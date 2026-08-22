@@ -607,10 +607,124 @@ function ConversationFlowsCard({ product }) {
   );
 }
 
+// ── SDR automático (Fase 1) ─────────────────────────────────────────────────
+// Primeiro toque em minutos (24/7) + lembretes de call (véspera/1h/10min) +
+// resgate de no-show, tudo em nome do SDR dono do lead — o motor roda no
+// servidor (sdr-flow.js). Aqui: liga/desliga, as 3 frentes e o estado dos
+// templates da Meta (o 1º toque de quem nunca escreveu depende de aprovação).
+function SdrBotCard({ product }) {
+  const { refresh } = useData();
+  const cfg = product.sdrBot || {};
+  const [on, setOn] = useState(!!cfg.enabled);
+  const [firstTouch, setFirstTouch] = useState(cfg.firstTouch !== false);
+  const [reminders, setReminders] = useState(cfg.reminders !== false);
+  const [rescue, setRescue] = useState(cfg.rescue !== false);
+  const [delay, setDelay] = useState(cfg.firstTouchDelayMin ?? 3);
+  const [status, setStatus] = useState(null);
+  const [note, setNote] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const loadStatus = () => api.sdrStatus(product.id).then(setStatus).catch((e) => setStatus({ error: e.message || "não deu pra ler o status" }));
+  useEffect(() => { loadStatus(); }, [product.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function save() {
+    try {
+      await api.update("products", product.id, {
+        sdrBot: {
+          ...cfg, enabled: on, firstTouch, reminders, rescue,
+          firstTouchDelayMin: Math.max(1, Number(delay) || 3),
+          // Carimbo de QUANDO ligou: o robô só faz 1º toque em lead criado
+          // DEPOIS dele (backlog antigo segue fila humana). Religar re-carimba.
+          enabledAt: on ? (cfg.enabled && cfg.enabledAt ? cfg.enabledAt : new Date().toISOString()) : (cfg.enabledAt || ""),
+        },
+      });
+      setNote({ ok: true, text: on ? "ligado — vale já pro próximo lead novo" : "salvo (robô desligado)" });
+      refresh?.();
+    } catch (e) { setNote({ ok: false, text: e.message || "sem permissão (escrita de produto = tela Ajustes)" }); }
+  }
+  async function setupTemplates() {
+    setBusy(true); setNote(null);
+    try {
+      const r = await api.sdrTemplateSetup();
+      setNote({ ok: true, text: "submetidos pra Meta: " + (r.templates || []).map((t) => `${t.name.replace("sdr_", "")} ${t.status}`).join(" · ") });
+      loadStatus();
+    } catch (e) { setNote({ ok: false, text: e.message || "não deu pra submeter os templates" }); }
+    finally { setBusy(false); }
+  }
+
+  const tpl = status?.templates || [];
+  const pending = tpl.filter((t) => !t.approved);
+  return (
+    <Card title="SDR automático" hint="primeiro toque em minutos (24/7) + lembretes da call + resgate de no-show · fala em nome do SDR dono do lead; no inbox as mensagens aparecem com autor sdr-bot">
+      <div style={{ padding: "12px var(--inset-x) 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+          <input type="checkbox" checked={on} onChange={(e) => setOn(e.target.checked)} />
+          ligado neste produto
+        </label>
+        {on && (
+          <>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, cursor: "pointer" }}>
+                <input type="checkbox" checked={firstTouch} onChange={(e) => setFirstTouch(e.target.checked)} />
+                primeiro toque no lead novo
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, cursor: "pointer" }}>
+                <input type="checkbox" checked={reminders} onChange={(e) => setReminders(e.target.checked)} />
+                lembretes da call (véspera · 1h · 10min)
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, cursor: "pointer" }}>
+                <input type="checkbox" checked={rescue} onChange={(e) => setRescue(e.target.checked)} />
+                resgate de no-show
+              </label>
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <span className="kicker">1º toque sai</span>
+              <input type="number" min={1} max={60} value={delay} onChange={(e) => setDelay(e.target.value)} className="mono" style={{ ...inp, width: 58, fontFamily: "var(--mono)" }} />
+              <span className="kicker">min depois do cadastro</span>
+              <span className="mono dim" style={{ fontSize: 10 }}>a pausa curta soa como gente que viu o cadastro, não robô de 2 segundos</span>
+            </div>
+            <div className="mono dim" style={{ fontSize: 10.5 }}>
+              lembretes gravam nas mesmas chaves das tarefas de confirmação do Meu dia (feito lá cala o robô e vice-versa) · resposta do lead confirma a call sozinha ou vira pop-up quente · mensagem humana na conversa silencia o 1º toque
+            </div>
+          </>
+        )}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <span className="kicker">templates da Meta (1º toque fora da janela de 24h depende deles)</span>
+            <button onClick={setupTemplates} disabled={busy} style={{ ...btn, opacity: busy ? 0.6 : 1 }}>{busy ? "submetendo…" : "submeter pra aprovação"}</button>
+            <button onClick={loadStatus} className="mono dim" style={{ fontSize: 11 }}>↻</button>
+          </div>
+          {status?.error && <span className="mono" style={{ fontSize: 11.5, color: "var(--neg)" }}>{status.error}</span>}
+          {status?.templatesError && !status?.error && <span className="mono dim" style={{ fontSize: 10.5 }}>{status.templatesError}</span>}
+          {tpl.map((t) => (
+            <div key={t.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", border: "1px solid var(--line-faint)", borderRadius: "var(--r-2)", flexWrap: "wrap" }}>
+              <span className="mono" style={{ fontSize: 12, fontWeight: 600 }}>{t.name}</span>
+              <span style={{ flex: 1, fontSize: 11.5, color: "var(--fg-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 120 }} title={t.body}>{t.body}</span>
+              <Pill tone={t.approved ? "pos" : /reject|disable|paused/i.test(t.event || "") ? "neg" : "warn"}>
+                {t.approved ? "aprovado" : /reject/i.test(t.event || "") ? "reprovado" : "aguardando"}
+              </Pill>
+            </div>
+          ))}
+          {on && pending.length > 0 && (
+            <span className="mono dim" style={{ fontSize: 10.5 }}>
+              sem o template aprovado, o 1º toque só sai pra lead que já escreveu (janela aberta); lembrete cai em alerta quente quando a janela fecha
+            </span>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "flex-end" }}>
+          {note && <span className="mono" style={{ fontSize: 11.5, color: note.ok ? "var(--pos)" : "var(--neg)", maxWidth: 520, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={note.text}>{note.text}</span>}
+          <button onClick={save} style={{ ...btn, background: "var(--btn-bg)", color: "var(--btn-fg)", border: "none", fontWeight: 600 }}>salvar</button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 export function WaAutomationsPanel({ product }) {
   if (!product) return <EmptyState title="Nenhum produto cadastrado" hint="Crie o produto em Ajustes." />;
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 14, maxWidth: 980 }}>
+      <SdrBotCard key={"sdr-" + product.id} product={product} />
       <ConversationFlowsCard product={product} />
       <RulesCard product={product} />
       <CallFlowCard key={product.id} product={product} />

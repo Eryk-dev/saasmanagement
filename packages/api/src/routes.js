@@ -37,6 +37,7 @@ import { registerFlashcardRoutes } from "./routes.flashcards.js";
 import { registerGoogleRoutes } from "./routes.google.js";
 import { syncPersonalCalendar } from "./google-user.js";
 import { registerWhatsappRoutes } from "./routes.whatsapp.js";
+import { registerSdrRoutes } from "./routes.sdr.js";
 import { makeSalesWhatsapp } from "./sales-whatsapp.js";
 import { makeMailer } from "./mailer.js";
 import { getWaHealth, waHealthSummary } from "./wa-health.js";
@@ -343,8 +344,11 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // WhatsApp (Cloud API): webhook (recebe) + envio pelo drawer do lead. O SDR
   // conversa com o cliente direto no cockpit; as mensagens viram timeline.
   whatsappClient = registerWhatsappRoutes(app, repo, { whatsapp: opts.whatsapp, anthropic: anthropicClient, transcriber: opts.transcriber });
+  // SDR automatizado: horários livres no servidor + templates + status (o
+  // motor em si é o poller startSdrFlow do index.js, com o MESMO client).
+  registerSdrRoutes(app, repo, { whatsapp: whatsappClient });
   // Poller de resumos (index.js) usa os MESMOS clients das rotas.
-  if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, googleUser, anthropic: anthropicClient, mailer: mailerClient });
+  if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, googleUser, anthropic: anthropicClient, mailer: mailerClient, whatsapp: whatsappClient });
 
   // ── Tempo real ─────────────────────────────────────────────────────────
   // Toda escrita no repo (db.js) incrementa um contador global (changes.js).

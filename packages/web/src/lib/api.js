@@ -357,6 +357,18 @@ export const api = {
   sequenceWaSent: (enrollmentId) => req("POST", "/api/sequences/wa-sent", { enrollmentId }),
   sequenceMetrics: (saas) => req("GET", `/api/sequences/metrics/${encodeURIComponent(saas)}`),
   sequenceRun: () => req("POST", "/api/sequences/run", {}),
+  // SDR automatizado: status do robô + templates dele, submissão pra Meta e os
+  // horários livres calculados no servidor (régua de roteamento por nível).
+  sdrStatus: (saas) => req("GET", `/api/sdr/status?saas=${encodeURIComponent(saas)}`),
+  sdrTemplateSetup: () => req("POST", "/api/whatsapp/templates/sdr-setup", {}),
+  freeSlots: (saas, { lead, grade, days, limit } = {}) => {
+    const q = new URLSearchParams({ saas });
+    if (lead) q.set("lead", lead);
+    if (grade) q.set("grade", grade);
+    if (days) q.set("days", String(days));
+    if (limit) q.set("limit", String(limit));
+    return req("GET", `/api/agenda/free-slots?${q.toString()}`);
+  },
   // Metas de desempenho por vaga/pessoa (ferramenta; escreve na collection goals).
   // `company` (opcional): meta da empresa — { cashTarget } vai pro
   // product.monthlyCashTarget (a meta que a Visão geral e a Análise perseguem).

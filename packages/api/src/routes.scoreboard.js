@@ -15,7 +15,7 @@ import { RATE_BENCHMARKS, computePipelinePace } from "./routes.pipeline-pace.js"
 import {
   DAY_MS as DAY, round2, dayKey, rangeFromQuery, isRealLead, isSaleLead, isWonLead,
   callOutcome as coreCallOutcome, callCohortIn,
-  winsIn, customerStartMap, contactAttribution, isReferralLead,
+  winsIn, customerStartMap, contactAttribution, firstResponseAttribution, isReferralLead,
   classCounts, cashBucketsIn, mentoriaScore, keyAccountIds, isKeyAccountLead,
 } from "./metrics-core.js";
 import { isMentoriaLead } from "./mentoria.js";
@@ -737,6 +737,30 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       touched: touchMins.length,
       cohort: slaCohort.length,
       pct5m: touchMins.length ? round2((within5 / touchMins.length) * 100) : null,
+    };
+    // 4b. SLA de 1ª RESPOSTA por QUALQUER canal (sdr-bot incluído): a espera
+    //     REAL do lead com o SDR automatizado no ar. A régua humana acima segue
+    //     intacta (é a cobrança do time); esta mede máquina + time juntos, e
+    //     `botFirst` diz em quantos leads o robô chegou antes de todo mundo.
+    const anyFirst = firstResponseAttribution({ leads, actsOf, waMessages, saas: product.id, inWin, humanIds });
+    const respMins = [];
+    let within5Any = 0, botFirst = 0;
+    for (const l of slaCohort) {
+      const r = anyFirst.get(l.id);
+      if (!r) continue;
+      const m = (new Date(r.at) - new Date(l.createdAt)) / 60_000;
+      if (!Number.isFinite(m) || m < 0) continue;
+      respMins.push(m);
+      if (m <= 5) within5Any++;
+      if (!r.human) botFirst++;
+    }
+    team.firstResponse = {
+      medianMin: respMins.length ? round2(median(respMins)) : null,
+      within5m: within5Any,
+      responded: respMins.length,
+      cohort: slaCohort.length,
+      pct5m: respMins.length ? round2((within5Any / respMins.length) * 100) : null,
+      botFirst,
     };
     // 5. ESTAGNADAS (faxina mensal, p.191): oportunidade em etapa ATIVA de
     //    venda parada há 14+ dias sem mudar de etapa — candidata a reativar,
