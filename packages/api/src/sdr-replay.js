@@ -10,7 +10,7 @@
 // parcial gravado a cada conversa pra dar pra acompanhar.
 import { kindOf, firstStage } from "./stages.js";
 import { leadGrade } from "./routes.marketing.js";
-import { slotsForLead, slotLabel, wallNow } from "./agenda-slots.js";
+import { slotsForLead, slotLabel, wallNow, OFFER_HOURS } from "./agenda-slots.js";
 import { leadDigest, SDR_AUTHOR } from "./sdr-flow.js";
 
 const DOC_ID = "sdr_replay";
@@ -80,7 +80,7 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
       // validade do horário em si é papel do motor (sempre valida na hora).
       let slotList = [];
       try {
-        const { slots } = await slotsForLead(repo, { lead, saas, now: wnow, limit: 4 });
+        const { slots } = await slotsForLead(repo, { lead, saas, now: wnow, limit: 4, ...OFFER_HOURS });
         slotList = slots.map((s) => ({ ...s, label: slotLabel(s.at, wnow) }));
       } catch { /* sem agenda: a IA é instruída a perguntar período */ }
 

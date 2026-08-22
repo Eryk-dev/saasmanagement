@@ -114,7 +114,7 @@ export function closerPools(users, saas) {
 // Varre os próximos `days` DIAS ÚTEIS e devolve, por slot livre, o closer com
 // MENOS calls no dia (balanceamento; empate = ordem estável). Um item por
 // horário: [{ at: "YYYY-MM-DDTHH:MM", closer, level }...], em ordem cronológica.
-export function freeSlotsForPool({ pool, now, days = 5, minNoticeMin = 120, limit = 0, busyFns, callCountOf }) {
+export function freeSlotsForPool({ pool, now, days = 5, minNoticeMin = 120, limit = 0, busyFns, callCountOf, fromHour = CALL_H0, toHour = CALL_H1 }) {
   if (!pool.length) return [];
   const out = [];
   const floor = new Date(now.getTime() + minNoticeMin * 60_000);
@@ -123,7 +123,7 @@ export function freeSlotsForPool({ pool, now, days = 5, minNoticeMin = 120, limi
   while (scanned < days) {
     const dow = day.getUTCDay();
     if (dow !== 0 && dow !== 6) {
-      for (let total = CALL_H0 * 60; total + CALL_MIN <= CALL_H1 * 60; total += SLOT_MIN) {
+      for (let total = Math.ceil((fromHour * 60) / SLOT_MIN) * SLOT_MIN; total + CALL_MIN <= toHour * 60; total += SLOT_MIN) {
         const w = new Date(day);
         w.setUTCHours(Math.floor(total / 60), total % 60, 0, 0);
         if (w.getTime() < floor.getTime()) continue;
@@ -155,10 +155,16 @@ export function addBusinessDaysNaive(at, n) {
   return slotValOf(w);
 }
 
+// Janela de OFERTA do robô: horário que o SDR automatizado propõe pro lead.
+// A grade completa (7h às 21h) continua valendo pra gente marcar na mão; o
+// robô oferecendo "segunda às 7h" é honesto mas soa errado (visto no replay
+// de 22/08) — oferta automática fica no horário comercial confortável.
+export const OFFER_HOURS = { fromHour: 9, toHour: 18.5 };
+
 // ── A régua completa: horários pro LEAD ─────────────────────────────────────
 // Nota do lead (matriz S-E) → pool elegível → próximos horários. Devolve
 // { slots, pool: "upper"|"junior"|"junior+upper"|"all", grade }.
-export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wallNow(), days = 5, minNoticeMin = 120, limit = 6 } = {}) {
+export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wallNow(), days = 5, minNoticeMin = 120, limit = 6, fromHour, toHour } = {}) {
   const sid = saas || lead?.saas || "";
   const [users, leads, blocks, consultations, products] = await Promise.all([
     repo.list("users"),
@@ -185,7 +191,7 @@ export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wal
   };
   const compute = (pool, lim) => {
     ensureBusy(pool);
-    return freeSlotsForPool({ pool, now, days, minNoticeMin, limit: lim, busyFns, callCountOf });
+    return freeSlotsForPool({ pool, now, days, minNoticeMin, limit: lim, busyFns, callCountOf, ...(fromHour != null ? { fromHour } : {}), ...(toHour != null ? { toHour } : {}) });
   };
 
   // S/A/B: pleno/sênior, nunca desce pro júnior. Sem ninguém no pool de cima,
