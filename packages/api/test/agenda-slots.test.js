@@ -130,3 +130,13 @@ test("slotLabel fala como gente: hoje, amanhã e dia da semana", () => {
   assert.equal(slotLabel("2026-08-20T09:30", NOW), "amanhã às 9h30");
   assert.equal(slotLabel("2026-08-21T10:00", NOW), "sexta às 10h");
 });
+
+test("janela de oferta do robô: fromHour 9 tira os horários de madrugador da oferta", async () => {
+  const { repo, fill } = seedRepo({ users: [PL] });
+  await fill();
+  const cedo = wallFromNaive("2026-08-19T06:00"); // 6h BRT + aviso de 2h = 8h
+  const semFiltro = await slotsForLead(repo, { lead: { id: "l", saas: "leverads", accounts: "10+" }, saas: "leverads", now: cedo, limit: 1 });
+  assert.equal(semFiltro.slots[0].at, "2026-08-19T08:00", "a grade completa segue existindo pra marcação manual");
+  const oferta = await slotsForLead(repo, { lead: { id: "l", saas: "leverads", accounts: "10+" }, saas: "leverads", now: cedo, limit: 1, fromHour: 9, toHour: 18.5 });
+  assert.equal(oferta.slots[0].at, "2026-08-19T09:00", "o robô só oferece horário comercial confortável");
+});

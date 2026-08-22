@@ -22,8 +22,9 @@ import { kindOf, firstStage, stageByKind, isWonLead } from "./stages.js";
 import { brtToIso, applyStageMove } from "./lead-flow.js";
 import { raiseAlert } from "./wa-call-flow.js";
 import { leadGrade } from "./routes.marketing.js";
-import { slotsForLead, slotLabel, wallNow } from "./agenda-slots.js";
+import { slotsForLead, slotLabel, wallNow, OFFER_HOURS } from "./agenda-slots.js";
 import { sdrBotConfig, leadDigest, SDR_AUTHOR } from "./sdr-flow.js";
+import { transcriber as defaultTranscriber } from "./transcribe.js";
 
 const HOUR = 3_600_000;
 const BRAIN_KINDS = new Set(["novo", "contato", "qualificacao", "call"]);
@@ -91,7 +92,39 @@ export async function bookCall(repo, { lead, product, at, closer, author = SDR_A
   return repo.update("leads", lead.id, { ...patchExtra, ...moved, callAt: at, closer });
 }
 
-export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = null, log = console, now = () => new Date(), replyDelayMs = 6000, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = null, transcriber = defaultTranscriber, log = console, now = () => new Date(), replyDelayMs = 6000, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+  // ÁUDIO do lead: 13% das mensagens recebidas (mineração) — sem isso, todo
+  // áudio viraria handoff. Transcreve a nota de voz (cache wa_media primeiro,
+  // Graph depois) e grava o texto NA mensagem (campo transcript), então a
+  // conversa inteira fica legível pra IA nas próximas decisões também.
+  // Falhou/não configurado: segue como "🎤 áudio" e o prompt manda pra humano.
+  async function transcriptOf(m, lead) {
+    if (m.transcript) return m.transcript;
+    if (m.media?.kind !== "audio" || !transcriber?.configured?.()) return "";
+    try {
+      let buf = null, mime = m.media.mime || "audio/ogg";
+      const cached = await repo.get("wa_media", m.id).catch(() => null);
+      if (cached?.data) { buf = Buffer.from(cached.data, "base64"); mime = cached.mime || mime; }
+      else if (wa?.fetchMedia && m.media.id) {
+        ({ buf, mime } = await wa.fetchMedia(m.media.id));
+        if (buf && buf.length <= 16 * 1024 * 1024) {
+          try { await repo.create("wa_media", { id: m.id, mime, size: buf.length, data: buf.toString("base64"), at: new Date().toISOString() }); }
+          catch { /* cache é bônus */ }
+        }
+      }
+      if (!buf || buf.length < 1024 || buf.length > 25 * 1024 * 1024) return "";
+      const text = await transcriber.transcribe(buf, {
+        filename: `wa-${m.id}.ogg`, mime,
+        prompt: ["LeverAds", lead?.name, lead?.company].filter(Boolean).join(", "),
+      });
+      if (text) await repo.update("wa_messages", m.id, { transcript: text }).catch(() => {});
+      return text || "";
+    } catch (err) {
+      log.warn?.({ msg: m.id, err: err.message }, "sdr-brain: transcrição do áudio falhou");
+      return "";
+    }
+  }
+
   async function sendBot({ phone, text, phoneId, saas, leadId }) {
     const { messageId } = await wa.sendText(phone, text, { phoneId });
     await recordMessage(repo, { id: messageId, phone, direction: "out", text, status: "sent", author: SDR_AUTHOR, waPhoneId: phoneId || "", saas, leadId });
@@ -158,11 +191,19 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
 
     // Contexto pra decisão: agenda real + conversa + relógio BRT.
     const wnow = wallNow(at);
-    const { slots } = await slotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 4 });
+    const { slots } = await slotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 4, ...OFFER_HOURS });
     const slotList = slots.map((s) => ({ ...s, label: slotLabel(s.at, wnow) }));
+    // Nota de voz que disparou a decisão vira texto (as antigas já carregam o
+    // transcript gravado); sem transcrição possível, fica "🎤 áudio" e o
+    // prompt manda pra humano.
+    const lastIn = [...msgs].reverse().find((x) => x.direction === "in");
+    if (lastIn && lastIn.media?.kind === "audio" && !lastIn.transcript) {
+      const t = await transcriptOf(lastIn, lead);
+      if (t) lastIn.transcript = t;
+    }
     const conversation = msgs.slice(-24).map((m) => ({
       who: m.direction === "in" ? "LEAD" : "VOCÊ",
-      text: String(m.text || "").slice(0, 500) || "[mensagem]",
+      text: String(m.transcript ? `[áudio] ${m.transcript}` : (m.text || "")).slice(0, 500) || "[mensagem]",
     }));
     const nome = firstName(lead.name);
     const decision = await anthropic.sdrDecide({

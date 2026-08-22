@@ -225,3 +225,32 @@ test("bookCall direto: exige etapa de call no funil", async () => {
   const lead = await repo.create("leads", { id: "L9", saas: "x", stage: "Novo" });
   await assert.rejects(() => bookCall(repo, { lead, product, at: "2026-08-19T12:00", closer: "c" }), /funil sem etapa de call/);
 });
+
+test("nota de voz é transcrita antes da decisão: áudio com horário vira agendamento", async () => {
+  const repo = await world({ messages: [{ direction: "in", text: "🎤 áudio", media: { kind: "audio", id: "MID1", mime: "audio/ogg" }, at: ISO("2026-08-19T12:59:00Z") }] });
+  await repo.create("wa_media", { id: "m1", mime: "audio/ogg", data: Buffer.from("a".repeat(2048)).toString("base64") });
+  const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: SLOT1 }] });
+  const transcriber = { configured: () => true, transcribe: async () => "pode ser meio dia então" };
+  const brain = makeSdrBrain({
+    repo, whatsapp: fakes.wa, anthropic: fakes.anthropic, autoCallMeet: fakes.autoCallMeet, transcriber,
+    log: { warn: () => {} }, now: () => NOW, replyDelayMs: 0, sleep: async () => {},
+  });
+  assert.equal(await brain.handleInbound(INBOUND), "agendar");
+  // A IA viu o texto transcrito, não o "🎤 áudio"…
+  assert.match(fakes.calls[0].conversation.at(-1).text, /\[áudio\] pode ser meio dia/);
+  // …e o transcript ficou gravado na mensagem (conversa legível pra sempre).
+  const msg = (await repo.list("wa_messages")).find((m) => m.media?.kind === "audio");
+  assert.equal(msg.transcript, "pode ser meio dia então");
+});
+
+test("sem transcrição configurada, o áudio segue como áudio (e o prompt manda pra humano)", async () => {
+  const repo = await world({ messages: [{ direction: "in", text: "🎤 áudio", media: { kind: "audio", id: "MID1" }, at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes = makeFakes({ decisions: [{ acao: "humano", motivoHumano: "áudio sem transcrição" }] });
+  const transcriber = { configured: () => false, transcribe: async () => { throw new Error("não chega aqui"); } };
+  const brain = makeSdrBrain({
+    repo, whatsapp: fakes.wa, anthropic: fakes.anthropic, autoCallMeet: fakes.autoCallMeet, transcriber,
+    log: { warn: () => {} }, now: () => NOW, replyDelayMs: 0, sleep: async () => {},
+  });
+  assert.equal(await brain.handleInbound(INBOUND), "humano");
+  assert.match(fakes.calls[0].conversation.at(-1).text, /áudio/);
+});
