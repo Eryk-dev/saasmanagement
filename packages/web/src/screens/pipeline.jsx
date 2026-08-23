@@ -567,7 +567,7 @@ const AGENDA_INK = "oklch(0.22 0.02 250)";      // letra "preta" sobre as cores 
 const AGENDA_INK_SOFT = "oklch(0.4 0.02 250)";  // linha secundária (hora, empresa)
 
 function AgendaView({ leads, consultations = [], onOpenLead, blocking, person }) {
-  const [week, setWeek] = useStP(0); // offset em semanas a partir da atual
+  const [week, setWeek] = useStP(0); // offset em MEIAS-semanas a partir da atual (seg·ter·qua | qui·sex·sáb·dom)
   const [showTouches, setShowTouchesState] = useStP(() => {
     try { return localStorage.getItem("cockpit_agenda_touches") === "1"; } catch { return false; }
   });
@@ -587,11 +587,22 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
   };
   const H0 = 7, H1 = 21, hourH = 44;
   const saasCfgOf = (l) => (window.SEED?.SAAS || []).find((x) => x.id === l.saas);
+  // MEIA-SEMANA por página (Leo, 23/08): SEG·TER·QUA e depois QUI·SEX·SÁB·DOM.
+  // Quinta e sexta saem na MESMA largura dos dias da primeira metade, e o fim
+  // de semana divide a largura de UM dia (2 colunas de meia) — as duas páginas
+  // somam 3 "dias" de largura, então nada muda de tamanho ao navegar. As setas
+  // andam de metade em metade; "hoje" cai na metade que contém hoje.
   const today = new Date(); today.setHours(0, 0, 0, 0);
+  const baseHalf = ((today.getDay() + 6) % 7) >= 3 ? 1 : 0; // de quinta em diante = 2ª metade
+  const totalHalf = baseHalf + week; // `week` agora conta MEIAS-semanas
+  const weekOff = Math.floor(totalHalf / 2);
+  const secondHalf = ((totalHalf % 2) + 2) % 2 === 1;
   const monday = new Date(today);
-  monday.setDate(today.getDate() - ((today.getDay() + 6) % 7) + week * 7);
-  const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d; });
-  const end = new Date(monday); end.setDate(monday.getDate() + 7);
+  monday.setDate(today.getDate() - ((today.getDay() + 6) % 7) + weekOff * 7);
+  const days = (secondHalf ? [3, 4, 5, 6] : [0, 1, 2]).map((i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d; });
+  const start = days[0];
+  const end = new Date(days[days.length - 1]); end.setDate(end.getDate() + 1);
+  const colTemplate = `52px ${(secondHalf ? [1, 1, 0.5, 0.5] : [1, 1, 1]).map((f) => `${f}fr`).join(" ")}`;
   // Eventos: call agendada (callAt), integração (integrationAt) e — opcional —
   // toque do GPS (nextActionAt). O mesmo lead pode ter os três.
   // Consultas 1:1 (mentoria UniqueKids) entram na mesma grade como um "lead" de
@@ -668,7 +679,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
       return out;
     })
     .concat(consultEvents)
-    .filter(e => e && Number.isFinite(e.t.getTime()) && e.t >= monday && e.t < end)
+    .filter(e => e && Number.isFinite(e.t.getTime()) && e.t >= start && e.t < end)
     .filter(e => !person || e.who === person);
   // Contagem por tipo (já na semana/pessoa filtradas) alimenta as abas; a grade
   // desenha só o tipo escolhido.
@@ -676,7 +687,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
   const fupCount = events.filter((e) => e.kind === "follow-up").length;
   const shown = evKind === "all" ? events : events.filter((e) => e.kind === (evKind === "call" ? "call" : "follow-up"));
   const fmtDay = (d, opts) => d.toLocaleDateString("pt-BR", opts).replace(/\./g, "");
-  const label = `${fmtDay(days[0], { day: "2-digit", month: "short" })} · ${fmtDay(days[6], { day: "2-digit", month: "short", year: "numeric" })}`;
+  const label = `${fmtDay(days[0], { day: "2-digit", month: "short" })} · ${fmtDay(days[days.length - 1], { day: "2-digit", month: "short", year: "numeric" })}`;
   const navBtn = {
     height: 26, padding: "0 10px", borderRadius: 5, fontSize: 12,
     background: "var(--bg-2)", border: "1px solid var(--line-1)", color: "var(--fg-2)", cursor: "pointer",
@@ -707,7 +718,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
         <button style={navBtn} onClick={() => setWeek(w => w + 1)}>›</button>
         <span style={{ fontSize: 14, fontWeight: 600, fontFamily: "var(--display)", marginLeft: 4 }}>{label}</span>
         <span className="mono dim" style={{ fontSize: 11 }}>
-          {calls === 0 ? "nenhuma call nesta semana" : `${calls} ${calls === 1 ? "call" : "calls"}`}
+          {calls === 0 ? "nenhuma call nesses dias" : `${calls} ${calls === 1 ? "call" : "calls"}`}
         </span>
         {/* Tipo de evento: tudo · calls · follow-ups, com a contagem da semana
             e o pontinho na cor do tipo — a mesma da pílula na grade. */}
@@ -731,18 +742,18 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
           {/* Pessoa = BARRINHA à esquerda da pílula; a legenda usa o mesmo desenho. */}
           {team.map(u => (
             <span key={u.id} className="mono" style={{ fontSize: 11, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", gap: 5 }}>
-              <span style={{ width: 4, height: 12, borderRadius: 2, background: toneOf(u.id) }} />{u.name || u.id}
+              <span style={{ width: 10, height: 13, borderRadius: 3, background: toneOf(u.id) }} />{u.name || u.id}
             </span>
           ))}
           <span className="mono" style={{ fontSize: 11, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", gap: 5 }}>
-            <span style={{ width: 4, height: 12, borderRadius: 2, background: "var(--fg-4)" }} />sem responsável
+            <span style={{ width: 10, height: 13, borderRadius: 3, background: "var(--fg-4)" }} />sem responsável
           </span>
         </span>
       </div>
 
       <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
         {/* Cabeçalho dos dias */}
-        <div style={{ display: "grid", gridTemplateColumns: "52px repeat(7, 1fr)", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: colTemplate, borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
           <span />
           {days.map((d, i) => {
             const isToday = d.toDateString() === new Date().toDateString();
@@ -760,7 +771,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
           })}
         </div>
         {/* Corpo: gutter de horas + 7 colunas com linhas por hora */}
-        <div style={{ display: "grid", gridTemplateColumns: "52px repeat(7, 1fr)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: colTemplate }}>
           <div style={{ position: "relative", height: (H1 - H0) * hourH }}>
             {Array.from({ length: H1 - H0 }, (_, i) => (
               <span key={i} className="mono tnum" style={{ position: "absolute", top: i * hourH - 6, right: 6, fontSize: 10, color: "var(--fg-4)" }}>
@@ -845,7 +856,9 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                         background: isTouch ? "transparent" : tc.bg,
                         border: isTouch ? `1px dashed color-mix(in srgb, ${tone} 55%, var(--line-2))`
                           : `1px ${isFollowup ? "dashed" : "solid"} ${tc.line}`,
-                        borderLeft: isTouch ? `2px dashed ${tone}` : `4px solid ${tone}`,
+                        // Faixa da PESSOA bem grossa (Leo, 23/08: "pelo menos
+                        // 5x mais grossa"): 20px, dá pra ver o closer de longe.
+                        borderLeft: isTouch ? `2px dashed ${tone}` : `20px solid ${tone}`,
                         borderRadius: 5, padding: isFollowup ? "0 6px" : isTouch ? "1px 6px" : "3px 6px",
                         // Feita (histórico): mesma cor do closer, só lavada — dá
                         // pra ler a semana inteira do que aconteceu sem confundir
