@@ -31,10 +31,11 @@ const sessionId = (leadId) => `cs_${leadId}`;
 // científica"; o valor está nos sinais objetivos (câmera desligou, entrou mais
 // gente = decisor, cliente sumiu da frente).
 const OR_URL = "https://openrouter.ai/api/v1/chat/completions";
-const VISION_PROMPT = "Você vê um print da tela de uma call do Google Meet. Responda SÓ com JSON válido, sem markdown: " +
+const VISION_PROMPT = "Você vê um print da tela de uma call de vendas no Google Meet. Responda SÓ com JSON válido, sem markdown: " +
   '{"cameraLigada": bool (a câmera de ALGUM participante remoto aparece ligada?), "pessoas": número de pessoas visíveis em vídeo, ' +
-  '"atencao": "alta"|"media"|"baixa"|"na" (postura e olhar de quem aparece; "na" se ninguém visível), ' +
-  '"nota": "1 frase curta e objetiva sobre o que se vê (ex.: cliente atento, segunda pessoa entrou, câmera desligada)"}. ' +
+  '"atencao": "alta"|"media"|"baixa"|"na" (olhar e postura de quem aparece; "na" se ninguém visível), ' +
+  '"expressao": "tenso"|"neutro"|"a_vontade"|"sorrindo"|"na" (a expressão e postura dominantes do CLIENTE visível; "na" se não dá pra ver), ' +
+  '"nota": "1 frase curta e objetiva (ex.: cliente inclinado pra frente e atento, segunda pessoa entrou, cliente olhando o celular)"}. ' +
   "Nunca invente o que não dá pra ver.";
 
 export function makeVisionReader({ fetch: f = globalThis.fetch, apiKey = process.env.OPENROUTER_API_KEY || "", model = process.env.COPILOT_VISION_MODEL || "google/gemini-2.5-flash-lite" } = {}) {
@@ -61,6 +62,7 @@ export function makeVisionReader({ fetch: f = globalThis.fetch, apiKey = process
       cameraLigada: !!j.cameraLigada,
       pessoas: Math.max(0, Math.floor(Number(j.pessoas) || 0)),
       atencao: ["alta", "media", "baixa"].includes(j.atencao) ? j.atencao : "na",
+      expressao: ["tenso", "neutro", "a_vontade", "sorrindo"].includes(j.expressao) ? j.expressao : "na",
       nota: String(j.nota || "").slice(0, 200),
     };
   }
@@ -82,13 +84,16 @@ export function registerCopilotRoutes(app, repo, { transcriber = defaultTranscri
     if (!anthropic?.configured?.() || typeof anthropic.copilotCue !== "function") return null;
     const transcript = transcriptOf(session);
     if (transcript.length < 80) return null; // cedo demais: nada útil pra analisar
-    const v = session.visual;
+    // Trajetória visual resumida (hh:mm expressão/atenção): tendência > foto.
+    const trace = (session.visualTrace || []).slice(-12)
+      .map((v) => `${String(v.at || "").slice(11, 16)} ${v.cameraLigada ? "" : "câmera off · "}${v.pessoas}p · ${v.expressao || "na"} · atenção ${v.atencao}${v.nota ? ` · ${v.nota}` : ""}`)
+      .join("\n");
     const { cue } = await anthropic.copilotCue({
       transcript,
       checklist: session.checklist || [],
       lead: { name: lead.name, company: lead.company, niche: lead.niche, stage: lead.stage },
       productName: product?.name || "LeverAds",
-      visual: v ? `câmera ${v.cameraLigada ? "ligada" : "desligada"} · ${v.pessoas} pessoa(s) em vídeo · atenção ${v.atencao} · ${v.nota}` : "",
+      visual: trace,
     });
     return cue || null;
   }
@@ -172,7 +177,10 @@ export function registerCopilotRoutes(app, repo, { transcriber = defaultTranscri
     if (buf.length < 4000) return { ok: true, skipped: true };
     try {
       const visual = { ...(await vision.read(buf, file.mimetype || "image/jpeg")), at: new Date().toISOString() };
-      await repo.update("copilot_sessions", session.id, { visual });
+      // trajetória: os últimos ~30 frames (5 min) — é a TENDÊNCIA que informa o
+      // termômetro ("ficou tenso quando o preço entrou"), não um print solto.
+      const visualTrace = [...(session.visualTrace || []), visual].slice(-30);
+      await repo.update("copilot_sessions", session.id, { visual, visualTrace });
       return { ok: true, visual };
     } catch (err) {
       req.log.warn({ err: err.message, lead: req.params.id }, "copiloto: leitura visual falhou (áudio segue)");

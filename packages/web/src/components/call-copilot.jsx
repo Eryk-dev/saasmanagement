@@ -16,7 +16,7 @@ import { DEFAULT_SCRIPTS } from "../lib/scripts.js";
 const { useState: useS, useEffect: useE, useRef: useR } = React;
 
 const CHUNK_MS = 15_000; // pedaço fechado e enviado a cada 15s (webm válido por reinício do recorder)
-const FRAME_MS = 25_000; // um print da aba a cada 25s → leitura visual do cliente
+const FRAME_MS = 10_000; // um print da aba a cada 10s → trajetória visual do cliente (tendência, não foto)
 
 // Checklist = os passos do roteiro da call (a mesma fonte do painel que o
 // closer já lê). Título só; a fala/dica ficam no roteiro.
@@ -255,6 +255,28 @@ export function CallCopilot({ lead }) {
           </div>
         )}
         {state?.cues?.alerta && <div className="mono" style={{ fontSize: 11, color: "var(--warn)" }}>⚠ {state.cues.alerta}</div>}
+        {/* Termômetro do cliente: fala (principal) + trajetória visual (apoio) */}
+        {state?.cues?.leitura && (() => {
+          const L = state.cues.leitura;
+          const pill = (label, value, tone) => (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, padding: "3px 9px", borderRadius: 999, background: "var(--bg-1)", border: `1px solid ${tone}`, color: tone, fontWeight: 600, whiteSpace: "nowrap" }}>
+              <span style={{ opacity: 0.65, fontWeight: 500 }}>{label}</span> {value.replace("_", " ")}
+            </span>
+          );
+          const tTom = { frio: "var(--info, var(--fg-3))", morno: "var(--warn)", quente: "var(--pos)" }[L.temperatura] || "var(--fg-3)";
+          const cTom = { hesitante: "var(--warn)", avaliando: "var(--fg-3)", decidido: "var(--pos)" }[L.confianca] || "var(--fg-3)";
+          const eTom = { tenso: "var(--neg)", neutro: "var(--fg-3)", a_vontade: "var(--pos)" }[L.estado] || "var(--fg-3)";
+          return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {pill("interesse", L.temperatura, tTom)}
+                {pill("decisão", L.confianca, cTom)}
+                {pill("estado", L.estado, eTom)}
+              </div>
+              {L.porque && <div className="mono dim" style={{ fontSize: 10.5 }}>{L.porque}</div>}
+            </div>
+          );
+        })()}
         {/* Leitura visual: presença e engajamento aparente do outro lado */}
         {state?.visual && (
           <div className="mono" style={{ fontSize: 11, color: "var(--fg-3)" }}
