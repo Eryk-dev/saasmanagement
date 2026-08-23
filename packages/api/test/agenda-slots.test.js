@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
-  closerPools, slotsForLead, occupyCells, addBusinessDaysNaive, slotLabel, wallFromNaive, spreadPair,
+  closerPools, slotsForLead, occupyCells, addBusinessDaysNaive, slotLabel, wallFromNaive, spreadPair, OFFER_HOURS,
 } from "../src/agenda-slots.js";
 
 // Quarta-feira 19/08/2026, 8h da manhã no relógio de Brasília (ver
@@ -139,6 +139,17 @@ test("janela de oferta do robô: fromHour 9 tira os horários de madrugador da o
   assert.equal(semFiltro.slots[0].at, "2026-08-19T08:00", "a grade completa segue existindo pra marcação manual");
   const oferta = await slotsForLead(repo, { lead: { id: "l", saas: "leverads", accounts: "10+" }, saas: "leverads", now: cedo, limit: 1, fromHour: 9, toHour: 18.5 });
   assert.equal(oferta.slots[0].at, "2026-08-19T09:00", "o robô só oferece horário comercial confortável");
+});
+
+test("OFFER_HOURS: última call ofertável começa às 19h (teto 20 porque a call termina dentro da janela)", async () => {
+  const { repo, fill } = seedRepo({ users: [PL] });
+  await fill();
+  const cedo = wallFromNaive("2026-08-19T06:00");
+  const { slots } = await slotsForLead(repo, { lead: { id: "l", saas: "leverads", accounts: "10+" }, saas: "leverads", now: cedo, limit: 50, ...OFFER_HOURS });
+  const doDia = slots.filter((s) => s.at.startsWith("2026-08-19T")).map((s) => s.at.slice(11));
+  assert.equal(doDia[0], "09:00", "abre às 9h");
+  assert.equal(doDia.at(-1), "19:00", "a última call do dia começa às 19h");
+  assert.ok(!doDia.includes("19:30") && !doDia.includes("20:00"), "depois das 19h não oferece");
 });
 
 test("janela de oferta do robô bloqueia o almoço (12h-13h) e o par sugerido tem 2h de respiro", async () => {

@@ -162,7 +162,9 @@ export function addBusinessDaysNaive(at, n) {
 // A grade completa (7h às 21h) continua valendo pra gente marcar na mão; o
 // robô oferecendo "segunda às 7h" é honesto mas soa errado (visto no replay
 // de 22/08) — oferta automática fica no horário comercial confortável.
-export const OFFER_HOURS = { fromHour: 9, toHour: 18.5, lunchFrom: 12, lunchTo: 13 };
+// Das 9h às 19h, com a ÚLTIMA call começando 19h (Leo, 23/08): a varredura
+// exige a call TERMINANDO dentro da janela, por isso o teto é 20.
+export const OFFER_HOURS = { fromHour: 9, toHour: 20, lunchFrom: 12, lunchTo: 13 };
 
 // ── A régua completa: horários pro LEAD ─────────────────────────────────────
 // Nota do lead (matriz S-E) → pool elegível → próximos horários. Devolve
