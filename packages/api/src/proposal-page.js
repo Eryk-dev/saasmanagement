@@ -705,6 +705,13 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .lvx-script-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .lvx-script-track { flex: none; padding: 3px 8px; border-radius: 999px; background: var(--accent-soft);
     color: var(--accent); font: 700 10px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+  .lvx-qnav { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .lvx-qnav button { border: 1px solid var(--line); background: var(--raised); color: var(--ink-2); cursor: pointer;
+    border-radius: 7px; min-width: 26px; height: 26px; padding: 0 7px; font: 700 12px var(--font-mono); }
+  .lvx-qnav button:hover { border-color: var(--ink-3); }
+  .lvx-qnav button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+  .lvx-qnav-hint { margin-left: auto; font-family: var(--font-mono); font-size: 10px; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--ink-3); }
   .lvx-qg { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: .12em;
     text-transform: uppercase; color: var(--accent); display: flex; align-items: center; gap: 10px; margin-top: 4px; }
   .lvx-qg::after { content: ''; flex: 1; height: 1px; background: var(--line); }
@@ -1811,6 +1818,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       var sec = el('section', 'closer-setup');
       var w = el('div', 'wrap');
       var goHost = null; // com o card do catálogo, o botão desce na COLUNA dos campos
+      var applyOrder = null; // ordem B (beta): apresentação = só esta tela
       // Com o card do catálogo o título sai: o card ocupa a tela inteira e o
       // espaço vai pra fonte maior. Telas zero sem catálogo seguem com título.
       var CAT = P.catalogUI;
@@ -1863,6 +1871,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
             ['"Te faço umas perguntas, te mostro a ferramenta e no fim a gente decide junto. Fechado?"', 'Primeiro micro-sim.'],
           ]],
           ['Diagnóstico · situação', [
+            ['"Me conta um pouco da sua história e como sua operação está organizada hoje, por favor."', 'Pergunta aberta que abre o diagnóstico: ele fala, você anota.'],
             ['"Quantas contas no Mercado Livre? E na Shopee?"', 'Confirma o que a SDR trouxe em vez de perguntar do zero.'],
             ['"Quantos anúncios ativos?"', ''],
             ['"Isso é quanto do teu estoque?"', 'O gap estoque × anunciado costuma ser a dor 1.', 'oem'],
@@ -1912,18 +1921,35 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
             ['"Integração amanhã 9h30 ou 15h?"', 'Alternativa dupla. Nunca "quando você pode?".'],
           ]],
         ];
+        // O roteiro mostra UMA etapa por vez (espaço avança, shift+espaço
+        // volta, os chips pulam direto): o closer fica na tela zero inteira
+        // sem precisar rolar. A numeração segue contínua na espinha toda.
+        var qsStage = 0;
         function qsHtml(tk) {
-          var n = 0, h = '';
-          QS.forEach(function (g) {
-            var items = g[1].filter(function (q) { return !q[2] || tk === 'co' || q[2] === tk; });
-            if (!items.length) return;
-            h += '<span class="lvx-qg">' + g[0] + '</span><ol>' + items.map(function (q) {
+          var vis = QS.map(function (g) {
+            return g[1].filter(function (q) { return !q[2] || tk === 'co' || q[2] === tk; });
+          });
+          if (qsStage < 0 || qsStage >= QS.length) qsStage = 0;
+          var start = 0;
+          for (var i = 0; i < qsStage; i++) start += vis[i].length;
+          var chips = QS.map(function (g, i) {
+            return '<button type="button" data-qs="' + i + '"' + (i === qsStage ? ' class="on"' : '') +
+              ' title="' + g[0] + '">' + (i + 1) + '</button>';
+          }).join('');
+          var n = start;
+          return '<div class="lvx-qnav">' + chips + '<span class="lvx-qnav-hint">espaço avança · shift+espaço volta</span></div>' +
+            '<span class="lvx-qg">' + QS[qsStage][0] + '</span><ol>' + vis[qsStage].map(function (q) {
               n += 1;
               return '<li><i>' + n + '</i><span><b>' + q[0] + '</b>' +
                 (q[1] ? '<span class="lvx-ql">' + q[1] + '</span>' : '') + '</span></li>';
             }).join('') + '</ol>';
-          });
-          return h;
+        }
+        function renderScript() {
+          var tk = trackOf(state.product || CAT.suggested);
+          catGet('lvxScript').innerHTML =
+            '<div class="lvx-script-head"><span class="lvx-h">Roteiro da call · a espinha de perguntas</span><span class="lvx-script-track">' + TRACK_LABEL[tk] + '</span></div>' +
+            qsHtml(tk) +
+            '<span class="lvx-note">Âncora = o preço ao lado, sem teto inventado. Concessão só com contrapartida. Decisor fora da call: não fecha, traz ele pros últimos 10 minutos.</span>';
         }
         // Ordem das dores vem do servidor (painOrder): dor nova no catálogo
         // entra no select sozinha. Fallback = catálogo antigo, sem painOrder.
@@ -2062,11 +2088,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           catGet('lvxCur').innerHTML = '<b>' + esc(CAT.names[shown] || shown) + '</b>' + esc(CAT.offerLines[shown] || '') +
             '<span class="lvx-cur-price">' + esc(CAT.priceLines[shown] || '') + '</span>';
           catGet('lvxBack').className = 'lvx-back' + (state.product && state.product !== CAT.suggested ? ' show' : '');
-          var tk = trackOf(shown);
-          catGet('lvxScript').innerHTML =
-            '<div class="lvx-script-head"><span class="lvx-h">Roteiro da call · a espinha de perguntas</span><span class="lvx-script-track">' + TRACK_LABEL[tk] + '</span></div>' +
-            qsHtml(tk) +
-            '<span class="lvx-note">Âncora = o preço ao lado, sem teto inventado. Concessão só com contrapartida. Decisor fora da call: não fecha, traz ele pros últimos 10 minutos.</span>';
+          renderScript();
           var cotaOn = shown === 'oem' && (CAT.oemLevels || []).length;
           catGet('lvxCotaRow').style.display = cotaOn ? '' : 'none';
           if (cotaOn) catGet('lvxCota').value = String(Number(state.oemCota) || CAT.oemCota || '');
@@ -2075,7 +2097,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
             b.className = ((b.getAttribute('data-order') || '') === (isB ? 'B' : '')) ? 'on' : '';
           });
           catGet('lvxOrderNote').textContent = isB
-            ? 'Beta: começa nas 3 etapas, preço logo depois, impacto e história no meio e fecha no investimento com tudo à mostra. Sem capa.'
+            ? 'Beta: a apresentação é só esta tela de setup, sem os slides. O link do cliente segue com o deck completo.'
             : 'Ordem de sempre: capa, história, marcas, sobre nós, 3 etapas, impacto e investimento.';
         }
         // Recarrega com o deck do produto certo. Proposta real: salva e recarrega;
@@ -2096,16 +2118,37 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           value === '' || value == null ? q.delete(key) : q.set(key, value);
           history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q.toString() : ''));
         }
-        // Ordem da apresentação: a montagem do deck é no servidor, então trocar
-        // de A pra B salva e recarrega (mesma dança da troca de produto).
+        // Ordem da apresentação: o beta não remonta mais o deck (é só esconder
+        // os slides aqui no ?k), então a troca é ao vivo e salva sem recarregar.
         catGet('lvxOrder').addEventListener('click', function (ev) {
           var b = ev.target && ev.target.closest ? ev.target.closest('button[data-order]') : null;
           if (!b) return;
           var v = b.getAttribute('data-order') === 'B' ? 'B' : '';
           if (v === state.deckOrder) return;
           state.deckOrder = v;
+          catRemember('order', v);
           syncCat();
-          catReload({ order: v || null });
+          if (applyOrder) applyOrder();
+        });
+        // Chips do roteiro: clicar numa etapa pula direto pra ela.
+        catGet('lvxScript').addEventListener('click', function (ev) {
+          var b = ev.target && ev.target.closest ? ev.target.closest('button[data-qs]') : null;
+          if (!b) return;
+          qsStage = Number(b.getAttribute('data-qs')) || 0;
+          renderScript();
+        });
+        // Espaço passa a etapa do roteiro (shift+espaço volta): o closer toca a
+        // call inteira sem rolar a tela. Só age com a tela de setup à vista e
+        // com o foco fora de campo/botão; nos slides o espaço segue rolando.
+        document.addEventListener('keydown', function (ev) {
+          if (ev.code !== 'Space') return;
+          var t = ev.target;
+          if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.tagName === 'BUTTON' || t.isContentEditable)) return;
+          var r = sec.getBoundingClientRect();
+          if (r.top > innerHeight * 0.5 || r.bottom < innerHeight * 0.5) return;
+          ev.preventDefault();
+          qsStage = (qsStage + (ev.shiftKey ? QS.length - 1 : 1)) % QS.length;
+          renderScript();
         });
         catGet('lvxSel').addEventListener('change', function () {
           state.product = this.value;
@@ -2138,6 +2181,15 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           state.product = '';
           catReload({ accounts: state.accounts, volume: state.volume, niche: DATA.answers.niche || null, product: null });
         });
+        // Beta = a apresentação é só esta tela: some com os slides e com o
+        // botão de começar (o link do cliente, sem ?k, não passa por aqui).
+        applyOrder = function () {
+          var solo = state.deckOrder === 'B';
+          Array.prototype.forEach.call(root.children, function (n) {
+            if (n !== sec) n.style.display = solo ? 'none' : '';
+          });
+          go.style.display = solo ? 'none' : '';
+        };
         syncCat();
         renderDores();
       }
@@ -2150,6 +2202,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       (goHost || w).appendChild(go);
       sec.appendChild(w);
       root.insertBefore(sec, root.firstChild);
+      if (applyOrder) applyOrder();
       // Inserir a "tela zero" ANTES da capa dispara o scroll anchoring do navegador
       // (ele rola pra baixo pra manter a capa onde estava), então a apresentação
       // abria NA CAPA e o closer nao via o setup. O overflow-anchor:none no html ja

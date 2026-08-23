@@ -329,44 +329,16 @@ export function applyCatalog(p) {
     }
   }
 
-  return { slides: orderDeck(out, (p.state || {}).deckOrder), product, suggested: suggestProduct(calc, p.state || {}, p.data?.answers || {}), tier, oemCota };
+  return { slides: out, product, suggested: suggestProduct(calc, p.state || {}, p.data?.answers || {}), tier, oemCota };
 }
 
-// ── Ordem da apresentação · teste A/B (Leo, 12/08/2026) ─────────────────────
+// ── Ordem da apresentação · teste A/B (Leo, 12/08/2026; refeito 23/08) ──────
 // A = a ordem de sempre (capa → história → marcas → sobre nós → 3 etapas →
-// [OEM] → impacto → investimento). B = beta: abre no MECANISMO, mostra o preço
-// cedo e deixa história e prova pro fim; a CAPA fica de fora.
-//   B: 3 etapas → [OEM] → investimento → impacto → história → marcas → sobre nós
-// Slide que a régua não conhece (template editado) mantém a ordem original no
-// fim da fila, então mexer no deck nunca faz slide sumir.
-export const DECK_ORDERS = { A: "padrão", B: "beta · mecanismo, preço e prova no fim" };
-const ORDER_B_RANK = { como_funciona: 0, oem_processo: 1, impacto: 3, nossa_operacao: 4, perfis_ig: 5, sobre_nos: 6 };
-export function orderDeck(slides, order) {
-  const list = Array.isArray(slides) ? slides : [];
-  if (String(order || "").toUpperCase() !== "B") return list;
-  const rank = (s, i) => (s?.type === "pricing" ? 2 : ORDER_B_RANK[s?.key] != null ? ORDER_B_RANK[s.key] : 7 + i);
-  const out = list
-    .filter((s) => s?.type !== "hero")
-    .map((s, i) => ({ s: clone(s), i, r: rank(s, i) }))
-    .sort((a, b) => a.r - b.r || a.i - b.i)
-    .map((x) => x.s);
-  // FECHAMENTO do beta: o investimento DE NOVO no fim, com tudo à mostra. No
-  // meio do deck ele é encadeado (benefícios um a um, preço no comando); aqui
-  // o closer recapitula a oferta inteira de uma vez, sem refazer a revelação.
-  // A escada de ofertas (Shift+1/2) continua secreta, como no slide encadeado.
-  const pricing = out.find((s) => s?.type === "pricing");
-  if (pricing) {
-    const recap = clone(pricing);
-    recap.key = (pricing.key || "investimento") + "_aberto";
-    recap.revealOpen = true;
-    out.push(recap);
-  }
-  // A ordem nova embaralha os fundos originais, então o ritmo claro/escuro é
-  // refeito do zero (mesma regra da inserção da tela OEM): começa claro.
-  let dark = false;
-  for (const s of out) { s.bg = dark ? "dark" : ""; dark = !dark; }
-  return out;
-}
+// [OEM] → impacto → investimento). B = beta: a APRESENTAÇÃO é só a tela de
+// setup do closer (o modo ?k esconde os slides). O deck em si não muda mais
+// de ordem, então o link do cliente segue o deck padrão; a reordenação antiga
+// do beta (mecanismo primeiro, sem capa, fechamento aberto) foi aposentada.
+export const DECK_ORDERS = { A: "padrão", B: "beta · só a tela de setup" };
 
 // ── Payload da tela zero (modo closer) ──────────────────────────────────────
 // Tudo que o card de decisão mostra vem PRONTO daqui: o cliente-side não tem
