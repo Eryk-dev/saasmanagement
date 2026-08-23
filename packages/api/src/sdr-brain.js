@@ -254,7 +254,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     const nome = firstName(lead.name);
     const decision = await anthropic.sdrDecide({
       sdrName: firstName((await repo.get("users", lead.owner).catch(() => null))?.name),
-      lead: { name: lead.name, company: lead.company, email: lead.email },
+      lead: { name: lead.name, company: lead.company, email: lead.email, niche: lead.niche },
       digest: leadDigest(product, lead),
       grade: leadGrade(lead) || "",
       stage: lead.stage || firstStage(product),
