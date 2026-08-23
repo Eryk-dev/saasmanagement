@@ -22,7 +22,7 @@ import { kindOf, firstStage, stageByKind, isWonLead } from "./stages.js";
 import { brtToIso, applyStageMove } from "./lead-flow.js";
 import { raiseAlert } from "./wa-call-flow.js";
 import { leadGrade } from "./routes.marketing.js";
-import { slotsForLead, slotLabel, wallNow, OFFER_HOURS } from "./agenda-slots.js";
+import { slotsForLead, slotLabel, wallNow, spreadPair, OFFER_HOURS } from "./agenda-slots.js";
 import { sdrBotConfig, leadDigest, conversationActive, leadPainFocus, SDR_AUTHOR } from "./sdr-flow.js";
 import { transcriber as defaultTranscriber } from "./transcribe.js";
 
@@ -214,6 +214,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     const wnow = wallNow(at);
     const { slots } = await slotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 16, ...OFFER_HOURS });
     const slotList = slots.map((s) => ({ ...s, label: slotLabel(s.at, wnow) }));
+    const suggestedPair = spreadPair(slotList);
     // Nota de voz que disparou a decisão vira texto (as antigas já carregam o
     // transcript gravado); sem transcrição possível, fica "🎤 áudio" e o
     // prompt manda pra humano.
@@ -249,6 +250,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       gapMin,
       demoOffered,
       slotsOffered,
+      suggestedPair,
     });
 
     const phoneId = thread.waPhoneId || product.waPhoneId || undefined;
@@ -276,9 +278,9 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     if (decision.acao === "agendar" || decision.acao === "remarcar") {
       const pick = slotList.find((s) => s.at === decision.horario);
       if (!pick) {
-        // Horário fora da agenda real: re-oferta determinística, nada de
-        // marcar no escuro.
-        await send(reofferText(nome, slotList, wnow));
+        // Horário fora da agenda real: re-oferta determinística (com o par
+        // espaçado), nada de marcar no escuro.
+        await send(reofferText(nome, suggestedPair, wnow));
         return "reoferta";
       }
       const fresh = await repo.get("leads", lead.id);

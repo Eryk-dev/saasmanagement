@@ -370,7 +370,7 @@ COMO TRATAR O QUE APARECE (padrões que comprovadamente viram call):
 - Sócio/decisor: SEMPRE convide a trazer o sócio pra call (com decisor presente a conversa rende muito mais).
 - "Ainda não vendo em marketplace": responda com gentileza que a plataforma é pra quem já vende, e acao humano (o time direciona pra mentoria).
 
-QUANDO AGENDAR: o lead topou call, pediu horário ou indicou período ("pode ser de manhã") → escolha o horário da lista de HORÁRIOS LIVRES que melhor encaixa no que ele disse e devolva acao agendar com esse horário EXATO. Se ele propôs um horário que não está na lista, NÃO invente: acao responder oferecendo os 2 primeiros da lista como alternativas. Se já existe call marcada e ele quer mudar, acao remarcar com o novo horário da lista. Ao CITAR um horário em texto, copie o RÓTULO exato que veio na lista (nunca recalcule "amanhã/segunda" de cabeça: o rótulo da lista é a verdade).
+QUANDO AGENDAR: o lead topou call, pediu horário ou indicou período ("pode ser de manhã") → escolha o horário da lista de HORÁRIOS LIVRES que melhor encaixa no que ele disse e devolva acao agendar com esse horário EXATO. Se ele propôs um horário que não está na lista, NÃO invente: acao responder oferecendo os 2 primeiros da lista como alternativas. Se já existe call marcada e ele quer mudar, acao remarcar com o novo horário da lista. Ao CITAR um horário em texto, copie o RÓTULO exato que veio na lista (nunca recalcule "amanhã/segunda" de cabeça: o rótulo da lista é a verdade). Ao oferecer DUAS opções, elas devem ter pelo menos 2 horas entre si quando a agenda permitir: use o PAR SUGERIDO do contexto.
 
 QUANDO CHAMAR GENTE (acao humano): pergunta técnica específica que exige verificação real (part numbers, compatibilidade de peça, integração específica de ERP); lead irritado, desconfiado ou pedindo pra parar de receber mensagem; pedido explícito de falar com humano ou de ligação telefônica (não prometa ligação); pergunta direta se você é robô/IA (nunca minta, nunca afirme ser humano: chame gente); qualquer negociação de preço insistente; áudio sem transcrição ([áudio]).
 
@@ -723,7 +723,7 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
   // Decisão do SDR conversacional pra UMA mensagem recebida no WhatsApp.
   // Devolve ação fechada + texto; quem valida horário, trava preço e executa é
   // o motor (sdr-brain.js) — aqui é só a cabeça.
-  async function sdrDecide({ sdrName = "", lead = {}, digest = "", grade = "", stage = "", callAt = "", nowLabel = "", slots = [], conversation = [], pain = null, canGreet = true, gapMin = null, demoOffered = false, slotsOffered = false }) {
+  async function sdrDecide({ sdrName = "", lead = {}, digest = "", grade = "", stage = "", callAt = "", nowLabel = "", slots = [], conversation = [], pain = null, canGreet = true, gapMin = null, demoOffered = false, slotsOffered = false, suggestedPair = [] }) {
     if (!configured()) throw new Error("IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor");
     const slotLines = slots.length
       ? slots.map((s) => `- ${s.at} (${s.label || s.at})`).join("\n")
@@ -750,6 +750,9 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
         : "",
       "",
       "HORÁRIOS LIVRES, em ordem (é uma AMOSTRA dos próximos livres, não a agenda inteira; pra agendar/remarcar use SOMENTE valores desta lista, copiando exato; se o período que o lead pediu não aparece aqui, NUNCA afirme que não existe: ofereça o mais próximo da lista e diga que consegue ver outras opções):",
+      suggestedPair.length >= 2
+        ? `PAR SUGERIDO pra quando você oferecer DUAS opções (já espaçado em 2h+): ${suggestedPair[0].label || suggestedPair[0].at} (${suggestedPair[0].at}) ou ${suggestedPair[1].label || suggestedPair[1].at} (${suggestedPair[1].at}). Use este par; só fuja dele se o lead pedir um encaixe específico.`
+        : "",
       slotLines,
       "",
       "CONVERSA (mais antiga primeiro; a última linha é a mensagem NOVA do lead, que você vai tratar):",

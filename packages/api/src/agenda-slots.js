@@ -114,7 +114,7 @@ export function closerPools(users, saas) {
 // Varre os próximos `days` DIAS ÚTEIS e devolve, por slot livre, o closer com
 // MENOS calls no dia (balanceamento; empate = ordem estável). Um item por
 // horário: [{ at: "YYYY-MM-DDTHH:MM", closer, level }...], em ordem cronológica.
-export function freeSlotsForPool({ pool, now, days = 5, minNoticeMin = 120, limit = 0, busyFns, callCountOf, fromHour = CALL_H0, toHour = CALL_H1 }) {
+export function freeSlotsForPool({ pool, now, days = 5, minNoticeMin = 120, limit = 0, busyFns, callCountOf, fromHour = CALL_H0, toHour = CALL_H1, lunchFrom = null, lunchTo = null }) {
   if (!pool.length) return [];
   const out = [];
   const floor = new Date(now.getTime() + minNoticeMin * 60_000);
@@ -124,6 +124,9 @@ export function freeSlotsForPool({ pool, now, days = 5, minNoticeMin = 120, limi
     const dow = day.getUTCDay();
     if (dow !== 0 && dow !== 6) {
       for (let total = Math.ceil((fromHour * 60) / SLOT_MIN) * SLOT_MIN; total + CALL_MIN <= toHour * 60; total += SLOT_MIN) {
+        // Almoço (Leo, 23/08): call que ENCOSTA na janela de almoço não entra
+        // na oferta do robô (12h-13h por padrão via OFFER_HOURS).
+        if (lunchFrom != null && lunchTo != null && total / 60 < lunchTo && (total + CALL_MIN) / 60 > lunchFrom) continue;
         const w = new Date(day);
         w.setUTCHours(Math.floor(total / 60), total % 60, 0, 0);
         if (w.getTime() < floor.getTime()) continue;
@@ -159,12 +162,12 @@ export function addBusinessDaysNaive(at, n) {
 // A grade completa (7h às 21h) continua valendo pra gente marcar na mão; o
 // robô oferecendo "segunda às 7h" é honesto mas soa errado (visto no replay
 // de 22/08) — oferta automática fica no horário comercial confortável.
-export const OFFER_HOURS = { fromHour: 9, toHour: 18.5 };
+export const OFFER_HOURS = { fromHour: 9, toHour: 18.5, lunchFrom: 12, lunchTo: 13 };
 
 // ── A régua completa: horários pro LEAD ─────────────────────────────────────
 // Nota do lead (matriz S-E) → pool elegível → próximos horários. Devolve
 // { slots, pool: "upper"|"junior"|"junior+upper"|"all", grade }.
-export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wallNow(), days = 5, minNoticeMin = 120, limit = 6, fromHour, toHour } = {}) {
+export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wallNow(), days = 5, minNoticeMin = 120, limit = 6, fromHour, toHour, lunchFrom, lunchTo } = {}) {
   const sid = saas || lead?.saas || "";
   const [users, leads, blocks, consultations, products] = await Promise.all([
     repo.list("users"),
@@ -191,7 +194,7 @@ export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wal
   };
   const compute = (pool, lim) => {
     ensureBusy(pool);
-    return freeSlotsForPool({ pool, now, days, minNoticeMin, limit: lim, busyFns, callCountOf, ...(fromHour != null ? { fromHour } : {}), ...(toHour != null ? { toHour } : {}) });
+    return freeSlotsForPool({ pool, now, days, minNoticeMin, limit: lim, busyFns, callCountOf, ...(fromHour != null ? { fromHour } : {}), ...(toHour != null ? { toHour } : {}), ...(lunchFrom != null ? { lunchFrom } : {}), ...(lunchTo != null ? { lunchTo } : {}) });
   };
 
   // S/A/B: pleno/sênior, nunca desce pro júnior. Sem ninguém no pool de cima,
@@ -218,6 +221,17 @@ export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wal
     }
   }
   return { slots: jr, pool: "junior", grade };
+}
+
+// Dupla de sugestão com RESPIRO (Leo, 23/08): ao oferecer 2 opções, elas
+// devem ter pelo menos 2h de diferença quando a agenda permitir — 9h/9h30 não
+// é escolha de verdade. Cai pro adjacente só quando não há espaçado.
+export function spreadPair(slots, minGapMin = 120) {
+  if (!slots.length) return [];
+  const first = slots[0];
+  const t0 = wallFromNaive(first.at)?.getTime() ?? 0;
+  const second = slots.find((s) => (wallFromNaive(s.at)?.getTime() ?? 0) - t0 >= minGapMin * 60_000) || slots[1];
+  return second ? [first, second] : [first];
 }
 
 // Rótulo humano de um slot naive pro texto do WhatsApp: "hoje às 14h" /

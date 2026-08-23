@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
-  closerPools, slotsForLead, occupyCells, addBusinessDaysNaive, slotLabel, wallFromNaive,
+  closerPools, slotsForLead, occupyCells, addBusinessDaysNaive, slotLabel, wallFromNaive, spreadPair,
 } from "../src/agenda-slots.js";
 
 // Quarta-feira 19/08/2026, 8h da manhã no relógio de Brasília (ver
@@ -139,4 +139,21 @@ test("janela de oferta do robô: fromHour 9 tira os horários de madrugador da o
   assert.equal(semFiltro.slots[0].at, "2026-08-19T08:00", "a grade completa segue existindo pra marcação manual");
   const oferta = await slotsForLead(repo, { lead: { id: "l", saas: "leverads", accounts: "10+" }, saas: "leverads", now: cedo, limit: 1, fromHour: 9, toHour: 18.5 });
   assert.equal(oferta.slots[0].at, "2026-08-19T09:00", "o robô só oferece horário comercial confortável");
+});
+
+test("janela de oferta do robô bloqueia o almoço (12h-13h) e o par sugerido tem 2h de respiro", async () => {
+  const { repo, fill } = seedRepo({ users: [PL] });
+  await fill();
+  const cedo = wallFromNaive("2026-08-19T06:00");
+  const { slots } = await slotsForLead(repo, { lead: { id: "l", saas: "leverads", accounts: "10+" }, saas: "leverads", now: cedo, limit: 12, fromHour: 9, toHour: 18.5, lunchFrom: 12, lunchTo: 13 });
+  const starts = slots.map((s) => s.at.slice(11));
+  assert.ok(!starts.includes("11:30") && !starts.includes("12:00") && !starts.includes("12:30"), "call não encosta no almoço");
+  assert.ok(starts.includes("11:00") && starts.includes("13:00"), "a manhã fecha às 11h e a tarde reabre às 13h");
+  // Par com respiro: 9h e 11h (2h de diferença), não 9h/9h30.
+  const pair = spreadPair(slots);
+  assert.equal(pair[0].at, "2026-08-19T09:00");
+  assert.equal(pair[1].at, "2026-08-19T11:00");
+  // Sem opção espaçada, cai no adjacente.
+  const apertado = spreadPair([{ at: "2026-08-19T09:00" }, { at: "2026-08-19T09:30" }]);
+  assert.equal(apertado[1].at, "2026-08-19T09:30");
 });
