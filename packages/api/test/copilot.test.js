@@ -23,11 +23,12 @@ function fakes() {
       steps: checklist.map((c, i) => ({ id: c.id, done: i === 0 })),
       objecao: { resumo: "vai canibalizar", resposta: "Replicar não canibaliza: a Unique dobrou a conta 2 e a 1 subiu 20%." },
       alerta: null, sugestao: "Chama pra demo ao vivo agora.",
+      leitura: { temperatura: "morno", confianca: "avaliando", estado: "a_vontade", porque: "perguntou preço mas quer ver rodando" },
     } }),
   };
   const vision = {
     configured: () => true,
-    read: async () => ({ cameraLigada: true, pessoas: 2, atencao: "alta", nota: "segunda pessoa entrou na sala" }),
+    read: async () => ({ cameraLigada: true, pessoas: 2, atencao: "alta", expressao: "a_vontade", nota: "segunda pessoa entrou na sala" }),
   };
   return { transcriber, anthropic, vision, seen };
 }
@@ -70,6 +71,7 @@ test("copiloto: start → chunks viram transcrição, cue no 3º pedaço, stop g
   await send();
   const c3 = (await send()).json();
   assert.equal(c3.cues.sugestao, "Chama pra demo ao vivo agora.");
+  assert.equal(c3.cues.leitura.temperatura, "morno", "o termômetro do cliente vem junto do cue");
   assert.equal(c3.cues.objecao.resumo, "vai canibalizar");
   // a transcrição estéreo pede rótulo por canal
   assert.match(seen[0].instructions, /canal esquerdo é o VENDEDOR/);
@@ -107,6 +109,8 @@ test("copiloto: frame da aba vira leitura visual na sessão (a imagem não persi
   assert.equal(r.visual.atencao, "alta");
   const doc = await repo.get("copilot_sessions", "cs_le1");
   assert.equal(doc.visual.nota, "segunda pessoa entrou na sala");
+  assert.equal(doc.visualTrace.length, 1, "frame vira trajetória, não só foto");
+  assert.equal(doc.visualTrace[0].expressao, "a_vontade");
   const st = (await app.inject({ url: "/api/leads/le1/copilot", headers: as })).json();
   assert.equal(st.visual.cameraLigada, true);
   await app.close();

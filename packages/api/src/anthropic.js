@@ -385,12 +385,13 @@ NUNCA: invente recurso, número de resultado, promessa de ranking ou prazo que n
 // closer está EM call, ninguém lê parágrafo. Copy sem travessão (regra do Leo).
 const COPILOT_SYSTEM = `Você é o copiloto de vendas da LeverAds, assistindo a uma call AO VIVO pela transcrição parcial (o áudio chega com ~20s de atraso; "Vendedor:" é o closer, "Cliente:" é o lead).
 Seu trabalho: (1) marcar quais etapas do roteiro JÁ aconteceram de verdade (não marque por menção vaga; a etapa precisa ter sido executada); (2) detectar a objeção MAIS RECENTE ainda não tratada e dar a resposta pronta em 1 a 2 frases faladas, no tom do closer; (3) UMA sugestão curta do próximo movimento.
+Você também mantém o TERMÔMETRO do cliente (leitura): temperatura de compra, confiança na decisão e estado emocional. A fonte PRINCIPAL é a fala dele: o que responde, se hesita, se pergunta preço/prazo (sinal de compra), se responde curto ou desconversa (sinal de risco). A trajetória visual (expressão, postura, câmera, quem entrou) é APOIO: use quando reforça ou contradiz a fala (ex.: diz que gostou mas ficou tenso no preço). O "porque" sempre cita a evidência concreta.
 Regras: português do Brasil, frases curtas, prontas pra falar; nunca invente fatos sobre o cliente; sem travessão (use vírgula ou ponto); se a call está indo bem e não há objeção, objecao vem null e a sugestão aponta a PRÓXIMA etapa do roteiro ainda não coberta.`;
 
 const COPILOT_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["steps", "sugestao"],
+  required: ["steps", "sugestao", "leitura"],
   properties: {
     steps: {
       type: "array",
@@ -412,6 +413,18 @@ const COPILOT_SCHEMA = {
     },
     alerta: { type: ["string", "null"], description: "aviso de processo (ex.: decisor ausente, tempo passando sem demo); null se nada" },
     sugestao: { type: "string", description: "o próximo movimento, em 1 frase" },
+    leitura: {
+      type: "object",
+      additionalProperties: false,
+      description: "o termômetro do CLIENTE, inferido principalmente da FALA dele (conteúdo, hesitação, perguntas) com a trajetória visual de apoio",
+      required: ["temperatura", "confianca", "estado", "porque"],
+      properties: {
+        temperatura: { type: "string", enum: ["frio", "morno", "quente"], description: "interesse na compra agora" },
+        confianca: { type: "string", enum: ["hesitante", "avaliando", "decidido"], description: "quão perto de decidir ele soa" },
+        estado: { type: "string", enum: ["tenso", "neutro", "a_vontade"], description: "estado emocional aparente (fala + visual)" },
+        porque: { type: "string", description: "a evidência, em 1 frase (cite o que ele DISSE ou FEZ)" },
+      },
+    },
   },
 };
 
@@ -788,7 +801,7 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
       `Lead: ${lead.name || "?"}${lead.company ? ` (${lead.company})` : ""}`,
       lead.niche ? `Nicho: ${lead.niche}` : "",
       `Produto: ${productName}`,
-      visual ? `Leitura visual da tela (última): ${visual}` : "",
+      visual ? `Trajetória visual (do mais antigo ao mais recente):\n${visual}` : "",
       `\nEtapas do roteiro (marque done por id):\n${list}`,
     ].filter(Boolean).join("\n");
     const r = await requestJson(`${context}\n\nTranscrição parcial (ao vivo):\n\n${clipped}`,
