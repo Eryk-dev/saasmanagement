@@ -208,6 +208,13 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       return "cap";
     }
 
+    const phoneId = thread.waPhoneId || product.waPhoneId || undefined;
+    const to = thread.phone || digits(lead.waPhone || lead.phone);
+    // "Digitando…" enquanto a IA pensa (o visto azul vai junto): humano de
+    // verdade lê e digita. Best-effort; re-disparado entre as partes.
+    const typing = () => { if (message?.id && wa.sendTyping) wa.sendTyping(message.id, { phoneId }).catch(() => {}); };
+    typing();
+
     // Contexto pra decisão: agenda real + conversa + relógio BRT.
     const wnow = wallNow(at);
     const { slots } = await slotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 16, ...OFFER_HOURS });
@@ -251,14 +258,13 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       suggestedPair,
     });
 
-    const phoneId = thread.waPhoneId || product.waPhoneId || undefined;
-    const to = thread.phone || digits(lead.waPhone || lead.phone);
     // Envio em PARTES, como gente digitando (Leo, 23/08): a 1ª mensagem sai
     // depois do atraso de resposta; as seguintes com 5s entre cada uma.
     const send = async (textOrParts) => {
       const parts = (Array.isArray(textOrParts) ? textOrParts : [textOrParts])
         .map((t) => String(t || "").trim()).filter(Boolean).slice(0, 3);
       for (let i = 0; i < parts.length; i++) {
+        if (i > 0) typing(); // o envio anterior derruba o indicador: reacende
         await sleep(i === 0 ? replyDelayMs : partDelayMs);
         await sendBot({ phone: to, text: parts[i].slice(0, 900), phoneId, saas: product.id, leadId: lead.id });
       }

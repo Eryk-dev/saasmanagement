@@ -420,3 +420,14 @@ test("confirmação de agendamento enxuta: sem re-descrever a demo e sem pedir e
   assert.ok(!/demonstraç/.test(text), "não re-descreve a demonstração");
   assert.ok(!/e-mail/.test(text), "não pede e-mail (vem do formulário)");
 });
+
+test("digitando… aparece pro lead enquanto a IA pensa e entre as partes", async () => {
+  const repo = await world({ messages: [{ id: "in9", direction: "in", text: "me explica", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Parte um.", "Parte dois."] }] });
+  const typed = [];
+  fakes.wa.sendTyping = async (id) => { typed.push(id); };
+  await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "me explica", id: "in9" } });
+  assert.ok(typed.length >= 2, "digitando ao pensar + reaceso entre as partes");
+  assert.ok(typed.every((id) => id === "in9"));
+  assert.equal(fakes.sent.length, 2);
+});

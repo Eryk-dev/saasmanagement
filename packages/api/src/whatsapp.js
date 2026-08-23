@@ -99,6 +99,15 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
     try { await post({ status: "read", message_id: messageId }, phoneId); } catch { /* opcional */ }
   }
 
+  // "Digitando…" nativo da Cloud API: viaja NO recibo de leitura da última
+  // mensagem RECEBIDA (a Meta só mostra o indicador atrelado a um inbound).
+  // Aparece pro contato por até ~25s, ou até a próxima mensagem enviada, e
+  // marca o visto junto (leu → digitando → respondeu). Best-effort.
+  async function sendTyping(messageId, { phoneId } = {}) {
+    if (!messageId) return;
+    try { await post({ status: "read", message_id: messageId, typing_indicator: { type: "text" } }, phoneId); } catch { /* opcional */ }
+  }
+
   // ── Calling API (ligação pelo WhatsApp direto do cockpit) ──────────────────
   // Chamada INICIADA pelo negócio: manda a oferta SDP (não-trickle, com os ICE
   // candidates já dentro) e o WhatsApp do lead toca. O SDP answer volta pelo
@@ -328,7 +337,7 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
     return null;
   }
 
-  return { configured, sendText, sendTemplate, sendCallPermission, markRead, verifyWebhook, numberInfo, listTemplates, createTemplate, tokenWabaIds, initiateCall, terminateCall, conversationCosts, fetchMedia, uploadMedia, sendMedia };
+  return { configured, sendText, sendTemplate, sendCallPermission, markRead, sendTyping, verifyWebhook, numberInfo, listTemplates, createTemplate, tokenWabaIds, initiateCall, terminateCall, conversationCosts, fetchMedia, uploadMedia, sendMedia };
 }
 
 // Número em dígitos (E.164 sem +) pra enviar e pra casar o recebido com o lead.
