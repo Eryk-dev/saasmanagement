@@ -366,3 +366,15 @@ test("rajada de mensagens: só o disparo da ÚLTIMA responde, lendo a conversa i
   assert.equal(convo.at(-2).text, "olá");
   assert.equal(convo.at(-1).text, "me ajudaria sim");
 });
+
+test("o template do 1º toque conta como pitch feito: a IA recebe a proibição de re-listar", async () => {
+  const repo = await world({
+    messages: [
+      { direction: "out", author: "sdr-bot", text: "Oiii, Rafael. A LeverAds cria o anúncio completo da sua autopeça só com o OEM (part number): fotos, título de 200 caracteres, descrição e compatibilidade inteira. Isso ajudaria?", at: ISO("2026-08-19T12:50:00Z") },
+      { direction: "in", text: "quanto custa?", at: ISO("2026-08-19T12:59:00Z") },
+    ],
+  });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "O especialista fecha o plano na demonstração. Segunda 9h ou 9h30?" }] });
+  await brainOf(repo, fakes).handleInbound(INBOUND);
+  assert.equal(fakes.calls[0].demoOffered, true, "pitch do template detectado, mesmo sem a palavra demonstração");
+});

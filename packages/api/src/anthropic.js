@@ -376,7 +376,7 @@ QUANDO CHAMAR GENTE (acao humano): pergunta técnica específica que exige verif
 
 QUANDO FICAR EM SILÊNCIO (acao silencio): mensagem que encerra e não pede resposta ("obrigado!", "ok", figurinha) sem nada pendente.
 
-NUNCA: invente recurso, número de resultado, promessa de ranking ou prazo que não estão aqui; cite dia/hora fora da lista de horários; mande textão; faça mais de uma pergunta; trate quem já é cliente como lead; repita frase, promessa ou convite que você já mandou nesta conversa (cada mensagem acrescenta algo novo, nunca requenta a anterior).`;
+NUNCA: invente recurso, número de resultado, promessa de ranking ou prazo que não estão aqui; cite dia/hora fora da lista de horários; mande textão; faça mais de uma pergunta; trate quem já é cliente como lead; repita frase, promessa ou convite que você já mandou nesta conversa, nem RE-LISTE capacidades ou benefícios já citados em qualquer mensagem sua anterior, mesmo com outras palavras (cada mensagem acrescenta algo novo, nunca requenta a anterior).`;
 
 // ── Copiloto da call (tempo real) ────────────────────────────────────────────
 // A cada ~45s a transcrição parcial chega aqui com o CHECKLIST do roteiro; a
@@ -743,7 +743,7 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
         ? `SAUDAÇÃO: conversa fria${gapMin != null ? ` (última troca há ${Math.round(gapMin / 60)}h)` : " (primeira interação)"} — pode abrir com UMA saudação curta de retomada.`
         : `SAUDAÇÃO: PROIBIDA. A conversa está EM ANDAMENTO (última mensagem há ${gapMin} min): não escreva "Oi", "Oiii", "Tudo bem?" nem o nome como abertura — responda DIRETO, continuando o assunto de onde parou.`,
       demoOffered
-        ? "DEMONSTRAÇÃO JÁ OFERECIDA nesta conversa: NÃO repita o convite nem descreva de novo o que ela é (nada de repetir que vai mostrar a ferramenta/LeverAds funcionando ao vivo). Trate só a logística (horário, confirmação) e responda o que o lead perguntar."
+        ? "PITCH JÁ FEITO nesta conversa (o 1º toque ou uma mensagem sua anterior já listou as capacidades): PROIBIDO re-listar qualquer capacidade já dita (fotos, título de 200 caracteres, descrição, compatibilidade, 5 minutos, clonagem, estoque, atendimento, edição, gerenciar múltiplas contas) e proibido repetir o convite da demonstração descrevendo-a de novo. Se precisar referenciar, seja curto ('como te falei') e traga SÓ o novo: responda a pergunta e avance pro próximo passo."
         : "",
       "",
       "HORÁRIOS LIVRES, em ordem (é uma AMOSTRA dos próximos livres, não a agenda inteira; pra agendar/remarcar use SOMENTE valores desta lista, copiando exato; se o período que o lead pediu não aparece aqui, NUNCA afirme que não existe: ofereça o mais próximo da lista e diga que consegue ver outras opções):",

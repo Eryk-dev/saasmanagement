@@ -95,7 +95,7 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
         turns++;
         report.turns++;
         const prevMsg = i >= 1 ? msgs[i - 1] : null;
-        const demoOffered = msgs.slice(0, i).some((x) => x.direction === "out" && /demonstra|mostrar (a |o )?(leverads|plataforma|ferramenta)|funcionando ao vivo/i.test(x.text || ""));
+        const demoOffered = msgs.slice(0, i).some((x) => x.direction === "out" && /demonstra|mostrar (a |o )?(leverads|plataforma|ferramenta)|funcionando ao vivo|t[íi]tulo de 200|part number|compatibilidade inteira|clonagem de an[úu]ncios|estoque, atendimento e edi[çc][ãa]o|gerenciar m[úu]ltiplas contas/i.test(x.text || ""));
         const gapMin = prevMsg ? Math.round((Date.parse(m.at || 0) - Date.parse(prevMsg.at || 0)) / 60_000) : null;
         const conversation = msgs.slice(0, i + 1).slice(-24).map((x) => ({
           who: x.direction === "in" ? "LEAD" : "VOCÊ",
