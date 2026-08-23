@@ -696,6 +696,17 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .lvx-spin .q { display: block; margin-top: 6px; }
   .lvx-spin .q:first-child { margin-top: 0; }
   .lvx-spin .q b { color: var(--accent); font-family: var(--font-mono); margin-right: 4px; }
+  /* Roteiro da call na tela zero: trilha muda com o produto apresentado. */
+  .lvx-script { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg);
+    display: flex; flex-direction: column; gap: 8px; }
+  .lvx-script-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .lvx-script-track { flex: none; padding: 3px 8px; border-radius: 999px; background: var(--accent-soft);
+    color: var(--accent); font: 700 9px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+  .lvx-script ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .lvx-script li { display: flex; gap: 8px; font-size: 12px; line-height: 1.5; color: var(--ink-2); }
+  .lvx-script li i { font-style: normal; flex: none; width: 14px; text-align: right; margin-top: 1px;
+    font: 700 10px var(--font-mono); color: var(--accent); }
+  .lvx-script li b { color: var(--fg); margin-right: 5px; }
   .lvx-back { font-size: 11.5px; color: var(--ink-2); background: none; border: 0; cursor: pointer;
     text-align: left; padding: 0; text-decoration: underline; font-family: var(--font-display); display: none; }
   .lvx-back.show { display: inline; }
@@ -1814,6 +1825,21 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       if (CAT) {
         sec.classList.add('lvx');
         var TIER_STYLE = { S: ['#7c3aed', '#fff'], A: ['#16a34a', '#fff'], B: ['#65a30d', '#fff'], C: ['#eab308', '#463500'], D: ['#ea580c', '#fff'], E: ['#9aa2ad', '#fff'] };
+        // Roteiro da call por trilha de venda: OEM (só autopeça), Cópia
+        // (full/parcial) e Cópia + OEM (combos). O produto APRESENTADO decide a
+        // trilha; só diagnóstico e demo mudam, o resto da espinha é fixo.
+        var TRACK_LABEL = { oem: 'OEM', copia: 'Cópia', co: 'Cópia + OEM' };
+        var TRACK_DIAG = {
+          oem: '"Compatibilidade preenchida? Quanto do estoque tá no ar?"',
+          copia: '"Os SKUs batem entre as contas? Como baixa o estoque quando vende?"',
+          co: '"Compatibilidade preenchida? E os SKUs batem entre as contas?"',
+        };
+        var TRACK_DEMO = {
+          oem: 'Pede 3 part numbers no chat e cria ao vivo: o lead valida peça a peça.',
+          copia: 'Clona ao vivo o anúncio campeão dele pra outra conta ou Shopee.',
+          co: 'Cria por OEM na matriz e replica pra todas as contas e Shopee na sequência.',
+        };
+        function trackOf(k) { return k === 'oem' ? 'oem' : (k === 'fulloem' || k === 'parcialoem') ? 'co' : 'copia'; }
         // Ordem das dores vem do servidor (painOrder): dor nova no catálogo
         // entra no select sozinha. Fallback = catálogo antigo, sem painOrder.
         var painKeys = (CAT.painOrder && CAT.painOrder.length ? CAT.painOrder : ['A', 'B', 'C', 'D', 'E', 'none'])
@@ -1850,6 +1876,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           '</div>' +
           '<div class="lvx-ccol">' +
           '<div class="lvx-spin" id="lvxSpin"></div>' +
+          '<div class="lvx-script" id="lvxScript"></div>' +
           '</div>' +
           '<div class="lvx-ccol">' +
           '<div><span class="lvx-h">Ordem da apresentação</span>' +
@@ -1928,6 +1955,19 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           catGet('lvxCur').innerHTML = '<b>' + esc(CAT.names[shown] || shown) + '</b>' + esc(CAT.offerLines[shown] || '') +
             '<span class="lvx-cur-price">' + esc(CAT.priceLines[shown] || '') + '</span>';
           catGet('lvxBack').className = 'lvx-back' + (state.product && state.product !== CAT.suggested ? ' show' : '');
+          var tk = trackOf(shown);
+          catGet('lvxScript').innerHTML =
+            '<div class="lvx-script-head"><span class="lvx-h">Roteiro da call</span><span class="lvx-script-track">' + TRACK_LABEL[tk] + '</span></div>' +
+            '<ol>' +
+            '<li><i>1</i><span><b>Abertura</b>"Como você prefere que eu te chame?" · "Você decide sozinho ou com mais alguém?"</span></li>' +
+            '<li><i>2</i><span><b>Diagnóstico</b>"Quem sobe anúncio? Quantos por dia?" · ' + TRACK_DIAG[tk] + ' Saia com 3 dores, cada uma com um número.</span></li>' +
+            '<li><i>3</i><span><b>Recap</b>"Resumindo: [dor 1], [dor 2], [dor 3]. É isso?" Só avança com o é isso.</span></li>' +
+            '<li><i>4</i><span><b>Custo</b>Anual explícito, o preço da coluna ao lado. "Esse valor cabe no teu orçamento pra fechar hoje?"</span></li>' +
+            '<li><i>5</i><span><b>Acordo</b>"No fim, me dá um sim ou um não? Se for sim, pagamento e integração aqui na call. Fechado?"</span></li>' +
+            '<li><i>6</i><span><b>Demo</b>' + TRACK_DEMO[tk] + ' Por bloco: "isso resolve o teu problema de [dor]?"</span></li>' +
+            '<li><i>7</i><span><b>Fechamento</b>Contrato antes do link. "12x no cartão ou Pix?" Se adiar: "pelo nosso combinado, o que faltou pra ser um sim?"</span></li>' +
+            '</ol>' +
+            '<span class="lvx-note">Âncora = o preço ao lado, sem teto inventado. Concessão só com contrapartida. Decisor fora da call: não fecha, traz ele pros últimos 10 minutos.</span>';
           var cotaOn = shown === 'oem' && (CAT.oemLevels || []).length;
           catGet('lvxCotaRow').style.display = cotaOn ? '' : 'none';
           if (cotaOn) catGet('lvxCota').value = String(Number(state.oemCota) || CAT.oemCota || '');
