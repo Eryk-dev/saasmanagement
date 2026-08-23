@@ -60,20 +60,22 @@ function priceDeferral(nome) {
   return `${oi} investimento é de acordo com as necessidades da sua operação: primeiro a gente entende o seu cenário, e aí te mostra os pontos que dá pra alavancar. É exatamente isso que o especialista faz na demonstração.`;
 }
 
-// Confirmação de agendamento ENXUTA (Leo, 23/08): combinado por escrito +
-// aviso do convite por e-mail (SÓ quando o card tem e-mail, senão vira
-// promessa falsa e o link chega pelo lembrete de 10min) + sócio/decisor +
-// aviso de lembrete. Sem re-descrever a demonstração e sem pedir e-mail.
+// Confirmação de agendamento ENXUTA (Leo, 23/08), na letra da Manuela
+// (minerado ago/2026: "Certinho, agendado então para amanhã 15:30h", vocativo
+// sem vírgula, "te chamo aqui"): combinado por escrito + aviso do convite por
+// e-mail (SÓ quando o card tem e-mail, senão vira promessa falsa e o link
+// chega pelo lembrete de 10min) + sócio/decisor + aviso de lembrete. Sem
+// re-descrever a demonstração e sem pedir e-mail.
 function bookingConfirmText(nome, quando, hasEmail) {
   const convite = hasEmail ? ", o convite vai chegar no seu e-mail" : "";
-  return `Fechado${nome ? `, ${nome}` : ""}! Nossa conversa fica ${quando} então${convite}. Se tiver sócio ou alguém que decida junto, chama junto que rende mais. Te mando o lembrete por aqui um pouco antes!`;
+  return `Perfeito${nome ? ` ${nome}` : ""}, agendado então pra ${quando}${convite}. Se tiver sócio ou alguém que decida junto, chama junto que rende mais. Te chamo aqui um pouco antes com o lembrete!`;
 }
 
 function reofferText(nome, slots, wnow) {
   const oi = nome ? `${nome}, esse` : "Esse";
   if (slots.length >= 2) return `${oi} horário acabou de sair da minha agenda aqui. Consigo ${slotLabel(slots[0].at, wnow)} ou ${slotLabel(slots[1].at, wnow)}, qual fica melhor pra você?`;
-  if (slots.length === 1) return `${oi} horário não está mais livre aqui. Consigo ${slotLabel(slots[0].at, wnow)}, fica bom?`;
-  return `${oi} horário não está mais livre aqui. Me fala outro período que encaixe pra você que eu vejo a agenda.`;
+  if (slots.length === 1) return `${oi} horário não está mais livre aqui. Consigo ${slotLabel(slots[0].at, wnow)}, fica bom pra você?`;
+  return `${oi} horário não está mais livre aqui. Me diz um horário que fica bom pra você que eu vejo aqui na agenda.`;
 }
 
 // Marca (ou remarca) a call pelo MESMO caminho do PATCH da API: applyStageMove
