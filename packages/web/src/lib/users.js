@@ -55,20 +55,67 @@ export function userPhoto(id) {
   return assetUrl(userById(id)?.photo || "");
 }
 
-// Matiz determinística por id — MESMO hash do Avatar (atoms.jsx), pra cor do
-// avatar e do chip/agenda baterem.
-// Matiz (0-360) da cor de cada pessoa na agenda/pipeline: hash do id. Exceções
-// EXPLÍCITAS pra quando o sorteio aproxima duas pessoas e confunde a leitura
-// (Leo, 06/08: o verde do Vitor era igual ao do Leonardo → Vitor fica AMARELO).
+// Cor de cada pessoa na agenda/pipeline. O matiz por hash do id (abaixo)
+// sorteava famílias iguais — José, Vitor e Leonardo caíam todos no verde-oliva
+// (Leo, 06/08 e 23/08). Agora cada membro do time pega um SLOT de uma paleta
+// curada de cores fortes e bem separadas: o slot mais perto do tom que a pessoa
+// já tinha; ocupado, anda pro próximo livre. Duas pessoas nunca dividem a mesma
+// família. A ordem do roster (SEED.USERS) é estável, então a cor não muda entre
+// sessões nem entre workspaces.
+const PERSON_COLORS = [
+  { h: 285, l: 0.5, c: 0.19 },  // violeta
+  { h: 25, l: 0.54, c: 0.19 },  // vermelho
+  { h: 150, l: 0.5, c: 0.15 },  // verde
+  { h: 245, l: 0.53, c: 0.16 }, // azul
+  { h: 55, l: 0.6, c: 0.15 },   // laranja
+  { h: 345, l: 0.55, c: 0.19 }, // magenta
+  { h: 200, l: 0.55, c: 0.12 }, // petróleo
+  { h: 90, l: 0.63, c: 0.14 },  // dourado
+  { h: 320, l: 0.45, c: 0.14 }, // uva
+  { h: 65, l: 0.45, c: 0.08 },  // marrom
+];
+// Matiz PREFERIDA (0-360): override explícito > hash do id. O override segue
+// valendo como preferência de família (Vitor → amarelo/dourado, Leo 06/08).
 const TONE_OVERRIDES = {
-  us_mrqkn2tm03: 95, // Vitor · amarelo (mostarda no oklch 0.55/0.13 das telas)
+  us_mrqkn2tm03: 95, // Vitor · dourado
 };
-export function userTone(id) {
-  const over = TONE_OVERRIDES[String(id || "")];
-  if (over != null) return over;
+const hashHue = (id) => {
   let h = 0;
   for (const c of String(id || "?")) h = (h * 31 + c.charCodeAt(0)) % 360;
   return h;
+};
+export function userTone(id) {
+  const over = TONE_OVERRIDES[String(id || "")];
+  return over != null ? over : hashHue(id);
+}
+// Slots resolvidos pro roster atual; refeito quando a lista de ids muda.
+let toneCache = { key: "", map: new Map() };
+function personColorSlot(id) {
+  const users = usersList();
+  const key = users.map((u) => u.id).join("|");
+  if (toneCache.key !== key) {
+    const map = new Map();
+    let taken = new Set();
+    for (const u of users) {
+      const want = userTone(u.id);
+      const dist = (h) => Math.min(Math.abs(h - want), 360 - Math.abs(h - want));
+      const nearest = PERSON_COLORS.map((p, i) => i).sort((a, b) => dist(PERSON_COLORS[a].h) - dist(PERSON_COLORS[b].h));
+      const slot = nearest.find((i) => !taken.has(i)) ?? nearest[0];
+      taken.add(slot);
+      if (taken.size === PERSON_COLORS.length) taken = new Set(); // time maior que a paleta: recomeça
+      map.set(u.id, slot);
+    }
+    toneCache = { key, map };
+  }
+  return toneCache.map.get(String(id || ""));
+}
+// Cor pronta (string oklch) da pessoa — o que as telas devem usar. Id fora do
+// roster (owner legado de PEOPLE) cai no desenho antigo pelo hash.
+export function userColor(id) {
+  if (!id) return "";
+  const slot = personColorSlot(id);
+  const p = slot != null ? PERSON_COLORS[slot] : null;
+  return p ? `oklch(${p.l} ${p.c} ${p.h})` : `oklch(0.55 0.13 ${userTone(id)})`;
 }
 
 export function currentUser() {
