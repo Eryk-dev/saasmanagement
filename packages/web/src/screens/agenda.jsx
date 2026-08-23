@@ -4,7 +4,7 @@ import { useData } from "../data.jsx";
 import { usersByRole, currentUser, displayName, userTone } from "../lib/users.js";
 import { PageHead, Segmented } from "../components/viz.jsx";
 import { PrimaryButton } from "../atoms.jsx";
-import { AgendaView } from "./pipeline.jsx";
+import { AgendaView, AGENDA_TYPE_COLORS } from "./pipeline.jsx";
 import { stageKind } from "../lib/funnel.js";
 import { useActiveSaas } from "../lib/workspace.js";
 
@@ -227,18 +227,18 @@ export function AgendaScreen({ onOpenLead }) {
         <AgendaView leads={leads} consultations={consultas} onOpenLead={onOpenLead} person={person || null} blocking={{ blocksFor, onSlot, onBlock }} />
 
         <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center", fontSize: 12.5, color: "var(--fg-3)" }}>
+          {/* A COR diz o tipo (mesma paleta das pílulas); a barrinha diz a pessoa. */}
+          {Object.entries(AGENDA_TYPE_COLORS).map(([k, c]) => (
+            <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span style={{ width: 12, height: 12, borderRadius: 3, background: c.bg, border: `1px ${k === "follow-up" ? "dashed" : "solid"} ${c.line}` }} />
+              {c.label}
+            </span>
+          ))}
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: 10, height: 10, borderRadius: 3, background: "var(--accent)" }} />
-            call agendada · bloco cheio na cor do responsável
+            <span style={{ width: 4, height: 12, borderRadius: 2, background: "var(--accent)" }} />
+            barrinha = responsável
           </span>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: 10, height: 10, borderRadius: 3, background: "var(--bg-1)", border: "2px dashed var(--accent)" }} />
-            follow-up · contorno tracejado
-          </span>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: 10, height: 10, borderRadius: 3, background: "color-mix(in srgb, var(--accent) 14%, var(--bg-1))", border: "1px solid var(--accent)", opacity: 0.62 }} />
-            ✓ lavada = já aconteceu
-          </span>
+          <span>✓ lavada = já aconteceu</span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             <span style={{ width: 10, height: 10, borderRadius: 3, background: "var(--accent-soft)", border: "1px solid var(--accent)" }} />
             compromisso na cor da pessoa · clique pra editar
