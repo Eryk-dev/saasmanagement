@@ -1964,12 +1964,14 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           .filter(function (kk) { return CAT.pains[kk]; });
         var prodKeys = Object.keys(CAT.names);
         var oneOff = CAT.oneOffCloning;
+        // As linhas e o badge têm id porque o syncCat re-renderiza os valores
+        // com o desconto da negociação aplicado (o mesmo do produto).
         var oneOffHtml = oneOff && Array.isArray(oneOff.rows)
           ? '<div class="lvx-oneoff">' +
               '<div class="lvx-oneoff-head"><div><span class="lvx-h">Consulta rápida</span><b>' + esc(oneOff.title || '') + '</b>' +
-                '<span class="lvx-oneoff-disc">Negociável · até 15% de desconto no valor</span></div>' +
+                '<span class="lvx-oneoff-disc" id="lvxOneOffDisc">Negociável · até 15% de desconto no valor</span></div>' +
                 '<span class="lvx-oneoff-tag">' + esc(oneOff.tag || '') + '</span></div>' +
-              '<table class="lvx-oneoff-table"><tbody>' + oneOff.rows.map(function (row) {
+              '<table class="lvx-oneoff-table"><tbody id="lvxOneOffRows">' + oneOff.rows.map(function (row) {
                 return '<tr><td>' + esc(row.range || '') + '</td><td>' + esc(row.price || '') + '</td></tr>';
               }).join('') + '</tbody></table>' +
               '<span class="lvx-oneoff-note">' + esc(oneOff.note || '') + '</span>' +
@@ -2110,6 +2112,17 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
               priceRows.map(function (r) { return '<span class="lvx-cur-row">' + esc(discLine(r, pct)) + '</span>'; }).join('') +
             '</span>';
           catGet('lvxBack').className = 'lvx-back' + (state.product && state.product !== CAT.suggested ? ' show' : '');
+          // O desconto vale pro serviço único também: a tabela da consulta
+          // rápida re-renderiza com os valores descontados e o badge avisa.
+          var oneRows = catGet('lvxOneOffRows');
+          if (oneRows && oneOff) {
+            oneRows.innerHTML = oneOff.rows.map(function (row) {
+              return '<tr><td>' + esc(row.range || '') + '</td><td>' + esc(discLine(String(row.price || ''), pct)) + '</td></tr>';
+            }).join('');
+            catGet('lvxOneOffDisc').textContent = pct
+              ? 'Valores com ' + pct + '% de desconto'
+              : 'Negociável · até 15% de desconto no valor';
+          }
           renderScript();
           var cotaOn = shown === 'oem' && (CAT.oemLevels || []).length;
           catGet('lvxCotaRow').style.display = cotaOn ? '' : 'none';
