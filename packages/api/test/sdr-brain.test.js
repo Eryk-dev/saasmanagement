@@ -112,6 +112,47 @@ test("firstReply: conversa sem NENHUMA mensagem nossa liga a descoberta; templat
   assert.equal(fakes2.calls[0].firstReply, false);
 });
 
+test("walk-in: conversa sem lead vira card preenchido pelo prefill e o robô atende", async () => {
+  const repo = await world({ messages: [] });
+  // Conversa de um número DESCONHECIDO (sem lead): só thread + mensagem dele.
+  await repo.create("wa_threads", { id: "5532988887777", phone: "5532988887777", saas: "leverads", name: "José Larino Souza" });
+  const texto = "Oi, me chamo José Larino e quero saber mais sobre a LeverAds. Resumo da minha operação: segmento - Autopeças, contas no ML/Shopee - 3 a 5 contas, anúncios na maior conta - 500 a 2 mil.";
+  await repo.create("wa_messages", { id: "wk1", thread: "5532988887777", direction: "in", text: texto, at: ISO("2026-08-19T12:59:00Z") });
+  // leadQuestions do produto ganham os rótulos usados no prefill.
+  await repo.update("products", "leverads", { leadQuestions: [
+    { key: "niche", label: "Nicho", options: [{ value: "autopecas", label: "Autopeças" }] },
+    { key: "accounts", label: "Contas", options: [{ value: "3-5", label: "3 a 5 contas" }] },
+    { key: "listings", label: "Anúncios", options: [{ value: "500-2000", label: "500 a 2 mil" }] },
+  ] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Isso ajudaria na sua operação?" }] });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5532988887777", text: texto, id: "wk1" } });
+  assert.equal(r, "responder");
+  const novo = (await repo.list("leads")).find((l) => l.phone === "5532988887777");
+  assert.ok(novo, "lead do walk-in criado");
+  assert.equal(novo.name, "José Larino");
+  assert.equal(novo.niche, "autopecas");
+  assert.equal(novo.accounts, "3-5");
+  assert.equal(novo.listings, "500-2000");
+  assert.equal(novo.source, "WhatsApp · chegou direto");
+  assert.equal((await repo.get("wa_threads", "5532988887777")).leadId, novo.id);
+  assert.equal(fakes.sent.length, 1);
+});
+
+test("walk-in: cliente da casa e robô de loja NÃO viram lead", async () => {
+  const repo = await world({ messages: [] });
+  await repo.create("customers", { id: "C1", name: "Cliente", phone: "41911112222" });
+  await repo.create("wa_threads", { id: "5541911112222", phone: "5541911112222", saas: "leverads", name: "Cliente" });
+  await repo.create("wa_messages", { id: "wk2", thread: "5541911112222", direction: "in", text: "oi, preciso de suporte", at: ISO("2026-08-19T12:59:00Z") });
+  const fakes = makeFakes();
+  assert.equal(await brainOf(repo, fakes).handleInbound({ message: { from: "5541911112222", text: "oi, preciso de suporte", id: "wk2" } }), null);
+
+  await repo.create("wa_threads", { id: "5541933334444", phone: "5541933334444", saas: "leverads", name: "Loja X" });
+  await repo.create("wa_messages", { id: "wk3", thread: "5541933334444", direction: "in", text: "Loja X agradece seu contato. Como podemos ajudar?", at: ISO("2026-08-19T12:59:00Z") });
+  assert.equal(await brainOf(repo, fakes).handleInbound({ message: { from: "5541933334444", text: "Loja X agradece seu contato. Como podemos ajudar?", id: "wk3" } }), "auto-reply");
+  assert.equal((await repo.list("leads")).filter((l) => l.id !== "L1").length, 0, "nenhum lead novo criado");
+  assert.equal(fakes.calls.length, 0);
+});
+
 test("auto-atendimento de loja na 1ª resposta: silêncio, sem gastar IA", async () => {
   const repo = await world({ messages: [
     { direction: "out", author: "sdr-bot", text: "Oiii, Rafael. Isso ajudaria na sua operação?", at: ISO("2026-08-19T12:58:00Z") },

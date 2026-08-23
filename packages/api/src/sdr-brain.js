@@ -16,10 +16,10 @@
 //
 // Chamado pelo webhook DESTACADO (sem await): a resposta da Meta não espera a
 // IA. Um pequeno atraso antes do envio faz o ritmo parecer de gente.
-import { findThreadByPhone, listMessages, recordMessage } from "./wa-store.js";
+import { findThreadByPhone, listMessages, recordMessage, findLeadByPhone, linkThreadToLead, waMatchKey } from "./wa-store.js";
 import { digits } from "./whatsapp.js";
 import { kindOf, firstStage, stageByKind, isWonLead } from "./stages.js";
-import { brtToIso, applyStageMove, onOutboundMessage } from "./lead-flow.js";
+import { brtToIso, applyStageMove, onOutboundMessage, autoLeadOwner, logActivity, initialNextActionAt } from "./lead-flow.js";
 import { raiseAlert } from "./wa-call-flow.js";
 import { leadGrade } from "./routes.marketing.js";
 import { slotsForLead, slotLabel, wallNow, spreadPair, OFFER_HOURS } from "./agenda-slots.js";
@@ -161,6 +161,64 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
 
   const stamp = (lead, patch) => repo.update("leads", lead.id, { sdrLog: { ...(lead.sdrLog || {}), ...patch } });
 
+  // ── Walk-in: conversa SEM lead ──────────────────────────────────────────
+  // Contato que chegou direto no número (sem passar pelo form) não tinha card,
+  // então o robô ficava mudo (caso José Larino, 23/08). Agora o robô ADOTA:
+  // cria o lead, vincula a conversa e atende normal. A mensagem pronta do form
+  // ("me chamo X ... segmento - Y, contas - Z, anúncios - W") vira cadastro
+  // preenchido; os RÓTULOS viram os values do painel via product.leadQuestions.
+  function parseFormPrefill(text, product) {
+    const t = String(text || "");
+    const out = {};
+    const nome = t.match(/me chamo\s+(.{2,60}?)(?:\s+e\s+quero\b|[.,\n]|$)/i);
+    if (nome) out.name = nome[1].trim();
+    const byLabel = (key, raw) => {
+      const q = (product?.leadQuestions || []).find((x) => x.key === key);
+      const hit = (q?.options || []).find((o) => String(o.label || "").toLowerCase() === String(raw || "").trim().toLowerCase());
+      return hit ? hit.value : "";
+    };
+    const seg = t.match(/segmento\s*[-:]\s*([^,\n]+)/i);
+    if (seg) out.niche = byLabel("niche", seg[1]) || seg[1].trim().toLowerCase();
+    const contas = t.match(/contas no ML\/Shopee\s*[-:]\s*([^,\n]+)/i);
+    if (contas) out.accounts = byLabel("accounts", contas[1]);
+    const an = t.match(/an[úu]ncios na maior conta\s*[-:]\s*([^,.\n]+)/i);
+    if (an) out.listings = byLabel("listings", an[1]);
+    if (seg || contas) out.vende_marketplace = "sim"; // veio do fluxo do form
+    return out;
+  }
+
+  async function adoptWalkIn({ thread, product, message }) {
+    const phone = digits(thread.phone || thread.id);
+    if (!phone) return null;
+    // Cliente da casa escrevendo no comercial não é lead novo: fica pro time.
+    const customers = await repo.list("customers").catch(() => []);
+    if (customers.some((c) => c.phone && waMatchKey(c.phone) === waMatchKey(phone))) return null;
+    // Corrida/duplicata: se um lead com esse número já existe, só vincula.
+    const existing = await findLeadByPhone(repo, phone);
+    if (existing) { await linkThreadToLead(repo, thread.id, existing); return existing; }
+    const parsed = parseFormPrefill(message?.text || thread.lastText || "", product);
+    const stage = firstStage(product);
+    const nowIso = new Date().toISOString();
+    const lead = await repo.create("leads", {
+      saas: product.id,
+      owner: (await autoLeadOwner(repo, product.id)) || "",
+      name: parsed.name || thread.name || "",
+      nome: parsed.name || thread.name || "",
+      phone, whatsapp: phone,
+      stage, stageSince: nowIso, createdAt: nowIso,
+      priority: "P2", source: "WhatsApp · chegou direto",
+      nextActionAt: initialNextActionAt(product, stage) || "",
+      ...(parsed.niche ? { niche: parsed.niche } : {}),
+      ...(parsed.accounts ? { accounts: parsed.accounts } : {}),
+      ...(parsed.listings ? { listings: parsed.listings } : {}),
+      ...(parsed.vende_marketplace ? { vende_marketplace: parsed.vende_marketplace } : {}),
+    });
+    await linkThreadToLead(repo, thread.id, lead);
+    await logActivity(repo, { saas: product.id, lead: lead.id, type: "system", text: "Lead criado pelo SDR automático (conversa sem cadastro no WhatsApp)" }).catch(() => {});
+    log.info?.({ lead: lead.id, phone }, "sdr-brain: walk-in adotado");
+    return lead;
+  }
+
   // Uma mensagem recebida → uma decisão aplicada. Devolve a ação executada (ou
   // null quando o gate segurou). NUNCA lança: falha vira log + alerta espaçado.
   async function handleInbound({ message } = {}) {
@@ -183,10 +241,12 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
   async function decide({ message }) {
     const at = now();
     const thread = await findThreadByPhone(repo, message?.from || "");
-    if (!thread?.leadId) return null;
-    const lead = await repo.get("leads", thread.leadId);
-    if (!lead) return null;
-    const product = lead.saas ? await repo.get("products", lead.saas) : null;
+    if (!thread) return null;
+    // Sem lead ainda? Walk-in: segue até depois do debounce/auto-reply e adota.
+    let lead = thread.leadId ? await repo.get("leads", thread.leadId) : null;
+    if (thread.leadId && !lead) return null;
+    const saas = lead?.saas || thread.saas || "";
+    const product = saas ? await repo.get("products", saas) : null;
     const cfg = sdrBotConfig(product);
     // Modo normal: chave conversation + lead real. Modo teste: chave
     // conversationTest + lead INTERNO (a experiência completa no WhatsApp do
@@ -194,12 +254,15 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     if (!conversationActive(cfg, lead)) return null;
     if (!anthropic?.configured?.()) return null;
 
-    // Elegibilidade — as mesmas cercas da Fase 1 + região do funil.
-    if (lead.formExit || lead.disqualified) return null;
-    if (lead.whatsappOptOut || lead.whatsappInvalid) return null;
-    if (isWonLead(product, lead)) return null;
-    const kind = kindOf(product, lead.stage || firstStage(product));
-    if (!BRAIN_KINDS.has(kind)) return null;
+    // Elegibilidade — as mesmas cercas da Fase 1 + região do funil. Walk-in
+    // (sem lead) pula as cercas: o card nasce limpo logo adiante.
+    if (lead) {
+      if (lead.formExit || lead.disqualified) return null;
+      if (lead.whatsappOptOut || lead.whatsappInvalid) return null;
+      if (isWonLead(product, lead)) return null;
+      const kind = kindOf(product, lead.stage || firstStage(product));
+      if (!BRAIN_KINDS.has(kind)) return null;
+    }
 
     // DEBOUNCE DE RAJADA (Leo, 23/08): espera o lead terminar de digitar. Ao
     // acordar, se chegou mensagem MAIS NOVA que a que disparou esta decisão,
@@ -217,6 +280,14 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       const lastIn = [...msgs].reverse().find((m) => m.direction === "in");
       const priorIn = msgs.some((m) => m.direction === "in" && m.id !== lastIn?.id);
       if (lastIn && !priorIn && AUTO_REPLY_RX.test(lastIn.text || "")) return "auto-reply";
+    }
+    // Walk-in: adota AGORA (depois do debounce, do supersede e do filtro de
+    // auto-reply — rajada não duplica card e robô de loja não vira lead).
+    if (!lead) {
+      const t2 = await findThreadByPhone(repo, message?.from || "");
+      lead = t2?.leadId ? await repo.get("leads", t2.leadId) : null;
+      if (!lead) lead = await adoptWalkIn({ thread, product, message });
+      if (!lead) return null;
     }
     const humanIds = new Set((await repo.list("users")).map((u) => u.id));
     const nowMs = at.getTime();
