@@ -552,6 +552,20 @@ function laneByCluster(items, startOf, endOf) {
   return out;
 }
 
+// Cores dos TIPOS de evento da agenda (Leo, 23/08 v2: as escuras ficaram
+// péssimas — "cores claras com letra preta, bem variado, bater o olho e saber").
+// A COR diz o tipo; a PESSOA fica na barrinha grossa à esquerda, na mesma cor
+// da legenda de nomes. Valores fixos (não seguem o tema): a letra escura por
+// cima também é fixa, então o par sempre fecha contraste.
+export const AGENDA_TYPE_COLORS = {
+  call:         { bg: "oklch(0.91 0.09 165)", line: "oklch(0.62 0.12 165)", label: "call agendada" },   // verde-menta
+  "follow-up":  { bg: "oklch(0.93 0.11 92)",  line: "oklch(0.65 0.12 92)",  label: "follow-up" },       // amarelo
+  "integração": { bg: "oklch(0.91 0.07 268)", line: "oklch(0.62 0.10 268)", label: "integração" },      // lilás
+  consulta:     { bg: "oklch(0.92 0.08 350)", line: "oklch(0.64 0.12 350)", label: "consulta 1:1" },    // rosa
+};
+const AGENDA_INK = "oklch(0.22 0.02 250)";      // letra "preta" sobre as cores claras
+const AGENDA_INK_SOFT = "oklch(0.4 0.02 250)";  // linha secundária (hora, empresa)
+
 function AgendaView({ leads, consultations = [], onOpenLead, blocking, person }) {
   const [week, setWeek] = useStP(0); // offset em semanas a partir da atual
   const [showTouches, setShowTouchesState] = useStP(() => {
@@ -695,10 +709,14 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
         <span className="mono dim" style={{ fontSize: 11 }}>
           {calls === 0 ? "nenhuma call nesta semana" : `${calls} ${calls === 1 ? "call" : "calls"}`}
         </span>
-        {/* Tipo de evento: tudo · calls · follow-ups, com a contagem da semana. */}
+        {/* Tipo de evento: tudo · calls · follow-ups, com a contagem da semana
+            e o pontinho na cor do tipo — a mesma da pílula na grade. */}
         <span style={{ display: "inline-flex", gap: 2, marginLeft: 4 }}>
           {[["all", "tudo", null], ["call", "calls", callCount], ["follow-up", "follow-ups", fupCount]].map(([v, lbl, n]) => (
             <FilterTab key={v} active={evKind === v} count={n} onClick={() => setEvKind(v)} style={{ padding: "4px 10px", fontSize: 12 }}>
+              {AGENDA_TYPE_COLORS[v] && (
+                <span style={{ width: 9, height: 9, borderRadius: 3, background: AGENDA_TYPE_COLORS[v].bg, border: `1px solid ${AGENDA_TYPE_COLORS[v].line}` }} />
+              )}
               {lbl}
             </FilterTab>
           ))}
@@ -710,13 +728,14 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
           </label>
         )}
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8, marginLeft: "auto", flexWrap: "wrap" }}>
+          {/* Pessoa = BARRINHA à esquerda da pílula; a legenda usa o mesmo desenho. */}
           {team.map(u => (
             <span key={u.id} className="mono" style={{ fontSize: 11, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", gap: 5 }}>
-              <span style={{ width: 9, height: 9, borderRadius: 3, background: toneOf(u.id) }} />{u.name || u.id}
+              <span style={{ width: 4, height: 12, borderRadius: 2, background: toneOf(u.id) }} />{u.name || u.id}
             </span>
           ))}
           <span className="mono" style={{ fontSize: 11, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", gap: 5 }}>
-            <span style={{ width: 9, height: 9, borderRadius: 3, background: "var(--fg-4)" }} />sem responsável
+            <span style={{ width: 4, height: 12, borderRadius: 2, background: "var(--fg-4)" }} />sem responsável
           </span>
         </span>
       </div>
@@ -806,16 +825,11 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                   const tone = toneOf(who);
                   const isTouch = kind === "toque";
                   const isFollowup = kind === "follow-up";
-                  // CONTRASTE FORTE entre os tipos (Leo, 23/08: não dava pra
-                  // diferenciar pela cor): call FUTURA é bloco CHEIO na cor do
-                  // responsável com letra clara; follow-up é VAZADO com contorno
-                  // tracejado grosso e letra na cor — cheio × vazado se separa
-                  // de longe, mesmo quando os tons das pessoas são parecidos.
-                  // Integração/consulta seguem no fundo suave; call FEITA
-                  // (história) continua lavada com ✓, sem competir com o futuro.
-                  const solid = kind === "call" && !done;
-                  const solidBg = `color-mix(in srgb, ${tone} 85%, oklch(0 0 0))`; // fundo cheio escurecido: letra branca legível em qualquer tom
-                  const edge = `color-mix(in srgb, ${tone} 72%, var(--fg-1))`; // tom fechado no fg: contorno/letra do follow-up nos 2 temas
+                  // A COR DE FUNDO diz o TIPO (paleta clara + letra preta,
+                  // AGENDA_TYPE_COLORS); follow-up reforça com contorno
+                  // tracejado (vale pra daltonismo). A barrinha à esquerda é a
+                  // PESSOA. História (done) continua lavada com ✓.
+                  const tc = AGENDA_TYPE_COLORS[kind] || AGENDA_TYPE_COLORS.call;
                   const hour = Math.min(H1 - 1, Math.max(H0, t.getHours() + t.getMinutes() / 60));
                   const w = 100 / lanes;
                   const timeStr = t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
@@ -826,13 +840,12 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                       style={{
                         position: "absolute", top: (hour - H0) * hourH + 1,
                         left: `calc(${lane * w}% + 2px)`, width: `calc(${w}% - 4px)`,
-                        height: isTouch ? 22 : isFollowup ? Math.max(18, Math.round(hourH * 20 / 60)) : hourH - 3, // follow-up = 20 min
+                        height: isTouch ? 22 : isFollowup ? Math.max(19, Math.round(hourH * 20 / 60)) : hourH - 3, // follow-up = 20 min
                         overflow: "hidden", cursor: "pointer",
-                        background: isTouch ? "transparent" : solid ? solidBg : isFollowup ? "var(--bg-1)" : `color-mix(in srgb, ${tone} 14%, var(--bg-1))`,
+                        background: isTouch ? "transparent" : tc.bg,
                         border: isTouch ? `1px dashed color-mix(in srgb, ${tone} 55%, var(--line-2))`
-                          : isFollowup ? `2px dashed ${edge}`
-                          : `1px solid color-mix(in srgb, ${tone} ${solid ? 85 : 45}%, var(--line-1))`,
-                        borderLeft: isTouch ? `2px dashed ${tone}` : isFollowup ? `2px dashed ${edge}` : `3px solid ${tone}`,
+                          : `1px ${isFollowup ? "dashed" : "solid"} ${tc.line}`,
+                        borderLeft: isTouch ? `2px dashed ${tone}` : `4px solid ${tone}`,
                         borderRadius: 5, padding: isFollowup ? "0 6px" : isTouch ? "1px 6px" : "3px 6px",
                         // Feita (histórico): mesma cor do closer, só lavada — dá
                         // pra ler a semana inteira do que aconteceu sem confundir
@@ -841,21 +854,21 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                         display: isFollowup ? "flex" : undefined, alignItems: isFollowup ? "center" : undefined,
                       }}>
                       {isFollowup ? (
-                        <div className="mono" style={{ fontSize: 10, fontWeight: 700, color: edge, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {timeStr} · {l.name}
+                        <div className="mono" style={{ fontSize: 10, fontWeight: 700, color: AGENDA_INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          ↩ {timeStr} · {l.name}
                           {l.callUrl && <a href={l.callUrl} target="_blank" rel="noopener noreferrer" title="Entrar na videochamada" onClick={(e) => e.stopPropagation()} style={{ marginLeft: 4, textDecoration: "none" }}>🎥</a>}
                         </div>
                       ) : (
                         <>
-                          <div className="mono tnum" style={{ fontSize: 9.5, color: solid ? "oklch(1 0 0 / 0.85)" : "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          <div className="mono tnum" style={{ fontSize: 9.5, color: isTouch ? "var(--fg-3)" : AGENDA_INK_SOFT, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                             {isTouch ? `○ ${l.name}` : `${done ? "✓ " : ""}${timeStr}${who ? ` · ${displayName(who).split(" ")[0]}` : ""}${kind === "integração" ? " · int" : kind === "consulta" ? " · 1:1" : ""}`}
                             {!isTouch && (kind === "call" || kind === "consulta") && l.callUrl && (
                               <a href={l.callUrl} target="_blank" rel="noopener noreferrer" title="Entrar na videochamada"
                                 onClick={(e) => e.stopPropagation()} style={{ marginLeft: 4, textDecoration: "none" }}>🎥</a>
                             )}
                           </div>
-                          {!isTouch && <div style={{ fontSize: 11.5, fontWeight: 600, color: solid ? "oklch(1 0 0)" : undefined, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</div>}
-                          {!isTouch && l.company && <div style={{ fontSize: 10, color: solid ? "oklch(1 0 0 / 0.72)" : "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.company}</div>}
+                          {!isTouch && <div style={{ fontSize: 11.5, fontWeight: 600, color: AGENDA_INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</div>}
+                          {!isTouch && l.company && <div style={{ fontSize: 10, color: AGENDA_INK_SOFT, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.company}</div>}
                         </>
                       )}
                     </div>
