@@ -181,6 +181,37 @@ test("remarcar: confirmação CURTA, sem repetir sócio e lembrete", async () =>
   assert.equal((await repo.get("leads", "L1")).callAt, SLOT1);
 });
 
+test("trava de beco: interesse respondido sem pergunta ganha a oferta do par; adiamento não", async () => {
+  // Caso Daniel: "Opa sim" → afirmação solta. O motor emenda a oferta.
+  const repo = await world({ messages: [
+    { direction: "out", author: "sdr-bot", text: "Isso ajudaria na sua operação?", at: ISO("2026-08-19T12:50:00Z") },
+    { direction: "in", text: "Opa sim", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Perfeito, nosso especialista mostra a ferramenta funcionando na prática" }] });
+  await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "Opa sim" } });
+  assert.equal(fakes.sent.length, 2);
+  assert.match(fakes.sent[1].text, /qual fica melhor pra você\?/);
+  assert.match(fakes.sent[1].text, /às \d/);
+
+  // Horários JÁ oferecidos: repescagem curta, sem re-listar.
+  const repo2 = await world({ messages: [
+    { direction: "out", author: "sdr-bot", text: "Consigo hoje às 13h ou hoje às 15h, qual fica melhor?", at: ISO("2026-08-19T12:50:00Z") },
+    { direction: "in", text: "pode ser sim", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const fakes2 = makeFakes({ decisions: [{ acao: "responder", mensagem: "Maravilha, vai ser uma ótima conversa" }] });
+  await brainOf(repo2, fakes2).handleInbound({ message: { from: "5541999990000", text: "pode ser sim" } });
+  assert.match(fakes2.sent.at(-1).text, /Algum dos horários que te passei encaixa/);
+
+  // Lead ADIANDO ("vou pensar e te falo"): resposta sem pergunta passa sem empurrão.
+  const repo3 = await world({ messages: [
+    { direction: "in", text: "vou pensar e depois te falo", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const fakes3 = makeFakes({ decisions: [{ acao: "responder", mensagem: "Tranquilo, fico no aguardo" }] });
+  await brainOf(repo3, fakes3).handleInbound({ message: { from: "5541999990000", text: "vou pensar e depois te falo" } });
+  assert.equal(fakes3.sent.length, 1);
+  assert.ok(!/qual fica melhor/.test(fakes3.sent[0].text));
+});
+
 test("trava de preço: resposta da IA com valor vira o desvio com autoridade (sem número)", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "quanto custa?", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "O plano parte de R$ 299 por mês, fechado?" }] });
