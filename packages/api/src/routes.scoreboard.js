@@ -5,8 +5,7 @@
 //
 // Só LEITURA/agregação sobre o que o CRM já grava (lead.owner/closer/stage/
 // stageSince/callAt/amount, activities de stage/toque, customers, proposals).
-// Sem histórico de churn confiável ainda, então retenção entra magra (contas
-// novas + cancelamentos com data) — cresce quando o billing registrar o evento.
+// Retenção lê o evento de churn do cliente (customer.endedAt — churn.js).
 
 import { cadenceOf, firstStage, isLoss, kindOf, TOUCH_TYPES } from "./stages.js";
 import { compGoalFor, compLevelOf } from "./comp-plan.js";
@@ -19,6 +18,7 @@ import {
   classCounts, cashBucketsIn, mentoriaScore, keyAccountIds, isKeyAccountLead,
 } from "./metrics-core.js";
 import { isMentoriaLead } from "./mentoria.js";
+import { isChurnedCustomer } from "./churn.js";
 
 const HOUR = 3_600_000;
 // Meta de indicação do CS: cada cliente da carteira precisa render N indicações
@@ -525,13 +525,17 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     const teamReferrals = leads.filter((l) => isReferralLead(l) && inWin(l.createdAt)).length;
     const cs = csIds.map((uid) => {
       const mine = customers.filter((c) => c.owner === uid);
+      // Contas ativas = sem churn (endedAt no passado); as churnadas continuam
+      // no `mine` pra NPS/upsell históricos, mas saem do placar de carteira.
+      const mineActive = mine.filter((c) => !isChurnedCustomer(c));
       const mineIds = new Set(mine.map((c) => c.id));
       const newAccounts = mine.filter((c) => inWin(c.startedAt)).length;
-      // Churn magro: assinatura cancelada COM data na janela (billing ainda não
-      // grava evento de churn dedicado — cresce quando gravar). Retenção = 100 −
-      // churn% sobre a base (ativas + churnadas); sem churn = 100% (honesto).
-      const churned = subs.filter((s) => mineIds.has(s.customer) && s.status === "canceled" && inWin(s.canceledAt)).length;
-      const base = mine.length + churned;
+      // Churn agora é evento do CLIENTE (customer.endedAt — botão da ficha ou
+      // cancelamento da recorrência no MP), não mais inferido da assinatura.
+      // Retenção = 100 − churn% sobre a base (ativas + churnadas na janela);
+      // sem churn = 100% (honesto).
+      const churned = mine.filter((c) => inWin(c.endedAt)).length;
+      const base = mineActive.length + churned;
       const retentionRate = base > 0 ? round2(((base - churned) / base) * 100) : null;
       // NPS médio das contas dele (coleção nps: { customer, score }). Sem dado → null.
       const scores = npsSaas.filter((n) => mineIds.has(n.customer) && Number.isFinite(Number(n.score))).map((n) => Number(n.score));
@@ -543,8 +547,8 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       const upsellRevenue = round2(myUpsells.reduce((a, i) => a + (Number(i.amount) || 0), 0));
       return {
         user: uid, name: nameOf(uid),
-        targets: personTargets(uid, "integrator", { retentionRate, nps, newAccounts, activeAccounts: mine.length, upsells, referrals: teamReferrals }),
-        activeAccounts: mine.length,
+        targets: personTargets(uid, "integrator", { retentionRate, nps, newAccounts, activeAccounts: mineActive.length, upsells, referrals: teamReferrals }),
+        activeAccounts: mineActive.length,
         newAccounts,
         churned,
         retentionRate,

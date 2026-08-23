@@ -5,8 +5,52 @@
 import { computeChange, runBilling, syncCustomerArr } from "./billing.js";
 import { kindOf, stageByKind, firstStage } from "./stages.js";
 import { applyStageMove, revertWonLead } from "./lead-flow.js";
+import { mirrorSubscriptionToMp } from "./routes.mp.js";
+import { markCustomerChurn, clearCustomerChurn } from "./churn.js";
 
 export function registerBillingRoutes(app, repo, { mp, discord } = {}) {
+  // ── Churn manual (botão da ficha do cliente) ──────────────────────────────
+  // Registrar a SAÍDA de um cliente: carimba endedAt + motivo no cadastro,
+  // cancela as assinaturas em aberto (espelhando no MP quando vinculadas — não
+  // pode ficar cobrando) e loga na timeline. O arr fica CONGELADO de propósito:
+  // o endedAt é quem tira o cliente do MRR/rollup, e o valor parado segue
+  // contando o histórico (Análise). É o caminho pros clientes sem recorrência
+  // rastreada no MP — os com recorrência churnam sozinhos quando o MP cancela.
+  // Re-marcar um cliente já churnado só corrige data/motivo.
+  app.post("/api/customers/:id/churn", async (req, reply) => {
+    const customer = await repo.get("customers", req.params.id);
+    if (!customer) return reply.code(404).send({ error: "cliente não encontrado" });
+    const body = req.body || {};
+    const endedAtRaw = String(body.endedAt || "").trim();
+    if (endedAtRaw && Number.isNaN(new Date(endedAtRaw).getTime())) {
+      return reply.code(400).send({ error: "data de saída inválida" });
+    }
+    const nowIso = new Date().toISOString();
+    const canceled = [];
+    for (const s of (await repo.list("subscriptions")).filter((s) => s.customer === customer.id && s.status !== "canceled")) {
+      const updated = await repo.update("subscriptions", s.id, { status: "canceled", canceledAt: nowIso });
+      await mirrorSubscriptionToMp(mp, s, updated, req.log);
+      canceled.push(s.id);
+    }
+    const saved = await markCustomerChurn(repo, customer, {
+      endedAt: endedAtRaw || nowIso,
+      reason: String(body.reason || ""), note: String(body.note || ""),
+      source: "manual", author: req.authUser?.id || "api", discord, log: req.log,
+    });
+    return { ok: true, customer: saved, canceledSubscriptions: canceled };
+  });
+
+  // Desfazer um churn marcado errado (ou cliente que voltou): limpa a saída.
+  // As assinaturas canceladas NÃO voltam sozinhas — se a cobrança continua,
+  // reative na aba Assinaturas (reativar recorrência no MP é decisão humana).
+  app.post("/api/customers/:id/unchurn", async (req, reply) => {
+    const customer = await repo.get("customers", req.params.id);
+    if (!customer) return reply.code(404).send({ error: "cliente não encontrado" });
+    if (!customer.endedAt) return { ok: true, customer };
+    const saved = await clearCustomerChurn(repo, customer, { author: req.authUser?.id || "api" });
+    return { ok: true, customer: saved };
+  });
+
   // Desfazer um FECHAMENTO ERRADO direto da tela de Clientes (Leo, 07/08 —
   // caso New Gift: avançou sem querer, puxou o card de volta, mas o cliente/
   // assinatura/fatura ficaram vivos contando MRR, caixa e ganho do mês). O

@@ -21,7 +21,10 @@
 
 import { repo as defaultRepo } from "./db.js";
 import { mp as defaultMp } from "./mp.js";
+import { discord as defaultDiscord } from "./discord.js";
 import { cleanMasked } from "./mp-payments.js";
+import { syncCustomerArr } from "./billing.js";
+import { applyMpCancellationChurn, applyMpReactivationRescue } from "./churn.js";
 
 // frequency/frequency_type do MP → ciclo do cockpit. O MP aceita "months" e
 // "days"; recorrência em dias vira o ciclo do mês mais próximo (30d = mensal).
@@ -85,7 +88,7 @@ const sameDoc = (a, b, keys) => a && keys.every((k) => JSON.stringify(a[k] ?? nu
 // Upsert do espelho + casamento por FATO + sugestão de dono. Idempotente: o
 // poller repassa a mesma lista a cada tick e, sem mudança, não escreve (sem
 // escrita não há SSE/refresh).
-export async function ingestPreapproval(repo, pre, { log } = {}) {
+export async function ingestPreapproval(repo, pre, { log, discord } = {}) {
   const docId = preapprovalDocId(pre.id);
   const prev = await repo.get("mp_preapprovals", docId);
   const base = normalizePreapproval(pre);
@@ -141,10 +144,27 @@ export async function ingestPreapproval(repo, pre, { log } = {}) {
   else if (!sameDoc(prev, doc, KEYS)) saved = await repo.update("mp_preapprovals", docId, { ...doc, syncedAt: new Date().toISOString() });
   else saved = prev;
 
-  // Assinatura já vinculada: mantém o retrato do MP em dia (status/valor mudam
-  // no painel do MP sem passar por aqui).
+  // Assinatura já vinculada: espelha o retrato do MP com o MESMO mapeamento do
+  // webhook — o poller é a rede de segurança quando o webhook não está
+  // configurado no painel, então cancelar/pausar/reativar lá tem que chegar
+  // aqui também (antes só o mpStatus mudava e o cliente ficava "ativo" pra
+  // sempre). Cancelamento carimba canceledAt e pode churnar o CLIENTE
+  // (applyMpCancellationChurn); reativação resgata churn feito pelo MP.
   if (linked && (linked.mpStatus !== base.status)) {
-    await repo.update("subscriptions", linked.id, { mpStatus: base.status });
+    const mapped = { authorized: "active", cancelled: "canceled", paused: "paused" }[base.status];
+    const statusChanges = !!mapped && linked.status !== mapped;
+    const updatedSub = await repo.update("subscriptions", linked.id, {
+      mpStatus: base.status,
+      ...(statusChanges ? { status: mapped } : {}),
+      ...(mapped === "canceled" && !linked.canceledAt ? { canceledAt: new Date().toISOString() } : {}),
+    });
+    if (statusChanges) {
+      if (base.status === "cancelled") await applyMpCancellationChurn(repo, updatedSub, { discord, log });
+      else if (base.status === "authorized") await applyMpReactivationRescue(repo, updatedSub, { log });
+      // Depois do churn de propósito: cliente churnado congela o arr (billing.js).
+      await syncCustomerArr(repo, updatedSub.customer);
+      log?.info?.({ preapproval: base.mpId, sub: linked.id, status: mapped }, "MP: status da recorrência espelhado pelo poller");
+    }
   }
 
   return { preapproval: saved, linked: !!linked };
@@ -152,14 +172,14 @@ export async function ingestPreapproval(repo, pre, { log } = {}) {
 
 // Uma passada: varre as preapprovals da conta e ingere uma a uma. Carimbo em
 // app_config "mp_preapproval_sync" — a tela mostra o último sync.
-export async function runPreapprovalSync(repo, mp, { log, now = new Date(), maxPages = 20, pageSize = 50 } = {}) {
+export async function runPreapprovalSync(repo, mp, { log, discord, now = new Date(), maxPages = 20, pageSize = 50 } = {}) {
   if (!mp?.configured?.()) return { ok: false, error: "not_configured" };
   let offset = 0, seen = 0, linked = 0;
   for (let page = 0; page < maxPages; page++) {
     const res = await mp.searchPreapprovals({ limit: pageSize, offset });
     const results = Array.isArray(res?.results) ? res.results : [];
     for (const pre of results) {
-      const r = await ingestPreapproval(repo, pre, { log });
+      const r = await ingestPreapproval(repo, pre, { log, discord });
       seen++;
       if (r.linked) linked++;
     }
@@ -176,13 +196,13 @@ export async function runPreapprovalSync(repo, mp, { log, now = new Date(), maxP
 
 // Poller (mesmo modelo do startMpSync): recorrência criada/cancelada no painel
 // do MP aparece sozinha. Cadência folgada — preapproval muda pouco.
-export function startPreapprovalSync(repo = defaultRepo, { mp = defaultMp, intervalMs = 30 * 60_000, log = console } = {}) {
+export function startPreapprovalSync(repo = defaultRepo, { mp = defaultMp, discord = defaultDiscord, intervalMs = 30 * 60_000, log = console } = {}) {
   if (!mp?.configured?.()) { log.info?.("mp preapprovals: sem MERCADOPAGO_ACCESS_TOKEN — desligado"); return () => {}; }
   let running = false;
   async function tick() {
     if (running) return; running = true;
     try {
-      const r = await runPreapprovalSync(repo, mp, { log });
+      const r = await runPreapprovalSync(repo, mp, { log, discord });
       if (r.seen) log.info?.(`mp preapprovals: ${r.seen} recorrência(s) na conta, ${r.linked} vinculada(s)`);
     } catch (err) { log.warn?.({ err: err.message }, "mp preapprovals: sync falhou (re-tenta no próximo ciclo)"); }
     finally { running = false; }

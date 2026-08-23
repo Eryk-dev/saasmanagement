@@ -117,6 +117,36 @@ export function makeDiscord({ fetch: f = globalThis.fetch, webhookUrl = "" } = {
       });
     },
 
+    // Cliente marcado como CHURN (botão da ficha ou cancelamento no MP).
+    // `mrr` = quanto ele valia por mês na hora da saída (arr congelado ÷ 12).
+    customerChurned({ customer = {}, productName, reasonLabel, source, mrr } = {}) {
+      return send({
+        title: `📉 Churn: ${customer.name || customer.id || "?"}${mrr > 0 ? ` — ${money(mrr)}/mês` : ""}`,
+        color: COLORS.red,
+        fields: [
+          { name: "SaaS", value: productName || customer.saas },
+          { name: "Motivo", value: reasonLabel },
+          { name: "Origem", value: source === "mp" ? "Mercado Pago (cancelou a recorrência)" : "marcado no cockpit" },
+        ],
+      });
+    },
+
+    // Estorno/chargeback detectado no espelho de pagamentos do MP. Aviso, não
+    // ação: fatura e churn continuam decisão humana (estorno parcial existe).
+    paymentRefunded({ payment = {}, customerName } = {}) {
+      const kind = payment.status === "charged_back" ? "Chargeback" : "Estorno";
+      return send({
+        title: `↩️ ${kind} no Mercado Pago: ${customerName || payment.payerName || payment.payerEmail || "?"} — ${money(payment.amount)}`,
+        description: "Confira o cliente no cockpit — estorno não desfaz fatura nem marca churn sozinho.",
+        color: COLORS.red,
+        fields: [
+          { name: "SaaS", value: payment.saas },
+          { name: "Forma", value: payment.method },
+          { name: "Pagamento", value: payment.mpId },
+        ],
+      });
+    },
+
     // Disparado pelo tick do billing quando marcou overdue/past_due NOVOS;
     // `lines` lista o estoque vencido (montado pela rota, que tem o repo).
     billingAlert({ report = {}, lines = [] } = {}) {

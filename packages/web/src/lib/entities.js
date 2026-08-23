@@ -182,7 +182,7 @@ export const ENTITIES = {
         help: "autoriza o sync a ligar/cortar o acesso na ferramenta; a lista carrega com a credencial LEVERADS_* na API — sem ela, use “Outro” e cole o id da org" },
       { key: "arr", label: "Valor anual (ARR)", type: "money", help: "a lista mostra o MRR (ARR ÷ 12); com assinatura ativa é recalculado sozinho" },
       { key: "startedAt", label: "Cliente desde", type: "date", help: "base da linha do tempo de marcos" },
-      { key: "endedAt", label: "Churn (saída)", type: "date", help: "deixe vazio enquanto o cliente estiver ativo; alimenta churn e LTV da Análise" },
+      { key: "endedAt", label: "Churn (saída)", type: "date", help: "prefira o botão \"registrar churn\" na ficha do cliente (grava o motivo e cancela as assinaturas); aqui só ajusta a data — vazio = ativo" },
       { key: "csm", label: "CSM", type: "select", options: peopleOptions, blankLabel: "—" },
       // Conta grande (★): venda fora da régua (ex.: pacote bespoke). Sai do
       // ticket médio e das metas por contrato; o dinheiro segue no caixa.

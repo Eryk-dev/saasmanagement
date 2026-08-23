@@ -21,6 +21,7 @@ import { repo as defaultRepo } from "./db.js";
 import { mp as defaultMp } from "./mp.js";
 import { discord as defaultDiscord } from "./discord.js";
 import { syncCustomerArr } from "./billing.js";
+import { logActivity } from "./lead-flow.js";
 
 // O /v1/payments/search devolve o pagador MASCARADO (e-mail "xxxxxxxxxx",
 // nome/CPF vazios ou só x's) — máscara não é dado: vira "" pra UI não mostrar
@@ -232,6 +233,35 @@ export async function ingestMpPayment(repo, pmt, { discord, log, extra } = {}) {
   if (!prev) saved = await repo.create("mp_payments", { id: mirrorId, ...doc, syncedAt: new Date().toISOString() });
   else if (!sameDoc(prev, doc, KEYS)) saved = await repo.update("mp_payments", mirrorId, { ...doc, syncedAt: new Date().toISOString() });
   else saved = prev;
+
+  // ESTORNO/CHARGEBACK de um pagamento que o espelho já conhecia com outro
+  // status: dinheiro SAINDO da conta — avisa no Discord e registra na timeline
+  // do lead. Não desfaz fatura nem churna sozinho (estorno parcial e acordo
+  // existem); a decisão é humana, na tela de Clientes/Financeiro. Só a
+  // TRANSIÇÃO avisa (prev com status diferente): o backfill de estornos
+  // antigos não vira tempestade de aviso.
+  const wentBad = !!prev && prev.status !== base.status && (base.status === "refunded" || base.status === "charged_back");
+  if (wentBad) {
+    const badLabel = base.status === "charged_back" ? "chargeback" : "estorno";
+    let customerName = "";
+    if (link.customer) {
+      try { customerName = (await repo.get("customers", link.customer))?.name || ""; } catch { /* segue sem nome */ }
+    }
+    if (link.lead) {
+      try {
+        await logActivity(repo, {
+          saas: link.saas || "", lead: link.lead, type: "system",
+          text: `Pagamento de R$ ${(Number(base.amount) || 0).toFixed(2).replace(".", ",")} sofreu ${badLabel} no Mercado Pago`,
+          meta: { event: "mp_refund", mpPaymentId: base.mpId, status: base.status }, author: "mercadopago",
+        });
+      } catch { /* timeline nunca quebra o ingest */ }
+    }
+    if (discord?.configured?.()) {
+      try { await discord.paymentRefunded({ payment: saved, customerName }); }
+      catch (err) { log?.warn?.({ payment: mpId, err: err.message }, "MP: aviso de estorno no Discord falhou"); }
+    }
+    log?.warn?.({ payment: mpId, status: base.status, customer: link.customer || "" }, `MP: ${badLabel} detectado no espelho`);
+  }
 
   return {
     payment: saved,

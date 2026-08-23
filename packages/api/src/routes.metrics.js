@@ -191,8 +191,11 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts, getWhats
       const spend = A.filter((r) => monthOf(r.date) === mk).reduce((a, r) => a + (Number(r.spend) || 0), 0);
       const nl = L.filter((l) => monthOf(l.createdAt) === mk).length;
       const nc = C.filter((c) => monthOf(c.startedAt) === mk).length;
-      // Cliente sem startedAt (cadastro antigo/manual) conta como base desde sempre.
-      const mrr = C.filter((c) => !c.startedAt || c.startedAt < endIso).reduce((a, c) => a + (c.arr || 0) / 12, 0);
+      // Cliente sem startedAt (cadastro antigo/manual) conta como base desde
+      // sempre; churnado (endedAt) sai da série a partir do mês da saída — o
+      // arr congelado no churn preserva os meses anteriores.
+      const mrr = C.filter((c) => (!c.startedAt || c.startedAt < endIso) && !(c.endedAt && String(c.endedAt) < endIso))
+        .reduce((a, c) => a + (c.arr || 0) / 12, 0);
       series.push({
         month: mk,
         spend: round2(spend),

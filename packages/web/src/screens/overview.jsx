@@ -10,6 +10,7 @@ import { levelLabel } from "../lib/levels.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { buildPeople, roleLabel, scaledGoal } from "../components/team-cards.jsx";
 import { usePeriod, businessDaysBetween } from "../components/period-picker.jsx";
+import { isChurned } from "../lib/churn.js";
 // Visão geral — o modelo aprovado pelo Leo em 08/08/2026 (protótipo v9):
 //   Meta do mês (réguas de receita contratada e de contratos, com pace)
 //   → Funil do período (atual vs meta por etapa)
@@ -607,7 +608,9 @@ function AquisicaoCard({ marketing, biz, classes, pShort }) {
 function CarteiraCard({ customers, ltv }) {
   // Estado ACUMULADO da base — não muda com o filtro. Conta grande (keyAccount,
   // ex.: Galante) fica fora das médias; o número grande é sempre o cheio.
-  const ativos = customers.filter((c) => !c.endedAt);
+  // Churnado = régua única de lib/churn.js (endedAt no PASSADO) — antes esta
+  // tela churnava qualquer endedAt, até futuro, e divergia da tela Clientes.
+  const ativos = customers.filter((c) => !isChurned(c));
   const churned = customers.length - ativos.length;
   const cg = ativos.filter((c) => !!c.keyAccount);
   const core = ativos.filter((c) => !c.keyAccount);

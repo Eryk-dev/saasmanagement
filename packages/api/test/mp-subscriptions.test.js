@@ -111,16 +111,30 @@ test("sync: external_reference apontando pra assinatura do cockpit vincula sozin
   assert.equal(sub.mpStatus, "authorized");
   assert.equal(sub.payerEmail, "cliente@x.com");
 
-  // Recorrência cancelada no painel do MP: o espelho e o mpStatus acompanham
-  // (o status do cockpit continua sendo decisão de quem opera a tela).
+  // Recorrência cancelada no painel do MP: o poller espelha o status como o
+  // webhook faria (rede de segurança quando o webhook não está configurado) —
+  // a assinatura cancela com canceledAt e o CLIENTE churna sozinho (endedAt +
+  // motivo mp_cancel), com o arr congelado.
   status = "cancelled";
   await runPreapprovalSync(repo, mp);
   sub = await repo.get("subscriptions", "s1");
   assert.equal(sub.mpStatus, "cancelled");
-  assert.equal(sub.status, "active");
+  assert.equal(sub.status, "canceled");
+  assert.ok(sub.canceledAt);
+  const churned = await repo.get("customers", "c1");
+  assert.ok(churned.endedAt);
+  assert.equal(churned.churnReason, "mp_cancel");
+  assert.equal(churned.churnSource, "mp");
   const [doc] = await repo.list("mp_preapprovals");
   assert.equal(doc.subscription, "s1");
   assert.equal(doc.customer, "c1");
+
+  // Reativada no painel → volta a active e o churn que o MP marcou desfaz.
+  status = "authorized";
+  await runPreapprovalSync(repo, mp);
+  sub = await repo.get("subscriptions", "s1");
+  assert.equal(sub.status, "active");
+  assert.equal((await repo.get("customers", "c1")).endedAt, "");
 });
 
 test("GET /api/mp/preapprovals + vínculo manual carimba a assinatura; body vazio desvincula", async () => {
