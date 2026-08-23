@@ -9,7 +9,7 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { ensureProposalCatalog } = await import("../src/migrations.js");
-const { applyCatalog, activeProduct, catalogUI, suggestProduct, dealCatalog, DEAL_PRODUCT_LABEL, orderDeck } = await import("../src/proposal-catalog.js");
+const { applyCatalog, activeProduct, catalogUI, suggestProduct, dealCatalog, DEAL_PRODUCT_LABEL } = await import("../src/proposal-catalog.js");
 const { runNativeProposal, shareProposalOffer, publicProposal, syncProposalLeadSnapshot } = await import("../src/proposal.js");
 const { registerProposalRoutes } = await import("../src/routes.proposals.js");
 
@@ -366,58 +366,10 @@ test("rotas: card de decisão só no modo closer; PATCH aceita product/pain/oem 
   assert.equal((await repo.get("proposals", p.id)).state.oemCota, "", "cota fora do leque = segue o porte");
 });
 
-// ── Teste A/B da ordem da apresentação (Leo, 12/08) ─────────────────────────
-const DECK_REAL = [
-  { key: "hero", type: "hero", bg: "" },
-  { key: "nossa_operacao", type: "custom", bg: "dark" },
-  { key: "perfis_ig", type: "custom", bg: "" },
-  { key: "sobre_nos", type: "cards", bg: "dark" },
-  { key: "como_funciona", type: "steps", bg: "" },
-  { key: "oem_processo", type: "steps", bg: "dark" },
-  { key: "impacto", type: "compare", bg: "dark" },
-  { key: "investimento_combo", type: "pricing", bg: "" },
-];
-
-test("ordem B: mecanismo → OEM → preço → impacto → história, sem capa e com ritmo refeito", () => {
-  const b = orderDeck(DECK_REAL, "B");
-  assert.deepEqual(b.map((s) => s.key), [
-    "como_funciona", "oem_processo", "investimento_combo", "impacto", "nossa_operacao", "perfis_ig", "sobre_nos",
-    "investimento_combo_aberto",
-  ]);
-  assert.deepEqual(b.map((s) => s.bg), ["", "dark", "", "dark", "", "dark", "", "dark"], "claro/escuro alternado do zero");
-  assert.equal(DECK_REAL[0].key, "hero", "não mexe no array original");
-  assert.deepEqual(orderDeck(DECK_REAL, "").map((s) => s.key), DECK_REAL.map((s) => s.key), "A = ordem de sempre");
-  // Sem OEM a fila é a mesma, só sem a tela do processo.
-  const semOem = orderDeck(DECK_REAL.filter((s) => s.key !== "oem_processo"), "B");
-  assert.deepEqual(semOem.map((s) => s.key), [
-    "como_funciona", "investimento_combo", "impacto", "nossa_operacao", "perfis_ig", "sobre_nos", "investimento_combo_aberto",
-  ]);
-  // Slide que a régua não conhece não some: fica no fim, na ordem original.
-  const comExtra = orderDeck([...DECK_REAL, { key: "novo_slide", type: "custom" }], "B");
-  assert.equal(comExtra[comExtra.length - 2].key, "novo_slide", "slide desconhecido antes do fechamento");
-  assert.equal(comExtra[comExtra.length - 1].key, "investimento_combo_aberto");
-});
-
-test("fechamento do beta: cópia do investimento com tudo à mostra, fora do link do cliente", async () => {
-  const repo = await seedRepo();
-  const p = await makeProposal(repo, { niche: "outros", accounts: "10+", listings: "10000+" });
-  await repo.update("proposals", p.id, { state: { ...p.state, deckOrder: "B" } });
-  const t = applyCatalog(await repo.get("proposals", p.id));
-  const pricing = t.slides.filter((s) => s.type === "pricing");
-  assert.equal(pricing.length, 2, "o investimento aparece no meio e no fim");
-  assert.equal(t.slides[t.slides.length - 1].key, "investimento_aberto", "fechamento é o último");
-  assert.equal(pricing[0].revealOpen, undefined, "o do meio segue encadeado");
-  assert.equal(pricing[1].revealOpen, true, "o do fim já nasce aberto");
-  assert.equal(pricing[1].price, pricing[0].price, "mesma oferta, mesmo preço");
-
-  // Link do cliente: nada espera comando lá, então o fechamento seria o preço repetido.
-  const shared = await shareProposalOffer(repo, await repo.get("proposals", p.id), 1, { baseUrl: "http://x" });
-  assert.equal(shared.ok, true);
-  assert.equal(shared.proposal.slides.filter((s) => s.type === "pricing").length, 1, "cliente recebe um investimento só");
-  assert.ok(!shared.proposal.slides.some((s) => s.revealOpen), "sem o slide de fechamento");
-});
-
-test("ordem B na proposta: PATCH liga o beta e o deck servido já vem reordenado", async () => {
+// ── Teste A/B da ordem da apresentação (Leo, 12/08; refeito 23/08) ──────────
+// B agora é só a tela de setup no modo ?k (client-side): o deck servido não
+// muda, então o link do cliente segue o padrão mesmo com o beta ligado.
+test("ordem B na proposta: PATCH liga o beta e o deck servido segue o padrão", async () => {
   const repo = await seedRepo();
   const p = await makeProposal(repo, { niche: "autopecas", accounts: "1", listings: "100-500" });
   const app = Fastify();
@@ -425,6 +377,7 @@ test("ordem B na proposta: PATCH liga o beta e o deck servido já vem reordenado
 
   const padrao = applyCatalog(await repo.get("proposals", p.id));
   assert.equal(padrao.slides[0].key, "hero", "A abre na capa");
+  assert.equal(padrao.slides.filter((s) => s.type === "pricing").length, 1, "um investimento só");
 
   const patch = await app.inject({
     method: "PATCH", url: "/public/proposals/" + p.id,
@@ -434,9 +387,12 @@ test("ordem B na proposta: PATCH liga o beta e o deck servido já vem reordenado
   assert.equal((await repo.get("proposals", p.id)).state.deckOrder, "B", "aceita minúsculo");
 
   const beta = applyCatalog(await repo.get("proposals", p.id));
-  assert.deepEqual(beta.slides.map((s) => s.key).slice(0, 3), ["como_funciona", "oem_processo", "investimento_combo"]);
-  assert.ok(!beta.slides.some((s) => s.type === "hero"), "capa fora do beta");
-  assert.equal(beta.slides.length, padrao.slides.length, "sai a capa, entra o fechamento");
+  assert.deepEqual(beta.slides.map((s) => s.key), padrao.slides.map((s) => s.key), "deck igual: o beta vive na tela de setup");
+  assert.ok(!beta.slides.some((s) => s.revealOpen), "sem o slide de fechamento do beta antigo");
+
+  const shared = await shareProposalOffer(repo, await repo.get("proposals", p.id), 1, { baseUrl: "http://x" });
+  assert.equal(shared.ok, true);
+  assert.equal(shared.proposal.slides[0].key, "hero", "cliente recebe o deck padrão, com capa");
 
   const closer = await app.inject({ method: "GET", url: "/p/" + p.id + "?k=" + p.editKey });
   assert.equal(payloadOf(closer.body).catalogUI.deckOrder, "B", "pílula A/B abre marcada no beta");
