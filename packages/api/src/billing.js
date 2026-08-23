@@ -46,6 +46,10 @@ export async function syncCustomerArr(repo, customerId) {
   if (!customerId) return null;
   const customer = await repo.get("customers", customerId);
   if (!customer) return null;
+  // Cliente CHURNADO congela o arr: quem o tira das réguas é o endedAt
+  // (rollupProduct/telas), e o valor parado preserva o histórico (Análise,
+  // série mensal). Zerar aqui apagaria quanto o cliente valia quando saiu.
+  if (customer.endedAt) return customer;
   const subs = (await repo.list("subscriptions")).filter((s) => s.customer === customerId);
   return repo.update("customers", customerId, { arr: Math.round(contractedArr(subs)) });
 }

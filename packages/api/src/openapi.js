@@ -170,6 +170,9 @@ export const openapi = {
           nps: { type: "number", example: 2 },
           renewal: { type: "string", example: "21d" },
           flags: { type: "array", items: { type: "string" }, example: ["renewal-90d", "usage-decay"] },
+          endedAt: { type: "string", description: "Data da saída (churn). No passado = cliente fora do MRR/rollup. Prefira o POST /api/customers/{id}/churn, que grava motivo e cancela as assinaturas.", example: "" },
+          churnReason: { type: "string", description: "Motivo do churn (catálogo em churn.js ou texto livre).", example: "" },
+          churnNote: { type: "string", description: "Observação livre da saída.", example: "" },
         },
       },
       NpsResponse: {
@@ -298,6 +301,14 @@ export const openapi = {
     "/api/customers/{id}": {
       parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
       patch: { tags: ["Clientes"], summary: "Atualiza um cliente (saúde, uso, renovação)", security: [{ ApiKeyAuth: [] }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/Customer" } } } }, responses: { 200: { description: "OK" } } },
+    },
+    "/api/customers/{id}/churn": {
+      parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+      post: { tags: ["Clientes"], summary: "Registra o churn (saída) do cliente: endedAt + motivo, cancela as assinaturas em aberto (espelha no Mercado Pago quando vinculadas) e tira o cliente do MRR/rollup — o arr fica congelado como histórico", security: [{ ApiKeyAuth: [] }], requestBody: { required: false, content: { "application/json": { schema: { type: "object", properties: { endedAt: { type: "string", description: "Data da saída (default: hoje)." }, reason: { type: "string", description: "Motivo (catálogo ou texto livre)." }, note: { type: "string" } } } } } }, responses: { 200: { description: "OK" }, 404: { description: "Não encontrado" } } },
+    },
+    "/api/customers/{id}/unchurn": {
+      parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+      post: { tags: ["Clientes"], summary: "Desfaz o churn (limpa endedAt/motivo); assinaturas canceladas não voltam sozinhas", security: [{ ApiKeyAuth: [] }], responses: { 200: { description: "OK" }, 404: { description: "Não encontrado" } } },
     },
     "/api/nps": {
       get: { tags: ["NPS"], summary: "Lista respostas de NPS", parameters: [{ name: "saas", in: "query", schema: { type: "string" } }], responses: { 200: { description: "OK", content: { "application/json": { schema: { type: "array", items: { $ref: "#/components/schemas/NpsResponse" } } } } } } },

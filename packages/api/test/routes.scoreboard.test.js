@@ -203,16 +203,17 @@ test("CS: retenção cai com churn na janela e NPS médio das contas do owner", 
   await repo.create("customers", { id: "c1", saas: "leverads", owner: "u_cs", startedAt: "2026-05-01T10:00:00.000Z" });
   await repo.create("customers", { id: "c2", saas: "leverads", owner: "u_cs", startedAt: "2026-05-01T10:00:00.000Z" });
   await repo.create("customers", { id: "c3", saas: "leverads", owner: "u_cs", startedAt: "2026-05-01T10:00:00.000Z" });
-  // 1 assinatura cancelada na janela → churn 1 sobre base 4 (3 ativas + 1)
-  await repo.create("subscriptions", { id: "s1", saas: "leverads", customer: "cx", status: "canceled", canceledAt: "2026-07-10T10:00:00.000Z" });
-  await repo.create("customers", { id: "cx", saas: "leverads", owner: "u_cs", startedAt: "2026-04-01T10:00:00.000Z" });
+  // 1 cliente com churn (endedAt — o evento do mecanismo de churn) na janela
+  // → churn 1 sobre base 4 (3 ativas + 1 churnada); churnado sai das ativas.
+  await repo.create("customers", { id: "cx", saas: "leverads", owner: "u_cs", startedAt: "2026-04-01T10:00:00.000Z", endedAt: "2026-07-10T10:00:00.000Z", churnReason: "preco" });
   // NPS: duas respostas das contas dele (9 e 7 → média 8)
   await repo.create("nps", { id: "n1", saas: "leverads", customer: "c1", score: 9 });
   await repo.create("nps", { id: "n2", saas: "leverads", customer: "c2", score: 7 });
 
   const cs = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json().cs.find((x) => x.user === "u_cs");
   assert.equal(cs.churned, 1);
-  assert.equal(cs.retentionRate, 80); // (5 - 1) / 5 × 100
+  assert.equal(cs.activeAccounts, 3); // cx churnada sai da carteira ativa
+  assert.equal(cs.retentionRate, 75); // (4 - 1) / 4 × 100
   assert.equal(cs.nps, 8);
   assert.equal(cs.npsCount, 2);
   await app.close();

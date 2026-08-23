@@ -19,6 +19,7 @@ import { registerBillingRoutes } from "./routes.billing.js";
 import { initSubscription, syncCustomerArr, createClosedSubscription, closedSubscriptionSpec, closedInstallments, createInstallmentSchedule, syncClosedInstallments } from "./billing.js";
 import { registerAuthRoutes } from "./auth.js";
 import { registerMpRoutes, mirrorSubscriptionToMp } from "./routes.mp.js";
+import { isChurnedCustomer } from "./churn.js";
 import { registerLeveradsAccessRoutes } from "./leverads-access.js";
 import { mp as defaultMpClient } from "./mp.js";
 import { registerMarketingRoutes } from "./routes.marketing.js";
@@ -91,7 +92,10 @@ export const CREATE_DEFAULTS = {
   },
   // Métricas de cliente não são mais editáveis no form (saúde/uso/NPS/renovação são
   // alimentadas por automação); o create precisa de defaults pra UI não ler `undefined`.
-  customers: { flags: [], health: 0, delta: 0, nps: 0, usage: "", lastTouch: "—", renewal: "—" },
+  // endedAt/churn* = saída do cliente (churn): gravados pelo POST /customers/:id/churn
+  // (ou pelo cancelamento da recorrência no MP); endedAt no passado tira o cliente
+  // do MRR/rollup e o arr fica congelado como histórico (churn.js).
+  customers: { flags: [], health: 0, delta: 0, nps: 0, usage: "", lastTouch: "—", renewal: "—", endedAt: "", churnReason: "", churnNote: "" },
   nps: { tags: [] },
   // comments = [{ id, author, text, at }] — anotações do card; o SPA faz PATCH do array inteiro (mesmo padrão de tasks).
   // callAt = dia/horário da call (editável no card em "Call closer"); proposalValue/proposalPeriod = valor e período da
@@ -186,8 +190,10 @@ export const CREATE_DEFAULTS = {
 // Receita e nº de clientes são DERIVADOS da coleção `customers`, não dos campos
 // crus do produto — assim um SaaS nunca exibe receita sem clientes registrados.
 // `customers` = qtd de clientes daquele saas; `arr` = soma do ARR deles; `mrr` = arr/12.
+// Cliente CHURNADO (endedAt no passado — régua única em churn.js) fica fora dos
+// três números: o arr dele segue congelado no cadastro só como histórico.
 function rollupProduct(p, customers) {
-  const mine = customers.filter((c) => c.saas === p.id);
+  const mine = customers.filter((c) => c.saas === p.id && !isChurnedCustomer(c));
   const arr = mine.reduce((a, c) => a + (Number(c.arr) || 0), 0);
   return { ...p, customers: mine.length, arr, mrr: Math.round(arr / 12) };
 }
@@ -792,6 +798,12 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
           patch = { ...patch, callHistory: [...hist, { at: oldAt, closer: cur.closer || "" }].slice(-60) };
         }
       }
+    }
+    // Assinatura cancelada por QUALQUER caminho ganha o carimbo canceledAt (o
+    // churn de CS do scoreboard e o histórico dependem dele; antes só o
+    // syncWonLeadDeal gravava — o botão da tela e o webhook deixavam vazio).
+    if (collection === "subscriptions" && patch.status === "canceled" && before && before.status !== "canceled" && !before.canceledAt) {
+      patch = { ...patch, canceledAt: new Date().toISOString() };
     }
     const updated = await repo.update(collection, id, patch);
     if (!updated) return reply.code(404).send({ error: "Not found" });

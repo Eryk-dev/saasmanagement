@@ -16,6 +16,7 @@ import { scriptChecklist } from "../lib/scripts.js";
 import { displayName } from "../lib/users.js";
 import { paymentLabel, paymentUpfront, paymentRecurring, PAYMENT_METHODS, PAY_STATUS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf, mpMethodLabel, accruedAmountOf, isRecurringClose } from "../lib/payments.js";
 import { useAttribution, leadPain } from "../lib/pains.js";
+import { isChurned, CHURN_REASONS, churnReasonLabel } from "../lib/churn.js";
 import { fetchLeveradsOrgs } from "../lib/leverads.js";
 import { printContract, issueDate, byIssuedDesc } from "../lib/contracts.js";
 // Clientes — a base ativa do produto em dois blocos: a tabela de clientes e,
@@ -125,9 +126,10 @@ function CustomersScreen({ initialTab }) {
   // contrato — boleto faturado vira ciclo mensal por design, e mostrar "mensal"
   // pra um contrato semestral faturado estava errado.
   const contractPlan = (c) => c.plan || (mainSub(c) ? planLabel(mainSub(c)) : "");
-  // Cliente com endedAt no passado deu churn: fica fora do MRR, da contagem de
-  // ativos e da régua (mas segue na tabela e na Análise).
-  const isChurned = (c) => c.endedAt && new Date(c.endedAt).getTime() <= Date.now();
+  // Cliente com endedAt no passado deu churn (régua única em lib/churn.js —
+  // marcado pelo botão da ficha ou pelo cancelamento da recorrência no MP):
+  // fica fora do MRR, da contagem de ativos e da régua de marcos, mas segue
+  // na tabela (esmaecido, com o filtro Todos/Ativos/Churn) e na Análise.
   const activeCustomers = customers.filter((c) => !isChurned(c));
   const totalMrr = activeCustomers.reduce((a, c) => a + (c.arr || 0), 0) / 12;
   // CONTA GRANDE (customer.keyAccount): cliente fora da régua (Galante, CRGroup).
@@ -267,7 +269,17 @@ function CustomersScreen({ initialTab }) {
       return sort.dir * (typeof va === "string" ? va.localeCompare(vb, "pt-BR") : va - vb);
     });
   }, [customers, sort, subs, plans, received, LEADS, allConsultas, leverOrgs, tick]); // eslint-disable-line react-hooks/exhaustive-deps
-  const shownCustomers = showAll ? sortedCustomers : sortedCustomers.slice(0, 50);
+  // Filtro Todos/Ativos/Churn da tabela — só aparece quando existe churn na
+  // base (sem churn a tela fica idêntica). Padrão "Todos": o churnado continua
+  // visível (esmaecido), ninguém some da lista.
+  const [baseFilter, setBaseFilter] = useState("all"); // all | active | churned
+  const churnedCount = customers.length - activeCustomers.length;
+  const filteredCustomers = baseFilter === "active"
+    ? sortedCustomers.filter((c) => !isChurned(c))
+    : baseFilter === "churned"
+      ? sortedCustomers.filter((c) => isChurned(c))
+      : sortedCustomers;
+  const shownCustomers = showAll ? filteredCustomers : filteredCustomers.slice(0, 50);
   const lastContact = (c) => {
     const lead = (LEADS || []).find((l) => l.id === c.leadId);
     const at = lead?.lastActivityAt || c.lastContactAt;
@@ -449,6 +461,16 @@ function CustomersScreen({ initialTab }) {
 
             <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
             <Card style={{ overflow: "hidden", flex: "1 1 560px", minWidth: 0 }}>
+              {/* Filtro Todos/Ativos/Churn: só existe quando há churn na base. */}
+              {churnedCount > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 20px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+                  <Segmented value={baseFilter} onChange={setBaseFilter} options={[
+                    { value: "all", label: `Todos (${customers.length})` },
+                    { value: "active", label: `Ativos (${activeCustomers.length})` },
+                    { value: "churned", label: `Churn (${churnedCount})` },
+                  ]} />
+                </div>
+              )}
               <div className="tbl-x">
               <table style={{ width: "100%", minWidth: isKidsWorkspace ? 960 : isLeverads ? 1660 : 1480, borderCollapse: "collapse" }}>
                 <thead>
@@ -472,8 +494,9 @@ function CustomersScreen({ initialTab }) {
                     const kids = isMentoria(c);
                     const nm = kids ? null : nextMilestone(withCycle(c), product);
                     const j = kids ? journeyOf(c) : null;
+                    // Linha de churnado fica esmaecida — visível, mas claramente fora da base ativa.
                     return (
-                      <tr key={c.id} onClick={() => setSel(c.id)} style={{ cursor: "pointer" }}
+                      <tr key={c.id} onClick={() => setSel(c.id)} style={{ cursor: "pointer", opacity: isChurned(c) ? 0.55 : 1 }}
                         onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
                         onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
                         {/* Empresa + nome do contato (do cadastro; fallback no lead). Some quando é a mesma coisa. */}
@@ -567,7 +590,9 @@ function CustomersScreen({ initialTab }) {
                         {/* Progresso do pacote (mentoria) × status da assinatura */}
                         <td style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-faint)" }}>
                           {isChurned(c)
-                            ? <Pill tone="neg">churn</Pill>
+                            ? <span title={[c.churnReason ? churnReasonLabel(c.churnReason) : "", c.churnNote || ""].filter(Boolean).join(" · ") || "cliente saiu (churn)"}>
+                                <Pill tone="neg">churn{c.endedAt ? ` ${fmtDay(parseDay(c.endedAt))}` : ""}</Pill>
+                              </span>
                             : kids
                               ? <Pill tone={j.done >= j.total && j.items.length > 0 ? "pos" : j.done > 0 ? "warn" : "mut"}>{j.done} de {j.total}</Pill>
                               : st ? <Pill tone={st.tone}>{st.label}</Pill> : <Pill tone="mut">sem assinatura</Pill>}
@@ -613,8 +638,8 @@ function CustomersScreen({ initialTab }) {
               </table>
               </div>
               <div style={{ padding: "12px 20px", borderTop: "1px solid var(--line-1)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>mostrando {shownCustomers.length} de {customers.length}</span>
-                {customers.length > 50 && <button onClick={() => setShowAll((v) => !v)} style={{ fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>{showAll ? "Mostrar 50" : "Ver todos"}</button>}
+                <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>mostrando {shownCustomers.length} de {filteredCustomers.length}</span>
+                {filteredCustomers.length > 50 && <button onClick={() => setShowAll((v) => !v)} style={{ fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>{showAll ? "Mostrar 50" : "Ver todos"}</button>}
               </div>
             </Card>
             {/* Legenda: como o nível A/B/C sai (contas × anúncios). Só LeverAds. */}
@@ -920,6 +945,44 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
     } finally { setReverting(false); }
   }
 
+  // Registrar CHURN (a saída de verdade, diferente do "desfazer venda" que é
+  // correção de erro): data + motivo + observação → POST /churn, que carimba
+  // endedAt, cancela as assinaturas em aberto (espelhando no MP quando
+  // vinculadas) e tira o cliente do MRR e da base ativa — o histórico fica.
+  // Clientes com recorrência no MP churnam sozinhos quando o MP cancela; este
+  // botão cobre os que pagam por fora (não sincronizados).
+  const churned = isChurned(customer);
+  const [churnOpen, setChurnOpen] = useState(false);
+  const [chuDate, setChuDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [chuReason, setChuReason] = useState("");
+  const [chuNote, setChuNote] = useState("");
+  const [chuSaving, setChuSaving] = useState(false);
+  async function saveChurn() {
+    if (chuSaving || !chuDate) return;
+    setChuSaving(true);
+    try {
+      const r = await api.customerChurn(customer.id, { endedAt: chuDate, reason: chuReason, note: chuNote.trim() });
+      Object.assign(customer, r.customer || {}); // otimista: o objeto vem do SEED compartilhado
+      setChurnOpen(false);
+      window.toast && window.toast("churn registrado — cliente fora da base ativa; assinaturas em aberto canceladas", "pos");
+      refresh();
+    } catch (e) {
+      window.toast ? window.toast(e.message || "não deu pra registrar o churn", "neg") : window.alert(e.message || "não deu pra registrar o churn");
+    } finally { setChuSaving(false); }
+  }
+  async function undoChurn() {
+    if (chuSaving) return;
+    setChuSaving(true);
+    try {
+      const r = await api.customerUnchurn(customer.id);
+      Object.assign(customer, r.customer || {});
+      window.toast && window.toast("churn desfeito — se a cobrança continua, reative a assinatura na aba Assinaturas", "pos");
+      refresh();
+    } catch (e) {
+      window.toast && window.toast(e.message || "não deu pra desfazer o churn", "neg");
+    } finally { setChuSaving(false); }
+  }
+
   const [upsellOpen, setUpsellOpen] = useState(false);
   const [upVal, setUpVal] = useState("");
   const [upDate, setUpDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -1052,6 +1115,13 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
                   : `${money((customer.arr || 0) / 12)}/mês · ${money(customer.arr || 0)}/ano`}{customer.email ? ` · ${customer.email}` : ""}
               </div>
             </div>
+            {!editing && !churned && (
+              <button onClick={() => setChurnOpen((v) => !v)}
+                title="Registrar a saída deste cliente (churn): data + motivo. Cancela as assinaturas em aberto (espelha no Mercado Pago quando vinculadas) e tira o cliente do MRR e da base ativa — o histórico e o valor do contrato ficam registrados."
+                style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid color-mix(in srgb, var(--neg) 40%, transparent)", background: "var(--bg-1)", color: "var(--neg)", fontSize: 12.5, flexShrink: 0 }}>
+                {churnOpen ? "cancelar" : "registrar churn"}
+              </button>
+            )}
             {!editing && (
               <button onClick={() => setEditing(true)} style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, flexShrink: 0 }}>Editar</button>
             )}
@@ -1068,6 +1138,43 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
           {(customer.flags || []).length > 0 && (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
               {customer.flags.map((f) => <Pill key={f} tone="warn">{f}</Pill>)}
+            </div>
+          )}
+          {/* Faixa de churn: o cliente saiu — quando, por quê e o desfazer. */}
+          {churned && (
+            <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "9px 12px", borderRadius: "var(--r-2)", background: "var(--neg-soft)", border: "1px solid color-mix(in srgb, var(--neg) 30%, transparent)" }}>
+              <Pill tone="neg">churn</Pill>
+              <span style={{ fontSize: 12.5, color: "var(--fg-2)", minWidth: 0 }}>
+                saiu em <b>{fmtDay(parseDay(customer.endedAt))}</b>
+                {customer.churnReason ? ` · ${churnReasonLabel(customer.churnReason)}` : ""}
+                {customer.churnNote ? ` · ${customer.churnNote}` : ""}
+                {customer.churnSource === "mp" ? " · marcado pelo Mercado Pago" : ""}
+              </span>
+              <button onClick={undoChurn} disabled={chuSaving}
+                title="Desfaz a marcação de churn (o cliente volta pra base ativa). As assinaturas canceladas NÃO voltam sozinhas — reative na aba Assinaturas se a cobrança continua."
+                style={{ marginLeft: "auto", height: 24, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11, flexShrink: 0, opacity: chuSaving ? 0.5 : 1 }}>
+                {chuSaving ? "…" : "desfazer churn"}
+              </button>
+            </div>
+          )}
+          {/* Painel do registrar churn: data (padrão hoje) + motivo + observação. */}
+          {churnOpen && !churned && (
+            <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "9px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-1)" }}>
+              <span className="mono dim" style={{ fontSize: 10.5 }}>saída</span>
+              <input type="date" value={chuDate} onChange={(e) => setChuDate(e.target.value)}
+                style={{ height: 28, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontFamily: "var(--mono)" }} />
+              <select value={chuReason} onChange={(e) => setChuReason(e.target.value)}
+                style={{ height: 28, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: chuReason ? "var(--fg-1)" : "var(--fg-4)", fontSize: 12.5 }}>
+                <option value="">motivo…</option>
+                {CHURN_REASONS.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+              </select>
+              <input type="text" value={chuNote} onChange={(e) => setChuNote(e.target.value)} placeholder="observação (opcional)"
+                onKeyDown={(e) => e.key === "Enter" && saveChurn()}
+                style={{ height: 28, flex: "1 1 160px", minWidth: 130, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 }} />
+              <button onClick={saveChurn} disabled={chuSaving || !chuDate}
+                style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "none", background: "var(--neg)", color: "#fff", fontSize: 12.5, fontWeight: 600, opacity: chuSaving || !chuDate ? 0.5 : 1 }}>
+                {chuSaving ? "registrando…" : "confirmar churn"}
+              </button>
             </div>
           )}
         </div>

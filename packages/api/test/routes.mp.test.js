@@ -96,7 +96,7 @@ test("mp/link: cria preapproval pending e salva id/init_point/payer na assinatur
   await app.close();
 });
 
-test("webhook preapproval: assinatura HMAC inválida → 400; authorized → active; cancelled → canceled + ARR 0", async () => {
+test("webhook preapproval: assinatura HMAC inválida → 400; authorized → active; cancelled → canceled + churn com ARR congelado", async () => {
   const repo = makeMemRepo();
   let preStatus = "authorized";
   const { app } = buildApp(repo, {
@@ -119,12 +119,33 @@ test("webhook preapproval: assinatura HMAC inválida → 400; authorized → act
   assert.equal(cur.mpStatus, "authorized");
   assert.equal((await repo.get("customers", "c1")).arr, 5388);
 
-  // cancelled → cancela e zera ARR.
+  // cancelled → cancela (com canceledAt) e o CLIENTE churna sozinho: endedAt +
+  // motivo mp_cancel, com o ARR CONGELADO (o endedAt é quem tira das réguas;
+  // o valor parado preserva o histórico da Análise).
   preStatus = "cancelled";
   await app.inject({ method: "POST", url: "/public/mp/webhook", payload, headers: sign("pre_1") });
   cur = await repo.get("subscriptions", sub.id);
   assert.equal(cur.status, "canceled");
-  assert.equal((await repo.get("customers", "c1")).arr, 0);
+  assert.ok(cur.canceledAt);
+  const churned = await repo.get("customers", "c1");
+  assert.ok(churned.endedAt);
+  assert.equal(churned.churnReason, "mp_cancel");
+  assert.equal(churned.churnSource, "mp");
+  assert.equal(churned.arr, 5388);
+  // Cliente churnado some do rollup do produto (nº de clientes e ARR).
+  const prod = (await app.inject({ method: "GET", url: "/api/products/leverads" })).json();
+  assert.equal(prod.customers, 0);
+  assert.equal(prod.arr, 0);
+
+  // Reativou no MP → o churn que o MP marcou é desfeito sozinho e o ARR volta
+  // a contar (recalculado da assinatura ativa).
+  preStatus = "authorized";
+  await app.inject({ method: "POST", url: "/public/mp/webhook", payload, headers: sign("pre_1") });
+  const back = await repo.get("customers", "c1");
+  assert.equal(back.endedAt, "");
+  assert.equal(back.churnReason, "");
+  assert.equal((await repo.get("subscriptions", sub.id)).status, "active");
+  assert.equal(back.arr, 5388);
 
   await app.close();
 });

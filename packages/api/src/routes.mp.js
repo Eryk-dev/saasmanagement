@@ -14,6 +14,7 @@ import { CYCLE_MONTHS, syncCustomerArr } from "./billing.js";
 import { ingestMpPayment, runMpSync, settleInvoice } from "./mp-payments.js";
 import { recordPaymentLink } from "./payment-links.js";
 import { attachPreapprovalToSub, linkableSubs, runPreapprovalSync } from "./mp-subscriptions.js";
+import { applyMpCancellationChurn, applyMpReactivationRescue } from "./churn.js";
 import { DEAL_PRODUCT_LABEL } from "./proposal-catalog.js";
 import { MENTORIA_LABEL } from "./mentoria.js";
 import { logActivity } from "./lead-flow.js";
@@ -214,7 +215,7 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
   app.post("/api/mp/preapprovals/sync", async (req, reply) => {
     if (!mp.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Mercado Pago não configurado (MERCADOPAGO_ACCESS_TOKEN)" });
     try {
-      return await runPreapprovalSync(repo, mp, { log: req.log });
+      return await runPreapprovalSync(repo, mp, { log: req.log, discord });
     } catch (err) {
       req.log.warn({ err: err.message }, "MP: sync de recorrências falhou");
       return reply.code(UPSTREAM_FAILED).send({ error: "MP não respondeu a busca de assinaturas", detail: String(err.message || err).slice(0, 300) });
@@ -449,7 +450,14 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
         mpStatus: pre.status,
         payerEmail: sub.payerEmail || pre.payer_email || null,
         ...(mapped && sub.status !== mapped ? { status: mapped } : {}),
+        ...(mapped === "canceled" && !sub.canceledAt ? { canceledAt: new Date().toISOString() } : {}),
       });
+      // Cancelou no MP sem outra assinatura viva → o CLIENTE churna sozinho
+      // (endedAt + motivo "mp_cancel"); reativou → desfaz churn que o próprio
+      // MP marcou. ANTES do syncCustomerArr: cliente churnado congela o arr
+      // (guard no billing.js), preservando quanto ele valia quando saiu.
+      if (pre.status === "cancelled") await applyMpCancellationChurn(repo, updated, { discord, log: req.log });
+      else if (pre.status === "authorized") await applyMpReactivationRescue(repo, updated, { log: req.log });
       await syncCustomerArr(repo, updated.customer);
       // Aviso no Discord pela transição do mpStatus (autorizou/cancelou/pausou) —
       // status Cockpit pode já nascer "active" (CREATE_DEFAULTS), o evento que

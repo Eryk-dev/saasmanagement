@@ -597,6 +597,10 @@ export const api = {
   // Desfaz um fechamento errado: remove cliente/assinatura/faturas automáticas
   // e devolve o card pro funil (409 se houver dinheiro real do Mercado Pago).
   customerRevertWin: (id) => req("POST", `/api/customers/${id}/revert-win`),
+  // Churn: registra a SAÍDA do cliente (endedAt + motivo; cancela as
+  // assinaturas em aberto, espelhando no MP) e o desfazer da marcação.
+  customerChurn: (id, body = {}) => req("POST", `/api/customers/${id}/churn`, body),
+  customerUnchurn: (id) => req("POST", `/api/customers/${id}/unchurn`),
   createUser: ({ name, password, roles }) => req("POST", "/api/auth/users", { name, password, ...(roles ? { roles } : {}) }),
   // Remove um usuário do time. force=true remove mesmo com leads atribuídos (409 sem force).
   removeUser: (id, force = false) => req("DELETE", `/api/auth/users/${id}${force ? "?force=1" : ""}`),
