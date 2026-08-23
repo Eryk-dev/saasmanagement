@@ -6,7 +6,7 @@
 // sozinho via onActivityCreated.
 
 import { randomUUID } from "node:crypto";
-import { kindOf, cadenceOf, firstStage, stageByKind, LOSS_KINDS, TOUCH_TYPES } from "./stages.js";
+import { kindOf, cadenceOf, firstStage, stageByKind, isNoShowStage, isWonLead, LOSS_KINDS, TOUCH_TYPES } from "./stages.js";
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
@@ -282,4 +282,31 @@ export async function onActivityCreated(repo, activity) {
     if (manualNextAt) patch.nextActionAt = manualNextAt;
   }
   return repo.update("leads", lead.id, patch);
+}
+
+// Mensagem de SAÍDA no WhatsApp pro lead (inbox ou robô SDR): quem recebeu
+// mensagem nossa já está sendo qualificado (Leo, 23/08). Lead NOVO ganha o
+// toque de 1º contato (activity + onActivityCreated, que já promove e agenda
+// a cadência); lead em CONTATO vai pra qualificação pelo caminho canônico,
+// uma vez só (depois vira no-op). Nunca anda pra trás: call, proposta e
+// afins ficam onde estão; No show fica (o resgate não devolve o card pro
+// SDR) e lead ganho não mexe. Nunca lança — mover card não trava envio.
+export async function onOutboundMessage(repo, leadId, { author = "system", text = "mensagem no WhatsApp", now = new Date() } = {}) {
+  if (!leadId) return null;
+  try {
+    const lead = await repo.get("leads", leadId);
+    if (!lead) return null;
+    const product = lead.saas ? await repo.get("products", lead.saas) : null;
+    const stage = lead.stage || firstStage(product);
+    const kind = kindOf(product, stage);
+    if (kind === "novo") {
+      const activity = await logActivity(repo, { saas: lead.saas || "", lead: lead.id, type: "whatsapp", text, author, at: now.toISOString() });
+      return onActivityCreated(repo, activity);
+    }
+    if (kind !== "contato" || isNoShowStage(stage) || isWonLead(product, lead)) return null;
+    const target = stageByKind(product, "qualificacao");
+    if (!target || target.stage === stage) return null;
+    const movePatch = await applyStageMove(repo, { lead, toStage: target.stage, author, now });
+    return repo.update("leads", lead.id, { ...movePatch, stage: target.stage });
+  } catch { return null; }
 }

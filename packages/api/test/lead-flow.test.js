@@ -8,7 +8,7 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerRoutes } = await import("../src/routes.js");
-const { rollToBusinessDay, appointmentAt, brtToIso } = await import("../src/lead-flow.js");
+const { rollToBusinessDay, appointmentAt, brtToIso, onOutboundMessage } = await import("../src/lead-flow.js");
 
 const FUNNEL = [
   { stage: "Novo lead", kind: "novo", conv: 1, cadence: { firstTouchHours: 2 } },
@@ -488,4 +488,46 @@ test("etapa que NÃO é de call segue entrando sem hora nenhuma", async () => {
   const lead = (await app.inject({ method: "POST", url: "/api/leads", payload: { name: "Ana", saas: "leverads" } })).json();
   const res = await app.inject({ method: "PATCH", url: `/api/leads/${lead.id}`, payload: { stage: "Follow-up" } });
   assert.equal(res.statusCode, 200);
+});
+
+// ── Mensagem de saída no WhatsApp → lead vai pra qualificação (Leo, 23/08) ──
+test("onOutboundMessage: novo ganha o toque, contato move pra Qualificando, call fica", async () => {
+  const { app, repo } = await buildApp();
+  // Lead NOVO: registra o toque de whatsapp e promove pra qualificação.
+  const novo = (await app.inject({ method: "POST", url: "/api/leads", payload: { name: "Ana", saas: "leverads" } })).json();
+  await onOutboundMessage(repo, novo.id, { author: "sdr", text: "1º toque do SDR" });
+  assert.equal((await repo.get("leads", novo.id)).stage, "Qualificando");
+  assert.equal((await activitiesOf(repo, novo.id, "whatsapp")).length, 1, "toque registrado");
+
+  // Lead em CONTATO: move pelo caminho canônico, sem inflar tentativa.
+  const cont = (await app.inject({ method: "POST", url: "/api/leads", payload: { name: "Bia", saas: "leverads" } })).json();
+  await app.inject({ method: "PATCH", url: `/api/leads/${cont.id}`, payload: { stage: "Em contato" } });
+  await onOutboundMessage(repo, cont.id, { author: "cockpit" });
+  const moved = await repo.get("leads", cont.id);
+  assert.equal(moved.stage, "Qualificando");
+  assert.equal((await activitiesOf(repo, cont.id, "whatsapp")).length, 0, "sem toque inflado");
+  assert.equal(moved.stageAttempts, 0, "movimento canônico zera tentativas");
+
+  // Mandar de novo com o lead já em qualificação: no-op.
+  await onOutboundMessage(repo, cont.id, { author: "cockpit" });
+  assert.equal((await repo.get("leads", cont.id)).stage, "Qualificando");
+
+  // Estágio de closer NUNCA volta (lembrete de call não demove o card).
+  const brt = new Date(Date.now() + 26 * 3600e3 - 3 * 3600e3).toISOString().slice(0, 16);
+  const call = (await app.inject({ method: "POST", url: "/api/leads", payload: { name: "Caio", saas: "leverads", stage: "Call agendada", callAt: brt } })).json();
+  await onOutboundMessage(repo, call.id, { author: "sdr" });
+  assert.equal((await repo.get("leads", call.id)).stage, "Call agendada");
+  await app.close();
+});
+
+test("onOutboundMessage: No show fica onde está (o resgate não devolve o card pro SDR)", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "p1", name: "P", funnel: [
+    { stage: "Novo lead", kind: "novo", conv: 1 },
+    { stage: "No show", kind: "contato", conv: 1 },
+    { stage: "Qualificando", kind: "qualificacao", conv: 1 },
+  ] });
+  await repo.create("leads", { id: "l1", saas: "p1", name: "Duda", stage: "No show" });
+  await onOutboundMessage(repo, "l1", { author: "sdr" });
+  assert.equal((await repo.get("leads", "l1")).stage, "No show");
 });

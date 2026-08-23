@@ -27,7 +27,7 @@
 import { findThreadByPhone, listMessages, recordMessage } from "./wa-store.js";
 import { digits } from "./whatsapp.js";
 import { kindOf, firstStage, isNoShowStage, isWonLead } from "./stages.js";
-import { brtToIso } from "./lead-flow.js";
+import { brtToIso, onOutboundMessage } from "./lead-flow.js";
 import { resolveWabaId } from "./wa-health.js";
 import { raiseAlert } from "./wa-call-flow.js";
 import { slotsForLead, slotLabel, wallNow, spreadPair, OFFER_HOURS } from "./agenda-slots.js";
@@ -204,6 +204,9 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
   async function sendText({ phone, text, phoneId, saas, leadId }) {
     const { messageId } = await wa.sendText(phone, text, { phoneId });
     await recordMessage(repo, { id: messageId, phone, direction: "out", text, status: "sent", author: SDR_AUTHOR, waPhoneId: phoneId || "", saas, leadId });
+    // Mensagem do robô = lead sendo qualificado: novo ganha o toque, contato
+    // vai pra qualificação; lembrete de call e resgate de no-show são no-op.
+    await onOutboundMessage(repo, leadId, { author: SDR_AUTHOR, text: "1º toque do SDR" });
     return messageId;
   }
   async function sendTemplate({ phone, name, params, phoneId, saas, leadId }) {
@@ -211,6 +214,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
     const { messageId } = await wa.sendTemplate(phone, name, "pt_BR", components, { phoneId });
     const rendered = (TEMPLATE_BODY[name] || name).replace(/\{\{\s*(\d+)\s*\}\}/g, (_, n) => params[Number(n) - 1] || "");
     await recordMessage(repo, { id: messageId, phone, direction: "out", text: rendered, status: "sent", author: SDR_AUTHOR, waPhoneId: phoneId || "", saas, leadId });
+    await onOutboundMessage(repo, leadId, { author: SDR_AUTHOR, text: "1º toque do SDR" });
     return messageId;
   }
 
