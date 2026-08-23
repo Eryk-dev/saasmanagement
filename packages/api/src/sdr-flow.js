@@ -73,8 +73,10 @@ export function sdrBotConfig(product) {
       firstTouchMulti: cfg.templates?.firstTouchMulti || "sdr_primeiro_toque_multi",
       firstTouchOem: cfg.templates?.firstTouchOem || "sdr_primeiro_toque_oem",
       firstTouch: cfg.templates?.firstTouch || "sdr_primeiro_toque_v2",
-      reminder: cfg.templates?.reminder || "sdr_lembrete_call",
-      rescue: cfg.templates?.rescue || "sdr_resgate_noshow",
+      // "call" nunca chega no lead (Leo, 23/08): templates novos falam
+      // "conversa"; os antigos aprovados seguem de fallback até a revisão.
+      reminder: cfg.templates?.reminder || "sdr_lembrete_conversa",
+      rescue: cfg.templates?.rescue || "sdr_resgate_conversa",
     },
   };
 }
@@ -150,11 +152,11 @@ const REMINDERS = [
 // entrega o link. Tudo sem emoji, no tom da persona do número.
 function reminderText(key, { nome, quando, link }) {
   const oi = nome ? `Oi ${nome}!` : "Oi!";
-  if (key === "24h") return `${oi} Confirmando nossa call ${quando}, tudo certo? Qualquer imprevisto me fala por aqui que eu remarco sem problema.`;
-  if (key === "1h") return `${oi} Está tudo certo pra nossa call ${quando}? Nosso especialista vai estar te esperando pra te fazer a demonstração ao vivo. Te espero lá!`;
+  if (key === "24h") return `${oi} Confirmando nossa conversa ${quando}, tudo certo? Qualquer imprevisto me fala por aqui que eu remarco sem problema.`;
+  if (key === "1h") return `${oi} Está tudo certo pra nossa conversa ${quando}? Nosso especialista vai estar te esperando pra te fazer a demonstração ao vivo. Te espero lá!`;
   return link
-    ? `${nome ? nome + ", nossa" : "Nossa"} call começa em 10 minutos! Link pra entrar: ${link}`
-    : `${nome ? nome + ", nossa" : "Nossa"} call começa em 10 minutos! Te espero lá.`;
+    ? `${nome ? nome + ", nossa" : "Nossa"} conversa começa em 10 minutos! Link pra entrar: ${link}`
+    : `${nome ? nome + ", nossa" : "Nossa"} conversa começa em 10 minutos! Te espero lá.`;
 }
 
 // A mensagem de resgate é a que o time já usa e recupera no-show (mineração:
@@ -162,7 +164,7 @@ function reminderText(key, { nome, quando, link }) {
 // próximos horários reais na sequência.
 function rescueText({ nome, slots = [], now }) {
   const oi = nome ? `Oi ${nome},` : "Oi,";
-  const base = `${oi} passei na nossa call no horário e não te encontrei, acontece! Quer que eu remarque?`;
+  const base = `${oi} passei no nosso horário marcado e não te encontrei, acontece! Quer que eu remarque?`;
   if (slots.length >= 2) return `${base} Tenho ${slotLabel(slots[0].at, now)} ou ${slotLabel(slots[1].at, now)} livres, me diz qual fica bom que eu já reservo.`;
   if (slots.length === 1) return `${base} Consigo te encaixar ${slotLabel(slots[0].at, now)}, fica bom?`;
   return `${base} Me diz um horário que fica bom pra você que eu já reservo.`;
@@ -337,8 +339,9 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
               // alerta quente — o lembrete é justamente o anti no-show, não
               // pode morrer calado.
               const names = await approvedNames();
-              if (names.has(cfg.templates.reminder)) {
-                await sendTemplate({ phone: to, name: cfg.templates.reminder, params: [nome || "tudo bem", quando], phoneId, saas: product.id, leadId: lead.id });
+              const tplLembrete = [cfg.templates.reminder, "sdr_lembrete_call"].find((n) => names.has(n));
+              if (tplLembrete) {
+                await sendTemplate({ phone: to, name: tplLembrete, params: [nome || "tudo bem", quando], phoneId, saas: product.id, leadId: lead.id });
               } else {
                 await raiseAlert(repo, thread || { id: digits(phone), phone: digits(phone), name: lead.name || "", leadId: lead.id, saas: product.id }, {
                   text: `Lembrete ${due.key} da call não entregue (janela fechada, sem template aprovado) · confirmar na mão`,
@@ -385,8 +388,9 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
               await sendText({ phone: to, text: rescueText({ nome, slots: spreadPair(slots), now: wnow }), phoneId, saas: product.id, leadId: lead.id });
             } else {
               const names = await approvedNames();
-              if (names.has(cfg.templates.rescue)) {
-                await sendTemplate({ phone: to, name: cfg.templates.rescue, params: [nome || "tudo bem"], phoneId, saas: product.id, leadId: lead.id });
+              const tplResgate = [cfg.templates.rescue, "sdr_resgate_noshow"].find((n) => names.has(n));
+              if (tplResgate) {
+                await sendTemplate({ phone: to, name: tplResgate, params: [nome || "tudo bem"], phoneId, saas: product.id, leadId: lead.id });
                 via = "template";
               } else {
                 await raiseAlert(repo, thread || { id: digits(phone), phone: digits(phone), name: lead.name || "", leadId: lead.id, saas: product.id }, {

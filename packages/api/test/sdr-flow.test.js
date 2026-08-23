@@ -176,7 +176,7 @@ test("véspera, 1h e 10min saem uma vez cada, gravam no confirmLog e o 10min lev
   const r = runner(repo, wa, nowRef);
   await r.tick();
   assert.equal(wa.sent.length, 1);
-  assert.match(wa.sent[0].text, /Confirmando nossa call amanhã às 10h, tudo certo\?/);
+  assert.match(wa.sent[0].text, /Confirmando nossa conversa amanhã às 10h, tudo certo\?/);
   assert.ok((await repo.get("leads", "L1")).confirmLog["24h"]);
   await r.tick(); // mesmo instante: não repete
   assert.equal(wa.sent.length, 1);
@@ -184,12 +184,12 @@ test("véspera, 1h e 10min saem uma vez cada, gravam no confirmLog e o 10min lev
   nowRef.t = new Date("2026-08-20T12:05:00Z"); // 9h05 BRT, janela do 1h
   await r.tick();
   assert.equal(wa.sent.length, 2);
-  assert.match(wa.sent[1].text, /Está tudo certo pra nossa call hoje às 10h\?/);
+  assert.match(wa.sent[1].text, /Está tudo certo pra nossa conversa hoje às 10h\?/);
 
   nowRef.t = new Date("2026-08-20T12:52:00Z"); // 9h52, janela do 10min
   await r.tick();
   assert.equal(wa.sent.length, 3);
-  assert.match(wa.sent[2].text, /começa em 10 minutos! Link pra entrar: https:\/\/meet\.google\.com\/abc-defg/);
+  assert.match(wa.sent[2].text, /conversa começa em 10 minutos! Link pra entrar: https:\/\/meet\.google\.com\/abc-defg/);
   const log = (await repo.get("leads", "L1")).confirmLog;
   assert.equal(log.at, "2026-08-20T10:00");
   assert.ok(log["1h"] && log["10min"]);

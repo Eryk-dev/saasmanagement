@@ -64,7 +64,7 @@ function priceDeferral(nome) {
 // demonstração (a conversa já falou dela) e sem pedir e-mail (vem do form).
 // Fica o combinado por escrito + o sócio/decisor + o aviso de lembrete.
 function bookingConfirmText(nome, quando) {
-  return `Fechado${nome ? `, ${nome}` : ""}! Nossa call fica ${quando} então. Se tiver sócio ou alguém que decida junto, traz pra call que a conversa rende mais. Te mando o lembrete por aqui um pouco antes!`;
+  return `Fechado${nome ? `, ${nome}` : ""}! Nossa conversa fica ${quando} então. Se tiver sócio ou alguém que decida junto, chama junto que rende mais. Te mando o lembrete por aqui um pouco antes!`;
 }
 
 function reofferText(nome, slots, wnow) {

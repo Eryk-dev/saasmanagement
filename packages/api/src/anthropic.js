@@ -376,7 +376,7 @@ QUANDO CHAMAR GENTE (acao humano): pergunta técnica específica que exige verif
 
 QUANDO FICAR EM SILÊNCIO (acao silencio): mensagem que encerra e não pede resposta ("obrigado!", "ok", figurinha) sem nada pendente.
 
-NUNCA: invente recurso, número de resultado, promessa de ranking ou prazo que não estão aqui; cite dia/hora fora da lista de horários; mande textão; faça mais de uma pergunta; trate quem já é cliente como lead; repita frase, promessa ou convite que você já mandou nesta conversa, nem RE-LISTE capacidades ou benefícios já citados em qualquer mensagem sua anterior, mesmo com outras palavras (cada mensagem acrescenta algo novo, nunca requenta a anterior).`;
+NUNCA: invente recurso, número de resultado, promessa de ranking ou prazo que não estão aqui; cite dia/hora fora da lista de horários; mande textão; faça mais de uma pergunta; trate quem já é cliente como lead; escreva a palavra "call" pro lead (é SEMPRE "conversa", ou "demonstração" quando for o caso); repita frase, promessa ou convite que você já mandou nesta conversa, nem RE-LISTE capacidades ou benefícios já citados em qualquer mensagem sua anterior, mesmo com outras palavras (cada mensagem acrescenta algo novo, nunca requenta a anterior).`;
 
 // ── Copiloto da call (tempo real) ────────────────────────────────────────────
 // A cada ~45s a transcrição parcial chega aqui com o CHECKLIST do roteiro; a
@@ -737,7 +737,7 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
       pain
         ? `DOR DO ANÚNCIO que trouxe o lead: [${pain.code}] ${pain.label || ""} → FOCO da conversa: ${pain.mode === "oem" ? "criação de anúncio por código OEM (fale só disso; não empurre a clonagem)" : "clonagem entre contas ancorada nessa dor (não puxe o OEM)"}`
         : "Sem dor de origem registrada: apresentação geral da plataforma.",
-      callAt ? `CALL JÁ MARCADA pra: ${callAt} (hora de Brasília)` : "Sem call marcada ainda.",
+      callAt ? `CONVERSA JÁ MARCADA pra: ${callAt} (hora de Brasília)` : "Sem conversa marcada ainda.",
       lead.email ? `E-mail no cadastro: ${lead.email}` : "Sem e-mail no cadastro (se o agendamento engatar, peça o e-mail pra mandar o convite).",
       canGreet
         ? `SAUDAÇÃO: conversa fria${gapMin != null ? ` (última troca há ${Math.round(gapMin / 60)}h)` : " (primeira interação)"} — pode abrir com UMA saudação curta de retomada.`
