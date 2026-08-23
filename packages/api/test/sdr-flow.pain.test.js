@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { firstTouchText, isAutoPecas } from "../src/sdr-flow.js";
+import { firstTouchText, isAutoPecas, leadPainFocus } from "../src/sdr-flow.js";
 
 // Autopeças com dor de gestão (A-E) ouve clonagem + OEM juntos (Leo, 23/08);
 // outros nichos seguem só na clonagem, e dor OEM não duplica o assunto.
@@ -20,4 +20,12 @@ test("firstTouchText: outro nicho com dor A-E não puxa OEM; dor OEM não duplic
 test("isAutoPecas aceita variações de escrita", () => {
   assert.ok(isAutoPecas("autopecas") && isAutoPecas("Auto Peças") && isAutoPecas("autopeças"));
   assert.ok(!isAutoPecas("moda") && !isAutoPecas(""));
+});
+
+test("leadPainFocus: dor OEM fora de autopeças cai pra clonagem; autopeças e nicho vazio mantêm OEM", () => {
+  const product = { painMap: { OEM: "Anunciar pelo OEM", A: "Subir anúncios" } };
+  assert.equal(leadPainFocus(product, { sourcePain: "OEM", niche: "eletronicos" }).mode, "clone");
+  assert.equal(leadPainFocus(product, { sourcePain: "OEM", niche: "autopecas" }).mode, "oem");
+  assert.equal(leadPainFocus(product, { sourcePain: "OEM" }).mode, "oem");
+  assert.equal(leadPainFocus(product, { sourcePain: "A", niche: "autopecas" }).mode, "clone");
 });

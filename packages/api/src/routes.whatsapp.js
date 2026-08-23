@@ -4,7 +4,7 @@
 import { makeWhatsapp } from "./whatsapp.js";
 import { recordMessage, updateStatus, listThreads, listMessages, markThreadRead, threadId, setLeadWhatsappOptOut, waInsights, waFormEngagement, findLeadByPhone, findThreadByPhone, linkThreadToLead } from "./wa-store.js";
 import { applyHealthEvent, getWaHealth, waHealthSummary, recordWebhookDelivery, resolveWabaId } from "./wa-health.js";
-import { runInboundCallFlow, openAlerts, closeThreadAlerts, parsePermissionReply } from "./wa-call-flow.js";
+import { runInboundCallFlow, openAlerts, closeThreadAlerts, parsePermissionReply, flagFailedBotSend } from "./wa-call-flow.js";
 import { runWaAutomations } from "./wa-automations.js";
 import { runWaFlows } from "./wa-flows.js";
 import { handleSdrInbound } from "./sdr-flow.js";
@@ -200,6 +200,9 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
             }
             for (const st of v.statuses || []) {
               await updateStatus(repo, st.id, st.status, st.errors?.[0] || "");
+              // Envio do ROBÔ recusado pela Meta → alerta quente (senão o
+              // sdrLog diz "tocado" e o lead morre no silêncio).
+              if (st.status === "failed") await flagFailedBotSend(repo, st.id).catch(() => {});
             }
           } else if (field === "calls" || v.calls) {
             // Ligação pelo cockpit (Calling API). Lições das chamadas REAIS de

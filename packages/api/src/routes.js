@@ -337,7 +337,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerAuthRoutes(app, repo);
   // Google Meet: conectar conta (OAuth) + criar call na agenda do closer.
   // Claude resume as calls (transcrição → timeline) quando há ANTHROPIC_API_KEY.
-  const { client: googleClient, googleUser, briefer, autoIntegrationMeet, autoCallMeet } = registerGoogleRoutes(app, repo, { google: opts.google, googleUser: opts.googleUser, anthropic: anthropicClient });
+  const { client: googleClient, googleUser, briefer, autoIntegrationMeet, autoCallMeet, moveCallMeet } = registerGoogleRoutes(app, repo, { google: opts.google, googleUser: opts.googleUser, anthropic: anthropicClient });
   // Consultas 1:1 + Manual da Família (UniqueKids): Meet da consulta, resumo IA,
   // compor manual e página pública /m/:id. Depois do Google (usa os 2 clients).
   registerConsultationRoutes(app, repo, { google: googleClient, googleUser, anthropic: anthropicClient });
@@ -862,6 +862,12 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     // conectou a própria conta Google. Best-effort: nunca quebra o PATCH.
     if (collection === "leads" && ("callAt" in req.body || "closer" in req.body || "integrationAt" in req.body || "integrator" in req.body)) {
       try { await syncPersonalCalendar(repo, googleUser, updated); } catch { /* fail-open */ }
+    }
+    // Remarcou a call (na mão ou pelo robô via PATCH) → o convite do Meet
+    // acompanha: o evento é PATCHado pro horário novo e o lead recebe o
+    // e-mail de atualização do Google.
+    if (collection === "leads" && "callAt" in req.body && updated.callUrl) {
+      try { await moveCallMeet(updated.id); } catch { /* fail-open: o lembrete de 10min entrega o link certo */ }
     }
     // Remarcou a call/integração → o GPS segue o compromisso. Só quando o
     // horário mudou de verdade e o PATCH não trouxe um nextActionAt explícito

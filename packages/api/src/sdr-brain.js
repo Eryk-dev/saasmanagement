@@ -42,6 +42,12 @@ const PITCH_RX = /t[íi]tulo de 200|part number|compatibilidade inteira|clonagem
 const SLOTS_RX = /(hoje|amanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo) às \d{1,2}h/i;
 const DAILY_CAP = 15;             // mensagens do robô por conversa por dia
 const PRICE_RX = /r\$\s*\d|\b\d{2,}\s*(reais|por m[eê]s|\/m[eê]s|mensais)\b|\ba partir de\s*\d/i;
+// Auto-atendimento do OUTRO lado (visto 23/08: "MAF Imports agradece seu
+// contato. Como podemos ajudar? informe os 7 últimos números do chassi"):
+// resposta instantânea de loja não é gente — responder vira robô falando com
+// robô. Só se aplica à PRIMEIRA resposta da conversa; gente de verdade escrevendo
+// depois segue o fluxo normal.
+const AUTO_REPLY_RX = /agradece (o |pelo )?(seu )?contato|como podemos (te )?ajudar|atendimento autom|escolha uma (das )?op[çc][õo]es|digite (o n[úu]mero|uma? op[çc][ãa]o)|menu de atendimento|hor[áa]rio de atendimento|consulte (o )?nosso (site|estoque|cat[áa]logo)|informe os? \d+ [úu]ltimos/i;
 
 const firstName = (v) => String(v || "").trim().split(/\s+/)[0] || "";
 
@@ -69,6 +75,14 @@ function priceDeferral(nome) {
 function bookingConfirmText(nome, quando, hasEmail) {
   const convite = hasEmail ? ", o convite vai chegar no seu e-mail" : "";
   return `Perfeito${nome ? ` ${nome}` : ""}, agendado então pra ${quando}${convite}. Se tiver sócio ou alguém que decida junto, chama junto que rende mais. Te chamo aqui um pouco antes com o lembrete!`;
+}
+
+// Remarcação: confirmação CURTA (a íntegra com sócio+lembrete já foi dita na
+// marcação; repetir palavra por palavra soa robô — Gilberto, 23/08). "Convite
+// atualizado" só quando o convite existe de verdade (o moveCallMeet PATCHa o
+// evento e o Google manda o e-mail de atualização).
+function rebookConfirmText(nome, quando, conviteAtualizado) {
+  return `Perfeito${nome ? ` ${nome}` : ""}, remarcado então pra ${quando}${conviteAtualizado ? ", o convite atualizado vai chegar no seu e-mail" : ""}!`;
 }
 
 function reofferText(nome, slots, wnow) {
@@ -197,6 +211,13 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       const lastIn = [...msgs].reverse().find((m) => m.direction === "in");
       if (lastIn && lastIn.id !== message.id) return "superseded";
     }
+    // 1ª resposta com cara de saudação automática de estabelecimento: silêncio
+    // (o alerta de lead quente do inbox continua valendo pro time ver).
+    {
+      const lastIn = [...msgs].reverse().find((m) => m.direction === "in");
+      const priorIn = msgs.some((m) => m.direction === "in" && m.id !== lastIn?.id);
+      if (lastIn && !priorIn && AUTO_REPLY_RX.test(lastIn.text || "")) return "auto-reply";
+    }
     const humanIds = new Set((await repo.list("users")).map((u) => u.id));
     const nowMs = at.getTime();
     const lastHumanOut = [...msgs].reverse().find((m) => m.direction === "out" && humanIds.has(m.author));
@@ -307,8 +328,11 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
         return "reoferta";
       }
       const fresh = await repo.get("leads", lead.id);
+      const rebook = decision.acao === "remarcar" || !!(fresh || lead).callAt;
       await bookCall(repo, { lead: fresh || lead, product, at: pick.at, closer: pick.closer, now: at });
-      await send(bookingConfirmText(nome, slotLabel(pick.at, wnow), !!lead.email));
+      await send(rebook
+        ? rebookConfirmText(nome, slotLabel(pick.at, wnow), !!(lead.email && (fresh || lead).callUrl))
+        : bookingConfirmText(nome, slotLabel(pick.at, wnow), !!lead.email));
       if (autoCallMeet) autoCallMeet(lead.id).catch(() => { /* o lembrete de 10min entrega o link quando existir */ });
       return decision.acao;
     }

@@ -99,6 +99,23 @@ export const alertKind = (a) => (a?.kind === "lead" ? "lead" : "hot");
 // Um alerta ABERTO por conversa: mensagem nova do mesmo lead atualiza o alerta
 // existente em vez de empilhar pop-ups. (Exportado: o SDR automatizado usa o
 // MESMO pop-up quando uma resposta de lembrete precisa de gente — sdr-flow.js.)
+// Mensagem do ROBÔ que a Meta recusou DEPOIS do envio (status failed no
+// webhook): número sem WhatsApp, teto de template marketing por usuário,
+// experimento da Meta. Sem isto o sdrLog dizia "tocado" e ninguém ia atrás
+// (3 leads mortos silenciosos em 23/08). Um alerta por lead basta.
+// (autor "sdr-bot" literal: importar SDR_AUTHOR do sdr-flow criaria ciclo.)
+export async function flagFailedBotSend(repo, waMessageId) {
+  const m = await repo.get("wa_messages", waMessageId);
+  if (!m || m.author !== "sdr-bot" || !m.thread) return null;
+  const thread = await repo.get("wa_threads", m.thread);
+  if (!thread) return null;
+  const lead = thread.leadId ? await repo.get("leads", thread.leadId) : null;
+  if (!lead || lead.sdrLog?.sendFailedAlertAt) return null;
+  await raiseAlert(repo, thread, { text: `Mensagem do robô NÃO entregue (${String(m.error || "erro da Meta").slice(0, 120)}) · chama o lead na mão` });
+  await repo.update("leads", lead.id, { sdrLog: { ...(lead.sdrLog || {}), sendFailedAlertAt: new Date().toISOString() } });
+  return lead.id;
+}
+
 export async function raiseAlert(repo, thread, { text = "", permission = "" } = {}) {
   const now = new Date().toISOString();
   const base = {
