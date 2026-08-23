@@ -738,7 +738,7 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
         ? `DOR DO ANÚNCIO que trouxe o lead: [${pain.code}] ${pain.label || ""} → FOCO da conversa: ${pain.mode === "oem" ? "criação de anúncio por código OEM (fale só disso; não empurre a clonagem)" : "clonagem entre contas ancorada nessa dor (não puxe o OEM)"}`
         : "Sem dor de origem registrada: apresentação geral da plataforma.",
       callAt ? `CONVERSA JÁ MARCADA pra: ${callAt} (hora de Brasília)` : "Sem conversa marcada ainda.",
-      lead.email ? `E-mail no cadastro: ${lead.email}` : "Sem e-mail no cadastro (se o agendamento engatar, peça o e-mail pra mandar o convite).",
+      lead.email ? `E-mail no cadastro: ${lead.email} (o convite do agendamento vai pra ele; NUNCA peça e-mail).` : "Sem e-mail no cadastro. NUNCA peça e-mail (ele vem do formulário): o link da conversa chega pelo lembrete aqui no WhatsApp.",
       canGreet
         ? `SAUDAÇÃO: conversa fria${gapMin != null ? ` (última troca há ${Math.round(gapMin / 60)}h)` : " (primeira interação)"} — pode abrir com UMA saudação curta de retomada.`
         : `SAUDAÇÃO: PROIBIDA. A conversa está EM ANDAMENTO (última mensagem há ${gapMin} min): não escreva "Oi", "Oiii", "Tudo bem?" nem o nome como abertura — responda DIRETO, continuando o assunto de onde parou.`,
