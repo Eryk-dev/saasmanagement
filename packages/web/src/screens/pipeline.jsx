@@ -8,7 +8,7 @@ import {
   stageKind, phaseOf, openStages, workableStages, ladderOf, isWonStage, isWonLead, wonAtOf,
   nextTouch, nextTouchPill, lossReasonLabel,
 } from "../lib/funnel.js";
-import { usersByRole, userTone, displayName, currentUser } from "../lib/users.js";
+import { usersByRole, userColor, displayName, currentUser } from "../lib/users.js";
 import { mentoriaFit, mentoriaOfferLine, VERBA_RANK } from "../lib/mentoria.js";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
 import { useActiveSaas, pinActiveSaas } from "../lib/workspace.js";
@@ -685,7 +685,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
   // Time da legenda: quem tem papel de closer/integrador (Ajustes → Equipe).
   const team = [...usersByRole("closer"), ...usersByRole("integrator")]
     .filter((u, i, arr) => arr.findIndex(x => x.id === u.id) === i);
-  const toneOf = (id) => id ? `oklch(0.55 0.13 ${userTone(id)})` : "var(--fg-4)";
+  const toneOf = (id) => (id ? userColor(id) : "var(--fg-4)");
 
   // Lanes: itens que se SOBREPÕEM dividem a largura. A largura sai do nº de lanes
   // do CLUSTER de sobreposição, não do dia inteiro — senão um horário cheio (ex.:

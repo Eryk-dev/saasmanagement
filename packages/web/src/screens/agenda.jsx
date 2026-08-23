@@ -1,7 +1,7 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { usersByRole, currentUser, displayName, userTone } from "../lib/users.js";
+import { usersByRole, currentUser, displayName, userColor } from "../lib/users.js";
 import { PageHead, Segmented } from "../components/viz.jsx";
 import { PrimaryButton } from "../atoms.jsx";
 import { AgendaView, AGENDA_TYPE_COLORS } from "./pipeline.jsx";
@@ -83,7 +83,7 @@ export function AgendaScreen({ onOpenLead }) {
 
   // Todos os itens do time no calendário, com a cara do dono: compromisso na
   // cor da pessoa principal, bloqueio em vermelho.
-  const toneOf = (id) => (id ? `oklch(0.55 0.13 ${userTone(id)})` : "var(--fg-4)");
+  const toneOf = (id) => (id ? userColor(id) : "var(--fg-4)");
   const decorate = (b) => {
     const parts = participantsOf(b);
     return {
