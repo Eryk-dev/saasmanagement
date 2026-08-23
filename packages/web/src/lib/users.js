@@ -55,40 +55,49 @@ export function userPhoto(id) {
   return assetUrl(userById(id)?.photo || "");
 }
 
-// Cor de cada pessoa na agenda/pipeline. O matiz por hash do id (abaixo)
-// sorteava famílias iguais — José, Vitor e Leonardo caíam todos no verde-oliva
-// (Leo, 06/08 e 23/08). Agora cada membro do time pega um SLOT de uma paleta
-// curada de cores fortes e bem separadas: o slot mais perto do tom que a pessoa
-// já tinha; ocupado, anda pro próximo livre. Duas pessoas nunca dividem a mesma
-// família. A ordem do roster (SEED.USERS) é estável, então a cor não muda entre
-// sessões nem entre workspaces.
+// Cor de cada pessoa na agenda/pipeline. O matiz por hash do id sorteava
+// famílias iguais — José, Vitor e Leonardo caíam todos no verde-oliva (Leo,
+// 06/08 e 23/08). O time principal tem cor CRAVADA pelo Leo (FIXED_BY_FIRSTNAME
+// abaixo); o resto pega um SLOT livre de uma paleta curada de cores fortes e
+// bem separadas, o mais perto do tom de hash. Duas pessoas nunca dividem a
+// mesma família. A ordem do roster (SEED.USERS) é estável, então a cor não
+// muda entre sessões nem entre workspaces.
 const PERSON_COLORS = [
-  { h: 285, l: 0.5, c: 0.19 },  // violeta
-  { h: 25, l: 0.54, c: 0.19 },  // vermelho
-  { h: 150, l: 0.5, c: 0.15 },  // verde
-  { h: 245, l: 0.53, c: 0.16 }, // azul
-  { h: 55, l: 0.6, c: 0.15 },   // laranja
-  { h: 345, l: 0.55, c: 0.19 }, // magenta
-  { h: 200, l: 0.55, c: 0.12 }, // petróleo
-  { h: 90, l: 0.63, c: 0.14 },  // dourado
-  { h: 320, l: 0.45, c: 0.14 }, // uva
-  { h: 65, l: 0.45, c: 0.08 },  // marrom
+  { name: "roxo", h: 295, l: 0.5, c: 0.2 },
+  { name: "vermelho", h: 25, l: 0.54, c: 0.2 },
+  { name: "verde", h: 150, l: 0.5, c: 0.15 },
+  { name: "azul", h: 250, l: 0.5, c: 0.17 },
+  { name: "laranja", h: 55, l: 0.63, c: 0.17 },
+  { name: "amarelo", h: 90, l: 0.72, c: 0.15 },
+  { name: "magenta", h: 345, l: 0.55, c: 0.19 },
+  { name: "petroleo", h: 200, l: 0.55, c: 0.12 },
+  { name: "uva", h: 320, l: 0.45, c: 0.14 },
+  { name: "marrom", h: 65, l: 0.45, c: 0.08 },
 ];
-// Matiz PREFERIDA (0-360): override explícito > hash do id. O override segue
-// valendo como preferência de família (Vitor → amarelo/dourado, Leo 06/08).
-const TONE_OVERRIDES = {
-  us_mrqkn2tm03: 95, // Vitor · dourado
+// Cores CRAVADAS pelo Leo (23/08), pelo primeiro nome — vale pra id novo da
+// mesma pessoa e pra gente nova que ele já batizou (Bruna). Quem não está aqui
+// pega um slot LIVRE da paleta (as cravadas ficam fora do sorteio).
+const FIXED_BY_FIRSTNAME = {
+  jonathan: "roxo", jonatham: "roxo",
+  leonardo: "azul",
+  vitor: "amarelo", victor: "amarelo",
+  jose: "laranja",
+  bruna: "vermelho",
 };
+const firstNameOf = (u) => String(u?.name || u?.id || "")
+  .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  .toLowerCase().trim().split(/\s+/)[0] || "";
 const hashHue = (id) => {
   let h = 0;
   for (const c of String(id || "?")) h = (h * 31 + c.charCodeAt(0)) % 360;
   return h;
 };
 export function userTone(id) {
-  const over = TONE_OVERRIDES[String(id || "")];
-  return over != null ? over : hashHue(id);
+  return hashHue(id);
 }
 // Slots resolvidos pro roster atual; refeito quando a lista de ids muda.
+// Duas passadas: primeiro as cores cravadas por nome, depois o resto no slot
+// livre mais perto do tom de hash — ninguém divide família com ninguém.
 let toneCache = { key: "", map: new Map() };
 function personColorSlot(id) {
   const users = usersList();
@@ -97,7 +106,15 @@ function personColorSlot(id) {
     const map = new Map();
     let taken = new Set();
     for (const u of users) {
-      const want = userTone(u.id);
+      const fixed = FIXED_BY_FIRSTNAME[firstNameOf(u)];
+      if (!fixed) continue;
+      const slot = PERSON_COLORS.findIndex((p) => p.name === fixed);
+      map.set(u.id, slot);
+      taken.add(slot);
+    }
+    for (const u of users) {
+      if (map.has(u.id)) continue;
+      const want = hashHue(u.id);
       const dist = (h) => Math.min(Math.abs(h - want), 360 - Math.abs(h - want));
       const nearest = PERSON_COLORS.map((p, i) => i).sort((a, b) => dist(PERSON_COLORS[a].h) - dist(PERSON_COLORS[b].h));
       const slot = nearest.find((i) => !taken.has(i)) ?? nearest[0];
