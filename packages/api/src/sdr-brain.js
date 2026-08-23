@@ -36,6 +36,10 @@ const GREETING_GAP_MS = 6 * HOUR; // conversa parada há menos disso = SEM sauda
 // toque também conta como pitch feito.
 const DEMO_RX = /demonstra|mostrar (a |o )?(leverads|plataforma|ferramenta)|funcionando ao vivo/i;
 const PITCH_RX = /t[íi]tulo de 200|part number|compatibilidade inteira|clonagem de an[úu]ncios|estoque, atendimento e edi[çc][ãa]o|gerenciar m[úu]ltiplas contas/i;
+// Horário já oferecido não se repete enquanto o lead não escolher (Leo,
+// 23/08): a re-oferta a cada resposta soa insistente (e o modelo ainda
+// rotulava o dia errado ao re-citar de cabeça).
+const SLOTS_RX = /(hoje|amanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo) às \d{1,2}h/i;
 const DAILY_CAP = 15;             // mensagens do robô por conversa por dia
 const PRICE_RX = /r\$\s*\d|\b\d{2,}\s*(reais|por m[eê]s|\/m[eê]s|mensais)\b|\ba partir de\s*\d/i;
 
@@ -48,14 +52,12 @@ function nowLabelOf(wnow) {
   return `${WEEKDAYS[wnow.getUTCDay()]}, ${p2(wnow.getUTCDate())}/${p2(wnow.getUTCMonth() + 1)}, ${wnow.getUTCHours()}h${p2(wnow.getUTCMinutes())} (hora de Brasília)`;
 }
 
-// Desvio com autoridade (tática comprovada da mineração) — o texto que entra no
-// lugar de QUALQUER resposta da IA que tenha citado preço.
-function priceDeferral(nome, slots, wnow) {
+// Resposta OFICIAL de preço (copy do Leo, 23/08) — o texto que entra no lugar
+// de QUALQUER resposta da IA que tenha citado valor. Sem horário junto: a
+// re-oferta de agenda colada no preço soava insistente.
+function priceDeferral(nome) {
   const oi = nome ? `${nome}, o` : "O";
-  const base = `${oi} investimento depende do tamanho da tua operação, e é exatamente isso que o especialista fecha contigo na call, já com o plano ideal.`;
-  if (slots.length >= 2) return `${base} Tenho ${slotLabel(slots[0].at, wnow)} ou ${slotLabel(slots[1].at, wnow)} livres, qual encaixa melhor?`;
-  if (slots.length === 1) return `${base} Consigo te encaixar ${slotLabel(slots[0].at, wnow)}, fica bom?`;
-  return `${base} Qual período fica melhor pra você essa semana: manhã ou tarde?`;
+  return `${oi} investimento é de acordo com as necessidades da sua operação: primeiro a gente entende o seu cenário, e aí te mostra os pontos que dá pra alavancar. É exatamente isso que o especialista faz na demonstração.`;
 }
 
 // Confirmação de agendamento: SEMPRE a copy comprovada (a mensagem da IA é
@@ -230,6 +232,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     const gapMin = prevMsg ? Math.round((nowMs - Date.parse(prevMsg.at || 0)) / 60_000) : null;
     const canGreet = gapMin == null || gapMin >= GREETING_GAP_MS / 60_000;
     const demoOffered = msgs.some((m) => m.direction === "out" && (DEMO_RX.test(m.text || "") || PITCH_RX.test(m.text || "")));
+    const slotsOffered = msgs.some((m) => m.direction === "out" && SLOTS_RX.test(m.text || ""));
     const nome = firstName(lead.name);
     const decision = await anthropic.sdrDecide({
       sdrName: firstName((await repo.get("users", lead.owner).catch(() => null))?.name),
@@ -245,6 +248,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       canGreet,
       gapMin,
       demoOffered,
+      slotsOffered,
     });
 
     const phoneId = thread.waPhoneId || product.waPhoneId || undefined;
@@ -288,7 +292,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     let text = String(decision.mensagem || "").trim();
     if (!text) return "silencio";
     if (PRICE_RX.test(text)) {
-      await send(priceDeferral(nome, slotList, wnow));
+      await send(priceDeferral(nome));
       await stamp(lead, { priceGuardAt: new Date(nowMs).toISOString() });
       return "preco-travado";
     }

@@ -116,6 +116,7 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
             canGreet: gapMin == null || gapMin >= 360,
             gapMin,
             demoOffered,
+            slotsOffered: msgs.slice(0, i).some((x) => x.direction === "out" && /(hoje|amanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo) às \d{1,2}h/i.test(x.text || "")),
           });
           report.actions[d.acao] = (report.actions[d.acao] || 0) + 1;
           if ((d.acao === "agendar" || d.acao === "remarcar")) {
