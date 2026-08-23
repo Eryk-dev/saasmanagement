@@ -428,6 +428,7 @@ export function catalogUI(p) {
     // Teste A/B da ordem dos slides (pílula na tela zero).
     deckOrder: String(state.deckOrder || "").toUpperCase() === "B" ? "B" : "A",
     deckOrders: DECK_ORDERS,
+    discountPct: Math.min(15, Math.max(0, Math.round(Number(state.discountPct) || 0))),
   };
 }
 

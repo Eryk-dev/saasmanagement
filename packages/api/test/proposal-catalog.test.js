@@ -401,6 +401,24 @@ test("ordem B na proposta: PATCH liga o beta e o deck servido segue o padrão", 
   assert.equal((await repo.get("proposals", p.id)).state.deckOrder, "", "valor estranho volta pro padrão");
 });
 
+test("desconto da negociação: PATCH clampa em 0..15 e a tela zero recebe o salvo", async () => {
+  const repo = await seedRepo();
+  const p = await makeProposal(repo, { niche: "autopecas", accounts: "1", listings: "100-500" });
+  const app = Fastify();
+  registerProposalRoutes(app, repo);
+
+  await app.inject({ method: "PATCH", url: "/public/proposals/" + p.id, payload: { k: p.editKey, discountPct: 10 } });
+  assert.equal((await repo.get("proposals", p.id)).state.discountPct, 10, "desconto entra");
+  await app.inject({ method: "PATCH", url: "/public/proposals/" + p.id, payload: { k: p.editKey, discountPct: 40 } });
+  assert.equal((await repo.get("proposals", p.id)).state.discountPct, 15, "acima do teto vira 15");
+  await app.inject({ method: "PATCH", url: "/public/proposals/" + p.id, payload: { k: p.editKey, discountPct: -3 } });
+  assert.equal((await repo.get("proposals", p.id)).state.discountPct, 0, "negativo vira 0");
+
+  await app.inject({ method: "PATCH", url: "/public/proposals/" + p.id, payload: { k: p.editKey, discountPct: 12 } });
+  const closer = await app.inject({ method: "GET", url: "/p/" + p.id + "?k=" + p.editKey });
+  assert.equal(payloadOf(closer.body).catalogUI.discountPct, 12, "tela zero abre com o desconto salvo");
+});
+
 test("preview /p/t: simulação via query (produto e dados) sem persistir nada", async () => {
   const repo = await seedRepo();
   const app = Fastify();
