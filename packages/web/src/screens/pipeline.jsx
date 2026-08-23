@@ -757,15 +757,23 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
           <span />
           {days.map((d, i) => {
             const isToday = d.toDateString() === new Date().toDateString();
+            const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+            // HOJE ganha cara de calendário: número no círculo cheio do accent
+            // (+ kicker "hoje"); fim de semana fica acinzentado (Leo, 23/08).
             return (
-              <div key={i} style={{ padding: "8px 6px", textAlign: "center", borderLeft: "1px solid var(--line-1)" }}>
+              <div key={i} style={{ padding: "8px 6px", textAlign: "center", borderLeft: "1px solid var(--line-1)", background: isWeekend && !isToday ? "var(--bg-2)" : undefined }}>
                 <div className="kicker" style={{ color: isToday ? "var(--accent)" : "var(--fg-4)" }}>
-                  {fmtDay(d, { weekday: "short" })}
+                  {isToday ? "hoje · " : ""}{fmtDay(d, { weekday: "short" })}
                 </div>
-                <div className="tnum" style={{
-                  fontSize: 14, fontWeight: 700, fontFamily: "var(--display)", marginTop: 2,
-                  color: isToday ? "var(--accent)" : "var(--fg-1)",
-                }}>{d.getDate()}</div>
+                <div style={{ marginTop: 2 }}>
+                  <span className="tnum" style={{
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    minWidth: 26, height: 26, padding: "0 6px", borderRadius: 999,
+                    fontSize: 14, fontWeight: 700, fontFamily: "var(--display)",
+                    background: isToday ? "var(--accent)" : "transparent",
+                    color: isToday ? "oklch(1 0 0)" : "var(--fg-1)",
+                  }}>{d.getDate()}</span>
+                </div>
               </div>
             );
           })}
@@ -782,6 +790,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
           {days.map((d, i) => {
             const { placed } = layoutDay(d);
             const isToday = d.toDateString() === new Date().toDateString();
+            const isWeekend = d.getDay() === 0 || d.getDay() === 6;
             return (
               <div key={i}
                 onClick={blocking?.onSlot ? (e) => {
@@ -793,9 +802,23 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                   position: "relative", height: (H1 - H0) * hourH,
                   borderLeft: "1px solid var(--line-1)",
                   backgroundImage: `repeating-linear-gradient(to bottom, var(--line-1) 0 1px, transparent 1px ${hourH}px)`,
-                  backgroundColor: isToday ? "color-mix(in srgb, var(--accent) 5%, transparent)" : "transparent",
+                  // Hoje = tinta do accent (vence o cinza quando cai no fim de
+                  // semana); sáb/dom = cinza de "fora do expediente".
+                  backgroundColor: isToday ? "color-mix(in srgb, var(--accent) 7%, transparent)"
+                    : isWeekend ? "color-mix(in srgb, var(--bg-3) 55%, transparent)" : "transparent",
                   cursor: blocking?.onSlot ? "pointer" : undefined,
                 }}>
+                {/* Linha do AGORA: só na coluna de hoje, na altura da hora atual. */}
+                {isToday && (() => {
+                  const now = new Date();
+                  const nh = now.getHours() + now.getMinutes() / 60;
+                  if (nh < H0 || nh > H1) return null;
+                  return (
+                    <div style={{ position: "absolute", left: 0, right: 0, top: (nh - H0) * hourH, borderTop: "2px solid var(--accent)", zIndex: 3, pointerEvents: "none" }}>
+                      <span style={{ position: "absolute", left: -1, top: -4, width: 8, height: 8, borderRadius: 999, background: "var(--accent)" }} />
+                    </div>
+                  );
+                })()}
                 {(() => {
                   // Itens da agenda (bloqueios/compromissos, decorados pela tela com
                   // _tone/_label/_who): lanes por CLUSTER de sobreposição (ex.: o
