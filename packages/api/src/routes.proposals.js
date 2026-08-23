@@ -106,6 +106,7 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     if (q.oem === "1") fake.state.oem = true;
     if (typeof q.oemCota === "string") fake.state.oemCota = Number(q.oemCota) || 0;
     if (typeof q.order === "string") fake.state.deckOrder = q.order.toUpperCase() === "B" ? "B" : "";
+    if (typeof q.dores === "string") fake.state.dores = q.dores.split("|").map((d) => d.slice(0, 120)).filter(Boolean).slice(0, 12);
     return reply.type("text/html").header("cache-control", "no-store").send(renderProposal(fake, { editable: true, previewBanner: true }));
   });
 
@@ -197,6 +198,9 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     }
     // Ordem da apresentação (teste A/B da tela zero): A = padrão, B = beta.
     if (typeof body.deckOrder === "string") state.deckOrder = body.deckOrder.toUpperCase() === "B" ? "B" : "";
+    // Dores anotadas pelo closer na tela zero (texto livre, alimentam o recap
+    // do roteiro): posições vazias ficam (a ordem dos campos importa na tela).
+    if (Array.isArray(body.dores)) state.dores = body.dores.slice(0, 12).map((d) => String(d ?? "").slice(0, 120));
 
     // Campos de texto da capa (editados inline no modo closer): gravam no SNAPSHOT
     // da proposta e — porque o dado do lead costuma estar errado/incompleto — no

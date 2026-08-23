@@ -643,6 +643,12 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
      vê esta tela. Card em 3 colunas: régua+dor · perguntas SPIN · decisão. */
   .closer-setup.lvx { justify-content: flex-start; padding-top: 24px; }
   .closer-setup.lvx > .wrap { max-width: min(97vw, 1840px); }
+  /* A tela zero não entra no fitSlides (não é slide do cliente): em janela
+     baixa o conteúdo era CORTADO pelo overflow:hidden da regra dos slides.
+     Aqui ela cresce e a página rola por dentro dela (snap segue no início). */
+  @media (min-width: 900px) and (prefers-reduced-motion: no-preference) {
+    main > section.closer-setup { height: auto; min-height: calc(100vh - var(--navh)); overflow: visible; }
+  }
   .closer-setup.lvx .setup-title { font-size: clamp(24px, 2.4vw, 34px); }
   .lvx-cols { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 26px; align-items: start; margin-top: 24px; }
   @media (max-width: 900px) { .lvx-cols { grid-template-columns: 1fr; } }
@@ -654,7 +660,7 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .lvx-side .setup-go { align-self: center; margin-top: 20px; }
   .lvx-card { border: 1px solid var(--line); border-radius: calc(var(--radius) + 4px); background: var(--raised);
     padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
-  .lvx-card-cols { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.15fr) minmax(0, 1fr); gap: 12px 24px; align-items: start; }
+  .lvx-card-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1fr); gap: 12px 24px; align-items: start; }
   @media (max-width: 1240px) { .lvx-card-cols { grid-template-columns: 1fr; } }
   .lvx-ccol { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
   .lvx-h { font-family: var(--font-mono); font-size: 10px; letter-spacing: .13em; text-transform: uppercase; color: var(--ink-3); }
@@ -707,6 +713,17 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .lvx-script li i { font-style: normal; flex: none; width: 14px; text-align: right; margin-top: 1px;
     font: 700 10px var(--font-mono); color: var(--accent); }
   .lvx-script li b { color: var(--fg); margin-right: 5px; }
+  /* Dores anotadas pelo closer (alimentam o Recap do roteiro ao vivo). */
+  .lvx-dores { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg);
+    display: flex; flex-direction: column; gap: 8px; }
+  .lvx-dores #lvxDorList { display: flex; flex-direction: column; gap: 6px; }
+  .lvx-dor { width: 100%; border: 1px solid var(--line); background: var(--raised); border-radius: 10px;
+    padding: 9px 12px; font: 500 13px var(--font-display); color: var(--fg); }
+  .lvx-dor::placeholder { color: var(--ink-3); }
+  .lvx-dor:focus { outline: 2px solid color-mix(in oklab, var(--accent) 55%, transparent); outline-offset: 1px; }
+  .lvx-dor-add { flex: none; border: 1px dashed var(--line); background: none; color: var(--ink-2); cursor: pointer;
+    border-radius: 999px; padding: 3px 10px; font: 600 11px var(--font-display); }
+  .lvx-dor-add:hover { color: var(--fg); border-color: var(--ink-3); }
   .lvx-back { font-size: 11.5px; color: var(--ink-2); background: none; border: 0; cursor: pointer;
     text-align: left; padding: 0; text-decoration: underline; font-family: var(--font-display); display: none; }
   .lvx-back.show { display: inline; }
@@ -1684,7 +1701,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       // Retorna a promise: o card do catálogo espera o save antes de recarregar.
       return fetch('/public/proposals/' + encodeURIComponent(P.id), {
         method: 'PATCH', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ k: token, accounts: state.accounts, volume: state.volume, cycle: state.cycle, customPriceCents: state.customPriceCents, validUntil: state.validUntil, frozen: true, company: DATA.lead.company, name: DATA.lead.name, niche: DATA.answers.niche, cloneCount: state.cloneCount, newPerMonth: state.newPerMonth, product: state.product, pain: state.pain, oem: state.oem, oemCota: state.oemCota, deckOrder: state.deckOrder })
+        body: JSON.stringify({ k: token, accounts: state.accounts, volume: state.volume, cycle: state.cycle, customPriceCents: state.customPriceCents, validUntil: state.validUntil, frozen: true, company: DATA.lead.company, name: DATA.lead.name, niche: DATA.answers.niche, cloneCount: state.cloneCount, newPerMonth: state.newPerMonth, product: state.product, pain: state.pain, oem: state.oem, oemCota: state.oemCota, deckOrder: state.deckOrder, dores: (state.dores || []).map(function (d) { return d == null ? '' : String(d); }) })
       }).then(function (r) { if (!r.ok) throw new Error('falha'); return r.json(); })
         .then(function () { flash('salvo ✓', 'ok'); setTimeout(function () { tag.className = 'save-tag'; }, 1600); })
         .catch(function () { flash('✕ erro ao salvar', 'err'); });
@@ -1860,7 +1877,11 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         if (state.oem == null) state.oem = CAT.oem;
         if (state.product == null) state.product = CAT.product;
         if (state.deckOrder == null) state.deckOrder = CAT.deckOrder === 'B' ? 'B' : '';
+        if (!Array.isArray(state.dores)) state.dores = [];
         var card = el('div', 'lvx-card');
+        // Colunas com peso parelho: régua+dor+SPIN+consulta rápida · roteiro+
+        // dores anotadas · decisão/oferta. A consulta rápida mora na coluna da
+        // régua porque não altera produto nem apresentação (é consulta do closer).
         card.innerHTML =
           '<span class="lvx-h">A régua sugere, você decide</span>' +
           '<div class="lvx-card-cols">' +
@@ -1873,10 +1894,15 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
             '<select class="lvx-sel" id="lvxPain" style="margin-top:6px">' +
               painKeys.map(function (kk) { return '<option value="' + kk + '">' + (kk === 'none' ? '' : '[' + kk + '] ') + esc(CAT.pains[kk].label) + '</option>'; }).join('') +
             '</select></div>' +
+          '<div class="lvx-spin" id="lvxSpin"></div>' +
+          oneOffHtml +
           '</div>' +
           '<div class="lvx-ccol">' +
-          '<div class="lvx-spin" id="lvxSpin"></div>' +
           '<div class="lvx-script" id="lvxScript"></div>' +
+          '<div class="lvx-dores"><div class="lvx-script-head"><span class="lvx-h">Dores do lead · com número</span>' +
+            '<button class="lvx-dor-add" id="lvxDorAdd" type="button">+ adicionar dor</button></div>' +
+            '<div id="lvxDorList"></div>' +
+            '<span class="lvx-note">Preencha durante o diagnóstico. Entram no recap do roteiro na hora.</span></div>' +
           '</div>' +
           '<div class="lvx-ccol">' +
           '<div><span class="lvx-h">Ordem da apresentação</span>' +
@@ -1903,7 +1929,6 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           '<div class="lvx-row" id="lvxOemRow" style="display:none;font-size:12.5px;color:var(--ink-2)">' +
             '<label style="display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" id="lvxOem" style="width:15px;height:15px"> ' +
             'Confirmei no rapport que ele quer os anúncios OEM</label></div>' +
-          oneOffHtml +
           '</div>' +
           '</div>';
         var cols = el('div', 'lvx-cols');
@@ -1918,6 +1943,37 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         goHost = side;
 
         var catGet = function (id) { return card.querySelector('#' + id); };
+        // Dores anotadas pelo closer durante o diagnóstico: 3 campos fixos +
+        // botão de acrescentar. Persistem no state (proposta real) ou na query
+        // (preview) e alimentam a linha do Recap do roteiro ao vivo.
+        function syncRecap() {
+          var r = catGet('lvxRecap');
+          if (!r) return;
+          var ds = (state.dores || []).map(function (d) { return String(d == null ? '' : d).trim(); }).filter(Boolean);
+          r.textContent = ds.length
+            ? '"Resumindo: ' + ds.join(' · ') + '. É isso?" Só avança com o é isso.'
+            : '"Resumindo: [dor 1], [dor 2], [dor 3]. É isso?" Só avança com o é isso.';
+        }
+        function renderDores(focusLast) {
+          var host = catGet('lvxDorList'), n = Math.max(3, state.dores.length), h = '';
+          for (var i = 0; i < n; i++) {
+            h += '<input class="lvx-dor" data-i="' + i + '" maxlength="120" placeholder="Dor ' + (i + 1) + ' + número" value="' + esc(state.dores[i] || '') + '">';
+          }
+          host.innerHTML = h;
+          if (focusLast) { var last = host.lastElementChild; if (last) last.focus(); }
+        }
+        catGet('lvxDorList').addEventListener('input', function (ev) {
+          var i = Number(ev.target && ev.target.getAttribute('data-i'));
+          if (!isFinite(i)) return;
+          state.dores[i] = ev.target.value;
+          catRemember('dores', (state.dores || []).map(function (d) { return String(d == null ? '' : d).trim(); }).filter(Boolean).join('|'));
+          syncRecap();
+        });
+        catGet('lvxDorAdd').addEventListener('click', function () {
+          while (state.dores.length < 3) state.dores.push('');
+          state.dores.push('');
+          renderDores(true);
+        });
         function mtxHtml() {
           var m = CAT.matrix, h = '<tr><th></th>' + m.vols.map(function (a) { return '<th>' + a + '</th>'; }).join('') + '</tr>';
           for (var r = 0; r < m.grid.length; r++) {
@@ -1961,13 +2017,14 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
             '<ol>' +
             '<li><i>1</i><span><b>Abertura</b>"Como você prefere que eu te chame?" · "Você decide sozinho ou com mais alguém?"</span></li>' +
             '<li><i>2</i><span><b>Diagnóstico</b>"Quem sobe anúncio? Quantos por dia?" · ' + TRACK_DIAG[tk] + ' Saia com 3 dores, cada uma com um número.</span></li>' +
-            '<li><i>3</i><span><b>Recap</b>"Resumindo: [dor 1], [dor 2], [dor 3]. É isso?" Só avança com o é isso.</span></li>' +
+            '<li><i>3</i><span><b>Recap</b><span id="lvxRecap"></span></span></li>' +
             '<li><i>4</i><span><b>Custo</b>Anual explícito, o preço da coluna ao lado. "Esse valor cabe no teu orçamento pra fechar hoje?"</span></li>' +
             '<li><i>5</i><span><b>Acordo</b>"No fim, me dá um sim ou um não? Se for sim, pagamento e integração aqui na call. Fechado?"</span></li>' +
             '<li><i>6</i><span><b>Demo</b>' + TRACK_DEMO[tk] + ' Por bloco: "isso resolve o teu problema de [dor]?"</span></li>' +
             '<li><i>7</i><span><b>Fechamento</b>Contrato antes do link. "12x no cartão ou Pix?" Se adiar: "pelo nosso combinado, o que faltou pra ser um sim?"</span></li>' +
             '</ol>' +
             '<span class="lvx-note">Âncora = o preço ao lado, sem teto inventado. Concessão só com contrapartida. Decisor fora da call: não fecha, traz ele pros últimos 10 minutos.</span>';
+          syncRecap();
           var cotaOn = shown === 'oem' && (CAT.oemLevels || []).length;
           catGet('lvxCotaRow').style.display = cotaOn ? '' : 'none';
           if (cotaOn) catGet('lvxCota').value = String(Number(state.oemCota) || CAT.oemCota || '');
@@ -2049,6 +2106,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           catReload({ accounts: state.accounts, volume: state.volume, niche: DATA.answers.niche || null, product: null });
         });
         syncCat();
+        renderDores();
       }
 
       var go = el('button', 'setup-go', 'Começar apresentação →');
