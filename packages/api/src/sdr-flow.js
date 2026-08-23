@@ -28,7 +28,7 @@ import { findThreadByPhone, listMessages, recordMessage } from "./wa-store.js";
 import { digits } from "./whatsapp.js";
 import { kindOf, firstStage, isNoShowStage, isWonLead } from "./stages.js";
 import { brtToIso, onOutboundMessage } from "./lead-flow.js";
-import { resolveWabaId } from "./wa-health.js";
+import { resolveWabaId, getWaHealth } from "./wa-health.js";
 import { raiseAlert } from "./wa-call-flow.js";
 import { slotsForLead, slotLabel, wallNow, spreadPair, OFFER_HOURS } from "./agenda-slots.js";
 import { SDR_TEMPLATES } from "./sdr-templates.leverads.js";
@@ -56,6 +56,14 @@ export function sdrBotConfig(product) {
     // a mensagem de retomada que a Manuela já manda na mão (Leo, 23/08).
     // Acompanha a chave do 1º toque; `secondTouch: false` desliga só ele.
     secondTouch: cfg.secondTouch == null ? cfg.firstTouch !== false : cfg.secondTouch === true,
+    // Campanha de resgate do backlog (Qualificando + Nutrição): lotes de
+    // perBatch a cada meia hora das janelas configuradas, dias úteis, mais
+    // novos primeiro. Nasce DESLIGADA: é campanha, não régua permanente.
+    backlogRescue: cfg.backlogRescue === true,
+    backlogRescuePerBatch: num(cfg.backlogRescuePerBatch, 100),
+    backlogRescueHours: Array.isArray(cfg.backlogRescueHours) && cfg.backlogRescueHours.length
+      ? cfg.backlogRescueHours
+      : [9, 9.5, 10, 10.5, 11, 11.5, 13, 13.5, 14, 14.5, 15, 15.5, 16],
     // Fase 2 (conversa com IA): chave PRÓPRIA, nasce desligada — só liga
     // depois de passar na bateria de replay (sdr-replay.js).
     conversation: cfg.conversation === true,
@@ -82,6 +90,8 @@ export function sdrBotConfig(product) {
       reminder: cfg.templates?.reminder || "sdr_lembrete_conversa",
       rescue: cfg.templates?.rescue || "sdr_resgate_conversa",
       secondTouch: cfg.templates?.secondTouch || "sdr_retomada_conversa",
+      backlogRescue: cfg.templates?.backlogRescue || "sdr_retomada_conversa",
+      backlogRescueNutri: cfg.templates?.backlogRescueNutri || "sdr_retomada_novidades",
     },
   };
 }
@@ -226,12 +236,15 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
     await onOutboundMessage(repo, leadId, { author: SDR_AUTHOR, text: "1º toque do SDR" });
     return messageId;
   }
-  async function sendTemplate({ phone, name, params, phoneId, saas, leadId }) {
+  async function sendTemplate({ phone, name, params, phoneId, saas, leadId, moveCard = true }) {
     const components = params.length ? [{ type: "body", parameters: params.map((t) => ({ type: "text", text: String(t || "") })) }] : [];
     const { messageId } = await wa.sendTemplate(phone, name, "pt_BR", components, { phoneId });
     const rendered = (TEMPLATE_BODY[name] || name).replace(/\{\{\s*(\d+)\s*\}\}/g, (_, n) => params[Number(n) - 1] || "");
     await recordMessage(repo, { id: messageId, phone, direction: "out", text: rendered, status: "sent", author: SDR_AUTHOR, waPhoneId: phoneId || "", saas, leadId });
-    await onOutboundMessage(repo, leadId, { author: SDR_AUTHOR, text: "1º toque do SDR" });
+    // moveCard=false: campanha de resgate não mexe no card no ENVIO — o card
+    // anda quando o lead RESPONDER (fluxo do inbound), senão a Nutrição
+    // esvaziaria na rajada sem nenhum lead ter falado nada.
+    if (moveCard) await onOutboundMessage(repo, leadId, { author: SDR_AUTHOR, text: "1º toque do SDR" });
     return messageId;
   }
 
@@ -250,7 +263,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
     const anyPhone = products.some((p) => p.waPhoneId);
     const [users, allLeads] = await Promise.all([repo.list("users"), repo.list("leads")]);
     const humanIds = new Set(users.map((u) => u.id));
-    const stats = { firstTouch: 0, secondTouch: 0, reminders: 0, rescue: 0, skipped: 0 };
+    const stats = { firstTouch: 0, secondTouch: 0, reminders: 0, rescue: 0, backlogRescue: 0, skipped: 0 };
     let sends = 0;
     const CAP = 25; // teto por ciclo: rajada nunca vira metralhadora
 
@@ -468,6 +481,83 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
         }
       }
     }
+
+      // ── 4. Resgate do backlog (Qualificando + Nutrição) ──────────────────
+      // Campanha (Leo, 24/08): lotes de perBatch a cada meia hora nas janelas
+      // configuradas (default 9h→11h30 e 13h→16h BRT), só dia útil, MAIS NOVOS
+      // primeiro e Qualificando na frente da Nutrição. Cada lead recebe UMA vez
+      // (sdrLog.backlogRescueAt); conversa com atividade nos últimos dias fica
+      // de fora (3d qualificação, 7d nutrição); saúde do número em "danger"
+      // pausa sozinha. Progresso do lote em app_config (sobrevive a restart).
+      for (const { product, cfg } of active) {
+        if (!cfg.backlogRescue || sends >= CAP) continue;
+        const phoneId = product.waPhoneId || (anyPhone ? null : undefined);
+        if (phoneId === null || !wa.configured(phoneId)) continue;
+        const frac = wnow.getUTCHours() + (wnow.getUTCMinutes() >= 30 ? 0.5 : 0);
+        const isWeekday = wnow.getUTCDay() >= 1 && wnow.getUTCDay() <= 5;
+        if (!isWeekday || !cfg.backlogRescueHours.includes(frac)) continue;
+        // Pausa pela saúde: sinais DE ENVIO (número sinalizado pela Meta ou
+        // template do resgate com qualidade vermelha). A violação antiga da
+        // CONTA (ligações, removidas em 22/08) não trava a campanha — ela já
+        // aparece na régua de saúde do inbox pro time acompanhar.
+        const health = await getWaHealth(repo).catch(() => null);
+        const tplQ4 = (n) => String(health?.templates?.[n]?.quality || "").toUpperCase();
+        if (String(health?.number?.event || "").toUpperCase() === "FLAGGED"
+          || tplQ4(cfg.templates.backlogRescue) === "RED" || tplQ4(cfg.templates.backlogRescueNutri) === "RED") {
+          log.warn?.({ saas: product.id }, "sdr: resgate do backlog pausado (número sinalizado ou template vermelho)");
+          continue;
+        }
+        const mm = wnow.getUTCMinutes() >= 30 ? "30" : "00";
+        const ymd = `${wnow.getUTCFullYear()}-${String(wnow.getUTCMonth() + 1).padStart(2, "0")}-${String(wnow.getUTCDate()).padStart(2, "0")}`;
+        const batchKey = `${ymd}T${String(wnow.getUTCHours()).padStart(2, "0")}:${mm}`;
+        const recId = `sdr_backlog_rescue_${product.id}`;
+        let rec = await repo.get("app_config", recId).catch(() => null);
+        if (!rec) rec = await repo.create("app_config", { id: recId, batch: batchKey, sent: 0 });
+        else if (rec.batch !== batchKey) { rec = { ...rec, batch: batchKey, sent: 0 }; await repo.update("app_config", recId, { batch: batchKey, sent: 0 }); }
+        let quota = Math.max(0, cfg.backlogRescuePerBatch - (Number(rec.sent) || 0));
+        if (quota <= 0) continue;
+        const names = await approvedNames();
+        const tplQ = names.has(cfg.templates.backlogRescue) ? cfg.templates.backlogRescue : null;
+        if (!tplQ) { stats.skipped++; continue; }
+        const tplN = names.has(cfg.templates.backlogRescueNutri) ? cfg.templates.backlogRescueNutri : tplQ;
+        const okLead = (l) =>
+          (!l.internal || cfg.conversationTest) && !l.formExit && !l.disqualified &&
+          !l.whatsappOptOut && !l.whatsappInvalid && digits(l.waPhone || l.phone);
+        const IDLE_DAYS = { qualificacao: 3, contato: 7 };
+        const pool = allLeads
+          .filter((l) => (l.saas || "") === product.id)
+          .filter((l) => okLead(l) && !l.callAt && !isWonLead(product, l) && !isNoShowStage(l.stage))
+          .filter((l) => !l.sdrLog?.backlogRescueAt && !l.sdrLog?.secondTouchAt && !l.sdrLog?.sendFailedAlertAt)
+          .filter((l) => { const ft = Date.parse(l.sdrLog?.firstTouchAt || ""); return !(Number.isFinite(ft) && nowMs - ft < 72 * HOUR); })
+          .map((l) => ({ l, kind: kindOf(product, l.stage || firstStage(product)) }))
+          .filter((x) => x.kind === "qualificacao" || x.kind === "contato")
+          .sort((a, b) => (a.kind === b.kind
+            ? String(b.l.createdAt || "").localeCompare(String(a.l.createdAt || ""))
+            : a.kind === "qualificacao" ? -1 : 1));
+        for (const { l, kind } of pool) {
+          if (quota <= 0 || sends >= CAP) break;
+          const idleMs = IDLE_DAYS[kind] * 24 * HOUR;
+          const thread = await findThreadByPhone(repo, l.waPhone || l.phone);
+          const lastAt = Date.parse(thread?.lastAt || "") || 0;
+          const since = Date.parse(l.stageSince || l.createdAt || "") || 0;
+          if (Math.max(since, lastAt) > nowMs - idleMs) continue; // atividade recente: fora
+          const nome = firstName(l.name);
+          const tpl = kind === "contato" ? tplN : tplQ;
+          try {
+            const params = tpl === cfg.templates.backlogRescueNutri
+              ? [nome || "de novo", firstName(users.find((u) => u.id === l.owner)?.name) || "Manuela"]
+              : [nome || "de novo"];
+            await sendTemplate({ phone: thread?.phone || digits(l.waPhone || l.phone), name: tpl, params, phoneId, saas: product.id, leadId: l.id, moveCard: false });
+            sends++; stats.backlogRescue++; quota--;
+            rec = { ...rec, sent: (Number(rec.sent) || 0) + 1 };
+            await repo.update("app_config", recId, { batch: rec.batch, sent: rec.sent });
+            await stampLog(l, { backlogRescueAt: nowIso });
+          } catch (err) {
+            log.warn?.({ lead: l.id, err: err.message }, "sdr: resgate do backlog falhou");
+            await stampLog(l, { backlogRescueError: String(err.message || err).slice(0, 200) });
+          }
+        }
+      }
     return stats;
   }
 

@@ -64,6 +64,16 @@ export const SDR_TEMPLATES = [
     body: "Oiii {{1}}, tudo bem? Vamos retomar nossa conversa sobre a LeverAds? Me dá um ok aqui, por favor",
     example: ["Rafael"],
   },
+  // Retomada da NUTRIÇÃO (campanha de resgate do backlog): quem já disse "não
+  // agora" ouve novidade, não cobrança. Curta, 1 pergunta, sem promessa de
+  // número (claim em template de marketing arrisca reprovação na Meta).
+  {
+    name: "sdr_retomada_novidades",
+    category: "MARKETING",
+    language: "pt_BR",
+    body: "Oiii {{1}}, tudo bem? Aqui é a {{2}}, da LeverAds. Seguimos ajudando lojas de marketplace a espelhar contas e criar anúncios de autopeças só com o código OEM. Se quiser retomar de onde paramos, me dá um ok que eu te mostro as novidades",
+    example: ["Rafael", "Manuela"],
+  },
   {
     name: "sdr_lembrete_conversa",
     category: "UTILITY",
