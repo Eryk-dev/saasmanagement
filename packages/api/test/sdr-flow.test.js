@@ -129,7 +129,9 @@ test("lead que escreveu (janela aberta) recebe texto no tom da casa com horário
   assert.equal(wa.sent[0].kind, "text");
   assert.match(wa.sent[0].text, /^Oiii, Rafael\. Manuela falando, da LeverAds\./);
   assert.match(wa.sent[0].text, /3 a 5 contas/);
-  assert.match(wa.sent[0].text, /Tenho hoje às 12h ou hoje às 12h30 livres/);
+  assert.match(wa.sent[0].text, /gerenciar múltiplas contas/);
+  assert.match(wa.sent[0].text, /Isso ajudaria na sua operação hoje\?/);
+  assert.ok(!/Tenho hoje às/.test(wa.sent[0].text), "abertura não oferece horário (decisão do Leo, 23/08)");
 });
 
 test("mensagem já enviada por gente (ou pelo fluxo de ligação) cala o primeiro toque", async () => {
@@ -399,6 +401,32 @@ test("lead que veio do anúncio de OEM ouve OEM no 1º toque (janela aberta)", a
   });
   const wa = makeWa();
   await runner(repo, wa, nowRef).tick();
-  assert.match(wa.sent[0].text, /código OEM/);
-  assert.ok(!/plataforma funcionando ao vivo/.test(wa.sent[0].text));
+  assert.match(wa.sent[0].text, /OEM \(part number\)/);
+  assert.match(wa.sent[0].text, /Isso ajudaria na sua operação\?/);
+  assert.ok(!/gerenciar múltiplas contas/.test(wa.sent[0].text));
+});
+
+test("template do 1º toque escolhido pela dor: OEM aprovado vai pro lead de OEM, multi pros demais; sem específico, cai no v2", async () => {
+  const nowRef = { t: new Date("2026-08-19T13:00:00Z") };
+  const repo = await world({
+    product: { sdrBot: { enabled: true, enabledAt: ISO("2026-08-01T00:00:00Z") }, painMap: { OEM: "OEM", B: "Banida" } },
+    leads: [
+      { id: "L1", name: "Alfa", phone: "41911111111", stage: "Novo lead", sourcePain: "OEM", createdAt: ISO("2026-08-19T12:50:00Z") },
+      { id: "L2", name: "Beta", phone: "41922222222", stage: "Novo lead", sourcePain: "B", createdAt: ISO("2026-08-19T12:50:00Z") },
+    ],
+  });
+  const wa = makeWa({ approved: ["sdr_primeiro_toque_multi", "sdr_primeiro_toque_oem", "sdr_primeiro_toque_v2"] });
+  await runner(repo, wa, nowRef).tick();
+  const byName = Object.fromEntries(wa.sent.map((s) => [s.params[0], s.name]));
+  assert.equal(byName["Alfa"], "sdr_primeiro_toque_oem");
+  assert.equal(byName["Beta"], "sdr_primeiro_toque_multi");
+
+  // Específicos ainda em revisão: v2 cobre.
+  const repo2 = await world({
+    product: { sdrBot: { enabled: true, enabledAt: ISO("2026-08-01T00:00:00Z") }, painMap: { OEM: "OEM" } },
+    leads: [{ id: "L1", name: "Gama", phone: "41933333333", stage: "Novo lead", sourcePain: "OEM", createdAt: ISO("2026-08-19T12:50:00Z") }],
+  });
+  const wa2 = makeWa({ approved: ["sdr_primeiro_toque_v2"] });
+  await runner(repo2, wa2, nowRef).tick();
+  assert.equal(wa2.sent[0].name, "sdr_primeiro_toque_v2");
 });
