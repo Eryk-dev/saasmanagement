@@ -12,7 +12,7 @@ import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { waLink, leadTier } from "../lib/ui.js";
 import { useIsMobile } from "../lib/responsive.js";
-import { clientSummary, buildQueue, ACTION_LABELS } from "./today.jsx";
+import { clientSummary } from "./today.jsx";
 import { currentUser, usersByRole } from "../lib/users.js";
 import { scriptChecklist } from "../lib/scripts.js";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
@@ -46,6 +46,22 @@ function when(iso) {
   if (days === 1) return "ontem";
   if (days < 7) return `${days}d`;
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "");
+}
+
+// Estado do SDR automático numa conversa: "bot" = o robô falou por último do
+// nosso lado e não pediu gente; "handoff" = pediu humano (sdrLog.handoffAt do
+// lead). Humano respondeu depois = sai de "bot" sozinho (lastOutAuthor muda).
+function botStateOf(t) {
+  if (t.sdrHandoffAt) return "handoff";
+  if (t.lastOutAuthor === "sdr-bot") return "bot";
+  return null;
+}
+// Cor de status do robô na lista: verde = call marcada; amarelo = lead
+// respondeu e a conversa segue; vermelho = lead ainda não respondeu nada.
+function botToneOf(t) {
+  if (!botStateOf(t)) return null;
+  if (t.callAt) return "pos";
+  return t.hasIn ? "warn" : "neg";
 }
 
 // Banner de saúde do WhatsApp (lê CONFIG.whatsapp.health do bootstrap, alimentado
@@ -91,6 +107,10 @@ function dur(min) {
 // e os números que mudam a ação do dia — quem está esperando resposta, quanto
 // a gente demora e quantas janelas de 24h ainda estão abertas.
 function WaTopStats({ numInfo, stats }) {
+  const health = window.SEED?.CONFIG?.whatsapp?.health || null;
+  const healthTone = health?.level === "danger" ? { label: "em risco", color: "var(--neg)" }
+    : health?.level === "warn" ? { label: "atenção", color: "var(--warn)" }
+    : { label: "ok", color: "var(--pos)" };
   const q = QUALITY[String(numInfo?.quality || "").toUpperCase()];
   const tier = numInfo?.tier ? (TIER_LABEL[numInfo.tier] || String(numInfo.tier).replace("TIER_", "").toLowerCase()) : null;
   const waiting = stats?.awaiting || 0;
@@ -103,7 +123,17 @@ function WaTopStats({ numInfo, stats }) {
   const sep = <div style={{ width: 1, alignSelf: "stretch", background: "var(--line-1)" }} />;
 
   return (
-    <div style={{ margin: "12px var(--pad-x) 0", padding: "12px 16px", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
+    <div style={{ margin: "12px var(--pad-x) 0", padding: "12px 16px", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", display: "flex", alignItems: "center", gap: 18, flexWrap: "nowrap", overflowX: "auto" }}>
+      {/* Saúde da conta mora aqui (o banner separado saiu, Leo 23/08): o
+          detalhe do problema fica no title, passa o mouse pra ler. */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 84, flexShrink: 0 }}
+        title={(health?.messages || []).join("\n") || "conta saudável"}>
+        <span className="kicker">Saúde</span>
+        <span style={{ fontSize: 15, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6, color: healthTone.color }}>
+          <span style={{ width: 8, height: 8, borderRadius: 99, background: healthTone.color }} />{healthTone.label}
+        </span>
+      </div>
+      {sep}
       {numInfo?.ok && (
         <>
           <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 150 }}>
@@ -176,7 +206,6 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
   // trabalhável hoje (ex.: só mudou de etapa) ficaria; esta marca garante que sai.
   const [resolved, setResolved] = React.useState(() => new Set());
   const markResolved = React.useCallback((leadId) => { if (leadId) setResolved((s) => new Set(s).add(leadId)); }, []);
-  const clearResolved = React.useCallback(() => setResolved(new Set()), []);
 
   // Chegada pelo pop-up de lead quente: abre direto NA conversa do alerta.
   React.useEffect(() => {
@@ -306,6 +335,10 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
     if (answerFilter === "closed") return byQ.filter((t) => t.status === "closed");
     if (answerFilter === "in") return open.filter((t) => t.lastDir === "in");
     if (answerFilter === "out") return open.filter((t) => t.lastDir === "out");
+    // Robô × humano: quem o SDR automático está atendendo e o que ele passou
+    // pro time (handoff pedido) — o termômetro da automação no dia a dia.
+    if (answerFilter === "bot") return open.filter((t) => botStateOf(t) === "bot");
+    if (answerFilter === "handoff") return open.filter((t) => botStateOf(t) === "handoff");
     return open;
   }, [threads, q, answerFilter]);
   const answerCounts = React.useMemo(() => {
@@ -315,6 +348,8 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
       in: open.filter((t) => t.lastDir === "in").length,
       out: open.filter((t) => t.lastDir === "out").length,
       closed: base.length - open.length,
+      bot: open.filter((t) => botStateOf(t) === "bot").length,
+      handoff: open.filter((t) => botStateOf(t) === "handoff").length,
     };
   }, [threads]);
 
@@ -406,12 +441,6 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
       {channel === "automacoes" && <WaAutomationsPanel key={product?.id} product={product} />}
 
       {channel === "whatsapp" && <>
-      <WaHealthBanner />
-
-      {/* A fila do dia mora no topo, acima das métricas: é o "o que fazer
-          agora" do inbox — clique e a conversa do lead abre embaixo. */}
-      {configured && <MyQueueStrip product={product} version={version} currentLeadId={current?.leadId || null} onPick={openByLead} resolved={resolved} onClearHandled={clearResolved} />}
-
       {configured && <WaTopStats numInfo={numInfo} stats={stats} />}
 
       {configured && numInfo && numInfo.ok === false && (
@@ -476,11 +505,11 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
             {/* Respondidas = o lead falou por último; sem resposta = a última é
                 nossa e o lead ainda não voltou (a fila do re-toque). */}
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-              {[["all", "todas", null], ["in", "respondidas", answerCounts.in], ["out", "sem resposta", answerCounts.out], ["closed", "encerradas", answerCounts.closed]].map(([id, label, n]) => {
+              {[["all", "todas", null], ["bot", "robô", answerCounts.bot], ["handoff", "pra humano", answerCounts.handoff], ["in", "respondidas", answerCounts.in], ["out", "sem resposta", answerCounts.out], ["closed", "encerradas", answerCounts.closed]].map(([id, label, n]) => {
                 const on = answerFilter === id;
                 return (
                   <button key={id} onClick={() => setAnswerFilter(id)}
-                    title={id === "in" ? "o lead falou por último" : id === "out" ? "a gente falou por último, esperando o lead" : "todas as conversas"}
+                    title={id === "bot" ? "o SDR automático está atendendo (verde = call marcada · amarelo = lead respondeu · vermelho = sem resposta)" : id === "handoff" ? "o robô pediu gente: atendimento passou pro time" : id === "in" ? "o lead falou por último" : id === "out" ? "a gente falou por último, esperando o lead" : "todas as conversas"}
                     style={{ height: 26, padding: "0 10px", borderRadius: 999, fontSize: 11.5, fontWeight: 600, cursor: "pointer",
                       background: on ? "var(--accent-soft)" : "transparent", color: on ? "var(--accent)" : "var(--fg-3)",
                       border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)") }}>
@@ -497,11 +526,17 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
               <div style={{ padding: 20 }}><EmptyState title="Nenhuma conversa" hint={configured ? "quando um lead responder, a conversa aparece aqui" : "configure o WhatsApp pra começar"} /></div>
             ) : list.map((t) => {
               const on = t.id === sel;
+              // Conversa do SDR automático ganha cor de status: verde = call
+              // marcada, amarelo = lead respondeu, vermelho = sem resposta.
+              const tone = botToneOf(t);
               return (
-                <button key={t.id} onClick={() => setSel(t.id)} style={{
+                <button key={t.id} onClick={() => setSel(t.id)}
+                  title={tone === "pos" ? "SDR automático · call marcada" : tone === "warn" ? "SDR automático · lead respondeu, em conversa" : tone === "neg" ? "SDR automático · lead ainda não respondeu" : undefined}
+                  style={{
                   width: "100%", textAlign: "left", display: "flex", gap: 10, alignItems: "center", padding: "10px 12px",
                   border: "none", borderBottom: "1px solid var(--line-1)", cursor: "pointer",
-                  background: on ? "var(--accent-soft)" : "transparent",
+                  borderLeft: tone ? `3px solid var(--${tone})` : "3px solid transparent",
+                  background: on ? "var(--accent-soft)" : tone ? `var(--${tone}-soft)` : "transparent",
                 }}>
                   <span style={{ width: 36, height: 36, borderRadius: "50%", flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "var(--bg-3)", border: "1px solid var(--line-2)", fontSize: 12, fontWeight: 700, color: "var(--fg-2)" }}>
                     {initials(t.name, t.phone)}
@@ -759,10 +794,6 @@ function DmInbox({ network, saas, isMobile }) {
   );
 }
 
-// Mini "Minhas atividades": as 3 próximas pendências de HOJE do usuário logado
-// (mesma fila e ordem do Meu dia), no topo do inbox, acima das métricas — o
-// SDR emenda um atendimento no outro sem sair da tela. Clique abre a conversa
-// do lead, com ou sem thread ainda.
 // Conversa órfã: quem escreveu de um número diferente do que digitou no form,
 // ou chegou no WhatsApp sem passar por ele. Sem vínculo o SDR fica sem contexto
 // e o fluxo automático não roda, então "sem lead" deixa de ser um rótulo morto e
@@ -817,112 +848,6 @@ function LinkLeadButton({ thread, onLinked }) {
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-function MyQueueStrip({ product, version, currentLeadId, onPick, resolved, onClearHandled }) {
-  const me = currentUser()?.id || "";
-  // Onde a pessoa parou NESTA sessão: a lista é longa (a fila do SDR passa de
-  // 100) e o item só sai dela quando o toque é registrado, então sem esta
-  // marca não dá pra saber quem já foi atendido.
-  const [opened, setOpened] = React.useState(() => new Set());
-  const items = React.useMemo(() => {
-    if (!me) return [];
-    try {
-      const saasCfg = (window.SEED?.SAAS || []).find((s) => s.id === product?.id) || product;
-      const leads = window.SEED?.LEADS || [];
-      // Critério: o que se resolve POR MENSAGEM. Entra tudo da fila da pessoa
-      // (1º contato, tentativa, retomada, no-show, reativação, follow-up) mais
-      // a confirmação de call, que é mensagem também. Fica de fora só a call/
-      // integração em si — essas se atendem no Meet, não aqui.
-      // (Filtrar por fase `sdr` esvaziava a faixa pra closer e CS: os cards
-      // deles vêm por `closer`/`integrator`, nunca por `owner`.)
-      const byMsg = (i) => !i.done && (i.confirm || (i.kind !== "call" && i.kind !== "integracao"));
-      // buildQueue ganhou o 2º param `consultas` (fila da mentoria no Meu dia); o
-      // inbox trabalha só pendência POR MENSAGEM, então passa [] — sem esse arg a
-      // fila vinha desalinhada (person=undefined) e a faixa sumia do topo do inbox.
-      const mine = buildQueue(leads, [], saasCfg, me).hoje.filter(byMsg).map((i) => ({ ...i, pool: false }));
-      // A fila do SDR vem logo abaixo da minha: o inbox é onde ela se resolve,
-      // uma conversa atrás da outra, sem trocar de tela.
-      const pool = usersByRole("sdr").filter((u) => u.id !== me)
-        .flatMap((u) => buildQueue(leads, [], saasCfg, u.id).hoje.filter(byMsg).map((i) => ({ ...i, pool: true })));
-      const seen = new Set();
-      return [...mine, ...pool].filter((i) => {
-        const k = i.confirmWindow ? `${i.l.id}-${i.confirmWindow}` : i.l.id;
-        if (seen.has(k)) return false;
-        seen.add(k);
-        return true;
-      });
-    } catch { return []; }
-  }, [me, product?.id, version]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Tira da lista quem já foi resolvido nesta sessão (próxima ação executada).
-  const visible = resolved?.size ? items.filter((i) => !resolved.has(i.l.id)) : items;
-  if (!visible.length) return null;
-  const mineCount = visible.filter((i) => !i.pool).length;
-  const poolStart = visible.findIndex((i) => i.pool);
-  const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
-  const timeOf = (i) => !i.due ? "agora"
-    : i.due.t < startToday.getTime() ? "atrasado"
-    : new Date(i.due.t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-  const labelOf = (i) => i.confirm ? "confirmar call"
-    : i.group === "noshow" ? "remarcar" : i.group === "nutri" ? "reativação" : (ACTION_LABELS[i.kind] || "contato");
-  return (
-    <div style={{ margin: "12px var(--pad-x) 0", padding: "8px 14px 7px", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "0 4px 3px" }}>
-        <span className="kicker">
-          Fila de hoje{mineCount ? ` · ${mineCount} minha${mineCount > 1 ? "s" : ""}` : ""}
-        </span>
-        <span className="mono tnum" style={{ fontSize: 9.5, color: "var(--fg-4)" }}>{visible.length} no total</span>
-        <span style={{ flex: 1 }} />
-        {resolved?.size > 0 ? (
-          <button onClick={() => { onClearHandled?.(); setOpened(new Set()); }} title="mostra de novo as atividades que você resolveu nesta sessão"
-            className="mono" style={{ fontSize: 10, color: "var(--fg-4)", background: "none", border: "none", cursor: "pointer", padding: 0, marginRight: 10 }}>
-            {resolved.size} feito{resolved.size > 1 ? "s" : ""} · mostrar
-          </button>
-        ) : opened.size > 0 ? (
-          <button onClick={() => setOpened(new Set())} title="limpa as marcas de quem você já abriu nesta sessão"
-            className="mono" style={{ fontSize: 10, color: "var(--fg-4)", background: "none", border: "none", cursor: "pointer", padding: 0, marginRight: 10 }}>
-            {opened.size} aberto{opened.size > 1 ? "s" : ""} · limpar
-          </button>
-        ) : null}
-        <a href="#today" style={{ fontSize: 11, color: "var(--fg-3)", textDecoration: "none" }}>ver a fila →</a>
-      </div>
-      {/* Lista rolável: a fila do SDR é longa e a faixa não pode comer a tela. */}
-      <div style={{ maxHeight: 132, overflowY: "auto" }}>
-        {visible.map((i, idx) => {
-          const on = !!currentLeadId && i.l.id === currentLeadId;
-          const late = i.due && i.due.t < startToday.getTime();
-          const hasPhone = !!String(i.l.phone || "").replace(/\D/g, "");
-          const done = opened.has(i.l.id);
-          const row = (
-            <button key={i.confirmWindow ? `${i.l.id}-${i.confirmWindow}` : i.l.id}
-              onClick={() => { if (!hasPhone) return; setOpened((s) => new Set(s).add(i.l.id)); onPick(i.l); }}
-              title={hasPhone ? "Abrir a conversa deste lead" : "lead sem telefone"} disabled={!hasPhone}
-              style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "4px", border: "none", borderRadius: "var(--r-1)",
-                background: on ? "var(--accent-soft)" : "transparent", cursor: hasPhone ? "pointer" : "default", textAlign: "left", opacity: !hasPhone ? 0.55 : done && !on ? 0.5 : 1 }}>
-              <span className="mono tnum" style={{ fontSize: 10.5, width: 56, flexShrink: 0, color: late ? "var(--neg)" : "var(--fg-4)" }}>{timeOf(i)}</span>
-              <span style={{ fontSize: 10.5, lineHeight: "17px", padding: "0 7px", borderRadius: "var(--r-1)", background: "var(--bg-2)", color: "var(--fg-3)", flexShrink: 0, whiteSpace: "nowrap" }}>{labelOf(i)}</span>
-              <span style={{ fontSize: 12.5, fontWeight: 600, color: on ? "var(--accent)" : "var(--fg-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{i.l.name}</span>
-              {i.l.company && <span style={{ fontSize: 11.5, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flexShrink: 3 }}>{i.l.company}</span>}
-              <span style={{ flex: 1 }} />
-              <span className="mono" style={{ fontSize: 10, color: done ? "var(--pos)" : "var(--fg-4)", flexShrink: 0 }}>{done ? "✓ aberto" : "abrir →"}</span>
-            </button>
-          );
-          // Divisória entre a minha fila e o pool do SDR.
-          if (idx === poolStart && poolStart > 0) {
-            return (
-              <React.Fragment key={`sep-${i.l.id}`}>
-                <div className="kicker" style={{ padding: "6px 4px 2px", borderTop: "1px solid var(--line-faint)", marginTop: 4 }}>
-                  Fila do SDR · {visible.length - poolStart}
-                </div>
-                {row}
-              </React.Fragment>
-            );
-          }
-          return row;
-        })}
-      </div>
     </div>
   );
 }

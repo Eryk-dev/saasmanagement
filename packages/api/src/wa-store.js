@@ -143,6 +143,11 @@ export async function recordMessage(repo, { id, phone, direction, text = "", at,
     // O número da conversa: fixa por onde ela ENTROU (resposta sai pelo mesmo).
     waPhoneId: waPhoneId || prev?.waPhoneId || "",
     lastText: text, lastAt: when, lastDir: direction,
+    // Sinais do inbox: o lead JÁ respondeu alguma vez nesta conversa? e quem
+    // falou por último do NOSSO lado (humano ou sdr-bot)? Alimentam o filtro
+    // robô × humano e as cores de status do SDR automático na lista.
+    hasIn: direction === "in" ? true : prev?.hasIn || false,
+    lastOutAuthor: direction === "out" ? (author || "") : prev?.lastOutAuthor || "",
     unread: direction === "in" ? (prev?.unread || 0) + 1 : (prev?.unread || 0),
     // Mensagem nova (de qualquer lado) REABRE conversa encerrada: se o lead
     // desqualificado voltar a falar, ela ressuscita na lista sozinha.
@@ -263,6 +268,12 @@ export async function listThreads(repo) {
         lastText: t.lastText || "", lastAt: t.lastAt || t.updatedAt || "", lastDir: t.lastDir || "",
         unread: t.unread || 0,
         status: t.status || "open", // "closed" = conversa encerrada (arquivo do inbox)
+        // Sinais do SDR automático pra lista: robô falando por último × handoff
+        // pedido, lead já respondeu, call marcada no card.
+        hasIn: !!t.hasIn,
+        lastOutAuthor: t.lastOutAuthor || "",
+        callAt: lead?.callAt || "",
+        sdrHandoffAt: lead?.sdrLog?.handoffAt || "",
       };
     })
     .sort((a, b) => String(b.lastAt || "").localeCompare(String(a.lastAt || "")));
