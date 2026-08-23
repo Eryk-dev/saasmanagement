@@ -697,11 +697,6 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .lvx-oneoff-table td:last-child { text-align: right; color: var(--fg); font-weight: 700; white-space: nowrap; }
   .lvx-oneoff-note { display: block; padding: 8px 12px 10px; border-top: 1px solid var(--line);
     color: var(--ink-3); font-size: 10.5px; line-height: 1.35; }
-  .lvx-spin { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg);
-    font-size: 12px; color: var(--ink-2); line-height: 1.5; }
-  .lvx-spin .q { display: block; margin-top: 6px; }
-  .lvx-spin .q:first-child { margin-top: 0; }
-  .lvx-spin .q b { color: var(--accent); font-family: var(--font-mono); margin-right: 4px; }
   /* Roteiro da call na tela zero: trilha muda com o produto apresentado. */
   .lvx-script { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg);
     display: flex; flex-direction: column; gap: 8px; }
@@ -1879,7 +1874,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         if (state.deckOrder == null) state.deckOrder = CAT.deckOrder === 'B' ? 'B' : '';
         if (!Array.isArray(state.dores)) state.dores = [];
         var card = el('div', 'lvx-card');
-        // Colunas com peso parelho: régua+dor+SPIN+consulta rápida · roteiro+
+        // Colunas com peso parelho: régua+dor+consulta rápida · roteiro+
         // dores anotadas · decisão/oferta. A consulta rápida mora na coluna da
         // régua porque não altera produto nem apresentação (é consulta do closer).
         card.innerHTML =
@@ -1894,7 +1889,6 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
             '<select class="lvx-sel" id="lvxPain" style="margin-top:6px">' +
               painKeys.map(function (kk) { return '<option value="' + kk + '">' + (kk === 'none' ? '' : '[' + kk + '] ') + esc(CAT.pains[kk].label) + '</option>'; }).join('') +
             '</select></div>' +
-          '<div class="lvx-spin" id="lvxSpin"></div>' +
           oneOffHtml +
           '</div>' +
           '<div class="lvx-ccol">' +
@@ -1902,7 +1896,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           '<div class="lvx-dores"><div class="lvx-script-head"><span class="lvx-h">Dores do lead · com número</span>' +
             '<button class="lvx-dor-add" id="lvxDorAdd" type="button">+ adicionar dor</button></div>' +
             '<div id="lvxDorList"></div>' +
-            '<span class="lvx-note">Preencha durante o diagnóstico. Entram no recap do roteiro na hora.</span></div>' +
+            '<span class="lvx-note">Preencha durante o diagnóstico. Ficam salvas com a proposta.</span></div>' +
           '</div>' +
           '<div class="lvx-ccol">' +
           '<div><span class="lvx-h">Ordem da apresentação</span>' +
@@ -1945,15 +1939,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         var catGet = function (id) { return card.querySelector('#' + id); };
         // Dores anotadas pelo closer durante o diagnóstico: 3 campos fixos +
         // botão de acrescentar. Persistem no state (proposta real) ou na query
-        // (preview) e alimentam a linha do Recap do roteiro ao vivo.
-        function syncRecap() {
-          var r = catGet('lvxRecap');
-          if (!r) return;
-          var ds = (state.dores || []).map(function (d) { return String(d == null ? '' : d).trim(); }).filter(Boolean);
-          r.textContent = ds.length
-            ? '"Resumindo: ' + ds.join(' · ') + '. É isso?" Só avança com o é isso.'
-            : '"Resumindo: [dor 1], [dor 2], [dor 3]. É isso?" Só avança com o é isso.';
-        }
+        // (preview); o Recap do roteiro fica fixo, sem espelhar o que é digitado.
         function renderDores(focusLast) {
           var host = catGet('lvxDorList'), n = Math.max(3, state.dores.length), h = '';
           for (var i = 0; i < n; i++) {
@@ -1967,7 +1953,6 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           if (!isFinite(i)) return;
           state.dores[i] = ev.target.value;
           catRemember('dores', (state.dores || []).map(function (d) { return String(d == null ? '' : d).trim(); }).filter(Boolean).join('|'));
-          syncRecap();
         });
         catGet('lvxDorAdd').addEventListener('click', function () {
           while (state.dores.length < 3) state.dores.push('');
@@ -1994,13 +1979,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           catGet('lvxT').textContent = 'Cliente ' + CAT.tier;
           catGet('lvxW').textContent = state.accounts + ' conta(s) × ' + state.volume + ' anúncios.' + (CAT.low ? ' Entra no Parcial.' : ' Perfil de FULL.');
           catGet('lvxM').innerHTML = mtxHtml();
-          var pn = CAT.pains[state.pain] || CAT.pains.none || {};
           catGet('lvxPain').value = CAT.pains[state.pain] ? state.pain : 'none';
-          catGet('lvxSpin').innerHTML = pn.spin
-            ? '<span class="q"><b>S</b>' + esc(pn.spin.S) + '</span><span class="q"><b>P</b>' + esc(pn.spin.P) + '</span>' +
-              '<span class="q"><b>I</b>' + esc(pn.spin.I) + '</span><span class="q"><b>N</b>' + esc(pn.spin.N) + '</span>' +
-              '<span class="lvx-note" style="display:block;margin-top:8px">Respondeu a N? Emenda a demo ao vivo: deixa eu te mostrar isso rodando nas SUAS contas agora. Não re-pergunte o que o form já respondeu, abra confirmando.</span>'
-            : '<span class="q">' + esc(pn.tip || '') + '</span>';
           var tagEl = catGet('lvxTag');
           if (CAT.oemNeeded && !state.oem) { tagEl.className = 'lvx-tag pend'; tagEl.textContent = 'Sugerido · OEM a confirmar no rapport'; }
           else { tagEl.className = 'lvx-tag'; tagEl.textContent = 'Sugerido pela régua'; }
@@ -2017,14 +1996,13 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
             '<ol>' +
             '<li><i>1</i><span><b>Abertura</b>"Como você prefere que eu te chame?" · "Você decide sozinho ou com mais alguém?"</span></li>' +
             '<li><i>2</i><span><b>Diagnóstico</b>"Quem sobe anúncio? Quantos por dia?" · ' + TRACK_DIAG[tk] + ' Saia com 3 dores, cada uma com um número.</span></li>' +
-            '<li><i>3</i><span><b>Recap</b><span id="lvxRecap"></span></span></li>' +
+            '<li><i>3</i><span><b>Recap</b>"Resumindo: [dor 1], [dor 2], [dor 3]. É isso?" Só avança com o é isso.</span></li>' +
             '<li><i>4</i><span><b>Custo</b>Anual explícito, o preço da coluna ao lado. "Esse valor cabe no teu orçamento pra fechar hoje?"</span></li>' +
             '<li><i>5</i><span><b>Acordo</b>"No fim, me dá um sim ou um não? Se for sim, pagamento e integração aqui na call. Fechado?"</span></li>' +
             '<li><i>6</i><span><b>Demo</b>' + TRACK_DEMO[tk] + ' Por bloco: "isso resolve o teu problema de [dor]?"</span></li>' +
             '<li><i>7</i><span><b>Fechamento</b>Contrato antes do link. "12x no cartão ou Pix?" Se adiar: "pelo nosso combinado, o que faltou pra ser um sim?"</span></li>' +
             '</ol>' +
             '<span class="lvx-note">Âncora = o preço ao lado, sem teto inventado. Concessão só com contrapartida. Decisor fora da call: não fecha, traz ele pros últimos 10 minutos.</span>';
-          syncRecap();
           var cotaOn = shown === 'oem' && (CAT.oemLevels || []).length;
           catGet('lvxCotaRow').style.display = cotaOn ? '' : 'none';
           if (cotaOn) catGet('lvxCota').value = String(Number(state.oemCota) || CAT.oemCota || '');
@@ -2082,12 +2060,10 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           catReload({ oemCota: this.value || null });
         });
         catGet('lvxPain').addEventListener('change', function () {
-          // Toda dor (inclusive a OEM) só troca a trilha SPIN, que é
-          // client-side — o produto/preço fica com a régua ou com o
-          // Apresentar do closer, então o deck nunca remonta por dor.
+          // A dor só é registrada (vai pro snapshot da proposta); não abre
+          // roteiro nem mexe no produto/preço, então o deck nunca remonta.
           state.pain = this.value;
           catRemember('pain', this.value === 'none' ? '' : this.value);
-          syncCat();
         });
         catGet('lvxOem').addEventListener('change', function () {
           state.oem = this.checked;
