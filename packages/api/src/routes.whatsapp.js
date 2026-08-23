@@ -10,27 +10,15 @@ import { runWaFlows } from "./wa-flows.js";
 import { handleSdrInbound } from "./sdr-flow.js";
 import { transcriber as defaultTranscriber } from "./transcribe.js";
 import { formatSummaryText } from "./call-summaries.js";
-import { logActivity, onActivityCreated } from "./lead-flow.js";
-import { kindOf, firstStage } from "./stages.js";
+import { logActivity, onOutboundMessage } from "./lead-flow.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 
-// 1º contato pelo inbox: mandar mensagem pra um lead NOVO registra o toque e
-// promove pra qualificação (o card sai de "1º contato" na fila e no pipeline) —
-// antes, enviar não gravava atividade nenhuma, então o lead ficava preso.
-// Só o lead NOVO: quem já está no funil não vira toque a cada mensagem (não
-// inflar tentativa nem remarcar o GPS numa conversa ativa; pra isso a pessoa usa
-// "Próxima ação"). Nunca trava o envio.
+// Mensagem enviada pelo inbox: lead NOVO ganha o toque de 1º contato e lead
+// em CONTATO vai pra qualificação — quem recebeu mensagem nossa já está sendo
+// qualificado (Leo, 23/08). A regra inteira (incluindo poupar No show, ganho
+// e estágios de closer) vive em onOutboundMessage. Nunca trava o envio.
 async function markFirstContact(repo, leadId, author) {
-  if (!leadId) return;
-  try {
-    const lead = await repo.get("leads", leadId);
-    if (!lead) return;
-    const product = lead.saas ? await repo.get("products", lead.saas) : null;
-    const stage = lead.stage || firstStage(product);
-    if (kindOf(product, stage) !== "novo") return;
-    const activity = await logActivity(repo, { saas: lead.saas || "", lead: leadId, type: "whatsapp", text: "1º contato pelo inbox", author: author || "cockpit" });
-    await onActivityCreated(repo, activity);
-  } catch { /* toque não trava o envio */ }
+  await onOutboundMessage(repo, leadId, { author: author || "cockpit", text: "1º contato pelo inbox" });
 }
 
 // Mídia de uma mensagem recebida: a Cloud API manda só o ID (o binário se baixa

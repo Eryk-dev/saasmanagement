@@ -19,7 +19,7 @@
 import { findThreadByPhone, listMessages, recordMessage } from "./wa-store.js";
 import { digits } from "./whatsapp.js";
 import { kindOf, firstStage, stageByKind, isWonLead } from "./stages.js";
-import { brtToIso, applyStageMove } from "./lead-flow.js";
+import { brtToIso, applyStageMove, onOutboundMessage } from "./lead-flow.js";
 import { raiseAlert } from "./wa-call-flow.js";
 import { leadGrade } from "./routes.marketing.js";
 import { slotsForLead, slotLabel, wallNow, spreadPair, OFFER_HOURS } from "./agenda-slots.js";
@@ -139,6 +139,9 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
   async function sendBot({ phone, text, phoneId, saas, leadId }) {
     const { messageId } = await wa.sendText(phone, text, { phoneId });
     await recordMessage(repo, { id: messageId, phone, direction: "out", text, status: "sent", author: SDR_AUTHOR, waPhoneId: phoneId || "", saas, leadId });
+    // Resposta do robô na conversa = lead sendo qualificado (novo/contato →
+    // qualificação; estágios de closer, No show e ganho ficam onde estão).
+    await onOutboundMessage(repo, leadId, { author: SDR_AUTHOR, text: "conversa com o SDR" });
     return messageId;
   }
 
