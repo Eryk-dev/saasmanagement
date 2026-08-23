@@ -253,10 +253,32 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
   // o robô agenda e o Meet nasce sozinho, com convite quando o lead tem e-mail;
   // o link chega ao lead pelo lembrete de 10 minutos (sdr-flow). Re-checa o
   // lead fresco (agendamentos rápidos em sequência não duplicam o evento).
+  // Remarcação: o EVENTO do calendário acompanha o callAt novo (sendUpdates=all
+  // manda o e-mail de atualização pro lead). Sem isto o convite ficava no
+  // horário velho (visto 23/08: Gilberto remarcou 11h→9h e o convite não
+  // mexeu; a base tinha 8+ convites defasados de remarcações antigas).
+  async function moveCallMeet(leadId) {
+    if (!client.configured()) return null;
+    const fresh = await repo.get("leads", leadId);
+    if (!fresh || !fresh.callAt || !fresh.callUrl || !fresh.meetEventId) return null;
+    const s = callMoment(fresh.callAt);
+    if (!s) return null;
+    if (fresh.meetScheduledAt && Math.abs(Date.parse(fresh.meetScheduledAt) - s.getTime()) < 60_000) return null;
+    if (!(await client.connected().catch(() => false))) return null;
+    const e = new Date(s.getTime() + 45 * 60_000);
+    await client.patchCalendarEvent(fresh.meetEventId, {
+      start: { dateTime: wallClockBrt(s), timeZone: TZ },
+      end: { dateTime: wallClockBrt(e), timeZone: TZ },
+    });
+    await repo.update("leads", fresh.id, { meetScheduledAt: s.toISOString() });
+    return { moved: true, at: s.toISOString() };
+  }
+
   async function autoCallMeet(leadId) {
     if (!client.configured()) return null;
     const fresh = await repo.get("leads", leadId);
-    if (!fresh || !fresh.callAt || fresh.callUrl) return null;
+    if (!fresh || !fresh.callAt) return null;
+    if (fresh.callUrl) return moveCallMeet(leadId); // remarcação: move o evento existente
     const ok = (await client.connected().catch(() => false))
       || (fresh.closer && (await gu.meetReadyFor(fresh.closer).catch(() => false)));
     if (!ok) return null;
@@ -335,5 +357,5 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     }
   });
 
-  return { client, googleUser: gu, briefer, autoIntegrationMeet, autoCallMeet };
+  return { client, googleUser: gu, briefer, autoIntegrationMeet, autoCallMeet, moveCallMeet };
 }

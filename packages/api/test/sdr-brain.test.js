@@ -112,6 +112,34 @@ test("firstReply: conversa sem NENHUMA mensagem nossa liga a descoberta; templat
   assert.equal(fakes2.calls[0].firstReply, false);
 });
 
+test("auto-atendimento de loja na 1ª resposta: silêncio, sem gastar IA", async () => {
+  const repo = await world({ messages: [
+    { direction: "out", author: "sdr-bot", text: "Oiii, Rafael. Isso ajudaria na sua operação?", at: ISO("2026-08-19T12:58:00Z") },
+    { direction: "in", text: "MAF Imports agradece seu contato. Como podemos ajudar? Para facilitar informe os 7 últimos números do chassi.", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const fakes = makeFakes();
+  assert.equal(await brainOf(repo, fakes).handleInbound(INBOUND), "auto-reply");
+  assert.equal(fakes.calls.length, 0);
+  assert.equal(fakes.sent.length, 0);
+  // Gente de verdade escrevendo depois segue o fluxo normal.
+  await repo.create("wa_messages", { id: "mX", thread: "5541999990000", leadId: "L1", direction: "in", text: "oi, tem interesse sim", at: ISO("2026-08-19T13:05:00Z") });
+  const fakes2 = makeFakes({ decisions: [{ acao: "responder", mensagem: "Perfeito" }] });
+  assert.equal(await brainOf(repo, fakes2).handleInbound({ message: { from: "5541999990000", text: "oi, tem interesse sim", id: "mX" } }), "responder");
+});
+
+test("remarcar: confirmação CURTA, sem repetir sócio e lembrete", async () => {
+  const repo = await world({
+    lead: { stage: "Call agendada", callAt: "2026-08-19T16:00", email: "r@x.com", callUrl: "https://meet.google.com/abc", closer: "pl" },
+    messages: [{ direction: "in", text: "consegue mais cedo?", at: ISO("2026-08-19T12:59:00Z") }],
+  });
+  const fakes = makeFakes({ decisions: [{ acao: "remarcar", horario: SLOT1 }] });
+  assert.equal(await brainOf(repo, fakes).handleInbound(INBOUND), "remarcar");
+  assert.match(fakes.sent[0].text, /remarcado então pra hoje às 13h/);
+  assert.match(fakes.sent[0].text, /convite atualizado/);
+  assert.ok(!/sócio/.test(fakes.sent[0].text), "remarcação não repete o bloco do sócio");
+  assert.equal((await repo.get("leads", "L1")).callAt, SLOT1);
+});
+
 test("trava de preço: resposta da IA com valor vira o desvio com autoridade (sem número)", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "quanto custa?", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "O plano parte de R$ 299 por mês, fechado?" }] });

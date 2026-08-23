@@ -52,6 +52,10 @@ export function sdrBotConfig(product) {
     firstTouch: cfg.firstTouch !== false,
     reminders: cfg.reminders !== false,
     rescue: cfg.rescue !== false,
+    // Segundo toque: 1º toque há 24h sem NENHUMA resposta → re-toque único com
+    // a mensagem de retomada que a Manuela já manda na mão (Leo, 23/08).
+    // Acompanha a chave do 1º toque; `secondTouch: false` desliga só ele.
+    secondTouch: cfg.secondTouch == null ? cfg.firstTouch !== false : cfg.secondTouch === true,
     // Fase 2 (conversa com IA): chave PRÓPRIA, nasce desligada — só liga
     // depois de passar na bateria de replay (sdr-replay.js).
     conversation: cfg.conversation === true,
@@ -77,6 +81,7 @@ export function sdrBotConfig(product) {
       // "conversa"; os antigos aprovados seguem de fallback até a revisão.
       reminder: cfg.templates?.reminder || "sdr_lembrete_conversa",
       rescue: cfg.templates?.rescue || "sdr_resgate_conversa",
+      secondTouch: cfg.templates?.secondTouch || "sdr_retomada_conversa",
     },
   };
 }
@@ -89,7 +94,12 @@ export function sdrBotConfig(product) {
 export function leadPainFocus(product, lead) {
   const code = String(lead?.sourcePain || "").toUpperCase().trim();
   if (!code) return null;
-  return { code, label: product?.painMap?.[code] || "", mode: code === "OEM" ? "oem" : "clone" };
+  // Dor OEM só cabe em autopeças: lead de OUTRO nicho que clicou no anúncio de
+  // part number conversa pela clonagem (o pitch OEM dizia "sua autopeça" pra
+  // lead de eletrônicos — visto 23/08). Nicho vazio mantém o OEM: o anúncio
+  // segmenta autopeças.
+  const oemFits = !lead?.niche || isAutoPecas(lead.niche);
+  return { code, label: product?.painMap?.[code] || "", mode: code === "OEM" && oemFits ? "oem" : "clone" };
 }
 
 // A conversa com IA vale pra este lead? Modo normal: chave `conversation` e
@@ -240,7 +250,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
     const anyPhone = products.some((p) => p.waPhoneId);
     const [users, allLeads] = await Promise.all([repo.list("users"), repo.list("leads")]);
     const humanIds = new Set(users.map((u) => u.id));
-    const stats = { firstTouch: 0, reminders: 0, rescue: 0, skipped: 0 };
+    const stats = { firstTouch: 0, secondTouch: 0, reminders: 0, rescue: 0, skipped: 0 };
     let sends = 0;
     const CAP = 25; // teto por ciclo: rajada nunca vira metralhadora
 
@@ -312,6 +322,45 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
           } catch (err) {
             log.warn?.({ lead: lead.id, err: err.message }, "sdr: primeiro toque falhou");
             await stampLog(lead, { firstTouchTries: (Number(lead.sdrLog?.firstTouchTries) || 0) + 1, firstTouchError: String(err.message || err).slice(0, 200) });
+          }
+        }
+      }
+
+      // ── 1b. Segundo toque: 1º toque há 24h sem NENHUMA resposta ──────────
+      // Re-toque ÚNICO (24h a 72h depois do 1º), com a retomada que a Manuela
+      // já manda na mão. Lead que respondeu qualquer coisa fica de fora (a
+      // conversa é do cérebro/humano); humano que já falou também trava.
+      if (cfg.secondTouch || cfg.conversationTest) {
+        for (const lead of leads) {
+          if (sends >= CAP) break;
+          if (!eligible(lead) || !passOn(cfg.secondTouch, lead)) continue;
+          const t0 = Date.parse(lead.sdrLog?.firstTouchAt || "");
+          if (!Number.isFinite(t0)) continue;
+          if (lead.sdrLog?.firstTouchVia === "human") continue; // 1º toque foi gente: fila humana
+          if (lead.sdrLog?.secondTouchAt || lead.sdrLog?.sendFailedAlertAt) continue;
+          if (nowMs - t0 < 24 * HOUR || nowMs - t0 > 72 * HOUR) continue;
+          const kind = kindOf(product, lead.stage || firstStage(product));
+          if (!["novo", "qualificacao"].includes(kind)) continue;
+          if (isWonLead(product, lead) || lead.callAt) continue;
+          const phone = lead.waPhone || lead.phone;
+          const thread = await findThreadByPhone(repo, phone);
+          if (thread) {
+            const msgs = await listMessages(repo, thread.id);
+            if (thread.hasIn || msgs.some((m) => m.direction === "in")) continue;
+            const lastOut = [...msgs].reverse().find((m) => m.direction === "out");
+            if (lastOut && lastOut.author && lastOut.author !== SDR_AUTHOR) continue; // humano já falou
+          }
+          // Lead nunca escreveu = janela fechada por definição: só template.
+          const names = await approvedNames();
+          if (!names.has(cfg.templates.secondTouch)) { stats.skipped++; continue; }
+          const nome = firstName(lead.name);
+          try {
+            await sendTemplate({ phone: thread?.phone || phone, name: cfg.templates.secondTouch, params: [nome || "de novo"], phoneId, saas: product.id, leadId: lead.id });
+            sends++; stats.secondTouch++;
+            await stampLog(lead, { secondTouchAt: nowIso });
+          } catch (err) {
+            log.warn?.({ lead: lead.id, err: err.message }, "sdr: segundo toque falhou");
+            await stampLog(lead, { secondTouchError: String(err.message || err).slice(0, 200) });
           }
         }
       }

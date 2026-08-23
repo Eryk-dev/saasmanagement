@@ -54,6 +54,16 @@ export const SDR_TEMPLATES = [
     body: "Fechado, {{1}}! Nossa call fica {{2}} então. Nosso especialista vai te fazer uma demonstração ao vivo, com a ferramenta clonando anúncios na prática. Se tiver sócio ou alguém que decida junto, traz pra call que a conversa rende mais. Qualquer coisa me chama por aqui!",
     example: ["Rafael", "amanhã às 10h"],
   },
+  // Segundo toque: 1º toque sem NENHUMA resposta há 24h. É a retomada que a
+  // Manuela já manda na mão (mineração ago/2026, dezenas de usos): curta e
+  // pedindo só um ok.
+  {
+    name: "sdr_retomada_conversa",
+    category: "MARKETING",
+    language: "pt_BR",
+    body: "Oiii {{1}}, tudo bem? Vamos retomar nossa conversa sobre a LeverAds? Me dá um ok aqui, por favor",
+    example: ["Rafael"],
+  },
   {
     name: "sdr_lembrete_conversa",
     category: "UTILITY",
