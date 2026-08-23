@@ -101,7 +101,8 @@ test("trava de preço: resposta da IA com valor vira o desvio com autoridade (se
   assert.equal(r, "preco-travado");
   assert.equal(fakes.sent.length, 1);
   assert.ok(!/299|R\$/.test(fakes.sent[0].text));
-  assert.match(fakes.sent[0].text, /investimento depende/);
+  assert.match(fakes.sent[0].text, /necessidades da sua operação/);
+  assert.ok(!/às \d/.test(fakes.sent[0].text), "resposta de preço não re-oferece horário");
   assert.ok((await repo.get("leads", "L1")).sdrLog.priceGuardAt);
 });
 
@@ -377,4 +378,21 @@ test("o template do 1º toque conta como pitch feito: a IA recebe a proibição 
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "O especialista fecha o plano na demonstração. Segunda 9h ou 9h30?" }] });
   await brainOf(repo, fakes).handleInbound(INBOUND);
   assert.equal(fakes.calls[0].demoOffered, true, "pitch do template detectado, mesmo sem a palavra demonstração");
+});
+
+test("horário já oferecido não se repete: a IA recebe o aviso quando a agenda já foi passada", async () => {
+  const repo = await world({
+    messages: [
+      { direction: "out", author: "sdr-bot", text: "Consigo te mostrar na segunda às 9h ou às 9h30, qual fica melhor?", at: ISO("2026-08-19T12:50:00Z") },
+      { direction: "in", text: "quanto custa?", at: ISO("2026-08-19T12:59:00Z") },
+    ],
+  });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Depende da operação. Algum dos horários que te passei encaixa?" }] });
+  await brainOf(repo, fakes).handleInbound(INBOUND);
+  assert.equal(fakes.calls[0].slotsOffered, true);
+
+  const repo2 = await world({ messages: [{ direction: "in", text: "oi", at: ISO("2026-08-19T12:59:00Z") }] });
+  const f2 = makeFakes({ decisions: [{ acao: "responder", mensagem: "..." }] });
+  await brainOf(repo2, f2).handleInbound(INBOUND);
+  assert.equal(f2.calls[0].slotsOffered, false);
 });
