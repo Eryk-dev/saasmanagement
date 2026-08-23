@@ -47,6 +47,11 @@ const PRICE_RX = /r\$\s*\d|\b\d{2,}\s*(reais|por m[eê]s|\/m[eê]s|mensais)\b|\b
 // resposta instantânea de loja não é gente — responder vira robô falando com
 // robô. Só se aplica à PRIMEIRA resposta da conversa; gente de verdade escrevendo
 // depois segue o fluxo normal.
+// Lead sinalizou INTERESSE ("sim", "ajudaria", "quero"...): a resposta tem
+// que puxar o próximo passo. O prompt já manda, mas prompt não é garantia —
+// a trava de beco (motor) emenda a oferta quando a IA esquecer (caso Daniel,
+// 23/08: "Opa sim" respondido com afirmação solta matou a conversa).
+const INTEREST_RX = /\b(sim|ajudaria|com certeza|claro|tenho interesse|quero|pode ser|bora|show|top|gostei|perfeito)\b/i;
 const AUTO_REPLY_RX = /agradece (o |pelo )?(seu )?contato|como podemos (te )?ajudar|atendimento autom|escolha uma (das )?op[çc][õo]es|digite (o n[úu]mero|uma? op[çc][ãa]o)|menu de atendimento|hor[áa]rio de atendimento|consulte (o )?nosso (site|estoque|cat[áa]logo)|informe os? \d+ [úu]ltimos/i;
 
 const firstName = (v) => String(v || "").trim().split(/\s+/)[0] || "";
@@ -416,6 +421,23 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       await send(priceDeferral(nome));
       await stamp(lead, { priceGuardAt: new Date(nowMs).toISOString() });
       return "preco-travado";
+    }
+    // TRAVA DE BECO: lead demonstrou interesse, ainda não tem call marcada e a
+    // resposta veio SEM pergunta → o motor emenda a oferta (par sugerido; já
+    // ofereceu antes = repescagem curta). Determinístico, como a trava de preço.
+    const lastInText = String(([...msgs].reverse().find((m) => m.direction === "in"))?.transcript
+      || ([...msgs].reverse().find((m) => m.direction === "in"))?.text || "");
+    if (!parts.some((t) => t.includes("?")) && !lead.callAt && INTEREST_RX.test(lastInText)) {
+      const push = slotsOffered
+        ? "Algum dos horários que te passei encaixa pra você?"
+        : suggestedPair.length >= 2
+          ? `Consigo ${slotLabel(suggestedPair[0].at, wnow)} ou ${slotLabel(suggestedPair[1].at, wnow)}, qual fica melhor pra você?`
+          : slotList.length
+            ? `Consigo ${slotLabel(slotList[0].at, wnow)}, fica bom pra você?`
+            : "Qual período costuma ser melhor pra você, manhã ou tarde?";
+      if (parts.length >= 3) parts[2] = `${parts[2]} ${push}`;
+      else parts.push(push);
+      log.info?.({ lead: lead.id }, "sdr-brain: trava de beco emendou a oferta");
     }
     await send(parts);
     return "responder";
