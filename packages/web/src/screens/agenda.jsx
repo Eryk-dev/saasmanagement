@@ -228,6 +228,18 @@ export function AgendaScreen({ onOpenLead }) {
 
         <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center", fontSize: 12.5, color: "var(--fg-3)" }}>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: "var(--accent)" }} />
+            call agendada · bloco cheio na cor do responsável
+          </span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: "var(--bg-1)", border: "2px dashed var(--accent)" }} />
+            follow-up · contorno tracejado
+          </span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: "color-mix(in srgb, var(--accent) 14%, var(--bg-1))", border: "1px solid var(--accent)", opacity: 0.62 }} />
+            ✓ lavada = já aconteceu
+          </span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             <span style={{ width: 10, height: 10, borderRadius: 3, background: "var(--accent-soft)", border: "1px solid var(--accent)" }} />
             compromisso na cor da pessoa · clique pra editar
           </span>
