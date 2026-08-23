@@ -246,6 +246,11 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     const canGreet = gapMin == null || gapMin >= GREETING_GAP_MS / 60_000;
     const demoOffered = msgs.some((m) => m.direction === "out" && (DEMO_RX.test(m.text || "") || PITCH_RX.test(m.text || "")));
     const slotsOffered = msgs.some((m) => m.direction === "out" && SLOTS_RX.test(m.text || ""));
+    // Lead escreveu ANTES de qualquer mensagem nossa (o clique do form chega
+    // antes do 1º toque): a primeira resposta é DESCOBERTA, com a pergunta do
+    // template ("isso ajudaria na sua operação?"), nunca oferta de horário
+    // (Leo, 23/08). O horário entra só depois que o lead responder.
+    const firstReply = !msgs.some((m) => m.direction === "out");
     const nome = firstName(lead.name);
     const decision = await anthropic.sdrDecide({
       sdrName: firstName((await repo.get("users", lead.owner).catch(() => null))?.name),
@@ -262,6 +267,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       gapMin,
       demoOffered,
       slotsOffered,
+      firstReply,
       suggestedPair,
     });
 

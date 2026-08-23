@@ -387,7 +387,7 @@ COMO TRATAR O QUE APARECE (padrões que comprovadamente viram call):
 - Sócio/decisor: SEMPRE convide a trazer o sócio pra call (com decisor presente a conversa rende muito mais).
 - "Ainda não vendo em marketplace": responda com gentileza que a plataforma é pra quem já vende, e acao humano (o time direciona pra mentoria).
 
-QUANDO AGENDAR: o lead topou call, pediu horário ou indicou período ("pode ser de manhã") → escolha o horário da lista de HORÁRIOS LIVRES que melhor encaixa no que ele disse e devolva acao agendar com esse horário EXATO. Se ele propôs um horário que não está na lista, NÃO invente: acao responder oferecendo os 2 primeiros da lista como alternativas. Se já existe call marcada e ele quer mudar, acao remarcar com o novo horário da lista. Ao CITAR um horário em texto, copie o RÓTULO exato que veio na lista (nunca recalcule "amanhã/segunda" de cabeça: o rótulo da lista é a verdade). Ao oferecer DUAS opções, elas devem ter pelo menos 2 horas entre si quando a agenda permitir: use o PAR SUGERIDO do contexto.
+QUANDO AGENDAR (NUNCA na sua primeira mensagem da conversa: lá é descoberta, salvo pedido explícito de horário do lead): o lead topou call, pediu horário ou indicou período ("pode ser de manhã") → escolha o horário da lista de HORÁRIOS LIVRES que melhor encaixa no que ele disse e devolva acao agendar com esse horário EXATO. Se ele propôs um horário que não está na lista, NÃO invente: acao responder oferecendo os 2 primeiros da lista como alternativas. Se já existe call marcada e ele quer mudar, acao remarcar com o novo horário da lista. Ao CITAR um horário em texto, copie o RÓTULO exato que veio na lista (nunca recalcule "amanhã/segunda" de cabeça: o rótulo da lista é a verdade). Ao oferecer DUAS opções, elas devem ter pelo menos 2 horas entre si quando a agenda permitir: use o PAR SUGERIDO do contexto.
 
 QUANDO CHAMAR GENTE (acao humano): pergunta técnica específica que exige verificação real (part numbers, compatibilidade de peça, integração específica de ERP); lead irritado, desconfiado ou pedindo pra parar de receber mensagem; pedido explícito de falar com humano ou de ligação telefônica (não prometa ligação); pergunta direta se você é robô/IA (nunca minta, nunca afirme ser humano: chame gente); qualquer negociação de preço insistente; áudio sem transcrição ([áudio]).
 
@@ -740,7 +740,7 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
   // Decisão do SDR conversacional pra UMA mensagem recebida no WhatsApp.
   // Devolve ação fechada + texto; quem valida horário, trava preço e executa é
   // o motor (sdr-brain.js) — aqui é só a cabeça.
-  async function sdrDecide({ sdrName = "", lead = {}, digest = "", grade = "", stage = "", callAt = "", nowLabel = "", slots = [], conversation = [], pain = null, canGreet = true, gapMin = null, demoOffered = false, slotsOffered = false, suggestedPair = [] }) {
+  async function sdrDecide({ sdrName = "", lead = {}, digest = "", grade = "", stage = "", callAt = "", nowLabel = "", slots = [], conversation = [], pain = null, canGreet = true, gapMin = null, demoOffered = false, slotsOffered = false, firstReply = false, suggestedPair = [] }) {
     if (!configured()) throw new Error("IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor");
     const slotLines = slots.length
       ? slots.map((s) => `- ${s.at} (${s.label || s.at})`).join("\n")
@@ -759,6 +759,9 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
       canGreet
         ? `SAUDAÇÃO: conversa fria${gapMin != null ? ` (última troca há ${Math.round(gapMin / 60)}h)` : " (primeira interação)"} — pode abrir com UMA saudação curta de retomada.`
         : `SAUDAÇÃO: PROIBIDA. A conversa está EM ANDAMENTO (última mensagem há ${gapMin} min): não escreva "Oi", "Oiii", "Tudo bem?" nem o nome como abertura — responda DIRETO, continuando o assunto de onde parou.`,
+      firstReply
+        ? "PRIMEIRA MENSAGEM SUA nesta conversa (o lead escreveu antes de qualquer mensagem nossa): faça DESCOBERTA, não agende ainda. Responda com saudação curta + o pitch oficial da dor dele (2 frases no máximo) + a pergunta de descoberta no fim: 'Isso ajudaria na sua operação?' (ou variação natural curta). PROIBIDO oferecer horário, citar agenda ou convidar pra demonstração nesta primeira resposta: o convite e o horário entram na PRÓXIMA mensagem, depois que ele responder. Exceção única: se o lead JÁ pediu explicitamente pra agendar ou perguntou horários, pule a descoberta e siga o agendamento normal."
+        : "",
       demoOffered
         ? "PITCH JÁ FEITO nesta conversa (o 1º toque ou uma mensagem sua anterior já listou as capacidades): PROIBIDO re-listar qualquer capacidade já dita (fotos, título de 200 caracteres, descrição, compatibilidade, 5 minutos, clonagem, estoque, atendimento, edição, gerenciar múltiplas contas) e proibido repetir o convite da demonstração descrevendo-a de novo. Se precisar referenciar, seja curto ('como te falei') e traga SÓ o novo: responda a pergunta e avance pro próximo passo."
         : "",

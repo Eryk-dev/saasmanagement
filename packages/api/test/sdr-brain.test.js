@@ -95,6 +95,23 @@ test("responder: manda o texto da IA com autoria sdr-bot e contexto completo (ag
   assert.equal(ctx.sdrName, "Manuela");
 });
 
+test("firstReply: conversa sem NENHUMA mensagem nossa liga a descoberta; template já enviado desliga", async () => {
+  // Lead escreveu primeiro (clique do form): descoberta antes de agendar.
+  const repo = await world({ messages: [{ direction: "in", text: "Oi, quero saber mais sobre a LeverAds", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Isso ajudaria na sua operação?" }] });
+  await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "Oi, quero saber mais sobre a LeverAds" } });
+  assert.equal(fakes.calls[0].firstReply, true);
+
+  // 1º toque (template) já saiu: conversa em andamento, sem descoberta de novo.
+  const repo2 = await world({ messages: [
+    { direction: "out", author: "sdr-bot", text: "Oiii, Rafael. Recebi seu diagnóstico aqui. Isso ajudaria na sua operação?", at: ISO("2026-08-19T12:50:00Z") },
+    { direction: "in", text: "ajudaria sim", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const fakes2 = makeFakes({ decisions: [{ acao: "responder", mensagem: "Perfeito, vamos agendar?" }] });
+  await brainOf(repo2, fakes2).handleInbound({ message: { from: "5541999990000", text: "ajudaria sim" } });
+  assert.equal(fakes2.calls[0].firstReply, false);
+});
+
 test("trava de preço: resposta da IA com valor vira o desvio com autoridade (sem número)", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "quanto custa?", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "O plano parte de R$ 299 por mês, fechado?" }] });
