@@ -60,11 +60,13 @@ function priceDeferral(nome) {
   return `${oi} investimento é de acordo com as necessidades da sua operação: primeiro a gente entende o seu cenário, e aí te mostra os pontos que dá pra alavancar. É exatamente isso que o especialista faz na demonstração.`;
 }
 
-// Confirmação de agendamento ENXUTA (Leo, 23/08): sem re-descrever a
-// demonstração (a conversa já falou dela) e sem pedir e-mail (vem do form).
-// Fica o combinado por escrito + o sócio/decisor + o aviso de lembrete.
-function bookingConfirmText(nome, quando) {
-  return `Fechado${nome ? `, ${nome}` : ""}! Nossa conversa fica ${quando} então. Se tiver sócio ou alguém que decida junto, chama junto que rende mais. Te mando o lembrete por aqui um pouco antes!`;
+// Confirmação de agendamento ENXUTA (Leo, 23/08): combinado por escrito +
+// aviso do convite por e-mail (SÓ quando o card tem e-mail, senão vira
+// promessa falsa e o link chega pelo lembrete de 10min) + sócio/decisor +
+// aviso de lembrete. Sem re-descrever a demonstração e sem pedir e-mail.
+function bookingConfirmText(nome, quando, hasEmail) {
+  const convite = hasEmail ? ", o convite vai chegar no seu e-mail" : "";
+  return `Fechado${nome ? `, ${nome}` : ""}! Nossa conversa fica ${quando} então${convite}. Se tiver sócio ou alguém que decida junto, chama junto que rende mais. Te mando o lembrete por aqui um pouco antes!`;
 }
 
 function reofferText(nome, slots, wnow) {
@@ -295,7 +297,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       }
       const fresh = await repo.get("leads", lead.id);
       await bookCall(repo, { lead: fresh || lead, product, at: pick.at, closer: pick.closer, now: at });
-      await send(bookingConfirmText(nome, slotLabel(pick.at, wnow)));
+      await send(bookingConfirmText(nome, slotLabel(pick.at, wnow), !!lead.email));
       if (autoCallMeet) autoCallMeet(lead.id).catch(() => { /* o lembrete de 10min entrega o link quando existir */ });
       return decision.acao;
     }

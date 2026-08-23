@@ -431,3 +431,13 @@ test("digitando… aparece pro lead enquanto a IA pensa e entre as partes", asyn
   assert.ok(typed.every((id) => id === "in9"));
   assert.equal(fakes.sent.length, 2);
 });
+
+test("confirmação avisa do convite por e-mail SÓ quando o card tem e-mail", async () => {
+  const repo = await world({
+    lead: { email: "rafa@loja.com.br" },
+    messages: [{ direction: "in", text: "pode ser 13h", at: ISO("2026-08-19T12:59:00Z") }],
+  });
+  const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: SLOT1 }] });
+  await brainOf(repo, fakes).handleInbound(INBOUND);
+  assert.match(fakes.sent[0].text, /o convite vai chegar no seu e-mail/);
+});
