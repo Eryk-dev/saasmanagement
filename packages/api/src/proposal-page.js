@@ -692,6 +692,8 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .lvx-oneoff-head b { display: block; margin-top: 2px; font-size: 13.5px; color: var(--fg); }
   .lvx-oneoff-tag { flex: none; padding: 3px 8px; border-radius: 999px; background: var(--accent-soft);
     color: var(--accent); font: 700 9px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+  .lvx-oneoff-disc { display: inline-block; margin-top: 6px; padding: 3px 8px; border-radius: 999px;
+    background: #f6e3b4; color: #6d4a06; font: 700 9px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
   .lvx-oneoff-table { width: 100%; border-collapse: collapse; font-size: 12px; }
   .lvx-oneoff-table td { padding: 7px 12px; border-top: 1px solid var(--line); color: var(--ink-2); }
   .lvx-oneoff-table td:last-child { text-align: right; color: var(--fg); font-weight: 700; white-space: nowrap; }
@@ -1860,7 +1862,8 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         var oneOff = CAT.oneOffCloning;
         var oneOffHtml = oneOff && Array.isArray(oneOff.rows)
           ? '<div class="lvx-oneoff">' +
-              '<div class="lvx-oneoff-head"><div><span class="lvx-h">Consulta rápida</span><b>' + esc(oneOff.title || '') + '</b></div>' +
+              '<div class="lvx-oneoff-head"><div><span class="lvx-h">Consulta rápida</span><b>' + esc(oneOff.title || '') + '</b>' +
+                '<span class="lvx-oneoff-disc">Negociável · até 15% de desconto no valor</span></div>' +
                 '<span class="lvx-oneoff-tag">' + esc(oneOff.tag || '') + '</span></div>' +
               '<table class="lvx-oneoff-table"><tbody>' + oneOff.rows.map(function (row) {
                 return '<tr><td>' + esc(row.range || '') + '</td><td>' + esc(row.price || '') + '</td></tr>';
@@ -1874,9 +1877,10 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         if (state.deckOrder == null) state.deckOrder = CAT.deckOrder === 'B' ? 'B' : '';
         if (!Array.isArray(state.dores)) state.dores = [];
         var card = el('div', 'lvx-card');
-        // Colunas com peso parelho: régua+dor+consulta rápida · roteiro+
-        // dores anotadas · decisão/oferta. A consulta rápida mora na coluna da
-        // régua porque não altera produto nem apresentação (é consulta do closer).
+        // Colunas com peso parelho: régua+dor+dores anotadas · roteiro+
+        // consulta rápida · decisão/oferta. As dores moram na coluna da dor do
+        // anúncio; a consulta rápida acompanha o roteiro (é consulta do closer,
+        // não altera produto nem apresentação).
         card.innerHTML =
           '<span class="lvx-h">A régua sugere, você decide</span>' +
           '<div class="lvx-card-cols">' +
@@ -1889,14 +1893,14 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
             '<select class="lvx-sel" id="lvxPain" style="margin-top:6px">' +
               painKeys.map(function (kk) { return '<option value="' + kk + '">' + (kk === 'none' ? '' : '[' + kk + '] ') + esc(CAT.pains[kk].label) + '</option>'; }).join('') +
             '</select></div>' +
-          oneOffHtml +
-          '</div>' +
-          '<div class="lvx-ccol">' +
-          '<div class="lvx-script" id="lvxScript"></div>' +
           '<div class="lvx-dores"><div class="lvx-script-head"><span class="lvx-h">Dores do lead · com número</span>' +
             '<button class="lvx-dor-add" id="lvxDorAdd" type="button">+ adicionar dor</button></div>' +
             '<div id="lvxDorList"></div>' +
             '<span class="lvx-note">Preencha durante o diagnóstico. Ficam salvas com a proposta.</span></div>' +
+          '</div>' +
+          '<div class="lvx-ccol">' +
+          '<div class="lvx-script" id="lvxScript"></div>' +
+          oneOffHtml +
           '</div>' +
           '<div class="lvx-ccol">' +
           '<div><span class="lvx-h">Ordem da apresentação</span>' +
