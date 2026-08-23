@@ -22,6 +22,24 @@
 // única no fim. Lembrete e resgate reaproveitam as mensagens que o time JÁ
 // manda na mão e que comprovadamente respondem/recuperam.
 export const SDR_TEMPLATES = [
+  // 1º toque POR DOR DE ORIGEM (copys validadas pelo Leo, 23/08): a abertura é
+  // pergunta de DESCOBERTA ("isso ajudaria na sua operação?"), não convite de
+  // agenda — o horário entra na resposta seguinte, quando o lead engaja.
+  {
+    name: "sdr_primeiro_toque_multi",
+    category: "MARKETING",
+    language: "pt_BR",
+    body: "Oiii, {{1}}. {{2}} falando, da LeverAds. Recebi seu diagnóstico aqui: {{3}}. A LeverAds te ajuda a gerenciar múltiplas contas de Mercado Livre e Shopee de forma automática, com clonagem de anúncios, estoque, atendimento e edição em um lugar só. Isso ajudaria na sua operação hoje?",
+    example: ["Rafael", "Manuela", "3 a 5 contas de autopeças"],
+  },
+  {
+    name: "sdr_primeiro_toque_oem",
+    category: "MARKETING",
+    language: "pt_BR",
+    body: "Oiii, {{1}}. {{2}} falando, da LeverAds. Recebi seu diagnóstico aqui: {{3}}. A LeverAds cria o anúncio completo da sua autopeça só com o OEM (part number): fotos, título de 200 caracteres, descrição e compatibilidade inteira, pronto pra revisar e publicar em menos de 5 minutos. Isso ajudaria na sua operação?",
+    example: ["Rafael", "Manuela", "3 a 5 contas de autopeças"],
+  },
+  // Fallback do 1º toque enquanto os dois de cima não estiverem aprovados.
   {
     name: "sdr_primeiro_toque_v2",
     category: "MARKETING",

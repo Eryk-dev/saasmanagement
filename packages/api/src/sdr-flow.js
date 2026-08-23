@@ -64,6 +64,10 @@ export function sdrBotConfig(product) {
     firstTouchDelayMin: num(cfg.firstTouchDelayMin, 3), // "um humano viu" > resposta em 2s
     freshHours: num(cfg.freshHours, 24),                // lead mais velho que isso é fila humana
     templates: {
+      // 1º toque escolhido pela DOR DE ORIGEM; o v2 genérico é o fallback
+      // enquanto os específicos não estão aprovados na Meta.
+      firstTouchMulti: cfg.templates?.firstTouchMulti || "sdr_primeiro_toque_multi",
+      firstTouchOem: cfg.templates?.firstTouchOem || "sdr_primeiro_toque_oem",
       firstTouch: cfg.templates?.firstTouch || "sdr_primeiro_toque_v2",
       reminder: cfg.templates?.reminder || "sdr_lembrete_call",
       rescue: cfg.templates?.rescue || "sdr_resgate_noshow",
@@ -115,17 +119,17 @@ export function leadDigest(product, lead) {
 // número abre com "Oiii", não usa emoji digitado, referencia o cadastro e
 // fecha com pergunta única. Oferta de 2 horários concretos é o padrão de
 // agendamento mais usado do time.
-export function firstTouchText({ nome, sdrName, resumo, slots = [], now, pain = null }) {
+// O 1º toque virou pergunta de DESCOBERTA (decisão do Leo, 23/08): pitch do
+// ângulo que trouxe o lead + "isso ajudaria na sua operação?" — sem oferecer
+// horário na abertura; a agenda entra na resposta seguinte, pelo cérebro,
+// quando o lead engaja.
+export function firstTouchText({ nome, sdrName, resumo, pain = null }) {
   const oi = nome ? `Oiii, ${nome}.` : "Oiii.";
   const eu = sdrName ? `${sdrName} falando, da LeverAds.` : "Aqui é da LeverAds.";
-  // O gancho segue o ANÚNCIO que trouxe o lead: quem veio do OEM ouve OEM.
-  const promessa = pain?.mode === "oem"
-    ? "Consigo te mostrar ao vivo como o anúncio nasce pelo código OEM, numa demonstração rápida."
-    : "Consigo te mostrar a plataforma funcionando ao vivo, numa demonstração rápida.";
-  const base = `${oi} ${eu} Vi seu diagnóstico aqui: ${resumo}. ${promessa}`;
-  if (slots.length >= 2) return `${base} Tenho ${slotLabel(slots[0].at, now)} ou ${slotLabel(slots[1].at, now)} livres, qual fica melhor pra você?`;
-  if (slots.length === 1) return `${base} Tenho ${slotLabel(slots[0].at, now)} livre, fica bom pra você?`;
-  return `${base} Ainda essa semana, qual período fica melhor pra você: manhã ou tarde?`;
+  const pitch = pain?.mode === "oem"
+    ? "A LeverAds cria o anúncio completo da sua autopeça só com o OEM (part number): fotos, título de 200 caracteres, descrição e compatibilidade inteira, pronto pra revisar e publicar em menos de 5 minutos. Isso ajudaria na sua operação?"
+    : "A LeverAds te ajuda a gerenciar múltiplas contas de Mercado Livre e Shopee de forma automática, com clonagem de anúncios, estoque, atendimento e edição em um lugar só. Isso ajudaria na sua operação hoje?";
+  return `${oi} ${eu} Recebi seu diagnóstico aqui: ${resumo}. ${pitch}`;
 }
 
 // Lembretes ancorados no callAt. `grace` = janela de disparo depois do ponto
@@ -270,16 +274,20 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
           const sdrName = firstName(users.find((u) => u.id === lead.owner)?.name);
           const resumo = leadDigest(product, lead);
           const to = thread?.phone || phone;
+          const pain = leadPainFocus(product, lead);
           try {
             let via;
             if (windowOpen) {
-              const { slots } = await slotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 2, ...OFFER_HOURS });
-              await sendText({ phone: to, text: firstTouchText({ nome, sdrName, resumo, slots, now: wnow, pain: leadPainFocus(product, lead) }), phoneId, saas: product.id, leadId: lead.id });
+              await sendText({ phone: to, text: firstTouchText({ nome, sdrName, resumo, pain }), phoneId, saas: product.id, leadId: lead.id });
               via = "text";
             } else {
               const names = await approvedNames();
-              if (!names.has(cfg.templates.firstTouch)) { stats.skipped++; continue; } // espera a aprovação da Meta
-              await sendTemplate({ phone: to, name: cfg.templates.firstTouch, params: [nome || "tudo bem", sdrName || "o time", resumo], phoneId, saas: product.id, leadId: lead.id });
+              // Template POR DOR (multi × OEM); o v2 genérico cobre enquanto o
+              // específico não estiver aprovado. Sem nenhum aprovado, espera.
+              const wanted = pain?.mode === "oem" ? cfg.templates.firstTouchOem : cfg.templates.firstTouchMulti;
+              const tplName = names.has(wanted) ? wanted : names.has(cfg.templates.firstTouch) ? cfg.templates.firstTouch : null;
+              if (!tplName) { stats.skipped++; continue; }
+              await sendTemplate({ phone: to, name: tplName, params: [nome || "tudo bem", sdrName || "o time", resumo], phoneId, saas: product.id, leadId: lead.id });
               via = "template";
             }
             sends++; stats.firstTouch++;
