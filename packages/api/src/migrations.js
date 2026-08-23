@@ -1493,7 +1493,42 @@ export async function migrateRolesCsSdr(repo) {
   return changed;
 }
 
+
+// Backfill dos sinais do inbox por conversa (ago/2026): `hasIn` (o lead já
+// respondeu alguma vez) e `lastOutAuthor` (quem falou por último do nosso lado,
+// humano ou sdr-bot) — recordMessage mantém os dois daqui pra frente; isto
+// preenche as conversas que nasceram antes. Idempotente: só toca thread que
+// ainda não tem o campo `hasIn`.
+export async function backfillWaThreadSignals(repo) {
+  const threads = await repo.list("wa_threads");
+  const missing = threads.filter((t) => t.hasIn === undefined);
+  if (!missing.length) return 0;
+  const messages = await repo.list("wa_messages");
+  const byThread = new Map();
+  for (const m of messages) {
+    if (!byThread.has(m.thread)) byThread.set(m.thread, []);
+    byThread.get(m.thread).push(m);
+  }
+  let n = 0;
+  for (const t of missing) {
+    const msgs = (byThread.get(t.id) || []).sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
+    const lastOut = [...msgs].reverse().find((x) => x.direction === "out");
+    await repo.update("wa_threads", t.id, {
+      hasIn: msgs.some((x) => x.direction === "in"),
+      lastOutAuthor: lastOut?.author || "",
+    }, { silent: true });
+    n++;
+  }
+  return n;
+}
+
 export async function runStartupMigrations(repo) {
+  try {
+    const n = await backfillWaThreadSignals(repo);
+    if (n) console.log(`[migration] sinais do inbox (hasIn/lastOutAuthor) preenchidos em ${n} conversa(s)`);
+  } catch (err) {
+    console.error("[migration] backfillWaThreadSignals falhou:", err?.message || err);
+  }
   try {
     const n = await ensureKeyAccounts(repo);
     if (n) console.log(`[migration] ${n} cliente(s) marcado(s) como conta grande (keyAccount) — fora das médias`);
