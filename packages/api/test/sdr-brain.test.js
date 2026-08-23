@@ -121,12 +121,11 @@ test("agendar com horário da lista: card vai pra etapa de call pelo caminho can
   const stageActs = (await repo.list("activities")).filter((a) => a.type === "stage");
   assert.equal(stageActs.length, 1);
   assert.equal(stageActs[0].meta.to, "Call agendada");
-  // Confirmação é a copy comprovada (vende a call + pede o e-mail que falta).
+  // Confirmação enxuta (Leo, 23/08): combinado + sócio + lembrete, sem
+  // re-descrever a demo e sem pedir e-mail.
   assert.match(fakes.sent[0].text, /Fechado, Rafael! Nossa call fica hoje às 13h/);
-  assert.match(fakes.sent[0].text, /demonstração ao vivo/);
   assert.ok(!/entrar nas suas contas/.test(fakes.sent[0].text), "a gente não entra nas contas do lead");
   assert.match(fakes.sent[0].text, /sócio/);
-  assert.match(fakes.sent[0].text, /e-mail/);
   assert.deepEqual(fakes.meets, ["L1"]);
 });
 
@@ -396,4 +395,27 @@ test("horário já oferecido não se repete: a IA recebe o aviso quando a agenda
   const f2 = makeFakes({ decisions: [{ acao: "responder", mensagem: "..." }] });
   await brainOf(repo2, f2).handleInbound(INBOUND);
   assert.equal(f2.calls[0].slotsOffered, false);
+});
+
+test("resposta longa quebra em até 3 envios em sequência; direta segue em um só", async () => {
+  const repo = await world({ messages: [{ direction: "in", text: "me explica tudo", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Boa! Te explico rapidinho.", "Você digita o OEM e recebe o anúncio pronto.", "Quer ver ao vivo?"] }] });
+  await brainOf(repo, fakes).handleInbound(INBOUND);
+  assert.equal(fakes.sent.length, 3);
+  assert.match(fakes.sent[0].text, /Te explico/);
+  assert.match(fakes.sent[2].text, /ao vivo/);
+  const out = (await repo.list("wa_messages")).filter((m) => m.direction === "out");
+  assert.equal(out.length, 3, "cada parte vira uma mensagem separada na conversa");
+});
+
+test("confirmação de agendamento enxuta: sem re-descrever a demo e sem pedir e-mail", async () => {
+  const repo = await world({ messages: [{ direction: "in", text: "pode ser 13h", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: SLOT1 }] });
+  await brainOf(repo, fakes).handleInbound(INBOUND);
+  const text = fakes.sent[0].text;
+  assert.match(text, /Fechado, Rafael! Nossa call fica hoje às 13h/);
+  assert.match(text, /sócio/);
+  assert.match(text, /lembrete/);
+  assert.ok(!/demonstraç/.test(text), "não re-descreve a demonstração");
+  assert.ok(!/e-mail/.test(text), "não pede e-mail (vem do formulário)");
 });
