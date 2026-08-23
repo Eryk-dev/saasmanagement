@@ -561,6 +561,16 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
     setShowTouchesState(v);
     try { localStorage.setItem("cockpit_agenda_touches", v ? "1" : "0"); } catch { /* ignore */ }
   };
+  // Filtro por TIPO de evento: tudo · só calls agendadas · só follow-ups (Leo,
+  // 23/08: "ver separadamente e juntos"). Filtrado, a grade isola só aquelas
+  // pílulas — compromissos/bloqueios e toques saem do caminho pra leitura limpa.
+  const [evKind, setEvKindState] = useStP(() => {
+    try { return localStorage.getItem("cockpit_agenda_kind") || "all"; } catch { return "all"; }
+  });
+  const setEvKind = (v) => {
+    setEvKindState(v);
+    try { localStorage.setItem("cockpit_agenda_kind", v); } catch { /* ignore */ }
+  };
   const H0 = 7, H1 = 21, hourH = 44;
   const saasCfgOf = (l) => (window.SEED?.SAAS || []).find((x) => x.id === l.saas);
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -646,6 +656,11 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
     .concat(consultEvents)
     .filter(e => e && Number.isFinite(e.t.getTime()) && e.t >= monday && e.t < end)
     .filter(e => !person || e.who === person);
+  // Contagem por tipo (já na semana/pessoa filtradas) alimenta as abas; a grade
+  // desenha só o tipo escolhido.
+  const callCount = events.filter((e) => e.kind === "call").length;
+  const fupCount = events.filter((e) => e.kind === "follow-up").length;
+  const shown = evKind === "all" ? events : events.filter((e) => e.kind === (evKind === "call" ? "call" : "follow-up"));
   const fmtDay = (d, opts) => d.toLocaleDateString("pt-BR", opts).replace(/\./g, "");
   const label = `${fmtDay(days[0], { day: "2-digit", month: "short" })} · ${fmtDay(days[6], { day: "2-digit", month: "short", year: "numeric" })}`;
   const navBtn = {
@@ -664,7 +679,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
   // às 14h saía com 1/9 da largura. Cada item ganha `lane` (posição) e `lanes`
   // (nº de lanes do seu cluster).
   const layoutDay = (d) => ({
-    placed: laneByCluster(events.filter(e => e.t.toDateString() === d.toDateString()),
+    placed: laneByCluster(shown.filter(e => e.t.toDateString() === d.toDateString()),
       e => e.t.getTime(), e => e.t.getTime() + 3600000),
   });
 
@@ -680,10 +695,20 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
         <span className="mono dim" style={{ fontSize: 11 }}>
           {calls === 0 ? "nenhuma call nesta semana" : `${calls} ${calls === 1 ? "call" : "calls"}`}
         </span>
-        <label className="mono" style={{ fontSize: 11, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer" }}>
-          <input type="checkbox" checked={showTouches} onChange={(e) => setShowTouches(e.target.checked)} style={{ accentColor: "var(--accent)" }} />
-          mostrar toques
-        </label>
+        {/* Tipo de evento: tudo · calls · follow-ups, com a contagem da semana. */}
+        <span style={{ display: "inline-flex", gap: 2, marginLeft: 4 }}>
+          {[["all", "tudo", null], ["call", "calls", callCount], ["follow-up", "follow-ups", fupCount]].map(([v, lbl, n]) => (
+            <FilterTab key={v} active={evKind === v} count={n} onClick={() => setEvKind(v)} style={{ padding: "4px 10px", fontSize: 12 }}>
+              {lbl}
+            </FilterTab>
+          ))}
+        </span>
+        {evKind === "all" && (
+          <label className="mono" style={{ fontSize: 11, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer" }}>
+            <input type="checkbox" checked={showTouches} onChange={(e) => setShowTouches(e.target.checked)} style={{ accentColor: "var(--accent)" }} />
+            mostrar toques
+          </label>
+        )}
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8, marginLeft: "auto", flexWrap: "wrap" }}>
           {team.map(u => (
             <span key={u.id} className="mono" style={{ fontSize: 11, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", gap: 5 }}>
@@ -746,8 +771,10 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                   // _tone/_label/_who): lanes por CLUSTER de sobreposição (ex.: o
                   // almoço do time inteiro no mesmo meio-dia divide; compromisso
                   // sozinho ocupa largura cheia, sem ser espremido por outro horário).
+                  // Filtro de tipo ligado: compromissos/bloqueios saem também —
+                  // a grade fica só com as pílulas pedidas.
                   const placedBlks = laneByCluster(
-                    (blocking ? blocking.blocksFor(d) : [])
+                    (blocking && evKind === "all" ? blocking.blocksFor(d) : [])
                       .map((b) => ({ b, from: b.allDay ? H0 : Math.max(H0, Number(b.fromHour) || 0), to: b.allDay ? H1 : Math.min(H1, Number(b.toHour) || 0) }))
                       .filter((x) => x.to > x.from),
                     (x) => x.from, (x) => x.to);
@@ -778,9 +805,17 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                 {placed.map(({ l, t, lane, lanes, kind, who, done }) => {
                   const tone = toneOf(who);
                   const isTouch = kind === "toque";
-                  // Follow-up: ocupa 20 min na agenda, fundo ESCURO + letra clara
-                  // pra destacar da call. Agora o kind já vem explícito ("follow-up").
                   const isFollowup = kind === "follow-up";
+                  // CONTRASTE FORTE entre os tipos (Leo, 23/08: não dava pra
+                  // diferenciar pela cor): call FUTURA é bloco CHEIO na cor do
+                  // responsável com letra clara; follow-up é VAZADO com contorno
+                  // tracejado grosso e letra na cor — cheio × vazado se separa
+                  // de longe, mesmo quando os tons das pessoas são parecidos.
+                  // Integração/consulta seguem no fundo suave; call FEITA
+                  // (história) continua lavada com ✓, sem competir com o futuro.
+                  const solid = kind === "call" && !done;
+                  const solidBg = `color-mix(in srgb, ${tone} 85%, oklch(0 0 0))`; // fundo cheio escurecido: letra branca legível em qualquer tom
+                  const edge = `color-mix(in srgb, ${tone} 72%, var(--fg-1))`; // tom fechado no fg: contorno/letra do follow-up nos 2 temas
                   const hour = Math.min(H1 - 1, Math.max(H0, t.getHours() + t.getMinutes() / 60));
                   const w = 100 / lanes;
                   const timeStr = t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
@@ -791,11 +826,13 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                       style={{
                         position: "absolute", top: (hour - H0) * hourH + 1,
                         left: `calc(${lane * w}% + 2px)`, width: `calc(${w}% - 4px)`,
-                        height: isTouch ? 22 : isFollowup ? Math.round(hourH * 20 / 60) : hourH - 3, // follow-up = 20 min
+                        height: isTouch ? 22 : isFollowup ? Math.max(18, Math.round(hourH * 20 / 60)) : hourH - 3, // follow-up = 20 min
                         overflow: "hidden", cursor: "pointer",
-                        background: isTouch ? "transparent" : isFollowup ? `color-mix(in srgb, ${tone} 45%, var(--fg-1))` : `color-mix(in srgb, ${tone} 14%, var(--bg-1))`,
-                        border: isTouch ? `1px dashed color-mix(in srgb, ${tone} 55%, var(--line-2))` : `1px solid color-mix(in srgb, ${tone} ${isFollowup ? 60 : 45}%, var(--line-1))`,
-                        borderLeft: isTouch ? `2px dashed ${tone}` : `3px solid ${tone}`,
+                        background: isTouch ? "transparent" : solid ? solidBg : isFollowup ? "var(--bg-1)" : `color-mix(in srgb, ${tone} 14%, var(--bg-1))`,
+                        border: isTouch ? `1px dashed color-mix(in srgb, ${tone} 55%, var(--line-2))`
+                          : isFollowup ? `2px dashed ${edge}`
+                          : `1px solid color-mix(in srgb, ${tone} ${solid ? 85 : 45}%, var(--line-1))`,
+                        borderLeft: isTouch ? `2px dashed ${tone}` : isFollowup ? `2px dashed ${edge}` : `3px solid ${tone}`,
                         borderRadius: 5, padding: isFollowup ? "0 6px" : isTouch ? "1px 6px" : "3px 6px",
                         // Feita (histórico): mesma cor do closer, só lavada — dá
                         // pra ler a semana inteira do que aconteceu sem confundir
@@ -804,21 +841,21 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                         display: isFollowup ? "flex" : undefined, alignItems: isFollowup ? "center" : undefined,
                       }}>
                       {isFollowup ? (
-                        <div className="mono" style={{ fontSize: 10, fontWeight: 600, color: "var(--bg-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        <div className="mono" style={{ fontSize: 10, fontWeight: 700, color: edge, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                           {timeStr} · {l.name}
                           {l.callUrl && <a href={l.callUrl} target="_blank" rel="noopener noreferrer" title="Entrar na videochamada" onClick={(e) => e.stopPropagation()} style={{ marginLeft: 4, textDecoration: "none" }}>🎥</a>}
                         </div>
                       ) : (
                         <>
-                          <div className="mono tnum" style={{ fontSize: 9.5, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          <div className="mono tnum" style={{ fontSize: 9.5, color: solid ? "oklch(1 0 0 / 0.85)" : "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                             {isTouch ? `○ ${l.name}` : `${done ? "✓ " : ""}${timeStr}${who ? ` · ${displayName(who).split(" ")[0]}` : ""}${kind === "integração" ? " · int" : kind === "consulta" ? " · 1:1" : ""}`}
                             {!isTouch && (kind === "call" || kind === "consulta") && l.callUrl && (
                               <a href={l.callUrl} target="_blank" rel="noopener noreferrer" title="Entrar na videochamada"
                                 onClick={(e) => e.stopPropagation()} style={{ marginLeft: 4, textDecoration: "none" }}>🎥</a>
                             )}
                           </div>
-                          {!isTouch && <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</div>}
-                          {!isTouch && l.company && <div style={{ fontSize: 10, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.company}</div>}
+                          {!isTouch && <div style={{ fontSize: 11.5, fontWeight: 600, color: solid ? "oklch(1 0 0)" : undefined, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</div>}
+                          {!isTouch && l.company && <div style={{ fontSize: 10, color: solid ? "oklch(1 0 0 / 0.72)" : "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.company}</div>}
                         </>
                       )}
                     </div>
