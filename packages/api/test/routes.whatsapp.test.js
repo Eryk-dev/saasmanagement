@@ -293,6 +293,52 @@ test("webhook: status failed com código de não-entregável marca o número inv
   await app.close();
 });
 
+test("número inválido em lead do SDR: card vai direto pra Desqualificado com motivo sem_whatsapp", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", {
+    id: "leverads", name: "LeverAds",
+    funnel: [
+      { stage: "Novo lead", kind: "novo", conv: 1 },
+      { stage: "Qualificando", kind: "qualificacao", conv: 1 },
+      { stage: "Call agendada", kind: "call", conv: 1 },
+      { stage: "Desqualificado", kind: "desqualificado", conv: 1 },
+    ],
+    lossReasons: [{ id: "sem_whatsapp", label: "Sem WhatsApp" }],
+  });
+  const failed = (id) => ({ entry: [{ changes: [{ field: "messages", value: { statuses: [{ id, status: "failed", errors: [{ code: 131026, title: "Message undeliverable" }] }] } }] }] });
+  const app = await appWith(repo, fakeWa());
+
+  // Lead do SDR sem resposta na conversa: descarta com motivo e nota.
+  await repo.create("leads", { id: "ld1", saas: "leverads", phone: "5541992516545", stage: "Qualificando" });
+  await repo.create("wa_messages", { id: "wamid.OUT1", thread: "5541992516545", leadId: "ld1", direction: "out", status: "sent" });
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: failed("wamid.OUT1") });
+  const lead = await repo.get("leads", "ld1");
+  assert.equal(lead.whatsappInvalid, true);
+  assert.equal(lead.stage, "Desqualificado");
+  assert.equal(lead.lostReason, "sem_whatsapp");
+  assert.match(lead.lostNote, /undeliverable/i);
+  const stages = (await repo.list("activities")).filter((a) => a.lead === "ld1" && a.type === "stage");
+  assert.equal(stages.length, 1, "movimento canônico loga o histórico");
+  assert.equal(stages[0].meta.to, "Desqualificado");
+
+  // Lead que JÁ respondeu na conversa: marca cai, card fica (decisão humana).
+  await repo.create("leads", { id: "ld2", saas: "leverads", phone: "5541988887777", stage: "Qualificando" });
+  await repo.create("wa_threads", { id: "5541988887777", phone: "5541988887777", leadId: "ld2" });
+  await repo.create("wa_messages", { id: "wamid.IN2", thread: "5541988887777", leadId: "ld2", direction: "in", text: "oi", at: "2026-08-23T10:00:00Z" });
+  await repo.create("wa_messages", { id: "wamid.OUT2", thread: "5541988887777", leadId: "ld2", direction: "out", status: "sent" });
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: failed("wamid.OUT2") });
+  const replied = await repo.get("leads", "ld2");
+  assert.equal(replied.whatsappInvalid, true, "a marca cai do mesmo jeito");
+  assert.equal(replied.stage, "Qualificando", "quem já respondeu não é descartado sozinho");
+
+  // Estágio de closer fica intacto (lembrete de call que falhou não descarta).
+  await repo.create("leads", { id: "ld3", saas: "leverads", phone: "5541977776666", stage: "Call agendada", callAt: "2026-08-30T15:00" });
+  await repo.create("wa_messages", { id: "wamid.OUT3", thread: "5541977776666", leadId: "ld3", direction: "out", status: "sent" });
+  await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: failed("wamid.OUT3") });
+  assert.equal((await repo.get("leads", "ld3")).stage, "Call agendada");
+  await app.close();
+});
+
 test("webhook: status failed por RE-ENGAJAMENTO (131047) NÃO marca inválido (número é válido)", async () => {
   const repo = makeMemRepo();
   await repo.create("leads", { id: "ld1", saas: "leverads", phone: "5541992516545" });

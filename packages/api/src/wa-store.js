@@ -7,6 +7,7 @@
 // timeline de activities de propósito: chat ≠ toque de cadência (não re-agenda).
 import { randomUUID } from "node:crypto";
 import { digits } from "./whatsapp.js";
+import { kindOf, firstStage, stageByKind, isWonLead, SDR_KINDS } from "./stages.js";
 
 export const threadId = (phone) => digits(phone);
 
@@ -233,8 +234,37 @@ export async function updateStatus(repo, waMessageId, status, err = "") {
         whatsappInvalidReason: title || `código ${code}`,
         whatsappInvalidAt: new Date().toISOString(),
       });
+      await disqualifyInvalidNumber(repo, lead, title || `código ${code}`);
     }
   }
+}
+
+// Número sem WhatsApp em lead que ainda está com o SDR (novo/contato/
+// qualificação) vira DESQUALIFICADO na hora (Leo, 23/08): sem canal, o card só
+// apodrece na coluna. Guardas: lead que já RESPONDEU na conversa fica (o
+// número funcionou um dia, a decisão é humana), estágio de closer/ganho/No
+// show fica, e o movimento é o canônico (applyStageMove: histórico, motivo
+// sem_whatsapp, encerra a conversa). Nunca lança: descarte não trava o recibo.
+async function disqualifyInvalidNumber(repo, lead, reason) {
+  try {
+    const product = lead.saas ? await repo.get("products", lead.saas) : null;
+    const stage = lead.stage || firstStage(product);
+    if (!SDR_KINDS.has(kindOf(product, stage)) || isWonLead(product, lead)) return;
+    const thread = await findThreadByPhone(repo, lead.waPhone || lead.phone);
+    if (thread) {
+      const msgs = await listMessages(repo, thread.id);
+      if (msgs.some((msg) => msg.direction === "in")) return;
+    }
+    const target = stageByKind(product, "desqualificado");
+    if (!target || target.stage === stage) return;
+    const { applyStageMove } = await import("./lead-flow.js");
+    const movePatch = await applyStageMove(repo, {
+      lead, toStage: target.stage,
+      patch: { lostReason: "sem_whatsapp" },
+      author: "system",
+    });
+    await repo.update("leads", lead.id, { ...movePatch, stage: target.stage, lostNote: String(reason || "") });
+  } catch { /* descarte automático é best-effort */ }
 }
 
 // Opt-out / opt-in de MARKETING no WhatsApp (webhook user_preferences, o "parar

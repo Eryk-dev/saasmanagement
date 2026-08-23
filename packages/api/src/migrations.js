@@ -406,6 +406,25 @@ export async function ensureNoShowReason(repo) {
   return changed;
 }
 
+// "Sem WhatsApp": o descarte automático de número inválido (wa-store) grava
+// lostReason "sem_whatsapp" — o motivo precisa existir na lista do produto pro
+// modal e pros relatórios mostrarem o rótulo. Uma vez por produto que já usa
+// lossReasons (marcador semWhatsappReasonV1 respeita remoção manual).
+export async function ensureSemWhatsappReason(repo) {
+  let changed = 0;
+  for (const product of await repo.list("products")) {
+    if (product.semWhatsappReasonV1) continue;
+    const patch = { semWhatsappReasonV1: true };
+    const reasons = Array.isArray(product.lossReasons) ? product.lossReasons : [];
+    if (reasons.length && !reasons.some((r) => r.id === "sem_whatsapp")) {
+      patch.lossReasons = [...reasons, { id: "sem_whatsapp", label: "Sem WhatsApp" }];
+    }
+    await repo.update("products", product.id, patch);
+    changed++;
+  }
+  return changed;
+}
+
 // Metas de SDR por TAXA (benchmark de SaaS inbound morno) — o alvo é a taxa,
 // que já se normaliza pelo volume de leads (o alvo absoluto de calls sai de
 // leads × taxa na UI). Semeadas como role-scope na coleção goals, uma vez por
@@ -1624,6 +1643,12 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] motivo "não compareceu" verificado em ${n} produto(s)`);
   } catch (err) {
     console.error("[migration] ensureNoShowReason falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureSemWhatsappReason(repo);
+    if (n) console.log(`[migration] motivo "sem WhatsApp" verificado em ${n} produto(s)`);
+  } catch (err) {
+    console.error("[migration] ensureSemWhatsappReason falhou:", err?.message || err);
   }
   try {
     const n = await ensureSdrGoals(repo);
