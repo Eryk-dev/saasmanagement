@@ -668,10 +668,6 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
     font-weight: 700; font-size: 22px; flex: none; font-family: var(--font-display); }
   .lvx-row b { font-size: 15.5px; }
   .lvx-row .lvx-why { font-size: 13px; color: var(--ink-2); display: block; max-width: 46ch; }
-  .lvx-tag { display: inline-block; font-family: var(--font-mono); font-size: 9px; letter-spacing: .11em;
-    text-transform: uppercase; border-radius: 999px; padding: 4px 9px; margin-bottom: 4px;
-    background: color-mix(in oklab, var(--accent) 16%, transparent); color: var(--fg); }
-  .lvx-tag.pend { background: #f6e3b4; color: #6d4a06; }
   .lvx-sel { width: 100%; border: 1px solid var(--line); background: var(--bg); border-radius: 10px;
     padding: 10px 12px; font: 600 14.5px var(--font-display); color: var(--fg); }
   .lvx-note { font-size: 12px; color: var(--ink-3); }
@@ -684,7 +680,18 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .lvx-cur { margin-top: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
     background: color-mix(in oklab, var(--accent) 7%, var(--bg)); font-size: 13.5px; color: var(--ink-2); line-height: 1.45; }
   .lvx-cur b { display: block; font-size: 15px; color: var(--fg); margin-bottom: 2px; }
-  .lvx-cur .lvx-cur-price { display: block; margin-top: 4px; color: var(--fg); font-weight: 600; }
+  /* Precificação separada: uma linha por oferta (anual · Shift+1 · Shift+2). */
+  .lvx-cur .lvx-cur-prices { display: flex; flex-direction: column; margin-top: 8px; }
+  .lvx-cur .lvx-cur-row { display: block; padding: 6px 0; color: var(--fg); font-weight: 600;
+    border-top: 1px solid color-mix(in oklab, var(--accent) 25%, var(--line)); }
+  .lvx-cur .lvx-cur-disc { align-self: flex-start; margin-bottom: 6px; padding: 3px 8px; border-radius: 999px;
+    background: #f6e3b4; color: #6d4a06; font: 700 10px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+  /* Campo do desconto da negociação (máx 15%). */
+  .lvx-disc { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  .lvx-disc input { width: 90px; border: 1px solid var(--line); background: var(--bg); border-radius: 10px;
+    padding: 10px 12px; font: 600 14.5px var(--font-display); color: var(--fg); }
+  .lvx-disc input:focus { outline: none; border-color: var(--accent); box-shadow: var(--glow); }
+  .lvx-disc span { font: 600 14.5px var(--font-display); color: var(--ink-2); }
   .lvx-oneoff { border: 1px solid color-mix(in oklab, var(--accent) 38%, var(--line)); border-radius: 10px;
     background: color-mix(in oklab, var(--accent) 5%, var(--bg)); overflow: hidden; }
   .lvx-oneoff-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px 8px; }
@@ -1709,7 +1716,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       // Retorna a promise: o card do catálogo espera o save antes de recarregar.
       return fetch('/public/proposals/' + encodeURIComponent(P.id), {
         method: 'PATCH', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ k: token, accounts: state.accounts, volume: state.volume, cycle: state.cycle, customPriceCents: state.customPriceCents, validUntil: state.validUntil, frozen: true, company: DATA.lead.company, name: DATA.lead.name, niche: DATA.answers.niche, cloneCount: state.cloneCount, newPerMonth: state.newPerMonth, product: state.product, pain: state.pain, oem: state.oem, oemCota: state.oemCota, deckOrder: state.deckOrder, dores: (state.dores || []).map(function (d) { return d == null ? '' : String(d); }) })
+        body: JSON.stringify({ k: token, accounts: state.accounts, volume: state.volume, cycle: state.cycle, customPriceCents: state.customPriceCents, validUntil: state.validUntil, frozen: true, company: DATA.lead.company, name: DATA.lead.name, niche: DATA.answers.niche, cloneCount: state.cloneCount, newPerMonth: state.newPerMonth, product: state.product, pain: state.pain, oem: state.oem, oemCota: state.oemCota, deckOrder: state.deckOrder, discountPct: Number(state.discountPct) || 0, dores: (state.dores || []).map(function (d) { return d == null ? '' : String(d); }) })
       }).then(function (r) { if (!r.ok) throw new Error('falha'); return r.json(); })
         .then(function () { flash('salvo ✓', 'ok'); setTimeout(function () { tag.className = 'save-tag'; }, 1600); })
         .catch(function () { flash('✕ erro ao salvar', 'err'); });
@@ -1973,6 +1980,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         if (state.product == null) state.product = CAT.product;
         if (state.deckOrder == null) state.deckOrder = CAT.deckOrder === 'B' ? 'B' : '';
         if (!Array.isArray(state.dores)) state.dores = [];
+        if (state.discountPct == null) state.discountPct = CAT.discountPct || 0;
         var card = el('div', 'lvx-card');
         // Colunas com peso parelho: régua+dor+dores anotadas · roteiro+
         // consulta rápida · decisão/oferta. As dores moram na coluna da dor do
@@ -2006,19 +2014,21 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
               '<button type="button" data-order="B">B <i>beta</i></button>' +
             '</div>' +
             '<span class="lvx-note" id="lvxOrderNote" style="display:block;margin-top:6px"></span></div>' +
-          '<div><span class="lvx-tag" id="lvxTag"></span><b id="lvxSug" style="display:block;font-size:15px"></b>' +
-            '<span style="font-size:12px;color:var(--ink-2)" id="lvxPr"></span></div>' +
+          // O produto sugerido é marcado direto na opção do select (tag no
+          // nome), sem bloco próprio em cima: menos coisa na frente do closer.
           '<div><span class="lvx-h">Apresentar</span>' +
             '<select class="lvx-sel" id="lvxSel" style="margin-top:6px">' +
-              prodKeys.map(function (kk) { return '<option value="' + kk + '">' + esc(CAT.names[kk]) + '</option>'; }).join('') +
+              prodKeys.map(function (kk) { return '<option value="' + kk + '">' + esc(CAT.names[kk]) + (kk === CAT.suggested ? ' · sugerido pela régua' : '') + '</option>'; }).join('') +
             '</select><button class="lvx-back" id="lvxBack" type="button">↩ voltar pra sugestão da régua</button>' +
-            '<div class="lvx-cur" id="lvxCur"></div>' +
-            '<div class="lvx-note" style="margin-top:6px">Mudou contas, anúncios ou nicho? O deck já troca sozinho pra apresentação sugerida. Escolher aqui força um produto até a próxima mudança de dados.</div></div>' +
+            '<div class="lvx-cur" id="lvxCur"></div></div>' +
+          '<div><span class="lvx-h">Desconto na negociação · até 15%</span>' +
+            '<div class="lvx-disc"><input type="number" id="lvxDisc" min="0" max="15" step="1" inputmode="numeric" placeholder="0" value="' + (Number(state.discountPct) || '') + '"><span>%</span></div>' +
+            '<span class="lvx-note" style="display:block;margin-top:6px">Desconta na hora dos valores e parcelas do produto apresentado. Máximo 15%.</span></div>' +
           // Leque do OEM avulso: só aparece quando o produto apresentado é o
           // OEM; a régua abre no nível do porte e o closer troca aqui.
           '<div id="lvxCotaRow" style="display:none"><span class="lvx-h">Cota OEM · anúncios por mês</span>' +
             '<select class="lvx-sel" id="lvxCota" style="margin-top:6px">' +
-              (CAT.oemLevels || []).map(function (l) { return '<option value="' + l.cota + '">' + l.cota + '/mês — ' + esc(l.short) + '</option>'; }).join('') +
+              (CAT.oemLevels || []).map(function (l) { return '<option value="' + l.cota + '">' + l.cota + '/mês · ' + esc(l.short) + '</option>'; }).join('') +
             '</select>' +
             '<div class="lvx-note" style="margin-top:6px">Muda a cota e o preço do deck do OEM avulso. Sem mexer, vale o nível do porte da régua.</div></div>' +
           '</div>' +
@@ -2035,6 +2045,16 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         goHost = side;
 
         var catGet = function (id) { return card.querySelector('#' + id); };
+        // Desconto da negociação (máx 15%): recalcula na tela os R$ e o valor
+        // das parcelas das linhas de preço; contagem de parcelas e cotas ficam.
+        function discBR(v) { return String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+        function discLine(line, pct) {
+          if (!pct) return line;
+          var f = (100 - pct) / 100;
+          return String(line)
+            .replace(/(\d+)x (\d[\d.]*)/g, function (m, k, v) { return k + 'x ' + discBR(Number(v.replace(/\./g, '')) * f); })
+            .replace(/R\$ (\d[\d.]*)/g, function (m, v) { return 'R$ ' + discBR(Number(v.replace(/\./g, '')) * f); });
+        }
         // Dores anotadas pelo closer durante o diagnóstico: 3 campos fixos +
         // botão de acrescentar. Persistem no state (proposta real) ou na query
         // (preview); o Recap do roteiro fica fixo, sem espelhar o que é digitado.
@@ -2078,15 +2098,17 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           catGet('lvxW').textContent = state.accounts + ' conta(s) × ' + state.volume + ' anúncios.' + (CAT.low ? ' Entra no Parcial.' : ' Perfil de FULL.');
           catGet('lvxM').innerHTML = mtxHtml();
           catGet('lvxPain').value = CAT.pains[state.pain] ? state.pain : 'none';
-          var tagEl = catGet('lvxTag');
-          tagEl.className = 'lvx-tag';
-          tagEl.textContent = 'Sugerido pela régua';
-          catGet('lvxSug').textContent = CAT.names[CAT.suggested] || CAT.suggested;
-          catGet('lvxPr').textContent = CAT.priceLines[CAT.suggested] || '';
           var shown = state.product || CAT.suggested;
           catGet('lvxSel').value = shown;
+          // Precificação separada em linhas (anual · Shift+1 · Shift+2), com o
+          // desconto da negociação já aplicado nos R$ e nas parcelas.
+          var pct = Math.min(15, Math.max(0, Math.round(Number(state.discountPct) || 0)));
+          var priceRows = String(CAT.priceLines[shown] || '').split(' · ').filter(Boolean);
           catGet('lvxCur').innerHTML = '<b>' + esc(CAT.names[shown] || shown) + '</b>' + esc(CAT.offerLines[shown] || '') +
-            '<span class="lvx-cur-price">' + esc(CAT.priceLines[shown] || '') + '</span>';
+            '<span class="lvx-cur-prices">' +
+              (pct ? '<span class="lvx-cur-disc">valores com ' + pct + '% de desconto</span>' : '') +
+              priceRows.map(function (r) { return '<span class="lvx-cur-row">' + esc(discLine(r, pct)) + '</span>'; }).join('') +
+            '</span>';
           catGet('lvxBack').className = 'lvx-back' + (state.product && state.product !== CAT.suggested ? ' show' : '');
           renderScript();
           var cotaOn = shown === 'oem' && (CAT.oemLevels || []).length;
@@ -2169,6 +2191,15 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           // roteiro nem mexe no produto/preço, então o deck nunca remonta.
           state.pain = this.value;
           catRemember('pain', this.value === 'none' ? '' : this.value);
+        });
+        // Desconto: clampa em 0..15, aplica na hora nos valores e salva.
+        catGet('lvxDisc').addEventListener('input', function () {
+          var v = Math.round(Number(this.value));
+          if (!isFinite(v) || v < 0) v = 0;
+          if (v > 15) { v = 15; this.value = '15'; }
+          state.discountPct = v;
+          catRemember('desc', v ? String(v) : '');
+          syncCat();
         });
         // Dado que muda a régua (contas/anúncios/nicho) solta o override e
         // recarrega já no produto sugerido. change (não input): o nicho digitado
