@@ -2000,7 +2000,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
             '<select class="lvx-sel" id="lvxPain" style="margin-top:6px">' +
               painKeys.map(function (kk) { return '<option value="' + kk + '">' + (kk === 'none' ? '' : '[' + kk + '] ') + esc(CAT.pains[kk].label) + '</option>'; }).join('') +
             '</select></div>' +
-          '<div class="lvx-dores"><div class="lvx-script-head"><span class="lvx-h">Dores do lead · com número</span>' +
+          '<div class="lvx-dores" id="lvxDores"><div class="lvx-script-head"><span class="lvx-h">Dores do lead · com número</span>' +
             '<button class="lvx-dor-add" id="lvxDorAdd" type="button">+ adicionar dor</button></div>' +
             '<div id="lvxDorList"></div>' +
             '<span class="lvx-note">Preencha durante o diagnóstico. Ficam salvas com a proposta.</span></div>' +
@@ -2134,6 +2134,10 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           catGet('lvxOrderNote').textContent = isB
             ? 'Beta: a apresentação é só esta tela de setup, sem os slides. O link do cliente segue com o deck completo.'
             : 'Ordem de sempre: capa, história, marcas, sobre nós, 3 etapas, impacto e investimento.';
+          // Roteiro e dores são ferramenta da apresentação B (a call é tocada
+          // desta tela); na A o closer apresenta pelos slides e a tela fica limpa.
+          catGet('lvxScript').style.display = isB ? '' : 'none';
+          catGet('lvxDores').style.display = isB ? '' : 'none';
         }
         // Recarrega com o deck do produto certo. Proposta real: salva e recarrega;
         // preview (demo): as escolhas viajam na query string.
@@ -2177,6 +2181,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         // com o foco fora de campo/botão; nos slides o espaço segue rolando.
         document.addEventListener('keydown', function (ev) {
           if (ev.code !== 'Space') return;
+          if (state.deckOrder !== 'B') return; // roteiro só existe na apresentação B
           var t = ev.target;
           if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.tagName === 'BUTTON' || t.isContentEditable)) return;
           var r = sec.getBoundingClientRect();
