@@ -337,14 +337,14 @@ Regras: escreva PRA FAMÍLIA (segunda pessoa, "vocês"), tom acolhedor e prátic
 const SDR_DECIDE_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["acao", "mensagem", "horario", "email", "motivoHumano"],
+  required: ["acao", "mensagens", "horario", "email", "motivoHumano"],
   properties: {
     acao: {
       type: "string",
       enum: ["responder", "agendar", "remarcar", "humano", "silencio"],
       description: "responder = mandar a mensagem e seguir a conversa; agendar = o lead topou um horário da lista; remarcar = mudar a call já marcada pra um horário da lista; humano = precisa de gente (a mensagem vira frase de transição curta, pode ser vazia); silencio = não responder nada",
     },
-    mensagem: { type: "string", description: "A resposta pro lead no WhatsApp (curta, no tom da casa). Vazia em agendar, remarcar e silencio (a confirmação de agendamento o sistema manda sozinho)." },
+    mensagens: { type: "array", maxItems: 3, items: { type: "string" }, description: "As mensagens a enviar, EM SEQUÊNCIA, como gente digitando: 1 item curto quando a resposta é direta; quebre em 2 ou 3 itens curtos quando o conteúdo pedir mais (nunca um textão único). Lista vazia em agendar, remarcar e silencio (a confirmação de agendamento o sistema manda sozinho)." },
     horario: { type: "string", description: "Em agendar/remarcar: o horário escolhido EXATAMENTE como está na lista de HORÁRIOS LIVRES (YYYY-MM-DDTHH:MM). Vazio nas outras ações. NUNCA invente horário fora da lista." },
     email: { type: "string", description: "E-mail do lead, se apareceu nesta mensagem dele; senão vazio." },
     motivoHumano: { type: "string", description: "Em humano: por que precisa de gente, 1 frase. Vazio nas outras ações." },
@@ -357,7 +357,7 @@ const SDR_DECIDE_SYSTEM = `Você é SDR da LeverAds no WhatsApp comercial, respo
 SEU ÚNICO OBJETIVO: levar o lead até a call agendada com o especialista, que faz uma DEMONSTRAÇÃO ao vivo da ferramenta funcionando na prática. IMPORTANTE: a gente NÃO entra nem acessa as contas do lead; a call demonstra a ferramenta. Todo caminho termina em call marcada.
 FOCO PELA ORIGEM: o contexto traz a DOR DO ANÚNCIO que trouxe o lead. Dores A a E são da GESTÃO MULTI-CONTAS: conduza a conversa SÓ pelo pitch oficial multi-contas, sem puxar o OEM. Dor OEM: conduza SÓ pelo pitch oficial OEM (part number → anúncio completo pra revisar e publicar em menos de 5 minutos) e pela demonstração desse fluxo, sem empurrar a gestão multi-contas. Sem dor registrada: apresentação geral com o pitch multi-contas. Se o LEAD puxar o outro assunto por conta própria, responda normalmente.
 
-TOM (do histórico real do time): mensagens CURTAS (2 a 4 frases), UMA pergunta por vez, caloroso sem emoji ("Oiii", "Maravilha", "Perfeito", "Combinado", exclamação com moderação). Espelhe o registro do lead. Valide antes de redirecionar ("Entendo perfeitamente..."). NUNCA use travessão (—); use vírgula ou parênteses. Não repita saudação em conversa já aberta. Evite flexionar gênero sobre você (prefira "aqui da LeverAds", "a gente").
+TOM (do histórico real do time): mensagens CURTAS (1 a 3 frases cada), UMA pergunta por vez; resposta direta = UMA mensagem só, conteúdo maior = quebrado em 2 a 3 mensagens da lista (nunca textão único), caloroso sem emoji ("Oiii", "Maravilha", "Perfeito", "Combinado", exclamação com moderação). Espelhe o registro do lead. Valide antes de redirecionar ("Entendo perfeitamente..."). NUNCA use travessão (—); use vírgula ou parênteses. Não repita saudação em conversa já aberta. Evite flexionar gênero sobre você (prefira "aqui da LeverAds", "a gente").
 
 COMO TRATAR O QUE APARECE (padrões que comprovadamente viram call):
 - Preço/valor/plano: NUNCA fale número, faixa, "a partir de", desconto ou forma de pagamento. Resposta OFICIAL (copy do Leo): o investimento é de acordo com as necessidades da operação, primeiro a gente entende o cenário e aí mostra os pontos que dá pra alavancar, e é isso que o especialista faz na demonstração. NÃO cole oferta de horário nessa resposta se os horários já foram oferecidos antes.
@@ -762,9 +762,11 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
     ].filter(Boolean).join("\n");
     const r = await requestJson(context, { system: SDR_DECIDE_SYSTEM, schema: SDR_DECIDE_SCHEMA, schemaName: "sdr_decision" });
     const p = r.parsed || {};
+    const mensagens = (Array.isArray(p.mensagens) ? p.mensagens : [p.mensagem]).map((m) => String(m || "").trim()).filter(Boolean).slice(0, 3);
     return {
       acao: ["responder", "agendar", "remarcar", "humano", "silencio"].includes(p.acao) ? p.acao : "humano",
-      mensagem: String(p.mensagem || ""),
+      mensagens,
+      mensagem: mensagens.join("\n"),
       horario: String(p.horario || ""),
       email: String(p.email || ""),
       motivoHumano: String(p.motivoHumano || ""),

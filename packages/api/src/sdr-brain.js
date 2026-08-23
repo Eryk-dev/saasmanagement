@@ -60,13 +60,11 @@ function priceDeferral(nome) {
   return `${oi} investimento é de acordo com as necessidades da sua operação: primeiro a gente entende o seu cenário, e aí te mostra os pontos que dá pra alavancar. É exatamente isso que o especialista faz na demonstração.`;
 }
 
-// Confirmação de agendamento: SEMPRE a copy comprovada (a mensagem da IA é
-// ignorada no agendar) — vende a call no formato que fecha e puxa o sócio.
-function bookingConfirmText(nome, quando, askEmail) {
-  const base = `Fechado${nome ? `, ${nome}` : ""}! Nossa call fica ${quando} então. Nosso especialista vai te fazer uma demonstração ao vivo, com a ferramenta clonando anúncios na prática. Se tiver sócio ou alguém que decida junto, traz pra call que a conversa rende mais.`;
-  return askEmail
-    ? `${base} Me passa teu melhor e-mail que eu te mando o convite da call por lá?`
-    : `${base} Te mando o lembrete por aqui um pouco antes!`;
+// Confirmação de agendamento ENXUTA (Leo, 23/08): sem re-descrever a
+// demonstração (a conversa já falou dela) e sem pedir e-mail (vem do form).
+// Fica o combinado por escrito + o sócio/decisor + o aviso de lembrete.
+function bookingConfirmText(nome, quando) {
+  return `Fechado${nome ? `, ${nome}` : ""}! Nossa call fica ${quando} então. Se tiver sócio ou alguém que decida junto, traz pra call que a conversa rende mais. Te mando o lembrete por aqui um pouco antes!`;
 }
 
 function reofferText(nome, slots, wnow) {
@@ -101,7 +99,7 @@ export async function bookCall(repo, { lead, product, at, closer, author = SDR_A
   return repo.update("leads", lead.id, { ...patchExtra, ...moved, callAt: at, closer });
 }
 
-export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = null, transcriber = defaultTranscriber, log = console, now = () => new Date(), replyDelayMs = 6000, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = null, transcriber = defaultTranscriber, log = console, now = () => new Date(), replyDelayMs = 6000, partDelayMs = 5000, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   // ÁUDIO do lead: 13% das mensagens recebidas (mineração) — sem isso, todo
   // áudio viraria handoff. Transcreve a nota de voz (cache wa_media primeiro,
   // Graph depois) e grava o texto NA mensagem (campo transcript), então a
@@ -255,9 +253,15 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
 
     const phoneId = thread.waPhoneId || product.waPhoneId || undefined;
     const to = thread.phone || digits(lead.waPhone || lead.phone);
-    const send = async (text) => {
-      await sleep(replyDelayMs);
-      return sendBot({ phone: to, text: String(text).slice(0, 900), phoneId, saas: product.id, leadId: lead.id });
+    // Envio em PARTES, como gente digitando (Leo, 23/08): a 1ª mensagem sai
+    // depois do atraso de resposta; as seguintes com 5s entre cada uma.
+    const send = async (textOrParts) => {
+      const parts = (Array.isArray(textOrParts) ? textOrParts : [textOrParts])
+        .map((t) => String(t || "").trim()).filter(Boolean).slice(0, 3);
+      for (let i = 0; i < parts.length; i++) {
+        await sleep(i === 0 ? replyDelayMs : partDelayMs);
+        await sendBot({ phone: to, text: parts[i].slice(0, 900), phoneId, saas: product.id, leadId: lead.id });
+      }
     };
 
     // E-mail capturado na mensagem entra no cadastro (o convite do Meet usa).
@@ -270,7 +274,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     if (decision.acao === "humano") {
       await raiseAlert(repo, thread, { text: `SDR IA pediu humano: ${decision.motivoHumano || "precisa de gente"} · "${String(message?.text || "").slice(0, 140)}"` });
       await stamp(lead, { handoffAt: new Date(nowMs).toISOString() });
-      const transition = String(decision.mensagem || "").trim();
+      const transition = ((Array.isArray(decision.mensagens) && decision.mensagens[0]) || String(decision.mensagem || "")).trim();
       if (transition && !PRICE_RX.test(transition) && transition.length <= 240) await send(transition);
       return "humano";
     }
@@ -285,20 +289,21 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       }
       const fresh = await repo.get("leads", lead.id);
       await bookCall(repo, { lead: fresh || lead, product, at: pick.at, closer: pick.closer, now: at });
-      await send(bookingConfirmText(nome, slotLabel(pick.at, wnow), !lead.email));
+      await send(bookingConfirmText(nome, slotLabel(pick.at, wnow)));
       if (autoCallMeet) autoCallMeet(lead.id).catch(() => { /* o lembrete de 10min entrega o link quando existir */ });
       return decision.acao;
     }
 
-    // responder — com a trava de preço na frente de tudo.
-    let text = String(decision.mensagem || "").trim();
-    if (!text) return "silencio";
-    if (PRICE_RX.test(text)) {
+    // responder — com a trava de preço na frente de tudo, sobre o conjunto.
+    const parts = (Array.isArray(decision.mensagens) && decision.mensagens.length
+      ? decision.mensagens : [decision.mensagem]).map((t) => String(t || "").trim()).filter(Boolean);
+    if (!parts.length) return "silencio";
+    if (PRICE_RX.test(parts.join(" "))) {
       await send(priceDeferral(nome));
       await stamp(lead, { priceGuardAt: new Date(nowMs).toISOString() });
       return "preco-travado";
     }
-    await send(text);
+    await send(parts);
     return "responder";
   }
 
