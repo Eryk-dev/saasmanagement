@@ -177,7 +177,16 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     const kind = kindOf(product, lead.stage || firstStage(product));
     if (!BRAIN_KINDS.has(kind)) return null;
 
+    // DEBOUNCE DE RAJADA (Leo, 23/08): espera o lead terminar de digitar. Ao
+    // acordar, se chegou mensagem MAIS NOVA que a que disparou esta decisão,
+    // aborta — o disparo da última mensagem é quem responde, lendo a rajada
+    // inteira e compilando um retorno só.
+    if (cfg.debounceSec > 0) await sleep(cfg.debounceSec * 1000);
     const msgs = await listMessages(repo, thread.id);
+    if (message?.id) {
+      const lastIn = [...msgs].reverse().find((m) => m.direction === "in");
+      if (lastIn && lastIn.id !== message.id) return "superseded";
+    }
     const humanIds = new Set((await repo.list("users")).map((u) => u.id));
     const nowMs = at.getTime();
     const lastHumanOut = [...msgs].reverse().find((m) => m.direction === "out" && humanIds.has(m.author));

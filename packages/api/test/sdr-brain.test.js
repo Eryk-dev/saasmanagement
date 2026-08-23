@@ -345,3 +345,24 @@ test("convite de demonstração não se repete: a IA recebe o aviso quando ele j
   await brainOf(repo2, f2).handleInbound(INBOUND);
   assert.equal(f2.calls[0].demoOffered, false);
 });
+
+test("rajada de mensagens: só o disparo da ÚLTIMA responde, lendo a conversa inteira", async () => {
+  const repo = await world({
+    messages: [
+      { direction: "in", text: "olá", at: ISO("2026-08-19T12:58:50Z") },
+      { direction: "in", text: "me ajudaria sim", at: ISO("2026-08-19T12:59:00Z") },
+    ],
+  });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Que bom! Quer ver funcionando ao vivo?" }] });
+  const brain = brainOf(repo, fakes);
+  // O disparo da PRIMEIRA mensagem acorda do debounce e vê que chegou mais nova: aborta.
+  assert.equal(await brain.handleInbound({ message: { from: "5541999990000", text: "olá", id: "m1" } }), "superseded");
+  assert.equal(fakes.calls.length, 0);
+  // O disparo da ÚLTIMA responde, com a rajada inteira no contexto.
+  assert.equal(await brain.handleInbound({ message: { from: "5541999990000", text: "me ajudaria sim", id: "m2" } }), "responder");
+  assert.equal(fakes.calls.length, 1);
+  assert.equal(fakes.sent.length, 1);
+  const convo = fakes.calls[0].conversation;
+  assert.equal(convo.at(-2).text, "olá");
+  assert.equal(convo.at(-1).text, "me ajudaria sim");
+});

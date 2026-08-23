@@ -62,6 +62,10 @@ export function sdrBotConfig(product) {
     // sem sujar métrica (lead interno segue fora do isRealLead).
     conversationTest: cfg.conversationTest === true,
     firstTouchDelayMin: num(cfg.firstTouchDelayMin, 3), // "um humano viu" > resposta em 2s
+    // Debounce de RAJADA (Leo, 23/08): ao receber mensagem, o cérebro espera
+    // esse tempo; chegou outra no meio, só a última responde, compilando a
+    // rajada inteira numa resposta só.
+    debounceSec: num(cfg.debounceSec, 20),
     freshHours: num(cfg.freshHours, 24),                // lead mais velho que isso é fila humana
     templates: {
       // 1º toque escolhido pela DOR DE ORIGEM; o v2 genérico é o fallback
