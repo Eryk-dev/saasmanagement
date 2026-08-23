@@ -129,12 +129,19 @@ export function leadDigest(product, lead) {
 // ângulo que trouxe o lead + "isso ajudaria na sua operação?" — sem oferecer
 // horário na abertura; a agenda entra na resposta seguinte, pelo cérebro,
 // quando o lead engaja.
-export function firstTouchText({ nome, sdrName, resumo, pain = null }) {
+// Lead de AUTOPEÇAS que veio por dor de gestão (A-E) ouve a clonagem E o OEM
+// junto (Leo, 23/08): o OEM entra como segundo benefício, sem virar o assunto.
+export const isAutoPecas = (niche) => /auto\s*pe[çc]/i.test(String(niche || ""));
+
+export function firstTouchText({ nome, sdrName, resumo, pain = null, niche = "" }) {
   const oi = nome ? `Oiii, ${nome}.` : "Oiii.";
   const eu = sdrName ? `${sdrName} falando, da LeverAds.` : "Aqui é da LeverAds.";
+  const oemSide = pain?.mode !== "oem" && isAutoPecas(niche)
+    ? " E pra autopeças, ela ainda cria o anúncio completo só com o código OEM: fotos, título, descrição e compatibilidade."
+    : "";
   const pitch = pain?.mode === "oem"
     ? "A LeverAds cria o anúncio completo da sua autopeça só com o OEM (part number): fotos, título de 200 caracteres, descrição e compatibilidade inteira, pronto pra revisar e publicar em menos de 5 minutos. Isso ajudaria na sua operação?"
-    : "A LeverAds te ajuda a gerenciar múltiplas contas de Mercado Livre e Shopee de forma automática, com clonagem de anúncios, estoque, atendimento e edição em um lugar só. Isso ajudaria na sua operação hoje?";
+    : `A LeverAds te ajuda a gerenciar múltiplas contas de Mercado Livre e Shopee de forma automática, com clonagem de anúncios, estoque, atendimento e edição em um lugar só.${oemSide} Isso ajudaria na sua operação hoje?`;
   return `${oi} ${eu} Recebi seu diagnóstico aqui: ${resumo}. ${pitch}`;
 }
 
@@ -288,7 +295,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
           try {
             let via;
             if (windowOpen) {
-              await sendText({ phone: to, text: firstTouchText({ nome, sdrName, resumo, pain }), phoneId, saas: product.id, leadId: lead.id });
+              await sendText({ phone: to, text: firstTouchText({ nome, sdrName, resumo, pain, niche: lead.niche }), phoneId, saas: product.id, leadId: lead.id });
               via = "text";
             } else {
               const names = await approvedNames();
