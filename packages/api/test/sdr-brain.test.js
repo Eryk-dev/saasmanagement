@@ -4,10 +4,11 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 import { makeSdrBrain, bookCall } from "../src/sdr-brain.js";
 
 // Relógio dos testes: quarta 19/08/2026, 10h BRT (13h UTC). Com o closer livre
-// e aviso mínimo de 2h, o primeiro horário livre é 12:00 do próprio dia.
+// e aviso mínimo de 2h, o primeiro horário OFERTÁVEL é 13:00 do próprio dia
+// (12:00-13:00 é o almoço bloqueado na janela de oferta do robô).
 const NOW = new Date("2026-08-19T13:00:00Z");
 const ISO = (s) => new Date(s).toISOString();
-const SLOT1 = "2026-08-19T12:00";
+const SLOT1 = "2026-08-19T13:00";
 
 const FUNNEL = [
   { stage: "Novo lead", kind: "novo" },
@@ -121,7 +122,7 @@ test("agendar com horário da lista: card vai pra etapa de call pelo caminho can
   assert.equal(stageActs.length, 1);
   assert.equal(stageActs[0].meta.to, "Call agendada");
   // Confirmação é a copy comprovada (vende a call + pede o e-mail que falta).
-  assert.match(fakes.sent[0].text, /Fechado, Rafael! Nossa call fica hoje às 12h/);
+  assert.match(fakes.sent[0].text, /Fechado, Rafael! Nossa call fica hoje às 13h/);
   assert.match(fakes.sent[0].text, /demonstração ao vivo/);
   assert.ok(!/entrar nas suas contas/.test(fakes.sent[0].text), "a gente não entra nas contas do lead");
   assert.match(fakes.sent[0].text, /sócio/);
@@ -137,7 +138,7 @@ test("agendar com horário INVENTADO: nada é marcado, re-oferta determinística
   const lead = await repo.get("leads", "L1");
   assert.equal(lead.stage, "Qualificando");
   assert.equal(lead.callAt || "", "");
-  assert.match(fakes.sent[0].text, /hoje às 12h/);
+  assert.match(fakes.sent[0].text, /hoje às 13h/);
 });
 
 test("humano: alerta quente + transição curta, e o robô fica calado até gente falar", async () => {
@@ -198,7 +199,7 @@ test("remarcar: callAt antigo já passado vai pro histórico e o GPS segue o hor
   assert.equal(lead.stage, "Call agendada");
   assert.equal(lead.callConfirmed, false, "confirmação é do horário novo");
   assert.deepEqual(lead.callHistory, [{ at: "2026-08-18T10:00", closer: "pl" }]);
-  assert.equal(lead.nextActionAt, new Date("2026-08-19T12:00:00-03:00").toISOString());
+  assert.equal(lead.nextActionAt, new Date("2026-08-19T13:00:00-03:00").toISOString());
 });
 
 test("lead fora da região do SDR (ganho) ou com opt-out: o cérebro não age", async () => {

@@ -37,7 +37,7 @@ test("replay: roda as conversas reais, conta as ações e grava o relatório em 
   const repo = await seed();
   const decisions = [
     { acao: "responder", mensagem: "Consigo te mostrar ao vivo, qual período?" },
-    { acao: "agendar", mensagem: "", horario: "2026-08-19T12:00" }, // 1º slot real do closer livre
+    { acao: "agendar", mensagem: "", horario: "2026-08-19T13:00" }, // 1º slot ofertável (12h-13h é almoço)
     { acao: "responder", mensagem: "custa R$ 300" },                // cairia na trava de preço
   ];
   let i = 0;

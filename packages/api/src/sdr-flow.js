@@ -30,7 +30,7 @@ import { kindOf, firstStage, isNoShowStage, isWonLead } from "./stages.js";
 import { brtToIso } from "./lead-flow.js";
 import { resolveWabaId } from "./wa-health.js";
 import { raiseAlert } from "./wa-call-flow.js";
-import { slotsForLead, slotLabel, wallNow, OFFER_HOURS } from "./agenda-slots.js";
+import { slotsForLead, slotLabel, wallNow, spreadPair, OFFER_HOURS } from "./agenda-slots.js";
 import { SDR_TEMPLATES } from "./sdr-templates.leverads.js";
 
 export const SDR_AUTHOR = "sdr-bot";
@@ -381,8 +381,8 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
           try {
             let via = "text";
             if (windowOpen) {
-              const { slots } = await slotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 2, ...OFFER_HOURS });
-              await sendText({ phone: to, text: rescueText({ nome, slots, now: wnow }), phoneId, saas: product.id, leadId: lead.id });
+              const { slots } = await slotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 8, ...OFFER_HOURS });
+              await sendText({ phone: to, text: rescueText({ nome, slots: spreadPair(slots), now: wnow }), phoneId, saas: product.id, leadId: lead.id });
             } else {
               const names = await approvedNames();
               if (names.has(cfg.templates.rescue)) {
