@@ -204,7 +204,9 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
                 // teto diário) e nunca lança.
                 try {
                   const brain = getSdrBrain();
-                  if (brain) brain.handleInbound({ message: { from: m.from, text: bodyOf(m) } }).catch((err) => req.log?.warn?.({ err: err.message }, "sdr-brain falhou"));
+                  // O id da mensagem vai junto: é ele que deixa o debounce de
+                  // rajada saber se este disparo ainda é o mais novo.
+                  if (brain) brain.handleInbound({ message: { from: m.from, text: bodyOf(m), id: m.id } }).catch((err) => req.log?.warn?.({ err: err.message }, "sdr-brain falhou"));
                 } catch { /* nunca derruba a entrega do webhook */ }
               }
             }
