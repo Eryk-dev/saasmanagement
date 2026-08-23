@@ -235,8 +235,8 @@ export function AgendaScreen({ onOpenLead }) {
             </span>
           ))}
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: 4, height: 12, borderRadius: 2, background: "var(--accent)" }} />
-            barrinha = responsável
+            <span style={{ width: 10, height: 13, borderRadius: 3, background: "var(--accent)" }} />
+            faixa = responsável
           </span>
           <span>✓ lavada = já aconteceu</span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
