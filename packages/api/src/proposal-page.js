@@ -2047,13 +2047,13 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         var catGet = function (id) { return card.querySelector('#' + id); };
         // Desconto da negociação (máx 15%): recalcula na tela os R$ e o valor
         // das parcelas das linhas de preço; contagem de parcelas e cotas ficam.
-        function discBR(v) { return String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+        function discBR(v) { return String(Math.round(v)).replace(/\\B(?=(\\d{3})+(?!\\d))/g, '.'); }
         function discLine(line, pct) {
           if (!pct) return line;
           var f = (100 - pct) / 100;
           return String(line)
-            .replace(/(\d+)x (\d[\d.]*)/g, function (m, k, v) { return k + 'x ' + discBR(Number(v.replace(/\./g, '')) * f); })
-            .replace(/R\$ (\d[\d.]*)/g, function (m, v) { return 'R$ ' + discBR(Number(v.replace(/\./g, '')) * f); });
+            .replace(/(\\d+)x (\\d[\\d.]*)/g, function (m, k, v) { return k + 'x ' + discBR(Number(v.replace(/\\./g, '')) * f); })
+            .replace(/R\\$ (\\d[\\d.]*)/g, function (m, v) { return 'R$ ' + discBR(Number(v.replace(/\\./g, '')) * f); });
         }
         // Dores anotadas pelo closer durante o diagnóstico: 3 campos fixos +
         // botão de acrescentar. Persistem no state (proposta real) ou na query
