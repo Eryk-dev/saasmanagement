@@ -55,17 +55,17 @@ export const SDR_TEMPLATES = [
     example: ["Rafael", "amanhã às 10h"],
   },
   {
-    name: "sdr_lembrete_call",
+    name: "sdr_lembrete_conversa",
     category: "UTILITY",
     language: "pt_BR",
-    body: "Oi {{1}}! Está tudo certo pra nossa call {{2}}? Nosso especialista vai estar te esperando pra te mostrar como escalar sua operação nos marketplaces. Te espero lá!",
+    body: "Oi {{1}}! Está tudo certo pra nossa conversa {{2}}? Nosso especialista vai estar te esperando pra te mostrar como escalar sua operação nos marketplaces. Te espero lá!",
     example: ["Rafael", "hoje às 14h"],
   },
   {
-    name: "sdr_resgate_noshow",
+    name: "sdr_resgate_conversa",
     category: "UTILITY",
     language: "pt_BR",
-    body: "Oi {{1}}, passei na nossa call no horário e não te encontrei, acontece! Quer que eu remarque? Me diz um horário que fica bom pra você que eu já reservo.",
+    body: "Oi {{1}}, passei no nosso horário marcado e não te encontrei, acontece! Quer que eu remarque? Me diz um horário que fica bom pra você que eu já reservo.",
     example: ["Rafael"],
   },
 ];

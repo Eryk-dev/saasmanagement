@@ -123,7 +123,7 @@ test("agendar com horário da lista: card vai pra etapa de call pelo caminho can
   assert.equal(stageActs[0].meta.to, "Call agendada");
   // Confirmação enxuta (Leo, 23/08): combinado + sócio + lembrete, sem
   // re-descrever a demo e sem pedir e-mail.
-  assert.match(fakes.sent[0].text, /Fechado, Rafael! Nossa call fica hoje às 13h/);
+  assert.match(fakes.sent[0].text, /Fechado, Rafael! Nossa conversa fica hoje às 13h/);
   assert.ok(!/entrar nas suas contas/.test(fakes.sent[0].text), "a gente não entra nas contas do lead");
   assert.match(fakes.sent[0].text, /sócio/);
   assert.deepEqual(fakes.meets, ["L1"]);
@@ -413,7 +413,8 @@ test("confirmação de agendamento enxuta: sem re-descrever a demo e sem pedir e
   const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: SLOT1 }] });
   await brainOf(repo, fakes).handleInbound(INBOUND);
   const text = fakes.sent[0].text;
-  assert.match(text, /Fechado, Rafael! Nossa call fica hoje às 13h/);
+  assert.match(text, /Fechado, Rafael! Nossa conversa fica hoje às 13h/);
+  assert.ok(!/\bcall\b/i.test(text), "a palavra call nunca chega no lead");
   assert.match(text, /sócio/);
   assert.match(text, /lembrete/);
   assert.ok(!/demonstraç/.test(text), "não re-descreve a demonstração");
