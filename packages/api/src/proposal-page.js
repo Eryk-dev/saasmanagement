@@ -649,8 +649,7 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   @media (min-width: 900px) and (prefers-reduced-motion: no-preference) {
     main > section.closer-setup { height: auto; min-height: calc(100vh - var(--navh)); overflow: visible; }
   }
-  .closer-setup.lvx .setup-title { font-size: clamp(24px, 2.4vw, 34px); }
-  .lvx-cols { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 26px; align-items: start; margin-top: 24px; }
+  .lvx-cols { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 26px; align-items: start; margin-top: 8px; }
   @media (max-width: 900px) { .lvx-cols { grid-template-columns: 1fr; } }
   .lvx-cols .setup-grid { display: flex; flex-direction: column; gap: 11px; margin: 0; }
   .lvx-cols .setup-field { width: 100%; }
@@ -659,23 +658,23 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .lvx-side { display: flex; flex-direction: column; min-width: 0; }
   .lvx-side .setup-go { align-self: center; margin-top: 20px; }
   .lvx-card { border: 1px solid var(--line); border-radius: calc(var(--radius) + 4px); background: var(--raised);
-    padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
-  .lvx-card-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1fr); gap: 12px 24px; align-items: start; }
+    padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; }
+  .lvx-card-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1fr); gap: 14px 28px; align-items: start; }
   @media (max-width: 1240px) { .lvx-card-cols { grid-template-columns: 1fr; } }
   .lvx-ccol { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-  .lvx-h { font-family: var(--font-mono); font-size: 10px; letter-spacing: .13em; text-transform: uppercase; color: var(--ink-3); }
+  .lvx-h { font-family: var(--font-mono); font-size: 11px; letter-spacing: .13em; text-transform: uppercase; color: var(--ink-3); }
   .lvx-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
   .lvx-badge { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center;
     font-weight: 700; font-size: 22px; flex: none; font-family: var(--font-display); }
-  .lvx-row b { font-size: 14.5px; }
-  .lvx-row .lvx-why { font-size: 12px; color: var(--ink-2); display: block; max-width: 46ch; }
+  .lvx-row b { font-size: 15.5px; }
+  .lvx-row .lvx-why { font-size: 13px; color: var(--ink-2); display: block; max-width: 46ch; }
   .lvx-tag { display: inline-block; font-family: var(--font-mono); font-size: 9px; letter-spacing: .11em;
     text-transform: uppercase; border-radius: 999px; padding: 4px 9px; margin-bottom: 4px;
     background: color-mix(in oklab, var(--accent) 16%, transparent); color: var(--fg); }
   .lvx-tag.pend { background: #f6e3b4; color: #6d4a06; }
   .lvx-sel { width: 100%; border: 1px solid var(--line); background: var(--bg); border-radius: 10px;
-    padding: 10px 12px; font: 600 13.5px var(--font-display); color: var(--fg); }
-  .lvx-note { font-size: 11px; color: var(--ink-3); }
+    padding: 10px 12px; font: 600 14.5px var(--font-display); color: var(--fg); }
+  .lvx-note { font-size: 12px; color: var(--ink-3); }
   /* Pílula A/B da ordem da apresentação (teste do closer). */
   .lvx-ab { display: inline-flex; padding: 3px; gap: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); }
   .lvx-ab button { border: 0; cursor: pointer; border-radius: 999px; padding: 6px 14px; background: transparent;
@@ -683,39 +682,44 @@ export function proposalPageHtml(p, { previewBanner = false } = {}) {
   .lvx-ab button i { font-style: normal; font-family: var(--font-mono); font-size: 9px; letter-spacing: .1em; text-transform: uppercase; opacity: .75; }
   .lvx-ab button.on { background: var(--fg); color: var(--bg); }
   .lvx-cur { margin-top: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
-    background: color-mix(in oklab, var(--accent) 7%, var(--bg)); font-size: 12.5px; color: var(--ink-2); line-height: 1.45; }
-  .lvx-cur b { display: block; font-size: 13.5px; color: var(--fg); margin-bottom: 2px; }
+    background: color-mix(in oklab, var(--accent) 7%, var(--bg)); font-size: 13.5px; color: var(--ink-2); line-height: 1.45; }
+  .lvx-cur b { display: block; font-size: 15px; color: var(--fg); margin-bottom: 2px; }
   .lvx-cur .lvx-cur-price { display: block; margin-top: 4px; color: var(--fg); font-weight: 600; }
   .lvx-oneoff { border: 1px solid color-mix(in oklab, var(--accent) 38%, var(--line)); border-radius: 10px;
     background: color-mix(in oklab, var(--accent) 5%, var(--bg)); overflow: hidden; }
   .lvx-oneoff-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px 8px; }
-  .lvx-oneoff-head b { display: block; margin-top: 2px; font-size: 13.5px; color: var(--fg); }
+  .lvx-oneoff-head b { display: block; margin-top: 2px; font-size: 15px; color: var(--fg); }
   .lvx-oneoff-tag { flex: none; padding: 3px 8px; border-radius: 999px; background: var(--accent-soft);
     color: var(--accent); font: 700 9px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
   .lvx-oneoff-disc { display: inline-block; margin-top: 6px; padding: 3px 8px; border-radius: 999px;
     background: #f6e3b4; color: #6d4a06; font: 700 9px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
-  .lvx-oneoff-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .lvx-oneoff-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   .lvx-oneoff-table td { padding: 7px 12px; border-top: 1px solid var(--line); color: var(--ink-2); }
   .lvx-oneoff-table td:last-child { text-align: right; color: var(--fg); font-weight: 700; white-space: nowrap; }
   .lvx-oneoff-note { display: block; padding: 8px 12px 10px; border-top: 1px solid var(--line);
-    color: var(--ink-3); font-size: 10.5px; line-height: 1.35; }
-  /* Roteiro da call na tela zero: trilha muda com o produto apresentado. */
-  .lvx-script { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg);
+    color: var(--ink-3); font-size: 12px; line-height: 1.35; }
+  /* Roteiro da call na tela zero: a espinha de perguntas inteira, filtrada
+     pela trilha do produto apresentado. */
+  .lvx-script { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: var(--bg);
     display: flex; flex-direction: column; gap: 8px; }
   .lvx-script-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .lvx-script-track { flex: none; padding: 3px 8px; border-radius: 999px; background: var(--accent-soft);
-    color: var(--accent); font: 700 9px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
-  .lvx-script ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-  .lvx-script li { display: flex; gap: 8px; font-size: 12px; line-height: 1.5; color: var(--ink-2); }
-  .lvx-script li i { font-style: normal; flex: none; width: 14px; text-align: right; margin-top: 1px;
-    font: 700 10px var(--font-mono); color: var(--accent); }
-  .lvx-script li b { color: var(--fg); margin-right: 5px; }
+    color: var(--accent); font: 700 10px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+  .lvx-qg { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--accent); display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+  .lvx-qg::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+  .lvx-script ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+  .lvx-script li { display: flex; gap: 9px; font-size: 13.5px; line-height: 1.5; color: var(--ink-2); }
+  .lvx-script li i { font-style: normal; flex: none; width: 18px; text-align: right; margin-top: 2px;
+    font: 700 11px var(--font-mono); color: var(--accent); }
+  .lvx-script li b { display: block; color: var(--fg); }
+  .lvx-script li .lvx-ql { display: block; font-size: 12px; color: var(--ink-3); }
   /* Dores anotadas pelo closer (alimentam o Recap do roteiro ao vivo). */
   .lvx-dores { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg);
     display: flex; flex-direction: column; gap: 8px; }
   .lvx-dores #lvxDorList { display: flex; flex-direction: column; gap: 6px; }
   .lvx-dor { width: 100%; border: 1px solid var(--line); background: var(--raised); border-radius: 10px;
-    padding: 9px 12px; font: 500 13px var(--font-display); color: var(--fg); }
+    padding: 9px 12px; font: 500 14px var(--font-display); color: var(--fg); }
   .lvx-dor::placeholder { color: var(--ink-3); }
   .lvx-dor:focus { outline: 2px solid color-mix(in oklab, var(--accent) 55%, transparent); outline-offset: 1px; }
   .lvx-dor-add { flex: none; border: 1px dashed var(--line); background: none; color: var(--ink-2); cursor: pointer;
@@ -1807,9 +1811,14 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       var sec = el('section', 'closer-setup');
       var w = el('div', 'wrap');
       var goHost = null; // com o card do catálogo, o botão desce na COLUNA dos campos
-      w.appendChild(el('span', 'hero-tag', 'Antes de começar'));
-      w.appendChild(el('h2', 'setup-title', 'Confira os dados antes de apresentar'));
-      w.appendChild(el('p', 'setup-sub', 'Ajuste o que precisar. As mudanças entram na apresentação na hora.'));
+      // Com o card do catálogo o título sai: o card ocupa a tela inteira e o
+      // espaço vai pra fonte maior. Telas zero sem catálogo seguem com título.
+      var CAT = P.catalogUI;
+      if (!CAT) {
+        w.appendChild(el('span', 'hero-tag', 'Antes de começar'));
+        w.appendChild(el('h2', 'setup-title', 'Confira os dados antes de apresentar'));
+        w.appendChild(el('p', 'setup-sub', 'Ajuste o que precisar. As mudanças entram na apresentação na hora.'));
+      }
       var grid = el('div', 'setup-grid');
       // Campos condicionais ao produto: nicho/contas/anúncios só entram se o calc
       // tiver a config (outros SaaS sem esses mapas não mostram select vazio).
@@ -1835,7 +1844,6 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       // régua sugere, o closer decide; dado que muda a régua salva e RECARREGA
       // (o deck do produto é montado no servidor). No preview (/p/t) nada
       // persiste: as escolhas viajam na query string.
-      var CAT = P.catalogUI;
       if (CAT) {
         sec.classList.add('lvx');
         var TIER_STYLE = { S: ['#7c3aed', '#fff'], A: ['#16a34a', '#fff'], B: ['#65a30d', '#fff'], C: ['#eab308', '#463500'], D: ['#ea580c', '#fff'], E: ['#9aa2ad', '#fff'] };
@@ -1843,17 +1851,80 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         // (full/parcial) e Cópia + OEM (combos). O produto APRESENTADO decide a
         // trilha; só diagnóstico e demo mudam, o resto da espinha é fixo.
         var TRACK_LABEL = { oem: 'OEM', copia: 'Cópia', co: 'Cópia + OEM' };
-        var TRACK_DIAG = {
-          oem: '"Compatibilidade preenchida? Quanto do estoque tá no ar?"',
-          copia: '"Os SKUs batem entre as contas? Como baixa o estoque quando vende?"',
-          co: '"Compatibilidade preenchida? E os SKUs batem entre as contas?"',
-        };
-        var TRACK_DEMO = {
-          oem: 'Pede 3 part numbers no chat e cria ao vivo: o lead valida peça a peça.',
-          copia: 'Clona ao vivo o anúncio campeão dele pra outra conta ou Shopee.',
-          co: 'Cria por OEM na matriz e replica pra todas as contas e Shopee na sequência.',
-        };
         function trackOf(k) { return k === 'oem' ? 'oem' : (k === 'fulloem' || k === 'parcialoem') ? 'co' : 'copia'; }
+        // Espinha de perguntas do Roteiro do Closer (v2 · 22/08): a cola inteira
+        // da call, etapa por etapa. Cada item = [pergunta, lembrete, trilha?];
+        // 'oem' aparece nas trilhas OEM e combo, 'copia' nas trilhas Cópia e
+        // combo, sem marca = todas. Mudou o roteiro? Muda AQUI e no artifact.
+        var QS = [
+          ['Abertura', [
+            ['"Como você prefere que eu te chame?"', 'Nome real anotado. A conta do Google mente.'],
+            ['"Você decide sozinho ou com mais alguém?"', 'Tem par? "Consegue trazer essa pessoa pros últimos 10 minutos?"'],
+            ['"Te faço umas perguntas, te mostro a ferramenta e no fim a gente decide junto. Fechado?"', 'Primeiro micro-sim.'],
+          ]],
+          ['Diagnóstico · situação', [
+            ['"Quantas contas no Mercado Livre? E na Shopee?"', 'Confirma o que a SDR trouxe em vez de perguntar do zero.'],
+            ['"Quantos anúncios ativos?"', ''],
+            ['"Isso é quanto do teu estoque?"', 'O gap estoque × anunciado costuma ser a dor 1.', 'oem'],
+            ['"Quem sobe anúncio? Quantos por dia?"', 'Ritmo com número. Volta no recap e na implicação.'],
+            ['"Usa alguma ferramenta? Onde ela trava?"', 'O lead fala mal do concorrente. Você, nunca primeiro.'],
+            ['"Teus anúncios têm compatibilidade preenchida?"', 'Quase sempre não. A demo resolve essa na cara.', 'oem'],
+            ['"Os SKUs batem entre as contas?"', 'Salada de SKU = dor de estoque e de gestão.', 'copia'],
+            ['"Vendeu numa conta: como baixa o estoque nas outras?"', 'Quebra de estoque anotada com número.', 'copia'],
+            ['"Quanto do teu faturamento vem do marketplace?"', ''],
+          ]],
+          ['Diagnóstico · problema', [
+            ['"O que te trava pra ter mais anúncio no ar?"', 'O lead nomeia a dor. Anota literal, devolve no recap.'],
+            ['"O que te toma mais tempo hoje?"', 'Prioriza. Costuma abrir a demo.'],
+          ]],
+          ['Diagnóstico · implicação', [
+            ['"Nesse ritmo, quando o estoque inteiro fica no ar?"', 'Deixa ele fazer a conta. Ajuda se travar.', 'oem'],
+            ['"Montar uma conta nova hoje te toma quanto tempo?"', '', 'copia'],
+            ['"Quanto você deixa de vender por mês por causa disso?"', 'A perda calculada pelo lead vale mais que qualquer pitch.'],
+            ['"Resolver isso contratando custaria quanto por ano?"', 'A âncora dos 50 mil nasce na boca dele.'],
+          ]],
+          ['Diagnóstico · necessidade', [
+            ['"Se isso rodasse sozinho, o que você faria primeiro?"', 'A resposta é o roteiro da demo e o sonho do fechamento.'],
+            ['"Onde essa operação tem que estar em 12 meses?"', 'Meta declarada = régua do ROI.'],
+          ]],
+          ['Recap', [
+            ['"Resumindo: [dor 1], [dor 2], [dor 3]. É isso?"', 'Só avança com o "é isso".'],
+            ['"Qual das três dói mais?"', 'Define a primeira tela da demo.'],
+          ]],
+          ['Custo', [
+            ['(preço dito, o da coluna ao lado) "Esse valor cabe no teu orçamento pra fechar hoje?"', '"Apertado" se trata AGORA: plano menor, 12x, Pix. Nunca no fim.'],
+          ]],
+          ['Acordo', [
+            ['"No fim, me dá um sim ou um não? Se for sim, pagamento e integração aqui na call. Fechado?"', 'Hesitou? Uma reformulação: "depende só da ferramenta, não quero te caçar no WhatsApp". Aceite registrado.'],
+          ]],
+          ['Demonstração', [
+            ['"Me manda no chat 3 códigos das peças que você mais vende."', 'Só se não vieram na pré-call.', 'oem'],
+            ['"Qual anúncio teu mais vende? Vamos clonar ele agora."', '', 'copia'],
+            ['(por bloco) "Isso resolve o teu problema de [dor]?"', 'Três "resolve" = fechamento pronto. Substitui o "alguma dúvida?".'],
+            ['(no pico) "Já se vê usando isso?"', 'Sim = encurta a demo e vai pro fechamento.'],
+            ['(fim da demo) "Alguma dúvida que te impede de começar hoje?"', 'Flush final. O que sair, trata antes do pagamento.'],
+          ]],
+          ['Fechamento', [
+            ['(depois de case, ROI, entregáveis e preço) "Fez sentido?"', 'Colhe o sim do acordo.'],
+            ['"12x no cartão ou Pix com 10%?"', 'Presumido. Nunca "quer fechar?". Contrato antes do link.'],
+            ['(se adiar) "Pelo nosso combinado: o que faltou pra ser um sim?"', 'A resposta é a objeção real. Trata e volta pro pagamento.'],
+            ['(se travar) "Até que horas você resolve?"', 'Crava hora, marca o follow-up, integração condicionada.'],
+            ['"Integração amanhã 9h30 ou 15h?"', 'Alternativa dupla. Nunca "quando você pode?".'],
+          ]],
+        ];
+        function qsHtml(tk) {
+          var n = 0, h = '';
+          QS.forEach(function (g) {
+            var items = g[1].filter(function (q) { return !q[2] || tk === 'co' || q[2] === tk; });
+            if (!items.length) return;
+            h += '<span class="lvx-qg">' + g[0] + '</span><ol>' + items.map(function (q) {
+              n += 1;
+              return '<li><i>' + n + '</i><span><b>' + q[0] + '</b>' +
+                (q[1] ? '<span class="lvx-ql">' + q[1] + '</span>' : '') + '</span></li>';
+            }).join('') + '</ol>';
+          });
+          return h;
+        }
         // Ordem das dores vem do servidor (painOrder): dor nova no catálogo
         // entra no select sozinha. Fallback = catálogo antigo, sem painOrder.
         var painKeys = (CAT.painOrder && CAT.painOrder.length ? CAT.painOrder : ['A', 'B', 'C', 'D', 'E', 'none'])
@@ -1924,9 +1995,6 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
               (CAT.oemLevels || []).map(function (l) { return '<option value="' + l.cota + '">' + l.cota + '/mês — ' + esc(l.short) + '</option>'; }).join('') +
             '</select>' +
             '<div class="lvx-note" style="margin-top:6px">Muda a cota e o preço do deck do OEM avulso. Sem mexer, vale o nível do porte da régua.</div></div>' +
-          '<div class="lvx-row" id="lvxOemRow" style="display:none;font-size:12.5px;color:var(--ink-2)">' +
-            '<label style="display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" id="lvxOem" style="width:15px;height:15px"> ' +
-            'Confirmei no rapport que ele quer os anúncios OEM</label></div>' +
           '</div>' +
           '</div>';
         var cols = el('div', 'lvx-cols');
@@ -1985,8 +2053,8 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           catGet('lvxM').innerHTML = mtxHtml();
           catGet('lvxPain').value = CAT.pains[state.pain] ? state.pain : 'none';
           var tagEl = catGet('lvxTag');
-          if (CAT.oemNeeded && !state.oem) { tagEl.className = 'lvx-tag pend'; tagEl.textContent = 'Sugerido · OEM a confirmar no rapport'; }
-          else { tagEl.className = 'lvx-tag'; tagEl.textContent = 'Sugerido pela régua'; }
+          tagEl.className = 'lvx-tag';
+          tagEl.textContent = 'Sugerido pela régua';
           catGet('lvxSug').textContent = CAT.names[CAT.suggested] || CAT.suggested;
           catGet('lvxPr').textContent = CAT.priceLines[CAT.suggested] || '';
           var shown = state.product || CAT.suggested;
@@ -1996,22 +2064,12 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           catGet('lvxBack').className = 'lvx-back' + (state.product && state.product !== CAT.suggested ? ' show' : '');
           var tk = trackOf(shown);
           catGet('lvxScript').innerHTML =
-            '<div class="lvx-script-head"><span class="lvx-h">Roteiro da call</span><span class="lvx-script-track">' + TRACK_LABEL[tk] + '</span></div>' +
-            '<ol>' +
-            '<li><i>1</i><span><b>Abertura</b>"Como você prefere que eu te chame?" · "Você decide sozinho ou com mais alguém?"</span></li>' +
-            '<li><i>2</i><span><b>Diagnóstico</b>"Quem sobe anúncio? Quantos por dia?" · ' + TRACK_DIAG[tk] + ' Saia com 3 dores, cada uma com um número.</span></li>' +
-            '<li><i>3</i><span><b>Recap</b>"Resumindo: [dor 1], [dor 2], [dor 3]. É isso?" Só avança com o é isso.</span></li>' +
-            '<li><i>4</i><span><b>Custo</b>Anual explícito, o preço da coluna ao lado. "Esse valor cabe no teu orçamento pra fechar hoje?"</span></li>' +
-            '<li><i>5</i><span><b>Acordo</b>"No fim, me dá um sim ou um não? Se for sim, pagamento e integração aqui na call. Fechado?"</span></li>' +
-            '<li><i>6</i><span><b>Demo</b>' + TRACK_DEMO[tk] + ' Por bloco: "isso resolve o teu problema de [dor]?"</span></li>' +
-            '<li><i>7</i><span><b>Fechamento</b>Contrato antes do link. "12x no cartão ou Pix?" Se adiar: "pelo nosso combinado, o que faltou pra ser um sim?"</span></li>' +
-            '</ol>' +
+            '<div class="lvx-script-head"><span class="lvx-h">Roteiro da call · a espinha de perguntas</span><span class="lvx-script-track">' + TRACK_LABEL[tk] + '</span></div>' +
+            qsHtml(tk) +
             '<span class="lvx-note">Âncora = o preço ao lado, sem teto inventado. Concessão só com contrapartida. Decisor fora da call: não fecha, traz ele pros últimos 10 minutos.</span>';
           var cotaOn = shown === 'oem' && (CAT.oemLevels || []).length;
           catGet('lvxCotaRow').style.display = cotaOn ? '' : 'none';
           if (cotaOn) catGet('lvxCota').value = String(Number(state.oemCota) || CAT.oemCota || '');
-          catGet('lvxOemRow').style.display = String(DATA.answers.niche || '') === 'autopecas' ? 'flex' : 'none';
-          catGet('lvxOem').checked = !!state.oem;
           var isB = state.deckOrder === 'B';
           Array.prototype.forEach.call(catGet('lvxOrder').children, function (b) {
             b.className = ((b.getAttribute('data-order') || '') === (isB ? 'B' : '')) ? 'on' : '';
@@ -2068,11 +2126,6 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           // roteiro nem mexe no produto/preço, então o deck nunca remonta.
           state.pain = this.value;
           catRemember('pain', this.value === 'none' ? '' : this.value);
-        });
-        catGet('lvxOem').addEventListener('change', function () {
-          state.oem = this.checked;
-          catRemember('oem', this.checked ? '1' : '');
-          syncCat();
         });
         // Dado que muda a régua (contas/anúncios/nicho) solta o override e
         // recarrega já no produto sugerido. change (não input): o nicho digitado
