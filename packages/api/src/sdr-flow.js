@@ -28,6 +28,7 @@ import { findThreadByPhone, listMessages, recordMessage } from "./wa-store.js";
 import { digits } from "./whatsapp.js";
 import { kindOf, firstStage, isNoShowStage, isWonLead } from "./stages.js";
 import { brtToIso, onOutboundMessage } from "./lead-flow.js";
+import { isBusinessHours } from "./business-hours.js";
 import { resolveWabaId, getWaHealth } from "./wa-health.js";
 import { raiseAlert } from "./wa-call-flow.js";
 import { slotsForLead, slotLabel, wallNow, spreadPair, OFFER_HOURS } from "./agenda-slots.js";
@@ -35,6 +36,9 @@ import { SDR_TEMPLATES } from "./sdr-templates.leverads.js";
 
 export const SDR_AUTHOR = "sdr-bot";
 const HOUR = 3_600_000, MIN = 60_000;
+// Teto do segundo toque (seção 1b) — também é a linha de corte da campanha de
+// backlog, que só pega lead DEPOIS que essa janela expira (nunca dose dupla).
+const SECOND_TOUCH_MAX_MS = 96 * HOUR;
 const TEMPLATE_BODY = Object.fromEntries(SDR_TEMPLATES.map((t) => [t.name, t.body]));
 
 const firstName = (v) => String(v || "").trim().split(/\s+/)[0] || "";
@@ -52,8 +56,8 @@ export function sdrBotConfig(product) {
     firstTouch: cfg.firstTouch !== false,
     reminders: cfg.reminders !== false,
     rescue: cfg.rescue !== false,
-    // Segundo toque: 1º toque há 24h sem NENHUMA resposta → re-toque único com
-    // a mensagem de retomada que a Manuela já manda na mão (Leo, 23/08).
+    // Segundo toque: 1º toque há 24h sem NENHUMA resposta → re-toque único, em
+    // horário comercial, com a retomada que a Manuela já manda na mão (Leo, 23/08).
     // Acompanha a chave do 1º toque; `secondTouch: false` desliga só ele.
     secondTouch: cfg.secondTouch == null ? cfg.firstTouch !== false : cfg.secondTouch === true,
     // Campanha de resgate do backlog (Qualificando + Nutrição): lotes de
@@ -340,18 +344,24 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
       }
 
       // ── 1b. Segundo toque: 1º toque há 24h sem NENHUMA resposta ──────────
-      // Re-toque ÚNICO (24h a 72h depois do 1º), com a retomada que a Manuela
-      // já manda na mão. Lead que respondeu qualquer coisa fica de fora (a
+      // Re-toque ÚNICO a partir de 24h do 1º, com a retomada que a Manuela já
+      // manda na mão. Lead que respondeu qualquer coisa fica de fora (a
       // conversa é do cérebro/humano); humano que já falou também trava.
-      if (cfg.secondTouch || cfg.conversationTest) {
+      // Só em HORÁRIO COMERCIAL (Leo, 24/08): o 1º toque é 24/7, então as 24h
+      // herdam a hora dele — lead das 23h levaria a retomada às 23h do dia
+      // seguinte. Fora do expediente o toque espera a régua do business-hours
+      // (a mesma do fluxo de ligação e do plantão); o teto é 96h porque 24h
+      // completadas na quinta à noite só viram expediente na segunda de manhã
+      // (~86h depois do 1º toque) — com 72h esses leads perderiam a retomada.
+      if ((cfg.secondTouch || cfg.conversationTest) && isBusinessHours(product, at)) {
         for (const lead of leads) {
           if (sends >= CAP) break;
           if (!eligible(lead) || !passOn(cfg.secondTouch, lead)) continue;
           const t0 = Date.parse(lead.sdrLog?.firstTouchAt || "");
           if (!Number.isFinite(t0)) continue;
           if (lead.sdrLog?.firstTouchVia === "human") continue; // 1º toque foi gente: fila humana
-          if (lead.sdrLog?.secondTouchAt || lead.sdrLog?.sendFailedAlertAt) continue;
-          if (nowMs - t0 < 24 * HOUR || nowMs - t0 > 72 * HOUR) continue;
+          if (lead.sdrLog?.secondTouchAt || lead.sdrLog?.backlogRescueAt || lead.sdrLog?.sendFailedAlertAt) continue;
+          if (nowMs - t0 < 24 * HOUR || nowMs - t0 > SECOND_TOUCH_MAX_MS) continue;
           const kind = kindOf(product, lead.stage || firstStage(product));
           if (!["novo", "qualificacao"].includes(kind)) continue;
           if (isWonLead(product, lead) || lead.callAt) continue;
@@ -545,7 +555,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
           .filter((l) => (l.saas || "") === product.id)
           .filter((l) => okLead(l) && !l.callAt && !isWonLead(product, l) && !isNoShowStage(l.stage))
           .filter((l) => !l.sdrLog?.backlogRescueAt && !l.sdrLog?.secondTouchAt && !l.sdrLog?.sendFailedAlertAt)
-          .filter((l) => { const ft = Date.parse(l.sdrLog?.firstTouchAt || ""); return !(Number.isFinite(ft) && nowMs - ft < 72 * HOUR); })
+          .filter((l) => { const ft = Date.parse(l.sdrLog?.firstTouchAt || ""); return !(Number.isFinite(ft) && nowMs - ft < SECOND_TOUCH_MAX_MS); })
           .map((l) => ({ l, kind: kindOf(product, l.stage || firstStage(product)) }))
           .filter((x) => x.kind === "qualificacao" || x.kind === "contato")
           .sort((a, b) => (a.kind === b.kind
