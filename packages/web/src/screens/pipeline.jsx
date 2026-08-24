@@ -859,6 +859,10 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                   const tone = toneOf(who);
                   const isTouch = kind === "toque";
                   const isFollowup = kind === "follow-up";
+                  // Lead CONFIRMOU no lembrete (callConfirmed, marcado pelo robô
+                  // quando a resposta é "sim" — ou pelo botão do Meu dia): check
+                  // verde no card, o closer sabe de longe quem vai aparecer.
+                  const confirmed = !done && (kind === "call" ? !!l.callConfirmed : kind === "integração" ? !!l.integrationConfirmed : false);
                   // A COR DE FUNDO diz o TIPO (paleta clara + letra preta,
                   // AGENDA_TYPE_COLORS); follow-up reforça com contorno
                   // tracejado (vale pra daltonismo). A barrinha à esquerda é a
@@ -870,7 +874,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                   return (
                     <div key={l.id + kind + t.getTime()}
                       onClick={(e) => { e.stopPropagation(); const target = kind === "consulta" ? l._leadRef : l; if (target && onOpenLead) onOpenLead(target); }}
-                      title={`${timeStr} · ${isFollowup ? "follow-up" : kind}${done ? (isFollowup ? " · já passou" : " · realizada · histórico") : ""} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"}`}
+                      title={`${timeStr} · ${isFollowup ? "follow-up" : kind}${done ? (isFollowup ? " · já passou" : " · realizada · histórico") : ""}${confirmed ? " · CONFIRMADA pelo lead" : ""} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"}`}
                       style={{
                         position: "absolute", top: (hour - H0) * hourH + 1,
                         left: `calc(${lane * w}% + 2px)`, width: `calc(${w}% - 4px)`,
@@ -898,6 +902,10 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                         <>
                           <div className="mono tnum" style={{ fontSize: 9.5, color: isTouch ? "var(--fg-3)" : AGENDA_INK_SOFT, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                             {isTouch ? `○ ${l.name}` : `${done ? "✓ " : ""}${timeStr}${who ? ` · ${displayName(who).split(" ")[0]}` : ""}${kind === "integração" ? " · int" : kind === "consulta" ? " · 1:1" : ""}`}
+                            {confirmed && (
+                              <span title="Lead confirmou no lembrete"
+                                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 12, height: 12, borderRadius: 99, background: "var(--pos)", color: "#fff", fontSize: 8.5, fontWeight: 800, marginLeft: 4, verticalAlign: "text-bottom" }}>✓</span>
+                            )}
                             {!isTouch && (kind === "call" || kind === "consulta") && l.callUrl && (
                               <a href={l.callUrl} target="_blank" rel="noopener noreferrer" title="Entrar na videochamada"
                                 onClick={(e) => e.stopPropagation()} style={{ marginLeft: 4, textDecoration: "none" }}>🎥</a>
