@@ -7,6 +7,9 @@
 //     (agenda-slots.js) — horário inventado vira re-oferta dos 2 primeiros;
 //   - movimento de card SÓ pelo caminho canônico (applyStageMove), com o
 //     arquivo do callAt antigo (callHistory) igual ao PATCH da API;
+//   - cancelamento do lead desmarca DE VERDADE (cancelCall): card volta pra
+//     qualificação, lembretes param, convite do Meet morre e a resposta já
+//     oferece a remarcação;
 //   - trava de preço: se a resposta da IA citar valor, ela é trocada pelo
 //     desvio com autoridade (a IA nunca fala número com lead);
 //   - handoff silencia o robô na conversa até um humano falar; mensagem humana
@@ -90,6 +93,17 @@ function rebookConfirmText(nome, quando, conviteAtualizado) {
   return `Perfeito${nome ? ` ${nome}` : ""}, remarcado então pra ${quando}${conviteAtualizado ? ", o convite atualizado vai chegar no seu e-mail" : ""}!`;
 }
 
+// Desmarcação a pedido do lead: confirma que o compromisso SAIU da agenda e já
+// abre a porta da remarcação com horários reais (Leo, 24/08: o robô aceitou o
+// cancelamento mas deixou a call de pé — o lembrete de 1h disparou depois — e
+// não sugeriu reagendar). Oferta leve, sem cobrança: o lead acabou de cancelar.
+function cancelConfirmText(nome, slots, wnow) {
+  const oi = `Tranquilo${nome ? ` ${nome}` : ""}, sem problemas, já desmarquei aqui`;
+  if (slots.length >= 2) return [oi, `Quer que eu já deixe outro horário reservado? Consigo ${slotLabel(slots[0].at, wnow)} ou ${slotLabel(slots[1].at, wnow)}, qual fica melhor pra você?`];
+  if (slots.length === 1) return [oi, `Quer que eu já deixe outro horário reservado? Consigo ${slotLabel(slots[0].at, wnow)}, fica bom pra você?`];
+  return [oi, "Quando quiser remarcar me chama aqui que eu vejo os horários pra você"];
+}
+
 function reofferText(nome, slots, wnow) {
   const oi = nome ? `${nome}, esse` : "Esse";
   if (slots.length >= 2) return `${oi} horário acabou de sair da minha agenda aqui. Consigo ${slotLabel(slots[0].at, wnow)} ou ${slotLabel(slots[1].at, wnow)}, qual fica melhor pra você?`;
@@ -122,7 +136,30 @@ export async function bookCall(repo, { lead, product, at, closer, author = SDR_A
   return repo.update("leads", lead.id, { ...patchExtra, ...moved, callAt: at, closer });
 }
 
-export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = null, transcriber = defaultTranscriber, log = console, now = () => new Date(), replyDelayMs = 6000, partDelayMs = 5000, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+// DESMARCA a call sem horário novo pelo caminho canônico: o card volta pra
+// qualificação (etapa de call sem callAt é card fantasma — Agenda, slot do
+// closer e lembretes do sdr-flow leem callAt), a confirmação zera e horário
+// antigo que JÁ passou vira histórico, igual ao PATCH da API.
+export async function cancelCall(repo, { lead, product, author = SDR_AUTHOR, now = new Date() }) {
+  const patchExtra = { callAt: "", callConfirmed: false };
+  const oldAt = String(lead.callAt || "");
+  if (oldAt) {
+    const oldT = Date.parse(brtToIso(oldAt));
+    const hist = Array.isArray(lead.callHistory) ? lead.callHistory : [];
+    if (Number.isFinite(oldT) && oldT < now.getTime() && !hist.some((h) => String(h?.at || "") === oldAt)) {
+      patchExtra.callHistory = [...hist, { at: oldAt, closer: lead.closer || "" }].slice(-60);
+    }
+  }
+  const target = stageByKind(product, "qualificacao") || stageByKind(product, "contato") || { stage: firstStage(product) };
+  let moved = {};
+  if (target.stage && lead.stage !== target.stage) {
+    moved = await applyStageMove(repo, { lead, toStage: target.stage, patch: patchExtra, author, now });
+    moved.stage = target.stage;
+  }
+  return repo.update("leads", lead.id, { ...patchExtra, ...moved });
+}
+
+export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = null, cancelCallMeet = null, transcriber = defaultTranscriber, log = console, now = () => new Date(), replyDelayMs = 6000, partDelayMs = 5000, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   // ÁUDIO do lead: 13% das mensagens recebidas (mineração) — sem isso, todo
   // áudio viraria handoff. Transcreve a nota de voz (cache wa_media primeiro,
   // Graph depois) e grava o texto NA mensagem (campo transcript), então a
@@ -418,6 +455,24 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
         : bookingConfirmText(nome, slotLabelFull(pick.at, wnow), !!lead.email));
       if (autoCallMeet) autoCallMeet(lead.id).catch(() => { /* o lembrete de 10min entrega o link quando existir */ });
       return decision.acao;
+    }
+
+    // Lead CANCELOU a call sem escolher horário novo (Leo, 24/08): aceitar de
+    // boca e deixar o callAt de pé mantinha o compromisso na agenda e o
+    // lembrete de 1h ainda disparava DEPOIS do cancelamento. Aqui o
+    // compromisso sai de verdade (card volta pra qualificação, convite do
+    // Meet cancelado) e a resposta já oferece a remarcação.
+    if (decision.acao === "desmarcar") {
+      const fresh = (await repo.get("leads", lead.id)) || lead;
+      if (fresh.callAt) {
+        const quando = slotLabelFull(fresh.callAt, wnow);
+        await cancelCall(repo, { lead: fresh, product, now: at });
+        if (cancelCallMeet) cancelCallMeet(lead.id).catch(() => { /* evento fica; o time vê pelo alerta */ });
+        await raiseAlert(repo, thread, { text: `Desmarcou a call de ${quando} · robô tirou da agenda e ofereceu remarcação` });
+        await send(cancelConfirmText(nome, suggestedPair, wnow));
+        return "desmarcar";
+      }
+      // Sem call marcada não há o que desmarcar: segue como resposta comum.
     }
 
     // responder — com a trava de preço na frente de tudo, sobre o conjunto.

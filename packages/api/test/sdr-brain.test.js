@@ -47,6 +47,7 @@ function makeFakes({ decisions = [] } = {}) {
   const sent = [];
   const calls = [];
   const meets = [];
+  const meetCancels = [];
   const queue = [...decisions];
   const wa = {
     configured: () => true,
@@ -61,11 +62,12 @@ function makeFakes({ decisions = [] } = {}) {
     },
   };
   const autoCallMeet = async (id) => { meets.push(id); return null; };
-  return { wa, anthropic, autoCallMeet, sent, calls, meets };
+  const cancelCallMeet = async (id) => { meetCancels.push(id); return null; };
+  return { wa, anthropic, autoCallMeet, cancelCallMeet, sent, calls, meets, meetCancels };
 }
 
 const brainOf = (repo, fakes) => makeSdrBrain({
-  repo, whatsapp: fakes.wa, anthropic: fakes.anthropic, autoCallMeet: fakes.autoCallMeet,
+  repo, whatsapp: fakes.wa, anthropic: fakes.anthropic, autoCallMeet: fakes.autoCallMeet, cancelCallMeet: fakes.cancelCallMeet,
   log: { warn: () => {} }, now: () => NOW, replyDelayMs: 0, sleep: async () => {},
 });
 
@@ -316,6 +318,46 @@ test("remarcar: callAt antigo já passado vai pro histórico e o GPS segue o hor
   assert.equal(lead.callConfirmed, false, "confirmação é do horário novo");
   assert.deepEqual(lead.callHistory, [{ at: "2026-08-18T10:00", closer: "pl" }]);
   assert.equal(lead.nextActionAt, new Date("2026-08-19T13:00:00-03:00").toISOString());
+});
+
+test("desmarcar: call sai da agenda de verdade, Meet cancelado, time avisado e remarcação oferecida", async () => {
+  // Caso 24/08: lead avisou que não ia conseguir, o robô aceitou de boca,
+  // deixou o callAt de pé e o lembrete de 1h ainda disparou depois.
+  const repo = await world({
+    lead: { stage: "Call agendada", callAt: "2026-08-19T16:00", closer: "pl", callConfirmed: true, callUrl: "https://meet.google.com/abc", meetEventId: "ev1" },
+    messages: [{ direction: "in", text: "não vou conseguir hoje, entro em contato pra reagendar", at: ISO("2026-08-19T12:59:00Z") }],
+  });
+  const fakes = makeFakes({ decisions: [{ acao: "desmarcar" }] });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "não vou conseguir hoje, entro em contato pra reagendar" } });
+  assert.equal(r, "desmarcar");
+  const lead = await repo.get("leads", "L1");
+  assert.equal(lead.callAt || "", "", "callAt limpo: lembrete de 1h/10min não dispara mais");
+  assert.equal(lead.stage, "Qualificando", "card volta pro funil pelo caminho canônico");
+  assert.equal(lead.callConfirmed, false);
+  assert.ok(!(lead.callHistory || []).length, "call futura cancelada não vira histórico de call feita");
+  const stageActs = (await repo.list("activities")).filter((a) => a.type === "stage");
+  assert.equal(stageActs.length, 1);
+  assert.equal(stageActs[0].meta.to, "Qualificando");
+  // Resposta: confirma a desmarcação e JÁ oferece horários reais de remarcação.
+  assert.equal(fakes.sent.length, 2);
+  assert.match(fakes.sent[0].text, /já desmarquei aqui/);
+  assert.match(fakes.sent[1].text, /qual fica melhor pra você\?/);
+  assert.match(fakes.sent[1].text, /às \d/);
+  // Convite do Meet cancelado e alerta pro time.
+  assert.deepEqual(fakes.meetCancels, ["L1"]);
+  const alerts = await repo.list("wa_alerts");
+  assert.equal(alerts.length, 1);
+  assert.match(alerts[0].text, /Desmarcou a call de hoje \(19\/08\) às 16h/);
+});
+
+test("desmarcar sem call marcada: nada a cancelar, a resposta segue o fluxo comum", async () => {
+  const repo = await world({ messages: [{ direction: "in", text: "hoje não consigo falar", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes = makeFakes({ decisions: [{ acao: "desmarcar", mensagem: "Tranquilo, quando ficar bom me chama aqui" }] });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "hoje não consigo falar" } });
+  assert.equal(r, "responder");
+  assert.equal(fakes.meetCancels.length, 0);
+  assert.equal((await repo.get("leads", "L1")).stage, "Qualificando");
+  assert.equal((await repo.list("wa_alerts")).length, 0);
 });
 
 test("lead fora da região do SDR (ganho) ou com opt-out: o cérebro não age", async () => {

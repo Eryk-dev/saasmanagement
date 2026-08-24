@@ -285,6 +285,35 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     return createMeetForLead(fresh, { kind: "call" });
   }
 
+  // Call DESMARCADA sem horário novo (lead cancelou; sdr-brain): o evento do
+  // calendário morre (sendUpdates=all manda o e-mail de cancelamento pro
+  // convidado), o espelho na agenda pessoal do closer some e os campos do Meet
+  // zeram — a próxima marcação nasce com sala nova. Só age com o callAt JÁ
+  // limpo: convite de call ainda de pé nunca é apagado por engano.
+  async function cancelCallMeet(leadId) {
+    const fresh = await repo.get("leads", leadId);
+    if (!fresh || fresh.callAt) return null;
+    const patch = {};
+    if (fresh.meetEventId) {
+      // Apaga com a conta que ORGANIZOU o Meet (a pessoal do closer quando foi
+      // ela, senão a do time) — o evento mora no calendário do organizador.
+      const org = fresh.meetOrganizer && (await gu.connectedFor(fresh.meetOrganizer).catch(() => false)) ? fresh.meetOrganizer : "";
+      const gclient = org ? client.forUser(gu, org) : client;
+      if (org || (client.configured() && (await client.connected().catch(() => false)))) {
+        try {
+          await gclient.deleteCalendarEvent(fresh.meetEventId, org ? "primary" : undefined);
+          Object.assign(patch, { callUrl: "", meetEventId: "", meetScheduledAt: "", meetOrganizer: "" });
+        } catch (err) {
+          app.log.warn({ err: err.message, lead: leadId }, "Google: cancelamento do evento da call falhou");
+        }
+      }
+    }
+    if (Object.keys(patch).length) await repo.update("leads", fresh.id, patch);
+    // Sem callAt, o espelho pessoal (calCallEventId) sai da agenda do closer.
+    try { await syncPersonalCalendar(repo, gu, { ...fresh, ...patch }); } catch { /* fail-open */ }
+    return { ok: true, eventRemoved: "meetEventId" in patch };
+  }
+
   app.post("/api/leads/:id/meet", async (req, reply) => {
     if (!client.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Google não configurado (GOOGLE_CLIENT_ID/SECRET)" });
     const lead = await repo.get("leads", req.params.id);
@@ -357,5 +386,5 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     }
   });
 
-  return { client, googleUser: gu, briefer, autoIntegrationMeet, autoCallMeet, moveCallMeet };
+  return { client, googleUser: gu, briefer, autoIntegrationMeet, autoCallMeet, moveCallMeet, cancelCallMeet };
 }
