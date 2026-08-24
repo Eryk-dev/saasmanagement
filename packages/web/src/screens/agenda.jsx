@@ -239,6 +239,7 @@ export function AgendaScreen({ onOpenLead }) {
             faixa = responsável
           </span>
           <span>✓ lavada = já aconteceu</span>
+          <span><span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 12, height: 12, borderRadius: 99, background: "var(--pos)", color: "#fff", fontSize: 8.5, fontWeight: 800, verticalAlign: "text-bottom" }}>✓</span> = lead confirmou no lembrete</span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             <span style={{ width: 10, height: 10, borderRadius: 3, background: "var(--accent-soft)", border: "1px solid var(--accent)" }} />
             compromisso na cor da pessoa · clique pra editar
