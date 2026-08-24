@@ -169,8 +169,12 @@ test("opt-out, número inválido, saída lateral, interno e desqualificado ficam
 
 test("véspera, 1h e 10min saem uma vez cada, gravam no confirmLog e o 10min leva o link", async () => {
   const nowRef = { t: new Date("2026-08-19T13:00:00Z") }; // exatamente T-24h da call
+  // Lead que ESCREVEU há pouco (janela de 24h aberta nos 3 lembretes): é o
+  // único cenário em que o lembrete sai como texto livre.
   const repo = await world({
     leads: [{ id: "L1", name: "Rafael", phone: "41999990000", stage: "Call agendada", callAt: "2026-08-20T10:00", closer: "pl", callUrl: "https://meet.google.com/abc-defg", createdAt: ISO("2026-08-10T10:00:00Z") }],
+    threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads", name: "Rafael" }],
+    messages: [{ id: "in1", thread: "5541999990000", leadId: "L1", saas: "leverads", direction: "in", text: "Fechado, amanhã às 10h", at: ISO("2026-08-19T12:59:00Z") }],
   });
   const wa = makeWa();
   const r = runner(repo, wa, nowRef);
@@ -226,17 +230,34 @@ test("passo já feito pelo humano no Meu dia (confirmLog) cala o robô naquele p
   assert.equal(wa.sent.length, 0);
 });
 
-test("janela de 24h fechada: lembrete cai pro template aprovado", async () => {
+// REGRESSÃO (Rogerio, 24/08): a Meta ACEITA texto livre com janela fechada
+// (devolve id, sem erro síncrono) e só reprova depois, pelo webhook. O motor
+// não pode esperar o erro: lead que nunca escreveu vai DIRETO pro template.
+test("janela de 24h fechada (lead nunca escreveu): lembrete sai direto pelo template, sem tentar texto", async () => {
   const nowRef = { t: new Date("2026-08-20T12:05:00Z") };
   const repo = await world({
     leads: [{ id: "L1", name: "Rafael", phone: "41999990000", stage: "Call agendada", callAt: "2026-08-20T10:00", createdAt: ISO("2026-08-10T10:00:00Z") }],
+  });
+  const wa = makeWa({ approved: ["sdr_lembrete_call"] }); // sendText NÃO falharia: é o silêncio da Meta
+  await runner(repo, wa, nowRef).tick();
+  assert.equal(wa.sent.length, 1, "nenhum texto livre saiu antes");
+  assert.equal(wa.sent[0].kind, "template");
+  assert.equal(wa.sent[0].name, "sdr_lembrete_call");
+  assert.deepEqual(wa.sent[0].params, ["Rafael", "hoje às 10h"]);
+});
+
+test("registro diz janela aberta mas a Meta recusa na hora: cai pro template", async () => {
+  const nowRef = { t: new Date("2026-08-20T12:05:00Z") };
+  const repo = await world({
+    leads: [{ id: "L1", name: "Rafael", phone: "41999990000", stage: "Call agendada", callAt: "2026-08-20T10:00", createdAt: ISO("2026-08-10T10:00:00Z") }],
+    threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads" }],
+    messages: [{ id: "in1", thread: "5541999990000", leadId: "L1", saas: "leverads", direction: "in", text: "oi", at: ISO("2026-08-20T11:00:00Z") }],
   });
   const wa = makeWa({ approved: ["sdr_lembrete_call"], failText: 131047 });
   await runner(repo, wa, nowRef).tick();
   const tpl = wa.sent.find((s) => s.kind === "template");
   assert.ok(tpl, "caiu pro template");
   assert.equal(tpl.name, "sdr_lembrete_call");
-  assert.deepEqual(tpl.params, ["Rafael", "hoje às 10h"]);
 });
 
 test("sem canal nenhum (janela fechada e sem template), o lembrete vira alerta quente", async () => {
@@ -244,7 +265,7 @@ test("sem canal nenhum (janela fechada e sem template), o lembrete vira alerta q
   const repo = await world({
     leads: [{ id: "L1", name: "R", phone: "41999990000", stage: "Call agendada", callAt: "2026-08-20T10:00", createdAt: ISO("2026-08-10T10:00:00Z") }],
   });
-  const wa = makeWa({ approved: [], failText: 131047 });
+  const wa = makeWa({ approved: [] });
   const r = runner(repo, wa, nowRef);
   await r.tick();
   const alerts = await repo.list("wa_alerts");
