@@ -698,15 +698,48 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
     .filter((u, i, arr) => arr.findIndex(x => x.id === u.id) === i);
   const toneOf = (id) => (id ? userColor(id) : "var(--fg-4)");
 
-  // Lanes: itens que se SOBREPÕEM dividem a largura. A largura sai do nº de lanes
-  // do CLUSTER de sobreposição, não do dia inteiro — senão um horário cheio (ex.:
-  // 9 follow-ups às 11h) espremia TODO evento do dia, e um compromisso sozinho
-  // às 14h saía com 1/9 da largura. Cada item ganha `lane` (posição) e `lanes`
-  // (nº de lanes do seu cluster).
-  const layoutDay = (d) => ({
-    placed: laneByCluster(shown.filter(e => e.t.toDateString() === d.toDateString()),
-      e => e.t.getTime(), e => e.t.getTime() + 3600000),
-  });
+  // COLUNAS POR PESSOA dentro do dia (Leo, 24/08): cada closer tem a própria
+  // faixa vertical, com o nome no cabeçalho — a agenda de cada um se lê de
+  // cima a baixo. Ordem preferida do Leo: Leonardo · Jonathan · Vitor · Jonan;
+  // demais entram depois (ordem do time) e "sem responsável" fecha a fila. Só
+  // quem TEM evento/bloqueio no dia vira faixa (dia vazio de alguém não gasta
+  // largura). Sobreposição DENTRO da faixa divide em sub-lanes, então
+  // double-booking da mesma pessoa continua gritando.
+  const PERSON_ORDER = ["leonardo", "jonathan", "us_mrqkn2tm03", "jonan"];
+  const personRank = (id) => {
+    const i = PERSON_ORDER.indexOf(id);
+    if (i >= 0) return i;
+    if (!id) return 999;
+    const t = team.findIndex((u) => u.id === id);
+    return 100 + (t >= 0 ? t : 50);
+  };
+  // Bloqueio de UMA pessoa mora na faixa dela; de time (vários/ninguém) cobre
+  // o dia inteiro, atrás das pílulas.
+  const blockPerson = (b) => {
+    const us = Array.isArray(b.users) && b.users.length ? b.users : (b.user ? [b.user] : []);
+    return us.length === 1 ? us[0] : null;
+  };
+  const layoutDay = (d) => {
+    const dayEvents = shown.filter(e => e.t.toDateString() === d.toDateString());
+    const rawBlocks = (blocking && evKind === "all" ? blocking.blocksFor(d) : [])
+      .map((b) => ({ b, from: b.allDay ? H0 : Math.max(H0, Number(b.fromHour) || 0), to: b.allDay ? H1 : Math.min(H1, Number(b.toHour) || 0) }))
+      .filter((x) => x.to > x.from);
+    const persons = [...new Set([
+      ...dayEvents.map(e => e.who || ""),
+      ...rawBlocks.map(x => blockPerson(x.b)).filter(Boolean),
+    ])].sort((a, b) => personRank(a) - personRank(b) || String(a).localeCompare(String(b)));
+    const laneOf = new Map(persons.map((p, i) => [p, i]));
+    const placed = persons.flatMap((p) => laneByCluster(
+      dayEvents.filter(e => (e.who || "") === p), e => e.t.getTime(), e => e.t.getTime() + 3600000,
+    ).map((e) => ({ ...e, personLane: laneOf.get(p), personLanes: persons.length, sub: e.lane, subs: e.lanes })));
+    const blocks = rawBlocks.map((x) => {
+      const who = blockPerson(x.b);
+      const lane = who != null && laneOf.has(who) ? laneOf.get(who) : null;
+      return { ...x, personLane: lane, personLanes: persons.length };
+    });
+    return { placed, blocks, persons };
+  };
+  const dayLayouts = days.map(layoutDay);
 
   const calls = events.filter(e => e.kind === "call" || e.kind === "integração" || e.kind === "consulta").length;
 
@@ -774,6 +807,18 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                     color: isToday ? "oklch(1 0 0)" : "var(--fg-1)",
                   }}>{d.getDate()}</span>
                 </div>
+                {/* Nomes das faixas: mesma largura das colunas de pessoa do corpo. */}
+                {dayLayouts[i].persons.length > 0 && (
+                  <div style={{ display: "flex", marginTop: 6 }}>
+                    {dayLayouts[i].persons.map((p) => (
+                      <div key={p || "none"} className="mono" title={p ? displayName(p) : "sem responsável"}
+                        style={{ flex: 1, minWidth: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4, fontSize: 10, fontWeight: 600, color: "var(--fg-3)", overflow: "hidden" }}>
+                        <span style={{ width: 8, height: 10, borderRadius: 2, background: toneOf(p), flexShrink: 0 }} />
+                        <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p ? displayName(p).split(" ")[0] : "—"}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -788,7 +833,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
             ))}
           </div>
           {days.map((d, i) => {
-            const { placed } = layoutDay(d);
+            const { placed, blocks: dayBlocks, persons } = dayLayouts[i];
             const isToday = d.toDateString() === new Date().toDateString();
             const isWeekend = d.getDay() === 0 || d.getDay() === 6;
             return (
@@ -819,20 +864,19 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                     </div>
                   );
                 })()}
+                {/* Divisórias das faixas de pessoa: a coluna de cada closer se
+                    enxerga de cima a baixo. */}
+                {persons.length > 1 && persons.slice(1).map((_, si) => (
+                  <div key={`sep-${si}`} style={{ position: "absolute", top: 0, bottom: 0, left: `${(si + 1) * (100 / persons.length)}%`, borderLeft: "1px dashed var(--line-1)", pointerEvents: "none" }} />
+                ))}
                 {(() => {
-                  // Itens da agenda (bloqueios/compromissos, decorados pela tela com
-                  // _tone/_label/_who): lanes por CLUSTER de sobreposição (ex.: o
-                  // almoço do time inteiro no mesmo meio-dia divide; compromisso
-                  // sozinho ocupa largura cheia, sem ser espremido por outro horário).
-                  // Filtro de tipo ligado: compromissos/bloqueios saem também —
-                  // a grade fica só com as pílulas pedidas.
-                  const placedBlks = laneByCluster(
-                    (blocking && evKind === "all" ? blocking.blocksFor(d) : [])
-                      .map((b) => ({ b, from: b.allDay ? H0 : Math.max(H0, Number(b.fromHour) || 0), to: b.allDay ? H1 : Math.min(H1, Number(b.toHour) || 0) }))
-                      .filter((x) => x.to > x.from),
-                    (x) => x.from, (x) => x.to);
-                  return placedBlks.map(({ b, from, to, lane, lanes }) => {
-                    const bw = 100 / lanes;
+                  // Bloqueios/compromissos: o de UMA pessoa mora na faixa dela;
+                  // o de time (vários participantes) cobre o dia inteiro, atrás
+                  // das pílulas. Filtro de tipo ligado tira tudo do caminho.
+                  return dayBlocks.map(({ b, from, to, personLane, personLanes }) => {
+                    const pw = personLanes > 0 ? 100 / personLanes : 100;
+                    const left = personLane != null ? personLane * pw : 0;
+                    const bw = personLane != null ? pw : 100;
                     const tone = b._tone || null; // com tom = compromisso; sem = bloqueio vermelho
                     const label = b._label || `bloqueado${b.recur === "weekly" ? " ↻" : ""}${b.reason ? ` · ${b.reason}` : ""}`;
                     return (
@@ -841,7 +885,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                         title={`${b._who ? b._who + " · " : ""}${label}${b.recur === "weekly" ? " · toda semana" : ""}${blocking.onBlock ? " · clique pra editar" : ""}`}
                         style={{
                           position: "absolute", top: (from - H0) * hourH + 1,
-                          left: `calc(${lane * bw}% + 2px)`, width: `calc(${bw}% - 4px)`,
+                          left: `calc(${left}% + 2px)`, width: `calc(${bw}% - 4px)`,
                           height: Math.max(16, (to - from) * hourH - 3),
                           background: tone ? `color-mix(in srgb, ${tone} 14%, var(--bg-1))` : "color-mix(in srgb, var(--neg) 8%, var(--bg-1))",
                           border: tone ? `1px solid color-mix(in srgb, ${tone} 45%, var(--line-1))` : "1px dashed color-mix(in srgb, var(--neg) 45%, var(--line-1))",
@@ -855,7 +899,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                     );
                   });
                 })()}
-                {placed.map(({ l, t, lane, lanes, kind, who, done }) => {
+                {placed.map(({ l, t, kind, who, done, personLane, personLanes, sub, subs }) => {
                   const tone = toneOf(who);
                   const isTouch = kind === "toque";
                   const isFollowup = kind === "follow-up";
@@ -869,7 +913,8 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                   // PESSOA. História (done) continua lavada com ✓.
                   const tc = AGENDA_TYPE_COLORS[kind] || AGENDA_TYPE_COLORS.call;
                   const hour = Math.min(H1 - 1, Math.max(H0, t.getHours() + t.getMinutes() / 60));
-                  const w = 100 / lanes;
+                  const pw = 100 / personLanes;
+                  const w = pw / subs;
                   const timeStr = t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
                   return (
                     <div key={l.id + kind + t.getTime()}
@@ -877,7 +922,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                       title={`${timeStr} · ${isFollowup ? "follow-up" : kind}${done ? (isFollowup ? " · já passou" : " · realizada · histórico") : ""}${confirmed ? " · CONFIRMADA pelo lead" : ""} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"}`}
                       style={{
                         position: "absolute", top: (hour - H0) * hourH + 1,
-                        left: `calc(${lane * w}% + 2px)`, width: `calc(${w}% - 4px)`,
+                        left: `calc(${personLane * pw + sub * w}% + 2px)`, width: `calc(${w}% - 4px)`,
                         height: isTouch ? 22 : isFollowup ? Math.max(19, Math.round(hourH * 20 / 60)) : hourH - 3, // follow-up = 20 min
                         overflow: "hidden", cursor: "pointer",
                         background: isTouch ? "transparent" : tc.bg,
