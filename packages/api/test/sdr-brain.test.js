@@ -175,7 +175,7 @@ test("remarcar: confirmação CURTA, sem repetir sócio e lembrete", async () =>
   });
   const fakes = makeFakes({ decisions: [{ acao: "remarcar", horario: SLOT1 }] });
   assert.equal(await brainOf(repo, fakes).handleInbound(INBOUND), "remarcar");
-  assert.match(fakes.sent[0].text, /remarcado então pra hoje às 13h/);
+  assert.match(fakes.sent[0].text, /remarcado então pra hoje \(19\/08\) às 13h/);
   assert.match(fakes.sent[0].text, /convite atualizado/);
   assert.ok(!/sócio/.test(fakes.sent[0].text), "remarcação não repete o bloco do sócio");
   assert.equal((await repo.get("leads", "L1")).callAt, SLOT1);
@@ -238,9 +238,9 @@ test("agendar com horário da lista: card vai pra etapa de call pelo caminho can
   const stageActs = (await repo.list("activities")).filter((a) => a.type === "stage");
   assert.equal(stageActs.length, 1);
   assert.equal(stageActs[0].meta.to, "Call agendada");
-  // Confirmação enxuta (Leo, 23/08): combinado + sócio + lembrete, sem
-  // re-descrever a demo e sem pedir e-mail.
-  assert.match(fakes.sent[0].text, /Perfeito Rafael, agendado então pra hoje às 13h/);
+  // Confirmação enxuta (Leo, 23/08) e com a data cravada (Leo, 24/08):
+  // combinado + sócio + lembrete, sem re-descrever a demo e sem pedir e-mail.
+  assert.match(fakes.sent[0].text, /Perfeito Rafael, agendado então pra hoje \(19\/08\) às 13h/);
   assert.ok(!/entrar nas suas contas/.test(fakes.sent[0].text), "a gente não entra nas contas do lead");
   assert.match(fakes.sent[0].text, /sócio/);
   assert.deepEqual(fakes.meets, ["L1"]);
@@ -530,7 +530,7 @@ test("confirmação de agendamento enxuta: sem re-descrever a demo e sem pedir e
   const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: SLOT1 }] });
   await brainOf(repo, fakes).handleInbound(INBOUND);
   const text = fakes.sent[0].text;
-  assert.match(text, /Perfeito Rafael, agendado então pra hoje às 13h/);
+  assert.match(text, /Perfeito Rafael, agendado então pra hoje \(19\/08\) às 13h/);
   assert.ok(!/\bcall\b/i.test(text), "a palavra call nunca chega no lead");
   assert.match(text, /sócio/);
   assert.match(text, /lembrete/);

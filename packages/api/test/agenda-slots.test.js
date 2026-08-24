@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
-  closerPools, slotsForLead, occupyCells, addBusinessDaysNaive, slotLabel, wallFromNaive, spreadPair, OFFER_HOURS,
+  closerPools, slotsForLead, occupyCells, addBusinessDaysNaive, slotLabel, slotLabelFull, wallFromNaive, spreadPair, OFFER_HOURS,
 } from "../src/agenda-slots.js";
 
 // Quarta-feira 19/08/2026, 8h da manhã no relógio de Brasília (ver
@@ -129,6 +129,13 @@ test("slotLabel fala como gente: hoje, amanhã e dia da semana", () => {
   assert.equal(slotLabel("2026-08-19T16:00", NOW), "hoje às 16h");
   assert.equal(slotLabel("2026-08-20T09:30", NOW), "amanhã às 9h30");
   assert.equal(slotLabel("2026-08-21T10:00", NOW), "sexta às 10h");
+});
+
+test("slotLabelFull crava a data no combinado: hoje/amanhã/dia sempre com dd/mm", () => {
+  assert.equal(slotLabelFull("2026-08-19T16:00", NOW), "hoje (19/08) às 16h");
+  assert.equal(slotLabelFull("2026-08-20T09:30", NOW), "amanhã (20/08) às 9h30");
+  assert.equal(slotLabelFull("2026-08-21T10:00", NOW), "sexta (21/08) às 10h");
+  assert.equal(slotLabelFull("2026-09-04T10:00", NOW), "sexta (04/09) às 10h");
 });
 
 test("janela de oferta do robô: fromHour 9 tira os horários de madrugador da oferta", async () => {

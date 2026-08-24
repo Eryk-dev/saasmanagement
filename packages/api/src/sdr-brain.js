@@ -22,7 +22,7 @@ import { kindOf, firstStage, stageByKind, isWonLead } from "./stages.js";
 import { brtToIso, applyStageMove, onOutboundMessage, autoLeadOwner, logActivity, initialNextActionAt } from "./lead-flow.js";
 import { raiseAlert } from "./wa-call-flow.js";
 import { leadGrade } from "./routes.marketing.js";
-import { slotsForLead, slotLabel, wallNow, spreadPair, OFFER_HOURS } from "./agenda-slots.js";
+import { slotsForLead, slotLabel, slotLabelFull, wallNow, spreadPair, OFFER_HOURS } from "./agenda-slots.js";
 import { sdrBotConfig, leadDigest, conversationActive, leadPainFocus, SDR_AUTHOR } from "./sdr-flow.js";
 import { transcriber as defaultTranscriber } from "./transcribe.js";
 
@@ -411,9 +411,11 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       const fresh = await repo.get("leads", lead.id);
       const rebook = decision.acao === "remarcar" || !!(fresh || lead).callAt;
       await bookCall(repo, { lead: fresh || lead, product, at: pick.at, closer: pick.closer, now: at });
+      // Confirmação com a DATA cravada (Leo, 24/08): "hoje/amanhã" solto na
+      // confirmação vira mal-entendido quando o lead relê depois.
       await send(rebook
-        ? rebookConfirmText(nome, slotLabel(pick.at, wnow), !!(lead.email && (fresh || lead).callUrl))
-        : bookingConfirmText(nome, slotLabel(pick.at, wnow), !!lead.email));
+        ? rebookConfirmText(nome, slotLabelFull(pick.at, wnow), !!(lead.email && (fresh || lead).callUrl))
+        : bookingConfirmText(nome, slotLabelFull(pick.at, wnow), !!lead.email));
       if (autoCallMeet) autoCallMeet(lead.id).catch(() => { /* o lembrete de 10min entrega o link quando existir */ });
       return decision.acao;
     }
