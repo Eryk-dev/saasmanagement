@@ -522,7 +522,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
         const tplN = names.has(cfg.templates.backlogRescueNutri) ? cfg.templates.backlogRescueNutri : tplQ;
         const okLead = (l) =>
           (!l.internal || cfg.conversationTest) && !l.formExit && !l.disqualified &&
-          !l.whatsappOptOut && !l.whatsappInvalid && digits(l.waPhone || l.phone);
+          !l.whatsappOptOut && !l.whatsappInvalid && !l.sdrOff && digits(l.waPhone || l.phone);
         const IDLE_DAYS = { qualificacao: 3, contato: 7 };
         const pool = allLeads
           .filter((l) => (l.saas || "") === product.id)
