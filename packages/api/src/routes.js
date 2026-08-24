@@ -37,6 +37,7 @@ import { registerMetasRoutes } from "./routes.metas.js";
 import { registerFlashcardRoutes } from "./routes.flashcards.js";
 import { registerGoogleRoutes } from "./routes.google.js";
 import { syncPersonalCalendar } from "./google-user.js";
+import { srcFingerprint } from "./build-info.js";
 import { registerCopilotRoutes } from "./copilot.js";
 import { registerWhatsappRoutes } from "./routes.whatsapp.js";
 import { registerSdrRoutes } from "./routes.sdr.js";
@@ -265,7 +266,10 @@ function listFilter(collection, q) {
 }
 
 export function registerRoutes(app, repo = defaultRepo, opts = {}) {
-  app.get("/api/health", async () => ({ ok: true, service: "cockpit-api", collections: COLLECTION_NAMES }));
+  // `build` = impressão digital do código em execução (build-info.js): comparar
+  // com `node packages/api/src/build-info.js` na main responde se o deploy do
+  // EasyPanel está atualizado.
+  app.get("/api/health", async () => ({ ok: true, service: "cockpit-api", build: srcFingerprint(), collections: COLLECTION_NAMES }));
 
   // Avisos do funil num canal Discord (webhook único, fail-open) — injetado nas
   // superfícies que geram eventos: forms (lead), proposals (vista/aceite),
