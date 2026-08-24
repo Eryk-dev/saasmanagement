@@ -276,7 +276,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
       const enabledMs = cfg.enabledAt ? Date.parse(cfg.enabledAt) : 0;
       const eligible = (l) =>
         (!l.internal || cfg.conversationTest) && !l.formExit && !l.disqualified &&
-        !l.whatsappOptOut && !l.whatsappInvalid && digits(l.waPhone || l.phone);
+        !l.whatsappOptOut && !l.whatsappInvalid && !l.sdrOff && digits(l.waPhone || l.phone);
       // Cada frente roda pro lead quando a chave DELA está ligada (produção)
       // OU quando é lead interno com o modo teste ligado — assim o test-drive
       // cobre a jornada inteira mesmo com a produção toda desligada.

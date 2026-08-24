@@ -264,6 +264,8 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     if (lead) {
       if (lead.formExit || lead.disqualified) return null;
       if (lead.whatsappOptOut || lead.whatsappInvalid) return null;
+      // Botão "parar robô" do inbox (lead.sdrOff): a conversa é 100% humana.
+      if (lead.sdrOff) return null;
       if (isWonLead(product, lead)) return null;
       const kind = kindOf(product, lead.stage || firstStage(product));
       if (!BRAIN_KINDS.has(kind)) return null;
@@ -294,6 +296,9 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       if (!lead) lead = await adoptWalkIn({ thread, product, message });
       if (!lead) return null;
     }
+    // O lead pode ter chegado agora (walk-in/vínculo pelo telefone): o botão
+    // "parar robô" vale pra ele também.
+    if (lead.sdrOff) return "off";
     const humanIds = new Set((await repo.list("users")).map((u) => u.id));
     const nowMs = at.getTime();
     const lastHumanOut = [...msgs].reverse().find((m) => m.direction === "out" && humanIds.has(m.author));
