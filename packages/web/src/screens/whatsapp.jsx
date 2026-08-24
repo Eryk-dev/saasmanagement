@@ -606,6 +606,7 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
                         atual (agendar call, fechar, perda…), tudo refletindo no
                         pipeline/fila na hora. */}
                     <NextActionButton thread={current} onScheduled={(draft) => composerApi.current?.insert?.(draft)} onResolved={markResolved} />
+                    <BotStopButton leadId={current.leadId} />
                     {!isMobile && (
                       <button onClick={toggleSide} style={{ ...pill, ...(sideOpen ? { background: "var(--accent-soft)", color: "var(--accent)", borderColor: "var(--accent-line)" } : {}) }}
                         title={sideOpen ? "Esconder o card do cliente" : "Mostrar o card do cliente ao lado da conversa"}>▤ card</button>
@@ -1024,6 +1025,33 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
 }
 
 const pill = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 11px", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", flexShrink: 0 };
+
+// Parar o robô NESTA conversa (Leo, 24/08): grava lead.sdrOff — o SDR
+// automático inteiro (1º/2º toque, lembretes, resgate e as respostas da IA)
+// pula esse lead até alguém religar aqui. Não mexe no robô dos outros leads;
+// o time continua respondendo normalmente. Ligado, o botão fica âmbar.
+function BotStopButton({ leadId }) {
+  const { version } = useData();
+  const rec = (window.SEED?.LEADS || []).find((l) => l.id === leadId);
+  const [off, setOff] = React.useState(!!rec?.sdrOff);
+  React.useEffect(() => { setOff(!!rec?.sdrOff); }, [leadId, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  const toggle = () => {
+    const v = !off;
+    setOff(v);
+    api.update("leads", leadId, { sdrOff: v }).catch(() => {
+      setOff(!v);
+      window.toast && window.toast("Não consegui salvar o estado do robô · tente de novo", "neg");
+    });
+  };
+  return (
+    <button onClick={toggle}
+      style={{ ...pill, ...(off ? { background: "var(--warn-soft)", color: "var(--warn)", borderColor: "var(--warn-line)" } : {}) }}
+      title={off ? "O robô SDR está PARADO nesta conversa · clique pra religar"
+        : "Para o robô SDR nesta conversa (toques e respostas automáticas) · o time continua respondendo normal"}>
+      {off ? "robô parado · religar" : "parar robô"}
+    </button>
+  );
+}
 const flowChip = { display: "inline-flex", alignItems: "center", gap: 4, height: 24, padding: "0 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, flexShrink: 0 };
 
 // Criar template aprovado da Meta a partir do cockpit. A Meta revisa (nasce
