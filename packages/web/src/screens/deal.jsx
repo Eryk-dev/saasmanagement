@@ -5,6 +5,7 @@ import { RoutineSuggestion } from "../components/routine-suggestion.jsx";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
 import { clientSummary, leadBox, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks } from "../components/lead-blocks.jsx";
 import { waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
+import { waCallLinkText, waProposalPlainText } from "../lib/wa-copy.js";
 import { stageKind, lossReasonLabel, nextTouchPill, workableStages, stageByKind, isLossKind } from "../lib/funnel.js";
 import { displayName, usersByRole, currentUser } from "../lib/users.js";
 import { CallCopilot } from "../components/call-copilot.jsx";
@@ -241,7 +242,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
       const shared = await api.shareProposal(lead.id, 1);
       const url = shared?.url || "";
       if (!url) { if (win) win.close(); window.alert("Não consegui preparar a proposta deste produto."); return; }
-      const msg = `Aqui está a proposta sobre a qual conversamos: ${url}`;
+      const msg = waProposalPlainText(lead, url);
       // SEMPRE WhatsApp Web (decisão do Leo, 03/08): wa.me com o texto pronto,
       // independente de o produto ter número oficial conectado — quem envia a
       // proposta é o closer, do WhatsApp dele. O inbox segue existindo pros
@@ -694,7 +695,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                 </button>
                 {wa && (
                   <a className="mono" style={{ fontSize: 11, color: "var(--wa-brand-deep)", textDecoration: "none", flexShrink: 0 }}
-                    href={`${wa}?text=${encodeURIComponent(`Oi${lead.name ? " " + String(lead.name).trim().split(/\s+/)[0] : ""}! Aqui é da LeverAds. Nossa call vai ser por este link: ${lead.callUrl}`)}`}
+                    href={`${wa}?text=${encodeURIComponent(waCallLinkText(lead, lead.callUrl))}`}
                     target="_blank" rel="noopener noreferrer" title="Enviar o link pro lead no WhatsApp">
                     mandar no Whats ↗
                   </a>
