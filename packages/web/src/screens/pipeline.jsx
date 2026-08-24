@@ -11,6 +11,7 @@ import {
 import { usersByRole, userColor, displayName, currentUser } from "../lib/users.js";
 import { mentoriaFit, mentoriaOfferLine, VERBA_RANK } from "../lib/mentoria.js";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
+import { ProposalCardActions } from "../components/ProposalActions.jsx";
 import { useActiveSaas, pinActiveSaas } from "../lib/workspace.js";
 // Pipeline — Kanban + Lista. Drag-and-drop between columns.
 // Funil unificado: os LEADS são os cards do pipeline (window.SEED.LEADS). Cada
@@ -512,6 +513,7 @@ function LeadCard({ d, s, currentStage, onDragStart, selected, onSelect, onOpen 
           </span>
         )}
       </div>
+      <ProposalCardActions lead={d} />
     </div>
   );
 }

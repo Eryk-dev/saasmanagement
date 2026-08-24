@@ -8,7 +8,7 @@ import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf, nextKindsFor } from "../lib/funnel.js";
 import { allUsers, currentUser, displayName, userById, usersByRole } from "../lib/users.js";
-import { useProposalTemplates } from "../components/ProposalActions.jsx";
+import { proposalWhatsappText, useProposalTemplates } from "../components/ProposalActions.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { useAttribution } from "../lib/pains.js";
 import { clientSummary, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks, DealProductField, isOneOffProduct } from "../components/lead-blocks.jsx";
@@ -1197,7 +1197,6 @@ function ProposalBlock({ l, wa, item, onPatch }) {
     || (!!cfg?.enabled && l.saas === cfg.saas)
   );
   const brand = (window.SEED?.SAAS || []).find((s) => s.id === l.saas)?.name || "LeverAds";
-  const firstName = l.name ? " " + String(l.name).trim().split(/\s+/)[0] : "";
 
   // Ofertas do deck (a principal + a escada secreta) — só existem depois que a
   // proposta foi gerada; deck sem escada devolve uma opção só.
@@ -1230,7 +1229,7 @@ function ProposalBlock({ l, wa, item, onPatch }) {
     try {
       const r = await api.shareProposal(l.id, o.offer);
       setSent({ offer: o.offer, url: r.url });
-      const text = `Oi${firstName}! Aqui é da ${brand}. Segue a sua proposta com tudo o que a gente conversou: ${r.url}`;
+      const text = proposalWhatsappText(l, brand, r.url);
       if (win) win.location.replace(`${wa}?text=${encodeURIComponent(text)}`);
     } catch {
       if (win) win.close();

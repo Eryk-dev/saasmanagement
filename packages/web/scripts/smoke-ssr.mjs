@@ -37,7 +37,7 @@ window.SEED = {
   ],
   LEADS: [
     { id: "l1", saas: "leverads", name: "Lead Novo", stage: "Inbox", amount: 1290, createdAt: nowIso, stageSince: nowIso },
-    { id: "l2", saas: "leverads", name: "Lead Call", stage: "Call closer", amount: 2190, createdAt: nowIso, stageSince: nowIso, callAt: nowIso },
+    { id: "l2", saas: "leverads", name: "Lead Call", stage: "Call closer", amount: 2190, phone: "41999990000", createdAt: nowIso, stageSince: nowIso, callAt: nowIso, proposta_id: "pr_l2", proposalUrl: "https://cockpit.test/p/pr_l2", proposal_edit_url: "https://cockpit.test/p/pr_l2?k=edit" },
     { id: "l3", saas: "leverads", name: "Lead Ganho", stage: "Ganho", amount: 1490, createdAt: nowIso, stageSince: nowIso },
   ],
   NPS: [], LEADERBOARD_MONTH: [], LEADERBOARD_ALL: [], GOALS: [],
@@ -92,6 +92,7 @@ try {
     ["expenses", "/src/screens/expenses.jsx", "ExpensesScreen", {}, "Pagamentos"],
     ["customers", "/src/screens/customers.jsx", "CustomersScreen", {}, "Cliente Teste"],
     ["pipeline", "/src/screens/pipeline.jsx", "PipelineScreen", { onOpenLead() {} }, "Lead Novo"],
+    ["pipeline-proposal-shortcuts", "/src/screens/pipeline.jsx", "PipelineScreen", { onOpenLead() {} }, "enviar no Whats"],
     ["chrome", "/src/chrome.jsx", "NavRail", { current: "overview", onNav() {} }, "Visão geral"],
     ["forms", "/src/screens/forms.jsx", "FormsScreen", { saasId: "leverads" }, ""],
     ["proposals", "/src/screens/proposals.jsx", "ProposalsScreen", { saasId: "leverads" }, ""],
