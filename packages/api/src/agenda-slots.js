@@ -253,3 +253,16 @@ export function slotLabel(at, now = wallNow()) {
   if (diffDays < 7) return `${wd} às ${h}`;
   return `${wd} ${pad2(w.getUTCDate())}/${pad2(w.getUTCMonth() + 1)} às ${h}`;
 }
+
+// Rótulo da CONFIRMAÇÃO (Leo, 24/08): o combinado por escrito leva a data
+// cravada — "hoje/amanhã" sozinho vira ambiguidade quando o lead relê a
+// conversa dias depois. "hoje (24/08) às 14h" / "sexta (28/08) às 10h".
+export function slotLabelFull(at, now = wallNow()) {
+  const w = wallFromNaive(at);
+  if (!w) return String(at || "");
+  const h = w.getUTCMinutes() ? `${w.getUTCHours()}h${pad2(w.getUTCMinutes())}` : `${w.getUTCHours()}h`;
+  const tomorrow = new Date(now); tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  const day = wallYmd(w);
+  const base = day === wallYmd(now) ? "hoje" : day === wallYmd(tomorrow) ? "amanhã" : WEEKDAYS[w.getUTCDay()];
+  return `${base} (${pad2(w.getUTCDate())}/${pad2(w.getUTCMonth() + 1)}) às ${h}`;
+}
