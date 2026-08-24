@@ -403,23 +403,40 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
           const phone = lead.waPhone || lead.phone;
           const thread = await findThreadByPhone(repo, phone);
           const to = thread?.phone || phone;
+          // Janela de 24h checada ANTES do envio, como no 1º toque e no resgate:
+          // a Meta ACEITA o texto livre com janela fechada (devolve id) e só
+          // reprova depois, pelo webhook de status (131047) — o catch síncrono
+          // nunca via o erro e o lembrete morria calado como "enviada".
+          let windowOpen = false;
+          if (thread) {
+            const msgs = await listMessages(repo, thread.id);
+            const lastIn = [...msgs].reverse().find((m) => m.direction === "in");
+            windowOpen = !!lastIn && nowMs - Date.parse(lastIn.at || 0) < 24 * HOUR;
+          }
+          // Janela fechada: template aprovado reabre; sem template, alerta
+          // quente — o lembrete é justamente o anti no-show, não pode morrer
+          // calado.
+          const viaTemplate = async () => {
+            const names = await approvedNames();
+            const tplLembrete = [cfg.templates.reminder, "sdr_lembrete_call"].find((n) => names.has(n));
+            if (tplLembrete) {
+              await sendTemplate({ phone: to, name: tplLembrete, params: [nome || "tudo bem", quando], phoneId, saas: product.id, leadId: lead.id });
+            } else {
+              await raiseAlert(repo, thread || { id: digits(phone), phone: digits(phone), name: lead.name || "", leadId: lead.id, saas: product.id }, {
+                text: `Lembrete ${due.key} da call não entregue (janela fechada, sem template aprovado) · confirmar na mão`,
+              });
+            }
+          };
           try {
-            try {
-              await sendText({ phone: to, text: reminderText(due.key, { nome, quando, link: lead.callUrl || "" }), phoneId, saas: product.id, leadId: lead.id });
-            } catch (err) {
-              if (!outsideWindow(err)) throw err;
-              // Janela de 24h fechada: template aprovado reabre; sem template,
-              // alerta quente — o lembrete é justamente o anti no-show, não
-              // pode morrer calado.
-              const names = await approvedNames();
-              const tplLembrete = [cfg.templates.reminder, "sdr_lembrete_call"].find((n) => names.has(n));
-              if (tplLembrete) {
-                await sendTemplate({ phone: to, name: tplLembrete, params: [nome || "tudo bem", quando], phoneId, saas: product.id, leadId: lead.id });
-              } else {
-                await raiseAlert(repo, thread || { id: digits(phone), phone: digits(phone), name: lead.name || "", leadId: lead.id, saas: product.id }, {
-                  text: `Lembrete ${due.key} da call não entregue (janela fechada, sem template aprovado) · confirmar na mão`,
-                });
+            if (windowOpen) {
+              try {
+                await sendText({ phone: to, text: reminderText(due.key, { nome, quando, link: lead.callUrl || "" }), phoneId, saas: product.id, leadId: lead.id });
+              } catch (err) {
+                if (!outsideWindow(err)) throw err; // nosso registro dizia aberta, a Meta discorda
+                await viaTemplate();
               }
+            } else {
+              await viaTemplate();
             }
             sends++; stats.reminders++;
             await repo.update("leads", lead.id, { confirmLog: { ...log0, [due.key]: nowIso } });
