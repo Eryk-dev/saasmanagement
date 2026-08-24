@@ -45,7 +45,7 @@ async function world({ lead = {}, threads = [], messages = [] } = {}) {
   return repo;
 }
 
-const tickOf = (repo, wa) => makeSdrRunner({ repo, whatsapp: wa, log: { warn: () => {} }, now: () => NOW }).tick();
+const tickOf = (repo, wa, at = NOW) => makeSdrRunner({ repo, whatsapp: wa, log: { warn: () => {} }, now: () => at }).tick();
 
 test("24h calado: manda a retomada UMA vez e carimba secondTouchAt", async () => {
   const repo = await world({
@@ -73,6 +73,38 @@ test("lead que respondeu qualquer coisa fica FORA do segundo toque", async () =>
   });
   const wa = makeWa({ approved: ["sdr_retomada_conversa"] });
   await tickOf(repo, wa);
+  assert.equal(wa.sent.filter((s) => s.name === "sdr_retomada_conversa").length, 0);
+});
+
+// Horário comercial (24/08): o ponto das 24h herda a hora do 1º toque (que é
+// 24/7) — lead das 23h levaria a retomada às 23h. Fora do expediente
+// (business-hours: seg a sex, 8h às 18h BRT) a retomada espera.
+test("fora do expediente a retomada espera; no expediente seguinte ela sai", async () => {
+  // 1º toque terça 20:30 BRT; 24h caem fora do expediente.
+  const repo = await world({ lead: { sdrLog: { firstTouchAt: ISO("2026-08-18T23:30:00Z"), firstTouchVia: "template" } } });
+  const wa = makeWa({ approved: ["sdr_retomada_conversa"] });
+  await tickOf(repo, wa, new Date("2026-08-20T01:30:00Z")); // quarta 22:30 BRT
+  assert.equal(wa.sent.filter((s) => s.name === "sdr_retomada_conversa").length, 0);
+  assert.equal((await repo.get("leads", "L1")).sdrLog.secondTouchAt, undefined);
+  await tickOf(repo, wa, new Date("2026-08-20T12:00:00Z")); // quinta 9:00 BRT
+  assert.equal(wa.sent.filter((s) => s.name === "sdr_retomada_conversa").length, 1);
+  assert.ok((await repo.get("leads", "L1")).sdrLog.secondTouchAt);
+});
+
+test("24h completadas na quinta à noite atravessam o fim de semana (teto 96h)", async () => {
+  // 1º toque quinta 18:30 BRT → primeiro expediente é segunda 8h (~86h depois).
+  const repo = await world({ lead: { sdrLog: { firstTouchAt: ISO("2026-08-13T21:30:00Z"), firstTouchVia: "template" } } });
+  const wa = makeWa({ approved: ["sdr_retomada_conversa"] });
+  await tickOf(repo, wa, new Date("2026-08-15T14:00:00Z")); // sábado 11h BRT: fim de semana não é expediente
+  assert.equal(wa.sent.length, 0);
+  await tickOf(repo, wa, new Date("2026-08-17T11:30:00Z")); // segunda 8:30 BRT
+  assert.equal(wa.sent.filter((s) => s.name === "sdr_retomada_conversa").length, 1);
+});
+
+test("mais velho que o teto de 96h fica de fora", async () => {
+  const repo = await world({ lead: { sdrLog: { firstTouchAt: ISO("2026-08-13T10:00:00Z"), firstTouchVia: "template" } } });
+  const wa = makeWa({ approved: ["sdr_retomada_conversa"] });
+  await tickOf(repo, wa, new Date("2026-08-17T11:30:00Z")); // segunda 8:30 BRT, 97h depois
   assert.equal(wa.sent.filter((s) => s.name === "sdr_retomada_conversa").length, 0);
 });
 
