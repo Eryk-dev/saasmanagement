@@ -337,7 +337,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerAuthRoutes(app, repo);
   // Google Meet: conectar conta (OAuth) + criar call na agenda do closer.
   // Claude resume as calls (transcrição → timeline) quando há ANTHROPIC_API_KEY.
-  const { client: googleClient, googleUser, briefer, autoIntegrationMeet, autoCallMeet, moveCallMeet } = registerGoogleRoutes(app, repo, { google: opts.google, googleUser: opts.googleUser, anthropic: anthropicClient });
+  const { client: googleClient, googleUser, briefer, autoIntegrationMeet, autoCallMeet, moveCallMeet, cancelCallMeet } = registerGoogleRoutes(app, repo, { google: opts.google, googleUser: opts.googleUser, anthropic: anthropicClient });
   // Consultas 1:1 + Manual da Família (UniqueKids): Meet da consulta, resumo IA,
   // compor manual e página pública /m/:id. Depois do Google (usa os 2 clients).
   registerConsultationRoutes(app, repo, { google: googleClient, googleUser, anthropic: anthropicClient });
@@ -359,7 +359,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // browser) + cues da IA sobre o roteiro. Rotas sob /api/leads → guard do
   // pipeline já cobre.
   registerCopilotRoutes(app, repo, { transcriber: opts.transcriber, anthropic: anthropicClient });
-  sdrBrain = opts.sdrBrain || makeSdrBrain({ repo, whatsapp: whatsappClient, anthropic: anthropicClient, autoCallMeet, log: app.log });
+  sdrBrain = opts.sdrBrain || makeSdrBrain({ repo, whatsapp: whatsappClient, anthropic: anthropicClient, autoCallMeet, cancelCallMeet, log: app.log });
   // SDR automatizado: horários livres no servidor + templates + status +
   // bateria de replay (o motor determinístico é o poller startSdrFlow do
   // index.js, com o MESMO client).

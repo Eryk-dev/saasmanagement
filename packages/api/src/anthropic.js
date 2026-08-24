@@ -341,10 +341,10 @@ const SDR_DECIDE_SCHEMA = {
   properties: {
     acao: {
       type: "string",
-      enum: ["responder", "agendar", "remarcar", "humano", "silencio"],
-      description: "responder = mandar a mensagem e seguir a conversa; agendar = o lead topou um horário da lista; remarcar = mudar a call já marcada pra um horário da lista; humano = precisa de gente (a mensagem vira frase de transição curta, pode ser vazia); silencio = não responder nada",
+      enum: ["responder", "agendar", "remarcar", "desmarcar", "humano", "silencio"],
+      description: "responder = mandar a mensagem e seguir a conversa; agendar = o lead topou um horário da lista; remarcar = mudar a call já marcada pra um horário da lista; desmarcar = o lead cancelou a call marcada SEM escolher horário novo (o sistema tira da agenda e oferece a remarcação sozinho); humano = precisa de gente (a mensagem vira frase de transição curta, pode ser vazia); silencio = não responder nada",
     },
-    mensagens: { type: "array", maxItems: 3, items: { type: "string" }, description: "As mensagens a enviar, EM SEQUÊNCIA, como gente digitando: 1 item curto quando a resposta é direta; quebre em 2 ou 3 itens curtos quando o conteúdo pedir mais (nunca um textão único). Lista vazia em agendar, remarcar e silencio (a confirmação de agendamento o sistema manda sozinho)." },
+    mensagens: { type: "array", maxItems: 3, items: { type: "string" }, description: "As mensagens a enviar, EM SEQUÊNCIA, como gente digitando: 1 item curto quando a resposta é direta; quebre em 2 ou 3 itens curtos quando o conteúdo pedir mais (nunca um textão único). Lista vazia em agendar, remarcar, desmarcar e silencio (a confirmação de agendamento ou desmarcação o sistema manda sozinho)." },
     horario: { type: "string", description: "Em agendar/remarcar: o horário escolhido EXATAMENTE como está na lista de HORÁRIOS LIVRES (YYYY-MM-DDTHH:MM). Vazio nas outras ações. NUNCA invente horário fora da lista." },
     email: { type: "string", description: "E-mail do lead, se apareceu nesta mensagem dele; senão vazio." },
     motivoHumano: { type: "string", description: "Em humano: por que precisa de gente, 1 frase. Vazio nas outras ações." },
@@ -389,6 +389,8 @@ COMO TRATAR O QUE APARECE (padrões que comprovadamente viram call):
 - "Ainda não vendo em marketplace": responda com gentileza que a plataforma é pra quem já vende, e acao humano (o time direciona pra mentoria).
 
 QUANDO AGENDAR (NUNCA na sua primeira mensagem da conversa: lá é descoberta, salvo pedido explícito de horário do lead): o lead topou call, pediu horário ou indicou período ("pode ser de manhã") → escolha o horário da lista de HORÁRIOS LIVRES que melhor encaixa no que ele disse e devolva acao agendar com esse horário EXATO. Se ele propôs um horário que não está na lista, NÃO invente: acao responder oferecendo os 2 primeiros da lista como alternativas. Se já existe call marcada e ele quer mudar, acao remarcar com o novo horário da lista. Ao CITAR um horário em texto, copie o RÓTULO exato que veio na lista (nunca recalcule "amanhã/segunda" de cabeça: o rótulo da lista é a verdade). Ao oferecer DUAS opções, elas devem ter pelo menos 2 horas entre si quando a agenda permitir: use o PAR SUGERIDO do contexto.
+
+QUANDO DESMARCAR (acao desmarcar): existe conversa marcada e o lead avisa que NÃO vai conseguir, sem escolher horário novo ("não vou conseguir hoje", "surgiu um imprevisto", "entro em contato pra reagendar"): acao desmarcar, mensagens vazia — o sistema confirma pro lead, tira o compromisso da agenda e já oferece novos horários sozinho. Se ele já indicou o horário ou período novo, é remarcar (horário da lista) ou responder oferecendo opções. NUNCA responda um cancelamento com acao responder deixando a conversa marcada de pé: o lembrete automático continuaria disparando pra uma conversa que o lead já cancelou.
 
 QUANDO CHAMAR GENTE (acao humano): pergunta técnica específica que exige verificação real (part numbers, compatibilidade de peça, integração específica de ERP); lead irritado, desconfiado ou pedindo pra parar de receber mensagem; pedido explícito de falar com humano ou de ligação telefônica (não prometa ligação); pergunta direta se você é robô/IA (nunca minta, nunca afirme ser humano: chame gente); qualquer negociação de preço insistente; áudio sem transcrição ([áudio]).
 
@@ -785,7 +787,7 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
     const p = r.parsed || {};
     const mensagens = (Array.isArray(p.mensagens) ? p.mensagens : [p.mensagem]).map((m) => String(m || "").trim()).filter(Boolean).slice(0, 3);
     return {
-      acao: ["responder", "agendar", "remarcar", "humano", "silencio"].includes(p.acao) ? p.acao : "humano",
+      acao: ["responder", "agendar", "remarcar", "desmarcar", "humano", "silencio"].includes(p.acao) ? p.acao : "humano",
       mensagens,
       mensagem: mensagens.join("\n"),
       horario: String(p.horario || ""),

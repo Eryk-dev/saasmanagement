@@ -65,7 +65,7 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
     const report = {
       saas, startedAt,
       threads: picked.length, turns: 0, errors: 0,
-      actions: { responder: 0, agendar: 0, remarcar: 0, humano: 0, silencio: 0 },
+      actions: { responder: 0, agendar: 0, remarcar: 0, desmarcar: 0, humano: 0, silencio: 0 },
       priceGuardHits: 0,          // respostas da IA que a trava de preço trocaria
       invalidSlotPicks: 0,        // agendar com horário fora da lista (o motor re-oferta)
       realBookedThreads: 0,       // nas conversas da amostra, quantas viraram call na vida real
