@@ -52,8 +52,8 @@ import { meta as defaultMetaClient } from "./meta.js";
 import { metaCapi as defaultMetaCapi } from "./meta-capi.js";
 import { discord as defaultDiscord } from "./discord.js";
 import { currentRev, subscribe as subscribeChanges } from "./changes.js";
-import { isWon, isPostSaleStage, firstStage, kindOf } from "./stages.js";
-import { logActivity, applyStageMove, onActivityCreated, initialNextActionAt, appointmentAt, autoLeadOwner } from "./lead-flow.js";
+import { isWon, isPostSaleStage, firstStage, kindOf, stageByKind, isNoShowStage } from "./stages.js";
+import { logActivity, applyStageMove, onActivityCreated, initialNextActionAt, appointmentAt, autoLeadOwner, brtToIso } from "./lead-flow.js";
 import { findDuplicateLead, dedupMergePatch } from "./lead-dedup.js";
 import { registerFunnelMetricsRoutes } from "./routes.funnel-metrics.js";
 import { registerScoreboardRoutes } from "./routes.scoreboard.js";
@@ -878,6 +878,21 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     // e-mail de atualização do Google.
     if (collection === "leads" && "callAt" in req.body && updated.callUrl) {
       try { await moveCallMeet(updated.id); } catch { /* fail-open: o lembrete de 10min entrega o link certo */ }
+    }
+    // REMARCOU UM NO-SHOW: o card volta pra etapa de call sozinho. Editar só o
+    // horário deixava o card preso em "No show" com call futura — e a régua de
+    // lembretes exige etapa de call, então o lead remarcado não recebia nem a
+    // confirmação nem o link, e furava de novo (caso Alcindotzwicins, 25/08).
+    if (collection === "leads" && "callAt" in req.body && req.body.stage == null) {
+      try {
+        const product = await repo.get("products", updated.saas);
+        const at = Date.parse(brtToIso(String(updated.callAt || "")));
+        const target = stageByKind(product, "call");
+        if (target && Number.isFinite(at) && at > Date.now() && isNoShowStage(updated.stage)) {
+          const patch = await applyStageMove(repo, { lead: updated, toStage: target.stage, author: req.authUser?.id || "system" });
+          Object.assign(updated, await repo.update("leads", updated.id, { ...patch, stage: target.stage }));
+        }
+      } catch { /* fail-open: a etapa segue como está */ }
     }
     // Remarcou a call/integração → o GPS segue o compromisso. Só quando o
     // horário mudou de verdade e o PATCH não trouxe um nextActionAt explícito

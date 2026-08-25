@@ -916,7 +916,10 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                   // Furou: card sinalizado como No show (ou perdido por "não
                   // compareceu") E este evento é a call ATUAL do card — entrada
                   // antiga de callHistory é remarcação, não carrega desfecho.
-                  const noShow = kind === "call" && !!l.callAt
+                  // Só a call que JÁ PASSOU pode ter furado. Card em No show com
+                  // call FUTURA é remarcação em pé, e pintar de vermelho fazia
+                  // parecer furo que ainda nem aconteceu (Leo, 25/08).
+                  const noShow = kind === "call" && done && !!l.callAt
                     && new Date(l.callAt).getTime() === t.getTime()
                     && (isNoShowStage(l.stage) || l.lostReason === "nao_compareceu");
                   // A COR DE FUNDO diz o TIPO (paleta clara + letra preta,

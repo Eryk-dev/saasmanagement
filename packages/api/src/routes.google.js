@@ -264,9 +264,15 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     const s = callMoment(fresh.callAt);
     if (!s) return null;
     if (fresh.meetScheduledAt && Math.abs(Date.parse(fresh.meetScheduledAt) - s.getTime()) < 60_000) return null;
-    if (!(await client.connected().catch(() => false))) return null;
+    // O evento mora no calendário de quem ORGANIZOU: a conta pessoal do closer
+    // quando ele conectou a dele, senão a conta do time. Patch pela conta
+    // errada dá 404 e o convite seguia mentindo o horário antigo (caso
+    // Alcindotzwicins, 25/08: remarcado pra hoje, convite preso em ontem).
+    const org = fresh.meetOrganizer && (await gu.connectedFor(fresh.meetOrganizer).catch(() => false)) ? fresh.meetOrganizer : "";
+    if (!org && !(await client.connected().catch(() => false))) return null;
+    const gclient = org ? client.forUser(gu, org) : client;
     const e = new Date(s.getTime() + 45 * 60_000);
-    await client.patchCalendarEvent(fresh.meetEventId, {
+    await gclient.patchCalendarEvent(fresh.meetEventId, {
       start: { dateTime: wallClockBrt(s), timeZone: TZ },
       end: { dateTime: wallClockBrt(e), timeZone: TZ },
     });
