@@ -65,6 +65,12 @@ export function sdrBotConfig(product) {
     // novos primeiro. Nasce DESLIGADA: é campanha, não régua permanente.
     backlogRescue: cfg.backlogRescue === true,
     backlogRescuePerBatch: num(cfg.backlogRescuePerBatch, 100),
+    // DISJUNTOR (Leo, 24/08 — "medo de ser banido"): a campanha se pausa
+    // sozinha quando a Meta começa a recusar entrega. Limiar em % de falhas
+    // das mensagens do robô nas últimas 2h, com piso de amostra pra um azar
+    // isolado não derrubar a campanha.
+    backlogRescueMaxFailPct: num(cfg.backlogRescueMaxFailPct, 15),
+    backlogRescueMinSample: num(cfg.backlogRescueMinSample, 20),
     backlogRescueHours: Array.isArray(cfg.backlogRescueHours) && cfg.backlogRescueHours.length
       ? cfg.backlogRescueHours
       : [9, 9.5, 10, 10.5, 11, 11.5, 13, 13.5, 14, 14.5, 15, 15.5, 16],
@@ -523,15 +529,37 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
         const frac = wnow.getUTCHours() + (wnow.getUTCMinutes() >= 30 ? 0.5 : 0);
         const isWeekday = wnow.getUTCDay() >= 1 && wnow.getUTCDay() <= 5;
         if (!isWeekday || !cfg.backlogRescueHours.includes(frac)) continue;
-        // Pausa pela saúde: sinais DE ENVIO (número sinalizado pela Meta ou
-        // template do resgate com qualidade vermelha). A violação antiga da
+        // Pausa pela saúde: sinais DE ENVIO (número sinalizado/qualidade caída
+        // ou template do resgate com qualidade vermelha). A violação antiga da
         // CONTA (ligações, removidas em 22/08) não trava a campanha — ela já
         // aparece na régua de saúde do inbox pro time acompanhar.
         const health = await getWaHealth(repo).catch(() => null);
         const tplQ4 = (n) => String(health?.templates?.[n]?.quality || "").toUpperCase();
+        const numQ = String(health?.number?.quality || "").toUpperCase();
         if (String(health?.number?.event || "").toUpperCase() === "FLAGGED"
+          || numQ === "RED" || numQ === "YELLOW"
           || tplQ4(cfg.templates.backlogRescue) === "RED" || tplQ4(cfg.templates.backlogRescueNutri) === "RED") {
-          log.warn?.({ saas: product.id }, "sdr: resgate do backlog pausado (número sinalizado ou template vermelho)");
+          log.warn?.({ saas: product.id, numQ }, "sdr: resgate do backlog pausado (número sinalizado/qualidade caída ou template vermelho)");
+          continue;
+        }
+        // DISJUNTOR: a Meta recusando entrega é o primeiro sinal de excesso
+        // (o "healthy ecosystem engagement" é a régua de marketing por
+        // usuário). Passou do limiar nas últimas 2h, a campanha para sozinha
+        // e um alerta chama o time — vale mais um resgate pela metade que um
+        // número queimado.
+        const since2h = new Date(nowMs - 2 * HOUR).toISOString();
+        const recent = await repo.listWhere("wa_messages", { at: { gte: since2h } }, { fields: ["author", "status", "at"] }).catch(() => []);
+        const mine = recent.filter((m) => m.author === SDR_AUTHOR);
+        const failed = mine.filter((m) => m.status === "failed").length;
+        const failPct = mine.length ? Math.round((100 * failed) / mine.length) : 0;
+        if (mine.length >= cfg.backlogRescueMinSample && failPct >= cfg.backlogRescueMaxFailPct) {
+          log.warn?.({ saas: product.id, failPct, sample: mine.length }, "sdr: DISJUNTOR — resgate do backlog pausado por taxa de falha");
+          if (!(await repo.get("app_config", `sdr_backlog_breaker_${product.id}`).catch(() => null))) {
+            await repo.create("app_config", { id: `sdr_backlog_breaker_${product.id}`, at: nowIso, failPct, sample: mine.length }).catch(() => {});
+            await raiseAlert(repo, { id: "campanha", phone: "", name: "Campanha de resgate", saas: product.id }, {
+              text: `DISJUNTOR: resgate do backlog pausado · ${failPct}% das mensagens do robô falharam nas últimas 2h (${failed}/${mine.length}) · confira a saúde do número antes de religar`,
+            }).catch(() => {});
+          }
           continue;
         }
         const mm = wnow.getUTCMinutes() >= 30 ? "30" : "00";
@@ -551,16 +579,26 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
           (!l.internal || cfg.conversationTest) && !l.formExit && !l.disqualified &&
           !l.whatsappOptOut && !l.whatsappInvalid && !l.sdrOff && digits(l.waPhone || l.phone);
         const IDLE_DAYS = { qualificacao: 3, contato: 7 };
-        const pool = allLeads
+        let pool = allLeads
           .filter((l) => (l.saas || "") === product.id)
           .filter((l) => okLead(l) && !l.callAt && !isWonLead(product, l) && !isNoShowStage(l.stage))
           .filter((l) => !l.sdrLog?.backlogRescueAt && !l.sdrLog?.secondTouchAt && !l.sdrLog?.sendFailedAlertAt)
           .filter((l) => { const ft = Date.parse(l.sdrLog?.firstTouchAt || ""); return !(Number.isFinite(ft) && nowMs - ft < SECOND_TOUCH_MAX_MS); })
           .map((l) => ({ l, kind: kindOf(product, l.stage || firstStage(product)) }))
-          .filter((x) => x.kind === "qualificacao" || x.kind === "contato")
-          .sort((a, b) => (a.kind === b.kind
-            ? String(b.l.createdAt || "").localeCompare(String(a.l.createdAt || ""))
-            : a.kind === "qualificacao" ? -1 : 1));
+          .filter((x) => x.kind === "qualificacao" || x.kind === "contato");
+        // ORDEM POR ENGAJAMENTO (Leo, 24/08): quem JÁ conversou com a gente
+        // alguma vez vai primeiro — responde mais e quase nunca bloqueia. Lead
+        // que nunca respondeu nada é o de maior risco de bloqueio/denúncia,
+        // então fica no fim: se o disjuntor cortar a campanha, o que já saiu é
+        // justamente a parte boa da base.
+        const engagedThreads = new Set((await repo.listWhere("wa_messages", { direction: "in" }, { fields: ["leadId"] }).catch(() => []))
+          .map((m) => m.leadId).filter(Boolean));
+        pool.sort((a, b) => {
+          const ea = engagedThreads.has(a.l.id) ? 0 : 1, eb = engagedThreads.has(b.l.id) ? 0 : 1;
+          if (ea !== eb) return ea - eb;
+          if (a.kind !== b.kind) return a.kind === "qualificacao" ? -1 : 1;
+          return String(b.l.createdAt || "").localeCompare(String(a.l.createdAt || ""));
+        });
         for (const { l, kind } of pool) {
           if (quota <= 0 || sends >= CAP) break;
           const idleMs = IDLE_DAYS[kind] * 24 * HOUR;

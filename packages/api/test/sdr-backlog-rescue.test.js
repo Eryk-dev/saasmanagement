@@ -115,3 +115,53 @@ test("saúde do número em risco pausa a campanha; sem template aprovado, nada s
   await tickAt(repo2, wa2);
   assert.equal(wa2.sent.length, 0, "sem template aprovado");
 });
+
+test("DISJUNTOR: taxa de falha alta nas últimas 2h pausa a campanha e levanta alerta", async () => {
+  const lead = { id: "L1", name: "Gil", phone: "41911110006", stage: "Qualificando", createdAt: ISO("2026-08-10T10:00:00Z"), stageSince: ISO("2026-08-10T10:00:00Z") };
+  const repo = await world({ leads: [lead] });
+  // 20 mensagens do robô na última hora, 5 falhadas = 25% (limiar 15%).
+  for (let i = 0; i < 20; i++) {
+    await repo.create("wa_messages", {
+      id: "f" + i, thread: "5541900000000", direction: "out", author: "sdr-bot",
+      status: i < 5 ? "failed" : "sent", at: ISO("2026-08-24T11:30:00Z"),
+    });
+  }
+  const wa = makeWa({ approved: ["sdr_retomada_conversa"] });
+  await tickAt(repo, wa);
+  assert.equal(wa.sent.length, 0, "disjuntor cortou");
+  const alerts = await repo.list("wa_alerts");
+  assert.equal(alerts.length, 1);
+  assert.match(alerts[0].text, /DISJUNTOR/);
+  assert.ok(await repo.get("app_config", "sdr_backlog_breaker_leverads"));
+});
+
+test("amostra pequena não aciona o disjuntor (um azar isolado não derruba a campanha)", async () => {
+  const lead = { id: "L1", name: "Gil", phone: "41911110006", stage: "Qualificando", createdAt: ISO("2026-08-10T10:00:00Z"), stageSince: ISO("2026-08-10T10:00:00Z") };
+  const repo = await world({ leads: [lead] });
+  // 4 mensagens, 2 falhas = 50%, mas amostra < 20: segue enviando.
+  for (let i = 0; i < 4; i++) {
+    await repo.create("wa_messages", {
+      id: "g" + i, thread: "5541900000000", direction: "out", author: "sdr-bot",
+      status: i < 2 ? "failed" : "sent", at: ISO("2026-08-24T11:30:00Z"),
+    });
+  }
+  const wa = makeWa({ approved: ["sdr_retomada_conversa"] });
+  await tickAt(repo, wa);
+  assert.equal(wa.sent.length, 1);
+});
+
+test("ordem por engajamento: quem já respondeu alguma vez sai antes do lead frio", async () => {
+  const repo = await world({
+    sdrBot: { backlogRescuePerBatch: 1 },
+    leads: [
+      { id: "FRIO", name: "Frio", phone: "41911110007", stage: "Qualificando", createdAt: ISO("2026-08-22T10:00:00Z"), stageSince: ISO("2026-08-20T10:00:00Z") },
+      { id: "QUENTE", name: "Quente", phone: "41911110008", stage: "Qualificando", createdAt: ISO("2026-08-05T10:00:00Z"), stageSince: ISO("2026-08-05T10:00:00Z") },
+    ],
+  });
+  // QUENTE é mais VELHO, mas já respondeu — ganha a vez.
+  await repo.create("wa_messages", { id: "in1", thread: "5541911110008", leadId: "QUENTE", direction: "in", text: "oi", at: ISO("2026-08-06T10:00:00Z") });
+  const wa = makeWa({ approved: ["sdr_retomada_conversa"] });
+  await tickAt(repo, wa);
+  assert.equal(wa.sent.length, 1);
+  assert.equal(wa.sent[0].params[0], "Quente");
+});
