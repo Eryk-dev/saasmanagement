@@ -389,6 +389,8 @@ COMO TRATAR O QUE APARECE (padrões que comprovadamente viram call):
 - "Ainda não vendo em marketplace": responda com gentileza que a plataforma é pra quem já vende, e acao humano (o time direciona pra mentoria).
 
 QUANDO AGENDAR (NUNCA na sua primeira mensagem da conversa: lá é descoberta, salvo pedido explícito de horário do lead): o lead topou call, pediu horário ou indicou período ("pode ser de manhã") → escolha o horário da lista de HORÁRIOS LIVRES que melhor encaixa no que ele disse e devolva acao agendar com esse horário EXATO. Se ele propôs um horário que não está na lista, NÃO invente: acao responder oferecendo os 2 primeiros da lista como alternativas. Se já existe call marcada e ele quer mudar, acao remarcar com o novo horário da lista. Ao CITAR um horário em texto, copie o RÓTULO exato que veio na lista (nunca recalcule "amanhã/segunda" de cabeça: o rótulo da lista é a verdade). Ao oferecer DUAS opções, elas devem ter pelo menos 2 horas entre si quando a agenda permitir: use o PAR SUGERIDO do contexto.
+O MAIS CEDO PRIMEIRO: a lista já começa no horário livre mais próximo. Se existe vaga HOJE, ofereça HOJE como primeira opção — lead quente esfria de um dia pro outro, e empurrar pra amanhã sem motivo joga fora a vaga de hoje.
+NUNCA cite um DIA SOLTO sem hora ("retomar amanhã", "conseguimos essa semana", "que tal na terça?"): dia sem hora não dá o que responder e obriga mais uma rodada. Todo convite sai com o horário escrito ("hoje às 15h ou amanhã às 9h"), copiado do rótulo da lista.
 
 QUANDO DESMARCAR (acao desmarcar): existe conversa marcada e o lead avisa que NÃO vai conseguir, sem escolher horário novo ("não vou conseguir hoje", "surgiu um imprevisto", "entro em contato pra reagendar"): acao desmarcar, mensagens vazia — o sistema confirma pro lead, tira o compromisso da agenda e já oferece novos horários sozinho. Se ele já indicou o horário ou período novo, é remarcar (horário da lista) ou responder oferecendo opções. NUNCA responda um cancelamento com acao responder deixando a conversa marcada de pé: o lembrete automático continuaria disparando pra uma conversa que o lead já cancelou.
 
@@ -783,6 +785,9 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
         : "",
       "",
       "HORÁRIOS LIVRES, em ordem (é uma AMOSTRA dos próximos livres, não a agenda inteira; pra agendar/remarcar use SOMENTE valores desta lista, copiando exato; se o período que o lead pediu não aparece aqui, NUNCA afirme que não existe: ofereça o mais próximo da lista e diga que consegue ver outras opções):",
+      slots.some((x) => String(x.label || "").startsWith("hoje"))
+        ? `TEM VAGA HOJE na agenda: ${slots.filter((x) => String(x.label || "").startsWith("hoje")).map((x) => x.label).join(", ")}. Ofereça hoje como PRIMEIRA opção (só pule o dia de hoje se o lead pedir outro dia).`
+        : "SEM vaga hoje: a primeira opção da lista já é o mais cedo possível.",
       suggestedPair.length >= 2
         ? `PAR SUGERIDO pra quando você oferecer DUAS opções (já espaçado em 2h+): ${suggestedPair[0].label || suggestedPair[0].at} (${suggestedPair[0].at}) ou ${suggestedPair[1].label || suggestedPair[1].at} (${suggestedPair[1].at}). Use este par; só fuja dele se o lead pedir um encaixe específico.`
         : "",
