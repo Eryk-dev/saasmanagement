@@ -322,6 +322,27 @@ test("re-oferta determinística (horário inventado pela IA) também pede descul
   assert.match(fakes.sent[0].text, /hoje às 13h/);
 });
 
+test("oferta só em hora cheia; hora quebrada só quando o LEAD pede", async () => {
+  const repo = await world({ messages: [{ direction: "in", text: "sim, quero ver", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Perfeito" }] });
+  await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "sim, quero ver" } });
+  // A trava de beco emenda a oferta: tem que vir em hora cheia.
+  const ofertado = fakes.sent.map((x) => x.text).join(" ");
+  assert.ok(!/\dh30/.test(ofertado), `oferta não usa hora quebrada: ${ofertado}`);
+  // O PAR que a IA recebeu também é de hora cheia.
+  for (const s of fakes.calls[0].suggestedPair) assert.ok(s.at.endsWith(":00"), `par sugerido em hora cheia: ${s.at}`);
+  // Mas a lista COMPLETA (pra agendar o que o lead pedir) mantém as quebradas.
+  assert.ok(fakes.calls[0].slots.some((s) => s.at.endsWith(":30")), "lista completa mantém meia hora");
+});
+
+test("lead que pede hora quebrada é agendado nela", async () => {
+  const repo = await world({ messages: [{ direction: "in", text: "consigo só 13h30", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: "2026-08-19T13:30" }] });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "consigo só 13h30" } });
+  assert.equal(r, "agendar");
+  assert.equal((await repo.get("leads", "L1")).callAt, "2026-08-19T13:30");
+});
+
 test("trava de preço: resposta da IA com valor vira o desvio com autoridade (sem número)", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "quanto custa?", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "O plano parte de R$ 299 por mês, fechado?" }] });

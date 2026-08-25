@@ -10,7 +10,7 @@
 // parcial gravado a cada conversa pra dar pra acompanhar.
 import { kindOf, firstStage } from "./stages.js";
 import { leadGrade } from "./routes.marketing.js";
-import { slotsForLead, slotLabel, wallNow, spreadPair, OFFER_HOURS } from "./agenda-slots.js";
+import { slotsForLead, slotLabel, wallNow, spreadPair, wholeHourSlots, OFFER_HOURS } from "./agenda-slots.js";
 import { leadDigest, leadPainFocus, SDR_AUTHOR } from "./sdr-flow.js";
 
 const DOC_ID = "sdr_replay";
@@ -116,7 +116,7 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
             canGreet: gapMin == null || gapMin >= 360,
             gapMin,
             demoOffered,
-            suggestedPair: spreadPair(slotList),
+            suggestedPair: spreadPair(wholeHourSlots(slotList)),
             slotsOffered: msgs.slice(0, i).some((x) => x.direction === "out" && /(hoje|amanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo) às \d{1,2}h/i.test(x.text || "")),
           });
           report.actions[d.acao] = (report.actions[d.acao] || 0) + 1;
