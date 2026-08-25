@@ -160,9 +160,28 @@ export function allowedScreens() {
   return s.length ? new Set(s) : null;
 }
 
+// Piso por PAPEL: espelho do ROLE_SCREENS do servidor (screens.js). Closer
+// sempre enxerga o pipeline e a tela de Links de pagamento, mesmo com a lista
+// de telas restrita — gerar link é o meio de vida dele, não pode depender de
+// alguém lembrar de marcar a caixinha em Ajustes → Equipe. Quem manda de
+// verdade é o guard da API; aqui é só o menu e a rota não mentirem pra ele.
+const ROLE_SCREENS = {
+  closer: ["pipeline", "offers"],
+};
+
+export function roleScreens(user = currentUser()) {
+  const fresh = user?.id ? (userById(user.id) || user) : user;
+  const out = new Set();
+  for (const role of (fresh?.roles || [])) {
+    for (const screen of ROLE_SCREENS[role] || []) out.add(screen);
+  }
+  return out;
+}
+
 export function canSeeScreen(id) {
   const a = allowedScreens();
-  return !a || a.has(id);
+  if (!a) return true;
+  return a.has(id) || roleScreens().has(id);
 }
 
 // Tela concedida EXPLICITAMENTE (consta na lista de telas, que não está vazia).
