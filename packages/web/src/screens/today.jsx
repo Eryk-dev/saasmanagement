@@ -528,29 +528,33 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   const callsToday = q.hoje.filter((i) => i.kind === "call" && !i.confirm);
   const callsDone = callsToday.filter((i) => i.done).length;
 
-  // ── Placar do dia: a META DIÁRIA da pessoa (Leo, 25/08) ────────────────────
+  // ── Placar: a META da pessoa, na unidade do trabalho dela (Leo, 25/08) ─────
   // O placar comparava o feito com o TAMANHO DA FILA do dia ("1/9" = nove itens
   // na fila), o que sobe e desce conforme o dia enche — não é meta, é carga. A
-  // régua certa é a meta de Metas repartida pelos dias úteis (base 21,75/mês),
-  // a MESMA que a Visão geral cobra da pessoa: o alvo do dia não muda porque
-  // entraram leads novos.
+  // régua certa é a meta de Metas, a MESMA que a Visão geral cobra da pessoa.
   //
-  // Valor e meta vêm SEMPRE do mesmo lugar: com meta configurada, os dois saem
-  // do placar do servidor (que já resolve pessoa > vaga ÷ time e mede contato/
-  // agendamento pela régua do metrics-core); sem meta, os dois seguem locais,
-  // como era antes. Nunca cruza feito-do-servidor com meta-da-fila.
+  // SDR é medido no DIA (contato e agendamento são volume: 54 e 10 por dia na
+  // régua atual, números que fazem sentido cobrar hoje). CLOSER é medido no MÊS
+  // (contrato e receita, Leo 25/08): a meta de contrato repartida por 21,75 dias
+  // arredonda pra cima e vira mentira — 10 contratos/mês virariam "1 por dia",
+  // o dobro do que a pessoa persegue. Cada papel na janela em que a meta dele
+  // existe de verdade.
+  const viewRoles = new Set(person ? (userById(person)?.roles || []) : []);
+  const scoreRole = viewRoles.has("sdr") ? "sdr" : viewRoles.has("closer") ? "closer" : "";
   const [dayScore, setDayScore] = useS(null);
   useE(() => {
-    if (!saasCfg?.id || !person) { setDayScore(null); return; }
+    if (!saasCfg?.id || !person || !scoreRole) { setDayScore(null); return; }
     let alive = true;
     const hoje = bizDay(new Date());
-    api.scoreboard(saasCfg.id, { since: hoje, until: hoje })
+    const since = scoreRole === "closer" ? `${hoje.slice(0, 8)}01` : hoje;
+    api.scoreboard(saasCfg.id, { since, until: hoje })
       .then((s) => { if (alive) setDayScore(s); })
       .catch(() => { if (alive) setDayScore(null); });
     return () => { alive = false; };
-  }, [saasCfg?.id, person, version]);
+  }, [saasCfg?.id, person, scoreRole, version]);
   const score = dayScoreOf({
-    row: (dayScore?.sdr || []).find((p) => p.user === person) || null,
+    role: scoreRole,
+    row: (dayScore?.[scoreRole] || []).find((p) => p.user === person) || null,
     today: bizDay(new Date()),
     local: { contacted: q.doneToday, contactedGoal, calls: callsDone, callsGoal: Math.max(callsToday.length, 1) },
   });
@@ -911,54 +915,88 @@ function TasksCard({ tasks, onDone, undo, onUndo }) {
   );
 }
 
-// Placar do dia: o que a pessoa fez HOJE contra a META DELA no dia (Leo, 25/08).
-// A meta mensal de Metas (pessoa > vaga ÷ time > derivada do pace, tudo já
-// resolvido pelo servidor no `row.goals`) se reparte pelos dias úteis, base
-// 21,75/mês — a MESMA régua da Visão geral, então as duas telas nunca divergem.
+// Placar: o que a pessoa fez contra a META DELA (Leo, 25/08). A meta de Metas
+// (pessoa > vaga ÷ time > plano de remuneração > derivada do pace, tudo já
+// resolvido pelo servidor em `row.goals`) é a MESMA régua da Visão geral, então
+// as duas telas nunca divergem.
 //
-// Valor e meta saem SEMPRE do mesmo lugar: com meta no dia, os dois vêm do
-// placar do servidor; sem meta (produto sem cadeia derivável, fim de semana,
-// pessoa que não é SDR), os dois seguem locais, como era antes. O que nunca
-// pode acontecer é cruzar realizado do servidor com um alvo que é só o tamanho
-// da fila — foi assim que "1 / 9" parecia meta sendo, na verdade, carga do dia.
-export function dayScoreOf({ row, today, local }) {
+// A JANELA é a do trabalho de cada papel:
+//   SDR    → o DIA. Contato e agendamento são volume diário (a meta mensal ÷
+//            dias úteis, base 21,75, dá dezenas por dia: número que se persegue
+//            hoje).
+//   CLOSER → o MÊS. Contrato e receita não cabem num dia: 10 contratos/mês
+//            repartidos por 21,75 arredondam pra "1 por dia", o dobro do que a
+//            pessoa persegue de verdade. O mês é a unidade em que essa meta
+//            existe, então é nela que o placar cobra.
+//
+// Valor e meta saem SEMPRE do mesmo lugar: com meta, os dois vêm do placar do
+// servidor; sem meta (produto sem cadeia derivável, fim de semana, quem não é
+// SDR nem closer), os dois seguem locais, como era antes. O que nunca pode
+// acontecer é cruzar realizado do servidor com um alvo que é só o tamanho da
+// fila — foi assim que "1 / 9" parecia meta sendo, na verdade, carga do dia.
+export function dayScoreOf({ role, row, today, local }) {
+  const fila = {
+    title: "Placar do dia", scope: "fila de hoje",
+    lines: [
+      { label: "Contatados", value: local.contacted, goal: local.contactedGoal, kind: "int" },
+      { label: "Calls de hoje", value: local.calls, goal: local.callsGoal, kind: "int" },
+    ],
+  };
+  if (role === "closer") {
+    const won = Number(row?.goals?.won?.target) > 0 ? Math.round(row.goals.won.target) : null;
+    const revenue = Number(row?.goals?.revenue?.target) > 0 ? Math.round(row.goals.revenue.target) : null;
+    const lines = [
+      won && { label: "Contratos", value: row.won || 0, goal: won, kind: "int" },
+      revenue && { label: "Receita", value: row.revenue || 0, goal: revenue, kind: "money" },
+    ].filter(Boolean);
+    return lines.length ? { title: "Placar do mês", scope: "meta do mês", lines } : fila;
+  }
   const biz = businessDaysBetween(today, today);
   const goalContacts = scaledGoal(row?.goals?.contacts, biz);
   const goalCalls = scaledGoal(row?.goals?.callsBooked, biz);
+  if (!goalContacts && !goalCalls) return fila;
   return {
-    contacted: goalContacts ? (row.contacted || 0) : local.contacted,
-    contactedGoal: goalContacts || local.contactedGoal,
-    calls: goalCalls ? (row.callsBooked || 0) : local.calls,
-    callsGoal: goalCalls || local.callsGoal,
-    // A linha de calls muda de sentido junto com a meta: contra a meta de
-    // agendamento, o número é quanto a pessoa AGENDOU hoje; sem meta, segue
-    // sendo quantas das calls de hoje já aconteceram.
-    callsLabel: goalCalls ? "Calls agendadas" : "Calls de hoje",
-    goalScope: goalContacts || goalCalls ? "meta" : "fila",
+    title: "Placar do dia", scope: "meta do dia",
+    lines: [
+      {
+        label: "Contatados",
+        value: goalContacts ? (row.contacted || 0) : local.contacted,
+        goal: goalContacts || local.contactedGoal, kind: "int",
+      },
+      {
+        // A linha muda de sentido junto com a meta: contra a meta de
+        // agendamento, o número é quanto a pessoa AGENDOU hoje; sem ela, segue
+        // sendo quantas das calls de hoje já aconteceram.
+        label: goalCalls ? "Calls agendadas" : "Calls de hoje",
+        value: goalCalls ? (row.callsBooked || 0) : local.calls,
+        goal: goalCalls || local.callsGoal, kind: "int",
+      },
+    ],
   };
 }
 
-function DayScore({ contacted, contactedGoal, calls, callsGoal, callsLabel = "Calls agendadas", goalScope = "fila" }) {
-  const progress = (label, value, goal) => (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-        <span style={{ fontSize: 13.5, color: "var(--fg-2)" }}>{label}</span>
-        <span className="tnum" style={{ fontSize: 14, fontWeight: 600 }}>{value} <span style={{ fontWeight: 400, fontSize: 12, color: "var(--fg-4)" }}>/ {goal}</span></span>
-      </div>
-      <div style={{ height: 5, borderRadius: 999, background: "var(--bg-2)", overflow: "hidden" }}><div style={{ height: "100%", width: `${Math.min(100, Math.round((value / Math.max(goal, 1)) * 100))}%`, background: "var(--accent)", borderRadius: 999 }} /></div>
-    </div>
-  );
+function DayScore({ title = "Placar do dia", scope = "fila de hoje", lines = [] }) {
+  const show = (v, kind) => (kind === "money" ? window.fmt.money(Number(v) || 0) : window.fmt.int(Number(v) || 0));
   return (
     <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px var(--inset-x)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-        <span className="kicker accent">Placar do dia</span>
+        <span className="kicker accent">{title}</span>
         {/* Contra o que o número está sendo cobrado: sem meta configurada, o
             placar mede a fila, e dizer isso evita ler carga do dia como alvo. */}
-        <span style={{ fontSize: 11, color: "var(--fg-4)" }}>{goalScope === "meta" ? "meta do dia" : "fila de hoje"}</span>
+        <span style={{ fontSize: 11, color: "var(--fg-4)" }}>{scope}</span>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 14 }}>
-        {progress("Contatados", contacted, contactedGoal)}
-        {progress(callsLabel, calls, callsGoal)}
+        {lines.map((l) => (
+          <div key={l.label} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <span style={{ fontSize: 13.5, color: "var(--fg-2)" }}>{l.label}</span>
+              <span className="tnum" style={{ fontSize: 14, fontWeight: 600 }}>{show(l.value, l.kind)} <span style={{ fontWeight: 400, fontSize: 12, color: "var(--fg-4)" }}>/ {show(l.goal, l.kind)}</span></span>
+            </div>
+            <div style={{ height: 5, borderRadius: 999, background: "var(--bg-2)", overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${Math.min(100, Math.round((l.value / Math.max(l.goal, 1)) * 100))}%`, background: "var(--accent)", borderRadius: 999 }} />
+            </div>
+          </div>
+        ))}
       </div>
     </section>
   );
