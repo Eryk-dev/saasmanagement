@@ -219,6 +219,25 @@ test("resgate sai quando o horário já passou de verdade", async () => {
   assert.match(wa.sent[0].text, /não te encontrei/);
 });
 
+test("2ª tentativa do no-show também passa pela higiene do nome e pela reserva", async () => {
+  const repo = await world({
+    leads: [{
+      id: "L1", name: "PECAS", phone: "5566993361260", stage: "No show",
+      stageSince: ISO("2026-08-18T12:00:00Z"),
+      sdrLog: { noshowFor: ISO("2026-08-18T12:00:00Z"), noshowVia: "text", noshowAt: ISO("2026-08-18T12:00:00Z") },
+    }],
+    threads: [{ id: "5566993361260", phone: "5566993361260", leadId: "L1", saas: "leverads" }],
+    // Silêncio desde o 1º resgate (quem responde não leva 2ª tentativa) e
+    // janela de 24h fechada, que é o normal um dia depois do furo: vai template.
+    messages: [{ id: "m1", thread: "5566993361260", leadId: "L1", direction: "in", text: "oi", at: ISO("2026-08-17T12:00:00Z") }],
+  });
+  const wa = makeWa({ approved: ["sdr_remarcar_noshow"] });
+  await runnerOf(repo, wa).tick();
+  assert.equal(wa.sent.length, 1);
+  assert.equal(wa.sent[0].params[0], "tudo bem", "não sai 'Oi PECAS' na 2ª tentativa");
+  assert.ok((await activeHolds(repo, "leverads", { now: NOW })).length, "horário oferecido fica reservado");
+});
+
 // ── A9 · lead já está na conversa ───────────────────────────────────────────
 test("lead avisando que já está na sala carimba os lembretes restantes", async () => {
   const repo = await world({
