@@ -105,6 +105,28 @@ function goalRate(goals, role, metric) {
   return Number.isFinite(value) && value > 0 ? clampRate(value / 100) : null;
 }
 
+// ── Maturação da coorte: destrunca a ponta a ponta da janela móvel ──────────
+// Um lead criado há 2 dias ainda não teve chance de fechar, mas entra inteiro no
+// denominador de "ganhos ÷ leads". Numa janela de 30 dias móveis isso esconde
+// boa parte dos ganhos que a safra ainda vai gerar (LeverAds em 25/08/2026:
+// mediana de 3,1 dias entre lead e ganho, p90 de 20,5, 96% em até 30 dias, o
+// que dá ~79% de captura) e o plano acaba pedindo lead e mídia a mais.
+// A correção usa a história do PRÓPRIO produto: F(a) = fração dos ganhos que já
+// teriam acontecido em `a` dias de vida. A EXPOSIÇÃO da coorte é a soma de F(a)
+// de cada lead, no lugar da contagem crua. Produto de ciclo longo ganha uma
+// correção maior; de ciclo curto, quase nenhuma. Sozinha ela não vale nada: é a
+// dupla com a calibração que faz a cadeia pedir o número certo de lead.
+export function maturityCurve(delaysDays) {
+  const sorted = delaysDays.filter((d) => Number.isFinite(d) && d >= 0).sort((a, b) => a - b);
+  return (ageDays) => {
+    if (!sorted.length) return 1;
+    if (!(ageDays > 0)) return 0;
+    let lo = 0, hi = sorted.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (sorted[mid] <= ageDays) lo = mid + 1; else hi = mid; }
+    return lo / sorted.length;
+  };
+}
+
 function resolvedRate(numerator, denominator, configured, benchmark) {
   if (denominator > 0) {
     return {
@@ -240,11 +262,20 @@ export async function computePipelinePace(repo, product, now = new Date()) {
     averageEntrySource = "configured_ticket";
   }
 
-  // ── Taxas da cadeia: o FUNIL DO PERÍODO do mês fechado anterior ────────────
-  // (decisão do Leo, 08/08/2026: "o correto é o funil"). As taxas que desdobram
-  // a meta são as MESMAS contas do funil da Visão geral filtrada no mês passado
-  // (bloco `team` do scoreboard), pra Metas, Análise e Visão geral contarem UMA
-  // história — o teste de consistência no routes.pipeline-pace.test.js amarra:
+  // ── Taxas da cadeia: os 30 DIAS MÓVEIS (decisão do Leo, 25/08/2026) ────────
+  // Antes a janela era o mês fechado anterior (08/08: "o correto é o funil").
+  // Trocou porque a operação muda de patamar rápido demais pro mês passado
+  // ainda descrever o presente: junho 58 leads, julho 484, agosto 756 em 25
+  // dias (30/dia contra 15,6/dia em julho). Com o mês fechado, o plano era
+  // desdobrado por um funil de outra escala de operação.
+  // O custo conhecido é o TRUNCAMENTO: uma janela de 30d móveis captura ~79%
+  // dos ganhos que a coorte ainda vai gerar (medido na distribuição real de
+  // atraso lead→ganho: mediana 3,1 dias, p90 20,5, 96% em até 30 dias). Quem
+  // paga essa conta é a CALIBRAÇÃO da ponta a ponta, logo abaixo, que agora
+  // fica ligada em QUALQUER janela.
+  // O mês fechado segue como FALLBACK (sem amostra em 30d), e nele as contas
+  // continuam sendo as MESMAS do funil da Visão geral filtrada no mês passado
+  // (bloco `team` do scoreboard) — o teste de consistência amarra:
   //   leads      = criados na janela (+ histórico pré-cockpit se a janela
   //                alcança a época; MESMO gate do placar)
   //   contatados = WORKLOAD: leads trabalhados na janela (lead antigo tocado
@@ -260,9 +291,9 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   // inflava o plano); comparecimento = realizadas ÷ devidas; conversão =
   // ganhos ÷ realizadas, SEM calibração: calibrar mostraria um número diferente
   // do que a Visão geral mostra pro mesmo mês.
-  // Sem amostra no mês fechado (menos de MIN_RATE_SAMPLE leads ou nenhum
-  // ganho), cai na janela móvel de 30 dias (coorte + calibração), como era —
-  // produto novo não trava no benchmark.
+  // Sem amostra nos 30 dias móveis (menos de MIN_RATE_SAMPLE leads ou nenhum
+  // ganho na janela), cai no mês fechado anterior; sem amostra lá também, as
+  // taxas caem na meta configurada e depois no benchmark.
   const humanIds = new Set(users.map((u) => u.id));
   const prevMonth = (() => { const d = new Date(`${month}-01T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7); })();
   const [pmY, pmM] = prevMonth.split("-").map(Number);
@@ -270,7 +301,12 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   const inPrevMonth = (iso) => inRange(iso, `${prevMonth}-01`, prevMonthEnd);
   const enteredPrev = leads.filter((l) => inPrevMonth(l.createdAt));
   const wonPrev = winLeadsIn(inPrevMonth).length;
-  const useMonth = enteredPrev.length >= MIN_RATE_SAMPLE && wonPrev > 0;
+  // Janela PRIMÁRIA: 30d móveis. Só cai no mês fechado quando os 30d não têm
+  // amostra (produto novo, mês parado), invertendo a prioridade de 08/08.
+  const cohort30 = leads.filter((l) => inRange(l.createdAt, since30));
+  const won30 = winLeadsIn((iso) => inRange(iso, since30)).length;
+  const rolling30HasSample = cohort30.length >= MIN_RATE_SAMPLE && won30 > 0;
+  const useMonth = !rolling30HasSample && enteredPrev.length >= MIN_RATE_SAMPLE && wonPrev > 0;
 
   // Histórico PRÉ-COCKPIT (product.paceAdjust): dados reais de antes do registro
   // no cockpit somados aos VOLUMES. GANHO nunca usa ajuste (decisão do Leo,
@@ -279,7 +315,12 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   const adjVal = (k) => { const n = Math.floor(Number(adj[k])); return Number.isFinite(n) && n > 0 ? n : 0; };
   const adjMap = (on) => (on ? ["leads", "contacted", "booked", "shown"].reduce((o, k) => (adjVal(k) ? { ...o, [k]: adjVal(k) } : o), null) : null);
 
-  let conversions, rateWindow, paceAdjust, nLeads, nWon;
+  // nWon alimenta o closeRate (ganhos das calls REALIZADAS); nWonChain alimenta
+  // a ponta a ponta (ganhos da COORTE, com ou sem call agendada) — separados
+  // porque a venda sem call registrada sumia do ponta a ponta e puxava a
+  // calibração pra baixo.
+  let conversions, rateWindow, paceAdjust, nLeads, nWon, nWonChain;
+  let chainExposure = null; // leads da coorte já MADUROS (só na janela móvel)
   if (useMonth) {
     // Gate do histórico: MESMO do placar — só entra quando a JANELA começa
     // antes da época do 1º registro de atividade (ou de paceAdjust.before).
@@ -304,6 +345,7 @@ export async function computePipelinePace(repo, product, now = new Date()) {
     const shown = outPrev.shown + adjN("shown");
     const due = shown + outPrev.noShow; // o que JÁ devia ter acontecido (sem as futuras)
     nWon = wonPrev;
+    nWonChain = wonPrev;
     conversions = {
       contactRate: resolvedRate(reached, enteredPrev.length, goalRate(goals, "sdr", "contactRate"), RATE_BENCHMARKS.contactRate),
       bookingRate: resolvedRate(bookedCohortPrev.length + adjN("booked"), reached + adjN("contacted"), goalRate(goals, "sdr", "bookingRate"), RATE_BENCHMARKS.bookingRate),
@@ -313,11 +355,11 @@ export async function computePipelinePace(repo, product, now = new Date()) {
     paceAdjust = adjMap(adjOn);
     rateWindow = { mode: "month", month: prevMonth, since: `${prevMonth}-01`, until: prevMonthEnd };
   } else {
-    // Janela móvel de 30 dias (fallback): coorte dos leads criados nela com
-    // desfechos até hoje + calibração pela ponta a ponta, como sempre foi.
+    // Janela móvel de 30 dias (a PRIMÁRIA desde 25/08): coorte dos leads criados
+    // nela com desfechos até hoje + calibração pela ponta a ponta.
     // Contato sem janela no toque de propósito: a coorte é dos leads recentes,
     // o contato vale quando aconteceu.
-    const cohort = leads.filter((l) => inRange(l.createdAt, since30));
+    const cohort = cohort30;
     const ids = new Set(cohort.map((l) => l.id));
     const humanContact = contactAttribution({ leads, actsOf, waMessages, saas: product.id, inWin: () => true, humanIds });
     const contacted = cohort.filter((l) => humanContact.leadIds.has(l.id));
@@ -328,6 +370,24 @@ export async function computePipelinePace(repo, product, now = new Date()) {
     const nBooked = booked.length + adjVal("booked");
     const nShown = out.shown + adjVal("shown");
     nWon = out.won;
+    // Ponta a ponta: TODOS os ganhos da coorte, inclusive quem fechou sem call
+    // agendada no cockpit (o `out.won` só enxerga a safra de calls).
+    nWonChain = winLeadsIn(() => true).filter((l) => ids.has(l.id)).length;
+    // Exposição madura: quanto dessa coorte já teve tempo real de fechar.
+    const winAtAll = winsIn(product, leads, () => true, customerStartByLead);
+    const delays = [];
+    for (const [wid, when] of winAtAll) {
+      const born = Date.parse(leadById.get(wid)?.createdAt || "");
+      const at = Date.parse(when);
+      if (Number.isFinite(born) && Number.isFinite(at) && at >= born) delays.push((at - born) / DAY);
+    }
+    if (delays.length >= MIN_RATE_SAMPLE) {
+      const matured = maturityCurve(delays);
+      chainExposure = cohort.reduce((a, l) => {
+        const born = Date.parse(l.createdAt || "");
+        return a + (Number.isFinite(born) ? matured((now.getTime() - born) / DAY) : 1);
+      }, 0) + adjVal("leads");
+    }
     conversions = {
       contactRate: resolvedRate(nContacted, nLeads, goalRate(goals, "sdr", "contactRate"), RATE_BENCHMARKS.contactRate),
       bookingRate: resolvedRate(nBooked, nContacted, goalRate(goals, "sdr", "bookingRate"), RATE_BENCHMARKS.bookingRate),
@@ -351,20 +411,40 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   const cpl = spend30 > 0 && leads30 > 0 ? round2(spend30 / leads30) : null;
 
   // Ponta a ponta REAL (ganhos ÷ leads da janela das taxas): é a régua que bate
-  // com o caixa ("vendi X com Y de mídia"). Na janela MÓVEL as taxas de etapa
-  // vêm de coorte truncada (lead recente ainda não teve tempo de avançar) e o
-  // viés se multiplica na cadeia — por isso lá o fechamento é CALIBRADO pra
-  // cadeia fechar exatamente na ponta a ponta. No modo MÊS FECHADO a calibração
-  // fica DESLIGADA de propósito: a régua é o funil como a Visão geral mostra
-  // pro mesmo mês, e calibrar exibiria um número diferente entre as duas telas.
+  // com o caixa ("vendi X com Y de mídia").
+  // A CALIBRAÇÃO vale em QUALQUER janela desde 25/08. Antes ficava desligada no
+  // mês fechado pra não divergir da Visão geral, e o preço era uma cadeia que se
+  // contradizia na própria tela: multiplicando as 4 taxas de julho dava 2,62%,
+  // enquanto o lead→ganho da MESMA janela dava 4,07%. As bases das etapas não
+  // são a mesma coorte (contato e agendamento são da safra de LEADS, o
+  // comparecimento é da safra de CALLS, o fechamento é ganho por data de venda),
+  // então o produto delas nunca devolve o ponta a ponta. Sem calibrar, o plano
+  // pedia ~60% mais lead e mídia do que a história do produto justifica.
+  // A Visão geral continua batendo com `closeRate` (o valor MEDIDO, que segue
+  // exposto); `closeRateEffective` é o que a cadeia usa, e a tela mostra os dois.
   const chainProb = round4(clampRate(conversions.contactRate.value * conversions.bookingRate.value
     * conversions.showRate.value * conversions.closeRate.value));
-  conversions.leadToWin = resolvedRate(nWon, nLeads, null, chainProb);
+  conversions.leadToWin = resolvedRate(nWonChain, nLeads, null, chainProb);
+  // Ponta a ponta DESTRUNCADA: os mesmos ganhos sobre os leads que já tiveram
+  // tempo de fechar. É ela que a cadeia persegue; `leadToWin` (cru) continua
+  // exposto porque é o número que qualquer um conta na mão.
+  // A chave só existe quando a correção se aplica: toda entrada de `conversions`
+  // é um objeto de taxa, e um null aqui quebraria quem varre o mapa.
+  if (chainExposure > 0 && nWonChain > 0 && conversions.leadToWin.source === "history") {
+    conversions.leadToWinMature = {
+      value: round4(clampRate(nWonChain / chainExposure)),
+      source: "matured",
+      numerator: nWonChain,
+      denominator: Math.round(chainExposure),
+      capture: round4(clampRate(chainExposure / nLeads)),
+    };
+  }
+  const endToEnd = conversions.leadToWinMature?.value ?? conversions.leadToWin.value;
   const upstream = conversions.contactRate.value * conversions.bookingRate.value * conversions.showRate.value;
-  const calibrated = rateWindow.mode !== "month" && conversions.leadToWin.source === "history"
+  const calibrated = conversions.leadToWin.source === "history"
     && conversions.leadToWin.numerator > 0 && conversions.leadToWin.denominator >= MIN_RATE_SAMPLE && upstream > 0;
   conversions.closeRateEffective = calibrated
-    ? { value: round4(clampRate(conversions.leadToWin.value / upstream)), source: "calibrated" }
+    ? { value: round4(clampRate(endToEnd / upstream)), source: "calibrated" }
     : { value: conversions.closeRate.value, source: conversions.closeRate.source };
 
   // ── Meta ancorada no VENDIDO (contrato cheio) ──────────────────────────────
