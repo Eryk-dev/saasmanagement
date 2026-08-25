@@ -396,11 +396,33 @@ test("appointmentAt: pega o compromisso DA ETAPA, e só no futuro", () => {
   assert.equal(appointmentAt(PROD, lead, "Integração", agora), "2026-07-20T20:00:00.000Z");
   // Na etapa de call vale o callAt — que aqui já passou, então não vale nada.
   assert.equal(appointmentAt(PROD, lead, "Call agendada", agora), "");
-  // Etapa sem compromisso associado não inventa.
+  // Etapa sem compromisso associado não inventa (nenhum followupAt marcado).
   assert.equal(appointmentAt(PROD, lead, "Follow-up", agora), "");
+  // Follow-up MARCADO é compromisso igual aos outros (25/08): sem isso o resumo
+  // por IA sobrescrevia o horário do closer e a agenda desenhava duas pílulas.
+  const comFup = { ...lead, stage: "Follow-up", followupAt: "2026-07-24T16:00" };
+  assert.equal(appointmentAt(PROD, comFup, "Follow-up", agora), "2026-07-24T19:00:00.000Z");
+  // Follow-up que já passou não segura o GPS.
+  assert.equal(appointmentAt(PROD, { ...comFup, followupAt: "2026-07-01T16:00" }, "Follow-up", agora), "");
   // Compromisso passado não é próximo passo.
   const depois = new Date("2026-07-20T23:00:00.000Z");
   assert.equal(appointmentAt(PROD, lead, "Integração", depois), "");
+});
+
+test("remarcar SÓ o followupAt move o GPS junto (agenda não fica com duas horas)", async () => {
+  const { app, repo } = await buildApp();
+  const futuro = new Date(Date.now() + 30 * 3600e3);
+  const brt = new Date(futuro.getTime() - 3 * 3600e3).toISOString().slice(0, 16);
+  const lead = (await app.inject({
+    method: "POST", url: "/api/leads",
+    payload: { name: "Wanderley", saas: "leverads", stage: "Follow-up", followupAt: brt, nextActionAt: brt },
+  })).json();
+  // O closer arrasta o follow-up pra 2h depois, mexendo só no followupAt.
+  const novo = new Date(futuro.getTime() + 2 * 3600e3 - 3 * 3600e3).toISOString().slice(0, 16);
+  await app.inject({ method: "PATCH", url: `/api/leads/${lead.id}`, payload: { followupAt: novo } });
+  const depois = await repo.get("leads", lead.id);
+  assert.equal(depois.followupAt, novo);
+  assert.equal(depois.nextActionAt, new Date(`${novo}:00-03:00`).toISOString());
 });
 
 test("mover pra Integração com hora marcada aponta o GPS pra ela, não pra cadência", async () => {

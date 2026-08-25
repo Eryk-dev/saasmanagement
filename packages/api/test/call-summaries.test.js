@@ -340,3 +340,64 @@ test("google.endActiveConference: 400 FAILED_PRECONDITION vira no_active_confere
   const r = await g.endActiveConference("sxj-tzvx-hud");
   assert.deepEqual(r, { ended: false, reason: "no_active_conference" });
 });
+
+// ── Follow-up marcado manda no GPS (Leo, 25/08/2026) ────────────────────────
+// A agenda desenhava DUAS pílulas de follow-up pro mesmo lead: o closer marcava
+// o horário (followupAt + nextActionAt iguais) e o resumo por IA sobrescrevia o
+// nextActionAt com a hora SUGERIDA, desalinhando os dois. `appointmentAt` não
+// conhecia a etapa de follow-up e devolvia "" ali, então a sugestão sempre
+// vencia. Casos reais em produção: Wanderley, Rood e Yuri.
+const FUNIL_FUP = [
+  { stage: "Call agendada", kind: "call", conv: 1 },
+  { stage: "Follow-up", kind: "followup", conv: 1 },
+];
+
+test("follow-up JÁ marcado pelo closer vence a sugestão da IA (só a nota entra)", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNIL_FUP });
+  await repo.create("leads", {
+    id: "le1", saas: "leverads", name: "Wanderley", stage: "Follow-up",
+    callUrl: "https://meet.google.com/abc-defg-hij", meetEventId: "ev1",
+    followupAt: "2099-01-09T16:00", nextActionAt: "2099-01-09T16:00",
+  });
+  const anthropic = makeAnthropic({ fetch: makeAnthropicFetch(), apiKey: "sk-test" });
+  const w = makeCallSummarizer({ repo, google: fakeGoogle(TRANSCRIPT), anthropic, log: { info() {}, warn() {} } });
+  assert.equal((await w.summarizeLead("le1")).ok, true);
+
+  const lead = await repo.get("leads", "le1");
+  // O GPS ficou no compromisso marcado (09/01 16:00 BRT), não na sugestão da IA
+  // (05/01 10:00) — é o que impede a segunda pílula na agenda.
+  assert.equal(lead.nextActionAt, new Date("2099-01-09T16:00:00-03:00").toISOString());
+  assert.equal(lead.followupAt, "2099-01-09T16:00");
+  // A nota da IA entra do mesmo jeito: é onde está o valor.
+  assert.equal(lead.nextActionNote, "cobrar leitura da proposta");
+});
+
+test("sem follow-up marcado, a sugestão da IA continua virando o GPS", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNIL_FUP });
+  await repo.create("leads", {
+    id: "le1", saas: "leverads", name: "Sem horário", stage: "Follow-up",
+    callUrl: "https://meet.google.com/abc-defg-hij", meetEventId: "ev1", followupAt: "",
+  });
+  const anthropic = makeAnthropic({ fetch: makeAnthropicFetch(), apiKey: "sk-test" });
+  const w = makeCallSummarizer({ repo, google: fakeGoogle(TRANSCRIPT), anthropic, log: { info() {}, warn() {} } });
+  assert.equal((await w.summarizeLead("le1")).ok, true);
+  const lead = await repo.get("leads", "le1");
+  assert.equal(lead.nextActionAt, new Date("2099-01-05T10:00:00-03:00").toISOString());
+});
+
+test("follow-up marcado que JÁ PASSOU não segura o GPS (a sugestão volta a valer)", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNIL_FUP });
+  await repo.create("leads", {
+    id: "le1", saas: "leverads", name: "Passado", stage: "Follow-up",
+    callUrl: "https://meet.google.com/abc-defg-hij", meetEventId: "ev1",
+    followupAt: "2020-01-02T09:00", nextActionAt: "2020-01-02T09:00",
+  });
+  const anthropic = makeAnthropic({ fetch: makeAnthropicFetch(), apiKey: "sk-test" });
+  const w = makeCallSummarizer({ repo, google: fakeGoogle(TRANSCRIPT), anthropic, log: { info() {}, warn() {} } });
+  assert.equal((await w.summarizeLead("le1")).ok, true);
+  const lead = await repo.get("leads", "le1");
+  assert.equal(lead.nextActionAt, new Date("2099-01-05T10:00:00-03:00").toISOString());
+});

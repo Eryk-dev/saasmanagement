@@ -29,6 +29,27 @@ const { useState: useStP, useMemo: useMP, useEffect: useEfP } = React;
 const TIER_RANK = { S: 0, A: 1, B: 2, C: 3, D: 4, E: 5 };
 const tierRank = (l) => TIER_RANK[leadTier(l).grade] ?? 9;
 
+// Instante de um horário de compromisso do lead. Os campos convivem em DUAS
+// representações: o time digita hora local ("2026-08-28T16:00", sem fuso, é
+// como callAt/followupAt são guardados) e o servidor grava ISO em UTC
+// ("2026-08-28T18:00:00.000Z", como o nextActionAt do resumo por IA). O
+// `new Date()` cru lê a string sem fuso na hora DO NAVEGADOR, então o mesmo
+// compromisso virava dois instantes diferentes e a agenda desenhava duas
+// pílulas. Aqui string sem fuso é sempre hora de BRASÍLIA, igual ao brtToIso do
+// servidor (lead-flow.js) — é a régua que faz as duas representações se
+// reconhecerem.
+const atMs = (value) => {
+  const v = String(value || "").trim();
+  if (!v) return NaN;
+  const withZone = /[Zz]|[+-]\d{2}:\d{2}$/.test(v) ? v : `${v.length === 16 ? `${v}:00` : v}-03:00`;
+  return new Date(withZone).getTime();
+};
+// Mesmo compromisso, ainda que escrito em representações diferentes.
+const sameMoment = (a, b) => {
+  const x = atMs(a), y = atMs(b);
+  return Number.isFinite(x) && Number.isFinite(y) && x === y;
+};
+
 function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   const { SAAS } = window.SEED;
   const { openForm, version } = useData();
@@ -646,14 +667,16 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
       // FEITA (✓, cor lavada, do closer) mesmo que o card tenha ido pra
       // follow-up/no show/ganho — a supressão do naSame só vale pra call
       // FUTURA (não duplicar o compromisso remarcado por cima do horário).
-      const callT = l.callAt ? new Date(l.callAt) : null;
-      const callDone = !!(callT && Number.isFinite(callT.getTime()) && callT.getTime() < Date.now());
-      const naSame = l.callAt && l.nextActionAt && new Date(l.callAt).getTime() === new Date(l.nextActionAt).getTime();
+      const callMs = atMs(l.callAt);
+      const callT = Number.isFinite(callMs) ? new Date(callMs) : null;
+      const callDone = !!(callT && callMs < Date.now());
+      const naSame = sameMoment(l.callAt, l.nextActionAt);
       const callInstead = k === "followup" && naSame && callDone; // história vence a pílula duplicada
-      if (l.nextActionAt && k === "followup" && !callInstead) {
-        out.push({ l, t: new Date(l.nextActionAt), kind: "follow-up", who: l.closer || l.owner });
-      } else if (l.nextActionAt && showTouches && k !== "followup") {
-        out.push({ l, t: new Date(l.nextActionAt), kind: "toque", who: l.owner || l.closer });
+      const naMs = atMs(l.nextActionAt);
+      if (Number.isFinite(naMs) && k === "followup" && !callInstead) {
+        out.push({ l, t: new Date(naMs), kind: "follow-up", who: l.closer || l.owner });
+      } else if (Number.isFinite(naMs) && showTouches && k !== "followup") {
+        out.push({ l, t: new Date(naMs), kind: "toque", who: l.owner || l.closer });
       }
       // Follow-up MARCADO com hora (lead.followupAt): compromisso PRÓPRIO, com a
       // cara de follow-up hoje e depois de passar (lavado, como toda história).
@@ -661,26 +684,25 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
       // existiu — indistinguível de uma call de verdade (Leo, 13/08). Some do
       // caminho quando é o mesmo instante do próximo toque, senão a pílula sai
       // duplicada em cima dela mesma.
-      const fupT = l.followupAt ? new Date(l.followupAt) : null;
-      if (fupT && Number.isFinite(fupT.getTime())
-        && !(l.nextActionAt && new Date(l.nextActionAt).getTime() === fupT.getTime())) {
-        out.push({ l, t: fupT, kind: "follow-up", who: l.closer || l.owner, done: fupT.getTime() < Date.now() });
+      const fupMs = atMs(l.followupAt);
+      if (Number.isFinite(fupMs) && !sameMoment(l.followupAt, l.nextActionAt)) {
+        out.push({ l, t: new Date(fupMs), kind: "follow-up", who: l.closer || l.owner, done: fupMs < Date.now() });
       }
       // Call marcada: futura respeita o naSame (follow-up cobre o horário);
       // passada entra SEMPRE, como histórico.
       if (callT && (callDone || !(k === "followup" && naSame))) {
         out.push({ l, t: callT, kind: "call", who: l.closer, done: callDone });
       }
+      const intMs = atMs(l.integrationAt);
       if (l.integrationAt) {
-        const it = new Date(l.integrationAt);
-        out.push({ l, t: it, kind: "integração", who: l.integrator || l.closer, done: Number.isFinite(it.getTime()) && it.getTime() < Date.now() });
+        out.push({ l, t: new Date(intMs), kind: "integração", who: l.integrator || l.closer, done: Number.isFinite(intMs) && intMs < Date.now() });
       }
       // HISTÓRICO de calls remarcadas por cima (lead.callHistory, arquivado
       // pelo PATCH da API quando um callAt passado é sobrescrito): cada
       // entrada vira uma call FEITA no dia em que aconteceu.
       for (const h of (Array.isArray(l.callHistory) ? l.callHistory : [])) {
-        const ht = new Date(h?.at);
-        if (Number.isFinite(ht.getTime())) out.push({ l, t: ht, kind: "call", who: h?.closer || l.closer, done: true });
+        const hMs = atMs(h?.at);
+        if (Number.isFinite(hMs)) out.push({ l, t: new Date(hMs), kind: "call", who: h?.closer || l.closer, done: true });
       }
       return out;
     })

@@ -894,10 +894,12 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
         }
       } catch { /* fail-open: a etapa segue como está */ }
     }
-    // Remarcou a call/integração → o GPS segue o compromisso. Só quando o
-    // horário mudou de verdade e o PATCH não trouxe um nextActionAt explícito
-    // (toque marcado na mão pelo time continua ganhando).
-    if (collection === "leads" && ("callAt" in req.body || "integrationAt" in req.body) && req.body.nextActionAt == null) {
+    // Remarcou a call/integração/follow-up → o GPS segue o compromisso. Só quando
+    // o horário mudou de verdade e o PATCH não trouxe um nextActionAt explícito
+    // (toque marcado na mão pelo time continua ganhando). O follow-up entrou em
+    // 25/08: remarcar só o followupAt deixava o GPS no horário velho, e a agenda
+    // desenhava as duas horas.
+    if (collection === "leads" && ("callAt" in req.body || "integrationAt" in req.body || "followupAt" in req.body) && req.body.nextActionAt == null) {
       try {
         const at = appointmentAt(await repo.get("products", updated.saas), updated);
         if (at && at !== updated.nextActionAt) {
