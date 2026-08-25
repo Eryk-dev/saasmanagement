@@ -214,6 +214,36 @@ test("trava de beco: interesse respondido sem pergunta ganha a oferta do par; ad
   assert.ok(!/qual fica melhor/.test(fakes3.sent[0].text));
 });
 
+test("oferta fantasma: 'os horários que te passei' sem ter passado vira a oferta real", async () => {
+  // Caso Gabriel (25/08): retomada é template SEM horário, e a IA respondeu
+  // citando horários que nunca existiram.
+  const repo = await world({ messages: [
+    { direction: "out", author: "sdr-bot", text: "Oiii Gabriel, tudo bem? Vamos retomar nossa conversa sobre a LeverAds? Me dá um ok aqui, por favor", at: ISO("2026-08-19T12:00:00Z") },
+    { direction: "in", text: "Ola tudo bem e com você ?", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagens: [
+    "Tudo certo por aqui também",
+    "Conseguimos retomar a demonstração amanhã, algum dos horários que te passei encaixa?",
+  ] }] });
+  await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "Ola tudo bem e com você ?" } });
+  const textos = fakes.sent.map((s) => s.text);
+  assert.ok(!textos.some((t) => /que te passei/i.test(t)), "a frase mentirosa não sai");
+  assert.match(textos.at(-1), /Consigo .*às \d/, "entra a oferta de verdade");
+  assert.equal(textos[0], "Tudo certo por aqui também", "o resto da resposta é preservado");
+  assert.ok((await repo.get("leads", "L1")).sdrLog.fakeOfferGuardAt);
+});
+
+test("horário JÁ oferecido antes: a referência é legítima e passa", async () => {
+  const repo = await world({ messages: [
+    { direction: "out", author: "sdr-bot", text: "Consigo hoje às 13h ou hoje às 15h, qual fica melhor?", at: ISO("2026-08-19T12:00:00Z") },
+    { direction: "in", text: "vou ver aqui", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Tranquilo! Algum dos horários que te passei encaixa?" }] });
+  await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "vou ver aqui" } });
+  assert.match(fakes.sent[0].text, /que te passei/i);
+  assert.equal((await repo.get("leads", "L1")).sdrLog?.fakeOfferGuardAt, undefined);
+});
+
 test("trava de preço: resposta da IA com valor vira o desvio com autoridade (sem número)", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "quanto custa?", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "O plano parte de R$ 299 por mês, fechado?" }] });
