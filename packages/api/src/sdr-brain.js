@@ -58,6 +58,12 @@ const PRICE_RX = /r\$\s*\d|\b\d{2,}\s*(reais|por m[eê]s|\/m[eê]s|mensais)\b|\b
 // nenhum (visto 25/08 com o Gabriel, logo depois da retomada — que é template
 // SEM horário). Prompt já proíbe; aqui o motor garante, trocando a frase
 // mentirosa pela oferta de verdade.
+// AFILIADO da Shopee/ML (Leo, 25/08): divulga produto dos outros por comissão,
+// não tem conta de vendedor nem anúncio pra clonar — não é cliente. O robô
+// marcou call pra uma afiliada e ainda manteve o horário "pro especialista
+// avaliar", queimando agenda. Aqui o motor bloqueia: não agenda, desmarca o que
+// já estava marcado e chama gente. Sem \b no fim (o \b do JS é ASCII).
+const AFFILIATE_RX = /\b(sou|somos|trabalho como|atuo como)\s+(um[ao]?\s+)?afil[ih]ad|afil[ih]ad[ao]s?\s+(d[ao]|na|no)\s+(shopee|mercado\s*livre|ml\b)|programa de afiliad|link de afiliad|divulgo produtos? (de|d[ao]s)/i;
 const FAKE_OFFER_RX = /(hor[áa]rios?|op[çc][õo]es)\s+que\s+(eu\s+)?(te\s+)?(passei|mandei|enviei)|algum\s+d(os|aqueles)\s+hor[áa]rios|aqueles\s+hor[áa]rios/i;
 const INTEREST_RX = /\b(sim|ajudaria|com certeza|claro|tenho interesse|quero|pode ser|bora|show|top|gostei|perfeito)\b/i;
 // Só frases que SÓ robô de atendimento escreve. Nada de "esse número é do…" ou
@@ -527,6 +533,25 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       const transition = ((Array.isArray(decision.mensagens) && decision.mensagens[0]) || String(decision.mensagem || "")).trim();
       if (transition && !PRICE_RX.test(transition) && transition.length <= 240) await send(transition);
       return "humano";
+    }
+
+    // TRAVA DE AFILIADO: o lead disse que é afiliado em QUALQUER mensagem desta
+    // conversa → nada de agendar. Call já marcada é desmarcada (libera o slot),
+    // o time recebe alerta e o robô sai da conversa.
+    const disseAfiliado = msgs.some((m) => m.direction === "in" && AFFILIATE_RX.test(m.transcript || m.text || ""));
+    if (disseAfiliado && !lead.sdrLog?.affiliateGuardAt) {
+      const fresh = (await repo.get("leads", lead.id)) || lead;
+      const tinhaCall = !!fresh.callAt;
+      if (tinhaCall) {
+        await cancelCall(repo, { lead: fresh, product, now: at });
+        if (cancelCallMeet) cancelCallMeet(lead.id).catch(() => { /* o alerta cobre */ });
+      }
+      await raiseAlert(repo, thread, {
+        text: `Lead é AFILIADO da Shopee/ML (não é cliente)${tinhaCall ? " · call desmarcada e horário liberado" : ""} · confirma e desqualifica`,
+      });
+      await stamp(lead, { affiliateGuardAt: new Date(nowMs).toISOString(), handoffAt: new Date(nowMs).toISOString() });
+      await send(`${nome ? `${nome}, ` : ""}obrigada por explicar! A LeverAds atende quem vende com conta PRÓPRIA de Mercado Livre e Shopee, porque o que a gente faz é espelhar e criar os anúncios da sua conta. Pra quem trabalha com afiliação ela não se aplica${tinhaCall ? ", então já liberei o horário aqui" : ""}. Qualquer coisa é só me chamar!`);
+      return "afiliado";
     }
 
     if (decision.acao === "agendar" || decision.acao === "remarcar") {
