@@ -7,7 +7,7 @@ import { api } from "../lib/api.js";
 import { KINDS, KIND_IDS, guessKind, lossReasonsOf, stageKind, stageByKind, phaseOf, NEXT_KINDS, NEXT_STEP_KINDS, NEXT_STEP_LABELS } from "../lib/funnel.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { DEFAULT_SCRIPTS, SCRIPT_CATALOG, catalogStageRow, isNoShowStage } from "../lib/scripts.js";
-import { usersByRole } from "../lib/users.js";
+import { usersByRole, roleScreens } from "../lib/users.js";
 import { ScriptPanel } from "./today.jsx";
 import { ErrorBoundary } from "../components/error-boundary.jsx";
 import { NAV } from "../chrome.jsx";
@@ -585,7 +585,7 @@ function TeamSettings() {
               <option value="">todos os produtos</option>
               {SAAS.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
             </select>
-            <ScreensPicker screens={u.screens || []} onChange={(screens) => setUserScreens(u, screens)} />
+            <ScreensPicker screens={u.screens || []} roles={u.roles || []} onChange={(screens) => setUserScreens(u, screens)} />
             <button onClick={() => removeUser(u)} title={`Remover ${u.name || u.id} do time`}
               style={{ justifySelf: "center", width: 26, height: 26, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-4)", fontSize: 13, cursor: "pointer" }}
               onMouseEnter={(e) => { e.currentTarget.style.color = "var(--neg)"; e.currentTarget.style.borderColor = "var(--neg)"; }}
@@ -619,7 +619,10 @@ function TeamSettings() {
 // Seletor compacto de telas permitidas: botão-resumo ("todas" / "N telas") com
 // popover de checkboxes (espelho do NAV). Nenhuma marcada = todas as telas. O
 // menu do usuário e o guard das rotas na API seguem essa lista.
-function ScreensPicker({ screens, onChange }) {
+// Tela que o PAPEL já garante (roleScreens, ex.: Links de pagamento pro closer)
+// aparece marcada e travada: desmarcar não tiraria nada, e deixar a caixinha
+// solta faz a gestão achar que cortou um acesso que continua de pé.
+function ScreensPicker({ screens, roles, onChange }) {
   const [open, setOpen] = useStS(false);
   const ref = React.useRef(null);
   React.useEffect(() => {
@@ -628,6 +631,7 @@ function ScreensPicker({ screens, onChange }) {
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
   const toggle = (id) => onChange(screens.includes(id) ? screens.filter((s) => s !== id) : [...screens, id]);
+  const doPapel = roleScreens({ roles: roles || [] });
   return (
     <div ref={ref} style={{ position: "relative" }}>
       <button onClick={() => setOpen((o) => !o)}
@@ -636,12 +640,18 @@ function ScreensPicker({ screens, onChange }) {
       </button>
       {open && (
         <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, width: 200, zIndex: 60, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 8 }}>
-          {NAV.map((n) => (
-            <label key={n.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px", fontSize: 12.5, cursor: "pointer" }}>
-              <input type="checkbox" checked={screens.includes(n.id)} onChange={() => toggle(n.id)} style={{ accentColor: "var(--accent)" }} />
-              {n.label}
-            </label>
-          ))}
+          {NAV.map((n) => {
+            const peloPapel = doPapel.has(n.id);
+            return (
+              <label key={n.id} title={peloPapel ? "o papel já garante esta tela" : undefined}
+                style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px", fontSize: 12.5, cursor: peloPapel ? "default" : "pointer", opacity: peloPapel ? 0.65 : 1 }}>
+                <input type="checkbox" checked={peloPapel || screens.includes(n.id)} disabled={peloPapel}
+                  onChange={() => toggle(n.id)} style={{ accentColor: "var(--accent)" }} />
+                {n.label}
+                {peloPapel && <span className="mono dim" style={{ fontSize: 9.5, marginLeft: "auto" }}>papel</span>}
+              </label>
+            );
+          })}
           <button onClick={() => onChange([])} className="mono dim" style={{ fontSize: 10.5, padding: 4 }}>limpar (todas as telas)</button>
         </div>
       )}

@@ -244,6 +244,29 @@ test("horário JÁ oferecido antes: a referência é legítima e passa", async (
   assert.equal((await repo.get("leads", "L1")).sdrLog?.fakeOfferGuardAt, undefined);
 });
 
+test("dia solto sem hora vira oferta concreta (o mais cedo primeiro)", async () => {
+  const repo = await world({ messages: [
+    { direction: "out", author: "sdr-bot", text: "Isso ajudaria na sua operação?", at: ISO("2026-08-19T12:50:00Z") },
+    { direction: "in", text: "sim, ajudaria", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Conseguimos retomar a demonstração amanhã, o que acha?" }] });
+  await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "sim, ajudaria" } });
+  const ultima = fakes.sent.at(-1).text;
+  assert.match(ultima, /às \d/, "sai com hora escrita");
+  // O relógio do teste é 10h BRT e há vaga HOJE às 13h: a oferta começa por hoje.
+  assert.match(fakes.sent.map((x) => x.text).join(" "), /hoje às 13h/);
+});
+
+test("resposta que já traz hora não é mexida", async () => {
+  const repo = await world({ messages: [
+    { direction: "in", text: "sim, quero", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Perfeito! Consigo hoje às 13h ou hoje às 15h, qual fica melhor pra você?" }] });
+  await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "sim, quero" } });
+  assert.equal(fakes.sent.length, 1);
+  assert.match(fakes.sent[0].text, /hoje às 13h ou hoje às 15h/);
+});
+
 test("afiliado da Shopee: robô não agenda, desmarca o que estava marcado e chama gente", async () => {
   // Caso Judite (25/08): marcou call, depois disse que era afiliada, e o robô
   // manteve o horário "pro especialista avaliar".

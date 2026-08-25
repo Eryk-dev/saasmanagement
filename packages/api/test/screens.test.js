@@ -211,3 +211,59 @@ test("screens: create/PATCH sanitizam e expõem; [] volta a ver tudo", async (t)
   const patched = (await app.inject({ method: "PATCH", url: "/api/auth/users/x", payload: { screens: [] } })).json();
   assert.deepEqual(patched.screens, []);
 });
+
+// ── Piso por papel (ROLE_SCREENS) ───────────────────────────────────────────
+// O closer Vitor não conseguiu gerar link de pagamento em 24/08/2026 porque
+// faltava "offers" na lista de telas dele. Gerar link é o meio de vida do
+// closer: o papel garante o piso, sem depender de alguém marcar a caixinha.
+
+test("closer com lista restrita alcança Links de pagamento e o pipeline pelo PAPEL", async (t) => {
+  const repo = makeMemRepo();
+  await ensureDefaultAdmins(repo);
+  // Lista restrita que NÃO tem offers nem pipeline: é o caso do Vitor.
+  await repo.create("users", {
+    id: "vitor", name: "Vitor", roles: ["closer"],
+    screens: ["today", "tasks"], passwordHash: hashPassword("1234"),
+  });
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [{ stage: "Novo lead", conv: 1 }] });
+  const app = buildApp(repo);
+  t.after(() => app.close());
+  const H = { "x-api-key": await loginToken(app, "vitor", "1234") };
+
+  // A tela de Links de pagamento e o histórico: liberados pelo papel.
+  assert.equal((await app.inject({ url: "/api/offers?saas=leverads", headers: H })).statusCode, 200);
+  assert.equal((await app.inject({ url: "/api/payment-links?saas=leverads", headers: H })).statusCode, 200);
+  // O pipeline, de onde ele gera o link do lead.
+  assert.equal((await app.inject({ url: "/api/leads", headers: H })).statusCode, 200);
+  // O piso é PISO, não teto: o que ele não tem por papel nem por lista segue 403.
+  for (const url of ["/api/expenses", "/api/forms", "/api/marketing/leverads"]) {
+    assert.equal((await app.inject({ url, headers: H })).statusCode, 403, `esperava 403 em ${url}`);
+  }
+});
+
+test("piso do papel não vaza dado sensível: remuneração segue exigindo admin ou tela na mão", async (t) => {
+  const repo = makeMemRepo();
+  await ensureDefaultAdmins(repo);
+  await repo.create("users", {
+    id: "vitor", name: "Vitor", roles: ["closer"],
+    screens: ["today"], passwordHash: hashPassword("1234"),
+  });
+  const app = buildApp(repo);
+  t.after(() => app.close());
+  const H = { "x-api-key": await loginToken(app, "vitor", "1234") };
+  assert.equal((await app.inject({ url: "/api/comp_plans", headers: H })).statusCode, 403);
+});
+
+test("papel sem piso definido (sdr) não ganha nada de graça", async (t) => {
+  const repo = makeMemRepo();
+  await ensureDefaultAdmins(repo);
+  await repo.create("users", {
+    id: "manu", name: "Manuela", roles: ["sdr"],
+    screens: ["today"], passwordHash: hashPassword("1234"),
+  });
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [{ stage: "Novo lead", conv: 1 }] });
+  const app = buildApp(repo);
+  t.after(() => app.close());
+  const H = { "x-api-key": await loginToken(app, "manu", "1234") };
+  assert.equal((await app.inject({ url: "/api/offers?saas=leverads", headers: H })).statusCode, 403);
+});

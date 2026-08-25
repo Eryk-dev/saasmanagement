@@ -23,11 +23,35 @@ export const SCREEN_IDS = [
 export const sanitizeScreens = (x) =>
   Array.isArray(x) ? x.filter((s) => SCREEN_IDS.includes(s)) : [];
 
-// Usuário pode acessar a tela? Sem authUser (key mestre) ou lista vazia = sim.
+// ── Telas que vêm com o PAPEL (piso, não teto) ───────────────────────────────
+// A restrição por lista de telas tem um furo: ela presume que alguém lembrou de
+// marcar, na mão, tudo que o cargo precisa. Em 24/08/2026 o Vitor (closer) não
+// conseguiu gerar link de pagamento no meio de uma venda porque faltava
+// "offers" na lista dele. Gerar link é o meio de vida do closer, não um extra.
+// Aqui o papel garante o piso: closer SEMPRE alcança o pipeline e a tela de
+// Links de pagamento, com lista restrita ou não. A lista de telas continua
+// somando por cima (é piso, nunca teto), e dado sensível não passa por aqui:
+// ADMIN_PREFIXES (remuneração) segue exigindo etiqueta admin ou tela marcada
+// explicitamente na mão.
+export const ROLE_SCREENS = {
+  closer: ["pipeline", "offers"],
+};
+
+const roleScreens = (user) => {
+  const out = new Set();
+  for (const role of Array.isArray(user?.roles) ? user.roles : []) {
+    for (const screen of ROLE_SCREENS[role] || []) out.add(screen);
+  }
+  return out;
+};
+
+// Usuário pode acessar a tela? Sem authUser (key mestre) ou lista vazia = sim;
+// senão, a lista dele OU o piso do papel.
 export function canScreen(user, screen) {
   if (!user) return true;
   const s = Array.isArray(user.screens) ? user.screens : [];
-  return s.length === 0 || s.includes(screen);
+  if (s.length === 0 || s.includes(screen)) return true;
+  return roleScreens(user).has(screen);
 }
 
 // Prefixo de rota → telas que ela serve (basta o usuário ter UMA delas). Ordem
