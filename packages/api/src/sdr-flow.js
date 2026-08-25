@@ -677,12 +677,15 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
             windowOpen = !!lastIn && nowMs - Date.parse(lastIn.at || 0) < 24 * HOUR;
           }
           if (!quiet) { await stampLog(lead, { noshow2For: lead.stageSince, noshow2Via: "skip" }); continue; }
-          const nome = firstName(lead.name);
+          const nome = greetName(lead.name);
           const to = thread?.phone || phone;
           try {
             let via = "text";
             const { slots } = await slotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 8, ...OFFER_HOURS });
-            const pair = spreadPair(slots);
+            // Reserva dos horários ofertados, igual ao 1º resgate e à conversa
+            // com IA: o que outro lead está decidindo não entra nesta oferta.
+            const holds2 = await activeHolds(repo, product.id, { now: at }).catch(() => []);
+            const pair = spreadPair(withoutHeld(slots, holds2, lead.id));
             if (windowOpen) {
               await sendText({ phone: to, text: rescue2Text({ nome, slots: pair, now: wnow }), phoneId, saas: product.id, leadId: lead.id });
             } else {
@@ -702,6 +705,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
               via = "template";
             }
             sends++; stats.rescue2++;
+            await holdSlots(repo, { saas: product.id, leadId: lead.id, slots: pair, now: at }).catch(() => {});
             await stampLog(lead, { noshow2For: lead.stageSince, noshow2Via: via, noshow2At: nowIso });
           } catch (err) {
             log.warn?.({ lead: lead.id, err: err.message }, "sdr: 2ª tentativa do no-show falhou");
