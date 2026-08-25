@@ -692,6 +692,10 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
   const callCount = events.filter((e) => e.kind === "call").length;
   const fupCount = events.filter((e) => e.kind === "follow-up").length;
   const shown = evKind === "all" ? events : events.filter((e) => e.kind === (evKind === "call" ? "call" : "follow-up"));
+  // Filtro ligado esconde integrações, consultas e compromissos em silêncio —
+  // e aí "marquei a integração e não apareceu na agenda" (Leo, 25/08). O aviso
+  // conta o que ficou de fora e devolve a visão inteira num clique.
+  const hiddenCount = events.length - shown.length;
   const fmtDay = (d, opts) => d.toLocaleDateString("pt-BR", opts).replace(/\./g, "");
   const label = `${fmtDay(days[0], { day: "2-digit", month: "short" })} · ${fmtDay(days[days.length - 1], { day: "2-digit", month: "short", year: "numeric" })}`;
   const navBtn = {
@@ -771,6 +775,14 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
             </FilterTab>
           ))}
         </span>
+        {evKind !== "all" && hiddenCount > 0 && (
+          <button onClick={() => setEvKind("all")} className="mono"
+            title="Mostrar tudo de novo (integrações, consultas e compromissos)"
+            style={{ height: 24, padding: "0 9px", borderRadius: 999, fontSize: 11, cursor: "pointer",
+              background: "var(--warn-soft)", color: "var(--warn)", border: "1px solid var(--warn-line, transparent)" }}>
+            {hiddenCount} {hiddenCount === 1 ? "evento escondido" : "eventos escondidos"} pelo filtro · ver tudo
+          </button>
+        )}
         {evKind === "all" && (
           <label className="mono" style={{ fontSize: 11, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer" }}>
             <input type="checkbox" checked={showTouches} onChange={(e) => setShowTouches(e.target.checked)} style={{ accentColor: "var(--accent)" }} />
