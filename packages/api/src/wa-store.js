@@ -225,7 +225,14 @@ export async function updateStatus(repo, waMessageId, status, err = "") {
   // silent: recibo de status (sent→delivered→read) chega às dezenas por
   // conversa e NÃO é dado de SEED — bumpar aqui recarregava o cockpit inteiro
   // de todo usuário a cada recibo. O inbox aberto vê o ✓✓ no próprio poll.
-  await repo.update("wa_messages", waMessageId, { status, ...(title ? { error: title } : {}) }, { silent: true });
+  // O CÓDIGO fica gravado junto do título: quem lê o recibo depois (o alerta de
+  // envio falho) precisa distinguir "fora da janela de 24h" de "este número não
+  // recebe mais mensagem de marketing", e o título sozinho é texto livre da Meta.
+  await repo.update("wa_messages", waMessageId, {
+    status,
+    ...(title ? { error: title } : {}),
+    ...(Number.isFinite(code) ? { errorCode: code } : {}),
+  }, { silent: true });
   if (status === "failed" && Number.isFinite(code) && INVALID_FAIL_CODES.has(code) && m.leadId) {
     const lead = await repo.get("leads", m.leadId);
     if (lead && !lead.whatsappInvalid) {

@@ -110,7 +110,7 @@ export const CREATE_DEFAULTS = {
   // callAt = call marcada (a de verdade, que vira histórico ao ser remarcada);
   // followupAt = follow-up marcado com hora, campo PRÓPRIO pra a agenda não
   // desenhar follow-up com a cara de call (Leo, 13/08).
-  leads: { priority: "P2", score: 0, icp: 0, value: "", amount: 0, owner: "", closer: "", reason: "", source: "Form", age: "agora", stage: "", stageSince: "", comments: [], callAt: "", followupAt: "", proposalValue: "", proposalPeriod: "", integrationAt: "", nextActionAt: "", nextActionNote: "", lostReason: "", lostNote: "", lastActivityAt: "", lastActivityType: "", stageAttempts: 0, sdrOff: false },
+  leads: { priority: "P2", score: 0, icp: 0, value: "", amount: 0, owner: "", closer: "", reason: "", source: "Form", age: "agora", stage: "", stageSince: "", comments: [], callAt: "", callSetAt: "", followupAt: "", proposalValue: "", proposalPeriod: "", integrationAt: "", nextActionAt: "", nextActionNote: "", lostReason: "", lostNote: "", lastActivityAt: "", lastActivityType: "", stageAttempts: 0, sdrOff: false },
   // `current`/`projected` saem do form (leitura ao vivo da meta) — default 0 até serem alimentados.
   goals: { current: 0, projected: 0 },
   forms: { status: "draft", theme: {}, welcome: null, questions: [], thanks: {}, mapping: {} },
@@ -369,7 +369,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // index.js, com o MESMO client).
   registerSdrRoutes(app, repo, { whatsapp: whatsappClient, anthropic: anthropicClient });
   // Poller de resumos (index.js) usa os MESMOS clients das rotas.
-  if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, googleUser, anthropic: anthropicClient, mailer: mailerClient, whatsapp: whatsappClient });
+  // autoCallMeet vai junto: o poller do SDR cria a sala que falta na hora do
+  // lembrete de 1h (sem link, o lembrete de 10min chamava pra lugar nenhum).
+  if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, googleUser, anthropic: anthropicClient, mailer: mailerClient, whatsapp: whatsappClient, autoCallMeet });
 
   // ── Tempo real ─────────────────────────────────────────────────────────
   // Toda escrita no repo (db.js) incrementa um contador global (changes.js).
@@ -802,6 +804,10 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
           patch = { ...patch, callHistory: [...hist, { at: oldAt, closer: cur.closer || "" }].slice(-60) };
         }
       }
+      // QUANDO a call foi marcada por este caminho (a marcação do robô carimba
+      // no bookCall). O lembrete de véspera usa isso pra não pedir confirmação
+      // de um combinado que acabou de ser feito — ver VESPERA_MIN_GAP_MS.
+      if (nextAt && oldAt !== nextAt) patch = { ...patch, callSetAt: new Date().toISOString() };
     }
     // Assinatura cancelada por QUALQUER caminho ganha o carimbo canceledAt (o
     // churn de CS do scoreboard e o histórico dependem dele; antes só o

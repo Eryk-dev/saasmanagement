@@ -31,7 +31,7 @@ import { brtToIso, onOutboundMessage } from "./lead-flow.js";
 import { isBusinessHours } from "./business-hours.js";
 import { resolveWabaId, getWaHealth } from "./wa-health.js";
 import { raiseAlert } from "./wa-call-flow.js";
-import { slotsForLead, slotLabel, wallNow, spreadPair, OFFER_HOURS } from "./agenda-slots.js";
+import { slotsForLead, slotLabel, wallNow, spreadPair, OFFER_HOURS, activeHolds, holdSlots, withoutHeld } from "./agenda-slots.js";
 import { SDR_TEMPLATES } from "./sdr-templates.leverads.js";
 
 export const SDR_AUTHOR = "sdr-bot";
@@ -39,11 +39,50 @@ const HOUR = 3_600_000, MIN = 60_000;
 // Teto do segundo toque (seção 1b) — também é a linha de corte da campanha de
 // backlog, que só pega lead DEPOIS que essa janela expira (nunca dose dupla).
 const SECOND_TOUCH_MAX_MS = 96 * HOUR;
+// Gente falou na conversa há menos que isso: o robô não manda lembrete por
+// cima (a confirmação já foi feita na mão, e as duas assinam o mesmo nome).
+const HUMAN_QUIET_MS = 60 * MIN;
+// Espalhamento do 2º toque: leads tocados no mesmo lote não voltam juntos.
+const SECOND_TOUCH_JITTER_MIN = 90;
+const SECOND_TOUCH_PER_TICK = 3;
+// Hash estável de string (FNV-1a) — o mesmo lead cai sempre no mesmo atraso e
+// no mesmo template, sem guardar sorteio nenhum.
+const hashInt = (s) => {
+  let h = 2166136261;
+  for (let i = 0; i < String(s).length; i++) { h ^= String(s).charCodeAt(i); h = Math.imul(h, 16777619); }
+  return Math.abs(h);
+};
+const jitterMs = (id) => (hashInt(id) % SECOND_TOUCH_JITTER_MIN) * MIN;
+// Folga mínima entre a MARCAÇÃO e a véspera: marcou "amanhã no mesmo horário"
+// e a véspera cairia minutos depois do combinado.
+const VESPERA_MIN_GAP_MS = 3 * HOUR;
 const TEMPLATE_BODY = Object.fromEntries(SDR_TEMPLATES.map((t) => [t.name, t.body]));
 
 const firstName = (v) => String(v || "").trim().split(/\s+/)[0] || "";
 const norm = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 const outsideWindow = (err) => err?.code === 131047 || err?.code === 470;
+
+// NOME DE SAUDAÇÃO. O campo `name` vem do que o lead digitou no form (ou do
+// perfil do WhatsApp) e chega sujo: em prod 24/08 o robô mandou "Oi PECAS!",
+// "Oiii GMS", "Oi Gostariademaisi!", "Perfeito PEDRO" e "Oiii silas". Nada
+// denuncia robô mais rápido que cumprimentar alguém pelo nome errado, e
+// saudação SEM nome não denuncia nada — então na dúvida devolve "" e o texto
+// cai no fallback que já existe ("Oiii, tudo bem?").
+const BIZ_WORDS = /^(pecas|peca|auto|autopecas|autopeca|loja|lojas|comercio|distribuidora|imports|import|store|shop|parts|motos|moto|car|cars|ltda|me|mei|eireli|empresa|vendas|atacado|varejo|teste|test|sim|nao|ok|oi|ola|gostaria|quero|preciso|info|contato|whats|whatsapp|cliente|admin|user|usuario)$/;
+export function greetName(raw) {
+  const first = firstName(raw).replace(/[^\p{L}'-]/gu, ""); // pontuação/emoji fora
+  if (!first || /\d/.test(firstName(raw))) return "";
+  const flat = norm(first);
+  if (flat.length < 3) return "";              // "Jr", "M" — não dá pra saudar
+  if (BIZ_WORDS.test(flat)) return "";         // "PECAS", "Loja", "Gostaria"
+  // Sigla: caixa alta curta é nome de empresa ("GMS", "RT"), não de gente.
+  // Caixa alta LONGA ("PEDRO", "JOSNIEL") é nome gritado — só normaliza.
+  if (first === first.toUpperCase() && first.length <= 4) return "";
+  // Aglutinação do form ("Gostariademaisi", "Alcindotzwicins"): palavra única
+  // longa demais pra ser primeiro nome de gente.
+  if (flat.length > 12) return "";
+  return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+}
 
 // Config normalizada do robô por produto; null = desligado (default de todo
 // produto: mensagem automática pro lead é opt-in, igual às regras do inbox).
@@ -103,6 +142,10 @@ export function sdrBotConfig(product) {
       reminder: cfg.templates?.reminder || "sdr_lembrete_conversa",
       rescue: cfg.templates?.rescue || "sdr_resgate_conversa",
       secondTouch: cfg.templates?.secondTouch || "sdr_retomada_conversa",
+      // Variações aprovadas da retomada: o lote de 2º toque sorteia entre elas
+      // (pelo id do lead) em vez de mandar a MESMA frase pra todo mundo. Só
+      // entram as que a Meta já aprovou; com uma só, é o comportamento de antes.
+      secondTouchVariants: Array.isArray(cfg.templates?.secondTouchVariants) ? cfg.templates.secondTouchVariants : [],
       backlogRescue: cfg.templates?.backlogRescue || "sdr_retomada_conversa",
       backlogRescueNutri: cfg.templates?.backlogRescueNutri || "sdr_retomada_novidades",
       rescue2: cfg.templates?.rescue2 || "sdr_remarcar_noshow",
@@ -226,6 +269,9 @@ function rescueText({ nome, slots = [], now }) {
 // Resposta a um lembrete: o que é confirmação e o que precisa de gente.
 // Remarcação/negativa é testada ANTES ("sim, mas preciso remarcar" é humano).
 const RESCHEDULE_RX = /remarc|reagend|mudar|trocar|outro hor|adiar|cancel|imprevisto|nao vou|nao consigo|nao vai dar|nao poss/;
+// Lead avisando que a conversa JÁ está rolando (ou já rolou): o lembrete que
+// vem depois disso só faz o robô parecer desligado do que está acontecendo.
+const IN_CALL_RX = /\bna sala\b|na (reuniao|chamada)\b|ja (conversamos|conversei|falei|estou|entrei)|estou (conversando|falando com)|entrei na/;
 const AFFIRM_RX = /(^|\s)(sim|confirmo|confirmad[oa]|pode ser|pode sim|combinado|fechado|show|beleza|blz|ok|okay|claro|com certeza|certo|perfeito|top|bora|estarei|vou estar|isso)(\s|[!.,)]|$)/;
 export function classifyReminderReply(text) {
   const t = norm(text);
@@ -235,7 +281,7 @@ export function classifyReminderReply(text) {
   return "other";
 }
 
-export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => new Date() } = {}) {
+export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = console, now = () => new Date() } = {}) {
   // Templates APROVADOS (só o nome importa aqui) com cache de 5 min — sem a
   // permissão de management no token, segue sem templates (o primeiro toque de
   // quem não escreveu espera a aprovação; o resto do motor funciona igual).
@@ -336,7 +382,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
             await stampLog(lead, { firstTouchAt: nowIso, firstTouchVia: "human" });
             continue;
           }
-          const nome = firstName(lead.name);
+          const nome = greetName(lead.name);
           const sdrName = firstName(users.find((u) => u.id === lead.owner)?.name);
           const resumo = leadDigest(product, lead);
           const to = thread?.phone || phone;
@@ -376,14 +422,22 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
       // completadas na quinta à noite só viram expediente na segunda de manhã
       // (~86h depois do 1º toque) — com 72h esses leads perderiam a retomada.
       if ((cfg.secondTouch || cfg.conversationTest) && isBusinessHours(product, at)) {
+        let secondTouchNow = 0;
         for (const lead of leads) {
-          if (sends >= CAP) break;
+          if (sends >= CAP || secondTouchNow >= SECOND_TOUCH_PER_TICK) break;
           if (!eligible(lead) || !passOn(cfg.secondTouch, lead)) continue;
           const t0 = Date.parse(lead.sdrLog?.firstTouchAt || "");
           if (!Number.isFinite(t0)) continue;
           if (lead.sdrLog?.firstTouchVia === "human") continue; // 1º toque foi gente: fila humana
           if (lead.sdrLog?.secondTouchAt || lead.sdrLog?.backlogRescueAt || lead.sdrLog?.sendFailedAlertAt) continue;
-          if (nowMs - t0 < 24 * HOUR || nowMs - t0 > SECOND_TOUCH_MAX_MS) continue;
+          // JITTER + TETO POR CICLO (Leo, 24/08). O 1º toque saiu em lote (o
+          // liga-geral tocou 9 leads no mesmo segundo), então as 24h cravadas
+          // devolviam o MESMO lote, a mesma frase, no mesmo segundo — e a Meta
+          // bloqueou 3 dos 9 na hora por frequência ("healthy ecosystem
+          // engagement"). Rajada idêntica e simultânea é assinatura de spam.
+          // O atraso é derivado do id do lead: estável entre ciclos (não fica
+          // sorteando a cada tick) e diferente por lead.
+          if (nowMs - t0 < 24 * HOUR + jitterMs(lead.id) || nowMs - t0 > SECOND_TOUCH_MAX_MS) continue;
           const kind = kindOf(product, lead.stage || firstStage(product));
           if (!["novo", "qualificacao"].includes(kind)) continue;
           if (isWonLead(product, lead) || lead.callAt) continue;
@@ -396,12 +450,17 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
             if (lastOut && lastOut.author && lastOut.author !== SDR_AUTHOR) continue; // humano já falou
           }
           // Lead nunca escreveu = janela fechada por definição: só template.
+          // VARIAÇÃO: com mais de um template de retomada aprovado, o lote deixa
+          // de ser a mesma frase pra todo mundo (o lead escolhido é sempre o
+          // mesmo, pelo id, então re-tentativa não troca o texto no meio).
           const names = await approvedNames();
-          if (!names.has(cfg.templates.secondTouch)) { stats.skipped++; continue; }
-          const nome = firstName(lead.name);
+          const variants = [...new Set([cfg.templates.secondTouch, ...cfg.templates.secondTouchVariants])].filter((n) => names.has(n));
+          if (!variants.length) { stats.skipped++; continue; }
+          const tplRetomada = variants[hashInt(lead.id) % variants.length];
+          const nome = greetName(lead.name);
           try {
-            await sendTemplate({ phone: thread?.phone || phone, name: cfg.templates.secondTouch, params: [nome || "de novo"], phoneId, saas: product.id, leadId: lead.id });
-            sends++; stats.secondTouch++;
+            await sendTemplate({ phone: thread?.phone || phone, name: tplRetomada, params: [nome || "de novo"], phoneId, saas: product.id, leadId: lead.id });
+            sends++; stats.secondTouch++; secondTouchNow++;
             await stampLog(lead, { secondTouchAt: nowIso });
           } catch (err) {
             log.warn?.({ lead: lead.id, err: err.message }, "sdr: segundo toque falhou");
@@ -430,7 +489,21 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
             await repo.update("leads", lead.id, { confirmLog: { ...log0, [due.key]: nowIso } });
             continue; // já confirmou: véspera vira silêncio (1h/10min seguem)
           }
-          const nome = firstName(lead.name);
+          // VÉSPERA SÓ SE A MARCAÇÃO FOR VELHA (Leo, 24/08). A véspera dispara
+          // 24h cravadas antes da call, e o lead quase sempre marca pra "amanhã
+          // no mesmo horário" — aí o "confirmando nossa conversa amanhã" caía 5
+          // minutos depois do próprio agendamento (6 vezes em prod 24/08, caso
+          // Amilton: marcou 13h55, confirmação às 14h). Gente nenhuma pede
+          // confirmação de um combinado que acabou de fazer: marcação feita
+          // dentro da janela pula a véspera (o lembrete de 1h e o de 10min
+          // seguem normais). Lead antigo, sem callSetAt gravado, mantém o
+          // comportamento de antes.
+          const setAtMs = Date.parse(lead.callSetAt || "");
+          if (due.key === "24h" && Number.isFinite(setAtMs) && callMs - due.beforeMs - setAtMs < VESPERA_MIN_GAP_MS) {
+            await repo.update("leads", lead.id, { confirmLog: { ...log0, [due.key]: nowIso } });
+            continue;
+          }
+          const nome = greetName(lead.name);
           const quando = slotLabel(lead.callAt, wnow);
           const phone = lead.waPhone || lead.phone;
           const thread = await findThreadByPhone(repo, phone);
@@ -439,11 +512,41 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
           // a Meta ACEITA o texto livre com janela fechada (devolve id) e só
           // reprova depois, pelo webhook de status (131047) — o catch síncrono
           // nunca via o erro e o lembrete morria calado como "enviada".
-          let windowOpen = false;
+          let windowOpen = false, humanRecent = false;
           if (thread) {
             const msgs = await listMessages(repo, thread.id);
             const lastIn = [...msgs].reverse().find((m) => m.direction === "in");
             windowOpen = !!lastIn && nowMs - Date.parse(lastIn.at || 0) < 24 * HOUR;
+            // GENTE ACABOU DE FALAR: o robô não repete o que a pessoa já disse.
+            // Em prod 24/08 a Manuela confirmou na mão e minutos depois o robô
+            // mandou a MESMA confirmação (as duas assinadas por ela) em 6
+            // conversas; no encaixe do Junior ela teve que escrever "pode
+            // desconsiderar a mensagem anterior". O resgate de no-show já
+            // respeitava humano na conversa; o lembrete não respeitava.
+            const lastHumanOut = [...msgs].reverse().find((m) => m.direction === "out" && humanIds.has(m.author));
+            humanRecent = !!lastHumanOut && nowMs - Date.parse(lastHumanOut.at || 0) < HUMAN_QUIET_MS;
+          }
+          if (humanRecent) { // passo carimbado: gente cobriu, e não sai atrasado depois
+            await repo.update("leads", lead.id, { confirmLog: { ...log0, [due.key]: "humano" } });
+            continue;
+          }
+          // LINK DO MEET. O lembrete de 10min é quem entrega o link, e sem ele
+          // sai um "te espero lá" sem lugar nenhum (prod 24/08: o lead perguntou
+          // "vão mandar algum link?" e a SDR correu atrás na mão). Na hora do
+          // lembrete de 1h ainda dá tempo de criar a sala: tenta agora.
+          let callUrl = lead.callUrl || "";
+          if (due.key === "1h" && !callUrl && autoCallMeet) {
+            try {
+              await autoCallMeet(lead.id);
+              callUrl = (await repo.get("leads", lead.id))?.callUrl || "";
+            } catch (err) {
+              log.warn?.({ lead: lead.id, err: err.message }, "sdr: criação do Meet no lembrete falhou");
+            }
+          }
+          // Chegou nos 10 minutos sem sala: o lembrete ainda sai (silêncio na
+          // véspera da hora é pior), mas gente é avisada pra mandar o link.
+          if (due.key === "10min" && !callUrl && thread) {
+            await raiseAlert(repo, thread, { text: `Conversa em 10 min sem link do Meet · manda o link pro lead (${quando})` }).catch(() => {});
           }
           // Janela fechada: template aprovado reabre; sem template, alerta
           // quente — o lembrete é justamente o anti no-show, não pode morrer
@@ -462,7 +565,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
           try {
             if (windowOpen) {
               try {
-                await sendText({ phone: to, text: reminderText(due.key, { nome, quando, link: lead.callUrl || "" }), phoneId, saas: product.id, leadId: lead.id });
+                await sendText({ phone: to, text: reminderText(due.key, { nome, quando, link: callUrl }), phoneId, saas: product.id, leadId: lead.id });
               } catch (err) {
                 if (!outsideWindow(err)) throw err; // nosso registro dizia aberta, a Meta discorda
                 await viaTemplate();
@@ -490,6 +593,13 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
           if (enabledMs && sinceMs < enabledMs) continue;
           if (nowMs - sinceMs > 48 * HOUR) continue; // furo velho é retomada humana
           if (lead.sdrLog?.noshowFor === lead.stageSince) continue;
+          // "PASSEI NO HORÁRIO E NÃO TE ENCONTREI" SÓ DEPOIS DO HORÁRIO. O card
+          // vai pra No show quando o time já sabe que o lead não vem — às vezes
+          // ANTES da hora marcada (prod 24/08: card movido 09h38, call era 10h;
+          // e o lead que tinha cancelado às 10h33 levou o resgate às 10h39). O
+          // texto ficava mentindo sobre um horário que nem chegou.
+          const callMs = lead.callAt ? Date.parse(brtToIso(lead.callAt)) : NaN;
+          if (Number.isFinite(callMs) && callMs > nowMs) continue;
 
           const phone = lead.waPhone || lead.phone;
           const thread = await findThreadByPhone(repo, phone);
@@ -501,13 +611,18 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
             windowOpen = !!lastIn && nowMs - Date.parse(lastIn.at || 0) < 24 * HOUR;
           }
           if (humanAfter) { await stampLog(lead, { noshowFor: lead.stageSince, noshowVia: "human" }); continue; }
-          const nome = firstName(lead.name);
+          const nome = greetName(lead.name);
           const to = thread?.phone || phone;
           try {
             let via = "text";
             if (windowOpen) {
               const { slots } = await slotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 8, ...OFFER_HOURS });
-              await sendText({ phone: to, text: rescueText({ nome, slots: spreadPair(slots), now: wnow }), phoneId, saas: product.id, leadId: lead.id });
+              // Mesma reserva da conversa com IA: o horário oferecido aqui não
+              // pode ser oferecido a outro lead enquanto este decide.
+              const holds = await activeHolds(repo, product.id, { now: at }).catch(() => []);
+              const pair = spreadPair(withoutHeld(slots, holds, lead.id));
+              await sendText({ phone: to, text: rescueText({ nome, slots: pair, now: wnow }), phoneId, saas: product.id, leadId: lead.id });
+              await holdSlots(repo, { saas: product.id, leadId: lead.id, slots: pair, now: at }).catch(() => {});
             } else {
               const names = await approvedNames();
               const tplResgate = [cfg.templates.rescue, "sdr_resgate_noshow"].find((n) => names.has(n));
@@ -687,7 +802,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
           const lastAt = Date.parse(thread?.lastAt || "") || 0;
           const since = Date.parse(l.stageSince || l.createdAt || "") || 0;
           if (Math.max(since, lastAt) > nowMs - idleMs) continue; // atividade recente: fora
-          const nome = firstName(l.name);
+          const nome = greetName(l.name);
           const tpl = kind === "contato" ? tplN : tplQ;
           try {
             const params = tpl === cfg.templates.backlogRescueNutri
@@ -731,6 +846,21 @@ export async function handleSdrInbound(repo, { message, now = new Date() } = {})
   const callMs = lead.callAt ? Date.parse(brtToIso(lead.callAt)) : NaN;
   const askedByBot = !!log0 && log0.at === lead.callAt
     && [log0["24h"], log0["1h"], log0["10min"]].some((v) => typeof v === "string" && v.length > 0 && !v.startsWith("erro:"));
+  // LEAD JÁ ESTÁ NA CONVERSA (Leo, 24/08): "já estou na sala", "já conversamos",
+  // "estou aguardando na reunião" — o lembrete seguinte não pode chamar pra uma
+  // conversa que já está acontecendo (prod 24/08: o lead avisou às 17h01 que já
+  // estava falando com o especialista e às 17h50 levou "começa em 10 minutos").
+  // Carimba os passos restantes DESTE horário como feitos.
+  // "não consigo entrar na sala" é o oposto disso: segue pro alerta, que é onde
+  // gente aparece pra ajudar.
+  const inboundText = norm(message?.text || "");
+  if (Number.isFinite(callMs) && lead.callAt && IN_CALL_RX.test(inboundText) && !/\bnao\b/.test(inboundText)) {
+    const base = log0 && log0.at === lead.callAt ? log0 : { at: lead.callAt };
+    const stamped = { ...base };
+    for (const r of REMINDERS) if (!stamped[r.key]) stamped[r.key] = "na-conversa";
+    await repo.update("leads", lead.id, { confirmLog: stamped });
+    return "in-call";
+  }
   if (askedByBot && Number.isFinite(callMs) && callMs > now.getTime()) {
     const verdict = classifyReminderReply(message?.text || "");
     if (verdict === "confirm") {
@@ -768,8 +898,8 @@ export async function handleSdrInbound(repo, { message, now = new Date() } = {})
 
 // Poller de produção: 60s (o lembrete de 10min precisa de granularidade fina),
 // single-flight, primeiro passe logo após o boot. No-op sem produto ligado.
-export function startSdrFlow(repo, { whatsapp, intervalMs = 60_000, log = console } = {}) {
-  const runner = makeSdrRunner({ repo, whatsapp, log });
+export function startSdrFlow(repo, { whatsapp, autoCallMeet = null, intervalMs = 60_000, log = console } = {}) {
+  const runner = makeSdrRunner({ repo, whatsapp, autoCallMeet, log });
   let running = false;
   const run = async () => {
     if (running) return;
