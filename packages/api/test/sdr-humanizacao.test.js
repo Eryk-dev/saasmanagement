@@ -435,6 +435,83 @@ test("confirmação curta pode repetir: 'Perfeito' duas vezes não vira handoff"
   assert.equal(fakes.sent.length, 1);
 });
 
+// ── A10 · resposta automática do lead não é ordem pro robô (caso Alexandre) ──
+const POS_VENDAS = "Olá! Você contatou o PÓS VENDAS. Deixe sua mensagem para agilizarmos o atendimento. Para *VENDAS* clique no link wa.me/+554135161828 e entre direto.";
+
+test("robô não repassa pro lead o link que veio da resposta automática dele", async () => {
+  const repo = await brainWorld({
+    lead: { name: "Alexandre" },
+    messages: [
+      { direction: "out", author: "sdr-bot", text: "Oiii, Alexandre. Manuela falando, da LeverAds...", at: ISO("2026-08-19T12:41:00Z") },
+      { direction: "in", text: POS_VENDAS, at: ISO("2026-08-19T12:42:00Z") },
+      { direction: "in", text: "Ola", at: ISO("2026-08-19T12:59:00Z") },
+    ],
+  });
+  // A IA se confunde e tenta redirecionar, como aconteceu em produção.
+  const fakes = brainFakes({ decisions: [{ acao: "responder", mensagens: ["Esse número é do pós-vendas. Para seguirmos sobre a LeverAds, entre pelo link de vendas: wa.me/+554135161828", "Consegue acessar por lá?"] }] });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "Ola", id: "bm3" } });
+  assert.equal(r, "redirect-travado");
+  assert.equal(fakes.sent.length, 0, "nem a parte sem link sai: a fala inteira estava confusa");
+  assert.match((await repo.list("wa_alerts"))[0].text, /outro número\/link/);
+  assert.ok((await repo.get("leads", "L1")).sdrLog.handoffAt);
+});
+
+test("o conteúdo da resposta automática não chega na IA, só o rótulo", async () => {
+  const repo = await brainWorld({
+    messages: [
+      { direction: "out", author: "sdr-bot", text: "Oiii, tudo bem?", at: ISO("2026-08-19T12:41:00Z") },
+      { direction: "in", text: POS_VENDAS, at: ISO("2026-08-19T12:42:00Z") },
+      { direction: "in", text: "Ola", at: ISO("2026-08-19T12:59:00Z") },
+    ],
+  });
+  let visto = null;
+  const fakes = brainFakes({ decisions: [{ acao: "responder", mensagem: "Oi! A LeverAds ajuda a escalar sua operação, isso faria sentido pra você?" }] });
+  const orig = fakes.anthropic.sdrDecide;
+  fakes.anthropic.sdrDecide = async (ctx) => { visto = ctx; return orig(ctx); };
+  await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "Ola", id: "bm3" } });
+  const linhas = visto.conversation.map((c) => c.text);
+  assert.ok(linhas.some((t) => t.includes("resposta automática do estabelecimento")), "entrou rotulada");
+  assert.ok(!linhas.some((t) => t.includes("wa.me")), "o link do menu não chega na IA");
+  assert.ok(!linhas.some((t) => t.includes("PÓS VENDAS")), "nem o texto da ordem");
+});
+
+test("trava de redirecionamento pega também o telefone escrito por extenso", async () => {
+  const repo = await brainWorld({
+    messages: [{ direction: "in", text: "aqui é o pós-vendas", at: ISO("2026-08-19T12:59:00Z") }],
+  });
+  const fakes = brainFakes({ decisions: [{ acao: "responder", mensagem: "Sem problemas, chama a gente no 41 3516-1828 que seguimos por lá" }] });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "aqui é o pós-vendas", id: "bm1" } });
+  assert.equal(r, "redirect-travado");
+  assert.equal(fakes.sent.length, 0);
+});
+
+test("pessoa dizendo 'esse número é do meu sócio' NÃO é tratada como robô: conversa segue", async () => {
+  const repo = await brainWorld({
+    messages: [
+      { direction: "out", author: "sdr-bot", text: "Oiii, tudo bem?", at: ISO("2026-08-19T12:40:00Z") },
+      { direction: "in", text: "esse número é do meu sócio, mas pode falar comigo", at: ISO("2026-08-19T12:59:00Z") },
+    ],
+  });
+  const fakes = brainFakes({ decisions: [{ acao: "responder", mensagem: "Perfeito, seguimos por aqui então. A LeverAds ajuda a escalar sua operação nos marketplaces, isso faz sentido pra vocês?" }] });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "esse número é do meu sócio, mas pode falar comigo", id: "bm2" } });
+  assert.equal(r, "responder");
+  assert.equal(fakes.sent.length, 1);
+});
+
+test("resposta automática NO MEIO da conversa também não é respondida", async () => {
+  const repo = await brainWorld({
+    messages: [
+      { direction: "in", text: "oi, quero saber mais", at: ISO("2026-08-19T12:30:00Z") },
+      { direction: "out", author: "sdr-bot", text: "Oiii, tudo bem?", at: ISO("2026-08-19T12:31:00Z") },
+      { direction: "in", text: "Agradecemos sua mensagem. Não estamos disponíveis no momento, mas responderemos assim que possível.", at: ISO("2026-08-19T12:59:00Z") },
+    ],
+  });
+  const fakes = brainFakes({ decisions: [{ acao: "responder", mensagem: "qualquer coisa" }] });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "Agradecemos sua mensagem. Não estamos disponíveis no momento, mas responderemos assim que possível.", id: "bm3" } });
+  assert.equal(r, "auto-reply");
+  assert.equal(fakes.sent.length, 0);
+});
+
 test("sameSentence pega a mesma frase reescrita, mas não confunde frases diferentes", () => {
   assert.ok(sameSentence(
     "O investimento é de acordo com as necessidades da operação, primeiro entendemos o cenário",
