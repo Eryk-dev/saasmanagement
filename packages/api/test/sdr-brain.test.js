@@ -267,6 +267,36 @@ test("resposta que já traz hora não é mexida", async () => {
   assert.match(fakes.sent[0].text, /hoje às 13h ou hoje às 15h/);
 });
 
+test("afiliado da Shopee: robô não agenda, desmarca o que estava marcado e chama gente", async () => {
+  // Caso Judite (25/08): marcou call, depois disse que era afiliada, e o robô
+  // manteve o horário "pro especialista avaliar".
+  const repo = await world({
+    lead: { stage: "Call agendada", callAt: SLOT1, closer: "pl", callUrl: "https://meet.google.com/abc" },
+    messages: [{ direction: "in", text: "Não querida sou afilhado da shopee etc", at: ISO("2026-08-19T12:59:00Z") }],
+  });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Nosso especialista confirma se a ferramenta se aplica" }] });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "Não querida sou afilhado da shopee etc" } });
+  assert.equal(r, "afiliado");
+  const lead = await repo.get("leads", "L1");
+  assert.equal(lead.callAt || "", "", "a call foi desmarcada e o horário liberado");
+  assert.ok(lead.sdrLog.affiliateGuardAt);
+  assert.ok(lead.sdrLog.handoffAt, "robô sai da conversa");
+  assert.match(fakes.sent[0].text, /conta PRÓPRIA/);
+  const alerts = await repo.list("wa_alerts");
+  assert.match(alerts[0].text, /AFILIADO/);
+  // Não repete o desmarque nas mensagens seguintes.
+  const fakes2 = makeFakes({ decisions: [{ acao: "responder", mensagem: "ok" }] });
+  assert.notEqual(await brainOf(repo, fakes2).handleInbound({ message: { from: "5541999990000", text: "entendi" } }), "afiliado");
+});
+
+test("vendedor com conta própria na Shopee NÃO é confundido com afiliado", async () => {
+  const repo = await world({ messages: [{ direction: "in", text: "tenho loja própria na shopee e no ML", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: SLOT1 }] });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "tenho loja própria na shopee e no ML" } });
+  assert.equal(r, "agendar");
+  assert.equal((await repo.get("leads", "L1")).callAt, SLOT1);
+});
+
 test("trava de preço: resposta da IA com valor vira o desvio com autoridade (sem número)", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "quanto custa?", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "O plano parte de R$ 299 por mês, fechado?" }] });
