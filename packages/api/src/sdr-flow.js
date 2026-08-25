@@ -56,6 +56,9 @@ export function sdrBotConfig(product) {
     firstTouch: cfg.firstTouch !== false,
     reminders: cfg.reminders !== false,
     rescue: cfg.rescue !== false,
+    // 2ª tentativa do no-show (24h depois, se o lead não respondeu nada).
+    // Acompanha a chave do resgate; `rescue2: false` desliga só ela.
+    rescue2: cfg.rescue2 == null ? cfg.rescue !== false : cfg.rescue2 === true,
     // Segundo toque: 1º toque há 24h sem NENHUMA resposta → re-toque único, em
     // horário comercial, com a retomada que a Manuela já manda na mão (Leo, 23/08).
     // Acompanha a chave do 1º toque; `secondTouch: false` desliga só ele.
@@ -102,6 +105,7 @@ export function sdrBotConfig(product) {
       secondTouch: cfg.templates?.secondTouch || "sdr_retomada_conversa",
       backlogRescue: cfg.templates?.backlogRescue || "sdr_retomada_conversa",
       backlogRescueNutri: cfg.templates?.backlogRescueNutri || "sdr_retomada_novidades",
+      rescue2: cfg.templates?.rescue2 || "sdr_remarcar_noshow",
     },
   };
 }
@@ -199,6 +203,18 @@ function reminderText(key, { nome, quando, link }) {
 // A mensagem de resgate é a que o time já usa e recupera no-show (mineração:
 // "passei na nossa call no horário e não te encontrei, acontece!"), com os
 // próximos horários reais na sequência.
+// SEGUNDO toque do no-show (Leo, 24/08: "quando um cartão for sinalizado como
+// no show, vamos entrar em contato para remarcar"): o 1º resgate sai na hora do
+// furo; quem não respondeu ganha MAIS UMA tentativa no dia seguinte, agora com
+// horário concreto na mão (oferta fechada converte mais que "me diz um
+// horário"). Depois desse, o lead fica pro time — insistir mais vira chateação.
+function rescue2Text({ nome, slots = [], now }) {
+  const oi = nome ? `Oi ${nome},` : "Oi,";
+  if (slots.length >= 2) return `${oi} consegui dois horários novos com nosso especialista: ${slotLabel(slots[0].at, now)} ou ${slotLabel(slots[1].at, now)}. Qual fica melhor pra você?`;
+  if (slots.length === 1) return `${oi} consegui um horário novo com nosso especialista, ${slotLabel(slots[0].at, now)}. Fica bom pra você?`;
+  return `${oi} ainda dá tempo de remarcar nossa conversa. Me diz o melhor dia e período que eu vejo aqui na agenda.`;
+}
+
 function rescueText({ nome, slots = [], now }) {
   const oi = nome ? `Oi ${nome},` : "Oi,";
   const base = `${oi} passei no nosso horário marcado e não te encontrei, acontece! Quer que eu remarque?`;
@@ -273,7 +289,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
     const anyPhone = products.some((p) => p.waPhoneId);
     const [users, allLeads] = await Promise.all([repo.list("users"), repo.list("leads")]);
     const humanIds = new Set(users.map((u) => u.id));
-    const stats = { firstTouch: 0, secondTouch: 0, reminders: 0, rescue: 0, backlogRescue: 0, skipped: 0 };
+    const stats = { firstTouch: 0, secondTouch: 0, reminders: 0, rescue: 0, rescue2: 0, backlogRescue: 0, skipped: 0 };
     let sends = 0;
     const CAP = 25; // teto por ciclo: rajada nunca vira metralhadora
 
@@ -506,10 +522,75 @@ export function makeSdrRunner({ repo, whatsapp: wa, log = console, now = () => n
               }
             }
             if (via !== "alert") { sends++; stats.rescue++; }
-            await stampLog(lead, { noshowFor: lead.stageSince, noshowVia: via });
+            await stampLog(lead, { noshowFor: lead.stageSince, noshowVia: via, noshowAt: nowIso });
           } catch (err) {
             log.warn?.({ lead: lead.id, err: err.message }, "sdr: resgate de no-show falhou");
             await stampLog(lead, { noshowFor: lead.stageSince, noshowVia: "erro:" + String(err.message || err).slice(0, 120) });
+          }
+        }
+      }
+
+      // ── 3b. Segunda tentativa do no-show (24h depois, sem resposta) ──────
+      // O 1º resgate sai no calor do furo e muita gente nem vê. Este é o
+      // "vamos remarcar mesmo" do dia seguinte, com horário concreto. Lead que
+      // respondeu qualquer coisa (ou que o time já atendeu) fica de fora.
+      if (cfg.rescue2 || cfg.conversationTest) {
+        for (const lead of leads) {
+          if (sends >= CAP) break;
+          if (!eligible(lead) || !passOn(cfg.rescue2, lead)) continue;
+          if (!isNoShowStage(lead.stage)) continue;
+          if (lead.sdrLog?.noshowFor !== lead.stageSince) continue;      // 1º resgate não saiu pra ESTE furo
+          if (!["text", "template"].includes(lead.sdrLog?.noshowVia)) continue; // humano/erro: fila humana
+          if (lead.sdrLog?.noshow2For === lead.stageSince) continue;      // já teve a 2ª
+          if (lead.callAt && Date.parse(brtToIso(lead.callAt)) > nowMs) continue; // já remarcou
+          const firstMs = Date.parse(lead.sdrLog?.noshowAt || lead.stageSince || "");
+          if (!Number.isFinite(firstMs)) continue;
+          if (nowMs - firstMs < 24 * HOUR || nowMs - firstMs > 72 * HOUR) continue;
+          // Só em horário comercial: re-toque de madrugada queima a paciência.
+          const h2 = wnow.getUTCHours();
+          if (wnow.getUTCDay() === 0 || wnow.getUTCDay() === 6 || h2 < 9 || h2 >= 19) continue;
+
+          const phone = lead.waPhone || lead.phone;
+          const thread = await findThreadByPhone(repo, phone);
+          let quiet = true, windowOpen = false;
+          if (thread) {
+            const msgs = await listMessages(repo, thread.id);
+            // Respondeu depois do 1º resgate? Ou gente falou? Então não insiste.
+            quiet = !msgs.some((m) => Date.parse(m.at || 0) > firstMs
+              && (m.direction === "in" || (m.direction === "out" && humanIds.has(m.author))));
+            const lastIn = [...msgs].reverse().find((m) => m.direction === "in");
+            windowOpen = !!lastIn && nowMs - Date.parse(lastIn.at || 0) < 24 * HOUR;
+          }
+          if (!quiet) { await stampLog(lead, { noshow2For: lead.stageSince, noshow2Via: "skip" }); continue; }
+          const nome = firstName(lead.name);
+          const to = thread?.phone || phone;
+          try {
+            let via = "text";
+            const { slots } = await slotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 8, ...OFFER_HOURS });
+            const pair = spreadPair(slots);
+            if (windowOpen) {
+              await sendText({ phone: to, text: rescue2Text({ nome, slots: pair, now: wnow }), phoneId, saas: product.id, leadId: lead.id });
+            } else {
+              // Janela fechada (o normal 24h depois): template. Com dois
+              // horários reais na agenda, vai o template que os CARREGA no
+              // corpo; sem agenda livre, cai na retomada genérica. Repetir o
+              // template de resgate de ontem soaria robô travado.
+              const names = await approvedNames();
+              const withSlots = pair.length >= 2 && names.has(cfg.templates.rescue2);
+              const tpl = withSlots ? cfg.templates.rescue2
+                : [cfg.templates.secondTouch, cfg.templates.rescue].find((n) => names.has(n));
+              if (!tpl) { stats.skipped++; continue; }
+              const params = withSlots
+                ? [nome || "tudo bem", slotLabel(pair[0].at, wnow), slotLabel(pair[1].at, wnow)]
+                : [nome || "tudo bem"];
+              await sendTemplate({ phone: to, name: tpl, params, phoneId, saas: product.id, leadId: lead.id, moveCard: false });
+              via = "template";
+            }
+            sends++; stats.rescue2++;
+            await stampLog(lead, { noshow2For: lead.stageSince, noshow2Via: via, noshow2At: nowIso });
+          } catch (err) {
+            log.warn?.({ lead: lead.id, err: err.message }, "sdr: 2ª tentativa do no-show falhou");
+            await stampLog(lead, { noshow2For: lead.stageSince, noshow2Via: "erro:" + String(err.message || err).slice(0, 120) });
           }
         }
       }

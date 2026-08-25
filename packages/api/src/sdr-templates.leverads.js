@@ -81,6 +81,17 @@ export const SDR_TEMPLATES = [
     body: "Oi {{1}}! Está tudo certo pra nossa conversa {{2}}? Nosso especialista vai estar te esperando pra te mostrar como escalar sua operação nos marketplaces. Te espero lá!",
     example: ["Rafael", "hoje às 14h"],
   },
+  // 2ª tentativa do NO-SHOW (24h depois do furo, Leo 24/08). Sai sempre por
+  // template: um dia depois a janela de 24h da Meta já fechou. Leva os DOIS
+  // horários reais da agenda no corpo — oferta fechada converte muito mais que
+  // "me diz um horário".
+  {
+    name: "sdr_remarcar_noshow",
+    category: "UTILITY",
+    language: "pt_BR",
+    body: "Oi {{1}}, consegui dois horários novos com nosso especialista: {{2}} ou {{3}}. Qual fica melhor pra você?",
+    example: ["Rafael", "amanhã às 10h", "amanhã às 15h"],
+  },
   {
     name: "sdr_resgate_conversa",
     category: "UTILITY",
