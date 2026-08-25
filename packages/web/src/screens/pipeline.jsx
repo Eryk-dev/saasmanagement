@@ -9,6 +9,7 @@ import {
   nextTouch, nextTouchPill, lossReasonLabel,
 } from "../lib/funnel.js";
 import { usersByRole, userColor, displayName, currentUser } from "../lib/users.js";
+import { isNoShowStage } from "../lib/scripts.js";
 import { mentoriaFit, mentoriaOfferLine, VERBA_RANK } from "../lib/mentoria.js";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
 import { useActiveSaas, pinActiveSaas } from "../lib/workspace.js";
@@ -563,6 +564,11 @@ export const AGENDA_TYPE_COLORS = {
   "integração": { bg: "oklch(0.91 0.07 268)", line: "oklch(0.62 0.10 268)", label: "integração" },      // lilás
   consulta:     { bg: "oklch(0.92 0.08 350)", line: "oklch(0.64 0.12 350)", label: "consulta 1:1" },    // rosa
 };
+// Call que o lead FUROU (Leo, 25/08): não é outro TIPO de compromisso, é outro
+// DESFECHO — mantém o desenho da call e troca a cor pro vermelho suave. Na
+// grade cheia, verde = aconteceu e vermelho = furou se lê de longe, sem abrir
+// card nenhum.
+const AGENDA_NOSHOW = { bg: "oklch(0.90 0.07 25)", line: "oklch(0.60 0.14 25)", label: "no-show" };
 const AGENDA_INK = "oklch(0.22 0.02 250)";      // letra "preta" sobre as cores claras
 const AGENDA_INK_SOFT = "oklch(0.4 0.02 250)";  // linha secundária (hora, empresa)
 
@@ -907,11 +913,17 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                   // quando a resposta é "sim" — ou pelo botão do Meu dia): check
                   // verde no card, o closer sabe de longe quem vai aparecer.
                   const confirmed = !done && (kind === "call" ? !!l.callConfirmed : kind === "integração" ? !!l.integrationConfirmed : false);
+                  // Furou: card sinalizado como No show (ou perdido por "não
+                  // compareceu") E este evento é a call ATUAL do card — entrada
+                  // antiga de callHistory é remarcação, não carrega desfecho.
+                  const noShow = kind === "call" && !!l.callAt
+                    && new Date(l.callAt).getTime() === t.getTime()
+                    && (isNoShowStage(l.stage) || l.lostReason === "nao_compareceu");
                   // A COR DE FUNDO diz o TIPO (paleta clara + letra preta,
                   // AGENDA_TYPE_COLORS); follow-up reforça com contorno
                   // tracejado (vale pra daltonismo). A barrinha à esquerda é a
                   // PESSOA. História (done) continua lavada com ✓.
-                  const tc = AGENDA_TYPE_COLORS[kind] || AGENDA_TYPE_COLORS.call;
+                  const tc = noShow ? AGENDA_NOSHOW : (AGENDA_TYPE_COLORS[kind] || AGENDA_TYPE_COLORS.call);
                   const hour = Math.min(H1 - 1, Math.max(H0, t.getHours() + t.getMinutes() / 60));
                   const pw = 100 / personLanes;
                   const w = pw / subs;
@@ -919,7 +931,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                   return (
                     <div key={l.id + kind + t.getTime()}
                       onClick={(e) => { e.stopPropagation(); const target = kind === "consulta" ? l._leadRef : l; if (target && onOpenLead) onOpenLead(target); }}
-                      title={`${timeStr} · ${isFollowup ? "follow-up" : kind}${done ? (isFollowup ? " · já passou" : " · realizada · histórico") : ""}${confirmed ? " · CONFIRMADA pelo lead" : ""} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"}`}
+                      title={`${timeStr} · ${isFollowup ? "follow-up" : kind}${noShow ? " · NO-SHOW, o lead não compareceu" : done ? (isFollowup ? " · já passou" : " · realizada · histórico") : ""}${confirmed ? " · CONFIRMADA pelo lead" : ""} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"}`}
                       style={{
                         position: "absolute", top: (hour - H0) * hourH + 1,
                         left: `calc(${personLane * pw + sub * w}% + 2px)`, width: `calc(${w}% - 4px)`,
@@ -935,7 +947,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                         // Feita (histórico): mesma cor do closer, só lavada — dá
                         // pra ler a semana inteira do que aconteceu sem confundir
                         // com o que ainda vai acontecer.
-                        opacity: isTouch ? 0.85 : done ? 0.62 : 1,
+                        opacity: isTouch ? 0.85 : noShow ? 0.95 : done ? 0.62 : 1,
                         display: isFollowup ? "flex" : undefined, alignItems: isFollowup ? "center" : undefined,
                       }}>
                       {isFollowup ? (
@@ -946,7 +958,11 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                       ) : (
                         <>
                           <div className="mono tnum" style={{ fontSize: 9.5, color: isTouch ? "var(--fg-3)" : AGENDA_INK_SOFT, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {isTouch ? `○ ${l.name}` : `${done ? "✓ " : ""}${timeStr}${who ? ` · ${displayName(who).split(" ")[0]}` : ""}${kind === "integração" ? " · int" : kind === "consulta" ? " · 1:1" : ""}`}
+                            {isTouch ? `○ ${l.name}` : `${noShow ? "✕ " : done ? "✓ " : ""}${timeStr}${who ? ` · ${displayName(who).split(" ")[0]}` : ""}${kind === "integração" ? " · int" : kind === "consulta" ? " · 1:1" : ""}`}
+                            {noShow && (
+                              <span title="O lead não compareceu"
+                                style={{ marginLeft: 4, padding: "0 5px", borderRadius: 4, background: AGENDA_NOSHOW.line, color: "#fff", fontSize: 8.5, fontWeight: 800, letterSpacing: "0.04em", verticalAlign: "text-bottom" }}>FUROU</span>
+                            )}
                             {confirmed && (
                               <span title="Lead confirmou no lembrete"
                                 style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 12, height: 12, borderRadius: 99, background: "var(--pos)", color: "#fff", fontSize: 8.5, fontWeight: 800, marginLeft: 4, verticalAlign: "text-bottom" }}>✓</span>
