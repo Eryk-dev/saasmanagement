@@ -1080,11 +1080,12 @@ function PaceMini({ label, value, sub, tone }) {
   );
 }
 
-function EquationStep({ value, label, money }) {
+function EquationStep({ value, label, money, sub }) {
   return (
     <div style={{ minWidth: 92, flex: "1 1 92px", padding: "9px 10px", textAlign: "center", borderRadius: "var(--r-2)", background: "var(--bg-2)", border: "1px solid var(--line-1)" }}>
       <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>{money ? window.fmt.money(value || 0) : wholeFmt(value)}</div>
       <div className="kicker" style={{ marginTop: 1 }}>{label}</div>
+      {sub && <div style={{ marginTop: 1, fontSize: 9.5, color: "var(--fg-4)" }}>{sub}</div>}
     </div>
   );
 }
@@ -1099,8 +1100,8 @@ function EquationArrow({ label }) {
 }
 
 // Probabilidade de um lead na etapa virar ganho, compondo as taxas reais da
-// janela do funil (funil do último mês fechado, as mesmas contas da Visão
-// geral; fallback 30d móveis) — contato → agendamento → comparecimento →
+// janela do funil (30 dias móveis; fallback no último mês fechado, com as
+// mesmas contas da Visão geral) — contato → agendamento → comparecimento →
 // fechamento.
 // O fechamento usa a taxa EFETIVA (calibrada pela ponta a ponta real quando a
 // amostra deixa, vide routes.pipeline-pace.js) — sem isso o produto das taxas
@@ -1329,6 +1330,8 @@ function GoalReversePlan({ data, s, leads }) {
     : "30d";
   const sourceLabel = (rate) => rate.source === "history"
     ? `real ${rateJanela} · ${rate.numerator}/${rate.denominator}`
+    : rate.source === "calibrated" ? "o que a cadeia usa"
+    : rate.source === "matured" ? `${rate.numerator}/${rate.denominator} com tempo de fechar`
     : rate.source === "goal" ? "meta configurada" : "benchmark";
   const ticketSource = {
     initial_payments: "primeiras faturas pagas",
@@ -1336,6 +1339,10 @@ function GoalReversePlan({ data, s, leads }) {
     won_tcv: "média dos ganhos (90d)",
     configured_ticket: "ticket configurado",
   }[data.context.averageEntrySource] || "sem base de ticket";
+
+  // A cadeia persegue a ponta a ponta MADURA quando ela existe (janela móvel
+  // destruncada); senão, a crua.
+  const pontaAPonta = conversions.leadToWinMature || conversions.leadToWin;
 
   const alvo = g.superMode ? `super meta ${g.chasePct}%` : "meta";
   if (g.gap === 0) {
@@ -1352,27 +1359,29 @@ function GoalReversePlan({ data, s, leads }) {
     <Card title="Engenharia reversa da meta" hint={`de trás pra frente: o que precisa acontecer pra fechar ${money(g.gap)} até a ${alvo}`}>
       <div style={{ padding: "16px 24px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "stretch", gap: 7, flexWrap: "wrap" }}>
-          {g.investNeeded != null && (
+          {g.investNew != null && (
             <>
-              <EquationStep value={g.investNeeded} label="investimento" money />
+              <EquationStep value={g.investNew} label="investimento" money sub="só o lead novo" />
               <EquationArrow label={`CPL ${money(g.cpl)}`} />
             </>
           )}
-          <EquationStep value={g.leadsNeeded} label="leads" />
-          <EquationArrow label={`${rateFmt(conversions.contactRate.value)} contatados`} />
+          <EquationStep value={g.newLeads} label="leads novos" sub={g.pipeCount > 0 ? `+${wholeFmt(g.pipeCount)} na esteira` : null} />
+          <EquationArrow label={g.pipeCount > 0
+            ? `com a esteira · ${rateFmt(conversions.contactRate.value)} contatados`
+            : `${rateFmt(conversions.contactRate.value)} contatados`} />
           <EquationStep value={g.contacts} label="contatos" />
           <EquationArrow label={`${rateFmt(conversions.bookingRate.value)} agendam`} />
           <EquationStep value={g.bookings} label="calls agendadas" />
           <EquationArrow label={`${rateFmt(conversions.showRate.value)} comparecem`} />
           <EquationStep value={g.calls} label="calls feitas" />
-          <EquationArrow label={`${rateFmt(conversions.closeRateEffective?.value ?? conversions.closeRate.value)} fecham`} />
+          <EquationArrow label={`${rateFmt(conversions.closeRateEffective?.value ?? conversions.closeRate.value)} fecham${conversions.closeRateEffective?.source === "calibrated" ? " (efetiva)" : ""}`} />
           <EquationStep value={g.wins} label="ganhos" />
           <EquationArrow label={`${g.ticket ? money(g.ticket) : "sem ticket"} cada`} />
           <EquationStep value={g.gap} label={`falta pra ${alvo}`} money />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
-          <PaceMini label="Leads/dia útil" value={dailyFmt(perDay(g.leadsNeeded))} sub={`hoje ${wholeFmt(plan.leads?.today)} · ${g.daysLeft} dias úteis restantes`} />
+          <PaceMini label="Leads novos/dia útil" value={dailyFmt(perDay(g.newLeads))} sub={`hoje ${wholeFmt(plan.leads?.today)} · ${g.daysLeft} dias úteis restantes`} />
           <PaceMini label="Contatos/dia útil" value={dailyFmt(perDay(g.contacts))} sub={`hoje ${wholeFmt(plan.contacts?.today)} leads tocados`} />
           <PaceMini label="Calls/dia útil" value={dailyFmt(perDay(g.calls))} sub={`hoje ${wholeFmt(plan.calls?.today)} na agenda`} />
           <PaceMini label="Ganhos/dia útil" value={dailyFmt(perDay(g.wins))} sub={`hoje ${wholeFmt(plan.wins?.today)} · ticket ${g.ticket ? money(g.ticket) : "indisponível"}`} />
@@ -1392,11 +1401,19 @@ function GoalReversePlan({ data, s, leads }) {
             <> Ao CPL real de {money(g.cpl)}, esses leads pedem <strong>~{money(g.investNew)} de investimento</strong> ({money(perDay(g.investNew) || 0)}/dia útil).</>
           )}
           {g.cpl == null && g.newLeads > 0 && " Sem spend registrado nos últimos 30 dias, não dá pra estimar o investimento (sincronize a Publicidade)."}
-          {conversions.closeRateEffective?.source === "calibrated" && conversions.leadToWin && (
+          {g.leadsNeeded != null && (
+            <span style={{ display: "block", marginTop: 6, color: "var(--fg-3)" }}>
+              Sem descontar a esteira, a cadeia pediria {wholeFmt(g.leadsNeeded)} leads{g.investNeeded != null ? ` (${money(g.investNeeded)} de mídia)` : ""}.
+              É a demanda bruta: só vale se você tratar a esteira aberta como perdida.
+            </span>
+          )}
+          {conversions.closeRateEffective?.source === "calibrated" && pontaAPonta && (
             <span style={{ display: "block", marginTop: 6, color: "var(--fg-3)" }}>
               A cadeia usa fechamento efetivo de {rateFmt(conversions.closeRateEffective.value)}, calibrado pra bater com a ponta a ponta real
-              ({conversions.leadToWin.numerator} ganhos de {conversions.leadToWin.denominator} leads em 30d, {rateFmt(conversions.leadToWin.value)}).
-              O {rateFmt(conversions.closeRate.value)} medido só na janela subestima, porque call recente ainda não teve tempo de fechar.
+              ({wholeFmt(pontaAPonta.numerator)} ganhos de {wholeFmt(pontaAPonta.denominator)} leads em {rateJanela}, {rateFmt(pontaAPonta.value)}).
+              Multiplicar as 4 taxas medidas dá menos que isso porque cada uma tem uma base diferente (leads, calls, data da venda),
+              e sem calibrar o plano pede lead e mídia a mais.
+              {conversions.leadToWinMature && ` O denominador desconta quem ainda não teve tempo de fechar: dos ${wholeFmt(conversions.leadToWin.denominator)} leads da janela, ${wholeFmt(conversions.leadToWinMature.denominator)} já tiveram chance real (${rateFmt(conversions.leadToWinMature.capture)} da safra), pela curva de maturação do próprio produto.`}
             </span>
           )}
         </div>
@@ -1434,7 +1451,10 @@ function GoalReversePlan({ data, s, leads }) {
             </div>
           </div>
           {[["Contato", conversions.contactRate], ["Agendamento", conversions.bookingRate], ["Comparecimento", conversions.showRate], ["Call → ganho", conversions.closeRate],
-            ...(conversions.leadToWin ? [["Lead → ganho", conversions.leadToWin]] : [])].map(([label, rate]) => (
+            ...(conversions.closeRateEffective?.source === "calibrated"
+              ? [["Call → ganho efetivo", { ...conversions.closeRateEffective, source: "calibrated" }]] : []),
+            ...(conversions.leadToWin ? [["Lead → ganho", conversions.leadToWin]] : []),
+            ...(conversions.leadToWinMature ? [["Lead → ganho maduro", conversions.leadToWinMature]] : [])].map(([label, rate]) => (
             <div key={label}>
               <div className="kicker">{label}</div>
               <div className="tnum" style={{ marginTop: 2, fontSize: 13, fontWeight: 600 }}>{rateFmt(rate.value)}</div>

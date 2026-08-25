@@ -371,7 +371,10 @@ test("taxas da cadeia = funil do mês fechado (mesmas contas da Visão geral fil
   assert.deepEqual(r.conversions.showRate, { value: 0.75, source: "history", numerator: 6, denominator: 8 });
   // ganhos com wonAt em julho ÷ realizadas, SEM calibração no modo mês
   assert.deepEqual(r.conversions.closeRate, { value: 0.3333, source: "history", numerator: 2, denominator: 6 });
-  assert.deepEqual(r.conversions.closeRateEffective, { value: 0.3333, source: "history" });
+  // A calibração vale em QUALQUER janela desde 25/08. Aqui ela devolve o mesmo
+  // 33,33% medido (2 ganhos ÷ 20 leads ÷ upstream 0,8×0,5×0,75), o que é o
+  // sinal de que a cadeia já fechava na ponta a ponta nesse fixture.
+  assert.deepEqual(r.conversions.closeRateEffective, { value: 0.3333, source: "calibrated" });
   await app.close();
 });
 
@@ -384,7 +387,9 @@ test("cadeia e Visão geral batem: pace mês fechado = funil do scoreboard no me
   assert.equal(pctOf(pace.conversions.contactRate.value), sb.team.contactRate);
   assert.equal(pctOf(pace.conversions.bookingRate.value), sb.team.bookingRate);
   assert.equal(pctOf(pace.conversions.showRate.value), sb.team.showRate);
-  assert.equal(pctOf(pace.conversions.closeRateEffective.value), sb.team.closeRatePeriod);
+  // Régua MEDIDA é a que precisa bater com a Visão geral; a efetiva (calibrada)
+  // é a que a cadeia usa e a tela mostra ao lado, sem substituir a medida.
+  assert.equal(pctOf(pace.conversions.closeRate.value), sb.team.closeRatePeriod);
   assert.equal(pace.conversions.bookingRate.numerator, sb.team.bookedCohort);
   assert.equal(pace.conversions.bookingRate.denominator, sb.team.contactedCohort);
   assert.equal(pace.conversions.closeRate.numerator, sb.team.won);
@@ -413,7 +418,7 @@ test("histórico pré-cockpit entra no funil do mês só quando a janela alcanç
   await off.app.close();
 });
 
-test("mês fechado sem amostra (menos de 20 leads) cai nos 30 dias móveis", async () => {
+test("sem amostra em lugar nenhum (menos de 20 leads nos 30d e no mês) usa os 30 dias móveis", async () => {
   const { app, repo } = await build({}, AGO);
   // Julho tem só 5 leads (1 até fechou): amostra pequena demais pra virar régua.
   for (let i = 1; i <= 5; i++) {
@@ -428,5 +433,108 @@ test("mês fechado sem amostra (menos de 20 leads) cai nos 30 dias móveis", asy
   assert.equal(r.rateWindow.since, "2026-07-12");
   // Denominador = criados nos 30d móveis: 5 de julho (dias 21-25) + 3 de agosto.
   assert.equal(r.conversions.contactRate.denominator, 8);
+  await app.close();
+});
+
+// ── Janela primária: 30 dias móveis (Leo, 25/08/2026) ────────────────────────
+// A operação muda de patamar rápido demais pro mês passado descrever o presente
+// (junho 58 leads, julho 484, agosto 756 em 25 dias). O mês fechado virou
+// fallback e a calibração da ponta a ponta passou a valer em qualquer janela.
+
+// 24 leads dentro dos 30d móveis (desde 12/07, olhando de 10/08): 20 tocados,
+// 12 com call na janela, 3 ganhos, 3 furos, 6 avançaram pra Proposta.
+async function seed30d(repo) {
+  for (let i = 1; i <= 24; i++) {
+    const dia = String((i % 8) + 1).padStart(2, "0");
+    const stage = i <= 3 ? "Ganho" : i <= 9 ? "Proposta" : i <= 12 ? "Perdido" : "Novo lead";
+    await repo.create("leads", {
+      id: `ag${i}`, saas: "leverads", stage,
+      createdAt: `2026-08-${dia}T12:00:00.000Z`,
+      ...(i <= 12 ? { callAt: `2026-08-0${(i % 8) + 1}T15:00:00.000Z` } : {}),
+      ...(i <= 3 ? { amount: 5000, wonAt: `2026-08-0${(i % 8) + 1}T18:00:00.000Z` } : {}),
+      ...(i >= 10 && i <= 12 ? { lostReason: "nao_compareceu" } : {}),
+    });
+    if (i <= 20) await repo.create("activities", { id: `a${i}`, saas: "leverads", lead: `ag${i}`, type: "whatsapp", author: "sdr", at: `2026-08-${dia}T13:00:00.000Z` });
+    // A janela móvel conta agendamento pela MUDANÇA DE ETAPA (bookedLeadsIn),
+    // não pelo callAt — o mês fechado é que usa a safra de callAt (callCohortIn).
+    if (i <= 12) await repo.create("activities", { id: `s${i}`, saas: "leverads", lead: `ag${i}`, type: "stage", author: "sdr", at: `2026-08-${dia}T14:00:00.000Z`, meta: { to: "Call agendada" } });
+  }
+}
+
+test("30 dias móveis são a janela primária quando têm amostra (mês fechado vira fallback)", async () => {
+  const { app, repo } = await build({}, AGO);
+  await seedFunilJulho(repo); // julho inteiro disponível: antes ele ganhava
+  await seed30d(repo);
+  const r = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json();
+  assert.equal(r.rateWindow.mode, "rolling30");
+  assert.equal(r.rateWindow.since, "2026-07-12");
+  await app.close();
+});
+
+test("a cadeia calibrada fecha exatamente na ponta a ponta real", async () => {
+  const { app, repo } = await build({}, AGO);
+  await seed30d(repo);
+  const c = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json().conversions;
+  assert.equal(c.closeRateEffective.source, "calibrated");
+  const cadeia = c.contactRate.value * c.bookingRate.value * c.showRate.value * c.closeRateEffective.value;
+  // É o invariante que a tela promete: desdobrar a meta pela cadeia tem que
+  // pedir a MESMA quantidade de lead que o lead→ganho histórico pediria.
+  assert.ok(Math.abs(cadeia - c.leadToWin.value) < 0.001,
+    `cadeia ${cadeia} != ponta a ponta ${c.leadToWin.value}`);
+  await app.close();
+});
+
+test("ganho sem call agendada conta na ponta a ponta (mas não no fechamento)", async () => {
+  const { app, repo } = await build({}, AGO);
+  await seed30d(repo);
+  const antes = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json().conversions;
+  // Venda que nasceu sem call registrada no cockpit: não é ganho de call, mas é
+  // ganho da coorte — antes sumia do ponta a ponta e puxava a calibração pra baixo.
+  await repo.create("leads", {
+    id: "semcall", saas: "leverads", stage: "Ganho",
+    createdAt: "2026-08-05T12:00:00.000Z", wonAt: "2026-08-07T12:00:00.000Z", amount: 5000,
+  });
+  const depois = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json().conversions;
+  assert.equal(depois.leadToWin.numerator, antes.leadToWin.numerator + 1);
+  assert.equal(depois.closeRate.numerator, antes.closeRate.numerator); // fechamento intocado
+  await app.close();
+});
+
+test("coorte imatura não afunda a ponta a ponta: exposição madura destrunca a janela móvel", async () => {
+  const { app, repo } = await build({}, AGO);
+  // História do produto: 30 ganhos que fecharam em 2 dias. É ela que define a
+  // curva F(a) — aqui, quem tem 2+ dias de vida já teve toda a chance de fechar.
+  for (let i = 1; i <= 30; i++) {
+    await repo.create("leads", {
+      id: `h${i}`, saas: "leverads", stage: "Ganho", amount: 5000,
+      createdAt: "2026-06-01T12:00:00.000Z", wonAt: "2026-06-03T12:00:00.000Z",
+    });
+  }
+  // Coorte dos 30d: 20 leads maduros (21/07, com 20 dias de vida) e 20 recém
+  // nascidos (hoje), que ainda não tiveram chance nenhuma de fechar.
+  for (let i = 1; i <= 20; i++) {
+    await repo.create("leads", {
+      id: `m${i}`, saas: "leverads", stage: i <= 2 ? "Ganho" : "Novo lead",
+      createdAt: "2026-07-21T12:00:00.000Z",
+      ...(i <= 2 ? { amount: 5000, wonAt: "2026-07-23T12:00:00.000Z" } : {}),
+    });
+    await repo.create("leads", { id: `n${i}`, saas: "leverads", stage: "Novo lead", createdAt: "2026-08-10T12:00:00.000Z" });
+  }
+  const c = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json().conversions;
+  // Cru: 2 ganhos ÷ 40 leads = 5%, mas metade da coorte nasceu hoje.
+  assert.deepEqual([c.leadToWin.value, c.leadToWin.denominator], [0.05, 40]);
+  // Maduro: os mesmos 2 ganhos ÷ os 20 que já tiveram tempo = 10%.
+  assert.equal(c.leadToWinMature.value, 0.1);
+  assert.equal(c.leadToWinMature.denominator, 20);
+  assert.equal(c.leadToWinMature.capture, 0.5);
+  await app.close();
+});
+
+test("sem histórico de ganho suficiente, a exposição madura não se aplica (fica no cru)", async () => {
+  const { app, repo } = await build({}, AGO);
+  await seed30d(repo); // só 3 ganhos: amostra curta demais pra curva de maturação
+  const c = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json().conversions;
+  assert.equal(c.leadToWinMature, undefined);
+  assert.equal(c.leadToWin.source, "history");
   await app.close();
 });
