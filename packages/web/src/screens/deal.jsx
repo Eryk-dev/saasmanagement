@@ -13,7 +13,7 @@ import { api } from "../lib/api.js";
 import { useAttribution } from "../lib/pains.js";
 import { sourceLabel } from "../lib/sources.js";
 import { resolveScript, scriptTokens, scriptChecklist } from "../lib/scripts.js";
-import { CallSummaryCard, IntegrationBriefCard, callBusyKeys, callSlotKeys } from "./today.jsx";
+import { CallSummaryCard, IntegrationBriefCard, callBusyKeys, callSlotKeys, integBusyKeys } from "./today.jsx";
 import { CustomProposalModal } from "../components/custom-proposal.jsx";
 import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
 import { useData } from "../data.jsx";
@@ -199,6 +199,20 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   const conflictAt = lead.callAt ? callConflictInfo(lead.callAt) : null;
   const callBusyMsg = !conflictAt ? ""
     : `${displayName(lead.closer) || "o closer"} já tem ${conflictAt.kind === "call" ? "call" : (conflictAt.reason || "compromisso")} nesse horário`;
+  // Integração tem a MESMA régua da call: ocupa 1h na agenda do integrador e
+  // avisa colisão antes de salvar.
+  const integBusy = React.useMemo(
+    () => integBusyKeys(window.SEED?.LEADS || [], lead.integrator, lead.id),
+    [lead.integrator, lead.id],
+  );
+  const integConflict = (v) => callSlotKeys(v).some((k) => integBusy.has(k));
+  const integConflictInfo = (v) => {
+    for (const k of callSlotKeys(v)) { const i = integBusy.info(k); if (i) return i; }
+    return null;
+  };
+  const integAt = lead.integrationAt ? integConflictInfo(lead.integrationAt) : null;
+  const integBusyMsg = !integAt ? ""
+    : `${displayName(lead.integrator) || "o integrador"} já tem ${integAt.kind === "call" ? "integração" : (integAt.reason || "compromisso")} nesse horário`;
 
   function patch(p) {
     dirty.current = true;
@@ -802,8 +816,20 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
             <>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <span className="mono dim" style={rowLabel}>Integração</span>
-                <input type="datetime-local" value={dtLocal(lead.integrationAt)} onChange={(e) => patch({ integrationAt: e.target.value })}
-                  style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
+                {/* MESMO editor da call (Leo, 25/08): o input controlado salvava
+                    a cada tecla e o valor não grudava — data digitada sumia sem
+                    chegar na Agenda. Aqui o horário só vai pro servidor no
+                    "salvar horário", com confirmação de verdade. */}
+                <DateTimeEditor value={dtLocal(lead.integrationAt)}
+                  validate={(raw) => raw && integConflict(raw) ? (integBusyMsg || "Esse horário já está ocupado") : ""}
+                  onSave={async (raw) => !!(await persistSchedule({ integrationAt: raw }))}
+                  style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: `1px solid ${integBusyMsg ? "var(--neg)" : "var(--line-1)"}`, background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
+                {lead.integrationAt && (
+                  <button onClick={() => patch({ integrationAt: "" })} className="mono dim" style={{ fontSize: 11 }} title="Limpar integração">limpar</button>
+                )}
+                <span className="mono dim" style={{ fontSize: 10, color: integBusyMsg ? "var(--neg)" : undefined }}>
+                  {integBusyMsg || "aparece na Agenda"}
+                </span>
               </div>
               {/* Entrega: briefing pro integrador + vídeo/resumo da integração,
                   recolhidos — a DATA fica em cima, sempre visível. */}
