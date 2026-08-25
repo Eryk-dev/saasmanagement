@@ -25,7 +25,7 @@ import { kindOf, firstStage, stageByKind, isWonLead } from "./stages.js";
 import { brtToIso, applyStageMove, onOutboundMessage, autoLeadOwner, logActivity, initialNextActionAt } from "./lead-flow.js";
 import { raiseAlert } from "./wa-call-flow.js";
 import { leadGrade } from "./routes.marketing.js";
-import { slotsForLead, slotLabel, slotLabelFull, wallNow, spreadPair, OFFER_HOURS, activeHolds, holdSlots, releaseHolds, withoutHeld } from "./agenda-slots.js";
+import { slotsForLead, slotLabel, slotLabelFull, wallNow, spreadPair, wholeHourSlots, OFFER_HOURS, activeHolds, holdSlots, releaseHolds, withoutHeld } from "./agenda-slots.js";
 import { sdrBotConfig, leadDigest, conversationActive, leadPainFocus, greetName, SDR_AUTHOR } from "./sdr-flow.js";
 import { transcriber as defaultTranscriber } from "./transcribe.js";
 
@@ -450,7 +450,10 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     // negar o próprio horário (prod 24/08, Guilherme). Ver agenda-slots.js.
     const holds = await activeHolds(repo, product.id, { now: at }).catch(() => []);
     const slotList = withoutHeld(slots, holds, lead.id).map((s) => ({ ...s, label: slotLabel(s.at, wnow) }));
-    const suggestedPair = spreadPair(slotList);
+    // A OFERTA sai só de hora cheia; slotList inteiro (com as quebradas) segue
+    // valendo pra AGENDAR quando o lead pede um horário específico.
+    const offerPool = wholeHourSlots(slotList);
+    const suggestedPair = spreadPair(offerPool);
     // Nota de voz que disparou a decisão vira texto (as antigas já carregam o
     // transcript gravado); sem transcrição possível, fica "🎤 áudio" e o
     // prompt manda pra humano.
@@ -665,7 +668,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     if (parts.some((t) => DRY_REFUSAL_RX.test(t))) {
       const kept = parts.filter((t) => !DRY_REFUSAL_RX.test(t));
       parts.length = 0;
-      parts.push(...kept, reofferText(nome, suggestedPair.length ? suggestedPair : slotList.slice(0, 1), wnow));
+      parts.push(...kept, reofferText(nome, suggestedPair.length ? suggestedPair : offerPool.slice(0, 1), wnow));
       await stamp(lead, { slotTakenGuardAt: new Date(nowMs).toISOString() });
       log.info?.({ lead: lead.id }, "sdr-brain: recusa seca virou desculpa + re-oferta");
     }
@@ -676,8 +679,8 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     if (!slotsOffered && parts.some((t) => FAKE_OFFER_RX.test(t))) {
       const real = suggestedPair.length >= 2
         ? `Consigo ${slotLabel(suggestedPair[0].at, wnow)} ou ${slotLabel(suggestedPair[1].at, wnow)}, qual fica melhor pra você?`
-        : slotList.length
-          ? `Consigo ${slotLabel(slotList[0].at, wnow)}, fica bom pra você?`
+        : offerPool.length
+          ? `Consigo ${slotLabel(offerPool[0].at, wnow)}, fica bom pra você?`
           : "Qual período fica melhor pra você, manhã ou tarde?";
       const kept = parts.filter((t) => !FAKE_OFFER_RX.test(t));
       parts.length = 0;
@@ -700,8 +703,8 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
         ? "Algum dos horários que te passei encaixa pra você?"
         : suggestedPair.length >= 2
           ? `Consigo ${slotLabel(suggestedPair[0].at, wnow)} ou ${slotLabel(suggestedPair[1].at, wnow)}, qual fica melhor pra você?`
-          : slotList.length
-            ? `Consigo ${slotLabel(slotList[0].at, wnow)}, fica bom pra você?`
+          : offerPool.length
+            ? `Consigo ${slotLabel(offerPool[0].at, wnow)}, fica bom pra você?`
             : "Qual período costuma ser melhor pra você, manhã ou tarde?";
       if (parts.length >= 3) parts[2] = `${parts[2]} ${push}`;
       else parts.push(push);

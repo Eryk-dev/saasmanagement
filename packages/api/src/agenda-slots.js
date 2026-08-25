@@ -280,6 +280,16 @@ export function withoutHeld(slots, holds, leadId) {
 // Dupla de sugestão com RESPIRO (Leo, 23/08): ao oferecer 2 opções, elas
 // devem ter pelo menos 2h de diferença quando a agenda permitir — 9h/9h30 não
 // é escolha de verdade. Cai pro adjacente só quando não há espaçado.
+// OFERTA só em HORA CHEIA (Leo, 25/08): "amanhã às 16h30" soa sobra de agenda
+// e polui a escolha. A grade continua de meia em meia hora — hora quebrada
+// segue disponível pra quando o LEAD pedir ("consigo só 14h30") e pra marcação
+// na mão. Sem nenhuma hora cheia livre, devolve a lista inteira (melhor uma
+// oferta quebrada que nenhuma).
+export function wholeHourSlots(slots) {
+  const cheias = (slots || []).filter((s) => String(s?.at || "").endsWith(":00"));
+  return cheias.length ? cheias : (slots || []);
+}
+
 export function spreadPair(slots, minGapMin = 120) {
   if (!slots.length) return [];
   const first = slots[0];
