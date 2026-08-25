@@ -297,6 +297,31 @@ test("vendedor com conta própria na Shopee NÃO é confundido com afiliado", as
   assert.equal((await repo.get("leads", "L1")).callAt, SLOT1);
 });
 
+test("horário preenchido no meio do caminho: pede desculpa e diz que outro cliente pegou", async () => {
+  // Caso Gabriel (25/08): escolheu um horário que NÓS oferecemos e ouviu
+  // "Esse horário não consigo" seco.
+  const repo = await world({ messages: [
+    { direction: "out", author: "sdr-bot", text: "Consigo hoje às 13h ou hoje às 15h, qual fica melhor?", at: ISO("2026-08-19T12:50:00Z") },
+    { direction: "in", text: "as 15h fica melhor", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Esse horário não consigo, mas tenho hoje às 13h" }] });
+  await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "as 15h fica melhor" } });
+  const texto = fakes.sent.map((x) => x.text).join(" ");
+  assert.ok(!/não consigo/i.test(texto), "a recusa seca não sai");
+  assert.match(texto, /preenchido por outro cliente/);
+  assert.match(texto, /desculpa/i);
+  assert.match(texto, /às \d/, "já vem com horário novo");
+  assert.ok((await repo.get("leads", "L1")).sdrLog.slotTakenGuardAt);
+});
+
+test("re-oferta determinística (horário inventado pela IA) também pede desculpa", async () => {
+  const repo = await world({ messages: [{ direction: "in", text: "pode ser 9h", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: "2026-08-19T09:00" }] });
+  assert.equal(await brainOf(repo, fakes).handleInbound(INBOUND), "reoferta");
+  assert.match(fakes.sent[0].text, /preenchido por outro cliente, me desculpa/);
+  assert.match(fakes.sent[0].text, /hoje às 13h/);
+});
+
 test("trava de preço: resposta da IA com valor vira o desvio com autoridade (sem número)", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "quanto custa?", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "O plano parte de R$ 299 por mês, fechado?" }] });

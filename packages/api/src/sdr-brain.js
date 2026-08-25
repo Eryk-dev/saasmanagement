@@ -71,6 +71,10 @@ const AFFILIATE_RX = /\b(sou|somos|trabalho como|atuo como)\s+(um[ao]?\s+)?afil[
 // fecha fronteira e a palavra escapava da checagem.
 const DAY_WORD_RX = /\b(hoje|amanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta|essa semana|semana que vem)/i;
 const HAS_HOUR_RX = /\b\d{1,2}\s?h(\d{2})?\b|\b\d{1,2}:\d{2}\b/;
+// Recusa SECA de horário ("esse horário não consigo"): quando o horário caiu
+// depois de a gente oferecer, a resposta tem que pedir desculpa e dizer que
+// outro cliente pegou. Sem \b no fim (o \b do JS é ASCII).
+const DRY_REFUSAL_RX = /n[ãa]o (consigo|tenho|d[áa]|vai dar)\s*(esse|nesse|este|neste|nesse dia)?\s*hor[áa]ri|esse hor[áa]rio n[ãa]o (consigo|tenho|est[áa]|d[áa]|vai)|hor[áa]rio (j[áa] )?(n[ãa]o est[áa]|ficou) (dispon[íi]vel|livre)/i;
 const FAKE_OFFER_RX = /(hor[áa]rios?|op[çc][õo]es)\s+que\s+(eu\s+)?(te\s+)?(passei|mandei|enviei)|algum\s+d(os|aqueles)\s+hor[áa]rios|aqueles\s+hor[áa]rios/i;
 const INTEREST_RX = /\b(sim|ajudaria|com certeza|claro|tenho interesse|quero|pode ser|bora|show|top|gostei|perfeito)\b/i;
 // Só frases que SÓ robô de atendimento escreve. Nada de "esse número é do…" ou
@@ -170,11 +174,16 @@ function cancelConfirmText(nome, slots, wnow) {
   return [oi, "Quando quiser remarcar me chama aqui que eu vejo os horários pra você"];
 }
 
+// Horário que a gente OFERECEU e o lead escolheu, mas foi preenchido no meio do
+// caminho (Leo, 25/08): a culpa é da nossa agenda, não dele. Então pede
+// desculpa e diz o que houve de verdade — "não consigo" seco depois de ter
+// oferecido soa descaso.
 function reofferText(nome, slots, wnow) {
-  const oi = nome ? `${nome}, esse` : "Esse";
-  if (slots.length >= 2) return `${oi} horário acabou de sair da minha agenda aqui. Consigo ${slotLabel(slots[0].at, wnow)} ou ${slotLabel(slots[1].at, wnow)}, qual fica melhor pra você?`;
-  if (slots.length === 1) return `${oi} horário não está mais livre aqui. Consigo ${slotLabel(slots[0].at, wnow)}, fica bom pra você?`;
-  return `${oi} horário não está mais livre aqui. Me diz um horário que fica bom pra você que eu vejo aqui na agenda.`;
+  const oi = nome ? `Ahh ${nome}, ` : "Ahh, ";
+  const desculpa = `${oi}esse horário acabou de ser preenchido por outro cliente, me desculpa!`;
+  if (slots.length >= 2) return `${desculpa} Consigo ${slotLabel(slots[0].at, wnow)} ou ${slotLabel(slots[1].at, wnow)}, qual fica melhor pra você?`;
+  if (slots.length === 1) return `${desculpa} Consigo ${slotLabel(slots[0].at, wnow)}, fica bom pra você?`;
+  return `${desculpa} Me diz um horário que fica bom pra você que eu vejo aqui na agenda.`;
 }
 
 // Marca (ou remarca) a call pelo MESMO caminho do PATCH da API: applyStageMove
@@ -649,6 +658,18 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     }
     parts.length = 0;
     parts.push(...fresh);
+    // TRAVA DE RECUSA SECA: o horário que a gente ofereceu caiu, e a resposta
+    // devolve um "não consigo" sem explicação nem desculpa (visto 25/08 com o
+    // Gabriel, que tinha escolhido um horário NOSSO). Troca pela re-oferta com
+    // desculpa e a causa real.
+    if (parts.some((t) => DRY_REFUSAL_RX.test(t))) {
+      const kept = parts.filter((t) => !DRY_REFUSAL_RX.test(t));
+      parts.length = 0;
+      parts.push(...kept, reofferText(nome, suggestedPair.length ? suggestedPair : slotList.slice(0, 1), wnow));
+      await stamp(lead, { slotTakenGuardAt: new Date(nowMs).toISOString() });
+      log.info?.({ lead: lead.id }, "sdr-brain: recusa seca virou desculpa + re-oferta");
+    }
+
     // TRAVA DE OFERTA FANTASMA: nunca oferecemos horário nesta conversa, mas a
     // resposta fala de horários "que te passei" — tira a frase e coloca a
     // oferta real no lugar (mesma régua determinística da trava de preço).
