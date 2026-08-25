@@ -775,6 +775,9 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
       demoOffered
         ? "PITCH JÁ FEITO nesta conversa (o 1º toque ou uma mensagem sua anterior já listou as capacidades): PROIBIDO re-listar qualquer capacidade já dita (fotos, título de 200 caracteres, descrição, compatibilidade, 5 minutos, clonagem, estoque, atendimento, edição, gerenciar múltiplas contas) e proibido repetir o convite da demonstração descrevendo-a de novo. Se precisar referenciar, seja curto ('como te falei') e traga SÓ o novo: responda a pergunta e avance pro próximo passo."
         : "",
+      !slotsOffered
+        ? "VOCÊ AINDA NÃO OFERECEU NENHUM HORÁRIO nesta conversa. É PROIBIDO escrever \"os horários que te passei\", \"algum dos horários\", \"aqueles horários\" ou qualquer referência a uma oferta que não existe — o lead não recebeu horário nenhum e a mensagem soa mentirosa. Quando for a hora de agendar, ESCREVA os horários por extenso, usando o PAR SUGERIDO (ex.: \"Consigo hoje às 15h ou amanhã às 9h, qual fica melhor pra você?\")."
+        : "",
       slotsOffered
         ? "HORÁRIOS JÁ OFERECIDOS nesta conversa e o lead ainda não escolheu: NÃO repita horários na sua resposta. Responda o que ele perguntou e, no máximo, pergunte curto se algum dos horários que você já passou encaixa (sem re-listar). Só cite horários específicos de novo se ele pedir outras opções ou disser que nenhum serve (aí use a lista atual)."
         : "",

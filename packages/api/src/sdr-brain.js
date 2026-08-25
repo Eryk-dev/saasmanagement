@@ -54,6 +54,11 @@ const PRICE_RX = /r\$\s*\d|\b\d{2,}\s*(reais|por m[eê]s|\/m[eê]s|mensais)\b|\b
 // que puxar o próximo passo. O prompt já manda, mas prompt não é garantia —
 // a trava de beco (motor) emenda a oferta quando a IA esquecer (caso Daniel,
 // 23/08: "Opa sim" respondido com afirmação solta matou a conversa).
+// Oferta FANTASMA: a IA cita horários "que te passei" sem nunca ter passado
+// nenhum (visto 25/08 com o Gabriel, logo depois da retomada — que é template
+// SEM horário). Prompt já proíbe; aqui o motor garante, trocando a frase
+// mentirosa pela oferta de verdade.
+const FAKE_OFFER_RX = /(hor[áa]rios?|op[çc][õo]es)\s+que\s+(eu\s+)?(te\s+)?(passei|mandei|enviei)|algum\s+d(os|aqueles)\s+hor[áa]rios|aqueles\s+hor[áa]rios/i;
 const INTEREST_RX = /\b(sim|ajudaria|com certeza|claro|tenho interesse|quero|pode ser|bora|show|top|gostei|perfeito)\b/i;
 // Só frases que SÓ robô de atendimento escreve. Nada de "esse número é do…" ou
 // "clique no link", que gente de verdade também manda ("esse número é do meu
@@ -612,6 +617,22 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     }
     parts.length = 0;
     parts.push(...fresh);
+    // TRAVA DE OFERTA FANTASMA: nunca oferecemos horário nesta conversa, mas a
+    // resposta fala de horários "que te passei" — tira a frase e coloca a
+    // oferta real no lugar (mesma régua determinística da trava de preço).
+    if (!slotsOffered && parts.some((t) => FAKE_OFFER_RX.test(t))) {
+      const real = suggestedPair.length >= 2
+        ? `Consigo ${slotLabel(suggestedPair[0].at, wnow)} ou ${slotLabel(suggestedPair[1].at, wnow)}, qual fica melhor pra você?`
+        : slotList.length
+          ? `Consigo ${slotLabel(slotList[0].at, wnow)}, fica bom pra você?`
+          : "Qual período fica melhor pra você, manhã ou tarde?";
+      const kept = parts.filter((t) => !FAKE_OFFER_RX.test(t));
+      parts.length = 0;
+      parts.push(...kept, real);
+      await stamp(lead, { fakeOfferGuardAt: new Date(nowMs).toISOString() });
+      log.info?.({ lead: lead.id }, "sdr-brain: trava de oferta fantasma trocou a frase pela oferta real");
+    }
+
     // TRAVA DE BECO: lead demonstrou interesse, ainda não tem call marcada e a
     // resposta veio SEM pergunta → o motor emenda a oferta (par sugerido; já
     // ofereceu antes = repescagem curta). Determinístico, como a trava de preço.
