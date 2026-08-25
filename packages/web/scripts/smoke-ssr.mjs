@@ -241,6 +241,38 @@ try {
     console.error(`✗ periodo: ${err.message}`);
     failed++;
   }
+  // Placar do dia (Meu dia): o denominador é a META DIÁRIA da pessoa, não o
+  // tamanho da fila. Meta mensal ÷ dias úteis (21,75), e valor e alvo sempre da
+  // mesma fonte — cruzar realizado do servidor com alvo de fila é o bug que
+  // fazia "1 / 9" parecer meta.
+  try {
+    const { dayScoreOf } = await server.ssrLoadModule("/src/screens/today.jsx");
+    const check = (name, got, want) => { if (got !== want) throw new Error(`${name}: ${got} ≠ ${want}`); };
+    const local = { contacted: 1, contactedGoal: 9, calls: 0, callsGoal: 1 };
+    // Terça, dia útil: 218 contatos/mês ÷ 21,75 = 10/dia; 44 calls = 2/dia.
+    const row = { user: "sdr", contacted: 3, callsBooked: 1, goals: { contacts: { target: 218, period: "month" }, callsBooked: { target: 44, period: "month" } } };
+    const s = dayScoreOf({ row, today: "2026-08-25", local });
+    check("meta diária de contatos", s.contactedGoal, 10);
+    check("meta diária de calls", s.callsGoal, 2);
+    check("realizado vem do servidor junto com a meta", s.contacted, 3);
+    check("calls agendadas hoje", s.calls, 1);
+    check("rótulo de calls", s.callsLabel, "Calls agendadas");
+    check("origem", s.goalScope, "meta");
+    // Sem meta configurada: tudo local, como era antes (nada regride).
+    const semMeta = dayScoreOf({ row: { user: "sdr", contacted: 3, callsBooked: 1, goals: {} }, today: "2026-08-25", local });
+    check("sem meta cai na fila", semMeta.contactedGoal, 9);
+    check("sem meta usa o feito local", semMeta.contacted, 1);
+    check("sem meta, calls são as de hoje", semMeta.callsLabel, "Calls de hoje");
+    check("origem fila", semMeta.goalScope, "fila");
+    // Pessoa sem placar (closer, produto sem cadeia): idem.
+    check("sem linha no placar", dayScoreOf({ row: null, today: "2026-08-25", local }).contactedGoal, 9);
+    // Fim de semana não cobra meta: domingo cai na régua local.
+    check("domingo sem meta", dayScoreOf({ row, today: "2026-08-23", local }).goalScope, "fila");
+    console.log("✓ placar-do-dia");
+  } catch (err) {
+    console.error(`✗ placar-do-dia: ${err.message}`);
+    failed++;
+  }
   // Agenda ocupada: a consulta da mentoria (UniqueKids) tem que bloquear o slot
   // de call de venda de quem atende. É regra de negócio, não render — vale um
   // teste de verdade, e vale AQUI porque busyView lê window.SEED.

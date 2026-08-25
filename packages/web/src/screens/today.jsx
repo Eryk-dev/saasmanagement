@@ -6,6 +6,9 @@ import { ActivityComposer } from "../components/timeline.jsx";
 import { waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
 import { waCallLinkText, waProposalText } from "../lib/wa-copy.js";
 import { api } from "../lib/api.js";
+import { bizDay } from "../lib/format.js";
+import { businessDaysBetween } from "../components/period-picker.jsx";
+import { scaledGoal } from "../components/team-cards.jsx";
 import { useData } from "../data.jsx";
 import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf, nextKindsFor } from "../lib/funnel.js";
 import { allUsers, currentUser, displayName, userById, usersByRole } from "../lib/users.js";
@@ -525,6 +528,33 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   const callsToday = q.hoje.filter((i) => i.kind === "call" && !i.confirm);
   const callsDone = callsToday.filter((i) => i.done).length;
 
+  // ── Placar do dia: a META DIÁRIA da pessoa (Leo, 25/08) ────────────────────
+  // O placar comparava o feito com o TAMANHO DA FILA do dia ("1/9" = nove itens
+  // na fila), o que sobe e desce conforme o dia enche — não é meta, é carga. A
+  // régua certa é a meta de Metas repartida pelos dias úteis (base 21,75/mês),
+  // a MESMA que a Visão geral cobra da pessoa: o alvo do dia não muda porque
+  // entraram leads novos.
+  //
+  // Valor e meta vêm SEMPRE do mesmo lugar: com meta configurada, os dois saem
+  // do placar do servidor (que já resolve pessoa > vaga ÷ time e mede contato/
+  // agendamento pela régua do metrics-core); sem meta, os dois seguem locais,
+  // como era antes. Nunca cruza feito-do-servidor com meta-da-fila.
+  const [dayScore, setDayScore] = useS(null);
+  useE(() => {
+    if (!saasCfg?.id || !person) { setDayScore(null); return; }
+    let alive = true;
+    const hoje = bizDay(new Date());
+    api.scoreboard(saasCfg.id, { since: hoje, until: hoje })
+      .then((s) => { if (alive) setDayScore(s); })
+      .catch(() => { if (alive) setDayScore(null); });
+    return () => { alive = false; };
+  }, [saasCfg?.id, person, version]);
+  const score = dayScoreOf({
+    row: (dayScore?.sdr || []).find((p) => p.user === person) || null,
+    today: bizDay(new Date()),
+    local: { contacted: q.doneToday, contactedGoal, calls: callsDone, callsGoal: Math.max(callsToday.length, 1) },
+  });
+
   // Aviso de social selling: quando o SDR zera a fila de HOJE (nada pendente),
   // manda ir pro Instagram chamar os novos seguidores. Só na fila de um SDR.
   const viewedIsSdr = !!person && (userById(person)?.roles || []).includes("sdr");
@@ -611,7 +641,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
-              <DayScore contacted={q.doneToday} contactedGoal={contactedGoal} calls={callsDone} callsGoal={Math.max(callsToday.length, 1)} />
+              <DayScore {...score} />
               {myTasks.length > 0 && <TasksCard tasks={myTasks} onDone={completeTask} undo={undoTask} onUndo={revertTask} />}
               <CompactSchedule title="Amanhã" rows={q.amanha} onOpen={openRow} />
               {futureRows.length > 0 && <CompactSchedule title="Próximos dias" rows={futureRows} onOpen={openRow} />}
@@ -881,7 +911,34 @@ function TasksCard({ tasks, onDone, undo, onUndo }) {
   );
 }
 
-function DayScore({ contacted, contactedGoal, calls, callsGoal }) {
+// Placar do dia: o que a pessoa fez HOJE contra a META DELA no dia (Leo, 25/08).
+// A meta mensal de Metas (pessoa > vaga ÷ time > derivada do pace, tudo já
+// resolvido pelo servidor no `row.goals`) se reparte pelos dias úteis, base
+// 21,75/mês — a MESMA régua da Visão geral, então as duas telas nunca divergem.
+//
+// Valor e meta saem SEMPRE do mesmo lugar: com meta no dia, os dois vêm do
+// placar do servidor; sem meta (produto sem cadeia derivável, fim de semana,
+// pessoa que não é SDR), os dois seguem locais, como era antes. O que nunca
+// pode acontecer é cruzar realizado do servidor com um alvo que é só o tamanho
+// da fila — foi assim que "1 / 9" parecia meta sendo, na verdade, carga do dia.
+export function dayScoreOf({ row, today, local }) {
+  const biz = businessDaysBetween(today, today);
+  const goalContacts = scaledGoal(row?.goals?.contacts, biz);
+  const goalCalls = scaledGoal(row?.goals?.callsBooked, biz);
+  return {
+    contacted: goalContacts ? (row.contacted || 0) : local.contacted,
+    contactedGoal: goalContacts || local.contactedGoal,
+    calls: goalCalls ? (row.callsBooked || 0) : local.calls,
+    callsGoal: goalCalls || local.callsGoal,
+    // A linha de calls muda de sentido junto com a meta: contra a meta de
+    // agendamento, o número é quanto a pessoa AGENDOU hoje; sem meta, segue
+    // sendo quantas das calls de hoje já aconteceram.
+    callsLabel: goalCalls ? "Calls agendadas" : "Calls de hoje",
+    goalScope: goalContacts || goalCalls ? "meta" : "fila",
+  };
+}
+
+function DayScore({ contacted, contactedGoal, calls, callsGoal, callsLabel = "Calls agendadas", goalScope = "fila" }) {
   const progress = (label, value, goal) => (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
@@ -893,10 +950,15 @@ function DayScore({ contacted, contactedGoal, calls, callsGoal }) {
   );
   return (
     <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px var(--inset-x)" }}>
-      <div className="kicker accent">Placar do dia</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+        <span className="kicker accent">Placar do dia</span>
+        {/* Contra o que o número está sendo cobrado: sem meta configurada, o
+            placar mede a fila, e dizer isso evita ler carga do dia como alvo. */}
+        <span style={{ fontSize: 11, color: "var(--fg-4)" }}>{goalScope === "meta" ? "meta do dia" : "fila de hoje"}</span>
+      </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 14 }}>
         {progress("Contatados", contacted, contactedGoal)}
-        {progress("Calls agendadas", calls, callsGoal)}
+        {progress(callsLabel, calls, callsGoal)}
       </div>
     </section>
   );
