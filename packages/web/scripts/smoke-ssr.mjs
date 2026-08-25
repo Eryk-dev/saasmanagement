@@ -249,25 +249,43 @@ try {
     const { dayScoreOf } = await server.ssrLoadModule("/src/screens/today.jsx");
     const check = (name, got, want) => { if (got !== want) throw new Error(`${name}: ${got} ≠ ${want}`); };
     const local = { contacted: 1, contactedGoal: 9, calls: 0, callsGoal: 1 };
-    // Terça, dia útil: 218 contatos/mês ÷ 21,75 = 10/dia; 44 calls = 2/dia.
+    // SDR mede o DIA. Terça, dia útil: 218 contatos/mês ÷ 21,75 = 10/dia; 44 calls = 2/dia.
     const row = { user: "sdr", contacted: 3, callsBooked: 1, goals: { contacts: { target: 218, period: "month" }, callsBooked: { target: 44, period: "month" } } };
-    const s = dayScoreOf({ row, today: "2026-08-25", local });
-    check("meta diária de contatos", s.contactedGoal, 10);
-    check("meta diária de calls", s.callsGoal, 2);
-    check("realizado vem do servidor junto com a meta", s.contacted, 3);
-    check("calls agendadas hoje", s.calls, 1);
-    check("rótulo de calls", s.callsLabel, "Calls agendadas");
-    check("origem", s.goalScope, "meta");
+    const s = dayScoreOf({ role: "sdr", row, today: "2026-08-25", local });
+    check("título do SDR", s.title, "Placar do dia");
+    check("origem", s.scope, "meta do dia");
+    check("meta diária de contatos", s.lines[0].goal, 10);
+    check("realizado vem do servidor junto com a meta", s.lines[0].value, 3);
+    check("meta diária de calls", s.lines[1].goal, 2);
+    check("calls agendadas hoje", s.lines[1].value, 1);
+    check("rótulo de calls", s.lines[1].label, "Calls agendadas");
+    // CLOSER mede o MÊS: contrato e receita não se repartem por dia útil sem
+    // virar mentira (10/mês arredondaria pra "1 por dia").
+    const closer = { user: "jonathan", won: 4, revenue: 52000, goals: { won: { target: 35 }, revenue: { target: 180000 } } };
+    const c = dayScoreOf({ role: "closer", row: closer, today: "2026-08-25", local });
+    check("título do closer", c.title, "Placar do mês");
+    check("origem do closer", c.scope, "meta do mês");
+    check("contratos no mês", c.lines[0].label, "Contratos");
+    check("meta de contratos cheia", c.lines[0].goal, 35);
+    check("contratos feitos", c.lines[0].value, 4);
+    check("receita é dinheiro", c.lines[1].kind, "money");
+    check("meta de receita cheia", c.lines[1].goal, 180000);
+    check("receita feita", c.lines[1].value, 52000);
+    // Meta por pessoa baixa (Vitor: 10/mês) continua sendo 10 no mês, nunca "1 por dia".
+    const baixo = dayScoreOf({ role: "closer", row: { user: "v", won: 3, revenue: 9000, goals: { won: { target: 10 }, revenue: { target: 20000 } } }, today: "2026-08-25", local });
+    check("meta baixa fica no mês", baixo.lines[0].goal, 10);
     // Sem meta configurada: tudo local, como era antes (nada regride).
-    const semMeta = dayScoreOf({ row: { user: "sdr", contacted: 3, callsBooked: 1, goals: {} }, today: "2026-08-25", local });
-    check("sem meta cai na fila", semMeta.contactedGoal, 9);
-    check("sem meta usa o feito local", semMeta.contacted, 1);
-    check("sem meta, calls são as de hoje", semMeta.callsLabel, "Calls de hoje");
-    check("origem fila", semMeta.goalScope, "fila");
-    // Pessoa sem placar (closer, produto sem cadeia): idem.
-    check("sem linha no placar", dayScoreOf({ row: null, today: "2026-08-25", local }).contactedGoal, 9);
-    // Fim de semana não cobra meta: domingo cai na régua local.
-    check("domingo sem meta", dayScoreOf({ row, today: "2026-08-23", local }).goalScope, "fila");
+    const semMeta = dayScoreOf({ role: "sdr", row: { user: "sdr", contacted: 3, callsBooked: 1, goals: {} }, today: "2026-08-25", local });
+    check("sem meta cai na fila", semMeta.lines[0].goal, 9);
+    check("sem meta usa o feito local", semMeta.lines[0].value, 1);
+    check("sem meta, calls são as de hoje", semMeta.lines[1].label, "Calls de hoje");
+    check("origem fila", semMeta.scope, "fila de hoje");
+    check("closer sem meta cai na fila", dayScoreOf({ role: "closer", row: { user: "x", goals: {} }, today: "2026-08-25", local }).scope, "fila de hoje");
+    check("sem linha no placar", dayScoreOf({ role: "sdr", row: null, today: "2026-08-25", local }).lines[0].goal, 9);
+    // Fim de semana não cobra meta diária: domingo cai na régua local (o closer,
+    // medido no mês, segue cobrando normalmente).
+    check("domingo sem meta no SDR", dayScoreOf({ role: "sdr", row, today: "2026-08-23", local }).scope, "fila de hoje");
+    check("domingo mantém o mês do closer", dayScoreOf({ role: "closer", row: closer, today: "2026-08-23", local }).scope, "meta do mês");
     console.log("✓ placar-do-dia");
   } catch (err) {
     console.error(`✗ placar-do-dia: ${err.message}`);
