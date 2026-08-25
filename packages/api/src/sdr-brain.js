@@ -58,6 +58,13 @@ const PRICE_RX = /r\$\s*\d|\b\d{2,}\s*(reais|por m[eê]s|\/m[eê]s|mensais)\b|\b
 // nenhum (visto 25/08 com o Gabriel, logo depois da retomada — que é template
 // SEM horário). Prompt já proíbe; aqui o motor garante, trocando a frase
 // mentirosa pela oferta de verdade.
+// Dia SOLTO sem hora ("retomar amanhã", "que tal na terça?"): o lead não tem o
+// que responder e a conversa gasta mais uma rodada. Se a resposta propõe dia e
+// não escreve NENHUMA hora, o motor emenda o par real (visto 25/08, Gabriel).
+// Sem \b no fim de propósito: o \b do JavaScript é ASCII, então "amanhã," não
+// fecha fronteira e a palavra escapava da checagem.
+const DAY_WORD_RX = /\b(hoje|amanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta|essa semana|semana que vem)/i;
+const HAS_HOUR_RX = /\b\d{1,2}\s?h(\d{2})?\b|\b\d{1,2}:\d{2}\b/;
 const FAKE_OFFER_RX = /(hor[áa]rios?|op[çc][õo]es)\s+que\s+(eu\s+)?(te\s+)?(passei|mandei|enviei)|algum\s+d(os|aqueles)\s+hor[áa]rios|aqueles\s+hor[áa]rios/i;
 const INTEREST_RX = /\b(sim|ajudaria|com certeza|claro|tenho interesse|quero|pode ser|bora|show|top|gostei|perfeito)\b/i;
 // Só frases que SÓ robô de atendimento escreve. Nada de "esse número é do…" ou
@@ -638,7 +645,11 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     // ofereceu antes = repescagem curta). Determinístico, como a trava de preço.
     const lastInText = String(([...msgs].reverse().find((m) => m.direction === "in"))?.transcript
       || ([...msgs].reverse().find((m) => m.direction === "in"))?.text || "");
-    if (!parts.some((t) => t.includes("?")) && !lead.callAt && INTEREST_RX.test(lastInText)) {
+    // Sem pergunta OU propondo dia sem hora nenhuma: nos dois casos o lead fica
+    // sem o que responder, então o motor emenda a oferta concreta.
+    const semSaida = !parts.some((t) => t.includes("?"));
+    const diaSemHora = DAY_WORD_RX.test(parts.join(" ")) && !HAS_HOUR_RX.test(parts.join(" "));
+    if ((semSaida || diaSemHora) && !lead.callAt && INTEREST_RX.test(lastInText)) {
       const push = slotsOffered
         ? "Algum dos horários que te passei encaixa pra você?"
         : suggestedPair.length >= 2
