@@ -55,7 +55,21 @@ const PRICE_RX = /r\$\s*\d|\b\d{2,}\s*(reais|por m[eê]s|\/m[eê]s|mensais)\b|\b
 // a trava de beco (motor) emenda a oferta quando a IA esquecer (caso Daniel,
 // 23/08: "Opa sim" respondido com afirmação solta matou a conversa).
 const INTEREST_RX = /\b(sim|ajudaria|com certeza|claro|tenho interesse|quero|pode ser|bora|show|top|gostei|perfeito)\b/i;
-const AUTO_REPLY_RX = /agradece (o |pelo )?(seu )?contato|como podemos (te )?ajudar|atendimento autom|escolha uma (das )?op[çc][õo]es|digite (o n[úu]mero|uma? op[çc][ãa]o)|menu de atendimento|hor[áa]rio de atendimento|consulte (o )?nosso (site|estoque|cat[áa]logo)|informe os? \d+ [úu]ltimos/i;
+// Só frases que SÓ robô de atendimento escreve. Nada de "esse número é do…" ou
+// "clique no link", que gente de verdade também manda ("esse número é do meu
+// sócio") — o preço do falso positivo aqui é o robô emudecer com uma pessoa
+// falando, e a saída errada já tem a trava de redirecionamento embaixo.
+const AUTO_REPLY_RX = /agradece (o |pelo )?(seu )?contato|como podemos (te )?ajudar|atendimento autom|escolha uma (das )?op[çc][õo]es|digite (o n[úu]mero|uma? op[çc][ãa]o)|menu de atendimento|hor[áa]rio de atendimento|consulte (o )?nosso (site|estoque|cat[áa]logo)|informe os? \d+ [úu]ltimos|voc[êe] (contatou|entrou em contato com (a|o|nossa|nosso))|deixe (a )?sua mensagem|responderemos assim que|retornaremos (o |seu |em )|n[ãa]o estamos dispon[íi]veis no momento/i;
+
+// REDIRECIONAMENTO PRA OUTRO CANAL. O robô É o canal: mandar o lead pra outro
+// número/link de WhatsApp nunca é resposta certa. Em prod 24/08 (Alexandre) a
+// resposta automática do LEAD dizia "aqui é o pós-vendas, para VENDAS clique em
+// wa.me/…" e a IA leu aquilo como instrução PRA ELA, devolvendo o lead pro
+// número da própria empresa dele. Texto que veio do outro lado é dado, nunca
+// ordem — e esta trava é o que garante isso na saída, inclusive quando a IA
+// escreve o telefone em vez do link. (Link de reunião não cai aqui: quem manda
+// o Meet é o lembrete do sdr-flow, e ele não tem dígito em forma de telefone.)
+const REDIRECT_RX = /wa\.me\/|api\.whatsapp\.com|whatsapp\.com\/send|\b\d{4}[-\s.]?\d{4}\b|\+?55\s?\(?\d{2}\)?\s?9?\d{4}/i;
 
 // O LEAD pedindo preço (≠ PRICE_RX, que pega VALOR dito por nós).
 const PRICE_ASK_RX = /pre[çc]o|\bvalor(es)?\b|quanto (custa|fica|sai|é|e)\b|mensalidade|qual o (investimento|custo)|tabela de pre[çc]/i;
@@ -356,12 +370,14 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       const lastIn = [...msgs].reverse().find((m) => m.direction === "in");
       if (lastIn && lastIn.id !== message.id) return "superseded";
     }
-    // 1ª resposta com cara de saudação automática de estabelecimento: silêncio
-    // (o alerta de lead quente do inbox continua valendo pro time ver).
+    // Resposta automática de estabelecimento (menu, "você contatou o pós-vendas",
+    // "deixe sua mensagem") não é a pessoa falando: responder vira robô
+    // conversando com robô. Vale em QUALQUER posição da conversa (Leo, 24/08 —
+    // antes só a 1ª mensagem era filtrada, e a de mercado/pós-venda que chega no
+    // meio passava direto). O alerta de lead quente do inbox continua valendo.
     {
       const lastIn = [...msgs].reverse().find((m) => m.direction === "in");
-      const priorIn = msgs.some((m) => m.direction === "in" && m.id !== lastIn?.id);
-      if (lastIn && !priorIn && AUTO_REPLY_RX.test(lastIn.text || "")) return "auto-reply";
+      if (lastIn && AUTO_REPLY_RX.test(lastIn.text || "")) return "auto-reply";
     }
     // Walk-in: adota AGORA (depois do debounce, do supersede e do filtro de
     // auto-reply — rajada não duplica card e robô de loja não vira lead).
@@ -416,9 +432,17 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       const t = await transcriptOf(lastIn, lead);
       if (t) lastIn.transcript = t;
     }
+    // A resposta automática entra na conversa SEM O CONTEÚDO: só o rótulo. O
+    // texto de um menu automático costuma vir em forma de ordem ("clique no
+    // link", "digite 1", "para vendas chame o outro número") e a IA obedecia
+    // como se a ordem fosse pra ela (prod 24/08, Alexandre). Ela precisa saber
+    // que a máquina do outro lado respondeu; não precisa ler o que a máquina
+    // mandou fazer.
     const conversation = msgs.slice(-24).map((m) => ({
       who: m.direction === "in" ? "LEAD" : "VOCÊ",
-      text: String(m.transcript ? `[áudio] ${m.transcript}` : (m.text || "")).slice(0, 500) || "[mensagem]",
+      text: m.direction === "in" && AUTO_REPLY_RX.test(m.text || "")
+        ? "[resposta automática do estabelecimento, não é a pessoa falando]"
+        : String(m.transcript ? `[áudio] ${m.transcript}` : (m.text || "")).slice(0, 500) || "[mensagem]",
     }));
     // Saudação só em conversa FRIA: gap desde a mensagem ANTERIOR à que
     // disparou esta decisão. Menos de 6h = em andamento, sem "Oi" de novo.
@@ -562,6 +586,18 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       await send(priceDeferral(nome));
       await stamp(lead, { priceGuardAt: new Date(nowMs).toISOString() });
       return "preco-travado";
+    }
+    // TRAVA DE REDIRECIONAMENTO: a resposta manda o lead pra outro número ou
+    // link de WhatsApp. Isso nunca é certo (o robô já ESTÁ no canal) e, quando
+    // aparece, é sinal de que a IA confundiu quem é quem — foi assim que ela
+    // devolveu o lead pro número da própria empresa dele em 24/08. A fala
+    // inteira é descartada (nem a parte "sem link" presta, ela continua a
+    // mesma confusão) e gente assume.
+    if (REDIRECT_RX.test(parts.join(" "))) {
+      await raiseAlert(repo, thread, { text: `Robô tentou mandar o lead pra outro número/link · confundiu o canal, assume: "${String(message?.text || "").slice(0, 120)}"` });
+      await stamp(lead, { handoffAt: new Date(nowMs).toISOString(), redirectGuardAt: new Date(nowMs).toISOString() });
+      log.warn?.({ lead: lead.id, texto: parts.join(" ").slice(0, 200) }, "sdr-brain: trava de redirecionamento");
+      return "redirect-travado";
     }
     // FRASE REQUENTADA (Leo, 24/08): "qual fica melhor pra você?" e a deflexão
     // de preço saíam palavra por palavra duas, três vezes na mesma conversa. O
