@@ -102,17 +102,52 @@ export const alertKind = (a) => (a?.kind === "lead" ? "lead" : "hot");
 // Mensagem do ROBÔ que a Meta recusou DEPOIS do envio (status failed no
 // webhook): número sem WhatsApp, teto de template marketing por usuário,
 // experimento da Meta. Sem isto o sdrLog dizia "tocado" e ninguém ia atrás
-// (3 leads mortos silenciosos em 23/08). Um alerta por lead basta.
+// (3 leads mortos silenciosos em 23/08).
 // (autor "sdr-bot" literal: importar SDR_AUTHOR do sdr-flow criaria ciclo.)
-export async function flagFailedBotSend(repo, waMessageId) {
+//
+// UM ALERTA POR CONTEXTO, não um por lead pra sempre (Leo, 24/08). O carimbo
+// único silenciava o aviso justamente quando ele mais valia: Lucas e Andre
+// tinham sido alertados na véspera por uma retomada, então no dia da call os
+// DOIS lembretes de cada um falharam sem levantar nada, e os dois deram no-show
+// (prod 24/08). Agora a chave carrega o horário da call — falha de lembrete de
+// uma call nova sempre alerta, repetição da mesma call não vira spam.
+const TEMPLATE_BLOCKED = new Set([131049, 131050]); // frequência da Meta · experimento
+const TEMPLATE_BLOCKED_RX = /healthy ecosystem|part of an experiment/i;
+
+export async function flagFailedBotSend(repo, waMessageId, { now = new Date() } = {}) {
   const m = await repo.get("wa_messages", waMessageId);
   if (!m || m.author !== "sdr-bot" || !m.thread) return null;
   const thread = await repo.get("wa_threads", m.thread);
   if (!thread) return null;
   const lead = thread.leadId ? await repo.get("leads", thread.leadId) : null;
-  if (!lead || lead.sdrLog?.sendFailedAlertAt) return null;
-  await raiseAlert(repo, thread, { text: `Mensagem do robô NÃO entregue (${String(m.error || "erro da Meta").slice(0, 120)}) · chama o lead na mão` });
-  await repo.update("leads", lead.id, { sdrLog: { ...(lead.sdrLog || {}), sendFailedAlertAt: new Date().toISOString() } });
+  if (!lead) return null;
+  const nowIso = new Date(now).toISOString();
+  const motivo = String(m.error || "erro da Meta").slice(0, 120);
+  // Marketing BLOQUEADO neste número (o lead existe, o WhatsApp funciona, mas a
+  // Meta não entrega template nosso): insistir só piora a qualidade do número.
+  // Vira flag no card pra fila humana tratar por LIGAÇÃO.
+  const blocked = TEMPLATE_BLOCKED.has(Number(m.errorCode)) || TEMPLATE_BLOCKED_RX.test(String(m.error || ""));
+  const key = lead.callAt ? `call:${lead.callAt}` : `dia:${nowIso.slice(0, 10)}`;
+  if (lead.sdrLog?.sendFailedAlertKey === key) return null;
+  // Lead antigo (alertado antes desta régua) não leva um alerta repetido pelo
+  // mesmo motivo no mesmo dia só porque a chave nasceu agora.
+  if (!lead.sdrLog?.sendFailedAlertKey && lead.sdrLog?.sendFailedAlertAt
+    && String(lead.sdrLog.sendFailedAlertAt).slice(0, 10) === nowIso.slice(0, 10) && !lead.callAt) return null;
+  await raiseAlert(repo, thread, {
+    text: lead.callAt
+      ? `Lembrete da conversa (${lead.callAt.slice(11)}) NÃO entregue (${motivo}) · confirma com o lead na mão`
+      : blocked
+        ? `WhatsApp de marketing bloqueado neste número (${motivo}) · fala por ligação`
+        : `Mensagem do robô NÃO entregue (${motivo}) · chama o lead na mão`,
+  });
+  await repo.update("leads", lead.id, {
+    sdrLog: {
+      ...(lead.sdrLog || {}),
+      sendFailedAlertAt: nowIso,
+      sendFailedAlertKey: key,
+      ...(blocked ? { templateBlockedAt: nowIso, templateBlockedReason: motivo } : {}),
+    },
+  });
   return lead.id;
 }
 

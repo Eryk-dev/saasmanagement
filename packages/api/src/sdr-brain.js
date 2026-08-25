@@ -25,8 +25,8 @@ import { kindOf, firstStage, stageByKind, isWonLead } from "./stages.js";
 import { brtToIso, applyStageMove, onOutboundMessage, autoLeadOwner, logActivity, initialNextActionAt } from "./lead-flow.js";
 import { raiseAlert } from "./wa-call-flow.js";
 import { leadGrade } from "./routes.marketing.js";
-import { slotsForLead, slotLabel, slotLabelFull, wallNow, spreadPair, OFFER_HOURS } from "./agenda-slots.js";
-import { sdrBotConfig, leadDigest, conversationActive, leadPainFocus, SDR_AUTHOR } from "./sdr-flow.js";
+import { slotsForLead, slotLabel, slotLabelFull, wallNow, spreadPair, OFFER_HOURS, activeHolds, holdSlots, releaseHolds, withoutHeld } from "./agenda-slots.js";
+import { sdrBotConfig, leadDigest, conversationActive, leadPainFocus, greetName, SDR_AUTHOR } from "./sdr-flow.js";
 import { transcriber as defaultTranscriber } from "./transcribe.js";
 
 const HOUR = 3_600_000;
@@ -57,7 +57,41 @@ const PRICE_RX = /r\$\s*\d|\b\d{2,}\s*(reais|por m[eê]s|\/m[eê]s|mensais)\b|\b
 const INTEREST_RX = /\b(sim|ajudaria|com certeza|claro|tenho interesse|quero|pode ser|bora|show|top|gostei|perfeito)\b/i;
 const AUTO_REPLY_RX = /agradece (o |pelo )?(seu )?contato|como podemos (te )?ajudar|atendimento autom|escolha uma (das )?op[çc][õo]es|digite (o n[úu]mero|uma? op[çc][ãa]o)|menu de atendimento|hor[áa]rio de atendimento|consulte (o )?nosso (site|estoque|cat[áa]logo)|informe os? \d+ [úu]ltimos/i;
 
+// O LEAD pedindo preço (≠ PRICE_RX, que pega VALOR dito por nós).
+const PRICE_ASK_RX = /pre[çc]o|\bvalor(es)?\b|quanto (custa|fica|sai|é|e)\b|mensalidade|qual o (investimento|custo)|tabela de pre[çc]/i;
+
 const firstName = (v) => String(v || "").trim().split(/\s+/)[0] || "";
+const lastInboundText = (msgs) => {
+  const m = [...msgs].reverse().find((x) => x.direction === "in");
+  return String(m?.transcript || m?.text || "");
+};
+
+// Ponte pro humano quando o lead insiste no preço: promete gente, não número
+// (o valor é conversa do closer). O alerta quente sai junto, então a promessa
+// tem quem cumpra.
+function priceBridgeText(nome) {
+  return `Deixa eu ver isso certinho com o time aqui${nome ? ` ${nome}` : ""} e já te falo por aqui`;
+}
+
+// A resposta é requentada? Compara com o que o robô JÁ mandou nesta conversa,
+// sem pontuação/acento: 75% das palavras de conteúdo repetidas é a MESMA frase
+// pro lead ("primeiro entendemos o cenário" × "primeiro a gente entende o
+// cenário" foi o par que perdeu a lead da RT Eleven em 24/08). O limiar deixa
+// passar oferta de horário nova, que compartilha o esqueleto mas troca os dados
+// ("consigo amanhã às 10h ou às 14h" × "consigo hoje às 17h ou às 19h").
+const bag = (s) => new Set(String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+  .replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((w) => w.length > 2));
+export function sameSentence(a, b) {
+  const A = bag(a), B = bag(b);
+  if (!A.size || !B.size) return false;
+  let hit = 0;
+  for (const w of A) if (B.has(w)) hit++;
+  return hit / Math.max(A.size, B.size) >= 0.75;
+}
+// Confirmação curta ("Perfeito", "Combinado", "Isso") PODE repetir: é assim que
+// gente fala. A trava é pra frase de conteúdo — pitch, deflexão, convite.
+const alreadySaid = (text, msgs) => bag(text).size >= 4 && msgs.some((m) =>
+  m.direction === "out" && m.author === SDR_AUTHOR && sameSentence(text, m.text));
 
 // "sexta, 22/08, 10h32 (hora de Brasília)" — o relógio que a IA enxerga.
 const WEEKDAYS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
@@ -117,7 +151,11 @@ function reofferText(nome, slots, wnow) {
 export async function bookCall(repo, { lead, product, at, closer, author = SDR_AUTHOR, now = new Date() }) {
   const target = stageByKind(product, "call");
   if (!target) throw new Error("funil sem etapa de call");
-  const patchExtra = { callConfirmed: false };
+  // QUANDO a marcação foi feita. É o que deixa o lembrete de véspera saber que
+  // o combinado é fresco: marcou "amanhã às 14h" agora às 13h55 e a véspera
+  // (24h antes) cairia 5 minutos depois — confirmação de algo que acabou de ser
+  // combinado (sdr-flow.js, VESPERA_MIN_GAP_MS).
+  const patchExtra = { callConfirmed: false, callSetAt: new Date(now).toISOString() };
   const oldAt = String(lead.callAt || "");
   if (oldAt && oldAt !== at) {
     const oldT = Date.parse(brtToIso(oldAt));
@@ -364,7 +402,11 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     // Contexto pra decisão: agenda real + conversa + relógio BRT.
     const wnow = wallNow(at);
     const { slots } = await slotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 16, ...OFFER_HOURS });
-    const slotList = slots.map((s) => ({ ...s, label: slotLabel(s.at, wnow) }));
+    // Horário que OUTRO lead está decidindo agora sai da oferta: era o que fazia
+    // o robô oferecer "amanhã às 10h" e, na resposta do lead 27 minutos depois,
+    // negar o próprio horário (prod 24/08, Guilherme). Ver agenda-slots.js.
+    const holds = await activeHolds(repo, product.id, { now: at }).catch(() => []);
+    const slotList = withoutHeld(slots, holds, lead.id).map((s) => ({ ...s, label: slotLabel(s.at, wnow) }));
     const suggestedPair = spreadPair(slotList);
     // Nota de voz que disparou a decisão vira texto (as antigas já carregam o
     // transcript gravado); sem transcrição possível, fica "🎤 áudio" e o
@@ -390,10 +432,13 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     // template ("isso ajudaria na sua operação?"), nunca oferta de horário
     // (Leo, 23/08). O horário entra só depois que o lead responder.
     const firstReply = !msgs.some((m) => m.direction === "out");
-    const nome = firstName(lead.name);
+    // Nome do form passa pela higiene (greetName): "Oi PECAS", "Oiii GMS" e
+    // "Perfeito PEDRO" saíram em prod 24/08. Sem nome utilizável, "" — e os
+    // textos caem no fallback sem nome, que soa natural.
+    const nome = greetName(lead.name);
     const decision = await anthropic.sdrDecide({
       sdrName: firstName((await repo.get("users", lead.owner).catch(() => null))?.name),
-      lead: { name: lead.name, company: lead.company, email: lead.email, niche: lead.niche },
+      lead: { name: nome, company: lead.company, email: lead.email, niche: lead.niche },
       digest: leadDigest(product, lead),
       grade: leadGrade(lead) || "",
       stage: lead.stage || firstStage(product),
@@ -412,12 +457,30 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
 
     // Envio em PARTES, como gente digitando (Leo, 23/08): a 1ª mensagem sai
     // depois do atraso de resposta; as seguintes com 5s entre cada uma.
+    //
+    // ABORTO NO MEIO DO CAMINHO (Leo, 24/08): entre o atraso da 1ª parte e o
+    // envio da última passam ~15s, e o lead escreve nesse intervalo. A resposta
+    // já em voo então cruzava com a mensagem nova e a conversa desencontrava
+    // (prod 24/08, Amilton: o robô perguntou "conseguiu acessar o link?" e 24s
+    // depois respondeu "tranquilo, imprevistos acontecem" à mensagem anterior).
+    // Antes de cada parte o motor confere se ainda é o turno dele; chegou coisa
+    // nova, o resto da fala é descartado e o próximo disparo responde a rajada
+    // inteira, com contexto completo.
+    const stillMyTurn = async () => {
+      if (!message?.id) return true;
+      const fresh = await listMessages(repo, thread.id).catch(() => null);
+      if (!fresh) return true;
+      const lastIn = [...fresh].reverse().find((m) => m.direction === "in");
+      return !lastIn || lastIn.id === message.id;
+    };
+    let aborted = false;
     const send = async (textOrParts) => {
       const parts = (Array.isArray(textOrParts) ? textOrParts : [textOrParts])
         .map((t) => String(t || "").trim()).filter(Boolean).slice(0, 3);
       for (let i = 0; i < parts.length; i++) {
         if (i > 0) typing(); // o envio anterior derruba o indicador: reacende
         await sleep(i === 0 ? replyDelayMs : partDelayMs);
+        if (!(await stillMyTurn())) { aborted = true; return; }
         await sendBot({ phone: to, text: parts[i].slice(0, 900), phoneId, saas: product.id, leadId: lead.id });
       }
     };
@@ -448,6 +511,9 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       const fresh = await repo.get("leads", lead.id);
       const rebook = decision.acao === "remarcar" || !!(fresh || lead).callAt;
       await bookCall(repo, { lead: fresh || lead, product, at: pick.at, closer: pick.closer, now: at });
+      // Marcou: o que este lead segurava volta pro pool na hora (o horário dele
+      // agora ocupa a agenda de verdade).
+      await releaseHolds(repo, { saas: product.id, leadId: lead.id, now: at }).catch(() => {});
       // Confirmação com a DATA cravada (Leo, 24/08): "hoje/amanhã" solto na
       // confirmação vira mal-entendido quando o lead relê depois.
       await send(rebook
@@ -479,11 +545,37 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     const parts = (Array.isArray(decision.mensagens) && decision.mensagens.length
       ? decision.mensagens : [decision.mensagem]).map((t) => String(t || "").trim()).filter(Boolean);
     if (!parts.length) return "silencio";
+    // PREÇO PELA SEGUNDA VEZ = GENTE (Leo, 24/08). A resposta oficial desvia uma
+    // vez; repetida, vira parede. Em prod 24/08 a lead da RT Eleven perguntou o
+    // valor, ouviu o desvio, insistiu, ouviu o MESMO desvio com outras palavras
+    // e encerrou ("sem todo esse processo de vendas") — e voltou interessada uma
+    // hora depois, quando a SDR mandou o preço por áudio. Insistiu duas vezes,
+    // o robô sai da frente.
+    const priceAsks = msgs.filter((m) => m.direction === "in" && PRICE_ASK_RX.test(m.transcript || m.text || "")).length;
+    if (priceAsks >= 2 || (lead.sdrLog?.priceGuardAt && PRICE_ASK_RX.test(lastInboundText(msgs)))) {
+      await raiseAlert(repo, thread, { text: `Insistiu no preço ${priceAsks}x · assume e fala de valor: "${String(message?.text || "").slice(0, 140)}"` });
+      await stamp(lead, { handoffAt: new Date(nowMs).toISOString(), priceHandoffAt: new Date(nowMs).toISOString() });
+      await send(priceBridgeText(nome));
+      return "preco-humano";
+    }
     if (PRICE_RX.test(parts.join(" "))) {
       await send(priceDeferral(nome));
       await stamp(lead, { priceGuardAt: new Date(nowMs).toISOString() });
       return "preco-travado";
     }
+    // FRASE REQUENTADA (Leo, 24/08): "qual fica melhor pra você?" e a deflexão
+    // de preço saíam palavra por palavra duas, três vezes na mesma conversa. O
+    // prompt já proíbe, mas prompt não é garantia — aqui o motor corta a parte
+    // que repete algo que o robô já disse. Sobrou nada pra falar: é sinal de que
+    // a conversa travou, e quem destrava é gente.
+    const fresh = parts.filter((t) => !alreadySaid(t, msgs));
+    if (!fresh.length) {
+      await raiseAlert(repo, thread, { text: `Robô sem resposta nova (ia repetir o que já disse) · assume: "${String(message?.text || "").slice(0, 140)}"` });
+      await stamp(lead, { handoffAt: new Date(nowMs).toISOString(), repeatGuardAt: new Date(nowMs).toISOString() });
+      return "repeticao-humano";
+    }
+    parts.length = 0;
+    parts.push(...fresh);
     // TRAVA DE BECO: lead demonstrou interesse, ainda não tem call marcada e a
     // resposta veio SEM pergunta → o motor emenda a oferta (par sugerido; já
     // ofereceu antes = repescagem curta). Determinístico, como a trava de preço.
@@ -502,6 +594,13 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       log.info?.({ lead: lead.id }, "sdr-brain: trava de beco emendou a oferta");
     }
     await send(parts);
+    if (aborted) return "abortado";
+    // Horário citado na resposta fica RESERVADO enquanto o lead decide: some da
+    // oferta dos outros leads por 30 min (agenda-slots.js). Só quando a resposta
+    // realmente ofereceu horário.
+    if (suggestedPair.length && parts.some((t) => SLOTS_RX.test(t))) {
+      await holdSlots(repo, { saas: product.id, leadId: lead.id, slots: suggestedPair, now: at }).catch(() => {});
+    }
     return "responder";
   }
 

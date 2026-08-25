@@ -225,6 +225,58 @@ export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wal
   return { slots: jr, pool: "junior", grade };
 }
 
+// ── Reserva curta do horário OFERTADO ───────────────────────────────────────
+// O robô ofereceu "amanhã às 10h ou às 14h", o lead respondeu "10" 27 minutos
+// depois e ouviu "esse horário eu não consigo confirmar aqui" — outro lead
+// tinha levado o slot no meio (visto em prod 24/08, Guilherme). Oferecer e
+// depois negar é o tipo de contradição que só robô comete, então a oferta
+// RESERVA: o horário some da oferta dos OUTROS leads por HOLD_MIN minutos e
+// continua válido pra quem recebeu.
+//
+// A reserva é só do robô: quem marca na mão pelo cockpit enxerga a agenda
+// inteira (decisão humana sempre ganha) — por isso o filtro mora aqui, aplicado
+// por quem oferta, e não dentro do slotsForLead.
+export const HOLD_MIN = 30;
+const holdsId = (saas) => `sdr_slot_holds_${saas || "default"}`;
+
+export async function activeHolds(repo, saas, { now = new Date() } = {}) {
+  const rec = await repo.get("app_config", holdsId(saas)).catch(() => null);
+  const nowMs = new Date(now).getTime();
+  return (Array.isArray(rec?.holds) ? rec.holds : []).filter((h) => h?.at && Date.parse(h.until || "") > nowMs);
+}
+
+// Reserva os horários pro lead (as reservas ANTERIORES dele caem: a oferta nova
+// substitui a antiga). Expiradas são podadas no mesmo passe, então o registro
+// não cresce sem fim.
+export async function holdSlots(repo, { saas, leadId, slots = [], now = new Date(), minutes = HOLD_MIN } = {}) {
+  const list = (slots || []).filter((s) => s?.at);
+  if (!leadId || !list.length) return [];
+  const keep = (await activeHolds(repo, saas, { now })).filter((h) => h.leadId !== leadId);
+  const until = new Date(new Date(now).getTime() + minutes * 60_000).toISOString();
+  const holds = [...keep, ...list.map((s) => ({ at: s.at, leadId, until }))].slice(-400);
+  const id = holdsId(saas);
+  const rec = await repo.get("app_config", id).catch(() => null);
+  if (rec) await repo.update("app_config", id, { holds });
+  else await repo.create("app_config", { id, holds });
+  return holds;
+}
+
+// Lead marcou (ou saiu de cena): o que ele segurava volta pro pool na hora.
+export async function releaseHolds(repo, { saas, leadId, now = new Date() } = {}) {
+  if (!leadId) return;
+  const id = holdsId(saas);
+  const rec = await repo.get("app_config", id).catch(() => null);
+  if (!rec) return;
+  const holds = (await activeHolds(repo, saas, { now })).filter((h) => h.leadId !== leadId);
+  await repo.update("app_config", id, { holds });
+}
+
+// Tira da lista o que OUTRO lead reservou agora há pouco.
+export function withoutHeld(slots, holds, leadId) {
+  const taken = new Set((holds || []).filter((h) => h.leadId !== leadId).map((h) => h.at));
+  return taken.size ? (slots || []).filter((s) => !taken.has(s.at)) : (slots || []);
+}
+
 // Dupla de sugestão com RESPIRO (Leo, 23/08): ao oferecer 2 opções, elas
 // devem ter pelo menos 2h de diferença quando a agenda permitir — 9h/9h30 não
 // é escolha de verdade. Cai pro adjacente só quando não há espaçado.
