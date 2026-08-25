@@ -71,14 +71,23 @@ export function brtToIso(value) {
 // (call de venda ou reunião de integração), e o "próximo passo" tem que ser ela:
 // mostrar outro horário no card faz o time ler a hora errada do compromisso.
 //
-// Só vale pro compromisso DA ETAPA (call na etapa de call, integração na
-// entrega) e só se ainda está no futuro — compromisso que já passou não é
-// próximo passo, aí o toque volta a sair da cadência ou do resumo da call.
+// Só vale pro compromisso DA ETAPA (call na etapa de call, follow-up marcado na
+// etapa de follow-up, integração na entrega) e só se ainda está no futuro —
+// compromisso que já passou não é próximo passo, aí o toque volta a sair da
+// cadência ou do resumo da call.
+//
+// O follow-up entrou aqui em 25/08/2026: sem ele, esta função devolvia "" na
+// etapa de follow-up e o resumo por IA (call-summaries.js) sobrescrevia o GPS
+// com o horário SUGERIDO por cima do horário que o closer tinha marcado. Os
+// dois divergiam e a agenda desenhava DUAS pílulas de follow-up pro mesmo lead
+// (caso Wanderley/Rood/Yuri, 25/08). Compromisso marcado manda, follow-up
+// também é compromisso marcado.
 export function appointmentAt(product, lead, stage = lead?.stage, now = new Date()) {
   const kind = kindOf(product, stage);
   const raw = kind === "call" ? lead?.callAt
-    : (kind === "integracao" || kind === "posvenda") ? lead?.integrationAt
-      : "";
+    : kind === "followup" ? lead?.followupAt
+      : (kind === "integracao" || kind === "posvenda") ? lead?.integrationAt
+        : "";
   const iso = brtToIso(raw);
   return iso && new Date(iso).getTime() > now.getTime() ? iso : "";
 }
