@@ -451,3 +451,67 @@ test("template do 1º toque escolhido pela dor: OEM aprovado vai pro lead de OEM
   await runner(repo2, wa2, nowRef).tick();
   assert.equal(wa2.sent[0].name, "sdr_primeiro_toque_v2");
 });
+
+// ── 2ª tentativa do no-show (Leo, 24/08) ─────────────────────────────────────
+
+test("no-show sem resposta ganha 2ª tentativa 24h depois, com horários concretos", async () => {
+  const nowRef = { t: new Date("2026-08-20T14:30:00Z") }; // quinta 11h30 BRT (24h+ depois do 1º resgate)
+  const repo = await world({
+    leads: [{
+      id: "L1", name: "Rafael Silva", phone: "41999990000", stage: "No show",
+      callAt: "2026-08-19T10:00", createdAt: ISO("2026-08-18T12:00:00Z"),
+      stageSince: ISO("2026-08-19T13:30:00Z"),
+      sdrLog: { noshowFor: ISO("2026-08-19T13:30:00Z"), noshowVia: "text", noshowAt: ISO("2026-08-19T13:31:00Z") },
+    }],
+    threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads" }],
+    messages: [
+      { id: "m1", thread: "5541999990000", leadId: "L1", direction: "in", text: "oi", at: ISO("2026-08-19T12:00:00Z") },
+      { id: "m2", thread: "5541999990000", leadId: "L1", direction: "out", author: "sdr-bot", text: "passei no nosso horário...", at: ISO("2026-08-19T13:31:00Z") },
+    ],
+  });
+  // 24h depois a janela de 24h da Meta já fechou: sai por TEMPLATE, e o
+  // template do re-agendamento leva os dois horários reais no corpo.
+  const wa = makeWa({ approved: ["sdr_remarcar_noshow"] });
+  await runner(repo, wa, nowRef).tick();
+  const out = wa.sent.filter((s) => s.name === "sdr_remarcar_noshow");
+  assert.equal(out.length, 1);
+  assert.equal(out[0].params[0], "Rafael");
+  assert.match(out[0].params[1], /às \d/, "1º horário concreto");
+  assert.match(out[0].params[2], /às \d/, "2º horário concreto");
+  const lead = await repo.get("leads", "L1");
+  assert.equal(lead.sdrLog.noshow2Via, "template");
+  // Não repete no tick seguinte.
+  await runner(repo, wa, nowRef).tick();
+  assert.equal(wa.sent.filter((s) => s.name === "sdr_remarcar_noshow").length, 1);
+});
+
+test("no-show que RESPONDEU ao 1º resgate (ou já remarcou) não leva a 2ª tentativa", async () => {
+  const nowRef = { t: new Date("2026-08-20T14:30:00Z") };
+  const base = {
+    id: "L1", name: "Rafael", phone: "41999990000", stage: "No show",
+    createdAt: ISO("2026-08-18T12:00:00Z"), stageSince: ISO("2026-08-19T13:30:00Z"),
+    sdrLog: { noshowFor: ISO("2026-08-19T13:30:00Z"), noshowVia: "text", noshowAt: ISO("2026-08-19T13:31:00Z") },
+  };
+  // (a) respondeu depois do resgate
+  const repo = await world({
+    leads: [{ ...base, callAt: "2026-08-19T10:00" }],
+    threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads" }],
+    messages: [
+      { id: "m1", thread: "5541999990000", leadId: "L1", direction: "out", author: "sdr-bot", text: "passei...", at: ISO("2026-08-19T13:31:00Z") },
+      { id: "m2", thread: "5541999990000", leadId: "L1", direction: "in", text: "opa, me chama amanhã", at: ISO("2026-08-19T14:00:00Z") },
+    ],
+  });
+  const wa = makeWa();
+  await runner(repo, wa, nowRef).tick();
+  assert.equal(wa.sent.length, 0);
+  assert.equal((await repo.get("leads", "L1")).sdrLog.noshow2Via, "skip");
+
+  // (b) já remarcou (call futura)
+  const repo2 = await world({
+    leads: [{ ...base, callAt: "2026-08-21T10:00" }],
+    threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads" }],
+  });
+  const wa2 = makeWa();
+  await runner(repo2, wa2, nowRef).tick();
+  assert.equal(wa2.sent.length, 0);
+});
