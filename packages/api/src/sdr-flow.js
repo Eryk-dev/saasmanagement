@@ -26,8 +26,8 @@
 // produto ligado), iniciado no index.js.
 import { findThreadByPhone, listMessages, recordMessage } from "./wa-store.js";
 import { digits } from "./whatsapp.js";
-import { kindOf, firstStage, isNoShowStage, isWonLead } from "./stages.js";
-import { brtToIso, onOutboundMessage } from "./lead-flow.js";
+import { kindOf, firstStage, isNoShowStage, isWonLead, stageByKind } from "./stages.js";
+import { brtToIso, onOutboundMessage, applyStageMove } from "./lead-flow.js";
 import { isBusinessHours } from "./business-hours.js";
 import { resolveWabaId, getWaHealth } from "./wa-health.js";
 import { raiseAlert } from "./wa-call-flow.js";
@@ -45,6 +45,16 @@ const HUMAN_QUIET_MS = 60 * MIN;
 // Espalhamento do 2º toque: leads tocados no mesmo lote não voltam juntos.
 const SECOND_TOUCH_JITTER_MIN = 90;
 const SECOND_TOUCH_PER_TICK = 3;
+const DAY = 24 * HOUR;
+// Escada de retomada: pingando, nunca em lote. 2 por ciclo de 60s já dá o teto
+// diário de 60 numa manhã, e o teto diário é quem manda de verdade.
+const LADDER_PER_TICK = 2;
+// Quantos candidatos o ciclo abre (carregar mensagens é o custo do passe): sem
+// isso, um dia com 400 cards em Qualificando lê 400 conversas por minuto.
+const LADDER_SCAN_PER_TICK = 25;
+// Corte pra Nutrição: quantos cards por ciclo (o movimento é barato, mas o
+// kanban não pode dar um salto de 300 cards de uma vez na cara do time).
+const LADDER_DROP_PER_TICK = 5;
 // Hash estável de string (FNV-1a) — o mesmo lead cai sempre no mesmo atraso e
 // no mesmo template, sem guardar sorteio nenhum.
 const hashInt = (s) => {
@@ -102,6 +112,33 @@ export function sdrBotConfig(product) {
     // horário comercial, com a retomada que a Manuela já manda na mão (Leo, 23/08).
     // Acompanha a chave do 1º toque; `secondTouch: false` desliga só ele.
     secondTouch: cfg.secondTouch == null ? cfg.firstTouch !== false : cfg.secondTouch === true,
+    // ESCADA DE RETOMADA ATÉ O CORTE (Leo, 26/08). O que a campanha de 25/08
+    // ensinou, medido em 560 leads: a resposta cai com o tempo parado (23,3%
+    // com 3 a 5 dias de silêncio, 17,2% com 6 a 10, 15,1% com 11 a 20, 10,9%
+    // com 21 a 40) e 66 das 67 respostas chegaram em menos de 24h. Logo:
+    // retomada CEDO, e silêncio se declara RÁPIDO. Nasce desligada porque
+    // MOVE CARD (é mudança de funil, não só de mensagem).
+    ladder: cfg.ladder === true,
+    // FRIO (nunca respondeu nada): o degrau de +24h é a seção 1b; este é o
+    // encerramento, no 5º dia depois do 1º toque.
+    ladderColdDays: num(cfg.ladderColdDays, 5),
+    // MORNO (respondeu alguma vez e sumiu): converteu 18,3% contra 13,9% do
+    // frio, então ganha um degrau a mais e mais espaçado. O relógio conta da
+    // ÚLTIMA mensagem DELE e zera toda vez que ele volta a falar.
+    ladderWarmDays: Array.isArray(cfg.ladderWarmDays) && cfg.ladderWarmDays.length
+      ? cfg.ladderWarmDays
+      : [3, 8, 13],
+    // Silêncio depois do último degrau = sem retorno. 48h é o dobro da margem
+    // (97% das respostas vieram em 24h); esperar mais só envelhece o card na
+    // etapa errada.
+    ladderDropHours: num(cfg.ladderDropHours, 48),
+    ladderDrop: cfg.ladderDrop !== false,
+    // Teto DIÁRIO da escada. O que a Meta puniu em 25/08 foi rajada (560 num
+    // dia, 65 falhas de "healthy ecosystem engagement"), não cadência: o mesmo
+    // volume pingado não arma o freio deles.
+    ladderPerDay: num(cfg.ladderPerDay, 60),
+    // Piso entre duas mensagens do robô pro MESMO lead, em qualquer frente.
+    ladderCooldownDays: num(cfg.ladderCooldownDays, 3),
     // Campanha de resgate do backlog (Qualificando + Nutrição): lotes de
     // perBatch a cada meia hora das janelas configuradas, dias úteis, mais
     // novos primeiro. Nasce DESLIGADA: é campanha, não régua permanente.
@@ -148,6 +185,9 @@ export function sdrBotConfig(product) {
       secondTouchVariants: Array.isArray(cfg.templates?.secondTouchVariants) ? cfg.templates.secondTouchVariants : [],
       backlogRescue: cfg.templates?.backlogRescue || "sdr_retomada_conversa",
       backlogRescueNutri: cfg.templates?.backlogRescueNutri || "sdr_retomada_novidades",
+      // Último degrau da escada: encerramento (dá permissão pro não). Sem ele
+      // APROVADO na Meta a escada não fecha, e o corte nunca acontece.
+      ladderBreakup: cfg.templates?.ladderBreakup || "sdr_encerramento_atendimento",
       rescue2: cfg.templates?.rescue2 || "sdr_remarcar_noshow",
     },
   };
@@ -335,7 +375,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
     const anyPhone = products.some((p) => p.waPhoneId);
     const [users, allLeads] = await Promise.all([repo.list("users"), repo.list("leads")]);
     const humanIds = new Set(users.map((u) => u.id));
-    const stats = { firstTouch: 0, secondTouch: 0, reminders: 0, rescue: 0, rescue2: 0, backlogRescue: 0, skipped: 0 };
+    const stats = { firstTouch: 0, secondTouch: 0, ladder: 0, nurtured: 0, reminders: 0, rescue: 0, rescue2: 0, backlogRescue: 0, skipped: 0 };
     let sends = 0;
     const CAP = 25; // teto por ciclo: rajada nunca vira metralhadora
 
@@ -465,6 +505,143 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           } catch (err) {
             log.warn?.({ lead: lead.id, err: err.message }, "sdr: segundo toque falhou");
             await stampLog(lead, { secondTouchError: String(err.message || err).slice(0, 200) });
+          }
+        }
+      }
+
+      // ── 1c. Escada de retomada até o corte (Leo, 26/08) ──────────────────
+      // Dois públicos, porque na campanha de 25/08 quem JÁ tinha respondido
+      // alguma vez converteu 18,3% contra 13,9% de quem nunca falou:
+      //
+      //   FRIO  (nunca respondeu nada): 1º toque · +24h (seção 1b) · +5d
+      //         ENCERRAMENTO. Fecha o ciclo de Qualificando em 7 dias.
+      //   MORNO (respondeu e sumiu): relógio conta da ÚLTIMA MENSAGEM DELE e
+      //         ZERA toda vez que ele volta a falar · +3d · +8d · +13d
+      //         ENCERRAMENTO. Um degrau a mais e mais espaçado: ele vale mais
+      //         e já teve conversa de verdade, então não se cobra a cada dia.
+      //
+      // O último degrau é sempre a mensagem de encerramento, não uma quarta
+      // cobrança: ela dá permissão pro não e é o que separa quem estava só
+      // ocupado de quem morreu. Sem resposta depois dela, a seção 1d manda o
+      // card pra Nutrição.
+      if ((cfg.ladder || cfg.conversationTest) && isBusinessHours(product, at)) {
+        // Teto DIÁRIO em app_config (sobrevive a restart, igual à campanha).
+        const ymdL = `${wnow.getUTCFullYear()}-${String(wnow.getUTCMonth() + 1).padStart(2, "0")}-${String(wnow.getUTCDate()).padStart(2, "0")}`;
+        const ladderId = `sdr_ladder_${product.id}`;
+        let lrec = await repo.get("app_config", ladderId).catch(() => null);
+        if (!lrec) lrec = await repo.create("app_config", { id: ladderId, day: ymdL, sent: 0 });
+        else if (lrec.day !== ymdL) { lrec = { ...lrec, day: ymdL, sent: 0 }; await repo.update("app_config", ladderId, { day: ymdL, sent: 0 }); }
+        let dayQuota = Math.max(0, cfg.ladderPerDay - (Number(lrec.sent) || 0));
+
+        const names = await approvedNames();
+        // Degrau → template. O último é sempre o encerramento; antes dele vêm
+        // a retomada da Manuela e a de novidades, ambas já aprovadas.
+        const stepTemplate = (step, steps) => step >= steps.length - 1
+          ? cfg.templates.ladderBreakup
+          : (step === 0 ? cfg.templates.secondTouch : cfg.templates.backlogRescueNutri);
+
+        // Passe BARATO primeiro (só campos do lead): ler a conversa é o custo
+        // do ciclo, e não dá pra abrir 400 threads por minuto. Mais novos
+        // primeiro, como na campanha — a curva de resposta cai com a idade.
+        const cands = leads
+          .filter((l) => eligible(l) && passOn(cfg.ladder, l))
+          .filter((l) => !isWonLead(product, l) && !l.callAt && !isNoShowStage(l.stage))
+          .filter((l) => ["novo", "qualificacao"].includes(kindOf(product, l.stage || firstStage(product))))
+          .filter((l) => Number.isFinite(Date.parse(l.sdrLog?.firstTouchAt || "")))
+          .filter((l) => l.sdrLog?.firstTouchVia !== "human")   // 1º toque foi gente: fila humana
+          .filter((l) => !l.sdrLog?.ladder?.done)               // escada terminada: quem age é o corte
+          .sort((a, b) => String(b.sdrLog?.firstTouchAt || "").localeCompare(String(a.sdrLog?.firstTouchAt || "")));
+
+        let scanned = 0, ladderNow = 0;
+        for (const lead of cands) {
+          if (sends >= CAP || ladderNow >= LADDER_PER_TICK || dayQuota <= 0) break;
+          if (scanned >= LADDER_SCAN_PER_TICK) break;
+          scanned++;
+          const t0 = Date.parse(lead.sdrLog.firstTouchAt);
+          const phone = lead.waPhone || lead.phone;
+          const thread = await findThreadByPhone(repo, phone);
+          const msgs = thread ? await listMessages(repo, thread.id) : [];
+          const lastIn = [...msgs].reverse().find((m) => m.direction === "in");
+          const inMs = lastIn ? Date.parse(lastIn.at || 0) : NaN;
+          // ÂNCORA DO SILÊNCIO: a última vez que o LEAD falou; sem isso, o 1º
+          // toque. É ela que define o público e reinicia a escada sozinha.
+          const warm = Number.isFinite(inMs);
+          const anchor = warm ? inMs : t0;
+          // Humano na conversa depois da âncora: a conversa é dele, não do robô.
+          const lastHumanOut = [...msgs].reverse().find((m) => m.direction === "out" && humanIds.has(m.author));
+          if (lastHumanOut && Date.parse(lastHumanOut.at || 0) >= anchor) continue;
+          const steps = warm ? cfg.ladderWarmDays : [cfg.ladderColdDays];
+          const st = lead.sdrLog?.ladder || {};
+          const anchorIso = new Date(anchor).toISOString();
+          const step = st.at === anchorIso ? (Number(st.step) || 0) : 0; // falou de novo = escada do zero
+          if (step >= steps.length) continue;
+          if (nowMs - anchor < steps[step] * DAY + jitterMs(lead.id)) continue;
+          // PISO ENTRE MENSAGENS DO ROBÔ. Template empilhado em cima de
+          // mensagem recente é o que a Meta lê como frequência abusiva (65 das
+          // 76 falhas de 25/08 foram "healthy ecosystem engagement"). Conta a
+          // última saída do robô por QUALQUER frente (1º/2º toque, lembrete,
+          // resposta da IA), não só pela escada.
+          const lastBotOut = [...msgs].reverse().find((m) => m.direction === "out" && m.author === SDR_AUTHOR);
+          if (lastBotOut && nowMs - Date.parse(lastBotOut.at || 0) < cfg.ladderCooldownDays * DAY) continue;
+
+          const wanted = stepTemplate(step, steps);
+          if (!names.has(wanted)) { stats.skipped++; continue; } // sem aprovação da Meta, o degrau espera
+          const nome = greetName(lead.name);
+          const params = wanted === cfg.templates.backlogRescueNutri
+            ? [nome || "de novo", firstName(users.find((u) => u.id === lead.owner)?.name) || "Manuela"]
+            : [nome || "de novo"];
+          const last = step === steps.length - 1;
+          try {
+            // moveCard=false: retomada não é "1º contato", e o card só anda
+            // quando o lead RESPONDER (mesma semântica da campanha).
+            await sendTemplate({ phone: thread?.phone || digits(phone), name: wanted, params, phoneId, saas: product.id, leadId: lead.id, moveCard: false });
+            sends++; ladderNow++; dayQuota--; stats.ladder++;
+            lrec = { ...lrec, sent: (Number(lrec.sent) || 0) + 1 };
+            await repo.update("app_config", ladderId, { day: lrec.day, sent: lrec.sent });
+            await stampLog(lead, { ladder: { at: anchorIso, step: step + 1, lastAt: nowIso, warm, done: last } });
+          } catch (err) {
+            log.warn?.({ lead: lead.id, step, err: err.message }, "sdr: degrau da escada falhou");
+            await stampLog(lead, { ladder: { ...st, at: anchorIso, step, error: String(err.message || err).slice(0, 200) } });
+          }
+        }
+      }
+
+      // ── 1d. Corte pra Nutrição (Leo, 26/08) ──────────────────────────────
+      // Silêncio depois do encerramento = sem retorno. 48h porque 66 das 67
+      // respostas da campanha de 25/08 vieram em menos de 24h e só UMA depois
+      // disso: esperar mais não recupera ninguém, só envelhece o card na etapa
+      // errada (a mediana em Qualificando era de 9,1 dias, com 448 cards).
+      // Qualificando vira fila de trabalho; Nutrição vira o reservatório.
+      if (cfg.ladderDrop && (cfg.ladder || cfg.conversationTest)) {
+        const target = stageByKind(product, "contato");
+        let dropped = 0;
+        for (const lead of leads) {
+          if (dropped >= LADDER_DROP_PER_TICK) break;
+          if (!target || target.stage === lead.stage) continue;
+          if (!eligible(lead) || !passOn(cfg.ladder, lead)) continue;
+          const st = lead.sdrLog?.ladder || {};
+          if (!st.done || lead.sdrLog?.nurtureAt) continue;
+          const doneMs = Date.parse(st.lastAt || "");
+          if (!Number.isFinite(doneMs) || nowMs - doneMs < cfg.ladderDropHours * HOUR) continue;
+          if (isWonLead(product, lead) || lead.callAt || isNoShowStage(lead.stage)) continue;
+          if (!["novo", "qualificacao"].includes(kindOf(product, lead.stage || firstStage(product)))) continue;
+          // Falou (ou gente falou) depois do encerramento: a escada reinicia
+          // sozinha na seção 1c, e o card fica onde está.
+          const thread = await findThreadByPhone(repo, lead.waPhone || lead.phone);
+          const msgs = thread ? await listMessages(repo, thread.id) : [];
+          if (msgs.some((m) => Date.parse(m.at || 0) > doneMs
+            && (m.direction === "in" || (m.direction === "out" && humanIds.has(m.author))))) continue;
+          try {
+            const moved = await applyStageMove(repo, { lead, toStage: target.stage, author: SDR_AUTHOR, now: at });
+            await repo.update("leads", lead.id, {
+              ...moved,
+              stage: target.stage,
+              sdrLog: { ...(lead.sdrLog || {}), nurtureAt: nowIso },
+            });
+            dropped++; stats.nurtured++;
+          } catch (err) {
+            log.warn?.({ lead: lead.id, err: err.message }, "sdr: corte pra Nutrição falhou");
+            await stampLog(lead, { nurtureError: String(err.message || err).slice(0, 200) });
           }
         }
       }
@@ -785,7 +962,10 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           .filter((l) => !l.sdrLog?.backlogRescueAt && !l.sdrLog?.secondTouchAt && !l.sdrLog?.sendFailedAlertAt)
           .filter((l) => { const ft = Date.parse(l.sdrLog?.firstTouchAt || ""); return !(Number.isFinite(ft) && nowMs - ft < SECOND_TOUCH_MAX_MS); })
           .map((l) => ({ l, kind: kindOf(product, l.stage || firstStage(product)) }))
-          .filter((x) => x.kind === "qualificacao" || x.kind === "contato");
+          // Com a ESCADA ligada, Qualificando é dela (seção 1c): a campanha
+          // fica só com a Nutrição, senão o mesmo lead levaria a retomada por
+          // duas frentes com réguas diferentes.
+          .filter((x) => x.kind === "contato" || (x.kind === "qualificacao" && !cfg.ladder));
         // ORDEM POR ENGAJAMENTO (Leo, 24/08): quem JÁ conversou com a gente
         // alguma vez vai primeiro — responde mais e quase nunca bloqueia. Lead
         // que nunca respondeu nada é o de maior risco de bloqueio/denúncia,
