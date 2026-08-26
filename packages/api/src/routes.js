@@ -33,6 +33,7 @@ import { registerConsultationRoutes } from "./routes.consultations.js";
 import { syncConsultationCalendar, syncConsultationMeetEvent } from "./consultations.js";
 import { newManual, sameFamily } from "./deliverables.js";
 import { registerIntegrationRoutes } from "./routes.integrations.js";
+import { registerIntegrationFormRoutes } from "./routes.integration-forms.js";
 import { registerMetasRoutes } from "./routes.metas.js";
 import { registerFlashcardRoutes } from "./routes.flashcards.js";
 import { registerGoogleRoutes } from "./routes.google.js";
@@ -257,6 +258,9 @@ function listFilter(collection, q) {
   // cliente (?customer=) leem daqui — sem o filtro, a ficha mostraria contrato
   // dos outros.
   if (collection === "contract_issues") return (i) => (!q.saas || i.saas === q.saas) && (!q.customer || i.customerId === q.customer) && (!q.contract || i.contract === q.contract);
+  // Formulário de integração: a tela lista por produto, e a ficha do cliente
+  // (?customer=) pede só o dele.
+  if (collection === "integration_forms") return (f) => (!q.saas || f.saas === q.saas) && (!q.customer || f.customerId === q.customer) && (!q.status || f.status === q.status);
   if (collection === "campaigns") return (c) => !q.saas || c.saas === q.saas;
   if (collection === "outbound_accounts") return (a) => (!q.saas || a.saas === q.saas) && (!q.status || a.status === q.status);
   if (collection === "sequences") return (s) => !q.saas || s.saas === q.saas;
@@ -318,6 +322,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerRoutineRoutes(app, repo, { anthropic: anthropicClient });
   // Análise de integração (CS/onboarding): sentimento + pendências recorrentes.
   registerIntegrationRoutes(app, repo);
+  // Formulário de Integração: página pública que o cliente recém-fechado
+  // preenche (/fi/:id) + envio das respostas. O CRUD do pedido é o genérico.
+  registerIntegrationFormRoutes(app, repo, { ...(opts.integrationForms || {}), discord: discordClient });
   // Metas de desempenho por vaga/pessoa (ferramenta; escreve na collection goals).
   registerMetasRoutes(app, repo);
   // Treinamentos: flashcards por vaga com repetição espaçada (FSRS) por pessoa
@@ -631,6 +638,15 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     // (MCP/integração) respeita o que veio no corpo.
     if (collection === "contract_issues") {
       if (!req.body.createdAt) stamp.createdAt = now;
+      if (req.authUser?.id) stamp.author = req.authUser.id;
+    }
+    // Formulário de integração: o id É o token do link público (/fi/:id), então
+    // não pode ser o gerador por timestamp do repo (adivinhável) nem vir do
+    // corpo. Status, data e quem pediu carimbam aqui: é registro de auditoria.
+    if (collection === "integration_forms") {
+      stamp.id = "if_" + randomUUID().replace(/-/g, "").slice(0, 20);
+      stamp.status = "pendente";
+      stamp.createdAt = now;
       if (req.authUser?.id) stamp.author = req.authUser.id;
     }
     // Manual criado sem seções ganha o template (as 6 seções da apresentação).

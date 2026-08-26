@@ -99,6 +99,7 @@ try {
     ["settings", "/src/screens/settings.jsx", "SettingsScreen", { saasId: "leverads" }, ""],
     ["social", "/src/screens/social.jsx", "SocialScreen", {}, "Comentários"],
     ["contracts", "/src/screens/contracts.jsx", "ContractsScreen", {}, "Contratos gerados"],
+    ["intform", "/src/screens/integration-forms.jsx", "IntegrationFormsScreen", {}, "Formulário de Integração"],
     ["deal", "/src/screens/deal.jsx", "LeadDetail", { lead: window.SEED.LEADS[1], onClose() {} }, "Próximo passo"],
     ["funcionarios", "/src/screens/funcionarios.jsx", "FuncionariosScreen", {}, "Análise de Equipe"],
     ["aquisicao", "/src/screens/aquisicao.jsx", "AquisicaoScreen", {}, "Análise de Aquisição"],

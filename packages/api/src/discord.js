@@ -157,6 +157,20 @@ export function makeDiscord({ fetch: f = globalThis.fetch, webhookUrl = "" } = {
       });
     },
 
+    // Formulário de integração respondido pelo cliente recém-fechado: o
+    // integrador pode preparar a call sem esperar ninguém avisar.
+    integrationFormFilled({ customerName, productName, summary, url } = {}) {
+      return send({
+        title: `📋 Formulário de integração respondido: ${customerName || "cliente"}`,
+        color: COLORS.blue,
+        fields: [
+          { name: "SaaS", value: productName },
+          { name: "Resumo", value: summary },
+          ...(url ? [{ name: "Respostas", value: url, inline: false }] : []),
+        ],
+      });
+    },
+
     // Lembrete diário dos treinamentos: pessoas com flashcards vencendo
     // (`lines` montadas pelo job, que tem o repo).
     trainingReminder({ lines = [] } = {}) {

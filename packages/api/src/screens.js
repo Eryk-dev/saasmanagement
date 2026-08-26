@@ -15,7 +15,7 @@
 
 export const SCREEN_IDS = [
   "overview", "today", "pipeline", "customers", "metrics", "expenses",
-  "social", "forms", "proposals", "creative", "offers", "contracts", "disparos", "whatsapp", "agenda", "consultas", "calls", "integrations", "aquisicao", "analise", "funcionarios", "metas", "training", "tasks", "mindmaps", "settings",
+  "social", "forms", "proposals", "creative", "offers", "contracts", "intform", "disparos", "whatsapp", "agenda", "consultas", "calls", "integrations", "aquisicao", "analise", "funcionarios", "metas", "training", "tasks", "mindmaps", "settings",
   "outbound", "remuneracao",
   "eloapp", "landingpages",
 ];
@@ -125,6 +125,11 @@ const ROUTE_SCREENS = [
   ["/api/consultations", ["consultas"]], // consultas 1:1 (mentoria UniqueKids): agenda + ações (meet/summary)
   ["/api/deliverables", ["consultas"]],  // Manual da Família (entregável) + compose por IA
   ["/api/pitch", ["calls", "settings"]], // análise de pitch (calls) + botão "IA das calls" em Ajustes → Scripts
+  // Formulário de Integração (tela intform): definição das perguntas + os
+  // pedidos por cliente. Precede /api/integrations só por clareza — os
+  // prefixos não se cruzam ("integration-" e "integration_" ≠ "integrations").
+  ["/api/integration-forms", ["intform"]],
+  ["/api/integration_forms", ["intform"]],
   ["/api/integrations", ["integrations"]], // análise de integração (CS/onboarding)
 
   ["/api/metas", ["metas"]],             // metas de desempenho por vaga/pessoa
