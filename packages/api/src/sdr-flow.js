@@ -63,6 +63,17 @@ const hashInt = (s) => {
   return Math.abs(h);
 };
 const jitterMs = (id) => (hashInt(id) % SECOND_TOUCH_JITTER_MIN) * MIN;
+// ÚLTIMA VEZ QUE A GENTE TOCOU O LEAD, pelo carimbo mais recente que existir.
+// O 1º toque é só um dos caminhos: lead que entrou pela campanha de backlog
+// tem backlogRescueAt e nenhum firstTouchAt. Devolve 0 pra quem nunca recebeu
+// nada nosso (esse fica fora da escada). `lastBot` só é passado no passe que
+// já leu a conversa; no passe barato valem os carimbos do próprio lead.
+const touchedAt = (lead, lastBot = null) => Math.max(
+  Date.parse(lead?.sdrLog?.firstTouchAt || "") || 0,
+  Date.parse(lead?.sdrLog?.secondTouchAt || "") || 0,
+  Date.parse(lead?.sdrLog?.backlogRescueAt || "") || 0,
+  lastBot ? (Date.parse(lastBot.at || "") || 0) : 0,
+);
 // Folga mínima entre a MARCAÇÃO e a véspera: marcou "amanhã no mesmo horário"
 // e a véspera cairia minutos depois do combinado.
 const VESPERA_MIN_GAP_MS = 3 * HOUR;
@@ -547,26 +558,35 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           .filter((l) => eligible(l) && passOn(cfg.ladder, l))
           .filter((l) => !isWonLead(product, l) && !l.callAt && !isNoShowStage(l.stage))
           .filter((l) => ["novo", "qualificacao"].includes(kindOf(product, l.stage || firstStage(product))))
-          .filter((l) => Number.isFinite(Date.parse(l.sdrLog?.firstTouchAt || "")))
+          // A ESCADA VALE PRA QUEM A GENTE JÁ TOCOU, não só pra quem levou o 1º
+          // toque do robô: em 26/08 só 41 dos 448 cards em Qualificando tinham
+          // firstTouchAt (os outros 364 entraram pela campanha de backlog, que
+          // carimba backlogRescueAt). Exigir o 1º toque deixaria de fora 9 em
+          // cada 10 cards que a escada existe justamente pra drenar. Quem
+          // nunca recebeu NADA nosso fica de fora: "não consegui falar com
+          // você" pressupõe que a gente tentou.
+          .filter((l) => touchedAt(l))
           .filter((l) => l.sdrLog?.firstTouchVia !== "human")   // 1º toque foi gente: fila humana
           .filter((l) => !l.sdrLog?.ladder?.done)               // escada terminada: quem age é o corte
-          .sort((a, b) => String(b.sdrLog?.firstTouchAt || "").localeCompare(String(a.sdrLog?.firstTouchAt || "")));
+          .sort((a, b) => touchedAt(b) - touchedAt(a));
 
         let scanned = 0, ladderNow = 0;
         for (const lead of cands) {
           if (sends >= CAP || ladderNow >= LADDER_PER_TICK || dayQuota <= 0) break;
           if (scanned >= LADDER_SCAN_PER_TICK) break;
           scanned++;
-          const t0 = Date.parse(lead.sdrLog.firstTouchAt);
           const phone = lead.waPhone || lead.phone;
           const thread = await findThreadByPhone(repo, phone);
           const msgs = thread ? await listMessages(repo, thread.id) : [];
           const lastIn = [...msgs].reverse().find((m) => m.direction === "in");
           const inMs = lastIn ? Date.parse(lastIn.at || 0) : NaN;
-          // ÂNCORA DO SILÊNCIO: a última vez que o LEAD falou; sem isso, o 1º
-          // toque. É ela que define o público e reinicia a escada sozinha.
+          // ÂNCORA DO SILÊNCIO: a última vez que o LEAD falou. Sem isso, a
+          // última vez que a GENTE falou (1º toque quando existe; senão a
+          // mensagem mais recente do robô ou o carimbo da campanha). É ela que
+          // define o público e reinicia a escada sozinha.
+          const lastBot = [...msgs].reverse().find((m) => m.direction === "out" && m.author === SDR_AUTHOR);
           const warm = Number.isFinite(inMs);
-          const anchor = warm ? inMs : t0;
+          const anchor = warm ? inMs : (Date.parse(lead.sdrLog?.firstTouchAt || "") || touchedAt(lead, lastBot));
           // Humano na conversa depois da âncora: a conversa é dele, não do robô.
           const lastHumanOut = [...msgs].reverse().find((m) => m.direction === "out" && humanIds.has(m.author));
           if (lastHumanOut && Date.parse(lastHumanOut.at || 0) >= anchor) continue;

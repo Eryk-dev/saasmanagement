@@ -246,3 +246,38 @@ test("escada desligada: nada se move nem sai", async () => {
   assert.equal(tplsOf(wa).length, 0);
   assert.equal((await repo.get("leads", "L1")).stage, "Qualificando");
 });
+
+// A escada tem que alcançar quem entrou pela CAMPANHA de backlog: em 26/08 só
+// 41 dos 448 cards em Qualificando tinham firstTouchAt, os outros 364 só
+// tinham backlogRescueAt. Exigir o 1º toque deixava 9 em cada 10 de fora.
+test("lead sem 1º toque, só com carimbo da campanha, entra na escada", async () => {
+  const repo = await world({
+    lead: { sdrLog: { backlogRescueAt: ISO("2026-08-13T12:00:00Z") } },
+    messages: [{ id: "m1", direction: "out", author: "sdr-bot", text: "Vamos retomar...", at: ISO("2026-08-13T12:00:00Z") }],
+  });
+  const wa = makeWa();
+  await tickOf(repo, wa);
+  assert.deepEqual(tplsOf(wa), ["sdr_encerramento_atendimento"]);
+  assert.equal((await repo.get("leads", "L1")).sdrLog.ladder.at, ISO("2026-08-13T12:00:00Z"));
+});
+
+test("lead que a gente NUNCA tocou fica fora da escada", async () => {
+  const repo = await world({ lead: { sdrLog: {} } });
+  const wa = makeWa();
+  await tickOf(repo, wa);
+  assert.equal(tplsOf(wa).length, 0);
+});
+
+test("carimbo mais recente manda: campanha depois do 1º toque reinicia a conta", async () => {
+  const repo = await world({
+    // 1º toque velho, campanha ontem: o encerramento conta do 1º toque (a
+    // promessa é D+5 do 1º toque), mas o piso de 3 dias segura a rajada.
+    lead: { sdrLog: { firstTouchAt: ISO("2026-08-01T12:00:00Z"), firstTouchVia: "template", backlogRescueAt: ISO("2026-08-19T12:00:00Z") } },
+    messages: [{ id: "m1", direction: "out", author: "sdr-bot", text: "Vamos retomar...", at: ISO("2026-08-19T12:00:00Z") }],
+  });
+  const wa = makeWa();
+  await tickOf(repo, wa);
+  assert.equal(tplsOf(wa).length, 0); // mensagem do robô há 1 dia: espera o piso
+  await tickOf(repo, wa, new Date("2026-08-24T13:00:00Z")); // segunda, 5 dias depois
+  assert.deepEqual(tplsOf(wa), ["sdr_encerramento_atendimento"]);
+});
