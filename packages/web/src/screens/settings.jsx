@@ -736,7 +736,8 @@ function FieldsSettings({ s }) {
 // (conta de anúncio da Meta) é editado aqui e gravado no produto.
 // Conexão Google PESSOAL: cada usuário conecta a PRÓPRIA conta pra que suas
 // calls (como closer) e integrações (como integrador) apareçam na agenda dele.
-// Convive com a conta única do time (Google Meet, acima) — é aditivo.
+// É o ÚNICO conector Google da tela: a conta do time virou infraestrutura
+// (e-mail dos disparos, consultas da UniqueKids) e só aparece se cair.
 function MyGoogleCalendarCard() {
   const [st, setSt] = useStS(null); // { configured, connected, account, meetReady }
   const [busy, setBusy] = useStS(false);
@@ -774,6 +775,10 @@ function MyGoogleCalendarCard() {
         <div style={{ fontSize: 13, fontWeight: 500 }}>Minha conta Google</div>
         <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>
           conecte seu e-mail @leverads: suas calls entram na sua agenda e o Meet delas passa a ser SEU (gravação e resumo pela sua conta)
+        </div>
+        <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}
+          title="O Google só grava quando quem está na call é do mesmo Workspace da conta que criou a sala. Entrar no Meet com outro e-mail te deixa como convidado externo na sua própria sala: sem gravação, sem transcrição, sem resumo.">
+          e entre no Meet logado NESTA conta: sala de uma conta e pessoa de outra, o Google não grava
         </div>
         {precisaReconectar && (
           <div className="mono" style={{ fontSize: 11, marginTop: 3, color: "var(--warn)" }}
@@ -943,32 +948,25 @@ function IntegrationsSettings({ s }) {
         )}
       </div>
 
-      {/* Google Meet: calls criadas direto na agenda da conta conectada. */}
-      <div style={{ padding: "14px 16px", border: g.connected ? "1px solid var(--line-1)" : "1px dashed var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 500 }}>Google Meet</div>
-          <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>
-            call do lead criada direto na agenda Google (com Meet e convite por e-mail)
-          </div>
-          {g.connected && (
-            <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}
-              title="GOOGLE_MEET_CALENDAR_ID no servidor. Se apontar pra um calendário que a conta conectada não enxerga, o Google responde 404 e o Meet nasce no calendário primário dela.">
-              calendário do evento: <b>{g.meetCalendar || "primary"}</b>
-              {g.meetCalendar && g.meetCalendar !== "primary" && g.account && g.meetCalendar !== g.account
-                ? " · precisa estar compartilhado com a conta conectada" : ""}
+      {/* Conta do SISTEMA (Google do time): sumiu da tela quando está tudo certo.
+          Ela deixou de ser o conector das calls (isso é "Minha conta Google",
+          logo abaixo) e segue só como remetente do e-mail dos disparos e dona
+          das consultas da UniqueKids. Dois conectores Google lado a lado
+          confundiam (pedido do Leo, 26/08), então ela só aparece quando cai —
+          senão não haveria como reconectar o que o sistema ainda usa. */}
+      {g.configured && !g.connected && (
+        <div style={{ padding: "14px 16px", border: "1px dashed var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500, color: "var(--warn)" }}>conta do sistema desconectada</div>
+            <div className="mono dim" style={{ fontSize: 11, marginTop: 3 }}>
+              é ela que manda o e-mail dos disparos e organiza as consultas da UniqueKids
             </div>
-          )}
+          </div>
+          <button onClick={connectGoogle} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}>
+            <span style={{ fontSize: 11 }}>reconectar</span>
+          </button>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {g.connected && <span className="chip pos" style={{ height: 22 }}>conectado · {g.account || "conta do time"}</span>}
-          {!g.connected && !g.configured && <span className="chip" style={{ height: 22 }}>configurar GOOGLE_CLIENT_ID/SECRET</span>}
-          {g.configured && (
-            <button onClick={connectGoogle} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}>
-              <span style={{ fontSize: 11 }}>{g.connected ? "reconectar" : "Conectar Google"}</span>
-            </button>
-          )}
-        </div>
-      </div>
+      )}
 
       <MyGoogleCalendarCard />
 
