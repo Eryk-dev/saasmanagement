@@ -92,6 +92,26 @@ export function appointmentAt(product, lead, stage = lead?.stage, now = new Date
   return iso && new Date(iso).getTime() > now.getTime() ? iso : "";
 }
 
+// UM COMPROMISSO MARCADO POR VEZ (Leo, 26/08). Call e follow-up são passos
+// DIFERENTES do mesmo lead: quando os dois ficam marcados no futuro, o card
+// aparece duas vezes na agenda, em horas diferentes, e ninguém sabe qual vale —
+// "não pode ter uma call marcada e um follow-up junto marcado, futuro".
+//
+// A regra é sempre "a intenção NOVA manda": marcou follow-up, a call futura que
+// nunca aconteceu sai; marcou call, o follow-up futuro sai. Compromisso que já
+// PASSOU nunca é tocado: call feita é história do card (é o que desenha o "✓
+// call feita" na agenda e alimenta o placar), e apagá-la seria perder o fato.
+//
+// Devolve só o que precisa ser limpo — o chamador mescla no patch.
+export function clearRivalAppointment(lead, patch = {}, kind, now = new Date()) {
+  const ahead = (v) => { const iso = brtToIso(v); return !!iso && new Date(iso).getTime() > now.getTime(); };
+  const valueOf = (field) => (patch[field] != null ? patch[field] : lead?.[field]);
+  // Campo que o próprio patch está escrevendo não é "rival": é a intenção nova.
+  if (kind === "followup" && patch.callAt == null && ahead(valueOf("callAt"))) return { callAt: "" };
+  if (kind === "call" && patch.followupAt == null && ahead(valueOf("followupAt"))) return { followupAt: "" };
+  return {};
+}
+
 // Kinds da "região de venda" do funil: estar neles (ou ter vindo deles) é o que
 // separa mover um card de DESFAZER um fechamento no applyStageMove.
 const SOLD_KINDS = new Set(["ganho", "integracao", "posvenda"]);
@@ -200,6 +220,11 @@ export async function applyStageMove(repo, { lead, toStage, patch = {}, author =
       out.wonAt = "";
       try { await revertWonLead(repo, lead, { author }); } catch { /* nunca trava o movimento */ }
     }
+    // Card entrando em follow-up com uma call ainda no FUTURO: essa call não
+    // vai acontecer (o closer já decidiu que o próximo passo é o follow-up), e
+    // deixá-la marcada é o que fazia o mesmo lead ocupar duas horas na agenda.
+    // Vale nos dois sentidos — ver clearRivalAppointment.
+    Object.assign(out, clearRivalAppointment(lead, patch, kind, now));
     if (kind === "ganho") {
       out.nextActionAt = "";
       out.nextActionNote = "";

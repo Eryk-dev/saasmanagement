@@ -425,6 +425,79 @@ test("remarcar SÓ o followupAt move o GPS junto (agenda não fica com duas hora
   assert.equal(depois.nextActionAt, new Date(`${novo}:00-03:00`).toISOString());
 });
 
+// UM COMPROMISSO MARCADO POR VEZ (Leo, 26/08): o mesmo lead não pode ocupar
+// duas horas na agenda com uma call e um follow-up marcados no futuro. Quem
+// chega por último manda; o que já PASSOU é história e não se apaga.
+const brtOf = (ms) => new Date(ms - 3 * 3600e3).toISOString().slice(0, 16);
+
+test("card indo pra Follow-up larga a call FUTURA que não vai acontecer", async () => {
+  const { app, repo } = await buildApp();
+  const callBrt = brtOf(Date.now() + 26 * 3600e3);   // call marcada pra amanhã
+  const lead = (await app.inject({
+    method: "POST", url: "/api/leads",
+    payload: { name: "Wanderley", saas: "leverads", stage: "Call agendada", callAt: callBrt, closer: "leonardo" },
+  })).json();
+  const fupBrt = brtOf(Date.now() + 72 * 3600e3);    // closer marca o follow-up na sexta
+  await app.inject({ method: "PATCH", url: `/api/leads/${lead.id}`, payload: { stage: "Follow-up", followupAt: fupBrt } });
+  const depois = await repo.get("leads", lead.id);
+  assert.equal(depois.stage, "Follow-up");
+  assert.equal(depois.followupAt, fupBrt);
+  assert.equal(depois.callAt, "", "a call futura sai: ela não vai acontecer");
+  assert.equal(depois.nextActionAt, new Date(`${fupBrt}:00-03:00`).toISOString());
+});
+
+test("call que JÁ ACONTECEU continua no card ao virar follow-up (é história)", async () => {
+  const { app, repo } = await buildApp();
+  const passada = brtOf(Date.now() - 26 * 3600e3);
+  const lead = (await app.inject({
+    method: "POST", url: "/api/leads",
+    payload: { name: "Wanderley", saas: "leverads", stage: "Call agendada", callAt: passada, closer: "leonardo" },
+  })).json();
+  await app.inject({ method: "PATCH", url: `/api/leads/${lead.id}`, payload: { stage: "Follow-up" } });
+  assert.equal((await repo.get("leads", lead.id)).callAt, passada);
+});
+
+test("marcar follow-up pelo drawer limpa a call futura, sem mexer na etapa", async () => {
+  const { app, repo } = await buildApp();
+  const callBrt = brtOf(Date.now() + 26 * 3600e3);
+  const lead = (await app.inject({
+    method: "POST", url: "/api/leads",
+    payload: { name: "Wanderley", saas: "leverads", stage: "Call agendada", callAt: callBrt, closer: "leonardo" },
+  })).json();
+  const fupBrt = brtOf(Date.now() + 72 * 3600e3);
+  await app.inject({ method: "PATCH", url: `/api/leads/${lead.id}`, payload: { followupAt: fupBrt } });
+  const depois = await repo.get("leads", lead.id);
+  assert.equal(depois.callAt, "");
+  assert.equal(depois.followupAt, fupBrt);
+});
+
+test("remarcar a call limpa o follow-up futuro (a intenção nova manda)", async () => {
+  const { app, repo } = await buildApp();
+  const fupBrt = brtOf(Date.now() + 72 * 3600e3);
+  const lead = (await app.inject({
+    method: "POST", url: "/api/leads",
+    payload: { name: "Wanderley", saas: "leverads", stage: "Follow-up", followupAt: fupBrt, closer: "leonardo" },
+  })).json();
+  const callBrt = brtOf(Date.now() + 26 * 3600e3);
+  await app.inject({ method: "PATCH", url: `/api/leads/${lead.id}`, payload: { stage: "Call agendada", callAt: callBrt } });
+  const depois = await repo.get("leads", lead.id);
+  assert.equal(depois.callAt, callBrt);
+  assert.equal(depois.followupAt, "", "o follow-up futuro sai quando a call é remarcada");
+});
+
+test("mandar os DOIS horários no mesmo patch respeita o que foi mandado", async () => {
+  const { app, repo } = await buildApp();
+  const lead = (await app.inject({
+    method: "POST", url: "/api/leads", payload: { name: "Wanderley", saas: "leverads", stage: "Qualificando" },
+  })).json();
+  const callBrt = brtOf(Date.now() + 26 * 3600e3);
+  const fupBrt = brtOf(Date.now() + 72 * 3600e3);
+  await app.inject({ method: "PATCH", url: `/api/leads/${lead.id}`, payload: { callAt: callBrt, followupAt: fupBrt } });
+  const depois = await repo.get("leads", lead.id);
+  assert.equal(depois.callAt, callBrt, "escrita explícita não é rival de si mesma");
+  assert.equal(depois.followupAt, fupBrt);
+});
+
 test("mover pra Integração com hora marcada aponta o GPS pra ela, não pra cadência", async () => {
   const { app, repo } = await buildApp();
   const futuro = new Date(Date.now() + 6 * 3600e3);
