@@ -622,6 +622,7 @@ function SdrBotCard({ product }) {
   const [reminders, setReminders] = useState(cfg.reminders !== false);
   const [rescue, setRescue] = useState(cfg.rescue !== false);
   const [conversation, setConversation] = useState(cfg.conversation === true);
+  const [ladder, setLadder] = useState(cfg.ladder === true);
   const [conversationTest, setConversationTest] = useState(cfg.conversationTest === true);
   const [delay, setDelay] = useState(cfg.firstTouchDelayMin ?? 3);
   const [status, setStatus] = useState(null);
@@ -653,7 +654,7 @@ function SdrBotCard({ product }) {
     try {
       await api.update("products", product.id, {
         sdrBot: {
-          ...cfg, enabled: on, firstTouch, reminders, rescue, conversation, conversationTest,
+          ...cfg, enabled: on, firstTouch, reminders, rescue, conversation, ladder, conversationTest,
           firstTouchDelayMin: Math.max(1, Number(delay) || 3),
           // Carimbo de QUANDO ligou: o robô só faz 1º toque em lead criado
           // DEPOIS dele (backlog antigo segue fila humana). Religar re-carimba.
@@ -702,6 +703,11 @@ function SdrBotCard({ product }) {
                 title="Fase 2: a IA responde a conversa e marca a call sozinha (horários reais da agenda, preço nunca, handoff pra humano). Só ligar depois de rodar e revisar a bateria de replay abaixo.">
                 <input type="checkbox" checked={conversation} onChange={(e) => setConversation(e.target.checked)} />
                 conversa com IA (agenda sozinha)
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, cursor: "pointer", fontWeight: 600 }}
+                title="Retomada até o corte. Quem NUNCA respondeu: 1º toque, 24h e o encerramento no 5º dia. Quem respondeu e sumiu: o relógio conta da última mensagem DELE (e zera se ele voltar a falar), com retomada em 3, 8 e 13 dias. Sem resposta 48h depois do encerramento, o card VAI PRA NUTRIÇÃO sozinho. Teto de 60 mensagens por dia e piso de 3 dias entre mensagens do robô pro mesmo lead.">
+                <input type="checkbox" checked={ladder} onChange={(e) => setLadder(e.target.checked)} />
+                escada de retomada (move o card pra Nutrição)
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, cursor: "pointer" }}
                 title="O robô INTEIRO (1º toque, lembretes, resgate e conversa com IA) atende leads marcados como teste da equipe — e SÓ eles nesta chave. É o test-drive: cria um lead interno com o seu número e conversa com o robô no seu WhatsApp, sem tocar lead real e sem sujar métrica.">

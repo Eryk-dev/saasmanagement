@@ -74,6 +74,19 @@ export const SDR_TEMPLATES = [
     body: "Oiii {{1}}, tudo bem? Aqui é a {{2}}, da LeverAds. Seguimos ajudando lojas de marketplace a espelhar contas e criar anúncios de autopeças só com o código OEM. Se quiser retomar de onde paramos, me dá um ok que eu te mostro as novidades",
     example: ["Rafael", "Manuela"],
   },
+  // ÚLTIMO degrau da escada de retomada (Leo, 26/08), antes do card cair pra
+  // Nutrição. Não é mais uma cobrança: é a mensagem de ENCERRAMENTO, que dá
+  // permissão explícita pro não. Na prática é ela que separa quem estava só
+  // ocupado de quem morreu, e o lead que responde aqui volta quente. Sem
+  // pergunta de agenda: pedir horário de quem ignorou três mensagens é o que
+  // faz a pessoa bloquear.
+  {
+    name: "sdr_encerramento_atendimento",
+    category: "MARKETING",
+    language: "pt_BR",
+    body: "Oiii {{1}}, tudo bem? Como não consegui falar com você por aqui, vou encerrar seu atendimento e parar de te chamar. Se ainda fizer sentido conhecer a LeverAds, me manda um ok que eu retomo na hora",
+    example: ["Rafael"],
+  },
   {
     name: "sdr_lembrete_conversa",
     category: "UTILITY",
