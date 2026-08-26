@@ -264,6 +264,28 @@ test("payload público nunca leva o catálogo cru; catalogUI tem nomes/preços p
   assert.ok(ui.pains.A.spin.S.length > 10, "perguntas SPIN embarcadas");
 });
 
+test("tela zero descreve o produto com os empilháveis do slide de investimento", async () => {
+  const repo = await seedRepo();
+  const p = await makeProposal(repo, { niche: "autopecas", accounts: "1", listings: "100-500" });
+  const ui = catalogUI(p);
+  const itemsOf = (key) => {
+    const s = applyCatalog({ ...p, state: { ...p.state, product: key } }).slides.find((x) => x.type === "pricing");
+    return s.benefitGroups.slice(0, 2).flatMap((g) => g.items).map((f) => (typeof f === "object" ? f.text : f));
+  };
+  // Item por item, na mesma ordem: o que o closer lê é o que o lead vai ver.
+  for (const key of ["full", "fulloem", "oem", "parcialA", "parcialoem"]) {
+    assert.equal(ui.offerLines[key], itemsOf(key).join(" · "), key + ": linha derivada do slide");
+  }
+  // O lado humano (grupo 3) é igual nos cinco: fica fora da linha do produto.
+  assert.ok(!ui.offerLines.full.includes("Suporte"), "grupo 3 não entra na linha");
+  // As cotas saem do catálogo, nunca do texto: era aqui que a tela zero
+  // prometia 50 OEM/mês e 2.000 clones no semestre com o slide já em 125/1.000.
+  assert.match(ui.offerLines.parcialoem, /125 anúncios OEM por mês/);
+  assert.match(ui.offerLines.oem, /^125 anúncios OEM criados por mês/, "porte D abre no menor nível");
+  const all = Object.values(ui.offerLines).join(" ");
+  assert.ok(!/50 anúncios OEM|2\.000 clones/.test(all), "nenhuma cota escrita à mão sobrou");
+});
+
 test("serviço único: tabela por faixa na tela zero, fora do deck e sobrescrita pelo banco", async () => {
   const repo = await seedRepo();
   const p = await makeProposal(repo, {});
