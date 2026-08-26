@@ -809,6 +809,21 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       // de um combinado que acabou de ser feito — ver VESPERA_MIN_GAP_MS.
       if (nextAt && oldAt !== nextAt) patch = { ...patch, callSetAt: new Date().toISOString() };
     }
+    // UM COMPROMISSO MARCADO POR VEZ (Leo, 26/08): marcar call limpa o follow-up
+    // futuro e vice-versa, pro mesmo lead nunca ocupar duas horas na agenda com
+    // dois passos diferentes. Aqui é o caminho de quem edita o horário SEM mudar
+    // de etapa (drawer, roteiro, MCP); a mudança de etapa passa pela mesma régua
+    // dentro do applyStageMove. Compromisso PASSADO nunca é limpo: é história.
+    if (collection === "leads" && ("callAt" in req.body || "followupAt" in req.body)) {
+      const cur = await repo.get(collection, id);
+      const ahead = (v) => { const iso = brtToIso(v); return !!iso && new Date(iso).getTime() > Date.now(); };
+      if ("callAt" in req.body && ahead(req.body.callAt) && !("followupAt" in req.body) && ahead(cur?.followupAt)) {
+        patch = { ...patch, followupAt: "" };
+      }
+      if ("followupAt" in req.body && ahead(req.body.followupAt) && !("callAt" in req.body) && ahead(cur?.callAt)) {
+        patch = { ...patch, callAt: "" };
+      }
+    }
     // Assinatura cancelada por QUALQUER caminho ganha o carimbo canceledAt (o
     // churn de CS do scoreboard e o histórico dependem dele; antes só o
     // syncWonLeadDeal gravava — o botão da tela e o webhook deixavam vazio).
