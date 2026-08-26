@@ -274,17 +274,26 @@ function oemProcessSlide(cota) {
   };
 }
 
+// Matéria-prima de TODO produto: os dois slides de investimento do template —
+// o genérico (layout do FULL) e o de autopeças (+OEM FULL). Fica num helper
+// porque a tela zero também precisa deles: a linha do produto no card do closer
+// é lida do mesmo slide que o cliente vai ver.
+function pricingSources(p) {
+  const slides = Array.isArray(p?.slides) ? p.slides : [];
+  const sBase = slides.find((s) => s?.type === "pricing" && s.key === "investimento")
+    || [...slides].reverse().find((s) => s?.type === "pricing") || null;
+  const sAuto = slides.find((s) => s?.type === "pricing" && s.key === "investimento_autopecas") || null;
+  return { slides, sBase, sAuto };
+}
+
 // ── Transform principal ─────────────────────────────────────────────────────
 // Recebe a proposta (snapshot) e devolve os slides do PRODUTO ativo, ou null
 // quando não há catálogo (deck segue como está).
 export function applyCatalog(p) {
   const calc = p?.calc;
   if (!hasCatalog(calc)) return null;
-  const slides = Array.isArray(p.slides) ? p.slides : [];
-  const sBase = slides.find((s) => s?.type === "pricing" && s.key === "investimento")
-    || [...slides].reverse().find((s) => s?.type === "pricing");
+  const { slides, sBase, sAuto } = pricingSources(p);
   if (!sBase) return null; // deck sem slide de investimento — não mexe
-  const sAuto = slides.find((s) => s?.type === "pricing" && s.key === "investimento_autopecas") || null;
 
   const product = activeProduct(p);
   const tier = tierOf(calc, p.state || {});
@@ -361,15 +370,35 @@ function priceLine(key, products, small, oemLevel) {
   return line(P[key]);
 }
 
-function offerLine(key, products, small, oemLevel) {
-  if (key === "full") return "Plataforma completa nas suas contas: equalização, clone automático, estoque sincronizado, perguntas, SKUs, precificação e promoções.";
-  if (key === "fulloem") return "Tudo do FULL + " + (products.fulloem.cota || 500) + " anúncios OEM por mês com compatibilidade veicular.";
-  if (key === "oem") {
-    const o = oemLevel || (small ? products.oem.small : products.oem.big);
-    return o.cota + " anúncios OEM por mês criados pela Lever, sem a clonagem: o cliente só manda a lista de códigos.";
-  }
-  if (key === "parcialA") return "Equalização + automação de clone/estoque, até 2.000 clones no semestre, gerenciador de SKU e perguntas num lugar só.";
-  return "Parcial + 50 anúncios OEM por mês com compatibilidade veicular.";
+// ── O que o produto ENTREGA, lido do próprio slide ──────────────────────────
+// A linha do produto na tela zero é DERIVADA dos empilháveis do slide de
+// investimento (os itens dos grupos 1 e 2, na ordem em que o closer revela),
+// não escrita à mão. Ter as duas redações foi o que deixou o card do closer
+// prometendo "50 anúncios OEM por mês" e "2.000 clones no semestre" enquanto o
+// slide que o lead lê já entregava 125 OEM e "até 1.000 anúncios": número de
+// produto não se escreve duas vezes.
+//
+// O grupo 3 ("o lado humano") fica de fora de propósito: é igual nos cinco
+// produtos (o template manda nele) e não diferencia oferta nenhuma.
+const featText = (f) => String((f && typeof f === "object" ? (f.text ?? f.label ?? "") : f) || "").trim();
+const normAns = (v) => String(v == null ? "" : v).trim().toLowerCase();
+// Mesmo showIf do renderer (visibleFeats): item condicional só entra quando a
+// resposta do lead bate — ex.: compatibilidade veicular só pra autopeças.
+function featShown(f, answers) {
+  const sh = f && typeof f === "object" ? f.showIf : null;
+  if (!sh || !sh.key) return true;
+  const want = (Array.isArray(sh.values) ? sh.values : [sh.values]).map(normAns);
+  const got = answers?.[sh.key];
+  return (Array.isArray(got) ? got : [got]).map(normAns).some((g) => want.includes(g));
+}
+function offerLine(slide, answers) {
+  const groups = Array.isArray(slide?.benefitGroups) ? slide.benefitGroups.slice(0, 2) : [];
+  return groups
+    .flatMap((g) => (Array.isArray(g?.items) ? g.items : [])
+      .filter((f) => featShown(f, answers))
+      .map(featText))
+    .filter(Boolean)
+    .join(" · ");
 }
 
 export function catalogUI(p) {
@@ -386,11 +415,17 @@ export function catalogUI(p) {
   const priceLines = {};
   const offerLines = {};
   const oemLv = oemLevelOf(cat.products, state, small);
+  // O card monta o slide de CADA produto (o mesmo buildPricing que serve o
+  // deck) só pra ler o que ele entrega: o que o closer vê na tela zero é,
+  // item por item, o que o lead vai ver empilhado no último slide.
+  const { sBase, sAuto } = pricingSources(p);
   for (const k of PRODUCT_KEYS) {
     if (!cat.products[k]) continue;
     names[k] = cat.products[k].name || k;
     priceLines[k] = priceLine(k, cat.products, small, oemLv);
-    offerLines[k] = offerLine(k, cat.products, small, oemLv);
+    offerLines[k] = sBase
+      ? offerLine(buildPricing(k, { sBase, sAuto, products: cat.products, small, oemLevel: oemLv }), answers)
+      : "";
   }
   // Ordem do select de dor: códigos de 1 letra (A-E) antes dos maiores (OEM),
   // "sem código" sempre por último. Sai pronto daqui porque a tela zero não
