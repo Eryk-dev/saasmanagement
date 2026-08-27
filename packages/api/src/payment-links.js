@@ -42,6 +42,10 @@ export async function recordPaymentLink(repo, fields = {}, { log } = {}) {
       reference: str(fields.reference, 120),
       plan: str(fields.plan, 40),
       product: str(fields.product, 40),
+      // Assinatura recorrente (preapproval) em vez de cobrança única: o link é a
+      // AUTORIZAÇÃO, e o MP passa a cobrar sozinho a cada `frequencyMonths`.
+      recurring: !!fields.recurring,
+      frequencyMonths: Math.round(Number(fields.frequencyMonths) || 0),
       createdAt: fields.createdAt || new Date().toISOString(),
       createdBy: str(fields.createdBy, 60),
     };
