@@ -37,6 +37,19 @@ export const ROLE_SCREENS = {
   closer: ["pipeline", "offers"],
 };
 
+// ── Telas que TODA sessão alcança ───────────────────────────────────────────
+// O piso por papel resolveu o closer, mas não o resto: em 27/08/2026 o Jonathan
+// esbarrou de novo em gerar cobrança, e a régua "depende de alguém ter marcado
+// a caixinha certa (ou ter o papel certo)" já tinha falhado duas vezes na mesma
+// tarefa. DECISÃO DO LEO: gerar link de pagamento é ferramenta de trabalho de
+// TODO MUNDO no cockpit, não permissão a conceder. `offers` (Links de pagamento)
+// passa a valer pra qualquer sessão, com lista restrita ou não.
+//
+// O que continua fechado: a tela Clientes (ARR/MRR/churn da base) e o Financeiro.
+// A AÇÃO de cobrar um cliente anda junto com esta tela (ACTION_SCREENS), a
+// LEITURA da base continua exigindo `customers`.
+export const UNIVERSAL_SCREENS = new Set(["offers"]);
+
 const roleScreens = (user) => {
   const out = new Set();
   for (const role of Array.isArray(user?.roles) ? user.roles : []) {
@@ -49,6 +62,7 @@ const roleScreens = (user) => {
 // senão, a lista dele OU o piso do papel.
 export function canScreen(user, screen) {
   if (!user) return true;
+  if (UNIVERSAL_SCREENS.has(screen)) return true;
   const s = Array.isArray(user.screens) ? user.screens : [];
   if (s.length === 0 || s.includes(screen)) return true;
   return roleScreens(user).has(screen);
@@ -159,8 +173,21 @@ const OVERVIEW_READ_PREFIXES = ["/api/marketing", "/api/metrics/", "/api/invoice
 // mas gerar/excluir registro segue sendo coisa da tela Contratos.
 const EXTRA_READ_SCREENS = [["/api/contract_issues", "customers"]];
 
+// ── Ações com o id NO MEIO da rota ──────────────────────────────────────────
+// A régua de prefixo só olha o começo da URL, então `POST /api/customers/:id/
+// charge` (gerar cobrança no nome de um cliente) caía na tela `customers` — a
+// base inteira, com ARR, MRR e churn. São coisas diferentes: COBRAR é trabalho
+// de quem vende, LER a base é gestão. Aqui a ação anda com a tela de Links de
+// pagamento; /api/customers continua exigindo `customers`.
+const ACTION_SCREENS = [
+  [/^\/api\/customers\/[^/]+\/charge$/, ["customers", "offers"]],
+  [/^\/api\/leads\/[^/]+\/mp\/link$/, ["pipeline", "today", "offers"]],
+];
+
 export function screenForRequest(method, path) {
   if (method !== "GET" && SETTINGS_WRITE_PREFIXES.some((p) => path.startsWith(p))) return ["settings"];
+  const action = ACTION_SCREENS.find(([re]) => re.test(path));
+  if (action) return action[1];
   const hit = ROUTE_SCREENS.find(([prefix]) => path.startsWith(prefix));
   if (!hit) return null;
   if (method === "GET" && OVERVIEW_READ_PREFIXES.some((p) => path.startsWith(p))) return [...hit[1], "overview"];

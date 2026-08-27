@@ -7,7 +7,7 @@ import { api } from "../lib/api.js";
 import { KINDS, KIND_IDS, guessKind, lossReasonsOf, stageKind, stageByKind, phaseOf, NEXT_KINDS, NEXT_STEP_KINDS, NEXT_STEP_LABELS } from "../lib/funnel.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { DEFAULT_SCRIPTS, SCRIPT_CATALOG, catalogStageRow, isNoShowStage } from "../lib/scripts.js";
-import { usersByRole, roleScreens } from "../lib/users.js";
+import { usersByRole, roleScreens, isUniversalScreen } from "../lib/users.js";
 import { ScriptPanel } from "./today.jsx";
 import { ErrorBoundary } from "../components/error-boundary.jsx";
 import { NAV } from "../chrome.jsx";
@@ -619,9 +619,10 @@ function TeamSettings() {
 // Seletor compacto de telas permitidas: botão-resumo ("todas" / "N telas") com
 // popover de checkboxes (espelho do NAV). Nenhuma marcada = todas as telas. O
 // menu do usuário e o guard das rotas na API seguem essa lista.
-// Tela que o PAPEL já garante (roleScreens, ex.: Links de pagamento pro closer)
-// aparece marcada e travada: desmarcar não tiraria nada, e deixar a caixinha
-// solta faz a gestão achar que cortou um acesso que continua de pé.
+// Tela que o PAPEL já garante (roleScreens) ou que vale pra TODO MUNDO
+// (isUniversalScreen, ex.: Links de pagamento) aparece marcada e travada:
+// desmarcar não tiraria nada, e deixar a caixinha solta faz a gestão achar que
+// cortou um acesso que continua de pé. A etiqueta diz de onde vem.
 function ScreensPicker({ screens, roles, onChange }) {
   const [open, setOpen] = useStS(false);
   const ref = React.useRef(null);
@@ -641,14 +642,14 @@ function ScreensPicker({ screens, roles, onChange }) {
       {open && (
         <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, width: 200, zIndex: 60, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 8 }}>
           {NAV.map((n) => {
-            const peloPapel = doPapel.has(n.id);
+            const fixa = doPapel.has(n.id) ? "papel" : isUniversalScreen(n.id) ? "todos" : "";
             return (
-              <label key={n.id} title={peloPapel ? "o papel já garante esta tela" : undefined}
-                style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px", fontSize: 12.5, cursor: peloPapel ? "default" : "pointer", opacity: peloPapel ? 0.65 : 1 }}>
-                <input type="checkbox" checked={peloPapel || screens.includes(n.id)} disabled={peloPapel}
+              <label key={n.id} title={fixa === "papel" ? "o papel já garante esta tela" : fixa ? "esta tela vale pra todo mundo" : undefined}
+                style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px", fontSize: 12.5, cursor: fixa ? "default" : "pointer", opacity: fixa ? 0.65 : 1 }}>
+                <input type="checkbox" checked={!!fixa || screens.includes(n.id)} disabled={!!fixa}
                   onChange={() => toggle(n.id)} style={{ accentColor: "var(--accent)" }} />
                 {n.label}
-                {peloPapel && <span className="mono dim" style={{ fontSize: 9.5, marginLeft: "auto" }}>papel</span>}
+                {fixa && <span className="mono dim" style={{ fontSize: 9.5, marginLeft: "auto" }}>{fixa}</span>}
               </label>
             );
           })}
