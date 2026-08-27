@@ -69,7 +69,7 @@ export function makeMp({ fetch: f = globalThis.fetch, accessToken, webhookSecret
     // Preapproval = assinatura recorrente. Sem card token (v1): status pending +
     // init_point — o cliente autoriza na página do MP. external_reference carrega
     // o id da assinatura do Cockpit pro webhook mapear de volta.
-    createPreapproval({ payerEmail, externalReference, backUrl, amount, frequencyMonths, reason }) {
+    createPreapproval({ payerEmail, externalReference, backUrl, amount, frequencyMonths, reason, notificationUrl }) {
       if (!(Number(amount) > 0)) throw new Error(`amount deve ser positivo, got ${amount}`);
       if (![1, 3, 6, 12].includes(frequencyMonths)) throw new Error(`frequencyMonths inválido: ${frequencyMonths}`);
       return request("POST", "/preapproval", {
@@ -83,6 +83,9 @@ export function makeMp({ fetch: f = globalThis.fetch, accessToken, webhookSecret
         payer_email: payerEmail,
         external_reference: externalReference,
         back_url: backUrl,
+        // Webhook por recurso (o painel do MP tem o global; este chega mesmo
+        // quando o painel não está configurado). Só com base pública https.
+        ...(notificationUrl ? { notification_url: notificationUrl } : {}),
         status: "pending",
       });
     },

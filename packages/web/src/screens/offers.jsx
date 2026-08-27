@@ -27,6 +27,9 @@ const fmtAt = (iso) => (iso
   ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
   : "—");
 
+// Recorrência do link (preapproval): de quanto em quanto tempo o MP cobra.
+const RECURRING_LABEL = { 1: "mensal", 3: "trimestral", 6: "semestral", 12: "anual" };
+
 // Grupos das abas: o que o time pergunta é "quem falta pagar?" e "quem pagou?".
 const WAITING = new Set(["waiting", "pending", "in_process", "authorized"]);
 const FAILED = new Set(["rejected", "cancelled", "refunded", "charged_back"]);
@@ -248,7 +251,16 @@ function OffersScreen({ onOpenLead }) {
                         </div>
                       </td>
                       <td style={{ ...td, maxWidth: 280 }}>
-                        <div title={l.title} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.title || "—"}</div>
+                        <div title={l.title} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {l.title || "—"}
+                          {/* Assinatura recorrente: o link é a autorização, não uma cobrança de uma vez. */}
+                          {l.recurring && (
+                            <span className="mono" style={{ marginLeft: 6, fontSize: 10, color: "var(--accent)" }}
+                              title="assinatura recorrente no Mercado Pago: o cliente autoriza uma vez e a cobrança se repete sozinha">
+                              ↻ {RECURRING_LABEL[l.frequencyMonths] || "recorrente"}
+                            </span>
+                          )}
+                        </div>
                         {l.payerEmail && (
                           <div className="mono dim" title={l.payerEmail}
                             style={{ fontSize: 10.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.payerEmail}</div>

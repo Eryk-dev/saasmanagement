@@ -1195,6 +1195,19 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
       planClosed: lead.planClosed, amount: lead.amount, paymentMethod: lead.paymentMethod,
       paymentInstallments: lead.paymentInstallments,
     });
+    // Recorrência AUTORIZADA no card do lead (link de assinatura do Mercado
+    // Pago gerado antes do Ganho): a assinatura que acabou de nascer adota o
+    // preapproval — daqui em diante a cobrança mensal dá baixa na fatura e
+    // cancelar/pausar aqui vale no MP. Só quando está autorizada: recorrência
+    // ainda pendente não é dinheiro, e carimbar travaria o desfazer do ganho.
+    if (sub && lead.mpPreapprovalId && lead.mpPreapprovalStatus === "authorized") {
+      await repo.update("subscriptions", sub.id, {
+        mpPreapprovalId: lead.mpPreapprovalId,
+        mpStatus: lead.mpPreapprovalStatus,
+        payerEmail: lead.mpPayerEmail || lead.email || "",
+        ...(lead.mpChargeUrl ? { mpInitPoint: lead.mpChargeUrl } : {}),
+      });
+    }
     // Serviço único faturado em Nx: não há recorrência (spec null, arr manual),
     // mas o cronograma de parcelas existe do mesmo jeito, preso só ao cliente.
     if (!sub && closedInstallments(lead) && Number(lead.amount) > 0) {

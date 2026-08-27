@@ -473,11 +473,14 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                 {lead.customProposalUrl ? "editar personalizada" : "+ proposta personalizada"}
               </button>
               {/* Link de pagamento do MP pelo card: o checkout nasce com o id
-                  do LEAD — o dinheiro entra no Financeiro rastreado à origem. */}
+                  do LEAD — o dinheiro entra no Financeiro rastreado à origem.
+                  No modo recorrente o link é a autorização da assinatura. */}
               <button onClick={() => setPayLink(true)} className="chip"
-                title="Criar link de pagamento do Mercado Pago já rastreado pra este lead (o pagamento casa sozinho no Financeiro)"
+                title="Criar link de pagamento do Mercado Pago já rastreado pra este lead — cobrança única ou assinatura recorrente (o pagamento casa sozinho no Financeiro)"
                 style={{ cursor: "pointer" }}>
-                {lead.mpChargeUrl ? "link de pagamento" : "+ link de pagamento"}
+                {lead.mpChargeUrl
+                  ? (lead.mpChargeKind === "recurring" ? "↻ link da assinatura" : "link de pagamento")
+                  : "+ link de pagamento"}
               </button>
             </div>
           </div>

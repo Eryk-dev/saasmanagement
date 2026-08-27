@@ -15,6 +15,8 @@
 // Casamento automático (só quando é FATO, não palpite):
 //   1. assinatura do cockpit que já tem esse mpPreapprovalId (link do cockpit)
 //   2. external_reference = id de assinatura do cockpit
+//   3. external_reference = id de um LEAD já convertido, com UMA assinatura sem
+//      recorrência (a recorrência gerada no card do lead, antes do Ganho)
 // Sugestão (fica no doc pro seletor da tela vir preenchido, sem gravar nada na
 // assinatura): e-mail do pagador = e-mail de exatamente UM cliente (ou UM lead
 // já convertido).
@@ -107,6 +109,19 @@ export async function ingestPreapproval(repo, pre, { log, discord } = {}) {
     if (byRef && !byRef.mpPreapprovalId) {
       linked = await attachPreapprovalToSub(repo, byRef, base);
       log?.info?.({ preapproval: base.mpId, sub: byRef.id }, "MP: recorrência casada por external_reference");
+    }
+    // Recorrência gerada no CARD DO LEAD (external_reference = id do lead): já
+    // convertido, a assinatura que nasceu do fechamento é a dona. Rede de
+    // segurança do webhook — uma única candidata sem recorrência é FATO.
+    if (!linked) {
+      const lead = await repo.get("leads", base.externalReference);
+      if (lead?.customerId) {
+        const cand = linkableSubs(subs, lead.customerId).filter((s) => !s.mpPreapprovalId);
+        if (cand.length === 1) {
+          linked = await attachPreapprovalToSub(repo, cand[0], base);
+          log?.info?.({ preapproval: base.mpId, sub: cand[0].id, lead: lead.id }, "MP: recorrência do card do lead casada com a assinatura do fechamento");
+        }
+      }
     }
   }
 
