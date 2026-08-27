@@ -20,6 +20,16 @@ import { MENTORIA_LABEL } from "./mentoria.js";
 import { logActivity } from "./lead-flow.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 
+// ── E-mail do pagador: conveniência, nunca requisito ────────────────────────
+// `payer.email` só PRÉ-PREENCHE o checkout. Mas o campo de e-mail do lead nem
+// sempre é um e-mail (form com resposta livre, "não tenho", telefone digitado
+// no lugar), e o Mercado Pago recusa a preferência INTEIRA quando ele não
+// presta. O closer via "MP recusou a criação do link" no meio da venda, sem
+// motivo na tela, e ficava sem cobrar. Duas defesas: só mandar o que parece
+// e-mail, e, se o MP recusar mesmo assim, tentar de novo SEM ele.
+const looksLikeEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(v || "").trim());
+export const payerEmailOrNone = (v) => (looksLikeEmail(v) ? String(v).trim().toLowerCase() : undefined);
+
 const CYCLE_LABEL = { monthly: "mensal", quarterly: "trimestral", semiannual: "semestral", annual: "anual" };
 const KIND_LABEL = { renewal: "renovação", prorata: "pró-rata", upsell: "upsell", manual: "cobrança", installment: "parcela" };
 
@@ -92,6 +102,19 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
   }
 
   // Gera o link de pagamento recorrente (preapproval pending → init_point).
+  // Cria a preferência e, se o MP recusar COM e-mail do pagador, tenta de novo
+  // sem ele. Link sem pré-preenchimento é melhor que venda travada; o cliente
+  // digita o e-mail no próprio checkout.
+  async function createPreference(args, log) {
+    try {
+      return await mp.createCheckoutPreference(args);
+    } catch (err) {
+      if (!args.payerEmail) throw err;
+      log?.warn?.({ err: err.message }, "MP recusou com payer.email — tentando sem o e-mail do pagador");
+      return await mp.createCheckoutPreference({ ...args, payerEmail: undefined });
+    }
+  }
+
   app.post("/api/subscriptions/:id/mp/link", async (req, reply) => {
     if (!mp.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Mercado Pago não configurado (MERCADOPAGO_ACCESS_TOKEN)" });
     const sub = await repo.get("subscriptions", req.params.id);
@@ -291,9 +314,9 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
       title, dueDate: req.body?.dueDate || nowIso, createdAt: nowIso,
     });
     try {
-      const pref = await mp.createCheckoutPreference({
+      const pref = await createPreference({
         title, amount, externalReference: invoice.id,
-        payerEmail: customer.email || undefined,
+        payerEmail: payerEmailOrNone(customer.email),
         backUrl: PUBLIC_BASE, notificationUrl,
         maxInstallments: Number(req.body?.maxInstallments) || undefined,
       });
@@ -326,9 +349,9 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
     const title = String(req.body?.title || "").trim()
       || [product?.name || invoice.saas, invoice.title || KIND_LABEL[invoice.kind] || "fatura"].filter(Boolean).join(" · ");
     try {
-      const pref = await mp.createCheckoutPreference({
+      const pref = await createPreference({
         title, amount: Number(invoice.amount), externalReference: invoice.id,
-        payerEmail: customer?.email || undefined,
+        payerEmail: payerEmailOrNone(customer?.email),
         backUrl: PUBLIC_BASE, notificationUrl,
         maxInstallments: Number(req.body?.maxInstallments) || undefined,
       });
@@ -376,9 +399,9 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
     const title = String(req.body?.title || "").trim()
       || [PRODUCT_LABEL_ALL[dealProduct] || product?.name || lead.saas, plan ? PLAN_LABEL[plan] : "pagamento"].filter(Boolean).join(" · ");
     const description = String(req.body?.description || "").trim() || undefined;
-    const payerEmail = String(req.body?.payerEmail ?? lead.email ?? "").trim().toLowerCase() || undefined;
+    const payerEmail = payerEmailOrNone(req.body?.payerEmail ?? lead.email);
     try {
-      const pref = await mp.createCheckoutPreference({
+      const pref = await createPreference({
         title, description, amount, externalReference: lead.id,
         payerEmail,
         backUrl: PUBLIC_BASE, notificationUrl,

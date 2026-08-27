@@ -40,7 +40,14 @@ async function req(method, path, body) {
     // proxy com uma página HTML inteira — despejar isso na tela (já aconteceu)
     // esconde o problema em vez de mostrar.
     let msg = "";
-    try { msg = JSON.parse(text).error || ""; } catch { /* HTML do proxy */ }
+    try {
+      const body = JSON.parse(text);
+      msg = body.error || "";
+      // `detail` é o motivo que o serviço externo deu (ex.: o que o Mercado Pago
+      // respondeu). Sem ele a tela dizia só "MP recusou a criação do link" e
+      // ninguém sabia o que consertar.
+      if (msg && body.detail) msg += ` · ${String(body.detail).slice(0, 220)}`;
+    } catch { /* HTML do proxy */ }
     const err = new Error(msg || proxyMessage(res.status));
     err.status = res.status;
     err.path = path;
