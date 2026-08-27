@@ -759,6 +759,62 @@ function FormAnswersCard({ lead, product, onPatch }) {
   );
 }
 
+// Valor do contrato com UNIDADE (mês ou ano). O banco guarda sempre o ANUAL
+// (customer.arr; o MRR das telas é arr/12), mas quem vende assinatura recorrente
+// pensa em "699 por mês" e digitava 699 num campo chamado "Valor/ano": o ARR do
+// cliente ficava em 1/12 do real e sujava MRR, portfólio, metas e o placar de
+// CS, sem ninguém perceber (foi o caso do Phillype, 27/08/2026). Agora dá pra
+// digitar por mês (grava mês × 12) e a linha de baixo mostra OS DOIS números,
+// pra não sobrar dúvida do que foi salvo.
+//
+// A unidade abre em "por mês" quando o cliente é de assinatura recorrente ou de
+// plano mensal — é como a pessoa pensa naquele contrato.
+const brl = (n) => `R$ ${Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}`;
+
+export function ValorContrato({ customer, onPatch, inputSt }) {
+  const mensalPorPadrao = paymentRecurring(customer.paymentMethod) || /mensal/i.test(customer.plan || "");
+  const [unit, setUnit] = useState(mensalPorPadrao ? "mes" : "ano");
+  const arr = Number(customer.arr) || 0;
+  const doArr = (u) => (!arr ? "" : String(u === "mes" ? Math.round((arr / 12) * 100) / 100 : arr));
+  const [txt, setTxt] = useState(doArr(mensalPorPadrao ? "mes" : "ano"));
+  // Valor salvo por outro caminho (gate de Ganho, assinatura, MP) ou troca de
+  // unidade: o campo reflete o que está no banco, nunca o que sobrou na tela.
+  useEffect(() => { setTxt(doArr(unit)); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [arr, unit]);
+
+  function salvar(raw) {
+    const n = String(raw).trim() === "" ? 0 : Number(String(raw).replace(",", "."));
+    if (!Number.isFinite(n) || n < 0) { setTxt(doArr(unit)); return; }
+    const anual = Math.round(unit === "mes" ? n * 12 : n);
+    if (anual !== arr) onPatch({ arr: anual });
+  }
+
+  const tab = (id, label) => (
+    <button key={id} onClick={() => setUnit(id)} title={id === "mes" ? "digitar a mensalidade" : "digitar o valor do ano"}
+      style={{
+        height: 28, padding: "0 8px", borderRadius: "var(--r-2)", fontSize: 11, fontWeight: 600, cursor: "pointer",
+        border: "1px solid " + (unit === id ? "var(--accent-line)" : "var(--line-2)"),
+        background: unit === id ? "var(--accent-soft)" : "var(--bg-1)",
+        color: unit === id ? "var(--accent)" : "var(--fg-3)",
+      }}>{label}</button>
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+      <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span className="mono dim" style={{ width: 96, flexShrink: 0, fontSize: 10.5 }}>Valor (R$)</span>
+        <input type="number" min="0" step="0.01" value={txt} onChange={(e) => setTxt(e.target.value)}
+          onBlur={(e) => salvar(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+          style={inputSt} />
+        <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>{tab("mes", "por mês")}{tab("ano", "por ano")}</div>
+      </label>
+      <div className="mono dim" style={{ marginLeft: 104, fontSize: 10.5 }}>
+        {arr ? `${brl(Math.round((arr / 12) * 100) / 100)}/mês · ${brl(arr)}/ano` : "sem valor registrado"}
+      </div>
+    </div>
+  );
+}
+
 function CustomerFacts({ customer, lead, product, leverOrg, onPatch }) {
   const [edit, setEdit] = useState(false);
   const saasId = customer.saas || product?.id;
@@ -853,7 +909,7 @@ function CustomerFacts({ customer, lead, product, leverOrg, onPatch }) {
               <option value="unpaid">Não pago</option>
             </select>
           </EditRow>
-          <EditRow label="Valor/ano (R$)"><input type="number" defaultValue={customer.arr ?? ""} onBlur={(e) => { const n = e.target.value === "" ? 0 : Number(e.target.value); if (n !== (customer.arr || 0)) patch({ arr: n }); }} style={inputSt} /></EditRow>
+          <ValorContrato customer={customer} onPatch={patch} inputSt={inputSt} />
           <EditRow label="Cliente desde"><input type="date" value={String(customer.startedAt || "").slice(0, 10)} onChange={(e) => patch({ startedAt: e.target.value })} style={inputSt} /></EditRow>
         </div>
       ) : facts.length === 0 ? (

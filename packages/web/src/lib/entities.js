@@ -180,7 +180,11 @@ export const ENTITIES = {
         options: (v) => (v?.saas === "leverads" ? leveradsOrgOptions() : []),
         allowCustom: true, sendBlank: true,
         help: "autoriza o sync a ligar/cortar o acesso na ferramenta; a lista carrega com a credencial LEVERADS_* na API — sem ela, use “Outro” e cole o id da org" },
-      { key: "arr", label: "Valor anual (ARR)", type: "money", help: "a lista mostra o MRR (ARR ÷ 12); com assinatura ativa é recalculado sozinho" },
+      // Pegadinha que já custou dado errado: cliente de assinatura recorrente é
+      // fechado "por mês" e alguém digita a MENSALIDADE aqui, deixando o ARR em
+      // 1/12 do real. A ficha do cliente tem o campo com unidade (mês/ano); aqui
+      // o rótulo e a ajuda dizem a regra na cara.
+      { key: "arr", label: "Valor anual (ARR)", type: "money", help: "é o valor do ANO: mensalidade × 12 (R$ 699/mês = R$ 8.388). A lista mostra o MRR (ARR ÷ 12); com assinatura ativa é recalculado sozinho" },
       { key: "startedAt", label: "Cliente desde", type: "date", help: "base da linha do tempo de marcos" },
       { key: "endedAt", label: "Churn (saída)", type: "date", help: "prefira o botão \"registrar churn\" na ficha do cliente (grava o motivo e cancela as assinaturas); aqui só ajusta a data — vazio = ativo" },
       { key: "csm", label: "CSM", type: "select", options: peopleOptions, blankLabel: "—" },
