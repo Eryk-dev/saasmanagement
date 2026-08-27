@@ -412,6 +412,12 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Usuário com telas restritas (user.screens) recebe o payload FILTRADO:
   // esconder o menu no SPA sem cortar os dados aqui não seria restrição —
   // faturamento/clientes não podem chegar no navegador de quem não vê as telas.
+  // Campos de IDENTIFICAÇÃO do cliente (nada financeiro): é o que vai pros
+  // seletores de quem não tem a tela Clientes. Ver CUSTOMERS no bootstrap.
+  const CUSTOMER_PICK_KEYS = ["id", "saas", "name", "company", "email", "phone"];
+  const pickCustomer = (c) =>
+    Object.fromEntries(CUSTOMER_PICK_KEYS.filter((k) => c?.[k] !== undefined).map((k) => [k, c[k]]));
+
   app.get("/api/bootstrap", async (req) => {
     const can = (screen) => canScreen(req.authUser, screen);
     const [products, customers, attention, leads, nps, lbMonth, lbAll, goals, portfolio, people, agendaBlocks, consultations] =
@@ -440,7 +446,13 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       PORTFOLIO: can("overview") ? portfolio : null,
       ATTENTION: can("overview") ? attention : [],
       PEOPLE: people,
-      CUSTOMERS: can("customers") ? customers : [],
+      // Cliente pra ESCOLHER (cobrança, contrato, consulta, formulário de
+      // integração) ≠ cliente pra ANALISAR. Quem não tem a tela Clientes recebe
+      // só o suficiente pra achar a pessoa; ARR, MRR, saúde, churn e plano de
+      // pagamento continuam fora. Sem isto o modal de cobrança abria com a aba
+      // "Cliente" VAZIA e não dava pra gerar o link (foi o que travou o
+      // Jonathan em 27/08/2026 — e o Vitor, do outro lado, em 24/08).
+      CUSTOMERS: can("customers") ? customers : customers.map(pickCustomer),
       LEADS: can("pipeline") || can("today") || can("analise") ? leads : [], // Meu dia e Análise do pipeline = views dos mesmos leads
       AGENDA_BLOCKS: agendaBlocks, // bloqueios de horário por pessoa (tela Agenda) — alimentam a "agenda ocupada" ao marcar call/integração
       // Consulta da mentoria ocupa a agenda de quem atende: sem isso dava pra

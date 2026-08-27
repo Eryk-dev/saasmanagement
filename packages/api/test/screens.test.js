@@ -169,7 +169,11 @@ test("bootstrap filtrado: restrito recebe leads mas NÃO clientes/portfólio/fin
   const token = await loginToken(app, "sdr", "1234");
   const seed = (await app.inject({ url: "/api/bootstrap", headers: { "x-api-key": token } })).json();
   assert.equal(seed.LEADS.length, 1);
-  assert.deepEqual(seed.CUSTOMERS, []);
+  // Cliente vem, mas SÓ pra escolher (cobrança, contrato, consulta): nome e
+  // contato, nunca ARR/MRR/saúde. Ver test/cobranca-todo-mundo.test.js.
+  assert.equal(seed.CUSTOMERS.length, 1);
+  assert.equal(seed.CUSTOMERS[0].name, "Cliente");
+  assert.equal(seed.CUSTOMERS[0].arr, undefined, "receita do cliente não chega em quem não tem a tela Clientes");
   assert.equal(seed.PORTFOLIO, null);
   assert.deepEqual(seed.GOALS, []);
   const p = seed.SAAS.find((s) => s.id === "leverads");
@@ -254,6 +258,9 @@ test("piso do papel não vaza dado sensível: remuneração segue exigindo admin
   assert.equal((await app.inject({ url: "/api/comp_plans", headers: H })).statusCode, 403);
 });
 
+// (`offers` saiu deste teste de propósito: desde 27/08/2026 os Links de
+// pagamento valem pra toda sessão — UNIVERSAL_SCREENS. O que se garante aqui
+// continua sendo que o PISO de um papel não vaza pros outros.)
 test("papel sem piso definido (sdr) não ganha nada de graça", async (t) => {
   const repo = makeMemRepo();
   await ensureDefaultAdmins(repo);
@@ -265,5 +272,6 @@ test("papel sem piso definido (sdr) não ganha nada de graça", async (t) => {
   const app = buildApp(repo);
   t.after(() => app.close());
   const H = { "x-api-key": await loginToken(app, "manu", "1234") };
-  assert.equal((await app.inject({ url: "/api/offers?saas=leverads", headers: H })).statusCode, 403);
+  assert.equal((await app.inject({ url: "/api/proposals", headers: H })).statusCode, 403);
+  assert.equal((await app.inject({ url: "/api/contracts", headers: H })).statusCode, 403);
 });

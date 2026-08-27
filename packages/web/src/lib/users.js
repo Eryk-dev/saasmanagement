@@ -178,7 +178,16 @@ export function roleScreens(user = currentUser()) {
   return out;
 }
 
+// Telas que TODA sessão alcança (espelho do UNIVERSAL_SCREENS do servidor).
+// Links de pagamento virou ferramenta de todo mundo em 27/08/2026: gerar
+// cobrança tinha travado duas pessoas por falta de caixinha marcada, e não é
+// dado sensível (a base de clientes, essa sim, continua na tela Clientes).
+const UNIVERSAL_SCREENS = new Set(["offers"]);
+
+export const isUniversalScreen = (id) => UNIVERSAL_SCREENS.has(id);
+
 export function canSeeScreen(id) {
+  if (UNIVERSAL_SCREENS.has(id)) return true;
   const a = allowedScreens();
   if (!a) return true;
   return a.has(id) || roleScreens().has(id);
