@@ -211,6 +211,31 @@ try {
     failed++;
   }
 
+  // Valor do contrato com unidade (ficha do cliente): o banco guarda o ANUAL,
+  // mas quem vende assinatura recorrente digita a MENSALIDADE. A unidade tem que
+  // abrir certa por tipo de contrato, e os dois números têm que aparecer na tela
+  // — foi digitar 699/mês num campo "Valor/ano" que deixou um cliente com ARR
+  // 12x menor que o real (27/08/2026).
+  try {
+    const { ValorContrato } = await server.ssrLoadModule("/src/screens/customers.jsx");
+    const render = (customer) => renderToString(wrap(React.createElement(ValorContrato, { customer, onPatch() {}, inputSt: {} })));
+
+    const recorrente = render({ arr: 8388, paymentMethod: "cartao_recorrente", plan: "Anual" });
+    if (!recorrente.includes('value="699"')) throw new Error("recorrente devia abrir com a MENSALIDADE no campo");
+    if (!recorrente.includes("699/mês") || !recorrente.includes("8.388/ano")) throw new Error("faltou mostrar os dois valores");
+
+    const anual = render({ arr: 7188, paymentMethod: "pix", plan: "Anual" });
+    if (!anual.includes('value="7188"')) throw new Error("contrato à vista devia abrir com o valor do ANO no campo");
+    if (!anual.includes("599/mês")) throw new Error("faltou o equivalente mensal");
+
+    const vazio = render({ arr: 0, plan: "" });
+    if (!vazio.includes("sem valor registrado")) throw new Error("cliente sem valor devia dizer isso");
+    console.log("✓ valor-contrato-mes-ano");
+  } catch (err) {
+    console.error(`✗ valor-contrato-mes-ano: ${err.message}`);
+    failed++;
+  }
+
   // Filtro de período: as datas são a régua de TODA a Visão geral, então a conta
   // vale um teste de verdade e não só um render. Data fixa (quarta, 22/07/2026).
   try {
