@@ -70,7 +70,7 @@ with p as (select public.dashboard_portfolio($1::uuid[]) as j),
                    then (org->>'since_leverads')::numeric / (org->>'post_days')::int * 30 end as ritmo,
               case when (org->>'first_sale') is not null and (org->>'joined_at') is not null
                    then (org->>'first_sale')::date - (org->>'joined_at')::date end as dias
-       from o)
+       from o),
      -- RITMO dos últimos 30 dias: é o número que o card mostra. Numa operação
      -- nova o acumulado esconde a velocidade — nos 30 dias anteriores a estes
      -- foram R$ 164 mil, e nestes 30, R$ 798 mil. Sem filtro de plataforma, pra
