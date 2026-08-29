@@ -48,9 +48,10 @@ const parseDay = (v) => {
 };
 const fmtDay = (d) => (d ? d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "2-digit" }).replace(".", "") : "");
 
-// Quantas linhas a fila de "Próximas ações" mostra fechada: com retenção E
-// cobrança na mesma lista, 2 escondia vencimento atrás do "ver mais".
-const ACOES_FECHADAS = 4;
+// Quantas linhas a fila de "Próximas ações" mostra fechada: com o faturado e a
+// recorrente inteiros na lista (não só os vencidos), 2 escondia quase tudo
+// atrás do "ver mais".
+const ACOES_FECHADAS = 6;
 
 // Botão das linhas de "Próximas ações" (concluir marco, cobrar, dar baixa).
 const ACAO_BTN = { height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", flexShrink: 0, display: "inline-flex", alignItems: "center", textDecoration: "none", whiteSpace: "nowrap" };
@@ -323,11 +324,26 @@ function CustomersScreen({ initialTab }) {
   const ACTION_ORDER = { late: 0, soon: 1, next: 2 };
   // COBRANÇA (Leo, 29/08): boleto faturado e assinatura recorrente recebem ao
   // longo do contrato, então cada vencimento é um toque de cobrança — e sem
-  // isso o vencimento só aparecia se alguém abrisse a ficha do cliente. A fila
-  // é a fatura EM ABERTO mais antiga de cada cliente (a próxima a cobrar; as
-  // outras 11 parcelas não viram 11 linhas), e só entra quando já venceu ou
-  // vence em até 7 dias. Fatura à vista nasce paga, então não aparece aqui.
+  // isso o vencimento só aparecia se alguém abrisse a ficha do cliente.
+  //
+  // Uma linha por cliente, sempre a PRÓXIMA cobrança dele (as outras 11
+  // parcelas não viram 11 linhas):
+  //   1. a fatura EM ABERTO mais antiga; e, quando não há nenhuma,
+  //   2. a RENOVAÇÃO da assinatura (periodEnd) — é o que a coluna Vencimento
+  //      mostra e o que o motor de billing vai faturar. É por aqui que a
+  //      assinatura recorrente no cartão aparece: a fatura dela só nasce
+  //      quando o ciclo vira.
+  //
+  // Quem RECEBE AO LONGO do contrato aparece SEMPRE, mesmo a vencer (o Leo quer
+  // saber quando vem a próxima e se ela caiu): faturado, PIX parcelado,
+  // assinatura recorrente e qualquer contrato de ciclo MENSAL (um PIX mensal
+  // também é cobrança todo mês, mesmo o meio sendo "à vista"). O contrato anual
+  // ou semestral pago de uma vez só entra quando venceu ou vence em até 7 dias:
+  // a renovação dele não é rotina de cobrança, e a fatura do fechamento já
+  // nasce paga.
   const COBRANCA_SOON_DAYS = 7;
+  const pagamentoDe = (c) => c.paymentMethod || leadById.get(c.leadId)?.paymentMethod || "";
+  const recebeAoLongo = (c) => !paymentUpfront(pagamentoDe(c)) || mainSub(c)?.cycle === "monthly";
   // O que é essa cobrança, na língua do time: a parcela do faturado já vem com
   // título pronto ("Parcela 2/12 · boleto faturado"); a mensalidade da
   // assinatura e a renovação do contrato ganham o rótulo do meio de pagamento.
@@ -336,9 +352,16 @@ function CustomersScreen({ initialTab }) {
     if (i.title) return minuscula(i.title); // parcela do cronograma e cobrança avulsa já vêm nomeadas
     if (i.kind === "installment") return `parcela ${i.installmentN || 1}/${i.installmentOf || 1}`;
     if (i.kind === "upsell") return "upsell";
-    const pm = c.paymentMethod || leadById.get(c.leadId)?.paymentMethod || "";
+    const pm = pagamentoDe(c);
     if (paymentRecurring(pm)) return "mensalidade da assinatura recorrente";
     return pm ? `renovação · ${paymentLabel(pm).toLowerCase()}` : "renovação do contrato";
+  };
+  // Linha que ainda NÃO tem fatura: a próxima virada do ciclo. O texto diz que
+  // a cobrança está por vir, pra não parecer que tem boleto esperando baixa.
+  const proximaDesc = (c) => {
+    const pm = pagamentoDe(c);
+    if (paymentRecurring(pm)) return "próxima mensalidade · assinatura recorrente";
+    return pm ? `próxima cobrança · ${paymentLabel(pm).toLowerCase()}` : "próxima cobrança do contrato";
   };
   const cobrancas = useMemo(() => {
     const now = Date.now();
@@ -352,13 +375,21 @@ function CustomersScreen({ initialTab }) {
       const atual = porCliente.get(c.id);
       if (!atual || due < atual.due) porCliente.set(c.id, { customer: c, invoice: i, due });
     }
+    for (const c of customers) {
+      if (isChurned(c) || isMentoria(c) || porCliente.has(c.id)) continue;
+      const sub = mainSub(c);
+      if (!sub || !(sub.status === "active" || sub.status === "past_due")) continue;
+      const due = parseDay(sub.periodEnd);
+      if (!due) continue;
+      porCliente.set(c.id, { customer: c, sub, due });
+    }
     return [...porCliente.values()]
       .map((x) => {
         const dias = (x.due.getTime() - now) / 86400000;
         return { ...x, kind: "cobranca", dueAt: x.due.toISOString(), status: dias <= 0 ? "late" : dias <= COBRANCA_SOON_DAYS ? "soon" : "next" };
       })
-      .filter((x) => x.status !== "next");
-  }, [invoices, customers, tick, version]);
+      .filter((x) => x.status !== "next" || recebeAoLongo(x.customer));
+  }, [invoices, customers, subs, tick, version]);
   // Dinheiro parado: TODAS as faturas vencidas (a fila mostra só a próxima de
   // cada cliente, mas o que está preso é a soma de todas).
   const vencido = useMemo(() => {
@@ -488,7 +519,7 @@ function CustomersScreen({ initialTab }) {
               </Card>
             )}
 
-            <Card title="Próximas ações" hint="vencimentos a cobrar, vencidos primeiro">
+            <Card title="Próximas ações" hint="faturado e assinatura recorrente · vencidos primeiro">
               <div style={{ padding: "12px 0 8px" }}>
                 {vencido.n > 0 && (
                   <div style={{ padding: "0 24px 10px", fontSize: 12, color: "var(--fg-3)" }}
@@ -499,7 +530,7 @@ function CustomersScreen({ initialTab }) {
                 )}
                 {nextActions.length === 0 && (
                   <div style={{ padding: "8px 24px 16px", fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
-                    Nenhum vencimento a cobrar agora (nem vencido, nem nos próximos 7 dias).
+                    Nenhuma cobrança na fila: ninguém com fatura em aberto nem com ciclo pra virar.
                   </div>
                 )}
                 {(showAllActions ? nextActions : nextActions.slice(0, ACOES_FECHADAS)).map((a, i, shown) => {
@@ -513,25 +544,33 @@ function CustomersScreen({ initialTab }) {
                   // O vencimento do faturado/recorrente vira toque de cobrança,
                   // com o WhatsApp do cliente do lado e a baixa aqui mesmo (não
                   // precisa abrir a ficha pra confirmar que o dinheiro entrou).
+                  // Sem fatura ainda (ciclo por virar) não há o que baixar: a
+                  // linha é o radar do que vem, e o botão só aparece quando a
+                  // fatura existe.
                   const wa = waLink(c.phone || leadById.get(c.leadId)?.phone);
-                  const baixando = payingId === a.invoice.id;
+                  const inv = a.invoice || null;
+                  const baixando = inv && payingId === inv.id;
                   return (
-                    <div key={`cob_${a.invoice.id}`} onClick={() => setSel(c.id)} style={linha} onMouseEnter={enter} onMouseLeave={leave}>
+                    <div key={inv ? `cob_${inv.id}` : `sub_${c.id}`} onClick={() => setSel(c.id)} style={linha} onMouseEnter={enter} onMouseLeave={leave}>
                       <span style={dot} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={nome}>{c.name}</div>
                         <div style={{ fontSize: 12, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          Cobrar {money(a.invoice.amount)} · {cobrancaDesc(a.invoice, c)}
+                          {inv
+                            ? `Cobrar ${money(inv.amount)} · ${cobrancaDesc(inv, c)}`
+                            : `${money(a.sub.price)} · ${proximaDesc(c)}`}
                         </div>
                       </div>
                       <Pill tone={tone}>{a.status === "late" ? "venceu " : "vence "}{dueLabel(a.dueAt)}</Pill>
                       {wa && (
                         <a href={wa} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} title="abrir a conversa pra cobrar" style={ACAO_BTN}>WhatsApp</a>
                       )}
-                      <button onClick={(e) => { e.stopPropagation(); payFromQueue(a.invoice); }} disabled={baixando}
-                        title="marcar como recebida (a mesma baixa da ficha do cliente)" style={ACAO_BTN}>
-                        {baixando ? "…" : "dar baixa"}
-                      </button>
+                      {inv && (
+                        <button onClick={(e) => { e.stopPropagation(); payFromQueue(inv); }} disabled={baixando}
+                          title="marcar como recebida (a mesma baixa da ficha do cliente)" style={ACAO_BTN}>
+                          {baixando ? "…" : "dar baixa"}
+                        </button>
+                      )}
                     </div>
                   );
                 })}
