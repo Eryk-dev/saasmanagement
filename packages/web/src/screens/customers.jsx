@@ -385,7 +385,10 @@ function CustomersScreen({ initialTab }) {
 
             {!isKidsWorkspace && (
               <Card title="Clientes por nível" hint="categoria (A/B/C…) da carteira ativa, pela grade do lead">
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "10px 22px", padding: "6px 24px 20px", alignItems: "center" }}>
+                {/* Contagem da carteira e, ao lado, a matriz que DEFINE o nível
+                    (contas × anúncios): o resultado e a régua no mesmo bloco. */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 24, padding: "6px 24px 20px", alignItems: "flex-start" }}>
+                <div style={{ flex: "1 1 300px", minWidth: 0, display: "flex", flexWrap: "wrap", gap: "10px 22px", alignItems: "center" }}>
                   {["S", "A", "B", "C", "D", "E"].filter((g) => gradeDist.counts[g] > 0).map((g) => {
                     const s = GRADE_STYLE[g];
                     return (
@@ -405,6 +408,8 @@ function CustomersScreen({ initialTab }) {
                   {Object.keys(gradeDist.counts).length === 0 && gradeDist.sem === 0 && (
                     <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>sem clientes ativos ainda</span>
                   )}
+                </div>
+                <NivelLegend />
                 </div>
               </Card>
             )}
@@ -642,8 +647,6 @@ function CustomersScreen({ initialTab }) {
                 {filteredCustomers.length > 50 && <button onClick={() => setShowAll((v) => !v)} style={{ fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>{showAll ? "Mostrar 50" : "Ver todos"}</button>}
               </div>
             </Card>
-            {/* Legenda: como o nível A/B/C sai (contas × anúncios). Só LeverAds. */}
-            {!isKidsWorkspace && <NivelLegend />}
             </div>
           </div>
         )}
@@ -693,14 +696,15 @@ function useFormName(saas, formId) {
 // pagamento e responsáveis). O lápis liga a edição INLINE dos campos do
 // cadastro do cliente (nome, contato, e-mail, WhatsApp, plano, pagamento,
 // valor e cliente desde), sem trocar de janela; o que vem do lead é leitura.
-// Legenda da classificação de nível (ao lado da tabela): a MESMA matriz que
-// define a grade (GRADE_GRID de lib/ui.js) — contas de marketplace × anúncios
-// na maior conta. Mais de cada = nível mais alto (S topo, E base).
+// Legenda da classificação de nível (dentro do card "Clientes por nível"): a
+// MESMA matriz que define a grade (GRADE_GRID de lib/ui.js) — contas de
+// marketplace × anúncios na maior conta. Mais de cada = nível mais alto
+// (S topo, E base).
 function NivelLegend() {
   return (
-    <div style={{ ...BOX, flex: "0 1 250px", minWidth: 220 }}>
-      <div className="kicker" style={{ marginBottom: 8 }}>Como o nível é definido</div>
-      <div style={{ fontSize: 11.5, color: "var(--fg-3)", lineHeight: 1.45, marginBottom: 12 }}>
+    <div style={{ flex: "0 1 320px", minWidth: 260, border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-inset)", padding: "10px 12px" }}>
+      <div className="kicker" style={{ marginBottom: 6 }}>Como o nível é definido</div>
+      <div style={{ fontSize: 11.5, color: "var(--fg-3)", lineHeight: 1.45, marginBottom: 10 }}>
         Cruzamento de <b style={{ color: "var(--fg-2)" }}>contas de marketplace</b> (linha) × <b style={{ color: "var(--fg-2)" }}>anúncios na maior conta</b> (coluna). Quanto mais de cada, mais alto o nível (S no topo, E na base).
       </div>
       <div className="mono" style={{ fontSize: 8.5, color: "var(--fg-4)", textAlign: "center", marginBottom: 3, paddingLeft: 30 }}>anúncios →</div>
