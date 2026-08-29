@@ -165,16 +165,24 @@ function CustomersScreen({ initialTab }) {
   const totalContratado = activeCustomers.reduce((a, c) => a + (c.arr || 0), 0);
   const money = window.fmt.money;
 
-  // Colunas Pagamento e Total fechado da tabela: meio de pagamento (do cliente ou
-  // do lead que fechou) e o VALOR FECHADO do contrato (lead.amount lançado no
-  // fechamento, fallback no arr do cliente). Fechado, não pago — mostra o valor
-  // mesmo quando a fatura ainda está aberta (boleto/pix à vista não baixado).
+  // Coluna Pagamento (o meio com que fechou) e a base do contrato: `fechadoOf` é
+  // o VALOR FECHADO (lead.amount do fechamento, fallback no arr do cliente) —
+  // é ele que o Status pgto. usa como denominador e o card de conta grande
+  // mostra. O que a tabela EXIBE na coluna do dinheiro é o `trazidoOf` (mais
+  // abaixo): o que o cliente de fato trouxe.
   const leadById = React.useMemo(() => new Map((LEADS || []).map((l) => [l.id, l])), [LEADS]);
   // Assinatura recorrente (plano mensal) ACUMULA: cada 30 dias desde o
   // fechamento soma outra mensalidade no total — churn (endedAt) para o
   // relógio. É a mesma régua do status de pagamento, então a 2ª mensalidade
   // não paga aparece como Parcial sozinha.
   const fechadoOf = (c) => accruedAmountOf(leadById.get(c.leadId), { endAt: c.endedAt }) || Number(c.arr) || 0;
+
+  // Meio de pagamento do cliente (cadastro manda, o lead é o fallback) e a
+  // régua do DINHEIRO: quem recebe ao longo do contrato (boleto faturado, PIX
+  // parcelado, assinatura recorrente) contra quem recebeu tudo no fechamento
+  // (à vista, cartão 12x, que a adquirente antecipa).
+  const pagamentoDe = (c) => c.paymentMethod || leadById.get(c.leadId)?.paymentMethod || "";
+  const recebeParcelado = (c) => !paymentUpfront(pagamentoDe(c));
 
   // Dinheiro REAL recebido por cliente ({ id: total }): MP aprovado casado com
   // o cliente/lead + baixas de fatura de verdade (o endpoint exclui a fatura
@@ -215,6 +223,18 @@ function CustomersScreen({ initialTab }) {
     }
     return by;
   }, [mpPays]);
+
+  // Quanto esse cliente TROUXE de verdade (coluna "Total recebido", Leo 29/08).
+  // À vista e cartão 12x: o contrato inteiro, porque o dinheiro entrou no
+  // fechamento (a adquirente antecipa). Faturado, parcelado e recorrente: só o
+  // que ENTROU — parcela baixada e pagamento do MP casado com o cliente —, em
+  // vez do contrato cheio de um ano que ainda vai ser cobrado mês a mês. É a
+  // mesma régua da receita reconhecida do placar e da meta.
+  //
+  // O `received` de propósito NÃO conta a fatura que nasce paga no fechamento:
+  // no faturado ela nem existe (o recebimento é o cronograma) e na recorrente
+  // ela é só o carimbo do contrato, não uma cobrança que rodou.
+  const trazidoOf = (c) => (recebeParcelado(c) ? Number(received[c.id]) || 0 : fechadoOf(c));
 
   // Estado do pagamento (coluna Status pgto.): a marcação MANUAL no cliente
   // manda (paymentStatus — muita venda entra por PIX/cartão fora do rastreio do
@@ -294,7 +314,7 @@ function CustomersScreen({ initialTab }) {
     plano: (c) => String(isMentoria(c) ? consultPackageLabel(journeyOf(c).total) : contractPlan(c)).toLowerCase() || null,
     mrr: (c) => (c.arr || 0),
     pagamento: (c) => { const pm = c.paymentMethod || leadById.get(c.leadId)?.paymentMethod; return pm ? paymentLabel(pm).toLowerCase() : null; },
-    fechado: (c) => fechadoOf(c) || null,
+    recebido: (c) => trazidoOf(c) || null,
     pgto: (c) => payStatus(c).rank,
     mp: (c) => mpByCustomer.get(c.id)?.total ?? null,
     entrada: (c) => entradaDate(c)?.getTime() ?? null,
@@ -372,8 +392,9 @@ function CustomersScreen({ initialTab }) {
   // a renovação dele não é rotina de cobrança, e a fatura do fechamento já
   // nasce paga.
   const COBRANCA_SOON_DAYS = 7;
-  const pagamentoDe = (c) => c.paymentMethod || leadById.get(c.leadId)?.paymentMethod || "";
-  const recebeAoLongo = (c) => !paymentUpfront(pagamentoDe(c)) || mainSub(c)?.cycle === "monthly";
+  // Mais larga que a régua do DINHEIRO (recebeParcelado): pra COBRAR, um PIX de
+  // ciclo mensal também vence todo mês, mesmo o meio sendo "à vista".
+  const recebeAoLongo = (c) => recebeParcelado(c) || mainSub(c)?.cycle === "monthly";
   // O que é essa cobrança, na língua do time: a parcela do faturado já vem com
   // título pronto ("Parcela 2/12 · boleto faturado"); a mensalidade da
   // assinatura e a renovação do contrato ganham o rótulo do meio de pagamento.
@@ -632,11 +653,11 @@ function CustomersScreen({ initialTab }) {
                   <tr>
                     {(isKidsWorkspace
                       ? [["Cliente", "cliente"], ["Pacote", "plano"], ["Valor", "mrr"], ["Entrada", "entrada"], ["Tempo de casa", "casa"], ["Último contato", "contato"], ["Próxima consulta", null], ["Consultas", null]]
-                      : [["Cliente", "cliente"], ["Nível", "nivel"], ["Plano", "plano"], ["MRR", "mrr"], ["Pagamento", "pagamento"], ["Status pgto.", "pgto"], ["Mercado Pago", "mp"], ["Total fechado", "fechado"], ["Entrada", "entrada"], ["Tempo de casa", "casa"], ["Último contato", "contato"], ["Próximo marco", null], ["Assinatura", null], ["Vencimento", "venc"], ...(isLeverads ? [["Usuário LeverAds", "lever"]] : [])]
+                      : [["Cliente", "cliente"], ["Nível", "nivel"], ["Plano", "plano"], ["MRR", "mrr"], ["Pagamento", "pagamento"], ["Status pgto.", "pgto"], ["Mercado Pago", "mp"], ["Total recebido", "recebido"], ["Entrada", "entrada"], ["Tempo de casa", "casa"], ["Último contato", "contato"], ["Próximo marco", null], ["Assinatura", null], ["Vencimento", "venc"], ...(isLeverads ? [["Usuário LeverAds", "lever"]] : [])]
                     ).map(([h, k]) => (
                       <th key={h} className="kicker" title={k ? "ordenar" : undefined}
                         onClick={k ? () => setSort((s) => (s?.key === k ? { key: k, dir: -s.dir } : { key: k, dir: 1 })) : undefined}
-                        style={{ textAlign: (h === "MRR" || h === "Valor" || h === "Total fechado") ? "right" : "left", fontWeight: 600, color: sort?.key === k ? "var(--fg-2)" : "var(--fg-4)", padding: "12px 20px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", cursor: k ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>
+                        style={{ textAlign: (h === "MRR" || h === "Valor" || h === "Total recebido") ? "right" : "left", fontWeight: 600, color: sort?.key === k ? "var(--fg-2)" : "var(--fg-4)", padding: "12px 20px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", cursor: k ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>
                         {h}{sort?.key === k ? (sort.dir === 1 ? " ↑" : " ↓") : ""}
                       </th>
                     ))}
@@ -733,15 +754,24 @@ function CustomersScreen({ initialTab }) {
                             </td>
                           );
                         })()}
+                        {/* Total recebido: o que esse cliente TROUXE. À vista conta o contrato
+                            (entrou no fechamento); faturado e recorrente contam só o que caiu, e
+                            o ↻ avisa que o número cresce a cada parcela baixada. */}
                         {!isKidsWorkspace && (() => {
-                          const fechado = fechadoOf(c);
+                          const acumula = recebeParcelado(c);
+                          const trazido = trazidoOf(c);
+                          const contrato = fechadoOf(c);
                           const lead = leadById.get(c.leadId);
                           const rec = isRecurringClose(lead);
+                          const dica = acumula
+                            ? `${money(trazido)} recebido de ${money(contrato)} ${rec ? "acumulados na assinatura" : "contratados"} · soma das parcelas baixadas e dos pagamentos do Mercado Pago, cresce a cada cobrança que entra`
+                            : rec ? `assinatura de ${money(Number(lead?.amount) || 0)}/mês · acumulado desde o fechamento (+1 mensalidade a cada 30 dias)`
+                            : "pagamento à vista: o contrato inteiro entrou no fechamento";
                           return (
-                            <td className="tnum" title={rec ? `assinatura de ${money(Number(lead.amount) || 0)}/mês · acumulado desde o fechamento (+1 mensalidade a cada 30 dias)` : undefined}
-                              style={{ padding: "14px 20px", fontSize: 13, textAlign: "right", color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)", whiteSpace: "nowrap" }}>
-                              {fechado > 0 ? money(fechado) : <span style={{ color: "var(--fg-4)" }}>—</span>}
-                              {rec && fechado > 0 && <span style={{ fontSize: 11, color: "var(--fg-4)" }}> ↻</span>}
+                            <td className="tnum" title={dica}
+                              style={{ padding: "14px 20px", fontSize: 13, textAlign: "right", color: acumula && trazido <= 0 ? "var(--fg-4)" : "var(--fg-2)", borderBottom: "1px solid var(--line-faint)", whiteSpace: "nowrap" }}>
+                              {trazido > 0 ? money(trazido) : <span style={{ color: "var(--fg-4)" }}>{acumula ? "R$ 0" : "—"}</span>}
+                              {(acumula || rec) && <span style={{ fontSize: 11, color: "var(--fg-4)" }}> ↻</span>}
                             </td>
                           );
                         })()}
