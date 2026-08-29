@@ -113,7 +113,8 @@ export const isSaleLead = (l) => !l?.internal && (!l?.formExit || isMentoriaLead
 //   startByLead  customerStartMap (fallback de ganho legado)
 //   contactedIds Set de leadId com 1º contato humano NA JANELA (contactAttribution)
 //   authorOf     leadId → quem fez esse 1º contato (crédito por pessoa)
-export function mentoriaScore(product, leads, { inWin, startByLead, contactedIds, authorOf } = {}) {
+//   valueOf      régua do R$ da venda (saleValuer) — faturado conta só o recebido
+export function mentoriaScore(product, leads, { inWin, startByLead, contactedIds, authorOf, valueOf = FULL_VALUE } = {}) {
   const fila = (leads || []).filter((l) => l.saas === product?.id && isMentoriaLead(l) && !l.internal);
   const winAt = winsIn(product, fila, inWin, startByLead);
   const open = fila.filter((l) => !TERMINAL_KINDS.has(kindOf(product, l.stage)) && !l.customerId);
@@ -138,7 +139,7 @@ export function mentoriaScore(product, leads, { inWin, startByLead, contactedIds
     if (winAt.has(l.id)) {
       const b = bucket(l.owner || "");
       b.won++;
-      b.revenue = round2(b.revenue + (Number(l.amount) || 0));
+      b.revenue = round2(b.revenue + (Number(valueOf(l)) || 0));
     }
   }
   const wonLeads = fila.filter((l) => winAt.has(l.id));
@@ -149,7 +150,8 @@ export function mentoriaScore(product, leads, { inWin, startByLead, contactedIds
     newIn: fila.filter((l) => inWin(l.createdAt)).length,
     contacted: fila.filter((l) => contactedIds?.has(l.id)).length,
     won: wonLeads.length,
-    revenue: tcvOf(wonLeads),
+    revenue: revenueOf(wonLeads, valueOf),
+    contracted: tcvOf(wonLeads), // o que foi vendido (contrato cheio), pro contexto
     unowned: open.filter((l) => !l.owner).length, // card sem dono = ninguém trabalha
     byUser: [...byUser.values()].filter((b) => b.user),
   };
@@ -194,12 +196,12 @@ export function leadClassOf(lead) {
 // Contagens por classe numa janela: leads que ENTRARAM (createdAt), ganhos e
 // receita (winAt = Map do winsIn — a régua oficial da venda). Soma das classes
 // = tile de leads/ganhos do período, pro funil por origem nunca divergir.
-export function classCounts(leads, inWin, winAt) {
+export function classCounts(leads, inWin, winAt, valueOf = FULL_VALUE) {
   const out = Object.fromEntries(LEAD_CLASSES.map((c) => [c, { leads: 0, won: 0, revenue: 0 }]));
   for (const l of leads) {
     const c = out[leadClassOf(l)];
     if (inWin(l.createdAt)) c.leads++;
-    if (winAt?.has(l.id)) { c.won++; c.revenue = round2(c.revenue + (Number(l.amount) || 0)); }
+    if (winAt?.has(l.id)) { c.won++; c.revenue = round2(c.revenue + (Number(valueOf(l)) || 0)); }
   }
   return out;
 }
@@ -222,8 +224,84 @@ export function winsIn(product, leads, inWin, customerStartByLead) {
 export const customerStartMap = (customers) =>
   new Map(customers.filter((c) => c.leadId && c.startedAt).map((c) => [c.leadId, c.startedAt]));
 
-// TCV de um conjunto de leads (valor lançado no fechamento).
+// TCV de um conjunto de leads (valor CONTRATADO, lançado no fechamento).
 export const tcvOf = (leads) => round2(leads.reduce((a, l) => a + (Number(l.amount) || 0), 0));
+
+// ── Contratado × RECONHECIDO: o R$ que a meta cobra (Leo, 29/08/2026) ───────
+// Venda faturada (boleto/PIX parcelado) ou assinatura recorrente no cartão NÃO
+// é dinheiro no dia do fechamento: é promessa. Contar o contrato cheio fazia
+// "12 mil em 12 boletos" valer o mesmo que 12 mil no PIX, e enchia a meta do
+// mês (e o placar do closer/SDR) de dinheiro que ainda não entrou.
+//
+// REGRA:
+//   · à vista / cartão 12x  → conta o contrato CHEIO no fechamento (a
+//     adquirente antecipa o dinheiro, então ele entrou de verdade);
+//   · faturado / parcelado / recorrente → conta só o que ENTROU na MESMA
+//     JANELA do fechamento (na prática, a 1ª parcela). As parcelas dos meses
+//     seguintes NÃO voltam a contar em meta nenhuma: a venda conta uma vez, no
+//     mês em que fechou, pelo que caiu ali. O caixa delas segue no Financeiro
+//     (bloco `cash`, faturas pagas), que é onde o dinheiro do mês mora.
+//
+// Meio de pagamento em branco (fechamento antigo) = à vista, o comportamento
+// de sempre — nenhum histórico muda de valor por causa desta régua.
+export const PAY_ON_RECEIPT = new Set(["boleto", "pix_parcelado", "cartao_recorrente"]);
+export const isPayOnReceipt = (method) => PAY_ON_RECEIPT.has(String(method || ""));
+
+// Dinheiro que ENTROU de verdade por cliente numa janela ({ id: R$ }). Régua
+// idêntica à do /api/billing/received (a coluna Status pgto. de Clientes):
+// pagamento aprovado no MP + fatura baixada, contando UMA vez quando a fatura
+// foi baixada por aquele pagamento, e SEM a fatura que nasce paga no
+// fechamento — fechar no cartão não é receber (caso Marianna, 13/08).
+export function cashReceivedByCustomer({ invoices = [], mpPayments = [], customers = [], inWin = () => true } = {}) {
+  const ids = new Set(customers.map((c) => c.id));
+  const byLead = new Map(customers.filter((c) => c.leadId).map((c) => [c.leadId, c.id]));
+  const cash = new Map();
+  const add = (cid, v) => { if (cid && ids.has(cid) && v > 0) cash.set(cid, round2((cash.get(cid) || 0) + v)); };
+  const countedMp = new Set();
+  for (const p of mpPayments) {
+    if (p.status !== "approved") continue;
+    const cid = (ids.has(p.customer) ? p.customer : "") || byLead.get(p.lead) || "";
+    if (!cid) continue;
+    // Marca ANTES da janela: a fatura baixada por este pagamento não pode
+    // entrar de novo por outra data (a data que vale é a da APROVAÇÃO).
+    countedMp.add(String(p.mpId));
+    if (!inWin(p.dateApproved || p.dateCreated)) continue;
+    add(cid, Number(p.amount) || 0);
+  }
+  for (const i of invoices) {
+    if (i.status !== "paid" || !i.paidAt || !inWin(i.paidAt)) continue;
+    if (i.mpPaymentId) {
+      if (!countedMp.has(String(i.mpPaymentId))) add(i.customer, Number(i.amount) || 0);
+      continue;
+    }
+    if (i.periodStart && i.paidAt === i.periodStart) continue; // nasceu paga no fechamento
+    add(i.customer, Number(i.amount) || 0);
+  }
+  return cash;
+}
+
+// Valor de UMA venda pela régua acima, pronto pra somar. Monte um valuer por
+// janela (o caixa é recortado pela MESMA janela do fechamento) e passe pro
+// revenueOf — assim placar, meta do mês e Análise nunca divergem.
+export const FULL_VALUE = (l) => Number(l?.amount) || 0;
+export function saleValuer({ invoices, mpPayments, customers, inWin } = {}) {
+  const cash = cashReceivedByCustomer({ invoices, mpPayments, customers, inWin });
+  const methodOf = new Map((customers || []).map((c) => [c.id, c.paymentMethod || ""]));
+  return (lead) => {
+    const full = Number(lead?.amount) || 0;
+    // O meio do LEAD é o do fechamento; o do cliente é o fallback (ficha
+    // editada depois, fechamento antigo sem o campo).
+    const method = lead?.paymentMethod || methodOf.get(lead?.customerId) || "";
+    if (!isPayOnReceipt(method)) return full;
+    // Teto no contrato: um pagamento a mais (upsell no mesmo mês) não pode
+    // fazer a venda valer mais do que foi vendido.
+    return round2(Math.min(full, cash.get(lead?.customerId) || 0));
+  };
+}
+
+// Receita RECONHECIDA de um conjunto de leads (soma pelo valuer da janela).
+export const revenueOf = (leads, valueOf = FULL_VALUE) =>
+  round2(leads.reduce((a, l) => a + (Number(valueOf(l)) || 0), 0));
 
 // ── A safra de calls ─────────────────────────────────────────────────────────
 // Avançou pra frente da call (a call ACONTECEU): proposta/negociação/fechou.
@@ -427,11 +505,30 @@ export function funnelCounts(product, { leads, actsOf, inWin, winLeadsIn, adjust
 export const mrrOf = (customers) =>
   round2(customers.reduce((a, c) => a + (Number(c.arr) || 0), 0) / 12);
 
+// Fatura que representa dinheiro que ENTROU de verdade. A fatura inicial nasce
+// PAGA no fechamento (paidAt = periodStart) e isso é verdade no à vista/cartão
+// 12x — o fechamento É o recebimento. Em faturado/parcelado/recorrente ela é só
+// o carimbo do contrato (a 1ª cobrança do MP ainda vai rodar), então contá-la
+// inflava o "Recebido no mês" com dinheiro que não entrou. `methodOf` devolve o
+// meio de pagamento do cliente; sem ele, o comportamento é o de sempre.
+export function isRealReceipt(inv, methodOf) {
+  if (!inv || inv.status !== "paid" || !inv.paidAt) return false;
+  if (inv.mpPaymentId) return true; // baixada por pagamento real do Mercado Pago
+  if (!methodOf || !inv.periodStart || inv.paidAt !== inv.periodStart) return true;
+  return !isPayOnReceipt(methodOf(inv.customer));
+}
+
 // Caixa do mês: faturas PAGAS com paidAt dentro do mês (chave "YYYY-MM").
-export const cashCollectedIn = (invoices, month) =>
+export const cashCollectedIn = (invoices, month, methodOf) =>
   round2(invoices
-    .filter((i) => i.status === "paid" && i.paidAt && monthKey(i.paidAt) === month)
+    .filter((i) => isRealReceipt(i, methodOf) && monthKey(i.paidAt) === month)
     .reduce((a, i) => a + (Number(i.amount) || 0), 0));
+
+// Meio de pagamento por cliente ({ id: método }), pro isRealReceipt acima.
+export const paymentMethodOf = (customers) => {
+  const by = new Map((customers || []).map((c) => [c.id, c.paymentMethod || ""]));
+  return (id) => by.get(id) || "";
+};
 
 // Caixa numa janela em 3 BALDES (livro: novos negócios · add-ons · renovações).
 // Mesma régua da faixa de meta (fatura paga, por paidAt), só que repartida:
@@ -440,9 +537,10 @@ export const cashCollectedIn = (invoices, month) =>
 // renovacao = cashCollectedIn da mesma janela, por construção.
 export function cashBucketsIn(invoices, customers, inWin) {
   const startBy = new Map(customers.map((c) => [c.id, c.startedAt || ""]));
+  const methodOf = paymentMethodOf(customers);
   const out = { novos: 0, upsell: 0, renovacao: 0 };
   for (const i of invoices) {
-    if (i.status !== "paid" || !i.paidAt || !inWin(i.paidAt)) continue;
+    if (!isRealReceipt(i, methodOf) || !inWin(i.paidAt)) continue;
     const amt = Number(i.amount) || 0;
     if (i.kind === "upsell") out.upsell += amt;
     else if (inWin(startBy.get(i.customer))) out.novos += amt;

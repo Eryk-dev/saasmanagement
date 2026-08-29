@@ -195,11 +195,17 @@ export async function createClosedSubscription(repo, { customerId, saas, planClo
       installments: spec.schedule, startAt: startAt || periodStart, method: paymentMethod,
     }, now);
   } else {
+    // A 1ª fatura nasce PAGA quando o fechamento É o recebimento (à vista,
+    // cartão 12x: a adquirente antecipa). Em assinatura recorrente no cartão
+    // ela nasce ABERTA (Leo, 29/08/2026): autorizar a assinatura não é receber
+    // — a 1ª cobrança só cai quando o Mercado Pago rodar, e contar antes
+    // inflava o "Recebido no mês" do Financeiro com dinheiro que não entrou.
+    const naVista = !MONTHLY_PAYMENT.has(String(paymentMethod || ""));
     await repo.create("invoices", {
       subscription: sub.id, customer: customerId, saas: saas || "",
-      amount: price, kind: "renewal", status: "paid",
+      amount: price, kind: "renewal", status: naVista ? "paid" : "open",
       dueDate: periodStart, periodStart, periodEnd,
-      paidAt: periodStart, createdAt: now.toISOString(),
+      ...(naVista ? { paidAt: periodStart } : {}), createdAt: now.toISOString(),
     });
   }
   await syncCustomerArr(repo, customerId);

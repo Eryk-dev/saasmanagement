@@ -16,6 +16,7 @@ import {
   callOutcome as coreCallOutcome, callCohortIn,
   winsIn, customerStartMap, contactAttribution, firstResponseAttribution, isReferralLead,
   classCounts, cashBucketsIn, mentoriaScore, keyAccountIds, isKeyAccountLead,
+  saleValuer, revenueOf, tcvOf,
 } from "./metrics-core.js";
 import { isMentoriaLead } from "./mentoria.js";
 import { isChurnedCustomer } from "./churn.js";
@@ -49,7 +50,7 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     const hasPrev = /^\d{4}-\d{2}-\d{2}$/.test(prevSince) && /^\d{4}-\d{2}-\d{2}$/.test(prevUntil);
     const inPrev = (iso) => iso && dayKey(iso) >= prevSince && dayKey(iso) <= prevUntil;
 
-    const [allLeads, allActs, allCustomers, proposals, subs, users, goalsAll, npsAll, waMessages, invoicesAll, compPlansAll] = await Promise.all([
+    const [allLeads, allActs, allCustomers, proposals, subs, users, goalsAll, npsAll, waMessages, invoicesAll, compPlansAll, mpPaymentsAll] = await Promise.all([
       repo.list("leads"),
       repo.list("activities"),
       repo.list("customers"),
@@ -61,6 +62,7 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       repo.list("wa_messages").catch(() => []),
       repo.list("invoices").catch(() => []),
       repo.list("comp_plans").catch(() => []), // plano de remuneração (metas por nível)
+      repo.list("mp_payments").catch(() => []), // espelho do MP (metade da régua do recebido)
     ]);
     // Lead interno (teste) fora de tudo — régua oficial do metrics-core.
     const leads = allLeads.filter((l) => l.saas === product.id && isRealLead(l));
@@ -76,6 +78,14 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     // Conta grande (Galante, CRGroup): o dinheiro dela conta, a MÉDIA não.
     const keyIds = keyAccountIds(customers);
     const isKey = (l) => isKeyAccountLead(keyIds, l);
+    // R$ da venda pela régua do metrics-core (Leo, 29/08): à vista conta cheio,
+    // faturado/recorrente conta só o que ENTROU na janela. Um valuer só pro
+    // placar inteiro — SDR, closer, time, mentoria e classes somam pela mesma
+    // conta, então os blocos da tela nunca divergem entre si.
+    const valueOf = saleValuer({
+      invoices: invoicesAll.filter((i) => i.saas === product.id),
+      mpPayments: mpPaymentsAll, customers, inWin,
+    });
 
     const actsByLead = new Map();
     for (const a of allActs) {
@@ -287,7 +297,7 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     });
     const mentoria = mentoriaScore(product, mentoriaLeads, {
       inWin, startByLead: customerStartByLead,
-      contactedIds: mentoriaContact.leadIds, authorOf: mentoriaContact.authorOf,
+      contactedIds: mentoriaContact.leadIds, authorOf: mentoriaContact.authorOf, valueOf,
     });
     const mentoriaOf = (uid) => mentoria.byUser.find((b) => b.user === uid)
       || { queue: 0, contacted: 0, won: 0, revenue: 0 };
@@ -358,8 +368,12 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       const wonMineLeads = wonMineAll.filter((l) => !isKey(l));
       const keyMineLeads = wonMineAll.filter(isKey);
       const wonMine = wonMineLeads.length;
-      const revenueMine = round2(wonMineLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0));
-      const keyRevenueMine = round2(keyMineLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0));
+      // Receita RECONHECIDA (faturado/recorrente entra só pelo recebido) — é
+      // ela que a meta cobra. O contratado segue ao lado, pro card mostrar
+      // "vendeu 12 mil, entrou 1 mil" em vez de sumir com a diferença.
+      const revenueMine = revenueOf(wonMineLeads, valueOf);
+      const contractedMine = tcvOf(wonMineLeads);
+      const keyRevenueMine = revenueOf(keyMineLeads, valueOf);
       // Taxa de agendamento em COORTE (régua #650): das leads DA JANELA cujo 1º
       // contato foi dele, quantas viraram call. Workload (lead antigo tocado
       // pela nutrição) segue no COUNT, mas não afunda mais a taxa.
@@ -384,6 +398,7 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
         contactRate,
         targets: personTargets(uid, "sdr", { contactRate, bookingRate, showRate, contacts: contacted, callsBooked, won: wonMine, revenue: revenueMine }),
         won: wonMine, revenue: revenueMine, // as duas pernas do plano (oportunidades DELE)
+        contracted: contractedMine,         // o mesmo em CONTRATO cheio (faturado inteiro)
         keyWon: keyMineLeads.length, keyRevenue: keyRevenueMine, // conta grande fora do placar
         mentoriaQueue: men.queue, mentoriaContacted: men.contacted,
         mentoriaWon: men.won, mentoriaRevenue: men.revenue,
@@ -464,7 +479,12 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       const keyWonLeads = wonAll.filter(isKey);
       const wonLeads = wonAll.filter((l) => !isKey(l));
       const wonN = wonLeads.length;
-      const revenue = wonLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0);
+      // Receita RECONHECIDA da janela (régua do metrics-core): faturado e
+      // assinatura recorrente entram só pelo que ENTROU. Ticket e R$/call saem
+      // dela também, senão o card não fecha (won × ticket ≠ receita); o
+      // contrato cheio fica em `contracted`, ao lado.
+      const revenue = revenueOf(wonLeads, valueOf);
+      const contracted = tcvOf(wonLeads);
       const wonPlatformN = wonLeads.filter((l) => isRealLead(l)).length;
       const coreWon = wonLeads;
       const coreRevenue = revenue;
@@ -493,13 +513,13 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
           won: wonN, revenue: round2(revenue), ticket: coreWon.length > 0 ? round2(coreRevenue / coreWon.length) : null,
         }),
         calls, callsShown,
-        won: wonN, revenue: round2(revenue), lost: lost.length,
+        won: wonN, revenue: round2(revenue), contracted, lost: lost.length,
         conversaoCall: conversao,
         winRateCall: calls > 0 ? round2((wonPlatformN / calls) * 100) : null,
         revenuePerCall: calls > 0 ? round2(coreRevenue / calls) : null,
         ticket: coreWon.length > 0 ? round2(coreRevenue / coreWon.length) : null,
         keyWon: keyWonLeads.length,                                    // contas grandes que ELE fechou na janela
-        keyRevenue: round2(keyWonLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0)),
+        keyRevenue: revenueOf(keyWonLeads, valueOf),
         cycleDays: median(cycle),
         lossReasons,
         followupNow: fuNow.length,           // leads dele em follow-up agora
@@ -670,11 +690,14 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       closeRate: shownN > 0 ? round2((wonFromCallsN / shownN) * 100) : null, // safra (informativo)
       closeRatePeriod: shownN > 0 ? round2((teamWonPlatform.length / shownN) * 100) : null,
       won: wonN,             // ganhos do período (por transição) = soma dos closers, sem conta grande
-      revenue: round2(teamWonLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0)),
+      // Receita do time = a mesma régua dos cards (recebido no faturado), pra
+      // meta da empresa e placar individual nunca contarem coisas diferentes.
+      revenue: revenueOf(teamWonLeads, valueOf),
+      contracted: tcvOf(teamWonLeads), // contrato cheio do período (contexto)
       // O que a conta grande tirou do resultado (rodapé da tela, nunca some).
       keyAccount: teamKeyLeads.length ? {
         won: teamKeyLeads.length,
-        revenue: round2(teamKeyLeads.reduce((a, l) => a + (Number(l.amount) || 0), 0)),
+        revenue: revenueOf(teamKeyLeads, valueOf),
         names: [...new Set(teamKeyLeads.map((l) => customers.find((c) => c.id === l.customerId)?.name).filter(Boolean))],
       } : null,
       // Lead → ganho: ganhos no período ÷ leads que entraram no período. Os dois
@@ -697,7 +720,7 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     // 1. Leads por CLASSE (Semente/Rede/Alvo): classes nunca entram na mesma
     //    projeção (ciclo e taxa próprios). Soma das classes = leads que entraram
     //    e ganhos do período (a MESMA winTransitionsFor do resto do placar).
-    team.classes = classCounts(leads, inWin, winTransitionsFor(leads));
+    team.classes = classCounts(leads, inWin, winTransitionsFor(leads), valueOf);
     // 2. Caixa do período em 3 baldes (novos · upsell · renovação) — mesma
     //    régua de fatura paga da faixa de meta, só que repartida.
     team.cash = cashBucketsIn(invoicesAll.filter((i) => i.saas === product.id), customers, inWin);

@@ -76,9 +76,13 @@ test("ganho oficial: scoreboard, pace, custos %, marketing e funil contam os MES
   assert.equal(sb.team.won, 2);
   assert.equal(sb.team.revenue, 8000);
   assert.equal(pace.context.wonMonth, sb.team.won);
-  assert.equal(pace.context.tcvMonth, sb.team.revenue);
-  assert.equal(costs.wonBase, pace.context.tcvMonth);          // base do custo % = mesmos fechados
+  // Contratado × reconhecido (régua de 29/08): aqui tudo é à vista (nenhum lead
+  // tem paymentMethod faturado), então os dois números coincidem — o que amarra
+  // é CADA tela ler o seu lado do MESMO fechado, sem reimplementar régua.
+  assert.equal(pace.context.tcvMonth, sb.team.contracted);
+  assert.equal(costs.wonBase, pace.context.tcvMonth);          // base do custo % = contratado
   assert.equal(pace.sale.sold, sb.team.revenue);               // a META persegue o mesmo vendido
+  assert.equal(pace.sale.contracted, sb.team.contracted);
   assert.equal(costs.manual[0].amount, 800);                    // 10% de 8.000
   assert.equal(mkt.totals.won, 2);
   assert.equal(mkt.totals.revenue, 8000);

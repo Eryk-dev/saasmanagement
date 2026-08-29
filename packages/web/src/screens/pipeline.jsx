@@ -1221,7 +1221,7 @@ function goalMath(data, s, leads) {
   const target = chaseTarget != null ? chaseTarget : baseTarget;
   const superMode = chaseTarget != null && chaseTarget > baseTarget;
   const chasePct = data.sale.chasePct || null;
-  const closed = Number(data.context.tcvMonth) || 0;
+  const closed = Number(data.sale.sold) || 0; // vendido RECONHECIDO (faturado só pelo recebido) — o mesmo da meta
   const gap = data.sale.chaseGap != null ? Number(data.sale.chaseGap) : Math.max(0, target - closed);
   const ticket = data.context.averageEntry;
   const need = (n, r) => n === 0 ? 0 : n != null && r > 0 ? Math.ceil(n / r) : null;
@@ -1286,27 +1286,35 @@ function PaceChart({ data, s, leads }) {
   const [year, month] = data.month.split("-").map(Number);
   const totalDays = new Date(year, month, 0).getDate();
   const currentDay = data.today.startsWith(data.month) ? Number(data.today.slice(8, 10)) : totalDays;
-  const byDay = Array.from({ length: currentDay }, () => 0);
-  for (const lead of leads) {
-    if (!isWonLead(s, lead) || !String(wonAtOf(lead)).startsWith(data.month)) continue;
-    // Dia da VENDA (wonAt), não do card: stageSince muda quando o card anda.
-    const day = Number(String(wonAtOf(lead)).slice(8, 10));
-    if (day >= 1 && day <= currentDay) byDay[day - 1] += Number(lead.amount) || 0;
-  }
+  // Série do SERVIDOR (sale.byDay): o vendido RECONHECIDO dia a dia — faturado
+  // e recorrente entram só pelo que caiu, a mesma régua da faixa de meta. Sem
+  // ela (API antiga), cai no cálculo local por lead.amount.
+  const byDay = Array.isArray(data.sale?.byDay) && data.sale.byDay.length
+    ? data.sale.byDay.slice(0, currentDay)
+    : (() => {
+      const local = Array.from({ length: currentDay }, () => 0);
+      for (const lead of leads) {
+        if (!isWonLead(s, lead) || !String(wonAtOf(lead)).startsWith(data.month)) continue;
+        // Dia da VENDA (wonAt), não do card: stageSince muda quando o card anda.
+        const day = Number(String(wonAtOf(lead)).slice(8, 10));
+        if (day >= 1 && day <= currentDay) local[day - 1] += Number(lead.amount) || 0;
+      }
+      return local;
+    })();
   const cumulative = [];
-  byDay.reduce((sum, amount, index) => (cumulative[index] = sum + amount), 0);
-  if (cumulative.length && cumulative[cumulative.length - 1] === 0 && data.context.tcvMonth > 0) cumulative[cumulative.length - 1] = data.context.tcvMonth;
+  byDay.reduce((sum, amount, index) => (cumulative[index] = sum + (Number(amount) || 0)), 0);
+  if (cumulative.length && cumulative[cumulative.length - 1] === 0 && data.sale.sold > 0) cumulative[cumulative.length - 1] = data.sale.sold;
   // A linha da meta segue a META ATUAL: batida a base, sobe pra super meta que
   // o pace persegue, então o gráfico não fica com a meta atrás do vendido.
   const superChase = data.sale.chaseTarget != null && data.sale.chaseTarget > (Number(data.sale.target) || 0);
   const target = Number(data.sale.chaseTarget || data.sale.target) || 0;
   const targetLabel = superChase ? `super meta ${data.sale.chasePct}% ${window.fmt.money(target)}` : `meta ${window.fmt.money(target)}`;
-  const max = Math.max(1, target, data.context.tcvMonth || 0);
+  const max = Math.max(1, target, data.sale.sold || 0);
   const H = 190, padL = 64, padR = 16, yTop = 22, yZero = 152;
   const x = (day) => padL + ((day - 1) / Math.max(1, totalDays - 1)) * (w - padL - padR);
   const y = (value) => yZero - (value / max) * (yZero - yTop);
   const points = cumulative.map((value, index) => `${x(index + 1).toFixed(1)},${y(value).toFixed(1)}`).join(" ");
-  const lastValue = cumulative[cumulative.length - 1] || data.context.tcvMonth || 0;
+  const lastValue = cumulative[cumulative.length - 1] || data.sale.sold || 0;
   const lastX = x(Math.max(1, currentDay));
   const lastY = y(lastValue);
   const monthLabel = new Date(year, month - 1, 1).toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
@@ -1341,7 +1349,7 @@ function AnalysisPaceSummary({ data, s, leads }) {
   const buckets = analysisBuckets(s, leads, data.conversions);
   const forecast = buckets.reduce((sum, bucket) => sum + bucket.weighted, 0);
   const g = goalMath(data, s, leads);
-  const closed = Number(data.context.tcvMonth) || 0;
+  const closed = Number(data.sale.sold) || 0; // vendido RECONHECIDO (faturado só pelo recebido) — o mesmo da meta
   const pace = data.sale.elapsedBusinessDays > 0 ? (closed / data.sale.elapsedBusinessDays) * data.sale.totalBusinessDays : 0;
   // Tudo comparado com a META ATUAL (super meta quando a base já caiu).
   const target = g.target;
@@ -1362,7 +1370,7 @@ function AnalysisPaceSummary({ data, s, leads }) {
         <StatTile label={`Leads novos pra ${alvo}`} value={g.gap === 0 ? "0" : wholeFmt(g.newLeads)} delta={leadsDelta} tone={g.gap === 0 || g.newLeads === 0 ? "pos" : "flat"} />
         <StatTile label="Forecast ponderado" value={window.fmt.money(forecast)} delta="pipeline aberto × probabilidade real (30d)" />
       </div>
-      <Card title={`Pace de venda · ${monthLabel}`} hint="vendido (contrato cheio) vs. meta, dia a dia">
+      <Card title={`Pace de venda · ${monthLabel}`} hint="vendido reconhecido (faturado só pelo recebido) vs. meta, dia a dia">
         <div style={{ padding: "8px 16px 12px" }}><PaceChart data={data} s={s} leads={leads} /></div>
       </Card>
     </>
