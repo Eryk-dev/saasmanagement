@@ -63,6 +63,28 @@ test("fechamento faturado 4x: parcelas abertas com vencimento mensal, sem fatura
   assert.equal((await repo.get("customers", "c1")).arr, 10000, "faturado anual: arr = valor do contrato, igual à vista");
 });
 
+test("assinatura recorrente no cartão: a 1ª fatura nasce ABERTA (autorizar não é receber)", async () => {
+  const repo = makeMemRepo();
+  await repo.create("customers", { id: "c1", name: "Cliente", saas: "leverads", arr: 0 });
+  await createClosedSubscription(repo, {
+    customerId: "c1", saas: "leverads", planClosed: "mensal", amount: 997,
+    paymentMethod: "cartao_recorrente", startAt: "2026-08-13T12:00:00.000Z",
+  }, new Date("2026-08-13T12:00:00.000Z"));
+  const [inv] = await repo.list("invoices");
+  assert.equal(inv.kind, "renewal");
+  assert.equal(inv.status, "open", "a cobrança do MP ainda não rodou — não pode entrar no Recebido do mês");
+  assert.equal(inv.paidAt, undefined);
+  // À vista segue nascendo paga: o fechamento É o recebimento.
+  await repo.create("customers", { id: "c2", name: "À vista", saas: "leverads", arr: 0 });
+  await createClosedSubscription(repo, {
+    customerId: "c2", saas: "leverads", planClosed: "anual", amount: 12000,
+    paymentMethod: "cartao12x", startAt: "2026-08-13T12:00:00.000Z",
+  }, new Date("2026-08-13T12:00:00.000Z"));
+  const vista = (await repo.list("invoices")).find((i) => i.customer === "c2");
+  assert.equal(vista.status, "paid");
+  assert.equal(vista.paidAt, "2026-08-13T12:00:00.000Z");
+});
+
 test("runBilling não fatura por mês no cronograma; parcela vencida derruba pra past_due e a baixa recupera", async () => {
   const repo = makeMemRepo();
   await repo.create("customers", { id: "c1", name: "Cliente", saas: "leverads", arr: 0 });

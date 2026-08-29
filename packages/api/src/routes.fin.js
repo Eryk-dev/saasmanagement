@@ -17,7 +17,7 @@
 //     entram no fluxo/DRE por competência; IA e WhatsApp (APIs externas) ficam
 //     fora deste endpoint de propósito — a UI soma pelo /api/expenses/summary.
 
-import { monthKey, dayKey, isSaleLead, winsIn, tcvOf, customerStartMap, cashCollectedIn, card12xBaseIn } from "./metrics-core.js";
+import { monthKey, dayKey, isSaleLead, winsIn, tcvOf, customerStartMap, cashCollectedIn, card12xBaseIn, paymentMethodOf } from "./metrics-core.js";
 import { settleTarget, settleInvoice } from "./mp-payments.js";
 
 const round2 = (n) => Math.round(n * 100) / 100;
@@ -88,7 +88,7 @@ export async function ensurePayables(repo, saas, month) {
 // (chamadas externas) ficam de fora — a UI soma pelo summary quando precisa.
 // Cada linha ecoa `pctBase` pro DRE setorizar: imposto (received) é dedução da
 // receita; checkout (cartao12x) é taxa de pagamento (COGS).
-function expensesOfMonth({ product, expenses, insights, invoices, leads, starts, mp }, month) {
+function expensesOfMonth({ product, expenses, insights, invoices, leads, starts, mp, methodOf }, month) {
   const applies = (e) => e.recurring
     ? String(e.month) <= month && (!e.endMonth || String(e.endMonth) >= month)
     : e.month === month;
@@ -106,7 +106,7 @@ function expensesOfMonth({ product, expenses, insights, invoices, leads, starts,
   // Base do checkout: dinheiro de cartão que ENTROU no mês (espelho MP, D+0)
   // — card12xBaseIn é a MESMA régua do /api/expenses/summary.
   if (needed.has("cartao12x")) bases.cartao12x = card12xBaseIn(mp, month);
-  if (needed.has("received")) bases.received = cashCollectedIn(invoices, month);
+  if (needed.has("received")) bases.received = cashCollectedIn(invoices, month, methodOf);
   const rows = mine.map((e) => (Number(e.pct) > 0
     ? { category: e.category || "outros", pctBase: pctBaseOf(e), amount: round2((Number(e.pct) / 100) * bases[pctBaseOf(e)]) }
     : { category: e.category || "outros", pctBase: "", amount: Number(e.amount) || 0 }));
@@ -198,6 +198,9 @@ export function registerFinRoutes(app, repo, { mp } = {}) {
       // venda normal (Leo, 16/08).
       leads: allLeads.filter((l) => l.saas === product.id && isSaleLead(l)),
       starts: customerStartMap(customers),
+      // Meio de pagamento por cliente: a fatura que nasce paga no fechamento só
+      // é RECEBIDO no à vista/cartão 12x (metrics-core.isRealReceipt).
+      methodOf: paymentMethodOf(customers),
     };
 
     // ── Regras aprendidas nas pendências: o mesmo pagador não pergunta 2x. ───
@@ -240,7 +243,7 @@ export function registerFinRoutes(app, repo, { mp } = {}) {
     const custosByMonth = Object.fromEntries(window.map((m) => [m, expensesOfMonth(ctx, m)]));
     const fluxo = window.map((m) => ({
       month: m,
-      entrada: round2(cashCollectedIn(invoices, m)),
+      entrada: round2(cashCollectedIn(invoices, m, ctx.methodOf)),
       saida: round2(paidInMonth(m).reduce((a, p) => a + (Number(p.amount) || 0), 0) + custosByMonth[m].total),
     }));
 
@@ -254,7 +257,7 @@ export function registerFinRoutes(app, repo, { mp } = {}) {
     const openInv = invoices.filter((i) => i.status === "open" || i.status === "overdue");
     const invVencidas = openInv.filter((i) => i.dueDate && dayKey(i.dueDate) < today);
     const somaInv = (list) => round2(list.reduce((a, i) => a + (Number(i.amount) || 0), 0));
-    const recebidosMes = round2(cashCollectedIn(invoices, month));
+    const recebidosMes = round2(cashCollectedIn(invoices, month, ctx.methodOf));
 
     // ── Conciliação: o que sobrou sem regra vira pendência COM SUGESTÃO ──────
     const pendentes = espelho.filter((p) => p.status === "approved" && !p.customer && !p.finIgnored);

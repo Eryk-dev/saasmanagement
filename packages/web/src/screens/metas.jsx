@@ -194,7 +194,7 @@ function MetasScreen() {
     return {
       sold: s.sold || 0, alvo, progress: (s.sold || 0) / alvo, expected: s.expectedProgress,
       lvl: levelOf(s.sold, alvo, s.expectedProgress),
-      title: `Receita nova contratada no mês (contrato cheio). Hoje: ${money(s.soldToday)} · ritmo ${money(s.actualDailyPace)}/dia útil`
+      title: `Receita reconhecida no mês (à vista conta cheio; faturado e recorrente, só o recebido). Hoje: ${money(s.soldToday)} · ritmo ${money(s.actualDailyPace)}/dia útil`
         + (s.requiredDailyPace != null ? ` · precisa ${money(s.requiredDailyPace)}/dia` : "")
         + ` · ${int(s.remainingBusinessDays)} dias úteis restantes · projeção do mês ${money(s.projected)}.`,
     };
@@ -377,7 +377,7 @@ function MetasScreen() {
             <Card title="Meta do mês"
               hint={<>
                 {mesAtualInfo ? mesLabel(mesAtualInfo.month) : "mês corrente"} · digitar move a régua na hora, salvar é o que grava
-                {infoDot("A faixa Meta do mês da Visão geral e a Análise de Pace perseguem esse número pelo VENDIDO (contrato cheio; cartão em 12x conta inteiro) e desdobram o que falta em ganhos, calls, contatos e leads por dia. Na virada do mês, o valor do mês novo assume sozinho: o agendado, se houver, senão a regra de crescimento. O caixa e o dinheiro futuro ficam na aba Clientes.")}
+                {infoDot("A faixa Meta do mês da Visão geral e a Análise de Pace perseguem esse número pelo VENDIDO RECONHECIDO (à vista e cartão em 12x contam inteiro, porque a adquirente antecipa; boleto faturado, PIX parcelado e assinatura recorrente contam só o que ENTROU no mês) e desdobram o que falta em ganhos, calls, contatos e leads por dia. Na virada do mês, o valor do mês novo assume sozinho: o agendado, se houver, senão a regra de crescimento. O caixa e o dinheiro futuro ficam na aba Clientes.")}
               </>}>
               <div className="resp-cols" style={{ "--cols": "1fr 1fr", gap: "18px 36px", padding: "16px var(--inset-x) 20px" }}>
                 <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 14 }}>

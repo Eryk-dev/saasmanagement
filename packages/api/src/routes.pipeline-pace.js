@@ -6,6 +6,7 @@ import { TOUCH_TYPES } from "./stages.js";
 import {
   DAY_MS as DAY, round2, dayKey, isRealLead, isSaleLead, keyAccountIds, isKeyAccountLead,
   bookedLeadsIn, callOutcome, callCohortIn, winsIn, customerStartMap, tcvOf, contactAttribution,
+  saleValuer, revenueOf, isRealReceipt, paymentMethodOf,
 } from "./metrics-core.js";
 
 // Meta de caixa quando o produto ainda não tem a dele (product.monthlyCashTarget,
@@ -155,7 +156,7 @@ function planMetric(remaining, days, today) {
 }
 
 export async function computePipelinePace(repo, product, now = new Date()) {
-  const [allInvoices, allLeads, allActivities, allCustomers, allProposals, allGoals, allInsights, waMessages, users] = await Promise.all([
+  const [allInvoices, allLeads, allActivities, allCustomers, allProposals, allGoals, allInsights, waMessages, users, mpPayments] = await Promise.all([
     repo.list("invoices"),
     repo.list("leads"),
     repo.list("activities"),
@@ -165,6 +166,7 @@ export async function computePipelinePace(repo, product, now = new Date()) {
     repo.list("ad_insights"),
     repo.list("wa_messages").catch(() => []),
     repo.list("users").catch(() => []),
+    repo.list("mp_payments").catch(() => []), // espelho do MP (metade da régua do recebido)
   ]);
   const today = dayKey(now);
   const month = today.slice(0, 7);
@@ -207,7 +209,11 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   const winSaleLeadsIn = (test) => [...winsIn(product, saleLeads, test, customerStartByLead).keys()]
     .map((id) => saleById.get(id)).filter(Boolean);
 
-  const paid = invoices.filter((i) => i.status === "paid" && i.paidAt);
+  // Caixa: só fatura que representa dinheiro que ENTROU. A que nasce paga no
+  // fechamento de faturado/recorrente é carimbo de contrato, não recebimento
+  // (isRealReceipt do metrics-core) — mesma régua do Financeiro.
+  const methodOf = paymentMethodOf(customers);
+  const paid = invoices.filter((i) => isRealReceipt(i, methodOf));
   const paidMonth = paid.filter((i) => inMonth(i.paidAt));
   const collected = round2(paidMonth.reduce((a, i) => a + (Number(i.amount) || 0), 0));
   const collectedToday = round2(paidMonth
@@ -467,8 +473,25 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   const tcvMonthLeads = tcvMonthLeadsAll.filter(notKey);
   const keyMonthLeads = tcvMonthLeadsAll.filter(isKeyLead);
   const tcvMonth = tcvOf(tcvMonthLeads);
-  const sold = tcvMonth;
-  const soldToday = tcvOf(todayWinLeads);
+  // VENDIDO = receita RECONHECIDA (Leo, 29/08/2026): à vista e cartão 12x
+  // contam o contrato cheio, faturado/parcelado/recorrente contam só o que
+  // ENTROU na janela. `tcvMonth` segue sendo o CONTRATADO (contexto e base do
+  // custo % de "ganhos"); a meta persegue o vendido reconhecido, que é o mesmo
+  // número do placar do time (metrics-consistency amarra os dois).
+  const valueOfMonth = saleValuer({ invoices, mpPayments, customers, inWin: inMonth });
+  const valueOfToday = saleValuer({ invoices, mpPayments, customers, inWin: (iso) => dayKey(iso) === today });
+  const sold = revenueOf(tcvMonthLeads, valueOfMonth);
+  const soldToday = revenueOf(todayWinLeads, valueOfToday);
+  // Vendido reconhecido POR DIA do mês (soma = `sold`): o gráfico de pace do
+  // pipeline desenha esta série em vez de somar lead.amount por conta própria —
+  // senão a curva subiria pelo contrato cheio e passaria a meta que a faixa
+  // mostra, com os dois números na mesma tela.
+  const winMonthAt = winsIn(product, saleLeads, inMonth, customerStartByLead);
+  const soldByDay = Array.from({ length: Number(calendar.lastDay) }, () => 0);
+  for (const l of tcvMonthLeads) {
+    const day = Number(dayKey(winMonthAt.get(l.id)).slice(8, 10));
+    if (day >= 1 && day <= soldByDay.length) soldByDay[day - 1] += valueOfMonth(l);
+  }
   const saleGap = round2(Math.max(0, target - sold));
   const saleDelta = round2(sold - expectedToDate);
   const salePace = calendar.elapsed > 0 ? round2(sold / calendar.elapsed) : 0;
@@ -524,6 +547,11 @@ export async function computePipelinePace(repo, product, now = new Date()) {
       targetConfigured, // false = rodando no padrão; a UI aponta pra Metas → Empresa
       sold,
       soldToday,
+      // Contrato CHEIO fechado no mês (sem conta grande). `contracted - sold` é
+      // o faturado/recorrente que ainda não caiu: a faixa mostra a diferença em
+      // vez de a venda parecer menor sem explicação.
+      contracted: tcvMonth,
+      byDay: soldByDay.map(round2), // vendido reconhecido dia a dia (soma = sold)
       gap: saleGap,
       // Super metas + o teto que o pace persegue agora (base → 125% → 150% →
       // 200%). chaseTarget null = passou de 200%, não há mais o que perseguir.
@@ -562,7 +590,7 @@ export async function computePipelinePace(repo, product, now = new Date()) {
       };
     })(),
     // O que a conta grande tirou do resultado (e quanto o mês daria com ela).
-    keyAccount: keyAccountNote(keyMonthLeads, customers, sold, tcvMonthLeads.length),
+    keyAccount: keyAccountNote(keyMonthLeads, customers, sold, tcvMonthLeads.length, valueOfMonth),
     // Leitura de CAIXA (faturas pagas) — informativa; o fluxo detalhado e o
     // dinheiro futuro moram na aba Clientes.
     cash: {
@@ -661,9 +689,13 @@ export async function computeWindowGoal(repo, product, since, until, now = new D
   }
   targetRevenue = round2(targetRevenue);
 
-  // Vendido na janela: régua oficial da venda (isWonLead + wonAt, contrato
-  // cheio) sobre a base do DINHEIRO — a mentoria entra normal (Leo, 16/08).
-  const [allLeads, allCustomers] = await Promise.all([repo.list("leads"), repo.list("customers")]);
+  // Vendido na janela: régua oficial da venda (isWonLead + wonAt) sobre a base
+  // do DINHEIRO — a mentoria entra normal (Leo, 16/08) e o R$ é o RECONHECIDO
+  // (faturado/recorrente só pelo que entrou, Leo 29/08).
+  const [allLeads, allCustomers, allInvoices, mpPayments] = await Promise.all([
+    repo.list("leads"), repo.list("customers"),
+    repo.list("invoices"), repo.list("mp_payments").catch(() => []),
+  ]);
   const leads = allLeads.filter((l) => l.saas === product.id && isSaleLead(l));
   const customers = allCustomers.filter((c) => c.saas === product.id);
   const inWin = (iso) => { const d = dayKey(iso); return d && d >= since && d <= until; };
@@ -677,7 +709,12 @@ export async function computeWindowGoal(repo, product, since, until, now = new D
   const winLeadsAll = leads.filter((l) => winAt.has(l.id));
   const winLeads = winLeadsAll.filter((l) => !isKeyAccountLead(keyIds, l));
   const keyWinLeads = winLeadsAll.filter((l) => isKeyAccountLead(keyIds, l));
-  const sold = tcvOf(winLeads);
+  // MESMA régua do mês: faturado/recorrente conta só o que entrou NA JANELA.
+  const valueOf = saleValuer({
+    invoices: allInvoices.filter((i) => i.saas === product.id), mpPayments, customers, inWin,
+  });
+  const sold = revenueOf(winLeads, valueOf);
+  const contracted = tcvOf(winLeads);
   const soldN = winLeads.length;
 
   const ended = until < today;
@@ -696,6 +733,9 @@ export async function computeWindowGoal(repo, product, since, until, now = new D
     sale: {
       target: targetRevenue > 0 ? targetRevenue : null,
       sold,
+      // Contrato cheio da janela: `contracted - sold` é o faturado/recorrente
+      // que ainda não caiu (a UI explica a diferença em vez de escondê-la).
+      contracted,
       progress: targetRevenue > 0 ? round4(sold / targetRevenue) : null,
       expectedProgress: expectedFrac,
       status: statusOf(sold, targetRevenue),
@@ -707,16 +747,16 @@ export async function computeWindowGoal(repo, product, since, until, now = new D
       expectedProgress: expectedFrac,
       status: statusOf(soldN, contractsTarget),
     },
-    keyAccount: keyAccountNote(keyWinLeads, customers, sold, soldN),
+    keyAccount: keyAccountNote(keyWinLeads, customers, sold, soldN, valueOf),
   };
 }
 
 // Rodapé da conta grande: o que ficou de FORA do resultado e quanto o período
 // daria com ela. Sem isso a exclusão vira número sumido sem explicação.
-function keyAccountNote(keyLeads, customers, sold, soldN) {
+function keyAccountNote(keyLeads, customers, sold, soldN, valueOf) {
   if (!keyLeads.length) return null;
   const nameOfCustomer = (id) => customers.find((c) => c.id === id)?.name || "";
-  const revenue = tcvOf(keyLeads);
+  const revenue = revenueOf(keyLeads, valueOf);
   return {
     count: keyLeads.length,
     revenue,

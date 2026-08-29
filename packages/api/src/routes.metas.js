@@ -51,7 +51,7 @@ export const META_CATALOG = [
       // placar), então a tela não oferece campo de vaga — mostra a régua do
       // plano; só o ajuste por PESSOA ainda vence.
       { metric: "won", kind: "flow", label: "Contratos no mês", unit: "n", hint: "fechamentos das SUAS oportunidades", default: null, compPlan: true },
-      { metric: "revenue", kind: "flow", label: "Receita fechada", unit: "R$", hint: "R$ fechado das SUAS oportunidades", default: null, compPlan: true },
+      { metric: "revenue", kind: "flow", label: "Receita fechada", unit: "R$", hint: "R$ das SUAS oportunidades — faturado e recorrente contam só o recebido", default: null, compPlan: true },
       // Mentoria: a segunda fila do SDR (Leo, 16/08). Metas SEPARADAS das duas
       // pernas acima de propósito — o funil é outro (não tem call agendada nem
       // fechamento por call) e o plano de remuneração ainda não cobre a
@@ -77,7 +77,7 @@ export const META_CATALOG = [
       // dela — as duas juntas explicam os ganhos.
       { metric: "callsShown", kind: "flow", label: "Calls realizadas no mês", unit: "n", hint: "sem contar os no-show", default: null, team: true },
       { metric: "won", kind: "flow", label: "Ganhos no mês", unit: "n", default: null, team: true, compPlan: true },
-      { metric: "revenue", kind: "flow", label: "Receita no mês", unit: "R$", default: null, team: true, compPlan: true },
+      { metric: "revenue", kind: "flow", label: "Receita no mês", unit: "R$", hint: "à vista conta cheio; faturado e recorrente contam só o recebido", default: null, team: true, compPlan: true },
       { metric: "ticket", kind: "avg", label: "Ticket médio", unit: "R$", default: null },
     ],
   },

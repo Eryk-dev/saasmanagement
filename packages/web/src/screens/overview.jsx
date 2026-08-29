@@ -29,6 +29,7 @@ const { useState, useEffect, useMemo } = React;
 const DAY = 86_400_000;
 const money = (v) => window.fmt.money(v || 0);
 const int = (v) => window.fmt.int(v || 0);
+const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
 const pctStr = (n) => (n == null ? "—" : String(Math.round(n * 10) / 10).replace(".", ",") + "%");
 const compactMoney = (v) => {
   const n = Number(v) || 0;
@@ -175,11 +176,17 @@ function MetaMesCard({ pace, goal, onNav, links = true }) {
   // No mês CORRENTE o pace mensal completo enriquece o tooltip (ritmo, precisa
   // por dia, projeção); janela histórica fica com a explicação da fatia.
   const curMes = kind === "mês" && goal.current && pace?.sale;
-  const saleTitle = curMes
-    ? `Receita nova contratada no mês (contrato cheio). Hoje: ${money(pace.sale.soldToday)} · ritmo ${money(pace.sale.actualDailyPace)}/dia útil`
+  // Receita RECONHECIDA (Leo, 29/08): à vista e cartão 12x contam o contrato
+  // cheio; boleto faturado, PIX parcelado e assinatura recorrente entram só
+  // pelo que ENTROU na janela. `contracted` é o contrato cheio, pra diferença
+  // aparecer no rodapé em vez de a venda encolher sem explicação.
+  const naoRecebido = Math.max(0, r2((s.contracted || 0) - (s.sold || 0)));
+  const saleTitle = (curMes
+    ? `Receita reconhecida no mês. Hoje: ${money(pace.sale.soldToday)} · ritmo ${money(pace.sale.actualDailyPace)}/dia útil`
       + (pace.sale.requiredDailyPace != null ? ` · precisa ${money(pace.sale.requiredDailyPace)}/dia` : "")
       + ` · ${int(pace.sale.remainingBusinessDays)} dias úteis restantes · projeção do mês ${money(pace.sale.projected)}.`
-    : `Receita nova contratada em ${label} (contrato cheio) vs. a meta da época, repartida pelos ${int(goal.businessDays)} dias úteis da janela.`;
+    : `Receita reconhecida em ${label} vs. a meta da época, repartida pelos ${int(goal.businessDays)} dias úteis da janela.`)
+    + " À vista e cartão 12x contam o contrato cheio (a adquirente antecipa); boleto faturado, PIX parcelado e assinatura recorrente contam só o que entrou de verdade na janela.";
   const contractsTitle = "Meta de contratos da época (a digitada em Metas vence; senão venda ÷ ticket sem contas grandes), repartida pelos dias úteis da janela.";
   return (
     <Card title={title} hint={`${label} · segue o filtro do topo · a meta vive nos dias úteis`}
@@ -214,6 +221,13 @@ function MetaMesCard({ pace, goal, onNav, links = true }) {
               {links ? <button onClick={() => onNav && onNav("metas")} style={{ fontWeight: 600, color: "var(--accent)", marginLeft: 4 }}>digite a meta em Metas →</button> : " digite a meta em Metas."}
             </div>
           )}
+        </div>
+      )}
+      {naoRecebido > 0 && (
+        <div style={{ padding: "0 var(--inset-x) 14px", fontSize: 11.5, color: "var(--fg-3)", lineHeight: 1.5 }}
+          title="Boleto faturado, PIX parcelado e assinatura recorrente no cartão só contam na meta pelo que ENTROU na janela (a 1ª parcela, na prática). As parcelas dos meses seguintes seguem no Financeiro, no caixa do mês em que caírem.">
+          Contratado no período: <b className="tnum">{money(s.contracted)}</b> · faturado/recorrente que ainda não caiu:{" "}
+          <b className="tnum" style={{ color: "var(--warn)" }}>{money(naoRecebido)}</b>.
         </div>
       )}
       {ka && (
@@ -399,6 +413,14 @@ function PersonRow({ p, rank, bizDays, elapsedFrac, monthFrac, onPerson }) {
             {r.metaText != null && <span style={{ color: "var(--fg-4)" }}> / {r.metaText}</span>}
           </span>
         ))}
+        {/* Faturado/recorrente entra na meta só pelo que caiu (Leo, 29/08): o
+            contrato cheio aparece aqui pra ninguém achar que a venda sumiu. */}
+        {leg?.contracted > (leg?.revenue || 0) && (
+          <span className="tnum" style={{ whiteSpace: "nowrap", color: "var(--fg-4)" }}
+            title="Boleto faturado, PIX parcelado e assinatura recorrente no cartão contam na meta só pelo que ENTROU na janela (a 1ª parcela, na prática). O resto das parcelas segue no Financeiro, no caixa do mês em que cair.">
+            contratado <b style={{ fontWeight: 650 }}>R$ {compactMoney(leg.contracted)}</b> · não recebido R$ {compactMoney(leg.contracted - (leg.revenue || 0))}
+          </span>
+        )}
         {leg?.keyWon > 0 && (
           <span className="tnum" style={{ whiteSpace: "nowrap", color: "var(--fg-4)" }}
             title="Conta grande fica fora do placar desde 19/08 (um bespoke de R$ 120 mil não é a régua da operação). O dinheiro segue cheio no caixa e no Financeiro.">
