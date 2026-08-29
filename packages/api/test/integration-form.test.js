@@ -44,6 +44,7 @@ const FULL = {
   status_clone: "Sempre pausado (eu ativo depois)",
   erp: "Não uso",
   sync: "Não, cada conta com o estoque dela",
+  regra_mesmo_documento: true,
   regra_mae: true, regra_auto: true, regra_shopee: true, regra_edicao: true, regra_mudanca: true,
   observacoes: "nada",
   termo_aceite: true,
@@ -182,6 +183,15 @@ test("resposta escondida pela condicional não é guardada, e chave inventada so
   assert.equal(limpo.preco_regra, undefined);
   assert.equal(limpo.campo_inventado, undefined);
   assert.equal(limpo.empresa, "Loja do João LTDA");
+});
+
+// Regra do Mercado Livre (não da LeverAds): conta do mesmo CNPJ/CPF não pode ter
+// o mesmo anúncio. O formulário conscientiza e o cliente assume o risco; sem a
+// marcação, o envio não passa.
+test("ciência da regra de mesmo CNPJ/CPF é obrigatória", async () => {
+  const { regra_mesmo_documento, ...semCiencia } = FULL;
+  assert.ok(validateIntegrationAnswers(semCiencia).some((e) => e.key === "regra_mesmo_documento"));
+  assert.ok(validateIntegrationAnswers({ ...FULL, regra_mesmo_documento: false }).some((e) => e.key === "regra_mesmo_documento"));
 });
 
 test("opção fora da lista é recusada (a rota é pública)", async () => {

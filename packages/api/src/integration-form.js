@@ -25,7 +25,7 @@
 // a página esconde, o servidor não exige o que está escondido (nem aceita como
 // obrigatório o que não deveria aparecer).
 
-export const INTEGRATION_FORM_VERSION = 1;
+export const INTEGRATION_FORM_VERSION = 2;
 
 // Termo assinado no fim. Fica separado porque é a parte jurídica: o cliente
 // declara que o que escreveu é verdade e assume a responsabilidade pelo que a
@@ -35,6 +35,7 @@ export const TERM_TEXT = [
   "Estou ciente de que a LeverAds vai configurar a integração das minhas contas exatamente com base no que informei aqui, e que informação errada ou faltando pode gerar anúncio publicado na conta errada, preço errado, estoque errado ou item anunciado onde não podia.",
   "Assumo a responsabilidade por essas informações e me comprometo a avisar a LeverAds, por escrito, sempre que qualquer uma delas mudar (conta nova, mudança de preço, item que não pode mais ser anunciado).",
   "Autorizo a LeverAds a acessar as contas de marketplace que eu conectar, para executar a clonagem e a sincronização conforme as regras que informei acima.",
+  "Estou ciente de que o Mercado Livre não permite anúncios duplicados entre contas que pertencem ao mesmo CNPJ ou ao mesmo CPF, e que essa é uma regra do marketplace, não da LeverAds. Se eu optar por clonar entre contas do mesmo documento, faço isso por minha conta e risco, respondendo sozinho por qualquer punição aplicada pelo Mercado Livre (anúncio pausado ou excluído, restrição ou bloqueio da conta).",
 ];
 
 const sim_nao = (sim = "Sim", nao = "Não") => [sim, nao];
@@ -207,6 +208,11 @@ export const SECTIONS = [
     title: "Como a operação funciona daqui pra frente",
     intro: "Marque cada item. São as regras que fazem a clonagem se comportar do jeito que você espera.",
     questions: [
+      {
+        key: "regra_mesmo_documento", type: "ack",
+        label: "Estou ciente de que o Mercado Livre não permite o mesmo anúncio em contas do mesmo CNPJ ou do mesmo CPF, e que a punição (anúncio pausado ou excluído, restrição ou bloqueio da conta) é decisão do marketplace. Se eu mandar clonar entre contas do mesmo documento, assumo esse risco por minha conta, e a LeverAds fica isenta.",
+        help: "A regra vale para contas do mesmo titular. Clonagem entre contas de titulares diferentes (CNPJs ou CPFs distintos) não tem essa restrição.",
+      },
       {
         key: "regra_mae", type: "ack",
         label: "Produto novo eu publico na conta-mãe. É dela que a réplica sai para as outras contas; anúncio criado direto numa conta de destino nasce fora da clonagem e da sincronização.",
