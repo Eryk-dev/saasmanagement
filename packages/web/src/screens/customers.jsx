@@ -187,6 +187,35 @@ function CustomersScreen({ initialTab }) {
     return () => { alive = false; };
   }, [product?.id, version]);
 
+  // Pagamentos do MERCADO PAGO já vinculados a cada cliente (coluna própria,
+  // Leo 29/08): o Status pgto. resume "pagou ou não", mas some com a prova. Aqui
+  // fica o que o espelho do MP tem casado com aquele cliente — quanto entrou,
+  // como e quando. Pagamento sem dono não aparece (ele vive na Conciliação do
+  // Financeiro, esperando alguém vincular).
+  const [mpPays, setMpPays] = useState([]);
+  useEffect(() => {
+    if (!product?.id) { setMpPays([]); return; }
+    let alive = true;
+    api.mpPayments({ saas: product.id, status: "approved" })
+      .then((r) => alive && setMpPays(Array.isArray(r?.payments) ? r.payments : []))
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [product?.id, version]);
+  // { customerId: { total, n, last } } — o último é o de data mais recente.
+  const mpByCustomer = React.useMemo(() => {
+    const by = new Map();
+    for (const p of mpPays) {
+      if (!p.customer) continue;
+      const at = p.dateApproved || p.dateCreated || "";
+      const cur = by.get(p.customer) || { total: 0, n: 0, last: null };
+      cur.total = Math.round((cur.total + (Number(p.amount) || 0)) * 100) / 100;
+      cur.n += 1;
+      if (!cur.last || String(at) > String(cur.last.at)) cur.last = { at, ...p };
+      by.set(p.customer, cur);
+    }
+    return by;
+  }, [mpPays]);
+
   // Estado do pagamento (coluna Status pgto.): a marcação MANUAL no cliente
   // manda (paymentStatus — muita venda entra por PIX/cartão fora do rastreio do
   // MP, só o time sabe o que caiu na conta). Sem marcação, decide o FATO: o
@@ -267,6 +296,7 @@ function CustomersScreen({ initialTab }) {
     pagamento: (c) => { const pm = c.paymentMethod || leadById.get(c.leadId)?.paymentMethod; return pm ? paymentLabel(pm).toLowerCase() : null; },
     fechado: (c) => fechadoOf(c) || null,
     pgto: (c) => payStatus(c).rank,
+    mp: (c) => mpByCustomer.get(c.id)?.total ?? null,
     entrada: (c) => entradaDate(c)?.getTime() ?? null,
     casa: (c) => { const d = entradaDate(c); return d ? Math.floor((Date.now() - d.getTime()) / 86400000) : null; },
     contato: (c) => {
@@ -290,7 +320,7 @@ function CustomersScreen({ initialTab }) {
       if (vb == null) return -1;
       return sort.dir * (typeof va === "string" ? va.localeCompare(vb, "pt-BR") : va - vb);
     });
-  }, [customers, sort, subs, plans, received, LEADS, allConsultas, leverOrgs, tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [customers, sort, subs, plans, received, mpByCustomer, LEADS, allConsultas, leverOrgs, tick]); // eslint-disable-line react-hooks/exhaustive-deps
   // Filtro Todos/Ativos/Churn da tabela — só aparece quando existe churn na
   // base (sem churn a tela fica idêntica). Padrão "Todos": o churnado continua
   // visível (esmaecido), ninguém some da lista.
@@ -597,12 +627,12 @@ function CustomersScreen({ initialTab }) {
                 </div>
               )}
               <div className="tbl-x">
-              <table style={{ width: "100%", minWidth: isKidsWorkspace ? 960 : isLeverads ? 1660 : 1480, borderCollapse: "collapse" }}>
+              <table style={{ width: "100%", minWidth: isKidsWorkspace ? 960 : isLeverads ? 1810 : 1630, borderCollapse: "collapse" }}>
                 <thead>
                   <tr>
                     {(isKidsWorkspace
                       ? [["Cliente", "cliente"], ["Pacote", "plano"], ["Valor", "mrr"], ["Entrada", "entrada"], ["Tempo de casa", "casa"], ["Último contato", "contato"], ["Próxima consulta", null], ["Consultas", null]]
-                      : [["Cliente", "cliente"], ["Nível", "nivel"], ["Plano", "plano"], ["MRR", "mrr"], ["Pagamento", "pagamento"], ["Status pgto.", "pgto"], ["Total fechado", "fechado"], ["Entrada", "entrada"], ["Tempo de casa", "casa"], ["Último contato", "contato"], ["Próximo marco", null], ["Assinatura", null], ["Vencimento", "venc"], ...(isLeverads ? [["Usuário LeverAds", "lever"]] : [])]
+                      : [["Cliente", "cliente"], ["Nível", "nivel"], ["Plano", "plano"], ["MRR", "mrr"], ["Pagamento", "pagamento"], ["Status pgto.", "pgto"], ["Mercado Pago", "mp"], ["Total fechado", "fechado"], ["Entrada", "entrada"], ["Tempo de casa", "casa"], ["Último contato", "contato"], ["Próximo marco", null], ["Assinatura", null], ["Vencimento", "venc"], ...(isLeverads ? [["Usuário LeverAds", "lever"]] : [])]
                     ).map(([h, k]) => (
                       <th key={h} className="kicker" title={k ? "ordenar" : undefined}
                         onClick={k ? () => setSort((s) => (s?.key === k ? { key: k, dir: -s.dir } : { key: k, dir: 1 })) : undefined}
@@ -677,6 +707,29 @@ function CustomersScreen({ initialTab }) {
                                   <option value="unpaid">Não pago</option>
                                 </select>
                               </span>
+                            </td>
+                          );
+                        })()}
+                        {/* Mercado Pago: o que o espelho tem VINCULADO a este cliente — quanto
+                            entrou, por qual meio e quando foi a última entrada. É a prova por trás
+                            do Status pgto. Pagamento sem dono não aparece aqui: ele espera vínculo
+                            na Conciliação do Financeiro. */}
+                        {!isKidsWorkspace && (() => {
+                          const mp = mpByCustomer.get(c.id);
+                          if (!mp) {
+                            return (
+                              <td title="nenhum pagamento do Mercado Pago vinculado a este cliente" style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-4)", borderBottom: "1px solid var(--line-faint)" }}>—</td>
+                            );
+                          }
+                          const quando = parseDay(mp.last.dateApproved || mp.last.dateCreated);
+                          const como = mpMethodLabel(mp.last);
+                          return (
+                            <td title={`${mp.n} ${mp.n === 1 ? "pagamento aprovado" : "pagamentos aprovados"} no Mercado Pago vinculado${mp.n === 1 ? "" : "s"} a este cliente · último: ${money(mp.last.amount)}${como ? ` em ${como}` : ""}${quando ? ` (${fmtDay(quando)})` : ""}`}
+                              style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-faint)", whiteSpace: "nowrap" }}>
+                              <div className="tnum" style={{ fontSize: 13, color: "var(--pos)", fontWeight: 600 }}>{money(mp.total)}</div>
+                              <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>
+                                {[como, quando ? fmtDay(quando) : "", mp.n > 1 ? `${mp.n}x` : ""].filter(Boolean).join(" · ")}
+                              </div>
                             </td>
                           );
                         })()}
