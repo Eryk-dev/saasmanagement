@@ -66,6 +66,7 @@ const STYLE = `
   .ack input { margin-top: 3px; width: 17px; height: 17px; accent-color: var(--teal); flex: 0 0 auto; }
   .ack span { font-size: 13.5px; color: var(--ink2); }
   .bad .ack { border-color: var(--neg); background: var(--neg-soft); }
+  .ack + .help { margin: 6px 0 0; }
 
   .rows { display: flex; flex-direction: column; gap: 12px; }
   .row { border: 1px solid var(--line); border-radius: 10px; padding: 14px; background: var(--inset); }
@@ -256,6 +257,7 @@ const CLIENT_JS = `
       lbl.appendChild(cb);
       lbl.appendChild(el('span', null, q.label));
       wrap.appendChild(lbl);
+      if (q.help) wrap.appendChild(el('div', 'help', q.help));
       wrap.appendChild(el('div', 'err'));
     } else {
       wrap.appendChild(field(q.type, q.options, '', function (v) { answers[q.key] = v; sync(); }));
