@@ -20,8 +20,8 @@ import { isChurned, CHURN_REASONS, churnReasonLabel } from "../lib/churn.js";
 import { fetchLeveradsOrgs } from "../lib/leverads.js";
 import { printContract, issueDate, byIssuedDesc } from "../lib/contracts.js";
 // Clientes — a base ativa do produto em dois blocos: a tabela de clientes e,
-// ao lado, "Próximas ações" (o próximo marco de retenção de cada cliente MAIS
-// os vencimentos a cobrar do faturado/recorrente, ordenados por urgência). Clicar num cliente abre um popup com o resumo dele
+// ao lado, "Próximas ações" (os vencimentos a cobrar do faturado e da
+// assinatura recorrente, ordenados por urgência). Clicar num cliente abre um popup com o resumo dele
 // e o histórico de ações de retenção (régua de marcos + funil de origem).
 // A receita vem das assinaturas (customer.arr é derivado); a régua nasce em
 // startedAt (carimbado na conversão automática do pipeline).
@@ -313,12 +313,12 @@ function CustomersScreen({ initialTab }) {
   // assinatura ativa no cliente antes de calcular a régua.
   const withCycle = (c) => ({ ...c, contractCycle: mainSub(c)?.cycle });
 
-  // Bloco "Próximas ações": o próximo marco em aberto de cada cliente E a
-  // próxima cobrança a fazer, na MESMA fila, vencidos primeiro e depois por
-  // data. Clientes sem startedAt ficam num rodapé próprio (a régua ainda não
-  // começou). Cliente da mentoria (UniqueKids)
-  // fica FORA da régua de SaaS: o pós-venda dele é a jornada de consultas, que
-  // vive na tela Consultas e na Agenda.
+  // Bloco "Próximas ações": a fila de COBRANÇA — o vencimento a cobrar de cada
+  // cliente, vencidos primeiro. A régua de retenção (onboarding, check-in,
+  // upsell, renovação) saiu daqui em 29/08 a pedido do Leo: ela continua
+  // inteira na ficha do cliente, no bloco "Ações de retenção", e volta pra cá
+  // quando ele retomar o pós-venda. Cliente da mentoria (UniqueKids) fica FORA:
+  // o pós-venda dele é a jornada de consultas, na tela Consultas e na Agenda.
   const isMentoria = (c) => c.saas === "uniquekids";
   const ACTION_ORDER = { late: 0, soon: 1, next: 2 };
   // COBRANÇA (Leo, 29/08): boleto faturado e assinatura recorrente recebem ao
@@ -372,19 +372,15 @@ function CustomersScreen({ initialTab }) {
     });
     return { n: rows.length, total: rows.reduce((a, i) => a + (Number(i.amount) || 0), 0) };
   }, [invoices, customers, tick, version]);
-  // A fila é uma só: marco de retenção e cobrança disputam a mesma ordem
-  // (vencidos primeiro, depois por data) — é assim que o CS vê o que fazer
-  // agora sem ter que olhar dois cards.
-  const nextActions = useMemo(() => {
-    const marcos = customers
-      .filter((c) => !isChurned(c) && !isMentoria(c))
-      .map((c) => ({ kind: "marco", customer: c, milestone: nextMilestone(withCycle(c), product) }))
-      .filter((x) => x.milestone)
-      .map((x) => ({ ...x, dueAt: x.milestone.dueAt, status: x.milestone.status }));
-    return [...cobrancas, ...marcos]
-      .sort((a, b) => (ACTION_ORDER[a.status] - ACTION_ORDER[b.status]) || (new Date(a.dueAt) - new Date(b.dueAt)));
-  }, [customers, subs, product, tick, version, cobrancas]);
-  const noRuler = useMemo(() => customers.filter((c) => !c.startedAt && !isChurned(c) && !isMentoria(c)), [customers]);
+  // A fila é SÓ COBRANÇA (Leo, 29/08): a régua de retenção (onboarding,
+  // check-in, upsell, renovação) saiu daqui e continua viva na ficha do
+  // cliente, no bloco "Ações de retenção" — é lá que o Leo vai retomar ela
+  // quando a operação estiver madura pra isso. Ordem: vencidas primeiro,
+  // depois por data.
+  const nextActions = useMemo(
+    () => [...cobrancas].sort((a, b) => (ACTION_ORDER[a.status] - ACTION_ORDER[b.status]) || (new Date(a.dueAt) - new Date(b.dueAt))),
+    [cobrancas],
+  );
 
   if (!product) return <EmptyState title="Nenhum produto cadastrado" hint="Crie o produto em Ajustes." />;
 
@@ -492,7 +488,7 @@ function CustomersScreen({ initialTab }) {
               </Card>
             )}
 
-            <Card title="Próximas ações" hint="retenção e cobrança, vencidas primeiro">
+            <Card title="Próximas ações" hint="vencimentos a cobrar, vencidos primeiro">
               <div style={{ padding: "12px 0 8px" }}>
                 {vencido.n > 0 && (
                   <div style={{ padding: "0 24px 10px", fontSize: 12, color: "var(--fg-3)" }}
@@ -503,7 +499,7 @@ function CustomersScreen({ initialTab }) {
                 )}
                 {nextActions.length === 0 && (
                   <div style={{ padding: "8px 24px 16px", fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
-                    Nenhuma ação pendente. A régua de retenção está em dia e não há vencimento a cobrar.
+                    Nenhum vencimento a cobrar agora (nem vencido, nem nos próximos 7 dias).
                   </div>
                 )}
                 {(showAllActions ? nextActions : nextActions.slice(0, ACOES_FECHADAS)).map((a, i, shown) => {
@@ -514,44 +510,27 @@ function CustomersScreen({ initialTab }) {
                   const nome = { fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
                   const enter = (e) => { e.currentTarget.style.background = "var(--hover)"; };
                   const leave = (e) => { e.currentTarget.style.background = "transparent"; };
-                  const prazo = <Pill tone={tone}>{a.status === "late" ? "venceu " : "vence "}{dueLabel(a.dueAt)}</Pill>;
-                  // Cobrança: o vencimento do faturado/recorrente vira toque de
-                  // cobrança, com o WhatsApp do cliente do lado e a baixa aqui
-                  // mesmo (não precisa abrir a ficha pra confirmar que entrou).
-                  if (a.kind === "cobranca") {
-                    const wa = waLink(c.phone || leadById.get(c.leadId)?.phone);
-                    const baixando = payingId === a.invoice.id;
-                    return (
-                      <div key={`cob_${a.invoice.id}`} onClick={() => setSel(c.id)} style={linha} onMouseEnter={enter} onMouseLeave={leave}>
-                        <span style={dot} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={nome}>{c.name}</div>
-                          <div style={{ fontSize: 12, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            Cobrar {money(a.invoice.amount)} · {cobrancaDesc(a.invoice, c)}
-                          </div>
-                        </div>
-                        {prazo}
-                        {wa && (
-                          <a href={wa} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} title="abrir a conversa pra cobrar" style={ACAO_BTN}>WhatsApp</a>
-                        )}
-                        <button onClick={(e) => { e.stopPropagation(); payFromQueue(a.invoice); }} disabled={baixando}
-                          title="marcar como recebida (a mesma baixa da ficha do cliente)" style={ACAO_BTN}>
-                          {baixando ? "…" : "dar baixa"}
-                        </button>
-                      </div>
-                    );
-                  }
-                  const m = a.milestone;
+                  // O vencimento do faturado/recorrente vira toque de cobrança,
+                  // com o WhatsApp do cliente do lado e a baixa aqui mesmo (não
+                  // precisa abrir a ficha pra confirmar que o dinheiro entrou).
+                  const wa = waLink(c.phone || leadById.get(c.leadId)?.phone);
+                  const baixando = payingId === a.invoice.id;
                   return (
-                    <div key={c.id} onClick={() => setSel(c.id)} style={linha} onMouseEnter={enter} onMouseLeave={leave}>
+                    <div key={`cob_${a.invoice.id}`} onClick={() => setSel(c.id)} style={linha} onMouseEnter={enter} onMouseLeave={leave}>
                       <span style={dot} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={nome}>{c.name}</div>
-                        <div style={{ fontSize: 12, color: "var(--fg-3)" }}>{m.label}{m.hint ? ` · ${m.hint}` : ""}</div>
+                        <div style={{ fontSize: 12, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          Cobrar {money(a.invoice.amount)} · {cobrancaDesc(a.invoice, c)}
+                        </div>
                       </div>
-                      {prazo}
-                      <button onClick={(e) => { e.stopPropagation(); completeMilestone(c, m.key); }} style={ACAO_BTN}>
-                        concluir
+                      <Pill tone={tone}>{a.status === "late" ? "venceu " : "vence "}{dueLabel(a.dueAt)}</Pill>
+                      {wa && (
+                        <a href={wa} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} title="abrir a conversa pra cobrar" style={ACAO_BTN}>WhatsApp</a>
+                      )}
+                      <button onClick={(e) => { e.stopPropagation(); payFromQueue(a.invoice); }} disabled={baixando}
+                        title="marcar como recebida (a mesma baixa da ficha do cliente)" style={ACAO_BTN}>
+                        {baixando ? "…" : "dar baixa"}
                       </button>
                     </div>
                   );
@@ -561,17 +540,6 @@ function CustomersScreen({ initialTab }) {
                     <button onClick={() => setShowAllActions((v) => !v)} style={{ fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>
                       {showAllActions ? "ver menos" : `ver mais (${nextActions.length - ACOES_FECHADAS})`}
                     </button>
-                  </div>
-                )}
-                {noRuler.length > 0 && (
-                  <div style={{ padding: "14px 24px 8px", borderTop: nextActions.length ? "1px solid var(--line-1)" : "none" }}>
-                    <div className="kicker" style={{ marginBottom: 8 }}>Sem régua ativa</div>
-                    {noRuler.map((c) => (
-                      <div key={c.id} onClick={() => setSel(c.id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", cursor: "pointer", fontSize: 13 }}>
-                        <span style={{ fontWeight: 600 }}>{c.name}</span>
-                        <span style={{ fontSize: 12, color: "var(--fg-4)" }}>defina "cliente desde" pra ativar a régua</span>
-                      </div>
-                    ))}
                   </div>
                 )}
               </div>
