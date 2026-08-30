@@ -176,6 +176,11 @@ export const api = {
   adCreative: (saas, adId) => req("GET", `/api/marketing/${saas}/ad/${adId}/creative`),
   metaObjectStatus: (id, status) => req("POST", `/api/marketing/objects/${id}/status`, { status }),
   metaObjectBudget: (id, dailyBudget) => req("POST", `/api/marketing/objects/${id}/budget`, { dailyBudget }),
+  // Regras de veiculação (agenda cheia pausa, janela de fim de semana, sexta
+  // curta, orçamento alvo): config + estado + log, e o tick manual do runner.
+  deliveryRules: (saas) => req("GET", `/api/marketing/${saas}/delivery-rules`),
+  saveDeliveryRules: (saas, rules) => req("PUT", `/api/marketing/${saas}/delivery-rules`, { rules }),
+  runDeliveryRules: (saas) => req("POST", `/api/marketing/${saas}/delivery-rules/tick`),
   creativeDefaults: (saas) => req("GET", `/api/marketing/${saas}/creative-defaults`),
   // Google Meet: URL de consentimento (Ajustes) + criar a call do lead na agenda.
   googleAuthUrl: () => req("GET", "/api/google/auth-url"),

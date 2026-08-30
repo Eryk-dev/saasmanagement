@@ -11,6 +11,7 @@ import multipart from "@fastify/multipart";
 import { initDb, repo } from "./db.js";
 import { registerRoutes } from "./routes.js";
 import { startMarketingAutoSync } from "./routes.marketing.js";
+import { startAdDelivery } from "./ad-delivery.js";
 import { startCallSummaries } from "./call-summaries.js";
 import { startIntegrationBriefs } from "./integration-brief.js";
 import { startConsultationSummaries } from "./consultations.js";
@@ -83,6 +84,10 @@ try {
   // Sync automático da Meta no servidor (uma execução pro time inteiro; no-op
   // sem META_ACCESS_TOKEN). O SPA só lê — não faz mais polling por aba.
   startMarketingAutoSync(repo, { log: app.log });
+  // Regras de veiculação dos anúncios (agenda cheia pausa, janela de fim de
+  // semana, orçamento alvo): tick invariante de 60s; regra nasce desligada, o
+  // toggle vive na tela Publicidade. No-op sem META_ACCESS_TOKEN.
+  startAdDelivery(repo, { log: app.log });
   // Resumo automático de calls: só faz algo com ANTHROPIC_API_KEY + Google conectado.
   startCallSummaries(repo, { ...app.integrationClients, log: app.log });
   // Briefing de passagem pro integrador (card que entrou em Integração): tenta

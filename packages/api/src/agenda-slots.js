@@ -58,8 +58,9 @@ export function occupyCells(startNaive, minutes = CALL_MIN) {
 
 // Um bloqueio (agenda_blocks) casa com a célula? Mesma régua do matchBlock do
 // front: weekly pelo dia da semana, once pela data; allDay ou sobreposição de
-// horas (fromHour/toHour fracionários).
-function blockHits(b, key) {
+// horas (fromHour/toHour fracionários). Exportada: as regras de veiculação
+// (ad-delivery.js) medem a capacidade da agenda com ESTA régua, não uma cópia.
+export function blockHits(b, key) {
   const dateStr = key.slice(0, 10);
   const from = Number(key.slice(11, 13)) + Number(key.slice(14, 16)) / 60;
   const to = from + SLOT_MIN / 60;

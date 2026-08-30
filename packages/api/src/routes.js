@@ -23,6 +23,7 @@ import { isChurnedCustomer } from "./churn.js";
 import { registerLeveradsAccessRoutes } from "./leverads-access.js";
 import { mp as defaultMpClient } from "./mp.js";
 import { registerMarketingRoutes } from "./routes.marketing.js";
+import { registerAdDeliveryRoutes } from "./ad-delivery.js";
 import { registerSocialRoutes } from "./routes.social.js";
 import { registerOfferRoutes } from "./routes.offers.js";
 import { registerCampaignRoutes } from "./routes.disparos.js";
@@ -311,6 +312,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Marketing: sync de insights da Meta + métricas cruzadas com o funil.
   const metaClient = opts.meta || defaultMetaClient;
   registerMarketingRoutes(app, repo, { meta: metaClient });
+  // Regras de veiculação (agenda cheia pausa, janela de fim de semana, sexta
+  // curta, orçamento alvo) — config/estado/log + tick manual; poller no index.js.
+  registerAdDeliveryRoutes(app, repo, { meta: metaClient });
   // Mídia social: métricas do perfil + publicação orgânica (IG/página FB) +
   // copy do post por IA (mesma chave OpenRouter/Anthropic do resto).
   registerSocialRoutes(app, repo, { social: opts.social, meta: metaClient, anthropic: anthropicClient });

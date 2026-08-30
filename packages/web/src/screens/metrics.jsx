@@ -9,6 +9,7 @@ import { EmptyState, PrimaryButton } from "../atoms.jsx";
 import { stageKind } from "../lib/funnel.js";
 import { GRADE_STYLE } from "../lib/ui.js";
 import { InsightsCard } from "../components/insights.jsx";
+import { DeliveryRulesCard } from "../components/delivery-rules.jsx";
 import { MetaConnectCard } from "../components/meta-connect.jsx";
 // Métricas — aquisição × funil do produto ativo (substitui a tela Marketing).
 // Hoje: investimento (Meta), leads, CPL real e custo por etapa, com séries no
@@ -462,6 +463,12 @@ function MetricsScreen() {
             Some inteiro quando não há recomendação ou tudo foi dispensado. */}
         <InsightsCard title="Regras do gerenciador" hint="recomendações pra escalar/cortar anúncio pela qualidade do lead e retorno · aplicar pede confirmação"
           items={insights} scope={`ads:${product.id}`} onApplied={reloadObjects} />
+
+        {/* Regras de VEICULAÇÃO (executam sozinhas no servidor, diferente das
+            recomendações acima): agenda cheia pausa, janela de fim de semana,
+            sexta curta e orçamento alvo — estratégia "encher a agenda de
+            amanhã" (Leo, 30/08). Toggle e parâmetros por regra + histórico. */}
+        <DeliveryRulesCard saas={product.id} />
 
         <Card title="Custo por etapa do funil" hint="investimento ÷ leads que chegaram em cada marco · % = quantos chegaram até ali">
           <div style={{ padding: "16px 24px 22px", display: "flex", flexDirection: "column", gap: 10 }}>
