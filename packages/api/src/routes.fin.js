@@ -365,6 +365,7 @@ export async function syncMpOutflows(repo, mp, { log } = {}) {
   files.sort((a, b) => String(b.createdAt || b.name).localeCompare(String(a.createdAt || a.name)));
   const byId = new Set((await repo.list("mp_movements")).map((m) => m.id));
   let imported = 0, filesRead = 0, downloadErrors = 0, rowsSeen = 0;
+  let sample = ""; // cabeçalho + primeiras linhas do 1º arquivo — o diagnóstico do formato real
   for (const f of files.slice(0, 3)) {
     const text = await mp.settlementReportDownload(f.name).catch((err) => {
       downloadErrors++;
@@ -373,6 +374,9 @@ export async function syncMpOutflows(repo, mp, { log } = {}) {
     });
     if (!text) continue;
     filesRead++;
+    // Zero linha importada com arquivo baixado = formato diferente do esperado.
+    // A amostra vai no carimbo pra ler o CSV real sem acesso ao container.
+    if (!sample) sample = `${f.name}\n` + String(text).split(/\r?\n/).slice(0, 4).join("\n").slice(0, 900);
     for (const row of parseSettlementCsv(text)) {
       rowsSeen++;
       const id = `mov_${row.sourceId}`;
@@ -430,6 +434,7 @@ export async function syncMpOutflows(repo, mp, { log } = {}) {
     ok: true, filesRead, filesTotal: files.length, imported, requested,
     ...(rowsSeen ? { rowsSeen } : {}), ...(downloadErrors ? { downloadErrors } : {}),
     ...(requestError ? { requestError } : {}),
+    ...(sample && !imported ? { sample } : {}), // só quando nada entrou: é o caso a diagnosticar
   };
   // Carimbo do diagnóstico (app_config "mp_out_sync"): o poller roda sem
   // ninguém olhando, então o resultado de cada passada — inclusive a recusa
