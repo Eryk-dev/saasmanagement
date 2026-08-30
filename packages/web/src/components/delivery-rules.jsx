@@ -92,7 +92,7 @@ export function DeliveryRulesCard({ saas }) {
     finally { setChecking(false); }
   }
 
-  const hint = "o anúncio existe pra encher a agenda de amanhã · as regras rodam no servidor a cada minuto · regra nasce desligada";
+  const hint = "o anúncio existe pra encher a agenda dos próximos dias (pares seg/ter · qua/qui · sex) · as regras rodam no servidor a cada minuto · regra nasce desligada";
   if (data?.error) {
     return <Card title="Regras de veiculação" hint={hint}><div style={{ padding: "14px var(--inset-x)", fontSize: 13, color: "var(--fg-3)" }}>{data.error}</div></Card>;
   }
@@ -110,9 +110,12 @@ export function DeliveryRulesCard({ saas }) {
 
         {/* O que as regras enxergam agora — a régua inteira à vista. */}
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 12.5, color: "var(--fg-2)" }}>
-          <span>
-            amanhã ({ddmm(p.tomorrow)}): <b className="tnum">{p.booked}</b> de <b className="tnum">{p.target}</b> horários
-            <span className="dim"> · {p.closersAtivos} closer{p.closersAtivos === 1 ? "" : "s"} × {r.agendaFull.callsPerCloser} · {p.capacity} desbloqueado{p.capacity === 1 ? "" : "s"}</span>
+          <span title={(p.days || []).map((d) => `${ddmm(d.day)}: ${d.booked}/${d.target} calls · ${d.closersAtivos} closer(s) ativos × ${r.agendaFull.callsPerCloser}`).join("  ·  ")}>
+            janela ({(p.window || []).map(ddmm).join(" + ")}): <b className="tnum">{p.booked}</b> de <b className="tnum">{p.target}</b> horários
+            {(p.days || []).length > 1 && (
+              <span className="dim"> · {p.days.map((d) => `${ddmm(d.day)} ${d.booked}/${d.target}`).join(" · ")}</span>
+            )}
+            <span className="dim"> · {p.capacity} desbloqueado{p.capacity === 1 ? "" : "s"}</span>
           </span>
           <span className="dim">·</span>
           <span title={`${p.cost.calls} calls de ${p.cost.leads} leads Meta · ${money(p.cost.spend)} gastos na janela de ${r.budget.windowDays} dias`}>
@@ -132,8 +135,16 @@ export function DeliveryRulesCard({ saas }) {
 
         <RuleRow name="Pausa por agenda cheia" busy={busy} on={r.agendaFull.enabled}
           onToggle={() => save({ agendaFull: { enabled: !r.agendaFull.enabled } })}
-          desc="bateu o alvo de calls amanhã (calls por closer × closers ativos, limitado aos horários desbloqueados), pausa todas as campanhas. Não religa no meio do dia; volta na virada."
-          status={`alvo de amanhã: ${p.target} call${p.target === 1 ? "" : "s"} · marcadas: ${p.booked}`}>
+          desc="bateu o alvo de calls da janela (calls por closer × closers ativos, limitado aos horários desbloqueados), pausa todas as campanhas. No par de dias, a janela anda em pares fixos: domingo mira seg+ter, terça mira qua+qui, quinta mira a sexta — segunda lotada não pausa enquanto a terça tiver buraco. Não religa no meio do dia; volta na virada."
+          status={`alvo da janela: ${p.target} call${p.target === 1 ? "" : "s"} · marcadas: ${p.booked}`}>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--fg-3)" }}>
+            janela
+            <select value={r.agendaFull.horizon} disabled={busy} onChange={(e) => save({ agendaFull: { horizon: e.target.value } })}
+              style={{ height: 28, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12 }}>
+              <option value="pair">par de dias (seg/ter · qua/qui · sex)</option>
+              <option value="day">só o dia seguinte</option>
+            </select>
+          </label>
           <NumParam label="calls por closer" value={r.agendaFull.callsPerCloser} min={1} max={20} disabled={busy}
             onCommit={(n) => save({ agendaFull: { callsPerCloser: n } })} />
         </RuleRow>
@@ -164,7 +175,7 @@ export function DeliveryRulesCard({ saas }) {
 
         <RuleRow name="Orçamento alvo" busy={busy} on={r.budget.enabled}
           onToggle={() => save({ budget: { enabled: !r.budget.enabled } })}
-          desc="1x por dia (na virada) ajusta o orçamento diário na Meta rumo a: vagas restantes de amanhã × custo por call agendada. Fator único proporcional em cada campanha CBO/conjunto ABO — parte dos valores atuais e anda no máximo o passo por dia. Agenda cheia derruba o alvo e o orçamento também desce."
+          desc="1x por dia (na virada) ajusta o orçamento diário na Meta rumo a: vagas restantes da janela × custo por call agendada. Fator único proporcional em cada campanha CBO/conjunto ABO — parte dos valores atuais e anda no máximo o passo por dia. Agenda cheia derruba o alvo e o orçamento também desce."
           status={p.cost.costPerCall != null
             ? `hoje: ${Math.max(0, p.target - p.booked)} vaga${Math.max(0, p.target - p.booked) === 1 ? "" : "s"} × ${money(p.cost.costPerCall)} = alvo ${money(Math.max(0, p.target - p.booked) * p.cost.costPerCall)}/dia`
             : `sem base: ${p.cost.calls} call${p.cost.calls === 1 ? "" : "s"} de origem Meta na janela (precisa de 3+)`}>

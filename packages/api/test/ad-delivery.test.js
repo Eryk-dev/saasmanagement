@@ -4,7 +4,7 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import { wallFromNaive } from "../src/agenda-slots.js";
 import {
-  DEFAULT_RULES, sanitizeRules, dayTarget, bookedCallsFor, costPerCall,
+  DEFAULT_RULES, sanitizeRules, dayTarget, bookedCallsFor, costPerCall, fillWindow,
   syncShortFridayBlock, adDeliveryTick, loadDeliveryCfg, registerAdDeliveryRoutes,
 } from "../src/ad-delivery.js";
 
@@ -92,6 +92,16 @@ test("dayTarget: bloqueio derruba a capacidade e o alvo cai junto (o '22 < 30' d
     blocks: [{ id: "b3", user: "c1", kind: "block", recur: "once", date: AMANHA, fromHour: 9, toHour: 17 }],
   });
   assert.equal(t3.target, 3);
+});
+
+test("fillWindow: pares fixos seg/ter · qua/qui · sexta sozinha, a partir do próximo dia útil", () => {
+  assert.deepEqual(fillWindow(wallFromNaive("2026-08-30T10:00")), ["2026-08-31", "2026-09-01"]); // dom → seg+ter
+  assert.deepEqual(fillWindow(wallFromNaive("2026-08-31T10:00")), ["2026-09-01"]);               // seg → só ter
+  assert.deepEqual(fillWindow(wallFromNaive("2026-09-01T10:00")), ["2026-09-02", "2026-09-03"]); // ter → qua+qui
+  assert.deepEqual(fillWindow(wallFromNaive("2026-09-02T10:00")), ["2026-09-03"]);               // qua → só qui
+  assert.deepEqual(fillWindow(wallFromNaive("2026-09-03T10:00")), ["2026-09-04"]);               // qui → sex
+  assert.deepEqual(fillWindow(wallFromNaive("2026-09-04T10:00")), ["2026-09-07", "2026-09-08"]); // sex → seg+ter da semana seguinte
+  assert.deepEqual(fillWindow(wallFromNaive("2026-08-30T10:00"), "day"), ["2026-08-31"]);        // modo "dia seguinte"
 });
 
 test("dayTarget: fim de semana não tem agenda (alvo zero)", () => {
@@ -219,6 +229,28 @@ test("agenda cheia pausa TODAS as ativas, não repausa, não religa no meio do d
   cfg = await loadDeliveryCfg(repo, "leverads");
   assert.deepEqual(cfg.state.pausedCampaigns, []);
   assert.equal(meta.campaigns.find((c) => c.id === "c_off").status, "PAUSED", "campanha pausada na mão continua pausada");
+});
+
+test("domingo com par seg/ter: segunda lotada NÃO pausa enquanto a terça tem buraco; terça enchendo, pausa", async () => {
+  const users = [closer("c1")];
+  const repo = await seedRepo({
+    users,
+    // callsPerCloser 2 → alvo 2 por dia, janela seg+ter = 4. Segunda com 3
+    // marcadas (acima do alvo DELA) e terça vazia: 3/4, segue rodando.
+    leads: ["09:00", "10:00", "11:00"].map((h, i) => (
+      { id: `s${i}`, saas: "leverads", stage: "Call agendada", callAt: `2026-08-31T${h}` })),
+    config: { rules: rules({ agendaFull: { enabled: true, callsPerCloser: 2 } }) },
+  });
+  const meta = makeFakeMeta({ campaigns: [{ id: "c1", status: "ACTIVE" }] });
+
+  await adDeliveryTick(repo, { meta, now: wallFromNaive("2026-08-30T10:00") }); // domingo
+  assert.equal(meta.calls.status.length, 0, "3/4 na janela: continua rodando pra encher a terça");
+
+  await repo.create("leads", { id: "s9", saas: "leverads", stage: "Call agendada", callAt: "2026-09-01T09:00" });
+  await adDeliveryTick(repo, { meta, now: wallFromNaive("2026-08-30T12:00") });
+  assert.deepEqual(meta.calls.status, [{ id: "c1", status: "PAUSED" }]);
+  const cfg = await loadDeliveryCfg(repo, "leverads");
+  assert.match(cfg.log[0].detail, /janela \(31\/08 \+ 01\/09\) com 4\/4 calls/);
 });
 
 test("janela de fim de semana: pausa na sexta, fica quieto no sábado, religa domingo 00:00", async () => {
@@ -361,8 +393,12 @@ test("GET/PUT delivery-rules: devolve prévia, sanitiza e mantém o bloqueio de 
   assert.equal(g.statusCode, 200);
   const got = g.json();
   assert.equal(got.rules.agendaFull.enabled, false);
-  assert.match(String(got.preview.tomorrow), /^\d{4}-\d{2}-\d{2}$/);
-  assert.equal(got.preview.capacity, 20); // 2 closers × 10 inícios
+  assert.equal(got.rules.agendaFull.horizon, "pair");
+  // A prévia usa o relógio REAL: a janela tem 1 ou 2 dias conforme o dia da
+  // semana em que o teste roda — 2 closers × 10 inícios por dia da janela.
+  assert.ok(Array.isArray(got.preview.window) && got.preview.window.length >= 1);
+  assert.match(String(got.preview.window[0]), /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(got.preview.capacity, got.preview.window.length * 20);
   assert.equal(got.preview.booked, 0);
 
   const p = await app.inject({

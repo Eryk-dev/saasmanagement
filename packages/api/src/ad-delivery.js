@@ -41,7 +41,12 @@ const brl = (n) => `R$ ${Number(n || 0).toFixed(2).replace(".", ",")}`;
 const LOG_MAX = 120;
 
 export const DEFAULT_RULES = {
-  agendaFull: { enabled: false, callsPerCloser: 5 },
+  // horizon "pair" (Leo, 30/08 à noite): a agenda é olhada em PARES fixos —
+  // seg/ter · qua/qui · sexta sozinha. Domingo os anúncios já miram segunda E
+  // terça; segunda mira só a terça; terça mira qua+qui; quinta mira a sexta
+  // curta. Segunda lotada não desliga nada enquanto a terça tiver buraco.
+  // "day" = comportamento antigo, só o próximo dia útil.
+  agendaFull: { enabled: false, callsPerCloser: 5, horizon: "pair" },
   weekendOff: { enabled: false, days: [5, 6] }, // 5=sexta, 6=sábado
   shortFriday: { enabled: false, lastCallHour: 14 },
   budget: { enabled: false, maxStepPct: 25, windowDays: 14 },
@@ -65,7 +70,11 @@ export function sanitizeRules(input) {
     const n = Math.round(Number(v));
     return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : def;
   };
-  r.agendaFull = { enabled: !!r.agendaFull.enabled, callsPerCloser: num(r.agendaFull.callsPerCloser, 5, 1, 20) };
+  r.agendaFull = {
+    enabled: !!r.agendaFull.enabled,
+    callsPerCloser: num(r.agendaFull.callsPerCloser, 5, 1, 20),
+    horizon: r.agendaFull.horizon === "day" ? "day" : "pair",
+  };
   r.weekendOff = {
     enabled: !!r.weekendOff.enabled,
     days: [...new Set((Array.isArray(r.weekendOff.days) ? r.weekendOff.days : [5, 6]).map((d) => num(d, -1, 0, 6)))].filter((d) => d >= 0).sort(),
@@ -145,6 +154,41 @@ export function dayTarget({ users, blocks, saas, dayStr, callsPerCloser }) {
   const cap = dayCapacity({ users, blocks, saas, dayStr });
   return { ...cap, target: Math.min(callsPerCloser * cap.closersAtivos, cap.capacity) };
 }
+
+// ── Janela de preenchimento (pares fixos) ───────────────────────────────────
+// horizon "pair": o alvo é o PAR de dias que contém o próximo dia útil —
+// seg/ter · qua/qui · sexta sozinha — recortado ao que ainda está À FRENTE:
+//   dom → seg+ter · seg → ter · ter → qua+qui · qua → qui · qui → sex ·
+//   sex/sáb → seg+ter da semana seguinte.
+// horizon "day": só o próximo dia útil (comportamento original).
+export function fillWindow(now, horizon = "pair") {
+  const d = new Date(now);
+  do { d.setUTCDate(d.getUTCDate() + 1); } while (d.getUTCDay() === 0 || d.getUTCDay() === 6);
+  const days = [ymdOf(d)];
+  // seg(1) e qua(3) abrem par: o segundo dia entra na janela junto.
+  if (horizon === "pair" && (d.getUTCDay() === 1 || d.getUTCDay() === 3)) {
+    d.setUTCDate(d.getUTCDate() + 1);
+    days.push(ymdOf(d));
+  }
+  return days;
+}
+
+// Números da janela: alvo e marcadas SOMADOS nos dias + o detalhe por dia
+// (é o que a tela mostra e o log grava).
+export function windowStats({ users, blocks, leads, products, saas, days, callsPerCloser }) {
+  const perDay = days.map((dayStr) => {
+    const t = dayTarget({ users, blocks, saas, dayStr, callsPerCloser });
+    return { day: dayStr, booked: bookedCallsFor({ leads, products, saas, dayStr }), target: t.target, capacity: t.capacity, closersAtivos: t.closersAtivos };
+  });
+  return {
+    days: perDay,
+    booked: perDay.reduce((a, d) => a + d.booked, 0),
+    target: perDay.reduce((a, d) => a + d.target, 0),
+    capacity: perDay.reduce((a, d) => a + d.capacity, 0),
+  };
+}
+const ddmm = (day) => `${day.slice(8, 10)}/${day.slice(5, 7)}`;
+const windowLabel = (days) => days.map(ddmm).join(" + ");
 
 // ── Custo por call agendada (janela móvel, coorte) ──────────────────────────
 // Gasto da conta na janela ÷ leads de origem Meta (ads_*) criados na janela que
@@ -281,7 +325,7 @@ export async function adDeliveryTick(repo, { meta = defaultMeta, saas = "", now 
     const before = JSON.stringify({ state: cfg.state, log: cfg.log[0] || null });
     const today = ymdOf(now);
     const dow = now.getUTCDay();
-    const tomorrow = ymdOf(new Date(now.getTime() + 86_400_000));
+    const winDays = fillWindow(now, cfg.rules.agendaFull.horizon);
     const offToday = cfg.rules.weekendOff.enabled && cfg.rules.weekendOff.days.includes(dow);
 
     // Sexta curta ANTES de ler os bloqueios: o bloqueio recém-criado/ajustado
@@ -319,23 +363,24 @@ export async function adDeliveryTick(repo, { meta = defaultMeta, saas = "", now 
         catch (err) { log?.warn?.(`ad-delivery: religar falhou (${product.id}): ${String(err.message || err).slice(0, 120)}`); }
       }
 
-      // 3) Orçamento do dia (1x, na primeira passada depois da virada).
+      // 3) Orçamento do dia (1x, na primeira passada depois da virada) — as
+      //    vagas são as da JANELA inteira (par de dias), mesma régua da pausa.
       if (!offToday && cfg.rules.budget.enabled && cfg.state.lastBudgetDay !== today) {
-        const { target } = dayTarget({ users, blocks, saas: product.id, dayStr: tomorrow, callsPerCloser: cfg.rules.agendaFull.callsPerCloser });
-        const booked = bookedCallsFor({ leads, products, saas: product.id, dayStr: tomorrow });
+        const win = windowStats({ users, blocks, leads, products, saas: product.id, days: winDays, callsPerCloser: cfg.rules.agendaFull.callsPerCloser });
         const cost = costPerCall({ leads, insights, saas: product.id, now, windowDays: cfg.rules.budget.windowDays });
-        try { await adjustBudgets(cfg, meta, product.metaAdAccount, { target, booked, cost, today }, log); }
+        try { await adjustBudgets(cfg, meta, product.metaAdAccount, { target: win.target, booked: win.booked, cost, today }, log); }
         catch (err) { log?.warn?.(`ad-delivery: ajuste de orçamento falhou (${product.id}): ${String(err.message || err).slice(0, 120)}`); }
       }
 
-      // 4) Agenda de amanhã bateu o alvo → pausa (e não religa até a virada).
+      // 4) A janela bateu o alvo → pausa (e não religa até a virada). Com o par
+      //    de dias, segunda lotada segura a pausa enquanto a terça tem buraco.
       if (!offToday && cfg.rules.agendaFull.enabled && cfg.state.agendaPausedDay !== today && !(cfg.state.pausedCampaigns || []).length) {
-        const t = dayTarget({ users, blocks, saas: product.id, dayStr: tomorrow, callsPerCloser: cfg.rules.agendaFull.callsPerCloser });
-        const booked = bookedCallsFor({ leads, products, saas: product.id, dayStr: tomorrow });
-        if (t.target > 0 && booked >= t.target) {
+        const win = windowStats({ users, blocks, leads, products, saas: product.id, days: winDays, callsPerCloser: cfg.rules.agendaFull.callsPerCloser });
+        if (win.target > 0 && win.booked >= win.target) {
           try {
+            const porDia = win.days.map((d) => `${ddmm(d.day)} ${d.booked}/${d.target}`).join(" · ");
             const n = await pauseAll(cfg, meta, product.metaAdAccount, "agenda cheia",
-              `amanhã (${tomorrow.slice(8, 10)}/${tomorrow.slice(5, 7)}) com ${booked}/${t.target} calls · ${t.closersAtivos} closer${t.closersAtivos === 1 ? "" : "s"} × ${cfg.rules.agendaFull.callsPerCloser} · ${t.capacity} desbloqueado${t.capacity === 1 ? "" : "s"}`, log);
+              `janela (${windowLabel(winDays)}) com ${win.booked}/${win.target} calls · ${porDia} · ${win.capacity} desbloqueado${win.capacity === 1 ? "" : "s"}`, log);
             if (n >= 0) cfg.state.agendaPausedDay = today;
           } catch (err) {
             log?.warn?.(`ad-delivery: pausa por agenda falhou (${product.id}): ${String(err.message || err).slice(0, 120)}`);
@@ -352,19 +397,20 @@ export async function adDeliveryTick(repo, { meta = defaultMeta, saas = "", now 
 }
 
 // Prévia pros olhos (tela Publicidade): os números que as regras enxergam AGORA,
-// sem tocar na Meta — agenda de amanhã, alvo, custo por call da janela.
+// sem tocar na Meta — a janela de preenchimento (par de dias), alvo somado e
+// por dia, e o custo por call da janela móvel.
 export async function deliveryPreview(repo, { saas, rules, now = wallNow() }) {
   const [users, blocks, leads, insights, products] = await Promise.all([
     repo.list("users"), repo.list("agenda_blocks"), repo.list("leads"), repo.list("ad_insights"), repo.list("products"),
   ]);
-  const tomorrow = ymdOf(new Date(now.getTime() + 86_400_000));
-  const t = dayTarget({ users, blocks, saas, dayStr: tomorrow, callsPerCloser: rules.agendaFull.callsPerCloser });
-  const booked = bookedCallsFor({ leads, products, saas, dayStr: tomorrow });
+  const winDays = fillWindow(now, rules.agendaFull.horizon);
+  const win = windowStats({ users, blocks, leads, products, saas, days: winDays, callsPerCloser: rules.agendaFull.callsPerCloser });
   const cost = costPerCall({ leads, insights, saas, now, windowDays: rules.budget.windowDays });
   const dow = now.getUTCDay();
   return {
-    today: ymdOf(now), tomorrow, booked,
-    target: t.target, capacity: t.capacity, closersAtivos: t.closersAtivos, closers: t.closers,
+    today: ymdOf(now),
+    window: winDays, days: win.days,
+    booked: win.booked, target: win.target, capacity: win.capacity,
     offToday: rules.weekendOff.enabled && rules.weekendOff.days.includes(dow),
     cost,
   };
@@ -410,7 +456,7 @@ export function registerAdDeliveryRoutes(app, repo, { meta = defaultMeta } = {})
 function resumoRegras(r) {
   const dias = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
   return [
-    `agenda cheia ${r.agendaFull.enabled ? `ON (${r.agendaFull.callsPerCloser}/closer)` : "off"}`,
+    `agenda cheia ${r.agendaFull.enabled ? `ON (${r.agendaFull.callsPerCloser}/closer · ${r.agendaFull.horizon === "day" ? "dia seguinte" : "par de dias"})` : "off"}`,
     `janela ${r.weekendOff.enabled ? `ON (${r.weekendOff.days.map((d) => dias[d]).join("+") || "sem dia"})` : "off"}`,
     `sexta curta ${r.shortFriday.enabled ? `ON (${r.shortFriday.lastCallHour}h)` : "off"}`,
     `orçamento ${r.budget.enabled ? `ON (±${r.budget.maxStepPct}%/dia · ${r.budget.windowDays}d)` : "off"}`,
