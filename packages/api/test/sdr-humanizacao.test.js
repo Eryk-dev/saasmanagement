@@ -84,25 +84,25 @@ test("1º toque com nome impróprio sai sem nome, não com 'Oi PECAS'", async ()
 
 // ── A3 · robô não fala por cima de gente ────────────────────────────────────
 test("lembrete cala quando gente confirmou na mão minutos antes (e o passo fica carimbado)", async () => {
-  const callAt = "2026-08-19T11:00"; // 1h depois do agora (BRT)
+  const callAt = "2026-08-19T12:00"; // 2h depois do agora (BRT): janela do lembrete de 2h
   const repo = await world({
     leads: [{ id: "L1", name: "Jeverson", phone: "5562992864482", stage: "Call agendada", callAt, callSetAt: ISO("2026-08-17T12:00:00Z") }],
     threads: [{ id: "5562992864482", phone: "5562992864482", leadId: "L1", saas: "leverads" }],
     messages: [
       { id: "m1", thread: "5562992864482", leadId: "L1", direction: "in", text: "oi", at: ISO("2026-08-19T12:00:00Z") },
       // A Manuela confirmou na mão 11 minutos atrás — foi o que aconteceu em prod.
-      { id: "m2", thread: "5562992864482", leadId: "L1", direction: "out", author: "sdr", text: "Jeverson, confirmando a call de hoje às 11h. Tudo certo?", at: ISO("2026-08-19T12:49:00Z") },
+      { id: "m2", thread: "5562992864482", leadId: "L1", direction: "out", author: "sdr", text: "Jeverson, confirmando a call de hoje às 12h. Tudo certo?", at: ISO("2026-08-19T12:49:00Z") },
     ],
   });
   const wa = makeWa();
   await runnerOf(repo, wa).tick();
   assert.equal(wa.sent.length, 0, "robô não repete a confirmação que a pessoa acabou de mandar");
-  assert.equal((await repo.get("leads", "L1")).confirmLog["1h"], "humano");
+  assert.equal((await repo.get("leads", "L1")).confirmLog["2h"], "humano");
 });
 
 test("lembrete sai normalmente quando a última fala humana é antiga", async () => {
   const repo = await world({
-    leads: [{ id: "L1", name: "Jeverson", phone: "5562992864482", stage: "Call agendada", callAt: "2026-08-19T11:00", callSetAt: ISO("2026-08-17T12:00:00Z") }],
+    leads: [{ id: "L1", name: "Jeverson", phone: "5562992864482", stage: "Call agendada", callAt: "2026-08-19T12:00", callSetAt: ISO("2026-08-17T12:00:00Z") }],
     threads: [{ id: "5562992864482", phone: "5562992864482", leadId: "L1", saas: "leverads" }],
     messages: [
       { id: "m1", thread: "5562992864482", leadId: "L1", direction: "in", text: "oi", at: ISO("2026-08-19T12:00:00Z") },
@@ -159,9 +159,9 @@ test("lead antigo sem callSetAt mantém a véspera (compatibilidade)", async () 
 });
 
 // ── B4 · link do Meet ───────────────────────────────────────────────────────
-test("lembrete de 1h cria a sala que falta; 10min sem link levanta alerta pro time", async () => {
+test("lembrete de 2h cria a sala que falta; 10min sem link levanta alerta pro time", async () => {
   const repo = await world({
-    leads: [{ id: "L1", name: "Marlos", phone: "5547991788462", stage: "Call agendada", callAt: "2026-08-19T11:00", callSetAt: ISO("2026-08-17T12:00:00Z") }],
+    leads: [{ id: "L1", name: "Marlos", phone: "5547991788462", stage: "Call agendada", callAt: "2026-08-19T12:00", callSetAt: ISO("2026-08-17T12:00:00Z") }],
     threads: [{ id: "5547991788462", phone: "5547991788462", leadId: "L1", saas: "leverads" }],
     messages: [{ id: "m1", thread: "5547991788462", leadId: "L1", direction: "in", text: "tudo certo sim", at: ISO("2026-08-19T12:30:00Z") }],
   });
@@ -175,9 +175,10 @@ test("lembrete de 1h cria a sala que falta; 10min sem link levanta alerta pro ti
   assert.deepEqual(meets, ["L1"]);
   assert.match(wa.sent[0].text, /Está tudo certo/);
 
-  // Agora o passo de 10min, com a sala já criada: o link vai no texto.
+  // Agora o passo de 10min, com a sala já criada: o link vai no texto. O lead
+  // confirmou (senão o alerta de ligação da 2b entraria por cima do "sem link").
   const repo2 = await world({
-    leads: [{ id: "L1", name: "Marlos", phone: "5547991788462", stage: "Call agendada", callAt: "2026-08-19T10:10", callSetAt: ISO("2026-08-17T12:00:00Z"), confirmLog: { at: "2026-08-19T10:10", "24h": "x", "1h": "x" } }],
+    leads: [{ id: "L1", name: "Marlos", phone: "5547991788462", stage: "Call agendada", callAt: "2026-08-19T10:10", callConfirmed: true, callSetAt: ISO("2026-08-17T12:00:00Z"), confirmLog: { at: "2026-08-19T10:10", "24h": "x", "2h": "x" } }],
     threads: [{ id: "5547991788462", phone: "5547991788462", leadId: "L1", saas: "leverads" }],
     messages: [{ id: "m1", thread: "5547991788462", leadId: "L1", direction: "in", text: "tudo certo", at: ISO("2026-08-19T12:30:00Z") }],
   });
@@ -247,7 +248,7 @@ test("lead avisando que já está na sala carimba os lembretes restantes", async
   const r = await handleSdrInbound(repo, { message: { from: "5532913540250", text: "Já estou conversando aqui" }, now: NOW });
   assert.equal(r, "in-call");
   const lead = await repo.get("leads", "L1");
-  assert.equal(lead.confirmLog["1h"], "na-conversa");
+  assert.equal(lead.confirmLog["2h"], "na-conversa");
   assert.equal(lead.confirmLog["10min"], "na-conversa");
 });
 

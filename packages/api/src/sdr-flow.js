@@ -278,17 +278,18 @@ export function firstTouchText({ nome, sdrName, resumo, pain = null, niche = "" 
 // lembrete de véspera chegando 3h depois soa robô quebrado.
 const REMINDERS = [
   { key: "24h", beforeMs: 24 * HOUR, graceMs: 45 * MIN },
-  { key: "1h", beforeMs: 1 * HOUR, graceMs: 20 * MIN },
+  { key: "2h", beforeMs: 2 * HOUR, graceMs: 30 * MIN },
   { key: "10min", beforeMs: 10 * MIN, graceMs: 8 * MIN },
 ];
 
-// Véspera pede confirmação; o lembrete de 1h é a mensagem que o time já manda
-// 70+ vezes por mês na mão (mineração ago/2026), agora automática; o de 10min
+// Véspera pede confirmação; o lembrete de 2h pede a POSITIVA (era 1h antes —
+// Leo, 30/08: sai 2h antes pra dar tempo do silêncio virar ligação do SDR
+// ainda antes da call; ver o alerta de ligação na seção 2b); o de 10min
 // entrega o link. Tudo sem emoji, no tom da persona do número.
 function reminderText(key, { nome, quando, link }) {
   const oi = nome ? `Oi ${nome}!` : "Oi!";
   if (key === "24h") return `${oi} Confirmando nossa conversa ${quando}, tudo certo? Qualquer imprevisto me fala por aqui que eu remarco sem problema.`;
-  if (key === "1h") return `${oi} Está tudo certo pra nossa conversa ${quando}? Nosso especialista vai estar te esperando pra te fazer a demonstração ao vivo. Te espero lá!`;
+  if (key === "2h") return `${oi} Está tudo certo pra nossa conversa ${quando}? Nosso especialista vai estar te esperando pra te fazer a demonstração ao vivo. Me confirma por aqui, por favor!`;
   return link
     ? `${nome ? nome + ", nossa" : "Nossa"} conversa começa em 10 minutos! Link pra entrar: ${link}`
     : `${nome ? nome + ", nossa" : "Nossa"} conversa começa em 10 minutos! Te espero lá.`;
@@ -386,7 +387,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
     const anyPhone = products.some((p) => p.waPhoneId);
     const [users, allLeads] = await Promise.all([repo.list("users"), repo.list("leads")]);
     const humanIds = new Set(users.map((u) => u.id));
-    const stats = { firstTouch: 0, secondTouch: 0, ladder: 0, nurtured: 0, reminders: 0, rescue: 0, rescue2: 0, backlogRescue: 0, skipped: 0 };
+    const stats = { firstTouch: 0, secondTouch: 0, ladder: 0, nurtured: 0, reminders: 0, ringAlerts: 0, rescue: 0, rescue2: 0, backlogRescue: 0, skipped: 0 };
     let sends = 0;
     const CAP = 25; // teto por ciclo: rajada nunca vira metralhadora
 
@@ -666,7 +667,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
         }
       }
 
-      // ── 2. Lembretes da call (véspera · 1h · 10min) ──────────────────────
+      // ── 2. Lembretes da call (véspera · 2h · 10min) ──────────────────────
       if (cfg.reminders || cfg.conversationTest) {
         for (const lead of leads) {
           if (sends >= CAP) break;
@@ -730,9 +731,9 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           // LINK DO MEET. O lembrete de 10min é quem entrega o link, e sem ele
           // sai um "te espero lá" sem lugar nenhum (prod 24/08: o lead perguntou
           // "vão mandar algum link?" e a SDR correu atrás na mão). Na hora do
-          // lembrete de 1h ainda dá tempo de criar a sala: tenta agora.
+          // lembrete de 2h ainda dá tempo de criar a sala: tenta agora.
           let callUrl = lead.callUrl || "";
-          if (due.key === "1h" && !callUrl && autoCallMeet) {
+          if (due.key === "2h" && !callUrl && autoCallMeet) {
             try {
               await autoCallMeet(lead.id);
               callUrl = (await repo.get("leads", lead.id))?.callUrl || "";
@@ -775,6 +776,44 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           } catch (err) {
             log.warn?.({ lead: lead.id, err: err.message }, "sdr: lembrete falhou");
             await repo.update("leads", lead.id, { confirmLog: { ...log0, [due.key]: "erro:" + String(err.message || err).slice(0, 120) } });
+          }
+        }
+      }
+
+      // ── 2b. Silêncio na confirmação vira LIGAÇÃO (Leo, 30/08) ────────────
+      // Análise dos no-shows (jun-ago/26): quem respondeu a confirmação fura
+      // 21,6%; quem recebeu e ficou em silêncio fura 88% (22 de 25). O sinal
+      // existia no confirmLog e ninguém agia. A confirmação agora sai 2h antes
+      // e, se até 1h antes da call não veio positiva, o SDR ganha um alerta
+      // pra LIGAR — texto em cima de silêncio é mais silêncio; ligação não é.
+      // Um alerta por horário; se o lead respondeu algo que o robô não entendeu,
+      // o alerta quente do inbound já chamou gente (confirmAlertFor) e este cala.
+      if (cfg.reminders || cfg.conversationTest) {
+        for (const lead of leads) {
+          if (!eligible(lead) || !passOn(cfg.reminders, lead)) continue;
+          if (kindOf(product, lead.stage) !== "call" || !lead.callAt || lead.callConfirmed) continue;
+          const callMs = Date.parse(brtToIso(lead.callAt));
+          if (!Number.isFinite(callMs) || callMs <= nowMs) continue; // hora passou: é fluxo de no-show
+          if (nowMs < callMs - 1 * HOUR) continue; // ainda não é a hora de escalar
+          const log0 = lead.confirmLog && lead.confirmLog.at === lead.callAt ? lead.confirmLog : null;
+          if (!log0 || log0.confirmed) continue;
+          // Só escala silêncio REAL: algum pedido de confirmação saiu (véspera
+          // ou 2h — inclusive falho: aí ligar vale ainda mais) e o lead não está
+          // na sala ("na-conversa" carimba quem já avisou que a call rolou).
+          const asked = ["24h", "2h", "1h"].some((k) => typeof log0[k] === "string" && log0[k] && log0[k] !== "na-conversa");
+          if (!asked) continue;
+          if (lead.sdrLog?.ringAlertFor === lead.callAt) continue;
+          if (lead.sdrLog?.confirmAlertFor === lead.callAt) continue;
+          const phone = lead.waPhone || lead.phone;
+          const thread = await findThreadByPhone(repo, phone);
+          try {
+            await raiseAlert(repo, thread || { id: digits(phone), phone: digits(phone), name: lead.name || "", leadId: lead.id, saas: product.id }, {
+              text: `Call ${slotLabel(lead.callAt, wnow)} sem positiva na confirmação · liga pro lead agora pra garantir`,
+            });
+            await repo.update("leads", lead.id, { sdrLog: { ...(lead.sdrLog || {}), ringAlertFor: lead.callAt } });
+            stats.ringAlerts++;
+          } catch (err) {
+            log.warn?.({ lead: lead.id, err: err.message }, "sdr: alerta de ligação falhou");
           }
         }
       }
@@ -1049,7 +1088,7 @@ export async function handleSdrInbound(repo, { message, now = new Date() } = {})
   const log0 = lead.confirmLog;
   const callMs = lead.callAt ? Date.parse(brtToIso(lead.callAt)) : NaN;
   const askedByBot = !!log0 && log0.at === lead.callAt
-    && [log0["24h"], log0["1h"], log0["10min"]].some((v) => typeof v === "string" && v.length > 0 && !v.startsWith("erro:"));
+    && [log0["24h"], log0["2h"], log0["1h"], log0["10min"]].some((v) => typeof v === "string" && v.length > 0 && !v.startsWith("erro:"));
   // LEAD JÁ ESTÁ NA CONVERSA (Leo, 24/08): "já estou na sala", "já conversamos",
   // "estou aguardando na reunião" — o lembrete seguinte não pode chamar pra uma
   // conversa que já está acontecendo (prod 24/08: o lead avisou às 17h01 que já
