@@ -383,10 +383,19 @@ export function registerFinRoutes(app, repo, { mp } = {}) {
           requested = true;
         } catch (err1) {
           try {
+            // O MP valida `columns` e `frequency` como OBRIGATÓRIOS na config
+            // (erro real de 30/08: "Columns: required · Frequency: required").
+            // As colunas são as que o parseSettlementCsv lê + contexto útil;
+            // frequency é exigida mesmo sem agendamento ligado.
             await mp.settlementReportConfigCreate({
               file_name_prefix: "cockpit-settlement",
               display_timezone: "GMT-03",
-              scheduled: false,
+              columns: [
+                { key: "TRANSACTION_TYPE" }, { key: "TRANSACTION_DATE" }, { key: "SOURCE_ID" },
+                { key: "SETTLEMENT_NET_AMOUNT" }, { key: "FEE_AMOUNT" },
+                { key: "TRANSACTION_AMOUNT" }, { key: "EXTERNAL_REFERENCE" }, { key: "PAYMENT_METHOD" },
+              ],
+              frequency: { hour: 3, type: "daily", value: 0 },
             });
             await mp.settlementReportCreate(begin.toISOString(), end.toISOString());
             requested = true;
