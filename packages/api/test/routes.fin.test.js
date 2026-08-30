@@ -186,6 +186,53 @@ test("parseSettlementCsv: só WITHDRAWAL/PAYOUT viram movimento, com valor pt-BR
   await Promise.resolve();
 });
 
+test("mp-out/sync: create recusado tenta criar a CONFIG e pede de novo; erro persistente sai na resposta", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [] });
+  const { registerFinRoutes } = await import("../src/routes.fin.js");
+
+  // Caso 1: conta sem config — o 1º create falha, a config é criada e o retry
+  // passa. A UI recebe requested:true, sem erro.
+  let configCreated = false;
+  let creates = 0;
+  const mpOk = {
+    configured: () => true,
+    settlementReportList: async () => [], // nenhum relatório na conta, nunca
+    settlementReportDownload: async () => "",
+    settlementReportCreate: async () => {
+      creates++;
+      if (!configCreated) throw new Error("you do not have a settlement report configuration");
+      return { status: 202 };
+    },
+    settlementReportConfigCreate: async () => { configCreated = true; return {}; },
+  };
+  const app1 = Fastify();
+  registerFinRoutes(app1, repo, { mp: mpOk });
+  const r1 = (await app1.inject({ method: "POST", url: "/api/fin/leverads/mp-out/sync" })).json();
+  assert.equal(r1.requested, true);
+  assert.equal(r1.requestError, undefined);
+  assert.equal(creates, 2, "create → falha → cria config → retry");
+  await app1.close();
+
+  // Caso 2: falha mesmo depois da config — o MOTIVO vai na resposta (era
+  // engolido por um .catch vazio e o botão parecia morto pra sempre).
+  const mpBad = {
+    configured: () => true,
+    settlementReportList: async () => [],
+    settlementReportDownload: async () => "",
+    settlementReportCreate: async () => { throw new Error("collector sem permissão de reports"); },
+    settlementReportConfigCreate: async () => { throw new Error("config recusada"); },
+  };
+  const app2 = Fastify();
+  registerFinRoutes(app2, repo, { mp: mpBad });
+  const r2 = (await app2.inject({ method: "POST", url: "/api/fin/leverads/mp-out/sync" })).json();
+  assert.equal(r2.ok, true); // a importação (vazia) não é erro; o pedido é que falhou
+  assert.equal(r2.requested, false);
+  assert.match(r2.requestError, /collector sem permissão de reports/);
+  assert.match(r2.requestError, /config recusada/);
+  await app2.close();
+});
+
 test("mp-out/sync importa saídas do relatório pronto e não duplica", async () => {
   const repo = makeMemRepo();
   await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [] });
