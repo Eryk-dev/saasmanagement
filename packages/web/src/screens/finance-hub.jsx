@@ -294,8 +294,15 @@ export function ConciliacaoTab({ product, month }) {
     setNote({ ok: true, text: "sincronizando saídas…" });
     try {
       const r = await api.finMpOutSync(product.id);
-      const extra = r.requested ? " · relatório novo pedido ao MP, sincronize de novo em alguns minutos" : "";
-      setNote({ ok: true, text: `${r.imported} importadas de ${r.filesRead} relatórios${extra}` });
+      // O pedido do relatório pode falhar do lado do MP (ex.: conta sem a
+      // config do settlement report) — o servidor manda o motivo e ele TEM que
+      // aparecer, senão o botão parece morto ("0 importadas" pra sempre).
+      if (r.requestError) {
+        setNote({ ok: false, text: `${r.imported} importadas de ${r.filesRead} relatórios · o MP recusou gerar um novo: ${r.requestError}` });
+      } else {
+        const extra = r.requested ? " · relatório novo pedido ao MP, sincronize de novo em alguns minutos" : "";
+        setNote({ ok: true, text: `${r.imported} importadas de ${r.filesRead} relatórios (${r.filesTotal ?? r.filesRead} na conta)${extra}` });
+      }
       reload(); loadAll();
     } catch (e) { setNote({ ok: false, text: e.message }); }
   };

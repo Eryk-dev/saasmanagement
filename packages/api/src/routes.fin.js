@@ -369,13 +369,36 @@ export function registerFinRoutes(app, repo, { mp } = {}) {
       const DAY = 86_400_000;
       const fresh = files.some((f) => f.createdAt && Date.now() - new Date(f.createdAt).getTime() < DAY);
       let requested = false;
+      let requestError = "";
       if (!fresh) {
         const end = new Date();
         const begin = new Date(end.getTime() - 59 * DAY); // teto da API: 60 dias por relatório
-        await mp.settlementReportCreate(begin.toISOString(), end.toISOString()).catch(() => {});
-        requested = true;
+        // O pedido do relatório NÃO pode falhar em silêncio: foi assim que a
+        // tela ficou meses dizendo "sincronize de novo" com zero relatório
+        // gerado do lado do MP. Conta sem a CONFIG do settlement report recusa
+        // o create — tenta criar uma config mínima e pedir de novo; persistindo
+        // o erro, ele vai na resposta pra aparecer na tela.
+        try {
+          await mp.settlementReportCreate(begin.toISOString(), end.toISOString());
+          requested = true;
+        } catch (err1) {
+          try {
+            await mp.settlementReportConfigCreate({
+              file_name_prefix: "cockpit-settlement",
+              display_timezone: "GMT-03",
+              scheduled: false,
+            });
+            await mp.settlementReportCreate(begin.toISOString(), end.toISOString());
+            requested = true;
+          } catch (err2) {
+            requestError = String(err1?.message || err1).slice(0, 300);
+            const second = String(err2?.message || err2).slice(0, 200);
+            if (second && second !== requestError) requestError += ` · após criar config: ${second}`;
+            req.log.warn({ err: requestError }, "MP settlement: pedido de relatório falhou");
+          }
+        }
       }
-      return { ok: true, filesRead, imported, requested };
+      return { ok: true, filesRead, filesTotal: files.length, imported, requested, ...(requestError ? { requestError } : {}) };
     } catch (e) {
       // Serviço externo falhou → 4xx SEMPRE (5xx vira "Service is not
       // reachable" atrás do proxy do EasyPanel e a mensagem some).

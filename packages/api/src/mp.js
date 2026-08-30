@@ -65,6 +65,14 @@ export function makeMp({ fetch: f = globalThis.fetch, accessToken, webhookSecret
     settlementReportDownload(fileName) {
       return requestText("GET", `/v1/account/settlement_report/${encodeURIComponent(fileName)}`);
     },
+    // O MP exige uma CONFIGURAÇÃO criada antes de gerar o settlement report —
+    // conta sem config responde 4xx no create e nenhum relatório nasce nunca.
+    settlementReportConfigGet() {
+      return request("GET", "/v1/account/settlement_report/config");
+    },
+    settlementReportConfigCreate(body) {
+      return request("POST", "/v1/account/settlement_report/config", body);
+    },
 
     // Preapproval = assinatura recorrente. Sem card token (v1): status pending +
     // init_point — o cliente autoriza na página do MP. external_reference carrega

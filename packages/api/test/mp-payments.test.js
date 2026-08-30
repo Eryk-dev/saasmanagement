@@ -158,6 +158,30 @@ test("ingest: pendente entra no espelho SEM baixar; aprovado depois baixa a mesm
   assert.equal(mirror.invoice, inv.id);
 });
 
+test("link do card: pagamento que chega ANTES do Ganho completa o vínculo sozinho quando o lead converte", async () => {
+  const repo = makeMemRepo();
+  // O lead ainda NÃO virou cliente quando o dinheiro cai (pagou pelo link e o
+  // closer só vira o card depois) — o espelho fica com lead, sem cliente.
+  await repo.create("leads", { id: "le_x1", saas: "leverads", name: "Fulano", stage: "Call agendada" });
+  await ingestMpPayment(repo, mpPmt({ id: 4001, transaction_amount: 3000, external_reference: "le_x1", payer: { email: "" } }));
+  let mirror = await repo.get("mp_payments", "mpp_4001");
+  assert.equal(mirror.lead, "le_x1");
+  assert.equal(mirror.customer, "", "antes do Ganho não há cliente");
+  assert.equal(mirror.matchedBy, "reference");
+
+  // O card vira Ganho (customerId carimbado) e nasce a fatura do fechamento.
+  await repo.create("customers", { id: "c_x1", saas: "leverads", name: "Fulano", leadId: "le_x1" });
+  await repo.update("leads", "le_x1", { customerId: "c_x1", stage: "Ganho" });
+  const inv = await repo.create("invoices", { customer: "c_x1", saas: "leverads", amount: 3000, kind: "renewal", status: "open" });
+
+  // Próxima passada do poller (mesmo doc): o vínculo completa e a fatura baixa.
+  const r = await ingestMpPayment(repo, mpPmt({ id: 4001, transaction_amount: 3000, external_reference: "le_x1", payer: { email: "" } }));
+  mirror = await repo.get("mp_payments", "mpp_4001");
+  assert.equal(mirror.customer, "c_x1", "cliente preenchido depois da conversão");
+  assert.equal(r.settledNow, inv.id);
+  assert.equal((await repo.get("invoices", inv.id)).status, "paid");
+});
+
 test("ingest por e-mail: baixa SÓ com valor exato numa única fatura aberta; senão casa sem baixar", async () => {
   const repo = makeMemRepo();
   await seedCustomer(repo);

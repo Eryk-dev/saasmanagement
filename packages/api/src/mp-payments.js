@@ -144,6 +144,19 @@ export async function ingestMpPayment(repo, pmt, { discord, log, extra } = {}) {
   };
   let payerMismatch = !!prev?.payerMismatch;
 
+  // Pagamento rastreado ao LEAD antes do Ganho (o link do card chega antes do
+  // closer virar o card): quando o lead converte, o vínculo COMPLETA sozinho na
+  // próxima passada do poller — cliente carimbado e a fatura elegível pra
+  // baixa. Sem isso o dinheiro ficava "identificado mas sem dono" pra sempre
+  // (9 pagamentos órfãos assim em 29/08: Zpack, euro neuvo, João…).
+  if (link.lead && !link.customer) {
+    const l = await repo.get("leads", link.lead).catch(() => null);
+    if (l?.customerId) {
+      link.customer = l.customerId;
+      link.saas = link.saas || l.saas || "";
+    }
+  }
+
   const invoices = await repo.list("invoices");
   const alreadySettled = invoices.find((i) => i.mpPaymentId === mpId) || null;
   if (alreadySettled && !link.invoice) {
