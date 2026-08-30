@@ -186,6 +186,28 @@ test("parseSettlementCsv: só WITHDRAWAL/PAYOUT viram movimento, com valor pt-BR
   await Promise.resolve();
 });
 
+test("poller de saídas: importa sozinho quando o relatório fica pronto (sem segundo clique do Leo)", async () => {
+  const repo = makeMemRepo();
+  const { syncMpOutflows } = await import("../src/routes.fin.js");
+  const csv = "TRANSACTION_TYPE;TRANSACTION_DATE;SOURCE_ID;SETTLEMENT_NET_AMOUNT;FEE_AMOUNT\nWITHDRAWAL;2026-08-28T10:00:00Z;901;5.000,00;0,00";
+  // Passada 1: sem relatório — pede um (o MP gera nos minutos seguintes).
+  let ready = false;
+  const mp = {
+    configured: () => true,
+    settlementReportList: async () => (ready ? [{ file_name: "rel.csv", date_created: new Date().toISOString() }] : []),
+    settlementReportDownload: async () => csv,
+    settlementReportCreate: async () => { ready = true; return { status: 202 }; },
+    settlementReportConfigCreate: async () => ({}),
+  };
+  const r1 = await syncMpOutflows(repo, mp);
+  assert.equal(r1.requested, true);
+  assert.equal(r1.imported, 0);
+  // Passada 2 (o tick seguinte do poller): o arquivo existe e entra sozinho.
+  const r2 = await syncMpOutflows(repo, mp);
+  assert.equal(r2.imported, 1);
+  assert.equal((await repo.list("mp_movements"))[0].amount, 5000);
+});
+
 test("mp-out/sync: create recusado tenta criar a CONFIG e pede de novo; erro persistente sai na resposta", async () => {
   const repo = makeMemRepo();
   await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [] });
