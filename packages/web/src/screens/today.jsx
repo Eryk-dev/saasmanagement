@@ -137,7 +137,7 @@ const GROUP_ORDER = ["confirm", "appt", "novo", "noshow", "qual", "closer", "nut
 // (exclusivos de closer/integrador) e closer não herda a fila de novos.
 const PHASE_ROLE = { sdr: "sdr", closer: "closer", entrega: "integrator" };
 
-// Passo de confirmação (1h / 10min antes da call, 2h antes da integração) já
+// Passo de confirmação (2h / 10min antes da call, 2h antes da integração) já
 // executado? O registro mora em `lead.confirmLog` AMARRADO ao horário vigente
 // do compromisso ({ at, "1h": iso, … }): remarcou a call, o log antigo perde a
 // validade sozinho e as tarefas de confirmação voltam pra fila.
@@ -199,14 +199,16 @@ function buildQueue(leads, consultas, saasCfg, person) {
       new Date(l.lastActivityAt).toDateString() === new Date().toDateString()) doneToday++;
 
     // Tarefa de confirmação: NÃO vence no horário da call. Vira DUAS tarefas com
-    // o horário já descontado — 1h antes (manda a confirmação) e 10min antes
-    // (positiva ou liga). Assim o SDR sabe a hora exata de executar cada uma.
+    // o horário já descontado — 2h antes (manda a confirmação; era 1h até 30/08:
+    // saindo 2h antes, o silêncio vira ligação AINDA antes da call — quem não
+    // responde a confirmação fura 88%) e 10min antes (positiva ou liga). Assim
+    // o SDR sabe a hora exata de executar cada uma.
     if (isConfirm) {
       const M = 60 * 1000;
       // FEITO por janela: o SDR marcou "confirmou" ou "sem resposta" naquele
       // passo (confirmStepDone), senão a tarefa continua pendente. Cliente que
-      // confirmou já resolve a de 1h; a de 10min segue (positiva ou ligação).
-      g.hoje.push({ l, kind, phase, who, due: { t: callT - 60 * M, type: "confirm" }, done: confirmStepDone(l, "1h", l.callAt) || !!l.callConfirmed, stage, group: "confirm", confirm: true, confirmWindow: "1h" });
+      // confirmou já resolve a de 2h; a de 10min segue (positiva ou ligação).
+      g.hoje.push({ l, kind, phase, who, due: { t: callT - 120 * M, type: "confirm" }, done: confirmStepDone(l, "2h", l.callAt) || !!l.callConfirmed, stage, group: "confirm", confirm: true, confirmWindow: "2h" });
       g.hoje.push({ l, kind, phase, who, due: { t: callT - 10 * M, type: "confirm" }, done: confirmStepDone(l, "10min", l.callAt), stage, group: "confirm", confirm: true, confirmWindow: "10min" });
       continue;
     }
@@ -755,7 +757,7 @@ function QueueRow({ item, block, featured, onScript, onClaim, onWhatsapp, onOpen
   const unowned = !who; // assumir só quando o card não tem responsável
   const action = item.confirm
     ? (item.confirmKind === "integracao" ? "confirmar integração · 2h antes"
-      : item.confirmWindow === "1h" ? "confirmar · 1h antes" : "confirmar · 10 min antes")
+      : item.confirmWindow === "10min" ? "confirmar · 10 min antes" : "confirmar · 2h antes")
     : group === "noshow" ? "remarcar" : group === "nutri" ? "reativação" : (ACTION_LABELS[kind] || "contato");
   const whatsapp = waLink(l.phone);
   const meet = (kind === "call" || kind === "integracao") && l.callUrl;
@@ -1442,7 +1444,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
   function markConfirm(replied) {
     const isInteg = item.confirmKind === "integracao";
     const at = isInteg ? l.integrationAt : l.callAt;
-    const win = item.confirmWindow || "1h";
+    const win = item.confirmWindow || "2h";
     const prev = l.confirmLog && l.confirmLog.at === at ? l.confirmLog : { at };
     const p = { confirmLog: { ...prev, [win]: new Date().toISOString() } };
     if (replied) p[isInteg ? "integrationConfirmed" : "callConfirmed"] = true;
@@ -1655,10 +1657,10 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
             );
           })()}
           {/* Sem resposta: registra a tentativa e tira a tarefa da fila — na
-              janela de 1h o próximo passo é a de 10 min; nela, é ligar. */}
+              janela de 2h o próximo passo é a de 10 min; nela, é ligar. */}
           {item.confirm && !preview && (
             <button onClick={() => markConfirm(false)}
-              title={item.confirmWindow === "1h"
+              title={item.confirmWindow === "2h" && item.confirmKind !== "integracao"
                 ? "Não respondeu: registra a tentativa e segue pro passo de 10 min (nele o roteiro manda ligar)"
                 : "Não respondeu: registra a tentativa — ligue no horário, a call segue reservada"}
               style={{ padding: "8px 14px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,

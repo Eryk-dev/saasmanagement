@@ -167,7 +167,7 @@ test("opt-out, número inválido, saída lateral, interno e desqualificado ficam
 
 // ── Lembretes da call ────────────────────────────────────────────────────────
 
-test("véspera, 1h e 10min saem uma vez cada, gravam no confirmLog e o 10min leva o link", async () => {
+test("véspera, 2h e 10min saem uma vez cada, gravam no confirmLog e o 10min leva o link", async () => {
   const nowRef = { t: new Date("2026-08-19T13:00:00Z") }; // exatamente T-24h da call
   // Lead que ESCREVEU há pouco (janela de 24h aberta nos 3 lembretes): é o
   // único cenário em que o lembrete sai como texto livre.
@@ -185,10 +185,11 @@ test("véspera, 1h e 10min saem uma vez cada, gravam no confirmLog e o 10min lev
   await r.tick(); // mesmo instante: não repete
   assert.equal(wa.sent.length, 1);
 
-  nowRef.t = new Date("2026-08-20T12:05:00Z"); // 9h05 BRT, janela do 1h
+  nowRef.t = new Date("2026-08-20T11:05:00Z"); // 8h05 BRT, janela do 2h
   await r.tick();
   assert.equal(wa.sent.length, 2);
   assert.match(wa.sent[1].text, /Está tudo certo pra nossa conversa hoje às 10h\?/);
+  assert.match(wa.sent[1].text, /Me confirma por aqui/);
 
   nowRef.t = new Date("2026-08-20T12:52:00Z"); // 9h52, janela do 10min
   await r.tick();
@@ -196,7 +197,7 @@ test("véspera, 1h e 10min saem uma vez cada, gravam no confirmLog e o 10min lev
   assert.match(wa.sent[2].text, /conversa começa em 10 minutos! Link pra entrar: https:\/\/meet\.google\.com\/abc-defg/);
   const log = (await repo.get("leads", "L1")).confirmLog;
   assert.equal(log.at, "2026-08-20T10:00");
-  assert.ok(log["1h"] && log["10min"]);
+  assert.ok(log["2h"] && log["10min"]);
 });
 
 test("lembrete atrasado além da tolerância não sai (robô quebrado não manda véspera 3h depois)", async () => {
@@ -221,9 +222,9 @@ test("call já confirmada cala a véspera (mas os lembretes do dia seguem)", asy
 });
 
 test("passo já feito pelo humano no Meu dia (confirmLog) cala o robô naquele passo", async () => {
-  const nowRef = { t: new Date("2026-08-20T12:05:00Z") };
+  const nowRef = { t: new Date("2026-08-20T11:05:00Z") };
   const repo = await world({
-    leads: [{ id: "L1", name: "R", phone: "41999990000", stage: "Call agendada", callAt: "2026-08-20T10:00", confirmLog: { at: "2026-08-20T10:00", "1h": ISO("2026-08-20T11:55:00Z") }, createdAt: ISO("2026-08-10T10:00:00Z") }],
+    leads: [{ id: "L1", name: "R", phone: "41999990000", stage: "Call agendada", callAt: "2026-08-20T10:00", confirmLog: { at: "2026-08-20T10:00", "2h": ISO("2026-08-20T10:55:00Z") }, createdAt: ISO("2026-08-10T10:00:00Z") }],
   });
   const wa = makeWa();
   await runner(repo, wa, nowRef).tick();
@@ -234,7 +235,7 @@ test("passo já feito pelo humano no Meu dia (confirmLog) cala o robô naquele p
 // (devolve id, sem erro síncrono) e só reprova depois, pelo webhook. O motor
 // não pode esperar o erro: lead que nunca escreveu vai DIRETO pro template.
 test("janela de 24h fechada (lead nunca escreveu): lembrete sai direto pelo template, sem tentar texto", async () => {
-  const nowRef = { t: new Date("2026-08-20T12:05:00Z") };
+  const nowRef = { t: new Date("2026-08-20T11:05:00Z") };
   const repo = await world({
     leads: [{ id: "L1", name: "Rafael", phone: "41999990000", stage: "Call agendada", callAt: "2026-08-20T10:00", createdAt: ISO("2026-08-10T10:00:00Z") }],
   });
@@ -247,11 +248,11 @@ test("janela de 24h fechada (lead nunca escreveu): lembrete sai direto pelo temp
 });
 
 test("registro diz janela aberta mas a Meta recusa na hora: cai pro template", async () => {
-  const nowRef = { t: new Date("2026-08-20T12:05:00Z") };
+  const nowRef = { t: new Date("2026-08-20T11:05:00Z") };
   const repo = await world({
     leads: [{ id: "L1", name: "Rafael", phone: "41999990000", stage: "Call agendada", callAt: "2026-08-20T10:00", createdAt: ISO("2026-08-10T10:00:00Z") }],
     threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads" }],
-    messages: [{ id: "in1", thread: "5541999990000", leadId: "L1", saas: "leverads", direction: "in", text: "oi", at: ISO("2026-08-20T11:00:00Z") }],
+    messages: [{ id: "in1", thread: "5541999990000", leadId: "L1", saas: "leverads", direction: "in", text: "oi", at: ISO("2026-08-20T10:30:00Z") }],
   });
   const wa = makeWa({ approved: ["sdr_lembrete_call"], failText: 131047 });
   await runner(repo, wa, nowRef).tick();
@@ -261,7 +262,7 @@ test("registro diz janela aberta mas a Meta recusa na hora: cai pro template", a
 });
 
 test("sem canal nenhum (janela fechada e sem template), o lembrete vira alerta quente", async () => {
-  const nowRef = { t: new Date("2026-08-20T12:05:00Z") };
+  const nowRef = { t: new Date("2026-08-20T11:05:00Z") };
   const repo = await world({
     leads: [{ id: "L1", name: "R", phone: "41999990000", stage: "Call agendada", callAt: "2026-08-20T10:00", createdAt: ISO("2026-08-10T10:00:00Z") }],
   });
@@ -273,6 +274,45 @@ test("sem canal nenhum (janela fechada e sem template), o lembrete vira alerta q
   assert.match(alerts[0].text, /não entregue/);
   await r.tick();
   assert.equal((await repo.list("wa_alerts")).length, 1, "carimbou o passo: não empilha alerta");
+});
+
+// Análise dos no-shows (30/08): silêncio na confirmação = 88% de furo. A régua
+// nova: confirmação sai 2h antes; sem positiva até 1h antes, o SDR ganha um
+// alerta pra LIGAR (uma vez por horário de call).
+test("sem positiva até 1h antes da call: alerta de ligação sai uma vez; confirmado ou já alertado, não sai", async () => {
+  const nowRef = { t: new Date("2026-08-20T12:10:00Z") }; // 9h10 BRT, call às 10h
+  const asked = { at: "2026-08-20T10:00", "2h": ISO("2026-08-20T11:05:00Z") };
+  const repo = await world({
+    leads: [
+      { id: "mudo", name: "Rafael", phone: "41999990000", stage: "Call agendada", callAt: "2026-08-20T10:00", confirmLog: asked, createdAt: ISO("2026-08-10T10:00:00Z") },
+      { id: "ok", name: "B", phone: "41922222222", stage: "Call agendada", callAt: "2026-08-20T10:00", callConfirmed: true, confirmLog: asked, createdAt: ISO("2026-08-10T10:00:00Z") },
+      { id: "respondeu", name: "C", phone: "41933333333", stage: "Call agendada", callAt: "2026-08-20T10:00", confirmLog: asked, sdrLog: { confirmAlertFor: "2026-08-20T10:00" }, createdAt: ISO("2026-08-10T10:00:00Z") },
+    ],
+  });
+  const wa = makeWa();
+  const r = runner(repo, wa, nowRef);
+  const stats = await r.tick();
+  assert.equal(stats.ringAlerts, 1);
+  const alerts = await repo.list("wa_alerts");
+  assert.equal(alerts.length, 1);
+  assert.match(alerts[0].text, /sem positiva na confirmação · liga pro lead agora/);
+  assert.equal((await repo.get("leads", "mudo")).sdrLog.ringAlertFor, "2026-08-20T10:00");
+  await r.tick(); // mesmo horário de call: não empilha alerta
+  assert.equal((await repo.list("wa_alerts")).length, 1);
+});
+
+test("antes da última hora (ou sem pedido de confirmação na rua) o alerta de ligação espera", async () => {
+  const nowRef = { t: new Date("2026-08-20T11:40:00Z") }; // 8h40 BRT: falta 1h20
+  const repo = await world({
+    leads: [
+      { id: "cedo", name: "R", phone: "41999990000", stage: "Call agendada", callAt: "2026-08-20T10:00", confirmLog: { at: "2026-08-20T10:00", "2h": ISO("2026-08-20T11:05:00Z") }, createdAt: ISO("2026-08-10T10:00:00Z") },
+      { id: "semPedido", name: "S", phone: "41922222222", stage: "Call agendada", callAt: "2026-08-20T13:00", createdAt: ISO("2026-08-10T10:00:00Z") },
+    ],
+  });
+  const wa = makeWa();
+  const stats = await runner(repo, wa, nowRef).tick();
+  assert.equal(stats.ringAlerts, 0);
+  assert.equal((await repo.list("wa_alerts")).length, 0);
 });
 
 // ── Resgate de no-show ───────────────────────────────────────────────────────

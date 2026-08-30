@@ -237,15 +237,17 @@ export const DEFAULT_SCRIPTS = {
     ],
   },
 
-  // Confirmação da call (tarefa do SDR antes do closer entrar): 1h antes confirma;
-  // respondeu, manda a de 10 min; sem resposta, LIGA 10 min antes. Tom incisivo:
-  // a call já está de pé (especialista reservado), o cliente só entra.
+  // Confirmação da call (tarefa do SDR antes do closer entrar): 2h antes confirma
+  // (era 1h; mudou em 30/08 — quem não responde a confirmação fura 88%, e saindo
+  // 2h antes o silêncio vira ligação AINDA antes da call); respondeu, manda a de
+  // 10 min; sem resposta, LIGA. Tom incisivo: a call já está de pé (especialista
+  // reservado), o cliente só entra.
   confirmacao: {
     titulo: "Confirmação da call",
-    resumo: "Antes do especialista entrar, você garante a presença do cliente. 1h antes manda a confirmação; se ele responder, manda a de 10 min; sem resposta, LIGA 10 min antes. Sem abrir brecha pra cancelar: a call já está reservada, o cliente só entra.",
+    resumo: "Antes do especialista entrar, você garante a presença do cliente. 2h antes manda a confirmação; se ele responder, manda a de 10 min; sem resposta até 1h antes, LIGA (o robô também levanta um alerta). Sem abrir brecha pra cancelar: a call já está reservada, o cliente só entra.",
     objetivo: "Garantir a presença na call e reduzir no-show.",
     passos: [
-      { t: "1h antes: confirmação (WhatsApp)", fala: "Oi {{nome}}! Tudo bem? Aqui é {{eu}}, da {{produto}}. Tá tudo certo pra nossa call de hoje às {{hora_call}}. O especialista {{closer_responsavel}} já está se preparando pra te receber no link: {{link_call}}. Duas dicas pra call render: entra já logado no Mercado Livre e na Shopee (ele clona anúncios de verdade nas suas contas, ao vivo) e, se alguém decide junto com você, chama pra assistir. Qualquer mudança de plano, pode me avisar aqui, ok? Te esperamos!", dica: "Logins em mãos e decisor presente são o que mais decide a call: sem login o teste ao vivo não roda; sem o sócio, a decisão adia." },
+      { t: "2h antes: confirmação (WhatsApp)", fala: "Oi {{nome}}! Tudo bem? Aqui é {{eu}}, da {{produto}}. Tá tudo certo pra nossa call de hoje às {{hora_call}}. O especialista {{closer_responsavel}} já está se preparando pra te receber no link: {{link_call}}. Duas dicas pra call render: entra já logado no Mercado Livre e na Shopee (ele clona anúncios de verdade nas suas contas, ao vivo) e, se alguém decide junto com você, chama pra assistir. Me confirma por aqui, por favor? Te esperamos!", dica: "Logins em mãos e decisor presente são o que mais decide a call: sem login o teste ao vivo não roda; sem o sócio, a decisão adia. Sem resposta até 1h antes da call: LIGA (silêncio na confirmação é 88% de furo)." },
       { t: "10 min antes: cliente respondeu (WhatsApp)", fala: "Maravilha! Obrigado pelo retorno. Em 10 minutos ele já vai estar te aguardando." },
       { t: "10 min antes: sem resposta, LIGA", fala: "Oi {{nome}}, é {{eu}}, da {{produto}}. Nossa call é agora, o especialista já está na sala. Tô te mandando o link, entra que já vamos começar.", dica: "Não atendeu? Manda no WhatsApp: o especialista já está te esperando na sala, entra agora: {{link_call}}. Já começamos!" },
     ],
@@ -499,12 +501,13 @@ export function resolveScript(saasCfg, lead) {
   return base;
 }
 
-// Roteiro de confirmação da call. Passos base: [0]=1h antes, [1]=10min positiva
+// Roteiro de confirmação da call. Passos base: [0]=2h antes, [1]=10min positiva
 // (cliente confirmou), [2]=10min ligar (sem resposta). A tarefa de confirmação
 // na fila é DIVIDIDA em duas janelas (Meu dia): passar `window` mostra só a
-// mensagem daquela janela — "1h" = passo [0]; "10min" = [1] ou [2] conforme o
-// lead.callConfirmed (o SDR marca "cliente confirmou" e o passo troca). Sem
-// window (drawer antigo), mostra 1h + a de 10min certa. Respeita override
+// mensagem daquela janela — "2h" = passo [0] ("1h" segue aceito pra item antigo
+// na fila); "10min" = [1] ou [2] conforme o lead.callConfirmed (o SDR marca
+// "cliente confirmou" e o passo troca). Sem
+// window (drawer antigo), mostra 2h + a de 10min certa. Respeita override
 // product.scripts.confirmacao quando saasCfg é passado.
 // Confirmação da INTEGRAÇÃO (2h antes): janela única, então não fatia passos
 // como a da call. Respeita override product.scripts.confirmacaoIntegracao.
@@ -518,7 +521,7 @@ export function confirmationScript(lead, saasCfg, window) {
   const confirmed = !!lead?.callConfirmed;
   const all = base.passos || [];
   let passos;
-  if (window === "1h") passos = all.filter((_, i) => i === 0);
+  if (window === "2h" || window === "1h") passos = all.filter((_, i) => i === 0);
   else if (window === "10min") passos = all.filter((_, i) => confirmed ? i === 1 : i === 2);
   else passos = all.filter((_, i) => i === 0 || (confirmed ? i === 1 : i === 2));
   return { ...base, passos };

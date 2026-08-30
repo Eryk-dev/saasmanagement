@@ -377,7 +377,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerSdrRoutes(app, repo, { whatsapp: whatsappClient, anthropic: anthropicClient });
   // Poller de resumos (index.js) usa os MESMOS clients das rotas.
   // autoCallMeet vai junto: o poller do SDR cria a sala que falta na hora do
-  // lembrete de 1h (sem link, o lembrete de 10min chamava pra lugar nenhum).
+  // lembrete de 2h (sem link, o lembrete de 10min chamava pra lugar nenhum).
   if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, googleUser, anthropic: anthropicClient, mailer: mailerClient, whatsapp: whatsappClient, autoCallMeet });
 
   // ── Tempo real ─────────────────────────────────────────────────────────
