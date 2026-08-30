@@ -344,74 +344,104 @@ export function registerFinRoutes(app, repo, { mp } = {}) {
     if (!product) return reply.code(404).send({ error: "produto não encontrado" });
     if (!mp?.configured?.()) return reply.code(400).send({ error: "Mercado Pago não configurado (MERCADOPAGO_ACCESS_TOKEN)" });
     try {
-      const listRaw = await mp.settlementReportList();
-      const files = (Array.isArray(listRaw) ? listRaw : listRaw?.files || listRaw?.results || [])
-        .map((x) => ({ name: x.file_name || x.fileName || x.name || "", createdAt: x.date_created || x.created_at || x.createdAt || "" }))
-        .filter((x) => x.name);
-      files.sort((a, b) => String(b.createdAt || b.name).localeCompare(String(a.createdAt || a.name)));
-      const byId = new Set((await repo.list("mp_movements")).map((m) => m.id));
-      let imported = 0, filesRead = 0;
-      for (const f of files.slice(0, 3)) {
-        const text = await mp.settlementReportDownload(f.name).catch(() => null);
-        if (!text) continue;
-        filesRead++;
-        for (const row of parseSettlementCsv(text)) {
-          const id = `mov_${row.sourceId}`;
-          if (byId.has(id)) continue;
-          byId.add(id);
-          await repo.create("mp_movements", {
-            id, saas: "", type: row.type, date: row.date, amount: row.amount, fee: row.fee,
-            fileName: f.name, payableId: "", finIgnored: false, createdAt: new Date().toISOString(),
-          });
-          imported++;
-        }
-      }
-      const DAY = 86_400_000;
-      const fresh = files.some((f) => f.createdAt && Date.now() - new Date(f.createdAt).getTime() < DAY);
-      let requested = false;
-      let requestError = "";
-      if (!fresh) {
-        const end = new Date();
-        const begin = new Date(end.getTime() - 59 * DAY); // teto da API: 60 dias por relatório
-        // O pedido do relatório NÃO pode falhar em silêncio: foi assim que a
-        // tela ficou meses dizendo "sincronize de novo" com zero relatório
-        // gerado do lado do MP. Conta sem a CONFIG do settlement report recusa
-        // o create — tenta criar uma config mínima e pedir de novo; persistindo
-        // o erro, ele vai na resposta pra aparecer na tela.
-        try {
-          await mp.settlementReportCreate(begin.toISOString(), end.toISOString());
-          requested = true;
-        } catch (err1) {
-          try {
-            // O MP valida `columns` e `frequency` como OBRIGATÓRIOS na config
-            // (erro real de 30/08: "Columns: required · Frequency: required").
-            // As colunas são as que o parseSettlementCsv lê + contexto útil;
-            // frequency é exigida mesmo sem agendamento ligado.
-            await mp.settlementReportConfigCreate({
-              file_name_prefix: "cockpit-settlement",
-              display_timezone: "GMT-03",
-              columns: [
-                { key: "TRANSACTION_TYPE" }, { key: "TRANSACTION_DATE" }, { key: "SOURCE_ID" },
-                { key: "SETTLEMENT_NET_AMOUNT" }, { key: "FEE_AMOUNT" },
-                { key: "TRANSACTION_AMOUNT" }, { key: "EXTERNAL_REFERENCE" }, { key: "PAYMENT_METHOD" },
-              ],
-              frequency: { hour: 3, type: "daily", value: 0 },
-            });
-            await mp.settlementReportCreate(begin.toISOString(), end.toISOString());
-            requested = true;
-          } catch (err2) {
-            requestError = String(err1?.message || err1).slice(0, 300);
-            const second = String(err2?.message || err2).slice(0, 200);
-            if (second && second !== requestError) requestError += ` · após criar config: ${second}`;
-            req.log.warn({ err: requestError }, "MP settlement: pedido de relatório falhou");
-          }
-        }
-      }
-      return { ok: true, filesRead, filesTotal: files.length, imported, requested, ...(requestError ? { requestError } : {}) };
+      return await syncMpOutflows(repo, mp, { log: req.log });
     } catch (e) {
       // Serviço externo falhou → 4xx SEMPRE (5xx vira "Service is not
       // reachable" atrás do proxy do EasyPanel e a mensagem some).
       return reply.code(400).send({ error: `Mercado Pago: ${String(e.message || e).slice(0, 200)}` });
     }
   });
+}
+
+// Uma passada das SAÍDAS: baixa os relatórios prontos, importa o que é novo e,
+// sem relatório fresco (24h), pede um ao MP. Usada pela rota (botão) e pelo
+// poller (startMpOutflowSync) — antes só o botão existia e o fluxo assíncrono
+// do MP exigia o Leo clicar duas vezes com minutos de espera no meio.
+export async function syncMpOutflows(repo, mp, { log } = {}) {
+  const listRaw = await mp.settlementReportList();
+  const files = (Array.isArray(listRaw) ? listRaw : listRaw?.files || listRaw?.results || [])
+    .map((x) => ({ name: x.file_name || x.fileName || x.name || "", createdAt: x.date_created || x.created_at || x.createdAt || "" }))
+    .filter((x) => x.name);
+  files.sort((a, b) => String(b.createdAt || b.name).localeCompare(String(a.createdAt || a.name)));
+  const byId = new Set((await repo.list("mp_movements")).map((m) => m.id));
+  let imported = 0, filesRead = 0;
+  for (const f of files.slice(0, 3)) {
+    const text = await mp.settlementReportDownload(f.name).catch(() => null);
+    if (!text) continue;
+    filesRead++;
+    for (const row of parseSettlementCsv(text)) {
+      const id = `mov_${row.sourceId}`;
+      if (byId.has(id)) continue;
+      byId.add(id);
+      await repo.create("mp_movements", {
+        id, saas: "", type: row.type, date: row.date, amount: row.amount, fee: row.fee,
+        fileName: f.name, payableId: "", finIgnored: false, createdAt: new Date().toISOString(),
+      });
+      imported++;
+    }
+  }
+  const DAY = 86_400_000;
+  const fresh = files.some((f) => f.createdAt && Date.now() - new Date(f.createdAt).getTime() < DAY);
+  let requested = false;
+  let requestError = "";
+  if (!fresh) {
+    const end = new Date();
+    const begin = new Date(end.getTime() - 59 * DAY); // teto da API: 60 dias por relatório
+    // O pedido do relatório NÃO pode falhar em silêncio: foi assim que a
+    // tela ficou meses dizendo "sincronize de novo" com zero relatório
+    // gerado do lado do MP. Conta sem a CONFIG do settlement report recusa
+    // o create — tenta criar uma config mínima e pedir de novo; persistindo
+    // o erro, ele vai na resposta pra aparecer na tela.
+    try {
+      await mp.settlementReportCreate(begin.toISOString(), end.toISOString());
+      requested = true;
+    } catch (err1) {
+      try {
+        // O MP valida `columns` e `frequency` como OBRIGATÓRIOS na config
+        // (erro real de 30/08: "Columns: required · Frequency: required").
+        // As colunas são as que o parseSettlementCsv lê + contexto útil;
+        // frequency é exigida mesmo sem agendamento ligado.
+        await mp.settlementReportConfigCreate({
+          file_name_prefix: "cockpit-settlement",
+          display_timezone: "GMT-03",
+          columns: [
+            { key: "TRANSACTION_TYPE" }, { key: "TRANSACTION_DATE" }, { key: "SOURCE_ID" },
+            { key: "SETTLEMENT_NET_AMOUNT" }, { key: "FEE_AMOUNT" },
+            { key: "TRANSACTION_AMOUNT" }, { key: "EXTERNAL_REFERENCE" }, { key: "PAYMENT_METHOD" },
+          ],
+          frequency: { hour: 3, type: "daily", value: 0 },
+        });
+        await mp.settlementReportCreate(begin.toISOString(), end.toISOString());
+        requested = true;
+      } catch (err2) {
+        requestError = String(err1?.message || err1).slice(0, 300);
+        const second = String(err2?.message || err2).slice(0, 200);
+        if (second && second !== requestError) requestError += ` · após criar config: ${second}`;
+        log?.warn?.({ err: requestError }, "MP settlement: pedido de relatório falhou");
+      }
+    }
+  }
+  return { ok: true, filesRead, filesTotal: files.length, imported, requested, ...(requestError ? { requestError } : {}) };
+}
+
+// Poller das saídas (mesmo modelo do startMpSync): pede o relatório quando não
+// há fresco e importa o que estiver pronto — o "aguarde alguns minutos e
+// sincronize de novo" acontece sozinho. Cadência folgada: saque/transferência
+// é evento de poucos por semana, e o relatório do MP é diário por natureza.
+export function startMpOutflowSync(repo, { mp, intervalMs = 30 * 60_000, log = console } = {}) {
+  if (!mp?.configured?.()) { log.info?.("mp saídas: sem MERCADOPAGO_ACCESS_TOKEN — desligado"); return () => {}; }
+  let running = false;
+  async function tick() {
+    if (running) return; running = true;
+    try {
+      const r = await syncMpOutflows(repo, mp, { log });
+      if (r.imported) log.info?.(`mp saídas: ${r.imported} movimento(s) importado(s)`);
+      if (r.requestError) log.warn?.({ err: r.requestError }, "mp saídas: pedido de relatório recusado");
+    } catch (err) { log.warn?.({ err: err.message }, "mp saídas: sync falhou (re-tenta no próximo ciclo)"); }
+    finally { running = false; }
+  }
+  tick();
+  const timer = setInterval(tick, intervalMs);
+  if (timer.unref) timer.unref();
+  return () => clearInterval(timer);
 }
