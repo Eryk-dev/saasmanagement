@@ -364,12 +364,17 @@ export async function syncMpOutflows(repo, mp, { log } = {}) {
     .filter((x) => x.name);
   files.sort((a, b) => String(b.createdAt || b.name).localeCompare(String(a.createdAt || a.name)));
   const byId = new Set((await repo.list("mp_movements")).map((m) => m.id));
-  let imported = 0, filesRead = 0;
+  let imported = 0, filesRead = 0, downloadErrors = 0, rowsSeen = 0;
   for (const f of files.slice(0, 3)) {
-    const text = await mp.settlementReportDownload(f.name).catch(() => null);
+    const text = await mp.settlementReportDownload(f.name).catch((err) => {
+      downloadErrors++;
+      log?.warn?.({ file: f.name, err: String(err?.message || err).slice(0, 200) }, "MP settlement: download falhou");
+      return null;
+    });
     if (!text) continue;
     filesRead++;
     for (const row of parseSettlementCsv(text)) {
+      rowsSeen++;
       const id = `mov_${row.sourceId}`;
       if (byId.has(id)) continue;
       byId.add(id);
@@ -421,7 +426,22 @@ export async function syncMpOutflows(repo, mp, { log } = {}) {
       }
     }
   }
-  return { ok: true, filesRead, filesTotal: files.length, imported, requested, ...(requestError ? { requestError } : {}) };
+  const result = {
+    ok: true, filesRead, filesTotal: files.length, imported, requested,
+    ...(rowsSeen ? { rowsSeen } : {}), ...(downloadErrors ? { downloadErrors } : {}),
+    ...(requestError ? { requestError } : {}),
+  };
+  // Carimbo do diagnóstico (app_config "mp_out_sync"): o poller roda sem
+  // ninguém olhando, então o resultado de cada passada — inclusive a recusa
+  // do MP — fica legível no banco em vez de sumir no log do container.
+  try {
+    const stamp = { id: "mp_out_sync", lastAt: new Date().toISOString(), ...result };
+    delete stamp.ok;
+    const cur = await repo.get("app_config", "mp_out_sync");
+    if (cur) await repo.update("app_config", "mp_out_sync", stamp, { silent: true });
+    else await repo.create("app_config", stamp);
+  } catch { /* diagnóstico nunca derruba o sync */ }
+  return result;
 }
 
 // Poller das saídas (mesmo modelo do startMpSync): pede o relatório quando não
