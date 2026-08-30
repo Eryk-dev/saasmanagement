@@ -594,7 +594,7 @@ const AGENDA_INK = "oklch(0.22 0.02 250)";      // letra "preta" sobre as cores 
 const AGENDA_INK_SOFT = "oklch(0.4 0.02 250)";  // linha secundária (hora, empresa)
 
 function AgendaView({ leads, consultations = [], onOpenLead, blocking, person }) {
-  const [week, setWeek] = useStP(0); // offset em MEIAS-semanas a partir da atual (seg·ter·qua | qui·sex·sáb·dom)
+  const [week, setWeek] = useStP(0); // offset em PÁGINAS a partir da atual (seg·ter | qua·qui | sex·fds)
   const [showTouches, setShowTouchesState] = useStP(() => {
     try { return localStorage.getItem("cockpit_agenda_touches") === "1"; } catch { return false; }
   });
@@ -614,22 +614,26 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
   };
   const H0 = 7, H1 = 21, hourH = 44;
   const saasCfgOf = (l) => (window.SEED?.SAAS || []).find((x) => x.id === l.saas);
-  // MEIA-SEMANA por página (Leo, 23/08): SEG·TER·QUA e depois QUI·SEX·SÁB·DOM.
-  // Quinta e sexta saem na MESMA largura dos dias da primeira metade, e o fim
-  // de semana divide a largura de UM dia (2 colunas de meia) — as duas páginas
-  // somam 3 "dias" de largura, então nada muda de tamanho ao navegar. As setas
-  // andam de metade em metade; "hoje" cai na metade que contém hoje.
+  // PARES DE DIAS por página (Leo, 30/08): SEG·TER | QUA·QUI | SEX + fim de
+  // semana. É o mesmo par da régua de veiculação — a agenda que os anúncios
+  // enchem se lê inteira numa página. Sexta fecha a semana com sáb·dom em duas
+  // colunas de meia largura; toda página soma 2 "dias" de largura, então nada
+  // muda de tamanho ao navegar. As setas andam de página em página; "hoje" cai
+  // na página que contém hoje — e no FIM DE SEMANA já abre em seg·ter da semana
+  // seguinte (sábado/domingo se olham pela página da sexta, voltando uma seta).
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const baseHalf = ((today.getDay() + 6) % 7) >= 3 ? 1 : 0; // de quinta em diante = 2ª metade
-  const totalHalf = baseHalf + week; // `week` agora conta MEIAS-semanas
-  const weekOff = Math.floor(totalHalf / 2);
-  const secondHalf = ((totalHalf % 2) + 2) % 2 === 1;
+  const dowMon = (today.getDay() + 6) % 7; // 0=seg … 6=dom
+  const basePage = dowMon <= 1 ? 0 : dowMon <= 3 ? 1 : dowMon === 4 ? 2 : 3; // sáb/dom = seg·ter da próxima
+  const totalPage = basePage + week; // `week` agora conta PÁGINAS (terços de semana)
+  const weekOff = Math.floor(totalPage / 3);
+  const pageInWeek = ((totalPage % 3) + 3) % 3;
   const monday = new Date(today);
-  monday.setDate(today.getDate() - ((today.getDay() + 6) % 7) + weekOff * 7);
-  const days = (secondHalf ? [3, 4, 5, 6] : [0, 1, 2]).map((i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d; });
+  monday.setDate(today.getDate() - dowMon + weekOff * 7);
+  const days = (pageInWeek === 0 ? [0, 1] : pageInWeek === 1 ? [2, 3] : [4, 5, 6])
+    .map((i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d; });
   const start = days[0];
   const end = new Date(days[days.length - 1]); end.setDate(end.getDate() + 1);
-  const colTemplate = `52px ${(secondHalf ? [1, 1, 0.5, 0.5] : [1, 1, 1]).map((f) => `${f}fr`).join(" ")}`;
+  const colTemplate = `52px ${(pageInWeek === 2 ? [1, 0.5, 0.5] : [1, 1]).map((f) => `${f}fr`).join(" ")}`;
   // Eventos: call agendada (callAt), integração (integrationAt) e — opcional —
   // toque do GPS (nextActionAt). O mesmo lead pode ter os três.
   // Consultas 1:1 (mentoria UniqueKids) entram na mesma grade como um "lead" de
