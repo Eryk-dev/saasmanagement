@@ -14,23 +14,31 @@ const SCHEMA = "cockpit";
 // (so importing COLLECTION_NAMES/repo never connects or throws), and fails fast with a
 // clear message the moment something actually needs the DB without COCKPIT_DB_URL set.
 let _pool;
+
+// Pool a partir de uma connection string, com a postura de SSL da casa.
+// Strip any `sslmode`/`ssl` query param so the explicit ssl option below wins — newer
+// pg treats sslmode=require as verify-full, which rejects Supabase's CA chain. We
+// encrypt without chain verification (same posture as the copylever app's asyncpg DSN).
+// Exportado porque leverads-results.js abre um segundo pool (só leitura) pro banco
+// do Levercopy quando os dois projetos estão separados (LEVERCOPY_DB_URL).
+export function makePool(connectionString) {
+  const url = new URL(connectionString);
+  const sslDisabled = url.searchParams.get("sslmode") === "disable";
+  url.searchParams.delete("sslmode");
+  url.searchParams.delete("ssl");
+  return new pg.Pool({
+    connectionString: url.toString(),
+    // sslmode=disable permite Postgres local (dev) sem SSL.
+    ssl: sslDisabled ? false : { rejectUnauthorized: false },
+  });
+}
+
 function getPool() {
   if (!_pool) {
     if (!process.env.COCKPIT_DB_URL) {
       throw new Error("COCKPIT_DB_URL is required (Supabase Postgres connection string).");
     }
-    // Strip any `sslmode`/`ssl` query param so the explicit ssl option below wins — newer
-    // pg treats sslmode=require as verify-full, which rejects Supabase's CA chain. We
-    // encrypt without chain verification (same posture as the copylever app's asyncpg DSN).
-    const url = new URL(process.env.COCKPIT_DB_URL);
-    const sslDisabled = url.searchParams.get("sslmode") === "disable";
-    url.searchParams.delete("sslmode");
-    url.searchParams.delete("ssl");
-    _pool = new pg.Pool({
-      connectionString: url.toString(),
-      // sslmode=disable permite Postgres local (dev) sem SSL.
-      ssl: sslDisabled ? false : { rejectUnauthorized: false },
-    });
+    _pool = makePool(process.env.COCKPIT_DB_URL);
   }
   return _pool;
 }

@@ -47,7 +47,20 @@
 // tokens saem vazios e o deck mostra o literal do `{{calc.x||fallback}}`, então
 // falha de banco degrada pro número escrito no slide, nunca pra buraco.
 
-import { rawQuery } from "./db.js";
+import { rawQuery, makePool } from "./db.js";
+
+// De qual banco vêm os números: com os projetos SEPARADOS (cockpit num Supabase
+// próprio), este job é o único ponto do cockpit que ainda lê o Levercopy — e o
+// faz por LEVERCOPY_DB_URL, uma credencial SOMENTE-LEITURA no projeto do
+// produto, restrita ao que a query usa (orgs, platform_orders,
+// org_revenue_generated, dashboard_portfolio). Sem a env, cai no pool do
+// cockpit: é o comportamento de sempre enquanto os dois moram no mesmo banco.
+let _levercopyPool;
+function levercopyQuery(sql, params = []) {
+  if (!process.env.LEVERCOPY_DB_URL) return rawQuery(sql, params);
+  _levercopyPool ||= makePool(process.env.LEVERCOPY_DB_URL);
+  return _levercopyPool.query(sql, params).then(({ rows }) => rows);
+}
 
 // A org interna da Lever fica fora: número de teste nosso não é resultado de
 // cliente. Mesmo default do `portfolio_exclude_org_ids` do Levercopy.
@@ -160,7 +173,7 @@ export function resultTokens(row) {
 let cache = { tokens: null, at: 0 };
 let inFlight = null;
 
-export async function refreshResults({ query = rawQuery, now = Date.now } = {}) {
+export async function refreshResults({ query = levercopyQuery, now = Date.now } = {}) {
   if (inFlight) return inFlight;
   inFlight = (async () => {
     try {

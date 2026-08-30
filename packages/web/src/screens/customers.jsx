@@ -648,16 +648,16 @@ function CustomersScreen({ initialTab }) {
                 </div>
               )}
               <div className="tbl-x">
-              <table style={{ width: "100%", minWidth: isKidsWorkspace ? 960 : isLeverads ? 1810 : 1630, borderCollapse: "collapse" }}>
+              <table style={{ width: "100%", minWidth: isKidsWorkspace ? 880 : isLeverads ? 1360 : 1240, borderCollapse: "collapse" }}>
                 <thead>
                   <tr>
                     {(isKidsWorkspace
-                      ? [["Cliente", "cliente"], ["Pacote", "plano"], ["Valor", "mrr"], ["Entrada", "entrada"], ["Tempo de casa", "casa"], ["Último contato", "contato"], ["Próxima consulta", null], ["Consultas", null]]
-                      : [["Cliente", "cliente"], ["Nível", "nivel"], ["Plano", "plano"], ["MRR", "mrr"], ["Pagamento", "pagamento"], ["Status pgto.", "pgto"], ["Mercado Pago", "mp"], ["Total recebido", "recebido"], ["Entrada", "entrada"], ["Tempo de casa", "casa"], ["Último contato", "contato"], ["Próximo marco", null], ["Assinatura", null], ["Vencimento", "venc"], ...(isLeverads ? [["Usuário LeverAds", "lever"]] : [])]
+                      ? [["Cliente", "cliente"], ["Pacote", "plano"], ["Valor", "mrr"], ["Entrada", "entrada"], ["Último contato", "contato"], ["Próxima consulta", null], ["Consultas", null]]
+                      : [["Cliente", "cliente"], ["Nível", "nivel"], ["Plano", "plano"], ["MRR", "mrr"], ["Pagamento", "pagamento"], ["Status pgto.", "pgto"], ["Mercado Pago", "mp"], ["Total recebido", "recebido"], ["Entrada", "entrada"], ["Último contato", "contato"], ["Próximo marco", null], ["Assinatura", "venc"], ...(isLeverads ? [["Usuário LeverAds", "lever"]] : [])]
                     ).map(([h, k]) => (
                       <th key={h} className="kicker" title={k ? "ordenar" : undefined}
                         onClick={k ? () => setSort((s) => (s?.key === k ? { key: k, dir: -s.dir } : { key: k, dir: 1 })) : undefined}
-                        style={{ textAlign: (h === "MRR" || h === "Valor" || h === "Total recebido") ? "right" : "left", fontWeight: 600, color: sort?.key === k ? "var(--fg-2)" : "var(--fg-4)", padding: "12px 20px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", cursor: k ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>
+                        style={{ textAlign: (h === "MRR" || h === "Valor" || h === "Total recebido") ? "right" : "left", fontWeight: 600, color: sort?.key === k ? "var(--fg-2)" : "var(--fg-4)", padding: "12px 14px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", cursor: k ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>
                         {h}{sort?.key === k ? (sort.dir === 1 ? " ↑" : " ↓") : ""}
                       </th>
                     ))}
@@ -676,7 +676,7 @@ function CustomersScreen({ initialTab }) {
                         onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
                         onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
                         {/* Empresa + nome do contato (do cadastro; fallback no lead). Some quando é a mesma coisa. */}
-                        <td style={{ padding: "14px 20px", fontSize: 13.5, fontWeight: 600, borderBottom: "1px solid var(--line-faint)" }}>
+                        <td style={{ padding: "13px 14px", fontSize: 13.5, fontWeight: 600, borderBottom: "1px solid var(--line-faint)" }}>
                           {isKeyAccount(c) && <span title="conta grande · fora das médias" style={{ color: "var(--accent)", marginRight: 5 }}>★</span>}
                           {c.name}
                           {(() => {
@@ -688,25 +688,25 @@ function CustomersScreen({ initialTab }) {
                         </td>
                         {/* Nível (categoria A/B/C…) do cliente, pela grade do lead. Só LeverAds. */}
                         {!isKidsWorkspace && (() => { const t = gradeOf(c); return (
-                          <td style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-faint)" }}>
+                          <td style={{ padding: "13px 14px", borderBottom: "1px solid var(--line-faint)" }}>
                             {t.grade
                               ? <span title={t.label} style={{ width: 22, height: 22, borderRadius: 6, background: t.tone, color: t.badgeFg, fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>{t.grade}</span>
                               : <span style={{ fontSize: 13, color: "var(--fg-4)" }}>—</span>}
                           </td>
                         ); })()}
                         {/* Pacote (mentoria) × plano contratado (cadastro primeiro, assinatura como fallback) */}
-                        <td style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
+                        <td style={{ padding: "13px 14px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
                           {kids ? consultPackageLabel(j.total) : contractPlan(c) || "sem plano"}
                         </td>
                         {/* Mentoria é compra única: mostra o valor do contrato, não MRR */}
-                        <td className="tnum" style={{ padding: "14px 20px", fontSize: 13, textAlign: "right", borderBottom: "1px solid var(--line-faint)" }}>
+                        <td className="tnum" style={{ padding: "13px 14px", fontSize: 13, textAlign: "right", borderBottom: "1px solid var(--line-faint)" }}>
                           {money(kids ? (c.arr || 0) : (c.arr || 0) / 12)}
                         </td>
                         {/* Meio de pagamento (cliente > lead) e total já pago (faturas pagas). Só SaaS. */}
                         {!isKidsWorkspace && (() => {
                           const pm = c.paymentMethod || leadById.get(c.leadId)?.paymentMethod;
                           return (
-                            <td style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
+                            <td style={{ padding: "13px 14px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
                               {pm ? paymentLabel(pm) : <span style={{ color: "var(--fg-4)" }}>—</span>}
                             </td>
                           );
@@ -716,7 +716,7 @@ function CustomersScreen({ initialTab }) {
                         {!isKidsWorkspace && (() => {
                           const ps = payStatus(c);
                           return (
-                            <td style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-faint)" }}>
+                            <td style={{ padding: "13px 14px", borderBottom: "1px solid var(--line-faint)" }}>
                               <span onClick={(e) => e.stopPropagation()} title={ps.hint} style={{ position: "relative", display: "inline-flex" }}>
                                 <Pill tone={ps.tone}>{ps.label}</Pill>
                                 <select value={ps.manual ? ps.key : ""}
@@ -739,14 +739,14 @@ function CustomersScreen({ initialTab }) {
                           const mp = mpByCustomer.get(c.id);
                           if (!mp) {
                             return (
-                              <td title="nenhum pagamento do Mercado Pago vinculado a este cliente" style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-4)", borderBottom: "1px solid var(--line-faint)" }}>—</td>
+                              <td title="nenhum pagamento do Mercado Pago vinculado a este cliente" style={{ padding: "13px 14px", fontSize: 13, color: "var(--fg-4)", borderBottom: "1px solid var(--line-faint)" }}>—</td>
                             );
                           }
                           const quando = parseDay(mp.last.dateApproved || mp.last.dateCreated);
                           const como = mpMethodLabel(mp.last);
                           return (
                             <td title={`${mp.n} ${mp.n === 1 ? "pagamento aprovado" : "pagamentos aprovados"} no Mercado Pago vinculado${mp.n === 1 ? "" : "s"} a este cliente · último: ${money(mp.last.amount)}${como ? ` em ${como}` : ""}${quando ? ` (${fmtDay(quando)})` : ""}`}
-                              style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-faint)", whiteSpace: "nowrap" }}>
+                              style={{ padding: "13px 14px", borderBottom: "1px solid var(--line-faint)", whiteSpace: "nowrap" }}>
                               <div className="tnum" style={{ fontSize: 13, color: "var(--pos)", fontWeight: 600 }}>{money(mp.total)}</div>
                               <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>
                                 {[como, quando ? fmtDay(quando) : "", mp.n > 1 ? `${mp.n}x` : ""].filter(Boolean).join(" · ")}
@@ -769,22 +769,21 @@ function CustomersScreen({ initialTab }) {
                             : "pagamento à vista: o contrato inteiro entrou no fechamento";
                           return (
                             <td className="tnum" title={dica}
-                              style={{ padding: "14px 20px", fontSize: 13, textAlign: "right", color: acumula && trazido <= 0 ? "var(--fg-4)" : "var(--fg-2)", borderBottom: "1px solid var(--line-faint)", whiteSpace: "nowrap" }}>
+                              style={{ padding: "13px 14px", fontSize: 13, textAlign: "right", color: acumula && trazido <= 0 ? "var(--fg-4)" : "var(--fg-2)", borderBottom: "1px solid var(--line-faint)", whiteSpace: "nowrap" }}>
                               {trazido > 0 ? money(trazido) : <span style={{ color: "var(--fg-4)" }}>{acumula ? "R$ 0" : "—"}</span>}
                               {(acumula || rec) && <span style={{ fontSize: 11, color: "var(--fg-4)" }}> ↻</span>}
                             </td>
                           );
                         })()}
-                        {/* Data de entrada (startedAt = "Cliente desde") */}
-                        <td className="tnum" style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
+                        {/* Entrada (startedAt = "Cliente desde") com o tempo de casa embaixo —
+                            uma coluna só, pra tabela caber sem rolagem lateral (Leo, 30/08). */}
+                        <td className="tnum" style={{ padding: "13px 14px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)", whiteSpace: "nowrap" }}>
                           {entradaLabel(c) || <span style={{ color: "var(--fg-4)" }}>—</span>}
+                          <div style={{ fontSize: 11, color: "var(--fg-4)" }}>{tenureLabel(c) || "defina o início"}</div>
                         </td>
-                        <td style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
-                          {tenureLabel(c) || <span style={{ color: "var(--fg-4)" }}>defina o início</span>}
-                        </td>
-                        <td className="tnum" style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-3)", borderBottom: "1px solid var(--line-faint)" }}>{lastContact(c)}</td>
+                        <td className="tnum" style={{ padding: "13px 14px", fontSize: 13, color: "var(--fg-3)", borderBottom: "1px solid var(--line-faint)" }}>{lastContact(c)}</td>
                         {/* Próxima consulta (mentoria) × próximo marco da régua */}
-                        <td style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-faint)" }}>
+                        <td style={{ padding: "13px 14px", borderBottom: "1px solid var(--line-faint)" }}>
                           {kids
                             ? j.next
                               ? <Pill tone="warn">consulta {j.next.n || "?"} · {fmtNextAt(j.next.at)}</Pill>
@@ -795,8 +794,11 @@ function CustomersScreen({ initialTab }) {
                               ? <Pill tone={nm.status === "late" ? "neg" : nm.status === "soon" ? "warn" : "mut"}>{nm.label} · {dueLabel(nm.dueAt)}</Pill>
                               : c.startedAt ? <Pill tone="pos">régua completa</Pill> : <Pill tone="mut">sem início</Pill>}
                         </td>
-                        {/* Progresso do pacote (mentoria) × status da assinatura */}
-                        <td style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-faint)" }}>
+                        {/* Progresso do pacote (mentoria) × status da assinatura, com o fim do
+                            ciclo atual (o antigo "Vencimento") como subtítulo — a mesma data do
+                            "Ciclo atual até" da aba Assinaturas; vencido e ainda ativa/em atraso
+                            = fatura da renovação não caiu → vermelho. */}
+                        <td style={{ padding: "13px 14px", borderBottom: "1px solid var(--line-faint)", whiteSpace: "nowrap" }}>
                           {isChurned(c)
                             ? <span title={[c.churnReason ? churnReasonLabel(c.churnReason) : "", c.churnNote || ""].filter(Boolean).join(" · ") || "cliente saiu (churn)"}>
                                 <Pill tone="neg">churn{c.endedAt ? ` ${fmtDay(parseDay(c.endedAt))}` : ""}</Pill>
@@ -804,30 +806,26 @@ function CustomersScreen({ initialTab }) {
                             : kids
                               ? <Pill tone={j.done >= j.total && j.items.length > 0 ? "pos" : j.done > 0 ? "warn" : "mut"}>{j.done} de {j.total}</Pill>
                               : st ? <Pill tone={st.tone}>{st.label}</Pill> : <Pill tone="mut">sem assinatura</Pill>}
+                          {!kids && !isChurned(c) && (() => {
+                            const d = vencDate(c);
+                            if (!d) return null;
+                            const past = d.getTime() < Date.now();
+                            return (
+                              <div className="tnum" title="fim do ciclo atual da assinatura"
+                                style={{ fontSize: 11, marginTop: 3, color: past ? "var(--neg)" : "var(--fg-4)" }}>
+                                {past ? "venceu " : "renova "}{fmtDay(d)}
+                              </div>
+                            );
+                          })()}
                         </td>
-                        {/* Vencimento da assinatura: fim do ciclo atual (mesma data do
-                            "Ciclo atual até" da aba Assinaturas). Vencido e ainda ativa/em
-                            atraso = fatura da renovação não caiu → vermelho. Só SaaS. */}
-                        {!isKidsWorkspace && (() => {
-                          const d = vencDate(c);
-                          if (!d) return <td style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-4)", borderBottom: "1px solid var(--line-faint)" }}>—</td>;
-                          const past = d.getTime() < Date.now();
-                          return (
-                            <td className="tnum" title="fim do ciclo atual da assinatura"
-                              style={{ padding: "14px 20px", fontSize: 13, color: past ? "var(--neg)" : "var(--fg-2)", borderBottom: "1px solid var(--line-faint)", whiteSpace: "nowrap" }}>
-                              {fmtDay(d)}
-                              <div style={{ fontSize: 11, color: past ? "var(--neg)" : "var(--fg-4)" }}>{past ? "venceu " : "renova "}{dueLabel(d.toISOString())}</div>
-                            </td>
-                          );
-                        })()}
                         {/* Usuário linkado no LeverAds (via customer.leveradsOrgId, o de-para
                             do sync de acesso). Sem match na lista de orgs (ou lista não
                             carregada), mostra o id cru. Só no workspace LeverAds. */}
                         {isLeverads && (() => {
-                          if (!c.leveradsOrgId) return <td style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-4)", borderBottom: "1px solid var(--line-faint)" }}>—</td>;
+                          if (!c.leveradsOrgId) return <td style={{ padding: "13px 14px", fontSize: 13, color: "var(--fg-4)", borderBottom: "1px solid var(--line-faint)" }}>—</td>;
                           const o = leverOrgOf(c);
                           return (
-                            <td title={`org ${c.leveradsOrgId}`} style={{ padding: "14px 20px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
+                            <td title={`org ${c.leveradsOrgId}`} style={{ padding: "13px 14px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
                               {o ? (
                                 <div style={{ minWidth: 0, maxWidth: 220 }}>
                                   <div style={{ fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.email || o.name || c.leveradsOrgId}</div>
