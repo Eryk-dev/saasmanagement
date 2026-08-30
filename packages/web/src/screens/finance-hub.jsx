@@ -289,19 +289,22 @@ export function ConciliacaoTab({ product, month }) {
     try { await api.remove("fin_rules", r.id); loadAll(); } catch (e) { setNote({ ok: false, text: e.message }); }
   };
 
-  // Saídas da conta MP: importar (assíncrono do lado do MP) e casar com contas.
-  const syncSaidas = async () => {
-    setNote({ ok: true, text: "sincronizando saídas…" });
+  // Sincronizar TUDO: entradas (espelho de pagamentos) e saídas (settlement
+  // report, assíncrono do lado do MP) num botão só — a fila é uma, o sync
+  // também (Leo, 30/08).
+  const syncTudo = async () => {
+    setNote({ ok: true, text: "sincronizando entradas e saídas…" });
     try {
+      const rIn = await api.mpSyncNow().catch((e) => ({ error: e.message }));
+      const inTxt = rIn?.error ? `entradas: ${rIn.error}` : `entradas: ${int(rIn?.seen || 0)} lidas, ${int(rIn?.settled || 0)} baixadas`;
       const r = await api.finMpOutSync(product.id);
-      // O pedido do relatório pode falhar do lado do MP (ex.: conta sem a
-      // config do settlement report) — o servidor manda o motivo e ele TEM que
-      // aparecer, senão o botão parece morto ("0 importadas" pra sempre).
+      // O pedido do relatório pode falhar do lado do MP — o servidor manda o
+      // motivo e ele TEM que aparecer, senão o botão parece morto.
       if (r.requestError) {
-        setNote({ ok: false, text: `${r.imported} importadas de ${r.filesRead} relatórios · o MP recusou gerar um novo: ${r.requestError}` });
+        setNote({ ok: false, text: `${inTxt} · saídas: ${r.imported} importadas · o MP recusou gerar relatório novo: ${r.requestError}` });
       } else {
         const extra = r.requested ? " · relatório novo pedido ao MP, sincronize de novo em alguns minutos" : "";
-        setNote({ ok: true, text: `${r.imported} importadas de ${r.filesRead} relatórios (${r.filesTotal ?? r.filesRead} na conta)${extra}` });
+        setNote({ ok: true, text: `${inTxt} · saídas: ${r.imported} importadas de ${r.filesRead} relatórios (${r.filesTotal ?? r.filesRead} na conta)${extra}` });
       }
       reload(); loadAll();
     } catch (e) { setNote({ ok: false, text: e.message }); }
@@ -323,6 +326,13 @@ export function ConciliacaoTab({ product, month }) {
 
   const movSugestao = (m) => fin.payables.find((p) => Math.abs((Number(p.amount) || 0) - (Number(m.amount) || 0)) <= 0.01);
 
+  // A FILA é uma só (Leo, 30/08): entrada e saída misturadas, por data — o
+  // trabalho de conciliar é um, não dois cards pra varrer.
+  const fila = [
+    ...pendentes.map((x) => ({ kind: "entrada", at: String(x.dateApproved || x.dateCreated || "").slice(0, 10), row: x })),
+    ...movsPend.map((x) => ({ kind: "saida", at: String(x.date || ""), row: x })),
+  ].sort((a, b) => b.at.localeCompare(a.at));
+
   return (
     <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
       {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
@@ -340,15 +350,23 @@ export function ConciliacaoTab({ product, month }) {
           title="Saques e transferências da conta MP (settlement report) ainda não casados com uma conta a pagar." />
       </div>
 
-      <Card title="Pendências de entrada" hint="vincule ao cliente ou desconsidere com motivo · com o lembrar ligado, vira regra e não pergunta mais">
+      <Card title="Conciliação Mercado Pago" hint="entradas e saídas numa fila só, por data · vincule ao cliente, case com a conta a pagar ou desconsidere"
+        action={<button onClick={syncTudo} style={btn}>↻ sincronizar</button>}>
         <div style={{ padding: "10px var(--inset-x) 18px", display: "flex", flexDirection: "column", gap: 10 }}>
-          {!pendentes.length && <span className="dim" style={{ fontSize: 12.5 }}>Tudo conciliado por aqui.</span>}
-          {pendentes.map((p) => {
+          {!fila.length && (
+            <span className="dim" style={{ fontSize: 12.5 }}>
+              Tudo conciliado. As entradas chegam sozinhas pelo sync automático; as saídas dependem do
+              relatório do MP (assíncrono): sincronize, aguarde alguns minutos e sincronize de novo.
+            </span>
+          )}
+          {fila.map(({ kind, row }) => kind === "entrada" ? (() => {
+            const p = row;
             const sug = fin.conciliacao.sugestoes?.[p.id];
             const best = bestIdOf(p);
             return (
               <div key={p.id} style={{ padding: "10px 12px", background: "var(--bg-inset)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
+                  <Pill tone="pos">entrada</Pill>
                   <span className="tnum dim" style={{ fontSize: 12, width: 42 }}>{dmy((p.dateApproved || p.dateCreated || "").slice(0, 10))}</span>
                   <span style={{ flex: 1, minWidth: 160, fontSize: 13, fontWeight: 600 }}>
                     {p.payerName || p.payerEmail || "pagador sem nome"}
@@ -388,18 +406,12 @@ export function ConciliacaoTab({ product, month }) {
                 </div>
               </div>
             );
-          })}
-        </div>
-      </Card>
-
-      <Card title="Saídas da conta Mercado Pago" hint="saques e transferências do settlement report · case com a conta a pagar (baixa junto) ou desconsidere"
-        action={<button onClick={syncSaidas} style={btn}>↻ sincronizar saídas</button>}>
-        <div style={{ padding: "10px var(--inset-x) 18px", display: "flex", flexDirection: "column", gap: 8 }}>
-          {!movsPend.length && <span className="dim" style={{ fontSize: 12.5 }}>Nenhuma saída pendente. O relatório do MP é assíncrono: sincronize, aguarde alguns minutos e sincronize de novo pra importar.</span>}
-          {movsPend.map((m) => {
+          })() : (() => {
+            const m = row;
             const sug = movSugestao(m);
             return (
               <div key={m.id} style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "9px 12px", background: "var(--bg-inset)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)" }}>
+                <Pill tone="neg">saída</Pill>
                 <span className="tnum dim" style={{ fontSize: 12, width: 42 }}>{dmy(m.date)}</span>
                 <span style={{ flex: 1, minWidth: 140, fontSize: 12.5 }}>
                   {m.type === "PAYOUT" ? "Transferência enviada" : "Saque pra conta bancária"}
@@ -417,7 +429,7 @@ export function ConciliacaoTab({ product, month }) {
                 <button onClick={() => ignorarMov(m)} className="dim" style={{ fontSize: 12, fontWeight: 600 }}>desconsiderar</button>
               </div>
             );
-          })}
+          })())}
         </div>
       </Card>
 

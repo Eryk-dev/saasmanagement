@@ -204,7 +204,12 @@ test("mp-out/sync: create recusado tenta criar a CONFIG e pede de novo; erro per
       if (!configCreated) throw new Error("you do not have a settlement report configuration");
       return { status: 202 };
     },
-    settlementReportConfigCreate: async () => { configCreated = true; return {}; },
+    settlementReportConfigCreate: async (body) => {
+      // O MP recusa config sem columns/frequency — o corpo enviado TEM que tê-los.
+      assert.ok(Array.isArray(body?.columns) && body.columns.length > 0, "config precisa de columns");
+      assert.ok(body?.frequency?.type, "config precisa de frequency");
+      configCreated = true; return {};
+    },
   };
   const app1 = Fastify();
   registerFinRoutes(app1, repo, { mp: mpOk });
