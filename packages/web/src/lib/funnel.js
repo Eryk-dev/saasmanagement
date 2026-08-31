@@ -187,12 +187,14 @@ export const NEXT_KINDS = {
   qualificacao:  ["retry", "call", "contato", "desqualificado"], // contato = Nutrição
   call:          ["retry", "noshow", "followup", "ganho", "desqualificado"], // noshow = cliente furou
   // Com o Ganho ANTES da Integração, fechar é o passo do closer e a entrega vem
-  // depois: o Follow-up não manda mais direto pra Integração, e Integração e
-  // pós-venda não voltam pro Ganho (seria andar pra trás na régua).
+  // depois: o Follow-up não manda mais direto pra Integração.
   followup:      ["retry", "ganho", "desqualificado"],
   proposta:      ["retry", "followup", "ganho", "desqualificado"],
   ganho:         ["integracao", "posvenda"],
-  integracao:    ["posvenda"],
+  // Da entrega dá pra voltar pro Ganho (pedido do Leo, 31/08/2026): card que
+  // foi de Call direto pra Integração ainda pode parar na coluna Ganho — os
+  // dois são SOLD_KINDS no servidor, então a venda não desfaz no movimento.
+  integracao:    ["posvenda", "ganho"],
   posvenda:      [],
   outro:         ["retry", "desqualificado"],
 };

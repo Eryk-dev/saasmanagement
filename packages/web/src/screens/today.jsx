@@ -1983,9 +1983,11 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   const [slot, setSlot] = useS(lead.callAt || "");
   const [day, setDay] = useS(() => nextBusinessDays(1)[0]); // dia da grade (qualquer dia via calendário)
   const [retryAt, setRetryAt] = useS(""); // "Retomar": quando voltar nesse lead
-  // Call → Follow-up: qual proposta ficou na mesa (obrigatória nesse movimento).
+  // Call → Follow-up: qual proposta ficou na mesa (obrigatória nesse movimento)
+  // — o PRODUTO da apresentação + o ciclo, pro follow-up cobrar a oferta certa.
   const fromCall = stageKind(saasCfg, lead.stage || saasCfg?.funnel?.[0]?.stage) === "call";
   const [offer, setOffer] = useS(lead.proposalOffer || "");
+  const [offerProduct, setOfferProduct] = useS(lead.proposalProduct || "");
   const [email, setEmail] = useS(lead.email || "");
   const [emailTouched, setEmailTouched] = useS(false); // SDR digitou um e-mail próprio pro convite
   const [meetBusy, setMeetBusy] = useS(false);   // criando o Meet
@@ -1996,7 +1998,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     setIntegrator(lead.integrator || (integrators.length === 1 ? integrators[0].id : ""));
     setAmount(lead.amount || ""); setPayment(lead.paymentMethod || ""); setReason(""); setNote("");
     setDealProduct(lead.dealProduct || ""); setPlanClosed(lead.planClosed || "anual");
-    setOffer(lead.proposalOffer || "");
+    setOffer(lead.proposalOffer || ""); setOfferProduct(lead.proposalProduct || "");
     setEmail(lead.email || ""); setEmailTouched(false); setMeetBusy(false); setMeetRes(null); setMeetErr(null);
   }, [lead.id]); // eslint-disable-line react-hooks/exhaustive-deps
   // Auto-preenche o e-mail do convite com o do lead SEMPRE que ele estiver
@@ -2064,10 +2066,13 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   const askProduct = dealProductsOf(lead.saas).length > 0;
   const oneOff = isOneOffProduct(lead.saas, dealProduct);
   const dealReady = Number(amount) > 0 && !!payment && (!askProduct || !!dealProduct);
+  // Proposta na mesa completa = ciclo escolhido E, em quem tem catálogo, o
+  // produto ofertado ("não chegou na proposta" dispensa o produto).
+  const offerDone = !!offer && (offer === "nenhuma" || !askProduct || !!offerProduct);
   const ready = !dest ? false
     : isRetry ? !!retryAt
     : setup === "call" ? !!(closer && slot)
-    : setup === "followup" ? !!closer && (!fromCall || !!offer) // horário é opcional; saindo da call, a proposta na mesa é obrigatória
+    : setup === "followup" ? !!closer && (!fromCall || offerDone) // horário é opcional; saindo da call, a proposta na mesa é obrigatória
     : setup === "integrator" ? !!(integrator && (dest.kind !== "integracao" || dealReady))
     : setup === "won" ? dealReady
     : setup === "loss" ? !!reason
@@ -2094,7 +2099,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     // horário, não na cadência padrão). Já foi gravado no callAt e dava ruim: a
     // agenda desenhava um "✓ call feita" que nunca aconteceu e ainda arquivava a
     // call de verdade no histórico (Leo, 13/08 — casos Beto e Milaan).
-    else if (setup === "followup") { patch.closer = closer; if (fromCall && offer) patch.proposalOffer = offer; if (slot) { patch.followupAt = slot; patch.nextActionAt = slot; } }
+    else if (setup === "followup") { patch.closer = closer; if (fromCall && offer) { patch.proposalOffer = offer; patch.proposalProduct = offer === "nenhuma" ? "" : offerProduct; } if (slot) { patch.followupAt = slot; patch.nextActionAt = slot; } }
     // Integração: define o integrador e, se um horário foi escolhido na agenda,
     // agenda a integração nele (integrationAt aparece na Agenda e replica na
     // agenda pessoal do integrador que conectou o Google).
@@ -2277,16 +2282,28 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
           {setup === "followup" && (
             closer ? (
               <div>
-                {/* Saindo da CALL: registra qual proposta ficou na mesa — é ela
-                    que o follow-up cobra (aparece no Resumo do cliente). */}
+                {/* Saindo da CALL: registra qual proposta ficou na mesa — o
+                    PRODUTO da apresentação + o ciclo, é ela que o follow-up
+                    cobra (aparece no Resumo do cliente). */}
                 {fromCall && (
-                  <div style={{ maxWidth: 280, marginBottom: 10 }}>
-                    <label className="kicker" style={label}>Qual proposta ficou na mesa? *</label>
-                    <select value={offer} onChange={(e) => setOffer(e.target.value)} style={fieldStyle}>
-                      <option value="">a oferta que o cliente levou pra pensar…</option>
-                      {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-                      <option value="nenhuma">não chegou na proposta</option>
-                    </select>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+                    {askProduct && offer !== "nenhuma" && (
+                      <div style={{ width: "min(280px, 100%)" }}>
+                        <label className="kicker" style={label}>Qual produto ficou ofertado? *</label>
+                        <select value={offerProduct} onChange={(e) => setOfferProduct(e.target.value)} style={fieldStyle}>
+                          <option value="">o produto da apresentação…</option>
+                          {dealProductsOf(lead.saas).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                        </select>
+                      </div>
+                    )}
+                    <div style={{ width: "min(280px, 100%)" }}>
+                      <label className="kicker" style={label}>Qual proposta ficou na mesa? *</label>
+                      <select value={offer} onChange={(e) => setOffer(e.target.value)} style={fieldStyle}>
+                        <option value="">a oferta que o cliente levou pra pensar…</option>
+                        {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                        <option value="nenhuma">não chegou na proposta</option>
+                      </select>
+                    </div>
                   </div>
                 )}
                 <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginBottom: 6 }}>

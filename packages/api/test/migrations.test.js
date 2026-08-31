@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   ensureIntegrationStage, migrateLeverAdsCrmFunnel, migrateLeverAdsSdrCadence, migrateNutricaoSevenDays, ensureFunnelKinds,
-  migrateGanhoAntesIntegracao, backfillWonAt, backfillPostSaleCustomers,
+  migrateGanhoAntesIntegracao, migrateGanhoNaIntegracao, backfillWonAt, backfillPostSaleCustomers,
   ensureLossReasons, ensureNoShowReason, ensureSdrGoals, ensureCloserGoals, ensureCloseRateUnica, ensureSocialGoals, ensureUserRoles, ensureUserSaasScope, ensureUserScreens, DEFAULT_LOSS_REASONS,
   migrateExpensePctBases,
 } from "../src/migrations.js";
@@ -458,6 +458,24 @@ test("migrateGanhoAntesIntegracao: move o ganho pra antes da entrega sem mexer e
   assert.deepEqual(p.nextSteps.ganho, ["integracao", "posvenda"]);
   // Card NÃO é movido: quem estava na entrega continua lá.
   assert.equal((await repo.get("leads", "l1")).stage, "Integração");
+});
+
+test("migrateGanhoNaIntegracao: devolve o Ganho aos próximos passos da entrega, uma vez só", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", {
+    id: "leverads",
+    nextSteps: { integracao: ["posvenda"], integracao2: ["posvenda", "ganho"], posvenda: [], followup1: ["retry", "ganho"] },
+  });
+  assert.equal(await migrateGanhoNaIntegracao(repo), true);
+  const p = await repo.get("products", "leverads");
+  assert.deepEqual(p.nextSteps.integracao, ["posvenda", "ganho"]);
+  assert.deepEqual(p.nextSteps.integracao2, ["posvenda", "ganho"], "quem já tem não duplica");
+  assert.deepEqual(p.nextSteps.posvenda, [], "só as chaves de integração ganham o destino");
+  assert.deepEqual(p.nextSteps.followup1, ["retry", "ganho"], "as outras chaves ficam como estão");
+  // One-shot: o dono pode tirar de novo em Ajustes sem a migração recolocar.
+  await repo.update("products", "leverads", { nextSteps: { ...p.nextSteps, integracao: ["posvenda"] } });
+  assert.equal(await migrateGanhoNaIntegracao(repo), false);
+  assert.deepEqual((await repo.get("products", "leverads")).nextSteps.integracao, ["posvenda"]);
 });
 
 test("migrateGanhoAntesIntegracao: one-shot e não mexe em funil já na ordem nova", async () => {

@@ -64,8 +64,10 @@ export function clientSummary(saasCfg, lead, stage, cat, { full = false } = {}) 
     // fechamento (é o escopo que a entrega vai executar).
     ["Produto", dealProductLabel(lead.dealProduct, lead.saas) || null],
     ["Valor", lead.amount ? money(lead.amount) : null],
-    // Registrada no movimento Call → Follow-up: é a oferta que o follow-up cobra.
-    ["Proposta na mesa", lead.proposalOffer ? (lead.proposalOffer === "nenhuma" ? "não chegou na proposta" : closedPlanLabel(lead.proposalOffer) || lead.proposalOffer) : null],
+    // Registrada no movimento Call → Follow-up: produto da apresentação + ciclo,
+    // é essa oferta que o follow-up cobra.
+    ["Proposta na mesa", lead.proposalOffer ? (lead.proposalOffer === "nenhuma" ? "não chegou na proposta"
+      : [dealProductLabel(lead.proposalProduct, lead.saas), closedPlanLabel(lead.proposalOffer) || lead.proposalOffer].filter(Boolean).join(" · ")) : null],
     ["Pagamento", lead.paymentMethod ? paymentLabel(lead.paymentMethod) : null],
     ["Origem", lead.source],
     ["SDR / closer", [lead.owner && displayName(lead.owner), lead.closer && displayName(lead.closer)].filter(Boolean).join(" / ") || null],
