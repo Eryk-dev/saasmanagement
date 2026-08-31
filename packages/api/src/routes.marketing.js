@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { meta as defaultMeta, onMetaThrottle } from "./meta.js";
 import { stagePassCounts } from "./routes.funnel-metrics.js";
 import { kindOf } from "./stages.js";
-import { dayKey, isRealLead, isSaleLead, winsIn, customerStartMap, leadOrigin, LEAD_ORIGINS } from "./metrics-core.js";
+import { dayKey, isRealLead, isSaleLead, winsIn, customerStartMap, leadOrigin, LEAD_ORIGINS, callOutcome } from "./metrics-core.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 import { painCode } from "./attribution.js";
 export { painCode };
@@ -714,6 +714,23 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       l.callAt || kindOf(product, l.stage) === "call" ||
       (stageActsByLead.get(l.id) || []).some((a) => kindOf(product, a.meta?.to) === "call");
 
+    // Comparecimento na call pela régua ÚNICA do placar (callOutcome do
+    // metrics-core): a testemunha é o resumo de call por IA (activity system/
+    // call_summary), que separa compareceu de furo mesmo com callAt remarcado
+    // ou limpo. Só as do produto, projetadas (meta.summary é o maior campo útil).
+    const witnessByLead = new Map();
+    for (const a of await repo.listWhere("activities", { saas: product.id, type: "system" }, { fields: ["lead", "type", "meta", "at"] })) {
+      if (!a.lead || a.meta?.event !== "call_summary" || !a.meta.summary) continue;
+      if (!witnessByLead.has(a.lead)) witnessByLead.set(a.lead, []);
+      witnessByLead.get(a.lead).push(a);
+    }
+    const callActsOf = (id) => {
+      const wit = witnessByLead.get(id);
+      const stage = stageActsByLead.get(id) || [];
+      return wit ? [...stage, ...wit] : stage;
+    };
+    const today = dayStr(Date.now()); // separa "não veio" de "ainda vai acontecer"
+
     // Origem dos leads (Leo, 07/08): UTM + referrer do cadastro, classificador
     // único do metrics-core. Leads/calls = coorte da janela (mesma base do CPL);
     // ganhos e receita = fechados NA janela pela data da venda, creditados à
@@ -775,13 +792,22 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       // Calls agendadas: lead atribuído que marcou call (callAt), está no
       // estágio de kind call ou passou por ele (histórico — cobre lead antigo
       // sem callAt). Responde "essa dor/anúncio traz lead que senta na call?".
-      const calls = matched.filter(hadCall).length;
+      const callLeads = matched.filter(hadCall);
+      const calls = callLeads.length;
+      // Comparecimento = compareceram ÷ calls já VENCIDAS (shown + noShow);
+      // call marcada pro futuro (pending) fica fora — não é furo, é agenda.
+      const out = callOutcome(product, callLeads, callActsOf, today);
+      const callsDue = out.shown + out.noShow;
       return {
         ...g,
         abc,
         abcCost: gradeCost(g.spend, abc),
         wonAbc,
         calls,
+        callsShown: out.shown,
+        callsDue,
+        bookRate: n > 0 ? Math.round((calls / n) * 1000) / 10 : null, // % de lead que marca call
+        showRate: callsDue > 0 ? Math.round((out.shown / callsDue) * 1000) / 10 : null, // % que compareceu
         spend: Math.round(g.spend * 100) / 100,
         cplMeta: g.metaLeads > 0 ? Math.round((g.spend / g.metaLeads) * 100) / 100 : null,
         leads: n,
