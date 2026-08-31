@@ -18,6 +18,7 @@ import { applyMpCancellationChurn, applyMpReactivationRescue } from "./churn.js"
 import { DEAL_PRODUCT_LABEL } from "./proposal-catalog.js";
 import { MENTORIA_LABEL } from "./mentoria.js";
 import { logActivity } from "./lead-flow.js";
+import { baseUrl } from "./disparos-util.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 
 // ── E-mail do pagador: conveniência, nunca requisito ────────────────────────
@@ -169,7 +170,7 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
       const pre = await mp.createPreapproval({
         payerEmail,
         externalReference: sub.id,
-        backUrl: PUBLIC_BASE,
+        ...mpUrls(req),
         amount: Number(sub.price) || 0,
         frequencyMonths: CYCLE_MONTHS[sub.cycle] || 1,
         reason,
@@ -188,8 +189,6 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
   });
 
   // ── Financeiro (espelho de pagamentos + cobrança avulsa) ─────────────────
-  // notification_url só vale com base pública https (MP recusa localhost).
-  const notificationUrl = PUBLIC_BASE.startsWith("https://") ? `${PUBLIC_BASE}/public/mp/webhook` : undefined;
 
   // Lista do espelho pra tela Financeiro (aba Pagamentos). Pagamento sem saas = não identificado:
   // aparece em qualquer produto até alguém vincular.
@@ -355,7 +354,7 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
       const pref = await createPreference({
         title, amount, externalReference: invoice.id,
         payerEmail: payerEmailOrNone(customer.email),
-        backUrl: PUBLIC_BASE, notificationUrl,
+        ...mpUrls(req),
         maxInstallments: Number(req.body?.maxInstallments) || undefined,
       });
       const updated = await repo.update("invoices", invoice.id, { mpPrefId: pref.id, mpInitPoint: pref.init_point || null });
@@ -390,7 +389,7 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
       const pref = await createPreference({
         title, amount: Number(invoice.amount), externalReference: invoice.id,
         payerEmail: payerEmailOrNone(customer?.email),
-        backUrl: PUBLIC_BASE, notificationUrl,
+        ...mpUrls(req),
         maxInstallments: Number(req.body?.maxInstallments) || undefined,
       });
       const updated = await repo.update("invoices", invoice.id, { mpPrefId: pref.id, mpInitPoint: pref.init_point || null });
@@ -458,13 +457,13 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
     try {
       const pref = recurring
         ? await mp.createPreapproval({
-          payerEmail, externalReference: lead.id, backUrl: PUBLIC_BASE, notificationUrl,
+          payerEmail, externalReference: lead.id, ...mpUrls(req),
           amount, frequencyMonths, reason: title.slice(0, 255),
         })
         : await createPreference({
           title, description, amount, externalReference: lead.id,
           payerEmail,
-          backUrl: PUBLIC_BASE, notificationUrl,
+          ...mpUrls(req),
           maxInstallments: Number(req.body?.maxInstallments) || undefined,
         });
       const contractValue = Math.round(Number(req.body?.contractValue) * 100) / 100;
@@ -636,5 +635,19 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
   });
 }
 
-// Mesma base pública do routes.js (link de retorno do checkout).
-const PUBLIC_BASE = (process.env.COCKPIT_PUBLIC_URL || `http://localhost:${process.env.API_PORT || 8787}`).replace(/\/+$/, "");
+// URLs públicas dos links do MP, POR REQUEST: COCKPIT_PUBLIC_URL > host da
+// request (x-forwarded-*) > localhost — a mesma cadeia do publicBase de
+// routes.js (via baseUrl, que existe fora dele pra não criar ciclo de import).
+// Era uma constante só da env: deploy sem COCKPIT_PUBLIC_URL mandava back_url
+// "http://localhost:8787" e o /preapproval recusava a assinatura recorrente
+// inteira ("Invalid value for back_url" — ali o MP exige URL https válida; o
+// checkout avulso engole). Env sem esquema ganha https:// pelo mesmo motivo.
+// notification_url só vale com base pública https (MP recusa localhost).
+function mpUrls(req) {
+  const base = baseUrl(req).trim();
+  const backUrl = /^https?:\/\//.test(base) ? base : `https://${base}`;
+  return {
+    backUrl,
+    notificationUrl: backUrl.startsWith("https://") ? `${backUrl}/public/mp/webhook` : undefined,
+  };
+}
