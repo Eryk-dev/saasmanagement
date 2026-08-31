@@ -99,6 +99,39 @@ test("mode recurring cria a ASSINATURA no MP (preapproval), não um checkout de 
   assert.match(nota.text, /assinatura recorrente/i);
 });
 
+// O /preapproval do MP exige back_url https VÁLIDA (recusa http://localhost com
+// "Invalid value for back_url" e a venda trava na cara do closer). Sem a env,
+// a base tem que sair do host da request, igual às outras URLs públicas.
+test("back_url sai do host da request quando falta COCKPIT_PUBLIC_URL", async (t) => {
+  const env = process.env.COCKPIT_PUBLIC_URL;
+  delete process.env.COCKPIT_PUBLIC_URL;
+  t.after(() => { if (env !== undefined) process.env.COCKPIT_PUBLIC_URL = env; });
+  const repo = await comLead();
+  const { app, calls } = buildApp(repo);
+  t.after(() => app.close());
+
+  await app.inject({
+    method: "POST", url: "/api/leads/le_1/mp/link", payload: recorrente(),
+    headers: { "x-forwarded-host": "cockpit.leverads.com.br" },
+  });
+  const body = calls.find((c) => c.key === "POST /preapproval").body;
+  assert.equal(body.back_url, "https://cockpit.leverads.com.br");
+  assert.equal(body.notification_url, "https://cockpit.leverads.com.br/public/mp/webhook");
+});
+
+test("COCKPIT_PUBLIC_URL sem esquema ganha https:// no back_url", async (t) => {
+  const env = process.env.COCKPIT_PUBLIC_URL;
+  process.env.COCKPIT_PUBLIC_URL = "manager.leverads.com.br";
+  t.after(() => { if (env !== undefined) process.env.COCKPIT_PUBLIC_URL = env; else delete process.env.COCKPIT_PUBLIC_URL; });
+  const repo = await comLead();
+  const { app, calls } = buildApp(repo);
+  t.after(() => app.close());
+
+  await app.inject({ method: "POST", url: "/api/leads/le_1/mp/link", payload: recorrente() });
+  const body = calls.find((c) => c.key === "POST /preapproval").body;
+  assert.equal(body.back_url, "https://manager.leverads.com.br");
+});
+
 test("forma combinada escolhida pelo closer manda mais que o default do recorrente", async (t) => {
   const repo = await comLead();
   const { app } = buildApp(repo);
