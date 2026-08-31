@@ -272,12 +272,15 @@ export async function migrateFlashcardsDeckExpansion(repo) {
 }
 
 // ── Flashcards: cotas de OEM nos cards de produto (31/08/2026) ──────────────
-// O combo Parcial + OEM passou a entregar 250 anúncios/mês (antes 125), e o
-// card geral de OEM ainda citava o leque aposentado em 21/08 (200 no FULL,
-// avulso 50/100/200). A base em produção congela os defaults no doc
-// `flashcards`, então número velho não sai sozinho. REPLACE cirúrgico só nos
-// cards afetados: card que o dono reescreveu não casa com o texto antigo e
-// fica como está. Idempotente: depois da troca o texto velho não existe mais.
+// O combo Parcial + OEM passou a entregar 250 anúncios/mês (antes 125), e uma
+// leva de cards ainda ensinava o catálogo aposentado em 21/08 (200 no FULL,
+// avulso 50/100/200, preços da tabela velha). A base em produção congela os
+// defaults no doc `flashcards`, então número velho não sai sozinho. REPLACE
+// cirúrgico só nos cards afetados: card que o dono reescreveu não casa com o
+// texto antigo e fica como está. Idempotente: depois da troca o texto velho
+// não existe mais. Ficam FORA de propósito (dependem de decisão do Leo):
+// ger_n_45/clo_100 (descrição oficial do FULL, que vem do deck) e
+// ger_n_61/63/65/66 (escada antiga do doc de pagamentos).
 const FLASHCARD_OEM_FIXES = {
   ger_n_71: [["Parcial + OEM 125", "Parcial + OEM 250"]],
   ger_n_73: [["Parcial + OEM 125/mês", "Parcial + OEM 250/mês"]],
@@ -287,6 +290,37 @@ const FLASHCARD_OEM_FIXES = {
   ]],
   clo_98: [["Com OEM 125/mês", "Com OEM 250/mês"]],
   clo_99: [["Parcial + OEM 125", "Parcial + OEM 250"]],
+  ger_n_46: [["com teto de 2.000 clones no semestre", "com teto de 1.000 anúncios"]],
+  ger_n_47: [["a Lever cria 50, 100 ou 200 anúncios OEM por mês", "a Lever cria 125, 250 ou 500 anúncios OEM por mês"]],
+  ger_n_64: [[
+    "Leque por cota mensal (ago/2026): 50/mês por R$ 1.788 no semestre (12x 149) ou R$ 3.288 no ano (12x 274) · 100/mês por R$ 2.988 (12x 249) ou R$ 5.388 (12x 449) · 200/mês por R$ 4.788 (12x 399) ou R$ 8.388 (12x 699).",
+    "Leque por cota mensal (tabela de 21/08/2026): 125/mês por R$ 3.288 no ano (12x 274), R$ 1.914 no semestre (6x 319) ou R$ 379/mês na recorrente · 250/mês por R$ 5.388 (12x 449), R$ 2.994 (6x 499) ou R$ 599/mês · 500/mês por R$ 8.388 (12x 699), R$ 4.494 (6x 749) ou R$ 849/mês. Sem clonagem, a recorrente não tem entrada.",
+  ]],
+  ger_m_123: [[
+    "No LeverAds + OEM FULL: 200 anúncios OEM por mês. No OEM avulso (sem a clonagem: o cliente só manda a lista de códigos): versões de 50, 100 ou 200 por mês. Pra dimensionar: 200 fichas",
+    "No LeverAds + OEM FULL: 500 anúncios OEM por mês. No combo Parcial + OEM: 250 por mês. No OEM avulso (sem a clonagem: o cliente só manda a lista de códigos): versões de 125, 250 ou 500 por mês. Pra dimensionar: 500 fichas",
+  ]],
+  clo_29: [["criação por OEM (200/mês no +OEM FULL)", "criação por OEM (500/mês no +OEM FULL)"]],
+  clo_96: [[
+    "Tudo do FULL + 200 anúncios OEM por mês com compatibilidade veicular. Semestral: 11.988 (12x de 999); anual: 16.068 (12x de 1.339).",
+    "Tudo do FULL + 500 anúncios OEM por mês com compatibilidade veicular. Anual: 11.988 (12x de 999); semestral: 7.794 (6x de 1.299); recorrente: 774/mês + 3.750 de clonagem na entrada.",
+  ]],
+  clo_97: [[
+    "50/mês: 1.188 no semestre (12x de 99), o formato pro lead D/E de autopeça. 200/mês: 2.988 no semestre (12x de 249) pros demais.",
+    "A régua abre em 125/mês (3.288 no ano, 12x de 274) pro lead D/E de autopeça e em 500/mês (8.388 no ano, 12x de 699) pros demais; o closer troca a cota na tela zero (125/250/500).",
+  ]],
+  int_26: [[
+    "com cota mensal pelo plano (200 no +OEM FULL; avulso de 50 ou 200)",
+    "com cota mensal pelo plano (500 no +OEM FULL; 250 no Parcial + OEM; avulso de 125, 250 ou 500)",
+  ]],
+  int_100: [[
+    "Degraus: OEM avulso de 50 ou 200 criações/mês, ou migrar pro +OEM FULL (200/mês inclusas).",
+    "Degraus: OEM avulso de 125, 250 ou 500 criações/mês, ou migrar pro +OEM FULL (500/mês inclusas).",
+  ]],
+  int_132: [[
+    "+OEM FULL: 200 criações/mês inclusas. OEM avulso: 50/mês ou 200/mês",
+    "+OEM FULL: 500 criações/mês inclusas. Parcial + OEM: 250/mês. OEM avulso: 125, 250 ou 500/mês",
+  ]],
 };
 export async function migrateFlashcardsOemQuotas(repo) {
   const doc = await repo.get("flashcards", "leverads");

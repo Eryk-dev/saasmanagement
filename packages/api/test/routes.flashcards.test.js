@@ -498,13 +498,15 @@ test("migração 31/08: cotas de OEM velhas trocadas nos cards de produto; ediç
   await repo.create("flashcards", { id: "leverads", cards: [
     { id: "ger_n_73", role: "geral_negocio", front: "Preços do Parcial", back: "Parcial + OEM 125/mês: R$ 7.188 no ano (12x 599)." },
     { id: "ger_m_20", role: "geral_marketplace", front: "O que é OEM?", back: "Cota mensal pelo plano (200 no +OEM FULL; avulso de 50, 100 ou 200)." },
+    { id: "clo_96", role: "closer", front: "+OEM FULL", back: "Tudo do FULL + 200 anúncios OEM por mês com compatibilidade veicular. Semestral: 11.988 (12x de 999); anual: 16.068 (12x de 1.339). É a sugestão da matriz." },
     { id: "clo_99", role: "closer", front: "Matriz S-E", back: "Texto reescrito pelo dono, sem cota nenhuma." },
     { id: "sdr_9", role: "sdr", front: "Outro assunto", back: "OEM 125 fora da lista de conserto." },
   ] });
-  assert.equal(await migrateFlashcardsOemQuotas(repo), 2, "só os dois com texto antigo mudam");
+  assert.equal(await migrateFlashcardsOemQuotas(repo), 3, "só os três com texto antigo mudam");
   const by = Object.fromEntries((await repo.get("flashcards", "leverads")).cards.map((c) => [c.id, c.back]));
   assert.match(by.ger_n_73, /Parcial \+ OEM 250\/mês: R\$ 7\.188/);
   assert.match(by.ger_m_20, /500 no \+OEM FULL; 250 no Parcial \+ OEM; avulso de 125, 250 ou 500/);
+  assert.match(by.clo_96, /500 anúncios OEM por mês.*Anual: 11\.988 \(12x de 999\); semestral: 7\.794 \(6x de 1\.299\)/, "tabela de 21/08 no card do +OEM FULL");
   assert.equal(by.clo_99, "Texto reescrito pelo dono, sem cota nenhuma.", "card editado não é tocado");
   assert.match(by.sdr_9, /OEM 125/, "card fora da lista não é tocado");
   assert.equal(await migrateFlashcardsOemQuotas(repo), 0, "idempotente");
