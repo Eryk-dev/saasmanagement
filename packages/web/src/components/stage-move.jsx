@@ -96,6 +96,10 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   const isOffer = gate.type === "offer";
   const askOffer = isOffer && gate.askOffer !== false;
   const [offer, setOffer] = React.useState(lead.proposalOffer || "");
+  // O PRODUTO da apresentação que ficou na mesa (espelho do Meu dia): em quem
+  // tem catálogo ele acompanha o ciclo — "não chegou na proposta" dispensa.
+  const [offerProduct, setOfferProduct] = React.useState(lead.proposalProduct || "");
+  const offerProducts = dealProductsOf(lead.saas);
   const [followAt, setFollowAt] = React.useState(lead.followupAt || "");
   // Hora da call pela MESMA grade do Meu dia: slot ocupado do closer vem
   // desabilitado, então não dá pra criar conflito digitando.
@@ -110,7 +114,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   // de call quanto no handoff que já cai numa etapa de call.
   const ready = isLost ? !!reason
     : isWonGate ? (Number(amount) > 0 && !!payment && (!askProduct || !!dealProduct))
-      : isOffer ? (!askOffer || !!offer)
+      : isOffer ? (!askOffer || (!!offer && (offer === "nenhuma" || !offerProducts.length || !!offerProduct)))
         : askCall ? (!!closer && !!callAt)
           : !!closer;
 
@@ -130,7 +134,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
       if (isKidsWon) patch.consultPackage = Number(consultPackage) || 8;
       if (askProduct) patch.dealProduct = dealProduct;
     } else if (isOffer) {
-      if (askOffer && offer) patch.proposalOffer = offer;
+      if (askOffer && offer) { patch.proposalOffer = offer; patch.proposalProduct = offer === "nenhuma" ? "" : offerProduct; }
       // Espelho do Meu dia: followupAt (aparece na Agenda com cara de follow-up,
       // sem travar slot de venda) + nextActionAt (a fila vence NESSE horário).
       if (followAt) { patch.followupAt = followAt; patch.nextActionAt = followAt; }
@@ -162,8 +166,18 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
           <>
             {askOffer && (
               <>
+                {offerProducts.length > 0 && offer !== "nenhuma" && (
+                  <>
+                    <label className="kicker" style={label}>Qual produto ficou ofertado? *</label>
+                    <select value={offerProduct} onChange={(e) => setOfferProduct(e.target.value)} style={field} autoFocus>
+                      <option value="">— o produto da apresentação —</option>
+                      {offerProducts.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                    </select>
+                    <div style={{ height: 10 }} />
+                  </>
+                )}
                 <label className="kicker" style={label}>Qual proposta ficou na mesa? *</label>
-                <select value={offer} onChange={(e) => setOffer(e.target.value)} style={field} autoFocus>
+                <select value={offer} onChange={(e) => setOffer(e.target.value)} style={field} autoFocus={!offerProducts.length}>
                   <option value="">— a oferta que o cliente levou pra pensar —</option>
                   {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                   <option value="nenhuma">não chegou na proposta</option>

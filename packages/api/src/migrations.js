@@ -271,6 +271,29 @@ export async function migrateFlashcardsDeckExpansion(repo) {
   return missing.length;
 }
 
+// ── Ganho como destino da Integração (31/08/2026) ───────────────────────────
+// A reordenação de julho tirou o "ganho" dos próximos passos da entrega (era
+// andar pra trás na régua). Na prática o card às vezes vai de Call direto pra
+// Integração, e o Leo quer poder movê-lo pra coluna Ganho depois (pedido de
+// 31/08) — a venda não desfaz nesse movimento (integracao e ganho são
+// SOLD_KINDS no lead-flow). O default novo do código já oferece o ganho, mas o
+// override salvo em product.nextSteps vence o default, então ele precisa
+// ganhar o destino de volta. One-shot por marcador: o Leo pode tirar de novo
+// em Ajustes → Próximos passos sem a migração recolocar no boot seguinte.
+export async function migrateGanhoNaIntegracao(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product || product.ganhoNaIntegracaoV1) return false;
+  const nextSteps = { ...(product.nextSteps || {}) };
+  let changed = false;
+  for (const [key, list] of Object.entries(nextSteps)) {
+    if (!/^integracao/.test(key) || !Array.isArray(list) || list.includes("ganho")) continue;
+    nextSteps[key] = [...list, "ganho"];
+    changed = true;
+  }
+  await repo.update("products", "leverads", { ganhoNaIntegracaoV1: true, ...(changed ? { nextSteps } : {}) });
+  return changed;
+}
+
 // ── Flashcards: cotas de OEM nos cards de produto (31/08/2026) ──────────────
 // O combo Parcial + OEM passou a entregar 250 anúncios/mês (antes 125), e uma
 // leva de cards ainda ensinava o catálogo aposentado em 21/08 (200 no FULL,
@@ -1813,6 +1836,14 @@ export async function runStartupMigrations(repo) {
     if (r) console.log(`[migration] funil do leverads reordenado (ganho antes da integração): ${r.order.join(" → ")}`);
   } catch (err) {
     console.error("[migration] migrateGanhoAntesIntegracao falhou:", err?.message || err);
+  }
+  // Depois da reordenação: a entrega volta a oferecer o Ganho como destino no
+  // "Depois da ação" (o override salvo em nextSteps vencia o default do código).
+  try {
+    const changed = await migrateGanhoNaIntegracao(repo);
+    if (changed) console.log("[migration] próximos passos da Integração ganharam o destino Ganho (leverads)");
+  } catch (err) {
+    console.error("[migration] migrateGanhoNaIntegracao falhou:", err?.message || err);
   }
   // Depois da reordenação: quem está na entrega passa a ser venda, então ganha
   // cliente e assinatura como se tivesse passado pelo Ganho.
