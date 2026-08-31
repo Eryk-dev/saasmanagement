@@ -489,6 +489,27 @@ test("4fun aparece SEPARADO nos números: stats da pessoa e coluna da equipe, se
   assert.equal(ana.doneToday, 0);
 });
 
+test("migração 31/08: cotas de OEM velhas trocadas nos cards de produto; edição do dono é soberana", async () => {
+  const { migrateFlashcardsOemQuotas } = await import("../src/migrations.js");
+  const { repo } = await buildApp();
+  // Sem doc salvo (defaults servindo sozinhos) a migração é no-op.
+  assert.equal(await migrateFlashcardsOemQuotas(repo), 0);
+  // Base congelada no banco com os textos ANTIGOS (o que está em produção).
+  await repo.create("flashcards", { id: "leverads", cards: [
+    { id: "ger_n_73", role: "geral_negocio", front: "Preços do Parcial", back: "Parcial + OEM 125/mês: R$ 7.188 no ano (12x 599)." },
+    { id: "ger_m_20", role: "geral_marketplace", front: "O que é OEM?", back: "Cota mensal pelo plano (200 no +OEM FULL; avulso de 50, 100 ou 200)." },
+    { id: "clo_99", role: "closer", front: "Matriz S-E", back: "Texto reescrito pelo dono, sem cota nenhuma." },
+    { id: "sdr_9", role: "sdr", front: "Outro assunto", back: "OEM 125 fora da lista de conserto." },
+  ] });
+  assert.equal(await migrateFlashcardsOemQuotas(repo), 2, "só os dois com texto antigo mudam");
+  const by = Object.fromEntries((await repo.get("flashcards", "leverads")).cards.map((c) => [c.id, c.back]));
+  assert.match(by.ger_n_73, /Parcial \+ OEM 250\/mês: R\$ 7\.188/);
+  assert.match(by.ger_m_20, /500 no \+OEM FULL; 250 no Parcial \+ OEM; avulso de 125, 250 ou 500/);
+  assert.equal(by.clo_99, "Texto reescrito pelo dono, sem cota nenhuma.", "card editado não é tocado");
+  assert.match(by.sdr_9, /OEM 125/, "card fora da lista não é tocado");
+  assert.equal(await migrateFlashcardsOemQuotas(repo), 0, "idempotente");
+});
+
 test("defaults: ids únicos, roles válidos, limites de tamanho e zero travessão", () => {
   const cards = FLASHCARD_DEFAULTS.leverads;
   const roles = new Set(["geral_negocio", "geral_marketplace", "geral_vendas", "sdr", "closer", "integrator", "social"]);

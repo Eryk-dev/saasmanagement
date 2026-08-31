@@ -271,6 +271,40 @@ export async function migrateFlashcardsDeckExpansion(repo) {
   return missing.length;
 }
 
+// ── Flashcards: cotas de OEM nos cards de produto (31/08/2026) ──────────────
+// O combo Parcial + OEM passou a entregar 250 anúncios/mês (antes 125), e o
+// card geral de OEM ainda citava o leque aposentado em 21/08 (200 no FULL,
+// avulso 50/100/200). A base em produção congela os defaults no doc
+// `flashcards`, então número velho não sai sozinho. REPLACE cirúrgico só nos
+// cards afetados: card que o dono reescreveu não casa com o texto antigo e
+// fica como está. Idempotente: depois da troca o texto velho não existe mais.
+const FLASHCARD_OEM_FIXES = {
+  ger_n_71: [["Parcial + OEM 125", "Parcial + OEM 250"]],
+  ger_n_73: [["Parcial + OEM 125/mês", "Parcial + OEM 250/mês"]],
+  ger_m_20: [[
+    "(200 no +OEM FULL; avulso de 50, 100 ou 200)",
+    "(500 no +OEM FULL; 250 no Parcial + OEM; avulso de 125, 250 ou 500)",
+  ]],
+  clo_98: [["Com OEM 125/mês", "Com OEM 250/mês"]],
+  clo_99: [["Parcial + OEM 125", "Parcial + OEM 250"]],
+};
+export async function migrateFlashcardsOemQuotas(repo) {
+  const doc = await repo.get("flashcards", "leverads");
+  if (!doc || !Array.isArray(doc.cards)) return 0;
+  let n = 0;
+  const cards = doc.cards.map((c) => {
+    const fixes = FLASHCARD_OEM_FIXES[c?.id];
+    if (!fixes) return c;
+    let back = String(c.back || "");
+    for (const [from, to] of fixes) back = back.split(from).join(to);
+    if (back === c.back) return c;
+    n++;
+    return { ...c, back };
+  });
+  if (n) await repo.update("flashcards", "leverads", { cards });
+  return n;
+}
+
 // ── Custos %: base por lançamento (ago/2026) ────────────────────────────────
 // Todo custo percentual incidia sobre os GANHOS do mês inteiro. O Leo separou:
 // o checkout de 12% só existe quando a venda fecha no cartão de crédito em 12x
@@ -1207,8 +1241,9 @@ const LEVERADS_CATALOG = {
     parcialoem: {
       // O semestral saiu da planilha em 549/mês, ABAIXO do anual (599) — era a
       // única linha com a escada invertida (dois semestres sairiam mais baratos
-      // que o ano). Leo corrigiu pra 649 em 21/08.
-      name: "Parcial + OEM 125", cota: 125,
+      // que o ano). Leo corrigiu pra 649 em 21/08. Em 31/08 a entrega do combo
+      // subiu de 125 pra 250 OEM/mês, mesmo preço.
+      name: "Parcial + OEM 250", cota: 250,
       anu: { total: 7188, per: 599 }, sem: { total: 3894, per: 649 },
       rec: { per: 499, setup: 1750 },
     },
@@ -1359,7 +1394,10 @@ export async function backfillProposalCatalog(repo) {
 // Marcador `pricingV` no catálogo em vez de comparar preço: assim o Leo pode
 // editar um valor pela mão depois sem que a migração volte e atropele a edição
 // dele no próximo boot.
-const PRICING_VERSION = "2026-08-21";
+// 31/08/2026: a entrega do combo Parcial + OEM subiu de 125 pra 250 anúncios/
+// mês (mesmo preço) — o bump da versão re-aplica os produtos do seed no
+// template e nas propostas abertas, exatamente como na tabela de 21/08.
+const PRICING_VERSION = "2026-08-31";
 // De-para das cotas de OEM avulso: o closer escolheu 50/100/200 e esses níveis
 // deixaram de existir. Sem isto a proposta aberta cairia no nível PADRÃO da
 // régua e o closer perderia a escolha que já tinha feito.
@@ -1615,6 +1653,12 @@ export async function runStartupMigrations(repo) {
     console.error("[migration] migrateFlashcardsDeckExpansion falhou:", err?.message || err);
   }
   try {
+    const n = await migrateFlashcardsOemQuotas(repo);
+    if (n) console.log(`[migration] flashcards: cotas de OEM atualizadas em ${n} card(s) de produto (combo 250/mês)`);
+  } catch (err) {
+    console.error("[migration] migrateFlashcardsOemQuotas falhou:", err?.message || err);
+  }
+  try {
     const n = await ensureFunnelKinds(repo);
     if (n) console.log(`[migration] kind garantido no funil de ${n} produto(s)`);
   } catch (err) {
@@ -1761,13 +1805,13 @@ export async function runStartupMigrations(repo) {
   // cotas, preços velhos) recebe a tabela atual do template.
   try {
     const changed = await migrateCatalogPricing(repo);
-    if (changed) console.log("[migration] proposta: tabela de preços de 21/08 (ano/semestral/recorrente + cotas OEM 125/250/500) no template");
+    if (changed) console.log("[migration] proposta: catálogo de produtos atualizado no template (combo Parcial + OEM agora entrega 250/mês)");
   } catch (err) {
     console.error("[migration] migrateCatalogPricing falhou:", err?.message || err);
   }
   try {
     const n = await backfillCatalogPricing(repo);
-    if (n) console.log(`[migration] proposta: ${n} proposta(s) aberta(s) reprecificada(s) pela tabela de 21/08`);
+    if (n) console.log(`[migration] proposta: ${n} proposta(s) aberta(s) atualizadas pra tabela vigente do catálogo`);
   } catch (err) {
     console.error("[migration] backfillCatalogPricing falhou:", err?.message || err);
   }

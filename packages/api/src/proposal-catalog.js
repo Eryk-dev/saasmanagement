@@ -71,7 +71,7 @@ export const PRODUCT_LABEL = {
   fulloem: "LeverAds + OEM FULL",
   oem: "OEM avulso",
   parcialA: "Parcial",
-  parcialoem: "Parcial + OEM 125",
+  parcialoem: "Parcial + OEM 250",
 };
 
 // O que pode ser VENDIDO (lead.dealProduct) = os produtos do deck + a clonagem
@@ -108,7 +108,7 @@ const isAuto = (answers) => String(answers?.niche || "").trim().toLowerCase() ==
 // a [OEM] do anúncio de part number, só troca a trilha SPIN (pedido do Leo,
 // 15/08/2026: quem veio pelo anúncio de OEM também serve pro LeverAds, então a
 // dor não rebaixa a apresentação nem o card pro OEM avulso). D/E entra no
-// Parcial (combo com OEM 50 se autopeças) e o resto é FULL (+OEM se
+// Parcial (combo com OEM 250 se autopeças) e o resto é FULL (+OEM se
 // autopeças). O OEM avulso vive no override do closer (state.product).
 export function suggestProduct(calc, state, answers) {
   const low = lowTier(tierOf(calc, state));
@@ -242,7 +242,7 @@ function buildPricing(key, { sBase, sAuto, products, small, oemLevel }) {
     return withSub(s, "plano de entrada");
   }
   if (key === "parcialoem") {
-    const cota = P.parcialoem.cota || 125;
+    const cota = P.parcialoem.cota || 250;
     const s = withGroups(clone(sBase),
       ["Equalização das suas contas", "Automação de clone + estoque", "Até 1.000 anúncios", cota + " anúncios OEM por mês com compatibilidade veicular"],
       ["Gerenciador de SKU", "Perguntas de todas as contas num só lugar", "Estoque sincronizado entre as contas"]);
@@ -311,7 +311,7 @@ export function applyCatalog(p) {
 
   // Tela do processo OEM + ritmo claro/escuro.
   const oemCota = product === "fulloem" ? (products.fulloem.cota || 200)
-    : product === "parcialoem" ? (products.parcialoem.cota || 50)
+    : product === "parcialoem" ? (products.parcialoem.cota || 250)
     : product === "oem" ? (Number(oemLevel?.cota) || 0)
     : 0;
   if (oemCota) {

@@ -134,7 +134,7 @@ test("cliente D fora de autopeças → Parcial (preço fechado, sem OEM, sem tel
   assert.equal(t.slides.filter((s) => s.type === "pricing").length, 1, "um investimento só");
 });
 
-test("autopeças pequeno → Parcial + OEM 125; tela OEM escura depois do 3 etapas e ritmo re-alternado", async () => {
+test("autopeças pequeno → Parcial + OEM 250; tela OEM escura depois do 3 etapas e ritmo re-alternado", async () => {
   const repo = await seedRepo();
   const p = await makeProposal(repo, { niche: "autopecas", accounts: "1", listings: "100-500" });
   const t = applyCatalog(p);
@@ -144,13 +144,13 @@ test("autopeças pequeno → Parcial + OEM 125; tela OEM escura depois do 3 etap
   assert.equal(keys[iSteps + 1], "oem_processo", "tela OEM logo depois do 3 etapas");
   const oem = t.slides[iSteps + 1];
   assert.equal(oem.bg, "dark");
-  assert.match(oem.pills[0], /^125 anúncios OEM/, "cota do combo");
+  assert.match(oem.pills[0], /^250 anúncios OEM/, "cota do combo");
   assert.equal(t.slides[iSteps + 2].bg, "", "impacto vira claro");
   const pricing = t.slides.find((s) => s.type === "pricing");
   assert.equal(pricing.bg, "dark", "investimento fecha escuro");
   assert.equal(pricing.price, "7.188");
-  assert.equal(pricing.sub, "soma: Parcial + OEM 125/mês");
-  assert.equal(pricing.offer3.sub, "soma: Parcial + OEM 125/mês", "o subtítulo é do produto, vale nas três");
+  assert.equal(pricing.sub, "soma: Parcial + OEM 250/mês");
+  assert.equal(pricing.offer3.sub, "soma: Parcial + OEM 250/mês", "o subtítulo é do produto, vale nas três");
 });
 
 test("OEM avulso: 3 etapas SAI, tela OEM entra clara no lugar; cota segue o porte", async () => {
@@ -192,7 +192,7 @@ test("leque do OEM avulso: o closer troca a cota na tela zero (state.oemCota)", 
 
 test("dor [OEM] não manda no produto: a régua decide; OEM avulso é escolha do closer", async () => {
   const repo = await seedRepo();
-  // Autopeças pequeno: régua → combo Parcial + OEM 125, com ou sem dor OEM
+  // Autopeças pequeno: régua → combo Parcial + OEM 250, com ou sem dor OEM
   // (pedido do Leo, 15/08/2026: quem veio pelo OEM também serve pro LeverAds).
   const p = await makeProposal(repo, { niche: "autopecas", accounts: "1", listings: "100-500" });
   assert.equal(suggestProduct(p.calc, p.state, p.data.answers), "parcialoem");
@@ -280,10 +280,11 @@ test("tela zero descreve o produto com os empilháveis do slide de investimento"
   assert.ok(!ui.offerLines.full.includes("Suporte"), "grupo 3 não entra na linha");
   // As cotas saem do catálogo, nunca do texto: era aqui que a tela zero
   // prometia 50 OEM/mês e 2.000 clones no semestre com o slide já em 125/1.000.
-  assert.match(ui.offerLines.parcialoem, /125 anúncios OEM por mês/);
+  assert.match(ui.offerLines.parcialoem, /250 anúncios OEM por mês/);
   assert.match(ui.offerLines.oem, /^125 anúncios OEM criados por mês/, "porte D abre no menor nível");
   const all = Object.values(ui.offerLines).join(" ");
-  assert.ok(!/50 anúncios OEM|2\.000 clones/.test(all), "nenhuma cota escrita à mão sobrou");
+  // \b: "250 anúncios OEM" (cota real do combo) não pode casar como "50 ...".
+  assert.ok(!/\b50 anúncios OEM|2\.000 clones/.test(all), "nenhuma cota escrita à mão sobrou");
 });
 
 test("serviço único: tabela por faixa na tela zero, fora do deck e sobrescrita pelo banco", async () => {
@@ -626,7 +627,7 @@ test("geração: lead.amount é o preço do produto sugerido, não a fórmula po
   const p2 = await makeProposal(repo, { niche: "outros", accounts: "3-5", listings: "2000-10000" });
   assert.equal((await repo.get("leads", p2.lead)).amount, 8976);
   // Dor [OEM] do anúncio NÃO rebaixa: autopeças porte D segue a régua →
-  // combo Parcial + OEM 125 (R$ 7.188 no ano).
+  // combo Parcial + OEM 250 (R$ 7.188 no ano).
   const p3 = await makeProposal(repo, { niche: "autopecas", accounts: "1", listings: "100-500", sourcePain: "oem" });
   assert.equal((await repo.get("leads", p3.lead)).amount, 7188);
 });
@@ -660,7 +661,7 @@ test("tela zero mexeu → o card acompanha o produto ativo; negócio fechado nã
 test("dor [OEM] inferida na abertura do link entra como trilha SPIN sem mexer no card", async () => {
   const repo = await seedRepo();
   const p = await makeProposal(repo, { niche: "autopecas", accounts: "1", listings: "100-500" });
-  assert.equal((await repo.get("leads", p.lead)).amount, 7188, "nasce no combo Parcial + OEM 125");
+  assert.equal((await repo.get("leads", p.lead)).amount, 7188, "nasce no combo Parcial + OEM 250");
   // A dor chega DEPOIS da geração (ad_insights sincroniza no ciclo de marketing).
   await repo.update("leads", p.lead, { utm: { content: "ad_9" } });
   await repo.create("ad_insights", { id: "ai_9", saas: "leverads", adId: "ad_9", date: "2026-08-14", adName: "peças [OEM]" });
