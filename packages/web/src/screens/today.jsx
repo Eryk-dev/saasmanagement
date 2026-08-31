@@ -18,6 +18,7 @@ import { useAttribution } from "../lib/pains.js";
 import { clientSummary, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks, DealProductField, isOneOffProduct } from "../components/lead-blocks.jsx";
 import { resolveScript, scriptTokens, scriptChecklist, isNoShowStage, confirmationScript, integrationConfirmationScript, scriptKeyFor } from "../lib/scripts.js";
 import { PAYMENT_METHODS, CLOSED_PLANS, closedPlanLabel, dealProductLabel, dealProductsOf } from "../lib/payments.js";
+import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
 // "Hoje" (a fila de trabalho, numerada na ordem de prioridade do processo),
 // "Amanhã" e "Próximos dias" (o que já está agendado, à vista), e "Sem data".
@@ -1420,7 +1421,10 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
   const [resched, setResched] = useS(false);
   const [rDay, setRDay] = useS(() => nextBusinessDays(1)[0]);
   const [rSlot, setRSlot] = useS("");
-  useE(() => { setResched(false); setRSlot(""); }, [item.l.id]);
+  // Atalho pro link de pagamento do MP sem sair do roteiro: mesmo modal do
+  // card do lead (o checkout nasce amarrado ao id do lead).
+  const [payLink, setPayLink] = useS(false);
+  useE(() => { setResched(false); setRSlot(""); setPayLink(false); }, [item.l.id]);
   function doReschedule() {
     if (!rSlot) return;
     // Na confirmação da INTEGRAÇÃO o horário que muda é o da entrega, não o da
@@ -1544,6 +1548,15 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
               )}
             </div>
           </div>
+          {!preview && (
+            <button onClick={() => setPayLink(true)} className="chip"
+              title="Criar link de pagamento do Mercado Pago já rastreado pra este lead — cobrança única ou assinatura recorrente (o pagamento casa sozinho no Financeiro)"
+              style={{ cursor: "pointer", flexShrink: 0 }}>
+              {l.mpChargeUrl
+                ? (l.mpChargeKind === "recurring" ? "↻ link da assinatura" : "link de pagamento")
+                : "+ link de pagamento"}
+            </button>
+          )}
           {!preview && (
             <button onClick={onOpenLead} style={{ padding: "6px 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12, flexShrink: 0 }}>
               abrir lead
@@ -1703,6 +1716,16 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
             </div>
           )}
         </div>
+
+        {/* O modal empilha por cima do painel (z-index maior) e o servidor já
+            persiste o lead — aqui só refletimos o retorno na cópia local. */}
+        {payLink && (
+          <PaymentLinkModal
+            lead={l}
+            onClose={() => setPayLink(false)}
+            onSaved={(r) => setL((prev) => ({ ...prev, ...(r.lead || {}) }))}
+          />
+        )}
       </div>
     </div>
   );
