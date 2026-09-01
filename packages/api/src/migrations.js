@@ -294,6 +294,34 @@ export async function migrateGanhoNaIntegracao(repo) {
   return changed;
 }
 
+// ── Integração como destino do Follow-up (01/09/2026) ───────────────────────
+// A reordenação de julho tirou a Integração dos próximos passos do follow-up
+// (fechar virou o passo do closer, via Ganho). Na prática o closer às vezes
+// fecha no follow-up já combinando a entrega e quer mandar o card direto pra
+// Integração (pedido do Leo, 01/09) — o gate cobra o fechamento igual ao Ganho
+// e a venda registra do mesmo jeito (os dois são SOLD_KINDS no lead-flow). O
+// default novo do código já oferece, mas o override salvo em product.nextSteps
+// vence o default, então ele precisa ganhar o destino de volta. One-shot por
+// marcador: o Leo pode tirar de novo em Ajustes → Próximos passos sem a
+// migração recolocar no boot seguinte.
+export async function migrateIntegracaoNoFollowup(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product || product.integracaoNoFollowupV1) return false;
+  const nextSteps = { ...(product.nextSteps || {}) };
+  let changed = false;
+  for (const [key, list] of Object.entries(nextSteps)) {
+    if (!/^followup/.test(key) || !Array.isArray(list) || list.includes("integracao")) continue;
+    // Entra logo depois do Ganho (os dois são "fechar"); sem Ganho na lista,
+    // vai pro fim.
+    const i = list.indexOf("ganho");
+    nextSteps[key] = i === -1 ? [...list, "integracao"]
+      : [...list.slice(0, i + 1), "integracao", ...list.slice(i + 1)];
+    changed = true;
+  }
+  await repo.update("products", "leverads", { integracaoNoFollowupV1: true, ...(changed ? { nextSteps } : {}) });
+  return changed;
+}
+
 // ── Flashcards: cotas de OEM nos cards de produto (31/08/2026) ──────────────
 // O combo Parcial + OEM passou a entregar 250 anúncios/mês (antes 125), e uma
 // leva de cards ainda ensinava o catálogo aposentado em 21/08 (200 no FULL,
@@ -1844,6 +1872,14 @@ export async function runStartupMigrations(repo) {
     if (changed) console.log("[migration] próximos passos da Integração ganharam o destino Ganho (leverads)");
   } catch (err) {
     console.error("[migration] migrateGanhoNaIntegracao falhou:", err?.message || err);
+  }
+  // O follow-up volta a poder fechar direto na entrega (o override salvo em
+  // nextSteps vencia o default novo do código).
+  try {
+    const changed = await migrateIntegracaoNoFollowup(repo);
+    if (changed) console.log("[migration] próximos passos do Follow-up ganharam o destino Integração (leverads)");
+  } catch (err) {
+    console.error("[migration] migrateIntegracaoNoFollowup falhou:", err?.message || err);
   }
   // Depois da reordenação: quem está na entrega passa a ser venda, então ganha
   // cliente e assinatura como se tivesse passado pelo Ganho.

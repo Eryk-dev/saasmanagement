@@ -186,9 +186,10 @@ export const NEXT_KINDS = {
   contato:       ["retry", "call", "desqualificado"],   // Nutrição: reativar
   qualificacao:  ["retry", "call", "contato", "desqualificado"], // contato = Nutrição
   call:          ["retry", "noshow", "followup", "ganho", "desqualificado"], // noshow = cliente furou
-  // Com o Ganho ANTES da Integração, fechar é o passo do closer e a entrega vem
-  // depois: o Follow-up não manda mais direto pra Integração.
-  followup:      ["retry", "ganho", "desqualificado"],
+  // Fechar no follow-up pode ir pro Ganho ou DIRETO pra Integração (pedido do
+  // Leo, 01/09/2026): os dois cobram o fechamento no gate (produto, plano,
+  // valor, pagamento) e registram a venda — são SOLD_KINDS no servidor.
+  followup:      ["retry", "ganho", "integracao", "desqualificado"],
   proposta:      ["retry", "followup", "ganho", "desqualificado"],
   ganho:         ["integracao", "posvenda"],
   // Da entrega dá pra voltar pro Ganho (pedido do Leo, 31/08/2026): card que

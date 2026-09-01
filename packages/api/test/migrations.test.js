@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   ensureIntegrationStage, migrateLeverAdsCrmFunnel, migrateLeverAdsSdrCadence, migrateNutricaoSevenDays, ensureFunnelKinds,
-  migrateGanhoAntesIntegracao, migrateGanhoNaIntegracao, backfillWonAt, backfillPostSaleCustomers,
+  migrateGanhoAntesIntegracao, migrateGanhoNaIntegracao, migrateIntegracaoNoFollowup, backfillWonAt, backfillPostSaleCustomers,
   ensureLossReasons, ensureNoShowReason, ensureSdrGoals, ensureCloserGoals, ensureCloseRateUnica, ensureSocialGoals, ensureUserRoles, ensureUserSaasScope, ensureUserScreens, DEFAULT_LOSS_REASONS,
   migrateExpensePctBases,
 } from "../src/migrations.js";
@@ -476,6 +476,30 @@ test("migrateGanhoNaIntegracao: devolve o Ganho aos próximos passos da entrega,
   await repo.update("products", "leverads", { nextSteps: { ...p.nextSteps, integracao: ["posvenda"] } });
   assert.equal(await migrateGanhoNaIntegracao(repo), false);
   assert.deepEqual((await repo.get("products", "leverads")).nextSteps.integracao, ["posvenda"]);
+});
+
+test("migrateIntegracaoNoFollowup: devolve a Integração aos próximos passos do follow-up, uma vez só", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", {
+    id: "leverads",
+    nextSteps: {
+      followup1: ["retry", "ganho", "desqualificado", "contato"],
+      followup2: ["retry", "desqualificado"],
+      followup3: ["retry", "ganho", "integracao"],
+      call1: ["retry", "ganho"],
+    },
+  });
+  assert.equal(await migrateIntegracaoNoFollowup(repo), true);
+  const p = await repo.get("products", "leverads");
+  // Entra logo depois do Ganho; sem Ganho na lista, vai pro fim.
+  assert.deepEqual(p.nextSteps.followup1, ["retry", "ganho", "integracao", "desqualificado", "contato"]);
+  assert.deepEqual(p.nextSteps.followup2, ["retry", "desqualificado", "integracao"]);
+  assert.deepEqual(p.nextSteps.followup3, ["retry", "ganho", "integracao"], "quem já tem não duplica");
+  assert.deepEqual(p.nextSteps.call1, ["retry", "ganho"], "as outras chaves ficam como estão");
+  // One-shot: o dono pode tirar de novo em Ajustes sem a migração recolocar.
+  await repo.update("products", "leverads", { nextSteps: { ...p.nextSteps, followup1: ["retry", "ganho"] } });
+  assert.equal(await migrateIntegracaoNoFollowup(repo), false);
+  assert.deepEqual((await repo.get("products", "leverads")).nextSteps.followup1, ["retry", "ganho"]);
 });
 
 test("migrateGanhoAntesIntegracao: one-shot e não mexe em funil já na ordem nova", async () => {
