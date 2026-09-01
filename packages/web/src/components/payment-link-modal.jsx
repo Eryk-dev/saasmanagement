@@ -337,6 +337,11 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved }) {
                 <option value="">escolher…</option>
                 {/* catálogo real do SaaS (SEED); sem catálogo, a lista estática */}
                 <ProductOptions products={dealProductsOf(doc.saas).length ? dealProductsOf(doc.saas) : DEAL_PRODUCTS} />
+                {/* produto Personalizado do fechamento (texto livre no lugar do
+                    id): entra como opção pro select não abrir vazio */}
+                {dealProduct && !(dealProductsOf(doc.saas).length ? dealProductsOf(doc.saas) : DEAL_PRODUCTS).some((p) => p.id === dealProduct) && (
+                  <option value={dealProduct}>{dealProduct}</option>
+                )}
               </select>
             </label>
             <label style={field}>

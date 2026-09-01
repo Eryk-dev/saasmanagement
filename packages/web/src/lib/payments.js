@@ -103,10 +103,12 @@ export function dealProductsOf(saas) {
   return Array.isArray(rows) ? rows : [];
 }
 // Rótulo do produto vendido: o do catálogo do SEED (nome que está na
-// apresentação) e, sem ele, o estático acima.
+// apresentação), o estático acima e, por fim, o próprio valor — o produto
+// Personalizado guarda o nome livre no lugar do id (DealProductField).
 export const dealProductLabel = (id, saas = "") =>
   dealProductsOf(saas).find((p) => p.id === id)?.label
-  || DEAL_PRODUCTS.find((p) => p.id === id)?.label || "";
+  || DEAL_PRODUCTS.find((p) => p.id === id)?.label
+  || String(id || "");
 
 // Como o pagamento SAIU no Mercado Pago (payment_type_id/payment_method_id do
 // /v1/payments) — diferente de PAYMENT_METHODS (o combinado do fechamento):

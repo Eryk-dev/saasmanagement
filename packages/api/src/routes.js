@@ -1140,8 +1140,11 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
 const CLOSED_PLAN_LABEL = { anual: "Anual", semestral: "Semestral", mensal: "Mensal", unico: "Serviço único" };
 // O produto do catálogo da apresentação (FULL/OEM/Parcial, lead.dealProduct)
 // entra na frente do ciclo na coluna Plano do cliente: "LeverAds FULL · Anual".
+// Produto Personalizado (gate de fechamento): dealProduct fora do catálogo é o
+// próprio nome livre que o closer escreveu — vale como rótulo do jeito que veio.
 const planLabelOf = (lead) => [
-  DEAL_PRODUCT_LABEL[lead.dealProduct] || MENTORIA_LABEL[lead.dealProduct],
+  DEAL_PRODUCT_LABEL[lead.dealProduct] || MENTORIA_LABEL[lead.dealProduct]
+    || String(lead.dealProduct || "").trim(),
   CLOSED_PLAN_LABEL[lead.planClosed],
 ].filter(Boolean).join(" · ");
 const CLOSED_PLAN_ANNUAL_FACTOR = { anual: 1, semestral: 2, mensal: 12, unico: 1 };
