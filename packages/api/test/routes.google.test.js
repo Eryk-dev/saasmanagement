@@ -81,8 +81,10 @@ test("google client: exchangeCode persiste refresh token + conta; accessToken re
 
 test("rotas: status/auth-url/callback com state + POST /leads/:id/meet grava callUrl", async () => {
   const repo = makeMemRepo();
-  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [] });
-  await repo.create("leads", { id: "le1", saas: "leverads", name: "Ana", company: "Loja X", callAt: "2026-07-14T15:00", email: "ana@x.com" });
+  // UniqueKids: produto do Workspace da conta do time — o único em que a rota
+  // ainda cria o Meet sem conta pessoal (nos demais, exige o @leverads do closer).
+  await repo.create("products", { id: "uniquekids", name: "UniqueKids", funnel: [] });
+  await repo.create("leads", { id: "le1", saas: "uniquekids", name: "Ana", company: "Loja X", callAt: "2026-07-14T15:00", email: "ana@x.com" });
   const g = makeGoogle({ fetch: makeGoogleFetch(), clientId: "cid", clientSecret: "sec", repo });
   const app = Fastify();
   registerRoutes(app, repo, { google: g });
@@ -181,7 +183,7 @@ test("createMeetEvent: cria o evento no calendarId indicado (controle do remeten
 
 test("POST /meet: e-mail do body entra nos convidados", async () => {
   const repo = makeMemRepo();
-  await repo.create("leads", { id: "le2", saas: "leverads", name: "Bia" });
+  await repo.create("leads", { id: "le2", saas: "uniquekids", name: "Bia" });
   const g = makeGoogle({ fetch: makeGoogleFetch(), clientId: "cid", clientSecret: "sec", repo });
   const app = Fastify();
   registerRoutes(app, repo, { google: g });

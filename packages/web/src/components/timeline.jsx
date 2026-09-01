@@ -20,6 +20,7 @@ const TYPE_META = {
 
 const SYSTEM_TEXT = {
   meet_created: (m) => `Meet criado na agenda${(m.attendees || []).length ? ` · ${m.attendees.length} convidado(s)` : ""}`,
+  meet_skipped: (m) => `Meet NÃO criado: ${m.responsible ? `${displayName(m.responsible)} precisa conectar a conta @leverads em Ajustes → Integrações` : `sem ${m.kind === "integracao" ? "integrador" : "closer"} definido (a sala nasce na conta @leverads dele)`}`,
   lead_created: (m) => `Lead criado${m.via === "form" ? " pelo formulário" : ""}${m.stage ? ` em “${m.stage}”` : ""}`,
   proposal_viewed: (m) => `Proposta visualizada${m.viewer === "cliente" ? " pelo cliente" : m.viewer === "time" ? " (pelo time)" : " pela 1ª vez"}${m.device ? ` · ${m.device}` : ""}`,
   proposal_shared: (m) => `Proposta enviada pro cliente${m.label ? ` · ${m.label}` : ""}`,

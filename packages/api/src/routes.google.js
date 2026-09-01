@@ -37,6 +37,15 @@ export function wallClockBrt(date) {
   return p.replace(" ", "T");
 }
 
+// A conta do TIME (contato@uniquebox) só organiza sala da UniqueKids — é o
+// Workspace dela. Nos demais produtos a operação vive nos @leverads (decisão
+// do Leo, 01/09/2026): sala organizada pela uniquebox com closer @leverads
+// dentro conta como convidado externo e o Google NÃO grava nem transcreve.
+// Sem a conta pessoal do responsável pronta, é melhor call sem sala do que
+// sala que não grava — o erro/aviso aponta o conserto.
+const TEAM_ORGANIZER_SAAS = new Set(["uniquekids"]);
+const teamMayOrganize = (saas) => TEAM_ORGANIZER_SAAS.has(String(saas || ""));
+
 export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic } = {}) {
   const client = google || makeGoogle({
     clientId: process.env.GOOGLE_CLIENT_ID || "",
@@ -186,6 +195,14 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     // O SDR marca a call mas nunca organiza: a call é do closer.
     const responsible = kind === "integracao" ? lead.integrator : lead.closer;
     const organizerId = responsible && (await gu.meetReadyFor(responsible).catch(() => false)) ? responsible : "";
+    if (!organizerId && !teamMayOrganize(lead.saas)) {
+      const who = responsible ? (await repo.get("users", responsible).catch(() => null))?.name || "o responsável" : "";
+      const err = new Error(responsible
+        ? `a sala de ${product?.name || "LeverAds"} nasce na conta @leverads de quem faz a call — ${who} precisa conectar (ou reconectar) a conta em Ajustes → Integrações → Minha conta Google`
+        : `defina o ${kind === "integracao" ? "integrador" : "closer"} antes de criar o Meet — a sala de ${product?.name || "LeverAds"} nasce na conta @leverads dele`);
+      err.code = "personal_account_required";
+      throw err;
+    }
     const gclient = organizerId ? client.forUser(gu, organizerId) : client;
 
     try {
@@ -239,13 +256,33 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
   // link — cria o Meet (convite da chamada) sozinho, então o cartão já chega
   // com o link pro integrador e o convite na agenda do cliente. Re-checa o
   // lead fresco antes de criar (dois PATCHes rápidos não duplicam o evento).
+  // Sala que os gatilhos automáticos NÃO criam (produto @leverads sem a conta
+  // pessoal do responsável): deixa o motivo na timeline do lead, uma vez por
+  // horário marcado, senão a call fica sem link e ninguém sabe por quê.
+  async function noteMeetSkip(lead, kind) {
+    const at = kind === "integracao" ? lead.integrationAt : lead.callAt;
+    const key = `${kind}:${at || ""}`;
+    if (lead.meetSkipNoted === key) return;
+    try {
+      await repo.update("leads", lead.id, { meetSkipNoted: key });
+      await logActivity(repo, {
+        saas: lead.saas || "", lead: lead.id, type: "system",
+        meta: { event: "meet_skipped", kind, responsible: kind === "integracao" ? lead.integrator : lead.closer },
+        author: "cockpit",
+      });
+    } catch { /* fail-open */ }
+  }
+
   async function autoIntegrationMeet(leadId) {
     if (!client.configured()) return null;
     const fresh = await repo.get("leads", leadId);
     if (!fresh || !fresh.integrationAt || fresh.integrationCallUrl) return null;
-    const ok = (await client.connected().catch(() => false))
-      || (fresh.integrator && (await gu.meetReadyFor(fresh.integrator).catch(() => false)));
-    if (!ok) return null;
+    const ok = (fresh.integrator && (await gu.meetReadyFor(fresh.integrator).catch(() => false)))
+      || (teamMayOrganize(fresh.saas) && (await client.connected().catch(() => false)));
+    if (!ok) {
+      if (!teamMayOrganize(fresh.saas)) await noteMeetSkip(fresh, "integracao");
+      return null;
+    }
     return createMeetForLead(fresh, { kind: "integracao" });
   }
 
@@ -285,9 +322,12 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     const fresh = await repo.get("leads", leadId);
     if (!fresh || !fresh.callAt) return null;
     if (fresh.callUrl) return moveCallMeet(leadId); // remarcação: move o evento existente
-    const ok = (await client.connected().catch(() => false))
-      || (fresh.closer && (await gu.meetReadyFor(fresh.closer).catch(() => false)));
-    if (!ok) return null;
+    const ok = (fresh.closer && (await gu.meetReadyFor(fresh.closer).catch(() => false)))
+      || (teamMayOrganize(fresh.saas) && (await client.connected().catch(() => false)));
+    if (!ok) {
+      if (!teamMayOrganize(fresh.saas)) await noteMeetSkip(fresh, "call");
+      return null;
+    }
     return createMeetForLead(fresh, { kind: "call" });
   }
 
@@ -325,15 +365,20 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     const lead = await repo.get("leads", req.params.id);
     if (!lead) return reply.code(404).send({ error: "Not found" });
     const kind = req.body?.kind === "integracao" ? "integracao" : "call";
-    // Basta UMA conta apta: a do time (fallback de sempre) ou a do responsável
-    // pela call (transição @leverads: cada um organiza as próprias).
+    // Conta apta: a @leverads do responsável pela call sempre serve; a do time
+    // só organiza produto do Workspace dela (UniqueKids) — nos demais, sala da
+    // uniquebox não grava, então o erro pede a conexão pessoal em vez de criar.
     const resp = kind === "integracao" ? lead.integrator : lead.closer;
-    const anyAccount = (await client.connected()) || (resp && (await gu.meetReadyFor(resp).catch(() => false)));
-    if (!anyAccount) return reply.code(NOT_CONFIGURED).send({ error: "Google não conectado — conecte a conta do time em Ajustes → Integrações, ou a sua conta @leverads no card Minha conta Google" });
+    const respReady = !!(resp && (await gu.meetReadyFor(resp).catch(() => false)));
+    const anyAccount = respReady || (teamMayOrganize(lead.saas) && (await client.connected()));
+    if (!anyAccount && teamMayOrganize(lead.saas)) return reply.code(NOT_CONFIGURED).send({ error: "Google não conectado — conecte a conta do time em Ajustes → Integrações, ou a sua conta @leverads no card Minha conta Google" });
     try {
       return await createMeetForLead(lead, { kind, guests: req.body?.guests, email: req.body?.email, log: req.log });
     } catch (err) {
-      return reply.code(UPSTREAM_FAILED).send({ error: String(err.message || err).slice(0, 300) });
+      // 422 pro caso "conecte a sua conta @leverads": é conserto do usuário,
+      // não falha do Google (e 5xx o proxy da hospedagem engole).
+      const code = err.code === "personal_account_required" ? 422 : UPSTREAM_FAILED;
+      return reply.code(code).send({ error: String(err.message || err).slice(0, 300) });
     }
   });
 

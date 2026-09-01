@@ -1,7 +1,10 @@
-// Transição pros e-mails @leverads (22/08/2026): a conta PESSOAL do responsável
-// organiza o Meet da call dele (gravação/resumo pela conta dele); a conta do
-// time fica de fallback e continua dona das calls antigas — nenhum resumo
-// pendente se perde na troca.
+// Transição pros e-mails @leverads (22/08/2026, endurecida em 01/09/2026): a
+// conta PESSOAL do responsável organiza o Meet da call dele (gravação/resumo
+// pela conta dele). A conta do TIME (uniquebox) só organiza produto do
+// Workspace dela (UniqueKids) — sala da uniquebox com gente @leverads dentro
+// não grava, então nos demais produtos sem conta pessoal pronta o Meet não
+// nasce: o botão devolve 422 com instrução e o gatilho automático deixa o
+// motivo na timeline. Calls antigas seguem com o time (resumo não se perde).
 import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
@@ -68,17 +71,58 @@ test("meet: conta @leverads do closer organiza a call dele (token dele, meetOrga
   await app.close();
 });
 
-test("meet: conexão antiga (só agenda) cai na conta do time; sem closer idem", async () => {
+test("meet: produto @leverads sem conta pessoal pronta NÃO cai no time — 422 com instrução; UniqueKids segue no time", async () => {
   const f = makeFetch();
   const { app, repo } = await buildApp(f);
+  await repo.create("products", { id: "uniquekids", name: "UniqueKids" });
   await repo.create("leads", { id: "le2", saas: "leverads", name: "Beto", closer: "u_old", callAt: "2026-08-25T16:00" });
+  await repo.create("leads", { id: "le6", saas: "leverads", name: "Caio", callAt: "2026-08-25T18:00" });
+  await repo.create("leads", { id: "le5", saas: "uniquekids", name: "Bia", callAt: "2026-08-25T17:00" });
 
+  // conexão antiga (só agenda) não organiza e o time não pode: erro diz quem conecta
   const r = await app.inject({ method: "POST", url: "/api/leads/le2/meet" });
-  assert.equal(r.statusCode, 200, r.body);
-  assert.equal(r.json().organizer, "");
+  assert.equal(r.statusCode, 422, r.body);
+  assert.match(r.json().error, /Bruna/);
+  assert.match(r.json().error, /@leverads/);
+  assert.ok(!f.calls.some((c) => c.url.includes("/calendars/primary/events") && c.init?.method === "POST"), "nenhum evento criado na conta do time");
+  assert.ok(!(await repo.get("leads", "le2")).callUrl, "nada gravado no lead");
+
+  // sem closer definido: mesma trava, pedindo o closer
+  const r2 = await app.inject({ method: "POST", url: "/api/leads/le6/meet" });
+  assert.equal(r2.statusCode, 422);
+  assert.match(r2.json().error, /closer/);
+
+  // UniqueKids é o Workspace da conta do time: continua nascendo nela
+  const r3 = await app.inject({ method: "POST", url: "/api/leads/le5/meet" });
+  assert.equal(r3.statusCode, 200, r3.body);
+  assert.equal(r3.json().organizer, "");
   const calPost = f.calls.find((c) => c.url.includes("/calendars/primary/events") && c.init.method === "POST");
-  assert.equal(calPost.init.headers.authorization, "Bearer at-team", "sem escopos do Meet, o time organiza");
-  assert.equal((await repo.get("leads", "le2")).meetOrganizer, "");
+  assert.equal(calPost.init.headers.authorization, "Bearer at-team", "UniqueKids no token do time");
+  assert.equal((await repo.get("leads", "le5")).meetOrganizer, "");
+  await app.close();
+});
+
+test("integração automática @leverads sem conta do integrador: não cria na uniquebox e deixa o motivo na timeline (uma vez)", async () => {
+  const f = makeFetch();
+  const { app, repo } = await buildApp(f);
+  await repo.update("products", "leverads", { funnel: [
+    { stage: "Novo lead", kind: "novo", conv: 1 },
+    { stage: "Call agendada", kind: "call", conv: 1 },
+    { stage: "Integração", kind: "integracao", conv: 1 },
+    { stage: "Ganho", kind: "ganho", conv: 1 },
+  ] });
+  await repo.create("leads", { id: "le7", saas: "leverads", name: "Duda", stage: "Call agendada", callAt: "2026-09-02T17:00" });
+  const wait = async (cond) => { for (let i = 0; i < 60 && !(await cond()); i++) await new Promise((r) => setImmediate(r)); };
+
+  await app.inject({ method: "PATCH", url: "/api/leads/le7", payload: { stage: "Integração", integrator: "u_old", integrationAt: "2026-09-03T15:00" } });
+  await wait(async () => (await repo.get("leads", "le7")).meetSkipNoted);
+
+  const lead = await repo.get("leads", "le7");
+  assert.ok(!lead.integrationCallUrl, "sala NÃO nasce na conta do time");
+  const skips = (await repo.list("activities")).filter((a) => a.lead === "le7" && a.meta?.event === "meet_skipped");
+  assert.equal(skips.length, 1);
+  assert.equal(skips[0].meta.responsible, "u_old");
+  assert.equal(skips[0].meta.kind, "integracao");
   await app.close();
 });
 

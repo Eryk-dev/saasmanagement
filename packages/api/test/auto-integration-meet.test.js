@@ -34,9 +34,12 @@ function googleFake() {
 
 async function setup() {
   const repo = makeMemRepo();
-  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNNEL });
+  // UniqueKids: produto do Workspace da conta do time — o gatilho ainda cria na
+  // conta do time aqui (nos demais produtos ele exige o @leverads do integrador;
+  // esse caminho é coberto em meet-organizer.test.js).
+  await repo.create("products", { id: "uniquekids", name: "UniqueKids", funnel: FUNNEL });
   await repo.create("leads", {
-    id: "l1", saas: "leverads", name: "Danilo", company: "rotadosbordados",
+    id: "l1", saas: "uniquekids", name: "Danilo", company: "rotadosbordados",
     stage: "Call agendada", email: "danitec2000@gmail.com", callAt: "2026-07-17T17:00",
     callUrl: "https://meet.google.com/venda-ja-existia", meetEventId: "ev_venda",
   });
