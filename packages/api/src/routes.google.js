@@ -321,7 +321,24 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     if (!client.configured()) return null;
     const fresh = await repo.get("leads", leadId);
     if (!fresh || !fresh.callAt) return null;
-    if (fresh.callUrl) return moveCallMeet(leadId); // remarcação: move o evento existente
+    if (fresh.callUrl) {
+      // Sala de produto @leverads que nasceu na conta do TIME (antes da trava
+      // de 01/09) com a call ainda por acontecer: RECRIA na conta do closer —
+      // sala da uniquebox com gente @leverads dentro não grava, e gravar toda
+      // call de venda é a regra. Call passada nunca é recriada (o resumo
+      // pendente mora na sala velha). Fora disso, remarcação: move o evento.
+      const s = callMoment(fresh.callAt);
+      const reorg = !teamMayOrganize(fresh.saas) && !fresh.meetOrganizer
+        && s && s.getTime() > Date.now()
+        && fresh.closer && (await gu.meetReadyFor(fresh.closer).catch(() => false));
+      if (!reorg) return moveCallMeet(leadId);
+      if (fresh.meetEventId && (await client.connected().catch(() => false))) {
+        // Convite velho sai da agenda (e-mail de cancelamento pro lead) —
+        // best-effort: sem isso o lead ficaria com dois convites válidos.
+        try { await client.deleteCalendarEvent(fresh.meetEventId); } catch { /* o convite novo prevalece */ }
+      }
+      return createMeetForLead(fresh, { kind: "call" });
+    }
     const ok = (fresh.closer && (await gu.meetReadyFor(fresh.closer).catch(() => false)))
       || (teamMayOrganize(fresh.saas) && (await client.connected().catch(() => false)));
     if (!ok) {
@@ -365,6 +382,22 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     const lead = await repo.get("leads", req.params.id);
     if (!lead) return reply.code(404).send({ error: "Not found" });
     const kind = req.body?.kind === "integracao" ? "integracao" : "call";
+    // Sala JÁ existe: não duplica o evento (o Meet agora nasce sozinho no
+    // agendamento, e o botão do Meu dia chega depois). Na call, o autoCallMeet
+    // ainda resolve remarcação e a recriação de sala nascida na conta do time.
+    const existingUrl = kind === "integracao" ? lead.integrationCallUrl : lead.callUrl;
+    if (existingUrl) {
+      if (kind === "call") {
+        const r = await autoCallMeet(lead.id).catch(() => null);
+        if (r?.callUrl) return r; // sala recriada na conta do closer
+      }
+      const fresh = (await repo.get("leads", lead.id)) || lead;
+      return {
+        ok: true, kind, existing: true,
+        callUrl: kind === "integracao" ? fresh.integrationCallUrl : fresh.callUrl,
+        organizer: (kind === "integracao" ? fresh.integrationMeetOrganizer : fresh.meetOrganizer) || "",
+      };
+    }
     // Conta apta: a @leverads do responsável pela call sempre serve; a do time
     // só organiza produto do Workspace dela (UniqueKids) — nos demais, sala da
     // uniquebox não grava, então o erro pede a conexão pessoal em vez de criar.
