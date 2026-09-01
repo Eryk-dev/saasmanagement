@@ -438,9 +438,12 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
     // e fica no lead (dealProduct) — segue pro cliente e pro card da Integração.
     // (a Mentoria vende pelo mesmo campo, com o catálogo dela).
     const PRODUCT_LABEL_ALL = { ...DEAL_PRODUCT_LABEL, ...MENTORIA_LABEL };
-    const dealProduct = PRODUCT_LABEL_ALL[req.body?.product] ? String(req.body.product) : "";
+    // Fora do catálogo = produto Personalizado do gate de fechamento: o texto
+    // livre É o dealProduct — passa como veio, só aparado e com teto de tamanho.
+    const productRaw = String(req.body?.product || "").trim();
+    const dealProduct = PRODUCT_LABEL_ALL[productRaw] ? productRaw : productRaw.slice(0, 80);
     const title = String(req.body?.title || "").trim()
-      || [PRODUCT_LABEL_ALL[dealProduct] || product?.name || lead.saas, plan ? PLAN_LABEL[plan] : "pagamento"].filter(Boolean).join(" · ");
+      || [PRODUCT_LABEL_ALL[dealProduct] || dealProduct || product?.name || lead.saas, plan ? PLAN_LABEL[plan] : "pagamento"].filter(Boolean).join(" · ");
     const description = String(req.body?.description || "").trim() || undefined;
     const payerEmail = payerEmailOrNone(req.body?.payerEmail ?? lead.email);
     // Recorrência: o MP só aceita 1/3/6/12 meses no preapproval, e EXIGE um

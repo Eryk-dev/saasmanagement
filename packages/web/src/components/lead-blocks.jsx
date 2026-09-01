@@ -221,9 +221,18 @@ export function ProductOptions({ products }) {
   );
 }
 
+// Sentinela da opção "Personalizado…" do select — nunca vira valor salvo: ao
+// escolher, o closer ESCREVE o produto e o texto livre é gravado direto em
+// dealProduct (id fora do catálogo = nome livre), então segue pro cliente, pro
+// card da Integração e pro título do link sem precisar de campo novo.
+const CUSTOM_PRODUCT = "__custom__";
+
 export function DealProductField({ saas, value, onChange, plan = "", amount = null, onPick, fieldStyle, labelStyle = null, required = true }) {
   const products = dealProductsOf(saas);
+  const isCustomValue = !!value && !products.some((p) => p.id === value);
+  const [customOn, setCustomOn] = React.useState(false);
   if (!products.length) return null;
+  const custom = isCustomValue || customOn;
   const cur = products.find((p) => p.id === value) || null;
   // Só os preços do PLANO selecionado: o período já é escolhido no "Plano
   // fechado" logo abaixo — listar os dois ciclos duplicava o leque e o destaque
@@ -248,10 +257,24 @@ export function DealProductField({ saas, value, onChange, plan = "", amount = nu
   return (
     <div>
       <label className="kicker" style={labelStyle || { display: "block", marginBottom: 4 }}>Produto vendido {required ? "*" : ""}</label>
-      <select value={value} onChange={(e) => onChange(e.target.value, products.find((p) => p.id === e.target.value) || null)} style={fieldStyle}>
+      <select value={custom ? CUSTOM_PRODUCT : value}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v === CUSTOM_PRODUCT) { setCustomOn(true); if (!isCustomValue) onChange("", null); return; }
+          setCustomOn(false);
+          onChange(v, products.find((p) => p.id === v) || null);
+        }} style={fieldStyle}>
         <option value="">— o que ele comprou na apresentação —</option>
         <ProductOptions products={products} />
+        <option value={CUSTOM_PRODUCT}>Personalizado… (escrever o produto)</option>
       </select>
+      {custom && (
+        <input type="text" value={isCustomValue ? value : ""} autoFocus
+          placeholder="escreva o produto vendido…"
+          onChange={(e) => onChange(e.target.value, null)}
+          onBlur={(e) => { const t = e.target.value.trim(); if (t !== e.target.value) onChange(t, null); }}
+          style={{ ...(fieldStyle || {}), marginTop: 6 }} />
+      )}
       {!!prices.length && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>
           <span className="mono dim" style={{ fontSize: 10, flexShrink: 0 }}>preço do catálogo</span>
