@@ -733,7 +733,11 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           // "vão mandar algum link?" e a SDR correu atrás na mão). Na hora do
           // lembrete de 2h ainda dá tempo de criar a sala: tenta agora.
           let callUrl = lead.callUrl || "";
-          if (due.key === "2h" && !callUrl && autoCallMeet) {
+          if (due.key === "2h" && autoCallMeet) {
+            // Mesmo COM sala vale rodar: além de criar a que falta, o
+            // autoCallMeet recria na conta do closer a sala que nasceu na
+            // conta do time (essa não gravaria) — barato quando está tudo
+            // certo (compara horário e sai).
             try {
               await autoCallMeet(lead.id);
               callUrl = (await repo.get("leads", lead.id))?.callUrl || "";

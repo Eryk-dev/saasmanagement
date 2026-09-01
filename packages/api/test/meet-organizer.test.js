@@ -126,6 +126,69 @@ test("integração automática @leverads sem conta do integrador: não cria na u
   await app.close();
 });
 
+test("agendar a call pelo PATCH já cria o Meet na conta do closer (sem botão); o botão depois não duplica", async () => {
+  const f = makeFetch();
+  const { app, repo } = await buildApp(f);
+  await repo.create("leads", { id: "le8", saas: "leverads", name: "Rui" });
+
+  const r = await app.inject({ method: "PATCH", url: "/api/leads/le8", payload: { callAt: "2030-01-05T15:00", closer: "u_clo" } });
+  assert.equal(r.statusCode, 200, r.body);
+  const lead = await repo.get("leads", "le8");
+  assert.ok(String(lead.callUrl).includes("meet.google.com"), "sala nasceu no agendamento");
+  assert.equal(lead.meetOrganizer, "u_clo");
+  // POST com conferenceDataVersion = criação do MEET (o espelho de agenda pessoal
+  // também POSTa em /events, sem conference — não conta aqui)
+  const calPost = f.calls.find((c) => c.url.includes("conferenceDataVersion") && c.init.method === "POST");
+  assert.equal(calPost.init.headers.authorization, "Bearer at-clo", "sala do closer, não do time");
+
+  // botão do Meu dia chega DEPOIS da sala pronta: devolve a existente, sem 2º evento
+  const posts = () => f.calls.filter((c) => c.url.includes("conferenceDataVersion") && c.init.method === "POST").length;
+  const before = posts();
+  const again = await app.inject({ method: "POST", url: "/api/leads/le8/meet" });
+  assert.equal(again.statusCode, 200, again.body);
+  assert.equal(again.json().existing, true);
+  assert.equal(again.json().callUrl, lead.callUrl);
+  assert.equal(posts(), before, "não duplica o evento");
+  await app.close();
+});
+
+test("sala @leverads que nasceu na conta do time (call ainda futura) é recriada na conta do closer", async () => {
+  const f = makeFetch();
+  const { app, repo } = await buildApp(f);
+  await repo.create("leads", {
+    id: "le9", saas: "leverads", name: "Téo", closer: "u_clo", callAt: "2030-02-01T14:00",
+    callUrl: "https://meet.google.com/old-team-room", meetEventId: "ev_old",
+    meetScheduledAt: "2030-02-01T17:00:00.000Z", meetOrganizer: "",
+  });
+
+  // qualquer toque no agendamento (aqui: reatribuir o closer) dispara o conserto
+  await app.inject({ method: "PATCH", url: "/api/leads/le9", payload: { closer: "u_clo" } });
+  const lead = await repo.get("leads", "le9");
+  assert.equal(lead.meetOrganizer, "u_clo");
+  assert.equal(lead.callUrl, "https://meet.google.com/abc-defg-hij", "sala nova na conta do closer");
+  const del = f.calls.find((c) => c.url.includes("/events/ev_old") && c.init.method === "DELETE");
+  assert.ok(del, "convite velho cancelado (senão o lead fica com dois)");
+  assert.equal(del.init.headers.authorization, "Bearer at-team", "cancelado pela conta que organizou (time)");
+  const calPost = f.calls.find((c) => c.url.includes("conferenceDataVersion") && c.init.method === "POST");
+  assert.equal(calPost.init.headers.authorization, "Bearer at-clo");
+  await app.close();
+});
+
+test("call que JÁ aconteceu nunca é recriada (o resumo pendente mora na sala velha)", async () => {
+  const f = makeFetch();
+  const { app, repo } = await buildApp(f);
+  await repo.create("leads", {
+    id: "le10", saas: "leverads", name: "Vera", closer: "u_clo", callAt: "2026-08-20T14:00",
+    callUrl: "https://meet.google.com/old-team-room", meetEventId: "ev_old",
+    meetScheduledAt: "2026-08-20T17:00:00.000Z", meetOrganizer: "",
+  });
+  await app.inject({ method: "PATCH", url: "/api/leads/le10", payload: { closer: "u_clo" } });
+  const lead = await repo.get("leads", "le10");
+  assert.equal(lead.callUrl, "https://meet.google.com/old-team-room", "sala antiga intacta");
+  assert.ok(!f.calls.some((c) => c.url.includes("conferenceDataVersion") && c.init?.method === "POST"), "nenhum Meet novo");
+  await app.close();
+});
+
 test("resumo: call organizada pela conta do closer é lida pelo token DELE, mesmo com o time desconectado; call antiga segue no time", async () => {
   const repo = makeMemRepo();
   const used = [];

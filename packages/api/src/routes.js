@@ -920,11 +920,13 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     if (collection === "leads" && ("callAt" in req.body || "closer" in req.body || "integrationAt" in req.body || "integrator" in req.body)) {
       try { await syncPersonalCalendar(repo, googleUser, updated); } catch { /* fail-open */ }
     }
-    // Remarcou a call (na mão ou pelo robô via PATCH) → o convite do Meet
-    // acompanha: o evento é PATCHado pro horário novo e o lead recebe o
-    // e-mail de atualização do Google.
-    if (collection === "leads" && "callAt" in req.body && updated.callUrl) {
-      try { await moveCallMeet(updated.id); } catch { /* fail-open: o lembrete de 10min entrega o link certo */ }
+    // Call agendada, remarcada ou reatribuída → o Meet acompanha SOZINHO: sem
+    // sala, ela nasce na hora na conta @leverads do closer (gravar toda call
+    // de venda é a regra — 01/09); com sala, o evento move pro horário novo
+    // (e-mail de atualização pro lead) e sala que nasceu na conta do time é
+    // recriada na do closer enquanto a call não aconteceu.
+    if (collection === "leads" && ("callAt" in req.body || "closer" in req.body) && updated.callAt && autoCallMeet) {
+      try { await autoCallMeet(updated.id); } catch { /* fail-open: o lembrete de 2h tenta de novo */ }
     }
     // REMARCOU UM NO-SHOW: o card volta pra etapa de call sozinho. Editar só o
     // horário deixava o card preso em "No show" com call futura — e a régua de
