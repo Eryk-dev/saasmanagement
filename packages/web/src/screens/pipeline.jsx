@@ -13,6 +13,7 @@ import { isNoShowStage } from "../lib/scripts.js";
 import { mentoriaFit, mentoriaOfferLine, VERBA_RANK } from "../lib/mentoria.js";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
 import { useActiveSaas, pinActiveSaas } from "../lib/workspace.js";
+import { bizDay } from "../lib/format.js";
 // Pipeline — Kanban + Lista. Drag-and-drop between columns.
 // Funil unificado: os LEADS são os cards do pipeline (window.SEED.LEADS). Cada
 // lead já carrega seu `saas` + `stage`. Uma cópia local deixa o drag-and-drop
@@ -394,12 +395,15 @@ function KanbanBoard({ s, stages, byStage, sortMode, highlight, onMove, selected
 
 function WonSummary({ leads }) {
   const now = new Date();
-  const month = now.toISOString().slice(0, 7);
+  // Mês do NEGÓCIO (bizDay, America/Sao_Paulo), igual à Meta do mês da Visão
+  // geral: o slice do ISO cortava em UTC e uma venda das 21h+ do dia 31 caía no
+  // mês seguinte só neste card, divergindo da meta.
+  const month = bizDay(now).slice(0, 7);
   // Mês pela DATA DA VENDA (wonAt), não pelo stageSince: o card anda pra
   // Integração e recarimba o stageSince, o que jogaria o ganho pro mês errado.
-  const monthLeads = leads.filter((l) => String(wonAtOf(l)).slice(0, 7) === month);
+  const monthLeads = leads.filter((l) => bizDay(wonAtOf(l)).slice(0, 7) === month);
   const total = monthLeads.reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
-  const label = now.toLocaleDateString("pt-BR", { month: "long" });
+  const label = now.toLocaleDateString("pt-BR", { month: "long", timeZone: "America/Sao_Paulo" });
   return (
     <div style={{ width: 220, flexShrink: 0, border: "1px dashed var(--line-2)", borderRadius: "var(--r-4)", padding: 16, textAlign: "center" }}>
       <div style={{ fontSize: 13, fontWeight: 600, color: "var(--pos)" }}>Ganho · {label}</div>
