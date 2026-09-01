@@ -244,8 +244,17 @@ export const tcvOf = (leads) => round2(leads.reduce((a, l) => a + (Number(l.amou
 //
 // Meio de pagamento em branco (fechamento antigo) = à vista, o comportamento
 // de sempre — nenhum histórico muda de valor por causa desta régua.
+// Condição PERSONALIZADA (o closer escreve a condição no gate e o texto livre
+// vira o paymentMethod, ex.: "entrada no PIX + recorrência no cartão"): conta
+// como os pagos-no-recebimento — só o que caiu na janela. Por isso a régua é
+// pelo conjunto dos meios À VISTA: tudo que não está nele e não é vazio entra
+// no conta-pelo-que-caiu, inclusive o texto livre.
+export const PAY_UPFRONT = new Set(["pix", "boleto_vista", "cartao12x"]);
 export const PAY_ON_RECEIPT = new Set(["boleto", "pix_parcelado", "cartao_recorrente"]);
-export const isPayOnReceipt = (method) => PAY_ON_RECEIPT.has(String(method || ""));
+export const isPayOnReceipt = (method) => {
+  const m = String(method || "");
+  return !!m && !PAY_UPFRONT.has(m);
+};
 
 // Dinheiro que ENTROU de verdade por cliente numa janela ({ id: R$ }). Régua
 // idêntica à do /api/billing/received (a coluna Status pgto. de Clientes):

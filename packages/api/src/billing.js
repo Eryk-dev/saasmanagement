@@ -84,6 +84,11 @@ const PLAN_CYCLE = { anual: "annual", semestral: "semiannual", mensal: "monthly"
 // por mês como o faturado, mas NUNCA tem Nº de parcelas — o gate não pergunta,
 // então closedInstallments devolve 0 e o ciclo mensal fica com o runBilling.
 const MONTHLY_PAYMENT = new Set(["boleto", "pix_parcelado", "cartao_recorrente"]);
+// À vista DE VERDADE (a adquirente antecipa): só estes têm a 1ª fatura nascendo
+// paga no fechamento. Condição PERSONALIZADA (texto livre do gate, ex.:
+// "entrada no PIX + recorrência no cartão") fica de fora — fechar não é
+// receber; o dinheiro entra pelo espelho do MP ou pela baixa manual.
+const UPFRONT_PAYMENT = new Set(["pix", "boleto_vista", "cartao12x"]);
 const METHOD_LABEL = { boleto: "boleto faturado", pix_parcelado: "PIX parcelado", cartao_recorrente: "assinatura recorrente" };
 
 // Nº de parcelas escolhido no gate de fechamento (0 = sem cronograma explícito).
@@ -200,7 +205,9 @@ export async function createClosedSubscription(repo, { customerId, saas, planClo
     // ela nasce ABERTA (Leo, 29/08/2026): autorizar a assinatura não é receber
     // — a 1ª cobrança só cai quando o Mercado Pago rodar, e contar antes
     // inflava o "Recebido no mês" do Financeiro com dinheiro que não entrou.
-    const naVista = !MONTHLY_PAYMENT.has(String(paymentMethod || ""));
+    // Condição personalizada também nasce ABERTA; meio em branco (fechamento
+    // antigo) mantém o comportamento à vista de sempre.
+    const naVista = !paymentMethod || UPFRONT_PAYMENT.has(String(paymentMethod));
     await repo.create("invoices", {
       subscription: sub.id, customer: customerId, saas: saas || "",
       amount: price, kind: "renewal", status: naVista ? "paid" : "open",

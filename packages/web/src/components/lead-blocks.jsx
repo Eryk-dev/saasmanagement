@@ -17,7 +17,7 @@ import { leadTier, leadScoreLabel, leadAge } from "../lib/ui.js";
 import { cadenceOf, lossReasonLabel } from "../lib/funnel.js";
 import { leadPain } from "../lib/pains.js";
 import { displayName } from "../lib/users.js";
-import { paymentLabel, closedPlanLabel, dealProductLabel, dealProductsOf } from "../lib/payments.js";
+import { PAYMENT_METHODS, paymentLabel, closedPlanLabel, dealProductLabel, dealProductsOf } from "../lib/payments.js";
 import { mentoriaFit, mentoriaOfferLine } from "../lib/mentoria.js";
 import { scriptSegments } from "../lib/scripts.js";
 
@@ -221,18 +221,66 @@ export function ProductOptions({ products }) {
   );
 }
 
-// Sentinela da opção "Personalizado…" do select — nunca vira valor salvo: ao
-// escolher, o closer ESCREVE o produto e o texto livre é gravado direto em
-// dealProduct (id fora do catálogo = nome livre), então segue pro cliente, pro
-// card da Integração e pro título do link sem precisar de campo novo.
-const CUSTOM_PRODUCT = "__custom__";
+// ── Select com "Personalizado…" ─────────────────────────────────────────────
+// Escolher a opção abre um campo de texto e o TEXTO LIVRE vira o próprio valor
+// gravado (valor fora da lista = personalizado) — o dado viaja pela cadeia
+// (cliente, card da Integração, links, título do checkout) sem campo novo.
+// Compartilhado por produto vendido/ofertado e modo de pagamento.
+// commit "blur" (edição direto na ficha, que salva a cada onChange): o texto
+// só grava ao sair do campo, e escolher Personalizado não zera o valor salvo.
+const CUSTOM_OPT = "__custom__";
+export function SelectWithCustom({ ids, value, onChange, children, fieldStyle, placeholder = null, customLabel = "Personalizado… (escrever)", customPlaceholder = "escreva aqui…", autoFocus = false, commit = "change" }) {
+  const isCustomValue = !!value && !ids.includes(value);
+  const [customOn, setCustomOn] = React.useState(false);
+  const custom = isCustomValue || customOn;
+  return (
+    <>
+      <select value={custom ? CUSTOM_OPT : value} autoFocus={autoFocus}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v === CUSTOM_OPT) { setCustomOn(true); if (!isCustomValue && commit !== "blur") onChange(""); return; }
+          setCustomOn(false);
+          onChange(v);
+        }} style={fieldStyle}>
+        {placeholder != null && <option value="">{placeholder}</option>}
+        {children}
+        <option value={CUSTOM_OPT}>{customLabel}</option>
+      </select>
+      {custom && (commit === "blur" ? (
+        <input key={value} type="text" defaultValue={isCustomValue ? value : ""} autoFocus={customOn}
+          placeholder={customPlaceholder}
+          onBlur={(e) => { const t = e.target.value.trim(); if (t && t !== value) onChange(t); }}
+          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+          style={{ ...(fieldStyle || {}), marginTop: 6 }} />
+      ) : (
+        <input type="text" value={isCustomValue ? value : ""} autoFocus={customOn}
+          placeholder={customPlaceholder}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={(e) => { const t = e.target.value.trim(); if (t !== e.target.value) onChange(t); }}
+          style={{ ...(fieldStyle || {}), marginTop: 6 }} />
+      ))}
+    </>
+  );
+}
+
+// Modo de pagamento com Personalizado (ex.: entrada no PIX + recorrência no
+// cartão): a condição escrita vira o próprio paymentMethod e conta na meta como
+// faturado/recorrente, só pelo que ENTROU na janela (paymentUpfront = false;
+// isPayOnReceipt na API acompanha).
+export function PaymentMethodSelect({ value, onChange, fieldStyle, placeholder = "— como o cliente fechou —", commit = "change" }) {
+  return (
+    <SelectWithCustom ids={PAYMENT_METHODS.map((p) => p.id)} value={value} onChange={onChange}
+      fieldStyle={fieldStyle} placeholder={placeholder} commit={commit}
+      customLabel="Personalizado… (escrever a condição)"
+      customPlaceholder="ex.: entrada no PIX + recorrência no cartão">
+      {PAYMENT_METHODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+    </SelectWithCustom>
+  );
+}
 
 export function DealProductField({ saas, value, onChange, plan = "", amount = null, onPick, fieldStyle, labelStyle = null, required = true }) {
   const products = dealProductsOf(saas);
-  const isCustomValue = !!value && !products.some((p) => p.id === value);
-  const [customOn, setCustomOn] = React.useState(false);
   if (!products.length) return null;
-  const custom = isCustomValue || customOn;
   const cur = products.find((p) => p.id === value) || null;
   // Só os preços do PLANO selecionado: o período já é escolhido no "Plano
   // fechado" logo abaixo — listar os dois ciclos duplicava o leque e o destaque
@@ -257,24 +305,12 @@ export function DealProductField({ saas, value, onChange, plan = "", amount = nu
   return (
     <div>
       <label className="kicker" style={labelStyle || { display: "block", marginBottom: 4 }}>Produto vendido {required ? "*" : ""}</label>
-      <select value={custom ? CUSTOM_PRODUCT : value}
-        onChange={(e) => {
-          const v = e.target.value;
-          if (v === CUSTOM_PRODUCT) { setCustomOn(true); if (!isCustomValue) onChange("", null); return; }
-          setCustomOn(false);
-          onChange(v, products.find((p) => p.id === v) || null);
-        }} style={fieldStyle}>
-        <option value="">— o que ele comprou na apresentação —</option>
+      <SelectWithCustom ids={products.map((p) => p.id)} value={value}
+        onChange={(v) => onChange(v, products.find((p) => p.id === v) || null)}
+        fieldStyle={fieldStyle} placeholder="— o que ele comprou na apresentação —"
+        customLabel="Personalizado… (escrever o produto)" customPlaceholder="escreva o produto vendido…">
         <ProductOptions products={products} />
-        <option value={CUSTOM_PRODUCT}>Personalizado… (escrever o produto)</option>
-      </select>
-      {custom && (
-        <input type="text" value={isCustomValue ? value : ""} autoFocus
-          placeholder="escreva o produto vendido…"
-          onChange={(e) => onChange(e.target.value, null)}
-          onBlur={(e) => { const t = e.target.value.trim(); if (t !== e.target.value) onChange(t, null); }}
-          style={{ ...(fieldStyle || {}), marginTop: 6 }} />
-      )}
+      </SelectWithCustom>
       {!!prices.length && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>
           <span className="mono dim" style={{ fontSize: 10, flexShrink: 0 }}>preço do catálogo</span>

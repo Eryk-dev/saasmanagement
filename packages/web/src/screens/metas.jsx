@@ -377,7 +377,7 @@ function MetasScreen() {
             <Card title="Meta do mês"
               hint={<>
                 {mesAtualInfo ? mesLabel(mesAtualInfo.month) : "mês corrente"} · digitar move a régua na hora, salvar é o que grava
-                {infoDot("A faixa Meta do mês da Visão geral e a Análise de Pace perseguem esse número pelo VENDIDO RECONHECIDO (à vista e cartão em 12x contam inteiro, porque a adquirente antecipa; boleto faturado, PIX parcelado e assinatura recorrente contam só o que ENTROU no mês) e desdobram o que falta em ganhos, calls, contatos e leads por dia. Na virada do mês, o valor do mês novo assume sozinho: o agendado, se houver, senão a regra de crescimento. O caixa e o dinheiro futuro ficam na aba Clientes.")}
+                {infoDot("A faixa Meta do mês da Visão geral e a Análise de Pace perseguem esse número pelo VENDIDO RECONHECIDO (à vista e cartão em 12x contam inteiro, porque a adquirente antecipa; boleto faturado, PIX parcelado, assinatura recorrente e condição personalizada contam só o que ENTROU no mês) e desdobram o que falta em ganhos, calls, contatos e leads por dia. Na virada do mês, o valor do mês novo assume sozinho: o agendado, se houver, senão a regra de crescimento. O caixa e o dinheiro futuro ficam na aba Clientes.")}
               </>}>
               <div className="resp-cols" style={{ "--cols": "1fr 1fr", gap: "18px 36px", padding: "16px var(--inset-x) 20px" }}>
                 <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 14 }}>
