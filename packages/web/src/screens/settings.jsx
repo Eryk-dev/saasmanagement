@@ -458,11 +458,28 @@ const ROLE_OPTS = [
   ["admin", "Admin", "dono da operação: não é vaga do funil e não é cobrado no treinamento"],
 ];
 
+// Senha inicial do usuário novo: 10 caracteres com letra maiúscula, minúscula,
+// número e especial garantidos. Sem caracteres ambíguos (0/O, 1/l/I) porque a
+// senha é ditada/colada no WhatsApp pro responsável da conta.
+function genPassword() {
+  const sets = ["abcdefghjkmnpqrstuvwxyz", "ABCDEFGHJKMNPQRSTUVWXYZ", "23456789", "!@#$%&*+?"];
+  const all = sets.join("");
+  const rand = (n) => crypto.getRandomValues(new Uint32Array(1))[0] % n;
+  const chars = sets.map((s) => s[rand(s.length)]);
+  while (chars.length < 10) chars.push(all[rand(all.length)]);
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = rand(i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join("");
+}
+
 function TeamSettings() {
   const { SAAS } = window.SEED;
   const [users, setUsers] = useStS(null);
   const [saving, setSaving] = useStS("");
   const [invite, setInvite] = useStS(null); // { name, password }
+  const [created, setCreated] = useStS(null); // { name, password } do último criado, fica na tela pro Leo copiar
 
   const load = () => api.listUsers().then(setUsers).catch(() => setUsers([]));
   React.useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -520,6 +537,7 @@ function TeamSettings() {
     try {
       const res = await api.createUser(invite);
       setUsers((us) => [...(us || []), res]);
+      setCreated({ name: res.name || invite.name, password: invite.password });
       setInvite(null);
     } catch (e) { alert("não criou: " + e.message); }
   }
@@ -598,14 +616,26 @@ function TeamSettings() {
         {invite ? (
           <>
             <input value={invite.name} placeholder="Nome" onChange={(e) => setInvite({ ...invite, name: e.target.value })} style={{ ...inputStyle, width: 160 }} />
-            <input value={invite.password} type="password" placeholder="Senha (4+)" onChange={(e) => setInvite({ ...invite, password: e.target.value })} style={{ ...inputStyle, width: 140 }} />
+            <input value={invite.password} type="text" className="mono" placeholder="Senha (4+)"
+              title="Senha inicial gerada automaticamente · pode editar antes de criar"
+              onChange={(e) => setInvite({ ...invite, password: e.target.value })} style={{ ...inputStyle, width: 130 }} />
+            <button type="button" onClick={() => setInvite({ ...invite, password: genPassword() })} title="Gerar outra senha"
+              style={{ width: 26, height: 26, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-4)", fontSize: 13, cursor: "pointer" }}>↻</button>
             <PrimaryButton onClick={createUser} disabled={!invite.name || String(invite.password).length < 4}>criar usuário</PrimaryButton>
             <button onClick={() => setInvite(null)} className="mono dim" style={{ fontSize: 11 }}>cancelar</button>
           </>
         ) : (
-          <button type="button" onClick={() => setInvite({ name: "", password: "" })} style={{ ...chromeBtnStyleSmall }}>
+          <button type="button" onClick={() => { setCreated(null); setInvite({ name: "", password: genPassword() }); }} style={{ ...chromeBtnStyleSmall }}>
             <span style={{ fontSize: 11 }}>+ usuário do time</span>
           </button>
+        )}
+        {created && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", fontSize: 12 }}>
+            <span>✓ <b>{created.name}</b> no time · senha: <b className="mono code">{created.password}</b> · anote e passe pro responsável (não aparece de novo)</span>
+            <button type="button" className="mono" style={{ fontSize: 11, cursor: "pointer" }}
+              onClick={() => { try { navigator.clipboard.writeText(created.password); window.toast && window.toast("Senha copiada", "pos"); } catch { window.prompt("Senha:", created.password); } }}>copiar</button>
+            <button type="button" className="mono dim" style={{ fontSize: 11, cursor: "pointer" }} title="Fechar (a senha some da tela)" onClick={() => setCreated(null)}>✕</button>
+          </span>
         )}
         <span className="mono dim" style={{ fontSize: 11 }}>papéis salvam ao clicar · senha troca em Ajustes do usuário (ou peça pro admin resetar)</span>
       </div>
