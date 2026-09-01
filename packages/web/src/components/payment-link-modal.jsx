@@ -2,8 +2,8 @@ import React from "react";
 import { useEsc } from "../atoms.jsx";
 import { waLink } from "../lib/ui.js";
 import { api } from "../lib/api.js";
-import { PAYMENT_METHODS, CLOSED_PLANS, DEAL_PRODUCTS, dealProductLabel, dealProductsOf } from "../lib/payments.js";
-import { ProductOptions } from "./lead-blocks.jsx";
+import { CLOSED_PLANS, DEAL_PRODUCTS, dealProductLabel, dealProductsOf } from "../lib/payments.js";
+import { ProductOptions, PaymentMethodSelect } from "./lead-blocks.jsx";
 
 // Modal do LINK DE PAGAMENTO do Mercado Pago — o MESMO em todo lugar que gera
 // link: atalho do card do lead (deal.jsx) e tela "Links de pagamento", que abre
@@ -359,10 +359,7 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved }) {
             </label>
             <label style={field}>
               <span className="kicker">Forma combinada</span>
-              <select value={method} onChange={(e) => setMethod(e.target.value)} style={inputStyle}>
-                <option value="">escolher…</option>
-                {PAYMENT_METHODS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-              </select>
+              <PaymentMethodSelect value={method} onChange={setMethod} fieldStyle={inputStyle} placeholder="escolher…" />
             </label>
           </div>
           <div className="mono dim" style={{ fontSize: 10.5 }}>

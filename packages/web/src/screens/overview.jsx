@@ -225,7 +225,7 @@ function MetaMesCard({ pace, goal, onNav, links = true }) {
       )}
       {naoRecebido > 0 && (
         <div style={{ padding: "0 var(--inset-x) 14px", fontSize: 11.5, color: "var(--fg-3)", lineHeight: 1.5 }}
-          title="Boleto faturado, PIX parcelado e assinatura recorrente no cartão só contam na meta pelo que ENTROU na janela (a 1ª parcela, na prática). As parcelas dos meses seguintes seguem no Financeiro, no caixa do mês em que caírem.">
+          title="Boleto faturado, PIX parcelado, assinatura recorrente no cartão e condição personalizada só contam na meta pelo que ENTROU na janela (a 1ª parcela, na prática). As parcelas dos meses seguintes seguem no Financeiro, no caixa do mês em que caírem.">
           Contratado no período: <b className="tnum">{money(s.contracted)}</b> · faturado/recorrente que ainda não caiu:{" "}
           <b className="tnum" style={{ color: "var(--warn)" }}>{money(naoRecebido)}</b>.
         </div>
@@ -417,7 +417,7 @@ function PersonRow({ p, rank, bizDays, elapsedFrac, monthFrac, onPerson }) {
             contrato cheio aparece aqui pra ninguém achar que a venda sumiu. */}
         {leg?.contracted > (leg?.revenue || 0) && (
           <span className="tnum" style={{ whiteSpace: "nowrap", color: "var(--fg-4)" }}
-            title="Boleto faturado, PIX parcelado e assinatura recorrente no cartão contam na meta só pelo que ENTROU na janela (a 1ª parcela, na prática). O resto das parcelas segue no Financeiro, no caixa do mês em que cair.">
+            title="Boleto faturado, PIX parcelado, assinatura recorrente no cartão e condição personalizada contam na meta só pelo que ENTROU na janela (a 1ª parcela, na prática). O resto das parcelas segue no Financeiro, no caixa do mês em que cair.">
             contratado <b style={{ fontWeight: 650 }}>R$ {compactMoney(leg.contracted)}</b> · não recebido R$ {compactMoney(leg.contracted - (leg.revenue || 0))}
           </span>
         )}

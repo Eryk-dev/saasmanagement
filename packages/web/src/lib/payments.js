@@ -20,9 +20,17 @@ export const PAYMENT_METHODS = [
   { id: "cartao_recorrente", label: "Assinatura recorrente (cartão)", upfront: false, recurring: true },
 ];
 
-export const paymentLabel = (id) => PAYMENT_METHODS.find((p) => p.id === id)?.label || "";
+// Condição PERSONALIZADA (ex.: "entrada no PIX + recorrência no cartão"): o
+// closer escreve a condição no gate e o texto livre É o paymentMethod (id fora
+// da lista = personalizado). Regras do dinheiro: rótulo = o próprio texto,
+// upfront = false (conta na meta só o que ENTROU na janela, como faturado e
+// recorrente; isPayOnReceipt na API acompanha) e fica fora do cronograma de
+// parcelas do faturado (a condição não é N parcelas iguais).
+export const paymentCustom = (id) => !!id && !PAYMENT_METHODS.some((p) => p.id === id);
+export const paymentLabel = (id) => PAYMENT_METHODS.find((p) => p.id === id)?.label || String(id || "");
 // Sem meio de pagamento registrado, assume à vista (comportamento antigo: tudo caixa).
-export const paymentUpfront = (id) => PAYMENT_METHODS.find((p) => p.id === id)?.upfront !== false;
+export const paymentUpfront = (id) =>
+  !id ? true : paymentCustom(id) ? false : PAYMENT_METHODS.find((p) => p.id === id)?.upfront !== false;
 // Recorrente = mensal sem fim definido: fica fora do "faturado em quantas vezes".
 export const paymentRecurring = (id) => !!PAYMENT_METHODS.find((p) => p.id === id)?.recurring;
 

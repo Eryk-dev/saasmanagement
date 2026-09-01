@@ -14,7 +14,8 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { leadTier, waLink, GRADE_STYLE, GRADE_GRID, GRADE_ACCOUNTS, GRADE_LISTINGS } from "../lib/ui.js";
 import { scriptChecklist } from "../lib/scripts.js";
 import { displayName } from "../lib/users.js";
-import { paymentLabel, paymentUpfront, paymentRecurring, PAYMENT_METHODS, PAY_STATUS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf, mpMethodLabel, accruedAmountOf, isRecurringClose } from "../lib/payments.js";
+import { paymentLabel, paymentUpfront, paymentRecurring, paymentCustom, PAY_STATUS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf, mpMethodLabel, accruedAmountOf, isRecurringClose } from "../lib/payments.js";
+import { PaymentMethodSelect } from "../components/lead-blocks.jsx";
 import { useAttribution, leadPain } from "../lib/pains.js";
 import { isChurned, CHURN_REASONS, churnReasonLabel } from "../lib/churn.js";
 import { fetchLeveradsOrgs } from "../lib/leverads.js";
@@ -1101,10 +1102,8 @@ function CustomerFacts({ customer, lead, product, leverOrg, onPatch }) {
             </select>
           </EditRow>
           <EditRow label="Pagamento">
-            <select value={customer.paymentMethod || ""} onChange={(e) => patch({ paymentMethod: e.target.value })} style={inputSt}>
-              <option value="">—</option>
-              {PAYMENT_METHODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-            </select>
+            <PaymentMethodSelect value={customer.paymentMethod || ""} onChange={(v) => patch({ paymentMethod: v })}
+              fieldStyle={inputSt} placeholder="—" commit="blur" />
           </EditRow>
           <EditRow label="Status pgto.">
             <select value={PAY_STATUS[customer.paymentStatus] ? customer.paymentStatus : ""} onChange={(e) => patch({ paymentStatus: e.target.value })} style={inputSt}>
@@ -1498,7 +1497,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
                 <span className="mono" style={{ marginLeft: "auto", fontSize: 11, color: "var(--fg-3)", textTransform: "none", letterSpacing: 0 }}>
                   {money(recebido)} recebido · {money(aReceber)} a receber
                 </span>
-                {lead && !paymentUpfront(customer.paymentMethod || lead.paymentMethod) && (
+                {lead && !paymentUpfront(customer.paymentMethod || lead.paymentMethod) && !paymentCustom(customer.paymentMethod || lead.paymentMethod) && (
                   <select value={String(totalN)} disabled={nSaving} onChange={(e) => changeParcelamento(e.target.value)}
                     title="Mudar o parcelamento refaz as parcelas em aberto; as pagas ficam como estão"
                     style={{ height: 22, padding: "0 4px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11 }}>
@@ -1550,7 +1549,9 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
             Recorrente fica fora: a cobrança dela é a renovação mensal, sem fim. */}
         {parcelas.length === 0 && lead && Number(lead.amount) > 0 && (() => {
           const pm = customer.paymentMethod || lead.paymentMethod;
-          if (paymentUpfront(pm) || paymentRecurring(pm)) return null;
+          // Condição personalizada fica fora do cronograma do faturado: o que o
+          // closer escreveu não é N parcelas iguais (recebido = MP/baixa manual).
+          if (paymentUpfront(pm) || paymentRecurring(pm) || paymentCustom(pm)) return null;
           return (
             <div style={BOX}>
               <div className="kicker" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>

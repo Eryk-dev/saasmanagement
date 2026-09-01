@@ -2,8 +2,8 @@ import React from "react";
 import { PrimaryButton, useEsc } from "../atoms.jsx";
 import { stageKind, phaseOf, isLossKind, isWonKind, lossReasonsOf } from "../lib/funnel.js";
 import { usersByRole, currentUser } from "../lib/users.js";
-import { PAYMENT_METHODS, CLOSED_PLANS, CONSULT_PACKAGES, CLOSED_PLAN_MONTHS, dealProductsOf, paymentUpfront, paymentRecurring } from "../lib/payments.js";
-import { DealProductField, isOneOffProduct } from "./lead-blocks.jsx";
+import { CLOSED_PLANS, CONSULT_PACKAGES, CLOSED_PLAN_MONTHS, dealProductsOf, paymentUpfront, paymentRecurring, paymentCustom } from "../lib/payments.js";
+import { DealProductField, isOneOffProduct, SelectWithCustom, PaymentMethodSelect, ProductOptions } from "./lead-blocks.jsx";
 import { api } from "../lib/api.js";
 import { SlotGrid, nextBusinessDays, callBusyKeys } from "../screens/today.jsx";
 
@@ -86,7 +86,10 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   // do cliente soma outra mensalidade a cada 30 dias (accruedAmountOf). Não há
   // Nº de parcelas (a cobrança é indefinida), então o faturado fica fora.
   const isMonthly = !isKidsWon && !oneOff && planClosed === "mensal";
-  const isFaturado = !!payment && paymentUpfront(payment) === false && !paymentRecurring(payment) && !isMonthly;
+  // Condição personalizada fica fora do "faturado em quantas vezes": o que o
+  // closer escreveu não é N parcelas iguais — o recebido entra pelo espelho do
+  // MP ou pela baixa manual em Clientes.
+  const isFaturado = !!payment && paymentUpfront(payment) === false && !paymentRecurring(payment) && !paymentCustom(payment) && !isMonthly;
   const effInstallments = Number(installments) > 0 ? Number(installments)
     : (CLOSED_PLAN_MONTHS[isKidsWon || oneOff ? "unico" : planClosed] || 12);
   // Follow-up: qual proposta ficou na mesa (só saindo da call — askOffer) e
@@ -169,10 +172,11 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
                 {offerProducts.length > 0 && offer !== "nenhuma" && (
                   <>
                     <label className="kicker" style={label}>Qual produto ficou ofertado? *</label>
-                    <select value={offerProduct} onChange={(e) => setOfferProduct(e.target.value)} style={field} autoFocus>
-                      <option value="">— o produto da apresentação —</option>
-                      {offerProducts.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-                    </select>
+                    <SelectWithCustom ids={offerProducts.map((p) => p.id)} value={offerProduct} onChange={setOfferProduct}
+                      fieldStyle={field} placeholder="— o produto da apresentação —" autoFocus
+                      customLabel="Personalizado… (escrever o produto)" customPlaceholder="escreva o produto ofertado…">
+                      <ProductOptions products={offerProducts} />
+                    </SelectWithCustom>
                     <div style={{ height: 10 }} />
                   </>
                 )}
@@ -250,10 +254,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
             )}
             <div style={{ height: 12 }} />
             <label className="kicker" style={label}>Modo de pagamento *</label>
-            <select value={payment} onChange={(e) => setPayment(e.target.value)} style={field}>
-              <option value="">— como o cliente fechou —</option>
-              {PAYMENT_METHODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-            </select>
+            <PaymentMethodSelect value={payment} onChange={setPayment} fieldStyle={field} />
             {isFaturado && (
               <>
                 <div style={{ height: 12 }} />

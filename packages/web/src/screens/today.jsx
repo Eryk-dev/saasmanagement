@@ -15,9 +15,9 @@ import { allUsers, currentUser, displayName, userById, usersByRole } from "../li
 import { useProposalTemplates } from "../components/ProposalActions.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { useAttribution } from "../lib/pains.js";
-import { clientSummary, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks, DealProductField, isOneOffProduct } from "../components/lead-blocks.jsx";
+import { clientSummary, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks, DealProductField, isOneOffProduct, SelectWithCustom, PaymentMethodSelect, ProductOptions } from "../components/lead-blocks.jsx";
 import { resolveScript, scriptTokens, scriptChecklist, isNoShowStage, confirmationScript, integrationConfirmationScript, scriptKeyFor } from "../lib/scripts.js";
-import { PAYMENT_METHODS, CLOSED_PLANS, closedPlanLabel, dealProductLabel, dealProductsOf } from "../lib/payments.js";
+import { CLOSED_PLANS, closedPlanLabel, dealProductLabel, dealProductsOf } from "../lib/payments.js";
 import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
 // "Hoje" (a fila de trabalho, numerada na ordem de prioridade do processo),
@@ -2187,10 +2187,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
       </div>
       <div style={{ marginTop: 12 }}>
         <label className="kicker" style={label}>Modo de pagamento *</label>
-        <select value={payment} onChange={(e) => setPayment(e.target.value)} style={fieldStyle}>
-          <option value="">como o cliente fechou…</option>
-          {PAYMENT_METHODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-        </select>
+        <PaymentMethodSelect value={payment} onChange={setPayment} fieldStyle={fieldStyle} placeholder="como o cliente fechou…" />
       </div>
     </div>
   );
@@ -2313,10 +2310,11 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                     {askProduct && offer !== "nenhuma" && (
                       <div style={{ width: "min(280px, 100%)" }}>
                         <label className="kicker" style={label}>Qual produto ficou ofertado? *</label>
-                        <select value={offerProduct} onChange={(e) => setOfferProduct(e.target.value)} style={fieldStyle}>
-                          <option value="">o produto da apresentação…</option>
-                          {dealProductsOf(lead.saas).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-                        </select>
+                        <SelectWithCustom ids={dealProductsOf(lead.saas).map((p) => p.id)} value={offerProduct} onChange={setOfferProduct}
+                          fieldStyle={fieldStyle} placeholder="o produto da apresentação…"
+                          customLabel="Personalizado… (escrever o produto)" customPlaceholder="escreva o produto ofertado…">
+                          <ProductOptions products={dealProductsOf(lead.saas)} />
+                        </SelectWithCustom>
                       </div>
                     )}
                     <div style={{ width: "min(280px, 100%)" }}>
