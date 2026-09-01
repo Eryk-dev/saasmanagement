@@ -160,6 +160,7 @@ const CLIENT_JS = `
   if (!form || F.status === 'respondido') return;
   var answers = {};           // estado único: o DOM escreve aqui, a condicional lê daqui
   var listRows = {};          // chave da pergunta -> array de linhas (objetos)
+  var listRefs = {};          // chave da pergunta -> [{row, key, node}] da render atual
 
   function el(tag, cls, txt) {
     var n = document.createElement(tag);
@@ -202,6 +203,7 @@ const CLIENT_JS = `
   var blocks = [];
   function questionBlock(q) {
     var wrap = el('div', 'q');
+    var ctl = null;
     wrap.dataset.key = q.key;
     if (q.type !== 'ack') {
       var lab = el('label', 'lbl');
@@ -225,6 +227,7 @@ const CLIENT_JS = `
 
       function renderRows() {
         rows.innerHTML = '';
+        listRefs[q.key] = [];
         listRows[q.key].forEach(function (row, i) {
           var box = el('div', 'row');
           var head = el('div', 'row-head');
@@ -240,7 +243,9 @@ const CLIENT_JS = `
             var fw = el('div', 'f');
             var fl = el('label', null, f.label);
             fw.appendChild(fl);
-            fw.appendChild(field(f.type, f.options, row[f.key], function (v) { row[f.key] = v; answers[q.key] = listRows[q.key]; }));
+            var inp = field(f.type, f.options, row[f.key], function (v) { row[f.key] = v; answers[q.key] = listRows[q.key]; });
+            listRefs[q.key].push({ row: row, key: f.key, node: inp });
+            fw.appendChild(inp);
             box.appendChild(fw);
           });
           rows.appendChild(box);
@@ -253,6 +258,7 @@ const CLIENT_JS = `
       var lbl = el('label', 'ack');
       var cb = el('input');
       cb.type = 'checkbox';
+      ctl = cb;
       cb.addEventListener('change', function () { answers[q.key] = cb.checked; sync(); });
       lbl.appendChild(cb);
       lbl.appendChild(el('span', null, q.label));
@@ -260,10 +266,11 @@ const CLIENT_JS = `
       if (q.help) wrap.appendChild(el('div', 'help', q.help));
       wrap.appendChild(el('div', 'err'));
     } else {
-      wrap.appendChild(field(q.type, q.options, '', function (v) { answers[q.key] = v; sync(); }));
+      ctl = field(q.type, q.options, '', function (v) { answers[q.key] = v; sync(); });
+      wrap.appendChild(ctl);
       wrap.appendChild(el('div', 'err'));
     }
-    blocks.push({ q: q, node: wrap });
+    blocks.push({ q: q, node: wrap, ctl: ctl });
     return wrap;
   }
 
@@ -310,6 +317,23 @@ const CLIENT_JS = `
   }
   function blank(v) { return v == null || (typeof v === 'string' && !v.trim()); }
 
+  // Autofill do celular e restauração de sessão preenchem o campo SEM disparar
+  // 'input'/'change' — o estado ficava vazio e a validação reprovava formulário
+  // visivelmente preenchido. No envio, o DOM é a fonte da verdade.
+  function pull() {
+    blocks.forEach(function (b) {
+      var q = b.q;
+      if (q.type === 'list') {
+        (listRefs[q.key] || []).forEach(function (r) { r.row[r.key] = r.node.value; });
+        answers[q.key] = listRows[q.key];
+      } else if (q.type === 'ack') {
+        answers[q.key] = !!(b.ctl && b.ctl.checked);
+      } else if (b.ctl) {
+        answers[q.key] = b.ctl.value;
+      }
+    });
+  }
+
   function validate() {
     var first = null;
     blocks.forEach(function (b) {
@@ -340,6 +364,8 @@ const CLIENT_JS = `
   form.addEventListener('submit', function (ev) {
     ev.preventDefault();
     formErr.style.display = 'none';
+    pull();
+    sync();
     var bad = validate();
     if (bad) {
       formErr.textContent = 'Faltou preencher alguma coisa. Os campos em vermelho estão logo acima.';
