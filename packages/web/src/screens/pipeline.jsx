@@ -598,7 +598,7 @@ const AGENDA_INK = "oklch(0.22 0.02 250)";      // letra "preta" sobre as cores 
 const AGENDA_INK_SOFT = "oklch(0.4 0.02 250)";  // linha secundária (hora, empresa)
 
 function AgendaView({ leads, consultations = [], onOpenLead, blocking, person }) {
-  const [week, setWeek] = useStP(0); // offset em PÁGINAS a partir da atual (seg·ter | qua·qui | sex·fds)
+  const [dayOff, setDayOff] = useStP(0); // offset em DIAS a partir de hoje
   const [showTouches, setShowTouchesState] = useStP(() => {
     try { return localStorage.getItem("cockpit_agenda_touches") === "1"; } catch { return false; }
   });
@@ -618,26 +618,16 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
   };
   const H0 = 7, H1 = 21, hourH = 44;
   const saasCfgOf = (l) => (window.SEED?.SAAS || []).find((x) => x.id === l.saas);
-  // PARES DE DIAS por página (Leo, 30/08): SEG·TER | QUA·QUI | SEX + fim de
-  // semana. É o mesmo par da régua de veiculação — a agenda que os anúncios
-  // enchem se lê inteira numa página. Sexta fecha a semana com sáb·dom em duas
-  // colunas de meia largura; toda página soma 2 "dias" de largura, então nada
-  // muda de tamanho ao navegar. As setas andam de página em página; "hoje" cai
-  // na página que contém hoje — e no FIM DE SEMANA já abre em seg·ter da semana
-  // seguinte (sábado/domingo se olham pela página da sexta, voltando uma seta).
+  // UM DIA por página (Leo, 03/09): a agenda abre em hoje e as setas andam de
+  // dia em dia, fim de semana incluso; "hoje" volta pra data atual. Substitui
+  // as páginas em pares de 30/08 (seg·ter | qua·qui | sex+fds) — com todos os
+  // closers sempre na grade, dois dias lado a lado não cabiam mais na largura.
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const dowMon = (today.getDay() + 6) % 7; // 0=seg … 6=dom
-  const basePage = dowMon <= 1 ? 0 : dowMon <= 3 ? 1 : dowMon === 4 ? 2 : 3; // sáb/dom = seg·ter da próxima
-  const totalPage = basePage + week; // `week` agora conta PÁGINAS (terços de semana)
-  const weekOff = Math.floor(totalPage / 3);
-  const pageInWeek = ((totalPage % 3) + 3) % 3;
-  const monday = new Date(today);
-  monday.setDate(today.getDate() - dowMon + weekOff * 7);
-  const days = (pageInWeek === 0 ? [0, 1] : pageInWeek === 1 ? [2, 3] : [4, 5, 6])
-    .map((i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d; });
+  const day = new Date(today); day.setDate(today.getDate() + dayOff);
+  const days = [day];
   const start = days[0];
   const end = new Date(days[days.length - 1]); end.setDate(end.getDate() + 1);
-  const colTemplate = `52px ${(pageInWeek === 2 ? [1, 0.5, 0.5] : [1, 1]).map((f) => `${f}fr`).join(" ")}`;
+  const colTemplate = "52px 1fr";
   // Eventos: call agendada (callAt), integração (integrationAt) e — opcional —
   // toque do GPS (nextActionAt). O mesmo lead pode ter os três.
   // Consultas 1:1 (mentoria UniqueKids) entram na mesma grade como um "lead" de
@@ -727,7 +717,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
   // conta o que ficou de fora e devolve a visão inteira num clique.
   const hiddenCount = events.length - shown.length;
   const fmtDay = (d, opts) => d.toLocaleDateString("pt-BR", opts).replace(/\./g, "");
-  const label = `${fmtDay(days[0], { day: "2-digit", month: "short" })} · ${fmtDay(days[days.length - 1], { day: "2-digit", month: "short", year: "numeric" })}`;
+  const label = fmtDay(days[0], { weekday: "long", day: "2-digit", month: "short", year: "numeric" });
   const navBtn = {
     height: 26, padding: "0 10px", borderRadius: 5, fontSize: 12,
     background: "var(--bg-2)", border: "1px solid var(--line-1)", color: "var(--fg-2)", cursor: "pointer",
@@ -741,9 +731,11 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
   // COLUNAS POR PESSOA dentro do dia (Leo, 24/08): cada closer tem a própria
   // faixa vertical, com o nome no cabeçalho — a agenda de cada um se lê de
   // cima a baixo. Ordem preferida do Leo: Leonardo · Jonathan · Vitor · Jonan;
-  // demais entram depois (ordem do time) e "sem responsável" fecha a fila. Só
-  // quem TEM evento/bloqueio no dia vira faixa (dia vazio de alguém não gasta
-  // largura). Sobreposição DENTRO da faixa divide em sub-lanes, então
+  // demais entram depois (ordem do time) e "sem responsável" fecha a fila.
+  // TODOS os closers viram faixa SEMPRE (Leo, 03/09): dia vazio de alguém
+  // mostra a coluna em branco — bater o olho e ver quem está livre. Integrador
+  // e "sem responsável" continuam entrando só quando têm evento/bloqueio no
+  // dia. Sobreposição DENTRO da faixa divide em sub-lanes, então
   // double-booking da mesma pessoa continua gritando.
   const PERSON_ORDER = ["leonardo", "jonathan", "us_mrqkn2tm03", "jonan"];
   const personRank = (id) => {
@@ -759,12 +751,16 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
     const us = Array.isArray(b.users) && b.users.length ? b.users : (b.user ? [b.user] : []);
     return us.length === 1 ? us[0] : null;
   };
+  // Faixas fixas: filtrado por pessoa, só a coluna dela; senão, todos os
+  // closers do workspace — mesmo sem nada marcado no dia.
+  const baseLanes = person ? [person] : usersByRole("closer").map((u) => u.id);
   const layoutDay = (d) => {
     const dayEvents = shown.filter(e => e.t.toDateString() === d.toDateString());
     const rawBlocks = (blocking && evKind === "all" ? blocking.blocksFor(d) : [])
       .map((b) => ({ b, from: b.allDay ? H0 : Math.max(H0, Number(b.fromHour) || 0), to: b.allDay ? H1 : Math.min(H1, Number(b.toHour) || 0) }))
       .filter((x) => x.to > x.from);
     const persons = [...new Set([
+      ...baseLanes,
       ...dayEvents.map(e => e.who || ""),
       ...rawBlocks.map(x => blockPerson(x.b)).filter(Boolean),
     ])].sort((a, b) => personRank(a) - personRank(b) || String(a).localeCompare(String(b)));
@@ -786,12 +782,12 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-        <button style={navBtn} onClick={() => setWeek(w => w - 1)}>‹</button>
-        <button style={navBtn} onClick={() => setWeek(0)}>hoje</button>
-        <button style={navBtn} onClick={() => setWeek(w => w + 1)}>›</button>
+        <button style={navBtn} onClick={() => setDayOff(w => w - 1)}>‹</button>
+        <button style={navBtn} onClick={() => setDayOff(0)}>hoje</button>
+        <button style={navBtn} onClick={() => setDayOff(w => w + 1)}>›</button>
         <span style={{ fontSize: 14, fontWeight: 600, fontFamily: "var(--display)", marginLeft: 4 }}>{label}</span>
         <span className="mono dim" style={{ fontSize: 11 }}>
-          {calls === 0 ? "nenhuma call nesses dias" : `${calls} ${calls === 1 ? "call" : "calls"}`}
+          {calls === 0 ? "nenhuma call no dia" : `${calls} ${calls === 1 ? "call" : "calls"}`}
         </span>
         {/* Tipo de evento: tudo · calls · follow-ups, com a contagem da semana
             e o pontinho na cor do tipo — a mesma da pílula na grade. */}
