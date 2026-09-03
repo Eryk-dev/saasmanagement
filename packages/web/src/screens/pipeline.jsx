@@ -870,9 +870,12 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
         {/* Corpo: gutter de horas + 7 colunas com linhas por hora */}
         <div style={{ display: "grid", gridTemplateColumns: colTemplate }}>
           <div style={{ position: "relative", height: (H1 - H0) * hourH }}>
+            {/* "7h" (i=0) fica logo abaixo do cabeçalho — a linha dele É a borda
+                do topo; centrar no risco jogava o rótulo pra cima do cabeçalho
+                e ele vivia suprimido, parecendo que o dia começava às 8h. */}
             {Array.from({ length: H1 - H0 }, (_, i) => (
-              <span key={i} className="mono tnum" style={{ position: "absolute", top: i * hourH - 6, right: 6, fontSize: 10, color: "var(--fg-4)" }}>
-                {i === 0 ? "" : `${H0 + i}h`}
+              <span key={i} className="mono tnum" style={{ position: "absolute", top: i === 0 ? 2 : i * hourH - 6, right: 6, fontSize: 10, color: "var(--fg-4)" }}>
+                {`${H0 + i}h`}
               </span>
             ))}
           </div>
@@ -890,13 +893,21 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                 style={{
                   position: "relative", height: (H1 - H0) * hourH,
                   borderLeft: "1px solid var(--line-1)",
-                  backgroundImage: `repeating-linear-gradient(to bottom, var(--line-1) 0 1px, transparent 1px ${hourH}px)`,
                   // Hoje = tinta do accent (vence o cinza quando cai no fim de
                   // semana); sáb/dom = cinza de "fora do expediente".
                   backgroundColor: isToday ? "color-mix(in srgb, var(--accent) 7%, transparent)"
                     : isWeekend ? "color-mix(in srgb, var(--bg-3) 55%, transparent)" : "transparent",
                   cursor: blocking?.onSlot ? "pointer" : undefined,
                 }}>
+                {/* Linhas de hora como ELEMENTOS, não repeating-linear-gradient:
+                    o gradient de 1px em zoom fracionado do navegador caía entre
+                    pixels físicos e o anti-aliasing engolia uma linha a cada
+                    cinco (8h/13h/18h sumidas em 90% — Leo, 03/09). Borda por
+                    elemento arredonda pro pixel sozinha e aparece em qualquer
+                    zoom. */}
+                {Array.from({ length: H1 - H0 - 1 }, (_, hi) => (
+                  <div key={`hr-${hi}`} style={{ position: "absolute", left: 0, right: 0, top: (hi + 1) * hourH, borderTop: "1px solid var(--line-1)", pointerEvents: "none" }} />
+                ))}
                 {/* Linha do AGORA: só na coluna de hoje, na altura da hora atual. */}
                 {isToday && (() => {
                   const now = new Date();
