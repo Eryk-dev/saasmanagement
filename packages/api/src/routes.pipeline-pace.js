@@ -5,7 +5,7 @@
 import { TOUCH_TYPES } from "./stages.js";
 import {
   DAY_MS as DAY, round2, dayKey, isRealLead, isSaleLead, keyAccountIds, isKeyAccountLead,
-  bookedLeadsIn, callOutcome, callCohortIn, winsIn, customerStartMap, tcvOf, contactAttribution,
+  bookedLeadsIn, callOutcome, callCohortIn, winsIn, customerStartMap, tcvOf, firstResponseAttribution,
   saleValuer, revenueOf, isRealReceipt, paymentMethodOf,
 } from "./metrics-core.js";
 
@@ -339,10 +339,12 @@ export async function computePipelinePace(repo, product, now = new Date()) {
     const adjCutoff = adj.before || activityEpoch;
     const adjOn = !!product.paceAdjust && (!adjCutoff || `${prevMonth}-01` < adjCutoff);
     const adjN = (k) => (adjOn ? adjVal(k) : 0);
-    const contactPrev = contactAttribution({ leads, actsOf, waMessages, saas: product.id, inWin: inPrevMonth, humanIds });
+    // Contato = 1ª resposta por QUALQUER canal, robô incluído (Leo, 03/09) — a
+    // mesma régua do funil da Visão geral, pra as duas telas nunca divergirem.
+    const contactPrev = firstResponseAttribution({ leads, actsOf, waMessages, saas: product.id, inWin: inPrevMonth, humanIds });
     const bookedPrev = callCohortIn(leads, actsOf, inPrevMonth);
     const outPrev = callOutcome(product, bookedPrev, actsOf, today, inPrevMonth);
-    const reached = enteredPrev.filter((l) => contactPrev.leadIds.has(l.id)).length;
+    const reached = enteredPrev.filter((l) => contactPrev.has(l.id)).length;
     // Coorte encadeada (régua #650): das calls da janela, só as de lead que
     // ENTROU nela — par do `reached` na taxa de agendamento.
     const enteredIds = new Set(enteredPrev.map((l) => l.id));
@@ -367,8 +369,9 @@ export async function computePipelinePace(repo, product, now = new Date()) {
     // o contato vale quando aconteceu.
     const cohort = cohort30;
     const ids = new Set(cohort.map((l) => l.id));
-    const humanContact = contactAttribution({ leads, actsOf, waMessages, saas: product.id, inWin: () => true, humanIds });
-    const contacted = cohort.filter((l) => humanContact.leadIds.has(l.id));
+    // Contato = 1ª resposta por QUALQUER canal, robô incluído (Leo, 03/09).
+    const anyContact = firstResponseAttribution({ leads, actsOf, waMessages, saas: product.id, inWin: () => true, humanIds });
+    const contacted = cohort.filter((l) => anyContact.has(l.id));
     const booked = bookedLeadsIn(product, leads, actsOf, (iso) => inRange(iso, since30)).filter((l) => ids.has(l.id));
     const out = callOutcome(product, booked, actsOf); // { shown, noShow, won }
     nLeads = cohort.length + adjVal("leads");

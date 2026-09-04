@@ -545,19 +545,21 @@ function FunilPeriodo({ team, win, pLabel }) {
   const stages = [
     { nm: "Leads", v: team.leadsNew, m: sMeta(mt?.leads), title: "Leads que entraram na janela (sem internos e sem saídas laterais do form)" },
     // COORTE, não workload: funil tem que ser monotônico (contatados ≤ leads).
-    // Quem foi trabalhado da base antiga aparece no tooltip, não no card.
-    { nm: "Contatados", v: team.contactedCohort ?? team.contacted, m: sMeta(mt?.contacts), title: `Dos leads da janela, os que receberam contato humano${team.paceAdjust?.contacted ? ` (+ ${int(team.paceAdjust.contacted)} do histórico pré-cockpit)` : ""} · no total o time trabalhou ${int(team.contacted)} leads no período (inclui base antiga tocada agora)` },
-    { nm: "Calls marcadas", v: team.callsBooked, m: sMeta(mt?.callsBooked), title: `Calls com data na janela${team.pending > 0 ? ` · ${int(team.pending)} ainda no futuro` : ""}` },
+    // Contato = 1ª resposta por QUALQUER canal, SDR automático incluído (Leo,
+    // 03/09) — antes só humano contava e a etapa lia 40% com o robô cobrindo
+    // 100%. O recorte humano e o workload seguem no tooltip.
+    { nm: "Contatados", v: team.reachedCohort ?? team.contactedCohort ?? team.contacted, m: sMeta(mt?.contacts), title: `Dos leads da janela, os que receberam contato — humano ou SDR automático${team.paceAdjust?.contacted ? ` (+ ${int(team.paceAdjust.contacted)} do histórico pré-cockpit)` : ""}${team.contactedCohort != null ? ` · com toque humano: ${int(team.contactedCohort)}` : ""} · no total o time trabalhou ${int(team.contacted)} leads no período (inclui base antiga tocada agora)` },
+    { nm: "Calls marcadas", v: team.callsBooked, m: sMeta(mt?.callsBooked), title: `Calls com data na janela${team.bookedCohort != null ? ` · ${int(team.bookedCohort)} de leads da própria janela (o resto é safra antiga trabalhada agora)` : ""}${team.pending > 0 ? ` · ${int(team.pending)} ainda no futuro` : ""}` },
     { nm: "Calls realizadas", v: team.shown, m: sMeta(mt?.callsShown), title: `Calls que aconteceram${team.noShow > 0 ? ` · ${int(team.noShow)} não compareceram` : ""}` },
     { nm: "Ganhos", v: team.won, m: sMeta(mt?.won),
       title: `Ganhos no período (= soma dos closers)${team.revenue > 0 ? ` · ${money(team.revenue)}` : ""}`
         + (team.keyAccount ? ` · fora: ${team.keyAccount.won} conta grande (${money(team.keyAccount.revenue)}${team.keyAccount.names?.length ? ` · ${team.keyAccount.names.join(", ")}` : ""})` : "") },
   ];
   const convs = [
-    { pct: team.contactRate, metaPct: 80, num: team.contactedCohort ?? null, den: team.leadsNew },
+    { pct: team.contactRate, metaPct: 80, num: team.reachedCohort ?? team.contactedCohort ?? null, den: team.leadsNew },
     // Agendamento em COORTE encadeada (régua #650): calls de leads DA janela
-    // sobre os alcançados da janela — o hover mostra o N de M.
-    { pct: team.bookingRate, metaPct: g.bookingRate?.target || 30, num: team.bookedCohort ?? team.callsBooked, den: team.contactedCohort ?? team.contacted },
+    // sobre os alcançados da janela (robô incluído) — o hover mostra o N de M.
+    { pct: team.bookingRate, metaPct: g.bookingRate?.target || 30, num: team.bookedCohort ?? team.callsBooked, den: team.reachedCohort ?? team.contactedCohort ?? team.contacted },
     { pct: team.showRate, metaPct: g.showRate?.target || 75, num: team.shown, den: team.shown + team.noShow },
     { pct: team.closeRatePeriod, metaPct: g.closeRate?.target || 33, num: team.won, den: team.shown },
   ];
