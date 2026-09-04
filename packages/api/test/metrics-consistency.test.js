@@ -215,9 +215,15 @@ test("funil da Visão geral = soma dos cards (contato humano, automação fora, 
   const sdrCard = sb.sdr.find((p) => p.user === "sdr1");
   assert.equal(sdrCard.contacted, 83, "card do SDR = o topo do funil inteiro");
   // Taxa de contato = COBERTURA da safra (dos que ENTRARAM, quantos alcançou),
-  // NUNCA passa de 100% — é o que o rótulo promete. Aqui 4 entraram (A,B,C,D),
-  // 3 tiveram contato humano (C só automação) = 75%. NÃO é 83/4 (workload).
-  assert.equal(sb.team.contactRate, 75);
+  // NUNCA passa de 100% — é o que o rótulo promete. Alcance por QUALQUER canal
+  // (Leo, 03/09): C só foi tocado pela automação e CONTA na cobertura (o robô é
+  // a operação), mesmo ficando fora do total humano acima. 4 entraram, 4
+  // alcançados = 100%. NÃO é 83/4 (workload).
+  assert.equal(sb.team.contactRate, 100);
+  // A COORTE do funil também é por qualquer canal; o recorte humano segue no
+  // payload pro tooltip (A, B e D — sem o C).
+  assert.equal(sb.team.reachedCohort, 84);      // 4 alcançados + 80 do histórico
+  assert.equal(sb.team.contactedCohort, 83);    // 3 humanos + 80 do histórico
   assert.equal(sdrCard.contactRate, sb.team.contactRate, "SDR único = cobertura do funil");
   assert.ok(sdrCard.contactRate <= 100, "taxa de contato nunca passa de 100%");
 

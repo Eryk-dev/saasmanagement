@@ -73,6 +73,11 @@ test("contato por WhatsApp do cockpit conta (SDR e funil do time), sem virar ati
   assert.equal(s.contacted, 1);                    // lw contado pela mensagem enviada, sem atividade
   assert.equal(sb.team.contacted, 1);              // só o contato HUMANO (lw); automação fora
   assert.equal(sb.team.automationReached, 1);      // lo alcançado pela automação, informativo
+  // O FUNIL conta alcance por QUALQUER canal (Leo, 03/09): lo entra na coorte
+  // alcançada e na taxa de contato, mesmo fora do total humano acima.
+  assert.equal(sb.team.reachedCohort, 2);          // lw (humano) + lo (automação)
+  assert.equal(sb.team.contactedCohort, 1);        // recorte humano do tooltip
+  assert.equal(sb.team.contactRate, 100);          // 2 alcançados ÷ 2 que entraram
   // Não criou atividade de cadência (o inbox segue separado da timeline).
   assert.equal((await repo.list("activities")).length, 0);
   await app.close();

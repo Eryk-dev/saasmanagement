@@ -266,6 +266,12 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     const humanIds = new Set(users.map((u) => u.id));
     const contact = contactAttribution({ leads, actsOf, waMessages, saas: product.id, inWin, humanIds, creditAllTo: soloSdr || undefined });
     const contactsOf = (uid) => contact.byAuthor.get(uid) || 0;
+    // ALCANCE por QUALQUER canal (sdr-bot incluído) — desde 03/09 (Leo) é a
+    // régua do FUNIL e das taxas de cobertura: com o SDR automatizado atendendo
+    // todo lead no 1º minuto, "contatado = só humano" lia 40% com cobertura real
+    // de 100%. O contato HUMANO (contactAttribution acima) segue sendo a régua
+    // dos CARDS por pessoa e do workload `contacted` (cobrança do time).
+    const anyFirst = firstResponseAttribution({ leads, actsOf, waMessages, saas: product.id, inWin, humanIds });
     // Safra de calls do TIME — callAt na janela OU call com transcrição na
     // janela (callCohortIn): a testemunha resgata a call feita cujo callAt foi
     // remarcado/limpo depois (Leo, 03/08). O funil e o card do SDR único leem
@@ -273,14 +279,15 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     const teamBooked = callCohortIn(leads, actsOf, inWin);
     const teamOutcome = callOutcome(teamBooked);
     // COBERTURA da safra (a "taxa de contato" honesta): dos leads que ENTRARAM
-    // na janela, quantos tiveram contato humano — é o que o rótulo promete
-    // ("dos leads novos, quantos você alcança"). Restrita à COORTE, então nunca
-    // passa de 100%. O tile "Contatados" é WORKLOAD (inclui lead antigo
-    // trabalhado agora + histórico pré-cockpit), a TAXA não — daí a divergência
-    // que o Leo viu (347 contatados vs 302 que entraram = "126%" sem sentido).
+    // na janela, quantos foram alcançados — é o que o rótulo promete ("dos
+    // leads novos, quantos você alcança"). Alcance por QUALQUER canal (robô
+    // incluído, Leo 03/09). Restrita à COORTE, então nunca passa de 100%. O
+    // tile "Contatados" é WORKLOAD (inclui lead antigo trabalhado agora +
+    // histórico pré-cockpit), a TAXA não — daí a divergência que o Leo viu
+    // (347 contatados vs 302 que entraram = "126%" sem sentido).
     const cohortRate = (list) => {
       const entered = list.filter((l) => inWin(l.createdAt));
-      const reached = entered.filter((l) => contact.leadIds.has(l.id)).length;
+      const reached = entered.filter((l) => anyFirst.has(l.id)).length;
       return entered.length > 0 ? round2((reached / entered.length) * 100) : null;
     };
     const teamContactRate = cohortRate(leads);
@@ -644,6 +651,10 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     // sobre 121 leads lia como bug — o workload segue no tile/tooltip). O ajuste
     // pré-cockpit entra igual ao de leads: o histórico é funil de coorte.
     const cohortContactedN = leads.filter((l) => inWin(l.createdAt) && contact.leadIds.has(l.id)).length + adjN("contacted");
+    // ALCANÇADOS da coorte: 1ª resposta por QUALQUER canal (robô incluído) nos
+    // leads que ENTRARAM na janela — o número do FUNIL desde 03/09 (Leo). O
+    // recorte humano (cohortContactedN) segue no payload pro tooltip.
+    const reachedCohortN = leads.filter((l) => inWin(l.createdAt) && anyFirst.has(l.id)).length + adjN("contacted");
     // Calls da coorte: das agendadas na janela, as de lead que ENTROU nela —
     // numerador da taxa de agendamento em coorte (workload inflado pela
     // nutrição em massa afundava a taxa: 30÷250 = 12% "vermelho" com o time
@@ -664,17 +675,20 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     const wonN = teamWonLeads.length;
     const team = {
       leadsNew: leadsNewN,
-      contacted: contactedN,               // WORKLOAD: leads trabalhados no período + histórico
+      contacted: contactedN,               // WORKLOAD humano: leads trabalhados no período + histórico
       contactedInPeriod: contact.leadIds.size, // só o orgânico (sem histórico) — pro subtítulo do tile
-      contactedCohort: cohortContactedN,   // COORTE: contatados DENTRE os leads da janela — o número do funil
+      contactedCohort: cohortContactedN,   // COORTE do contato HUMANO — recorte do tooltip
+      reachedCohort: reachedCohortN,       // COORTE alcançada por QUALQUER canal (robô incluído) — o número do funil
       callsBooked: bookedN,
       // Taxa de contato = COBERTURA da safra (dos leads que ENTRARAM, quantos
-      // foram alcançados) — nunca passa de 100%. NÃO é contacted÷leadsNew, que
-      // misturava workload (lead antigo + histórico) com coorte e dava 126%.
+      // foram alcançados, robô incluído) — nunca passa de 100%. NÃO é
+      // contacted÷leadsNew, que misturava workload com coorte e dava 126%.
       contactRate: teamContactRate,
       // Taxa de agendamento em COORTE encadeada (mesma régua do funil #650):
-      // das leads da janela alcançadas, quantas marcaram call.
-      bookingRate: cohortContactedN > 0 ? round2((bookedCohortN / cohortContactedN) * 100) : null,
+      // das leads da janela ALCANÇADAS (robô incluído), quantas marcaram call —
+      // numerador e denominador na MESMA base (antes o robô marcava call de
+      // lead que nunca entrava no denominador humano e a taxa inflava).
+      bookingRate: reachedCohortN > 0 ? round2((bookedCohortN / reachedCohortN) * 100) : null,
       bookedCohort: bookedCohortN,         // calls marcadas de leads DA janela — hover do funil
       shown: shownN,
       noShow: noShowN,       // não compareceram (call vencida sem acontecer) — o gap real
@@ -769,7 +783,7 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     //     REAL do lead com o SDR automatizado no ar. A régua humana acima segue
     //     intacta (é a cobrança do time); esta mede máquina + time juntos, e
     //     `botFirst` diz em quantos leads o robô chegou antes de todo mundo.
-    const anyFirst = firstResponseAttribution({ leads, actsOf, waMessages, saas: product.id, inWin, humanIds });
+    //     (`anyFirst` é o mesmo mapa que alimenta o funil, calculado lá em cima.)
     const respMins = [];
     let within5Any = 0, botFirst = 0;
     for (const l of slaCohort) {
