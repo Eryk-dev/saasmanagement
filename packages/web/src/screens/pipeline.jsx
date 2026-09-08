@@ -606,9 +606,10 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
     setShowTouchesState(v);
     try { localStorage.setItem("cockpit_agenda_touches", v ? "1" : "0"); } catch { /* ignore */ }
   };
-  // Filtro por TIPO de evento: tudo · só calls agendadas · só follow-ups (Leo,
-  // 23/08: "ver separadamente e juntos"). Filtrado, a grade isola só aquelas
-  // pílulas — compromissos/bloqueios e toques saem do caminho pra leitura limpa.
+  // Filtro por TIPO de evento: tudo · calls · follow-ups · integrações (Leo,
+  // 23/08: "ver separadamente e juntos"; integrações em 08/09). Filtrado, a
+  // grade isola só aquelas pílulas — compromissos/bloqueios e toques saem do
+  // caminho pra leitura limpa. O valor do filtro é o próprio `kind` do evento.
   const [evKind, setEvKindState] = useStP(() => {
     try { return localStorage.getItem("cockpit_agenda_kind") || "all"; } catch { return "all"; }
   });
@@ -711,7 +712,8 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
   // desenha só o tipo escolhido.
   const callCount = events.filter((e) => e.kind === "call").length;
   const fupCount = events.filter((e) => e.kind === "follow-up").length;
-  const shown = evKind === "all" ? events : events.filter((e) => e.kind === (evKind === "call" ? "call" : "follow-up"));
+  const intCount = events.filter((e) => e.kind === "integração").length;
+  const shown = evKind === "all" ? events : events.filter((e) => e.kind === evKind);
   // Filtro ligado esconde integrações, consultas e compromissos em silêncio —
   // e aí "marquei a integração e não apareceu na agenda" (Leo, 25/08). O aviso
   // conta o que ficou de fora e devolve a visão inteira num clique.
@@ -789,10 +791,10 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
         <span className="mono dim" style={{ fontSize: 11 }}>
           {calls === 0 ? "nenhuma call no dia" : `${calls} ${calls === 1 ? "call" : "calls"}`}
         </span>
-        {/* Tipo de evento: tudo · calls · follow-ups, com a contagem da semana
-            e o pontinho na cor do tipo — a mesma da pílula na grade. */}
+        {/* Tipo de evento: tudo · calls · follow-ups · integrações, com a
+            contagem do dia e o pontinho na cor do tipo — a mesma da pílula. */}
         <span style={{ display: "inline-flex", gap: 2, marginLeft: 4 }}>
-          {[["all", "tudo", null], ["call", "calls", callCount], ["follow-up", "follow-ups", fupCount]].map(([v, lbl, n]) => (
+          {[["all", "tudo", null], ["call", "calls", callCount], ["follow-up", "follow-ups", fupCount], ["integração", "integrações", intCount]].map(([v, lbl, n]) => (
             <FilterTab key={v} active={evKind === v} count={n} onClick={() => setEvKind(v)} style={{ padding: "4px 10px", fontSize: 12 }}>
               {AGENDA_TYPE_COLORS[v] && (
                 <span style={{ width: 9, height: 9, borderRadius: 3, background: AGENDA_TYPE_COLORS[v].bg, border: `1px solid ${AGENDA_TYPE_COLORS[v].line}` }} />
@@ -803,7 +805,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
         </span>
         {evKind !== "all" && hiddenCount > 0 && (
           <button onClick={() => setEvKind("all")} className="mono"
-            title="Mostrar tudo de novo (integrações, consultas e compromissos)"
+            title="Mostrar tudo de novo (todos os tipos de evento, consultas e compromissos)"
             style={{ height: 24, padding: "0 9px", borderRadius: 999, fontSize: 11, cursor: "pointer",
               background: "var(--warn-soft)", color: "var(--warn)", border: "1px solid var(--warn-line, transparent)" }}>
             {hiddenCount} {hiddenCount === 1 ? "evento escondido" : "eventos escondidos"} pelo filtro · ver tudo
