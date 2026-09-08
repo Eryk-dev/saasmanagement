@@ -156,6 +156,9 @@ function App() {
     es.onmessage = (m) => {
       let rev, collection;
       try { ({ rev, collection } = JSON.parse(m.data)); } catch { return; }
+      // Tela com fetch PRÓPRIO (ex.: Mapas mentais, que fica fora do SEED)
+      // escuta este evento pra reagir só à coleção dela, sem esperar o reload.
+      try { window.dispatchEvent(new CustomEvent("cockpit-change", { detail: { rev, collection } })); } catch { /* fora do browser */ }
       // Timeline (activities) fica FORA do bootstrap — o drawer refetch sozinho.
       // Recarregar o SEED inteiro a cada toque registrado seria desperdício; se o
       // toque também mexeu no lead (denorm), o update do lead emite outro evento
