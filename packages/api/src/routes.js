@@ -153,9 +153,14 @@ export const CREATE_DEFAULTS = {
   // `users` = participantes (compromisso com mais de uma pessoa ocupa a agenda
   // de todas; `user` segue como dona principal, compat com registros antigos).
   agenda_blocks: { saas: "", user: "", users: [], kind: "block", title: "", recur: "once", date: "", weekday: 0, allDay: false, fromHour: 0, toHour: 0, reason: "", createdAt: "" },
-  // Mapa mental / estratégia: nodes = [{ id, x, y, text, color, parent }] (árvore),
-  // links = [{ from, to }] (conexões livres). name = título do mapa.
-  mindmaps: { name: "Novo mapa", saas: "", nodes: [], links: [], createdAt: "" },
+  // Mapa mental / estratégia (tela Mapas mentais). Desde 09/2026 a posição é
+  // DERIVADA da árvore: nodes = [{ id, parent, order, text, color, collapsed,
+  // note, emoji, image, link, shape, bold, boundary, auto, x, y }] (x/y só
+  // valem quando auto=false ou layout="free"), links = [{ id, from, to, label,
+  // color, arrow }] (conexões livres). layout = tree|radial|org|list|free.
+  // `version` sobe a cada PATCH e serve de trava otimista (baseVersion no
+  // body → 409 quando outra pessoa gravou no meio).
+  mindmaps: { name: "Novo mapa", saas: "", layout: "tree", theme: "", nodes: [], links: [], slides: [], version: 0, updatedAt: "", updatedBy: "", createdAt: "" },
   // Disparos (ferramenta): uma campanha por produto pra mandar e-mail + WhatsApp
   // pros leads qualificados. `stages` = segmento (etapas do funil que entram);
   // `sent` = progresso por lead ({leadId: {whatsapp, email}}, ISO), mesclado no
@@ -570,6 +575,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // /api/tasks/* exige a tela "tasks" (screens.js) e o widget vive em toda
   // tela, pra qualquer usuário — inclusive os de telas restritas.
   app.post("/api/feedback/asset", taskAssetHandler);
+  // Imagem colada/enviada num nó do mapa mental: mesmo asset (servido em
+  // /public/tasks/:id), rota própria porque /api/tasks exige a tela "tasks".
+  app.post("/api/mindmaps/asset", taskAssetHandler);
 
   app.get("/public/tasks/:id", async (req, reply) => {
     const doc = await repo.get("task_assets", req.params.id);
@@ -800,6 +808,20 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     // toque pela cadência e loga a activity `stage` (histórico do funil). Renome
     // de estágio NÃO passa por aqui (vai via PUT /funnel → repo.update direto).
     let patch = req.body;
+    // MAPA MENTAL: trava otimista. O editor manda `baseVersion` (a versão que
+    // ele abriu); se outra pessoa gravou no meio, devolve 409 com o doc atual
+    // pra tela oferecer "recarregar" em vez de sobrescrever em silêncio. Toda
+    // gravação carimba version+1, updatedAt e quem gravou.
+    if (collection === "mindmaps") {
+      const cur = await repo.get(collection, id);
+      if (!cur) return reply.code(404).send({ error: "Not found" });
+      const curV = Number(cur.version) || 0;
+      const { baseVersion, ...rest } = req.body;
+      if (baseVersion != null && Number(baseVersion) !== curV) {
+        return reply.code(409).send({ error: "outra pessoa editou este mapa enquanto você mexia", code: "version_conflict", current: cur });
+      }
+      patch = { ...rest, version: curV + 1, updatedAt: new Date().toISOString(), updatedBy: req.authUser?.id || "" };
+    }
     if (collection === "leads" && typeof req.body.stage === "string") {
       const cur = await repo.get(collection, id);
       if (cur && cur.stage !== req.body.stage) {
