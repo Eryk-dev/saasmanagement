@@ -617,18 +617,33 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
     setEvKindState(v);
     try { localStorage.setItem("cockpit_agenda_kind", v); } catch { /* ignore */ }
   };
+  // VISÃO: 1 dia ou semana de 7 dias (Leo, 08/09). No dia cabe o time inteiro
+  // em faixas lado a lado; na semana as faixas por pessoa não têm largura —
+  // os eventos dividem a coluna do dia por sobreposição e a pessoa continua
+  // na barrinha de cor à esquerda da pílula.
+  const [view, setViewState] = useStP(() => {
+    try { return localStorage.getItem("cockpit_agenda_view") || "day"; } catch { return "day"; }
+  });
+  const setView = (v) => {
+    setViewState(v);
+    try { localStorage.setItem("cockpit_agenda_view", v); } catch { /* ignore */ }
+  };
+  const isWeek = view === "week";
   const H0 = 7, H1 = 21, hourH = 44;
   const saasCfgOf = (l) => (window.SEED?.SAAS || []).find((x) => x.id === l.saas);
-  // UM DIA por página (Leo, 03/09): a agenda abre em hoje e as setas andam de
-  // dia em dia, fim de semana incluso; "hoje" volta pra data atual. Substitui
-  // as páginas em pares de 30/08 (seg·ter | qua·qui | sex+fds) — com todos os
-  // closers sempre na grade, dois dias lado a lado não cabiam mais na largura.
+  // PÁGINA da grade: no DIA (padrão desde 03/09) as setas andam de dia em dia,
+  // fim de semana incluso; na SEMANA mostram os 7 dias de segunda a domingo e
+  // as setas pulam de semana em semana. "hoje" volta pra data atual nos dois.
+  // O offset continua em DIAS — trocar de visão preserva o ponto da navegação.
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const day = new Date(today); day.setDate(today.getDate() + dayOff);
-  const days = [day];
+  const anchor = new Date(today); anchor.setDate(today.getDate() + dayOff);
+  const weekStart = new Date(anchor); weekStart.setDate(anchor.getDate() - ((anchor.getDay() + 6) % 7));
+  const days = isWeek
+    ? Array.from({ length: 7 }, (_, i) => { const d = new Date(weekStart); d.setDate(weekStart.getDate() + i); return d; })
+    : [anchor];
   const start = days[0];
   const end = new Date(days[days.length - 1]); end.setDate(end.getDate() + 1);
-  const colTemplate = "52px 1fr";
+  const colTemplate = isWeek ? "52px repeat(7, minmax(0, 1fr))" : "52px 1fr";
   // Eventos: call agendada (callAt), integração (integrationAt) e — opcional —
   // toque do GPS (nextActionAt). O mesmo lead pode ter os três.
   // Consultas 1:1 (mentoria UniqueKids) entram na mesma grade como um "lead" de
@@ -719,7 +734,9 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
   // conta o que ficou de fora e devolve a visão inteira num clique.
   const hiddenCount = events.length - shown.length;
   const fmtDay = (d, opts) => d.toLocaleDateString("pt-BR", opts).replace(/\./g, "");
-  const label = fmtDay(days[0], { weekday: "long", day: "2-digit", month: "short", year: "numeric" });
+  const label = isWeek
+    ? `${fmtDay(days[0], { day: "2-digit", month: "short" })} · ${fmtDay(days[6], { day: "2-digit", month: "short", year: "numeric" })}`
+    : fmtDay(days[0], { weekday: "long", day: "2-digit", month: "short", year: "numeric" });
   const navBtn = {
     height: 26, padding: "0 10px", borderRadius: 5, fontSize: 12,
     background: "var(--bg-2)", border: "1px solid var(--line-1)", color: "var(--fg-2)", cursor: "pointer",
@@ -761,6 +778,15 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
     const rawBlocks = (blocking && evKind === "all" ? blocking.blocksFor(d) : [])
       .map((b) => ({ b, from: b.allDay ? H0 : Math.max(H0, Number(b.fromHour) || 0), to: b.allDay ? H1 : Math.min(H1, Number(b.toHour) || 0) }))
       .filter((x) => x.to > x.from);
+    // SEMANA: sem faixas por pessoa (7 colunas não dão largura) — os eventos
+    // do dia dividem a coluna por cluster de sobreposição, como era antes das
+    // faixas, e todo bloqueio cobre o dia inteiro atrás das pílulas.
+    if (isWeek) {
+      const placed = laneByCluster(dayEvents, e => e.t.getTime(), e => e.t.getTime() + 3600000)
+        .map((e) => ({ ...e, personLane: 0, personLanes: 1, sub: e.lane, subs: e.lanes }));
+      const blocks = rawBlocks.map((x) => ({ ...x, personLane: null, personLanes: 0 }));
+      return { placed, blocks, persons: [] };
+    }
     const persons = [...new Set([
       ...baseLanes,
       ...dayEvents.map(e => e.who || ""),
@@ -784,12 +810,18 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-        <button style={navBtn} onClick={() => setDayOff(w => w - 1)}>‹</button>
+        <button style={navBtn} onClick={() => setDayOff(w => w - (isWeek ? 7 : 1))}>‹</button>
         <button style={navBtn} onClick={() => setDayOff(0)}>hoje</button>
-        <button style={navBtn} onClick={() => setDayOff(w => w + 1)}>›</button>
+        <button style={navBtn} onClick={() => setDayOff(w => w + (isWeek ? 7 : 1))}>›</button>
+        {/* Visão: 1 dia (faixas por closer) ou semana de 7 dias. */}
+        <span style={{ display: "inline-flex", gap: 2, marginLeft: 2 }}>
+          {[["day", "dia"], ["week", "semana"]].map(([v, lbl]) => (
+            <FilterTab key={v} active={view === v} onClick={() => setView(v)} style={{ padding: "4px 10px", fontSize: 12 }}>{lbl}</FilterTab>
+          ))}
+        </span>
         <span style={{ fontSize: 14, fontWeight: 600, fontFamily: "var(--display)", marginLeft: 4 }}>{label}</span>
         <span className="mono dim" style={{ fontSize: 11 }}>
-          {calls === 0 ? "nenhuma call no dia" : `${calls} ${calls === 1 ? "call" : "calls"}`}
+          {calls === 0 ? `nenhuma call ${isWeek ? "na semana" : "no dia"}` : `${calls} ${calls === 1 ? "call" : "calls"}`}
         </span>
         {/* Tipo de evento: tudo · calls · follow-ups · integrações, com a
             contagem do dia e o pontinho na cor do tipo — a mesma da pílula. */}
@@ -832,7 +864,9 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
 
       <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
         {/* Cabeçalho dos dias */}
-        <div style={{ display: "grid", gridTemplateColumns: colTemplate, borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+        {/* Na semana, 7 colunas pedem largura mínima — em tela estreita a
+            grade rola de lado dentro do tbl-x em vez de espremer as pílulas. */}
+        <div style={{ display: "grid", gridTemplateColumns: colTemplate, minWidth: isWeek ? 960 : undefined, borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
           <span />
           {days.map((d, i) => {
             const isToday = d.toDateString() === new Date().toDateString();
@@ -869,8 +903,8 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
             );
           })}
         </div>
-        {/* Corpo: gutter de horas + 7 colunas com linhas por hora */}
-        <div style={{ display: "grid", gridTemplateColumns: colTemplate }}>
+        {/* Corpo: gutter de horas + colunas de dia com linhas por hora */}
+        <div style={{ display: "grid", gridTemplateColumns: colTemplate, minWidth: isWeek ? 960 : undefined }}>
           <div style={{ position: "relative", height: (H1 - H0) * hourH }}>
             {/* "7h" (i=0) fica logo abaixo do cabeçalho — a linha dele É a borda
                 do topo; centrar no risco jogava o rótulo pra cima do cabeçalho
@@ -996,7 +1030,9 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
                           : `1px ${isFollowup ? "dashed" : "solid"} ${tc.line}`,
                         // Faixa da PESSOA bem grossa (Leo, 23/08: "pelo menos
                         // 5x mais grossa"): 20px, dá pra ver o closer de longe.
-                        borderLeft: isTouch ? `2px dashed ${tone}` : `20px solid ${tone}`,
+                        // Na SEMANA a coluna do dia é 1/7 da largura — a faixa
+                        // afina pra 6px pra sobrar espaço pro nome do lead.
+                        borderLeft: isTouch ? `2px dashed ${tone}` : `${isWeek ? 6 : 20}px solid ${tone}`,
                         borderRadius: 5, padding: isFollowup ? "0 6px" : isTouch ? "1px 6px" : "3px 6px",
                         // Feita (histórico): mesma cor do closer, só lavada — dá
                         // pra ler a semana inteira do que aconteceu sem confundir
