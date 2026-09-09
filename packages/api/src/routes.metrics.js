@@ -15,7 +15,7 @@ import { aiCosts as defaultAiCosts } from "./ai-costs.js";
 import { NOT_CONFIGURED } from "./http-status.js";
 import {
   DAY_MS, round2, dayKey, monthKey, isRealLead, isSaleLead,
-  winsIn, customerStartMap, tcvOf, cashCollectedIn, card12xBaseIn, paymentMethodOf,
+  winsIn, customerStartMap, tcvOf, cashCollectedIn, card12xBaseIn, paymentMethodOf, upsellSalesIn, upsellContractedOf,
 } from "./metrics-core.js";
 
 const monthOf = monthKey; // mês do dia do NEGÓCIO (metrics-core), não UTC
@@ -94,8 +94,11 @@ export function registerMetricsRoutes(app, repo, { ai = defaultAiCosts, getWhats
       // do checkout incide no dinheiro dela igual.
       const leads = allLeads.filter((l) => l.saas === product.id && isSaleLead(l));
       const starts = customerStartMap(allCustomers.filter((c) => c.saas === product.id));
-      const wins = winsIn(product, leads, (iso) => monthKey(iso) === month, starts);
-      bases.won = tcvOf(leads.filter((l) => wins.has(l.id)));
+      const inMonth = (iso) => monthKey(iso) === month;
+      const wins = winsIn(product, leads, inMonth, starts);
+      // Upsell é venda: o contratado dele entra na base (a taxa incide igual).
+      const upsells = upsellSalesIn(await repo.list("invoices").catch(() => []), inMonth, { saas: product.id });
+      bases.won = Math.round((tcvOf(leads.filter((l) => wins.has(l.id))) + upsellContractedOf(upsells)) * 100) / 100;
     }
     if (basesNeeded.has("cartao12x")) {
       const mp = (await repo.list("mp_payments")).filter((p) => !p.saas || p.saas === product.id);

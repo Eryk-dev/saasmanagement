@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { meta as defaultMeta, onMetaThrottle } from "./meta.js";
 import { stagePassCounts } from "./routes.funnel-metrics.js";
 import { kindOf } from "./stages.js";
-import { dayKey, isRealLead, isSaleLead, winsIn, customerStartMap, leadOrigin, LEAD_ORIGINS, callOutcome } from "./metrics-core.js";
+import { dayKey, isRealLead, isSaleLead, winsIn, customerStartMap, leadOrigin, LEAD_ORIGINS, callOutcome, upsellSalesIn, upsellContractedOf } from "./metrics-core.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 import { painCode } from "./attribution.js";
 export { painCode };
@@ -691,7 +691,10 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     const customerStartByLead = customerStartMap((await repo.list("customers")).filter((c) => c.saas === product.id));
     const wonIds = winsIn(product, saleLeads, inWin, customerStartByLead);
     const wonAll = saleLeads.filter((l) => wonIds.has(l.id));
-    const revenueAll = wonAll.reduce((s, l) => s + (Number(l.amount) || 0), 0);
+    // Upsell é venda (Leo, 09/09): entra no fecho do período (nº e R$ do
+    // contrato, a régua daqui) — a atribuição por campanha segue só pelo lead.
+    const upsells = upsellSalesIn(await repo.list("invoices").catch(() => []), inWin, { saas: product.id });
+    const revenueAll = wonAll.reduce((s, l) => s + (Number(l.amount) || 0), 0) + upsellContractedOf(upsells);
 
     // Custo por etapa: leads que PASSARAM por cada estágio da régua de progresso
     // (até o kind `ganho`). Lead com histórico na timeline conta cada estágio
@@ -898,8 +901,9 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
         formStarts: formSessions("start"), // clicaram em começar
         cpl: per(leads.length),          // custo por lead REAL (criados no Cockpit)
         cplMeta: per(metaLeads),         // custo por lead reportado pela Meta
-        won: wonAll.length,
-        costPerWin: per(wonAll.length),
+        won: wonAll.length + upsells.length,
+        upsells: upsells.length,
+        costPerWin: per(wonAll.length + upsells.length),
         revenue: Math.round(revenueAll * 100) / 100,
         roas: spend > 0 && revenueAll > 0 ? Math.round((revenueAll / spend) * 100) / 100 : null,
         cpc: per(clicks),

@@ -17,6 +17,7 @@ import {
   winsIn, customerStartMap, contactAttribution, firstResponseAttribution, isReferralLead,
   classCounts, cashBucketsIn, mentoriaScore, keyAccountIds, isKeyAccountLead,
   saleValuer, revenueOf, tcvOf,
+  upsellSalesIn, upsellValuer, upsellRevenueOf, upsellContractedOf, isKeyAccountUpsell,
 } from "./metrics-core.js";
 import { isMentoriaLead } from "./mentoria.js";
 import { isChurnedCustomer } from "./churn.js";
@@ -86,6 +87,14 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       invoices: invoicesAll.filter((i) => i.saas === product.id),
       mpPayments: mpPaymentsAll, customers, inWin,
     });
+    // UPSELL É VENDA (Leo, 09/09): fatura kind:"upsell" registrada na ficha do
+    // cliente conta como fechamento de quem vendeu (soldBy) — nº e R$ (só o que
+    // caiu) — no card do closer e no time. As taxas do funil ficam na
+    // plataforma (upsell não nasce de call). Régua no metrics-core.
+    const upsellSales = upsellSalesIn(invoicesAll, inWin, { saas: product.id });
+    const upsellValue = upsellValuer(inWin);
+    const isKeyUpsell = (i) => isKeyAccountUpsell(keyIds, i);
+    const upsellsOf = (uid) => upsellSales.filter((i) => (i.soldBy || "") === uid);
 
     const actsByLead = new Map();
     for (const a of allActs) {
@@ -437,7 +446,8 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     // aparece aqui E as contas dele seguem no painel de CS). O filtro final
     // (calls > 0 || won > 0) já esconde quem não tem movimento.
     const closerRole = new Set(withRole("closer")); // membro do papel closer sempre aparece (pra ver a meta)
-    const closerIds = [...new Set([...closerRole, ...leads.map((l) => l.closer).filter(Boolean)])];
+    // Quem vendeu upsell na janela também entra (é venda dele, mesmo sendo CS).
+    const closerIds = [...new Set([...closerRole, ...leads.map((l) => l.closer).filter(Boolean), ...upsellSales.map((i) => i.soldBy).filter(Boolean)])];
     // ── Follow-up do closer (submetas da Visão geral) ─────────────────────────
     // "Follow-ups em dia" = estado ATUAL: leads dele parados em etapa de kind
     // followup cujo GPS (nextActionAt, a cadência que o lead-flow materializa)
@@ -485,15 +495,22 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       const wonAll = [...winAt.keys()].map((id) => saleById.get(id)).filter(Boolean);
       const keyWonLeads = wonAll.filter(isKey);
       const wonLeads = wonAll.filter((l) => !isKey(l));
-      const wonN = wonLeads.length;
+      // Upsells que ELE vendeu na janela: entram no nº e no R$ (só o que caiu),
+      // fora das taxas de call. Conta grande vai pro rodapé, como o lead.
+      const upsMineAll = upsellsOf(uid);
+      const upsMine = upsMineAll.filter((i) => !isKeyUpsell(i));
+      const keyUpsMine = upsMineAll.filter(isKeyUpsell);
+      const upsellN = upsMine.length;
+      const upsellRevenue = upsellRevenueOf(upsMine, upsellValue);
+      const wonN = wonLeads.length + upsellN;
       // Receita RECONHECIDA da janela (régua do metrics-core): faturado e
       // assinatura recorrente entram só pelo que ENTROU. Ticket e R$/call saem
       // dela também, senão o card não fecha (won × ticket ≠ receita); o
       // contrato cheio fica em `contracted`, ao lado.
-      const revenue = revenueOf(wonLeads, valueOf);
-      const contracted = tcvOf(wonLeads);
+      const revenue = round2(revenueOf(wonLeads, valueOf) + upsellRevenue);
+      const contracted = round2(tcvOf(wonLeads) + upsellContractedOf(upsMine));
       const wonPlatformN = wonLeads.filter((l) => isRealLead(l)).length;
-      const coreWon = wonLeads;
+      const coreWonN = wonN;
       const coreRevenue = revenue;
       // Ciclo CALL → GANHO: dias da call marcada até o fechamento (integração).
       const cycle = wonAll.map((l) => (l.callAt ? (new Date(winAt.get(l.id)) - new Date(l.callAt)) / DAY : null))
@@ -517,16 +534,17 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
         targets: personTargets(uid, "closer", {
           conversaoCall: conversao,
           callsShown,
-          won: wonN, revenue: round2(revenue), ticket: coreWon.length > 0 ? round2(coreRevenue / coreWon.length) : null,
+          won: wonN, revenue: round2(revenue), ticket: coreWonN > 0 ? round2(coreRevenue / coreWonN) : null,
         }),
         calls, callsShown,
         won: wonN, revenue: round2(revenue), contracted, lost: lost.length,
+        upsells: upsellN, upsellRevenue, // a parte do won/revenue que veio de upsell (venda pra cliente atual)
         conversaoCall: conversao,
         winRateCall: calls > 0 ? round2((wonPlatformN / calls) * 100) : null,
         revenuePerCall: calls > 0 ? round2(coreRevenue / calls) : null,
-        ticket: coreWon.length > 0 ? round2(coreRevenue / coreWon.length) : null,
-        keyWon: keyWonLeads.length,                                    // contas grandes que ELE fechou na janela
-        keyRevenue: revenueOf(keyWonLeads, valueOf),
+        ticket: coreWonN > 0 ? round2(coreRevenue / coreWonN) : null,
+        keyWon: keyWonLeads.length + keyUpsMine.length,                // contas grandes que ELE fechou na janela (upsell incluso)
+        keyRevenue: round2(revenueOf(keyWonLeads, valueOf) + upsellRevenueOf(keyUpsMine, upsellValue)),
         cycleDays: median(cycle),
         lossReasons,
         followupNow: fuNow.length,           // leads dele em follow-up agora
@@ -674,7 +692,12 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     // calls futuras): realizadas + não compareceram.
     const dueN = shownN + noShowN;
     const wonFromCallsN = teamOutcome.won; // SEM ajuste: ganho segue os registros
-    const wonN = teamWonLeads.length;
+    // Upsell do time: TODOS os registrados na janela (com ou sem soldBy) —
+    // soma dos cards + os sem vendedor carimbado, pra meta da empresa fechar.
+    const teamUpsAll = upsellSales;
+    const teamUps = teamUpsAll.filter((i) => !isKeyUpsell(i));
+    const teamKeyUps = teamUpsAll.filter(isKeyUpsell);
+    const wonN = teamWonLeads.length + teamUps.length;
     const team = {
       leadsNew: leadsNewN,
       contacted: contactedN,               // WORKLOAD humano: leads trabalhados no período + histórico
@@ -705,16 +728,19 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       callWinRate: bookedN > 0 ? round2((wonFromCallsN / bookedN) * 100) : null,
       closeRate: shownN > 0 ? round2((wonFromCallsN / shownN) * 100) : null, // safra (informativo)
       closeRatePeriod: shownN > 0 ? round2((teamWonPlatform.length / shownN) * 100) : null,
-      won: wonN,             // ganhos do período (por transição) = soma dos closers, sem conta grande
+      won: wonN,             // ganhos do período (por transição + upsells) = soma dos closers, sem conta grande
+      wonPlatform: teamWonPlatform.length, // só fechamentos de lead da plataforma (numerador das taxas)
+      upsells: teamUps.length, // dos ganhos, quantos são upsell (venda pra cliente atual)
       // Receita do time = a mesma régua dos cards (recebido no faturado), pra
       // meta da empresa e placar individual nunca contarem coisas diferentes.
-      revenue: revenueOf(teamWonLeads, valueOf),
-      contracted: tcvOf(teamWonLeads), // contrato cheio do período (contexto)
+      revenue: round2(revenueOf(teamWonLeads, valueOf) + upsellRevenueOf(teamUps, upsellValue)),
+      upsellRevenue: upsellRevenueOf(teamUps, upsellValue),
+      contracted: round2(tcvOf(teamWonLeads) + upsellContractedOf(teamUps)), // contrato cheio do período (contexto)
       // O que a conta grande tirou do resultado (rodapé da tela, nunca some).
-      keyAccount: teamKeyLeads.length ? {
-        won: teamKeyLeads.length,
-        revenue: revenueOf(teamKeyLeads, valueOf),
-        names: [...new Set(teamKeyLeads.map((l) => customers.find((c) => c.id === l.customerId)?.name).filter(Boolean))],
+      keyAccount: teamKeyLeads.length || teamKeyUps.length ? {
+        won: teamKeyLeads.length + teamKeyUps.length,
+        revenue: round2(revenueOf(teamKeyLeads, valueOf) + upsellRevenueOf(teamKeyUps, upsellValue)),
+        names: [...new Set([...teamKeyLeads.map((l) => l.customerId), ...teamKeyUps.map((i) => i.customer)].map((id) => customers.find((c) => c.id === id)?.name).filter(Boolean))],
       } : null,
       // Lead → ganho: ganhos no período ÷ leads que entraram no período. Os dois
       // lados são da PLATAFORMA (a mentoria tem funil e bloco próprios).

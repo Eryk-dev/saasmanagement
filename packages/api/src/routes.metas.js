@@ -76,8 +76,9 @@ export const META_CATALOG = [
       // comparecimento do SDR). Fica logo abaixo da taxa porque é o denominador
       // dela — as duas juntas explicam os ganhos.
       { metric: "callsShown", kind: "flow", label: "Calls realizadas no mês", unit: "n", hint: "sem contar os no-show", default: null, team: true },
-      { metric: "won", kind: "flow", label: "Ganhos no mês", unit: "n", default: null, team: true, compPlan: true },
-      { metric: "revenue", kind: "flow", label: "Receita no mês", unit: "R$", hint: "à vista conta cheio; faturado e recorrente contam só o recebido", default: null, team: true, compPlan: true },
+      // Upsell registrado na ficha do cliente conta como ganho de quem vendeu (09/09).
+      { metric: "won", kind: "flow", label: "Ganhos no mês", unit: "n", hint: "fechamentos + upsells que você vendeu", default: null, team: true, compPlan: true },
+      { metric: "revenue", kind: "flow", label: "Receita no mês", unit: "R$", hint: "à vista conta cheio; faturado, recorrente e upsell contam só o recebido", default: null, team: true, compPlan: true },
       { metric: "ticket", kind: "avg", label: "Ticket médio", unit: "R$", default: null },
     ],
   },

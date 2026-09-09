@@ -13,7 +13,12 @@
 //                cliente sem assinatura tem o arr somado direto (+12×delta).
 //                A fatura de agora é o que foi COBRADO na virada (delta cheio,
 //                pró-rata, o que o CS combinou) — pode ser zero quando a
-//                cobrança só entra na próxima mensalidade.
+//                cobrança só entra na próxima mensalidade (a fatura nasce
+//                paga com R$ 0: ela É o registro da venda).
+//
+// Upsell É VENDA (Leo, 09/09): a fatura carrega soldAt (data do registro) e o
+// metrics-core (upsellSalesIn) conta nº e R$ pra quem vendeu nas metas, no
+// placar e no vendido do mês. R$ reconhecido = só o que caiu.
 //
 // Três formas de pagamento da fatura de agora:
 //   paid  → já pago (data informada) — entra no caixa na hora.
@@ -82,27 +87,27 @@ export async function recordUpsell(repo, customer, input, { author = "system", c
   const soldBy = input.soldBy || author || customer.owner || "";
   const nowIso = new Date().toISOString();
   const stamp = {
-    title: input.item, soldBy, upsellMode: input.mode, note: input.note,
+    title: input.item, soldBy, soldAt: input.at, upsellMode: input.mode, note: input.note,
     product: input.product, createdBy: author,
     ...(input.mode === "recurring" ? { recurringDelta: input.monthlyDelta } : {}),
   };
 
-  // 1. A fatura de agora (pode não existir no recorrente sem cobrança na virada).
+  // 1. A fatura de agora — sempre existe: é o registro da venda. Recorrente
+  // sem cobrança na virada nasce paga com R$ 0 (conta a venda, não o caixa).
   let invoice = null;
   let url = null;
-  if (input.amount > 0) {
-    if (createInvoice) {
-      const r = await createInvoice(stamp);
-      invoice = r.invoice; url = r.url || null;
-    } else {
-      invoice = await repo.create("invoices", {
-        customer: customer.id, saas: customer.saas || "", amount: input.amount, kind: "upsell",
-        status: input.payment === "paid" ? "paid" : "open",
-        dueDate: input.payment === "paid" ? input.at : input.dueAt,
-        ...(input.payment === "paid" ? { paidAt: input.at } : {}),
-        createdAt: nowIso, ...stamp,
-      });
-    }
+  if (createInvoice && input.amount > 0) {
+    const r = await createInvoice(stamp);
+    invoice = r.invoice; url = r.url || null;
+  } else {
+    const paid = input.payment === "paid" || !(input.amount > 0);
+    invoice = await repo.create("invoices", {
+      customer: customer.id, saas: customer.saas || "", amount: input.amount, kind: "upsell",
+      status: paid ? "paid" : "open",
+      dueDate: paid ? input.at : input.dueAt,
+      ...(paid ? { paidAt: input.at } : {}),
+      createdAt: nowIso, ...stamp,
+    });
   }
 
   // 2. Recorrente: a mensalidade sobe na assinatura (e o arr acompanha).

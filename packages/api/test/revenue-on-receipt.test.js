@@ -74,10 +74,11 @@ test("o mesmo dinheiro não conta duas vezes (pagamento do MP + fatura baixada p
     { customer: "c1", kind: "upsell", status: "paid", amount: 9000, paidAt: "2026-07-09T12:00:00.000Z" },
   ];
   const cash = cashReceivedByCustomer({ invoices, mpPayments, customers, inWin: inJuly });
-  assert.equal(cash.get("c1"), 10000); // 1.000 (contado uma vez) + 9.000 do upsell
-  // Teto no contrato: o upsell do mês não faz a venda de 3.000 valer 10.000.
+  assert.equal(cash.get("c1"), 10000); // 1.000 (contado uma vez) + 9.000 do upsell (Status pgto. do cliente)
+  // O upsell é venda PRÓPRIA (09/09): não completa o contrato do fechamento —
+  // a venda de 3.000 no boleto vale só a parcela que caiu (1.000).
   const valueOf = saleValuer({ invoices, mpPayments, customers, inWin: inJuly });
-  assert.equal(valueOf({ id: "l1", amount: 3000, customerId: "c1", paymentMethod: "boleto" }), 3000);
+  assert.equal(valueOf({ id: "l1", amount: 3000, customerId: "c1", paymentMethod: "boleto" }), 1000);
 });
 
 test("meio de pagamento do CLIENTE vale quando o lead não tem (ficha editada depois)", () => {
