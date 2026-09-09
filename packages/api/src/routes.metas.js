@@ -91,9 +91,12 @@ export const META_CATALOG = [
       // Trabalho de CS (retenção): upsell e indicação. SEM `team` de propósito — o
       // papel `integrator` junta o CS e o integrador técnico (Eryk), e só o CS faz
       // upsell/indicação; repartir o alvo pelos dois subestimaria a fatia do CS.
-      // Upsell = fatura kind:"upsell" (entra no caixa, atribuída pelo dono do
-      // cliente); indicação = leads com origem "Indicação" na janela (nº do time).
+      // Upsell = fatura kind:"upsell" registrada na ficha do cliente, atribuída a
+      // quem vendeu (soldBy; fatura antiga cai no dono do cliente). O nº conta o
+      // registro; o R$ só o que caiu. Indicação = leads com origem "Indicação"
+      // na janela (nº do time).
       { metric: "upsells", kind: "flow", label: "Upsells no mês", unit: "n", default: null },
+      { metric: "upsellRevenue", kind: "flow", label: "Receita de upsell no mês", unit: "R$", hint: "só o que caiu (fatura de upsell paga)", default: null },
       { metric: "referrals", kind: "flow", label: "Indicações no mês", unit: "n", default: null },
     ],
   },

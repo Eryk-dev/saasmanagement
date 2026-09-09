@@ -5,8 +5,10 @@
 import { computeChange, runBilling, syncCustomerArr } from "./billing.js";
 import { kindOf, stageByKind, firstStage } from "./stages.js";
 import { applyStageMove, revertWonLead } from "./lead-flow.js";
-import { mirrorSubscriptionToMp } from "./routes.mp.js";
+import { mirrorSubscriptionToMp, createCustomerCharge } from "./routes.mp.js";
 import { markCustomerChurn, clearCustomerChurn } from "./churn.js";
+import { parseUpsellBody, recordUpsell } from "./upsell.js";
+import { NOT_CONFIGURED } from "./http-status.js";
 
 export function registerBillingRoutes(app, repo, { mp, discord } = {}) {
   // ── Churn manual (botão da ficha do cliente) ──────────────────────────────
@@ -38,6 +40,41 @@ export function registerBillingRoutes(app, repo, { mp, discord } = {}) {
       source: "manual", author: req.authUser?.id || "api", discord, log: req.log,
     });
     return { ok: true, customer: saved, canceledSubscriptions: canceled };
+  });
+
+  // ── Upsell (botão "registrar upsell" da ficha do cliente) ────────────────
+  // Venda extra pra cliente atual: o que foi vendido, valor, modo (avulso ou
+  // acréscimo na mensalidade), forma (pago / a receber / link do MP) e quem
+  // vendeu. Regras e efeitos em upsell.js; aqui só o HTTP e a ponte com o MP.
+  app.post("/api/customers/:id/upsell", async (req, reply) => {
+    const customer = await repo.get("customers", req.params.id);
+    if (!customer) return reply.code(404).send({ error: "cliente não encontrado" });
+    const input = parseUpsellBody(req.body || {});
+    if (input.error) return reply.code(400).send({ error: input.error });
+    if (input.payment === "link" && !mp?.configured?.()) {
+      return reply.code(NOT_CONFIGURED).send({ error: "Mercado Pago não configurado — registre como pago ou a receber" });
+    }
+    const author = req.authUser?.id || "api";
+    try {
+      const r = await recordUpsell(repo, customer, input, {
+        author, discord, log: req.log,
+        createInvoice: input.payment === "link"
+          ? (stamp) => createCustomerCharge(repo, mp, req, customer, {
+            amount: input.amount, title: input.item, kind: "upsell", dueDate: input.dueAt,
+            maxInstallments: input.maxInstallments, origin: "upsell", extra: stamp,
+          })
+          : null,
+        mirrorPrice: mp?.configured?.()
+          ? async (before, updated) => { if (before.mpPreapprovalId) await mp.updatePreapprovalAmount(before.mpPreapprovalId, updated.price); }
+          : null,
+      });
+      return { ok: true, ...r };
+    } catch (err) {
+      if (err.status === 409) return reply.code(409).send({ error: err.message });
+      req.log.warn({ customer: customer.id, err: err.message }, "upsell: falha ao registrar");
+      // Link do MP recusado sai 4xx (EasyPanel engole 5xx) com o motivo.
+      return reply.code(err.status || 422).send({ error: err.message || "não deu pra registrar o upsell" });
+    }
   });
 
   // Desfazer um churn marcado errado (ou cliente que voltou): limpa a saída.
