@@ -105,14 +105,85 @@ test("recorrente com assinatura: mensalidade sobe o delta, arr acompanha e a fat
   await app.close();
 });
 
-test("recorrente sem assinatura: arr soma 12× o delta; cobrar agora zero não gera fatura", async () => {
+test("recorrente sem assinatura: arr soma 12× o delta; cobrar agora zero nasce paga com R$ 0 (é o registro da venda)", async () => {
   const { app, repo } = await buildApp();
-  const r = await post(app, { item: "+OEM", mode: "recurring", monthlyDelta: 250, amount: 0, soldBy: "u_cs" });
+  const r = await post(app, { item: "+OEM", mode: "recurring", monthlyDelta: 250, amount: 0, soldBy: "u_cs", date: "2026-09-08" });
   assert.equal(r.statusCode, 200, r.body);
-  assert.equal(r.json().invoice, null);
+  const inv = r.json().invoice;
+  assert.equal(inv.amount, 0);
+  assert.equal(inv.status, "paid");
+  assert.equal(inv.soldAt, "2026-09-08T12:00:00.000Z");
+  assert.equal(inv.recurringDelta, 250);
   assert.equal((await repo.get("customers", "c1")).arr, 9000); // 6000 + 250 × 12
-  assert.equal((await repo.list("invoices")).length, 0);
+  assert.equal((await repo.list("invoices")).length, 1);
   assert.equal((await repo.get("customers", "c1")).upsellCount, 1);
+  await app.close();
+});
+
+// ── Upsell É VENDA (Leo, 09/09): metas, placar, pace, marketing e custos % ──
+test("upsell conta como venda de quem vendeu: placar (closer + time), pace do mês, marketing e base do custo % — a mesma régua", async () => {
+  const repo = makeMemRepo();
+  const FUNNEL = [
+    { stage: "Novo lead", kind: "novo", conv: 1 }, { stage: "Call agendada", kind: "call", conv: 1 },
+    { stage: "Ganho", kind: "ganho", conv: 1 }, { stage: "Perdido", kind: "perdido", conv: 0 },
+  ];
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNNEL });
+  await repo.create("users", { id: "leo", name: "Leo", roles: ["closer"] });
+  await repo.create("users", { id: "u_cs", name: "Cris CS", roles: ["integrator"] });
+  // 1 fechamento de lead do Leo em julho (à vista, R$ 5.000).
+  await repo.create("leads", { id: "l1", saas: "leverads", closer: "leo", stage: "Ganho", amount: 5000, paymentMethod: "pix", customerId: "c1", wonAt: "2026-07-08T12:00:00.000Z", createdAt: "2026-07-02T12:00:00.000Z" });
+  await repo.create("customers", { id: "c1", saas: "leverads", name: "Cliente Um", leadId: "l1", owner: "u_cs", startedAt: "2026-07-08T12:00:00.000Z", arr: 5000 });
+  // Cliente antigo (fechado em maio) que recebe upsell em julho.
+  await repo.create("customers", { id: "c2", saas: "leverads", name: "Cliente Dois", owner: "u_cs", startedAt: "2026-05-01T12:00:00.000Z", arr: 6000 });
+  await repo.create("expenses", { id: "e1", saas: "leverads", category: "checkout", pct: 10, month: "2026-07" });
+  const NOW = new Date("2026-07-28T12:00:00.000Z");
+  const app = Fastify();
+  registerRoutes(app, repo, { mp: makeMp({}), pipelinePace: { now: () => NOW }, scoreboard: { now: () => NOW } });
+
+  // Upsell PAGO vendido pela CS em julho (R$ 1.200) + um A RECEBER do Leo (R$ 900, não caiu).
+  let r = await app.inject({ method: "POST", url: "/api/customers/c2/upsell", payload: { item: "FULL", amount: 1200, payment: "paid", date: "2026-07-15", soldBy: "u_cs" } });
+  assert.equal(r.statusCode, 200, r.body);
+  r = await app.inject({ method: "POST", url: "/api/customers/c1/upsell", payload: { item: "OEM 250", amount: 900, payment: "open", date: "2026-07-20", dueDate: "2026-08-10", soldBy: "leo" } });
+  assert.equal(r.statusCode, 200, r.body);
+
+  const MONTH = "?since=2026-07-01&until=2026-07-31";
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${MONTH}` })).json();
+  const pace = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json();
+  const costs = (await app.inject({ url: "/api/expenses/summary/leverads?month=2026-07" })).json();
+  const mkt = (await app.inject({ url: `/api/marketing/leverads${MONTH}` })).json();
+
+  // Closer Leo: 1 fechamento + 1 upsell (a receber conta no nº, não no R$).
+  const leo = sb.closer.find((c) => c.user === "leo");
+  assert.equal(leo.won, 2);
+  assert.equal(leo.revenue, 5000);
+  assert.equal(leo.upsells, 1);
+  assert.equal(leo.upsellRevenue, 0);
+  assert.equal(leo.contracted, 5900);
+  // A CS aparece no placar de closer pelo upsell dela (é venda dela).
+  const cris = sb.closer.find((c) => c.user === "u_cs");
+  assert.equal(cris.won, 1);
+  assert.equal(cris.revenue, 1200);
+  assert.equal(cris.calls, 0);
+  // Card de CS dela continua com a régua própria.
+  assert.equal(sb.cs.find((c) => c.user === "u_cs").upsellRevenue, 1200);
+  // Time = soma: 3 vendas, R$ 6.200 reconhecidos, R$ 7.100 contratados.
+  assert.equal(sb.team.won, 3);
+  assert.equal(sb.team.wonPlatform, 1); // taxas do funil seguem no ganho de lead
+  assert.equal(sb.team.upsells, 2);
+  assert.equal(sb.team.revenue, 6200);
+  assert.equal(sb.team.contracted, 7100);
+  // Pace do mês = o mesmo vendido; contratos do mês contam os 3.
+  assert.equal(pace.sale.sold, sb.team.revenue);
+  assert.equal(pace.sale.contracted, sb.team.contracted);
+  assert.equal(pace.sale.upsell.sold, 1200);
+  assert.equal(pace.contracts.sold, 3);
+  assert.equal(pace.context.wonMonth, sb.team.won);
+  assert.equal(pace.sale.byDay.reduce((a, v) => a + v, 0), 6200);
+  // Custo % sobre o vendido: base = contratado (com upsell).
+  assert.equal(costs.wonBase, pace.context.tcvMonth);
+  // Marketing: ganhos e receita do período com upsell (régua do contrato).
+  assert.equal(mkt.totals.won, 3);
+  assert.equal(mkt.totals.revenue, 7100);
   await app.close();
 });
 

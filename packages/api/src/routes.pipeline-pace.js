@@ -7,6 +7,7 @@ import {
   DAY_MS as DAY, round2, dayKey, isRealLead, isSaleLead, keyAccountIds, isKeyAccountLead,
   bookedLeadsIn, callOutcome, callCohortIn, winsIn, customerStartMap, tcvOf, firstResponseAttribution,
   saleValuer, revenueOf, isRealReceipt, paymentMethodOf,
+  upsellSalesIn, upsellValuer, upsellRevenueOf, upsellContractedOf, upsellSoldAt, isKeyAccountUpsell,
 } from "./metrics-core.js";
 
 // Meta de caixa quando o produto ainda não tem a dele (product.monthlyCashTarget,
@@ -482,9 +483,21 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   // custo % de "ganhos"); a meta persegue o vendido reconhecido, que é o mesmo
   // número do placar do time (metrics-consistency amarra os dois).
   const valueOfMonth = saleValuer({ invoices, mpPayments, customers, inWin: inMonth });
-  const valueOfToday = saleValuer({ invoices, mpPayments, customers, inWin: (iso) => dayKey(iso) === today });
-  const sold = revenueOf(tcvMonthLeads, valueOfMonth);
-  const soldToday = revenueOf(todayWinLeads, valueOfToday);
+  const inToday = (iso) => dayKey(iso) === today;
+  const valueOfToday = saleValuer({ invoices, mpPayments, customers, inWin: inToday });
+  // UPSELL É VENDA (Leo, 09/09): registrado na ficha do cliente, conta no
+  // vendido do mês (nº e R$ que caiu) e no contratado — mesma régua do placar
+  // (metrics-core). Conta grande vai pro rodapé com os leads dela.
+  const upsMonthAll = upsellSalesIn(invoices, inMonth, { saas: product.id });
+  const upsMonth = upsMonthAll.filter((i) => !isKeyAccountUpsell(keyCustomerIds, i));
+  const keyUpsMonth = upsMonthAll.filter((i) => isKeyAccountUpsell(keyCustomerIds, i));
+  const upsToday = upsellSalesIn(invoices, inToday, { saas: product.id }).filter((i) => !isKeyAccountUpsell(keyCustomerIds, i));
+  const upsellSoldMonth = upsellRevenueOf(upsMonth, upsellValuer(inMonth));
+  const soldN = tcvMonthLeads.length + upsMonth.length;
+  const soldTodayN = todayWon + upsToday.length;
+  const tcvMonthAll = round2(tcvMonth + upsellContractedOf(upsMonth));
+  const sold = round2(revenueOf(tcvMonthLeads, valueOfMonth) + upsellSoldMonth);
+  const soldToday = round2(revenueOf(todayWinLeads, valueOfToday) + upsellRevenueOf(upsToday, upsellValuer(inToday)));
   // Vendido reconhecido POR DIA do mês (soma = `sold`): o gráfico de pace do
   // pipeline desenha esta série em vez de somar lead.amount por conta própria —
   // senão a curva subiria pelo contrato cheio e passaria a meta que a faixa
@@ -494,6 +507,10 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   for (const l of tcvMonthLeads) {
     const day = Number(dayKey(winMonthAt.get(l.id)).slice(8, 10));
     if (day >= 1 && day <= soldByDay.length) soldByDay[day - 1] += valueOfMonth(l);
+  }
+  for (const i of upsMonth) {
+    const day = Number(dayKey(upsellSoldAt(i)).slice(8, 10));
+    if (day >= 1 && day <= soldByDay.length) soldByDay[day - 1] += upsellValuer(inMonth)(i);
   }
   const saleGap = round2(Math.max(0, target - sold));
   const saleDelta = round2(sold - expectedToDate);
@@ -553,7 +570,8 @@ export async function computePipelinePace(repo, product, now = new Date()) {
       // Contrato CHEIO fechado no mês (sem conta grande). `contracted - sold` é
       // o faturado/recorrente que ainda não caiu: a faixa mostra a diferença em
       // vez de a venda parecer menor sem explicação.
-      contracted: tcvMonth,
+      contracted: tcvMonthAll,
+      upsell: { sold: upsellSoldMonth, count: upsMonth.length }, // a parte do vendido que é upsell (venda pra cliente atual)
       byDay: soldByDay.map(round2), // vendido reconhecido dia a dia (soma = sold)
       gap: saleGap,
       // Super metas + o teto que o pace persegue agora (base → 125% → 150% →
@@ -578,13 +596,12 @@ export async function computePipelinePace(repo, product, now = new Date()) {
     },
     // A 2ª régua da Meta do mês: CONTRATOS fechados vs. meta (contagem).
     contracts: (() => {
-      const soldN = tcvMonthLeads.length;
       const expected = contractsTarget != null ? round2(contractsTarget * (calendar.elapsed / Math.max(1, calendar.total))) : null;
       return {
         target: contractsTarget,
         targetSource: Number(product.monthlyContractsTarget) > 0 ? "company" : (contractsTarget != null ? "ticket" : ""),
         sold: soldN,
-        soldToday: todayWon,
+        soldToday: soldTodayN,
         gap: contractsTarget != null ? Math.max(0, contractsTarget - soldN) : null,
         progress: contractsTarget > 0 ? round4(soldN / contractsTarget) : null,
         expectedToDate: expected,
@@ -593,7 +610,7 @@ export async function computePipelinePace(repo, product, now = new Date()) {
       };
     })(),
     // O que a conta grande tirou do resultado (e quanto o mês daria com ela).
-    keyAccount: keyAccountNote(keyMonthLeads, customers, sold, tcvMonthLeads.length, valueOfMonth),
+    keyAccount: keyAccountNote(keyMonthLeads, customers, sold, soldN, valueOfMonth, keyUpsMonth, upsellValuer(inMonth)),
     // Leitura de CAIXA (faturas pagas) — informativa; o fluxo detalhado e o
     // dinheiro futuro moram na aba Clientes.
     cash: {
@@ -618,8 +635,8 @@ export async function computePipelinePace(repo, product, now = new Date()) {
       forecastWithReceivables: round2(collected + receivableAmount),
     },
     context: {
-      tcvMonth,
-      wonMonth: tcvMonthLeads.length,
+      tcvMonth: tcvMonthAll,
+      wonMonth: soldN,
       mrr,
       averageEntry,
       averageEntrySource,
@@ -636,7 +653,7 @@ export async function computePipelinePace(repo, product, now = new Date()) {
       callsBooked: planMetric(bookingsRemaining, calendar.remaining, todayBooked),
       calls: planMetric(callsRemaining, calendar.remaining, leads.filter((l) => dayKey(l.callAt) === today).length),
       proposals: { today: proposals.filter((p) => dayKey(p.createdAt) === today).length },
-      wins: planMetric(winsRemaining, calendar.remaining, todayWon),
+      wins: planMetric(winsRemaining, calendar.remaining, soldTodayN),
       onboardings: planMetric(winsRemaining, calendar.remaining, customers.filter((c) => dayKey(c.startedAt) === today).length),
     },
   };
@@ -716,9 +733,14 @@ export async function computeWindowGoal(repo, product, since, until, now = new D
   const valueOf = saleValuer({
     invoices: allInvoices.filter((i) => i.saas === product.id), mpPayments, customers, inWin,
   });
-  const sold = revenueOf(winLeads, valueOf);
-  const contracted = tcvOf(winLeads);
-  const soldN = winLeads.length;
+  // Upsell é venda — mesma régua do mês (metrics-core).
+  const upsAll = upsellSalesIn(allInvoices, inWin, { saas: product.id });
+  const ups = upsAll.filter((i) => !isKeyAccountUpsell(keyIds, i));
+  const keyUps = upsAll.filter((i) => isKeyAccountUpsell(keyIds, i));
+  const upsValue = upsellValuer(inWin);
+  const sold = round2(revenueOf(winLeads, valueOf) + upsellRevenueOf(ups, upsValue));
+  const contracted = round2(tcvOf(winLeads) + upsellContractedOf(ups));
+  const soldN = winLeads.length + ups.length;
 
   const ended = until < today;
   const expectedFrac = bizDays > 0 ? round4(bizElapsed / bizDays) : 1;
@@ -750,22 +772,23 @@ export async function computeWindowGoal(repo, product, since, until, now = new D
       expectedProgress: expectedFrac,
       status: statusOf(soldN, contractsTarget),
     },
-    keyAccount: keyAccountNote(keyWinLeads, customers, sold, soldN, valueOf),
+    keyAccount: keyAccountNote(keyWinLeads, customers, sold, soldN, valueOf, keyUps, upsValue),
   };
 }
 
 // Rodapé da conta grande: o que ficou de FORA do resultado e quanto o período
 // daria com ela. Sem isso a exclusão vira número sumido sem explicação.
-function keyAccountNote(keyLeads, customers, sold, soldN, valueOf) {
-  if (!keyLeads.length) return null;
+function keyAccountNote(keyLeads, customers, sold, soldN, valueOf, keyUpsells = [], upsValue = () => 0) {
+  if (!keyLeads.length && !keyUpsells.length) return null;
   const nameOfCustomer = (id) => customers.find((c) => c.id === id)?.name || "";
-  const revenue = revenueOf(keyLeads, valueOf);
+  const revenue = round2(revenueOf(keyLeads, valueOf) + upsellRevenueOf(keyUpsells, upsValue));
+  const count = keyLeads.length + keyUpsells.length;
   return {
-    count: keyLeads.length,
+    count,
     revenue,
-    names: [...new Set(keyLeads.map((l) => nameOfCustomer(l.customerId)).filter(Boolean))],
+    names: [...new Set([...keyLeads.map((l) => l.customerId), ...keyUpsells.map((i) => i.customer)].map(nameOfCustomer).filter(Boolean))],
     soldWith: round2(sold + revenue),
-    countWith: soldN + keyLeads.length,
+    countWith: soldN + count,
   };
 }
 

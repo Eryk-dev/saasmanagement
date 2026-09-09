@@ -552,7 +552,7 @@ function FunilPeriodo({ team, win, pLabel }) {
     { nm: "Calls marcadas", v: team.callsBooked, m: sMeta(mt?.callsBooked), title: `Calls com data na janela${team.bookedCohort != null ? ` · ${int(team.bookedCohort)} de leads da própria janela (o resto é safra antiga trabalhada agora)` : ""}${team.pending > 0 ? ` · ${int(team.pending)} ainda no futuro` : ""}` },
     { nm: "Calls realizadas", v: team.shown, m: sMeta(mt?.callsShown), title: `Calls que aconteceram${team.noShow > 0 ? ` · ${int(team.noShow)} não compareceram` : ""}` },
     { nm: "Ganhos", v: team.won, m: sMeta(mt?.won),
-      title: `Ganhos no período (= soma dos closers)${team.revenue > 0 ? ` · ${money(team.revenue)}` : ""}`
+      title: `Ganhos no período (= soma dos closers)${team.revenue > 0 ? ` · ${money(team.revenue)}` : ""}${team.upsells > 0 ? ` · ${int(team.upsells)} upsell${team.upsells > 1 ? "s" : ""} (${money(team.upsellRevenue || 0)})` : ""}`
         + (team.keyAccount ? ` · fora: ${team.keyAccount.won} conta grande (${money(team.keyAccount.revenue)}${team.keyAccount.names?.length ? ` · ${team.keyAccount.names.join(", ")}` : ""})` : "") },
   ];
   const convs = [
@@ -561,7 +561,8 @@ function FunilPeriodo({ team, win, pLabel }) {
     // sobre os alcançados da janela (robô incluído) — o hover mostra o N de M.
     { pct: team.bookingRate, metaPct: g.bookingRate?.target || 30, num: team.bookedCohort ?? team.callsBooked, den: team.reachedCohort ?? team.contactedCohort ?? team.contacted },
     { pct: team.showRate, metaPct: g.showRate?.target || 75, num: team.shown, den: team.shown + team.noShow },
-    { pct: team.closeRatePeriod, metaPct: g.closeRate?.target || 33, num: team.won, den: team.shown },
+    // Numerador = ganho da PLATAFORMA (sem mentoria e sem upsell, que não nascem de call) — o mesmo que o servidor divide.
+    { pct: team.closeRatePeriod, metaPct: g.closeRate?.target || 33, num: team.wonPlatform ?? team.won, den: team.shown },
   ];
   const adj = team.paceAdjust;
   return (

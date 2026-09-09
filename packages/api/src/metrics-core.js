@@ -294,7 +294,15 @@ export function cashReceivedByCustomer({ invoices = [], mpPayments = [], custome
 // revenueOf — assim placar, meta do mês e Análise nunca divergem.
 export const FULL_VALUE = (l) => Number(l?.amount) || 0;
 export function saleValuer({ invoices, mpPayments, customers, inWin } = {}) {
-  const cash = cashReceivedByCustomer({ invoices, mpPayments, customers, inWin });
+  // O upsell é venda PRÓPRIA (upsellSalesIn, abaixo): o dinheiro dele não pode
+  // completar o contrato do fechamento — sai da conta do lead, e sai também o
+  // pagamento do MP que baixou a fatura de upsell.
+  const upsellMp = new Set((invoices || []).filter((i) => isUpsellInvoice(i) && i.mpPaymentId).map((i) => String(i.mpPaymentId)));
+  const cash = cashReceivedByCustomer({
+    invoices: (invoices || []).filter((i) => !isUpsellInvoice(i)),
+    mpPayments: (mpPayments || []).filter((p) => !upsellMp.has(String(p.mpId))),
+    customers, inWin,
+  });
   const methodOf = new Map((customers || []).map((c) => [c.id, c.paymentMethod || ""]));
   return (lead) => {
     const full = Number(lead?.amount) || 0;
@@ -311,6 +319,24 @@ export function saleValuer({ invoices, mpPayments, customers, inWin } = {}) {
 // Receita RECONHECIDA de um conjunto de leads (soma pelo valuer da janela).
 export const revenueOf = (leads, valueOf = FULL_VALUE) =>
   round2(leads.reduce((a, l) => a + (Number(valueOf(l)) || 0), 0));
+
+// ── Upsell como VENDA (Leo, 09/09/2026) ─────────────────────────────────────
+// Upsell registrado na ficha do cliente (upsell.js) É um fechamento: conta
+// como venda (nº e R$) de QUEM VENDEU (invoice.soldBy) nas metas, no placar e
+// no vendido do mês — datado pelo REGISTRO (soldAt). O valor reconhecido segue
+// a régua do resto: só o que CAIU na janela (fatura paga, por paidAt); o
+// contratado (amount) fica como contexto e base do custo %. As TAXAS do funil
+// (call→ganho, lead→ganho) seguem no ganho da PLATAFORMA, como a mentoria:
+// upsell não nasce de call agendada. Conta grande sai do núcleo igual ao lead.
+export const isUpsellInvoice = (i) => i?.kind === "upsell";
+export const upsellSoldAt = (i) => i?.soldAt || i?.paidAt || i?.dueDate || i?.createdAt || "";
+export function upsellSalesIn(invoices, inWin, { saas = "" } = {}) {
+  return (invoices || []).filter((i) => isUpsellInvoice(i) && (!saas || i.saas === saas) && inWin(upsellSoldAt(i)));
+}
+export const upsellValuer = (inWin) => (i) => (i?.status === "paid" && inWin(i.paidAt) ? round2(Number(i.amount) || 0) : 0);
+export const upsellRevenueOf = (sales, valueOf) => round2((sales || []).reduce((a, i) => a + (Number(valueOf(i)) || 0), 0));
+export const upsellContractedOf = (sales) => round2((sales || []).reduce((a, i) => a + (Number(i.amount) || 0), 0));
+export const isKeyAccountUpsell = (keyIds, i) => !!(i?.customer && keyIds?.has(i.customer));
 
 // ── A safra de calls ─────────────────────────────────────────────────────────
 // Avançou pra frente da call (a call ACONTECEU): proposta/negociação/fechou.
