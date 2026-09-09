@@ -123,9 +123,28 @@ export function CustomersAnalysis({ customers, subs = [], invoices = [], isKids 
       caixa += s.cash;
       futuro += s.future;
     }
+    // UPSELL do período (Leo, 09/09): a venda extra registrada na ficha, datada
+    // pelo registro (soldAt), de QUALQUER cliente (o upsell é de cliente antigo
+    // por natureza — a coorte de entrada não o alcança). Contratado soma no
+    // Total contratado; pago no Recebido; em aberto no A receber — os três
+    // continuam fechando. O acréscimo RECORRENTE já vive no arr do cliente;
+    // aqui entra só o que foi cobrado na venda (amount).
+    const upsellAt = (i) => i.soldAt || i.paidAt || i.dueDate || i.createdAt || "";
+    const upsells = invoices.filter((i) => i.kind === "upsell" && (fromT == null ? true : inPeriod(upsellAt(i))));
+    const sum = (list) => Math.round(list.reduce((a, i) => a + (Number(i.amount) || 0), 0) * 100) / 100;
+    const upsell = {
+      n: upsells.length,
+      total: sum(upsells),
+      paid: sum(upsells.filter((i) => i.status === "paid")),
+      open: sum(upsells.filter((i) => i.status !== "paid")),
+    };
+    caixa += upsell.paid;
+    futuro += upsell.open;
     const withMrr = cohort.filter((c) => (Number(c.arr) || 0) > 0);
     const mrrMedio = withMrr.length ? withMrr.reduce((a, c) => a + (Number(c.arr) || 0) / 12, 0) / withMrr.length : 0;
+    // Ticket = contrato dos clientes novos (sem upsell, que é venda pra cliente antigo).
     const ticket = cohort.length ? faturado / cohort.length : 0;
+    const contratado = Math.round((faturado + upsell.total) * 100) / 100;
 
     const planos = new Map();
     for (const c of cohort) {
@@ -154,7 +173,7 @@ export function CustomersAnalysis({ customers, subs = [], invoices = [], isKids 
     const lifeMonths = churnMonthly > 0 ? 1 / churnMonthly : null;
     const ltv = lifeMonths != null && mrrMedio > 0 ? mrrMedio * lifeMonths : null;
 
-    return { cohort, faturado, caixa, futuro, mrrMedio, ticket, planos, churned, baseStart, churnPct, lifeMonths, ltv };
+    return { cohort, faturado, contratado, upsell, caixa, futuro, mrrMedio, ticket, planos, churned, baseStart, churnPct, lifeMonths, ltv };
   }, [customers, invoices, win.since, win.until, planOf]);
 
   const pct = (v) => `${Math.round(v * 100)}%`;
@@ -171,11 +190,13 @@ export function CustomersAnalysis({ customers, subs = [], invoices = [], isKids 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-        <StatTile label="Total contratado" value={money(m.faturado)} delta="valor anual (ARR) dos clientes do período" />
-        <StatTile label="Recebido" value={money(m.caixa)} delta="já entrou · à vista + parcelas/ciclos vencidos" />
-        <StatTile label="A receber" value={money(m.futuro)} delta="parcelas e renovações a vencer no ano" />
+        <StatTile label="Total contratado" value={money(m.contratado)} delta={m.upsell.n ? `ARR dos clientes do período + ${money(m.upsell.total)} de upsell` : "valor anual (ARR) dos clientes do período"} />
+        <StatTile label="Recebido" value={money(m.caixa)} delta={m.upsell.paid ? `já entrou · à vista + parcelas/ciclos vencidos + ${money(m.upsell.paid)} de upsell` : "já entrou · à vista + parcelas/ciclos vencidos"} />
+        <StatTile label="A receber" value={money(m.futuro)} delta={m.upsell.open ? `parcelas e renovações a vencer no ano + ${money(m.upsell.open)} de upsell` : "parcelas e renovações a vencer no ano"} />
         <StatTile label="Clientes novos" value={String(m.cohort.length)} delta="entraram no período" />
-        <StatTile label="Ticket médio" value={money(m.ticket)} delta="ARR ÷ clientes novos" />
+        <StatTile label="Upsell" value={money(m.upsell.total)} small={m.upsell.n ? `${m.upsell.n} ${m.upsell.n === 1 ? "venda" : "vendas"}` : ""}
+          delta={m.upsell.n ? `${money(m.upsell.paid)} recebido · registrado na ficha do cliente` : "nenhum upsell registrado no período"} />
+        <StatTile label="Ticket médio" value={money(m.ticket)} delta="ARR ÷ clientes novos (sem upsell)" />
         {!isKids && <StatTile label="Preço mensal médio" value={money(m.mrrMedio)} delta="média do mensal (ARR ÷ 12)" />}
         <StatTile label="Churn" tone={m.churned.length > 0 ? "down" : "flat"}
           value={m.churnPct == null ? "—" : pct(m.churnPct)}
