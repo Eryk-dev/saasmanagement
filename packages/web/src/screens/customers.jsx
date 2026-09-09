@@ -236,7 +236,26 @@ function CustomersScreen({ initialTab }) {
   // O `received` de propósito NÃO conta a fatura que nasce paga no fechamento:
   // no faturado ela nem existe (o recebimento é o cronograma) e na recorrente
   // ela é só o carimbo do contrato, não uma cobrança que rodou.
-  const trazidoOf = (c) => (recebeParcelado(c) ? Number(received[c.id]) || 0 : fechadoOf(c));
+  //
+  // UPSELL (Leo, 09/09): a venda extra registrada na ficha entra no que o
+  // cliente trouxe. Faturado/recorrente já vem no `received` (a fatura de
+  // upsell baixada é recebimento real); à vista soma o upsell PAGO por cima do
+  // contrato. O Status pgto. compara com contrato + upsell contratado.
+  const upsellByCustomer = React.useMemo(() => {
+    const by = new Map();
+    for (const i of invoices) {
+      if (i.kind !== "upsell") continue;
+      const cur = by.get(i.customer) || { paid: 0, total: 0, n: 0 };
+      const amt = Number(i.amount) || 0;
+      cur.total = Math.round((cur.total + amt) * 100) / 100;
+      if (i.status === "paid") cur.paid = Math.round((cur.paid + amt) * 100) / 100;
+      cur.n += 1;
+      by.set(i.customer, cur);
+    }
+    return by;
+  }, [invoices]);
+  const upsellOf = (c) => upsellByCustomer.get(c.id) || { paid: 0, total: 0, n: 0 };
+  const trazidoOf = (c) => (recebeParcelado(c) ? Number(received[c.id]) || 0 : fechadoOf(c) + upsellOf(c).paid);
 
   // Estado do pagamento (coluna Status pgto.): a marcação MANUAL no cliente
   // manda (paymentStatus — muita venda entra por PIX/cartão fora do rastreio do
@@ -248,7 +267,7 @@ function CustomersScreen({ initialTab }) {
   // cartão NÃO é receber (caso Marianna, 13/08).
   const payStatus = (c) => {
     const cash = Number(received[c.id]) || 0;
-    const total = fechadoOf(c);
+    const total = fechadoOf(c) + upsellOf(c).total; // contrato + upsells registrados
     const pm = c.paymentMethod || leadById.get(c.leadId)?.paymentMethod;
     const auto = total > 0 && cash >= total * 0.98 ? "paid" : cash > 0 ? "partial" : paymentUpfront(pm) ? "unpaid" : "partial";
     const manual = PAY_STATUS[c.paymentStatus] ? c.paymentStatus : "";
@@ -765,10 +784,12 @@ function CustomersScreen({ initialTab }) {
                           const contrato = fechadoOf(c);
                           const lead = leadById.get(c.leadId);
                           const rec = isRecurringClose(lead);
-                          const dica = acumula
-                            ? `${money(trazido)} recebido de ${money(contrato)} ${rec ? "acumulados na assinatura" : "contratados"} · soma das parcelas baixadas e dos pagamentos do Mercado Pago, cresce a cada cobrança que entra`
+                          const ups = upsellOf(c);
+                          const upsTxt = ups.n ? ` · ${ups.n} upsell${ups.n > 1 ? "s" : ""}: ${money(ups.paid)} pago${ups.total > ups.paid ? ` de ${money(ups.total)}` : ""}` : "";
+                          const dica = (acumula
+                            ? `${money(trazido)} recebido de ${money(contrato + ups.total)} ${rec ? "acumulados na assinatura" : "contratados"} · soma das parcelas baixadas, dos upsells pagos e dos pagamentos do Mercado Pago, cresce a cada cobrança que entra`
                             : rec ? `assinatura de ${money(Number(lead?.amount) || 0)}/mês · acumulado desde o fechamento (+1 mensalidade a cada 30 dias)`
-                            : "pagamento à vista: o contrato inteiro entrou no fechamento";
+                            : "pagamento à vista: o contrato inteiro entrou no fechamento") + upsTxt;
                           return (
                             <td className="tnum" title={dica}
                               style={{ padding: "13px 14px", fontSize: 13, textAlign: "right", color: acumula && trazido <= 0 ? "var(--fg-4)" : "var(--fg-2)", borderBottom: "1px solid var(--line-faint)", whiteSpace: "nowrap" }}>
