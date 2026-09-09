@@ -541,12 +541,13 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
 
     // ── CS / retenção (agrupado por customer.owner) ───────────────────────────
     const csRole = new Set(withRole("integrator")); // membros do papel CS sempre aparecem (pra ver a meta)
-    const csIds = [...new Set([...csRole, ...customers.map((c) => c.owner).filter(Boolean)])];
-    const npsSaas = npsAll.filter((n) => !n.saas || n.saas === product.id);
-    // Upsells do produto: fatura kind:"upsell" (o botão do card do cliente cria uma
-    // fatura PAGA, então já entra no caixa pela régua existente). Atribuídos ao CS
-    // pelo DONO do cliente, igual ao resto do bloco.
+    // Quem vendeu um upsell (invoice.soldBy) também ganha card, mesmo sem carteira.
     const upsellInvoices = invoicesAll.filter((i) => i.saas === product.id && i.kind === "upsell");
+    const csIds = [...new Set([...csRole, ...customers.map((c) => c.owner).filter(Boolean), ...upsellInvoices.map((i) => i.soldBy).filter(Boolean)])];
+    const npsSaas = npsAll.filter((n) => !n.saas || n.saas === product.id);
+    // Upsells do produto: fatura kind:"upsell" (registrada na ficha do cliente,
+    // upsell.js). Atribuída a QUEM VENDEU (invoice.soldBy); fatura antiga sem o
+    // carimbo cai no dono do cliente, igual ao resto do bloco.
     // Indicações recebidas na janela: nº do TIME (sem atribuição fina por pessoa,
     // decisão do Leo). Mesmo número em cada card de CS — a régua isReferralLead.
     const teamReferrals = leads.filter((l) => isReferralLead(l) && inWin(l.createdAt)).length;
@@ -567,21 +568,22 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       // NPS médio das contas dele (coleção nps: { customer, score }). Sem dado → null.
       const scores = npsSaas.filter((n) => mineIds.has(n.customer) && Number.isFinite(Number(n.score))).map((n) => Number(n.score));
       const nps = scores.length ? round2(scores.reduce((a, s) => a + s, 0) / scores.length) : null;
-      // Upsells dele = faturas de upsell dos clientes dele na janela (pela data de
-      // pagamento, que é quando entrou no caixa). Conta e soma de R$.
-      const myUpsells = upsellInvoices.filter((i) => mineIds.has(i.customer) && inWin(i.paidAt || i.createdAt || i.dueDate));
+      // Upsells dele na janela: nº = registros (pago ou a receber, pela data do
+      // registro/pagamento); R$ = só o que CAIU (fatura paga), a mesma régua de
+      // receita reconhecida do resto do cockpit.
+      const myUpsells = upsellInvoices.filter((i) => (i.soldBy ? i.soldBy === uid : mineIds.has(i.customer)) && inWin(i.paidAt || i.dueDate || i.createdAt));
       const upsells = myUpsells.length;
-      const upsellRevenue = round2(myUpsells.reduce((a, i) => a + (Number(i.amount) || 0), 0));
+      const upsellRevenue = round2(myUpsells.filter((i) => i.status === "paid").reduce((a, i) => a + (Number(i.amount) || 0), 0));
       return {
         user: uid, name: nameOf(uid),
-        targets: personTargets(uid, "integrator", { retentionRate, nps, newAccounts, activeAccounts: mineActive.length, upsells, referrals: teamReferrals }),
+        targets: personTargets(uid, "integrator", { retentionRate, nps, newAccounts, activeAccounts: mineActive.length, upsells, upsellRevenue, referrals: teamReferrals }),
         activeAccounts: mineActive.length,
         newAccounts,
         churned,
         retentionRate,
         nps, npsCount: scores.length,
         upsells, upsellRevenue, referrals: teamReferrals,
-        goals: goalMap(uid, "integrator", ["newAccounts", "activeAccounts", "retentionRate", "nps", "upsells", "referrals"]),
+        goals: goalMap(uid, "integrator", ["newAccounts", "activeAccounts", "retentionRate", "nps", "upsells", "upsellRevenue", "referrals"]),
       };
     }).filter((p) => p.activeAccounts > 0 || p.newAccounts > 0 || csRole.has(p.user)) // responsável aparece mesmo sem conta (pra ver a meta)
       .sort((a, b) => b.activeAccounts - a.activeAccounts);

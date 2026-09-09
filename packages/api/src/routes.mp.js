@@ -128,6 +128,58 @@ function payerMismatch(sub, eventPayer) {
   return !!(sub.payerEmail && eventPayer && String(eventPayer).toLowerCase() !== String(sub.payerEmail).toLowerCase());
 }
 
+// Cria a preferência de checkout e, se o MP recusar COM e-mail do pagador,
+// tenta de novo sem ele. Link sem pré-preenchimento é melhor que venda
+// travada; o cliente digita o e-mail no próprio checkout.
+async function createPreferenceWith(mp, args, log) {
+  try {
+    return await mp.createCheckoutPreference(args);
+  } catch (err) {
+    if (!args.payerEmail) throw err;
+    log?.warn?.({ err: err.message }, "MP recusou com payer.email — tentando sem o e-mail do pagador");
+    return await mp.createCheckoutPreference({ ...args, payerEmail: undefined });
+  }
+}
+
+// Cobrança avulsa anexada ao cliente: fatura (registro no billing) + link de
+// pagamento (checkout preference) com external_reference = id da fatura — o
+// webhook/poller dá a baixa sozinho quando o cliente pagar. Serve o botão
+// "+ cobrança" da ficha e o registro de upsell com link (routes.billing.js).
+// `extra` = campos a mais carimbados na fatura (upsell: quem vendeu, modo…).
+// Falha no MP remove a fatura (não fica órfã) e propaga o erro.
+export async function createCustomerCharge(repo, mp, req, customer, { amount, title, kind, dueDate, maxInstallments, origin, extra = {} } = {}) {
+  const product = customer.saas ? await repo.get("products", customer.saas) : null;
+  const finalTitle = String(title || "").trim()
+    || [product?.name || customer.saas, kind === "upsell" ? "upsell" : "cobrança"].filter(Boolean).join(" · ");
+  const nowIso = new Date().toISOString();
+  const invoice = await repo.create("invoices", {
+    customer: customer.id, saas: customer.saas || "", amount,
+    kind: kind === "upsell" ? "upsell" : "manual", status: "open",
+    title: finalTitle, dueDate: dueDate || nowIso, createdAt: nowIso, ...extra,
+  });
+  try {
+    const pref = await createPreferenceWith(mp, {
+      title: finalTitle, amount, externalReference: invoice.id,
+      payerEmail: payerEmailOrNone(customer.email),
+      ...mpUrls(req),
+      maxInstallments: Number(maxInstallments) || undefined,
+    }, req.log);
+    const updated = await repo.update("invoices", invoice.id, { mpPrefId: pref.id, mpInitPoint: pref.init_point || null });
+    await recordPaymentLink(repo, {
+      saas: customer.saas || "", kind: "customer", origin: origin || "cliente",
+      customer: customer.id, invoice: invoice.id,
+      targetName: customer.name || "", targetPhone: customer.phone || "",
+      amount, title: finalTitle, url: pref.init_point || "", prefId: pref.id || "",
+      payerEmail: customer.email || "", reference: invoice.id,
+      createdBy: req.authUser?.id || "",
+    }, { log: req.log });
+    return { invoice: updated, url: pref.init_point || null };
+  } catch (err) {
+    await repo.remove("invoices", invoice.id); // fatura sem link não fica órfã
+    throw err;
+  }
+}
+
 export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
   // Fatura baixada pelo webhook avisa no Discord (fail-open; duplicado não tem
   // result.invoice, então não re-avisa).
@@ -144,15 +196,7 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
   // Cria a preferência e, se o MP recusar COM e-mail do pagador, tenta de novo
   // sem ele. Link sem pré-preenchimento é melhor que venda travada; o cliente
   // digita o e-mail no próprio checkout.
-  async function createPreference(args, log) {
-    try {
-      return await mp.createCheckoutPreference(args);
-    } catch (err) {
-      if (!args.payerEmail) throw err;
-      log?.warn?.({ err: err.message }, "MP recusou com payer.email — tentando sem o e-mail do pagador");
-      return await mp.createCheckoutPreference({ ...args, payerEmail: undefined });
-    }
-  }
+  const createPreference = (args, log) => createPreferenceWith(mp, args, log);
 
   app.post("/api/subscriptions/:id/mp/link", async (req, reply) => {
     if (!mp.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Mercado Pago não configurado (MERCADOPAGO_ACCESS_TOKEN)" });
@@ -341,34 +385,13 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
     if (!customer) return reply.code(404).send({ error: "Not found" });
     const amount = Math.round(Number(req.body?.amount) * 100) / 100;
     if (!(amount > 0)) return reply.code(400).send({ error: "valor da cobrança deve ser positivo" });
-    const product = customer.saas ? await repo.get("products", customer.saas) : null;
-    const title = String(req.body?.title || "").trim()
-      || [product?.name || customer.saas, "cobrança"].filter(Boolean).join(" · ");
-    const nowIso = new Date().toISOString();
-    const invoice = await repo.create("invoices", {
-      customer: customer.id, saas: customer.saas || "", amount,
-      kind: req.body?.kind === "upsell" ? "upsell" : "manual", status: "open",
-      title, dueDate: req.body?.dueDate || nowIso, createdAt: nowIso,
-    });
     try {
-      const pref = await createPreference({
-        title, amount, externalReference: invoice.id,
-        payerEmail: payerEmailOrNone(customer.email),
-        ...mpUrls(req),
-        maxInstallments: Number(req.body?.maxInstallments) || undefined,
+      const { invoice, url } = await createCustomerCharge(repo, mp, req, customer, {
+        amount, title: req.body?.title, kind: req.body?.kind, dueDate: req.body?.dueDate,
+        maxInstallments: req.body?.maxInstallments, origin: req.body?.origin,
       });
-      const updated = await repo.update("invoices", invoice.id, { mpPrefId: pref.id, mpInitPoint: pref.init_point || null });
-      await recordPaymentLink(repo, {
-        saas: customer.saas || "", kind: "customer", origin: req.body?.origin || "cliente",
-        customer: customer.id, invoice: invoice.id,
-        targetName: customer.name || "", targetPhone: customer.phone || "",
-        amount, title, url: pref.init_point || "", prefId: pref.id || "",
-        payerEmail: customer.email || "", reference: invoice.id,
-        createdBy: req.authUser?.id || "",
-      }, { log: req.log });
-      return { ok: true, invoice: updated, url: pref.init_point || null };
+      return { ok: true, invoice, url };
     } catch (err) {
-      await repo.remove("invoices", invoice.id); // fatura sem link não fica órfã
       req.log.warn({ customer: customer.id, err: err.message }, "MP: falha ao criar link de cobrança");
       return reply.code(UPSTREAM_FAILED).send({ error: "MP recusou a criação do link de cobrança", detail: String(err.message || err).slice(0, 300) });
     }

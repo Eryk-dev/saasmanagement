@@ -16,6 +16,7 @@ import { scriptChecklist } from "../lib/scripts.js";
 import { displayName } from "../lib/users.js";
 import { paymentLabel, paymentUpfront, paymentRecurring, paymentCustom, PAY_STATUS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf, mpMethodLabel, accruedAmountOf, isRecurringClose } from "../lib/payments.js";
 import { PaymentMethodSelect } from "../components/lead-blocks.jsx";
+import { UpsellPanel } from "../components/UpsellPanel.jsx";
 import { useAttribution, leadPain } from "../lib/pains.js";
 import { isChurned, CHURN_REASONS, churnReasonLabel } from "../lib/churn.js";
 import { fetchLeveradsOrgs } from "../lib/leverads.js";
@@ -1183,10 +1184,6 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
   const fmtConsultaAt = (at) => at ? new Date(at).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).replace(".", "") : "";
   const CONSULT_STATUS = { done: { label: "feita", tone: "pos" }, scheduled: { label: "marcada", tone: "warn" }, canceled: { label: "cancelada", tone: "mut" } };
 
-  // Registrar upsell (trabalho de CS): cria uma fatura kind:"upsell" PAGA na data
-  // informada — assim já entra no CAIXA pela régua existente e conta na meta de
-  // upsell do CS (atribuída pelo dono do cliente). O bump do SSE recarrega a lista
-  // de faturas sozinho (deps [product, version] no efeito da tela).
   // Desfazer um fechamento ERRADO (Leo, 07/08): remove o cliente, a assinatura
   // e as faturas automáticas, limpa o carimbo de venda e devolve o card pro
   // funil — as métricas (ganho do mês, MRR, caixa) descontam sozinhas.
@@ -1243,23 +1240,19 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
     } finally { setChuSaving(false); }
   }
 
+  // Registrar UPSELL (venda extra pra cliente atual, trabalho de CS): o painel
+  // (components/UpsellPanel.jsx) grava pelo POST /customers/:id/upsell — fatura
+  // kind:"upsell" com o que foi vendido e quem vendeu; no modo recorrente a
+  // assinatura sobe e o MRR acompanha. Caixa, placar do CS e Financeiro leem
+  // a fatura pelas réguas existentes; o SSE recarrega a lista de faturas.
   const [upsellOpen, setUpsellOpen] = useState(false);
-  const [upVal, setUpVal] = useState("");
-  const [upDate, setUpDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [upSaving, setUpSaving] = useState(false);
-  async function saveUpsell() {
-    const amount = Number(upVal);
-    if (!(amount > 0) || !upDate || upSaving) return;
-    setUpSaving(true);
-    const at = new Date(`${upDate}T12:00:00`).toISOString();
-    try {
-      await api.create("invoices", {
-        customer: customer.id, saas: customer.saas || product?.id || "",
-        amount, kind: "upsell", status: "paid", dueDate: at, paidAt: at,
-        createdAt: new Date().toISOString(),
-      });
-      setUpsellOpen(false); setUpVal("");
-    } finally { setUpSaving(false); }
+  function upsellDone(r) {
+    Object.assign(customer, r?.customer || {}); // otimista: o objeto vem do SEED compartilhado
+    setUpsellOpen(false);
+    window.toast && window.toast(r?.url
+      ? "upsell registrado — link de pagamento copiado, manda pro cliente; a baixa é automática"
+      : r?.subscription ? "upsell registrado — mensalidade e MRR atualizados" : "upsell registrado", "pos");
+    refresh();
   }
 
   // Cobrança avulsa pelo Mercado Pago: fatura + link de pagamento anexados ao
@@ -1356,6 +1349,10 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
     { label: "Tempo de casa", value: tenureLabel(customer) || "defina o início" },
     { label: "Último contato", value: lastContact(customer) },
     { label: "Assinatura", value: st ? st.label : "sem assinatura" },
+    // Upsells registrados na ficha (upsell.js carimba contador e último item).
+    ...(Number(customer.upsellCount) > 0
+      ? [{ label: "Upsells", value: `${customer.upsellCount}${parseDay(customer.lastUpsellAt) ? ` · último ${fmtDay(parseDay(customer.lastUpsellAt))}` : ""}` }]
+      : []),
     // Vencimento = fim do ciclo atual; pausada/cancelada não tem ciclo correndo.
     ...(mainSub && (mainSub.status === "active" || mainSub.status === "past_due") && parseDay(mainSub.periodEnd)
       ? [{ label: "Vencimento", value: fmtDay(parseDay(mainSub.periodEnd)) }]
@@ -1376,7 +1373,14 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
               </div>
             </div>
             {!editing && !churned && (
-              <button onClick={() => setChurnOpen((v) => !v)}
+              <button onClick={() => { setUpsellOpen((v) => !v); setChurnOpen(false); }}
+                title="Registrar um upsell (venda extra pra este cliente): o que foi vendido, valor, avulso ou acréscimo na mensalidade, pago / a receber / link do Mercado Pago e quem vendeu. Entra no caixa, no placar e na meta de upsell do CS."
+                style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid color-mix(in srgb, var(--pos) 45%, transparent)", background: "var(--bg-1)", color: "var(--pos)", fontSize: 12.5, flexShrink: 0 }}>
+                {upsellOpen ? "cancelar" : "registrar upsell"}
+              </button>
+            )}
+            {!editing && !churned && (
+              <button onClick={() => { setChurnOpen((v) => !v); setUpsellOpen(false); }}
                 title="Registrar a saída deste cliente (churn): data + motivo. Cancela as assinaturas em aberto (espelha no Mercado Pago quando vinculadas) e tira o cliente do MRR e da base ativa — o histórico e o valor do contrato ficam registrados."
                 style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid color-mix(in srgb, var(--neg) 40%, transparent)", background: "var(--bg-1)", color: "var(--neg)", fontSize: 12.5, flexShrink: 0 }}>
                 {churnOpen ? "cancelar" : "registrar churn"}
@@ -1416,6 +1420,10 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
                 {chuSaving ? "…" : "desfazer churn"}
               </button>
             </div>
+          )}
+          {/* Painel do registrar upsell: item, modo, valor, pagamento e quem vendeu. */}
+          {upsellOpen && !churned && !editing && (
+            <UpsellPanel customer={customer} product={product} mpOn={mpOn} onDone={upsellDone} onCancel={() => setUpsellOpen(false)} />
           )}
           {/* Painel do registrar churn: data (padrão hoje) + motivo + observação. */}
           {churnOpen && !churned && (
@@ -1577,15 +1585,17 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
         <div style={BOX}>
           <div className="kicker" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
             <span>Últimas faturas</span>
-            <button onClick={() => setUpsellOpen((v) => !v)}
-              title="Registrar um upsell (venda extra pra um cliente atual). Vira fatura paga: entra no caixa e conta na meta de upsell do CS."
-              style={{ marginLeft: "auto", height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
-              {upsellOpen ? "cancelar" : "+ upsell"}
-            </button>
+            {!churned && (
+              <button onClick={() => { setUpsellOpen(true); setChurnOpen(false); }}
+                title="Registrar um upsell (venda extra pra este cliente) — abre o painel no topo da ficha."
+                style={{ marginLeft: "auto", height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
+                + upsell
+              </button>
+            )}
             {mpOn && (
               <button onClick={() => setChargeOpen((v) => !v)}
                 title="Gerar uma cobrança pelo Mercado Pago: cria a fatura e o link de pagamento anexado ao cliente. A baixa é automática quando pagar."
-                style={{ height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--accent-line, var(--line-2))", background: "var(--bg-1)", color: "var(--accent)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
+                style={{ marginLeft: churned ? "auto" : 0, height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--accent-line, var(--line-2))", background: "var(--bg-1)", color: "var(--accent)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
                 {chargeOpen ? "cancelar" : "+ cobrança"}
               </button>
             )}
@@ -1619,27 +1629,16 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
               </button>
             </div>
           )}
-          {upsellOpen && (
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "2px 0 10px" }}>
-              <span className="mono dim" style={{ fontSize: 12 }}>R$</span>
-              <input type="number" min="0" step="0.01" inputMode="decimal" autoFocus value={upVal}
-                onChange={(e) => setUpVal(e.target.value)} placeholder="valor"
-                onKeyDown={(e) => e.key === "Enter" && saveUpsell()}
-                className="tnum" style={{ height: 28, width: 96, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, textAlign: "right" }} />
-              <input type="date" value={upDate} onChange={(e) => setUpDate(e.target.value)}
-                style={{ height: 28, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontFamily: "var(--mono)" }} />
-              <button onClick={saveUpsell} disabled={!(Number(upVal) > 0) || upSaving}
-                style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "none", background: "var(--accent)", color: "#fff", fontSize: 12.5, fontWeight: 600, opacity: !(Number(upVal) > 0) || upSaving ? 0.5 : 1 }}>
-                {upSaving ? "salvando…" : "registrar"}
-              </button>
-            </div>
-          )}
           {invoices.filter((i) => i.kind !== "installment").slice(0, 6).map((i) => (
             <div key={i.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 13 }}>
               <span style={{ color: "var(--fg-2)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {i.dueDate ? new Date(i.dueDate).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "") : ""} · {i.title || i.kind || "fatura"}
                 {/* como o dinheiro entrou de verdade (carimbado pela baixa do MP) */}
                 {i.status === "paid" && mpMethodLabel(i) ? <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)" }}> · {mpMethodLabel(i)}</span> : null}
+                {/* upsell: o acréscimo recorrente e quem vendeu (atribuição do placar do CS) */}
+                {i.kind === "upsell" && (i.recurringDelta > 0 || i.soldBy)
+                  ? <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)" }}>{i.recurringDelta > 0 ? ` · +${money(i.recurringDelta)}/mês` : ""}{i.soldBy ? ` · por ${displayName(i.soldBy)}` : ""}</span>
+                  : null}
               </span>
               <span style={{ display: "inline-flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
                 {mpOn && i.status !== "paid" && (

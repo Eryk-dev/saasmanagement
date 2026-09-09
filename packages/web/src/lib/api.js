@@ -613,6 +613,10 @@ export const api = {
   // assinaturas em aberto, espelhando no MP) e o desfazer da marcação.
   customerChurn: (id, body = {}) => req("POST", `/api/customers/${id}/churn`, body),
   customerUnchurn: (id) => req("POST", `/api/customers/${id}/unchurn`),
+  // Upsell: venda extra pra cliente atual (item, valor, avulso ou acréscimo na
+  // mensalidade, pago / a receber / link do MP, quem vendeu). Devolve a fatura,
+  // o cliente atualizado e o link quando gerado.
+  customerUpsell: (id, body = {}) => req("POST", `/api/customers/${id}/upsell`, body),
   createUser: ({ name, password, roles }) => req("POST", "/api/auth/users", { name, password, ...(roles ? { roles } : {}) }),
   // Remove um usuário do time. force=true remove mesmo com leads atribuídos (409 sem force).
   removeUser: (id, force = false) => req("DELETE", `/api/auth/users/${id}${force ? "?force=1" : ""}`),

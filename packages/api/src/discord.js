@@ -119,6 +119,20 @@ export function makeDiscord({ fetch: f = globalThis.fetch, webhookUrl = "" } = {
 
     // Cliente marcado como CHURN (botão da ficha ou cancelamento no MP).
     // `mrr` = quanto ele valia por mês na hora da saída (arr congelado ÷ 12).
+    // Upsell registrado na ficha do cliente (routes.billing → upsell.js).
+    customerUpsell({ customer = {}, productName, summary, soldByName, mrr, url } = {}) {
+      return send({
+        title: `📈 Upsell: ${customer.name || customer.id || "?"}${mrr > 0 ? ` — agora ${money(mrr)}/mês` : ""}`,
+        color: COLORS.green,
+        fields: [
+          { name: "SaaS", value: productName || customer.saas },
+          { name: "Venda", value: summary },
+          { name: "Quem vendeu", value: soldByName },
+          ...(url ? [{ name: "Link de pagamento", value: url, inline: false }] : []),
+        ],
+      });
+    },
+
     customerChurned({ customer = {}, productName, reasonLabel, source, mrr } = {}) {
       return send({
         title: `📉 Churn: ${customer.name || customer.id || "?"}${mrr > 0 ? ` — ${money(mrr)}/mês` : ""}`,

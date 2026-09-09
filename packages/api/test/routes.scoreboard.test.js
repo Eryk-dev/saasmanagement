@@ -237,9 +237,20 @@ test("CS: upsell (fatura kind:upsell) conta e soma R$ pelo dono do cliente", asy
   // upsell de cliente de OUTRO dono → não entra no card do u_cs
   await repo.create("invoices", { id: "u3", saas: "leverads", customer: "c2", kind: "upsell", status: "paid", amount: 700, paidAt: "2026-07-08T12:00:00.000Z" });
 
-  const cs = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json().cs.find((x) => x.user === "u_cs");
-  assert.equal(cs.upsells, 1);
-  assert.equal(cs.upsellRevenue, 1200);
+  // upsell de cliente de outro dono VENDIDO pelo u_cs (soldBy manda) → conta pra ele
+  await repo.create("invoices", { id: "u4", saas: "leverads", customer: "c2", kind: "upsell", status: "paid", amount: 300, paidAt: "2026-07-12T12:00:00.000Z", soldBy: "u_cs" });
+  // upsell A RECEBER na janela: conta no nº, mas o R$ é só o que caiu
+  await repo.create("invoices", { id: "u5", saas: "leverads", customer: "c1", kind: "upsell", status: "open", amount: 5000, dueDate: "2026-07-20T12:00:00.000Z", soldBy: "u_cs" });
+  // upsell de cliente do u_cs vendido por OUTRO → vai pro outro
+  await repo.create("invoices", { id: "u6", saas: "leverads", customer: "c1", kind: "upsell", status: "paid", amount: 400, paidAt: "2026-07-12T12:00:00.000Z", soldBy: "outro" });
+
+  const res = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json().cs;
+  const cs = res.find((x) => x.user === "u_cs");
+  assert.equal(cs.upsells, 3); // u1 (dono, sem carimbo) + u4 + u5
+  assert.equal(cs.upsellRevenue, 1500); // 1200 + 300; o aberto (u5) não caiu
+  const outro = res.find((x) => x.user === "outro");
+  assert.equal(outro.upsells, 2); // u3 (dono) + u6 (soldBy)
+  assert.equal(outro.upsellRevenue, 1100);
   await app.close();
 });
 
