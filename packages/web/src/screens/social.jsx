@@ -6,6 +6,9 @@ import { ErrorBoundary } from "../components/error-boundary.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { useData } from "../data.jsx";
+import { currentUser, isAdminUser, userById, usersByRole } from "../lib/users.js";
+import { bizDay } from "../lib/format.js";
+import { toast } from "../atoms.jsx";
 import { CreativeEditor } from "./creative.jsx";
 import { useIsMobile } from "../lib/responsive.js";
 import { usePeriod } from "../components/period-picker.jsx";
@@ -338,8 +341,51 @@ function DiscoveryPanel({ product, sum }) {
   );
 }
 
+// Criativos de hoje (decisão do Leo, 10/09): o social media anota quantos
+// criativos fez no dia; a Análise de Desempenho soma por janela. A pessoa com
+// o papel `social` registra o próprio; admin registra pelo social único.
+function CreativesToday({ saasId, version }) {
+  const me = currentUser();
+  const admin = !me || isAdminUser(me); // acesso por chave mestra conta como gestão
+  const roles = (userById(me?.id) || me)?.roles || [];
+  const socials = usersByRole("social").filter((u) => !u.saas || u.saas === saasId);
+  const target = roles.includes("social") ? me?.id : admin && socials.length === 1 ? socials[0].id : null;
+  const [count, setCount] = useS(null);
+  const [busy, setBusy] = useS(false);
+  const hoje = bizDay(new Date());
+  useE(() => {
+    if (!saasId || !target) return;
+    let alive = true;
+    api.desempenho(saasId, { since: hoje, until: hoje })
+      .then((d) => alive && setCount(d?.logs?.[target]?.creatives || 0))
+      .catch(() => alive && setCount(null));
+    return () => { alive = false; };
+  }, [saasId, target, version, hoje]);
+  if (!target) return null;
+  const bump = async (d) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const r = await api.desempenhoLog(saasId, { user: target, inc: { creatives: d } });
+      setCount(r?.creatives ?? Math.max(0, (count || 0) + d));
+    } catch (e) { toast(`Não deu pra registrar · ${e?.message || "tente de novo"}`, "neg"); }
+    finally { setBusy(false); }
+  };
+  const btn = { width: 28, height: 28, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 14, fontWeight: 700, lineHeight: 1, opacity: busy ? 0.5 : 1 };
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", border: "1px solid var(--line-1)", background: "var(--bg-1)", borderRadius: "var(--r-3)", padding: "8px 12px" }}>
+      <span style={{ fontSize: 13, fontWeight: 600 }}>🎨 Criativos de hoje{target !== me?.id ? ` · ${userById(target)?.name || target}` : ""}</span>
+      <button onClick={() => bump(-1)} disabled={busy || !(count > 0)} style={btn}>−</button>
+      <span className="tnum" style={{ fontSize: 15, fontWeight: 700, minWidth: 18, textAlign: "center" }}>{count == null ? "—" : count}</span>
+      <button onClick={() => bump(1)} disabled={busy} style={btn}>+</button>
+      <span className="dim" style={{ fontSize: 12 }}>anúncios, estáticos e vídeos feitos no dia · conta na Análise de Desempenho</span>
+    </div>
+  );
+}
+
 function SocialScreen() {
   const [product] = useActiveSaas();
+  const { version } = useData(); // SSE: o registro de criativos acompanha o resto
   const [sum, setSum] = useS(null);
   const [posts, setPosts] = useS([]);
   const [audience, setAudience] = useS(null); // demografia + melhor horário (endpoint à parte, caro)
@@ -454,6 +500,7 @@ function SocialScreen() {
         </ErrorBoundary>
       ) : (
       <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+        <CreativesToday saasId={product?.id} version={version} />
         {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
         {!sum && !err && <div className="mono dim" style={{ fontSize: 12 }}>carregando métricas…</div>}
         {/* Sem token no servidor: o cartão explica o passo de infra. Com token

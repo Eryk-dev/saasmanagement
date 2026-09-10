@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { meta as defaultMeta, onMetaThrottle } from "./meta.js";
 import { stagePassCounts } from "./routes.funnel-metrics.js";
 import { kindOf } from "./stages.js";
-import { dayKey, isRealLead, isSaleLead, winsIn, customerStartMap, leadOrigin, LEAD_ORIGINS, callOutcome, upsellSalesIn, upsellContractedOf } from "./metrics-core.js";
+import { dayKey, isRealLead, isSaleLead, winsIn, customerStartMap, leadOrigin, LEAD_ORIGINS, callOutcome, upsellSalesIn, upsellContractedOf, leadGrade } from "./metrics-core.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 import { painCode } from "./attribution.js";
 export { painCode };
@@ -124,32 +124,10 @@ function parseBudget(raw) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-// Cliente A/B/C/D/E — a MESMA régua do leadTier() da web (packages/web/src/lib/
-// ui.js, mantê-las iguais): matriz CONTAS × ANÚNCIOS (listings; `volume` é o
-// legado semanal), TABELA DE CONSULTA redesenhada pelo Leo em 21/07 (não
-// fórmula, pra bater exato). Lead sem nenhuma resposta fica de fora (null).
-const GRADE_ACCOUNTS = { "1": 0, "2": 1, "3-5": 2, "6-10": 3, "10+": 4 };
-const GRADE_LISTINGS = { "0-100": 0, "100-500": 1, "500-2000": 2, "2000-10000": 3, "10000+": 4 };
-const GRADE_VOLUME = { "0-10": 0, "10-50": 1, "50-200": 2, "200+": 3 };
-//        ≤100 100-500 500-2k 2-10k 10k+
-const GRADE_GRID = [
-  ["E", "D", "C", "C", "C"], // 1 conta — 500-2k anúncios já é C (decisão do Leo, 24/07)
-  ["D", "C", "C", "B", "B"], // 2 contas
-  ["C", "B", "B", "A", "A"], // 3-5 contas
-  ["B", "B", "A", "S", "S"], // 6-10 contas
-  ["A", "A", "A", "S", "S"], // 10+ contas
-];
-export function leadGrade(l) {
-  const acc = GRADE_ACCOUNTS[l?.accounts];
-  const ads = l?.listings != null && l.listings !== "" ? GRADE_LISTINGS[l.listings] : GRADE_VOLUME[l?.volume];
-  if (acc == null && ads == null) return null;
-  return GRADE_GRID[acc ?? 0][ads ?? 0];
-}
-// Faixas que a régua ENTENDE, por campo do lead. Quem escreve resposta de volta
-// no lead (a tela zero da proposta) checa aqui antes: valor fora dessas faixas
-// não muda a nota, só sujaria o cadastro.
-export const GRADE_BANDS = { accounts: GRADE_ACCOUNTS, listings: GRADE_LISTINGS, volume: GRADE_VOLUME };
-export const gradeBandKnown = (field, value) => !!GRADE_BANDS[field] && GRADE_BANDS[field][value] != null;
+// Cliente S/A/B/C/D/E: a régua MORA no metrics-core (leadGrade, GRADE_BANDS,
+// gradeBandKnown, isIcpLead) desde 10/09, porque o placar por pessoa também
+// lê. Re-exportada daqui pros importadores antigos (forms, sdr-brain, agenda).
+export { leadGrade, GRADE_BANDS, gradeBandKnown } from "./metrics-core.js";
 const GRADES = ["S", "A", "B", "C", "D", "E"];
 const gradeCounts = (leads) => {
   const abc = { S: 0, A: 0, B: 0, C: 0, D: 0, E: 0 };

@@ -20,7 +20,7 @@
 // tem horário mais de 1 dia útil depois (velocidade ganha do escalão); S/A/B
 // nunca desce. Pool vazio cai pra todos os closers — agendamento nunca trava.
 import { kindOf } from "./stages.js";
-import { leadGrade } from "./routes.marketing.js";
+import { leadGrade, ICP_GRADES } from "./metrics-core.js";
 
 const BRT_MS = 3 * 3_600_000;
 export const SLOT_MIN = 30;
@@ -99,7 +99,7 @@ function busyOf(userId, { leads, blocks, consultations, productById, excludeLead
 
 // ── Pools de closer por nível ───────────────────────────────────────────────
 const levelOf = (u) => { const n = Math.floor(Number(u?.compLevel)); return n >= 1 && n <= 3 ? n : 1; };
-export const UPPER_GRADES = new Set(["S", "A", "B"]); // "B+" da régua do Leo
+export const UPPER_GRADES = ICP_GRADES; // "B+" da régua do Leo (S/A/B) — régua única no metrics-core
 
 export function closerPools(users, saas) {
   const closers = (users || []).filter((u) =>

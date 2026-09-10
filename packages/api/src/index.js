@@ -18,6 +18,7 @@ import { startConsultationSummaries } from "./consultations.js";
 import { startDripSequences } from "./drip-runner.js";
 import { startSdrFlow } from "./sdr-flow.js";
 import { startTrainingReminder } from "./training-reminder.js";
+import { startStoriesCapture } from "./routes.desempenho.js";
 import { startShopifySync } from "./routes.webhooks.js";
 import { makeShopify } from "./shopify.js";
 import { startMpSync } from "./mp-payments.js";
@@ -106,6 +107,9 @@ try {
   startSdrFlow(repo, { ...app.integrationClients, log: app.log });
   // Lembrete diário de treinamento (flashcards vencendo) — no-op sem Discord.
   startTrainingReminder(repo, { log: app.log });
+  // Captura de stories do Instagram de hora em hora (a Graph só entrega story
+  // vivo): alimenta o "Stories" da Análise de Desempenho. No-op sem token.
+  startStoriesCapture(repo, { log: app.log });
   // Reconciliação da Shopify (UniqueKids): puxa os pedidos pagos e preenche os
   // leads que faltam — rede de segurança pro webhook orders/paid (que ficou 8
   // dias sem entregar). No-op sem SHOPIFY_ADMIN_TOKEN + SHOPIFY_STORE.

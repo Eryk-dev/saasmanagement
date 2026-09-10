@@ -110,6 +110,7 @@ const NAV = [
   { id: "calls",         label: "Análise de Pitches",    icon: "◑", group: "analises", notSaas: "elo" },
   { id: "integrations",  label: "Análise de Integração", icon: "◒", group: "analises", notSaas: "elo" },
   { id: "funcionarios",  label: "Análise de Equipe",     icon: "◓", group: "analises", notSaas: "elo" },
+  { id: "desempenho",    label: "Análise de Desempenho", icon: "◕", group: "analises", notSaas: "elo" }, // revisão de fim de dia por pessoa (SDR · social · closer)
 
   { id: "tasks",      label: "Tarefas",        icon: "▣",  group: "geral" },
   { id: "mindmaps",   label: "Mapas mentais",  icon: "⌬",  group: "geral" },
@@ -152,6 +153,7 @@ const ICONS = {
   eloapp: <NavSvg><path d="M12 20.4l-7.2-7.1a4.6 4.6 0 0 1 6.5-6.5l.7.7.7-.7a4.6 4.6 0 0 1 6.5 6.5z" /></NavSvg>,
   landingpages: <NavSvg><rect x="2.8" y="4" width="18.4" height="16" rx="2" /><path d="M2.8 8.6h18.4" /><path d="M5.6 6.3h.01M8 6.3h.01" /><path d="M6 12.4h7M6 15.6h4.6" /></NavSvg>,
   funcionarios: <NavSvg><rect x="6" y="3" width="12" height="18" rx="2" /><circle cx="12" cy="10" r="2.1" /><path d="M8.9 16.4a3.4 3.4 0 0 1 6.2 0" /><path d="M10.2 3.4h3.6" /></NavSvg>,
+  desempenho: <NavSvg><path d="M4 19.5h16" /><path d="M6.5 16.5v-5" /><path d="M10.5 16.5v-9" /><path d="M14.5 16.5v-6.5" /><path d="M18.5 16.5V5.5" /></NavSvg>,
   tasks: <NavSvg><rect x="3.6" y="3.6" width="16.8" height="16.8" rx="2.4" /><path d="M8.4 12.4l2.6 2.6 4.9-5.5" /></NavSvg>,
   mindmaps: <NavSvg><circle cx="12" cy="5.2" r="2.4" /><circle cx="5.4" cy="18.2" r="2.4" /><circle cx="18.6" cy="18.2" r="2.4" /><path d="M12 7.6v3.6M12 11.2l-5.2 5M12 11.2l5.2 5" /></NavSvg>,
   metas: <NavSvg><circle cx="12" cy="12" r="8.6" /><circle cx="12" cy="12" r="4.9" /><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" /></NavSvg>,

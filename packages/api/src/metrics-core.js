@@ -408,23 +408,34 @@ export function callCohortIn(leads, actsOf, inWin) {
 // `inWin` (opcional): com a janela na mão, a testemunha só fala se o resumo é
 // DA janela — senão o lead remarcado pro mês seguinte carregaria o resumo do
 // mês anterior e contaria "realizada" antes da call nova acontecer.
+// Desfecho de UMA call — o classificador por lead que o callOutcome soma.
+// Devolve "won" | "shown" | "noShow" | "pending" (won também é shown na
+// soma). Exposto pra o placar listar QUAIS leads furaram (Análise de
+// Desempenho, 10/09) com a MESMA régua da contagem.
+export function callResultOf(product, l, actsOf, today = null, inWin = null) {
+  if (isWonLead(product, l)) return "won";
+  const lost = isLoss(product, l.stage);
+  const w = callWitness(actsOf(l.id));
+  const temp = w && (!inWin || inWin(w.at)) ? w.temperatura : "";
+  if (temp === "frio") return "noShow";
+  if (temp === "quente" || temp === "morno") return "shown";
+  const advanced = FORWARD_KINDS.has(kindOf(product, l.stage))
+    || (actsOf(l.id) || []).some((a) => a.type === "stage" && FORWARD_KINDS.has(kindOf(product, a.meta?.to)));
+  if (advanced || (lost && l.lostReason !== "nao_compareceu")) return "shown";
+  if ((lost && l.lostReason === "nao_compareceu") || isNoShowStage(l.stage)) return "noShow";
+  // Não avançou e não é furo marcado: futuro = ainda vai acontecer; senão,
+  // call vencida que não virou nada = não compareceu.
+  if (today && dayKey(l.callAt) > today) return "pending";
+  return "noShow";
+}
+
 export function callOutcome(product, list, actsOf, today = null, inWin = null) {
   let shown = 0, noShow = 0, pending = 0, won = 0;
   for (const l of list) {
-    const isW = isWonLead(product, l);
-    const lost = isLoss(product, l.stage);
-    if (isW) { won++; shown++; continue; }
-    const w = callWitness(actsOf(l.id));
-    const temp = w && (!inWin || inWin(w.at)) ? w.temperatura : "";
-    if (temp === "frio") { noShow++; continue; }
-    if (temp === "quente" || temp === "morno") { shown++; continue; }
-    const advanced = FORWARD_KINDS.has(kindOf(product, l.stage))
-      || (actsOf(l.id) || []).some((a) => a.type === "stage" && FORWARD_KINDS.has(kindOf(product, a.meta?.to)));
-    if (advanced || (lost && l.lostReason !== "nao_compareceu")) { shown++; continue; }
-    if ((lost && l.lostReason === "nao_compareceu") || isNoShowStage(l.stage)) { noShow++; continue; }
-    // Não avançou e não é furo marcado: futuro = ainda vai acontecer; senão,
-    // call vencida que não virou nada = não compareceu.
-    if (today && dayKey(l.callAt) > today) pending++;
+    const r = callResultOf(product, l, actsOf, today, inWin);
+    if (r === "won") { won++; shown++; }
+    else if (r === "shown") shown++;
+    else if (r === "pending") pending++;
     else noShow++;
   }
   return { shown, noShow, pending, won };
@@ -481,6 +492,117 @@ export function contactAttribution({ leads, actsOf, waMessages, saas, inWin, hum
   // `authorOf` = leadId → autor creditado (base das taxas por pessoa em coorte).
   const authorOf = new Map([...first].map(([id, v]) => [id, v.author]));
   return { leadIds: new Set(first.keys()), firstAt, byAuthor, authorOf, automationReached: autoReached.size };
+}
+
+// ── Nota do lead (S/A/B/C/D/E) e ICP ─────────────────────────────────────────
+// Régua ÚNICA da nota do lead — a MESMA do leadTier() da web (packages/web/
+// src/lib/ui.js, mantê-las iguais): matriz CONTAS × ANÚNCIOS (listings;
+// `volume` é o legado semanal), TABELA DE CONSULTA redesenhada pelo Leo em
+// 21/07 (não fórmula, pra bater exato). Lead sem nenhuma resposta fica de fora
+// (null). Morava em routes.marketing.js; veio pra cá porque o placar por
+// pessoa também lê ("calls agendadas com ICP", 10/09) e regra de métrica nasce
+// aqui. routes.marketing.js re-exporta pros importadores antigos.
+const GRADE_ACCOUNTS = { "1": 0, "2": 1, "3-5": 2, "6-10": 3, "10+": 4 };
+const GRADE_LISTINGS = { "0-100": 0, "100-500": 1, "500-2000": 2, "2000-10000": 3, "10000+": 4 };
+const GRADE_VOLUME = { "0-10": 0, "10-50": 1, "50-200": 2, "200+": 3 };
+//        ≤100 100-500 500-2k 2-10k 10k+
+const GRADE_GRID = [
+  ["E", "D", "C", "C", "C"], // 1 conta — 500-2k anúncios já é C (decisão do Leo, 24/07)
+  ["D", "C", "C", "B", "B"], // 2 contas
+  ["C", "B", "B", "A", "A"], // 3-5 contas
+  ["B", "B", "A", "S", "S"], // 6-10 contas
+  ["A", "A", "A", "S", "S"], // 10+ contas
+];
+export function leadGrade(l) {
+  const acc = GRADE_ACCOUNTS[l?.accounts];
+  const ads = l?.listings != null && l.listings !== "" ? GRADE_LISTINGS[l.listings] : GRADE_VOLUME[l?.volume];
+  if (acc == null && ads == null) return null;
+  return GRADE_GRID[acc ?? 0][ads ?? 0];
+}
+// Faixas que a régua ENTENDE, por campo do lead. Quem escreve resposta de volta
+// no lead (a tela zero da proposta) checa aqui antes: valor fora dessas faixas
+// não muda a nota, só sujaria o cadastro.
+export const GRADE_BANDS = { accounts: GRADE_ACCOUNTS, listings: GRADE_LISTINGS, volume: GRADE_VOLUME };
+export const gradeBandKnown = (field, value) => !!GRADE_BANDS[field] && GRADE_BANDS[field][value] != null;
+// ICP = nota S/A/B ("B+" da régua do Leo) — a mesma faixa que manda a call pro
+// pool de closer sênior (agenda-slots). "Call agendada com ICP" no placar lê
+// daqui.
+export const ICP_GRADES = new Set(["S", "A", "B"]);
+export const isIcpLead = (l) => ICP_GRADES.has(leadGrade(l) || "");
+
+// ── Social selling ───────────────────────────────────────────────────────────
+// Lead que nasceu do social selling da SDR (decisão do Leo, 10/09): a origem
+// escrita no cadastro ("Social selling", sugestão do form) é o carimbo. Casa
+// com ou sem espaço/hífen pra o texto livre não perder o lead.
+export const SOCIAL_SELLING_SOURCE = "Social selling";
+export const isSocialSellingLead = (l) => /social[\s_-]?selling/i.test(String(l?.source || "")) || /social[\s_-]?selling/i.test(String(l?.utm?.source || ""));
+
+// ── Contatos SEM resposta ────────────────────────────────────────────────────
+// Dos leads que a pessoa contatou na janela (o 1º contato humano é dela —
+// contactAttribution), quais NUNCA responderam depois desse contato: resposta
+// = mensagem RECEBIDA no WhatsApp (direction "in") do lead com `at` depois do
+// 1º contato, até agora (não só na janela — quem respondeu ontem à noite
+// respondeu). Ligação atendida não deixa registro de "resposta", então é o
+// WhatsApp que decide; é a régua honesta com o dado que existe.
+// Devolve Map<author, { count, leadIds }>; leadIds na ordem do 1º contato.
+export function unansweredContacts({ contact, waMessages, saas } = {}) {
+  const lastIn = new Map(); // leadId → maior `at` recebido
+  for (const m of waMessages || []) {
+    if (m.direction !== "in" || !m.leadId) continue;
+    if (saas && m.saas && m.saas !== saas) continue;
+    const cur = lastIn.get(m.leadId) || "";
+    if (String(m.at || "") > cur) lastIn.set(m.leadId, String(m.at || ""));
+  }
+  const out = new Map();
+  const entries = [...(contact?.firstAt || new Map())].sort((a, b) => String(a[1]).localeCompare(String(b[1])));
+  for (const [leadId, firstAt] of entries) {
+    const author = contact.authorOf?.get(leadId);
+    if (!author) continue;
+    const replied = (lastIn.get(leadId) || "") > String(firstAt || "");
+    if (replied) continue;
+    const e = out.get(author) || { count: 0, leadIds: [] };
+    e.count++;
+    e.leadIds.push(leadId);
+    out.set(author, e);
+  }
+  return out;
+}
+
+// ── Follow-ups EXECUTADOS pelo closer ────────────────────────────────────────
+// Não existe registro explícito de "fiz o follow-up": executar é TOCAR o lead
+// (toque na timeline com TOUCH_TYPES ou mensagem enviada no inbox, autor
+// humano) enquanto ele está em etapa de kind followup. Vale o lead que CAIU em
+// follow-up na janela (transição no log ou stageSince) ou que está lá agora.
+// Conta 1 por lead POR DIA (3 mensagens na mesma conversa = 1 follow-up).
+// Devolve Map<author, { count, leadIds }>.
+export function followupTouches({ product, leads, actsOf, waMessages, inWin, humanIds } = {}) {
+  const inFollowup = new Set();
+  for (const l of leads || []) {
+    if (kindOf(product, l.stage) === "followup") { inFollowup.add(l.id); continue; }
+    for (const a of actsOf(l.id) || []) {
+      if (a.type === "stage" && inWin(a.at) && kindOf(product, a.meta?.to) === "followup") { inFollowup.add(l.id); break; }
+    }
+  }
+  const seen = new Map(); // author → Set("leadId|day")
+  const touch = (author, leadId, at) => {
+    if (!author || !humanIds?.has(author) || !inFollowup.has(leadId) || !inWin(at)) return;
+    if (!seen.has(author)) seen.set(author, new Set());
+    seen.get(author).add(`${leadId}|${dayKey(at)}`);
+  };
+  for (const l of leads || []) {
+    for (const a of actsOf(l.id) || []) if (TOUCH_TYPES.has(a.type)) touch(a.author, l.id, a.at);
+  }
+  for (const m of waMessages || []) {
+    if (m.direction !== "out" || !m.leadId) continue;
+    if (product?.id && m.saas && m.saas !== product.id) continue;
+    touch(m.author, m.leadId, m.at);
+  }
+  const out = new Map();
+  for (const [author, keys] of seen) {
+    const leadIds = [...new Set([...keys].map((k) => k.split("|")[0]))];
+    out.set(author, { count: keys.size, leadIds });
+  }
+  return out;
 }
 
 // ── Primeira RESPOSTA por qualquer canal (humano OU robô) ────────────────────

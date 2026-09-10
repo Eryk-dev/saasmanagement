@@ -593,6 +593,15 @@ export const api = {
     for (const [k, v] of Object.entries({ since, until, prevSince, prevUntil })) if (v) q.set(k, v);
     return req("GET", `/api/scoreboard/${saas}${q.toString() ? `?${q}` : ""}`);
   },
+  // Análise de Desempenho: objeções por closer na janela, produção do social
+  // (feed/stories) e os registros manuais do dia (social selling/criativos).
+  desempenho: (saas, { since, until } = {}) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries({ since, until })) if (v) q.set(k, v);
+    return req("GET", `/api/desempenho/${encodeURIComponent(saas)}${q.toString() ? `?${q}` : ""}`);
+  },
+  // Registro do dia: { user?, day?, socialSelling?, creatives?, inc: { socialSelling?, creatives? }, note? }
+  desempenhoLog: (saas, body = {}) => req("POST", `/api/desempenho/${encodeURIComponent(saas)}/log`, body),
   // Catálogo id → nome (campanha/conjunto/anúncio) pro bloco de atribuição.
   marketingAttribution: (saas) => req("GET", `/api/marketing/${saas}/attribution`),
   // Variante de welcome por IA (insight "welcome fraca" → aplicar).

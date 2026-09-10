@@ -13,7 +13,8 @@ import { TEAM_METRICS, META_CATALOG, deriveGoalsFromPace } from "./routes.metas.
 import { RATE_BENCHMARKS, computePipelinePace } from "./routes.pipeline-pace.js";
 import {
   DAY_MS as DAY, round2, dayKey, rangeFromQuery, isRealLead, isSaleLead, isWonLead,
-  callOutcome as coreCallOutcome, callCohortIn,
+  callOutcome as coreCallOutcome, callResultOf as coreCallResultOf, callCohortIn,
+  isIcpLead, isSocialSellingLead, unansweredContacts, followupTouches,
   winsIn, customerStartMap, contactAttribution, firstResponseAttribution, isReferralLead,
   classCounts, cashBucketsIn, mentoriaScore, keyAccountIds, isKeyAccountLead,
   saleValuer, revenueOf, tcvOf,
@@ -215,6 +216,12 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     // `inWin` vai junto: a testemunha (resumo de call) só decide compareceu/
     // furou quando o resumo é DESTA janela (ver callOutcome no metrics-core).
     const callOutcome = (list) => coreCallOutcome(product, list, actsOf, today, inWin);
+    // QUAIS leads furaram (mesma régua da contagem) — a Análise de Desempenho
+    // lista os nomes na revisão do dia. Teto de 50 pra o payload não inchar.
+    const callResult = (l) => coreCallResultOf(product, l, actsOf, today, inWin);
+    const LIST_MAX = 50;
+    const refs = (list) => list.slice(0, LIST_MAX).map((l) => ({ id: l.id, name: l.name || "" }));
+    const noShowRefs = (list) => refs(list.filter((l) => callResult(l) === "noShow"));
     const customerStartByLead = customerStartMap(customers);
     const winTransitionsFor = (list) => winsIn(product, list, inWin, customerStartByLead);
 
@@ -275,6 +282,14 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     const humanIds = new Set(users.map((u) => u.id));
     const contact = contactAttribution({ leads, actsOf, waMessages, saas: product.id, inWin, humanIds, creditAllTo: soloSdr || undefined });
     const contactsOf = (uid) => contact.byAuthor.get(uid) || 0;
+    // Contatos SEM resposta (Análise de Desempenho, 10/09): dos leads que a
+    // pessoa contatou na janela, quais nunca responderam no WhatsApp depois do
+    // 1º contato. Mesma atribuição do `contacted` (contactAttribution, SDR
+    // único herda tudo), então "sem resposta" ⊆ "contatados" por construção.
+    const unanswered = unansweredContacts({ contact, waMessages, saas: product.id });
+    // Follow-ups EXECUTADOS pelo closer: toque humano em lead em Follow-up na
+    // janela, 1 por lead por dia (régua no metrics-core).
+    const fuTouches = followupTouches({ product, leads, actsOf, waMessages, inWin, humanIds });
     // ALCANCE por QUALQUER canal (sdr-bot incluído) — desde 03/09 (Leo) é a
     // régua do FUNIL e das taxas de cobertura: com o SDR automatizado atendendo
     // todo lead no 1º minuto, "contatado = só humano" lia 40% com cobertura real
@@ -346,6 +361,14 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       const booked = callCohortIn(leads.filter((l) => l.owner === uid || (!l.owner && uid === soloSdr)), actsOf, inWin);
       const callsBookedOrganic = booked.length;
       const callsBooked = callsBookedOrganic + (bookedHist.get(uid) || 0);
+      // Das agendadas, quantas são ICP (nota S/A/B — a faixa que vai pro closer
+      // sênior). Só orgânico: o histórico não tem nota.
+      const icpBooked = booked.filter(isIcpLead);
+      // Social selling que VIROU lead: lead com origem "Social selling" criado
+      // na janela com ela de dona (o executado vem do registro diário, na
+      // rota /api/desempenho).
+      const ssLeads = mine.filter((l) => inWin(l.createdAt) && isSocialSellingLead(l));
+      const noReplyOf = unanswered.get(uid) || { count: 0, leadIds: [] };
 
       // Show-rate e calls→ganho sobre o cohort de calls agendadas (callOutcome).
       const { shown, noShow, pending, won: wonFromCalls } = callOutcome(booked);
@@ -423,6 +446,9 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
         contacted,
         reschedules,
         callsBooked,
+        callsBookedIcp: icpBooked.length,   // das agendadas, as com nota S/A/B
+        noReply: noReplyOf.count,           // contatados por ela que nunca responderam
+        socialSellingLeads: ssLeads.length, // leads nascidos do social selling dela
         bookingRate,
         firstTouchMedianH: median(touchHours),
         withinSla: touchHours.filter((h) => h <= slaMs / HOUR).length,
@@ -433,6 +459,13 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
         pending, // agendadas pro futuro (ainda vão acontecer)
         wonFromCalls,
         callWinRate: callsBookedOrganic > 0 ? round2((wonFromCalls / callsBookedOrganic) * 100) : null,
+        // Quem é quem (Análise de Desempenho): até 50 refs por lista.
+        detail: {
+          noShow: noShowRefs(booked),
+          icp: refs(icpBooked),
+          noReply: refs(noReplyOf.leadIds.map((id) => leadById.get(id)).filter(Boolean)),
+          socialSelling: refs(ssLeads),
+        },
         // Metas por TAXA (o alvo absoluto de calls sai de leads × bookingRate na
         // UI); callsBooked absoluto fica de fallback se alguém preferir fixo.
         goals: { ...goalMap(uid, "sdr", ["contactRate", "bookingRate", "showRate", "callsBooked", "contacts", "won", "revenue", "mentoriaWon", "mentoriaRevenue"]), callWinRate: bookedWinGoal(uid, "sdr") },
@@ -477,7 +510,9 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       const callLeads = callCohortIn(mine, actsOf, inWin);
       const calls = callLeads.length;
       // Compareceu/furo pela MESMA régua da safra (callOutcome do metrics-core).
-      const callsShown = callOutcome(callLeads).shown + (shownHist.get(uid) || 0);
+      const callOut = callOutcome(callLeads);
+      const callsShown = callOut.shown + (shownHist.get(uid) || 0);
+      const fuDone = fuTouches.get(uid) || { count: 0, leadIds: [] };
       // GANHO do closer = venda na janela pela régua oficial (isWonLead +
       // wonAt, metrics-core). O valor do negócio é lançado no fechamento
       // (ver stage-move/DestinoSection).
@@ -537,6 +572,9 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
           won: wonN, revenue: round2(revenue), ticket: coreWonN > 0 ? round2(coreRevenue / coreWonN) : null,
         }),
         calls, callsShown,
+        noShow: callOut.noShow,   // calls dele que furaram (mesma régua do SDR)
+        pending: callOut.pending, // marcadas pro futuro (ainda vão acontecer)
+        followupsDone: fuDone.count, // follow-ups executados (toque em lead em Follow-up, 1/lead/dia)
         won: wonN, revenue: round2(revenue), contracted, lost: lost.length,
         upsells: upsellN, upsellRevenue, // a parte do won/revenue que veio de upsell (venda pra cliente atual)
         conversaoCall: conversao,
@@ -552,6 +590,10 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
         followupCohort: fuCohort.length,     // caíram em follow-up na janela
         followupWon,                         // desses, resgatados pra ganho
         followupWinRate: fuCohort.length > 0 ? round2((followupWon / fuCohort.length) * 100) : null,
+        detail: {
+          noShow: noShowRefs(callLeads),
+          followups: refs(fuDone.leadIds.map((id) => leadById.get(id)).filter(Boolean)),
+        },
         goals: { ...goalMap(uid, "closer", ["won", "revenue", "conversaoCall", "ticket", "followupWinRate", "callsShown"]), winRateCall: bookedWinGoal(uid, "closer") },
       };
     }).filter((p) => closerRole.has(p.user) || p.calls > 0 || p.won > 0) // closer legado (ex.: CS que fechou) só com movimento; closer real sempre
