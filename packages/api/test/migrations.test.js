@@ -778,3 +778,29 @@ test("custos %: Checkout vira base cartão 12x e Imposto vira recebidos, uma vez
   assert.equal((await repo.get("expenses", "e5")).base, "won");
   assert.equal(await migrateExpensePctBases(repo), 0); // idempotente
 });
+
+// ── Blog: configuração da redação ───────────────────────────────────────────
+import { ensureBlogSettings } from "../src/migrations.js";
+import { BLOG_DEFAULT_RULES } from "../src/blog-config.js";
+
+test("ensureBlogSettings: cria o doc blog_leverads com os defaults uma vez só", async () => {
+  const repo = makeMemRepo();
+  assert.equal(await ensureBlogSettings(repo), false); // sem produto, não mexe
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNNEL });
+  assert.equal(await ensureBlogSettings(repo), true);
+  const doc = await repo.get("app_config", "blog_leverads");
+  assert.equal(doc.saas, "leverads");
+  assert.equal(doc.rules.autoPublicar, false);
+  assert.deepEqual(doc.rules.diasPublicacao, BLOG_DEFAULT_RULES.diasPublicacao);
+  assert.equal(doc.state.pautaRounds, 0);
+  assert.deepEqual(doc.log, []);
+  assert.equal(await ensureBlogSettings(repo), false); // idempotente
+});
+
+test("ensureBlogSettings: nunca sobrescreve regra editada pelo dono", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNNEL });
+  await repo.create("app_config", { id: "blog_leverads", saas: "leverads", rules: { autoPublicar: true }, state: {}, log: [] });
+  assert.equal(await ensureBlogSettings(repo), false);
+  assert.equal((await repo.get("app_config", "blog_leverads")).rules.autoPublicar, true);
+});

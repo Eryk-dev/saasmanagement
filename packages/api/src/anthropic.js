@@ -460,6 +460,144 @@ const COPILOT_SCHEMA = {
   },
 };
 
+// ── Blog SEO (blog-engine.js): pautas, rascunho e revisão ─────────────────
+// Versão dos prompts do blog. Sobe quando o texto dos prompts muda, pra o post
+// gravar com qual receita foi escrito (ai.promptVersion).
+export const BLOG_PROMPT_VERSION = "2026-09-v1";
+
+// Voz e regras invioláveis, compartilhadas pelos 3 prompts do blog. O lint
+// (blog-lint.js) confere depois: travessão, preço, "clon*", nome, contato.
+export const BLOG_VOICE = `Você escreve o blog da LeverAds, empresa de tecnologia que escala operações de venda em marketplace (Mercado Livre e Shopee): a plataforma publica e mantém anúncios sincronizados entre várias contas, com estoque integrado e ficha técnica completada por IA.
+Regras invioláveis do texto:
+1. Português do Brasil, direto, sem enrolação. Quando falar da empresa, use primeira pessoa do plural (nós, a gente, a LeverAds).
+2. NUNCA use travessão (o traço longo). Use vírgula, ponto ou parênteses.
+3. NUNCA escreva preço, valor, parcela, plano, mensalidade ou desconto. Nem em exemplo.
+4. NUNCA use as palavras clonar, clonagem ou clone. Diga publicar, replicar, sincronizar, operar, escalar.
+5. NUNCA cite nome de pessoa, loja ou cliente. Fale "um lojista de autopeças", "uma operação com quatro contas".
+6. Só use números que estejam na seção RESULTADOS, e sempre no formato {{token||texto qualitativo}} (o token entre chaves duplas e, depois de duas barras verticais, a frase que fica no lugar se o número não existir). Sem número disponível, escreva de forma qualitativa.
+7. Sem tabela e sem imagem no markdown. Só títulos (##, ###), parágrafos, listas, citação e negrito.
+8. Nada de promessa de ganho garantido, "dobrar as vendas" ou "100% de".
+9. Sem emoji. Sem jargão vazio de marketing.`;
+
+const BLOG_PAUTAS_SYSTEM = `${BLOG_VOICE}
+
+Sua função agora: EDITOR-CHEFE. Você recebe um digest do que a operação aprende com leads, calls e WhatsApp e propõe pautas de blog.
+Critérios:
+- Cada pauta é um tema que um lojista de marketplace digita no Google de verdade, ligado a um problema que a LeverAds resolve.
+- Priorize as dores que fecham venda (seção DORES QUE FECHAM VENDA) e o nicho de autopeças.
+- keyword: 2 a 5 palavras, como a pessoa pesquisa.
+- title: no máximo 60 caracteres e contém a keyword.
+- angle: por que a LeverAds tem autoridade pra falar disso (o que a gente vê na operação).
+- outline: 5 a 8 H2, na ordem do texto.
+- evidence: cite as linhas do digest que sustentam a pauta.
+- faqSeeds: 3 a 5 perguntas reais (use as do WhatsApp quando houver).
+- priority: 1 é a melhor pauta, 5 a mais fraca.
+- Não repita tema nem keyword do que já existe no blog.`;
+
+const BLOG_PAUTAS_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["pautas"],
+  properties: {
+    pautas: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "keyword", "intent", "category", "painCode", "angle", "outline", "evidence", "faqSeeds", "priority"],
+        properties: {
+          title: { type: "string", description: "título do post, até 60 caracteres, com a keyword" },
+          keyword: { type: "string", description: "palavra-chave principal, 2 a 5 palavras, como a pessoa pesquisa" },
+          intent: { type: "string", enum: ["informacional", "comercial", "comparativo", "guia"], description: "intenção de busca" },
+          category: { type: "string", description: "uma das categorias permitidas, escrita igual" },
+          painCode: { type: "string", enum: ["A", "B", "C", "D", "E", "OEM", ""], description: "código da dor do funil que a pauta ataca; vazio se nenhuma" },
+          angle: { type: "string", description: "por que a LeverAds tem autoridade nesse tema, 1 a 2 frases" },
+          outline: { type: "array", items: { type: "string" }, description: "5 a 8 títulos H2 na ordem do texto" },
+          evidence: { type: "array", items: { type: "string" }, description: "linhas do digest que sustentam a pauta" },
+          faqSeeds: { type: "array", items: { type: "string" }, description: "3 a 5 perguntas reais pra virar FAQ" },
+          priority: { type: "integer", description: "1 (melhor) a 5 (mais fraca)" },
+        },
+      },
+    },
+  },
+};
+
+const BLOG_DRAFT_SYSTEM = `${BLOG_VOICE}
+
+Sua função agora: REDATOR. Você recebe uma pauta, evidências e o CONHECIMENTO da empresa e escreve o artigo completo em Markdown.
+Como escrever:
+- 900 a 1.500 palavras.
+- Abertura de 2 a 3 parágrafos nomeando o problema do jeito que o lojista vive.
+- Um H2 (##) por item do outline (pode ajustar a ordem se ficar melhor). Nunca use H1 (#) no corpo: o título vai no campo title.
+- Parágrafos curtos (até 4 linhas). Listas quando ajudarem. Um exemplo prático por seção quando fizer sentido.
+- A keyword aparece no primeiro parágrafo, em pelo menos um H2 e na conclusão, de forma natural.
+- Fatos sobre a plataforma só os que estão em CONHECIMENTO. Não invente funcionalidade.
+- Feche com uma seção curta "## Como a LeverAds entra nisso" com exatamente um link em Markdown pra URL do CTA informada, com o texto "fazer o diagnóstico gratuito".
+- FAQ NÃO vai no corpo: vai no campo faq (3 a 5 perguntas reais, respostas de 2 a 4 frases).
+- description: até 155 caracteres, com a keyword, convidando a ler.
+- slug: 3 a 6 palavras, sem acento, minúsculas, separadas por hífen, com a keyword.
+- tags: 3 a 6.
+- sourcesUsed: ids dos cards ou nomes de seção do digest que você usou.`;
+
+const BLOG_DRAFT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["title", "slug", "description", "body_md", "faq", "tags", "sourcesUsed"],
+  properties: {
+    title: { type: "string", description: "título do artigo, até 60 caracteres, com a keyword" },
+    slug: { type: "string", description: "3 a 6 palavras sem acento, minúsculas, separadas por hífen" },
+    description: { type: "string", description: "meta description, até 155 caracteres, com a keyword" },
+    body_md: { type: "string", description: "o artigo completo em Markdown (## e ###, parágrafos, listas), sem H1 e sem FAQ" },
+    faq: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["q", "a"],
+        properties: {
+          q: { type: "string", description: "pergunta real, como o lojista faz" },
+          a: { type: "string", description: "resposta de 2 a 4 frases" },
+        },
+      },
+    },
+    tags: { type: "array", items: { type: "string" }, description: "3 a 6 tags curtas" },
+    sourcesUsed: { type: "array", items: { type: "string" }, description: "ids de cards ou seções do digest usados" },
+  },
+};
+
+const BLOG_REVISE_SYSTEM = `${BLOG_VOICE}
+
+Sua função agora: REVISOR. Você recebe um artigo pronto e uma instrução de revisão (do editor humano ou do lint automático).
+- Aplique SOMENTE o que a instrução pede e preserve o resto (estrutura, fatos, título, salvo pedido explícito).
+- Se houver PROBLEMAS DO LINT, corrija cada item listado.
+- Devolva o artigo completo, não só o trecho alterado.
+- changeNote: em 1 a 2 frases, o que mudou.`;
+
+const BLOG_REVISE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["title", "description", "body_md", "faq", "tags", "changeNote"],
+  properties: {
+    title: { type: "string", description: "título do artigo (igual ao atual, salvo instrução)" },
+    description: { type: "string", description: "meta description, até 155 caracteres" },
+    body_md: { type: "string", description: "o artigo completo revisado em Markdown, sem H1 e sem FAQ" },
+    faq: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["q", "a"],
+        properties: {
+          q: { type: "string", description: "pergunta" },
+          a: { type: "string", description: "resposta de 2 a 4 frases" },
+        },
+      },
+    },
+    tags: { type: "array", items: { type: "string" }, description: "3 a 6 tags curtas" },
+    changeNote: { type: "string", description: "o que mudou, em 1 a 2 frases" },
+  },
+};
+
 export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model = "" } = {}) {
   const configured = () => !!apiKey;
   const openrouter = apiKey.startsWith("sk-or-");
@@ -469,7 +607,9 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
   // (chat/completions + response_format json_schema); Anthropic fala Messages
   // API (output_config + thinking adaptativo). system/schema variam por tarefa
   // (resumo de call, variante de welcome).
-  function buildRequest(userContent, { system, schema, schemaName }) {
+  // maxTokens: teto de saída por tarefa (artigo do blog precisa de mais que o
+  // default de 16k; no Anthropic o thinking adaptativo conta dentro dele).
+  function buildRequest(userContent, { system, schema, schemaName, maxTokens = 16000 }) {
     if (openrouter) {
       return {
         url: OPENROUTER_URL,
@@ -481,7 +621,7 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
         },
         body: {
           model: modelId,
-          max_tokens: 16000,
+          max_tokens: maxTokens,
           messages: [
             { role: "system", content: `${system}\nResponda SOMENTE com o JSON pedido, sem texto fora dele.` },
             { role: "user", content: userContent },
@@ -499,7 +639,7 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
       },
       body: {
         model: modelId,
-        max_tokens: 16000,
+        max_tokens: maxTokens,
         thinking: { type: "adaptive" },
         system,
         output_config: { format: { type: "json_schema", schema } },
@@ -860,5 +1000,94 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
     return { cue: r.parsed, usage: r.usage, model: r.model };
   }
 
-  return { configured, summarizeCall, summarizeIntegration, briefIntegration, summarizeConsultation, composeDeliverables, suggestWelcome, suggestSocialCopy, suggestCampaignCopy, improvePitch, routineSuggestion, gradeAnswer, sdrDecide, copilotCue, model: modelId, provider: openrouter ? "openrouter" : "anthropic" };
+  // ── Blog SEO ──────────────────────────────────────────────────────────
+  const blogList = (arr) => (Array.isArray(arr) ? arr : []).map((x) => String(x ?? "").trim()).filter(Boolean);
+
+  // Pautas a partir do digest do cockpit (blog-digest.js). Não grava nada: o
+  // motor filtra duplicata e cria os docs.
+  async function blogPautas({ digest = "", existing = [], categorias = [], n = 6, productName = "LeverAds" } = {}) {
+    if (!configured()) throw new Error("IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor");
+    const MAX = 60_000;
+    const text = String(digest || "");
+    const clipped = text.length > MAX ? `${text.slice(0, MAX)}\n[digest cortado]` : text;
+    const exist = blogList(existing);
+    const cats = blogList(categorias);
+    const context = [
+      `Produto: ${productName}`,
+      `Categorias permitidas: ${cats.length ? cats.join(" · ") : "(livre)"}`,
+      "",
+      "Já existe no blog (NÃO repetir tema nem keyword):",
+      exist.length ? exist.map((t) => `- ${t}`).join("\n") : "- (nada ainda)",
+      "",
+      "DIGEST:",
+      clipped || "(sem digest: proponha pautas pelo conhecimento do mercado)",
+      "",
+      `Gere ${Math.max(1, Number(n) || 6)} pautas.`,
+    ].join("\n");
+    const r = await requestJson(context, { system: BLOG_PAUTAS_SYSTEM, schema: BLOG_PAUTAS_SCHEMA, schemaName: "blog_pautas" });
+    return { pautas: Array.isArray(r.parsed?.pautas) ? r.parsed.pautas : [], usage: r.usage, model: r.model };
+  }
+
+  // Artigo completo a partir de uma pauta + pacote de conhecimento
+  // (blog-knowledge.js). maxTokens maior: 1.500 palavras + thinking.
+  async function blogDraft({ pauta = {}, knowledge = "", rules = [], ctaUrl = "", productName = "LeverAds" } = {}) {
+    if (!configured()) throw new Error("IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor");
+    const p = pauta || {};
+    const pautaJson = JSON.stringify({
+      title: p.title || "", keyword: p.keyword || "", intent: p.intent || "", category: p.category || "",
+      painCode: p.painCode || "", angle: p.angle || "", outline: blogList(p.outline), faqSeeds: blogList(p.faqSeeds),
+    }, null, 2);
+    const evid = blogList(p.evidence);
+    const extra = blogList(rules);
+    const context = [
+      `Produto: ${productName}`,
+      "",
+      "PAUTA:",
+      pautaJson,
+      "",
+      "EVIDÊNCIAS:",
+      evid.length ? evid.map((e) => `- ${e}`).join("\n") : "- (sem evidências específicas)",
+      "",
+      "CONHECIMENTO:",
+      String(knowledge || "(sem pacote de conhecimento)"),
+      "",
+      "REGRAS EXTRAS:",
+      extra.length ? extra.map((e) => `- ${e}`).join("\n") : "- (nenhuma)",
+      "",
+      `CTA: a URL do diagnóstico é ${ctaUrl || "(informe na revisão)"}. Na seção final "Como a LeverAds entra nisso", inclua exatamente um link em Markdown pra essa URL com o texto "fazer o diagnóstico gratuito".`,
+    ].join("\n");
+    const r = await requestJson(context, { system: BLOG_DRAFT_SYSTEM, schema: BLOG_DRAFT_SCHEMA, schemaName: "blog_draft", maxTokens: 24000 });
+    return { draft: r.parsed, usage: r.usage, model: r.model };
+  }
+
+  // Revisão de um artigo: instrução humana e/ou problemas do lint. Sem slug
+  // (a URL nunca muda numa revisão).
+  async function blogRevise({ post = {}, instruction = "", lintIssues = [], knowledge = "" } = {}) {
+    if (!configured()) throw new Error("IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor");
+    const cur = post || {};
+    const issues = (Array.isArray(lintIssues) ? lintIssues : [])
+      .map((i) => (typeof i === "string" ? i : `${i?.code || "lint"}: ${i?.msg || ""}`.trim()))
+      .filter(Boolean);
+    const artigo = JSON.stringify({
+      title: cur.title || "", description: cur.description || "", body_md: cur.body || cur.body_md || "",
+      faq: Array.isArray(cur.faq) ? cur.faq : [], tags: blogList(cur.tags),
+    }, null, 2);
+    const context = [
+      "INSTRUÇÃO:",
+      String(instruction || "").trim() || "(sem instrução do editor: corrija só os problemas do lint)",
+      "",
+      "PROBLEMAS DO LINT:",
+      issues.length ? issues.map((i) => `- ${i}`).join("\n") : "- (nenhum)",
+      "",
+      "ARTIGO ATUAL:",
+      artigo,
+      "",
+      "CONHECIMENTO:",
+      String(knowledge || "(sem pacote de conhecimento)"),
+    ].join("\n");
+    const r = await requestJson(context, { system: BLOG_REVISE_SYSTEM, schema: BLOG_REVISE_SCHEMA, schemaName: "blog_revise", maxTokens: 24000 });
+    return { revised: r.parsed, usage: r.usage, model: r.model };
+  }
+
+  return { configured, summarizeCall, summarizeIntegration, briefIntegration, summarizeConsultation, composeDeliverables, suggestWelcome, suggestSocialCopy, suggestCampaignCopy, improvePitch, routineSuggestion, gradeAnswer, sdrDecide, copilotCue, blogPautas, blogDraft, blogRevise, model: modelId, provider: openrouter ? "openrouter" : "anthropic" };
 }

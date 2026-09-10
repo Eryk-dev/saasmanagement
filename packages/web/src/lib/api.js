@@ -51,6 +51,9 @@ async function req(method, path, body) {
     const err = new Error(msg || proxyMessage(res.status));
     err.status = res.status;
     err.path = path;
+    // Corpo inteiro pra quem precisa de mais que a mensagem (ex.: o blog devolve
+    // a lista do lint junto com a 422).
+    try { err.body = JSON.parse(text); } catch { err.body = null; }
     throw err;
   }
   return res.status === 204 ? null : res.json();
@@ -626,6 +629,23 @@ export const api = {
   // mensalidade, pago / a receber / link do MP, quem vendeu). Devolve a fatura,
   // o cliente atualizado e o link quando gerado.
   customerUpsell: (id, body = {}) => req("POST", `/api/customers/${id}/upsell`, body),
+  // Blog SEO (routes.blog.js): redação por produto. Lista sem body + contagens +
+  // regras/estado do motor; o post inteiro vem por id.
+  blog: (saas, status) => req("GET", `/api/blog/${encodeURIComponent(saas)}${status ? `?status=${encodeURIComponent(status)}` : ""}`),
+  blogPost: (saas, id) => req("GET", `/api/blog/${encodeURIComponent(saas)}/posts/${encodeURIComponent(id)}`),
+  blogSettings: (saas) => req("GET", `/api/blog/${encodeURIComponent(saas)}/settings`),
+  blogSaveRules: (saas, rules) => req("PATCH", `/api/blog/${encodeURIComponent(saas)}/settings`, { rules }),
+  blogMine: (saas, body = {}) => req("POST", `/api/blog/${encodeURIComponent(saas)}/pautas`, body),
+  blogNewPauta: (saas, body) => req("POST", `/api/blog/${encodeURIComponent(saas)}/posts`, body),
+  blogDraft: (saas, id, force = false) => req("POST", `/api/blog/${encodeURIComponent(saas)}/posts/${encodeURIComponent(id)}/draft${force ? "?force=1" : ""}`, {}),
+  blogUpdate: (saas, id, patch) => req("PATCH", `/api/blog/${encodeURIComponent(saas)}/posts/${encodeURIComponent(id)}`, patch),
+  // action: approve | unschedule | publish | unpublish | archive | restore
+  blogAction: (saas, id, action, body = {}) => req("POST", `/api/blog/${encodeURIComponent(saas)}/posts/${encodeURIComponent(id)}/${action}`, body),
+  blogRevise: (saas, id, instruction) => req("POST", `/api/blog/${encodeURIComponent(saas)}/posts/${encodeURIComponent(id)}/revise`, { instruction }),
+  blogDelete: (saas, id) => req("DELETE", `/api/blog/${encodeURIComponent(saas)}/posts/${encodeURIComponent(id)}`),
+  blogTick: (saas) => req("POST", `/api/blog/${encodeURIComponent(saas)}/tick`, {}),
+  blogDigest: (saas) => req("GET", `/api/blog/${encodeURIComponent(saas)}/digest`),
+  blogPreviewUrl: (saas, id) => req("GET", `/api/blog/${encodeURIComponent(saas)}/posts/${encodeURIComponent(id)}/preview-url`),
   createUser: ({ name, password, roles }) => req("POST", "/api/auth/users", { name, password, ...(roles ? { roles } : {}) }),
   // Remove um usuário do time. force=true remove mesmo com leads atribuídos (409 sem force).
   removeUser: (id, force = false) => req("DELETE", `/api/auth/users/${id}${force ? "?force=1" : ""}`),

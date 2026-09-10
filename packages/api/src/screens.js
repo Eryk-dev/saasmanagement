@@ -17,6 +17,7 @@ export const SCREEN_IDS = [
   "overview", "today", "pipeline", "customers", "metrics", "expenses",
   "social", "forms", "proposals", "creative", "offers", "contracts", "intform", "disparos", "whatsapp", "agenda", "consultas", "calls", "integrations", "aquisicao", "analise", "funcionarios", "desempenho", "metas", "training", "tasks", "mindmaps", "settings",
   "outbound", "remuneracao",
+  "blog", // redação do blog SEO (grupo Marketing)
   "eloapp", "landingpages",
 ];
 
@@ -107,6 +108,7 @@ const ROUTE_SCREENS = [
   ["/api/plans", ["customers"]],
   ["/api/nps", ["customers"]],
   ["/api/billing/", ["customers"]],
+  ["/api/blog", ["blog"]],               // redação do blog: pautas, rascunhos, agenda, preview (routes.blog.js)
   ["/api/forms", ["forms", "aquisicao"]], // inclui /:id/funnel e /preview (Aquisição usa o funil do form)
   ["/api/form_submissions", ["forms"]],
   ["/api/form_events", ["forms"]],

@@ -28,12 +28,42 @@ export const openapi = {
     { name: "NPS", description: "Respostas de NPS" },
     { name: "Metas", description: "Goals / pacing" },
     { name: "Sistema", description: "Saúde, bootstrap, agregados" },
+    { name: "Blog", description: "Redação do blog SEO (leverads.com.br/blog): pautas mineradas do cockpit, rascunhos por IA, revisão, agenda e publicação. Páginas públicas em /public/blog/* (sem chave)." },
   ],
   components: {
     securitySchemes: {
       ApiKeyAuth: { type: "apiKey", in: "header", name: "x-api-key" },
     },
     schemas: {
+      BlogPost: {
+        type: "object",
+        description: "Um post do blog em qualquer estágio. Só `publicado` aparece no site. `slug` trava no primeiro publish (SEO).",
+        properties: {
+          id: { type: "string" }, saas: { type: "string" },
+          status: { type: "string", enum: ["pauta", "rascunho", "agendado", "publicado", "arquivado"] },
+          title: { type: "string" }, slug: { type: "string" }, slugLocked: { type: "boolean" },
+          description: { type: "string", description: "Meta description (≤ 155)." },
+          keyword: { type: "string" }, intent: { type: "string", enum: ["informacional", "comercial", "comparativo", "guia"] },
+          category: { type: "string" }, painCode: { type: "string" }, tags: { type: "array", items: { type: "string" } },
+          angle: { type: "string" }, outline: { type: "array", items: { type: "string" } }, evidence: { type: "array", items: { type: "string" } },
+          body: { type: "string", description: "Markdown (subconjunto: h2/h3, parágrafo, negrito, itálico, link, lista, citação). Tokens `{{resRitmo||texto}}` resolvem com os resultados reais na hora de renderizar." },
+          faq: { type: "array", items: { type: "object", properties: { q: { type: "string" }, a: { type: "string" } } } },
+          sources: { type: "array", items: { type: "object", properties: { type: { type: "string" }, ref: { type: "string" }, note: { type: "string" } } } },
+          lint: { type: "array", items: { type: "object", properties: { code: { type: "string" }, level: { type: "string", enum: ["erro", "aviso"] }, msg: { type: "string" } } } },
+          wordCount: { type: "integer" }, readingMin: { type: "integer" }, priority: { type: "integer" },
+          scheduledAt: { type: "string" }, publishedAt: { type: "string" }, createdAt: { type: "string" }, updatedAt: { type: "string" },
+        },
+      },
+      BlogRules: {
+        type: "object",
+        description: "Regras da redação automática (doc app_config `blog_<saas>`).",
+        properties: {
+          enabled: { type: "boolean" }, autoPauta: { type: "boolean" }, autoRascunho: { type: "boolean" }, autoPublicar: { type: "boolean", description: "Rascunho sem erro de lint vai pra agenda sozinho." },
+          cadenciaSemanal: { type: "integer" }, diasPublicacao: { type: "array", items: { type: "string", enum: ["seg", "ter", "qua", "qui", "sex", "sab", "dom"] } }, horaPublicacao: { type: "string", description: "HH:MM em Brasília." },
+          minPautas: { type: "integer" }, minRascunhos: { type: "integer" }, pautasPorRodada: { type: "integer" }, maxRascunhosDia: { type: "integer" }, maxRodadasPautaDia: { type: "integer" }, bufferAgendados: { type: "integer" },
+          categorias: { type: "array", items: { type: "string" } }, ctaUrl: { type: "string" },
+        },
+      },
       LeadInput: {
         type: "object",
         required: ["name", "saas"],
@@ -321,6 +351,76 @@ export const openapi = {
     "/api/goals": {
       get: { tags: ["Metas"], summary: "Lista metas", parameters: [{ name: "scope", in: "query", schema: { type: "string" } }], responses: { 200: { description: "OK", content: { "application/json": { schema: { type: "array", items: { $ref: "#/components/schemas/Goal" } } } } } } },
       post: { tags: ["Metas"], summary: "Cria uma meta", security: [{ ApiKeyAuth: [] }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/Goal" } } } }, responses: { 201: { description: "Criado" } } },
+    },
+    "/api/blog/{saas}": {
+      parameters: [{ name: "saas", in: "path", required: true, schema: { type: "string" } }],
+      get: { tags: ["Blog"], security: [{ ApiKeyAuth: [] }], summary: "Redação do blog: posts (sem corpo), contagens por status, regras, estado do motor e próximo slot de publicação", parameters: [{ name: "status", in: "query", schema: { type: "string", enum: ["pauta", "rascunho", "agendado", "publicado", "arquivado"] } }], responses: { 200: { description: "{ posts, counts, aiConfigured, rules, state, nextSlot }" } } },
+    },
+    "/api/blog/{saas}/settings": {
+      parameters: [{ name: "saas", in: "path", required: true, schema: { type: "string" } }],
+      get: { tags: ["Blog"], security: [{ ApiKeyAuth: [] }], summary: "Regras + estado + log do motor", responses: { 200: { description: "{ rules, state, log }" } } },
+      patch: { tags: ["Blog"], security: [{ ApiKeyAuth: [] }], summary: "Edita as regras (admin): cadência, dias, automações, categorias, CTA", requestBody: { required: true, content: { "application/json": { schema: { type: "object", properties: { rules: { $ref: "#/components/schemas/BlogRules" } } } } } }, responses: { 200: { description: "{ rules, state }" }, 403: { description: "Só admin" } } },
+    },
+    "/api/blog/{saas}/pautas": {
+      parameters: [{ name: "saas", in: "path", required: true, schema: { type: "string" } }],
+      post: { tags: ["Blog"], security: [{ ApiKeyAuth: [] }], summary: "Minera pautas agora a partir do digest do cockpit (diagnósticos, calls, WhatsApp anonimizado, dores, resultados)", requestBody: { required: false, content: { "application/json": { schema: { type: "object", properties: { n: { type: "integer" }, refresh: { type: "boolean", description: "Reconstrói o digest (cache de 6h)." } } } } } }, responses: { 200: { description: "{ created: BlogPost[], dropped, usage }" }, 409: { description: "Motor ocupado" }, 424: { description: "IA não configurada ou falhou" } } },
+    },
+    "/api/blog/{saas}/tick": {
+      parameters: [{ name: "saas", in: "path", required: true, schema: { type: "string" } }],
+      post: { tags: ["Blog"], security: [{ ApiKeyAuth: [] }], summary: "Roda um ciclo do motor agora (publica vencidos, agenda se auto publicar, minera, rascunha)", responses: { 200: { description: "{ saas, published, scheduled, drafted, mined, errors }" }, 409: { description: "Motor ocupado" } } },
+    },
+    "/api/blog/{saas}/digest": {
+      parameters: [{ name: "saas", in: "path", required: true, schema: { type: "string" } }],
+      get: { tags: ["Blog"], security: [{ ApiKeyAuth: [] }], summary: "O digest anonimizado que alimenta as pautas (só agregados)", responses: { 200: { description: "{ text, builtAt, counts }" } } },
+    },
+    "/api/blog/{saas}/posts": {
+      parameters: [{ name: "saas", in: "path", required: true, schema: { type: "string" } }],
+      post: { tags: ["Blog"], security: [{ ApiKeyAuth: [] }], summary: "Cria uma pauta manual", requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["title"], properties: { title: { type: "string" }, keyword: { type: "string" }, category: { type: "string" }, angle: { type: "string" }, outline: { type: "array", items: { type: "string" } } } } } } }, responses: { 201: { description: "Criado", content: { "application/json": { schema: { $ref: "#/components/schemas/BlogPost" } } } } } },
+    },
+    "/api/blog/{saas}/posts/{id}": {
+      parameters: [{ name: "saas", in: "path", required: true, schema: { type: "string" } }, { name: "id", in: "path", required: true, schema: { type: "string" } }],
+      get: { tags: ["Blog"], security: [{ ApiKeyAuth: [] }], summary: "Um post completo (com corpo, fontes, lint e histórico)", responses: { 200: { description: "OK", content: { "application/json": { schema: { $ref: "#/components/schemas/BlogPost" } } } }, 404: { description: "Não encontrado" } } },
+      patch: { tags: ["Blog"], security: [{ ApiKeyAuth: [] }], summary: "Edita campos do post; slug só enquanto não publicado; post publicado exige lint sem erro e admin", requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BlogPost" } } } }, responses: { 200: { description: "OK", content: { "application/json": { schema: { $ref: "#/components/schemas/BlogPost" } } } }, 400: { description: "Campo inválido" }, 409: { description: "Slug travado ou duplicado" }, 422: { description: "Lint com erro: { error, lint }" } } },
+      delete: { tags: ["Blog"], security: [{ ApiKeyAuth: [] }], summary: "Apaga (só pauta ou arquivado)", responses: { 200: { description: "OK" }, 409: { description: "Status não permite" } } },
+    },
+    "/api/blog/{saas}/posts/{id}/draft": {
+      parameters: [{ name: "saas", in: "path", required: true, schema: { type: "string" } }, { name: "id", in: "path", required: true, schema: { type: "string" } }],
+      post: { tags: ["Blog"], security: [{ ApiKeyAuth: [] }], summary: "Escreve o rascunho da pauta com IA (uma revisão automática se o lint reprovar); ?force=1 reescreve um rascunho não publicado", responses: { 200: { description: "OK", content: { "application/json": { schema: { $ref: "#/components/schemas/BlogPost" } } } }, 403: { description: "Só admin" }, 409: { description: "Status não permite" }, 422: { description: "Lint com erro: { error, lint }" }, 424: { description: "IA não configurada ou falhou" } } },
+    },
+    "/api/blog/{saas}/posts/{id}/revise": {
+      parameters: [{ name: "saas", in: "path", required: true, schema: { type: "string" } }, { name: "id", in: "path", required: true, schema: { type: "string" } }],
+      post: { tags: ["Blog"], security: [{ ApiKeyAuth: [] }], summary: "Reescreve com uma instrução (agendado volta pra rascunho)", requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["instruction"], properties: { instruction: { type: "string", maxLength: 600 } } } } } }, responses: { 200: { description: "OK", content: { "application/json": { schema: { $ref: "#/components/schemas/BlogPost" } } } }, 403: { description: "Só admin" }, 409: { description: "Status não permite" }, 422: { description: "Lint com erro: { error, lint }" }, 424: { description: "IA não configurada ou falhou" } } },
+    },
+    "/api/blog/{saas}/posts/{id}/approve": {
+      parameters: [{ name: "saas", in: "path", required: true, schema: { type: "string" } }, { name: "id", in: "path", required: true, schema: { type: "string" } }],
+      post: { tags: ["Blog"], security: [{ ApiKeyAuth: [] }], summary: "Aprova: vai pra agenda no próximo slot da cadência (ou no scheduledAt informado)", requestBody: { required: false, content: { "application/json": { schema: { type: "object", properties: { scheduledAt: { type: "string" } } } } } }, responses: { 200: { description: "OK", content: { "application/json": { schema: { $ref: "#/components/schemas/BlogPost" } } } }, 403: { description: "Só admin" }, 409: { description: "Status não permite" }, 422: { description: "Lint com erro: { error, lint }" }, 424: { description: "IA não configurada ou falhou" } } },
+    },
+    "/api/blog/{saas}/posts/{id}/unschedule": {
+      parameters: [{ name: "saas", in: "path", required: true, schema: { type: "string" } }, { name: "id", in: "path", required: true, schema: { type: "string" } }],
+      post: { tags: ["Blog"], security: [{ ApiKeyAuth: [] }], summary: "Tira da agenda (volta pra rascunho)", responses: { 200: { description: "OK", content: { "application/json": { schema: { $ref: "#/components/schemas/BlogPost" } } } }, 403: { description: "Só admin" }, 409: { description: "Status não permite" }, 422: { description: "Lint com erro: { error, lint }" }, 424: { description: "IA não configurada ou falhou" } } },
+    },
+    "/api/blog/{saas}/posts/{id}/publish": {
+      parameters: [{ name: "saas", in: "path", required: true, schema: { type: "string" } }, { name: "id", in: "path", required: true, schema: { type: "string" } }],
+      post: { tags: ["Blog"], security: [{ ApiKeyAuth: [] }], summary: "Publica agora (admin): trava o slug e entra no site", responses: { 200: { description: "OK", content: { "application/json": { schema: { $ref: "#/components/schemas/BlogPost" } } } }, 403: { description: "Só admin" }, 409: { description: "Status não permite" }, 422: { description: "Lint com erro: { error, lint }" }, 424: { description: "IA não configurada ou falhou" } } },
+    },
+    "/api/blog/{saas}/posts/{id}/unpublish": {
+      parameters: [{ name: "saas", in: "path", required: true, schema: { type: "string" } }, { name: "id", in: "path", required: true, schema: { type: "string" } }],
+      post: { tags: ["Blog"], security: [{ ApiKeyAuth: [] }], summary: "Despublica (admin): volta pra rascunho, slug segue travado; some do site em até 5 min pelo cache do proxy", responses: { 200: { description: "OK", content: { "application/json": { schema: { $ref: "#/components/schemas/BlogPost" } } } }, 403: { description: "Só admin" }, 409: { description: "Status não permite" }, 422: { description: "Lint com erro: { error, lint }" }, 424: { description: "IA não configurada ou falhou" } } },
+    },
+    "/api/blog/{saas}/posts/{id}/archive": {
+      parameters: [{ name: "saas", in: "path", required: true, schema: { type: "string" } }, { name: "id", in: "path", required: true, schema: { type: "string" } }],
+      post: { tags: ["Blog"], security: [{ ApiKeyAuth: [] }], summary: "Arquiva", responses: { 200: { description: "OK", content: { "application/json": { schema: { $ref: "#/components/schemas/BlogPost" } } } }, 403: { description: "Só admin" }, 409: { description: "Status não permite" }, 422: { description: "Lint com erro: { error, lint }" }, 424: { description: "IA não configurada ou falhou" } } },
+    },
+    "/api/blog/{saas}/posts/{id}/restore": {
+      parameters: [{ name: "saas", in: "path", required: true, schema: { type: "string" } }, { name: "id", in: "path", required: true, schema: { type: "string" } }],
+      post: { tags: ["Blog"], security: [{ ApiKeyAuth: [] }], summary: "Restaura do arquivo (pauta ou rascunho, conforme tenha corpo)", responses: { 200: { description: "OK", content: { "application/json": { schema: { $ref: "#/components/schemas/BlogPost" } } } }, 403: { description: "Só admin" }, 409: { description: "Status não permite" }, 422: { description: "Lint com erro: { error, lint }" }, 424: { description: "IA não configurada ou falhou" } } },
+    },
+    "/api/blog/{saas}/posts/{id}/preview-url": {
+      parameters: [{ name: "saas", in: "path", required: true, schema: { type: "string" } }, { name: "id", in: "path", required: true, schema: { type: "string" } }],
+      get: { tags: ["Blog"], security: [{ ApiKeyAuth: [] }], summary: "Link assinado (30 min) da prévia pública do post, publicado ou não", responses: { 200: { description: "{ url, expiresAt }" }, 404: { description: "Não encontrado" } } },
+    },
+    "/public/blog/": {
+      get: { tags: ["Blog"], summary: "Índice público do blog (HTML). Sem chave. Indexável só com o header x-blog-proxy do copylever; senão noindex + canonical em leverads.com.br. Também: /public/blog/{slug}, /public/blog/c/{categoria}, /public/blog/sitemap.xml, /public/blog/feed.xml", parameters: [{ name: "page", in: "query", schema: { type: "integer" } }], responses: { 200: { description: "HTML" }, 404: { description: "HTML 404" } } },
     },
     "/api/leaderboard": {
       get: { tags: ["Sistema"], summary: "Ranking (scope=month|all)", parameters: [{ name: "scope", in: "query", schema: { type: "string", enum: ["month", "all"] } }], responses: { 200: { description: "OK" } } },

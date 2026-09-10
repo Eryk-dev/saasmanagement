@@ -100,6 +100,7 @@ try {
     ["social", "/src/screens/social.jsx", "SocialScreen", {}, "Comentários"],
     ["contracts", "/src/screens/contracts.jsx", "ContractsScreen", {}, "Contratos gerados"],
     ["intform", "/src/screens/integration-forms.jsx", "IntegrationFormsScreen", {}, "Formulário de Integração"],
+    ["blog", "/src/screens/blog.jsx", "BlogScreen", {}, "Blog"],
     ["deal", "/src/screens/deal.jsx", "LeadDetail", { lead: window.SEED.LEADS[1], onClose() {} }, "Próximo passo"],
     ["funcionarios", "/src/screens/funcionarios.jsx", "FuncionariosScreen", {}, "Análise de Equipe"],
     ["desempenho", "/src/screens/desempenho.jsx", "DesempenhoScreen", {}, "Análise de Desempenho"],

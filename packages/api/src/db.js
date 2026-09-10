@@ -68,6 +68,8 @@ const INDEXES = [
   ["activities_saas_type_idx", "activities", `((json->>'saas'), (json->>'type'))`],
   ["proposals_lead_origin_idx", "proposals", `((json->>'lead'), (json->>'origin'))`],
   ["proposals_shared_from_idx", "proposals", `((json->>'sharedFrom'))`],
+  ["blog_posts_saas_status_idx", "blog_posts", `((json->>'saas'), (json->>'status'))`],
+  ["blog_posts_slug_idx", "blog_posts", `((json->>'slug'))`],
 ];
 
 async function createTables() {

@@ -1331,6 +1331,8 @@ function PersonDetail({ user: u, today, saasId }) {
 // Manual vivo: o que a LeverAds faz, missão/visão, os 5 pilares de cultura e o
 // papel de cada vaga NA ORDEM DO FUNIL (mídia social → SDR → closer → CS), em
 // linguagem simples pra qualquer pessoa do time entender o todo.
+// ESPELHO em packages/api/src/company.leverads.js (LEVERADS_COMPANY): a API não
+// importa daqui; alterou o texto, altera lá (teste blog-knowledge compara o `what`).
 const COMPANY = {
   what: "Somos uma empresa de tecnologia que escala operações de venda em marketplace. Construímos uma plataforma própria que publica e mantém anúncios sincronizados entre várias contas de Mercado Livre e Shopee, com estoque integrado e ficha técnica completada por IA. Vendemos por assinatura, com preço fixo e sem taxa por pedido, e entregamos a operação do cliente rodando já na primeira semana. Somos um time enxuto que opera tudo dentro do nosso próprio cockpit: da primeira ligação ao acompanhamento pós-venda, cada etapa tem processo, dado e responsável.",
   mission: "Ser o motor tecnológico que faz uma operação de marketplace crescer sem crescer o time: o que levaria meses de trabalho manual, a gente entrega em minutos.",
