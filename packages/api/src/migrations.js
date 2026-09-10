@@ -14,6 +14,7 @@ import { waMatchKey } from "./wa-store.js";
 import { backfillPaymentLinks } from "./payment-links.js";
 import { slideVisible } from "./proposal.js";
 import { mentoriaTemplateDoc, mentoriaCalcBlock } from "./mentoria.js";
+import { BLOG_DEFAULT_RULES, BLOG_DEFAULT_STATE, blogCfgId } from "./blog-config.js";
 
 // Garante o estágio "Integração" no funil do produto `leverads`, posicionado
 // entre "Negociação" e "Ganho". Integração é pós-venda: negócio já fechado,
@@ -1708,6 +1709,12 @@ export async function runStartupMigrations(repo) {
     console.error("[migration] ensureIntegrationStage falhou:", err?.message || err);
   }
   try {
+    const changed = await ensureBlogSettings(repo);
+    if (changed) console.log("[migration] configuração da redação do blog (app_config/blog_leverads) criada com os defaults");
+  } catch (err) {
+    console.error("[migration] ensureBlogSettings falhou:", err?.message || err);
+  }
+  try {
     const r = await migrateLeverAdsCrmFunnel(repo);
     if (r) console.log(`[migration] funil CRM SDR+Closer aplicado no leverads (${r.migrated} cards migrados)`);
   } catch (err) {
@@ -2038,5 +2045,26 @@ export async function migrateFormMentoriaOferta(repo) {
     subtitle: "A LeverAds é pra quem já vende, mas a Mentoria Lever é exatamente pra quem está começando: a gente coloca um produto nosso, que já vende todo dia, na sua conta pra fazer as primeiras vendas enquanto escolhe e compra o seu estoque com você. Vamos te chamar no WhatsApp pra conversar.",
   };
   await repo.update("forms", form.id, { exits, mentoriaOfertaV1: true });
+  return true;
+}
+
+// ── Blog SEO: configuração da redação (set/2026) ─────────────────────────────
+// Garante o doc `app_config/blog_leverads` com as regras default do motor do
+// blog (blog-config.js): IA gera pautas e rascunhos, publicação só com aprovação
+// (autoPublicar=false), 2 posts por semana (ter/qui 09:00 BRT). Só cria quando
+// o produto leverads existe e o doc ainda não; nunca sobrescreve regra editada.
+export async function ensureBlogSettings(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product) return false;
+  const id = blogCfgId("leverads");
+  const existing = await repo.get("app_config", id);
+  if (existing) return false;
+  await repo.create("app_config", {
+    id,
+    saas: "leverads",
+    rules: { ...BLOG_DEFAULT_RULES, diasPublicacao: [...BLOG_DEFAULT_RULES.diasPublicacao], categorias: [...BLOG_DEFAULT_RULES.categorias] },
+    state: { ...BLOG_DEFAULT_STATE },
+    log: [],
+  });
   return true;
 }

@@ -16,6 +16,7 @@ import { SocialScreen } from "./screens/social.jsx";
 import { OffersScreen } from "./screens/offers.jsx";
 import { ContractsScreen } from "./screens/contracts.jsx";
 import { IntegrationFormsScreen } from "./screens/integration-forms.jsx";
+import { BlogScreen } from "./screens/blog.jsx";
 import { DisparosScreen } from "./screens/disparos.jsx";
 import { OutboundScreen } from "./screens/outbound.jsx";
 import { RemuneracaoScreen } from "./screens/remuneracao.jsx";
@@ -228,6 +229,7 @@ function App() {
     forms:       ["Marketing", "Formulários"],
     creative:    ["Marketing", "Canvas"],
     disparos:    ["Marketing", "Disparos"],
+    blog:        ["Marketing", "Blog"],
     eloapp:      ["Análises", "Análise do App"],
     aquisicao:   ["Análises", "Análise de Aquisição"],
     calls:       ["Análises", "Análise de Pitches"],
@@ -307,6 +309,7 @@ function App() {
           {scr === "agenda"      && <AgendaScreen onOpenLead={openLead} />}
           {scr === "consultas"   && <ConsultasScreen />}
           {scr === "disparos"    && <DisparosScreen onOpenLead={openLead} />}
+          {scr === "blog"        && <BlogScreen />}
           {scr === "outbound"    && <OutboundScreen onOpenLead={openLead} />}
           {scr === "remuneracao" && <RemuneracaoScreen />}
           {scr === "whatsapp"    && <WhatsappInboxScreen onOpenLead={openLead} initialThread={params.waThread} initialLead={params.waLead} initialDraft={params.waDraft} />}

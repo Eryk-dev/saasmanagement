@@ -736,6 +736,9 @@ export function leadOrigin(lead) {
     if (fb) return "ads_fb";
     return "ads_meta"; // pago sem canal identificável (referrer vazio/estranho)
   }
+  // Blog do site: o CTA dos posts manda utm_source=blog e o referrer do form é
+  // leverads.com.br/blog/<slug>. Vem ANTES de "site" (que também casa o referrer).
+  if (src === "blog" || ref.includes("leverads.com.br/blog")) return "blog";
   if (ig) return "bio_ig";
   if (fb) return "bio_fb";
   if (src.includes("google") || ref.includes("google")) return "google";
@@ -751,6 +754,7 @@ export const LEAD_ORIGINS = [
   { key: "bio_ig", label: "Bio IG" },
   { key: "bio_fb", label: "Bio FB" },
   { key: "google", label: "Google" },
+  { key: "blog", label: "Blog" },
   { key: "site", label: "Site" },
   { key: "direto", label: "Direto · sem UTM" },
   { key: "outros", label: "Outros" },

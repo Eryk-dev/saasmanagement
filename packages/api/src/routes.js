@@ -29,6 +29,9 @@ import { registerOfferRoutes } from "./routes.offers.js";
 import { registerCampaignRoutes } from "./routes.disparos.js";
 import { registerSequenceRoutes } from "./routes.sequences.js";
 import { registerPitchRoutes } from "./routes.pitch.js";
+import { registerBlogPublicRoutes } from "./routes.blog-public.js";
+import { registerBlogRoutes } from "./routes.blog.js";
+import { makeBlogEngine } from "./blog-engine.js";
 import { registerRoutineRoutes } from "./routes.routine.js";
 import { registerConsultationRoutes } from "./routes.consultations.js";
 import { syncConsultationCalendar, syncConsultationMeetEvent } from "./consultations.js";
@@ -68,7 +71,9 @@ import { registerEloRoutes } from "./elo.js";
 // wa_threads/wa_messages ficam FORA do CRUD genérico: o inbox usa as rotas
 // dedicadas (/api/whatsapp/*, gateadas), então o texto das conversas não vaza
 // pra qualquer usuário autenticado via /api/wa_messages.
-const PRIVATE = new Set(["users", "sessions", "user_assets", "activity_assets", "task_assets", "wa_threads", "wa_messages", "wa_media", "wa_template_media"]);
+// blog_posts também fica fora: rascunho/pauta/fontes são internos e a máquina
+// de estados (slug travado, lint, agenda) vive em routes.blog.js.
+const PRIVATE = new Set(["users", "sessions", "user_assets", "activity_assets", "task_assets", "wa_threads", "wa_messages", "wa_media", "wa_template_media", "blog_posts"]);
 const isExposed = (c) => COLLECTION_NAMES.includes(c) && !PRIVATE.has(c);
 
 // Collections external SaaS are allowed to write to via REST/MCP.
@@ -332,6 +337,13 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerOfferRoutes(app, repo);
   // Insight de pitch: melhora o roteiro de venda a partir dos resumos das calls.
   registerPitchRoutes(app, repo, { anthropic: anthropicClient });
+  // Blog público (leverads.com.br/blog via proxy do copylever): índice, post,
+  // categoria, sitemap, feed e preview assinado. Sem chave (OPEN_PREFIXES).
+  registerBlogPublicRoutes(app, repo, opts.blogPublic || {});
+  // Redação do blog: motor único (pautas → rascunho por IA → agenda → publica),
+  // compartilhado pelas rotas e pelo poller do index.js (integrationClients.blogEngine).
+  const blogEngine = opts.blogEngine || makeBlogEngine({ repo, anthropic: anthropicClient, log: app.log });
+  registerBlogRoutes(app, repo, { anthropic: anthropicClient, engine: blogEngine, publicBase });
   // UniqueKids · sugestão de solução da rotina por IA (método R.O.T.I.N.A) no lead.
   registerRoutineRoutes(app, repo, { anthropic: anthropicClient });
   // Análise de integração (CS/onboarding): sentimento + pendências recorrentes.
@@ -395,7 +407,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Poller de resumos (index.js) usa os MESMOS clients das rotas.
   // autoCallMeet vai junto: o poller do SDR cria a sala que falta na hora do
   // lembrete de 2h (sem link, o lembrete de 10min chamava pra lugar nenhum).
-  if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, googleUser, anthropic: anthropicClient, mailer: mailerClient, whatsapp: whatsappClient, autoCallMeet });
+  if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, googleUser, anthropic: anthropicClient, mailer: mailerClient, whatsapp: whatsappClient, autoCallMeet, blogEngine });
 
   // ── Tempo real ─────────────────────────────────────────────────────────
   // Toda escrita no repo (db.js) incrementa um contador global (changes.js).
