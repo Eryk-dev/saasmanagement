@@ -10,8 +10,9 @@ import dotenv from "dotenv";
 import express from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { registerTools } from "./tools.js";
-import { apiClient } from "./apiClient.js";
+import { registerTools } from "./tools/index.js";
+import { catalog } from "./core/register.js";
+import { http } from "./core/http.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: join(__dirname, "..", "..", "..", ".env") });
@@ -33,6 +34,11 @@ function buildServer() {
   registerTools(server);
   return server;
 }
+
+// O catálogo (usado por /health e pelo log) só existe depois que as tools são
+// registradas, e isso acontece por SESSÃO. Registra uma vez na subida, num
+// servidor descartado, pra saber quantas tools o processo publica.
+buildServer();
 
 // sessionId -> transport
 const transports = {};
@@ -58,8 +64,8 @@ app.use("/mcp", (req, res, next) => {
 // Plain (non-MCP) health endpoint for liveness checks.
 app.get("/health", async (_req, res) => {
   let api = "unreachable";
-  try { api = (await apiClient.health()).ok ? "ok" : "error"; } catch { /* keep unreachable */ }
-  res.json({ ok: true, service: "cockpit-mcp", transport: "streamable-http", endpoint: "/mcp", sessions: Object.keys(transports).length, api });
+  try { api = (await http.get("/api/health")).ok ? "ok" : "error"; } catch { /* keep unreachable */ }
+  res.json({ ok: true, service: "cockpit-mcp", transport: "streamable-http", endpoint: "/mcp", sessions: Object.keys(transports).length, tools: catalog.size, api });
 });
 
 app.post("/mcp", async (req, res) => {
@@ -104,5 +110,5 @@ app.delete("/mcp", handleSessionRequest);
 
 app.listen(PORT, () => {
   console.log(`Cockpit MCP ready on http://localhost:${PORT}/mcp  (auth: ${MCP_KEY ? "ON" : "off"})`);
-  console.log(`  -> API em ${apiClient.base}`);
+  console.log(`  -> API em ${http.base}  ·  ${catalog.size} tools`);
 });

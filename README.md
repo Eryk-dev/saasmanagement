@@ -36,8 +36,8 @@ ou MCP.
 - **`packages/web`** — Vite + React. Os componentes **exatos** do design, buscando tudo de
   `/api/bootstrap` no boot. As 10 telas, 5 personas, kanban com drag-and-drop, drill-downs,
   painel de tweaks.
-- **`packages/mcp`** — Servidor MCP sobre **Streamable HTTP** (com sessão). 16 tools que são
-  wrappers finos sobre a API, então MCP e UI nunca divergem.
+- **`packages/mcp`** — Servidor MCP sobre **Streamable HTTP** (com sessão). Cobre o cockpit
+  inteiro, sempre pela API REST, então MCP e UI nunca divergem.
 
 ---
 
@@ -247,21 +247,43 @@ próprio JSON do lead — **sem migração**.
 
 ## Servidor MCP — manual de conexão
 
-Streamable HTTP em `http://localhost:8788/mcp` (health em `/health`). **O MCP NÃO transmite
-dados de negócio** — ele é um *manual* que te diz como conectar na API. Os dados trafegam só
-pela API REST. As tools devolvem documentação (markdown / schema), lendo a própria
-`/api/openapi.json`:
+Streamable HTTP em `http://localhost:8788/mcp` (health em `/health`). São **231 tools em 20 grupos**
+cobrindo **o cockpit inteiro**: tudo que existe numa tela existe como tool. Toda escrita passa pela API REST, então
+MCP e UI nunca divergem.
 
-| tool | o que devolve |
+Comece por **`cockpit_help`** (índice das tools por assunto) e **`cockpit_health`** (o que está
+configurado — relatório vazio quase sempre é integração desligada, não bug).
+
+| grupo | do que dá conta |
 |---|---|
-| `api_overview` | visão geral: base, auth, fluxo, links da doc |
-| `connect_a_form` | **passo a passo** de mapear seu form → lead + anexar `proposalUrl` |
-| `lead_fields` | tabela dos campos do lead (`LeadInput`) |
-| `resource_schema` | schema de um recurso (`lead\|product\|customer\|deal\|nps\|goal`) |
-| `list_endpoints` | todos os endpoints (método, rota, se exige key) |
-| `openapi_spec` | o OpenAPI completo (pra codegen / Postman) |
+| Publicidade (Meta Ads) | relatório com CPL/ROAS por campanha, conjunto, anúncio e dor; objetos ao vivo; pausar/reativar; orçamento diário; posicionamentos; sync de insights |
+| Relatórios | pace do mês, placar do time, funil, unit economics, custos, metas, portfólio, app Elo, landing pages |
+| Pipeline | quadro, busca de leads, ficha completa, mover de etapa, timeline, worklist, configuração do funil |
+| Clientes | carteira, saúde, NPS, contratos, churn |
+| Financeiro | fechamento, faturas, assinaturas, Mercado Pago, links de pagamento |
+| Inbox e redes | WhatsApp (conversas, templates, envio), Instagram/Facebook (posts, comentários, DMs) |
+| Disparos | campanhas, sequências, outbound |
+| Formulários e propostas | construtor, funil do form, respostas, propostas, ofertas |
+| Agenda | horários livres, Meet, consultas, resumos de call, análise de pitch |
+| Plataforma | tarefas, equipe, permissões, configurações, treinamento |
+| Dados | leitura e escrita em qualquer uma das coleções, com filtro, projeção e agregação |
+| Manual | `cockpit_help`, `cockpit_health`, OpenAPI, endpoints, schema de recurso |
 
-Use o MCP como manual num agente/IDE; pra mover dados, fale com a API REST direto.
+### O formato da resposta
+
+Toda tool de leitura devolve o mesmo envelope, feito para virar relatório sem recontar nada:
+
+- `totals` — os números **já somados**, não linhas para o cliente somar.
+- `units` — a unidade de cada métrica (`BRL`, `%`, `x`), escrita, não adivinhada.
+- `period` — `since`/`until`, quantos dias e o fuso (**dia do negócio, America/Sao_Paulo**), mais
+  a janela anterior usada nas comparações.
+- `rows` / `tables` — tabelas com colunas estáveis (viram Markdown no texto e JSON em
+  `structuredContent`).
+- `page` — quando houve corte, diz quanto ficou de fora. Nada é truncado em silêncio.
+- `notes` — as ressalvas que mudam a leitura do número (ex.: receita reconhecida × contratada).
+
+Janela de tempo por nome: `period: "last_month"`, `"this_month"`, `"last_7d"`, `"2026-08"`… — ninguém
+precisa calcular data na mão.
 
 ### Conectar um cliente
 
@@ -289,7 +311,7 @@ packages/
          data/cockpit.db   (banco, fora do Git)
   web/   index.html  vite.config.js  src/{main,app,atoms,charts,chrome,tweaks-panel}.jsx
          src/screens/*.jsx   src/lib/{api,format,ui}.js   src/tokens.css
-  mcp/   src/{index,tools,apiClient}.js   (manual: documenta, não transmite dados)
+  mcp/   src/index.js  src/core/*.js  src/tools/*.js  test/   (uma tool para cada função do cockpit)
 Dockerfile  packages/web/Dockerfile  packages/web/nginx.conf  docker-compose.yml
 .env.example
 ```
@@ -304,7 +326,7 @@ Dockerfile  packages/web/Dockerfile  packages/web/nginx.conf  docker-compose.yml
   campos certos do lead. O mapa dos campos está em `/api/docs` e na tool `connect_a_form`.
 - **Proposta**: o módulo dentro do app foi **removido**. A proposta é gerada **fora** (a partir
   do form) e o link entra no lead via `PATCH /api/leads/{id}` no campo `proposalUrl`.
-- **MCP = manual**, não transmite dados (a pedido). Quem move dados é a API REST.
+- **MCP cobre o cockpit inteiro** e escreve sempre pela API REST — nunca direto no banco.
 
 ---
 
