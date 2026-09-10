@@ -59,6 +59,7 @@ import { logActivity, applyStageMove, onActivityCreated, initialNextActionAt, ap
 import { findDuplicateLead, dedupMergePatch } from "./lead-dedup.js";
 import { registerFunnelMetricsRoutes } from "./routes.funnel-metrics.js";
 import { registerScoreboardRoutes } from "./routes.scoreboard.js";
+import { registerDesempenhoRoutes } from "./routes.desempenho.js";
 import { registerPipelinePaceRoutes } from "./routes.pipeline-pace.js";
 import { registerEloRoutes } from "./elo.js";
 
@@ -140,6 +141,10 @@ export const CREATE_DEFAULTS = {
   // `photo` = URL /public/tasks/:id do anexo (task_assets, 1 foto por tarefa).
   tasks: { title: "", description: "", saas: "", assignees: [], column: "", priority: "", dueDate: "", labels: [], comments: [], order: 0, photo: "" },
   task_boards: { name: "Tarefas", columns: [] },
+  // Registro manual do dia por pessoa (Análise de Desempenho): social selling
+  // feito pela SDR e criativos feitos pelo social media. Escrito pela rota
+  // dedicada POST /api/desempenho/:saas/log (id determinístico por pessoa+dia).
+  daily_logs: { saas: "", user: "", day: "", socialSelling: 0, creatives: 0, note: "", updatedAt: "" },
   // Timeline do lead (pontos de contato + eventos automáticos). `type` toque =
   // whatsapp/call/email/meeting; `stage` = mudança de estágio (meta {from,to});
   // `system` = evento automático (lead_created, proposal_viewed...). `at` = quando
@@ -350,6 +355,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerPipelinePaceRoutes(app, repo, opts.pipelinePace);
   // Placar por pessoa/papel (SDR/closer/CS) — o cockpit de gestão da Visão geral.
   registerScoreboardRoutes(app, repo, opts.scoreboard);
+  // Análise de Desempenho: objeções por closer na janela, produção do social e
+  // os registros manuais do dia (social selling / criativos).
+  registerDesempenhoRoutes(app, repo, { social: opts.social, now: opts.scoreboard?.now, ...(opts.desempenho || {}) });
   // Análises do Elo App (produto B2C): agregados do banco do app + beacon
   // público das landing pages (/public/lp/events) e resumo de conversão.
   registerEloRoutes(app, repo, opts.elo);

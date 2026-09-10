@@ -79,6 +79,28 @@ export function aggregateCalls(summaries) {
   };
 }
 
+// Resumo de call de VENDA de um produto (kind integracao fica de fora — outra
+// estrutura, outra tela). Usado pela Análise de pitch e pela Análise de
+// Desempenho (objeções por closer).
+export const isSalesCallSummary = (a, saas) =>
+  !!a && (!saas || a.saas === saas) && a.meta?.event === "call_summary" && !!a.meta?.summary && a.meta?.kind !== "integracao";
+
+// Uma linha por CALL: re-resumo (mesma call) não conta duas vezes. Dedup pelo
+// meetEventId (senão pelo lead), mantendo o resumo mais recente. Devolve em
+// ordem decrescente de data.
+export function dedupCallSummaries(list) {
+  const all = [...(list || [])].sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0));
+  const seen = new Set();
+  const acts = [];
+  for (const a of all) {
+    const key = a.meta?.meetEventId || a.lead || a.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    acts.push(a);
+  }
+  return acts;
+}
+
 export function registerPitchRoutes(app, repo, { anthropic } = {}) {
   // Painel de Análise de pitch: estatísticas agregadas das calls resumidas do
   // produto + as calls recentes (com nome do lead). Read-only; alimenta a tela.
@@ -90,19 +112,7 @@ export function registerPitchRoutes(app, repo, { anthropic } = {}) {
     // sem responsável). Ausentes = tudo.
     const closerFilter = req.query.closer != null ? String(req.query.closer) : null;
     const groupFilter = req.query.group === "venda" || req.query.group === "sdr" ? req.query.group : null;
-    const all = (await repo.list("activities"))
-      .filter((a) => a && a.saas === saas && a.meta?.event === "call_summary" && a.meta?.summary && a.meta?.kind !== "integracao")
-      .sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0));
-    // Uma linha por CALL: re-resumo (mesma call) não conta duas vezes. Dedup pelo
-    // meetEventId (senão pelo lead), mantendo o resumo mais recente (já ordenado).
-    const seen = new Set();
-    const acts = [];
-    for (const a of all) {
-      const key = a.meta?.meetEventId || a.lead || a.id;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      acts.push(a);
-    }
+    const acts = dedupCallSummaries((await repo.list("activities")).filter((a) => isSalesCallSummary(a, saas)));
     // Responsável pela call (o call_summary é gravado por "cockpit", não guarda
     // quem conduziu): closer do lead quando há; senão o DONO (SDR que fez a
     // qualificação). Grupo: com closer = venda; sem = qualificação do SDR.

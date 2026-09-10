@@ -23,6 +23,7 @@ export const COLLECTIONS = {
   goals: [],
   leaderboard_month: [],
   leaderboard_all: [],
+  daily_logs: [], // registro manual do dia por pessoa (social selling da SDR, criativos do social) — routes.desempenho.js
   forms: [],
   form_submissions: [],
   form_events: [],

@@ -215,7 +215,9 @@ export const ENTITIES = {
       { key: "phone", label: "Telefone", type: "text" },
       { key: "owner", label: "Dono (SDR)", type: "select", options: usersWithRole("sdr"), blankLabel: "—" },
       { key: "closer", label: "Closer", type: "select", options: usersWithRole("closer"), blankLabel: "—" },
-      { key: "source", label: "Origem", type: "text", placeholder: "Form · /pricing" },
+      // Sugestões de origem (texto livre continua valendo). "Social selling" é o
+      // carimbo que a Análise de Desempenho lê (isSocialSellingLead no metrics-core).
+      { key: "source", label: "Origem", type: "text", placeholder: "Form · /pricing", suggestions: ["Social selling", "Indicação", "Outbound", "Instagram", "Site"] },
       { key: "stage", label: "Estágio", type: "select", options: stageOptions, blankLabel: "(primeiro estágio)" },
       // Escolher uma etapa de call sem preencher isto é recusado pelo servidor:
       // card em etapa de call sem hora não entra na Agenda nem ocupa o slot do
