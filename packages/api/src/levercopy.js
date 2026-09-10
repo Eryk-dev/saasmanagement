@@ -36,6 +36,8 @@ export function integrationStatus() {
 // qualificação (thesis/accounts/volume/…) não existem no lead do Cockpit hoje, então
 // não são enviados (a proposta usa defaults). `cockpit_lead_id` dá rastreabilidade
 // e habilita o pulo do espelho no lado do Levercopy.
+import { traduzirParaLevercopy } from "./classificacao.js";
+
 export function buildBody(lead, leadQuestions = []) {
   const body = {
     name: lead.name,
@@ -53,7 +55,9 @@ export function buildBody(lead, leadQuestions = []) {
     const v = lead[q.key];
     if (v === undefined || v === null || v === "") continue;
     if (Array.isArray(v) && v.length === 0) continue;
-    body[q.key] = v;
+    // Faixas recortadas (09/2026) usam rótulos novos; o Levercopy só conhece os
+    // antigos e degrada em silêncio com valor desconhecido.
+    body[q.key] = traduzirParaLevercopy(q.key, v);
   }
   return body;
 }

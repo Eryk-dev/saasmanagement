@@ -73,8 +73,14 @@ export function makeDripRunner({ repo, mailer, log = console } = {}) {
       for (const seq of seqs) {
         const stages = new Set(seq.trigger?.stages || []);
         if (!stages.size || !Array.isArray(seq.steps) || !seq.steps.length) continue;
+        // Filtro por MOTIVO de saída (opcional). Sem ele, "desqualificado"
+        // mandaria a mesma coisa pra quem é pequeno demais e pra quem só não
+        // respondeu em 7 dias — e demo pra quem não pode comprar gera resposta
+        // que ocupa SDR sem nunca fechar. Vazio = comporta como antes.
+        const reasons = new Set(seq.trigger?.reasons || []);
         for (const lead of leads) {
           if (lead.saas !== seq.saas || !stages.has(lead.stage)) continue;
+          if (reasons.size && !reasons.has(lead.lostReason)) continue;
           const key = `${seq.id}:${lead.id}`;
           if (enrolledKey.has(key)) continue;
           enrolledKey.add(key);

@@ -20,6 +20,10 @@ export const KINDS = [
   "outro",          // estágio custom sem semântica especial
 ];
 
+// Canais válidos de um passo de cadência. `ligacao` é o único que exige
+// presença humana — o robô cobre os demais fora do expediente.
+export const CANAIS_CADENCIA = ["ligacao", "whats", "audio", "email"];
+
 export const SDR_KINDS = new Set(["novo", "contato", "qualificacao"]);
 export const CLOSER_KINDS = new Set(["call", "proposta", "followup", "integracao"]);
 export const LOSS_KINDS = new Set(["perdido", "desqualificado"]);
@@ -67,6 +71,26 @@ export function normalizeFunnel(funnel) {
       for (const k of ["maxAttempts", "retryDays", "firstTouchHours"]) {
         const v = Number(row.cadence[k]);
         if (Number.isFinite(v) && v > 0) c[k] = v;
+      }
+      // `steps` descreve a cadência com DIA e CANAL por toque, em vez de um
+      // intervalo uniforme. Existe porque o valor da cadência de 7 dias está
+      // justamente em concentrar na frente e alternar canal e janela de
+      // horário — ligar sempre às 10h só alcança quem está livre às 10h, e
+      // `retryDays` sozinho não expressa isso. Retrocompatível: funil que só
+      // tem maxAttempts/retryDays continua igual.
+      const steps = Array.isArray(row.cadence.steps) ? row.cadence.steps : null;
+      if (steps) {
+        const limpos = steps
+          .map((s) => {
+            const day = Number(s?.day);
+            if (!Number.isFinite(day) || day < 0) return null;
+            const canal = CANAIS_CADENCIA.includes(s?.canal) ? s.canal : "whats";
+            const janela = typeof s?.janela === "string" ? s.janela : undefined;
+            return janela ? { day, canal, janela } : { day, canal };
+          })
+          .filter(Boolean)
+          .sort((a, b) => a.day - b.day);
+        if (limpos.length) c.steps = limpos;
       }
       if (Object.keys(c).length) row.cadence = c; else delete row.cadence;
     } else {
