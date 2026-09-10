@@ -457,7 +457,8 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
     const product = lead.saas ? await repo.get("products", lead.saas) : null;
     const PLAN_LABEL = { anual: "Plano Anual", semestral: "Plano Semestral", unico: "Serviço único" };
     const plan = PLAN_LABEL[req.body?.plan] ? String(req.body.plan) : "";
-    // Produto do catálogo da apresentação (FULL/OEM/Parcial): nomeia o checkout
+    // Produto do catálogo da apresentação (Lever OEM/Ads/Price × pacote, ou
+    // chave legada de venda antiga): nomeia o checkout
     // e fica no lead (dealProduct) — segue pro cliente e pro card da Integração.
     // (a Mentoria vende pelo mesmo campo, com o catálogo dela).
     const PRODUCT_LABEL_ALL = { ...DEAL_PRODUCT_LABEL, ...MENTORIA_LABEL };

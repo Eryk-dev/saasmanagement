@@ -6,7 +6,7 @@
 // (closer abrindo o próprio link de edição não infla o número).
 
 import { publicProposal, syncProposalLeadSnapshot } from "./proposal.js";
-import { applyCatalog, catalogAmount, catalogUI, oemCotasOf } from "./proposal-catalog.js";
+import { applyCatalog, catalogAmount, catalogUI } from "./proposal-catalog.js";
 import { proposalPageHtml } from "./proposal-page.js";
 import { leveradsResults } from "./leverads-results.js";
 import { makeRateLimiter } from "./forms.js";
@@ -104,7 +104,6 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     if (typeof q.product === "string") fake.state.product = q.product.slice(0, 20);
     if (typeof q.pain === "string") fake.state.pain = q.pain.slice(0, 8);
     if (q.oem === "1") fake.state.oem = true;
-    if (typeof q.oemCota === "string") fake.state.oemCota = Number(q.oemCota) || 0;
     if (typeof q.desc === "string") fake.state.discountPct = Math.min(15, Math.max(0, Math.round(Number(q.desc) || 0)));
     if (typeof q.order === "string") fake.state.deckOrder = q.order.toUpperCase() === "B" ? "B" : "";
     if (typeof q.dores === "string") fake.state.dores = q.dores.split("|").map((d) => d.slice(0, 120)).filter(Boolean).slice(0, 12);
@@ -191,12 +190,6 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     if (typeof body.product === "string" && (body.product === "" || catalogProducts[body.product])) state.product = body.product;
     if (typeof body.pain === "string") state.pain = body.pain.slice(0, 8);
     if (typeof body.oem === "boolean") state.oem = body.oem;
-    // Cota do OEM avulso (select da tela zero): só cota do leque do catálogo
-    // entra; vazio ou fora do leque = volta a seguir o porte da régua.
-    if (body.oemCota !== undefined) {
-      const cota = Number(body.oemCota) || 0;
-      state.oemCota = oemCotasOf(catalogProducts).includes(cota) ? cota : "";
-    }
     // Ordem da apresentação (teste A/B da tela zero): A = padrão, B = beta.
     if (typeof body.deckOrder === "string") state.deckOrder = body.deckOrder.toUpperCase() === "B" ? "B" : "";
     // Desconto da negociação (tela zero): inteiro de 0 a 15%, fora disso clampa.
@@ -247,7 +240,7 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     if (dataChanged) patch.data = data;
     const updated = await repo.update("proposals", p.id, patch);
     // O card do pipeline acompanha a APRESENTAÇÃO: mexeu na tela zero (produto,
-    // dor, régua, cota OEM), o valor do lead recalcula pelo preço do produto
+    // dor, régua), o valor do lead recalcula pelo preço do produto
     // ativo. Negócio já fechado (planClosed/wonAt) tem valor de venda — não mexe.
     const amount = catalogAmount(updated);
     if (amount > 0 && p.lead) {

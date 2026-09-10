@@ -88,19 +88,31 @@ export function accruedAmountOf(lead, { now, endAt } = {}) {
 export const CLOSED_PLAN_MONTHS = { anual: 12, semestral: 6, mensal: 1, unico: 1 };
 
 // Produto do catálogo da apresentação (tela zero) com que o negócio fechou —
-// espelho do PRODUCT_LABEL de packages/api/src/proposal-catalog.js (os dois
-// andam juntos). Vai no lead (dealProduct) pelo link de pagamento, aparece no
-// card da Integração e na coluna Plano do cliente.
+// espelho do DEAL_PRODUCT_LABEL de packages/api/src/proposal-catalog.js (os
+// dois andam juntos). Vai no lead (dealProduct) pelo link de pagamento, aparece
+// no card da Integração e na coluna Plano do cliente.
+// Catálogo v2 (10/09/2026): linha × pacote. As chaves do catálogo anterior
+// (FULL/OEM/Parcial/clonagem avulsa) ficam com `legacy: true`: não entram em
+// select nenhum, só nomeiam venda antiga.
 export const DEAL_PRODUCTS = [
-  { id: "full", label: "LeverAds FULL" },
-  { id: "fulloem", label: "LeverAds + OEM FULL" },
-  { id: "oem", label: "OEM avulso" },
-  { id: "parcialA", label: "Parcial" },
-  { id: "parcialoem", label: "Parcial + OEM 250" },
-  // Serviço único (clonagem entre contas cobrada uma vez, por faixa de
-  // anúncios): vende, mas não é produto do deck — não vira apresentação.
-  { id: "avulso", label: "Clonagem avulsa" },
+  { id: "oem_essencial", label: "Lever OEM · Essencial" },
+  { id: "oem_escala", label: "Lever OEM · Escala" },
+  { id: "ads_essencial", label: "Lever Ads · Essencial" },
+  { id: "ads_escala", label: "Lever Ads · Escala" },
+  { id: "price_essencial", label: "Lever Price · Essencial" },
+  { id: "price_escala", label: "Lever Price · Escala" },
+  { id: "price_enterprise", label: "Lever Price · Enterprise" },
+  // Serviço único (pacote de anúncios OEM cobrado uma vez): vende, mas não é
+  // produto do deck — não vira apresentação.
+  { id: "oem_pack", label: "Pacote de OEM avulso" },
+  { id: "full", label: "LeverAds FULL", legacy: true },
+  { id: "fulloem", label: "LeverAds + OEM FULL", legacy: true },
+  { id: "oem", label: "OEM avulso", legacy: true },
+  { id: "parcialA", label: "Parcial", legacy: true },
+  { id: "parcialoem", label: "Parcial + OEM 250", legacy: true },
+  { id: "avulso", label: "Clonagem avulsa", legacy: true },
 ];
+export const DEAL_PRODUCTS_ACTIVE = DEAL_PRODUCTS.filter((p) => !p.legacy);
 
 // O QUE DÁ PRA FECHAR neste SaaS, com os preços que estão na apresentação: o
 // servidor manda o catálogo do template (banco) no SEED, então preço mexido no

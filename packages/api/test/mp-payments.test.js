@@ -438,6 +438,12 @@ test("lead: link completo carrega o checkout (título/descrição/e-mail) e grav
   assert.equal(saved.paymentMethod, "cartao12x");
   assert.equal(saved.mpChargeTitle, "LeverAds + OEM FULL · Plano Anual");
 
+  // Catálogo v2: chave nova nomeia o checkout com linha × pacote.
+  await app.inject({ method: "POST", url: "/api/leads/l7/mp/link", payload: { amount: 11988, plan: "anual", product: "ads_escala" } });
+  assert.equal((await repo.get("leads", "l7")).mpChargeTitle, "Lever Ads · Escala · Plano Anual");
+  assert.equal((await repo.get("leads", "l7")).dealProduct, "ads_escala");
+  await app.inject({ method: "POST", url: "/api/leads/l7/mp/link", payload: { amount: 40000, plan: "anual", product: "fulloem", contractValue: 40000, paymentMethod: "cartao12x" } });
+
   // link rápido sem os campos de fechamento: nada do combinado é apagado
   await app.inject({ method: "POST", url: "/api/leads/l7/mp/link", payload: { amount: 500 } });
   const again = await repo.get("leads", "l7");

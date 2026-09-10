@@ -332,7 +332,7 @@ export function DealProductField({ saas, value, onChange, plan = "", amount = nu
     </div>
   );
 }
-// Produto de SERVIÇO ÚNICO (clonagem avulsa): o plano é sempre "unico", não faz
+// Produto de SERVIÇO ÚNICO (pacote de OEM avulso): o plano é sempre "unico", não faz
 // sentido perguntar ciclo. Quem consome usa pra travar o select de plano.
 export const isOneOffProduct = (saas, id) => !!dealProductsOf(saas).find((p) => p.id === id)?.oneOff;
 

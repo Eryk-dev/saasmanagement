@@ -2,7 +2,7 @@ import React from "react";
 import { useEsc } from "../atoms.jsx";
 import { waLink } from "../lib/ui.js";
 import { api } from "../lib/api.js";
-import { CLOSED_PLANS, DEAL_PRODUCTS, dealProductLabel, dealProductsOf } from "../lib/payments.js";
+import { CLOSED_PLANS, DEAL_PRODUCTS_ACTIVE, dealProductLabel, dealProductsOf } from "../lib/payments.js";
 import { ProductOptions, PaymentMethodSelect } from "./lead-blocks.jsx";
 
 // Modal do LINK DE PAGAMENTO do Mercado Pago — o MESMO em todo lugar que gera
@@ -336,10 +336,10 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved }) {
                 title="produto do catálogo da apresentação — vai pro card, pro cliente e pro card da Integração">
                 <option value="">escolher…</option>
                 {/* catálogo real do SaaS (SEED); sem catálogo, a lista estática */}
-                <ProductOptions products={dealProductsOf(doc.saas).length ? dealProductsOf(doc.saas) : DEAL_PRODUCTS} />
+                <ProductOptions products={dealProductsOf(doc.saas).length ? dealProductsOf(doc.saas) : DEAL_PRODUCTS_ACTIVE} />
                 {/* produto Personalizado do fechamento (texto livre no lugar do
                     id): entra como opção pro select não abrir vazio */}
-                {dealProduct && !(dealProductsOf(doc.saas).length ? dealProductsOf(doc.saas) : DEAL_PRODUCTS).some((p) => p.id === dealProduct) && (
+                {dealProduct && !(dealProductsOf(doc.saas).length ? dealProductsOf(doc.saas) : DEAL_PRODUCTS_ACTIVE).some((p) => p.id === dealProduct) && (
                   <option value={dealProduct}>{dealProduct}</option>
                 )}
               </select>

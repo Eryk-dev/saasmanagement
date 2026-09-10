@@ -1,19 +1,36 @@
-// Camada de PRODUTO e OFERTA da proposta (catálogo LeverAds, aprovado pelo Leo
-// em 04-06/08/2026) — só age quando o snapshot carrega `calc.catalog` (posto no
-// template pela migração ensureProposalCatalog).
+// Camada de PRODUTO e OFERTA da proposta (catálogo LeverAds v2, desenhado pelo
+// Leo no mapa mental "Produtos" em 10/09/2026) — só age quando o snapshot
+// carrega `calc.catalog` no shape v2 (posto no template pela migração
+// ensureProposalCatalog / migrateCatalogPricing).
+//
+// Três LINHAS × PACOTES:
+//   - oem   (autopeças: tudo do Ads + criação de anúncios por código OEM)
+//   - ads   (Lever Ads: sincronização, cópia, edição em massa, SAC)
+//   - price (Lever Price: precificação, produto novo)
+//   × essencial / escala / enterprise. Enterprise de OEM e Ads é SOB CONSULTA
+//   (não tem preço, não entra em `products`); o do Price tem preço.
+// Chave de produto = linha_pacote ("oem_essencial", "price_escala"…): cabe em
+// state.product, lead.dealProduct e no select do gate sem campo novo.
+//
+// Só DUAS formas de pagar: o ANUAL abre a apresentação e o SEMESTRAL é o degrau
+// secreto do Shift+1. A recorrente (mensalidade + clonagem na entrada) saiu
+// dos planos novos (Leo, 10/09/2026).
 //
 // O deck no banco continua GENÉRICO (os slides do template, com os dois slides
 // de investimento originais como matéria-prima). Na hora de SERVIR a página,
 // applyCatalog() transforma o deck no deck do produto decidido na tela zero:
-//   - slide de investimento único, clonado do layout do FULL, com os preços e
-//     features do produto ativo (semestral abre; anual é o degrau do Shift+1);
-//   - tela "como nasce o anúncio OEM" nos produtos com OEM (no OEM avulso ela
-//     SUBSTITUI o "Como funciona · 3 etapas", que é todo sobre clonagem);
-//   - ritmo claro/escuro re-alternado quando a tela OEM entra no meio.
+//   - slide de investimento único, clonado do layout do template, com os
+//     preços e entregáveis do produto ativo (lidos do catálogo, nunca do texto);
+//   - tela "como nasce o anúncio OEM" na linha OEM (entra escura depois do
+//     "Como funciona · 3 etapas" e o resto do deck re-alterna claro/escuro).
 //
-// A régua (matriz contas × anúncios S-E) SUGERE o produto; o closer decide no
-// select "Apresentar" (state.product; vazio = seguir a régua). O link do
-// cliente (shareProposalOffer) recebe o deck JÁ transformado e travado.
+// A régua SUGERE o produto: o NICHO decide a linha (autopeças → OEM, resto →
+// Ads) e o Nº DE CONTAS decide o pacote (tierByAccounts). Price nunca é
+// sugerido: é cross-sell, escolha manual do closer. A matriz contas × anúncios
+// (S-E) continua sendo calculada só como NOTA do cliente (tierOf), usada por
+// outras telas. O closer decide no select "Apresentar" (state.product; vazio =
+// seguir a régua). O link do cliente (shareProposalOffer) recebe o deck JÁ
+// transformado e travado.
 //
 // Espelho do GRADE_GRID de packages/web/src/lib/ui.js (calibração 24/07) — os
 // dois precisam andar juntos.
@@ -27,39 +44,24 @@ const DEFAULT_GRID = [
 ];
 const DEFAULT_ACCOUNTS = ["1", "2", "3-5", "6-10", "10+"];
 const DEFAULT_VOL_LABELS = ["≤100", "100-500", "500-2k", "2-10k", "10k+"];
-const PRODUCT_KEYS = ["full", "fulloem", "oem", "parcialA", "parcialoem"];
-// OEM avulso vende por COTA mensal — leque aprovado pelo Leo em 14/08/2026:
-// 50, 100 e 200 anúncios/mês, em products.oem.{small,mid,big} no banco.
-// Snapshot antigo (só small/big) continua válido: os níveis são lidos do que
-// existir, em ordem de cota. A régua abre no MENOR nível pro porte D/E e no
-// MAIOR pros demais; o closer troca na tela zero (state.oemCota).
-const OEM_LEVEL_KEYS = ["small", "mid", "big"];
-const oemLevelsOf = (products) => OEM_LEVEL_KEYS
-  .map((k) => products?.oem?.[k])
-  .filter((l) => l && l.sem)
-  .sort((a, b) => (Number(a.cota) || 0) - (Number(b.cota) || 0));
-// Cotas válidas do leque (validação do PATCH da tela zero).
-export const oemCotasOf = (products) => oemLevelsOf(products).map((l) => Number(l.cota) || 0);
-function oemLevelOf(products, state, small) {
-  const levels = oemLevelsOf(products);
-  const want = Number(state?.oemCota) || 0;
-  return levels.find((l) => (Number(l.cota) || 0) === want)
-    || (small ? levels[0] : levels[levels.length - 1])
-    || null;
-}
-// Serviço único: a clonagem entre contas cobrada UMA vez, por faixa de anúncios.
-// Não é produto do catálogo — é tabela de consulta do closer na tela zero, então
-// não entra no deck nem viaja no link do cliente. `calc.catalog.oneOff` (banco)
-// sobrescreve estes valores sem precisar de deploy.
-const ONE_OFF_CLONING = {
-  tag: "serviço único",
-  title: "Clonagem entre contas",
-  rows: [
-    { range: "Até 100 anúncios", price: "R$ 996" },
-    { range: "101 a 500 anúncios", price: "R$ 2.184" },
-    { range: "501 a 2.000 anúncios", price: "R$ 2.988" },
-  ],
-  note: "Consulta do closer · não altera o produto nem a apresentação",
+
+export const LINE_KEYS = ["oem", "ads", "price"];
+export const TIER_KEYS = ["essencial", "escala", "enterprise"];
+const TIER_LABEL = { essencial: "Essencial", escala: "Escala", enterprise: "Enterprise" };
+// Ordem canônica dos produtos com preço (o que pode virar deck). Produto extra
+// gravado no banco (fora desta lista) também entra, depois destes.
+const PRODUCT_KEYS = [
+  "oem_essencial", "oem_escala",
+  "ads_essencial", "ads_escala",
+  "price_essencial", "price_escala", "price_enterprise",
+];
+// Faixa de contas do form → pacote sugerido. `calc.catalog.tierByAccounts`
+// (banco) sobrescreve sem deploy.
+const DEFAULT_TIER_BY_ACCOUNTS = { "1": "essencial", "2": "essencial", "3-5": "essencial", "6-10": "escala", "10+": "enterprise" };
+const DEFAULT_LINES = {
+  oem: { name: "Lever OEM", enterprise: "sob consulta" },
+  ads: { name: "Lever Ads", enterprise: "sob consulta" },
+  price: { name: "Lever Price", enterprise: "" },
 };
 
 // Nome de exibição dos produtos do catálogo (espelho dos `name` da migração
@@ -67,31 +69,55 @@ const ONE_OFF_CLONING = {
 // link de pagamento do lead, coluna Plano do cliente e card da Integração
 // (web espelha em lib/payments.js DEAL_PRODUCTS).
 export const PRODUCT_LABEL = {
+  oem_essencial: "Lever OEM · Essencial",
+  oem_escala: "Lever OEM · Escala",
+  ads_essencial: "Lever Ads · Essencial",
+  ads_escala: "Lever Ads · Escala",
+  price_essencial: "Lever Price · Essencial",
+  price_escala: "Lever Price · Escala",
+  price_enterprise: "Lever Price · Enterprise",
+};
+// Catálogo ANTERIOR (FULL / +OEM / OEM avulso / Parcial / combo / clonagem
+// avulsa): não vende mais, mas venda fechada com essas chaves continua
+// nomeada na coluna Plano do cliente, no checkout e no card da Integração.
+export const LEGACY_PRODUCT_LABEL = {
   full: "LeverAds FULL",
   fulloem: "LeverAds + OEM FULL",
   oem: "OEM avulso",
   parcialA: "Parcial",
   parcialoem: "Parcial + OEM 250",
+  avulso: "Clonagem avulsa",
 };
 
-// O que pode ser VENDIDO (lead.dealProduct) = os produtos do deck + a clonagem
-// avulsa, que é serviço único e não vira apresentação. Separado do
-// PRODUCT_LABEL de propósito: "avulso" não existe em catalog.products, então
-// nunca pode virar produto ativo do deck (applyCatalog ignoraria).
-export const ONE_OFF_KEY = "avulso";
-export const DEAL_PRODUCT_LABEL = { ...PRODUCT_LABEL, [ONE_OFF_KEY]: "Clonagem avulsa" };
+// O que pode ser VENDIDO (lead.dealProduct) = os produtos do deck + o pacote de
+// OEM avulso (serviço único, não vira apresentação) + os rótulos legados.
+// "oem_pack" não existe em catalog.products, então nunca pode virar produto
+// ativo do deck (applyCatalog ignoraria).
+export const ONE_OFF_KEY = "oem_pack";
+export const DEAL_PRODUCT_LABEL = { ...PRODUCT_LABEL, [ONE_OFF_KEY]: "Pacote de OEM avulso", ...LEGACY_PRODUCT_LABEL };
 
-export const hasCatalog = (calc) => !!(calc && calc.catalog && calc.catalog.products);
+// Só o shape v2 é lido em runtime. Um snapshot v1 que escape da migração
+// renderiza o deck cru do template (sem tela zero de catálogo), nunca quebra.
+export const CATALOG_VERSION = 2;
+export const hasCatalog = (calc) =>
+  !!(calc && calc.catalog && calc.catalog.products) && Number(calc.catalog.catalogV) >= CATALOG_VERSION;
 
 // Milhar pt-BR sem depender do ICU do runtime (imagem slim pode vir sem pt-BR).
 const fmtBR = (n) => String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 const clone = (o) => JSON.parse(JSON.stringify(o || {}));
+const moneyOf = (v) => {
+  if (typeof v === "number") return Math.round(v) || 0;
+  const digits = String(v ?? "").replace(/[^\d,]/g, "").split(",")[0].replace(/\D/g, "");
+  return digits ? Number(digits) : 0;
+};
 
 function volCol(calc, band) {
   const mid = Number((calc?.volumeMid || {})[band]) || 0;
   return mid <= 100 ? 0 : mid <= 500 ? 1 : mid <= 2000 ? 2 : mid <= 10000 ? 3 : 4;
 }
 
+// Nota do cliente (matriz contas × anúncios). Continua existindo como
+// informação da tela zero e do card; não decide mais o produto.
 export function tierOf(calc, state) {
   const cat = calc?.catalog || {};
   const accounts = cat.accounts || DEFAULT_ACCOUNTS;
@@ -104,17 +130,37 @@ export const lowTier = (t) => t === "D" || t === "E";
 
 const isAuto = (answers) => String(answers?.niche || "").trim().toLowerCase() === "autopecas";
 
-// A régua (contas × anúncios) decide o produto sugerido — TODA dor, inclusive
-// a [OEM] do anúncio de part number, só troca a trilha SPIN (pedido do Leo,
-// 15/08/2026: quem veio pelo anúncio de OEM também serve pro LeverAds, então a
-// dor não rebaixa a apresentação nem o card pro OEM avulso). D/E entra no
-// Parcial (combo com OEM 250 se autopeças) e o resto é FULL (+OEM se
-// autopeças). O OEM avulso vive no override do closer (state.product).
+// ── Régua: nicho → linha, contas → pacote ──────────────────────────────────
+const productKeysOf = (products) => PRODUCT_KEYS
+  .filter((k) => products?.[k])
+  .concat(Object.keys(products || {}).filter((k) => !PRODUCT_KEYS.includes(k)));
+const lineOfKey = (products, key) => String(products?.[key]?.line || String(key).split("_")[0] || "");
+const tierOfKey = (products, key) => String(products?.[key]?.tier || String(key).split("_")[1] || "");
+const linesOf = (cat) => ({ ...DEFAULT_LINES, ...(cat?.lines || {}) });
+const lineName = (cat, line) => linesOf(cat)[line]?.name || line;
+
+export const lineOf = (answers) => (isAuto(answers) ? "oem" : "ads");
+export function pkgOf(cat, state) {
+  const map = cat?.tierByAccounts || DEFAULT_TIER_BY_ACCOUNTS;
+  return map[String(state?.accounts ?? "")] || "essencial";
+}
+// 10+ contas cai no Enterprise, que em OEM/Ads é sob consulta: a apresentação
+// abre no Escala e a tela zero avisa (fecha como Personalizado no gate).
+export const enterpriseHint = (cat, state, answers) =>
+  pkgOf(cat, state) === "enterprise" && !cat?.products?.[lineOf(answers) + "_enterprise"];
+
+// A dor do anúncio ([A-E]/[OEM]) só troca a trilha SPIN — nunca o produto
+// (pedido do Leo, 15/08/2026). Price fica fora da sugestão: é cross-sell.
 export function suggestProduct(calc, state, answers) {
-  const low = lowTier(tierOf(calc, state));
-  const auto = isAuto(answers);
-  if (low) return auto ? "parcialoem" : "parcialA";
-  return auto ? "fulloem" : "full";
+  const cat = calc?.catalog || {};
+  const products = cat.products || {};
+  const line = lineOf(answers);
+  let tier = pkgOf(cat, state);
+  if (tier === "enterprise" && !products[line + "_enterprise"]) tier = "escala";
+  if (!products[line + "_" + tier]) tier = "escala";
+  if (!products[line + "_" + tier]) tier = "essencial";
+  const key = line + "_" + tier;
+  return products[key] ? key : (productKeysOf(products)[0] || key);
 }
 
 export function activeProduct(p) {
@@ -123,45 +169,31 @@ export function activeProduct(p) {
   return suggestProduct(p?.calc, p?.state || {}, p?.data?.answers || {});
 }
 
-// Preço do produto que a APRESENTAÇÃO vai abrir (a oferta principal do deck é
-// o ANUAL desde 21/08/2026; semestral e recorrente são os degraus secretos do
-// Shift+1 e Shift+2). Vira o `lead.amount`: o card do pipeline mostra o mesmo
-// número que o closer apresenta. Sem catálogo devolve 0 — quem chama cai na
-// fórmula por assentos (contractValue) de sempre.
+// Preço do produto que a APRESENTAÇÃO vai abrir (o ANUAL). Vira o
+// `lead.amount`: o card do pipeline mostra o mesmo número que o closer
+// apresenta. Sem catálogo devolve 0 — quem chama cai na fórmula por assentos
+// (contractValue) de sempre.
 export function catalogAmount(p) {
   const calc = p?.calc;
   if (!hasCatalog(calc)) return 0;
-  const products = calc.catalog.products;
-  const key = activeProduct(p);
-  const offer = key === "oem"
-    ? oemLevelOf(products, p?.state || {}, lowTier(tierOf(calc, p?.state || {})))
-    : products[key];
-  return moneyOf(offer?.anu?.total);
+  return moneyOf(calc.catalog.products[activeProduct(p)]?.anu?.total);
 }
 
 // ── Ofertas ────────────────────────────────────────────────────────────────
-// Escreve as TRÊS formas de pagar num slide de pricing (tabela do Leo,
-// 21/08/2026): a oferta principal é o ANUAL e os degraus secretos são o
-// SEMESTRAL (Shift+1) e a RECORRENTE (Shift+2).
-//
-// A ordem é o argumento de venda: o anual abre porque é o menor custo total E
-// não cobra a clonagem; a recorrente fecha porque tem a menor mensalidade mas
-// pede a clonagem na entrada. Quem vê os três na ordem entende sozinho que o
-// compromisso paga a entrada.
-//
-// O *X* no cycles vira o número em destaque no renderer.
-const recTotal = (rec, meses) => moneyOf(rec?.per) * meses + moneyOf(rec?.setup);
+// Escreve as DUAS formas de pagar num slide de pricing: a oferta principal é
+// o ANUAL e o degrau secreto é o SEMESTRAL (Shift+1). O *X* no cycles vira o
+// número em destaque no renderer.
 function offers(slide, prod, pill) {
-  const { anu, sem, rec } = prod;
+  const { anu, sem } = prod;
   slide.planTag = "ANUAL";
-  slide.price = fmtBR(anu.total);
+  slide.price = fmtBR(anu?.total);
   slide.per = "no ano";
-  slide.cycles = "12x de *" + fmtBR(anu.per) + "*/mês";
+  slide.cycles = "12x de *" + fmtBR(anu?.per) + "*/mês";
   slide.cyclesLabel = "ou";
   slide.currency = false;
   slide.pricePrefix = "";
   if (pill) slide.planPill = pill;
-  if (sem) {
+  if (sem && sem.total) {
     slide.offer2 = {
       planTag: "SEMESTRAL", price: fmtBR(sem.total), per: "no semestre",
       cycles: "6x de *" + fmtBR(sem.per) + "*/mês", cyclesLabel: "ou",
@@ -173,36 +205,23 @@ function offers(slide, prod, pill) {
   } else {
     delete slide.offer2;
   }
-  if (rec?.per) {
-    slide.offer3 = {
-      planTag: "RECORRENTE", price: fmtBR(rec.per), per: "/ mês",
-      // A entrada é a informação que decide entre este plano e os outros dois,
-      // então ela ocupa a linha do cycles em vez de virar letra miúda.
-      cycles: rec.setup
-        ? "+ R$ " + fmtBR(rec.setup) + " de clonagem na entrada"
-        : "sem entrada, cancela quando quiser",
-      cyclesLabel: "",
-      currency: false, pricePrefix: "",
-      planPill: slide.planPill || "sem compromisso de permanência",
-    };
-  } else {
-    delete slide.offer3;
-  }
+  // Recorrente e escada antiga não existem mais nos planos novos.
+  delete slide.offer3;
   delete slide.offer4;
   delete slide.showIf;
   return slide;
 }
 
-// O subtítulo descreve o PRODUTO, não o plano — vale igual nas três ofertas.
+// O subtítulo descreve o PRODUTO, não o plano — vale igual nas duas ofertas.
 function withSub(slide, text) {
   slide.sub = text;
-  for (const o of [slide.offer2, slide.offer3]) if (o) o.sub = text;
+  if (slide.offer2) slide.offer2.sub = text;
   return slide;
 }
 
-// Todos os produtos usam o LAYOUT do FULL (grupos encadeados + faixa de preço):
-// troca só os itens dos grupos 1 e 2 — o 3 ("lado humano"), synths e títulos
-// originais ficam. features espelha os grupos (fallback do layout simples).
+// Todos os produtos usam o LAYOUT do template (grupos encadeados + faixa de
+// preço): troca só os itens dos grupos 1 e 2 — o 3 ("lado humano"), synths e
+// títulos originais ficam. features espelha os grupos (fallback do layout simples).
 function withGroups(slide, motorItems, platItems) {
   const g = slide.benefitGroups || [];
   if (g[0]) g[0].items = motorItems;
@@ -211,58 +230,43 @@ function withGroups(slide, motorItems, platItems) {
   return slide;
 }
 
-// +OEM FULL parte do slide de autopeças original, que fala em 100 OEM/mês: a
-// cota sai do CATÁLOGO (era fixa em 200 no texto e ficou pra trás quando o Leo
-// subiu o limite pra 500 em 21/08 — número de produto não se escreve à mão).
-const deepCota = (o, cota) => JSON.parse(JSON.stringify(o)
-  .replace(/100 anúncios/g, cota + " anúncios")
-  .replace(/100 SKUs por mês/g, cota + " anúncios OEM por mês"));
+// Escopo curto do pacote (pílula do card de preço e rótulo do select):
+// "3 contas · 200 OEM/mês", "7 contas · OEM ilimitado", "até 1.000 anúncios".
+export function scopeOf(P) {
+  const parts = [];
+  if (Number(P?.contas) > 0) parts.push(P.contas + " contas");
+  if (P?.line === "oem") {
+    parts.push(Number(P.cota) > 0 ? P.cota + " OEM/mês" : (P.cotaLabel || "OEM ilimitado"));
+  }
+  if (Number(P?.limite) > 0) parts.push("até " + fmtBR(P.limite) + " anúncios");
+  else if (P?.limiteLabel) parts.push(P.limiteLabel);
+  return parts.join(" · ");
+}
 
-function buildPricing(key, { sBase, sAuto, products, small, oemLevel }) {
-  const P = products;
-  if (key === "fulloem") {
-    const src = sAuto || sBase;
-    return offers(deepCota(clone(src), P.fulloem.cota || 500), P.fulloem);
-  }
-  if (key === "oem") {
-    const o = oemLevel || (small ? P.oem.small : P.oem.big);
-    const s = withGroups(clone(sBase),
-      [o.cota + " anúncios OEM criados por mês", "Compatibilidade veicular em cada anúncio", "Publicados direto nas suas contas (Meli + Shopee)"],
-      ["Você só manda a lista de códigos OEM", "Preview antes de publicar", "Acompanhamento dos anúncios criados no painel"]);
-    s.key = "investimento_oem";
-    offers(s, o);
-    return withSub(s, "só a parte de OEM, sem a clonagem · " + o.cota + " anúncios por mês");
-  }
-  if (key === "parcialA") {
-    const s = withGroups(clone(sBase),
-      ["Equalização das suas contas", "Automação de clone + estoque", "Até 1.000 anúncios"],
-      ["Gerenciador de SKU", "Perguntas de todas as contas num só lugar", "Estoque sincronizado entre as contas"]);
-    s.key = "investimento_parcial";
-    offers(s, P.parcialA, "até 1.000 anúncios");
-    return withSub(s, "plano de entrada");
-  }
-  if (key === "parcialoem") {
-    const cota = P.parcialoem.cota || 250;
-    const s = withGroups(clone(sBase),
-      ["Equalização das suas contas", "Automação de clone + estoque", "Até 1.000 anúncios", cota + " anúncios OEM por mês com compatibilidade veicular"],
-      ["Gerenciador de SKU", "Perguntas de todas as contas num só lugar", "Estoque sincronizado entre as contas"]);
-    s.key = "investimento_combo";
-    offers(s, P.parcialoem, "até 1.000 anúncios · " + cota + " OEM/mês");
-    return withSub(s, "soma: Parcial + OEM " + cota + "/mês");
-  }
-  // full: o slide original já é o layout e as features certas — só a oferta muda.
-  return offers(clone(sBase), P.full);
+function buildPricing(key, { sBase, sAuto, products }) {
+  const P = products?.[key];
+  if (!P) return null;
+  // A linha OEM parte do slide de autopeças do template (quando existe); as
+  // outras, do genérico. Entregáveis saem do CATÁLOGO (P.inclui), nunca do
+  // texto do slide — era assim que a cota ficava pra trás quando mudava.
+  const src = P.line === "oem" && sAuto ? sAuto : sBase;
+  const inc = P.inclui || {};
+  const s = withGroups(clone(src), Array.isArray(inc.motor) ? inc.motor.slice() : [], Array.isArray(inc.plataforma) ? inc.plataforma.slice() : []);
+  s.key = "investimento_" + key;
+  offers(s, P, scopeOf(P));
+  return withSub(s, P.name || PRODUCT_LABEL[key] || key);
 }
 
 // Tela do processo OEM (layout steps, o mesmo do "Como funciona · 3 etapas").
-function oemProcessSlide(cota) {
+function oemProcessSlide(P) {
+  const cota = Number(P?.cota) || 0;
   return {
     key: "oem_processo",
     type: "steps",
     bg: "dark",
     eyebrow: "OEM · como nasce o anúncio",
     title: "Do código OEM ao *anúncio publicado*, sem trabalho seu.",
-    pills: [cota + " anúncios OEM por mês", "ficha técnica completa", "compatibilidade veicular", "preview antes de publicar", "Mercado Livre + Shopee"],
+    pills: [cota ? cota + " anúncios OEM por mês" : "anúncios OEM sem limite mensal", "ficha técnica completa", "compatibilidade veicular", "preview antes de publicar", "Mercado Livre + Shopee"],
     steps: [
       { tag: "ETAPA 01 · LISTA DE CÓDIGOS", title: "Você só manda a lista de códigos OEM",
         text: "Uma planilha simples com os códigos das peças que você quer anunciar. É tudo o que a gente precisa de você nesse processo." },
@@ -275,9 +279,9 @@ function oemProcessSlide(cota) {
 }
 
 // Matéria-prima de TODO produto: os dois slides de investimento do template —
-// o genérico (layout do FULL) e o de autopeças (+OEM FULL). Fica num helper
-// porque a tela zero também precisa deles: a linha do produto no card do closer
-// é lida do mesmo slide que o cliente vai ver.
+// o genérico e o de autopeças. Fica num helper porque a tela zero também
+// precisa deles: a linha do produto no card do closer é lida do mesmo slide
+// que o cliente vai ver.
 function pricingSources(p) {
   const slides = Array.isArray(p?.slides) ? p.slides : [];
   const sBase = slides.find((s) => s?.type === "pricing" && s.key === "investimento")
@@ -295,35 +299,27 @@ export function applyCatalog(p) {
   const { slides, sBase, sAuto } = pricingSources(p);
   if (!sBase) return null; // deck sem slide de investimento — não mexe
 
-  const product = activeProduct(p);
-  const tier = tierOf(calc, p.state || {});
-  const small = lowTier(tier);
   const products = calc.catalog.products;
-  const oemLevel = oemLevelOf(products, p.state || {}, small);
+  const product = activeProduct(p);
+  const P = products[product];
+  if (!P) return null;
+  const tier = tierOf(calc, p.state || {});
 
   // Slides-base (sem os pricing) + o investimento do produto na posição do 1º pricing.
   const firstPricingIdx = slides.findIndex((s) => s?.type === "pricing");
   const base = slides.filter((s) => s?.type !== "pricing");
-  const pricing = buildPricing(product, { sBase, sAuto, products, small, oemLevel });
+  const pricing = buildPricing(product, { sBase, sAuto, products });
   const insertAt = firstPricingIdx === -1 ? base.length
     : Math.min(base.length, slides.slice(0, firstPricingIdx).filter((s) => s?.type !== "pricing").length);
   const out = base.slice(0, insertAt).concat([pricing], base.slice(insertAt)).map(clone);
 
-  // Tela do processo OEM + ritmo claro/escuro.
-  const oemCota = product === "fulloem" ? (products.fulloem.cota || 200)
-    : product === "parcialoem" ? (products.parcialoem.cota || 250)
-    : product === "oem" ? (Number(oemLevel?.cota) || 0)
-    : 0;
-  if (oemCota) {
-    const oemSlide = oemProcessSlide(oemCota);
+  // Tela do processo OEM + ritmo claro/escuro (só na linha OEM: ela entrega
+  // tudo do Ads MAIS o OEM, então o "3 etapas" da clonagem fica).
+  const oemLine = lineOfKey(products, product) === "oem";
+  if (oemLine) {
+    const oemSlide = oemProcessSlide(P);
     const stepsIdx = out.findIndex((s) => s.key === "como_funciona" || s.type === "steps");
-    if (product === "oem") {
-      // OEM avulso não tem clonagem: o "3 etapas" SAI e a tela OEM entra CLARA
-      // no lugar; o resto do deck mantém o ritmo original.
-      oemSlide.bg = "";
-      if (stepsIdx !== -1) out.splice(stepsIdx, 1, oemSlide);
-      else out.splice(Math.max(0, out.length - 1), 0, oemSlide);
-    } else if (stepsIdx !== -1) {
+    if (stepsIdx !== -1) {
       // Entra ESCURA logo depois do "3 etapas" (claro) e o rabo do deck volta a
       // alternar: impacto claro → investimento escuro.
       out.splice(stepsIdx + 1, 0, oemSlide);
@@ -338,52 +334,39 @@ export function applyCatalog(p) {
     }
   }
 
-  return { slides: out, product, suggested: suggestProduct(calc, p.state || {}, p.data?.answers || {}), tier, oemCota };
+  return {
+    slides: out, product, tier,
+    suggested: suggestProduct(calc, p.state || {}, p.data?.answers || {}),
+    line: lineOfKey(products, product), pkg: tierOfKey(products, product), oem: oemLine,
+  };
 }
 
 // ── Ordem da apresentação · teste A/B (Leo, 12/08/2026; refeito 23/08) ──────
 // A = a ordem de sempre (capa → história → marcas → sobre nós → 3 etapas →
 // [OEM] → impacto → investimento). B = beta: a APRESENTAÇÃO é só a tela de
 // setup do closer (o modo ?k esconde os slides). O deck em si não muda mais
-// de ordem, então o link do cliente segue o deck padrão; a reordenação antiga
-// do beta (mecanismo primeiro, sem capa, fechamento aberto) foi aposentada.
+// de ordem, então o link do cliente segue o deck padrão.
 export const DECK_ORDERS = { A: "padrão", B: "beta · só a tela de setup" };
 
 // ── Payload da tela zero (modo closer) ──────────────────────────────────────
 // Tudo que o card de decisão mostra vem PRONTO daqui: o cliente-side não tem
 // tabela de preço nenhuma (mudou dado → salva → recarrega → recalcula aqui).
-function priceLine(key, products, small, oemLevel) {
-  const P = products;
-  // Na ordem em que o closer apresenta: anual abre, semestral no Shift+1 e
-  // recorrente no Shift+2. Da recorrente vale a mensalidade + a entrada (o
-  // custo em 12 meses ele compara no deck, não precisa decorar).
-  const line = (o) => "Anual R$ " + fmtBR(o.anu.total) + " (12x " + fmtBR(o.anu.per) + ")" +
-    (o.sem ? " · Shift+1 semestral R$ " + fmtBR(o.sem.total) + " (6x " + fmtBR(o.sem.per) + ")" : "") +
-    (o.rec?.per ? " · Shift+2 recorrente R$ " + fmtBR(o.rec.per) + "/mês" +
-      (o.rec.setup ? " + R$ " + fmtBR(o.rec.setup) + " de clonagem" : " sem entrada") +
-      " (12 meses = R$ " + fmtBR(recTotal(o.rec, 12)) + ")" : "");
-  if (key === "oem") {
-    const o = oemLevel || (small ? P.oem.small : P.oem.big);
-    return "OEM " + o.cota + "/mês: " + line(o);
-  }
-  if (key === "parcialoem") return line(P.parcialoem).replace("Anual", "Anual (soma)");
-  return line(P[key]);
+// Na ordem em que o closer apresenta: anual abre, semestral no Shift+1.
+function priceLine(P) {
+  return "Anual R$ " + fmtBR(P.anu?.total) + " (12x " + fmtBR(P.anu?.per) + ")" +
+    (P.sem && P.sem.total ? " · Shift+1 semestral R$ " + fmtBR(P.sem.total) + " (6x " + fmtBR(P.sem.per) + ")" : "");
 }
 
 // ── O que o produto ENTREGA, lido do próprio slide ──────────────────────────
 // A linha do produto na tela zero é DERIVADA dos empilháveis do slide de
 // investimento (os itens dos grupos 1 e 2, na ordem em que o closer revela),
-// não escrita à mão. Ter as duas redações foi o que deixou o card do closer
-// prometendo "50 anúncios OEM por mês" e "2.000 clones no semestre" enquanto o
-// slide que o lead lê já entregava 125 OEM e "até 1.000 anúncios": número de
-// produto não se escreve duas vezes.
-//
-// O grupo 3 ("o lado humano") fica de fora de propósito: é igual nos cinco
+// não escrita à mão: número de produto não se escreve duas vezes.
+// O grupo 3 ("o lado humano") fica de fora de propósito: é igual em todos os
 // produtos (o template manda nele) e não diferencia oferta nenhuma.
 const featText = (f) => String((f && typeof f === "object" ? (f.text ?? f.label ?? "") : f) || "").trim();
 const normAns = (v) => String(v == null ? "" : v).trim().toLowerCase();
 // Mesmo showIf do renderer (visibleFeats): item condicional só entra quando a
-// resposta do lead bate — ex.: compatibilidade veicular só pra autopeças.
+// resposta do lead bate.
 function featShown(f, answers) {
   const sh = f && typeof f === "object" ? f.showIf : null;
   if (!sh || !sh.key) return true;
@@ -401,32 +384,81 @@ function offerLine(slide, answers) {
     .join(" · ");
 }
 
+// Tabela de consulta do closer na tela zero: adicionais, pacotes de OEM e o
+// que é sob consulta. Não entra no deck nem viaja no link do cliente.
+export function quickRefOf(cat) {
+  const rows = [];
+  const addons = cat?.addons || {};
+  const ce = addons.contaExtra;
+  if (ce && moneyOf(ce.per)) rows.push({ label: ce.label || "Conta extra no Escala", price: "R$ " + fmtBR(ce.per) + "/mês por conta" });
+  for (const pk of Array.isArray(cat?.oemPacks) ? cat.oemPacks : []) {
+    if (!moneyOf(pk?.price)) continue;
+    rows.push({ label: "Pacote de " + fmtBR(pk.qty) + " anúncios OEM (uma vez)", price: "R$ " + fmtBR(pk.price) });
+  }
+  for (const st of Array.isArray(addons.setups) ? addons.setups : []) {
+    if (!st?.label) continue;
+    rows.push({ label: st.label, price: moneyOf(st.price) ? "R$ " + fmtBR(st.price) : "sob consulta" });
+  }
+  const lines = linesOf(cat);
+  for (const line of Object.keys(lines)) {
+    if (lines[line]?.enterprise && !cat?.products?.[line + "_enterprise"]) {
+      rows.push({ label: lineName(cat, line) + " · Enterprise", price: lines[line].enterprise });
+    }
+  }
+  return {
+    tag: "consulta rápida",
+    title: "Adicionais e sob consulta",
+    rows,
+    note: "Consulta do closer · não altera o produto nem a apresentação",
+  };
+}
+
 export function catalogUI(p) {
   const calc = p?.calc;
   if (!hasCatalog(calc)) return null;
   const cat = calc.catalog;
+  const products = cat.products;
   const state = p.state || {};
   const answers = p.data?.answers || {};
   const tier = tierOf(calc, state);
-  const small = lowTier(tier);
   const suggested = suggestProduct(calc, state, answers);
   const accounts = cat.accounts || DEFAULT_ACCOUNTS;
+  const keys = productKeysOf(products);
   const names = {};
   const priceLines = {};
   const offerLines = {};
-  const oemLv = oemLevelOf(cat.products, state, small);
   // O card monta o slide de CADA produto (o mesmo buildPricing que serve o
   // deck) só pra ler o que ele entrega: o que o closer vê na tela zero é,
   // item por item, o que o lead vai ver empilhado no último slide.
   const { sBase, sAuto } = pricingSources(p);
-  for (const k of PRODUCT_KEYS) {
-    if (!cat.products[k]) continue;
-    names[k] = cat.products[k].name || k;
-    priceLines[k] = priceLine(k, cat.products, small, oemLv);
-    offerLines[k] = sBase
-      ? offerLine(buildPricing(k, { sBase, sAuto, products: cat.products, small, oemLevel: oemLv }), answers)
-      : "";
+  for (const k of keys) {
+    names[k] = products[k].name || PRODUCT_LABEL[k] || k;
+    priceLines[k] = priceLine(products[k]);
+    offerLines[k] = sBase ? offerLine(buildPricing(k, { sBase, sAuto, products }), answers) : "";
   }
+  // Linhas × pacotes pro select "Apresentar" (optgroup por linha). Enterprise
+  // sem preço aparece como opção desabilitada com o texto "sob consulta".
+  const lineDefs = linesOf(cat);
+  const lineIds = LINE_KEYS.filter((l) => lineDefs[l]).concat(Object.keys(lineDefs).filter((l) => !LINE_KEYS.includes(l)));
+  const lines = lineIds.map((id) => ({
+    id,
+    name: lineName(cat, id),
+    products: keys.filter((k) => lineOfKey(products, k) === id).map((k) => ({
+      key: k,
+      tier: tierOfKey(products, k),
+      label: (TIER_LABEL[tierOfKey(products, k)] || tierOfKey(products, k)) + (scopeOf(products[k]) ? " · " + scopeOf(products[k]) : ""),
+    })),
+    enterprise: products[id + "_enterprise"] ? "" : String(lineDefs[id]?.enterprise || ""),
+  })).filter((l) => l.products.length || l.enterprise);
+  const active = products[String(state.product || "")] ? String(state.product) : suggested;
+  const line = lineOf(answers);
+  const pkg = pkgOf(cat, state);
+  const hint = enterpriseHint(cat, state, answers);
+  const nicheTxt = isAuto(answers) ? "autopeças" : "fora de autopeças";
+  const why = String(state.accounts ?? "") + " conta(s) · " + nicheTxt + " → " +
+    (hint
+      ? lineName(cat, line) + " Enterprise é sob consulta: apresenta o Escala e fecha como Personalizado."
+      : lineName(cat, line) + " · " + (TIER_LABEL[pkg] || pkg) + ".");
   // Ordem do select de dor: códigos de 1 letra (A-E) antes dos maiores (OEM),
   // "sem código" sempre por último. Sai pronto daqui porque a tela zero não
   // conhece o catálogo — dor nova no template aparece sem tocar no renderer.
@@ -435,9 +467,10 @@ export function catalogUI(p) {
     .sort((a, b) => a.length - b.length || a.localeCompare(b))
     .concat(cat.pains?.none ? ["none"] : []);
   return {
-    tier, low: small, suggested,
-    product: cat.products[String(state.product || "")] ? String(state.product) : "",
-    oemNeeded: suggested === "fulloem" || suggested === "parcialoem",
+    tier, low: lowTier(tier), suggested,
+    product: products[String(state.product || "")] ? String(state.product) : "",
+    line: lineOfKey(products, active), pkg: tierOfKey(products, active),
+    enterpriseHint: hint, why,
     oem: !!state.oem,
     pain: String(state.pain || "") || "none",
     painOrder,
@@ -448,18 +481,9 @@ export function catalogUI(p) {
       accIndex: Math.max(0, accounts.indexOf(String(state.accounts ?? ""))),
       volIndex: volCol(calc, state.volume),
     },
-    names, priceLines, offerLines,
-    // Leque do OEM avulso: cota ATIVA (escolha do closer ou porte da régua) e
-    // os níveis com preço curto — vira o select "Cota OEM" da tela zero.
-    oemCota: Number(oemLv?.cota) || 0,
-    oemLevels: oemLevelsOf(cat.products).map((l) => ({
-      cota: Number(l.cota) || 0,
-      short: "R$ " + fmtBR(l.anu.total) + " anu (12x " + fmtBR(l.anu.per) + ")" +
-        (l.sem ? " · R$ " + fmtBR(l.sem.total) + " sem (6x " + fmtBR(l.sem.per) + ")" : "") +
-        (l.rec?.per ? " · R$ " + fmtBR(l.rec.per) + "/mês rec" : ""),
-    })),
+    names, priceLines, offerLines, lines,
     pains: cat.pains || {},
-    oneOffCloning: clone(cat.oneOff || ONE_OFF_CLONING),
+    quickRef: quickRefOf(cat),
     // Teste A/B da ordem dos slides (pílula na tela zero).
     deckOrder: String(state.deckOrder || "").toUpperCase() === "B" ? "B" : "A",
     deckOrders: DECK_ORDERS,
@@ -473,64 +497,36 @@ export function catalogUI(p) {
 // SEED (CONFIG.proposals.catalog[saas]): produto + os preços do catálogo do
 // TEMPLATE (banco), pra o cockpit sugerir o valor sem hardcode nem regra
 // duplicada — mexeu no preço no banco, o card já fecha com o preço novo.
+// `group` = nome da linha (o select do gate agrupa por optgroup).
 //
-// A clonagem avulsa entra como produto vendível (serviço único, por faixa de
-// anúncios) mesmo não sendo produto do deck.
-const moneyOf = (v) => {
-  if (typeof v === "number") return Math.round(v) || 0;
-  const digits = String(v ?? "").replace(/[^\d,]/g, "").split(",")[0].replace(/\D/g, "");
-  return digits ? Number(digits) : 0;
-};
-// Ordem em que o closer apresenta. A RECORRENTE fecha como plano `mensal`: é o
-// que a casa já entende de ponta a ponta (valor = a MENSALIDADE, arr = 12×, e
-// isRecurringClose gera a assinatura). Inventar um plano "recorrente" novo
-// deixaria o PLAN_MONTHS do billing.js sem resposta.
-const CYCLES = ["anu", "sem", "rec"];
-const cycleLabel = { anu: "Anual", sem: "Semestral", rec: "Recorrente" };
-const cyclePlan = { anu: "anual", sem: "semestral", rec: "mensal" };
-// Valor que vai pro card: total do ciclo nos compromissos, MENSALIDADE na
-// recorrente (a entrada de clonagem vai no rótulo, pro closer não esquecer de
-// cobrar — ela não é receita recorrente e não pode inflar o arr).
-const cycleValue = (o, k) => (k === "rec" ? moneyOf(o?.rec?.per) : moneyOf(o?.[k]?.total));
-const cycleHas = (o, k) => (k === "rec" ? !!moneyOf(o?.rec?.per) : !!o?.[k]?.total);
-const cycleTag = (o, k) => (k === "rec" && moneyOf(o?.rec?.setup)
-  ? cycleLabel.rec + " · entrada R$ " + fmtBR(o.rec.setup)
-  : cycleLabel[k]);
+// O pacote de OEM avulso entra como produto vendível (serviço único, por
+// quantidade) mesmo não sendo produto do deck. Enterprise de OEM/Ads (sob
+// consulta) não entra: fecha como Personalizado com valor livre.
+const CYCLES = ["anu", "sem"];
+const cycleLabel = { anu: "Anual", sem: "Semestral" };
+const cyclePlan = { anu: "anual", sem: "semestral" };
 
 export function dealCatalog(calc) {
   if (!hasCatalog(calc)) return [];
   const cat = calc.catalog;
+  const products = cat.products;
   const out = [];
-  // Preços de um produto: anual/semestral/recorrente direto, ou os níveis de
-  // cota do OEM avulso (leque 125/250/500 anúncios), cada um virando três
-  // opções nomeadas.
-  const pricesOf = (p) => {
-    const rows = [];
+  for (const key of productKeysOf(products)) {
+    const P = products[key];
+    const prices = [];
     for (const k of CYCLES) {
-      if (cycleHas(p, k)) rows.push({ plan: cyclePlan[k], label: cycleTag(p, k), value: cycleValue(p, k) });
+      if (P?.[k]?.total) prices.push({ plan: cyclePlan[k], label: cycleLabel[k], value: moneyOf(P[k].total) });
     }
-    for (const level of OEM_LEVEL_KEYS) {
-      const lv = p?.[level];
-      if (!lv) continue;
-      for (const k of CYCLES) {
-        if (cycleHas(lv, k)) rows.push({ plan: cyclePlan[k], label: `${cycleTag(lv, k)} · ${lv.cota || level} anúncios`, value: cycleValue(lv, k) });
-      }
-    }
-    return rows;
-  };
-  for (const key of PRODUCT_KEYS) {
-    const p = cat.products?.[key];
-    if (!p) continue;
-    out.push({ id: key, label: p.name || PRODUCT_LABEL[key] || key, prices: pricesOf(p) });
+    out.push({ id: key, label: P.name || PRODUCT_LABEL[key] || key, group: lineName(cat, lineOfKey(products, key)), prices });
   }
-  const oneOff = cat.oneOff || ONE_OFF_CLONING;
-  const rows = (oneOff.rows || []).filter((r) => r && r.price);
-  if (rows.length) {
+  const packs = (Array.isArray(cat.oemPacks) ? cat.oemPacks : []).filter((k) => k && moneyOf(k.price));
+  if (packs.length) {
     out.push({
       id: ONE_OFF_KEY,
       label: DEAL_PRODUCT_LABEL[ONE_OFF_KEY],
+      group: "Adicionais",
       oneOff: true, // plano é sempre "Serviço único"
-      prices: rows.map((r) => ({ plan: "unico", label: r.range || oneOff.title || "serviço único", value: moneyOf(r.price) })),
+      prices: packs.map((k) => ({ plan: "unico", label: fmtBR(k.qty) + " anúncios OEM", value: moneyOf(k.price) })),
     });
   }
   return out;

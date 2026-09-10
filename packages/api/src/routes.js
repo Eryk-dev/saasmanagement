@@ -1182,8 +1182,10 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
 // é anualizado pelo plano fechado. Assinatura criada depois manda mais — toda
 // mutação de assinatura reescreve o arr via syncCustomerArr.
 const CLOSED_PLAN_LABEL = { anual: "Anual", semestral: "Semestral", mensal: "Mensal", unico: "Serviço único" };
-// O produto do catálogo da apresentação (FULL/OEM/Parcial, lead.dealProduct)
-// entra na frente do ciclo na coluna Plano do cliente: "LeverAds FULL · Anual".
+// O produto do catálogo da apresentação (Lever OEM/Ads/Price × pacote,
+// lead.dealProduct) entra na frente do ciclo na coluna Plano do cliente:
+// "Lever Ads · Escala · Anual". Venda antiga (FULL/OEM/Parcial) segue nomeada
+// pelos rótulos legados do DEAL_PRODUCT_LABEL.
 // Produto Personalizado (gate de fechamento): dealProduct fora do catálogo é o
 // próprio nome livre que o closer escreveu — vale como rótulo do jeito que veio.
 const planLabelOf = (lead) => [
