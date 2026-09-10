@@ -1664,7 +1664,85 @@ export async function backfillWaThreadSignals(repo) {
   return n;
 }
 
+
+// ── Classificação v2 (09/2026) ────────────────────────────────────────────
+// Liga os formulários por produto e as trilhas de nutrição. DESARMADA por
+// padrão: cria a chave `classificacao_v2` em app_config com enabled=false e
+// sai. Nada acontece até alguém virar a flag.
+//
+// Existe assim porque o processo novo precisa de alinhamento com a SDR antes
+// de entrar no ar, e porque a fiação MEXE no que o lead vê: as opções de
+// `accounts`/`listings` são recortadas nas fronteiras comerciais novas, e o
+// formulário público passa a fazer duas perguntas abertas. Merge de código
+// não pode disparar isso sozinho.
+export const CLASSIFICACAO_V2_FLAG = "classificacao_v2";
+
+export async function ensureClassificacaoV2(repo) {
+  const atual = await repo.get("app_config", CLASSIFICACAO_V2_FLAG);
+  if (!atual) {
+    // Primeira subida: só publica a flag, pra ela existir na tela e alguém
+    // poder ligar quando o processo estiver alinhado.
+    await repo.create("app_config", {
+      id: CLASSIFICACAO_V2_FLAG,
+      enabled: false,
+      ligadoEm: "",
+      nota: "Liga os formulários por produto (OEM/Ads/Price) e as trilhas de nutrição. Alinhar com a SDR antes.",
+    }, CLASSIFICACAO_V2_FLAG);
+    return 0;
+  }
+  if (atual.enabled !== true) return 0;
+
+  const { LEAD_QUESTIONS_POR_PRODUTO } = await import("./lead-questions.produtos.js");
+  const { TRILHAS } = await import("./cadencia-nutricao.js");
+
+  let mudou = 0;
+
+  // 1) Perguntas no card do lead. mergeLeadQuestions casa por `key`: chave
+  // nova entra, chave existente tem as OPÇÕES atualizadas (é aqui que as
+  // faixas recortadas passam a valer). A união dos três formulários vira o
+  // schema do lead — o pipeline é um só.
+  const produto = await repo.get("products", "leverads");
+  if (produto) {
+    const uniao = [];
+    const vistas = new Set();
+    for (const qs of Object.values(LEAD_QUESTIONS_POR_PRODUTO)) {
+      for (const q of qs) {
+        if (vistas.has(q.key)) continue;
+        vistas.add(q.key);
+        uniao.push(q);
+      }
+    }
+    const antes = JSON.stringify(produto.leadQuestions || []);
+    const depois = mergeLeadQuestions(produto.leadQuestions || [], { questions: uniao });
+    if (JSON.stringify(depois) !== antes) {
+      await repo.update("products", "leverads", { leadQuestions: depois });
+      mudou += 1;
+    }
+  }
+
+  // 2) Sequências de nutrição, uma por trilha. Idempotente pelo id fixo; não
+  // sobrescreve o que já existe (alguém pode ter ajustado a copy na tela).
+  for (const t of Object.values(TRILHAS)) {
+    const existente = await repo.get("sequences", t.id);
+    if (existente) continue;
+    await repo.create("sequences", {
+      id: t.id, saas: "leverads", name: t.nome, active: false,
+      trigger: { stages: [], reasons: t.reasons },
+      steps: t.steps, exitOn: {},
+    }, t.id);
+    mudou += 1;
+  }
+
+  return mudou;
+}
+
 export async function runStartupMigrations(repo) {
+  try {
+    const n = await ensureClassificacaoV2(repo);
+    if (n) console.log(`[migration] classificação v2 aplicada (${n} objeto(s)) — flag classificacao_v2 está ligada`);
+  } catch (err) {
+    console.error("[migration] ensureClassificacaoV2 falhou:", err?.message || err);
+  }
   try {
     const n = await backfillWaThreadSignals(repo);
     if (n) console.log(`[migration] sinais do inbox (hasIn/lastOutAuthor) preenchidos em ${n} conversa(s)`);
