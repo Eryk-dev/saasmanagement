@@ -19,8 +19,22 @@ export const chromeBtnStyleSmall = {
 // alto = verde · médio = âmbar · baixo = cinza · sem respostas = neutro.
 // A API espelha essa régua em leadGrade() (routes.marketing.js) pras colunas
 // A/B/C de Publicidade — mudou aqui, muda lá.
-const TIER_ACCOUNTS = { "1": 0, "2": 1, "3-5": 2, "6-10": 3, "10+": 4 };
-const TIER_LISTINGS = { "0-100": 0, "100-500": 1, "500-2000": 2, "2000-10000": 3, "10000+": 4 };
+// Leitura dupla das faixas. As novas (recortadas em 09/2026 nas fronteiras
+// comerciais: 3 e 7 contas, 1k e 10k anúncios) convivem com as antigas, que
+// ~2 mil leads da base carregam. Valor desconhecido cairia em `?? 0` lá
+// embaixo e jogaria todo lead histórico pra primeira linha da matriz —
+// inclusive nas propostas abertas, que usam este mesmo grid pra sugerir
+// produto. Como as duas escalas têm 5 faixas na mesma ordem, o legado mapeia
+// pros MESMOS índices e nenhum lead muda de grau.
+// Espelho de IDX_ACCOUNTS/IDX_LISTINGS em api/src/classificacao.js.
+const TIER_ACCOUNTS = {
+  "1": 0, "2-3": 1, "4-6": 2, "7-10": 3, "10+": 4,
+  "2": 1, "3-5": 2, "6-10": 3, // legado
+};
+const TIER_LISTINGS = {
+  "0-500": 0, "500-1000": 1, "1000-5000": 2, "5000-10000": 3, "10000+": 4,
+  "0-100": 0, "100-500": 1, "500-2000": 2, "2000-10000": 3, // legado
+};
 const TIER_VOLUME = { "0-10": 0, "10-50": 1, "50-200": 2, "200+": 3 }; // legado (anúncios novos/semana)
 // Cores próprias (não os tokens semânticos) pra separação clara à distância:
 // tone = preenchimentos (badge/tinta do card); ink = variante escura pra texto.
