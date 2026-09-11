@@ -6,7 +6,7 @@ import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import {
   stageKind, phaseOf, openStages, workableStages, ladderOf, isWonStage, isWonLead, wonAtOf,
-  nextTouch, nextTouchPill, lossReasonLabel, CADENCE_COLS, cadenceDayCol,
+  nextTouch, nextTouchPill, lossReasonLabel,
 } from "../lib/funnel.js";
 import { usersByRole, userColor, displayName, currentUser } from "../lib/users.js";
 import { isNoShowStage } from "../lib/scripts.js";
@@ -28,9 +28,6 @@ const { useState: useStP, useMemo: useMP, useEffect: useEfP } = React;
 // último). Usa a MESMA leadTier do card, do drawer e do Publicidade — uma régua
 // só pra o número não divergir entre as telas.
 const TIER_RANK = { S: 0, A: 1, B: 2, C: 3, D: 4, E: 5 };
-
-
-
 const tierRank = (l) => TIER_RANK[leadTier(l).grade] ?? 9;
 
 // Instante de um horário de compromisso do lead. Os campos convivem em DUAS
@@ -106,15 +103,6 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   // "ultimo" (a mesma fila invertida — o fim do próximo toque no topo) ou
   // "qualidade" (melhor cliente no topo). Vale pra TODAS as colunas de uma vez —
   // não configurar coluna a coluna. Persistida como o resto dos filtros da tela.
-  // Agrupamento do board: por etapa do funil (o de sempre) ou por dia da
-  // cadência. Persistido como os outros filtros da tela.
-  const [boardMode, setBoardModeState] = useStP(() => {
-    try { const v = localStorage.getItem("cockpit_pipeline_board"); return v === "cadencia" ? v : "etapas"; } catch { return "etapas"; }
-  });
-  const setBoardMode = (m) => {
-    setBoardModeState(m);
-    try { localStorage.setItem("cockpit_pipeline_board", m); } catch { /* ignore */ }
-  };
   const [sortMode, setSortModeState] = useStP(() => {
     try { const v = localStorage.getItem("cockpit_pipeline_sort"); return ["qualidade", "ultimo"].includes(v) ? v : "toque"; } catch { return "toque"; }
   });
@@ -167,20 +155,6 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
       return true;
     });
   }, [stages.join("|"), phase, activeSaas, showDiscarded]);
-  // Só entra na cadência quem está sendo TRABALHADO: ganho, perdido, pós-venda
-  // e descartado não têm toque pendente, e poluiriam a leitura do tempo.
-  const cadenceLeads = useMP(
-    () => { const w = new Set(workableStages(s)); return saasLeads.filter((l) => w.has(l.stage)); },
-    [leads, activeSaas, person, stages.join("|")],
-  );
-  const byCadenceDay = useMP(() => {
-    const m = {}; CADENCE_COLS.forEach((c) => { m[c] = []; });
-    const now = Date.now();
-    cadenceLeads.forEach((l) => { m[cadenceDayCol(l, now)].push(l); });
-    return m;
-  }, [cadenceLeads]);
-  const emCadencia = boardMode === "cadencia";
-
   // Quantos no cemitério do produto ativo (pro contador do botão).
   const discardedCount = useMP(
     () => saasLeads.filter((l) => stageKind(s, l.stage) === "desqualificado").length,
@@ -243,12 +217,6 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 6, flexWrap: "wrap" }}>
             <ViewToggle view={view} onChange={setView} />
-            {view === "kanban" && (
-              <Segmented value={boardMode} onChange={setBoardMode} options={[
-                { value: "etapas", label: "Etapas" },
-                { value: "cadencia", label: "Cadência" },
-              ]} />
-            )}
             <PrimaryButton onClick={() => openForm("leads", { saas: activeSaas })}>+ novo lead</PrimaryButton>
           </div>
         </div>
@@ -277,9 +245,8 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
       {view === "kanban" && (
         <KanbanBoard
           s={s}
-          stages={emCadencia ? CADENCE_COLS : visibleStages}
-          byStage={emCadencia ? byCadenceDay : byStage}
-          readOnly={emCadencia}
+          stages={visibleStages}
+          byStage={byStage}
           sortMode={sortMode}
           highlight={highlight}
           onMove={requestMove}
@@ -287,7 +254,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
           setSelected={setSelected}
           onOpenLead={onOpenLead}
           wonLeads={saasAll.filter((l) => isWonLead(s, l))}
-          showWon={!emCadencia && phase !== "sdr"}
+          showWon={phase !== "sdr"}
         />
       )}
       {view === "list" && <LeadList leads={saasLeads} />}
@@ -388,7 +355,7 @@ function PersonFilter({ person, leads, onChange, me }) {
 }
 
 // ─────────────────────────────────────────────── Kanban
-function KanbanBoard({ s, stages, byStage, sortMode, highlight, onMove, selected, setSelected, onOpenLead, wonLeads, showWon, readOnly = false }) {
+function KanbanBoard({ s, stages, byStage, sortMode, highlight, onMove, selected, setSelected, onOpenLead, wonLeads, showWon }) {
   const [dragging, setDragging] = useStP(null);
   // O resumo do Ganho entra na POSIÇÃO que o FUNIL declara pro ganho: logo depois
   // da última etapa VISÍVEL que vem ANTES do ganho na ordem do funil (Follow-up),
@@ -412,7 +379,6 @@ function KanbanBoard({ s, stages, byStage, sortMode, highlight, onMove, selected
             sortMode={sortMode}
             highlight={highlight === st}
             onDropCard={(id) => { onMove(id, st); setDragging(null); }}
-            readOnly={readOnly}
             dragging={dragging}
             setDragging={setDragging}
             selected={selected}
@@ -447,7 +413,7 @@ function WonSummary({ leads }) {
   );
 }
 
-function KanbanColumn({ s, stage, cards, sortMode, highlight, onDropCard, dragging, setDragging, selected, setSelected, onOpenLead, readOnly = false }) {
+function KanbanColumn({ s, stage, cards, sortMode, highlight, onDropCard, dragging, setDragging, selected, setSelected, onOpenLead }) {
   const [over, setOver] = useStP(false);
   const [expanded, setExpanded] = useStP(false);
   const total = cards.reduce((a, l) => a + (l.amount || 0), 0);
@@ -481,9 +447,9 @@ function KanbanColumn({ s, stage, cards, sortMode, highlight, onDropCard, draggi
   const hidden = ordered.length - shown.length;
   return (
     <div
-      onDragOver={readOnly ? undefined : (e) => { e.preventDefault(); setOver(true); }}
-      onDragLeave={readOnly ? undefined : () => setOver(false)}
-      onDrop={readOnly ? undefined : (e) => { e.preventDefault(); setOver(false); if (dragging) onDropCard(dragging); }}
+      onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => { e.preventDefault(); setOver(false); if (dragging) onDropCard(dragging); }}
       style={{
         width: "min(264px, 82vw)", flexShrink: 0,
         background: over ? "var(--accent-soft)" : "var(--bg-2)",
@@ -501,7 +467,7 @@ function KanbanColumn({ s, stage, cards, sortMode, highlight, onDropCard, draggi
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {shown.map(l => (
           <LeadCard
-            key={l.id} d={l} readOnly={readOnly}
+            key={l.id} d={l}
             s={s}
             currentStage={stage}
             onDragStart={() => setDragging(l.id)}
@@ -524,7 +490,7 @@ function KanbanColumn({ s, stage, cards, sortMode, highlight, onDropCard, draggi
   );
 }
 
-function LeadCard({ d, s, currentStage, onDragStart, selected, onSelect, onOpen, readOnly = false }) {
+function LeadCard({ d, s, currentStage, onDragStart, selected, onSelect, onOpen }) {
   const saasCfg = s || (window.SEED?.SAAS || []).find((x) => x.id === d.saas);
   const kind = stageKind(saasCfg, currentStage);
   const phase = phaseOf(kind);
@@ -540,7 +506,7 @@ function LeadCard({ d, s, currentStage, onDragStart, selected, onSelect, onOpen,
 
   return (
     <div
-      draggable={!readOnly}
+      draggable
       onDragStart={onDragStart}
       onClick={(e) => { if (e.shiftKey) onSelect(); else onOpen && onOpen(); }}
       style={{
