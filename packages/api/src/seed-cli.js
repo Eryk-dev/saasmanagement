@@ -3,7 +3,11 @@
 //   npm run seed:clear              -> ZERA tudo (instância limpa)         [= --force/--clear]
 //   npm run seed:leverads-questions -> grava as perguntas do pipeline LeverAds (idempotente)
 import { initDb, seedAll, repo } from "./db.js";
-import { LEVERADS_LEAD_QUESTIONS } from "./lead-questions.leverads.js";
+// União das perguntas dos formulários v2 (derivada deles). O conjunto antigo
+// de 4 perguntas continua existindo em lead-questions.leverads.js pro
+// contrato do Levercopy, mas semear com ele APAGARIA as perguntas novas do
+// card do lead — o seed é destrutivo por natureza.
+import { LEAD_QUESTIONS_UNIAO as LEVERADS_LEAD_QUESTIONS } from "./lead-questions.produtos.js";
 
 const args = process.argv.slice(2);
 const leveradsQuestions = args.includes("--leverads-questions");
