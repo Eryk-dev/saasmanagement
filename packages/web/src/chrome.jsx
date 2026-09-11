@@ -85,7 +85,8 @@ const NAV = [
   { id: "today",      label: "Minhas atividades", icon: "◷",  group: "main" },
 
   { id: "pipeline",   label: "Pipeline",       icon: "≡",  group: "comercial", notSaas: "elo" },
-  { id: "outbound",   label: "Outbound",       icon: "⌖",  group: "comercial", notSaas: "elo" }, // radar de contas (Cold Calling 2.0)
+  // hidden (Leo, 10/09/2026): Outbound e Análise de Equipe saem do menu; rotas e telas seguem no código (abrem por URL).
+  { id: "outbound",   label: "Outbound",       icon: "⌖",  group: "comercial", notSaas: "elo", hidden: true }, // radar de contas (Cold Calling 2.0)
   { id: "customers",  label: "Clientes",       icon: "○",  group: "comercial", notSaas: "elo" }, // CRM manual — assinantes do Elo vivem no app (Análise do App)
   // Tela da mentoria 1:1 (pacote de consultas + Manual da Família): só aparece
   // no workspace do UniqueKids (`saas`); nos outros produtos ela não existe.
@@ -110,7 +111,7 @@ const NAV = [
   { id: "aquisicao",     label: "Análise de Aquisição",  icon: "◐", group: "analises", notSaas: "elo" }, // aquisição do Elo = Landing pages + GA4
   { id: "calls",         label: "Análise de Pitches",    icon: "◑", group: "analises", notSaas: "elo" },
   { id: "integrations",  label: "Análise de Integração", icon: "◒", group: "analises", notSaas: "elo" },
-  { id: "funcionarios",  label: "Análise de Equipe",     icon: "◓", group: "analises", notSaas: "elo" },
+  { id: "funcionarios",  label: "Análise de Equipe",     icon: "◓", group: "analises", notSaas: "elo", hidden: true },
   { id: "desempenho",    label: "Análise de Desempenho", icon: "◕", group: "analises", notSaas: "elo" }, // revisão de fim de dia por pessoa (SDR · social · closer)
 
   { id: "tasks",      label: "Tarefas",        icon: "▣",  group: "geral" },

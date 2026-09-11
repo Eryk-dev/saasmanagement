@@ -671,7 +671,7 @@ function ScreensPicker({ screens, roles, onChange }) {
       </button>
       {open && (
         <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, width: 200, zIndex: 60, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 8 }}>
-          {NAV.map((n) => {
+          {NAV.filter((n) => !n.hidden).map((n) => {
             const fixa = doPapel.has(n.id) ? "papel" : isUniversalScreen(n.id) ? "todos" : "";
             return (
               <label key={n.id} title={fixa === "papel" ? "o papel já garante esta tela" : fixa ? "esta tela vale pra todo mundo" : undefined}
