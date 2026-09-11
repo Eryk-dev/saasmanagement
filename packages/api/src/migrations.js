@@ -5,6 +5,7 @@
 
 import { normalizeFunnel, kindOf, isPostSaleStage, TERMINAL_KINDS } from "./stages.js";
 import { autoLeadOwner } from "./lead-flow.js";
+import { legacyDoneKey, DEFAULT_COLUMNS as TASK_DEFAULT_COLUMNS, assetIdFromUrl } from "./tasks-core.js";
 import { catalogAmount } from "./proposal-catalog.js";
 import { createClosedSubscription } from "./billing.js";
 import { FLASHCARD_DEFAULTS } from "./routes.flashcards.js";
@@ -2148,6 +2149,12 @@ export async function runStartupMigrations(repo) {
   } catch (err) {
     console.error("[migration] assignMentoriaOwner falhou:", err?.message || err);
   }
+  try {
+    const n = await migrateTasksV2(repo);
+    if (n) console.log(`[migration] tarefas v2 (concluída/seguidores/anexos/autor do comentário): ${n} registro(s) migrado(s)`);
+  } catch (err) {
+    console.error("[migration] migrateTasksV2 falhou:", err?.message || err);
+  }
 }
 
 // ── A fila da Mentoria ganhou dono (Leo, 16/08/2026) ────────────────────────
@@ -2244,4 +2251,85 @@ export async function ensureBlogSettings(repo) {
     log: [],
   });
   return true;
+}
+
+// ── Tarefas v2 · quadro no nível Asana (10/09/2026) ─────────────────────────
+// O quadro ganhou `completed` (régua única de concluída, no lugar da regex no
+// nome da coluna), seguidores, vários anexos (o `photo` vira o primeiro),
+// carimbos de atualização e comentários com o ID do autor (o SPA antigo
+// gravava o NOME). O board ganha `doneKey` (a coluna de concluído explícita),
+// `labels` com cor e `completeMovesToDone`.
+//
+// Idempotente por campo: só preenche o que NÃO existe no doc, nunca sobrescreve
+// (segunda rodada devolve 0). Autor de comentário sem correspondência em
+// `users` fica como está (a tela mostra o texto mesmo).
+export async function migrateTasksV2(repo) {
+  const [boards, tasks, users, ] = await Promise.all([repo.list("task_boards"), repo.list("tasks"), repo.list("users")]);
+  const strip = (v) => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  const userId = (author) => {
+    const a = String(author || "");
+    if (!a || a === "api") return a || "api";
+    if (a === "API key") return "api";
+    if (users.some((u) => u.id === a)) return a;
+    const byName = users.find((u) => strip(u.name) === strip(a));
+    return byName ? byName.id : a;
+  };
+  let n = 0;
+  const board = boards[0] || null;
+  const columns = Array.isArray(board?.columns) && board.columns.length ? board.columns : TASK_DEFAULT_COLUMNS;
+  let doneKey = board ? (board.doneKey !== undefined ? String(board.doneKey) : legacyDoneKey(columns)) : legacyDoneKey(columns);
+  if (board) {
+    const patch = {};
+    if (board.doneKey === undefined) patch.doneKey = doneKey;
+    if (board.completeMovesToDone === undefined) patch.completeMovesToDone = true;
+    if (!Array.isArray(board.labels)) {
+      const seen = new Set();
+      const labels = [];
+      const color = (name) => (name === "bug" ? "oklch(0.64 0.16 25)" : name === "melhoria" ? "oklch(0.62 0.13 240)" : "");
+      for (const t of tasks) for (const l of Array.isArray(t.labels) ? t.labels : []) {
+        const name = String(l || "").trim();
+        if (!name || seen.has(name.toLowerCase())) continue;
+        seen.add(name.toLowerCase());
+        labels.push({ name, color: color(name.toLowerCase()) });
+      }
+      patch.labels = labels;
+    }
+    if (Object.keys(patch).length) { await repo.update("task_boards", board.id, patch, { silent: true }); n++; }
+  }
+  for (const t of tasks) {
+    const patch = {};
+    if (t.completed === undefined) {
+      patch.completed = !!doneKey && t.column === doneKey;
+      patch.completedAt = patch.completed ? String(t.updatedAt || t.createdAt || "") : "";
+      patch.completedBy = ""; patch.completedFrom = "";
+    }
+    if (!Array.isArray(t.assignees)) patch.assignees = t.assignee ? [String(t.assignee)] : [];
+    const assignees = patch.assignees || t.assignees;
+    if (!Array.isArray(t.followers)) patch.followers = [...new Set([...assignees, ...(t.createdBy ? [String(t.createdBy)] : [])].filter(Boolean))];
+    if (t.createdBy === undefined) patch.createdBy = "";
+    if (t.updatedAt === undefined) patch.updatedAt = String(t.createdAt || "");
+    if (t.updatedBy === undefined) patch.updatedBy = "";
+    if (t.version === undefined) patch.version = 0;
+    if (!Array.isArray(t.attachments)) {
+      const id = assetIdFromUrl(t.photo);
+      if (id) {
+        const asset = await repo.get("task_assets", id);
+        patch.attachments = [{ id, url: `/public/tasks/${id}`, name: asset?.name || "foto", mime: asset?.mime || "image/png", size: Number(asset?.size) || 0, by: asset?.by || "", at: asset?.at || String(t.createdAt || "") }];
+      } else patch.attachments = [];
+    }
+    if (t.cover === undefined) patch.cover = assetIdFromUrl(t.photo) ? `/public/tasks/${assetIdFromUrl(t.photo)}` : "";
+    for (const k of ["blockedBy", "likes", "labels"]) if (!Array.isArray(t[k])) patch[k] = [];
+    for (const k of ["startDate", "parentId", "followUpOf", "duplicatedFrom", "recurrenceOf"]) if (t[k] === undefined) patch[k] = "";
+    if (t.recurrence === undefined) patch.recurrence = null;
+    const comments = Array.isArray(t.comments) ? t.comments : [];
+    const needsComments = !Array.isArray(t.comments) || comments.some((c) => !c || typeof c !== "object" || c.editedAt === undefined || !Array.isArray(c.likes) || !Array.isArray(c.mentions) || userId(c.author) !== String(c.author || ""));
+    if (needsComments) {
+      patch.comments = comments.filter((c) => c && typeof c === "object").map((c) => ({
+        ...c, author: userId(c.author), editedAt: c.editedAt === undefined ? "" : c.editedAt,
+        likes: Array.isArray(c.likes) ? c.likes : [], mentions: Array.isArray(c.mentions) ? c.mentions : [],
+      }));
+    }
+    if (Object.keys(patch).length) { await repo.update("tasks", t.id, patch, { silent: true }); n++; }
+  }
+  return n;
 }

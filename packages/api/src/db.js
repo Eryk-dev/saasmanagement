@@ -70,6 +70,9 @@ const INDEXES = [
   ["proposals_shared_from_idx", "proposals", `((json->>'sharedFrom'))`],
   ["blog_posts_saas_status_idx", "blog_posts", `((json->>'saas'), (json->>'status'))`],
   ["blog_posts_slug_idx", "blog_posts", `((json->>'slug'))`],
+  ["task_events_task_idx", "task_events", `((json->>'task'))`],
+  ["notifications_user_read_idx", "notifications", `((json->>'user'), (json->>'read'))`],
+  ["tasks_parent_idx", "tasks", `((json->>'parentId'))`],
 ];
 
 async function createTables() {
