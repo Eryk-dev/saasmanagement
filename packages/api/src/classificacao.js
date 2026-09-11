@@ -203,6 +203,22 @@ const RE_FERRAMENTA = /\b(bling|tiny|upseller|olist|anymarket|ihub|plugg|erp|pla
 // não tentou — vale menos que quem já apanhou, mas não é zero.
 const TENTATIVAS_FORTES = new Set(["erp", "outra-ferramenta", "agencia"]);
 
+// `asked` = chaves que o FORMULÁRIO de origem perguntou. Serve pra distinguir
+// duas coisas que um número só confunde: lead que foi perguntado e não deu
+// sinal (intenção baixa, legítima) e lead que nunca foi perguntado (intenção
+// desconhecida). Tratar o segundo como zero jogaria todo lead do formulário
+// antigo — que não tem as perguntas abertas — pra "nutrir", esvaziando a fila
+// da SDR de gente que nunca teve chance de pontuar.
+export function perguntouIntencao(lead, asked) {
+  if (Array.isArray(asked) || asked instanceof Set) {
+    const set = asked instanceof Set ? asked : new Set(asked);
+    return set.has("trigger") || set.has("tried");
+  }
+  // Sem lista explícita, infere pela presença dos campos: `trigger` é
+  // obrigatório nos formulários v2, então quem veio de lá sempre tem.
+  return lead?.trigger !== undefined || lead?.tried !== undefined;
+}
+
 export function qualificacao(lead) {
   const gatilho = String(lead?.trigger || "").trim();
   const tentou = Array.isArray(lead?.tried) ? lead.tried : (lead?.tried ? [lead.tried] : []);
@@ -265,7 +281,7 @@ const grupoDe = (letra) =>
   letra === "S" || letra === "A" ? "S/A" : letra === "B" || letra === "C" ? "B/C" : "D/E";
 
 // ── Entrada única ─────────────────────────────────────────────────────────
-export function classificar(lead) {
+export function classificar(lead, { asked } = {}) {
   const portes = { ads: porteAds(lead), oem: porteOem(lead), price: portePrice(lead) };
 
   // Porta errada: o lead preenche o form do anúncio que clicou, não o do
@@ -298,23 +314,31 @@ export function classificar(lead) {
 
   const portaErrada = Boolean(lead?.formProduct && primario && lead.formProduct !== primario);
 
-  const q = qualificacao(lead);
-  const intencao = faixaIntencao(q.total);
+  const medida = perguntouIntencao(lead, asked);
+  const q = medida ? qualificacao(lead) : null;
+  const intencao = medida ? faixaIntencao(q.total) : "nao-medida";
   const letra = primario ? portes[primario] : null;
-  const acao = letra ? ACOES[grupoDe(letra)][intencao] : "nutrir";
+  // Sem intenção medida a tabela de cruzamento não se aplica: cai na coluna
+  // neutra (a do meio), que é o tratamento honesto pra quem não foi perguntado.
+  const acao = letra ? ACOES[grupoDe(letra)][medida ? intencao : "media"] : "nutrir";
 
   // MQL sai do formulário; SQL é do SDR (decisor + dor + orçamento) e por isso
   // não se calcula aqui — nenhuma dessas três perguntas está no form, de
   // propósito: no form elas assustam e envelhecem mal.
-  const mql = Boolean(letra) && LETRAS.indexOf(letra) >= LETRAS.indexOf("C") && q.total >= 40;
+  // MQL sem intenção medida é INDETERMINADO, não falso: não dá pra reprovar
+  // alguém por uma pergunta que ninguém fez.
+  const mql = !letra ? false
+    : !medida ? null
+    : LETRAS.indexOf(letra) >= LETRAS.indexOf("C") && q.total >= 40;
 
   return {
     portes,
     primario,
     crossSell,
     porte: letra,
-    qualificacao: q.total,
+    qualificacao: medida ? q.total : null,
     detalheQualificacao: q,
+    intencaoMedida: medida,
     intencao,
     acao,
     cadencia: CADENCIA_DA_ACAO[acao],

@@ -9,6 +9,7 @@
 import { randomUUID } from "node:crypto";
 import { publicForm, validateAnswers, leadFromSubmission, submissionTerminal, submissionExit, makeRateLimiter, buildSteps, variantHeadline, submissionSummary } from "./forms.js";
 import { pickForm, seedFrom, readAbCookie, abCookieHeader, FORM_AB_FLAG } from "./form-ab.js";
+import { classificar } from "./classificacao.js";
 import { leadGrade } from "./routes.marketing.js";
 import { attributionPain } from "./attribution.js";
 import { isWonLead, kindOf } from "./stages.js";
@@ -20,6 +21,19 @@ import { findDuplicateLead, dedupMergePatch } from "./lead-dedup.js";
 import { raiseNewLeadAlert } from "./wa-call-flow.js";
 import { dutyPhone } from "./off-hours-duty.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
+
+// Snapshot da classificação pro payload do lead. Devolve null (e não um objeto
+// vazio) quando o formulário não permite classificar, pro spread sumir.
+function classificacaoDoLead(form, answers) {
+  try {
+    const asked = (form?.questions || []).map((q) => q.key);
+    const clf = classificar(answers, { asked });
+    if (!clf.porte) return null; // sem porte não há classificação — não inventa
+    return { classificacao: clf };
+  } catch {
+    return null; // classificação nunca pode derrubar a criação do lead
+  }
+}
 
 export const clientIp = (req) =>
   String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.ip || "?";
@@ -210,6 +224,18 @@ export function registerFormRoutes(app, repo, opts = {}) {
       ...(pain ? { sourcePain: pain } : {}),
       ...(nextAt ? { nextActionAt: nextAt } : {}),
       ...(internal ? { internal: true, source: `Form · ${form.name || form.id} · teste da equipe` } : {}),
+      // Classificação por produto, calculada no NASCIMENTO e guardada como
+      // snapshot. Snapshot e não cálculo ao vivo porque a régua vai mudar: sem
+      // congelar a nota do momento, no dia em que os pesos mudarem some a
+      // capacidade de responder "o score previu quem apareceu e quem fechou?".
+      //
+      // `asked` = o que ESTE formulário perguntou. É o que separa intenção
+      // baixa de intenção não perguntada — o formulário antigo não tem as
+      // abertas, e sem isso todo lead dele nasceria com nota 0.
+      //
+      // Só entra quando dá pra classificar (porte resolvido). Formulário sem as
+      // perguntas de porte não ganha campo nenhum, em vez de ganhar um vazio.
+      ...(classificacaoDoLead(form, contact) || {}),
       createdAt: new Date().toISOString(), // métricas de marketing filtram por período
     };
     // Evita CADASTRO DUPLICADO: mesma pessoa (telefone/e-mail) já no produto →

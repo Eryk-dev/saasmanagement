@@ -54,6 +54,12 @@ test("com a flag ligada: perguntas entram e sequências nascem inativas", async 
     assert.ok(chaves.includes(k), `faltou a pergunta ${k}`);
   }
 
+  // Nutrição tem flag própria: ligar as perguntas não pode arrastar o robô.
+  assert.equal((await repo.list("sequences")).length, 0, "nutrição não pode subir junto com as perguntas");
+
+  await repo.update("app_config", CLASSIFICACAO_V2_FLAG, { nutricao: true });
+  await ensureClassificacaoV2(repo);
+
   // Sequência criada mas NÃO ativa: o drip não dispara sozinho no primeiro boot.
   const seqs = await repo.list("sequences");
   assert.ok(seqs.length >= 2);
@@ -66,7 +72,7 @@ test("com a flag ligada: perguntas entram e sequências nascem inativas", async 
 test("com a flag ligada, rodar de novo não duplica sequência", async () => {
   const repo = await repoComProduto();
   await ensureClassificacaoV2(repo);
-  await repo.update("app_config", CLASSIFICACAO_V2_FLAG, { enabled: true });
+  await repo.update("app_config", CLASSIFICACAO_V2_FLAG, { enabled: true, nutricao: true });
   await ensureClassificacaoV2(repo);
   const antes = (await repo.list("sequences")).length;
   await ensureClassificacaoV2(repo);

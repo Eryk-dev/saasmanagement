@@ -1705,9 +1705,10 @@ export async function ensureClassificacaoV2(repo) {
     // poder ligar quando o processo estiver alinhado.
     await repo.create("app_config", {
       id: CLASSIFICACAO_V2_FLAG,
-      enabled: false,
+      enabled: false,   // perguntas da classificação no card do lead
+      nutricao: false,  // sequências de nutrição (depende de alinhamento com a SDR)
       ligadoEm: "",
-      nota: "Liga os formulários por produto (OEM/Ads/Price) e as trilhas de nutrição. Alinhar com a SDR antes.",
+      nota: "enabled = perguntas da classificação no card. nutricao = trilhas automatizadas; alinhar com a SDR antes.",
     }, CLASSIFICACAO_V2_FLAG);
     return 0;
   }
@@ -1741,8 +1742,13 @@ export async function ensureClassificacaoV2(repo) {
     }
   }
 
-  // 2) Sequências de nutrição, uma por trilha. Idempotente pelo id fixo; não
-  // sobrescreve o que já existe (alguém pode ter ajustado a copy na tela).
+  // 2) Sequências de nutrição, uma por trilha — atrás de uma flag PRÓPRIA.
+  // Separadas das perguntas porque são coisas diferentes: as perguntas são
+  // classificação (o que a SDR lê no card), as sequências são o processo de
+  // nutrição automatizada, que depende de alinhamento com a SDR. Ligar uma não
+  // pode arrastar a outra.
+  if (atual.nutricao !== true) return mudou;
+
   for (const t of Object.values(TRILHAS)) {
     const existente = await repo.get("sequences", t.id);
     if (existente) continue;
