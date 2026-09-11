@@ -217,6 +217,30 @@ try {
     failed++;
   }
 
+  // Destinos do follow-up (Meu dia, "Depois da ação"): a Nutrição entra como
+  // botão (Leo, 11/09) resolvida pelo NOME da etapa — `contato` cairia em Dia 2,
+  // a 1ª etapa de cadência da LeverAds. Sem etapa Nutrição no funil, o botão some.
+  try {
+    const { destinationsFor } = await server.ssrLoadModule("/src/screens/today.jsx");
+    const funnel = [
+      { stage: "Novo lead", kind: "novo" }, { stage: "Dia 2", kind: "contato" }, { stage: "Dia 3", kind: "contato" },
+      { stage: "Qualificando", kind: "qualificacao" }, { stage: "Call agendada", kind: "call" }, { stage: "Follow-up", kind: "followup" },
+      { stage: "Ganho", kind: "ganho" }, { stage: "Integração", kind: "integracao" }, { stage: "Desqualificado", kind: "desqualificado" },
+      { stage: "Nutrição", kind: "contato" }, { stage: "No show", kind: "contato" },
+    ];
+    const eq = (name, got, want) => {
+      if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error(`${name}: ${JSON.stringify(got)} ≠ ${JSON.stringify(want)}`);
+    };
+    const names = (cfg, lead) => destinationsFor(cfg, lead).map((d) => (d.retry ? "retry" : d.stage));
+    eq("follow-up ganha Nutrição antes de Desqualificado", names({ funnel }, { id: "l1", stage: "Follow-up" }), ["retry", "Ganho", "Integração", "Nutrição", "Desqualificado"]);
+    const semNutri = funnel.filter((f) => f.stage !== "Nutrição");
+    eq("sem etapa Nutrição, o botão some", names({ funnel: semNutri }, { id: "l1", stage: "Follow-up" }), ["retry", "Ganho", "Integração", "Desqualificado"]);
+    console.log("✓ destino-nutricao");
+  } catch (err) {
+    console.error(`✗ destino-nutricao: ${err.message}`);
+    failed++;
+  }
+
   // Contrato preenchido (lib/contracts.js): é o papel que vai pra assinatura e o
   // MESMO snapshot reimpresso na ficha do cliente, então a montagem do HTML vale
   // teste. Valor digitado entra ESCAPADO (contrato não executa HTML de campo) e

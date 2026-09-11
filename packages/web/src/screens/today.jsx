@@ -10,7 +10,7 @@ import { bizDay } from "../lib/format.js";
 import { businessDaysBetween } from "../components/period-picker.jsx";
 import { scaledGoal } from "../components/team-cards.jsx";
 import { useData } from "../data.jsx";
-import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf, nextKindsFor } from "../lib/funnel.js";
+import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf, nextKindsFor, nurtureStage } from "../lib/funnel.js";
 import { allUsers, currentUser, displayName, userById, usersByRole } from "../lib/users.js";
 import { useProposalTemplates } from "../components/ProposalActions.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -1804,6 +1804,14 @@ export function destinationsFor(saasCfg, lead) {
       // pela etapa nomeada "No show" do funil, se existir.
       const st = (saasCfg?.funnel || []).find((f) => f && isNoShowStage(f.stage));
       if (st && !seen.has(st.stage)) { seen.add(st.stage); out.push({ stage: st.stage, kind: "noshow" }); }
+      continue;
+    }
+    if (k === "nutricao") {
+      // Nutrição também é kind contato (e stageByKind cairia em Dia 2, a 1ª
+      // etapa de cadência) → resolve pela etapa NOMEADA. Move direto: o
+      // servidor aplica a cadência de 7 dias da etapa (GPS em 168h, dia útil).
+      const st = nurtureStage(saasCfg);
+      if (st && !seen.has(st)) { seen.add(st); out.push({ stage: st, kind: stageKind(saasCfg, st) }); }
       continue;
     }
     const stage = stageByKind(saasCfg, k);

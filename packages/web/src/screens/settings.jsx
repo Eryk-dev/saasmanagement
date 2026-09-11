@@ -4,7 +4,7 @@ import { CAREER_LEVELS } from "../lib/levels.js";
 import { EmptyState, PrimaryButton, Avatar } from "../atoms.jsx";
 import { useData } from "../data.jsx";
 import { api } from "../lib/api.js";
-import { KINDS, KIND_IDS, guessKind, lossReasonsOf, stageKind, stageByKind, phaseOf, NEXT_KINDS, NEXT_STEP_KINDS, NEXT_STEP_LABELS } from "../lib/funnel.js";
+import { KINDS, KIND_IDS, guessKind, lossReasonsOf, stageKind, stageByKind, phaseOf, NEXT_KINDS, NEXT_STEP_KINDS, NEXT_STEP_LABELS, nurtureStage } from "../lib/funnel.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { DEFAULT_SCRIPTS, SCRIPT_CATALOG, catalogStageRow, isNoShowStage } from "../lib/scripts.js";
 import { usersByRole, roleScreens, isUniversalScreen } from "../lib/users.js";
@@ -356,6 +356,7 @@ function NextStepsSettings({ s }) {
   const resolvable = (k) => {
     if (k === "retry") return true;
     if (k === "noshow") return funnel.some((f) => isNoShowStage(f.stage));
+    if (k === "nutricao") return !!nurtureStage(s);
     return !!stageByKind(s, k);
   };
   const avail = NEXT_STEP_KINDS.filter(resolvable);
