@@ -29,6 +29,9 @@ import { registerOfferRoutes } from "./routes.offers.js";
 import { registerCampaignRoutes } from "./routes.disparos.js";
 import { registerSequenceRoutes } from "./routes.sequences.js";
 import { registerPitchRoutes } from "./routes.pitch.js";
+import { registerBlogPublicRoutes } from "./routes.blog-public.js";
+import { registerBlogRoutes } from "./routes.blog.js";
+import { makeBlogEngine } from "./blog-engine.js";
 import { registerRoutineRoutes } from "./routes.routine.js";
 import { registerConsultationRoutes } from "./routes.consultations.js";
 import { syncConsultationCalendar, syncConsultationMeetEvent } from "./consultations.js";
@@ -59,6 +62,7 @@ import { logActivity, applyStageMove, onActivityCreated, initialNextActionAt, ap
 import { findDuplicateLead, dedupMergePatch } from "./lead-dedup.js";
 import { registerFunnelMetricsRoutes } from "./routes.funnel-metrics.js";
 import { registerScoreboardRoutes } from "./routes.scoreboard.js";
+import { registerDesempenhoRoutes } from "./routes.desempenho.js";
 import { registerPipelinePaceRoutes } from "./routes.pipeline-pace.js";
 import { registerEloRoutes } from "./elo.js";
 
@@ -67,7 +71,9 @@ import { registerEloRoutes } from "./elo.js";
 // wa_threads/wa_messages ficam FORA do CRUD genérico: o inbox usa as rotas
 // dedicadas (/api/whatsapp/*, gateadas), então o texto das conversas não vaza
 // pra qualquer usuário autenticado via /api/wa_messages.
-const PRIVATE = new Set(["users", "sessions", "user_assets", "activity_assets", "task_assets", "wa_threads", "wa_messages", "wa_media", "wa_template_media"]);
+// blog_posts também fica fora: rascunho/pauta/fontes são internos e a máquina
+// de estados (slug travado, lint, agenda) vive em routes.blog.js.
+const PRIVATE = new Set(["users", "sessions", "user_assets", "activity_assets", "task_assets", "wa_threads", "wa_messages", "wa_media", "wa_template_media", "blog_posts"]);
 const isExposed = (c) => COLLECTION_NAMES.includes(c) && !PRIVATE.has(c);
 
 // Collections external SaaS are allowed to write to via REST/MCP.
@@ -140,6 +146,10 @@ export const CREATE_DEFAULTS = {
   // `photo` = URL /public/tasks/:id do anexo (task_assets, 1 foto por tarefa).
   tasks: { title: "", description: "", saas: "", assignees: [], column: "", priority: "", dueDate: "", labels: [], comments: [], order: 0, photo: "" },
   task_boards: { name: "Tarefas", columns: [] },
+  // Registro manual do dia por pessoa (Análise de Desempenho): social selling
+  // feito pela SDR e criativos feitos pelo social media. Escrito pela rota
+  // dedicada POST /api/desempenho/:saas/log (id determinístico por pessoa+dia).
+  daily_logs: { saas: "", user: "", day: "", socialSelling: 0, creatives: 0, note: "", updatedAt: "" },
   // Timeline do lead (pontos de contato + eventos automáticos). `type` toque =
   // whatsapp/call/email/meeting; `stage` = mudança de estágio (meta {from,to});
   // `system` = evento automático (lead_created, proposal_viewed...). `at` = quando
@@ -327,6 +337,13 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerOfferRoutes(app, repo);
   // Insight de pitch: melhora o roteiro de venda a partir dos resumos das calls.
   registerPitchRoutes(app, repo, { anthropic: anthropicClient });
+  // Blog público (leverads.com.br/blog via proxy do copylever): índice, post,
+  // categoria, sitemap, feed e preview assinado. Sem chave (OPEN_PREFIXES).
+  registerBlogPublicRoutes(app, repo, opts.blogPublic || {});
+  // Redação do blog: motor único (pautas → rascunho por IA → agenda → publica),
+  // compartilhado pelas rotas e pelo poller do index.js (integrationClients.blogEngine).
+  const blogEngine = opts.blogEngine || makeBlogEngine({ repo, anthropic: anthropicClient, log: app.log });
+  registerBlogRoutes(app, repo, { anthropic: anthropicClient, engine: blogEngine, publicBase });
   // UniqueKids · sugestão de solução da rotina por IA (método R.O.T.I.N.A) no lead.
   registerRoutineRoutes(app, repo, { anthropic: anthropicClient });
   // Análise de integração (CS/onboarding): sentimento + pendências recorrentes.
@@ -350,6 +367,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerPipelinePaceRoutes(app, repo, opts.pipelinePace);
   // Placar por pessoa/papel (SDR/closer/CS) — o cockpit de gestão da Visão geral.
   registerScoreboardRoutes(app, repo, opts.scoreboard);
+  // Análise de Desempenho: objeções por closer na janela, produção do social e
+  // os registros manuais do dia (social selling / criativos).
+  registerDesempenhoRoutes(app, repo, { social: opts.social, now: opts.scoreboard?.now, ...(opts.desempenho || {}) });
   // Análises do Elo App (produto B2C): agregados do banco do app + beacon
   // público das landing pages (/public/lp/events) e resumo de conversão.
   registerEloRoutes(app, repo, opts.elo);
@@ -387,7 +407,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Poller de resumos (index.js) usa os MESMOS clients das rotas.
   // autoCallMeet vai junto: o poller do SDR cria a sala que falta na hora do
   // lembrete de 2h (sem link, o lembrete de 10min chamava pra lugar nenhum).
-  if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, googleUser, anthropic: anthropicClient, mailer: mailerClient, whatsapp: whatsappClient, autoCallMeet });
+  if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, googleUser, anthropic: anthropicClient, mailer: mailerClient, whatsapp: whatsappClient, autoCallMeet, blogEngine });
 
   // ── Tempo real ─────────────────────────────────────────────────────────
   // Toda escrita no repo (db.js) incrementa um contador global (changes.js).
@@ -1162,8 +1182,10 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
 // é anualizado pelo plano fechado. Assinatura criada depois manda mais — toda
 // mutação de assinatura reescreve o arr via syncCustomerArr.
 const CLOSED_PLAN_LABEL = { anual: "Anual", semestral: "Semestral", mensal: "Mensal", unico: "Serviço único" };
-// O produto do catálogo da apresentação (FULL/OEM/Parcial, lead.dealProduct)
-// entra na frente do ciclo na coluna Plano do cliente: "LeverAds FULL · Anual".
+// O produto do catálogo da apresentação (Lever OEM/Ads/Price × pacote,
+// lead.dealProduct) entra na frente do ciclo na coluna Plano do cliente:
+// "Lever Ads · Escala · Anual". Venda antiga (FULL/OEM/Parcial) segue nomeada
+// pelos rótulos legados do DEAL_PRODUCT_LABEL.
 // Produto Personalizado (gate de fechamento): dealProduct fora do catálogo é o
 // próprio nome livre que o closer escreveu — vale como rótulo do jeito que veio.
 const planLabelOf = (lead) => [

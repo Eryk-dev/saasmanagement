@@ -233,6 +233,14 @@ test("funil da Visão geral = soma dos cards (contato humano, automação fora, 
   // funil, com o histórico das agendadas (10). Os closers contam só as calls
   // que aconteceram COM eles (denominador real do win rate, sem histórico).
   assert.equal(sb.team.callsBooked, 13);            // 3 reais + 10 do histórico
+  // Recortes da Análise de Desempenho (10/09) nascem da MESMA safra e do MESMO
+  // contato dos cards: ICP ⊆ agendadas (orgânicas) e sem-resposta ⊆ contatados.
+  assert.ok(sdrCard.callsBookedIcp <= sdrCard.callsBooked, "calls com ICP ⊆ calls agendadas");
+  assert.ok(sdrCard.noReply <= sdrCard.contacted, "sem resposta ⊆ contatados");
+  assert.equal(sdrCard.noReply, 3, "A, B e D: ninguém respondeu no WhatsApp depois do 1º contato");
+  // Closer: agendadas (orgânicas) = realizadas (sem a parte do histórico, 5 pra
+  // cada um dos 2 closers) + furos + a realizar.
+  for (const c of sb.closer) assert.equal(c.noShow + (c.callsShown - 5) + c.pending, c.calls, `closer ${c.user}: agendadas = realizadas + furos + a realizar`);
   assert.equal(sdrCard.callsBooked, sb.team.callsBooked, "SDR único = topo do funil também em agendadas");
   assert.equal(c1.calls + c2.calls, 3, "closers só as agendadas reais deles (sem histórico)");
   // Calls REALIZADAS: o card MOSTRA o real + a parte do histórico (Leo quer

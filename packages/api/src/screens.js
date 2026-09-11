@@ -15,8 +15,9 @@
 
 export const SCREEN_IDS = [
   "overview", "today", "pipeline", "customers", "metrics", "expenses",
-  "social", "forms", "proposals", "creative", "offers", "contracts", "intform", "disparos", "whatsapp", "agenda", "consultas", "calls", "integrations", "aquisicao", "analise", "funcionarios", "metas", "training", "tasks", "mindmaps", "settings",
+  "social", "forms", "proposals", "creative", "offers", "contracts", "intform", "disparos", "whatsapp", "agenda", "consultas", "calls", "integrations", "aquisicao", "analise", "funcionarios", "desempenho", "metas", "training", "tasks", "mindmaps", "settings",
   "outbound", "remuneracao",
+  "blog", // redação do blog SEO (grupo Marketing)
   "eloapp", "landingpages",
 ];
 
@@ -107,6 +108,7 @@ const ROUTE_SCREENS = [
   ["/api/plans", ["customers"]],
   ["/api/nps", ["customers"]],
   ["/api/billing/", ["customers"]],
+  ["/api/blog", ["blog"]],               // redação do blog: pautas, rascunhos, agenda, preview (routes.blog.js)
   ["/api/forms", ["forms", "aquisicao"]], // inclui /:id/funnel e /preview (Aquisição usa o funil do form)
   ["/api/form_submissions", ["forms"]],
   ["/api/form_events", ["forms"]],
@@ -154,7 +156,12 @@ const ROUTE_SCREENS = [
   ["/api/goals", ["overview"]],
   ["/api/portfolio", ["overview"]],
   ["/api/leaderboard", ["overview"]],
-  ["/api/scoreboard", ["overview", "funcionarios"]], // placar por pessoa/papel (Visão geral + tela Funcionários)
+  ["/api/scoreboard", ["overview", "funcionarios", "desempenho"]], // placar por pessoa/papel (Visão geral + Funcionários + Desempenho)
+  // Análise de Desempenho: a tela lê tudo; SDR (Meu dia) e social (Redes
+  // sociais) só usam a rota pra gravar o próprio registro do dia — a leitura
+  // aplica a lente individual no servidor (só o próprio recorte).
+  ["/api/desempenho", ["desempenho", "today", "social"]],
+  ["/api/daily_logs", ["desempenho"]], // CRUD genérico da collection fica atrás da tela (a escrita normal é pela rota acima)
 ];
 
 // Escritas administrativas: leitura fica aberta (o app inteiro precisa do

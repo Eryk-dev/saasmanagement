@@ -18,6 +18,8 @@ import { startConsultationSummaries } from "./consultations.js";
 import { startDripSequences } from "./drip-runner.js";
 import { startSdrFlow } from "./sdr-flow.js";
 import { startTrainingReminder } from "./training-reminder.js";
+import { startBlogEngine } from "./blog-engine.js";
+import { startStoriesCapture } from "./routes.desempenho.js";
 import { startShopifySync } from "./routes.webhooks.js";
 import { makeShopify } from "./shopify.js";
 import { startMpSync } from "./mp-payments.js";
@@ -37,11 +39,15 @@ dotenv.config({ path: join(__dirname, "..", "..", "..", ".env") });
 const PORT = Number(process.env.API_PORT || 8787);
 const API_KEY = process.env.COCKPIT_API_KEY || "";
 // Routes that stay open even with a key (liveness probes from the PaaS + login).
-const OPEN_PATHS = new Set(["/api/health", "/embed.js", "/favicon.ico", "/api/auth/login", "/api/google/callback"]);
+const OPEN_PATHS = new Set(["/api/health", "/embed.js", "/favicon.ico", "/api/auth/login", "/api/google/callback", "/public/blog"]);
 // Superfície pública do form builder (página + envio anônimo) e do proposal
 // builder (página /p/:id, aceite, painel do closer via editKey). Endurecimento
 // (rate-limit, honeypot, token) vive em routes.forms.js / routes.proposals.js.
-const OPEN_PREFIXES = ["/f/", "/public/forms/", "/fi/", "/public/integration-forms/", "/p/", "/public/proposals/", "/public/mp/", "/public/social/", "/public/training/", "/public/users/", "/public/activities/", "/public/tasks/", "/public/lp/", "/u/", "/m/", "/api/webhooks/"];
+const OPEN_PREFIXES = ["/f/", "/public/forms/", "/fi/", "/public/integration-forms/", "/p/", "/public/proposals/", "/public/mp/", "/public/social/", "/public/training/", "/public/users/", "/public/activities/", "/public/tasks/", "/public/lp/", "/u/", "/m/", "/api/webhooks/",
+  // Blog público (routes.blog-public.js): o copylever faz proxy de leverads.com.br/blog
+  // pra cá. Sem o header x-blog-proxy tudo sai noindex + canonical em leverads.com.br,
+  // então expor no host do cockpit não duplica conteúdo. Raiz `public` já está no nginx.
+  "/public/blog/"];
 
 // Read the key from either header style: `x-api-key: <key>` or `Authorization: Bearer <key>`.
 // Exceção: /api/events (SSE) — EventSource não manda headers, então a key/token
@@ -106,6 +112,13 @@ try {
   startSdrFlow(repo, { ...app.integrationClients, log: app.log });
   // Lembrete diário de treinamento (flashcards vencendo) — no-op sem Discord.
   startTrainingReminder(repo, { log: app.log });
+  // Blog SEO: minera pautas, rascunha 1 post por ciclo e publica os agendados
+  // (15 min). No-op sem doc app_config/blog_<saas> ou com rules.enabled=false;
+  // sem IA configurada só publica o que já está agendado.
+  startBlogEngine(repo, { engine: app.integrationClients.blogEngine, log: app.log });
+  // Captura de stories do Instagram de hora em hora (a Graph só entrega story
+  // vivo): alimenta o "Stories" da Análise de Desempenho. No-op sem token.
+  startStoriesCapture(repo, { log: app.log });
   // Reconciliação da Shopify (UniqueKids): puxa os pedidos pagos e preenche os
   // leads que faltam — rede de segurança pro webhook orders/paid (que ficou 8
   // dias sem entregar). No-op sem SHOPIFY_ADMIN_TOKEN + SHOPIFY_STORE.

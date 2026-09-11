@@ -339,6 +339,14 @@ test("lead ganho manda Purchase pro CAPI com o valor do negócio, uma vez só", 
   await app.inject({ method: "PATCH", url: "/api/leads/l2", payload: { stage: "Ganho", amount: 100 } });
   assert.equal(purchases.length, 2, "lead interno não manda Purchase");
   assert.equal((await repo.list("customers")).length, 2);
+
+  // Catálogo v2 (10/09/2026): produto novo nomeia o Plano e o semestral
+  // anualiza ×2; a chave legada (fulloem, acima) continua nomeando venda antiga.
+  await repo.create("leads", { id: "l9", saas: "leverads", name: "Caio", stage: "Novo lead", dealProduct: "price_escala" });
+  await app.inject({ method: "PATCH", url: "/api/leads/l9", payload: { stage: "Ganho", amount: 11382, planClosed: "semestral" } });
+  const won9 = (await repo.list("customers")).find((c) => c.leadId === "l9");
+  assert.equal(won9.plan, "Lever Price · Escala · Semestral");
+  assert.equal(won9.arr, 22764);
   await app.close();
 });
 

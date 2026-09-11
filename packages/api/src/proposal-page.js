@@ -1716,7 +1716,7 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       // Retorna a promise: o card do catálogo espera o save antes de recarregar.
       return fetch('/public/proposals/' + encodeURIComponent(P.id), {
         method: 'PATCH', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ k: token, accounts: state.accounts, volume: state.volume, cycle: state.cycle, customPriceCents: state.customPriceCents, validUntil: state.validUntil, frozen: true, company: DATA.lead.company, name: DATA.lead.name, niche: DATA.answers.niche, cloneCount: state.cloneCount, newPerMonth: state.newPerMonth, product: state.product, pain: state.pain, oem: state.oem, oemCota: state.oemCota, deckOrder: state.deckOrder, discountPct: Number(state.discountPct) || 0, dores: (state.dores || []).map(function (d) { return d == null ? '' : String(d); }) })
+        body: JSON.stringify({ k: token, accounts: state.accounts, volume: state.volume, cycle: state.cycle, customPriceCents: state.customPriceCents, validUntil: state.validUntil, frozen: true, company: DATA.lead.company, name: DATA.lead.name, niche: DATA.answers.niche, cloneCount: state.cloneCount, newPerMonth: state.newPerMonth, product: state.product, pain: state.pain, oem: state.oem, deckOrder: state.deckOrder, discountPct: Number(state.discountPct) || 0, dores: (state.dores || []).map(function (d) { return d == null ? '' : String(d); }) })
       }).then(function (r) { if (!r.ok) throw new Error('falha'); return r.json(); })
         .then(function () { flash('salvo ✓', 'ok'); setTimeout(function () { tag.className = 'save-tag'; }, 1600); })
         .catch(function () { flash('✕ erro ao salvar', 'err'); });
@@ -1862,11 +1862,12 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
       if (CAT) {
         sec.classList.add('lvx');
         var TIER_STYLE = { S: ['#7c3aed', '#fff'], A: ['#16a34a', '#fff'], B: ['#65a30d', '#fff'], C: ['#eab308', '#463500'], D: ['#ea580c', '#fff'], E: ['#9aa2ad', '#fff'] };
-        // Roteiro da call por trilha de venda: OEM (só autopeça), Cópia
-        // (full/parcial) e Cópia + OEM (combos). O produto APRESENTADO decide a
-        // trilha; só diagnóstico e demo mudam, o resto da espinha é fixo.
+        // Roteiro da call por trilha de venda: a linha OEM entrega tudo do Ads
+        // MAIS o OEM (trilha Cópia + OEM); Ads e Price seguem a trilha Cópia
+        // (o roteiro próprio do Price fica pra próxima fase). O produto
+        // APRESENTADO decide a trilha; só diagnóstico e demo mudam.
         var TRACK_LABEL = { oem: 'OEM', copia: 'Cópia', co: 'Cópia + OEM' };
-        function trackOf(k) { return k === 'oem' ? 'oem' : (k === 'fulloem' || k === 'parcialoem') ? 'co' : 'copia'; }
+        function trackOf(k) { return String(k || '').split('_')[0] === 'oem' ? 'co' : 'copia'; }
         // Espinha de perguntas do Roteiro do Closer (v2 · 22/08): a cola inteira
         // da call, etapa por etapa. Cada item = [pergunta, lembrete, trilha?];
         // 'oem' aparece nas trilhas OEM e combo, 'copia' nas trilhas Cópia e
@@ -1962,17 +1963,20 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         // entra no select sozinha. Fallback = catálogo antigo, sem painOrder.
         var painKeys = (CAT.painOrder && CAT.painOrder.length ? CAT.painOrder : ['A', 'B', 'C', 'D', 'E', 'none'])
           .filter(function (kk) { return CAT.pains[kk]; });
-        var prodKeys = Object.keys(CAT.names);
-        var oneOff = CAT.oneOffCloning;
-        // As linhas e o badge têm id porque o syncCat re-renderiza os valores
-        // com o desconto da negociação aplicado (o mesmo do produto).
-        var oneOffHtml = oneOff && Array.isArray(oneOff.rows)
+        // Linhas × pacotes do select "Apresentar" (optgroup por linha) vêm
+        // prontas do servidor; Enterprise sem preço entra desabilitado.
+        var lines = Array.isArray(CAT.lines) ? CAT.lines : [];
+        // Consulta rápida (adicionais, pacotes de OEM, sob consulta): as linhas
+        // e o badge têm id porque o syncCat re-renderiza os valores com o
+        // desconto da negociação aplicado (o mesmo do produto).
+        var oneOff = CAT.quickRef;
+        var oneOffHtml = oneOff && Array.isArray(oneOff.rows) && oneOff.rows.length
           ? '<div class="lvx-oneoff">' +
               '<div class="lvx-oneoff-head"><div><span class="lvx-h">Consulta rápida</span><b>' + esc(oneOff.title || '') + '</b>' +
                 '<span class="lvx-oneoff-disc" id="lvxOneOffDisc">Negociável · até 15% de desconto no valor</span></div>' +
                 '<span class="lvx-oneoff-tag">' + esc(oneOff.tag || '') + '</span></div>' +
               '<table class="lvx-oneoff-table"><tbody id="lvxOneOffRows">' + oneOff.rows.map(function (row) {
-                return '<tr><td>' + esc(row.range || '') + '</td><td>' + esc(row.price || '') + '</td></tr>';
+                return '<tr><td>' + esc(row.label || '') + '</td><td>' + esc(row.price || '') + '</td></tr>';
               }).join('') + '</tbody></table>' +
               '<span class="lvx-oneoff-note">' + esc(oneOff.note || '') + '</span>' +
             '</div>'
@@ -2020,19 +2024,18 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           // nome), sem bloco próprio em cima: menos coisa na frente do closer.
           '<div><span class="lvx-h">Apresentar</span>' +
             '<select class="lvx-sel" id="lvxSel" style="margin-top:6px">' +
-              prodKeys.map(function (kk) { return '<option value="' + kk + '">' + esc(CAT.names[kk]) + (kk === CAT.suggested ? ' · sugerido pela régua' : '') + '</option>'; }).join('') +
+              lines.map(function (L) {
+                return '<optgroup label="' + esc(L.name) + '">' +
+                  (L.products || []).map(function (pr) { return '<option value="' + pr.key + '">' + esc(pr.label) + (pr.key === CAT.suggested ? ' · sugerido pela régua' : '') + '</option>'; }).join('') +
+                  (L.enterprise ? '<option disabled>Enterprise · ' + esc(L.enterprise) + '</option>' : '') +
+                '</optgroup>';
+              }).join('') +
             '</select><button class="lvx-back" id="lvxBack" type="button">↩ voltar pra sugestão da régua</button>' +
+            '<span class="lvx-note" id="lvxEnt" style="display:none;margin-top:6px">10+ contas: Enterprise é sob consulta. Apresente o Escala e feche como Personalizado no gate.</span>' +
             '<div class="lvx-cur" id="lvxCur"></div></div>' +
           '<div><span class="lvx-h">Desconto na negociação · até 15%</span>' +
             '<div class="lvx-disc"><input type="number" id="lvxDisc" min="0" max="15" step="1" inputmode="numeric" placeholder="0" value="' + (Number(state.discountPct) || '') + '"><span>%</span></div>' +
             '<span class="lvx-note" style="display:block;margin-top:6px">Desconta na hora dos valores e parcelas do produto apresentado. Máximo 15%.</span></div>' +
-          // Leque do OEM avulso: só aparece quando o produto apresentado é o
-          // OEM; a régua abre no nível do porte e o closer troca aqui.
-          '<div id="lvxCotaRow" style="display:none"><span class="lvx-h">Cota OEM · anúncios por mês</span>' +
-            '<select class="lvx-sel" id="lvxCota" style="margin-top:6px">' +
-              (CAT.oemLevels || []).map(function (l) { return '<option value="' + l.cota + '">' + l.cota + '/mês · ' + esc(l.short) + '</option>'; }).join('') +
-            '</select>' +
-            '<div class="lvx-note" style="margin-top:6px">Muda a cota e o preço do deck do OEM avulso. Sem mexer, vale o nível do porte da régua.</div></div>' +
           '</div>' +
           '</div>';
         var cols = el('div', 'lvx-cols');
@@ -2097,12 +2100,13 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
           catGet('lvxB').style.background = st[0];
           catGet('lvxB').style.color = st[1];
           catGet('lvxT').textContent = 'Cliente ' + CAT.tier;
-          catGet('lvxW').textContent = state.accounts + ' conta(s) × ' + state.volume + ' anúncios.' + (CAT.low ? ' Entra no Parcial.' : ' Perfil de FULL.');
+          catGet('lvxW').textContent = CAT.why || (state.accounts + ' conta(s) × ' + state.volume + ' anúncios.');
+          catGet('lvxEnt').style.display = CAT.enterpriseHint ? 'block' : 'none';
           catGet('lvxM').innerHTML = mtxHtml();
           catGet('lvxPain').value = CAT.pains[state.pain] ? state.pain : 'none';
           var shown = state.product || CAT.suggested;
           catGet('lvxSel').value = shown;
-          // Precificação separada em linhas (anual · Shift+1 · Shift+2), com o
+          // Precificação separada em linhas (anual · Shift+1 semestral), com o
           // desconto da negociação já aplicado nos R$ e nas parcelas.
           var pct = Math.min(15, Math.max(0, Math.round(Number(state.discountPct) || 0)));
           var priceRows = String(CAT.priceLines[shown] || '').split(' · ').filter(Boolean);
@@ -2112,21 +2116,19 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
               priceRows.map(function (r) { return '<span class="lvx-cur-row">' + esc(discLine(r, pct)) + '</span>'; }).join('') +
             '</span>';
           catGet('lvxBack').className = 'lvx-back' + (state.product && state.product !== CAT.suggested ? ' show' : '');
-          // O desconto vale pro serviço único também: a tabela da consulta
-          // rápida re-renderiza com os valores descontados e o badge avisa.
+          // O desconto vale pros adicionais também: a tabela da consulta
+          // rápida re-renderiza com os valores descontados e o badge avisa
+          // ("sob consulta" não tem número, passa intacto).
           var oneRows = catGet('lvxOneOffRows');
           if (oneRows && oneOff) {
             oneRows.innerHTML = oneOff.rows.map(function (row) {
-              return '<tr><td>' + esc(row.range || '') + '</td><td>' + esc(discLine(String(row.price || ''), pct)) + '</td></tr>';
+              return '<tr><td>' + esc(row.label || '') + '</td><td>' + esc(discLine(String(row.price || ''), pct)) + '</td></tr>';
             }).join('');
             catGet('lvxOneOffDisc').textContent = pct
               ? 'Valores com ' + pct + '% de desconto'
               : 'Negociável · até 15% de desconto no valor';
           }
           renderScript();
-          var cotaOn = shown === 'oem' && (CAT.oemLevels || []).length;
-          catGet('lvxCotaRow').style.display = cotaOn ? '' : 'none';
-          if (cotaOn) catGet('lvxCota').value = String(Number(state.oemCota) || CAT.oemCota || '');
           var isB = state.deckOrder === 'B';
           Array.prototype.forEach.call(catGet('lvxOrder').children, function (b) {
             b.className = ((b.getAttribute('data-order') || '') === (isB ? 'B' : '')) ? 'on' : '';
@@ -2197,12 +2199,6 @@ ${previewBanner ? '<div class="edit-banner">👁 Preview do template — dados d
         catGet('lvxBack').addEventListener('click', function () {
           state.product = '';
           catReload({ product: null });
-        });
-        // Cota do OEM avulso: o preço do deck muda, então salva e recarrega
-        // (mesma dança da troca de produto).
-        catGet('lvxCota').addEventListener('change', function () {
-          state.oemCota = Number(this.value) || '';
-          catReload({ oemCota: this.value || null });
         });
         catGet('lvxPain').addEventListener('change', function () {
           // A dor só é registrada (vai pro snapshot da proposta); não abre

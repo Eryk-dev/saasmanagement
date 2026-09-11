@@ -305,6 +305,46 @@ function buildQueue(leads, consultas, saasCfg, person) {
   return { ...g, doneToday };
 }
 
+// Registro rápido de social selling (decisão do Leo, 10/09): a SDR aperta +1 a
+// cada abordagem feita no Instagram; o número do dia vai pra Análise de
+// Desempenho ("social selling executado"). "cadastrar lead" abre o form já com
+// a origem "Social selling" (é o que conta como "virou lead") e ela de dona.
+function SocialSellingBar({ saasId, person, version, openForm }) {
+  const [count, setCount] = useS(null);
+  const [busy, setBusy] = useS(false);
+  const hoje = bizDay(new Date());
+  useE(() => {
+    if (!saasId || !person) return;
+    let alive = true;
+    api.desempenho(saasId, { since: hoje, until: hoje })
+      .then((d) => alive && setCount(d?.logs?.[person]?.socialSelling || 0))
+      .catch(() => alive && setCount(null));
+    return () => { alive = false; };
+  }, [saasId, person, version, hoje]);
+  const inc = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const r = await api.desempenhoLog(saasId, { user: person, inc: { socialSelling: 1 } });
+      setCount(r?.socialSelling ?? ((count || 0) + 1));
+      toast("Social selling registrado", "pos");
+    } catch (e) { toast(`Não deu pra registrar · ${e?.message || "tente de novo"}`, "neg"); }
+    finally { setBusy(false); }
+  };
+  const btn = { height: 28, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 };
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", border: "1px solid var(--line-1)", background: "var(--bg-1)", borderRadius: "var(--r-3)", padding: "8px 12px" }}>
+      <span style={{ fontSize: 13, fontWeight: 600 }}>📸 Social selling hoje</span>
+      <span className="tnum" style={{ fontSize: 15, fontWeight: 700, minWidth: 18, textAlign: "center" }}>{count == null ? "—" : count}</span>
+      <button onClick={inc} disabled={busy} title="registra uma abordagem feita no Instagram" style={{ ...btn, background: "var(--btn-bg)", color: "var(--btn-fg)", border: "none", opacity: busy ? 0.6 : 1 }}>+1</button>
+      {openForm && (
+        <button onClick={() => openForm("leads", { saas: saasId, source: "Social selling", owner: person })} title="cadastra o lead já com a origem Social selling" style={btn}>virou lead · cadastrar</button>
+      )}
+      <span className="dim" style={{ fontSize: 12 }}>conta na Análise de Desempenho</span>
+    </div>
+  );
+}
+
 // Aviso de social selling: aparece quando o SDR zera a fila de HOJE. Manda ir
 // pro Instagram chamar os novos seguidores. Mostra a CONTAGEM de novos
 // seguidores (~24h); o @ de cada um o Instagram NÃO entrega por API (privacidade
@@ -336,7 +376,7 @@ function SocialSellingNotice({ ig }) {
 }
 
 function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
-  const { version } = useData();
+  const { version, openForm } = useData();
   const [activeProduct] = useActiveSaas();
   const saasCfg = (window.SEED?.SAAS || []).find((s) => s.id === activeProduct?.id) || activeProduct;
   const me = currentUser()?.id || "";
@@ -606,6 +646,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
             <button onClick={() => setReload((n) => n + 1)} style={{ marginLeft: "auto", height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--warn-line)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 600 }}>recarregar</button>
           </div>
         )}
+        {viewedIsSdr && saasCfg?.id && <SocialSellingBar saasId={saasCfg.id} person={person} version={version} openForm={openForm} />}
         {daySocialDone && <SocialSellingNotice ig={igStats} />}
         {total === 0 ? (
           // Fila de leads vazia: a tela continua a de sempre ("Fila limpa");

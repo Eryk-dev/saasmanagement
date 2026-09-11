@@ -239,7 +239,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
             ) : (
               <>
                 <label className="kicker" style={label}>Plano fechado *</label>
-                {/* Serviço único (clonagem avulsa) não tem ciclo: o plano é o
+                {/* Serviço único (pacote de OEM avulso) não tem ciclo: o plano é o
                     próprio produto, então o select fica travado. */}
                 <select value={oneOff ? "unico" : planClosed} disabled={oneOff}
                   onChange={(e) => {

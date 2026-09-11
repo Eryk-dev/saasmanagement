@@ -16,6 +16,7 @@ import { SocialScreen } from "./screens/social.jsx";
 import { OffersScreen } from "./screens/offers.jsx";
 import { ContractsScreen } from "./screens/contracts.jsx";
 import { IntegrationFormsScreen } from "./screens/integration-forms.jsx";
+import { BlogScreen } from "./screens/blog.jsx";
 import { DisparosScreen } from "./screens/disparos.jsx";
 import { OutboundScreen } from "./screens/outbound.jsx";
 import { RemuneracaoScreen } from "./screens/remuneracao.jsx";
@@ -29,6 +30,7 @@ import { IntegrationsScreen } from "./screens/integrations.jsx";
 import { AnaliseScreen } from "./screens/analise.jsx";
 import { AquisicaoScreen } from "./screens/aquisicao.jsx";
 import { FuncionariosScreen } from "./screens/funcionarios.jsx";
+import { DesempenhoScreen } from "./screens/desempenho.jsx";
 import { MetasScreen } from "./screens/metas.jsx";
 import { TrainingScreen, TrainingGate } from "./screens/training.jsx";
 import { CustomersScreen } from "./screens/customers.jsx";
@@ -57,7 +59,7 @@ const { useState: useStA, useEffect: useEA, useCallback: useCbA } = React;
 // mais seletor próprio (o mês dos Custos fica: é mês CONTÁBIL de lançamento,
 // não janela de análise).
 const PERIOD_SCREENS = new Set([
-  "overview", "aquisicao", "funcionarios",
+  "overview", "aquisicao", "funcionarios", "desempenho",
   "metrics", "forms", "expenses", "customers", "social",
   "eloapp", "landingpages",
 ]);
@@ -227,12 +229,14 @@ function App() {
     forms:       ["Marketing", "Formulários"],
     creative:    ["Marketing", "Canvas"],
     disparos:    ["Marketing", "Disparos"],
+    blog:        ["Marketing", "Blog"],
     eloapp:      ["Análises", "Análise do App"],
     aquisicao:   ["Análises", "Análise de Aquisição"],
     calls:       ["Análises", "Análise de Pitches"],
     integrations: ["Análises", "Análise de Integração"],
     analise:     ["Análises", "Análise de Pace"],
     funcionarios: ["Análises", "Análise de Equipe"],
+    desempenho:  ["Análises", "Análise de Desempenho"],
     tasks:       ["Geral", "Tarefas"],
     remuneracao: ["Geral", "Remuneração"],
     mindmaps:    ["Geral", "Mapas mentais"],
@@ -305,6 +309,7 @@ function App() {
           {scr === "agenda"      && <AgendaScreen onOpenLead={openLead} />}
           {scr === "consultas"   && <ConsultasScreen />}
           {scr === "disparos"    && <DisparosScreen onOpenLead={openLead} />}
+          {scr === "blog"        && <BlogScreen />}
           {scr === "outbound"    && <OutboundScreen onOpenLead={openLead} />}
           {scr === "remuneracao" && <RemuneracaoScreen />}
           {scr === "whatsapp"    && <WhatsappInboxScreen onOpenLead={openLead} initialThread={params.waThread} initialLead={params.waLead} initialDraft={params.waDraft} />}
@@ -315,6 +320,7 @@ function App() {
           {scr === "eloapp"      && <EloAppScreen />}
           {scr === "landingpages" && <LandingPagesScreen />}
           {scr === "funcionarios" && <FuncionariosScreen onNav={nav} />}
+          {scr === "desempenho"  && <DesempenhoScreen onOpenLead={openLead} />}
           {scr === "metas"       && <MetasScreen />}
           {scr === "training"    && <TrainingScreen />}
           {scr === "subscriptions" && <CustomersScreen initialTab="billing" />}

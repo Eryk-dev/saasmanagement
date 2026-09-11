@@ -17,12 +17,17 @@ async function buildApp() {
   return { app, repo };
 }
 
-test("GET sem doc: LeverAds cai nos 3 links default; produto sem default = vazio", async () => {
+test("GET sem doc: LeverAds cai na escada do catálogo v2 (links vazios, o Leo cola); produto sem default = vazio", async () => {
   const { app } = await buildApp();
   const lev = (await app.inject({ method: "GET", url: "/api/offers/leverads" })).json();
-  assert.equal(lev.items.length, 3);
-  assert.deepEqual(lev.items.map((o) => o.key), ["anual", "semestral", "unico"]);
-  assert.match(lev.items[0].link, /mpago\.la/);
+  assert.equal(lev.items.length, 11);
+  assert.deepEqual(lev.items.map((o) => o.key), [
+    "essencial_anual", "essencial_semestral", "escala_anual", "escala_semestral",
+    "price_essencial_anual", "price_essencial_semestral", "price_escala_anual", "price_escala_semestral",
+    "price_enterprise_anual", "price_enterprise_semestral", "oem_pack",
+  ]);
+  assert.equal(lev.items[0].price, "12x 497 · 5.964 no ano");
+  assert.equal(lev.items[0].link, "", "link do Mercado Pago é do Leo, nasce vazio");
 
   const outro = (await app.inject({ method: "GET", url: "/api/offers/outro" })).json();
   assert.deepEqual(outro.items, []);

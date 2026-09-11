@@ -23,6 +23,7 @@ export const COLLECTIONS = {
   goals: [],
   leaderboard_month: [],
   leaderboard_all: [],
+  daily_logs: [], // registro manual do dia por pessoa (social selling da SDR, criativos do social) — routes.desempenho.js
   forms: [],
   form_submissions: [],
   form_events: [],
@@ -82,5 +83,6 @@ export const COLLECTIONS = {
   copilot_sessions: [],  // copiloto da call: transcrição ao vivo + cues por lead (1 doc por lead, áudio nunca persiste)
   consultations: [],     // consultas 1:1 da mentoria (UniqueKids, 8 encontros): agenda + Meet + resumo IA (consultations.js)
   deliverables: [],      // Manual da Família (entregável final da mentoria): 1 por cliente, seções moduladas pelas consultas (deliverables.js)
+  blog_posts: [],        // blog SEO do site (leverads.com.br/blog): pauta → rascunho (IA) → agendado → publicado (blog-engine.js); PRIVATE, rotas em routes.blog.js e páginas em routes.blog-public.js
   integration_forms: [], // Formulário de Integração: 1 por cliente fechado — o id é o token do link público /fi/:id; guarda respostas + termo assinado (integration-form.js)
 };

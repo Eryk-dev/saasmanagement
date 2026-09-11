@@ -57,7 +57,12 @@ test("screenForRequest: mapa por prefixo + escritas administrativas", () => {
   assert.deepEqual(screenForRequest("POST", "/api/activities"), ["pipeline", "today"]);
   assert.deepEqual(screenForRequest("GET", "/api/pipeline-pace/leverads"), ["pipeline", "analise", "overview"]);
   assert.deepEqual(screenForRequest("GET", "/api/funnel/leverads"), ["pipeline", "analise"]);
-  assert.deepEqual(screenForRequest("GET", "/api/scoreboard/leverads"), ["overview", "funcionarios"]);
+  assert.deepEqual(screenForRequest("GET", "/api/scoreboard/leverads"), ["overview", "funcionarios", "desempenho"]);
+  // Análise de Desempenho: a tela lê; SDR (Meu dia) e social (Redes sociais) só
+  // gravam o próprio registro do dia pela mesma rota.
+  assert.deepEqual(screenForRequest("GET", "/api/desempenho/leverads"), ["desempenho", "today", "social"]);
+  assert.deepEqual(screenForRequest("POST", "/api/desempenho/leverads/log"), ["desempenho", "today", "social"]);
+  assert.deepEqual(screenForRequest("GET", "/api/daily_logs"), ["desempenho"]);
   // Leitura agregada do inbox na Visão geral; conversas/envio seguem só do inbox
   assert.deepEqual(screenForRequest("GET", "/api/whatsapp/insights"), ["whatsapp", "overview"]);
   assert.deepEqual(screenForRequest("GET", "/api/whatsapp/threads"), ["whatsapp"]);

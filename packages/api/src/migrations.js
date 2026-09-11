@@ -14,6 +14,7 @@ import { waMatchKey } from "./wa-store.js";
 import { backfillPaymentLinks } from "./payment-links.js";
 import { slideVisible } from "./proposal.js";
 import { mentoriaTemplateDoc, mentoriaCalcBlock } from "./mentoria.js";
+import { BLOG_DEFAULT_RULES, BLOG_DEFAULT_STATE, blogCfgId } from "./blog-config.js";
 
 // Garante o estágio "Integração" no funil do produto `leverads`, posicionado
 // entre "Negociação" e "Ganho". Integração é pós-venda: negócio já fechado,
@@ -1287,52 +1288,88 @@ const LEVERADS_CATALOG = {
     ["B", "B", "A", "S", "S"],
     ["A", "A", "A", "S", "S"],
   ],
-  // TRÊS formas de pagar (tabela nova do Leo, 21/08/2026). O ANUAL abre a
-  // apresentação; semestral é o Shift+1 e recorrente o Shift+2.
-  //   anu.total = anu.per × 12 · sem.total = sem.per × 6 (o total é o que se
-  //   paga no ciclo, não 12 mensalidades como na tabela velha).
-  //   rec = mensalidade + `setup` (a CLONAGEM) cobrado UMA vez na entrada.
-  // A regra que sustenta a oferta: quem se compromete NÃO paga a clonagem, e é
-  // isso que faz o compromisso ganhar — a mensalidade da recorrente é a menor
-  // das três. O custo em 12/6 meses da recorrente é derivado (per × N + setup),
-  // nunca guardado, pra não existir número que possa divergir.
+  // Catálogo v2 (mapa mental "Produtos", Leo, 10/09/2026): três LINHAS
+  // (oem / ads / price) × PACOTES (essencial / escala / enterprise), só ANUAL
+  // (abre a apresentação) e SEMESTRAL (Shift+1). A recorrente saiu.
+  //   anu.total = anu.per × 12 · sem.total = sem.per × 6.
+  // OEM e Ads têm o MESMO preço: a diferença é o nicho (autopeças leva a
+  // criação por OEM inclusa). Enterprise de OEM/Ads é sob consulta e por isso
+  // não está em `products` (não vira deck; fecha como Personalizado). O do
+  // Price tem preço. Entregáveis (`inclui`) vivem AQUI, como os preços: número
+  // de produto não se escreve no texto do slide.
+  catalogV: 2,
+  tierByAccounts: { "1": "essencial", "2": "essencial", "3-5": "essencial", "6-10": "escala", "10+": "enterprise" },
+  lines: {
+    oem: { name: "Lever OEM", enterprise: "sob consulta" },
+    ads: { name: "Lever Ads", enterprise: "sob consulta" },
+    price: { name: "Lever Price", enterprise: "" },
+  },
   products: {
-    full: {
-      name: "LeverAds FULL",
-      anu: { total: 8976, per: 748 }, sem: { total: 5094, per: 849 },
-      rec: { per: 499, setup: 3500 },
+    oem_essencial: {
+      line: "oem", tier: "essencial", name: "Lever OEM · Essencial", contas: 3, cota: 200,
+      inclui: {
+        motor: ["200 anúncios OEM criados por mês, com compatibilidade veicular", "Sincronização das suas contas (Meli + Shopee)", "Cópia de anúncios entre contas com títulos sugeridos"],
+        plataforma: ["Edição em massa por SKU", "SAC centralizado e automatizado pela descrição dos produtos", "3 contas incluídas"],
+      },
+      anu: { total: 5964, per: 497 }, sem: { total: 3582, per: 597 },
     },
-    fulloem: {
-      name: "LeverAds + OEM FULL", cota: 500,
-      anu: { total: 11988, per: 999 }, sem: { total: 7794, per: 1299 },
-      rec: { per: 774, setup: 3750 },
+    oem_escala: {
+      line: "oem", tier: "escala", name: "Lever OEM · Escala", contas: 7, cota: 0, cotaLabel: "OEM ilimitado",
+      inclui: {
+        motor: ["Anúncios OEM sem limite mensal, com compatibilidade veicular", "Equalização das suas contas", "Sincronização das suas contas (Meli + Shopee)", "Cópia de anúncios entre contas com títulos sugeridos"],
+        plataforma: ["Edição em massa por SKU", "SAC centralizado e automatizado pela descrição dos produtos", "7 contas incluídas · conta extra R$ 100/mês"],
+      },
+      anu: { total: 11988, per: 999 }, sem: { total: 7182, per: 1197 },
     },
-    oem: {
-      name: "OEM avulso",
-      // Leque de cota do Leo (limites novos em 21/08/2026: 125/250/500
-      // anúncios/mês, mesmo preço de antes). A régua abre no menor nível pro
-      // porte D/E e no maior pros demais; o closer troca na tela zero (select
-      // "Cota OEM" → state.oemCota). OEM avulso não tem clonagem: rec é só a
-      // mensalidade, sem entrada.
-      small: { cota: 125, anu: { total: 3288, per: 274 }, sem: { total: 1914, per: 319 }, rec: { per: 379, setup: 0 } },
-      mid: { cota: 250, anu: { total: 5388, per: 449 }, sem: { total: 2994, per: 499 }, rec: { per: 599, setup: 0 } },
-      big: { cota: 500, anu: { total: 8388, per: 699 }, sem: { total: 4494, per: 749 }, rec: { per: 849, setup: 0 } },
+    ads_essencial: {
+      line: "ads", tier: "essencial", name: "Lever Ads · Essencial", contas: 3, equalizacao: false,
+      inclui: {
+        motor: ["Sincronização das suas contas (Meli + Shopee)", "Cópia de anúncios entre contas com títulos sugeridos", "Edição em massa por SKU"],
+        plataforma: ["SAC centralizado e automatizado pela descrição dos produtos", "3 contas incluídas"],
+      },
+      anu: { total: 5964, per: 497 }, sem: { total: 3582, per: 597 },
     },
-    parcialA: {
-      name: "Parcial",
-      anu: { total: 4536, per: 378 }, sem: { total: 2574, per: 429 },
-      rec: { per: 299, setup: 1500 },
+    ads_escala: {
+      line: "ads", tier: "escala", name: "Lever Ads · Escala", contas: 7, equalizacao: true,
+      inclui: {
+        motor: ["Equalização das suas contas", "Sincronização das suas contas (Meli + Shopee)", "Cópia de anúncios entre contas com títulos sugeridos", "Edição em massa por SKU"],
+        plataforma: ["SAC centralizado e automatizado pela descrição dos produtos", "7 contas incluídas · conta extra R$ 100/mês"],
+      },
+      anu: { total: 11988, per: 999 }, sem: { total: 7182, per: 1197 },
     },
-    parcialoem: {
-      // O semestral saiu da planilha em 549/mês, ABAIXO do anual (599) — era a
-      // única linha com a escada invertida (dois semestres sairiam mais baratos
-      // que o ano). Leo corrigiu pra 649 em 21/08. Em 31/08 a entrega do combo
-      // subiu de 125 pra 250 OEM/mês, mesmo preço.
-      name: "Parcial + OEM 250", cota: 250,
-      anu: { total: 7188, per: 599 }, sem: { total: 3894, per: 649 },
-      rec: { per: 499, setup: 1750 },
+    price_essencial: {
+      line: "price", tier: "essencial", name: "Lever Price · Essencial", limite: 1000,
+      inclui: {
+        motor: ["Precificação automática de até 1.000 anúncios", "Regras de preço por margem e concorrência"],
+        plataforma: ["Acompanhamento de preço e margem no painel", "Alertas de anúncio fora da regra"],
+      },
+      anu: { total: 9564, per: 797 }, sem: { total: 5082, per: 847 },
+    },
+    price_escala: {
+      line: "price", tier: "escala", name: "Lever Price · Escala", limite: 10000,
+      inclui: {
+        motor: ["Precificação automática de até 10.000 anúncios", "Regras de preço por margem e concorrência"],
+        plataforma: ["Acompanhamento de preço e margem no painel", "Alertas de anúncio fora da regra"],
+      },
+      anu: { total: 17964, per: 1497 }, sem: { total: 11382, per: 1897 },
+    },
+    price_enterprise: {
+      line: "price", tier: "enterprise", name: "Lever Price · Enterprise", limite: 0, limiteLabel: "anúncios ilimitados",
+      inclui: {
+        motor: ["Precificação automática sem limite de anúncios", "Regras de preço por margem e concorrência"],
+        plataforma: ["Acompanhamento de preço e margem no painel", "Alertas de anúncio fora da regra"],
+      },
+      anu: { total: 41964, per: 3497 }, sem: { total: 23982, per: 3997 },
     },
   },
+  // Adicionais e pacotes: tabela de consulta do closer na tela zero. O pacote
+  // de OEM é vendível (serviço único) pelo gate de Ganho; setups sem preço
+  // aparecem como "sob consulta".
+  addons: {
+    contaExtra: { label: "Conta extra no Escala", per: 100 },
+    setups: [{ label: "Setup de Equalização" }, { label: "Setup de Otimização" }],
+  },
+  oemPacks: [{ qty: 1000, price: 2000 }, { qty: 2000, price: 3500 }, { qty: 3000, price: 4500 }],
   // Dores do painMap do produto + perguntas SPIN (definidas com o Leo 06/08).
   pains: {
     A: {
@@ -1460,17 +1497,8 @@ export async function backfillProposalCatalog(repo) {
   return n;
 }
 
-// ── Leque do OEM avulso nas propostas ABERTAS (pedido do Leo, 14/08/2026) ───
-// A tabela nova do OEM avulso (cotas 50/100/200) entrou no template, mas cada
-// proposta congela calc.catalog no snapshot — as abertas seguiam mostrando o
-// leque antigo (2 cotas, preços velhos) na tela zero. Mesmo recorte do
-// retroativo de 06/08: proposta viva do pt_leverads ganha o catálogo ATUAL do
-// template (só o catálogo — deck, estado e escolhas do closer ficam); ACEITAS
-// e snapshots de cliente (sharedFrom) ficam de fora. Idempotente: proposta
-// cujo OEM já tem o nível `mid` (100) não é tocada — edição posterior do dono
-// no snapshot é soberana.
-// ── Tabela de preços de 21/08/2026 (as três formas de pagar) ───────────────
-// O Leo refez a tabela: ANO (12 × mensal), SEMESTRAL (6 × mensal) e RECORRENTE
+// ── Tabela de preços do catálogo (versão no marcador pricingV) ─────────────
+// 21/08/2026: o Leo refez a tabela: ANO (12 × mensal), SEMESTRAL (6 × mensal) e RECORRENTE
 // (clonagem na entrada + mensalidade), e subiu os limites do OEM (125/250/500,
 // mesmo preço). Como o catálogo vive no BANCO (calc.catalog do template, e
 // congelado em cada proposta), mudar o default do código não muda nada em
@@ -1482,24 +1510,37 @@ export async function backfillProposalCatalog(repo) {
 // 31/08/2026: a entrega do combo Parcial + OEM subiu de 125 pra 250 anúncios/
 // mês (mesmo preço) — o bump da versão re-aplica os produtos do seed no
 // template e nas propostas abertas, exatamente como na tabela de 21/08.
-const PRICING_VERSION = "2026-08-31";
-// De-para das cotas de OEM avulso: o closer escolheu 50/100/200 e esses níveis
-// deixaram de existir. Sem isto a proposta aberta cairia no nível PADRÃO da
-// régua e o closer perderia a escolha que já tinha feito.
-const OEM_COTA_REMAP = { 50: 125, 100: 250, 200: 500 };
+// 10/09/2026: catálogo v2 (mapa "Produtos"): OEM / Ads / Price × Essencial /
+// Escala / Enterprise, só anual e semestral. O bump reescreve `products` e
+// grava as chaves novas do shape (lines, addons, oemPacks, tierByAccounts,
+// catalogV) no template e nas propostas abertas; a clonagem avulsa (oneOff)
+// sai. Dores/SPIN e a matriz S-E ficam como estão no banco.
+const PRICING_VERSION = "2026-09-10";
+// De-para do produto escolhido pelo closer (state.product) do catálogo v1 pro
+// v2. Sem isto a proposta aberta perderia a escolha e cairia na régua. OEM
+// avulso e o combo viram o OEM Essencial; FULL vira o Ads Escala.
+const PRODUCT_KEY_REMAP = { full: "ads_escala", parcialA: "ads_essencial", fulloem: "oem_escala", parcialoem: "oem_essencial", oem: "oem_essencial" };
 
 export async function migrateCatalogPricing(repo) {
   const t = await repo.get("proposal_templates", "pt_leverads");
   const catalog = t?.calc?.catalog;
   if (!catalog) return false; // sem catálogo ainda: ensureProposalCatalog cuida
   if (catalog.pricingV === PRICING_VERSION) return false;
-  // Só os PRODUTOS: régua, dores/SPIN e a tabela de clonagem avulsa seguem como
-  // estão no banco (podem ter sido editados pelo dono).
+  // Só o que é PRODUTO (products, lines, addons, oemPacks, tierByAccounts):
+  // régua e dores/SPIN seguem como estão no banco (podem ter sido editados
+  // pelo dono). A clonagem avulsa (oneOff) deixou de existir no v2.
+  const { oneOff, ...rest } = catalog;
+  const pick = (k) => JSON.parse(JSON.stringify(LEVERADS_CATALOG[k]));
   const calc = {
     ...t.calc,
     catalog: {
-      ...catalog,
-      products: JSON.parse(JSON.stringify(LEVERADS_CATALOG.products)),
+      ...rest,
+      products: pick("products"),
+      lines: pick("lines"),
+      addons: pick("addons"),
+      oemPacks: pick("oemPacks"),
+      tierByAccounts: pick("tierByAccounts"),
+      catalogV: LEVERADS_CATALOG.catalogV,
       pricingV: PRICING_VERSION,
     },
   };
@@ -1525,34 +1566,14 @@ export async function backfillCatalogPricing(repo) {
     // CÓPIA do catálogo (mesma lição do ensureProposalCatalog): sem ela todos
     // os snapshots apontariam pro mesmo objeto e uma edição vazaria pros outros.
     const patch = { calc: { ...p.calc, catalog: JSON.parse(JSON.stringify(catalog)) } };
-    const cota = OEM_COTA_REMAP[Number(p.state?.oemCota) || 0];
-    if (cota) patch.state = { ...p.state, oemCota: cota };
+    // Escolha do closer sobrevive à troca de catálogo (de-para acima); produto
+    // desconhecido volta pra régua. A cota do OEM avulso não existe mais.
+    const state = { ...(p.state || {}) };
+    delete state.oemCota;
+    const prod = String(state.product || "");
+    if (prod && !catalog.products?.[prod]) state.product = PRODUCT_KEY_REMAP[prod] || "";
+    patch.state = state;
     await repo.update("proposals", p.id, patch);
-    n++;
-  }
-  return n;
-}
-
-export async function backfillOemLeque(repo) {
-  const t = await repo.get("proposal_templates", "pt_leverads");
-  const catalog = t?.calc?.catalog;
-  if (!catalog?.products?.oem?.mid) return 0; // template ainda sem o leque
-  const proposals = await repo.list("proposals");
-  let n = 0;
-  for (const p of proposals) {
-    if (p.template !== "pt_leverads") continue;
-    if (p.sharedFrom || p.accepted) continue;
-    const oem = p.calc?.catalog?.products?.oem;
-    if (!oem) continue;
-    // "Leque antigo" = sem o nível mid (pré-leque) OU a tabela v1 de 14/08,
-    // que saiu com os preços errados e o Leo corrigiu no mesmo dia (v1 só
-    // existiu por automação, nunca por edição do dono). Qualquer outra tabela
-    // com mid é edição soberana do snapshot: não mexe.
-    const v1 = Number(oem.small?.sem?.total) === 2976 && Number(oem.mid?.sem?.total) === 4776;
-    if (oem.mid && !v1) continue;
-    // CÓPIA do catálogo (mesma lição do ensureProposalCatalog): sem ela todos
-    // os snapshots apontariam pro mesmo objeto e uma edição vazaria pros outros.
-    await repo.update("proposals", p.id, { calc: { ...p.calc, catalog: JSON.parse(JSON.stringify(catalog)) } });
     n++;
   }
   return n;
@@ -1786,6 +1807,12 @@ export async function runStartupMigrations(repo) {
     console.error("[migration] ensureIntegrationStage falhou:", err?.message || err);
   }
   try {
+    const changed = await ensureBlogSettings(repo);
+    if (changed) console.log("[migration] configuração da redação do blog (app_config/blog_leverads) criada com os defaults");
+  } catch (err) {
+    console.error("[migration] ensureBlogSettings falhou:", err?.message || err);
+  }
+  try {
     const r = await migrateLeverAdsCrmFunnel(repo);
     if (r) console.log(`[migration] funil CRM SDR+Closer aplicado no leverads (${r.migrated} cards migrados)`);
   } catch (err) {
@@ -1984,7 +2011,7 @@ export async function runStartupMigrations(repo) {
   // cotas, preços velhos) recebe a tabela atual do template.
   try {
     const changed = await migrateCatalogPricing(repo);
-    if (changed) console.log("[migration] proposta: catálogo de produtos atualizado no template (combo Parcial + OEM agora entrega 250/mês)");
+    if (changed) console.log("[migration] proposta: catálogo de produtos atualizado no template (v2: OEM / Ads / Price × Essencial / Escala / Enterprise)");
   } catch (err) {
     console.error("[migration] migrateCatalogPricing falhou:", err?.message || err);
   }
@@ -1993,12 +2020,6 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] proposta: ${n} proposta(s) aberta(s) atualizadas pra tabela vigente do catálogo`);
   } catch (err) {
     console.error("[migration] backfillCatalogPricing falhou:", err?.message || err);
-  }
-  try {
-    const n = await backfillOemLeque(repo);
-    if (n) console.log(`[migration] leque do OEM avulso (50/100/200) aplicado em ${n} proposta(s) aberta(s)`);
-  } catch (err) {
-    console.error("[migration] backfillOemLeque falhou:", err?.message || err);
   }
   // Depois do catálogo/leque nas propostas: o valor do card dos leads abertos
   // passa a ser o preço do produto que a apresentação sugere.
@@ -2116,5 +2137,26 @@ export async function migrateFormMentoriaOferta(repo) {
     subtitle: "A LeverAds é pra quem já vende, mas a Mentoria Lever é exatamente pra quem está começando: a gente coloca um produto nosso, que já vende todo dia, na sua conta pra fazer as primeiras vendas enquanto escolhe e compra o seu estoque com você. Vamos te chamar no WhatsApp pra conversar.",
   };
   await repo.update("forms", form.id, { exits, mentoriaOfertaV1: true });
+  return true;
+}
+
+// ── Blog SEO: configuração da redação (set/2026) ─────────────────────────────
+// Garante o doc `app_config/blog_leverads` com as regras default do motor do
+// blog (blog-config.js): IA gera pautas e rascunhos, publicação só com aprovação
+// (autoPublicar=false), 2 posts por semana (ter/qui 09:00 BRT). Só cria quando
+// o produto leverads existe e o doc ainda não; nunca sobrescreve regra editada.
+export async function ensureBlogSettings(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product) return false;
+  const id = blogCfgId("leverads");
+  const existing = await repo.get("app_config", id);
+  if (existing) return false;
+  await repo.create("app_config", {
+    id,
+    saas: "leverads",
+    rules: { ...BLOG_DEFAULT_RULES, diasPublicacao: [...BLOG_DEFAULT_RULES.diasPublicacao], categorias: [...BLOG_DEFAULT_RULES.categorias] },
+    state: { ...BLOG_DEFAULT_STATE },
+    log: [],
+  });
   return true;
 }

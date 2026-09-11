@@ -1,7 +1,7 @@
 // Servidor da tela "Links de pagamento" (id `offers`), duas coisas:
 //
-// 1. /api/offers — os links FIXOS das ofertas (anual / semestral / serviço
-//    único), ferramenta pro time pegar o link certo e mandar pro cliente. Um doc
+// 1. /api/offers — os links FIXOS das ofertas (por pacote, anual / semestral e
+//    o pacote de OEM), ferramenta pro time pegar o link certo e mandar pro cliente. Um doc
 //    por produto na collection `offers`; sem doc, cai nos defaults abaixo.
 //    Editar salva pra TODO o time (não é localStorage).
 // 2. /api/payment-links — o HISTÓRICO dos links gerados no nome de um lead ou
@@ -10,13 +10,22 @@
 
 import { enrichPaymentLinks } from "./payment-links.js";
 
-// Defaults por produto — os links que o Leo criou no Mercado Pago (jul/2026).
-// Espelham a escada de ofertas da proposta (sem cifrão, no estilo do Leo).
+// Defaults por produto — a escada de ofertas do catálogo v2 (10/09/2026):
+// OEM e Ads têm o mesmo preço por pacote; Price é a linha nova. Os links do
+// Mercado Pago são do Leo: nascem vazios e ele cola na tela (salva pro time).
 const DEFAULTS = {
   leverads: [
-    { key: "anual", label: "Assinatura anual", price: "12x 599 · 7.188 no ano", link: "https://mpago.la/31nuzcr" },
-    { key: "semestral", label: "Assinatura semestral", price: "12x 299 · 3.588 no semestre", link: "https://mpago.la/1zkJq73" },
-    { key: "unico", label: "Serviço único", price: "12x 149 · 1.788 uma única vez", link: "https://mpago.la/1oCWiXk" },
+    { key: "essencial_anual", label: "Lever OEM / Ads · Essencial · anual", price: "12x 497 · 5.964 no ano", link: "" },
+    { key: "essencial_semestral", label: "Lever OEM / Ads · Essencial · semestral", price: "6x 597 · 3.582 no semestre", link: "" },
+    { key: "escala_anual", label: "Lever OEM / Ads · Escala · anual", price: "12x 999 · 11.988 no ano", link: "" },
+    { key: "escala_semestral", label: "Lever OEM / Ads · Escala · semestral", price: "6x 1.197 · 7.182 no semestre", link: "" },
+    { key: "price_essencial_anual", label: "Lever Price · Essencial · anual", price: "12x 797 · 9.564 no ano", link: "" },
+    { key: "price_essencial_semestral", label: "Lever Price · Essencial · semestral", price: "6x 847 · 5.082 no semestre", link: "" },
+    { key: "price_escala_anual", label: "Lever Price · Escala · anual", price: "12x 1.497 · 17.964 no ano", link: "" },
+    { key: "price_escala_semestral", label: "Lever Price · Escala · semestral", price: "6x 1.897 · 11.382 no semestre", link: "" },
+    { key: "price_enterprise_anual", label: "Lever Price · Enterprise · anual", price: "12x 3.497 · 41.964 no ano", link: "" },
+    { key: "price_enterprise_semestral", label: "Lever Price · Enterprise · semestral", price: "6x 3.997 · 23.982 no semestre", link: "" },
+    { key: "oem_pack", label: "Pacote de OEM avulso (uma vez)", price: "1.000 = 2.000 · 2.000 = 3.500 · 3.000 = 4.500", link: "" },
   ],
 };
 

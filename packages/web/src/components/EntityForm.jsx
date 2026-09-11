@@ -343,9 +343,12 @@ function Field({ f, value, values, onChange, recordId }) {
         <input
           type={numeric ? "number" : f.type === "date" ? "date" : f.type === "datetime" ? "datetime-local" : "text"} step="any"
           value={value} placeholder={f.placeholder}
+          list={f.suggestions?.length ? `dl-${f.key}` : undefined}
           onChange={(e) => onChange(e.target.value)}
           style={{ ...inputStyle, paddingLeft: f.type === "money" ? 28 : 8, paddingRight: f.type === "pct" ? 22 : 8 }}
         />
+        {/* Sugestões (datalist nativo): um clique preenche, digitar continua livre. */}
+        {f.suggestions?.length > 0 && <datalist id={`dl-${f.key}`}>{f.suggestions.map((o) => <option key={o} value={o} />)}</datalist>}
         {f.type === "pct" && <span className="mono dim" style={{ position: "absolute", right: 8, top: 7, fontSize: 12 }}>%</span>}
       </div>
     );

@@ -165,7 +165,7 @@ export function slideVisible(slide, answers) {
 // com Shift+1/2/3 na apresentação ao vivo). Estes são os campos que descrevem
 // UMA oferta — promover uma secreta a principal é copiar exatamente eles.
 // `sub` é onde entra o ESCOPO quando a oferta muda de produto (ex.: as ofertas
-// de OEM avulso em autopeças, que não incluem a clonagem): a lista de
+// da linha OEM, que somam a criação por código OEM à clonagem): a lista de
 // benefícios é do slide e NÃO troca por oferta.
 const OFFER_KEYS = ["planTag", "planPill", "priceFrom", "pricePrefix", "currency", "price", "per", "sub", "cyclesLabel", "cyclesFrom", "cycles"];
 export const OFFER_SLOTS = [1, 2, 3, 4];
