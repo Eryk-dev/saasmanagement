@@ -17,7 +17,7 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { useAttribution } from "../lib/pains.js";
 import { clientSummary, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks, DealProductField, isOneOffProduct, SelectWithCustom, PaymentMethodSelect, ProductOptions } from "../components/lead-blocks.jsx";
 import { resolveScript, scriptTokens, scriptChecklist, isNoShowStage, confirmationScript, integrationConfirmationScript, scriptKeyFor } from "../lib/scripts.js";
-import { CLOSED_PLANS, closedPlanLabel, dealProductLabel, dealProductsOf } from "../lib/payments.js";
+import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, withLegacyOption, closedPlanLabel, dealProductLabel, dealProductsOf } from "../lib/payments.js";
 import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
 // "Hoje" (a fila de trabalho, numerada na ordem de prioridade do processo),
@@ -1591,7 +1591,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
           </div>
           {!preview && (
             <button onClick={() => setPayLink(true)} className="chip"
-              title="Criar link de pagamento do Mercado Pago já rastreado pra este lead — cobrança única ou assinatura recorrente (o pagamento casa sozinho no Financeiro)"
+              title="Criar link de pagamento do Mercado Pago já rastreado pra este lead (o pagamento casa sozinho no Financeiro)"
               style={{ cursor: "pointer", flexShrink: 0 }}>
               {l.mpChargeUrl
                 ? (l.mpChargeKind === "recurring" ? "↻ link da assinatura" : "link de pagamento")
@@ -2206,13 +2206,9 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
         <div style={{ marginTop: 12 }}>
           <label className="kicker" style={label}>Plano fechado *</label>
           <select value={oneOff ? "unico" : planClosed} disabled={oneOff}
-            onChange={(e) => {
-              setPlanClosed(e.target.value);
-              // Assinatura mensal fecha no cartão recorrente por padrão (igual
-              // ao gate do board) — só sugere com o pagamento ainda vazio.
-              if (e.target.value === "mensal" && !payment) setPayment("cartao_recorrente");
-            }} style={{ ...fieldStyle, opacity: oneOff ? 0.7 : 1 }}>
-            {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            onChange={(e) => setPlanClosed(e.target.value)} style={{ ...fieldStyle, opacity: oneOff ? 0.7 : 1 }}>
+            {/* Só os planos ativos; "Assinatura mensal" (legado) só quando já é o plano do lead. */}
+            {withLegacyOption(CLOSED_PLANS_ACTIVE, CLOSED_PLANS, planClosed).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
           </select>
         </div>
       )}

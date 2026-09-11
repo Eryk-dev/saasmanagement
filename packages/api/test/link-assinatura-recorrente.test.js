@@ -3,11 +3,12 @@
 // cartão recorrente saía com um link de uma vez na frente e, depois do Ganho,
 // outro link de autorização na tela Assinaturas.
 //
-// Cobre: `mode: "recurring"` cria preapproval (não preferência), as travas do
-// e-mail e da frequência, o webhook achando o LEAD pela external_reference
-// (antes do Ganho não existe assinatura pra espelhar), a assinatura do
-// fechamento adotando a recorrência já autorizada, e a recorrência que só é
-// autorizada DEPOIS do Ganho encontrando a assinatura que nasceu.
+// Em 10/09/2026 a recorrência saiu de linha: `mode: "recurring"` passou a ser
+// recusado. O que fica coberto aqui é o LEGADO que precisa continuar vivo: o
+// webhook achando o LEAD pela external_reference (autorização pendente de
+// antes), a assinatura do fechamento adotando a recorrência já autorizada, a
+// recorrência autorizada DEPOIS do Ganho encontrando a assinatura, e o
+// checkout avulso de sempre.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -59,112 +60,22 @@ async function comLead(over = {}) {
 
 const recorrente = (over = {}) => ({ amount: 378, mode: "recurring", frequencyMonths: 1, title: "LeverAds · Assinatura mensal", ...over });
 
-test("mode recurring cria a ASSINATURA no MP (preapproval), não um checkout de uma vez", async (t) => {
+// 10/09/2026: a casa parou de vender recorrência. O modo recorrente é recusado
+// ANTES de falar com o MP; o que já existe (preapproval de lead antigo, webhook,
+// adoção no Ganho) continua funcionando, e é o que os testes abaixo cobrem.
+test("mode recurring é recusado com 400 e o MP nem é chamado", async (t) => {
   const repo = await comLead();
   const { app, calls } = buildApp(repo);
   t.after(() => app.close());
 
   const res = await app.inject({ method: "POST", url: "/api/leads/le_1/mp/link", payload: recorrente() });
-  assert.equal(res.statusCode, 200);
-  assert.equal(res.json().recurring, true);
-  assert.equal(res.json().url, "https://mp.com/pre_1");
-
-  // O checkout avulso não pode ter sido chamado.
-  assert.deepEqual(calls.map((c) => c.key), ["POST /preapproval"]);
-  const body = calls[0].body;
-  assert.deepEqual(body.auto_recurring, { frequency: 1, frequency_type: "months", transaction_amount: 378, currency_id: "BRL" });
-  assert.equal(body.payer_email, "joao@sj.com.br");
-  assert.equal(body.external_reference, "le_1", "é por ela que o webhook acha o lead");
-  assert.equal(body.status, "pending");
-  assert.equal(body.reason, "LeverAds · Assinatura mensal");
-
-  // A recorrência fica carimbada no card (e vira a assinatura no Ganho).
+  assert.equal(res.statusCode, 400);
+  assert.match(res.json().error, /não vende mais assinatura recorrente/);
+  assert.deepEqual(calls, [], "nenhuma chamada ao MP");
   const lead = await repo.get("leads", "le_1");
-  assert.equal(lead.mpPreapprovalId, "pre_1");
-  assert.equal(lead.mpPreapprovalStatus, "pending");
-  assert.equal(lead.mpPreapprovalMonths, 1);
-  assert.equal(lead.mpChargeKind, "recurring");
-  assert.equal(lead.mpChargeUrl, "https://mp.com/pre_1");
-  // Sem forma combinada escolhida, recorrente É cartão recorrente.
-  assert.equal(lead.paymentMethod, "cartao_recorrente");
-
-  // Recibo no histórico da tela de links, marcado como recorrente.
-  const [rec] = await repo.list("payment_links");
-  assert.equal(rec.recurring, true);
-  assert.equal(rec.frequencyMonths, 1);
-  assert.equal(rec.url, "https://mp.com/pre_1");
-
-  // E a timeline conta o que foi mandado.
-  const nota = (await repo.list("activities")).find((a) => a.type === "note");
-  assert.match(nota.text, /assinatura recorrente/i);
-});
-
-// O /preapproval do MP exige back_url https VÁLIDA (recusa http://localhost com
-// "Invalid value for back_url" e a venda trava na cara do closer). Sem a env,
-// a base tem que sair do host da request, igual às outras URLs públicas.
-test("back_url sai do host da request quando falta COCKPIT_PUBLIC_URL", async (t) => {
-  const env = process.env.COCKPIT_PUBLIC_URL;
-  delete process.env.COCKPIT_PUBLIC_URL;
-  t.after(() => { if (env !== undefined) process.env.COCKPIT_PUBLIC_URL = env; });
-  const repo = await comLead();
-  const { app, calls } = buildApp(repo);
-  t.after(() => app.close());
-
-  await app.inject({
-    method: "POST", url: "/api/leads/le_1/mp/link", payload: recorrente(),
-    headers: { "x-forwarded-host": "cockpit.leverads.com.br" },
-  });
-  const body = calls.find((c) => c.key === "POST /preapproval").body;
-  assert.equal(body.back_url, "https://cockpit.leverads.com.br");
-  assert.equal(body.notification_url, "https://cockpit.leverads.com.br/public/mp/webhook");
-});
-
-test("COCKPIT_PUBLIC_URL sem esquema ganha https:// no back_url", async (t) => {
-  const env = process.env.COCKPIT_PUBLIC_URL;
-  process.env.COCKPIT_PUBLIC_URL = "manager.leverads.com.br";
-  t.after(() => { if (env !== undefined) process.env.COCKPIT_PUBLIC_URL = env; else delete process.env.COCKPIT_PUBLIC_URL; });
-  const repo = await comLead();
-  const { app, calls } = buildApp(repo);
-  t.after(() => app.close());
-
-  await app.inject({ method: "POST", url: "/api/leads/le_1/mp/link", payload: recorrente() });
-  const body = calls.find((c) => c.key === "POST /preapproval").body;
-  assert.equal(body.back_url, "https://manager.leverads.com.br");
-});
-
-test("forma combinada escolhida pelo closer manda mais que o default do recorrente", async (t) => {
-  const repo = await comLead();
-  const { app } = buildApp(repo);
-  t.after(() => app.close());
-
-  await app.inject({ method: "POST", url: "/api/leads/le_1/mp/link", payload: recorrente({ paymentMethod: "boleto" }) });
-  assert.equal((await repo.get("leads", "le_1")).paymentMethod, "boleto");
-});
-
-test("recorrente sem e-mail que preste é recusado ANTES de chamar o MP", async (t) => {
-  const repo = await comLead({ email: "não tenho" });
-  const { app, calls } = buildApp(repo);
-  t.after(() => app.close());
-
-  const res = await app.inject({ method: "POST", url: "/api/leads/le_1/mp/link", payload: recorrente() });
-  assert.equal(res.statusCode, 400);
-  assert.match(res.json().error, /e-mail/i);
-  assert.equal(calls.length, 0, "não adianta tentar: o preapproval EXIGE o pagador");
-
-  // A mesma cobrança como avulsa continua saindo (é o fallback do checkout).
-  const avulso = await app.inject({ method: "POST", url: "/api/leads/le_1/mp/link", payload: { amount: 378 } });
-  assert.equal(avulso.statusCode, 200);
-  assert.equal(avulso.json().url, "https://mp.com/pay/pref_1");
-});
-
-test("frequência que o MP não cobra (2 meses) é recusada com motivo", async (t) => {
-  const repo = await comLead();
-  const { app, calls } = buildApp(repo);
-  t.after(() => app.close());
-
-  const res = await app.inject({ method: "POST", url: "/api/leads/le_1/mp/link", payload: recorrente({ frequencyMonths: 2 }) });
-  assert.equal(res.statusCode, 400);
-  assert.equal(calls.length, 0);
+  assert.equal(lead.mpPreapprovalId, undefined);
+  assert.equal(lead.mpChargeUrl, undefined);
+  assert.equal((await repo.list("payment_links")).length, 0, "sem recibo");
 });
 
 test("webhook do preapproval acha o LEAD pela external_reference e conta na timeline", async (t) => {
@@ -192,7 +103,8 @@ test("pagador diferente do combinado é DERRUBADO (não carimba o lead)", async 
   const repo = await comLead();
   const { app } = buildApp(repo, { pre: () => ({ id: "pre_1", status: "authorized", payer_email: "outro@golpe.com", external_reference: "le_1" }) });
   t.after(() => app.close());
-  await app.inject({ method: "POST", url: "/api/leads/le_1/mp/link", payload: recorrente() });
+  // Autorização pendente de ANTES de 10/09 (o link recorrente não nasce mais).
+  await repo.update("leads", "le_1", { mpPreapprovalId: "pre_1", mpPreapprovalStatus: "pending", mpPayerEmail: "joao@sj.com.br", mpChargeKind: "recurring" });
 
   const res = await app.inject({ method: "POST", url: "/public/mp/webhook", payload: { type: "subscription_preapproval", data: { id: "pre_1" } } });
   assert.equal(res.json().ignored, "payer mismatch");

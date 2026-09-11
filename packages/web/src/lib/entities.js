@@ -11,7 +11,7 @@
 
 // ── dynamic option helpers ──────────────────────────────────────────────────
 import { getActiveSaasId } from "./workspace.js";
-import { PAYMENT_METHODS, CONSULT_PACKAGES, consultPackageLabel } from "./payments.js";
+import { PAYMENT_METHODS, PAYMENT_METHODS_ACTIVE, withLegacyOption, CONSULT_PACKAGES, consultPackageLabel } from "./payments.js";
 import { fetchLeveradsOrgs } from "./leverads.js";
 
 // Orgs do produto LeverAds pro select "Org na LeverAds" (vínculo do sync de
@@ -94,12 +94,15 @@ const customerOptions = (v) => (window.SEED?.CUSTOMERS || [])
 const planOptions = (v) => (window.PLANS_CACHE || [])
   .filter((p) => !v.saas || p.saas === v.saas)
   .map((p) => ({ value: p.id, label: `${p.name} · ${window.fmt.money(p.price || 0)}/${{ monthly: "mês", quarterly: "tri", semiannual: "sem", annual: "ano" }[p.cycle] || p.cycle}` }));
+// Ciclos que ainda se vendem (o Mensal saiu em 10/09/2026 com a recorrência;
+// assinatura antiga mensal continua rodando, só não nasce mais uma nova).
 const CYCLE_OPTS = [
-  { value: "monthly", label: "Mensal" },
   { value: "quarterly", label: "Trimestral" },
   { value: "semiannual", label: "Semestral" },
   { value: "annual", label: "Anual" },
 ];
+const CYCLE_LEGACY = { value: "monthly", label: "Mensal (legado)" };
+const cycleOptions = (v) => (v?.cycle === "monthly" ? [CYCLE_LEGACY, ...CYCLE_OPTS] : CYCLE_OPTS);
 
 const SCORE_OPTS = [{ value: "hot", label: "Quente" }, { value: "warm", label: "Morno" }, { value: "cold", label: "Frio" }];
 const ACCENT_OPTS = [
@@ -153,7 +156,7 @@ export const ENTITIES = {
       { key: "saas", label: "Produto", type: "select", options: saasOptions, required: true },
       { key: "email", label: "E-mail", type: "text", help: "payer do Mercado Pago nas assinaturas" },
       // Plano guarda o RÓTULO (mesmo valor que o convertWonLead grava do gate);
-      // "Mensal" fica como legado pra edição de clientes antigos.
+      // "Mensal" (legado) só aparece quando já é o plano do cliente.
       // O que o cliente comprou. Produto de mentoria (UniqueKids) vende PACOTE
       // de consultas, não plano recorrente — o select troca junto com o produto.
       { key: "plan", label: "Plano", type: "select", blankLabel: "—", options: (v) => (
@@ -163,13 +166,13 @@ export const ENTITIES = {
             { value: "Anual", label: "Anual" },
             { value: "Semestral", label: "Semestral" },
             { value: "Serviço único", label: "Serviço único" },
-            { value: "Mensal", label: "Mensal (legado)" },
+            ...(v?.plan === "Mensal" ? [{ value: "Mensal", label: "Mensal (legado)" }] : []),
           ]
       ), help: "com assinatura ativa, a lista mostra o plano da assinatura" },
       { key: "paymentMethod", label: "Meio de pagamento", type: "select", blankLabel: "—",
-        options: () => PAYMENT_METHODS.map((p) => ({ value: p.id, label: p.label })),
+        options: (v) => withLegacyOption(PAYMENT_METHODS_ACTIVE, PAYMENT_METHODS, v?.paymentMethod).map((p) => ({ value: p.id, label: p.label })),
         allowCustom: true,
-        help: "à vista/cartão = valor total no caixa; faturado/parcelado/recorrente = entra por mês; condição fora da lista (ex.: entrada no PIX + recorrência no cartão) entra por Outro e conta como recebe por mês" },
+        help: "à vista/cartão = valor total no caixa; faturado/parcelado = entra por mês; condição fora da lista (ex.: entrada no PIX + saldo no boleto) entra por Outro e conta como recebe por mês" },
       { key: "paymentStatus", label: "Status do pagamento", type: "select", blankLabel: "automático",
         options: [{ value: "paid", label: "Pago" }, { value: "partial", label: "Parcial" }, { value: "unpaid", label: "Não pago" }],
         help: "vazio = automático (o dinheiro registrado no MP/faturas decide); marque na mão quando o pagamento entra por fora" },
@@ -258,7 +261,7 @@ export const ENTITIES = {
       { key: "saas", label: "Produto", type: "select", options: saasOptions, required: true },
       { key: "name", label: "Nome", type: "text", required: true },
       { key: "price", label: "Preço por ciclo", type: "money", required: true },
-      { key: "cycle", label: "Ciclo", type: "select", options: CYCLE_OPTS, default: "monthly" },
+      { key: "cycle", label: "Ciclo", type: "select", options: cycleOptions, default: "annual" },
     ],
   },
 
@@ -271,7 +274,7 @@ export const ENTITIES = {
       { key: "customer", label: "Cliente", type: "select", options: customerOptions, required: true },
       { key: "plan", label: "Plano", type: "select", options: planOptions, blankLabel: "(sem plano — preço avulso)" },
       { key: "price", label: "Preço por ciclo", type: "money", required: true, help: "valor cobrado a cada ciclo; o ARR do cliente é derivado disto" },
-      { key: "cycle", label: "Ciclo", type: "select", options: CYCLE_OPTS, default: "monthly" },
+      { key: "cycle", label: "Ciclo", type: "select", options: cycleOptions, default: "annual" },
     ],
   },
 

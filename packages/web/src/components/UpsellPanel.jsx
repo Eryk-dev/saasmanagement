@@ -9,10 +9,9 @@ import { allUsers, currentUser, displayName } from "../lib/users.js";
 // O que ele grava (POST /customers/:id/upsell):
 //   item        o que foi vendido — do catálogo do produto (SEED.CONFIG.
 //               proposals.catalog, o mesmo do gate de fechamento) ou texto livre.
-//   mode        avulso (venda única) · recorrente (acréscimo na mensalidade:
-//               a assinatura sobe e o MRR acompanha).
-//   amount      o que é cobrado AGORA; no recorrente pode ser zero quando a
-//               diferença só entra na próxima mensalidade.
+//   mode        sempre avulso (venda única): o "acréscimo na mensalidade" saiu
+//               em 10/09/2026 junto com a recorrência.
+//   amount      o que é cobrado.
 //   payment     pago (data) · a receber (vencimento) · link do Mercado Pago.
 //   soldBy      quem vendeu (padrão: quem está logado) — é a atribuição do
 //               placar e da meta de upsell do CS.
@@ -34,15 +33,14 @@ export function UpsellPanel({ customer, product, mpOn, onDone, onCancel }) {
       const prices = Array.isArray(p.prices) && p.prices.length ? p.prices : [null];
       for (const pr of prices) {
         const label = pr ? `${p.label} · ${pr.label}` : p.label;
-        rows.push({ key: `${p.id}|${pr?.label || ""}`, product: p.id, label, value: pr?.value || 0, recurring: pr?.plan === "mensal" });
+        rows.push({ key: `${p.id}|${pr?.label || ""}`, product: p.id, label, value: pr?.value || 0 });
       }
     }
     return rows;
   }, [saas]);
   const [pick, setPick] = useState(options.length ? "" : OTHER);
   const [itemTxt, setItemTxt] = useState("");
-  const [mode, setMode] = useState("oneoff");
-  const [delta, setDelta] = useState("");
+  const mode = "oneoff";
   const [amount, setAmount] = useState("");
   const [payment, setPayment] = useState("paid");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -59,16 +57,10 @@ export function UpsellPanel({ customer, product, mpOn, onDone, onCancel }) {
     setPick(key);
     const o = options.find((x) => x.key === key);
     if (!o) return;
-    if (o.value > 0) {
-      if (o.recurring) { setMode("recurring"); setDelta(String(o.value)); setAmount(String(o.value)); }
-      else { setMode("oneoff"); setAmount(String(o.value)); }
-    }
+    if (o.value > 0) setAmount(String(o.value));
   }
   const amountN = Number(amount) || 0;
-  const deltaN = Number(delta) || 0;
-  const canSave = !!item && !saving && soldBy
-    && (mode === "recurring" ? deltaN > 0 && amountN >= 0 : amountN > 0)
-    && (payment === "paid" || amountN > 0);
+  const canSave = !!item && !saving && soldBy && amountN > 0;
 
   async function save() {
     if (!canSave) return;
@@ -76,7 +68,6 @@ export function UpsellPanel({ customer, product, mpOn, onDone, onCancel }) {
     try {
       const r = await api.customerUpsell(customer.id, {
         item, product: picked?.product || "", mode, amount: amountN,
-        monthlyDelta: mode === "recurring" ? deltaN : undefined,
         payment, date, dueDate: payment === "open" ? dueDate : undefined,
         maxInstallments: payment === "link" ? Number(inst) || undefined : undefined,
         soldBy, note: note.trim(),
@@ -108,25 +99,12 @@ export function UpsellPanel({ customer, product, mpOn, onDone, onCancel }) {
           <input type="text" value={itemTxt} onChange={(e) => setItemTxt(e.target.value)} placeholder="o que foi vendido" autoFocus={!options.length}
             style={{ ...inputSt, flex: "1 1 180px", minWidth: 140 }} />
         )}
-        <select value={mode} onChange={(e) => setMode(e.target.value)} title="Avulso: venda única. Recorrente: a mensalidade da assinatura sobe e o MRR acompanha."
-          style={selectSt}>
-          <option value="oneoff">venda avulsa</option>
-          <option value="recurring">acréscimo na mensalidade</option>
-        </select>
       </div>
 
       {/* Linha 2: valores + pagamento */}
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        {mode === "recurring" && (
-          <label className="mono dim" style={lbl} title="Quanto a mensalidade sobe a partir de agora (o MRR do cliente acompanha).">
-            + R$
-            <input type="number" min="0" step="0.01" inputMode="decimal" value={delta} onChange={(e) => setDelta(e.target.value)} placeholder="por mês"
-              className="tnum" style={{ ...inputSt, width: 92, textAlign: "right" }} />
-            /mês
-          </label>
-        )}
-        <label className="mono dim" style={lbl} title={mode === "recurring" ? "O que é cobrado agora na virada (diferença cheia, pró-rata ou zero se só entra na próxima mensalidade)." : "Valor da venda."}>
-          {mode === "recurring" ? "cobrar agora R$" : "R$"}
+        <label className="mono dim" style={lbl} title="Valor da venda.">
+          R$
           <input type="number" min="0" step="0.01" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="valor"
             onKeyDown={(e) => e.key === "Enter" && save()}
             className="tnum" style={{ ...inputSt, width: 96, textAlign: "right" }} />

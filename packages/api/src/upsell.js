@@ -5,16 +5,9 @@
 // regra nova: caixa em 3 baldes (cashBucketsIn → upsell), placar do CS
 // (routes.scoreboard: nº e R$ por soldBy) e Financeiro (Upsell).
 //
-// Dois modos:
-//   oneoff     → venda única (serviço, pacote, clonagem avulsa): só a fatura.
-//   recurring  → acréscimo na MENSALIDADE (mudou de plano, mais anúncios): a
-//                assinatura ativa sobe `monthlyDelta` (MP espelha o valor novo
-//                quando há preapproval) e o arr acompanha via syncCustomerArr;
-//                cliente sem assinatura tem o arr somado direto (+12×delta).
-//                A fatura de agora é o que foi COBRADO na virada (delta cheio,
-//                pró-rata, o que o CS combinou) — pode ser zero quando a
-//                cobrança só entra na próxima mensalidade (a fatura nasce
-//                paga com R$ 0: ela É o registro da venda).
+// Um modo só, venda AVULSA (serviço, pacote de OEM, setup): só a fatura. O
+// "acréscimo na mensalidade" (modo recurring, que subia a assinatura) saiu em
+// 10/09/2026 junto com a recorrência; a API recusa com 400.
 //
 // Upsell É VENDA (Leo, 09/09): a fatura carrega soldAt (data do registro) e o
 // metrics-core (upsellSalesIn) conta nº e R$ pra quem vendeu nas metas, no
@@ -29,10 +22,11 @@
 // Receita reconhecida = só o que caiu (fatura paga), mesma régua do resto.
 
 import { logActivity } from "./lead-flow.js";
-import { syncCustomerArr } from "./billing.js";
 import { isChurnedCustomer } from "./churn.js";
 
-export const UPSELL_MODES = new Set(["oneoff", "recurring"]);
+// Só venda AVULSA desde 10/09/2026: o "acréscimo na mensalidade" (modo
+// recurring, que subia a assinatura) saiu junto com a recorrência.
+export const UPSELL_MODES = new Set(["oneoff"]);
 export const UPSELL_PAYMENTS = new Set(["paid", "open", "link"]);
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -41,12 +35,12 @@ const dayIso = (day) => (day ? new Date(`${String(day).slice(0, 10)}T12:00:00.00
 // Valida e normaliza o corpo do POST. Devolve { error } (mensagem pro 400) ou
 // os campos prontos pra gravar.
 export function parseUpsellBody(body = {}, { now = new Date() } = {}) {
-  const mode = UPSELL_MODES.has(body.mode) ? body.mode : "oneoff";
+  if (body.mode && !UPSELL_MODES.has(body.mode)) return { error: "upsell é sempre venda avulsa: a casa não trabalha mais com recorrência" };
+  const mode = "oneoff";
   const payment = UPSELL_PAYMENTS.has(body.payment) ? body.payment : "paid";
   const amount = round2(body.amount);
-  const monthlyDelta = mode === "recurring" ? round2(body.monthlyDelta ?? body.amount) : 0;
-  if (mode === "recurring" && !(monthlyDelta > 0)) return { error: "acréscimo na mensalidade deve ser positivo" };
-  if (mode === "oneoff" && !(amount > 0)) return { error: "valor do upsell deve ser positivo" };
+  const monthlyDelta = 0;
+  if (!(amount > 0)) return { error: "valor do upsell deve ser positivo" };
   if (amount < 0) return { error: "valor do upsell não pode ser negativo" };
   if (payment !== "paid" && !(amount > 0)) return { error: "cobrança a receber ou por link precisa de valor" };
   const day = String(body.date || "").trim().slice(0, 10) || now.toISOString().slice(0, 10);
@@ -66,11 +60,10 @@ export function parseUpsellBody(body = {}, { now = new Date() } = {}) {
 }
 
 // Texto da timeline/Discord: o que foi vendido e como.
-export function upsellSummary({ item, amount, mode, monthlyDelta, payment }) {
+export function upsellSummary({ item, amount, payment }) {
   const brl = (v) => `R$ ${round2(v).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
   const parts = [item];
   if (amount > 0) parts.push(brl(amount));
-  if (mode === "recurring") parts.push(`+${brl(monthlyDelta)}/mês na assinatura`);
   parts.push({ paid: "pago", open: "a receber", link: "cobrança por link" }[payment] || payment);
   return parts.join(" · ");
 }
@@ -89,11 +82,9 @@ export async function recordUpsell(repo, customer, input, { author = "system", c
   const stamp = {
     title: input.item, soldBy, soldAt: input.at, upsellMode: input.mode, note: input.note,
     product: input.product, createdBy: author,
-    ...(input.mode === "recurring" ? { recurringDelta: input.monthlyDelta } : {}),
   };
 
-  // 1. A fatura de agora — sempre existe: é o registro da venda. Recorrente
-  // sem cobrança na virada nasce paga com R$ 0 (conta a venda, não o caixa).
+  // 1. A fatura de agora — sempre existe: é o registro da venda.
   let invoice = null;
   let url = null;
   if (createInvoice && input.amount > 0) {
@@ -110,24 +101,8 @@ export async function recordUpsell(repo, customer, input, { author = "system", c
     });
   }
 
-  // 2. Recorrente: a mensalidade sobe na assinatura (e o arr acompanha).
-  let subscription = null;
-  if (input.mode === "recurring") {
-    const subs = await repo.list("subscriptions");
-    const sub = mainSubscriptionOf(subs, customer.id);
-    if (sub) {
-      subscription = await repo.update("subscriptions", sub.id, {
-        price: round2((Number(sub.price) || 0) + input.monthlyDelta), pendingChange: null,
-      });
-      if (mirrorPrice) {
-        try { await mirrorPrice(sub, subscription); }
-        catch (err) { log?.warn?.({ sub: sub.id, err: err.message }, "upsell: MP não atualizou o valor do preapproval"); }
-      }
-      await syncCustomerArr(repo, customer.id);
-    } else {
-      await repo.update("customers", customer.id, { arr: Math.round((Number(customer.arr) || 0) + input.monthlyDelta * 12) });
-    }
-  }
+  // (O modo recorrente, que subia a mensalidade da assinatura, saiu em 10/09/2026.)
+  const subscription = null;
 
   // 3. Registro do upsell no cliente (último, pra ficha/lista mostrarem sem
   // varrer faturas) + timeline do lead de origem.
@@ -141,7 +116,7 @@ export async function recordUpsell(repo, customer, input, { author = "system", c
       await logActivity(repo, {
         saas: customer.saas || "", lead: customer.leadId, type: "system",
         text: `Upsell registrado: ${summary}${input.note ? ` · ${input.note}` : ""}`,
-        meta: { event: "customer_upsell", invoice: invoice?.id || "", mode: input.mode, payment: input.payment, amount: input.amount, monthlyDelta: input.monthlyDelta, soldBy },
+        meta: { event: "customer_upsell", invoice: invoice?.id || "", mode: input.mode, payment: input.payment, amount: input.amount, soldBy },
         author, at: input.at,
       });
     } catch { /* timeline é registro, nunca quebra o upsell */ }

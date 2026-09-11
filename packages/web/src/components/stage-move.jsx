@@ -2,7 +2,7 @@ import React from "react";
 import { PrimaryButton, useEsc } from "../atoms.jsx";
 import { stageKind, phaseOf, isLossKind, isWonKind, lossReasonsOf } from "../lib/funnel.js";
 import { usersByRole, currentUser } from "../lib/users.js";
-import { CLOSED_PLANS, CONSULT_PACKAGES, CLOSED_PLAN_MONTHS, dealProductsOf, paymentUpfront, paymentRecurring, paymentCustom } from "../lib/payments.js";
+import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, withLegacyOption, CONSULT_PACKAGES, CLOSED_PLAN_MONTHS, dealProductsOf, paymentUpfront, paymentRecurring, paymentCustom } from "../lib/payments.js";
 import { DealProductField, isOneOffProduct, SelectWithCustom, PaymentMethodSelect, ProductOptions } from "./lead-blocks.jsx";
 import { api } from "../lib/api.js";
 import { SlotGrid, nextBusinessDays, callBusyKeys } from "../screens/today.jsx";
@@ -242,13 +242,10 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
                 {/* Serviço único (pacote de OEM avulso) não tem ciclo: o plano é o
                     próprio produto, então o select fica travado. */}
                 <select value={oneOff ? "unico" : planClosed} disabled={oneOff}
-                  onChange={(e) => {
-                    setPlanClosed(e.target.value);
-                    // Assinatura mensal fecha no cartão recorrente por padrão —
-                    // só sugere quando o closer ainda não escolheu o pagamento.
-                    if (e.target.value === "mensal" && !payment) setPayment("cartao_recorrente");
-                  }} style={{ ...field, opacity: oneOff ? 0.7 : 1 }}>
-                  {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                  onChange={(e) => setPlanClosed(e.target.value)} style={{ ...field, opacity: oneOff ? 0.7 : 1 }}>
+                  {/* Só os planos ativos; "Assinatura mensal" (legado) aparece
+                      apenas quando já é o plano deste lead. */}
+                  {withLegacyOption(CLOSED_PLANS_ACTIVE, CLOSED_PLANS, planClosed).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                 </select>
               </>
             )}

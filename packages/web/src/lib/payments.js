@@ -12,13 +12,12 @@ export const PAYMENT_METHODS = [
   { id: "boleto_vista", label: "Boleto à vista", upfront: true },
   { id: "boleto", label: "Boleto faturado", upfront: false },
   { id: "cartao12x", label: "Cartão de crédito 12x", upfront: true },
-  // Assinatura recorrente: cartão de crédito com cobrança MENSAL (modalidade
-  // nova, 13/08) — não tem Nº de parcelas (é indefinida), o dinheiro entra mês
-  // a mês enquanto durar o contrato.
-  // Rótulo com "(cartão)": o Leo procurou por "cartão recorrente" e não achou
-  // a opção porque o nome não dizia o meio (14/08).
-  { id: "cartao_recorrente", label: "Assinatura recorrente (cartão)", upfront: false, recurring: true },
+  // Assinatura recorrente (cartão, cobrança mensal): DEIXOU de ser vendida em
+  // 10/09/2026. `legacy` = fora dos selects; segue rotulando quem fechou assim.
+  { id: "cartao_recorrente", label: "Assinatura recorrente (cartão)", upfront: false, recurring: true, legacy: true },
 ];
+// O que o closer pode ESCOLHER hoje (gate de Ganho, modal do link, cadastro).
+export const PAYMENT_METHODS_ACTIVE = PAYMENT_METHODS.filter((p) => !p.legacy);
 
 // Condição PERSONALIZADA (ex.: "entrada no PIX + recorrência no cartão"): o
 // closer escreve a condição no gate e o texto livre É o paymentMethod (id fora
@@ -48,16 +47,22 @@ export const PAY_STATUS = {
 
 // Plano com que o negócio fechou — também assinalado no gate de fechamento e
 // carregado pro customer no convertWonLead (vira a coluna Plano e a base do arr).
-// "Assinatura mensal" (14/08): a modalidade de RECORRÊNCIA — o closer lança o
-// valor MENSAL e o acumulado do cliente cresce a cada 30 dias (accruedAmountOf).
-// A API já entende "mensal" de ponta a ponta: arr = 12×mensal, assinatura de
-// ciclo mensal com o valor cheio e faturas renovando no runBilling.
+// "Assinatura mensal" (recorrência) deixou de ser vendida em 10/09/2026:
+// `legacy` tira a opção dos selects, mas cliente antigo continua rotulado,
+// com o acumulado a cada 30 dias (accruedAmountOf) e a cobrança no runBilling.
 export const CLOSED_PLANS = [
   { id: "anual", label: "Anual" },
   { id: "semestral", label: "Semestral" },
-  { id: "mensal", label: "Assinatura mensal" },
+  { id: "mensal", label: "Assinatura mensal", legacy: true },
   { id: "unico", label: "Serviço único" },
 ];
+export const CLOSED_PLANS_ACTIVE = CLOSED_PLANS.filter((p) => !p.legacy);
+// Opções de um select de plano/meio: as ativas + o valor atual quando ele é
+// legado (senão o select de um cliente antigo abriria vazio).
+export const withLegacyOption = (active, all, value) =>
+  (value && !active.some((p) => p.id === value) && all.some((p) => p.id === value))
+    ? [...active, all.find((p) => p.id === value)]
+    : active;
 
 export const closedPlanLabel = (id) => CLOSED_PLANS.find((p) => p.id === id)?.label || "";
 
@@ -151,11 +156,24 @@ export function mpMethodLabel(p = {}) {
 // estados de PAGAMENTO reaproveitam MP_PAY_STATUS abaixo — estes três são do
 // link em si: nasceu e ninguém pagou, ou foi trocado por um mais novo.
 const LINK_STATUS = {
-  paid: { label: "pago", tone: "pos", hint: "pagamento aprovado no Mercado Pago" },
-  waiting: { label: "aguardando", tone: "warn", hint: "link gerado e nenhum pagamento até agora" },
+  paid: { label: "pago", tone: "pos", hint: "dinheiro confirmado: pelo Mercado Pago, por baixa manual ou pela fatura" },
+  waiting: { label: "em aberto", tone: "warn", hint: "link gerado e nenhum pagamento até agora" },
   superseded: { label: "substituído", tone: "mut", hint: "gerou outro link pro mesmo cliente e mesmo valor depois deste" },
 };
 export const linkStatusOf = (s) => LINK_STATUS[s] || MP_PAY_STATUS[s] || { label: s || "—", tone: "mut" };
+// Quem confirmou o dinheiro de um link pago (paidBy do servidor).
+const LINK_PAID_BY = { mp: "Mercado Pago", manual: "baixa manual", invoice: "fatura baixada" };
+export const linkPaidByLabel = (by) => LINK_PAID_BY[by] || "";
+// Como o dinheiro entrou numa baixa MANUAL (espelho de MANUAL_METHODS na API).
+export const MANUAL_PAY_METHODS = [
+  { id: "pix", label: "PIX" },
+  { id: "boleto", label: "Boleto" },
+  { id: "cartao", label: "Cartão" },
+  { id: "transferencia", label: "Transferência" },
+  { id: "dinheiro", label: "Dinheiro" },
+  { id: "outro", label: "Outro" },
+];
+export const manualPayLabel = (id) => MANUAL_PAY_METHODS.find((m) => m.id === id)?.label || String(id || "");
 
 // De onde o link nasceu — o time gera de três lugares e o histórico junta todos.
 const LINK_ORIGIN = { card: "card do lead", tela: "tela de links", cliente: "ficha do cliente", fatura: "fatura" };

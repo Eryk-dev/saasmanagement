@@ -33,8 +33,8 @@ const CLOSER = { roles: ["closer"], screens: ["overview", "today", "pipeline", "
 test("Links de pagamento vale pra qualquer sessão, mesmo sem papel e com lista restrita", async () => {
   assert.equal(canScreen(IGOR, "offers"), true);
   assert.equal(canScreen(CLOSER, "offers"), true);
-  assert.equal(await run(IGOR, "/api/offers/leverads"), null);
   assert.equal(await run(IGOR, "/api/payment-links?saas=leverads"), null);
+  assert.equal(await run(IGOR, "/api/payment-links/pl_1/pay", "POST"), null);
   assert.equal(await run(CLOSER, "/api/payment_links", "POST"), null);
 });
 

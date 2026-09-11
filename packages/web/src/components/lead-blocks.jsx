@@ -17,7 +17,7 @@ import { leadTier, leadScoreLabel, leadAge } from "../lib/ui.js";
 import { cadenceOf, lossReasonLabel } from "../lib/funnel.js";
 import { leadPain } from "../lib/pains.js";
 import { displayName } from "../lib/users.js";
-import { PAYMENT_METHODS, paymentLabel, closedPlanLabel, dealProductLabel, dealProductsOf } from "../lib/payments.js";
+import { PAYMENT_METHODS, PAYMENT_METHODS_ACTIVE, withLegacyOption, paymentLabel, closedPlanLabel, dealProductLabel, dealProductsOf } from "../lib/payments.js";
 import { mentoriaFit, mentoriaOfferLine } from "../lib/mentoria.js";
 import { scriptSegments } from "../lib/scripts.js";
 
@@ -263,17 +263,20 @@ export function SelectWithCustom({ ids, value, onChange, children, fieldStyle, p
   );
 }
 
-// Modo de pagamento com Personalizado (ex.: entrada no PIX + recorrência no
-// cartão): a condição escrita vira o próprio paymentMethod e conta na meta como
-// faturado/recorrente, só pelo que ENTROU na janela (paymentUpfront = false;
-// isPayOnReceipt na API acompanha).
+// Modo de pagamento com Personalizado (ex.: entrada no PIX + saldo no boleto):
+// a condição escrita vira o próprio paymentMethod e conta na meta como
+// faturado, só pelo que ENTROU na janela (paymentUpfront = false;
+// isPayOnReceipt na API acompanha). Só os meios ATIVOS entram na lista; um
+// valor legado (assinatura recorrente de antes de 10/09/2026) aparece só
+// enquanto for o valor atual.
 export function PaymentMethodSelect({ value, onChange, fieldStyle, placeholder = "— como o cliente fechou —", commit = "change" }) {
+  const opts = withLegacyOption(PAYMENT_METHODS_ACTIVE, PAYMENT_METHODS, value);
   return (
     <SelectWithCustom ids={PAYMENT_METHODS.map((p) => p.id)} value={value} onChange={onChange}
       fieldStyle={fieldStyle} placeholder={placeholder} commit={commit}
       customLabel="Personalizado… (escrever a condição)"
-      customPlaceholder="ex.: entrada no PIX + recorrência no cartão">
-      {PAYMENT_METHODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+      customPlaceholder="ex.: entrada no PIX + saldo no boleto">
+      {opts.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
     </SelectWithCustom>
   );
 }
