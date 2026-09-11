@@ -11,6 +11,7 @@ import { Icon } from "./icons.jsx";
 import { CompleteCircle, LabelChip } from "./card.jsx";
 import { Composer, CommentsList, ActivityTab, when } from "./comments.jsx";
 import { taskMenuItems } from "./context-menu.jsx";
+import { RecurrencePicker, LabelColorPopover } from "./pickers.jsx";
 
 const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
@@ -80,16 +81,24 @@ function DescriptionField({ task, save }) {
 }
 
 // Labels: chips com ✕ + campo que sugere as labels do quadro; Enter/vírgula adiciona.
-function LabelsField({ value, options, colors, onChange }) {
+function LabelsField({ value, options, colors, onChange, onColor }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
+  const [colorFor, setColorFor] = useState(null); // { label, anchor }
   const ref = useRef(null);
   const list = (value || []);
   const sugg = options.filter((o) => !list.includes(o) && (!q || o.toLowerCase().includes(q.toLowerCase()))).slice(0, 8);
   const add = (name) => { const n = String(name || "").trim().replace(/,+$/, ""); if (!n || list.includes(n)) { setQ(""); return; } onChange([...list, n]); setQ(""); };
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", minHeight: 28 }}>
-      {list.map((l) => <LabelChip key={l} label={l} color={colors.get(l) || ""} onRemove={() => onChange(list.filter((x) => x !== l))} />)}
+      {list.map((l) => (
+        <span key={l} role="button" tabIndex={0} title="Clique pra escolher a cor (vale pro quadro todo)" style={{ display: "inline-flex", cursor: "pointer", borderRadius: "var(--r-1)" }}
+          onClick={(e) => setColorFor({ label: l, anchor: e.currentTarget.getBoundingClientRect() })}
+          onKeyDown={(e) => { if (e.key === "Enter") setColorFor({ label: l, anchor: e.currentTarget.getBoundingClientRect() }); }}>
+          <LabelChip label={l} color={colors.get(l) || ""} onRemove={() => onChange(list.filter((x) => x !== l))} />
+        </span>
+      ))}
+      {colorFor && <LabelColorPopover anchor={colorFor.anchor} label={colorFor.label} color={colors.get(colorFor.label) || ""} onChange={(c) => onColor(colorFor.label, c)} onClose={() => setColorFor(null)} />}
       <div style={{ position: "relative" }}>
         <input ref={ref} value={q} placeholder={list.length ? "+ label" : "Adicionar label"} className="inp"
           onFocus={() => setOpen(true)} onChange={(e) => { setQ(e.target.value); setOpen(true); }}
@@ -327,7 +336,10 @@ export function TaskPanel({ task, tasks, columns, board, users, usersById, label
             ))}
           </Row>
           <Row label="Labels">
-            <LabelsField value={task.labels || []} options={labelOptions} colors={labelColors} onChange={(labels) => saveField(task.id, { labels })} />
+            <LabelsField value={task.labels || []} options={labelOptions} colors={labelColors} onChange={(labels) => saveField(task.id, { labels })} onColor={(name, color) => actions.labelColor(name, color)} />
+          </Row>
+          <Row label="Repetir">
+            <RecurrencePicker value={task.recurrence} dueDate={task.dueDate} onChange={(recurrence) => saveField(task.id, { recurrence })} />
           </Row>
           <Row label="Produto">
             <select className="inp" value={task.saas || ""} onChange={(e) => saveField(task.id, { saas: e.target.value })} style={{ height: 28, fontSize: 12.5 }}>
