@@ -502,8 +502,21 @@ export function contactAttribution({ leads, actsOf, waMessages, saas, inWin, hum
 // (null). Morava em routes.marketing.js; veio pra cá porque o placar por
 // pessoa também lê ("calls agendadas com ICP", 10/09) e regra de métrica nasce
 // aqui. routes.marketing.js re-exporta pros importadores antigos.
-const GRADE_ACCOUNTS = { "1": 0, "2": 1, "3-5": 2, "6-10": 3, "10+": 4 };
-const GRADE_LISTINGS = { "0-100": 0, "100-500": 1, "500-2000": 2, "2000-10000": 3, "10000+": 4 };
+// Leitura dupla das faixas: as NOVAS (recortadas em 09/2026 nas fronteiras
+// comerciais — 3 e 7 contas, 1k e 10k anúncios) convivem com as antigas, que a
+// base histórica carrega. Sem as novas aqui, todo lead dos formulários v2 caía
+// em `?? 0` (linha de baixo da matriz) e deixava de ser ICP — ou seja, não ia
+// pro pool de closer sênior (agenda-slots) e não contava no placar.
+// Terceiro espelho da mesma régua: os outros são classificacao.js (IDX_*) e
+// web/src/lib/ui.js (TIER_*). O teste metrics-icp.test.js trava os três juntos.
+const GRADE_ACCOUNTS = {
+  "1": 0, "2-3": 1, "4-6": 2, "7-10": 3, "10+": 4,
+  "2": 1, "3-5": 2, "6-10": 3, // legado
+};
+const GRADE_LISTINGS = {
+  "0-500": 0, "500-1000": 1, "1000-5000": 2, "5000-10000": 3, "10000+": 4,
+  "0-100": 0, "100-500": 1, "500-2000": 2, "2000-10000": 3, // legado
+};
 const GRADE_VOLUME = { "0-10": 0, "10-50": 1, "50-200": 2, "200+": 3 };
 //        ≤100 100-500 500-2k 2-10k 10k+
 const GRADE_GRID = [
