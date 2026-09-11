@@ -1,5 +1,6 @@
 import React from "react";
 import { SecondaryButton } from "../../atoms.jsx";
+import { Segmented } from "../../components/viz.jsx";
 import { Popover } from "../../components/popover.jsx";
 import { UserAvatarRing } from "../../components/user-picker.jsx";
 import { PRIORITIES } from "../../lib/tasks.js";
@@ -30,6 +31,7 @@ const TBtn = ({ btnRef, on, count, icon, label, onClick, hideLabelOnMobile = tru
 );
 const toggleIn = (list, v) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
 
+export const VIEWS = [{ value: "board", label: "Quadro" }, { value: "list", label: "Lista" }, { value: "calendar", label: "Calendário" }, { value: "timeline", label: "Cronograma" }];
 export function Toolbar({ prefs, setPrefs, users, labelOptions, labelColors, columns, q, setQ, searchRef, onHelp, onNew }) {
   const [open, setOpen] = useState(null); // filter | sort | group | options
   const refs = { filter: useRef(null), sort: useRef(null), group: useRef(null), options: useRef(null) };
@@ -54,6 +56,7 @@ export function Toolbar({ prefs, setPrefs, users, labelOptions, labelColors, col
       <TBtn btnRef={refs.sort} on={sortOn} icon="sort" label="Ordenar" onClick={() => setOpen(open === "sort" ? null : "sort")} />
       <TBtn btnRef={refs.group} on={groupOn} icon="group" label="Agrupar" onClick={() => setOpen(open === "group" ? null : "group")} />
       <TBtn btnRef={refs.options} on={optionsOn} icon="settings" label="Opções" onClick={() => setOpen(open === "options" ? null : "options")} />
+      <div style={{ maxWidth: "100%", overflowX: "auto" }}><Segmented value={prefs.view || "board"} options={VIEWS} onChange={(v) => setPrefs((p) => ({ ...p, view: v }))} /></div>
       {onNew}
 
       {open === "filter" && (
