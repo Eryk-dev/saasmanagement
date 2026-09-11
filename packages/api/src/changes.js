@@ -35,7 +35,8 @@ const SILENT = new Set([
 //   activities     timeline do lead (o drawer refaz o fetch sozinho)
 //   task_events    atividade de uma tarefa (o painel da tarefa refaz o fetch)
 //   notifications  caixa de entrada (o sino refaz o fetch)
-export const QUIET = new Set(["activities", "task_events", "notifications"]);
+//   tasks/task_boards  a tela de Tarefas e o Meu dia refazem o fetch sozinhos
+export const QUIET = new Set(["activities", "task_events", "notifications", "tasks", "task_boards"]);
 
 let rev = 0;
 const listeners = new Set();

@@ -547,6 +547,35 @@ export const api = {
     fd.append("file", blob, name);
     return upload("/api/feedback/asset", fd);
   },
+  // Quadro de Tarefas (rotas dedicadas de routes.tasks.js): o servidor calcula
+  // ordem, regras de coluna, carimbos, eventos e avisos. O CRUD genérico
+  // (api.update("tasks", …)) segue valendo pra campo simples.
+  taskMove: (id, body) => req("POST", `/api/tasks/${encodeURIComponent(id)}/move`, body),
+  taskComplete: (id, completed = true) => req("POST", `/api/tasks/${encodeURIComponent(id)}/complete`, { completed }),
+  taskComment: (id, text) => req("POST", `/api/tasks/${encodeURIComponent(id)}/comments`, { text }),
+  taskCommentEdit: (id, cid, text) => req("PATCH", `/api/tasks/${encodeURIComponent(id)}/comments/${encodeURIComponent(cid)}`, { text }),
+  taskCommentDelete: (id, cid) => req("DELETE", `/api/tasks/${encodeURIComponent(id)}/comments/${encodeURIComponent(cid)}`),
+  taskCommentLike: (id, cid) => req("POST", `/api/tasks/${encodeURIComponent(id)}/comments/${encodeURIComponent(cid)}/like`, {}),
+  taskLike: (id) => req("POST", `/api/tasks/${encodeURIComponent(id)}/like`, {}),
+  taskFollow: (id, user) => req("POST", `/api/tasks/${encodeURIComponent(id)}/followers`, user ? { user } : {}),
+  taskUnfollow: (id, user) => req("DELETE", `/api/tasks/${encodeURIComponent(id)}/followers/${encodeURIComponent(user)}`),
+  taskSubtask: (id, body) => req("POST", `/api/tasks/${encodeURIComponent(id)}/subtasks`, body),
+  taskConvert: (id, body) => req("POST", `/api/tasks/${encodeURIComponent(id)}/convert`, body),
+  taskDuplicate: (id, body = {}) => req("POST", `/api/tasks/${encodeURIComponent(id)}/duplicate`, body),
+  taskFollowUp: (id, body = {}) => req("POST", `/api/tasks/${encodeURIComponent(id)}/follow-up`, body),
+  taskBlocker: (id, taskId) => req("POST", `/api/tasks/${encodeURIComponent(id)}/blockers`, { taskId }),
+  taskUnblock: (id, blockerId) => req("DELETE", `/api/tasks/${encodeURIComponent(id)}/blockers/${encodeURIComponent(blockerId)}`),
+  taskAttachment: (id, file, onProgress) => {
+    const fd = new FormData();
+    fd.append("file", file, file.name || "anexo");
+    return upload(`/api/tasks/${encodeURIComponent(id)}/attachments`, fd, onProgress);
+  },
+  taskAttachmentDelete: (id, aid) => req("DELETE", `/api/tasks/${encodeURIComponent(id)}/attachments/${encodeURIComponent(aid)}`),
+  taskCover: (id, attachmentId) => req("POST", `/api/tasks/${encodeURIComponent(id)}/cover`, { attachmentId }),
+  taskActivity: (id) => req("GET", `/api/tasks/${encodeURIComponent(id)}/activity`),
+  tasksBulk: (ids, action, value) => req("POST", "/api/tasks/bulk", { ids, action, value }),
+  notifications: (unread = false) => req("GET", `/api/notifications${unread ? "?unread=1" : ""}`),
+  notificationsRead: (body) => req("POST", "/api/notifications/read", body),
   // Foto anexada a uma TAREFA → asset servido em /public/tasks/:id; a URL vai
   // no campo task.photo. Mesmo desenho do activityAsset abaixo.
   taskAsset: async (blob, name = "anexo.png") => {

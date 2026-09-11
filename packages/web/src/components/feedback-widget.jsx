@@ -1,6 +1,8 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { Segmented, Pill } from "./viz.jsx";
+import { isDone, taskHash } from "../lib/tasks.js";
+import { canSeeScreen } from "../lib/users.js";
 // Widget de feedback — botão flutuante no canto inferior direito de TODAS as
 // telas (montado no shell do app): atalho pra reportar bug ou sugerir melhoria
 // sem sair do que se está fazendo. O envio NÃO cria coleção nova: o servidor
@@ -37,14 +39,16 @@ export function FeedbackWidget({ screenLabel }) {
   // carregados ao abrir o painel (sem polling; abrir de novo re-sincroniza).
   const [reports, setReports] = useState([]);
   const [columns, setColumns] = useState([]);
+  const [doneKey, setDoneKey] = useState(undefined);
   const fileRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
     let alive = true;
-    api.feedbackList().then(({ reports, columns }) => {
+    api.feedbackList().then(({ reports, columns, doneKey }) => {
       if (!alive) return;
       setColumns(columns || []);
+      setDoneKey(doneKey);
       setReports(reports || []);
     }).catch(() => {});
     return () => { alive = false; };
@@ -89,13 +93,15 @@ export function FeedbackWidget({ screenLabel }) {
     finally { setSending(false); }
   }
 
-  // Coluna atual do reporte no quadro (mesma regra do kanban: key desconhecida
-  // cai na primeira coluna). Última coluna = concluído.
+  // Coluna atual do reporte no quadro (mesma régua do kanban, lib/tasks.js:
+  // key desconhecida cai na primeira; concluído = `completed` ou a coluna de
+  // concluído do board).
   const colOf = (t) => {
     const cols = columns.length ? columns : [{ key: "todo", name: "A fazer" }, { key: "doing", name: "Em andamento" }, { key: "done", name: "Concluído" }];
     const c = cols.find((x) => x.key === t.column) || cols[0];
-    return { name: c.name, done: c.key === cols[cols.length - 1].key };
+    return { name: c.name, done: isDone(t, { columns: cols, ...(doneKey !== undefined ? { doneKey } : {}) }) };
   };
+  const openTask = (t) => { if (!canSeeScreen("tasks")) return; setOpen(false); location.hash = taskHash(t.id); };
 
   const smallBtn = { height: 26, padding: "0 10px", borderRadius: 999, fontSize: 11.5, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)" };
 
@@ -162,10 +168,11 @@ export function FeedbackWidget({ screenLabel }) {
                 {reports.map((t) => {
                   const col = colOf(t);
                   return (
-                    <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", fontSize: 12.5 }}>
+                    <div key={t.id} role={canSeeScreen("tasks") ? "button" : undefined} onClick={() => openTask(t)} title={canSeeScreen("tasks") ? "Abrir a tarefa" : undefined}
+                      style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", fontSize: 12.5, cursor: canSeeScreen("tasks") ? "pointer" : "default" }}>
                       <span className="chip" style={{ minHeight: 18, fontSize: 10.5, flexShrink: 0 }}>{(t.labels || [])[0]}</span>
                       <span style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--fg-2)" }}>{t.title}</span>
-                      <Pill tone={col.done ? "pos" : "mut"}>{col.name}</Pill>
+                      <Pill tone={col.done ? "pos" : "mut"}>{col.done ? "Concluída" : col.name}</Pill>
                     </div>
                   );
                 })}
@@ -182,7 +189,7 @@ export function FeedbackWidget({ screenLabel }) {
       {/* Balãozinho fixo ao lado do FAB (Leo, 07/08: "para pessoal não esquecer
           dele") — some enquanto o painel está aberto; clicar também abre. */}
       {!open && (
-        <button onClick={() => setOpen(true)}
+        <button onClick={() => setOpen(true)} className="fb-balloon"
           style={{
             position: "fixed", right: 74, bottom: 27, zIndex: 59,
             height: 28, padding: "0 12px", borderRadius: 999,
