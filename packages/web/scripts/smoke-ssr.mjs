@@ -105,6 +105,7 @@ try {
     ["funcionarios", "/src/screens/funcionarios.jsx", "FuncionariosScreen", {}, "Análise de Equipe"],
     ["desempenho", "/src/screens/desempenho.jsx", "DesempenhoScreen", {}, "Análise de Desempenho"],
     ["aquisicao", "/src/screens/aquisicao.jsx", "AquisicaoScreen", {}, "Análise de Aquisição"],
+    ["tasks", "/src/screens/tasks/index.jsx", "TasksScreen", {}, "Tarefas"],
   ];
   for (const [name, path, exportName, props, mustContain] of cases) {
     try {

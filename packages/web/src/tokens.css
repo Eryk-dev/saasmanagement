@@ -429,3 +429,26 @@ body[data-density="regular"] { font-size: 14px; }
   ::-webkit-scrollbar-thumb { border: 0; }
   .tbl-x { -webkit-overflow-scrolling: touch; }
 }
+
+/* ── Tarefas (quadro nível Asana) ──────────────────────────────────
+   Card do kanban: ações reveladas no hover/foco (sempre visíveis no toque),
+   foco por teclado, seleção, animação de concluir e coluna recolhida. */
+.tk-card { position: relative; transition: box-shadow var(--transition-ui, .15s), border-color var(--transition-ui, .15s); }
+.tk-card:hover { box-shadow: var(--shadow-2); border-color: var(--line-2) !important; }
+.tk-card.is-focused { outline: 2px solid var(--fg-1); outline-offset: 2px; }
+.tk-card.is-selected { border-color: var(--accent-line) !important; background: var(--accent-soft) !important; }
+.tk-card.is-dragging { opacity: .45; }
+.tk-hover { opacity: 0; transition: opacity .12s; }
+.tk-card:hover .tk-hover, .tk-card:focus-within .tk-hover, .tk-col-head:hover .tk-hover, .tk-col-head:focus-within .tk-hover, .tk-row:hover .tk-hover, .tk-row:focus-within .tk-hover { opacity: 1; }
+@media (pointer: coarse) { .tk-hover { opacity: 1; } }
+@keyframes tk-pop { 0% { transform: scale(.8); } 55% { transform: scale(1.18); } 100% { transform: scale(1); } }
+.tk-pop { animation: tk-pop .22s ease; }
+@keyframes tk-fade { to { opacity: 0; transform: translateY(-4px); } }
+.tk-leaving { animation: tk-fade .35s ease .85s forwards; }
+.tk-strip { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
+.tk-panel-field:focus { background: var(--bg-1); border-color: var(--line-2) !important; }
+.tk-menu-item:hover:not(:disabled), .tk-menu-item.is-active { background: var(--bg-2); }
+.tk-drop-overlay { position: absolute; inset: 0; border: 2px dashed var(--accent-line); border-radius: var(--r-3); background: color-mix(in srgb, var(--accent-soft) 70%, transparent); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: var(--accent); z-index: 2; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .tk-pop, .tk-leaving { animation: none; } }
+/* Painel da tarefa aberto: o balão "Reportar um bug" some (cobria o rodapé do painel). */
+body[data-tk-panel] .fb-balloon { display: none; }

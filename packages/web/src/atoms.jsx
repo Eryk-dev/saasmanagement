@@ -326,8 +326,10 @@ function useEsc(onClose) {
 // window.toast("não salvou · tente de novo", "neg") — a superfície de erro das
 // mutações otimistas (que antes falhavam em silêncio no console) e de avisos
 // rápidos. Um por vez, some sozinho; clique dispensa. O host mora no app.jsx.
-function toast(message, tone = "neutral", ms = 4500) {
-  try { window.dispatchEvent(new CustomEvent("cockpit-toast", { detail: { message, tone, ms } })); }
+// `action` = { label, onClick } desenha um botão no toast (ex.: "Desfazer" ao
+// concluir uma tarefa); o clique dispara a ação e dispensa o toast.
+function toast(message, tone = "neutral", ms = 4500, action = null) {
+  try { window.dispatchEvent(new CustomEvent("cockpit-toast", { detail: { message, tone, ms, action } })); }
   catch { /* fora do browser */ }
 }
 
@@ -337,7 +339,7 @@ function ToastHost() {
     let timer = null;
     function onToast(e) {
       const d = e.detail || {};
-      setT({ message: d.message || "", tone: d.tone || "neutral", key: Date.now() });
+      setT({ message: d.message || "", tone: d.tone || "neutral", action: d.action && typeof d.action.onClick === "function" ? d.action : null, key: Date.now() });
       clearTimeout(timer);
       timer = setTimeout(() => setT(null), d.ms || 4500);
     }
@@ -355,6 +357,12 @@ function ToastHost() {
     }}>
       <span style={{ width: 7, height: 7, borderRadius: 999, background: dot, flexShrink: 0 }} />
       <span style={{ minWidth: 0 }}>{t.message}</span>
+      {t.action && (
+        <button onClick={(e) => { e.stopPropagation(); setT(null); try { t.action.onClick(); } catch { /* ação já tratou */ } }}
+          style={{ marginLeft: 6, padding: "3px 8px", borderRadius: "var(--r-1)", background: "color-mix(in srgb, var(--bg-1) 16%, transparent)", color: "var(--bg-1)", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+          {t.action.label}
+        </button>
+      )}
     </div>
   );
 }

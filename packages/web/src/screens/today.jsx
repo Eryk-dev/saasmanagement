@@ -14,6 +14,7 @@ import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusine
 import { allUsers, currentUser, displayName, userById, usersByRole } from "../lib/users.js";
 import { useProposalTemplates } from "../components/ProposalActions.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
+import { myOpenTasks, taskHash } from "../lib/tasks.js";
 import { useAttribution } from "../lib/pains.js";
 import { clientSummary, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks, DealProductField, isOneOffProduct, SelectWithCustom, PaymentMethodSelect, ProductOptions } from "../components/lead-blocks.jsx";
 import { resolveScript, scriptTokens, scriptChecklist, isNoShowStage, confirmationScript, integrationConfirmationScript, scriptKeyFor } from "../lib/scripts.js";
@@ -406,13 +407,17 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   // "Concluído" do board — mesmo registro, nenhuma fonte duplicada.
   const [tasks, setTasks] = useS([]);
   const [taskBoard, setTaskBoard] = useS(null);
+  const loadTasks = React.useCallback(() => Promise.all([api.list("tasks"), api.list("task_boards")])
+    .then(([ts, boards]) => { setTasks(ts || []); setTaskBoard((boards || [])[0] || null); setTasksErr(false); })
+    .catch(() => { setTasks([]); setTasksErr(true); }), []);
+  useE(() => { loadTasks(); }, [loadTasks, version, saasCfg?.id, reload]);
+  // `tasks` não recarrega o SEED (QUIET no servidor): a fila escuta o evento.
   useE(() => {
-    let alive = true;
-    Promise.all([api.list("tasks"), api.list("task_boards")])
-      .then(([ts, boards]) => { if (!alive) return; setTasks(ts || []); setTaskBoard((boards || [])[0] || null); setTasksErr(false); })
-      .catch(() => { if (alive) { setTasks([]); setTasksErr(true); } });
-    return () => { alive = false; };
-  }, [version, saasCfg?.id, reload]); // eslint-disable-line react-hooks/exhaustive-deps
+    let t = 0;
+    const on = (e) => { if (e.detail?.collection === "tasks" || e.detail?.collection === "task_boards") { clearTimeout(t); t = setTimeout(loadTasks, 600); } };
+    window.addEventListener("cockpit-change", on);
+    return () => { clearTimeout(t); window.removeEventListener("cockpit-change", on); };
+  }, [loadTasks]);
 
   // Fila de quem: padrão o usuário logado; admin pode inspecionar a de qualquer um.
   const [person, setPersonState] = useS(() => {
@@ -524,39 +529,29 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   }
   const openRow = (item) => (item.consulta ? openConsulta(item) : setScriptItem(item));
 
-  // Tarefas abertas da fila: sem coluna "Concluído" identificável no board, o
-  // ✓ leva pro kanban em vez de chutar a coluna errada.
-  const taskDoneKey = (() => {
-    const cols = taskBoard?.columns?.length ? taskBoard.columns : null;
-    if (!cols) return "done";
-    const c = cols.find((x) => x.key === "done" || /conclu/i.test(x.name || ""));
-    return c ? c.key : null;
-  })();
-  const taskAssignees = (t) => t.assignees || (t.assignee ? [t.assignee] : []);
-  const myTasks = tasks
-    .filter((t) => (t.saas === saasCfg?.id || !t.saas) && (!taskDoneKey || t.column !== taskDoneKey))
-    .filter((t) => { const a = taskAssignees(t); return !a.length || !person || a.includes(person); })
-    .sort((a, b) =>
-      String(a.dueDate || "9999-99-99").localeCompare(String(b.dueDate || "9999-99-99")) ||
-      String(a.priority || "P9").localeCompare(String(b.priority || "P9")));
+  // Tarefas abertas da fila: a MESMA régua da tela de Tarefas (lib/tasks.js:
+  // `completed` da tarefa, coluna de concluído do board como fallback).
+  const myTasks = myOpenTasks(tasks, taskBoard, { person, saas: saasCfg?.id });
 
   // Concluir tem DESFAZER (6s): no celular o dedo erra o ✓ e a tarefa sumia
-  // da fila sem volta fácil (só indo ao kanban).
+  // da fila sem volta fácil (só indo ao kanban). Concluir/reabrir passa pela
+  // rota do quadro (regras de coluna, atividade e avisos no servidor).
   const undoTimerRef = React.useRef(null);
-  const [undoTask, setUndoTask] = useS(null); // { task, prevColumn }
+  const [undoTask, setUndoTask] = useS(null); // { task }
   function completeTask(t) {
-    if (!taskDoneKey) { location.hash = "#tasks"; return; }
-    setTasks((prev) => prev.map((x) => (x.id === t.id ? { ...x, column: taskDoneKey } : x)));
-    setUndoTask({ task: t, prevColumn: t.column });
+    setTasks((prev) => prev.map((x) => (x.id === t.id ? { ...x, completed: true } : x)));
+    setUndoTask({ task: t });
     clearTimeout(undoTimerRef.current);
     undoTimerRef.current = setTimeout(() => setUndoTask(null), 6000);
-    api.update("tasks", t.id, { column: taskDoneKey }).catch((err) => { console.warn("tarefa não concluída:", err.message); toast("A tarefa não foi concluída no quadro · tente de novo", "neg"); });
+    api.taskComplete(t.id, true).then((r) => { if (r?.task) setTasks((prev) => prev.map((x) => (x.id === r.task.id ? r.task : x))); })
+      .catch((err) => { console.warn("tarefa não concluída:", err.message); setTasks((prev) => prev.map((x) => (x.id === t.id ? { ...x, completed: false } : x))); toast("A tarefa não foi concluída no quadro · tente de novo", "neg"); });
   }
   function revertTask() {
     const u = undoTask; if (!u) return;
     clearTimeout(undoTimerRef.current); setUndoTask(null);
-    setTasks((prev) => prev.map((x) => (x.id === u.task.id ? { ...x, column: u.prevColumn } : x)));
-    api.update("tasks", u.task.id, { column: u.prevColumn }).catch((err) => { console.warn("desfazer falhou:", err.message); toast("Não deu pra desfazer · veja no kanban", "neg"); });
+    setTasks((prev) => prev.map((x) => (x.id === u.task.id ? { ...x, completed: false } : x)));
+    api.taskComplete(u.task.id, false).then((r) => { if (r?.task) setTasks((prev) => prev.map((x) => (x.id === r.task.id ? r.task : x))); })
+      .catch((err) => { console.warn("desfazer falhou:", err.message); toast("Não deu pra desfazer · veja no kanban", "neg"); });
   }
 
   const users = useM(() => allUsers().filter((u) => !u.saas || u.saas === saasCfg?.id), [saasCfg?.id]);
@@ -937,7 +932,7 @@ function TasksCard({ tasks, onDone, undo, onUndo }) {
                 width: 28, height: 28, flexShrink: 0, borderRadius: 8, border: "1.5px solid var(--line-2)",
                 display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--fg-4)", fontSize: 13,
               }}>✓</button>
-              <button onClick={() => { location.hash = "#tasks"; }} style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+              <button onClick={() => { location.hash = taskHash(t.id); }} title="Abrir a tarefa" style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
                 <span style={{ display: "block", fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title || "(sem título)"}</span>
                 {(t.priority || t.dueDate) && (
                   <span style={{ display: "flex", gap: 8, fontSize: 11.5, marginTop: 1 }}>

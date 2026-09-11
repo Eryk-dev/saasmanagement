@@ -36,7 +36,7 @@ import { TrainingScreen, TrainingGate } from "./screens/training.jsx";
 import { CustomersScreen } from "./screens/customers.jsx";
 import { EloAppScreen } from "./screens/eloapp.jsx";
 import { LandingPagesScreen } from "./screens/landingpages.jsx";
-import { TasksScreen } from "./screens/tasks.jsx";
+import { TasksScreen } from "./screens/tasks/index.jsx";
 import { MindmapsScreen } from "./screens/mindmaps.jsx";
 import { SettingsScreen, SettingsLite } from "./screens/settings.jsx";
 import { LeadDetail } from "./screens/deal.jsx";
@@ -422,9 +422,12 @@ function App() {
   );
 }
 
+// Deep link com sub-estado: "#tasks/ta_x1" abre a tela Tarefas com o card
+// aberto (a tela lê o resto do hash); o 1º segmento é a tela.
 function screenFromHash() {
   const h = (typeof location !== "undefined" ? location.hash : "").replace(/^#\/?/, "");
-  return NAV.some(n => n.id === h) ? h : "overview";
+  const id = h.split(/[/?]/)[0];
+  return NAV.some(n => n.id === id) ? id : "overview";
 }
 
 export { App };
