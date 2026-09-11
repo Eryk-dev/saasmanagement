@@ -102,12 +102,29 @@ test("os três formulários seguem o padrão do form atual", () => {
   }
 });
 
-test("cada formulário carrega as perguntas da sua linha", () => {
+test("loja física só aparece no formulário de OEM", () => {
   const chaves = (l) => new Set(formV2(l).questions.map((q) => q.key));
-  assert.ok(chaves("oem").has("skus") && chaves("oem").has("partsType"));
-  assert.ok(chaves("ads").has("marketplaces") && chaves("ads").has("replicaHoje"));
-  assert.ok(chaves("price").has("repriceFreq"));
-  assert.ok(!chaves("ads").has("skus"), "form de Ads não deveria perguntar SKU");
+  assert.ok(chaves("oem").has("channel") && chaves("oem").has("stores"));
+  for (const l of ["ads", "price"]) {
+    assert.ok(!chaves(l).has("channel"), `form de ${l} não deveria perguntar canal`);
+    assert.ok(!chaves(l).has("stores"), `form de ${l} não deveria perguntar lojas`);
+  }
+});
+
+test("os três formulários compartilham o mesmo núcleo, e só ele", () => {
+  const nucleo = ["niche", "accounts", "listings", "trigger", "orders", "ticket", "nome", "whatsapp", "email"];
+  for (const l of ["ads", "price"]) {
+    assert.deepEqual(formV2(l).questions.map((q) => q.key), nucleo);
+  }
+  // OEM = núcleo + o bloco de loja física logo depois do nicho.
+  assert.deepEqual(formV2("oem").questions.map((q) => q.key),
+    ["niche", "channel", "stores", ...nucleo.slice(1)]);
+});
+
+test("o 'só online' pula a pergunta de unidades por branching", () => {
+  const canal = formV2("oem").questions.find((q) => q.key === "channel");
+  assert.equal(canal.options.find((o) => o.value === "online").to, "accounts");
+  assert.equal(canal.options.find((o) => o.value === "online-fisico").to, undefined);
 });
 
 test("migração cria tudo em rascunho e com o split desligado", async () => {
@@ -137,12 +154,12 @@ test("as opções de faixa batem com o que a classificação sabe ler", async ()
   );
   const r = classificar({ ...resp, niche: "autopecas", formProduct: "oem" });
   assert.ok(r.porte, "a maior faixa de cada pergunta tem que produzir um porte");
-  assert.equal(r.primario, "oem");
+  assert.equal(r.primario, "oem", "a linha vem do formulário preenchido");
 
-  // E o contrário, que é regra de negócio e não acidente: OEM é produto de
-  // autopeças. Quem preenche o form de OEM mas não é do nicho não vira lead de
-  // OEM — vira de Ads, e `portaErrada` avisa o SDR.
-  const foraDoNicho = classificar({ ...resp, niche: "eletronicos", formProduct: "oem" });
-  assert.equal(foraDoNicho.primario, "ads");
-  assert.equal(foraDoNicho.portaErrada, true);
+  // Autopeças que entrou pelo formulário de Ads: a linha respeita o form (é o
+  // que ele pediu), mas `portaErrada` avisa o SDR de que o pitch certo é OEM.
+  const peloFormErrado = classificar({ ...resp, niche: "autopecas", formProduct: "ads" });
+  assert.equal(peloFormErrado.primario, "ads");
+  assert.equal(peloFormErrado.candidatoOem, true);
+  assert.equal(peloFormErrado.portaErrada, true);
 });

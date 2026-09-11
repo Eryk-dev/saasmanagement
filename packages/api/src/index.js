@@ -16,6 +16,7 @@ import { startCallSummaries } from "./call-summaries.js";
 import { startIntegrationBriefs } from "./integration-brief.js";
 import { startConsultationSummaries } from "./consultations.js";
 import { startDripSequences } from "./drip-runner.js";
+import { startCadencia } from "./cadencia-runner.js";
 import { startSdrFlow } from "./sdr-flow.js";
 import { startTrainingReminder } from "./training-reminder.js";
 import { startBlogEngine } from "./blog-engine.js";
@@ -106,6 +107,7 @@ try {
   // Sequências de nutrição (drip): auto-inscreve e avança os passos (e-mail pela
   // conta Google; WhatsApp fica na fila assistida). No-op sem sequência ativa.
   startDripSequences(repo, { ...app.integrationClients, log: app.log });
+  startCadencia(repo, { log: app.log });
   // SDR automatizado (primeiro toque + lembretes de call + resgate de no-show):
   // poller de 60s, no-op sem product.sdrBot.enabled. Age em nome do SDR dono,
   // com autoria interna "sdr-bot" (fora da régua de contato humano).

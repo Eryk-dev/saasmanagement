@@ -161,7 +161,36 @@ export async function recordMessage(repo, { id, phone, direction, text = "", at,
   if (waPhoneOfLead && lid) {
     try { await repo.update("leads", lid, { waPhone: waPhoneOfLead }); } catch { /* não trava a mensagem */ }
   }
+  // Lead RESPONDEU: sai da cadência e vai pra Qualificando. É o único gatilho
+  // dessa promoção no funil com colunas de dia — o toque do SDR não promove
+  // mais, senão a etapa enche de gente que nunca respondeu.
+  if (direction === "in" && lid) await promoverPorResposta(repo, lid);
   return msgId;
+}
+
+// Resposta do lead → "Qualificando". Só age em lead que está numa COLUNA DE
+// DIA (ou no Novo lead): quem já avançou pra call, proposta, ganho ou foi
+// descartado não volta pra qualificação por causa de uma mensagem. Nunca
+// lança — promoção é best-effort e não pode travar o recibo da mensagem.
+async function promoverPorResposta(repo, leadId) {
+  try {
+    const { estaNaCadencia, ETAPA_QUALIFICANDO, CADENCIA_FLAG } = await import("./cadencia-stages.js");
+    const cfg = await repo.get("app_config", CADENCIA_FLAG);
+    if (cfg?.enabled !== true) return;
+
+    const lead = await repo.get("leads", leadId);
+    if (!lead || !estaNaCadencia(lead.stage)) return;
+
+    const product = lead.saas ? await repo.get("products", lead.saas) : null;
+    const existe = (product?.funnel || []).some((f) => f?.stage === ETAPA_QUALIFICANDO);
+    if (!existe || lead.stage === ETAPA_QUALIFICANDO) return;
+
+    const { applyStageMove } = await import("./lead-flow.js");
+    const movePatch = await applyStageMove(repo, {
+      lead, toStage: ETAPA_QUALIFICANDO, author: "system",
+    });
+    await repo.update("leads", lead.id, { ...movePatch, stage: ETAPA_QUALIFICANDO });
+  } catch { /* promoção automática é best-effort */ }
 }
 
 // "Preencheu o form E mandou a mensagem" — o lead que dá o passo extra de

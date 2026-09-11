@@ -1714,7 +1714,7 @@ export async function ensureClassificacaoV2(repo) {
   }
   if (atual.enabled !== true) return 0;
 
-  const { LEAD_QUESTIONS_POR_PRODUTO } = await import("./lead-questions.produtos.js");
+  const { LEAD_QUESTIONS_UNIAO } = await import("./lead-questions.produtos.js");
   const { TRILHAS } = await import("./cadencia-nutricao.js");
 
   let mudou = 0;
@@ -1725,17 +1725,8 @@ export async function ensureClassificacaoV2(repo) {
   // schema do lead — o pipeline é um só.
   const produto = await repo.get("products", "leverads");
   if (produto) {
-    const uniao = [];
-    const vistas = new Set();
-    for (const qs of Object.values(LEAD_QUESTIONS_POR_PRODUTO)) {
-      for (const q of qs) {
-        if (vistas.has(q.key)) continue;
-        vistas.add(q.key);
-        uniao.push(q);
-      }
-    }
     const antes = JSON.stringify(produto.leadQuestions || []);
-    const depois = mergeLeadQuestions(produto.leadQuestions || [], { questions: uniao });
+    const depois = mergeLeadQuestions(produto.leadQuestions || [], { questions: LEAD_QUESTIONS_UNIAO });
     if (JSON.stringify(depois) !== antes) {
       await repo.update("products", "leverads", { leadQuestions: depois });
       mudou += 1;
@@ -1802,7 +1793,50 @@ export async function ensureFormsV2(repo) {
   return criados;
 }
 
+// ── Etapas de cadência (10/09/2026) ───────────────────────────────────────
+// Insere "Dia 2".."Dia 7" entre "Novo lead" e "Qualificando". Atrás de flag
+// porque muda o BOARD de todo mundo no mesmo instante — e porque, com o
+// poller ligado, os leads começam a andar sozinhos.
+export async function ensureCadenciaStages(repo) {
+  const { DIAS, funnelRowDo, ETAPA_DIA_1, ETAPA_QUALIFICANDO, CADENCIA_FLAG } = await import("./cadencia-stages.js");
+
+  const cfg = await repo.get("app_config", CADENCIA_FLAG);
+  if (!cfg) {
+    await repo.create("app_config", {
+      id: CADENCIA_FLAG, enabled: false, ligadoEm: "",
+      nota: "Cria as colunas Dia 2..Dia 7 no funil e liga o motor que move o lead quando vira o dia.",
+    }, CADENCIA_FLAG);
+    return 0;
+  }
+  if (cfg.enabled !== true) return 0;
+
+  const product = await repo.get("products", "leverads");
+  if (!product || !Array.isArray(product.funnel) || !product.funnel.length) return 0;
+
+  const nomes = product.funnel.map((f) => f.stage);
+  const faltando = DIAS.filter((d) => !nomes.includes(d.stage));
+  if (!faltando.length) return 0;
+
+  // Ancora depois de "Novo lead"; sem a âncora, antes de "Qualificando"; sem
+  // nenhuma das duas, não mexe — melhor não fazer nada do que embaralhar o
+  // funil de quem já está rodando.
+  let at = nomes.indexOf(ETAPA_DIA_1);
+  at = at >= 0 ? at + 1 : nomes.indexOf(ETAPA_QUALIFICANDO);
+  if (at < 0) return 0;
+
+  const funnel = [...product.funnel];
+  funnel.splice(at, 0, ...faltando.map(funnelRowDo));
+  await repo.update("products", "leverads", { funnel });
+  return faltando.length;
+}
+
 export async function runStartupMigrations(repo) {
+  try {
+    const n = await ensureCadenciaStages(repo);
+    if (n) console.log(`[migration] ${n} coluna(s) de cadência criadas no funil (Dia 2..Dia 7)`);
+  } catch (err) {
+    console.error("[migration] ensureCadenciaStages falhou:", err?.message || err);
+  }
   try {
     const n = await ensureFormsV2(repo);
     if (n) console.log(`[migration] formulários v2 + config do A/B criados (${n} objeto(s)) — em rascunho, split desligado`);

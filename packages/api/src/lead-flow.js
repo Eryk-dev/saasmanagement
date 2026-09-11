@@ -7,6 +7,7 @@
 
 import { randomUUID } from "node:crypto";
 import { kindOf, cadenceOf, firstStage, stageByKind, isNoShowStage, isWonLead, LOSS_KINDS, TOUCH_TYPES } from "./stages.js";
+import { NOMES_DIAS as CADENCIA_DIAS } from "./cadencia-stages.js";
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
@@ -298,7 +299,14 @@ export async function onActivityCreated(repo, activity) {
     // novo — segue sozinho pra qualificação (o processo continua lá amanhã). O
     // movimento canônico (applyStageMove) zera tentativas, loga o histórico e
     // re-agenda o GPS pela cadência do estágio de destino.
-    if (kindOf(product, stage) === "novo") {
+    //
+    // EXCEÇÃO — funil com as colunas de dia: ali quem promove pra "Qualificando"
+    // é a RESPOSTA do lead, não o toque do SDR. Promover no toque encheria a
+    // etapa de gente que nunca respondeu e apagaria a diferença entre "ainda
+    // não falei" e "estou conversando" — que é a leitura inteira do board. O
+    // relógio (cadencia-runner) leva o lead pro Dia seguinte.
+    const temColunasDeDia = (product?.funnel || []).some((f) => CADENCIA_DIAS.includes(f?.stage));
+    if (!temColunasDeDia && kindOf(product, stage) === "novo") {
       const target = stageByKind(product, "qualificacao") || stageByKind(product, "contato");
       if (target && target.stage !== stage) {
         const movePatch = await applyStageMove(repo, {
@@ -338,6 +346,11 @@ export async function onOutboundMessage(repo, leadId, { author = "system", text 
       return onActivityCreated(repo, activity);
     }
     if (kind !== "contato" || isNoShowStage(stage) || isWonLead(product, lead)) return null;
+    // Coluna de dia da cadência também é `contato`, mas ali o toque NÃO promove:
+    // quem tira o lead da cadência é a resposta dele (wa-store.promoverPorResposta).
+    // Sem esta guarda, o primeiro toque em "Dia 3" mandaria pra Qualificando e a
+    // cadência inteira viraria enfeite.
+    if (CADENCIA_DIAS.includes(stage)) return null;
     const target = stageByKind(product, "qualificacao");
     if (!target || target.stage === stage) return null;
     const movePatch = await applyStageMove(repo, { lead, toStage: target.stage, author, now });
