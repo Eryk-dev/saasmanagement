@@ -1338,9 +1338,14 @@ const LEVERADS_CATALOG = {
       anu: { total: 11988, per: 999 }, sem: { total: 7182, per: 1197 },
     },
     price_essencial: {
-      line: "price", tier: "essencial", name: "Lever Price · Essencial", limite: 1000,
+      // Teto alinhado à faixa do ICP. Era 1.000 — exatamente o PISO do ICP
+      // ("acima de 1.000 anúncios"), então o pacote não servia nenhum lead
+      // qualificado: quem entrava no perfil já estourava o plano de entrada.
+      // 5.000 é a borda da faixa seguinte (1.000-5.000), então agora cada nível
+      // cobre uma faixa real do formulário.
+      line: "price", tier: "essencial", name: "Lever Price · Essencial", limite: 5000,
       inclui: {
-        motor: ["Precificação automática de até 1.000 anúncios", "Regras de preço por margem e concorrência"],
+        motor: ["Precificação automática de até 5.000 anúncios", "Regras de preço por margem e concorrência"],
         plataforma: ["Acompanhamento de preço e margem no painel", "Alertas de anúncio fora da regra"],
       },
       anu: { total: 9564, per: 797 }, sem: { total: 5082, per: 847 },
