@@ -301,6 +301,10 @@ function listFilter(collection, q) {
   return null;
 }
 
+// Etapas em que uma integração MARCADA ganha sala do Meet sozinha: a etapa de
+// integração, o pós-venda e o Ganho (que vem antes da Integração no funil).
+const INTEGRATION_MEET_KINDS = new Set(["integracao", "posvenda", "ganho"]);
+
 export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // `build` = impressão digital do código em execução (build-info.js): comparar
   // com `node packages/api/src/build-info.js` na main responde se o deploy do
@@ -393,7 +397,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerAuthRoutes(app, repo);
   // Google Meet: conectar conta (OAuth) + criar call na agenda do closer.
   // Claude resume as calls (transcrição → timeline) quando há ANTHROPIC_API_KEY.
-  const { client: googleClient, googleUser, briefer, autoIntegrationMeet, autoCallMeet, moveCallMeet, cancelCallMeet } = registerGoogleRoutes(app, repo, { google: opts.google, googleUser: opts.googleUser, anthropic: anthropicClient });
+  const { client: googleClient, googleUser, briefer, autoIntegrationMeet, cancelIntegrationMeet, autoCallMeet, moveCallMeet, cancelCallMeet } = registerGoogleRoutes(app, repo, { google: opts.google, googleUser: opts.googleUser, anthropic: anthropicClient });
   // Consultas 1:1 + Manual da Família (UniqueKids): Meet da consulta, resumo IA,
   // compor manual e página pública /m/:id. Depois do Google (usa os 2 clients).
   registerConsultationRoutes(app, repo, { google: googleClient, googleUser, anthropic: anthropicClient });
@@ -1019,18 +1023,28 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
         }
       } catch { /* fail-open: o GPS antigo continua valendo */ }
     }
-    // Card em INTEGRAÇÃO com horário marcado e sem link → o Meet da integração
-    // (convite da chamada) nasce sozinho: o cartão já chega com o link pro
-    // integrador e o convite vai pro cliente. Cobre o fechamento saindo da call
-    // (Meu dia grava stage+integrationAt juntos) e a data marcada depois no
-    // drawer. Solto em background; sem Google, o botão manual continua valendo.
-    if (collection === "leads" && ("stage" in req.body || "integrationAt" in req.body) && autoIntegrationMeet) {
+    // Integração marcada, remarcada ou reatribuída → o Meet acompanha SOZINHO,
+    // na MESMA régua da call de venda (Leo, 11/09: a integração também roda no
+    // Meet com o cliente). Sem sala, nasce na conta @leverads do responsável
+    // (integrador, ou o closer enquanto não há integrador); com sala, o evento
+    // move pro horário novo (e-mail de atualização pro cliente) e sala nascida
+    // na conta do time é recriada na do responsável enquanto a integração não
+    // aconteceu. Cobre o fechamento saindo da call (stage+integrationAt no
+    // mesmo PATCH), a data marcada depois no drawer, a remarcação do Meu dia e
+    // a troca de integrador. Card em Ganho com integração marcada também conta
+    // (o Ganho vem antes da Integração no funil). Sem Google, o botão manual
+    // continua valendo.
+    if (collection === "leads" && ("stage" in req.body || "integrationAt" in req.body || "integrator" in req.body) && autoIntegrationMeet) {
       try {
         const k = kindOf(await repo.get("products", updated.saas), updated.stage);
-        if ((k === "integracao" || k === "posvenda") && updated.integrationAt && !updated.integrationCallUrl) {
-          autoIntegrationMeet(updated.id).catch(() => { /* botão manual continua */ });
-        }
-      } catch { /* fail-open */ }
+        if (INTEGRATION_MEET_KINDS.has(k) && updated.integrationAt) await autoIntegrationMeet(updated.id);
+      } catch { /* fail-open: o botão manual continua valendo */ }
+    }
+    // Integração DESMARCADA (integrationAt limpo): o convite sai da agenda do
+    // organizador e do cliente e os campos da sala zeram — a próxima marcação
+    // nasce com sala nova, igual à call desmarcada.
+    if (collection === "leads" && "integrationAt" in req.body && !updated.integrationAt && cancelIntegrationMeet) {
+      try { await cancelIntegrationMeet(updated.id); } catch { /* fail-open */ }
     }
     // Consulta remarcada, cancelada ou reatribuída → re-espelha na agenda
     // pessoal da responsável (mesmo evento; cancelar apaga) E move o evento do

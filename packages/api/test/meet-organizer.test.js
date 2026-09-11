@@ -216,3 +216,56 @@ test("resumo: call organizada pela conta do closer é lida pelo token DELE, mesm
   assert.equal(r2.ok, false);
   assert.equal(r2.reason, "not_connected");
 });
+
+// ── Integração na MESMA régua da call (Leo, 11/09/2026) ─────────────────────
+const INTEG_FUNNEL = [
+  { stage: "Novo lead", kind: "novo", conv: 1 },
+  { stage: "Call agendada", kind: "call", conv: 1 },
+  { stage: "Integração", kind: "integracao", conv: 1 },
+  { stage: "Ganho", kind: "ganho", conv: 1 },
+];
+const waitUntil = async (cond) => { for (let i = 0; i < 60 && !(await cond()); i++) await new Promise((r) => setImmediate(r)); };
+const meetPosts = (f) => f.calls.filter((c) => c.url.includes("/calendars/primary/events") && c.url.includes("conferenceDataVersion"));
+
+test("integração sem integrador definido: a sala nasce na conta @leverads do CLOSER que vendeu (organizador = closer)", async () => {
+  const f = makeFetch();
+  const { app, repo } = await buildApp(f);
+  await repo.update("products", "leverads", { funnel: INTEG_FUNNEL });
+  // Fechou e marcou a integração na hora, sem ninguém atribuído como integrador.
+  await repo.create("leads", { id: "le8", saas: "leverads", name: "Thiago", stage: "Call agendada", closer: "u_clo", callAt: "2026-09-10T17:00", callUrl: "https://meet.google.com/venda-ok", meetEventId: "ev_venda", meetOrganizer: "u_clo" });
+
+  await app.inject({ method: "PATCH", url: "/api/leads/le8", payload: { stage: "Integração", integrationAt: "2026-09-12T08:35" } });
+  await waitUntil(async () => (await repo.get("leads", "le8")).integrationCallUrl);
+
+  const lead = await repo.get("leads", "le8");
+  assert.ok(lead.integrationCallUrl, "sala da integração nasceu sem botão");
+  assert.equal(lead.integrationMeetOrganizer, "u_clo", "o closer organiza enquanto não há integrador");
+  assert.equal(meetPosts(f).at(-1).init.headers.authorization, "Bearer at-clo", "token do closer, não do time");
+  // A venda não foi tocada.
+  assert.equal(lead.callUrl, "https://meet.google.com/venda-ok");
+  await app.close();
+});
+
+test("integração @leverads sem conta pronta: pula com o motivo; definir um integrador conectado DEPOIS cria a sala na conta dele", async () => {
+  const f = makeFetch();
+  const { app, repo } = await buildApp(f);
+  await repo.update("products", "leverads", { funnel: INTEG_FUNNEL });
+  // closer com conexão antiga (só agenda) e integrador igual: ninguém pronto.
+  await repo.create("leads", { id: "le9", saas: "leverads", name: "Duda", stage: "Call agendada", closer: "u_old", callAt: "2026-09-02T17:00" });
+
+  await app.inject({ method: "PATCH", url: "/api/leads/le9", payload: { stage: "Integração", integrator: "u_old", integrationAt: "2026-09-13T15:00" } });
+  await waitUntil(async () => (await repo.get("leads", "le9")).meetSkipNoted);
+  assert.ok(!(await repo.get("leads", "le9")).integrationCallUrl, "não nasce na conta do time");
+
+  // Reatribuiu pra quem tem a conta @leverads pronta: o gatilho roda de novo
+  // (a troca de integrador dispara, igual à troca de closer na call).
+  await app.inject({ method: "PATCH", url: "/api/leads/le9", payload: { integrator: "u_clo" } });
+  await waitUntil(async () => (await repo.get("leads", "le9")).integrationCallUrl);
+
+  const lead = await repo.get("leads", "le9");
+  assert.equal(lead.integrationMeetOrganizer, "u_clo");
+  assert.equal(meetPosts(f).at(-1).init.headers.authorization, "Bearer at-clo");
+  const skips = (await repo.list("activities")).filter((a) => a.lead === "le9" && a.meta?.event === "meet_skipped");
+  assert.equal(skips.length, 1, "o motivo ficou registrado uma vez, antes da conta pronta");
+  await app.close();
+});

@@ -1,7 +1,9 @@
 // Meet automático da integração: card que entra em Integração com horário
 // marcado (fechamento saindo da call) ganha o link do Meet sozinho — o convite
 // da chamada vai pro cliente e o cartão já chega com o link pro integrador.
-// Tudo offline (fake do Google).
+// Desde 11/09 (Leo: "a integração também é pelo Meet"), a MESMA régua da call
+// de venda: remarcar MOVE o evento, desmarcar APAGA, e a sala nasce em Ganho
+// também. Tudo offline (fake do Google).
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -13,21 +15,23 @@ const { registerRoutes } = await import("../src/routes.js");
 const FUNNEL = [
   { stage: "Novo lead", kind: "novo", conv: 1 },
   { stage: "Call agendada", kind: "call", conv: 1 },
-  { stage: "Integração", kind: "integracao", conv: 1 },
   { stage: "Ganho", kind: "ganho", conv: 1 },
+  { stage: "Integração", kind: "integracao", conv: 1 },
   { stage: "Perdido", kind: "perdido", conv: 0 },
 ];
 
 function googleFake() {
-  const created = [];
+  const created = [], patched = [], deleted = [];
   return {
-    created,
+    created, patched, deleted,
     configured: () => true,
     connected: async () => true,
     createMeetEvent: async (args) => {
       created.push(args);
       return { meetUrl: `https://meet.google.com/aaa-bbbb-cc${created.length}`, eventId: `ev${created.length}`, htmlLink: "https://calendar/x" };
     },
+    patchCalendarEvent: async (id, body) => { patched.push({ id, ...body }); },
+    deleteCalendarEvent: async (id) => { deleted.push(id); },
     configureSpace: async () => ({ open: true, recording: true, transcription: true }),
   };
 }
@@ -35,7 +39,7 @@ function googleFake() {
 async function setup() {
   const repo = makeMemRepo();
   // UniqueKids: produto do Workspace da conta do time — o gatilho ainda cria na
-  // conta do time aqui (nos demais produtos ele exige o @leverads do integrador;
+  // conta do time aqui (nos demais produtos ele exige o @leverads do responsável;
   // esse caminho é coberto em meet-organizer.test.js).
   await repo.create("products", { id: "uniquekids", name: "UniqueKids", funnel: FUNNEL });
   await repo.create("leads", {
@@ -77,16 +81,56 @@ test("fechar saindo da call com integração marcada cria o Meet da integração
   await app.close();
 });
 
-test("não duplica: patch seguinte com link já criado não gera outro Meet", async () => {
+test("remarcar a integração MOVE o evento do Meet pro horário novo (não recria) e o poller segue junto", async () => {
   const { repo, app, google } = await setup();
   await app.inject({ method: "PATCH", url: "/api/leads/l1", payload: { stage: "Integração", integrationAt: "2026-07-20T15:00" } });
   await waitFor(async () => (await repo.get("leads", "l1")).integrationCallUrl);
   assert.equal(google.created.length, 1);
+  const before = await repo.get("leads", "l1");
 
-  // Reatribuir/reagendar SEM limpar o link não recria (remarcação de evento é manual).
+  // Remarcou no drawer / no Meu dia: mesmo evento, horário novo (o cliente
+  // recebe o e-mail de atualização — sendUpdates=all no patch do Calendar).
   await app.inject({ method: "PATCH", url: "/api/leads/l1", payload: { integrationAt: "2026-07-21T10:00" } });
+  await waitFor(async () => (await repo.get("leads", "l1")).integrationScheduledAt !== before.integrationScheduledAt);
+
+  assert.equal(google.created.length, 1, "não nasce sala nova");
+  assert.equal(google.patched.length, 1);
+  assert.equal(google.patched[0].id, "ev1");
+  assert.equal(google.patched[0].start.dateTime, "2026-07-21T10:00:00");
+  const lead = await repo.get("leads", "l1");
+  assert.equal(lead.integrationCallUrl, before.integrationCallUrl, "o link continua o mesmo");
+  // integrationScheduledAt é o que o poller do resumo usa: acompanha a remarcação.
+  assert.equal(lead.integrationScheduledAt, new Date("2026-07-21T10:00:00-03:00").toISOString());
+
+  // Mesmo horário de novo (PATCH sem mudança real) não mexe no evento.
+  await app.inject({ method: "PATCH", url: "/api/leads/l1", payload: { integrationAt: "2026-07-21T10:00", integrator: "eryk" } });
   await new Promise((r) => setTimeout(r, 30));
-  assert.equal(google.created.length, 1);
+  assert.equal(google.patched.length, 1);
+  await app.close();
+});
+
+test("desmarcar a integração (integrationAt vazio) apaga o evento e zera a sala; marcar de novo nasce sala nova", async () => {
+  const { repo, app, google } = await setup();
+  await app.inject({ method: "PATCH", url: "/api/leads/l1", payload: { stage: "Integração", integrationAt: "2026-07-20T15:00" } });
+  await waitFor(async () => (await repo.get("leads", "l1")).integrationCallUrl);
+
+  // O "limpar" do drawer.
+  await app.inject({ method: "PATCH", url: "/api/leads/l1", payload: { integrationAt: "" } });
+  await waitFor(async () => !(await repo.get("leads", "l1")).integrationCallUrl);
+
+  assert.deepEqual(google.deleted, ["ev1"], "convite cancelado na agenda (e-mail pro cliente)");
+  const lead = await repo.get("leads", "l1");
+  assert.equal(lead.integrationCallUrl, "");
+  assert.equal(lead.integrationMeetEventId, "");
+  assert.equal(lead.integrationScheduledAt, "");
+  // A venda segue intocada.
+  assert.equal(lead.callUrl, "https://meet.google.com/venda-ja-existia");
+
+  // Marcou de novo: sala nova (a antiga morreu).
+  await app.inject({ method: "PATCH", url: "/api/leads/l1", payload: { integrationAt: "2026-07-22T09:00" } });
+  await waitFor(async () => (await repo.get("leads", "l1")).integrationCallUrl);
+  assert.equal(google.created.length, 2);
+  assert.equal((await repo.get("leads", "l1")).integrationMeetEventId, "ev2");
   await app.close();
 });
 
@@ -102,5 +146,27 @@ test("sem horário marcado não cria nada (o gatilho espera a data); a data marc
   await waitFor(async () => (await repo.get("leads", "l1")).integrationCallUrl);
   assert.equal(google.created.length, 1);
   assert.equal(google.created[0].start.dateTime, "2026-07-22T14:00:00");
+  await app.close();
+});
+
+test("card em GANHO com integração marcada também ganha o Meet (o Ganho vem antes da Integração no funil)", async () => {
+  const { repo, app, google } = await setup();
+  await app.inject({ method: "PATCH", url: "/api/leads/l1", payload: { stage: "Ganho", integrationAt: "2026-07-23T11:00" } });
+  await waitFor(async () => (await repo.get("leads", "l1")).integrationCallUrl);
+  assert.equal(google.created.length, 1);
+  assert.ok(google.created[0].summary.startsWith("Integração"));
+  await app.close();
+});
+
+test("botão manual com sala existente não duplica: devolve a sala que já existe", async () => {
+  const { repo, app, google } = await setup();
+  await app.inject({ method: "PATCH", url: "/api/leads/l1", payload: { stage: "Integração", integrationAt: "2026-07-20T15:00" } });
+  await waitFor(async () => (await repo.get("leads", "l1")).integrationCallUrl);
+
+  const r = await app.inject({ method: "POST", url: "/api/leads/l1/meet", payload: { kind: "integracao" } });
+  assert.equal(r.statusCode, 200);
+  assert.equal(r.json().existing, true);
+  assert.equal(r.json().callUrl, (await repo.get("leads", "l1")).integrationCallUrl);
+  assert.equal(google.created.length, 1);
   await app.close();
 });

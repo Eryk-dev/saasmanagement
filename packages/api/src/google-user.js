@@ -159,9 +159,11 @@ function calTimes(at, minutes) {
 export async function syncPersonalCalendar(repo, gu, lead) {
   if (!gu || !gu.configured() || !lead) return {};
   const who = (lead.company ? `${lead.name} (${lead.company})` : lead.name) || "cliente";
-  const meetLine = lead.callUrl ? `Meet: ${lead.callUrl}` : "";
+  // Link da sala do TIPO: a call de venda tem o dela, a integração tem a
+  // própria (integrationCallUrl) — o bloco do integrador levava o link da venda.
+  const meetLineOf = (url) => (url ? `Meet: ${url}` : "");
 
-  async function one({ at, responsible, minutes, idField, userField, summary }) {
+  async function one({ at, responsible, minutes, idField, userField, summary, meetUrl }) {
     const curId = lead[idField] || "";
     const curUser = lead[userField] || "";
     const patch = {};
@@ -169,7 +171,7 @@ export async function syncPersonalCalendar(repo, gu, lead) {
     try { want = !!(at && responsible && (await gu.connectedFor(responsible))); } catch { want = false; }
     if (want) {
       const { start, end } = calTimes(at, minutes);
-      const description = [`Lead: ${lead.name}`, lead.phone ? `WhatsApp: ${lead.phone}` : "", lead.email ? `E-mail: ${lead.email}` : "", meetLine]
+      const description = [`Lead: ${lead.name}`, lead.phone ? `WhatsApp: ${lead.phone}` : "", lead.email ? `E-mail: ${lead.email}` : "", meetLineOf(meetUrl)]
         .filter(Boolean).join("\n");
       let eventId = curId;
       // Reatribuído pra outra pessoa: apaga da agenda antiga.
@@ -191,8 +193,8 @@ export async function syncPersonalCalendar(repo, gu, lead) {
   const callResp = lead.meetOrganizer && lead.meetOrganizer === lead.closer ? "" : lead.closer;
   const integResp = lead.integrationMeetOrganizer && lead.integrationMeetOrganizer === lead.integrator ? "" : lead.integrator;
   const patch = {
-    ...(await one({ at: lead.callAt, responsible: callResp, minutes: 45, idField: "calCallEventId", userField: "calCallUser", summary: `Call · ${who}` })),
-    ...(await one({ at: lead.integrationAt, responsible: integResp, minutes: 60, idField: "calIntegEventId", userField: "calIntegUser", summary: `Integração · ${who}` })),
+    ...(await one({ at: lead.callAt, responsible: callResp, minutes: 45, idField: "calCallEventId", userField: "calCallUser", summary: `Call · ${who}`, meetUrl: lead.callUrl })),
+    ...(await one({ at: lead.integrationAt, responsible: integResp, minutes: 60, idField: "calIntegEventId", userField: "calIntegUser", summary: `Integração · ${who}`, meetUrl: lead.integrationCallUrl })),
   };
   if (Object.keys(patch).length) { try { await repo.update("leads", lead.id, patch); } catch { /* fail-open */ } }
   return patch;

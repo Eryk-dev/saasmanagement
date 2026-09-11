@@ -103,7 +103,7 @@ const GAP_HINTS = {
   closer_responsavel: "o closer da call",
   link_call: "gerar o link no lead",
   hora_integracao: "o horário da integração",
-  link_integracao: "criar o Meet da integração no lead",
+  link_integracao: "o Meet da integração (nasce sozinho ao marcar a data; sem link, conecte a conta Google do responsável ou crie no card)",
   combinado_call: "gerar o resumo da call (✨ no card acima)",
   objecao_aberta: "gerar o resumo da call (✨ no card acima)",
   dor_call: "gerar o resumo da call (✨ no card acima)",
