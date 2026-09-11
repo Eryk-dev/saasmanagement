@@ -241,6 +241,42 @@ try {
     failed++;
   }
 
+  // Cadência de 7 dias por coluna (Dia 2…Dia 7, #881): cada dia tem roteiro
+  // próprio, linha em Scripts/Próximos passos, e o Depois da ação oferece
+  // "Qualificando" (ele respondeu). Com as colunas, o Retomar do Novo lead não
+  // promete mais Qualificando; sem elas, o comportamento antigo continua.
+  try {
+    const { scriptKeyFor, SCRIPT_CATALOG, catalogStageRow } = await server.ssrLoadModule("/src/lib/scripts.js");
+    const { destinationsFor } = await server.ssrLoadModule("/src/screens/today.jsx");
+    const { nextKindsFor } = await server.ssrLoadModule("/src/lib/funnel.js");
+    const dias = [2, 3, 4, 5, 6, 7].map((n) => ({ stage: `Dia ${n}`, kind: "contato" }));
+    const funnel = [
+      { stage: "Novo lead", kind: "novo" }, ...dias,
+      { stage: "Qualificando", kind: "qualificacao" }, { stage: "Call agendada", kind: "call" }, { stage: "Follow-up", kind: "followup" },
+      { stage: "Ganho", kind: "ganho" }, { stage: "Desqualificado", kind: "desqualificado" }, { stage: "Nutrição", kind: "contato" },
+    ];
+    const eq = (name, got, want) => {
+      if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error(`${name}: ${JSON.stringify(got)} ≠ ${JSON.stringify(want)}`);
+    };
+    eq("Dia 3 usa o roteiro do dia", scriptKeyFor({ funnel }, { stage: "Dia 3" }), "dia3");
+    eq("Dia 7 usa o roteiro do dia", scriptKeyFor({ funnel }, { stage: "Dia 7" }), "dia7");
+    eq("Novo lead segue o 1º ato", scriptKeyFor({ funnel }, { stage: "Novo lead" }), "novo");
+    eq("Nutrição não é dia", scriptKeyFor({ funnel }, { stage: "Nutrição", stageAttempts: 0 }), "nutricao1");
+    const rows = SCRIPT_CATALOG.filter((c) => c.stageMatch === "dia").map((c) => catalogStageRow({ funnel }, c)?.stage);
+    eq("catálogo casa cada dia com a coluna", rows, ["Dia 2", "Dia 3", "Dia 4", "Dia 5", "Dia 6", "Dia 7"]);
+    eq("sem colunas de dia, as linhas somem", SCRIPT_CATALOG.filter((c) => c.stageMatch === "dia").map((c) => catalogStageRow({ funnel: funnel.filter((f) => !/^Dia/.test(f.stage)) }, c)), [null, null, null, null, null, null]);
+    const names = (cfg, lead) => destinationsFor(cfg, lead).map((d) => (d.retry ? (d.promote ? "retry→" + d.stage : "retry") : d.stage));
+    eq("Dia 3: Qualificando (respondeu) entra nos destinos", names({ funnel }, { id: "l1", stage: "Dia 3" }), ["retry", "Qualificando", "Call agendada", "Nutrição", "Desqualificado"]);
+    eq("Novo lead com colunas: Retomar não promove", names({ funnel }, { id: "l1", stage: "Novo lead" }), ["retry", "Qualificando", "Call agendada", "Nutrição", "Desqualificado"]);
+    const semDias = { funnel: funnel.filter((f) => !/^Dia/.test(f.stage)) };
+    eq("sem colunas: Retomar do Novo lead promove pra Qualificando", names(semDias, { id: "l1", stage: "Novo lead" }), ["retry→Qualificando", "Call agendada", "Desqualificado"]);
+    eq("override por roteiro continua ganhando", nextKindsFor({ funnel, nextSteps: { dia4: ["desqualificado"] } }, "dia4", "contato"), ["desqualificado"]);
+    console.log("✓ cadencia-dias");
+  } catch (err) {
+    console.error(`✗ cadencia-dias: ${err.message}`);
+    failed++;
+  }
+
   // Contrato preenchido (lib/contracts.js): é o papel que vai pra assinatura e o
   // MESMO snapshot reimpresso na ficha do cliente, então a montagem do HTML vale
   // teste. Valor digitado entra ESCAPADO (contrato não executa HTML de campo) e

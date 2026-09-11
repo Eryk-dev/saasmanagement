@@ -10,7 +10,7 @@ import { bizDay } from "../lib/format.js";
 import { businessDaysBetween } from "../components/period-picker.jsx";
 import { scaledGoal } from "../components/team-cards.jsx";
 import { useData } from "../data.jsx";
-import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf, nextKindsFor, nurtureStage } from "../lib/funnel.js";
+import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf, nextKindsFor, nurtureStage, hasDayStages } from "../lib/funnel.js";
 import { allUsers, currentUser, displayName, userById, usersByRole } from "../lib/users.js";
 import { useProposalTemplates } from "../components/ProposalActions.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -1794,7 +1794,9 @@ export function destinationsFor(saasCfg, lead) {
   // assim 2ª tentativa, 3ª tentativa, 1º/2º/3º contato têm passos independentes.
   for (const k of nextKindsFor(saasCfg, scriptKeyFor(saasCfg, lead), curKind)) {
     if (k === "retry") {
-      const promote = curKind === "novo";
+      // Com as colunas de dia, o toque no Novo lead NÃO promove (o relógio leva
+      // pro Dia 2 e só a resposta do lead leva pra Qualificando).
+      const promote = curKind === "novo" && !hasDayStages(saasCfg);
       const target = promote ? (stageByKind(saasCfg, "qualificacao") || curStage) : curStage;
       out.push({ retry: true, promote, stage: target, kind: promote ? "qualificacao" : curKind });
       continue;

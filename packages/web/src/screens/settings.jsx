@@ -4,7 +4,7 @@ import { CAREER_LEVELS } from "../lib/levels.js";
 import { EmptyState, PrimaryButton, Avatar } from "../atoms.jsx";
 import { useData } from "../data.jsx";
 import { api } from "../lib/api.js";
-import { KINDS, KIND_IDS, guessKind, lossReasonsOf, stageKind, stageByKind, phaseOf, NEXT_KINDS, NEXT_STEP_KINDS, NEXT_STEP_LABELS, nurtureStage } from "../lib/funnel.js";
+import { KINDS, KIND_IDS, guessKind, lossReasonsOf, stageKind, stageByKind, phaseOf, NEXT_KINDS, NEXT_STEP_KINDS, NEXT_STEP_LABELS, nurtureStage, nextKindsFor } from "../lib/funnel.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { DEFAULT_SCRIPTS, SCRIPT_CATALOG, catalogStageRow, isNoShowStage } from "../lib/scripts.js";
 import { usersByRole, roleScreens, isUniversalScreen } from "../lib/users.js";
@@ -372,7 +372,9 @@ function NextStepsSettings({ s }) {
   // Estado por roteiro: destinos disponíveis, ligados primeiro (na ordem salva)
   // e desligados depois. Sem override salvo, parte do default do kind da etapa.
   const initFor = (item) => {
-    const chosen = (s.nextSteps?.[item.key] || NEXT_KINDS[item.kind] || []).filter((d) => avail.includes(d));
+    // Mesma resolução do Meu dia (override por roteiro, senão o default do
+    // kind, e a lista da cadência nas colunas de dia).
+    const chosen = nextKindsFor(s, item.key, item.kind).filter((d) => avail.includes(d));
     const rest = avail.filter((d) => !chosen.includes(d));
     return [...chosen.map((d) => ({ kind: d, on: true })), ...rest.map((d) => ({ kind: d, on: false }))];
   };

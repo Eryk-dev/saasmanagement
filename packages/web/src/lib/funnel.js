@@ -127,6 +127,16 @@ export function nurtureStage(saasCfg) {
   return funnelOf(saasCfg).find((f) => f && isNurtureStage(f.stage))?.stage || "";
 }
 
+// Colunas de DIA da cadência de 7 dias (API: cadencia-stages.js): "Dia 2" …
+// "Dia 7" entre o Novo lead (Dia 1) e o Qualificando. O relógio move o card
+// quando vira o dia e só a RESPOSTA do lead promove pra Qualificando; o toque
+// do SDR não promove. Identidade pelo nome, como No show e Nutrição.
+export function dayStageNumber(stage) {
+  const m = /^dia\s*(\d{1,2})$/i.exec(String(stage || "").trim());
+  return m ? Number(m[1]) : 0;
+}
+export const hasDayStages = (saasCfg) => funnelOf(saasCfg).some((f) => dayStageNumber(f?.stage) > 0);
+
 // Régua de progresso (até o ganho, inclusive) — o que o forecast/funil linear usa.
 export function ladderOf(saasCfg) {
   const names = funnelOf(saasCfg).map((f) => f.stage);
@@ -193,6 +203,10 @@ export function lossReasonLabel(saasCfg, id) {
 export const NEXT_KINDS = {
   novo:          ["retry", "call", "desqualificado"],
   contato:       ["retry", "call", "desqualificado"],   // Nutrição: reativar
+  // Colunas de dia (e o Novo lead quando o funil as tem): o toque registra a
+  // tentativa sem promover; "Qualificando" é o botão de "ele respondeu" (por
+  // ligação, porque a resposta no WhatsApp promove sozinha no servidor).
+  dia:           ["retry", "qualificacao", "call", "nutricao", "desqualificado"],
   qualificacao:  ["retry", "call", "contato", "desqualificado"], // contato = Nutrição
   call:          ["retry", "noshow", "followup", "ganho", "desqualificado"], // noshow = cliente furou
   // Fechar no follow-up pode ir pro Ganho ou DIRETO pra Integração (pedido do
@@ -215,9 +229,10 @@ export const NEXT_KINDS = {
 // situação, com rótulo amigável. `nutricao` é pseudo-kind (como `noshow`):
 // resolve pela etapa NOMEADA Nutrição, porque `contato` cai na 1ª etapa de
 // contato do funil (Dia 2 na LeverAds, desde as etapas de cadência).
-export const NEXT_STEP_KINDS = ["retry", "call", "noshow", "contato", "nutricao", "followup", "integracao", "posvenda", "ganho", "desqualificado"];
+export const NEXT_STEP_KINDS = ["retry", "qualificacao", "call", "noshow", "contato", "nutricao", "followup", "integracao", "posvenda", "ganho", "desqualificado"];
 export const NEXT_STEP_LABELS = {
   retry:          "Retomar (escolhe o dia e a hora)",
+  qualificacao:   "Qualificando (o lead respondeu)",
   call:           "Agendar call",
   noshow:         "No show (cliente furou)",
   contato:        "Contato (1ª etapa de contato do funil)",
@@ -236,6 +251,9 @@ export const NEXT_STEP_LABELS = {
 export function nextKindsFor(saasCfg, scriptKey, fallbackKind) {
   const over = saasCfg?.nextSteps?.[scriptKey];
   if (Array.isArray(over)) return over.filter((k) => NEXT_STEP_KINDS.includes(k));
+  // Funil com colunas de dia: o Novo lead (Dia 1) e cada Dia N usam a lista da
+  // cadência, não a do kind (contato/novo), porque ali o toque não promove.
+  if (hasDayStages(saasCfg) && (scriptKey === "novo" || /^dia\d+$/.test(String(scriptKey || "")))) return NEXT_KINDS.dia;
   return NEXT_KINDS[fallbackKind] || NEXT_KINDS[scriptKey] || ["desqualificado"];
 }
 
