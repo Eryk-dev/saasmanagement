@@ -59,6 +59,12 @@ export function TaskColumn({ col, idx, count, cards, hiddenCount, usersById, lab
     { label: "Excluir coluna", danger: true, disabled: count <= 1, onClick: () => colActions.remove(col.key, col.name, cards.length) },
   ];
 
+  const virtualItems = [
+    { label: "Recolher coluna", onClick: () => colActions.collapse(col.key, true) },
+    { label: "Ocultar colunas vazias", checked: hideEmpty, onClick: () => colActions.toggleHideEmpty() },
+    { sep: true },
+    { label: "Voltar a agrupar por coluna", onClick: () => colActions.ungroup() },
+  ];
   const ph = over && placeholder.index >= 0 && dragging ? <div key="ph" style={{ height: dragging.height || 56, border: "1px dashed var(--accent-line)", borderRadius: "var(--r-3)", background: "var(--accent-soft)", flexShrink: 0 }} /> : null;
   const items = [];
   shown.forEach((t, i) => {
@@ -77,14 +83,14 @@ export function TaskColumn({ col, idx, count, cards, hiddenCount, usersById, lab
       <div className="tk-col-head" style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 8px 6px 12px", flexShrink: 0 }}>
         {col.color && <span style={{ width: 8, height: 8, borderRadius: 2, background: col.color, flexShrink: 0 }} />}
         <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
-          <ColumnName name={col.name} editing={editing} onStart={() => setEditing(true)} onSave={(v) => { setEditing(false); if (v != null && v.trim() && v.trim() !== col.name) colActions.rename(col.key, v.trim()); }} />
-          <span className="mono tnum dim" style={{ fontSize: 11.5, flexShrink: 0 }}>{cards.length + (hiddenCount || 0)}</span>
+          <ColumnName name={col.name} editing={editing && !col.virtual} onStart={() => { if (!col.virtual) setEditing(true); }} onSave={(v) => { setEditing(false); if (v != null && v.trim() && v.trim() !== col.name) colActions.rename(col.key, v.trim()); }} />
+          <span className="mono tnum dim" style={{ fontSize: 11.5, flexShrink: 0 }} title={hiddenCount ? `${hiddenCount} escondida(s) pelo filtro ou pela busca` : undefined}>{cards.length}{hiddenCount ? <span style={{ opacity: 0.7 }}> +{hiddenCount}</span> : null}</span>
         </div>
         <span className="tk-hover" style={{ display: "inline-flex", gap: 2, flexShrink: 0 }}>
-          <button type="button" title="Adicionar tarefa no topo" aria-label="Adicionar tarefa no topo" onClick={() => colActions.composer(col.key, "top")} style={{ width: 26, height: 26, borderRadius: 6, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="plus" size={14} /></button>
-          <button type="button" title="Mais ações da coluna" aria-label="Mais ações da coluna" onClick={(e) => setMenu(e.currentTarget.getBoundingClientRect())} style={{ width: 26, height: 26, borderRadius: 6, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="more" size={14} /></button>
+          {(!col.virtual || col.dropPatch) && <button type="button" title="Adicionar tarefa no topo" aria-label="Adicionar tarefa no topo" onClick={() => colActions.composer(col.key, "top")} style={{ width: 26, height: 26, borderRadius: 6, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="plus" size={14} /></button>}
+          <button type="button" title={col.virtual ? "Opções do grupo" : "Mais ações da coluna"} aria-label={col.virtual ? "Opções do grupo" : "Mais ações da coluna"} onClick={(e) => setMenu(e.currentTarget.getBoundingClientRect())} style={{ width: 26, height: 26, borderRadius: 6, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="more" size={14} /></button>
         </span>
-        {menu && <Menu anchor={menu} items={menuItems} onClose={() => setMenu(null)} title={col.name} />}
+        {menu && <Menu anchor={menu} items={col.virtual ? virtualItems : menuItems} onClose={() => setMenu(null)} title={col.name} />}
       </div>
       <div ref={listRef} data-col-list="1" {...dnd.listDropProps(col.key, listRef, { canReorder: sortManual })}
         style={{ flex: 1, minHeight: 60, overflowY: "auto", padding: "2px 10px 6px", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -95,10 +101,10 @@ export function TaskColumn({ col, idx, count, cards, hiddenCount, usersById, lab
         {cards.length === 0 && !composer && !ph && <div className="mono dim" style={{ fontSize: 11, textAlign: "center", padding: "22px 0" }}>{dragging ? "Solte aqui" : "vazio"}</div>}
         {composer && composer.position === "bottom" && <NewTaskCard onSave={(title) => actions.create(col.key, title, "bottom")} onCancel={() => colActions.composer(null)} />}
       </div>
-      <button type="button" onClick={() => colActions.composer(col.key, "bottom")} style={{ display: "flex", alignItems: "center", gap: 6, margin: "0 6px 6px", padding: "8px 8px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 500, color: "var(--fg-3)", textAlign: "left", flexShrink: 0 }}
+      {(!col.virtual || col.dropPatch) && <button type="button" onClick={() => colActions.composer(col.key, "bottom")} style={{ display: "flex", alignItems: "center", gap: 6, margin: "0 6px 6px", padding: "8px 8px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 500, color: "var(--fg-3)", textAlign: "left", flexShrink: 0 }}
         onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; e.currentTarget.style.color = "var(--fg-1)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--fg-3)"; }}>
         <Icon name="plus" size={14} /> Adicionar tarefa
-      </button>
+      </button>}
     </div>
   );
 }
