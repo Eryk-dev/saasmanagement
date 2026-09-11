@@ -1714,7 +1714,7 @@ export async function ensureClassificacaoV2(repo) {
   }
   if (atual.enabled !== true) return 0;
 
-  const { LEAD_QUESTIONS_POR_PRODUTO } = await import("./lead-questions.produtos.js");
+  const { LEAD_QUESTIONS_UNIAO } = await import("./lead-questions.produtos.js");
   const { TRILHAS } = await import("./cadencia-nutricao.js");
 
   let mudou = 0;
@@ -1725,17 +1725,8 @@ export async function ensureClassificacaoV2(repo) {
   // schema do lead — o pipeline é um só.
   const produto = await repo.get("products", "leverads");
   if (produto) {
-    const uniao = [];
-    const vistas = new Set();
-    for (const qs of Object.values(LEAD_QUESTIONS_POR_PRODUTO)) {
-      for (const q of qs) {
-        if (vistas.has(q.key)) continue;
-        vistas.add(q.key);
-        uniao.push(q);
-      }
-    }
     const antes = JSON.stringify(produto.leadQuestions || []);
-    const depois = mergeLeadQuestions(produto.leadQuestions || [], { questions: uniao });
+    const depois = mergeLeadQuestions(produto.leadQuestions || [], { questions: LEAD_QUESTIONS_UNIAO });
     if (JSON.stringify(depois) !== antes) {
       await repo.update("products", "leverads", { leadQuestions: depois });
       mudou += 1;

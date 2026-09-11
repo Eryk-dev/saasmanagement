@@ -35,18 +35,6 @@ const NUCLEO = [
     ],
   },
   {
-    // Loja física virou opção desta pergunta em vez de condicional: uma tela a
-    // menos, e o número de lojas é o que interessa (o ICP físico é porte por
-    // SKU, não por anúncio).
-    key: "channel", label: "Você vende *só online* ou também tem loja física?", type: "select", required: true,
-    options: [
-      { value: "online", label: "Só online" },
-      { value: "fisico-1", label: "Online + 1 loja física" },
-      { value: "fisico-2-3", label: "Online + 2 a 3 lojas" },
-      { value: "fisico-4", label: "Online + 4 ou mais lojas" },
-    ],
-  },
-  {
     key: "accounts", label: "Quantas *contas de anúncio* você opera?", type: "select", required: true,
     options: [
       { value: "1", label: "1 conta" },
@@ -67,19 +55,12 @@ const NUCLEO = [
     ],
   },
   {
+    // Única aberta do formulário. Com a pergunta do "o que já tentou" fora, é
+    // daqui que sai TODA a leitura de intenção — por isso o peso dela na régua
+    // subiu (ver qualificacao() em classificacao.js).
     key: "trigger", label: "O que fez você procurar uma solução *agora*?", type: "textarea", required: true,
     placeholder: "Pode ser direto — o que mudou ou o que travou.",
     help: "Quanto mais específico, mais rápido conseguimos te ajudar.",
-  },
-  {
-    key: "tried", label: "O que você *já tentou* pra resolver isso?", type: "multiselect", required: false,
-    options: [
-      { value: "nada", label: "Nada ainda" },
-      { value: "manual", label: "Faço na mão" },
-      { value: "erp", label: "Uso ERP (Bling, Tiny…)" },
-      { value: "outra-ferramenta", label: "Uso outra ferramenta de anúncio" },
-      { value: "agencia", label: "Contratei agência ou freelancer" },
-    ],
   },
   {
     key: "orders", label: "Quantos *pedidos por mês*, aproximadamente?", type: "select", required: true,
@@ -103,6 +84,31 @@ const NUCLEO = [
   },
 ];
 
+// Loja física só no formulário de OEM: é lá que ela muda alguma coisa (o
+// lojista com catálogo grande e pouco anúncio é o lead de maior potencial da
+// linha). Nos outros dois seria pergunta sem consequência.
+//
+// O "quantas unidades?" é condicional via BRANCHING (`to`), que é o mecanismo
+// que o builder tem — quem responde "só online" pula direto pra pergunta de
+// contas; quem tem loja física cai na de unidades.
+const FISICO = [
+  {
+    key: "channel", label: "Você vende *só online* ou também tem loja física?", type: "select", required: true,
+    options: [
+      { value: "online", label: "Só online", to: "accounts" },
+      { value: "online-fisico", label: "Online + loja física" },
+    ],
+  },
+  {
+    key: "stores", label: "Quantas unidades?", type: "select", required: true,
+    options: [
+      { value: "1", label: "1 loja" },
+      { value: "2-3", label: "2 a 3 lojas" },
+      { value: "4+", label: "4 ou mais" },
+    ],
+  },
+];
+
 // Contato por último: os campos que mais custam vêm depois do investimento.
 const CONTATO = [
   { key: "nome", label: "Como você se chama?", type: "text", required: true, placeholder: "Seu primeiro nome" },
@@ -110,68 +116,6 @@ const CONTATO = [
   { key: "email", label: "E o seu melhor e-mail?", type: "email", required: true, stack: true },
 ];
 
-const ESPECIFICAS = {
-  oem: [
-    {
-      key: "partsType", label: "Você trabalha com peça *nova*, usada, ou as duas?", type: "select", required: true,
-      options: [
-        { value: "nova", label: "Nova" },
-        { value: "usada", label: "Usada" },
-        { value: "ambas", label: "As duas" },
-      ],
-    },
-    {
-      key: "skus", label: "Quantos *SKUs* você tem cadastrados no estoque ou ERP?", type: "select", required: true,
-      help: "É o tamanho do catálogo que dá pra colocar no ar.",
-      options: [
-        { value: "0-1000", label: "Até 1.000" },
-        { value: "1000-5000", label: "1.000 a 5.000" },
-        { value: "5000-20000", label: "5.000 a 20.000" },
-        { value: "20000-50000", label: "20.000 a 50.000" },
-        { value: "50000+", label: "Mais de 50.000" },
-      ],
-    },
-  ],
-  ads: [
-    {
-      key: "marketplaces", label: "Em quais marketplaces você *já vende*?", type: "multiselect", required: true,
-      options: [
-        { value: "ml", label: "Mercado Livre" },
-        { value: "shopee", label: "Shopee" },
-        { value: "amazon", label: "Amazon" },
-        { value: "magalu", label: "Magalu" },
-        { value: "outro", label: "Outro" },
-      ],
-    },
-    {
-      key: "replicaHoje", label: "Você *replica anúncio* entre contas hoje?", type: "select", required: true,
-      options: [
-        { value: "nao", label: "Não replico" },
-        { value: "manual", label: "Faço na mão" },
-        { value: "ferramenta", label: "Uso uma ferramenta" },
-      ],
-    },
-  ],
-  price: [
-    {
-      key: "repriceFreq", label: "Com que frequência você *ajusta preço*?", type: "select", required: true,
-      options: [
-        { value: "nunca", label: "Não ajusto" },
-        { value: "as-vezes", label: "Quando lembro" },
-        { value: "semanal", label: "Toda semana" },
-        { value: "diario", label: "Todo dia" },
-        { value: "varias-dia", label: "Várias vezes ao dia" },
-      ],
-    },
-    {
-      key: "repriceTool", label: "Já usa alguma *ferramenta de precificação*?", type: "select", required: true,
-      options: [
-        { value: "nao", label: "Não" },
-        { value: "sim", label: "Sim" },
-      ],
-    },
-  ],
-};
 
 // Headlines viradas pra GANHO de performance, não pra redução de tempo
 // operacional — é a direção nova da comunicação dos anúncios.
@@ -197,9 +141,9 @@ const WELCOME = {
 };
 
 const PREFILL = {
-  oem: "Oi, me chamo {{nome}} e quero saber mais sobre o Lever OEM. Minha operação: {{niche}}, {{skus}} SKUs no estoque, {{accounts}} contas.",
+  oem: "Oi, me chamo {{nome}} e quero saber mais sobre o Lever OEM. Minha operação: {{niche}}, {{accounts}} contas, {{listings}} anúncios ativos.",
   ads: "Oi, me chamo {{nome}} e quero saber mais sobre o Lever Ads. Minha operação: {{niche}}, {{accounts}} contas, {{listings}} anúncios ativos.",
-  price: "Oi, me chamo {{nome}} e quero saber mais sobre o Lever Price. Minha operação: {{niche}}, {{listings}} anúncios ativos, ajusto preço {{repriceFreq}}.",
+  price: "Oi, me chamo {{nome}} e quero saber mais sobre o Lever Price. Minha operação: {{niche}}, {{listings}} anúncios ativos, {{orders}} pedidos por mês.",
 };
 
 const NOMES = { oem: "Diagnóstico Lever OEM", ads: "Diagnóstico Lever Ads", price: "Diagnóstico Lever Price" };
@@ -218,10 +162,11 @@ export function formV2(linha) {
     welcome: { ...WELCOME[linha] },
     submitLabel: "Receber meu diagnóstico",
     questions: [
-      ...NUCLEO.map((q) => ({ ...q })),
-      ...ESPECIFICAS[linha].map((q) => ({ ...q })),
-      ...CONTATO.map((q) => ({ ...q })),
-    ],
+      NUCLEO[0],                                        // nicho
+      ...(linha === "oem" ? FISICO : []),               // loja física: só no OEM
+      ...NUCLEO.slice(1),                               // contas → ticket
+      ...CONTATO,
+    ].map((q) => ({ ...q })),
     thanks: {
       title: "Seu perfil foi *aprovado*.",
       subtitle: "Vamos te levar pro WhatsApp com o resumo do seu perfil. É só enviar a mensagem que já vai pronta que nosso time responde na sequência.",

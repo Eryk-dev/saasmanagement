@@ -112,13 +112,19 @@ test("trava do OEM: quem entra por OEM não recebe Price no primeiro contato", (
   assert.notEqual(r.crossSell, "price");
 });
 
-test("porta errada é detectada pelo núcleo comum", () => {
-  const r = classificar({
-    formProduct: "ads", niche: "autopecas", partsType: "nova",
-    skus: "50000+", accounts: "1", listings: "0-500",
-  });
+test("porta errada: autopeças que entrou por um formulário que não é o de OEM", () => {
+  const r = classificar({ formProduct: "ads", niche: "autopecas", accounts: "1", listings: "0-500" });
   assert.equal(r.candidatoOem, true);
-  assert.equal(r.portaErrada, true);
+  assert.equal(r.portaErrada, true, "o SDR precisa saber que o pitch certo é OEM");
+
+  // Pelo formulário certo não há divergência a avisar.
+  const certo = classificar({ formProduct: "oem", niche: "autopecas", accounts: "1", listings: "0-500" });
+  assert.equal(certo.portaErrada, false);
+
+  // Nicho fora de autopeças nunca é candidato a OEM, entre por onde entrar.
+  const outro = classificar({ formProduct: "ads", niche: "moda", accounts: "1", listings: "0-500" });
+  assert.equal(outro.candidatoOem, false);
+  assert.equal(outro.portaErrada, false);
 });
 
 // ── Interação com o catálogo v2 (#880) ────────────────────────────────────
@@ -183,4 +189,42 @@ test("sem lista de perguntas, infere pela presença dos campos", () => {
 test("porte alto sem intenção medida continua indo pra ligação, não pra nutrição", () => {
   const r = classificar({ accounts: "10+", listings: "10000+" }, { asked: ["accounts", "listings"] });
   assert.equal(r.acao, "ligar-hoje");
+});
+
+// ── Régua adaptativa (formulários v2 com uma aberta só) ───────────────────
+test("com uma aberta só, a faixa 'alta' continua alcançável", () => {
+  // Sem rebalancear, o teto cairia pra 70 e ≥70 nunca aconteceria — ninguém
+  // seria prioridade e a tabela de ação colapsaria em média/baixa.
+  const asked = ["niche", "accounts", "listings", "trigger", "orders", "ticket"];
+  const q = qualificacao({ trigger: "abri a 2a conta esse mes e ja tenho 8000 anuncios pra replicar" }, asked);
+  assert.ok(q.total >= 70, `melhor resposta possível deu ${q.total}, e a faixa alta exige 70`);
+  assert.ok(q.total <= 100);
+  assert.equal(q.tentou, 0, "não pontua pergunta que o formulário não faz");
+});
+
+test("lead que TEM a resposta do 'já tentou' segue na régua cheia", () => {
+  const asked = ["trigger", "tried"];
+  const q = qualificacao({ trigger: "abri a 2a conta esse mes", tried: ["erp"], triedOther: "Bling" }, asked);
+  assert.ok(q.tentou > 0, "quem respondeu não pode perder os pontos");
+  assert.ok(q.total <= 100);
+});
+
+test("resposta vazia continua valendo zero nas duas réguas", () => {
+  assert.equal(qualificacao({ trigger: "" }, ["trigger"]).total, 0);
+  assert.equal(qualificacao({ trigger: "" }, ["trigger", "tried"]).total, 0);
+});
+
+test("a linha vem do formulário; sem ele, cai no ranking", () => {
+  const base = { niche: "moda", accounts: "7-10", listings: "10000+" };
+  assert.equal(classificar({ ...base, formProduct: "price" }).primario, "price");
+  assert.equal(classificar({ ...base, formProduct: "oem" }).primario, "oem");
+  assert.ok(classificar(base).primario, "lead sem formProduct ainda precisa de uma linha");
+});
+
+test("lead de OEM sem as perguntas específicas não fica sem porte", () => {
+  // O formulário enxuto não pergunta SKU, então porteOem não resolve sozinho —
+  // o porte cai no eixo genérico de contas × anúncios em vez de sumir.
+  const r = classificar({ formProduct: "oem", niche: "autopecas", accounts: "7-10", listings: "5000-10000" });
+  assert.equal(r.primario, "oem");
+  assert.ok(r.porte, "sem porte o lead sumiria da fila do SDR");
 });

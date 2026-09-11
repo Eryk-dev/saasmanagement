@@ -50,8 +50,13 @@ test("com a flag ligada: perguntas entram e sequências nascem inativas", async 
   assert.ok(n > 0);
 
   const chaves = (await repo.get("products", "leverads")).leadQuestions.map((q) => q.key);
-  for (const k of ["niche", "channel", "trigger", "tried", "orders", "ticket", "skus", "partsType", "repriceFreq"]) {
+  for (const k of ["niche", "channel", "stores", "accounts", "listings", "trigger", "orders", "ticket"]) {
     assert.ok(chaves.includes(k), `faltou a pergunta ${k}`);
+  }
+  // Contato não entra: nome/telefone/e-mail já são campos próprios do lead, e
+  // repetir mostraria o telefone duas vezes no card.
+  for (const k of ["nome", "whatsapp", "email"]) {
+    assert.ok(!chaves.includes(k), `${k} não deveria virar pergunta de qualificação`);
   }
 
   // Nutrição tem flag própria: ligar as perguntas não pode arrastar o robô.

@@ -219,45 +219,64 @@ export function perguntouIntencao(lead, asked) {
   return lead?.trigger !== undefined || lead?.tried !== undefined;
 }
 
-export function qualificacao(lead) {
+export function qualificacao(lead, asked) {
   const gatilho = String(lead?.trigger || "").trim();
   const tentou = Array.isArray(lead?.tried) ? lead.tried : (lead?.tried ? [lead.tried] : []);
   const tentouTexto = String(lead?.triedOther || "").trim();
 
-  // Gatilho (0-30): evento ou marcador de tempo nomeado é o melhor preditor de
-  // urgência que existe num formulário.
+  // A régua se ADAPTA ao que o formulário pergunta. Os formulários v2 ficaram
+  // com uma aberta só (10/09), e manter os pesos antigos travaria o teto em 70
+  // — a faixa "alta" (≥70) viraria inalcançável e ninguém nunca seria
+  // prioridade. Lead que TEM a resposta do "já tentou" (vindo de API ou de um
+  // formulário antigo) segue pontuando pela régua cheia.
+  const temTentou = perguntouTentou(lead, asked);
+  const PESOS = temTentou
+    ? { gatilhoBase: 10, gatilhoTempo: 12, gatilhoNum: 8, espNum: 10, espPessoa: 9, espFerr: 6, compGatilho: 8, compTentou: 7 }
+    : { gatilhoBase: 15, gatilhoTempo: 18, gatilhoNum: 12, espNum: 15, espPessoa: 12, espFerr: 8, compGatilho: 20, compTentou: 0 };
+
+  // Gatilho: evento ou marcador de tempo nomeado é o melhor preditor de
+  // urgência que cabe num formulário.
   let pGatilho = 0;
   if (gatilho) {
-    pGatilho = 10;
-    if (RE_TEMPO.test(gatilho)) pGatilho += 12;
-    if (RE_NUMERO.test(gatilho)) pGatilho += 8;
+    pGatilho = PESOS.gatilhoBase;
+    if (RE_TEMPO.test(gatilho)) pGatilho += PESOS.gatilhoTempo;
+    if (RE_NUMERO.test(gatilho)) pGatilho += PESOS.gatilhoNum;
   }
 
-  // Já tentou (0-30): quem já pagou por solução compra de novo; e nomear a
-  // ferramenta entrega o concorrente pro SDR entrar sabendo contra quem fala.
+  // Já tentou: quem já pagou por solução compra de novo, e nomear a ferramenta
+  // entrega o concorrente pro SDR entrar sabendo contra quem fala.
   let pTentou = 0;
-  if (tentou.length || tentouTexto) {
+  if (temTentou && (tentou.length || tentouTexto)) {
     const soNada = tentou.length === 1 && tentou[0] === "nada";
     pTentou = soNada ? 8 : 18;
     if (tentou.some((t) => TENTATIVAS_FORTES.has(t))) pTentou += 8;
     if (RE_FERRAMENTA.test(tentouTexto)) pTentou += 4;
   }
 
-  // Especificidade (0-25): número próprio e 1ª pessoa separam quem fala da
-  // PRÓPRIA operação de quem repete o texto do anúncio.
+  // Especificidade: número próprio e 1ª pessoa separam quem fala da PRÓPRIA
+  // operação de quem repete o texto do anúncio.
   let pEspec = 0;
   const livre = [gatilho, tentouTexto].join(" ");
-  if (RE_NUMERO.test(livre)) pEspec += 10;
-  if (RE_PRIMEIRA_PESSOA.test(livre)) pEspec += 9;
-  if (RE_FERRAMENTA.test(livre)) pEspec += 6;
+  if (RE_NUMERO.test(livre)) pEspec += PESOS.espNum;
+  if (RE_PRIMEIRA_PESSOA.test(livre)) pEspec += PESOS.espPessoa;
+  if (RE_FERRAMENTA.test(livre)) pEspec += PESOS.espFerr;
 
-  // Completude (0-15): respondeu as abertas em vez de pular.
+  // Completude: respondeu a aberta em vez de pular.
   let pCompleto = 0;
-  if (gatilho) pCompleto += 8;
-  if (tentou.length || tentouTexto) pCompleto += 7;
+  if (gatilho) pCompleto += PESOS.compGatilho;
+  if (temTentou && (tentou.length || tentouTexto)) pCompleto += PESOS.compTentou;
 
   const total = Math.min(100, pGatilho + pTentou + pEspec + pCompleto);
   return { total, gatilho: pGatilho, tentou: pTentou, especificidade: pEspec, completude: pCompleto };
+}
+
+// O formulário de origem tem a pergunta do "já tentou"? Decide qual régua vale.
+export function perguntouTentou(lead, asked) {
+  if (Array.isArray(asked) || asked instanceof Set) {
+    const set = asked instanceof Set ? asked : new Set(asked);
+    return set.has("tried");
+  }
+  return lead?.tried !== undefined || lead?.triedOther !== undefined;
 }
 
 export const faixaIntencao = (nota) => (nota >= 70 ? "alta" : nota >= 40 ? "media" : "baixa");
@@ -305,19 +324,35 @@ export function classificar(lead, { asked } = {}) {
       return dif !== 0 ? dif : PREFERENCIA.indexOf(a[0]) - PREFERENCIA.indexOf(b[0]);
     });
 
-  let primario = ranking[0]?.[0] || null;
-  let crossSell = ranking[1]?.[0] || null;
+  // A LINHA vem do formulário que o lead preencheu, não do score. Com os
+  // formulários v2 enxutos (10/09) as perguntas específicas de cada linha
+  // saíram, então não há mais dado pra OEM ou Price pontuarem sozinhos — e não
+  // precisa haver: quem clicou no anúncio de OEM e preencheu o form de OEM já
+  // declarou a linha. O score decide o NÍVEL, que é o que ele sabe medir.
+  // Sem `formProduct` (lead de API, importação), cai no ranking como antes.
+  let primario = lead?.formProduct && portes[lead.formProduct] !== undefined
+    ? lead.formProduct
+    : ranking[0]?.[0] || null;
+  let crossSell = ranking.find(([k]) => k !== primario)?.[0] || null;
 
   // Trava do OEM: quem entra por OEM não compra Price direto (decisão
   // comercial 09/2026). O Price fica no backlog, nunca no primeiro contato.
   if (primario === "oem" && crossSell === "price") crossSell = ranking[2]?.[0] || null;
 
-  const portaErrada = Boolean(lead?.formProduct && primario && lead.formProduct !== primario);
+  // "Porta errada" mudou de sentido quando a linha passou a vir do formulário:
+  // comparar formProduct com o primário virou tautologia. O que sobra — e é o
+  // que o SDR precisa saber — é o lead de AUTOPEÇAS que entrou por um
+  // formulário que não é o de OEM. Ele clicou no criativo de Ads, mas o pitch
+  // certo é OEM. É o único cruzamento que o núcleo comum ainda enxerga.
+  const portaErrada = Boolean(candidatoOem && lead?.formProduct && lead.formProduct !== "oem");
 
   const medida = perguntouIntencao(lead, asked);
-  const q = medida ? qualificacao(lead) : null;
+  const q = medida ? qualificacao(lead, asked) : null;
   const intencao = medida ? faixaIntencao(q.total) : "nao-medida";
-  const letra = primario ? portes[primario] : null;
+  // Porte da linha escolhida; se ela não tem eixo próprio preenchido (form
+  // enxuto), cai no eixo genérico de contas × anúncios, que todo formulário
+  // pergunta. Sem isso o lead de OEM ficaria sem porte e sumiria da fila.
+  const letra = primario ? (portes[primario] || portes.ads || null) : null;
   // Sem intenção medida a tabela de cruzamento não se aplica: cai na coluna
   // neutra (a do meio), que é o tratamento honesto pra quem não foi perguntado.
   const acao = letra ? ACOES[grupoDe(letra)][medida ? intencao : "media"] : "nutrir";
