@@ -118,3 +118,27 @@ test("porta errada é detectada pelo núcleo comum", () => {
   assert.equal(r.candidatoOem, true);
   assert.equal(r.portaErrada, true);
 });
+
+// ── Interação com o catálogo v2 (#880) ────────────────────────────────────
+// O catálogo traduz faixa de contas → pacote com `map[accounts] || "essencial"`.
+// Chave desconhecida não erra: cai no plano mais barato. Com as faixas
+// recortadas isso reproporia Essencial pra lead de 7-10 contas.
+test("catálogo: toda faixa de conta (nova e legada) resolve um pacote explícito", async () => {
+  const { pkgOf } = await import("../src/proposal-catalog.js");
+  const { ACCOUNTS_OPTIONS } = await import("../src/classificacao.js");
+
+  const legadas = ["1", "2", "3-5", "6-10", "10+"];
+  const novas = ACCOUNTS_OPTIONS.map((o) => o.value);
+
+  for (const acc of [...legadas, ...novas]) {
+    const pkg = pkgOf({}, { accounts: acc });
+    assert.ok(["essencial", "escala", "enterprise"].includes(pkg), `faixa ${acc} não resolveu pacote`);
+  }
+
+  // O caso que motivou o teste: operação grande não pode cair no mais barato.
+  assert.notEqual(pkgOf({}, { accounts: "7-10" }), "essencial", "7-10 contas caindo em Essencial");
+  assert.equal(pkgOf({}, { accounts: "10+" }), "enterprise");
+  // Teto do Essencial é 3 contas: quem tem 4 já estourou.
+  assert.equal(pkgOf({}, { accounts: "2-3" }), "essencial");
+  assert.equal(pkgOf({}, { accounts: "4-6" }), "escala");
+});

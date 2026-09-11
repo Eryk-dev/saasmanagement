@@ -57,7 +57,20 @@ const PRODUCT_KEYS = [
 ];
 // Faixa de contas do form → pacote sugerido. `calc.catalog.tierByAccounts`
 // (banco) sobrescreve sem deploy.
-const DEFAULT_TIER_BY_ACCOUNTS = { "1": "essencial", "2": "essencial", "3-5": "essencial", "6-10": "escala", "10+": "enterprise" };
+// Leitura dupla das faixas de conta, igual ao resto da régua (classificacao.js).
+// Sem as chaves novas o lookup dá undefined e cai no `|| "essencial"` do pkgOf
+// — um lead de 7-10 contas receberia proposta do plano mais barato, silenciosamente.
+//
+// Os cortes novos seguem o limite REAL dos pacotes: Essencial tem teto de 3
+// contas, Escala de 7. Por isso `4-6` vai pra escala, e não pra essencial como
+// a faixa antiga `3-5` fazia — quem tem 4 contas já estourou o Essencial.
+// Isso depende da decisão comercial ainda aberta (a conta extra a R$100 vale no
+// Essencial?); se a resposta for sim, `calc.catalog.tierByAccounts` sobrescreve
+// isto pelo banco, sem deploy.
+const DEFAULT_TIER_BY_ACCOUNTS = {
+  "1": "essencial", "2-3": "essencial", "4-6": "escala", "7-10": "escala", "10+": "enterprise",
+  "2": "essencial", "3-5": "essencial", "6-10": "escala", // legado
+};
 const DEFAULT_LINES = {
   oem: { name: "Lever OEM", enterprise: "sob consulta" },
   ads: { name: "Lever Ads", enterprise: "sob consulta" },
