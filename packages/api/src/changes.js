@@ -29,6 +29,14 @@ const SILENT = new Set([
   "mp_payments", "mp_preapprovals", "social_stories",
 ]);
 
+// Coleções que EMITEM o evento mas não devem recarregar o SEED do SPA: a tela
+// dona faz fetch próprio ao receber o `cockpit-change` (app.jsx). Diferente do
+// SILENT (que não emite nada): aqui a tela precisa saber que mudou.
+//   activities     timeline do lead (o drawer refaz o fetch sozinho)
+//   task_events    atividade de uma tarefa (o painel da tarefa refaz o fetch)
+//   notifications  caixa de entrada (o sino refaz o fetch)
+export const QUIET = new Set(["activities", "task_events", "notifications"]);
+
 let rev = 0;
 const listeners = new Set();
 

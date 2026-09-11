@@ -156,8 +156,8 @@ function App() {
     document.addEventListener("focusout", onIdle, true);
     const es = new EventSource(eventsUrl());
     es.onmessage = (m) => {
-      let rev, collection;
-      try { ({ rev, collection } = JSON.parse(m.data)); } catch { return; }
+      let rev, collection, quiet;
+      try { ({ rev, collection, quiet } = JSON.parse(m.data)); } catch { return; }
       // Tela com fetch PRÓPRIO (ex.: Mapas mentais, que fica fora do SEED)
       // escuta este evento pra reagir só à coleção dela, sem esperar o reload.
       try { window.dispatchEvent(new CustomEvent("cockpit-change", { detail: { rev, collection } })); } catch { /* fora do browser */ }
@@ -165,7 +165,9 @@ function App() {
       // Recarregar o SEED inteiro a cada toque registrado seria desperdício; se o
       // toque também mexeu no lead (denorm), o update do lead emite outro evento
       // e aí sim recarregamos.
-      if (last != null && rev !== last && collection !== "activities") schedule();
+      // `quiet` vem do servidor (changes.js QUIET): a tela dona refaz o fetch
+      // pelo cockpit-change acima e o SEED não precisa recarregar.
+      if (last != null && rev !== last && !quiet && collection !== "activities") schedule();
       last = rev;
     };
     return () => {

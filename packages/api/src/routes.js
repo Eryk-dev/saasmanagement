@@ -56,7 +56,7 @@ import { registerFinRoutes } from "./routes.fin.js";
 import { meta as defaultMetaClient } from "./meta.js";
 import { metaCapi as defaultMetaCapi } from "./meta-capi.js";
 import { discord as defaultDiscord } from "./discord.js";
-import { currentRev, subscribe as subscribeChanges } from "./changes.js";
+import { currentRev, subscribe as subscribeChanges, QUIET } from "./changes.js";
 import { isWon, isPostSaleStage, firstStage, kindOf, stageByKind, isNoShowStage } from "./stages.js";
 import { logActivity, applyStageMove, onActivityCreated, initialNextActionAt, appointmentAt, autoLeadOwner, brtToIso } from "./lead-flow.js";
 import { findDuplicateLead, dedupMergePatch } from "./lead-dedup.js";
@@ -65,6 +65,8 @@ import { registerScoreboardRoutes } from "./routes.scoreboard.js";
 import { registerDesempenhoRoutes } from "./routes.desempenho.js";
 import { registerPipelinePaceRoutes } from "./routes.pipeline-pace.js";
 import { registerEloRoutes } from "./elo.js";
+import { registerTaskRoutes } from "./routes.tasks.js";
+import { createTask, patchTask, deleteTask, sanitizeBoardPatch, TASK_DEFAULTS, BOARD_DEFAULTS, brtToday } from "./tasks-core.js";
 
 // Auth interna fica FORA do CRUD genérico: passwordHash/token de sessão nunca
 // saem pela API. Gestão via rotas dedicadas (/api/auth/*).
@@ -73,7 +75,9 @@ import { registerEloRoutes } from "./elo.js";
 // pra qualquer usuário autenticado via /api/wa_messages.
 // blog_posts também fica fora: rascunho/pauta/fontes são internos e a máquina
 // de estados (slug travado, lint, agenda) vive em routes.blog.js.
-const PRIVATE = new Set(["users", "sessions", "user_assets", "activity_assets", "task_assets", "wa_threads", "wa_messages", "wa_media", "wa_template_media", "blog_posts"]);
+// task_events/notifications: atividade e caixa de entrada das tarefas — lidas
+// só pelas rotas dedicadas (routes.tasks.js), nunca pelo CRUD genérico.
+const PRIVATE = new Set(["users", "sessions", "user_assets", "activity_assets", "task_assets", "task_events", "notifications", "wa_threads", "wa_messages", "wa_media", "wa_template_media", "blog_posts"]);
 const isExposed = (c) => COLLECTION_NAMES.includes(c) && !PRIVATE.has(c);
 
 // Collections external SaaS are allowed to write to via REST/MCP.
@@ -140,12 +144,13 @@ export const CREATE_DEFAULTS = {
   // Regra de conciliação aprendida: quando o pagador (doc > e-mail > nome) bate,
   // o Financeiro aplica a ação sozinho e não pergunta mais (routes.fin.js).
   fin_rules: { saas: "", matchField: "payerDoc", matchValue: "", action: "vincular", customer: "", reason: "", autoCount: 0, lastAppliedAt: "", createdAt: "" },
-  // Kanban de tarefas do time. `column` = KEY estável da coluna do board (renomear
-  // coluna não órfã o card); `assignees` = ids de usuários do time (collection users);
-  // comments = [{ id, author, text, at }] — o SPA faz PATCH do array inteiro.
-  // `photo` = URL /public/tasks/:id do anexo (task_assets, 1 foto por tarefa).
-  tasks: { title: "", description: "", saas: "", assignees: [], column: "", priority: "", dueDate: "", labels: [], comments: [], order: 0, photo: "" },
-  task_boards: { name: "Tarefas", columns: [] },
+  // Kanban de tarefas do time (nível Asana): modelo e regras em tasks-core.js.
+  // `column` = KEY estável da coluna do board; `completed` é a régua única de
+  // concluída; `parentId` = subtarefa; comments = [{ id, author (id), text, at,
+  // editedAt, likes, mentions }]. O POST/PATCH/DELETE genérico passa por
+  // createTask/patchTask/deleteTask (carimbos, regras de coluna, eventos).
+  tasks: TASK_DEFAULTS,
+  task_boards: BOARD_DEFAULTS,
   // Registro manual do dia por pessoa (Análise de Desempenho): social selling
   // feito pela SDR e criativos feitos pelo social media. Escrito pela rota
   // dedicada POST /api/desempenho/:saas/log (id determinístico por pessoa+dia).
@@ -268,7 +273,18 @@ function listFilter(collection, q) {
   if (collection === "subscriptions") return (s) => (!q.saas || s.saas === q.saas) && (!q.customer || s.customer === q.customer) && (!q.status || s.status === q.status);
   if (collection === "invoices") return (i) => (!q.saas || i.saas === q.saas) && (!q.customer || i.customer === q.customer) && (!q.subscription || i.subscription === q.subscription) && (!q.status || i.status === q.status);
   if (collection === "ad_insights") return (r) => (!q.saas || r.saas === q.saas) && (!q.campaign || r.campaignId === q.campaign);
-  if (collection === "tasks") return (t) => (!q.saas || t.saas === q.saas) && (!q.assignee || (t.assignees || (t.assignee ? [t.assignee] : [])).includes(q.assignee)) && (!q.column || t.column === q.column);
+  if (collection === "tasks") {
+    const today = q.due ? brtToday() : "";
+    const isOn = (v) => v === "1" || v === "true";
+    return (t) => (!q.saas || t.saas === q.saas)
+      && (!q.assignee || (t.assignees || (t.assignee ? [t.assignee] : [])).includes(q.assignee))
+      && (!q.column || t.column === q.column)
+      && (!q.parent || (q.parent === "none" ? !t.parentId : t.parentId === q.parent))
+      && (q.completed == null || !!t.completed === isOn(q.completed))
+      && (!q.label || (t.labels || []).includes(q.label))
+      && (!q.follower || (t.followers || []).includes(q.follower))
+      && (!q.due || (q.due === "today" ? t.dueDate === today : q.due === "overdue" ? (!!t.dueDate && t.dueDate < today && !t.completed) : true));
+  }
   if (collection === "activities") return (a) => (!q.lead || a.lead === q.lead) && (!q.saas || a.saas === q.saas) && (!q.type || a.type === q.type) && (!q.since || String(a.at || "") >= q.since);
   // Contratos gerados: o histórico da tela Contratos e o bloco da ficha do
   // cliente (?customer=) leem daqui — sem o filtro, a ficha mostraria contrato
@@ -425,8 +441,10 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       "x-accel-buffering": "no", // proxies (nginx/traefik) não bufferizam o stream
     });
     reply.raw.write(`data: {"rev":${currentRev()}}\n\n`);
+    // `quiet`: coleção com tela de fetch próprio (atividade/caixa de entrada
+    // das tarefas) — o SPA repassa o evento (cockpit-change) sem recarregar o SEED.
     const unsub = subscribeChanges((rev, collection) => {
-      reply.raw.write(`data: {"rev":${rev},"collection":${JSON.stringify(collection)}}\n\n`);
+      reply.raw.write(`data: ${JSON.stringify({ rev, collection, quiet: QUIET.has(collection) })}\n\n`);
     });
     // Heartbeat: proxies matam conexão ociosa; comentário SSE a cada 25s segura.
     const hb = setInterval(() => reply.raw.write(":hb\n\n"), 25000);
@@ -572,39 +590,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     return reply.type(doc.mime || "image/png").send(Buffer.from(doc.data || "", "base64"));
   });
 
-  // Foto anexada a uma TAREFA (Leo, 06/08: anexar foto ao criar a tarefa).
-  // MESMO desenho do asset de atividade acima: bytes em `task_assets`, URL
-  // pública /public/tasks/:id (id randômico é a chave, <img> não manda header)
-  // e a URL vai no campo `photo` do doc da tarefa (quem não conhece o campo
-  // simplesmente não mostra). Guard: /api/tasks já mapeia pra tela "tasks".
-  const taskAssetHandler = async (req, reply) => {
-    const file = await req.file();
-    if (!file) return reply.code(400).send({ error: "envie uma imagem (multipart, campo file)" });
-    if (!/^image\//.test(file.mimetype || "")) return reply.code(400).send({ error: "só aceito imagem" });
-    const buf = await file.toBuffer();
-    if (buf.length > 5 * 1024 * 1024) return reply.code(413).send({ error: "imagem acima de 5MB — recorte ou comprima" });
-    const id = `tka_${randomUUID()}`;
-    await repo.create("task_assets", {
-      id, mime: file.mimetype, size: buf.length, name: file.filename || "",
-      data: buf.toString("base64"), by: req.authUser?.id || "", at: new Date().toISOString(),
-    });
-    return { id, url: `/public/tasks/${id}` };
-  };
-  app.post("/api/tasks/asset", taskAssetHandler);
-  // O widget de feedback usa o MESMO asset de tarefa, mas por rota própria:
-  // /api/tasks/* exige a tela "tasks" (screens.js) e o widget vive em toda
-  // tela, pra qualquer usuário — inclusive os de telas restritas.
-  app.post("/api/feedback/asset", taskAssetHandler);
-  // Imagem colada/enviada num nó do mapa mental: mesmo asset (servido em
-  // /public/tasks/:id), rota própria porque /api/tasks exige a tela "tasks".
-  app.post("/api/mindmaps/asset", taskAssetHandler);
-
-  app.get("/public/tasks/:id", async (req, reply) => {
-    const doc = await repo.get("task_assets", req.params.id);
-    if (!doc) return reply.code(404).send({ error: "imagem não encontrada" });
-    reply.header("cache-control", "public, max-age=31536000, immutable");
-    return reply.type(doc.mime || "image/png").send(Buffer.from(doc.data || "", "base64"));
-  });
+  // Asset de tarefa (/api/tasks/asset, /api/feedback/asset, /api/mindmaps/asset,
+  // /public/tasks/:id) mora em routes.tasks.js, registrado mais abaixo.
 
   // ── Feedback (widget flutuante, toda tela) ────────────────────────────────
   // O reporte vira um card no quadro de Tarefas (label bug/melhoria) — nada de
@@ -619,22 +606,21 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     if (!text) return reply.code(400).send({ error: "escreva o reporte antes de enviar" });
     const photo = String(req.body?.photo || "");
     const [firstLine, ...rest] = text.split("\n");
-    const boards = await repo.list("task_boards");
-    const columns = boards[0]?.columns?.length ? boards[0].columns : [{ key: "todo" }];
-    const column = columns[0].key;
-    const tasks = await repo.list("tasks");
-    const inCol = tasks.filter((t) => (columns.some((c) => c.key === t.column) ? t.column : column) === column);
-    const order = inCol.length ? Math.max(...inCol.map((t) => Number(t.order) || 0)) + 1 : 1;
     const context = `Reportado pelo widget de feedback · tela ${String(req.body?.screen || "?").slice(0, 80)} · por ${req.authUser?.name || "API key"}`;
-    return repo.create("tasks", {
-      title: firstLine.trim().slice(0, 120),
-      description: [rest.join("\n").trim(), context].filter(Boolean).join("\n\n"),
-      saas: "", // geral: o card aparece no quadro em qualquer workspace
-      assignees: [], column, priority: kind === "bug" ? "P1" : "P2",
-      dueDate: "", labels: [kind], comments: [], order,
-      photo: photo.startsWith("/public/tasks/") ? photo : "", // só asset nosso
-      createdAt: new Date().toISOString(),
-    });
+    // createTask: card no FIM da primeira coluna (order = max + 1), quem
+    // reportou vira seguidor (recebe "concluída" quando o bug for fechado).
+    try {
+      return await createTask(repo, {
+        title: firstLine.trim().slice(0, 120),
+        description: [rest.join("\n").trim(), context].filter(Boolean).join("\n\n"),
+        saas: "", // geral: o card aparece no quadro em qualquer workspace
+        priority: kind === "bug" ? "P1" : "P2", labels: [kind],
+        cover: photo.startsWith("/public/tasks/") ? photo : "", // só asset nosso
+      }, { by: req.authUser?.id || "api" });
+    } catch (err) {
+      if (err?.statusCode) return reply.code(err.statusCode).send({ error: err.message, code: err.code });
+      throw err;
+    }
   });
 
   // O recorte que o painel do widget mostra (últimos reportes + colunas do
@@ -645,9 +631,13 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       .filter((t) => (t.labels || []).some((l) => l === "bug" || l === "melhoria"))
       .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
       .slice(0, 4)
-      .map((t) => ({ id: t.id, title: t.title, column: t.column, labels: t.labels, createdAt: t.createdAt }));
-    return { reports, columns: boards[0]?.columns || [] };
+      .map((t) => ({ id: t.id, title: t.title, column: t.column, labels: t.labels, createdAt: t.createdAt, completed: !!t.completed }));
+    return { reports, columns: boards[0]?.columns || [], doneKey: boards[0]?.doneKey ?? "" };
   });
+
+  // Quadro de Tarefas: mover, concluir, comentários, subtarefas, anexos,
+  // ações em massa, atividade + caixa de entrada (routes.tasks.js).
+  registerTaskRoutes(app, repo);
 
   // ── Generic CRUD over every collection ───────────────────────────────────
   app.get("/api/:collection", async (req, reply) => {
@@ -672,9 +662,20 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     const { collection } = req.params;
     if (!WRITABLE.has(collection)) return reply.code(404).send({ error: `Unknown collection: ${collection}` });
     if (!req.body || typeof req.body !== "object") return reply.code(400).send({ error: "JSON body required" });
+    // TAREFAS: composição, regras de coluna, seguidores, eventos e notificações
+    // vivem em tasks-core.js (mesmo caminho das rotas dedicadas).
+    if (collection === "tasks" || collection === "task_boards") {
+      try {
+        if (collection === "task_boards") return reply.code(201).send(await repo.create("task_boards", { ...sanitizeBoardPatch(req.body, null), ...(req.body.id != null ? { id: req.body.id } : {}) }));
+        return reply.code(201).send(await createTask(repo, req.body, { by: req.authUser?.id || "api" }));
+      } catch (err) {
+        if (err?.statusCode) return reply.code(err.statusCode).send({ error: err.message, code: err.code });
+        throw err;
+      }
+    }
     const now = new Date().toISOString();
     const stamp = {};
-    if ((collection === "leads" || collection === "tasks" || collection === "consultations" || collection === "deliverables") && !req.body.createdAt) stamp.createdAt = now;
+    if ((collection === "leads" || collection === "consultations" || collection === "deliverables") && !req.body.createdAt) stamp.createdAt = now;
     // Consulta nasce com a responsável = quem marcou (a Ana marca as próprias).
     if (collection === "consultations" && !req.body.owner && req.authUser?.id) stamp.owner = req.authUser.id;
     // Contrato gerado: o histórico é registro de AUDITORIA — quando saiu e quem
@@ -841,6 +842,25 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
         return reply.code(409).send({ error: "outra pessoa editou este mapa enquanto você mexia", code: "version_conflict", current: cur });
       }
       patch = { ...rest, version: curV + 1, updatedAt: new Date().toISOString(), updatedBy: req.authUser?.id || "" };
+    }
+    // TAREFAS: o PATCH cru (SPA, MCP) passa pela mesma régua das rotas
+    // dedicadas — regras de coluna, comentários carimbados, eventos, avisos.
+    if (collection === "tasks") {
+      try {
+        const r = await patchTask(repo, id, req.body, { by: req.authUser?.id || "api" });
+        if (!r) return reply.code(404).send({ error: "Not found" });
+        return r.task;
+      } catch (err) {
+        if (err?.statusCode) return reply.code(err.statusCode).send({ error: err.message, code: err.code });
+        throw err;
+      }
+    }
+    if (collection === "task_boards") {
+      try { patch = sanitizeBoardPatch(req.body, await repo.get(collection, id)); }
+      catch (err) {
+        if (err?.statusCode) return reply.code(err.statusCode).send({ error: err.message, code: err.code });
+        throw err;
+      }
     }
     if (collection === "leads" && typeof req.body.stage === "string") {
       const cur = await repo.get(collection, id);
@@ -1031,6 +1051,13 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   app.delete("/api/:collection/:id", async (req, reply) => {
     const { collection, id } = req.params;
     if (!WRITABLE.has(collection)) return reply.code(404).send({ error: `Unknown collection: ${collection}` });
+    // TAREFA apagada leva junto subtarefas, atividade, notificações, anexos
+    // órfãos e some dos bloqueios das outras (tasks-core.js).
+    if (collection === "tasks") {
+      const r = await deleteTask(repo, id, { by: req.authUser?.id || "api" });
+      if (!r) return reply.code(404).send({ error: "Not found" });
+      return { ok: true, id, removed: r.removed };
+    }
     const subCustomer = collection === "subscriptions" ? (await repo.get(collection, id))?.customer : null;
     // Consulta apagada → tira o evento da agenda pessoal da responsável.
     const gone = collection === "consultations" ? await repo.get(collection, id) : null;
