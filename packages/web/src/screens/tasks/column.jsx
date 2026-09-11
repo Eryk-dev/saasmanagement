@@ -3,6 +3,7 @@ import { Menu } from "../../components/menu.jsx";
 import { COLUMN_COLORS } from "../../lib/tasks.js";
 import { Icon } from "./icons.jsx";
 import { TaskCard, NewTaskCard } from "./card.jsx";
+import { rulesSummary } from "./rules.jsx";
 
 const { useState, useRef, useEffect } = React;
 const CUT = 60;
@@ -22,6 +23,7 @@ function ColumnName({ name, editing, onStart, onSave }) {
 
 export function TaskColumn({ col, idx, count, cards, hiddenCount, usersById, labelColors, isDoneCol, collapsed, hideEmpty, fields, compact, sortManual, dnd, placeholder, dragging, composer, focusId, selection, renamingId, subCounts, blockedIds, actions, colActions }) {
   const listRef = useRef(null);
+  const rulesTitle = "Regras: " + rulesSummary(col.column?.rules, usersById, isDoneCol);
   const [menu, setMenu] = useState(null);
   const [editing, setEditing] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -55,6 +57,7 @@ export function TaskColumn({ col, idx, count, cards, hiddenCount, usersById, lab
     { label: "Ocultar colunas vazias", checked: hideEmpty, onClick: () => colActions.toggleHideEmpty() },
     { label: "Cor", children: COLUMN_COLORS.map((c) => ({ label: c ? "" : "Sem cor", checked: (col.color || "") === c, icon: c ? <span style={{ width: 12, height: 12, borderRadius: 3, background: c, display: "inline-block" }} /> : "", onClick: () => colActions.color(col.key, c) })).map((it, i) => ({ ...it, label: it.label || ["", "Azul", "Índigo", "Verde", "Âmbar", "Vermelho", "Rosa"][i] || "Cor" })) },
     { label: "Definir como Concluído", checked: isDoneCol, onClick: () => colActions.setDone(isDoneCol ? "" : col.key) },
+    { label: "Regras da coluna…", icon: col.column?.rules ? "⚡" : "", onClick: () => colActions.rules(col.key) },
     { sep: true },
     { label: "Excluir coluna", danger: true, disabled: count <= 1, onClick: () => colActions.remove(col.key, col.name, cards.length) },
   ];
@@ -82,6 +85,7 @@ export function TaskColumn({ col, idx, count, cards, hiddenCount, usersById, lab
     <div style={{ width: "min(272px, 82vw)", flexShrink: 0, maxHeight: "100%", display: "flex", flexDirection: "column", background: "var(--bg-2)", borderRadius: "var(--r-4)", border: "1px solid " + (over ? "var(--accent-line)" : "transparent"), scrollSnapAlign: "start", transition: "border-color .12s" }}>
       <div className="tk-col-head" style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 8px 6px 12px", flexShrink: 0 }}>
         {col.color && <span style={{ width: 8, height: 8, borderRadius: 2, background: col.color, flexShrink: 0 }} />}
+        {(col.column?.rules || isDoneCol) && <span title={rulesTitle} style={{ color: "var(--accent)", display: "inline-flex", flexShrink: 0 }}><Icon name="play" size={12} /></span>}
         <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
           <ColumnName name={col.name} editing={editing && !col.virtual} onStart={() => { if (!col.virtual) setEditing(true); }} onSave={(v) => { setEditing(false); if (v != null && v.trim() && v.trim() !== col.name) colActions.rename(col.key, v.trim()); }} />
           <span className="mono tnum dim" style={{ fontSize: 11.5, flexShrink: 0 }} title={hiddenCount ? `${hiddenCount} escondida(s) pelo filtro ou pela busca` : undefined}>{cards.length}{hiddenCount ? <span style={{ opacity: 0.7 }}> +{hiddenCount}</span> : null}</span>

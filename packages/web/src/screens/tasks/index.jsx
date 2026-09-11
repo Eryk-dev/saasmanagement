@@ -24,6 +24,7 @@ import { Toolbar, ActiveFiltersStrip } from "./toolbar.jsx";
 import { BulkBar } from "./bulk-bar.jsx";
 import { useShortcuts } from "./shortcuts.js";
 import { ShortcutsHelp } from "./help.jsx";
+import { ColumnRulesModal } from "./rules.jsx";
 
 // Tarefas · quadro do time no nível do Asana. Cards = collection `tasks`;
 // colunas = 1 registro em `task_boards`. Tudo que escreve passa pelo servidor
@@ -80,6 +81,7 @@ export function TasksScreen() {
   const [selection, setSelection] = useState(() => new Set());
   const [selectMode, setSelectMode] = useState(false);
   const [help, setHelp] = useState(false);
+  const [rulesFor, setRulesFor] = useState(null); // key da coluna com o modal de regras aberto
   const [hint, setHint] = useState("");
   const [recentTick, setRecentTick] = useState(0);
   const recent = useRef(new Map()); // id -> timeout (card concluído fica 1,2s no lugar)
@@ -341,6 +343,12 @@ export function TasksScreen() {
       catch { toast(taskUrl(id), "neutral", 8000); }
     },
     remove: (id) => { const t = byId.get(id); if (!t) return; if (panelId === id) closePanel(); openDelete("tasks", t); },
+    // Cor de uma label vale pro quadro inteiro (task_boards.labels).
+    labelColor: (name, color) => {
+      const cur = board?.labels || [];
+      const labels = cur.some((l) => l.name === name) ? cur.map((l) => (l.name === name ? { ...l, color } : l)) : [...cur, { name, color }];
+      return saveBoard({ labels });
+    },
     // Ação em massa na seleção (rota /bulk); desfazer devolve cada uma ao que era.
     bulk: async (action, value) => {
       const ids = [...selection].filter((id) => byId.has(id));
@@ -371,7 +379,7 @@ export function TasksScreen() {
     },
   };
   const actions = useMemo(() => {
-    const names = ["activeSaas", "open", "click", "focus", "menu", "rename", "renameSave", "patch", "create", "createSubtask", "complete", "groupDrop", "moveCards", "move", "setDue", "pickDue", "pickAssignee", "assignMe", "duplicate", "followUp", "subtask", "convert", "pickBlocker", "unblock", "copyLink", "remove", "bulk"];
+    const names = ["activeSaas", "open", "click", "focus", "menu", "rename", "renameSave", "patch", "create", "createSubtask", "complete", "groupDrop", "moveCards", "move", "setDue", "pickDue", "pickAssignee", "assignMe", "duplicate", "followUp", "subtask", "convert", "pickBlocker", "unblock", "copyLink", "remove", "labelColor", "bulk"];
     return Object.fromEntries(names.map((n) => [n, (...args) => A.current[n](...args)]));
   }, []);
 
@@ -388,6 +396,8 @@ export function TasksScreen() {
     collapse: (key, on) => setPrefs((p) => ({ ...p, collapsed: { ...p.collapsed, [key]: !!on } })),
     toggleHideEmpty: () => setPrefs((p) => ({ ...p, hideEmpty: !p.hideEmpty })),
     ungroup: () => setPrefs((p) => ({ ...p, group: "column" })),
+    rules: (key) => setRulesFor(key),
+    saveRules: (key, rules) => saveBoard({ columns: columnsOf(board).map((c) => (c.key === key ? { ...c, rules: rules || undefined } : c)) }, rules ? "Regras da coluna salvas" : "Regras da coluna removidas"),
     composer: (colKey, position = "bottom") => setComposer(colKey ? { colKey, position } : null),
   }), [board, saveBoard, setPrefs]);
 
@@ -497,6 +507,10 @@ export function TasksScreen() {
         onMove={(k) => actions.bulk("move", k)} onComplete={() => actions.bulk("complete")} onDelete={() => A.current.bulkDelete()} onClear={clearSelection} />
       {hint && <div className="kbd" style={{ position: "fixed", left: 16, bottom: 16, zIndex: 63, fontSize: 12, padding: "4px 8px" }}>{hint}</div>}
       {help && <ShortcutsHelp onClose={() => setHelp(false)} />}
+      {rulesFor && columns.some((c) => c.key === rulesFor) && (
+        <ColumnRulesModal col={columns.find((c) => c.key === rulesFor)} users={users} isDoneCol={doneKey === rulesFor}
+          onSave={(rules) => colActions.saveRules(rulesFor, rules)} onClose={() => setRulesFor(null)} />
+      )}
 
       {menuTask && <Menu {...(menu.at?.x != null && menu.at.width == null ? { x: menu.at.x, y: menu.at.y } : { anchor: menu.at })} items={taskMenuItems(menuTask, { columns, done: !!menuTask.completed, me, actions })} onClose={() => setMenu(null)} title={menuTask.title} />}
       {duePick && byId.get(duePick.id) && <DateQuick anchor={duePick.at} value={byId.get(duePick.id).dueDate} title="Prazo" onChange={(v) => actions.setDue(duePick.id, v)} onClose={() => setDuePick(null)} />}
