@@ -175,20 +175,23 @@ const ESPECIFICAS = {
 
 // Headlines viradas pra GANHO de performance, não pra redução de tempo
 // operacional — é a direção nova da comunicação dos anúncios.
+// Sem número de perguntas no subtítulo: o rodapé calcula as etapas sozinho
+// (12, com o e-mail empilhado no WhatsApp) e prometer 10 desmente a própria
+// tela na primeira etapa.
 const WELCOME = {
   oem: {
     title: "Descubra quanto sua operação *deixa de vender* com anúncio de peça sem a compatibilidade certa.",
-    subtitle: "Responda 10 perguntas rápidas e nosso time te mostra, em reais, o tamanho do catálogo que dá pra colocar no ar.",
+    subtitle: "Leva menos de um minuto, e nosso time te mostra, em reais, o tamanho do catálogo que dá pra colocar no ar.",
     button: "Começar",
   },
   ads: {
     title: "Descubra como *aumentar sua margem* usando as mesmas automações das grandes operações de ML.",
-    subtitle: "Responda 10 perguntas rápidas e nosso time te mostra onde está o dinheiro parado nas suas contas.",
+    subtitle: "Leva menos de um minuto, e nosso time te mostra onde está o dinheiro parado nas suas contas.",
     button: "Começar",
   },
   price: {
     title: "Descubra quanto *preço desatualizado* custa por mês na sua operação.",
-    subtitle: "Responda 10 perguntas rápidas e nosso time te mostra quanto dá pra recuperar ajustando preço na hora certa.",
+    subtitle: "Leva menos de um minuto, e nosso time te mostra quanto dá pra recuperar ajustando preço na hora certa.",
     button: "Começar",
   },
 };
