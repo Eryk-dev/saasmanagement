@@ -1757,7 +1757,52 @@ export async function ensureClassificacaoV2(repo) {
   return mudou;
 }
 
+// ── Formulários v2 + teste A/B (09/2026) ──────────────────────────────────
+// Cria os três formulários por linha de produto e a config do split. Roda
+// SEMPRE, porque nada aqui muda tráfego: os formulários nascem em `draft` (o
+// A/B só serve formulário publicado) e a config nasce com enabled=false.
+//
+// Publicar e ligar são dois atos deliberados, na tela — deploy não faz nenhum
+// dos dois. O percentual fica em 20 pré-configurado pra ligar ser uma flag só.
+export async function ensureFormsV2(repo) {
+  const { FORMS_V2, FORM_IDS } = await import("./forms-v2.leverads.js");
+  const { FORM_AB_FLAG } = await import("./form-ab.js");
+  let criados = 0;
+
+  for (const form of FORMS_V2) {
+    // Nunca sobrescreve: a partir da primeira subida o dono do conteúdo é a
+    // tela, não este arquivo.
+    if (await repo.get("forms", form.id)) continue;
+    await repo.create("forms", form, form.id);
+    criados += 1;
+  }
+
+  if (!(await repo.get("app_config", FORM_AB_FLAG))) {
+    await repo.create("app_config", {
+      id: FORM_AB_FLAG,
+      enabled: false,
+      pct: 20,
+      // Só quem chega pelo formulário de controle entra no sorteio.
+      onlyForms: ["fo_diagnostico_leverads"],
+      // Campanhas de OEM são as que carregam [OEM] no nome do anúncio
+      // (convenção de attribution.js); as demais são Lever Ads.
+      byPain: { OEM: FORM_IDS.oem },
+      fallback: FORM_IDS.ads,
+      nota: "Manda pct% do tráfego pago pros formulários v2. Publicar os formulários antes de ligar.",
+    }, FORM_AB_FLAG);
+    criados += 1;
+  }
+
+  return criados;
+}
+
 export async function runStartupMigrations(repo) {
+  try {
+    const n = await ensureFormsV2(repo);
+    if (n) console.log(`[migration] formulários v2 + config do A/B criados (${n} objeto(s)) — em rascunho, split desligado`);
+  } catch (err) {
+    console.error("[migration] ensureFormsV2 falhou:", err?.message || err);
+  }
   try {
     const n = await ensureClassificacaoV2(repo);
     if (n) console.log(`[migration] classificação v2 aplicada (${n} objeto(s)) — flag classificacao_v2 está ligada`);

@@ -8,6 +8,7 @@
 
 import { randomUUID } from "node:crypto";
 import { publicForm, validateAnswers, leadFromSubmission, submissionTerminal, submissionExit, makeRateLimiter, buildSteps, variantHeadline, submissionSummary } from "./forms.js";
+import { pickForm, seedFrom, readAbCookie, abCookieHeader, FORM_AB_FLAG } from "./form-ab.js";
 import { leadGrade } from "./routes.marketing.js";
 import { attributionPain } from "./attribution.js";
 import { isWonLead, kindOf } from "./stages.js";
@@ -482,14 +483,35 @@ export function registerFormRoutes(app, repo, opts = {}) {
 
   // Página hospedada. `?embed=1` = modo iframe (sem altura cheia, posta a altura).
   app.get("/f/:id", async (req, reply) => {
-    const form = await publishedForm(req.params.id);
+    let form = await publishedForm(req.params.id);
     if (!form) {
       return reply.code(404).type("text/html").send("<!doctype html><meta charset=utf-8><title>404</title><p style='font-family:system-ui;padding:40px'>Formulário não encontrado.</p>");
     }
     const embed = req.query.embed === "1" || req.query.embed === "true";
-    // Pixel por produto: o form dispara o pixel do SaaS dele (fallback env).
-    const product = form.saas ? await repo.get("products", form.saas) : null;
     const pain = await adPainOf(String(req.query.utm_content || ""), form.saas);
+
+    // A/B de FORMULÁRIO. Decide na chegada em vez de trocar a URL dos anúncios:
+    // nenhuma campanha precisa ser editada e a atribuição (mesma URL, mesmo
+    // utm_content) continua idêntica, então o controle e a variante são
+    // comparáveis. O código de dor do anúncio separa OEM das demais.
+    const jaTinhaCookie = readAbCookie(req.headers.cookie);
+    const fbclid = String(req.query.fbclid || "");
+    const seed = seedFrom({ cookie: jaTinhaCookie, fbclid });
+    const alvo = pickForm({
+      cfg: await repo.get("app_config", FORM_AB_FLAG),
+      pain, seed, currentId: form.id,
+    });
+    if (alvo) {
+      const variante = await publishedForm(alvo);
+      if (variante) form = variante; // variante despublicada = fica no controle
+    }
+    // Grava a adesão só quando há semente, pra o mesmo visitante não trocar de
+    // formulário no meio do preenchimento ao recarregar.
+    if (seed && !jaTinhaCookie) reply.header("set-cookie", abCookieHeader(seed));
+
+    // Pixel por produto: o form dispara o pixel do SaaS dele (fallback env).
+    // Depois da troca — a variante manda no pixel que vai ao ar.
+    const product = form.saas ? await repo.get("products", form.saas) : null;
     const pf = await withSalesWhatsapp(resolveWelcome(publicForm(form), pain), form);
     return reply.type("text/html").send(formPageHtml(pf, { embed, pixelId: product?.metaPixelId || "", pain }));
   });
