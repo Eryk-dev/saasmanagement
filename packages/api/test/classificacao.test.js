@@ -89,7 +89,9 @@ test("GMV separa catálogo girando de catálogo morto", () => {
 });
 
 test("MQL exige porte E intenção — grande e frio não passa", () => {
-  const grandeFrio = classificar({ accounts: "10+", listings: "10000+" });
+  // Perguntado e sem resposta. (Sem perguntar, o MQL é indeterminado — está
+  // coberto em "lead de formulário sem as perguntas abertas".)
+  const grandeFrio = classificar({ accounts: "10+", listings: "10000+", trigger: "", tried: [] });
   assert.equal(grandeFrio.mql, false, "lead grande sem nenhum sinal de intenção não é MQL");
 
   const grandeQuente = classificar({
@@ -117,4 +119,68 @@ test("porta errada é detectada pelo núcleo comum", () => {
   });
   assert.equal(r.candidatoOem, true);
   assert.equal(r.portaErrada, true);
+});
+
+// ── Interação com o catálogo v2 (#880) ────────────────────────────────────
+// O catálogo traduz faixa de contas → pacote com `map[accounts] || "essencial"`.
+// Chave desconhecida não erra: cai no plano mais barato. Com as faixas
+// recortadas isso reproporia Essencial pra lead de 7-10 contas.
+test("catálogo: toda faixa de conta (nova e legada) resolve um pacote explícito", async () => {
+  const { pkgOf } = await import("../src/proposal-catalog.js");
+  const { ACCOUNTS_OPTIONS } = await import("../src/classificacao.js");
+
+  const legadas = ["1", "2", "3-5", "6-10", "10+"];
+  const novas = ACCOUNTS_OPTIONS.map((o) => o.value);
+
+  for (const acc of [...legadas, ...novas]) {
+    const pkg = pkgOf({}, { accounts: acc });
+    assert.ok(["essencial", "escala", "enterprise"].includes(pkg), `faixa ${acc} não resolveu pacote`);
+  }
+
+  // O caso que motivou o teste: operação grande não pode cair no mais barato.
+  assert.notEqual(pkgOf({}, { accounts: "7-10" }), "essencial", "7-10 contas caindo em Essencial");
+  assert.equal(pkgOf({}, { accounts: "10+" }), "enterprise");
+  // Teto do Essencial é 3 contas: quem tem 4 já estourou.
+  assert.equal(pkgOf({}, { accounts: "2-3" }), "essencial");
+  assert.equal(pkgOf({}, { accounts: "4-6" }), "escala");
+});
+
+// ── Intenção não perguntada ≠ intenção baixa ──────────────────────────────
+// O formulário antigo não tem `trigger`/`tried`. Se um lead dele nascesse com
+// qualificação 0, a tabela de ação mandaria TODOS pra "nutrir" — esvaziando a
+// fila da SDR de gente que nunca teve chance de pontuar.
+test("lead de formulário sem as perguntas abertas fica com intenção não medida", () => {
+  const antigo = { accounts: "3-5", listings: "500-2000", niche: "autopecas" };
+  const r = classificar(antigo, { asked: ["accounts", "listings", "niche"] });
+
+  assert.equal(r.qualificacao, null, "não pode inventar nota de intenção");
+  assert.equal(r.intencao, "nao-medida");
+  assert.equal(r.intencaoMedida, false);
+  assert.equal(r.mql, null, "MQL indeterminado, não reprovado");
+  assert.ok(r.porte, "o porte, esse dá pra calcular");
+  assert.notEqual(r.acao, "nutrir", "não pode ir pra nutrição por pergunta que ninguém fez");
+});
+
+test("lead perguntado que não deu sinal fica com intenção baixa de verdade", () => {
+  const asked = ["accounts", "listings", "niche", "trigger", "tried"];
+  const r = classificar({ accounts: "3-5", listings: "500-2000", trigger: "", tried: [] }, { asked });
+
+  assert.equal(r.intencaoMedida, true);
+  assert.equal(r.qualificacao, 0);
+  assert.equal(r.intencao, "baixa");
+  assert.equal(r.mql, false, "perguntado e sem sinal: reprovado de verdade");
+});
+
+test("sem lista de perguntas, infere pela presença dos campos", () => {
+  const semCampos = classificar({ accounts: "2-3", listings: "500-1000" });
+  assert.equal(semCampos.intencaoMedida, false);
+
+  const comCampos = classificar({ accounts: "2-3", listings: "500-1000", trigger: "abri a 2a conta esse mes" });
+  assert.equal(comCampos.intencaoMedida, true);
+  assert.ok(comCampos.qualificacao > 0);
+});
+
+test("porte alto sem intenção medida continua indo pra ligação, não pra nutrição", () => {
+  const r = classificar({ accounts: "10+", listings: "10000+" }, { asked: ["accounts", "listings"] });
+  assert.equal(r.acao, "ligar-hoje");
 });

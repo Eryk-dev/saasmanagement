@@ -1685,7 +1685,136 @@ export async function backfillWaThreadSignals(repo) {
   return n;
 }
 
+
+// ── Classificação v2 (09/2026) ────────────────────────────────────────────
+// Liga os formulários por produto e as trilhas de nutrição. DESARMADA por
+// padrão: cria a chave `classificacao_v2` em app_config com enabled=false e
+// sai. Nada acontece até alguém virar a flag.
+//
+// Existe assim porque o processo novo precisa de alinhamento com a SDR antes
+// de entrar no ar, e porque a fiação MEXE no que o lead vê: as opções de
+// `accounts`/`listings` são recortadas nas fronteiras comerciais novas, e o
+// formulário público passa a fazer duas perguntas abertas. Merge de código
+// não pode disparar isso sozinho.
+export const CLASSIFICACAO_V2_FLAG = "classificacao_v2";
+
+export async function ensureClassificacaoV2(repo) {
+  const atual = await repo.get("app_config", CLASSIFICACAO_V2_FLAG);
+  if (!atual) {
+    // Primeira subida: só publica a flag, pra ela existir na tela e alguém
+    // poder ligar quando o processo estiver alinhado.
+    await repo.create("app_config", {
+      id: CLASSIFICACAO_V2_FLAG,
+      enabled: false,   // perguntas da classificação no card do lead
+      nutricao: false,  // sequências de nutrição (depende de alinhamento com a SDR)
+      ligadoEm: "",
+      nota: "enabled = perguntas da classificação no card. nutricao = trilhas automatizadas; alinhar com a SDR antes.",
+    }, CLASSIFICACAO_V2_FLAG);
+    return 0;
+  }
+  if (atual.enabled !== true) return 0;
+
+  const { LEAD_QUESTIONS_POR_PRODUTO } = await import("./lead-questions.produtos.js");
+  const { TRILHAS } = await import("./cadencia-nutricao.js");
+
+  let mudou = 0;
+
+  // 1) Perguntas no card do lead. mergeLeadQuestions casa por `key`: chave
+  // nova entra, chave existente tem as OPÇÕES atualizadas (é aqui que as
+  // faixas recortadas passam a valer). A união dos três formulários vira o
+  // schema do lead — o pipeline é um só.
+  const produto = await repo.get("products", "leverads");
+  if (produto) {
+    const uniao = [];
+    const vistas = new Set();
+    for (const qs of Object.values(LEAD_QUESTIONS_POR_PRODUTO)) {
+      for (const q of qs) {
+        if (vistas.has(q.key)) continue;
+        vistas.add(q.key);
+        uniao.push(q);
+      }
+    }
+    const antes = JSON.stringify(produto.leadQuestions || []);
+    const depois = mergeLeadQuestions(produto.leadQuestions || [], { questions: uniao });
+    if (JSON.stringify(depois) !== antes) {
+      await repo.update("products", "leverads", { leadQuestions: depois });
+      mudou += 1;
+    }
+  }
+
+  // 2) Sequências de nutrição, uma por trilha — atrás de uma flag PRÓPRIA.
+  // Separadas das perguntas porque são coisas diferentes: as perguntas são
+  // classificação (o que a SDR lê no card), as sequências são o processo de
+  // nutrição automatizada, que depende de alinhamento com a SDR. Ligar uma não
+  // pode arrastar a outra.
+  if (atual.nutricao !== true) return mudou;
+
+  for (const t of Object.values(TRILHAS)) {
+    const existente = await repo.get("sequences", t.id);
+    if (existente) continue;
+    await repo.create("sequences", {
+      id: t.id, saas: "leverads", name: t.nome, active: false,
+      trigger: { stages: [], reasons: t.reasons },
+      steps: t.steps, exitOn: {},
+    }, t.id);
+    mudou += 1;
+  }
+
+  return mudou;
+}
+
+// ── Formulários v2 + teste A/B (09/2026) ──────────────────────────────────
+// Cria os três formulários por linha de produto e a config do split. Roda
+// SEMPRE, porque nada aqui muda tráfego: os formulários nascem em `draft` (o
+// A/B só serve formulário publicado) e a config nasce com enabled=false.
+//
+// Publicar e ligar são dois atos deliberados, na tela — deploy não faz nenhum
+// dos dois. O percentual fica em 20 pré-configurado pra ligar ser uma flag só.
+export async function ensureFormsV2(repo) {
+  const { FORMS_V2, FORM_IDS } = await import("./forms-v2.leverads.js");
+  const { FORM_AB_FLAG } = await import("./form-ab.js");
+  let criados = 0;
+
+  for (const form of FORMS_V2) {
+    // Nunca sobrescreve: a partir da primeira subida o dono do conteúdo é a
+    // tela, não este arquivo.
+    if (await repo.get("forms", form.id)) continue;
+    await repo.create("forms", form, form.id);
+    criados += 1;
+  }
+
+  if (!(await repo.get("app_config", FORM_AB_FLAG))) {
+    await repo.create("app_config", {
+      id: FORM_AB_FLAG,
+      enabled: false,
+      pct: 20,
+      // Só quem chega pelo formulário de controle entra no sorteio.
+      onlyForms: ["fo_diagnostico_leverads"],
+      // Campanhas de OEM são as que carregam [OEM] no nome do anúncio
+      // (convenção de attribution.js); as demais são Lever Ads.
+      byPain: { OEM: FORM_IDS.oem },
+      fallback: FORM_IDS.ads,
+      nota: "Manda pct% do tráfego pago pros formulários v2. Publicar os formulários antes de ligar.",
+    }, FORM_AB_FLAG);
+    criados += 1;
+  }
+
+  return criados;
+}
+
 export async function runStartupMigrations(repo) {
+  try {
+    const n = await ensureFormsV2(repo);
+    if (n) console.log(`[migration] formulários v2 + config do A/B criados (${n} objeto(s)) — em rascunho, split desligado`);
+  } catch (err) {
+    console.error("[migration] ensureFormsV2 falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureClassificacaoV2(repo);
+    if (n) console.log(`[migration] classificação v2 aplicada (${n} objeto(s)) — flag classificacao_v2 está ligada`);
+  } catch (err) {
+    console.error("[migration] ensureClassificacaoV2 falhou:", err?.message || err);
+  }
   try {
     const n = await backfillWaThreadSignals(repo);
     if (n) console.log(`[migration] sinais do inbox (hasIn/lastOutAuthor) preenchidos em ${n} conversa(s)`);
