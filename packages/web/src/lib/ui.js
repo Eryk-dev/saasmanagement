@@ -81,9 +81,17 @@ export function leadScoreLabel(score) {
   const n = Number(score) || 0;
   return n >= 75 ? "Quente" : n >= 50 ? "Morno" : "Frio";
 }
-// Idade do lead — string humana ("12m"/"2h") ou número (dias, vindo de deals
-// migrados). Normaliza sem inventar unidade pra strings.
-export function leadAge(lead) {
+// Idade do lead = tempo desde a ENTRADA (createdAt), humanizado: "agora" na
+// primeira hora, depois "3h", depois "2d". O campo `age` gravado no lead é o
+// default "agora" da criação e nunca é recalculado (por isso todo card dizia
+// "agora" pra sempre); só vale como fallback de deal migrado sem createdAt —
+// string humana ("12m") ou número (dias). `now` é injetável pro teste.
+export function leadAge(lead, now = Date.now()) {
+  const t = lead?.createdAt ? new Date(lead.createdAt).getTime() : NaN;
+  if (Number.isFinite(t)) {
+    const h = Math.floor(Math.max(0, now - t) / 3_600_000);
+    return h < 1 ? "agora" : h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`;
+  }
   const a = lead?.age;
   if (a == null || a === "") return "—";
   return typeof a === "number" ? `${a}d` : String(a);

@@ -194,6 +194,29 @@ try {
     failed++;
   }
 
+  // Entrada do lead (lib/format.js + lib/ui.js): o carimbo de entrada sai no
+  // fuso do negócio (a máquina pode estar em UTC e jogaria o lead das 22h pro
+  // dia seguinte) e a idade é calculada do createdAt, não do "agora" que a
+  // criação congela no campo `age`.
+  try {
+    const { fmtDateTime } = await server.ssrLoadModule("/src/lib/format.js");
+    const { leadAge } = await server.ssrLoadModule("/src/lib/ui.js");
+    const eq = (name, got, want) => {
+      if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error(`${name}: ${JSON.stringify(got)} ≠ ${JSON.stringify(want)}`);
+    };
+    eq("entrada no fuso de Brasília", fmtDateTime("2026-09-11T01:52:50.843Z"), "10/09/2026 22:52");
+    eq("sem data, vazio", fmtDateTime(""), "");
+    const now = Date.parse("2026-09-11T05:00:00Z");
+    eq("recém-chegado", leadAge({ createdAt: "2026-09-11T04:30:00Z" }, now), "agora");
+    eq("idade em horas", leadAge({ createdAt: "2026-09-11T01:52:50.843Z" }, now), "3h");
+    eq("idade em dias", leadAge({ createdAt: "2026-09-08T01:00:00Z" }, now), "3d");
+    eq("sem createdAt cai no campo age", leadAge({ age: "12m" }, now), "12m");
+    console.log("✓ entrada-do-lead");
+  } catch (err) {
+    console.error(`✗ entrada-do-lead: ${err.message}`);
+    failed++;
+  }
+
   // Contrato preenchido (lib/contracts.js): é o papel que vai pra assinatura e o
   // MESMO snapshot reimpresso na ficha do cliente, então a montagem do HTML vale
   // teste. Valor digitado entra ESCAPADO (contrato não executa HTML de campo) e

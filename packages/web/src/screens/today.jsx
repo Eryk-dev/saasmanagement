@@ -1637,7 +1637,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
 
             <AttributionCard rows={attribution} />
 
-            <LeadChecklist checklist={checklist} onPatch={patch} leadId={l.id} />
+            <LeadChecklist key={l.id} checklist={checklist} onPatch={patch} leadId={l.id} />
 
             {/* Destino do card fica AQUI, embaixo dos dados do cliente, pra
                 aproveitar o espaço vazio da coluna e encurtar o painel. Item de

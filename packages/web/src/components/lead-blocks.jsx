@@ -20,6 +20,7 @@ import { displayName } from "../lib/users.js";
 import { PAYMENT_METHODS, PAYMENT_METHODS_ACTIVE, withLegacyOption, paymentLabel, closedPlanLabel, dealProductLabel, dealProductsOf } from "../lib/payments.js";
 import { mentoriaFit, mentoriaOfferLine } from "../lib/mentoria.js";
 import { scriptSegments } from "../lib/scripts.js";
+import { fmtDateTime } from "../lib/format.js";
 
 const DAY = 86_400_000;
 
@@ -76,6 +77,8 @@ export function clientSummary(saasCfg, lead, stage, cat, { full = false } = {}) 
       // Escrito no painel do inbox durante a conversa. Só no card completo pra
       // não duplicar o campo editável que já fica aberto lá.
       ["O que ficou combinado", lead.recapNote],
+      // Quando o lead entrou no pipeline (Leo, 10/09) e há quanto tempo.
+      ["Entrada", fmtDateTime(lead.createdAt) || null],
       ["Idade", leadAge(lead)],
       ["Integrador", lead.integrator ? displayName(lead.integrator) : null],
       ["E-mail", lead.email],
@@ -158,31 +161,53 @@ export function AttributionCard({ rows, open = true, onToggle = null }) {
 // Dados do lead: o checklist da conversa (lib/scripts.js) com o campo editável
 // à direita — select com as opções do formulário, texto livre pro resto. Grava
 // na hora (onPatch). Amarelo = ainda falta descobrir.
+//
+// O que o cliente já respondeu (no formulário ou na conversa) fica à vista; o
+// que ainda falta perguntar fica DOBRADO numa linha (Leo, 10/09: com o
+// formulário novo em teste, o card enchia de pergunta vazia). Um clique abre as
+// mesmas linhas amarelas de sempre, na ordem da conversa; preencheu, a linha
+// sobe pro grupo de cima. Começa aberto só quando não há nada respondido (lead
+// criado à mão), senão o bloco viraria um botão solto. Quem monta passa
+// key={lead.id} pra o estado zerar ao trocar de lead.
 export function LeadChecklist({ checklist, onPatch, leadId, title = "Dados do lead · na ordem da conversa" }) {
+  const done = checklist.filter((c) => c.value);
+  const todo = checklist.filter((c) => !c.value);
+  const [showTodo, setShowTodo] = React.useState(done.length === 0);
   if (!checklist.length) return null;
+  const row = (c) => (
+    <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, padding: "5px 9px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: c.value ? "var(--bg-1)" : "var(--warn-soft)" }}>
+      <span style={{ color: c.value ? "var(--pos)" : "var(--warn)", flexShrink: 0, fontSize: 12 }}>{c.value ? "✓" : "○"}</span>
+      <span className="dim" style={{ flex: 1, minWidth: 0, fontSize: 11, lineHeight: 1.35 }}>{c.label}</span>
+      {c.type === "select" ? (
+        <select value={c.raw || ""} onChange={(e) => onPatch({ [c.key]: e.target.value })}
+          style={{ flexShrink: 0, maxWidth: "48%", height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: c.raw ? "var(--fg-1)" : "var(--fg-4)", fontSize: 12, fontWeight: 500 }}>
+          <option value="">selecionar…</option>
+          {c.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          {c.raw && !c.options.some((o) => o.value === c.raw) && <option value={c.raw}>{c.raw}</option>}
+        </select>
+      ) : (
+        <input key={leadId + c.key} type="text" defaultValue={c.raw || ""} placeholder="preencher…"
+          onBlur={(e) => { if (e.target.value !== (c.raw || "")) onPatch({ [c.key]: e.target.value }); }}
+          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+          style={{ flexShrink: 0, width: "48%", height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontWeight: 500 }} />
+      )}
+    </div>
+  );
   return (
     <div>
       <div className="kicker" style={{ marginBottom: 6 }}>{title}</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {checklist.map((c) => (
-          <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, padding: "5px 9px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: c.value ? "var(--bg-1)" : "var(--warn-soft)" }}>
-            <span style={{ color: c.value ? "var(--pos)" : "var(--warn)", flexShrink: 0, fontSize: 12 }}>{c.value ? "✓" : "○"}</span>
-            <span className="dim" style={{ flex: 1, minWidth: 0, fontSize: 11, lineHeight: 1.35 }}>{c.label}</span>
-            {c.type === "select" ? (
-              <select value={c.raw || ""} onChange={(e) => onPatch({ [c.key]: e.target.value })}
-                style={{ flexShrink: 0, maxWidth: "48%", height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: c.raw ? "var(--fg-1)" : "var(--fg-4)", fontSize: 12, fontWeight: 500 }}>
-                <option value="">selecionar…</option>
-                {c.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                {c.raw && !c.options.some((o) => o.value === c.raw) && <option value={c.raw}>{c.raw}</option>}
-              </select>
-            ) : (
-              <input key={leadId + c.key} type="text" defaultValue={c.raw || ""} placeholder="preencher…"
-                onBlur={(e) => { if (e.target.value !== (c.raw || "")) onPatch({ [c.key]: e.target.value }); }}
-                onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-                style={{ flexShrink: 0, width: "48%", height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontWeight: 500 }} />
-            )}
-          </div>
-        ))}
+        {done.map(row)}
+        {todo.length > 0 && (
+          <button type="button" onClick={() => setShowTodo((v) => !v)}
+            title={showTodo ? "Recolher as perguntas que ainda faltam" : "Abrir as perguntas que ainda faltam (na ordem da conversa)"}
+            style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", fontSize: 11, padding: "5px 9px", border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)", background: "none", color: "var(--fg-3)", cursor: "pointer", textAlign: "left" }}>
+            <span style={{ color: "var(--warn)", flexShrink: 0, fontSize: 12 }}>○</span>
+            <span style={{ flex: 1, minWidth: 0 }}>{todo.length} pergunta{todo.length === 1 ? "" : "s"} pra fazer na conversa</span>
+            <span style={{ flexShrink: 0, fontSize: 10 }}>{showTodo ? "▴ recolher" : "▾ abrir"}</span>
+          </button>
+        )}
+        {showTodo && todo.map(row)}
       </div>
     </div>
   );
