@@ -25,6 +25,9 @@ import { BulkBar } from "./bulk-bar.jsx";
 import { useShortcuts } from "./shortcuts.js";
 import { ShortcutsHelp } from "./help.jsx";
 import { ColumnRulesModal } from "./rules.jsx";
+import { ListView } from "./list-view.jsx";
+import { CalendarView } from "./calendar-view.jsx";
+import { TimelineView } from "./timeline-view.jsx";
 
 // Tarefas · quadro do time no nível do Asana. Cards = collection `tasks`;
 // colunas = 1 registro em `task_boards`. Tudo que escreve passa pelo servidor
@@ -234,11 +237,11 @@ export function TasksScreen() {
         undo: undo === true ? () => A.current.patch(id, before, { label: "" }) : undo,
       });
     },
-    create: async (groupKey, title, position = "bottom") => {
-      const g = groupByKey.get(groupKey);
+    create: async (groupKey, title, position = "bottom", more = {}) => {
+      const g = groupKey ? groupByKey.get(groupKey) : null;
       const list = g ? g.tasks : [];
       const colKey = g && !g.virtual ? groupKey : columns[0].key;
-      const extra = g?.virtual && g.dropPatch ? (g.dropPatch({ labels: [], assignees: [] }, "") || {}) : {};
+      const extra = { ...(g?.virtual && g.dropPatch ? (g.dropPatch({ labels: [], assignees: [] }, "") || {}) : {}), ...more };
       const order = position === "top" ? (list.length ? (Number(list[0].order) || 0) - 1 : 1) : (list.length ? (Number(list[list.length - 1].order) || 0) + 1 : 1);
       const tmpId = `tmp_${Date.now().toString(36)}`;
       const draft = { id: tmpId, title, description: "", saas: saasId, assignees: [], column: colKey, priority: "", dueDate: "", labels: [], comments: [], order, completed: colKey === doneKey, ...extra, _pending: true, createdAt: new Date().toISOString() };
@@ -413,7 +416,7 @@ export function TasksScreen() {
     if (el) { el.scrollIntoView({ block: "nearest", inline: "nearest" }); el.focus({ preventScroll: true }); }
   };
   useShortcuts({
-    rootRef,
+    rootRef, enabled: (prefs.view || "board") === "board" || prefs.view === "list",
     get: () => ({ focusId, selectionSize: selection.size }),
     actions: {
       moveFocus: (key) => {
@@ -469,12 +472,24 @@ export function TasksScreen() {
     </ErrorBoundary>
   ) : null;
   const qn = strip(q.trim());
+  const view = prefs.view || "board";
+  const viewEl = view === "list"
+    ? <ListView groups={groups} usersById={usersById} users={users} labelColors={labelColors} columns={columns} prefs={prefs} setPrefs={setPrefs} actions={actions} focusId={focusId} doneKey={doneKey} />
+    : view === "calendar"
+      ? <CalendarView tasks={filtered} usersById={usersById} actions={actions} mobile={isMobile} today={today} />
+      : view === "timeline"
+        ? <TimelineView groups={groups} usersById={usersById} actions={actions} mobile={isMobile} today={today} />
+        : (
+          <Board boardRef={boardRef} groups={groups} hiddenByColumn={hiddenByColumn} prefs={prefs} dnd={dnd} composer={composer}
+            focusId={focusId} selection={selection.size ? selection : null} renamingId={renamingId} subCounts={subCounts} blockedIds={blockedIds} usersById={usersById} labelColors={labelColors}
+            doneKey={doneKey} actions={actions} colActions={colActions} sortManual={sortManual} />
+        );
 
   return (
     <div ref={rootRef} style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <PageHead title="Tarefas" sub={selectMode ? "modo seleção: clique marca os cards · Esc sai" : "quadro do time · arraste para mover · Enter cria · ✓ conclui · ? atalhos"}>
         <Toolbar prefs={prefs} setPrefs={setPrefs} users={users} labelOptions={labelOptions} labelColors={labelColors} columns={columns} q={q} setQ={setQ} searchRef={searchRef} onHelp={() => setHelp(true)}
-          onNew={<PrimaryButton onClick={() => { const key = groups[0]?.key || columns[0].key; setPrefs((p) => ({ ...p, collapsed: { ...p.collapsed, [key]: false } })); setComposer({ colKey: key, position: "top" }); boardRef.current?.scrollTo({ left: 0, behavior: "smooth" }); }}>+ Tarefa</PrimaryButton>} />
+          onNew={<PrimaryButton onClick={() => { const key = groups[0]?.key || columns[0].key; setPrefs((p) => ({ ...p, view: "board", collapsed: { ...p.collapsed, [key]: false } })); setComposer({ colKey: key, position: "top" }); boardRef.current?.scrollTo({ left: 0, behavior: "smooth" }); }}>+ Tarefa</PrimaryButton>} />
       </PageHead>
       <ActiveFiltersStrip prefs={prefs} setPrefs={setPrefs} users={users} columns={columns} />
 
@@ -492,9 +507,7 @@ export function TasksScreen() {
           ) : state.loaded ? (
             <>
               {filtered.length === 0 && totalInWorkspace > 0 && <div className="mono dim" style={{ fontSize: 12, padding: "10px var(--pad-x) 0" }}>Nenhuma tarefa {qn ? `com "${q.trim()}"` : "com esses filtros"} · <button type="button" onClick={() => { setQ(""); setPrefs((p) => ({ ...p, filters: { ...DEFAULT_FILTERS }, done: "all" })); }} style={{ color: "var(--accent)", fontWeight: 600 }}>limpar filtros</button></div>}
-              <Board boardRef={boardRef} groups={groups} hiddenByColumn={hiddenByColumn} prefs={prefs} dnd={dnd} composer={composer}
-                focusId={focusId} selection={selection.size ? selection : null} renamingId={renamingId} subCounts={subCounts} blockedIds={blockedIds} usersById={usersById} labelColors={labelColors}
-                doneKey={doneKey} actions={actions} colActions={colActions} sortManual={sortManual} />
+              {viewEl}
             </>
           ) : null}
         </div>
