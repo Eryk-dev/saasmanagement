@@ -153,6 +153,10 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
 
   // Cria a call do lead: evento no calendário primário da conta conectada,
   // horário = lead.callAt (hora de Brasília) ou daqui a 30 min, duração 45 min.
+  // Quem responde pela sala de cada tipo: closer na venda; na integração o
+  // integrador, ou o closer enquanto o integrador não foi definido.
+  const meetResponsible = (lead, kind) => (kind === "integracao" ? (lead.integrator || lead.closer) : lead.closer) || "";
+
   // Cria o Meet de UM lead (venda ou integração) — corpo compartilhado entre a
   // rota manual e o gatilho automático (card entrando em Integração com horário
   // marcado). Lança em falha; quem chama decide se vira 502 ou silêncio.
@@ -192,14 +196,16 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     // integrador na integração) quando ela está conectada com os escopos da
     // sala — a gravação cai no Drive dele e o resumo é lido pela conta dele.
     // Sem conexão pronta, a conta do time organiza (o comportamento de sempre).
-    // O SDR marca a call mas nunca organiza: a call é do closer.
-    const responsible = kind === "integracao" ? lead.integrator : lead.closer;
+    // O SDR marca a call mas nunca organiza: a call é do closer. Integração
+    // ainda sem integrador definido (fechou e marcou a data na hora) fica com
+    // o closer que vendeu — a sala não pode esperar a atribuição (Leo, 11/09).
+    const responsible = meetResponsible(lead, kind);
     const organizerId = responsible && (await gu.meetReadyFor(responsible).catch(() => false)) ? responsible : "";
     if (!organizerId && !teamMayOrganize(lead.saas)) {
       const who = responsible ? (await repo.get("users", responsible).catch(() => null))?.name || "o responsável" : "";
       const err = new Error(responsible
         ? `a sala de ${product?.name || "LeverAds"} nasce na conta @leverads de quem faz a call — ${who} precisa conectar (ou reconectar) a conta em Ajustes → Integrações → Minha conta Google`
-        : `defina o ${kind === "integracao" ? "integrador" : "closer"} antes de criar o Meet — a sala de ${product?.name || "LeverAds"} nasce na conta @leverads dele`);
+        : `defina o ${kind === "integracao" ? "integrador (ou o closer)" : "closer"} antes de criar o Meet — a sala de ${product?.name || "LeverAds"} nasce na conta @leverads dele`);
       err.code = "personal_account_required";
       throw err;
     }
@@ -267,23 +273,91 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
       await repo.update("leads", lead.id, { meetSkipNoted: key });
       await logActivity(repo, {
         saas: lead.saas || "", lead: lead.id, type: "system",
-        meta: { event: "meet_skipped", kind, responsible: kind === "integracao" ? lead.integrator : lead.closer },
+        meta: { event: "meet_skipped", kind, responsible: meetResponsible(lead, kind) },
         author: "cockpit",
       });
     } catch { /* fail-open */ }
   }
 
+  // MESMA régua da call de venda (autoCallMeet), pedido do Leo em 11/09: a
+  // integração também roda no Meet com o cliente. Sem sala, ela nasce na conta
+  // @leverads do responsável (integrador, ou o closer enquanto não há
+  // integrador); com sala, remarcação MOVE o evento (convite atualizado pro
+  // cliente) e sala nascida na conta do time é recriada na do responsável
+  // enquanto a integração não aconteceu (a que já passou fica: o resumo
+  // pendente mora na sala velha).
   async function autoIntegrationMeet(leadId) {
     if (!client.configured()) return null;
     const fresh = await repo.get("leads", leadId);
-    if (!fresh || !fresh.integrationAt || fresh.integrationCallUrl) return null;
-    const ok = (fresh.integrator && (await gu.meetReadyFor(fresh.integrator).catch(() => false)))
+    if (!fresh || !fresh.integrationAt) return null;
+    const resp = meetResponsible(fresh, "integracao");
+    if (fresh.integrationCallUrl) {
+      const s = callMoment(fresh.integrationAt);
+      const reorg = !teamMayOrganize(fresh.saas) && !fresh.integrationMeetOrganizer
+        && s && s.getTime() > Date.now()
+        && resp && (await gu.meetReadyFor(resp).catch(() => false));
+      if (!reorg) return moveIntegrationMeet(leadId);
+      if (fresh.integrationMeetEventId && (await client.connected().catch(() => false))) {
+        try { await client.deleteCalendarEvent(fresh.integrationMeetEventId); } catch { /* o convite novo prevalece */ }
+      }
+      return createMeetForLead(fresh, { kind: "integracao" });
+    }
+    const ok = (resp && (await gu.meetReadyFor(resp).catch(() => false)))
       || (teamMayOrganize(fresh.saas) && (await client.connected().catch(() => false)));
     if (!ok) {
       if (!teamMayOrganize(fresh.saas)) await noteMeetSkip(fresh, "integracao");
       return null;
     }
     return createMeetForLead(fresh, { kind: "integracao" });
+  }
+
+  // Remarcação da integração: o EVENTO do calendário acompanha o integrationAt
+  // novo (sendUpdates=all manda o e-mail de atualização pro cliente) e o
+  // integrationScheduledAt segue junto — é ele que o poller do resumo usa pra
+  // saber quando a integração aconteceu. Espelho do moveCallMeet.
+  async function moveIntegrationMeet(leadId) {
+    if (!client.configured()) return null;
+    const fresh = await repo.get("leads", leadId);
+    if (!fresh || !fresh.integrationAt || !fresh.integrationCallUrl || !fresh.integrationMeetEventId) return null;
+    const s = callMoment(fresh.integrationAt);
+    if (!s) return null;
+    if (fresh.integrationScheduledAt && Math.abs(Date.parse(fresh.integrationScheduledAt) - s.getTime()) < 60_000) return null;
+    const org = fresh.integrationMeetOrganizer && (await gu.connectedFor(fresh.integrationMeetOrganizer).catch(() => false)) ? fresh.integrationMeetOrganizer : "";
+    if (!org && !(await client.connected().catch(() => false))) return null;
+    const gclient = org ? client.forUser(gu, org) : client;
+    const e = new Date(s.getTime() + 45 * 60_000);
+    await gclient.patchCalendarEvent(fresh.integrationMeetEventId, {
+      start: { dateTime: wallClockBrt(s), timeZone: TZ },
+      end: { dateTime: wallClockBrt(e), timeZone: TZ },
+    });
+    await repo.update("leads", fresh.id, { integrationScheduledAt: s.toISOString() });
+    return { moved: true, at: s.toISOString() };
+  }
+
+  // Integração DESMARCADA (integrationAt limpo no drawer): o evento morre
+  // (e-mail de cancelamento pro cliente), o espelho pessoal some e os campos
+  // da sala zeram — a próxima marcação nasce com sala nova. Só age com o
+  // integrationAt JÁ limpo. Espelho do cancelCallMeet.
+  async function cancelIntegrationMeet(leadId) {
+    const fresh = await repo.get("leads", leadId);
+    if (!fresh || fresh.integrationAt) return null;
+    const patch = {};
+    if (fresh.integrationMeetEventId) {
+      const org = fresh.integrationMeetOrganizer && (await gu.connectedFor(fresh.integrationMeetOrganizer).catch(() => false)) ? fresh.integrationMeetOrganizer : "";
+      const gclient = org ? client.forUser(gu, org) : client;
+      if (org || (client.configured() && (await client.connected().catch(() => false)))) {
+        try {
+          await gclient.deleteCalendarEvent(fresh.integrationMeetEventId, org ? "primary" : undefined);
+          Object.assign(patch, { integrationCallUrl: "", integrationMeetEventId: "", integrationScheduledAt: "", integrationMeetOrganizer: "" });
+        } catch (err) {
+          app.log.warn({ err: err.message, lead: leadId }, "Google: cancelamento do evento da integração falhou");
+        }
+      }
+    }
+    if (Object.keys(patch).length) await repo.update("leads", fresh.id, patch);
+    // Sem integrationAt, o espelho pessoal (calIntegEventId) sai da agenda do integrador.
+    try { await syncPersonalCalendar(repo, gu, { ...fresh, ...patch }); } catch { /* fail-open */ }
+    return { ok: true, eventRemoved: "integrationMeetEventId" in patch };
   }
 
   // Mesmo gatilho pra CALL DE VENDA marcada pelo SDR automatizado (sdr-brain):
@@ -383,14 +457,12 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     if (!lead) return reply.code(404).send({ error: "Not found" });
     const kind = req.body?.kind === "integracao" ? "integracao" : "call";
     // Sala JÁ existe: não duplica o evento (o Meet agora nasce sozinho no
-    // agendamento, e o botão do Meu dia chega depois). Na call, o autoCallMeet
-    // ainda resolve remarcação e a recriação de sala nascida na conta do time.
+    // agendamento, e o botão do Meu dia chega depois). O gatilho do tipo ainda
+    // resolve remarcação e a recriação de sala nascida na conta do time.
     const existingUrl = kind === "integracao" ? lead.integrationCallUrl : lead.callUrl;
     if (existingUrl) {
-      if (kind === "call") {
-        const r = await autoCallMeet(lead.id).catch(() => null);
-        if (r?.callUrl) return r; // sala recriada na conta do closer
-      }
+      const r = await (kind === "integracao" ? autoIntegrationMeet(lead.id) : autoCallMeet(lead.id)).catch(() => null);
+      if (r?.callUrl) return r; // sala recriada na conta do responsável
       const fresh = (await repo.get("leads", lead.id)) || lead;
       return {
         ok: true, kind, existing: true,
@@ -401,7 +473,7 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     // Conta apta: a @leverads do responsável pela call sempre serve; a do time
     // só organiza produto do Workspace dela (UniqueKids) — nos demais, sala da
     // uniquebox não grava, então o erro pede a conexão pessoal em vez de criar.
-    const resp = kind === "integracao" ? lead.integrator : lead.closer;
+    const resp = meetResponsible(lead, kind);
     const respReady = !!(resp && (await gu.meetReadyFor(resp).catch(() => false)));
     const anyAccount = respReady || (teamMayOrganize(lead.saas) && (await client.connected()));
     if (!anyAccount && teamMayOrganize(lead.saas)) return reply.code(NOT_CONFIGURED).send({ error: "Google não conectado — conecte a conta do time em Ajustes → Integrações, ou a sua conta @leverads no card Minha conta Google" });
@@ -470,5 +542,5 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     }
   });
 
-  return { client, googleUser: gu, briefer, autoIntegrationMeet, autoCallMeet, moveCallMeet, cancelCallMeet };
+  return { client, googleUser: gu, briefer, autoIntegrationMeet, moveIntegrationMeet, cancelIntegrationMeet, autoCallMeet, moveCallMeet, cancelCallMeet };
 }

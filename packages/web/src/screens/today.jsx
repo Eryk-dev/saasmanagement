@@ -797,7 +797,8 @@ function QueueRow({ item, block, featured, onScript, onClaim, onWhatsapp, onOpen
       : item.confirmWindow === "10min" ? "confirmar · 10 min antes" : "confirmar · 2h antes")
     : group === "noshow" ? "remarcar" : group === "nutri" ? "reativação" : (ACTION_LABELS[kind] || "contato");
   const whatsapp = waLink(l.phone);
-  const meet = (kind === "call" || kind === "integracao") && l.callUrl;
+  // Cada tipo abre a PRÓPRIA sala: a integração tem o Meet dela, não o da venda.
+  const meet = kind === "call" ? l.callUrl : kind === "integracao" ? l.integrationCallUrl : "";
   const attemptNumber = Number(l.stageAttempts) || 0;
   const actionDetail = l.nextActionNote || (item.confirmKind === "integracao" && l.integrationAt
     ? `integração às ${hhmmOf(l.integrationAt)}`
@@ -1212,7 +1213,7 @@ export function IntegrationBriefCard({ brief, phone, deal, onSend = null }) {
       <div className="kicker" style={{ marginBottom: 6, color: meetUrl ? "var(--pos)" : "var(--warn)" }}>
         {meetUrl
           ? `Call de vídeo ${when ? `marcada: ${when}` : "com link criado"}`
-          : when ? `Call de vídeo ${when}, falta criar o Meet (logo abaixo, em Integração)` : "Sem call de vídeo marcada: combine o horário e crie o Meet em Integração"}
+          : when ? `Call de vídeo ${when}, ainda sem Meet (nasce sozinho pela conta Google do responsável; ou crie logo abaixo, em Integração)` : "Sem call de vídeo marcada: combine o horário em Integração e o Meet nasce sozinho"}
       </div>
       {brief.resumo && <div style={{ ...line, marginBottom: open ? 6 : 0 }}>{brief.resumo}</div>}
       {open && (
@@ -1261,21 +1262,28 @@ export function IntegrationBriefCard({ brief, phone, deal, onSend = null }) {
 // regra do drawer. `wa` = base do WhatsApp do lead (waLink(l.phone));
 // `onPatch` grava no lead (sincroniza a fila e persiste). Proposta é só do
 // closer na call — na tarefa de confirmação do SDR ela some.
-function CallShortcuts({ l, item, wa, onPatch }) {
+// `kind` = "call" (venda) ou "integracao": a integração também roda no Meet com o
+// cliente (Leo, 11/09) e tem a PRÓPRIA sala (integrationCallUrl); a proposta
+// só faz sentido na call de venda.
+function CallShortcuts({ l, item, wa, onPatch, kind = "call" }) {
   const [busy, setBusy] = useS("");   // "meet" | ""
   const [err, setErr] = useS("");
-  const waForward = wa && l.callUrl
-    ? `${wa}?text=${encodeURIComponent(waCallLinkText(l, l.callUrl))}`
+  const isInteg = kind === "integracao";
+  const url = isInteg ? l.integrationCallUrl : l.callUrl;
+  const nome = isInteg ? "integração" : "call";
+  const waForward = wa && url
+    ? `${wa}?text=${encodeURIComponent(waCallLinkText(l, url, isInteg ? "integração" : ""))}`
     : null;
   const googleOn = !!window.SEED?.CONFIG?.google?.connected;
 
   async function makeLink() {
-    if (!googleOn) { setErr("conecte o Google em Ajustes pra criar o Meet da call"); return; }
+    if (!googleOn) { setErr(`conecte o Google em Ajustes pra criar o Meet da ${nome}`); return; }
     setBusy("meet"); setErr("");
     try {
-      // O servidor já grava o callUrl no lead; o patch só espelha aqui e na fila.
-      const r = await api.createMeet(l.id); onPatch({ callUrl: r.callUrl, meetEventId: r.eventId });
-    } catch (e) { setErr(e?.message || "falha ao criar o link da call"); }
+      // O servidor já grava o link no lead; o patch só espelha aqui e na fila.
+      const r = await api.createMeet(l.id, isInteg ? { kind: "integracao" } : undefined);
+      onPatch(isInteg ? { integrationCallUrl: r.callUrl, integrationMeetEventId: r.eventId } : { callUrl: r.callUrl, meetEventId: r.eventId });
+    } catch (e) { setErr(e?.message || `falha ao criar o link da ${nome}`); }
     setBusy("");
   }
 
@@ -1283,33 +1291,33 @@ function CallShortcuts({ l, item, wa, onPatch }) {
 
   return (
     <div style={{ border: "1px solid var(--line-2)", background: "var(--bg-inset)", borderRadius: "var(--r-2)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 9 }}>
-      <div className="kicker accent">Atalhos da call</div>
+      <div className="kicker accent">Atalhos da {nome}</div>
 
       {/* Link da chamada: entrar · copiar · mandar pro cliente no Whats. */}
       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
         <span className="kicker">Link da chamada</span>
-        {l.callUrl ? (
+        {url ? (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-            <a href={l.callUrl} target="_blank" rel="noopener noreferrer" style={chip} title={l.callUrl}>entrar na call ↗</a>
-            <button style={chip} title="Copiar o link da call"
-              onClick={() => { try { navigator.clipboard.writeText(l.callUrl); } catch { window.prompt("Link da call:", l.callUrl); } }}>copiar</button>
+            <a href={url} target="_blank" rel="noopener noreferrer" style={chip} title={url}>entrar na {nome} ↗</a>
+            <button style={chip} title={`Copiar o link da ${nome}`}
+              onClick={() => { try { navigator.clipboard.writeText(url); } catch { window.prompt(`Link da ${nome}:`, url); } }}>copiar</button>
             {waForward && (
               <a href={waForward} target="_blank" rel="noopener noreferrer" style={{ ...chip, borderColor: "var(--wa-brand)", color: "var(--wa-brand-deep)" }}
-                title={`Mandar o link da call pro ${l.name || "cliente"} no WhatsApp`}>mandar link no Whats ↗</a>
+                title={`Mandar o link da ${nome} pro ${l.name || "cliente"} no WhatsApp`}>mandar link no Whats ↗</a>
             )}
             {!wa && <span className="mono dim" style={{ fontSize: 10 }}>sem telefone pra mandar no Whats</span>}
           </div>
         ) : googleOn ? (
           <button onClick={makeLink} disabled={busy === "meet"} style={{ ...chip, alignSelf: "flex-start" }}
-            title="Cria o evento com Meet na agenda e o link da call">
+            title={`Cria o evento com Meet na agenda e o link da ${nome}`}>
             {busy === "meet" ? "criando…" : "🎥 criar link (Meet)"}
           </button>
         ) : (
-          <span className="mono dim" style={{ fontSize: 10.5 }}>conecte o Google em Ajustes pra criar o Meet da call</span>
+          <span className="mono dim" style={{ fontSize: 10.5 }}>conecte o Google em Ajustes pra criar o Meet da {nome}</span>
         )}
       </div>
 
-      <ProposalBlock l={l} wa={wa} item={item} onPatch={onPatch} />
+      {!isInteg && <ProposalBlock l={l} wa={wa} item={item} onPatch={onPatch} />}
 
       {err && <div className="mono" style={{ fontSize: 10.5, color: "var(--neg)" }}>{err}</div>}
     </div>
@@ -1658,8 +1666,9 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
             <CallSummaryCard summary={callSummary} phone={l.phone}
               onSend={onWhatsapp ? (msg) => onWhatsapp(l, msg) : null} />
             {/* Call agendada: atalhos do closer no topo (link da call + mandar pro
-                cliente no Whats + proposta), antes do passo a passo. */}
-            {item.kind === "call" && !preview && <CallShortcuts l={l} item={item} wa={wa} onPatch={patch} />}
+                cliente no Whats + proposta), antes do passo a passo. A integração
+                (tarefa e confirmação) ganha os mesmos atalhos com a sala DELA. */}
+            {(item.kind === "call" || item.kind === "integracao") && !preview && <CallShortcuts l={l} item={item} wa={wa} onPatch={patch} kind={item.kind} />}
             {/* Fora da call, quem cobra proposta/follow-up também precisa do
                 atalho de mandar a proposta no Whats (sem os atalhos da call). */}
             {item.kind !== "call" && !preview && PROPOSAL_KINDS.has(item.kind) && (
@@ -1732,7 +1741,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
             <div style={{ flex: "1 1 100%", marginTop: 4, padding: 12, borderRadius: "var(--r-2)", background: "var(--bg-1)", border: "1px solid var(--line-2)" }}>
               <div style={{ fontSize: 12, color: "var(--fg-3)", marginBottom: 8 }}>
                 {item.confirmKind === "integracao"
-                  ? "Novo horário da integração · o Meet criado antes continua valendo, reenvie o link no novo horário."
+                  ? "Novo horário da integração · o convite do Meet acompanha o horário novo (o cliente recebe a atualização por e-mail)."
                   : `Novo horário da call${l.closer ? "" : " · defina o closer no card antes"} — vira um toque no lead (conta no placar do SDR).`}
               </div>
               <SlotGrid days={nextBusinessDays(6)} day={rDay} setDay={setRDay} slot={rSlot} setSlot={setRSlot}

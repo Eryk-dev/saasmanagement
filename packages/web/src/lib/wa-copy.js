@@ -17,9 +17,10 @@ function hi(lead) {
 }
 
 // "Mandar link no Whats" da call agendada (roteiro do Meu dia e drawer do card).
-export function waCallLinkText(lead, url) {
+// `what` sobrescreve o nome da conversa (ex.: "integração"); vazio = a call do produto.
+export function waCallLinkText(lead, url, what = "") {
   const t = TERMS[lead?.saas];
-  return `${hi(lead)} Nossa ${t?.call || "call"} vai ser por este link: ${url}`;
+  return `${hi(lead)} Nossa ${what || t?.call || "call"} vai ser por este link: ${url}`;
 }
 
 // Envio da proposta a partir do roteiro (ofertas do deck).

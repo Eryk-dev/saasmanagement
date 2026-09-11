@@ -14,7 +14,7 @@ function mockFetch() {
     const u = String(url);
     const method = init.method || "GET";
     const body = typeof init.body === "string" ? init.body : "";
-    calls.push({ url: u, method });
+    calls.push({ url: u, method, body });
     const ok = (b) => ({ status: 200, json: async () => b, text: async () => "" });
     if (u.includes("oauth2.googleapis.com/token")) {
       const refresh = body.includes("grant_type=refresh_token");
@@ -83,4 +83,28 @@ test("syncPersonalCalendar: cria na agenda do closer, some ao reatribuir p/ quem
   await syncPersonalCalendar(repo, gu, await repo.get("leads", "le1"));
   lead = await repo.get("leads", "le1");
   assert.equal(lead.calCallEventId || "", "");
+});
+
+// O bloco espelhado na agenda do INTEGRADOR leva o link da sala da integração
+// (integrationCallUrl), não o da venda — antes o `meetLine` era um só, montado
+// do callUrl, e o integrador abria a agenda e caía na call de venda.
+test("syncPersonalCalendar: espelho da integração leva o Meet DA INTEGRAÇÃO, o da call leva o da venda", async () => {
+  const repo = makeMemRepo();
+  await repo.create("users", { id: "leonardo", name: "Leo" });
+  const f = mockFetch();
+  const gu = makeGoogleUser({ fetch: f, clientId: "cid", clientSecret: "sec", repo });
+  await gu.exchangeCodeForUser("code", "https://x/cb", "leonardo");
+  await repo.create("leads", {
+    id: "le2", saas: "leverads", name: "Bia", closer: "leonardo", integrator: "leonardo",
+    callAt: "2026-09-10T15:00", callUrl: "https://meet.google.com/venda-aaa",
+    integrationAt: "2026-09-12T09:00", integrationCallUrl: "https://meet.google.com/integ-bbb",
+  });
+  await syncPersonalCalendar(repo, gu, await repo.get("leads", "le2"));
+  const posts = f.calls.filter((c) => c.method === "POST").map((c) => JSON.stringify(c));
+  const integ = posts.find((s) => s.includes("Integração"));
+  const call = posts.find((s) => s.includes("Call ·"));
+  assert.ok(integ, "evento da integração espelhado");
+  assert.ok(integ.includes("meet.google.com/integ-bbb"), "link da integração no bloco do integrador");
+  assert.ok(!integ.includes("meet.google.com/venda-aaa"), "sem o link da venda no bloco da integração");
+  assert.ok(call && call.includes("meet.google.com/venda-aaa"), "bloco da call segue com o link da venda");
 });
