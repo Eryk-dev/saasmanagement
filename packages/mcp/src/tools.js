@@ -81,6 +81,12 @@ export function registerTools(server) {
       band: z.enum(["red", "yellow", "green"]).optional().describe("filtra customers por banda de saúde"),
       priority: z.enum(["P0", "P1", "P2"]).optional().describe("filtra leads (pipeline) por prioridade"),
       scope: z.string().optional().describe("filtra goals por escopo"),
+      assignee: z.string().optional().describe("filtra tasks por responsável (id do usuário)"),
+      column: z.string().optional().describe("filtra tasks pela key da coluna do quadro"),
+      completed: z.enum(["0", "1"]).optional().describe("filtra tasks concluídas (1) ou abertas (0)"),
+      parent: z.string().optional().describe("tasks: 'none' = só cards do quadro (sem subtarefas), ou o id da tarefa-mãe"),
+      label: z.string().optional().describe("filtra tasks por label"),
+      due: z.enum(["today", "overdue"]).optional().describe("filtra tasks vencendo hoje ou atrasadas"),
     },
   }, async ({ resource, ...q }) => {
     try { return out(await apiClient.list(resolve(resource), q)); } catch (e) { return fail(e); }
@@ -153,6 +159,50 @@ export function registerTools(server) {
     },
   }, async ({ lead_id, force }) => {
     try { return out(await apiClient.generateProposal(lead_id, { force: !!force })); } catch (e) { return fail(e); }
+  });
+
+  // ════════════════ TAREFAS (quadro do time) ════════════════
+  server.registerTool("move_task", {
+    title: "Mover tarefa no quadro",
+    description: "Move uma tarefa de coluna e/ou reordena (antes/depois de outro card). O servidor calcula a ordem e aplica as regras da coluna (entrar na coluna de concluído conclui). Sem column, só reordena.",
+    inputSchema: { id: z.string().describe("id da tarefa"), column: z.string().optional().describe("key da coluna destino (task_boards.columns[].key)"), beforeId: z.string().optional(), afterId: z.string().optional() },
+  }, async ({ id, ...body }) => {
+    try { return out(await apiClient.taskMove(id, body)); } catch (e) { return fail(e); }
+  });
+  server.registerTool("complete_task", {
+    title: "Concluir / reabrir tarefa",
+    description: "Marca a tarefa como concluída (default) ou reabre. Recorrente concluída gera a próxima ocorrência (devolvida em `next`).",
+    inputSchema: { id: z.string(), completed: z.boolean().optional().describe("false = reabrir") },
+  }, async ({ id, completed }) => {
+    try { return out(await apiClient.taskComplete(id, completed !== false)); } catch (e) { return fail(e); }
+  });
+  server.registerTool("comment_task", {
+    title: "Comentar numa tarefa",
+    description: "Adiciona um comentário (com @menções pelo id ou nome dos usuários, que são notificados). Autor = 'api' com a chave mestre.",
+    inputSchema: { id: z.string(), text: z.string() },
+  }, async ({ id, text }) => {
+    try { return out(await apiClient.taskComment(id, text)); } catch (e) { return fail(e); }
+  });
+  server.registerTool("task_activity", {
+    title: "Atividade de uma tarefa",
+    description: "Eventos (criou, atribuiu, moveu, concluiu…) e comentários da tarefa em ordem cronológica.",
+    inputSchema: { id: z.string() },
+  }, async ({ id }) => {
+    try { return out(await apiClient.taskActivity(id)); } catch (e) { return fail(e); }
+  });
+  server.registerTool("bulk_tasks", {
+    title: "Ação em massa nas tarefas",
+    description: "Aplica uma ação a várias tarefas (até 200): assign/unassign (value = ids de usuários), due (value = AAAA-MM-DD), priority (P0|P1|P2|''), move (value = key da coluna), complete, reopen, label/unlabel (value = labels), delete.",
+    inputSchema: { ids: z.array(z.string()), action: z.enum(["assign", "unassign", "due", "priority", "move", "complete", "reopen", "label", "unlabel", "delete"]), value: z.any().optional() },
+  }, async ({ ids, action, value }) => {
+    try { return out(await apiClient.tasksBulk(ids, action, value)); } catch (e) { return fail(e); }
+  });
+  server.registerTool("list_notifications", {
+    title: "Caixa de entrada de uma pessoa",
+    description: "Notificações das tarefas (atribuído, mencionado, comentário, vence hoje, atrasada) de um usuário. Com a chave mestre o `user` é obrigatório.",
+    inputSchema: { user: z.string().describe("id do usuário (ex.: leonardo)"), unread: z.boolean().optional().describe("só não lidas") },
+  }, async ({ user, unread }) => {
+    try { return out(await apiClient.notifications(user, !!unread)); } catch (e) { return fail(e); }
   });
 
   server.registerTool("leaderboard", {

@@ -194,6 +194,16 @@ export function makeDiscord({ fetch: f = globalThis.fetch, webhookUrl = "" } = {
         color: COLORS.blue,
       });
     },
+
+    // Lembrete diário das tarefas: pessoas com tarefa vencendo hoje ou
+    // atrasada (`lines` montadas pelo job task-reminder.js).
+    taskReminder({ lines = [] } = {}) {
+      return send({
+        title: `✅ Tarefas do dia: ${lines.length} pessoa(s) com tarefa vencendo`,
+        description: lines.slice(0, 20).join("\n"),
+        color: COLORS.gold,
+      });
+    },
   };
 }
 

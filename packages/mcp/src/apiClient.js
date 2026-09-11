@@ -50,4 +50,12 @@ export const apiClient = {
   // Sem force é idempotente (auto=1: pula se o lead já tem proposta).
   generateProposal: (leadId, { force = false } = {}) =>
     req("POST", `/api/leads/${encodeURIComponent(leadId)}/proposal${force ? "?force=1" : "?auto=1"}`),
+  // Quadro de Tarefas (rotas dedicadas: o servidor calcula ordem, regras de
+  // coluna, carimbos, atividade e avisos).
+  taskMove: (id, body) => req("POST", `/api/tasks/${encodeURIComponent(id)}/move`, body),
+  taskComplete: (id, completed = true) => req("POST", `/api/tasks/${encodeURIComponent(id)}/complete`, { completed }),
+  taskComment: (id, text) => req("POST", `/api/tasks/${encodeURIComponent(id)}/comments`, { text }),
+  taskActivity: (id) => req("GET", `/api/tasks/${encodeURIComponent(id)}/activity`),
+  tasksBulk: (ids, action, value) => req("POST", "/api/tasks/bulk", { ids, action, value }),
+  notifications: (user, unread) => req("GET", `/api/notifications${qs({ user, unread: unread ? "1" : undefined })}`),
 };

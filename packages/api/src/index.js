@@ -19,6 +19,7 @@ import { startDripSequences } from "./drip-runner.js";
 import { startCadencia } from "./cadencia-runner.js";
 import { startSdrFlow } from "./sdr-flow.js";
 import { startTrainingReminder } from "./training-reminder.js";
+import { startTaskReminder } from "./task-reminder.js";
 import { startBlogEngine } from "./blog-engine.js";
 import { startStoriesCapture } from "./routes.desempenho.js";
 import { startShopifySync } from "./routes.webhooks.js";
@@ -114,6 +115,9 @@ try {
   startSdrFlow(repo, { ...app.integrationClients, log: app.log });
   // Lembrete diário de treinamento (flashcards vencendo) — no-op sem Discord.
   startTrainingReminder(repo, { log: app.log });
+  // Lembrete diário das tarefas (vence hoje / atrasada) na caixa de entrada de
+  // cada pessoa + resumo no Discord quando configurado.
+  startTaskReminder(repo, { log: app.log });
   // Blog SEO: minera pautas, rascunha 1 post por ciclo e publica os agendados
   // (15 min). No-op sem doc app_config/blog_<saas> ou com rules.enabled=false;
   // sem IA configurada só publica o que já está agendado.

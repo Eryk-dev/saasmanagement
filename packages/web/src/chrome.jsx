@@ -3,6 +3,7 @@ import { api, clearKey } from "./lib/api.js";
 import { useActiveSaas } from "./lib/workspace.js";
 import { canSeeScreen, currentUser, hasExplicitScreen, isAdminUser, userById, userPhoto } from "./lib/users.js";
 import { PeriodPicker, usePeriod } from "./components/period-picker.jsx";
+import { NotificationsBell } from "./components/notifications.jsx";
 import { IcpCard } from "./components/icp-card.jsx";
 
 // Filtro de período GLOBAL, no topo ao lado da busca: muda a janela do cockpit
@@ -420,6 +421,7 @@ function TopBar({ title, leading, breadcrumb, onSearch, showPeriod }) {
             <circle cx="11" cy="11" r="7" /><path d="M20.4 20.4l-4.2-4.2" />
           </svg>
         </button>
+        <NotificationsBell />
         <UserMenu />
       </div>
     </header>
