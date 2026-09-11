@@ -14,6 +14,13 @@
 
 import { enrichPaymentLinks, filterPaymentLinks, groupPaymentLinks, validateManualPaid, GROUP_TABS } from "./payment-links.js";
 import { logActivity } from "./lead-flow.js";
+import { isAdmin } from "./routes.flashcards.js";
+
+// Quem vê o quê (Leo, 10/09/2026): closer vê SÓ os links que ele mesmo gerou;
+// admin vê todos e filtra por closer. Sessão sem usuário (key mestre: MCP,
+// integrações) conta como admin. A régua mora aqui, não na tela.
+const seesAll = (req) => !req.authUser || isAdmin(req.authUser);
+const ownsLink = (req, link) => seesAll(req) || String(link.createdBy || "") === String(req.authUser.id);
 
 const brl = (v) => `R$ ${(Math.round((Number(v) || 0) * 100) / 100).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".")}`;
 const MANUAL_LABEL = { pix: "PIX", boleto: "boleto", cartao: "cartão", transferencia: "transferência", dinheiro: "dinheiro", outro: "outro meio" };
@@ -48,7 +55,8 @@ export function registerOfferRoutes(app, repo) {
     const saas = String(q.saas || "");
     const since = String(q.since || "").slice(0, 10);
     const until = String(q.until || "").slice(0, 10);
-    const by = String(q.by || "");
+    const mine = !seesAll(req);
+    const by = mine ? String(req.authUser.id) : String(q.by || "");
     const status = String(q.status || "todos");
     const [all, payments, invoices, leads, customers, users] = await Promise.all([
       repo.list("payment_links"), repo.list("mp_payments"), repo.list("invoices"),
@@ -68,6 +76,9 @@ export function registerOfferRoutes(app, repo) {
       ...grouped,
       groups: grouped.groups.filter(tab),
       links: scoped,
+      // `mine` = a tela mostra "seus links" e esconde o filtro de vendedor.
+      scope: { mine, by },
+      sellers: mine ? [] : grouped.sellers,
       period: { since, until },
       backlog: { count: before.length, waiting: Math.round(before.reduce((a, l) => a + (Number(l.amount) || 0), 0) * 100) / 100 },
     };
@@ -80,6 +91,7 @@ export function registerOfferRoutes(app, repo) {
   app.post("/api/payment-links/:id/pay", async (req, reply) => {
     const link = await repo.get("payment_links", req.params.id);
     if (!link) return reply.code(404).send({ error: "Not found" });
+    if (!ownsLink(req, link)) return reply.code(403).send({ error: "esse link foi gerado por outra pessoa: só quem gerou (ou um admin) dá baixa" });
     const { error, value } = validateManualPaid(req.body || {});
     if (error) return reply.code(400).send({ error });
     if (link.invoice) return reply.code(409).send({ error: "esse link tem fatura: dê baixa na fatura pela ficha do cliente" });
@@ -97,6 +109,7 @@ export function registerOfferRoutes(app, repo) {
   app.post("/api/payment-links/:id/unpay", async (req, reply) => {
     const link = await repo.get("payment_links", req.params.id);
     if (!link) return reply.code(404).send({ error: "Not found" });
+    if (!ownsLink(req, link)) return reply.code(403).send({ error: "esse link foi gerado por outra pessoa: só quem gerou (ou um admin) desfaz" });
     if (!link.manualPaid) return { ok: true, link: await enrichOne(link) };
     const author = req.authUser?.id || "";
     const updated = await repo.update("payment_links", link.id, { manualPaid: null });
