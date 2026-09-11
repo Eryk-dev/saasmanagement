@@ -10,7 +10,7 @@
 // fetch_failed responde 200 pra não virar retry storm.
 
 import { mp as defaultMp, parseWebhookPayload } from "./mp.js";
-import { CYCLE_MONTHS, syncCustomerArr } from "./billing.js";
+import { syncCustomerArr } from "./billing.js";
 import { ingestMpPayment, runMpSync, settleInvoice } from "./mp-payments.js";
 import { recordPaymentLink } from "./payment-links.js";
 import { attachPreapprovalToSub, linkableSubs, runPreapprovalSync } from "./mp-subscriptions.js";
@@ -31,10 +31,11 @@ import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 const looksLikeEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(v || "").trim());
 export const payerEmailOrNone = (v) => (looksLikeEmail(v) ? String(v).trim().toLowerCase() : undefined);
 
-const CYCLE_LABEL = { monthly: "mensal", quarterly: "trimestral", semiannual: "semestral", annual: "anual" };
-// Recorrência do preapproval: o MP só cobra de 1, 3, 6 ou 12 em 12 meses.
-const RECURRING_MONTHS = new Set([1, 3, 6, 12]);
-const FREQ_LABEL = { 1: "mês", 3: "3 meses", 6: "6 meses", 12: "12 meses" };
+// Recorrência (preapproval) DEIXOU de ser vendida em 10/09/2026 (decisão do
+// Leo): nenhuma rota cria preapproval novo. O que já existe (assinaturas
+// mensais antigas, autorizações pendentes de leads) continua sendo lido,
+// espelhado e cobrado pelos webhooks e pelo poller de mp-subscriptions.js.
+const GONE = 410;
 const KIND_LABEL = { renewal: "renovação", prorata: "pró-rata", upsell: "upsell", manual: "cobrança", installment: "parcela" };
 
 // Baixa automática de uma cobrança do MP: paga a fatura aberta/vencida mais
@@ -192,44 +193,20 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
     await discord.invoicePaid({ invoice, customerName: customer?.name, via: "Mercado Pago" });
   }
 
-  // Gera o link de pagamento recorrente (preapproval pending → init_point).
   // Cria a preferência e, se o MP recusar COM e-mail do pagador, tenta de novo
   // sem ele. Link sem pré-preenchimento é melhor que venda travada; o cliente
   // digita o e-mail no próprio checkout.
   const createPreference = (args, log) => createPreferenceWith(mp, args, log);
 
+  // Link de autorização de uma assinatura: só DEVOLVE o que já existe (a
+  // recorrência não é mais vendida). Assinatura sem preapproval responde 410.
   app.post("/api/subscriptions/:id/mp/link", async (req, reply) => {
-    if (!mp.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Mercado Pago não configurado (MERCADOPAGO_ACCESS_TOKEN)" });
     const sub = await repo.get("subscriptions", req.params.id);
     if (!sub) return reply.code(404).send({ error: "Not found" });
-    const customer = await repo.get("customers", sub.customer);
-    const payerEmail = req.body?.payerEmail || customer?.email;
-    if (!payerEmail) return reply.code(400).send({ error: "cliente sem e-mail — preencha o e-mail do cliente ou envie payerEmail" });
-
-    const product = await repo.get("products", sub.saas);
-    const plan = sub.plan ? await repo.get("plans", sub.plan) : null;
-    const reason = [product?.name || sub.saas, plan?.name, `(${CYCLE_LABEL[sub.cycle] || sub.cycle})`]
-      .filter(Boolean).join(" · ");
-    try {
-      const pre = await mp.createPreapproval({
-        payerEmail,
-        externalReference: sub.id,
-        ...mpUrls(req),
-        amount: Number(sub.price) || 0,
-        frequencyMonths: CYCLE_MONTHS[sub.cycle] || 1,
-        reason,
-      });
-      const updated = await repo.update("subscriptions", sub.id, {
-        mpPreapprovalId: pre.id,
-        mpInitPoint: pre.init_point || null,
-        mpStatus: pre.status || "pending",
-        payerEmail,
-      });
-      return { ok: true, initPoint: pre.init_point, preapprovalId: pre.id, subscription: updated };
-    } catch (err) {
-      req.log.warn({ sub: sub.id, err: err.message }, "MP: falha ao criar preapproval");
-      return reply.code(UPSTREAM_FAILED).send({ error: "MP recusou a criação do link", detail: String(err.message || err).slice(0, 300) });
+    if (!sub.mpPreapprovalId) {
+      return reply.code(GONE).send({ error: "a casa não vende mais assinatura recorrente: cobre por link de pagamento avulso (ficha do cliente ou tela Links de pagamento)" });
     }
+    return { ok: true, initPoint: sub.mpInitPoint || null, preapprovalId: sub.mpPreapprovalId, subscription: sub };
   });
 
   // ── Financeiro (espelho de pagamentos + cobrança avulsa) ─────────────────
@@ -470,57 +447,33 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
       || [PRODUCT_LABEL_ALL[dealProduct] || dealProduct || product?.name || lead.saas, plan ? PLAN_LABEL[plan] : "pagamento"].filter(Boolean).join(" · ");
     const description = String(req.body?.description || "").trim() || undefined;
     const payerEmail = payerEmailOrNone(req.body?.payerEmail ?? lead.email);
-    // Recorrência: o MP só aceita 1/3/6/12 meses no preapproval, e EXIGE um
-    // e-mail que preste (é a conta que vai autorizar a cobrança automática) —
-    // aqui não cabe o fallback "tenta sem e-mail" do checkout avulso.
-    const recurring = String(req.body?.mode || "") === "recurring";
-    const frequencyMonths = Math.round(Number(req.body?.frequencyMonths) || 1);
-    if (recurring && !RECURRING_MONTHS.has(frequencyMonths)) {
-      return reply.code(400).send({ error: "a cobrança recorrente só aceita mensal, trimestral, semestral ou anual" });
-    }
-    if (recurring && !payerEmail) {
-      return reply.code(400).send({ error: "assinatura recorrente precisa do e-mail do pagador (o Mercado Pago exige um e-mail válido pra autorizar a cobrança automática)" });
+    // Recorrência saiu de linha (10/09/2026): o modo recorrente é recusado
+    // antes de falar com o MP. Lead antigo com preapproval continua carimbado.
+    if (String(req.body?.mode || "") === "recurring") {
+      return reply.code(400).send({ error: "a casa não vende mais assinatura recorrente: gere um link de pagamento avulso (à vista ou parcelado)" });
     }
     try {
-      const pref = recurring
-        ? await mp.createPreapproval({
-          payerEmail, externalReference: lead.id, ...mpUrls(req),
-          amount, frequencyMonths, reason: title.slice(0, 255),
-        })
-        : await createPreference({
-          title, description, amount, externalReference: lead.id,
-          payerEmail,
-          ...mpUrls(req),
-          maxInstallments: Number(req.body?.maxInstallments) || undefined,
-        });
+      const pref = await createPreference({
+        title, description, amount, externalReference: lead.id,
+        payerEmail,
+        ...mpUrls(req),
+        maxInstallments: Number(req.body?.maxInstallments) || undefined,
+      });
       const contractValue = Math.round(Number(req.body?.contractValue) * 100) / 100;
-      // Recorrência sem forma combinada escolhida assume o cartão recorrente —
-      // é o que ela É, e o gate de Ganho já entende esse meio (ciclo mensal,
-      // sem Nº de parcelas).
-      const paymentMethod = String(req.body?.paymentMethod || "").trim()
-        || (recurring && !lead.paymentMethod ? "cartao_recorrente" : "");
+      const paymentMethod = String(req.body?.paymentMethod || "").trim();
       const updated = await repo.update("leads", lead.id, {
         mpChargeUrl: pref.init_point || null, mpChargeAmount: amount,
         mpChargeTitle: title, mpChargeAt: new Date().toISOString(),
         // Que tipo de link é o ÚLTIMO gerado (a tela e o card mostram isso).
-        mpChargeKind: recurring ? "recurring" : "once",
+        mpChargeKind: "once",
         ...(plan ? { planClosed: plan } : {}),
         ...(dealProduct ? { dealProduct } : {}),
         ...(contractValue > 0 ? { amount: contractValue } : {}),
         ...(paymentMethod ? { paymentMethod } : {}),
-        // A recorrência é um FATO do lead: o preapproval fica carimbado aqui até
-        // o Ganho, quando a assinatura que nasce do fechamento a adota
-        // (convertWonLead / webhook). Gerar um avulso depois não apaga.
-        ...(recurring ? {
-          mpPreapprovalId: pref.id || "", mpPreapprovalStatus: pref.status || "pending",
-          mpPreapprovalMonths: frequencyMonths, mpPayerEmail: payerEmail || "",
-        } : {}),
       });
       await logActivity(repo, {
         saas: lead.saas || "", lead: lead.id, type: "note",
-        text: (recurring
-          ? `Link de assinatura recorrente criado: R$ ${amount.toFixed(2).replace(".", ",")} a cada ${FREQ_LABEL[frequencyMonths]} (${title})`
-          : `Link de pagamento criado: R$ ${amount.toFixed(2).replace(".", ",")} (${title})`)
+        text: `Link de pagamento criado: R$ ${amount.toFixed(2).replace(".", ",")} (${title})`
           + (contractValue > 0 && contractValue !== amount ? ` · contrato R$ ${contractValue.toFixed(2).replace(".", ",")}` : ""),
         author: req.authUser?.id || "system",
       });
@@ -532,14 +485,14 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
         targetName: lead.name || "", targetPhone: lead.phone || "",
         amount, title, description, url: pref.init_point || "", prefId: pref.id || "",
         payerEmail, reference: lead.id, plan, product: dealProduct,
-        recurring, frequencyMonths: recurring ? frequencyMonths : 0,
+        recurring: false, frequencyMonths: 0,
         createdBy: req.authUser?.id || "",
       }, { log: req.log });
-      return { ok: true, lead: updated, url: pref.init_point || null, recurring };
+      return { ok: true, lead: updated, url: pref.init_point || null, recurring: false };
     } catch (err) {
-      req.log.warn({ lead: lead.id, recurring, err: err.message }, "MP: falha ao criar link do lead");
+      req.log.warn({ lead: lead.id, err: err.message }, "MP: falha ao criar link do lead");
       return reply.code(UPSTREAM_FAILED).send({
-        error: recurring ? "MP recusou a criação da assinatura recorrente" : "MP recusou a criação do link",
+        error: "MP recusou a criação do link",
         detail: String(err.message || err).slice(0, 300),
       });
     }

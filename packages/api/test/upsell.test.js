@@ -46,15 +46,13 @@ const post = (app, body) => app.inject({ method: "POST", url: "/api/customers/c1
 test("parseUpsellBody: valida modo, valores e item", () => {
   assert.equal(parseUpsellBody({}).error, "valor do upsell deve ser positivo");
   assert.equal(parseUpsellBody({ amount: 100 }).error, "diga o que foi vendido");
-  assert.equal(parseUpsellBody({ mode: "recurring", item: "FULL" }).error, "acréscimo na mensalidade deve ser positivo");
-  assert.equal(parseUpsellBody({ mode: "recurring", item: "FULL", monthlyDelta: 200, amount: 0, payment: "link" }).error, "cobrança a receber ou por link precisa de valor");
+  assert.match(parseUpsellBody({ mode: "recurring", item: "FULL", monthlyDelta: 200 }).error, /não trabalha mais com recorrência/);
+  assert.equal(parseUpsellBody({ item: "FULL", amount: 0, payment: "link" }).error, "valor do upsell deve ser positivo");
   const ok = parseUpsellBody({ item: "OEM 250", amount: "1500", payment: "paid", date: "2026-09-08" });
   assert.equal(ok.error, undefined);
   assert.equal(ok.mode, "oneoff");
   assert.equal(ok.at, "2026-09-08T12:00:00.000Z");
-  const rec = parseUpsellBody({ mode: "recurring", item: "FULL", monthlyDelta: 300, amount: 0 });
-  assert.equal(rec.amount, 0);
-  assert.equal(rec.monthlyDelta, 300);
+  assert.equal(parseUpsellBody({ mode: "oneoff", item: "FULL", amount: 300 }).mode, "oneoff");
 });
 
 test("avulso pago: fatura upsell paga com item e vendedor, carimbo no cliente, activity, Discord e balde do caixa", async () => {
@@ -92,31 +90,14 @@ test("avulso pago: fatura upsell paga com item e vendedor, carimbo no cliente, a
   await app.close();
 });
 
-test("recorrente com assinatura: mensalidade sobe o delta, arr acompanha e a fatura de agora é o que foi cobrado", async () => {
+test("recorrente é recusado (400): upsell é sempre venda avulsa desde 10/09/2026", async () => {
   const { app, repo } = await buildApp();
   await repo.create("subscriptions", { id: "s1", customer: "c1", saas: "leverads", status: "active", cycle: "monthly", price: 500 });
   const r = await post(app, { item: "FULL", mode: "recurring", monthlyDelta: 300, amount: 150, payment: "paid", date: "2026-09-08", soldBy: "u_cs" });
-  assert.equal(r.statusCode, 200, r.body);
-  const body = r.json();
-  assert.equal(body.subscription.price, 800);
-  assert.equal(body.invoice.amount, 150); // pró-rata cobrado na virada
-  assert.equal(body.invoice.recurringDelta, 300);
-  assert.equal((await repo.get("customers", "c1")).arr, 9600); // 800 × 12
-  await app.close();
-});
-
-test("recorrente sem assinatura: arr soma 12× o delta; cobrar agora zero nasce paga com R$ 0 (é o registro da venda)", async () => {
-  const { app, repo } = await buildApp();
-  const r = await post(app, { item: "+OEM", mode: "recurring", monthlyDelta: 250, amount: 0, soldBy: "u_cs", date: "2026-09-08" });
-  assert.equal(r.statusCode, 200, r.body);
-  const inv = r.json().invoice;
-  assert.equal(inv.amount, 0);
-  assert.equal(inv.status, "paid");
-  assert.equal(inv.soldAt, "2026-09-08T12:00:00.000Z");
-  assert.equal(inv.recurringDelta, 250);
-  assert.equal((await repo.get("customers", "c1")).arr, 9000); // 6000 + 250 × 12
-  assert.equal((await repo.list("invoices")).length, 1);
-  assert.equal((await repo.get("customers", "c1")).upsellCount, 1);
+  assert.equal(r.statusCode, 400, r.body);
+  assert.match(r.json().error, /recorrência/);
+  assert.equal((await repo.get("subscriptions", "s1")).price, 500, "assinatura intacta");
+  assert.equal((await repo.list("invoices")).length, 0, "nada gravado");
   await app.close();
 });
 

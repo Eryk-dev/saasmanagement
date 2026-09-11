@@ -356,9 +356,6 @@ export const api = {
   socialDmMessages: (saas, id) => req("GET", `/api/social/dms/messages?saas=${encodeURIComponent(saas)}&id=${encodeURIComponent(id)}`),
   socialDmSend: (saas, body) => req("POST", `/api/social/dms/send?saas=${encodeURIComponent(saas)}`, body),
   socialPosts: (saas) => req("GET", `/api/social/posts?saas=${encodeURIComponent(saas)}`),
-  // Links de pagamento das ofertas (ferramenta) — leitura e edição pra todo o time.
-  offers: (saas) => req("GET", `/api/offers/${encodeURIComponent(saas)}`),
-  saveOffers: (saas, items) => req("PUT", `/api/offers/${encodeURIComponent(saas)}`, { items }),
   // Disparos (ferramenta): CRUD da campanha via api.list/create/update("campaigns").
   // `mark` grava um envio feito (fila assistida) + loga o toque na timeline; `aiCopy`
   // sugere a copy do disparo por IA.
@@ -495,7 +492,8 @@ export const api = {
   billingReceived: (saas) => req("GET", `/api/billing/received/${encodeURIComponent(saas)}`),
   unpayInvoice: (id) => req("POST", `/api/invoices/${id}/unpay`),
   runBilling: () => req("POST", "/api/billing/run", {}),
-  // Mercado Pago: gera o link de autorização da assinatura (preapproval).
+  // Mercado Pago: devolve o link de autorização de uma assinatura ANTIGA
+  // (recorrência não é mais vendida; sem preapproval o servidor responde 410).
   mpLink: (subId, payerEmail) => req("POST", `/api/subscriptions/${subId}/mp/link`, payerEmail ? { payerEmail } : {}),
   // Financeiro MP: espelho de pagamentos da conta + cobrança avulsa no cliente.
   mpPayments: (query = {}) => {
@@ -515,9 +513,17 @@ export const api = {
   // Link de pagamento pelo card do lead (external_reference = lead: pagamento
   // entra no Financeiro já casado com a origem).
   mpLeadLink: (leadId, body) => req("POST", `/api/leads/${leadId}/mp/link`, body),
-  // Histórico dos links gerados (tela Links de pagamento): o recibo de cada
-  // geração já cruzado com o espelho do MP — quem pagou, quanto e como.
-  paymentLinks: (saas) => req("GET", `/api/payment-links${saas ? `?saas=${encodeURIComponent(saas)}` : ""}`),
+  // Histórico dos links gerados (tela Links de pagamento), AGRUPADO por cliente
+  // no servidor com o saldo pago × em aberto: cada recibo já cruzado com o
+  // espelho do MP. query = { saas, since, until, by, status }.
+  paymentLinks: (query = {}) => {
+    const q = typeof query === "string" ? { saas: query } : query;
+    const qs = new URLSearchParams(Object.fromEntries(Object.entries(q).filter(([, v]) => v))).toString();
+    return req("GET", `/api/payment-links${qs ? `?${qs}` : ""}`);
+  },
+  // Baixa manual de um link (dinheiro que entrou por fora) e o desfazer.
+  payPaymentLink: (id, body) => req("POST", `/api/payment-links/${id}/pay`, body),
+  unpayPaymentLink: (id) => req("POST", `/api/payment-links/${id}/unpay`, {}),
   invoiceMpLink: (id, body = {}) => req("POST", `/api/invoices/${id}/mp/link`, body),
   // Marketing (Meta Ads): sync de insights + métricas cruzadas com o funil.
   marketingSync: (body = {}) => req("POST", "/api/marketing/sync", body),

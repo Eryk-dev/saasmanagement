@@ -61,7 +61,7 @@ const { useState: useStA, useEffect: useEA, useCallback: useCbA } = React;
 const PERIOD_SCREENS = new Set([
   "overview", "aquisicao", "funcionarios", "desempenho",
   "metrics", "forms", "expenses", "customers", "social",
-  "eloapp", "landingpages",
+  "eloapp", "landingpages", "offers",
 ]);
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{

@@ -1,6 +1,6 @@
 // Mercado Pago (fase 4) — client portado do copylever + webhook ligado no motor
 // da fase 5. Cobre: assinatura HMAC do webhook (manifest id;request-id;ts),
-// criação do link (preapproval pending → init_point salvo na assinatura),
+// link da assinatura (só devolve preapproval antigo; não cria mais, 10/09/2026),
 // webhook preapproval (authorized → active; cancelled → canceled + ARR),
 // baixa automática de fatura idempotente por mpPaymentId, payer mismatch DROP.
 
@@ -71,27 +71,24 @@ test("verifyWebhookSignature: válida passa, adulterada não, sem secret não", 
   assert.equal(noSecret.verifyWebhookSignature(h["x-signature"], "req-1", "123"), false);
 });
 
-test("mp/link: cria preapproval pending e salva id/init_point/payer na assinatura", async () => {
+test("mp/link: não cria preapproval novo (410); assinatura antiga com preapproval devolve o link salvo", async () => {
   const repo = makeMemRepo();
   const { app, fakeFetch } = buildApp(repo, {
     "POST /preapproval": (call) => ({ id: "pre_1", status: "pending", init_point: "https://mp.com/pay/pre_1", payer_email: call.body.payer_email }),
   });
   const sub = await setupSub(repo, app);
 
+  const gone = await app.inject({ method: "POST", url: `/api/subscriptions/${sub.id}/mp/link`, payload: {} });
+  assert.equal(gone.statusCode, 410);
+  assert.match(gone.json().error, /não vende mais assinatura recorrente/);
+  assert.equal(fakeFetch.calls.some((c) => c.key === "POST /preapproval"), false, "MP não é chamado");
+  assert.equal((await repo.get("subscriptions", sub.id)).mpPreapprovalId, undefined);
+
+  await repo.update("subscriptions", sub.id, { mpPreapprovalId: "pre_old", mpInitPoint: "https://mp.com/pay/pre_old", mpStatus: "authorized" });
   const res = await app.inject({ method: "POST", url: `/api/subscriptions/${sub.id}/mp/link`, payload: {} });
   assert.equal(res.statusCode, 200);
-  assert.equal(res.json().initPoint, "https://mp.com/pay/pre_1");
-
-  const saved = await repo.get("subscriptions", sub.id);
-  assert.equal(saved.mpPreapprovalId, "pre_1");
-  assert.equal(saved.mpStatus, "pending");
-  assert.equal(saved.payerEmail, "payer@x.com"); // veio do customer.email
-
-  // payload pro MP: valor em reais, ciclo em meses, external_reference = sub.id
-  const call = fakeFetch.calls.find((c) => c.key === "POST /preapproval");
-  assert.equal(call.body.auto_recurring.transaction_amount, 449);
-  assert.equal(call.body.auto_recurring.frequency, 1);
-  assert.equal(call.body.external_reference, sub.id);
+  assert.equal(res.json().initPoint, "https://mp.com/pay/pre_old");
+  assert.equal(res.json().preapprovalId, "pre_old");
 
   await app.close();
 });
@@ -157,7 +154,8 @@ test("webhook authorized_payment processed: baixa a fatura aberta; duplicado nã
     "GET /authorized_payments/ap_1": { id: "ap_1", status: "processed", preapproval_id: "pre_1", transaction_amount: 449, payment: { id: "pay_77" } },
   });
   const sub = await setupSub(repo, app);
-  await app.inject({ method: "POST", url: `/api/subscriptions/${sub.id}/mp/link`, payload: {} });
+  // Assinatura antiga já vinculada ao preapproval (o link não nasce mais).
+  await repo.update("subscriptions", sub.id, { mpPreapprovalId: "pre_1", mpStatus: "authorized", payerEmail: "payer@x.com" });
 
   const payload = { type: "subscription_authorized_payment", data: { id: "ap_1" } };
   const first = await app.inject({ method: "POST", url: "/public/mp/webhook", payload, headers: sign("ap_1") });
@@ -184,7 +182,7 @@ test("payer mismatch no webhook → evento DROPADO sem tocar a assinatura", asyn
   });
   const sub = await setupSub(repo, app);
   const theSubId = sub.id;
-  await app.inject({ method: "POST", url: `/api/subscriptions/${sub.id}/mp/link`, payload: {} });
+  await repo.update("subscriptions", sub.id, { mpPreapprovalId: "pre_1", mpStatus: "pending", payerEmail: "payer@x.com" });
 
   const res = await app.inject({ method: "POST", url: "/public/mp/webhook", payload: { type: "subscription_preapproval", data: { id: "pre_1" } }, headers: sign("pre_1") });
   assert.equal(res.json().ignored, "payer mismatch");
@@ -194,7 +192,7 @@ test("payer mismatch no webhook → evento DROPADO sem tocar a assinatura", asyn
   await app.close();
 });
 
-test("mp/link sem MP configurado → 503; cliente sem e-mail → 400", async () => {
+test("mp/link: sem preapproval responde 410 mesmo sem MP configurado (não depende do token)", async () => {
   const repo = makeMemRepo();
   // mp sem accessToken = não configurado
   const app = Fastify();
@@ -202,10 +200,7 @@ test("mp/link sem MP configurado → 503; cliente sem e-mail → 400", async () 
   await repo.create("products", { id: "p1", name: "P1" });
   await repo.create("customers", { id: "c1", name: "Sem Email", saas: "p1" });
   const sub = (await app.inject({ method: "POST", url: "/api/subscriptions", payload: { customer: "c1", saas: "p1", price: 100, cycle: "monthly" } })).json();
-  assert.equal((await app.inject({ method: "POST", url: `/api/subscriptions/${sub.id}/mp/link`, payload: {} })).statusCode, 424);
+  assert.equal((await app.inject({ method: "POST", url: `/api/subscriptions/${sub.id}/mp/link`, payload: {} })).statusCode, 410);
+  assert.equal((await app.inject({ method: "POST", url: "/api/subscriptions/nada/mp/link", payload: {} })).statusCode, 404);
   await app.close();
-
-  const { app: app2 } = buildApp(repo, {});
-  assert.equal((await app2.inject({ method: "POST", url: `/api/subscriptions/${sub.id}/mp/link`, payload: {} })).statusCode, 400);
-  await app2.close();
 });

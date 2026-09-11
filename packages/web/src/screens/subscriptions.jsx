@@ -88,8 +88,8 @@ function SubscriptionsScreen({ saasId }) {
       await load();
     } catch (err) { flash(`MP: ${err.message}`); }
   }
-  // Gera (ou copia) o link de autorização do MP. O cliente abre, autoriza, e o
-  // webhook ativa a assinatura + dá baixa nas faturas sozinho.
+  // Copia o link de autorização do MP de uma assinatura ANTIGA (a recorrência
+  // não é mais vendida desde 10/09/2026: o servidor não cria preapproval novo).
   async function mpLink(sub) {
     try {
       const r = await api.mpLink(sub.id);
@@ -207,9 +207,9 @@ function SubscriptionsScreen({ saasId }) {
                     </span>
                     <span className="mono dim tnum" style={{ fontSize: 12 }}>{fmtDate(s.periodEnd)}</span>
                     <span style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                      {mpConfigured && s.status !== "canceled" && (
-                        <button onClick={() => mpLink(s)} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }} title={s.mpInitPoint ? "re-gerar/copiar link de autorização" : "gerar link de autorização no Mercado Pago"}>
-                          <span style={{ fontSize: 11 }}>{s.mpPreapprovalId ? "link MP" : "cobrar via MP"}</span>
+                      {mpConfigured && s.status !== "canceled" && s.mpPreapprovalId && (
+                        <button onClick={() => mpLink(s)} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }} title="copiar o link de autorização desta assinatura no Mercado Pago (recorrência antiga)">
+                          <span style={{ fontSize: 11 }}>link MP</span>
                         </button>
                       )}
                       {s.status !== "canceled" && (

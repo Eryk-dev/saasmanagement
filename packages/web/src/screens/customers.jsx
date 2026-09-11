@@ -1095,10 +1095,11 @@ function CustomerFacts({ customer, lead, product, leverOrg, onPatch }) {
       {children}
     </label>
   );
-  // Mentoria vende pacote de consultas; os demais produtos, plano recorrente.
+  // Mentoria vende pacote de consultas; os demais, plano por ciclo. "Mensal"
+  // (recorrência) saiu de linha em 10/09/2026: só aparece se já é o plano.
   const PLANS = customer.saas === "uniquekids"
     ? CONSULT_PACKAGES.map(consultPackageLabel)
-    : ["Anual", "Semestral", "Serviço único", "Trimestral", "Mensal"];
+    : ["Anual", "Semestral", "Serviço único", "Trimestral", ...(customer.plan === "Mensal" ? ["Mensal"] : [])];
   return (
     <div style={BOX}>
       <div className="kicker" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
@@ -1395,7 +1396,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
             </div>
             {!editing && !churned && (
               <button onClick={() => { setUpsellOpen((v) => !v); setChurnOpen(false); }}
-                title="Registrar um upsell (venda extra pra este cliente): o que foi vendido, valor, avulso ou acréscimo na mensalidade, pago / a receber / link do Mercado Pago e quem vendeu. Entra no caixa, no placar e na meta de upsell do CS."
+                title="Registrar um upsell (venda extra pra este cliente): o que foi vendido, valor, pago / a receber / link do Mercado Pago e quem vendeu. Entra no caixa, no placar e na meta de upsell do CS."
                 style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid color-mix(in srgb, var(--pos) 45%, transparent)", background: "var(--bg-1)", color: "var(--pos)", fontSize: 12.5, flexShrink: 0 }}>
                 {upsellOpen ? "cancelar" : "registrar upsell"}
               </button>

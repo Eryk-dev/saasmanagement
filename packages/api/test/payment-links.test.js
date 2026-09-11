@@ -3,7 +3,9 @@
 //
 // Cobre: gravação do recibo nas 3 portas, casamento por referência e por
 // entidade (pagamento que casou pelo e-mail), link substituído ao gerar de novo,
-// pagamento anterior ao link não conta, e backfill idempotente.
+// pagamento anterior ao link não conta, backfill idempotente, baixa manual
+// (precedência, rotas pay/unpay) e o histórico agrupado por cliente com saldo
+// (filtro de período por dia BRT e por vendedor).
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -12,7 +14,7 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerRoutes } = await import("../src/routes.js");
 const { makeMp } = await import("../src/mp.js");
-const { enrichPaymentLinks, backfillPaymentLinks } = await import("../src/payment-links.js");
+const { enrichPaymentLinks, backfillPaymentLinks, groupPaymentLinks, filterPaymentLinks, validateManualPaid } = await import("../src/payment-links.js");
 
 // fetch fake do MP: qualquer preference criada devolve o mesmo init_point.
 function buildApp(repo) {
@@ -189,4 +191,171 @@ test("backfill traz o que já existia (lead e fatura) e não duplica ao rodar de
 
   assert.equal(await backfillPaymentLinks(repo), 0);
   assert.equal((await repo.list("payment_links")).length, 2);
+});
+
+// ── Baixa manual ─────────────────────────────────────────────────────────────
+test("validateManualPaid: forma obrigatória, dia BRT vira meio-dia, futuro e lixo recusados", () => {
+  const now = new Date("2026-09-10T15:00:00.000Z");
+  assert.match(validateManualPaid({}, now).error, /como o dinheiro entrou/);
+  assert.match(validateManualPaid({ method: "cheque" }, now).error, /como o dinheiro entrou/);
+  assert.deepEqual(validateManualPaid({ method: "PIX", at: "2026-09-08", note: " caiu na conta " }, now).value,
+    { at: "2026-09-08T15:00:00.000Z", method: "pix", note: "caiu na conta" });
+  assert.equal(validateManualPaid({ method: "pix" }, now).value.at, now.toISOString(), "sem data = agora");
+  assert.match(validateManualPaid({ method: "pix", at: "2026-09-20" }, now).error, /futuro/);
+  assert.match(validateManualPaid({ method: "pix", at: "ontem" }, now).error, /inválida/);
+});
+
+test("baixa manual: vira pago com paidBy manual; MP aprovado ganha; manual ganha de recusado; não vira substituído", () => {
+  const manual = { at: "2026-08-12T15:00:00.000Z", method: "pix", note: "", by: "u1", markedAt: "2026-08-12T15:01:00.000Z" };
+  const [m] = enrichPaymentLinks([link({ manualPaid: manual })], []);
+  assert.equal(m.status, "paid");
+  assert.equal(m.paidBy, "manual");
+  assert.equal(m.paidAt, manual.at);
+  assert.equal(m.paidAmount, 1000);
+
+  const [mp] = enrichPaymentLinks([link({ manualPaid: manual })], [payment({ externalReference: "le_1", amount: 999.5 })]);
+  assert.equal(mp.paidBy, "mp", "o fato do MP manda");
+  assert.equal(mp.paidAmount, 999.5, "o que entrou é o valor do pagamento");
+
+  const [rej] = enrichPaymentLinks([link({ manualPaid: manual })], [payment({ status: "rejected", dateApproved: "", externalReference: "le_1" })]);
+  assert.equal(rej.status, "paid", "cartão recusado e o cliente pagou por fora");
+  assert.equal(rej.paidBy, "manual");
+  assert.equal(rej.payment.status, "rejected", "a tentativa recusada continua visível");
+
+  const velho = link({ id: "pl_velho", createdAt: "2026-08-10T10:00:00.000Z", manualPaid: manual });
+  const novo = link({ id: "pl_novo", createdAt: "2026-08-11T10:00:00.000Z" });
+  const out = enrichPaymentLinks([velho, novo], []);
+  assert.equal(out.find((l) => l.id === "pl_velho").status, "paid", "pago à mão não é substituído");
+  assert.equal(out.find((l) => l.id === "pl_novo").status, "waiting");
+
+  const [inv] = enrichPaymentLinks([link({ kind: "customer", lead: "", customer: "cu_1", invoice: "in_1", reference: "in_1" })], [], [{ id: "in_1", status: "paid", paidAt: "2026-08-12T09:00:00.000Z" }]);
+  assert.equal(inv.paidBy, "invoice");
+});
+
+test("POST /pay grava a baixa, devolve o link pago e conta na timeline; 400/404/409 nas travas; /unpay desfaz", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds" });
+  await repo.create("customers", { id: "cu_1", saas: "leverads", name: "Cliente Real", leadId: "le_9" });
+  await repo.create("payment_links", link({ id: "pl_1" }));
+  await repo.create("payment_links", link({ id: "pl_mp", lead: "le_2", reference: "le_2" }));
+  await repo.create("payment_links", link({ id: "pl_fat", kind: "customer", lead: "", customer: "cu_1", invoice: "in_1", reference: "in_1" }));
+  await repo.create("payment_links", link({ id: "pl_cli", kind: "customer", lead: "", customer: "cu_1", reference: "" }));
+  await repo.create("mp_payments", payment({ mpId: "7", externalReference: "le_2", lead: "le_2" }));
+  const app = buildApp(repo);
+
+  assert.equal((await app.inject({ method: "POST", url: "/api/payment-links/nada/pay", payload: { method: "pix" } })).statusCode, 404);
+  assert.equal((await app.inject({ method: "POST", url: "/api/payment-links/pl_1/pay", payload: {} })).statusCode, 400);
+  const comFatura = await app.inject({ method: "POST", url: "/api/payment-links/pl_fat/pay", payload: { method: "pix" } });
+  assert.equal(comFatura.statusCode, 409);
+  assert.match(comFatura.json().error, /fatura/);
+  const jaPago = await app.inject({ method: "POST", url: "/api/payment-links/pl_mp/pay", payload: { method: "pix" } });
+  assert.equal(jaPago.statusCode, 409);
+  assert.match(jaPago.json().error, /Mercado Pago/);
+
+  const ok = await app.inject({ method: "POST", url: "/api/payment-links/pl_1/pay", payload: { method: "boleto", at: "2026-08-12", note: "pagou no banco" } });
+  assert.equal(ok.statusCode, 200);
+  assert.equal(ok.json().link.status, "paid");
+  assert.equal(ok.json().link.paidBy, "manual");
+  const saved = await repo.get("payment_links", "pl_1");
+  assert.equal(saved.manualPaid.method, "boleto");
+  assert.equal(saved.manualPaid.at, "2026-08-12T15:00:00.000Z");
+  assert.equal(saved.manualPaid.note, "pagou no banco");
+  assert.ok(saved.manualPaid.markedAt);
+  const act = (await repo.list("activities")).find((a) => a.lead === "le_1" && a.meta?.event === "link_manual_paid");
+  assert.match(act.text, /R\$ 1\.000,00 \(boleto\) · pagou no banco/);
+
+  // Link do cliente sem fatura: a timeline vai pro lead de origem do cliente.
+  const cli = await app.inject({ method: "POST", url: "/api/payment-links/pl_cli/pay", payload: { method: "dinheiro" } });
+  assert.equal(cli.statusCode, 200);
+  assert.ok((await repo.list("activities")).some((a) => a.lead === "le_9" && a.meta?.event === "link_manual_paid"));
+
+  const undo = await app.inject({ method: "POST", url: "/api/payment-links/pl_1/unpay", payload: {} });
+  assert.equal(undo.statusCode, 200);
+  assert.equal(undo.json().link.status, "waiting");
+  assert.equal((await repo.get("payment_links", "pl_1")).manualPaid, null);
+  assert.ok((await repo.list("activities")).some((a) => a.meta?.event === "link_manual_unpaid"));
+  assert.equal((await app.inject({ method: "POST", url: "/api/payment-links/pl_1/unpay", payload: {} })).statusCode, 200, "idempotente");
+});
+
+// ── Histórico por cliente ────────────────────────────────────────────────────
+test("filterPaymentLinks: produto, janela por dia BRT e quem gerou", () => {
+  const rows = [
+    link({ id: "a", saas: "leverads", createdAt: "2026-08-10T02:30:00.000Z", createdBy: "u1" }), // dia 09 em São Paulo
+    link({ id: "b", saas: "leverads", createdAt: "2026-08-10T12:00:00.000Z", createdBy: "u2" }),
+    link({ id: "c", saas: "", createdAt: "2026-08-11T12:00:00.000Z", createdBy: "u1" }),          // backfill sem produto
+    link({ id: "d", saas: "elo", createdAt: "2026-08-11T12:00:00.000Z" }),
+  ];
+  const ids = (out) => out.map((l) => l.id);
+  assert.deepEqual(ids(filterPaymentLinks(rows, { saas: "leverads" })), ["a", "b", "c"]);
+  assert.deepEqual(ids(filterPaymentLinks(rows, { since: "2026-08-10", until: "2026-08-10" })), ["b"], "02:30Z é dia 09 no Brasil");
+  assert.deepEqual(ids(filterPaymentLinks(rows, { since: "2026-08-09", until: "2026-08-09" })), ["a"]);
+  assert.deepEqual(ids(filterPaymentLinks(rows, { by: "u1" })), ["a", "c"]);
+});
+
+test("groupPaymentLinks: lead que virou cliente entra no cliente; saldo sem o substituído; vendedores e contagens", () => {
+  const leads = [{ id: "le_1", name: "Zé", customerId: "cu_1", phone: "1199" }, { id: "le_2", name: "Ana", phone: "1188" }];
+  const customers = [{ id: "cu_1", name: "Padaria do Zé", leadId: "le_1", phone: "1177" }];
+  const users = [{ id: "u1", name: "Jonan" }];
+  const enriched = enrichPaymentLinks([
+    link({ id: "pl_a", lead: "le_1", reference: "le_1", amount: 1000, createdAt: "2026-08-10T10:00:00.000Z", createdBy: "u1" }),
+    link({ id: "pl_b", lead: "le_1", reference: "le_1", amount: 1000, createdAt: "2026-08-11T10:00:00.000Z", createdBy: "u1" }),
+    link({ id: "pl_c", kind: "customer", lead: "", customer: "cu_1", reference: "", amount: 300, createdAt: "2026-08-12T10:00:00.000Z", createdBy: "u2" }),
+    link({ id: "pl_d", lead: "le_2", reference: "le_2", amount: 2000, createdAt: "2026-08-13T10:00:00.000Z", createdBy: "u1" }),
+    link({ id: "pl_e", lead: "le_2", reference: "le_2", amount: 500, createdAt: "2026-08-14T10:00:00.000Z" }),
+  ], [
+    payment({ mpId: "1", externalReference: "le_1", amount: 1000, dateCreated: "2026-08-11T12:00:00.000Z", dateApproved: "2026-08-11T12:01:00.000Z" }),
+    payment({ mpId: "2", externalReference: "le_2", amount: 500, status: "rejected", dateApproved: "", dateCreated: "2026-08-14T12:00:00.000Z" }),
+  ]);
+  const { groups, totals, counts, sellers } = groupPaymentLinks(enriched, { leads, customers, users });
+  assert.deepEqual(groups.map((g) => g.key), ["le:le_2", "cu:cu_1"], "cliente e lead; maior em aberto primeiro");
+  const ze = groups[1];
+  assert.equal(ze.name, "Padaria do Zé", "nome do cliente, não do lead");
+  assert.equal(ze.lead, "le_1", "card do lead de origem continua alcançável");
+  assert.equal(ze.kind, "customer");
+  assert.deepEqual(ze.links.map((l) => l.id), ["pl_c", "pl_b", "pl_a"], "mais novo primeiro");
+  assert.deepEqual(ze.totals, { generated: 1300, paid: 1000, waiting: 300, failed: 0 }, "substituído (pl_a) fora do gerado");
+  assert.deepEqual(ze.counts, { links: 3, paid: 1, waiting: 1, failed: 0, superseded: 1 });
+  const ana = groups[0];
+  assert.equal(ana.kind, "lead");
+  assert.deepEqual(ana.totals, { generated: 2500, paid: 0, waiting: 2000, failed: 500 });
+  assert.deepEqual(totals, { generated: 3800, paid: 1000, waiting: 2300, failed: 500 });
+  assert.deepEqual(counts.groups, { todos: 2, aguardando: 2, pagos: 1, recusados: 1 });
+  assert.equal(counts.links, 5);
+  assert.deepEqual(sellers, [{ id: "u1", name: "Jonan", count: 3 }, { id: "u2", name: "u2", count: 1 }]);
+});
+
+test("GET /api/payment-links agrupado: período, vendedor, aba e o em aberto de antes do período", async () => {
+  const repo = makeMemRepo();
+  await repo.create("leads", { id: "le_1", saas: "leverads", name: "Zé", customerId: "cu_1" });
+  await repo.create("customers", { id: "cu_1", saas: "leverads", name: "Padaria do Zé", leadId: "le_1" });
+  await repo.create("users", { id: "u1", name: "Jonan" });
+  await repo.create("payment_links", link({ id: "pl_old", lead: "le_1", reference: "le_1", amount: 700, createdAt: "2026-07-20T10:00:00.000Z", createdBy: "u1" }));
+  await repo.create("payment_links", link({ id: "pl_a", lead: "le_1", reference: "le_1", amount: 1000, createdAt: "2026-08-10T10:00:00.000Z", createdBy: "u1" }));
+  await repo.create("payment_links", link({ id: "pl_b", lead: "le_2", reference: "le_2", amount: 2000, targetName: "Outro", createdAt: "2026-08-12T10:00:00.000Z", createdBy: "u2" }));
+  await repo.create("mp_payments", payment({ mpId: "9", amount: 1000, externalReference: "le_1", lead: "le_1" }));
+  const app = buildApp(repo);
+  const get = async (qs) => (await app.inject({ method: "GET", url: "/api/payment-links?saas=leverads" + qs })).json();
+
+  const all = await get("");
+  assert.deepEqual(all.groups.map((g) => g.key), ["le:le_2", "cu:cu_1"]);
+  assert.equal(all.groups[1].name, "Padaria do Zé");
+  assert.deepEqual(all.totals, { generated: 3700, paid: 1000, waiting: 2700, failed: 0 });
+  assert.equal(all.backlog.count, 0, "sem período não existe 'antes do período'");
+  assert.deepEqual(all.sellers.map((s) => s.id), ["u1", "u2"]);
+  assert.equal(all.links.length, 3, "lista plana continua vindo (compatibilidade)");
+
+  const ago = await get("&since=2026-08-01&until=2026-08-31");
+  assert.equal(ago.links.length, 2);
+  assert.deepEqual(ago.totals, { generated: 3000, paid: 1000, waiting: 2000, failed: 0 });
+  assert.deepEqual(ago.backlog, { count: 1, waiting: 700 }, "o link de julho em aberto avisa");
+
+  const jonan = await get("&since=2026-08-01&until=2026-08-31&by=u1");
+  assert.deepEqual(jonan.groups.map((g) => g.key), ["cu:cu_1"]);
+  assert.equal(jonan.totals.waiting, 0);
+
+  const pagos = await get("&status=pagos");
+  assert.deepEqual(pagos.groups.map((g) => g.key), ["cu:cu_1"]);
+  assert.equal(pagos.counts.groups.pagos, 1);
+  const aberto = await get("&status=aguardando");
+  assert.deepEqual(aberto.groups.map((g) => g.key), ["le:le_2", "cu:cu_1"]);
 });

@@ -239,9 +239,9 @@ test("closer com lista restrita alcança Links de pagamento e o pipeline pelo PA
   t.after(() => app.close());
   const H = { "x-api-key": await loginToken(app, "vitor", "1234") };
 
-  // A tela de Links de pagamento e o histórico: liberados pelo papel.
-  assert.equal((await app.inject({ url: "/api/offers?saas=leverads", headers: H })).statusCode, 200);
+  // A tela de Links de pagamento (histórico + baixa manual): liberada pelo papel.
   assert.equal((await app.inject({ url: "/api/payment-links?saas=leverads", headers: H })).statusCode, 200);
+  assert.equal((await app.inject({ method: "POST", url: "/api/payment-links/pl_x/pay", headers: H, payload: { method: "pix" } })).statusCode, 404, "passa do guard (404 = link inexistente, não 403)");
   // O pipeline, de onde ele gera o link do lead.
   assert.equal((await app.inject({ url: "/api/leads", headers: H })).statusCode, 200);
   // O piso é PISO, não teto: o que ele não tem por papel nem por lista segue 403.

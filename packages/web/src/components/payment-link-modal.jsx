@@ -2,7 +2,7 @@ import React from "react";
 import { useEsc } from "../atoms.jsx";
 import { waLink } from "../lib/ui.js";
 import { api } from "../lib/api.js";
-import { CLOSED_PLANS, DEAL_PRODUCTS_ACTIVE, dealProductLabel, dealProductsOf } from "../lib/payments.js";
+import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, withLegacyOption, DEAL_PRODUCTS_ACTIVE, dealProductLabel, dealProductsOf } from "../lib/payments.js";
 import { ProductOptions, PaymentMethodSelect } from "./lead-blocks.jsx";
 
 // Modal do LINK DE PAGAMENTO do Mercado Pago — o MESMO em todo lugar que gera
@@ -21,17 +21,13 @@ import { ProductOptions, PaymentMethodSelect } from "./lead-blocks.jsx";
 // CLIENTE: é cobrança avulsa — nasce uma FATURA no financeiro do cliente e o
 // link aponta pra ela, então a baixa é automática quando o dinheiro cair.
 //
-// RECORRENTE (lead): em vez do checkout de uma vez, o link é a AUTORIZAÇÃO de
-// uma assinatura no Mercado Pago (preapproval) — o cliente aprova uma vez e o
-// MP cobra sozinho a cada N meses. A recorrência fica carimbada no card e, no
-// Ganho, a assinatura que nasce do fechamento a adota (cobrança do ciclo dá
-// baixa na fatura, cancelar aqui cancela no MP).
+// Só cobrança ÚNICA (checkout): a assinatura recorrente (preapproval) deixou
+// de ser vendida em 10/09/2026. O servidor recusa `mode: "recurring"`.
 
 const inputStyle = { height: 36, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, width: "100%" };
 const field = { display: "flex", flexDirection: "column", gap: 4 };
 
 const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const isEmail = (v) => EMAIL_RX.test(String(v || "").trim());
 
 // E-mail do alvo: o campo próprio quando existe; senão varre o card por uma
 // resposta que SEJA um e-mail (o form espalha TODAS as respostas no lead — um
@@ -45,15 +41,6 @@ function emailOf(doc) {
   }
   return "";
 }
-
-// Frequências que o preapproval do Mercado Pago aceita (1/3/6/12 meses).
-const FREQUENCIES = [
-  { months: 1, label: "todo mês" },
-  { months: 3, label: "a cada 3 meses" },
-  { months: 6, label: "a cada 6 meses" },
-  { months: 12, label: "todo ano" },
-];
-const freqShort = (m) => ({ 1: "mensal", 3: "trimestral", 6: "semestral", 12: "anual" })[m] || "";
 
 // Quem vai pagar: busca sobre os leads e clientes do workspace ativo (o SEED já
 // vem filtrado pela permissão de quem está logado). Lista curta e digitável —
@@ -157,16 +144,11 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved }) {
   const product = (window.SEED?.SAAS || []).find((s) => s.id === (doc.saas || saas));
   // Mesmo rótulo do servidor (PLAN_LABEL/PRODUCT_LABEL em routes.mp.js):
   // título default do checkout = produto do catálogo + plano.
-  const PLAN_TITLE = { anual: "Plano Anual", semestral: "Plano Semestral", mensal: "Assinatura mensal", unico: "Serviço único" };
+  const PLAN_TITLE = { anual: "Plano Anual", semestral: "Plano Semestral", unico: "Serviço único" };
   const titleFor = (p, prod) => [dealProductLabel(prod, doc.saas) || product?.name || doc.saas, PLAN_TITLE[p] || "pagamento"].filter(Boolean).join(" · ");
 
   const [amount, setAmount] = React.useState(isLead ? (doc.mpChargeAmount || "") : "");
   const [installments, setInstallments] = React.useState(12);
-  // Cobrança única (checkout) × assinatura recorrente (preapproval). O card que
-  // já tem recorrência abre no modo recorrente — é o combinado dele.
-  const [mode, setMode] = React.useState(isLead && doc.mpChargeKind === "recurring" ? "recurring" : "once");
-  const [freq, setFreq] = React.useState(Number(doc.mpPreapprovalMonths) || 1);
-  const recurring = isLead && mode === "recurring";
   const [plan, setPlan] = React.useState(doc.planClosed || "anual");
   const [dealProduct, setDealProduct] = React.useState(doc.dealProduct || "");
   const [contract, setContract] = React.useState(isLead && Number(doc.amount) > 0 ? String(doc.amount) : "");
@@ -193,31 +175,16 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved }) {
     if (!titleDirty) setTitle(titleFor(plan, prod));
   }
 
-  // Trocar pra recorrente já deixa o combinado do card coerente (é uma
-  // assinatura no cartão), sem sobrescrever escolha que o closer já fez.
-  function pickMode(m) {
-    setMode(m);
-    if (m === "recurring" && !method) setMethod("cartao_recorrente");
-  }
-
   async function create() {
     const value = Number(String(amount).replace(",", "."));
     if (!(value > 0)) { setErr("Informe o valor da cobrança."); return; }
-    // Preapproval EXIGE e-mail válido (é a conta que autoriza a cobrança
-    // automática): sem ele o MP recusa a assinatura inteira.
-    if (recurring && !isEmail(payerEmail)) {
-      setErr("Assinatura recorrente precisa do e-mail do pagador: o Mercado Pago exige um e-mail válido pra autorizar a cobrança automática.");
-      return;
-    }
     const contractValue = Number(String(contract).replace(",", "."));
     setBusy(true); setErr(null);
     try {
       const r = isLead
         ? await api.mpLeadLink(doc.id, {
           amount: value,
-          ...(recurring
-            ? { mode: "recurring", frequencyMonths: Number(freq) || 1 }
-            : { maxInstallments: Number(installments) || undefined }),
+          maxInstallments: Number(installments) || undefined,
           title: title.trim() || undefined, description: description.trim() || undefined,
           payerEmail: payerEmail.trim() || undefined,
           plan, product: dealProduct || undefined,
@@ -246,53 +213,27 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved }) {
       <Header
         title={`Link de pagamento · ${doc.name || (isLead ? "lead" : "cliente")}`}
         sub={isLead
-          ? `${product?.name || doc.saas} · ${recurring
-            ? "a recorrência fica no card e vira a assinatura do cliente no Ganho"
-            : "o pagamento entra no Financeiro já casado com este lead"}`
+          ? `${product?.name || doc.saas} · o pagamento entra no Financeiro já casado com este lead`
           : `${product?.name || doc.saas} · cria a fatura no cliente e a baixa é automática quando pagar`}
         onClose={onClose} onBack={onBack} />
 
       {/* O que o cliente vê ao abrir o checkout do MP. */}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <span className="kicker accent">{recurring ? "assinatura recorrente" : "checkout"}</span>
-        {/* Cobrança única × recorrente: muda o TIPO do link no Mercado Pago. */}
-        {isLead && (
-          <div style={{ display: "flex", gap: 6 }}>
-            {[["once", "cobrança única"], ["recurring", "assinatura recorrente"]].map(([id, label]) => (
-              <button key={id} onClick={() => pickMode(id)} className="chip" style={{
-                cursor: "pointer", fontWeight: 600,
-                background: mode === id ? "var(--accent-soft)" : "var(--bg-2)",
-                color: mode === id ? "var(--accent)" : "var(--fg-3)",
-                boxShadow: mode === id ? "inset 0 0 0 1px var(--accent-line)" : "none",
-              }} title={id === "once"
-                ? "checkout de uma vez (PIX, boleto ou cartão parcelado)"
-                : "o cliente autoriza uma vez e o Mercado Pago cobra sozinho a cada ciclo, no cartão"}>{label}</button>
-            ))}
-          </div>
-        )}
-        <div style={{ display: "grid", gridTemplateColumns: recurring ? "1fr 150px" : "1fr 96px", gap: 8 }}>
+        <span className="kicker accent">checkout</span>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 96px", gap: 8 }}>
           <label style={field}>
-            <span className="kicker">{recurring ? "Valor de cada cobrança (R$)" : "Valor da cobrança (R$)"}</span>
+            <span className="kicker">Valor da cobrança (R$)</span>
             <input type="number" min="0" step="0.01" placeholder="0,00" value={amount} autoFocus
               onChange={(e) => setAmount(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") create(); }}
               style={{ ...inputStyle, fontFamily: "var(--mono)", textAlign: "right" }} />
           </label>
-          {recurring ? (
-            <label style={field}>
-              <span className="kicker">Cobrar</span>
-              <select value={freq} onChange={(e) => setFreq(Number(e.target.value))} style={inputStyle}>
-                {FREQUENCIES.map((f) => <option key={f.months} value={f.months}>{f.label}</option>)}
-              </select>
-            </label>
-          ) : (
-            <label style={field}>
-              <span className="kicker">Parcelas até</span>
-              <select value={installments} onChange={(e) => setInstallments(e.target.value)} style={inputStyle}>
-                {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}x</option>)}
-              </select>
-            </label>
-          )}
+          <label style={field}>
+            <span className="kicker">Parcelas até</span>
+            <select value={installments} onChange={(e) => setInstallments(e.target.value)} style={inputStyle}>
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}x</option>)}
+            </select>
+          </label>
         </div>
         <label style={field}>
           <span className="kicker">Título no checkout</span>
@@ -309,18 +250,13 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved }) {
                 style={inputStyle} />
             </label>
             <label style={field}>
-              <span className="kicker">E-mail do pagador{recurring ? " (obrigatório)" : ""}</span>
+              <span className="kicker">E-mail do pagador</span>
               <input type="email" value={payerEmail}
-                placeholder={recurring ? "a conta que vai autorizar a cobrança automática" : "pré-preenche o checkout e reforça o casamento"}
+                placeholder="pré-preenche o checkout e reforça o casamento"
                 onChange={(e) => setPayerEmail(e.target.value)}
-                style={{ ...inputStyle, ...(recurring && !isEmail(payerEmail) ? { borderColor: "var(--neg)" } : {}) }} />
+                style={inputStyle} />
             </label>
           </>
-        )}
-        {recurring && (
-          <div className="mono dim" style={{ fontSize: 10.5 }}>
-            esse link é a AUTORIZAÇÃO da assinatura: o cliente aprova uma vez no cartão e o Mercado Pago cobra R$ {Number(String(amount).replace(",", ".")) > 0 ? Number(String(amount).replace(",", ".")).toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "…"} de forma {freqShort(Number(freq))} sozinho, até alguém cancelar
-          </div>
         )}
       </div>
 
@@ -347,7 +283,7 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved }) {
             <label style={field}>
               <span className="kicker">Plano · duração</span>
               <select value={plan} onChange={(e) => pickPlan(e.target.value)} style={inputStyle}>
-                {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                {withLegacyOption(CLOSED_PLANS_ACTIVE, CLOSED_PLANS, plan).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
               </select>
             </label>
             <label style={field}>
@@ -371,7 +307,7 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved }) {
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <button onClick={create} disabled={busy}
           style={{ height: 36, padding: "0 16px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 12.5, fontWeight: 600, opacity: busy ? 0.6 : 1 }}>
-          {busy ? "gerando…" : (url ? "gerar novo link" : (recurring ? "gerar link da assinatura" : "gerar link"))}
+          {busy ? "gerando…" : (url ? "gerar novo link" : "gerar link")}
         </button>
       </div>
 
@@ -386,7 +322,7 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved }) {
           </button>
           {wa && (
             <a className="mono" style={{ fontSize: 11, flexShrink: 0, color: "var(--accent)", textDecoration: "none" }}
-              href={`${wa}?text=${encodeURIComponent(`${recurring ? "Segue o link pra ativar a assinatura" : "Segue o link pra pagamento"}: ${url}`)}`}
+              href={`${wa}?text=${encodeURIComponent(`Segue o link pra pagamento: ${url}`)}`}
               target="_blank" rel="noopener noreferrer" title="Enviar o link no WhatsApp">mandar no Whats ↗</a>
           )}
         </div>
