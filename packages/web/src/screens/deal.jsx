@@ -608,7 +608,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
           <AttributionCard rows={attribution} open={showFrom} onToggle={() => setShowFrom((v) => !v)} />
 
           {/* Dados do lead: mesmo checklist, mesmo título do painel de atividade. */}
-          <LeadChecklist checklist={checklist} onPatch={patch} leadId={lead.id} />
+          <LeadChecklist key={lead.id} checklist={checklist} onPatch={patch} leadId={lead.id} />
 
           {/* GPS: etapa (gateada) + próximo toque + call agendada, sem sair do
               drawer. RECOLHÍVEL: fechado, o cabeçalho segura o resumo (o pill

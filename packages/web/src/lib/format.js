@@ -16,6 +16,19 @@ export function bizDay(value) {
   return BIZ_DAY_FMT.format(d); // en-CA = YYYY-MM-DD
 }
 
+// Data e hora no fuso do NEGÓCIO ("10/09/2026 22:52"): carimbo de entrada do
+// lead, último toque etc. Mesma âncora do bizDay — a máquina (ou o servidor do
+// SSR) pode estar em UTC e jogaria o lead das 22h pro dia seguinte.
+const DATE_TIME_FMT = new Intl.DateTimeFormat("pt-BR", {
+  timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+});
+export function fmtDateTime(value) {
+  if (!value) return "";
+  const d = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(d.getTime())) return "";
+  return DATE_TIME_FMT.format(d).replace(",", ""); // pt-BR põe vírgula entre data e hora em alguns runtimes
+}
+
 export const fmt = {
   // Money — compacto em R$(R$1,2M, R$84k)
   money(n, { sign = false } = {}) {
