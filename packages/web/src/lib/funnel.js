@@ -292,3 +292,25 @@ export function nextTouchPill(lead, { isOpen = true, kind, now = Date.now() } = 
   // Hora do evento também no futuro (padrão do "hoje HH:MM"); 00:00 = sem hora.
   return { key: "future", text: `${glyph} ${label}${hm === "00:00" ? "" : ` ${hm}`}`, tone: "var(--fg-3)", type: t.type, at: t.at };
 }
+
+// ── Modo cadência ─────────────────────────────────────────────────────────
+// Segundo agrupamento do MESMO board: em vez de uma coluna por etapa do funil,
+// uma coluna por DIA da cadência de contato. Serve pra enxergar a fila do SDR
+// no eixo do tempo — onde os leads empilham, quem está esticando além dos 7
+// dias — coisa que o board por etapa não mostra, porque lá "Qualificando" tem
+// lead de hoje e lead de duas semanas no mesmo monte.
+//
+// A coluna é DERIVADA (dias desde a entrada na etapa), não guardada. Por isso o
+// board de cadência não aceita arrastar: mover um card mudaria a coluna só se
+// reescrevesse `stageSince`, o que falsificaria a métrica que o board existe
+// pra mostrar. Pra agir no lead, abre o card.
+export const CADENCE_COLS = ["Dia 1", "Dia 2", "Dia 3", "Dia 4", "Dia 5", "Dia 6", "Dia 7", "7+ dias"];
+const DIA_MS = 86400000;
+
+export function cadenceDayCol(lead, now = Date.now()) {
+  const base = new Date(lead?.stageSince || lead?.createdAt || 0).getTime();
+  if (!Number.isFinite(base) || base <= 0) return CADENCE_COLS[0];
+  const dias = Math.floor((now - base) / DIA_MS);
+  if (dias < 0) return CADENCE_COLS[0];
+  return dias >= 7 ? CADENCE_COLS[7] : CADENCE_COLS[dias];
+}
