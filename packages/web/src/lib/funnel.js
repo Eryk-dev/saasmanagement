@@ -118,6 +118,15 @@ export function stageByKind(saasCfg, kind) {
   return funnelOf(saasCfg).find((f) => stageKind(saasCfg, f.stage) === kind)?.stage || "";
 }
 
+// Etapa de NUTRIÇÃO (cadência de 7 dias). O kind dela é `contato`, o mesmo das
+// etapas de cadência (Dia 2…Dia 7) e do No show, então stageByKind("contato")
+// devolve a primeira delas (Dia 2) — a identidade da Nutrição vem do NOME,
+// igual ao No show (isNoShowStage em lib/scripts.js).
+export const isNurtureStage = (stage) => /nutri/i.test(String(stage || ""));
+export function nurtureStage(saasCfg) {
+  return funnelOf(saasCfg).find((f) => f && isNurtureStage(f.stage))?.stage || "";
+}
+
 // Régua de progresso (até o ganho, inclusive) — o que o forecast/funil linear usa.
 export function ladderOf(saasCfg) {
   const names = funnelOf(saasCfg).map((f) => f.stage);
@@ -189,7 +198,9 @@ export const NEXT_KINDS = {
   // Fechar no follow-up pode ir pro Ganho ou DIRETO pra Integração (pedido do
   // Leo, 01/09/2026): os dois cobram o fechamento no gate (produto, plano,
   // valor, pagamento) e registram a venda — são SOLD_KINDS no servidor.
-  followup:      ["retry", "ganho", "integracao", "desqualificado"],
+  // Nutrição no follow-up (Leo, 11/09/2026): lead que esfriou sai da cobrança
+  // ativa e entra na cadência de 7 dias, em vez de virar perda.
+  followup:      ["retry", "ganho", "integracao", "nutricao", "desqualificado"],
   proposta:      ["retry", "followup", "ganho", "desqualificado"],
   ganho:         ["integracao", "posvenda"],
   // Da entrega dá pra voltar pro Ganho (pedido do Leo, 31/08/2026): card que
@@ -201,13 +212,16 @@ export const NEXT_KINDS = {
 };
 
 // Paleta completa de destinos (na ordem canônica) que o editor oferece por
-// situação, com rótulo amigável.
-export const NEXT_STEP_KINDS = ["retry", "call", "noshow", "contato", "followup", "integracao", "posvenda", "ganho", "desqualificado"];
+// situação, com rótulo amigável. `nutricao` é pseudo-kind (como `noshow`):
+// resolve pela etapa NOMEADA Nutrição, porque `contato` cai na 1ª etapa de
+// contato do funil (Dia 2 na LeverAds, desde as etapas de cadência).
+export const NEXT_STEP_KINDS = ["retry", "call", "noshow", "contato", "nutricao", "followup", "integracao", "posvenda", "ganho", "desqualificado"];
 export const NEXT_STEP_LABELS = {
   retry:          "Retomar (escolhe o dia e a hora)",
   call:           "Agendar call",
   noshow:         "No show (cliente furou)",
-  contato:        "Nutrição / voltar pro contato",
+  contato:        "Contato (1ª etapa de contato do funil)",
+  nutricao:       "Nutrição (cadência de 7 dias)",
   followup:       "Follow-up",
   integracao:     "Integração (entrega)",
   posvenda:       "Pós-venda (CS)",
