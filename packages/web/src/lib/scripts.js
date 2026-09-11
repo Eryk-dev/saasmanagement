@@ -5,7 +5,7 @@
 // do lead; token sem valor vira lacuna destacada ("perguntar na ligação") — a
 // lacuna É instrução: o que faltar no cadastro se descobre nesse contato.
 
-import { stageKind, openStages } from "./funnel.js";
+import { stageKind, openStages, dayStageNumber } from "./funnel.js";
 import { currentUser, displayName } from "./users.js";
 import { isMentoriaLead, mentoriaFit } from "./mentoria.js";
 
@@ -150,11 +150,11 @@ const QUALIFY_STEPS = [
 export const DEFAULT_SCRIPTS = {
   novo: {
     titulo: "1º ato · novo lead (prioridade máxima)",
-    resumo: "O lead acabou de entrar: é o topo da fila, sempre (cadastro de fim de semana se trabalha na segunda, nos primeiros horários). A sessão é uma só: ligue 2 vezes; não atendeu, deixe o WhatsApp de apresentação. Tom leve, sorriso na voz. Atendeu? Siga a sequência de perguntas do passo a passo, confirmando e corrigindo os campos ao lado. Registrou o toque, o card segue sozinho pra Qualificando.",
+    resumo: "O lead acabou de entrar: é o topo da fila, sempre (cadastro de fim de semana se trabalha na segunda, nos primeiros horários). A sessão é uma só: ligue 2 vezes; não atendeu, deixe o WhatsApp de apresentação. Tom leve, sorriso na voz. Atendeu? Siga a sequência de perguntas do passo a passo, confirmando e corrigindo os campos ao lado. Registrou o toque, o card segue sozinho (pro Dia 2 quando virar o dia, ou pra Qualificando nos funis sem colunas de dia).",
     objetivo: "Conversa breve de confirmação: dados completos na ordem (nicho, empresa, contas, anúncios, expansão, time), call agendada e o e-mail confirmado no fechamento, pra receber o convite. Não atendeu? Apresentação no WhatsApp pedindo o melhor horário.",
     passos: [
       { t: "Ligar (2 tentativas)", dica: "Ainda sem fala: liga e aguarda. Não atendeu? Liga de novo em seguida. Caiu na caixa duas vezes, manda o WhatsApp do passo 2 e registra o toque." },
-      { t: "Não atendeu: WhatsApp de apresentação", fala: "Olá {{nome}}, tudo bem? Aqui é {{eu}}, da plataforma {{produto}}. Recebemos o seu cadastro dizendo estar interessado no nosso serviço de clonagem de anúncios. Tem algum horário em que a gente possa te retornar pra conversar sobre?", dica: "Depois registra o toque: o card vai pra Qualificando e o GPS marca a retomada pra amanhã." },
+      { t: "Não atendeu: WhatsApp de apresentação", fala: "Olá {{nome}}, tudo bem? Aqui é {{eu}}, da plataforma {{produto}}. Recebemos o seu cadastro dizendo estar interessado no nosso serviço de clonagem de anúncios. Tem algum horário em que a gente possa te retornar pra conversar sobre?", dica: "Depois registra o toque e o GPS marca a retomada pra amanhã (com as colunas de dia, o card vai pro Dia 2 quando virar o dia; sem elas, pra Qualificando)." },
       { t: "Atendeu: identificação", fala: "Olá {{nome}}, tudo bom? Sou {{eu}}, da {{produto}}. Recebi o seu cadastro com interesse na nossa ferramenta de clonar anúncios, você confirma pra mim?" },
       { t: "Transição", fala: "Que bom! Queria confirmar só algumas informações com você, essa primeira conversa é bem breve." },
       { t: "Nicho", fala: "Vi que você preencheu que trabalha com {{nicho}}, é isso mesmo?" },
@@ -181,6 +181,73 @@ export const DEFAULT_SCRIPTS = {
   // Qualificando tem 2 tentativas (fecha as 3 abordagens do processo: 1 no Novo
   // lead + 2 aqui). O painel resolve QUAL mostrar pelo nº de toques na etapa
   // (resolveScript): 0 toques = 2ª tentativa; 1+ = 3ª (última).
+  // ── Cadência de 7 dias por COLUNA (API: cadencia-stages.js) ──────────────
+  // Dia 1 é o Novo lead (1º ato). Dias 2 a 7 são colunas do funil: o card anda
+  // sozinho quando vira o dia e só a RESPOSTA do lead promove pra Qualificando
+  // (no WhatsApp o servidor promove; por ligação, o botão "Qualificando" do
+  // Depois da ação). Canal e janela de cada dia vêm do perfil prioritário:
+  // ligação na janela oposta, áudio de manhã, espera, ligação, espera,
+  // WhatsApp de encerramento.
+  dia2: {
+    titulo: "Dia 2 · ligação na janela oposta ao Dia 1",
+    resumo: "Segundo dia da cadência: o card veio sozinho do Novo lead quando virou o dia. Hoje é só ligação, no período OPOSTO ao do 1º ato (ligou de manhã ontem, liga à tarde hoje; e vice-versa): quem não atende num horário costuma estar livre no outro. Sem mensagem hoje, o áudio é amanhã. Atendeu? Roda a qualificação e sai com a call marcada.",
+    objetivo: "Alcançar o lead pela voz num horário diferente do de ontem. Atendeu, qualificar e marcar a call. Não atendeu, registrar o toque e deixar o card seguir pro Dia 3.",
+    passos: [
+      { t: "Ligar (2 tentativas) na janela oposta", dica: "Ontem foi de manhã? Liga depois das 14h. Foi à tarde? Liga antes do meio-dia. Sem fala ao vivo: liga, aguarda, não atendeu liga de novo em seguida. Não deixa recado nem WhatsApp: o silêncio de hoje prepara o áudio de amanhã. Registra o toque (conta no seu placar); o card vai pro Dia 3 quando virar o dia." },
+      { t: "Atendeu: identificação", fala: "Olá {{nome}}, tudo bom? Sou {{eu}}, da {{produto}}. Te liguei ontem por causa do seu cadastro na nossa ferramenta de replicar anúncios entre as contas do marketplace. Consegue falar 3 minutinhos agora?", dica: "Respondeu? Move pra Qualificando no Depois da ação e segue os passos abaixo." },
+      ...QUALIFY_STEPS,
+    ],
+  },
+  dia3: {
+    titulo: "Dia 3 · áudio no WhatsApp (manhã)",
+    resumo: "Terceiro dia: dois dias de ligação sem resposta. Hoje muda o canal: um áudio curto no WhatsApp, de manhã. Voz humana, sem texto pronto, dá rosto ao número que ligou duas vezes. Até 30 segundos, nome dele no começo, uma pergunta no fim.",
+    objetivo: "Fazer o lead ouvir uma pessoa e responder com um horário. Respondeu (texto ou áudio), o card vai pra Qualificando sozinho e você retoma a qualificação.",
+    passos: [
+      { t: "Áudio de manhã (até 30 s)", fala: "Oi {{nome}}, bom dia! Aqui é {{eu}}, da {{produto}}. Tentei te ligar ontem e anteontem por causa do seu cadastro pra replicar seus anúncios entre as contas do marketplace. Sem pressa: quando der, me manda um horário bom pra 5 minutinhos de conversa que eu te mostro como isso ficaria na sua operação.", dica: "Grava como áudio, não manda como texto. Tom leve, sorriso na voz. Registra o toque. Amanhã é dia de espera: não toca." },
+      { t: "Respondeu: retoma", fala: "Que bom que respondeu, {{nome}}! Me conta rapidinho como está sua operação hoje e eu te digo se faz sentido a gente marcar a call com o especialista.", dica: "O card já foi pra Qualificando com a resposta dele (ou move no Depois da ação se ele respondeu por ligação)." },
+      ...QUALIFY_STEPS,
+    ],
+  },
+  dia4: {
+    titulo: "Dia 4 · espera (sem toque)",
+    resumo: "Dia de silêncio programado. Foram três dias seguidos de toque (ligação, ligação, áudio); hoje a cadência dá folga pro lead responder sem pressão. Não liga, não manda mensagem. Se ele responder, o card vai pra Qualificando sozinho.",
+    objetivo: "Não tocar. Só reagir se o lead falar primeiro.",
+    passos: [
+      { t: "Não tocar hoje", dica: "Nenhum toque. O card vai pro Dia 5 quando virar o dia. Se bater a tentação de mandar um 'oi', não manda: o áudio de ontem ainda está trabalhando." },
+      { t: "Ele respondeu? Retoma", fala: "Oi {{nome}}! Que bom. Me conta rapidinho como está sua operação hoje e eu te digo se faz sentido a gente marcar a call com o especialista.", dica: "Respondeu por WhatsApp, o card já está em Qualificando. Ligou de volta? Move no Depois da ação." },
+      ...QUALIFY_STEPS,
+    ],
+  },
+  dia5: {
+    titulo: "Dia 5 · ligação na janela oposta ao Dia 2",
+    resumo: "Quinto dia: última ligação da cadência. Liga no período oposto ao do Dia 2 (a terceira janela diferente em cinco dias). Não atendeu, sem recado: registra o toque e deixa o card seguir; amanhã é espera e no Dia 7 vai o WhatsApp de encerramento.",
+    objetivo: "Última chance pela voz. Atendeu, qualificar e marcar a call. Não atendeu, registrar e seguir.",
+    passos: [
+      { t: "Ligar (2 tentativas) na janela oposta ao Dia 2", dica: "Dia 2 foi à tarde? Liga de manhã. Foi de manhã? Liga à tarde. Sem fala ao vivo: liga, aguarda, não atendeu liga de novo. Registra o toque; o card vai pro Dia 6 quando virar o dia." },
+      { t: "Atendeu: identificação", fala: "Olá {{nome}}, tudo bom? {{eu}}, da {{produto}}. Te procurei essa semana por causa do seu cadastro pra replicar seus anúncios entre as contas. Consegue falar 3 minutinhos agora?", dica: "Respondeu? Move pra Qualificando no Depois da ação e segue os passos abaixo." },
+      ...QUALIFY_STEPS,
+    ],
+  },
+  dia6: {
+    titulo: "Dia 6 · espera (sem toque)",
+    resumo: "Segundo dia de silêncio programado, depois da última ligação. Não liga, não manda mensagem: amanhã vai o WhatsApp de encerramento, que é o toque de maior resposta da cadência, e ele só funciona se hoje for silêncio de verdade.",
+    objetivo: "Não tocar. Só reagir se o lead falar primeiro.",
+    passos: [
+      { t: "Não tocar hoje", dica: "Nenhum toque. O card vai pro Dia 7 quando virar o dia." },
+      { t: "Ele respondeu? Retoma", fala: "Oi {{nome}}! Que bom. Me conta rapidinho como está sua operação hoje e eu te digo se faz sentido a gente marcar a call com o especialista.", dica: "Respondeu por WhatsApp, o card já está em Qualificando. Ligou de volta? Move no Depois da ação." },
+      ...QUALIFY_STEPS,
+    ],
+  },
+  dia7: {
+    titulo: "Dia 7 · WhatsApp de encerramento",
+    resumo: "Sétimo e último dia da cadência. Uma mensagem de encerramento no WhatsApp: curta, sem cobrança, dizendo que você vai parar de tentar. É o toque de maior resposta da cadência inteira, porque aciona a perda em vez de pedir tempo. Sem resposta, o card vai pra Nutrição sozinho quando virar o dia.",
+    objetivo: "Fechar a cadência com elegância e arrancar a última resposta. Respondeu, Qualificando; silêncio, Nutrição (o relógio move).",
+    passos: [
+      { t: "WhatsApp de encerramento", fala: "Oi {{nome}}, aqui é {{eu}}, da {{produto}}. Tentei falar com você essa semana sobre o seu cadastro e não consegui. Vou encerrar por aqui pra não te incomodar. Se em algum momento fizer sentido escalar sua operação replicando os anúncios entre as contas, é só responder esta mensagem que eu retomo de onde paramos. Sucesso aí!", dica: "Manda e registra o toque. Não insiste depois: quem responde a essa mensagem responde em horas. Sem resposta, o card cai na Nutrição quando virar o dia (lá a régua é outra, de 7 em 7 dias)." },
+      { t: "Respondeu: retoma", fala: "Que bom, {{nome}}! Me conta rapidinho como está sua operação hoje e eu te digo se faz sentido a gente marcar a call com o especialista.", dica: "O card já foi pra Qualificando com a resposta." },
+      ...QUALIFY_STEPS,
+    ],
+  },
   qualificacao2: {
     titulo: "Qualificando · 2ª tentativa",
     resumo: "Primeira retomada. Já tentamos no cadastro (1º ato) e não deu. Liga 2 vezes; não atendeu, manda o WhatsApp confirmando que é a pessoa certa e reforçando o interesse. Atendeu? Roda a qualificação e sai com a call marcada.",
@@ -458,6 +525,9 @@ export function scriptKeyFor(saasCfg, lead) {
     if (kind === "outro") return "mentoria";
     if (kind === "call") return "mentoriaCall";
   }
+  // Coluna de dia da cadência: roteiro do dia (canal e janela daquele dia).
+  const dia = dayStageNumber(stage);
+  if (dia >= 2 && DEFAULT_SCRIPTS[`dia${dia}`]) return `dia${dia}`;
   if (isNoShowStage(stage)) return attempts >= 1 ? "noshow2" : "noshow1";
   if (reactivation) return attempts >= 2 ? "nutricao3" : attempts === 1 ? "nutricao2" : "nutricao1";
   if (kind === "qualificacao") return attempts >= 1 ? "qualificacao3" : "qualificacao2";
@@ -542,7 +612,14 @@ export function passosToText(passos) {
 // estágio relacionado (por kind ou por nome da coluna). confirmacao não tem
 // cadência de estágio (as janelas 1h/10min são regra fixa).
 export const SCRIPT_CATALOG = [
-  { key: "novo",          label: "Novo lead · 1º ato",            phase: "Pré-venda (SDR)", stageKind: "novo" },
+  { key: "novo",          label: "Novo lead · 1º ato (Dia 1)",    phase: "Pré-venda (SDR)", stageKind: "novo" },
+  // Colunas de dia da cadência (só aparecem no produto que as tem no funil).
+  { key: "dia2",          label: "Dia 2 · ligação (janela oposta ao Dia 1)", phase: "Pré-venda (SDR)", stageMatch: "dia", dia: 2 },
+  { key: "dia3",          label: "Dia 3 · áudio no WhatsApp (manhã)",        phase: "Pré-venda (SDR)", stageMatch: "dia", dia: 3 },
+  { key: "dia4",          label: "Dia 4 · espera (sem toque)",               phase: "Pré-venda (SDR)", stageMatch: "dia", dia: 4 },
+  { key: "dia5",          label: "Dia 5 · ligação (janela oposta ao Dia 2)", phase: "Pré-venda (SDR)", stageMatch: "dia", dia: 5 },
+  { key: "dia6",          label: "Dia 6 · espera (sem toque)",               phase: "Pré-venda (SDR)", stageMatch: "dia", dia: 6 },
+  { key: "dia7",          label: "Dia 7 · WhatsApp de encerramento",         phase: "Pré-venda (SDR)", stageMatch: "dia", dia: 7 },
   { key: "qualificacao2", label: "Qualificando · 2ª tentativa",   phase: "Pré-venda (SDR)", stageKind: "qualificacao" },
   { key: "qualificacao3", label: "Qualificando · 3ª tentativa",   phase: "Pré-venda (SDR)", stageKind: "qualificacao" },
   { key: "confirmacao",   label: "Confirmação da call",           phase: "Pré-venda (SDR)" },
@@ -567,6 +644,7 @@ export function catalogStageRow(saasCfg, item) {
   const funnel = saasCfg?.funnel || [];
   if (item.stageMatch === "noshow") return funnel.find((f) => isNoShowStage(f?.stage)) || null;
   if (item.stageMatch === "nutri") return funnel.find((f) => /nutri/i.test(String(f?.stage || ""))) || null;
+  if (item.stageMatch === "dia") return funnel.find((f) => dayStageNumber(f?.stage) === item.dia) || null;
   if (item.stageKind) return funnel.find((f) => f && f.kind === item.stageKind) || null;
   return null;
 }
