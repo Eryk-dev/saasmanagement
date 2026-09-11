@@ -8,7 +8,7 @@ import { usePeriod } from "../components/period-picker.jsx";
 import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
 import { ManualPaidModal } from "../components/manual-paid-modal.jsx";
 import { linkStatusOf, linkOriginLabel, linkPaidByLabel, mpMethodLabel, manualPayLabel } from "../lib/payments.js";
-import { displayName, usersByRole } from "../lib/users.js";
+import { displayName, usersByRole, isAdminUser } from "../lib/users.js";
 import { waLink } from "../lib/ui.js";
 
 // Links de pagamento — quem já pagou e quem ainda deve, cliente por cliente.
@@ -21,6 +21,8 @@ import { waLink } from "../lib/ui.js";
 //    somas. A tela só escolhe a aba e pinta.
 // 2. Período = o filtro global do topo (o mesmo das outras telas); vendedor =
 //    quem gerou o link. Link em aberto de ANTES do período avisa numa linha.
+//    Closer vê SÓ os links que ele mesmo gerou (o servidor filtra, a tela só
+//    esconde o seletor); admin vê todos e filtra por closer.
 // 3. "Marcar pago": dinheiro que entrou fora do link (PIX direto, boleto).
 //    Link com fatura dá baixa na fatura (ficha do cliente); o resto grava a
 //    baixa manual no próprio link. Desfazer volta pra em aberto.
@@ -62,6 +64,7 @@ function OffersScreen({ onOpenLead }) {
   const { win } = usePeriod();
   const mpOn = !!window.SEED?.CONFIG?.mp?.configured;
   const money = window.fmt.money;
+  const admin = isAdminUser();
 
   const [data, setData] = useS(null);      // { groups, totals, counts, sellers, backlog }
   const [err, setErr] = useS(null);
@@ -144,7 +147,9 @@ function OffersScreen({ onOpenLead }) {
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead title="Links de pagamento" sub="quem já pagou e quem ainda deve, cliente por cliente · o status vem do Mercado Pago">
+      <PageHead title="Links de pagamento" sub={admin
+        ? "quem já pagou e quem ainda deve, cliente por cliente · o status vem do Mercado Pago"
+        : "os links que você gerou: quem já pagou e quem ainda deve · o status vem do Mercado Pago"}>
         <PrimaryButton onClick={() => setCreating(true)} disabled={!mpOn}>+ gerar link</PrimaryButton>
       </PageHead>
 
@@ -179,10 +184,12 @@ function OffersScreen({ onOpenLead }) {
               <FilterTab key={id} active={tab === id} count={counts.groups?.[id] || 0} onClick={() => setTab(id)}>{label}</FilterTab>
             ))}
           </div>
-          <select value={by} onChange={(e) => setBy(e.target.value)} className="inp" style={{ height: 34, minWidth: 160 }} title="quem gerou o link">
-            <option value="">todos os vendedores</option>
-            {sellers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+          {admin && (
+            <select value={by} onChange={(e) => setBy(e.target.value)} className="inp" style={{ height: 34, minWidth: 160 }} title="quem gerou o link">
+              <option value="">todos os vendedores</option>
+              {sellers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          )}
           <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar por cliente, telefone, cobrança ou e-mail…"
             className="inp" style={{ marginLeft: "auto", minWidth: 240, flex: "0 1 320px" }} />
         </div>
@@ -192,7 +199,7 @@ function OffersScreen({ onOpenLead }) {
 
         {data && !data.groups.length && !hasFilter && (
           <div style={{ minHeight: 240, background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
-            <EmptyState title="Nenhum link de pagamento no período"
+            <EmptyState title={admin ? "Nenhum link de pagamento no período" : "Você ainda não gerou link neste período"}
               hint="Gere a cobrança no nome de um lead ou cliente: o pagamento volta casado com ele e aparece aqui como pago. Pra ver links antigos, amplie o período no topo."
               action={<PrimaryButton onClick={() => setCreating(true)} disabled={!mpOn}>+ gerar link</PrimaryButton>} />
           </div>

@@ -11,6 +11,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
+import { makeAuthHook, ensureDefaultAdmins, hashPassword } from "../src/auth.js";
+import { makeScreenGuardHook } from "../src/screens.js";
 
 const { registerRoutes } = await import("../src/routes.js");
 const { makeMp } = await import("../src/mp.js");
@@ -358,4 +360,62 @@ test("GET /api/payment-links agrupado: período, vendedor, aba e o em aberto de 
   assert.equal(pagos.counts.groups.pagos, 1);
   const aberto = await get("&status=aguardando");
   assert.deepEqual(aberto.groups.map((g) => g.key), ["le:le_2", "cu:cu_1"]);
+});
+
+// ── Quem vê o quê: closer só os próprios links; admin tudo e filtra ─────────
+function providedKey(req) {
+  const h = req.headers["x-api-key"];
+  return h ? (Array.isArray(h) ? h[0] : h) : "";
+}
+function buildAuthApp(repo) {
+  const app = Fastify();
+  app.addHook("onRequest", makeAuthHook({ apiKey: "test-key", repo, openPaths: new Set(["/api/auth/login"]), openPrefixes: [], providedKey }));
+  app.addHook("onRequest", makeScreenGuardHook());
+  registerRoutes(app, repo, { mp: makeMp({ fetch: async () => ({ status: 404, text: async () => "{}" }), accessToken: "t" }) });
+  return app;
+}
+const loginToken = async (app, username) => (await app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password: "1234" } })).json().token;
+
+test("closer vê só os links que ele gerou (o servidor filtra) e só dá baixa neles; admin vê todos e filtra por closer", async (t) => {
+  const repo = makeMemRepo();
+  await ensureDefaultAdmins(repo);
+  await repo.create("users", { id: "jonan", name: "Jonan", roles: ["closer"], screens: [], passwordHash: hashPassword("1234") });
+  await repo.create("users", { id: "jessica", name: "Jéssica", roles: ["closer"], screens: [], passwordHash: hashPassword("1234") });
+  await repo.create("users", { id: "leo", name: "Leo", roles: ["admin"], screens: [], passwordHash: hashPassword("1234") });
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [{ stage: "Novo lead", conv: 1 }] });
+  await repo.create("payment_links", link({ id: "pl_j1", lead: "le_1", reference: "le_1", amount: 1000, createdBy: "jonan" }));
+  await repo.create("payment_links", link({ id: "pl_j2", lead: "le_2", reference: "le_2", amount: 700, targetName: "Outro", createdBy: "jonan" }));
+  await repo.create("payment_links", link({ id: "pl_je", lead: "le_3", reference: "le_3", amount: 2000, targetName: "Da Jéssica", createdBy: "jessica" }));
+  const app = buildAuthApp(repo);
+  t.after(() => app.close());
+  const H = async (u) => ({ "x-api-key": await loginToken(app, u) });
+  const get = async (headers, qs = "") => (await app.inject({ method: "GET", url: "/api/payment-links?saas=leverads" + qs, headers })).json();
+
+  const jonan = await get(await H("jonan"));
+  assert.deepEqual(jonan.links.map((l) => l.id).sort(), ["pl_j1", "pl_j2"], "só os dele");
+  assert.equal(jonan.totals.waiting, 1700);
+  assert.deepEqual(jonan.scope, { mine: true, by: "jonan" });
+  assert.deepEqual(jonan.sellers, [], "sem filtro de vendedor pro closer");
+  const tentativa = await get(await H("jonan"), "&by=jessica");
+  assert.deepEqual(tentativa.links.map((l) => l.id).sort(), ["pl_j1", "pl_j2"], "pedir os de outro não adianta");
+
+  const leo = await get(await H("leo"));
+  assert.equal(leo.links.length, 3, "admin vê todos");
+  assert.equal(leo.scope.mine, false);
+  assert.deepEqual(leo.sellers.map((s) => s.id), ["jonan", "jessica"]);
+  const soJessica = await get(await H("leo"), "&by=jessica");
+  assert.deepEqual(soJessica.links.map((l) => l.id), ["pl_je"], "admin filtra por closer");
+
+  // Key mestre (sem usuário): tudo, como admin.
+  const master = await get({ "x-api-key": "test-key" });
+  assert.equal(master.links.length, 3);
+
+  // Baixa manual: só no próprio link; admin em qualquer um.
+  const alheio = await app.inject({ method: "POST", url: "/api/payment-links/pl_je/pay", headers: await H("jonan"), payload: { method: "pix" } });
+  assert.equal(alheio.statusCode, 403);
+  assert.equal((await repo.get("payment_links", "pl_je")).manualPaid, undefined);
+  assert.equal((await app.inject({ method: "POST", url: "/api/payment-links/pl_j1/pay", headers: await H("jonan"), payload: { method: "pix" } })).statusCode, 200);
+  assert.equal((await app.inject({ method: "POST", url: "/api/payment-links/pl_je/pay", headers: await H("leo"), payload: { method: "pix" } })).statusCode, 200);
+  assert.equal((await app.inject({ method: "POST", url: "/api/payment-links/pl_je/unpay", headers: await H("jonan"), payload: {} })).statusCode, 403);
+  assert.equal((await app.inject({ method: "POST", url: "/api/payment-links/pl_je/unpay", headers: await H("leo"), payload: {} })).statusCode, 200);
 });
