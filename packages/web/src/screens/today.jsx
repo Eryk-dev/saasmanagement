@@ -11,7 +11,7 @@ import { businessDaysBetween } from "../components/period-picker.jsx";
 import { scaledGoal } from "../components/team-cards.jsx";
 import { useData } from "../data.jsx";
 import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf, nextKindsFor, nurtureStage, hasDayStages } from "../lib/funnel.js";
-import { allUsers, currentUser, displayName, userById, usersByRole } from "../lib/users.js";
+import { allUsers, currentUser, displayName, userById, usersByRole, isAdminUser } from "../lib/users.js";
 import { useProposalTemplates } from "../components/ProposalActions.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { myOpenTasks, taskHash } from "../lib/tasks.js";
@@ -404,33 +404,100 @@ function SocialSellingBar({ saasId, person, version, openForm }) {
   );
 }
 
-// Aviso de social selling: aparece quando o SDR zera a fila de HOJE. Manda ir
-// pro Instagram chamar os novos seguidores. Mostra a CONTAGEM de novos
-// seguidores (~24h); o @ de cada um o Instagram NÃO entrega por API (privacidade
-// da plataforma), então o botão abre o app pra a pessoa ver os @ e chamar.
-function SocialSellingNotice({ ig }) {
+// ── Fila limpa: UM bloco (12/09) ───────────────────────────────────────────
+// Eram três coisas separadas empilhadas: o EmptyState "Fila limpa", a barra de
+// social selling e o aviso do Instagram — três caixas dizendo variações da
+// mesma coisa. Agora é um bloco: o que você fez hoje, o que fazer agora (os
+// seguidores novos) e as duas ações. O contador +1 continua vivo na barra do
+// fluxo normal; aqui o que importa é ir pro Instagram.
+function FilaLimpa({ ig, contatos, calls, saasId, person, openForm }) {
   const username = ig?.username || "";
   const count = ig?.count;
   const igUrl = username ? `https://instagram.com/${username}` : "https://instagram.com";
   return (
-    <div style={{ marginBottom: 12, border: "1px solid var(--accent-line)", background: "var(--accent-soft)", borderRadius: "var(--r-3)", padding: "14px 16px", display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-      <div style={{ fontSize: 24, lineHeight: 1, flexShrink: 0 }}>📸</div>
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--fg-1)" }}>Zerou a fila de hoje! Bora fazer social selling.</div>
-        <div style={{ fontSize: 12.5, color: "var(--fg-2)", marginTop: 3, lineHeight: 1.45 }}>
-          {count == null
-            ? "Passa no Instagram e chama os novos seguidores no direct."
-            : count > 0
-              ? <>Você teve <strong style={{ color: "var(--accent)" }}>{count} novo{count === 1 ? "" : "s"} seguidor{count === 1 ? "" : "es"}</strong> nas últimas ~24h. Chama cada um no direct.</>
-              : "Sem novos seguidores nas últimas 24h, mas vale reativar quem já te segue."}
-          {" "}<span className="dim">O Instagram não lista quem seguiu por aqui, abra o app pra ver os @ e chamar.</span>
+    <section style={{ border: "1px solid var(--accent-line)", background: "var(--accent-soft)", borderRadius: "var(--r-4)", padding: "20px var(--inset-x)" }}>
+      <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+        <div style={{ minWidth: 240, flex: 1 }}>
+          <div className="kicker accent">Fila limpa</div>
+          <div style={{ fontFamily: "var(--display)", fontSize: 20, fontWeight: 700, marginTop: 5 }}>
+            Nada pendente na sua fila de hoje.
+          </div>
+          <div style={{ fontSize: 13, color: "var(--fg-2)", marginTop: 5 }}>
+            {contatos != null || calls != null
+              ? `${contatos ?? 0} ${contatos === 1 ? "contato" : "contatos"}${calls ? ` e ${calls} ${calls === 1 ? "call agendada" : "calls agendadas"}` : ""} hoje.`
+              : "Confira o pipeline ou puxe leads novos."}
+          </div>
+          <div style={{ fontSize: 12.5, color: "var(--fg-2)", marginTop: 10, lineHeight: 1.5 }}>
+            {count == null
+              ? "Passa no Instagram e chama os novos seguidores no direct."
+              : count > 0
+                ? <>Você teve <strong style={{ color: "var(--accent)" }}>{count} novo{count === 1 ? "" : "s"} seguidor{count === 1 ? "" : "es"}</strong> nas últimas ~24h. Chama cada um no direct.</>
+                : "Sem novos seguidores nas últimas 24h, mas vale reativar quem já te segue."}
+            {" "}<span className="dim">O Instagram não lista quem seguiu por aqui (a plataforma não entrega o @ por API): abra o app pra ver e chamar.</span>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <a href={igUrl} target="_blank" rel="noopener noreferrer"
+            style={{ height: 38, display: "inline-flex", alignItems: "center", padding: "0 16px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13.5, fontWeight: 700, textDecoration: "none" }}>
+            Abrir o Instagram ↗
+          </a>
+          {openForm && saasId && (
+            <button onClick={() => openForm("leads", { saas: saasId, source: "Social selling", owner: person })}
+              title="cadastra o lead já com a origem Social selling e você como dono"
+              style={{ height: 38, padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>
+              + cadastrar lead
+            </button>
+          )}
         </div>
       </div>
-      <a href={igUrl} target="_blank" rel="noopener noreferrer"
-        style={{ flexShrink: 0, height: 34, display: "inline-flex", alignItems: "center", padding: "0 16px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: 700, textDecoration: "none" }}>
-        abrir Instagram ↗
-      </a>
-    </div>
+    </section>
+  );
+}
+
+// ── 3.1 Seletor de pessoa: UM chip ─────────────────────────────────────────
+// Eram N chips com contagem no lugar mais nobre do cabeçalho — num time de 8,
+// oito chips, e é recurso de GESTOR. Agora um chip com a fila atual; o clique
+// abre a lista com as contagens (o queueCounts já era calculado). Quem não é
+// admin vê só o rótulo da própria fila.
+function PersonPicker({ users, person, counts, onChange, canPick }) {
+  const [open, setOpen] = useS(false);
+  useEsc(open ? () => setOpen(false) : null);
+  useE(() => {
+    if (!open) return;
+    const fechar = () => setOpen(false);
+    window.addEventListener("click", fechar);
+    return () => window.removeEventListener("click", fechar);
+  }, [open]);
+  const atual = users.find((u) => u.id === person);
+  const rotulo = `${atual?.name || atual?.id || "fila"}${counts[person] != null ? ` · ${counts[person]}` : ""}`;
+  if (!canPick) {
+    return (
+      <span style={{ height: 34, display: "inline-flex", alignItems: "center", padding: "0 13px", borderRadius: 999, border: "1px solid var(--line-1)", color: "var(--fg-3)", fontSize: 13 }}>
+        {rotulo}
+      </span>
+    );
+  }
+  return (
+    <span style={{ position: "relative", display: "inline-flex" }} onClick={(e) => e.stopPropagation()}>
+      <button onClick={() => setOpen((o) => !o)} title="ver a fila de outra pessoa"
+        style={{ height: 34, display: "inline-flex", alignItems: "center", gap: 7, padding: "0 13px", borderRadius: 999, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", boxShadow: "var(--shadow-1)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+        {rotulo} <span className="mono dim" style={{ fontSize: 10 }}>▾</span>
+      </button>
+      {open && (
+        <div style={{ position: "absolute", right: 0, top: 38, zIndex: 30, minWidth: 208, padding: 4, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)" }}>
+          {users.map((u) => {
+            const ativo = u.id === person;
+            return (
+              <button key={u.id} onClick={() => { setOpen(false); onChange(u.id); }}
+                style={{ display: "flex", width: "100%", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: "var(--r-2)", border: 0, background: ativo ? "var(--accent-soft)" : "transparent", color: ativo ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: ativo ? 600 : 400, cursor: "pointer", textAlign: "left" }}>
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name || u.id}</span>
+                <span className="tnum" style={{ fontSize: 12, color: ativo ? "var(--accent)" : "var(--fg-4)" }}>{counts[u.id] || 0}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </span>
   );
 }
 
@@ -688,37 +755,45 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
             <div className="page-sub" style={{ marginTop: 4 }}>hoje em ordem de execução · amanhã e próximos dias à vista</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 6, flexWrap: "wrap" }}>
-            {users.map((u) => {
-              const active = person === u.id;
-              return (
-                <button key={u.id} onClick={() => setPerson(u.id)} style={{
-                  height: 34, display: "inline-flex", alignItems: "center", gap: 7, padding: "0 13px", borderRadius: 999,
-                  border: `1px solid ${active ? "var(--line-2)" : "var(--line-1)"}`, background: active ? "var(--bg-1)" : "transparent",
-                  color: active ? "var(--fg-1)" : "var(--fg-3)", boxShadow: active ? "var(--shadow-1)" : "none", fontSize: 13, fontWeight: active ? 600 : 500,
-                }}>
-                  {u.name || u.id}<span className="tnum" style={{ fontSize: 12, color: "var(--fg-4)" }}>{queueCounts[u.id] || 0}</span>
-                </button>
-              );
-            })}
+            <PersonPicker users={users} person={person} counts={queueCounts}
+              onChange={setPerson} canPick={users.length > 1 && isAdminUser()} />
           </div>
         </div>
 
         {(consultasErr || tasksErr) && (
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", border: "1px solid var(--warn-line)", background: "var(--warn-soft)", borderRadius: "var(--r-2)", padding: "9px 12px", fontSize: 12.5 }}>
-            <span>⚠ Não deu pra carregar {[consultasErr && "as consultas", tasksErr && "as tarefas"].filter(Boolean).join(" e ")} · a fila pode estar incompleta.</span>
-            <button onClick={() => setReload((n) => n + 1)} style={{ marginLeft: "auto", height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--warn-line)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 600 }}>recarregar</button>
+            <span style={{ minWidth: 240, flex: 1 }}>
+              <span style={{ display: "block", fontWeight: 600 }}>
+                {`Não deu pra carregar ${[consultasErr && "as consultas", tasksErr && "as tarefas"].filter(Boolean).join(" e ")} · a fila pode estar incompleta.`}
+              </span>
+              <span className="dim" style={{ display: "block", fontSize: 11.5, marginTop: 2 }}>
+                compromisso que não aparece é compromisso furado
+              </span>
+            </span>
+            <button onClick={() => setReload((n) => n + 1)} style={{ marginLeft: "auto", height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--warn-line)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 600, flexShrink: 0, cursor: "pointer" }}>recarregar</button>
           </div>
         )}
-        {viewedIsSdr && saasCfg?.id && <SocialSellingBar saasId={saasCfg.id} person={person} version={version} openForm={openForm} />}
-        {daySocialDone && <SocialSellingNotice ig={igStats} />}
+        {/* A barra do contador +1 segue no fluxo normal (registrar abordagem é
+            coisa do dia inteiro); no estado de fila limpa ela é absorvida pelo
+            bloco único. */}
+        {viewedIsSdr && saasCfg?.id && !daySocialDone && total > 0 && (
+          <SocialSellingBar saasId={saasCfg.id} person={person} version={version} openForm={openForm} />
+        )}
+        {daySocialDone && total > 0 && (
+          <FilaLimpa ig={igStats} contatos={q.doneToday} calls={callsToday.length}
+            saasId={saasCfg?.id} person={person} openForm={openForm} />
+        )}
         {total === 0 ? (
-          // Fila de leads vazia: a tela continua a de sempre ("Fila limpa");
+          // Fila de leads vazia: um bloco só (era EmptyState + barra + aviso);
           // as tarefas do kanban entram como um bloco A MAIS, nunca no lugar dela.
           <>
-            <EmptyState
-              title="Fila limpa"
-              hint={person ? "Nenhuma ação pendente nessa fila. Confira o pipeline ou puxe leads novos." : "Nenhuma ação pendente."}
-            />
+            {viewedIsSdr
+              ? <FilaLimpa ig={igStats} contatos={q.doneToday} calls={callsToday.length}
+                  saasId={saasCfg?.id} person={person} openForm={openForm} />
+              : <EmptyState
+                  title="Fila limpa"
+                  hint={person ? "Nenhuma ação pendente nessa fila. Confira o pipeline ou puxe leads novos." : "Nenhuma ação pendente."}
+                />}
             {myTasks.length > 0 && (
               <div style={{ maxWidth: 640 }}>
                 <TasksCard tasks={myTasks} onDone={completeTask} undo={undoTask} onUndo={revertTask} />
@@ -2742,4 +2817,4 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   );
 }
 
-export { TodayScreen, ScriptPanel, buildQueue, ACTION_LABELS };
+export { TodayScreen, ScriptPanel, buildQueue, ACTION_LABELS, GROUP_META, GROUP_ORDER };
