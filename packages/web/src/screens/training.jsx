@@ -202,7 +202,7 @@ function SessionProgress({ done, total, dark = false }) {
         <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: dark ? "#3eccbf" : "var(--accent)", transition: "width 220ms ease" }} />
       </div>
       <span className="mono tnum" style={{ fontSize: 11, color: dark ? "rgba(255,255,255,0.5)" : "var(--fg-4)", whiteSpace: "nowrap" }}>
-        {Math.min(done, total)} de {total}{extra ? ` · +${extra} que voltaram` : ""}
+        {`${Math.min(done, total)} de ${total}${extra ? ` · +${extra} que voltaram` : ""}`}
       </span>
     </div>
   );
@@ -413,7 +413,7 @@ function NextExamCard({ stats }) {
         <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: "var(--accent)", transition: "width 200ms ease" }} />
       </div>
       <div className="mono dim" style={{ fontSize: 10.5, marginTop: 8 }}>
-        a prova de checkpoint cai a cada {e.every} cards · nota mínima {e.pass}%
+        {`a prova de checkpoint cai a cada ${e.every} cards · nota mínima ${e.pass}%`}
       </div>
     </div>
   );
@@ -1115,7 +1115,7 @@ function CardList({ cards, total, q, setQ, sel, onSelect, onAdd, roleLabel }) {
         })}
       </div>
       <div className="mono dim" style={{ fontSize: 10.5, padding: "10px 14px", borderTop: "1px solid var(--line-1)" }}>
-        {total} card{total === 1 ? "" : "s"} em {roleLabel}{q.trim() ? ` · mostrando ${cards.length}` : ""}
+        {`${total} card${total === 1 ? "" : "s"} em ${roleLabel}${q.trim() ? ` · mostrando ${cards.length}` : ""}`}
       </div>
     </div>
   );
@@ -1366,9 +1366,12 @@ const retColor = (pct) => (pct == null ? "var(--fg-4)" : pct >= 85 ? "var(--pos)
 // abaixo do piso (retenção < 70% com base pra afirmar isso).
 const needsAttention = (u) =>
   u.overdue > 0 || u.examPending || u.examsFailed > 0 || (u.retention30d?.n > 0 && u.retention30d.pct < 70);
-// Urgência: atrasado pesa mais que fila do dia; prova travada entra na frente.
+// Urgência: prova pendente domina, porque ela BLOQUEIA o treino da pessoa (o
+// hero dela mostra a prova no lugar da fila, então nada mais anda até fazer);
+// depois atrasado, que pesa mais que fila do dia; reprovada entra na escala
+// contínua, porque não trava nada, só sinaliza.
 const urgencyOf = (u) =>
-  (u.overdue || 0) * 10 + (u.dueToday || 0) + (u.examPending ? 30 : 0) + (u.examsFailed || 0) * 8;
+  (u.examPending ? 1000 : 0) + (u.overdue || 0) * 10 + (u.dueToday || 0) + (u.examsFailed || 0) * 8;
 
 function Team({ saasId, mode, setMode }) {
   const [data, setData] = useS(null);
@@ -1906,4 +1909,8 @@ function TrainingGate({ saasId, active }) {
   );
 }
 
-export { TrainingScreen, TrainingGate };
+// TrainingScreen/TrainingGate são o que o app monta. Os outros saem daqui pro
+// smoke de render (scripts/smoke-ssr.mjs) poder exercitar os estados que o SSR
+// não alcança pela tela inteira (fila vazia, raio-x, card sem frente): os
+// dados chegam por efeito, que não roda no SSR.
+export { TrainingScreen, TrainingGate, StartCard, DeckList, MemoryCard, NextExamCard, SessionProgress, PersonDetail, CardList, urgencyOf, needsAttention };
