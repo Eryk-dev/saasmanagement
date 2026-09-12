@@ -36,7 +36,7 @@ async function seed() {
   return repo;
 }
 
-const GMV = { [ORG(1)]: 181550, [ORG(2)]: 11118, [ORG(4)]: 99999, [ORG(5)]: 50000 };
+const GMV = { [ORG(1)]: 181550, [ORG(2)]: 11118, [ORG(3)]: 562, [ORG(4)]: 99999, [ORG(5)]: 50000 };
 
 test("fila: ordena pela prova, corta novo de casa e churnado, e mostra o gap cadastral", async () => {
   const repo = await seed();
@@ -45,10 +45,13 @@ test("fila: ordena pela prova, corta novo de casa e churnado, e mostra o gap cad
   assert.deepEqual(q.rows.map((r) => r.customer), ["cu_a", "cu_b", "cu_c", "cu_f"]);
   assert.equal(q.rows[0].influenced30d, 181550);
   assert.equal(q.rows[0].bucket, "pedir");
-  assert.equal(q.rows[2].bucket, "sem_prova");   // ativo e com tempo de casa, sem venda influenciada
+  // R$ 562 influenciados não sustentam o pedido: aparece como prova fraca, não
+  // como fila (medido na base real em 12/09/2026).
+  assert.equal(q.rows[2].bucket, "prova_fraca");
   assert.equal(q.rows[3].bucket, "sem_prova");   // sem org vinculada: não há como provar
   assert.equal(q.totals.pedir, 2);
-  assert.equal(q.totals.influencedSum, 192668);
+  assert.equal(q.totals.provaFraca, 1);
+  assert.equal(q.totals.influencedSum, 193230);
   assert.deepEqual(q.coverage, { customers: 5, withOrg: 4 });
   // A frase do pedido acompanha a linha (a tela abre o WhatsApp com ela).
   assert.match(q.rows[0].script, /Xracing, os anúncios que a gente subiu venderam R\$\s181\.550/);
