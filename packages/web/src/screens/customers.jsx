@@ -1033,7 +1033,7 @@ export function ValorContrato({ customer, onPatch, inputSt }) {
   );
 }
 
-function CustomerFacts({ customer, lead, product, leverOrg, onPatch }) {
+function CustomerFacts({ customer, lead, product, leverOrg, onPatch, cicloAte = null }) {
   const [edit, setEdit] = useState(false);
   const saasId = customer.saas || product?.id;
   const saasCfg = (window.SEED?.SAAS || []).find((x) => x.id === saasId) || product;
@@ -1048,35 +1048,49 @@ function CustomerFacts({ customer, lead, product, leverOrg, onPatch }) {
   const phone = customer.phone || lead?.phone;
   const wa = phone ? waLink(phone) : null;
   const linkStyle = { color: "var(--accent)", fontWeight: 600, textDecoration: "none" };
-  const facts = [
-    ["Empresa", customer.company || lead?.company],
-    ["Contato", customer.contact],
-    ["WhatsApp", wa ? <a href={wa} target="_blank" rel="noreferrer" style={linkStyle}>{phone}</a> : phone],
-    ["E-mail", email ? <a href={`mailto:${email}`} style={linkStyle}>{email}</a> : null],
-    ["Potencial", tier && tier.key !== "sem" ? tier.label : null],
-    ["Dor do anúncio", pain ? `[${pain.code}] ${pain.label}` : null],
-    ["Origem", lead?.source],
-    ["Formulário", formName],
-    ["Anúncio", adName],
-    ["Faixa de faturamento", lead?.value],
-    // Recorrência: mostra a mensalidade E o acumulado (a régua dos 30 dias).
-    ["Valor fechado", lead?.amount
-      ? (isRecurringClose(lead)
-        ? `${window.fmt.money(lead.amount)}/mês · acumulado ${window.fmt.money(accruedAmountOf(lead, { endAt: customer.endedAt }))}`
-        : window.fmt.money(lead.amount))
-      : null],
-    ["Pagamento", (customer.paymentMethod || lead?.paymentMethod) ? paymentLabel(customer.paymentMethod || lead?.paymentMethod) : null],
-    ["Status pgto.", PAY_STATUS[customer.paymentStatus] ? `${PAY_STATUS[customer.paymentStatus].label} (manual)` : null],
-    // Usuário/org linkado no produto (de-para do sync de acesso); sem match na
-    // lista de orgs, fica o id cru mesmo.
-    ["Usuário LeverAds", customer.leveradsOrgId
-      ? (leverOrg ? (leverOrg.email ? `${leverOrg.name} · ${leverOrg.email}` : leverOrg.name) : customer.leveradsOrgId)
-      : null],
-    ["SDR", lead?.owner ? displayName(lead.owner) : null],
-    ["Closer", lead?.closer ? displayName(lead.closer) : null],
-    ["Integrador", lead?.integrator ? displayName(lead.integrator) : null],
-    ["Motivo da busca", lead?.reason],
-  ].filter(([, v]) => v != null && v !== "");
+  // TRÊS SEÇÕES em vez de até 20 pares num auto-fit só, onde "WhatsApp" caía
+  // ao lado de "SDR": quem é (contato), o que comprou (contrato), de onde veio
+  // (origem). Par vazio continua sumindo; seção que esvazia não aparece.
+  const grupos = [
+    ["Contato", [
+      ["Empresa", customer.company || lead?.company],
+      ["Contato", customer.contact],
+      ["WhatsApp", wa ? <a href={wa} target="_blank" rel="noreferrer" style={linkStyle}>{phone}</a> : phone],
+      ["E-mail", email ? <a href={`mailto:${email}`} style={linkStyle}>{email}</a> : null],
+      ["Usuário LeverAds", customer.leveradsOrgId
+        ? (leverOrg ? (leverOrg.email ? `${leverOrg.name} · ${leverOrg.email}` : leverOrg.name) : customer.leveradsOrgId)
+        : null],
+    ]],
+    ["Contrato", [
+      ["Plano", customer.plan],
+      // Recorrência: mostra a mensalidade E o acumulado (a régua dos 30 dias).
+      ["Valor fechado", lead?.amount
+        ? (isRecurringClose(lead)
+          ? `${window.fmt.money(lead.amount)}/mês · acumulado ${window.fmt.money(accruedAmountOf(lead, { endAt: customer.endedAt }))}`
+          : window.fmt.money(lead.amount))
+        : null],
+      ["Pagamento", (customer.paymentMethod || lead?.paymentMethod) ? paymentLabel(customer.paymentMethod || lead?.paymentMethod) : null],
+      ["Status pgto.", PAY_STATUS[customer.paymentStatus] ? `${PAY_STATUS[customer.paymentStatus].label} (manual)` : null],
+      ["Ciclo atual até", cicloAte],
+      ["Upsells", Number(customer.upsellCount) > 0
+        ? `${customer.upsellCount}${parseDay(customer.lastUpsellAt) ? ` · último ${fmtDay(parseDay(customer.lastUpsellAt))}` : ""}${customer.lastUpsellItem ? ` · ${customer.lastUpsellItem}` : ""}`
+        : null],
+      ["Conta grande", customer.keyAccount ? "sim · fora das médias" : null],
+    ]],
+    ["Origem", [
+      ["Origem", lead?.source],
+      ["Potencial", tier && tier.key !== "sem" ? tier.label : null],
+      ["Dor do anúncio", pain ? `[${pain.code}] ${pain.label}` : null],
+      ["Anúncio", adName],
+      ["Formulário", formName],
+      ["Faixa de faturamento", lead?.value],
+      ["SDR", lead?.owner ? displayName(lead.owner) : null],
+      ["Closer", lead?.closer ? displayName(lead.closer) : null],
+      ["Integrador", lead?.integrator ? displayName(lead.integrator) : null],
+      ["Motivo da busca", lead?.reason],
+    ]],
+  ].map(([titulo, pares]) => [titulo, pares.filter(([, v]) => v != null && v !== "")]).filter(([, pares]) => pares.length);
+  const facts = grupos.flatMap(([, pares]) => pares);
   const patch = (p) => onPatch && onPatch(p);
   const inputSt = { flex: 1, minWidth: 0, height: 28, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 };
   const EditRow = ({ label, children }) => (
@@ -1132,11 +1146,18 @@ function CustomerFacts({ customer, lead, product, leverOrg, onPatch }) {
       ) : facts.length === 0 ? (
         <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Sem dados ainda. Use o ✎ pra preencher.</div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(215px, 1fr))", gap: "0 18px" }}>
-          {facts.map(([k, v]) => (
-            <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5, padding: "5px 0", borderBottom: "1px solid var(--line-1)" }}>
-              <span className="mono dim" style={{ flexShrink: 0, fontSize: 10.5 }}>{k}</span>
-              <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0, overflowWrap: "anywhere" }}>{v}</span>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {grupos.map(([titulo, pares]) => (
+            <div key={titulo}>
+              <div className="kicker" style={{ marginBottom: 3 }}>{titulo}</div>
+              <div className="resp-cols" style={{ "--cols": "repeat(2, minmax(0,1fr))", gap: "0 18px" }}>
+                {pares.map(([k, v]) => (
+                  <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5, padding: "5px 0", borderBottom: "1px solid var(--line-1)", minWidth: 0 }}>
+                    <span className="mono dim" style={{ flexShrink: 0, fontSize: 10.5 }}>{k}</span>
+                    <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0, overflowWrap: "anywhere" }}>{v}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>
@@ -1153,6 +1174,10 @@ function CustomerFacts({ customer, lead, product, leverOrg, onPatch }) {
 function CustomerModal({ customer, lead, product, subs, invoices, planLabel, lastContact, leverOrg, onComplete, onPatch, onClose, onNewReferral }) {
   const { refresh } = useData();
   const [editing, setEditing] = useState(false);
+  // QUATRO ABAS (redesign de 12/09): a ficha era uma rolagem única com doze
+  // blocos — dados, assinatura, parcelas, faturas, MP, upsell, régua, conversa,
+  // indicações, contratos, histórico. Nada saiu; cada bloco tem lugar agora.
+  const [aba, setAba] = useState("resumo"); // resumo | dinheiro | indicacoes | historico
   // Edição das RESPOSTAS DO FORMULÁRIO (campos do lead) direto do popup: otimista
   // no objeto do lead (do SEED) + PATCH; o bump re-renderiza o popro pra o
   // Potencial/Nível recalcularem na hora.
@@ -1351,25 +1376,11 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
     } catch (err) { flashFin(err.message || "MP recusou o link"); }
   }
 
-  const summary = isKids ? [
-    { label: "Pacote", value: consultPackageLabel(consultTotal) },
-    { label: "Tempo de casa", value: tenureLabel(customer) || "defina o início" },
-    { label: "Último contato", value: lastContact(customer) },
-    { label: "Consultas", value: `${consultDone} de ${consultTotal} feitas` },
-  ] : [
-    { label: "Plano", value: customer.plan || (mainSub ? planLabel(mainSub) : "sem plano") },
-    { label: "Tempo de casa", value: tenureLabel(customer) || "defina o início" },
-    { label: "Último contato", value: lastContact(customer) },
-    { label: "Assinatura", value: st ? st.label : "sem assinatura" },
-    // Upsells registrados na ficha (upsell.js carimba contador e último item).
-    ...(Number(customer.upsellCount) > 0
-      ? [{ label: "Upsells", value: `${customer.upsellCount}${parseDay(customer.lastUpsellAt) ? ` · último ${fmtDay(parseDay(customer.lastUpsellAt))}` : ""}` }]
-      : []),
-    // Vencimento = fim do ciclo atual; pausada/cancelada não tem ciclo correndo.
-    ...(mainSub && (mainSub.status === "active" || mainSub.status === "past_due") && parseDay(mainSub.periodEnd)
-      ? [{ label: "Vencimento", value: fmtDay(parseDay(mainSub.periodEnd)) }]
-      : []),
-  ];
+  // O antigo grid de `summary` (plano, casa, último contato, assinatura,
+  // upsells, vencimento) saiu do cabeçalho: a assinatura virou Pill ao lado do
+  // nome, o tempo de casa entrou no subtítulo e o resto está nos Dados do
+  // cliente, na seção Contrato — cada um com contexto em vez de seis rótulos
+  // soltos competindo com o nome.
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 90, background: "color-mix(in srgb, var(--bg-0) 62%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
@@ -1377,43 +1388,53 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
         <div style={{ padding: "18px 24px 14px", borderBottom: "1px solid var(--line-faint)", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>{customer.name}</div>
-              <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 3 }}>
-                {isKids
-                  ? `${money(customer.arr || 0)} · Mentoria R.O.T.I.N.A`
-                  : `${money((customer.arr || 0) / 12)}/mês · ${money(customer.arr || 0)}/ano`}{customer.email ? ` · ${customer.email}` : ""}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                {customer.keyAccount && <span title="conta grande · fora das médias" style={{ color: "var(--accent)", fontSize: 15 }}>★</span>}
+                {!isKids && lead && (() => {
+                  const t = leadTier(lead);
+                  return t.grade
+                    ? <span title={t.label} style={{ width: 22, height: 22, borderRadius: 6, background: t.tone, color: t.badgeFg, fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1, flexShrink: 0 }}>{t.grade}</span>
+                    : null;
+                })()}
+                <div style={{ fontFamily: "var(--display)", fontSize: 20, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{customer.name}</div>
+                {!churned && (st ? <Pill tone={st.tone}>{st.label}</Pill> : !isKids && <Pill tone="mut">sem assinatura</Pill>)}
+                {(customer.flags || []).map((f) => <Pill key={f} tone="warn">{f}</Pill>)}
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 4 }}>
+                {[
+                  isKids ? `${money(customer.arr || 0)} · Mentoria R.O.T.I.N.A` : `${money((customer.arr || 0) / 12)}/mês · ${money(customer.arr || 0)}/ano`,
+                  customer.email || "",
+                  fmtDay(parseDay(customer.startedAt)) ? `cliente desde ${fmtDay(parseDay(customer.startedAt))}${tenureLabel(customer) ? ` (${tenureLabel(customer)})` : ""}` : "",
+                ].filter(Boolean).join(" · ")}
               </div>
             </div>
             {!editing && !churned && (
               <button onClick={() => { setUpsellOpen((v) => !v); setChurnOpen(false); }}
                 title="Registrar um upsell (venda extra pra este cliente): o que foi vendido, valor, pago / a receber / link do Mercado Pago e quem vendeu. Entra no caixa, no placar e na meta de upsell do CS."
-                style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid color-mix(in srgb, var(--pos) 45%, transparent)", background: "var(--bg-1)", color: "var(--pos)", fontSize: 12.5, flexShrink: 0 }}>
+                style={{ height: 28, padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid color-mix(in srgb, var(--pos) 45%, transparent)", background: "var(--bg-1)", color: "var(--pos)", fontSize: 12, flexShrink: 0 }}>
                 {upsellOpen ? "cancelar" : "registrar upsell"}
               </button>
             )}
             {!editing && !churned && (
               <button onClick={() => { setChurnOpen((v) => !v); setUpsellOpen(false); }}
                 title="Registrar a saída deste cliente (churn): data + motivo. Cancela as assinaturas em aberto (espelha no Mercado Pago quando vinculadas) e tira o cliente do MRR e da base ativa — o histórico e o valor do contrato ficam registrados."
-                style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid color-mix(in srgb, var(--neg) 40%, transparent)", background: "var(--bg-1)", color: "var(--neg)", fontSize: 12.5, flexShrink: 0 }}>
+                style={{ height: 28, padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid color-mix(in srgb, var(--neg) 40%, transparent)", background: "var(--bg-1)", color: "var(--neg)", fontSize: 12, flexShrink: 0 }}>
                 {churnOpen ? "cancelar" : "registrar churn"}
               </button>
             )}
             {!editing && (
-              <button onClick={() => setEditing(true)} style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, flexShrink: 0 }}>Editar</button>
+              <button onClick={() => setEditing(true)} style={{ height: 28, padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, flexShrink: 0 }}>Editar</button>
             )}
-            <button onClick={onClose} aria-label="Fechar" style={{ height: 30, width: 30, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 14, flexShrink: 0 }}>✕</button>
+            <button onClick={onClose} aria-label="Fechar" style={{ height: 28, width: 28, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 13, flexShrink: 0 }}>✕</button>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 10, marginTop: 14 }}>
-            {summary.map((s) => (
-              <div key={s.label}>
-                <div className="kicker">{s.label}</div>
-                <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>{s.value}</div>
-              </div>
-            ))}
-          </div>
-          {(customer.flags || []).length > 0 && (
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-              {customer.flags.map((f) => <Pill key={f} tone="warn">{f}</Pill>)}
+          {!editing && (
+            <div style={{ marginTop: 12 }}>
+              <Segmented value={aba} onChange={setAba} options={[
+                { value: "resumo", label: "Resumo" },
+                { value: "dinheiro", label: "Dinheiro" },
+                { value: "indicacoes", label: "Indicações" },
+                { value: "historico", label: "Histórico" },
+              ]} />
             </div>
           )}
           {/* Faixa de churn: o cliente saiu — quando, por quê e o desfazer. */}
@@ -1473,15 +1494,172 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
 
         {!editing && (
         <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "14px 16px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 14, alignItems: "start" }}>
+
+        {/* ── RESUMO: o contrato, os dados e o que fazer com o cliente ────── */}
+        {aba === "resumo" && (
+        <div className="resp-cols" style={{ "--cols": "minmax(0,1fr) minmax(0,1fr)", gap: 14, alignItems: "start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
-        <CustomerFacts customer={customer} lead={lead} product={product} leverOrg={leverOrg} onPatch={onPatch ? (p) => onPatch(customer, p) : null} />
+        {/* Dinheiro do contrato: a mesma barra empilhada da aba Clientes, com a
+            parcela vencida e as ações dela (as MESMAS funções da aba Dinheiro,
+            não uma segunda implementação da baixa). */}
+        <div style={BOX}>
+          <div className="kicker accent" style={{ marginBottom: 8 }}>Dinheiro do contrato</div>
+          {(() => {
+            const contrato = Number(customer.arr) || 0;
+            const pagas = parcelas.filter((i) => invStatus(i) === "paid");
+            const recebido = parcelas.length
+              ? pagas.reduce((a, i) => a + (Number(i.amount) || 0), 0)
+              : (paymentUpfront(customer.paymentMethod || lead?.paymentMethod) ? contrato : 0);
+            const pct = contrato > 0 ? Math.min(100, (recebido / contrato) * 100) : 0;
+            const vencida = parcelas.find((i) => invStatus(i) !== "paid" && parseDay(i.dueDate) && parseDay(i.dueDate).getTime() < Date.now());
+            const aberta = vencida || parcelas.find((i) => invStatus(i) !== "paid");
+            return (
+              <>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                  <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 24, fontWeight: 700 }}>{money(recebido)}</span>
+                  <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{`recebido de ${money(contrato)} contratados`}</span>
+                </div>
+                <div style={{ display: "flex", height: 12, borderRadius: 999, overflow: "hidden", background: "var(--bg-2)", marginTop: 8 }}>
+                  <div style={{ width: `${pct}%`, background: "var(--pos)" }} />
+                  <div style={{ width: `${100 - pct}%`, background: "var(--warn)" }} />
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 6 }}>
+                  {parcelas.length
+                    ? `${pagas.length} de ${parcelas.length} parcelas pagas`
+                    : (paymentUpfront(customer.paymentMethod || lead?.paymentMethod) ? "pagamento à vista: entrou no fechamento" : "sem cronograma de parcelas ainda")}
+                </div>
+                {aberta && (
+                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--line-1)", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 12.5, color: vencida ? "var(--neg)" : "var(--fg-2)", minWidth: 0 }}>
+                      {`${vencida ? "venceu" : "vence"} ${fmtDay(parseDay(aberta.dueDate))} · ${money(aberta.amount)}`}
+                      {aberta.installmentN ? ` · parcela ${aberta.installmentN}` : ""}
+                    </span>
+                    <button onClick={() => invoiceLink(aberta)} style={{ ...ACAO_BTN, marginLeft: "auto" }}>copiar link</button>
+                    <button onClick={() => toggleParcela(aberta)} disabled={invBusy === aberta.id} style={ACAO_BTN}>
+                      {invBusy === aberta.id ? "…" : "marcar paga"}
+                    </button>
+                  </div>
+                )}
+              </>
+            );
+          })()}
+        </div>
+
+        <CustomerFacts customer={customer} lead={lead} product={product} leverOrg={leverOrg}
+          cicloAte={mainSub && (mainSub.status === "active" || mainSub.status === "past_due") && parseDay(mainSub.periodEnd) ? fmtDay(parseDay(mainSub.periodEnd)) : null}
+          onPatch={onPatch ? (p) => onPatch(customer, p) : null} />
 
         {/* Respostas do formulário (campos do lead) — editáveis daqui; mudou o
             nicho/contas/anúncios, o Potencial e o Nível recalculam. Só quando
             há lead com perguntas (mentoria/produto B2C sem grade não mostra). */}
         {!isKids && <FormAnswersCard lead={lead} product={product} onPatch={patchLead} />}
+        </div>
 
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+        {isKids ? (
+        <div style={BOX}>
+          <div className="kicker" style={{ marginBottom: 8, display: "flex", alignItems: "center" }}>
+            <span>Jornada de consultas</span>
+            <button onClick={() => { onClose(); window.location.hash = "consultas"; }}
+              style={{ marginLeft: "auto", height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
+              abrir Consultas ↗
+            </button>
+          </div>
+          {customer.startedAt && (
+            <div style={{ fontSize: 12, color: "var(--fg-3)", marginBottom: 10 }}>
+              cliente desde {new Date(customer.startedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).replace(".", "")} · {nextConsult ? `próxima consulta: ${fmtConsultaAt(nextConsult.at)}` : consultDone >= consultTotal && consultas.length > 0 ? "jornada completa 🎉" : "sem próxima marcada"}
+            </div>
+          )}
+          {consultas.length === 0 ? (
+            <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
+              Nenhuma consulta ainda. O pacote nasce sozinho quando o lead vira Ganho; dá pra criar na tela Consultas também.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {consultas.map((c, i) => {
+                const cst = CONSULT_STATUS[c.status] || CONSULT_STATUS.scheduled;
+                const done = c.status === "done";
+                return (
+                  <div key={c.id} style={{ display: "flex", gap: 12, position: "relative", paddingBottom: i === consultas.length - 1 ? 0 : 14 }}>
+                    {i < consultas.length - 1 && <span style={{ position: "absolute", left: 7, top: 18, bottom: 0, width: 2, background: "var(--line-1)" }} />}
+                    <span style={{
+                      width: 16, height: 16, borderRadius: 999, flexShrink: 0, marginTop: 1, zIndex: 1,
+                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9,
+                      background: done ? "var(--pos-soft)" : c.at ? "var(--warn-soft)" : "var(--bg-2)",
+                      color: done ? "var(--pos)" : c.at ? "var(--warn)" : "var(--fg-4)",
+                      border: !done && !c.at ? "1px solid var(--line-2)" : "none",
+                    }}>
+                      {done ? "✓" : c.n || "○"}
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>Consulta {c.n || "?"} de {c.packageTotal || consultTotal}</div>
+                      <div style={{ fontSize: 12, color: "var(--fg-3)" }}>
+                        {c.at ? fmtConsultaAt(c.at) : "sem data · marque na tela Consultas"}
+                        {c.summary ? " · resumo de IA pronto" : ""}
+                      </div>
+                    </div>
+                    <Pill tone={c.at || done ? cst.tone : "mut"}>{!done && !c.at ? "a marcar" : cst.label}</Pill>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        ) : (
+        <div style={BOX}>
+          <div className="kicker" style={{ marginBottom: 8 }}>Ações de retenção</div>
+          {!customer.startedAt && (
+            <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
+              Defina "Cliente desde" (editar cliente) pra ativar a régua de marcos: onboarding, check-in de mês 1, revisão de mês 3, upsell de mês 6 e contato de renovação (2 meses antes do fim do contrato).
+            </div>
+          )}
+          {customer.startedAt && (
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <div style={{ fontSize: 12, color: "var(--fg-3)", marginBottom: 10 }}>
+                cliente desde {new Date(customer.startedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).replace(".", "")} · {tenureLabel(customer)}
+              </div>
+              {milestonesFor({ ...customer, contractCycle: mainSub?.cycle }, product).map((m, i, arr) => (
+                <div key={m.key} style={{ display: "flex", gap: 12, position: "relative", paddingBottom: i === arr.length - 1 ? 0 : 16 }}>
+                  {i < arr.length - 1 && <span style={{ position: "absolute", left: 7, top: 18, bottom: 0, width: 2, background: "var(--line-1)" }} />}
+                  <span style={{
+                    width: 16, height: 16, borderRadius: 999, flexShrink: 0, marginTop: 1, zIndex: 1,
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9,
+                    background: m.status === "done" ? "var(--pos-soft)" : m.status === "late" ? "var(--neg-soft)" : m.status === "soon" ? "var(--warn-soft)" : "var(--bg-2)",
+                    color: m.status === "done" ? "var(--pos)" : m.status === "late" ? "var(--neg)" : m.status === "soon" ? "var(--warn)" : "var(--fg-4)",
+                    border: m.status === "next" ? "1px solid var(--line-2)" : "none",
+                  }}>
+                    {m.status === "done" ? "✓" : "○"}
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{m.label}</div>
+                    <div style={{ fontSize: 12, color: "var(--fg-3)" }}>
+                      {m.status === "done"
+                        ? `concluído ${new Date(m.doneAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "")}`
+                        : `${m.hint || ""}${m.hint ? " · " : ""}${m.status === "late" ? "venceu " : "vence "}${dueLabel(m.dueAt)}`}
+                    </div>
+                  </div>
+                  {m.status !== "done" && (
+                    <button onClick={() => onComplete(customer, m.key)}
+                      style={{ alignSelf: "flex-start", height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", flexShrink: 0 }}>
+                      concluir
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        )}
+
+        {/* Indicações em resumo: o inteiro (com o link) mora na aba própria. */}
+        <CustomerReferrals customer={customer} onNewReferral={onNewReferral} compact onOpen={() => setAba("indicacoes")} />
+        </div>
+        </div>
+        )}
+
+        {/* ── DINHEIRO: assinatura, parcelas, faturas, MP e upsells ───────── */}
+        {aba === "dinheiro" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
         {/* Mentoria não é recorrência: pra cliente Kids o bloco de assinaturas
             sai (o pagamento fica em Dados do cliente e nas faturas). */}
         {!isKids && (
@@ -1671,115 +1849,28 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
             <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>{parcelas.length ? "Nenhuma fatura além das parcelas." : "Nenhuma fatura ainda."}</div>
           )}
         </div>
-
-        {/* Inbox do WhatsApp conectado: a MESMA conversa da tela #whatsapp,
-            pra mandar mensagem pro cliente sem sair do popup. */}
-        <WhatsappChat lead={lead} phone={customer.phone} />
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
-        {isKids ? (
-        <div style={BOX}>
-          <div className="kicker" style={{ marginBottom: 8, display: "flex", alignItems: "center" }}>
-            <span>Jornada de consultas</span>
-            <button onClick={() => { onClose(); window.location.hash = "consultas"; }}
-              style={{ marginLeft: "auto", height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
-              abrir Consultas ↗
-            </button>
-          </div>
-          {customer.startedAt && (
-            <div style={{ fontSize: 12, color: "var(--fg-3)", marginBottom: 10 }}>
-              cliente desde {new Date(customer.startedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).replace(".", "")} · {nextConsult ? `próxima consulta: ${fmtConsultaAt(nextConsult.at)}` : consultDone >= consultTotal && consultas.length > 0 ? "jornada completa 🎉" : "sem próxima marcada"}
-            </div>
-          )}
-          {consultas.length === 0 ? (
-            <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
-              Nenhuma consulta ainda. O pacote nasce sozinho quando o lead vira Ganho; dá pra criar na tela Consultas também.
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              {consultas.map((c, i) => {
-                const cst = CONSULT_STATUS[c.status] || CONSULT_STATUS.scheduled;
-                const done = c.status === "done";
-                return (
-                  <div key={c.id} style={{ display: "flex", gap: 12, position: "relative", paddingBottom: i === consultas.length - 1 ? 0 : 14 }}>
-                    {i < consultas.length - 1 && <span style={{ position: "absolute", left: 7, top: 18, bottom: 0, width: 2, background: "var(--line-1)" }} />}
-                    <span style={{
-                      width: 16, height: 16, borderRadius: 999, flexShrink: 0, marginTop: 1, zIndex: 1,
-                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9,
-                      background: done ? "var(--pos-soft)" : c.at ? "var(--warn-soft)" : "var(--bg-2)",
-                      color: done ? "var(--pos)" : c.at ? "var(--warn)" : "var(--fg-4)",
-                      border: !done && !c.at ? "1px solid var(--line-2)" : "none",
-                    }}>
-                      {done ? "✓" : c.n || "○"}
-                    </span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>Consulta {c.n || "?"} de {c.packageTotal || consultTotal}</div>
-                      <div style={{ fontSize: 12, color: "var(--fg-3)" }}>
-                        {c.at ? fmtConsultaAt(c.at) : "sem data · marque na tela Consultas"}
-                        {c.summary ? " · resumo de IA pronto" : ""}
-                      </div>
-                    </div>
-                    <Pill tone={c.at || done ? cst.tone : "mut"}>{!done && !c.at ? "a marcar" : cst.label}</Pill>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-        ) : (
-        <div style={BOX}>
-          <div className="kicker" style={{ marginBottom: 8 }}>Ações de retenção</div>
-          {!customer.startedAt && (
-            <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
-              Defina "Cliente desde" (editar cliente) pra ativar a régua de marcos: onboarding, check-in de mês 1, revisão de mês 3, upsell de mês 6 e contato de renovação (2 meses antes do fim do contrato).
-            </div>
-          )}
-          {customer.startedAt && (
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              <div style={{ fontSize: 12, color: "var(--fg-3)", marginBottom: 10 }}>
-                cliente desde {new Date(customer.startedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).replace(".", "")} · {tenureLabel(customer)}
-              </div>
-              {milestonesFor({ ...customer, contractCycle: mainSub?.cycle }, product).map((m, i, arr) => (
-                <div key={m.key} style={{ display: "flex", gap: 12, position: "relative", paddingBottom: i === arr.length - 1 ? 0 : 16 }}>
-                  {i < arr.length - 1 && <span style={{ position: "absolute", left: 7, top: 18, bottom: 0, width: 2, background: "var(--line-1)" }} />}
-                  <span style={{
-                    width: 16, height: 16, borderRadius: 999, flexShrink: 0, marginTop: 1, zIndex: 1,
-                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9,
-                    background: m.status === "done" ? "var(--pos-soft)" : m.status === "late" ? "var(--neg-soft)" : m.status === "soon" ? "var(--warn-soft)" : "var(--bg-2)",
-                    color: m.status === "done" ? "var(--pos)" : m.status === "late" ? "var(--neg)" : m.status === "soon" ? "var(--warn)" : "var(--fg-4)",
-                    border: m.status === "next" ? "1px solid var(--line-2)" : "none",
-                  }}>
-                    {m.status === "done" ? "✓" : "○"}
-                  </span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{m.label}</div>
-                    <div style={{ fontSize: 12, color: "var(--fg-3)" }}>
-                      {m.status === "done"
-                        ? `concluído ${new Date(m.doneAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "")}`
-                        : `${m.hint || ""}${m.hint ? " · " : ""}${m.status === "late" ? "venceu " : "vence "}${dueLabel(m.dueAt)}`}
-                    </div>
-                  </div>
-                  {m.status !== "done" && (
-                    <button onClick={() => onComplete(customer, m.key)}
-                      style={{ alignSelf: "flex-start", height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", flexShrink: 0 }}>
-                      concluir
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
         )}
 
+        {/* ── INDICAÇÕES ──────────────────────────────────────────────────── */}
+        {aba === "indicacoes" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
         <CustomerReferrals customer={customer} onNewReferral={onNewReferral} />
+        </div>
+        )}
 
-        <CustomerContracts customer={customer} onClose={onClose} />
+        {/* ── HISTÓRICO: a conversa, a timeline do funil e os contratos ───── */}
+        {aba === "historico" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+        {/* Inbox do WhatsApp conectado: a MESMA conversa da tela #whatsapp,
+            pra mandar mensagem pro cliente sem sair do popup. */}
+        <WhatsappChat lead={lead} phone={customer.phone} />
 
         <CustomerHistory customer={customer} />
+
+        <CustomerContracts customer={customer} onClose={onClose} />
         </div>
-        </div>
+        )}
         </div>
         )}
       </div>
@@ -1927,7 +2018,7 @@ function ReferralsTab({ saasId, onRegister, customers }) {
 // O link de indicação é o caminho mais barato: o cliente encaminha
 // /f/<form>?ref=<id dele> no grupo de lojistas e o vínculo nasce sozinho, já
 // creditado ao dono do cliente.
-function CustomerReferrals({ customer, onNewReferral }) {
+function CustomerReferrals({ customer, onNewReferral, compact = false, onOpen = null }) {
   const [formId, setFormId] = useState("");
   const [copied, setCopied] = useState(false);
   React.useEffect(() => {
@@ -1948,9 +2039,36 @@ function CustomerReferrals({ customer, onNewReferral }) {
   // telefone, que é o que a pessoa dá na integração).
   const digits = (v) => String(v || "").replace(/\D/g, "").slice(-8);
   const pending = seeds.filter((s) => !leads.some((l) => digits(l.phone) && digits(l.phone) === digits(s.phone)));
-  if (!leads.length && !pending.length && !formId) return null;
+  // Sem nada E sem form publicado o bloco inteiro não aparece — no Resumo,
+  // porém, a linha existe pra dizer que ninguém foi indicado ainda.
+  if (!compact && !leads.length && !pending.length && !formId) return null;
 
   const link = formId ? `${publicBase()}/f/${formId}?ref=${customer.id}` : "";
+
+  // No Resumo: só o placar e o caminho pra aba. O bloco inteiro (linhas, nomes
+  // plantados e o link) vive na aba Indicações.
+  if (compact) {
+    const fecharam = leads.filter((l) => l.customerId).length;
+    return (
+      <div style={BOX}>
+        <div className="kicker" style={{ marginBottom: 6 }}>Indicações</div>
+        {leads.length || pending.length ? (
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", fontSize: 12.5, color: "var(--fg-2)" }}>
+            <b className="tnum" style={{ fontSize: 18, fontWeight: 700 }}>{leads.length}</b>
+            <span>{`${leads.length === 1 ? "indicado" : "indicados"}${fecharam ? ` · ${fecharam} ${fecharam === 1 ? "fechou" : "fecharam"}` : ""}${pending.length ? ` · ${pending.length} ${pending.length === 1 ? "nome plantado" : "nomes plantados"}` : ""}`}</span>
+          </div>
+        ) : (
+          <div style={{ fontSize: 12.5, color: "var(--fg-3)" }}>Ninguém indicado ainda. O pedido rende mais depois de um resultado.</div>
+        )}
+        {onOpen && (
+          <button onClick={onOpen} className="mono"
+            style={{ marginTop: 8, background: "none", border: 0, padding: 0, fontSize: 12, color: "var(--accent)", fontWeight: 600, cursor: "pointer" }}>
+            abrir indicações →
+          </button>
+        )}
+      </div>
+    );
+  }
   async function copyLink() {
     if (!link) return;
     try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1800); }
