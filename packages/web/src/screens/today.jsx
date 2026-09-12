@@ -16,7 +16,7 @@ import { useProposalTemplates } from "../components/ProposalActions.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { myOpenTasks, taskHash } from "../lib/tasks.js";
 import { useAttribution } from "../lib/pains.js";
-import { clientSummary, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks, DealProductField, isOneOffProduct, SelectWithCustom, PaymentMethodSelect, ProductOptions } from "../components/lead-blocks.jsx";
+import { clientSummary, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks, DealProductField, isOneOffProduct, SelectWithCustom, PaymentMethodSelect, ProductOptions, leadBox } from "../components/lead-blocks.jsx";
 import { resolveScript, scriptTokens, scriptChecklist, isNoShowStage, confirmationScript, integrationConfirmationScript, scriptKeyFor } from "../lib/scripts.js";
 import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, withLegacyOption, closedPlanLabel, dealProductLabel, dealProductsOf } from "../lib/payments.js";
 import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
@@ -823,6 +823,8 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
             onAfter={advanceScript}
             onClose={() => setScriptItem(null)}
             onTouch={(when) => { const nx = nextAfter(scriptItem); logTouch(scriptItem, when); setScriptItem(nx); }}
+            nextItem={nextAfter(scriptItem)}
+            onSkip={() => setScriptItem(nextAfter(scriptItem))}
             onOpenLead={() => { setScriptItem(null); onOpenLead && onOpenLead(scriptItem.l); }}
             onWhatsapp={onOpenWhatsapp ? (l, draft) => { setScriptItem(null); onOpenWhatsapp(l, draft); } : null}
           />
@@ -1651,7 +1653,7 @@ function ProposalBlock({ l, wa, item, onPatch }) {
 // conversa) e ROTEIRO à direita (postura, objetivo e o passo a passo com a
 // fala pronta). Em tela estreita as colunas empilham. "Toque e próximo"
 // mantém o operador em fluxo: registra e já abre o cliente seguinte.
-function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfter, onClose, onTouch, onOpenLead, onWhatsapp, preview = false, previewScript = null }) {
+function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfter, onClose, onTouch, onOpenLead, onWhatsapp, preview = false, previewScript = null, nextItem = null, onSkip = null }) {
   // Cópia local do lead: a edição inline dos campos reflete na hora aqui (fala
   // interpolada + checklist) e persiste via onPatch (fila + API).
   const [l, setL] = useS(item.l);
@@ -1672,6 +1674,8 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
   // Atalho pro link de pagamento do MP sem sair do roteiro: mesmo modal do
   // card do lead (o checkout nasce amarrado ao id do lead).
   const [payLink, setPayLink] = useS(false);
+  const [showAttr, setShowAttr] = useS(false);   // atribuição do anúncio: consulta
+  const [showCheck, setShowCheck] = useS(false); // checklist do 1º contato: consulta
   useE(() => { setResched(false); setRSlot(""); setPayLink(false); }, [item.l.id]);
   function doReschedule() {
     if (!rSlot) return;
@@ -1776,20 +1780,35 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
         boxShadow: "var(--shadow-pop)", display: "flex", flexDirection: "column",
       }}>
         <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--line-1)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          {/* O TÍTULO é a AÇÃO (12/09): "Follow-up · tentativa 2" diz o que
+              se vem fazer aqui. O nome do lead desce pra segunda linha, com o
+              nível, a etapa e o contato; o script.titulo virou sub-rótulo do
+              roteiro, na coluna. */}
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div className="kicker" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span>{script.titulo}{script.custom ? " · personalizado" : ""}</span>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+              <span style={{ fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>
+                {actionVerb(item)}{Number(l.stageAttempts) > 0 && !item.confirm ? ` · tentativa ${l.stageAttempts}` : ""}
+                {item.confirm ? ` · ${item.confirmWindow === "10min" ? "10 min antes" : "2h antes"}` : ""}
+              </span>
+              {/* O estado do toque: vencido é o que muda a conversa. */}
+              {!preview && item.due && (
+                <span style={{ fontSize: 12.5, fontWeight: item.due.t <= Date.now() ? 600 : 400, color: item.due.t <= Date.now() ? "var(--neg)" : "var(--fg-3)" }}>
+                  {item.due.t <= Date.now()
+                    ? `o toque venceu ${new Date(item.due.t).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).replace(".", "")}`
+                    : `para ${new Date(item.due.t).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).replace(".", "")}`}
+                </span>
+              )}
               {preview && (
                 <span className="mono" style={{ fontSize: 9.5, color: "var(--accent)", background: "var(--accent-soft)", border: "1px solid var(--accent-line)", borderRadius: 999, padding: "1px 7px", letterSpacing: "0.04em" }}>
                   pré-visualização · dados de exemplo
                 </span>
               )}
             </div>
-            <div style={{ fontSize: 16.5, fontWeight: 600, marginTop: 2, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              {l.name}
+            <div style={{ fontSize: 13.5, marginTop: 4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               {tier.grade && (
-                <span className="tnum" style={{ width: 18, height: 18, borderRadius: 5, display: "inline-flex", alignItems: "center", justifyContent: "center", background: tier.tone, color: tier.badgeFg, fontFamily: "var(--display)", fontSize: 11, fontWeight: 700 }}>{tier.grade}</span>
+                <span className="tnum" title={tier.label} style={{ width: 18, height: 18, borderRadius: 5, display: "inline-flex", alignItems: "center", justifyContent: "center", background: tier.tone, color: tier.badgeFg, fontFamily: "var(--display)", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{tier.grade}</span>
               )}
+              <span style={{ fontWeight: 600 }}>{l.name}</span>
               <span className="chip">{item.stage}</span>
               {(l.company || l.phone) && (
                 <span className="mono dim" style={{ fontSize: 11 }}>{[l.company, l.phone].filter(Boolean).join(" · ")}</span>
@@ -1797,75 +1816,30 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
             </div>
           </div>
           {!preview && (
-            <button onClick={() => setPayLink(true)} className="chip"
-              title="Criar link de pagamento do Mercado Pago já rastreado pra este lead (o pagamento casa sozinho no Financeiro)"
-              style={{ cursor: "pointer", flexShrink: 0 }}>
-              {l.mpChargeUrl
-                ? (l.mpChargeKind === "recurring" ? "↻ link da assinatura" : "link de pagamento")
-                : "+ link de pagamento"}
-            </button>
-          )}
-          {!preview && (
             <button onClick={onOpenLead} style={{ padding: "6px 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12, flexShrink: 0 }}>
               abrir lead
             </button>
+          )}
+          {!preview && (
+            <MoreMenu items={[
+              { label: l.mpChargeUrl ? (l.mpChargeKind === "recurring" ? "link da assinatura" : "link de pagamento") : "criar link de pagamento", onClick: () => setPayLink(true) },
+            ]} />
           )}
           <button onClick={onClose} aria-label="Fechar" className="mono dim" style={{ fontSize: 16, flexShrink: 0, width: 36, height: 36, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "var(--r-2)" }}>✕</button>
         </div>
 
         {/* Corpo rolável: duas colunas (CLIENTE | ROTEIRO) + o destino do card. */}
         <div style={{ padding: "12px 18px", display: "flex", flexDirection: "column", gap: 14, overflowY: "auto", minHeight: 0 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 310px), 1fr))", gap: 16 }}>
+        {/* ── As colunas TROCARAM DE LADO (12/09) ────────────────────────
+            O roteiro é o que a pessoa LÊ enquanto fala: estava na coluna da
+            direita, enquanto os dados do cliente (consulta) ocupavam a
+            esquerda. Agora roteiro à esquerda (1,15fr) e cliente à direita. */}
+        <div className="resp-cols" style={{ "--cols": "minmax(0,1.15fr) minmax(0,1fr)", gap: 16 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
-            <div className="kicker" style={{ color: "var(--fg-3)" }}>Cliente</div>
-              {/* Resumo do cliente, atribuição e checklist: os MESMOS blocos do
-                  card do lead (components/lead-blocks.jsx) — quem trabalha a
-                  fila e depois abre o card vê a mesma coisa no mesmo lugar. */}
-              <ClientSummaryCard pain={pain} facts={facts}>
-                {/* Observações · registrar contato: mesmo composer do card do
-                    pipeline (grava na coleção activities). Como é o MESMO dado, a
-                    anotação feita aqui aparece lá e vice-versa. Some no preview. */}
-                {!preview && (
-                  <div style={{ marginTop: 10 }}>
-                    <div className="kicker" style={{ marginBottom: 4 }}>Observações · registrar contato</div>
-                    <ActivityComposer lead={l} onLogged={() => setActsReload((n) => n + 1)} />
-                  </div>
-                )}
-                <div style={{ marginTop: 8 }}>
-                  <div className="kicker" style={{ marginBottom: 3 }}>Últimos contatos</div>
-                  {acts === null && <div className="mono dim" style={{ fontSize: 11 }}>carregando…</div>}
-                  {acts !== null && acts.length === 0 && <div className="mono dim" style={{ fontSize: 11 }}>nenhum contato registrado ainda · você abre a conversa</div>}
-                  {(acts || []).map((a) => (
-                    <div key={a.id} style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 11.5, padding: "2px 0", minWidth: 0 }}>
-                      <span className="mono" style={{ flexShrink: 0, color: "var(--fg-3)", fontSize: 10.5 }}>{fmtWhen(a.at)}</span>
-                      <span className="mono" style={{ flexShrink: 0, color: "var(--accent)", fontSize: 10.5 }}>{ACT_LABELS[a.type] || a.type}</span>
-                      <span className="dim" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {a.type === "stage" ? `${a.meta?.from || "?"} → ${a.meta?.to || "?"}` : (a.text || "")}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </ClientSummaryCard>
-
-            <AttributionCard rows={attribution} />
-
-            <LeadChecklist key={l.id} checklist={checklist} onPatch={patch} leadId={l.id} />
-
-            {/* Destino do card fica AQUI, embaixo dos dados do cliente, pra
-                aproveitar o espaço vazio da coluna e encurtar o painel. Item de
-                confirmação não move etapa, então não mostra destino. Em
-                pré-visualização o bloco vira só uma nota (as ações mexem em
-                lead/agenda de verdade, não fazem sentido numa simulação). */}
-            {!item.confirm && !preview && <DestinoSection saasCfg={saasCfg} lead={l} leads={leads} callSummary={callSummary} onMove={onMove} onMoveMeet={onMoveMeet} onAfter={onAfter} onTouch={onTouch} />}
-            {!item.confirm && preview && (
-              <div className="mono dim" style={{ fontSize: 10.5, lineHeight: 1.5, border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)", padding: "9px 11px", background: "var(--bg-inset)" }}>
-                na fila real, aqui aparece o bloco <b>“Depois da ação”</b> (pra onde vai o card: próxima etapa, agenda da call, ganho/perda).
-              </div>
-            )}
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
-            <div className="kicker" style={{ color: "var(--fg-3)" }}>Roteiro</div>
+            <div>
+              <div className="kicker" style={{ color: "var(--fg-3)" }}>Roteiro</div>
+              <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 1 }}>{script.titulo}{script.custom ? " · personalizado" : ""}</div>
+            </div>
             {/* Resumo da última call por IA em cima do roteiro do estágio. */}
             <CallSummaryCard summary={callSummary} phone={l.phone}
               onSend={onWhatsapp ? (msg) => onWhatsapp(l, msg) : null} />
@@ -1884,13 +1858,93 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
                 compartilhado com o card do lead (lead-blocks.jsx). */}
             <ScriptBlocks script={script} tokens={tokens} />
           </div>
-        </div>
-        </div>
 
-        {/* Rodapé: sem "registrar toque" — a atividade só se completa movendo o
-            card pra próxima coluna (bloco "Depois da ação"). Aqui ficam só os
-            atalhos: WhatsApp e o card completo. */}
-        <div style={{ marginTop: "auto", padding: "10px 18px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
+            <div className="kicker" style={{ color: "var(--fg-3)" }}>Cliente</div>
+              {/* Resumo do cliente, atribuição e checklist: os MESMOS blocos do
+                  card do lead (components/lead-blocks.jsx) — quem trabalha a
+                  fila e depois abre o card vê a mesma coisa no mesmo lugar. */}
+              <ClientSummaryCard pain={pain} facts={facts} />
+
+            {/* ── "Anotar o que rolou" em bloco PRÓPRIO (12/09) ─────────────
+                O composer e os últimos contatos viviam ANINHADOS dentro do card
+                de resumo, como se fossem detalhe do cliente — são o registro do
+                toque. Mesmo dado e mesmo composer do card do pipeline. */}
+            <div style={{ ...leadBox }}>
+              <div className="kicker" style={{ marginBottom: 6 }}>Anotar o que rolou</div>
+                {!preview && (
+                  <div style={{ marginBottom: 10 }}>
+                    <ActivityComposer lead={l} onLogged={() => setActsReload((n) => n + 1)} />
+                  </div>
+                )}
+                <div style={{ marginTop: 8 }}>
+                  <div className="kicker" style={{ marginBottom: 3 }}>Últimos contatos</div>
+                  {acts === null && <div className="mono dim" style={{ fontSize: 11 }}>carregando…</div>}
+                  {acts !== null && acts.length === 0 && <div className="mono dim" style={{ fontSize: 11 }}>nenhum contato registrado ainda · você abre a conversa</div>}
+                  {(acts || []).map((a) => (
+                    <div key={a.id} style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 11.5, padding: "2px 0", minWidth: 0 }}>
+                      <span className="mono" style={{ flexShrink: 0, color: "var(--fg-3)", fontSize: 10.5 }}>{fmtWhen(a.at)}</span>
+                      <span className="mono" style={{ flexShrink: 0, color: "var(--accent)", fontSize: 10.5 }}>{ACT_LABELS[a.type] || a.type}</span>
+                      <span className="dim" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {a.type === "stage" ? `${a.meta?.from || "?"} → ${a.meta?.to || "?"}` : (a.text || "")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+            </div>
+
+            {/* Atribuição e checklist viram links quietos: são consulta, e
+                ocupavam dois cards inteiros na coluna. O checklist mostra o
+                progresso no próprio rótulo. */}
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+              <button onClick={() => setShowAttr((v) => !v)} className="mono"
+                style={{ background: "none", border: 0, padding: 0, fontSize: 12, color: "var(--accent)", fontWeight: 600, cursor: "pointer" }}>
+                {showAttr ? "atribuição ▴" : "atribuição ▾"}
+              </button>
+              <button onClick={() => setShowCheck((v) => !v)} className="mono"
+                style={{ background: "none", border: 0, padding: 0, fontSize: 12, color: "var(--accent)", fontWeight: 600, cursor: "pointer" }}>
+                {`checklist · ${checklist.filter((c) => c.done).length} de ${checklist.length} ${showCheck ? "▴" : "▾"}`}
+              </button>
+            </div>
+            {showAttr && <AttributionCard rows={attribution} />}
+            {showCheck && <LeadChecklist key={l.id} checklist={checklist} onPatch={patch} leadId={l.id} />}
+
+          </div>
+        </div>
+        </div>
+        {/* ── Rodapé: "Depois da ação" SEMPRE VISÍVEL (12/09) ───────────────
+            Continua sem "registrar toque": a atividade só se completa movendo o
+            card. O que muda é que o bloco que faz isso era o ÚLTIMO da coluna,
+            embaixo do resumo, da atribuição e do checklist — a única coisa que
+            fecha o item exigia a maior rolagem. Agora é a barra do rodapé.
+            Item de confirmação não move etapa: no lugar dos destinos, ele
+            mantém os botões próprios (confirmou / sem resposta / remarcar). */}
+        <div style={{ marginTop: "auto", padding: "10px 18px", borderTop: "2px solid var(--line-2)", background: "var(--bg-1)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          {!item.confirm && !preview && (
+            <div style={{ flexBasis: "100%", minWidth: 0 }}>
+              <DestinoSection saasCfg={saasCfg} lead={l} leads={leads} callSummary={callSummary}
+                onMove={onMove} onMoveMeet={onMoveMeet} onAfter={onAfter} onTouch={onTouch} />
+            </div>
+          )}
+          {!item.confirm && preview && (
+            <div className="mono dim" style={{ flexBasis: "100%", fontSize: 10.5, lineHeight: 1.5, border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)", padding: "8px 10px" }}>
+              na fila real, aqui aparece o bloco <b>“Depois da ação”</b> (pra onde vai o card)
+            </div>
+          )}
+          {/* A próxima da fila, ANTES de agir: é o mesmo nextAfter que o "toque
+              e próximo" já usa, agora visível. */}
+          {nextItem && !preview && (
+            <div style={{ flexBasis: "100%", display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: "var(--fg-4)", paddingBottom: 2 }}>
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {`a próxima da fila é ${nextItem.l.name}${Number(nextItem.l.stageAttempts) ? ` · tentativa ${nextItem.l.stageAttempts}` : ""}`}
+              </span>
+              {onSkip && (
+                <button onClick={onSkip} className="mono" style={{ background: "none", border: 0, padding: 0, fontSize: 11.5, color: "var(--accent)", fontWeight: 600, cursor: "pointer", flexShrink: 0 }}>
+                  pular para ela →
+                </button>
+              )}
+            </div>
+          )}
           {/* WhatsApp em linha própria, esticado (igual ao do drawer/pop de contato). */}
           {wa && (
             // Atende DENTRO do cockpit (inbox); sem o handler (pré-visualização
