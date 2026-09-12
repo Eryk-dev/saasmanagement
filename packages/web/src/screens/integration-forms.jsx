@@ -96,16 +96,7 @@ function AskModal({ saas, brand, onClose, onCreated }) {
 
   const rows = useM(() => {
     const src = kind === "customer" ? (window.SEED?.CUSTOMERS || []) : (window.SEED?.LEADS || []);
-    // A espera de cada pedido aberto (de createdAt): é a régua da faixa e da linha.
-  const diasDe = (iso) => {
-    const t = iso ? new Date(iso).getTime() : NaN;
-    return Number.isFinite(t) ? Math.max(0, Math.floor((Date.now() - t) / 86400000)) : null;
-  };
-  const esperas = pendentes.map((x) => ({ nome: x.customerName, d: diasDe(x.createdAt) })).filter((x) => x.d != null);
-  const maisLonga = esperas.length ? esperas.reduce((a, b) => (b.d > a.d ? b : a)) : null;
-  const esperaMax = maisLonga?.d ?? null;
-  const esperaMaxNome = maisLonga?.nome || "";
-  const term = q.trim().toLowerCase();
+    const term = q.trim().toLowerCase();
     const mine = src.filter((d) => !saas || d.saas === saas);
     const hit = term
       ? mine.filter((d) => `${d.name || ""} ${d.company || ""} ${d.email || ""} ${d.phone || ""}`.toLowerCase().includes(term))
@@ -334,6 +325,15 @@ function IntegrationFormsScreen() {
   const list = items || [];
   const pendentes = list.filter((x) => x.status !== "respondido");
   const respondidos = list.filter((x) => x.status === "respondido");
+  // A espera de cada pedido aberto (de createdAt): é a régua da faixa e da linha.
+  const diasDe = (iso) => {
+    const t = iso ? new Date(iso).getTime() : NaN;
+    return Number.isFinite(t) ? Math.max(0, Math.floor((Date.now() - t) / 86400000)) : null;
+  };
+  const esperas = pendentes.map((x) => ({ nome: x.customerName, d: diasDe(x.createdAt) })).filter((x) => x.d != null);
+  const maisLonga = esperas.length ? esperas.reduce((a, b) => (b.d > a.d ? b : a)) : null;
+  const esperaMax = maisLonga?.d ?? null;
+  const esperaMaxNome = maisLonga?.nome || "";
   const term = q.trim().toLowerCase();
   const visiveis = (tab === "pendente" ? pendentes : tab === "respondido" ? respondidos : list)
     .filter((x) => !term || `${x.customerName || ""} ${resumo(x)}`.toLowerCase().includes(term));
