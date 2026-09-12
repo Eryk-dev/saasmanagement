@@ -170,13 +170,25 @@ export const keyAccountIds = (customers) => new Set((customers || []).filter((c)
 export const isKeyAccountLead = (keyIds, lead) => !!(lead?.customerId && keyIds?.has(lead.customerId));
 
 // ── Indicação (referral) ─────────────────────────────────────────────────────
-// Lead que veio por INDICAÇÃO (de um cliente): a origem (`source`) ou o
-// `utm.source` contém "indica" — pega "Indicação", "indicacao", "Indicação de
-// cliente". É a régua do placar do CS (meta de indicação): conta TODA indicação
-// recebida na janela, sem atribuição fina por pessoa (decisão do Leo).
+// Lead que veio por INDICAÇÃO de um cliente. Duas réguas no mesmo lugar, porque
+// a estruturada nasceu depois (Leo, 12/09/2026) e a de texto não pode morrer:
+//   1. ESTRUTURADA: `referredByCustomer` aponta o CLIENTE que indicou e
+//      `referralCollectedBy` o colaborador que colheu. É a única que vale
+//      dinheiro (isPaidReferral) — sem cliente na base, lead inbound
+//      remarcado como "Indicação" viraria prêmio.
+//   2. TEXTO (legado): `source`/`utm.source` contém "indica" — pega
+//      "Indicação", "indicacao", "Indicação de cliente". Continua contando no
+//      funil e na classe semente, pro histórico e pro registro manual antigo
+//      não sumirem do placar.
 const stripAccents = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 export const isReferralLead = (l) =>
+  !!l?.referredByCustomer ||
   stripAccents(l?.source).includes("indica") || stripAccents(l?.utm?.source).includes("indica");
+
+// A indicação que PAGA: cliente indicador na base + coletor identificado. As
+// duas pontas são obrigatórias porque o prêmio é do coletor — sem uma delas não
+// há a quem pagar nem o que conferir.
+export const isPaidReferral = (l) => !!(l?.referredByCustomer && l?.referralCollectedBy);
 
 // ── Classes de lead (Receita Previsível: Sementes · Redes · Alvos) ───────────
 // Cada classe tem ciclo, taxa e previsibilidade próprios, então nunca entram na
@@ -439,6 +451,59 @@ export function callOutcome(product, list, actsOf, today = null, inWin = null) {
     else noShow++;
   }
   return { shown, noShow, pending, won };
+}
+
+// ── Crédito de indicação: o que o COLETOR ganha ─────────────────────────────
+// Quem colhe a indicação leva o prêmio (Leo, 12/09/2026) — o lojista que indica
+// não recebe nada, o que o move é o resultado e a relação. R$ 100 quando a
+// indicação vira reunião FEITA, R$ 500 se FECHAR, e o de fechamento entra NO
+// LUGAR do de reunião (nunca somados), igual ao que o plano de remuneração já
+// dizia por escrito e ninguém calculava.
+//
+// As duas cercas do Leo, as duas aqui e em nenhum outro lugar:
+//   · só indicação ESTRUTURADA paga (isPaidReferral): cliente indicador na base
+//     e coletor identificado;
+//   · "reunião feita" é a régua do PLACAR (callResultOf: a testemunha da
+//     transcrição manda, depois o avanço de etapa), nunca marcação manual de
+//     quem vai receber o dinheiro.
+export const REFERRAL_RATES = { meeting: 100, closed: 500 };
+
+// Desfecho comissionável de UMA indicação: "closed" | "meeting" | null.
+export function referralCredit(product, lead, actsOf, today = null, inWin = null) {
+  if (!isPaidReferral(lead)) return null;
+  if (isWonLead(product, lead)) return "closed";
+  const r = callResultOf(product, lead, actsOf, today, inWin);
+  return r === "won" || r === "shown" ? "meeting" : null;
+}
+
+// Indicações por COLETOR numa janela → Map(uid → { collected, meetings, closed,
+// value }). Cada linha conta pelo evento que caiu NA janela, nunca pelo estado
+// de hoje: `collected` pela data do registro (referralAt, o carimbo imutável do
+// servidor), `closed` pelo wonAtOf e `meetings` pela safra de calls
+// (callCohortIn: callAt na janela ou transcrição na janela) resolvida como
+// realizada. Lead já ganho FORA da janela sai inteiro da conta: o prêmio dele
+// foi pago no mês do fechamento e não pode voltar como reunião.
+export function referralsByCollector(product, leads, actsOf, inWin, { today = null, rates = REFERRAL_RATES } = {}) {
+  const out = new Map();
+  const row = (uid) => {
+    if (!out.has(uid)) out.set(uid, { collected: 0, meetings: 0, closed: 0, value: 0 });
+    return out.get(uid);
+  };
+  const pool = (leads || []).filter((l) => isPaidReferral(l) && l.referralCollectedBy);
+  const cohort = new Set(callCohortIn(pool, actsOf, inWin).map((l) => l.id));
+  for (const l of pool) {
+    const r = row(String(l.referralCollectedBy));
+    if (inWin(l.referralAt || l.createdAt)) r.collected++;
+    if (isWonLead(product, l)) {
+      const at = wonAtOf(l) || "";
+      if (at && inWin(at)) { r.closed++; r.value = round2(r.value + rates.closed); }
+      continue; // fechou: paga no lugar da reunião, na janela do fechamento
+    }
+    if (!cohort.has(l.id)) continue;
+    const res = callResultOf(product, l, actsOf, today, inWin);
+    if (res === "shown" || res === "won") { r.meetings++; r.value = round2(r.value + rates.meeting); }
+  }
+  return out;
 }
 
 // ── Funil de conversão do produto (base ÚNICA das telas) ─────────────────────

@@ -34,6 +34,11 @@ const PROTECTED = new Set([
   "createdAt", "shopifyOrderId", "internal", "disqualified", "lostReason",
   "lostNote", "formExit",
 ]);
+// INDICAÇÃO (referredByCustomer/referralCollectedBy/referralAt) fica de fora
+// dos dois conjuntos de propósito, pra cair na regra "só preenche buraco":
+// lead antigo que AGORA foi indicado ganha o vínculo (o coletor não perde a
+// comissão porque a pessoa já tinha preenchido o form), e lead que já tem
+// vínculo não troca de dono numa re-submissão — a primeira atribuição vale.
 // Atribuição/marketing: sempre pro clique/anúncio MAIS RECENTE (a pessoa voltou
 // por um anúncio novo — é essa origem que interessa medir e mostrar).
 const REFRESH = new Set(["utm", "fbc", "fbp", "sourceUrl", "source", "formVariant", "formHeadline", "form", "sourcePain"]);

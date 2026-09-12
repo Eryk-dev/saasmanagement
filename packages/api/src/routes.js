@@ -60,6 +60,7 @@ import { currentRev, subscribe as subscribeChanges, QUIET } from "./changes.js";
 import { isWon, isPostSaleStage, firstStage, kindOf, stageByKind, isNoShowStage } from "./stages.js";
 import { logActivity, applyStageMove, onActivityCreated, initialNextActionAt, appointmentAt, autoLeadOwner, brtToIso } from "./lead-flow.js";
 import { findDuplicateLead, dedupMergePatch } from "./lead-dedup.js";
+import { referralPatch, logReferralCollected } from "./referrals.js";
 import { registerFunnelMetricsRoutes } from "./routes.funnel-metrics.js";
 import { registerScoreboardRoutes } from "./routes.scoreboard.js";
 import { registerDesempenhoRoutes } from "./routes.desempenho.js";
@@ -122,7 +123,10 @@ export const CREATE_DEFAULTS = {
   // callAt = call marcada (a de verdade, que vira histórico ao ser remarcada);
   // followupAt = follow-up marcado com hora, campo PRÓPRIO pra a agenda não
   // desenhar follow-up com a cara de call (Leo, 13/08).
-  leads: { priority: "P2", score: 0, icp: 0, value: "", amount: 0, owner: "", closer: "", reason: "", source: "Form", age: "agora", stage: "", stageSince: "", comments: [], callAt: "", callSetAt: "", followupAt: "", proposalValue: "", proposalPeriod: "", integrationAt: "", nextActionAt: "", nextActionNote: "", lostReason: "", lostNote: "", lastActivityAt: "", lastActivityType: "", stageAttempts: 0, sdrOff: false },
+  // referredByCustomer/referralCollectedBy/referralAt = indicação (referrals.js):
+  // quem indicou (cliente), quem colheu (o prêmio é do coletor) e o carimbo
+  // imutável que define a janela da comissão.
+  leads: { priority: "P2", score: 0, icp: 0, value: "", amount: 0, owner: "", closer: "", reason: "", source: "Form", age: "agora", stage: "", stageSince: "", comments: [], callAt: "", callSetAt: "", followupAt: "", proposalValue: "", proposalPeriod: "", integrationAt: "", nextActionAt: "", nextActionNote: "", lostReason: "", lostNote: "", lastActivityAt: "", lastActivityType: "", stageAttempts: 0, sdrOff: false, referredByCustomer: "", referralCollectedBy: "", referralAt: "" },
   // `current`/`projected` saem do form (leitura ao vivo da meta) — default 0 até serem alimentados.
   goals: { current: 0, projected: 0 },
   forms: { status: "draft", theme: {}, welcome: null, questions: [], thanks: {}, mapping: {} },
@@ -740,6 +744,20 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       const owner = await autoLeadOwner(repo, req.body.saas);
       if (owner) stamp.owner = owner;
     }
+    // INDICAÇÃO: valida o cliente indicador (inexistente = 422, a cerca contra
+    // lead inbound remarcado como "Indicação" pra virar prêmio) e carimba
+    // coletor + data. Roda ANTES do dedup porque o vínculo também vale na
+    // mescla: a pessoa indicada que já tinha preenchido o form não pode custar
+    // a comissão de quem colheu.
+    let refInfo = null;
+    if (collection === "leads") {
+      const r = await referralPatch(repo, req.body, { by: req.authUser?.id || "" });
+      if (r.error) return reply.code(422).send({ error: r.error, code: r.code });
+      if (Object.keys(r.patch).length) {
+        Object.assign(stamp, r.patch);
+        refInfo = { patch: r.patch, customer: r.customer || null };
+      }
+    }
     // Evita CADASTRO DUPLICADO: a mesma pessoa (telefone/e-mail) já no produto
     // MESCLA no lead que existe e devolve ele, sem criar card novo. Refresca a
     // atribuição e preenche buracos, sem tocar etapa/dono/GPS/proposta — lead
@@ -747,8 +765,16 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     if (collection === "leads" && !req.body.internal) {
       const dup = await findDuplicateLead(repo, { saas: req.body.saas, phone: req.body.phone, email: req.body.email });
       if (dup) {
-        const patch = dedupMergePatch(dup, req.body);
+        const patch = dedupMergePatch(dup, refInfo ? { ...req.body, ...refInfo.patch } : req.body);
         const merged = Object.keys(patch).length ? await repo.update("leads", dup.id, patch) : dup;
+        // Indicação que ENTROU na mescla (lead sem vínculo antes) vira evento
+        // datado: é o que a auditoria da comissão lê.
+        if (patch.referredByCustomer) {
+          await logReferralCollected(repo, {
+            lead: merged.id, saas: merged.saas || "", customer: patch.referredByCustomer,
+            by: merged.referralCollectedBy || "", customerName: refInfo?.customer?.name || "",
+          });
+        }
         try {
           await logActivity(repo, {
             saas: merged.saas || "", lead: merged.id, type: "system",
@@ -775,6 +801,12 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
           author: req.authUser?.id || "api",
         });
       } catch { /* fail-open */ }
+      if (refInfo?.patch?.referredByCustomer) {
+        await logReferralCollected(repo, {
+          lead: created.id, saas: created.saas || "", customer: refInfo.patch.referredByCustomer,
+          by: created.referralCollectedBy || "", customerName: refInfo.customer?.name || "",
+        });
+      }
     }
     // Assinatura nova: janela do 1º ciclo + fatura inicial + customer.arr
     // (invariante: receita do produto deriva de customers).
@@ -922,6 +954,23 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
         patch = { ...patch, callAt: "" };
       }
     }
+    // INDICAÇÃO registrada/corrigida no card: mesma régua do POST (cliente
+    // precisa existir, coletor e data carimbados pelo servidor). `referralAt`
+    // só nasce uma vez: reeditar o card não muda a janela da comissão.
+    let refPatchInfo = null;
+    if (collection === "leads" && "referredByCustomer" in req.body) {
+      const cur = await repo.get(collection, id);
+      if (!cur) return reply.code(404).send({ error: "Not found" });
+      const r = await referralPatch(repo, req.body, { existing: cur, by: req.authUser?.id || "" });
+      if (r.error) return reply.code(422).send({ error: r.error, code: r.code });
+      if (Object.keys(r.patch).length) {
+        patch = { ...patch, ...r.patch };
+        // Evento novo só quando o vínculo NASCE (não em correção do mesmo cliente).
+        if (r.patch.referredByCustomer && r.patch.referredByCustomer !== cur.referredByCustomer) {
+          refPatchInfo = { customer: r.patch.referredByCustomer, name: r.customer?.name || "" };
+        }
+      }
+    }
     // Assinatura cancelada por QUALQUER caminho ganha o carimbo canceledAt (o
     // churn de CS do scoreboard e o histórico dependem dele; antes só o
     // syncWonLeadDeal gravava — o botão da tela e o webhook deixavam vazio).
@@ -930,6 +979,12 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     }
     const updated = await repo.update(collection, id, patch);
     if (!updated) return reply.code(404).send({ error: "Not found" });
+    if (refPatchInfo) {
+      await logReferralCollected(repo, {
+        lead: updated.id, saas: updated.saas || "", customer: refPatchInfo.customer,
+        by: updated.referralCollectedBy || "", customerName: refPatchInfo.name,
+      });
+    }
     // Empresa/nome preenchidos depois da geração precisam chegar na
     // apresentação existente. O helper também recupera a dor de origem quando
     // o snapshot é antigo; tudo é best-effort para nunca quebrar o PATCH do lead.
