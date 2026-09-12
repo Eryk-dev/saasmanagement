@@ -1,6 +1,7 @@
 import React from "react";
 import { PageHead, StatTile, FilterTab } from "../components/viz.jsx";
-import { EmptyState, PrimaryButton, SecondaryButton, WaButton, useEsc, toast } from "../atoms.jsx";
+import { EmptyState, PrimaryButton, SecondaryButton, WaButton, MoreMenu, useEsc, toast } from "../atoms.jsx";
+import { waLink } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { displayName } from "../lib/users.js";
@@ -95,7 +96,16 @@ function AskModal({ saas, brand, onClose, onCreated }) {
 
   const rows = useM(() => {
     const src = kind === "customer" ? (window.SEED?.CUSTOMERS || []) : (window.SEED?.LEADS || []);
-    const term = q.trim().toLowerCase();
+    // A espera de cada pedido aberto (de createdAt): é a régua da faixa e da linha.
+  const diasDe = (iso) => {
+    const t = iso ? new Date(iso).getTime() : NaN;
+    return Number.isFinite(t) ? Math.max(0, Math.floor((Date.now() - t) / 86400000)) : null;
+  };
+  const esperas = pendentes.map((x) => ({ nome: x.customerName, d: diasDe(x.createdAt) })).filter((x) => x.d != null);
+  const maisLonga = esperas.length ? esperas.reduce((a, b) => (b.d > a.d ? b : a)) : null;
+  const esperaMax = maisLonga?.d ?? null;
+  const esperaMaxNome = maisLonga?.nome || "";
+  const term = q.trim().toLowerCase();
     const mine = src.filter((d) => !saas || d.saas === saas);
     const hit = term
       ? mine.filter((d) => `${d.name || ""} ${d.company || ""} ${d.email || ""} ${d.phone || ""}`.toLowerCase().includes(term))
@@ -341,10 +351,19 @@ function IntegrationFormsScreen() {
       </PageHead>
 
       <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px" }}>
+      {/* ── Faixa (12/09) ───────────────────────────────────────────────────
+          "Total de pedidos" era a soma dos outros dois: número de vitrine. No
+          lugar dele entra o que importa e não aparecia — HÁ QUANTO TEMPO a
+          espera mais longa está de pé (a tabela mostrava a data e o leitor
+          fazia a subtração de cabeça). */}
       <div className="resp-cols" style={{ "--cols": "repeat(3, 1fr)", gap: 14 }}>
-        <StatTile label="Aguardando resposta" value={items === null ? "…" : pendentes.length} />
-        <StatTile label="Respondidos" value={items === null ? "…" : respondidos.length} />
-        <StatTile label="Total de pedidos" value={items === null ? "…" : list.length} />
+        <StatTile label="Aguardando resposta" value={items === null ? "…" : pendentes.length}
+          delta={pendentes.length ? "sem o formulário não dá pra marcar a integração" : "ninguém devendo"} />
+        <StatTile label="Espera mais longa" value={items === null ? "…" : (esperaMax == null ? "—" : `${esperaMax} ${esperaMax === 1 ? "dia" : "dias"}`)}
+          tone={esperaMax != null && esperaMax >= 5 ? "down" : "flat"}
+          delta={esperaMax == null ? "nenhum pedido aberto" : esperaMaxNome ? `${esperaMaxNome} é quem mais espera` : ""} />
+        <StatTile label="Prontos para a call" value={items === null ? "…" : respondidos.length}
+          delta={respondidos.length ? "responderam e assinaram o termo" : "nenhum respondido ainda"} />
       </div>
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 20, flexWrap: "wrap" }}>
@@ -371,28 +390,59 @@ function IntegrationFormsScreen() {
             <table className="tbl" style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "var(--bg-2)" }}>
-                  <th className="kicker" style={{ padding: "8px 12px", textAlign: "left" }}>Cliente</th>
-                  <th className="kicker" style={{ padding: "8px 12px", textAlign: "left" }}>Situação</th>
+                  <th className="kicker" style={{ padding: "8px 12px", textAlign: "left", width: "22%" }}>Cliente</th>
+                  <th className="kicker" style={{ padding: "8px 12px", textAlign: "left", width: "20%" }}>Situação</th>
                   <th className="kicker" style={{ padding: "8px 12px", textAlign: "left" }}>O que veio</th>
-                  <th className="kicker" style={{ padding: "8px 12px", textAlign: "left" }}>Pedido em</th>
-                  <th className="kicker" style={{ padding: "8px 12px", textAlign: "left" }}>Pedido por</th>
-                  <th className="kicker" style={{ padding: "8px 12px", textAlign: "right" }}>Link</th>
+                  <th className="kicker" style={{ padding: "8px 12px", textAlign: "left", width: 110 }}>Pedido por</th>
+                  <th className="kicker" style={{ padding: "8px 12px", textAlign: "right", width: 210 }}>Ação</th>
                 </tr>
               </thead>
               <tbody>
                 {visiveis.map((doc) => (
                   <tr key={doc.id} data-click onClick={() => setSel(doc)}>
-                    <td style={{ fontWeight: 500 }}>{doc.customerName || "(sem cliente)"}</td>
+                    <td style={{ fontWeight: 500 }}>
+                      {doc.customerName || "(sem cliente)"}
+                      <div className="mono dim" style={{ fontSize: 10.5 }}>pedido {fmtDay(doc.createdAt)}</div>
+                    </td>
+                    {/* A ESPERA, não a data: "aguardando há 9 dias" é o que
+                        decide se o integrador cobra hoje. */}
                     <td>
-                      {doc.status === "respondido"
-                        ? <span className="chip pos">respondido em {fmtDay(doc.respondedAt)}</span>
-                        : <span className="chip warn">aguardando</span>}
+                      {doc.status === "respondido" ? (
+                        <>
+                          <span className="chip pos">respondido</span>
+                          <div className="mono dim" style={{ fontSize: 10.5, marginTop: 2 }}>{`${fmtDay(doc.respondedAt)} · termo assinado`}</div>
+                        </>
+                      ) : (() => {
+                        const d = diasDe(doc.createdAt);
+                        const tom = d != null && d >= 5 ? "var(--neg)" : "var(--warn)";
+                        return (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, color: tom }}>
+                            <span style={{ width: 6, height: 6, borderRadius: 999, background: "currentColor", flexShrink: 0 }} />
+                            {d == null ? "aguardando" : `aguardando há ${d} ${d === 1 ? "dia" : "dias"}`}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="dim">{resumo(doc) || "—"}</td>
-                    <td className="mono dim" style={{ fontSize: 11.5 }}>{fmtDay(doc.createdAt)}</td>
-                    <td className="dim">{doc.author ? displayName(doc.author) : "—"}</td>
+                    <td className="dim" style={{ fontSize: 12 }}>{doc.author ? displayName(doc.author) : "—"}</td>
+                    {/* Ação: faltava COBRAR quem está devendo o formulário. */}
                     <td style={{ textAlign: "right", whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>
-                      <SecondaryButton size="sm" onClick={() => copiar(formUrl(doc), "link copiado")}>copiar</SecondaryButton>
+                      <span style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end" }}>
+                        {doc.status === "respondido" ? (
+                          <SecondaryButton size="sm" onClick={() => setSel(doc)}>ver respostas</SecondaryButton>
+                        ) : (() => {
+                          const wa = waLink(doc.phone);
+                          return wa ? (
+                            <a href={`${wa}?text=${encodeURIComponent(waText(doc, brand))}`} target="_blank" rel="noopener noreferrer"
+                              title="abrir o WhatsApp do cliente com o link do formulário"
+                              style={{ height: 28, display: "inline-flex", alignItems: "center", padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid var(--wa-brand)", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 12, fontWeight: 700, textDecoration: "none" }}>
+                              cobrar
+                            </a>
+                          ) : null;
+                        })()}
+                        <SecondaryButton size="sm" onClick={() => copiar(formUrl(doc), "link copiado")}>copiar</SecondaryButton>
+                        <MoreMenu items={[{ label: "excluir formulário", tone: "neg", onClick: () => remover(doc) }]} />
+                      </span>
                     </td>
                   </tr>
                 ))}
