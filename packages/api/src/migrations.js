@@ -1619,6 +1619,20 @@ export async function syncOpenLeadAmounts(repo) {
 // ausente). Desmarcado de propósito (campo presente com valor falso) não volta.
 const KEY_ACCOUNTS = [/galante/i, /cr\s*group/i];
 
+// Prêmio da indicação FECHADA: R$ 250 → R$ 500 (Leo, 12/09/2026). Sobe só o
+// que ainda está no valor antigo, pra não pisar em ajuste feito na tela.
+export async function migrateReferralClosedValue(repo) {
+  const docs = await repo.list("comp_plans");
+  let n = 0;
+  for (const doc of docs) {
+    if (doc?.role !== "cs" || !doc.plan) continue;
+    if (Number(doc.plan.referralClosed) !== 250) continue;
+    await repo.update("comp_plans", doc.id, { plan: { ...doc.plan, referralClosed: 500 } });
+    n++;
+  }
+  return n;
+}
+
 export async function ensureKeyAccounts(repo) {
   const customers = await repo.list("customers");
   let n = 0;
@@ -1861,6 +1875,12 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] ${n} cliente(s) marcado(s) como conta grande (keyAccount) — fora das médias`);
   } catch (err) {
     console.error("[migration] ensureKeyAccounts falhou:", err?.message || err);
+  }
+  try {
+    const n = await migrateReferralClosedValue(repo);
+    if (n) console.log(`[migration] prêmio de indicação fechada: R$ 250 → R$ 500 (${n} plano)`);
+  } catch (err) {
+    console.error("[migration] migrateReferralClosedValue falhou:", err?.message || err);
   }
   try {
     const n = await migrateRolesCsSdr(repo);
