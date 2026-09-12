@@ -511,6 +511,118 @@ try {
     console.error(`✗ remuneracao: ${err.message}`);
     failed++;
   }
+  // ── Treinamentos (redesign de 12/09) ────────────────────────────────────
+  // A tela tem cinco sub-telas e todos os dados chegam por efeito, que não roda
+  // no SSR: por isso os blocos vão renderizados à parte, com payload na mão. O
+  // que se exercita aqui são os estados que o checklist do handoff pede e que
+  // ninguém lembra de abrir na mão: fila vazia, memória sem base, raio-x e card
+  // sem frente.
+  try {
+    const T = await server.ssrLoadModule("/src/screens/training.jsx");
+    const has = (name, html, must) => { if (!html.includes(must)) throw new Error(`${name} não contém "${must}"`); };
+    const R = (el) => renderToString(wrap(el));
+    const decks = [
+      { role: "geral_negocio", label: "Geral · Negócio", total: 150, learned: 120, counts: { new: 2, learning: 1, review: 3 } },
+      { role: "closer", label: "Closer", total: 150, learned: 30, counts: { new: 0, learning: 0, review: 0 } },
+    ];
+
+    const hero = R(React.createElement(T.StartCard, { decks, exam: null, onExam() {}, onStudy() {}, onFun() {} }));
+    has("hero", hero, "Da vez");
+    has("hero", hero, "cards no treino de hoje");
+    has("hero", hero, "Estudar");
+    has("hero", hero, "aprendendo");          // a quebra virou micro-número com rótulo
+    has("hero", hero, "4fun");                 // o 4fun mora no rodapé do hero
+
+    // Fila zerada: o número vira 0 e o 4fun sobe pra ação primária.
+    const vazio = R(React.createElement(T.StartCard, {
+      decks: decks.map((d) => ({ ...d, counts: { new: 0, learning: 0, review: 0 } })),
+      exam: null, onExam() {}, onStudy() {}, onFun() {},
+    }));
+    has("hero vazio", vazio, "fila zerada");
+    if (vazio.includes("Estudar →")) throw new Error("hero vazio não deveria oferecer Estudar");
+
+    // Prova pendente vence a fila.
+    const comProva = R(React.createElement(T.StartCard, { decks, exam: { id: "e1", count: 30 }, onExam() {}, onStudy() {}, onFun() {} }));
+    has("hero prova", comProva, "Prova de checkpoint");
+
+    const baralhos = R(React.createElement(T.DeckList, { decks }));
+    has("baralhos", baralhos, "Seus baralhos");
+    has("baralhos", baralhos, "todo o time");
+    has("baralhos", baralhos, "80%");          // 120 de 150 dominados
+
+    const memoria = R(React.createElement(T.MemoryCard, {
+      stats: { memory: { retention30d: 88, reviews30d: 42, mature: 120, young: 30, seen: 150, deckSize: 300, firstTryPct: 71, lastExam: { score: 90, status: "passed" }, examsDone: 3 } },
+    }));
+    has("memória", memoria, "Retenção 30d");
+    has("memória", memoria, "88%");
+    has("memória", memoria, "de 300");
+
+    // Sem base ainda: mostra "—", nunca 0% (zero é afirmação, falta de dado não).
+    const memoriaVazia = R(React.createElement(T.MemoryCard, {
+      stats: { memory: { retention30d: null, reviews30d: 0, mature: 0, young: 0, seen: 0, deckSize: 300, firstTryPct: null, lastExam: null, examsDone: 0 } },
+    }));
+    has("memória sem base", memoriaVazia, "—");
+    if (memoriaVazia.includes("0%")) throw new Error("memória sem base não pode afirmar 0%");
+
+    const prova = R(React.createElement(T.NextExamCard, { stats: { nextExam: { every: 30, pass: 70, pool: 12, remaining: 18 } } }));
+    has("próxima prova", prova, "a prova de checkpoint cai a cada 30");
+    // Prova desligada nas configurações não renderiza card nenhum.
+    if (R(React.createElement(T.NextExamCard, { stats: { nextExam: null } })) !== "") throw new Error("prova desligada deveria sumir");
+
+    // Progresso: card que volta pra fixar entra como acréscimo, não infla o total.
+    const prog = R(React.createElement(T.SessionProgress, { done: 24, total: 22 }));
+    has("progresso", prog, "22 de 22");
+    has("progresso", prog, "+2 que voltaram");
+
+    const raiox = R(React.createElement(T.PersonDetail, {
+      today: new Date().toISOString().slice(0, 10),
+      user: {
+        id: "ana", name: "Ana", roles: ["sdr"], deckSize: 300, seen: 150, mature: 120, young: 30,
+        dueToday: 4, overdue: 2, doneToday: 6, streak: 3, retention30d: { pct: 88, n: 42 }, retention7d: { pct: 90, n: 10 },
+        firstTryPct: 71, reviewsPerDay30d: 12, activeDays30d: 22, medianMs: 4200, rushPct: 8,
+        fun: { last30: 20, total: 60, hitPct: 80 }, examsDone: 3, examsFailed: 1, examAvg: 78,
+        lastExam: { score: 90, status: "passed" }, examPending: false, exams: [],
+        retentionByRole: [{ role: "closer", label: "Closer", pct: 84, n: 20 }],
+        weekly: [{ start: "2026-07-06", pct: 80, n: 10 }, { start: "2026-07-13", pct: null, n: 0 }],
+        forecast: [{ day: "2026-09-13", n: 5 }], days: {},
+      },
+    }));
+    for (const bloco of ["Memória", "Ritmo", "Provas", "Constância"]) has("raio-x", raiox, bloco);
+
+    const lista = R(React.createElement(T.CardList, {
+      cards: [
+        { id: "c1", role: "closer", type: "basic", front: "Objeção: tá caro", back: "a técnica" },
+        { id: "c2", role: "closer", type: "basic", front: "", back: "" },
+      ],
+      total: 2, q: "", setQ() {}, sel: "c1", onSelect() {}, onAdd() {}, roleLabel: "Closer",
+    }));
+    has("lista", lista, "Objeção: tá caro");
+    has("lista", lista, "card novo · sem frente");   // rascunho não se esconde
+    has("lista", lista, "rascunho");
+    has("lista", lista, "2 cards em Closer");
+
+    // Ordem da Equipe: prova travada na frente, atrasado pesando mais que fila
+    // do dia, e quem está em dia no fim. É a régua que decide de quem cuidar.
+    const time = [
+      { id: "emdia", dueToday: 0, overdue: 0, examsFailed: 0, retention30d: { pct: 92, n: 30 } },
+      { id: "fila", dueToday: 8, overdue: 0, examsFailed: 0 },
+      { id: "atrasado", dueToday: 3, overdue: 3, examsFailed: 0 },
+      { id: "prova", dueToday: 0, overdue: 0, examPending: true },
+    ];
+    const ordem = [...time].sort((a, b) => T.urgencyOf(b) - T.urgencyOf(a)).map((u) => u.id);
+    if (ordem.join(",") !== "prova,atrasado,fila,emdia") throw new Error(`ordem por urgência saiu ${ordem.join(",")}`);
+    if (T.needsAttention(time[0])) throw new Error("quem está em dia não pede atenção");
+    // Retenção baixa COM base pede atenção; sem base (n=0) não afirma nada.
+    if (!T.needsAttention({ retention30d: { pct: 50, n: 20 } })) throw new Error("retenção baixa deveria pedir atenção");
+    if (T.needsAttention({ retention30d: { pct: 0, n: 0 } })) throw new Error("sem base não é diagnóstico");
+
+    // A tela inteira: pega import quebrado e undefined no caminho de render.
+    has("tela", R(React.createElement(T.TrainingScreen, {})), "Treinamentos");
+    console.log("✓ training");
+  } catch (err) {
+    console.error(`✗ training: ${err.message}`);
+    failed++;
+  }
 } finally {
   await server.close();
 }
