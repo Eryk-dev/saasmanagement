@@ -682,6 +682,38 @@ try {
     failed++;
   }
 
+  // ── Propostas: o funil e as duas tabelas (redesign de 12/09) ────────────
+  // A tela virou funil (gerada → aberta → fechou) + templates em linhas +
+  // UMA tabela de geradas com filtros (antes a aba "Geradas" e a seção
+  // "Geradas recentemente" mostravam a mesma lista). Os dados chegam por
+  // efeito, que não roda no SSR: aqui valem a moldura e o orçamento de
+  // largura das duas tabelas.
+  try {
+    const P = await server.ssrLoadModule("/src/screens/proposals.jsx");
+    const html = renderToString(wrap(React.createElement(P.ProposalsScreen, { saasId: "leverads" })));
+    for (const must of ["Geradas · 30d", "Abertas", "Fecharam", "Propostas geradas"]) {
+      if (!html.includes(must)) throw new Error(`a tela não contém "${must}"`);
+    }
+    if (html.includes("Geradas recentemente")) throw new Error("a seção duplicada voltou");
+    const floorOf = (col) => {
+      const mm = col.match(/^minmax\((\d+)px/);
+      if (mm) return Number(mm[1]);
+      const px = col.match(/^(\d+)px$/);
+      if (px) return Number(px[1]);
+      throw new Error(`coluna sem piso em px: "${col}" (fr puro deixa a tabela rolar de novo)`);
+    };
+    for (const [nome, grid] of [["templates", P.TPL_GRID], ["geradas", P.PROP_GRID]]) {
+      const cols = grid.trim().split(/\s+(?![^(]*\))/);
+      if (cols.length !== 5) throw new Error(`${nome}: esperava 5 colunas, achei ${cols.length}`);
+      const soma = cols.reduce((a, c) => a + floorOf(c), 0) + P.GRID_GAP * (cols.length - 1);
+      if (soma > P.GRID_BUDGET) throw new Error(`${nome} volta a rolar: ${soma}px de ${P.GRID_BUDGET}`);
+    }
+    console.log("✓ propostas");
+  } catch (err) {
+    console.error(`✗ propostas: ${err.message}`);
+    failed++;
+  }
+
   // ── Treinamentos (redesign de 12/09) ────────────────────────────────────
   // A tela tem cinco sub-telas e todos os dados chegam por efeito, que não roda
   // no SSR: por isso os blocos vão renderizados à parte, com payload na mão. O
