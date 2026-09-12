@@ -3,14 +3,15 @@ import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { PageHead, Card } from "../components/viz.jsx";
 import { EmptyState, Avatar } from "../atoms.jsx";
-import { stageKind, isRealLead } from "../lib/funnel.js";
+import { stageKind, isRealLead, isWonLead, wonAtOf } from "../lib/funnel.js";
 import { bizDay } from "../lib/format.js";
-import { canSeeScreen, userById } from "../lib/users.js";
+import { canSeeScreen, userById, displayName } from "../lib/users.js";
 import { levelLabel } from "../lib/levels.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { buildPeople, roleLabel, scaledGoal } from "../components/team-cards.jsx";
 import { usePeriod, businessDaysBetween } from "../components/period-picker.jsx";
 import { isChurned } from "../lib/churn.js";
+import { dealProductLabel } from "../lib/payments.js";
 // Visão geral — reorganização de 12/09/2026 ("operação e trilho de ação").
 // A tela tem DUAS colunas: a operação à esquerda e o que exige ação à direita,
 // fixo na tela (o "Atenção agora" vivia no fim da página e ninguém rolava até
@@ -19,8 +20,8 @@ import { isChurned } from "../lib/churn.js";
 //   existia dentro do tooltip: falta, precisa por dia útil, projeção)
 //   → Funil do período VERTICAL (etapa → conversão → etapa, com o gargalo
 //     nomeado)
-//   → Desempenho do time (duas pernas + a submeta mais atrasada em destaque;
-//     o resto das submetas fica no hover, não em texto corrido).
+//   → Desempenho do time (duas pernas + as submetas do papel na linha de
+//     baixo, com a mais atrasada em destaque no chip da direita).
 // Trilho da direita: Agora (avisos com botão) → Carteira → Aquisição.
 // Escala de cores única: vermelho (atrás do caminho) → teal (no pace) → verde
 // (meta batida) → dourado (120%+, alinhado às bandas da remuneração).
@@ -450,9 +451,9 @@ function PersonRow({ p, rank, bizDays, elapsedFrac, monthFrac, onPerson }) {
   const revTarget = leg ? monthGoal(leg.goals?.revenue) : null;
   const wonTarget = leg ? monthGoal(leg.goals?.won) : null;
   const rows = personRows(p, bizDays, elapsedFrac, monthFrac);
-  // Uma submeta em destaque (12/09): a MAIS atrasada. O resto continua no
-  // hover da célula — antes as 4 a 5 submetas viravam texto corrido e a linha
-  // não dizia mais onde olhar.
+  // Uma submeta em DESTAQUE: a mais atrasada, no chip da direita, pra linha
+  // dizer onde olhar. As outras não ficam mais só no hover (Leo, 12/09): a
+  // lista inteira voltou pra 2ª altura da linha, embaixo das duas pernas.
   const atrasada = rows.filter((r) => r.lvl === "red").sort((a, b) => (a.ratio ?? 9) - (b.ratio ?? 9))[0] || null;
   const todas = rows.length
     ? rows.map((r) => `${r.label} ${r.valueText}${r.metaText != null ? ` / ${r.metaText}` : ""}`).join(" · ")
@@ -478,16 +479,7 @@ function PersonRow({ p, rank, bizDays, elapsedFrac, monthFrac, onPerson }) {
           </div>
         </div>
       </div>
-      {leg ? <MiniRegua value={leg.revenue} target={revTarget} isMoney expectedFrac={monthFrac} /> : (
-        <div title={todas} className="tnum" style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", fontSize: 11.5, color: "var(--fg-3)", minWidth: 0, cursor: "help" }}>
-          {rows.filter((r) => r !== atrasada).slice(0, 3).map((r) => (
-            <span key={r.label} style={{ whiteSpace: "nowrap" }}>
-              {r.label} <b style={{ fontWeight: 650, color: lvlColor(r.lvl) }}>{r.valueText}</b>
-              {r.metaText != null && <span style={{ color: "var(--fg-4)" }}> / {r.metaText}</span>}
-            </span>
-          ))}
-        </div>
-      )}
+      {leg ? <MiniRegua value={leg.revenue} target={revTarget} isMoney expectedFrac={monthFrac} /> : semPerna}
       {leg ? <MiniRegua value={leg.won} target={wonTarget} expectedFrac={monthFrac} /> : semPerna}
       <div title={todas} style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, minWidth: 0, cursor: "help" }}>
         {atrasada ? (
@@ -514,6 +506,19 @@ function PersonRow({ p, rank, bizDays, elapsedFrac, monthFrac, onPerson }) {
           </span>
         )}
       </div>
+      {/* Submetas do papel de volta à tela (Leo, 12/09): todas, embaixo das
+          duas pernas. A mais atrasada segue destacada no chip à direita — aqui
+          ela aparece junto das outras, já vermelha pela cor do nível. */}
+      {rows.length > 0 && (
+        <div className="vg-tsub tnum" style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", fontSize: 11.5, color: "var(--fg-3)", minWidth: 0 }}>
+          {rows.map((r) => (
+            <span key={r.label} title={r.title} style={{ whiteSpace: "nowrap", cursor: r.title ? "help" : undefined }}>
+              {r.label} <b style={{ fontWeight: 650, color: lvlColor(r.lvl) }}>{r.valueText}</b>
+              {r.metaText != null && <span style={{ color: "var(--fg-4)" }}> / {r.metaText}</span>}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -552,7 +557,7 @@ function TeamBoard({ score, win, onPerson }) {
     return list.map((p) => ({ p, pct: pctOf(p) })).sort((a, b) => b.pct - a.pct);
   }, [score, win.businessDays]);
   return (
-    <Card title="Desempenho do time" hint="ranqueado por % da meta · réguas = meta do mês, o risquinho é o pace · a submeta mais atrasada fica à direita (todas no hover)">
+    <Card title="Desempenho do time" hint="ranqueado por % da meta · réguas = meta do mês, o risquinho é o pace · as submetas do papel ficam embaixo das duas pernas e a mais atrasada em destaque à direita">
       <div style={{ padding: "8px var(--inset-x) 20px" }}>
         {score == null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
         {score != null && !people.length && <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Sem atividade nesse período.</div>}
@@ -756,6 +761,67 @@ function AquisicaoCard({ marketing, biz, classes, pShort }) {
   );
 }
 
+// ── Últimas vendas (Leo, 12/09) ─────────────────────────────────────────────
+// O trilho da direita abre com o que JÁ ENTROU, no lugar do "Agora" (que foi
+// pro fim da página): cada venda com cliente, produto, valor e quem fechou.
+// A ordem é por RECÊNCIA e a lista NÃO segue o filtro do topo — "as últimas
+// vendas" precisa ter conteúdo mesmo com a janela num período vazio, e a data
+// de cada linha já diz de quando é. Fonte: a régua oficial de ganho do lead
+// (isWonLead + wonAtOf), a mesma do placar e do funil.
+const MAX_VENDAS = 6;
+function VendasCard({ leads, product, customers, onNav }) {
+  const vendas = useMemo(() => (leads || [])
+    .filter((l) => isWonLead(product, l))
+    .map((l) => ({ l, at: wonAtOf(l) }))
+    .filter((v) => v.at)
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)))
+    .slice(0, MAX_VENDAS), [leads, product]);
+  // Nome do CLIENTE: o cadastro vence (é o nome que o time usa em Clientes e
+  // no Financeiro); sem cliente convertido ainda, a empresa do lead e, por
+  // último, o nome da pessoa.
+  const nomeCliente = (l) => {
+    const c = l.customerId ? (customers || []).find((x) => x.id === l.customerId) : null;
+    return String(c?.name || l.company || l.name || "").trim() || "cliente sem nome";
+  };
+  const quemFechou = (l) => (l.closer || l.owner || "");
+  const dia = (at) => { const d = bizDay(at); return d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : ""; };
+  return (
+    <Card title="Últimas vendas"
+      hint={vendas.length ? `as ${int(vendas.length)} mais recentes · cliente, produto e quem fechou · não muda com o filtro` : "as vendas aparecem aqui assim que o card vira Ganho"}>
+      <div style={{ padding: "6px var(--inset-x) 12px" }}>
+        {!vendas.length && <div style={{ fontSize: 12.5, color: "var(--fg-4)", padding: "6px 0" }}>Nenhuma venda registrada ainda.</div>}
+        {vendas.map(({ l, at }, i) => {
+          const who = quemFechou(l);
+          const produto = dealProductLabel(l.proposalProduct, l.saas);
+          return (
+            <div key={l.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center", padding: "9px 0", borderTop: i ? "1px solid var(--line-1)" : "none" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                {who && <Avatar id={who} name={displayName(who)} size={22} />}
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nomeCliente(l)}</div>
+                  {/* Sem .kicker aqui: nome de produto e de pessoa em caixa
+                      alta com letter-spacing fica gritado ("ESCALA ANUAL"). */}
+                  <div style={{ fontSize: 11, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 1 }}>
+                    {produto || "produto não informado"}{who ? ` · ${displayName(who)}` : " · sem responsável"}
+                  </div>
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div className="tnum" style={{ fontSize: 13, fontWeight: 650, whiteSpace: "nowrap" }}>{money(l.amount)}</div>
+                <div className="tnum" style={{ fontSize: 11, color: "var(--fg-4)", marginTop: 1 }}>{dia(at)}</div>
+              </div>
+            </div>
+          );
+        })}
+        {vendas.length > 0 && onNav && (
+          <button onClick={() => onNav("pipeline", { saas: product.id })}
+            style={{ marginTop: 10, fontSize: 12, fontWeight: 600, color: "var(--accent)" }}>ver todas no pipeline →</button>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function CarteiraCard({ customers, ltv }) {
   // Estado ACUMULADO da base — não muda com o filtro. Conta grande (keyAccount,
   // ex.: Galante) fica fora das médias; o número grande é sempre o cheio.
@@ -799,18 +865,27 @@ const CHIP_TONE = {
   pos: { bg: "var(--pos-soft)", fg: "var(--pos)" },
 };
 
-function AtencaoCard({ items }) {
-  // Reorganizado em 12/09: era o ÚLTIMO card da página — a coisa mais
-  // acionável da tela, embaixo de tudo. Virou lista no trilho fixo da direita:
-  // uma linha por aviso, botão encostado na direita, risco no topo.
+function AtencaoCard({ items, wide }) {
+  // Fica no FIM da página (Leo, 12/09) — o trilho da direita abre com as
+  // últimas vendas. Como rodapé a lista ganha a largura toda, então os avisos
+  // viram uma grade de cartõezinhos (auto-fit) em vez de linhas gigantes com
+  // o botão perdido lá na ponta direita.
+  const grade = wide
+    ? { "--cols": "repeat(auto-fit, minmax(300px, 1fr))", display: "grid", gap: 10, padding: "12px var(--inset-x) 16px" }
+    : { padding: "12px 0 6px" };
   return (
     <Card title="Agora" hint={items.length ? `${int(items.length)} ${items.length === 1 ? "aviso" : "avisos"} · riscos no topo · cada um tem o botão da ação` : "riscos primeiro · cada aviso tem o botão da ação"}>
-      <div style={{ padding: "12px 0 6px" }}>
-        {!items.length && <div style={{ padding: "0 var(--inset-x) 12px", fontSize: 12.5, color: "var(--fg-4)" }}>Tudo em dia por aqui.</div>}
+      <div className={wide ? "resp-cols" : undefined} style={grade}>
+        {!items.length && <div style={{ padding: wide ? 0 : "0 var(--inset-x) 12px", fontSize: 12.5, color: "var(--fg-4)" }}>Tudo em dia por aqui.</div>}
         {items.map((it, i) => {
           const tone = CHIP_TONE[it.tone] || CHIP_TONE.info;
+          // Cartão com borda no modo largo (a grade não tem "linha anterior"
+          // pra pendurar divisor); lista com divisor no modo estreito.
+          const caixa = wide
+            ? { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "11px 13px" }
+            : { padding: "12px var(--inset-x)", borderTop: i ? "1px solid var(--line-1)" : "none" };
           return (
-            <div key={it.key} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center", padding: "12px var(--inset-x)", borderTop: i ? "1px solid var(--line-1)" : "none" }}>
+            <div key={it.key} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center", ...caixa }}>
               <div style={{ minWidth: 0 }}>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, color: tone.fg }}>
                   <span style={{ width: 6, height: 6, borderRadius: 999, background: "currentColor" }} />{it.chip}
@@ -1002,7 +1077,7 @@ function OverviewScreen({ onNav }) {
         <MonthSelect />
       </PageHead>
 
-      <div className="resp-cols" style={{ "--cols": "minmax(0, 1fr) 372px", gap: 16, padding: "16px var(--pad-x) 56px", alignItems: "start" }}>
+      <div className="resp-cols" style={{ "--cols": "minmax(0, 1fr) 372px", gap: 16, padding: "16px var(--pad-x) 0", alignItems: "start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
           <MetaMesCard pace={pace} goal={goal} onNav={onNav} />
 
@@ -1011,13 +1086,19 @@ function OverviewScreen({ onNav }) {
           <TeamBoard score={score} win={win} onPerson={canSeeScreen("pipeline") ? openPerson : null} />
         </div>
 
-        {/* Trilho de ação: fica na tela enquanto a operação rola (12/09). No
-            mobile o .resp-cols empilha e ele vem embaixo da operação. */}
+        {/* Trilho da direita: fica na tela enquanto a operação rola (12/09).
+            Abre com as ÚLTIMAS VENDAS (Leo, 12/09) — o "Agora" foi pro rodapé.
+            No mobile o .resp-cols empilha e o trilho vem depois da operação. */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0, position: "sticky", top: 0 }}>
-          <AtencaoCard items={atencao} />
+          <VendasCard leads={leads} product={product} customers={productCustomers} onNav={onNav} />
           <CarteiraCard customers={productCustomers} ltv={biz?.ltv} />
           <AquisicaoCard marketing={marketing} biz={biz} classes={score?.team?.classes} pShort={win.short} />
         </div>
+      </div>
+
+      {/* Agora: rodapé da página, largura cheia (Leo, 12/09). */}
+      <div style={{ padding: "16px var(--pad-x) 56px" }}>
+        <AtencaoCard items={atencao} wide />
       </div>
     </div>
   );
