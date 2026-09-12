@@ -402,6 +402,17 @@ body[data-density="regular"] { font-size: 14px; }
    inline se alguém setar os dois. */
 .resp-cols { display: grid; grid-template-columns: var(--cols, 1fr); }
 
+/* Trilho lateral que só existe quando a coluna principal ainda cabe: a tabela
+   de Clientes tem 6 colunas que somam ~706px, e com o trilho de 320px isso só
+   sobra a partir de ~1500px de janela (1500 − 220 do rail − 56 do pad − 336 do
+   trilho+gap − 32 do padding do card = 856). Abaixo disso o trilho desce pra
+   baixo da tabela, que aí usa a largura inteira e continua sem rolagem
+   horizontal. Diferente de .resp-cols, que empilha só no mobile (900px). */
+.side-rail { display: grid; grid-template-columns: var(--cols, 1fr); }
+@media (max-width: 1499px) {
+  .side-rail { grid-template-columns: 1fr !important; }
+}
+
 /* Tabela/grade larga: rola na horizontal dentro do card no mobile. */
 .tbl-x { overflow-x: auto; }
 .tbl-x > * { min-width: 720px; }

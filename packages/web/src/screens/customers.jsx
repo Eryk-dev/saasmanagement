@@ -24,6 +24,17 @@ import { printContract, issueDate, byIssuedDesc } from "../lib/contracts.js";
 // Base das URLs públicas (link de indicação do cliente): no dev o proxy do
 // Vite repassa /f pra API.
 const publicBase = () => import.meta.env.VITE_API_BASE || window.location.origin;
+
+// ── A grade da tabela de clientes (6 colunas) ───────────────────────────────
+// Pisos apertados de PROPÓSITO: com o gap, eles somam ~706px, que é o que caber
+// em 1024px de janela exige (1024 − 220 do nav − 56 do pad-x = 748 de conteúdo,
+// menos 32 do padding do card = 716). Passar disso devolve a rolagem lateral
+// que este redesign veio tirar — o smoke-ssr trava a conta (TABLE_GRID_BUDGET).
+// As duas colunas flexíveis crescem em tela larga; toda célula tem minWidth 0 +
+// ellipsis, então nada corta no meio da palavra.
+export const TABLE_GRID = "minmax(150px,1.4fr) 80px 76px 150px 100px minmax(100px,1fr)";
+export const TABLE_GRID_GAP = 10;
+export const TABLE_GRID_BUDGET = 716; // 1024px de janela, trilho empilhado
 // Clientes — a base ativa do produto em dois blocos: a tabela de clientes e,
 // ao lado, "Próximas ações" (os vencimentos a cobrar do faturado e da
 // assinatura recorrente, ordenados por urgência). Clicar num cliente abre um popup com o resumo dele
@@ -73,6 +84,7 @@ function CustomersScreen({ initialTab }) {
   const [invoices, setInvoices] = useState([]);
   const [sel, setSel] = useState(null); // id do cliente aberto no popup
   const [showAll, setShowAll] = useState(false);
+  const [q, setQ] = useState("");        // busca da tabela
   const [showAllActions, setShowAllActions] = useState(false);
   // Conclusão de marco: otimista no objeto do SEED (a tela lê dele) + PATCH.
   const [tick, setTick] = useState(0);
@@ -422,11 +434,23 @@ function CustomersScreen({ initialTab }) {
   // visível (esmaecido), ninguém some da lista.
   const [baseFilter, setBaseFilter] = useState("all"); // all | active | churned
   const churnedCount = customers.length - activeCustomers.length;
+  // BUSCA (o único estado novo do redesign): nome, contato e e-mail, sem acento
+  // e sem caixa. Entra ANTES do filtro Ativos/Churn, então "mostrando N de M"
+  // reflete os dois. useMemo porque a base cresce e o render é por linha.
+  const fold = (v) => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const searchedCustomers = useMemo(() => {
+    const needle = fold(q).trim();
+    if (!needle) return sortedCustomers;
+    return sortedCustomers.filter((c) => {
+      const lead = (LEADS || []).find((l) => l.id === c.leadId);
+      return [c.name, c.contact, c.email, lead?.name, lead?.email].some((v) => fold(v).includes(needle));
+    });
+  }, [sortedCustomers, q, LEADS]); // eslint-disable-line react-hooks/exhaustive-deps
   const filteredCustomers = baseFilter === "active"
-    ? sortedCustomers.filter((c) => !isChurned(c))
+    ? searchedCustomers.filter((c) => !isChurned(c))
     : baseFilter === "churned"
-      ? sortedCustomers.filter((c) => isChurned(c))
-      : sortedCustomers;
+      ? searchedCustomers.filter((c) => isChurned(c))
+      : searchedCustomers;
   const shownCustomers = showAll ? filteredCustomers : filteredCustomers.slice(0, 50);
   const lastContact = (c) => {
     const lead = (LEADS || []).find((l) => l.id === c.leadId);
@@ -563,381 +587,279 @@ function CustomersScreen({ initialTab }) {
             action={<PrimaryButton onClick={() => openForm("customers", { saas: product.id })}>+ Cadastrar cliente</PrimaryButton>}
           />
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, alignItems: "start" }}>
-            <CustomersAnalysis customers={customers} subs={subs} invoices={invoices} isKids={isKidsWorkspace} />
+          <div className="side-rail" style={{ "--cols": "minmax(0,1fr) 320px", gap: 16, alignItems: "start" }}>
+            <div style={{ display: "grid", gap: 16, minWidth: 0 }}>
+            <CustomersAnalysis customers={customers} subs={subs} invoices={invoices} isKids={isKidsWorkspace}
+              gradeDist={isKidsWorkspace ? null : gradeDist} nivelLegend={isKidsWorkspace ? null : <NivelLegend />} />
 
-            {/* Contas grandes: ficha própria em vez de linha de tabela. A tabela
-                é feita pra assinatura (plano, MRR, marco, vencimento) e um
-                contrato bespoke deixa metade das colunas vazia — aqui aparece o
-                que importa nele: quanto, desde quando, se pagou e qual o
-                próximo toque. Clique abre a mesma ficha do cliente. */}
-            {keyAccounts.length > 0 && (
-              <Card title="Contas grandes"
-                hint="fora das médias e das metas derivadas · o dinheiro segue contando em caixa e vendido">
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(288px, 1fr))", gap: 12, padding: "14px var(--inset-x) 20px" }}>
-                  {keyAccounts.map((c) => {
-                    const nm = isMentoria(c) ? null : nextMilestone(withCycle(c), product);
-                    const ps = payStatus(c);
-                    const contato = String(c.contact || leadById.get(c.leadId)?.name || "").trim();
-                    const fatos = [
-                      ["Cliente desde", entradaLabel(c) ? `${entradaLabel(c)}${tenureLabel(c) ? ` · ${tenureLabel(c)}` : ""}` : "defina o início"],
-                      ["Último contato", lastContact(c)],
-                      ["Fechado por", (() => { const l = leadById.get(c.leadId); const who = l?.closer || l?.owner || c.owner; return who ? displayName(who) : "—"; })()],
-                      ["Próximo marco", nm ? `${nm.label} · ${nm.status === "late" ? "venceu " : "vence "}${dueLabel(nm.dueAt)}` : "sem marco em aberto"],
-                    ];
-                    return (
-                      <div key={c.id} onClick={() => setSel(c.id)}
-                        style={{ border: "1px solid var(--accent-line)", borderRadius: "var(--r-3)", background: "var(--accent-soft)", padding: "14px 16px", cursor: "pointer", display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
-                        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                          <span title="conta grande" style={{ color: "var(--accent)", fontSize: 14, lineHeight: 1.2, flexShrink: 0 }}>★</span>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</div>
-                            {contato && contato.toLowerCase() !== String(c.name || "").trim().toLowerCase() && (
-                              <div style={{ fontSize: 12, color: "var(--fg-3)", marginTop: 1 }}>{contato}</div>
-                            )}
-                          </div>
-                          <Pill tone={ps.tone}>{ps.label}</Pill>
-                        </div>
-                        <div>
-                          <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1 }}>{money(fechadoOf(c))}</div>
-                          <div className="kicker" style={{ marginTop: 3 }}>contrato fechado{c.plan ? ` · ${c.plan}` : ""}</div>
-                        </div>
-                        <div style={{ display: "grid", gap: 3 }}>
-                          {fatos.map(([k, v]) => (
-                            <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, borderTop: "1px solid var(--line-faint)", paddingTop: 3 }}>
-                              <span className="mono dim" style={{ fontSize: 10.5, flexShrink: 0 }}>{k}</span>
-                              <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0, overflowWrap: "anywhere" }}>{v}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </Card>
-            )}
-
-            {!isKidsWorkspace && (
-              <Card title="Clientes por nível" hint="categoria (A/B/C…) da carteira ativa, pela grade do lead">
-                {/* Contagem da carteira e, ao lado, a matriz que DEFINE o nível
-                    (contas × anúncios): o resultado e a régua no mesmo bloco. */}
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 24, padding: "6px 24px 20px", alignItems: "flex-start" }}>
-                <div style={{ flex: "1 1 300px", minWidth: 0, display: "flex", flexWrap: "wrap", gap: "10px 22px", alignItems: "center" }}>
-                  {["S", "A", "B", "C", "D", "E"].filter((g) => gradeDist.counts[g] > 0).map((g) => {
-                    const s = GRADE_STYLE[g];
-                    return (
-                      <div key={g} style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                        <span title={s.label} style={{ width: 22, height: 22, borderRadius: 6, background: s.tone, color: s.badgeFg, fontSize: 12.5, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1, flexShrink: 0 }}>{g}</span>
-                        <span className="tnum" style={{ fontSize: 19, fontWeight: 700 }}>{gradeDist.counts[g]}</span>
-                      </div>
-                    );
-                  })}
-                  {gradeDist.sem > 0 && (
-                    <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                      <span title="sem qualificação (lead não respondeu contas/anúncios)" style={{ width: 22, height: 22, borderRadius: 6, border: "1px solid var(--line-2)", color: "var(--fg-4)", fontSize: 12.5, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1, flexShrink: 0 }}>—</span>
-                      <span className="tnum" style={{ fontSize: 19, fontWeight: 700, color: "var(--fg-3)" }}>{gradeDist.sem}</span>
-                      <span style={{ fontSize: 12, color: "var(--fg-4)" }}>sem nível</span>
-                    </div>
-                  )}
-                  {Object.keys(gradeDist.counts).length === 0 && gradeDist.sem === 0 && (
-                    <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>sem clientes ativos ainda</span>
-                  )}
-                </div>
-                <NivelLegend />
-                </div>
-              </Card>
-            )}
-
-            <Card title="Próximas ações" hint="faturado e assinatura recorrente · vencidos primeiro">
-              <div style={{ padding: "12px 0 8px" }}>
-                {vencido.n > 0 && (
-                  <div style={{ padding: "0 24px 10px", fontSize: 12, color: "var(--fg-3)" }}
-                    title="Faturas em aberto com vencimento no passado (parcelas do faturado, mensalidades da assinatura recorrente e cobranças avulsas). Cada cliente entra na fila abaixo com a próxima dele.">
-                    <b className="tnum" style={{ color: "var(--neg)" }}>{vencido.n}</b> {vencido.n === 1 ? "cobrança vencida" : "cobranças vencidas"} ·{" "}
-                    <b className="tnum" style={{ color: "var(--neg)" }}>{money(vencido.total)}</b> parados
-                  </div>
-                )}
-                {nextActions.length === 0 && (
-                  <div style={{ padding: "8px 24px 16px", fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
-                    Nenhuma cobrança na fila: ninguém com fatura em aberto nem com ciclo pra virar.
-                  </div>
-                )}
-                {(showAllActions ? nextActions : nextActions.slice(0, ACOES_FECHADAS)).map((a, i, shown) => {
-                  const c = a.customer;
-                  const linha = { display: "flex", alignItems: "center", gap: 12, padding: "11px 24px", cursor: "pointer", borderBottom: i === shown.length - 1 ? "none" : "1px solid var(--line-faint)" };
-                  const dot = { width: 8, height: 8, borderRadius: 999, flexShrink: 0, background: a.status === "late" ? "var(--neg)" : a.status === "soon" ? "var(--warn)" : "var(--fg-4)" };
-                  const tone = a.status === "late" ? "neg" : a.status === "soon" ? "warn" : "mut";
-                  const nome = { fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
-                  const enter = (e) => { e.currentTarget.style.background = "var(--hover)"; };
-                  const leave = (e) => { e.currentTarget.style.background = "transparent"; };
-                  // O vencimento do faturado/recorrente vira toque de cobrança,
-                  // com o WhatsApp do cliente do lado e a baixa aqui mesmo (não
-                  // precisa abrir a ficha pra confirmar que o dinheiro entrou).
-                  // Sem fatura ainda (ciclo por virar) não há o que baixar: a
-                  // linha é o radar do que vem, e o botão só aparece quando a
-                  // fatura existe.
-                  const wa = waLink(c.phone || leadById.get(c.leadId)?.phone);
-                  const inv = a.invoice || null;
-                  const baixando = inv && payingId === inv.id;
-                  return (
-                    <div key={inv ? `cob_${inv.id}` : `sub_${c.id}`} onClick={() => setSel(c.id)} style={linha} onMouseEnter={enter} onMouseLeave={leave}>
-                      <span style={dot} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={nome}>{c.name}</div>
-                        <div style={{ fontSize: 12, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {inv
-                            ? `Cobrar ${money(inv.amount)} · ${cobrancaDesc(inv, c)}`
-                            : `${money(a.sub.price)} · ${proximaDesc(c)}`}
-                        </div>
-                      </div>
-                      <Pill tone={tone}>{a.status === "late" ? "venceu " : "vence "}{dueLabel(a.dueAt)}</Pill>
-                      {wa && (
-                        <a href={wa} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} title="abrir a conversa pra cobrar" style={ACAO_BTN}>WhatsApp</a>
-                      )}
-                      {inv && (
-                        <button onClick={(e) => { e.stopPropagation(); payFromQueue(inv); }} disabled={baixando}
-                          title="marcar como recebida (a mesma baixa da ficha do cliente)" style={ACAO_BTN}>
-                          {baixando ? "…" : "dar baixa"}
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-                {nextActions.length > ACOES_FECHADAS && (
-                  <div style={{ padding: "12px 24px 8px", borderTop: "1px solid var(--line-1)" }}>
-                    <button onClick={() => setShowAllActions((v) => !v)} style={{ fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>
-                      {showAllActions ? "ver menos" : `ver mais (${nextActions.length - ACOES_FECHADAS})`}
-                    </button>
-                  </div>
-                )}
-              </div>
-            </Card>
-
-            <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
-            <Card style={{ overflow: "hidden", flex: "1 1 560px", minWidth: 0 }}>
-              {/* Filtro Todos/Ativos/Churn: só existe quando há churn na base. */}
-              {churnedCount > 0 && (
-                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 20px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+            {/* ── A tabela: 6 colunas em grade, sem rolagem lateral ──────────
+                Eram 13 colunas e minWidth 1360, o que garantia rolagem. Quatro
+                delas (Pagamento, Status pgto., Mercado Pago, Total recebido)
+                respondiam a MESMA pergunta — pagou? — e viraram a coluna
+                Dinheiro; nível virou o quadradinho no nome; entrada, último
+                contato e casa desceram pra sub-linha do cliente; o usuário do
+                LeverAds foi pra ficha. Os pisos das duas colunas flexíveis são
+                obrigatórios: sem eles o nome e a pill de situação cortam. */}
+            <Card style={{ overflow: "hidden", minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", flexWrap: "wrap" }}>
+                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar por nome, contato ou e-mail…"
+                  style={{ flex: 1, minWidth: 180, height: 30, padding: "0 10px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 }} />
+                {churnedCount > 0 && (
                   <Segmented value={baseFilter} onChange={setBaseFilter} options={[
                     { value: "all", label: `Todos (${customers.length})` },
                     { value: "active", label: `Ativos (${activeCustomers.length})` },
                     { value: "churned", label: `Churn (${churnedCount})` },
                   ]} />
-                </div>
-              )}
-              <div className="tbl-x">
-              <table style={{ width: "100%", minWidth: isKidsWorkspace ? 880 : isLeverads ? 1360 : 1240, borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    {(isKidsWorkspace
-                      ? [["Cliente", "cliente"], ["Pacote", "plano"], ["Valor", "mrr"], ["Entrada", "entrada"], ["Último contato", "contato"], ["Próxima consulta", null], ["Consultas", null]]
-                      : [["Cliente", "cliente"], ["Nível", "nivel"], ["Plano", "plano"], ["MRR", "mrr"], ["Pagamento", "pagamento"], ["Status pgto.", "pgto"], ["Mercado Pago", "mp"], ["Total recebido", "recebido"], ["Entrada", "entrada"], ["Último contato", "contato"], ["Próximo marco", null], ["Assinatura", "venc"], ...(isLeverads ? [["Usuário LeverAds", "lever"]] : [])]
-                    ).map(([h, k]) => (
-                      <th key={h} className="kicker" title={k ? "ordenar" : undefined}
-                        onClick={k ? () => setSort((s) => (s?.key === k ? { key: k, dir: -s.dir } : { key: k, dir: 1 })) : undefined}
-                        style={{ textAlign: (h === "MRR" || h === "Valor" || h === "Total recebido") ? "right" : "left", fontWeight: 600, color: sort?.key === k ? "var(--fg-2)" : "var(--fg-4)", padding: "12px 14px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", cursor: k ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>
-                        {h}{sort?.key === k ? (sort.dir === 1 ? " ↑" : " ↓") : ""}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {shownCustomers.map((c) => {
-                    const sub = mainSub(c);
-                    const st = sub ? SUB_STATUS[sub.status] || { label: sub.status, tone: "mut" } : null;
-                    const kids = isMentoria(c);
-                    const nm = kids ? null : nextMilestone(withCycle(c), product);
-                    const j = kids ? journeyOf(c) : null;
-                    // Linha de churnado fica esmaecida — visível, mas claramente fora da base ativa.
-                    return (
-                      <tr key={c.id} onClick={() => setSel(c.id)} style={{ cursor: "pointer", opacity: isChurned(c) ? 0.55 : 1 }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
-                        {/* Empresa + nome do contato (do cadastro; fallback no lead). Some quando é a mesma coisa. */}
-                        <td style={{ padding: "13px 14px", fontSize: 13.5, fontWeight: 600, borderBottom: "1px solid var(--line-faint)" }}>
-                          {isKeyAccount(c) && <span title="conta grande · fora das médias" style={{ color: "var(--accent)", marginRight: 5 }}>★</span>}
-                          {c.name}
-                          {(() => {
-                            const contact = String(c.contact || leadById.get(c.leadId)?.name || "").trim();
-                            return contact && contact.toLowerCase() !== String(c.name || "").trim().toLowerCase()
-                              ? <div style={{ fontSize: 12, fontWeight: 400, color: "var(--fg-3)", marginTop: 2 }}>{contact}</div>
-                              : null;
-                          })()}
-                        </td>
-                        {/* Nível (categoria A/B/C…) do cliente, pela grade do lead. Só LeverAds. */}
-                        {!isKidsWorkspace && (() => { const t = gradeOf(c); return (
-                          <td style={{ padding: "13px 14px", borderBottom: "1px solid var(--line-faint)" }}>
-                            {t.grade
-                              ? <span title={t.label} style={{ width: 22, height: 22, borderRadius: 6, background: t.tone, color: t.badgeFg, fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>{t.grade}</span>
-                              : <span style={{ fontSize: 13, color: "var(--fg-4)" }}>—</span>}
-                          </td>
-                        ); })()}
-                        {/* Pacote (mentoria) × plano contratado (cadastro primeiro, assinatura como fallback) */}
-                        <td style={{ padding: "13px 14px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
-                          {kids ? consultPackageLabel(j.total) : contractPlan(c) || "sem plano"}
-                        </td>
-                        {/* Mentoria é compra única: mostra o valor do contrato, não MRR */}
-                        <td className="tnum" style={{ padding: "13px 14px", fontSize: 13, textAlign: "right", borderBottom: "1px solid var(--line-faint)" }}>
-                          {money(kids ? (c.arr || 0) : (c.arr || 0) / 12)}
-                        </td>
-                        {/* Meio de pagamento (cliente > lead) e total já pago (faturas pagas). Só SaaS. */}
-                        {!isKidsWorkspace && (() => {
-                          const pm = c.paymentMethod || leadById.get(c.leadId)?.paymentMethod;
-                          const prox = proxCobrancaDe(c);
-                          return (
-                            <td style={{ padding: "13px 14px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
-                              {pm ? paymentLabel(pm) : <span style={{ color: "var(--fg-4)" }}>—</span>}
-                              {/* Data da próxima cobrança embaixo do meio de pagamento (Leo, 12/09):
-                                  vale pro faturado e pra assinatura recorrente, que cobram mês a mês.
-                                  Vencida fica em vermelho — o dinheiro não caiu. */}
-                              {prox && (
-                                <div className="tnum" title={`${prox.oque} · ${prox.late ? "venceu" : "vence"} ${fmtDay(prox.due)}`}
-                                  style={{ fontSize: 11, marginTop: 3, color: prox.late ? "var(--neg)" : "var(--fg-4)", whiteSpace: "nowrap" }}>
-                                  {prox.late ? "venceu " : "próx. "}{fmtDay(prox.due)}
-                                </div>
-                              )}
-                            </td>
-                          );
-                        })()}
-                        {/* Status pgto.: Pago / Parcial / Não pago. Clicar na pill abre um select invisível
-                            por cima dela — marca na mão sem abrir o popup (o resto da linha segue abrindo). */}
-                        {!isKidsWorkspace && (() => {
-                          const ps = payStatus(c);
-                          return (
-                            <td style={{ padding: "13px 14px", borderBottom: "1px solid var(--line-faint)" }}>
-                              <span onClick={(e) => e.stopPropagation()} title={ps.hint} style={{ position: "relative", display: "inline-flex" }}>
-                                <Pill tone={ps.tone}>{ps.label}</Pill>
-                                <select value={ps.manual ? ps.key : ""}
-                                  onChange={(e) => patchCustomer(c, { paymentStatus: e.target.value })}
-                                  style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}>
-                                  <option value="">automático · {PAY_STATUS[ps.auto].label}</option>
-                                  <option value="paid">Pago</option>
-                                  <option value="partial">Parcial</option>
-                                  <option value="unpaid">Não pago</option>
-                                </select>
-                              </span>
-                            </td>
-                          );
-                        })()}
-                        {/* Mercado Pago: o que o espelho tem VINCULADO a este cliente — quanto
-                            entrou, por qual meio e quando foi a última entrada. É a prova por trás
-                            do Status pgto. Pagamento sem dono não aparece aqui: ele espera vínculo
-                            na Conciliação do Financeiro. */}
-                        {!isKidsWorkspace && (() => {
-                          const mp = mpByCustomer.get(c.id);
-                          if (!mp) {
-                            return (
-                              <td title="nenhum pagamento do Mercado Pago vinculado a este cliente" style={{ padding: "13px 14px", fontSize: 13, color: "var(--fg-4)", borderBottom: "1px solid var(--line-faint)" }}>—</td>
-                            );
-                          }
-                          const quando = parseDay(mp.last.dateApproved || mp.last.dateCreated);
-                          const como = mpMethodLabel(mp.last);
-                          return (
-                            <td title={`${mp.n} ${mp.n === 1 ? "pagamento aprovado" : "pagamentos aprovados"} no Mercado Pago vinculado${mp.n === 1 ? "" : "s"} a este cliente · último: ${money(mp.last.amount)}${como ? ` em ${como}` : ""}${quando ? ` (${fmtDay(quando)})` : ""}`}
-                              style={{ padding: "13px 14px", borderBottom: "1px solid var(--line-faint)", whiteSpace: "nowrap" }}>
-                              <div className="tnum" style={{ fontSize: 13, color: "var(--pos)", fontWeight: 600 }}>{money(mp.total)}</div>
-                              <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>
-                                {[como, quando ? fmtDay(quando) : "", mp.n > 1 ? `${mp.n}x` : ""].filter(Boolean).join(" · ")}
-                              </div>
-                            </td>
-                          );
-                        })()}
-                        {/* Total recebido: o que esse cliente TROUXE. À vista conta o contrato
-                            (entrou no fechamento); faturado e recorrente contam só o que caiu, e
-                            o ↻ avisa que o número cresce a cada parcela baixada. */}
-                        {!isKidsWorkspace && (() => {
-                          const acumula = recebeParcelado(c);
-                          const trazido = trazidoOf(c);
-                          const contrato = fechadoOf(c);
-                          const lead = leadById.get(c.leadId);
-                          const rec = isRecurringClose(lead);
-                          const ups = upsellOf(c);
-                          const upsTxt = ups.n ? ` · ${ups.n} upsell${ups.n > 1 ? "s" : ""}: ${money(ups.paid)} pago${ups.total > ups.paid ? ` de ${money(ups.total)}` : ""}` : "";
-                          const dica = (acumula
-                            ? `${money(trazido)} recebido de ${money(contrato + ups.total)} ${rec ? "acumulados na assinatura" : "contratados"} · soma das parcelas baixadas, dos upsells pagos e dos pagamentos do Mercado Pago, cresce a cada cobrança que entra`
-                            : rec ? `assinatura de ${money(Number(lead?.amount) || 0)}/mês · acumulado desde o fechamento (+1 mensalidade a cada 30 dias)`
-                            : "pagamento à vista: o contrato inteiro entrou no fechamento") + upsTxt;
-                          return (
-                            <td className="tnum" title={dica}
-                              style={{ padding: "13px 14px", fontSize: 13, textAlign: "right", color: acumula && trazido <= 0 ? "var(--fg-4)" : "var(--fg-2)", borderBottom: "1px solid var(--line-faint)", whiteSpace: "nowrap" }}>
-                              {trazido > 0 ? money(trazido) : <span style={{ color: "var(--fg-4)" }}>{acumula ? "R$ 0" : "—"}</span>}
-                              {(acumula || rec) && <span style={{ fontSize: 11, color: "var(--fg-4)" }}> ↻</span>}
-                            </td>
-                          );
-                        })()}
-                        {/* Entrada (startedAt = "Cliente desde") com o tempo de casa embaixo —
-                            uma coluna só, pra tabela caber sem rolagem lateral (Leo, 30/08). */}
-                        <td className="tnum" style={{ padding: "13px 14px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)", whiteSpace: "nowrap" }}>
-                          {entradaLabel(c) || <span style={{ color: "var(--fg-4)" }}>—</span>}
-                          <div style={{ fontSize: 11, color: "var(--fg-4)" }}>{tenureLabel(c) || "defina o início"}</div>
-                        </td>
-                        <td className="tnum" style={{ padding: "13px 14px", fontSize: 13, color: "var(--fg-3)", borderBottom: "1px solid var(--line-faint)" }}>{lastContact(c)}</td>
-                        {/* Próxima consulta (mentoria) × próximo marco da régua */}
-                        <td style={{ padding: "13px 14px", borderBottom: "1px solid var(--line-faint)" }}>
-                          {kids
-                            ? j.next
-                              ? <Pill tone="warn">consulta {j.next.n || "?"} · {fmtNextAt(j.next.at)}</Pill>
-                              : j.done >= j.total && j.items.length > 0
-                                ? <Pill tone="pos">jornada completa</Pill>
-                                : <Pill tone="mut">a marcar</Pill>
-                            : nm
-                              ? <Pill tone={nm.status === "late" ? "neg" : nm.status === "soon" ? "warn" : "mut"}>{nm.label} · {dueLabel(nm.dueAt)}</Pill>
-                              : c.startedAt ? <Pill tone="pos">régua completa</Pill> : <Pill tone="mut">sem início</Pill>}
-                        </td>
-                        {/* Progresso do pacote (mentoria) × status da assinatura, com o fim do
-                            ciclo atual (o antigo "Vencimento") como subtítulo — a mesma data do
-                            "Ciclo atual até" da aba Assinaturas; vencido e ainda ativa/em atraso
-                            = fatura da renovação não caiu → vermelho. */}
-                        <td style={{ padding: "13px 14px", borderBottom: "1px solid var(--line-faint)", whiteSpace: "nowrap" }}>
-                          {isChurned(c)
-                            ? <span title={[c.churnReason ? churnReasonLabel(c.churnReason) : "", c.churnNote || ""].filter(Boolean).join(" · ") || "cliente saiu (churn)"}>
-                                <Pill tone="neg">churn{c.endedAt ? ` ${fmtDay(parseDay(c.endedAt))}` : ""}</Pill>
-                              </span>
-                            : kids
-                              ? <Pill tone={j.done >= j.total && j.items.length > 0 ? "pos" : j.done > 0 ? "warn" : "mut"}>{j.done} de {j.total}</Pill>
-                              : st ? <Pill tone={st.tone}>{st.label}</Pill> : <Pill tone="mut">sem assinatura</Pill>}
-                          {!kids && !isChurned(c) && (() => {
-                            const d = vencDate(c);
-                            if (!d) return null;
-                            const past = d.getTime() < Date.now();
-                            return (
-                              <div className="tnum" title="fim do ciclo atual da assinatura"
-                                style={{ fontSize: 11, marginTop: 3, color: past ? "var(--neg)" : "var(--fg-4)" }}>
-                                {past ? "venceu " : "renova "}{fmtDay(d)}
-                              </div>
-                            );
-                          })()}
-                        </td>
-                        {/* Usuário linkado no LeverAds (via customer.leveradsOrgId, o de-para
-                            do sync de acesso). Sem match na lista de orgs (ou lista não
-                            carregada), mostra o id cru. Só no workspace LeverAds. */}
-                        {isLeverads && (() => {
-                          if (!c.leveradsOrgId) return <td style={{ padding: "13px 14px", fontSize: 13, color: "var(--fg-4)", borderBottom: "1px solid var(--line-faint)" }}>—</td>;
-                          const o = leverOrgOf(c);
-                          return (
-                            <td title={`org ${c.leveradsOrgId}`} style={{ padding: "13px 14px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
-                              {o ? (
-                                <div style={{ minWidth: 0, maxWidth: 220 }}>
-                                  <div style={{ fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.email || o.name || c.leveradsOrgId}</div>
-                                  {o.email && o.name && <div style={{ fontSize: 11.5, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.name}</div>}
-                                </div>
-                              ) : (
-                                <span className="mono" title="org sem match na lista (ou credencial LEVERADS_* ausente na API)" style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{c.leveradsOrgId}</span>
-                              )}
-                            </td>
-                          );
-                        })()}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                )}
               </div>
-              <div style={{ padding: "12px 20px", borderTop: "1px solid var(--line-1)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>mostrando {shownCustomers.length} de {filteredCustomers.length}</span>
+              <div className="tbl-x">
+                <div style={{ minWidth: 0 }}>
+                  {(() => {
+                    const GRID = TABLE_GRID;
+                    const HEADS = isKidsWorkspace
+                      ? [["Cliente", "cliente"], ["Pacote", "plano"], ["Valor", "mrr"], ["Dinheiro", "recebido"], ["Próxima consulta", null], ["Jornada", null]]
+                      : [["Cliente", "cliente"], ["Plano", "plano"], ["MRR", "mrr"], ["Dinheiro", "recebido"], ["Próxima cobrança", null], ["Situação", "venc"]];
+                    const th = (h, k, i) => (
+                      <span key={h} className="kicker" title={k ? "ordenar" : undefined}
+                        onClick={k ? () => setSort((so) => (so?.key === k ? { key: k, dir: -so.dir } : { key: k, dir: 1 })) : undefined}
+                        style={{ fontWeight: 600, color: sort?.key === k ? "var(--fg-2)" : "var(--fg-4)", cursor: k ? "pointer" : "default", userSelect: "none", textAlign: i === 2 ? "right" : "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {h}{sort?.key === k ? (sort.dir === 1 ? " ↑" : " ↓") : ""}
+                      </span>
+                    );
+                    return (
+                      <>
+                        <div style={{ display: "grid", gridTemplateColumns: GRID, gap: TABLE_GRID_GAP, padding: "10px 16px", borderBottom: "1px solid var(--line-1)" }}>
+                          {HEADS.map(([h, k], i) => th(h, k, i))}
+                        </div>
+                        {shownCustomers.map((c) => {
+                          const sub = mainSub(c);
+                          const st = sub ? SUB_STATUS[sub.status] || { label: sub.status, tone: "mut" } : null;
+                          const kids = isMentoria(c);
+                          const nm = kids ? null : nextMilestone(withCycle(c), product);
+                          const j = kids ? journeyOf(c) : null;
+                          const t = gradeOf(c);
+                          const contato = String(c.contact || leadById.get(c.leadId)?.name || "").trim();
+                          const mesmoNome = contato && contato.toLowerCase() === String(c.name || "").trim().toLowerCase();
+                          const ps = payStatus(c);
+                          const prox = proxCobrancaDe(c);
+                          const trazido = trazidoOf(c);
+                          const contrato = fechadoOf(c) + upsellOf(c).total;
+                          const pago = contrato > 0 ? Math.min(100, (trazido / contrato) * 100) : 0;
+                          const acumula = recebeParcelado(c);
+                          const rec = isRecurringClose(leadById.get(c.leadId));
+                          const mp = mpByCustomer.get(c.id);
+                          // O title carrega o que saiu da tela: a régua do status
+                          // e a prova do MP (o detalhe vive na ficha agora).
+                          const mpQuando = mp ? parseDay(mp.last.dateApproved || mp.last.dateCreated) : null;
+                          const dinheiroTitle = [
+                            ps.hint,
+                            mp ? `Mercado Pago: ${mp.n} ${mp.n === 1 ? "pagamento" : "pagamentos"} · último ${money(mp.last.amount)}${mpMethodLabel(mp.last) ? ` em ${mpMethodLabel(mp.last)}` : ""}${mpQuando ? `, ${fmtDay(mpQuando)}` : ""}` : "sem pagamento do Mercado Pago vinculado",
+                            lastContact(c) ? `Último contato: ${lastContact(c)}` : "",
+                          ].filter(Boolean).join(" · ");
+                          const cell = { minWidth: 0, fontSize: 13, color: "var(--fg-2)" };
+                          return (
+                            <div key={c.id} onClick={() => setSel(c.id)}
+                              style={{ display: "grid", gridTemplateColumns: GRID, gap: TABLE_GRID_GAP, padding: "12px 16px", alignItems: "center", borderBottom: "1px solid var(--line-1)", cursor: "pointer", opacity: isChurned(c) ? 0.55 : 1 }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                              {/* Cliente: conta grande, nível, nome e a sub-linha com contato e casa */}
+                              <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                                {isKeyAccount(c) && <span title="conta grande · fora das médias" style={{ color: "var(--accent)", flexShrink: 0 }}>★</span>}
+                                {!isKidsWorkspace && (t.grade
+                                  ? <span title={t.label} style={{ width: 20, height: 20, borderRadius: 5, background: t.tone, color: t.badgeFg, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1, flexShrink: 0 }}>{t.grade}</span>
+                                  : <span title="sem nível (lead não respondeu contas/anúncios)" style={{ width: 20, height: 20, borderRadius: 5, border: "1px solid var(--line-2)", color: "var(--fg-4)", fontSize: 11, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>—</span>)}
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ fontSize: 13.5, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
+                                  <div style={{ fontSize: 11.5, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                                    title={[contato, entradaLabel(c) ? `cliente desde ${entradaLabel(c)}` : "", lastContact(c) ? `último contato ${lastContact(c)}` : ""].filter(Boolean).join(" · ")}>
+                                    {[mesmoNome ? "" : contato, tenureLabel(c) || (entradaLabel(c) ? "" : "sem início")].filter(Boolean).join(" · ") || "—"}
+                                  </div>
+                                </div>
+                              </div>
+                              {/* Plano / pacote */}
+                              <div style={{ ...cell, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                                title={kids ? consultPackageLabel(j.total) : contractPlan(c) || "sem plano"}>
+                                {kids ? consultPackageLabel(j.total) : contractPlan(c) || <span style={{ color: "var(--fg-4)" }}>sem plano</span>}
+                              </div>
+                              {/* MRR (mentoria mostra o contrato) */}
+                              <div className="tnum" style={{ ...cell, textAlign: "right" }}>
+                                {money(kids ? (c.arr || 0) : (c.arr || 0) / 12)}
+                              </div>
+                              {/* Dinheiro: quanto entrou de quanto, a barra e o status (com o select de marcação manual por cima do rótulo) */}
+                              <div style={{ minWidth: 0 }} title={dinheiroTitle}>
+                                <div className="tnum" style={{ fontSize: 13, whiteSpace: "nowrap" }}>
+                                  <b style={{ color: trazido > 0 ? "var(--fg-1)" : "var(--fg-4)" }}>{money(trazido)}</b>
+                                  <span style={{ color: "var(--fg-4)" }}> de {money(contrato)}</span>
+                                  {(acumula || rec) && <span title="cresce a cada parcela/mensalidade que entra" style={{ fontSize: 11, color: "var(--fg-4)" }}> ↻</span>}
+                                </div>
+                                <div style={{ height: 5, borderRadius: 999, background: "var(--bg-3)", overflow: "hidden", margin: "4px 0 3px" }}>
+                                  <div style={{ width: `${pago}%`, height: "100%", borderRadius: 999, background: ps.key === "paid" ? "var(--pos)" : ps.key === "partial" ? "var(--warn)" : "var(--neg)" }} />
+                                </div>
+                                <span onClick={(e) => e.stopPropagation()} style={{ position: "relative", display: "inline-flex", fontSize: 11, color: ps.key === "paid" ? "var(--pos)" : ps.key === "partial" ? "var(--warn)" : "var(--neg)", fontWeight: 600 }}>
+                                  {ps.label.toLowerCase()}
+                                  <select value={ps.manual ? ps.key : ""}
+                                    onChange={(e) => patchCustomer(c, { paymentStatus: e.target.value })}
+                                    style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}>
+                                    <option value="">automático · {PAY_STATUS[ps.auto].label}</option>
+                                    <option value="paid">Pago</option>
+                                    <option value="partial">Parcial</option>
+                                    <option value="unpaid">Não pago</option>
+                                  </select>
+                                </span>
+                              </div>
+                              {/* Próxima cobrança (SaaS) × próxima consulta (mentoria) */}
+                              <div style={{ minWidth: 0 }}>
+                                {kids
+                                  ? (j.next
+                                      ? <div className="tnum" style={{ fontSize: 12.5, color: "var(--warn)", whiteSpace: "nowrap" }}>consulta {j.next.n || "?"}<div style={{ fontSize: 11, color: "var(--fg-4)" }}>{fmtNextAt(j.next.at)}</div></div>
+                                      : <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>a marcar</span>)
+                                  : (prox
+                                      ? <div title={`${prox.oque} · ${prox.late ? "venceu" : "vence"} ${fmtDay(prox.due)}`} style={{ minWidth: 0 }}>
+                                          <div className="tnum" style={{ fontSize: 12.5, fontWeight: 600, color: prox.late ? "var(--neg)" : "var(--warn)", whiteSpace: "nowrap" }}>
+                                            {prox.late ? "venceu " : "próx. "}{fmtDay(prox.due)}
+                                          </div>
+                                          <div style={{ fontSize: 11, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{prox.oque}</div>
+                                        </div>
+                                      : <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>—</span>)}
+                              </div>
+                              {/* Situação: assinatura (ou churn) + o próximo marco embaixo */}
+                              <div style={{ minWidth: 0 }}>
+                                {isChurned(c)
+                                  ? <span title={[c.churnReason ? churnReasonLabel(c.churnReason) : "", c.churnNote || ""].filter(Boolean).join(" · ") || "cliente saiu (churn)"}>
+                                      <Pill tone="neg">churn{c.endedAt ? ` ${fmtDay(parseDay(c.endedAt))}` : ""}</Pill>
+                                    </span>
+                                  : kids
+                                    ? <Pill tone={j.done >= j.total && j.items.length > 0 ? "pos" : j.done > 0 ? "warn" : "mut"}>{j.done} de {j.total}</Pill>
+                                    : st ? <Pill tone={st.tone}>{st.label}</Pill> : <Pill tone="mut">sem assinatura</Pill>}
+                                {!kids && !isChurned(c) && nm && (
+                                  <div style={{ fontSize: 11, color: "var(--fg-4)", marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                                    title={`próximo marco: ${nm.label} · ${nm.status === "late" ? "venceu" : "vence"} ${dueLabel(nm.dueAt)}`}>
+                                    {nm.label} · {dueLabel(nm.dueAt)}
+                                  </div>
+                                )}
+                                {!kids && !isChurned(c) && !nm && c.startedAt && (
+                                  <div style={{ fontSize: 11, color: "var(--fg-4)", marginTop: 3 }}>régua completa</div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+              <div style={{ padding: "12px 16px", borderTop: "1px solid var(--line-1)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>
+                  mostrando {shownCustomers.length} de {filteredCustomers.length}{q.trim() ? ` · busca "${q.trim()}"` : ""}
+                </span>
                 {filteredCustomers.length > 50 && <button onClick={() => setShowAll((v) => !v)} style={{ fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>{showAll ? "Mostrar 50" : "Ver todos"}</button>}
               </div>
             </Card>
+            </div>
+
+            {/* ── Trilho direito: cobrar agora → fila → contas grandes ──────── */}
+            <div style={{ display: "grid", gap: 14, minWidth: 0 }}>
+              {/* O `vencido` vivia escondido numa linha de 12px dentro do card
+                  da fila; é o número que decide o dia de quem cobra. */}
+              {vencido.n > 0 && (
+                <div style={{ border: "1px solid var(--neg)", background: "var(--neg-soft)", borderRadius: "var(--r-4)", padding: "16px 18px" }}
+                  title="Faturas em aberto com vencimento no passado (parcelas do faturado, mensalidades da assinatura recorrente e cobranças avulsas).">
+                  <div className="kicker" style={{ color: "var(--neg)" }}>Cobrar agora</div>
+                  <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 30, fontWeight: 700, color: "var(--neg)", lineHeight: 1.1, marginTop: 6 }}>{money(vencido.total)}</div>
+                  <div style={{ fontSize: 12, color: "var(--fg-2)", marginTop: 4 }}>
+                    {`${vencido.n} ${vencido.n === 1 ? "cobrança vencida" : "cobranças vencidas"}`}
+                    {(() => {
+                      // "vence em 7 dias" sai do nextActions, que já classifica
+                      // status soon — sem régua nova nem mexer no `vencido`.
+                      const soon = nextActions.filter((a) => a.status === "soon").length;
+                      return soon ? ` · ${soon} ${soon === 1 ? "vence" : "vencem"} em 7 dias` : "";
+                    })()}
+                  </div>
+                </div>
+              )}
+
+              <Card title="Fila de cobrança" hint="faturado e assinatura recorrente · vencidos primeiro">
+                <div style={{ padding: "8px 0 6px" }}>
+                  {nextActions.length === 0 && (
+                    <div style={{ padding: "8px 18px 14px", fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
+                      Nenhuma cobrança na fila: ninguém com fatura em aberto nem com ciclo pra virar.
+                    </div>
+                  )}
+                  {(showAllActions ? nextActions : nextActions.slice(0, ACOES_FECHADAS)).map((a, i, shown) => {
+                    const c = a.customer;
+                    const tone = a.status === "late" ? "neg" : a.status === "soon" ? "warn" : "mut";
+                    const wa = waLink(c.phone || leadById.get(c.leadId)?.phone);
+                    const inv = a.invoice || null;
+                    const baixando = inv && payingId === inv.id;
+                    // Três níveis empilhados: em 332px de trilho, botão no `auto`
+                    // ao lado do nome colapsa o nome pra uma letra.
+                    return (
+                      <div key={inv ? `cob_${inv.id}` : `sub_${c.id}`} onClick={() => setSel(c.id)}
+                        style={{ padding: "11px 18px", cursor: "pointer", borderBottom: i === shown.length - 1 ? "none" : "1px solid var(--line-1)" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ width: 8, height: 8, borderRadius: 999, flexShrink: 0, background: a.status === "late" ? "var(--neg)" : a.status === "soon" ? "var(--warn)" : "var(--fg-4)" }} />
+                          <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</span>
+                          <Pill tone={tone}>{a.status === "late" ? "venceu " : "vence "}{dueLabel(a.dueAt)}</Pill>
+                        </div>
+                        <div style={{ fontSize: 12, color: "var(--fg-3)", marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {inv ? `Cobrar ${money(inv.amount)} · ${cobrancaDesc(inv, c)}` : `${money(a.sub.price)} · ${proximaDesc(c)}`}
+                        </div>
+                        {(wa || inv) && (
+                          <div style={{ display: "flex", gap: 6, marginTop: 7, justifyContent: "flex-end" }}>
+                            {wa && <a href={wa} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} title="abrir a conversa pra cobrar" style={ACAO_BTN}>WhatsApp</a>}
+                            {inv && (
+                              <button onClick={(e) => { e.stopPropagation(); payFromQueue(inv); }} disabled={baixando}
+                                title="marcar como recebida (a mesma baixa da ficha do cliente)" style={ACAO_BTN}>
+                                {baixando ? "…" : "dar baixa"}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {nextActions.length > ACOES_FECHADAS && (
+                    <div style={{ padding: "10px 18px 4px", borderTop: "1px solid var(--line-1)" }}>
+                      <button onClick={() => setShowAllActions((v) => !v)} style={{ fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>
+                        {showAllActions ? "ver menos" : `ver mais (${nextActions.length - ACOES_FECHADAS})`}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </Card>
+
+              {/* Contas grandes: duas linhas por conta em vez do card de 288px
+                  (que não cabe no trilho). Clique segue abrindo a ficha. */}
+              {keyAccounts.length > 0 && (
+                <Card title="Contas grandes" hint="fora das médias · o dinheiro segue contando">
+                  <div style={{ padding: "6px 0 10px" }}>
+                    {keyAccounts.map((c, i) => {
+                      const contrato = fechadoOf(c);
+                      const trazido = trazidoOf(c);
+                      const pctRec = contrato > 0 ? Math.round((trazido / contrato) * 100) : 0;
+                      return (
+                        <div key={c.id} onClick={() => setSel(c.id)}
+                          style={{ padding: "10px 18px", cursor: "pointer", borderBottom: i === keyAccounts.length - 1 ? "none" : "1px solid var(--line-1)" }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                            <span style={{ color: "var(--accent)", flexShrink: 0 }}>★</span>
+                            <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</span>
+                            <span className="tnum" style={{ fontSize: 13.5, fontWeight: 700 }}>{money(contrato)}</span>
+                          </div>
+                          <div style={{ display: "flex", gap: 8, justifyContent: "space-between", fontSize: 11.5, color: "var(--fg-4)", marginTop: 2 }}>
+                            <span>{tenureLabel(c) || "sem início"}</span>
+                            <span className="tnum" style={{ color: pctRec >= 98 ? "var(--pos)" : pctRec > 0 ? "var(--warn)" : "var(--neg)" }}>{pctRec}% recebido</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </Card>
+              )}
             </div>
           </div>
         )}
