@@ -612,6 +612,32 @@ try {
     failed++;
   }
 
+  // ── Pipeline: a Lista tem que CABER e ATRASADOS vem primeiro (12/09) ────
+  try {
+    const P = await server.ssrLoadModule("/src/screens/pipeline.jsx");
+    const cols = P.LIST_GRID.trim().split(/\s+(?![^(]*\))/);
+    if (cols.length !== 6) throw new Error(`esperava 6 colunas, achei ${cols.length}`);
+    const floorOf = (c) => {
+      const mm = c.match(/^minmax\((\d+)px/) || c.match(/^(\d+)px$/);
+      if (!mm) throw new Error(`coluna sem piso em px: ${c}`);
+      return Number(mm[1]);
+    };
+    const soma = cols.reduce((a, c) => a + floorOf(c), 0) + P.LIST_GRID_GAP * (cols.length - 1);
+    if (soma > P.LIST_GRID_BUDGET) throw new Error(`a lista volta a rolar: ${soma}px de ${P.LIST_GRID_BUDGET}`);
+
+    // A ordem das seções é o coração do bloco 3: o vencido vem ANTES da agenda.
+    const ordem = P.LIST_SECTIONS.map(([k]) => k);
+    if (ordem[0] !== "late") throw new Error(`Atrasados deveria ser a 1ª seção, é ${ordem.indexOf("late") + 1}ª`);
+    if (ordem.indexOf("today") !== 1) throw new Error("Hoje deveria vir logo depois de Atrasados");
+    if (ordem[ordem.length - 1] !== "closed") throw new Error("Finalizados deveria ser a última");
+    const tela = renderToString(wrap(React.createElement(P.PipelineScreen, { onNav() {}, onOpenLead() {} })));
+    if (!tela.includes("Pipeline")) throw new Error("a tela não montou");
+    console.log(`✓ pipeline-lista (${soma}px de ${P.LIST_GRID_BUDGET})`);
+  } catch (err) {
+    console.error(`✗ pipeline-lista: ${err.message}`);
+    failed++;
+  }
+
   // ── Treinamentos (redesign de 12/09) ────────────────────────────────────
   // A tela tem cinco sub-telas e todos os dados chegam por efeito, que não roda
   // no SSR: por isso os blocos vão renderizados à parte, com payload na mão. O

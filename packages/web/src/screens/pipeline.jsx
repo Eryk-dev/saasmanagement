@@ -1,7 +1,7 @@
 import React from "react";
 import { Avatar, EmptyState, PrimaryButton } from "../atoms.jsx";
 import { Card, FilterTab, Segmented, StatTile } from "../components/viz.jsx";
-import { leadScoreTone, leadAge, leadTier } from "../lib/ui.js";
+import { leadAge, leadTier } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import {
@@ -321,7 +321,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
           showWon={phase !== "sdr"}
         />
       )}
-      {view === "list" && <LeadList leads={saasLeads} />}
+      {view === "list" && <LeadList leads={saasLeads} onOpenLead={onOpenLead} />}
 
       {pendingMove && (
         <MoveLeadModal
@@ -1145,86 +1145,197 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
 }
 
 // ─────────────────────────────────────────────── List view
-function LeadList({ leads }) {
-  // Agrupada pelo próximo passo do GPS: Hoje → Amanhã → Próximos dias → Sem
-  // próximo passo → Atrasados (recuperação vai pro fim, não é agenda) →
-  // Finalizados (terminais/fora da régua). Dentro do dia, ordena pelo horário.
+// ── A LISTA: a melhor ferramenta diária da tela ─────────────────────────────
+// Agrupada pelo próximo passo do GPS. O que mudou em 12/09:
+//  · ATRASADOS vira a PRIMEIRA seção. Era a 5ª, depois de Hoje, Amanhã,
+//    Próximos dias e Sem próximo passo — o que está vencido era a última coisa
+//    que se via numa tela de trabalho;
+//  · o horário saiu de sufixo mono de 10,5px dentro do nome e virou coluna
+//    própria ("Próximo passo": o que é, quando e a tentativa);
+//  · Idade e Score deixam de ser coluna (viram sub-linha e title) e entram
+//    Nível e a ação de quem está sem próximo passo;
+//  · busca e linha clicável (a lista não abria o card).
+//
+// Pisos somados com os gaps dão ~710px: é o que caber em 1024px de janela
+// exige (748 de conteúdo − 32 do padding). O smoke trava a conta.
+export const LIST_GRID = "minmax(150px,1.6fr) 100px minmax(140px,1fr) 86px 104px 80px";
+export const LIST_GRID_GAP = 10;
+export const LIST_GRID_BUDGET = 716;
+// A ordem das seções. Atrasados era a 5ª, depois de Hoje, Amanhã, Próximos dias
+// e Sem próximo passo: o vencido era a última coisa que se via numa tela de
+// trabalho diário. O smoke garante que ele continua primeiro.
+export const LIST_SECTIONS = [
+  ["late", "Atrasados"],
+  ["today", "Hoje"],
+  ["tomorrow", "Amanhã"],
+  ["upcoming", "Próximos dias"],
+  ["none", "Sem próximo passo"],
+  ["closed", "Finalizados"],
+];
+
+function LeadList({ leads, onOpenLead }) {
+  const [q, setQ] = useStP("");
+  const [showAll, setShowAll] = useStP(false); // "Próximos dias" e "Finalizados" nascem recolhidas
   const saasCfg = (window.SEED?.SAAS || []).find((x) => x.id === leads[0]?.saas);
   const workable = new Set(workableStages(saasCfg));
+  const fold = (v) => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const needle = fold(q).trim();
+  const base = needle
+    ? leads.filter((l) => [l.name, l.company, l.phone, l.email].some((v) => fold(v).includes(needle)))
+    : leads;
   const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
   const endToday = new Date(); endToday.setHours(23, 59, 59, 999);
   const endTomorrow = new Date(endToday); endTomorrow.setDate(endTomorrow.getDate() + 1);
   const g = { today: [], tomorrow: [], upcoming: [], none: [], late: [], closed: [] };
-  for (const l of leads) {
-    if (l.stage && !workable.has(l.stage)) { g.closed.push({ l, at: 0 }); continue; }
+  for (const l of base) {
+    if (l.stage && !workable.has(l.stage)) { g.closed.push({ l, at: 0, t: null }); continue; }
     const t = nextTouch(l, { kind: stageKind(saasCfg, l.stage) });
-    if (!t) { g.none.push({ l, at: 0 }); continue; }
-    if (t.at < startToday.getTime()) g.late.push({ l, at: t.at });
-    else if (t.at <= endToday.getTime()) g.today.push({ l, at: t.at });
-    else if (t.at <= endTomorrow.getTime()) g.tomorrow.push({ l, at: t.at });
-    else g.upcoming.push({ l, at: t.at });
+    if (!t) { g.none.push({ l, at: 0, t: null }); continue; }
+    if (t.at < startToday.getTime()) g.late.push({ l, at: t.at, t });
+    else if (t.at <= endToday.getTime()) g.today.push({ l, at: t.at, t });
+    else if (t.at <= endTomorrow.getTime()) g.tomorrow.push({ l, at: t.at, t });
+    else g.upcoming.push({ l, at: t.at, t });
   }
-  for (const k of ["today", "tomorrow", "upcoming", "late"]) g[k].sort((a, b) => a.at - b.at);
+  for (const k of ["today", "tomorrow", "upcoming"]) g[k].sort((a, b) => a.at - b.at);
+  g.late.sort((a, b) => a.at - b.at); // o mais vencido primeiro
   const byScore = (a, b) => (Number(b.l.score) || 0) - (Number(a.l.score) || 0);
   g.none.sort(byScore);
   g.closed.sort(byScore);
-  const sections = [
-    ["Hoje", g.today], ["Amanhã", g.tomorrow], ["Próximos dias", g.upcoming],
-    ["Sem próximo passo", g.none], ["Atrasados", g.late], ["Finalizados", g.closed],
-  ].filter(([, rows]) => rows.length > 0);
-  const cols = "1.6fr 1fr 0.6fr 0.6fr 0.6fr 0.6fr 0.8fr";
+
+  const money = window.fmt.money;
+  const soma = (rows) => rows.reduce((a, r) => a + (Number(r.l.amount) || 0), 0);
+  const calls = (rows) => rows.filter((r) => r.t?.type === "meeting").length;
+  // Cada cabeçalho carrega um FATO, não só a contagem: é o que diz se a seção
+  // merece a próxima hora.
+  const fatoDe = (key, rows) => {
+    if (key === "late") return `${money(soma(rows))} esperando toque`;
+    if (key === "today" || key === "tomorrow") {
+      const c = calls(rows), f = rows.length - c;
+      return [c ? `${c} ${c === 1 ? "call" : "calls"}` : "", f ? `${f} follow-up${f === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ");
+    }
+    if (key === "none") return "ninguém marcou o que fazer";
+    if (key === "upcoming") return rows.length ? `até ${new Date(rows[rows.length - 1].at).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "")}` : "";
+    return `${money(soma(rows))} no total`;
+  };
+  const TONE = { late: "var(--neg)", today: "var(--accent)", tomorrow: "var(--warn)", upcoming: "var(--fg-4)", none: "var(--warn)", closed: "var(--fg-4)" };
+  // ATRASADOS primeiro (LIST_SECTIONS): é uma linha de ordem que decide o que o
+  // time vê ao abrir a tela, então mora numa constante testada.
+  const ordem = LIST_SECTIONS.map(([key, label]) => [key, label, g[key]]);
+  const dobradas = new Set(showAll ? [] : ["upcoming", "closed"]);
+  const sections = ordem.filter(([, , rows]) => rows.length > 0);
 
   return (
-    <div style={{ flex: 1, minWidth: 0 }}>
-      <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
-        <div className="kicker" style={{
-          display: "grid", gridTemplateColumns: cols,
-          padding: "8px 12px",
-          background: "var(--bg-inset)",
-          borderBottom: "1px solid var(--line-1)",
-        }}>
-          <span>Lead</span><span>Estágio</span><span style={{ textAlign: "right" }}>Valor</span>
-          <span>Dono</span><span>Idade</span><span>Score</span><span>Origem</span>
+    <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 12 }}>
+      <Card>
+        <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar por nome, empresa ou telefone…"
+            style={{ flex: 1, minWidth: 200, height: 30, padding: "0 10px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 }} />
+          <span style={{ fontSize: 12, color: "var(--fg-4)" }}>
+            {`${base.length} ${base.length === 1 ? "lead" : "leads"}${needle ? ` de ${leads.length}` : ""}`}
+          </span>
         </div>
-        {sections.map(([label, rows]) => (
-          <React.Fragment key={label}>
-            <div className="kicker" style={{
-              padding: "7px 12px", fontWeight: 600,
-              color: label === "Atrasados" ? "var(--neg)" : label === "Hoje" ? "var(--accent)" : "var(--fg-3)",
-              background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)",
-            }}>
-              {label} · {rows.length}
-            </div>
-            {rows.map(({ l, at }) => (
-              <div key={l.id} style={{
-                display: "grid", gridTemplateColumns: cols,
-                padding: "8px 12px",
-                borderBottom: "1px solid var(--line-1)",
-                alignItems: "center",
-                fontSize: 13,
-                opacity: label === "Finalizados" ? 0.65 : 1,
-              }}>
-                <span style={{ fontWeight: 500 }}>
-                  {l.name} {l.company && <span className="dim" style={{ fontSize: 11, marginLeft: 4 }}>{l.company}</span>}
-                  {at > 0 && (
-                    <span className="mono dim" style={{ fontSize: 10.5, marginLeft: 6 }}>
-                      {new Date(at).toLocaleString("pt-BR", label === "Hoje" || label === "Amanhã"
-                        ? { hour: "2-digit", minute: "2-digit" }
-                        : { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
-                    </span>
+      </Card>
+
+      <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+        <div>
+          <div className="kicker" style={{ display: "grid", gridTemplateColumns: LIST_GRID, gap: LIST_GRID_GAP, padding: "8px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
+            <span>Lead</span><span>Etapa</span><span>Próximo passo</span>
+            <span style={{ textAlign: "right" }}>Valor</span><span>Dono</span><span>Origem</span>
+          </div>
+          {sections.map(([key, label, rows]) => {
+            const fechada = dobradas.has(key);
+            return (
+              <React.Fragment key={key}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
+                  <span style={{ width: 6, height: 6, borderRadius: 999, background: TONE[key], flexShrink: 0 }} />
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: key === "late" ? "var(--neg)" : "var(--fg-1)" }}>{label}</span>
+                  <span className="tnum" style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{rows.length}</span>
+                  <span style={{ fontSize: 11.5, color: "var(--fg-4)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {fatoDe(key, rows) ? `— ${fatoDe(key, rows)}` : ""}
+                  </span>
+                  {fechada && (
+                    <button onClick={() => setShowAll(true)} className="mono"
+                      style={{ marginLeft: "auto", background: "none", border: 0, padding: 0, fontSize: 11.5, color: "var(--accent)", fontWeight: 600, cursor: "pointer", flexShrink: 0 }}>
+                      mostrar tudo
+                    </button>
                   )}
-                </span>
-                <span className="mono dim" style={{ fontSize: 12 }}>{l.stage}</span>
-                <span className="mono tnum" style={{ textAlign: "right" }}>{window.fmt.money(l.amount || 0)}</span>
-                <span className="mono dim" style={{ fontSize: 12 }}>{displayName(l.owner)}</span>
-                <span className="mono dim tnum" style={{ fontSize: 12 }}>{leadAge(l)}</span>
-                <span className="mono tnum" style={{ fontSize: 12, color: leadScoreTone(l.score) }}>{l.score ?? ""}</span>
-                <span className="mono dim" style={{ fontSize: 11 }}>{l.source}</span>
-              </div>
-            ))}
-          </React.Fragment>
-        ))}
+                </div>
+                {!fechada && rows.map(({ l, at, t }) => {
+                  const tier = leadTier(l);
+                  const tent = Number(l.stageAttempts) || 0;
+                  const quando = at > 0
+                    ? new Date(at).toLocaleString("pt-BR", key === "today" || key === "tomorrow"
+                        ? { hour: "2-digit", minute: "2-digit" }
+                        : { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).replace(".", "")
+                    : "";
+                  const oque = t?.type === "meeting" ? (t.note || "call") : (l.nextActionNote || "toque");
+                  return (
+                    <div key={l.id} onClick={() => onOpenLead && onOpenLead(l)}
+                      style={{ display: "grid", gridTemplateColumns: LIST_GRID, gap: LIST_GRID_GAP, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", fontSize: 13, cursor: onOpenLead ? "pointer" : "default", opacity: key === "closed" ? 0.65 : 1 }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                        {tier.grade
+                          ? <span title={tier.label} style={{ width: 20, height: 20, borderRadius: 5, background: tier.tone, color: tier.badgeFg, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{tier.grade}</span>
+                          : <span title="sem nível" style={{ width: 20, height: 20, borderRadius: 5, border: "1px solid var(--line-2)", color: "var(--fg-4)", fontSize: 11, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>—</span>}
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</div>
+                          <div style={{ fontSize: 11, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                            title={[l.company, `${leadAge(l)} no funil`, l.score != null && l.score !== "" ? `score ${l.score}` : ""].filter(Boolean).join(" · ")}>
+                            {[l.company, leadAge(l) ? `${leadAge(l)} no funil` : ""].filter(Boolean).join(" · ") || "—"}
+                          </div>
+                        </div>
+                      </div>
+                      <span className="mono dim" style={{ fontSize: 11.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={l.stage}>{l.stage}</span>
+                      {/* O que fazer ganhou coluna: era sufixo mono dentro do nome. */}
+                      <div style={{ minWidth: 0 }}>
+                        {key === "none" ? (
+                          <button onClick={(e) => { e.stopPropagation(); onOpenLead && onOpenLead(l); }}
+                            title="abrir o card pra marcar o próximo toque"
+                            style={{ height: 24, padding: "0 10px", borderRadius: 999, border: "1px solid var(--warn)", background: "var(--warn-soft)", color: "var(--warn)", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+                            marcar o próximo
+                          </button>
+                        ) : (
+                          <>
+                            <div style={{ fontSize: 12.5, color: key === "late" ? "var(--neg)" : "var(--fg-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={oque}>
+                              {oque}
+                            </div>
+                            <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", whiteSpace: "nowrap" }}>
+                              {[quando, tent ? `tentativa ${tent}/5` : ""].filter(Boolean).join(" · ")}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      <span className="mono tnum" style={{ textAlign: "right", fontSize: 12.5 }}>{l.amount ? money(l.amount) : "—"}</span>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, minWidth: 0 }}>
+                        {l.owner && <Avatar id={l.owner} name={displayName(l.owner)} size={20} />}
+                        <span style={{ fontSize: 12, color: "var(--fg-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.owner ? displayName(l.owner) : "—"}</span>
+                      </span>
+                      <span className="mono dim" style={{ fontSize: 11, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={l.source}>{l.source || "—"}</span>
+                    </div>
+                  );
+                })}
+              </React.Fragment>
+            );
+          })}
+          {!sections.length && (
+            <div style={{ padding: "20px 14px", fontSize: 12.5, color: "var(--fg-4)" }}>
+              {needle ? `nada com "${q.trim()}"` : "nenhum lead neste produto"}
+            </div>
+          )}
+        </div>
       </div>
+
+      {!showAll && (g.upcoming.length > 0 || g.closed.length > 0) && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "var(--fg-4)" }}>
+          <span>
+            {[g.upcoming.length ? `Próximos dias · ${g.upcoming.length}` : "", g.closed.length ? `Finalizados · ${g.closed.length}` : ""].filter(Boolean).join(" · ")}
+          </span>
+          <button onClick={() => setShowAll(true)} className="mono" style={{ background: "none", border: 0, padding: 0, fontSize: 12, color: "var(--accent)", fontWeight: 600, cursor: "pointer" }}>
+            mostrar tudo
+          </button>
+        </div>
+      )}
     </div>
   );
 }
