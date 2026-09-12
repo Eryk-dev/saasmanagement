@@ -107,6 +107,9 @@ const ROUTE_SCREENS = [
   ["/api/mp_movements", ["expenses"]],   // saídas da conta MP (settlement report)
   ["/api/plans", ["customers"]],
   ["/api/nps", ["customers"]],
+  // Fila de colheita de indicação: mora numa aba da tela Clientes e mostra
+  // faturamento por cliente, então segue o mesmo guard da base.
+  ["/api/referrals/", ["customers"]],
   ["/api/billing/", ["customers"]],
   ["/api/blog", ["blog"]],               // redação do blog: pautas, rascunhos, agenda, preview (routes.blog.js)
   ["/api/forms", ["forms", "aquisicao"]], // inclui /:id/funnel e /preview (Aquisição usa o funil do form)

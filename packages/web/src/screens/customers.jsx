@@ -66,7 +66,7 @@ function CustomersScreen({ initialTab }) {
   const { version, openForm, refresh } = useData();
   const [product] = useActiveSaas();
   // Aba persiste entre navegações (rota #subscriptions força billing via prop).
-  const [tab, setTabState] = useState(() => { if (initialTab) return initialTab; try { return localStorage.getItem("cockpit_customers_tab") || "base"; } catch { return "base"; } }); // base | billing
+  const [tab, setTabState] = useState(() => { if (initialTab) return initialTab; try { return localStorage.getItem("cockpit_customers_tab") || "base"; } catch { return "base"; } }); // base | indicacoes | billing
   const setTab = (t) => { setTabState(t); try { localStorage.setItem("cockpit_customers_tab", t); } catch { /* ignore */ } };
   const [subs, setSubs] = useState([]);
   const [plans, setPlans] = useState([]);
@@ -546,11 +546,13 @@ function CustomersScreen({ initialTab }) {
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Clientes"
         sub={`${activeCustomers.length} ${activeCustomers.length === 1 ? "ativo" : "ativos"} · ${isKidsWorkspace ? `${money(totalContratado)} contratado` : `MRR ${money(totalMrr)}`}${!isKidsWorkspace && keyAccounts.length ? ` · ${money(coreMrr)} sem ${keyAccounts.length === 1 ? "a conta grande" : `as ${keyAccounts.length} contas grandes`}` : ""}`}>
-        <Segmented value={tab} onChange={setTab} options={[{ value: "base", label: "Clientes" }, { value: "billing", label: "Assinaturas" }]} />
+        <Segmented value={tab} onChange={setTab} options={[{ value: "base", label: "Clientes" }, { value: "indicacoes", label: "Indicações" }, { value: "billing", label: "Assinaturas" }]} />
         {tab === "base" && <PrimaryButton onClick={() => openForm("customers", { saas: product.id })}>+ novo cliente</PrimaryButton>}
       </PageHead>
 
       {tab === "billing" && <SubscriptionsScreen saasId={product.id} />}
+
+      {tab === "indicacoes" && <ReferralsTab saasId={product.id} onRegister={newReferral} customers={CUSTOMERS} />}
 
       {tab === "base" && (
       <div style={{ padding: "16px var(--pad-x) 56px" }}>
@@ -1859,6 +1861,137 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
         </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Aba Indicações: a FILA DE COLHEITA ──────────────────────────────────────
+// A quem pedir indicação hoje, ordenado pela prova mais fresca: o que os
+// anúncios da Lever venderam na conta do cliente nos últimos 30 dias. O gatilho
+// é dado, não calendário — cliente que acabou de ver resultado indica bem,
+// cliente perguntado no aniversário de contrato indica por educação.
+//
+// O botão "pedir" faz três coisas de uma vez: abre o WhatsApp do cliente com a
+// frase pronta (com o número dele dentro), cria a tarefa pra quem pediu e
+// carimba o pedido, pro mesmo cliente não ser perguntado de novo por 90 dias.
+const BUCKETS = {
+  pedir: { label: "pedir agora", tone: "pos" },
+  descanso: { label: "pedido há pouco", tone: "mut" },
+  sem_prova: { label: "sem resultado ainda", tone: "warn" },
+};
+
+function ReferralsTab({ saasId, onRegister, customers }) {
+  const [data, setData] = useState(null);
+  const [erro, setErro] = useState("");
+  const [busy, setBusy] = useState("");
+  const [only, setOnly] = useState("pedir"); // pedir | todos
+  const money = window.fmt.money;
+
+  const load = React.useCallback(() => {
+    setErro("");
+    api.referralQueue(saasId).then(setData).catch((e) => setErro(e?.message || "não deu pra carregar a fila"));
+  }, [saasId]);
+  React.useEffect(() => { load(); }, [load]);
+
+  async function pedir(row) {
+    setBusy(row.customer);
+    // Abre o WhatsApp ANTES do await: navegador só deixa abrir aba nova no
+    // gesto do clique, e o pedido é o que a pessoa veio fazer aqui.
+    const wa = waLink(row.phone);
+    if (wa) window.open(`${wa}?text=${encodeURIComponent(row.script || "")}`, "_blank", "noreferrer");
+    try {
+      await api.referralAsk({ customer: row.customer, influenced30d: row.influenced30d });
+      load();
+    } catch (e) { setErro(e?.message || "o pedido não foi registrado"); }
+    finally { setBusy(""); }
+  }
+
+  if (erro && !data) return <div style={{ padding: "16px var(--pad-x)" }}><EmptyState title="Fila indisponível" hint={erro} /></div>;
+  if (!data) return <div style={{ padding: "16px var(--pad-x)", fontSize: 13, color: "var(--fg-3)" }}>Calculando o resultado de cada cliente…</div>;
+
+  const rows = only === "pedir" ? data.rows.filter((r) => r.bucket === "pedir") : data.rows;
+  const gap = data.coverage.customers - data.coverage.withOrg;
+
+  return (
+    <div style={{ padding: "16px var(--pad-x) 56px", display: "grid", gap: 14 }}>
+      <Card>
+        <div className="sec-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div>
+            <div className="card-title">Quem pedir hoje</div>
+            <div className="sec-sub">
+              {data.totals.pedir} {data.totals.pedir === 1 ? "cliente com resultado fresco" : "clientes com resultado fresco"}
+              {data.totals.descanso ? ` · ${data.totals.descanso} em descanso` : ""}
+              {` · ${money(data.totals.influencedSum)} vendidos pela Lever nas contas deles em 30 dias`}
+            </div>
+          </div>
+          <Segmented value={only} onChange={setOnly}
+            options={[{ value: "pedir", label: "pra pedir" }, { value: "todos", label: "todos" }]} />
+        </div>
+        {!!gap && (
+          <div style={{ marginTop: 8, fontSize: 12, color: "var(--fg-3)" }}>
+            {gap} {gap === 1 ? "cliente ativo está" : "clientes ativos estão"} sem conta do LeverAds no cadastro, então não tem
+            como provar resultado {gap === 1 ? "dele" : "deles"}. Preencher o campo na ficha aumenta a fila.
+          </div>
+        )}
+      </Card>
+
+      {!rows.length ? (
+        <EmptyState title="Ninguém pra pedir agora"
+          hint={only === "pedir" ? "Todo mundo com resultado fresco já foi pedido nos últimos 90 dias. Veja em 'todos'." : "A fila entra quando o cliente passa de 30 dias de casa."} />
+      ) : (
+        <Card>
+          <div className="tbl-x">
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ textAlign: "left", color: "var(--fg-3)", fontSize: 11, textTransform: "uppercase", letterSpacing: ".04em" }}>
+                  <th style={{ padding: "6px 8px" }}>Cliente</th>
+                  <th style={{ padding: "6px 8px", textAlign: "right" }}>Vendeu em 30d</th>
+                  <th style={{ padding: "6px 8px", textAlign: "right" }}>Casa</th>
+                  <th style={{ padding: "6px 8px" }}>Já indicou</th>
+                  <th style={{ padding: "6px 8px" }}>Situação</th>
+                  <th style={{ padding: "6px 8px" }} />
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => {
+                  const b = BUCKETS[r.bucket] || BUCKETS.sem_prova;
+                  const cliente = customers.find((c) => c.id === r.customer);
+                  return (
+                    <tr key={r.customer} style={{ borderTop: "1px solid var(--line-1)" }}>
+                      <td style={{ padding: "8px" }}>
+                        <div style={{ fontWeight: 600 }}>{r.name}</div>
+                        <div style={{ fontSize: 11, color: "var(--fg-3)" }}>
+                          {[r.contact, r.ownerName && `CS ${r.ownerName}`].filter(Boolean).join(" · ")}
+                        </div>
+                      </td>
+                      <td style={{ padding: "8px", textAlign: "right", fontWeight: r.influenced30d ? 600 : 400, color: r.influenced30d ? "var(--fg-1)" : "var(--fg-4)" }}>
+                        {r.influenced30d ? money(r.influenced30d) : "—"}
+                      </td>
+                      <td style={{ padding: "8px", textAlign: "right", color: "var(--fg-3)" }}>{r.daysAsClient}d</td>
+                      <td style={{ padding: "8px", color: r.collected ? "var(--fg-2)" : "var(--fg-4)" }}>
+                        {r.collected ? `${r.collected}${r.closed ? ` · ${r.closed} fechou` : ""}` : (r.seeds ? `${r.seeds} nome${r.seeds > 1 ? "s" : ""} plantado${r.seeds > 1 ? "s" : ""}` : "—")}
+                      </td>
+                      <td style={{ padding: "8px" }}><Pill tone={b.tone}>{b.label}</Pill></td>
+                      <td style={{ padding: "8px", textAlign: "right", whiteSpace: "nowrap" }}>
+                        <button onClick={() => pedir(r)} disabled={busy === r.customer}
+                          style={{ height: 26, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 600, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-1)", marginRight: 6 }}>
+                          {busy === r.customer ? "…" : "pedir no WhatsApp"}
+                        </button>
+                        {cliente && (
+                          <button onClick={() => onRegister(cliente)}
+                            style={{ height: 26, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)" }}>
+                            registrar
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
