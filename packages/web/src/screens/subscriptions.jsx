@@ -3,6 +3,7 @@ import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
 import { EmptyState, PrimaryButton, useEsc } from "../atoms.jsx";
+import { Segmented } from "../components/viz.jsx";
 import { mpMethodLabel, MP_SUB_STATUS } from "../lib/payments.js";
 // Assinaturas (fase 5) — Cockpit como system-of-record de billing: assinaturas,
 // faturas (renovação/pró-rata/dunning) e planos por SaaS. O pagamento em si fica
@@ -27,6 +28,93 @@ const INV_STATUS = {
   overdue: { label: "vencida", cls: "warn" },
   paid:    { label: "paga",    cls: "pos" },
 };
+
+// ── Menu de ações da linha ("⋯") ───────────────────────────────────────────
+// Cada linha tinha até cinco botões de 11px (link MP, mudar plano, pausar,
+// cancelar, ✕) competindo com o dado. Agora a ação principal fica visível e o
+// resto vem aqui; o title do botão lista o que tem dentro, pra não esconder as
+// opções atrás de um clique cego.
+function MoreMenu({ items }) {
+  const [open, setOpen] = useState(false);
+  const vis = (items || []).filter(Boolean);
+  useEsc(open ? () => setOpen(false) : null);
+  useEffect(() => {
+    if (!open) return;
+    const fechar = () => setOpen(false);
+    window.addEventListener("click", fechar);
+    return () => window.removeEventListener("click", fechar);
+  }, [open]);
+  if (!vis.length) return null;
+  return (
+    <span style={{ position: "relative", display: "inline-flex" }} onClick={(e) => e.stopPropagation()}>
+      <button onClick={() => setOpen((o) => !o)} title={vis.map((i) => i.label).join(" · ")}
+        style={{ width: 26, height: 26, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 13, lineHeight: 1, cursor: "pointer" }}>⋯</button>
+      {open && (
+        <div style={{ position: "absolute", right: 0, top: 30, zIndex: 20, minWidth: 176, padding: 4, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)" }}>
+          {vis.map((i) => (
+            <button key={i.label} onClick={() => { setOpen(false); i.onClick(); }}
+              style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 10px", borderRadius: "var(--r-2)", fontSize: 12.5, color: i.tone === "neg" ? "var(--neg)" : "var(--fg-2)", background: "transparent", border: 0, cursor: "pointer" }}>
+              {i.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
+  );
+}
+
+// ── Faixa de estado do billing ─────────────────────────────────────────────
+// Eram quatro sub-tabelas densas sem nenhum resumo: não havia como saber se o
+// billing estava saudável sem ler linha por linha. Tudo derivado de subs,
+// invoices e preapprovals, que a tela já carrega.
+function BillingState({ subs, invoices, preapprovals, mpUnlinked, sync, mpConfigured }) {
+  const money = window.fmt.money;
+  const hoje = Date.now();
+  const em7 = hoje + 7 * 86_400_000;
+  const ativas = subs.filter((s) => s.status === "active" || s.status === "past_due");
+  const mrr = ativas.reduce((a, s) => a + annualized(s) / 12, 0);
+  const vencendo = ativas.filter((s) => {
+    const t = s.periodEnd ? new Date(s.periodEnd).getTime() : NaN;
+    return Number.isFinite(t) && t >= hoje && t <= em7;
+  });
+  const vencendoVal = vencendo.reduce((a, s) => a + (Number(s.price) || 0), 0);
+  const vencidas = invoices.filter((i) => {
+    if (i.status === "paid") return false;
+    const t = i.dueDate ? new Date(i.dueDate).getTime() : NaN;
+    return Number.isFinite(t) && t < hoje;
+  });
+  const vencidasVal = vencidas.reduce((a, i) => a + (Number(i.amount) || 0), 0);
+  // Inadimplente = cliente com fatura vencida (ou assinatura em atraso): conta
+  // PESSOAS, não faturas, porque é com pessoa que se fala.
+  const inad = new Set([...vencidas.map((i) => i.customer), ...subs.filter((s) => s.status === "past_due").map((s) => s.customer)].filter(Boolean));
+  const item = (label, value, hint, color) => (
+    <div style={{ minWidth: 110 }}>
+      <div style={{ fontSize: 12, color: "var(--fg-3)" }}>{label}</div>
+      <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, marginTop: 2, color: color || "var(--fg-1)" }}>{value}</div>
+      {hint && <div style={{ fontSize: 11, color: "var(--fg-4)", marginTop: 1 }}>{hint}</div>}
+    </div>
+  );
+  return (
+    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px 20px", display: "flex", alignItems: "center", gap: 28, flexWrap: "wrap", marginBottom: 16 }}>
+      {item("MRR das ativas", money(mrr), `${ativas.length} ${ativas.length === 1 ? "assinatura" : "assinaturas"}`)}
+      {item("Vencem em 7 dias", String(vencendo.length), vencendo.length ? `${money(vencendoVal)} a renovar` : "nada a renovar", vencendo.length ? "var(--warn)" : undefined)}
+      {item("Faturas vencidas", String(vencidas.length), vencidas.length ? `${money(vencidasVal)} parados` : "nenhuma", vencidas.length ? "var(--neg)" : "var(--pos)")}
+      {item("Inadimplentes", String(inad.size), inad.size === 1 ? "cliente" : "clientes", inad.size ? "var(--neg)" : undefined)}
+      {mpConfigured && (
+        <div style={{ marginLeft: "auto", textAlign: "right" }}>
+          <div style={{ fontSize: 12.5, color: mpUnlinked ? "var(--warn)" : "var(--fg-3)" }}>
+            {mpUnlinked
+              ? `${mpUnlinked} ${mpUnlinked === 1 ? "recorrência do MP sem cliente" : "recorrências do MP sem cliente"}`
+              : `${preapprovals.length} ${preapprovals.length === 1 ? "recorrência" : "recorrências"} do MP vinculadas`}
+          </div>
+          <div className="mono dim" style={{ fontSize: 10.5, marginTop: 2 }}>
+            {sync?.lastAt ? `último sync ${new Date(sync.lastAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : "sem sync ainda"}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function SubscriptionsScreen({ saasId }) {
   const { SAAS, CUSTOMERS } = window.SEED;
@@ -132,14 +220,6 @@ function SubscriptionsScreen({ saasId }) {
     <EmptyState title="Nenhum SaaS ainda" hint="Crie um produto em Ajustes — assinaturas, faturas e planos pertencem a um SaaS." />
   );
 
-  const TabBtn = ({ k, label }) => (
-    <button onClick={() => setTab(k)} style={{
-      padding: "4px 10px", borderRadius: 4,
-      background: tab === k ? "var(--bg-3)" : "transparent",
-      color: tab === k ? "var(--fg-1)" : "var(--fg-3)",
-      fontSize: 12, border: "1px solid " + (tab === k ? "var(--line-2)" : "transparent"),
-    }}>{label}</button>
-  );
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -159,10 +239,12 @@ function SubscriptionsScreen({ saasId }) {
             </div>
           )}
           {!saasId && SAAS.length > 1 && <span style={{ color: "var(--line-2)" }}>·</span>}
-          <TabBtn k="subs" label={`Assinaturas (${subs.length})`} />
-          <TabBtn k="invoices" label={`Faturas (${invoices.length})`} />
-          <TabBtn k="plans" label={`Planos (${plans.length})`} />
-          {mpConfigured && <TabBtn k="mp" label={`MP recorrentes (${preapprovals.length})${mpUnlinked ? ` · ${mpUnlinked} sem cliente` : ""}`} />}
+          <Segmented value={tab} onChange={setTab} options={[
+            { value: "subs", label: `Assinaturas (${subs.length})` },
+            { value: "invoices", label: `Faturas (${invoices.length})` },
+            { value: "plans", label: `Planos (${plans.length})` },
+            ...(mpConfigured ? [{ value: "mp", label: `MP recorrentes (${preapprovals.length})${mpUnlinked ? ` · ${mpUnlinked} sem cliente` : ""}` }] : []),
+          ]} />
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {tab === "mp" ? (
@@ -183,6 +265,10 @@ function SubscriptionsScreen({ saasId }) {
       {toast && <div className="mono" style={{ padding: "8px var(--pad-x)", fontSize: 11, color: "var(--accent)", borderBottom: "1px solid var(--line-1)" }}>{toast}</div>}
 
       <div style={{ flex: 1, overflow: "auto", padding: "20px var(--pad-x)" }}>
+        {tab !== "plans" && (subs.length > 0 || invoices.length > 0) && (
+          <BillingState subs={subs} invoices={invoices} preapprovals={preapprovals}
+            mpUnlinked={mpUnlinked} sync={mpData?.sync} mpConfigured={mpConfigured} />
+        )}
         {tab === "subs" && (
           !subs.length ? (
             <EmptyState title="Nenhuma assinatura neste SaaS" hint="Crie uma assinatura ligando um cliente a um plano (ou preço avulso). O ARR do cliente passa a ser derivado daqui — e o MRR do produto via rollup." action={<PrimaryButton onClick={() => openForm("subscriptions", { saas: active })}>+ Criar assinatura</PrimaryButton>} />
@@ -206,21 +292,17 @@ function SubscriptionsScreen({ saasId }) {
                       {s.pendingChange && <span className="mono dim" style={{ fontSize: 9, display: "block", marginTop: 2 }}>muda em {fmtDate(s.pendingChange.applyAt)}</span>}
                     </span>
                     <span className="mono dim tnum" style={{ fontSize: 12 }}>{fmtDate(s.periodEnd)}</span>
-                    <span style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                      {mpConfigured && s.status !== "canceled" && s.mpPreapprovalId && (
-                        <button onClick={() => mpLink(s)} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }} title="copiar o link de autorização desta assinatura no Mercado Pago (recorrência antiga)">
-                          <span style={{ fontSize: 11 }}>link MP</span>
-                        </button>
-                      )}
-                      {s.status !== "canceled" && (
-                        <button onClick={() => setChanging(s)} style={chromeBtnStyleSmall}><span style={{ fontSize: 11 }}>mudar plano</span></button>
-                      )}
-                      {s.status === "active" && <button onClick={() => setStatus(s, "paused")} style={chromeBtnStyleSmall}><span style={{ fontSize: 11 }}>pausar</span></button>}
-                      {s.status === "paused" && <button onClick={() => setStatus(s, "active")} style={chromeBtnStyleSmall}><span style={{ fontSize: 11 }}>reativar</span></button>}
-                      {s.status !== "canceled" && (
-                        <button onClick={() => setStatus(s, "canceled")} style={{ ...chromeBtnStyleSmall, color: "var(--neg)" }}><span style={{ fontSize: 11 }}>cancelar</span></button>
-                      )}
-                      <button onClick={() => openDelete("subscriptions", s)} className="mono dim" style={{ fontSize: 12 }}>✕</button>
+                    {/* Assinatura ativa não tem ação principal — mexer nela é
+                        exceção, então tudo mora no menu. */}
+                    <span style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end" }}>
+                      <MoreMenu items={[
+                        mpConfigured && s.status !== "canceled" && s.mpPreapprovalId && { label: "copiar link do MP", onClick: () => mpLink(s) },
+                        s.status !== "canceled" && { label: "mudar plano", onClick: () => setChanging(s) },
+                        s.status === "active" && { label: "pausar", onClick: () => setStatus(s, "paused") },
+                        s.status === "paused" && { label: "reativar", onClick: () => setStatus(s, "active") },
+                        s.status !== "canceled" && { label: "cancelar assinatura", tone: "neg", onClick: () => setStatus(s, "canceled") },
+                        { label: "excluir registro", tone: "neg", onClick: () => openDelete("subscriptions", s) },
+                      ]} />
                     </span>
                   </div>
                 );
@@ -237,7 +319,17 @@ function SubscriptionsScreen({ saasId }) {
               cols="1.4fr 0.9fr 0.8fr 0.9fr 0.9fr 0.8fr 200px"
               head={["Cliente", "Tipo", "Valor", "Vencimento", "Status", "Paga em", ""]}
             >
-              {[...invoices].sort((a, b) => String(b.dueDate || "").localeCompare(String(a.dueDate || ""))).map((i) => {
+              {/* Vencida → aberta → paga, e dentro de cada grupo por data. Antes
+                  ordenava por vencimento desc, o que enterrava o que está
+                  vencido no fim da lista (Leo: confirmar com quem dá baixa). */}
+              {[...invoices].sort((a, b) => {
+                const rank = (x) => {
+                  if (x.status === "paid") return 2;
+                  const t = x.dueDate ? new Date(x.dueDate).getTime() : NaN;
+                  return Number.isFinite(t) && t < Date.now() ? 0 : 1;
+                };
+                return rank(a) - rank(b) || String(a.dueDate || "").localeCompare(String(b.dueDate || ""));
+              }).map((i) => {
                 const st = INV_STATUS[i.status] || { label: i.status, cls: "" };
                 return (
                   <div key={i.id} style={rowStyle("1.4fr 0.9fr 0.8fr 0.9fr 0.9fr 0.8fr 200px")}>
@@ -251,14 +343,16 @@ function SubscriptionsScreen({ saasId }) {
                     <span className="mono dim tnum" style={{ fontSize: 12 }}>{fmtDate(i.dueDate)}</span>
                     <span><span className={"chip " + st.cls} style={{ height: 20 }}>{st.label}</span></span>
                     <span className="mono dim tnum" style={{ fontSize: 12 }}>{fmtDate(i.paidAt)}</span>
-                    <span style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                      {i.status !== "paid" && mpConfigured && (
-                        <button onClick={() => invLink(i)} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }} title={i.mpInitPoint ? "copiar o link de pagamento desta fatura" : "gerar link de pagamento avulso desta fatura no MP"}>
-                          <span style={{ fontSize: 11 }}>{i.mpInitPoint ? "copiar link" : "link MP"}</span>
-                        </button>
-                      )}
+                    {/* A ação principal da fatura é dar baixa: fica visível.
+                        O link do MP vai pro menu. */}
+                    <span style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
                       {i.status !== "paid" && (
                         <button onClick={() => pay(i)} style={chromeBtnStyleSmall}><span style={{ fontSize: 11 }}>marcar paga</span></button>
+                      )}
+                      {i.status !== "paid" && mpConfigured && (
+                        <MoreMenu items={[
+                          { label: i.mpInitPoint ? "copiar link de pagamento" : "gerar link no MP", onClick: () => invLink(i) },
+                        ]} />
                       )}
                     </span>
                   </div>
@@ -390,9 +484,9 @@ function MpRecurringTab({ preapprovals, sync, subs, customerName, onLink, onSync
                       <span className="mono" title={`a assinatura do cockpit está em ${money(linked.price || 0)} e o MP cobra ${money(p.amount || 0)}`}
                         style={{ fontSize: 9.5, color: "var(--warn)" }}>valor difere</span>
                     )}
-                    <button onClick={() => onLink(p, "")} style={chromeBtnStyleSmall} title="desfaz o vínculo (não mexe na recorrência do MP)">
-                      <span style={{ fontSize: 11 }}>desvincular</span>
-                    </button>
+                    <MoreMenu items={[
+                      { label: "desvincular do cockpit", tone: "neg", onClick: () => onLink(p, "") },
+                    ]} />
                   </>
                 ) : !free.length ? (
                   <span className="mono dim" style={{ fontSize: 10.5 }}>nenhuma assinatura livre neste produto</span>
