@@ -631,6 +631,11 @@ export const api = {
     for (const [k, v] of Object.entries({ since, until, prevSince, prevUntil })) if (v) q.set(k, v);
     return req("GET", `/api/scoreboard/${saas}${q.toString() ? `?${q}` : ""}`);
   },
+  // Fila de colheita de indicação (aba Indicações da tela Clientes): a quem
+  // pedir hoje, ordenado pelo que a Lever vendeu na conta do cliente nos
+  // últimos 30 dias. `referralAsk` registra o pedido (tarefa + carimbo).
+  referralQueue: (saas) => req("GET", `/api/referrals/queue?saas=${encodeURIComponent(saas || "")}`),
+  referralAsk: (body) => req("POST", "/api/referrals/ask", body),
   // Análise de Desempenho: objeções por closer na janela, produção do social
   // (feed/stories) e os registros manuais do dia (social selling/criativos).
   desempenho: (saas, { since, until } = {}) => {

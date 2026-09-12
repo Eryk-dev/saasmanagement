@@ -203,8 +203,68 @@ export function leveradsResults({ now = Date.now, ttlMs = TTL_MS, refresh = refr
   return cache.tokens;
 }
 
+// ── Prova POR CLIENTE (fila de colheita de indicação) ───────────────────────
+// O agregado acima é do portfólio; a fila precisa do número DE CADA cliente,
+// porque é ele que vai na frase do pedido ("os anúncios que subimos venderam
+// R$ X na sua conta nos últimos 30 dias").
+//
+// O número é o INFLUENCIADO (gmv_clone dos últimos 30 dias), nunca o gmv_total
+// da conta: a loja já vendia antes da gente, e inflar o número queima a prova
+// na primeira conferência que o cliente fizer.
+//
+// Mesmo cache obrigatório do resto do módulo (egress compartilhado), com uma
+// diferença: cache FRIO espera a consulta uma vez, porque fila vazia na
+// primeira abertura da tela parece "ninguém pra pedir" e não "ainda calculando".
+// Depois disso é stale-while-revalidate como no resto.
+const ORG_SQL = `
+select x.org_id::text as org, coalesce(sum(x.gmv_clone), 0)::float8 as gmv
+  from public.platform_orders x
+ where x.date_created >= now() - interval '30 days'
+   and x.org_id = any($1::uuid[])
+ group by x.org_id`;
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ORG_TTL_MS = 3 * 3_600_000;
+let orgCache = { map: new Map(), at: 0, keys: "" };
+let orgInFlight = null;
+
+async function loadOrgs(ids, query) {
+  const rows = await query(ORG_SQL, [ids]);
+  return new Map((rows || []).map((r) => [String(r.org), Number(r.gmv) || 0]));
+}
+
+// orgIds: os leveradsOrgId dos clientes (o cadastro tem lixo, então só uuid
+// passa). Devolve Map(orgId → R$ influenciado nos últimos 30 dias).
+export async function influencedByOrg(orgIds = [], { query = levercopyQuery, now = Date.now, ttlMs = ORG_TTL_MS } = {}) {
+  const ids = [...new Set((orgIds || []).map((s) => String(s || "").trim()).filter((s) => UUID_RE.test(s)))].sort();
+  if (!ids.length) return new Map();
+  const keys = ids.join(",");
+  const fresh = orgCache.keys === keys && now() - orgCache.at <= ttlMs;
+  if (fresh) return orgCache.map;
+  const run = async () => {
+    try {
+      const map = await loadOrgs(ids, query);
+      orgCache = { map, at: now(), keys };
+      return map;
+    } catch (e) {
+      // Fail-open: sem o banco do produto a fila ainda serve (sai sem o número,
+      // e a tela mostra "sem prova ainda" em vez de erro).
+      console.warn("[leverads-results] influencedByOrg falhou:", e.message);
+      return orgCache.keys === keys ? orgCache.map : new Map();
+    } finally { orgInFlight = null; }
+  };
+  if (!orgCache.map.size || orgCache.keys !== keys) {
+    orgInFlight ||= run();
+    return orgInFlight;           // cache frio (ou lista de clientes mudou): espera
+  }
+  orgInFlight ||= run();          // quente mas vencido: devolve o que tem
+  return orgCache.map;
+}
+
 // Só pros testes: zera o estado de módulo entre casos.
 export function _resetResultsCache() {
   cache = { tokens: null, at: 0 };
   inFlight = null;
+  orgCache = { map: new Map(), at: 0, keys: "" };
+  orgInFlight = null;
 }

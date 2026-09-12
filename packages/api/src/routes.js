@@ -63,6 +63,7 @@ import { findDuplicateLead, dedupMergePatch } from "./lead-dedup.js";
 import { referralPatch, logReferralCollected } from "./referrals.js";
 import { registerFunnelMetricsRoutes } from "./routes.funnel-metrics.js";
 import { registerScoreboardRoutes } from "./routes.scoreboard.js";
+import { registerReferralRoutes } from "./routes.referrals.js";
 import { registerDesempenhoRoutes } from "./routes.desempenho.js";
 import { registerPipelinePaceRoutes } from "./routes.pipeline-pace.js";
 import { registerEloRoutes } from "./elo.js";
@@ -391,6 +392,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerPipelinePaceRoutes(app, repo, opts.pipelinePace);
   // Placar por pessoa/papel (SDR/closer/CS) — o cockpit de gestão da Visão geral.
   registerScoreboardRoutes(app, repo, opts.scoreboard);
+  registerReferralRoutes(app, repo, opts.referrals);
   // Análise de Desempenho: objeções por closer na janela, produção do social e
   // os registros manuais do dia (social selling / criativos).
   registerDesempenhoRoutes(app, repo, { social: opts.social, now: opts.scoreboard?.now, ...(opts.desempenho || {}) });
