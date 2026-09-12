@@ -192,6 +192,9 @@ function CountDot({ color, label, value, dim = false, size = 15 }) {
 // 20. O denominador é o tamanho da fila NO INÍCIO (recalcular no meio faria o
 // número pular); card que volta pra fixar (learning step do Anki) aparece como
 // acréscimo em vez de inflar o total, que seria mentir sobre o que falta.
+// No escuro (modo foco) o preenchimento é o accent CLAREADO por color-mix, não
+// um teal chumbado: o workspace UniqueKids troca o hue do accent em runtime, e
+// hex fixo sairia da paleta dele.
 function SessionProgress({ done, total, dark = false }) {
   if (!total) return null;
   const pct = Math.min(100, Math.round((done / total) * 100));
@@ -199,7 +202,7 @@ function SessionProgress({ done, total, dark = false }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
       <div style={{ flex: 1, height: 5, borderRadius: 999, background: dark ? "rgba(255,255,255,0.12)" : "var(--bg-3)", overflow: "hidden" }}>
-        <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: dark ? "#3eccbf" : "var(--accent)", transition: "width 220ms ease" }} />
+        <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: dark ? "color-mix(in oklab, var(--accent) 45%, #fff)" : "var(--accent)", transition: "width 220ms ease" }} />
       </div>
       <span className="mono tnum" style={{ fontSize: 11, color: dark ? "rgba(255,255,255,0.5)" : "var(--fg-4)", whiteSpace: "nowrap" }}>
         {`${Math.min(done, total)} de ${total}${extra ? ` · +${extra} que voltaram` : ""}`}
