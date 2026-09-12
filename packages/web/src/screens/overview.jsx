@@ -11,7 +11,7 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { buildPeople, roleLabel, scaledGoal } from "../components/team-cards.jsx";
 import { usePeriod, businessDaysBetween } from "../components/period-picker.jsx";
 import { isChurned } from "../lib/churn.js";
-import { dealProductLabel } from "../lib/payments.js";
+import { dealProductLabel, closedPlanLabel } from "../lib/payments.js";
 // Visão geral — reorganização de 12/09/2026 ("operação e trilho de ação").
 // A tela tem DUAS colunas: a operação à esquerda e o que exige ação à direita,
 // fixo na tela (o "Atenção agora" vivia no fim da página e ninguém rolava até
@@ -20,8 +20,8 @@ import { dealProductLabel } from "../lib/payments.js";
 //   existia dentro do tooltip: falta, precisa por dia útil, projeção)
 //   → Funil do período VERTICAL (etapa → conversão → etapa, com o gargalo
 //     nomeado)
-//   → Desempenho do time (duas pernas + as submetas do papel na linha de
-//     baixo, com a mais atrasada em destaque no chip da direita).
+//   → Desempenho do time (duas pernas ocupando a linha inteira + as submetas
+//     do papel como badges na linha de baixo, coloridas pelo pace).
 // Trilho da direita: Agora (avisos com botão) → Carteira → Aquisição.
 // Escala de cores única: vermelho (atrás do caminho) → teal (no pace) → verde
 // (meta batida) → dourado (120%+, alinhado às bandas da remuneração).
@@ -318,15 +318,16 @@ function MetaMesCard({ pace, goal, onNav, links = true }) {
 // no tempo): abaixo da meta é vermelho direto.
 function personRows(p, bizDays, elapsedFrac, monthFrac) {
   const rows = [];
-  // `ratio` (valor ÷ meta) entra pra linha do time poder eleger a submeta MAIS
-  // atrasada em vez de despejar todas em texto corrido.
+  // `lvl` é o que a linha do time usa: pinta o badge de cada submeta pelo pace
+  // (vermelho = atrás), então a cor faz o papel que a coluna da "mais
+  // atrasada" fazia antes.
   const rate = (label, value, target, title) => rows.push({
     label, valueText: pctStr(value), metaText: target != null ? int(target) : null,
-    lvl: levelOf(value, target, 1), ratio: target > 0 && value != null ? value / target : null, title,
+    lvl: levelOf(value, target, 1), title,
   });
   const flow = (label, value, target, title, frac = monthFrac) => rows.push({
     label, valueText: int(value), metaText: target != null ? int(target) : null,
-    lvl: levelOf(value, target, frac), ratio: target > 0 && value != null ? value / target : null, title,
+    lvl: levelOf(value, target, frac), title,
   });
   if (p.sdr) {
     const g = p.sdr.goals || {};
@@ -444,6 +445,29 @@ const nivelDaMeta = (leg) => {
   return g ? levelLabel(g.level) : "";
 };
 
+// Badge de submeta (Leo, 12/09): o desenho que era só da "mais atrasada" virou
+// o de TODAS — fundo suave na cor do nível, então a linha se lê pela cor (o que
+// está vermelho está atrás do pace) sem precisar de coluna separada.
+// Sem meta configurada (ticket médio, contas ativas) o badge é neutro.
+const LVL_SOFT = {
+  red: { fg: "var(--neg)", bg: "var(--neg-soft)" },
+  ok: { fg: "var(--accent)", bg: "var(--accent-soft)" },
+  green: { fg: "var(--pos)", bg: "var(--pos-soft)" },
+  gold: { fg: "var(--pos)", bg: "var(--pos-soft)" },
+  none: { fg: "var(--fg-2)", bg: "var(--bg-2)" },
+};
+function SubBadge({ r }) {
+  const t = LVL_SOFT[r.lvl] || LVL_SOFT.none;
+  return (
+    <span className="tnum" title={r.title}
+      style={{ display: "inline-flex", alignItems: "baseline", gap: 4, fontSize: 11, borderRadius: "var(--r-1)", padding: "3px 9px", background: t.bg, color: t.fg, whiteSpace: "nowrap", cursor: r.title ? "help" : undefined }}>
+      <span style={{ opacity: 0.75 }}>{r.label}</span>
+      <b style={{ fontWeight: 650 }}>{r.valueText}</b>
+      {r.metaText != null && <span style={{ opacity: 0.6 }}>/ {r.metaText}</span>}
+    </span>
+  );
+}
+
 function PersonRow({ p, rank, bizDays, elapsedFrac, monthFrac, onPerson }) {
   // As duas pernas do plano de remuneração (receita + contratos) — closer e SDR
   // têm meta própria pelo nível (comp_plans); CS/mídia mostram só as submetas.
@@ -451,13 +475,6 @@ function PersonRow({ p, rank, bizDays, elapsedFrac, monthFrac, onPerson }) {
   const revTarget = leg ? monthGoal(leg.goals?.revenue) : null;
   const wonTarget = leg ? monthGoal(leg.goals?.won) : null;
   const rows = personRows(p, bizDays, elapsedFrac, monthFrac);
-  // Uma submeta em DESTAQUE: a mais atrasada, no chip da direita, pra linha
-  // dizer onde olhar. As outras não ficam mais só no hover (Leo, 12/09): a
-  // lista inteira voltou pra 2ª altura da linha, embaixo das duas pernas.
-  const atrasada = rows.filter((r) => r.lvl === "red").sort((a, b) => (a.ratio ?? 9) - (b.ratio ?? 9))[0] || null;
-  const todas = rows.length
-    ? rows.map((r) => `${r.label} ${r.valueText}${r.metaText != null ? ` / ${r.metaText}` : ""}`).join(" · ")
-    : "sem metas configuradas ainda";
   const semPerna = <span style={{ fontSize: 11.5, color: "var(--fg-4)" }}>—</span>;
   return (
     <div className="vg-trow" onClick={() => onPerson && onPerson(p.user)} style={{ cursor: onPerson ? "pointer" : "default" }}>
@@ -481,44 +498,28 @@ function PersonRow({ p, rank, bizDays, elapsedFrac, monthFrac, onPerson }) {
       </div>
       {leg ? <MiniRegua value={leg.revenue} target={revTarget} isMoney expectedFrac={monthFrac} /> : semPerna}
       {leg ? <MiniRegua value={leg.won} target={wonTarget} expectedFrac={monthFrac} /> : semPerna}
-      <div title={todas} style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, minWidth: 0, cursor: "help" }}>
-        {atrasada ? (
-          <span className="tnum" style={{ fontSize: 11, fontWeight: 600, color: "var(--neg)", background: "var(--neg-soft)", borderRadius: "var(--r-1)", padding: "3px 9px", whiteSpace: "nowrap" }}>
-            {atrasada.label} {atrasada.valueText}{atrasada.metaText != null ? ` / ${atrasada.metaText}` : ""}
-          </span>
-        ) : (
-          <span className="tnum" style={{ fontSize: 11.5, color: rows.length ? "var(--pos)" : "var(--fg-4)" }}>
-            {rows.length ? "submetas em dia" : "sem metas configuradas ainda"}
-          </span>
-        )}
+      {/* Submetas do papel embaixo das duas réguas (Leo, 12/09), todas com o
+          mesmo badge — a coluna da "mais atrasada" saiu: ela repetia uma
+          submeta que já estava aqui e a cor vermelha do badge já a denuncia. */}
+      <div className="vg-tsub" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, minWidth: 0 }}>
+        {rows.map((r) => <SubBadge key={r.label} r={r} />)}
+        {!rows.length && <span style={{ fontSize: 11.5, color: "var(--fg-4)" }}>sem metas configuradas ainda</span>}
         {/* Faturado/recorrente entra na meta só pelo que caiu (Leo, 29/08): o
-            contrato cheio aparece aqui pra ninguém achar que a venda sumiu. */}
+            contrato cheio aparece aqui pra ninguém achar que a venda sumiu.
+            É NOTA, não submeta — por isso fica sem badge, no fim da linha. */}
         {leg?.contracted > (leg?.revenue || 0) && (
-          <span className="tnum" style={{ fontSize: 11, color: "var(--fg-4)", whiteSpace: "nowrap" }}
+          <span className="tnum" style={{ fontSize: 11, color: "var(--fg-4)", whiteSpace: "nowrap", cursor: "help" }}
             title="Boleto faturado, PIX parcelado, assinatura recorrente no cartão e condição personalizada contam na meta só pelo que ENTROU na janela (a 1ª parcela, na prática). O resto das parcelas segue no Financeiro, no caixa do mês em que cair.">
             não recebido R$ {compactMoney(leg.contracted - (leg.revenue || 0))}
           </span>
         )}
         {leg?.keyWon > 0 && (
-          <span className="tnum" style={{ fontSize: 11, color: "var(--fg-4)", whiteSpace: "nowrap" }}
+          <span className="tnum" style={{ fontSize: 11, color: "var(--fg-4)", whiteSpace: "nowrap", cursor: "help" }}
             title="Conta grande fica fora do placar desde 19/08 (um bespoke de R$ 120 mil não é a régua da operação). O dinheiro segue cheio no caixa e no Financeiro.">
             fora do placar {leg.keyWon} conta grande · R$ {compactMoney(leg.keyRevenue || 0)}
           </span>
         )}
       </div>
-      {/* Submetas do papel de volta à tela (Leo, 12/09): todas, embaixo das
-          duas pernas. A mais atrasada segue destacada no chip à direita — aqui
-          ela aparece junto das outras, já vermelha pela cor do nível. */}
-      {rows.length > 0 && (
-        <div className="vg-tsub tnum" style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", fontSize: 11.5, color: "var(--fg-3)", minWidth: 0 }}>
-          {rows.map((r) => (
-            <span key={r.label} title={r.title} style={{ whiteSpace: "nowrap", cursor: r.title ? "help" : undefined }}>
-              {r.label} <b style={{ fontWeight: 650, color: lvlColor(r.lvl) }}>{r.valueText}</b>
-              {r.metaText != null && <span style={{ color: "var(--fg-4)" }}> / {r.metaText}</span>}
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -557,7 +558,7 @@ function TeamBoard({ score, win, onPerson }) {
     return list.map((p) => ({ p, pct: pctOf(p) })).sort((a, b) => b.pct - a.pct);
   }, [score, win.businessDays]);
   return (
-    <Card title="Desempenho do time" hint="ranqueado por % da meta · réguas = meta do mês, o risquinho é o pace · as submetas do papel ficam embaixo das duas pernas e a mais atrasada em destaque à direita">
+    <Card title="Desempenho do time" hint="ranqueado por % da meta · réguas = meta do mês, o risquinho é o pace · as submetas do papel ficam embaixo, e o badge vermelho é o que está atrás do pace">
       <div style={{ padding: "8px var(--inset-x) 20px" }}>
         {score == null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
         {score != null && !people.length && <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Sem atividade nesse período.</div>}
@@ -567,7 +568,6 @@ function TeamBoard({ score, win, onPerson }) {
               <span className="kicker">Pessoa</span>
               <span className="kicker">Receita</span>
               <span className="kicker">Contratos</span>
-              <span className="kicker" style={{ textAlign: "right" }}>Submeta mais atrasada</span>
             </div>
             {people.map(({ p, pct }, i) => (
               <PersonRow key={p.user} p={p} rank={pct >= 0 ? i + 1 : null} bizDays={win.businessDays} elapsedFrac={elapsedFrac} monthFrac={monthFrac} onPerson={onPerson} />
@@ -766,53 +766,72 @@ function AquisicaoCard({ marketing, biz, classes, pShort }) {
 // pro fim da página): cada venda com cliente, produto, valor e quem fechou.
 // A ordem é por RECÊNCIA e a lista NÃO segue o filtro do topo — "as últimas
 // vendas" precisa ter conteúdo mesmo com a janela num período vazio, e a data
-// de cada linha já diz de quando é. Fonte: a régua oficial de ganho do lead
-// (isWonLead + wonAtOf), a mesma do placar e do funil.
+// de cada linha já diz de quando é.
+// DUAS FONTES, as mesmas do placar: o ganho do lead (isWonLead + wonAtOf) e o
+// UPSELL, que é venda desde 09/09 (fatura kind:"upsell" na ficha do cliente,
+// creditada a quem vendeu). Sem o upsell a lista contava metade do que o time
+// fez no mês.
 const MAX_VENDAS = 6;
-function VendasCard({ leads, product, customers, onNav }) {
-  const vendas = useMemo(() => (leads || [])
-    .filter((l) => isWonLead(product, l))
-    .map((l) => ({ l, at: wonAtOf(l) }))
-    .filter((v) => v.at)
-    .sort((a, b) => String(b.at).localeCompare(String(a.at)))
-    .slice(0, MAX_VENDAS), [leads, product]);
+// Espelho do upsellSoldAt do metrics-core (api) — a mesma ordem de fallback,
+// pra data aqui bater com a do placar.
+const upsellSoldAtOf = (i) => i?.soldAt || i?.paidAt || i?.dueDate || i?.createdAt || "";
+
+function VendasCard({ leads, invoices, product, customers, onNav }) {
   // Nome do CLIENTE: o cadastro vence (é o nome que o time usa em Clientes e
   // no Financeiro); sem cliente convertido ainda, a empresa do lead e, por
   // último, o nome da pessoa.
-  const nomeCliente = (l) => {
-    const c = l.customerId ? (customers || []).find((x) => x.id === l.customerId) : null;
-    return String(c?.name || l.company || l.name || "").trim() || "cliente sem nome";
-  };
-  const quemFechou = (l) => (l.closer || l.owner || "");
+  const nomeDoCadastro = (id) => String((customers || []).find((x) => x.id === id)?.name || "").trim();
+  const vendas = useMemo(() => {
+    const doLead = (leads || []).filter((l) => isWonLead(product, l)).map((l) => ({
+      id: `l_${l.id}`, at: wonAtOf(l), amount: l.amount, who: l.closer || l.owner || "",
+      cliente: nomeDoCadastro(l.customerId) || String(l.company || l.name || "").trim() || "cliente sem nome",
+      // O produto do fechamento; sem ele, a oferta que estava na mesa.
+      produto: dealProductLabel(l.proposalProduct, l.saas)
+        || (l.proposalOffer && l.proposalOffer !== "nenhuma" ? closedPlanLabel(l.proposalOffer) || l.proposalOffer : ""),
+      upsell: false,
+    }));
+    const doUpsell = (invoices || []).filter((i) => i.kind === "upsell").map((i) => ({
+      id: `i_${i.id}`, at: upsellSoldAtOf(i), amount: i.amount, who: i.soldBy || "",
+      cliente: nomeDoCadastro(i.customer) || "cliente sem nome",
+      produto: String(i.title || "").trim() || dealProductLabel(i.product, i.saas),
+      upsell: true,
+    }));
+    return [...doLead, ...doUpsell]
+      .filter((v) => v.at)
+      .sort((a, b) => String(b.at).localeCompare(String(a.at)))
+      .slice(0, MAX_VENDAS);
+  }, [leads, invoices, customers, product]); // eslint-disable-line react-hooks/exhaustive-deps
   const dia = (at) => { const d = bizDay(at); return d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : ""; };
   return (
     <Card title="Últimas vendas"
-      hint={vendas.length ? `as ${int(vendas.length)} mais recentes · cliente, produto e quem fechou · não muda com o filtro` : "as vendas aparecem aqui assim que o card vira Ganho"}>
+      hint={vendas.length ? `as ${int(vendas.length)} mais recentes · fechamentos e upsells · não muda com o filtro` : "as vendas aparecem aqui assim que o card vira Ganho"}>
       <div style={{ padding: "6px var(--inset-x) 12px" }}>
         {!vendas.length && <div style={{ fontSize: 12.5, color: "var(--fg-4)", padding: "6px 0" }}>Nenhuma venda registrada ainda.</div>}
-        {vendas.map(({ l, at }, i) => {
-          const who = quemFechou(l);
-          const produto = dealProductLabel(l.proposalProduct, l.saas);
-          return (
-            <div key={l.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center", padding: "9px 0", borderTop: i ? "1px solid var(--line-1)" : "none" }}>
+        {vendas.map((v, i) => (
+            <div key={v.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center", padding: "9px 0", borderTop: i ? "1px solid var(--line-1)" : "none" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                {who && <Avatar id={who} name={displayName(who)} size={22} />}
+                {v.who && <Avatar id={v.who} name={displayName(v.who)} size={22} />}
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nomeCliente(l)}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{v.cliente}</span>
+                    {v.upsell && (
+                      <span style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 700, letterSpacing: "0.04em", color: "var(--accent)", background: "var(--accent-soft)", borderRadius: "var(--r-1)", padding: "1px 5px" }}
+                        title="Upsell: venda registrada na ficha do cliente, creditada a quem vendeu (conta na meta desde 09/09).">UPSELL</span>
+                    )}
+                  </div>
                   {/* Sem .kicker aqui: nome de produto e de pessoa em caixa
                       alta com letter-spacing fica gritado ("ESCALA ANUAL"). */}
                   <div style={{ fontSize: 11, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 1 }}>
-                    {produto || "produto não informado"}{who ? ` · ${displayName(who)}` : " · sem responsável"}
+                    {v.produto || "produto não informado"}{v.who ? ` · ${displayName(v.who)}` : " · sem responsável"}
                   </div>
                 </div>
               </div>
               <div style={{ textAlign: "right" }}>
-                <div className="tnum" style={{ fontSize: 13, fontWeight: 650, whiteSpace: "nowrap" }}>{money(l.amount)}</div>
-                <div className="tnum" style={{ fontSize: 11, color: "var(--fg-4)", marginTop: 1 }}>{dia(at)}</div>
+                <div className="tnum" style={{ fontSize: 13, fontWeight: 650, whiteSpace: "nowrap" }}>{money(v.amount)}</div>
+                <div className="tnum" style={{ fontSize: 11, color: "var(--fg-4)", marginTop: 1 }}>{dia(v.at)}</div>
               </div>
             </div>
-          );
-        })}
+        ))}
         {vendas.length > 0 && onNav && (
           <button onClick={() => onNav("pipeline", { saas: product.id })}
             style={{ marginTop: 10, fontSize: 12, fontWeight: 600, color: "var(--accent)" }}>ver todas no pipeline →</button>
@@ -1090,7 +1109,7 @@ function OverviewScreen({ onNav }) {
             Abre com as ÚLTIMAS VENDAS (Leo, 12/09) — o "Agora" foi pro rodapé.
             No mobile o .resp-cols empilha e o trilho vem depois da operação. */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0, position: "sticky", top: 0 }}>
-          <VendasCard leads={leads} product={product} customers={productCustomers} onNav={onNav} />
+          <VendasCard leads={leads} invoices={invoices} product={product} customers={productCustomers} onNav={onNav} />
           <CarteiraCard customers={productCustomers} ltv={biz?.ltv} />
           <AquisicaoCard marketing={marketing} biz={biz} classes={score?.team?.classes} pShort={win.short} />
         </div>

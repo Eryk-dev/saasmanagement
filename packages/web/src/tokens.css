@@ -363,15 +363,16 @@ body[data-density="regular"] { font-size: 14px; }
 @media (prefers-reduced-motion: reduce) { .super-chip { animation: none; } }
 
 /* Lista do Desempenho do time (Visão geral, Leo 08/08): uma linha por pessoa —
-   identidade | régua de receita | régua de contratos | submetas em linha. */
+   identidade | régua de receita | régua de contratos, e as submetas do papel
+   numa 2ª altura embaixo das duas réguas.
+   A 4ª coluna (a "submeta mais atrasada") saiu em 12/09: o chip repetia uma
+   submeta que já estava na lista de baixo e comia 340px+ de largura das duas
+   réguas — agora elas ficam com a linha inteira. */
 .vg-trow {
   display: grid;
-  grid-template-columns: 215px minmax(170px, 1fr) minmax(170px, 1fr) minmax(340px, 1.7fr);
+  grid-template-columns: 215px minmax(0, 1fr) minmax(0, 1fr);
   gap: 20px; row-gap: 8px; align-items: center; padding: 12px 16px;
 }
-/* 2ª altura da linha (Leo, 12/09): as submetas do papel voltaram à tela e
-   ficam EMBAIXO das duas pernas, alinhadas com receita e contratos — antes
-   só a mais atrasada aparecia e o resto vivia no hover. */
 .vg-tsub { grid-column: 2 / 4; }
 .vg-trow + .vg-trow { border-top: 1px solid var(--line-1); }
 .vg-trow:not(.vg-thead):hover { background: var(--hover); }
