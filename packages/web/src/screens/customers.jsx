@@ -85,6 +85,7 @@ function CustomersScreen({ initialTab }) {
   const [sel, setSel] = useState(null); // id do cliente aberto no popup
   const [showAll, setShowAll] = useState(false);
   const [q, setQ] = useState("");        // busca da tabela
+  const [refSummary, setRefSummary] = useState(""); // resumo da fila de indicação (vira o sub do cabeçalho)
   const [showAllActions, setShowAllActions] = useState(false);
   // Conclusão de marco: otimista no objeto do SEED (a tela lê dele) + PATCH.
   const [tick, setTick] = useState(0);
@@ -569,14 +570,19 @@ function CustomersScreen({ initialTab }) {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
       <PageHead title="Clientes"
-        sub={`${activeCustomers.length} ${activeCustomers.length === 1 ? "ativo" : "ativos"} · ${isKidsWorkspace ? `${money(totalContratado)} contratado` : `MRR ${money(totalMrr)}`}${!isKidsWorkspace && keyAccounts.length ? ` · ${money(coreMrr)} sem ${keyAccounts.length === 1 ? "a conta grande" : `as ${keyAccounts.length} contas grandes`}` : ""}`}>
+        sub={tab === "indicacoes" && refSummary
+          ? refSummary
+          : `${activeCustomers.length} ${activeCustomers.length === 1 ? "ativo" : "ativos"} · ${isKidsWorkspace ? `${money(totalContratado)} contratado` : `MRR ${money(totalMrr)}`}${!isKidsWorkspace && keyAccounts.length ? ` · ${money(coreMrr)} sem ${keyAccounts.length === 1 ? "a conta grande" : `as ${keyAccounts.length} contas grandes`}` : ""}`}>
         <Segmented value={tab} onChange={setTab} options={[{ value: "base", label: "Clientes" }, { value: "indicacoes", label: "Indicações" }, { value: "billing", label: "Assinaturas" }]} />
         {tab === "base" && <PrimaryButton onClick={() => openForm("customers", { saas: product.id })}>+ novo cliente</PrimaryButton>}
       </PageHead>
 
       {tab === "billing" && <SubscriptionsScreen saasId={product.id} />}
 
-      {tab === "indicacoes" && <ReferralsTab saasId={product.id} onRegister={newReferral} customers={CUSTOMERS} />}
+      {tab === "indicacoes" && (
+        <ReferralsTab saasId={product.id} onRegister={newReferral} customers={CUSTOMERS}
+          onSummary={setRefSummary} onOpenCustomer={setSel} />
+      )}
 
       {tab === "base" && (
       <div style={{ padding: "16px var(--pad-x) 56px" }}>
@@ -1894,11 +1900,12 @@ const BUCKETS = {
   sem_prova: { label: "sem resultado ainda", tone: "warn" },
 };
 
-function ReferralsTab({ saasId, onRegister, customers }) {
+function ReferralsTab({ saasId, onRegister, customers, onSummary, onOpenCustomer }) {
   const [data, setData] = useState(null);
   const [erro, setErro] = useState("");
   const [busy, setBusy] = useState("");
-  const [only, setOnly] = useState("pedir"); // pedir | todos
+  const [bucket, setBucket] = useState("pedir");   // pedir | descanso | sem_prova
+  const [verGap, setVerGap] = useState(false);
   const money = window.fmt.money;
 
   const load = React.useCallback(() => {
@@ -1906,6 +1913,14 @@ function ReferralsTab({ saasId, onRegister, customers }) {
     api.referralQueue(saasId).then(setData).catch((e) => setErro(e?.message || "não deu pra carregar a fila"));
   }, [saasId]);
   React.useEffect(() => { load(); }, [load]);
+  // O resumo vira o subtítulo do cabeçalho da tela (o número do dia fica junto
+  // do título, não dentro de um card competindo com a fila).
+  React.useEffect(() => {
+    if (!onSummary) return;
+    onSummary(data
+      ? `${data.totals.pedir} com resultado fresco · ${money(data.totals.influencedSum)} vendidos pela Lever nas contas deles em 30 dias`
+      : "");
+  }, [data, onSummary]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function pedir(row) {
     setBusy(row.customer);
@@ -1923,86 +1938,121 @@ function ReferralsTab({ saasId, onRegister, customers }) {
   if (erro && !data) return <div style={{ padding: "16px var(--pad-x)" }}><EmptyState title="Fila indisponível" hint={erro} /></div>;
   if (!data) return <div style={{ padding: "16px var(--pad-x)", fontSize: 13, color: "var(--fg-3)" }}>Calculando o resultado de cada cliente…</div>;
 
-  const rows = only === "pedir" ? data.rows.filter((r) => r.bucket === "pedir") : data.rows;
+  const rows = data.rows.filter((r) => r.bucket === bucket);
   const gap = data.coverage.customers - data.coverage.withOrg;
+  // Quem está sem conta do LeverAds no cadastro: sai da própria base da tela
+  // (a fila não traz quem tem menos de 30 dias de casa).
+  const semOrg = (customers || []).filter((c) => c.saas === saasId && !isChurned(c) && !String(c.leveradsOrgId || "").trim());
+  const FILTROS = [
+    ["pedir", "Pra pedir", data.totals.pedir],
+    ["descanso", "Em descanso", data.totals.descanso],
+    ["prova_fraca", "Resultado pequeno", data.totals.provaFraca],
+    ["sem_prova", "Sem prova", data.totals.semProva],
+  ].filter(([, , n]) => n > 0 || bucket === "pedir");
+  // Cabe em 1280px (a aba usa a largura inteira); em 1024 rola na horizontal
+  // preservando o Cliente, que é a régua do .tbl-x.
+  const GRID = "minmax(150px,1.3fr) 120px 70px 96px minmax(160px,1fr) 150px";
 
   return (
     <div style={{ padding: "16px var(--pad-x) 56px", display: "grid", gap: 14 }}>
-      <Card>
-        <div className="sec-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <div>
-            <div className="card-title">Quem pedir hoje</div>
-            <div className="sec-sub">
-              {data.totals.pedir} {data.totals.pedir === 1 ? "cliente com resultado fresco" : "clientes com resultado fresco"}
-              {data.totals.descanso ? ` · ${data.totals.descanso} em descanso` : ""}
-              {` · ${money(data.totals.influencedSum)} vendidos pela Lever nas contas deles em 30 dias`}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        {FILTROS.map(([key, label, n]) => (
+          <FilterTab key={key} active={bucket === key} count={n} onClick={() => setBucket(key)}>{label}</FilterTab>
+        ))}
+        {!!gap && (
+          <span style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--fg-4)" }}>
+            {`${gap} ${gap === 1 ? "cliente ativo está" : "clientes ativos estão"} sem conta do LeverAds no cadastro`}
+            <button onClick={() => setVerGap((v) => !v)} className="mono"
+              style={{ background: "none", border: 0, padding: "0 0 0 6px", fontSize: 11.5, color: "var(--accent)", fontWeight: 600, cursor: "pointer" }}>
+              {verGap ? "esconder ▴" : "ver quem ▾"}
+            </button>
+          </span>
+        )}
+      </div>
+
+      {verGap && semOrg.length > 0 && (
+        <Card>
+          <div style={{ padding: "14px var(--inset-x)" }}>
+            <div className="kicker" style={{ marginBottom: 6 }}>Sem conta do LeverAds no cadastro</div>
+            <div style={{ fontSize: 11.5, color: "var(--fg-3)", marginBottom: 8 }}>
+              Sem a conta vinculada não há como provar resultado, e o pedido volta a ser genérico. O campo fica na ficha, na seção Contato.
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 10px" }}>
+              {semOrg.map((c) => (
+                <button key={c.id} onClick={() => onRegister && onRegister(c)} title="abrir o cadastro pra vincular"
+                  style={{ ...ACAO_BTN, cursor: "pointer" }}>{c.name}</button>
+              ))}
             </div>
           </div>
-          <Segmented value={only} onChange={setOnly}
-            options={[{ value: "pedir", label: "pra pedir" }, { value: "todos", label: "todos" }]} />
-        </div>
-        {!!gap && (
-          <div style={{ marginTop: 8, fontSize: 12, color: "var(--fg-3)" }}>
-            {gap} {gap === 1 ? "cliente ativo está" : "clientes ativos estão"} sem conta do LeverAds no cadastro, então não tem
-            como provar resultado {gap === 1 ? "dele" : "deles"}. Preencher o campo na ficha aumenta a fila.
-          </div>
-        )}
-      </Card>
+        </Card>
+      )}
+
+      {erro && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{erro}</div>}
 
       {!rows.length ? (
-        <EmptyState title="Ninguém pra pedir agora"
-          hint={only === "pedir" ? "Todo mundo com resultado fresco já foi pedido nos últimos 90 dias. Veja em 'todos'." : "A fila entra quando o cliente passa de 30 dias de casa."} />
+        <EmptyState title={bucket === "pedir" ? "Ninguém pra pedir agora" : "Nada nesta lista"}
+          hint={bucket === "pedir"
+            ? "Todo mundo com resultado fresco já foi pedido nos últimos 90 dias. Veja em 'Em descanso'."
+            : "Troque o filtro pra ver as outras listas."} />
       ) : (
-        <Card>
+        <Card style={{ overflow: "hidden" }}>
           <div className="tbl-x">
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr style={{ textAlign: "left", color: "var(--fg-3)", fontSize: 11, textTransform: "uppercase", letterSpacing: ".04em" }}>
-                  <th style={{ padding: "6px 8px" }}>Cliente</th>
-                  <th style={{ padding: "6px 8px", textAlign: "right" }}>Vendeu em 30d</th>
-                  <th style={{ padding: "6px 8px", textAlign: "right" }}>Casa</th>
-                  <th style={{ padding: "6px 8px" }}>Já indicou</th>
-                  <th style={{ padding: "6px 8px" }}>Situação</th>
-                  <th style={{ padding: "6px 8px" }} />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => {
-                  const b = BUCKETS[r.bucket] || BUCKETS.sem_prova;
-                  const cliente = customers.find((c) => c.id === r.customer);
-                  return (
-                    <tr key={r.customer} style={{ borderTop: "1px solid var(--line-1)" }}>
-                      <td style={{ padding: "8px" }}>
-                        <div style={{ fontWeight: 600 }}>{r.name}</div>
-                        <div style={{ fontSize: 11, color: "var(--fg-3)" }}>
-                          {[r.contact, r.ownerName && `CS ${r.ownerName}`].filter(Boolean).join(" · ")}
+            <div>
+              <div style={{ display: "grid", gridTemplateColumns: GRID, gap: 12, padding: "10px 16px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
+                <span className="kicker">Cliente</span>
+                <span className="kicker">Vendeu em 30d</span>
+                <span className="kicker">Casa</span>
+                <span className="kicker">Já indicou</span>
+                <span className="kicker">O que dizer</span>
+                <span className="kicker" style={{ textAlign: "right" }}>Ação</span>
+              </div>
+              {rows.map((r) => {
+                const cliente = (customers || []).find((c) => c.id === r.customer);
+                const descanso = r.bucket === "descanso";
+                return (
+                  <div key={r.customer} style={{ display: "grid", gridTemplateColumns: GRID, gap: 12, padding: "12px 16px", alignItems: "center", borderBottom: "1px solid var(--line-1)", opacity: descanso ? 0.6 : 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+                      <Avatar id={r.customer} name={r.name} size={28} />
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</div>
+                        <div style={{ fontSize: 11.5, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {[r.contact, r.ownerName && `CS ${r.ownerName}`].filter(Boolean).join(" · ") || "—"}
                         </div>
-                      </td>
-                      <td style={{ padding: "8px", textAlign: "right", fontWeight: r.influenced30d ? 600 : 400, color: r.influenced30d ? "var(--fg-1)" : "var(--fg-4)" }}>
+                      </div>
+                    </div>
+                    {/* A PROVA é o que autoriza o pedido: é o número que manda na linha. */}
+                    <div style={{ minWidth: 0 }}>
+                      <div className="tnum" style={{ fontSize: 16, fontWeight: 700, color: r.influenced30d ? "var(--pos)" : "var(--fg-4)", whiteSpace: "nowrap" }}>
                         {r.influenced30d ? money(r.influenced30d) : "—"}
-                      </td>
-                      <td style={{ padding: "8px", textAlign: "right", color: "var(--fg-3)" }}>{r.daysAsClient}d</td>
-                      <td style={{ padding: "8px", color: r.collected ? "var(--fg-2)" : "var(--fg-4)" }}>
-                        {r.collected ? `${r.collected}${r.closed ? ` · ${r.closed} fechou` : ""}` : (r.seeds ? `${r.seeds} nome${r.seeds > 1 ? "s" : ""} plantado${r.seeds > 1 ? "s" : ""}` : "—")}
-                      </td>
-                      <td style={{ padding: "8px" }}><Pill tone={b.tone}>{b.label}</Pill></td>
-                      <td style={{ padding: "8px", textAlign: "right", whiteSpace: "nowrap" }}>
-                        <button onClick={() => pedir(r)} disabled={busy === r.customer}
-                          style={{ height: 26, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 600, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-1)", marginRight: 6 }}>
-                          {busy === r.customer ? "…" : "pedir no WhatsApp"}
-                        </button>
-                        {cliente && (
-                          <button onClick={() => onRegister(cliente)}
-                            style={{ height: 26, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)" }}>
-                            registrar
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--fg-4)" }}>{r.influenced30d ? "na conta dele" : "sem venda ainda"}</div>
+                    </div>
+                    <div className="tnum" style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{r.daysAsClient}d</div>
+                    <div style={{ fontSize: 12.5, color: r.collected ? "var(--fg-2)" : "var(--fg-4)", minWidth: 0 }}>
+                      {r.collected
+                        ? `${r.collected}${r.closed ? ` · ${r.closed} fechou` : ""}`
+                        : (r.seeds ? `${r.seeds} plantado${r.seeds > 1 ? "s" : ""}` : "—")}
+                    </div>
+                    {/* O script deixa de aparecer só depois do clique, já dentro
+                        do WhatsApp: quem vai pedir lê antes o que vai dizer. */}
+                    <div title={r.script} style={{ fontSize: 11.5, color: "var(--fg-3)", lineHeight: 1.4, minWidth: 0, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                      {r.script}
+                    </div>
+                    <div style={{ textAlign: "right", display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                      {descanso
+                        ? <Pill tone="mut">em descanso</Pill>
+                        : <button onClick={() => pedir(r)} disabled={busy === r.customer}
+                            style={{ ...ACAO_BTN, background: "var(--bg-1)", color: "var(--fg-1)", fontWeight: 600, cursor: "pointer" }}>
+                            {busy === r.customer ? "…" : "pedir no WhatsApp"}
+                          </button>}
+                      {cliente && (
+                        <button onClick={() => onRegister(cliente)} style={{ ...ACAO_BTN, cursor: "pointer" }}>registrar</button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </Card>
       )}
