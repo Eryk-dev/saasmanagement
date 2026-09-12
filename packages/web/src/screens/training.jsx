@@ -1,6 +1,6 @@
 import React from "react";
 import { Segmented } from "../components/viz.jsx";
-import { EmptyState, PrimaryButton, SectionHead, CardHead } from "../atoms.jsx";
+import { EmptyState, PrimaryButton, SecondaryButton } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { useData } from "../data.jsx";
@@ -76,6 +76,9 @@ function Head({ mode, setMode, children }) {
 // ── Estudar: baralhos → sessão (normal ou em foco) ───────────────────────────
 function Study({ saasId, mode, setMode }) {
   const [data, setData] = useS(null);
+  // O /stats alimenta os TRÊS cards do trilho (consistência, memória, próxima
+  // prova): uma chamada só, carregada aqui, em vez de cada card buscar a sua.
+  const [stats, setStats] = useS(null);
   const [err, setErr] = useS(null);
   const [session, setSession] = useS(null); // role em sessão
   const [focus, setFocus] = useS(false);
@@ -88,6 +91,8 @@ function Study({ saasId, mode, setMode }) {
     if (!saasId) return;
     setErr(null);
     api.trainingQueue(saasId).then(setData).catch((e) => setErr(e.message));
+    // trilho é opcional: falha dele não pode derrubar o treino
+    api.trainingStats(saasId).then(setStats).catch(() => { /* widget opcional */ });
   }
   useE(load, [saasId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -121,19 +126,26 @@ function Study({ saasId, mode, setMode }) {
         onExit={() => { setSession(null); setFocus(false); load(); }} />;
     }
     if (!data.decks.length) return <EmptyState title="Nenhum baralho pra você" hint="Peça pro gestor te dar uma vaga (SDR/closer/…) em Ajustes → Usuários." />;
+    // Duas colunas: à esquerda o que fazer AGORA (a fila manda), à direita como
+    // você está indo. Antes eram seis blocos de peso igual empilhados e a
+    // pessoa abria a tela sem saber qual era a próxima ação.
     return (
-      <>
-        <StartCard decks={data.decks} exam={data.exam} onExam={() => setExam(data.exam)}
-          onStudy={(foco) => { setSession(true); setFocus(!!foco); }} />
-        {/* O ICP mora no treino também: decorar quem a gente caça é parte do
-            estudo diário (product.icp — o mesmo cartão da Visão geral). Aqui
-            ele ganha a coluna da matriz da nota (grade), que a Visão geral
-            não mostra. */}
-        <FunCard onStart={startFun} busy={funBusy} err={funErr} />
-        <IcpCard compact grade />
-        <DeckList decks={data.decks} />
-        <RoleGuides />
-      </>
+      <div className="resp-cols" style={{ "--cols": "minmax(0,1fr) 372px", gap: 16, alignItems: "start" }}>
+        <div style={{ display: "grid", gap: 14, minWidth: 0 }}>
+          <StartCard decks={data.decks} exam={data.exam} onExam={() => setExam(data.exam)}
+            onStudy={(foco) => { setSession(true); setFocus(!!foco); }}
+            onFun={startFun} funBusy={funBusy} funErr={funErr} />
+          <DeckList decks={data.decks} />
+          {/* Consulta, não rotina: ICP, vagas e empresa/cultura passam a abrir
+              quando a pessoa precisa, em vez de ocupar a dobra todo dia. */}
+          <RefList />
+        </div>
+        <div style={{ display: "grid", gap: 14, minWidth: 0 }}>
+          <ConsistencyCard stats={stats} />
+          <MemoryCard stats={stats} />
+          <NextExamCard stats={stats} />
+        </div>
+      </div>
     );
   };
 
@@ -157,112 +169,231 @@ function mixQueues(decks, queue) {
   return out;
 }
 
-// O bloco "da vez": a próxima coisa a fazer, uma por vez. Prova de checkpoint
-// pendente vem antes; senão, o treino do dia com a quebra dos números (novos do
-// dia + aprendendo/revisões que o FSRS devolveu pra fixar); zerou, descanso.
-function StartCard({ decks, exam, onExam, onStudy }) {
+// ── O hero "Da vez": a única coisa com tratamento forte na tela ────────────
+// A próxima ação, uma por vez: prova de checkpoint pendente vem antes; senão o
+// treino do dia com a quebra novos/aprendendo/revisar como três micro-números
+// (antes era uma frase corrida). O 4fun desceu pro rodapé do próprio hero: era
+// um card tracejado do mesmo peso competindo com o treino do dia.
+const FUN_ROUND = 20;
+
+// Ponto de 6px + palavra + número. Status no cockpit não é pílula colorida.
+function CountDot({ color, label, value }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6, fontSize: 12.5, color: "var(--fg-2)" }}>
+      <span style={{ width: 6, height: 6, borderRadius: 999, background: color, alignSelf: "center", flexShrink: 0 }} />
+      <b className="tnum" style={{ fontSize: 15, fontWeight: 700, color: "var(--fg-1)" }}>{value}</b>
+      {label}
+    </span>
+  );
+}
+
+function StartCard({ decks, exam, onExam, onStudy, onFun, funBusy, funErr }) {
   const sum = (k) => decks.reduce((a, d) => a + d.counts[k], 0);
   const novos = sum("new"), aprendendo = sum("learning"), revisar = sum("review");
   const total = novos + aprendendo + revisar;
-  const shell = { border: "1px solid var(--accent-line)", background: "var(--accent-soft)", borderRadius: "var(--r-4)", padding: "16px 20px", maxWidth: 760 };
+  const shell = { border: "1px solid var(--accent-line)", background: "var(--accent-soft)", borderRadius: "var(--r-4)", padding: "22px 24px" };
+  const funRow = (primary) => (
+    <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--accent-line)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+      <div style={{ flex: 1, minWidth: 200 }}>
+        <div style={{ fontSize: 12.5, color: "var(--fg-2)" }}>
+          {primary ? "Quer estudar mesmo assim?" : "Acabou a fila e quer continuar?"}
+        </div>
+        <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 2 }}>
+          não conta no compromisso do dia nem mexe na sua agenda de revisões · fica registrado no seu raio-x
+        </div>
+        {funErr && <div className="mono" style={{ fontSize: 11.5, color: "var(--neg)", marginTop: 5 }}>{funErr}</div>}
+      </div>
+      {primary ? (
+        <PrimaryButton onClick={onFun} disabled={funBusy}>{funBusy ? "sorteando…" : `Sortear ${FUN_ROUND} cards · 4fun →`}</PrimaryButton>
+      ) : (
+        <button onClick={onFun} disabled={funBusy} className="mono"
+          style={{ background: "none", border: 0, padding: 0, fontSize: 12, color: "var(--accent)", fontWeight: 600, cursor: funBusy ? "default" : "pointer", opacity: funBusy ? 0.6 : 1 }}>
+          {funBusy ? "sorteando…" : `Sortear ${FUN_ROUND} cards · 4fun →`}
+        </button>
+      )}
+    </div>
+  );
+
+  // Prova pendente vence a fila: é o compromisso da vez.
   if (exam) {
     return (
-      <div style={{ ...shell, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: 220 }}>
-          <div className="kicker accent">Da vez</div>
-          <div className="card-title" style={{ marginTop: 4 }}>Prova de checkpoint</div>
-          <div className="card-sub" style={{ marginTop: 3 }}>você aprendeu {exam.count} cards desde a última · mostra que ficou de verdade</div>
+      <div style={shell}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div className="kicker accent">Da vez</div>
+            <div className="card-title" style={{ marginTop: 6 }}>Prova de checkpoint</div>
+            <div className="card-sub" style={{ marginTop: 3 }}>você aprendeu {exam.count} cards desde a última · mostra que ficou de verdade</div>
+          </div>
+          <PrimaryButton onClick={onExam}>Fazer prova →</PrimaryButton>
         </div>
-        <button onClick={onExam} style={{ height: 40, padding: "0 18px", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: 600, background: "var(--btn-bg)", color: "var(--btn-fg)", border: "1px solid var(--btn-bg)", boxShadow: "var(--shadow-btn)", cursor: "pointer" }}>
-          Fazer prova →
-        </button>
       </div>
     );
   }
-  if (!total) return (
-    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "18px 24px", maxWidth: 760, fontSize: 13.5, color: "var(--fg-2)" }}>
-      Fila de hoje zerada 🎉 O FSRS traz cada card de volta na hora certa. Volte amanhã.
-    </div>
-  );
-  const parts = [
-    novos ? `${novos} novos do dia` : "",
-    aprendendo ? `${aprendendo} aprendendo (voltaram pra fixar)` : "",
-    revisar ? `${revisar} ${revisar === 1 ? "revisão vencida" : "revisões vencidas"}` : "",
-  ].filter(Boolean).join(" · ");
   return (
-    <div style={{ ...shell, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-      <div style={{ flex: 1, minWidth: 220 }}>
-        <div className="kicker accent">Da vez</div>
-        <div className="card-title" style={{ marginTop: 4 }}>Treino do dia · {total} card{total === 1 ? "" : "s"}</div>
-        <div className="card-sub" style={{ marginTop: 3 }}>{parts}</div>
-        <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 2 }}>temas misturados na cadência certa · você não escolhe, só responde</div>
-      </div>
-      <button onClick={() => onStudy(false)} style={{ height: 40, padding: "0 18px", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: 600, background: "var(--btn-bg)", color: "var(--btn-fg)", border: "1px solid var(--btn-bg)", boxShadow: "var(--shadow-btn)", cursor: "pointer" }}>
-        Estudar →
-      </button>
-      <button onClick={() => onStudy(true)} title="modo foco: tela cheia + áudio ambiente" style={{ height: 40, padding: "0 14px", borderRadius: "var(--r-2)", fontSize: 13, background: "var(--bg-1)", color: "var(--fg-2)", border: "1px solid var(--line-2)", cursor: "pointer" }}>
-        ◐ foco
-      </button>
-    </div>
-  );
-}
-
-// ── 4fun: estudo livre, fora da cota ─────────────────────────────────────────
-// A fila do dia acaba e quem quer continuar não tinha o que fazer. Aqui a
-// pessoa sorteia cards do próprio baralho quantas rodadas quiser: nada disso
-// agenda revisão, gasta o limite de novos ou conta como compromisso do dia — o
-// FSRS não é atrapalhado por quem estuda a mais. O que fica é o registro.
-const FUN_ROUND = 20;
-
-function FunCard({ onStart, busy, err }) {
-  return (
-    <div style={{ border: "1px dashed var(--line-2)", borderRadius: "var(--r-4)", background: "var(--bg-1)", padding: "14px 20px", maxWidth: 760, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-      <div style={{ flex: 1, minWidth: 220 }}>
-        <div className="kicker">Extra · 4fun</div>
-        <div className="card-title" style={{ marginTop: 4 }}>Estudar por diversão</div>
-        <div className="card-sub" style={{ marginTop: 3 }}>{FUN_ROUND} cards sorteados do seu baralho, quantas rodadas quiser</div>
-        <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 2 }}>não conta no compromisso do dia nem mexe na sua agenda de revisões · fica registrado no seu raio-x</div>
-        {err && <div className="mono" style={{ fontSize: 11.5, color: "var(--neg)", marginTop: 6 }}>{err}</div>}
-      </div>
-      <button onClick={onStart} disabled={busy} style={{ ...btn, height: 36, opacity: busy ? 0.6 : 1 }}>
-        {busy ? "sorteando…" : "Sortear cards →"}
-      </button>
-    </div>
-  );
-}
-
-// Tiles por tema = PONTUAÇÃO: % do baralho dominado (cards que já graduaram
-// pra revisão no FSRS). A fila do dia fica no bloco "da vez"; aqui é placar.
-function DeckList({ decks }) {
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
-      {decks.map((d) => {
-        const learned = d.learned || 0;
-        const pct = d.total > 0 ? Math.round((learned / d.total) * 100) : 0;
-        const tone = pct >= 80 ? "var(--pos)" : pct >= 40 ? "var(--warn)" : "var(--info)";
-        const pendToday = d.counts.new + d.counts.learning + d.counts.review;
-        return (
-          <div key={d.role} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "20px 22px" }}>
-            <CardHead title={d.label} sub={`${learned} de ${d.total} cards dominados`} meta={
-              <span style={{ height: 22, display: "inline-flex", alignItems: "center", padding: "0 9px", borderRadius: "var(--r-1)", background: d.role.startsWith("geral") ? "var(--bg-2)" : "var(--accent-soft)", color: d.role.startsWith("geral") ? "var(--fg-3)" : "var(--accent)", fontSize: 11.5, fontWeight: 600, flexShrink: 0 }}>
-                {d.role.startsWith("geral") ? "todo o time" : "sua vaga"}
-              </span>
-            } />
-            <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 14 }}>
-              <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 30, fontWeight: 700, color: tone }}>{pct}%</span>
-              <span className="kicker">pontuação</span>
-            </div>
-            <div style={{ height: 7, marginTop: 8, borderRadius: 999, background: "var(--bg-3)", overflow: "hidden" }}>
-              <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: tone, transition: "width 200ms ease" }} />
-            </div>
-            <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 10 }}>
-              {pendToday > 0
-                ? `${pendToday} no treino de hoje (${d.counts.new} novos · ${d.counts.learning} aprendendo · ${d.counts.review} revisar)`
-                : "nada pendente hoje nesse tema"}
-            </div>
+    <div style={shell}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div className="kicker accent">Da vez</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
+            <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 42, fontWeight: 700, letterSpacing: "-0.03em", lineHeight: 1, color: total ? "var(--fg-1)" : "var(--fg-4)" }}>{total}</span>
+            <span style={{ fontSize: 15, color: "var(--fg-3)" }}>
+              {total ? `card${total === 1 ? "" : "s"} no treino de hoje` : "cards no treino de hoje · fila zerada, o FSRS traz cada um na hora certa"}
+            </span>
           </div>
-        );
-      })}
+          {total > 0 && (
+            <div style={{ display: "flex", gap: 20, marginTop: 12, flexWrap: "wrap" }}>
+              <CountDot color="var(--accent)" label="novos" value={novos} />
+              <CountDot color="var(--warn)" label="aprendendo" value={aprendendo} />
+              <CountDot color="var(--pos)" label="revisar" value={revisar} />
+            </div>
+          )}
+        </div>
+        {total > 0 && (
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <PrimaryButton onClick={() => onStudy(false)}>Estudar →</PrimaryButton>
+            <SecondaryButton onClick={() => onStudy(true)} title="modo foco: tela cheia + áudio ambiente">◐ foco</SecondaryButton>
+          </div>
+        )}
+      </div>
+      {funRow(total === 0)}
+    </div>
+  );
+}
+
+// ── Seus baralhos: uma linha por tema, comparáveis entre si ─────────────────
+// PONTUAÇÃO = % do baralho dominado (cards que graduaram pra revisão no FSRS).
+// Eram tiles largos que não se comparavam; viraram linhas com a mesma barra na
+// mesma posição. A fila do dia mora no hero; aqui é placar.
+function DeckList({ decks }) {
+  const tone = (pct) => (pct >= 70 ? "var(--pos)" : pct >= 40 ? "var(--warn)" : "var(--neg)");
+  return (
+    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "18px 20px" }}>
+      <div className="card-title">Seus baralhos</div>
+      <div className="card-sub" style={{ marginTop: 3 }}>pontuação = cards que você já domina · a fila do dia mistura os temas sozinha</div>
+      <div style={{ marginTop: 12 }}>
+        {decks.map((d, i) => {
+          const learned = d.learned || 0;
+          const pct = d.total > 0 ? Math.round((learned / d.total) * 100) : 0;
+          const c = tone(pct);
+          const pend = d.counts.new + d.counts.learning + d.counts.review;
+          const geral = d.role.startsWith("geral");
+          return (
+            <div key={d.role} style={{ display: "grid", gridTemplateColumns: "minmax(0,1.1fr) 88px minmax(0,1fr) 150px", gap: 16, alignItems: "center", padding: "12px 0", borderBottom: i === decks.length - 1 ? "none" : "1px solid var(--line-1)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                <span style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{d.label}</span>
+                <span style={{ height: 20, display: "inline-flex", alignItems: "center", padding: "0 8px", borderRadius: "var(--r-1)", background: geral ? "var(--bg-2)" : "var(--accent-soft)", color: geral ? "var(--fg-3)" : "var(--accent)", fontSize: 11, fontWeight: 600, flexShrink: 0 }}>
+                  {geral ? "todo o time" : "sua vaga"}
+                </span>
+              </div>
+              <div className="tnum" style={{ fontSize: 17, fontWeight: 700, color: c }} title={`${learned} de ${d.total} cards dominados`}>{pct}%</div>
+              <div style={{ height: 7, borderRadius: 999, background: "var(--bg-3)", overflow: "hidden" }}>
+                <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: c, transition: "width 200ms ease" }} />
+              </div>
+              <div style={{ fontSize: 11.5, color: "var(--fg-4)", textAlign: "right" }}>
+                {pend > 0 ? `${pend} no treino de hoje` : "nada pendente hoje"}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Referências: abrem quando você precisa ──────────────────────────────────
+// ICP, vagas e empresa/cultura são consulta, não rotina: cada um ocupava uma
+// dobra inteira todo dia. Mesmo conteúdo, agora recolhido.
+function RefRow({ title, hint, children, last }) {
+  const [open, setOpen] = useS(false);
+  return (
+    <div style={{ padding: "12px 0", borderBottom: last ? "none" : "1px solid var(--line-1)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600 }}>{title}</div>
+          <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 2 }}>{hint}</div>
+        </div>
+        <button onClick={() => setOpen((o) => !o)} className="mono"
+          style={{ background: "none", border: 0, padding: 0, fontSize: 12, color: "var(--accent)", fontWeight: 600, cursor: "pointer", flexShrink: 0 }}>
+          {open ? "fechar ▴" : "abrir ▾"}
+        </button>
+      </div>
+      {open && <div style={{ marginTop: 12 }}>{children}</div>}
+    </div>
+  );
+}
+
+function RefList() {
+  return (
+    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "18px 20px" }}>
+      <div className="kicker">Referências · abrem quando você precisa</div>
+      <div style={{ marginTop: 8 }}>
+        <RefRow title="ICP · quem a gente caça" hint="o perfil que fecha e a matriz da nota (contas × anúncios)">
+          <IcpCard compact grade />
+        </RefRow>
+        <RefRow title="O papel de cada vaga" hint="mídia social → SDR → closer → CS · entender o vizinho é parte do jogo">
+          <RolesGuide />
+        </RefRow>
+        <RefRow title="A empresa · missão, números e cultura" hint="o mapa que os cards aprofundam" last>
+          <CompanyGuide />
+        </RefRow>
+      </div>
+    </div>
+  );
+}
+
+// ── Sua memória: você está lembrando? ───────────────────────────────────────
+// A MESMA agregação da aba Equipe, recortada na pessoa (routes.flashcards.js):
+// aluno e gestor nunca veem números diferentes do mesmo dado. Sem base ainda,
+// mostra "—" em vez de 0% (zero por cento é uma afirmação; falta de dado não).
+function MemoryCard({ stats }) {
+  const m = stats?.memory;
+  if (!m) return null;
+  const pct = (v) => (v == null ? "—" : `${v}%`);
+  const retTone = m.retention30d == null ? "var(--fg-4)" : m.retention30d >= 85 ? "var(--pos)" : m.retention30d >= 70 ? "var(--warn)" : "var(--neg)";
+  const rows = [
+    ["Retenção 30d", pct(m.retention30d), m.reviews30d ? `· ${m.reviews30d} rev.` : "", retTone],
+    ["Cards maduros", m.mature != null ? String(m.mature) : "—", m.deckSize ? `· de ${m.deckSize}` : "", "var(--fg-1)"],
+    ["Acerto de primeira", pct(m.firstTryPct), "", "var(--fg-1)"],
+    ["Última prova", m.lastExam ? `${m.lastExam.score}%` : "—", m.examsDone ? `· ${m.examsDone} feita${m.examsDone === 1 ? "" : "s"}` : "", m.lastExam ? (m.lastExam.status === "failed" ? "var(--neg)" : "var(--pos)") : "var(--fg-4)"],
+  ];
+  return (
+    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "18px 20px" }}>
+      <div className="kicker accent">Sua memória</div>
+      <div style={{ marginTop: 10 }}>
+        {rows.map(([label, value, extra, color], i) => (
+          <div key={label} style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, padding: "9px 0", borderBottom: i === rows.length - 1 ? "none" : "1px solid var(--line-1)" }}>
+            <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{label}</span>
+            <span style={{ textAlign: "right" }}>
+              <b className="tnum" style={{ fontSize: 15, fontWeight: 700, color }}>{value}</b>
+              {extra && <span className="mono dim" style={{ fontSize: 10.5, marginLeft: 5 }}>{extra}</span>}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Próxima prova: quanto falta pro checkpoint ──────────────────────────────
+// Lê o gatilho REAL (a pilha de graduados que dispara a prova), então a barra
+// nunca mente sobre quando cai. Prova desligada nas configurações = sem card.
+function NextExamCard({ stats }) {
+  const e = stats?.nextExam;
+  if (!e) return null;
+  const pct = e.every > 0 ? Math.min(100, Math.round((e.pool / e.every) * 100)) : 0;
+  return (
+    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-2)", padding: "16px 18px" }}>
+      <div className="kicker">Próxima prova</div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 8 }}>
+        <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 700 }}>{e.remaining}</span>
+        <span style={{ fontSize: 12.5, color: "var(--fg-2)" }}>card{e.remaining === 1 ? "" : "s"} aprendido{e.remaining === 1 ? "" : "s"} pra ela cair</span>
+      </div>
+      <div style={{ height: 7, marginTop: 10, borderRadius: 999, background: "var(--bg-1)", border: "1px solid var(--line-1)", overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: "var(--accent)", transition: "width 200ms ease" }} />
+      </div>
+      <div className="mono dim" style={{ fontSize: 10.5, marginTop: 8 }}>
+        a prova de checkpoint cai a cada {e.every} cards · nota mínima {e.pass}%
+      </div>
     </div>
   );
 }
@@ -596,25 +727,19 @@ function ExamScreen({ saasId, exam, onDone }) {
 }
 
 // ── Consistência: streak + heatmap de revisões (estilo GitHub) ───────────────
-function ConsistencyCard({ saasId }) {
-  const [s, setS] = useS(null);
-  useE(() => {
-    let alive = true;
-    api.trainingStats(saasId).then((d) => alive && setS(d)).catch(() => { /* widget é opcional */ });
-    return () => { alive = false; };
-  }, [saasId]);
-  if (!s) return null;
+// O stats vem do Study (uma chamada alimenta os três cards do trilho).
+function ConsistencyCard({ stats: s }) {
+  if (!s) return <div className="mono dim" style={{ fontSize: 12 }}>carregando seu histórico…</div>;
   return (
-    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px 18px", maxWidth: 720 }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-        <span className="kicker accent">Consistência</span>
-        <span style={{ flex: 1 }} />
-        <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 26, fontWeight: 700, color: s.streak ? "var(--accent)" : "var(--fg-4)" }}>{s.streak}</span>
-        <span style={{ fontSize: 12.5, color: "var(--fg-2)" }}>dia{s.streak === 1 ? "" : "s"} seguido{s.streak === 1 ? "" : "s"}</span>
-        <span className="mono dim" style={{ fontSize: 11 }}>
-          · melhor {s.bestStreak}d · hoje {s.doneToday}
-          {s.fun?.total ? ` · 4fun ${s.fun.doneToday} hoje (${s.fun.total} no total)` : ""}
-        </span>
+    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: 20 }}>
+      <div className="kicker accent">Consistência</div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 8 }}>
+        <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 34, fontWeight: 700, lineHeight: 1, color: s.streak ? "var(--accent)" : "var(--fg-4)" }}>{s.streak}</span>
+        <span style={{ fontSize: 13, color: "var(--fg-2)" }}>dia{s.streak === 1 ? "" : "s"} seguido{s.streak === 1 ? "" : "s"}</span>
+      </div>
+      <div className="mono dim" style={{ fontSize: 11.5, marginTop: 6, marginBottom: 12 }}>
+        melhor {s.bestStreak}d · {s.doneToday} feitas hoje
+        {s.fun?.total ? ` · 4fun ${s.fun.total} no total` : ""}
       </div>
       <Heatmap days={s.days} today={s.today} />
     </div>
@@ -633,15 +758,17 @@ const HEAT = [
 const DOW_LABELS = { 1: "seg", 3: "qua", 5: "sex" };
 
 function Heatmap({ days, today }) {
-  // 26 colunas de semanas (dom–sáb) terminando hoje. As chaves já são "dias
+  // 18 colunas de semanas (dom–sáb) terminando hoje. As chaves já são "dias
   // de estudo" (fuso SP, virada 4h) — a aritmética aqui é toda em UTC puro.
+  // 18 e não 26 porque o trilho tem 372px: mais semanas obrigaria a célula a
+  // cair abaixo de 9px, e aí o quadrado deixa de ser legível.
   const end = new Date(`${today}T12:00:00Z`);
   const start = new Date(end);
-  start.setUTCDate(start.getUTCDate() - start.getUTCDay() - 25 * 7);
+  start.setUTCDate(start.getUTCDate() - start.getUTCDay() - 17 * 7);
   const max = Math.max(1, ...Object.values(days || {}));
   const weeks = [];
   let prevMonth = -1;
-  for (let w = 0; w < 26; w++) {
+  for (let w = 0; w < 18; w++) {
     const first = new Date(start); first.setUTCDate(start.getUTCDate() + w * 7);
     const month = first.getUTCMonth();
     const label = month !== prevMonth ? first.toLocaleDateString("pt-BR", { month: "short", timeZone: "UTC" }).replace(".", "") : "";
@@ -1398,13 +1525,14 @@ const ROLE_GUIDES = [
   },
 ];
 
-function RoleGuides() {
+// A empresa: o que fazemos, os números, missão/visão e os 5 pilares. Mesmo
+// conteúdo de antes; só deixou de ocupar a dobra todo dia (vive numa linha das
+// Referências, no Estudar).
+function CompanyGuide() {
   return (
-    <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 14 }}>
-      <SectionHead title="A empresa e as vagas" sub="o mapa que os cards aprofundam" />
-
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {/* O que a empresa faz + missão/visão */}
-      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "20px 24px" }}>
+      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-inset)", padding: "18px 20px" }}>
         <div className="kicker">Quem somos</div>
         <div style={{ fontSize: 13.5, color: "var(--fg-1)", lineHeight: 1.6, marginTop: 6, maxWidth: 900 }}>{COMPANY.what}</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "14px 20px", marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line-faint)" }}>
@@ -1428,7 +1556,7 @@ function RoleGuides() {
       </div>
 
       {/* Os 5 pilares de cultura */}
-      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "20px 24px" }}>
+      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-inset)", padding: "18px 20px" }}>
         <div className="kicker">Os 5 pilares da nossa cultura</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginTop: 12 }}>
           {COMPANY.pillars.map((pl, i) => (
@@ -1440,13 +1568,17 @@ function RoleGuides() {
         </div>
       </div>
 
-      {/* As vagas na ordem do funil */}
-      <div style={{ marginTop: 4 }}>
-        <SectionHead title="As vagas, na ordem do funil" sub="mídia social → SDR → closer → CS · entender o vizinho é parte do jogo" />
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 14, alignItems: "start" }}>
+    </div>
+  );
+}
+
+// As vagas na ordem do funil (a segunda linha das Referências).
+function RolesGuide() {
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))", gap: 14, alignItems: "start" }}>
         {ROLE_GUIDES.map((g, gi) => (
-          <div key={g.role} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "20px 22px" }}>
+          <div key={g.role} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-inset)", padding: "16px 18px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span className="mono tnum" style={{ fontSize: 11, color: "var(--fg-4)" }}>{gi + 1}</span>
               <div className="card-title">{g.title}</div>

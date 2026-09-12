@@ -240,14 +240,20 @@ function retentionOf(reviews) {
   return { pct: Math.round((rs.filter((r) => r.rating >= 2).length / rs.length) * 100), n: rs.length };
 }
 
-export async function teamSnapshot(repo, saas, cardsBase, now = new Date()) {
+// `onlyUser` recorta a foto numa pessoa só: é como o card "Sua memória" da aba
+// Estudar lê retenção/maduros/acerto de primeira sem duplicar régua nenhuma (a
+// conta é a MESMA da aba Equipe, o que garante que o aluno e o gestor nunca
+// vejam números diferentes do mesmo dado). Pedido explícito passa por cima do
+// filtro de admin: o dono da operação não é cobrado no quadro, mas vê a
+// própria memória quando estuda.
+export async function teamSnapshot(repo, saas, cardsBase, now = new Date(), { onlyUser = "" } = {}) {
   const end = dayEnd(now);
   const today = dayKey(now);
   const users = (await repo.list("users"))
     .filter((u) => !u.saas || u.saas === saas) // respeita o escopo de produto do usuário
     // Admin fica FORA do quadro de cobrança: treinamento é opcional pra quem
     // toca o negócio, então listar ele como "atrasado" seria ruído.
-    .filter((u) => !isAdmin(u))
+    .filter((u) => (onlyUser ? u.id === onlyUser : !isAdmin(u)))
     .map((u) => ({ id: u.id, name: u.name, roles: Array.isArray(u.roles) ? u.roles : [] }));
   const reviews = (await repo.list("training_reviews")).filter((r) => r.saas === saas);
   const exams = (await repo.list("training_exams")).filter((e) => e.saas === saas);
@@ -724,7 +730,28 @@ export function registerFlashcardRoutes(app, repo, { anthropic = null } = {}) {
       total: funMine.length,
       hitPct30d: fun30.length ? Math.round((fun30.filter((r) => r.rating >= 3).length / fun30.length) * 100) : null,
     };
-    return { saas: product.id, today, streak, bestStreak, doneToday: counts[today] || 0, days, fun };
+    // MEMÓRIA (card "Sua memória") e PRÓXIMA PROVA: os dois vinham só do
+    // dashboard do gestor, então o aluno via a própria consistência mas não
+    // sabia se estava lembrando. Reusa teamSnapshot recortado nele mesmo em vez
+    // de recalcular: régua única, número igual ao que o gestor vê.
+    const { cards, settings } = await baseDoc(product.id);
+    const [me] = await teamSnapshot(repo, product.id, cards, now, { onlyUser: user.id });
+    const memory = me ? {
+      retention30d: me.retention30d?.pct ?? null,
+      reviews30d: me.retention30d?.n ?? 0,
+      retention7d: me.retention7d?.pct ?? null,
+      mature: me.mature, young: me.young, seen: me.seen, deckSize: me.deckSize,
+      firstTryPct: me.firstTryPct,
+      lastExam: me.lastExam, examsDone: me.examsDone,
+    } : null;
+    // Quantos cards graduados já esperam a prova: a MESMA pilha que dispara o
+    // checkpoint (statesDoc.gradPool), então a barra nunca mente sobre o gatilho.
+    const statesDoc = (await repo.get("training_states", stateDocId(product.id, user.id))) || EMPTY_STATES(product.id, user.id);
+    const pool = (statesDoc.gradPool || []).length;
+    const nextExam = settings.examEvery > 0
+      ? { every: settings.examEvery, pass: settings.examPass, pool, remaining: Math.max(0, settings.examEvery - pool) }
+      : null;
+    return { saas: product.id, today, streak, bestStreak, doneToday: counts[today] || 0, days, fun, memory, nextExam };
   });
 
   // Dashboard da equipe: quem está em dia, quem acumulou, acerto e sequência.
