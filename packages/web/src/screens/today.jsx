@@ -1,5 +1,5 @@
 import React from "react";
-import { EmptyState, useEsc, toast, WaButton } from "../atoms.jsx";
+import { EmptyState, useEsc, toast, WaButton, Avatar, MoreMenu } from "../atoms.jsx";
 import { ErrorBoundary } from "../components/error-boundary.jsx";
 import { Pill } from "../components/viz.jsx";
 import { ActivityComposer } from "../components/timeline.jsx";
@@ -133,6 +133,64 @@ const TIER_ORDER = { S: 6, A: 5, B: 4, C: 3, D: 2, E: 1, sem: 0 };
 // mais time-sensitive) e horário marcado primeiro; novos e no-show (leads
 // quentes) na sequência; depois retomadas, follow-ups, nutrição e sem agenda.
 const GROUP_ORDER = ["confirm", "appt", "novo", "noshow", "qual", "closer", "nutri", "loose"];
+
+// A grade da linha da fila: quando · o que fazer · nível · quem · dono · ações.
+// Somada com os gaps dá ~654px, dentro do orçamento de 1024px de janela com o
+// trilho de 380px empilhado (748 − 32 do padding). O smoke trava a conta.
+export const QUEUE_GRID = "76px minmax(120px,156px) 20px minmax(120px,1fr) 38px 176px";
+export const QUEUE_GRID_GAP = 12;
+export const QUEUE_GRID_BUDGET = 716;
+
+// ── O grupo VIRA CABEÇALHO na fila (12/09/2026) ─────────────────────────────
+// A ordem já existia (é o GROUP_ORDER que o buildQueue aplica) e não aparecia:
+// a lista renderizava plana, e 14 linhas seguidas não contam que as duas
+// primeiras são confirmação de call e as quatro seguintes são leads novos. A
+// frase diz POR QUE aquele grupo vem antes — é o que ensina a fila.
+const GROUP_META = {
+  confirm: ["Confirmar call", "o mais sensível a horário"],
+  appt: ["Compromissos de hoje", ""],
+  novo: ["Leads novos", "quanto mais fresco, mais responde"],
+  noshow: ["Remarcar", "não apareceu na call"],
+  qual: ["Retomadas", "toque agendado que venceu"],
+  closer: ["Follow-up do closer", ""],
+  nutri: ["Reativação", ""],
+  loose: ["Sem agenda", "ninguém marcou o próximo toque"],
+};
+
+// O VERBO da ação (o trabalho), que estava escondido em 12,5px --fg-3 dentro da
+// coluna do nome enquanto a ETAPA ocupava uma coluna de 118px em chip. Usado
+// pelo bloco "Agora" e pela coluna "o que fazer" da linha — uma régua só.
+function actionVerb(item) {
+  if (item.confirm) return item.confirmKind === "integracao" ? "Confirmar integração" : "Confirmar call";
+  if (item.group === "noshow") return "Remarcar";
+  if (item.group === "nutri") return "Reativação";
+  const l = ACTION_LABELS[item.kind] || "contato";
+  return l.charAt(0).toUpperCase() + l.slice(1);
+}
+
+// O detalhe embaixo do verbo: a janela da confirmação, a tentativa, a nota do
+// toque ou a origem do lead novo — o que dá contexto sem abrir o roteiro.
+function actionHint(item) {
+  const { l, kind, due } = item;
+  const tent = Number(l.stageAttempts) || 0;
+  const partes = [];
+  if (item.confirm) {
+    partes.push(item.confirmWindow === "10min" ? "10 min antes" : "2h antes");
+    const at = item.confirmKind === "integracao" ? l.integrationAt : l.callAt;
+    if (at) partes.push(`${item.confirmKind === "integracao" ? "integração" : "call"} ${hhmmOf(at)}`);
+  } else if (l.nextActionNote) {
+    if (tent > 0) partes.push(`${tent} de 5`);
+    partes.push(l.nextActionNote);
+  } else if (due?.type === "call") {
+    partes.push("call confirmada · Meet da agenda");
+  } else if (kind === "novo") {
+    partes.push(l.source || "sem origem");
+    partes.push(tent > 0 ? `${tent}ª tentativa` : "sem tentativa");
+  } else if (tent > 0) {
+    partes.push(`${tent} de 5`);
+  }
+  return partes.filter(Boolean).join(" · ");
+}
 
 // Fase do processo → papel que trabalha nela. Card SEM responsável só entra na
 // fila de quem tem o papel da fase: SDR não vê follow-up/integração soltos
@@ -558,6 +616,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   const firstPending = q.hoje.find((i) => !i.done);
   const pendingToday = q.hoje.filter((i) => !i.done);
   const doneTodayRows = q.hoje.filter((i) => i.done);
+  const [showDone, setShowDone] = useS(false); // "feitas hoje" é rodapé recolhível da fila
   const futureRows = [...q.proximos, ...q.semdata];
   // Memo: buildQueue de TODOS os usuários a cada render travava a digitação no painel.
   const queueCounts = useM(() => Object.fromEntries(users.map((u) => [u.id, buildQueue(leads, consultas, saasCfg, u.id).hoje.filter((i) => !i.done).length])), [leads, consultas, saasCfg, users]);
@@ -596,6 +655,15 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
     today: bizDay(new Date()),
     local: { contacted: q.doneToday, contactedGoal, calls: callsDone, callsGoal: Math.max(callsToday.length, 1) },
   });
+
+  // A fila mostrada exclui o item que virou o bloco "Agora" (ele sai da lista,
+  // como a prancha define) — consulta da mentoria não vira bloco Agora, então
+  // nesse caso nada é descontado. `lateCount` é o vencido de verdade (due no
+  // passado), que é o número que o cabeçalho da fila cobra.
+  const queueRows = firstPending && !firstPending.consulta
+    ? pendingToday.filter((i) => i !== firstPending)
+    : pendingToday;
+  const lateCount = pendingToday.filter((i) => i.due && i.due.t <= Date.now()).length;
 
   // Aviso de social selling: quando o SDR zera a fila de HOJE (nada pendente),
   // manda ir pro Instagram chamar os novos seguidores. Só na fila de um SDR.
@@ -660,34 +728,84 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
         ) : (
           <div className="resp-cols" style={{ "--cols": "minmax(0, 1fr) minmax(300px, 380px)", gap: 16, alignItems: "start" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
-              <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-                <div style={{ padding: "20px var(--inset-x) 14px" }}>
-                  <h3 className="card-title" style={{ margin: 0 }}>Hoje</h3>
-                  <div className="card-sub" style={{ marginTop: 3 }}>{pendingToday.length} pendentes · em ordem de execução</div>
-                </div>
-                {pendingToday.length === 0 && <div style={{ padding: "16px var(--inset-x)", borderTop: "1px solid var(--line-faint)", fontSize: 13, color: "var(--fg-3)" }}>Fila de hoje concluída.</div>}
-                {pendingToday.map((item, index) => (
-                  <QueueRow key={item.consulta ? `c-${item.consulta.id}` : item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id} item={item} block="hoje" featured={index === 0}
-                    onScript={() => setScriptItem(item)} onClaim={() => claim(item)} onWhatsapp={onOpenWhatsapp} onOpen={() => openConsulta(item)} />
-                ))}
-              </section>
-
-              {doneTodayRows.length > 0 && (
-                <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-                  <div style={{ padding: "20px var(--inset-x) 14px" }}>
-                    <h3 className="card-title" style={{ margin: 0 }}>Feitas hoje</h3>
-                    <div className="card-sub" style={{ marginTop: 3 }}>{doneTodayRows.length} concluídas</div>
-                  </div>
-                  {doneTodayRows.map((item) => <DoneActivityRow key={item.l.id} item={item} onClick={() => setScriptItem(item)} />)}
-                </section>
+              {/* ── AGORA: o comando da tela (12/09) ────────────────────────
+                  O primeiro pendente era só fundo --accent-soft numa linha
+                  igual às outras: a tela prometia "hoje em ordem de execução"
+                  e não dizia qual é o próximo. Ele SAI da lista abaixo (a
+                  contagem desconta), pra não existir em dois lugares. */}
+              {firstPending && !firstPending.consulta && (
+                <AgoraBlock item={firstPending} onScript={() => setScriptItem(firstPending)}
+                  onClaim={() => claim(firstPending)} onWhatsapp={onOpenWhatsapp} />
               )}
+
+              <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+                <div style={{ padding: "18px var(--inset-x) 12px", display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 180 }}>
+                    <h3 className="card-title" style={{ margin: 0 }}>{queueRows.length ? `${queueRows.length} restantes` : "Fila de hoje"}</h3>
+                    <div className="card-sub" style={{ marginTop: 3 }}>a ordem é a prioridade, não a hora</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+                    {lateCount > 0 && (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--neg)", fontWeight: 600 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: 999, background: "currentColor" }} />
+                        <span className="tnum">{lateCount}</span> {lateCount === 1 ? "atrasada" : "atrasadas"}
+                      </span>
+                    )}
+                    {doneTodayRows.length > 0 && (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--pos)", fontWeight: 600 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: 999, background: "currentColor" }} />
+                        <span className="tnum">{doneTodayRows.length}</span> feitas
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {queueRows.length === 0 && (
+                  <div style={{ padding: "16px var(--inset-x)", borderTop: "1px solid var(--line-faint)", fontSize: 13, color: "var(--fg-3)" }}>
+                    {firstPending ? "Só a atividade de agora, ali em cima." : "Fila de hoje concluída."}
+                  </div>
+                )}
+                {/* O grupo vira faixa: a ordem do GROUP_ORDER passa a ser
+                    legível em vez de implícita. Grupo vazio não rende faixa. */}
+                {queueRows.map((item, index) => {
+                  const grupo = item.group || "loose";
+                  const anterior = index > 0 ? (queueRows[index - 1].group || "loose") : null;
+                  const [rotulo, frase] = GROUP_META[grupo] || [grupo, ""];
+                  const nGrupo = queueRows.filter((x) => (x.group || "loose") === grupo).length;
+                  const key = item.consulta ? `c-${item.consulta.id}` : item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id;
+                  return (
+                    <React.Fragment key={key}>
+                      {grupo !== anterior && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px var(--inset-x)", background: "var(--bg-2)", borderTop: "1px solid var(--line-1)" }}>
+                          <span className="kicker" style={{ fontWeight: 600, color: grupo === "confirm" ? "var(--neg)" : "var(--fg-3)" }}>{rotulo}</span>
+                          <span className="tnum" style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{nGrupo}</span>
+                          {frase && <span style={{ fontSize: 11, color: "var(--fg-4)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>· {frase}</span>}
+                        </div>
+                      )}
+                      <QueueRow item={item} block="hoje" featured={false}
+                        onScript={() => setScriptItem(item)} onClaim={() => claim(item)} onWhatsapp={onOpenWhatsapp} onOpen={() => openConsulta(item)} />
+                    </React.Fragment>
+                  );
+                })}
+                {/* "Feitas hoje" era uma section inteira competindo com a fila;
+                    virou o rodapé recolhível dela, com a mesma DoneActivityRow. */}
+                {doneTodayRows.length > 0 && (
+                  <div style={{ borderTop: "1px solid var(--line-1)" }}>
+                    <button onClick={() => setShowDone((v) => !v)} className="mono"
+                      style={{ width: "100%", textAlign: "left", padding: "10px var(--inset-x)", background: "none", border: 0, fontSize: 12, color: "var(--accent)", fontWeight: 600, cursor: "pointer" }}>
+                      {showDone ? `esconder as feitas ▴` : `ver as feitas (${doneTodayRows.length}) ▾`}
+                    </button>
+                    {showDone && doneTodayRows.map((item) => <DoneActivityRow key={item.l.id} item={item} onClick={() => setScriptItem(item)} />)}
+                  </div>
+                )}
+              </section>
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
               <DayScore {...score} />
               {myTasks.length > 0 && <TasksCard tasks={myTasks} onDone={completeTask} undo={undoTask} onUndo={revertTask} />}
-              <CompactSchedule title="Amanhã" rows={q.amanha} onOpen={openRow} />
-              {futureRows.length > 0 && <CompactSchedule title="Próximos dias" rows={futureRows} onOpen={openRow} />}
+              {/* Amanhã e Próximos dias num card só: são consulta, não fluxo —
+                  o trilho tinha quatro cards de peso idêntico. */}
+              <CompactSchedule title="O que vem" rows={q.amanha} laterRows={futureRows} onOpen={openRow} />
             </div>
           </div>
         )}
@@ -792,61 +910,125 @@ function QueueRow({ item, block, featured, onScript, onClaim, onWhatsapp, onOpen
   } else when = { pill: "sem data", soft: true, tone: "mut" };
 
   const unowned = !who; // assumir só quando o card não tem responsável
-  const action = item.confirm
-    ? (item.confirmKind === "integracao" ? "confirmar integração · 2h antes"
-      : item.confirmWindow === "10min" ? "confirmar · 10 min antes" : "confirmar · 2h antes")
-    : group === "noshow" ? "remarcar" : group === "nutri" ? "reativação" : (ACTION_LABELS[kind] || "contato");
   const whatsapp = waLink(l.phone);
   // Cada tipo abre a PRÓPRIA sala: a integração tem o Meet dela, não o da venda.
   const meet = kind === "call" ? l.callUrl : kind === "integracao" ? l.integrationCallUrl : "";
-  const attemptNumber = Number(l.stageAttempts) || 0;
-  const actionDetail = l.nextActionNote || (item.confirmKind === "integracao" && l.integrationAt
-    ? `integração às ${hhmmOf(l.integrationAt)}`
-    : item.confirm && l.callAt ? `call às ${hhmmOf(l.callAt)}`
-    : due?.type === "call" ? "call confirmada · Meet criado pela agenda"
-    : kind === "novo" ? `1º toque${l.source ? ` · ${l.source}` : ""}`
-    : action);
+  const tier = leadTier(l);
+  const verbo = actionVerb(item);
+  const hint = actionHint(item);
 
+  // A ETAPA saiu da linha (ia num chip de 118px enquanto a ação, que é o
+  // trabalho, ficava em 12,5px dentro do nome): vive no title e no painel.
   return (
     <div onClick={onScript} role="button" tabIndex={0}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onScript(); } }}
-      title="Abrir o roteiro desta atividade" style={{
-      display: "flex", alignItems: "center", gap: 14, padding: featured ? "16px var(--inset-x)" : "14px var(--inset-x)",
-      borderTop: "1px solid var(--line-faint)", background: featured ? "var(--accent-soft)" : "transparent", cursor: "pointer", flexWrap: "wrap",
+      title={`Abrir o roteiro · ${stage}${hint ? ` · ${hint}` : ""}`} style={{
+      display: "grid", gridTemplateColumns: QUEUE_GRID, gap: 12, alignItems: "center",
+      padding: "12px var(--inset-x)",
+      borderTop: "1px solid var(--line-faint)", background: featured ? "var(--accent-soft)" : "transparent", cursor: "pointer",
     }}>
       <TimeCell pill={when.pill} note={when.note} tone={when.tone} soft={when.soft} />
-      {/* Status do lead como coluna própria (alinhada, igual o horário); a
-          tentativa vai numa linha menor embaixo da pill. */}
-      <span style={{ width: 118, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
-        <span title={stage} style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: "20px", padding: "0 8px", borderRadius: "var(--r-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 500 }}>{stage}</span>
-        {attemptNumber > 0 && <span className="mono tnum" style={{ fontSize: 10.5, color: "var(--fg-4)", paddingLeft: 2 }}>{attemptNumber}ª tentativa</span>}
-      </span>
-      <div style={{ flex: 1, minWidth: "min(240px, 100%)" }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 14, fontWeight: 600 }}>{l.name}</span>
-          {l.company && <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{l.company}</span>}
-        </div>
-        <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 3 }}>{actionDetail}</div>
+      {/* O QUE FAZER ganhou a coluna que era da etapa. */}
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{verbo}</div>
+        {hint && <div style={{ fontSize: 11, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{hint}</div>}
       </div>
-      <div style={{ display: "flex", gap: 8, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
-        {unowned && <button onClick={onClaim} style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px dashed var(--line-2)", color: "var(--fg-3)", fontSize: 12 }}>assumir</button>}
+      {/* Nível: estava só no painel e no card do pipeline. */}
+      {tier.grade
+        ? <span title={tier.label} style={{ width: 20, height: 20, borderRadius: 5, background: tier.tone, color: tier.badgeFg, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{tier.grade}</span>
+        : <span title="sem qualificação" style={{ width: 20, height: 20, borderRadius: 5, border: "1px solid var(--line-2)", color: "var(--fg-4)", fontSize: 11, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>—</span>}
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</div>
+        {l.company && <div style={{ fontSize: 11.5, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.company}</div>}
+      </div>
+      {/* Dono: avatar de 24px; sem responsável, o "+" que assume (era um botão
+          com texto que empurrava as ações pra fora da linha). */}
+      <span onClick={(e) => e.stopPropagation()} style={{ display: "inline-flex", justifyContent: "center" }}>
+        {unowned
+          ? <button onClick={onClaim} title="assumir este card" style={{ width: 38, height: 28, borderRadius: "var(--r-2)", border: "1px dashed var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 14, cursor: "pointer" }}>+</button>
+          : <Avatar id={who} name={displayName(who)} size={24} />}
+      </span>
+      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }} onClick={(e) => e.stopPropagation()}>
         {meet ? (
-          <a href={meet} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", color: "var(--fg-2)", fontSize: 12.5, textDecoration: "none" }}>abrir Meet</a>
+          <a href={meet} target="_blank" rel="noopener noreferrer" style={{ height: 28, display: "inline-flex", alignItems: "center", padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", color: "var(--fg-2)", fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}>abrir Meet</a>
         ) : whatsapp ? (
           // Atalho pro INBOX interno (conversa do lead, com ou sem thread ainda);
           // sem o handler (contexto antigo), cai no deep-link do app.
           onWhatsapp ? (
             <button onClick={() => onWhatsapp(l)} title="Abrir a conversa no inbox do cockpit"
-              style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: "var(--r-2)", border: `1px solid ${featured ? "var(--btn-bg)" : "var(--line-2)"}`, background: featured ? "var(--btn-bg)" : "var(--bg-1)", color: featured ? "var(--btn-fg)" : "var(--fg-2)", fontSize: 12.5, fontWeight: featured ? 600 : 500 }}>WhatsApp</button>
+              style={{ height: 28, display: "inline-flex", alignItems: "center", padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 500, whiteSpace: "nowrap" }}>WhatsApp</button>
           ) : (
-            <a href={whatsapp} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: "var(--r-2)", border: `1px solid ${featured ? "var(--btn-bg)" : "var(--line-2)"}`, background: featured ? "var(--btn-bg)" : "var(--bg-1)", color: featured ? "var(--btn-fg)" : "var(--fg-2)", fontSize: 12.5, fontWeight: featured ? 600 : 500, textDecoration: "none" }}>WhatsApp</a>
+            <a href={whatsapp} target="_blank" rel="noopener noreferrer" style={{ height: 28, display: "inline-flex", alignItems: "center", padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 500, textDecoration: "none", whiteSpace: "nowrap" }}>WhatsApp</a>
           )
         ) : null}
         {/* "roteiro" fica SEMPRE: sem ele, linha não-destaque com WhatsApp só
             abria pelo clique no corpo (invisível pra quem navega por botão). */}
-        <button onClick={onScript} style={{ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5 }}>roteiro</button>
+        <button onClick={onScript} style={{ height: 28, padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid var(--btn-bg, var(--accent))", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", cursor: "pointer" }}>roteiro</button>
       </div>
     </div>
+  );
+}
+
+// ── O bloco "Agora" ────────────────────────────────────────────────────────
+// O primeiro pendente deixa de ser uma linha com fundo colorido e passa a ser o
+// comando da tela: o VERBO em 22px, o atraso ao lado, a identidade embaixo e as
+// duas ações grandes. Ele sai da lista de baixo (a contagem desconta), pra não
+// existir em dois lugares.
+function AgoraBlock({ item, onScript, onClaim, onWhatsapp }) {
+  const { l, due, stage, who } = item;
+  const now = Date.now();
+  const atrasado = !!due && due.t <= now;
+  const tier = leadTier(l);
+  const wa = waLink(l.phone);
+  const meet = item.kind === "call" ? l.callUrl : item.kind === "integracao" ? l.integrationCallUrl : "";
+  const quando = due
+    ? `${item.confirm || due.type === "call" ? `${item.kind === "integracao" ? "integração" : "call"} às ${hhmmOf(due.t)}` : hhmmOf(due.t)} · ${atrasado ? "agora" : untilNote(due.t, now)}`
+    : item.kind === "novo" ? "lead novo · sem hora marcada" : "sem hora marcada";
+  return (
+    <section style={{ border: `1px solid ${atrasado ? "var(--neg)" : "var(--accent-line)"}`, background: atrasado ? "var(--neg-soft)" : "var(--accent-soft)", borderRadius: "var(--r-4)", padding: "18px var(--inset-x)" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <div className="kicker" style={{ color: atrasado ? "var(--neg)" : "var(--accent)" }}>Agora</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 4, flexWrap: "wrap" }}>
+            <span style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, lineHeight: 1.2 }}>{actionVerb(item)}</span>
+            <span style={{ fontSize: 13, color: atrasado ? "var(--neg)" : "var(--fg-3)", fontWeight: atrasado ? 600 : 400 }}>{quando}</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+            {tier.grade && (
+              <span title={tier.label} style={{ width: 20, height: 20, borderRadius: 5, background: tier.tone, color: tier.badgeFg, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{tier.grade}</span>
+            )}
+            <span style={{ fontSize: 14, fontWeight: 600 }}>{l.name}</span>
+            {l.company && <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{l.company}</span>}
+            <span className="mono dim" style={{ fontSize: 11 }}>{stage}</span>
+          </div>
+          {(l.nextActionNote || actionHint(item)) && (
+            <div style={{ fontSize: 13, color: "var(--fg-2)", marginTop: 6 }}>{l.nextActionNote || actionHint(item)}</div>
+          )}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {!who && (
+            <button onClick={onClaim} title="assumir este card"
+              style={{ height: 42, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px dashed var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 13, cursor: "pointer" }}>assumir</button>
+          )}
+          <button onClick={onScript}
+            style={{ height: 42, padding: "0 18px", borderRadius: "var(--r-2)", border: "1px solid var(--btn-bg, var(--accent))", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+            Abrir o roteiro →
+          </button>
+          {meet ? (
+            <a href={meet} target="_blank" rel="noopener noreferrer"
+              style={{ height: 42, display: "inline-flex", alignItems: "center", padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13.5, fontWeight: 600, textDecoration: "none" }}>abrir Meet ↗</a>
+          ) : wa ? (
+            onWhatsapp ? (
+              <button onClick={() => onWhatsapp(l)} title="Abrir a conversa no inbox do cockpit"
+                style={{ height: 42, padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>WhatsApp</button>
+            ) : (
+              <a href={wa} target="_blank" rel="noopener noreferrer"
+                style={{ height: 42, display: "inline-flex", alignItems: "center", padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13.5, fontWeight: 600, textDecoration: "none" }}>WhatsApp ↗</a>
+            )
+          ) : null}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -862,24 +1044,27 @@ function DoneActivityRow({ item, onClick }) {
   );
 }
 
-function CompactSchedule({ title, rows, onOpen }) {
-  // A lista corta em 5, mas NUNCA em silêncio: o total fica no subtítulo e o
+// Uma faixa (Amanhã ou Próximos dias) dentro do card "O que vem".
+function ScheduleLane({ label, rows, amanha, onOpen }) {
+  // A lista corta em 5, mas NUNCA em silêncio: o total fica no cabeçalho e o
   // "+N" expande aqui mesmo (agenda escondida = call que ninguém preparou).
   const [showAll, setShowAll] = useS(false);
   const timeOf = (item) => {
     if (!item.due) return "sem data";
-    return title === "Amanhã"
+    return amanha
       ? new Date(item.due.t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
       : new Date(item.due.t).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
   };
+  const calls = rows.filter((i) => i.due?.type === "call" || i.kind === "call").length;
   return (
-    <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
-      <div style={{ padding: "20px var(--inset-x) 12px" }}>
-        <h3 className="card-title" style={{ margin: 0 }}>{title}</h3>
-        {rows.length > 0 && <div className="card-sub" style={{ marginTop: 3 }}>{rows.length} {rows.length === 1 ? "atividade" : "atividades"}</div>}
+    <>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px var(--inset-x)", background: "var(--bg-2)", borderTop: "1px solid var(--line-1)" }}>
+        <span className="kicker" style={{ fontWeight: 600 }}>{label}</span>
+        <span className="tnum" style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{rows.length}</span>
+        {calls > 0 && <span style={{ fontSize: 11, color: "var(--fg-4)" }}>· {calls} {calls === 1 ? "call" : "calls"}</span>}
       </div>
-      <div style={{ padding: "0 var(--inset-x) 8px" }}>
-        {rows.length === 0 && <div style={{ borderTop: "1px solid var(--line-faint)", padding: "12px 0 14px", fontSize: 12.5, color: "var(--fg-4)" }}>nenhuma atividade</div>}
+      <div style={{ padding: "0 var(--inset-x) 4px" }}>
+        {rows.length === 0 && <div style={{ padding: "10px 0 12px", fontSize: 12.5, color: "var(--fg-4)" }}>nenhuma atividade</div>}
         {(showAll ? rows : rows.slice(0, 5)).map((item) => (
           <button key={item.consulta ? `c-${item.consulta.id}` : item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id} onClick={() => onOpen(item)} style={{ width: "100%", display: "flex", gap: 10, alignItems: "baseline", padding: "10px 0", borderTop: "1px solid var(--line-faint)", textAlign: "left" }}>
             <span className="tnum" style={{ fontSize: 12.5, color: "var(--fg-4)", flexShrink: 0 }}>{timeOf(item)}</span>
@@ -895,6 +1080,25 @@ function CompactSchedule({ title, rows, onOpen }) {
           </button>
         )}
       </div>
+    </>
+  );
+}
+
+// "O que vem": Amanhã e Próximos dias no MESMO card, em duas faixas (12/09).
+// O trilho tinha quatro cards de peso idêntico; estes dois são consulta, não
+// fluxo de trabalho, então dividem um lugar só.
+function CompactSchedule({ title = "O que vem", rows = [], laterRows = [], onOpen }) {
+  const total = rows.length + laterRows.length;
+  return (
+    <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+      <div style={{ padding: "18px var(--inset-x) 12px" }}>
+        <h3 className="card-title" style={{ margin: 0 }}>{title}</h3>
+        <div className="card-sub" style={{ marginTop: 3 }}>
+          {total ? `${total} ${total === 1 ? "atividade marcada" : "atividades marcadas"}` : "nada marcado ainda"}
+        </div>
+      </div>
+      <ScheduleLane label="Amanhã" rows={rows} amanha onOpen={onOpen} />
+      {laterRows.length > 0 && <ScheduleLane label="Próximos dias" rows={laterRows} onOpen={onOpen} />}
     </section>
   );
 }
