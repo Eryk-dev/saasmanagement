@@ -177,13 +177,34 @@ function mixQueues(decks, queue) {
 const FUN_ROUND = 20;
 
 // Ponto de 6px + palavra + número. Status no cockpit não é pílula colorida.
-function CountDot({ color, label, value }) {
+function CountDot({ color, label, value, dim = false, size = 15 }) {
   return (
-    <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6, fontSize: 12.5, color: "var(--fg-2)" }}>
+    <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6, fontSize: 12.5, color: dim ? "rgba(255,255,255,0.5)" : "var(--fg-2)", opacity: value ? 1 : 0.45 }}>
       <span style={{ width: 6, height: 6, borderRadius: 999, background: color, alignSelf: "center", flexShrink: 0 }} />
-      <b className="tnum" style={{ fontSize: 15, fontWeight: 700, color: "var(--fg-1)" }}>{value}</b>
+      <b className="tnum" style={{ fontSize: size, fontWeight: 700, color: dim ? "#fff" : "var(--fg-1)" }}>{value}</b>
       {label}
     </span>
+  );
+}
+
+// ── Barra de progresso da sessão ────────────────────────────────────────────
+// Não existia noção de progresso: a pessoa não sabia se estava no card 3 ou no
+// 20. O denominador é o tamanho da fila NO INÍCIO (recalcular no meio faria o
+// número pular); card que volta pra fixar (learning step do Anki) aparece como
+// acréscimo em vez de inflar o total, que seria mentir sobre o que falta.
+function SessionProgress({ done, total, dark = false }) {
+  if (!total) return null;
+  const pct = Math.min(100, Math.round((done / total) * 100));
+  const extra = Math.max(0, done - total);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={{ flex: 1, height: 5, borderRadius: 999, background: dark ? "rgba(255,255,255,0.12)" : "var(--bg-3)", overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: dark ? "#3eccbf" : "var(--accent)", transition: "width 220ms ease" }} />
+      </div>
+      <span className="mono tnum" style={{ fontSize: 11, color: dark ? "rgba(255,255,255,0.5)" : "var(--fg-4)", whiteSpace: "nowrap" }}>
+        {Math.min(done, total)} de {total}{extra ? ` · +${extra} que voltaram` : ""}
+      </span>
+    </div>
   );
 }
 
@@ -408,6 +429,7 @@ function Session({ saasId, label, cards, dayEnd, onExit, focus, onToggleFocus, r
   const [busy, setBusy] = useS(false);
   const [err, setErr] = useS(null);
   const [tally, setTally] = useS({ 1: 0, 2: 0, 3: 0, 4: 0 });
+  const total0 = useR(cards.length); // fila no início: denominador da barra
   const card = queue[0];
   const shownAt = useR(Date.now());
   useE(() => { shownAt.current = Date.now(); }, [card?.entryId || card?.id]); // cronômetro do card
@@ -478,7 +500,7 @@ function Session({ saasId, label, cards, dayEnd, onExit, focus, onToggleFocus, r
               : "Fila de hoje zerada — o FSRS traz cada card de volta na hora certa. Volte amanhã."}
           </div>
         </div>
-        {!fun && <ConsistencyCard saasId={saasId} />}
+        {!fun && <ConsistencyCardLive saasId={saasId} />}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {fun && onMore && (
             <button onClick={onMore} style={{ ...btn, ...(focus ? { background: "transparent", color: "rgba(255,255,255,0.7)", border: "1px solid rgba(255,255,255,0.2)" } : {}) }}>mais {FUN_ROUND} cards →</button>
@@ -491,26 +513,26 @@ function Session({ saasId, label, cards, dayEnd, onExit, focus, onToggleFocus, r
     const bucket = !card.srs || card.srs.state === 0 ? "new" : card.srs.state === 2 ? "review" : "learning";
     body = (
       <div style={{ display: "flex", flexDirection: "column", gap: focus ? 16 : 12, width: "100%", maxWidth: focus ? 760 : 720 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", justifyContent: focus ? "center" : "flex-start" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", justifyContent: focus ? "center" : "flex-start" }}>
           {!focus && <button onClick={onExit} className="mono dim" style={{ fontSize: 12 }}>{fun ? "← sair do 4fun" : "← baralhos"}</button>}
           {!focus && <span style={{ flex: 1 }} />}
+          {/* Os contadores ganharam RÓTULO: três números soltos não diziam o
+              que cada um era, e a pessoa lia "6 4 12" sem saber o que somar. */}
           {fun
             ? <span className="mono tnum" style={{ fontSize: 12, color: focus ? inkDim : "var(--fg-3)" }}>{queue.length} na rodada</span>
             : COUNT.map((c) => (
-              <span key={c.key} className="mono tnum" title={c.label}
-                style={{ fontSize: 12, color: focus ? inkDim : c.color, textDecoration: bucket === c.key ? "underline" : "none", opacity: counts[c.key] ? 1 : 0.35 }}>
-                {counts[c.key]}
-              </span>
+              <CountDot key={c.key} color={c.color} label={c.label} value={counts[c.key]} dim={focus} size={13.5} />
             ))}
-          <span className="mono tnum" style={{ fontSize: 11.5, color: focus ? inkDim : "var(--fg-3)" }}>· {done} feitas</span>
           {!focus && <button onClick={onToggleFocus} title="modo foco: tela cheia + áudio ambiente" className="mono dim" style={{ fontSize: 12, cursor: "pointer" }}>◐ foco</button>}
         </div>
+
+        {!fun && <SessionProgress done={done} total={total0.current} dark={focus} />}
 
         {/* O card */}
         <div onClick={() => !flipped && setFlipped(true)}
           style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)",
             boxShadow: focus ? "0 24px 90px rgba(0,0,0,0.55)" : "var(--shadow-2)",
-            padding: focus ? "34px 34px 28px" : "26px 26px 22px", minHeight: focus ? 220 : 180,
+            padding: focus ? "34px 34px 28px" : "26px 26px 22px", minHeight: focus ? 220 : 190,
             display: "flex", flexDirection: "column", gap: 14, cursor: flipped ? "default" : "pointer" }}>
           <div className="kicker">{(roleLabels && roleLabels[card.role]) || label} · {fun ? "4fun" : bucket === "new" ? "card novo" : bucket === "review" ? "revisão" : "aprendendo"}{card.sub ? ` · ${card.sub}` : ""}</div>
           <CardFace card={card} flipped={flipped} focus={focus} />
@@ -527,9 +549,11 @@ function Session({ saasId, label, cards, dayEnd, onExit, focus, onToggleFocus, r
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
             {RATINGS.map((r) => (
               <button key={r.rating} onClick={() => rate(r.rating)} disabled={busy}
-                style={{ height: focus ? 58 : 52, borderRadius: "var(--r-2)", border: `1px solid ${r.color}`, background: r.bg, color: r.color, fontWeight: 700, fontSize: focus ? 15 : 13.5, cursor: "pointer", opacity: busy ? 0.6 : 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
-                <span>{r.label} <span style={{ opacity: 0.6, fontWeight: 400, fontSize: 10.5 }}>({r.rating})</span></span>
-                <span className="mono" style={{ fontSize: 10.5, fontWeight: 500, opacity: 0.8 }}>{card.preview?.[r.rating] || ""}</span>
+                style={{ height: 58, borderRadius: "var(--r-2)", border: `1px solid ${r.color}`, background: r.bg, color: r.color, fontWeight: 700, fontSize: focus ? 14.5 : 13.5, cursor: "pointer", opacity: busy ? 0.6 : 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3 }}>
+                <span>{r.label} <span style={{ opacity: 0.6, fontWeight: 400, fontSize: 11 }}>({r.rating})</span></span>
+                {/* o intervalo é o que o FSRS agendaria pra ESTE card agora
+                    (card.preview vem do previewIntervals) — nunca tabela fixa */}
+                <span className="mono" style={{ fontSize: 11, fontWeight: 500, opacity: 0.85 }}>{card.preview?.[r.rating] || ""}</span>
               </button>
             ))}
           </div>
@@ -727,6 +751,18 @@ function ExamScreen({ saasId, exam, onDone }) {
 }
 
 // ── Consistência: streak + heatmap de revisões (estilo GitHub) ───────────────
+// Busca o stats e delega: é como a tela de fim de sessão mostra a consistência
+// JÁ com a revisão de agora contada (o Study passa o dele, que é de antes).
+function ConsistencyCardLive({ saasId }) {
+  const [s, setS] = useS(null);
+  useE(() => {
+    let alive = true;
+    api.trainingStats(saasId).then((d) => alive && setS(d)).catch(() => { /* widget é opcional */ });
+    return () => { alive = false; };
+  }, [saasId]);
+  return <ConsistencyCard stats={s} />;
+}
+
 // O stats vem do Study (uma chamada alimenta os três cards do trilho).
 function ConsistencyCard({ stats: s }) {
   if (!s) return <div className="mono dim" style={{ fontSize: 12 }}>carregando seu histórico…</div>;
