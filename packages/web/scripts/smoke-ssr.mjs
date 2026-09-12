@@ -612,6 +612,29 @@ try {
     failed++;
   }
 
+  // ── Minhas atividades: a linha da fila tem que CABER (12/09) ────────────
+  // Mesma disciplina de Clientes e Pipeline: a grade da linha é uma constante
+  // com orçamento, então alargar coluna sem refazer a conta falha o build.
+  try {
+    const T = await server.ssrLoadModule("/src/screens/today.jsx");
+    const cols = T.QUEUE_GRID.trim().split(/\s+(?![^(]*\))/);
+    if (cols.length !== 6) throw new Error(`esperava 6 colunas, achei ${cols.length}`);
+    const floorOf = (c) => {
+      const mm = c.match(/^minmax\((\d+)px/) || c.match(/^(\d+)px$/);
+      if (!mm) throw new Error(`coluna sem piso em px: ${c}`);
+      return Number(mm[1]);
+    };
+    const soma = cols.reduce((a, c) => a + floorOf(c), 0) + T.QUEUE_GRID_GAP * (cols.length - 1);
+    if (soma > T.QUEUE_GRID_BUDGET) throw new Error(`a fila volta a rolar: ${soma}px de ${T.QUEUE_GRID_BUDGET}`);
+    // A tela monta (a fila vem por efeito, então aqui é o caminho de render).
+    const tela = renderToString(wrap(React.createElement(T.TodayScreen, { onOpenLead() {}, onOpenWhatsapp() {} })));
+    if (!tela.includes("Minhas atividades")) throw new Error("a tela não montou");
+    console.log(`✓ minhas-atividades (${soma}px de ${T.QUEUE_GRID_BUDGET})`);
+  } catch (err) {
+    console.error(`✗ minhas-atividades: ${err.message}`);
+    failed++;
+  }
+
   // ── Pipeline: a Lista tem que CABER e ATRASADOS vem primeiro (12/09) ────
   try {
     const P = await server.ssrLoadModule("/src/screens/pipeline.jsx");
