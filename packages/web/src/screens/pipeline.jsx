@@ -120,6 +120,10 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
     setShowDiscardedState(v);
     try { localStorage.setItem("cockpit_pipeline_discarded", v ? "1" : "0"); } catch { /* ignore */ }
   };
+  // "N atrasados" é clicável e filtra o board (12/09): o número respondia a
+  // pergunta "quantos?" e deixava a seguinte — "quais?" — pra rolagem.
+  // Não persiste: é um recorte do momento, não um filtro de trabalho.
+  const [onlyLate, setOnlyLate] = useStP(false);
   // Gate de movimento pendente (handoff / motivo de perda).
   const [pendingMove, setPendingMove] = useStP(null); // { lead, toStage, gate, saasCfg }
 
@@ -201,9 +205,43 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   const openLeads = saasAll.filter(l => open.includes(l.stage));
   const newWeek = saasAll.filter(l => l.createdAt && Date.now() - new Date(l.createdAt).getTime() <= 7 * 86400000).length;
   const phaseCounts = {
+    all: saasAll.length,
     sdr: saasAll.filter((l) => phaseOf(stageKind(s, l.stage)) === "sdr").length,
     closer: saasAll.filter((l) => ["closer", "entrega"].includes(phaseOf(stageKind(s, l.stage)))).length,
   };
+  // ── Estado do BOARD (12/09): o board não dizia onde está o problema — o
+  // atraso só existia como pílula pequena dentro de cada card. Mesma régua das
+  // colunas (nextTouch pelo kind da etapa), sobre o que está visível no board.
+  const boardState = useMP(() => {
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    const amanha = hoje.getTime() + 86400000;
+    let late = 0, today = 0, valor = 0;
+    for (const st of visibleStages) {
+      const kind = stageKind(s, st);
+      for (const l of (byStage[st] || [])) {
+        valor += Number(l.amount) || 0;
+        const at = nextTouch(l, { kind })?.at;
+        if (at == null || !Number.isFinite(at)) continue;
+        if (at < hoje.getTime()) late++;
+        else if (at < amanha) today++;
+      }
+    }
+    return { late, today, valor };
+  }, [byStage, visibleStages.join("|"), activeSaas]);
+  // "N atrasados" filtra o board: é a pergunta que se faz olhando o número.
+  const lateOnly = useMP(() => {
+    if (!onlyLate) return byStage;
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    const out = {};
+    for (const st of Object.keys(byStage)) {
+      const kind = stageKind(s, st);
+      out[st] = (byStage[st] || []).filter((l) => {
+        const at = nextTouch(l, { kind })?.at;
+        return at != null && Number.isFinite(at) && at < hoje.getTime();
+      });
+    }
+    return out;
+  }, [byStage, onlyLate, activeSaas]);
 
   return (
     <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
@@ -221,32 +259,58 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
           </div>
         </div>
 
+        {/* ── UMA barra de controles (12/09) ─────────────────────────────────
+            Eram quatro grupos com micro-rótulos em texto ("fase:", "pessoa:",
+            "ordenar:") competindo numa linha que quebrava. A forma do controle
+            já diz o que ele é: fase no Segmented (com a contagem no rótulo),
+            pessoa nos chips, ordenação num select e descartados no FilterTab.
+            À direita, o estado do board — e "atrasados" FILTRA. */}
         {view === "kanban" && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 12, color: "var(--fg-4)" }}>fase:</span>
-            <PhaseFilter phase={phase} counts={phaseCounts} onChange={setPhase} />
-            <span style={{ width: 1, height: 18, background: "var(--line-1)", margin: "0 4px" }} />
-            <span style={{ fontSize: 12, color: "var(--fg-4)" }}>pessoa:</span>
-            <PersonFilter person={person} leads={saasAll} onChange={setPerson} me={me} />
-            <span style={{ width: 1, height: 18, background: "var(--line-1)", margin: "0 4px" }} />
-            <span style={{ fontSize: 12, color: "var(--fg-4)" }}>ordenar:</span>
-            <SortToggle mode={sortMode} onChange={setSortMode} />
-            {phase !== "closer" && phase !== "cs" && (
-              <>
-                <span style={{ width: 1, height: 18, background: "var(--line-1)", margin: "0 4px" }} />
+          <Card>
+            <div style={{ padding: "14px 20px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <Segmented value={phase} onChange={setPhase} options={[
+                { value: "all", label: `Todos ${phaseCounts.all}` },
+                { value: "sdr", label: `SDR ${phaseCounts.sdr}` },
+                { value: "closer", label: `Closer ${phaseCounts.closer}` },
+              ]} />
+              <PersonFilter person={person} leads={saasAll} onChange={setPerson} me={me} />
+              <select value={sortMode} onChange={(e) => setSortMode(e.target.value)} title="ordem das colunas"
+                style={{ height: 30, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5 }}>
+                <option value="toque">próximo toque</option>
+                <option value="ultimo">último toque</option>
+                <option value="qualidade">qualidade</option>
+              </select>
+              {phase !== "closer" && phase !== "cs" && (
                 <FilterTab active={showDiscarded} count={discardedCount || undefined} onClick={() => setShowDiscarded(!showDiscarded)}>
                   {showDiscarded ? "Ocultar descartados" : "Descartados"}
                 </FilterTab>
-              </>
-            )}
-          </div>
+              )}
+              <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+                <button onClick={() => setOnlyLate((v) => !v)}
+                  title={onlyLate ? "mostrar o board inteiro" : "filtrar o board só nos atrasados"}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 30, padding: "0 11px", borderRadius: 999, cursor: "pointer",
+                    border: `1px solid ${onlyLate ? "var(--neg)" : boardState.late ? "color-mix(in srgb, var(--neg) 40%, transparent)" : "var(--line-1)"}`,
+                    background: onlyLate ? "var(--neg-soft)" : "transparent",
+                    color: boardState.late ? "var(--neg)" : "var(--fg-4)", fontSize: 12.5, fontWeight: 600 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: 999, background: "currentColor", flexShrink: 0 }} />
+                  <span className="tnum">{boardState.late}</span> atrasados
+                </button>
+                <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>
+                  <b className="tnum" style={{ color: "var(--fg-1)" }}>{boardState.today}</b> para hoje
+                </span>
+                <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>
+                  <b className="tnum" style={{ color: "var(--fg-1)" }}>{window.fmt.money(boardState.valor)}</b> em jogo
+                </span>
+              </div>
+            </div>
+          </Card>
         )}
 
       {view === "kanban" && (
         <KanbanBoard
           s={s}
           stages={visibleStages}
-          byStage={byStage}
+          byStage={lateOnly}
           sortMode={sortMode}
           highlight={highlight}
           onMove={requestMove}
@@ -298,34 +362,6 @@ function stagesForPhase(s, stages, phase) {
     if (phase === "cs") return p === "entrega" || k === "ganho";
     return (p === "closer" || p === "entrega" || p === "fim") && k !== "desqualificado";
   });
-}
-
-// Fatia o board pela fase do processo (SDR = pré-venda; Closer = call em
-// diante; CS = pós-venda).
-function PhaseFilter({ phase, counts, onChange }) {
-  const opts = [["all", "Todas"], ["sdr", "SDR"], ["closer", "Closer"]];
-  return (
-    <div style={{ display: "contents" }}>
-      {opts.map(([k, label]) => (
-        <FilterTab key={k} active={phase === k} count={k === "all" ? undefined : counts[k]} onClick={() => onChange(k)}>{label}</FilterTab>
-      ))}
-    </div>
-  );
-}
-
-// Ordem das colunas: pelo próximo toque (o atrasado sobe, é a fila de trabalho),
-// pelo último toque (a mesma fila INVERTIDA — o fim dela sobe: sem próximo
-// passo primeiro, depois o toque mais distante) ou pela qualidade do cliente
-// (S no topo, é a fila de prioridade comercial).
-function SortToggle({ mode, onChange }) {
-  const opts = [["toque", "Próximo toque"], ["ultimo", "Último toque"], ["qualidade", "Qualidade"]];
-  return (
-    <div style={{ display: "contents" }}>
-      {opts.map(([k, label]) => (
-        <FilterTab key={k} active={mode === k} onClick={() => onChange(k)}>{label}</FilterTab>
-      ))}
-    </div>
-  );
 }
 
 // Filtro por pessoa: "meus" (dono, closer OU integrador = usuário logado) ou
@@ -404,11 +440,16 @@ function WonSummary({ leads }) {
   const monthLeads = leads.filter((l) => bizDay(wonAtOf(l)).slice(0, 7) === month);
   const total = monthLeads.reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
   const label = now.toLocaleDateString("pt-BR", { month: "long", timeZone: "America/Sao_Paulo" });
+  // A borda tracejada dava cara de placeholder vazio justamente no bloco que
+  // mostra o que já foi fechado. Agora é um bloco --pos soft (12/09).
   return (
-    <div style={{ width: 220, flexShrink: 0, border: "1px dashed var(--line-2)", borderRadius: "var(--r-4)", padding: 16, textAlign: "center" }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--pos)" }}>Ganho · {label}</div>
-      <div className="tnum" style={{ fontSize: 24, fontWeight: 700, marginTop: 6 }}>{monthLeads.length}</div>
-      <div style={{ fontSize: 12, color: "var(--fg-3)", marginTop: 2 }}>{window.fmt.money(total)} fechados</div>
+    <div style={{ width: 220, flexShrink: 0, border: "1px solid color-mix(in srgb, var(--pos) 35%, transparent)", background: "var(--pos-soft)", borderRadius: "var(--r-4)", padding: 16 }}>
+      <div className="kicker" style={{ color: "var(--pos)" }}>Ganho · {label}</div>
+      <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 28, fontWeight: 700, marginTop: 6, lineHeight: 1 }}>{monthLeads.length}</div>
+      <div style={{ fontSize: 12.5, color: "var(--fg-2)", marginTop: 4 }}>
+        {`${monthLeads.length === 1 ? "venda" : "vendas"} · ${window.fmt.money(total)}`}
+      </div>
+      <a href="#customers" style={{ display: "inline-block", marginTop: 10, fontSize: 12, fontWeight: 600, color: "var(--pos)", textDecoration: "none" }}>ver as vendas →</a>
     </div>
   );
 }
@@ -443,6 +484,11 @@ function KanbanColumn({ s, stage, cards, sortMode, highlight, onDropCard, draggi
     : sortMode === "ultimo"
       ? [...cards].sort((a, b) => byTouch(b, a))
       : [...cards].sort(byTouch);
+  // Mesma régua do nextTs acima (nextTouch pelo kind da coluna): o número do
+  // cabeçalho e a ordem da coluna nunca discordam.
+  const hoje0 = new Date(); hoje0.setHours(0, 0, 0, 0);
+  const colLate = cards.filter((l) => { const t = nextTs(l); return Number.isFinite(t) && t < hoje0.getTime(); }).length;
+  const colToday = cards.filter((l) => { const t = nextTs(l); return Number.isFinite(t) && t >= hoje0.getTime() && t < hoje0.getTime() + 86400000; }).length;
   const shown = expanded ? ordered : ordered.slice(0, 10);
   const hidden = ordered.length - shown.length;
   return (
@@ -457,12 +503,32 @@ function KanbanColumn({ s, stage, cards, sortMode, highlight, onDropCard, draggi
         boxShadow: highlight ? "0 0 0 2px var(--accent-line)" : "none",
         transition: "var(--transition-ui)",
       }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "6px 8px 10px" }}>
-        <div style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
-          {stage}
-          <span className="mono tnum" style={{ fontSize: 11.5, fontWeight: 400, color: "var(--fg-4)" }}>{cards.length}</span>
+      <div style={{ padding: "6px 8px 10px" }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
+            {stage}
+            <span className="mono tnum" style={{ fontSize: 11.5, fontWeight: 400, color: "var(--fg-4)" }}>{cards.length}</span>
+          </div>
+          <span className="tnum" style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--fg-4)", whiteSpace: "nowrap" }}>{window.fmt.money(total)}</span>
         </div>
-        <span className="tnum" style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--fg-4)", whiteSpace: "nowrap" }}>{window.fmt.money(total)}</span>
+        {/* Atraso da COLUNA (12/09): é o que permite ver a coluna travada sem
+            abrir card nenhum — antes o atraso só existia dentro de cada um. */}
+        {(colLate > 0 || colToday > 0) && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
+            {colLate > 0 && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--neg)", fontWeight: 600 }}>
+                <span style={{ width: 6, height: 6, borderRadius: 999, background: "currentColor" }} />
+                <span className="tnum">{colLate}</span> atrasados
+              </span>
+            )}
+            {colToday > 0 && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--fg-3)" }}>
+                <span style={{ width: 6, height: 6, borderRadius: 999, background: "var(--warn)" }} />
+                <span className="tnum">{colToday}</span> hoje
+              </span>
+            )}
+          </div>
+        )}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {shown.map(l => (
