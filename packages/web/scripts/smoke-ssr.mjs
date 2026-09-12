@@ -682,6 +682,30 @@ try {
     failed++;
   }
 
+  // ── Contratos: modelos e histórico viraram tabela (redesign de 12/09) ───
+  // As duas tabelas nasceram de cards/linhas soltas e têm o mesmo risco das
+  // outras: alguém alarga uma coluna e a rolagem horizontal volta calada.
+  try {
+    const C = await server.ssrLoadModule("/src/screens/contracts.jsx");
+    const floorOf = (col) => {
+      const mm = col.match(/^minmax\((\d+)px/);
+      if (mm) return Number(mm[1]);
+      const px = col.match(/^(\d+)px$/);
+      if (px) return Number(px[1]);
+      throw new Error(`coluna sem piso em px: "${col}"`);
+    };
+    for (const [nome, grid] of [["modelos", C.MODEL_GRID], ["histórico", C.HIST_GRID]]) {
+      const cols = grid.trim().split(/\s+(?![^(]*\))/);
+      if (cols.length !== 5) throw new Error(`${nome}: esperava 5 colunas, achei ${cols.length}`);
+      const soma = cols.reduce((a, c) => a + floorOf(c), 0) + C.GRID_GAP * (cols.length - 1);
+      if (soma > C.GRID_BUDGET) throw new Error(`${nome} volta a rolar: ${soma}px de ${C.GRID_BUDGET}`);
+    }
+    console.log("✓ contratos-tabelas");
+  } catch (err) {
+    console.error(`✗ contratos-tabelas: ${err.message}`);
+    failed++;
+  }
+
   // ── Propostas: o funil e as duas tabelas (redesign de 12/09) ────────────
   // A tela virou funil (gerada → aberta → fechou) + templates em linhas +
   // UMA tabela de geradas com filtros (antes a aba "Geradas" e a seção
