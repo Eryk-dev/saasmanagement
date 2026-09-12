@@ -366,6 +366,14 @@ ${PROGRESS_JS}
       var ref = p.get('referrer')
         || (document.referrer && document.referrer.indexOf(location.origin) !== 0 ? document.referrer : '');
       if (ref) o.referrer = ref.slice(0, 300);
+      // INDICAÇÃO: ?ref=<id do cliente> é o link que o cliente encaminha pros
+      // lojistas que ele conhece; ?refby=<id do usuário> vem da fila de
+      // colheita e diz quem colheu (sem ele, o servidor credita o dono do
+      // cliente). O servidor valida os dois: aqui é só transporte.
+      ['ref', 'refby'].forEach(function (k) {
+        var v = p.get(k);
+        if (v) o[k] = v.slice(0, 60);
+      });
       return Object.keys(o).length ? o : null;
     } catch (e) { return null; }
   })();

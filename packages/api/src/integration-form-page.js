@@ -123,7 +123,7 @@ export function integrationFormPageHtml(f, { done = false } = {}) {
     <div class="brand"><img src="${BRAND_ICON}" alt=""><span>LeverAds</span></div>
     <h1>Formulário de Integração</h1>
     <p>Antes da call de integração a gente precisa conhecer a sua operação: quais contas entram, de onde os anúncios saem, para onde vão, o que não pode ser clonado e como fica o estoque. É o que a gente configura na sua conta, então vale responder com calma.</p>
-    <p>São poucos minutos e todas as perguntas são obrigatórias.</p>
+    <p>São poucos minutos. Tudo aqui é obrigatório, menos a última parte (indicação), que fica a seu critério.</p>
     ${f.clientName ? `<div class="who">${esc(f.clientName)}</div>` : ""}
   </header>
   <form id="form" novalidate></form>
@@ -232,7 +232,7 @@ const CLIENT_JS = `
           var box = el('div', 'row');
           var head = el('div', 'row-head');
           head.appendChild(el('b', null, (q.rowLabel || 'Item') + ' ' + (i + 1)));
-          if (listRows[q.key].length > (q.min || 1)) {
+          if (listRows[q.key].length > (q.optional ? 0 : (q.min || 1))) {
             var del = el('button', 'row-del', 'remover');
             del.type = 'button';
             del.addEventListener('click', function () { listRows[q.key].splice(i, 1); renderRows(); });
@@ -342,13 +342,22 @@ const CLIENT_JS = `
       var q = b.q, v = answers[q.key], msg = '';
       if (q.type === 'list') {
         var rows = listRows[q.key] || [];
-        var falta = rows.length < (q.min || 1);
+        // Lista OPCIONAL toda em branco é resposta válida ("não quero indicar
+        // ninguém agora"); linha começada, porém, tem que ser terminada.
+        var algo = false;
+        rows.forEach(function (r) {
+          (q.fields || []).forEach(function (f) { if (!blank(r[f.key])) algo = true; });
+        });
+        if (q.optional && !algo) return;
+        var falta = rows.length < (q.optional ? 1 : (q.min || 1));
         rows.forEach(function (r) {
           (q.fields || []).forEach(function (f) { if (blank(r[f.key])) falta = true; });
         });
         if (falta) msg = 'Preencha todos os campos de cada ' + (q.rowLabel || 'item').toLowerCase() + '.';
       } else if (q.type === 'ack') {
         if (v !== true) msg = 'Marque para continuar.';
+      } else if (q.optional && blank(v)) {
+        return;
       } else if (blank(v)) {
         msg = 'Preencha este campo.';
       } else if (q.type === 'email' && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/.test(v)) {

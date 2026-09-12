@@ -24,6 +24,17 @@ import { fmtDateTime } from "../lib/format.js";
 
 const DAY = 86_400_000;
 
+// "Azul Pet · colhido por Jonan" — o cliente que indicou, com quem levou o
+// crédito da coleta. Cliente que saiu da base ainda mostra o id, pro histórico
+// não virar linha vazia.
+export function referralLine(lead) {
+  const id = lead?.referredByCustomer;
+  if (!id) return null;
+  const c = (typeof window !== "undefined" ? window.SEED?.CUSTOMERS : null)?.find?.((x) => x.id === id);
+  const who = lead.referralCollectedBy ? ` · colhido por ${displayName(lead.referralCollectedBy)}` : "";
+  return `${c?.name || id}${who}`;
+}
+
 // Caixa padrão dos blocos do painel (tile interno: bg-inset + r-2).
 export const leadBox = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "10px 12px", background: "var(--bg-inset)" };
 
@@ -71,6 +82,9 @@ export function clientSummary(saasCfg, lead, stage, cat, { full = false } = {}) 
       : [dealProductLabel(lead.proposalProduct, lead.saas), closedPlanLabel(lead.proposalOffer) || lead.proposalOffer].filter(Boolean).join(" · ")) : null],
     ["Pagamento", lead.paymentMethod ? paymentLabel(lead.paymentMethod) : null],
     ["Origem", lead.source],
+    // Indicação: quem indicou e quem colheu andam juntos — o crédito é do
+    // coletor, então o nome dele é parte do fato, não detalhe de bastidor.
+    ["Indicado por", referralLine(lead)],
     ["SDR / closer", [lead.owner && displayName(lead.owner), lead.closer && displayName(lead.closer)].filter(Boolean).join(" / ") || null],
     ["Próximo passo (nota)", lead.nextActionNote],
     ...(full ? [

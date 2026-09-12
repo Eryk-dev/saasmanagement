@@ -79,6 +79,37 @@ export async function logReferralCollected(repo, { lead, saas = "", customer = "
   } catch { return null; } // fail-open: auditoria não bloqueia cadastro de lead
 }
 
+// Indicação que chega pelo LINK PÚBLICO do form (/f/:id?ref=cu_x&refby=uid).
+// Fail-open por construção: link velho, cliente churnado do cadastro ou id
+// digitado errado NÃO podem derrubar o envio do formulário — a pessoa está do
+// outro lado preenchendo. Sem vínculo válido o lead entra como qualquer outro.
+//
+// Quem colheu, quando o link não diz (`refby` vazio): o DONO do cliente. O link
+// é do cliente, e quem cuida dele é quem plantou o pedido. Cliente sem dono
+// deixa o coletor vazio: a indicação conta no funil e na classe semente, mas
+// não paga ninguém até alguém assumir o registro.
+export async function referralFromRef(repo, { ref = "", by = "" } = {}) {
+  const cid = String(ref || "").trim();
+  if (!cid) return null;
+  try {
+    const customer = await repo.get("customers", cid);
+    if (!customer) return null;
+    let collector = String(by || "").trim();
+    if (collector) {
+      const user = await repo.get("users", collector);
+      if (!user) collector = "";
+    }
+    if (!collector) collector = String(customer.owner || "").trim();
+    return {
+      referredByCustomer: cid,
+      ...(collector ? { referralCollectedBy: collector } : {}),
+      referralAt: new Date().toISOString(),
+      source: REFERRAL_SOURCE,
+      _customerName: customer.name || "",
+    };
+  } catch { return null; }
+}
+
 // Já houve coleta registrada neste lead? (evita activity duplicada no PATCH)
 export const hasReferralEvent = (acts) =>
   (acts || []).some((a) => a?.meta?.event === "referral_collected");

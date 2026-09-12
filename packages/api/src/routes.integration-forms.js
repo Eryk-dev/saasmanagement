@@ -17,6 +17,7 @@ import { makeRateLimiter } from "./forms.js";
 import { publicSections, validateIntegrationAnswers, sanitizeIntegrationAnswers, integrationSummary, INTEGRATION_FORM_VERSION, TERM_TEXT } from "./integration-form.js";
 import { integrationFormPageHtml } from "./integration-form-page.js";
 import { logActivity } from "./lead-flow.js";
+import { createTask } from "./tasks-core.js";
 import { clientIp } from "./routes.forms.js";
 
 const notFoundHtml = "<!doctype html><meta charset='utf-8'><body style='font-family:system-ui;display:grid;place-items:center;height:100vh;color:#0c1d2b;background:#f7f8fa'><p>Formulário não encontrado. Peça um link novo pro time da LeverAds.</p></body>";
@@ -108,6 +109,46 @@ export function registerIntegrationFormRoutes(app, repo, opts = {}) {
       } catch { /* fail-open: aviso nunca derruba o envio */ }
       // Carimbo no card pra quem olha o lead saber que o formulário voltou.
       try { await repo.update("leads", doc.leadId, { integrationFormAt: now, integrationFormId: doc.id }); } catch { /* fail-open */ }
+    }
+
+    // PLANTIO DA INDICAÇÃO: os nomes que o cliente deu no fim do formulário
+    // ficam guardados NA FICHA dele e geram uma tarefa pra alguém pedir a ponte.
+    // De propósito não viram lead: telefone de terceiro sem consentimento é
+    // lead frio e exposição desnecessária, e o próprio formulário promete ao
+    // cliente que ninguém é procurado antes de ele ser avisado.
+    const seeds = (Array.isArray(answers.indicacoes) ? answers.indicacoes : [])
+      .map((r) => ({ name: String(r?.nome || "").trim(), phone: String(r?.whatsapp || "").trim() }))
+      .filter((r) => r.name || r.phone);
+    if (seeds.length) {
+      try {
+        const customers = await repo.list("customers");
+        const customer = doc.customerId
+          ? customers.find((c) => c.id === doc.customerId)
+          : customers.find((c) => doc.leadId && c.leadId === doc.leadId);
+        if (customer) {
+          const digits = (v) => String(v || "").replace(/\D/g, "").slice(-8);
+          const had = Array.isArray(customer.referralSeeds) ? customer.referralSeeds : [];
+          const novos = seeds
+            .filter((sd) => !had.some((h) => (digits(h.phone) && digits(h.phone) === digits(sd.phone)) || (!sd.phone && h.name === sd.name)))
+            .map((sd) => ({ ...sd, at: now, from: "integracao" }));
+          if (novos.length) {
+            await repo.update("customers", customer.id, { referralSeeds: [...had, ...novos].slice(-30) });
+            await createTask(repo, {
+              saas: doc.saas || customer.saas || "",
+              title: `Pedir a ponte das indicações de ${customer.name || doc.customerName || "cliente"}`,
+              description: [
+                `${customer.name || doc.customerName || "O cliente"} deixou ${novos.length === 1 ? "um nome" : `${novos.length} nomes`} no Formulário de Integração:`,
+                ...novos.map((sd) => `· ${sd.name}${sd.phone ? ` (${sd.phone})` : ""}`),
+                "",
+                "O formulário promete que ninguém é procurado antes de avisar o cliente: peça a ponte a ele (apresentação no WhatsApp), e só então registre a indicação na ficha do cliente.",
+                "A coleta entra no nome de quem registrar: R$ 100 se virar reunião feita, R$ 500 se fechar.",
+              ].join("\n"),
+              labels: ["indicacao"],
+              ...(customer.owner ? { assignees: [customer.owner] } : {}),
+            }, { by: "system" });
+          }
+        }
+      } catch { /* fail-open: plantio nunca derruba o envio do formulário */ }
     }
 
     if (discord?.configured?.()) {
