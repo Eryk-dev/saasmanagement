@@ -24,6 +24,13 @@ const DAY = 86_400_000;
 export const MIN_DAYS = 30;
 // Janela de descanso: o mesmo cliente não é pedido de novo antes disso.
 export const ASK_COOLDOWN_DAYS = 90;
+// Piso da prova: abaixo disso o número não sustenta o pedido. Medido na base
+// real em 12/09/2026 — depois de vincular as contas que faltavam, metade dos
+// clientes novos aparecia com R$ 500 a R$ 900 influenciados no mês, e "os
+// anúncios que subimos venderam R$ 562" convida o cliente a discordar da prova
+// em vez de indicar alguém. Quem está abaixo aparece como prova fraca, não como
+// fila: é caso de esperar a operação engrenar.
+export const MIN_PROOF_BRL = 1000;
 
 const dias = (from, at = Date.now()) => {
   const t = new Date(from || 0).getTime();
@@ -43,11 +50,12 @@ function lastAskOf(acts, customer) {
 }
 
 // A fila, já classificada. `bucket`:
-//   pedir      tem prova fresca e ninguém pediu na janela de descanso
-//   descanso   já foi pedido há menos de 90 dias
-//   sem_prova  ativo e com tempo de casa, mas sem venda influenciada nos 30d
-//              (ou sem org vinculada no cadastro — o gap cadastral aparece em
-//              `coverage`, porque é ele que limita a fila)
+//   pedir        prova acima do piso e ninguém pediu na janela de descanso
+//   descanso     já foi pedido há menos de 90 dias
+//   prova_fraca  vendeu algo pela Lever nos 30d, mas abaixo do piso
+//   sem_prova    sem venda influenciada nenhuma (ou sem org vinculada no
+//                cadastro — o gap aparece em `coverage`, porque é ele que
+//                limita a fila)
 export async function buildReferralQueue(repo, { saas = "", now = Date.now, influenced = influencedByOrg } = {}) {
   const [customers, leads, acts, users] = await Promise.all([
     repo.list("customers"), repo.list("leads"), repo.list("activities"), repo.list("users"),
@@ -81,7 +89,9 @@ export async function buildReferralQueue(repo, { saas = "", now = Date.now, infl
       closed: indicados.filter((l) => l.customerId).length,
       paid: indicados.filter((l) => isPaidReferral(l)).length,
       seeds,
-      bucket: descanso ? "descanso" : influenced30d > 0 ? "pedir" : "sem_prova",
+      bucket: descanso ? "descanso"
+        : influenced30d >= MIN_PROOF_BRL ? "pedir"
+        : influenced30d > 0 ? "prova_fraca" : "sem_prova",
       // A frase sai do servidor pra existir em UM lugar só: a tela abre o
       // WhatsApp com ela, a tarefa guarda a mesma, e o dia em que o pedido
       // mudar de tom muda nos dois.
@@ -97,6 +107,7 @@ export async function buildReferralQueue(repo, { saas = "", now = Date.now, infl
     totals: {
       pedir: rows.filter((r) => r.bucket === "pedir").length,
       descanso: rows.filter((r) => r.bucket === "descanso").length,
+      provaFraca: rows.filter((r) => r.bucket === "prova_fraca").length,
       semProva: rows.filter((r) => r.bucket === "sem_prova").length,
       influencedSum: Math.round(rows.reduce((a, r) => a + r.influenced30d, 0)),
     },

@@ -1877,6 +1877,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
 const BUCKETS = {
   pedir: { label: "pedir agora", tone: "pos" },
   descanso: { label: "pedido há pouco", tone: "mut" },
+  prova_fraca: { label: "resultado ainda pequeno", tone: "warn" },
   sem_prova: { label: "sem resultado ainda", tone: "warn" },
 };
 
