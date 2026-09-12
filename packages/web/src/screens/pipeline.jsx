@@ -663,6 +663,13 @@ const AGENDA_NOSHOW = { bg: "oklch(0.90 0.07 25)", line: "oklch(0.60 0.14 25)", 
 const AGENDA_INK = "oklch(0.22 0.02 250)";      // letra "preta" sobre as cores claras
 const AGENDA_INK_SOFT = "oklch(0.4 0.02 250)";  // linha secundária (hora, empresa)
 
+// ⚠️ NÃO É CÓDIGO MORTO (conferido em 12/09/2026). O `VIEWS` desta tela só tem
+// kanban e list, então nada daqui é alcançável PELO PIPELINE — mas AgendaView
+// (e o AnaliseView lá embaixo, com PaceChart, GoalReversePlan, ForecastView,
+// FunnelAnalytics, analysisBuckets, goalMath, PaceMini, EquationStep) é
+// IMPORTADO pelas telas próprias: screens/agenda.jsx e screens/analise.jsx.
+// Remover as ~600 linhas "que ninguém alcança" quebra as duas telas.
+// Se um dia mudar de casa, mova pra um módulo próprio — não apague.
 function AgendaView({ leads, consultations = [], onOpenLead, blocking, person }) {
   const [dayOff, setDayOff] = useStP(0); // offset em DIAS a partir de hoje
   const [showTouches, setShowTouchesState] = useStP(() => {
@@ -1882,6 +1889,8 @@ function FunnelAnalytics({ s }) {
   );
 }
 
+// Idem AgendaView: quem monta isto é screens/analise.jsx (a tela própria de
+// Análise do pipeline), não o VIEWS daqui.
 function AnaliseView({ s, leads }) {
   const { version } = useData();
   const [data, setData] = useStP(null);
