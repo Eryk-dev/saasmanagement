@@ -629,6 +629,27 @@ try {
     // A tela monta (a fila vem por efeito, então aqui é o caminho de render).
     const tela = renderToString(wrap(React.createElement(T.TodayScreen, { onOpenLead() {}, onOpenWhatsapp() {} })));
     if (!tela.includes("Minhas atividades")) throw new Error("a tela não montou");
+
+    // Os grupos da fila viram cabeçalho: cada chave do GROUP_ORDER precisa de
+    // rótulo, senão a faixa sai com o nome interno ("noshow") na cara do time.
+    const { GROUP_META, GROUP_ORDER } = T;
+    for (const k of GROUP_ORDER) {
+      if (!GROUP_META[k] || !GROUP_META[k][0]) throw new Error(`grupo ${k} sem rótulo no GROUP_META`);
+    }
+    // O painel de roteiro em PRÉ-VISUALIZAÇÃO (Ajustes → Scripts) não pode
+    // bater na API nem exigir a fila: é o caminho que o handoff manda preservar.
+    const item = {
+      l: { ...window.SEED.LEADS[1], stageAttempts: 2, nextActionNote: "cobrar a proposta" },
+      kind: "followup", group: "closer", stage: "Negociação",
+      due: { t: Date.now() - 3600000, type: "touch" }, who: "leonardo",
+    };
+    const painel = renderToString(wrap(React.createElement(T.ScriptPanel, {
+      item, saasCfg: window.SEED.SAAS[0], leads: window.SEED.LEADS, preview: true,
+      onPatch() {}, onMove() {}, onMoveMeet() {}, onAfter() {}, onClose() {}, onTouch() {}, onOpenLead() {},
+    })));
+    if (!painel.includes("Roteiro")) throw new Error("o painel não montou em preview");
+    if (!painel.includes("Depois da ação")) throw new Error("preview deveria mostrar a nota do Depois da ação");
+    if (painel.includes("abrir lead")) throw new Error("preview não deveria oferecer abrir lead");
     console.log(`✓ minhas-atividades (${soma}px de ${T.QUEUE_GRID_BUDGET})`);
   } catch (err) {
     console.error(`✗ minhas-atividades: ${err.message}`);
