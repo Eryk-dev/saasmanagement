@@ -186,6 +186,46 @@ function CustomersScreen({ initialTab }) {
   const pagamentoDe = (c) => c.paymentMethod || leadById.get(c.leadId)?.paymentMethod || "";
   const recebeParcelado = (c) => !paymentUpfront(pagamentoDe(c));
 
+  // PRÓXIMA COBRANÇA do cliente (o subtítulo da coluna Pagamento, Leo 12/09):
+  // quem recebe ao longo do contrato (boleto faturado, PIX parcelado,
+  // assinatura recorrente, condição personalizada) é cobrado outra vez mês a
+  // mês, e a data da próxima só aparecia abrindo a ficha. Mesma régua da fila
+  // "Próximas ações" mais abaixo: a fatura EM ABERTO mais antiga e, quando não
+  // há nenhuma, a virada do ciclo da assinatura — que é o que o motor de
+  // billing vai faturar (na recorrente, a fatura só nasce quando o ciclo vira).
+  const proxCobrancaPorCliente = useMemo(() => {
+    const by = new Map();
+    for (const i of invoices) {
+      if (!i.customer || (i.status !== "open" && i.status !== "overdue")) continue;
+      const due = parseDay(i.dueDate);
+      if (!due) continue;
+      const atual = by.get(i.customer);
+      if (!atual || due < atual.due) by.set(i.customer, { due, invoice: i });
+    }
+    for (const c of customers) {
+      if (by.has(c.id)) continue;
+      const s = mainSub(c);
+      if (!s || !(s.status === "active" || s.status === "past_due")) continue;
+      const due = parseDay(s.periodEnd);
+      if (due) by.set(c.id, { due, sub: s });
+    }
+    return by;
+  }, [invoices, customers, subs, version]);
+  // Quem pagou à vista (cartão 12x, PIX/boleto à vista) não tem próxima
+  // cobrança: o contrato inteiro entrou no fechamento. Churnado também não.
+  const proxCobrancaDe = (c) => {
+    if (isChurned(c) || !recebeParcelado(c)) return null;
+    const x = proxCobrancaPorCliente.get(c.id);
+    if (!x) return null;
+    const i = x.invoice;
+    const oque = !i
+      ? (paymentRecurring(pagamentoDe(c)) ? "mensalidade da assinatura" : "renovação do contrato")
+      : i.kind === "installment" ? `parcela ${i.installmentN || 1}/${i.installmentOf || 1}`
+      : i.kind === "upsell" ? "upsell"
+      : (i.title || "fatura em aberto");
+    return { ...x, oque, late: x.due.getTime() < Date.now() };
+  };
+
   // Dinheiro REAL recebido por cliente ({ id: total }): MP aprovado casado com
   // o cliente/lead + baixas de fatura de verdade (o endpoint exclui a fatura
   // que nasce paga no fechamento por convenção).
@@ -726,9 +766,19 @@ function CustomersScreen({ initialTab }) {
                         {/* Meio de pagamento (cliente > lead) e total já pago (faturas pagas). Só SaaS. */}
                         {!isKidsWorkspace && (() => {
                           const pm = c.paymentMethod || leadById.get(c.leadId)?.paymentMethod;
+                          const prox = proxCobrancaDe(c);
                           return (
                             <td style={{ padding: "13px 14px", fontSize: 13, color: "var(--fg-2)", borderBottom: "1px solid var(--line-faint)" }}>
                               {pm ? paymentLabel(pm) : <span style={{ color: "var(--fg-4)" }}>—</span>}
+                              {/* Data da próxima cobrança embaixo do meio de pagamento (Leo, 12/09):
+                                  vale pro faturado e pra assinatura recorrente, que cobram mês a mês.
+                                  Vencida fica em vermelho — o dinheiro não caiu. */}
+                              {prox && (
+                                <div className="tnum" title={`${prox.oque} · ${prox.late ? "venceu" : "vence"} ${fmtDay(prox.due)}`}
+                                  style={{ fontSize: 11, marginTop: 3, color: prox.late ? "var(--neg)" : "var(--fg-4)", whiteSpace: "nowrap" }}>
+                                  {prox.late ? "venceu " : "próx. "}{fmtDay(prox.due)}
+                                </div>
+                              )}
                             </td>
                           );
                         })()}
