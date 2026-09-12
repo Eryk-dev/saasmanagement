@@ -44,7 +44,7 @@ Rota = hash (`#pipeline`). Arquivos em `packages/web/src/screens/`.
 | `remuneracao` | remuneracao.jsx | Geral · Remuneração | plano de remuneração (admin-only, comp_plans) | tabela manual | ✓ padronização + funcional + passe fino (ago/2026) |
 | `mindmaps` | mindmaps.jsx | Geral · Mapas mentais | mapas mentais | canvas próprio | ✓ padronização + funcional + passe fino (ago/2026) |
 | `metas` | metas.jsx | Geral · Metas | metas por vaga/pessoa, SUPER METAS, regra de crescimento (#622) | réguas próprias | ✓ padronização + funcional + passe fino (ago/2026) |
-| `training` | training.jsx | Treinamentos | flashcards FSRS por pessoa + provas + dash da equipe + manual da empresa | IcpCard, CardHead, SectionHead, FocusShell | **piloto da régua de cabeçalhos (#621)** · checklist completo pendente |
+| `training` | training.jsx | Treinamentos | flashcards FSRS por pessoa + provas + dash da equipe + manual da empresa | IcpCard, FilterTab, Avatar, FocusShell, CardFace | **REDESENHADA 12/09/2026** (handoff do Leo, 5 blocos: #906/#907/#908/#910/#911) · duas colunas no Estudar, progresso na sessão, prova uma por vez, Equipe por urgência, Editar mestre-detalhe · smoke de render em #912 |
 | `expenses` | expenses.jsx + finance.jsx | Geral · Financeiro | abas Pagamentos (espelho MP, cobrança, baixa) + Custos (% por lançamento) | tabela manual | ✓ padronização + funcional + passe fino (ago/2026) |
 | `settings` | settings.jsx | Geral · Configurações | usuários/telas, produto (funil, ICP), integrações, tema | EntityForm, theme-inputs | ✓ padronização + funcional + passe fino (ago/2026) |
 
