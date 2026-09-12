@@ -1,6 +1,6 @@
 import React from "react";
 import { Segmented } from "../components/viz.jsx";
-import { EmptyState, PrimaryButton, SecondaryButton } from "../atoms.jsx";
+import { EmptyState, PrimaryButton, SecondaryButton, Avatar } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { useData } from "../data.jsx";
@@ -872,7 +872,7 @@ const HEAT = [
 ];
 const DOW_LABELS = { 1: "seg", 3: "qua", 5: "sex" };
 
-function Heatmap({ days, today }) {
+function Heatmap({ days, today, cell: cellPx = 11 }) {
   // 18 colunas de semanas (dom–sáb) terminando hoje. As chaves já são "dias
   // de estudo" (fuso SP, virada 4h) — a aritmética aqui é toda em UTC puro.
   // 18 e não 26 porque o trilho tem 372px: mais semanas obrigaria a célula a
@@ -899,7 +899,7 @@ function Heatmap({ days, today }) {
     }
     weeks.push({ label, cells });
   }
-  const cell = { width: 11, height: 11, borderRadius: 3 };
+  const cell = { width: cellPx, height: cellPx, borderRadius: 3 };
   return (
     <div style={{ overflowX: "auto" }}>
       <div style={{ display: "inline-flex", gap: 3 }}>
@@ -1280,6 +1280,20 @@ function OcclusionEditor({ card, onPatch }) {
 // maturidade do baralho, carga futura e constância.
 const retColor = (pct) => (pct == null ? "var(--fg-4)" : pct >= 85 ? "var(--pos)" : pct >= 70 ? "var(--warn)" : "var(--neg)");
 
+// ── Equipe: de quem cuidar hoje ─────────────────────────────────────────────
+// A tabela tinha dez colunas de peso igual e o gestor lia tudo pra descobrir
+// quem precisa dele. Agora são sete, a ordem é por URGÊNCIA e a faixa de cima
+// responde "como está o time" antes de qualquer linha. As colunas que saíram
+// não se perderam: viraram o raio-x, que abre clicando na pessoa.
+//
+// Pede atenção quem tem card atrasado, prova pendente ou reprovada, ou memória
+// abaixo do piso (retenção < 70% com base pra afirmar isso).
+const needsAttention = (u) =>
+  u.overdue > 0 || u.examPending || u.examsFailed > 0 || (u.retention30d?.n > 0 && u.retention30d.pct < 70);
+// Urgência: atrasado pesa mais que fila do dia; prova travada entra na frente.
+const urgencyOf = (u) =>
+  (u.overdue || 0) * 10 + (u.dueToday || 0) + (u.examPending ? 30 : 0) + (u.examsFailed || 0) * 8;
+
 function Team({ saasId, mode, setMode }) {
   const [data, setData] = useS(null);
   const [err, setErr] = useS(null);
@@ -1292,10 +1306,102 @@ function Team({ saasId, mode, setMode }) {
     return () => { alive = false; };
   }, [saasId]);
 
-  const users = (data?.users || []).filter((u) => u.deckSize > 0).sort((a, b) => (b.dueToday - a.dueToday) || (b.doneToday - a.doneToday));
+  const users = (data?.users || []).filter((u) => u.deckSize > 0)
+    .sort((a, b) => urgencyOf(b) - urgencyOf(a) || String(a.name).localeCompare(String(b.name)));
   const selected = users.find((u) => u.id === sel);
-  const th = { textAlign: "left", padding: "8px 10px", whiteSpace: "nowrap" };
-  const td = { padding: "9px 10px", fontSize: 12.5, color: "var(--fg-1)", borderTop: "1px solid var(--line-1)", whiteSpace: "nowrap" };
+
+  // Resumo do time, tudo derivado do que a tela já carregou.
+  const emDia = users.filter((u) => !u.dueToday).length;
+  const atrasados = users.reduce((a, u) => a + (u.overdue || 0), 0);
+  const rets = users.map((u) => u.retention30d).filter((r) => r?.n > 0).map((r) => r.pct);
+  const retMedia = rets.length ? Math.round(rets.reduce((a, b) => a + b, 0) / rets.length) : null;
+  const reprovas = users.reduce((a, u) => a + (u.examsFailed || 0), 0);
+  const pendentes = users.filter((u) => u.examPending).length;
+  const atencao = users.filter(needsAttention).length;
+
+  const GRID = "230px 150px minmax(180px,1fr) 130px 110px 150px 200px";
+  const HEAD = { display: "grid", gridTemplateColumns: GRID, gap: 16, padding: "8px 16px", background: "var(--bg-2)", borderBottom: "1px solid var(--line-1)" };
+  const ROW = { display: "grid", gridTemplateColumns: GRID, gap: 16, padding: "10px 16px", alignItems: "center", borderTop: "1px solid var(--line-1)", cursor: "pointer" };
+
+  function Resumo() {
+    const item = (label, value, color) => (
+      <div style={{ minWidth: 120 }}>
+        <div style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{label}</div>
+        <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 24, fontWeight: 700, marginTop: 2, color: color || "var(--fg-1)" }}>{value}</div>
+      </div>
+    );
+    return (
+      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "20px 24px", display: "flex", alignItems: "center", gap: 32, flexWrap: "wrap" }}>
+        {item("Em dia hoje", `${emDia} de ${users.length}`, emDia === users.length ? "var(--pos)" : undefined)}
+        {item("Retenção média 30d", retMedia == null ? "—" : `${retMedia}%`, retColor(retMedia))}
+        {item("Cards atrasados", atrasados, atrasados ? "var(--neg)" : "var(--pos)")}
+        {item("Provas", `${reprovas} reprova${reprovas === 1 ? "" : "s"}`, reprovas ? "var(--neg)" : undefined)}
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 7 }}>
+          <span style={{ width: 6, height: 6, borderRadius: 999, background: atencao ? "var(--neg)" : "var(--pos)", flexShrink: 0 }} />
+          <span style={{ fontSize: 12.5, color: "var(--fg-2)" }}>
+            {atencao ? `${atencao} ${atencao === 1 ? "pessoa pede" : "pessoas pedem"} atenção` : "ninguém pedindo atenção"}
+            {pendentes ? ` · ${pendentes} prova${pendentes === 1 ? "" : "s"} pendente${pendentes === 1 ? "" : "s"}` : ""}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  function Linha({ u }) {
+    const on = u.id === sel;
+    const ret = u.retention30d?.pct;
+    const retC = retColor(ret);
+    // Hoje: ponto + palavra (nunca pílula). Atrasado é o que dói, então vem
+    // com a contagem na frente.
+    const hoje = u.overdue > 0
+      ? { tone: "var(--neg)", text: `${u.dueToday} · ${u.overdue} atrasados` }
+      : u.dueToday > 0
+        ? { tone: "var(--warn)", text: `${u.dueToday} pra hoje` }
+        : { tone: "var(--pos)", text: "em dia" };
+    // A ação nomeia o que fazer e abre o raio-x, que é onde o gestor entende o
+    // problema antes de falar com a pessoa. Sem gênero: o cadastro não diz.
+    const acao = u.examPending ? "Cobrar prova →"
+      : u.overdue > 0 ? "Cobrar o treino →"
+      : (ret != null && ret < 70) ? "Ver o raio-x →" : null;
+    return (
+      <div onClick={() => setSel(on ? null : u.id)} style={{ ...ROW, background: on ? "var(--accent-soft)" : "transparent" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+          <Avatar id={u.id} name={u.name} size={28} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{u.name}</div>
+            <div className="kicker" style={{ marginTop: 1 }}>{(u.roles || []).join(" · ") || "sem vaga"}</div>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, color: "var(--fg-2)" }}>
+          <span style={{ width: 6, height: 6, borderRadius: 999, background: hoje.tone, flexShrink: 0 }} />
+          <span className="tnum">{hoje.text}</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }} title={`${u.retention30d?.n || 0} revisões de card maduro nos últimos 30 dias`}>
+          <b className="tnum" style={{ fontSize: 14, fontWeight: 700, color: retC, width: 40, flexShrink: 0 }}>{ret == null ? "—" : `${ret}%`}</b>
+          <div style={{ flex: 1, height: 6, borderRadius: 999, background: "var(--bg-3)", overflow: "hidden", minWidth: 40 }}>
+            <div style={{ width: `${ret || 0}%`, height: "100%", borderRadius: 999, background: retC }} />
+          </div>
+        </div>
+        <div className="tnum" style={{ fontSize: 12.5, color: "var(--fg-2)" }}>{u.mature} / {u.seen}</div>
+        <div className="tnum" style={{ fontSize: 12.5, color: u.streak ? "var(--fg-1)" : "var(--fg-4)" }}>{u.streak ? `${u.streak}d` : "—"}</div>
+        <div style={{ fontSize: 12.5 }}>
+          {u.examsDone ? (
+            <>
+              <b className="tnum" style={{ color: retColor(u.examAvg) }}>{u.examAvg}%</b>
+              <span className="mono dim" style={{ fontSize: 10.5 }}>
+                {u.examsFailed ? ` · ${u.examsFailed} reprova${u.examsFailed === 1 ? "" : "s"}` : ` · ${u.examsDone} feita${u.examsDone === 1 ? "" : "s"}`}
+              </span>
+            </>
+          ) : <span style={{ color: "var(--fg-4)" }}>{u.examPending ? "1 pendente" : "—"}</span>}
+        </div>
+        <div style={{ textAlign: "right" }}>
+          {acao
+            ? <SecondaryButton size="sm" onClick={() => setSel(u.id)}>{acao}</SecondaryButton>
+            : <span style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{needsAttention(u) ? "acompanhar" : "—"}</span>}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={page}>
@@ -1304,52 +1410,25 @@ function Team({ saasId, mode, setMode }) {
       {!data && !err && <div className="mono dim" style={{ fontSize: 12 }}>carregando equipe…</div>}
       {data && (users.length === 0 ? <EmptyState title="Ninguém com baralho ainda" hint="Dê vagas (SDR/closer/…) pros usuários em Ajustes." /> : (
         <>
-          <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", overflow: "auto" }}>
-            <table style={{ borderCollapse: "collapse", width: "100%" }}>
-              <thead><tr>
-                <th className="kicker" style={th}>Pessoa</th><th className="kicker" style={th}>Pra hoje</th><th className="kicker" style={th}>Feitas hoje</th>
-                <th className="kicker" style={th} title="acerto nos cards que já estavam em revisão — memória real">Retenção 30d</th>
-                <th className="kicker" style={th} title="cards com intervalo ≥ 21 dias — conhecimento consolidado">Maduros</th>
-                <th className="kicker" style={th}>Sequência</th>
-                <th className="kicker" style={th} title="modo 4fun: cards estudados por vontade própria, fora da cota — não conta como compromisso">4fun 30d</th>
-                <th className="kicker" style={th} title="provas de checkpoint: média das notas · quantas fez · clique na pessoa pra ver as questões">Provas</th>
-                <th className="kicker" style={th}>Viu do baralho</th><th className="kicker" style={th}>Último estudo</th>
-              </tr></thead>
-              <tbody>
-                {users.map((u) => (
-                  <tr key={u.id} onClick={() => setSel(u.id === sel ? null : u.id)}
-                    style={{ cursor: "pointer", background: u.id === sel ? "var(--accent-soft)" : "transparent" }}>
-                    <td style={td}><b>{u.name}</b> <span className="mono dim" style={{ fontSize: 10.5 }}>{(u.roles || []).join(" · ")}</span></td>
-                    <td style={{ ...td, color: u.dueToday ? "var(--warn)" : "var(--pos)", fontWeight: 600 }} className="tnum">
-                      {u.dueToday ? `${u.dueToday}${u.overdue ? ` (${u.overdue} atrasados)` : ""}` : "em dia ✓"}
-                    </td>
-                    <td style={td} className="tnum">{u.doneToday}</td>
-                    <td style={{ ...td, fontWeight: 700, color: retColor(u.retention30d?.pct) }} className="tnum">
-                      {u.retention30d?.pct == null ? "—" : `${u.retention30d.pct}%`}
-                      {u.retention30d?.n > 0 && <span className="mono dim" style={{ fontSize: 10, fontWeight: 400 }}> ({u.retention30d.n})</span>}
-                    </td>
-                    <td style={td} className="tnum">{u.mature}<span className="mono dim" style={{ fontSize: 10 }}>/{u.seen}</span></td>
-                    <td style={td} className="tnum">{u.streak ? `${u.streak}d 🔥` : "—"}</td>
-                    <td style={{ ...td, color: u.fun?.last30 ? "var(--fg-1)" : "var(--fg-4)" }} className="tnum">
-                      {u.fun?.last30 ? `${u.fun.last30}${u.fun.hitPct != null ? ` · ${u.fun.hitPct}%` : ""}` : "—"}
-                    </td>
-                    <td style={td} className="tnum">
-                      {u.examsDone
-                        ? <>
-                            <b style={{ color: retColor(u.examAvg) }}>{u.examAvg}%</b>
-                            <span className="mono dim" style={{ fontSize: 10, fontWeight: 400 }}> ({u.examsDone}{u.examsFailed ? ` · ${u.examsFailed} reprova${u.examsFailed === 1 ? "" : "s"}` : ""})</span>
-                          </>
-                        : <span style={{ color: "var(--fg-4)" }}>{u.examPending ? "1 pendente" : "—"}</span>}
-                    </td>
-                    <td style={td} className="tnum">{u.seen}/{u.deckSize}</td>
-                    <td style={{ ...td, color: "var(--fg-3)" }} className="mono">{u.lastReviewAt ? new Date(u.lastReviewAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "nunca"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <Resumo />
+          <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+            <div className="tbl-x">
+              <div>
+                <div style={HEAD}>
+                  <span className="kicker">Pessoa</span>
+                  <span className="kicker">Hoje</span>
+                  <span className="kicker" title="acerto nos cards que já estavam em revisão — memória real">Retenção 30d</span>
+                  <span className="kicker" title="cards com intervalo ≥ 21 dias — conhecimento consolidado">Maduros</span>
+                  <span className="kicker">Sequência</span>
+                  <span className="kicker" title="provas de checkpoint: média das notas · clique na pessoa pra ver as questões">Provas</span>
+                  <span className="kicker" style={{ textAlign: "right" }}>Ação</span>
+                </div>
+                {users.map((u) => <Linha key={u.id} u={u} />)}
+              </div>
+            </div>
           </div>
           {selected ? <PersonDetail user={selected} today={data.today} saasId={saasId} /> :
-            <div className="mono dim" style={{ fontSize: 10.5 }}>clique numa pessoa pra abrir o raio-x · retenção 30d = acerto SÓ em cards que já estavam em revisão (true retention) · maduros = intervalo ≥ 21 dias</div>}
+            <div className="mono dim" style={{ fontSize: 10.5 }}>clique numa pessoa pra abrir o raio-x · ordem por urgência: atrasado e prova travada primeiro</div>}
         </>
       ))}
     </div>
@@ -1463,111 +1542,104 @@ function ExamHistory({ user: u, saasId }) {
   );
 }
 
+// ── Raio-x da pessoa: agrupado, não nove tiles soltos ───────────────────────
+// Eram nove números lado a lado sem hierarquia. Agora três blocos que respondem
+// perguntas diferentes: MEMÓRIA (ela está lembrando?), RITMO (ela está
+// estudando?) e PROVAS (ela provou?). Os gráficos ficam embaixo, cada um com a
+// unidade no próprio rótulo pra dispensar eixo.
 function PersonDetail({ user: u, today, saasId }) {
-  const tile = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: "10px 12px", minWidth: 118 };
-  const big = (v, color) => <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, color: color || "var(--fg-1)" }}>{v}</div>;
+  const sub = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-2)", padding: "14px 16px" };
   const pct = (x) => (x == null ? "—" : `${x}%`);
+  const big = (v, color) => <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, color: color || "var(--fg-1)" }}>{v}</span>;
+  const mid = (v, color) => <span className="tnum" style={{ fontSize: 16, fontWeight: 650, color: color || "var(--fg-1)" }}>{v}</span>;
+  const line = (node, hint) => (
+    <div style={{ marginTop: 10 }}>
+      {node}
+      <div className="mono dim" style={{ fontSize: 9.5, marginTop: 1 }}>{hint}</div>
+    </div>
+  );
   const dow = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString("pt-BR", { weekday: "short", timeZone: "UTC" }).replace(".", "");
   const dm = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" });
   const weekly = u.weekly || [], forecast = u.forecast || [];
   const forecastMax = Math.max(1, ...forecast.map((f) => f.n));
+  const lastTone = u.lastExam ? (u.lastExam.status === "passed" ? "var(--pos)" : "var(--neg)") : undefined;
+
   return (
     <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 16 }}>
       <div className="kicker accent">Raio-x · {u.name}</div>
 
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <div style={tile} title="acerto em cards que já estavam em revisão — memória real">
-          {big(pct(u.retention30d?.pct), retColor(u.retention30d?.pct))}
-          <div className="mono dim" style={{ fontSize: 9.5 }}>retenção 30d · {u.retention30d?.n || 0} rev.</div>
-        </div>
-        <div style={tile}>
-          {big(pct(u.retention7d?.pct), retColor(u.retention7d?.pct))}
-          <div className="mono dim" style={{ fontSize: 9.5 }}>retenção 7d · {u.retention7d?.n || 0} rev.</div>
-        </div>
-        <div style={tile} title="cards novos que acertou logo de primeira (Bom/Fácil)">
-          {big(pct(u.firstTryPct))}
-          <div className="mono dim" style={{ fontSize: 9.5 }}>acerto de primeira 30d</div>
-        </div>
-        <div style={tile} title="cards com intervalo ≥ 21 dias — conhecimento consolidado">
-          {big(`${u.mature}`)}
-          <div className="mono dim" style={{ fontSize: 9.5 }}>maduros · {u.young} jovens</div>
-        </div>
-        <div style={tile}>
-          {big(u.reviewsPerDay30d)}
-          <div className="mono dim" style={{ fontSize: 9.5 }}>revisões/dia 30d</div>
-        </div>
-        <div style={tile}>
-          {big(`${u.activeDays30d}/30`)}
-          <div className="mono dim" style={{ fontSize: 9.5 }}>dias ativos</div>
-        </div>
-        {u.medianMs != null && (
-          <div style={tile} title="tempo entre ver a frente e responder (mediana 30d) · relâmpago = respostas em menos de 1,5s, sinal de clique sem ler">
-            {big(`${(u.medianMs / 1000).toFixed(1)}s`, u.rushPct > 20 ? "var(--neg)" : undefined)}
-            <div className="mono dim" style={{ fontSize: 9.5 }}>
-              tempo/card · <span style={{ color: u.rushPct > 20 ? "var(--neg)" : undefined }}>{u.rushPct}% relâmpago</span>
+      <div className="resp-cols" style={{ "--cols": "repeat(3, minmax(0,1fr))", gap: 14 }}>
+        {/* Ela está LEMBRANDO? */}
+        <div style={sub}>
+          <div className="kicker">Memória</div>
+          {line(big(pct(u.retention30d?.pct), retColor(u.retention30d?.pct)), `retenção 30d · ${u.retention30d?.n || 0} rev.`)}
+          {line(big(pct(u.retention7d?.pct), retColor(u.retention7d?.pct)), `retenção 7d · ${u.retention7d?.n || 0} rev.`)}
+          {line(mid(pct(u.firstTryPct)), "acerto de primeira 30d")}
+          {line(mid(`${u.mature} · ${u.young}`), "maduros · jovens")}
+          {u.retentionByRole?.length > 0 && (
+            <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--line-1)", display: "flex", flexDirection: "column", gap: 5 }}>
+              <div className="kicker">Por baralho (30d)</div>
+              {u.retentionByRole.map((r) => (
+                <div key={r.role} style={{ display: "flex", alignItems: "baseline", gap: 8, fontSize: 11.5 }}>
+                  <span style={{ flex: 1, minWidth: 0, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.label}</span>
+                  <b className="tnum" style={{ color: retColor(r.pct) }}>{pct(r.pct)}</b>
+                  <span className="mono dim" style={{ fontSize: 9.5 }}>{r.n}</span>
+                </div>
+              ))}
             </div>
+          )}
+        </div>
+
+        {/* Ela está ESTUDANDO? */}
+        <div style={sub}>
+          <div className="kicker">Ritmo</div>
+          {line(big(u.reviewsPerDay30d), "revisões/dia 30d")}
+          {line(big(`${u.activeDays30d}/30`), "dias ativos")}
+          {u.medianMs != null
+            ? line(
+                mid(`${(u.medianMs / 1000).toFixed(1)}s`, u.rushPct > 20 ? "var(--neg)" : undefined),
+                <>tempo/card · <span style={{ color: u.rushPct > 20 ? "var(--neg)" : undefined }}>{u.rushPct}% relâmpago</span></>,
+              )
+            : line(mid("—"), "tempo/card · sem base ainda")}
+          {line(mid(u.fun?.total ? `${u.fun.last30}` : "—", u.fun?.total ? "var(--accent)" : undefined),
+            u.fun?.total ? `4fun 30d · ${u.fun.total} no total${u.fun.hitPct != null ? ` · ${u.fun.hitPct}% bem` : ""}` : "4fun 30d · nunca estudou a mais")}
+        </div>
+
+        {/* Ela PROVOU? */}
+        <div style={sub}>
+          <div className="kicker">Provas</div>
+          {line(big(u.lastExam ? `${u.lastExam.score}%` : "—", lastTone),
+            u.lastExam ? `última prova · ${u.lastExam.status === "passed" ? "aprovada" : "reprovada"}` : "última prova · nenhuma ainda")}
+          {line(big(u.examsDone || 0),
+            `feitas${u.examsFailed ? ` · ${u.examsFailed} reprova${u.examsFailed === 1 ? "" : "s"}` : ""}${u.examPending ? " · 1 pendente" : ""}`)}
+          <div style={{ marginTop: 12 }}>
+            <ExamHistory user={u} saasId={saasId} />
           </div>
-        )}
-        {u.fun?.total > 0 && (
-          <div style={tile} title="modo 4fun: estudo livre além da cota do dia · não agenda revisão nem entra na retenção">
-            {big(`${u.fun.last30}`, "var(--accent)")}
-            <div className="mono dim" style={{ fontSize: 9.5 }}>
-              4fun 30d · {u.fun.total} no total{u.fun.hitPct != null ? ` · ${u.fun.hitPct}% bem` : ""}
-            </div>
-          </div>
-        )}
-        {(u.examsDone > 0 || u.examPending) && (
-          <div style={tile} title="provas de checkpoint (a cada N cards aprendidos, configurável em Editar)">
-            {big(u.lastExam ? `${u.lastExam.score}%` : "—", u.lastExam ? (u.lastExam.status === "passed" ? "var(--pos)" : "var(--neg)") : undefined)}
-            <div className="mono dim" style={{ fontSize: 9.5 }}>
-              última prova · {u.examsDone} feita{u.examsDone === 1 ? "" : "s"}
-              {u.examsFailed ? ` · ${u.examsFailed} reprova${u.examsFailed === 1 ? "" : "s"}` : ""}
-              {u.examPending ? " · 1 pendente" : ""}
-            </div>
-          </div>
-        )}
+        </div>
       </div>
 
-      <div style={{ display: "flex", gap: 28, flexWrap: "wrap", alignItems: "flex-start" }}>
+      <div className="resp-cols" style={{ "--cols": "minmax(0,1fr) minmax(0,1fr) minmax(0,1.2fr)", gap: 20, paddingTop: 14, borderTop: "1px solid var(--line-1)" }}>
         <div>
-          <div className="kicker" style={{ marginBottom: 8 }}>True retention por semana <span style={{ textTransform: "none" }}>(escala 0–100%)</span></div>
+          <div className="kicker" style={{ marginBottom: 8 }}>Retenção por semana <span style={{ textTransform: "none" }}>(0–100%)</span></div>
           <MiniBars max={100} bars={weekly.map((w, i) => ({
             v: w.pct, label: i === 0 || i === 7 ? dm(w.start) : "",
             title: w.pct == null ? `sem revisões · semana de ${dm(w.start)}` : `${w.pct}% · ${w.n} revisões · semana de ${dm(w.start)}`,
           }))} />
         </div>
         <div>
-          <div className="kicker" style={{ marginBottom: 8 }}>Vencendo nos próximos 7 dias</div>
+          <div className="kicker" style={{ marginBottom: 8 }}>Vencendo nos próximos 7 dias <span style={{ textTransform: "none" }}>(cards)</span></div>
           <MiniBars max={forecastMax} bars={forecast.map((f) => ({
             v: f.n, label: dow(f.day), title: `${f.n} card${f.n === 1 ? "" : "s"} · ${dm(f.day)}`,
           }))} />
         </div>
-        {u.retentionByRole?.length > 0 && (
-          <div>
-            <div className="kicker" style={{ marginBottom: 8 }}>Retenção por baralho (30d)</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {u.retentionByRole.map((r) => (
-                <div key={r.role} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
-                  <span style={{ minWidth: 110, color: "var(--fg-2)" }}>{r.label}</span>
-                  <b className="tnum" style={{ color: retColor(r.pct) }}>{pct(r.pct)}</b>
-                  <span className="mono dim" style={{ fontSize: 10 }}>{r.n} rev.</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <ExamHistory user={u} saasId={saasId} />
-
-      <div>
-        <div className="kicker" style={{ marginBottom: 8 }}>Constância</div>
-        <Heatmap days={u.days || {}} today={today} />
+        <div>
+          <div className="kicker" style={{ marginBottom: 8 }}>Constância <span style={{ textTransform: "none" }}>(revisões por dia)</span></div>
+          <Heatmap days={u.days || {}} today={today} cell={9} />
+        </div>
       </div>
     </div>
   );
 }
-
 
 // ── A empresa, as vagas e seus processos ─────────────────────────────────────
 // Manual vivo: o que a LeverAds faz, missão/visão, os 5 pilares de cultura e o
