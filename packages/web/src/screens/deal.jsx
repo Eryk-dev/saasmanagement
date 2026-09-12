@@ -1,5 +1,6 @@
 import React from "react";
-import { Avatar, useEsc, WaButton } from "../atoms.jsx";
+import { Avatar, useEsc, WaButton, MoreMenu } from "../atoms.jsx";
+import { Pill } from "../components/viz.jsx";
 import { ActivityList, ActivityComposer } from "../components/timeline.jsx";
 import { RoutineSuggestion } from "../components/routine-suggestion.jsx";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
@@ -127,7 +128,10 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   const dirty = React.useRef(false);
   const [editResumo, setEditResumo] = React.useState(false); // lápis do Resumo → edita inline
   const [showTimeline, setShowTimeline] = React.useState(false); // timeline recolhida por padrão
-  const [showGps, setShowGps] = React.useState(false);   // Próximo passo: a linha grande fica sempre visível; isto abre os editores
+  // Próximo passo nasce ABERTO (12/09): recolhido, escondia justamente o que
+  // se vem fazer no card. O que recolhe agora é só "outra data" e a logística.
+  const [showGps, setShowGps] = React.useState(true);
+  const [showFar, setShowFar] = React.useState(false); // "outra data": +15d a +60d e o editor livre
   const [showCall, setShowCall] = React.useState(false); // "Detalhes da call" (vídeo/convidados) recolhido por padrão
   const [customProp, setCustomProp] = React.useState(false); // modal da proposta personalizada
   const [payLink, setPayLink] = React.useState(false); // modal do link de pagamento (MP) do lead
@@ -411,81 +415,101 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
         display: "flex", flexDirection: "column",
         boxShadow: "var(--shadow-pop)",
       }}>
-        {/* Cabeçalho na MESMA anatomia do painel de atividade do Meu dia:
-            rótulo do painel em cima e a linha de identidade com nome, nota do
-            lead (A-E), etapa e empresa · telefone. Os chips de origem,
-            temperatura e prioridade saíram: repetiam o "Resumo do cliente"
-            logo abaixo. As AÇÕES ficam na linha de baixo, separadas da
-            identidade. */}
-        <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--line-1)", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "start", gap: 10 }}>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div className="kicker">Lead · <span className="code">{String(lead.id).toUpperCase()}</span></div>
-            <div style={{ fontSize: 16.5, fontWeight: 600, marginTop: 2, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              {lead.name}
-              {tier.grade && (
-                <span className="tnum" title={`${tier.label} · soma de contas operadas + anúncios publicados`}
-                  style={{ width: 18, height: 18, borderRadius: 5, display: "inline-flex", alignItems: "center", justifyContent: "center", background: tier.tone, color: tier.badgeFg, fontFamily: "var(--display)", fontSize: 11, fontWeight: 700 }}>{tier.grade}</span>
-              )}
-              {lead.stage && <span className="chip">{lead.stage}</span>}
-              {(lead.company || lead.phone) && (
-                <span className="mono dim" style={{ fontSize: 11 }}>{[lead.company, lead.phone].filter(Boolean).join(" · ")}</span>
-              )}
-              {(lead.owner || lead.closer) && (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                  {lead.owner && <span title={`SDR: ${displayName(lead.owner)}`}><Avatar id={lead.owner} name={displayName(lead.owner)} size={18} /></span>}
-                  {lead.closer && <span title={`Closer: ${displayName(lead.closer)}`}><Avatar id={lead.closer} name={displayName(lead.closer)} size={18} /></span>}
-                </span>
+        {/* ── Cabeçalho em DUAS FAIXAS (redesign de 12/09) ─────────────────
+            Identidade em cima (quem é, em que etapa, quem atende) e os FATOS do
+            lead embaixo, em colunas. O estado do lead — valor, tempo no funil,
+            tempo parado na etapa, tentativas, origem — já estava todo no dado e
+            não aparecia sem abrir bloco.
+            As cinco ações de peso idêntico (apresentar, personalizada, proposta
+            no Whats, + personalizada, + link) viraram uma principal, uma
+            secundária e o resto no menu: a hierarquia passa a dizer qual é a
+            ação da etapa. */}
+        <div style={{ flexShrink: 0, borderBottom: "1px solid var(--line-1)" }}>
+          <div style={{ padding: "14px 18px 12px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontFamily: "var(--display)", fontSize: 20, fontWeight: 700, minWidth: 0 }}>{lead.name}</span>
+                {tier.grade && (
+                  <span className="tnum" title={`${tier.label} · soma de contas operadas + anúncios publicados`}
+                    style={{ width: 20, height: 20, borderRadius: 5, display: "inline-flex", alignItems: "center", justifyContent: "center", background: tier.tone, color: tier.badgeFg, fontFamily: "var(--display)", fontSize: 11.5, fontWeight: 700, flexShrink: 0 }}>{tier.grade}</span>
+                )}
+                {lead.stage && <Pill tone={isOpen ? "accent" : isLossKind(kind) ? "neg" : "pos"}>{lead.stage}</Pill>}
+                <span className="mono dim" style={{ fontSize: 11 }}>{String(lead.id).toUpperCase()}</span>
+              </div>
+              {(lead.company || lead.phone || lead.email) && (
+                <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 4, overflowWrap: "anywhere" }}>
+                  {[lead.company, lead.phone, lead.email].filter(Boolean).join(" · ")}
+                </div>
               )}
             </div>
-            <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-              {/* Apresentação do CLOSER (link com a chave): abre a tela zero
-                  com régua/produto/SPIN — é por aqui que a call roda. */}
-              {lead.proposal_edit_url && (
-                <a href={lead.proposal_edit_url} target="_blank" rel="noreferrer"
-                  className="chip" title="Abrir a apresentação do closer (tela zero com régua e SPIN)"
-                  style={{ color: "var(--accent-fg)", borderColor: "var(--accent)", background: "var(--accent)", fontWeight: 600, textDecoration: "none" }}>
-                  apresentar ↗
-                </a>
-              )}
-              {/* Proposta PERSONALIZADA: pra quem fechou solução sob medida numa
-                  conversa. Capa + o combinado (entregáveis + valor), no layout
-                  do deck. Independe da proposta automática acima. */}
-              {lead.customProposalUrl && (
-                <a href={cockpitProposalUrl(lead.customProposalUrl)} target="_blank" rel="noreferrer"
-                  className="chip" title="Abrir a proposta personalizada como o cliente vê"
-                  style={{ color: "var(--accent)", borderColor: "var(--accent-line)", background: "var(--accent-soft)", fontWeight: 600, textDecoration: "none" }}>
-                  personalizada ↗
-                </a>
-              )}
-              {/* Enviar a proposta pro cliente: gera se faltar e abre o
-                  WhatsApp com a mensagem pronta (link limpo do cliente). */}
+            {/* Quem atende, COM rótulo: dois avatares de 18px sem legenda não
+                dizem quem é SDR e quem é closer. */}
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 14, flexShrink: 0 }}>
+              {[["SDR", lead.owner], ["Closer", lead.closer]].filter(([, id]) => id).map(([rot, id]) => (
+                <div key={rot} style={{ textAlign: "right" }}>
+                  <div className="kicker">{rot}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
+                    <Avatar id={id} name={displayName(id)} size={18} />
+                    <span style={{ fontSize: 12.5, fontWeight: 500, whiteSpace: "nowrap" }}>{displayName(id)}</span>
+                  </div>
+                </div>
+              ))}
+              <button onClick={close} aria-label="Fechar" className="mono dim" style={{ fontSize: 16, flexShrink: 0, width: 36, height: 36, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)" }}>✕</button>
+            </div>
+          </div>
+
+          {/* Faixa de fatos + a ação da etapa. "Nesta etapa" fica vermelho
+              quando o toque está VENCIDO (não inventei SLA por etapa: é a mesma
+              régua do nextTouch, como o handoff pede). */}
+          <div style={{ borderTop: "1px solid var(--line-1)", display: "flex", alignItems: "stretch", flexWrap: "wrap" }}>
+            {(() => {
+              const dias = (iso) => {
+                const t = iso ? new Date(iso).getTime() : NaN;
+                return Number.isFinite(t) ? Math.max(0, Math.floor((Date.now() - t) / 86400000)) : null;
+              };
+              const noFunil = dias(lead.createdAt);
+              const naEtapa = dias(lead.stageSince || lead.createdAt);
+              const atrasado = next?.key === "late";
+              const tent = Number(lead.stageAttempts) || 0;
+              const fatos = [
+                ["Valor", lead.amount ? window.fmt.money(lead.amount) : "—", null],
+                ["No funil", noFunil == null ? "—" : `${noFunil}d`, null],
+                ["Nesta etapa", naEtapa == null ? "—" : `${naEtapa}d`, atrasado ? "var(--neg)" : null],
+                ["Tentativas", `${tent} de 5`, tent >= 5 ? "var(--warn)" : null],
+                ["Origem", lead.source || "—", null],
+              ];
+              return fatos.map(([rot, val, cor], i) => (
+                <div key={rot} title={rot === "Nesta etapa" && atrasado ? "o toque desta etapa está vencido" : undefined}
+                  style={{ padding: "10px 16px", minWidth: 104, borderLeft: i === 0 ? "none" : "1px solid var(--line-1)" }}>
+                  <div className="kicker">{rot}</div>
+                  <div className="tnum" style={{ fontSize: 14, fontWeight: 600, marginTop: 2, color: cor || "var(--fg-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 170 }}>{val}</div>
+                </div>
+              ));
+            })()}
+            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, padding: "10px 18px", flexWrap: "wrap" }}>
               {(onOpenWhatsapp || wa) && (
-                <button onClick={propostaNoWhats} disabled={propBusy} className="chip"
-                  title={(lead.proposalUrl
+                <button onClick={propostaNoWhats} disabled={propBusy}
+                  title={lead.proposalUrl
                     ? "Abrir o WhatsApp Web com o produto escolhido em apresentar, já pronto para o cliente"
-                    : "Gerar a apresentação e abrir o WhatsApp Web com a versão pronta para o cliente")}
-                  style={{ cursor: "pointer", background: "var(--wa-brand)", borderColor: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontWeight: 700 }}>
+                    : "Gerar a apresentação e abrir o WhatsApp Web com a versão pronta para o cliente"}
+                  style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--wa-brand)", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 12.5, fontWeight: 700, cursor: "pointer", opacity: propBusy ? 0.6 : 1 }}>
                   {propBusy ? "gerando…" : "➤ proposta no Whats"}
                 </button>
               )}
-              <button onClick={() => setCustomProp(true)} className="chip" title="Montar/editar uma proposta personalizada (objetiva)"
-                style={{ cursor: "pointer" }}>
-                {lead.customProposalUrl ? "editar personalizada" : "+ proposta personalizada"}
-              </button>
-              {/* Link de pagamento do MP pelo card: o checkout nasce com o id
-                  do LEAD — o dinheiro entra no Financeiro rastreado à origem.
-                  "↻ link da assinatura" = lead antigo com recorrência (não se
-                  gera mais desde 10/09/2026). */}
-              <button onClick={() => setPayLink(true)} className="chip"
-                title="Criar link de pagamento do Mercado Pago já rastreado pra este lead (o pagamento casa sozinho no Financeiro)"
-                style={{ cursor: "pointer" }}>
-                {lead.mpChargeUrl
-                  ? (lead.mpChargeKind === "recurring" ? "↻ link da assinatura" : "link de pagamento")
-                  : "+ link de pagamento"}
-              </button>
+              {lead.proposal_edit_url && (
+                <a href={lead.proposal_edit_url} target="_blank" rel="noreferrer"
+                  title="Abrir a apresentação do closer (tela zero com régua e SPIN)"
+                  style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)", fontSize: 12.5, fontWeight: 600, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
+                  apresentar ↗
+                </a>
+              )}
+              <MoreMenu size={30} items={[
+                lead.customProposalUrl && { label: "abrir proposta personalizada ↗", onClick: () => window.open(cockpitProposalUrl(lead.customProposalUrl), "_blank", "noreferrer") },
+                { label: lead.customProposalUrl ? "editar proposta personalizada" : "montar proposta personalizada", onClick: () => setCustomProp(true) },
+                { label: lead.mpChargeUrl ? (lead.mpChargeKind === "recurring" ? "link da assinatura" : "link de pagamento") : "criar link de pagamento", onClick: () => setPayLink(true) },
+              ]} />
             </div>
           </div>
-          <button onClick={close} aria-label="Fechar" className="mono dim" style={{ fontSize: 16, flexShrink: 0, width: 36, height: 36, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "var(--r-2)" }}>✕</button>
         </div>
 
         {/* Corpo rolável: duas colunas (Cliente | Roteiro) — mesma divisão do
@@ -537,79 +561,9 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               <b>Devolvida pelo closer:</b> {lead.oppReturnNote}
             </div>
           )}
-          {/* Resumo do cliente: MESMO bloco do painel de atividade (dor em
-              destaque + os fatos na mesma ordem). O lápis é exclusivo da ficha:
-              abre a edição INLINE dos campos do lead, no lugar do grid. */}
-          <ClientSummaryCard
-            pain={pain}
-            facts={editResumo ? null : summaryFacts}
-            action={(
-              <button onClick={() => setEditResumo((v) => !v)} title={editResumo ? "Concluir edição" : "Editar os dados do cliente aqui mesmo"}
-                style={{ marginLeft: "auto", height: 22, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid " + (editResumo ? "var(--accent)" : "var(--line-2)"), background: editResumo ? "var(--accent)" : "var(--bg-1)", color: editResumo ? "var(--accent-fg)" : "var(--fg-3)", fontSize: 11 }}>
-                {editResumo ? "✓ pronto" : "✎ editar"}
-              </button>
-            )}>
-            {editResumo && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                <EditRow label="Nome"><input defaultValue={lead.name || ""} onBlur={(e) => e.target.value !== (lead.name || "") && patch({ name: e.target.value })} style={editInput} /></EditRow>
-                <EditRow label="Empresa"><input defaultValue={lead.company || ""} onBlur={(e) => e.target.value !== (lead.company || "") && patch({ company: e.target.value })} style={editInput} /></EditRow>
-                <EditRow label="Prioridade">
-                  <select value={lead.priority || ""} onChange={(e) => patch({ priority: e.target.value })} style={editInput}>
-                    <option value="">—</option><option value="P0">P0</option><option value="P1">P1</option><option value="P2">P2</option>
-                  </select>
-                </EditRow>
-                <EditRow label={lead.planClosed === "mensal" ? "Valor mensal (R$)" : "Valor (R$)"}><input type="number" defaultValue={lead.amount ?? ""} onBlur={(e) => patch({ amount: e.target.value === "" ? "" : Number(e.target.value) })} style={editInput} /></EditRow>
-                <EditRow label="Faixa"><input defaultValue={lead.value || ""} onBlur={(e) => e.target.value !== (lead.value || "") && patch({ value: e.target.value })} style={editInput} /></EditRow>
-                <EditRow label="E-mail"><input defaultValue={lead.email || ""} onBlur={(e) => e.target.value !== (lead.email || "") && patch({ email: e.target.value })} style={editInput} /></EditRow>
-                <EditRow label="Telefone"><input defaultValue={lead.phone || ""} onBlur={(e) => e.target.value !== (lead.phone || "") && patch({ phone: e.target.value })} style={editInput} /></EditRow>
-                {[["Dono (SDR)", "owner", "sdr"], ["Closer", "closer", "closer"], ["Integrador", "integrator", "integrator"]].map(([label, field, role]) => {
-                  const opts = usersByRole(role);
-                  return (
-                    <EditRow key={field} label={label}>
-                      <select value={lead[field] || ""} onChange={(e) => patch({ [field]: e.target.value })} style={editInput}>
-                        <option value="">—</option>
-                        {opts.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
-                        {lead[field] && !opts.some((u) => u.id === lead[field]) && <option value={lead[field]}>{displayName(lead[field])}</option>}
-                      </select>
-                    </EditRow>
-                  );
-                })}
-              </div>
-            )}
-          </ClientSummaryCard>
-
-          {/* Contatos logo abaixo do resumo, como no painel de atividade (lá é
-              "registrar contato · últimos contatos"). Aqui é a timeline COMPLETA
-              e nasce recolhida: o histórico é consulta, não fluxo do dia. */}
-          <div style={{ ...box, display: "flex", flexDirection: "column", ...(showTimeline ? { minHeight: 160 } : {}) }}>
-            <button onClick={() => setShowTimeline((v) => !v)}
-              title={showTimeline ? "Recolher a timeline" : "Abrir a timeline (histórico + registrar contato)"}
-              className="kicker" style={{ display: "flex", alignItems: "center", width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
-              <span>Contatos · timeline {activities ? `· ${timelineActs.length + (lead.comments?.length || 0)}` : ""}</span>
-              <span style={{ marginLeft: "auto", fontSize: 10 }}>{showTimeline ? "▴ recolher" : "▾ registrar contato"}</span>
-            </button>
-            {showTimeline && (
-              <>
-                <div style={{ marginTop: 10 }}>
-                  <ActivityComposer lead={lead} onLogged={refetchTimeline} />
-                </div>
-                <div style={{ marginTop: 8 }}>
-                  {activities === null
-                    ? <div className="mono dim" style={{ fontSize: 11.5, padding: "10px 0" }}>carregando…</div>
-                    : <ActivityList activities={timelineActs} comments={lead.comments} />}
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* De onde veio · atribuição do anúncio: mesmo bloco (e mesmo lugar,
-              depois dos contatos) do painel de atividade. Recolhível porque a
-              ficha lista a atribuição inteira. */}
-          <AttributionCard rows={attribution} open={showFrom} onToggle={() => setShowFrom((v) => !v)} />
-
-          {/* Dados do lead: mesmo checklist, mesmo título do painel de atividade. */}
-          <LeadChecklist key={lead.id} checklist={checklist} onPatch={patch} leadId={lead.id} />
-
+          {/* ── O PRÓXIMO PASSO VEM PRIMEIRO (redesign de 12/09) ─────────
+              Era o último bloco da coluna e nascia recolhido, embora seja o
+              motivo de abrir o card. Agora abre em cima, já aberto. */}
           {/* GPS: etapa (gateada) + próximo toque + call agendada, sem sair do
               drawer. RECOLHÍVEL: fechado, o cabeçalho segura o resumo (o pill
               de atraso continua visível). */}
@@ -622,17 +576,31 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               falar (e às vezes fecha) precisa voltar pro funil por aqui — o
               bloco fechado virava beco sem saída e o jeito era abrir card novo,
               perdendo histórico, origem e proposta. */}
-          <button onClick={() => setShowGps((v) => !v)}
-            title={showGps ? "Recolher os editores" : isOpen ? "Editar etapa, toque, call…" : "Reabrir o lead: voltar pro funil ou mover de etapa"}
-            style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
-            <span className="kicker" style={{ flexShrink: 0 }}>Próximo passo</span>
-            {!isOpen
-              ? <span className="dim" style={{ fontSize: 12.5 }}>lead finalizado{lead.lostReason ? ` · ${lossReasonLabel(saasCfg, lead.lostReason)}` : ""}</span>
-              : next && next.key !== "none"
-                ? <span style={{ fontSize: 13.5, fontWeight: 700, color: next.tone }}>{primaryStep.label} <span style={{ fontWeight: 400, color: "var(--fg-4)" }}>·</span> {next.text.replace(/^[◆●]\s*/, "")}</span>
-                : <span style={{ fontSize: 13, fontWeight: 600, color: "var(--warn)" }}>sem {primaryStep.label.toLowerCase()} · {primaryStep.verb}</span>}
-            <span className="mono" style={{ marginLeft: "auto", fontSize: 10, color: "var(--fg-4)", flexShrink: 0 }}>{showGps ? "▴ recolher" : isOpen ? "▾ editar" : "▾ reabrir"}</span>
-          </button>
+          <div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+              <span className="kicker" style={{ flexShrink: 0 }}>Próximo passo</span>
+              {lead.nextActionAt && (
+                <span className="mono dim" style={{ fontSize: 12.5 }}>
+                  {`era ${new Date(lead.nextActionAt).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).replace(".", "")}`}
+                </span>
+              )}
+              <button onClick={() => setShowGps((v) => !v)} className="mono"
+                title={showGps ? "Recolher os editores" : "Abrir os editores de toque e etapa"}
+                style={{ marginLeft: "auto", background: "none", border: 0, padding: 0, fontSize: 10.5, color: "var(--fg-4)", cursor: "pointer", flexShrink: 0 }}>
+                {showGps ? "▴ recolher" : "▾ editar"}
+              </button>
+            </div>
+            <div style={{ fontSize: 19, fontWeight: 700, lineHeight: 1.25, marginTop: 3, color: !isOpen ? "var(--fg-3)" : next && next.key !== "none" ? next.tone : "var(--warn)" }}>
+              {!isOpen
+                ? `lead finalizado${lead.lostReason ? ` · ${lossReasonLabel(saasCfg, lead.lostReason)}` : ""}`
+                : next && next.key !== "none"
+                  ? `${primaryStep.label} · ${next.text.replace(/^[◆●]\s*/, "")}`
+                  : `sem ${primaryStep.label.toLowerCase()} · ${primaryStep.verb}`}
+            </div>
+            {lead.nextActionNote && (
+              <div style={{ fontSize: 13, color: "var(--fg-2)", marginTop: 4 }}>{lead.nextActionNote}</div>
+            )}
+          </div>
           {showGps && isOpen && (<>
           <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
             <span className="mono dim" style={{ ...rowLabel, paddingTop: 6 }}>Próximo toque</span>
@@ -640,26 +608,39 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               {/* Atalhos curtos tocam a semana; os longos (15 a 60 dias) são pra
                   quem pediu pra voltar depois, que hoje virava data digitada na
                   mão. Todos caem às 9h, começo do dia de trabalho. */}
-              {[["hoje +1h", () => { const t = new Date(); t.setHours(t.getHours() + 1, 0, 0, 0); return t; }],
-                ["amanhã 9h", () => { const t = new Date(); t.setDate(t.getDate() + 1); t.setHours(9, 0, 0, 0); return t; }],
-                ["+2d", emDias(2)],
-                ["+1sem", emDias(7)],
-                ["+15d", emDias(15)],
-                ["+30d", emDias(30)],
-                ["+45d", emDias(45)],
-                ["+60d", emDias(60)]].map(([label, mk]) => (
-                <button key={label} onClick={() => patch({ nextActionAt: mk().toISOString() })} style={presetBtn}>
+              {/* QUATRO atalhos visíveis (a semana) — os oito numa linha eram a
+                  maior aglomeração de controle do app. O resgate longo (15 a 60
+                  dias) e a data livre ficam em "outra data". Todos caem às 9h. */}
+              {[["hoje +1h", () => { const t = new Date(); t.setHours(t.getHours() + 1, 0, 0, 0); return t; }, true],
+                ["amanhã 9h", () => { const t = new Date(); t.setDate(t.getDate() + 1); t.setHours(9, 0, 0, 0); return t; }, false],
+                ["+2d", emDias(2), false],
+                ["+1sem", emDias(7), false]].map(([label, mk, primary]) => (
+                <button key={label} onClick={() => patch({ nextActionAt: mk().toISOString() })}
+                  style={primary
+                    ? { ...presetBtn, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderColor: "var(--btn-bg, var(--accent))", fontWeight: 600 }
+                    : presetBtn}>
                   {label}
                 </button>
               ))}
-              <DateTimeEditor value={isoToLocal(lead.nextActionAt)}
-                onSave={async (raw) => {
-                  const saved = await persistSchedule({ nextActionAt: localToIso(raw) });
-                  return !!saved;
-                }}
-                style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
+              <button onClick={() => setShowFar((v) => !v)} className="mono"
+                style={{ ...presetBtn, color: "var(--accent)", borderColor: "var(--accent-line)" }}>
+                {showFar ? "outra data ▴" : "outra data ▾"}
+              </button>
               {lead.nextActionAt && (
                 <button onClick={() => patch({ nextActionAt: "", nextActionNote: "" })} className="mono dim" style={{ fontSize: 11 }} title="Limpar próximo toque">limpar</button>
+              )}
+              {showFar && (
+                <span style={{ display: "inline-flex", gap: 5, flexBasis: "100%", flexWrap: "wrap", alignItems: "center", marginTop: 2 }}>
+                  {[["+15d", emDias(15)], ["+30d", emDias(30)], ["+45d", emDias(45)], ["+60d", emDias(60)]].map(([label, mk]) => (
+                    <button key={label} onClick={() => patch({ nextActionAt: mk().toISOString() })} style={presetBtn}>{label}</button>
+                  ))}
+                  <DateTimeEditor value={isoToLocal(lead.nextActionAt)}
+                    onSave={async (raw) => {
+                      const saved = await persistSchedule({ nextActionAt: localToIso(raw) });
+                      return !!saved;
+                    }}
+                    style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />
+                </span>
               )}
               <input type="text" placeholder="o que fazer nesse toque? (ex.: cobrar proposta)" defaultValue={lead.nextActionNote ?? ""}
                 onBlur={(e) => e.target.value !== (lead.nextActionNote || "") && patch({ nextActionNote: e.target.value })}
@@ -688,11 +669,14 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               {callBusyMsg || "aparece na Agenda"}
             </span>
           </div>
-          {/* Detalhes da call: link do vídeo + convidados extras, recolhidos —
-              logística, não o "quando". */}
+          {/* Logística da call: link do vídeo + convidados, recolhidos — é o
+              "com o quê", não o "quando". O bloco da ENTREGA (briefing/vídeo da
+              integração) segue com recolhível próprio de propósito: ele só
+              existe em kind "integracao", então os dois nunca aparecem juntos e
+              fundir num toggle só trocaria o rótulo. */}
           <button onClick={() => setShowCall((v) => !v)}
             className="kicker" style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
-            Detalhes da call
+            Logística da call
             <span style={{ marginLeft: "auto", fontSize: 10, flexShrink: 0, textTransform: "none", letterSpacing: 0 }}>{showCall ? "▴ recolher" : "▾ vídeo · convidados"}</span>
           </button>
           {showCall && (<>
@@ -953,21 +937,115 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               </div>
             </div>
           )}
-          {/* mover etapa: demoted, no fim — a etapa é CONSEQUÊNCIA do trabalho,
-              não o "próximo passo". Antes era a 1ª linha e confundia. Serve
-              também de saída completa pro lead finalizado (inclui reclassificar
-              a perda: desqualificado ↔ perdido). */}
-          {showGps && (
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 2 }}>
-              <span className="mono dim" style={{ fontSize: 11, flexShrink: 0 }}>mover etapa</span>
-              <select value={lead.stage || ""} onChange={(e) => moveStage(e.target.value)}
-                style={{ flex: 1, height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 }}>
-                {(saasCfg?.funnel || []).map((f) => <option key={f.stage} value={f.stage}>{f.stage}</option>)}
-                {saasCfg?.funnel?.every((f) => f.stage !== lead.stage) && lead.stage && <option value={lead.stage}>{lead.stage}</option>}
-              </select>
-            </div>
-          )}
         </div>
+
+          {/* ── ETAPA em bloco próprio (12/09) ─────────────────────────────
+              O funil inteiro visível como trilha e o "mover de etapa" no canto:
+              mover o card é a segunda coisa mais feita e estava a dois cliques,
+              dentro do recolhível do próximo passo. O select continua sendo o
+              MESMO caminho gateado (moveStage → moveGate), inclusive pra
+              reclassificar perda (desqualificado ↔ perdido). */}
+          <div style={{ ...box, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span className="kicker" style={{ flexShrink: 0 }}>Etapa</span>
+              <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                <span className="mono dim" style={{ fontSize: 10.5, flexShrink: 0 }}>mover de etapa</span>
+                <select value={lead.stage || ""} onChange={(e) => moveStage(e.target.value)}
+                  style={{ height: 26, maxWidth: 190, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 }}>
+                  {(saasCfg?.funnel || []).map((f) => <option key={f.stage} value={f.stage}>{f.stage}</option>)}
+                  {saasCfg?.funnel?.every((f) => f.stage !== lead.stage) && lead.stage && <option value={lead.stage}>{lead.stage}</option>}
+                </select>
+              </span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              {(saasCfg?.funnel || []).map((f, i) => {
+                const atual = f.stage === lead.stage;
+                return (
+                  <React.Fragment key={f.stage}>
+                    {i > 0 && <span className="mono dim" style={{ fontSize: 9.5 }}>›</span>}
+                    {atual
+                      ? <span style={{ fontSize: 11.5, fontWeight: 600, padding: "2px 8px", borderRadius: "var(--r-1)", background: "var(--accent-soft)", color: "var(--accent)", whiteSpace: "nowrap" }}>{f.stage}</span>
+                      : <button onClick={() => moveStage(f.stage)} title={`Mover pra “${f.stage}”`}
+                          style={{ fontSize: 11.5, color: "var(--fg-4)", background: "none", border: 0, padding: "2px 2px", cursor: "pointer", whiteSpace: "nowrap" }}>{f.stage}</button>}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Resumo do cliente: MESMO bloco do painel de atividade (dor em
+              destaque + os fatos na mesma ordem). O lápis é exclusivo da ficha:
+              abre a edição INLINE dos campos do lead, no lugar do grid. */}
+          <ClientSummaryCard
+            pain={pain}
+            facts={editResumo ? null : summaryFacts}
+            action={(
+              <button onClick={() => setEditResumo((v) => !v)} title={editResumo ? "Concluir edição" : "Editar os dados do cliente aqui mesmo"}
+                style={{ marginLeft: "auto", height: 22, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid " + (editResumo ? "var(--accent)" : "var(--line-2)"), background: editResumo ? "var(--accent)" : "var(--bg-1)", color: editResumo ? "var(--accent-fg)" : "var(--fg-3)", fontSize: 11 }}>
+                {editResumo ? "✓ pronto" : "✎ editar"}
+              </button>
+            )}>
+            {editResumo && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                <EditRow label="Nome"><input defaultValue={lead.name || ""} onBlur={(e) => e.target.value !== (lead.name || "") && patch({ name: e.target.value })} style={editInput} /></EditRow>
+                <EditRow label="Empresa"><input defaultValue={lead.company || ""} onBlur={(e) => e.target.value !== (lead.company || "") && patch({ company: e.target.value })} style={editInput} /></EditRow>
+                <EditRow label="Prioridade">
+                  <select value={lead.priority || ""} onChange={(e) => patch({ priority: e.target.value })} style={editInput}>
+                    <option value="">—</option><option value="P0">P0</option><option value="P1">P1</option><option value="P2">P2</option>
+                  </select>
+                </EditRow>
+                <EditRow label={lead.planClosed === "mensal" ? "Valor mensal (R$)" : "Valor (R$)"}><input type="number" defaultValue={lead.amount ?? ""} onBlur={(e) => patch({ amount: e.target.value === "" ? "" : Number(e.target.value) })} style={editInput} /></EditRow>
+                <EditRow label="Faixa"><input defaultValue={lead.value || ""} onBlur={(e) => e.target.value !== (lead.value || "") && patch({ value: e.target.value })} style={editInput} /></EditRow>
+                <EditRow label="E-mail"><input defaultValue={lead.email || ""} onBlur={(e) => e.target.value !== (lead.email || "") && patch({ email: e.target.value })} style={editInput} /></EditRow>
+                <EditRow label="Telefone"><input defaultValue={lead.phone || ""} onBlur={(e) => e.target.value !== (lead.phone || "") && patch({ phone: e.target.value })} style={editInput} /></EditRow>
+                {[["Dono (SDR)", "owner", "sdr"], ["Closer", "closer", "closer"], ["Integrador", "integrator", "integrator"]].map(([label, field, role]) => {
+                  const opts = usersByRole(role);
+                  return (
+                    <EditRow key={field} label={label}>
+                      <select value={lead[field] || ""} onChange={(e) => patch({ [field]: e.target.value })} style={editInput}>
+                        <option value="">—</option>
+                        {opts.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
+                        {lead[field] && !opts.some((u) => u.id === lead[field]) && <option value={lead[field]}>{displayName(lead[field])}</option>}
+                      </select>
+                    </EditRow>
+                  );
+                })}
+              </div>
+            )}
+          </ClientSummaryCard>
+
+          {/* Contatos logo abaixo do resumo, como no painel de atividade (lá é
+              "registrar contato · últimos contatos"). Aqui é a timeline COMPLETA
+              e nasce recolhida: o histórico é consulta, não fluxo do dia. */}
+          <div style={{ ...box, display: "flex", flexDirection: "column", ...(showTimeline ? { minHeight: 160 } : {}) }}>
+            <button onClick={() => setShowTimeline((v) => !v)}
+              title={showTimeline ? "Recolher a timeline" : "Abrir a timeline (histórico + registrar contato)"}
+              className="kicker" style={{ display: "flex", alignItems: "center", width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+              <span>Contatos · timeline {activities ? `· ${timelineActs.length + (lead.comments?.length || 0)}` : ""}</span>
+              <span style={{ marginLeft: "auto", fontSize: 10 }}>{showTimeline ? "▴ recolher" : "▾ registrar contato"}</span>
+            </button>
+            {showTimeline && (
+              <>
+                <div style={{ marginTop: 10 }}>
+                  <ActivityComposer lead={lead} onLogged={refetchTimeline} />
+                </div>
+                <div style={{ marginTop: 8 }}>
+                  {activities === null
+                    ? <div className="mono dim" style={{ fontSize: 11.5, padding: "10px 0" }}>carregando…</div>
+                    : <ActivityList activities={timelineActs} comments={lead.comments} />}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* De onde veio · atribuição do anúncio: mesmo bloco (e mesmo lugar,
+              depois dos contatos) do painel de atividade. Recolhível porque a
+              ficha lista a atribuição inteira. */}
+          <AttributionCard rows={attribution} open={showFrom} onToggle={() => setShowFrom((v) => !v)} />
+
+          {/* Dados do lead: mesmo checklist, mesmo título do painel de atividade. */}
+          <LeadChecklist key={lead.id} checklist={checklist} onPatch={patch} leadId={lead.id} />
+
 
           </div>
 
@@ -1060,9 +1138,15 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
         <div style={{ flexShrink: 0, padding: "10px 18px", borderTop: "1px solid var(--line-1)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", background: "var(--bg-inset)" }}>
           {wa ? (
             <>
+              {/* O WhatsApp carrega o VERBO do toque: "WhatsApp · cobrar
+                  proposta" diz o que fazer na conversa que vai abrir. */}
               {onOpenWhatsapp
-                ? <WaButton block onClick={() => onOpenWhatsapp(lead)} title={`Abrir a conversa no inbox do cockpit · ${lead.phone}`}>WhatsApp</WaButton>
-                : <WaButton block href={wa} title={`WhatsApp · ${lead.phone}`}>WhatsApp ↗</WaButton>}
+                ? <WaButton block onClick={() => onOpenWhatsapp(lead)} title={`Abrir a conversa no inbox do cockpit · ${lead.phone}`}>
+                    {lead.nextActionNote ? `WhatsApp · ${lead.nextActionNote}` : "WhatsApp"}
+                  </WaButton>
+                : <WaButton block href={wa} title={`WhatsApp · ${lead.phone}`}>
+                    {lead.nextActionNote ? `WhatsApp · ${lead.nextActionNote} ↗` : "WhatsApp ↗"}
+                  </WaButton>}
               {onOpenWhatsapp && (
                 <a href={wa} target="_blank" rel="noopener noreferrer" title={`Abrir no WhatsApp Web/app · ${lead.phone}`}
                   style={{ flex: "0 1 auto", textAlign: "center", padding: "10px 14px", background: "var(--bg-1)", color: "var(--fg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}>
@@ -1073,6 +1157,31 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
           ) : (
             <span className="mono dim" style={{ flex: 1, textAlign: "center", padding: "10px 12px", fontSize: 12 }}>sem telefone cadastrado</span>
           )}
+          {/* Os dois movimentos TERMINAIS a um clique (só existiam dentro do
+              select de etapa). Os dois continuam passando pelo moveGate: ganho
+              pede valor e pagamento, perda pede motivo — e o `confirm` de
+              desfazer fechamento segue no moveStage. */}
+          {isOpen && (() => {
+            const ganho = stageByKind(saasCfg, "ganho");
+            const perdido = stageByKind(saasCfg, "perdido") || stageByKind(saasCfg, "desqualificado");
+            if (!ganho && !perdido) return null;
+            return (
+              <span style={{ marginLeft: "auto", display: "inline-flex", gap: 8, flexShrink: 0 }}>
+                {ganho && (
+                  <button onClick={() => moveStage(ganho)} title="Marcar como ganho (pede valor, produto e pagamento)"
+                    style={{ height: 38, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--pos)", background: "var(--pos-soft)", color: "var(--pos)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                    marcar ganho
+                  </button>
+                )}
+                {perdido && (
+                  <button onClick={() => moveStage(perdido)} title="Marcar como perdido (o motivo da perda é obrigatório)"
+                    style={{ height: 38, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--neg)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                    marcar perdido
+                  </button>
+                )}
+              </span>
+            );
+          })()}
         </div>
 
         {pendingMove && (

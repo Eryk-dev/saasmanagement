@@ -297,6 +297,41 @@ function RowActions({ onEdit, onDelete }) {
   );
 }
 
+// ─────────────────────────────────────────────── Menu de ações da linha ("⋯")
+// REGRA (12/09/2026): linha com mais de DUAS ações mostra a principal e guarda
+// o resto aqui. Cinco botõezinhos de 11px por linha competem com o dado e nenhum
+// se destaca; o `title` do botão lista o que tem dentro, pra não esconder opção
+// atrás de clique cego. Fecha no Esc e no clique fora.
+// items: [{ label, onClick, tone? }] — entrada falsy é ignorada (condicional).
+function MoreMenu({ items, size = 26, align = "right" }) {
+  const [open, setOpen] = React.useState(false);
+  const vis = (items || []).filter(Boolean);
+  useEsc(open ? () => setOpen(false) : null);
+  React.useEffect(() => {
+    if (!open) return;
+    const fechar = () => setOpen(false);
+    window.addEventListener("click", fechar);
+    return () => window.removeEventListener("click", fechar);
+  }, [open]);
+  if (!vis.length) return null;
+  return (
+    <span style={{ position: "relative", display: "inline-flex" }} onClick={(e) => e.stopPropagation()}>
+      <button onClick={() => setOpen((o) => !o)} title={vis.map((i) => i.label).join(" · ")}
+        style={{ width: size, height: size, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 13, lineHeight: 1, cursor: "pointer" }}>⋯</button>
+      {open && (
+        <div style={{ position: "absolute", [align]: 0, top: size + 4, zIndex: 20, minWidth: 186, padding: 4, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)" }}>
+          {vis.map((i) => (
+            <button key={i.label} onClick={() => { setOpen(false); i.onClick(); }}
+              style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 10px", borderRadius: "var(--r-2)", fontSize: 12.5, color: i.tone === "neg" ? "var(--neg)" : "var(--fg-2)", background: "transparent", border: 0, cursor: "pointer", whiteSpace: "nowrap" }}>
+              {i.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
+  );
+}
+
 // ───────────────────────────────────────────────────── Esc fecha o popup
 // Todo modal/painel fecha no Esc: useEsc(onClose) dentro do componente do
 // popup. Pilha por ordem de MONTAGEM: com modal sobre drawer, o Esc fecha só
@@ -420,4 +455,4 @@ function PrimaryButton({ onClick, children, disabled }) {
 
 Object.assign(window, { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, CardHead, Ticker, Led, EmptyState, PrimaryButton, SecondaryButton, RowActions, toast, ToastHost, WaButton });
 
-export { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, CardHead, Ticker, Led, EmptyState, PrimaryButton, SecondaryButton, RowActions, useEsc, toast, ToastHost, WaButton };
+export { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, CardHead, Ticker, Led, EmptyState, PrimaryButton, SecondaryButton, RowActions, MoreMenu, useEsc, toast, ToastHost, WaButton };

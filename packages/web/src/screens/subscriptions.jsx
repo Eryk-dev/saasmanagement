@@ -2,7 +2,7 @@ import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
-import { EmptyState, PrimaryButton, useEsc } from "../atoms.jsx";
+import { EmptyState, PrimaryButton, MoreMenu, useEsc } from "../atoms.jsx";
 import { Segmented } from "../components/viz.jsx";
 import { mpMethodLabel, MP_SUB_STATUS } from "../lib/payments.js";
 // Assinaturas (fase 5) — Cockpit como system-of-record de billing: assinaturas,
@@ -28,40 +28,6 @@ const INV_STATUS = {
   overdue: { label: "vencida", cls: "warn" },
   paid:    { label: "paga",    cls: "pos" },
 };
-
-// ── Menu de ações da linha ("⋯") ───────────────────────────────────────────
-// Cada linha tinha até cinco botões de 11px (link MP, mudar plano, pausar,
-// cancelar, ✕) competindo com o dado. Agora a ação principal fica visível e o
-// resto vem aqui; o title do botão lista o que tem dentro, pra não esconder as
-// opções atrás de um clique cego.
-function MoreMenu({ items }) {
-  const [open, setOpen] = useState(false);
-  const vis = (items || []).filter(Boolean);
-  useEsc(open ? () => setOpen(false) : null);
-  useEffect(() => {
-    if (!open) return;
-    const fechar = () => setOpen(false);
-    window.addEventListener("click", fechar);
-    return () => window.removeEventListener("click", fechar);
-  }, [open]);
-  if (!vis.length) return null;
-  return (
-    <span style={{ position: "relative", display: "inline-flex" }} onClick={(e) => e.stopPropagation()}>
-      <button onClick={() => setOpen((o) => !o)} title={vis.map((i) => i.label).join(" · ")}
-        style={{ width: 26, height: 26, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 13, lineHeight: 1, cursor: "pointer" }}>⋯</button>
-      {open && (
-        <div style={{ position: "absolute", right: 0, top: 30, zIndex: 20, minWidth: 176, padding: 4, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)" }}>
-          {vis.map((i) => (
-            <button key={i.label} onClick={() => { setOpen(false); i.onClick(); }}
-              style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 10px", borderRadius: "var(--r-2)", fontSize: 12.5, color: i.tone === "neg" ? "var(--neg)" : "var(--fg-2)", background: "transparent", border: 0, cursor: "pointer" }}>
-              {i.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </span>
-  );
-}
 
 // ── Faixa de estado do billing ─────────────────────────────────────────────
 // Eram quatro sub-tabelas densas sem nenhum resumo: não havia como saber se o
