@@ -526,3 +526,49 @@ test("defaults: ids únicos, roles válidos, limites de tamanho e zero travessã
     assert.ok(!/[—–]/.test(c.front + c.back), `travessão/meia-risca em ${c.id}`);
   }
 });
+
+// O card "Sua memória" e o "Próxima prova" da aba Estudar: o aluno via a
+// própria consistência mas não sabia se estava LEMBRANDO — retenção, maduros e
+// acerto de primeira existiam só no dashboard do gestor. O /stats passa a
+// devolver os dois, reusando a agregação da Equipe recortada na pessoa, pra
+// aluno e gestor nunca verem números diferentes do mesmo dado.
+test("GET stats: memória do próprio usuário bate com a linha dele na Equipe", async () => {
+  const { app } = await buildApp();
+  const q = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/queue", headers: as("ana") })).json();
+  const first = q.queue[q.decks[0].role][0];
+  await app.inject({ method: "POST", url: "/api/flashcards/leverads/review", headers: as("ana"), payload: { cardId: first.entryId, rating: 3, ms: 1500 } });
+
+  const stats = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/stats", headers: as("ana") })).json();
+  const team = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/team" })).json();
+  const mine = team.users.find((u) => u.id === "ana");
+
+  assert.equal(stats.memory.mature, mine.mature);
+  assert.equal(stats.memory.young, mine.young);
+  assert.equal(stats.memory.seen, mine.seen);
+  assert.equal(stats.memory.deckSize, mine.deckSize);
+  assert.equal(stats.memory.retention30d, mine.retention30d.pct);
+  assert.equal(stats.memory.firstTryPct, mine.firstTryPct);
+  assert.equal(stats.memory.examsDone, mine.examsDone);
+  // card novo respondido ainda não graduou: retenção só conta revisão de card maduro
+  assert.equal(stats.memory.retention30d, null);
+  assert.equal(stats.doneToday, 1, "a consistência continua igual");
+});
+
+test("GET stats: admin vê a própria memória (fica fora do quadro, não do estudo)", async () => {
+  const { app } = await buildApp();
+  const stats = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/stats", headers: as("leo") })).json();
+  const team = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/team" })).json();
+  assert.equal(team.users.some((u) => u.id === "leo"), false, "admin não é cobrado no quadro");
+  assert.ok(stats.memory, "mas vê a própria memória quando estuda");
+});
+
+test("GET stats: próxima prova lê o gatilho real (a cada N aprendidos, nota mínima N)", async () => {
+  const { app, repo } = await buildApp();
+  const stats = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/stats", headers: as("ana") })).json();
+  assert.deepEqual(stats.nextExam, { every: 30, pass: 70, pool: 0, remaining: 30 });
+
+  // prova desligada não inventa card de prova na tela
+  await repo.create("flashcards", { id: "leverads", cards: FLASHCARD_DEFAULTS.leverads, settings: { newPerDay: 10, examEvery: 0, examQuestions: 8, examPass: 70 } });
+  const off = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/stats", headers: as("ana") })).json();
+  assert.equal(off.nextExam, null);
+});
