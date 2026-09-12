@@ -98,7 +98,9 @@ export const META_CATALOG = [
       // na janela (nº do time).
       { metric: "upsells", kind: "flow", label: "Upsells no mês", unit: "n", default: null },
       { metric: "upsellRevenue", kind: "flow", label: "Receita de upsell no mês", unit: "R$", hint: "só o que caiu (fatura de upsell paga)", default: null },
-      { metric: "referrals", kind: "flow", label: "Indicações no mês", unit: "n", default: null },
+      // Indicação COLHIDA pela pessoa (desde 12/09/2026 tem dono: o prêmio da
+      // coleta é do colaborador, então o número por pessoa é o que se persegue).
+      { metric: "referrals", kind: "flow", label: "Indicações no mês", unit: "n", hint: "as que VOCÊ colheu (cliente indicador + seu nome no registro)", default: null },
     ],
   },
   {

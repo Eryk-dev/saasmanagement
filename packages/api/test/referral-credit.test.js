@@ -154,3 +154,18 @@ test("PATCH /api/leads: registra indicação depois, sem recarimbar a janela; li
   assert.equal(r3.json().referralAt, "");
   await app.close();
 });
+
+test("migração sobe o prêmio de fechamento pra R$ 500, sem pisar em ajuste da tela", async () => {
+  const { migrateReferralClosedValue } = await import("../src/migrations.js");
+  const { makeMemRepo: mem } = await import("./helpers/mem-repo.js");
+  const repo = mem();
+  await repo.create("comp_plans", { id: "cp_cs", role: "cs", plan: { referralMeeting: 100, referralClosed: 250, npsFloor: 80 } });
+  await repo.create("comp_plans", { id: "cp_cs2", role: "cs", plan: { referralMeeting: 100, referralClosed: 300 } }); // valor ajustado na mão
+  await repo.create("comp_plans", { id: "cp_sdr", role: "sdr", plan: { levels: [] } });
+
+  assert.equal(await migrateReferralClosedValue(repo), 1);
+  assert.equal((await repo.get("comp_plans", "cp_cs")).plan.referralClosed, 500);
+  assert.equal((await repo.get("comp_plans", "cp_cs")).plan.npsFloor, 80, "o resto do plano fica intacto");
+  assert.equal((await repo.get("comp_plans", "cp_cs2")).plan.referralClosed, 300, "ajuste manual não é sobrescrito");
+  assert.equal(await migrateReferralClosedValue(repo), 0, "idempotente entre boots");
+});

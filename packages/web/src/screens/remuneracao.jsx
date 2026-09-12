@@ -4,6 +4,7 @@ import { EmptyState } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { hasExplicitScreen, isAdminUser } from "../lib/users.js";
 import { levelLabel } from "../lib/levels.js";
+import { useActiveSaas } from "../lib/workspace.js";
 
 // Remuneração — tela da GESTÃO com o plano OFICIAL da casa, definido pelo
 // Leo em 04/08/2026 (folhas amarelas + decisões no chat): 3 trilhas (SDR,
@@ -75,7 +76,10 @@ const DEFAULT_PLAN = {
       { n: 3, fixed: 3000, npsBonus: 1000, churnBonus: 1000 },
     ],
     referralMeeting: 100,
-    referralClosed: 250,
+    // R$ 500 desde 12/09/2026 (era 250): o prêmio de fechamento é o que puxa
+    // coleta de nome qualificado, e sobre um ticket de R$ 5 a 7 mil anual isso é
+    // ~8%, bem abaixo do CAC de Meta.
+    referralClosed: 500,
     npsFloor: 80,
     churnMax: 15,
     notes: "",
@@ -263,6 +267,65 @@ export function RoleCard({ role, saved, onSave }) {
   );
 }
 
+// ── Indicação: o que o mês deve pagar, por pessoa ───────────────────────────
+// Era a lacuna do plano: as regras de indicação existiam escritas aqui e
+// NENHUM código calculava, então o simulador acima pedia os números na mão. O
+// placar agora atribui a coleta a quem colheu (referralsByCollector), com a
+// régua do próprio placar pra "reunião feita" (a transcrição da call manda).
+//
+// Vale pra QUALQUER papel: quem trouxe o nome leva, seja CS, SDR, closer ou
+// social. Por isso o bloco fica fora dos cards de trilha.
+function ReferralPayout({ rates }) {
+  const [data, setData] = useS(null);
+  const [product] = useActiveSaas();
+  const mes = React.useMemo(() => {
+    const d = new Date();
+    const ini = new Date(d.getFullYear(), d.getMonth(), 1);
+    const iso = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
+    return { since: iso(ini), until: iso(d) };
+  }, []);
+  useE(() => {
+    if (!product?.id) return;
+    api.scoreboard(product.id, mes).then((r) => setData(r?.referrals || { people: [] })).catch(() => setData({ people: [] }));
+  }, [product?.id, mes]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const people = data?.people || [];
+  const total = people.reduce((a, p) => a + num(p.value), 0);
+  const meeting = num(data?.rates?.meeting ?? rates?.meeting ?? 100);
+  const closed = num(data?.rates?.closed ?? rates?.closed ?? 500);
+  return (
+    <div style={box}>
+      <div className="kicker" style={{ color: "var(--accent)", marginBottom: 8 }}>Indicação · o que o mês deve pagar</div>
+      {data == null ? <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div> : !people.length ? (
+        <div style={{ fontSize: 12.5, color: "var(--fg-3)" }}>
+          Nenhuma indicação colhida neste mês ainda. A fila de quem pedir está na aba Indicações da tela Clientes.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {people.map((p) => (
+            <div key={p.user} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12.5 }}>
+              <span><b>{p.name || p.user}</b> <span style={{ color: "var(--fg-4)" }}>
+                {p.collected} colhida{p.collected === 1 ? "" : "s"}
+                {p.meetings ? ` · ${p.meetings} com reunião feita` : ""}
+                {p.closed ? ` · ${p.closed} fechou` : ""}
+              </span></span>
+              <b style={{ color: p.value ? "var(--pos)" : "var(--fg-4)" }}>{money(p.value)}</b>
+            </div>
+          ))}
+          <div style={{ borderTop: "1px solid var(--line-1)", paddingTop: 6, display: "flex", justifyContent: "space-between", fontSize: 12.5 }}>
+            <span style={{ color: "var(--fg-3)" }}>total do mês</span><b>{money(total)}</b>
+          </div>
+        </div>
+      )}
+      <div style={{ marginTop: 8, fontSize: 11.5, color: "var(--fg-4)" }}>
+        {money(meeting)} quando a indicação vira reunião FEITA (a régua é a do placar: a transcrição da call manda, não a marcação),
+        {" "}{money(closed)} se fechar, no lugar da de reunião. Só conta indicação com cliente indicador na base e coletor no nome.
+        {" "}O pagamento em si segue pela folha.
+      </div>
+    </div>
+  );
+}
+
 function RemuneracaoScreen() {
   const [docs, setDocs] = useS(null); // comp_plans salvos, por role
   const load = () => api.list("comp_plans").then((all) => {
@@ -317,8 +380,9 @@ function RemuneracaoScreen() {
             <RoleCard role={role} saved={planOf(role)} onSave={save} />
           </fieldset>
         ))}
+        {docs != null && <ReferralPayout rates={planOf("cs")} />}
         <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>
-          Contratos e receita saem da mesma régua do placar (fechamentos por wonAt). Próximo passo natural: o cockpit calcular a variável do mês de cada pessoa sozinho, a partir do nível dela.
+          Contratos e receita saem da mesma régua do placar (fechamentos por wonAt). A indicação já é calculada pelo cockpit (bloco acima); a variável de contratos/receita por pessoa continua sendo o próximo passo.
         </div>
       </div>
     </div>

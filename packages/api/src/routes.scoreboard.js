@@ -16,6 +16,7 @@ import {
   callOutcome as coreCallOutcome, callResultOf as coreCallResultOf, callCohortIn,
   isIcpLead, isSocialSellingLead, unansweredContacts, followupTouches,
   winsIn, customerStartMap, contactAttribution, firstResponseAttribution, isReferralLead,
+  referralsByCollector, REFERRAL_RATES,
   classCounts, cashBucketsIn, mentoriaScore, keyAccountIds, isKeyAccountLead,
   saleValuer, revenueOf, tcvOf,
   upsellSalesIn, upsellValuer, upsellRevenueOf, upsellContractedOf, isKeyAccountUpsell,
@@ -24,10 +25,14 @@ import { isMentoriaLead } from "./mentoria.js";
 import { isChurnedCustomer } from "./churn.js";
 
 const HOUR = 3_600_000;
-// Meta de indicação do CS: cada cliente da carteira precisa render N indicações
-// (regra do Leo). O alvo escala com a BASE — 7 × clientes que o CS atende — em
-// vez de um número fixo, então cresce sozinho conforme a carteira aumenta.
-const REFERRALS_PER_CUSTOMER = 7;
+// Meta de indicação do CS: o alvo escala com a BASE (cresce sozinho conforme a
+// carteira aumenta), mas como FRAÇÃO da carteira por mês, não múltiplo dela.
+//
+// Era 7 × a carteira, o que numa base de 90 clientes pedia centenas de
+// indicações por mês: meta impossível é meta que ninguém persegue, e foi por
+// isso que o canal ficou em 1 lead indicado em 2.122 (Leo, 12/09/2026). 20% da
+// carteira é perseguível: um CS com 45 contas tem alvo 9 no mês.
+const REFERRALS_PER_CUSTOMER = 0.2;
 const median = (arr) => {
   if (!arr.length) return null;
   const s = [...arr].sort((a, b) => a - b);
@@ -150,7 +155,7 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
         // escala sozinho conforme a base cresce. Manual (user/role) ainda vence.
         if (metric === "referrals") {
           const custs = custByOwner.get(userId) || 0;
-          const t = REFERRALS_PER_CUSTOMER * custs;
+          const t = custs > 0 ? Math.max(1, Math.round(REFERRALS_PER_CUSTOMER * custs)) : 0;
           return t > 0 ? { target: t, period: "month", scope: "derived", perCustomer: REFERRALS_PER_CUSTOMER, customers: custs } : null;
         }
         // Só VOLUME de time se deriva. Ticket e taxa entram na cadeia como
@@ -608,9 +613,17 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     // Upsells do produto: fatura kind:"upsell" (registrada na ficha do cliente,
     // upsell.js). Atribuída a QUEM VENDEU (invoice.soldBy); fatura antiga sem o
     // carimbo cai no dono do cliente, igual ao resto do bloco.
-    // Indicações recebidas na janela: nº do TIME (sem atribuição fina por pessoa,
-    // decisão do Leo). Mesmo número em cada card de CS — a régua isReferralLead.
+    // Indicações recebidas na janela: o TOTAL do time segue existindo pro rodapé
+    // e pro tile da Visão geral (régua isReferralLead, que conta também a
+    // indicação legada, marcada só no texto da origem).
     const teamReferrals = leads.filter((l) => isReferralLead(l) && inWin(l.createdAt)).length;
+    // Por PESSOA (Leo, 12/09/2026): desde que o prêmio da coleta é do
+    // colaborador (R$ 100 na reunião feita, R$ 500 no fechamento), o número
+    // precisa ter dono — antes o mesmo total do time aparecia em todo card de
+    // CS, o que não dava pra conferir nem pagar. Só indicação estruturada
+    // (cliente indicador + coletor) entra aqui; a régua é do metrics-core.
+    const refsBy = referralsByCollector(product, leads, actsOf, inWin, { today });
+    const refsOf = (uid) => refsBy.get(uid) || { collected: 0, meetings: 0, closed: 0, value: 0 };
     const cs = csIds.map((uid) => {
       const mine = customers.filter((c) => c.owner === uid);
       // Contas ativas = sem churn (endedAt no passado); as churnadas continuam
@@ -636,13 +649,13 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       const upsellRevenue = round2(myUpsells.filter((i) => i.status === "paid").reduce((a, i) => a + (Number(i.amount) || 0), 0));
       return {
         user: uid, name: nameOf(uid),
-        targets: personTargets(uid, "integrator", { retentionRate, nps, newAccounts, activeAccounts: mineActive.length, upsells, upsellRevenue, referrals: teamReferrals }),
+        targets: personTargets(uid, "integrator", { retentionRate, nps, newAccounts, activeAccounts: mineActive.length, upsells, upsellRevenue, referrals: refsOf(uid).collected }),
         activeAccounts: mineActive.length,
         newAccounts,
         churned,
         retentionRate,
         nps, npsCount: scores.length,
-        upsells, upsellRevenue, referrals: teamReferrals,
+        upsells, upsellRevenue, referrals: refsOf(uid).collected,
         goals: goalMap(uid, "integrator", ["newAccounts", "activeAccounts", "retentionRate", "nps", "upsells", "upsellRevenue", "referrals"]),
       };
     }).filter((p) => p.activeAccounts > 0 || p.newAccounts > 0 || csRole.has(p.user)) // responsável aparece mesmo sem conta (pra ver a meta)
@@ -896,6 +909,19 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       blockedBy: derivedChain.blockedBy || null,
     } : null;
 
-    return { saas: product.id, since, until, sdr, closer, cs, social, team, mentoria };
+    // Placar da COLETA de indicação, por pessoa e de qualquer papel (CS, SDR,
+    // closer, social): quem colheu, o que virou reunião feita, o que fechou e
+    // quanto isso rendeu em prêmio na janela. Fica num bloco próprio em vez de
+    // dentro dos cards de papel porque a coleta não é atribuição de vaga: quem
+    // trouxe o nome leva, seja quem for.
+    const referrals = {
+      rates: REFERRAL_RATES,
+      people: [...refsBy.entries()]
+        .map(([uid, r]) => ({ user: uid, name: nameOf(uid), ...r }))
+        .sort((a, b) => b.value - a.value || b.collected - a.collected),
+      team: teamReferrals,
+    };
+
+    return { saas: product.id, since, until, sdr, closer, cs, social, team, mentoria, referrals };
   });
 }

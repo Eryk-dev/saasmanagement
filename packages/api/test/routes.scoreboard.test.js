@@ -254,26 +254,49 @@ test("CS: upsell (fatura kind:upsell) conta e soma R$ pelo dono do cliente", asy
   await app.close();
 });
 
-test("CS: indicações = leads com origem 'Indicação' na janela (nº do time)", async () => {
+// Indicação tem DONO desde 12/09/2026: o prêmio da coleta é do colaborador, e
+// o total do time aparecendo igual em todo card de CS não dava pra conferir nem
+// pagar. O card agora conta o que a PESSOA colheu (indicação estruturada:
+// cliente indicador + coletor); o total do time vive no bloco `referrals`.
+test("CS: indicações do card = o que a PESSOA colheu; o total do time fica no bloco próprio", async () => {
   const { app, repo } = await buildApp();
   await repo.create("customers", { id: "c1", saas: "leverads", owner: "u_cs", startedAt: "2026-05-01T10:00:00.000Z" });
-  await repo.create("leads", { id: "r1", saas: "leverads", owner: "u_sdr", stage: "Novo lead", source: "Indicação", createdAt: now });
-  await repo.create("leads", { id: "r2", saas: "leverads", owner: "u_sdr", stage: "Novo lead", utm: { source: "indicacao" }, createdAt: now });
-  await repo.create("leads", { id: "r3", saas: "leverads", owner: "u_sdr", stage: "Novo lead", source: "Form · Diagnóstico", createdAt: now }); // não é indicação
-  await repo.create("leads", { id: "r4", saas: "leverads", owner: "u_sdr", stage: "Novo lead", source: "Indicação", createdAt: "2026-06-01T10:00:00.000Z" }); // fora da janela
+  await repo.create("customers", { id: "cu_ind", saas: "leverads", name: "Quem indicou", startedAt: "2026-05-01T10:00:00.000Z" });
+  // colhidas pelo CS (estruturadas)
+  await repo.create("leads", { id: "r1", saas: "leverads", stage: "Novo lead", referredByCustomer: "cu_ind", referralCollectedBy: "u_cs", referralAt: now, createdAt: now });
+  await repo.create("leads", { id: "r2", saas: "leverads", stage: "Novo lead", referredByCustomer: "cu_ind", referralCollectedBy: "u_cs", referralAt: now, createdAt: now });
+  // colhida por OUTRA pessoa: não entra no card do CS
+  await repo.create("leads", { id: "r3", saas: "leverads", stage: "Novo lead", referredByCustomer: "cu_ind", referralCollectedBy: "u_sdr", referralAt: now, createdAt: now });
+  // legado só no texto da origem: conta no total do time, não tem coletor pra creditar
+  await repo.create("leads", { id: "r4", saas: "leverads", stage: "Novo lead", source: "Indicação", createdAt: now });
+  // fora da janela
+  await repo.create("leads", { id: "r5", saas: "leverads", stage: "Novo lead", referredByCustomer: "cu_ind", referralCollectedBy: "u_cs", referralAt: "2026-06-01T10:00:00.000Z", createdAt: "2026-06-01T10:00:00.000Z" });
 
-  const cs = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json().cs.find((x) => x.user === "u_cs");
-  assert.equal(cs.referrals, 2); // r1 (source) + r2 (utm), r3 não conta, r4 fora da janela
+  const body = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
+  assert.equal(body.cs.find((x) => x.user === "u_cs").referrals, 2);
+  assert.equal(body.referrals.team, 4);                       // as 3 estruturadas da janela + a legada
+  assert.deepEqual(body.referrals.rates, { meeting: 100, closed: 500 });
+  const quem = body.referrals.people.map((p) => [p.user, p.collected]);
+  assert.deepEqual(quem.sort(), [["u_cs", 2], ["u_sdr", 1]]);  // qualquer papel coleta e aparece
   await app.close();
 });
 
-test("CS: meta de indicação deriva da base (7 × clientes do CS)", async () => {
+// 7 × a carteira pedia centenas de indicações por mês numa base de 90 clientes:
+// meta impossível é meta que ninguém persegue. Virou 20% da carteira.
+test("CS: meta de indicação deriva da base (20% da carteira, mínimo 1)", async () => {
+  const { app, repo } = await buildApp();
+  for (let i = 1; i <= 10; i++) await repo.create("customers", { id: `c${i}`, saas: "leverads", owner: "u_cs", startedAt: "2026-05-01T10:00:00.000Z" });
+  const cs = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json().cs.find((x) => x.user === "u_cs");
+  assert.equal(cs.goals.referrals.target, 2); // 20% de 10 contas
+  assert.equal(cs.goals.referrals.scope, "derived");
+  await app.close();
+});
+
+test("CS: carteira pequena não zera a meta de indicação (arredonda pra 1)", async () => {
   const { app, repo } = await buildApp();
   await repo.create("customers", { id: "c1", saas: "leverads", owner: "u_cs", startedAt: "2026-05-01T10:00:00.000Z" });
-  await repo.create("customers", { id: "c2", saas: "leverads", owner: "u_cs", startedAt: "2026-05-01T10:00:00.000Z" });
   const cs = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json().cs.find((x) => x.user === "u_cs");
-  assert.equal(cs.goals.referrals.target, 14); // 7 × 2 clientes da carteira
-  assert.equal(cs.goals.referrals.scope, "derived");
+  assert.equal(cs.goals.referrals.target, 1);
   await app.close();
 });
 
