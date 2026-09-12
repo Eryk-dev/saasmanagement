@@ -642,110 +642,189 @@ function CardFace({ card, flipped, focus }) {
 // ── Prova de checkpoint ──────────────────────────────────────────────────────
 // Questões geradas dos cards que a pessoa acabou de graduar; correção 100% no
 // servidor (o gabarito nunca chega ao cliente antes de entregar).
+// ── Prova de checkpoint ─────────────────────────────────────────────────────
+// UMA QUESTÃO POR VEZ (antes eram as oito numa rolagem única, o que convidava
+// a responder no piloto automático e a comparar enunciados entre si).
+//
+// RECARREGAR NO MEIO: a prova CONTINUA de onde parou. As respostas e o índice
+// ficam no sessionStorage da aba; perder sete respostas por um F5 acidental
+// seria punição desproporcional, e a prova não é cronometrada. Fechar a aba
+// reinicia (o servidor mantém a prova pendente, então nada se perde de fato),
+// e as questões são as MESMAS porque o servidor congela a lista na abertura.
+const examDraftKey = (id) => `cockpit_exam_${id}`;
+
 function ExamScreen({ saasId, exam, onDone }) {
   const [data, setData] = useS(null);
   const [answers, setAnswers] = useS([]);
+  const [idx, setIdx] = useS(0);
   const [result, setResult] = useS(null);
   const [busy, setBusy] = useS(false);
   const [err, setErr] = useS(null);
+  const [showAll, setShowAll] = useS(false);
 
   useE(() => {
     let alive = true;
     api.trainingExamStart(saasId, exam.id)
-      .then((d) => { if (alive) { setData(d); setAnswers(d.questions.map(() => ({}))); } })
+      .then((d) => {
+        if (!alive) return;
+        setData(d);
+        // retoma o rascunho da aba, se o tamanho ainda casar com a prova
+        let draft = null;
+        try { draft = JSON.parse(sessionStorage.getItem(examDraftKey(exam.id)) || "null"); } catch { /* ignore */ }
+        const ok = draft && Array.isArray(draft.answers) && draft.answers.length === d.questions.length;
+        setAnswers(ok ? draft.answers : d.questions.map(() => ({})));
+        setIdx(ok ? Math.min(Number(draft.idx) || 0, d.questions.length - 1) : 0);
+      })
       .catch((e) => alive && setErr(e.message));
     return () => { alive = false; };
   }, [exam.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const complete = data && answers.every((a, i) => (data.questions[i].kind === "mc" ? Number.isInteger(a.choice) : (a.text || "").trim()));
+  // guarda o rascunho a cada resposta/navegação (a aba sobrevive ao F5)
+  useE(() => {
+    if (!data || result) return;
+    try { sessionStorage.setItem(examDraftKey(exam.id), JSON.stringify({ answers, idx })); } catch { /* cota cheia: segue sem rascunho */ }
+  }, [answers, idx, data, result, exam.id]);
+
+  const answered = (a, q) => (q.kind === "mc" ? Number.isInteger(a?.choice) : !!(a?.text || "").trim());
+  const complete = data && answers.every((a, i) => answered(a, data.questions[i]));
+  const doneCount = data ? answers.filter((a, i) => answered(a, data.questions[i])).length : 0;
 
   async function submit() {
     setBusy(true); setErr(null);
-    try { setResult(await api.trainingExamSubmit(saasId, exam.id, answers)); }
-    catch (e) { setErr(e.message); }
+    try {
+      const r = await api.trainingExamSubmit(saasId, exam.id, answers);
+      setResult(r);
+      try { sessionStorage.removeItem(examDraftKey(exam.id)); } catch { /* ignore */ }
+    } catch (e) { setErr(e.message); }
     setBusy(false);
   }
 
-  const qCard = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 };
+  const qCard = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 };
 
   if (err) return <div style={{ maxWidth: 720 }}><div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div><button onClick={onDone} style={{ ...btn, marginTop: 10 }}>← voltar</button></div>;
   if (!data) return <div className="mono dim" style={{ fontSize: 12 }}>montando sua prova…</div>;
 
+  // ── Resultado: os erros primeiro ──────────────────────────────────────────
   if (result) {
     const tone = result.passed ? "var(--pos)" : "var(--neg)";
+    const qs = result.questions || [];
+    const wrong = qs.filter((q) => !q.correct);
+    const right = qs.length - wrong.length;
+    // o que a pessoa marcou, em texto (MC mostra a opção, não o índice)
+    const mine = (q) => (q.kind === "mc" ? (Number.isInteger(q.choice) ? q.options[q.choice] : "—") : (q.text || "—"));
+    const gabarito = (q) => (q.kind === "mc" ? q.options[q.answerIdx] : q.ideal);
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 720 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 720 }}>
         <div style={{ border: `1px solid ${tone}`, background: result.passed ? "var(--pos-soft)" : "var(--neg-soft)", borderRadius: "var(--r-3)", padding: "18px 20px" }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-            <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 42, fontWeight: 700, color: tone }}>{result.score}</span>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+            <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 42, fontWeight: 700, lineHeight: 1, color: tone }}>{result.score}</span>
             <span style={{ fontSize: 15, fontWeight: 700, color: tone }}>{result.passed ? "aprovado" : "reprovado"}</span>
             <span className="mono dim" style={{ fontSize: 11 }}>· nota mínima {result.passScore}</span>
           </div>
-          {!result.passed && <div style={{ fontSize: 12.5, color: "var(--fg-1)", marginTop: 6 }}>{result.resetCount} card{result.resetCount === 1 ? "" : "s"} voltaram pra sua fila — reaprende e a próxima prova vem melhor.</div>}
-        </div>
-        {result.questions.map((q, i) => (
-          <div key={i} style={{ ...qCard, borderLeft: `3px solid ${q.correct ? "var(--pos)" : "var(--neg)"}` }}>
-            <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--fg-1)", whiteSpace: "pre-wrap" }}>{i + 1}. {q.prompt}</div>
-            {q.kind === "mc" ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                {q.options.map((op, j) => (
-                  <div key={j} style={{ fontSize: 12.5, padding: "6px 10px", borderRadius: "var(--r-2)", lineHeight: 1.45,
-                    border: `1px solid ${j === q.answerIdx ? "var(--pos)" : j === q.choice ? "var(--neg)" : "var(--line-1)"}`,
-                    background: j === q.answerIdx ? "var(--pos-soft)" : j === q.choice ? "var(--neg-soft)" : "transparent",
-                    color: "var(--fg-1)" }}>
-                    {op}{j === q.answerIdx ? " ✓" : j === q.choice ? " ✗ (sua escolha)" : ""}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <>
-                <div style={{ fontSize: 12.5, color: "var(--fg-2)" }}><b>Sua resposta:</b> {q.text || "—"}</div>
-                <div style={{ fontSize: 12.5, color: "var(--fg-2)" }}><b>Gabarito:</b> {q.ideal}</div>
-                {q.feedback && <div style={{ fontSize: 12, color: q.correct ? "var(--pos)" : "var(--neg)" }}>{q.feedback}</div>}
-              </>
-            )}
+          <div style={{ fontSize: 12.5, color: "var(--fg-1)", marginTop: 8, lineHeight: 1.5 }}>
+            Acertou {right} de {qs.length}.
+            {result.resetCount ? ` Os ${result.resetCount} card${result.resetCount === 1 ? "" : "s"} das questões erradas voltaram para a sua fila.` : ""}
           </div>
-        ))}
-        <button onClick={onDone} style={{ ...btn, alignSelf: "flex-start", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", border: "1px solid var(--btn-bg, var(--accent))", fontWeight: 600 }}>← voltar aos baralhos</button>
+        </div>
+
+        {wrong.length > 0 && (
+          <div>
+            <div className="kicker" style={{ marginBottom: 8 }}>O que você errou</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {wrong.map((q, i) => (
+                <div key={i} style={{ ...qCard, borderLeft: "3px solid var(--neg)", gap: 7 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--fg-1)", whiteSpace: "pre-wrap" }}>{q.prompt}</div>
+                  <div style={{ fontSize: 12.5, color: "var(--fg-2)" }}><b>Sua resposta:</b> {mine(q)}</div>
+                  <div style={{ fontSize: 12.5, color: "var(--fg-2)" }}><b>Gabarito:</b> {gabarito(q)}</div>
+                  {q.feedback && <div style={{ fontSize: 12, color: "var(--neg)", lineHeight: 1.45 }}>{q.feedback}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{right} acerto{right === 1 ? "" : "s"} conferido{right === 1 ? "" : "s"}</span>
+          <button onClick={() => setShowAll((v) => !v)} className="mono"
+            style={{ background: "none", border: 0, padding: 0, fontSize: 12, color: "var(--accent)", fontWeight: 600, cursor: "pointer" }}>
+            {showAll ? "esconder as questões ▴" : "ver todas as questões ▾"}
+          </button>
+        </div>
+        {showAll && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {qs.map((q, i) => (
+              <div key={i} style={{ ...qCard, borderLeft: `3px solid ${q.correct ? "var(--pos)" : "var(--neg)"}`, gap: 7 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--fg-1)", whiteSpace: "pre-wrap" }}>{i + 1}. {q.prompt}</div>
+                <div style={{ fontSize: 12.5, color: "var(--fg-2)" }}><b>Sua resposta:</b> {mine(q)}</div>
+                <div style={{ fontSize: 12.5, color: "var(--fg-2)" }}><b>Gabarito:</b> {gabarito(q)}</div>
+                {q.feedback && <div style={{ fontSize: 12, color: q.correct ? "var(--pos)" : "var(--neg)", lineHeight: 1.45 }}>{q.feedback}</div>}
+              </div>
+            ))}
+          </div>
+        )}
+        <PrimaryButton onClick={onDone}>← voltar aos baralhos</PrimaryButton>
       </div>
     );
   }
 
+  // ── Durante: uma questão por vez ──────────────────────────────────────────
+  const q = data.questions[idx];
+  const last = idx === data.questions.length - 1;
+  const a = answers[idx] || {};
+  const set = (patch) => setAnswers((p) => p.map((x, k) => (k === idx ? patch : x)));
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 720 }}>
-      <div className="mono dim" style={{ fontSize: 11 }}>prova sobre {data.count} cards que você aprendeu · nota mínima {data.passScore} · sem consulta 😉</div>
-      {data.questions.map((q, i) => (
-        <div key={i} style={qCard}>
-          <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--fg-1)", whiteSpace: "pre-wrap" }}>{i + 1}. {q.prompt}</div>
-          {q.kind === "mc" ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              {q.options.map((op, j) => {
-                const on = answers[i]?.choice === j;
-                return (
-                  <button key={j} onClick={() => setAnswers((p) => p.map((a, k) => (k === i ? { choice: j } : a)))}
-                    style={{ textAlign: "left", fontSize: 12.5, padding: "7px 10px", borderRadius: "var(--r-2)", cursor: "pointer", lineHeight: 1.45,
-                      border: `1px solid ${on ? "var(--accent)" : "var(--line-2)"}`,
-                      background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-1)", fontWeight: on ? 600 : 400 }}>
-                    {op}
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            <textarea rows={3} value={answers[i]?.text || ""} placeholder="responda com suas palavras — a IA corrige o conceito, não as palavras exatas"
-              onChange={(e) => setAnswers((p) => p.map((a, k) => (k === i ? { text: e.target.value } : a)))}
-              style={{ width: "100%", padding: "9px 11px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.5, resize: "vertical", fontFamily: "inherit" }} />
-          )}
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 720 }}>
+      <div>
+        <div className="sec-title">Prova de checkpoint</div>
+        <div className="mono dim" style={{ fontSize: 11, marginTop: 4 }}>
+          {data.count} cards aprendidos · nota mínima {data.passScore} · sem consulta 😉
         </div>
-      ))}
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <button onClick={onDone} className="mono dim" style={{ fontSize: 12 }}>deixar pra depois</button>
-        <span style={{ flex: 1 }} />
-        <button onClick={submit} disabled={!complete || busy}
-          style={{ ...btn, height: 38, background: complete ? "var(--btn-bg, var(--accent))" : "var(--bg-2)", color: complete ? "var(--btn-fg, var(--accent-fg))" : "var(--fg-4)", border: `1px solid ${complete ? "var(--btn-bg, var(--accent))" : "var(--line-2)"}`, fontWeight: 600 }}>
-          {busy ? "corrigindo…" : "entregar prova"}
-        </button>
       </div>
+      <SessionProgress done={doneCount} total={data.questions.length} />
+
+      <div style={qCard}>
+        <div className="kicker">Questão {idx + 1} · {q.kind === "mc" ? "múltipla escolha" : "resposta escrita"}</div>
+        <div style={{ fontSize: 16, fontWeight: 600, color: "var(--fg-1)", whiteSpace: "pre-wrap", lineHeight: 1.45 }}>{q.prompt}</div>
+        {q.kind === "mc" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {q.options.map((op, j) => {
+              const on = a.choice === j;
+              return (
+                <button key={j} onClick={() => set({ choice: j })}
+                  style={{ textAlign: "left", width: "100%", fontSize: 13, padding: "11px 13px", borderRadius: "var(--r-2)", cursor: "pointer", lineHeight: 1.45,
+                    border: `1px solid ${on ? "var(--accent)" : "var(--line-2)"}`,
+                    background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-1)", fontWeight: on ? 600 : 400 }}>
+                  {op}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <textarea rows={4} value={a.text || ""} placeholder="responda com suas palavras — a IA corrige o conceito, não as palavras exatas"
+            onChange={(e) => set({ text: e.target.value })}
+            style={{ width: "100%", padding: "10px 12px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.5, resize: "vertical", fontFamily: "inherit" }} />
+        )}
+      </div>
+
+      {err && <div className="mono" style={{ fontSize: 11.5, color: "var(--neg)" }}>{err}</div>}
+
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <SecondaryButton size="sm" onClick={() => setIdx((i) => Math.max(0, i - 1))} disabled={idx === 0}>← anterior</SecondaryButton>
+        <button onClick={onDone} className="mono dim" style={{ fontSize: 12, cursor: "pointer" }}>deixar pra depois</button>
+        <span style={{ flex: 1 }} />
+        {last ? (
+          <PrimaryButton onClick={submit} disabled={!complete || busy}>
+            {busy ? "corrigindo…" : "entregar prova"}
+          </PrimaryButton>
+        ) : (
+          <PrimaryButton onClick={() => setIdx((i) => Math.min(data.questions.length - 1, i + 1))}>próxima →</PrimaryButton>
+        )}
+      </div>
+      {last && !complete && (
+        <div className="mono dim" style={{ fontSize: 10.5 }}>
+          faltam {data.questions.length - doneCount} questão(ões) sem resposta · volte com "← anterior"
+        </div>
+      )}
     </div>
   );
 }
