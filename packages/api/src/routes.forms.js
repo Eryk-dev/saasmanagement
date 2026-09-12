@@ -18,6 +18,7 @@ import { CREATE_DEFAULTS, dispatchProposal, publicBase } from "./routes.js";
 import { stageByKind, firstStage } from "./stages.js";
 import { logActivity, initialNextActionAt, autoLeadOwner } from "./lead-flow.js";
 import { findDuplicateLead, dedupMergePatch } from "./lead-dedup.js";
+import { referralFromRef, logReferralCollected } from "./referrals.js";
 import { raiseNewLeadAlert } from "./wa-call-flow.js";
 import { dutyPhone } from "./off-hours-duty.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
@@ -42,7 +43,11 @@ export const clientIp = (req) =>
 // (atribuição por campanha em /api/marketing) e na submission (auditoria).
 // Click-ids de cada plataforma (fbclid/gclid/ttclid) + referrer externo entram
 // no mesmo objeto — atribuição não fica restrita à Meta.
-const UTM_KEYS = ["source", "medium", "campaign", "content", "term", "placement", "fbclid", "gclid", "ttclid", "referrer"];
+// `ref`/`refby` = indicação: o id do CLIENTE que indicou (link que ele
+// encaminha) e o do colaborador que colheu. Ficam no utm pra auditoria da
+// submissão; quem vira vínculo de verdade no lead é o referrals.js, que valida
+// os dois contra o banco.
+const UTM_KEYS = ["source", "medium", "campaign", "content", "term", "placement", "fbclid", "gclid", "ttclid", "referrer", "ref", "refby"];
 export function sanitizeUtm(raw) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const out = {};
@@ -201,6 +206,11 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // (submission + funil de desistência do form), que é o que interessa medir.
     const contact = leadFromSubmission(form, answers);
     const semContato = !contact.phone && !contact.email;
+    // INDICAÇÃO pelo link do cliente (/f/:id?ref=cu_x): vira vínculo de verdade
+    // no lead, com coletor e carimbo. Fail-open no referrals.js — link velho
+    // nunca derruba o envio de quem está do outro lado preenchendo.
+    const refData = await referralFromRef(repo, { ref: utm?.ref, by: utm?.refby });
+    const { _customerName: refCustomerName = "", ...referral } = refData || {};
     const leadPayload = {
       ...(CREATE_DEFAULTS.leads || {}),
       ...contact,
@@ -223,6 +233,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
       // proposta, criada logo abaixo, inevitavelmente nascia em "Sem código".
       ...(pain ? { sourcePain: pain } : {}),
       ...(nextAt ? { nextActionAt: nextAt } : {}),
+      ...(refData ? referral : {}),
       ...(internal ? { internal: true, source: `Form · ${form.name || form.id} · teste da equipe` } : {}),
       // Classificação por produto, calculada no NASCIMENTO e guardada como
       // snapshot. Snapshot e não cálculo ao vivo porque a régua vai mudar: sem
@@ -266,6 +277,16 @@ export function registerFormRoutes(app, repo, opts = {}) {
         author: "lead",
       });
     } catch { /* fail-open */ }
+    // Coleta registrada: o evento datado que a auditoria da comissão lê. Só
+    // quando o vínculo entrou NESTE lead (re-submissão de quem já tinha dono
+    // não gera evento novo — o dedup preserva a primeira atribuição).
+    if (lead && refData && lead.referredByCustomer === referral.referredByCustomer
+        && !internal && lead.referralAt === referral.referralAt) {
+      await logReferralCollected(repo, {
+        lead: lead.id, saas: form.saas || "", customer: referral.referredByCustomer,
+        by: lead.referralCollectedBy || "", customerName: refCustomerName,
+      });
+    }
     const submission = await repo.create("form_submissions", {
       form: form.id,
       saas: form.saas,

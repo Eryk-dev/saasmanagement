@@ -21,6 +21,9 @@ import { useAttribution, leadPain } from "../lib/pains.js";
 import { isChurned, CHURN_REASONS, churnReasonLabel } from "../lib/churn.js";
 import { fetchLeveradsOrgs } from "../lib/leverads.js";
 import { printContract, issueDate, byIssuedDesc } from "../lib/contracts.js";
+// Base das URLs públicas (link de indicação do cliente): no dev o proxy do
+// Vite repassa /f pra API.
+const publicBase = () => import.meta.env.VITE_API_BASE || window.location.origin;
 // Clientes — a base ativa do produto em dois blocos: a tabela de clientes e,
 // ao lado, "Próximas ações" (os vencimentos a cobrar do faturado e da
 // assinatura recorrente, ordenados por urgência). Clicar num cliente abre um popup com o resumo dele
@@ -73,6 +76,18 @@ function CustomersScreen({ initialTab }) {
   const [showAllActions, setShowAllActions] = useState(false);
   // Conclusão de marco: otimista no objeto do SEED (a tela lê dele) + PATCH.
   const [tick, setTick] = useState(0);
+  // Nome plantado na integração → lead de verdade, já com o cliente indicador
+  // preenchido (é o que torna a indicação comissionável). O coletor sai da
+  // sessão no servidor: quem registra leva o crédito.
+  function newReferral(customer, seed = {}) {
+    openForm("leads", {
+      saas: customer.saas,
+      referredByCustomer: customer.id,
+      source: "Indicação",
+      ...(seed.name ? { name: seed.name } : {}),
+      ...(seed.phone ? { phone: seed.phone } : {}),
+    });
+  }
   function completeMilestone(customer, key) {
     const done = { ...(customer.milestonesDone || {}), [key]: new Date().toISOString() };
     customer.milestonesDone = done; // otimista: CUSTOMERS vem do SEED compartilhado
@@ -940,6 +955,7 @@ function CustomersScreen({ initialTab }) {
           onComplete={completeMilestone}
           onPatch={patchCustomer}
           onClose={() => setSel(null)}
+          onNewReferral={newReferral}
         />
       )}
     </div>
@@ -1210,7 +1226,7 @@ function CustomerFacts({ customer, lead, product, leverOrg, onPatch }) {
 // assinaturas + faturas. Direita: régua de retenção + histórico do funil.
 // "Editar" NÃO abre outro popup: troca o corpo pelo form (EntityForm bare)
 // dentro deste mesmo modal, pros campos raros (flags, saúde, dono).
-function CustomerModal({ customer, lead, product, subs, invoices, planLabel, lastContact, leverOrg, onComplete, onPatch, onClose }) {
+function CustomerModal({ customer, lead, product, subs, invoices, planLabel, lastContact, leverOrg, onComplete, onPatch, onClose, onNewReferral }) {
   const { refresh } = useData();
   const [editing, setEditing] = useState(false);
   // Edição das RESPOSTAS DO FORMULÁRIO (campos do lead) direto do popup: otimista
@@ -1833,6 +1849,8 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
         </div>
         )}
 
+        <CustomerReferrals customer={customer} onNewReferral={onNewReferral} />
+
         <CustomerContracts customer={customer} onClose={onClose} />
 
         <CustomerHistory customer={customer} />
@@ -1841,6 +1859,95 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
         </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// INDICAÇÕES DESTE CLIENTE (Leo, 12/09/2026): quem ele já indicou, em que pé
+// está cada um e os nomes que ele deu na integração e ninguém foi buscar. O
+// crédito da coleta é do COLABORADOR, então o nome de quem colheu aparece em
+// cada linha — é o que faz o pedido ter dono.
+//
+// O link de indicação é o caminho mais barato: o cliente encaminha
+// /f/<form>?ref=<id dele> no grupo de lojistas e o vínculo nasce sozinho, já
+// creditado ao dono do cliente.
+function CustomerReferrals({ customer, onNewReferral }) {
+  const [formId, setFormId] = useState("");
+  const [copied, setCopied] = useState(false);
+  React.useEffect(() => {
+    let alive = true;
+    api.list("forms")
+      .then((rows) => {
+        if (!alive) return;
+        const f = (rows || []).find((x) => x.saas === customer.saas && x.status === "published");
+        setFormId(f?.id || "");
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [customer.saas]);
+
+  const leads = (window.SEED?.LEADS || []).filter((l) => l.referredByCustomer === customer.id);
+  const seeds = Array.isArray(customer.referralSeeds) ? customer.referralSeeds : [];
+  // Nome plantado que já virou lead sai da lista de pendentes (casa por
+  // telefone, que é o que a pessoa dá na integração).
+  const digits = (v) => String(v || "").replace(/\D/g, "").slice(-8);
+  const pending = seeds.filter((s) => !leads.some((l) => digits(l.phone) && digits(l.phone) === digits(s.phone)));
+  if (!leads.length && !pending.length && !formId) return null;
+
+  const link = formId ? `${publicBase()}/f/${formId}?ref=${customer.id}` : "";
+  async function copyLink() {
+    if (!link) return;
+    try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1800); }
+    catch { window.prompt("Copie:", link); }
+  }
+
+  return (
+    <div className="sec">
+      <div className="sec-head">
+        <h3 className="card-title">Indicações</h3>
+        {link && (
+          <button onClick={copyLink}
+            style={{ height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)" }}>
+            {copied ? "link copiado" : "copiar link de indicação"}
+          </button>
+        )}
+      </div>
+      {!leads.length && !pending.length && (
+        <div style={{ fontSize: 12, color: "var(--fg-3)" }}>
+          Ninguém indicado ainda. O pedido rende mais depois de um resultado, com o número na mão.
+        </div>
+      )}
+      {!!leads.length && (
+        <div style={{ display: "grid", gap: 6 }}>
+          {leads.map((l) => (
+            <div key={l.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12 }}>
+              <span style={{ fontWeight: 500 }}>{l.company || l.name || l.phone}</span>
+              <span style={{ color: "var(--fg-3)", textAlign: "right" }}>
+                {l.customerId ? "fechou" : (l.stage || "no funil")}
+                {l.referralCollectedBy ? ` · colhido por ${displayName(l.referralCollectedBy)}` : " · sem coletor"}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {!!pending.length && (
+        <div style={{ marginTop: leads.length ? 10 : 0, display: "grid", gap: 6 }}>
+          <div style={{ fontSize: 11, color: "var(--fg-3)" }}>
+            Nomes que ele deu na integração e ninguém foi buscar:
+          </div>
+          {pending.map((sd, i) => (
+            <div key={`${sd.phone || sd.name}-${i}`} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, alignItems: "center" }}>
+              <span>{sd.name}{sd.phone ? ` · ${sd.phone}` : ""}</span>
+              {onNewReferral && (
+                <button onClick={() => onNewReferral(customer, sd)}
+                  style={{ height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", flexShrink: 0 }}>
+                  registrar indicação
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

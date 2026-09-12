@@ -21,11 +21,16 @@
 //   text · textarea · email · phone · select · ack (declaração que precisa ser
 //   marcada) · list (bloco que repete: uma linha por conta, por rota…)
 //
+// `optional: true` é a ÚNICA exceção à régua "tudo que está visível é
+// obrigatório" (que existe pra não faltar informação na integração): serve pra
+// pergunta que não é da integração, como o pedido de indicação. Em branco não
+// bloqueia; preenchida, é validada como qualquer outra.
+//
 // Condicional: `showIf: { key, in: [valores] }`. A regra vale nos DOIS lados —
 // a página esconde, o servidor não exige o que está escondido (nem aceita como
 // obrigatório o que não deveria aparecer).
 
-export const INTEGRATION_FORM_VERSION = 2;
+export const INTEGRATION_FORM_VERSION = 3; // 3 = pedido de indicação (opcional) no fim
 
 // Termo assinado no fim. Fica separado porque é a parte jurídica: o cliente
 // declara que o que escreveu é verdade e assume a responsabilidade pelo que a
@@ -241,6 +246,29 @@ export const SECTIONS = [
     ],
   },
 
+  // O PLANTIO DA INDICAÇÃO (Leo, 12/09/2026). Aqui é o momento de maior
+  // entusiasmo do cliente: ele acabou de comprar e está montando a operação.
+  // Pedir agora rende mais que pedir depois, mas o nome dado aqui NÃO vira lead
+  // sozinho: telefone de terceiro sem consentimento é lead frio e exposição
+  // desnecessária. O nome fica guardado na ficha do cliente e gera tarefa pra
+  // alguém pedir a ponte antes de procurar.
+  {
+    key: "indicacao",
+    title: "Quem mais você levaria com você",
+    intro: "Essa parte é opcional. Se você conhece outro lojista que vende em marketplace e penava com o que você penava, deixa o nome aqui. A gente só fala com ele depois de te avisar, nunca antes.",
+    questions: [
+      {
+        key: "indicacoes", type: "list", optional: true, addLabel: "adicionar outro nome", rowLabel: "Indicação", max: 5,
+        label: "Lojistas que você indicaria (opcional)",
+        help: "Dois nomes já ajudam muito. Se preferir não indicar ninguém agora, pule e envie o formulário.",
+        fields: [
+          { key: "nome", label: "Nome dele (e a loja, se você souber)", type: "text" },
+          { key: "whatsapp", label: "WhatsApp", type: "phone" },
+        ],
+      },
+    ],
+  },
+
   {
     key: "termo",
     title: "Termo de veracidade e responsabilidade",
@@ -287,9 +315,11 @@ export function validateIntegrationAnswers(answers, sections = SECTIONS) {
   for (const q of allQuestions(sections)) {
     if (!isVisible(q, answers)) continue;
     const val = answers[q.key];
+    const vazia = q.type === "list" ? !(Array.isArray(val) && val.length) : q.type === "ack" ? val !== true : isBlank(val);
+    if (q.optional && vazia) continue; // opcional em branco não bloqueia o envio
     if (q.type === "list") {
       const rows = Array.isArray(val) ? val : [];
-      const min = q.min || 1;
+      const min = q.optional ? 0 : (q.min || 1);
       if (rows.length < min) { errors.push({ key: q.key, error: `Preencha ao menos ${min} ${min === 1 ? "item" : "itens"}` }); continue; }
       rows.forEach((row, i) => {
         for (const f of q.fields || []) {
@@ -323,7 +353,10 @@ export function sanitizeIntegrationAnswers(answers, sections = SECTIONS) {
     const val = src[q.key];
     if (q.type === "list") {
       const rows = Array.isArray(val) ? val.slice(0, 40) : [];
-      out[q.key] = rows.map((row) => Object.fromEntries((q.fields || []).map((f) => [f.key, str(row?.[f.key], 300)])));
+      const clean = rows.map((row) => Object.fromEntries((q.fields || []).map((f) => [f.key, str(row?.[f.key], 300)])));
+      // A lista opcional nasce com uma linha em branco na tela (convida a
+      // preencher); linha vazia não é resposta, então não vira registro.
+      out[q.key] = q.optional ? clean.filter((row) => Object.values(row).some((v) => v)) : clean;
     } else if (q.type === "ack") {
       out[q.key] = val === true;
     } else {

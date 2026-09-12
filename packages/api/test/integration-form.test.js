@@ -198,3 +198,53 @@ test("opção fora da lista é recusada (a rota é pública)", async () => {
   const errs = validateIntegrationAnswers({ ...FULL, status_clone: "qualquer coisa" });
   assert.ok(errs.some((e) => e.key === "status_clone"));
 });
+
+// ── Plantio da indicação (Leo, 12/09/2026) ──────────────────────────────────
+// O pedido de indicação no fim do formulário é a ÚNICA parte opcional: é a
+// exceção à régua "tudo que está visível é obrigatório", que existe pra não
+// faltar dado da integração. Nome dado aqui não vira lead: fica na ficha do
+// cliente e gera tarefa pra alguém pedir a ponte, porque o próprio formulário
+// promete ao cliente que ninguém é procurado antes de ele ser avisado.
+test("indicação em branco (ou nem enviada) não bloqueia o formulário", async () => {
+  assert.deepEqual(validateIntegrationAnswers(FULL), []);                                  // nem veio no payload
+  assert.deepEqual(validateIntegrationAnswers({ ...FULL, indicacoes: [] }), []);            // lista vazia
+  // A tela nasce com uma linha em branco: linha sem nada não é resposta.
+  const limpo = sanitizeIntegrationAnswers({ ...FULL, indicacoes: [{ nome: "", whatsapp: "" }] });
+  assert.deepEqual(limpo.indicacoes, []);
+  assert.deepEqual(validateIntegrationAnswers(limpo), []);
+});
+
+test("indicação começada tem que ser terminada (nome sem WhatsApp não passa)", async () => {
+  const errs = validateIntegrationAnswers({ ...FULL, indicacoes: [{ nome: "Pedro das Peças", whatsapp: "" }] });
+  assert.ok(errs.some((e) => e.key === "indicacoes[0].whatsapp"));
+});
+
+test("nomes indicados vão pra FICHA do cliente e viram tarefa, sem criar lead", async (t) => {
+  const repo = makeMemRepo();
+  await repo.create("customers", { id: "cu_1", saas: "leverads", name: "Loja do João", owner: "jonan" });
+  await repo.create("users", { id: "jonan", name: "Jonan", roles: ["integrator"] });
+  const app = buildApp(repo);
+  t.after(() => app.close());
+  const doc = (await criar(app)).json();
+
+  const res = await app.inject({
+    method: "POST", url: `/public/integration-forms/${doc.id}`,
+    payload: { answers: { ...FULL, indicacoes: [
+      { nome: "Pedro das Peças", whatsapp: "41988887777" },
+      { nome: "Marcos Turbo", whatsapp: "41977776666" },
+    ] } },
+  });
+  assert.equal(res.statusCode, 201);
+
+  const customer = await repo.get("customers", "cu_1");
+  assert.equal(customer.referralSeeds.length, 2);
+  assert.equal(customer.referralSeeds[0].name, "Pedro das Peças");
+  assert.equal(customer.referralSeeds[0].from, "integracao");
+  assert.equal((await repo.list("leads")).length, 0, "nome de terceiro não vira lead sem consentimento");
+
+  const task = (await repo.list("tasks")).find((x) => (x.labels || []).includes("indicacao"));
+  assert.match(task.title, /Pedir a ponte das indicações de Loja do João/);
+  assert.deepEqual(task.assignees, ["jonan"]);         // o dono do cliente pede a ponte
+  assert.match(task.description, /Pedro das Peças/);
+  assert.match(task.description, /R\$ 500 se fechar/); // o coletor sabe o que ganha
+});

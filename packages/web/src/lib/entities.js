@@ -221,6 +221,10 @@ export const ENTITIES = {
       // Sugestões de origem (texto livre continua valendo). "Social selling" é o
       // carimbo que a Análise de Desempenho lê (isSocialSellingLead no metrics-core).
       { key: "source", label: "Origem", type: "text", placeholder: "Form · /pricing", suggestions: ["Social selling", "Indicação", "Outbound", "Instagram", "Site"] },
+      // INDICAÇÃO: o cliente que indicou. É o que torna a indicação
+      // comissionável (o servidor recusa cliente que não existe) e o crédito da
+      // coleta fica no nome de quem está cadastrando, pela sessão.
+      { key: "referredByCustomer", label: "Indicado por (cliente)", type: "select", options: customerOptions, blankLabel: "—", help: "a coleta entra no seu nome: R$ 100 se virar reunião feita, R$ 500 se fechar" },
       { key: "stage", label: "Estágio", type: "select", options: stageOptions, blankLabel: "(primeiro estágio)" },
       // Escolher uma etapa de call sem preencher isto é recusado pelo servidor:
       // card em etapa de call sem hora não entra na Agenda nem ocupa o slot do
