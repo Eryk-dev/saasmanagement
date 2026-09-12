@@ -511,6 +511,81 @@ try {
     console.error(`✗ remuneracao: ${err.message}`);
     failed++;
   }
+  // ── Clientes: os estados do redesign de 12/09 ───────────────────────────
+  // A ficha virou quatro abas e o billing ganhou faixa de estado; as duas
+  // coisas dependem de dado que chega por efeito, então vão renderizadas à
+  // parte, com payload na mão.
+  try {
+    const C = await server.ssrLoadModule("/src/screens/customers.jsx");
+    const S = await server.ssrLoadModule("/src/screens/subscriptions.jsx");
+    const A = await server.ssrLoadModule("/src/screens/customers-analysis.jsx");
+    const has = (name, html, must) => { if (!html.includes(must)) throw new Error(`${name} não contém "${must}"`); };
+    const R = (el) => renderToString(wrap(el));
+    const cliente = window.SEED.CUSTOMERS[0];
+    const nowIso2 = new Date().toISOString();
+
+    // A ficha: as quatro abas existem e o cabeçalho carrega nome + dinheiro.
+    const ficha = R(React.createElement(C.CustomerModal, {
+      customer: cliente, lead: window.SEED.LEADS[0], product: window.SEED.SAAS[0],
+      subs: [], invoices: [], planLabel: () => "Pro", lastContact: () => "hoje",
+      leverOrg: null, onComplete() {}, onPatch() {}, onClose() {}, onNewReferral() {},
+    }));
+    for (const aba of ["Resumo", "Dinheiro", "Indicações", "Histórico"]) has("ficha", ficha, aba);
+    has("ficha", ficha, "Cliente Teste");
+    has("ficha", ficha, "Dinheiro do contrato");
+    has("ficha", ficha, "cliente desde");
+
+    // Cliente sem lead e sem assinatura: a ficha ainda monta.
+    const semLead = R(React.createElement(C.CustomerModal, {
+      customer: { id: "c9", saas: "leverads", name: "Sem Lead", arr: 0 }, lead: null, product: window.SEED.SAAS[0],
+      subs: [], invoices: [], planLabel: () => "", lastContact: () => "—",
+      leverOrg: null, onComplete() {}, onPatch() {}, onClose() {}, onNewReferral() {},
+    }));
+    has("ficha sem lead", semLead, "Sem Lead");
+
+    // A faixa de estado do billing: números do que importa, e inadimplente
+    // conta PESSOA (duas faturas vencidas do mesmo cliente = 1).
+    const billing = R(React.createElement(S.BillingState, {
+      subs: [
+        { id: "s1", customer: "c1", status: "active", price: 1000, cycle: "monthly", periodEnd: new Date(Date.now() + 3 * 864e5).toISOString() },
+        { id: "s2", customer: "c2", status: "past_due", price: 500, cycle: "monthly", periodEnd: nowIso2 },
+      ],
+      invoices: [
+        { id: "i1", customer: "c2", status: "open", amount: 500, dueDate: new Date(Date.now() - 5 * 864e5).toISOString() },
+        { id: "i2", customer: "c2", status: "open", amount: 500, dueDate: new Date(Date.now() - 35 * 864e5).toISOString() },
+        { id: "i3", customer: "c1", status: "paid", amount: 1000, dueDate: nowIso2 },
+      ],
+      preapprovals: [], mpUnlinked: 0, sync: null, mpConfigured: false,
+    }));
+    has("billing", billing, "MRR das ativas");
+    has("billing", billing, "Vencem em 7 dias");
+    has("billing", billing, "Faturas vencidas");
+    if (!/Inadimplentes[\s\S]{0,240}>1</.test(billing)) throw new Error("inadimplente deveria contar PESSOA (1), não fatura (2)");
+
+    // O dinheiro do período: a barra empilhada e o rodapé.
+    const analise = R(React.createElement(A.CustomersAnalysis, {
+      customers: window.SEED.CUSTOMERS, subs: [], invoices: [], isKids: false,
+      gradeDist: { counts: { A: 2, C: 1 }, sem: 1 }, nivelLegend: null,
+    }));
+    has("análise", analise, "Dinheiro do período");
+    has("análise", analise, "recebido");
+    has("análise", analise, "Churn");
+    has("análise", analise, "Ticket médio");
+
+    // Base vazia: a tela oferece o cadastro em vez de uma tabela oca.
+    const vazia = (() => {
+      const antes = window.SEED.CUSTOMERS;
+      window.SEED.CUSTOMERS = [];
+      try { return R(React.createElement(C.CustomersScreen, {})); }
+      finally { window.SEED.CUSTOMERS = antes; }
+    })();
+    has("base vazia", vazia, "Nenhum cliente ainda");
+    console.log("✓ clientes-estados");
+  } catch (err) {
+    console.error(`✗ clientes-estados: ${err.message}`);
+    failed++;
+  }
+
   // ── Clientes: a tabela tem que CABER (redesign de 12/09) ────────────────
   // O redesign trocou 13 colunas com minWidth 1360 (rolagem garantida) por 6
   // que cabem. A conta é frágil por natureza: basta alguém alargar uma coluna

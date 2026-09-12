@@ -2283,4 +2283,8 @@ function CustomerHistory({ customer }) {
   );
 }
 
-export { CustomersScreen };
+// CustomersScreen é o que o app monta. CustomerModal e ReferralsTab saem daqui
+// pro smoke de render exercitar os estados que a tela inteira não alcança no
+// SSR (as quatro abas da ficha, a fila de indicação): os dados chegam por
+// efeito, que não roda no servidor.
+export { CustomersScreen, CustomerModal, ReferralsTab };
