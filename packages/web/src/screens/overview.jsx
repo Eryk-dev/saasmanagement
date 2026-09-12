@@ -33,6 +33,11 @@ import { dealProductLabel, closedPlanLabel } from "../lib/payments.js";
 const { useState, useEffect, useMemo } = React;
 
 const DAY = 86_400_000;
+// Offset do fuso do NEGÓCIO (America/Sao_Paulo, o mesmo do bizDay). O Brasil
+// não tem mais horário de verão desde 2019, então -03:00 vale o ano todo.
+// Só serve pra virar um DIA da janela em instante; o resto da tela compara
+// por string de bizDay.
+const BIZ_TZ = "-03:00";
 const money = (v) => window.fmt.money(v || 0);
 const int = (v) => window.fmt.int(v || 0);
 const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
@@ -841,36 +846,57 @@ function VendasCard({ leads, invoices, product, customers, onNav }) {
   );
 }
 
-function CarteiraCard({ customers, ltv }) {
-  // Estado ACUMULADO da base — não muda com o filtro. Conta grande (keyAccount,
-  // ex.: Galante) fica fora das médias; o número grande é sempre o cheio.
-  // Churnado = régua única de lib/churn.js (endedAt no PASSADO) — antes esta
-  // tela churnava qualquer endedAt, até futuro, e divergia da tela Clientes.
-  const ativos = customers.filter((c) => !isChurned(c));
-  const churned = customers.length - ativos.length;
+function CarteiraCard({ customers, ltv, win, pShort }) {
+  // A carteira SEGUE O FILTRO do topo desde 12/09 (Leo). Como ela é ESTADO e
+  // não fluxo, o que a janela escolhe é o MOMENTO: a base como estava no FIM
+  // do período. No mês corrente isso é hoje (o número não muda); numa janela
+  // histórica ela volta no tempo em vez de mostrar a base de agora.
+  // Comparação por dia de NEGÓCIO em string, como no resto da tela — win.since
+  // e win.until já chegam YYYY-MM-DD.
+  // Conta grande (keyAccount, ex.: Galante) segue fora das médias; o número
+  // grande é sempre o cheio.
+  // O churn continua na RÉGUA ÚNICA do lib/churn.js (isChurned = endedAt no
+  // passado), só que avaliada no instante que a janela escolhe. `Math.min` com
+  // agora mantém o mês corrente idêntico ao que era antes (corte = agora, não
+  // fim do dia), então um churn marcado pra mais tarde hoje segue fora.
+  const fimMs = Math.min(Date.now(), new Date(`${win.until}T23:59:59.999${BIZ_TZ}`).getTime());
+  const inicioMs = new Date(`${win.since}T00:00:00${BIZ_TZ}`).getTime();
+  const nasceuAte = (c, ate) => { const d = bizDay(c.startedAt); return !d || d <= ate; }; // sem startedAt = base antiga, sempre existiu
+
+  const naBase = customers.filter((c) => nasceuAte(c, win.until));
+  const ativos = naBase.filter((c) => !isChurned(c, fimMs));
   const cg = ativos.filter((c) => !!c.keyAccount);
   const core = ativos.filter((c) => !c.keyAccount);
   const arrAll = ativos.reduce((a, c) => a + (Number(c.arr) || 0), 0);
   const arrCore = core.reduce((a, c) => a + (Number(c.arr) || 0), 0);
   const ticketAll = ativos.length ? arrAll / ativos.length : null;
   const ticketCore = core.length ? arrCore / core.length : null;
-  const churnPct = customers.length ? Math.round((churned / customers.length) * 1000) / 10 : 0;
+  // Churn DO PERÍODO: quem saiu DENTRO da janela ÷ a base que existia no
+  // começo dela (a régua clássica). Antes era "todos que já saíram ÷ todos que
+  // já entraram", um número que só crescia e não dizia nada do mês.
+  // Saiu DENTRO da janela = estava de pé no começo e está churnado no fim.
+  const churned = naBase.filter((c) => !isChurned(c, inicioMs) && isChurned(c, fimMs)).length;
+  const baseInicio = customers.filter((c) => nasceuAte(c, win.since) && !isChurned(c, inicioMs));
+  const churnPct = baseInicio.length ? Math.round((churned / baseInicio.length) * 1000) / 10 : null;
   const semCG = (v) => (cg.length ? money(v) : null);
   return (
-    <Card title="Carteira" hint="estado acumulado · não muda com o filtro">
+    <Card title="Carteira" hint={`${pShort} · a base como estava no fim do período`}>
       <div style={{ padding: "12px var(--inset-x) 18px" }}>
         <KVRow label="MRR" value={money(arrAll / 12)} sub={semCG(arrCore / 12) ? `${semCG(arrCore / 12)} sem CG` : null}
           title={cg.length ? "Valor da direita: sem conta grande" : "contratos ÷ 12"} />
         <KVRow label="Clientes" value={int(ativos.length)} sub={cg.length ? `${int(core.length)} CP · ${int(cg.length)} CG` : null}
-          title="CP = cliente padrão · CG = conta grande (fora das médias)" />
+          title={`Clientes ativos no fim de ${win.range || win.label} · CP = cliente padrão, CG = conta grande (fora das médias)`} />
         <KVRow label="Ticket médio" value={ticketAll != null ? money(ticketAll) : "—"} sub={cg.length && ticketCore != null ? `${money(ticketCore)} sem CG` : null}
           title={cg.length ? "Valor da direita: sem conta grande — o ticket que alimenta as metas por contrato" : "valor médio de contrato da base"} />
         <KVRow label="ARR" value={money(arrAll)} sub={semCG(arrCore) ? `${semCG(arrCore)} sem CG` : null}
           title={cg.length ? "Valor da direita: sem conta grande" : "soma dos contratos ativos"} />
         <KVRow label="LTV" value={ltv?.value != null ? money(ltv.value) : "—"} sub={ltv?.ltvCac ? `LTV/CAC ${String(ltv.ltvCac).replace(".", ",")}x` : null}
           title={ltv?.value != null ? `Estimado: ticket mensal × ${ltv.months} meses de permanência (premissa até existir churn real)` : "precisa de assinaturas ativas"} />
-        <KVRow label="Churn" value={`${String(churnPct).replace(".", ",")}%`} last sub={churned ? `${int(churned)} ${churned === 1 ? "saiu" : "saíram"}` : null}
-          title={churned ? `${int(churned)} ${churned === 1 ? "cliente saiu" : "clientes saíram"} da base` : "nenhuma renovação vencida ainda"} />
+        <KVRow label="Churn" value={churnPct == null ? "—" : `${String(churnPct).replace(".", ",")}%`} last
+          sub={churned ? `${int(churned)} ${churned === 1 ? "saiu" : "saíram"}` : null}
+          title={churnPct == null
+            ? "Sem base no começo do período pra calcular a taxa."
+            : `Quem saiu DENTRO de ${pShort} (${int(churned)}) ÷ os ${int(baseInicio.length)} clientes que existiam no começo do período.`} />
       </div>
     </Card>
   );
@@ -1110,7 +1136,7 @@ function OverviewScreen({ onNav }) {
             No mobile o .resp-cols empilha e o trilho vem depois da operação. */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0, position: "sticky", top: 0 }}>
           <VendasCard leads={leads} invoices={invoices} product={product} customers={productCustomers} onNav={onNav} />
-          <CarteiraCard customers={productCustomers} ltv={biz?.ltv} />
+          <CarteiraCard customers={productCustomers} ltv={biz?.ltv} win={win} pShort={win.short} />
           <AquisicaoCard marketing={marketing} biz={biz} classes={score?.team?.classes} pShort={win.short} />
         </div>
       </div>
