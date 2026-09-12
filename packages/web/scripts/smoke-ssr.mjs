@@ -511,6 +511,32 @@ try {
     console.error(`✗ remuneracao: ${err.message}`);
     failed++;
   }
+  // ── Clientes: a tabela tem que CABER (redesign de 12/09) ────────────────
+  // O redesign trocou 13 colunas com minWidth 1360 (rolagem garantida) por 6
+  // que cabem. A conta é frágil por natureza: basta alguém alargar uma coluna
+  // pra devolver a rolagem sem perceber. Aqui a soma dos pisos + gaps é
+  // comparada com o orçamento de 1024px de janela.
+  try {
+    const { TABLE_GRID, TABLE_GRID_GAP, TABLE_GRID_BUDGET } = await server.ssrLoadModule("/src/screens/customers.jsx");
+    const cols = TABLE_GRID.trim().split(/\s+(?![^(]*\))/);
+    if (cols.length !== 6) throw new Error(`esperava 6 colunas, achei ${cols.length}`);
+    const floorOf = (col) => {
+      const mm = col.match(/^minmax\((\d+)px/);
+      if (mm) return Number(mm[1]);
+      const px = col.match(/^(\d+)px$/);
+      if (px) return Number(px[1]);
+      throw new Error(`coluna sem piso em px: ${col}`);
+    };
+    const soma = cols.reduce((a, c) => a + floorOf(c), 0) + TABLE_GRID_GAP * (cols.length - 1);
+    if (soma > TABLE_GRID_BUDGET) {
+      throw new Error(`a tabela volta a rolar: pisos + gaps = ${soma}px, orçamento ${TABLE_GRID_BUDGET}px (1024px de janela)`);
+    }
+    console.log(`✓ clientes-tabela (${soma}px de ${TABLE_GRID_BUDGET})`);
+  } catch (err) {
+    console.error(`✗ clientes-tabela: ${err.message}`);
+    failed++;
+  }
+
   // ── Treinamentos (redesign de 12/09) ────────────────────────────────────
   // A tela tem cinco sub-telas e todos os dados chegam por efeito, que não roda
   // no SSR: por isso os blocos vão renderizados à parte, com payload na mão. O
