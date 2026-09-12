@@ -46,7 +46,7 @@ const RECURRING_LABEL = { 1: "mensal", 3: "trimestral", 6: "semestral", 12: "anu
 
 // Abas: o que o time pergunta é "quem falta pagar?" e "quem pagou?". A régua é
 // POR CLIENTE (saldo do grupo), a mesma que o servidor usa em counts.groups.
-const TABS = [["todos", "Todos"], ["aguardando", "Em aberto"], ["pagos", "Pagos"], ["recusados", "Recusados"]];
+const TABS = [["aguardando", "Devendo"], ["pagos", "Pagos"], ["recusados", "Recusados"], ["todos", "Todos"]];
 const TAB_OF = {
   todos: () => true,
   aguardando: (g) => g.totals.waiting > 0,
@@ -68,7 +68,9 @@ function OffersScreen({ onOpenLead }) {
 
   const [data, setData] = useS(null);      // { groups, totals, counts, sellers, backlog }
   const [err, setErr] = useS(null);
-  const [tab, setTab] = useS("todos");
+  // O padrão era "todos" numa tela cuja pergunta é "quem falta pagar?": abre
+  // em quem está devendo (Leo, 12/09 — confirmar com quem cobra).
+  const [tab, setTab] = useS("aguardando");
   const [q, setQ] = useS("");
   const [by, setBy] = useS("");
   const [open, setOpen] = useS(() => new Set());
@@ -160,17 +162,72 @@ function OffersScreen({ onOpenLead }) {
           </div>
         )}
 
-        <div className="resp-cols" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", gap: 14 }}>
-          <StatTile label="Recebido pelos links" value={money(totals.paid)}
-            delta={`${counts.paid || 0} link(s) pagos no período`}
-            title="pagamentos aprovados no Mercado Pago + baixas manuais + faturas baixadas, dos links gerados no período" />
-          <StatTile label="Em aberto" value={money(totals.waiting)}
-            delta={`${counts.groups?.aguardando || 0} cliente(s) devendo`} tone={totals.waiting > 0 ? "down" : "flat"}
-            title="links gerados no período que ainda não têm pagamento (inclui boleto/PIX emitido e não pago)" />
-          <StatTile label="Links gerados" value={String(counts.links || 0)}
-            delta={`${money(totals.generated)} pedidos · ${counts.groups?.todos || 0} cliente(s)`}
-            title="cada geração vira uma linha; link substituído (gerou de novo pelo mesmo valor) não conta no pedido" />
-        </div>
+        {/* ── Faixa de dinheiro (12/09) ───────────────────────────────────
+            Eram três StatTile de peso igual. O número que EXIGE ação é o em
+            aberto, então ele vem primeiro e maior; a barra mostra a proporção
+            dos três estados sobre o gerado, que é a soma deles. */}
+        {(() => {
+          const ger = Number(totals.generated) || 0;
+          const pct = (v) => (ger > 0 ? Math.max(0, Math.min(100, (Number(v) || 0) / ger * 100)) : 0);
+          const dot = (color) => ({ width: 6, height: 6, borderRadius: 999, background: color, flexShrink: 0 });
+          return (
+            <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "20px var(--inset-x)" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 28, flexWrap: "wrap" }}>
+                <div style={{ minWidth: 180 }}
+                  title="links gerados no período que ainda não têm pagamento (inclui boleto/PIX emitido e não pago)">
+                  <div style={{ fontSize: 12.5, color: "var(--fg-3)" }}>Em aberto</div>
+                  <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 34, fontWeight: 700, lineHeight: 1.05, marginTop: 3, color: totals.waiting > 0 ? "var(--warn)" : "var(--fg-1)" }}>{money(totals.waiting)}</div>
+                  <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 2 }}>
+                    {`${counts.groups?.aguardando || 0} ${(counts.groups?.aguardando || 0) === 1 ? "cliente devendo" : "clientes devendo"}`}
+                  </div>
+                </div>
+                <div style={{ minWidth: 150 }} title="pagamentos aprovados no Mercado Pago + baixas manuais + faturas baixadas, dos links gerados no período">
+                  <div style={{ fontSize: 12.5, color: "var(--fg-3)" }}>Recebido</div>
+                  <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, marginTop: 3, color: "var(--pos)" }}>{money(totals.paid)}</div>
+                  <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 2 }}>{`${counts.paid || 0} ${(counts.paid || 0) === 1 ? "link pago" : "links pagos"}`}</div>
+                </div>
+                <div style={{ minWidth: 140 }} title="cada geração vira uma linha; link substituído (gerou de novo pelo mesmo valor) não conta no pedido">
+                  <div style={{ fontSize: 12.5, color: "var(--fg-3)" }}>Links gerados</div>
+                  <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, marginTop: 3 }}>{counts.links || 0}</div>
+                  <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 2 }}>{`${money(ger)} pedidos`}</div>
+                </div>
+                {totals.failed > 0 && (
+                  <div style={{ minWidth: 130 }} title="links recusados pelo Mercado Pago (cartão negado, pagamento cancelado)">
+                    <div style={{ fontSize: 12.5, color: "var(--fg-3)" }}>Recusado</div>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 5 }}>
+                      <span style={dot("var(--neg)")} />
+                      <span className="tnum" style={{ fontSize: 15, fontWeight: 700, color: "var(--neg)" }}>{money(totals.failed)}</span>
+                    </div>
+                  </div>
+                )}
+                <button onClick={() => setTab("aguardando")} title="filtrar só quem está devendo"
+                  style={{ marginLeft: "auto", alignSelf: "center", height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+                  ver quem está devendo →
+                </button>
+              </div>
+              {ger > 0 && (
+                <>
+                  <div style={{ display: "flex", height: 12, borderRadius: 999, overflow: "hidden", background: "var(--bg-2)", marginTop: 16 }}>
+                    <div style={{ width: `${pct(totals.paid)}%`, background: "var(--pos)" }} />
+                    <div style={{ width: `${pct(totals.waiting)}%`, background: "var(--warn)" }} />
+                    <div style={{ width: `${pct(totals.failed)}%`, background: "var(--neg)" }} />
+                  </div>
+                  <div style={{ display: "flex", gap: 16, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--fg-3)" }}><span style={dot("var(--pos)")} />pago</span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--fg-3)" }}><span style={dot("var(--warn)")} />em aberto</span>
+                    {totals.failed > 0 && <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--fg-3)" }}><span style={dot("var(--neg)")} />recusado</span>}
+                    {/* O rodapé de seis linhas em mono 10,5px virou isto: o
+                        mesmo texto, no title, onde a dúvida aparece. */}
+                    <span className="mono dim" style={{ marginLeft: "auto", fontSize: 11, cursor: "help" }}
+                      title="O status vem do Mercado Pago: o pagamento casa pelo link (referência do lead/fatura) ou pelo e-mail do pagador. “Baixa manual” = dinheiro que entrou por fora e foi marcado à mão. “Substituído” = link antigo de quem gerou de novo pelo mesmo valor. Link com fatura dá baixa na fatura (a mesma da ficha do cliente).">
+                      como o status funciona ⓘ
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
 
         {backlog.count > 0 && (
           <div className="mono" style={{ fontSize: 11.5, color: "var(--warn)" }}>
@@ -208,23 +265,22 @@ function OffersScreen({ onOpenLead }) {
         {data && !rows.length && hasFilter && (
           <div className="mono dim" style={{ fontSize: 12 }}>
             nenhum cliente com esse filtro ·{" "}
-            <button className="mono" style={{ color: "var(--accent)" }} onClick={() => { setTab("todos"); setQ(""); setBy(""); }}>limpar</button>
+            <button className="mono" style={{ color: "var(--accent)" }} onClick={() => { setTab("aguardando"); setQ(""); setBy(""); }}>limpar</button>
           </div>
         )}
 
         {data && !!rows.length && (
           <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
-            <table style={{ width: "100%", minWidth: 860, borderCollapse: "collapse" }}>
+            <table style={{ width: "100%", minWidth: 780, borderCollapse: "collapse" }}>
               <thead>
                 <tr>
                   <th className="kicker" style={{ ...th, width: 28 }}></th>
                   <th className="kicker" style={th}>Cliente</th>
                   <th className="kicker" style={{ ...th, textAlign: "right" }}>Links</th>
-                  <th className="kicker" style={{ ...th, textAlign: "right" }}>Gerado</th>
                   <th className="kicker" style={{ ...th, textAlign: "right" }}>Pago</th>
                   <th className="kicker" style={{ ...th, textAlign: "right" }}>Em aberto</th>
                   <th className="kicker" style={th}>Último link</th>
-                  <th className="kicker" style={th}>Situação</th>
+                  <th className="kicker" style={{ ...th, textAlign: "right" }}>Ação</th>
                 </tr>
               </thead>
               <tbody>
@@ -253,18 +309,55 @@ function OffersScreen({ onOpenLead }) {
                           </div>
                         </td>
                         <td className="tnum mono dim" style={{ ...td, textAlign: "right" }}>{g.counts.links}</td>
-                        <td className="tnum" style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>{BRL.format(g.totals.generated)}</td>
                         <td className="tnum" style={{ ...td, textAlign: "right", whiteSpace: "nowrap", color: g.totals.paid > 0 ? "var(--pos)" : "var(--fg-4)", fontWeight: g.totals.paid > 0 ? 600 : 400 }}>{BRL.format(g.totals.paid)}</td>
-                        <td className="tnum" style={{ ...td, textAlign: "right", whiteSpace: "nowrap", color: g.totals.waiting > 0 ? "var(--warn)" : "var(--fg-4)", fontWeight: g.totals.waiting > 0 ? 600 : 400 }}>{BRL.format(g.totals.waiting)}</td>
-                        <td className="mono dim tnum" style={{ ...td, whiteSpace: "nowrap" }}>{fmtAt(g.lastAt)}</td>
-                        <td style={{ ...td, whiteSpace: "nowrap" }}>
-                          <Pill tone={pill.tone}>{pill.label}</Pill>
-                          {g.totals.failed > 0 && g.totals.waiting > 0 && <span className="mono dim" style={{ fontSize: 10.5, marginLeft: 6 }}>+ {BRL.format(g.totals.failed)} recusado</span>}
+                        <td className="tnum" style={{ ...td, textAlign: "right", whiteSpace: "nowrap", color: g.totals.waiting > 0 ? "var(--warn)" : "var(--fg-4)", fontWeight: g.totals.waiting > 0 ? 600 : 400 }}>
+                          {BRL.format(g.totals.waiting)}
+                          <div style={{ marginTop: 2 }}><Pill tone={pill.tone}>{pill.label}</Pill></div>
+                        </td>
+                        <td className="mono dim tnum" style={{ ...td, whiteSpace: "nowrap" }}>
+                          {fmtAt(g.lastAt)}
+                          {(() => {
+                            const t = g.lastAt ? new Date(g.lastAt).getTime() : NaN;
+                            if (!Number.isFinite(t)) return null;
+                            const d = Math.floor((Date.now() - t) / 86400000);
+                            return <div style={{ fontSize: 10.5 }}>{d <= 0 ? "hoje" : `há ${d}d`}</div>;
+                          })()}
+                        </td>
+                        {/* AÇÃO: faltava a principal — cobrar. O link em aberto
+                            vai pronto pro WhatsApp do cliente; sem telefone o
+                            botão não aparece (em vez de ficar cinza sem dizer
+                            por quê). */}
+                        <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>
+                          {(() => {
+                            const aberto = (g.links || []).find((l) => linkStatusOf(l) === "waiting" || linkStatusOf(l) === "pending");
+                            const wa = waLink(g.phone);
+                            const texto = aberto
+                              ? `Oi${g.name ? ` ${String(g.name).split(" ")[0]}` : ""}, segue o link do pagamento: ${aberto.url || ""}`
+                              : "";
+                            return (
+                              <span style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end" }}>
+                                {aberto && wa && (
+                                  <a href={`${wa}?text=${encodeURIComponent(texto)}`} target="_blank" rel="noopener noreferrer"
+                                    title="abrir o WhatsApp com o link da cobrança em aberto"
+                                    style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid var(--wa-brand)", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>
+                                    cobrar
+                                  </a>
+                                )}
+                                {aberto?.url && (
+                                  <button onClick={() => copyLink(aberto.url, `g-${g.key}`)}
+                                    style={{ height: 26, padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, cursor: "pointer" }}>
+                                    {copied === `g-${g.key}` ? "copiado ✓" : "copiar"}
+                                  </button>
+                                )}
+                                {!aberto && <span className="mono dim" style={{ fontSize: 10.5 }}>—</span>}
+                              </span>
+                            );
+                          })()}
                         </td>
                       </tr>
                       {isOpen && (
                         <tr>
-                          <td colSpan={8} style={{ padding: 0, background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
+                          <td colSpan={7} style={{ padding: 0, background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
                             <LinksTable links={g.links} copied={copied} busy={busy} onCopy={copyLink} onPay={markPaid} onUndo={undoPaid} />
                           </td>
                         </tr>
@@ -278,8 +371,8 @@ function OffersScreen({ onOpenLead }) {
         )}
 
         {data && !!rows.length && (
-          <div className="mono dim" style={{ fontSize: 10.5, lineHeight: 1.5 }}>
-            {rows.length} cliente(s) · {counts.links} link(s) no período · o status vem do Mercado Pago: o pagamento casa pelo link (referência do lead/fatura) ou pelo e-mail do pagador · “baixa manual” = dinheiro que entrou por fora e foi marcado à mão · “substituído” = link antigo de quem gerou de novo pelo mesmo valor
+          <div className="mono dim" style={{ fontSize: 10.5 }}>
+            {`${rows.length} ${rows.length === 1 ? "cliente" : "clientes"} · ${counts.links} ${counts.links === 1 ? "link" : "links"} no período`}
           </div>
         )}
       </div>
