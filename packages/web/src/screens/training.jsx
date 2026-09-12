@@ -1,5 +1,5 @@
 import React from "react";
-import { Segmented } from "../components/viz.jsx";
+import { Segmented, FilterTab } from "../components/viz.jsx";
 import { EmptyState, PrimaryButton, SecondaryButton, Avatar } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -932,6 +932,11 @@ function Heatmap({ days, today, cell: cellPx = 11 }) {
 const ROLE_ORDER = ["geral_negocio", "geral_marketplace", "sdr", "closer", "integrator", "social"];
 const roleOrderIdx = (r) => { const i = ROLE_ORDER.indexOf(r); return i < 0 ? ROLE_ORDER.length : i; };
 
+// ── Editar: mestre-detalhe ──────────────────────────────────────────────────
+// A lista e o editor disputavam a mesma coluna: abrir um card empurrava a lista
+// inteira pra baixo, e as configurações do baralho ficavam no meio da tela,
+// entre a lista e o conteúdo. Agora a lista fica à esquerda, o editor à
+// direita, e os ajustes viraram um recolhível no topo.
 function Edit({ saasId, mode, setMode }) {
   const [cards, setCards] = useS(null);
   const [labels, setLabels] = useS({});
@@ -941,6 +946,9 @@ function Edit({ saasId, mode, setMode }) {
   const [err, setErr] = useS(null);
   const [saving, setSaving] = useS(false);
   const [note, setNote] = useS(null);
+  const [sel, setSel] = useS(null);       // card aberto no editor
+  const [q, setQ] = useS("");
+  const [cfg, setCfg] = useS(false);      // ajustes do baralho recolhidos
 
   useE(() => {
     if (!saasId) return;
@@ -957,10 +965,30 @@ function Edit({ saasId, mode, setMode }) {
   }, [saasId]);
 
   const dirty = cards && JSON.stringify({ cards, settings }) !== orig;
+  // Quantas mudanças o botão vai gravar: card novo, removido ou editado conta
+  // uma; mexer nos ajustes conta uma. É o número que o botão promete salvar.
+  const changeCount = (() => {
+    if (!cards || !orig) return 0;
+    const o = JSON.parse(orig);
+    const before = new Map((o.cards || []).map((c) => [c.id, JSON.stringify(c)]));
+    let n = 0;
+    for (const c of cards) {
+      const b = before.get(c.id);
+      if (b === undefined || b !== JSON.stringify(c)) n++;
+      before.delete(c.id);
+    }
+    n += before.size; // removidos
+    if (JSON.stringify(o.settings || {}) !== JSON.stringify(settings || {})) n++;
+    return n;
+  })();
+
   // Toda vaga com card na base vira aba (inclusive as gerais e roles novos).
   const rolesPresent = [...new Set((cards || []).map((c) => c.role))];
   const roleTabs = [...new Set([...rolesPresent, "sdr", "closer"])].sort((a, b) => roleOrderIdx(a) - roleOrderIdx(b));
   const roleCards = (cards || []).filter((c) => c.role === role);
+  const norm = (x) => String(x || "").toLowerCase();
+  const shown = q.trim() ? roleCards.filter((c) => norm(`${c.front} ${c.back}`).includes(norm(q))) : roleCards;
+  const current = roleCards.find((c) => c.id === sel) || null;
 
   async function save() {
     setSaving(true); setNote(null);
@@ -971,27 +999,27 @@ function Edit({ saasId, mode, setMode }) {
     } catch (e) { setNote({ ok: false, text: e.message }); }
     setSaving(false);
   }
-  function reset() { if (orig) { const o = JSON.parse(orig); setCards(o.cards); setSettings(o.settings || { newPerDay: 10 }); } }
+  function reset() { if (orig) { const o = JSON.parse(orig); setCards(o.cards); setSettings(o.settings || { newPerDay: 10 }); setSel(null); } }
   function patchCard(id, field, value) { setCards((p) => p.map((c) => (c.id === id ? { ...c, [field]: value } : c))); }
   function addCard() {
     const id = uid();
     setCards((p) => [{ id, role, type: "basic", front: "", back: "" }, ...(p || [])]); // entra no topo
-    return id;
+    setSel(id);
+    setQ("");
   }
-  function removeCard(id) { setCards((p) => p.filter((c) => c.id !== id)); }
+  function removeCard(id) {
+    setCards((p) => p.filter((c) => c.id !== id));
+    if (sel === id) setSel(null);
+  }
 
   return (
     <div style={page}>
       <Head mode={mode} setMode={setMode}>
-        {dirty && (
-          <>
-            <button onClick={reset} disabled={saving} className="mono dim" style={{ fontSize: 11.5 }}>descartar</button>
-            <button onClick={save} disabled={saving}
-              style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600, opacity: saving ? 0.6 : 1 }}>
-              {saving ? "salvando…" : "salvar"}
-            </button>
-          </>
-        )}
+        {dirty && <button onClick={reset} disabled={saving} className="mono dim" style={{ fontSize: 11.5, cursor: "pointer" }}>descartar</button>}
+        <SecondaryButton size="sm" onClick={save} disabled={!dirty || saving}
+          style={dirty ? { background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", border: "1px solid var(--btn-bg, var(--accent))", fontWeight: 600 } : undefined}>
+          {saving ? "salvando…" : dirty ? `Salvar ${changeCount} mudança${changeCount === 1 ? "" : "s"}` : "Salvar"}
+        </SecondaryButton>
       </Head>
       {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
       {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
@@ -999,32 +1027,96 @@ function Edit({ saasId, mode, setMode }) {
       {cards && (
         <>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-            {roleTabs.map((r) => {
-              const on = r === role;
-              const n = cards.filter((c) => c.role === r).length;
-              return (
-                <button key={r} onClick={() => setRole(r)} style={{
-                  display: "inline-flex", alignItems: "center", gap: 6, height: 30, padding: "0 12px", borderRadius: "var(--r-2)",
-                  background: on ? "var(--accent-soft)" : "var(--bg-1)", border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"),
-                  color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: on ? 600 : 500,
-                }}>
-                  {labels[r] || r}
-                  <span className="mono dim" style={{ fontSize: 10.5 }}>{n}</span>
-                </button>
-              );
-            })}
+            {roleTabs.map((r) => (
+              <FilterTab key={r} active={r === role} count={cards.filter((c) => c.role === r).length}
+                onClick={() => { setRole(r); setSel(null); }}>
+                {labels[r] || r}
+              </FilterTab>
+            ))}
             <span style={{ flex: 1 }} />
-            <label className="mono dim" style={{ fontSize: 11, display: "inline-flex", alignItems: "center", gap: 6 }}>
-              novos/dia
-              <input type="number" min={0} max={200} value={settings.newPerDay}
-                onChange={(e) => setSettings((s) => ({ ...s, newPerDay: Math.max(0, Math.min(200, Math.round(Number(e.target.value) || 0))) }))}
-                style={{ width: 58, height: 26, padding: "0 8px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12 }} />
-            </label>
+            <span className="mono dim" style={{ fontSize: 11 }}>
+              Ajustes do baralho · {settings.newPerDay} novos/dia · {settings.examEvery > 0 ? `prova a cada ${settings.examEvery}` : "prova desligada"}
+            </span>
+            <button onClick={() => setCfg((v) => !v)} className="mono"
+              style={{ background: "none", border: 0, padding: 0, fontSize: 12, color: "var(--accent)", fontWeight: 600, cursor: "pointer" }}>
+              {cfg ? "fechar ▴" : "abrir ▾"}
+            </button>
           </div>
-          <ExamSettings settings={settings} setSettings={setSettings} />
-          <EditCards cards={roleCards} saasId={saasId} onPatch={patchCard} onAdd={addCard} onRemove={removeCard} roleLabel={labels[role] || role} />
+
+          {cfg && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-inset)", padding: "12px 14px" }}>
+              <label className="mono dim" style={{ fontSize: 11, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                novos/dia
+                <input type="number" min={0} max={200} value={settings.newPerDay}
+                  onChange={(e) => setSettings((s) => ({ ...s, newPerDay: Math.max(0, Math.min(200, Math.round(Number(e.target.value) || 0))) }))}
+                  style={{ width: 58, height: 26, padding: "0 8px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12 }} />
+              </label>
+              <ExamSettings settings={settings} setSettings={setSettings} />
+            </div>
+          )}
+
+          <div className="editor-split" style={{ "--cols": "minmax(min(100%, 420px), 420px) minmax(0, 1fr)", gap: 14, alignItems: "start" }}>
+            <CardList cards={shown} total={roleCards.length} q={q} setQ={setQ} sel={sel} onSelect={setSel}
+              onAdd={addCard} roleLabel={labels[role] || role} />
+            {current
+              ? <CardEditor key={current.id} card={current} saasId={saasId} onPatch={patchCard} onRemove={removeCard} />
+              : (
+                <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "28px 24px" }}>
+                  <EmptyState title="Escolha um card pra editar" hint="ou crie um novo na lista ao lado. A base é do TIME: card novo entra como 'novo' pra todo mundo e card removido some pra todo mundo. O ritmo de cada pessoa continua individual." />
+                </div>
+              )}
+          </div>
+          <div className="mono dim" style={{ fontSize: 10.5, lineHeight: 1.5 }}>
+            cloze e oclusão viram vários sub-cards · cole imagem com Ctrl+V dentro do editor
+          </div>
         </>
       )}
+    </div>
+  );
+}
+
+// ── A lista (mestre) ────────────────────────────────────────────────────────
+function CardList({ cards, total, q, setQ, sel, onSelect, onAdd, roleLabel }) {
+  return (
+    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", overflow: "hidden", position: "sticky", top: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 14px", borderBottom: "1px solid var(--line-1)" }}>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar na frente ou no verso…"
+          style={{ flex: 1, minWidth: 0, height: 30, padding: "0 10px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 }} />
+        <SecondaryButton size="sm" onClick={onAdd}>+ card</SecondaryButton>
+      </div>
+      <div style={{ maxHeight: "60vh", overflowY: "auto" }}>
+        {cards.length === 0 && (
+          <div className="mono dim" style={{ fontSize: 11.5, padding: "16px 14px" }}>
+            {q.trim() ? "nada com esse texto neste baralho" : "nenhum card ainda — crie o primeiro"}
+          </div>
+        )}
+        {cards.map((c) => {
+          const on = c.id === sel;
+          const subs = subCountOf(c);
+          const front = stripCloze(c.front).trim();
+          const back = String(c.back || "").trim();
+          const vazio = !front;
+          return (
+            <div key={c.id} onClick={() => onSelect(c.id)}
+              style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center", padding: "10px 14px", borderBottom: "1px solid var(--line-1)", cursor: "pointer", background: on ? "var(--accent-soft)" : "transparent" }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: vazio ? "var(--warn)" : "var(--fg-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {vazio ? "card novo · sem frente" : front}
+                </div>
+                {back && !vazio && (
+                  <div style={{ fontSize: 11, color: "var(--fg-4)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{back}</div>
+                )}
+              </div>
+              <span className="mono" style={{ fontSize: 9.5, color: vazio ? "var(--warn)" : "var(--fg-3)", border: `1px solid ${vazio ? "var(--warn-line)" : "var(--line-2)"}`, borderRadius: 9, padding: "1px 7px", whiteSpace: "nowrap", flexShrink: 0 }}>
+                {vazio ? "rascunho" : `${TYPE_LABEL[c.type] || "básico"}${subs > 0 ? ` · ${subs}` : ""}`}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="mono dim" style={{ fontSize: 10.5, padding: "10px 14px", borderTop: "1px solid var(--line-1)" }}>
+        {total} card{total === 1 ? "" : "s"} em {roleLabel}{q.trim() ? ` · mostrando ${cards.length}` : ""}
+      </div>
     </div>
   );
 }
@@ -1071,69 +1163,29 @@ const stripCloze = (text) => String(text || "").replace(/\{\{c\d+::(.*?)(?:::.*?
 const subCountOf = (c) => (c.type === "cloze" ? clozeIdxs(c.front).length : c.type === "occlusion" ? (c.masks || []).length : 0);
 const TYPE_LABEL = { basic: "básico", cloze: "cloze", occlusion: "oclusão" };
 
-function EditCards({ cards, saasId, onPatch, onAdd, onRemove, roleLabel }) {
-  const [open, setOpen] = useS(null);
-  const [q, setQ] = useS("");
-  const norm = (s) => String(s || "").toLowerCase();
-  const shown = q.trim() ? cards.filter((c) => norm(`${c.front} ${c.back}`).includes(norm(q))) : cards;
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <button onClick={() => setOpen(onAdd())}
-          style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--btn-bg, var(--accent))", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600 }}>
-          ＋ novo card em {roleLabel}
-        </button>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`buscar nos ${cards.length} cards…`}
-          style={{ flex: 1, minWidth: 180, maxWidth: 320, height: 30, padding: "0 10px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 }} />
-        <span className="mono dim" style={{ fontSize: 10.5 }}>{q.trim() ? `${shown.length} de ${cards.length}` : `${cards.length} card${cards.length === 1 ? "" : "s"}`}</span>
-      </div>
-
-      {shown.length === 0 && <div className="mono dim" style={{ fontSize: 11.5, padding: "14px 0" }}>{q.trim() ? "nada com esse texto nesta vaga" : "nenhum card ainda — crie o primeiro"}</div>}
-      {shown.map((c, i) => {
-        const isOpen = open === c.id;
-        const subs = subCountOf(c);
-        const line = stripCloze(c.front).trim() || c.back?.trim() || "card vazio";
-        return (
-          <div key={c.id} style={{ border: `1px solid ${isOpen ? "var(--accent-line)" : "var(--line-1)"}`, borderRadius: "var(--r-3)", background: "var(--bg-1)", overflow: "hidden" }}>
-            <div onClick={() => setOpen(isOpen ? null : c.id)}
-              style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", cursor: "pointer", background: isOpen ? "var(--accent-soft)" : "transparent" }}>
-              <span className="mono tnum" style={{ fontSize: 10.5, color: "var(--fg-4)", minWidth: 22 }}>#{i + 1}</span>
-              <span className="mono" style={{ fontSize: 9.5, color: "var(--fg-3)", border: "1px solid var(--line-2)", borderRadius: 9, padding: "1px 7px", whiteSpace: "nowrap" }}>{TYPE_LABEL[c.type] || "básico"}</span>
-              <span style={{ flex: 1, fontSize: 13, color: line === "card vazio" ? "var(--fg-4)" : "var(--fg-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{line}</span>
-              {subs > 0 && <span className="mono dim" style={{ fontSize: 10 }}>{subs} sub</span>}
-              {c.image && <span style={{ fontSize: 12 }} title="tem imagem">🖼</span>}
-              <span className="mono dim" style={{ fontSize: 11 }}>{isOpen ? "▾" : "▸"}</span>
-              <button onClick={(e) => { e.stopPropagation(); onRemove(c.id); }} title="remover card" className="mono dim" style={{ fontSize: 13 }}>✕</button>
-            </div>
-            {isOpen && (
-              <div style={{ borderTop: "1px solid var(--line-1)", padding: "12px 14px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 14 }}>
-                <CardEditor card={c} saasId={saasId} onPatch={onPatch} />
-                <CardPreview card={c} />
-              </div>
-            )}
-          </div>
-        );
-      })}
-      <div className="mono dim" style={{ fontSize: 10.5, lineHeight: 1.5 }}>a base é do TIME: card novo entra como "novo" pra todo mundo; card removido some pra todo mundo. O RITMO de cada pessoa é individual. Cloze e oclusão viram vários sub-cards. Cole imagem com Ctrl+V dentro do card aberto.</div>
-    </div>
-  );
-}
-
-// Preview fiel: renderiza com o MESMO componente da sessão (CardFace).
+// Preview fiel: renderiza com o MESMO componente da sessão (CardFace), então o
+// que o gestor vê aqui é exatamente o que o time vai ver estudando.
 function CardPreview({ card }) {
   const [flip, setFlip] = useS(false);
   const sub = card.type === "cloze" ? `c${clozeIdxs(card.front)[0] || 1}`
     : card.type === "occlusion" ? (card.masks?.[0]?.id || null) : null;
   return (
-    <div onClick={() => setFlip((f) => !f)}
-      style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", boxShadow: "var(--shadow-2)", padding: "14px 16px", cursor: "pointer", display: "flex", flexDirection: "column", gap: 10, alignSelf: "start" }}>
-      <div className="kicker">preview · {flip ? "verso" : "frente"}{sub ? ` · ${sub}` : ""} · clique pra virar</div>
-      <CardFace card={{ ...card, sub }} flipped={flip} />
+    <div style={{ minWidth: 0 }}>
+      <div className="kicker">Como o time vai ver</div>
+      <div onClick={() => setFlip((f) => !f)}
+        style={{ marginTop: 8, border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", boxShadow: "var(--shadow-2)", padding: "14px 16px", cursor: "pointer", display: "flex", flexDirection: "column", gap: 10, minHeight: 150 }}>
+        <div className="kicker">{flip ? "verso" : "frente"}{sub ? ` · ${sub}` : ""}</div>
+        <CardFace card={{ ...card, sub }} flipped={flip} />
+      </div>
+      <button onClick={() => setFlip((f) => !f)} className="mono"
+        style={{ marginTop: 8, background: "none", border: 0, padding: 0, fontSize: 12, color: "var(--accent)", fontWeight: 600, cursor: "pointer" }}>
+        virar o card
+      </button>
     </div>
   );
 }
 
-function CardEditor({ card, saasId, onPatch }) {
+function CardEditor({ card, saasId, onPatch, onRemove }) {
   const frontRef = useR(null);
   const type = card.type || "basic";
 
@@ -1159,17 +1211,36 @@ function CardEditor({ card, saasId, onPatch }) {
     onPatch(card.id, "front", `${front.slice(0, s)}{{c${n}::${sel}}}${front.slice(e)}`);
   }
 
+  // Excluir é destrutivo e a base é do TIME: confirma nomeando o card e a
+  // consequência (régua do cockpit pra toda ação destrutiva).
+  function remove() {
+    const nome = stripCloze(card.front).trim() || "este card sem frente";
+    const ok = window.confirm(`Excluir "${nome.slice(0, 80)}"?\n\nO card sai do baralho de TODO o time na próxima gravação.`);
+    if (ok) onRemove(card.id);
+  }
+
   return (
-    <div onPaste={onPaste} style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
-      <div style={{ display: "flex", gap: 4 }}>
-        {CARD_TYPES.map((t) => (
-          <button key={t.id} onClick={() => onPatch(card.id, "type", t.id)} className="mono"
-            style={{ height: 22, padding: "0 9px", borderRadius: 11, fontSize: 10.5, cursor: "pointer",
-              border: `1px solid ${type === t.id ? "var(--accent-line)" : "var(--line-2)"}`,
-              background: type === t.id ? "var(--accent-soft)" : "transparent",
-              color: type === t.id ? "var(--accent)" : "var(--fg-3)" }}>{t.label}</button>
-        ))}
+    <div onPaste={onPaste} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "18px 20px", display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <div className="card-title" style={{ flex: 1, minWidth: 120 }}>Editar card</div>
+        <div style={{ display: "flex", gap: 4 }}>
+          {CARD_TYPES.map((t) => (
+            <button key={t.id} onClick={() => onPatch(card.id, "type", t.id)} className="mono"
+              style={{ height: 24, padding: "0 10px", borderRadius: "var(--r-2)", fontSize: 11, cursor: "pointer",
+                border: `1px solid ${type === t.id ? "var(--accent-line)" : "var(--line-2)"}`,
+                background: type === t.id ? "var(--accent-soft)" : "transparent",
+                color: type === t.id ? "var(--accent)" : "var(--fg-3)", fontWeight: type === t.id ? 600 : 400 }}>{t.label}</button>
+          ))}
+        </div>
+        {onRemove && (
+          <SecondaryButton size="sm" onClick={remove}
+            style={{ color: "var(--neg)", borderColor: "var(--neg)", background: "var(--neg-soft)" }}>
+            excluir card
+          </SecondaryButton>
+        )}
       </div>
+      <div className="editor-split" style={{ "--cols": "minmax(0,1fr) minmax(min(100%, 320px), 320px)", gap: 16, alignItems: "start" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
 
       {type === "occlusion" ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1183,12 +1254,14 @@ function CardEditor({ card, saasId, onPatch }) {
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 10 }}>
-            <label><span className="kicker" style={capStyle}>{type === "cloze" ? <>Texto · marque deleções com {"{{c1::…}}"}</> : "Frente · pergunta"}</span>
-              <textarea ref={frontRef} rows={type === "cloze" ? 3 : 2} value={card.front || ""} onChange={(e) => onPatch(card.id, "front", e.target.value)}
-                placeholder={type === "cloze" ? "ex.: A escada é {{c1::anual}} → {{c2::semestral}} → {{c3::serviço único}}" : "ex.: Objeção: 'tá caro'"} style={areaStyle} /></label>
-            <label><span className="kicker" style={capStyle}>{type === "cloze" ? "Verso (opcional) · contexto extra" : "Verso · resposta"}</span>
-              <textarea rows={2} value={card.back || ""} onChange={(e) => onPatch(card.id, "back", e.target.value)} placeholder={type === "cloze" ? "" : "a técnica / resposta ideal"} style={areaStyle} /></label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <label><span className="kicker" style={capStyle}>{type === "cloze" ? <>Texto · marque deleções com {"{{c1::…}}"}</> : "Frente · a pergunta"}</span>
+              <textarea ref={frontRef} rows={3} value={card.front || ""} onChange={(e) => onPatch(card.id, "front", e.target.value)}
+                placeholder={type === "cloze" ? "ex.: A escada é {{c1::anual}} → {{c2::semestral}} → {{c3::serviço único}}" : "ex.: Objeção: 'tá caro'"}
+                style={{ ...areaStyle, minHeight: 76 }} /></label>
+            <label><span className="kicker" style={capStyle}>{type === "cloze" ? "Verso (opcional) · contexto extra" : "Verso · a resposta"}</span>
+              <textarea rows={4} value={card.back || ""} onChange={(e) => onPatch(card.id, "back", e.target.value)} placeholder={type === "cloze" ? "" : "a técnica / resposta ideal"}
+                style={{ ...areaStyle, minHeight: 110 }} /></label>
           </div>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
             {type === "cloze" && (
@@ -1200,6 +1273,9 @@ function CardEditor({ card, saasId, onPatch }) {
           </div>
         </div>
       )}
+      </div>
+      <CardPreview card={card} />
+      </div>
     </div>
   );
 }
