@@ -246,7 +246,7 @@ test("linha Price: sem tela OEM; Enterprise tem preço e entra no deck", async (
   assert.equal(pricing.offer2.price, "23.982");
   assert.equal(pricing.planPill, "anúncios ilimitados");
   p.state.product = "price_essencial";
-  assert.equal(pricingOf(applyCatalog(p)).planPill, "até 1.000 anúncios");
+  assert.equal(pricingOf(applyCatalog(p)).planPill, "até 5.000 anúncios");
   assert.equal(pricingOf(applyCatalog(p)).price, "9.564");
 });
 
