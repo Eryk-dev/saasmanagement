@@ -368,6 +368,30 @@ export function sanitizeIntegrationAnswers(answers, sections = SECTIONS) {
 
 // Resumo de uma linha pro cockpit (lista da tela e timeline do lead): as contas
 // e as rotas são o que o integrador quer ver antes de abrir a ficha inteira.
+// Compromissos que o FORMULÁRIO já revela. O resumo por IA da call pega o que
+// foi combinado na conversa; estes dois vêm da resposta do próprio cliente e
+// não dependem de call nenhuma: conta que ele ainda não conectou e contas de
+// fora do ERP. Ambos travam a entrega de verdade.
+//
+// "Quero decidir na call" (sincronização) fica FORA de propósito: é decisão a
+// tomar junto, não combinado que ele deixou de cumprir. Cobrar isso como
+// pendência dele seria empurrar nossa conversa pra conta do cliente.
+export function formPendencias(answers = {}) {
+  const itens = [];
+  for (const c of Array.isArray(answers.contas) ? answers.contas : []) {
+    if (String(c?.conectada || "") !== "Ainda não conectei") continue;
+    const nome = String(c?.apelido || "").trim();
+    const mkt = String(c?.marketplace || "").trim();
+    itens.push(`Conectar a conta ${nome || "sem nome"}${mkt ? ` (${mkt})` : ""} na LeverAds`);
+  }
+  const erp = String(answers.erp || "");
+  if (["Bling", "Tiny (Olist)", "Outro"].includes(erp) && String(answers.erp_contas || "") === "Só algumas") {
+    const qual = erp === "Outro" ? String(answers.erp_qual || "").trim() || "ERP" : erp;
+    itens.push(`Ligar no ${qual} as contas que ainda ficaram de fora`);
+  }
+  return itens;
+}
+
 export function integrationSummary(answers = {}) {
   const contas = Array.isArray(answers.contas) ? answers.contas : [];
   const rotas = Array.isArray(answers.rotas) ? answers.rotas : [];

@@ -14,9 +14,10 @@
 // cliente, como na proposta (/p/:id) e no Manual da Família (/m/:id).
 
 import { makeRateLimiter } from "./forms.js";
-import { publicSections, validateIntegrationAnswers, sanitizeIntegrationAnswers, integrationSummary, INTEGRATION_FORM_VERSION, TERM_TEXT } from "./integration-form.js";
+import { publicSections, validateIntegrationAnswers, sanitizeIntegrationAnswers, integrationSummary, formPendencias, INTEGRATION_FORM_VERSION, TERM_TEXT } from "./integration-form.js";
 import { integrationFormPageHtml } from "./integration-form-page.js";
 import { logActivity } from "./lead-flow.js";
+import { syncClientPending } from "./client-pending.js";
 import { createTask } from "./tasks-core.js";
 import { clientIp } from "./routes.forms.js";
 
@@ -109,6 +110,18 @@ export function registerIntegrationFormRoutes(app, repo, opts = {}) {
       } catch { /* fail-open: aviso nunca derruba o envio */ }
       // Carimbo no card pra quem olha o lead saber que o formulário voltou.
       try { await repo.update("leads", doc.leadId, { integrationFormAt: now, integrationFormId: doc.id }); } catch { /* fail-open */ }
+      // O que o próprio formulário já mostra como pendente do cliente (conta
+      // não conectada, contas fora do ERP) vira tarefa com prazo, no mesmo
+      // caminho das pendências que a IA extrai da call. Best-effort.
+      try {
+        const lead = await repo.get("leads", doc.leadId);
+        const itens = formPendencias(answers);
+        if (lead && itens.length) {
+          await syncClientPending(repo, lead, {
+            pendencias: itens.map((item) => ({ item, responsavel: "cliente" })),
+          }, { source: "form" });
+        }
+      } catch { /* fail-open: pendência nunca derruba o envio do formulário */ }
     }
 
     // PLANTIO DA INDICAÇÃO: os nomes que o cliente deu no fim do formulário
