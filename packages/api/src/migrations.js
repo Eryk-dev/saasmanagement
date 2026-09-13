@@ -1912,12 +1912,112 @@ export async function ensureKnownCases(repo) {
   return seeds.length;
 }
 
+// Os quatro cases do slide "Quem já está dentro", agora com número do PAINEL.
+//
+// Cada um traz as quatro medidas que o slide mostra: quanto os anúncios da
+// Lever venderam na conta, quanto disso foi o crescimento do mês, quanto tempo
+// de cadastro manual isso poupou e quanto custaria pagar esse tempo. As duas
+// últimas saem de uma régua só, escrita no slide: 10 minutos por anúncio criado,
+// ao custo de um funcionário de R$ 3.000 por mês em 44h semanais (220h, R$ 13,64
+// a hora).
+//
+// POR QUE OS NÚMEROS ESTÃO CONGELADOS AQUI: a janela é móvel (últimos 30 dias),
+// então consultar de novo dá sempre outro valor. Num deck isso é ruim duas
+// vezes: o closer decora um número que mudou e o cliente que confere depois acha
+// divergência. O período fica escrito na métrica e a apuração tem data.
+//
+// ENTRAM COMO RASCUNHO, como todo case desta casa: usar nome e logo de cliente
+// em material comercial pede autorização dele, e o slide promete número
+// conferido. O Leo publica em Clientes › Cases quando tiver o ok de cada um.
+// Idempotente pelo marcador `seed`: roda uma vez e nunca mais mexe (nem
+// sobrescreve o que for editado na tela depois).
+const PANEL_SEED = "painel-30d-2026-09";
+const nomeChaveCase = (s) => String(s || "")
+  .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+export async function ensurePanelCases(repo) {
+  const atuais = await repo.list("cases").catch(() => []);
+  if (atuais.some((c) => c.seed === PANEL_SEED)) return 0;
+  const clientes = await repo.list("customers").catch(() => []);
+  const clientePorNome = new Map(clientes.map((c) => [nomeChaveCase(c.name), c.id]));
+  const periodo = "30 dias";
+  const met = (label, value, source = "painel") => ({ label, value, period: "", source, proofUrl: "" });
+  const seeds = [
+    {
+      name: "Motvia", niche: "Autopeças", order: 1,
+      headline: "574 mil anúncios no ar em 11 contas, sem ninguém digitar um título.",
+      metrics: [
+        { ...met("gerado por anúncios da Lever", "R$ 202 mil"), period: periodo },
+        met("do crescimento do mês", "66%"),
+        met("de cadastro manual poupadas", "95,8 mil h"),
+        met("de custo fixo evitado", "R$ 1,3 mi"),
+      ],
+    },
+    {
+      name: "Lupa Autopeças", niche: "Autopeças", order: 2,
+      headline: "282 mil anúncios criados e o faturamento da loja 47% maior no mês.",
+      metrics: [
+        { ...met("gerado por anúncios da Lever", "R$ 134 mil"), period: periodo },
+        met("do crescimento do mês", "41%"),
+        met("de cadastro manual poupadas", "47,1 mil h"),
+        met("de custo fixo evitado", "R$ 642 mil"),
+      ],
+    },
+    {
+      name: "Dyno Nutri", niche: "Suplementos", order: 3,
+      headline: "71% de tudo que a loja vende hoje sai de um anúncio que a Lever criou.",
+      metrics: [
+        { ...met("gerado por anúncios da Lever", "R$ 127 mil"), period: periodo },
+        met("do crescimento do mês", "66%"),
+        met("de cadastro manual poupadas", "240 h"),
+        met("de custo fixo evitado", "R$ 3,3 mil"),
+      ],
+    },
+    {
+      name: "123tudo", niche: "Variedades", order: 4,
+      headline: "Metade do que a loja cresceu no mês veio de 8,1 mil anúncios criados pela plataforma.",
+      metrics: [
+        { ...met("gerado por anúncios da Lever", "R$ 51 mil"), period: periodo },
+        met("do crescimento do mês", "52%"),
+        met("de cadastro manual poupadas", "1.355 h"),
+        met("de custo fixo evitado", "R$ 18,5 mil"),
+      ],
+    },
+  ];
+  let n = 0;
+  for (const s of seeds) {
+    const doc = {
+      ...s,
+      saas: "leverads",
+      seed: PANEL_SEED,
+      apuradoEm: "2026-09-13",
+      customerId: clientePorNome.get(nomeChaveCase(s.name)) || "",
+      logoUrl: "",
+      updatedAt: new Date().toISOString(),
+    };
+    // O case do mesmo cliente já existente (Dyno Nutri nasceu no seed antigo,
+    // com o número do roteiro do closer) é ATUALIZADO, nunca duplicado: dois
+    // cards do mesmo nome no slide seria o pior dos mundos.
+    const antigo = atuais.find((c) => nomeChaveCase(c.name) === nomeChaveCase(s.name));
+    if (antigo) await repo.update("cases", antigo.id, doc);
+    else await repo.create("cases", { ...doc, public: false, authorizedAt: "", authorizedBy: "", authorizedVia: "", createdAt: new Date().toISOString() });
+    n++;
+  }
+  return n;
+}
+
 export async function runStartupMigrations(repo) {
   try {
     const n = await ensureKnownCases(repo);
     if (n) console.log(`[migration] ${n} case(s) conhecidos criados em RASCUNHO (confira os números no painel e autorize antes de publicar)`);
   } catch (err) {
     console.error("[migration] ensureKnownCases falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensurePanelCases(repo);
+    if (n) console.log(`[migration] ${n} case(s) do painel prontos em RASCUNHO (Clientes › Cases: publique quando tiver o ok do cliente)`);
+  } catch (err) {
+    console.error("[migration] ensurePanelCases falhou:", err?.message || err);
   }
   try {
     const n = await backfillCustomerOwners(repo);
