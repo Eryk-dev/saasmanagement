@@ -86,9 +86,30 @@ export const AGENDA_TYPE_COLORS = {
 // grade cheia, verde = aconteceu e vermelho = furou se lê de longe, sem abrir
 // card nenhum.
 const AGENDA_NOSHOW = { bg: "oklch(0.90 0.07 25)", line: "oklch(0.60 0.14 25)", label: "no-show" };
+// Valor do card em um relance: 65k, R$1,2M, R$800. O número redondo basta
+// (o exato mora no card do lead) e cabe na primeira linha mesmo na semana,
+// onde a coluna do dia tem ~185px.
+const valorCurto = (n) => {
+  const v = Number(n) || 0;
+  if (!v) return "";
+  const abs = Math.abs(v);
+  if (abs >= 1_000_000) return `R$${(abs / 1_000_000).toFixed(1).replace(".", ",")}M`;
+  if (abs >= 1_000) return `${Math.round(abs / 1_000)}k`;
+  return `R$${Math.round(abs)}`;
+};
 const WD_LONG = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 const AGENDA_INK = "oklch(0.22 0.02 250)";      // letra "preta" sobre as cores claras
 const AGENDA_INK_SOFT = "oklch(0.4 0.02 250)";  // linha secundária (hora, empresa)
+
+// Entrar na sala sem abrir o card: o ▶ come o clique (o card inteiro abre o
+// lead). Era um emoji de câmera; a régua da tela é sem emoji.
+function PlayLink({ href }) {
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" title="Entrar na videochamada"
+      onClick={(e) => e.stopPropagation()}
+      style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", width: 13, height: 13, borderRadius: 99, background: AGENDA_INK, color: "oklch(1 0 0)", fontSize: 7, textDecoration: "none", lineHeight: 1 }}>▶</a>
+  );
+}
 
 function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, people = [], onPerson, view: viewProp, onView }) {
   const [dayOff, setDayOff] = useStP(0); // offset em DIAS a partir de hoje
@@ -159,6 +180,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
         company: `consulta ${c.n || "?"} de ${c.packageTotal || 8}`,
         closer: c.owner || "",
         callUrl: c.meetUrl || "",
+        _pack: c.n && c.packageTotal ? `${c.n}/${c.packageTotal}` : "", // consulta não tem valor: mostra a posição no pacote
         saas: c.saas, stage: "",
         _leadRef: (c.leadId && leadById.get(c.leadId)) || null,
       },
@@ -601,6 +623,15 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
                   const pw = 100 / personLanes;
                   const w = pw / subs;
                   const timeStr = t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+                  // Sala da reunião: call e consulta 1:1 usam callUrl; a
+                  // integração tem a própria (integrationCallUrl, criada pelo
+                  // Google Meet). O ▶ abre a sala SEM abrir o card.
+                  const sala = kind === "integração" ? l.integrationCallUrl : l.callUrl;
+                  // O valor do negócio não aparecia em lugar nenhum da agenda:
+                  // duas calls às 14h e 15h podem ser R$ 800 e R$ 65 mil, e a
+                  // grade mostrava as duas iguais. Consulta 1:1 não tem valor,
+                  // mostra a posição no pacote (3/8).
+                  const valor = l._pack || valorCurto(l.amount);
                   return (
                     <div key={l.id + kind + t.getTime()}
                       onClick={(e) => { e.stopPropagation(); const target = kind === "consulta" ? l._leadRef : l; if (target && onOpenLead) onOpenLead(target); }}
@@ -613,11 +644,13 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
                         background: isTouch ? "transparent" : tc.bg,
                         border: isTouch ? `1px dashed color-mix(in srgb, ${tone} 55%, var(--line-2))`
                           : `1px ${isFollowup ? "dashed" : "solid"} ${tc.line}`,
-                        // Faixa da PESSOA bem grossa (Leo, 23/08: "pelo menos
-                        // 5x mais grossa"): 20px, dá pra ver o closer de longe.
-                        // Na SEMANA a coluna do dia é 1/7 da largura — a faixa
-                        // afina pra 6px pra sobrar espaço pro nome do lead.
-                        borderLeft: isTouch ? `2px dashed ${tone}` : `${isWeek ? 6 : 20}px solid ${tone}`,
+                        // Faixa da PESSOA. Era 20px no dia (Leo, 23/08: "pelo
+                        // menos 5x mais grossa") e 6px na semana; o handoff de
+                        // 12/09 pede 3px, e o espaço vai pro valor e pro nome +
+                        // empresa na mesma linha. No dia e na Equipe o nome da
+                        // pessoa já está no cabeçalho da faixa; na semana o
+                        // primeiro nome continua na linha da hora.
+                        borderLeft: isTouch ? `2px dashed ${tone}` : `3px solid ${tone}`,
                         borderRadius: 5, padding: isFollowup ? "0 6px" : isTouch ? "1px 6px" : "3px 6px",
                         // Feita (histórico): mesma cor do closer, só lavada — dá
                         // pra ler a semana inteira do que aconteceu sem confundir
@@ -626,29 +659,44 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
                         display: isFollowup ? "flex" : undefined, alignItems: isFollowup ? "center" : undefined,
                       }}>
                       {isFollowup ? (
-                        <div className="mono" style={{ fontSize: 10, fontWeight: 700, color: AGENDA_INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          ↩ {timeStr} · {l.name}
-                          {l.callUrl && <a href={l.callUrl} target="_blank" rel="noopener noreferrer" title="Entrar na videochamada" onClick={(e) => e.stopPropagation()} style={{ marginLeft: 4, textDecoration: "none" }}>🎥</a>}
+                        <div className="mono" style={{ display: "flex", alignItems: "center", gap: 4, width: "100%", fontSize: 10, fontWeight: 700, color: AGENDA_INK, minWidth: 0 }}>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>↩ {timeStr} · {l.name}</span>
+                          {sala && <PlayLink href={sala} />}
+                          {valor && <span className="tnum" style={{ marginLeft: "auto", flexShrink: 0, fontWeight: 700 }}>{valor}</span>}
                         </div>
+                      ) : isTouch ? (
+                        <div className="mono" style={{ fontSize: 9.5, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{`○ ${l.name}`}</div>
                       ) : (
                         <>
-                          <div className="mono tnum" style={{ fontSize: 9.5, color: isTouch ? "var(--fg-3)" : AGENDA_INK_SOFT, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {isTouch ? `○ ${l.name}` : `${noShow ? "✕ " : done ? "✓ " : ""}${timeStr}${who ? ` · ${displayName(who).split(" ")[0]}` : ""}${kind === "integração" ? " · int" : kind === "consulta" ? " · 1:1" : ""}`}
+                          {/* Linha 1: quando, os sinais e quanto vale. O valor
+                              fica na direita porque é o que se compara entre
+                              dois horários do mesmo dia. */}
+                          <div className="mono tnum" style={{ display: "flex", alignItems: "center", gap: 3, minWidth: 0, fontSize: isWeek ? 9.5 : 10, color: AGENDA_INK_SOFT }}>
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {`${noShow ? "✕ " : done ? "✓ " : ""}${timeStr}${isWeek && who ? ` · ${displayName(who).split(" ")[0]}` : ""}${kind === "integração" ? " · int" : kind === "consulta" ? " · 1:1" : ""}`}
+                            </span>
                             {noShow && (
                               <span title="O lead não compareceu"
-                                style={{ marginLeft: 4, padding: "0 5px", borderRadius: 4, background: AGENDA_NOSHOW.line, color: "#fff", fontSize: 8.5, fontWeight: 800, letterSpacing: "0.04em", verticalAlign: "text-bottom" }}>FUROU</span>
+                                style={{ flexShrink: 0, padding: "0 5px", borderRadius: 4, background: AGENDA_NOSHOW.line, color: "#fff", fontSize: 8.5, fontWeight: 800, letterSpacing: "0.04em" }}>FUROU</span>
                             )}
                             {confirmed && (
                               <span title="Lead confirmou no lembrete"
-                                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 12, height: 12, borderRadius: 99, background: "var(--pos)", color: "#fff", fontSize: 8.5, fontWeight: 800, marginLeft: 4, verticalAlign: "text-bottom" }}>✓</span>
+                                style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", width: 11, height: 11, borderRadius: 99, background: "var(--pos)", color: "#fff", fontSize: 8, fontWeight: 800 }}>✓</span>
                             )}
-                            {!isTouch && (kind === "call" || kind === "consulta") && l.callUrl && (
-                              <a href={l.callUrl} target="_blank" rel="noopener noreferrer" title="Entrar na videochamada"
-                                onClick={(e) => e.stopPropagation()} style={{ marginLeft: 4, textDecoration: "none" }}>🎥</a>
+                            {sala && <PlayLink href={sala} />}
+                            {valor && <span style={{ marginLeft: "auto", flexShrink: 0, fontWeight: 700, color: AGENDA_INK }}>{valor}</span>}
+                          </div>
+                          {/* Linha 2: quem. Na semana o card tem duas linhas e
+                              a empresa fica só no title (a coluna do dia é 1/7
+                              da largura); no dia e na Equipe a empresa vem ao
+                              lado do nome, no lugar da terceira linha que o
+                              card de 41px cortava. */}
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 4, minWidth: 0, fontSize: 11, fontWeight: 650, color: AGENDA_INK }}>
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.name}</span>
+                            {!isWeek && l.company && (
+                              <span style={{ fontSize: 10, fontWeight: 500, color: AGENDA_INK_SOFT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{l.company}</span>
                             )}
                           </div>
-                          {!isTouch && <div style={{ fontSize: 11.5, fontWeight: 600, color: AGENDA_INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</div>}
-                          {!isTouch && l.company && <div style={{ fontSize: 10, color: AGENDA_INK_SOFT, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.company}</div>}
                         </>
                       )}
                     </div>
