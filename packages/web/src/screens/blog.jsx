@@ -1,5 +1,5 @@
 import React from "react";
-import { PageHead, StatTile, FilterTab, Segmented, Card } from "../components/viz.jsx";
+import { PageHead, FilterTab, Segmented, Card } from "../components/viz.jsx";
 import { EmptyState, PrimaryButton, SecondaryButton, useEsc, toast } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -774,11 +774,40 @@ function BlogScreen() {
       </PageHead>
 
       <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px" }}>
-        <div className="resp-cols" style={{ "--cols": "repeat(4, 1fr)", gap: 14 }}>
-          <StatTile label="Pautas" value={data === null ? "…" : countOf("pauta")} delta="temas esperando texto" />
-          <StatTile label="Rascunhos a revisar" value={data === null ? "…" : countOf("rascunho")} delta="a IA escreveu, falta aprovar" />
-          <StatTile label="Agendados" value={data === null ? "…" : countOf("agendado")} delta={data?.nextSlot ? `próximo ${fmtSlot(data.nextSlot)}` : "nada na agenda"} />
-          <StatTile label="Publicados" value={data === null ? "…" : countOf("publicado")} delta={data === null ? "" : `${publicados30} nos últimos 30 dias${ultimoPub ? ` · último ${fmtDay(ultimoPub.publishedAt)}` : ""}`} />
+        {/* A ESTEIRA (13/09): os quatro números eram tiles de peso igual, e a
+            relação entre eles (pauta vira rascunho, que vira agendado, que
+            vira publicado) ficava por conta do leitor. Cada passo leva pra sua
+            aba; o que a IA escreveu e espera revisão é o único que pede ação
+            hoje, então ele abre em destaque. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "14px var(--inset-x)", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
+          {[
+            { id: "pauta", rot: "pautas", nota: "temas esperando texto" },
+            { id: "rascunho", rot: "rascunhos a revisar", nota: "a IA escreveu, falta aprovar", acao: true },
+            { id: "agendado", rot: "agendados", nota: data?.nextSlot ? `próximo ${fmtSlot(data.nextSlot)}` : "nada na agenda" },
+            { id: "publicado", rot: "publicados", nota: data === null ? "" : `${publicados30} nos últimos 30 dias${ultimoPub ? ` · último ${fmtDay(ultimoPub.publishedAt)}` : ""}` },
+          ].map((passo, i) => {
+            const n = data === null ? null : Number(countOf(passo.id)) || 0;
+            const pede = passo.acao && n > 0;
+            return (
+              <React.Fragment key={passo.id}>
+                {i > 0 && <span className="mono dim" style={{ fontSize: 14 }}>→</span>}
+                <button onClick={() => setTab(passo.id)} title={`ver só os ${passo.rot}`}
+                  style={{ textAlign: "left", minWidth: 130, flex: "1 1 130px", background: "transparent", border: 0, cursor: "pointer", padding: 0 }}>
+                  <div className="kicker">{passo.rot}</div>
+                  <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 24, fontWeight: 700, lineHeight: 1.15, color: pede ? "var(--warn)" : "var(--fg-1)" }}>
+                    {data === null ? "…" : n}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{passo.nota}</div>
+                </button>
+              </React.Fragment>
+            );
+          })}
+          {data !== null && Number(countOf("rascunho")) > 0 && (
+            <button onClick={() => setTab("rascunho")}
+              style={{ marginLeft: "auto", height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: 0, background: "var(--warn)", color: "oklch(1 0 0)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+              revisar agora
+            </button>
+          )}
         </div>
 
         {data !== null && !semSaas && (

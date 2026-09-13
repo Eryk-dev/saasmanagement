@@ -240,6 +240,19 @@ function DisparosScreen({ onOpenLead }) {
     return `há ${days} dias`;
   };
   const stageCount = (stage) => leads.filter((lead) => lead.stage === stage).length;
+  // Passo 3 (13/09): o que o disparo custa e o que o número aguenta hoje, ANTES
+  // do botão. O custo médio sai do que a Meta já cobrou no período (insights do
+  // inbox), não de um preço inventado; o limite vem do número conectado.
+  const [numInfo, setNumInfo] = useS(null);
+  const [waStats, setWaStats] = useS(null);
+  useE(() => {
+    let vivo = true;
+    api.waNumber(product?.id).then((n) => vivo && setNumInfo(n)).catch(() => {});
+    api.waInsights().then((x) => vivo && setWaStats(x)).catch(() => {});
+    return () => { vivo = false; };
+  }, [product?.id]);
+  const limiteDia = Number(String(numInfo?.tier || "").replace(/\D/g, "")) || null;
+  const custoMedio = waStats?.costs?.messages > 0 ? Number(waStats.costs.cost) / Number(waStats.costs.messages) : null;
   const messageReady = channel === "email" ? !!camp.email.body : !!camp.wa.text;
   async function sendPrimary() {
     if (!chosen.length || !messageReady) return;
@@ -274,8 +287,15 @@ function DisparosScreen({ onOpenLead }) {
           {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
           {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
 
+          {/* TRÊS PASSOS NUMERADOS (13/09): público, mensagem e envio estavam
+              lado a lado sem ordem, e o disparo saía sem ninguém ver o custo
+              nem o limite do número. */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 12, color: "var(--fg-4)" }}>público por etapa:</span>
+            <span className="kicker" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span className="tnum" style={{ width: 18, height: 18, borderRadius: 999, background: "var(--btn-bg)", color: "var(--btn-fg)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, fontWeight: 700 }}>1</span>
+              Para quem
+            </span>
+            <span style={{ fontSize: 12, color: "var(--fg-4)" }}>etapas do funil:</span>
             {stageOptions.map((stage) => {
               const active = stagesSel.has(stage);
               return <button key={stage} onClick={() => toggleStage(stage)} style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 34, padding: "0 12px", borderRadius: 999, border: `1px solid ${active ? "var(--btn-bg)" : "var(--line-2)"}`, background: active ? "var(--btn-bg)" : "var(--bg-1)", color: active ? "var(--btn-fg)" : "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>{stage}<span className="tnum" style={{ fontSize: 11.5, opacity: .65 }}>{stageCount(stage)}</span></button>;
@@ -306,7 +326,10 @@ function DisparosScreen({ onOpenLead }) {
             </section>
 
             <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
-              <div className="kicker" style={{ fontWeight: 600 }}>Nova campanha</div>
+              <div className="kicker" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 600 }}>
+                <span className="tnum" style={{ width: 18, height: 18, borderRadius: 999, background: "var(--btn-bg)", color: "var(--btn-fg)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, fontWeight: 700 }}>2</span>
+                A mensagem
+              </div>
               <Segmented value={channel} onChange={setChannel} options={[{ value: "wa", label: "WhatsApp" }, { value: "email", label: "E-mail" }]} />
               <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                 <span style={{ fontSize: 12, color: "var(--fg-3)" }}>Template</span>
@@ -318,9 +341,54 @@ function DisparosScreen({ onOpenLead }) {
                 <textarea rows={4} value={channel === "email" ? camp.email.body : camp.wa.text} onChange={(event) => setCamp((current) => channel === "email" ? { ...current, email: { ...current.email, body: event.target.value } } : { ...current, wa: { text: event.target.value } })} placeholder="Oi {{nome}}! Seu diagnóstico da {{empresa}} ficou pronto — posso te mandar o resumo aqui mesmo?" style={{ width: "100%", minHeight: 96, padding: "9px 11px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.5, resize: "vertical", fontFamily: "inherit" }} />
               </label>
               <div style={{ fontSize: 12, color: "var(--fg-4)", lineHeight: 1.5 }}>variáveis: nome, empresa, etapa · o envio respeita a janela de 24h do WhatsApp</div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={sendPrimary} disabled={!chosen.length || !messageReady || emailBusy} style={{ height: 40, padding: "0 16px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 13, fontWeight: 600, opacity: !chosen.length || !messageReady || emailBusy ? .5 : 1 }}>{emailBusy ? "Enviando…" : `Enviar pra ${chosen.length} leads`}</button>
-                <button onClick={() => setTab("sequencias")} style={{ height: 40, padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 600 }}>Agendar</button>
+
+              {/* 3 · Conferir e disparar */}
+              <div style={{ borderTop: "1px solid var(--line-1)", paddingTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+                <div className="kicker" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 600 }}>
+                  <span className="tnum" style={{ width: 18, height: 18, borderRadius: 999, background: "var(--btn-bg)", color: "var(--btn-fg)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, fontWeight: 700 }}>3</span>
+                  Conferir e disparar
+                </div>
+                {/* A prévia com o PRIMEIRO da lista: variável que não resolve
+                    aparece aqui, não na conversa do cliente. */}
+                {chosen[0] && messageReady && (
+                  <div style={{ background: "var(--bg-inset)", border: "1px solid var(--line-faint)", borderRadius: "var(--r-3)", padding: "10px 12px" }}>
+                    <div className="kicker" style={{ marginBottom: 4 }}>{`prévia · ${chosen[0].name || "primeiro da lista"}`}</div>
+                    <div style={{ fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+                      {interpolate(channel === "email" ? camp.email.body : camp.wa.text, scriptTokens(chosen[0], product))}
+                    </div>
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
+                  <span style={{ display: "inline-flex", flexDirection: "column" }}>
+                    <span className="kicker">pessoas no disparo</span>
+                    <span className="tnum" style={{ fontSize: 15, fontWeight: 700 }}>{chosen.length}</span>
+                  </span>
+                  {channel === "wa" && custoMedio != null && (
+                    <span style={{ display: "inline-flex", flexDirection: "column" }} title="média do que a Meta cobrou por mensagem no período (pricing analytics) × o tamanho do disparo">
+                      <span className="kicker">custo estimado</span>
+                      <span className="tnum" style={{ fontSize: 15, fontWeight: 700 }}>{(custoMedio * chosen.length).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
+                    </span>
+                  )}
+                  {channel === "wa" && limiteDia && (
+                    <span style={{ display: "inline-flex", flexDirection: "column" }} title="limite de conversas iniciadas por dia do número (tier da Meta)">
+                      <span className="kicker">limite do número hoje</span>
+                      <span className="tnum" style={{ fontSize: 15, fontWeight: 700 }}>{limiteDia.toLocaleString("pt-BR")}</span>
+                    </span>
+                  )}
+                </div>
+                {/* Disparo grande em número de qualidade média derruba a saúde:
+                    o aviso vem ANTES do botão, não depois do estrago. */}
+                {channel === "wa" && limiteDia && chosen.length > limiteDia * 0.6 && (
+                  <div style={{ fontSize: 12, lineHeight: 1.5, color: chosen.length > limiteDia ? "var(--neg)" : "var(--warn)", background: chosen.length > limiteDia ? "var(--neg-soft)" : "var(--warn-soft)", border: "1px solid " + (chosen.length > limiteDia ? "color-mix(in srgb, var(--neg) 26%, transparent)" : "color-mix(in srgb, var(--warn) 26%, transparent)"), borderRadius: "var(--r-2)", padding: "9px 11px" }}>
+                    {chosen.length > limiteDia
+                      ? `${chosen.length} conversas passam do limite de ${limiteDia} do número hoje: o que passar vai falhar. Divida o disparo em dias.`
+                      : `${chosen.length} conversas cabem no limite de ${limiteDia} de hoje, mas passam de metade dele. Disparo acima de 60% do teto em dia de qualidade média derruba a saúde do número.`}
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={sendPrimary} disabled={!chosen.length || !messageReady || emailBusy} style={{ height: 40, padding: "0 16px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 13, fontWeight: 600, opacity: !chosen.length || !messageReady || emailBusy ? .5 : 1 }}>{emailBusy ? "Enviando…" : `Disparar para ${chosen.length}`}</button>
+                  <button onClick={() => setTab("sequencias")} style={{ height: 40, padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 600 }}>Agendar</button>
+                </div>
               </div>
             </section>
           </div>
