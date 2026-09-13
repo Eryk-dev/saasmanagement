@@ -132,6 +132,52 @@ function chainParts(d, people = {}) {
   return { boxes, steps };
 }
 
+// A cadeia dessa meta: o desdobramento como funil horizontal. Era um CARTÃO
+// separado (13/09) — virou seção dentro do cartão da meta, porque é a resposta
+// de "como essa meta acontece" e ninguém liga dois cartões de peso igual.
+function CadeiaDaMeta({ data, applyDerived }) {
+  if (!data.derived) return null;
+  return (
+    <div style={{ borderTop: "1px solid var(--line-1)", marginTop: 4, paddingTop: 14 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h4 className="card-title" style={{ margin: 0, fontSize: 14 }}>A cadeia dessa meta</h4>
+          <div className="card-sub" style={{ marginTop: 2 }}>
+            {data.derived.superMode ? `meta base batida · perseguindo a super meta ${data.derived.chasePct}%` : "o que a meta do mês exige de cada etapa · recalcula ao salvar"}
+            {infoDot("A meta de venda desce pela MESMA cadeia e pelas mesmas taxas da Análise de Pace. As taxas são as do FUNIL do último mês fechado, as mesmas contas da Visão geral filtrada naquele mês; sem amostra por lá (20 leads e 1 ganho), caem nos últimos 30 dias. Passe o mouse em cada número pra ver o período e a amostra.")}
+          </div>
+        </div>
+        {!data.derived.blockedBy && (
+          <button onClick={applyDerived}
+            title="Preenche os campos de VOLUME das vagas (calls, contatos, ganhos do time) com o desdobramento abaixo. As taxas ficam como estão: são a ambição que alimenta a cadeia, não resultado dela. Nada é gravado até clicar em salvar metas."
+            style={{ height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 600 }}>
+            derivar metas do pace
+          </button>
+        )}
+      </div>
+      {data.derived.blockedBy ? (
+        <div style={{ padding: "0 0 4px" }}>
+          <div className="mono" style={{ fontSize: 12.5, color: "var(--warn)" }}>{blockedText(data.derived.blockedBy)}</div>
+        </div>
+      ) : (
+        <div className="tbl-x" style={{ padding: "0 0 4px" }}>
+          <div style={{ display: "flex", gap: 0, alignItems: "stretch", minWidth: 680 }}>
+            {(() => {
+              const { boxes, steps } = chainParts(data.derived, data.people);
+              return boxes.map((b, i) => (
+                <React.Fragment key={b.nm}>
+                  {i > 0 && <ChainStep {...steps[i - 1]} />}
+                  <ChainBox {...b} />
+                </React.Fragment>
+              ));
+            })()}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MetasScreen() {
   const [product] = useActiveSaas();
   const [data, setData] = useS(null);
@@ -444,44 +490,11 @@ function MetasScreen() {
                   </label>
                 </div>
               </div>
+              <div style={{ padding: "0 var(--inset-x) 18px" }}>
+                <CadeiaDaMeta data={data} applyDerived={applyDerived} />
+              </div>
             </Card>
 
-            {/* 2 · Cadeia da meta: o desdobramento como funil horizontal, com o
-                botão que joga os volumes nos campos das vagas. */}
-            {data.derived && (
-              <Card title="Cadeia da meta"
-                hint={<>
-                  {data.derived.superMode ? `meta base batida · perseguindo a super meta ${data.derived.chasePct}%` : "o que a meta do mês exige de cada etapa · recalcula ao salvar"}
-                  {infoDot("A meta de venda desce pela MESMA cadeia e pelas mesmas taxas da Análise de Pace. As taxas são as do FUNIL do último mês fechado, as mesmas contas da Visão geral filtrada naquele mês; sem amostra por lá (20 leads e 1 ganho), caem nos últimos 30 dias. Passe o mouse em cada número pra ver o período e a amostra.")}
-                </>}
-                action={!data.derived.blockedBy ? (
-                  <button onClick={applyDerived}
-                    title="Preenche os campos de VOLUME das vagas (calls, contatos, ganhos do time) com o desdobramento abaixo. As taxas ficam como estão: são a ambição que alimenta a cadeia, não resultado dela. Nada é gravado até clicar em salvar metas."
-                    style={{ height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>
-                    derivar metas do pace
-                  </button>
-                ) : null}>
-                {data.derived.blockedBy ? (
-                  <div style={{ padding: "12px var(--inset-x) 18px" }}>
-                    <div className="mono" style={{ fontSize: 12.5, color: "var(--warn)" }}>{blockedText(data.derived.blockedBy)}</div>
-                  </div>
-                ) : (
-                  <div className="tbl-x" style={{ padding: "10px var(--inset-x) 18px" }}>
-                    <div style={{ display: "flex", gap: 0, alignItems: "stretch", minWidth: 680 }}>
-                      {(() => {
-                        const { boxes, steps } = chainParts(data.derived, data.people);
-                        return boxes.map((b, i) => (
-                          <React.Fragment key={b.nm}>
-                            {i > 0 && <ChainStep {...steps[i - 1]} />}
-                            <ChainBox {...b} />
-                          </React.Fragment>
-                        ));
-                      })()}
-                    </div>
-                  </div>
-                )}
-              </Card>
-            )}
 
             {/* 3 · Metas por vaga: campo vazio segue a meta do mês pela cadeia
                 (o placar usa o mesmo fallback); digitado vence, e quando briga
