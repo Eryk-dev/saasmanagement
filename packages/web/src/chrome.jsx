@@ -709,4 +709,4 @@ function UserDot({ name, photo, size = 30 }) {
 
 Object.assign(window, { NavRail, TopBar, NAV });
 
-export { NavRail, TopBar, NAV };
+export { NavRail, TopBar, NAV, GROUP_LABELS };
