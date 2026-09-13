@@ -1,5 +1,5 @@
 import React from "react";
-import { PageHead, Card, Pill, StatTile, Segmented } from "../components/viz.jsx";
+import { PageHead, Card, Pill, Segmented } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -153,20 +153,49 @@ function CallsScreen({ onOpenLead }) {
               </div>
             )}
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
-              <StatTile label="Calls" value={String(data.count)} />
-              <StatTile label="Quentes" value={String(temp.quente)} tone="pos" />
-              <StatTile label="Mornas" value={String(temp.morno)} tone="flat" />
-              <StatTile label="Frias" value={String(temp.frio)} tone="flat" />
-            </div>
+            {/* TEMPERATURA como barra (13/09): quatro tiles não diziam a
+                PROPORÇÃO, que é a leitura da tela — call quente é o que vira
+                cliente, e a barra mostra quanto do período foi quente sem
+                ninguém dividir de cabeça. */}
+            <section style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px var(--inset-x)" }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+                <h3 className="card-title" style={{ margin: 0 }}>Temperatura das calls</h3>
+                <span className="card-sub">{`${data.count} ${data.count === 1 ? "call resumida" : "calls resumidas"} no período`}</span>
+              </div>
+              <div style={{ display: "flex", height: 12, borderRadius: 999, overflow: "hidden", background: "var(--bg-2)" }}>
+                {[["quente", temp.quente, "var(--pos)"], ["morno", temp.morno, "var(--warn)"], ["frio", temp.frio, "var(--fg-4)"]].map(([k, n, cor]) => (
+                  n > 0 ? <div key={k} title={`${n} ${k}${n > 1 ? "s" : ""}`} style={{ width: `${(n / Math.max(1, data.count)) * 100}%`, background: cor }} /> : null
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 10 }}>
+                {[["quentes", temp.quente, "var(--pos)"], ["mornas", temp.morno, "var(--warn)"], ["frias", temp.frio, "var(--fg-4)"]].map(([rot, n, cor]) => (
+                  <span key={rot} style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 999, background: cor, alignSelf: "center" }} />
+                    <span className="tnum" style={{ fontSize: 15, fontWeight: 700 }}>{n}</span>
+                    <span style={{ fontSize: 12, color: "var(--fg-4)" }}>{`${rot} · ${data.count ? Math.round((n / data.count) * 100) : 0}%`}</span>
+                  </span>
+                ))}
+              </div>
+            </section>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 16 }}>
               <Card title="Objeções recorrentes" hint="o que mais trava as calls (× vezes · em aberto)">
                 <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "16px 24px 22px" }}>
                   {data.objecoes.length === 0 && <div className="mono dim" style={{ fontSize: 12 }}>nenhuma objeção registrada ainda</div>}
+                  {/* Objeção que se repete é conteúdo de treino esperando ser
+                      escrito: o atalho já abre o flashcard com a objeção como
+                      frente (13/09). */}
                   {data.objecoes.slice(0, 12).map((o, i) => (
-                    <Bar key={i} label={o.objecao} value={o.total} max={maxObj}
-                      tone={o.abertas > 0 ? "var(--neg)" : "var(--accent)"} sub={`${o.total}× · ${o.abertas} em aberto`} />
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <Bar label={o.objecao} value={o.total} max={maxObj}
+                          tone={o.abertas > 0 ? "var(--neg)" : "var(--accent)"} sub={`${o.total}× · ${o.abertas} em aberto`} />
+                      </div>
+                      <a href={`#training?objecao=${encodeURIComponent(o.objecao)}`} title="criar um card de treino com esta objeção"
+                        className="mono" style={{ flexShrink: 0, fontSize: 11, fontWeight: 600, color: "var(--accent)", textDecoration: "none", whiteSpace: "nowrap" }}>
+                        virar treino →
+                      </a>
+                    </div>
                   ))}
                 </div>
               </Card>

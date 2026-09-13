@@ -370,6 +370,7 @@ function DesempenhoScreen({ onOpenLead }) {
                 { label: "Não responderam", title: "dos contatados por ela, os sem mensagem recebida no WhatsApp depois do 1º contato" },
                 { label: "Social selling", title: "registrado por ela no Meu dia (+1 social selling)" },
                 { label: "Viraram leads", title: "leads com origem Social selling criados na janela com ela de dona" },
+                { label: "O que ouve na call", title: "objeções das calls de qualificação resumidas por IA na janela", right: false },
               ]}
               render={(r) => (
                 <>
@@ -381,6 +382,22 @@ function DesempenhoScreen({ onOpenLead }) {
                   <Num v={r.noReply} tone="neg" />
                   {counter(r.user, "socialSelling")}
                   <Num v={r.socialSellingLeads} />
+                  {/* O que a pessoa mais ouve na call (13/09): existia só na
+                      linha do closer e dentro do detalhe expandido. É o que diz
+                      onde o roteiro dela trava. */}
+                  <td style={{ maxWidth: 300 }}>
+                    {(() => {
+                      const ob = extra?.objections?.[r.user];
+                      if (!ob?.count) return <span className="dim" style={{ fontSize: 12 }}>sem call resumida</span>;
+                      return (
+                        <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                          {(ob.objecoes || []).slice(0, 2).map((o) => <span key={o.objecao} className={`chip ${o.abertas ? "neg" : ""}`} title={o.objecao}>{short(o.objecao, 40)} · {o.total}</span>)}
+                          {!(ob.objecoes || []).length && <span className="dim" style={{ fontSize: 12 }}>nenhuma objeção registrada</span>}
+                          {(ob.objecoes || []).length > 2 && <span className="dim" style={{ fontSize: 12 }}>+{ob.objecoes.length - 2}</span>}
+                        </span>
+                      );
+                    })()}
+                  </td>
                   <ReportCell onCopy={() => copy("sdr", r)} />
                 </>
               )}

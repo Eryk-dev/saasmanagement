@@ -1,5 +1,5 @@
 import React from "react";
-import { PageHead, Card, Pill, StatTile } from "../components/viz.jsx";
+import { PageHead, Card, Pill } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -72,12 +72,54 @@ function IntegrationsScreen({ onOpenLead }) {
               </div>
             )}
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
-              <StatTile label="Integrações" value={String(data.count)} />
-              <StatTile label="Satisfeitos" value={String(sent.satisfeito)} tone="pos" />
-              <StatTile label="Neutros" value={String(sent.neutro)} tone="flat" />
-              <StatTile label="Em risco" value={String(sent["em risco"])} tone={sent["em risco"] > 0 ? "down" : "flat"} delta="pegar churn cedo" />
-            </div>
+            {/* "EM RISCO" era o quarto tile de quatro iguais (13/09). É o
+                motivo de abrir esta tela: sobe pro topo, com NOME e ação — o
+                churn começa no onboarding e o CS tem poucos dias pra reverter. */}
+            {(() => {
+              const risco = (data.recent || []).filter((c) => c.sentimento === "em risco");
+              if (!sent["em risco"]) return null;
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "11px 16px", borderRadius: "var(--r-3)", border: "1px solid color-mix(in srgb, var(--neg) 26%, transparent)", background: "var(--neg-soft)" }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 650, color: "var(--neg)" }}>
+                    {`${sent["em risco"]} ${sent["em risco"] === 1 ? "cliente saiu da integração em risco" : "clientes saíram da integração em risco"}`}
+                  </span>
+                  {risco.length > 0 && (
+                    <span style={{ fontSize: 12.5, color: "var(--fg-2)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {risco.slice(0, 3).map((c) => c.leadName || c.company || "cliente").join(" · ")}
+                      {risco.length > 3 ? ` +${risco.length - 3}` : ""}
+                    </span>
+                  )}
+                  <span className="mono dim" style={{ fontSize: 11 }}>churn começa aqui</span>
+                  {risco[0]?.leadId && (
+                    <button onClick={() => openRecent(risco[0].leadId)} style={{ marginLeft: "auto", height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: 0, background: "var(--neg)", color: "oklch(1 0 0)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+                      {risco.length === 1 ? "abrir o cliente" : `abrir o primeiro dos ${risco.length}`}
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Como saíram: proporção, não quatro números soltos. */}
+            <section style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px var(--inset-x)" }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+                <h3 className="card-title" style={{ margin: 0 }}>Como saíram da integração</h3>
+                <span className="card-sub">{`${data.count} ${data.count === 1 ? "integração resumida" : "integrações resumidas"}`}</span>
+              </div>
+              <div style={{ display: "flex", height: 12, borderRadius: 999, overflow: "hidden", background: "var(--bg-2)" }}>
+                {[["satisfeito", sent.satisfeito, "var(--pos)"], ["neutro", sent.neutro, "var(--fg-4)"], ["em risco", sent["em risco"], "var(--neg)"]].map(([k, n, cor]) => (
+                  n > 0 ? <div key={k} title={`${n} ${k}`} style={{ width: `${(n / Math.max(1, data.count)) * 100}%`, background: cor }} /> : null
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 10 }}>
+                {[["satisfeitos", sent.satisfeito, "var(--pos)"], ["neutros", sent.neutro, "var(--fg-4)"], ["em risco", sent["em risco"], "var(--neg)"]].map(([rot, n, cor]) => (
+                  <span key={rot} style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 999, background: cor, alignSelf: "center" }} />
+                    <span className="tnum" style={{ fontSize: 15, fontWeight: 700 }}>{n}</span>
+                    <span style={{ fontSize: 12, color: "var(--fg-4)" }}>{rot}</span>
+                  </span>
+                ))}
+              </div>
+            </section>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 16 }}>
               <Card title="Pendências recorrentes do onboarding" hint="× vezes · quem resolve">

@@ -152,20 +152,37 @@ function EloAppScreen() {
           </Card>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
-          <Card title="Missões reveladas por dia" hint="o coração do produto — casal que revela volta amanhã">
-            <div style={{ padding: "8px var(--inset-x) 16px" }}>
-              <LineChart data={series(missionsDaily, "revealed")} height={170} />
-              <div className="mono dim" style={{ fontSize: 10.5, marginTop: 6, display: "flex", flexWrap: "wrap", gap: "4px 16px" }}>
-                <span>solo no período: {revealedTotal ? `${Math.round((soloTotal / revealedTotal) * 100)}%` : "—"}</span>
-                <span>novos casais no período: {couples.new_period ?? 0} ({couples.new_accepted_period ?? 0} já com par)</span>
+        {/* RETENÇÃO num bloco só (13/09): missões e streaks eram dois cartões
+            soltos, e a leitura do produto é uma frase só — casal que revela
+            missão volta amanhã. Os números do hábito ficam juntos, com a curva
+            embaixo deles. */}
+        <Card title="Retenção · o hábito" hint="casal que revela missão volta amanhã">
+          <div style={{ padding: "14px var(--inset-x) 18px", display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+              {[
+                { rot: "casais ativos", v: missions.active_couples ?? 0, nota: `${couples.new_period ?? 0} novos no período` },
+                { rot: "missões reveladas", v: missions.revealed ?? 0, nota: revealedTotal ? `${Math.round((soloTotal / revealedTotal) * 100)}% solo` : "no período" },
+                { rot: "streaks vivos", v: streaks.active ?? 0, nota: `maior atual ${streaks.top_current ?? 0} dias` },
+              ].map((x) => (
+                <div key={x.rot} style={{ minWidth: 120 }}>
+                  <div className="kicker">{x.rot}</div>
+                  <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 24, fontWeight: 700, lineHeight: 1.15 }}>{typeof x.v === "number" ? x.v.toLocaleString("pt-BR") : x.v}</div>
+                  <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{x.nota}</div>
+                </div>
+              ))}
+              <div style={{ marginLeft: "auto", alignSelf: "flex-end" }} className="mono dim">
+                <span style={{ fontSize: 10.5 }}>{`o recorde de streak da base é ${streaks.top_record ?? 0} dias`}</span>
               </div>
             </div>
-          </Card>
 
-          <Card title="Streaks" hint="casais com streak vivo (missão ontem ou hoje)">
-            <div style={{ padding: "14px var(--inset-x) 18px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, alignItems: "end", padding: "8px 4px" }}>
+            <div>
+              <div className="kicker" style={{ marginBottom: 2 }}>missões reveladas por dia</div>
+              <LineChart data={series(missionsDaily, "revealed")} height={150} />
+            </div>
+
+            <div>
+              <div className="kicker" style={{ marginBottom: 6 }}>casais por tamanho de streak</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, alignItems: "end" }}>
                 {streakBuckets.map((b) => (
                   <div key={b.label} style={{ textAlign: "center" }}>
                     <div className="mono tnum" style={{ fontSize: 15, fontWeight: 600 }}>{b.v}</div>
@@ -176,14 +193,9 @@ function EloAppScreen() {
                   </div>
                 ))}
               </div>
-              <div className="mono dim" style={{ fontSize: 10.5, marginTop: 6, display: "flex", gap: 16 }}>
-                <span>ativos: <b style={{ color: "var(--fg-2)" }}>{streaks.active ?? 0}</b></span>
-                <span>maior atual: <b style={{ color: "var(--fg-2)" }}>{streaks.top_current ?? 0}</b></span>
-                <span>recorde histórico: <b style={{ color: "var(--fg-2)" }}>{streaks.top_record ?? 0}</b></span>
-              </div>
             </div>
-          </Card>
-        </div>
+          </div>
+        </Card>
 
       </div>
     </div>
