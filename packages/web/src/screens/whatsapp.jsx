@@ -106,87 +106,73 @@ function dur(min) {
 // Faixa de contexto no topo do inbox: saúde do número (o que protege a conta)
 // e os números que mudam a ação do dia — quem está esperando resposta, quanto
 // a gente demora e quantas janelas de 24h ainda estão abertas.
-function WaTopStats({ numInfo, stats }) {
+// Topo do Inbox (redesign de 13/09): a faixa tinha TREZE números de peso igual
+// e rolagem lateral — ninguém lê uma régua que sai da tela. Fica o que manda no
+// dia (a fila esperando resposta, com o botão de agir ao lado) e um resumo do
+// número em uma linha; o resto do painel de números vive no title do
+// "detalhes do número ⓘ", que é onde ele era consultado de vez em quando.
+function WaTopStats({ numInfo, stats, onResponder }) {
   const health = window.SEED?.CONFIG?.whatsapp?.health || null;
   const healthTone = health?.level === "danger" ? { label: "em risco", color: "var(--neg)" }
     : health?.level === "warn" ? { label: "atenção", color: "var(--warn)" }
-    : { label: "ok", color: "var(--pos)" };
+    : { label: "alta", color: "var(--pos)" };
   const q = QUALITY[String(numInfo?.quality || "").toUpperCase()];
   const tier = numInfo?.tier ? (TIER_LABEL[numInfo.tier] || String(numInfo.tier).replace("TIER_", "").toLowerCase()) : null;
   const waiting = stats?.awaiting || 0;
+  const espera = stats?.oldestWaitHours != null ? dur(Math.round(stats.oldestWaitHours * 60)) : null;
+  const tipica = dur(stats?.medianReplyMinutes);
+
   const item = (label, value, tone) => (
-    <div key={label} style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 96 }}>
+    <span key={label} style={{ display: "inline-flex", alignItems: "baseline", gap: 6, whiteSpace: "nowrap" }}>
       <span className="kicker">{label}</span>
-      <span className="tnum" style={{ fontSize: 15, fontWeight: 600, color: tone || "var(--fg-1)", lineHeight: 1.2 }}>{value}</span>
-    </div>
+      <span className="tnum" style={{ fontSize: 13.5, fontWeight: 600, color: tone || "var(--fg-1)" }}>{value}</span>
+    </span>
   );
-  const sep = <div style={{ width: 1, alignSelf: "stretch", background: "var(--line-1)" }} />;
+  // O que saiu da faixa continua legível, num lugar só.
+  const detalhes = stats ? [
+    numInfo?.display ? `número ${numInfo.display}${numInfo.name ? ` · ${numInfo.name}` : ""}` : null,
+    q ? `qualidade ${q.label}` : null,
+    tier ? `limite de envio ${tier}` : null,
+    numInfo?.throughput ? `vazão ${numInfo.throughput === "STANDARD" ? "padrão" : String(numInfo.throughput).toLowerCase()}` : null,
+    `não lidas ${stats.unread}`,
+    `recebidas ${stats.inbound} · enviadas ${stats.outbound}`,
+    stats.withoutLead > 0 ? `sem lead ${stats.withoutLead}` : null,
+    stats.form && stats.form.formLeads > 0
+      ? `form → whats ${stats.form.formStarted}/${stats.form.formLeads} (${Math.round((stats.form.formStarted / stats.form.formLeads) * 100)}%)` : null,
+    stats.costs && stats.costs.cost != null
+      ? `custo ${stats.days}d ${Number(stats.costs.cost).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}${stats.costs.messages ? ` · ${stats.costs.messages} msg` : ""}` : null,
+    ...(health?.messages || []),
+  ].filter(Boolean).join("\n") : "carregando…";
 
   return (
-    <div style={{ margin: "12px var(--pad-x) 0", padding: "12px 16px", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", display: "flex", alignItems: "center", gap: 18, flexWrap: "nowrap", overflowX: "auto" }}>
-      {/* Saúde da conta mora aqui (o banner separado saiu, Leo 23/08): o
-          detalhe do problema fica no title, passa o mouse pra ler. */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 84, flexShrink: 0 }}
-        title={(health?.messages || []).join("\n") || "conta saudável"}>
-        <span className="kicker">Saúde</span>
-        <span style={{ fontSize: 15, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6, color: healthTone.color }}>
-          <span style={{ width: 8, height: 8, borderRadius: 99, background: healthTone.color }} />{healthTone.label}
+    <div style={{ margin: "12px var(--pad-x) 0", display: "flex", flexDirection: "column", gap: 8 }}>
+      {/* O aviso com prazo sobe pro topo, com a ação ao lado. */}
+      {waiting > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "11px 16px", borderRadius: "var(--r-3)", border: "1px solid color-mix(in srgb, var(--neg) 26%, transparent)", background: "var(--neg-soft)" }}>
+          <span style={{ fontSize: 13.5, fontWeight: 650, color: "var(--neg)" }}>
+            {`${waiting} ${waiting === 1 ? "conversa esperando resposta" : "conversas esperando resposta"}`}
+          </span>
+          {espera && <span style={{ fontSize: 12.5, color: "var(--fg-2)" }}>{`a mais antiga há ${espera}`}</span>}
+          {tipica !== "—" && <span className="mono dim" style={{ fontSize: 11 }}>{`a gente costuma responder em ${tipica}`}</span>}
+          <button onClick={onResponder} style={{ marginLeft: "auto", height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: 0, background: "var(--neg)", color: "oklch(1 0 0)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+            responder agora
+          </button>
+        </div>
+      )}
+      {/* Resumo do número: uma linha, sem rolagem. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap", padding: "10px 16px", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
+        <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }} title={(health?.messages || []).join("\n") || "conta saudável"}>
+          <span className="kicker">Saúde do número</span>
+          <span style={{ fontSize: 13.5, fontWeight: 600, color: healthTone.color, display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <span style={{ width: 7, height: 7, borderRadius: 99, background: healthTone.color }} />{healthTone.label}
+          </span>
+          {tier && <span className="mono dim" style={{ fontSize: 11 }}>{tier}</span>}
         </span>
+        {stats && item("Janela aberta", stats.openWindow)}
+        {stats && item(`Conversas · ${stats.days}d`, stats.activeThreads)}
+        {stats && waiting === 0 && item("Sem resposta", "0", "var(--pos)")}
+        <span className="mono" title={detalhes} style={{ marginLeft: "auto", fontSize: 11, color: "var(--fg-4)", cursor: "help", borderBottom: "1px dotted var(--line-2)" }}>detalhes do número ⓘ</span>
       </div>
-      {sep}
-      {numInfo?.ok && (
-        <>
-          <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 150 }}>
-            <span className="kicker">Número</span>
-            <span style={{ fontSize: 13.5, fontWeight: 600 }}>{numInfo.display || "—"}</span>
-            {numInfo.name && <span style={{ fontSize: 11, color: "var(--fg-3)" }}>{numInfo.name}</span>}
-          </div>
-          {sep}
-          {q && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 96 }}>
-              <span className="kicker">Qualidade</span>
-              <span style={{ fontSize: 15, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <span style={{ width: 8, height: 8, borderRadius: 99, background: q.color }} />{q.label}
-              </span>
-            </div>
-          )}
-          {tier && item("Limite de envio", tier)}
-          {numInfo.throughput && item("Vazão", numInfo.throughput === "STANDARD" ? "padrão" : String(numInfo.throughput).toLowerCase())}
-          {sep}
-        </>
-      )}
-
-      {stats ? (
-        <>
-          {item(`Conversas · ${stats.days}d`, stats.activeThreads, null)}
-          {/* O número que manda no dia: cliente falou e ninguém voltou. */}
-          {item("Sem resposta", waiting ? `${waiting}${stats.oldestWaitHours != null ? ` · ${dur(Math.round(stats.oldestWaitHours * 60))}` : ""}` : "0", waiting ? "var(--neg)" : "var(--pos)")}
-          {item("Resposta típica", dur(stats.medianReplyMinutes))}
-          {/* Fora da janela de 24h a Meta só aceita template aprovado. */}
-          {item("Janela aberta", stats.openWindow)}
-          {item("Não lidas", stats.unread, stats.unread ? "var(--warn)" : null)}
-          {item("Recebidas / enviadas", `${stats.inbound} / ${stats.outbound}`)}
-          {stats.withoutLead > 0 && item("Sem lead", stats.withoutLead)}
-          {/* Preencheu o form E disparou a mensagem do obrigado = lead mais
-              quente. Mostra a taxa da janela. */}
-          {stats.form && stats.form.formLeads > 0 && item(
-            `Form → mandou o Whats · ${stats.days}d`,
-            `${stats.form.formStarted}/${stats.form.formLeads} · ${Math.round((stats.form.formStarted / stats.form.formLeads) * 100)}%`,
-            null,
-          )}
-          {/* Custo real do período (pricing_analytics da conta, cobrança por
-              mensagem desde 01/07/2025). Serviço dentro da janela de 24h é
-              grátis; o que pesa são os templates. Valores em centavos (fmt.money
-              arredonda pra real inteiro e escondia o R$0,42), então formata com
-              centavos aqui. */}
-          {stats.costs && stats.costs.cost != null && item(
-            `Custo · ${stats.days}d`,
-            `${Number(stats.costs.cost).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}${stats.costs.messages ? ` · ${stats.costs.messages} msg` : ""}`,
-          )}
-        </>
-      ) : (
-        <span className="mono dim" style={{ fontSize: 11 }}>carregando números do inbox…</span>
-      )}
     </div>
   );
 }
@@ -240,6 +226,7 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
   // Filtro da lista: quem respondeu (lead falou por último) × sem resposta
   // (a gente falou por último e o lead ainda não voltou).
   const [answerFilter, setAnswerFilter] = React.useState("all"); // all | in | out
+  const [maisFiltros, setMaisFiltros] = React.useState(false); // "mais ▾": pra humano · respondidas · encerradas
   // Card do cliente ao lado da conversa (desktop) — preferência lembrada.
   const [sideOpen, setSideOpen] = React.useState(() => { try { return localStorage.getItem("cockpit_wa_sidecard") !== "0"; } catch { return true; } });
   const toggleSide = () => setSideOpen((v) => { const n = !v; try { localStorage.setItem("cockpit_wa_sidecard", n ? "1" : "0"); } catch { /* ignore */ } return n; });
@@ -441,7 +428,14 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
       {channel === "automacoes" && <WaAutomationsPanel key={product?.id} product={product} />}
 
       {channel === "whatsapp" && <>
-      {configured && <WaTopStats numInfo={numInfo} stats={stats} />}
+      {configured && <WaTopStats numInfo={numInfo} stats={stats} onResponder={() => {
+        // Filtra a fila e já abre a conversa que espera há mais tempo: o aviso
+        // só vale se levar pra ação.
+        setAnswerFilter("out");
+        const fila = (threads || []).filter((t) => t.status !== "closed" && t.lastDir === "out");
+        const antiga = fila.slice().sort((a, b) => new Date(a.lastAt || 0) - new Date(b.lastAt || 0))[0];
+        if (antiga) { setSel(antiga.id); setVirtual(null); }
+      }} />}
 
       {configured && numInfo && numInfo.ok === false && (
         <div style={{ margin: "12px var(--pad-x) 0", padding: "10px 14px", border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)", fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.5 }}>
@@ -505,7 +499,15 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
             {/* Respondidas = o lead falou por último; sem resposta = a última é
                 nossa e o lead ainda não voltou (a fila do re-toque). */}
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-              {[["all", "todas", null], ["bot", "robô", answerCounts.bot], ["handoff", "pra humano", answerCounts.handoff], ["in", "respondidas", answerCounts.in], ["out", "sem resposta", answerCounts.out], ["closed", "encerradas", answerCounts.closed]].map(([id, label, n]) => {
+              {/* Seis filtros viram TRÊS + "mais ▾" (13/09): todas, sem
+                  resposta e robô resolvem o dia; pra humano, respondidas e
+                  encerradas são consulta, não rotina. O filtro escondido que
+                  está ATIVO continua aparecendo, senão a lista filtra e a barra
+                  não diz por quê. */}
+              {[["all", "todas", null], ["out", "sem resposta", answerCounts.out], ["bot", "robô", answerCounts.bot],
+                ...(maisFiltros || ["handoff", "in", "closed"].includes(answerFilter)
+                  ? [["handoff", "pra humano", answerCounts.handoff], ["in", "respondidas", answerCounts.in], ["closed", "encerradas", answerCounts.closed]]
+                  : [])].map(([id, label, n]) => {
                 const on = answerFilter === id;
                 return (
                   <button key={id} onClick={() => setAnswerFilter(id)}
@@ -517,6 +519,12 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
                   </button>
                 );
               })}
+              {!maisFiltros && !["handoff", "in", "closed"].includes(answerFilter) && (
+                <button onClick={() => setMaisFiltros(true)} className="mono"
+                  style={{ height: 26, padding: "0 8px", borderRadius: 999, fontSize: 11, color: "var(--fg-4)", border: "1px dashed var(--line-2)", background: "transparent", cursor: "pointer" }}>
+                  mais ▾
+                </button>
+              )}
             </div>
           </div>
           <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
