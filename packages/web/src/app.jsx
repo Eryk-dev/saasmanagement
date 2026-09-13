@@ -370,6 +370,8 @@ function App() {
         activeSaasId={activeProduct?.id}
         onClose={() => setSearchOpen(false)}
         onOpenLead={(l) => { setSearchOpen(false); openLead(l); }}
+        onNav={(id) => nav(id)}
+        onNewLead={(nome) => openForm("leads", nome ? { name: nome } : null)}
       />
 
       {editor && (

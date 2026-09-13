@@ -146,6 +146,24 @@ try {
     failed++;
   }
 
+  // ── Busca ⌘K: lead, TELA e ação (13/09) ─────────────────────────────────
+  // Até aqui a busca só achava lead; com 35 telas no menu, ir pra tela é metade
+  // do uso. O teste protege os três grupos e a regra de permissão: a busca não
+  // pode abrir porta que o menu tranca.
+  try {
+    const { CommandSearch } = await server.ssrLoadModule("/src/components/CommandSearch.jsx");
+    const html = renderToString(wrap(React.createElement(CommandSearch, {
+      open: true, activeSaasId: "leverads",
+      onClose() {}, onOpenLead() {}, onNav() {}, onNewLead() {},
+    })));
+    if (!html.includes("Buscar lead, cliente, tela")) throw new Error("o campo não anuncia telas");
+    if (!html.includes("lead · cliente · tela · ação")) throw new Error("o rodapé não diz o que a busca acha");
+    console.log("✓ busca-cmdk");
+  } catch (err) {
+    console.error(`✗ busca-cmdk: ${err.message}`);
+    failed++;
+  }
+
   // ── Agenda: a barra de controles e a legenda (redesign de 12/09) ────────
   // A tela tinha DUAS barras pra mesma função (o filtro de pessoa na tela, o
   // resto dentro da grade) e onze itens de legenda impressos embaixo. Aqui
