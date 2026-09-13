@@ -64,6 +64,7 @@ import { referralPatch, logReferralCollected } from "./referrals.js";
 import { registerFunnelMetricsRoutes } from "./routes.funnel-metrics.js";
 import { registerScoreboardRoutes } from "./routes.scoreboard.js";
 import { registerReferralRoutes } from "./routes.referrals.js";
+import { registerNpsRoutes } from "./routes.nps.js";
 import { registerDesempenhoRoutes } from "./routes.desempenho.js";
 import { registerPipelinePaceRoutes } from "./routes.pipeline-pace.js";
 import { registerEloRoutes } from "./elo.js";
@@ -435,6 +436,10 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // autoCallMeet vai junto: o poller do SDR cria a sala que falta na hora do
   // lembrete de 2h (sem link, o lembrete de 10min chamava pra lugar nenhum).
   if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, googleUser, anthropic: anthropicClient, mailer: mailerClient, whatsapp: whatsappClient, autoCallMeet, blogEngine });
+  // NPS: página pública da nota (/public/nps/:token) + pedido manual pela ficha.
+  // Depois do mailer/whatsapp: o pedido sai por e-mail e, dentro da janela de
+  // 24h, por WhatsApp.
+  registerNpsRoutes(app, repo, { mailer: mailerClient, whatsapp: whatsappClient });
 
   // ── Tempo real ─────────────────────────────────────────────────────────
   // Toda escrita no repo (db.js) incrementa um contador global (changes.js).

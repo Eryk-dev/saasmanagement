@@ -86,7 +86,10 @@ export const META_CATALOG = [
     role: "integrator", label: "Integrador · CS", hint: "integração e pós-venda",
     metrics: [
       { metric: "retentionRate", kind: "rate", label: "Retenção", unit: "%", default: 95 },
-      { metric: "nps", kind: "avg", label: "NPS alvo", unit: "n", default: null },
+      // NPS é ÍNDICE (promotores − detratores, de -100 a 100), não média das
+      // notas: é a régua do npsIndex no metrics-core e a que o bônus do plano
+      // de remuneração (NPS >= 80) cobra.
+      { metric: "nps", kind: "avg", label: "NPS alvo (índice)", unit: "n", default: null },
       { metric: "newAccounts", kind: "flow", label: "Contas novas no mês", unit: "n", default: null, team: true },
       { metric: "activeAccounts", kind: "stock", label: "Contas ativas", unit: "n", default: null, team: true },
       // Trabalho de CS (retenção): upsell e indicação. SEM `team` de propósito — o

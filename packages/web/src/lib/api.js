@@ -636,6 +636,9 @@ export const api = {
   // últimos 30 dias. `referralAsk` registra o pedido (tarefa + carimbo).
   referralQueue: (saas) => req("GET", `/api/referrals/queue?saas=${encodeURIComponent(saas || "")}`),
   referralAsk: (body) => req("POST", "/api/referrals/ask", body),
+  // NPS: pede a nota agora (e-mail sozinho, WhatsApp dentro da janela de 24h,
+  // senão vira tarefa com o texto pronto pro dono da conta).
+  npsAsk: (id) => req("POST", `/api/customers/${id}/nps/ask`, {}),
   // Análise de Desempenho: objeções por closer na janela, produção do social
   // (feed/stories) e os registros manuais do dia (social selling/criativos).
   desempenho: (saas, { since, until } = {}) => {

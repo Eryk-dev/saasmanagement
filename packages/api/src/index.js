@@ -22,6 +22,7 @@ import { startTrainingReminder } from "./training-reminder.js";
 import { startTaskReminder } from "./task-reminder.js";
 import { startWaWaitingReminder } from "./wa-waiting-reminder.js";
 import { startCustomerMilestones } from "./customer-milestones.js";
+import { startNpsAsks } from "./nps.js";
 import { startBlogEngine } from "./blog-engine.js";
 import { startStoriesCapture } from "./routes.desempenho.js";
 import { startShopifySync } from "./routes.webhooks.js";
@@ -51,7 +52,10 @@ const OPEN_PREFIXES = ["/f/", "/public/forms/", "/fi/", "/public/integration-for
   // Blog público (routes.blog-public.js): o copylever faz proxy de leverads.com.br/blog
   // pra cá. Sem o header x-blog-proxy tudo sai noindex + canonical em leverads.com.br,
   // então expor no host do cockpit não duplica conteúdo. Raiz `public` já está no nginx.
-  "/public/blog/"];
+  "/public/blog/",
+  // NPS (routes.nps.js): o cliente responde a nota pelo link do e-mail/WhatsApp,
+  // sem login. O token de 32 hex do link é quem identifica a avaliação.
+  "/public/nps/"];
 
 // Read the key from either header style: `x-api-key: <key>` or `Authorization: Bearer <key>`.
 // Exceção: /api/events (SSE) — EventSource não manda headers, então a key/token
@@ -127,6 +131,10 @@ try {
   // upsell de mês 6, renovação): cada marco que chega a hora vira tarefa do dono
   // da conta. Marco vencido há mais de 30 dias fica pra trás de propósito.
   startCustomerMilestones(repo, { log: app.log });
+  // NPS: pergunta de 0 a 10 no mês 1, no mês 3 e de 90 em 90 dias depois.
+  // E-mail sai sozinho; WhatsApp só dentro da janela de 24h, senão vira tarefa
+  // com o texto pronto pro dono da conta.
+  startNpsAsks(repo, { ...app.integrationClients, log: app.log });
   // Blog SEO: minera pautas, rascunha 1 post por ciclo e publica os agendados
   // (15 min). No-op sem doc app_config/blog_<saas> ou com rules.enabled=false;
   // sem IA configurada só publica o que já está agendado.

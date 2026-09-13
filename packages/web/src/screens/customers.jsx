@@ -14,6 +14,7 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { leadTier, waLink, GRADE_STYLE, GRADE_GRID, GRADE_ACCOUNTS, GRADE_LISTINGS } from "../lib/ui.js";
 import { scriptChecklist } from "../lib/scripts.js";
 import { displayName, usersByRole } from "../lib/users.js";
+import { npsBucket, lastNps, pendingNps, NPS_TONE } from "../lib/nps.js";
 import { paymentLabel, paymentUpfront, paymentRecurring, paymentCustom, PAY_STATUS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf, mpMethodLabel, accruedAmountOf, isRecurringClose } from "../lib/payments.js";
 import { PaymentMethodSelect } from "../components/lead-blocks.jsx";
 import { UpsellPanel } from "../components/UpsellPanel.jsx";
@@ -1193,6 +1194,62 @@ function CustomerFacts({ customer, lead, product, leverOrg, onPatch, cicloAte = 
 // assinaturas + faturas. Direita: régua de retenção + histórico do funil.
 // "Editar" NÃO abre outro popup: troca o corpo pelo form (EntityForm bare)
 // dentro deste mesmo modal, pros campos raros (flags, saúde, dono).
+// Bloco de NPS da ficha. A pergunta sai sozinha na régua (mês 1, mês 3 e de 90
+// em 90 dias), mas o dono da conta pode pedir na hora: o botão manda o e-mail e,
+// se a conversa estiver dentro da janela de 24h, o WhatsApp; fora dela vira
+// tarefa com o texto pronto, porque texto livre fora da janela é reprovado pela
+// Meta depois de "enviar".
+function NpsBox({ customer }) {
+  const all = window.SEED?.NPS || [];
+  const ultimo = lastNps(customer, all);
+  const pendente = pendingNps(customer, all);
+  const [enviando, setEnviando] = useState(false);
+  const [aviso, setAviso] = useState("");
+  const bucket = ultimo ? npsBucket(ultimo.score) : "";
+  async function pedir() {
+    if (enviando) return;
+    setEnviando(true);
+    try {
+      const r = await api.npsAsk(customer.id);
+      setAviso(r?.channel === "task"
+        ? "fora da janela do WhatsApp: abri uma tarefa com o texto pronto"
+        : `pedido enviado por ${String(r?.channel || "").replace("+", " e ")}`);
+    } catch (e) {
+      setAviso(e?.message || "não consegui pedir agora");
+    } finally { setEnviando(false); }
+  }
+  return (
+    <div style={{ ...BOX, marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <div className="kicker">NPS</div>
+        <button onClick={pedir} disabled={enviando}
+          style={{ marginLeft: "auto", height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", cursor: enviando ? "default" : "pointer" }}>
+          {enviando ? "pedindo…" : "pedir NPS agora"}
+        </button>
+      </div>
+      {ultimo ? (
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 22, fontWeight: 700, lineHeight: 1 }}>{ultimo.score}</span>
+          <Pill tone={NPS_TONE[bucket] || "mut"}>{bucket}</Pill>
+          <span style={{ fontSize: 12, color: "var(--fg-3)" }}>
+            {ultimo.answeredAt ? new Date(ultimo.answeredAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).replace(".", "") : ""}
+          </span>
+        </div>
+      ) : (
+        <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
+          {pendente ? "Pedido enviado, ainda sem resposta." : "Nenhuma nota ainda. A pergunta sai sozinha a partir do mês 1."}
+        </div>
+      )}
+      {ultimo?.reason && (
+        <div style={{ marginTop: 8, fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.5, fontStyle: "italic" }}>
+          "{ultimo.reason}"
+        </div>
+      )}
+      {aviso && <div style={{ marginTop: 8, fontSize: 12, color: "var(--fg-3)" }}>{aviso}</div>}
+    </div>
+  );
+}
+
 function CustomerModal({ customer, lead, product, subs, invoices, planLabel, lastContact, leverOrg, onComplete, onPatch, onClose, onNewReferral }) {
   const { refresh } = useData();
   const [editing, setEditing] = useState(false);
@@ -1628,6 +1685,8 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
           )}
         </div>
         ) : (
+        <>
+        <NpsBox customer={customer} />
         <div style={BOX}>
           <div className="kicker" style={{ marginBottom: 8 }}>Ações de retenção</div>
           {!customer.startedAt && (
@@ -1671,6 +1730,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
             </div>
           )}
         </div>
+        </>
         )}
 
         {/* Indicações em resumo: o inteiro (com o link) mora na aba própria. */}

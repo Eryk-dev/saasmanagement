@@ -203,7 +203,7 @@ test("CS: contas ativas e novas por owner do cliente", async () => {
   await app.close();
 });
 
-test("CS: retenção cai com churn na janela e NPS médio das contas do owner", async () => {
+test("CS: retenção cai com churn na janela e ÍNDICE de NPS das contas do owner", async () => {
   const { app, repo } = await buildApp();
   await repo.create("customers", { id: "c1", saas: "leverads", owner: "u_cs", startedAt: "2026-05-01T10:00:00.000Z" });
   await repo.create("customers", { id: "c2", saas: "leverads", owner: "u_cs", startedAt: "2026-05-01T10:00:00.000Z" });
@@ -211,7 +211,10 @@ test("CS: retenção cai com churn na janela e NPS médio das contas do owner", 
   // 1 cliente com churn (endedAt — o evento do mecanismo de churn) na janela
   // → churn 1 sobre base 4 (3 ativas + 1 churnada); churnado sai das ativas.
   await repo.create("customers", { id: "cx", saas: "leverads", owner: "u_cs", startedAt: "2026-04-01T10:00:00.000Z", endedAt: "2026-07-10T10:00:00.000Z", churnReason: "preco" });
-  // NPS: duas respostas das contas dele (9 e 7 → média 8)
+  // NPS: duas respostas das contas dele. Desde 13/09/2026 o card mostra o
+  // ÍNDICE clássico (promotores − detratores), não a média das notas: 9 é
+  // promotor, 7 é neutro, nenhum detrator → (1 − 0) / 2 × 100 = 50. Média daria
+  // 8, que é outra régua e não é o que o bônus de "NPS >= 80" cobra.
   await repo.create("nps", { id: "n1", saas: "leverads", customer: "c1", score: 9 });
   await repo.create("nps", { id: "n2", saas: "leverads", customer: "c2", score: 7 });
 
@@ -219,8 +222,10 @@ test("CS: retenção cai com churn na janela e NPS médio das contas do owner", 
   assert.equal(cs.churned, 1);
   assert.equal(cs.activeAccounts, 3); // cx churnada sai da carteira ativa
   assert.equal(cs.retentionRate, 75); // (4 - 1) / 4 × 100
-  assert.equal(cs.nps, 8);
+  assert.equal(cs.nps, 50);
   assert.equal(cs.npsCount, 2);
+  assert.equal(cs.npsPromoters, 1);
+  assert.equal(cs.npsDetractors, 0);
   await app.close();
 });
 
