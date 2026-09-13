@@ -4,7 +4,7 @@ import { useData } from "../data.jsx";
 import { usersByRole, currentUser, displayName, userColor } from "../lib/users.js";
 import { PageHead, Segmented } from "../components/viz.jsx";
 import { PrimaryButton } from "../atoms.jsx";
-import { AgendaView, AGENDA_TYPE_COLORS } from "./pipeline.jsx";
+import { AgendaView, AGENDA_TYPE_COLORS } from "./agenda-grid.jsx";
 import { stageKind } from "../lib/funnel.js";
 import { useActiveSaas } from "../lib/workspace.js";
 
