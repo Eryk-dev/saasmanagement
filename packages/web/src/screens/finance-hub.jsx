@@ -165,23 +165,57 @@ export function ResumoTab({ product, month }) {
 
   return (
     <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 190px), 1fr))", gap: 12 }}>
-        <StatTile label="Recebido no mês" value={money(fin.receber.recebidosMes)} delta={`espelho MP: ${money(fin.conciliacao.espelhoMes)}`}
-          title="Faturas baixadas no mês (a mesma régua de caixa do cockpit). Embaixo, o que entrou na conta do Mercado Pago no mês." />
-        <StatTile label="A receber" value={money(fin.receber.emAberto.total)}
-          delta={fin.receber.vencidas.n ? `${int(fin.receber.vencidas.n)} vencida${fin.receber.vencidas.n > 1 ? "s" : ""} · ${money(fin.receber.vencidas.total)}` : "nada vencido"}
-          tone={fin.receber.vencidas.n ? "down" : "flat"}
-          title="Faturas em aberto agora (qualquer mês). Cobrança e baixa moram em Clientes → Assinaturas." />
-        <StatTile label="Despesas do mês" value={money(despesasMes)} delta="contas do mês + custos automáticos"
-          title="Contas a pagar com competência no mês + custos da aba Custos (mídia, IA, WhatsApp, percentuais)." />
-        <StatTile label="A pagar em aberto" value={money(abertasTotal)}
-          delta={fin.tiles.vencidos.n ? `${int(fin.tiles.vencidos.n)} vencida${fin.tiles.vencidos.n > 1 ? "s" : ""} · ${money(fin.tiles.vencidos.total)}` : "nada vencido"}
-          tone={fin.tiles.vencidos.n ? "down" : "flat"} />
-        <StatTile label="Margem bruta" value={margem == null ? "—" : `${String(margem).replace(".", ",")}%`}
-          delta={`lucro bruto ${money(bruto)}`} tone={margem != null && margem < 70 ? "down" : "flat"}
-          title="(Receita líquida − custo do serviço) ÷ receita líquida. SaaS saudável opera entre 70% e 85%; abaixo de 70% é alerta." />
-        <StatTile label="Resultado do mês" value={money(resultado)} tone={resultado < 0 ? "down" : "flat"}
-          delta="recebido − despesas do mês" title="Regime de caixa na receita (faturas baixadas) e competência nas despesas." />
+      {/* O RESUMO ABRE PELAS PENDÊNCIAS COM PRAZO (13/09), não por seis
+          números de peso igual: dinheiro vencido a receber, conta que vence
+          esta semana e entrada sem dono no Mercado Pago são o que exige alguém
+          hoje. A foto do mês (recebido, despesas, margem, resultado) desce pra
+          uma linha, e o detalhe continua no DRE logo abaixo. */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {fin.receber.vencidas.n > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "11px 16px", borderRadius: "var(--r-3)", border: "1px solid color-mix(in srgb, var(--neg) 26%, transparent)", background: "var(--neg-soft)" }}>
+            <span style={{ fontSize: 13.5, fontWeight: 650, color: "var(--neg)" }}>{`${money(fin.receber.vencidas.total)} vencidos a receber`}</span>
+            <span style={{ fontSize: 12.5, color: "var(--fg-2)" }}>
+              {`${int(fin.receber.vencidas.n)} ${fin.receber.vencidas.n === 1 ? "fatura" : "faturas"}`}
+            </span>
+            <a href="#customers" style={{ marginLeft: "auto", height: 30, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--neg)", color: "oklch(1 0 0)", fontSize: 12.5, fontWeight: 700, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
+              cobrar em Clientes ↗
+            </a>
+          </div>
+        )}
+        {fin.tiles.vencidos.n > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "11px 16px", borderRadius: "var(--r-3)", border: "1px solid color-mix(in srgb, var(--warn) 30%, transparent)", background: "var(--warn-soft)" }}>
+            <span style={{ fontSize: 13.5, fontWeight: 650, color: "var(--warn)" }}>
+              {`${int(fin.tiles.vencidos.n)} ${fin.tiles.vencidos.n === 1 ? "conta vencida" : "contas vencidas"} · ${money(fin.tiles.vencidos.total)}`}
+            </span>
+            <span style={{ fontSize: 12.5, color: "var(--fg-2)" }}>
+              {fin.tiles.vencemHoje.n ? `mais ${int(fin.tiles.vencemHoje.n)} vencendo hoje (${money(fin.tiles.vencemHoje.total)})` : "folha e fornecedores"}
+            </span>
+          </div>
+        )}
+        {fin.conciliacao.pendentes.n > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "11px 16px", borderRadius: "var(--r-3)", border: "1px solid var(--line-1)", background: "var(--bg-1)" }}>
+            <span style={{ fontSize: 13.5, fontWeight: 650 }}>{`${int(fin.conciliacao.pendentes.n)} entradas sem dono no Mercado Pago`}</span>
+            <span style={{ fontSize: 12.5, color: "var(--fg-2)" }}>{`${money(fin.conciliacao.pendentes.total)} esperando cliente ou motivo`}</span>
+          </div>
+        )}
+      </div>
+
+      {/* A foto do mês: uma linha, com o detalhe no title de sempre. */}
+      <div style={{ display: "flex", gap: 22, flexWrap: "wrap", padding: "12px var(--inset-x)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
+        {[
+          { rot: "recebido no mês", v: money(fin.receber.recebidosMes), nota: `espelho MP ${money(fin.conciliacao.espelhoMes)}`, title: "Faturas baixadas no mês (a mesma régua de caixa do cockpit)." },
+          { rot: "a receber", v: money(fin.receber.emAberto.total), nota: fin.receber.vencidas.n ? `${int(fin.receber.vencidas.n)} vencida${fin.receber.vencidas.n > 1 ? "s" : ""}` : "nada vencido", title: "Faturas em aberto agora (qualquer mês)." },
+          { rot: "despesas do mês", v: money(despesasMes), nota: "contas + custos automáticos", title: "Contas a pagar com competência no mês + custos da aba Custos." },
+          { rot: "a pagar em aberto", v: money(abertasTotal), nota: fin.tiles.vencidos.n ? `${int(fin.tiles.vencidos.n)} vencida${fin.tiles.vencidos.n > 1 ? "s" : ""}` : "nada vencido", title: "Contas em aberto: vencidas + vencendo hoje + a vencer." },
+          { rot: "margem bruta", v: margem == null ? "—" : `${String(margem).replace(".", ",")}%`, nota: `lucro bruto ${money(bruto)}`, tone: margem != null && margem < 70 ? "neg" : null, title: "(Receita líquida − custo do serviço) ÷ receita líquida. SaaS saudável opera entre 70% e 85%." },
+          { rot: "resultado do mês", v: money(resultado), nota: "recebido − despesas", tone: resultado < 0 ? "neg" : "pos", title: "Regime de caixa na receita (faturas baixadas) e competência nas despesas." },
+        ].map((x) => (
+          <div key={x.rot} title={x.title} style={{ minWidth: 128 }}>
+            <div className="kicker">{x.rot}</div>
+            <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 20, fontWeight: 700, lineHeight: 1.2, color: x.tone === "neg" ? "var(--neg)" : x.tone === "pos" ? "var(--pos)" : "var(--fg-1)" }}>{x.v}</div>
+            <div style={{ fontSize: 11, color: "var(--fg-4)" }}>{x.nota}</div>
+          </div>
+        ))}
       </div>
 
       <div className="resp-cols" style={{ "--cols": "1fr 1fr", gap: 16 }}>
