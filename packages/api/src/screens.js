@@ -15,7 +15,7 @@
 
 export const SCREEN_IDS = [
   "overview", "today", "pipeline", "customers", "metrics", "expenses",
-  "social", "forms", "proposals", "creative", "offers", "contracts", "intform", "disparos", "whatsapp", "agenda", "consultas", "calls", "integrations", "aquisicao", "analise", "funcionarios", "desempenho", "metas", "training", "tasks", "mindmaps", "settings",
+  "social", "forms", "proposals", "creative", "offers", "contracts", "intform", "disparos", "whatsapp", "agenda", "consultas", "calls", "integrations", "analise", "funcionarios", "desempenho", "metas", "training", "tasks", "mindmaps", "settings",
   "outbound", "remuneracao",
   "blog", // redação do blog SEO (grupo Marketing)
   "eloapp", "landingpages",
@@ -81,8 +81,8 @@ const ROUTE_SCREENS = [
   ["/api/social/new-followers", ["today", "pipeline", "overview", "social"]],
   ["/api/social/dms", ["whatsapp", "social"]], // DMs de IG/Messenger no Inbox (tela whatsapp)
   ["/api/social", ["social"]],
-  ["/api/marketing", ["metrics", "aquisicao"]],
-  ["/api/metrics/", ["metrics", "aquisicao"]],
+  ["/api/marketing", ["metrics"]],
+  ["/api/metrics/", ["metrics"]],
   ["/api/elo/", ["eloapp", "landingpages", "overview"]],  // agregados do app Elo (Análise do App + Visão geral do workspace)
   ["/api/lp/", ["landingpages"]],             // resumo do beacon das landing pages
   ["/api/ad_insights", ["metrics"]],
@@ -112,7 +112,7 @@ const ROUTE_SCREENS = [
   ["/api/referrals/", ["customers"]],
   ["/api/billing/", ["customers"]],
   ["/api/blog", ["blog"]],               // redação do blog: pautas, rascunhos, agenda, preview (routes.blog.js)
-  ["/api/forms", ["forms", "aquisicao"]], // inclui /:id/funnel e /preview (Aquisição usa o funil do form)
+  ["/api/forms", ["forms", "metrics"]], // inclui /:id/funnel e /preview (a Publicidade usa o funil do form)
   ["/api/form_submissions", ["forms"]],
   ["/api/form_events", ["forms"]],
   ["/api/proposal_templates", ["proposals"]],

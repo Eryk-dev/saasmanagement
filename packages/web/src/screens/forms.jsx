@@ -230,9 +230,32 @@ function FormsScreen({ saasId }) {
 
                   {pub ? (
                     <>
-                      <div style={{ display: "flex", gap: 22, marginTop: 18, padding: "14px 16px", background: "var(--bg-inset)", border: "1px solid var(--line-faint)", borderRadius: "var(--r-3)", flexWrap: "wrap" }}>
-                        {[[window.fmt.int(visits), `visitas · ${win.label}`], [window.fmt.int(starts), `começaram · ${pct(starts, visits)}`], [window.fmt.int(leads), `leads · ${pct(leads, starts)}`]].map(([value, label]) => <div key={label}><div className="tnum" style={{ fontSize: 18, fontWeight: 700 }}>{value}</div><div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{label}</div></div>)}
-                        <button onClick={() => setView({ mode: "subs", form: f })} style={{ textAlign: "left" }}><div className="tnum" style={{ fontSize: 18, fontWeight: 700, color: "var(--pos)" }}>{pct(leads, visits)}</div><div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>conversão total</div></button>
+                      {/* A linha do formulário conta a história inteira
+                          (13/09): visitas → envios → viraram cliente, com a
+                          conversão de cada passo embaixo. "Viraram cliente" é o
+                          que decide qual form vale a verba — e vive no funil da
+                          API desde 13/09 (won/revenue por formulário). */}
+                      <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 18, padding: "14px 16px", background: "var(--bg-inset)", border: "1px solid var(--line-faint)", borderRadius: "var(--r-3)", flexWrap: "wrap" }}>
+                        {[
+                          { v: window.fmt.int(visits), l: `visitas · ${win.label}` },
+                          { v: window.fmt.int(starts), l: `começaram · ${pct(starts, visits)} das visitas` },
+                          { v: window.fmt.int(leads), l: `envios · ${pct(leads, visits)} das visitas`, acao: () => setView({ mode: "subs", form: f }) },
+                          { v: window.fmt.int(Number(stat?.won) || 0), l: `viraram cliente · ${pct(Number(stat?.won) || 0, leads)} dos envios`, cor: "var(--pos)" },
+                          ...(Number(stat?.revenue) > 0 ? [{ v: window.fmt.money(stat.revenue), l: "receita fechada" }] : []),
+                        ].map((p, i) => (
+                          <React.Fragment key={p.l}>
+                            {i > 0 && <span className="mono dim" style={{ fontSize: 13 }}>→</span>}
+                            <div onClick={p.acao} style={{ minWidth: 108, cursor: p.acao ? "pointer" : "default" }}>
+                              <div className="tnum" style={{ fontSize: 18, fontWeight: 700, color: p.cor || "var(--fg-1)" }}>{p.v}</div>
+                              <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{p.l}</div>
+                            </div>
+                          </React.Fragment>
+                        ))}
+                        {stat?.lastSubmitAt && (
+                          <span className="mono dim" style={{ marginLeft: "auto", fontSize: 11 }}>
+                            {`último envio ${new Date(stat.lastSubmitAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "")}`}
+                          </span>
+                        )}
                       </div>
                       {abVariants.length > 1 && (
                         <div style={{ marginTop: 16 }}>

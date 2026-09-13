@@ -47,11 +47,11 @@ test("screenForRequest: mapa por prefixo + escritas administrativas", () => {
   // Leituras da Visão geral (tiles de aquisição + Resultado do mês): GET ganha
   // "overview" de carona; escrita/ação continua só da tela dona.
   assert.deepEqual(screenForRequest("GET", "/api/expenses/summary/leverads"), ["expenses", "overview"]);
-  assert.deepEqual(screenForRequest("GET", "/api/marketing/leverads"), ["metrics", "aquisicao", "overview"]);
-  assert.deepEqual(screenForRequest("POST", "/api/marketing/sync"), ["metrics", "aquisicao"]);
+  assert.deepEqual(screenForRequest("GET", "/api/marketing/leverads"), ["metrics", "overview"]);
+  assert.deepEqual(screenForRequest("POST", "/api/marketing/sync"), ["metrics"]);
   assert.deepEqual(screenForRequest("GET", "/api/invoices"), ["customers", "overview"]);
   assert.deepEqual(screenForRequest("POST", "/api/invoices/i1/pay"), ["customers"]);
-  assert.deepEqual(screenForRequest("GET", "/api/metrics/leverads"), ["metrics", "aquisicao", "overview"]);
+  assert.deepEqual(screenForRequest("GET", "/api/metrics/leverads"), ["metrics", "overview"]);
   assert.deepEqual(screenForRequest("POST", "/api/expenses"), ["expenses"]);
   assert.deepEqual(screenForRequest("POST", "/api/leads/l1/proposal"), ["pipeline", "today"]);
   assert.deepEqual(screenForRequest("POST", "/api/activities"), ["pipeline", "today"]);

@@ -1,7 +1,7 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { fmt } from "../lib/format.js";
-import { PageHead, Segmented, Card, LineChart, StatTile } from "../components/viz.jsx";
+import { PageHead, Card, LineChart } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { FunnelLadder } from "../charts.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -111,13 +111,6 @@ function LandingPagesScreen() {
           </Card>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
-          <StatTile label="Sessões na LP" value={String(lp.sessions)} delta={`${lp.ctaClicks} cliques em CTA`} />
-          <StatTile label="Sessões no checkout" value={String(checkout.sessions)} delta={lp.sessions ? `${Math.round((checkout.sessions / lp.sessions) * 100)}% da LP` : "—"} />
-          <StatTile label="Pedidos no período" value={created != null ? String(created) : "—"} delta={approved != null ? `${approved} pagos` : "banco do Elo não configurado"} />
-          <StatTile label="Receita no período" value={revenue != null ? centavos(revenue) : "—"} delta={created ? `conversão pedido→pago: ${created ? Math.round(((approved || 0) / created) * 100) : 0}%` : undefined} />
-        </div>
-
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
           <Card title="Funil da página" hint={`últimos ${d.days || days} dias`}>
             <div style={{ padding: "14px var(--inset-x) 18px" }}>
@@ -128,73 +121,78 @@ function LandingPagesScreen() {
             </div>
           </Card>
 
-          <Card title="Visitas na LP por dia" hint="sessões únicas">
+          {/* As duas curvas juntas: visita e pagamento no mesmo cartão, uma
+              embaixo da outra, com a mesma escala de dias — comparar duas
+              tendências em dois cartões distantes não funciona. */}
+          <Card title="Visitas e pagamentos por dia" hint="beacon da LP e pedidos pagos do checkout">
             <div style={{ padding: "8px var(--inset-x) 16px" }}>
-              <LineChart data={dailySeries} height={170} />
+              <div className="kicker" style={{ marginBottom: 2 }}>visitas na LP</div>
+              <LineChart data={dailySeries} height={128} />
+              <div className="kicker" style={{ margin: "6px 0 2px" }}>pagamentos</div>
+              <LineChart data={paidSeries} height={110} color="var(--chart-2)" />
             </div>
           </Card>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
-          <Card title="Conversão por origem" hint="pedidos do checkout por UTM (utm_source · utm_campaign)">
-            <div style={{ padding: "10px var(--inset-x) 16px" }}>
-              {!conv && <div className="dim" style={{ fontSize: 12.5, padding: "8px 0" }}>Configure ELO_DB_URL na API pra ver pedidos e receita por origem.</div>}
-              {conv && !byUtm.length && <div className="dim" style={{ fontSize: 12.5, padding: "8px 0" }}>sem pedidos no período</div>}
-              {byUtm.length > 0 && (
-                <div style={{ overflowX: "auto" }}><table className="mono" style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
-                  <thead>
-                    <tr style={{ color: "var(--fg-4)", textAlign: "right" }}>
-                      <th style={{ textAlign: "left", padding: "4px 0", fontWeight: 500 }}>origem</th>
-                      <th style={{ fontWeight: 500 }}>pedidos</th>
-                      <th style={{ fontWeight: 500 }}>pagos</th>
-                      <th style={{ fontWeight: 500 }}>ativados</th>
-                      <th style={{ fontWeight: 500 }}>receita</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {byUtm.map((u, i) => (
-                      <tr key={i} style={{ borderTop: "1px solid var(--line-1)", textAlign: "right" }}>
-                        <td style={{ textAlign: "left", padding: "5px 8px 5px 0", color: "var(--fg-2)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {u.source}{u.campaign ? ` · ${u.campaign}` : ""}
-                        </td>
-                        <td className="tnum">{u.created}</td>
-                        <td className="tnum" style={{ color: u.approved ? "var(--fg-1)" : "var(--fg-4)" }}>{u.approved}</td>
-                        <td className="tnum">{u.activated}</td>
-                        <td className="tnum">{centavos(u.revenue_cents)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table></div>
-              )}
-            </div>
-          </Card>
-
-          <Card title="Visitas por origem" hint="sessões do beacon (UTM ou referrer derivado)">
-            <div style={{ padding: "10px var(--inset-x) 16px" }}>
-              {!sources.length && <div className="dim" style={{ fontSize: 12.5, padding: "8px 0" }}>sem visitas no período</div>}
-              {sources.map((s) => {
-                const max = Math.max(1, ...sources.map((x) => x.sessions));
-                return (
-                  <div key={s.source} style={{ display: "grid", gridTemplateColumns: "140px 1fr 56px", gap: 8, alignItems: "center", padding: "4px 0", fontSize: 11 }} className="mono">
-                    <span style={{ color: "var(--fg-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.source}</span>
-                    <div style={{ height: 12, background: "var(--bg-3)", borderRadius: 2, position: "relative" }}>
-                      <div style={{ position: "absolute", inset: 0, width: `${(s.sessions / max) * 100}%`, background: "var(--accent)", opacity: 0.85, borderRadius: 2 }} />
+        {/* POR ORIGEM, uma tabela só (13/09): eram dois cartões lado a lado
+            respondendo a mesma pergunta — "de onde vem e o que rende" — com o
+            leitor casando as linhas no olho. Visitas vêm do beacon e pedidos do
+            checkout; a junção é por ORIGEM (não há ligação 1:1 sem PII). */}
+        <Card title="Por origem" hint="visitas do beacon e pedidos do checkout na mesma linha">
+          <div style={{ padding: "10px var(--inset-x) 16px" }}>
+            {!conv && !sources.length && <div className="dim" style={{ fontSize: 12.5, padding: "8px 0" }}>sem visitas nem pedidos no período</div>}
+            {!conv && sources.length > 0 && <div className="dim" style={{ fontSize: 12.5, padding: "0 0 8px" }}>Configure ELO_DB_URL na API pra ver pedidos e receita por origem.</div>}
+            {(sources.length > 0 || byUtm.length > 0) && (() => {
+              const linhas = new Map();
+              const pega = (k) => { if (!linhas.has(k)) linhas.set(k, { origem: k, sessions: 0, created: 0, approved: 0, revenue: 0, campanhas: [] }); return linhas.get(k); };
+              for (const x of sources) pega(x.source || "direto").sessions += Number(x.sessions) || 0;
+              for (const u of byUtm) {
+                const r = pega(u.source || "direto");
+                r.created += Number(u.created) || 0;
+                r.approved += Number(u.approved) || 0;
+                r.revenue += Number(u.revenue_cents) || 0;
+                if (u.campaign) r.campanhas.push(u.campaign);
+              }
+              const lista = [...linhas.values()].sort((a, b) => (b.revenue - a.revenue) || (b.sessions - a.sessions));
+              const maxSes = Math.max(1, ...lista.map((x) => x.sessions));
+              return (
+                <div className="tbl-x">
+                  <div>
+                    <div className="kicker" style={{ display: "grid", gridTemplateColumns: "minmax(140px,1.4fr) minmax(90px,1fr) 84px 84px 110px", gap: 10, padding: "6px 0", fontWeight: 600 }}>
+                      <span>Origem</span><span>Visitas</span><span style={{ textAlign: "right" }}>Pedidos</span><span style={{ textAlign: "right" }}>Pagos</span><span style={{ textAlign: "right" }}>Receita</span>
                     </div>
-                    <span className="tnum" style={{ textAlign: "right", color: "var(--fg-2)" }}>{s.sessions}</span>
+                    {lista.map((r) => (
+                      <div key={r.origem} style={{ display: "grid", gridTemplateColumns: "minmax(140px,1.4fr) minmax(90px,1fr) 84px 84px 110px", gap: 10, padding: "8px 0", alignItems: "center", borderTop: "1px solid var(--line-faint)", fontSize: 12.5 }}>
+                        <span style={{ minWidth: 0 }}>
+                          <span style={{ display: "block", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.origem}</span>
+                          {r.campanhas.length > 0 && (
+                            <span className="mono dim" style={{ fontSize: 10.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>
+                              {r.campanhas.slice(0, 2).join(" · ")}{r.campanhas.length > 2 ? ` +${r.campanhas.length - 2}` : ""}
+                            </span>
+                          )}
+                        </span>
+                        <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                          <span className="tnum" style={{ minWidth: 42 }}>{r.sessions || "—"}</span>
+                          <span style={{ flex: 1, height: 6, borderRadius: 3, background: "var(--bg-3)", minWidth: 24 }}>
+                            <span style={{ display: "block", height: "100%", width: `${Math.round((r.sessions / maxSes) * 100)}%`, background: "var(--accent)", borderRadius: 3, opacity: 0.85 }} />
+                          </span>
+                        </span>
+                        <span className="tnum" style={{ textAlign: "right" }}>{r.created || "—"}</span>
+                        <span className="tnum" style={{ textAlign: "right", color: r.approved ? "var(--pos)" : "var(--fg-4)" }}>{r.approved || "—"}</span>
+                        <span className="tnum" style={{ textAlign: "right", fontWeight: 600 }}>{r.revenue ? centavos(r.revenue) : "—"}</span>
+                      </div>
+                    ))}
                   </div>
-                );
-              })}
+                </div>
+              );
+            })()}
+            <div className="mono dim" style={{ fontSize: 10.5, marginTop: 10 }}>
+              visitas = sessões únicas do beacon (UTM ou referrer derivado) · pedidos e receita = checkout web, por utm_source
             </div>
-          </Card>
-        </div>
+          </div>
+        </Card>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
-          <Card title="Pagamentos por dia" hint="checkout web">
-            <div style={{ padding: "8px var(--inset-x) 16px" }}>
-              <LineChart data={paidSeries} height={150} />
-            </div>
-          </Card>
-
           <Card title="Plano × método" hint="pedidos do período">
             <div style={{ padding: "10px var(--inset-x) 16px" }}>
               {!byPlan.length && <div className="dim" style={{ fontSize: 12.5, padding: "8px 0" }}>sem pedidos no período</div>}

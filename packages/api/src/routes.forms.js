@@ -433,14 +433,15 @@ export function registerFormRoutes(app, repo, opts = {}) {
     const product = form.saas ? await repo.get("products", form.saas) : null;
     // `internal` fica no JS: ausente/false/true no documento, o `->>` só compara
     // o que existe. Form e janela vão pro Postgres.
-    const subs = groupKeys.length
-      ? (await repo.listWhere(
-          "form_submissions",
-          { form: form.id, createdAt: { gte: since, lte: until } },
-          { fields: ["lead", "variant", "pain", "internal", "createdAt"] },
-        )).filter((x) => !x.internal)
-      : [];
-    const leadsById = groupKeys.length ? new Map((await repo.list("leads")).map((l) => [l.id, l])) : new Map();
+    // As submissões (e os leads) do período são lidas SEMPRE, não só quando há
+    // teste A/B: a lista de formulários mostra quantos envios viraram CLIENTE
+    // por formulário (13/09), e sem isso a régua ficaria só dentro do A/B.
+    const subs = (await repo.listWhere(
+      "form_submissions",
+      { form: form.id, createdAt: { gte: since, lte: until } },
+      { fields: ["lead", "variant", "pain", "internal", "createdAt"] },
+    )).filter((x) => !x.internal);
+    const leadsById = new Map((await repo.list("leads")).map((l) => [l.id, l]));
     const variants = groupKeys.map((gk) => {
       const [pain, vid] = gk.split("|");
       const mine = (e) => (e.variant || "") === vid && (e.pain || "") === pain;
@@ -490,10 +491,18 @@ export function registerFormRoutes(app, repo, opts = {}) {
         views: ou("view"), starts: ou("start"), submits: ou("submit"),
       };
     }).sort((a, b) => b.views - a.views);
+    // Fechamento do FORMULÁRIO inteiro (não só por variante): quantos envios
+    // do período viraram contrato e quanto renderam.
+    const todosLeads = subs.map((x) => leadsById.get(x.lead)).filter(Boolean);
+    const ganhos = todosLeads.filter((l) => isWonLead(product, l));
     return {
       views: uniq((e) => e.event === "view"),
       starts: uniq((e) => e.event === "start"),
       submits: uniq((e) => e.event === "submit"),
+      leads: subs.length,
+      won: ganhos.length,
+      revenue: ganhos.reduce((sum, l) => sum + (Number(l.amount) || 0), 0),
+      lastSubmitAt: subs.map((x) => String(x.createdAt || "")).filter(Boolean).sort().pop() || null,
       ...(variants.length ? { variants } : {}),
       ...(origins.length ? { origins } : {}),
       steps: steps.map((q) => ({

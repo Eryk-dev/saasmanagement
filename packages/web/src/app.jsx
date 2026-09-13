@@ -28,7 +28,6 @@ import { ConsultasScreen } from "./screens/consultas.jsx";
 import { CallsScreen } from "./screens/calls.jsx";
 import { IntegrationsScreen } from "./screens/integrations.jsx";
 import { AnaliseScreen } from "./screens/analise.jsx";
-import { AquisicaoScreen } from "./screens/aquisicao.jsx";
 import { FuncionariosScreen } from "./screens/funcionarios.jsx";
 import { DesempenhoScreen } from "./screens/desempenho.jsx";
 import { MetasScreen } from "./screens/metas.jsx";
@@ -59,7 +58,7 @@ const { useState: useStA, useEffect: useEA, useCallback: useCbA } = React;
 // mais seletor próprio (o mês dos Custos fica: é mês CONTÁBIL de lançamento,
 // não janela de análise).
 const PERIOD_SCREENS = new Set([
-  "overview", "aquisicao", "funcionarios", "desempenho",
+  "overview", "funcionarios", "desempenho",
   "metrics", "forms", "expenses", "customers", "social",
   "eloapp", "landingpages", "offers",
 ]);
@@ -233,7 +232,6 @@ function App() {
     disparos:    ["Marketing", "Disparos"],
     blog:        ["Marketing", "Blog"],
     eloapp:      ["Análises", "Análise do App"],
-    aquisicao:   ["Análises", "Análise de Aquisição"],
     calls:       ["Análises", "Análise de Pitches"],
     integrations: ["Análises", "Análise de Integração"],
     analise:     ["Análises", "Análise de Pace"],
@@ -317,7 +315,6 @@ function App() {
           {scr === "whatsapp"    && <WhatsappInboxScreen onOpenLead={openLead} initialThread={params.waThread} initialLead={params.waLead} initialDraft={params.waDraft} />}
           {scr === "calls"       && <CallsScreen onOpenLead={openLead} />}
           {scr === "integrations" && <IntegrationsScreen onOpenLead={openLead} />}
-          {scr === "aquisicao"   && <AquisicaoScreen />}
           {scr === "analise"     && <AnaliseScreen />}
           {scr === "eloapp"      && <EloAppScreen />}
           {scr === "landingpages" && <LandingPagesScreen />}
