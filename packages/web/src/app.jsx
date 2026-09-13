@@ -312,7 +312,7 @@ function App() {
           {scr === "blog"        && <BlogScreen />}
           {scr === "outbound"    && <OutboundScreen onOpenLead={openLead} />}
           {scr === "remuneracao" && <RemuneracaoScreen />}
-          {scr === "whatsapp"    && <WhatsappInboxScreen onOpenLead={openLead} initialThread={params.waThread} initialLead={params.waLead} initialDraft={params.waDraft} />}
+          {scr === "whatsapp"    && <WhatsappInboxScreen onOpenLead={openLead} initialThread={params.waThread || hashRest()} initialLead={params.waLead} initialDraft={params.waDraft} />}
           {scr === "calls"       && <CallsScreen onOpenLead={openLead} />}
           {scr === "integrations" && <IntegrationsScreen onOpenLead={openLead} />}
           {scr === "analise"     && <AnaliseScreen />}
@@ -423,6 +423,14 @@ function App() {
 
 // Deep link com sub-estado: "#tasks/ta_x1" abre a tela Tarefas com o card
 // aberto (a tela lê o resto do hash); o 1º segmento é a tela.
+// Sub-estado do hash ("#whatsapp/wa_123" → "wa_123"): a tela lê o resto, como
+// as Tarefas já faziam. É o que faz o aviso da caixa de entrada abrir a
+// CONVERSA, não só o Inbox.
+function hashRest() {
+  const h = (typeof location !== "undefined" ? location.hash : "").replace(/^#\/?/, "");
+  return h.split(/[?]/)[0].split("/").slice(1).join("/");
+}
+
 function screenFromHash() {
   const h = (typeof location !== "undefined" ? location.hash : "").replace(/^#\/?/, "");
   const id = h.split(/[/?]/)[0];

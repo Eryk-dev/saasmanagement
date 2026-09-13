@@ -69,6 +69,14 @@ export function NotificationsBell() {
       api.notificationsRead({ ids: [n.id] }).catch(() => {});
     }
     setOpen(false);
+    // Destino que não é tarefa (13/09): o aviso de silêncio no WhatsApp abre a
+    // conversa. Tela fechada pra pessoa = aviso, não navegação quebrada.
+    if (n.link?.screen) {
+      if (!canSeeScreen(n.link.screen)) { toast("Você não tem acesso a essa tela", "warn"); return; }
+      if (n.saas && n.saas !== getActiveSaasId()) setActiveSaas(n.saas);
+      location.hash = n.link.thread ? `${n.link.screen}/${n.link.thread}` : n.link.screen;
+      return;
+    }
     if (!n.task) return;
     if (!canSeeScreen("tasks")) { toast("Você não tem acesso à tela de Tarefas", "warn"); return; }
     if (n.saas && n.saas !== getActiveSaasId()) setActiveSaas(n.saas);
@@ -120,9 +128,9 @@ export function NotificationsBell() {
                 {/* O QUE FAZER no próprio item (13/09): a linha inteira era
                     clicável sem dizer pra onde ia. O verbo fica à vista, e é o
                     mesmo clique. */}
-                {n.task && (
-                  <span style={{ flexShrink: 0, alignSelf: "center", fontSize: 11.5, fontWeight: 600, color: "var(--accent)" }}>
-                    {n.type === "mention" ? "responder" : n.type === "assigned" ? "assumir" : "abrir"} →
+                {(n.task || n.link?.screen) && (
+                  <span style={{ flexShrink: 0, alignSelf: "center", fontSize: 11.5, fontWeight: 600, color: n.type === "wa_waiting" ? "var(--neg)" : "var(--accent)" }}>
+                    {n.type === "wa_waiting" ? "responder" : n.type === "mention" ? "responder" : n.type === "assigned" ? "assumir" : "abrir"} →
                   </span>
                 )}
               </button>
