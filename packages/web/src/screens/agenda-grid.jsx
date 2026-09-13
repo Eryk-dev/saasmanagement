@@ -86,10 +86,11 @@ export const AGENDA_TYPE_COLORS = {
 // grade cheia, verde = aconteceu e vermelho = furou se lê de longe, sem abrir
 // card nenhum.
 const AGENDA_NOSHOW = { bg: "oklch(0.90 0.07 25)", line: "oklch(0.60 0.14 25)", label: "no-show" };
+const WD_LONG = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 const AGENDA_INK = "oklch(0.22 0.02 250)";      // letra "preta" sobre as cores claras
 const AGENDA_INK_SOFT = "oklch(0.4 0.02 250)";  // linha secundária (hora, empresa)
 
-function AgendaView({ leads, consultations = [], onOpenLead, blocking, person }) {
+function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, people = [], onPerson, view: viewProp, onView }) {
   const [dayOff, setDayOff] = useStP(0); // offset em DIAS a partir de hoje
   const [showTouches, setShowTouchesState] = useStP(() => {
     try { return localStorage.getItem("cockpit_agenda_touches") === "1"; } catch { return false; }
@@ -113,11 +114,15 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
   // em faixas lado a lado; na semana as faixas por pessoa não têm largura —
   // os eventos dividem a coluna do dia por sobreposição e a pessoa continua
   // na barrinha de cor à esquerda da pílula.
-  const [view, setViewState] = useStP(() => {
+  // Desde 12/09 quem manda na visão é a TELA (o alternador mora no cabeçalho,
+  // ao lado de "+ compromisso"); o estado interno fica de reserva pra quem
+  // renderizar a grade sem passar a prop.
+  const [viewInner, setViewInner] = useStP(() => {
     try { return localStorage.getItem("cockpit_agenda_view") || "day"; } catch { return "day"; }
   });
+  const view = viewProp || viewInner;
   const setView = (v) => {
-    setViewState(v);
+    if (onView) onView(v); else setViewInner(v);
     try { localStorage.setItem("cockpit_agenda_view", v); } catch { /* ignore */ }
   };
   const isWeek = view === "week";
@@ -234,7 +239,8 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
     background: "var(--bg-2)", border: "1px solid var(--line-1)", color: "var(--fg-2)", cursor: "pointer",
   };
 
-  // Time da legenda: quem tem papel de closer/integrador (Ajustes → Equipe).
+  // O time com agenda: quem tem papel de closer/integrador (Ajustes → Equipe).
+  // Serve à ordem das faixas por pessoa no dia (personRank).
   const team = [...usersByRole("closer"), ...usersByRole("integrator")]
     .filter((u, i, arr) => arr.findIndex(x => x.id === u.id) === i);
   const toneOf = (id) => (id ? userColor(id) : "var(--fg-4)");
@@ -297,27 +303,113 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
   };
   const dayLayouts = days.map(layoutDay);
 
-  const calls = events.filter(e => e.kind === "call" || e.kind === "integração" || e.kind === "consulta").length;
+  // ── Vãos livres (12/09) ───────────────────────────────────────────────
+  // Ninguém faz essa conta olhando a grade: "onde cabe mais uma call?". Marca
+  // as horas tomadas do dia (evento ocupa a hora cheia; bloqueio ocupa o
+  // intervalo dele) e devolve os vãos de 1h ou mais. `who` = null olha tudo do
+  // recorte atual; com pessoa, só a agenda dela.
+  const busyHoursOf = (d, who) => {
+    const set = new Set();
+    for (const e of events) {
+      if (e.t.toDateString() !== d.toDateString()) continue;
+      if (who != null && (e.who || "") !== who) continue;
+      const h = e.t.getHours();
+      if (h >= H0 && h < H1) set.add(h);
+    }
+    for (const b of (blocking ? blocking.blocksFor(d) : [])) {
+      const parts = [b.user, ...(Array.isArray(b.users) ? b.users : [])].filter(Boolean);
+      if (who != null && parts.length && !parts.includes(who)) continue;
+      const from = b.allDay ? H0 : Math.max(H0, Number(b.fromHour) || 0);
+      const to = b.allDay ? H1 : Math.min(H1, Number(b.toHour) || 0);
+      for (let h = Math.floor(from); h < Math.ceil(to); h++) set.add(h);
+    }
+    return set;
+  };
+  // `between: true` = só os BURACOS (vãos entre o primeiro e o último
+  // compromisso do dia). A noite inteira livre não é buraco de agenda.
+  const gapsOf = (d, who, { between = false } = {}) => {
+    const busy = busyHoursOf(d, who);
+    const horas = [...busy].sort((a, b) => a - b);
+    const lo = between ? (horas.length ? horas[0] : H1) : H0;
+    const hi = between ? (horas.length ? horas[horas.length - 1] + 1 : H1) : H1;
+    const out = [];
+    let run = null;
+    for (let h = lo; h < hi; h++) {
+      if (busy.has(h)) { if (run != null && h - run >= 1) out.push([run, h]); run = null; }
+      else if (run == null) run = h;
+    }
+    if (run != null && hi - run >= 1) out.push([run, hi]);
+    return out;
+  };
+  // O fato do período, à direita da legenda: o que a grade não diz sozinha.
+  // Com pessoa escolhida dá pra falar de BURACO (a agenda é de alguém); sem
+  // pessoa, o buraco do time não quer dizer nada, então o fato é qual dia está
+  // mais vazio.
+  const fatoPeriodo = (() => {
+    const total = events.length;
+    const base = `${total} ${total === 1 ? "compromisso" : "compromissos"} ${isWeek ? "nesta semana" : "no dia"}`;
+    if (person) {
+      const alvo = isWeek
+        ? days.map((d) => ({ d, g: gapsOf(d, person, { between: true }) })).sort((a, b) => b.g.length - a.g.length)[0]
+        : { d: days[0], g: gapsOf(days[0], person, { between: true }) };
+      const n = alvo?.g.length || 0;
+      if (!n) return base;
+      const quando = isWeek ? ` ${WD_LONG[alvo.d.getDay()]}` : "";
+      return `${base} · ${n} ${n === 1 ? "buraco" : "buracos"} de 1h${quando}`;
+    }
+    if (!isWeek || !total) return base;
+    const porDia = days
+      .filter((d) => d.getDay() !== 0 && d.getDay() !== 6)
+      .map((d) => ({ d, n: events.filter((e) => e.t.toDateString() === d.toDateString()).length }))
+      .sort((a, b) => a.n - b.n)[0];
+    return porDia ? `${base} · ${WD_LONG[porDia.d.getDay()]} é o dia mais livre (${porDia.n})` : base;
+  })();
+
+
+  // O texto inteiro da legenda que vivia IMPRESSA embaixo da grade (onze itens
+  // numa linha que quebrava, mais alta que duas faixas de hora). Ninguém lê
+  // isso duas vezes: as quatro cores ficam na faixa do topo da grade, o resto
+  // vive no title de cada card e aqui, atrás do "legenda ⓘ".
+  const LEGENDA = [
+    "cor do card = tipo do compromisso",
+    "barrinha da esquerda = responsável",
+    "card lavado com ✓ = já aconteceu",
+    "card vermelho com FUROU = o lead não compareceu",
+    "✓ verde = o lead confirmou no lembrete",
+    "compromisso aparece na cor da pessoa e abre pra editar no clique",
+    "tracejado vermelho = bloqueio (↻ = toda semana)",
+    "compromissos e bloqueios ocupam a agenda: nenhuma call cai em cima",
+  ].join(" · ");
 
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-        <button style={navBtn} onClick={() => setDayOff(w => w - (isWeek ? 7 : 1))}>‹</button>
-        <button style={navBtn} onClick={() => setDayOff(0)}>hoje</button>
-        <button style={navBtn} onClick={() => setDayOff(w => w + (isWeek ? 7 : 1))}>›</button>
-        {/* Visão: 1 dia (faixas por closer) ou semana de 7 dias. */}
-        <span style={{ display: "inline-flex", gap: 2, marginLeft: 2 }}>
-          {[["day", "dia"], ["week", "semana"]].map(([v, lbl]) => (
-            <FilterTab key={v} active={view === v} onClick={() => setView(v)} style={{ padding: "4px 10px", fontSize: 12 }}>{lbl}</FilterTab>
-          ))}
+      {/* UMA barra de controles, na ordem em que se usa: quando · quem · o quê.
+          O filtro de pessoa era um botão por usuário na tela (num time de oito
+          ocupava a largura inteira) e vivia separado dos controles de período
+          e tipo, que ficavam aqui dentro: duas barras pra mesma função. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap", padding: "12px 16px", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
+        <span style={{ display: "inline-flex", gap: 4 }}>
+          <button style={navBtn} onClick={() => setDayOff(w => w - (isWeek ? 7 : 1))} title={isWeek ? "semana anterior" : "dia anterior"}>‹</button>
+          <button style={navBtn} onClick={() => setDayOff(0)}>hoje</button>
+          <button style={navBtn} onClick={() => setDayOff(w => w + (isWeek ? 7 : 1))} title={isWeek ? "próxima semana" : "próximo dia"}>›</button>
         </span>
-        <span style={{ fontSize: 14, fontWeight: 600, fontFamily: "var(--display)", marginLeft: 4 }}>{label}</span>
-        <span className="mono dim" style={{ fontSize: 11 }}>
-          {calls === 0 ? `nenhuma call ${isWeek ? "na semana" : "no dia"}` : `${calls} ${calls === 1 ? "call" : "calls"}`}
-        </span>
+        <span style={{ fontSize: 14, fontWeight: 650, fontFamily: "var(--display)" }}>{label}</span>
+
+        {/* Pessoa: chip único no lugar de um botão por usuário. */}
+        {(people.length > 0 && onPerson) && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 4px 0 10px", borderRadius: 999, border: "1px solid " + (person ? "var(--accent-line)" : "var(--line-2)"), background: person ? "var(--accent-soft)" : "var(--bg-1)" }}>
+            {person && <span style={{ width: 8, height: 11, borderRadius: 2, background: toneOf(person) }} />}
+            <select value={person || ""} onChange={(e) => onPerson(e.target.value)} aria-label="Agenda de"
+              style={{ height: 26, border: 0, background: "transparent", color: person ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+              <option value="">agenda de: todos</option>
+              {people.map((p) => <option key={p.id} value={p.id}>{p.name || displayName(p.id)}</option>)}
+            </select>
+          </span>
+        )}
+
         {/* Tipo de evento: tudo · calls · follow-ups · integrações, com a
-            contagem do dia e o pontinho na cor do tipo — a mesma da pílula. */}
-        <span style={{ display: "inline-flex", gap: 2, marginLeft: 4 }}>
+            contagem do período e o pontinho na cor do tipo. */}
+        <span style={{ display: "inline-flex", gap: 2 }}>
           {[["all", "tudo", null], ["call", "calls", callCount], ["follow-up", "follow-ups", fupCount], ["integração", "integrações", intCount]].map(([v, lbl, n]) => (
             <FilterTab key={v} active={evKind === v} count={n} onClick={() => setEvKind(v)} style={{ padding: "4px 10px", fontSize: 12 }}>
               {AGENDA_TYPE_COLORS[v] && (
@@ -341,20 +433,21 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person })
             mostrar toques
           </label>
         )}
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, marginLeft: "auto", flexWrap: "wrap" }}>
-          {/* Pessoa = BARRINHA à esquerda da pílula; a legenda usa o mesmo desenho. */}
-          {team.map(u => (
-            <span key={u.id} className="mono" style={{ fontSize: 11, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", gap: 5 }}>
-              <span style={{ width: 10, height: 13, borderRadius: 3, background: toneOf(u.id) }} />{u.name || u.id}
-            </span>
-          ))}
-          <span className="mono" style={{ fontSize: 11, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", gap: 5 }}>
-            <span style={{ width: 10, height: 13, borderRadius: 3, background: "var(--fg-4)" }} />sem responsável
-          </span>
-        </span>
+        <span className="mono" title={LEGENDA} style={{ marginLeft: "auto", fontSize: 11, color: "var(--fg-4)", cursor: "help", borderBottom: "1px dotted var(--line-2)" }}>legenda ⓘ</span>
       </div>
 
       <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
+        {/* A legenda que FICA: as quatro cores de tipo, no topo da grade e não
+            embaixo dela, com o fato do período à direita. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", padding: "8px 12px", borderBottom: "1px solid var(--line-1)" }}>
+          {Object.entries(AGENDA_TYPE_COLORS).map(([k, c]) => (
+            <span key={k} className="mono" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10.5, color: "var(--fg-3)" }}>
+              <span style={{ width: 10, height: 10, borderRadius: 3, background: c.bg, border: `1px ${k === "follow-up" ? "dashed" : "solid"} ${c.line}` }} />
+              {c.label}
+            </span>
+          ))}
+          <span className="mono tnum" style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--fg-4)" }}>{fatoPeriodo}</span>
+        </div>
         {/* Cabeçalho dos dias */}
         {/* Na semana, 7 colunas pedem largura mínima — em tela estreita a
             grade rola de lado dentro do tbl-x em vez de espremer as pílulas. */}

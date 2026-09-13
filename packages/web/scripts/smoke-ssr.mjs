@@ -147,6 +147,41 @@ try {
     failed++;
   }
 
+  // ── Agenda: a barra de controles e a legenda (redesign de 12/09) ────────
+  // A tela tinha DUAS barras pra mesma função (o filtro de pessoa na tela, o
+  // resto dentro da grade) e onze itens de legenda impressos embaixo. Aqui
+  // valem: uma barra só, a legenda de tipos no TOPO da grade e o fato do
+  // período. Os dados vão na mão porque efeito não roda no SSR.
+  try {
+    const A = await server.ssrLoadModule("/src/screens/agenda-grid.jsx");
+    const hoje = new Date(); hoje.setHours(10, 0, 0, 0);
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}:00`;
+    const leads = [{ id: "l1", name: "Zpack", company: "Zpack Autopeças", closer: "leonardo", amount: 65000, callAt: iso(hoje), stage: "call", saas: "leverads" }];
+    const props = {
+      leads, consultations: [], onOpenLead() {},
+      people: [{ id: "leonardo", name: "Leonardo" }, { id: "jonathan", name: "Jonathan" }],
+      person: null, onPerson() {}, view: "day", onView() {},
+      blocking: { blocksFor: () => [], onSlot() {}, onBlock() {} },
+    };
+    const html = renderToString(wrap(React.createElement(A.AgendaView, props)));
+    const has = (must) => { if (!html.includes(must)) throw new Error(`a grade não contém "${must}"`); };
+    has("agenda de: todos");     // o filtro de pessoa virou UM chip
+    has("legenda ⓘ");            // os onze itens viraram um title
+    has("call agendada");        // a legenda de tipos ficou, no topo da grade
+    has("compromisso no dia");   // o fato do período
+    if (html.includes("nenhuma call no dia")) throw new Error("a contagem velha da barra voltou");
+    // A legenda impressa embaixo da grade não pode voltar.
+    if (html.includes("lavada = já aconteceu")) throw new Error("a legenda de onze itens voltou pra tela");
+    const semana = renderToString(wrap(React.createElement(A.AgendaView, { ...props, view: "week" })));
+    if (!semana.includes("compromisso nesta semana") && !semana.includes("compromissos nesta semana")) {
+      throw new Error("a semana não traz o fato do período");
+    }
+    console.log("✓ agenda-controles");
+  } catch (err) {
+    console.error(`✗ agenda-controles: ${err.message}`);
+    failed++;
+  }
+
   // Item de agenda "Dia inteiro" (allDay): tem que ocupar o DIA TODO na grade de
   // horários, pra não caber call de venda nesse dia. matchBlock já trata allDay;
   // aqui garante que busyView marca qualquer slot do dia.
