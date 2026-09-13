@@ -1,6 +1,7 @@
 import React from "react";
 import { FilterTab } from "../components/viz.jsx";
-import { usersByRole, userColor, displayName } from "../lib/users.js";
+import { usersByRole, userColor, displayName, userById } from "../lib/users.js";
+import { Avatar } from "../atoms.jsx";
 import { stageKind } from "../lib/funnel.js";
 import { isNoShowStage } from "../lib/scripts.js";
 
@@ -147,6 +148,12 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
     try { localStorage.setItem("cockpit_agenda_view", v); } catch { /* ignore */ }
   };
   const isWeek = view === "week";
+  // EQUIPE (12/09): o mesmo dia, mas cada pessoa com a coluna dela de verdade
+  // (cabeçalho com avatar, papel e contagem) e os VÃOS LIVRES clicáveis. A
+  // visão Dia já divide o dia em faixas por closer; a de Equipe é a que serve
+  // pra achar onde cabe mais uma call, e por isso entra todo mundo com agenda
+  // (closer e integrador), não só os closers.
+  const isTeam = view === "team";
   const H0 = 7, H1 = 21, hourH = 44;
   const saasCfgOf = (l) => (window.SEED?.SAAS || []).find((x) => x.id === l.saas);
   // PÁGINA da grade: no DIA (padrão desde 03/09) as setas andam de dia em dia,
@@ -266,6 +273,11 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
   const team = [...usersByRole("closer"), ...usersByRole("integrator")]
     .filter((u, i, arr) => arr.findIndex(x => x.id === u.id) === i);
   const toneOf = (id) => (id ? userColor(id) : "var(--fg-4)");
+  const papelDe = (id) => {
+    const r = userById(id)?.roles || [];
+    const closer = r.includes("closer"), integ = r.includes("integrator");
+    return closer && integ ? "closer · integrador" : closer ? "closer" : integ ? "integrador" : r.includes("sdr") ? "SDR" : "";
+  };
 
   // COLUNAS POR PESSOA dentro do dia (Leo, 24/08): cada closer tem a própria
   // faixa vertical, com o nome no cabeçalho — a agenda de cada um se lê de
@@ -292,7 +304,9 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
   };
   // Faixas fixas: filtrado por pessoa, só a coluna dela; senão, todos os
   // closers do workspace — mesmo sem nada marcado no dia.
-  const baseLanes = person ? [person] : usersByRole("closer").map((u) => u.id);
+  const baseLanes = person ? [person]
+    : isTeam ? [...new Set([...usersByRole("closer"), ...usersByRole("integrator")].map((u) => u.id))]
+    : usersByRole("closer").map((u) => u.id);
   const layoutDay = (d) => {
     const dayEvents = shown.filter(e => e.t.toDateString() === d.toDateString());
     const rawBlocks = (blocking && evKind === "all" ? blocking.blocksFor(d) : [])
@@ -324,6 +338,10 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
     return { placed, blocks, persons };
   };
   const dayLayouts = days.map(layoutDay);
+  // Largura mínima da grade: 7 colunas na semana, 150px por pessoa na Equipe
+  // (com oito pessoas a coluna ficaria com 90px e o card vira tarja). Abaixo
+  // disso a grade rola de lado dentro do tbl-x, em vez de espremer os cards.
+  const gradeMin = isWeek ? 960 : isTeam ? Math.max(600, 52 + (dayLayouts[0]?.persons.length || 1) * 150) : undefined;
 
   // ── Vãos livres (12/09) ───────────────────────────────────────────────
   // Ninguém faz essa conta olhando a grade: "onde cabe mais uma call?". Marca
@@ -370,6 +388,22 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
   const fatoPeriodo = (() => {
     const total = events.length;
     const base = `${total} ${total === 1 ? "compromisso" : "compromissos"} ${isWeek ? "nesta semana" : "no dia"}`;
+    // Na Equipe o fato é sobre QUEM está livre: é a pergunta da visão.
+    if (isTeam) {
+      const d = days[0];
+      const maior = (dayLayouts[0]?.persons || [])
+        .map((p) => ({ p, gap: [...gapsOf(d, p)].sort((a, b) => (b[1] - b[0]) - (a[1] - a[0]))[0] }))
+        .filter((x) => x.gap && x.gap[1] - x.gap[0] >= 3)
+        .sort((a, b) => (b.gap[1] - b.gap[0]) - (a.gap[1] - a.gap[0]))[0];
+      if (!maior) return base;
+      const [g0, g1] = maior.gap;
+      const quem = maior.p ? displayName(maior.p).split(" ")[0] : "quem está sem responsável";
+      const quanto = g0 <= H0 && g1 >= H1 ? "está com o dia todo livre"
+        : g0 <= 13 && g1 >= 18 ? "tem a tarde toda livre"
+        : g0 <= H0 && g1 >= 12 ? "tem a manhã toda livre"
+        : `tem ${g1 - g0}h livres (${g0}h às ${g1}h)`;
+      return `${base} · ${quem} ${quanto}`;
+    }
     if (person) {
       const alvo = isWeek
         ? days.map((d) => ({ d, g: gapsOf(d, person, { between: true }) })).sort((a, b) => b.g.length - a.g.length)[0]
@@ -473,7 +507,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
         {/* Cabeçalho dos dias */}
         {/* Na semana, 7 colunas pedem largura mínima — em tela estreita a
             grade rola de lado dentro do tbl-x em vez de espremer as pílulas. */}
-        <div style={{ display: "grid", gridTemplateColumns: colTemplate, minWidth: isWeek ? 960 : undefined, borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: colTemplate, minWidth: gradeMin, borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
           <span />
           {days.map((d, i) => {
             const isToday = d.toDateString() === new Date().toDateString();
@@ -494,16 +528,33 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
                     color: isToday ? "oklch(1 0 0)" : "var(--fg-1)",
                   }}>{d.getDate()}</span>
                 </div>
-                {/* Nomes das faixas: mesma largura das colunas de pessoa do corpo. */}
+                {/* Nomes das faixas: mesma largura das colunas de pessoa do
+                    corpo. Na Equipe o cabeçalho é a ficha da coluna (barrinha,
+                    avatar, nome, papel e a contagem do dia). */}
                 {dayLayouts[i].persons.length > 0 && (
-                  <div style={{ display: "flex", marginTop: 6 }}>
-                    {dayLayouts[i].persons.map((p) => (
-                      <div key={p || "none"} className="mono" title={p ? displayName(p) : "sem responsável"}
-                        style={{ flex: 1, minWidth: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4, fontSize: 10, fontWeight: 600, color: "var(--fg-3)", overflow: "hidden" }}>
-                        <span style={{ width: 8, height: 10, borderRadius: 2, background: toneOf(p), flexShrink: 0 }} />
-                        <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p ? displayName(p).split(" ")[0] : "—"}</span>
-                      </div>
-                    ))}
+                  <div style={{ display: "flex", marginTop: 6, gap: 0 }}>
+                    {dayLayouts[i].persons.map((p) => {
+                      const nDia = dayLayouts[i].placed.filter((e) => (e.who || "") === p).length;
+                      if (!isTeam) return (
+                        <div key={p || "none"} className="mono" title={p ? displayName(p) : "sem responsável"}
+                          style={{ flex: 1, minWidth: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4, fontSize: 10, fontWeight: 600, color: "var(--fg-3)", overflow: "hidden" }}>
+                          <span style={{ width: 8, height: 10, borderRadius: 2, background: toneOf(p), flexShrink: 0 }} />
+                          <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p ? displayName(p).split(" ")[0] : "—"}</span>
+                        </div>
+                      );
+                      return (
+                        <div key={p || "none"} style={{ flex: 1, minWidth: 0, padding: "6px 6px 2px", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, borderLeft: "1px solid var(--line-1)" }}>
+                          <span style={{ width: 26, height: 3, borderRadius: 2, background: toneOf(p) }} />
+                          <Avatar id={p || undefined} name={p ? displayName(p) : "—"} size={22} />
+                          <span style={{ maxWidth: "100%", fontSize: 12, fontWeight: 650, color: "var(--fg-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {p ? displayName(p) : "sem responsável"}
+                          </span>
+                          <span className="mono" style={{ fontSize: 9.5, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>
+                            {`${papelDe(p) ? papelDe(p) + " · " : ""}${nDia === 0 ? "dia livre" : `${nDia} ${nDia === 1 ? "compromisso" : "compromissos"}`}`}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -511,7 +562,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
           })}
         </div>
         {/* Corpo: gutter de horas + colunas de dia com linhas por hora */}
-        <div style={{ display: "grid", gridTemplateColumns: colTemplate, minWidth: isWeek ? 960 : undefined }}>
+        <div style={{ display: "grid", gridTemplateColumns: colTemplate, minWidth: gradeMin }}>
           <div style={{ position: "relative", height: (H1 - H0) * hourH }}>
             {/* "7h" (i=0) fica logo abaixo do cabeçalho — a linha dele É a borda
                 do topo; centrar no risco jogava o rótulo pra cima do cabeçalho
@@ -567,6 +618,28 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
                 {persons.length > 1 && persons.slice(1).map((_, si) => (
                   <div key={`sep-${si}`} style={{ position: "absolute", top: 0, bottom: 0, left: `${(si + 1) * (100 / persons.length)}%`, borderLeft: "1px dashed var(--line-1)", pointerEvents: "none" }} />
                 ))}
+                {/* VÃOS LIVRES (só na Equipe): todo buraco de 1h ou mais vira
+                    botão. É a razão de existir desta visão — achar onde cabe
+                    mais uma call sem varrer a grade com o olho. O clique já
+                    abre o modal com a pessoa da coluna e a hora do vão. */}
+                {isTeam && persons.map((p, pi) => {
+                  const pw = 100 / Math.max(1, persons.length);
+                  return gapsOf(d, p).map(([g0, g1]) => (
+                    <button key={`free-${p || "none"}-${g0}`}
+                      onClick={(e) => { e.stopPropagation(); blocking?.onSlot && blocking.onSlot(d, g0, p || ""); }}
+                      title={`${p ? displayName(p) : "Sem responsável"} está livre das ${g0}h às ${g1}h · clique pra marcar`}
+                      style={{
+                        position: "absolute", top: (g0 - H0) * hourH + 2,
+                        left: `calc(${pi * pw}% + 3px)`, width: `calc(${pw}% - 6px)`,
+                        height: (g1 - g0) * hourH - 4,
+                        border: "1px dashed var(--line-2)", borderRadius: 6, background: "transparent",
+                        color: "var(--fg-4)", fontSize: 10.5, cursor: "pointer", padding: "0 6px",
+                        display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center",
+                      }}>
+                      {`+ livre das ${g0}h às ${g1}h`}
+                    </button>
+                  ));
+                })}
                 {(() => {
                   // Bloqueios/compromissos: o de UMA pessoa mora na faixa dela;
                   // o de time (vários participantes) cobre o dia inteiro, atrás
