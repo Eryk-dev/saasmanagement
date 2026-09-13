@@ -6,8 +6,9 @@
 // (closer abrindo o próprio link de edição não infla o número).
 
 import { publicProposal, syncProposalLeadSnapshot } from "./proposal.js";
-import { applyCatalog, catalogAmount, catalogUI } from "./proposal-catalog.js";
+import { applyCatalog, catalogAmount, catalogUI, activeProduct } from "./proposal-catalog.js";
 import { proposalPageHtml } from "./proposal-page.js";
+import { proposalSlidesPageHtml, deckConfig } from "./proposal-slides-page.js";
 import { leveradsResults } from "./leverads-results.js";
 import { makeRateLimiter } from "./forms.js";
 import { convertWonLead } from "./routes.js";
@@ -20,6 +21,17 @@ import { gradeBandKnown } from "./routes.marketing.js";
 // snapshot no banco segue genérico); o card de decisão (catalogUI) só entra no
 // modo closer. Sem catálogo, tudo passa intacto.
 function renderProposal(p, { editable = false, previewBanner = false } = {}) {
+  // Opção C (12/09): apresentação em SLIDES. Outro renderer, mesma proposta —
+  // as views, o aceite e o editKey continuam da rota. O catálogo vai como
+  // argumento (publicProposal não expõe a tabela de preço ao navegador; aqui
+  // ela só chega na página no modo closer, pra tela zero calcular ao vivo).
+  if (p.layout === "slides") {
+    return proposalSlidesPageHtml(publicProposal(p, { editable }), {
+      editable, previewBanner,
+      catalog: (p.calc && p.calc.catalog) || null,
+      suggested: activeProduct(p),
+    });
+  }
   const transformed = applyCatalog(p);
   const pv = publicProposal(transformed ? { ...p, slides: transformed.slides } : p, { editable });
   // Resultado real dos clientes no slide `impacto`, como tokens {{calc.res*}}.
@@ -40,6 +52,7 @@ function previewFromTemplate(t, { data, state, answers } = {}) {
   return {
     id: "preview",
     name: t.name || "Proposta",
+    layout: t.layout || "",
     theme: t.theme || {},
     slides: t.slides || [],
     calc: t.calc || {},
@@ -184,9 +197,22 @@ export function registerProposalRoutes(app, repo, opts = {}) {
       state.accounts = body.accounts;
       state.seats = Number(seatsMap[body.accounts]);
     }
+    const catalogProducts = (p.calc && p.calc.catalog && p.calc.catalog.products) || {};
+    // Tela zero do deck de SLIDES (opção C): chega um objeto só, saneado pelo
+    // mesmo deckConfig que monta a tela (corta texto, arredonda número, valida
+    // linha/pacote). O produto escolhido vira `state.product` e o período vira
+    // `state.cycle` — é o que o resto do cockpit lê (valor do lead, gate de
+    // Ganho, link de pagamento), então a opção C não cria um mundo paralelo.
+    if (body.deckC && typeof body.deckC === "object") {
+      const c = deckConfig({ state: { deckC: body.deckC, seats: state.seats }, data: p.data }, { suggested: activeProduct(p) });
+      state.deckC = c;
+      const chave = c.linha + "_" + c.tier;
+      if (c.plataforma && catalogProducts[chave]) state.product = chave;
+      state.cycle = c.periodo === "semestral" ? "semiannual" : "annual";
+      state.seats = c.contas;
+    }
     // Camada de produto (catálogo): o select "Apresentar" da tela zero. Vazio =
     // seguir a sugestão da régua; produto fora do catálogo não entra.
-    const catalogProducts = (p.calc && p.calc.catalog && p.calc.catalog.products) || {};
     if (typeof body.product === "string" && (body.product === "" || catalogProducts[body.product])) state.product = body.product;
     if (typeof body.pain === "string") state.pain = body.pain.slice(0, 8);
     if (typeof body.oem === "boolean") state.oem = body.oem;

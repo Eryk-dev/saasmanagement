@@ -267,6 +267,7 @@ export function publicProposal(p, { editable = false } = {}) {
   return {
     id: p.id,
     name: p.name || "",
+    layout: p.layout || "",
     theme: p.theme || {},
     slides: p.slides || [],
     calc,
@@ -311,6 +312,7 @@ export async function shareProposalOffer(repo, parent, offer, { baseUrl = "" } =
   const snapshot = {
     saas: parent.saas,
     template: parent.template || "",
+    layout: parent.layout || "",
     lead: parent.lead || "",
     name: parent.name || "Proposta",
     theme: parent.theme || {},
@@ -449,6 +451,10 @@ export async function runNativeProposal(repo, lead, opts = {}) {
       lead: lead.id,
       name: template.name || "Proposta",
       theme: template.theme || {},
+      // Layout da página: "" = o deck de sempre (proposal-page.js), "slides" =
+      // a apresentação em palco 16:9 (proposal-slides-page.js). Vem do template
+      // e vive no snapshot pra o link continuar o mesmo se o template mudar.
+      layout: template.layout || "",
       // Com catálogo, os slides de pricing são MATÉRIA-PRIMA do produto (o
       // transform escolhe/reconstrói na hora de servir): entram no snapshot
       // mesmo com showIf de nicho — senão um override pra +OEM FULL num lead
