@@ -298,3 +298,29 @@ test("meu perfil: nome + foto do próprio usuário, mesmo com telas restritas", 
   ]);
   assert.equal((await app.inject({ method: "POST", url: "/api/auth/me/photo", headers: mp, payload: txt })).statusCode, 400);
 });
+
+test("nível: mudar compLevel apenda o histórico; o mesmo nível não duplica", async () => {
+  const repo = makeMemRepo();
+  await ensureDefaultAdmins(repo);
+  const app = buildApp(repo);
+  const { token } = (await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "eryk", password: "1234" } })).json();
+  await repo.create("users", { id: "bia", name: "Bia", roles: ["closer"], compLevel: 1 });
+  const patch = (n) => app.inject({
+    method: "PATCH", url: "/api/auth/users/bia",
+    headers: { authorization: `Bearer ${token}` }, payload: { compLevel: n },
+  });
+  await patch(2);
+  let bia = await repo.get("users", "bia");
+  assert.equal(bia.compLevel, 2);
+  assert.equal(bia.compLevelHistory.length, 1);
+  assert.equal(bia.compLevelHistory[0].level, 2);
+  assert.ok(bia.compLevelHistory[0].at);
+  // Mesmo nível de novo: não apenda (o marco zero da contagem de meses não pode
+  // andar por causa de um save sem mudança).
+  await patch(2);
+  bia = await repo.get("users", "bia");
+  assert.equal(bia.compLevelHistory.length, 1);
+  await patch(3);
+  bia = await repo.get("users", "bia");
+  assert.equal(bia.compLevelHistory.length, 2);
+});

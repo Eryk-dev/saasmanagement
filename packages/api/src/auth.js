@@ -62,6 +62,9 @@ const publicUser = (u) => ({
   saas: u.saas || "",
   // Nível do plano de remuneração (1 jr · 2 pl · 3 sn) — régua das metas do card.
   compLevel: (() => { const n = Math.floor(Number(u.compLevel)); return n >= 1 && n <= 3 ? n : 1; })(),
+  // Desde quando está no nível: é o que o critério de promoção usa como marco
+  // zero da contagem de meses.
+  compLevelHistory: Array.isArray(u.compLevelHistory) ? u.compLevelHistory : [],
   // Foto de perfil: URL de /public/users/:id com ?v= do último upload (a tag
   // <img> não manda header, então a rota é aberta e o ?v= fura o cache). "" =
   // sem foto, o SPA cai nas iniciais.
@@ -247,6 +250,14 @@ export function registerAuthRoutes(app, repo) {
     if (compLevel !== undefined) {
       const n = Math.floor(Number(compLevel));
       patch.compLevel = n >= 1 && n <= 3 ? n : 1;
+      // HISTÓRICO do nível: sem ele não dá pra saber desde quando a pessoa está
+      // no nível atual, e o critério de promoção (3 meses fechados a 100%)
+      // contaria meses de ANTES da última promoção — alguém subiria hoje e
+      // chegaria elegível amanhã.
+      if (Math.floor(Number(user.compLevel) || 1) !== patch.compLevel) {
+        const hist = Array.isArray(user.compLevelHistory) ? user.compLevelHistory : [];
+        patch.compLevelHistory = [...hist, { level: patch.compLevel, at: new Date().toISOString(), by: req.authUser?.id || "api" }].slice(-20);
+      }
     }
     if (typeof name === "string" && name.trim()) {
       // Mesma guarda do /api/auth/me: o login casa por id OU nome, então dois

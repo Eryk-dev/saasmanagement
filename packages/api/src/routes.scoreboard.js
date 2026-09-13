@@ -8,7 +8,7 @@
 // Retenção lê o evento de churn do cliente (customer.endedAt — churn.js).
 
 import { cadenceOf, firstStage, isLoss, kindOf, TOUCH_TYPES } from "./stages.js";
-import { teamBonusProducts, compGoalFor, compLevelOf } from "./comp-plan.js";
+import { teamBonusProducts, compGoalFor, compLevelOf, careerRuleOf, promotionEligibility, leveledRoleOf } from "./comp-plan.js";
 import { TEAM_METRICS, META_CATALOG, deriveGoalsFromPace } from "./routes.metas.js";
 import { computeWindowGoal, RATE_BENCHMARKS, computePipelinePace } from "./routes.pipeline-pace.js";
 import {
@@ -967,6 +967,32 @@ export async function computeScoreboard(repo, product, query = {}, { now = () =>
     // Remuneração, que é admin-only.
     team.teamBonus = await teamBonusStatus(repo, product, until, { customers: allCustomers, compDocs: compPlansAll, now: now() })
       .catch(() => null);
+
+    // ELEGIBILIDADE A SUBIR DE NÍVEL: 3 meses fechados seguidos com 100% da
+    // meta, lidos dos carimbos mensais (comp_months) — nunca recalculados aqui,
+    // que é o ponto do carimbo. Só SDR e closer têm nível.
+    const rule = careerRuleOf(compPlansAll);
+    const stamps = await repo.listWhere("comp_months", { saas: product.id }).catch(() => []);
+    const stampsBy = new Map();
+    for (const st of stamps) {
+      if (st.kind !== "person" || !st.uid) continue;
+      if (!stampsBy.has(st.uid)) stampsBy.set(st.uid, []);
+      stampsBy.get(st.uid).push(st);
+    }
+    const promoOf = (uid) => {
+      const u = users.find((x) => x.id === uid);
+      if (!u || !leveledRoleOf(u)) return null;
+      const hist = Array.isArray(u.compLevelHistory) ? u.compLevelHistory : [];
+      return promotionEligibility({
+        stamps: stampsBy.get(uid) || [],
+        level: compLevelOf(u),
+        levelSince: hist.length ? hist[hist.length - 1].at : "",
+        rule,
+        today: until,
+      });
+    };
+    for (const card of [...sdr, ...closer]) card.promo = promoOf(card.user);
+    team.career = rule;
 
     return { saas: product.id, since, until, sdr, closer, cs, social, team, mentoria, referrals };
 }

@@ -80,6 +80,75 @@ export function compLevelOf(user) {
   return n >= 1 && n <= 3 ? n : 1;
 }
 
+// ── Critério de promoção (decisão do Leo, 13/09/2026) ───────────────────────
+// "3 meses de meta 100% sobe." Até aqui a única coisa escrita sobre subir de
+// nível era uma frase de prosa na tela ("promoção sobe fixo, meta e bônus
+// juntos") e o nível era um dropdown livre do admin. Ninguém sabia o que fazer
+// pra subir, que é o jeito mais barato de perder gente boa.
+//
+// A régua: 3 meses FECHADOS consecutivos com 100% da meta, contados só a partir
+// da última mudança de nível (senão a pessoa sobe hoje e já chega elegível
+// amanhã com meses de antes). Por padrão as DUAS pernas precisam bater
+// (`legs: "both"`); o toggle "basta uma" existe porque é a única parte da régua
+// que o Leo pode querer afrouxar.
+//
+// A promoção em si continua MANUAL: o cockpit diz quem está elegível, quem
+// promove é a gestão.
+export const DEFAULT_CAREER_RULE = { months: 3, legs: "both" };
+export const LEVELED_ROLES = ["sdr", "closer"];
+
+export function careerRuleOf(compDocs) {
+  const doc = (compDocs || []).find((d) => d && d.role === "career")?.plan || null;
+  const rule = doc ? { ...DEFAULT_CAREER_RULE, ...doc } : { ...DEFAULT_CAREER_RULE };
+  rule.months = Math.max(1, Math.floor(Number(rule.months)) || DEFAULT_CAREER_RULE.months);
+  rule.legs = rule.legs === "any" ? "any" : "both";
+  return rule;
+}
+
+// Papel avaliado: closer manda sobre SDR quando a pessoa acumula os dois (é o
+// papel de contrato mais alto, e o `roleOfUser` da tela de Metas usa a mesma
+// ordem).
+export const leveledRoleOf = (user) => LEVELED_ROLES.slice().reverse().find((r) => (user?.roles || []).includes(r)) || "";
+
+// `stamps`: carimbos mensais da pessoa (comp_months, kind "person"), qualquer
+// ordem. `levelSince`: data da última mudança de nível (ISO) ou "".
+export function promotionEligibility({ stamps = [], level = 1, levelSince = "", rule = DEFAULT_CAREER_RULE, today = "" } = {}) {
+  const lv = Math.min(Math.max(Math.floor(Number(level)) || 1, 1), 3);
+  const to = lv + 1;
+  const mesDaMudanca = String(levelSince || "").slice(0, 7);
+  const mesCorrente = String(today || new Date().toISOString()).slice(0, 7);
+  const meses = (stamps || [])
+    .filter((s) => s && s.month && s.month < mesCorrente)                       // só mês FECHADO
+    .filter((s) => !mesDaMudanca || s.month > mesDaMudanca)                     // só depois da promoção
+    .sort((a, b) => String(b.month).localeCompare(String(a.month)));            // do mais novo pro mais velho
+
+  // Sequência a partir do mês fechado mais recente: mês que não bateu (ou que
+  // não existe no meio) zera a contagem.
+  let streak = 0;
+  const batidos = [];
+  let esperado = meses[0]?.month || "";
+  for (const s of meses) {
+    if (esperado && s.month !== esperado) break; // buraco na sequência
+    const ok = rule.legs === "any"
+      ? (s.contractsAtt >= 1 || s.revenueAtt >= 1)
+      : s.hit100 === true;
+    if (!ok) break;
+    streak++;
+    batidos.push(s.month);
+    const [y, m] = s.month.split("-").map(Number);
+    esperado = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+  }
+
+  const blockedBy = lv >= 3 ? "ja_e_senior" : streak >= rule.months ? "" : "meses";
+  return {
+    eligible: lv < 3 && streak >= rule.months,
+    to: lv < 3 ? to : null,
+    streak,
+    months: batidos.slice().reverse(),
+    blockedBy,
+  };
+}
+
 // Meta do plano pra métrica do card: won = contratos do mês, revenue = R$ do
 // mês, sempre POR PESSOA pelo nível. Fora de sdr/closer (ou métrica fora do
 // plano) devolve null — o goalFor segue a cadeia normal (vaga → derivado).
