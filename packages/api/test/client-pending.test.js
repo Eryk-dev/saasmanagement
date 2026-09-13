@@ -146,3 +146,65 @@ test("tarefa comum do lead não mexe no carimbo de compromissos do cliente", asy
   await completeTask(repo, outra.id, true, { by: "eryk" });
   assert.equal((await repo.get("leads", "ld_1")).clientPending.open, 1);
 });
+
+// ── Cobrança do que venceu ────────────────────────────────────────────────
+import { startClientPendingReminder, cobrancaText } from "../src/client-pending.js";
+
+const QUI = new Date(Date.UTC(2026, 8, 17, 13)); // quinta, 1 semana depois
+
+async function comAtraso() {
+  const { repo, lead } = await base();
+  await repo.create("products", { id: "leverads", name: "LeverAds" });
+  await syncClientPending(repo, lead, resumo([{ item: "Conectar a conta 2", responsavel: "cliente" }]), { now: () => TER });
+  return { repo, lead };
+}
+
+test("cobrança: texto cita o combinado e não usa travessão", () => {
+  const t = cobrancaText({ name: "Ana", company: "Lupa" }, "Conectar a conta 2");
+  assert.match(t, /^Oi Ana! Na nossa call de integração ficou combinado que você ia conectar a conta 2\./);
+  assert.match(t, /a Lupa fica com a integração parada/);
+  assert.ok(!t.includes("—"));
+});
+
+test("runner: avisa quem cuida e deixa a cobrança pronta na tarefa, uma vez por dia", async () => {
+  const { repo } = await comAtraso();
+  const r = startClientPendingReminder(repo, { intervalMs: 1e9, now: () => QUI });
+  const um = await r.tick(QUI);
+  assert.equal(um.avisos, 1);
+  assert.equal(um.comentarios, 1);
+  // addComment também notifica os seguidores da tarefa, então a fila tem mais
+  // de um aviso: o do atraso é o do tipo client_late.
+  const atrasos = (await repo.list("notifications")).filter((n) => n.type === "client_late");
+  assert.equal(atrasos.length, 1);
+  const aviso = atrasos[0];
+  assert.equal(aviso.user, "eryk");
+  assert.match(aviso.text, /Lupa Auto Peças não entregou o combinado/);
+  const t = (await repo.list("tasks"))[0];
+  assert.match(t.comments[0].text, /ficou combinado que você ia conectar a conta 2/);
+  assert.match(t.comments[0].text, /Fora da janela de 24 horas/);
+  // Mesmo dia: nem aviso nem comentário novo.
+  assert.deepEqual(await r.tick(QUI), { avisos: 0, comentarios: 0 });
+  assert.equal((await repo.list("notifications")).filter((n) => n.type === "client_late").length, 1);
+  assert.equal((await repo.get("tasks", t.id)).comments.length, 1);
+  r.stop();
+});
+
+test("runner: com a janela do WhatsApp aberta, o comentário diz pra usar o Inbox", async () => {
+  const { repo } = await comAtraso();
+  await repo.create("wa_threads", { id: "5541999990000", lastDir: "in", lastAt: new Date(QUI.getTime() - 3600_000).toISOString() });
+  const r = startClientPendingReminder(repo, { intervalMs: 1e9, now: () => QUI });
+  await r.tick(QUI);
+  const t = (await repo.list("tasks"))[0];
+  assert.match(t.comments[0].text, /Janela aberta/);
+  r.stop();
+});
+
+test("runner: fora do expediente não avisa, e tarefa no prazo não é cobrada", async () => {
+  const { repo } = await comAtraso();
+  const r = startClientPendingReminder(repo, { intervalMs: 1e9, now: () => QUI });
+  const sabado = new Date(Date.UTC(2026, 8, 19, 13));
+  assert.deepEqual(await r.tick(sabado), { avisos: 0, comentarios: 0 });
+  // No prazo (o próprio dia do vencimento) também não.
+  assert.deepEqual(await r.tick(new Date(Date.UTC(2026, 8, 10, 13))), { avisos: 0, comentarios: 0 });
+  r.stop();
+});

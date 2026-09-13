@@ -24,6 +24,7 @@ import { startWaWaitingReminder } from "./wa-waiting-reminder.js";
 import { startCustomerMilestones } from "./customer-milestones.js";
 import { startNpsAsks } from "./nps.js";
 import { startCustomerReports } from "./customer-reports.js";
+import { startClientPendingReminder } from "./client-pending.js";
 import { startBlogEngine } from "./blog-engine.js";
 import { startStoriesCapture } from "./routes.desempenho.js";
 import { startShopifySync } from "./routes.webhooks.js";
@@ -139,6 +140,9 @@ try {
   // Relatório mensal de resultado pro cliente (a evidência de serviço): 1 por
   // cliente a cada 30 dias, em horário comercial. Mês sem venda não manda.
   startCustomerReports(repo, { ...app.integrationClients, log: app.log });
+  // Combinado da integração que o cliente não entregou: avisa quem cuida do
+  // lead e deixa a cobrança pronta na tarefa. Nunca envia sozinho.
+  startClientPendingReminder(repo, { log: app.log });
   // Blog SEO: minera pautas, rascunha 1 post por ciclo e publica os agendados
   // (15 min). No-op sem doc app_config/blog_<saas> ou com rules.enabled=false;
   // sem IA configurada só publica o que já está agendado.
