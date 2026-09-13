@@ -440,7 +440,7 @@ export const DEFAULT_SCRIPTS = {
     objetivo: "Cliente saudável, resultado documentado e uma indicação pedida.",
     passos: [
       { t: "Check-in de resultado", fala: "Oi {{nome}}! Passando pra ver como a {{produto}} está rodando aí na {{empresa}}. Como está sendo pra vocês?" },
-      { t: "Virar case", fala: "Posso usar esse resultado da {{empresa}} como case nosso? A gente te marca e divulga a loja junto." },
+      { t: "Virar case", fala: "Posso usar esse resultado da {{empresa}} como case nosso? A gente te marca e divulga a loja junto.", dica: "Autorizou? Abra a ficha do cliente e clique em \"virar case\": o número já vem do painel e o case entra no slide 06 da apresentação e na página pública, sempre com a fonte de cada número." },
       { t: "Pedir 2 indicações", fala: "Na integração eu te falei que ia cobrar: quais DOIS lojistas você conhece que sofrem pra replicar anúncio entre contas? Me passa o contato deles que eu cuido bem. Se fechar, tenho uma condição especial pra você.", dica: "Registre cada indicação como lead novo com origem 'Indicação' (vira classe Semente nas métricas e conta na meta de 7 por cliente do CS)." },
     ],
   },

@@ -169,3 +169,40 @@ test("hook sai do ar com o runner parado (não vaza entre execuções)", async (
   await completeTask(repo, t.id, true, { by: "eryk" });
   assert.equal((await repo.get("customers", "cu_1")).milestonesDone, undefined);
 });
+
+// ── Marco com gate de prova (pedido de depoimento) ────────────────────────
+test("gate proof: cliente sem resultado no painel não recebe o pedido de depoimento", async () => {
+  const repo = makeMemRepo();
+  await repo.create("users", { id: "eryk", roles: ["integrator"] });
+  await repo.create("products", { id: "leverads" });
+  // Dia 100 = o marco do depoimento vence hoje.
+  await repo.create("customers", { id: "cu_sem", saas: "leverads", name: "Sem prova", owner: "eryk", startedAt: desde(100), plan: "Anual", leveradsOrgId: "" });
+  const runner = startCustomerMilestones(repo, { intervalMs: 1e9, now: () => new Date(HOJE) });
+  await runner.tick(new Date(HOJE));
+  const keys = (await repo.list("tasks")).map((t) => t.milestoneKey);
+  assert.ok(!keys.includes("depoimento"), `não devia pedir depoimento, veio ${keys.join(",")}`);
+  runner.stop();
+});
+
+test("gate proof: com resultado no painel, o pedido de depoimento vira tarefa com o roteiro", async () => {
+  const repo = makeMemRepo();
+  await repo.create("users", { id: "eryk", roles: ["integrator"] });
+  await repo.create("products", { id: "leverads" });
+  await repo.create("customers", {
+    id: "cu_com", saas: "leverads", name: "Lupa", owner: "eryk", startedAt: desde(100), plan: "Anual",
+    leveradsOrgId: "11111111-1111-4111-8111-111111111111",
+    milestonesDone: { onboarding: "x", checkin_m1: "x", revisao_m3: "x" },
+  });
+  const runner = startCustomerMilestones(repo, {
+    intervalMs: 1e9, now: () => new Date(HOJE),
+    influenced: async () => new Map([["11111111-1111-4111-8111-111111111111", 82000]]),
+  });
+  await runner.tick(new Date(HOJE));
+  const t = (await repo.list("tasks")).find((x) => x.milestoneKey === "depoimento");
+  assert.ok(t, "esperava a tarefa de depoimento");
+  assert.equal(t.title, "Pedir depoimento a Lupa");
+  assert.deepEqual(t.assignees, ["eryk"]);
+  assert.match(t.description, /Posso contar essa história como case da LeverAds/);
+  assert.match(t.description, /clique em "virar case"/);
+  runner.stop();
+});

@@ -643,6 +643,10 @@ export const api = {
   // (R$ que os anúncios da Lever venderam em 30 dias) + os últimos relatórios.
   customerResults: (id) => req("GET", `/api/customers/${id}/results`),
   customerReportSend: (id) => req("POST", `/api/customers/${id}/report/send`, {}),
+  // Cases (prova social): rascunho a partir do cliente, edição pelo CRUD
+  // genérico e o gate de publicação (422 devolve o que falta).
+  caseFromCustomer: (customer) => req("POST", "/api/cases/from-customer", { customer }),
+  casePublish: (id, pub = true) => req("POST", `/api/cases/${id}/publish`, { public: pub }),
   // Análise de Desempenho: objeções por closer na janela, produção do social
   // (feed/stories) e os registros manuais do dia (social selling/criativos).
   desempenho: (saas, { since, until } = {}) => {

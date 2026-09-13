@@ -8,6 +8,10 @@ export const DEFAULT_MILESTONES = [
   { key: "onboarding", label: "Onboarding", dueDays: 7, hint: "semana 1" },
   { key: "checkin_m1", label: "Check-in de mês 1", dueDays: 30, hint: "mês 1" },
   { key: "revisao_m3", label: "Revisão de resultado", dueDays: 90, hint: "mês 3" },
+  // Pedido de depoimento: só pra quem TEM prova (o gate "proof" olha a fila de
+  // indicação, que já calcula quanto a Lever vendeu na conta dele). Pedir case
+  // a quem não teve resultado é queimar a relação.
+  { key: "depoimento", label: "Pedir depoimento e autorizar case", dueDays: 100, hint: "depois da revisão de mês 3", gate: "proof" },
   { key: "upsell_m6", label: "Conversa de upsell", dueDays: 180, hint: "mês 6" },
 ];
 

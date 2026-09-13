@@ -579,11 +579,13 @@ function CustomersScreen({ initialTab }) {
         sub={tab === "indicacoes" && refSummary
           ? refSummary
           : `${activeCustomers.length} ${activeCustomers.length === 1 ? "ativo" : "ativos"} · ${isKidsWorkspace ? `${money(totalContratado)} contratado` : `MRR ${money(totalMrr)}`}${!isKidsWorkspace && keyAccounts.length ? ` · ${money(coreMrr)} sem ${keyAccounts.length === 1 ? "a conta grande" : `as ${keyAccounts.length} contas grandes`}` : ""}`}>
-        <Segmented value={tab} onChange={setTab} options={[{ value: "base", label: "Clientes" }, { value: "indicacoes", label: "Indicações" }, { value: "billing", label: "Assinaturas" }]} />
+        <Segmented value={tab} onChange={setTab} options={[{ value: "base", label: "Clientes" }, { value: "indicacoes", label: "Indicações" }, { value: "cases", label: "Cases" }, { value: "billing", label: "Assinaturas" }]} />
         {tab === "base" && <PrimaryButton onClick={() => openForm("customers", { saas: product.id })}>+ novo cliente</PrimaryButton>}
       </PageHead>
 
       {tab === "billing" && <SubscriptionsScreen saasId={product.id} />}
+
+      {tab === "cases" && <CasesTab product={product} customers={customers} />}
 
       {tab === "indicacoes" && (
         <ReferralsTab saasId={product.id} onRegister={newReferral} customers={CUSTOMERS}
@@ -1194,6 +1196,91 @@ function CustomerFacts({ customer, lead, product, leverOrg, onPatch, cicloAte = 
 // assinaturas + faturas. Direita: régua de retenção + histórico do funil.
 // "Editar" NÃO abre outro popup: troca o corpo pelo form (EntityForm bare)
 // dentro deste mesmo modal, pros campos raros (flags, saúde, dono).
+// Aba Cases: a lista dos cases e, ao lado, quem tem prova no painel e ainda não
+// virou case. A prova vem da MESMA fila de indicação (o R$ que a Lever vendeu na
+// conta nos últimos 30 dias), então pedir case e pedir indicação olham o mesmo
+// sinal e nunca discordam.
+function CasesTab({ product, customers }) {
+  const [cases, setCases] = useState(null);
+  const [fila, setFila] = useState([]);
+  const [erro, setErro] = useState("");
+  const [ocupado, setOcupado] = useState("");
+  const recarregar = React.useCallback(() => {
+    api.list("cases", { saas: product.id }).then(setCases).catch((e) => setErro(e?.message || "não consegui carregar"));
+  }, [product.id]);
+  React.useEffect(() => { recarregar(); }, [recarregar]);
+  React.useEffect(() => {
+    api.referralQueue(product.id).then((r) => setFila(r?.rows || r?.queue || [])).catch(() => setFila([]));
+  }, [product.id]);
+
+  const comCase = new Set((cases || []).map((c) => c.customerId).filter(Boolean));
+  const candidatos = (fila || []).filter((r) => r.bucket === "pedir" && !comCase.has(r.customer)).slice(0, 8);
+
+  async function virarCase(customerId) {
+    if (ocupado) return;
+    setOcupado(customerId);
+    try { await api.caseFromCustomer(customerId); recarregar(); }
+    catch (e) { window.alert(e?.message || "não consegui criar o rascunho"); }
+    finally { setOcupado(""); }
+  }
+  async function publicar(c) {
+    if (ocupado) return;
+    setOcupado(c.id);
+    try { await api.casePublish(c.id, !c.public); recarregar(); }
+    catch (e) { window.alert(e?.message || "não consegui publicar"); }
+    finally { setOcupado(""); }
+  }
+
+  return (
+    <div className="sec" style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+      <Card style={{ padding: "14px 16px" }}>
+        <div className="card-title" style={{ marginBottom: 10 }}>Cases</div>
+        {erro && <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>{erro}</div>}
+        {!erro && cases === null && <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>carregando…</div>}
+        {cases?.length === 0 && (
+          <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
+            Nenhum case ainda. Quem já tem resultado no painel aparece aqui embaixo, com o número pronto.
+          </div>
+        )}
+        {(cases || []).map((c) => (
+          <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: "1px solid var(--line-1)", fontSize: 13, flexWrap: "wrap" }}>
+            <Pill tone={c.public ? "pos" : "mut"}>{c.public ? "público" : "rascunho"}</Pill>
+            <span style={{ fontWeight: 600 }}>{c.name || "sem nome"}</span>
+            {c.niche && <span style={{ fontSize: 12, color: "var(--fg-3)" }}>{c.niche}</span>}
+            <span style={{ fontSize: 12, color: "var(--fg-3)" }}>
+              {(c.metrics || []).length} {(c.metrics || []).length === 1 ? "número" : "números"}
+              {c.authorizedAt ? " · autorizado" : " · sem autorização"}
+            </span>
+            <button onClick={() => publicar(c)} disabled={!!ocupado}
+              style={{ marginLeft: "auto", height: 26, padding: "0 11px", borderRadius: 999, fontSize: 11.5, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", cursor: ocupado ? "default" : "pointer" }}>
+              {c.public ? "despublicar" : "publicar"}
+            </button>
+          </div>
+        ))}
+      </Card>
+
+      <Card style={{ padding: "14px 16px" }}>
+        <div className="card-title" style={{ marginBottom: 4 }}>Quem tem prova pra virar case</div>
+        <div style={{ fontSize: 12, color: "var(--fg-3)", marginBottom: 10 }}>
+          clientes com venda influenciada nos últimos 30 dias e ainda sem case
+        </div>
+        {candidatos.length === 0 && <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Ninguém na fila agora.</div>}
+        {candidatos.map((r) => (
+          <div key={r.customer} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: "1px solid var(--line-1)", fontSize: 13, flexWrap: "wrap" }}>
+            <span style={{ fontWeight: 600 }}>{r.name || (customers || []).find((c) => c.id === r.customer)?.name || r.customer}</span>
+            <span className="tnum" style={{ fontSize: 12.5, color: "var(--fg-2)" }}>{window.fmt.money(r.influenced30d || 0)}</span>
+            <span style={{ fontSize: 12, color: "var(--fg-3)" }}>em 30 dias</span>
+            <button onClick={() => virarCase(r.customer)} disabled={!!ocupado}
+              style={{ marginLeft: "auto", height: 26, padding: "0 11px", borderRadius: 999, fontSize: 11.5, fontWeight: 600, border: 0, background: "var(--accent)", color: "oklch(1 0 0)", cursor: ocupado ? "default" : "pointer" }}>
+              virar case
+            </button>
+          </div>
+        ))}
+      </Card>
+    </div>
+  );
+}
+
 // Bloco de Resultados da ficha: a evidência de serviço na mão de quem cuida da
 // conta. O número é o INFLUENCIADO (o que os anúncios que a Lever criou
 // venderam), nunca o faturamento da loja: a loja já vendia antes da gente, e
@@ -1574,6 +1661,23 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
                 title="Registrar a saída deste cliente (churn): data + motivo. Cancela as assinaturas em aberto (espelha no Mercado Pago quando vinculadas) e tira o cliente do MRR e da base ativa — o histórico e o valor do contrato ficam registrados."
                 style={{ height: 28, padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid color-mix(in srgb, var(--neg) 40%, transparent)", background: "var(--bg-1)", color: "var(--neg)", fontSize: 12, flexShrink: 0 }}>
                 {churnOpen ? "cancelar" : "registrar churn"}
+              </button>
+            )}
+            {!editing && !churned && customer.saas !== "uniquekids" && (
+              <button onClick={async (ev) => {
+                const btn = ev.currentTarget; const era = btn.textContent;
+                btn.disabled = true; btn.textContent = "criando…";
+                try {
+                  const c = await api.caseFromCustomer(customer.id);
+                  window.alert(c.metrics?.length
+                    ? `Rascunho criado com o número do painel (${c.metrics[0].value}). Falta ${(c.blockers || []).join(", ")}. Abra a aba Cases pra completar e publicar.`
+                    : `Rascunho criado. Falta ${(c.blockers || []).join(", ")}. Abra a aba Cases pra completar e publicar.`);
+                } catch (e) { window.alert(e?.message || "não consegui criar o rascunho"); }
+                finally { btn.disabled = false; btn.textContent = era; }
+              }}
+                title="Cria o rascunho de case deste cliente, já com o número do painel (o que os anúncios da Lever venderam na conta dele nos últimos 30 dias). Nada vai a público sem a autorização dele."
+                style={{ height: 28, padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, flexShrink: 0 }}>
+                virar case
               </button>
             )}
             {!editing && (

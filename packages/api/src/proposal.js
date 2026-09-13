@@ -28,6 +28,7 @@
 // ao vivo, igual à proposta do Levercopy que serviu de referência.
 
 import { randomBytes } from "node:crypto";
+import { pickCases, publicCase } from "./cases.js";
 import { CYCLE_MONTHS } from "./billing.js";
 import { hasCatalog, applyCatalog, catalogAmount } from "./proposal-catalog.js";
 import { mentoriaAmount, mentoriaTemplateOf } from "./mentoria.js";
@@ -490,6 +491,13 @@ export async function runNativeProposal(repo, lead, opts = {}) {
   if (!template) return { ok: false, skipped: "no_template" };
 
   const data = splitLeadData(lead);
+  // Cases reais escolhidos pelo NICHO deste lead, congelados no snapshot como
+  // todo o resto: o link já enviado não pode mudar de prova depois. Só case
+  // público e autorizado entra (cases.js); sem nenhum, o slide 06 fica nos
+  // colchetes, que é o estado honesto.
+  try {
+    data.cases = pickCases(await repo.list("cases"), { niche: data.answers?.niche || "", limit: 4 }).map(publicCase);
+  } catch { data.cases = []; }
   const calc = { ...CALC_DEFAULTS, ...(template.calc || {}) };
   let proposal;
   try {

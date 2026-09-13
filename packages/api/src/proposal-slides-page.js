@@ -710,7 +710,7 @@ const SLIDES = `
   </div>
 </section>
 
-<section data-if="resultados" data-label="Quem já está dentro" data-screen-label="06 Resultados" data-speaker-notes="Troque os colchetes pelos cases reais mais parecidos com o nicho deste cliente antes da reunião." style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
+<section data-if="resultados" data-label="Quem já está dentro" data-screen-label="06 Resultados" data-speaker-notes="Cases escolhidos pelo nicho deste cliente. Sem case do nicho, entram os mais fortes. Sem case nenhum publicado, a tela volta pros colchetes." style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
   <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding-bottom:24px;border-bottom:1px solid var(--line);margin-bottom:44px">
     <span style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">Quem já está dentro</span>
     <span style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">06</span>
@@ -718,10 +718,13 @@ const SLIDES = `
   <h2 style="margin:0 0 16px;font-size:60px;line-height:1.05;letter-spacing:-0.025em;font-weight:700;max-width:1300px;text-wrap:balance">Sellers com a mesma dor que a sua. <span style="color:var(--brand)">O que mudou.</span></h2>
   <p style="margin:0 0 56px;font-size:28px;line-height:1.45;color:var(--ink-muted)">Números conferidos no painel, não em depoimento.</p>
   <div style="flex:1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px">
+    <div data-cases style="display:contents"></div>
+    <div data-cases-fallback style="display:contents">
     <div style="background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:32px;display:flex;flex-direction:column;gap:16px"><div style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">[CLIENTE] · [NICHO]</div><div style="font-size:54px;font-weight:700;letter-spacing:-0.03em;line-height:1;color:var(--brand);font-variant-numeric:tabular-nums">[R$ xx mil]</div><div style="font-size:25px;color:var(--ink-muted);line-height:1.35">faturados por anúncios da Lever em [x] meses</div><div style="margin-top:auto;font-size:24px;line-height:1.45;color:var(--ink-soft);border-top:1px solid var(--line-faint);padding-top:18px">[Ex.: Tinha 2 contas e 1 pessoa cadastrando. Ligou o efeito teia e triplicou os anúncios no ar sem contratar.]</div></div>
     <div style="background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:32px;display:flex;flex-direction:column;gap:16px"><div style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">[CLIENTE] · [NICHO]</div><div style="font-size:54px;font-weight:700;letter-spacing:-0.03em;line-height:1;color:var(--brand);font-variant-numeric:tabular-nums">[+xx%]</div><div style="font-size:25px;color:var(--ink-muted);line-height:1.35">de faturamento em [x] meses</div><div style="margin-top:auto;font-size:24px;line-height:1.45;color:var(--ink-soft);border-top:1px solid var(--line-faint);padding-top:18px">[Ex.: Estoque cheio, anúncio fraco. Publicou 1.000 OEM em uma semana e o catálogo passou a aparecer na busca por veículo.]</div></div>
     <div style="background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:32px;display:flex;flex-direction:column;gap:16px"><div style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">[CLIENTE] · [NICHO]</div><div style="font-size:54px;font-weight:700;letter-spacing:-0.03em;line-height:1;color:var(--brand);font-variant-numeric:tabular-nums">[x mil]</div><div style="font-size:25px;color:var(--ink-muted);line-height:1.35">anúncios publicados em [x] dias</div><div style="margin-top:auto;font-size:24px;line-height:1.45;color:var(--ink-soft);border-top:1px solid var(--line-faint);padding-top:18px">[Ex.: Levaria 4 meses de cadastro manual. Saiu em 9 dias, com compatibilidade completa.]</div></div>
     <div style="background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:32px;display:flex;flex-direction:column;gap:16px"><div style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">[CLIENTE] · [NICHO]</div><div style="font-size:54px;font-weight:700;letter-spacing:-0.03em;line-height:1;color:var(--brand);font-variant-numeric:tabular-nums">[x h/mês]</div><div style="font-size:25px;color:var(--ink-muted);line-height:1.35">de trabalho manual que voltaram pro dono</div><div style="margin-top:auto;font-size:24px;line-height:1.45;color:var(--ink-soft);border-top:1px solid var(--line-faint);padding-top:18px">[Ex.: Passava as tardes respondendo pergunta. Hoje a IA responde e ele cuida de compra e margem.]</div></div>
+    </div>
   </div>
 </section>
 
@@ -1081,6 +1084,10 @@ export function proposalSlidesPageHtml(p, { editable = false, previewBanner = fa
     oferta,
     catalog: editable ? slim : null,
     hoje: new Date().toLocaleDateString("pt-BR"),
+    // Cases escolhidos pelo NICHO deste lead, congelados no snapshot junto com
+    // o resto da proposta (cases.js / pickCases). Vazio = o slide 06 volta pros
+    // colchetes, que é o estado honesto de quem ainda não tem case autorizado.
+    cases: (p.data && Array.isArray(p.data.cases)) ? p.data.cases : [],
   };
   return `<!doctype html>
 <html lang="pt-BR">
@@ -1148,6 +1155,41 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
     return d;
   }
 
+  // Card de case real, no molde do cardEntregavel: o número grande é a 1ª
+  // métrica (a que o time pôs em primeiro), a legenda é o rótulo dela e o
+  // rodapé é o depoimento ou, na falta dele, a 2ª métrica.
+  function cardCase(c) {
+    var d = document.createElement("div");
+    d.setAttribute("style", "background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:32px;display:flex;flex-direction:column;gap:16px;min-width:0");
+    var m = (c.metrics || [])[0] || {};
+    var topo = document.createElement("div");
+    topo.setAttribute("style", "font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)");
+    topo.textContent = c.name + (c.niche ? " · " + c.niche : "");
+    d.appendChild(topo);
+    var num = document.createElement("div");
+    num.setAttribute("style", "font-size:54px;font-weight:700;letter-spacing:-0.03em;line-height:1;color:var(--brand);font-variant-numeric:tabular-nums");
+    num.textContent = m.value || "";
+    d.appendChild(num);
+    var leg = document.createElement("div");
+    leg.setAttribute("style", "font-size:25px;color:var(--ink-muted);line-height:1.35");
+    leg.textContent = (m.label || "") + (m.period ? " (" + m.period + ")" : "");
+    d.appendChild(leg);
+    var pe = document.createElement("div");
+    pe.setAttribute("style", "margin-top:auto;font-size:24px;line-height:1.45;color:var(--ink-soft);border-top:1px solid var(--line-faint);padding-top:18px");
+    var segunda = (c.metrics || [])[1];
+    if (c.quote) pe.textContent = '"' + c.quote + '"' + (c.quoteAuthor ? " " + c.quoteAuthor : "");
+    else if (segunda) pe.textContent = segunda.value + " " + (segunda.label || "");
+    else pe.textContent = c.headline || "";
+    d.appendChild(pe);
+    if (m.source === "painel") {
+      var fonte = document.createElement("div");
+      fonte.setAttribute("style", "font-family:var(--font-mono);font-size:20px;color:var(--ink-faint)");
+      fonte.textContent = "fonte: painel LeverAds";
+      d.appendChild(fonte);
+    }
+    return d;
+  }
+
   function pintar() {
     var o = oferta();
     var vals = {
@@ -1166,6 +1208,16 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
       grid.innerHTML = "";
       (o.entregaveis || []).forEach(function (e) { grid.appendChild(cardEntregavel(e)); });
     }
+    // Cases reais entram no lugar dos colchetes do slide 06. Sem case
+    // publicado, o fallback fica: colchete na tela é sinal pro closer, número
+    // inventado seria mentira.
+    var gc = document.querySelector("[data-cases]");
+    var fb = document.querySelector("[data-cases-fallback]");
+    if (gc) {
+      gc.innerHTML = "";
+      (D.cases || []).forEach(function (c) { gc.appendChild(cardCase(c)); });
+    }
+    if (fb) fb.style.display = (D.cases || []).length ? "none" : "contents";
     // Slide de produto que não está no plano sai da apresentação.
     todos.forEach(function (s) {
       var cond = s.getAttribute("data-if");

@@ -16,6 +16,7 @@
 
 import { createTask, completeTask, registerTaskHook } from "./tasks-core.js";
 import { isChurnedCustomer } from "./churn.js";
+import { influencedByOrg } from "./leverads-results.js";
 
 const DAY = 86_400_000;
 
@@ -23,6 +24,10 @@ export const DEFAULT_MILESTONES = [
   { key: "onboarding", label: "Onboarding", dueDays: 7, hint: "semana 1" },
   { key: "checkin_m1", label: "Check-in de mês 1", dueDays: 30, hint: "mês 1" },
   { key: "revisao_m3", label: "Revisão de resultado", dueDays: 90, hint: "mês 3" },
+  // Pedido de depoimento: só pra quem TEM prova (o gate "proof" olha a fila de
+  // indicação, que já calcula quanto a Lever vendeu na conta dele). Pedir case
+  // a quem não teve resultado é queimar a relação.
+  { key: "depoimento", label: "Pedir depoimento e autorizar case", dueDays: 100, hint: "depois da revisão de mês 3", gate: "proof" },
   { key: "upsell_m6", label: "Conversa de upsell", dueDays: 180, hint: "mês 6" },
 ];
 
@@ -93,6 +98,7 @@ const TITULO = {
   checkin_m1: (nome) => `Check-in de mês 1 com ${nome}`,
   revisao_m3: (nome) => `Revisão de resultado com ${nome} (mês 3)`,
   upsell_m6: (nome) => `Conversa de upsell com ${nome} (mês 6)`,
+  depoimento: (nome) => `Pedir depoimento a ${nome}`,
 };
 
 export function taskCopyFor(milestone, customer, { now = Date.now() } = {}) {
@@ -100,6 +106,16 @@ export function taskCopyFor(milestone, customer, { now = Date.now() } = {}) {
   const title = milestone.key === "renovacao"
     ? `Contato de renovação com ${nome} (contrato termina em ${fmtDia(new Date(new Date(customer.startedAt).getTime() + (Number(milestone.dueDays) + RENEWAL_LEAD_DAYS) * DAY).toISOString())})`
     : (TITULO[milestone.key] ? TITULO[milestone.key](nome) : `${milestone.label} · ${nome}`);
+  if (milestone.key === "depoimento") {
+    return {
+      title,
+      description: [
+        `${nome}, os anúncios que a gente subiu venderam na sua conta nos últimos 30 dias. Posso contar essa história como case da LeverAds? A gente cita a ${nome}, mostra o número e marca a loja. Se topar, me manda duas frases sobre o que mudou na operação e eu monto o resto.`,
+        "",
+        "Abra a ficha do cliente pra ver o número dos 30 dias antes de mandar (bloco Resultados) e, quando ele autorizar, clique em \"virar case\": o número já vem do painel.",
+      ].join("\n"),
+    };
+  }
   const description = [
     `Marco da régua de pós-venda: ${milestone.label}${milestone.hint ? ` (${milestone.hint})` : ""}.`,
     `Cliente desde ${fmtDia(customer.startedAt)} · ${tenureLabel(customer, now)}.`,
@@ -131,6 +147,7 @@ export function startCustomerMilestones(repo, {
   log,
   intervalMs = 30 * 60 * 1000,
   graceDays = 30,
+  influenced = influencedByOrg, // injetável no teste: é a única leitura do banco do produto
   now = () => new Date(),
 } = {}) {
   let running = false;
@@ -170,6 +187,16 @@ export function startCustomerMilestones(repo, {
       if (s.customer && !cycleOf.has(s.customer)) cycleOf.set(s.customer, s.cycle);
     }
     let created = 0;
+    // Prova por cliente: a MESMA fila de indicação (influencedByOrg), carregada
+    // uma vez por tick e só quando algum marco com gate precisar dela.
+    let provaMap = null;
+    const hasProof = async (c) => {
+      if (!c.leveradsOrgId) return false;
+      if (!provaMap) {
+        provaMap = await influenced(customers.map((x) => x.leveradsOrgId).filter(Boolean)).catch(() => new Map());
+      }
+      return (provaMap.get(String(c.leveradsOrgId)) || 0) > 0;
+    };
 
     for (const c of customers) {
       if (!inMilestoneRuler(c, ms)) continue;
@@ -177,6 +204,10 @@ export function startCustomerMilestones(repo, {
       const pending = dueMilestones(customer, prodById.get(c.saas), { now: ms, graceDays });
       if (!pending.length) continue;
       for (const m of pending) {
+        // Marco com gate de prova (pedido de depoimento) só nasce pra quem tem
+        // resultado no painel: o texto do pedido cita o número, e sem número o
+        // pedido não existe.
+        if (m.gate === "proof" && !(await hasProof(c))) continue;
         const existing = await repo.listWhere("tasks", { customerId: c.id, milestoneKey: m.key }, { fields: [] }).catch(() => []);
         if (existing.length) continue;
         const { title, description } = taskCopyFor(m, customer, { now: ms });
