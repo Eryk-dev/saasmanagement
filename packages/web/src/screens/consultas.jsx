@@ -1,6 +1,6 @@
 import React from "react";
 import { PageHead } from "../components/viz.jsx";
-import { EmptyState, useEsc } from "../atoms.jsx";
+import { EmptyState, useEsc, MoreMenu } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -184,6 +184,7 @@ export function ConsultasScreen() {
 // ── Aba Agenda ────────────────────────────────────────────────────────────────
 function AgendaTab({ days, byCell, journeys, consultas, onShiftWeek, onToday, onPick, onCell, onNext, onOpenManual }) {
   const today = ymd(new Date());
+  const [todasJornadas, setTodasJornadas] = useS(false); // "+N em dia"
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -234,51 +235,152 @@ function AgendaTab({ days, byCell, journeys, consultas, onShiftWeek, onToday, on
        </div>
       </div>
 
-      {/* Jornadas por cliente */}
-      <div>
-        <div className="kicker" style={{ marginBottom: 8 }}>Jornadas · {journeys.length} cliente{journeys.length === 1 ? "" : "s"}</div>
-        {consultas === null ? (
-          <div className="mono dim" style={{ fontSize: 11.5 }}>carregando…</div>
-        ) : journeys.length === 0 ? (
-          <EmptyState title="Nenhuma jornada ainda" hint="marca a 1ª consulta do cliente no botão acima (o Manual da Família nasce junto)" />
-        ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 320px), 1fr))", gap: 12 }}>
-            {journeys.map((j) => (
-              <div key={j.key} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "14px 16px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 700, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{j.clientName || "?"}</div>
-                  <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)" }}>{j.done}/{j.total}</span>
-                </div>
-                {/* bolinhas do progresso 1..N (tamanho do pacote comprado) */}
-                <div style={{ display: "flex", gap: 5, margin: "10px 0" }}>
-                  {Array.from({ length: j.total }, (_, i) => i + 1).map((n) => {
-                    const c = j.items.find((x) => x.n === n);
-                    const st = c ? (STATUS[c.status] || STATUS.scheduled) : null;
-                    const done = c?.status === "done";
-                    return (
-                      <span key={n} title={c ? `consulta ${n}: ${st.label}${c.at ? ` · ${fmtAt(c.at)}` : ""}` : `consulta ${n}: não marcada`}
-                        onClick={() => c && onPick(c)}
-                        style={{ width: 22, height: 22, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, cursor: c ? "pointer" : "default",
-                          background: c ? "color-mix(in srgb, " + st.color + " 16%, transparent)" : "var(--bg-2)",
-                          border: "1px solid " + (c ? st.color : "var(--line-2)"),
-                          color: c ? st.color : "var(--fg-4)" }}>
-                        {done ? "✓" : n}
-                      </span>
-                    );
-                  })}
-                </div>
-                <div className="mono dim" style={{ fontSize: 11 }}>
-                  {j.next ? `próxima: ${fmtAt(j.next.at)}` : j.done >= j.total ? "jornada completa 🎉" : "sem próxima marcada"}
-                </div>
-                <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-                  {j.done < j.total && <button onClick={() => onNext(j)} style={chip(false)}>+ marcar próxima</button>}
-                  <button onClick={() => onOpenManual(j)} style={chip(false)}>Manual da Família</button>
-                </div>
+      {/* Jornadas (redesign de 13/09): eram cartões de peso igual em ordem de
+          data. Agora sobem por RISCO — quem está sem próxima consulta marcada
+          vem primeiro, e quem está em dia fica atrás de um "+N em dia". A
+          pergunta da tela é "de quem eu tenho que cuidar hoje". */}
+      {(() => {
+        const diasDe = (iso) => {
+          const t = iso ? new Date(iso).getTime() : NaN;
+          return Number.isFinite(t) ? Math.max(0, Math.floor((Date.now() - t) / 86400000)) : null;
+        };
+        const enriquecer = (j) => {
+          const feitas = j.items.filter((c) => c.status === "done" && c.at).sort((a, b) => String(b.at).localeCompare(String(a.at)));
+          const ultima = feitas[0] || null;
+          const parada = ultima ? diasDe(ultima.at) : null;
+          const completa = j.done >= j.total;
+          const semProxima = !j.next && !completa;
+          return { ...j, ultima, parada, completa, semProxima, risco: semProxima ? 1000 + (parada || 0) : 0 };
+        };
+        const lista = journeys.map(enriquecer).sort((a, b) => b.risco - a.risco || String(a.next?.at || "9999").localeCompare(String(b.next?.at || "9999")));
+        const emRisco = lista.filter((j) => j.semProxima);
+        const maisParada = emRisco.slice().sort((a, b) => (b.parada || 0) - (a.parada || 0))[0] || null;
+        const mostradas = todasJornadas ? lista : lista.filter((j) => j.semProxima || j.next);
+        const escondidas = lista.length - mostradas.length;
+        // Manual a entregar: quem chega na ÚLTIMA consulta do pacote.
+        const naUltima = lista.filter((j) => j.next && Number(j.next.n) >= j.total);
+        const daSemana = (consultas || []).filter((c) => c.at && days.some((d) => ymd(d) === c.at.slice(0, 10)));
+        const faltou = daSemana.filter((c) => c.status === "noshow").length;
+        const desmarcadas = daSemana.filter((c) => c.status === "canceled").length;
+
+        return (
+          <>
+            {/* O aviso com prazo no topo, com a ação ao lado. */}
+            {emRisco.length > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "11px 16px", borderRadius: "var(--r-3)", border: "1px solid color-mix(in srgb, var(--warn) 30%, transparent)", background: "var(--warn-soft)" }}>
+                <span style={{ fontSize: 13.5, fontWeight: 650, color: "var(--warn)" }}>
+                  {`${emRisco.length} ${emRisco.length === 1 ? "jornada sem próxima marcada" : "jornadas sem próxima marcada"}`}
+                </span>
+                {maisParada && (
+                  <span style={{ fontSize: 12.5, color: "var(--fg-2)" }}>
+                    {`a mais parada: ${maisParada.clientName || "?"}${maisParada.parada != null ? `, última consulta há ${maisParada.parada} dias` : ", sem consulta feita ainda"}`}
+                  </span>
+                )}
+                {maisParada && (
+                  <button onClick={() => onNext(maisParada)} style={{ marginLeft: "auto", height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: 0, background: "var(--warn)", color: "oklch(1 0 0)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+                    {`marcar a ${Math.min(maisParada.done + 1, maisParada.total)}ª de ${maisParada.clientName?.split(" ")[0] || "quem parou"}`}
+                  </button>
+                )}
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            )}
+
+            {/* Resumo da semana + o que precisa de Manual pronto. */}
+            <div style={{ display: "flex", gap: 18, flexWrap: "wrap", alignItems: "center", padding: "10px 16px", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
+              <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
+                <span className="kicker">Nesta semana</span>
+                <span className="tnum" style={{ fontSize: 13.5, fontWeight: 600 }}>{`${daSemana.filter((c) => c.status !== "canceled").length} consultas`}</span>
+                {(faltou > 0 || desmarcadas > 0) && (
+                  <span className="mono dim" style={{ fontSize: 11 }}>
+                    {[faltou ? `${faltou} faltou` : "", desmarcadas ? `${desmarcadas} desmarcada${desmarcadas > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ")}
+                  </span>
+                )}
+              </span>
+              {naUltima.length > 0 && (
+                <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
+                  <span className="kicker">Manual a entregar</span>
+                  <span style={{ fontSize: 12.5, color: "var(--fg-2)" }}>
+                    {`${naUltima.length} ${naUltima.length === 1 ? "família chega" : "famílias chegam"} na consulta ${naUltima[0].total}`}
+                  </span>
+                </span>
+              )}
+            </div>
+
+            <div>
+              <div className="kicker" style={{ marginBottom: 8 }}>
+                {`Jornadas · ${journeys.length} ${journeys.length === 1 ? "família" : "famílias"}${emRisco.length ? " · as sem próxima consulta vêm primeiro" : ""}`}
+              </div>
+              {consultas === null ? (
+                <div className="mono dim" style={{ fontSize: 11.5 }}>carregando…</div>
+              ) : journeys.length === 0 ? (
+                <EmptyState title="Nenhuma jornada ainda" hint="marca a 1ª consulta do cliente no botão acima (o Manual da Família nasce junto)" />
+              ) : (
+                <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", overflow: "hidden" }}>
+                  {mostradas.map((j, i) => (
+                    <div key={j.key} style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", padding: "12px 16px", borderTop: i === 0 ? "none" : "1px solid var(--line-faint)" }}>
+                      <div style={{ minWidth: 170, flex: "1 1 170px" }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 650, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {j.clientName || "?"}{j.items[0]?.childName ? ` · ${j.items[0].childName}` : ""}
+                        </div>
+                        <div className="mono dim" style={{ fontSize: 10.5 }}>{`pacote de ${j.total}${j.items[0]?.at ? ` · começou em ${fmtAt(j.items[0].at).slice(0, 5)}` : ""}`}</div>
+                      </div>
+                      {/* bolinhas do progresso 1..N (tamanho do pacote comprado) */}
+                      <div style={{ display: "flex", gap: 5 }}>
+                        {Array.from({ length: j.total }, (_, n) => n + 1).map((n) => {
+                          const c = j.items.find((x) => x.n === n);
+                          const st = c ? (STATUS[c.status] || STATUS.scheduled) : null;
+                          const done = c?.status === "done";
+                          return (
+                            <span key={n} title={c ? `consulta ${n}: ${st.label}${c.at ? ` · ${fmtAt(c.at)}` : ""}` : `consulta ${n}: não marcada`}
+                              onClick={() => c && onPick(c)}
+                              style={{ width: 22, height: 22, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, cursor: c ? "pointer" : "default",
+                                background: c ? "color-mix(in srgb, " + st.color + " 16%, transparent)" : "var(--bg-2)",
+                                border: "1px solid " + (c ? st.color : "var(--line-2)"),
+                                color: c ? st.color : "var(--fg-4)" }}>
+                              {done ? "✓" : n}
+                            </span>
+                          );
+                        })}
+                      </div>
+                      <div style={{ minWidth: 180, flex: "1 1 180px", fontSize: 12.5 }}>
+                        {j.completa ? (
+                          <span style={{ color: "var(--pos)", fontWeight: 600 }}>jornada completa</span>
+                        ) : j.semProxima ? (
+                          <span style={{ color: "var(--warn)", fontWeight: 600 }}>
+                            {`sem próxima marcada${j.parada != null ? ` · última há ${j.parada} dias` : ""}`}
+                          </span>
+                        ) : (
+                          <span style={{ color: "var(--fg-2)" }}>
+                            {`${fmtAt(j.next.at)}${Number(j.next.n) >= j.total ? " — última consulta" : ""}`}
+                          </span>
+                        )}
+                      </div>
+                      {/* Uma ação principal por linha; o Manual fica ao lado. */}
+                      <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6, alignItems: "center" }}>
+                        {!j.completa && j.semProxima && (
+                          <button onClick={() => onNext(j)} style={{ ...chip(false), background: "var(--btn-bg)", color: "var(--btn-fg)", border: "none", fontWeight: 700 }}>
+                            {`marcar a ${Math.min(j.done + 1, j.total)}ª`}
+                          </button>
+                        )}
+                        {!j.semProxima && !j.completa && j.next && (
+                          <button onClick={() => onPick(j.next)} style={chip(false)}>abrir consulta</button>
+                        )}
+                        <button onClick={() => onOpenManual(j)} style={chip(false)}>Manual ↗</button>
+                      </span>
+                    </div>
+                  ))}
+                  {escondidas > 0 && (
+                    <button onClick={() => setTodasJornadas(true)} className="mono"
+                      style={{ width: "100%", padding: "10px 16px", borderTop: "1px solid var(--line-faint)", background: "transparent", color: "var(--accent)", fontSize: 11.5, fontWeight: 600, cursor: "pointer", textAlign: "left" }}>
+                      {`+${escondidas} ${escondidas === 1 ? "jornada em dia" : "jornadas em dia"}`}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        );
+      })()}
+
     </div>
   );
 }
@@ -479,41 +581,65 @@ function EntregaveisTab({ manuais, customers, product, onOpen, refresh }) {
   if (!manuais.length) {
     return <EmptyState title="Nenhum manual ainda" hint="o Manual da Família nasce sozinho na 1ª consulta do cliente; ou crie um manualmente" action={<button onClick={createManual} style={chip(false)}>+ criar manual</button>} />;
   }
+  // Linhas com UMA ação principal (redesign de 13/09): eram cartões iguais com
+  // três botões de mesmo peso, e a fila do que precisa sair primeiro (quem
+  // chega na última consulta) não aparecia.
+  const prontos = manuais.filter((m) => m.status !== "delivered" && (m.sections || []).filter((x) => String(x.content || "").trim()).length >= ((m.sections || []).length || 6) - 1);
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 320px), 1fr))", gap: 12 }}>
-      {manuais.map((m) => {
-        const filled = (m.sections || []).filter((s) => String(s.content || "").trim()).length;
-        const total = (m.sections || []).length || 6;
-        const delivered = m.status === "delivered";
-        return (
-          <div key={m.id} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "14px 16px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 700, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {m.clientName || "?"}{m.childName ? ` · ${m.childName}` : ""}
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 13.5, fontWeight: 650 }}>{`${manuais.length} ${manuais.length === 1 ? "manual" : "manuais"}`}</span>
+        {prontos.length > 0 && (
+          <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>
+            {`${prontos.length} ${prontos.length === 1 ? "pronto" : "prontos"} para entregar`}
+          </span>
+        )}
+        <button onClick={createManual} style={{ ...chip(false), marginLeft: "auto" }}>+ criar manual</button>
+      </div>
+      <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", overflow: "hidden" }}>
+        {manuais.map((m, i) => {
+          const secoes = m.sections || [];
+          const filled = secoes.filter((x) => String(x.content || "").trim()).length;
+          const total = secoes.length || 6;
+          const delivered = m.status === "delivered";
+          return (
+            <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", padding: "12px 16px", borderTop: i === 0 ? "none" : "1px solid var(--line-faint)" }}>
+              <div style={{ minWidth: 180, flex: "1 1 180px" }}>
+                <div style={{ fontSize: 13.5, fontWeight: 650, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {m.clientName || "?"}{m.childName ? ` · ${m.childName}` : ""}
+                </div>
+                <div className="mono dim" style={{ fontSize: 10.5 }}>{`${filled}/${total} seções escritas`}</div>
               </div>
-              <span className="mono" style={{ fontSize: 10, padding: "2px 8px", borderRadius: 999, fontWeight: 700,
-                background: delivered ? "color-mix(in srgb, var(--pos, #17803d) 14%, transparent)" : "var(--bg-2)",
-                color: delivered ? "var(--pos, #17803d)" : "var(--fg-3)",
-                border: "1px solid " + (delivered ? "var(--pos, #17803d)" : "var(--line-2)") }}>
+              <div style={{ display: "flex", gap: 4, minWidth: 120, flex: "1 1 120px" }}>
+                {secoes.map((x) => (
+                  <span key={x.key} title={x.title + (String(x.content || "").trim() ? " · escrita" : " · vazia")}
+                    style={{ flex: 1, height: 6, borderRadius: 3, background: String(x.content || "").trim() ? "var(--accent)" : "var(--bg-3)" }} />
+                ))}
+              </div>
+              <span className="mono" style={{ fontSize: 10, padding: "2px 8px", borderRadius: 999, fontWeight: 700, whiteSpace: "nowrap",
+                background: delivered ? "color-mix(in srgb, var(--pos) 14%, transparent)" : "var(--bg-2)",
+                color: delivered ? "var(--pos)" : "var(--fg-3)",
+                border: "1px solid " + (delivered ? "var(--pos)" : "var(--line-2)") }}>
                 {delivered ? "entregue" : "em construção"}
               </span>
+              <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6, alignItems: "center" }}>
+                {delivered ? (
+                  <a href={manualUrl(m.id)} target="_blank" rel="noreferrer" style={{ ...chip(false), textDecoration: "none" }}>ver página ↗</a>
+                ) : (
+                  <button onClick={() => onOpen(m.id)} style={{ ...chip(false), background: "var(--btn-bg)", color: "var(--btn-fg)", border: "none", fontWeight: 700 }}>
+                    {filled >= total ? "revisar e entregar" : "terminar manual"}
+                  </button>
+                )}
+                <MoreMenu items={[
+                  !delivered && { label: "ver página ↗", onClick: () => window.open(manualUrl(m.id), "_blank", "noreferrer") },
+                  delivered && { label: "abrir o editor", onClick: () => onOpen(m.id) },
+                  { label: "copiar o link público", onClick: () => { try { navigator.clipboard.writeText(manualUrl(m.id)); } catch { window.prompt("Link do Manual:", manualUrl(m.id)); } } },
+                ]} />
+              </span>
             </div>
-            {/* progresso das seções */}
-            <div style={{ display: "flex", gap: 4, margin: "10px 0 6px" }}>
-              {(m.sections || []).map((s) => (
-                <span key={s.key} title={s.title + (String(s.content || "").trim() ? " · escrita" : " · vazia")}
-                  style={{ flex: 1, height: 6, borderRadius: 3, background: String(s.content || "").trim() ? "var(--accent)" : "var(--bg-3)" }} />
-              ))}
-            </div>
-            <div className="mono dim" style={{ fontSize: 10.5 }}>{filled}/{total} seções escritas</div>
-            <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
-              <button onClick={() => onOpen(m.id)} style={chip(false)}>Abrir</button>
-              <a href={manualUrl(m.id)} target="_blank" rel="noreferrer" style={{ ...chip(false), textDecoration: "none" }}>Ver página ↗</a>
-              <button onClick={() => navigator.clipboard?.writeText(manualUrl(m.id))} style={chip(false)} title="copiar o link público pra mandar no WhatsApp">copiar link</button>
-            </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
