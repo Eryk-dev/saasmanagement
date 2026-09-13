@@ -208,3 +208,12 @@ test("runner: fora do expediente não avisa, e tarefa no prazo não é cobrada",
   assert.deepEqual(await r.tick(new Date(Date.UTC(2026, 8, 10, 13))), { avisos: 0, comentarios: 0 });
   r.stop();
 });
+
+test("formulário e call com o mesmo combinado não duplicam a tarefa", async () => {
+  const { repo, lead } = await base();
+  const item = "Conectar a conta Loja 2 (Shopee) na LeverAds";
+  await syncClientPending(repo, lead, { pendencias: [{ item, responsavel: "cliente" }] }, { source: "form", now: () => TER });
+  await syncClientPending(repo, lead, resumo([{ item, responsavel: "cliente" }]), { source: "call", now: () => TER });
+  assert.equal((await repo.list("tasks")).length, 1);
+  assert.match((await repo.list("tasks"))[0].description, /Combinado no Formulário de Integração/);
+});

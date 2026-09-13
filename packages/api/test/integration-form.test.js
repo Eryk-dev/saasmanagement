@@ -248,3 +248,40 @@ test("nomes indicados vão pra FICHA do cliente e viram tarefa, sem criar lead",
   assert.match(task.description, /Pedro das Peças/);
   assert.match(task.description, /R\$ 500 se fechar/); // o coletor sabe o que ganha
 });
+
+// ── Compromissos que o formulário já revela ───────────────────────────────
+import { formPendencias } from "../src/integration-form.js";
+
+test("formPendencias: conta não conectada e contas fora do ERP viram pendência", () => {
+  const itens = formPendencias({
+    contas: [
+      { marketplace: "Mercado Livre", apelido: "Loja 1", conectada: "Já está conectada" },
+      { marketplace: "Shopee", apelido: "Loja 2", conectada: "Ainda não conectei" },
+      { marketplace: "Amazon", apelido: "", conectada: "Ainda não conectei" },
+      { marketplace: "Magalu", apelido: "Loja 4", conectada: "Não sei dizer" },
+    ],
+    erp: "Bling",
+    erp_contas: "Só algumas",
+  });
+  assert.deepEqual(itens, [
+    "Conectar a conta Loja 2 (Shopee) na LeverAds",
+    "Conectar a conta sem nome (Amazon) na LeverAds",
+    "Ligar no Bling as contas que ainda ficaram de fora",
+  ]);
+});
+
+test("formPendencias: ERP \"Outro\" usa o nome escrito; todas ligadas não gera nada", () => {
+  assert.deepEqual(formPendencias({ erp: "Outro", erp_qual: "Bling do primo", erp_contas: "Só algumas" }),
+    ["Ligar no Bling do primo as contas que ainda ficaram de fora"]);
+  assert.deepEqual(formPendencias({ erp: "Tiny (Olist)", erp_contas: "Sim, todas" }), []);
+  assert.deepEqual(formPendencias({ erp: "Não uso" }), []);
+});
+
+test("formPendencias: \"Quero decidir na call\" NÃO é pendência do cliente", () => {
+  assert.deepEqual(formPendencias({ sync: "Quero decidir na call", contas: [{ conectada: "Já está conectada" }] }), []);
+});
+
+test("formPendencias: formulário vazio não inventa pendência", () => {
+  assert.deepEqual(formPendencias({}), []);
+  assert.deepEqual(formPendencias(), []);
+});
