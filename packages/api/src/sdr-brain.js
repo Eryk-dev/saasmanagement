@@ -25,7 +25,7 @@ import { kindOf, firstStage, stageByKind, isWonLead } from "./stages.js";
 import { brtToIso, applyStageMove, onOutboundMessage, autoLeadOwner, logActivity, initialNextActionAt } from "./lead-flow.js";
 import { raiseAlert } from "./wa-call-flow.js";
 import { leadGrade } from "./routes.marketing.js";
-import { slotsForLead, slotLabel, slotLabelFull, wallNow, spreadPair, wholeHourSlots, OFFER_HOURS, activeHolds, holdSlots, releaseHolds, withoutHeld } from "./agenda-slots.js";
+import { slotsForLead, slotLabel, slotLabelFull, wallNow, spreadPair, wholeHourSlots, OFFER_HOURS, OFFER_HORIZON_DAYS, activeHolds, holdSlots, releaseHolds, withoutHeld } from "./agenda-slots.js";
 import { sdrBotConfig, leadDigest, conversationActive, leadPainFocus, greetName, SDR_AUTHOR } from "./sdr-flow.js";
 import { transcriber as defaultTranscriber } from "./transcribe.js";
 
@@ -444,7 +444,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
 
     // Contexto pra decisão: agenda real + conversa + relógio BRT.
     const wnow = wallNow(at);
-    const { slots } = await slotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 16, ...OFFER_HOURS });
+    const { slots } = await slotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 16, ...OFFER_HOURS, horizonDays: OFFER_HORIZON_DAYS });
     // Horário que OUTRO lead está decidindo agora sai da oferta: era o que fazia
     // o robô oferecer "amanhã às 10h" e, na resposta do lead 27 minutos depois,
     // negar o próprio horário (prod 24/08, Guilherme). Ver agenda-slots.js.
