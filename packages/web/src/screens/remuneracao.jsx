@@ -49,6 +49,7 @@ const RULES = [
   ["CLT ou PJ só muda o fixo", "a variável do closer é a mesma nos dois regimes."],
   ["CS por evento, sem banda", "R$100 quando a indicação vira reunião FEITA; se converter, R$250 no lugar (não soma). Bônus de NPS pago com NPS ≥ 80 e bônus de churn pago com churn do mês abaixo de 15%."],
   ["Subir de nível é o plano de carreira", "promoção sobe fixo, meta e bônus juntos (1 júnior · 2 pleno · 3 sênior)."],
+  ["Bônus de time", "todo mundo do plano (SDR, closer, CS e mídia social) leva um valor fixo, pelo cargo e nível, quando o mês fecha com as DUAS condições juntas: a meta de venda do mês da empresa batida (a mesma faixa Meta do mês da Visão geral) e o churn do mês abaixo de 15%. Faltou uma, ninguém leva. Durante o mês a Visão geral mostra se o time está no ritmo."],
 ];
 
 // ── O plano aprovado (padrão da tela; salvar sobrescreve por trilha) ─────────
@@ -84,7 +85,27 @@ const DEFAULT_PLAN = {
     churnMax: 15,
     notes: "",
   },
+  // Parcela COLETIVA (13/09/2026): valor fixo por cargo e nível, pago quando o
+  // mês fecha com as duas condições juntas. Espelha o DEFAULT_TEAM_BONUS do
+  // comp-plan.js na API — mudou aqui, mudar lá.
+  team: {
+    products: ["leverads"],
+    sdr: [300, 400, 500],
+    closer: [400, 600, 800],
+    cs: [300, 400, 500],
+    social: 200,
+  },
 };
+
+// Valor do bônus de time por cargo e nível (mídia social não tem nível).
+export function teamBonusFor(team, role, level = 1) {
+  const chave = role === "integrator" ? "cs" : role;
+  const v = (team || {})[chave];
+  if (v == null) return 0;
+  if (!Array.isArray(v)) return num(v);
+  const i = Math.min(Math.max(Math.floor(Number(level)) || 1, 1), v.length) - 1;
+  return num(v[i]);
+}
 
 // Bônus de UMA perna: att = realizado ÷ meta (1 = 100%). É DEGRAU, não rampa
 // (Leo, 19/08): a banda só paga quando é BATIDA, então o valor entre duas
@@ -120,14 +141,15 @@ export const bandOf = (att) =>
 const bandS = (att) => (bandOf(att) == null ? "zerada" : `${bandOf(att)}%`);
 
 // ── Simulador de SDR/Closer: duas pernas + fixo ──────────────────────────────
-function SimVendas({ plan, isCloser }) {
-  const [s, setS] = useS({ n: 1, pj: false, contratos: 20, receita: 90000 });
+function SimVendas({ plan, isCloser, team }) {
+  const [s, setS] = useS({ n: 1, pj: false, contratos: 20, receita: 90000, time: false });
   const lv = (plan.levels || []).find((l) => l.n === Number(s.n)) || plan.levels?.[0] || {};
   const attC = num(lv.metaContracts) > 0 ? num(s.contratos) / num(lv.metaContracts) : 0;
   const attR = num(lv.metaRevenue) > 0 ? num(s.receita) / num(lv.metaRevenue) : 0;
   const legC = legBonus(attC, num(lv.b80), num(lv.b100), num(lv.b120), lv.b140 == null ? undefined : num(lv.b140));
   const legR = legBonus(attR, num(lv.b80), num(lv.b100), num(lv.b120), lv.b140 == null ? undefined : num(lv.b140));
   const fixed = isCloser && s.pj ? num(lv.fixedPj) : num(lv.fixed);
+  const bonusTime = s.time ? teamBonusFor(team, isCloser ? "closer" : "sdr", Number(s.n)) : 0;
   const set = (k) => (e) => setS((p) => ({ ...p, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
   return (
     <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-1)", display: "flex", flexDirection: "column", gap: 6, fontSize: 12 }}>
@@ -137,12 +159,14 @@ function SimVendas({ plan, isCloser }) {
         {isCloser && <label style={{ display: "inline-flex", gap: 5, alignItems: "center" }}><input type="checkbox" checked={!!s.pj} onChange={set("pj")} /> regime PJ</label>}
         <label>contratos <input type="number" value={s.contratos} onChange={set("contratos")} style={{ ...inputS, width: 64, height: 26 }} /></label>
         <label>receita R$ <input type="number" value={s.receita} onChange={set("receita")} style={{ ...inputS, width: 100, height: 26 }} /></label>
+        <label style={{ display: "inline-flex", gap: 5, alignItems: "center" }}><input type="checkbox" checked={!!s.time} onChange={set("time")} /> mês fechou com bônus de time</label>
       </div>
       <div style={{ color: "var(--fg-2)" }}>
         perna contratos {pctS(attC)} <span style={{ color: "var(--fg-4)" }}>{`(banda ${bandS(attC)})`}</span> → <b>{money(legC)}</b> · perna receita {pctS(attR)} <span style={{ color: "var(--fg-4)" }}>{`(banda ${bandS(attR)})`}</span> → <b>{money(legR)}</b>
       </div>
       <div>
-        fixo{isCloser ? (s.pj ? " (PJ)" : " (CLT)") : ""} <b>{money(fixed)}</b> + variável <b>{money(legC + legR)}</b> = <b style={{ color: "var(--pos)" }}>{money(fixed + legC + legR)}</b>
+        fixo{isCloser ? (s.pj ? " (PJ)" : " (CLT)") : ""} <b>{money(fixed)}</b> + variável <b>{money(legC + legR)}</b>
+        {bonusTime > 0 && <> + time <b>{money(bonusTime)}</b></>} = <b style={{ color: "var(--pos)" }}>{money(fixed + legC + legR + bonusTime)}</b>
         <span style={{ color: "var(--fg-4)" }}> · a banda só paga ao ser batida (110% paga o bônus de 100%) · abaixo de 80% a perna zera · acima de 140% cada +20% completo paga o degrau anterior + R$100, sem teto</span>
       </div>
     </div>
@@ -150,12 +174,12 @@ function SimVendas({ plan, isCloser }) {
 }
 
 // ── Simulador do CS: eventos + NPS ───────────────────────────────────────────
-function SimCs({ plan }) {
-  const [s, setS] = useS({ n: 1, nps: true, churn: true, reunioes: 4, fechadas: 1 });
+function SimCs({ plan, team }) {
+  const [s, setS] = useS({ n: 1, nps: true, churn: true, reunioes: 4, fechadas: 1, time: false });
   const lv = (plan.levels || []).find((l) => l.n === Number(s.n)) || plan.levels?.[0] || {};
   // Indicação fechada paga o valor CHEIO no lugar do de reunião (não soma):
   // "reuniões" aqui são as que NÃO converteram.
-  const varTotal = num(s.reunioes) * num(plan.referralMeeting) + num(s.fechadas) * num(plan.referralClosed) + (s.nps ? num(lv.npsBonus) : 0) + (s.churn ? num(lv.churnBonus) : 0);
+  const varTotal = num(s.reunioes) * num(plan.referralMeeting) + num(s.fechadas) * num(plan.referralClosed) + (s.nps ? num(lv.npsBonus) : 0) + (s.churn ? num(lv.churnBonus) : 0) + (s.time ? teamBonusFor(team, "cs", Number(s.n)) : 0);
   const set = (k) => (e) => setS((p) => ({ ...p, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
   return (
     <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-1)", display: "flex", flexDirection: "column", gap: 6, fontSize: 12 }}>
@@ -166,6 +190,7 @@ function SimCs({ plan }) {
         <label style={{ display: "inline-flex", gap: 5, alignItems: "center" }}><input type="checkbox" checked={!!s.churn} onChange={set("churn")} /> churn &lt; {num(plan.churnMax) || 15}%</label>
         <label>indicações c/ reunião feita (sem fechar) <input type="number" value={s.reunioes} onChange={set("reunioes")} style={{ ...inputS, width: 56, height: 26 }} /></label>
         <label>indicações fechadas <input type="number" value={s.fechadas} onChange={set("fechadas")} style={{ ...inputS, width: 56, height: 26 }} /></label>
+        <label style={{ display: "inline-flex", gap: 5, alignItems: "center" }}><input type="checkbox" checked={!!s.time} onChange={set("time")} /> mês fechou com bônus de time</label>
       </div>
       <div>
         fixo <b>{money(lv.fixed)}</b> + variável <b>{money(varTotal)}</b> = <b style={{ color: "var(--pos)" }}>{money(num(lv.fixed) + varTotal)}</b>
@@ -182,7 +207,7 @@ const ROLE_META = {
   cs: { title: "Integrador · CS", sub: "fixo + indicação (reunião feita / fechada) + bônus NPS" },
 };
 
-export function RoleCard({ role, saved, onSave }) {
+export function RoleCard({ role, saved, onSave, team }) {
   const [draft, setDraft] = useS(saved);
   const [saving, setSaving] = useS(false);
   useE(() => setDraft(saved), [saved]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -280,7 +305,7 @@ export function RoleCard({ role, saved, onSave }) {
         )}
       </div>
 
-      {isCs ? <SimCs plan={draft} /> : <SimVendas plan={draft} isCloser={isCloser} />}
+      {isCs ? <SimCs plan={draft} team={team} /> : <SimVendas plan={draft} isCloser={isCloser} team={team} />}
     </div>
   );
 }
@@ -293,6 +318,97 @@ export function RoleCard({ role, saved, onSave }) {
 //
 // Vale pra QUALQUER papel: quem trouxe o nome leva, seja CS, SDR, closer ou
 // social. Por isso o bloco fica fora dos cards de trilha.
+// Bônus de time: a tabela editável, o estado do mês corrente (as duas condições
+// com os números que o placar já calcula) e quem leva quanto se o mês fechar.
+export function TeamBonusCard({ saved, onSave }) {
+  const [draft, setDraft] = useS(saved);
+  const [saving, setSaving] = useS(false);
+  const [status, setStatus] = useS(null);
+  const [product] = useActiveSaas();
+  useE(() => setDraft(saved), [saved]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+  const mes = React.useMemo(() => {
+    const d = new Date();
+    const iso = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
+    return { since: iso(new Date(d.getFullYear(), d.getMonth(), 1)), until: iso(d) };
+  }, []);
+  useE(() => {
+    if (!product?.id) return;
+    api.scoreboard(product.id, mes).then((r) => setStatus(r?.team?.teamBonus || null)).catch(() => setStatus(null));
+  }, [product?.id, mes]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const users = (window.SEED?.USERS || []).filter((u) => (u.roles || []).some((r) => ["sdr", "closer", "integrator", "social"].includes(r)));
+  const setCell = (role, i) => (e) => setDraft((p) => ({
+    ...p, [role]: (p[role] || []).map((v, k) => (k === i ? num(e.target.value) : v)),
+  }));
+  const totalSeTodos = users.reduce((a, u) => {
+    const role = ["closer", "sdr", "integrator", "social"].find((r) => (u.roles || []).includes(r)) || "";
+    return a + teamBonusFor(draft, role, num(u.compLevel) || 1);
+  }, 0);
+
+  return (
+    <div style={box}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+        <div style={{ fontSize: 15.5, fontWeight: 700, letterSpacing: "-0.01em" }}>Bônus de time</div>
+        <span style={{ fontSize: 11.5, color: "var(--fg-3)" }}>
+          a parcela coletiva: meta de venda do mês batida E churn abaixo do limiar · vale para: {(draft.products || []).join(", ") || "nenhum produto"}
+        </span>
+      </div>
+
+      {status?.applies === false && (
+        <div style={{ fontSize: 12, color: "var(--fg-4)", marginBottom: 8 }}>O bônus de time não vale neste produto.</div>
+      )}
+      {status?.applies && (
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10, fontSize: 12.5 }}>
+          <span style={{ color: status.cash.ok ? "var(--pos)" : "var(--fg-3)" }}>
+            {status.cash.ok ? "✓" : "○"} meta de venda do mês {status.cash.target ? `(${money(status.cash.sold)} de ${money(status.cash.target)})` : "(sem meta digitada)"}
+          </span>
+          <span style={{ color: status.churn.ok ? "var(--pos)" : "var(--neg)" }}>
+            {status.churn.ok ? "✓" : "✕"} churn {status.churn.pct == null ? "sem base" : `${status.churn.pct}%`} (limite {status.churn.max}%)
+          </span>
+          <b style={{ marginLeft: "auto", color: status.ok ? "var(--pos)" : "var(--fg-3)" }}>
+            {status.source === "closed" ? (status.ok ? "mês fechado: paga" : "mês fechado: não paga") : (status.ok ? "no ritmo" : "fora do ritmo")}
+          </b>
+        </div>
+      )}
+
+      <div className="tbl-x"><table style={{ borderCollapse: "collapse", fontSize: 12.5, minWidth: 360 }}>
+        <thead><tr>
+          <th style={thS}>cargo</th><th style={thS}>júnior</th><th style={thS}>pleno</th><th style={thS}>sênior</th>
+        </tr></thead>
+        <tbody>
+          {[["sdr", "SDR"], ["closer", "Closer"], ["cs", "Integrador · CS"]].map(([k, rot]) => (
+            <tr key={k}>
+              <td style={tdS}>{rot}</td>
+              {[0, 1, 2].map((i) => (
+                <td key={i} style={tdS}><input type="number" value={(draft[k] || [])[i] ?? 0} onChange={setCell(k, i)} style={{ ...inputS, width: 76 }} /></td>
+              ))}
+            </tr>
+          ))}
+          <tr>
+            <td style={tdS}>Mídia social</td>
+            <td style={tdS} colSpan={3}>
+              <input type="number" value={draft.social ?? 0} onChange={(e) => setDraft((p) => ({ ...p, social: num(e.target.value) }))} style={{ ...inputS, width: 76 }} />
+              <span style={{ marginLeft: 8, color: "var(--fg-4)" }}>valor único (a vaga não tem nível)</span>
+            </td>
+          </tr>
+        </tbody>
+      </table></div>
+
+      <div style={{ marginTop: 10, fontSize: 12, color: "var(--fg-3)" }}>
+        se o mês fechar com as duas condições, o time leva <b style={{ color: "var(--fg-1)" }}>{money(totalSeTodos)}</b> ({users.length} {users.length === 1 ? "pessoa" : "pessoas"} no plano)
+      </div>
+
+      {dirty && (
+        <button onClick={async () => { setSaving(true); try { await onSave("team", draft); } finally { setSaving(false); } }} disabled={saving}
+          style={{ marginTop: 10, height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: 0, background: "var(--accent)", color: "oklch(1 0 0)", fontSize: 12.5, fontWeight: 600, cursor: saving ? "default" : "pointer" }}>
+          {saving ? "salvando…" : "salvar bônus de time"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function ReferralPayout({ rates }) {
   const [data, setData] = useS(null);
   const [product] = useActiveSaas();
@@ -395,9 +511,14 @@ function RemuneracaoScreen() {
             os campos de uma vez — sem edição, o botão salvar nem chega a nascer. */}
         {docs != null && ["sdr", "closer", "cs"].map((role) => (
           <fieldset key={role} disabled={!editor} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-            <RoleCard role={role} saved={planOf(role)} onSave={save} />
+            <RoleCard role={role} saved={planOf(role)} onSave={save} team={planOf("team")} />
           </fieldset>
         ))}
+        {docs != null && (
+          <fieldset disabled={!editor} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+            <TeamBonusCard saved={planOf("team")} onSave={save} />
+          </fieldset>
+        )}
         {docs != null && <ReferralPayout rates={planOf("cs")} />}
         <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>
           Contratos e receita saem da mesma régua do placar (fechamentos por wonAt). A indicação já é calculada pelo cockpit (bloco acima); a variável de contratos/receita por pessoa continua sendo o próximo passo.

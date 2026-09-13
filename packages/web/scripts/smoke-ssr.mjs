@@ -580,7 +580,7 @@ try {
   // proporcional rumo ao de 120%. É a conta que vira salário, então vale teste:
   // valores do closer nível 1 (600/1000/1500/2000).
   try {
-    const { legBonus, bandOf } = await server.ssrLoadModule("/src/screens/remuneracao.jsx");
+    const { legBonus, bandOf, teamBonusFor } = await server.ssrLoadModule("/src/screens/remuneracao.jsx");
     const B = (att) => legBonus(att, 600, 1000, 1500, 2000);
     const eq = (name, got, want) => { if (got !== want) throw new Error(`${name}: ${got} ≠ ${want}`); };
     eq("abaixo de 80% zera", B(0.79), 0);
@@ -604,6 +604,11 @@ try {
     eq("banda alcançada em 110%", bandOf(1.1), 100);
     eq("banda alcançada em 160%", bandOf(1.6), 160);
     eq("sem banda abaixo de 80%", bandOf(0.79), null);
+    // Bônus de time (parcela coletiva): valor fixo por cargo e nível.
+    const T = { sdr: [300, 400, 500], closer: [400, 600, 800], cs: [300, 400, 500], social: 200 };
+    eq("bônus de time do closer pleno", teamBonusFor(T, "closer", 2), 600);
+    eq("integrator cai na trilha do CS", teamBonusFor(T, "integrator", 3), 500);
+    eq("mídia social tem valor único", teamBonusFor(T, "social", 2), 200);
     console.log("✓ remuneracao-degrau");
   } catch (err) {
     console.error(`✗ remuneracao-degrau: ${err.message}`);
@@ -629,6 +634,17 @@ try {
     has("card", card, "Bônus 140%");
     // O simulador diz qual DEGRAU caiu, pra ninguém esperar valor proporcional.
     has("simulador", card, "(banda 100%)");
+    has("regras", tela, "Bônus de time");
+    has("simulador", card, "mês fechou com bônus de time");
+    const { TeamBonusCard } = await server.ssrLoadModule("/src/screens/remuneracao.jsx");
+    if (TeamBonusCard) {
+      const timeCard = renderToString(wrap(React.createElement(TeamBonusCard, {
+        saved: { products: ["leverads"], sdr: [300, 400, 500], closer: [400, 600, 800], cs: [300, 400, 500], social: 200 },
+        onSave() {},
+      })));
+      has("bônus de time", timeCard, "Bônus de time");
+      has("bônus de time", timeCard, "valor único (a vaga não tem nível)");
+    }
     console.log("✓ remuneracao");
   } catch (err) {
     console.error(`✗ remuneracao: ${err.message}`);

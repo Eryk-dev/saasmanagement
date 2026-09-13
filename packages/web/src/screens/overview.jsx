@@ -484,7 +484,7 @@ function SubBadge({ r }) {
   );
 }
 
-function PersonRow({ p, rank, bizDays, elapsedFrac, monthFrac, onPerson }) {
+function PersonRow({ p, rank, bizDays, elapsedFrac, monthFrac, onPerson, teamBonus }) {
   // As duas pernas do plano de remuneração (receita + contratos) — closer e SDR
   // têm meta própria pelo nível (comp_plans); CS/mídia mostram só as submetas.
   const leg = p.closer || p.sdr || null;
@@ -519,6 +519,18 @@ function PersonRow({ p, rank, bizDays, elapsedFrac, monthFrac, onPerson }) {
           submeta que já estava aqui e a cor vermelha do badge já a denuncia. */}
       <div className="vg-tsub" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, minWidth: 0 }}>
         {rows.map((r) => <SubBadge key={r.label} r={r} />)}
+        {/* Bônus de time: a parcela COLETIVA. Mesmo badge das submetas, mas com
+            as duas condições no title — o time precisa saber por qual das duas
+            o bônus está escapando, não só que escapou. */}
+        {teamBonus?.applies && (
+          <SubBadge r={{
+            label: "bônus de time",
+            valueText: teamBonus.source === "closed" ? (teamBonus.ok ? "sim" : "não") : (teamBonus.ok ? "no ritmo" : "fora do ritmo"),
+            metaText: null,
+            lvl: teamBonus.ok ? 3 : 1,
+            title: `Paga só com as duas: meta de venda do mês${teamBonus.cash.target ? ` (${int(teamBonus.cash.sold)} de ${int(teamBonus.cash.target)})` : " (sem meta digitada)"} ${teamBonus.cash.ok ? "batida" : "ainda não batida"} · churn ${teamBonus.churn.pct == null ? "sem base" : `${teamBonus.churn.pct}%`} (limite ${teamBonus.churn.max}%) ${teamBonus.churn.ok ? "ok" : "acima"}`,
+          }} />
+        )}
         {!rows.length && <span style={{ fontSize: 11.5, color: "var(--fg-4)" }}>sem metas configuradas ainda</span>}
         {/* Faturado/recorrente entra na meta só pelo que caiu (Leo, 29/08): o
             contrato cheio aparece aqui pra ninguém achar que a venda sumiu.
@@ -586,7 +598,7 @@ function TeamBoard({ score, win, onPerson }) {
               <span className="kicker">Contratos</span>
             </div>
             {people.map(({ p, pct }, i) => (
-              <PersonRow key={p.user} p={p} rank={pct >= 0 ? i + 1 : null} bizDays={win.businessDays} elapsedFrac={elapsedFrac} monthFrac={monthFrac} onPerson={onPerson} />
+              <PersonRow key={p.user} p={p} rank={pct >= 0 ? i + 1 : null} bizDays={win.businessDays} elapsedFrac={elapsedFrac} monthFrac={monthFrac} onPerson={onPerson} teamBonus={score?.team?.teamBonus} />
             ))}
           </div>
         )}
