@@ -94,6 +94,8 @@ export function MindmapsScreen() {
     if (activeId && !visible.some((m) => m.id === activeId)) setActiveId(visible[0]?.id || null);
     else if (!activeId && visible.length) setActiveId(visible[0].id);
   }, [activeProduct?.id, maps]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Gaveta fechada por padrão: a tela abre no mapa.
+  const [gaveta, setGaveta] = useState(false);
   async function claimMap(id) {
     const saas = activeProduct?.id || "";
     setMaps((m) => (m || []).map((x) => (x.id === id ? { ...x, saas } : x)));
@@ -102,7 +104,11 @@ export function MindmapsScreen() {
 
   return (
     <div style={{ flex: 1, display: "flex", minHeight: 0, flexDirection: isMobile ? "column" : "row" }}>
-      {!focus && (
+      {/* A LISTA VIROU GAVETA (13/09): a tela abre NO MAPA, que é o trabalho;
+          a coluna de 230px com os outros mapas ficava ocupando espaço o tempo
+          todo pra uma troca que acontece de vez em quando. Abre no nome do
+          mapa (canto superior esquerdo) e fecha ao escolher. */}
+      {!focus && gaveta && (
         <div style={{ width: isMobile ? "100%" : 230, maxHeight: isMobile ? 150 : undefined, flexShrink: 0, borderRight: isMobile ? "none" : "1px solid var(--line-1)", borderBottom: isMobile ? "1px solid var(--line-1)" : "none", overflow: "auto", padding: isMobile ? "10px 12px" : "16px 12px", background: "var(--bg-1)", display: "flex", flexDirection: "column", gap: 2 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 8px 12px" }}>
             <span className="kicker" style={{ fontWeight: 600 }}>Mapas</span>
@@ -112,12 +118,20 @@ export function MindmapsScreen() {
           {maps !== null && visible.length === 0 && <div className="dim" style={{ fontSize: 12, padding: 10, lineHeight: 1.5 }}>nenhum mapa {activeProduct?.name ? `da ${activeProduct.name}` : "ainda"} · crie o primeiro em “+ novo”</div>}
           {visible.map((m) => (
             <MapRow key={m.id} m={m} active={m.id === activeId} renaming={renaming === m.id}
-              onOpen={() => setActiveId(m.id)} onRename={() => setRenaming(m.id)} onRenamed={(name) => renameMap(m.id, name)} onCancelRename={() => setRenaming(null)}
+              onOpen={() => { setActiveId(m.id); setGaveta(false); }} onRename={() => setRenaming(m.id)} onRenamed={(name) => renameMap(m.id, name)} onCancelRename={() => setRenaming(null)}
               onDelete={() => deleteMap(m)} onDuplicate={() => duplicateMap(m)} onClaim={!m.saas ? () => claimMap(m.id) : null} productName={activeProduct?.name} />
           ))}
         </div>
       )}
       <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
+        {!focus && (
+          <button onClick={() => setGaveta((v) => !v)}
+            title={gaveta ? "esconder a lista de mapas" : "trocar de mapa"}
+            style={{ position: "absolute", top: 10, left: 12, zIndex: 5, height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6, maxWidth: 280 }}>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{active?.name || "Mapas"}</span>
+            <span className="mono dim" style={{ fontSize: 10 }}>{gaveta ? "◂" : "▾"}</span>
+          </button>
+        )}
         {active
           ? <MapEditor key={active.id} map={active} onSaved={onMapSaved} focus={focus} setFocus={setFocus} isMobile={isMobile} />
           : <EmptyState title="Nenhum mapa aberto" hint={visible.length ? "Escolha um mapa na lista." : `Crie um mapa ${activeProduct?.name ? `da ${activeProduct.name} ` : ""}em “+ novo” pra começar.`} />}
