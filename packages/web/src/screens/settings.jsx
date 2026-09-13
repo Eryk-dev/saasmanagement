@@ -95,13 +95,23 @@ function SettingsScreen({ saasId }) {
         </div>
       </PageHead>
 
-      <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-        <nav style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-          {TABS.map(([k,l]) => (
-            <FilterTab key={k} active={tab === k} onClick={() => setTab(k)}>{l}</FilterTab>
+      {/* MENU LATERAL (13/09): seis abas de nome comprido não cabem numa linha
+          e quebravam em duas, empurrando o conteúdo. Como coluna, cada seção
+          fica legível e a tela ganha o espaço de volta. No mobile o menu volta
+          pra cima, em linha rolável, porque ali a coluna comeria a largura. */}
+      <div className="set-cols" style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "grid", gridTemplateColumns: "196px minmax(0, 1fr)", gap: 20, alignItems: "start" }}>
+        <nav className="set-nav" style={{ display: "flex", flexDirection: "column", gap: 2, position: "sticky", top: 0 }}>
+          {TABS.map(([k, l]) => (
+            <button key={k} onClick={() => setTab(k)}
+              style={{ textAlign: "left", padding: "9px 12px", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: tab === k ? 650 : 500, cursor: "pointer",
+                background: tab === k ? "var(--accent-soft)" : "transparent",
+                color: tab === k ? "var(--accent)" : "var(--fg-2)",
+                border: "1px solid " + (tab === k ? "var(--accent-line)" : "transparent") }}>
+              {l}
+            </button>
           ))}
         </nav>
-        <div>
+        <div style={{ minWidth: 0 }}>
           {/* key={s.id}: troca de workspace REMONTA o editor — sem isso o rascunho
               seedado do produto anterior sobrevive e o Salvar gravaria a config
               de um produto por cima do outro. */}
@@ -249,11 +259,11 @@ function FunnelSettings({ s }) {
         <div style={{ padding: "16px var(--pad-x) 20px" }}>
           <div className="tbl-x">
             <div style={{ minWidth: 690 }}>
-              <div className="kicker" style={{ display: "grid", gridTemplateColumns: "32px 1.4fr 1fr 1.2fr 40px", gap: 12, padding: "8px 0", fontWeight: 600, borderBottom: "1px solid var(--line-1)" }}>
-                <span /><span>Etapa</span><span>Tipo</span><span>Cadência</span><span />
+              <div className="kicker" style={{ display: "grid", gridTemplateColumns: "32px 1.4fr 1fr 1.2fr 86px 40px", gap: 12, padding: "8px 0", fontWeight: 600, borderBottom: "1px solid var(--line-1)" }}>
+                <span /><span>Etapa</span><span>Tipo</span><span>Cadência</span><span style={{ textAlign: "right" }} title="cards nessa etapa agora">Leads agora</span><span />
               </div>
               {rows.map((f, i) => (
-                <div key={i} style={{ display: "grid", gridTemplateColumns: "32px 1.4fr 1fr 1.2fr 40px", gap: 12, padding: "10px 0", alignItems: "center", borderBottom: i < rows.length - 1 ? "1px solid var(--line-faint)" : "none" }}>
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "32px 1.4fr 1fr 1.2fr 86px 40px", gap: 12, padding: "10px 0", alignItems: "center", borderBottom: i < rows.length - 1 ? "1px solid var(--line-faint)" : "none" }}>
                   <span style={{ display: "flex", flexDirection: "column", alignItems: "center", lineHeight: 1 }} title="mover etapa">
                     <button type="button" onClick={() => move(i, -1)} disabled={i === 0} style={arrowStyle(i === 0)}>↑</button>
                     <button type="button" onClick={() => move(i, 1)} disabled={i === rows.length - 1} style={arrowStyle(i === rows.length - 1)}>↓</button>
@@ -265,6 +275,17 @@ function FunnelSettings({ s }) {
                   <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, color: "var(--fg-3)", whiteSpace: "nowrap" }}>
                     {i === 0 ? <><span>1º toque em até</span>{cadInput(i, f, "firstTouchHours", "—", "SLA do 1º contato em horas")}<span>h</span></> : <>{cadInput(i, f, "maxAttempts", "—", "toques máximos")}<span>tentativas</span>{cad(f, "retryDays") !== "" && <><span>· retry</span>{cadInput(i, f, "retryDays", "—", "retry em dias")}<span>d</span></>}</>}
                   </div>
+                  {/* Quantos cards estão nessa etapa AGORA (13/09): mexer na
+                      cadência sem saber quanta gente ela afeta é decidir no
+                      escuro. Conta os leads do produto pelo nome do estágio. */}
+                  <span className="tnum" style={{ textAlign: "right", fontSize: 13, fontWeight: 600, color: "var(--fg-2)" }}>
+                    {(() => {
+                      const nome = String(f._orig || f.stage || "").trim();
+                      if (!nome) return "—";
+                      const n = (window.SEED?.LEADS || []).filter((l) => l.saas === s.id && String(l.stage || "").trim() === nome).length;
+                      return n || "—";
+                    })()}
+                  </span>
                   <button type="button" onClick={() => remove(i)} style={{ color: "var(--fg-4)", fontSize: 13 }}>✕</button>
                 </div>
               ))}
