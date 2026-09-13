@@ -39,6 +39,7 @@ const WD_LABEL = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "
 const VIEW_OPTIONS = [
   { value: "day", label: "Dia" },
   { value: "week", label: "Semana" },
+  { value: "team", label: "Equipe" },
 ];
 
 export function AgendaScreen({ onOpenLead }) {
@@ -163,7 +164,9 @@ export function AgendaScreen({ onOpenLead }) {
   }
 
   // Clique em horário vazio → criar; clique num item → editar.
-  const onSlot = (day, hour) => setEditor({ block: null, date: ymd(day), fromHour: hour });
+  // A visão Equipe manda também a PESSOA da coluna: clicar no vão livre do
+  // Rafael já abre o modal com ele selecionado.
+  const onSlot = (day, hour, user) => setEditor({ block: null, date: ymd(day), fromHour: hour, user: user || "" });
   const onBlock = (b) => setEditor({ block: b, date: b.recur === "once" ? b.date : "", fromHour: Number(b.fromHour) || 9 });
 
   // Salvar do modal: valida, checa conflito de CADA participante e cria/atualiza.
@@ -281,7 +284,7 @@ export function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, o
   // agenda de todas. A primeira selecionada dá a cor do evento.
   const [sel, setSel] = useS(() => (b
     ? [...new Set([b.user, ...(Array.isArray(b.users) ? b.users : [])].filter(Boolean))]
-    : [defaultUser].filter(Boolean)));
+    : [init.user || defaultUser].filter(Boolean)));
   const toggleSel = (id) => setSel((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   const [date, setDate] = useS(() => formDateFor(init));
   const [from, setFrom] = useS(() => Number(b?.fromHour ?? init.fromHour ?? 9));

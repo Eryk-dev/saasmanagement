@@ -187,6 +187,10 @@ try {
     if (!semana.includes("compromisso nesta semana") && !semana.includes("compromissos nesta semana")) {
       throw new Error("a semana não traz o fato do período");
     }
+    // ── Equipe: coluna por pessoa e os vãos livres clicáveis (bloco 4) ──
+    const equipe = renderToString(wrap(React.createElement(A.AgendaView, { ...props, view: "team" })));
+    if (!/\+ livre das \d+h às \d+h/.test(equipe)) throw new Error("a Equipe não oferece os vãos livres");
+    if (!equipe.includes("compromisso")) throw new Error("a Equipe não conta o dia de cada um");
     console.log("✓ agenda-controles");
   } catch (err) {
     console.error(`✗ agenda-controles: ${err.message}`);
