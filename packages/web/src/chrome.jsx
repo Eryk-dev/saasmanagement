@@ -109,7 +109,6 @@ const NAV = [
 
   { id: "eloapp",        label: "Análise do App",        icon: "◕", group: "analises", saas: "elo" }, // funil web, assinaturas, casais, missões, streaks
   { id: "analise",       label: "Análise de Pace",       icon: "◔", group: "analises", notSaas: "elo" }, // pace do Elo mora na Visão geral (receita do checkout)
-  { id: "aquisicao",     label: "Análise de Aquisição",  icon: "◐", group: "analises", notSaas: "elo" }, // aquisição do Elo = Landing pages + GA4
   { id: "calls",         label: "Análise de Pitches",    icon: "◑", group: "analises", notSaas: "elo" },
   { id: "integrations",  label: "Análise de Integração", icon: "◒", group: "analises", notSaas: "elo" },
   { id: "funcionarios",  label: "Análise de Equipe",     icon: "◓", group: "analises", notSaas: "elo", hidden: true },
@@ -150,7 +149,6 @@ const ICONS = {
   disparos: <NavSvg><path d="M21.3 2.7L11 13" /><path d="M21.3 2.7l-6.5 18.2-3.8-7.9-7.9-3.8z" /></NavSvg>,
   outbound: <NavSvg><circle cx="12" cy="12" r="7.4" /><circle cx="12" cy="12" r="2.6" /><path d="M12 2.2v4M12 17.8v4M2.2 12h4M17.8 12h4" /></NavSvg>,
   remuneracao: <NavSvg><rect x="2.8" y="5.6" width="18.4" height="12.8" rx="2" /><circle cx="12" cy="12" r="2.6" /><path d="M6 9.2v5.6M18 9.2v5.6" /></NavSvg>,
-  aquisicao: <NavSvg><path d="M3.2 4h17.6l-6.8 8.2v6.3l-4 2.3v-8.6z" /></NavSvg>,
   calls: <NavSvg><rect x="9" y="2.6" width="6" height="11" rx="3" /><path d="M5.6 11a6.4 6.4 0 0 0 12.8 0" /><path d="M12 17.4V21" /></NavSvg>,
   integrations: <NavSvg><path d="M10 13.4a4 4 0 0 0 6 .4l2.9-2.9a4 4 0 0 0-5.7-5.7l-1.5 1.5" /><path d="M14 10.6a4 4 0 0 0-6-.4l-2.9 2.9a4 4 0 0 0 5.7 5.7l1.5-1.5" /></NavSvg>,
   analise: <NavSvg><path d="M5.4 20v-8" /><path d="M12 20V4.6" /><path d="M18.6 20v-5" /></NavSvg>,
