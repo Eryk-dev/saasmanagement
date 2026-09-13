@@ -39,6 +39,7 @@ const WD_LABEL = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "
 const VIEW_OPTIONS = [
   { value: "day", label: "Dia" },
   { value: "week", label: "Semana" },
+  { value: "month", label: "Mês" },
   { value: "team", label: "Equipe" },
 ];
 

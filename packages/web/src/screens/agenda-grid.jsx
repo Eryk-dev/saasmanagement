@@ -90,6 +90,7 @@ const AGENDA_NOSHOW = { bg: "oklch(0.90 0.07 25)", line: "oklch(0.60 0.14 25)", 
 // Valor do card em um relance: 65k, R$1,2M, R$800. O número redondo basta
 // (o exato mora no card do lead) e cabe na primeira linha mesmo na semana,
 // onde a coluna do dia tem ~185px.
+const fmtHora = (h) => `${String(Math.floor(h)).padStart(2, "0")}:${String(Math.round((h % 1) * 60)).padStart(2, "0")}`;
 const valorCurto = (n) => {
   const v = Number(n) || 0;
   if (!v) return "";
@@ -154,6 +155,9 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
   // pra achar onde cabe mais uma call, e por isso entra todo mundo com agenda
   // (closer e integrador), não só os closers.
   const isTeam = view === "team";
+  // MÊS (12/09): carga, não detalhe. A grade de horas não cabe em 30 dias; o
+  // mês responde "que semana está cheia" e leva pro dia num clique.
+  const isMonth = view === "month";
   const H0 = 7, H1 = 21, hourH = 44;
   const saasCfgOf = (l) => (window.SEED?.SAAS || []).find((x) => x.id === l.saas);
   // PÁGINA da grade: no DIA (padrão desde 03/09) as setas andam de dia em dia,
@@ -163,9 +167,21 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const anchor = new Date(today); anchor.setDate(today.getDate() + dayOff);
   const weekStart = new Date(anchor); weekStart.setDate(anchor.getDate() - ((anchor.getDay() + 6) % 7));
-  const days = isWeek
-    ? Array.from({ length: 7 }, (_, i) => { const d = new Date(weekStart); d.setDate(weekStart.getDate() + i); return d; })
-    : [anchor];
+  // A grade do mês começa na segunda da semana do dia 1 e vai até fechar a
+  // última semana: os dias de fora aparecem apagados, como em todo calendário.
+  const monthStart = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+  const monthCells = (() => {
+    const offset = (monthStart.getDay() + 6) % 7;
+    const gridStart = new Date(monthStart); gridStart.setDate(1 - offset);
+    const nDias = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0).getDate();
+    const semanas = Math.ceil((offset + nDias) / 7);
+    return Array.from({ length: semanas * 7 }, (_, i) => { const d = new Date(gridStart); d.setDate(gridStart.getDate() + i); return d; });
+  })();
+  const days = isMonth
+    ? monthCells
+    : isWeek
+      ? Array.from({ length: 7 }, (_, i) => { const d = new Date(weekStart); d.setDate(weekStart.getDate() + i); return d; })
+      : [anchor];
   const start = days[0];
   const end = new Date(days[days.length - 1]); end.setDate(end.getDate() + 1);
   const colTemplate = isWeek ? "52px repeat(7, minmax(0, 1fr))" : "52px 1fr";
@@ -260,9 +276,19 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
   // conta o que ficou de fora e devolve a visão inteira num clique.
   const hiddenCount = events.length - shown.length;
   const fmtDay = (d, opts) => d.toLocaleDateString("pt-BR", opts).replace(/\./g, "");
-  const label = isWeek
-    ? `${fmtDay(days[0], { day: "2-digit", month: "short" })} · ${fmtDay(days[6], { day: "2-digit", month: "short", year: "numeric" })}`
-    : fmtDay(days[0], { weekday: "long", day: "2-digit", month: "short", year: "numeric" });
+  const label = isMonth
+    ? fmtDay(monthStart, { month: "long", year: "numeric" })
+    : isWeek
+      ? `${fmtDay(days[0], { day: "2-digit", month: "short" })} · ${fmtDay(days[6], { day: "2-digit", month: "short", year: "numeric" })}`
+      : fmtDay(days[0], { weekday: "long", day: "2-digit", month: "short", year: "numeric" });
+  // O passo das setas segue a visão: dia, semana ou mês inteiro. O offset
+  // continua em DIAS, então trocar de visão preserva onde você estava.
+  const passo = (dir) => {
+    if (isMonth) {
+      const alvo = new Date(anchor.getFullYear(), anchor.getMonth() + dir, 1);
+      setDayOff(Math.round((alvo.getTime() - today.getTime()) / 86400000));
+    } else setDayOff((w) => w + dir * (isWeek ? 7 : 1));
+  };
   const navBtn = {
     height: 26, padding: "0 10px", borderRadius: 5, fontSize: 12,
     background: "var(--bg-2)", border: "1px solid var(--line-1)", color: "var(--fg-2)", cursor: "pointer",
@@ -337,11 +363,13 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
     });
     return { placed, blocks, persons };
   };
-  const dayLayouts = days.map(layoutDay);
+  // O mês não usa faixas nem clusters (não tem grade de horas): poupa 35 a 42
+  // layouts por render.
+  const dayLayouts = isMonth ? [] : days.map(layoutDay);
   // Largura mínima da grade: 7 colunas na semana, 150px por pessoa na Equipe
   // (com oito pessoas a coluna ficaria com 90px e o card vira tarja). Abaixo
   // disso a grade rola de lado dentro do tbl-x, em vez de espremer os cards.
-  const gradeMin = isWeek ? 960 : isTeam ? Math.max(600, 52 + (dayLayouts[0]?.persons.length || 1) * 150) : undefined;
+  const gradeMin = isWeek ? 960 : isTeam ? Math.max(600, 52 + (dayLayouts[0]?.persons?.length || 1) * 150) : undefined;
 
   // ── Vãos livres (12/09) ───────────────────────────────────────────────
   // Ninguém faz essa conta olhando a grade: "onde cabe mais uma call?". Marca
@@ -387,7 +415,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
   // mais vazio.
   const fatoPeriodo = (() => {
     const total = events.length;
-    const base = `${total} ${total === 1 ? "compromisso" : "compromissos"} ${isWeek ? "nesta semana" : "no dia"}`;
+    const base = `${total} ${total === 1 ? "compromisso" : "compromissos"} ${isMonth ? "neste mês" : isWeek ? "nesta semana" : "no dia"}`;
     // Na Equipe o fato é sobre QUEM está livre: é a pergunta da visão.
     if (isTeam) {
       const d = days[0];
@@ -445,9 +473,9 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
           e tipo, que ficavam aqui dentro: duas barras pra mesma função. */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap", padding: "12px 16px", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
         <span style={{ display: "inline-flex", gap: 4 }}>
-          <button style={navBtn} onClick={() => setDayOff(w => w - (isWeek ? 7 : 1))} title={isWeek ? "semana anterior" : "dia anterior"}>‹</button>
+          <button style={navBtn} onClick={() => passo(-1)} title={isMonth ? "mês anterior" : isWeek ? "semana anterior" : "dia anterior"}>‹</button>
           <button style={navBtn} onClick={() => setDayOff(0)}>hoje</button>
-          <button style={navBtn} onClick={() => setDayOff(w => w + (isWeek ? 7 : 1))} title={isWeek ? "próxima semana" : "próximo dia"}>›</button>
+          <button style={navBtn} onClick={() => passo(1)} title={isMonth ? "próximo mês" : isWeek ? "próxima semana" : "próximo dia"}>›</button>
         </span>
         <span style={{ fontSize: 14, fontWeight: 650, fontFamily: "var(--display)" }}>{label}</span>
 
@@ -504,6 +532,70 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
           ))}
           <span className="mono tnum" style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--fg-4)" }}>{fatoPeriodo}</span>
         </div>
+        {isMonth ? (
+          /* MÊS: carga, não detalhe. Célula de 96px com o número do dia, o
+             total à direita e até dois itens; o clique leva pro Dia (marcar
+             aqui não faria sentido, o horário não existe nesta visão). */
+          <div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
+              {["seg", "ter", "qua", "qui", "sex", "sáb", "dom"].map((w) => (
+                <div key={w} className="kicker" style={{ padding: "6px 8px", textAlign: "center", color: "var(--fg-4)" }}>{w}</div>
+              ))}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}>
+              {days.map((d, i) => {
+                const doMes = d.getMonth() === monthStart.getMonth();
+                const isToday = d.toDateString() === new Date().toDateString();
+                const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+                const doDia = shown
+                  .filter((e) => e.t.toDateString() === d.toDateString())
+                  .sort((a, b) => a.t - b.t);
+                const blocosDoDia = (blocking && evKind === "all" ? blocking.blocksFor(d) : [])
+                  .sort((a, b) => (Number(a.fromHour) || 0) - (Number(b.fromHour) || 0));
+                const itens = [
+                  ...doDia.map((e) => ({
+                    key: `${e.l.id}-${e.kind}-${e.t.getTime()}`,
+                    cor: (AGENDA_TYPE_COLORS[e.kind] || AGENDA_TYPE_COLORS.call).line,
+                    hora: e.t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+                    texto: e.l.name,
+                  })),
+                  ...blocosDoDia.map((b) => ({
+                    key: `blk-${b.id}`,
+                    cor: b._tone || "var(--neg)",
+                    hora: b.allDay ? "dia" : fmtHora(Number(b.fromHour) || 0),
+                    texto: b._label || "bloqueado",
+                  })),
+                ];
+                return (
+                  <div key={i}
+                    onClick={() => { setDayOff(Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() - today.getTime()) / 86400000)); setView("day"); }}
+                    title={`${fmtDay(d, { weekday: "long", day: "2-digit", month: "long" })} · ${itens.length === 0 ? "nada marcado" : `${itens.length} na agenda`} · clique pra abrir o dia`}
+                    style={{
+                      height: 96, padding: "6px 7px", overflow: "hidden", cursor: "pointer",
+                      borderTop: "1px solid var(--line-1)", borderLeft: i % 7 === 0 ? undefined : "1px solid var(--line-1)",
+                      background: isToday ? "color-mix(in srgb, var(--accent) 6%, transparent)"
+                        : !doMes || isWeekend ? "var(--bg-inset)" : "transparent",
+                    }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <span className="tnum" style={{ fontSize: 12.5, fontWeight: 700, fontFamily: "var(--display)", color: isToday ? "var(--accent)" : doMes ? "var(--fg-1)" : "var(--fg-4)" }}>{d.getDate()}</span>
+                      {itens.length > 0 && <span className="mono tnum" style={{ marginLeft: "auto", fontSize: 10, color: "var(--fg-4)" }}>{itens.length}</span>}
+                    </div>
+                    {itens.slice(0, 2).map((it) => (
+                      <div key={it.key} style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3, minWidth: 0 }}>
+                        <span style={{ width: 3, height: 12, borderRadius: 2, background: it.cor, flexShrink: 0 }} />
+                        <span className="mono tnum" style={{ fontSize: 9.5, color: "var(--fg-4)", flexShrink: 0 }}>{it.hora}</span>
+                        <span style={{ fontSize: 10.5, color: "var(--fg-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.texto}</span>
+                      </div>
+                    ))}
+                    {itens.length > 2 && (
+                      <div className="mono" style={{ marginTop: 3, fontSize: 9.5, color: "var(--accent)" }}>{`+${itens.length - 2} mais`}</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (<>
         {/* Cabeçalho dos dias */}
         {/* Na semana, 7 colunas pedem largura mínima — em tela estreita a
             grade rola de lado dentro do tbl-x em vez de espremer as pílulas. */}
@@ -779,6 +871,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
             );
           })}
         </div>
+        </>)}
       </div>
     </div>
   );

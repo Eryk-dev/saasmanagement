@@ -191,6 +191,13 @@ try {
     const equipe = renderToString(wrap(React.createElement(A.AgendaView, { ...props, view: "team" })));
     if (!/\+ livre das \d+h às \d+h/.test(equipe)) throw new Error("a Equipe não oferece os vãos livres");
     if (!equipe.includes("compromisso")) throw new Error("a Equipe não conta o dia de cada um");
+    // ── Mês: carga, não detalhe (bloco 5) ──────────────────────────────
+    const mes = renderToString(wrap(React.createElement(A.AgendaView, { ...props, view: "month" })));
+    for (const w of ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"]) {
+      if (!mes.includes(`>${w}<`)) throw new Error(`o mês não tem a coluna de ${w}`);
+    }
+    if (!mes.includes("neste mês")) throw new Error("o mês não traz o fato do período");
+    if (mes.includes("+ livre das")) throw new Error("o mês não cria compromisso (o horário não existe ali)");
     console.log("✓ agenda-controles");
   } catch (err) {
     console.error(`✗ agenda-controles: ${err.message}`);
