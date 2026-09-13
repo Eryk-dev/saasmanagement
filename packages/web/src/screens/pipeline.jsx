@@ -1036,13 +1036,56 @@ function AnalysisPaceSummary({ data, s, leads }) {
     : `~${dailyFmt(g.daysLeft > 0 ? g.newLeads / g.daysLeft : null)}/dia útil, além da esteira`;
   return (
     <>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
-        <StatTile label="Fechado no mês" value={window.fmt.money(closed)} delta={`${data.context.wonMonth} ganhos até dia ${Number(data.today.slice(8, 10))}`} />
-        <StatTile label="Pace projetado" value={window.fmt.money(pace)} delta={`ritmo atual até ${data.sale.totalBusinessDays} dias úteis`} />
-        <StatTile label={metaLabel} value={window.fmt.money(target)} delta={paceVsTarget == null ? "meta não configurada" : `pace ${Math.abs(paceVsTarget)}% ${paceVsTarget >= 0 ? "acima" : "abaixo"} da ${alvo}`} />
-        <StatTile label={`Leads novos pra ${alvo}`} value={g.gap === 0 ? "0" : wholeFmt(g.newLeads)} delta={leadsDelta} tone={g.gap === 0 || g.newLeads === 0 ? "pos" : "flat"} />
-        <StatTile label="Forecast ponderado" value={window.fmt.money(forecast)} delta="pipeline aberto × probabilidade real (30d)" />
-      </div>
+      {/* PACE, META E FORECAST NUM QUADRO SÓ (13/09): eram cinco tiles de peso
+          igual, e a relação entre eles — que é a leitura da tela — ficava por
+          conta de quem olha. Aqui o fechado e o projetado aparecem contra a
+          meta, com a barra de quanto já foi. */}
+      <section style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px var(--inset-x)" }}>
+        <div style={{ display: "flex", gap: 22, flexWrap: "wrap", alignItems: "flex-start" }}>
+          <div style={{ minWidth: 150 }}>
+            <div className="kicker">fechado no mês</div>
+            <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 26, fontWeight: 700, lineHeight: 1.15 }}>{window.fmt.money(closed)}</div>
+            <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{`${data.context.wonMonth} ganhos até dia ${Number(data.today.slice(8, 10))}`}</div>
+          </div>
+          <div style={{ minWidth: 150 }}>
+            <div className="kicker">pace projetado</div>
+            <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 26, fontWeight: 700, lineHeight: 1.15, color: paceVsTarget == null ? "var(--fg-1)" : paceVsTarget >= 0 ? "var(--pos)" : "var(--neg)" }}>{window.fmt.money(pace)}</div>
+            <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>
+              {paceVsTarget == null ? `ritmo atual até ${data.sale.totalBusinessDays} dias úteis` : `${Math.abs(paceVsTarget)}% ${paceVsTarget >= 0 ? "acima" : "abaixo"} da ${alvo}`}
+            </div>
+          </div>
+          <div style={{ minWidth: 150 }}>
+            <div className="kicker">{metaLabel.toLowerCase()}</div>
+            <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 26, fontWeight: 700, lineHeight: 1.15 }}>{window.fmt.money(target)}</div>
+            <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{`${data.sale.elapsedBusinessDays} de ${data.sale.totalBusinessDays} dias úteis corridos`}</div>
+          </div>
+          <div style={{ minWidth: 150 }}>
+            <div className="kicker">forecast ponderado</div>
+            <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 26, fontWeight: 700, lineHeight: 1.15 }}>{window.fmt.money(forecast)}</div>
+            <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>pipeline aberto × probabilidade real</div>
+          </div>
+          <div style={{ minWidth: 150 }}>
+            <div className="kicker">{`leads novos pra ${alvo}`}</div>
+            <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 26, fontWeight: 700, lineHeight: 1.15, color: g.gap === 0 || g.newLeads === 0 ? "var(--pos)" : "var(--fg-1)" }}>{g.gap === 0 ? "0" : wholeFmt(g.newLeads)}</div>
+            <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{leadsDelta}</div>
+          </div>
+        </div>
+        {/* Onde o mês está contra a meta, e onde DEVERIA estar hoje. */}
+        {target > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ position: "relative", height: 10, borderRadius: 999, background: "var(--bg-2)", overflow: "visible" }}>
+              <div style={{ height: "100%", width: `${Math.min(100, Math.round((closed / target) * 100))}%`, background: "var(--accent)", borderRadius: 999 }} />
+              {data.sale.totalBusinessDays > 0 && (
+                <span title="onde o pace deveria estar hoje"
+                  style={{ position: "absolute", top: -3, left: `${Math.min(100, Math.round((data.sale.elapsedBusinessDays / data.sale.totalBusinessDays) * 100))}%`, width: 2, height: 16, background: "var(--fg-3)" }} />
+              )}
+            </div>
+            <div className="mono dim" style={{ fontSize: 10.5, marginTop: 4 }}>
+              {`${Math.round((closed / target) * 100)}% da meta · o risquinho é onde o pace deveria estar hoje (${Math.round((data.sale.elapsedBusinessDays / Math.max(1, data.sale.totalBusinessDays)) * 100)}%)`}
+            </div>
+          </div>
+        )}
+      </section>
       <Card title={`Pace de venda · ${monthLabel}`} hint="vendido reconhecido (faturado só pelo recebido) vs. meta, dia a dia">
         <div style={{ padding: "8px 16px 12px" }}><PaceChart data={data} s={s} leads={leads} /></div>
       </Card>
@@ -1090,8 +1133,29 @@ function GoalReversePlan({ data, s, leads }) {
   }
 
   return (
-    <Card title="Engenharia reversa da meta" hint={`de trás pra frente: o que precisa acontecer pra fechar ${money(g.gap)} até a ${alvo}`}>
+    <Card title={`Para fechar os ${money(g.gap)} que faltam`} hint={`de trás pra frente, com as conversões reais dos últimos ${rateJanela === "30d" ? "30 dias" : rateJanela}`}>
       <div style={{ padding: "16px 24px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* COMPROMISSOS, não texto (13/09): a cadeia de setas dizia a mesma
+            coisa, mas ninguém sai dela sabendo o que prometer. Cada linha é uma
+            promessa com o número e a taxa que a justifica. */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+          {[
+            { n: wholeFmt(g.wins), o: "ganhos até o fim do mês", porque: g.ticket ? `ticket ${money(g.ticket)}` : "ticket indisponível" },
+            { n: wholeFmt(g.calls), o: "calls precisam acontecer", porque: `call → ganho ${rateFmt(conversions.closeRateEffective?.value ?? conversions.closeRate.value)}` },
+            g.newLeads == null ? null : {
+              n: wholeFmt(g.newLeads),
+              o: g.pipeCount > 0 ? `leads novos (além dos ${wholeFmt(g.pipeCount)} no funil)` : "leads novos",
+              porque: `lead → call ${rateFmt(conversions.bookingRate.value)}`,
+            },
+            g.investNew != null && g.newLeads > 0 ? { n: money(g.investNew), o: "de verba a mais", porque: `CPL ${money(g.cpl)}` } : null,
+          ].filter(Boolean).map((c, i) => (
+            <div key={c.o} style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "10px 0", borderTop: i === 0 ? "none" : "1px solid var(--line-faint)" }}>
+              <span className="tnum" style={{ minWidth: 92, fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, lineHeight: 1.1 }}>{c.n}</span>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: "var(--fg-1)" }}>{c.o}</span>
+              <span className="mono dim" style={{ fontSize: 11, whiteSpace: "nowrap" }}>{c.porque}</span>
+            </div>
+          ))}
+        </div>
         <div style={{ display: "flex", alignItems: "stretch", gap: 7, flexWrap: "wrap" }}>
           {g.investNew != null && (
             <>
@@ -1124,32 +1188,31 @@ function GoalReversePlan({ data, s, leads }) {
           )}
         </div>
 
-        <div style={{ padding: "10px 14px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-faint)", fontSize: 12.5, lineHeight: 1.55, color: "var(--fg-2)" }}>
-          A esteira aberta ({g.pipeCount} leads trabalháveis) deve render <strong>~{wholeFmt(g.pipeWins)} ganhos</strong> ({money(g.pipeValue)} ponderado) nessas taxas.
-          {g.newLeads === 0
-            ? " Isso já cobre o gap: o jogo é converter o que está dentro, sem depender de lead novo."
-            : g.newLeads == null
-              ? " Não dá pra estimar os leads novos necessários (tem taxa zerada na cadeia)."
-              : ` Descontando isso, precisam entrar ~${wholeFmt(g.newLeads)} leads novos até o fim do mês (${dailyFmt(perDay(g.newLeads))}/dia útil).`}
-          {g.investNew != null && g.newLeads > 0 && (
-            <> Ao CPL real de {money(g.cpl)}, esses leads pedem <strong>~{money(g.investNew)} de investimento</strong> ({money(perDay(g.investNew) || 0)}/dia útil).</>
-          )}
-          {g.cpl == null && g.newLeads > 0 && " Sem spend registrado nos últimos 30 dias, não dá pra estimar o investimento (sincronize a Publicidade)."}
-          {g.leadsNeeded != null && (
-            <span style={{ display: "block", marginTop: 6, color: "var(--fg-3)" }}>
-              Sem descontar a esteira, a cadeia pediria {wholeFmt(g.leadsNeeded)} leads{g.investNeeded != null ? ` (${money(g.investNeeded)} de mídia)` : ""}.
-              É a demanda bruta: só vale se você tratar a esteira aberta como perdida.
-            </span>
-          )}
-          {conversions.closeRateEffective?.source === "calibrated" && pontaAPonta && (
-            <span style={{ display: "block", marginTop: 6, color: "var(--fg-3)" }}>
-              A cadeia usa fechamento efetivo de {rateFmt(conversions.closeRateEffective.value)}, calibrado pra bater com a ponta a ponta real
-              ({wholeFmt(pontaAPonta.numerator)} ganhos de {wholeFmt(pontaAPonta.denominator)} leads em {rateJanela}, {rateFmt(pontaAPonta.value)}).
-              Multiplicar as 4 taxas medidas dá menos que isso porque cada uma tem uma base diferente (leads, calls, data da venda),
-              e sem calibrar o plano pede lead e mídia a mais.
-              {conversions.leadToWinMature && ` O denominador desconta quem ainda não teve tempo de fechar: dos ${wholeFmt(conversions.leadToWin.denominator)} leads da janela, ${wholeFmt(conversions.leadToWinMature.denominator)} já tiveram chance real (${rateFmt(conversions.leadToWinMature.capture)} da safra), pela curva de maturação do próprio produto.`}
-            </span>
-          )}
+        {/* O parágrafo de rodapé (esteira, demanda bruta, calibração) virou
+            um ⓘ: é a explicação da conta, consultada uma vez, não lida todo
+            dia. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", fontSize: 12.5, color: "var(--fg-2)" }}>
+          <span>
+            {g.newLeads === 0
+              ? `A esteira aberta (${g.pipeCount} leads trabalháveis) já cobre o gap: o jogo é converter o que está dentro.`
+              : g.newLeads == null
+                ? "Não dá pra estimar os leads novos necessários (tem taxa zerada na cadeia)."
+                : `A esteira aberta (${g.pipeCount} leads) deve render ~${wholeFmt(g.pipeWins)} ganhos; o resto é lead novo.`}
+          </span>
+          <span className="mono" style={{ fontSize: 11, color: "var(--fg-4)", cursor: "help", borderBottom: "1px dotted var(--line-2)" }}
+            title={[
+              `esteira aberta: ${g.pipeCount} leads trabalháveis, ~${wholeFmt(g.pipeWins)} ganhos (${money(g.pipeValue)} ponderado) nessas taxas`,
+              g.newLeads > 0 ? `leads novos até o fim do mês: ~${wholeFmt(g.newLeads)} (${dailyFmt(perDay(g.newLeads))}/dia útil)` : null,
+              g.investNew != null && g.newLeads > 0 ? `ao CPL real de ${money(g.cpl)}, ~${money(g.investNew)} de investimento (${money(perDay(g.investNew) || 0)}/dia útil)` : null,
+              g.cpl == null && g.newLeads > 0 ? "sem spend registrado nos últimos 30 dias, não dá pra estimar o investimento (sincronize a Publicidade)" : null,
+              g.leadsNeeded != null ? `sem descontar a esteira a cadeia pediria ${wholeFmt(g.leadsNeeded)} leads${g.investNeeded != null ? ` (${money(g.investNeeded)} de mídia)` : ""} — demanda bruta, só vale tratando a esteira como perdida` : null,
+              conversions.closeRateEffective?.source === "calibrated" && pontaAPonta
+                ? `fechamento efetivo ${rateFmt(conversions.closeRateEffective.value)}, calibrado pra bater com a ponta a ponta real (${wholeFmt(pontaAPonta.numerator)} ganhos de ${wholeFmt(pontaAPonta.denominator)} leads em ${rateJanela}). Multiplicar as 4 taxas medidas dá menos porque cada uma tem base diferente.` : null,
+              conversions.leadToWinMature
+                ? `o denominador desconta quem não teve tempo de fechar: dos ${wholeFmt(conversions.leadToWin.denominator)} leads da janela, ${wholeFmt(conversions.leadToWinMature.denominator)} já tiveram chance real.` : null,
+            ].filter(Boolean).join("\n")}>
+            como a conta é feita ⓘ
+          </span>
         </div>
 
         {g.blockedBy && (
