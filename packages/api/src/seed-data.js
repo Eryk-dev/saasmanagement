@@ -20,6 +20,9 @@ export const COLLECTIONS = {
   customers: [],
   leads: [],
   nps: [],
+  // Prova social: case autorizado de cliente (cases.js). Alimenta o slide
+  // "Quem já está dentro" do deck, a página pública do site e a ficha.
+  cases: [],
   // Relatório mensal de resultado mandado pro cliente (customer-reports.js): o
   // que foi enviado, quando e por qual canal. Histórico, não configuração.
   customer_reports: [],

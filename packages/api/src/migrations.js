@@ -1879,7 +1879,46 @@ export async function backfillCustomerOwners(repo, { now = Date.now() } = {}) {
   return n;
 }
 
+// Os cases que a casa já conta de cor entram como RASCUNHO, nunca públicos: os
+// números vieram do roteiro do closer (scripts.js), não do painel, e o slide
+// promete "conferido no painel". O Leo confere cada número, escolhe a fonte e
+// só então publica. Idempotente: só semeia com a coleção vazia.
+export async function ensureKnownCases(repo) {
+  const atuais = await repo.list("cases").catch(() => []);
+  if (atuais.length) return 0;
+  const base = { saas: "leverads", public: false, authorizedAt: "", authorizedBy: "", authorizedVia: "", customerId: "", createdAt: new Date().toISOString() };
+  const seeds = [
+    {
+      ...base, name: "Unique", niche: "", order: 1,
+      headline: "Espelhou as contas e a conta 1 não perdeu venda",
+      metrics: [
+        { label: "vendas", value: "+105%", period: "", source: "cliente", proofUrl: "" },
+        { label: "pedidos", value: "+98,8%", period: "", source: "cliente", proofUrl: "" },
+        { label: "visitas", value: "+115%", period: "", source: "cliente", proofUrl: "" },
+      ],
+    },
+    {
+      ...base, name: "Dyno Nutri", niche: "", order: 2,
+      headline: "Resultado em 20 dias",
+      metrics: [{ label: "a mais em vendas", value: "R$ 60 mil", period: "20 dias", source: "cliente", proofUrl: "" }],
+    },
+    {
+      ...base, name: "Unicoox", niche: "", order: 3,
+      headline: "Dobrou a conta 2 sem canibalizar a conta 1",
+      metrics: [{ label: "na conta 2", value: "+100%", period: "", source: "cliente", proofUrl: "" }],
+    },
+  ];
+  for (const c of seeds) await repo.create("cases", c);
+  return seeds.length;
+}
+
 export async function runStartupMigrations(repo) {
+  try {
+    const n = await ensureKnownCases(repo);
+    if (n) console.log(`[migration] ${n} case(s) conhecidos criados em RASCUNHO (confira os números no painel e autorize antes de publicar)`);
+  } catch (err) {
+    console.error("[migration] ensureKnownCases falhou:", err?.message || err);
+  }
   try {
     const n = await backfillCustomerOwners(repo);
     if (n) console.log(`[migration] dono da conta (CS) preenchido em ${n} cliente(s) que estavam sem owner`);

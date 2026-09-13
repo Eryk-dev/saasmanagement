@@ -304,6 +304,33 @@ export const openapi = {
           createdAt: { type: "string", readOnly: true }, createdBy: { type: "string", readOnly: true }, updatedAt: { type: "string", readOnly: true }, updatedBy: { type: "string", readOnly: true }, version: { type: "integer", readOnly: true },
         },
       },
+      Case: {
+        type: "object",
+        description: "Prova social autorizada de um cliente. Alimenta o slide \"Quem já está dentro\" do deck (escolhido pelo nicho do lead), a página pública do site e a ficha do cliente. Nada vai a público sem `authorizedAt` e sem `source` em cada número: o slide promete \"conferido no painel\".",
+        properties: {
+          id: { type: "string", readOnly: true }, saas: { type: "string" },
+          customerId: { type: "string", description: "Cliente de origem (nunca sai no JSON público)." },
+          name: { type: "string", description: "Marca, como ela aparece pro público.", example: "Lupa Auto Peças" },
+          niche: { type: "string", description: "Nicho; casado com o do lead sem acento e sem caixa.", example: "autopecas" },
+          headline: { type: "string", example: "Espelhou o catálogo em 3 contas" },
+          metrics: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                label: { type: "string" }, value: { type: "string" }, period: { type: "string" },
+                source: { type: "string", enum: ["painel", "print", "cliente"], description: "De onde veio o número. Sem isso o case não publica." },
+                proofUrl: { type: "string", description: "Print da prova (interno, nunca sai no público)." },
+              },
+            },
+          },
+          quote: { type: "string" }, quoteAuthor: { type: "string" }, logoUrl: { type: "string" },
+          authorizedAt: { type: "string", description: "Data em que o cliente autorizou. Sem ela o case não publica." },
+          authorizedBy: { type: "string" }, authorizedVia: { type: "string", enum: ["whatsapp", "email", "form"] },
+          public: { type: "boolean", description: "Só `true` literal publica." },
+          order: { type: "number", description: "Ordem manual (menor primeiro) dentro do mesmo peso de nicho." },
+        },
+      },
       TaskBoard: {
         type: "object",
         description: "Um quadro por workspace. `doneKey` = coluna de concluído; `columns[].rules` = automações ao entrar na coluna.",
