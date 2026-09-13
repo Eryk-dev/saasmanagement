@@ -16,9 +16,14 @@
 // é atendido por closer pleno/sênior (user.compLevel 2-3, o nível do plano de
 // remuneração); C pra baixo (C/D/E e sem qualificação) vai pro júnior
 // (compLevel 1). O foco é SEMPRE o próximo horário livre do pool: quem tiver o
-// slot mais cedo leva. C/D pode SUBIR pro pleno/sênior quando o pool júnior só
-// tem horário mais de 1 dia útil depois (velocidade ganha do escalão); S/A/B
-// nunca desce. Pool vazio cai pra todos os closers — agendamento nunca trava.
+// slot mais cedo leva. C/D pode SUBIR pro pleno/sênior ASSIM QUE O DIA DO
+// JÚNIOR LOTA (Leo, 13/09/2026): basta o pleno/sênior ter horário num dia
+// ANTERIOR ao primeiro slot livre do júnior. A régua antiga exigia mais de 1
+// dia útil de diferença, então o lead C/D esperava até o dia seguinte com um
+// closer livre na mesma tarde — velocidade de resposta vale mais que a
+// separação de escalão. Empate de horário continua do júnior (ele entra
+// primeiro na mistura). S/A/B nunca desce. Pool vazio cai pra todos os
+// closers — agendamento nunca trava.
 import { kindOf } from "./stages.js";
 import { leadGrade, ICP_GRADES } from "./metrics-core.js";
 
@@ -146,7 +151,9 @@ export function freeSlotsForPool({ pool, now, days = 5, minNoticeMin = 120, limi
   return out;
 }
 
-// Soma N dias úteis a um "YYYY-MM-DDTHH:MM" (a régua do overflow C/D → pleno).
+// Soma N dias úteis a um "YYYY-MM-DDTHH:MM". Hoje serve o prazo dos
+// compromissos do cliente na integração (client-pending.js); o overflow C/D
+// deixou de usar em 13/09/2026, quando virou comparação por dia.
 export function addBusinessDaysNaive(at, n) {
   const w = wallFromNaive(at);
   if (!w) return at;
@@ -166,6 +173,11 @@ export function addBusinessDaysNaive(at, n) {
 // Das 9h às 19h, com a ÚLTIMA call começando 19h (Leo, 23/08): a varredura
 // exige a call TERMINANDO dentro da janela, por isso o teto é 20.
 export const OFFER_HOURS = { fromHour: 9, toHour: 20, lunchFrom: 12, lunchTo: 13 };
+
+// Dia do slot no relógio de parede ("YYYY-MM-DDTHH:MM" → "YYYY-MM-DD"). É a
+// unidade do overflow: "a agenda do júnior encheu" é uma pergunta sobre o DIA,
+// não sobre a hora.
+const dayOfSlot = (at) => String(at || "").slice(0, 10);
 
 // ── A régua completa: horários pro LEAD ─────────────────────────────────────
 // Nota do lead (matriz S-E) → pool elegível → próximos horários. Devolve
@@ -206,9 +218,10 @@ export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wal
     const pool = pools.upper.length ? pools.upper : pools.all;
     return { slots: compute(pool, limit), pool: pools.upper.length ? "upper" : "all", grade };
   }
-  // C pra baixo (e sem qualificação): júnior primeiro. Overflow: se o pleno/
-  // sênior tem horário mais de 1 dia útil ANTES do primeiro slot júnior, os
-  // horários de cima entram na oferta (velocidade ganha do escalão).
+  // C pra baixo (e sem qualificação): júnior primeiro. Overflow: assim que o
+  // DIA do júnior lota (o primeiro slot livre dele cai num dia posterior ao do
+  // pleno/sênior), os horários de cima entram na oferta. Comparação por DIA, no
+  // relógio de parede: enquanto os dois conseguem hoje, o lead é do júnior.
   if (!pools.junior.length) {
     const pool = pools.upper.length ? pools.upper : pools.all;
     return { slots: compute(pool, limit), pool: pools.upper.length ? "upper" : "all", grade };
@@ -217,7 +230,7 @@ export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wal
   if (!jr.length) return { slots: compute(pools.upper.length ? pools.upper : pools.all, limit), pool: "upper", grade };
   if (pools.upper.length) {
     const up = compute(pools.upper, 1);
-    if (up.length && addBusinessDaysNaive(up[0].at, 1) < jr[0].at) {
+    if (up.length && dayOfSlot(up[0].at) < dayOfSlot(jr[0].at)) {
       const merged = [...jr, ...compute(pools.upper, limit)].sort((a, b) => a.at.localeCompare(b.at));
       const seen = new Set();
       return { slots: merged.filter((s) => !seen.has(s.at) && seen.add(s.at)).slice(0, limit || undefined), pool: "junior+upper", grade };

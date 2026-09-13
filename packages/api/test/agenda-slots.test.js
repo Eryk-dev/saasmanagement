@@ -82,7 +82,7 @@ test("ocupação vale: call marcada, bloqueio semanal e consulta tiram o horári
   assert.equal(slots[0].closer, "pl");
 });
 
-test("C/D fica no júnior; com júnior travado por mais de 1 dia útil, o pleno entra na oferta", async () => {
+test("C/D fica no júnior enquanto ele tem horário HOJE; dia lotado joga pro pleno", async () => {
   const base = {
     users: [JR, PL],
     // Júnior bloqueado quarta, quinta e sexta inteiras → próximo slot dele é segunda.
@@ -99,12 +99,51 @@ test("C/D fica no júnior; com júnior travado por mais de 1 dia útil, o pleno 
   assert.equal(r.pool, "junior+upper");
   assert.equal(r.slots[0].closer, "pl", "o horário mais cedo vem do pleno (overflow por velocidade)");
 
-  // Sem trava (júnior livre hoje): a régua estrita segura no júnior.
+  // Júnior livre hoje: enquanto ele consegue atender no mesmo dia, o lead é dele.
   const { repo: repo2, fill: fill2 } = seedRepo({ users: [JR, PL] });
   await fill2();
   const r2 = await slotsForLead(repo2, { lead, saas: "leverads", now: NOW, limit: 3 });
   assert.equal(r2.pool, "junior");
   assert.ok(r2.slots.every((s) => s.closer === "jr"));
+});
+
+// A régua de 13/09/2026: o lead C/D não espera o dia seguinte com um closer
+// livre na mesma tarde. UM dia de diferença já basta pra subir — antes eram
+// necessários mais de 1 dia útil, e este caso ficava preso no júnior.
+test("C/D sobe assim que o dia do júnior lota, com o pleno atendendo no MESMO dia", async () => {
+  const { repo, fill } = seedRepo({
+    users: [JR, PL],
+    // Júnior fora só HOJE (quarta): o próximo horário dele é amanhã de manhã,
+    // enquanto o pleno ainda atende hoje à tarde.
+    blocks: [{ id: "b1", user: "jr", kind: "block", recur: "once", date: "2026-08-19", allDay: true }],
+  });
+  await fill();
+  const lead = { id: "l9", saas: "leverads", accounts: "2" }; // nota D
+  const r = await slotsForLead(repo, { lead, saas: "leverads", now: NOW, days: 3, limit: 6, ...OFFER_HOURS });
+  assert.equal(r.pool, "junior+upper");
+  assert.equal(r.slots[0].closer, "pl");
+  assert.equal(r.slots[0].at.slice(0, 10), "2026-08-19", "o pleno atende HOJE, sem empurrar o lead pra amanhã");
+});
+
+// O overflow ACELERA, não transfere a fila: passado o dia cheio, o júnior volta
+// a aparecer na oferta em vez de perder o lead de vez.
+test("com o dia do pleno esgotado, o júnior volta pra oferta", async () => {
+  const { repo, fill } = seedRepo({
+    users: [JR, PL],
+    blocks: [{ id: "b1", user: "jr", kind: "block", recur: "once", date: "2026-08-19", allDay: true }],
+  });
+  await fill();
+  // NOW às 16h: sobram poucas horas do pleno hoje, então a lista alcança amanhã.
+  const tarde = wallFromNaive("2026-08-19T16:00");
+  const r = await slotsForLead(repo, {
+    lead: { id: "l10", saas: "leverads", accounts: "2" }, saas: "leverads",
+    now: tarde, days: 3, limit: 8, ...OFFER_HOURS,
+  });
+  assert.equal(r.pool, "junior+upper");
+  assert.ok(r.slots.every((s) => s.at >= "2026-08-19T18:00"), "aviso mínimo de 2h respeitado");
+  const doJunior = r.slots.filter((s) => s.closer === "jr");
+  assert.ok(doJunior.length > 0, "o júnior segue ofertado nos dias seguintes");
+  assert.ok(doJunior.every((s) => s.at.slice(0, 10) > "2026-08-19"));
 });
 
 test("pool vazio nunca trava: sem pleno/sênior, lead A cai em todos os closers", async () => {
