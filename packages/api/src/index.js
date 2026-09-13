@@ -25,6 +25,7 @@ import { startCustomerMilestones } from "./customer-milestones.js";
 import { startNpsAsks } from "./nps.js";
 import { startCustomerReports } from "./customer-reports.js";
 import { startClientPendingReminder } from "./client-pending.js";
+import { startCompMonthClose } from "./comp-months.js";
 import { startBlogEngine } from "./blog-engine.js";
 import { startStoriesCapture } from "./routes.desempenho.js";
 import { startShopifySync } from "./routes.webhooks.js";
@@ -146,6 +147,10 @@ try {
   // Combinado da integração que o cliente não entregou: avisa quem cuida do
   // lead e deixa a cobrança pronta na tarefa. Nunca envia sozinho.
   startClientPendingReminder(repo, { log: app.log });
+  // Fecha o mês da remuneração no dia seguinte: congela contratos, receita e o
+  // bônus de time de cada pessoa. É o extrato da folha e a base do critério de
+  // promoção, que não pode depender de recalcular o passado.
+  startCompMonthClose(repo, { log: app.log });
   // Blog SEO: minera pautas, rascunha 1 post por ciclo e publica os agendados
   // (15 min). No-op sem doc app_config/blog_<saas> ou com rules.enabled=false;
   // sem IA configurada só publica o que já está agendado.

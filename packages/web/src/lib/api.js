@@ -647,6 +647,9 @@ export const api = {
   // genérico e o gate de publicação (422 devolve o que falta).
   caseFromCustomer: (customer) => req("POST", "/api/cases/from-customer", { customer }),
   casePublish: (id, pub = true) => req("POST", `/api/cases/${id}/publish`, { public: pub }),
+  // Extrato mensal da remuneração (admin): o que cada mês fechado registrou.
+  compMonths: (saas, months = 6) => req("GET", `/api/comp/months/${encodeURIComponent(saas)}?months=${months}`),
+  compMonthClose: (saas, month) => req("POST", `/api/comp/months/${encodeURIComponent(saas)}/${month}/close`, {}),
   // Análise de Desempenho: objeções por closer na janela, produção do social
   // (feed/stories) e os registros manuais do dia (social selling/criativos).
   desempenho: (saas, { since, until } = {}) => {

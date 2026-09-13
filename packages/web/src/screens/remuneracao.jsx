@@ -332,10 +332,16 @@ export function TeamBonusCard({ saved, onSave }) {
     const iso = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
     return { since: iso(new Date(d.getFullYear(), d.getMonth(), 1)), until: iso(d) };
   }, []);
+  const [meses, setMeses] = useS([]);
   useE(() => {
     if (!product?.id) return;
     api.scoreboard(product.id, mes).then((r) => setStatus(r?.team?.teamBonus || null)).catch(() => setStatus(null));
   }, [product?.id, mes]); // eslint-disable-line react-hooks/exhaustive-deps
+  const carregarMeses = React.useCallback(() => {
+    if (!product?.id) return;
+    api.compMonths(product.id, 6).then((r) => setMeses(r?.months || [])).catch(() => setMeses([]));
+  }, [product?.id]);
+  useE(() => { carregarMeses(); }, [carregarMeses]);
 
   const users = (window.SEED?.USERS || []).filter((u) => (u.roles || []).some((r) => ["sdr", "closer", "integrator", "social"].includes(r)));
   const setCell = (role, i) => (e) => setDraft((p) => ({
@@ -398,6 +404,37 @@ export function TeamBonusCard({ saved, onSave }) {
       <div style={{ marginTop: 10, fontSize: 12, color: "var(--fg-3)" }}>
         se o mês fechar com as duas condições, o time leva <b style={{ color: "var(--fg-1)" }}>{money(totalSeTodos)}</b> ({users.length} {users.length === 1 ? "pessoa" : "pessoas"} no plano)
       </div>
+
+      {/* Extrato: o que cada mês FECHADO registrou. O carimbo é do dia seguinte
+          ao fim do mês; recalcular depois da folha muda um número já pago, por
+          isso o aviso fica junto do botão. */}
+      {(meses || []).length > 0 && (
+        <div style={{ marginTop: 12, borderTop: "1px solid var(--line-1)", paddingTop: 10 }}>
+          <div className="kicker" style={{ marginBottom: 6 }}>Meses fechados</div>
+          {meses.map((m) => (
+            <div key={m.month} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0", fontSize: 12.5, flexWrap: "wrap" }}>
+              <span className="mono" style={{ minWidth: 60 }}>{m.month}</span>
+              <span style={{ color: m.teamBonus?.ok ? "var(--pos)" : "var(--fg-3)" }}>
+                {m.teamBonus?.applies === false ? "fora do plano" : m.teamBonus?.ok ? "pagou" : "não pagou"}
+              </span>
+              {m.teamBonus?.applies !== false && (
+                <span style={{ color: "var(--fg-4)" }}>
+                  meta {m.teamBonus?.cash?.ok ? "batida" : "não batida"} · churn {m.teamBonus?.churn?.pct == null ? "sem base" : `${m.teamBonus.churn.pct}%`}
+                </span>
+              )}
+              <b style={{ marginLeft: "auto" }}>{money(m.total)}</b>
+              <button onClick={async () => {
+                if (!window.confirm(`Recalcular ${m.month}? Se a folha desse mês já foi paga, o número aqui pode mudar.`)) return;
+                try { await api.compMonthClose(product.id, m.month); carregarMeses(); }
+                catch (e) { window.alert(e?.message || "não consegui recalcular"); }
+              }}
+                style={{ height: 24, padding: "0 9px", borderRadius: 999, fontSize: 11, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-3)", cursor: "pointer" }}>
+                recalcular
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {dirty && (
         <button onClick={async () => { setSaving(true); try { await onSave("team", draft); } finally { setSaving(false); } }} disabled={saving}
