@@ -2,6 +2,7 @@ import React from "react";
 import { api, clearKey } from "./lib/api.js";
 import { useActiveSaas } from "./lib/workspace.js";
 import { canSeeScreen, currentUser, hasExplicitScreen, isAdminUser, userById, userPhoto } from "./lib/users.js";
+import { nextTouch, stageKind, workableStages } from "./lib/funnel.js";
 import { PeriodPicker, usePeriod } from "./components/period-picker.jsx";
 import { NotificationsBell } from "./components/notifications.jsx";
 import { IcpCard } from "./components/icp-card.jsx";
@@ -184,6 +185,16 @@ function NavRail({ current, onNav, collapsed }) {
   // guard de verdade.
   const inSaas = (item) =>
     (!item.saas || item.saas === product?.id) && (!item.notSaas || item.notSaas !== product?.id);
+  // Atrasados do produto ativo, pela régua do próprio pipeline (nextTouch).
+  const lateCount = React.useMemo(() => {
+    const cfg = (window.SEED?.SAAS || []).find((x) => x.id === product?.id);
+    const abertos = new Set(workableStages(cfg));
+    return (window.SEED?.LEADS || []).filter((l) => {
+      if (l.internal || (product?.id && l.saas !== product.id)) return false;
+      if (abertos.size && !abertos.has(l.stage)) return false;
+      return nextTouch(l, { kind: stageKind(cfg, l.stage) })?.key === "late";
+    }).length;
+  }, [product?.id, window.SEED?.LEADS]); // eslint-disable-line react-hooks/exhaustive-deps
   const groups = [];
   // "settings" aparece pra TODO usuário: quem não tem a tela liberada abre a
   // versão reduzida (só a conexão Google pessoal) — ver SettingsLite.
@@ -223,6 +234,10 @@ function NavRail({ current, onNav, collapsed }) {
             )}
             {g.items.map(item => {
               const active = current === item.id;
+              // O menu diz ONDE tem fogo (13/09): atrasado é a única contagem
+              // que o SEED já tem inteira e usa a MESMA régua da tela (nextTouch
+              // com key "late"), então não nasce um segundo número divergente.
+              const atrasados = item.id === "pipeline" ? lateCount : 0;
               return (
                 <button key={item.id}
                   onClick={() => onNav(item.id)}
@@ -242,6 +257,12 @@ function NavRail({ current, onNav, collapsed }) {
                   }}>
                   <span style={{ width: 16, height: 16, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: active ? "var(--accent)" : "var(--fg-4)" }}>{ICONS[item.id] || item.icon}</span>
                   {!collapsed && <span>{item.label}</span>}
+                  {atrasados > 0 && (
+                    <span className="tnum" title={`${atrasados} ${atrasados === 1 ? "lead com toque vencido" : "leads com toque vencido"}`}
+                      style={{ marginLeft: "auto", flexShrink: 0, padding: "1px 7px", borderRadius: 999, background: "var(--neg-soft)", color: "var(--neg)", fontSize: 10.5, fontWeight: 700 }}>
+                      {collapsed ? atrasados : `${atrasados} atrasados`}
+                    </span>
+                  )}
                 </button>
               );
             })}

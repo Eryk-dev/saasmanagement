@@ -117,6 +117,14 @@ export function NotificationsBell() {
                   <span style={{ display: "block", fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.4 }}>{n.text}</span>
                   <span className="mono dim" style={{ fontSize: 10.5 }}>{when(n.at)}{n.saas ? ` · ${n.saas}` : ""}</span>
                 </span>
+                {/* O QUE FAZER no próprio item (13/09): a linha inteira era
+                    clicável sem dizer pra onde ia. O verbo fica à vista, e é o
+                    mesmo clique. */}
+                {n.task && (
+                  <span style={{ flexShrink: 0, alignSelf: "center", fontSize: 11.5, fontWeight: 600, color: "var(--accent)" }}>
+                    {n.type === "mention" ? "responder" : n.type === "assigned" ? "assumir" : "abrir"} →
+                  </span>
+                )}
               </button>
             ))}
           </div>
