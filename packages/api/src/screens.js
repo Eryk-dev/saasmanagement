@@ -107,6 +107,9 @@ const ROUTE_SCREENS = [
   ["/api/mp_movements", ["expenses"]],   // saídas da conta MP (settlement report)
   ["/api/plans", ["customers"]],
   ["/api/nps", ["customers"]],
+  // Cases nascem da ficha do cliente e mostram faturamento por conta: mesmo
+  // guard da base de clientes.
+  ["/api/cases", ["customers"]],
   // Fila de colheita de indicação: mora numa aba da tela Clientes e mostra
   // faturamento por cliente, então segue o mesmo guard da base.
   ["/api/referrals/", ["customers"]],

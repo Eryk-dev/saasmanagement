@@ -57,7 +57,10 @@ const OPEN_PREFIXES = ["/f/", "/public/forms/", "/fi/", "/public/integration-for
   "/public/blog/",
   // NPS (routes.nps.js): o cliente responde a nota pelo link do e-mail/WhatsApp,
   // sem login. O token de 32 hex do link é quem identifica a avaliação.
-  "/public/nps/"];
+  "/public/nps/",
+  // Cases públicos (routes.cases.js): o site da LeverAds faz proxy com cache
+  // deste JSON. Só case autorizado e marcado como público sai daqui.
+  "/public/cases"];
 
 // Read the key from either header style: `x-api-key: <key>` or `Authorization: Bearer <key>`.
 // Exceção: /api/events (SSE) — EventSource não manda headers, então a key/token
