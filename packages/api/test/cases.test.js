@@ -6,7 +6,7 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import { validateCase, publishBlockers, canPublish, publicCase, pickCases } from "../src/cases.js";
 import { registerCaseRoutes } from "../src/routes.cases.js";
-import { ensureKnownCases } from "../src/migrations.js";
+import { ensureKnownCases, ensurePanelCases } from "../src/migrations.js";
 
 const completo = (over = {}) => ({
   id: "ca_1", saas: "leverads", customerId: "cu_1", name: "Lupa Auto Peças", niche: "autopecas",
@@ -179,4 +179,54 @@ test("deck: com cases, eles vão no snapshot e o fallback some na pintura", () =
   // O fallback continua no HTML (é ele que aparece quando não há case), mas a
   // pintura o esconde: a regra está no script, não no markup.
   assert.match(html, /fb\.style\.display = \(D\.cases \|\| \[\]\)\.length \? "none" : "contents"/);
+});
+
+// ── Os quatro cases do painel (página 10 do deck C) ───────────────────────
+test("migração do painel: quatro cases em rascunho, com as quatro medidas do slide", async () => {
+  const repo = makeMemRepo();
+  await repo.create("customers", { saas: "leverads", name: "Dyno Nutri" });
+  assert.equal(await ensurePanelCases(repo), 4);
+  const todos = await repo.list("cases");
+  assert.deepEqual(todos.map((c) => c.name), ["Motvia", "Lupa Autopeças", "Dyno Nutri", "123tudo"]);
+  assert.ok(todos.every((c) => c.metrics.length === 4), "cada case leva as quatro medidas do slide");
+  assert.ok(todos.every((c) => c.metrics.every((m) => m.source === "painel")), "todo número vem do painel");
+  assert.ok(todos.every((c) => c.public === false), "nada nasce público: nome e logo de cliente pedem autorização");
+  assert.ok(todos.every((c) => publishBlockers(c).includes("a autorização do cliente (data)")));
+  // O vínculo com o cadastro entra quando o cliente existe, e some quando não.
+  assert.ok(todos.find((c) => c.name === "Dyno Nutri").customerId);
+  assert.equal(todos.find((c) => c.name === "Motvia").customerId, "");
+});
+
+test("migração do painel: atualiza o case que já existia em vez de duplicar, e roda uma vez só", async () => {
+  const repo = makeMemRepo();
+  assert.equal(await ensureKnownCases(repo), 3);
+  const antes = (await repo.list("cases")).find((c) => c.name === "Dyno Nutri");
+  assert.equal(antes.metrics[0].value, "R$ 60 mil"); // número do roteiro do closer
+  assert.equal(await ensurePanelCases(repo), 4);
+  const todos = await repo.list("cases");
+  assert.equal(todos.filter((c) => c.name === "Dyno Nutri").length, 1, "um card por cliente");
+  const depois = todos.find((c) => c.name === "Dyno Nutri");
+  assert.equal(depois.id, antes.id, "mesmo registro, número novo");
+  assert.equal(depois.metrics[0].value, "R$ 127 mil");
+  assert.equal(depois.metrics[0].source, "painel");
+  assert.equal(todos.length, 6); // Unique e Unicoox seguem lá
+  assert.equal(await ensurePanelCases(repo), 0, "idempotente: não mexe no que o time editar depois");
+});
+
+// ── Slide 3 e slide de resultados ─────────────────────────────────────────
+test("deck: o slide de quem somos mostra as fotos da operação, não os placeholders", () => {
+  const html = deck([]);
+  for (const foto of ["operacao-interna-2.jpg", "operacao-interna-1.jpg", "operacao-barracao-novo.jpg"]) {
+    assert.ok(html.includes(`proposal-assets/leverads/${foto}`), `falta a foto ${foto}`);
+  }
+  assert.ok(!html.includes("img-slot"), "nenhum slot vazio sobrou");
+  assert.ok(!html.includes("Foto do galpão"), "o rótulo de placeholder saiu");
+});
+
+test("deck: o card de case leva logo, as três medidas de apoio e a régua no slide", () => {
+  const html = deck([]);
+  assert.match(html, /metricas\.slice\(1, 4\)/);   // as três medidas de apoio
+  assert.match(html, /if \(c\.logoUrl\)/);          // logo quando o cliente autoriza
+  assert.match(html, /10 minutos por anúncio, ao custo de um funcionário de R\$ 3\.000/);
+  assert.equal(html.split("[CLIENTE] · [NICHO]").length - 1, 4, "quatro cards de exemplo enquanto nada está publicado");
 });

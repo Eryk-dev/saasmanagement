@@ -434,10 +434,11 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0B141D; }
 .canvas > section { position: absolute; inset: 0; width: 1920px; height: 1080px;
   visibility: hidden; opacity: 0; transition: opacity .18s linear; }
 .canvas > section[data-deck-active] { visibility: visible; opacity: 1; }
-.img-slot { width: 100%; height: 100%; min-height: 120px; border-radius: 12px;
-  background: var(--paper-tinted); border: 1px dashed var(--line-strong);
-  display: flex; align-items: center; justify-content: center; text-align: center;
-  padding: 16px; color: var(--ink-faint); font-size: 22px; }
+/* Foto da operação: o slot é do tamanho do grid, a imagem preenche cortando o
+   excesso (as fotos vieram do celular, cada uma numa proporção). */
+.foto { width: 100%; height: 100%; display: block; object-fit: cover; border-radius: 12px;
+  background: var(--paper-tinted); }
+.logo-case { height: 52px; max-width: 210px; object-fit: contain; object-position: left center; display: block; }
 .logo { display: block; }
 
 /* Contador + dicas: some sozinho e volta no movimento do mouse. */
@@ -504,6 +505,34 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #0B141D; }
 }
 `;
 
+// Fotos da operação: as MESMAS do deck antigo (slide `nossa_operacao` do
+// `pt_leverads`), que já rodaram em call e estão no bucket público
+// `proposal-assets`. O bucket ficou no projeto do PRODUTO quando os bancos se
+// separaram (30/08), por isso o domínio não é o do cockpit.
+const ASSETS = "https://hsooljludhobvsznvnir.supabase.co/storage/v1/object/public/proposal-assets/leverads";
+const FOTOS = {
+  estoque: `${ASSETS}/operacao-interna-2.jpg`,
+  interna: `${ASSETS}/operacao-interna-1.jpg`,
+  galpao: `${ASSETS}/operacao-barracao-novo.jpg`,
+};
+
+// Card vazio do slide de resultados: é o que aparece quando NENHUM case está
+// publicado. Mesma estrutura do card real (`cardCase`), com colchete no lugar de
+// cada número, pra que o closer veja na tela o que falta autorizar em vez de um
+// slide que some.
+const CASE_VAZIO = `
+    <div style="background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:32px;display:flex;flex-direction:column;gap:14px">
+      <div style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">[CLIENTE] · [NICHO]</div>
+      <div style="font-size:54px;font-weight:700;letter-spacing:-0.03em;line-height:1;color:var(--brand);font-variant-numeric:tabular-nums">[R$ xx mil]</div>
+      <div style="font-size:25px;color:var(--ink-muted);line-height:1.35">gerado por anúncios da Lever (30 dias)</div>
+      <div style="display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line-faint);padding-top:16px;font-size:23px;line-height:1.25;color:var(--ink-muted)">
+        <div><b style="color:var(--ink)">[xx%]</b> do crescimento do mês</div>
+        <div><b style="color:var(--ink)">[x mil h]</b> de cadastro manual poupadas</div>
+        <div><b style="color:var(--ink)">[R$ xx mil]</b> de custo fixo evitado</div>
+      </div>
+      <div style="margin-top:auto;font-size:23px;line-height:1.4;color:var(--ink-soft);border-top:1px solid var(--line-faint);padding-top:16px">[O que mudou na operação dele em uma linha]</div>
+    </div>`;
+
 const SLIDES = `
 <section data-label="Capa" data-screen-label="Capa" data-speaker-notes="Abertura. Confirme quem está na sala e diga em uma frase o que vem: quem somos, o método, a demonstração e o investimento." data-theme="dark" style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:96px 112px 88px;display:flex;flex-direction:column;justify-content:space-between">
   <div style="display:flex;align-items:center;gap:18px">
@@ -536,9 +565,9 @@ const SLIDES = `
     <div style="min-width:0;display:flex;flex-direction:column;gap:16px">
       <div style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">A operação por dentro</div>
       <div style="display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);grid-template-rows:232px 232px;gap:12px">
-        <div style="grid-row:span 2;min-width:0"><div class="img-slot">Foto do galpão</div></div>
-        <div style="min-width:0"><div class="img-slot">Foto do estoque</div></div>
-        <div style="min-width:0"><div class="img-slot">Foto da expedição</div></div>
+        <div style="grid-row:span 2;min-width:0"><img class="foto" src="${FOTOS.estoque}" alt="Estoque da nossa operação, com milhares de peças em prateleira"></div>
+        <div style="min-width:0"><img class="foto" src="${FOTOS.interna}" alt="Vista interna do galpão, com as bancadas de separação"></div>
+        <div style="min-width:0"><img class="foto" src="${FOTOS.galpao}" alt="Fachada do galpão de hoje"></div>
       </div>
       <div style="font-size:24px;color:var(--ink-faint);line-height:1.45">Milhares de peças girando todo dia. A operação que virou ferramenta.</div>
     </div>
@@ -716,15 +745,10 @@ const SLIDES = `
     <span style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">06</span>
   </div>
   <h2 style="margin:0 0 16px;font-size:60px;line-height:1.05;letter-spacing:-0.025em;font-weight:700;max-width:1300px;text-wrap:balance">Sellers com a mesma dor que a sua. <span style="color:var(--brand)">O que mudou.</span></h2>
-  <p style="margin:0 0 56px;font-size:28px;line-height:1.45;color:var(--ink-muted)">Números conferidos no painel, não em depoimento.</p>
+  <p style="margin:0 0 44px;font-size:28px;line-height:1.45;color:var(--ink-muted)">Números conferidos no painel, não em depoimento. Tempo e custo pela mesma régua: 10 minutos por anúncio, ao custo de um funcionário de R$ 3.000 em 44 horas semanais.</p>
   <div style="flex:1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px">
     <div data-cases style="display:contents"></div>
-    <div data-cases-fallback style="display:contents">
-    <div style="background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:32px;display:flex;flex-direction:column;gap:16px"><div style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">[CLIENTE] · [NICHO]</div><div style="font-size:54px;font-weight:700;letter-spacing:-0.03em;line-height:1;color:var(--brand);font-variant-numeric:tabular-nums">[R$ xx mil]</div><div style="font-size:25px;color:var(--ink-muted);line-height:1.35">faturados por anúncios da Lever em [x] meses</div><div style="margin-top:auto;font-size:24px;line-height:1.45;color:var(--ink-soft);border-top:1px solid var(--line-faint);padding-top:18px">[Ex.: Tinha 2 contas e 1 pessoa cadastrando. Ligou o efeito teia e triplicou os anúncios no ar sem contratar.]</div></div>
-    <div style="background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:32px;display:flex;flex-direction:column;gap:16px"><div style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">[CLIENTE] · [NICHO]</div><div style="font-size:54px;font-weight:700;letter-spacing:-0.03em;line-height:1;color:var(--brand);font-variant-numeric:tabular-nums">[+xx%]</div><div style="font-size:25px;color:var(--ink-muted);line-height:1.35">de faturamento em [x] meses</div><div style="margin-top:auto;font-size:24px;line-height:1.45;color:var(--ink-soft);border-top:1px solid var(--line-faint);padding-top:18px">[Ex.: Estoque cheio, anúncio fraco. Publicou 1.000 OEM em uma semana e o catálogo passou a aparecer na busca por veículo.]</div></div>
-    <div style="background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:32px;display:flex;flex-direction:column;gap:16px"><div style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">[CLIENTE] · [NICHO]</div><div style="font-size:54px;font-weight:700;letter-spacing:-0.03em;line-height:1;color:var(--brand);font-variant-numeric:tabular-nums">[x mil]</div><div style="font-size:25px;color:var(--ink-muted);line-height:1.35">anúncios publicados em [x] dias</div><div style="margin-top:auto;font-size:24px;line-height:1.45;color:var(--ink-soft);border-top:1px solid var(--line-faint);padding-top:18px">[Ex.: Levaria 4 meses de cadastro manual. Saiu em 9 dias, com compatibilidade completa.]</div></div>
-    <div style="background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:32px;display:flex;flex-direction:column;gap:16px"><div style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">[CLIENTE] · [NICHO]</div><div style="font-size:54px;font-weight:700;letter-spacing:-0.03em;line-height:1;color:var(--brand);font-variant-numeric:tabular-nums">[x h/mês]</div><div style="font-size:25px;color:var(--ink-muted);line-height:1.35">de trabalho manual que voltaram pro dono</div><div style="margin-top:auto;font-size:24px;line-height:1.45;color:var(--ink-soft);border-top:1px solid var(--line-faint);padding-top:18px">[Ex.: Passava as tardes respondendo pergunta. Hoje a IA responde e ele cuida de compra e margem.]</div></div>
-    </div>
+    <div data-cases-fallback style="display:contents">${CASE_VAZIO.repeat(4)}</div>
   </div>
 </section>
 
@@ -1155,15 +1179,32 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
     return d;
   }
 
-  // Card de case real, no molde do cardEntregavel: o número grande é a 1ª
-  // métrica (a que o time pôs em primeiro), a legenda é o rótulo dela e o
-  // rodapé é o depoimento ou, na falta dele, a 2ª métrica.
+  // Card de case real, no molde do cardEntregavel. A 1ª métrica (a que o time
+  // pôs em primeiro) vira o número grande; as seguintes viram linhas de valor +
+  // rótulo, porque um case do painel conta a história em mais de um número:
+  // quanto vendeu, quanto disso foi crescimento, quanto tempo poupou e quanto
+  // custaria fazer na mão. O rodapé é o depoimento ou a manchete do case.
+  //
+  // A logo entra QUANDO EXISTE e nunca no lugar do nome: logo pequena em slide
+  // de palco é reconhecida por quem já conhece a marca, e o nome resolve para
+  // todo mundo. Sem logo, o card é o de sempre.
   function cardCase(c) {
     var d = document.createElement("div");
-    d.setAttribute("style", "background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:32px;display:flex;flex-direction:column;gap:16px;min-width:0");
-    var m = (c.metrics || [])[0] || {};
+    d.setAttribute("style", "background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:32px;display:flex;flex-direction:column;gap:14px;min-width:0");
+    var metricas = c.metrics || [];
+    var m = metricas[0] || {};
+    if (c.logoUrl) {
+      var logo = document.createElement("img");
+      logo.className = "logo-case";
+      logo.src = c.logoUrl;
+      logo.alt = c.name || "";
+      d.appendChild(logo);
+    }
+    // Duas linhas reservadas pro nome mesmo quando ele cabe em uma: são quatro
+    // cards lado a lado e o número grande tem que nascer na mesma altura nos
+    // quatro, senão a fileira parece torta.
     var topo = document.createElement("div");
-    topo.setAttribute("style", "font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)");
+    topo.setAttribute("style", "font-family:var(--font-mono);font-size:24px;line-height:1.25;color:var(--ink-faint);min-height:60px");
     topo.textContent = c.name + (c.niche ? " · " + c.niche : "");
     d.appendChild(topo);
     var num = document.createElement("div");
@@ -1174,14 +1215,31 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
     leg.setAttribute("style", "font-size:25px;color:var(--ink-muted);line-height:1.35");
     leg.textContent = (m.label || "") + (m.period ? " (" + m.period + ")" : "");
     d.appendChild(leg);
+    var resto = metricas.slice(1, 4);
+    if (resto.length) {
+      var lista = document.createElement("div");
+      lista.setAttribute("style", "display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line-faint);padding-top:16px");
+      resto.forEach(function (x) {
+        // Uma frase por linha (valor em negrito + rótulo), não duas colunas: o
+        // rótulo que não cabe continua embaixo alinhado à esquerda, em vez de
+        // pendurar recuado na coluna do número.
+        var linha = document.createElement("div");
+        linha.setAttribute("style", "font-size:23px;line-height:1.3;color:var(--ink-muted)");
+        var v = document.createElement("b");
+        v.setAttribute("style", "font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums");
+        v.textContent = x.value || "";
+        linha.appendChild(v);
+        linha.appendChild(document.createTextNode(" " + (x.label || "")));
+        lista.appendChild(linha);
+      });
+      d.appendChild(lista);
+    }
     var pe = document.createElement("div");
-    pe.setAttribute("style", "margin-top:auto;font-size:24px;line-height:1.45;color:var(--ink-soft);border-top:1px solid var(--line-faint);padding-top:18px");
-    var segunda = (c.metrics || [])[1];
+    pe.setAttribute("style", "margin-top:auto;font-size:23px;line-height:1.4;color:var(--ink-soft);border-top:1px solid var(--line-faint);padding-top:16px");
     if (c.quote) pe.textContent = '"' + c.quote + '"' + (c.quoteAuthor ? " " + c.quoteAuthor : "");
-    else if (segunda) pe.textContent = segunda.value + " " + (segunda.label || "");
     else pe.textContent = c.headline || "";
     d.appendChild(pe);
-    if (m.source === "painel") {
+    if (metricas.some(function (x) { return x.source === "painel"; })) {
       var fonte = document.createElement("div");
       fonte.setAttribute("style", "font-family:var(--font-mono);font-size:20px;color:var(--ink-faint)");
       fonte.textContent = "fonte: painel LeverAds";
