@@ -639,6 +639,10 @@ export const api = {
   // NPS: pede a nota agora (e-mail sozinho, WhatsApp dentro da janela de 24h,
   // senão vira tarefa com o texto pronto pro dono da conta).
   npsAsk: (id) => req("POST", `/api/customers/${id}/nps/ask`, {}),
+  // Resultados do cliente (bloco da ficha): o número vivo do banco do produto
+  // (R$ que os anúncios da Lever venderam em 30 dias) + os últimos relatórios.
+  customerResults: (id) => req("GET", `/api/customers/${id}/results`),
+  customerReportSend: (id) => req("POST", `/api/customers/${id}/report/send`, {}),
   // Análise de Desempenho: objeções por closer na janela, produção do social
   // (feed/stories) e os registros manuais do dia (social selling/criativos).
   desempenho: (saas, { since, until } = {}) => {
