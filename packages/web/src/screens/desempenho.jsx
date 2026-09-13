@@ -230,6 +230,27 @@ function ObjectionsBlock({ ob, onOpen }) {
 }
 
 // ── Linha + detalhe por papel ────────────────────────────────────────────────
+// Ritmo dos últimos 7 dias: barrinhas de toque por dia. Números iguais em dois
+// dias diferentes não dizem nada; a FORMA diz se a pessoa está acelerando ou
+// parando, que é o que a revisão de fim de dia procura.
+function Ritmo({ serie, dias }) {
+  if (!serie || !serie.length) return <span className="dim" style={{ fontSize: 11.5 }}>—</span>;
+  const max = Math.max(1, ...serie);
+  const total = serie.reduce((a, b) => a + b, 0);
+  const rotulo = (i) => {
+    const d = dias?.[i];
+    return d ? `${new Date(`${d}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "")}: ${serie[i]} toques` : `${serie[i]} toques`;
+  };
+  return (
+    <span title={`${total} toques nos últimos 7 dias`} style={{ display: "inline-flex", alignItems: "flex-end", gap: 2, height: 22 }}>
+      {serie.map((v, i) => (
+        <span key={i} title={rotulo(i)} style={{ width: 5, height: Math.max(2, Math.round((v / max) * 20)), borderRadius: 1, background: v ? "var(--accent)" : "var(--line-2)", opacity: v ? 0.85 : 1 }} />
+      ))}
+      <span className="tnum" style={{ marginLeft: 5, fontSize: 11.5, color: "var(--fg-3)" }}>{total}</span>
+    </span>
+  );
+}
+
 function PersonCell({ row }) {
   return (
     <td style={{ minWidth: 180 }}>
@@ -363,6 +384,7 @@ function DesempenhoScreen({ onOpenLead }) {
               rows={sdrRows}
               emptyTitle="Nenhum SDR neste produto" emptyHint="Marque a etiqueta SDR em Ajustes → Equipe pra pessoa aparecer aqui."
               cols={[
+                { label: "Ritmo · 7 dias", title: "toques por dia nos últimos 7 dias corridos (mesma régua do funil: toque na timeline pelo autor)", right: false },
                 { label: "No-show", title: "calls dos leads dela que não aconteceram (call vencida sem virar nada, furo marcado ou IA frio)" },
                 { label: "Calls agendadas", title: "calls dos leads dela pela data da call" },
                 { label: "Calls com ICP", title: "das agendadas, as com nota S/A/B (a faixa que vai pro closer sênior)" },
@@ -375,6 +397,7 @@ function DesempenhoScreen({ onOpenLead }) {
               render={(r) => (
                 <>
                   <PersonCell row={r} />
+                  <td><Ritmo serie={extra?.ritmo?.[r.user]} dias={extra?.ritmoDays} /></td>
                   <Num v={r.noShow} tone="neg" />
                   <Num v={r.callsBooked} />
                   <Num v={r.callsBookedIcp} />
@@ -451,6 +474,7 @@ function DesempenhoScreen({ onOpenLead }) {
               rows={closerRows}
               emptyTitle="Nenhum closer neste produto" emptyHint="Marque a etiqueta closer em Ajustes → Equipe pra pessoa aparecer aqui."
               cols={[
+                { label: "Ritmo · 7 dias", title: "toques por dia nos últimos 7 dias corridos (mesma régua do funil: toque na timeline pelo autor)", right: false },
                 { label: "No-show", title: "calls dele na janela que não aconteceram" },
                 { label: "Calls realizadas", title: "calls que aconteceram com ele (inclui a parte do histórico pré-cockpit)" },
                 { label: "Receita", title: "receita reconhecida na janela (faturado/recorrente só pelo que entrou); conta grande fora" },
@@ -463,6 +487,7 @@ function DesempenhoScreen({ onOpenLead }) {
                 return (
                   <>
                     <PersonCell row={r} />
+                    <td><Ritmo serie={extra?.ritmo?.[r.user]} dias={extra?.ritmoDays} /></td>
                     <Num v={r.noShow} tone="neg" />
                     <Num v={r.callsShown} />
                     <Num v={fmt.money(r.revenue)} />

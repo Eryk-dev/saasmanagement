@@ -68,7 +68,7 @@ import { registerDesempenhoRoutes } from "./routes.desempenho.js";
 import { registerPipelinePaceRoutes } from "./routes.pipeline-pace.js";
 import { registerEloRoutes } from "./elo.js";
 import { registerTaskRoutes } from "./routes.tasks.js";
-import { createTask, patchTask, deleteTask, sanitizeBoardPatch, TASK_DEFAULTS, BOARD_DEFAULTS, brtToday } from "./tasks-core.js";
+import { createTask, patchTask, deleteTask, sanitizeBoardPatch, TASK_DEFAULTS, BOARD_DEFAULTS, brtToday, normalizeBoard } from "./tasks-core.js";
 
 // Auth interna fica FORA do CRUD genérico: passwordHash/token de sessão nunca
 // saem pela API. Gestão via rotas dedicadas (/api/auth/*).
@@ -498,8 +498,41 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     const FINANCE_KEYS = ["arr", "mrr", "mrrSeries", "mrrDelta", "nnm", "tcv", "tcvDelta", "acv", "acvDelta", "customers", "customersDelta", "churnRate", "nrr", "nrrDelta", "grr", "healthSeries"];
     let saas = rollupProducts(products, customers);
     if (!seesFinance) saas = saas.map((s) => { const c = { ...s }; for (const k of FINANCE_KEYS) delete c[k]; return c; });
+    // ── Contadores da moldura (13/09) ───────────────────────────────────────
+    // O menu diz onde tem fogo. Vêm daqui (e não de um fetch por tela) porque o
+    // SEED já é o que o SSE atualiza: um número só, do servidor, sem a moldura
+    // reimplementar régua de tela. Tarefas e Inbox usam as MESMAS regras das
+    // telas donas (coluna de concluído do board; unread da thread).
+    const contadores = {};
+    try {
+      const [tarefas, boards, threads] = await Promise.all([
+        can("tasks") ? repo.list("tasks").catch(() => []) : [],
+        can("tasks") ? repo.list("task_boards").catch(() => []) : [],
+        can("whatsapp") ? repo.list("wa_threads").catch(() => []) : [],
+      ]);
+      const hoje = new Date().toISOString().slice(0, 10);
+      const meuId = req.authUser?.id || "";
+      for (const p of products) {
+        const board = normalizeBoard(boards.find((b) => b.saas === p.id) || boards.find((b) => !b.saas));
+        const minhas = tarefas.filter((t) => {
+          if (t.parentId) return false;
+          if (t.saas && t.saas !== p.id) return false;
+          if (t.completed) return false;
+          if (board.doneKey && t.column === board.doneKey) return false;
+          const donos = Array.isArray(t.assignees) ? t.assignees : (t.assignee ? [t.assignee] : []);
+          return !donos.length || !meuId || donos.includes(meuId);
+        });
+        contadores[p.id] = {
+          tasks: minhas.length,
+          tasksLate: minhas.filter((t) => t.dueDate && String(t.dueDate) < hoje).length,
+          inbox: threads.filter((t) => (!t.saas || t.saas === p.id) && Number(t.unread) > 0 && t.status !== "closed").length,
+        };
+      }
+    } catch { /* contador é enfeite: falhar aqui não pode derrubar o bootstrap */ }
+
     return {
       SAAS: saas,
+      COUNTERS: contadores,
       PORTFOLIO: can("overview") ? portfolio : null,
       ATTENTION: can("overview") ? attention : [],
       PEOPLE: people,

@@ -9,6 +9,7 @@
 // e casa por `user`. Regra de métrica nova nasce no metrics-core.
 
 import { dayKey, rangeFromQuery } from "./metrics-core.js";
+import { TOUCH_TYPES } from "./stages.js";
 import { aggregateCalls, dedupCallSummaries, isSalesCallSummary } from "./routes.pitch.js";
 import { syncStories } from "./social-stories.js";
 import { social as defaultSocial } from "./social.js";
@@ -109,8 +110,30 @@ export function registerDesempenhoRoutes(app, repo, { social = defaultSocial, no
     out.stories = stories.length;
     out.storyItems = stories.sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 30).map((s) => ({ id: s.id, at: s.at, type: s.type || "", permalink: s.permalink || "", caption: String(s.caption || "").slice(0, 90) }));
 
+    // ── Ritmo dos últimos 7 dias, por pessoa (13/09) ────────────────────────
+    // A linha da tabela dizia o TOTAL da janela e não dizia se a pessoa está
+    // acelerando ou parando. Aqui vai um toque por dia (mesma régua do funil:
+    // TOUCH_TYPES na timeline, pelo AUTOR da atividade), sempre nos últimos 7
+    // dias corridos — é ritmo, não recorte da janela escolhida.
+    const dias7 = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(now()); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - (6 - i));
+      return dayKey(d.toISOString());
+    });
+    const ritmo = {};
+    for (const a of acts) {
+      if (!TOUCH_TYPES.has(a.type) || !a.author || !a.at) continue;
+      const l = leadById.get(a.lead);
+      if (!l) continue; // atividade de outro produto
+      const dia = dayKey(a.at);
+      const i = dias7.indexOf(dia);
+      if (i < 0) continue;
+      if (!visible(a.author)) continue;
+      if (!ritmo[a.author]) ritmo[a.author] = dias7.map(() => 0);
+      ritmo[a.author][i] += 1;
+    }
+
     const social_ = users.filter((u) => (!u.saas || u.saas === product.id) && (u.roles || []).includes("social")).map((u) => u.id);
-    return { saas: product.id, since, until, me: me?.id || "", admin, objections, logs, social: out, socialUsers: social_ };
+    return { saas: product.id, since, until, me: me?.id || "", admin, objections, logs, social: out, socialUsers: social_, ritmo, ritmoDays: dias7 };
   });
 
   // Registro do dia: +1 social selling (SDR, no Meu dia) / criativos feitos

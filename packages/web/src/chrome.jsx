@@ -3,6 +3,7 @@ import { api, clearKey } from "./lib/api.js";
 import { useActiveSaas } from "./lib/workspace.js";
 import { canSeeScreen, currentUser, hasExplicitScreen, isAdminUser, userById, userPhoto } from "./lib/users.js";
 import { nextTouch, stageKind, workableStages } from "./lib/funnel.js";
+import { buildQueue } from "./screens/today.jsx";
 import { PeriodPicker, usePeriod } from "./components/period-picker.jsx";
 import { NotificationsBell } from "./components/notifications.jsx";
 import { IcpCard } from "./components/icp-card.jsx";
@@ -195,6 +196,25 @@ function NavRail({ current, onNav, collapsed }) {
       return nextTouch(l, { kind: stageKind(cfg, l.stage) })?.key === "late";
     }).length;
   }, [product?.id, window.SEED?.LEADS]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Contadores do servidor (bootstrap) pro produto ativo + a régua local do
+  // pipeline. Um número por item, e só quando há o que fazer.
+  const cont = (window.SEED?.COUNTERS || {})[product?.id] || {};
+  const filaHoje = React.useMemo(() => {
+    const cfg = (window.SEED?.SAAS || []).find((x) => x.id === product?.id);
+    if (!cfg) return 0;
+    try {
+      // MESMA função da tela Meu dia (buildQueue): a moldura não recalcula fila.
+      const q = buildQueue((window.SEED?.LEADS || []).filter((l) => l.saas === cfg.id), [], cfg, currentUser()?.id || "");
+      return (q?.hoje || []).filter((it) => !it.done).length;
+    } catch { return 0; }
+  }, [product?.id, window.SEED?.LEADS]); // eslint-disable-line react-hooks/exhaustive-deps
+  const badgeDe = (id) => {
+    if (id === "pipeline" && lateCount > 0) return { n: lateCount, texto: `${lateCount} atrasados`, tone: "neg", title: `${lateCount} leads com o toque vencido` };
+    if (id === "today" && filaHoje > 0) return { n: filaHoje, texto: String(filaHoje), tone: "mut", title: `${filaHoje} na sua fila de hoje` };
+    if (id === "tasks" && cont.tasks > 0) return { n: cont.tasks, texto: String(cont.tasks), tone: cont.tasksLate > 0 ? "neg" : "mut", title: `${cont.tasks} tarefas abertas${cont.tasksLate ? ` · ${cont.tasksLate} atrasadas` : ""}` };
+    if (id === "whatsapp" && cont.inbox > 0) return { n: cont.inbox, texto: String(cont.inbox), tone: "neg", title: `${cont.inbox} conversas não lidas` };
+    return null;
+  };
   const groups = [];
   // "settings" aparece pra TODO usuário: quem não tem a tela liberada abre a
   // versão reduzida (só a conexão Google pessoal) — ver SettingsLite.
@@ -234,10 +254,12 @@ function NavRail({ current, onNav, collapsed }) {
             )}
             {g.items.map(item => {
               const active = current === item.id;
-              // O menu diz ONDE tem fogo (13/09): atrasado é a única contagem
-              // que o SEED já tem inteira e usa a MESMA régua da tela (nextTouch
-              // com key "late"), então não nasce um segundo número divergente.
-              const atrasados = item.id === "pipeline" ? lateCount : 0;
+              // O MENU DIZ ONDE TEM FOGO (13/09). Pipeline sai da régua do
+              // próprio pipeline (nextTouch "late") com os leads do SEED;
+              // Tarefas, Inbox e Minhas atividades vêm dos contadores que o
+              // servidor manda no bootstrap (mesmas regras das telas donas) —
+              // nunca de uma conta reinventada aqui.
+              const badge = badgeDe(item.id);
               return (
                 <button key={item.id}
                   onClick={() => onNav(item.id)}
@@ -257,10 +279,13 @@ function NavRail({ current, onNav, collapsed }) {
                   }}>
                   <span style={{ width: 16, height: 16, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: active ? "var(--accent)" : "var(--fg-4)" }}>{ICONS[item.id] || item.icon}</span>
                   {!collapsed && <span>{item.label}</span>}
-                  {atrasados > 0 && (
-                    <span className="tnum" title={`${atrasados} ${atrasados === 1 ? "lead com toque vencido" : "leads com toque vencido"}`}
-                      style={{ marginLeft: "auto", flexShrink: 0, padding: "1px 7px", borderRadius: 999, background: "var(--neg-soft)", color: "var(--neg)", fontSize: 10.5, fontWeight: 700 }}>
-                      {collapsed ? atrasados : `${atrasados} atrasados`}
+                  {badge && (
+                    <span className="tnum" title={badge.title}
+                      style={{ marginLeft: "auto", flexShrink: 0, padding: "1px 7px", borderRadius: 999,
+                        background: badge.tone === "neg" ? "var(--neg-soft)" : "var(--bg-2)",
+                        color: badge.tone === "neg" ? "var(--neg)" : "var(--fg-3)",
+                        fontSize: 10.5, fontWeight: 700 }}>
+                      {collapsed ? badge.n : badge.texto}
                     </span>
                   )}
                 </button>
