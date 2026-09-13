@@ -191,7 +191,11 @@ export const ENTITIES = {
       { key: "arr", label: "Valor anual (ARR)", type: "money", help: "é o valor do ANO: mensalidade × 12 (R$ 699/mês = R$ 8.388). A lista mostra o MRR (ARR ÷ 12); com assinatura ativa é recalculado sozinho" },
       { key: "startedAt", label: "Cliente desde", type: "date", help: "base da linha do tempo de marcos" },
       { key: "endedAt", label: "Churn (saída)", type: "date", help: "prefira o botão \"registrar churn\" na ficha do cliente (grava o motivo e cancela as assinaturas); aqui só ajusta a data — vazio = ativo" },
-      { key: "csm", label: "CSM", type: "select", options: peopleOptions, blankLabel: "—" },
+      // Dono da conta = quem cuida do pós-venda. É por ele que o placar de CS
+      // agrupa a carteira e que a régua de marcos atribui tarefa. Substitui o
+      // "CSM" antigo (campo morto: ninguém lia).
+      { key: "owner", label: "Dono da conta (CS)", type: "select", options: usersWithRole("integrator"), blankLabel: "— sem dono", sendBlank: true,
+        help: "quem cuida do pós-venda: agrupa a carteira no placar de CS e recebe as tarefas da régua de marcos; vazio aparece em \"Sem dono\" na lista" },
       // Conta grande (★): venda fora da régua (ex.: pacote bespoke). Sai do
       // ticket médio e das metas por contrato; o dinheiro segue no caixa.
       { key: "keyAccount", label: "Conta grande", type: "select", blankLabel: "Não",

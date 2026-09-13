@@ -1055,6 +1055,19 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     // coluna "Total fechado" mostra) e segue pelo mesmo syncWonLeadDeal até a
     // assinatura — senão MRR muda e o total fechado fica com o número velho.
     // Best-effort: nunca quebra o PATCH.
+    // Dono da conta trocado na ficha → as tarefas ABERTAS do cliente (marcos da
+    // régua, cobranças, cases) seguem pro dono novo; o antigo sai da lista de
+    // responsáveis. Best-effort: nunca quebra o PATCH.
+    if (collection === "customers" && "owner" in req.body && before && (before.owner || "") !== (updated.owner || "")) {
+      try {
+        const open = (await repo.listWhere("tasks", { customerId: updated.id })).filter((t) => !t.completed);
+        for (const t of open) {
+          const assignees = (t.assignees || []).filter((a) => a !== before.owner);
+          if (updated.owner && !assignees.includes(updated.owner)) assignees.push(updated.owner);
+          await patchTask(repo, t.id, { assignees }, { by: req.authUser?.id || "api" });
+        }
+      } catch { /* fail-open */ }
+    }
     if (collection === "customers" && "arr" in req.body && updated.leadId) {
       try {
         const lead = await repo.get("leads", updated.leadId);
@@ -1343,12 +1356,17 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
     return null;
   }
   if (lead.customerId && customers.some((c) => c.id === lead.customerId)) return null;
-  // CS automático: com UM integrador no escopo do produto, ele nasce como owner
-  // do cliente — é por customer.owner que o placar de CS agrupa (sem owner o
-  // trabalho de pós-venda não conta pra ninguém). Ambíguo (0 ou 2+) fica vazio.
-  const csCandidates = (await repo.list("users").catch(() => []))
-    .filter((u) => (u.roles || []).includes("integrator") && (!u.saas || u.saas === lead.saas));
-  const csOwner = csCandidates.length === 1 ? csCandidates[0].id : "";
+  // CS automático: o integrador do lead (escolhido no bloco Entrega do card)
+  // nasce como owner do cliente; sem ele, com UM integrador no escopo do
+  // produto, é esse. É por customer.owner que o placar de CS agrupa e que a
+  // régua de marcos atribui tarefa (sem owner o pós-venda não conta pra
+  // ninguém). Ambíguo (0 ou 2+ e lead sem integrador) fica vazio e aparece em
+  // "Sem dono" na tela de Clientes; o backfill de migrations.js usa a mesma regra.
+  const csUsers = await repo.list("users").catch(() => []);
+  const csCandidates = csUsers.filter((u) => (u.roles || []).includes("integrator") && (!u.saas || u.saas === lead.saas));
+  const csOwner = (lead.integrator && csUsers.some((u) => u.id === lead.integrator))
+    ? lead.integrator
+    : (csCandidates.length === 1 ? csCandidates[0].id : "");
   const customer = await repo.create("customers", {
     ...(CREATE_DEFAULTS.customers || {}),
     name: lead.company || lead.name || "Cliente",
