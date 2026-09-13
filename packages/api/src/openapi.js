@@ -200,7 +200,7 @@ export const openapi = {
           delta: { type: "number", description: "Variação da saúde.", example: -22 },
           usage: { type: "string", description: "Texto de uso (ex.: '−42% s/s', 'estável').", example: "−42% s/s" },
           lastTouch: { type: "string", example: "12d" },
-          csm: { type: "string", description: "Código do CSM.", example: "AB" },
+          owner: { type: "string", description: "Dono da conta (CS): id de um usuário com papel integrator. É por ele que o placar de CS agrupa a carteira e que as tarefas da régua de marcos são atribuídas. Nasce no fechamento (integrador do lead, senão o único integrador do produto) e é editável na ficha; trocar o dono reatribui as tarefas abertas do cliente.", example: "eryk" },
           nps: { type: "number", example: 2 },
           renewal: { type: "string", example: "21d" },
           flags: { type: "array", items: { type: "string" }, example: ["renewal-90d", "usage-decay"] },

@@ -5,6 +5,7 @@
 
 import { normalizeFunnel, kindOf, isPostSaleStage, TERMINAL_KINDS } from "./stages.js";
 import { autoLeadOwner } from "./lead-flow.js";
+import { isChurnedCustomer } from "./churn.js";
 import { legacyDoneKey, DEFAULT_COLUMNS as TASK_DEFAULT_COLUMNS, assetIdFromUrl } from "./tasks-core.js";
 import { catalogAmount } from "./proposal-catalog.js";
 import { createClosedSubscription } from "./billing.js";
@@ -1845,7 +1846,46 @@ export async function ensureCadenciaStages(repo) {
   return faltando.length;
 }
 
+// Dono da conta (CS) pra cliente que nasceu sem `owner`. Até 13/09/2026 o
+// fechamento só gravava owner com EXATAMENTE um integrador no produto; com 2+
+// o cliente ficava sem dono, e sem dono o pós-venda (placar de CS, régua de
+// marcos, NPS, relatório) não conta pra ninguém. Regra do backfill, a mesma
+// que o fechamento passou a usar: integrador do lead de origem → único
+// integrador do escopo do produto → fica vazio (aparece em "Sem dono" na tela
+// de Clientes, pro admin escolher na ficha). Só toca owner vazio de cliente
+// ativo; idempotente (segunda execução não muda nada).
+export async function backfillCustomerOwners(repo, { now = Date.now() } = {}) {
+  const customers = await repo.list("customers");
+  const pending = customers.filter((c) => !c.owner && !isChurnedCustomer(c, now));
+  if (!pending.length) return 0;
+  const users = await repo.list("users").catch(() => []);
+  const known = new Set(users.map((u) => u.id));
+  const integrators = users.filter((u) => (u.roles || []).includes("integrator"));
+  const leads = await repo.list("leads").catch(() => []);
+  const leadById = new Map(leads.map((l) => [l.id, l]));
+  let n = 0;
+  for (const c of pending) {
+    const lead = c.leadId ? leadById.get(c.leadId) : null;
+    let owner = "";
+    if (lead?.integrator && known.has(lead.integrator)) owner = lead.integrator;
+    else {
+      const scoped = integrators.filter((u) => !u.saas || u.saas === c.saas);
+      if (scoped.length === 1) owner = scoped[0].id;
+    }
+    if (!owner) continue;
+    await repo.update("customers", c.id, { owner });
+    n++;
+  }
+  return n;
+}
+
 export async function runStartupMigrations(repo) {
+  try {
+    const n = await backfillCustomerOwners(repo);
+    if (n) console.log(`[migration] dono da conta (CS) preenchido em ${n} cliente(s) que estavam sem owner`);
+  } catch (err) {
+    console.error("[migration] backfillCustomerOwners falhou:", err?.message || err);
+  }
   try {
     const n = await ensureCadenciaStages(repo);
     if (n) console.log(`[migration] ${n} coluna(s) de cadência criadas no funil (Dia 2..Dia 7)`);

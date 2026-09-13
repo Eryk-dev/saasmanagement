@@ -13,7 +13,7 @@ import { WhatsappChat } from "../components/whatsapp-chat.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { leadTier, waLink, GRADE_STYLE, GRADE_GRID, GRADE_ACCOUNTS, GRADE_LISTINGS } from "../lib/ui.js";
 import { scriptChecklist } from "../lib/scripts.js";
-import { displayName } from "../lib/users.js";
+import { displayName, usersByRole } from "../lib/users.js";
 import { paymentLabel, paymentUpfront, paymentRecurring, paymentCustom, PAY_STATUS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf, mpMethodLabel, accruedAmountOf, isRecurringClose } from "../lib/payments.js";
 import { PaymentMethodSelect } from "../components/lead-blocks.jsx";
 import { UpsellPanel } from "../components/UpsellPanel.jsx";
@@ -433,8 +433,11 @@ function CustomersScreen({ initialTab }) {
   // Filtro Todos/Ativos/Churn da tabela — só aparece quando existe churn na
   // base (sem churn a tela fica idêntica). Padrão "Todos": o churnado continua
   // visível (esmaecido), ninguém some da lista.
-  const [baseFilter, setBaseFilter] = useState("all"); // all | active | churned
+  const [baseFilter, setBaseFilter] = useState("all"); // all | active | churned | noowner
   const churnedCount = customers.length - activeCustomers.length;
+  // Cliente ativo sem dono da conta: ninguém responde pelo pós-venda dele (o
+  // placar de CS e a régua de marcos dependem do owner). Mentoria não tem CS.
+  const noOwnerCount = isKidsWorkspace ? 0 : activeCustomers.filter((c) => !c.owner).length;
   // BUSCA (o único estado novo do redesign): nome, contato e e-mail, sem acento
   // e sem caixa. Entra ANTES do filtro Ativos/Churn, então "mostrando N de M"
   // reflete os dois. useMemo porque a base cresce e o render é por linha.
@@ -451,7 +454,9 @@ function CustomersScreen({ initialTab }) {
     ? searchedCustomers.filter((c) => !isChurned(c))
     : baseFilter === "churned"
       ? searchedCustomers.filter((c) => isChurned(c))
-      : searchedCustomers;
+      : baseFilter === "noowner"
+        ? searchedCustomers.filter((c) => !isChurned(c) && !c.owner)
+        : searchedCustomers;
   const shownCustomers = showAll ? filteredCustomers : filteredCustomers.slice(0, 50);
   const lastContact = (c) => {
     const lead = (LEADS || []).find((l) => l.id === c.leadId);
@@ -610,11 +615,12 @@ function CustomersScreen({ initialTab }) {
               <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", flexWrap: "wrap" }}>
                 <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar por nome, contato ou e-mail…"
                   style={{ flex: 1, minWidth: 180, height: 30, padding: "0 10px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 }} />
-                {churnedCount > 0 && (
+                {(churnedCount > 0 || noOwnerCount > 0) && (
                   <Segmented value={baseFilter} onChange={setBaseFilter} options={[
                     { value: "all", label: `Todos (${customers.length})` },
                     { value: "active", label: `Ativos (${activeCustomers.length})` },
-                    { value: "churned", label: `Churn (${churnedCount})` },
+                    ...(churnedCount > 0 ? [{ value: "churned", label: `Churn (${churnedCount})` }] : []),
+                    ...(noOwnerCount > 0 ? [{ value: "noowner", label: `Sem dono (${noOwnerCount})` }] : []),
                   ]} />
                 )}
               </div>
@@ -1063,6 +1069,7 @@ function CustomerFacts({ customer, lead, product, leverOrg, onPatch, cicloAte = 
       ["Contato", customer.contact],
       ["WhatsApp", wa ? <a href={wa} target="_blank" rel="noreferrer" style={linkStyle}>{phone}</a> : phone],
       ["E-mail", email ? <a href={`mailto:${email}`} style={linkStyle}>{email}</a> : null],
+      ["Dono da conta", customer.owner ? displayName(customer.owner) : (customer.saas === "uniquekids" ? null : "sem dono")],
       ["Usuário LeverAds", customer.leveradsOrgId
         ? (leverOrg ? (leverOrg.email ? `${leverOrg.name} · ${leverOrg.email}` : leverOrg.name) : customer.leveradsOrgId)
         : null],
@@ -1148,6 +1155,15 @@ function CustomerFacts({ customer, lead, product, leverOrg, onPatch, cicloAte = 
           </EditRow>
           <ValorContrato customer={customer} onPatch={patch} inputSt={inputSt} />
           <EditRow label="Cliente desde"><input type="date" value={String(customer.startedAt || "").slice(0, 10)} onChange={(e) => patch({ startedAt: e.target.value })} style={inputSt} /></EditRow>
+          {customer.saas !== "uniquekids" && (
+            <EditRow label="Dono da conta">
+              <select value={customer.owner || ""} onChange={(e) => patch({ owner: e.target.value })} style={inputSt}>
+                <option value="">sem dono</option>
+                {usersByRole("integrator").map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
+                {customer.owner && !usersByRole("integrator").some((u) => u.id === customer.owner) && <option value={customer.owner}>{displayName(customer.owner)}</option>}
+              </select>
+            </EditRow>
+          )}
         </div>
       ) : facts.length === 0 ? (
         <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Sem dados ainda. Use o ✎ pra preencher.</div>
