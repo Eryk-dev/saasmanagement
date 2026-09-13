@@ -129,6 +129,7 @@ const ROUTE_SCREENS = [
   ["/api/wa_flows", ["whatsapp"]],       // fluxos de conversa do Inbox (construtor: CRUD genérico)
   ["/api/outbound_accounts", ["outbound"]], // radar de contas do outbound (Cold Calling 2.0)
   ["/api/comp_plans", ["remuneracao"]],  // remuneração por cargo (ADMIN_PREFIXES exige etiqueta admin, além da tela)
+  ["/api/comp/", ["remuneracao"]],       // extrato mensal da remuneração (mesmo guard: tem R$ por pessoa)
   ["/api/sequences", ["disparos", "whatsapp"]],      // sequências de nutrição (drip): CRUD + enroll/wa-sent/metrics/run; a aba Automações do Inbox lista/pausa
   ["/api/sequence_enrollments", ["disparos", "whatsapp"]], // progresso das sequências
   ["/api/drip_templates", ["disparos"]], // biblioteca de conteúdo dos passos
@@ -215,7 +216,7 @@ export function screenForRequest(method, path) {
 // por esse caminho. Passa quem tem a etiqueta `admin` — ou quem ganhou a tela
 // `remuneracao` EXPLICITAMENTE em Ajustes → Equipe, e aí só LEITURA: editar
 // plano de comp segue coisa de admin.
-const ADMIN_PREFIXES = ["/api/comp_plans"];
+const ADMIN_PREFIXES = ["/api/comp_plans", "/api/comp/"];
 
 // Hook Fastify (registrar DEPOIS do makeAuthHook, que popula req.authUser).
 export function makeScreenGuardHook() {

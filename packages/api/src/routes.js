@@ -67,6 +67,7 @@ import { registerReferralRoutes } from "./routes.referrals.js";
 import { registerNpsRoutes } from "./routes.nps.js";
 import { registerCustomerResultsRoutes } from "./routes.customer-results.js";
 import { registerCaseRoutes } from "./routes.cases.js";
+import { registerCompRoutes } from "./routes.comp.js";
 import { registerDesempenhoRoutes } from "./routes.desempenho.js";
 import { registerPipelinePaceRoutes } from "./routes.pipeline-pace.js";
 import { registerEloRoutes } from "./elo.js";
@@ -83,7 +84,10 @@ import { completeMilestoneTasks } from "./customer-milestones.js";
 // de estados (slug travado, lint, agenda) vive em routes.blog.js.
 // task_events/notifications: atividade e caixa de entrada das tarefas — lidas
 // só pelas rotas dedicadas (routes.tasks.js), nunca pelo CRUD genérico.
-const PRIVATE = new Set(["users", "sessions", "user_assets", "activity_assets", "task_assets", "task_events", "notifications", "wa_threads", "wa_messages", "wa_media", "wa_template_media", "blog_posts"]);
+const PRIVATE = new Set(["users", "sessions", "user_assets", "activity_assets", "task_assets", "task_events", "notifications", "wa_threads", "wa_messages", "wa_media", "wa_template_media", "blog_posts",
+  // comp_months tem R$ por pessoa: só pelas rotas /api/comp/, que exigem
+  // etiqueta admin (ADMIN_PREFIXES), nunca pelo CRUD genérico.
+  "comp_months"]);
 const isExposed = (c) => COLLECTION_NAMES.includes(c) && !PRIVATE.has(c);
 
 // Collections external SaaS are allowed to write to via REST/MCP.
@@ -445,6 +449,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Cases (prova social): rascunho a partir do cliente, gate de publicação e o
   // JSON público que o site consome.
   registerCaseRoutes(app, repo);
+  // Extrato mensal da remuneração (o que cada mês fechado registrou).
+  registerCompRoutes(app, repo);
   // Resultados do cliente na ficha: número vivo do banco do produto + envio
   // manual do relatório mensal.
   registerCustomerResultsRoutes(app, repo, { mailer: mailerClient, whatsapp: whatsappClient });

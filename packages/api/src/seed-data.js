@@ -20,6 +20,10 @@ export const COLLECTIONS = {
   customers: [],
   leads: [],
   nps: [],
+  // Extrato mensal da remuneração (comp-months.js): o resultado de cada pessoa
+  // CONGELADO no fim do mês. Tem R$ por pessoa, então fica fora do CRUD
+  // genérico (PRIVATE em routes.js).
+  comp_months: [],
   // Prova social: case autorizado de cliente (cases.js). Alimenta o slide
   // "Quem já está dentro" do deck, a página pública do site e a ficha.
   cases: [],
