@@ -18,7 +18,8 @@
 //     (funnel.js) não muda, e a Análise de Integração separa os dois.
 
 import { createHash } from "node:crypto";
-import { createTask, registerTaskHook } from "./tasks-core.js";
+import { createTask, registerTaskHook, upsertNotification, addComment, brtToday } from "./tasks-core.js";
+import { isBusinessHours } from "./business-hours.js";
 import { addBusinessDaysNaive } from "./agenda-slots.js";
 import { logActivity } from "./lead-flow.js";
 import { digits } from "./whatsapp.js";
@@ -129,6 +130,89 @@ const onPendingWrite = async (repo, task) => {
 };
 registerTaskHook("completed", onPendingWrite);
 registerTaskHook("reopened", onPendingWrite);
+
+// Cobrança do combinado que venceu. NUNCA envia sozinho: a mensagem sai da mão
+// de quem cuida do lead, porque não existe template de pós-venda aprovado na
+// Meta e texto livre fora da janela de 24h é aceito na hora e reprovado depois
+// no webhook (131047). O runner só põe o trabalho na frente da pessoa, com a
+// mensagem pronta e dizendo por onde dá pra mandar hoje.
+export function cobrancaText(lead, item) {
+  const quem = lead.name || "tudo bem";
+  const empresa = lead.company || "sua operação";
+  const oque = `${String(item).charAt(0).toLowerCase()}${String(item).slice(1)}`;
+  return `Oi ${quem}! Na nossa call de integração ficou combinado que você ia ${oque}. Consegue resolver hoje? Sem isso a ${empresa} fica com a integração parada, e eu quero te ver vendendo nas outras contas ainda esta semana. Qualquer dúvida me chama aqui.`;
+}
+
+export function startClientPendingReminder(repo, {
+  log, intervalMs = 15 * 60 * 1000, now = () => new Date(),
+} = {}) {
+  let running = false;
+
+  async function tick(at = now()) {
+    const hoje = brtToday(at);
+    const [tasks, products] = await Promise.all([
+      repo.list("tasks").catch(() => []),
+      repo.list("products").catch(() => []),
+    ]);
+    const prodById = new Map(products.map((p) => [p.id, p]));
+    const vencidas = tasks.filter((t) =>
+      !t.completed && (t.labels || []).includes(CLIENT_PENDING_LABEL) && t.dueDate && t.dueDate < hoje);
+    let avisos = 0, comentarios = 0;
+
+    for (const t of vencidas) {
+      const produto = prodById.get(t.saas);
+      if (produto && !isBusinessHours(produto, at)) continue;
+      const lead = t.lead ? await repo.get("leads", t.lead).catch(() => null) : null;
+
+      // Um aviso por tarefa por dia: o combinado segue atrasado amanhã, e
+      // silenciar pra sempre depois do primeiro dia perde a conta.
+      const key = `pc-late:${t.id}:${hoje}`;
+      const dup = await repo.listWhere("notifications", { key }, { fields: [] }).catch(() => []);
+      if (dup.length) continue;
+      const dono = (t.assignees || [])[0] || "";
+      if (dono) {
+        const dias = Math.max(1, Math.round((new Date(`${hoje}T12:00:00Z`) - new Date(`${t.dueDate}T12:00:00Z`)) / 86_400_000));
+        await upsertNotification(repo, {
+          user: dono, task: t.id, taskTitle: t.title || "", saas: t.saas || "", by: "api", key,
+          type: "client_late",
+          text: `${lead?.company || lead?.name || "O cliente"} não entregou o combinado da integração há ${dias} ${dias === 1 ? "dia" : "dias"}`,
+        }, { now: at.toISOString() });
+        avisos++;
+      }
+
+      // No PRIMEIRO dia de atraso, a cobrança pronta entra como comentário da
+      // tarefa (com o estado da janela de 24h), pra pessoa só copiar e mandar.
+      const jaComentou = (t.comments || []).some((c) => c.author === "api" && /call de integração ficou combinado/.test(c.text || ""));
+      if (!jaComentou && lead) {
+        const thread = lead.phone ? await repo.get("wa_threads", digits(lead.phone)).catch(() => null) : null;
+        const ultima = thread?.lastAt ? new Date(thread.lastAt).getTime() : 0;
+        const aberta = !!thread && at.getTime() - ultima < 24 * 3600 * 1000 && (thread.lastDir === "in" || !!thread.hasIn);
+        await addComment(repo, t.id, [
+          cobrancaText(lead, t.clientPendingItem || t.title || "o combinado"),
+          "",
+          aberta
+            ? "Janela aberta: dá pra mandar texto livre pelo Inbox do cockpit."
+            : `Fora da janela de 24 horas: mande pelo celular${lead.phone ? ` (https://wa.me/${digits(lead.phone)})` : ""}, porque texto livre fora da janela é reprovado pela Meta depois de "enviar".`,
+        ].join("\n"), { by: "api" }).catch(() => { /* fail-open */ });
+        comentarios++;
+      }
+    }
+    return { avisos, comentarios };
+  }
+
+  const run = async () => {
+    if (running) return null;
+    running = true;
+    try { return await tick(); }
+    catch (err) { log?.warn?.(`client pending reminder: ${err.message}`); return null; }
+    finally { running = false; }
+  };
+  const timer = setInterval(run, intervalMs);
+  timer.unref?.();
+  const first = setTimeout(run, 110_000);
+  first.unref?.();
+  return { tick, run, stop: () => { clearInterval(timer); clearTimeout(first); } };
+}
 
 // Atraso NOSSO num card de integração: o compromisso da etapa (integrationAt)
 // venceu. É a mesma régua do próximo toque do board (funnel.js), replicada aqui

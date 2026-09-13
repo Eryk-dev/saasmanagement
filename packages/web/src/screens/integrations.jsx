@@ -99,6 +99,26 @@ function IntegrationsScreen({ onOpenLead }) {
               );
             })()}
 
+            {/* ATRASOS, separados por quem deve. Estar esperando o cliente não é
+                estar devendo: sem essa divisão o time lê a integração parada
+                como falha nossa e trabalha a fila errada. */}
+            {(data.atrasos?.cliente > 0 || data.atrasos?.nosso > 0) && (
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "11px 16px", borderRadius: "var(--r-3)", border: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+                <span style={{ fontSize: 13.5, fontWeight: 650 }}>
+                  Atrasos: {data.atrasos.cliente} do cliente · {data.atrasos.nosso} {data.atrasos.nosso === 1 ? "nosso" : "nossos"}
+                </span>
+                <span style={{ fontSize: 12.5, color: "var(--fg-3)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {(data.atrasos.itens || []).slice(0, 3).map((i) => `${i.leadName || "cliente"} (${i.dias}d)`).join(" · ")}
+                </span>
+                {data.atrasos.itens?.[0]?.leadId && (
+                  <button onClick={() => openRecent(data.atrasos.itens[0].leadId)}
+                    style={{ marginLeft: "auto", height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+                    abrir o mais antigo
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* Como saíram: proporção, não quatro números soltos. */}
             <section style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px var(--inset-x)" }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>

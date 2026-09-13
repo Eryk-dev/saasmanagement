@@ -3,6 +3,8 @@
 // sentimento do cliente, pendências recorrentes do onboarding e o que mais é
 // configurado. Read-only. Espelho do routes.pitch.js, mas do lado pós-venda.
 
+import { CLIENT_PENDING_LABEL, lateOurs } from "./client-pending.js";
+
 // Agregação estruturada: distribuição de sentimento, pendências (com quem
 // resolve) e itens configurados, ordenados por frequência. Normalização
 // case-insensitive (corta em 80), igual ao aggregateCalls.
@@ -76,6 +78,39 @@ export function registerIntegrationRoutes(app, repo) {
       resumo: a.meta.summary.resumo || "",
       recordingUrl: a.meta.recordingUrl || "",
     }));
-    return { ...agg, recent, integradores, integrator: integFilter };
+    // ATRASOS, separados por quem deve: o combinado que o CLIENTE não entregou
+    // (tarefas com a label pendencia-cliente vencidas) e o compromisso NOSSO da
+    // etapa que passou da hora. A conta vinha misturada no board, e um time que
+    // não distingue os dois acha que está devendo quando está esperando.
+    const hoje = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+    const agora = Date.now();
+    const tarefas = (await repo.list("tasks").catch(() => []))
+      .filter((t) => !t.completed && (t.labels || []).includes(CLIENT_PENDING_LABEL) && t.dueDate && t.dueDate < hoje && t.saas === saas);
+    const doCliente = tarefas
+      .filter((t) => integFilter == null || (leadsById.get(t.lead)?.integrator || "") === integFilter)
+      .map((t) => ({
+        leadId: t.lead || "",
+        leadName: leadsById.get(t.lead)?.company || leadsById.get(t.lead)?.name || "",
+        item: t.clientPendingItem || t.title || "",
+        dias: Math.max(1, Math.round((new Date(`${hoje}T12:00:00Z`) - new Date(`${t.dueDate}T12:00:00Z`)) / 86_400_000)),
+        de: "cliente",
+      }));
+    const emIntegracao = [...leadsById.values()].filter((l) =>
+      l.saas === saas && /integra/i.test(String(l.stage || "")) && lateOurs(l, agora)
+      && (integFilter == null || (l.integrator || "") === integFilter));
+    const doTime = emIntegracao.map((l) => ({
+      leadId: l.id,
+      leadName: l.company || l.name || "",
+      item: "compromisso da etapa vencido",
+      dias: Math.max(1, Math.round((agora - new Date(l.integrationAt || l.nextActionAt).getTime()) / 86_400_000)),
+      de: "nosso",
+    }));
+    const atrasos = {
+      cliente: doCliente.length,
+      nosso: doTime.length,
+      itens: [...doCliente, ...doTime].sort((a, b) => b.dias - a.dias).slice(0, 8),
+    };
+
+    return { ...agg, recent, integradores, integrator: integFilter, atrasos };
   });
 }
