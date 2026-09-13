@@ -705,8 +705,28 @@ function ManualEditor({ m, onClose, refresh }) {
             onBlur={(e) => api.update("deliverables", doc.id, { childName: e.target.value }).catch(() => {})} style={inp} />
         </label>
 
+        {/* ÍNDICE DAS SEÇÕES sempre à vista (13/09): seis blocos de texto longos
+            escondem o que ainda falta escrever. A lista diz o que está vazio e
+            leva pra seção no clique. */}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+          {(doc.sections || []).map((s, i) => {
+            const vazia = !String(s.content || "").trim();
+            return (
+              <button key={`ix-${s.key}`} onClick={() => document.getElementById(`sec-${s.key}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                title={vazia ? "ainda vazia" : "escrita"}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 26, padding: "0 10px", borderRadius: 999, cursor: "pointer",
+                  border: "1px solid " + (vazia ? "var(--line-2)" : "var(--accent-line)"),
+                  background: vazia ? "transparent" : "var(--accent-soft)",
+                  color: vazia ? "var(--fg-4)" : "var(--accent)", fontSize: 11.5, fontWeight: 600 }}>
+                {`${i + 1}. ${s.title}`}
+                {vazia && <span className="mono" style={{ fontSize: 9.5, opacity: 0.8 }}>vazia</span>}
+              </button>
+            );
+          })}
+        </div>
+
         {(doc.sections || []).map((s, i) => (
-          <div key={s.key} style={{ marginBottom: 14, border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "12px 14px", background: "var(--bg-inset)" }}>
+          <div key={s.key} id={`sec-${s.key}`} style={{ marginBottom: 14, border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "12px 14px", background: "var(--bg-inset)" }}>
             <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 2 }}>{i + 1}. {s.title}</div>
             <div className="dim" style={{ fontSize: 11, marginBottom: 8, lineHeight: 1.45 }}>{s.hint}</div>
             <textarea value={s.content || ""} rows={s.content ? Math.min(14, Math.max(4, s.content.split("\n").length + 1)) : 3}
