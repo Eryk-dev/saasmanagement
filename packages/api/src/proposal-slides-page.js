@@ -1198,6 +1198,9 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
       logo.className = "logo-case";
       logo.src = c.logoUrl;
       logo.alt = c.name || "";
+      // Logo que não carrega SOME: no meio de uma call, o ícone de imagem
+      // quebrada num slide de prova custa mais caro que a logo vale.
+      logo.onerror = function () { logo.remove(); };
       d.appendChild(logo);
     }
     // Duas linhas reservadas pro nome mesmo quando ele cabe em uma: são quatro
