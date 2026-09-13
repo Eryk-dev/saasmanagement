@@ -69,6 +69,7 @@ import { registerPipelinePaceRoutes } from "./routes.pipeline-pace.js";
 import { registerEloRoutes } from "./elo.js";
 import { registerTaskRoutes } from "./routes.tasks.js";
 import { createTask, patchTask, deleteTask, sanitizeBoardPatch, TASK_DEFAULTS, BOARD_DEFAULTS, brtToday, normalizeBoard } from "./tasks-core.js";
+import { completeMilestoneTasks } from "./customer-milestones.js";
 
 // Auth interna fica FORA do CRUD genérico: passwordHash/token de sessão nunca
 // saem pela API. Gestão via rotas dedicadas (/api/auth/*).
@@ -1055,6 +1056,16 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     // coluna "Total fechado" mostra) e segue pelo mesmo syncWonLeadDeal até a
     // assinatura — senão MRR muda e o total fechado fica com o número velho.
     // Best-effort: nunca quebra o PATCH.
+    // Marco concluído na FICHA → conclui a tarefa daquele marco no quadro (o
+    // caminho inverso, tarefa concluída marca o marco, é hook em tasks-core).
+    // Best-effort: nunca quebra o PATCH.
+    if (collection === "customers" && req.body.milestonesDone && typeof req.body.milestonesDone === "object") {
+      try {
+        const antes = (before && before.milestonesDone) || {};
+        const novos = Object.keys(updated.milestonesDone || {}).filter((k) => !antes[k]);
+        if (novos.length) await completeMilestoneTasks(repo, updated, novos, { by: req.authUser?.id || "api" });
+      } catch { /* fail-open */ }
+    }
     // Dono da conta trocado na ficha → as tarefas ABERTAS do cliente (marcos da
     // régua, cobranças, cases) seguem pro dono novo; o antigo sai da lista de
     // responsáveis. Best-effort: nunca quebra o PATCH.

@@ -599,11 +599,31 @@ async function spawnNext(repo, done, recurrence, { by, now, board }) {
     startDate: start, dueDate: due, recurrence: rec, recurrenceOf: done.id, column: backTo,
   }, { by, now });
 }
+// Hooks de conclusão. Quem guarda estado FORA da tarefa (a régua de marcos do
+// cliente é o primeiro caso: concluir a tarefa marca o marco na ficha) pendura
+// aqui em vez de duplicar a regra em cada rota que conclui (patchTask com
+// completed, completeTask, mover pra coluna Concluído). Best-effort por
+// contrato: hook que estoura nunca derruba a gravação da tarefa.
+const TASK_HOOKS = { completed: [], reopened: [] };
+export function registerTaskHook(kind, fn) {
+  const arr = TASK_HOOKS[kind];
+  if (!arr || typeof fn !== "function") return () => {};
+  arr.push(fn);
+  return () => { const i = arr.indexOf(fn); if (i >= 0) arr.splice(i, 1); };
+}
+async function runTaskHooks(kind, repo, task, ctx) {
+  for (const fn of TASK_HOOKS[kind] || []) {
+    try { await fn(repo, task, ctx); } catch { /* fail-open: hook não derruba a tarefa */ }
+  }
+}
+
 async function finishWrite(repo, before, saved, { by, now, users, spawn = null, board }) {
   const events = diffTask(before, saved);
   await recordEvents(repo, saved, events, { by, now });
   await notifyEvents(repo, saved, events, { by, users, now });
   if (!before.completed && saved.completed) await afterCompleted(repo, saved, { by, now, users });
+  if (!before.completed && saved.completed) await runTaskHooks("completed", repo, saved, { by, now });
+  if (before.completed && !saved.completed) await runTaskHooks("reopened", repo, saved, { by, now });
   const next = spawn ? await spawnNext(repo, saved, spawn, { by, now, board }) : null;
   return { events, next };
 }
