@@ -13,7 +13,7 @@
 // cadeia (calls, contatos, leads) desce a partir dela.
 
 import { DEFAULT_CASH_TARGET, RATE_BENCHMARKS, computePipelinePace, cashTargetFor } from "./routes.pipeline-pace.js";
-import { DEFAULT_COMP_PLAN, compLevelOf } from "./comp-plan.js";
+import { DEFAULT_COMP_PLAN, compLevelOf, careerRuleOf, promotionEligibility, leveledRoleOf } from "./comp-plan.js";
 import { monthKey } from "./metrics-core.js";
 
 // Benchmark do pace (0..1) vira o "padrão" em % que a tela mostra: um número só
@@ -247,7 +247,28 @@ export function registerMetasRoutes(app, repo) {
     const users = (await repo.list("users").catch(() => []))
       .filter((u) => !u.saas || u.saas === product.id)
       .filter((u) => (u.roles || []).some((r) => ROLES.has(r)))
-      .map((u) => ({ id: u.id, name: u.name || u.id, roles: (u.roles || []).filter((r) => ROLES.has(r)), compLevel: compLevelOf(u) }));
+      .map((u) => ({ id: u.id, name: u.name || u.id, roles: (u.roles || []).filter((r) => ROLES.has(r)), compLevel: compLevelOf(u), _raw: u }));
+    // ELEGIBILIDADE a subir de nível: 3 meses fechados seguidos com 100% da
+    // meta, lidos dos carimbos mensais (comp_months) — nunca recalculados aqui.
+    // A tela classifica o nível nesta mesma lista, então o chip fica ao lado do
+    // seletor, que é onde a decisão acontece.
+    const careerDocs = await repo.list("comp_plans").catch(() => []);
+    const careerRule = careerRuleOf(careerDocs);
+    const monthStamps = await repo.listWhere("comp_months", { saas: product.id }).catch(() => []);
+    const hojeKey = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+    for (const u of users) {
+      const raw = u._raw;
+      delete u._raw;
+      if (!leveledRoleOf(raw)) { u.promo = null; continue; }
+      const hist = Array.isArray(raw.compLevelHistory) ? raw.compLevelHistory : [];
+      u.promo = promotionEligibility({
+        stamps: monthStamps.filter((s) => s.kind === "person" && s.uid === u.id),
+        level: u.compLevel,
+        levelSince: hist.length ? hist[hist.length - 1].at : "",
+        rule: careerRule,
+        today: hojeKey,
+      });
+    }
     // Plano de REMUNERAÇÃO vigente (comp_plans por cima do padrão aprovado):
     // contratos/receita de SDR e closer são meta POR PESSOA pelo nível — o
     // placar já aplica (comp vence vaga e derivado), a tela mostra a régua.

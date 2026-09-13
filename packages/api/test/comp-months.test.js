@@ -130,3 +130,48 @@ test("mês sem a meta da empresa batida carimba o bônus como não pago", async 
   assert.equal(bia.teamBonusPaid, false);
   assert.equal(bia.teamBonusValue, 0);
 });
+
+// ── Aviso de elegibilidade ────────────────────────────────────────────────
+import { notifyEligible } from "../src/comp-months.js";
+
+async function tresMeses(repo, uid = "bia", role = "closer") {
+  for (const m of ["2026-07", "2026-08", "2026-09"]) {
+    await repo.create("comp_months", {
+      id: monthPersonId("leverads", m, uid, role), kind: "person", saas: "leverads", month: m,
+      uid, role, level: 1, hit100: true, contractsAtt: 1.1, revenueAtt: 1.05,
+    });
+  }
+}
+
+test("aviso: quem fechou 3 meses a 100% vira notificação pros admins, uma vez só", async () => {
+  const repo = await base();
+  await repo.create("users", { id: "leo", name: "Leonardo", roles: ["admin"] });
+  await repo.update("users", "bia", { compLevel: 1 });
+  await tresMeses(repo);
+  const r = await notifyEligible(repo, produto, { now: OUT });
+  assert.equal(r.avisos, 1);
+  const avisos = (await repo.list("notifications")).filter((n) => n.type === "level_eligible");
+  assert.equal(avisos.length, 1);
+  assert.equal(avisos[0].user, "leo");
+  assert.match(avisos[0].text, /Bia fechou 3 meses seguidos/);
+  assert.match(avisos[0].text, /elegível a Pleno/);
+  assert.equal(avisos[0].link.screen, "metas");
+  // Segunda execução não repete (a chave é pessoa + nível-alvo).
+  assert.equal((await notifyEligible(repo, produto, { now: OUT })).avisos, 0);
+});
+
+test("aviso: sem 3 meses, ninguém é avisado; CS nunca entra (não tem nível)", async () => {
+  const repo = await base();
+  await repo.create("users", { id: "leo", name: "Leonardo", roles: ["admin"] });
+  await repo.create("users", { id: "vitor", name: "Vitor", roles: ["integrator"] });
+  await tresMeses(repo, "vitor", "cs");
+  assert.equal((await notifyEligible(repo, produto, { now: OUT })).avisos, 0);
+});
+
+test("aviso: promoção recente zera a contagem e o aviso some", async () => {
+  const repo = await base();
+  await repo.create("users", { id: "leo", name: "Leonardo", roles: ["admin"] });
+  await repo.update("users", "bia", { compLevel: 2, compLevelHistory: [{ level: 2, at: "2026-09-20T10:00:00.000Z", by: "leo" }] });
+  await tresMeses(repo);
+  assert.equal((await notifyEligible(repo, produto, { now: OUT })).avisos, 0);
+});

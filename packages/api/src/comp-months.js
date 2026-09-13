@@ -13,7 +13,7 @@
 // recalcular o passado a cada abertura de tela.
 
 import { computeScoreboard, teamBonusStatus } from "./routes.scoreboard.js";
-import { teamBonusOf, compLevelOf } from "./comp-plan.js";
+import { teamBonusOf, compLevelOf, careerRuleOf, promotionEligibility, leveledRoleOf } from "./comp-plan.js";
 import { brtToday } from "./tasks-core.js";
 
 const STATE_DOC = "comp_months";
@@ -96,6 +96,58 @@ export async function stampCompMonth(repo, product, month, { now = new Date(), b
   return { month, pessoas, teamBonusPaid: pago };
 }
 
+// Depois de fechar o mês, quem ficou elegível a subir de nível? Avisa os
+// admins UMA vez por (pessoa, nível-alvo): promover é decisão de gente, mas
+// ninguém pode perder o momento por não ter olhado a tela.
+export async function notifyEligible(repo, product, { users = null, now = new Date(), discord = null } = {}) {
+  const todos = users || await repo.list("users").catch(() => []);
+  const admins = todos.filter((u) => (u.roles || []).includes("admin"));
+  if (!admins.length) return { avisos: 0 };
+  const compDocs = await repo.list("comp_plans").catch(() => []);
+  const rule = careerRuleOf(compDocs);
+  const stamps = await repo.listWhere("comp_months", { saas: product.id }).catch(() => []);
+  const hoje = brtToday(now);
+  let avisos = 0;
+
+  for (const u of todos) {
+    const role = leveledRoleOf(u);
+    if (!role) continue;
+    const hist = Array.isArray(u.compLevelHistory) ? u.compLevelHistory : [];
+    const r = promotionEligibility({
+      stamps: stamps.filter((s) => s.kind === "person" && s.uid === u.id),
+      level: compLevelOf(u),
+      levelSince: hist.length ? hist[hist.length - 1].at : "",
+      rule,
+      today: hoje,
+    });
+    if (!r.eligible) continue;
+    const key = `comp:eligible:${u.id}:${r.to}`;
+    const dup = await repo.listWhere("notifications", { key }, { fields: [] }).catch(() => []);
+    if (dup.length) continue;
+    const texto = `${u.name || u.id} fechou ${r.streak} meses seguidos com 100% da meta (${r.months.join(", ")}): elegível a ${LEVEL_LABEL[r.to] || r.to}. Promover é em Metas, Meta por pessoa.`;
+    for (const admin of admins) {
+      await repo.create("notifications", {
+        id: `no_${admin.id}_${key}`.slice(0, 80),
+        user: admin.id, type: "level_eligible", task: "", taskTitle: "",
+        saas: product.id, text: texto, by: "api", at: new Date(now).toISOString(),
+        read: false, readAt: "", key: `${key}:${admin.id}`,
+        link: { screen: "metas" },
+      }).catch(() => {});
+    }
+    // Uma marca por (pessoa, nível) pra dedupe, independente de quantos admins.
+    await repo.create("notifications", {
+      id: `no_mark_${u.id}_${r.to}`, user: "", type: "level_eligible_mark", task: "", taskTitle: "",
+      saas: product.id, text: texto, by: "api", at: new Date(now).toISOString(),
+      read: true, readAt: new Date(now).toISOString(), key,
+    }).catch(() => {});
+    discord?.levelEligible?.({ name: u.name || u.id, role, from: compLevelOf(u), to: r.to, months: r.months }).catch?.(() => {});
+    avisos++;
+  }
+  return { avisos };
+}
+
+const LEVEL_LABEL = { 2: "Pleno", 3: "Sênior" };
+
 // Meses FECHADOS ainda sem carimbo, do mais antigo pro mais novo, no teto do
 // backfill (a primeira execução não reescreve a história inteira da base).
 export async function pendingMonths(repo, product, { now = new Date(), max = MAX_BACKFILL } = {}) {
@@ -131,6 +183,10 @@ export function startCompMonthClose(repo, {
       for (const month of await pendingMonths(repo, product, { now: at })) {
         await stampCompMonth(repo, product, month, { now: at, by: "runner", users });
         carimbados++;
+      }
+      // Mês novo carimbado pode ter fechado a sequência de alguém.
+      if (await pendingMonths(repo, product, { now: at }).then((m) => m.length === 0)) {
+        await notifyEligible(repo, product, { users, now: at }).catch(() => {});
       }
     }
     if (state) await repo.update("app_config", STATE_DOC, { lastRunDay: hoje }, { silent: true });

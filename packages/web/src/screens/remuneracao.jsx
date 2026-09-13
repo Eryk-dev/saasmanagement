@@ -48,7 +48,7 @@ const RULES = [
   ["SDR e closer perseguem o mesmo número", "metas iguais por nível de propósito: a dupla fecha junto (2 pessoas nível 1 a 90k = a meta de agosto)."],
   ["CLT ou PJ só muda o fixo", "a variável do closer é a mesma nos dois regimes."],
   ["CS por evento, sem banda", "R$100 quando a indicação vira reunião FEITA; se converter, R$250 no lugar (não soma). Bônus de NPS pago com NPS ≥ 80 e bônus de churn pago com churn do mês abaixo de 15%."],
-  ["Subir de nível é o plano de carreira", "promoção sobe fixo, meta e bônus juntos (1 júnior · 2 pleno · 3 sênior)."],
+  ["Subir de nível é o plano de carreira", "promoção sobe fixo, meta e bônus juntos (1 júnior · 2 pleno · 3 sênior). O critério é um só: 3 meses seguidos FECHADOS com 100% da meta nas duas pernas (contratos e receita, cada uma pela meta do nível da época) deixam a pessoa elegível a subir um nível. O cockpit marca quem está elegível e avisa a gestão; a promoção em si é decisão do Leo, em Metas → Meta por pessoa. Mês abaixo de 100% em qualquer perna zera a contagem. Vale pra SDR e closer, que são as vagas com nível."],
   ["Bônus de time", "todo mundo do plano (SDR, closer, CS e mídia social) leva um valor fixo, pelo cargo e nível, quando o mês fecha com as DUAS condições juntas: a meta de venda do mês da empresa batida (a mesma faixa Meta do mês da Visão geral) e o churn do mês abaixo de 15%. Faltou uma, ninguém leva. Durante o mês a Visão geral mostra se o time está no ritmo."],
 ];
 

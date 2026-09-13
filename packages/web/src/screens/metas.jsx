@@ -296,6 +296,9 @@ function MetasScreen() {
   const PERSON_METRICS = ["won", "revenue"]; // contratos e receita (as duas pernas do plano)
   const roleOfUser = (u) => ["closer", "sdr", "integrator", "social"].find((r) => (u.roles || []).includes(r)) || "";
   const planOfUser = (u) => (data?.compPlan?.[roleOfUser(u)] || []).find((l) => l.n === u.compLevel) || null;
+  // Elegibilidade a subir de nível, calculada no servidor a partir dos carimbos
+  // mensais (comp_months) e devolvida nos cards de SDR/closer do placar.
+  const promoDe = (uid) => (data?.users || []).find((u) => u.id === uid)?.promo || null;
   // De onde vem o número que a pessoa persegue hoje, sem ajuste.
   function vigente(u, metric) {
     const role = roleOfUser(u);
@@ -609,6 +612,16 @@ function MetasScreen() {
                                     {CAREER_LEVELS.map((l) => <option key={l.n} value={l.n}>{l.label}</option>)}
                                   </select>
                                 : <span style={{ fontSize: 12.5 }} title="Só admin classifica (o nível vale também no plano de Remuneração)">{levelLabel(u.compLevel)}</span>}
+                            {/* Elegível a subir: 3 meses fechados seguidos com
+                                100% da meta (a régua está escrita nas Regras da
+                                casa, na tela Remuneração). Quem promove é gente,
+                                o cockpit só não deixa passar batido. */}
+                            {promoDe(u.id)?.eligible && (
+                              <span className="chip" title={`Meses que contaram: ${(promoDe(u.id).months || []).join(", ")}. A promoção em si é decisão da gestão.`}
+                                style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 600, color: "var(--accent)", background: "var(--accent-soft)", borderRadius: 999, padding: "2px 7px", whiteSpace: "nowrap" }}>
+                                elegível a {levelLabel(promoDe(u.id).to)}
+                              </span>
+                            )}
                           </td>
                           {PERSON_METRICS.map((metric) => {
                             const vig = vigente(u, metric);
