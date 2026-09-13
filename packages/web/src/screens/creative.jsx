@@ -1251,6 +1251,10 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
   const [tplId, setTplId] = useS(allowed[0]?.id);
   const tpl = allowed.find((t) => t.id === tplId) || allowed[0] || TEMPLATES[0];
   const [zoom, setZoom] = useS(Math.min(zoomIndex, ZOOMS.length - 1));
+  // O FORMATO ACIMA DA ARTE (13/09): a galeria listava os quatro formatos
+  // empilhados e a pergunta "é story ou post?" vinha antes de escolher o
+  // modelo. O formato escolhido filtra a galeria e acompanha o template aberto.
+  const [formato, setFormato] = useS(() => (TEMPLATES.find((t) => t.id === allowed[0]?.id)?.group) || groups[0]);
   const [activeSlide, setActiveSlide] = useS(0);
   const [vals, setVals] = useS(() => defaultsOf(allowed[0] || TEMPLATES[0]));
   const [pos, setPos] = useS({});        // offsets de arrasto por elemento
@@ -1499,7 +1503,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
       <div style={{ flex: 1, minHeight: 0, display: "flex", gap: 0, flexDirection: isMobile ? "column" : "row", overflowY: isMobile ? "auto" : undefined }}>
         {/* Galeria de templates */}
         <div style={{ width: isMobile ? "100%" : 216, flexShrink: 0, maxHeight: isMobile ? 168 : undefined, borderRight: isMobile ? "none" : "1px solid var(--line-1)", borderBottom: isMobile ? "1px solid var(--line-1)" : "none", overflowY: "auto", padding: "12px 10px" }}>
-          {GROUPS.filter(([gid]) => groups.includes(gid)).map(([gid, glabel]) => (
+          {GROUPS.filter(([gid]) => groups.includes(gid) && gid === formato).map(([gid, glabel]) => (
             <div key={gid} style={{ marginBottom: 14 }}>
               <div className="kicker" style={{ padding: "0 6px", marginBottom: 6 }}>{glabel}</div>
               {allowed.filter((t) => t.group === gid).map((t) => {
@@ -1529,6 +1533,23 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
         {/* Preview */}
         <div style={{ flex: isMobile ? "none" : 1, minWidth: 0, overflow: "auto", padding: isMobile ? 12 : 18, background: "var(--bg-inset)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+            <span style={{ display: "inline-flex", gap: 2, padding: 3, borderRadius: 9, background: "var(--bg-2)" }}>
+              {GROUPS.filter(([gid]) => groups.includes(gid)).map(([gid, glabel]) => (
+                <button key={gid} onClick={() => {
+                  setFormato(gid);
+                  const primeiro = allowed.find((t) => t.group === gid);
+                  if (primeiro && tpl.group !== gid) setTplId(primeiro.id);
+                }}
+                  title={glabel}
+                  style={{ padding: "6px 12px", borderRadius: 7, border: 0, cursor: "pointer", fontSize: 12.5,
+                    fontWeight: formato === gid ? 600 : 500,
+                    background: formato === gid ? "var(--bg-1)" : "transparent",
+                    boxShadow: formato === gid ? "var(--shadow-segment)" : "none",
+                    color: formato === gid ? "var(--fg-1)" : "var(--fg-3)" }}>
+                  {glabel.split(" · ")[0]}
+                </button>
+              ))}
+            </span>
             <span className="kicker">zoom</span>
             {ZOOMS.map((z, i) => (
               <button key={i} onClick={() => setZoom(i)}
