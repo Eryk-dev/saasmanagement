@@ -10,7 +10,7 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { ensureProposalCatalog, ensureSlidesDeck } = await import("../src/migrations.js");
-const { runNativeProposal } = await import("../src/proposal.js");
+const { runNativeProposal, shareProposalOffer, proposalOffersOf } = await import("../src/proposal.js");
 const { registerProposalRoutes } = await import("../src/routes.proposals.js");
 const { calcOferta, deckConfig, slimCatalog, proposalSlidesPageHtml } = await import("../src/proposal-slides-page.js");
 
@@ -205,4 +205,46 @@ test("a página é um template literal só: sem crase solta no script do cliente
   const script = html.slice(html.lastIndexOf("<script>"), html.lastIndexOf("</script>"));
   assert.equal(script.includes("`"), false, "crase dentro do script quebraria o template literal do módulo");
   assert.ok(cat.products.ads_essencial, "catálogo enxuto tem os produtos");
+});
+
+test("o link do cliente do deck de slides existe e vai com o preço congelado", async () => {
+  const repo = await seedRepo();
+  const lead = await repo.create("leads", { id: "ld_share", saas: "leverads", name: "Ana", company: "Ana Peças", accounts: "6-10", niche: "autopecas" });
+  const r = await runNativeProposal(repo, lead, { baseUrl: "http://x", template: "pt_leverads_slides" });
+  const app = Fastify();
+  registerProposalRoutes(app, repo);
+
+  // A tela zero monta o plano; é ela que define a única oferta que existe.
+  await app.inject({
+    method: "PATCH", url: "/public/proposals/" + r.proposal.id,
+    payload: { k: r.proposal.editKey, deckC: { ...cfgBase, linha: "oem", tier: "escala", contas: 7 } },
+  });
+  const mae = await repo.get("proposals", r.proposal.id);
+
+  const ofertas = proposalOffersOf(mae);
+  assert.equal(ofertas.length, 1, "deck de slides tem UMA oferta: o plano montado");
+  assert.equal(ofertas[0].price, "999");
+
+  const share = await shareProposalOffer(repo, mae, 1, { baseUrl: "http://x" });
+  assert.equal(share.ok, true, "o link do cliente é gerado (sem slide de pricing no deck)");
+  const filho = await repo.get("proposals", share.proposal.id);
+  assert.equal(filho.layout, "slides");
+  assert.equal(filho.editKey, "", "link do cliente nunca abre a tela zero");
+  assert.equal(filho.state.deckOferta.mensalFmt, "999", "oferta congelada no snapshot");
+  assert.equal(filho.calc.catalog, undefined, "a tabela de preço não viaja no link do cliente");
+
+  // Preço novo no catálogo não mexe no que o cliente já recebeu.
+  const t = await repo.get("proposal_templates", "pt_leverads_slides");
+  const cat = JSON.parse(JSON.stringify(t.calc.catalog));
+  cat.products.oem_escala.anu.per = 1999;
+  await repo.update("proposals", filho.id, { calc: { ...filho.calc, catalog: cat } });
+  const html = await app.inject({ method: "GET", url: "/p/" + filho.id });
+  assert.match(html.body, /999/, "o número enviado ao cliente é o congelado");
+  assert.doesNotMatch(html.body, /1\.999/, "preço novo do catálogo não entra no link já mandado");
+
+  // Sem plano montado não existe link pra mandar (melhor falhar que mandar R$ 0).
+  const semPlano = await repo.create("proposals", { ...mae, id: "pr_vazio", state: { deckC: { ...cfgBase, plataforma: false } } });
+  const nada = await shareProposalOffer(repo, semPlano, 1, { baseUrl: "http://x" });
+  assert.equal(nada.ok, false);
+  assert.match(nada.error, /monte o plano/);
 });

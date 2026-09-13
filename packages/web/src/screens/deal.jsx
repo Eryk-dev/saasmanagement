@@ -17,6 +17,7 @@ import { resolveScript, scriptTokens, scriptChecklist } from "../lib/scripts.js"
 import { CallSummaryCard, IntegrationBriefCard, callBusyKeys, callSlotKeys, integBusyKeys } from "./today.jsx";
 import { CustomProposalModal } from "../components/custom-proposal.jsx";
 import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
+import { useProposalTemplates } from "../components/ProposalActions.jsx";
 import { useData } from "../data.jsx";
 // Lead detail drawer — slides over the pipeline when a card is opened.
 // (Funil unificado: o card do pipeline é um lead, então o detalhe é do lead.)
@@ -135,6 +136,11 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   const [showCall, setShowCall] = React.useState(false); // "Detalhes da call" (vídeo/convidados) recolhido por padrão
   const [customProp, setCustomProp] = React.useState(false); // modal da proposta personalizada
   const [payLink, setPayLink] = React.useState(false); // modal do link de pagamento (MP) do lead
+  // Decks alternativos do produto (opção C · slides, Starter, Mentoria): o card
+  // só oferecia o padrão, e a escolha de apresentação vivia só no roteiro do
+  // Meu dia — que não serve pra quem trabalha pelo pipeline. Hook aqui em cima,
+  // antes do `if (!lead) return null` lá embaixo.
+  const altDecks = useProposalTemplates(initial?.saas).filter((t) => t.selectable);
   const [showEntrega, setShowEntrega] = React.useState(false); // "Entrega" (briefing/vídeo integração) recolhido
   const [showFrom, setShowFrom] = React.useState(false); // atribuição do anúncio recolhida
   const [pendingMove, setPendingMove] = React.useState(null); // { toStage, gate }
@@ -244,6 +250,24 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   // recebe exatamente o produto decidido pelo closer, sem setup, sem edição e
   // com benefícios/preço já visíveis (nada depende de Espaço/Shift+Espaço).
   const [propBusy, setPropBusy] = React.useState(false);
+  async function gerarCom(t) {
+    const rotulo = t.pickLabel || t.name || "esta apresentação";
+    if (lead.proposta_id && !window.confirm(`Este lead já tem apresentação gerada. Gerar "${rotulo}" substitui o link atual (o que já foi mandado pro cliente continua de pé). Continuar?`)) return;
+    // A aba abre DENTRO do clique: depois do await o navegador trata como popup.
+    const win = window.open("", "_blank");
+    setPropBusy(true);
+    try {
+      await api.generateProposal(lead.id, { force: true, template: t.id, unpin: !!lead.proposalPinned });
+      const fresh = await api.get("leads", lead.id);
+      setLead((prev) => ({ ...prev, ...fresh }));
+      dirty.current = true;
+      if (win) win.location.replace(fresh.proposal_edit_url || fresh.proposalUrl || "about:blank");
+    } catch (e) {
+      if (win) win.close();
+      window.alert(e?.message || "não deu pra gerar essa apresentação");
+    }
+    setPropBusy(false);
+  }
   async function propostaNoWhats() {
     setPropBusy(true);
     // Abre ainda dentro do clique: depois dos awaits o navegador pode tratar a
@@ -503,10 +527,18 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                   apresentar ↗
                 </a>
               )}
+              {/* Link de pagamento à vista no CARD (Leo, 13/09): estava dentro
+                  do ⋯, e é o passo seguinte à apresentação — quem fecha na call
+                  precisa cobrar sem procurar. */}
+              <button onClick={() => setPayLink(true)}
+                title={lead.mpChargeUrl ? "Abrir/refazer o link de pagamento deste lead" : "Criar o link de pagamento deste lead (Mercado Pago)"}
+                style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+                {lead.mpChargeUrl ? (lead.mpChargeKind === "recurring" ? "link da assinatura" : "link de pagamento") : "link de pagamento"}
+              </button>
               <MoreMenu size={30} items={[
+                ...altDecks.map((t) => ({ label: `gerar ${t.pickLabel || t.name}`, onClick: () => gerarCom(t) })),
                 lead.customProposalUrl && { label: "abrir proposta personalizada ↗", onClick: () => window.open(cockpitProposalUrl(lead.customProposalUrl), "_blank", "noreferrer") },
                 { label: lead.customProposalUrl ? "editar proposta personalizada" : "montar proposta personalizada", onClick: () => setCustomProp(true) },
-                { label: lead.mpChargeUrl ? (lead.mpChargeKind === "recurring" ? "link da assinatura" : "link de pagamento") : "criar link de pagamento", onClick: () => setPayLink(true) },
               ]} />
             </div>
           </div>

@@ -1067,7 +1067,10 @@ function cfgScreen() {
 export function proposalSlidesPageHtml(p, { editable = false, previewBanner = false, catalog = null, suggested = "" } = {}) {
   const cfg = deckConfig(p, { suggested });
   const slim = slimCatalog(catalog || {});
-  const oferta = calcOferta(slim, cfg);
+  // Link do CLIENTE: a oferta vai congelada no snapshot (shareProposalOffer) —
+  // mexer no catálogo depois do envio não pode mudar o número que ele já viu.
+  // No modo closer a conta é sempre ao vivo, a partir da tela zero.
+  const oferta = (!editable && p.state && p.state.deckOferta) ? p.state.deckOferta : calcOferta(slim, cfg);
   const titulo = escHtml(p.name || "Proposta");
   const dados = {
     id: p.id,

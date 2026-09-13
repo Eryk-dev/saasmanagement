@@ -11,7 +11,7 @@ import { registerFormRoutes } from "./routes.forms.js";
 import { registerWebhookRoutes } from "./routes.webhooks.js";
 import { mergeLeadQuestions } from "./forms.js";
 import { registerProposalRoutes } from "./routes.proposals.js";
-import { runNativeProposal, proposalOffers, shareProposalOffer, buildCustomProposal, publicProposal, syncProposalLeadSnapshot } from "./proposal.js";
+import { runNativeProposal, proposalOffersOf, shareProposalOffer, buildCustomProposal, publicProposal, syncProposalLeadSnapshot } from "./proposal.js";
 import { DEAL_PRODUCT_LABEL, dealCatalog } from "./proposal-catalog.js";
 import { mentoriaDealCatalog, MENTORIA_LABEL } from "./mentoria.js";
 import { proposalPageHtml } from "./proposal-page.js";
@@ -1245,7 +1245,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     if (!lead) return reply.code(404).send({ error: "Not found" });
     const proposal = lead.proposta_id ? await repo.get("proposals", lead.proposta_id) : null;
     if (!proposal) return { proposal: null, offers: [] };
-    return { proposal: proposal.id, offers: proposalOffers(proposal.slides) };
+    return { proposal: proposal.id, offers: proposalOffersOf(proposal) };
   });
 
   app.post("/api/leads/:id/proposal-share", async (req, reply) => {
