@@ -20,6 +20,7 @@ import { startCadencia } from "./cadencia-runner.js";
 import { startSdrFlow } from "./sdr-flow.js";
 import { startTrainingReminder } from "./training-reminder.js";
 import { startTaskReminder } from "./task-reminder.js";
+import { startWaWaitingReminder } from "./wa-waiting-reminder.js";
 import { startBlogEngine } from "./blog-engine.js";
 import { startStoriesCapture } from "./routes.desempenho.js";
 import { startShopifySync } from "./routes.webhooks.js";
@@ -118,6 +119,9 @@ try {
   // Lembrete diário das tarefas (vence hoje / atrasada) na caixa de entrada de
   // cada pessoa + resumo no Discord quando configurado.
   startTaskReminder(repo, { log: app.log });
+  // Silêncio nosso no WhatsApp: cliente falou e ninguém voltou em N horas (3 por
+  // padrão) vira aviso na caixa de entrada de quem cuida do lead.
+  startWaWaitingReminder(repo, { log: app.log });
   // Blog SEO: minera pautas, rascunha 1 post por ciclo e publica os agendados
   // (15 min). No-op sem doc app_config/blog_<saas> ou com rules.enabled=false;
   // sem IA configurada só publica o que já está agendado.

@@ -476,12 +476,21 @@ const excerpt = (s) => { const t = String(s || "").replace(/\s+/g, " ").trim(); 
 // Cria (ou, se a mesma pessoa já tem a mesma notificação não lida da mesma
 // tarefa há menos de 10 min, atualiza) — o burst de edições não vira spam.
 export async function upsertNotification(repo, n, { now = nowIso() } = {}) {
-  const same = await repo.listWhere("notifications", { user: n.user, task: n.task, type: n.type });
-  const recent = same.find((x) => !x.read && Date.now() - new Date(x.at || 0).getTime() < DEDUPE_MS);
-  if (recent) return repo.update("notifications", recent.id, { text: n.text, by: n.by, at: now, taskTitle: n.taskTitle });
+  // Com CHAVE, a chave é a identidade do aviso (ex.: wa:<conversa>:<instante>)
+  // e quem chama já conferiu que ela não existe — juntar por (pessoa, tarefa,
+  // tipo) aqui faria dois avisos de conversas DIFERENTES virarem um só, porque
+  // aviso que não é de tarefa tem `task` vazio nos dois.
+  if (!n.key) {
+    const same = await repo.listWhere("notifications", { user: n.user, task: n.task, type: n.type });
+    const recent = same.find((x) => !x.read && Date.now() - new Date(x.at || 0).getTime() < DEDUPE_MS);
+    if (recent) return repo.update("notifications", recent.id, { text: n.text, by: n.by, at: now, taskTitle: n.taskTitle });
+  }
   return repo.create("notifications", {
     id: "no_" + randomUUID(), user: n.user, type: n.type, task: n.task, taskTitle: n.taskTitle || "",
     saas: n.saas || "", text: n.text, by: n.by || ACTOR_API, at: now, read: false, readAt: "", key: n.key || "",
+    // Destino que NÃO é tarefa (13/09): { screen, thread, lead }. A caixa de
+    // entrada deixou de ser só das tarefas — o silêncio no WhatsApp cai aqui.
+    ...(n.link ? { link: n.link } : {}),
   });
 }
 export async function notifyEvents(repo, task, events, { by = ACTOR_API, users = [], now = nowIso() } = {}) {
