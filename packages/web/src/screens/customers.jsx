@@ -1194,6 +1194,81 @@ function CustomerFacts({ customer, lead, product, leverOrg, onPatch, cicloAte = 
 // assinaturas + faturas. Direita: régua de retenção + histórico do funil.
 // "Editar" NÃO abre outro popup: troca o corpo pelo form (EntityForm bare)
 // dentro deste mesmo modal, pros campos raros (flags, saúde, dono).
+// Bloco de Resultados da ficha: a evidência de serviço na mão de quem cuida da
+// conta. O número é o INFLUENCIADO (o que os anúncios que a Lever criou
+// venderam), nunca o faturamento da loja: a loja já vendia antes da gente, e
+// inflar queima a prova na primeira conferência que o cliente fizer.
+function ResultsBox({ customer }) {
+  const [data, setData] = useState(null);
+  const [erro, setErro] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [aviso, setAviso] = useState("");
+  React.useEffect(() => {
+    let vivo = true;
+    setData(null); setErro("");
+    api.customerResults(customer.id)
+      .then((r) => { if (vivo) setData(r); })
+      .catch((e) => { if (vivo) setErro(e?.message || "não consegui carregar"); });
+    return () => { vivo = false; };
+  }, [customer.id]);
+  async function enviar() {
+    if (enviando) return;
+    setEnviando(true);
+    try {
+      const r = await api.customerReportSend(customer.id);
+      setAviso(r?.status === "skipped"
+        ? "sem venda influenciada nos 30 dias: não mandei (R$ 0 não é evidência de serviço)"
+        : r?.whatsapp === "task" ? "fora da janela do WhatsApp: abri uma tarefa com o texto pronto" : "relatório enviado");
+      api.customerResults(customer.id).then(setData).catch(() => {});
+    } catch (e) {
+      setAviso(e?.message || "não consegui enviar agora");
+    } finally { setEnviando(false); }
+  }
+  const money = window.fmt.money;
+  const snap = data?.snapshot;
+  const ultimo = data?.reports?.[0];
+  return (
+    <div style={{ ...BOX, marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <div className="kicker">Resultados</div>
+        {data?.hasOrg && (
+          <button onClick={enviar} disabled={enviando}
+            style={{ marginLeft: "auto", height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", cursor: enviando ? "default" : "pointer" }}>
+            {enviando ? "enviando…" : "enviar relatório agora"}
+          </button>
+        )}
+      </div>
+      {erro && <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>{erro}</div>}
+      {!erro && !data && <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>carregando…</div>}
+      {data && !data.hasOrg && (
+        <div style={{ fontSize: 12.5, color: "var(--fg-4)", lineHeight: 1.5 }}>
+          Vincule a org na LeverAds (editar cliente) pra ter o número: sem ela o cockpit não sabe quanto os anúncios venderam na conta dele.
+        </div>
+      )}
+      {data?.hasOrg && snap && (
+        <>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 22, fontWeight: 700, lineHeight: 1 }}>{money(snap.gmv30d)}</span>
+            <span style={{ fontSize: 12, color: "var(--fg-3)" }}>
+              vendidos pelos anúncios da Lever nos últimos 30 dias{snap.orders30d ? ` · ${window.fmt.int(snap.orders30d)} ${snap.orders30d === 1 ? "pedido" : "pedidos"}` : ""}
+            </span>
+          </div>
+          <div style={{ marginTop: 6, fontSize: 12.5, color: "var(--fg-2)" }}>
+            desde o começo {money(snap.gmvTotal)}{snap.listings ? ` · ${window.fmt.int(snap.listings)} anúncios criados pela plataforma` : ""}
+          </div>
+        </>
+      )}
+      {data?.hasOrg && !snap && <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Sem número do produto agora (o banco não respondeu).</div>}
+      <div style={{ marginTop: 8, fontSize: 12, color: "var(--fg-3)" }}>
+        {ultimo
+          ? `último relatório em ${new Date(ultimo.periodEnd).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).replace(".", "")}${ultimo.status === "skipped" ? " (não enviado: sem venda no período)" : ""}`
+          : "nenhum relatório enviado ainda"}
+      </div>
+      {aviso && <div style={{ marginTop: 6, fontSize: 12, color: "var(--fg-3)" }}>{aviso}</div>}
+    </div>
+  );
+}
+
 // Bloco de NPS da ficha. A pergunta sai sozinha na régua (mês 1, mês 3 e de 90
 // em 90 dias), mas o dono da conta pode pedir na hora: o botão manda o e-mail e,
 // se a conversa estiver dentro da janela de 24h, o WhatsApp; fora dela vira
@@ -1686,6 +1761,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
         </div>
         ) : (
         <>
+        {!isKids && <ResultsBox customer={customer} />}
         <NpsBox customer={customer} />
         <div style={BOX}>
           <div className="kicker" style={{ marginBottom: 8 }}>Ações de retenção</div>

@@ -65,6 +65,7 @@ import { registerFunnelMetricsRoutes } from "./routes.funnel-metrics.js";
 import { registerScoreboardRoutes } from "./routes.scoreboard.js";
 import { registerReferralRoutes } from "./routes.referrals.js";
 import { registerNpsRoutes } from "./routes.nps.js";
+import { registerCustomerResultsRoutes } from "./routes.customer-results.js";
 import { registerDesempenhoRoutes } from "./routes.desempenho.js";
 import { registerPipelinePaceRoutes } from "./routes.pipeline-pace.js";
 import { registerEloRoutes } from "./elo.js";
@@ -440,6 +441,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Depois do mailer/whatsapp: o pedido sai por e-mail e, dentro da janela de
   // 24h, por WhatsApp.
   registerNpsRoutes(app, repo, { mailer: mailerClient, whatsapp: whatsappClient });
+  // Resultados do cliente na ficha: número vivo do banco do produto + envio
+  // manual do relatório mensal.
+  registerCustomerResultsRoutes(app, repo, { mailer: mailerClient, whatsapp: whatsappClient });
 
   // ── Tempo real ─────────────────────────────────────────────────────────
   // Toda escrita no repo (db.js) incrementa um contador global (changes.js).

@@ -23,6 +23,7 @@ import { startTaskReminder } from "./task-reminder.js";
 import { startWaWaitingReminder } from "./wa-waiting-reminder.js";
 import { startCustomerMilestones } from "./customer-milestones.js";
 import { startNpsAsks } from "./nps.js";
+import { startCustomerReports } from "./customer-reports.js";
 import { startBlogEngine } from "./blog-engine.js";
 import { startStoriesCapture } from "./routes.desempenho.js";
 import { startShopifySync } from "./routes.webhooks.js";
@@ -135,6 +136,9 @@ try {
   // E-mail sai sozinho; WhatsApp só dentro da janela de 24h, senão vira tarefa
   // com o texto pronto pro dono da conta.
   startNpsAsks(repo, { ...app.integrationClients, log: app.log });
+  // Relatório mensal de resultado pro cliente (a evidência de serviço): 1 por
+  // cliente a cada 30 dias, em horário comercial. Mês sem venda não manda.
+  startCustomerReports(repo, { ...app.integrationClients, log: app.log });
   // Blog SEO: minera pautas, rascunha 1 post por ciclo e publica os agendados
   // (15 min). No-op sem doc app_config/blog_<saas> ou com rules.enabled=false;
   // sem IA configurada só publica o que já está agendado.

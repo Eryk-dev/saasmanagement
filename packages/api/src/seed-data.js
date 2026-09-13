@@ -20,6 +20,9 @@ export const COLLECTIONS = {
   customers: [],
   leads: [],
   nps: [],
+  // Relatório mensal de resultado mandado pro cliente (customer-reports.js): o
+  // que foi enviado, quando e por qual canal. Histórico, não configuração.
+  customer_reports: [],
   goals: [],
   leaderboard_month: [],
   leaderboard_all: [],

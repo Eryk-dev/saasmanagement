@@ -233,6 +233,62 @@ async function loadOrgs(ids, query) {
   return new Map((rows || []).map((r) => [String(r.org), Number(r.gmv) || 0]));
 }
 
+// ── Retrato por cliente (relatório mensal + bloco Resultados da ficha) ──────
+// A fila de indicação precisa de um número só (o influenciado de 30 dias); o
+// relatório que vai PRO CLIENTE precisa da história: quanto os anúncios da
+// Lever venderam no mês, em quantos pedidos, quanto desde o começo e quantos
+// anúncios a plataforma criou. Mesmas duas tabelas do agregado do portfólio,
+// agora agrupadas por org.
+const SNAPSHOT_SQL = `
+with d30 as (
+  select x.org_id::text as org,
+         coalesce(sum(x.gmv_clone), 0)::float8 as gmv30,
+         count(*)::int                         as pedidos30
+    from public.platform_orders x
+   where x.date_created >= now() - interval '30 days'
+     and x.org_id = any($1::uuid[])
+     and x.gmv_clone > 0
+   group by x.org_id),
+tot as (
+  select v.org_id::text as org,
+         coalesce(sum(v.gmv_total), 0)::float8   as gmv,
+         coalesce(sum(v.items_counted), 0)::int  as anuncios
+    from public.org_revenue_generated v
+   where v.org_id = any($1::uuid[])
+   group by v.org_id)
+select coalesce(d30.org, tot.org)      as org,
+       coalesce(d30.gmv30, 0)          as gmv30,
+       coalesce(d30.pedidos30, 0)      as pedidos30,
+       coalesce(tot.gmv, 0)            as gmv,
+       coalesce(tot.anuncios, 0)       as anuncios
+  from d30 full outer join tot on tot.org = d30.org`;
+
+let snapCache = { map: new Map(), at: 0, keys: "" };
+
+// Devolve Map(orgId → { gmv30d, orders30d, gmvTotal, listings }). Mesmo cache de
+// 3h do influencedByOrg (o egress do banco do produto é compartilhado) e o
+// mesmo fail-open: sem banco, devolve o que tem em vez de estourar.
+export async function orgSnapshot(orgIds = [], { query = levercopyQuery, now = Date.now, ttlMs = ORG_TTL_MS } = {}) {
+  const ids = [...new Set((orgIds || []).map((s) => String(s || "").trim()).filter((s) => UUID_RE.test(s)))].sort();
+  if (!ids.length) return new Map();
+  const keys = ids.join(",");
+  if (snapCache.keys === keys && now() - snapCache.at <= ttlMs) return snapCache.map;
+  try {
+    const rows = await query(SNAPSHOT_SQL, [ids]);
+    const map = new Map((rows || []).map((r) => [String(r.org), {
+      gmv30d: Number(r.gmv30) || 0,
+      orders30d: Number(r.pedidos30) || 0,
+      gmvTotal: Number(r.gmv) || 0,
+      listings: Number(r.anuncios) || 0,
+    }]));
+    snapCache = { map, at: now(), keys };
+    return map;
+  } catch (e) {
+    console.warn("[leverads-results] orgSnapshot falhou:", e.message);
+    return snapCache.keys === keys ? snapCache.map : new Map();
+  }
+}
+
 // orgIds: os leveradsOrgId dos clientes (o cadastro tem lixo, então só uuid
 // passa). Devolve Map(orgId → R$ influenciado nos últimos 30 dias).
 export async function influencedByOrg(orgIds = [], { query = levercopyQuery, now = Date.now, ttlMs = ORG_TTL_MS } = {}) {
