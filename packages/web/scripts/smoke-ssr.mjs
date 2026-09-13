@@ -126,7 +126,7 @@ try {
   // espremer os itens dos outros horários (era o bug — 9 follow-ups às 11h
   // deixavam a call das 14h com 1/9 da largura).
   try {
-    const { laneByCluster } = await server.ssrLoadModule("/src/screens/pipeline.jsx");
+    const { laneByCluster } = await server.ssrLoadModule("/src/screens/agenda-grid.jsx");
     const H = (h) => h * 3600000;
     // 9 itens no MESMO horário (11h) + 1 sozinho às 14h + 2 sobrepostos às 16h
     const items = [];

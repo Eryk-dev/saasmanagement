@@ -1,0 +1,573 @@
+import React from "react";
+import { FilterTab } from "../components/viz.jsx";
+import { usersByRole, userColor, displayName } from "../lib/users.js";
+import { stageKind } from "../lib/funnel.js";
+import { isNoShowStage } from "../lib/scripts.js";
+
+// A GRADE da agenda. Morava em screens/pipeline.jsx desde que a aba Agenda era
+// do pipeline; a aba saiu de lá (VIEWS = kanban | list) e o código ficou, com
+// um aviso de "não é código morto" em cima. Mudou de casa em 12/09/2026: a tela
+// Agenda (screens/agenda.jsx) é a única consumidora, e as visões novas (Mês e
+// Equipe) precisavam de espaço que um arquivo de 1.900 linhas de pipeline não
+// dá. Nada de comportamento mudou na mudança.
+//
+// Visão de DIA (faixas por closer) ou SEMANA de 7 dias, estilo Google Agenda:
+// calls (lead.callAt), integrações (integrationAt), follow-ups marcados,
+// consultas 1:1 e — opcional — os toques do GPS. Cor do CARD = tipo; barrinha
+// da esquerda = responsável. Clique abre o lead.
+// `blocking` (opcional, tela Agenda): { blocksFor(d), onSlot(d, hora), onBlock(b) }
+// desenha os bloqueios/compromissos e liga o clique em horário vazio.
+// `person` (opcional): mostra só os eventos daquele responsável.
+
+const { useState: useStP } = React;
+
+// Instante de um horário de compromisso do lead. Os campos convivem em DUAS
+// representações: o time digita hora local ("2026-08-28T16:00", sem fuso, é
+// como callAt/followupAt são guardados) e o servidor grava ISO em UTC
+// ("2026-08-28T18:00:00.000Z", como o nextActionAt do resumo por IA). O
+// `new Date()` cru lê a string sem fuso na hora DO NAVEGADOR, então o mesmo
+// compromisso virava dois instantes diferentes e a agenda desenhava duas
+// pílulas. Aqui string sem fuso é sempre hora de BRASÍLIA, igual ao brtToIso do
+// servidor (lead-flow.js) — é a régua que faz as duas representações se
+// reconhecerem.
+const atMs = (value) => {
+  const v = String(value || "").trim();
+  if (!v) return NaN;
+  const withZone = /[Zz]|[+-]\d{2}:\d{2}$/.test(v) ? v : `${v.length === 16 ? `${v}:00` : v}-03:00`;
+  return new Date(withZone).getTime();
+};
+// Mesmo compromisso, ainda que escrito em representações diferentes.
+const sameMoment = (a, b) => {
+  const x = atMs(a), y = atMs(b);
+  return Number.isFinite(x) && Number.isFinite(y) && x === y;
+};
+
+// Distribui itens em faixas por CLUSTER de sobreposição: cada item recebe `lane`
+// (posição) e `lanes` (nº de faixas do SEU cluster). A largura vem do cluster,
+// não do dia — assim um horário lotado não espreme os itens dos outros horários.
+function laneByCluster(items, startOf, endOf) {
+  const sorted = [...items].sort((a, b) => startOf(a) - startOf(b));
+  const out = [];
+  let i = 0;
+  while (i < sorted.length) {
+    let clusterEnd = endOf(sorted[i]);
+    let j = i + 1;
+    while (j < sorted.length && startOf(sorted[j]) < clusterEnd) {
+      clusterEnd = Math.max(clusterEnd, endOf(sorted[j]));
+      j++;
+    }
+    const laneEnds = [];
+    const group = sorted.slice(i, j).map((it) => {
+      let lane = laneEnds.findIndex((t) => t <= startOf(it));
+      if (lane < 0) { lane = laneEnds.length; laneEnds.push(0); }
+      laneEnds[lane] = endOf(it);
+      return { ...it, lane };
+    });
+    const lanes = Math.max(1, laneEnds.length);
+    group.forEach((it) => out.push({ ...it, lanes }));
+    i = j;
+  }
+  return out;
+}
+
+// Cores dos TIPOS de evento da agenda (Leo, 23/08 v2: as escuras ficaram
+// péssimas — "cores claras com letra preta, bem variado, bater o olho e saber").
+// A COR diz o tipo; a PESSOA fica na barrinha grossa à esquerda, na mesma cor
+// da legenda de nomes. Valores fixos (não seguem o tema): a letra escura por
+// cima também é fixa, então o par sempre fecha contraste.
+export const AGENDA_TYPE_COLORS = {
+  call:         { bg: "oklch(0.91 0.09 165)", line: "oklch(0.62 0.12 165)", label: "call agendada" },   // verde-menta
+  "follow-up":  { bg: "oklch(0.93 0.11 92)",  line: "oklch(0.65 0.12 92)",  label: "follow-up" },       // amarelo
+  "integração": { bg: "oklch(0.91 0.07 268)", line: "oklch(0.62 0.10 268)", label: "integração" },      // lilás
+  consulta:     { bg: "oklch(0.92 0.08 350)", line: "oklch(0.64 0.12 350)", label: "consulta 1:1" },    // rosa
+};
+// Call que o lead FUROU (Leo, 25/08): não é outro TIPO de compromisso, é outro
+// DESFECHO — mantém o desenho da call e troca a cor pro vermelho suave. Na
+// grade cheia, verde = aconteceu e vermelho = furou se lê de longe, sem abrir
+// card nenhum.
+const AGENDA_NOSHOW = { bg: "oklch(0.90 0.07 25)", line: "oklch(0.60 0.14 25)", label: "no-show" };
+const AGENDA_INK = "oklch(0.22 0.02 250)";      // letra "preta" sobre as cores claras
+const AGENDA_INK_SOFT = "oklch(0.4 0.02 250)";  // linha secundária (hora, empresa)
+
+function AgendaView({ leads, consultations = [], onOpenLead, blocking, person }) {
+  const [dayOff, setDayOff] = useStP(0); // offset em DIAS a partir de hoje
+  const [showTouches, setShowTouchesState] = useStP(() => {
+    try { return localStorage.getItem("cockpit_agenda_touches") === "1"; } catch { return false; }
+  });
+  const setShowTouches = (v) => {
+    setShowTouchesState(v);
+    try { localStorage.setItem("cockpit_agenda_touches", v ? "1" : "0"); } catch { /* ignore */ }
+  };
+  // Filtro por TIPO de evento: tudo · calls · follow-ups · integrações (Leo,
+  // 23/08: "ver separadamente e juntos"; integrações em 08/09). Filtrado, a
+  // grade isola só aquelas pílulas — compromissos/bloqueios e toques saem do
+  // caminho pra leitura limpa. O valor do filtro é o próprio `kind` do evento.
+  const [evKind, setEvKindState] = useStP(() => {
+    try { return localStorage.getItem("cockpit_agenda_kind") || "all"; } catch { return "all"; }
+  });
+  const setEvKind = (v) => {
+    setEvKindState(v);
+    try { localStorage.setItem("cockpit_agenda_kind", v); } catch { /* ignore */ }
+  };
+  // VISÃO: 1 dia ou semana de 7 dias (Leo, 08/09). No dia cabe o time inteiro
+  // em faixas lado a lado; na semana as faixas por pessoa não têm largura —
+  // os eventos dividem a coluna do dia por sobreposição e a pessoa continua
+  // na barrinha de cor à esquerda da pílula.
+  const [view, setViewState] = useStP(() => {
+    try { return localStorage.getItem("cockpit_agenda_view") || "day"; } catch { return "day"; }
+  });
+  const setView = (v) => {
+    setViewState(v);
+    try { localStorage.setItem("cockpit_agenda_view", v); } catch { /* ignore */ }
+  };
+  const isWeek = view === "week";
+  const H0 = 7, H1 = 21, hourH = 44;
+  const saasCfgOf = (l) => (window.SEED?.SAAS || []).find((x) => x.id === l.saas);
+  // PÁGINA da grade: no DIA (padrão desde 03/09) as setas andam de dia em dia,
+  // fim de semana incluso; na SEMANA mostram os 7 dias de segunda a domingo e
+  // as setas pulam de semana em semana. "hoje" volta pra data atual nos dois.
+  // O offset continua em DIAS — trocar de visão preserva o ponto da navegação.
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const anchor = new Date(today); anchor.setDate(today.getDate() + dayOff);
+  const weekStart = new Date(anchor); weekStart.setDate(anchor.getDate() - ((anchor.getDay() + 6) % 7));
+  const days = isWeek
+    ? Array.from({ length: 7 }, (_, i) => { const d = new Date(weekStart); d.setDate(weekStart.getDate() + i); return d; })
+    : [anchor];
+  const start = days[0];
+  const end = new Date(days[days.length - 1]); end.setDate(end.getDate() + 1);
+  const colTemplate = isWeek ? "52px repeat(7, minmax(0, 1fr))" : "52px 1fr";
+  // Eventos: call agendada (callAt), integração (integrationAt) e — opcional —
+  // toque do GPS (nextActionAt). O mesmo lead pode ter os três.
+  // Consultas 1:1 (mentoria UniqueKids) entram na mesma grade como um "lead" de
+  // fachada: nome do cliente + posição no pacote, cor da responsável (owner via
+  // closer). O clique abre o lead de ORIGEM quando existir (_leadRef).
+  const leadById = new Map(leads.map((l) => [l.id, l]));
+  const consultEvents = (consultations || [])
+    .filter((c) => c.at && c.status !== "canceled")
+    .map((c) => ({
+      kind: "consulta",
+      t: new Date(c.at),
+      who: c.owner || "",
+      l: {
+        id: `consulta-${c.id}`,
+        name: c.clientName || "cliente",
+        company: `consulta ${c.n || "?"} de ${c.packageTotal || 8}`,
+        closer: c.owner || "",
+        callUrl: c.meetUrl || "",
+        saas: c.saas, stage: "",
+        _leadRef: (c.leadId && leadById.get(c.leadId)) || null,
+      },
+    }));
+  const events = leads
+    .flatMap(l => {
+      const k = stageKind(saasCfgOf(l), l.stage);
+      const out = [];
+      // Follow-up é COMPROMISSO agendado (a pessoa marcou "retomar dia X às Y",
+      // com nota): o compromisso vive no nextActionAt e aparece SEMPRE na
+      // agenda. Antes só entrava com "mostrar toques" ligado, e quando o
+      // follow-up era marcado pelo drawer (só nextActionAt, sem callAt) sumia —
+      // foi o caso da Laura. Toque de CADÊNCIA (novo/contato/qualificação) segue
+      // opcional pelo toggle, senão a agenda vira lista de GPS.
+      // Call que JÁ ACONTECEU é HISTÓRIA e nunca sai da agenda (Leo, 07/08:
+      // "fiz as calls e sumiu tudo da minha agenda"): renderiza como call
+      // FEITA (✓, cor lavada, do closer) mesmo que o card tenha ido pra
+      // follow-up/no show/ganho — a supressão do naSame só vale pra call
+      // FUTURA (não duplicar o compromisso remarcado por cima do horário).
+      const callMs = atMs(l.callAt);
+      const callT = Number.isFinite(callMs) ? new Date(callMs) : null;
+      const callDone = !!(callT && callMs < Date.now());
+      const naSame = sameMoment(l.callAt, l.nextActionAt);
+      const callInstead = k === "followup" && naSame && callDone; // história vence a pílula duplicada
+      const naMs = atMs(l.nextActionAt);
+      if (Number.isFinite(naMs) && k === "followup" && !callInstead) {
+        out.push({ l, t: new Date(naMs), kind: "follow-up", who: l.closer || l.owner });
+      } else if (Number.isFinite(naMs) && showTouches && k !== "followup") {
+        out.push({ l, t: new Date(naMs), kind: "toque", who: l.owner || l.closer });
+      }
+      // Follow-up MARCADO com hora (lead.followupAt): compromisso PRÓPRIO, com a
+      // cara de follow-up hoje e depois de passar (lavado, como toda história).
+      // Ele já morou no callAt e a agenda desenhava um "✓ call feita" que nunca
+      // existiu — indistinguível de uma call de verdade (Leo, 13/08). Some do
+      // caminho quando é o mesmo instante do próximo toque, senão a pílula sai
+      // duplicada em cima dela mesma.
+      const fupMs = atMs(l.followupAt);
+      if (Number.isFinite(fupMs) && !sameMoment(l.followupAt, l.nextActionAt)) {
+        out.push({ l, t: new Date(fupMs), kind: "follow-up", who: l.closer || l.owner, done: fupMs < Date.now() });
+      }
+      // Call marcada: futura respeita o naSame (follow-up cobre o horário);
+      // passada entra SEMPRE, como histórico.
+      if (callT && (callDone || !(k === "followup" && naSame))) {
+        out.push({ l, t: callT, kind: "call", who: l.closer, done: callDone });
+      }
+      const intMs = atMs(l.integrationAt);
+      if (l.integrationAt) {
+        out.push({ l, t: new Date(intMs), kind: "integração", who: l.integrator || l.closer, done: Number.isFinite(intMs) && intMs < Date.now() });
+      }
+      // HISTÓRICO de calls remarcadas por cima (lead.callHistory, arquivado
+      // pelo PATCH da API quando um callAt passado é sobrescrito): cada
+      // entrada vira uma call FEITA no dia em que aconteceu.
+      for (const h of (Array.isArray(l.callHistory) ? l.callHistory : [])) {
+        const hMs = atMs(h?.at);
+        if (Number.isFinite(hMs)) out.push({ l, t: new Date(hMs), kind: "call", who: h?.closer || l.closer, done: true });
+      }
+      return out;
+    })
+    .concat(consultEvents)
+    .filter(e => e && Number.isFinite(e.t.getTime()) && e.t >= start && e.t < end)
+    .filter(e => !person || e.who === person);
+  // Contagem por tipo (já na semana/pessoa filtradas) alimenta as abas; a grade
+  // desenha só o tipo escolhido.
+  const callCount = events.filter((e) => e.kind === "call").length;
+  const fupCount = events.filter((e) => e.kind === "follow-up").length;
+  const intCount = events.filter((e) => e.kind === "integração").length;
+  const shown = evKind === "all" ? events : events.filter((e) => e.kind === evKind);
+  // Filtro ligado esconde integrações, consultas e compromissos em silêncio —
+  // e aí "marquei a integração e não apareceu na agenda" (Leo, 25/08). O aviso
+  // conta o que ficou de fora e devolve a visão inteira num clique.
+  const hiddenCount = events.length - shown.length;
+  const fmtDay = (d, opts) => d.toLocaleDateString("pt-BR", opts).replace(/\./g, "");
+  const label = isWeek
+    ? `${fmtDay(days[0], { day: "2-digit", month: "short" })} · ${fmtDay(days[6], { day: "2-digit", month: "short", year: "numeric" })}`
+    : fmtDay(days[0], { weekday: "long", day: "2-digit", month: "short", year: "numeric" });
+  const navBtn = {
+    height: 26, padding: "0 10px", borderRadius: 5, fontSize: 12,
+    background: "var(--bg-2)", border: "1px solid var(--line-1)", color: "var(--fg-2)", cursor: "pointer",
+  };
+
+  // Time da legenda: quem tem papel de closer/integrador (Ajustes → Equipe).
+  const team = [...usersByRole("closer"), ...usersByRole("integrator")]
+    .filter((u, i, arr) => arr.findIndex(x => x.id === u.id) === i);
+  const toneOf = (id) => (id ? userColor(id) : "var(--fg-4)");
+
+  // COLUNAS POR PESSOA dentro do dia (Leo, 24/08): cada closer tem a própria
+  // faixa vertical, com o nome no cabeçalho — a agenda de cada um se lê de
+  // cima a baixo. Ordem preferida do Leo: Leonardo · Jonathan · Vitor · Jonan;
+  // demais entram depois (ordem do time) e "sem responsável" fecha a fila.
+  // TODOS os closers viram faixa SEMPRE (Leo, 03/09): dia vazio de alguém
+  // mostra a coluna em branco — bater o olho e ver quem está livre. Integrador
+  // e "sem responsável" continuam entrando só quando têm evento/bloqueio no
+  // dia. Sobreposição DENTRO da faixa divide em sub-lanes, então
+  // double-booking da mesma pessoa continua gritando.
+  const PERSON_ORDER = ["leonardo", "jonathan", "us_mrqkn2tm03", "jonan"];
+  const personRank = (id) => {
+    const i = PERSON_ORDER.indexOf(id);
+    if (i >= 0) return i;
+    if (!id) return 999;
+    const t = team.findIndex((u) => u.id === id);
+    return 100 + (t >= 0 ? t : 50);
+  };
+  // Bloqueio de UMA pessoa mora na faixa dela; de time (vários/ninguém) cobre
+  // o dia inteiro, atrás das pílulas.
+  const blockPerson = (b) => {
+    const us = Array.isArray(b.users) && b.users.length ? b.users : (b.user ? [b.user] : []);
+    return us.length === 1 ? us[0] : null;
+  };
+  // Faixas fixas: filtrado por pessoa, só a coluna dela; senão, todos os
+  // closers do workspace — mesmo sem nada marcado no dia.
+  const baseLanes = person ? [person] : usersByRole("closer").map((u) => u.id);
+  const layoutDay = (d) => {
+    const dayEvents = shown.filter(e => e.t.toDateString() === d.toDateString());
+    const rawBlocks = (blocking && evKind === "all" ? blocking.blocksFor(d) : [])
+      .map((b) => ({ b, from: b.allDay ? H0 : Math.max(H0, Number(b.fromHour) || 0), to: b.allDay ? H1 : Math.min(H1, Number(b.toHour) || 0) }))
+      .filter((x) => x.to > x.from);
+    // SEMANA: sem faixas por pessoa (7 colunas não dão largura) — os eventos
+    // do dia dividem a coluna por cluster de sobreposição, como era antes das
+    // faixas, e todo bloqueio cobre o dia inteiro atrás das pílulas.
+    if (isWeek) {
+      const placed = laneByCluster(dayEvents, e => e.t.getTime(), e => e.t.getTime() + 3600000)
+        .map((e) => ({ ...e, personLane: 0, personLanes: 1, sub: e.lane, subs: e.lanes }));
+      const blocks = rawBlocks.map((x) => ({ ...x, personLane: null, personLanes: 0 }));
+      return { placed, blocks, persons: [] };
+    }
+    const persons = [...new Set([
+      ...baseLanes,
+      ...dayEvents.map(e => e.who || ""),
+      ...rawBlocks.map(x => blockPerson(x.b)).filter(Boolean),
+    ])].sort((a, b) => personRank(a) - personRank(b) || String(a).localeCompare(String(b)));
+    const laneOf = new Map(persons.map((p, i) => [p, i]));
+    const placed = persons.flatMap((p) => laneByCluster(
+      dayEvents.filter(e => (e.who || "") === p), e => e.t.getTime(), e => e.t.getTime() + 3600000,
+    ).map((e) => ({ ...e, personLane: laneOf.get(p), personLanes: persons.length, sub: e.lane, subs: e.lanes })));
+    const blocks = rawBlocks.map((x) => {
+      const who = blockPerson(x.b);
+      const lane = who != null && laneOf.has(who) ? laneOf.get(who) : null;
+      return { ...x, personLane: lane, personLanes: persons.length };
+    });
+    return { placed, blocks, persons };
+  };
+  const dayLayouts = days.map(layoutDay);
+
+  const calls = events.filter(e => e.kind === "call" || e.kind === "integração" || e.kind === "consulta").length;
+
+  return (
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+        <button style={navBtn} onClick={() => setDayOff(w => w - (isWeek ? 7 : 1))}>‹</button>
+        <button style={navBtn} onClick={() => setDayOff(0)}>hoje</button>
+        <button style={navBtn} onClick={() => setDayOff(w => w + (isWeek ? 7 : 1))}>›</button>
+        {/* Visão: 1 dia (faixas por closer) ou semana de 7 dias. */}
+        <span style={{ display: "inline-flex", gap: 2, marginLeft: 2 }}>
+          {[["day", "dia"], ["week", "semana"]].map(([v, lbl]) => (
+            <FilterTab key={v} active={view === v} onClick={() => setView(v)} style={{ padding: "4px 10px", fontSize: 12 }}>{lbl}</FilterTab>
+          ))}
+        </span>
+        <span style={{ fontSize: 14, fontWeight: 600, fontFamily: "var(--display)", marginLeft: 4 }}>{label}</span>
+        <span className="mono dim" style={{ fontSize: 11 }}>
+          {calls === 0 ? `nenhuma call ${isWeek ? "na semana" : "no dia"}` : `${calls} ${calls === 1 ? "call" : "calls"}`}
+        </span>
+        {/* Tipo de evento: tudo · calls · follow-ups · integrações, com a
+            contagem do dia e o pontinho na cor do tipo — a mesma da pílula. */}
+        <span style={{ display: "inline-flex", gap: 2, marginLeft: 4 }}>
+          {[["all", "tudo", null], ["call", "calls", callCount], ["follow-up", "follow-ups", fupCount], ["integração", "integrações", intCount]].map(([v, lbl, n]) => (
+            <FilterTab key={v} active={evKind === v} count={n} onClick={() => setEvKind(v)} style={{ padding: "4px 10px", fontSize: 12 }}>
+              {AGENDA_TYPE_COLORS[v] && (
+                <span style={{ width: 9, height: 9, borderRadius: 3, background: AGENDA_TYPE_COLORS[v].bg, border: `1px solid ${AGENDA_TYPE_COLORS[v].line}` }} />
+              )}
+              {lbl}
+            </FilterTab>
+          ))}
+        </span>
+        {evKind !== "all" && hiddenCount > 0 && (
+          <button onClick={() => setEvKind("all")} className="mono"
+            title="Mostrar tudo de novo (todos os tipos de evento, consultas e compromissos)"
+            style={{ height: 24, padding: "0 9px", borderRadius: 999, fontSize: 11, cursor: "pointer",
+              background: "var(--warn-soft)", color: "var(--warn)", border: "1px solid var(--warn-line, transparent)" }}>
+            {hiddenCount} {hiddenCount === 1 ? "evento escondido" : "eventos escondidos"} pelo filtro · ver tudo
+          </button>
+        )}
+        {evKind === "all" && (
+          <label className="mono" style={{ fontSize: 11, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer" }}>
+            <input type="checkbox" checked={showTouches} onChange={(e) => setShowTouches(e.target.checked)} style={{ accentColor: "var(--accent)" }} />
+            mostrar toques
+          </label>
+        )}
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, marginLeft: "auto", flexWrap: "wrap" }}>
+          {/* Pessoa = BARRINHA à esquerda da pílula; a legenda usa o mesmo desenho. */}
+          {team.map(u => (
+            <span key={u.id} className="mono" style={{ fontSize: 11, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <span style={{ width: 10, height: 13, borderRadius: 3, background: toneOf(u.id) }} />{u.name || u.id}
+            </span>
+          ))}
+          <span className="mono" style={{ fontSize: 11, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <span style={{ width: 10, height: 13, borderRadius: 3, background: "var(--fg-4)" }} />sem responsável
+          </span>
+        </span>
+      </div>
+
+      <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
+        {/* Cabeçalho dos dias */}
+        {/* Na semana, 7 colunas pedem largura mínima — em tela estreita a
+            grade rola de lado dentro do tbl-x em vez de espremer as pílulas. */}
+        <div style={{ display: "grid", gridTemplateColumns: colTemplate, minWidth: isWeek ? 960 : undefined, borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+          <span />
+          {days.map((d, i) => {
+            const isToday = d.toDateString() === new Date().toDateString();
+            const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+            // HOJE ganha cara de calendário: número no círculo cheio do accent
+            // (+ kicker "hoje"); fim de semana fica acinzentado (Leo, 23/08).
+            return (
+              <div key={i} style={{ padding: "8px 6px", textAlign: "center", borderLeft: "1px solid var(--line-1)", background: isWeekend && !isToday ? "var(--bg-2)" : undefined }}>
+                <div className="kicker" style={{ color: isToday ? "var(--accent)" : "var(--fg-4)" }}>
+                  {isToday ? "hoje · " : ""}{fmtDay(d, { weekday: "short" })}
+                </div>
+                <div style={{ marginTop: 2 }}>
+                  <span className="tnum" style={{
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    minWidth: 26, height: 26, padding: "0 6px", borderRadius: 999,
+                    fontSize: 14, fontWeight: 700, fontFamily: "var(--display)",
+                    background: isToday ? "var(--accent)" : "transparent",
+                    color: isToday ? "oklch(1 0 0)" : "var(--fg-1)",
+                  }}>{d.getDate()}</span>
+                </div>
+                {/* Nomes das faixas: mesma largura das colunas de pessoa do corpo. */}
+                {dayLayouts[i].persons.length > 0 && (
+                  <div style={{ display: "flex", marginTop: 6 }}>
+                    {dayLayouts[i].persons.map((p) => (
+                      <div key={p || "none"} className="mono" title={p ? displayName(p) : "sem responsável"}
+                        style={{ flex: 1, minWidth: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4, fontSize: 10, fontWeight: 600, color: "var(--fg-3)", overflow: "hidden" }}>
+                        <span style={{ width: 8, height: 10, borderRadius: 2, background: toneOf(p), flexShrink: 0 }} />
+                        <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p ? displayName(p).split(" ")[0] : "—"}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {/* Corpo: gutter de horas + colunas de dia com linhas por hora */}
+        <div style={{ display: "grid", gridTemplateColumns: colTemplate, minWidth: isWeek ? 960 : undefined }}>
+          <div style={{ position: "relative", height: (H1 - H0) * hourH }}>
+            {/* "7h" (i=0) fica logo abaixo do cabeçalho — a linha dele É a borda
+                do topo; centrar no risco jogava o rótulo pra cima do cabeçalho
+                e ele vivia suprimido, parecendo que o dia começava às 8h. */}
+            {Array.from({ length: H1 - H0 }, (_, i) => (
+              <span key={i} className="mono tnum" style={{ position: "absolute", top: i === 0 ? 2 : i * hourH - 6, right: 6, fontSize: 10, color: "var(--fg-4)" }}>
+                {`${H0 + i}h`}
+              </span>
+            ))}
+          </div>
+          {days.map((d, i) => {
+            const { placed, blocks: dayBlocks, persons } = dayLayouts[i];
+            const isToday = d.toDateString() === new Date().toDateString();
+            const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+            return (
+              <div key={i}
+                onClick={blocking?.onSlot ? (e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const hour = H0 + Math.floor((e.clientY - rect.top) / hourH);
+                  if (hour >= H0 && hour < H1) blocking.onSlot(d, hour);
+                } : undefined}
+                style={{
+                  position: "relative", height: (H1 - H0) * hourH,
+                  borderLeft: "1px solid var(--line-1)",
+                  // Hoje = tinta do accent (vence o cinza quando cai no fim de
+                  // semana); sáb/dom = cinza de "fora do expediente".
+                  backgroundColor: isToday ? "color-mix(in srgb, var(--accent) 7%, transparent)"
+                    : isWeekend ? "color-mix(in srgb, var(--bg-3) 55%, transparent)" : "transparent",
+                  cursor: blocking?.onSlot ? "pointer" : undefined,
+                }}>
+                {/* Linhas de hora como ELEMENTOS, não repeating-linear-gradient:
+                    o gradient de 1px em zoom fracionado do navegador caía entre
+                    pixels físicos e o anti-aliasing engolia uma linha a cada
+                    cinco (8h/13h/18h sumidas em 90% — Leo, 03/09). Borda por
+                    elemento arredonda pro pixel sozinha e aparece em qualquer
+                    zoom. */}
+                {Array.from({ length: H1 - H0 - 1 }, (_, hi) => (
+                  <div key={`hr-${hi}`} style={{ position: "absolute", left: 0, right: 0, top: (hi + 1) * hourH, borderTop: "1px solid var(--line-1)", pointerEvents: "none" }} />
+                ))}
+                {/* Linha do AGORA: só na coluna de hoje, na altura da hora atual. */}
+                {isToday && (() => {
+                  const now = new Date();
+                  const nh = now.getHours() + now.getMinutes() / 60;
+                  if (nh < H0 || nh > H1) return null;
+                  return (
+                    <div style={{ position: "absolute", left: 0, right: 0, top: (nh - H0) * hourH, borderTop: "2px solid var(--accent)", zIndex: 3, pointerEvents: "none" }}>
+                      <span style={{ position: "absolute", left: -1, top: -4, width: 8, height: 8, borderRadius: 999, background: "var(--accent)" }} />
+                    </div>
+                  );
+                })()}
+                {/* Divisórias das faixas de pessoa: a coluna de cada closer se
+                    enxerga de cima a baixo. */}
+                {persons.length > 1 && persons.slice(1).map((_, si) => (
+                  <div key={`sep-${si}`} style={{ position: "absolute", top: 0, bottom: 0, left: `${(si + 1) * (100 / persons.length)}%`, borderLeft: "1px dashed var(--line-1)", pointerEvents: "none" }} />
+                ))}
+                {(() => {
+                  // Bloqueios/compromissos: o de UMA pessoa mora na faixa dela;
+                  // o de time (vários participantes) cobre o dia inteiro, atrás
+                  // das pílulas. Filtro de tipo ligado tira tudo do caminho.
+                  return dayBlocks.map(({ b, from, to, personLane, personLanes }) => {
+                    const pw = personLanes > 0 ? 100 / personLanes : 100;
+                    const left = personLane != null ? personLane * pw : 0;
+                    const bw = personLane != null ? pw : 100;
+                    const tone = b._tone || null; // com tom = compromisso; sem = bloqueio vermelho
+                    const label = b._label || `bloqueado${b.recur === "weekly" ? " ↻" : ""}${b.reason ? ` · ${b.reason}` : ""}`;
+                    return (
+                      <div key={`blk-${b.id}`}
+                        onClick={(e) => { e.stopPropagation(); blocking.onBlock && blocking.onBlock(b); }}
+                        title={`${b._who ? b._who + " · " : ""}${label}${b.recur === "weekly" ? " · toda semana" : ""}${blocking.onBlock ? " · clique pra editar" : ""}`}
+                        style={{
+                          position: "absolute", top: (from - H0) * hourH + 1,
+                          left: `calc(${left}% + 2px)`, width: `calc(${bw}% - 4px)`,
+                          height: Math.max(16, (to - from) * hourH - 3),
+                          background: tone ? `color-mix(in srgb, ${tone} 14%, var(--bg-1))` : "color-mix(in srgb, var(--neg) 8%, var(--bg-1))",
+                          border: tone ? `1px solid color-mix(in srgb, ${tone} 45%, var(--line-1))` : "1px dashed color-mix(in srgb, var(--neg) 45%, var(--line-1))",
+                          borderLeft: `3px solid ${tone || "var(--neg)"}`,
+                          borderRadius: 5, padding: "2px 6px", cursor: blocking.onBlock ? "pointer" : "default", overflow: "hidden",
+                        }}>
+                        <div className="mono" style={{ fontSize: 9.5, fontWeight: 600, color: tone ? "var(--fg-2)" : "var(--neg)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {label}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+                {placed.map(({ l, t, kind, who, done, personLane, personLanes, sub, subs }) => {
+                  const tone = toneOf(who);
+                  const isTouch = kind === "toque";
+                  const isFollowup = kind === "follow-up";
+                  // Lead CONFIRMOU no lembrete (callConfirmed, marcado pelo robô
+                  // quando a resposta é "sim" — ou pelo botão do Meu dia): check
+                  // verde no card, o closer sabe de longe quem vai aparecer.
+                  const confirmed = !done && (kind === "call" ? !!l.callConfirmed : kind === "integração" ? !!l.integrationConfirmed : false);
+                  // Furou: card sinalizado como No show (ou perdido por "não
+                  // compareceu") E este evento é a call ATUAL do card — entrada
+                  // antiga de callHistory é remarcação, não carrega desfecho.
+                  // Só a call que JÁ PASSOU pode ter furado. Card em No show com
+                  // call FUTURA é remarcação em pé, e pintar de vermelho fazia
+                  // parecer furo que ainda nem aconteceu (Leo, 25/08).
+                  const noShow = kind === "call" && done && !!l.callAt
+                    && new Date(l.callAt).getTime() === t.getTime()
+                    && (isNoShowStage(l.stage) || l.lostReason === "nao_compareceu");
+                  // A COR DE FUNDO diz o TIPO (paleta clara + letra preta,
+                  // AGENDA_TYPE_COLORS); follow-up reforça com contorno
+                  // tracejado (vale pra daltonismo). A barrinha à esquerda é a
+                  // PESSOA. História (done) continua lavada com ✓.
+                  const tc = noShow ? AGENDA_NOSHOW : (AGENDA_TYPE_COLORS[kind] || AGENDA_TYPE_COLORS.call);
+                  const hour = Math.min(H1 - 1, Math.max(H0, t.getHours() + t.getMinutes() / 60));
+                  const pw = 100 / personLanes;
+                  const w = pw / subs;
+                  const timeStr = t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+                  return (
+                    <div key={l.id + kind + t.getTime()}
+                      onClick={(e) => { e.stopPropagation(); const target = kind === "consulta" ? l._leadRef : l; if (target && onOpenLead) onOpenLead(target); }}
+                      title={`${timeStr} · ${isFollowup ? "follow-up" : kind}${noShow ? " · NO-SHOW, o lead não compareceu" : done ? (isFollowup ? " · já passou" : " · realizada · histórico") : ""}${confirmed ? " · CONFIRMADA pelo lead" : ""} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"}`}
+                      style={{
+                        position: "absolute", top: (hour - H0) * hourH + 1,
+                        left: `calc(${personLane * pw + sub * w}% + 2px)`, width: `calc(${w}% - 4px)`,
+                        height: isTouch ? 22 : isFollowup ? Math.max(19, Math.round(hourH * 20 / 60)) : hourH - 3, // follow-up = 20 min
+                        overflow: "hidden", cursor: "pointer",
+                        background: isTouch ? "transparent" : tc.bg,
+                        border: isTouch ? `1px dashed color-mix(in srgb, ${tone} 55%, var(--line-2))`
+                          : `1px ${isFollowup ? "dashed" : "solid"} ${tc.line}`,
+                        // Faixa da PESSOA bem grossa (Leo, 23/08: "pelo menos
+                        // 5x mais grossa"): 20px, dá pra ver o closer de longe.
+                        // Na SEMANA a coluna do dia é 1/7 da largura — a faixa
+                        // afina pra 6px pra sobrar espaço pro nome do lead.
+                        borderLeft: isTouch ? `2px dashed ${tone}` : `${isWeek ? 6 : 20}px solid ${tone}`,
+                        borderRadius: 5, padding: isFollowup ? "0 6px" : isTouch ? "1px 6px" : "3px 6px",
+                        // Feita (histórico): mesma cor do closer, só lavada — dá
+                        // pra ler a semana inteira do que aconteceu sem confundir
+                        // com o que ainda vai acontecer.
+                        opacity: isTouch ? 0.85 : noShow ? 0.95 : done ? 0.62 : 1,
+                        display: isFollowup ? "flex" : undefined, alignItems: isFollowup ? "center" : undefined,
+                      }}>
+                      {isFollowup ? (
+                        <div className="mono" style={{ fontSize: 10, fontWeight: 700, color: AGENDA_INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          ↩ {timeStr} · {l.name}
+                          {l.callUrl && <a href={l.callUrl} target="_blank" rel="noopener noreferrer" title="Entrar na videochamada" onClick={(e) => e.stopPropagation()} style={{ marginLeft: 4, textDecoration: "none" }}>🎥</a>}
+                        </div>
+                      ) : (
+                        <>
+                          <div className="mono tnum" style={{ fontSize: 9.5, color: isTouch ? "var(--fg-3)" : AGENDA_INK_SOFT, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {isTouch ? `○ ${l.name}` : `${noShow ? "✕ " : done ? "✓ " : ""}${timeStr}${who ? ` · ${displayName(who).split(" ")[0]}` : ""}${kind === "integração" ? " · int" : kind === "consulta" ? " · 1:1" : ""}`}
+                            {noShow && (
+                              <span title="O lead não compareceu"
+                                style={{ marginLeft: 4, padding: "0 5px", borderRadius: 4, background: AGENDA_NOSHOW.line, color: "#fff", fontSize: 8.5, fontWeight: 800, letterSpacing: "0.04em", verticalAlign: "text-bottom" }}>FUROU</span>
+                            )}
+                            {confirmed && (
+                              <span title="Lead confirmou no lembrete"
+                                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 12, height: 12, borderRadius: 99, background: "var(--pos)", color: "#fff", fontSize: 8.5, fontWeight: 800, marginLeft: 4, verticalAlign: "text-bottom" }}>✓</span>
+                            )}
+                            {!isTouch && (kind === "call" || kind === "consulta") && l.callUrl && (
+                              <a href={l.callUrl} target="_blank" rel="noopener noreferrer" title="Entrar na videochamada"
+                                onClick={(e) => e.stopPropagation()} style={{ marginLeft: 4, textDecoration: "none" }}>🎥</a>
+                            )}
+                          </div>
+                          {!isTouch && <div style={{ fontSize: 11.5, fontWeight: 600, color: AGENDA_INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</div>}
+                          {!isTouch && l.company && <div style={{ fontSize: 10, color: AGENDA_INK_SOFT, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.company}</div>}
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export { AgendaView, laneByCluster };
