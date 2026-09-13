@@ -384,7 +384,18 @@ function personRows(p, bizDays, elapsedFrac, monthFrac) {
     const g = p.cs.goals || {};
     rows.push({ label: "contas ativas", valueText: int(p.cs.activeAccounts), metaText: null, lvl: null, title: "Clientes na carteira dele" });
     rate("retenção", p.cs.retentionRate, g.retentionRate?.target || 95, "Base que ficou (100 − churn)");
-    if (p.cs.nps != null || g.nps?.target) rate("nps", p.cs.nps, g.nps?.target || 80, "NPS médio das contas dele");
+    // NPS é índice (-100 a 100), não taxa: sai da régua do rate(), que
+    // carimbaria "%" num número que não é percentual.
+    if (p.cs.nps != null || g.nps?.target) {
+      const alvo = g.nps?.target || 80;
+      rows.push({
+        label: "nps", valueText: p.cs.nps == null ? "—" : int(p.cs.nps), metaText: int(alvo),
+        lvl: p.cs.nps == null ? null : levelOf(p.cs.nps, alvo, 1),
+        title: p.cs.npsCount
+          ? `Índice de NPS das contas dele (promotores − detratores) · ${int(p.cs.npsCount)} ${p.cs.npsCount === 1 ? "resposta" : "respostas"}${p.cs.npsCount < 5 ? ", amostra pequena" : ""}`
+          : "Índice de NPS das contas dele (promotores − detratores) · nenhuma resposta ainda",
+      });
+    }
     flow("indicações", p.cs.referrals, monthGoal(g.referrals), "Indicações recebidas na janela vs. a meta do mês (nº do time)");
   }
   if (p.social) {

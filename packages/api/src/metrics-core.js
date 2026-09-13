@@ -259,6 +259,25 @@ export function churnRateIn(customers, { since, until }) {
   return { churned, base, pct, retentionRate };
 }
 
+// NPS: ÍNDICE clássico, não média das notas. Cada resposta é 0 a 10; promotor
+// é 9-10, detrator é 0-6, e o índice é (promotores − detratores) ÷ respostas,
+// de -100 a 100. É essa a régua que o "NPS >= 80" do plano de remuneração
+// cobra: média das notas daria 8, outro número e outra conversa. Sem resposta,
+// index = null (nunca 0, que passaria por "neutro" sendo "não sei").
+export function npsIndex(scores) {
+  // `Number("")` e `Number(null)` são 0, que aqui viraria detrator: nota em
+  // branco tem que sumir da base, nunca virar a pior nota possível.
+  const notas = (scores || [])
+    .filter((v) => v !== "" && v !== null && v !== undefined && typeof v !== "boolean")
+    .map(Number)
+    .filter((n) => Number.isFinite(n) && n >= 0 && n <= 10);
+  const count = notas.length;
+  if (!count) return { index: null, promoters: 0, passives: 0, detractors: 0, count: 0 };
+  const promoters = notas.filter((n) => n >= 9).length;
+  const detractors = notas.filter((n) => n <= 6).length;
+  return { index: round2(((promoters - detractors) / count) * 100), promoters, passives: count - promoters - detractors, detractors, count };
+}
+
 // TCV de um conjunto de leads (valor CONTRATADO, lançado no fechamento).
 export const tcvOf = (leads) => round2(leads.reduce((a, l) => a + (Number(l.amount) || 0), 0));
 

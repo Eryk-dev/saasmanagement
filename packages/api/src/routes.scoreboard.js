@@ -21,6 +21,7 @@ import {
   saleValuer, revenueOf, tcvOf,
   upsellSalesIn, upsellValuer, upsellRevenueOf, upsellContractedOf, isKeyAccountUpsell,
   churnRateIn,
+  npsIndex,
 } from "./metrics-core.js";
 import { isMentoriaLead } from "./mentoria.js";
 import { isChurnedCustomer } from "./churn.js";
@@ -640,9 +641,12 @@ export async function computeScoreboard(repo, product, query = {}, { now = () =>
       // churnadas nela); sem churn = 100% (honesto). A régua é a churnRateIn
       // do metrics-core, a MESMA do churn da empresa (bônus de time).
       const { churned, retentionRate } = churnRateIn(mine, { since, until });
-      // NPS médio das contas dele (coleção nps: { customer, score }). Sem dado → null.
+      // NPS das contas dele: ÍNDICE clássico (promotores − detratores), a régua
+      // do npsIndex no metrics-core — é o que o bônus de NPS >= 80 do plano de
+      // remuneração cobra. Sem resposta → null.
       const scores = npsSaas.filter((n) => mineIds.has(n.customer) && Number.isFinite(Number(n.score))).map((n) => Number(n.score));
-      const nps = scores.length ? round2(scores.reduce((a, s) => a + s, 0) / scores.length) : null;
+      const npsStats = npsIndex(scores);
+      const nps = npsStats.index;
       // Upsells dele na janela: nº = registros (pago ou a receber, pela data do
       // registro/pagamento); R$ = só o que CAIU (fatura paga), a mesma régua de
       // receita reconhecida do resto do cockpit.
@@ -656,7 +660,7 @@ export async function computeScoreboard(repo, product, query = {}, { now = () =>
         newAccounts,
         churned,
         retentionRate,
-        nps, npsCount: scores.length,
+        nps, npsCount: npsStats.count, npsPromoters: npsStats.promoters, npsDetractors: npsStats.detractors,
         upsells, upsellRevenue, referrals: refsOf(uid).collected,
         goals: goalMap(uid, "integrator", ["newAccounts", "activeAccounts", "retentionRate", "nps", "upsells", "upsellRevenue", "referrals"]),
       };
