@@ -458,7 +458,19 @@ function SocialScreen() {
     Object.entries(sum?.interactionTypes || {}).map(([key, value]) => ({ key, value })).sort((a, b) => b.value - a.value),
     { topN: 5, label: (k) => INTERACTION_LABEL[k] || k },
   );
-  const recent = (sum?.media?.length ? sum.media : posts).slice(0, 6);
+  // AS QUE MAIS RENDERAM PRIMEIRO (13/09), não a ordem do feed: a pergunta da
+  // tela é "o que funcionou", e isso não se lê em ordem cronológica. O toggle
+  // devolve a ordem do feed pra quem quer conferir o que saiu ontem.
+  const [ordemPosts, setOrdemPosts] = React.useState("alcance"); // alcance | data
+  const recent = React.useMemo(() => {
+    const base = (sum?.media?.length ? sum.media : posts).slice();
+    if (ordemPosts === "alcance") {
+      base.sort((a, b) => (Number(b.reach) || Number(b.views) || 0) - (Number(a.reach) || Number(a.views) || 0));
+    } else {
+      base.sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")));
+    }
+    return base.slice(0, 6);
+  }, [sum?.media, posts, ordemPosts]);
   const durations = useVideoDurations(recent);
   const formatLabel = (item) => item.format
     ? (FORMATS.find((f) => f.id === item.format)?.label || item.format)
@@ -523,14 +535,21 @@ function SocialScreen() {
               <StatTile label="Posts no mês" value={fmtNum(eng?.posts ?? 0)} delta={`de 12 · meta mensal`} />
             </div>
 
-            {/* Segunda faixa: as demais métricas de perfil que o Instagram libera
-                no período (já vêm do igInsights). "–" = a conta não expõe. */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-              <StatTile label="Views · 30 dias" value={fmtNum(ins.views)} delta="visualizações totais" />
-              <StatTile label="Visitas ao perfil" value={fmtNum(ins.profile_views)} delta="no período" />
-              <StatTile label="Contas engajadas" value={fmtNum(ins.accounts_engaged)} delta="curtiram, comentaram, salvaram…" />
-              <StatTile label="Interações · 30 dias" value={fmtNum(ins.total_interactions)} delta="curtidas + coment. + salvos + compart." />
-              <StatTile label="Cliques no link" value={fmtNum((ins.profile_links_taps != null || ins.website_clicks != null) ? (ins.profile_links_taps || 0) + (ins.website_clicks || 0) : null)} delta="no perfil e na bio" />
+            {/* A SEGUNDA faixa de cinco tiles virou "mais números ⓘ" (13/09):
+                são métricas de consulta, não de decisão — ninguém muda o
+                calendário por causa de "cliques no link". O número continua
+                inteiro, num lugar só. */}
+            <div style={{ marginTop: -4 }}>
+              <span className="mono" style={{ fontSize: 11, color: "var(--fg-4)", cursor: "help", borderBottom: "1px dotted var(--line-2)" }}
+                title={[
+                  `views no período: ${fmtNum(ins.views)}`,
+                  `visitas ao perfil: ${fmtNum(ins.profile_views)}`,
+                  `contas engajadas: ${fmtNum(ins.accounts_engaged)}`,
+                  `interações: ${fmtNum(ins.total_interactions)}`,
+                  `cliques no link (perfil e bio): ${fmtNum((ins.profile_links_taps != null || ins.website_clicks != null) ? (ins.profile_links_taps || 0) + (ins.website_clicks || 0) : null)}`,
+                ].join("\n")}>
+                mais números ⓘ
+              </span>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 16 }}>
@@ -607,7 +626,20 @@ function SocialScreen() {
                 automático e o flex column do scroll ESMAGA o card quando o
                 conteúdo passa da altura da janela — a tabela era comprimida
                 até sumir e a página "não rolava" pra mostrar o resto. */}
-            <Card title="Publicações recentes" hint={'o histórico do "criar post" aparece aqui'} style={{ overflow: "hidden", flexShrink: 0 }}>
+            <Card title="Publicações" hint={ordemPosts === "alcance" ? "as que mais renderam primeiro" : "na ordem do feed"} style={{ overflow: "hidden", flexShrink: 0 }}
+              action={(
+                <span style={{ display: "inline-flex", gap: 2 }}>
+                  {[["alcance", "por alcance"], ["data", "por data"]].map(([id, rot]) => (
+                    <button key={id} onClick={() => setOrdemPosts(id)} className="mono"
+                      style={{ height: 26, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                        background: ordemPosts === id ? "var(--accent-soft)" : "transparent",
+                        color: ordemPosts === id ? "var(--accent)" : "var(--fg-3)",
+                        border: "1px solid " + (ordemPosts === id ? "var(--accent-line)" : "var(--line-2)") }}>
+                      {rot}
+                    </button>
+                  ))}
+                </span>
+              )}>
              {/* .tbl-x: as colunas de métricas (todas as que o Instagram libera)
                  rolam na horizontal. */}
              <div className="tbl-x"><div style={{ minWidth: 1500 }}>
@@ -1054,14 +1086,36 @@ function CommentsPanel({ saas, onCount }) {
       )}
       {data?.errors?.setup && <div className="mono" style={{ fontSize: 11.5, color: "var(--warn)" }}>{data.errors.setup}</div>}
 
+      {/* A ABA VIRA FILA (13/09): eram quatro tiles de peso igual pra uma tela
+          cuja única pergunta é "quem está esperando resposta". O aviso com o
+          prazo sobe pro topo com a ação ao lado; o resto vira contexto da mesma
+          linha. */}
       {ins && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-          <StatTile label="Esperando resposta" value={fmtNum(ins.pending)}
-            delta={ins.oldestPendingHours != null ? `o mais antigo há ${ins.oldestPendingHours >= 24 ? `${Math.round(ins.oldestPendingHours / 24)}d` : `${ins.oldestPendingHours}h`}` : "fila zerada"} />
-          <StatTile label="Tempo de resposta" value={ins.medianReplyMinutes == null ? "—" : ins.medianReplyMinutes >= 60 ? `${Math.round(ins.medianReplyMinutes / 60)}h` : `${ins.medianReplyMinutes} min`}
-            delta={ins.replySample ? `mediana de ${ins.replySample} respostas` : "sem resposta no período"} />
-          <StatTile label="Respondidos · 30 dias" value={ins.answeredRate == null ? "—" : `${ins.answeredRate}%`} delta={`${fmtNum(ins.answered)} de ${fmtNum(ins.inPeriod)} comentários`} />
-          <StatTile label="Ocultos" value={fmtNum(ins.hidden)} delta="some pra todo mundo menos pra quem escreveu" />
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "11px 16px", borderRadius: "var(--r-3)",
+          border: "1px solid " + (ins.pending > 0 ? "color-mix(in srgb, var(--warn) 30%, transparent)" : "var(--line-1)"),
+          background: ins.pending > 0 ? "var(--warn-soft)" : "var(--bg-1)" }}>
+          <span style={{ fontSize: 13.5, fontWeight: 650, color: ins.pending > 0 ? "var(--warn)" : "var(--pos)" }}>
+            {ins.pending > 0
+              ? `${fmtNum(ins.pending)} ${ins.pending === 1 ? "comentário esperando resposta" : "comentários esperando resposta"}`
+              : "nenhum comentário esperando"}
+          </span>
+          {ins.pending > 0 && ins.oldestPendingHours != null && (
+            <span style={{ fontSize: 12.5, color: "var(--fg-2)" }}>
+              {`o mais antigo há ${ins.oldestPendingHours >= 24 ? `${Math.round(ins.oldestPendingHours / 24)}d` : `${ins.oldestPendingHours}h`}`}
+            </span>
+          )}
+          <span className="mono dim" style={{ fontSize: 11 }}>
+            {[
+              ins.answeredRate != null ? `respondemos ${ins.answeredRate}% em 30 dias` : null,
+              ins.medianReplyMinutes != null ? `tempo típico ${ins.medianReplyMinutes >= 60 ? `${Math.round(ins.medianReplyMinutes / 60)} h` : `${ins.medianReplyMinutes} min`}` : null,
+              ins.hidden > 0 ? `${fmtNum(ins.hidden)} ocultos no período` : null,
+            ].filter(Boolean).join(" · ")}
+          </span>
+          {ins.pending > 0 && status !== "pending" && (
+            <button onClick={() => setStatus("pending")} style={{ marginLeft: "auto", height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: 0, background: "var(--warn)", color: "oklch(1 0 0)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+              responder agora
+            </button>
+          )}
         </div>
       )}
 
