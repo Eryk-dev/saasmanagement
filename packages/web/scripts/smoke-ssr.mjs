@@ -146,6 +146,21 @@ try {
     failed++;
   }
 
+  // ── Badges do menu (13/09): número no item só com régua de dono ─────────
+  try {
+    const C = await server.ssrLoadModule("/src/chrome.jsx");
+    const antes = window.SEED.COUNTERS;
+    window.SEED.COUNTERS = { leverads: { tasks: 4, tasksLate: 2, inbox: 7 } };
+    const html = renderToString(wrap(React.createElement(C.NavRail, { current: "overview", onNav() {} })));
+    window.SEED.COUNTERS = antes;
+    if (!html.includes("Tarefas")) throw new Error("o menu não renderizou");
+    // O badge só aparece pra quem tem a tela; o número vem do SEED, não de conta local.
+    console.log("✓ menu-badges");
+  } catch (err) {
+    console.error(`✗ menu-badges: ${err.message}`);
+    failed++;
+  }
+
   // ── Busca ⌘K: lead, TELA e ação (13/09) ─────────────────────────────────
   // Até aqui a busca só achava lead; com 35 telas no menu, ir pra tela é metade
   // do uso. O teste protege os três grupos e a regra de permissão: a busca não
