@@ -487,7 +487,23 @@ export function TasksScreen() {
 
   return (
     <div ref={rootRef} style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead title="Tarefas" sub={selectMode ? "modo seleção: clique marca os cards · Esc sai" : "quadro do time · arraste para mover · Enter cria · ✓ conclui · ? atalhos"}>
+      {/* O cabeçalho diz o ESTADO do quadro (13/09): atrasadas e o que vence
+          nesta semana são o que faz alguém abrir a tela; o resto (como arrasta,
+          como cria) é dica de uso e mora no "? atalhos". */}
+      <PageHead title="Tarefas" sub={selectMode ? "modo seleção: clique marca os cards · Esc sai" : (() => {
+        const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+        const fimSemana = new Date(hoje); fimSemana.setDate(hoje.getDate() + (7 - hoje.getDay()));
+        const abertas = (tasks || []).filter((t) => !t.completed && !t.parentId);
+        const dia = (t) => (t.dueDate ? new Date(`${t.dueDate}T12:00:00`) : null);
+        const atrasadas = abertas.filter((t) => { const d = dia(t); return d && d < hoje; }).length;
+        const semana = abertas.filter((t) => { const d = dia(t); return d && d >= hoje && d <= fimSemana; }).length;
+        return [
+          "quadro do time",
+          atrasadas ? `${atrasadas} ${atrasadas === 1 ? "atrasada" : "atrasadas"}` : null,
+          semana ? `${semana} ${semana === 1 ? "pra esta semana" : "para esta semana"}` : null,
+          "? atalhos",
+        ].filter(Boolean).join(" · ");
+      })()}>
         <Toolbar prefs={prefs} setPrefs={setPrefs} users={users} labelOptions={labelOptions} labelColors={labelColors} columns={columns} q={q} setQ={setQ} searchRef={searchRef} onHelp={() => setHelp(true)}
           onNew={<PrimaryButton onClick={() => { const key = groups[0]?.key || columns[0].key; setPrefs((p) => ({ ...p, view: "board", collapsed: { ...p.collapsed, [key]: false } })); setComposer({ colKey: key, position: "top" }); boardRef.current?.scrollTo({ left: 0, behavior: "smooth" }); }}>+ Tarefa</PrimaryButton>} />
       </PageHead>
