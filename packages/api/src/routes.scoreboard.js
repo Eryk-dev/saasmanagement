@@ -8,9 +8,9 @@
 // Retenção lê o evento de churn do cliente (customer.endedAt — churn.js).
 
 import { cadenceOf, firstStage, isLoss, kindOf, TOUCH_TYPES } from "./stages.js";
-import { compGoalFor, compLevelOf } from "./comp-plan.js";
+import { teamBonusProducts, compGoalFor, compLevelOf } from "./comp-plan.js";
 import { TEAM_METRICS, META_CATALOG, deriveGoalsFromPace } from "./routes.metas.js";
-import { RATE_BENCHMARKS, computePipelinePace } from "./routes.pipeline-pace.js";
+import { computeWindowGoal, RATE_BENCHMARKS, computePipelinePace } from "./routes.pipeline-pace.js";
 import {
   DAY_MS as DAY, round2, dayKey, rangeFromQuery, isRealLead, isSaleLead, isWonLead,
   callOutcome as coreCallOutcome, callResultOf as coreCallResultOf, callCohortIn,
@@ -47,6 +47,38 @@ const median = (arr) => {
 // dentro do servidor (fechamento do mês em comp-months.js): a rota só resolve
 // o produto e responde 404. O corpo mantém a indentação da época da rota de
 // propósito, pra preservar o blame e não brigar com os outros PRs em voo.
+// Estado do bônus de time no mês de uma data: a meta de venda da empresa foi
+// batida E o churn ficou abaixo do limiar? Mês ainda correndo devolve o mesmo
+// formato com `source: "live"` (é o "no ritmo" que a Visão geral mostra).
+export async function teamBonusStatus(repo, product, until, { customers = null, compDocs = null, now = new Date() } = {}) {
+  const docs = compDocs || await repo.list("comp_plans").catch(() => []);
+  if (!teamBonusProducts(docs).includes(product.id)) return { applies: false };
+  const mes = String(until).slice(0, 7);
+  const ini = `${mes}-01`;
+  const fimDate = new Date(Date.UTC(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)), 0));
+  const fim = fimDate.toISOString().slice(0, 10);
+  const hoje = new Date(now.getTime() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+  const fechado = fim < hoje;
+  const alvoFim = fechado ? fim : hoje;
+
+  const goal = await computeWindowGoal(repo, product, ini, alvoFim, now);
+  const base = customers || await repo.list("customers").catch(() => []);
+  const churn = churnRateIn(base.filter((c) => c.saas === product.id), { since: ini, until: alvoFim });
+  const csPlan = (docs.find((d) => d && d.role === "cs")?.plan) || {};
+  const churnMax = Number(csPlan.churnMax) > 0 ? Number(csPlan.churnMax) : 15;
+
+  const cashOk = goal.sale.target > 0 && goal.sale.sold >= goal.sale.target;
+  const churnOk = churn.pct == null || churn.pct < churnMax;
+  return {
+    applies: true,
+    month: mes,
+    cash: { sold: goal.sale.sold, target: goal.sale.target, ok: cashOk },
+    churn: { churned: churn.churned, base: churn.base, pct: churn.pct, max: churnMax, ok: churnOk },
+    ok: cashOk && churnOk,
+    source: fechado ? "closed" : "live",
+  };
+}
+
 export async function computeScoreboard(repo, product, query = {}, { now = () => new Date() } = {}) {
     const { since, until } = rangeFromQuery(query || {});
     // Hoje (dia do negócio): separa call já VENCIDA (não veio) de call marcada
@@ -927,6 +959,14 @@ export async function computeScoreboard(repo, product, query = {}, { now = () =>
         .sort((a, b) => b.value - a.value || b.collected - a.collected),
       team: teamReferrals,
     };
+
+    // BÔNUS DE TIME (a parcela coletiva do plano): as duas condições do mês em
+    // que `until` cai. A meta é a MESMA faixa "Meta do mês" da Visão geral
+    // (computeWindowGoal), e o churn é a régua única do metrics-core. Só o
+    // ESTADO vai no placar, nunca o valor: salário é dado privado da tela de
+    // Remuneração, que é admin-only.
+    team.teamBonus = await teamBonusStatus(repo, product, until, { customers: allCustomers, compDocs: compPlansAll, now: now() })
+      .catch(() => null);
 
     return { saas: product.id, since, until, sdr, closer, cs, social, team, mentoria, referrals };
 }
