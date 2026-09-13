@@ -4,7 +4,7 @@ import { useData } from "../data.jsx";
 import { usersByRole, currentUser, displayName, userColor } from "../lib/users.js";
 import { PageHead, Segmented } from "../components/viz.jsx";
 import { PrimaryButton } from "../atoms.jsx";
-import { AgendaView, AGENDA_TYPE_COLORS } from "./agenda-grid.jsx";
+import { AgendaView } from "./agenda-grid.jsx";
 import { stageKind } from "../lib/funnel.js";
 import { useActiveSaas } from "../lib/workspace.js";
 
@@ -33,6 +33,13 @@ const quarterHours = (from, to) => Array.from({ length: Math.round((to - from) *
 // fechado/perdido (o callAt vira história).
 const DEAD_CALL_KINDS = new Set(["followup", "ganho", "integracao", "posvenda", "perdido", "desqualificado"]);
 const WD_LABEL = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+// As quatro visões da agenda. Dia e Semana já existiam dentro da grade (num
+// par de FilterTab perdido no meio dos filtros); Mês e Equipe entram no
+// redesign de 12/09.
+const VIEW_OPTIONS = [
+  { value: "day", label: "Dia" },
+  { value: "week", label: "Semana" },
+];
 
 export function AgendaScreen({ onOpenLead }) {
   const { version } = useData();
@@ -73,6 +80,12 @@ export function AgendaScreen({ onOpenLead }) {
   const [notice, setNotice] = useS("");
   const noticeT = React.useRef(null);
   const flash = (msg) => { setNotice(msg); clearTimeout(noticeT.current); noticeT.current = setTimeout(() => setNotice(""), 4000); };
+
+  // VISÃO: dia · semana · mês · equipe. Mora aqui (e não dentro da grade)
+  // porque o alternador é do cabeçalho da tela, ao lado de "+ compromisso" —
+  // a grade continua guardando a escolha no mesmo localStorage.
+  const [view, setViewState] = useS(() => { try { return localStorage.getItem("cockpit_agenda_view") || "day"; } catch { return "day"; } });
+  const setView = (v) => { setViewState(v); try { localStorage.setItem("cockpit_agenda_view", v); } catch { /* ignore */ } };
 
   // Filtro por pessoa: mostra só os eventos/itens dela ("" = time inteiro).
   const [person, setPersonState] = useS(() => { try { return localStorage.getItem("cockpit_agenda_person") || ""; } catch { return ""; } });
@@ -204,53 +217,15 @@ export function AgendaScreen({ onOpenLead }) {
           {notice && (
             <span style={{ padding: "7px 12px", borderRadius: "var(--r-2)", background: "var(--warn-soft)", color: "var(--warn)", fontSize: 12.5, fontWeight: 500 }}>{notice}</span>
           )}
+          <Segmented value={view} onChange={setView} options={VIEW_OPTIONS} />
           <PrimaryButton onClick={() => setEditor({ block: null, date: ymd(new Date()), fromHour: 9 })}>+ compromisso</PrimaryButton>
         </span>
       </PageHead>
       <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 14 }}>
-        {/* Filtro por pessoa: calls/integrações/consultas + compromissos/bloqueios dela */}
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <span className="kicker">Agenda de</span>
-          {[{ id: "", name: "todos" }, ...people].map((p) => {
-            const on = person === p.id;
-            return (
-              <button key={p.id || "all"} onClick={() => setPerson(p.id)}
-                style={{ height: 32, padding: "0 13px", borderRadius: 999, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
-                  background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-2)",
-                  border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)") }}>
-                {p.id ? (p.name || displayName(p.id)) : "todos"}
-              </button>
-            );
-          })}
-        </div>
-
-        <AgendaView leads={leads} consultations={consultas} onOpenLead={onOpenLead} person={person || null} blocking={{ blocksFor, onSlot, onBlock }} />
-
-        <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center", fontSize: 12.5, color: "var(--fg-3)" }}>
-          {/* A COR diz o tipo (mesma paleta das pílulas); a barrinha diz a pessoa. */}
-          {Object.entries(AGENDA_TYPE_COLORS).map(([k, c]) => (
-            <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <span style={{ width: 12, height: 12, borderRadius: 3, background: c.bg, border: `1px ${k === "follow-up" ? "dashed" : "solid"} ${c.line}` }} />
-              {c.label}
-            </span>
-          ))}
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: 10, height: 13, borderRadius: 3, background: "var(--accent)" }} />
-            faixa = responsável
-          </span>
-          <span>✓ lavada = já aconteceu</span>
-          <span><span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 3, background: "oklch(0.90 0.07 25)", border: "1px solid oklch(0.60 0.14 25)", verticalAlign: "text-bottom" }} /> vermelha = furou (no-show)</span>
-          <span><span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 12, height: 12, borderRadius: 99, background: "var(--pos)", color: "#fff", fontSize: 8.5, fontWeight: 800, verticalAlign: "text-bottom" }}>✓</span> = lead confirmou no lembrete</span>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: 10, height: 10, borderRadius: 3, background: "var(--accent-soft)", border: "1px solid var(--accent)" }} />
-            compromisso na cor da pessoa · clique pra editar
-          </span>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: 10, height: 10, borderRadius: 3, background: "color-mix(in srgb, var(--neg) 8%, var(--bg-1))", border: "1px dashed var(--neg)" }} />
-            bloqueado · ↻ = toda semana
-          </span>
-          <span>compromissos e bloqueios ocupam a agenda: nenhuma call cai em cima</span>
-        </div>
+        <AgendaView leads={leads} consultations={consultas} onOpenLead={onOpenLead}
+          person={person || null} people={people} onPerson={setPerson}
+          view={view} onView={setView}
+          blocking={{ blocksFor, onSlot, onBlock }} />
       </div>
 
       {editor && (
