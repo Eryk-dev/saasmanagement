@@ -151,9 +151,13 @@ try {
     const C = await server.ssrLoadModule("/src/chrome.jsx");
     const antes = window.SEED.COUNTERS;
     window.SEED.COUNTERS = { leverads: { tasks: 4, tasksLate: 2, inbox: 7 } };
-    const html = renderToString(wrap(React.createElement(C.NavRail, { current: "overview", onNav() {} })));
+    const html = renderToString(wrap(React.createElement(C.NavRail, { current: "overview", onNav() {}, onSearch() {} })));
     window.SEED.COUNTERS = antes;
     if (!html.includes("Tarefas")) throw new Error("o menu não renderizou");
+    // 14a: produto ativo explícito, busca no rail e grupos que recolhem.
+    if (!html.includes("produto ativo")) throw new Error("o topo não diz qual é o produto ativo");
+    if (!html.includes("buscar lead, cliente, tela")) throw new Error("a busca saiu do rail");
+    if (!html.includes("comercial")) throw new Error("os grupos sumiram");
     // O badge só aparece pra quem tem a tela; o número vem do SEED, não de conta local.
     console.log("✓ menu-badges");
   } catch (err) {

@@ -174,7 +174,7 @@ const GROUP_LABELS = {
   geral: "geral",
 };
 
-function NavRail({ current, onNav, collapsed }) {
+function NavRail({ current, onNav, collapsed, onSearch }) {
   const w = collapsed ? 56 : 228;
   const [product] = useActiveSaas();
   const brand = BRANDS[product?.id] || { label: product?.name || "Cockpit", Icon: GenericMark };
@@ -208,6 +208,8 @@ function NavRail({ current, onNav, collapsed }) {
       return (q?.hoje || []).filter((it) => !it.done).length;
     } catch { return 0; }
   }, [product?.id, window.SEED?.LEADS]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Grupo fechado não pode esconder fogo: o cabeçalho soma os badges de dentro.
+  const badgeDoGrupo = (g) => g.items.reduce((soma, it) => soma + (badgeDe(it.id)?.n || 0), 0);
   const badgeDe = (id) => {
     if (id === "pipeline" && lateCount > 0) return { n: lateCount, texto: `${lateCount} atrasados`, tone: "neg", title: `${lateCount} leads com o toque vencido` };
     if (id === "today" && filaHoje > 0) return { n: filaHoje, texto: String(filaHoje), tone: "mut", title: `${filaHoje} na sua fila de hoje` };
@@ -215,6 +217,21 @@ function NavRail({ current, onNav, collapsed }) {
     if (id === "whatsapp" && cont.inbox > 0) return { n: cont.inbox, texto: String(cont.inbox), tone: "neg", title: `${cont.inbox} conversas não lidas` };
     return null;
   };
+  // GRUPOS QUE RECOLHEM (13/09): 35 itens numa lista só viravam uma coluna de
+  // rolagem em que ninguém achava nada. O grupo da tela aberta fica SEMPRE
+  // aberto (senão você não vê onde está) e a escolha persiste.
+  const [fechados, setFechados] = useS(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("cockpit_nav_fechados") || "[]")); } catch { return new Set(); }
+  });
+  const alternar = (key) => setFechados((atual) => {
+    const proximo = new Set(atual);
+    if (proximo.has(key)) proximo.delete(key); else proximo.add(key);
+    try { localStorage.setItem("cockpit_nav_fechados", JSON.stringify([...proximo])); } catch { /* ignore */ }
+    return proximo;
+  });
+  // "mais N em <grupo>": o grupo mostra os 5 primeiros e revela o resto.
+  const [vertudo, setVerTudo] = useS(() => new Set());
+  const LIMITE = 5;
   const groups = [];
   // "settings" aparece pra TODO usuário: quem não tem a tela liberada abre a
   // versão reduzida (só a conexão Google pessoal) — ver SettingsLite.
@@ -235,24 +252,45 @@ function NavRail({ current, onNav, collapsed }) {
       transition: "width 180ms ease",
       overflow: "hidden",
     }}>
-      <div style={{ padding: "0 16px", display: "flex", alignItems: "center", gap: 10, height: 58, flexShrink: 0, borderBottom: "1px solid var(--line-faint)" }}>
-        <brand.Icon />
-        {!collapsed && (
-          <div style={{ lineHeight: 1.1, minWidth: 0 }}>
-            <div style={{ fontFamily: "var(--display)", fontSize: 15, fontWeight: 700, color: "var(--fg-1)", letterSpacing: "-0.01em" }}>{brand.label}</div>
-          </div>
+      {/* O PRODUTO ATIVO FICA EXPLÍCITO (13/09): a marca sozinha no topo não
+          dizia que ela É o contexto do cockpit inteiro, e o seletor vivia no
+          pé, longe do nome. Agora é um card só: marca + "produto ativo" + o
+          alternador. */}
+      <div style={{ padding: collapsed ? "10px 8px" : 10, flexShrink: 0, borderBottom: "1px solid var(--line-faint)", display: "flex", flexDirection: "column", gap: 8 }}>
+        <WorkspaceSwitcher collapsed={collapsed} brand={brand} />
+        {!collapsed && onSearch && (
+          <button onClick={onSearch} title="Buscar lead, cliente ou tela (⌘K)"
+            style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", height: 32, padding: "0 8px 0 10px",
+              border: "1px solid var(--line-1)", background: "var(--bg-inset)", borderRadius: "var(--r-2)",
+              color: "var(--fg-4)", fontSize: 12.5, cursor: "pointer" }}>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>buscar lead, cliente, tela…</span>
+            <span className="kbd" style={{ marginLeft: "auto", fontSize: 9.5 }}>⌘K</span>
+          </button>
         )}
       </div>
 
       <div style={{ flex: 1, padding: 10, overflowY: "auto", overflowX: "hidden", display: "flex", flexDirection: "column", gap: 4 }}>
-        {groups.map(g => (
-          <div key={g.key} style={{ marginBottom: 10 }}>
-            {!collapsed && GROUP_LABELS[g.key] && (
-              <div className="kicker" style={{ fontWeight: 600, padding: "10px 10px 6px" }}>
-                {GROUP_LABELS[g.key]}
-              </div>
+        {groups.map(g => {
+          const temLabel = !collapsed && !!GROUP_LABELS[g.key];
+          const daTelaAberta = g.items.some((x) => x.id === current);
+          const aberto = collapsed || !temLabel || daTelaAberta || !fechados.has(g.key);
+          const todos = vertudo.has(g.key) || g.items.length <= LIMITE + 1;
+          const itens = !aberto ? [] : (todos ? g.items : g.items.slice(0, LIMITE));
+          const escondidos = aberto && !todos ? g.items.length - itens.length : 0;
+          return (
+          <div key={g.key} style={{ marginBottom: aberto ? 10 : 2 }}>
+            {temLabel && (
+              <button onClick={() => alternar(g.key)}
+                title={aberto ? `recolher ${GROUP_LABELS[g.key]}` : `abrir ${GROUP_LABELS[g.key]}`}
+                style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "10px 10px 6px", background: "transparent", border: 0, cursor: "pointer", textAlign: "left" }}>
+                <span className="kicker" style={{ fontWeight: 600 }}>{GROUP_LABELS[g.key]}</span>
+                {!aberto && badgeDoGrupo(g) > 0 && (
+                  <span className="tnum" style={{ padding: "0 6px", borderRadius: 999, background: "var(--neg-soft)", color: "var(--neg)", fontSize: 10, fontWeight: 700 }}>{badgeDoGrupo(g)}</span>
+                )}
+                <span className="dim" style={{ marginLeft: "auto", fontSize: 9 }}>{aberto ? "▾" : "›"}</span>
+              </button>
             )}
-            {g.items.map(item => {
+            {itens.map(item => {
               const active = current === item.id;
               // O MENU DIZ ONDE TEM FOGO (13/09). Pipeline sai da régua do
               // próprio pipeline (nextTouch "late") com os leads do SEED;
@@ -291,12 +329,22 @@ function NavRail({ current, onNav, collapsed }) {
                 </button>
               );
             })}
+            {escondidos > 0 && (
+              <button onClick={() => setVerTudo((v) => new Set([...v, g.key]))} className="mono"
+                style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "6px 10px", background: "transparent", border: 0, color: "var(--fg-4)", fontSize: 11, cursor: "pointer", textAlign: "left" }}>
+                <span style={{ width: 16, textAlign: "center" }}>⋯</span>
+                {`mais ${escondidos} em ${GROUP_LABELS[g.key] || "geral"}`}
+              </button>
+            )}
           </div>
-        ))}
+          );
+        })}
       </div>
 
-      <div style={{ padding: 12, paddingBottom: "calc(12px + env(safe-area-inset-bottom, 0px))", borderTop: "1px solid var(--line-1)" }}>
-        {!collapsed && <WorkspaceSwitcher />}
+      <div style={{ padding: "10px 12px", paddingBottom: "calc(10px + env(safe-area-inset-bottom, 0px))", borderTop: "1px solid var(--line-1)" }}>
+        {!collapsed && (
+          <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)" }}>{`${NAV.filter((n) => !n.hidden).length} telas · ⌘K abre a busca`}</span>
+        )}
       </div>
     </nav>
   );
@@ -305,7 +353,7 @@ function NavRail({ current, onNav, collapsed }) {
 // Seletor de produto (workspace) no pé da sidebar. Com 1 produto é um chip
 // informativo; com 2+ vira o alternador: a bolinha mostra o contador e o clique
 // abre o menu — o cockpit INTEIRO troca de contexto (telas + cor da marca).
-function WorkspaceSwitcher() {
+function WorkspaceSwitcher({ collapsed = false, brand }) {
   const [product, setProduct] = useActiveSaas();
   const saas = (window.SEED?.SAAS || []);
   const [open, setOpen] = useS(false);
@@ -317,43 +365,41 @@ function WorkspaceSwitcher() {
   }, []);
   if (!product) return null;
   const single = saas.length <= 1;
+  const Icon = brand?.Icon;
+  if (collapsed) return <span style={{ display: "flex", justifyContent: "center" }}>{Icon ? <Icon /> : null}</span>;
   return (
     <div ref={ref} style={{ position: "relative" }}>
       <button onClick={() => !single && setOpen((o) => !o)}
-        title={single ? undefined : "Trocar de produto"}
+        title={single ? product.name : "Trocar de produto (o cockpit inteiro muda de contexto)"}
         style={{
-          display: "flex", alignItems: "center", gap: 8, width: "100%",
-          padding: "8px 10px", border: "1px solid " + (open ? "var(--accent-line)" : "var(--line-1)"),
+          display: "flex", alignItems: "center", gap: 9, width: "100%",
+          padding: "8px 9px", border: "1px solid " + (open ? "var(--accent-line)" : "var(--line-1)"),
           borderRadius: "var(--r-3)", background: "var(--bg-inset)",
-          cursor: single ? "default" : "pointer",
+          cursor: single ? "default" : "pointer", textAlign: "left",
         }}>
-        <span className="dot" style={{ color: "var(--accent)", width: 7, height: 7, flexShrink: 0 }} />
-        <span style={{ fontSize: 12.5, color: "var(--fg-2)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{product.name}</span>
-        {!single && (
-          <span style={{
-            marginLeft: "auto", flexShrink: 0, minWidth: 18, height: 18, padding: "0 5px",
-            display: "inline-flex", alignItems: "center", justifyContent: "center",
-            borderRadius: 999, background: "var(--accent-soft)", color: "var(--accent)",
-            fontSize: 11, fontWeight: 600, fontFamily: "var(--mono)",
-          }}>{saas.length}</span>
-        )}
-        {!single && <span className="dim" style={{ fontSize: 9, flexShrink: 0 }}>{open ? "▾" : "▴"}</span>}
-        {single && <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)", marginLeft: "auto", flexShrink: 0 }}>1 SaaS</span>}
+        {Icon ? <Icon /> : <span className="dot" style={{ color: "var(--accent)", width: 7, height: 7 }} />}
+        <span style={{ minWidth: 0, lineHeight: 1.15 }}>
+          <span style={{ display: "block", fontFamily: "var(--display)", fontSize: 14.5, fontWeight: 700, color: "var(--fg-1)", letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {brand?.label || product.name}
+          </span>
+          <span className="kicker" style={{ fontSize: 9.5 }}>produto ativo</span>
+        </span>
+        {!single && <span className="dim" style={{ marginLeft: "auto", fontSize: 9, flexShrink: 0 }}>{open ? "▴" : "▾"}</span>}
       </button>
       {open && (
         <div style={{
-          position: "absolute", bottom: "calc(100% + 6px)", left: 0, right: 0,
+          position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0,
           border: "1px solid var(--line-2)", background: "var(--bg-1)",
           borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 5, zIndex: 80,
         }}>
           <div className="kicker" style={{ padding: "6px 8px 4px" }}>Produtos</div>
-          {saas.map((s) => {
-            const isActive = s.id === product.id;
+          {saas.map((s2) => {
+            const isActive = s2.id === product.id;
             return (
-              <button key={s.id} onClick={() => { setProduct(s.id); setOpen(false); }}
+              <button key={s2.id} onClick={() => { setProduct(s2.id); setOpen(false); }}
                 style={{ ...menuItemStyle, display: "flex", alignItems: "center", gap: 8, fontWeight: isActive ? 600 : 450 }}>
-                <span style={{ width: 7, height: 7, borderRadius: 2, background: window.productTone ? window.productTone(s) : "var(--accent)", flexShrink: 0 }} />
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
+                <span style={{ width: 7, height: 7, borderRadius: 2, background: window.productTone ? window.productTone(s2) : "var(--accent)", flexShrink: 0 }} />
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s2.name}</span>
                 {isActive && <span style={{ marginLeft: "auto", color: "var(--accent)", fontSize: 11 }}>✓</span>}
               </button>
             );

@@ -259,12 +259,12 @@ function App() {
   return (
     <DataContext.Provider value={dataCtx}>
     <div className="app-shell" style={{ display: "flex", overflow: "hidden", background: "var(--bg-0)" }}>
-      {!isMobile && <NavRail current={scr} onNav={(id) => nav(id)} collapsed={false} />}
+      {!isMobile && <NavRail current={scr} onNav={(id) => nav(id)} collapsed={false} onSearch={() => setSearchOpen(true)} />}
       {isMobile && menuOpen && (
         <div onClick={() => setMenuOpen(false)}
           style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", zIndex: 100, display: "flex" }}>
           <div onClick={(e) => e.stopPropagation()} style={{ height: "100%", display: "flex", boxShadow: "var(--shadow-pop)" }}>
-            <NavRail current={scr} onNav={(id) => { nav(id); setMenuOpen(false); }} collapsed={false} />
+            <NavRail current={scr} onNav={(id) => { nav(id); setMenuOpen(false); }} collapsed={false} onSearch={() => { setMenuOpen(false); setSearchOpen(true); }} />
           </div>
         </div>
       )}
