@@ -469,3 +469,11 @@ body[data-density="regular"] { font-size: 14px; }
 @media (prefers-reduced-motion: reduce) { .tk-pop, .tk-leaving { animation: none; } }
 /* Painel da tarefa aberto: o balão "Reportar um bug" some (cobria o rodapé do painel). */
 body[data-tk-panel] .fb-balloon { display: none; }
+
+/* Configurações: menu lateral no desktop, linha rolável no mobile (13/09). Seis
+   abas de nome comprido não cabem numa linha só. */
+@media (max-width: 860px) {
+  .set-cols { grid-template-columns: minmax(0, 1fr) !important; }
+  .set-nav { flex-direction: row !important; overflow-x: auto; position: static !important; padding-bottom: 4px; }
+  .set-nav button { white-space: nowrap; }
+}

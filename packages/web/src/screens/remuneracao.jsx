@@ -220,7 +220,25 @@ export function RoleCard({ role, saved, onSave }) {
           <tbody>
             {(draft.levels || []).map((l) => (
               <tr key={l.n}>
-                <td style={{ ...tdS, fontWeight: 700, whiteSpace: "nowrap" }}>{l.n} <span style={{ fontWeight: 400, color: "var(--fg-4)", fontSize: 10.5 }}>{levelLabel(l.n)}</span></td>
+                {/* QUEM ESTÁ NA FAIXA (13/09): o plano era uma tabela de
+                    valores sem gente, e o nível de cada pessoa vivia em outra
+                    tela (Metas). Com o nome na célula dá pra ler o plano e a
+                    folha ao mesmo tempo. O nível continua sendo definido nas
+                    Metas — aqui é leitura. */}
+                <td style={{ ...tdS, fontWeight: 700, whiteSpace: "nowrap" }}>
+                  {l.n} <span style={{ fontWeight: 400, color: "var(--fg-4)", fontSize: 10.5 }}>{levelLabel(l.n)}</span>
+                  {(() => {
+                    const gente = (window.SEED?.USERS || []).filter((u) => (u.roles || []).includes(role === "cs" ? "integrator" : role) && Number(u.compLevel) === l.n);
+                    if (!gente.length) return null;
+                    return (
+                      <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
+                        {gente.map((u) => (
+                          <span key={u.id} className="chip" title={`${u.name || u.id} está no nível ${levelLabel(l.n)}`} style={{ fontSize: 10, fontWeight: 600 }}>{(u.name || u.id).split(" ")[0]}</span>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </td>
                 <td style={tdS}><input type="number" value={l.fixed} onChange={setLevel(l.n, "fixed")} style={cellIn} /></td>
                 {isCloser && <td style={tdS}><input type="number" value={l.fixedPj ?? 0} onChange={setLevel(l.n, "fixedPj")} style={cellIn} /></td>}
                 {!isCs && <td style={tdS}><input type="number" value={l.metaContracts ?? 0} onChange={setLevel(l.n, "metaContracts")} style={{ ...cellIn, width: 60 }} /></td>}
