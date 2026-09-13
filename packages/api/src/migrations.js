@@ -2127,6 +2127,14 @@ export async function runStartupMigrations(repo) {
   } catch (err) {
     console.error("[migration] backfillCatalogPricing falhou:", err?.message || err);
   }
+  // Depois do catálogo vigente: o deck de slides (opção C) nasce/atualiza com a
+  // MESMA tabela de preço do deck padrão.
+  try {
+    const changed = await ensureSlidesDeck(repo);
+    if (changed) console.log("[migration] proposta: deck de slides (opção C) pronto no select do card");
+  } catch (err) {
+    console.error("[migration] ensureSlidesDeck falhou:", err?.message || err);
+  }
   // Depois do catálogo/leque nas propostas: o valor do card dos leads abertos
   // passa a ser o preço do produto que a apresentação sugere.
   try {
@@ -2216,6 +2224,49 @@ export async function assignMentoriaOwner(repo) {
 //
 // Idempotente e respeitosa: template que já existe só ganha o bloco de preços
 // quando ele falta. Slides editados pelo dono nunca são reescritos.
+// ── Opção C: a apresentação em SLIDES (Leo, 12/09/2026) ─────────────────────
+// Deck alternativo pra testar na call de vendas, ao lado do deck de sempre e do
+// Starter. O documento é só a CASCA: nome, layout e o catálogo — os slides e a
+// tela zero moram no código (proposal-slides-page.js), porque este deck não é
+// montado campo a campo, e sim pela configuração do plano (linha, pacote,
+// Price, pacote de OEM, período). `selectable` é o que faz o deck aparecer no
+// select do card do lead; `status: draft` mantém o padrão do produto como está.
+//
+// O catálogo ACOMPANHA o do pt_leverads: preço novo entra nos dois decks no
+// mesmo deploy, sem ninguém lembrar de copiar.
+export async function ensureSlidesDeck(repo) {
+  const base = await repo.get("proposal_templates", "pt_leverads");
+  const catalogo = base?.calc?.catalog ? JSON.parse(JSON.stringify(base.calc.catalog)) : null;
+  const cur = await repo.get("proposal_templates", "pt_leverads_slides");
+  if (!cur) {
+    await repo.create("proposal_templates", {
+      id: "pt_leverads_slides",
+      saas: "leverads",
+      name: "Opção C · Apresentação em slides",
+      pickLabel: "Opção C · slides",
+      status: "draft",
+      selectable: true,
+      layout: "slides",
+      theme: base?.theme || {},
+      slides: [],
+      acceptStage: base?.acceptStage || "",
+      calc: catalogo ? { ...(base?.calc || {}), catalog: catalogo } : { ...(base?.calc || {}) },
+      createdAt: new Date().toISOString(),
+    });
+    return true;
+  }
+  const patch = {};
+  if (cur.layout !== "slides") patch.layout = "slides";
+  if (!cur.selectable) patch.selectable = true;
+  if (!cur.pickLabel) patch.pickLabel = "Opção C · slides";
+  if (catalogo && JSON.stringify(cur.calc?.catalog || null) !== JSON.stringify(catalogo)) {
+    patch.calc = { ...(cur.calc || {}), catalog: catalogo };
+  }
+  if (!Object.keys(patch).length) return false;
+  await repo.update("proposal_templates", "pt_leverads_slides", patch);
+  return true;
+}
+
 export async function ensureMentoriaTemplate(repo) {
   const doc = mentoriaTemplateDoc();
   const cur = await repo.get("proposal_templates", doc.id);
