@@ -236,6 +236,29 @@ export function winsIn(product, leads, inWin, customerStartByLead) {
 export const customerStartMap = (customers) =>
   new Map(customers.filter((c) => c.leadId && c.startedAt).map((c) => [c.leadId, c.startedAt]));
 
+// ── Churn de uma carteira numa janela (régua ÚNICA) ─────────────────────────
+// Churn é evento do cliente: `customer.endedAt` (botão da ficha ou o MP
+// cancelando a recorrência, churn.js). Numa janela [since, until] (dias do
+// negócio, AAAA-MM-DD):
+//   churned = clientes com endedAt DENTRO da janela
+//   base    = ativos no FIM da janela (sem endedAt, ou endedAt depois de until,
+//             e que já existiam: startedAt até until ou sem startedAt) + churned
+//   pct     = churned ÷ base × 100 · retentionRate = 100 − pct
+// Count e taxa saem da MESMA base, e a função vale tanto pra carteira de um CS
+// (card do placar) quanto pra empresa inteira (bônus de time): quem precisar
+// de churn chama aqui, nunca reimplementa.
+export function churnRateIn(customers, { since, until }) {
+  const list = customers || [];
+  const inWin = (iso) => !!iso && dayKey(iso) >= since && dayKey(iso) <= until;
+  const churned = list.filter((c) => inWin(c.endedAt)).length;
+  const activeAtEnd = list.filter((c) =>
+    (!c.endedAt || dayKey(c.endedAt) > until) && (!c.startedAt || dayKey(c.startedAt) <= until)).length;
+  const base = activeAtEnd + churned;
+  const pct = base > 0 ? round2((churned / base) * 100) : null;
+  const retentionRate = base > 0 ? round2(((base - churned) / base) * 100) : null;
+  return { churned, base, pct, retentionRate };
+}
+
 // TCV de um conjunto de leads (valor CONTRATADO, lançado no fechamento).
 export const tcvOf = (leads) => round2(leads.reduce((a, l) => a + (Number(l.amount) || 0), 0));
 

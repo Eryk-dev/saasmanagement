@@ -20,6 +20,7 @@ import {
   classCounts, cashBucketsIn, mentoriaScore, keyAccountIds, isKeyAccountLead,
   saleValuer, revenueOf, tcvOf,
   upsellSalesIn, upsellValuer, upsellRevenueOf, upsellContractedOf, isKeyAccountUpsell,
+  churnRateIn,
 } from "./metrics-core.js";
 import { isMentoriaLead } from "./mentoria.js";
 import { isChurnedCustomer } from "./churn.js";
@@ -40,11 +41,13 @@ const median = (arr) => {
   return round2(s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2);
 };
 
-export function registerScoreboardRoutes(app, repo, { now = () => new Date() } = {}) {
-  app.get("/api/scoreboard/:saas", async (req, reply) => {
-    const product = await repo.get("products", req.params.saas);
-    if (!product) return reply.code(404).send({ error: "Not found" });
-    const { since, until } = rangeFromQuery(req.query || {});
+// Placar completo do produto na janela `query` (since/until/prevSince/
+// prevUntil, o mesmo contrato da rota). Extraído da rota pra ser chamável de
+// dentro do servidor (fechamento do mês em comp-months.js): a rota só resolve
+// o produto e responde 404. O corpo mantém a indentação da época da rota de
+// propósito, pra preservar o blame e não brigar com os outros PRs em voo.
+export async function computeScoreboard(repo, product, query = {}, { now = () => new Date() } = {}) {
+    const { since, until } = rangeFromQuery(query || {});
     // Hoje (dia do negócio): separa call já VENCIDA (não veio) de call marcada
     // pro FUTURO (ainda vai acontecer) no comparecimento — ver callOutcome.
     const today = dayKey(now());
@@ -52,8 +55,8 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     // Janela ANTERIOR (semana/mês passado) — base da meta dinâmica de calls do
     // SDR: a meta da semana atual sai do volume de leads da semana passada
     // (completa), que é estável (a semana atual ainda não fechou).
-    const prevSince = String(req.query?.prevSince || "");
-    const prevUntil = String(req.query?.prevUntil || "");
+    const prevSince = String(query?.prevSince || "");
+    const prevUntil = String(query?.prevUntil || "");
     const hasPrev = /^\d{4}-\d{2}-\d{2}$/.test(prevSince) && /^\d{4}-\d{2}-\d{2}$/.test(prevUntil);
     const inPrev = (iso) => iso && dayKey(iso) >= prevSince && dayKey(iso) <= prevUntil;
 
@@ -633,11 +636,10 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
       const newAccounts = mine.filter((c) => inWin(c.startedAt)).length;
       // Churn agora é evento do CLIENTE (customer.endedAt — botão da ficha ou
       // cancelamento da recorrência no MP), não mais inferido da assinatura.
-      // Retenção = 100 − churn% sobre a base (ativas + churnadas na janela);
-      // sem churn = 100% (honesto).
-      const churned = mine.filter((c) => inWin(c.endedAt)).length;
-      const base = mineActive.length + churned;
-      const retentionRate = base > 0 ? round2(((base - churned) / base) * 100) : null;
+      // Retenção = 100 − churn% sobre a base (ativas no fim da janela +
+      // churnadas nela); sem churn = 100% (honesto). A régua é a churnRateIn
+      // do metrics-core, a MESMA do churn da empresa (bônus de time).
+      const { churned, retentionRate } = churnRateIn(mine, { since, until });
       // NPS médio das contas dele (coleção nps: { customer, score }). Sem dado → null.
       const scores = npsSaas.filter((n) => mineIds.has(n.customer) && Number.isFinite(Number(n.score))).map((n) => Number(n.score));
       const nps = scores.length ? round2(scores.reduce((a, s) => a + s, 0) / scores.length) : null;
@@ -923,5 +925,12 @@ export function registerScoreboardRoutes(app, repo, { now = () => new Date() } =
     };
 
     return { saas: product.id, since, until, sdr, closer, cs, social, team, mentoria, referrals };
+}
+
+export function registerScoreboardRoutes(app, repo, { now = () => new Date() } = {}) {
+  app.get("/api/scoreboard/:saas", async (req, reply) => {
+    const product = await repo.get("products", req.params.saas);
+    if (!product) return reply.code(404).send({ error: "Not found" });
+    return computeScoreboard(repo, product, req.query || {}, { now });
   });
 }
