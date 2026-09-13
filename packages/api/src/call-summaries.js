@@ -4,6 +4,7 @@
 // O resumo vira activity "call_summary" (visível no drawer) e preenche o
 // próximo toque do GPS quando a IA sugere follow-up e o lead está em aberto.
 import { logActivity, appointmentAt } from "./lead-flow.js";
+import { syncClientPending } from "./client-pending.js";
 
 const CLOSED_STAGE = /perdid|ganh|fechad|won|lost|cliente/i;
 
@@ -152,6 +153,16 @@ export function makeCallSummarizer({ repo, google, googleUser = null, anthropic,
       author: "cockpit",
       at: t.endTime || undefined,
     });
+
+    // Compromissos que ficaram com o CLIENTE viram tarefa com prazo (e o chip
+    // "aguardando cliente" no card). Só na integração: na call de venda a
+    // pendência do lead é objeção, não combinado de entrega. Best-effort.
+    if (kind === "integracao") {
+      try {
+        const customer = lead.customerId ? await repo.get("customers", lead.customerId).catch(() => null) : null;
+        await syncClientPending(repo, lead, summary, { source: "call", customer });
+      } catch { /* fail-open: o resumo já está gravado */ }
+    }
 
     // Follow-up/acompanhamento sugerido entra como próximo toque do GPS (só em
     // lead aberto e com horário no futuro; "quando" vem em hora de Brasília).

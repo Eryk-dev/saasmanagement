@@ -26,6 +26,7 @@ const SYSTEM_TEXT = {
   proposal_shared: (m) => `Proposta enviada pro cliente${m.label ? ` · ${m.label}` : ""}`,
   proposal_accepted: (m) => `Proposta aceita${m.stage ? ` → “${m.stage}”` : ""}`,
   customer_created: () => "Virou cliente 🎉",
+  client_pending: (m) => `${m.count || 1} compromisso${(m.count || 1) === 1 ? "" : "s"} do cliente ${(m.count || 1) === 1 ? "virou tarefa" : "viraram tarefas"}${m.source === "form" ? " (formulário de integração)" : ""}`,
 };
 
 function when(iso) {

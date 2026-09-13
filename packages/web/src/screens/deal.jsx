@@ -858,6 +858,29 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                 Entrega
                 <span style={{ marginLeft: "auto", fontSize: 10, flexShrink: 0, textTransform: "none", letterSpacing: 0 }}>{showEntrega ? "▴ recolher" : "▾ briefing · vídeo"}</span>
               </button>
+              {/* Compromissos do CLIENTE: o que ele ficou de fazer na call de
+                  integração, com prazo. Fica FORA do recolhível porque é a
+                  razão mais comum de a integração estar parada. */}
+              {lead.clientPending?.open > 0 && (
+                <div style={{ marginTop: 6, marginBottom: 2 }}>
+                  <div className="mono dim" style={{ fontSize: 10.5, marginBottom: 4 }}>
+                    aguardando o cliente ({lead.clientPending.open}
+                    {lead.clientPending.overdue ? ` · ${lead.clientPending.overdue} atrasado${lead.clientPending.overdue === 1 ? "" : "s"}` : ""})
+                  </div>
+                  {(lead.clientPending.items || []).map((it) => (
+                    <div key={it.task} style={{ display: "flex", alignItems: "flex-start", gap: 7, padding: "3px 0", fontSize: 12 }}>
+                      <input type="checkbox" style={{ marginTop: 2, flexShrink: 0, cursor: "pointer" }}
+                        onChange={async (ev) => {
+                          ev.target.disabled = true;
+                          try { await api.taskComplete(it.task); refetchTimeline?.(); }
+                          catch (e) { ev.target.disabled = false; window.alert(e.message || "Não consegui concluir."); }
+                        }} />
+                      <span style={{ flex: 1, minWidth: 0 }}>{it.item}</span>
+                      <span className="mono dim" style={{ fontSize: 10.5, flexShrink: 0 }}>{it.dueDate ? it.dueDate.slice(8, 10) + "/" + it.dueDate.slice(5, 7) : ""}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               {showEntrega && (<>
               {/* Briefing de passagem: o cockpit gera sozinho quando o card
                   entra aqui (e re-tenta enquanto a transcrição da venda não

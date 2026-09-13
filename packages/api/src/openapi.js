@@ -116,6 +116,14 @@ export const openapi = {
         allOf: [
           { type: "object", properties: {
             id: { type: "string", description: "Gerado se omitido.", example: "le_k9f2a" },
+            clientPending: {
+              type: "object", nullable: true, readOnly: true,
+              description: "Compromissos do CLIENTE em aberto na integração (carimbo recalculado a partir das tarefas com a label pendencia-cliente). É o que o card do pipeline e o bloco Entrega leem. Atraso aqui NÃO é atraso nosso: a régua de próximo toque do board não muda.",
+              properties: {
+                open: { type: "integer" }, overdue: { type: "integer" }, nextDue: { type: "string", description: "AAAA-MM-DD" },
+                items: { type: "array", items: { type: "object", properties: { task: { type: "string" }, item: { type: "string" }, dueDate: { type: "string" } } } },
+              },
+            },
             proposta_id: { type: "string", description: "id da proposta gerada no Levercopy (preenchido pela integração).", example: "pr_abc123" },
             proposal_edit_url: { type: "string", format: "uri", description: "Link de edição da proposta no Levercopy (com token).", example: "https://leverads.com.br/proposta/pr_abc123/edit?k=tok" },
           } },
@@ -288,6 +296,9 @@ export const openapi = {
           parentId: { type: "string" }, followUpOf: { type: "string" }, duplicatedFrom: { type: "string", readOnly: true }, recurrenceOf: { type: "string", readOnly: true },
           recurrence: { $ref: "#/components/schemas/Recurrence" }, blockedBy: { type: "array", items: { type: "string" } },
           followers: { type: "array", items: { type: "string" } }, likes: { type: "array", items: { type: "string" }, readOnly: true },
+          lead: { type: "string", description: "Lead que originou a tarefa (compromisso do cliente na integração).", example: "ld_1" },
+          pendingKey: { type: "string", readOnly: true, description: "Chave de idempotência do compromisso do cliente: pc:<lead>:<hash do item>. Um combinado, uma tarefa, por mais vezes que a call seja resumida.", example: "pc:ld_1:9f2a1c" },
+          clientPendingItem: { type: "string", description: "O combinado, como a IA extraiu do resumo da call de integração.", example: "Conectar a conta 2 do Mercado Livre" },
           customerId: { type: "string", description: "Cliente que originou a tarefa (régua de marcos do pós-venda). Com `milestoneKey`, é a chave de idempotência: um marco gera uma tarefa só.", example: "cu_1" },
           milestoneKey: { type: "string", description: "Marco da régua (onboarding, checkin_m1, revisao_m3, upsell_m6, renovacao). Concluir a tarefa marca o marco na ficha do cliente, e vice-versa.", example: "checkin_m1" },
           createdAt: { type: "string", readOnly: true }, createdBy: { type: "string", readOnly: true }, updatedAt: { type: "string", readOnly: true }, updatedBy: { type: "string", readOnly: true }, version: { type: "integer", readOnly: true },
