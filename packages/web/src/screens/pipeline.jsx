@@ -548,6 +548,7 @@ function LeadCard({ d, s, currentStage, onDragStart, selected, onSelect, onOpen 
   const tier = leadTier(d);
   const grade = tier?.grade || "";
   const fit = mentoriaFit(d);
+  const pend = d.clientPending;
 
   return (
     <div
@@ -583,6 +584,17 @@ function LeadCard({ d, s, currentStage, onDragStart, selected, onSelect, onOpen 
           </span>
         )}
       </div>
+      {/* Compromisso do CLIENTE em aberto (o que ele ficou de fazer na call de
+          integração). Fica fora da régua de atraso do board de propósito:
+          esperar o cliente não é atraso nosso, mas quem olha o card precisa
+          saber que a integração está parada e por quê. */}
+      {phase === "entrega" && pend?.open > 0 && (
+        <div title={(pend.items || []).map((i) => `· ${i.item}`).join("\n")}
+          style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, color: pend.overdue ? "var(--neg)" : "var(--warn)" }}>
+          <span style={{ width: 6, height: 6, borderRadius: 999, background: "currentColor", flexShrink: 0 }} />
+          {pend.overdue ? `cliente atrasado · ${pend.overdue}` : `aguardando cliente · ${pend.open}`}
+        </div>
+      )}
     </div>
   );
 }
