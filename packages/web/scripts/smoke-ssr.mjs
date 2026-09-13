@@ -172,6 +172,17 @@ try {
     if (html.includes("nenhuma call no dia")) throw new Error("a contagem velha da barra voltou");
     // A legenda impressa embaixo da grade não pode voltar.
     if (html.includes("lavada = já aconteceu")) throw new Error("a legenda de onze itens voltou pra tela");
+    // O card: valor abreviado, ▶ da sala e o ✓ de confirmado (bloco 2).
+    has("65k");
+    has("Zpack Autopeças");      // empresa ao lado do nome no DIA
+    const comSala = renderToString(wrap(React.createElement(A.AgendaView, {
+      ...props,
+      leads: [{ ...leads[0], callUrl: "https://meet.google.com/abc", callConfirmed: true }],
+    })));
+    if (!comSala.includes("▶")) throw new Error("o card não oferece a sala da reunião");
+    if (comSala.includes("🎥")) throw new Error("o emoji de câmera voltou (a régua da tela é sem emoji)");
+    if (!comSala.includes("meet.google.com/abc")) throw new Error("o ▶ não aponta pra sala");
+
     const semana = renderToString(wrap(React.createElement(A.AgendaView, { ...props, view: "week" })));
     if (!semana.includes("compromisso nesta semana") && !semana.includes("compromissos nesta semana")) {
       throw new Error("a semana não traz o fato do período");
