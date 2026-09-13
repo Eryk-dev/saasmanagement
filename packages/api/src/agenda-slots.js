@@ -174,6 +174,20 @@ export function addBusinessDaysNaive(at, n) {
 // exige a call TERMINANDO dentro da janela, por isso o teto é 20.
 export const OFFER_HOURS = { fromHour: 9, toHour: 20, lunchFrom: 12, lunchTo: 13 };
 
+// HORIZONTE DA OFERTA (Leo, 13/09/2026): o robô não marca pra depois de amanhã.
+// Medido em produção sobre as 349 calls já vencidas do LeverAds, o furo cresce
+// com a distância do agendamento (só o robô: D+0 45,5% · D+1 49,3% · D+2 59,1%),
+// então cada dia a mais de espera custa comparecimento. 2 = hoje + o PRÓXIMO DIA
+// ÚTIL (o `days` do freeSlotsForPool conta dias úteis, então sexta alcança
+// segunda, que é o mais perto que existe).
+//
+// É teto da OFERTA AUTOMÁTICA, não da agenda: quem marca na mão pelo cockpit
+// segue enxergando tudo (decisão humana sempre ganha, mesma regra da reserva).
+// Válvula: se NINGUÉM tem horário dentro do teto, a oferta abre pro prazo cheio
+// em vez de deixar o lead sem call — furo de 50% ainda é melhor que lead frio,
+// e o `beyondHorizon` no retorno deixa isso visível pra quem for medir.
+export const OFFER_HORIZON_DAYS = 2;
+
 // Dia do slot no relógio de parede ("YYYY-MM-DDTHH:MM" → "YYYY-MM-DD"). É a
 // unidade do overflow: "a agenda do júnior encheu" é uma pergunta sobre o DIA,
 // não sobre a hora.
@@ -182,7 +196,7 @@ const dayOfSlot = (at) => String(at || "").slice(0, 10);
 // ── A régua completa: horários pro LEAD ─────────────────────────────────────
 // Nota do lead (matriz S-E) → pool elegível → próximos horários. Devolve
 // { slots, pool: "upper"|"junior"|"junior+upper"|"all", grade }.
-export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wallNow(), days = 5, minNoticeMin = 120, limit = 6, fromHour, toHour, lunchFrom, lunchTo } = {}) {
+export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wallNow(), days = 5, horizonDays = 0, minNoticeMin = 120, limit = 6, fromHour, toHour, lunchFrom, lunchTo } = {}) {
   const sid = saas || lead?.saas || "";
   const [users, leads, blocks, consultations, products] = await Promise.all([
     repo.list("users"),
@@ -207,16 +221,20 @@ export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wal
     }
     return countCache.get(key);
   };
-  const compute = (pool, lim) => {
+  const compute = (pool, lim, janela) => {
     ensureBusy(pool);
-    return freeSlotsForPool({ pool, now, days, minNoticeMin, limit: lim, busyFns, callCountOf, ...(fromHour != null ? { fromHour } : {}), ...(toHour != null ? { toHour } : {}), ...(lunchFrom != null ? { lunchFrom } : {}), ...(lunchTo != null ? { lunchTo } : {}) });
+    return freeSlotsForPool({ pool, now, days: janela, minNoticeMin, limit: lim, busyFns, callCountOf, ...(fromHour != null ? { fromHour } : {}), ...(toHour != null ? { toHour } : {}), ...(lunchFrom != null ? { lunchFrom } : {}), ...(lunchTo != null ? { lunchTo } : {}) });
   };
 
+  // A resolução inteira é função da JANELA de dias, pra o horizonte da oferta
+  // poder rodar a mesma régua num prazo curto e, se não achar nada pra ninguém,
+  // repetir no prazo cheio.
+  const resolve = (janela) => {
   // S/A/B: pleno/sênior, nunca desce pro júnior. Sem ninguém no pool de cima,
   // cai pra todos (agendamento nunca trava por cadastro incompleto de nível).
   if (grade && UPPER_GRADES.has(grade)) {
     const pool = pools.upper.length ? pools.upper : pools.all;
-    return { slots: compute(pool, limit), pool: pools.upper.length ? "upper" : "all", grade };
+    return { slots: compute(pool, limit, janela), pool: pools.upper.length ? "upper" : "all", grade };
   }
   // C pra baixo (e sem qualificação): júnior primeiro. Overflow: assim que o
   // DIA do júnior lota (o primeiro slot livre dele cai num dia posterior ao do
@@ -224,19 +242,28 @@ export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wal
   // relógio de parede: enquanto os dois conseguem hoje, o lead é do júnior.
   if (!pools.junior.length) {
     const pool = pools.upper.length ? pools.upper : pools.all;
-    return { slots: compute(pool, limit), pool: pools.upper.length ? "upper" : "all", grade };
+    return { slots: compute(pool, limit, janela), pool: pools.upper.length ? "upper" : "all", grade };
   }
-  const jr = compute(pools.junior, limit);
-  if (!jr.length) return { slots: compute(pools.upper.length ? pools.upper : pools.all, limit), pool: "upper", grade };
+  const jr = compute(pools.junior, limit, janela);
+  if (!jr.length) return { slots: compute(pools.upper.length ? pools.upper : pools.all, limit, janela), pool: "upper", grade };
   if (pools.upper.length) {
-    const up = compute(pools.upper, 1);
+    const up = compute(pools.upper, 1, janela);
     if (up.length && dayOfSlot(up[0].at) < dayOfSlot(jr[0].at)) {
-      const merged = [...jr, ...compute(pools.upper, limit)].sort((a, b) => a.at.localeCompare(b.at));
+      const merged = [...jr, ...compute(pools.upper, limit, janela)].sort((a, b) => a.at.localeCompare(b.at));
       const seen = new Set();
       return { slots: merged.filter((s) => !seen.has(s.at) && seen.add(s.at)).slice(0, limit || undefined), pool: "junior+upper", grade };
     }
   }
   return { slots: jr, pool: "junior", grade };
+  };
+
+  // Sem horizonte, a régua é a de sempre (é o caminho da tela e da rota manual).
+  if (!(horizonDays > 0) || horizonDays >= days) return resolve(days);
+  const perto = resolve(horizonDays);
+  if (perto.slots.length) return { ...perto, horizonDays };
+  // Ninguém tem horário dentro do teto: abre o prazo cheio em vez de deixar o
+  // lead sem call, e diz que abriu.
+  return { ...resolve(days), horizonDays, beyondHorizon: true };
 }
 
 // ── Reserva curta do horário OFERTADO ───────────────────────────────────────

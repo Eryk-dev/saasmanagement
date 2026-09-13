@@ -31,7 +31,7 @@ import { brtToIso, onOutboundMessage, applyStageMove } from "./lead-flow.js";
 import { isBusinessHours } from "./business-hours.js";
 import { resolveWabaId, getWaHealth } from "./wa-health.js";
 import { raiseAlert } from "./wa-call-flow.js";
-import { slotsForLead, slotLabel, wallNow, spreadPair, wholeHourSlots, OFFER_HOURS, activeHolds, holdSlots, withoutHeld } from "./agenda-slots.js";
+import { slotsForLead, slotLabel, wallNow, spreadPair, wholeHourSlots, OFFER_HOURS, OFFER_HORIZON_DAYS, activeHolds, holdSlots, withoutHeld } from "./agenda-slots.js";
 import { SDR_TEMPLATES } from "./sdr-templates.leverads.js";
 
 export const SDR_AUTHOR = "sdr-bot";
@@ -856,7 +856,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           try {
             let via = "text";
             if (windowOpen) {
-              const { slots } = await slotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 8, ...OFFER_HOURS });
+              const { slots } = await slotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 8, ...OFFER_HOURS, horizonDays: OFFER_HORIZON_DAYS });
               // Mesma reserva da conversa com IA: o horário oferecido aqui não
               // pode ser oferecido a outro lead enquanto este decide.
               const holds = await activeHolds(repo, product.id, { now: at }).catch(() => []);
@@ -921,7 +921,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           const to = thread?.phone || phone;
           try {
             let via = "text";
-            const { slots } = await slotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 8, ...OFFER_HOURS });
+            const { slots } = await slotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 8, ...OFFER_HOURS, horizonDays: OFFER_HORIZON_DAYS });
             // Reserva dos horários ofertados, igual ao 1º resgate e à conversa
             // com IA: o que outro lead está decidindo não entra nesta oferta.
             const holds2 = await activeHolds(repo, product.id, { now: at }).catch(() => []);
