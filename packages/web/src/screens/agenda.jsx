@@ -234,6 +234,7 @@ export function AgendaScreen({ onOpenLead }) {
           people={people}
           defaultUser={defaultUser}
           onSave={saveItem}
+          conflictOf={liveConflict}
           onDelete={(b) => removeBlocks([b])}
           onClose={() => setEditor(null)}
         />
@@ -272,7 +273,7 @@ export function formDateFor(init, now = new Date()) {
   return ymd(d);
 }
 
-function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose }) {
+export function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose, conflictOf }) {
   const b = init.block;
   const [kind, setKind] = useS(b ? (b.kind === "event" ? "event" : "block") : "event");
   const [text, setText] = useS(b ? (b.title || b.reason || "") : "");
@@ -281,7 +282,6 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
   const [sel, setSel] = useS(() => (b
     ? [...new Set([b.user, ...(Array.isArray(b.users) ? b.users : [])].filter(Boolean))]
     : [defaultUser].filter(Boolean)));
-  const [selOpen, setSelOpen] = useS(false);
   const toggleSel = (id) => setSel((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   const [date, setDate] = useS(() => formDateFor(init));
   const [from, setFrom] = useS(() => Number(b?.fromHour ?? init.fromHour ?? 9));
@@ -290,6 +290,7 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
     return d > 0 ? d : 60;
   });
   const [allDay, setAllDay] = useS(!!b?.allDay);
+  const [durOpen, setDurOpen] = useS(false); // "outra ▾": a escada inteira de duração
   // Recorrência: "once" | "weekly" (dia da data) | "weekdays" | "daily" | "custom".
   const [recur, setRecur] = useS(b ? (b.recur === "weekly" ? "weekly" : "once") : "once");
   const [customWds, setCustomWds] = useS(() => (b?.recur === "weekly" ? [Number(b.weekday)] : [1, 3, 5]));
@@ -301,12 +302,18 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
   }, [onClose]);
 
   const to = from + dur / 60;
+  // CONFLITO VIVO (12/09): o mesmo liveConflict que o saveItem chama, agora
+  // consultado a cada render. Antes você montava o compromisso inteiro pra
+  // descobrir no submit que o Rafael já tinha call nesse horário. Item
+  // recorrente não é checado (nem no salvar), então aqui também não avisa.
+  const conflitos = (recur === "once" && conflictOf && date)
+    ? sel.map((u) => ({ u, hit: conflictOf(u, date, allDay ? 0 : from, allDay ? 24 : to) })).filter((x) => x.hit)
+    : [];
   // Sem data não tem como derivar: cai no weekday gravado (0 = domingo é dia
   // válido, então nada de `|| 1`, que engolia domingo virando segunda).
   const weekdayLabel = WD_LABEL[date ? new Date(`${date}T12:00:00`).getDay() : (Number(b?.weekday) || 0)];
   const field = { height: 34, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, minWidth: 0 };
   const label = { display: "block", marginBottom: 4 };
-  const selNames = sel.map((id) => displayName(id) || id);
   const submit = () => {
     const wd = date ? new Date(`${date}T12:00:00`).getDay() : (Number(b?.weekday) || 0);
     const weekdaysSel = recur === "once" ? null
@@ -338,37 +345,36 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
             style={{ ...field, width: "100%" }} />
         </div>
 
-        {/* Pessoas: campo que abre a lista com checkboxes (a agenda de cada
-            selecionada fica ocupada). */}
-        <div style={{ position: "relative" }}>
+        {/* Pessoas: chips com a cor de cada um (a agenda de todas as
+            selecionadas fica ocupada). Era um campo que abria lista com
+            checkbox: dois cliques e nenhuma cor pra confirmar quem entrou. */}
+        <div>
           <span className="kicker" style={label}>Pessoas</span>
-          <button onClick={() => setSelOpen((v) => !v)}
-            style={{ ...field, width: "100%", display: "flex", alignItems: "center", gap: 8, cursor: "pointer", textAlign: "left" }}>
-            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: sel.length ? "var(--fg-1)" : "var(--fg-4)" }}>
-              {sel.length ? selNames.join(", ") : "selecionar…"}
-            </span>
-            <span className="dim" style={{ fontSize: 11 }}>{selOpen ? "▲" : "▼"}</span>
-          </button>
-          {selOpen && (
-            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 5, marginTop: 4, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", boxShadow: "var(--shadow-pop)", padding: 4, maxHeight: 200, overflowY: "auto" }}>
-              {people.map((p) => (
-                <label key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 9px", borderRadius: 6, fontSize: 13, cursor: "pointer" }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
-                  <input type="checkbox" checked={sel.includes(p.id)} onChange={() => toggleSel(p.id)}
-                    style={{ width: 14, height: 14, accentColor: "var(--accent)", cursor: "pointer" }} />
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {people.map((p) => {
+              const on = sel.includes(p.id);
+              return (
+                <button key={p.id} onClick={() => toggleSel(p.id)}
+                  style={{ height: 30, padding: "0 11px 0 8px", borderRadius: 999, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                    background: on ? "color-mix(in srgb, " + userColor(p.id) + " 16%, var(--bg-1))" : "var(--bg-1)",
+                    color: on ? "var(--fg-1)" : "var(--fg-3)",
+                    border: "1px solid " + (on ? userColor(p.id) : "var(--line-2)") }}>
+                  <span style={{ width: 8, height: 11, borderRadius: 2, background: userColor(p.id), opacity: on ? 1 : 0.45 }} />
                   {p.name || p.id}
-                </label>
-              ))}
-              {sel.filter((id) => !people.some((p) => p.id === id)).map((id) => (
-                <label key={id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 9px", borderRadius: 6, fontSize: 13, cursor: "pointer" }}>
-                  <input type="checkbox" checked onChange={() => toggleSel(id)}
-                    style={{ width: 14, height: 14, accentColor: "var(--accent)", cursor: "pointer" }} />
-                  {displayName(id)}
-                </label>
-              ))}
-            </div>
-          )}
+                </button>
+              );
+            })}
+            {/* Quem já está no item mas não tem papel de agenda hoje (mudou de
+                função, saiu do time): continua clicável pra poder sair. */}
+            {sel.filter((id) => !people.some((p) => p.id === id)).map((id) => (
+              <button key={id} onClick={() => toggleSel(id)} title="não está mais na lista de agenda deste produto"
+                style={{ height: 30, padding: "0 11px", borderRadius: 999, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+                  background: "var(--bg-2)", color: "var(--fg-2)", border: "1px dashed var(--line-2)" }}>
+                {displayName(id)}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div>
@@ -380,6 +386,7 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
         <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, color: "var(--fg-2)" }}>
           <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} style={{ accentColor: "var(--accent)", width: 15, height: 15, cursor: "pointer" }} />
           Dia inteiro
+          <span className="mono dim" style={{ fontSize: 10.5 }}>ocupa a grade toda: nenhuma call cai nesse dia</span>
         </label>
         {!allDay && (<>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -389,12 +396,28 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
               {quarterHours(7, 20.75).map((h) => <option key={h} value={h}>{fmtH(h)}</option>)}
             </select>
           </div>
+          {/* Duração: três chips resolvem quase tudo (a escada de doze opções
+              continua atrás do "outra"). A escada em si não muda. */}
           <div>
             <span className="kicker" style={label}>Duração</span>
-            <select value={dur} onChange={(e) => setDur(Number(e.target.value))} style={{ ...field, width: "100%" }}>
-              {DUR_OPTIONS.filter((m) => from + m / 60 <= 24).map((m) => <option key={m} value={m}>{durLabel(m)}</option>)}
-              {!DUR_OPTIONS.includes(dur) && <option value={dur}>{durLabel(dur)}</option>}
-            </select>
+            <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
+              {[30, 60, 120].map((m) => (
+                <button key={m} onClick={() => { setDur(m); setDurOpen(false); }}
+                  style={{ height: 34, padding: "0 12px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+                    background: dur === m ? "var(--accent-soft)" : "var(--bg-1)", color: dur === m ? "var(--accent)" : "var(--fg-2)",
+                    border: "1px solid " + (dur === m ? "var(--accent-line)" : "var(--line-2)") }}>
+                  {durLabel(m)}
+                </button>
+              ))}
+              {(durOpen || ![30, 60, 120].includes(dur)) ? (
+                <select value={dur} autoFocus={durOpen} onChange={(e) => setDur(Number(e.target.value))} style={{ ...field, flex: 1, minWidth: 96 }}>
+                  {DUR_OPTIONS.filter((m) => from + m / 60 <= 24).map((m) => <option key={m} value={m}>{durLabel(m)}</option>)}
+                  {!DUR_OPTIONS.includes(dur) && <option value={dur}>{durLabel(dur)}</option>}
+                </select>
+              ) : (
+                <button onClick={() => setDurOpen(true)} className="mono" style={{ height: 34, padding: "0 10px", fontSize: 11.5, color: "var(--fg-3)", cursor: "pointer" }}>outra ▾</button>
+              )}
+            </div>
           </div>
         </div>
         <div className="mono dim" style={{ fontSize: 11, marginTop: -6 }}>termina às {fmtH(to)}</div>
@@ -402,13 +425,21 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
 
         <div>
           <span className="kicker" style={label}>Repete</span>
-          <select value={recur} onChange={(e) => setRecur(e.target.value)} style={{ ...field, width: "100%" }}>
-            <option value="once">não repete (só {date ? date.slice(8, 10) + "/" + date.slice(5, 7) : "essa data"})</option>
-            <option value="weekly">toda {weekdayLabel}</option>
-            <option value="weekdays">segunda a sexta, toda semana</option>
-            <option value="daily">todos os dias, toda semana</option>
-            <option value="custom">dias escolhidos…</option>
-          </select>
+          {/* Segmented no lugar do select: as quatro opções cabem à vista.
+              "Todos os dias" saiu da lista porque é "dias escolhidos" com os
+              sete marcados, e cada dia continua virando um registro weekly. */}
+          <Segmented value={recur} onChange={setRecur} options={[
+            { value: "once", label: "Não repete" },
+            { value: "weekly", label: "Toda semana" },
+            { value: "weekdays", label: "Seg a sex" },
+            { value: "custom", label: "Dias escolhidos" },
+          ]} />
+          <div className="mono dim" style={{ fontSize: 10.5, marginTop: 6 }}>
+            {recur === "once" ? `só ${date ? date.slice(8, 10) + "/" + date.slice(5, 7) : "essa data"}`
+              : recur === "weekly" ? `toda ${weekdayLabel}`
+              : recur === "weekdays" ? "segunda a sexta, toda semana"
+              : "marque os dias, cada um vira um item semanal"}
+          </div>
           {recur === "custom" && (
             <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 8 }}>
               {WD_SHORT.map((wLabel, w) => {
@@ -426,6 +457,16 @@ function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, onClose 
           )}
         </div>
 
+        {conflitos.length > 0 && (
+          <div style={{ padding: "9px 11px", borderRadius: "var(--r-2)", background: "var(--neg-soft)", border: "1px solid color-mix(in srgb, var(--neg) 30%, transparent)", color: "var(--neg)", fontSize: 12.5, lineHeight: 1.5 }}>
+            {conflitos.map(({ u, hit }) => (
+              <div key={u}><strong>{displayName(u)}</strong>{` já tem ${hit} nesse ${allDay ? "dia" : "horário"}`}</div>
+            ))}
+            <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 2 }}>
+              remarque uma das duas ou tire {conflitos.length === 1 ? "essa pessoa" : "essas pessoas"} deste compromisso
+            </div>
+          </div>
+        )}
         {err && <div style={{ padding: "8px 10px", borderRadius: "var(--r-2)", background: "var(--warn-soft)", color: "var(--warn)", fontSize: 12.5 }}>{err}</div>}
 
         <div style={{ display: "flex", gap: 8, marginTop: 2 }}>

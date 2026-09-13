@@ -193,6 +193,36 @@ try {
     failed++;
   }
 
+  // ── Agenda: o modal avisa do conflito ANTES do submit (bloco 3 de 12/09) ──
+  // O conflito só aparecia como string no submit: você montava o compromisso
+  // inteiro pra descobrir no fim. Agora o mesmo liveConflict roda no render.
+  try {
+    const A = await server.ssrLoadModule("/src/screens/agenda.jsx");
+    const props = {
+      init: { block: null, date: "2026-09-15", fromHour: 13 },
+      people: [{ id: "rafael", name: "Rafael" }, { id: "camila", name: "Camila" }],
+      defaultUser: "rafael",
+      onSave() { return null; }, onDelete() {}, onClose() {},
+      conflictOf: (user, date, from, to) => (user === "rafael" && date === "2026-09-15" && from < 14 && to > 13 ? "call com Caio Ferraz" : null),
+    };
+    const html = renderToString(wrap(React.createElement(A.AgendaItemModal, props)));
+    const has = (must) => { if (!html.includes(must)) throw new Error(`o modal não contém "${must}"`); };
+    has("já tem call com Caio Ferraz nesse horário");
+    has("remarque uma das duas");
+    has("Dias escolhidos");        // recorrência virou Segmented
+    has("Seg a sex");
+    has("outra ▾");                // duração: 3 chips + o resto da escada
+    has("ocupa a grade toda");     // a nota do dia inteiro
+    if (html.includes("selecionar…")) throw new Error("o dropdown de pessoas voltou (agora são chips)");
+    // Sem conflito, nenhum aviso na tela.
+    const limpo = renderToString(wrap(React.createElement(A.AgendaItemModal, { ...props, conflictOf: () => null })));
+    if (limpo.includes("remarque uma das duas")) throw new Error("aviso de conflito aparecendo sem conflito");
+    console.log("✓ agenda-modal");
+  } catch (err) {
+    console.error(`✗ agenda-modal: ${err.message}`);
+    failed++;
+  }
+
   // Item de agenda "Dia inteiro" (allDay): tem que ocupar o DIA TODO na grade de
   // horários, pra não caber call de venda nesse dia. matchBlock já trata allDay;
   // aqui garante que busyView marca qualquer slot do dia.
