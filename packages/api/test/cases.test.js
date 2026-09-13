@@ -152,3 +152,31 @@ test("migração: cases conhecidos entram em rascunho e não duplicam", async ()
   assert.ok(todos.every((c) => publishBlockers(c).length > 0), "todos exigem conferência antes de publicar");
   assert.equal(await ensureKnownCases(repo), 0);
 });
+
+// ── Deck: slide 06 com case real, colchetes quando não há ─────────────────
+import { proposalSlidesPageHtml } from "../src/proposal-slides-page.js";
+
+const deck = (cases) => proposalSlidesPageHtml({
+  id: "pr_1", name: "Proposta", layout: "slides", theme: {}, slides: [], calc: {},
+  data: { lead: { name: "Ana", company: "Lupa" }, answers: { niche: "autopecas" }, cases },
+  state: {}, accepted: false,
+}, { editable: false });
+
+test("deck: sem case publicado o slide 06 mantém os colchetes", () => {
+  const html = deck([]);
+  assert.match(html, /\[CLIENTE\] · \[NICHO\]/);
+  assert.match(html, /data-cases-fallback/);
+  assert.match(html, /"cases":\[\]/);
+});
+
+test("deck: com cases, eles vão no snapshot e o fallback some na pintura", () => {
+  const html = deck([
+    { name: "Auto C", niche: "autopecas", metrics: [{ label: "vendidos", value: "R$ 82 mil", period: "30 dias", source: "painel" }], quote: "", quoteAuthor: "", headline: "", order: 1 },
+  ]);
+  assert.match(html, /"name":"Auto C"/);
+  assert.match(html, /R\$ 82 mil/);
+  assert.match(html, /data-cases\b/);
+  // O fallback continua no HTML (é ele que aparece quando não há case), mas a
+  // pintura o esconde: a regra está no script, não no markup.
+  assert.match(html, /fb\.style\.display = \(D\.cases \|\| \[\]\)\.length \? "none" : "contents"/);
+});

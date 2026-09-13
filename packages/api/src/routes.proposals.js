@@ -6,6 +6,7 @@
 // (closer abrindo o próprio link de edição não infla o número).
 
 import { publicProposal, syncProposalLeadSnapshot } from "./proposal.js";
+import { pickCases, publicCase } from "./cases.js";
 import { applyCatalog, catalogAmount, catalogUI, activeProduct } from "./proposal-catalog.js";
 import { proposalPageHtml } from "./proposal-page.js";
 import { proposalSlidesPageHtml, deckConfig } from "./proposal-slides-page.js";
@@ -48,7 +49,7 @@ function renderProposal(p, { editable = false, previewBanner = false } = {}) {
   return proposalPageHtml(pv, { previewBanner });
 }
 
-function previewFromTemplate(t, { data, state, answers } = {}) {
+function previewFromTemplate(t, { data, state, answers, cases } = {}) {
   return {
     id: "preview",
     name: t.name || "Proposta",
@@ -59,6 +60,7 @@ function previewFromTemplate(t, { data, state, answers } = {}) {
     data: data || {
       lead: { name: "Ana Souza", firstName: "Ana", company: "Empresa Exemplo", email: "ana@exemplo.com", phone: "(11) 98765-4321", amount: 0 },
       answers: answers || {},
+      cases: cases || [],
     },
     state: state || {
       accounts: Object.keys(t.calc?.seatsMap || {})[0] || "",
@@ -114,6 +116,11 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     }
     if (typeof q.volume === "string" && (t.calc?.volumeMid || {})[q.volume] != null) fake.state.volume = q.volume;
     if (typeof q.niche === "string" && q.niche) fake.data.answers.niche = q.niche.slice(0, 40);
+    // Preview mostra os cases DE VERDADE (escolhidos pelo nicho da query): é
+    // aqui que o closer confere como o slide 06 vai sair na call.
+    try {
+      fake.data.cases = pickCases(await repo.list("cases"), { niche: fake.data.answers.niche || "", limit: 4 }).map(publicCase);
+    } catch { fake.data.cases = []; }
     if (typeof q.product === "string") fake.state.product = q.product.slice(0, 20);
     if (typeof q.pain === "string") fake.state.pain = q.pain.slice(0, 8);
     if (q.oem === "1") fake.state.oem = true;
