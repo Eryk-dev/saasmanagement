@@ -1080,6 +1080,51 @@ try {
     console.error(`✗ story: ${err.message}`);
     failed++;
   }
+
+  // ── A moldura dos painéis (components/overlay.jsx, 14/09) ───────────────
+  // Eram cinco cores de véu e z-index de 60 a 1200 sem escala. Aqui se prova
+  // que quem usa a peça herda UM véu e UMA camada, e que os painéis já
+  // migrados não escrevem mais os valores na mão.
+  try {
+    const has = (name, html, must) => { if (!html.includes(must)) throw new Error(`${name} não contém "${must}"`); };
+    const R = (el) => renderToString(wrap(el));
+    const O = await server.ssrLoadModule("/src/components/overlay.jsx");
+
+    const modal = R(React.createElement(O.Modal, { onClose: () => {}, label: "x", largura: 420 }, "miolo"));
+    has("modal", modal, "var(--scrim)");
+    has("modal", modal, "z-index:var(--z-modal)");
+    has("modal", modal, "min(420px, 100%)");
+    has("modal", modal, 'aria-modal="true"');
+
+    const drawer = R(React.createElement(O.Drawer, { onClose: () => {}, label: "x" }, "miolo"));
+    has("gaveta", drawer, "var(--scrim-soft)");
+    has("gaveta", drawer, "z-index:var(--z-drawer)");
+    has("gaveta", drawer, "justify-content:flex-end");
+
+    has("passos", R(React.createElement(O.PassosDoPainel, { passos: ["cliente", "quadro resumo", "gerar"], atual: 1 })), "quadro resumo");
+
+    // Os quatro painéis desta leva não podem mais trazer véu próprio.
+    const migrados = [
+      ["atalhos", "/src/screens/tasks/help.jsx", "ShortcutsHelp", { onClose: () => {} }],
+      ["regras da coluna", "/src/screens/tasks/rules.jsx", "ColumnRulesModal", { col: { name: "A fazer", rules: {} }, users: [], isDoneCol: false, onSave: () => {}, onClose: () => {} }],
+      ["baixa manual", "/src/components/manual-paid-modal.jsx", "ManualPaidModal", { link: { id: "l1", amount: 990, title: "Mensalidade" }, onClose: () => {}, onDone: () => {} }],
+      ["excluir", "/src/components/ConfirmDelete.jsx", "ConfirmDelete", { entityKey: "customers", record: { id: "c1", name: "Cliente Teste" }, onClose: () => {}, onDeleted: () => {} }],
+    ];
+    for (const [nome, mod, exp, props] of migrados) {
+      const m = await server.ssrLoadModule(mod);
+      const comp = m[exp] || m.default;
+      if (!comp) throw new Error(`${nome}: não achei o export ${exp}`);
+      const html = R(React.createElement(comp, props));
+      has(nome, html, "var(--scrim)");
+      if (/oklch\(0 0 0 \/ 0\.4/.test(html)) throw new Error(`${nome} ainda escreve o véu na mão`);
+      if (/z-index:80\b/.test(html)) throw new Error(`${nome} ainda escreve a camada na mão`);
+    }
+
+    console.log("✓ overlay");
+  } catch (err) {
+    console.error(`✗ overlay: ${err.message}`);
+    failed++;
+  }
 } finally {
   await server.close();
 }
