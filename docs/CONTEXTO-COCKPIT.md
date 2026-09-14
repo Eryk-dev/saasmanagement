@@ -64,6 +64,20 @@ O repositório usa cache de listagem com invalidação e `listWhere` para filtro
 no Postgres. Em tabelas volumosas, procurar os acessos existentes antes de
 adicionar um `list()` completo ou carregar registros no bootstrap.
 
+Na Visão Geral, `metrics-reader.js` compartilha leituras apenas dentro de um
+cálculo do placar/pace/meta. Atividades são filtradas por produto; mensagens
+mantêm os registros legados sem `saas`, mas trafegam sem texto/mídia. Propostas
+levam só os campos usados no contador. Não reutilizar esse leitor em CRUD ou
+entre requisições. A meta de uma janela compartilha o cálculo do ticket com o
+pace, sem recalcular todo o funil. A regressão de custo e equivalência está em
+`api/test/overview-loading.test.js`.
+
+O nginx do container comprime JSON, JavaScript, CSS e outros textos com gzip,
+com `Vary: Accept-Encoding`. Streams SSE não entram nos tipos comprimidos e
+o MCP mantém compressão desabilitada. A validação de produção dessa melhoria
+deve conferir `Content-Encoding: gzip` no bootstrap com `Accept-Encoding: gzip`,
+além do hash da API: só o hash não comprova a configuração do nginx.
+
 ## Mapa para encontrar a mudança
 
 Os caminhos abaixo são relativos a `packages/`.

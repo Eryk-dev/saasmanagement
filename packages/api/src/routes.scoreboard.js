@@ -7,6 +7,7 @@
 // stageSince/callAt/amount, activities de stage/toque, customers, proposals).
 // Retenção lê o evento de churn do cliente (customer.endedAt — churn.js).
 
+import { metricsReader } from "./metrics-reader.js";
 import { cadenceOf, firstStage, isLoss, kindOf, TOUCH_TYPES } from "./stages.js";
 import { teamBonusProducts, compGoalFor, compLevelOf, careerRuleOf, promotionEligibility, leveledRoleOf } from "./comp-plan.js";
 import { TEAM_METRICS, META_CATALOG, deriveGoalsFromPace } from "./routes.metas.js";
@@ -80,6 +81,7 @@ export async function teamBonusStatus(repo, product, until, { customers = null, 
 }
 
 export async function computeScoreboard(repo, product, query = {}, { now = () => new Date() } = {}) {
+    repo = metricsReader(repo, product.id);
     const { since, until } = rangeFromQuery(query || {});
     // Hoje (dia do negócio): separa call já VENCIDA (não veio) de call marcada
     // pro FUTURO (ainda vai acontecer) no comparecimento — ver callOutcome.
@@ -93,12 +95,10 @@ export async function computeScoreboard(repo, product, query = {}, { now = () =>
     const hasPrev = /^\d{4}-\d{2}-\d{2}$/.test(prevSince) && /^\d{4}-\d{2}-\d{2}$/.test(prevUntil);
     const inPrev = (iso) => iso && dayKey(iso) >= prevSince && dayKey(iso) <= prevUntil;
 
-    const [allLeads, allActs, allCustomers, proposals, subs, users, goalsAll, npsAll, waMessages, invoicesAll, compPlansAll, mpPaymentsAll] = await Promise.all([
+    const [allLeads, allActs, allCustomers, users, goalsAll, npsAll, waMessages, invoicesAll, compPlansAll, mpPaymentsAll] = await Promise.all([
       repo.list("leads"),
       repo.list("activities"),
       repo.list("customers"),
-      repo.list("proposals"),
-      repo.list("subscriptions"),
       repo.list("users").catch(() => []),
       repo.list("goals"),
       repo.list("nps").catch(() => []),
