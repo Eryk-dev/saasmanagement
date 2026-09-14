@@ -2,6 +2,7 @@ import React from "react";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
 import { CAREER_LEVELS } from "../lib/levels.js";
 import { EmptyState, PrimaryButton, Avatar } from "../atoms.jsx";
+import { Popover } from "../components/popover.jsx";
 import { useData } from "../data.jsx";
 import { api } from "../lib/api.js";
 import { KINDS, KIND_IDS, guessKind, lossReasonsOf, stageKind, stageByKind, phaseOf, NEXT_KINDS, NEXT_STEP_KINDS, NEXT_STEP_LABELS, nurtureStage, nextKindsFor } from "../lib/funnel.js";
@@ -679,22 +680,21 @@ function TeamSettings() {
 // cortou um acesso que continua de pé. A etiqueta diz de onde vem.
 function ScreensPicker({ screens, roles, onChange }) {
   const [open, setOpen] = useStS(false);
-  const ref = React.useRef(null);
-  React.useEffect(() => {
-    function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, []);
+  // Pelo Popover (14/09), não `position: absolute`: a tabela da Equipe vive num
+  // .tbl-x com minWidth 860, e overflow automático recorta o que sai da caixa —
+  // nas últimas linhas o seletor nascia cortado. É o mesmo defeito que o ⋯
+  // tinha nas tabelas largas.
+  const btn = React.useRef(null);
   const toggle = (id) => onChange(screens.includes(id) ? screens.filter((s) => s !== id) : [...screens, id]);
   const doPapel = roleScreens({ roles: roles || [] });
   return (
-    <div ref={ref} style={{ position: "relative" }}>
-      <button onClick={() => setOpen((o) => !o)}
+    <div style={{ position: "relative" }}>
+      <button ref={btn} onClick={() => setOpen((o) => !o)}
         style={{ ...inputStyle, height: 26, fontSize: 12, textAlign: "left", cursor: "pointer", border: "1px solid " + (open ? "var(--accent-line)" : "var(--line-1)") }}>
         {screens.length ? `${screens.length} tela${screens.length > 1 ? "s" : ""}` : "todas"}
       </button>
       {open && (
-        <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, width: 200, zIndex: 60, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 8 }}>
+        <Popover anchor={btn} onClose={() => setOpen(false)} width={220} align="end" title="Telas do usuário">
           {NAV.filter((n) => !n.hidden).map((n) => {
             const fixa = doPapel.has(n.id) ? "papel" : isUniversalScreen(n.id) ? "todos" : "";
             return (
@@ -708,7 +708,7 @@ function ScreensPicker({ screens, roles, onChange }) {
             );
           })}
           <button onClick={() => onChange([])} className="mono dim" style={{ fontSize: 10.5, padding: 4 }}>limpar (todas as telas)</button>
-        </div>
+        </Popover>
       )}
     </div>
   );
@@ -969,8 +969,8 @@ function IntegrationsSettings({ s }) {
               <input value={adAccount} placeholder="act_1234567890" onChange={(e) => setAdAccount(e.target.value)} className="mono" style={{ ...inputStyle, width: 220, fontFamily: "var(--mono)" }} />
             </>
           )}
-          <span className="mono" title="Pixel disparado na página pública do form deste SaaS (/f/:id) e no CAPI. Vazio = pixel padrão do env."
-            className="kicker" style={{ whiteSpace: "nowrap" }}>pixel de {s.name}</span>
+          <span className="kicker" title="Pixel disparado na página pública do form deste SaaS (/f/:id) e no CAPI. Vazio = pixel padrão do env."
+            style={{ whiteSpace: "nowrap" }}>pixel de {s.name}</span>
           <input value={pixelId} placeholder="971201888623790" onChange={(e) => setPixelId(e.target.value)} className="mono" style={{ ...inputStyle, width: 170, fontFamily: "var(--mono)" }} />
           <CardSaveButton onSave={saveMeta} />
         </div>
@@ -988,8 +988,8 @@ function IntegrationsSettings({ s }) {
         {waOn && (
           <>
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
-              <span className="mono" title="Phone number ID do número deste SaaS (WhatsApp Manager → API Setup, é o id do NÚMERO, não o da conta). O número precisa estar no mesmo WABA do token."
-                className="kicker" style={{ whiteSpace: "nowrap" }}>número de {s.name}</span>
+              <span className="kicker" title="Phone number ID do número deste SaaS (WhatsApp Manager → API Setup, é o id do NÚMERO, não o da conta). O número precisa estar no mesmo WABA do token."
+                style={{ whiteSpace: "nowrap" }}>número de {s.name}</span>
               <input value={waPhoneId} placeholder="712249848640591" onChange={(e) => setWaPhoneId(e.target.value)} className="mono" style={{ ...inputStyle, width: 200, fontFamily: "var(--mono)" }} />
             </div>
             {/* O fluxo de ligação do 1º contato mudou de casa: Inbox → Automações. */}
