@@ -1,5 +1,7 @@
 import React from "react";
 import { PageHead } from "../components/viz.jsx";
+import { AvisoTopo } from "../components/story.jsx";
+import { Modal } from "../components/overlay.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { WaBubbles, WaComposer, WaTemplateComposer, waWindowOpen } from "../components/wa-thread.jsx";
 // (o discador do cockpit — WaCallButton/wa-call.jsx — saiu da tela em 22/08/2026
@@ -148,16 +150,12 @@ function WaTopStats({ numInfo, stats, onResponder }) {
     <div style={{ margin: "12px var(--pad-x) 0", display: "flex", flexDirection: "column", gap: 8 }}>
       {/* O aviso com prazo sobe pro topo, com a ação ao lado. */}
       {waiting > 0 && (
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "11px 16px", borderRadius: "var(--r-3)", border: "1px solid color-mix(in srgb, var(--neg) 26%, transparent)", background: "var(--neg-soft)" }}>
-          <span style={{ fontSize: 13.5, fontWeight: 650, color: "var(--neg)" }}>
-            {`${waiting} ${waiting === 1 ? "conversa esperando resposta" : "conversas esperando resposta"}`}
-          </span>
-          {espera && <span style={{ fontSize: 12.5, color: "var(--fg-2)" }}>{`a mais antiga há ${espera}`}</span>}
-          {tipica !== "—" && <span className="mono dim" style={{ fontSize: 11 }}>{`a gente costuma responder em ${tipica}`}</span>}
-          <button onClick={onResponder} style={{ marginLeft: "auto", height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: 0, background: "var(--neg)", color: "oklch(1 0 0)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
-            responder agora
-          </button>
-        </div>
+        <AvisoTopo
+          titulo={`${waiting} ${waiting === 1 ? "conversa esperando resposta" : "conversas esperando resposta"}`}
+          nota={espera ? `a mais antiga há ${espera}` : null}
+          fim={tipica !== "—" ? <span className="mono dim" style={{ fontSize: 11 }}>{`a gente costuma responder em ${tipica}`}</span> : null}
+          acao={{ label: "responder agora", onClick: onResponder }}
+        />
       )}
       {/* Resumo do número: uma linha, sem rolagem. */}
       <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap", padding: "10px 16px", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
@@ -1109,8 +1107,7 @@ export function WaTemplateCreator({ onClose }) {
   const lab = { display: "block", fontSize: 11.5, fontWeight: 600, color: "var(--fg-3)", marginBottom: 4 };
   const inp = { width: "100%", height: 36, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, boxSizing: "border-box" };
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, padding: 16 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(560px, 100%)", maxHeight: "90vh", overflow: "auto", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: 22 }}>
+    <Modal onClose={onClose} label="criar template" largura={560} padding={16} painelStyle={{ padding: 22 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 4 }}>
           <div style={{ fontSize: 15.5, fontWeight: 800, flex: 1 }}>Criar template do WhatsApp</div>
           <button onClick={onClose} style={{ ...pill, height: 26, padding: "0 9px" }}>✕</button>
@@ -1161,7 +1158,6 @@ export function WaTemplateCreator({ onClose }) {
             {busy ? "enviando…" : "Enviar pra aprovação"}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
