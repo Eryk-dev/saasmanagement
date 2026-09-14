@@ -2,6 +2,8 @@ import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { PageHead, Card, Pill, Segmented } from "../components/viz.jsx";
+import { AvisoTopo } from "../components/story.jsx";
+import { Modal } from "../components/overlay.jsx";
 import { EmptyState, PrimaryButton } from "../atoms.jsx";
 import { milestonesFor, nextMilestone, tenureLabel, dueLabel } from "../lib/milestones.js";
 import { ActivityList } from "../components/timeline.jsx";
@@ -559,7 +561,10 @@ function CustomersScreen({ initialTab }) {
       const c = customers.find((x) => x.id === i.customer);
       return !!c && !isChurned(c) && !isMentoria(c);
     });
-    return { n: rows.length, total: rows.reduce((a, i) => a + (Number(i.amount) || 0), 0) };
+    // A mais antiga é a que o aviso do topo baixa: sem ela o aviso seria um
+    // número sem ação, que é a regra 2 do handoff invertida.
+    const maisAntiga = [...rows].sort((a, b) => (parseDay(a.dueDate)?.getTime() || 0) - (parseDay(b.dueDate)?.getTime() || 0))[0] || null;
+    return { n: rows.length, total: rows.reduce((a, i) => a + (Number(i.amount) || 0), 0), maisAntiga };
   }, [invoices, customers, tick, version]);
   // A fila é SÓ COBRANÇA (Leo, 29/08): a régua de retenção (onboarding,
   // check-in, upsell, renovação) saiu daqui e continua viva na ficha do
@@ -603,6 +608,28 @@ function CustomersScreen({ initialTab }) {
         ) : (
           <div className="side-rail" style={{ "--cols": "minmax(0,1fr) 320px", gap: 16, alignItems: "start" }}>
             <div style={{ display: "grid", gap: 16, minWidth: 0 }}>
+            {/* ── O AVISO SOBE PRO TOPO (14/09, protótipo) ──────────────────
+                "Cobrar agora" era um card no TRILHO, competindo com a fila de
+                cobrança logo abaixo dele e sem ação nenhuma: o número que
+                decide o dia de quem cobra ficava na terceira posição da
+                terceira coluna. Agora abre a aba, com a baixa da mais antiga
+                ao lado, que é a regra 2 do handoff. */}
+            {vencido.n > 0 && (
+              <AvisoTopo
+                titulo={`${money(vencido.total)} vencidos a receber`}
+                nota={(() => {
+                  const soon = nextActions.filter((a) => a.status === "soon").length;
+                  const base = `${vencido.n} ${vencido.n === 1 ? "cobrança vencida" : "cobranças vencidas"}`;
+                  return soon ? `${base} · ${soon} ${soon === 1 ? "vence" : "vencem"} em 7 dias` : base;
+                })()}
+                acao={vencido.maisAntiga ? {
+                  label: payingId === vencido.maisAntiga.id ? "dando baixa…" : "dar baixa na mais antiga",
+                  title: "marcar a cobrança vencida mais antiga como recebida (a mesma baixa da ficha do cliente)",
+                  disabled: !!payingId,
+                  onClick: () => payFromQueue(vencido.maisAntiga),
+                } : null}
+              />
+            )}
             <CustomersAnalysis customers={customers} subs={subs} invoices={invoices} isKids={isKidsWorkspace}
               gradeDist={isKidsWorkspace ? null : gradeDist} nivelLegend={isKidsWorkspace ? null : <NivelLegend />} />
 
@@ -775,25 +802,6 @@ function CustomersScreen({ initialTab }) {
 
             {/* ── Trilho direito: cobrar agora → fila → contas grandes ──────── */}
             <div style={{ display: "grid", gap: 14, minWidth: 0 }}>
-              {/* O `vencido` vivia escondido numa linha de 12px dentro do card
-                  da fila; é o número que decide o dia de quem cobra. */}
-              {vencido.n > 0 && (
-                <div style={{ border: "1px solid var(--neg)", background: "var(--neg-soft)", borderRadius: "var(--r-4)", padding: "16px 18px" }}
-                  title="Faturas em aberto com vencimento no passado (parcelas do faturado, mensalidades da assinatura recorrente e cobranças avulsas).">
-                  <div className="kicker" style={{ color: "var(--neg)" }}>Cobrar agora</div>
-                  <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 30, fontWeight: 700, color: "var(--neg)", lineHeight: 1.1, marginTop: 6 }}>{money(vencido.total)}</div>
-                  <div style={{ fontSize: 12, color: "var(--fg-2)", marginTop: 4 }}>
-                    {`${vencido.n} ${vencido.n === 1 ? "cobrança vencida" : "cobranças vencidas"}`}
-                    {(() => {
-                      // "vence em 7 dias" sai do nextActions, que já classifica
-                      // status soon — sem régua nova nem mexer no `vencido`.
-                      const soon = nextActions.filter((a) => a.status === "soon").length;
-                      return soon ? ` · ${soon} ${soon === 1 ? "vence" : "vencem"} em 7 dias` : "";
-                    })()}
-                  </div>
-                </div>
-              )}
-
               <Card title="Fila de cobrança" hint="faturado e assinatura recorrente · vencidos primeiro">
                 <div style={{ padding: "8px 0 6px" }}>
                   {nextActions.length === 0 && (
@@ -1624,8 +1632,8 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
   // soltos competindo com o nome.
 
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 90, background: "color-mix(in srgb, var(--bg-0) 62%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: editing ? "min(640px, 100%)" : "min(1080px, 100%)", maxHeight: "min(92vh, 100%)", display: "flex", flexDirection: "column", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)" }}>
+    <Modal onClose={onClose} label="ficha do cliente" largura={editing ? 640 : 1080} padding={20}
+      painelStyle={{ maxHeight: "min(92dvh, 100%)", display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "18px 24px 14px", borderBottom: "1px solid var(--line-faint)", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
             <div style={{ minWidth: 0, flex: 1 }}>
@@ -2135,8 +2143,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
         )}
         </div>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 

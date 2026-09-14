@@ -2,7 +2,8 @@ import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
-import { EmptyState, PrimaryButton, MoreMenu, useEsc } from "../atoms.jsx";
+import { EmptyState, PrimaryButton, MoreMenu } from "../atoms.jsx";
+import { Modal } from "../components/overlay.jsx";
 import { Segmented } from "../components/viz.jsx";
 import { mpMethodLabel, MP_SUB_STATUS } from "../lib/payments.js";
 // Assinaturas (fase 5) — Cockpit como system-of-record de billing: assinaturas,
@@ -488,7 +489,6 @@ function MpRecurringTab({ preapprovals, sync, subs, customerName, onLink, onSync
 // Modal de mudança de plano/preço/ciclo — o servidor decide: upgrade aplica já e
 // fatura o pró-rata do resto do ciclo; downgrade/troca de ciclo agendam pro fim.
 function ChangeModal({ sub, plans, customerName, onClose, onDone }) {
-  useEsc(onClose);
   const [plan, setPlan] = useState(sub.plan || "");
   const [price, setPrice] = useState(String(sub.price ?? ""));
   const [cycle, setCycle] = useState(sub.cycle || "monthly");
@@ -522,8 +522,8 @@ function ChangeModal({ sub, plans, customerName, onClose, onDone }) {
   const input = { width: "100%", height: 30, padding: "0 8px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 };
 
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 70 }}>
-      <form onClick={(e) => e.stopPropagation()} onSubmit={submit} style={{ width: "min(420px, calc(100vw - 24px))", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+    <Modal onClose={onClose} label="mudar plano" largura={420} padding={12} painelStyle={{ padding: 0 }}>
+      <form onSubmit={submit} style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
         <div>
           <div className="kicker">Mudar plano</div>
           <div style={{ fontSize: 16, fontWeight: 500, marginTop: 2 }}>{customerName}</div>
@@ -561,7 +561,7 @@ function ChangeModal({ sub, plans, customerName, onClose, onDone }) {
           <button type="button" onClick={onClose} style={{ padding: "9px 16px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 13 }}>Cancelar</button>
         </div>
       </form>
-    </div>
+    </Modal>
   );
 }
 
