@@ -2,6 +2,8 @@
 // só o vite.preview.config.js troca lib/api.js por este arquivo, pra conferir
 // o desenho de uma tela sem subir a API nem tocar em banco nenhum.
 import { integrationFormsMock } from "./integration-forms-mock.js";
+import { marketingCollections, marketingCrud, marketingMock } from "./marketing-mock.js";
+const marketingPreview = typeof location !== "undefined" && new URLSearchParams(location.search).has("marketing");
 import { trainingMock } from "./training-mock.js";
 const DIA = 86400000;
 const hoje = new Date();
@@ -101,10 +103,12 @@ const vazio = () => Promise.resolve(null);
 
 export const api = new Proxy({}, {
   get(_, nome) {
-    if (Object.hasOwn(integrationFormsMock, nome)) return (col, ...args) => {
-      if (col === "integration_forms") return Promise.resolve().then(() => integrationFormsMock[nome](...args));
-      return Promise.resolve().then(() => RESPOSTAS[nome]?.(col, ...args) ?? null);
-    };
+    if (marketingPreview && Object.hasOwn(marketingMock, nome)) return (...args) => Promise.resolve().then(() => marketingMock[nome](...args));
+    if (Object.hasOwn(integrationFormsMock, nome) || (marketingPreview && Object.hasOwn(marketingCrud, nome))) return (col, ...args) => Promise.resolve().then(() => {
+      if (col === "integration_forms" && integrationFormsMock[nome]) return integrationFormsMock[nome](...args);
+      if (marketingPreview && Object.hasOwn(marketingCollections, col) && marketingCrud[nome]) return marketingCrud[nome](col, ...args);
+      return RESPOSTAS[nome]?.(col, ...args) ?? null;
+    });
     if (nome === "bootstrap") return () => Promise.resolve(window.SEED);
     if (nome === "listUsers") return () => Promise.resolve(window.SEED.USERS);
     if (RESPOSTAS[nome]) return (...a) => Promise.resolve(RESPOSTAS[nome](...a));
