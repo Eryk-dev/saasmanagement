@@ -1,312 +1,329 @@
-# Cockpit · Portfolio OS
+# Cockpit
 
-Um cockpit operacional para tocar **vários SaaS em paralelo** — implementação fiel do
-design *Portfolio Cockpit* (UI dark estilo Linear), com uma API REST de verdade e um
-servidor MCP para você plugar nos SaaS que já roda hoje.
+Painel operacional dos produtos da casa (LeverAds, UniqueKids, Elo). Reúne numa só
+ferramenta captação e qualificação de leads, WhatsApp, calls, propostas, fechamento,
+integração do cliente, retenção, tarefas, treinamentos, marketing e financeiro.
 
-> Três perguntas, respondidas em 60 segundos: *Como está meu portfólio hoje? Onde preciso
-> agir essa semana? Como cada produto está sendo operado por dentro?*
+Um **workspace por produto** (campo `saas` em todos os registros) permite que cada
+produto tenha seu próprio funil, perguntas, formulários, propostas e integrações.
 
-Já vem com três produtos demo deliberadamente heterogêneos — **LeverAds** (sales-led, vaca
-leiteira), **Quill** (PLG, sangrando), **Mesa** (sales-assisted, estável mas em risco) — pra
-consolidação e drill-down ficarem visíveis na hora. Troque-os pelos seus dados reais via API
-ou MCP.
+> Guia de trabalho mais detalhado (regras de domínio, mapa de arquivos, validação):
+> [`docs/CONTEXTO-COCKPIT.md`](docs/CONTEXTO-COCKPIT.md). Acordo de commit/deploy:
+> [`AGENTS.md`](AGENTS.md).
 
 ---
 
 ## Arquitetura
 
+Monorepo com npm workspaces, JavaScript ESM e Node 20 ou superior.
+
 ```
-┌────────────┐        ┌──────────────────────────┐        ┌───────────────┐
-│  web (Vite │  HTTP  │   api (Fastify + SQLite)  │  HTTP  │  mcp (MCP /   │
-│  + React)  │ ─────▶ │   a única fonte da        │ ◀───── │  Streamable   │
-│  a UI      │  /api  │   verdade — CRUD completo │  /api  │  HTTP)        │
-└────────────┘        └──────────────────────────┘        └───────────────┘
-        ▲                          ▲                               ▲
-        │                          │ REST (empurra métricas,       │ tools MCP
-   seu navegador           leads, deals, NPS…)              agentes IA / Claude /
-                           ◀── seus SaaS rodando ──▶          Cursor / seus bots
+                    ┌──────────────────────────────────────────────┐
+ navegador ───────▶ │ web · React 18 + Vite 6 (SPA, rotas por hash)│
+                    └───────────────┬──────────────────────────────┘
+                                    │ /api (REST + SSE /api/events)
+ forms públicos /f/ ─┐              ▼
+ propostas /p/       ├──▶ ┌──────────────────────────────────────┐ ──▶ Mercado Pago, Meta,
+ webhooks, blog      ┘    │ api · Fastify 5                      │     WhatsApp, Google,
+                          │ fonte da verdade: auth, regras,      │     Shopify, IA, Discord,
+ agentes / IDEs ─▶ mcp ─▶ │ migrações e rotinas em segundo plano │     Levercopy, Elo
+   (Streamable HTTP)      └───────────────┬──────────────────────┘
+                                          │ pg
+                                          ▼
+                          ┌──────────────────────────────────────┐
+                          │ Postgres (Supabase) · schema cockpit │
+                          └──────────────────────────────────────┘
 ```
 
-- **`packages/api`** — Fastify + SQLite. A única fonte da verdade. Armazenamento estilo
-  documento (uma linha JSON por registro) porque **cada SaaS define seu próprio funil e
-  campos** — heterogeneidade é o princípio central. Leitura é aberta; escrita pode exigir
-  uma API key. A camada de repositório é isolada, então trocar SQLite → Postgres/Supabase é
-  um arquivo só.
-- **`packages/web`** — Vite + React. Os componentes **exatos** do design, buscando tudo de
-  `/api/bootstrap` no boot. As 10 telas, 5 personas, kanban com drag-and-drop, drill-downs,
-  painel de tweaks.
-- **`packages/mcp`** — Servidor MCP sobre **Streamable HTTP** (com sessão). 16 tools que são
-  wrappers finos sobre a API, então MCP e UI nunca divergem.
+| Pacote | Stack | Papel |
+|---|---|---|
+| `packages/api` | Fastify 5, `pg` | API REST na porta 8787. Autenticação (usuários + chave mestre), permissão por tela, CRUD genérico das coleções e rotas de domínio (`routes.*.js`), páginas públicas (formulários, propostas, NPS, blog), webhooks e ~25 rotinas em segundo plano (cobrança, sync de pagamentos, cadências de WhatsApp, lembretes, relatórios). |
+| `packages/web` | React 18, Vite 6 | SPA na porta 5173 (dev). Carrega o `/api/bootstrap` e recebe atualizações em tempo real por SSE. Tema claro por padrão, com modo escuro. |
+| `packages/mcp` | SDK MCP, Express | Servidor MCP (Streamable HTTP) na porta 8788. As ferramentas leem **e escrevem** sempre através da API REST. |
+
+**Dados.** Postgres (Supabase), schema `cockpit`, uma tabela por coleção com
+`id`, `json` (JSONB) e `updated_at`. O formato documento é intencional: cada
+produto define seus próprios campos e funis. As tabelas são criadas no boot da API
+a partir de `COLLECTIONS` (`packages/api/src/seed-data.js`), e `migrations.js`
+aplica migrações idempotentes de dados logo em seguida. O acesso ao banco fica
+concentrado em `packages/api/src/db.js`.
+
+**Autenticação.** Com `COCKPIT_API_KEY` definida, toda rota exige autenticação:
+a chave mestre (integrações e MCP) ou o token de sessão de um usuário logado (senha
+com scrypt, sessão de 7 dias). `screens.js` restringe, também no servidor, o que
+cada usuário alcança. Continuam abertas só as superfícies públicas (`/api/health`,
+login, `/f/`, `/p/`, `/public/*`, webhooks).
 
 ---
 
-## Começar rápido
+## Estrutura do repositório
 
-```bash
-npm install        # instala os três workspaces (compila o better-sqlite3)
-npm run dev        # sobe api (:8787) + web (:5173) + mcp (:8788) juntos
 ```
-
-Depois abra **http://localhost:5173**.
-
-O banco SQLite se cria e popula sozinho no primeiro start da API
-(`packages/api/data/cockpit.db`).
-
-Rodar cada parte separada, se preferir:
-
-```bash
-npm run dev:api    # Fastify na :8787
-npm run dev:web    # Vite na :5173 (faz proxy de /api -> :8787)
-npm run dev:mcp    # MCP na :8788  (faz proxy pra API)
-npm run seed:demo  # carrega os 3 SaaS de demonstração (pra explorar)
-npm run seed:clear # ZERA tudo (instância limpa)
-npm run build      # build de produção do web -> packages/web/dist
+packages/
+  api/
+    src/            index.js (boot), routes.js (CRUD + registro dos módulos),
+                    routes.*.js (domínios), db.js, migrations.js, auth.js, screens.js,
+                    integrações (mp, meta, whatsapp, google, shopify…) e rotinas
+    test/           testes node:test com repositório em memória (test/helpers/mem-repo.js)
+    scripts/        scripts pontuais de dados, datados
+  web/
+    src/            main.jsx, app.jsx, chrome.jsx, data.jsx, atoms.jsx, tokens.css
+      screens/      uma tela por arquivo (tasks/ tem subpasta própria)
+      components/   componentes compartilhados
+      lib/          api, workspace, users, funnel, formatação…
+    preview/        App real com API fictícia, para revisar telas sem banco
+    scripts/        smoke-ssr.mjs (teste de render)
+  mcp/src/          index.js, tools.js, apiClient.js
+infra/local/        Supabase local para desenvolvimento (só infraestrutura)
+deploy/             start.sh + nginx da imagem all-in-one
+design/             handoff de design do cockpit
+docs/               contexto do projeto, plano histórico, playbook SDR
+Dockerfile.allinone imagem de produção (UI + API + MCP numa porta)
+Dockerfile, docker-compose.yml, packages/web/{Dockerfile,nginx.conf}   stack de 3 containers (VPS)
 ```
-
-Configuração fica no `.env` na raiz — copie o `.env.example` e edite. Portas, a API key
-opcional e a URL da API que o MCP consome ficam lá.
 
 ---
 
-## Rodar em VPS (Docker)
+## Ambiente local
 
-Sem instalar Node na VPS — só Docker + Compose:
+A infraestrutura (Supabase) roda no Docker; API, web e MCP rodam direto na máquina.
 
-```bash
-git clone git@github.com:Eryk-dev/saasmanagement.git && cd saasmanagement
-cp .env.example .env        # (opcional) defina COCKPIT_API_KEY p/ proteger as escritas
-docker compose up -d --build
-```
+**Pré-requisitos:** Node 20+, Docker com Compose.
 
-Sobe **uma porta só** (80): o nginx serve a UI e faz proxy de `/api` (REST) e `/mcp` (MCP).
-- UI:  `http://SEU_IP/`
-- API: `http://SEU_IP/api/...`
-- MCP: `http://SEU_IP/mcp`
-
-O SQLite persiste no volume `cockpit-data` (sobrevive a `down`/redeploys). Coloque um proxy
-com TLS (Caddy/Traefik/nginx) na frente para HTTPS + seu domínio.
+### 1. Subir o Supabase local
 
 ```bash
-docker compose logs -f                                              # logs
-docker compose exec api node packages/api/src/seed-cli.js --demo    # carrega demo
-docker compose exec api node packages/api/src/seed-cli.js --clear   # zera
-docker compose down                                                 # para (mantém os dados)
+docker compose -f infra/local/docker-compose.yml up -d
 ```
 
-Mudar a porta pública: `WEB_PORT=8080 docker compose up -d`. Para expor a API/MCP direto (sem
-passar pelo nginx), descomente os `ports:` no `docker-compose.yml`.
+| Serviço | Endereço | Uso |
+|---|---|---|
+| Postgres (imagem `supabase/postgres` 17) | `localhost:54322` · usuário `postgres` · senha `postgres` | banco da API |
+| Supabase Studio | http://localhost:54323 | editor de tabelas e SQL |
 
-### Easypanel / Render / Railway (um container só)
+Sobe só o que o app usa: Postgres, `postgres-meta` e Studio. Auth, Storage, REST e
+Realtime do Supabase ficam de fora porque o Cockpit não usa nenhum deles. Portas e
+senha podem ser trocadas com `LOCAL_DB_PORT`, `LOCAL_STUDIO_PORT` e
+`LOCAL_DB_PASSWORD`.
 
-PaaS que mapeia o domínio para **um container + uma porta** não combinam com o compose de 3
-serviços. Use o **`Dockerfile.allinone`**: ele empacota UI + API + MCP num único container,
-servidos por nginx na **porta 80** (`/` = UI, `/api` = REST, `/mcp` = MCP).
+```bash
+docker compose -f infra/local/docker-compose.yml ps        # status
+docker compose -f infra/local/docker-compose.yml logs -f db
+docker compose -f infra/local/docker-compose.yml down      # para, mantém os dados
+docker compose -f infra/local/docker-compose.yml down -v   # para e APAGA o banco
+```
 
-No **Easypanel** (App a partir do repo GitHub):
-1. **Build:** Dockerfile → caminho `Dockerfile.allinone`.
-2. **Port (proxy):** `80`.
-3. **Volume:** monte em `/app/packages/api/data` (persiste o SQLite).
-4. **Env (opcional):** `COCKPIT_API_KEY` para exigir key nas escritas.
+### 2. Configurar o `.env`
 
-O domínio do Easypanel já entrega HTTPS e faz proxy pra porta 80 do container.
-Se aparecer **"Service is not reachable"**, quase sempre é a **porta** apontando pra lugar
-errado (tem que ser 80) ou o container não subiu — veja os logs do serviço no Easypanel.
+```bash
+cp .env.example .env
+```
 
----
+O exemplo já aponta `COCKPIT_DB_URL` para o banco local
+(`postgresql://postgres:postgres@localhost:54322/postgres?sslmode=disable`).
+Recomendado para testar como em produção: definir `COCKPIT_API_KEY` com qualquer
+valor local, o que ativa a tela de login.
 
-## Como os dados são guardados e atualizados
+Deixe as integrações vazias. No boot, a API executa migrações e rotinas em
+segundo plano, e uma credencial real no `.env` local faz o ambiente de testes
+agir em serviços de produção (pagamentos, mensagens, anúncios). **Nunca aponte
+`COCKPIT_DB_URL` para o banco de produção.**
 
-**Onde ficam.** Os dados vivem em **SQLite**, em `packages/api/data/cockpit.db`. É um arquivo
-de banco real (modo WAL, durável em disco) — a API (`packages/api/src/db.js`) é a **única**
-coisa que fala com ele. Esse arquivo **não vai pro Git** (está no `.gitignore`): o repositório
-carrega o **código + a semente** (`packages/api/src/seed-data.js`), não o banco em si.
+### 3. Rodar os pacotes
 
-**Como nasce.** Por padrão o app sobe **vazio** (instância limpa) — a semente padrão
-(`seed-data.js`) não tem dados. Você popula tudo conectando seus SaaS via REST/MCP. As telas
-mostram um estado vazio com a dica de como começar até chegarem os primeiros dados.
-Quer explorar com dados fictícios? `npm run seed:demo` carrega 3 SaaS de exemplo;
-`npm run seed:clear` zera de novo. Reinícios **nunca** sobrescrevem o que já existe — o que
-seus SaaS empurraram fica preservado.
+```bash
+npm ci
+npm run dev        # api (:8787) + web (:5173) + mcp (:8788) juntos
+```
 
-**Adicionar seu primeiro produto** (mínimo — a API completa o resto com defaults seguros):
+Ou separados, cada um num terminal:
+
+```bash
+npm run dev:api    # Fastify em :8787
+npm run dev:web    # Vite em :5173 (proxy de /api, /f, /p, /public para :8787)
+npm run dev:mcp    # MCP em :8788
+```
+
+Abra http://localhost:5173.
+
+### 4. Primeiro acesso
+
+- O primeiro boot cria as tabelas e, com a coleção `users` vazia, os administradores
+  padrão definidos em `DEFAULT_ADMINS` (`packages/api/src/auth.js`). Troque a senha
+  depois de entrar.
+- O banco nasce sem produtos. Crie o primeiro em **Configurações** ou pela API:
+
 ```bash
 curl -X POST http://localhost:8787/api/products \
-  -H 'content-type: application/json' \
-  -d '{"id":"meusaas","name":"Meu SaaS","mrr":15000,"arr":180000,"health":72}'
+  -H 'content-type: application/json' -H 'x-api-key: <COCKPIT_API_KEY>' \
+  -d '{"id":"leverads","name":"LeverAds"}'
+npm run seed:leverads-questions -w packages/api   # perguntas de qualificação da LeverAds
 ```
-Quanto mais campos você enviar (`funnel`, `nnm`, `nrr`, `churnRate`, `activation`, `mrrSeries`…),
-mais partes da UI ganham vida. Veja o shape completo em `packages/api/src/seed-data.demo.js`.
 
-**Como é atualizado.** Há três caminhos, todos passando pela mesma API (uma fonte da verdade):
+- No log da API, `[leverads-results] falhou: function public.dashboard_portfolio…`
+  é esperado em ambiente local: essa função vive no banco do Levercopy, e o slide
+  da proposta volta para o texto do template.
 
-1. **Seus SaaS** chamam a **API REST** (`POST` / `PATCH` / `DELETE`) — ex.: sincronizar MRR à
-   noite, criar um lead vindo de um formulário, avançar um deal quando o CRM fecha.
-2. **Agentes de IA / bots** chamam as **tools do MCP** (que por baixo chamam a mesma API).
-3. **A própria UI** grava algumas mutações (ex.: arrastar um deal de estágio no kanban já
-   persiste via `PATCH /api/deals/:id`).
+### Scripts de dados
 
-Qualquer coisa escrita por um caminho aparece **na hora** nos outros — UI, MCP e REST leem o
-mesmo banco. Cada clone/deploy gera o **seu próprio** `cockpit.db` a partir da semente no
-primeiro boot; em produção, é só apontar a camada de repositório pra um Postgres/Supabase
-(reescrevendo só o `repo` em `db.js`) se quiser banco gerenciado.
+| Comando | Efeito |
+|---|---|
+| `npm run seed` | garante as tabelas (não altera dados existentes) |
+| `npm run seed:leverads-questions -w packages/api` | grava as perguntas do pipeline LeverAds (idempotente) |
+| `npm run seed:clear` | **apaga todos os dados** das coleções |
 
 ---
 
-## O app (9 telas · 5 personas)
+## Testes e verificação
 
-| Tela | O que responde |
-|---|---|
-| **Portfolio** (home do Founder) | Herói de trajetória de MRR, fita de KPIs, **fila de atenção** priorizada, rails densos por produto, pacing de metas. |
-| **SaaS Dashboard** | MRR north-star, decomposição de health, 4 tiles vitais, heatmap de funil + alerta de gargalo. |
-| **Pipeline** (home do Closer) | Kanban (drag-and-drop, persistido), visão **All pipelines** empilhada, Lista, Forecast. Clicar no card → drawer do deal. |
-| **Leads** (home do SDR) | Worklist priorizada round-robin. A proposta é gerada **fora** do app (a partir do form) e o link entra no lead via API (`proposalUrl`), virando o botão "proposta ↗". |
-| **Customers** (home do CS) | Contas ordenadas por health, filtros por banda, painel de drill-down, CTAs ativas. |
-| **NPS** | Gauge, tendência, split promotor/detrator, clusters de tags, verbatims de detratores. |
-| **Goals** | Pacing vs projetado com bandas verde/amarelo/vermelho, cascata portfólio → SaaS. |
-| **Leaderboard** | Mensal (resetável) / All-time, múltiplas categorias de vitória, fila de coaching. |
-| **Settings** | Funil/estágios por SaaS, campos custom, pesos do health, definição de Aha, integrações. |
+```bash
+npm test -w packages/api                               # suíte da API (node:test, repositório em memória)
+node --test packages/api/test/routes.rollup.test.js    # um arquivo específico
+npm test -w packages/web                               # smoke de render SSR das telas
+npm run build                                          # build de produção do web
+```
 
-O seletor de persona (canto superior direito) leva cada papel pra sua home com os filtros
-padrão certos. O painel **Tweaks** (canto inferior direito) troca tema/densidade/tipografia/
-acento e persona.
+Os testes não precisam de banco nem da API rodando. Smoke e build não substituem
+conferir a tela no navegador quando a mudança é visual ou interativa.
+
+**Preview de telas sem banco.** O App real com API fictícia:
+
+```bash
+npm run preview:tela -w packages/web    # http://localhost:5199
+```
+
+Exemplos: `/?shell=1#overview`, `/?shell=1#training`, `/?shell=1&exam=1#training`,
+`/?shell=1&marketing=1#blog` (aceita `&theme=dark` e `&product=elo`). Os mocks
+ficam em `packages/web/preview/` e não entram no build de produção.
+
+---
+
+## Deploy
+
+**Produção (EasyPanel).** Build a partir do `Dockerfile.allinone`: um container com
+nginx na porta 80 servindo a UI e fazendo proxy de `/api`, `/mcp` e das rotas
+públicas (`/f`, `/fi`, `/p`, `/u`, `/m`, `/public`, `/embed.js`) para a API e o MCP.
+O container não guarda estado; os dados ficam no Supabase indicado em
+`COCKPIT_DB_URL`. As variáveis de produção são configuradas no EasyPanel. Push na
+`main` dispara o deploy (ver [`AGENTS.md`](AGENTS.md)).
+
+Verificação: `GET /api/health` devolve `ok`, `service` e `build`, a impressão de
+`packages/api/src`. Compare com `node packages/api/src/build-info.js` no commit
+enviado.
+
+**VPS com `docker-compose.yml`.** Sobe api, mcp e web em containers separados
+(`docker compose up -d --build`, porta `WEB_PORT`, padrão 80), com o mesmo
+`COCKPIT_DB_URL` externo. Atenção: o `packages/web/nginx.conf` desse caminho só faz
+proxy de `/api` e `/mcp`, então formulários públicos, propostas, blog e webhook do
+Mercado Pago não funcionam por ele. O caminho mantido é o all-in-one.
 
 ---
 
 ## API REST
 
-Base: `http://localhost:8787`. Leitura aberta; escrita exige `x-api-key` **apenas se**
-`COCKPIT_API_KEY` estiver definido. **Doc interativa em `/api/docs`** (Redoc) e spec em
-`/api/openapi.json` — é onde você vê todos os campos pra mapear seus forms.
+Base local: `http://localhost:8787`. Documentação interativa em **`/api/docs`**
+(Redoc) e spec em `/api/openapi.json`.
+
+Autenticação (quando `COCKPIT_API_KEY` está definida): `x-api-key: <chave>` ou
+`Authorization: Bearer <chave>`, com a chave mestre ou com o token de sessão
+devolvido por `POST /api/auth/login`.
 
 | Método | Rota | Notas |
 |---|---|---|
-| `GET` | `/api/health` | liveness + lista de coleções |
-| `GET` | `/api/bootstrap` | tudo que a UI precisa num payload só |
-| `GET` | `/api/portfolio` | totais do portfólio (computados) |
-| `GET` | `/api/:collection` | lista; filtros abaixo |
+| `GET` | `/api/health` | liveness + build + coleções (aberta) |
+| `GET` | `/api/bootstrap` | dados que a UI carrega no boot |
+| `GET` | `/api/events` | SSE de mudanças (chave em `?key=`) |
+| `GET` | `/api/:collection` | lista |
 | `GET` | `/api/:collection/:id` | um registro |
 | `POST` | `/api/:collection` | cria (id gerado se omitido) |
 | `PATCH` | `/api/:collection/:id` | atualiza por merge |
 | `DELETE` | `/api/:collection/:id` | apaga |
-| `POST` | `/api/leads/:id/proposal?auto=1\|force=1` | gera/re-gera a proposta no Levercopy (ver abaixo) |
-| `GET` | `/api/leaderboard?scope=month\|all` | conveniência |
-| `GET` | `/api/openapi.json` | spec OpenAPI (para máquina/codegen) |
-| `GET` | `/api/docs` | **doc interativa** (Redoc) |
 
-Coleções: `products`, `attention`, `deals`, `people`, `customers`, `leads`, `nps`,
-`goals`, `leaderboard_month`, `leaderboard_all`.
+O CRUD genérico cobre as coleções de `COLLECTIONS`, exceto as privadas (`PRIVATE`
+em `routes.js`: usuários, sessões, mensagens de WhatsApp, remuneração etc.), que só
+são acessíveis pelas rotas próprias. Os domínios têm rotas dedicadas em
+`packages/api/src/routes.*.js`: formulários, propostas, billing, Mercado Pago,
+financeiro, WhatsApp, tarefas, agenda, marketing, redes sociais, blog, treinamentos,
+métricas, entre outros.
 
-Filtros: `deals?saas=&stage=&owner=&score=` · `customers?band=red|yellow|green&saas=` ·
-`leads?priority=P0|P1|P2` · `nps?saas=` · `goals?scope=`.
-
-### Conectar formulários e SaaS (exemplos)
+Exemplo, um formulário externo criando um lead:
 
 ```bash
-# Seu FORMULÁRIO cria um lead (só name + saas são obrigatórios; o resto tem default).
-# `saas` é o id do produto; o lead entra no funil dele.
 curl -X POST http://localhost:8787/api/leads \
-  -H 'content-type: application/json' \
-  -d '{"name":"Mara Olin","email":"mara@drift.com","company":"Drift","saas":"meusaas",
+  -H 'content-type: application/json' -H 'x-api-key: <COCKPIT_API_KEY>' \
+  -d '{"name":"Mara Olin","email":"mara@drift.com","company":"Drift","saas":"leverads",
        "source":"Form · /pricing","utm":{"source":"google","campaign":"q2"}}'
-
-# Depois de gerar a proposta (fora do app), grave o LINK no lead.
-# Vira o botão "proposta ↗" no card do lead.
-curl -X PATCH http://localhost:8787/api/leads/LEAD_ID \
-  -H 'content-type: application/json' \
-  -d '{"proposalUrl":"https://propostas.seudominio.com/p/abc123"}'
-
-# Sync de métricas do seu billing/produto
-curl -X PATCH http://localhost:8787/api/products/meusaas \
-  -H 'content-type: application/json' \
-  -d '{"mrr":96000,"churnRate":0.058,"activation":0.47}'
 ```
 
-Mapa completo dos campos do lead: abra `/api/docs` ou use a tool `connect_a_form` do MCP.
-Se `COCKPIT_API_KEY` estiver definido, acrescente `-H "x-api-key: <key>"` nas escritas.
-
-### Integração Levercopy (Cockpit → Levercopy)
-
-Mão dupla com o Levercopy: o **inbound** (form `/diagnostico` → `POST /api/leads`) já existia; o
-**outbound** é esta feature. Ao **criar um lead manual** do SaaS Levercopy (`saas = LEVERCOPY_SAAS_ID`,
-default `leverads`), a UI dispara `POST /api/leads/:id/proposal?auto=1`, que chama o Levercopy
-(`POST {LEVERCOPY_API_URL}/api/proposta/generate`, header `X-Cockpit-Key`) e grava
-`proposta_id` / `proposalUrl` / `proposal_edit_url` no lead. No card há **"gerar proposta"** (quando
-ainda não tem) e **"re-gerar"** (`?force=1`, sobrescreve). *Schemaless:* esses campos entram no
-próprio JSON do lead — **sem migração**.
-
-- **Env:** `LEVERCOPY_API_URL`, `LEVERCOPY_INGEST_KEY` (== `COCKPIT_INGEST_KEY` no Levercopy),
-  `LEVERCOPY_SAAS_ID`. Sem a key, a integração fica **desligada graciosamente** (fail-open, sem 500).
-- **Idempotência:** o gatilho automático **pula** se o lead já tem `proposta_id`; só "re-gerar" força.
-- **Gotcha do round-trip:** o `generate` do Levercopy espelha o lead de volta (`POST /api/leads`) e
-  poderia **duplicar**. Caminho adotado — **os dois**: mandamos `cockpit_lead_id` no body (o Levercopy
-  pula o espelho quando passar a suportá-lo) **e** deduplicamos aqui pelo `cockpit_lead_id` devolvido,
-  removendo o lead espelhado. ➜ *Ação no Levercopy:* aceitar `cockpit_lead_id` e pular o espelhamento.
+Os formulários e as propostas nativos (páginas `/f/:id` e `/p/:id`) são criados nas
+telas **Formulários** e **Propostas**. Para produtos sem template nativo, a
+proposta pode vir do Levercopy (`POST /api/leads/:id/proposal`; ver o bloco
+Levercopy no `.env.example`).
 
 ---
 
-## Servidor MCP — manual de conexão
+## Servidor MCP
 
-Streamable HTTP em `http://localhost:8788/mcp` (health em `/health`). **O MCP NÃO transmite
-dados de negócio** — ele é um *manual* que te diz como conectar na API. Os dados trafegam só
-pela API REST. As tools devolvem documentação (markdown / schema), lendo a própria
-`/api/openapi.json`:
+Streamable HTTP em `http://localhost:8788/mcp` (health em `/health`). Exige a chave
+em `MCP_AUTH_KEY` ou, se vazia, em `COCKPIT_API_KEY`. Todas as ferramentas passam
+pela API REST, então valem as mesmas regras e permissões.
 
-| tool | o que devolve |
+| Grupo | Ferramentas |
 |---|---|
-| `api_overview` | visão geral: base, auth, fluxo, links da doc |
-| `connect_a_form` | **passo a passo** de mapear seu form → lead + anexar `proposalUrl` |
-| `lead_fields` | tabela dos campos do lead (`LeadInput`) |
-| `resource_schema` | schema de um recurso (`lead\|product\|customer\|deal\|nps\|goal`) |
-| `list_endpoints` | todos os endpoints (método, rota, se exige key) |
-| `openapi_spec` | o OpenAPI completo (pra codegen / Postman) |
+| Consulta | `portfolio_summary`, `list_records`, `get_record`, `leaderboard`, `list_notifications`, `task_activity` |
+| Escrita | `create_record`, `update_record`, `delete_record`, `move_deal`, `generate_proposal`, `move_task`, `complete_task`, `comment_task`, `bulk_tasks` |
+| Documentação | `api_overview`, `connect_a_form`, `lead_fields`, `resource_schema`, `list_endpoints`, `openapi_spec` |
 
-Use o MCP como manual num agente/IDE; pra mover dados, fale com a API REST direto.
+As ferramentas de escrita alteram dados de verdade. Conecte o MCP ao banco local
+para testes.
 
-### Conectar um cliente
-
-**Claude Code:**
 ```bash
-claude mcp add --transport http cockpit http://localhost:8788/mcp
+claude mcp add --transport http cockpit http://localhost:8788/mcp \
+  --header "x-api-key: <COCKPIT_API_KEY>"
 ```
 
-**Cursor / Claude Desktop / qualquer cliente MCP** — adicione na config MCP:
+Outros clientes MCP:
+
 ```json
 {
   "mcpServers": {
-    "cockpit": { "url": "http://localhost:8788/mcp" }
+    "cockpit": {
+      "url": "http://localhost:8788/mcp",
+      "headers": { "x-api-key": "<COCKPIT_API_KEY>" }
+    }
   }
 }
 ```
 
 ---
 
-## Estrutura do projeto
+## Integrações
 
-```
-packages/
-  api/   src/{index,routes,db,seed-data,seed-data.demo,seed-cli,openapi}.js
-         data/cockpit.db   (banco, fora do Git)
-  web/   index.html  vite.config.js  src/{main,app,atoms,charts,chrome,tweaks-panel}.jsx
-         src/screens/*.jsx   src/lib/{api,format,ui}.js   src/tokens.css
-  mcp/   src/{index,tools,apiClient}.js   (manual: documenta, não transmite dados)
-Dockerfile  packages/web/Dockerfile  packages/web/nginx.conf  docker-compose.yml
-.env.example
-```
+Todas são opcionais e ficam desligadas sem credencial. As variáveis estão
+documentadas, com o que cada uma liga, no [`.env.example`](.env.example).
 
-## Notas / próximos passos
-
-- **Persistência**: SQLite por trás de um repositório pequeno. Pra ir pra Postgres/Supabase,
-  reimplemente o `repo` em `packages/api/src/db.js` — nada mais muda.
-- **Auth**: defina `COCKPIT_API_KEY` pra exigir key nas escritas (leitura fica aberta pra UI).
-  Antes de expor publicamente, reforce (keys por tenant, OAuth).
-- **Forms** são **externos** (você cria os seus) — eles batem em `POST /api/leads` e caem nos
-  campos certos do lead. O mapa dos campos está em `/api/docs` e na tool `connect_a_form`.
-- **Proposta**: o módulo dentro do app foi **removido**. A proposta é gerada **fora** (a partir
-  do form) e o link entra no lead via `PATCH /api/leads/{id}` no campo `proposalUrl`.
-- **MCP = manual**, não transmite dados (a pedido). Quem move dados é a API REST.
+| Integração | Uso |
+|---|---|
+| Mercado Pago | assinaturas, links de cobrança, espelho de pagamentos, dunning |
+| WhatsApp Cloud API | Inbox, cadências, fluxo SDR, ligações |
+| Meta | insights de anúncios, redes sociais, comentários, Pixel/CAPI |
+| Google | agenda, Meet e documentos de transcrição |
+| IA (OpenRouter/Anthropic/OpenAI) | resumos de call, SDR, copiloto, blog, transcrição |
+| LeverAds / Levercopy | liberação de acesso por pagamento, propostas, resultados de clientes |
+| Elo | análises do app (banco próprio, só leitura) |
+| Shopify | pedidos pagos da UniqueKids viram leads |
+| Discord | avisos do funil |
 
 ---
 
-_Nota: os comentários no código-fonte estão em inglês; a documentação (este README) e a UI de
-configuração estão em português. Posso traduzir os comentários do código também, é só pedir._
+## Documentação relacionada
+
+| Documento | Conteúdo |
+|---|---|
+| [`docs/CONTEXTO-COCKPIT.md`](docs/CONTEXTO-COCKPIT.md) | mapa do código, regras de domínio, validação e entrega |
+| [`AGENTS.md`](AGENTS.md) | acordo de trabalho: commit, push e deploy |
+| [`docs/PLANO-REWORK.md`](docs/PLANO-REWORK.md) | histórico de decisões (datado) |
+| [`PORTFOLIO.md`](PORTFOLIO.md) | histórico da simplificação para um produto (datado) |
+| [`docs/SDR-PLAYBOOK-LEVERADS.md`](docs/SDR-PLAYBOOK-LEVERADS.md) | tom, objeções e fluxo comercial |
+| [`design/handoff-cockpit`](design/handoff-cockpit/README.md) | handoff de design |
+| [`.claude/skills/cockpit-ui-review`](.claude/skills/cockpit-ui-review/SKILL.md) | design system e checklist de UI |

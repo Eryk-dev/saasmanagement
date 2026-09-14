@@ -1,0 +1,87 @@
+# Supabase local para desenvolvimento e testes — SÓ a infraestrutura.
+# API, web e MCP rodam fora do Docker (npm run dev:api / dev:web / dev:mcp).
+#
+#   docker compose -f infra/local/docker-compose.yml up -d      # sobe
+#   docker compose -f infra/local/docker-compose.yml down       # para (mantém os dados)
+#   docker compose -f infra/local/docker-compose.yml down -v    # para e APAGA o banco
+#
+# O Cockpit usa do Supabase apenas o Postgres (driver `pg`, schema `cockpit`, criado
+# no primeiro boot da API). Por isso sobem só os serviços úteis aqui:
+#   db     Postgres na imagem oficial do Supabase  -> localhost:54322
+#   meta   postgres-meta (backend do Studio)       -> rede interna
+#   studio Supabase Studio (tabelas + SQL editor)  -> http://localhost:54323
+# Auth, Storage, REST, Realtime e gateway ficam de fora: o app não usa nenhum deles,
+# então as telas do Studio que dependem deles não funcionam neste ambiente.
+#
+# Versões fixadas a partir do docker/docker-compose.yml oficial do Supabase (set/2026).
+# Senhas e chaves abaixo são de desenvolvimento local — nunca reutilize em produção.
+
+name: cockpit-local
+
+services:
+  db:
+    image: supabase/postgres:17.6.1.136
+    restart: unless-stopped
+    ports:
+      - "${LOCAL_DB_PORT:-54322}:5432"
+    environment:
+      POSTGRES_HOST: /var/run/postgresql
+      PGPORT: 5432
+      POSTGRES_PORT: 5432
+      PGDATABASE: postgres
+      POSTGRES_DB: postgres
+      PGPASSWORD: ${LOCAL_DB_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${LOCAL_DB_PASSWORD:-postgres}
+      JWT_SECRET: local-dev-jwt-secret-with-at-least-32-characters
+      JWT_EXP: 3600
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf", "-c", "log_min_messages=fatal"]
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - db-config:/etc/postgresql-custom
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  meta:
+    image: supabase/postgres-meta:v0.99.0
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PG_META_PORT: 8080
+      PG_META_DB_HOST: db
+      PG_META_DB_PORT: 5432
+      PG_META_DB_NAME: postgres
+      PG_META_DB_USER: postgres
+      PG_META_DB_PASSWORD: ${LOCAL_DB_PASSWORD:-postgres}
+      CRYPTO_KEY: local-dev-pg-meta-crypto-key-32-characters
+
+  studio:
+    image: supabase/studio:2026.09.07-sha-7996410
+    restart: unless-stopped
+    depends_on:
+      - meta
+    ports:
+      - "${LOCAL_STUDIO_PORT:-54323}:3000"
+    environment:
+      HOSTNAME: "0.0.0.0"
+      STUDIO_PG_META_URL: http://meta:8080
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: ${LOCAL_DB_PASSWORD:-postgres}
+      POSTGRES_USER_READ_WRITE: postgres
+      PG_META_CRYPTO_KEY: local-dev-pg-meta-crypto-key-32-characters
+      DEFAULT_ORGANIZATION_NAME: Cockpit
+      DEFAULT_PROJECT_NAME: Cockpit local
+      SUPABASE_URL: http://localhost:8000
+      SUPABASE_PUBLIC_URL: http://localhost:8000
+      AUTH_JWT_SECRET: local-dev-jwt-secret-with-at-least-32-characters
+      ENABLED_FEATURES_LOGS_ALL: "false"
+
+volumes:
+  db-data:
+  db-config:

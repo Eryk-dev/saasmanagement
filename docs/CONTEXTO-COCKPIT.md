@@ -30,7 +30,7 @@ não devem virar defaults novos sem conferir o catálogo vigente.
 | --- | --- |
 | [AGENTS.md](../AGENTS.md) | Acordo de trabalho, commit, push e verificação de produção. |
 | [Plano do rework](PLANO-REWORK.md) | Histórico detalhado de decisões, contratos e evolução dos módulos. Os estados de entrega e comandos de retomada envelheceram. |
-| [README](../README.md) | Visão original e exemplos de integração; conferir os detalhes técnicos no código. |
+| [README](../README.md) | Arquitetura, ambiente local com Supabase no Docker, deploy, API e MCP (revisado em 14/09/2026). |
 | [Portfólio](../PORTFOLIO.md) | Histórico da simplificação para um produto; a proposta de alternador global já foi implementada. |
 | [Playbook SDR](SDR-PLAYBOOK-LEVERADS.md) | Tom, objeções e fluxo comercial derivados de conversas de julho/agosto de 2026; estatísticas são desse período. |
 | [Revisão de UI](../.claude/skills/cockpit-ui-review/SKILL.md) | Procedimento específico já existente para o cockpit. |
@@ -146,6 +146,15 @@ e `index.js` executa migrações e inicia automações. A presença de um `.env`
 comprova isolamento. Não copiar seus valores para logs, documentação ou commits.
 `seed:clear` apaga dados e não é passo de preparação de ambiente.
 
+Banco isolado disponível: `docker compose -f infra/local/docker-compose.yml up -d`
+sobe só a infraestrutura (Postgres do Supabase em `localhost:54322`, Studio em
+`http://localhost:54323`); os pacotes rodam fora do Docker. O `.env.example` já
+aponta `COCKPIT_DB_URL` para esse banco. Integrações ficam vazias no `.env`
+local, porque as rotinas do boot usam credenciais reais se existirem. Em
+14/09/2026, a API subiu nesse banco (77 tabelas, migrações, login, criação de
+produto e `seed:leverads-questions`); o único aviso esperado é
+`[leverads-results]`, pois a função do Levercopy não existe localmente.
+
 Após a validação, seguir o acordo em `AGENTS.md`: verificar `origin/main`,
 commitar os arquivos da tarefa e fazer push para `origin/main`, sem force-push
 e sem incluir mudanças alheias. O push dispara o deploy do EasyPanel.
@@ -205,10 +214,11 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   no build de produção. A navegação saindo de Publicidade foi conferida após
   corrigir o cleanup do efeito de `DeliveryRulesCard`.
 
-- **README:** SQLite, leitura sempre aberta, MCP apenas como manual, seed demo e
-  proposta exclusivamente externa são descrições antigas. O código atual usa
-  Postgres, auth sobre as rotas protegidas, MCP com escrita e propostas nativas.
-  `npm run seed:demo` não está nos scripts atuais.
+- **README (revisado em 14/09/2026):** as descrições antigas (SQLite, leitura
+  aberta, MCP só como manual, seed demo) foram substituídas. Pendência registrada
+  lá: o `packages/web/nginx.conf` do `docker-compose.yml` não faz proxy das rotas
+  públicas (`/f`, `/p`, `/public`…); o caminho de produção mantido é o
+  `Dockerfile.allinone`.
 - **Plano do rework:** referências a ausência de Git, entregas apenas locais,
   contagens de testes, senhas em produção e indisponibilidade de deploy são
   registros datados, não diagnóstico atual. Não repetir os passos antigos de
