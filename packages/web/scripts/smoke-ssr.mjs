@@ -989,6 +989,97 @@ try {
     console.error(`✗ training: ${err.message}`);
     failed++;
   }
+
+  // ── As peças de história (components/story.jsx, 14/09) ──────────────────
+  // O que as telas passam a compartilhar: aviso com prazo, corrente, funil,
+  // barra de composição, ⓘ e a barra de filtros. Aqui se garante o que as
+  // rodadas de crítica do handoff cobraram, não só que renderiza.
+  try {
+    const has = (name, html, must) => { if (!html.includes(must)) throw new Error(`${name} não contém "${must}"`); };
+    const R = (el) => renderToString(wrap(el));
+    const S = await server.ssrLoadModule("/src/components/story.jsx");
+
+    // Aviso: título na cor do tom, botão NEUTRO (uma cor forte por linha).
+    const aviso = R(React.createElement(S.AvisoTopo, {
+      tom: "neg", titulo: "3 clientes em risco", nota: "o churn começa aqui",
+      acao: { label: "abrir o primeiro", href: "#customers" },
+    }));
+    has("aviso", aviso, "3 clientes em risco");
+    has("aviso", aviso, "abrir o primeiro");
+    if (!/color:var\(--neg\)/.test(aviso)) throw new Error("o título do aviso deveria sair na cor do tom");
+    const botao = (aviso.match(/<a [^>]*>/) || [""])[0];
+    if (!botao.includes("var(--bg-1)")) throw new Error("não achei o botão do aviso");
+    if (botao.includes("var(--neg)")) throw new Error("o botão do aviso tem que ficar neutro (uma cor forte por linha)");
+
+    // Corrente: a seta viaja DENTRO do passo, senão o último passo quebra
+    // sozinho pra segunda linha sem seta (crítica 1 da rodada 5).
+    const corrente = R(React.createElement(S.CorrenteDoDinheiro, {
+      passos: [
+        { rotulo: "investido", valor: "R$ 18,4k" },
+        { rotulo: "leads", valor: "214", taxa: "R$ 86", taxaNota: "por lead" },
+        { rotulo: "receita", valor: "R$ 34,2k", tom: "pos", taxa: "1,9×" },
+      ],
+    }));
+    has("corrente", corrente, "grid-template-columns:repeat(auto-fit");
+    if ((corrente.match(/→/g) || []).length !== 2) throw new Error("3 passos pedem exatamente 2 setas");
+    if (/flex-wrap/.test(corrente.split("grid-template-columns")[0])) throw new Error("a corrente não pode voltar a ser flex-wrap");
+
+    // Funil: a passagem fica vermelha abaixo do piso e "—" no 1º degrau.
+    const funil = R(React.createElement(S.FunilHorizontal, {
+      degraus: [
+        { rotulo: "visitas", valor: 1000 },
+        { rotulo: "leads", valor: 300 },
+        { rotulo: "clientes", valor: 200 },
+      ],
+    }));
+    has("funil", funil, "—");
+    has("funil", funil, "30%");
+    has("funil", funil, "67%");
+    const vermelhos = (funil.match(/color:var\(--neg\)/g) || []).length;
+    if (vermelhos !== 1) throw new Error(`só a passagem de 30% devia estar em --neg, achei ${vermelhos}`);
+
+    // Barra de composição: as fatias somam o total, e quando não somam o dev
+    // é avisado em vez de a tela mentir em silêncio.
+    const barra = R(React.createElement(S.BarraComposicao, {
+      titulo: "128 contas no radar",
+      fatias: [
+        { rotulo: "em prospecção", valor: 38, cor: "var(--accent)" },
+        { rotulo: "frias", valor: 69, cor: "var(--line-2)" },
+        { rotulo: "viraram lead", valor: 21, cor: "var(--pos)" },
+      ],
+      total: 128,
+    }));
+    has("barra", barra, "128 contas no radar");
+    has("barra", barra, "em prospecção");
+    has("barra", barra, "30%");
+    let avisou = false;
+    const warn = console.warn;
+    console.warn = () => { avisou = true; };
+    try {
+      R(React.createElement(S.BarraComposicao, { titulo: "x", fatias: [{ rotulo: "a", valor: 10 }], total: 100 }));
+    } finally { console.warn = warn; }
+    if (!avisou) throw new Error("fatia que não soma o total tem que avisar no console");
+
+    // ⓘ: o TEXTO em --fg-3 (5,19:1). Só o glifo fica em --fg-4.
+    const nota = R(React.createElement(S.InfoNota, null, "conclusão média 68%"));
+    has("ⓘ", nota, "conclusão média 68%");
+    if (!/color:var\(--fg-3\)/.test(nota)) throw new Error("o texto do ⓘ tem que sair em --fg-3");
+
+    // Barra de filtros: o escondido ATIVO aparece mesmo com o "mais ▾" fechado.
+    const filtros = [{ id: "all", label: "todas" }, { id: "out", label: "sem resposta", n: 5 }];
+    const escondidos = [{ id: "closed", label: "encerradas", n: 2 }];
+    const fechada = R(React.createElement(S.BarraFiltros, { valor: "all", onChange: () => {}, filtros, escondidos }));
+    has("filtros", fechada, "mais ▾");
+    if (fechada.includes("encerradas") && !fechada.includes("mais ▾")) throw new Error("escondido não deveria aparecer");
+    const comAtivo = R(React.createElement(S.BarraFiltros, { valor: "closed", onChange: () => {}, filtros, escondidos }));
+    has("filtros", comAtivo, "encerradas");
+    if (comAtivo.includes("mais ▾")) throw new Error("com o escondido ativo, o \"mais ▾\" não faz sentido");
+
+    console.log("✓ story");
+  } catch (err) {
+    console.error(`✗ story: ${err.message}`);
+    failed++;
+  }
 } finally {
   await server.close();
 }

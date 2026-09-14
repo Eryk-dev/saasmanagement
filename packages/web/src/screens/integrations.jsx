@@ -1,6 +1,7 @@
 import React from "react";
 import { PageHead, Card, Pill } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
+import { AvisoTopo } from "../components/story.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
 
@@ -78,24 +79,17 @@ function IntegrationsScreen({ onOpenLead }) {
             {(() => {
               const risco = (data.recent || []).filter((c) => c.sentimento === "em risco");
               if (!sent["em risco"]) return null;
+              const nomes = risco.slice(0, 3).map((c) => c.leadName || c.company || "cliente").join(" · ");
               return (
-                <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "11px 16px", borderRadius: "var(--r-3)", border: "1px solid color-mix(in srgb, var(--neg) 26%, transparent)", background: "var(--neg-soft)" }}>
-                  <span style={{ fontSize: 13.5, fontWeight: 650, color: "var(--neg)" }}>
-                    {`${sent["em risco"]} ${sent["em risco"] === 1 ? "cliente saiu da integração em risco" : "clientes saíram da integração em risco"}`}
-                  </span>
-                  {risco.length > 0 && (
-                    <span style={{ fontSize: 12.5, color: "var(--fg-2)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {risco.slice(0, 3).map((c) => c.leadName || c.company || "cliente").join(" · ")}
-                      {risco.length > 3 ? ` +${risco.length - 3}` : ""}
-                    </span>
-                  )}
-                  <span className="mono dim" style={{ fontSize: 11 }}>churn começa aqui</span>
-                  {risco[0]?.leadId && (
-                    <button onClick={() => openRecent(risco[0].leadId)} style={{ marginLeft: "auto", height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: 0, background: "var(--neg)", color: "oklch(1 0 0)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
-                      {risco.length === 1 ? "abrir o cliente" : `abrir o primeiro dos ${risco.length}`}
-                    </button>
-                  )}
-                </div>
+                <AvisoTopo
+                  titulo={`${sent["em risco"]} ${sent["em risco"] === 1 ? "cliente saiu da integração em risco" : "clientes saíram da integração em risco"}`}
+                  nota={risco.length > 0 ? `${nomes}${risco.length > 3 ? ` +${risco.length - 3}` : ""}` : null}
+                  fim={<span className="mono dim" style={{ fontSize: 11 }}>churn começa aqui</span>}
+                  acao={risco[0]?.leadId ? {
+                    label: risco.length === 1 ? "abrir o cliente" : `abrir o primeiro dos ${risco.length}`,
+                    onClick: () => openRecent(risco[0].leadId),
+                  } : null}
+                />
               );
             })()}
 

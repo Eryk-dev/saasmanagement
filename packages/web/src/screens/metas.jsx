@@ -1,5 +1,6 @@
 import React from "react";
 import { PageHead, Card } from "../components/viz.jsx";
+import { Info } from "../components/story.jsx";
 import { Avatar } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -391,7 +392,7 @@ function MetasScreen() {
   }
 
   const inp = { height: 38, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
-  const infoDot = (t) => <span className="dim" title={t} style={{ fontSize: 10.5, cursor: "help", marginLeft: 5 }}>ⓘ</span>;
+  const infoDot = (t) => <Info texto={t} />;
   const nameOf = (id) => data?.users?.find((u) => u.id === id)?.name || id;
   // "12 por pessoa · 2 na vaga" — só faz sentido em métrica de time com mais de
   // uma pessoa na vaga (taxa e ticket não se repartem).

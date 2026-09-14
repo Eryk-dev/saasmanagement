@@ -2,6 +2,7 @@ import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { StatTile, Card, Pill } from "../components/viz.jsx";
+import { AvisoTopo } from "../components/story.jsx";
 import { Avatar } from "../atoms.jsx";
 import { allUsers } from "../lib/users.js";
 import { mpMethodLabel } from "../lib/payments.js";
@@ -137,7 +138,7 @@ function DreSetor({ sector, itens }) {
   );
 }
 
-export function ResumoTab({ product, month }) {
+export function ResumoTab({ product, month, onTab }) {
   const { fin, err } = useFin(product, month);
   const { version } = useData();
   const [sum, setSum] = useState(null); // IA + WhatsApp (custos externos) vêm do summary existente
@@ -172,31 +173,25 @@ export function ResumoTab({ product, month }) {
           uma linha, e o detalhe continua no DRE logo abaixo. */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {fin.receber.vencidas.n > 0 && (
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "11px 16px", borderRadius: "var(--r-3)", border: "1px solid color-mix(in srgb, var(--neg) 26%, transparent)", background: "var(--neg-soft)" }}>
-            <span style={{ fontSize: 13.5, fontWeight: 650, color: "var(--neg)" }}>{`${money(fin.receber.vencidas.total)} vencidos a receber`}</span>
-            <span style={{ fontSize: 12.5, color: "var(--fg-2)" }}>
-              {`${int(fin.receber.vencidas.n)} ${fin.receber.vencidas.n === 1 ? "fatura" : "faturas"}`}
-            </span>
-            <a href="#customers" style={{ marginLeft: "auto", height: 30, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--neg)", color: "oklch(1 0 0)", fontSize: 12.5, fontWeight: 700, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
-              cobrar em Clientes ↗
-            </a>
-          </div>
+          <AvisoTopo
+            titulo={`${money(fin.receber.vencidas.total)} vencidos a receber`}
+            nota={`${int(fin.receber.vencidas.n)} ${fin.receber.vencidas.n === 1 ? "fatura" : "faturas"}`}
+            acao={{ label: "cobrar em Clientes ↗", href: "#customers" }}
+          />
         )}
         {fin.tiles.vencidos.n > 0 && (
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "11px 16px", borderRadius: "var(--r-3)", border: "1px solid color-mix(in srgb, var(--warn) 30%, transparent)", background: "var(--warn-soft)" }}>
-            <span style={{ fontSize: 13.5, fontWeight: 650, color: "var(--warn)" }}>
-              {`${int(fin.tiles.vencidos.n)} ${fin.tiles.vencidos.n === 1 ? "conta vencida" : "contas vencidas"} · ${money(fin.tiles.vencidos.total)}`}
-            </span>
-            <span style={{ fontSize: 12.5, color: "var(--fg-2)" }}>
-              {fin.tiles.vencemHoje.n ? `mais ${int(fin.tiles.vencemHoje.n)} vencendo hoje (${money(fin.tiles.vencemHoje.total)})` : "folha e fornecedores"}
-            </span>
-          </div>
+          <AvisoTopo tom="warn"
+            titulo={`${int(fin.tiles.vencidos.n)} ${fin.tiles.vencidos.n === 1 ? "conta vencida" : "contas vencidas"} · ${money(fin.tiles.vencidos.total)}`}
+            nota={fin.tiles.vencemHoje.n ? `mais ${int(fin.tiles.vencemHoje.n)} vencendo hoje (${money(fin.tiles.vencemHoje.total)})` : "folha e fornecedores"}
+            acao={{ label: "abrir A pagar", onClick: () => onTab?.("pagar") }}
+          />
         )}
         {fin.conciliacao.pendentes.n > 0 && (
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "11px 16px", borderRadius: "var(--r-3)", border: "1px solid var(--line-1)", background: "var(--bg-1)" }}>
-            <span style={{ fontSize: 13.5, fontWeight: 650 }}>{`${int(fin.conciliacao.pendentes.n)} entradas sem dono no Mercado Pago`}</span>
-            <span style={{ fontSize: 12.5, color: "var(--fg-2)" }}>{`${money(fin.conciliacao.pendentes.total)} esperando cliente ou motivo`}</span>
-          </div>
+          <AvisoTopo tom="neutro"
+            titulo={`${int(fin.conciliacao.pendentes.n)} entradas sem dono no Mercado Pago`}
+            nota={`${money(fin.conciliacao.pendentes.total)} esperando cliente ou motivo`}
+            acao={{ label: "conciliar", onClick: () => onTab?.("conciliacao") }}
+          />
         )}
       </div>
 
