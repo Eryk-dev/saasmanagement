@@ -1,4 +1,5 @@
 import React from "react";
+import "./marketing.css";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { chromeBtnStyleSmall, GRADE_STYLE } from "../lib/ui.js";
@@ -9,6 +10,7 @@ import { useAttribution } from "../lib/pains.js";
 import { InsightsList } from "../components/insights.jsx";
 import { sourceLabel } from "../lib/sources.js";
 import { AbcCell } from "./metrics.jsx";
+import { CorrenteDoDinheiro } from "../components/story.jsx";
 import { PageHead, Card } from "../components/viz.jsx";
 import { usePeriod } from "../components/period-picker.jsx";
 // Form builder — formulários de captação por SaaS, estilo Typeform: uma pergunta
@@ -84,6 +86,10 @@ function FormsScreen({ saasId }) {
   const [activeProduct] = useActiveSaas();
   const active = activeProduct?.id;
   const [forms, setForms] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [publishing, setPublishing] = useState(null);
+  const loadEpoch = useRef(0);
   const [counts, setCounts] = useState({}); // formId -> nº de respostas
   const [stats, setStats] = useState({});   // formId -> { views, submits } · 30d (funil)
   const [submissions, setSubmissions] = useState([]);
@@ -99,18 +105,27 @@ function FormsScreen({ saasId }) {
 
   const load = useCallback(async () => {
     if (!active) return;
-    const [fs, subs] = await Promise.all([
-      api.list("forms", { saas: active }),
-      api.list("form_submissions", { saas: active }),
-    ]);
-    fs.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
-    const c = {};
-    for (const s of subs) c[s.form] = (c[s.form] || 0) + 1;
-    subs.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
-    setForms(fs); setCounts(c); setSubmissions(subs);
+    const epoch = ++loadEpoch.current;
+    setLoading(true); setLoadError("");
+    try {
+      const [fs, subs] = await Promise.all([
+        api.list("forms", { saas: active }),
+        api.list("form_submissions", { saas: active }),
+      ]);
+      if (epoch !== loadEpoch.current) return;
+      fs.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+      const c = {};
+      for (const s of subs) c[s.form] = (c[s.form] || 0) + 1;
+      subs.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+      setForms(fs); setCounts(c); setSubmissions(subs);
+    } catch (e) {
+      if (epoch === loadEpoch.current) setLoadError(e.message || "Tente carregar novamente.");
+    } finally {
+      if (epoch === loadEpoch.current) setLoading(false);
+    }
   }, [active]);
 
-  useEffect(() => { load(); }, [load, version]);
+  useEffect(() => { load(); return () => { loadEpoch.current++; }; }, [load, version]);
 
   // Métricas de funil por form publicado (tiles do topo E tabela do A/B saem
   // daqui, então o período manda nas duas). Fetch SEPARADO do load: trocar de
@@ -146,8 +161,14 @@ function FormsScreen({ saasId }) {
     catch { window.prompt("Copie:", text); }
   }
   async function togglePublish(f) {
-    await api.update("forms", f.id, { status: f.status === "published" ? "draft" : "published" });
-    await load();
+    if (publishing) return;
+    setPublishing(f.id);
+    try {
+      await api.update("forms", f.id, { status: f.status === "published" ? "draft" : "published" });
+      await load();
+      flash(f.status === "published" ? "Formulário despublicado" : "Formulário publicado");
+    } catch (e) { window.toast?.(`Não deu para alterar a publicação: ${e.message}`, "neg"); }
+    finally { setPublishing(null); }
   }
 
   if (!SAAS.length) return (
@@ -167,19 +188,21 @@ function FormsScreen({ saasId }) {
 
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead title="Formulários" sub="formulários de captação · o envio cria o lead no funil · a janela vem do filtro do topo">
+    <div className="marketing-page" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <PageHead className="marketing-head" title="Formulários" sub="captação por produto · visitas, leads e receita na mesma régua">
         <PrimaryButton onClick={() => setView({ mode: "edit", form: null })}>+ novo formulário</PrimaryButton>
       </PageHead>
 
       <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-        {!forms.length ? (
+        {loadError && <EmptyState title="Não deu para carregar os formulários" hint={loadError} action={<button className="inp" onClick={load}>Tentar de novo</button>} />}
+        {loading && <div className="dim" role="status">carregando formulários…</div>}
+        {!forms.length ? (!loading && !loadError && (
           <EmptyState
             title="Nenhum form neste SaaS"
             hint="Crie um formulário de captação: uma pergunta por vez, com branching e o tema da marca. Cada resposta vira um lead no pipeline."
             action={<PrimaryButton onClick={() => setView({ mode: "edit", form: null })}>+ Criar form</PrimaryButton>}
           />
-        ) : (
+        )) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 380px), 1fr))", gap: 14, alignItems: "start" }}>
             {[...forms].sort((a, b) => (b.status === "published" ? 1 : 0) - (a.status === "published" ? 1 : 0)).map((f) => {
               const pub = f.status === "published";
@@ -212,50 +235,36 @@ function FormsScreen({ saasId }) {
               return (
                 // Publicado ocupa a LARGURA TODA (a tabela do teste A/B precisa de
                 // área); rascunho/backup vira um bloco compacto abaixo, sem esticar.
-                <div key={f.id} style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: pub ? 24 : "16px 20px 18px", ...(pub ? { gridColumn: "1 / -1" } : {}) }}>
-                  <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                <div key={f.id} style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: pub ? "18px var(--inset-x)" : "16px 18px", ...(pub ? { gridColumn: "1 / -1" } : {}) }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                         <span style={{ fontSize: 15.5, fontWeight: 600, letterSpacing: "-.01em" }}>{f.name || f.id}</span>
-                        <button onClick={() => togglePublish(f)} title={pub ? "despublicar" : "publicar"} style={{ display: "inline-flex", alignItems: "center", gap: 6, color: pub ? "var(--pos)" : "var(--warn)", fontSize: 12, fontWeight: 600 }}><span style={{ width: 6, height: 6, borderRadius: 99, background: "currentColor" }} />{pub ? "publicado" : "rascunho"}</button>
+                        <button disabled={!!publishing} onClick={() => togglePublish(f)} title={pub ? "despublicar" : "publicar"} style={{ display: "inline-flex", alignItems: "center", gap: 6, color: pub ? "var(--pos)" : "var(--warn)", fontSize: 12, fontWeight: 600 }}><span style={{ width: 6, height: 6, borderRadius: 99, background: "currentColor" }} />{publishing === f.id ? "salvando…" : pub ? "publicado" : "rascunho"}</button>
                       </div>
                       <div className="mono code" style={{ fontSize: 12, color: "var(--fg-4)", marginTop: 4 }}>/f/{f.id}</div>
                     </div>
                     <div style={{ display: "flex", gap: 6 }}>
                       {pub && <button onClick={() => copy(formUrl(f), "Link copiado")} style={{ ...chromeBtnStyleSmall, height: 30, padding: "0 11px" }}>Copiar link</button>}
                       <button onClick={() => setView({ mode: "edit", form: f })} style={{ ...chromeBtnStyleSmall, height: 30, padding: "0 11px" }}>Editar</button>
-                      {!pub && <button onClick={() => togglePublish(f)} style={{ height: 30, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 12.5, fontWeight: 600 }}>Publicar</button>}
+                      {!pub && <button disabled={!!publishing} onClick={() => togglePublish(f)} style={{ height: 30, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 12.5, fontWeight: 600 }}>Publicar</button>}
                     </div>
                   </div>
 
                   {pub ? (
                     <>
-                      {/* A linha do formulário conta a história inteira
-                          (13/09): visitas → envios → viraram cliente, com a
-                          conversão de cada passo embaixo. "Viraram cliente" é o
-                          que decide qual form vale a verba — e vive no funil da
-                          API desde 13/09 (won/revenue por formulário). */}
-                      <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 18, padding: "14px 16px", background: "var(--bg-inset)", border: "1px solid var(--line-faint)", borderRadius: "var(--r-3)", flexWrap: "wrap" }}>
-                        {[
-                          { v: window.fmt.int(visits), l: `visitas · ${win.label}` },
-                          { v: window.fmt.int(starts), l: `começaram · ${pct(starts, visits)} das visitas` },
-                          { v: window.fmt.int(leads), l: `envios · ${pct(leads, visits)} das visitas`, acao: () => setView({ mode: "subs", form: f }) },
-                          { v: window.fmt.int(Number(stat?.won) || 0), l: `viraram cliente · ${pct(Number(stat?.won) || 0, leads)} dos envios`, cor: "var(--pos)" },
-                          ...(Number(stat?.revenue) > 0 ? [{ v: window.fmt.money(stat.revenue), l: "receita fechada" }] : []),
-                        ].map((p, i) => (
-                          <React.Fragment key={p.l}>
-                            {i > 0 && <span className="mono dim" style={{ fontSize: 13 }}>→</span>}
-                            <div onClick={p.acao} style={{ minWidth: 108, cursor: p.acao ? "pointer" : "default" }}>
-                              <div className="tnum" style={{ fontSize: 18, fontWeight: 700, color: p.cor || "var(--fg-1)" }}>{p.v}</div>
-                              <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{p.l}</div>
-                            </div>
-                          </React.Fragment>
-                        ))}
-                        {stat?.lastSubmitAt && (
-                          <span className="mono dim" style={{ marginLeft: "auto", fontSize: 11 }}>
-                            {`último envio ${new Date(stat.lastSubmitAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "")}`}
-                          </span>
-                        )}
+                      <div style={{ marginTop: 18 }}>
+                        <CorrenteDoDinheiro bare passos={[
+                          { rotulo: `visitas · ${win.label}`, valor: window.fmt.int(visits) },
+                          { rotulo: "começaram", valor: window.fmt.int(starts), taxa: pct(starts, visits), taxaNota: "das visitas" },
+                          { rotulo: "envios", valor: window.fmt.int(leads), taxa: pct(leads, starts), taxaNota: "de quem começou" },
+                          { rotulo: "viraram cliente", valor: window.fmt.int(Number(stat?.won) || 0), taxa: pct(Number(stat?.won) || 0, leads), taxaNota: "dos envios", tom: "pos" },
+                          { rotulo: "receita fechada", valor: window.fmt.money(Number(stat?.revenue) || 0), tom: "pos" },
+                        ]} />
+                        <div className="marketing-toolbar" style={{ marginTop: 12, justifyContent: "space-between" }}>
+                          <span style={{ fontSize: 11.5, color: "var(--fg-3)" }}>{stat?.lastSubmitAt ? `último envio ${new Date(stat.lastSubmitAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}` : "sem envios no período"}</span>
+                          <button onClick={() => setView({ mode: "subs", form: f })} style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)" }}>Ver respostas →</button>
+                        </div>
                       </div>
                       {abVariants.length > 1 && (
                         <div style={{ marginTop: 16 }}>
