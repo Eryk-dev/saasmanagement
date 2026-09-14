@@ -1,5 +1,5 @@
 import React from "react";
-import { useEsc } from "../atoms.jsx";
+import { useEsc } from "../lib/use-esc.js";
 import { useIsMobile } from "../lib/responsive.js";
 // Popover ancorado (position: fixed, preso na viewport, vira pro lado que cabe).
 // No celular vira folha no rodapé. Fecha no Esc (pilha do useEsc) e no clique

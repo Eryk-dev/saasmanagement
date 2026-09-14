@@ -1,5 +1,6 @@
 import React from "react";
 import { PageHead } from "../components/viz.jsx";
+import { Drawer } from "../components/overlay.jsx";
 import { EmptyState, PrimaryButton, SecondaryButton, CardHead, MoreMenu, useEsc, toast } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -55,10 +56,8 @@ const NEW_BODY = `<h1>Título do contrato</h1>
 // Viewer somente-leitura de um contrato GERADO (componente próprio pro
 // useEsc montar/desmontar junto). Sem formulário → backdrop e Esc fecham.
 function IssueViewer({ issue, btn, onClose, onPrint, onRemove }) {
-  useEsc(onClose);
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", display: "flex", justifyContent: "flex-end", zIndex: 70 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(860px, 100vw)", height: "100%", background: "var(--bg-1)", borderLeft: "1px solid var(--line-2)", display: "flex", flexDirection: "column", boxShadow: "var(--shadow-pop)" }}>
+    <Drawer onClose={onClose} label="contrato gerado" largura={860}>
         <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <div style={{ minWidth: 0 }}>
             <div className="kicker">Contrato gerado{issue.createdAt ? ` · ${issueDate(issue.createdAt)}` : ""}{issue.author ? ` · ${displayName(issue.author)}` : ""}</div>
@@ -73,8 +72,7 @@ function IssueViewer({ issue, btn, onClose, onPrint, onRemove }) {
           </div>
         </div>
         <iframe title={issue.name} srcDoc={fullHtml(issue, issue.values)} style={{ flex: 1, border: 0, background: "#fff" }} />
-      </div>
-    </div>
+    </Drawer>
   );
 }
 
@@ -429,11 +427,12 @@ function ContractsScreen() {
 
       </div>
 
+      {/* O backdrop NÃO fecha no clique (Leo, 04/08): o painel tem formulário
+          preenchido à mão e um clique fora jogava tudo fora. Fecha só no ✕, e é
+          por isso que `fechavel` vai false (o Esc segue no useEsc da tela). */}
       {(sel || edit) && (
-        <div style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", display: "flex", justifyContent: "flex-end", zIndex: 70 }}>
-          {/* O backdrop NÃO fecha no clique (Leo, 04/08): o painel tem formulário
-              preenchido à mão e um clique fora jogava tudo fora. Fecha só no ✕. */}
-          <div onClick={(e) => e.stopPropagation()} style={{ width: !edit && sel && fieldsOf(sel).length ? "min(1120px, 100vw)" : "min(860px, 100vw)", height: "100%", background: "var(--bg-1)", borderLeft: "1px solid var(--line-2)", display: "flex", flexDirection: "column", boxShadow: "var(--shadow-pop)" }}>
+        <Drawer onClose={close} fechavel={false} label="modelo de contrato"
+          largura={!edit && sel && fieldsOf(sel).length ? 1120 : 860}>
             <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
               <div style={{ minWidth: 0 }}>
                 <div className="kicker">{edit ? (sel ? "Editar modelo" : "Novo modelo") : "Modelo de contrato"}</div>
@@ -615,8 +614,7 @@ function ContractsScreen() {
                 </div>
               </div>
             )}
-          </div>
-        </div>
+        </Drawer>
       )}
 
       {issueSel && !sel && !edit && (
