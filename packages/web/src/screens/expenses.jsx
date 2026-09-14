@@ -89,7 +89,7 @@ function ExpensesScreen() {
 
       {/* key={product.id}: trocar de produto remonta a aba — rascunho de custo
           e vínculo em andamento nunca vazam pro SaaS errado. */}
-      {tab === "resumo" && <ResumoTab key={product.id} product={product} month={month} />}
+      {tab === "resumo" && <ResumoTab key={product.id} product={product} month={month} onTab={setTab} />}
       {tab === "conciliacao" && <ConciliacaoTab key={product.id} product={product} month={month} />}
       {tab === "pagar" && <PagarTab key={product.id} product={product} month={month} />}
       {tab === "folha" && <FolhaTab key={product.id} product={product} month={month} />}
