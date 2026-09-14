@@ -1,0 +1,33 @@
+/* Lever Premium Design — tipografia */
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+:root {
+  /* Famílias */
+  --font-sans: 'Instrument Sans', -apple-system, 'Segoe UI', sans-serif; /* toda a UI */
+  --font-mono: 'JetBrains Mono', monospace; /* só IDs, SKU, código, números de passo */
+
+  /* Escala (nunca abaixo de 11px) */
+  --text-badge: 11px;       /* badges */
+  --text-meta: 12.5px;      /* meta, timestamps */
+  --text-dense: 13px;       /* corpo denso, botões pequenos, chips */
+  --text-control: 13.5px;   /* nav, botões, IDs mono */
+  --text-body: 14px;        /* corpo */
+  --text-body-lg: 14.5px;   /* subtítulo de página, corpo confortável */
+  --text-card-title: 15.5px;/* título de card */
+  --text-section: 17px;     /* título de seção */
+  --text-page: 26px;        /* título de página */
+  --text-kpi: 30px;         /* número de KPI */
+
+  /* Pesos */
+  --weight-regular: 400;
+  --weight-medium: 500;   /* texto interativo em repouso */
+  --weight-semibold: 600; /* ativo/selecionado, títulos de card */
+  --weight-bold: 700;     /* títulos de página/seção, valores */
+
+  /* Tracking */
+  --tracking-title: -0.02em;  /* títulos de página */
+  --tracking-card: -0.01em;   /* títulos de card */
+}
+
+/* Números sempre tabulares em dados */
+.tabular, [data-tabular] { font-variant-numeric: tabular-nums; }
