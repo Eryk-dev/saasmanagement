@@ -1,6 +1,8 @@
 import React from "react";
 import { PageHead } from "../components/viz.jsx";
-import { EmptyState, useEsc, MoreMenu } from "../atoms.jsx";
+import { AvisoTopo } from "../components/story.jsx";
+import { Modal } from "../components/overlay.jsx";
+import { EmptyState, MoreMenu } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -267,21 +269,14 @@ function AgendaTab({ days, byCell, journeys, consultas, onShiftWeek, onToday, on
           <>
             {/* O aviso com prazo no topo, com a ação ao lado. */}
             {emRisco.length > 0 && (
-              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "11px 16px", borderRadius: "var(--r-3)", border: "1px solid color-mix(in srgb, var(--warn) 30%, transparent)", background: "var(--warn-soft)" }}>
-                <span style={{ fontSize: 13.5, fontWeight: 650, color: "var(--warn)" }}>
-                  {`${emRisco.length} ${emRisco.length === 1 ? "jornada sem próxima marcada" : "jornadas sem próxima marcada"}`}
-                </span>
-                {maisParada && (
-                  <span style={{ fontSize: 12.5, color: "var(--fg-2)" }}>
-                    {`a mais parada: ${maisParada.clientName || "?"}${maisParada.parada != null ? `, última consulta há ${maisParada.parada} dias` : ", sem consulta feita ainda"}`}
-                  </span>
-                )}
-                {maisParada && (
-                  <button onClick={() => onNext(maisParada)} style={{ marginLeft: "auto", height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: 0, background: "var(--warn)", color: "oklch(1 0 0)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
-                    {`marcar a ${Math.min(maisParada.done + 1, maisParada.total)}ª de ${maisParada.clientName?.split(" ")[0] || "quem parou"}`}
-                  </button>
-                )}
-              </div>
+              <AvisoTopo tom="warn"
+                titulo={`${emRisco.length} ${emRisco.length === 1 ? "jornada sem próxima marcada" : "jornadas sem próxima marcada"}`}
+                nota={maisParada ? `a mais parada: ${maisParada.clientName || "?"}${maisParada.parada != null ? `, última consulta há ${maisParada.parada} dias` : ", sem consulta feita ainda"}` : null}
+                acao={maisParada ? {
+                  label: `marcar a ${Math.min(maisParada.done + 1, maisParada.total)}ª de ${maisParada.clientName?.split(" ")[0] || "quem parou"}`,
+                  onClick: () => onNext(maisParada),
+                } : null}
+              />
             )}
 
             {/* Resumo da semana + o que precisa de Manual pronto. */}
@@ -387,7 +382,6 @@ function AgendaTab({ days, byCell, journeys, consultas, onShiftWeek, onToday, on
 
 // ── Modal de consulta (criar/editar) ─────────────────────────────────────────
 function ConsultaModal({ c, customers, consultas = [], onClose, onSaved }) {
-  useEsc(onClose);
   // Prefill do e-mail do convite pelo cadastro do cliente quando a consulta
   // ainda não tem o seu (consultas antigas, ou família que já tem e-mail no
   // customer) — a Ana abre e já vê pra quem o convite vai, sem redigitar.
@@ -450,8 +444,7 @@ function ConsultaModal({ c, customers, consultas = [], onClose, onSaved }) {
 
   const s = form.summary;
   return (
-    <div style={overlay} onClick={onClose}>
-      <div style={{ ...sheet, width: "min(680px, calc(100vw - 32px))" }} onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose} label="consulta" largura={680} painelStyle={sheet}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
           <div style={{ fontSize: 15, fontWeight: 800, flex: 1 }}>{isNew ? "Nova consulta" : `Consulta ${form.n}/${form.packageTotal || TOTAL} · ${form.clientName}`}</div>
           <button onClick={onClose} style={{ ...chip(false), padding: "0 9px" }}>✕</button>
@@ -560,8 +553,7 @@ function ConsultaModal({ c, customers, consultas = [], onClose, onSaved }) {
           <button onClick={onClose} style={chip(false)}>cancelar</button>
           <button disabled={!!busy} onClick={save} style={{ ...chip(false), background: "var(--accent)", color: "var(--accent-fg, #fff)", border: "none", fontWeight: 700 }}>{busy === "save" ? "salvando…" : "Salvar"}</button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -646,7 +638,6 @@ function EntregaveisTab({ manuais, customers, product, onOpen, refresh }) {
 
 // ── Editor do Manual da Família ───────────────────────────────────────────────
 function ManualEditor({ m, onClose, refresh }) {
-  useEsc(onClose);
   const [doc, setDoc] = useS(m);
   const [busy, setBusy] = useS("");
   const [err, setErr] = useS("");
@@ -682,8 +673,7 @@ function ManualEditor({ m, onClose, refresh }) {
   }
 
   return (
-    <div style={overlay} onClick={onClose}>
-      <div style={{ ...sheet, width: "min(860px, calc(100vw - 32px))", maxHeight: "92vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
+    <Modal onClose={onClose} label="manual da família" largura={860} painelStyle={{ ...sheet, maxHeight: "min(92dvh, 100%)", overflowY: "auto" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
           <div style={{ fontSize: 15, fontWeight: 800, flex: 1, minWidth: 200 }}>Manual da Família · {doc.clientName}</div>
           <button disabled={!!busy} onClick={compose} style={{ ...chip(false), borderColor: "var(--accent-line)", color: "var(--accent)", background: "var(--accent-soft)" }}
@@ -738,15 +728,13 @@ function ManualEditor({ m, onClose, refresh }) {
           </div>
         ))}
         {err && <div style={{ fontSize: 11.5, color: "#e5484d" }}>{err}</div>}
-      </div>
-    </div>
+    </Modal>
   );
 }
 
 // ── estilos ───────────────────────────────────────────────────────────────────
 const chip = (on) => ({ display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 11px", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"), background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-2)" });
 const navBtn = { height: 28, minWidth: 32, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, cursor: "pointer" };
-const overlay = { position: "fixed", inset: 0, background: "rgba(8, 18, 26, 0.45)", display: "grid", placeItems: "center", zIndex: 90, padding: 16 };
 const sheet = { background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "18px 20px", boxShadow: "0 24px 80px rgba(2, 16, 28, 0.35)" };
 const lab = { display: "flex", flexDirection: "column", gap: 5, fontSize: 11.5, color: "var(--fg-3)", fontWeight: 600 };
 const inp = { width: "100%", padding: "8px 10px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5, fontWeight: 400 };
