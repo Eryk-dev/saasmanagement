@@ -2,6 +2,8 @@ import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { PageHead, Segmented, Card } from "../components/viz.jsx";
+import { CorrenteDoDinheiro } from "../components/story.jsx";
+import { Modal } from "../components/overlay.jsx";
 import { usePeriod } from "../components/period-picker.jsx";
 import { painCodeOf } from "../lib/pains.js";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -116,7 +118,9 @@ function DragScroll({ children }) {
 // que transforma sete números soltos numa história que se lê da esquerda pra
 // direita. Nasceu da fusão com a tela "Análise de Aquisição", que respondia à
 // mesma pergunta com números diferentes (decisão do Leo, 13/09).
-function CorrenteDoDinheiro({ t, biz, rangeDays }) {
+// Os seis passos do dinheiro desta tela. O DESENHO é o compartilhado
+// (components/story.jsx): o que mora aqui é o que cada passo mede.
+function CorrenteDaPublicidade({ t, biz, rangeDays }) {
   const w = biz?.window || {};
   const int = (n) => (Number(n) || 0).toLocaleString("pt-BR");
   const pctDe = (a, b) => (b > 0 ? `${((a / b) * 100).toFixed(1).replace(".", ",")}%` : null);
@@ -140,7 +144,7 @@ function CorrenteDoDinheiro({ t, biz, rangeDays }) {
     {
       rotulo: "custo por lead", valor: t?.cpl != null ? money(t.cpl) : "—",
       nota: t?.cplMeta != null ? `meta ${money(t.cplMeta)}` : "investido ÷ leads",
-      tone: t?.cpl != null && t?.cplMeta != null ? (t.cpl <= t.cplMeta ? "pos" : "neg") : null,
+      tom: t?.cpl != null && t?.cplMeta != null ? (t.cpl <= t.cplMeta ? "pos" : "neg") : null,
       title: "Investido dividido pelos leads do período.",
     },
     {
@@ -153,30 +157,14 @@ function CorrenteDoDinheiro({ t, biz, rangeDays }) {
       rotulo: "receita", valor: t?.revenue != null ? money(t.revenue) : "…",
       nota: t?.roas != null ? `ROAS ${String(Math.round(t.roas * 10) / 10).replace(".", ",")}×` : "sem receita no período",
       alerta: biz?.ltv?.ltvCac != null ? `LTV/CAC ${window.fmt.ratio(biz.ltv.ltvCac)}` : null,
-      tone: t?.roas != null ? (t.roas >= 1 ? "pos" : "neg") : null,
+      tom: t?.roas != null ? (t.roas >= 1 ? "pos" : "neg") : null,
       title: "Receita dos negócios fechados no período, pra casar com o investido no ROAS e no CAC.",
     },
   ];
   return (
-    <section style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px var(--inset-x)" }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
-        <h3 className="card-title" style={{ margin: 0 }}>Do anúncio ao dinheiro</h3>
-        <span className="card-sub">{`últimos ${rangeDays} dias · cada passo mostra a conversão do anterior`}</span>
-      </div>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
-        {passos.map((p, i) => (
-          <React.Fragment key={p.rotulo}>
-            {i > 0 && <span className="mono dim" style={{ fontSize: 14, alignSelf: "center", flexShrink: 0 }}>→</span>}
-            <div title={p.title} style={{ minWidth: 128, flex: "1 1 128px" }}>
-              <div className="kicker">{p.rotulo}</div>
-              <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, lineHeight: 1.15, marginTop: 2, color: p.tone === "pos" ? "var(--pos)" : p.tone === "neg" ? "var(--neg)" : "var(--fg-1)" }}>{p.valor}</div>
-              <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{p.nota}</div>
-              {p.alerta && <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 1 }}>{p.alerta}</div>}
-            </div>
-          </React.Fragment>
-        ))}
-      </div>
-    </section>
+    <CorrenteDoDinheiro passos={passos}
+      titulo="Do anúncio ao dinheiro"
+      sub={`últimos ${rangeDays} dias · cada passo mostra a conversão do anterior`} />
   );
 }
 
@@ -509,7 +497,7 @@ function MetricsScreen() {
             cada passo mostra a conversão do anterior. As duas telas respondiam
             à mesma pergunta com números diferentes; agora é uma só (decisão do
             Leo, 13/09). O detalhe de cada passo continua no title. */}
-        <CorrenteDoDinheiro t={t} biz={biz} rangeDays={rangeDays} />
+        <CorrenteDaPublicidade t={t} biz={biz} rangeDays={rangeDays} />
 
         {/* Regras do gerenciador: recomendações por regra (nível do lead, custo
             por lead qualificado, ROAS por dor) comparadas com a média da conta,
@@ -1137,8 +1125,7 @@ function CreativeModal({ saas, ad, onClose }) {
   const box = { width: "100%", maxHeight: "64dvh", borderRadius: "var(--r-2)", background: "var(--bg-2)" };
   const mediaUrl = media?.videoUrl || media?.imageUrl || "";
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 95, background: "color-mix(in srgb, var(--bg-0) 62%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(520px, 100%)", maxHeight: "88dvh", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 18 }}>
+    <Modal onClose={onClose} label="criativo do anúncio" largura={520} padding={24} painelStyle={{ padding: 18 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 12 }}>
           <span style={{ fontFamily: "var(--display)", fontSize: 14.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ad.name || ad.id}</span>
           <span style={{ flex: 1 }} />
@@ -1160,8 +1147,7 @@ function CreativeModal({ saas, ad, onClose }) {
             abrir em nova aba ↗{st.mediaError ? " · não carregou aqui" : ""}
           </a>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 

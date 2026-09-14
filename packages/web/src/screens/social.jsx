@@ -1,5 +1,7 @@
 import React from "react";
 import { PageHead, Pill, Card, StatTile } from "../components/viz.jsx";
+import { BarraComposicao } from "../components/story.jsx";
+import { Modal } from "../components/overlay.jsx";
 import { EmptyState, useEsc } from "../atoms.jsx";
 import { MetaConnectCard } from "../components/meta-connect.jsx";
 import { ErrorBoundary } from "../components/error-boundary.jsx";
@@ -568,15 +570,17 @@ function SocialScreen() {
 
               <Card title="Alcance: seguidores × não-seguidores" hint="quanto do alcance é gente nova">
                 <div style={{ padding: "18px 24px 22px" }}>
-                  <div style={{ display: "flex", height: 34, borderRadius: 6, overflow: "hidden", gap: 2, background: "var(--bg-2)" }}>
-                    <div style={{ width: `${followerPct}%`, background: "var(--fg-3)" }} />
-                    <div style={{ width: `${nonFollowerPct}%`, background: "var(--accent)" }} />
-                  </div>
-                  <div style={{ display: "flex", gap: 20, marginTop: 14, flexWrap: "wrap" }}>
-                    {[["Seguidores", rb?.follower, followerPct, "var(--fg-3)"], ["Não-seguidores", rb?.nonFollower, nonFollowerPct, "var(--accent)"]].map(([label, value, pct, color]) => (
-                      <span key={label} style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: color }} />{label} <b className="tnum">{fmtNum(value)}</b> <span className="tnum" style={{ color: "var(--fg-4)", fontSize: 12 }}>{pct}%</span></span>
-                    ))}
-                  </div>
+                  {/* As fatias medem ALCANCE, então o rótulo diz alcance
+                      (14/09). "Seguidores 50.076" na barra com "Seguidores
+                      17.441" no tile a poucos centímetros são duas grandezas
+                      diferentes com o mesmo nome, e é isso que faz a tela
+                      parecer errada: nenhum rótulo de fatia pode repetir o
+                      rótulo de um KPI que mede outra coisa. */}
+                  <BarraComposicao bare
+                    fatias={[
+                      { rotulo: "alcance de quem já segue", valor: Number(rb?.follower) || 0, cor: "var(--fg-3)", texto: fmtNum(rb?.follower) },
+                      { rotulo: "alcance de quem não segue", valor: Number(rb?.nonFollower) || 0, cor: "var(--accent)", texto: fmtNum(rb?.nonFollower) },
+                    ]} />
                   {/* Preferência pro número OFICIAL da conta por formato (inclui
                       story e anúncio); sem ele, cai na média derivada dos posts. */}
                   {(officialFormats.length > 0 || sum.formats?.length > 0) && (
@@ -832,8 +836,8 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
   const stepLabel = ["", "formato", kind === "video" ? "vídeo" : "arte", "publicar"][step];
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 80, background: "color-mix(in srgb, var(--bg-0) 70%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", padding: 10 }}>
-      <div style={{ width: "min(1400px, 100%)", height: "min(92vh, 100%)", background: "var(--bg-0)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+    <Modal onClose={onClose} label="criar post" largura={1400} padding={10}
+      painelStyle={{ height: "min(92dvh, 100%)", background: "var(--bg-0)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--line-1)", display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontFamily: "var(--display)", fontSize: 15, fontWeight: 700 }}>Criar post</span>
           <span className="mono dim" style={{ fontSize: 11 }}>passo {step}/3 · {stepLabel}</span>
@@ -1002,8 +1006,7 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
           {result?.ok && <span className="mono" style={{ fontSize: 12, color: "var(--pos)" }}>publicado ✓</span>}
           <button onClick={onClose} className="mono dim" style={{ marginLeft: "auto", fontSize: 12 }}>fechar</button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
