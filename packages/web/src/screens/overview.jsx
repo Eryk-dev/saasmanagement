@@ -229,7 +229,7 @@ function Termometro({ s, goal, lad, naMesa, title }) {
     <div style={{ width: 140, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center" }}>
       <div style={{ textAlign: "center", marginBottom: 12 }}>
         <div className="kicker">Meta do mês</div>
-        <div className="tnum" style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.2, marginTop: 3 }}>{money(alvo)}</div>
+        <div className="tnum" style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.2, marginTop: 3 }}>{window.fmt.moneyFull(alvo)}</div>
       </div>
       <div title={title} style={{ width: 96, height: 300, borderRadius: "var(--r-3)", border: "1px solid var(--line-1)", overflow: "hidden", display: "flex", flexDirection: "column", cursor: "help" }}>
         <div className="meta-track" style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
@@ -331,7 +331,7 @@ function MetaMesCard({ pace, goal, onNav, links = true, children }) {
                     <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginTop: 4 }}>
                       <span className="tnum" title={saleTitle}
                         style={{ fontFamily: "var(--display)", fontSize: 52, fontWeight: 700, letterSpacing: "-0.04em", lineHeight: 1, cursor: "help", color: lvlColor(sLad?.lvl, "var(--fg-1)") }}>
-                        {money(s.sold)}
+                        {window.fmt.moneyFull(s.sold)}
                       </span>
                       <LvlChip lvl={sLad?.lvl} label={goal.ended ? endedLabel(sLad?.lvl) : sLad?.chip} />
                     </div>
@@ -340,9 +340,9 @@ function MetaMesCard({ pace, goal, onNav, links = true, children }) {
                         <div style={{ flex: "1 1 170px", minWidth: 0 }}>
                           <div style={{ fontSize: 12, color: "var(--fg-3)" }}>contra o pace de hoje</div>
                           <div className="tnum" style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.025em", lineHeight: 1.2, color: paceDelta >= 0 ? "var(--pos)" : "var(--neg)" }}>
-                            {`${paceDelta >= 0 ? "+" : "−"}${money(Math.abs(paceDelta))}`}
+                            {`${paceDelta >= 0 ? "+" : "−"}${window.fmt.moneyFull(Math.abs(paceDelta))}`}
                           </div>
-                          <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 4 }}>{`o pace pedia ${money(esperadoAteAqui)} até aqui`}</div>
+                          <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 4 }}>{`o pace pedia ${window.fmt.moneyFull(esperadoAteAqui)} até aqui`}</div>
                         </div>
                       )}
                       {naMesa.valor > 0 && (
@@ -351,7 +351,7 @@ function MetaMesCard({ pace, goal, onNav, links = true, children }) {
                             <span style={{ width: 12, height: 12, borderRadius: 3, background: "var(--chart-1)", flexShrink: 0 }} />
                             <span style={{ fontSize: 12, color: "var(--fg-3)" }}>{`em follow-up · ${int(naMesa.n)}`}</span>
                           </div>
-                          <div className="tnum" style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.025em", lineHeight: 1.2, marginTop: 2 }}>{money(naMesa.valor)}</div>
+                          <div className="tnum" style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.025em", lineHeight: 1.2, marginTop: 2 }}>{window.fmt.moneyFull(naMesa.valor)}</div>
                           <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 4 }}>o que ainda pode virar venda</div>
                         </div>
                       )}
@@ -359,7 +359,7 @@ function MetaMesCard({ pace, goal, onNav, links = true, children }) {
                     {c.sold > 0 && (
                       <div style={{ fontSize: 13, color: "var(--fg-3)", marginTop: 10 }}>
                         {`${int(c.sold)} ${c.sold === 1 ? "contrato assinado" : "contratos assinados"}`}
-                        {c.sold > 0 && s.sold > 0 ? ` · ticket médio ${money(s.sold / c.sold)}` : ""}
+                        {c.sold > 0 && s.sold > 0 ? ` · ticket médio ${window.fmt.moneyFull(s.sold / c.sold)}` : ""}
                       </div>
                     )}
                   </div>
@@ -384,11 +384,18 @@ function MetaMesCard({ pace, goal, onNav, links = true, children }) {
               )}
             </div>
           </div>
-          <PaceFacts pace={curMes ? pace : null} goal={goal} falta={falta} />
         </div>
       )}
       {/* O funil do mês fecha o card: é ele que explica de onde a meta sai. */}
       {children && <div style={{ padding: "0 var(--inset-x) 18px" }}>{children}</div>}
+      {/* A ficha do pace (precisa por dia, ritmo, projeção) é só do repo: a
+          prancha não tem, então desce pro pé do card em vez de disputar o
+          primeiro olhar com o termômetro. */}
+      {goal.businessDays > 0 && (
+        <div style={{ padding: "0 var(--inset-x) 16px" }}>
+          <PaceFacts pace={curMes ? pace : null} goal={goal} falta={falta} />
+        </div>
+      )}
       {naoRecebido > 0 && (
         <div style={{ padding: "0 var(--inset-x) 14px", fontSize: 11.5, color: "var(--fg-3)", lineHeight: 1.5 }}
           title="Boleto faturado, PIX parcelado, assinatura recorrente no cartão e condição personalizada só contam na meta pelo que ENTROU na janela (a 1ª parcela, na prática). As parcelas dos meses seguintes seguem no Financeiro, no caixa do mês em que caírem.">
