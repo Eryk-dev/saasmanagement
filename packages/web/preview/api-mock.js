@@ -93,6 +93,20 @@ const RESPOSTAS = {
   marketingMetrics: () => ({ totals: { spend: 1152, cpl: 64, roas: 9.5 } }),
   metrics: () => ({ window: { cac: 384 }, ltv: { value: 5040, months: 12, ltvCac: 13.1 } }),
   listActivities: () => [],
+  get: (col, id) => RESPOSTAS.list(col).find((row) => row.id === id) || null,
+  update: (col, id, patch) => {
+    const row = RESPOSTAS.get(col, id);
+    if (!row) throw new Error("Registro não encontrado na prévia");
+    Object.assign(row, patch);
+    return { ...row };
+  },
+  create: (col, data) => {
+    const row = { ...data, id: `preview-${Date.now()}`, createdAt: new Date().toISOString() };
+    RESPOSTAS.list(col).push(row);
+    return row;
+  },
+  logActivity: (data) => ({ ...data, id: `activity-${Date.now()}` }),
+  leadActivities: () => [],
   consultations: () => [],
 };
 
@@ -103,7 +117,7 @@ export const api = new Proxy({}, {
     if (nome === "list") return (col) => Promise.resolve(RESPOSTAS.list(col));
     if (nome === "bootstrap") return () => Promise.resolve(window.SEED);
     if (nome === "listUsers") return () => Promise.resolve(window.SEED.USERS);
-    if (RESPOSTAS[nome]) return (...a) => Promise.resolve(RESPOSTAS[nome](...a));
+    if (RESPOSTAS[nome]) return (...a) => Promise.resolve().then(() => RESPOSTAS[nome](...a));
     if (nome === "then") return undefined;
     return (...a) => { console.info("[preview] api." + String(nome), a); return vazio(); };
   },

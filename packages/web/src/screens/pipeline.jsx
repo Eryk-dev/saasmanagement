@@ -1,4 +1,6 @@
 import React from "react";
+import "./commercial.css";
+import "./pipeline.css";
 import { Avatar, EmptyState, PrimaryButton } from "../atoms.jsx";
 import { Card, FilterTab, Segmented, StatTile } from "../components/viz.jsx";
 import { Popover } from "../components/popover.jsx";
@@ -141,7 +143,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
     return base.filter((st) => {
       const k = stageKind(s, st);
       if (k === "ganho" || k === "perdido") return false;
-      if (k === "desqualificado") return showDiscarded;
+      if (k === "desqualificado") return false;
       return true;
     });
   }, [stages.join("|"), phase, activeSaas, showDiscarded]);
@@ -306,8 +308,8 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   }
 
   return (
-    <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-      <div style={{ padding: "28px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16, minHeight: "100%" }}>
+    <div className="commercial-page pipeline-page">
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 260 }}>
             <h1 className="page-title">Pipeline</h1>
@@ -339,10 +341,10 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
             já diz o que ele é: fase no Segmented (com a contagem no rótulo),
             pessoa nos chips, ordenação num select e descartados no FilterTab.
             À direita, o estado do board — e "atrasados" FILTRA. */}
-        {view === "kanban" && (
+        {(
           <Card>
             <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <input value={buscaBoard} onChange={(e) => setBuscaBoard(e.target.value)} placeholder="buscar lead ou empresa…"
+              <input aria-label="Buscar leads" value={buscaBoard} onChange={(e) => setBuscaBoard(e.target.value)} placeholder="buscar lead ou empresa…"
                 className="inp" style={{ width: 190 }} />
               <span className="kicker">Fase</span>
               <BarraFiltros valor={phase} onChange={setPhase} filtros={[
@@ -408,7 +410,16 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
         </div>
       )}
 
-      {view === "list" && <LeadList leads={saasLeads} onOpenLead={onOpenLead} />}
+      {view === "kanban" && showDiscarded && <section className="commercial-card" aria-label="Leads descartados">
+        {saasLeads.filter((l) => stageKind(s, l.stage) === "desqualificado").map((l) => <div key={l.id} className="pipeline-discarded-row">
+          <button onClick={() => onOpenLead?.(l)}><strong>{l.name}</strong><small>{l.company} · {window.fmt.moneyFull(l.amount || 0)}</small></button>
+          <span style={{ fontSize: 12.5, color: "var(--neg)" }}>{lossReasonLabel(s, l.lossReason) || "sem motivo registrado"}</span>
+          <PrimaryButton onClick={() => requestMove(l.id, stages[0])}>voltar ao funil</PrimaryButton>
+        </div>)}
+        {!discardedCount && <div className="commercial-toolbar commercial-note">Nenhum lead descartado.</div>}
+      </section>}
+
+      {view === "list" && <LeadList leads={saasLeads.filter((l) => stagesForPhase(s, stages, phase).includes(l.stage))} query={buscaBoard} sortMode={sortMode} onlyLate={onlyLate} onOpenLead={onOpenLead} />}
 
       {pendingMove && (
         <MoveLeadModal
@@ -442,15 +453,15 @@ function BulkBar({ n, stages, users, onMove, onAssign, onTouch, onClear }) {
   const refAtribuir = React.useRef(null);
   const [aberto, setAberto] = useStP(null);
   return (
-    <section style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "11px 16px", borderRadius: "var(--r-3)", border: "1px solid var(--accent-line)", background: "var(--accent-soft)" }}>
-      <span className="tnum" style={{ fontSize: 13.5, fontWeight: 650, color: "var(--accent)" }}>
+    <section className="pipeline-bulk" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "12px 16px", borderRadius: "var(--r-4)", background: "var(--bg-rail)" }}>
+      <span className="tnum" style={{ fontSize: 13, fontWeight: 650 }}>
         {n} {n === 1 ? "lead selecionado" : "leads selecionados"}
       </span>
       <span style={{ flex: 1 }} />
       <button ref={refMover} onClick={() => setAberto(aberto === "mover" ? null : "mover")} style={bulkBtn}>mover para ▾</button>
       <button ref={refAtribuir} onClick={() => setAberto(aberto === "atribuir" ? null : "atribuir")} style={bulkBtn}>atribuir ▾</button>
       <button onClick={onTouch} title="registra uma tentativa de contato em cada um (tentativa +1 e último contato agora)" style={bulkBtn}>registrar toque</button>
-      <button onClick={onClear} className="mono" style={{ background: "none", border: 0, padding: "0 4px", fontSize: 12, color: "var(--fg-3)", fontWeight: 600, cursor: "pointer" }}>limpar</button>
+      <button onClick={onClear} style={{ background: "none", border: 0, padding: "0 4px", fontSize: 12.5, color: "var(--rail-fg)", fontWeight: 600, cursor: "pointer" }}>limpar</button>
       {aberto === "mover" && (
         <Popover anchor={refMover} onClose={() => setAberto(null)} width={230} title="Mover para" align="end">
           {stages.map(({ stage, travada }) => (
@@ -476,7 +487,7 @@ function BulkBar({ n, stages, users, onMove, onAssign, onTouch, onClear }) {
     </section>
   );
 }
-const bulkBtn = { height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" };
+const bulkBtn = { height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--rail-line)", background: "var(--rail-hover)", color: "var(--rail-fg)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" };
 const bulkItem = { display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 10px", borderRadius: "var(--r-2)", background: "none", border: 0, textAlign: "left", fontSize: 12.5, color: "var(--fg-1)", cursor: "pointer" };
 
 function ViewToggle({ view, onChange }) {
@@ -560,7 +571,7 @@ function KanbanBoard({ s, stages, byStage, fullByStage, sortMode, highlight, onM
     // de 264px fixos, que deixava faixa vazia à direita com poucas etapas e
     // rolava de lado com muitas. `grid-auto-columns` faz as duas coisas: enche
     // a largura quando cabe e rola quando não cabe.
-    <div style={{ flex: 1, overflowX: "auto", paddingBottom: 8, display: "grid", gridAutoFlow: "column", gridAutoColumns: "minmax(240px, 1fr)", gap: 12, alignItems: "start" }}>
+    <div className="pipeline-board">
       {stages.map((st, i) => (
         <React.Fragment key={st}>
           <KanbanColumn
@@ -577,15 +588,15 @@ function KanbanBoard({ s, stages, byStage, fullByStage, sortMode, highlight, onM
             setSelected={setSelected}
             onOpenLead={onOpenLead}
           />
-          {showWon && i === wonAfter && <WonSummary leads={wonLeads} />}
+          {showWon && i === wonAfter && <WonSummary leads={wonLeads} onOpenLead={onOpenLead} />}
         </React.Fragment>
       ))}
-      {showWon && stages.length === 0 && <WonSummary leads={wonLeads} />}
+      {showWon && stages.length === 0 && <WonSummary leads={wonLeads} onOpenLead={onOpenLead} />}
     </div>
   );
 }
 
-function WonSummary({ leads }) {
+function WonSummary({ leads, onOpenLead }) {
   const now = new Date();
   // Mês do NEGÓCIO (bizDay, America/Sao_Paulo), igual à Meta do mês da Visão
   // geral: o slice do ISO cortava em UTC e uma venda das 21h+ do dia 31 caía no
@@ -620,13 +631,13 @@ function WonSummary({ leads }) {
         {recentes.map((l) => {
           const dono = l.closer || l.owner;
           return (
-            <div key={l.id} style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "10px 11px" }}>
+            <button key={l.id} onClick={() => onOpenLead?.(l)} style={{ width: "100%", textAlign: "left", color: "var(--fg-1)", cursor: "pointer", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "10px 11px" }}>
               <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.company || l.name}</div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 4 }}>
                 <span className="tnum" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--pos)" }}>{window.fmt.moneyFull(l.amount || 0)}</span>
                 {dono && <span style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--fg-4)", whiteSpace: "nowrap" }}>{displayName(dono)}</span>}
               </div>
-            </div>
+            </button>
           );
         })}
         {monthLeads.length === 0 && (
@@ -695,7 +706,7 @@ function KanbanColumn({ s, stage, cards, todos, sortMode, highlight, onDropCard,
       }}>
       {/* Cabeçalho da prancha: nome e contagem à esquerda, o ATRASO à direita
           na mesma linha, e o dinheiro da coluna na linha de baixo. */}
-      <div style={{ padding: "4px 4px 10px" }}>
+      <div className="pipeline-column-head" style={{ padding: "4px 4px 10px" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
           <span style={{ fontSize: 13.5, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stage}</span>
           <span className="tnum" style={{ fontSize: 12, color: "var(--fg-4)" }}>{todosCards.length}</span>
@@ -776,6 +787,8 @@ function LeadCard({ d, s, currentStage, onDragStart, selected, onSelect, onOpen 
   return (
     <div
       draggable
+      role="button" tabIndex={0} aria-label={`Abrir lead: ${d.name}`}
+      onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen?.(); } }}
       onDragStart={onDragStart}
       onClick={(e) => { if (e.shiftKey) onSelect(); else onOpen && onOpen(); }}
       style={{
@@ -784,12 +797,12 @@ function LeadCard({ d, s, currentStage, onDragStart, selected, onSelect, onOpen 
         borderRadius: "var(--r-3)", padding: "10px 11px", cursor: "grab", boxShadow: "var(--shadow-card)",
       }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-        <span onClick={(e) => { e.stopPropagation(); onSelect(); }} role="checkbox" aria-checked={selected}
+        <button onClick={(e) => { e.stopPropagation(); onSelect(); }} role="checkbox" aria-checked={selected} aria-label={`Selecionar ${d.name}`}
           title="selecionar para ação em massa"
           style={{ flexShrink: 0, width: 14, height: 14, borderRadius: 4, cursor: "pointer",
             border: `1px solid ${selected ? "var(--accent)" : "var(--line-2)"}`,
             background: selected ? "var(--accent)" : "var(--bg-1)",
-            color: "oklch(1 0 0)", fontSize: 10, lineHeight: "12px", textAlign: "center" }}>{selected ? "✓" : ""}</span>
+            padding: 0, color: "oklch(1 0 0)", fontSize: 10, lineHeight: "12px", textAlign: "center" }}>{selected ? "✓" : ""}</button>
         {grade && (
           <span title={tier.label} style={{ flexShrink: 0, width: 18, height: 18, borderRadius: 5, background: tier.tone, color: tier.badgeFg, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>{grade}</span>
         )}
@@ -844,7 +857,7 @@ function LeadCard({ d, s, currentStage, onDragStart, selected, onSelect, onOpen 
 //
 // Pisos somados com os gaps dão ~710px: é o que caber em 1024px de janela
 // exige (748 de conteúdo − 32 do padding). O smoke trava a conta.
-export const LIST_GRID = "minmax(150px,1.6fr) 100px minmax(140px,1fr) 86px 104px 80px";
+export const LIST_GRID = "minmax(150px,1.4fr) minmax(140px,1.3fr) minmax(100px,.8fr) 86px 104px";
 export const LIST_GRID_GAP = 10;
 export const LIST_GRID_BUDGET = 716;
 // A ordem das seções. Atrasados era a 5ª, depois de Hoje, Amanhã, Próximos dias
@@ -859,13 +872,13 @@ export const LIST_SECTIONS = [
   ["closed", "Finalizados"],
 ];
 
-function LeadList({ leads, onOpenLead }) {
+function LeadList({ leads, onOpenLead, query, onlyLate = false, sortMode = "toque" }) {
   const [q, setQ] = useStP("");
   const [showAll, setShowAll] = useStP(false); // "Próximos dias" e "Finalizados" nascem recolhidas
   const saasCfg = (window.SEED?.SAAS || []).find((x) => x.id === leads[0]?.saas);
   const workable = new Set(workableStages(saasCfg));
   const fold = (v) => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  const needle = fold(q).trim();
+  const needle = fold(query ?? q).trim();
   const base = needle
     ? leads.filter((l) => [l.name, l.company, l.phone, l.email].some((v) => fold(v).includes(needle)))
     : leads;
@@ -887,6 +900,10 @@ function LeadList({ leads, onOpenLead }) {
   const byScore = (a, b) => (Number(b.l.score) || 0) - (Number(a.l.score) || 0);
   g.none.sort(byScore);
   g.closed.sort(byScore);
+  for (const rows of Object.values(g)) {
+    if (sortMode === "qualidade") rows.sort((a, b) => tierRank(a.l) - tierRank(b.l) || a.at - b.at);
+    else if (sortMode === "ultimo") rows.reverse();
+  }
 
   const money = window.fmt.money;
   const soma = (rows) => rows.reduce((a, r) => a + (Number(r.l.amount) || 0), 0);
@@ -908,11 +925,11 @@ function LeadList({ leads, onOpenLead }) {
   // time vê ao abrir a tela, então mora numa constante testada.
   const ordem = LIST_SECTIONS.map(([key, label]) => [key, label, g[key]]);
   const dobradas = new Set(showAll ? [] : ["upcoming", "closed"]);
-  const sections = ordem.filter(([, , rows]) => rows.length > 0);
+  const sections = ordem.filter(([key, , rows]) => rows.length > 0 && (!onlyLate || key === "late"));
 
   return (
     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 12 }}>
-      <Card>
+      {query == null && <Card>
         <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar por nome, empresa ou telefone…"
             style={{ flex: 1, minWidth: 200, height: 30, padding: "0 10px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 }} />
@@ -920,13 +937,13 @@ function LeadList({ leads, onOpenLead }) {
             {`${base.length} ${base.length === 1 ? "lead" : "leads"}${needle ? ` de ${leads.length}` : ""}`}
           </span>
         </div>
-      </Card>
+      </Card>}
 
       <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
         <div>
-          <div className="kicker" style={{ display: "grid", gridTemplateColumns: LIST_GRID, gap: LIST_GRID_GAP, padding: "8px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
-            <span>Lead</span><span>Etapa</span><span>Próximo passo</span>
-            <span style={{ textAlign: "right" }}>Valor</span><span>Dono</span><span>Origem</span>
+          <div className="kicker pipeline-list-head" style={{ display: "grid", gridTemplateColumns: LIST_GRID, gap: LIST_GRID_GAP, padding: "8px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
+            <span>Lead</span><span>Próximo passo</span><span>Etapa e dono</span>
+            <span style={{ textAlign: "right" }}>Valor</span><span style={{ textAlign: "right" }}>Quando</span>
           </div>
           {sections.map(([key, label, rows]) => {
             const fechada = dobradas.has(key);
@@ -956,7 +973,7 @@ function LeadList({ leads, onOpenLead }) {
                     : "";
                   const oque = t?.type === "meeting" ? (t.note || "call") : (l.nextActionNote || "toque");
                   return (
-                    <div key={l.id} onClick={() => onOpenLead && onOpenLead(l)}
+                    <div key={l.id} className="pipeline-list-row" role="button" tabIndex={0} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpenLead?.(l); } }} onClick={() => onOpenLead && onOpenLead(l)}
                       style={{ display: "grid", gridTemplateColumns: LIST_GRID, gap: LIST_GRID_GAP, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", fontSize: 13, cursor: onOpenLead ? "pointer" : "default", opacity: key === "closed" ? 0.65 : 1 }}
                       onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
                       onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
@@ -967,12 +984,11 @@ function LeadList({ leads, onOpenLead }) {
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</div>
                           <div style={{ fontSize: 11, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
-                            title={[l.company, `${leadAge(l)} no funil`, l.score != null && l.score !== "" ? `score ${l.score}` : ""].filter(Boolean).join(" · ")}>
+                            title={[l.company, `${leadAge(l)} no funil`, l.source].filter(Boolean).join(" · ")}>
                             {[l.company, leadAge(l) ? `${leadAge(l)} no funil` : ""].filter(Boolean).join(" · ") || "—"}
                           </div>
                         </div>
                       </div>
-                      <span className="mono dim" style={{ fontSize: 11.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={l.stage}>{l.stage}</span>
                       {/* O que fazer ganhou coluna: era sufixo mono dentro do nome. */}
                       <div style={{ minWidth: 0 }}>
                         {key === "none" ? (
@@ -987,17 +1003,14 @@ function LeadList({ leads, onOpenLead }) {
                               {oque}
                             </div>
                             <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", whiteSpace: "nowrap" }}>
-                              {[quando, tent ? `tentativa ${tent}/5` : ""].filter(Boolean).join(" · ")}
+                              {[l.lastActivityAt ? `último toque ${leadAge({ createdAt: l.lastActivityAt })}` : "", tent ? `tentativa ${tent}/5` : ""].filter(Boolean).join(" · ")}
                             </div>
                           </>
                         )}
                       </div>
-                      <span className="mono tnum" style={{ textAlign: "right", fontSize: 12.5 }}>{l.amount ? money(l.amount) : "—"}</span>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, minWidth: 0 }}>
-                        {l.owner && <Avatar id={l.owner} name={displayName(l.owner)} size={20} />}
-                        <span style={{ fontSize: 12, color: "var(--fg-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.owner ? displayName(l.owner) : "—"}</span>
-                      </span>
-                      <span className="mono dim" style={{ fontSize: 11, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={l.source}>{l.source || "—"}</span>
+                      <span style={{ minWidth: 0 }}><span style={{ display: "block", fontSize: 12, color: "var(--fg-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={l.stage}>{l.stage}</span><span style={{ display: "block", marginTop: 3, fontSize: 11, color: "var(--fg-3)" }}>{l.closer || l.owner ? displayName(l.closer || l.owner) : "sem dono"}</span></span>
+                      <span className="tnum" style={{ textAlign: "right", fontSize: 13, fontWeight: 650 }}>{l.amount ? window.fmt.moneyFull(l.amount) : "—"}</span>
+                      <span className="tnum" style={{ textAlign: "right", fontSize: 12, fontWeight: 600, color: TONE[key] }}>{quando || "—"}</span>
                     </div>
                   );
                 })}
@@ -1006,13 +1019,13 @@ function LeadList({ leads, onOpenLead }) {
           })}
           {!sections.length && (
             <div style={{ padding: "20px 14px", fontSize: 12.5, color: "var(--fg-4)" }}>
-              {needle ? `nada com "${q.trim()}"` : "nenhum lead neste produto"}
+              {needle ? `nada com "${(query ?? q).trim()}"` : "nenhum lead neste filtro"}
             </div>
           )}
         </div>
       </div>
 
-      {!showAll && (g.upcoming.length > 0 || g.closed.length > 0) && (
+      {!onlyLate && !showAll && (g.upcoming.length > 0 || g.closed.length > 0) && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "var(--fg-4)" }}>
           <span>
             {[g.upcoming.length ? `Próximos dias · ${g.upcoming.length}` : "", g.closed.length ? `Finalizados · ${g.closed.length}` : ""].filter(Boolean).join(" · ")}

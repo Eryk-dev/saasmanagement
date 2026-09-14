@@ -818,7 +818,7 @@ try {
   try {
     const P = await server.ssrLoadModule("/src/screens/pipeline.jsx");
     const cols = P.LIST_GRID.trim().split(/\s+(?![^(]*\))/);
-    if (cols.length !== 6) throw new Error(`esperava 6 colunas, achei ${cols.length}`);
+    if (cols.length !== 5) throw new Error(`esperava 5 colunas, achei ${cols.length}`);
     const floorOf = (c) => {
       const mm = c.match(/^minmax\((\d+)px/) || c.match(/^(\d+)px$/);
       if (!mm) throw new Error(`coluna sem piso em px: ${c}`);
