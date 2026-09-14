@@ -1,6 +1,8 @@
 import React from "react";
+import "./marketing.css";
 import { PageHead, Pill, Segmented } from "../components/viz.jsx";
-import { EmptyState } from "../atoms.jsx";
+import { InfoNota } from "../components/story.jsx";
+import { EmptyState, PrimaryButton, SecondaryButton } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -69,6 +71,7 @@ function DisparosScreen({ onOpenLead }) {
   const [saving, setSaving] = useS(false);
   const [aiBusy, setAiBusy] = useS(false);
   const [emailBusy, setEmailBusy] = useS(false);
+  const [assistBusy, setAssistBusy] = useS(false);
   const [metrics, setMetrics] = useS([]); // [{ id, name, sent, advanced, booked, won }]
   const [note, setNote] = useS(null);   // { ok, text }
   const [err, setErr] = useS(null);
@@ -80,6 +83,7 @@ function DisparosScreen({ onOpenLead }) {
   useE(() => {
     if (!product?.id) return;
     setStagesSel(new Set(defaultStages));
+    setCamp(blankCamp(me)); setCampaigns([]); setMetrics([]); setSearch(""); setNote(null); setErr(null);
     let alive = true;
     api.list("campaigns", { saas: product.id })
       .then((cs) => alive && setCampaigns(Array.isArray(cs) ? cs : []))
@@ -120,7 +124,7 @@ function DisparosScreen({ onOpenLead }) {
   // Cria a campanha na 1ª necessidade (o mark precisa de um id). Não re-salva a
   // cada envio — o botão "salvar" persiste as edições da composição.
   async function ensureSaved() {
-    if (camp.id) return camp.id;
+    if (camp.id) { await api.update("campaigns", camp.id, draftPayload()); return camp.id; }
     const created = await api.create("campaigns", { ...draftPayload(), sent: {} });
     setCamp((c) => ({ ...c, id: created.id, createdAt: created.createdAt || c.createdAt }));
     refreshCampaigns();
@@ -162,7 +166,8 @@ function DisparosScreen({ onOpenLead }) {
       const updated = await api.campaignMark(id, { leadId: lead.id, channel });
       setCamp((c) => ({ ...c, id, status: updated.status || c.status, sent: updated.sent || c.sent }));
       refreshCampaigns();
-    } catch (e) { setErr(`não deu pra marcar o envio: ${e.message}`); }
+      return true;
+    } catch (e) { setErr(`não deu pra marcar o envio: ${e.message}`); return false; }
   }
 
   // Envio NATIVO de e-mail em massa (Gmail): manda pra todo lead selecionado com
@@ -199,7 +204,6 @@ function DisparosScreen({ onOpenLead }) {
     setAiBusy(false);
   }
 
-  if (!product) return <EmptyState title="Sem produto ativo" hint="Escolha um produto no seletor da barra lateral." />;
 
   const toggleStage = (st) => setStagesSel((prev) => { const n = new Set(prev); n.has(st) ? n.delete(st) : n.add(st); return n; });
   const toggleLead = (id) => setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -210,12 +214,6 @@ function DisparosScreen({ onOpenLead }) {
     ? recipients.filter((l) => `${l.name || ""} ${l.company || ""}`.toLowerCase().includes(search.trim().toLowerCase()))
     : recipients;
   const chosen = recipients.filter((l) => selected.has(l.id));
-  const withWa = chosen.filter((l) => waLink(l.phone) && !l.whatsappInvalid && !l.whatsappOptOut).length;
-  const withEmail = chosen.filter((l) => l.email).length;
-  const sentWa = chosen.filter((l) => camp.sent?.[l.id]?.whatsapp).length;
-  const sentEmail = chosen.filter((l) => camp.sent?.[l.id]?.email).length;
-  const pendingEmail = chosen.filter((l) => l.email && !l.emailOptOut && !camp.sent?.[l.id]?.email).length;
-
   const sampleLead = chosen[0] || recipients[0] || null;
   const sampleTokens = sampleLead ? scriptTokens(sampleLead, product) : null;
   const insertToken = (tok) => {
@@ -226,11 +224,14 @@ function DisparosScreen({ onOpenLead }) {
   };
 
   const channel = camp.channels.email ? "email" : "wa";
-  const setChannel = (value) => setCamp((current) => ({
+  const setChannel = (value) => {
+    setActiveField(value === "email" ? "body" : "wa");
+    setCamp((current) => ({
     ...current,
     channels: { email: value === "email", whatsapp: value === "wa" },
     ...(value === "email" && !current.email.subject && current.name ? { email: { ...current.email, subject: current.name } } : {}),
-  }));
+    }));
+  };
   const relativeTouch = (lead) => {
     const at = lead.stageSince || lead.updatedAt || lead.createdAt;
     if (!at) return "—";
@@ -247,6 +248,7 @@ function DisparosScreen({ onOpenLead }) {
   const [waStats, setWaStats] = useS(null);
   useE(() => {
     let vivo = true;
+    setNumInfo(null); setWaStats(null);
     api.waNumber(product?.id).then((n) => vivo && setNumInfo(n)).catch(() => {});
     api.waInsights().then((x) => vivo && setWaStats(x)).catch(() => {});
     return () => { vivo = false; };
@@ -254,414 +256,96 @@ function DisparosScreen({ onOpenLead }) {
   const limiteDia = Number(String(numInfo?.tier || "").replace(/\D/g, "")) || null;
   const custoMedio = waStats?.costs?.messages > 0 ? Number(waStats.costs.cost) / Number(waStats.costs.messages) : null;
   const messageReady = channel === "email" ? !!camp.email.body : !!camp.wa.text;
+  const pending = chosen.filter((l) => channel === "wa"
+    ? waLink(l.phone) && !l.whatsappInvalid && !l.whatsappOptOut && !camp.sent?.[l.id]?.whatsapp
+    : l.email && !l.emailOptOut && !camp.sent?.[l.id]?.email);
   async function sendPrimary() {
-    if (!chosen.length || !messageReady) return;
-    if (channel === "email" && gmailOn) {
-      await sendEmails();
-      return;
-    }
-    const lead = channel === "wa"
-      ? chosen.find((item) => waLink(item.phone) && !item.whatsappInvalid && !item.whatsappOptOut)
-      : chosen.find((item) => item.email && !item.emailOptOut);
-    if (!lead) { setNote({ ok: false, text: channel === "wa" ? "nenhum selecionado tem WhatsApp válido" : "nenhum selecionado tem e-mail válido" }); return; }
+    if (!pending.length || !messageReady || assistBusy || emailBusy) return;
+    if (channel === "email" && gmailOn) { await sendEmails(); return; }
+    const lead = pending[0];
     const tokens = scriptTokens(lead, product);
     const url = channel === "wa"
       ? `${waLink(lead.phone)}?text=${encodeURIComponent(interpolate(camp.wa.text, tokens))}`
       : gmailCompose(lead.email, interpolate(camp.email.subject || camp.name, tokens), interpolate(camp.email.body, tokens));
     window.open(url, "_blank", "noopener,noreferrer");
-    await mark(lead, channel === "wa" ? "whatsapp" : "email");
-    setNote({ ok: true, text: `${lead.name || "Lead"} aberto para envio · continue pelos selecionados` });
+    setAssistBusy(true);
+    try {
+      if (await mark(lead, channel === "wa" ? "whatsapp" : "email")) setNote({ ok: true, text: `${lead.name || "Lead"} aberto para envio · continue pelos selecionados` });
+    } finally { setAssistBusy(false); }
   }
+  if (!product) return <EmptyState title="Sem produto ativo" hint="Escolha um produto no seletor da barra lateral." />;
+  const step = (n, title, sub) => <div className="marketing-toolbar" style={{ marginBottom: 14 }}><span className="tnum" style={{ width: 26, height: 26, borderRadius: 99, background: "var(--btn-bg)", color: "var(--btn-fg)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600 }}>{n}</span><h3 className="card-title" style={{ margin: 0 }}>{title}</h3>{sub && <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{sub}</span>}</div>;
+  const changedBody = (value) => setCamp((c) => channel === "email" ? { ...c, email: { ...c.email, body: value } } : { ...c, wa: { text: value } });
 
-  return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead title="Disparos" sub={tab === "disparos" ? `${recipients.length} no público · ${selected.size} selecionados · campanhas de e-mail e WhatsApp` : tab === "sequencias" ? "sequências automáticas de nutrição (drip)" : "biblioteca de conteúdo reutilizável"}>
-        <Segmented value={tab} onChange={setTab} options={[{ value: "disparos", label: "Disparos" }, { value: "sequencias", label: "Sequências" }, { value: "templates", label: "Templates" }]} />
-      </PageHead>
-
-      {tab === "sequencias" && <SequencesTab product={product} leads={leads} stageOptions={allStages} defaultStages={defaultStages} />}
-      {tab === "templates" && <TemplatesTab product={product} />}
-
-      {tab === "disparos" && (
-        <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-          {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
-          {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
-
-          {/* TRÊS PASSOS NUMERADOS (13/09): público, mensagem e envio estavam
-              lado a lado sem ordem, e o disparo saía sem ninguém ver o custo
-              nem o limite do número. */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span className="kicker" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <span className="tnum" style={{ width: 18, height: 18, borderRadius: 999, background: "var(--btn-bg)", color: "var(--btn-fg)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, fontWeight: 700 }}>1</span>
-              Para quem
-            </span>
-            <span style={{ fontSize: 12, color: "var(--fg-4)" }}>etapas do funil:</span>
-            {stageOptions.map((stage) => {
-              const active = stagesSel.has(stage);
-              return <button key={stage} onClick={() => toggleStage(stage)} style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 34, padding: "0 12px", borderRadius: 999, border: `1px solid ${active ? "var(--btn-bg)" : "var(--line-2)"}`, background: active ? "var(--btn-bg)" : "var(--bg-1)", color: active ? "var(--btn-fg)" : "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>{stage}<span className="tnum" style={{ fontSize: 11.5, opacity: .65 }}>{stageCount(stage)}</span></button>;
-            })}
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 400px), 1fr))", gap: 16, alignItems: "start" }}>
-            <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden", minWidth: 0 }}>
-              <div style={{ overflowX: "auto" }}><div style={{ minWidth: 620 }}>
-                <div className="kicker" style={{ display: "grid", gridTemplateColumns: "40px 1.3fr 1.1fr .9fr .9fr", gap: 12, padding: "12px 20px", fontWeight: 600, borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", alignItems: "center" }}>
-                  <input type="checkbox" checked={allSelected} onChange={toggleAll} style={{ width: 18, height: 18, accentColor: "var(--accent)" }} /><span>Lead</span><span>Empresa</span><span>Etapa</span><span>Último toque</span>
-                </div>
-                {shown.slice(0, 5).map((lead) => (
-                  <div key={lead.id} style={{ display: "grid", gridTemplateColumns: "40px 1.3fr 1.1fr .9fr .9fr", gap: 12, padding: "13px 20px", alignItems: "center", borderBottom: "1px solid var(--line-faint)" }}>
-                    <input type="checkbox" checked={selected.has(lead.id)} onChange={() => toggleLead(lead.id)} style={{ width: 18, height: 18, accentColor: "var(--accent)" }} />
-                    <button onClick={() => onOpenLead?.(lead)} style={{ textAlign: "left", fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lead.name || "sem nome"}</button>
-                    <span style={{ fontSize: 13, color: "var(--fg-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lead.company || "—"}</span>
-                    <span><Pill tone="mut">{lead.stage}</Pill></span>
-                    <span className="tnum" style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{relativeTouch(lead)}</span>
-                  </div>
-                ))}
-                {!shown.length && <div style={{ padding: "18px 20px", color: "var(--fg-4)", fontSize: 13 }}>nenhum lead neste público</div>}
-              </div></div>
-              <div style={{ padding: "12px 20px", borderTop: "1px solid var(--line-1)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <button onClick={toggleAll} style={{ color: "var(--fg-1)", fontSize: 12.5, fontWeight: 600 }}>{allSelected ? "Limpar seleção" : `Selecionar todos (${recipients.length})`}</button>
-                <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>mostrando {Math.min(5, shown.length)} de {shown.length}</span>
-              </div>
-            </section>
-
-            <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
-              <div className="kicker" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 600 }}>
-                <span className="tnum" style={{ width: 18, height: 18, borderRadius: 999, background: "var(--btn-bg)", color: "var(--btn-fg)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, fontWeight: 700 }}>2</span>
-                A mensagem
-              </div>
-              <Segmented value={channel} onChange={setChannel} options={[{ value: "wa", label: "WhatsApp" }, { value: "email", label: "E-mail" }]} />
-              <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                <span style={{ fontSize: 12, color: "var(--fg-3)" }}>Template</span>
-                <input list="campaign-options" value={camp.name} onChange={(event) => setCamp((current) => ({ ...current, name: event.target.value, email: channel === "email" ? { ...current.email, subject: event.target.value } : current.email }))} placeholder="Retomada · diagnóstico pendente" style={{ width: "100%", height: 38, padding: "0 11px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 }} />
-                <datalist id="campaign-options">{campaigns.map((campaign) => <option key={campaign.id} value={campaign.name || "sem nome"} />)}</datalist>
-              </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                <span style={{ fontSize: 12, color: "var(--fg-3)" }}>Mensagem</span>
-                <textarea rows={4} value={channel === "email" ? camp.email.body : camp.wa.text} onChange={(event) => setCamp((current) => channel === "email" ? { ...current, email: { ...current.email, body: event.target.value } } : { ...current, wa: { text: event.target.value } })} placeholder="Oi {{nome}}! Seu diagnóstico da {{empresa}} ficou pronto — posso te mandar o resumo aqui mesmo?" style={{ width: "100%", minHeight: 96, padding: "9px 11px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.5, resize: "vertical", fontFamily: "inherit" }} />
-              </label>
-              <div style={{ fontSize: 12, color: "var(--fg-4)", lineHeight: 1.5 }}>variáveis: nome, empresa, etapa · o envio respeita a janela de 24h do WhatsApp</div>
-
-              {/* 3 · Conferir e disparar */}
-              <div style={{ borderTop: "1px solid var(--line-1)", paddingTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-                <div className="kicker" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 600 }}>
-                  <span className="tnum" style={{ width: 18, height: 18, borderRadius: 999, background: "var(--btn-bg)", color: "var(--btn-fg)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, fontWeight: 700 }}>3</span>
-                  Conferir e disparar
-                </div>
-                {/* A prévia com o PRIMEIRO da lista: variável que não resolve
-                    aparece aqui, não na conversa do cliente. */}
-                {chosen[0] && messageReady && (
-                  <div style={{ background: "var(--bg-inset)", border: "1px solid var(--line-faint)", borderRadius: "var(--r-3)", padding: "10px 12px" }}>
-                    <div className="kicker" style={{ marginBottom: 4 }}>{`prévia · ${chosen[0].name || "primeiro da lista"}`}</div>
-                    <div style={{ fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
-                      {interpolate(channel === "email" ? camp.email.body : camp.wa.text, scriptTokens(chosen[0], product))}
-                    </div>
-                  </div>
-                )}
-                <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
-                  <span style={{ display: "inline-flex", flexDirection: "column" }}>
-                    <span className="kicker">pessoas no disparo</span>
-                    <span className="tnum" style={{ fontSize: 15, fontWeight: 700 }}>{chosen.length}</span>
-                  </span>
-                  {channel === "wa" && custoMedio != null && (
-                    <span style={{ display: "inline-flex", flexDirection: "column" }} title="média do que a Meta cobrou por mensagem no período (pricing analytics) × o tamanho do disparo">
-                      <span className="kicker">custo estimado</span>
-                      <span className="tnum" style={{ fontSize: 15, fontWeight: 700 }}>{(custoMedio * chosen.length).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
-                    </span>
-                  )}
-                  {channel === "wa" && limiteDia && (
-                    <span style={{ display: "inline-flex", flexDirection: "column" }} title="limite de conversas iniciadas por dia do número (tier da Meta)">
-                      <span className="kicker">limite do número hoje</span>
-                      <span className="tnum" style={{ fontSize: 15, fontWeight: 700 }}>{limiteDia.toLocaleString("pt-BR")}</span>
-                    </span>
-                  )}
-                </div>
-                {/* Disparo grande em número de qualidade média derruba a saúde:
-                    o aviso vem ANTES do botão, não depois do estrago. */}
-                {channel === "wa" && limiteDia && chosen.length > limiteDia * 0.6 && (
-                  <div style={{ fontSize: 12, lineHeight: 1.5, color: chosen.length > limiteDia ? "var(--neg)" : "var(--warn)", background: chosen.length > limiteDia ? "var(--neg-soft)" : "var(--warn-soft)", border: "1px solid " + (chosen.length > limiteDia ? "color-mix(in srgb, var(--neg) 26%, transparent)" : "color-mix(in srgb, var(--warn) 26%, transparent)"), borderRadius: "var(--r-2)", padding: "9px 11px" }}>
-                    {chosen.length > limiteDia
-                      ? `${chosen.length} conversas passam do limite de ${limiteDia} do número hoje: o que passar vai falhar. Divida o disparo em dias.`
-                      : `${chosen.length} conversas cabem no limite de ${limiteDia} de hoje, mas passam de metade dele. Disparo acima de 60% do teto em dia de qualidade média derruba a saúde do número.`}
-                  </div>
-                )}
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={sendPrimary} disabled={!chosen.length || !messageReady || emailBusy} style={{ height: 40, padding: "0 16px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 13, fontWeight: 600, opacity: !chosen.length || !messageReady || emailBusy ? .5 : 1 }}>{emailBusy ? "Enviando…" : `Disparar para ${chosen.length}`}</button>
-                  <button onClick={() => setTab("sequencias")} style={{ height: 40, padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 600 }}>Agendar</button>
-                </div>
-              </div>
-            </section>
-          </div>
+  return <div className="marketing-page" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+    <PageHead className="marketing-head" title="Disparos" sub={tab === "disparos" ? `${recipients.length} no público · ${selected.size} selecionados · campanhas de e-mail e WhatsApp` : tab === "sequencias" ? "sequências automáticas de nutrição" : "biblioteca de conteúdo reutilizável"}>
+      <Segmented value={tab} onChange={setTab} options={[{ value: "disparos", label: "Disparos" }, { value: "sequencias", label: "Sequências" }, { value: "templates", label: "Templates" }]} />
+    </PageHead>
+    {tab === "sequencias" && <SequencesTab key={product.id} product={product} leads={leads} stageOptions={allStages} defaultStages={defaultStages} />}
+    {tab === "templates" && <TemplatesTab key={product.id} product={product} />}
+    {tab === "disparos" && <div className="marketing-body" style={{ flex: 1, overflow: "auto" }}>
+      <WaHealthBanner style={{ margin: 0 }} />
+      {note && <div role="status" className="marketing-card marketing-toolbar" style={{ padding: "11px 16px" }}><span style={{ flex: 1, fontSize: 13, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</span><button aria-label="Fechar aviso" onClick={() => setNote(null)}>×</button></div>}
+      {err && <div role="alert" style={{ fontSize: 12.5, color: "var(--neg)" }}>{err}</div>}
+      <div className="marketing-two-col">
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+          <section className="marketing-card">
+            {step(1, "Para quem", "etapas do funil")}
+            <div className="marketing-toolbar">
+              {stageOptions.map((stage) => <button key={stage} aria-pressed={stagesSel.has(stage)} onClick={() => toggleStage(stage)} style={{ height: 32, padding: "0 12px", borderRadius: 999, border: `1px solid ${stagesSel.has(stage) ? "var(--accent-line)" : "var(--line-2)"}`, background: stagesSel.has(stage) ? "var(--accent-soft)" : "var(--bg-1)", color: stagesSel.has(stage) ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>{stage} <span className="tnum" style={{ marginLeft: 5, opacity: .7 }}>{stageCount(stage)}</span></button>)}
+            </div>
+            <input className="inp" type="search" aria-label="Buscar público" placeholder="buscar por nome ou empresa" value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: "100%", margin: "14px 0 10px" }} />
+            <div className="tbl-x" style={{ maxHeight: 400, border: "1px solid var(--line-1)", borderRadius: "var(--r-3)" }}>
+              <table className="marketing-table" style={{ minWidth: 470, tableLayout: "fixed" }}><colgroup><col style={{ width: 56 }} /><col style={{ width: "32%" }} /><col style={{ width: "24%" }} /><col style={{ width: "22%" }} /><col /></colgroup>
+                <thead><tr><th><input type="checkbox" aria-label="Selecionar todo o público" checked={allSelected} onChange={toggleAll} /></th><th>Lead</th><th>Empresa</th><th>Etapa</th><th>Na etapa</th></tr></thead>
+                <tbody>{shown.map((lead) => {
+                  const sent = camp.sent?.[lead.id]?.[channel === "wa" ? "whatsapp" : "email"];
+                  const invalid = channel === "wa" ? !waLink(lead.phone) || lead.whatsappInvalid || lead.whatsappOptOut : !lead.email || lead.emailOptOut;
+                  return <tr key={lead.id}><td><input type="checkbox" aria-label={`Selecionar ${lead.name}`} checked={selected.has(lead.id)} onChange={() => toggleLead(lead.id)} /></td>
+                    <td><button onClick={() => onOpenLead?.(lead)} style={{ fontSize: 13, fontWeight: 600, textAlign: "left" }}>{lead.name || "sem nome"}</button><div style={{ fontSize: 11, marginTop: 3, color: sent ? "var(--pos)" : "var(--fg-3)" }}>{sent ? "já aberto/enviado" : invalid ? "sem contato disponível" : "pendente"}</div></td>
+                    <td style={{ fontSize: 12, color: "var(--fg-3)", overflowWrap: "anywhere" }}>{lead.company || "—"}</td><td style={{ fontSize: 11.5 }}>{lead.stage}</td><td style={{ fontSize: 11.5, color: "var(--fg-3)" }}>{relativeTouch(lead)}</td>
+                  </tr>;
+                })}</tbody>
+              </table>
+              {!shown.length && <div style={{ padding: 16, color: "var(--fg-3)", fontSize: 12.5 }}>nenhum lead neste público</div>}
+            </div>
+            <div className="marketing-toolbar" style={{ marginTop: 12, justifyContent: "space-between" }}><button onClick={toggleAll} style={{ fontSize: 12.5, fontWeight: 600 }}>{allSelected ? "Limpar seleção" : `Selecionar todos (${recipients.length})`}</button><span style={{ fontSize: 11.5, color: "var(--fg-3)" }}>{shown.length} na lista · {selected.size} selecionados</span></div>
+          </section>
+          <section className="marketing-card">
+            <h3 className="card-title" style={{ margin: "0 0 12px" }}>Campanhas salvas</h3>
+            <div className="marketing-toolbar"><select className="inp" aria-label="Carregar campanha" value={camp.id || ""} onChange={(e) => { const c = campaigns.find((x) => x.id === e.target.value); if (c) loadCampaign(c); else newCampaign(); }} style={{ flex: 1, minWidth: 160 }}><option value="">Nova campanha</option>{campaigns.map((c) => <option key={c.id} value={c.id}>{c.name || "sem nome"} · {Object.keys(c.sent || {}).length} env.</option>)}</select><SecondaryButton onClick={newCampaign}>+ nova</SecondaryButton></div>
+          </section>
         </div>
-      )}
-    </div>
-  );
-
-  const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: 14 };
-  const field = { width: "100%", padding: "8px 10px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 };
-  const chipBtn = (on) => ({ display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 11px", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"), background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-2)" });
-  const sendChip = { display: "inline-flex", alignItems: "center", gap: 5, height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 11.5, fontWeight: 600, textDecoration: "none", cursor: "pointer" };
-  const num = { fontSize: 12.5, textAlign: "right", fontVariantNumeric: "tabular-nums" };
-
-  return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead title="Disparos" sub={tab === "disparos" ? `${recipients.length} no público · ${selected.size} selecionados` : tab === "sequencias" ? "sequências automáticas de nutrição (drip)" : "biblioteca de conteúdo reutilizável"}>
-        <span style={{ display: "inline-flex", gap: 4, marginRight: 4 }}>
-          {[["disparos", "Disparos"], ["sequencias", "Sequências"], ["templates", "Templates"]].map(([id, lbl]) => (
-            <button key={id} onClick={() => setTab(id)} style={{
-              height: 26, padding: "0 11px", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 600, cursor: "pointer",
-              border: "1px solid " + (tab === id ? "var(--accent-line)" : "var(--line-2)"),
-              background: tab === id ? "var(--accent-soft)" : "var(--bg-1)", color: tab === id ? "var(--accent)" : "var(--fg-2)",
-            }}>{lbl}</button>
-          ))}
-        </span>
-        {tab === "disparos" && (
-          <>
-            <input value={camp.name} onChange={(e) => setCamp((c) => ({ ...c, name: e.target.value }))} placeholder="nome da campanha"
-              style={{ ...field, width: 180, height: 26, padding: "0 10px", fontSize: 12.5 }} />
-            <Pill tone={camp.status === "sending" ? "warn" : camp.id ? "pos" : "mut"}>{camp.status === "sending" ? "disparando" : camp.id ? "salva" : "rascunho"}</Pill>
-            <button onClick={save} disabled={saving}
-              style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600 }}>
-              {saving ? "salvando…" : "salvar"}
-            </button>
-            <button onClick={newCampaign} className="mono dim" style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-2)", fontSize: 12 }}>+ nova</button>
-          </>
-        )}
-      </PageHead>
-
-      {tab === "sequencias" && <SequencesTab product={product} leads={leads} stageOptions={allStages} defaultStages={defaultStages} />}
-      {tab === "templates" && <TemplatesTab product={product} />}
-
-      {tab === "disparos" && (
-      <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-        <WaHealthBanner style={{ margin: 0 }} />
-        {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
-        {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
-
-        {campaigns.length > 0 && (
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-            <span className="kicker">campanhas</span>
-            {campaigns.map((c) => {
-              const total = Object.keys(c.sent || {}).length;
-              return (
-                <button key={c.id} onClick={() => loadCampaign(c)} title={`carregar "${c.name || "sem nome"}"`}
-                  style={{ ...sendChip, borderColor: camp.id === c.id ? "var(--accent-line)" : "var(--line-2)", color: camp.id === c.id ? "var(--accent)" : "var(--fg-2)" }}>
-                  {c.name || "sem nome"}{total ? ` · ${total} env.` : ""}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 14 }}>
-          {/* ── PÚBLICO ─────────────────────────────────────────────── */}
-          <div style={{ ...box, display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
-            <div className="kicker">Público · etapas do funil</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {stageOptions.map((st) => (
-                <button key={st} onClick={() => toggleStage(st)} style={chipBtn(stagesSel.has(st))}>{st}</button>
-              ))}
-              {stageOptions.length === 0 && <span className="mono dim" style={{ fontSize: 12 }}>o funil deste produto não tem etapas trabalháveis</span>}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+          <section className="marketing-card">
+            {step(2, "A mensagem")}
+            <Segmented value={channel} onChange={setChannel} options={[{ value: "wa", label: "WhatsApp" }, { value: "email", label: "E-mail" }]} />
+            <label className="canvas-field" style={{ marginTop: 14, fontSize: 12.5 }}>Nome da campanha<input className="inp" value={camp.name} onChange={(e) => setCamp((c) => ({ ...c, name: e.target.value }))} placeholder="Retomada · diagnóstico pendente" /></label>
+            {channel === "email" && <label className="canvas-field" style={{ marginTop: 12, fontSize: 12.5 }}>Assunto do e-mail<input className="inp" value={camp.email.subject} onFocus={() => setActiveField("subject")} onChange={(e) => setCamp((c) => ({ ...c, email: { ...c.email, subject: e.target.value } }))} /></label>}
+            <label className="canvas-field" style={{ marginTop: 12, fontSize: 12.5 }}>Mensagem<textarea className="inp" value={channel === "email" ? camp.email.body : camp.wa.text} onFocus={() => setActiveField(channel === "email" ? "body" : "wa")} onChange={(e) => changedBody(e.target.value)} placeholder="Oi {{nome}}! Seu diagnóstico da {{empresa}} ficou pronto." rows={5} style={{ minHeight: 112, padding: "9px 11px", resize: "vertical", lineHeight: 1.5 }} /></label>
+            <div className="marketing-toolbar" style={{ marginTop: 10 }}>{TOKENS.map(([key, label]) => <button key={key} title={`Inserir ${label}`} onClick={() => insertToken(key)} style={{ fontSize: 11.5, color: "var(--fg-3)", border: "1px solid var(--line-1)", borderRadius: "var(--r-1)", padding: "4px 7px" }}>{`{{${key}}}`}</button>)}</div>
+            <div className="marketing-toolbar" style={{ marginTop: 14 }}><SecondaryButton onClick={save} disabled={saving || assistBusy || emailBusy}>{saving ? "salvando…" : "Salvar campanha"}</SecondaryButton>{window.SEED?.CONFIG?.ai?.configured && <SecondaryButton onClick={genCopy} disabled={aiBusy}>{aiBusy ? "gerando…" : "Gerar com IA"}</SecondaryButton>}</div>
+          </section>
+          <section className="marketing-card">
+            {step(3, "Conferir e disparar")}
+            {sampleLead && messageReady && <div style={{ padding: "10px 12px", background: "var(--bg-inset)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", marginBottom: 14 }}><div className="marketing-kicker" style={{ marginBottom: 6 }}>prévia · {sampleLead.name}</div>{channel === "email" && <strong style={{ fontSize: 12.5 }}>{interpolate(camp.email.subject, sampleTokens)}</strong>}<div style={{ fontSize: 12.5, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{interpolate(channel === "email" ? camp.email.body : camp.wa.text, sampleTokens)}</div></div>}
+            <div className="marketing-toolbar" style={{ gap: 20, marginBottom: 14 }}>
+              <div><div className="marketing-kicker">pessoas no disparo</div><strong className="tnum">{chosen.length}</strong><div style={{ fontSize: 11.5, color: "var(--fg-3)" }}>{pending.length} pendentes com contato válido</div></div>
+              {channel === "wa" && <><div><div className="marketing-kicker">custo estimado</div><strong className="tnum">{custoMedio != null ? (custoMedio * chosen.length).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}</strong></div><div><div className="marketing-kicker">limite do número</div><strong className="tnum">{limiteDia?.toLocaleString("pt-BR") || "—"}</strong></div></>}
             </div>
-
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="buscar por nome ou empresa" style={{ ...field, height: 30 }} />
-              <button onClick={toggleAll} className="mono" style={{ ...sendChip, flexShrink: 0 }}>{allSelected ? "limpar" : "todos"}</button>
-            </div>
-            <div className="mono dim" style={{ fontSize: 11 }}>{selected.size} de {recipients.length} · {withWa} com WhatsApp · {withEmail} com e-mail</div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 380, overflow: "auto" }}>
-              {shown.length === 0 && <div className="mono dim" style={{ fontSize: 12, padding: "8px 0" }}>nenhum lead nessas etapas</div>}
-              {shown.map((l) => {
-                const on = selected.has(l.id);
-                const s = camp.sent?.[l.id] || {};
-                return (
-                  <label key={l.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: on ? "var(--bg-inset)" : "transparent", cursor: "pointer" }}>
-                    <input type="checkbox" checked={on} onChange={() => toggleLead(l.id)} />
-                    <span style={{ minWidth: 0, flex: 1 }}>
-                      <span style={{ display: "flex", gap: 6, alignItems: "baseline" }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.name || "sem nome"}</span>
-                        {l.company && <span className="dim" style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.company}</span>}
-                      </span>
-                      <span className="mono dim" style={{ fontSize: 10 }}>{l.stage}</span>
-                    </span>
-                    <span style={{ display: "inline-flex", gap: 4, flexShrink: 0 }}>
-                      <span title={waLink(l.phone) ? "tem WhatsApp" : "sem telefone"} style={{ fontSize: 11, color: s.whatsapp ? "var(--pos)" : waLink(l.phone) ? "var(--fg-3)" : "var(--fg-4)" }}>{s.whatsapp ? "✓" : ""}wpp</span>
-                      <span title={l.email ? "tem e-mail" : "sem e-mail"} style={{ fontSize: 11, color: s.email ? "var(--pos)" : l.email ? "var(--fg-3)" : "var(--fg-4)" }}>{s.email ? "✓" : ""}@</span>
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* ── MENSAGEM ────────────────────────────────────────────── */}
-          <div style={{ ...box, display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div className="kicker">Mensagem</div>
-              <div style={{ display: "flex", gap: 6 }}>
-                <button onClick={() => setCamp((c) => ({ ...c, channels: { ...c.channels, whatsapp: !c.channels.whatsapp } }))} style={chipBtn(camp.channels.whatsapp)}>WhatsApp</button>
-                <button onClick={() => setCamp((c) => ({ ...c, channels: { ...c.channels, email: !c.channels.email } }))} style={chipBtn(camp.channels.email)}>E-mail</button>
-              </div>
-            </div>
-
-            {camp.channels.email && (
-              <>
-                <div>
-                  <label style={kicker}>Assunto do e-mail</label>
-                  <input value={camp.email.subject} onFocus={() => setActiveField("subject")}
-                    onChange={(e) => setCamp((c) => ({ ...c, email: { ...c.email, subject: e.target.value } }))}
-                    placeholder="Ex.: {{nome}}, uma ideia rápida pra sua operação" style={{ ...field, marginTop: 4 }} />
-                </div>
-                <div>
-                  <label style={kicker}>Corpo do e-mail</label>
-                  <textarea value={camp.email.body} onFocus={() => setActiveField("body")}
-                    onChange={(e) => setCamp((c) => ({ ...c, email: { ...c.email, body: e.target.value } }))}
-                    rows={5} placeholder="Oi {{nome}}, …" style={{ ...field, marginTop: 4, resize: "vertical", fontFamily: "inherit" }} />
-                </div>
-              </>
-            )}
-            {camp.channels.whatsapp && (
-              <div>
-                <label style={kicker}>Mensagem de WhatsApp</label>
-                <textarea value={camp.wa.text} onFocus={() => setActiveField("wa")}
-                  onChange={(e) => setCamp((c) => ({ ...c, wa: { text: e.target.value } }))}
-                  rows={4} placeholder="Oi {{nome}}, …" style={{ ...field, marginTop: 4, resize: "vertical", fontFamily: "inherit" }} />
-              </div>
-            )}
-
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-              <span className="kicker">tokens</span>
-              {TOKENS.map(([k, lbl]) => (
-                <button key={k} onClick={() => insertToken(k)} title={`inserir ${lbl}`} className="mono"
-                  style={{ ...sendChip, height: 24, padding: "0 8px", fontSize: 11 }}>{`{{${k}}}`}</button>
-              ))}
-              {window.SEED?.CONFIG?.ai?.configured && (
-                <button onClick={genCopy} disabled={aiBusy}
-                  style={{ ...sendChip, height: 24, padding: "0 10px", fontSize: 11, borderColor: "var(--accent-line)", color: "var(--accent)", marginLeft: "auto" }}>
-                  {aiBusy ? "gerando…" : "✨ gerar com IA"}
-                </button>
-              )}
-            </div>
-
-            {sampleLead && (camp.wa.text || camp.email.subject || camp.email.body) && (
-              <div style={{ border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)", padding: 10, background: "var(--bg-inset)" }}>
-                <div className="kicker">Prévia · {sampleLead.name}</div>
-                {camp.channels.email && (camp.email.subject || camp.email.body) && (
-                  <div style={{ marginTop: 6, fontSize: 12.5 }}>
-                    <div style={{ fontWeight: 600 }}>{interpolate(camp.email.subject, sampleTokens)}</div>
-                    <div style={{ whiteSpace: "pre-wrap", color: "var(--fg-2)", marginTop: 2 }}>{interpolate(camp.email.body, sampleTokens)}</div>
-                  </div>
-                )}
-                {camp.channels.whatsapp && camp.wa.text && (
-                  <div style={{ marginTop: 6, whiteSpace: "pre-wrap", fontSize: 12.5, color: "var(--fg-2)" }}>{interpolate(camp.wa.text, sampleTokens)}</div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* ── DISPARAR ──────────────────────────────────────────────── */}
-        <div style={box}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
-            <div className="kicker">Disparar · {chosen.length} selecionados</div>
-            {camp.channels.whatsapp && <Pill tone={sentWa >= withWa && withWa > 0 ? "pos" : "mut"}>WhatsApp {sentWa}/{withWa}</Pill>}
-            {camp.channels.email && <Pill tone={sentEmail >= withEmail && withEmail > 0 ? "pos" : "mut"}>e-mail {sentEmail}/{withEmail}</Pill>}
-            {camp.channels.email && (
-              gmailOn ? (
-                <button onClick={sendEmails} disabled={emailBusy || pendingEmail === 0}
-                  title="Envia o e-mail pela conta Google conectada pra todos os selecionados com e-mail ainda pendente"
-                  style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 600,
-                    background: emailBusy || pendingEmail === 0 ? "var(--bg-2)" : "var(--btn-bg, var(--accent))",
-                    color: emailBusy || pendingEmail === 0 ? "var(--fg-4)" : "var(--btn-fg, var(--accent-fg))",
-                    border: "1px solid " + (emailBusy || pendingEmail === 0 ? "var(--line-2)" : "var(--btn-bg, var(--accent))"),
-                    cursor: emailBusy || pendingEmail === 0 ? "not-allowed" : "pointer" }}>
-                  {emailBusy ? "enviando…" : `✉ enviar ${pendingEmail} e-mail${pendingEmail === 1 ? "" : "s"}`}
-                </button>
-              ) : (
-                <span className="mono dim" style={{ fontSize: 10.5 }}>conecte o Google com permissão de e-mail (Ajustes → Integrações) pra enviar em massa · ou use "abrir Gmail" por lead</span>
-              )
-            )}
-          </div>
-
-          {chosen.length === 0 ? (
-            <div className="mono dim" style={{ fontSize: 12 }}>selecione leads no público pra montar a fila de disparo</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 420, overflow: "auto" }}>
-              {chosen.map((l) => {
-                const s = camp.sent?.[l.id] || {};
-                const toks = scriptTokens(l, product);
-                const wa = waLink(l.phone);
-                const waUrl = wa && camp.wa.text ? `${wa}?text=${encodeURIComponent(interpolate(camp.wa.text, toks))}` : null;
-                const mailUrl = l.email && (camp.email.subject || camp.email.body)
-                  ? gmailCompose(l.email, interpolate(camp.email.subject, toks), interpolate(camp.email.body, toks)) : null;
-                return (
-                  <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)" }}>
-                    <span style={{ minWidth: 0, flex: 1, display: "flex", gap: 6, alignItems: "baseline" }}>
-                      <span onClick={() => onOpenLead && onOpenLead(l)} title="abrir lead" style={{ fontSize: 13, fontWeight: 600, cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.name || "sem nome"}</span>
-                      {l.company && <span className="dim" style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.company}</span>}
-                    </span>
-                    {camp.channels.whatsapp && (
-                      l.whatsappInvalid ? <span className="mono" style={{ fontSize: 10.5, color: "var(--neg)" }} title={l.whatsappInvalidReason || "o WhatsApp não entregou antes"}>número inválido</span>
-                      : l.whatsappOptOut ? <span className="mono dim" style={{ fontSize: 10.5 }} title="pediu pra parar de receber no WhatsApp">descadastrou Whats</span>
-                      : waUrl ? (
-                        <a href={waUrl} target="_blank" rel="noopener noreferrer" onClick={() => mark(l, "whatsapp")}
-                          style={{ ...sendChip, borderColor: s.whatsapp ? "var(--pos)" : "var(--wa-brand)", color: s.whatsapp ? "var(--pos)" : "var(--wa-brand-deep)" }}>
-                          {s.whatsapp ? "✓ Whats" : "abrir Whats ↗"}
-                        </a>
-                      ) : <span className="mono dim" style={{ fontSize: 10.5 }}>{wa ? "sem texto" : "sem telefone"}</span>
-                    )}
-                    {camp.channels.email && (
-                      mailUrl ? (
-                        <a href={mailUrl} target="_blank" rel="noopener noreferrer" onClick={() => mark(l, "email")}
-                          style={{ ...sendChip, borderColor: s.email ? "var(--pos)" : "var(--accent-line)", color: s.email ? "var(--pos)" : "var(--accent)" }}>
-                          {s.email ? "✓ e-mail" : "abrir Gmail ↗"}
-                        </a>
-                      ) : <span className="mono dim" style={{ fontSize: 10.5 }}>{l.email ? "sem texto" : "sem e-mail"}</span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* ── RESULTADOS · conversão no funil ───────────────────────────
-            O que deu certo: dos leads que receberam o disparo, quantos
-            avançaram de etapa / marcaram call / fecharam nos 30 dias seguintes
-            (atribuído pela timeline). Compara as campanhas pra achar o padrão. */}
-        <div style={box}>
-          <div className="kicker" style={{ marginBottom: 8 }}>Resultados · conversão no funil (30 dias após o disparo)</div>
-          {metrics.length === 0 ? (
-            <div className="mono dim" style={{ fontSize: 12 }}>nenhum disparo medido ainda · dispare e a conversão aparece aqui</div>
-          ) : (
-            <div className="tbl-x" style={{ overflowX: "auto" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "minmax(140px, 1fr) repeat(5, 82px)", gap: "5px 6px", minWidth: 520 }}>
-                {["campanha", "enviados", "avançou", "marcou call", "fechou", "conversão"].map((h, i) => (
-                  <span key={h} style={{ ...kicker, textAlign: i === 0 ? "left" : "right" }}>{h}</span>
-                ))}
-                {[...metrics].sort((a, b) => (b.won - a.won) || (b.advanced - a.advanced) || (b.sent - a.sent)).map((m) => {
-                  const rate = m.sent ? Math.round((m.won / m.sent) * 100) : 0;
-                  const on = m.id === camp.id;
-                  return (
-                    <React.Fragment key={m.id}>
-                      <span style={{ fontSize: 12.5, fontWeight: on ? 700 : 500, color: on ? "var(--accent)" : "var(--fg-1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name || "sem nome"}</span>
-                      <span style={num}>{m.sent}</span>
-                      <span style={num}>{m.advanced}</span>
-                      <span style={num}>{m.booked}</span>
-                      <span style={{ ...num, fontWeight: 700, color: m.won ? "var(--pos)" : "var(--fg-3)" }}>{m.won}</span>
-                      <span style={{ ...num, color: rate >= 20 ? "var(--pos)" : "var(--fg-2)" }}>{rate}%</span>
-                    </React.Fragment>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+            {channel === "wa" && limiteDia && chosen.length > limiteDia * .6 && <div role="status" style={{ padding: 12, borderRadius: "var(--r-2)", background: "var(--warn-soft)", color: "var(--warn)", fontSize: 12.5, marginBottom: 12 }}>{chosen.length > limiteDia ? `O público passa do limite de ${limiteDia} do número. Divida o disparo em dias.` : "O público passa de 60% do limite do número. Confira a saúde antes de continuar."}</div>}
+            <div className="marketing-toolbar"><PrimaryButton disabled={!pending.length || !messageReady || saving || emailBusy || assistBusy} onClick={sendPrimary}>{emailBusy || assistBusy ? "processando…" : channel === "email" && gmailOn ? `Disparar ${pending.length} e-mails` : channel === "wa" ? "Abrir próximo WhatsApp ↗" : "Abrir próximo Gmail ↗"}</PrimaryButton><SecondaryButton onClick={() => setTab("sequencias")}>Criar sequência</SecondaryButton></div>
+            <InfoNota style={{ marginTop: 12 }}>{channel === "email" && gmailOn ? "Os e-mails saem pela conta Google conectada. Quem já recebeu ou se descadastrou fica fora do envio." : "Envio assistido: a conversa abre com a mensagem preenchida. Confira e envie no aplicativo; depois continue para o próximo contato."}</InfoNota>
+          </section>
         </div>
       </div>
-      )}
-    </div>
-  );
+      <section className="marketing-card">
+        <h3 className="card-title" style={{ margin: "0 0 12px" }}>Resultados das campanhas</h3>
+        {!metrics.length ? <InfoNota>A conversão aparece depois dos primeiros disparos.</InfoNota> : <div className="tbl-x"><table className="marketing-table" style={{ minWidth: 540 }}><thead><tr><th>Campanha</th><th>Enviados</th><th>Avançaram</th><th>Calls</th><th>Ganhos</th><th>Conversão</th></tr></thead><tbody>{[...metrics].sort((a, b) => b.won - a.won || b.advanced - a.advanced).map((m) => <tr key={m.id}><td>{m.name || "sem nome"}</td><td className="tnum">{m.sent}</td><td className="tnum">{m.advanced}</td><td className="tnum">{m.booked}</td><td className="tnum" style={{ color: m.won ? "var(--pos)" : "var(--fg-3)" }}>{m.won}</td><td className="tnum">{m.sent ? Math.round(m.won / m.sent * 100) : 0}%</td></tr>)}</tbody></table></div>}
+        <InfoNota style={{ marginTop: 12 }}>Avanços no funil nos 30 dias após o disparo, atribuídos pela timeline.</InfoNota>
+      </section>
+    </div>}
+  </div>;
 }
 
 // ─────────────────────────────────────────────── Sequências (drip) ──────────
