@@ -134,10 +134,16 @@ const TIER_ORDER = { S: 6, A: 5, B: 4, C: 3, D: 2, E: 1, sem: 0 };
 // quentes) na sequência; depois retomadas, follow-ups, nutrição e sem agenda.
 const GROUP_ORDER = ["confirm", "appt", "novo", "noshow", "qual", "closer", "nutri", "loose"];
 
-// A grade da linha da fila: quando · o que fazer · nível · quem · dono · ações.
-// Somada com os gaps dá ~654px, dentro do orçamento de 1024px de janela com o
-// trilho de 380px empilhado (748 − 32 do padding). O smoke trava a conta.
-export const QUEUE_GRID = "76px minmax(120px,156px) 20px minmax(120px,1fr) 38px 176px";
+// A grade da linha da fila: ordem · quando · o que fazer · nível · quem · dono
+// · ações. Somada com os gaps dá ~646px, dentro do orçamento de 1024px de
+// janela com o trilho de 380px empilhado (748 − 32 do padding). O smoke trava
+// a conta.
+//
+// A COLUNA DA ORDEM entrou em 14/09 (protótipo do Leo): a tela promete "a
+// ordem é a prioridade do processo, não a hora" e não numerava nada, então a
+// promessa só existia no subtítulo. Com o número, pular a 3ª pra fazer a 7ª
+// vira uma decisão consciente em vez de acidente.
+export const QUEUE_GRID = "24px 76px minmax(120px,156px) 20px minmax(120px,1fr) 38px 176px";
 export const QUEUE_GRID_GAP = 12;
 export const QUEUE_GRID_BUDGET = 716;
 
@@ -684,7 +690,13 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   const pendingToday = q.hoje.filter((i) => !i.done);
   const doneTodayRows = q.hoje.filter((i) => i.done);
   const [showDone, setShowDone] = useS(false); // "feitas hoje" é rodapé recolhível da fila
-  const futureRows = [...q.proximos, ...q.semdata];
+  const [busca, setBusca] = useS("");
+  // "Sem data" SAIU do trilho (14/09): estava misturado com "Próximos dias"
+  // dentro de um card que diz "nada aqui é para hoje", quando a verdade é o
+  // contrário — ninguém marcou o próximo toque desses leads e alguém precisa
+  // decidir. Virou bloco próprio embaixo da fila, com as mesmas ações e FORA
+  // da contagem do dia (não têm prazo pra hoje).
+  const futureRows = q.proximos;
   // Memo: buildQueue de TODOS os usuários a cada render travava a digitação no painel.
   const queueCounts = useM(() => Object.fromEntries(users.map((u) => [u.id, buildQueue(leads, consultas, saasCfg, u.id).hoje.filter((i) => !i.done).length])), [leads, consultas, saasCfg, users]);
   // Meta de "Contatados" é de contato (leads): consultas não contam pro placar.
@@ -732,6 +744,22 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
     : pendingToday;
   const lateCount = pendingToday.filter((i) => i.due && i.due.t <= Date.now()).length;
 
+  // Busca DENTRO da fila (protótipo, 14/09). Com oito grupos e o dia cheio, a
+  // fila passa de vinte linhas e achar "aquele lead" era rolar a tela inteira.
+  // Filtra por nome e empresa; a numeração continua a da fila inteira, pra
+  // buscar não mentir sobre a posição do item na ordem do dia.
+  const filtraFila = (rows) => {
+    const t = busca.trim().toLowerCase();
+    if (!t) return rows;
+    return rows.filter((i) => {
+      const nome = i.consulta ? (i.consulta.clientName || "") : (i.l?.name || "");
+      const empresa = i.consulta ? (i.consulta.childName || "") : (i.l?.company || "");
+      return `${nome} ${empresa}`.toLowerCase().includes(t);
+    });
+  };
+  const queueShown = filtraFila(queueRows);
+  const semDataShown = filtraFila(q.semdata);
+
   // Aviso de social selling: quando o SDR zera a fila de HOJE (nada pendente),
   // manda ir pro Instagram chamar os novos seguidores. Só na fila de um SDR.
   const viewedIsSdr = !!person && (userById(person)?.roles || []).includes("sdr");
@@ -752,7 +780,14 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
               <h1 className="page-title">Minhas atividades</h1>
               <NowClock now={now} />
             </div>
-            <div className="page-sub" style={{ marginTop: 4 }}>hoje em ordem de execução · amanhã e próximos dias à vista</div>
+            {/* O subtítulo diz QUANTOS (protótipo, 14/09): "hoje em ordem de
+                execução" sem número não responde a primeira pergunta de quem
+                abre a tela, que é o tamanho do dia. */}
+            <div className="page-sub" style={{ marginTop: 4 }}>
+              {pendingToday.length
+                ? `${pendingToday.length} ${pendingToday.length === 1 ? "pendente" : "pendentes"} · em ordem de execução · ${q.amanha.length} amanhã e ${q.proximos.length} nos próximos dias`
+                : "hoje em ordem de execução · amanhã e próximos dias à vista"}
+            </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 6, flexWrap: "wrap" }}>
             <PersonPicker users={users} person={person} counts={queueCounts}
@@ -817,35 +852,58 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                 <div style={{ padding: "18px var(--inset-x) 12px", display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
                   <div style={{ flex: 1, minWidth: 180 }}>
                     <h3 className="card-title" style={{ margin: 0 }}>{queueRows.length ? `${queueRows.length} restantes` : "Fila de hoje"}</h3>
-                    <div className="card-sub" style={{ marginTop: 3 }}>a ordem é a prioridade, não a hora</div>
+                    <div className="card-sub" style={{ marginTop: 3 }}>a ordem é a prioridade do processo, não a hora</div>
                   </div>
-                  <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+                  <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
                     {lateCount > 0 && (
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--neg)", fontWeight: 600 }}>
                         <span style={{ width: 6, height: 6, borderRadius: 999, background: "currentColor" }} />
                         <span className="tnum">{lateCount}</span> {lateCount === 1 ? "atrasada" : "atrasadas"}
                       </span>
                     )}
-                    {doneTodayRows.length > 0 && (
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--pos)", fontWeight: 600 }}>
-                        <span style={{ width: 6, height: 6, borderRadius: 999, background: "currentColor" }} />
-                        <span className="tnum">{doneTodayRows.length}</span> feitas
-                      </span>
-                    )}
+                    {/* PROGRESSO DO DIA (protótipo, 14/09): "N de M feitos" com
+                        a barra. Os chips diziam quantas faltavam e quantas
+                        saíram, nunca a proporção — e é a proporção que diz se
+                        o dia está ganho ou perdido às 15h. */}
+                    {(doneTodayRows.length > 0 || queueRows.length > 0) && (() => {
+                      const feitos = doneTodayRows.length;
+                      const totalDia = feitos + pendingToday.length;
+                      const pct = totalDia > 0 ? Math.round((feitos / totalDia) * 100) : 0;
+                      return (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
+                          title={`${feitos} de ${totalDia} da fila de hoje já saíram`}>
+                          <span className="tnum" style={{ fontSize: 12.5, fontWeight: 600, color: feitos ? "var(--pos)" : "var(--fg-3)" }}>{`${feitos} de ${totalDia} feitos`}</span>
+                          <span style={{ width: 90, height: 6, borderRadius: 999, background: "var(--bg-3)", overflow: "hidden", flexShrink: 0 }}>
+                            <span style={{ display: "block", height: 6, width: `${pct}%`, background: "var(--pos)" }} />
+                          </span>
+                        </span>
+                      );
+                    })()}
+                    <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar na fila…"
+                      className="inp" style={{ width: 160 }} />
                   </div>
                 </div>
                 {queueRows.length === 0 && (
                   <div style={{ padding: "16px var(--inset-x)", borderTop: "1px solid var(--line-faint)", fontSize: 13, color: "var(--fg-3)" }}>
-                    {firstPending ? "Só a atividade de agora, ali em cima." : "Fila de hoje concluída."}
+                    {firstPending ? "Só a atividade de agora, ali em cima." : "Fila zerada por hoje. O que vem está no trilho ao lado."}
+                  </div>
+                )}
+                {queueRows.length > 0 && queueShown.length === 0 && (
+                  <div style={{ padding: "16px var(--inset-x)", borderTop: "1px solid var(--line-faint)", fontSize: 13, color: "var(--fg-3)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <span>{`Nenhum item da fila com “${busca.trim()}”.`}</span>
+                    <button onClick={() => setBusca("")} className="mono" style={{ background: "none", border: 0, padding: 0, fontSize: 12, color: "var(--accent)", fontWeight: 600, cursor: "pointer" }}>limpar busca</button>
                   </div>
                 )}
                 {/* O grupo vira faixa: a ordem do GROUP_ORDER passa a ser
                     legível em vez de implícita. Grupo vazio não rende faixa. */}
-                {queueRows.map((item, index) => {
+                {queueShown.map((item, index) => {
                   const grupo = item.group || "loose";
-                  const anterior = index > 0 ? (queueRows[index - 1].group || "loose") : null;
+                  const anterior = index > 0 ? (queueShown[index - 1].group || "loose") : null;
                   const [rotulo, frase] = GROUP_META[grupo] || [grupo, ""];
-                  const nGrupo = queueRows.filter((x) => (x.group || "loose") === grupo).length;
+                  const nGrupo = queueShown.filter((x) => (x.group || "loose") === grupo).length;
+                  // A numeração é a da fila INTEIRA, não a da lista filtrada:
+                  // buscar não pode mentir sobre a posição do item no dia.
+                  const ordem = queueRows.indexOf(item) + 1 + (firstPending && !firstPending.consulta ? 1 : 0);
                   const key = item.consulta ? `c-${item.consulta.id}` : item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id;
                   return (
                     <React.Fragment key={key}>
@@ -856,11 +914,29 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                           {frase && <span style={{ fontSize: 11, color: "var(--fg-4)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>· {frase}</span>}
                         </div>
                       )}
-                      <QueueRow item={item} block="hoje" featured={false}
+                      <QueueRow item={item} block="hoje" featured={false} ordem={ordem}
                         onScript={() => setScriptItem(item)} onClaim={() => claim(item)} onWhatsapp={onOpenWhatsapp} onOpen={() => openConsulta(item)} />
                     </React.Fragment>
                   );
                 })}
+                {/* SEM DATA (protótipo, 14/09): ninguém marcou o próximo toque
+                    desses leads. Estavam no trilho "O que vem", debaixo de um
+                    card que diz "nada aqui é para hoje" — exatamente o oposto
+                    do problema, que é não ter data nenhuma. Vêm pra cá, com as
+                    mesmas ações da fila, e FORA da contagem do dia. */}
+                {semDataShown.length > 0 && (
+                  <>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px var(--inset-x)", background: "var(--bg-2)", borderTop: "1px solid var(--line-1)" }}>
+                      <span className="kicker" style={{ fontWeight: 600, color: "var(--fg-3)" }}>Sem data</span>
+                      <span className="tnum" style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{q.semdata.length}</span>
+                      <span style={{ fontSize: 11, color: "var(--fg-4)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>· ninguém marcou o próximo toque · não entram na contagem do dia</span>
+                    </div>
+                    {semDataShown.map((item) => (
+                      <QueueRow key={`sd-${item.l?.id || item.consulta?.id}`} item={item} block="semdata" featured={false} ordem={null}
+                        onScript={() => setScriptItem(item)} onClaim={() => claim(item)} onWhatsapp={onOpenWhatsapp} onOpen={() => openConsulta(item)} />
+                    ))}
+                  </>
+                )}
                 {/* "Feitas hoje" era uma section inteira competindo com a fila;
                     virou o rodapé recolhível dela, com a mesma DoneActivityRow. */}
                 {doneTodayRows.length > 0 && (
@@ -912,7 +988,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
 // Linha de consulta (UniqueKids) na fila: horário, "Consulta n/8", cliente e as
 // ações — entrar no Meet (se já existe) e abrir o card (onde o Meet é criado e
 // resumido). Não participa do fluxo de roteiro/toque dos leads.
-function ConsultaRow({ item, block, featured, onOpen }) {
+function ConsultaRow({ item, block, featured, ordem, onOpen }) {
   const c = item.consulta;
   const t = item.due?.t;
   const now = Date.now();
@@ -929,6 +1005,7 @@ function ConsultaRow({ item, block, featured, onOpen }) {
       display: "flex", alignItems: "center", gap: 14, padding: featured ? "16px var(--inset-x)" : "14px var(--inset-x)",
       borderTop: "1px solid var(--line-faint)", background: featured ? "var(--accent-soft)" : "transparent", cursor: "pointer", flexWrap: "wrap",
     }}>
+      <span className="mono tnum" style={{ width: 24, flexShrink: 0, fontSize: 11.5, color: "var(--fg-4)", textAlign: "right" }}>{ordem ?? "—"}</span>
       <TimeCell pill={when.pill} note={when.note} tone={when.tone} soft={when.soft} />
       <span style={{ width: 118, flexShrink: 0 }}>
         <span style={{ display: "inline-block", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: "20px", padding: "0 8px", borderRadius: "var(--r-1)", background: "var(--accent-soft)", color: "var(--accent)", fontSize: 11.5, fontWeight: 600 }}>Consulta {c.n || "?"}/{c.packageTotal || 8}</span>
@@ -953,9 +1030,9 @@ function ConsultaRow({ item, block, featured, onOpen }) {
 // Uma linha da fila: sequência, quando, etapa (coluna do funil), ação a fazer,
 // lead com a qualificação compilada e as ações. Clique no corpo abre o ROTEIRO
 // (o painel de execução), não o card de status; o drawer fica no "abrir lead".
-function QueueRow({ item, block, featured, onScript, onClaim, onWhatsapp, onOpen }) {
+function QueueRow({ item, block, featured, ordem, onScript, onClaim, onWhatsapp, onOpen }) {
   const { l, consulta, kind, due, stage, who, group } = item;
-  if (consulta) return <ConsultaRow item={item} block={block} featured={featured} onOpen={onOpen} />;
+  if (consulta) return <ConsultaRow item={item} block={block} featured={featured} ordem={ordem} onOpen={onOpen} />;
   const now = Date.now();
 
   // Coluna de horário. A HORA marcada vai na pílula navy (destaque) e a
@@ -1004,6 +1081,7 @@ function QueueRow({ item, block, featured, onScript, onClaim, onWhatsapp, onOpen
       padding: "12px var(--inset-x)",
       borderTop: "1px solid var(--line-faint)", background: featured ? "var(--accent-soft)" : "transparent", cursor: "pointer",
     }}>
+      <span className="mono tnum" style={{ fontSize: 11.5, color: "var(--fg-4)", textAlign: "right" }}>{ordem ?? "—"}</span>
       <TimeCell pill={when.pill} note={when.note} tone={when.tone} soft={when.soft} />
       {/* O QUE FAZER ganhou a coluna que era da etapa. */}
       <div style={{ minWidth: 0 }}>
