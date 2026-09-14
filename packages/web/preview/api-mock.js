@@ -2,6 +2,7 @@
 // só o vite.preview.config.js troca lib/api.js por este arquivo, pra conferir
 // o desenho de uma tela sem subir a API nem tocar em banco nenhum.
 import { trainingMock } from "./training-mock.js";
+import { customerCollections, customersMock } from "./customers-mock.js";
 const DIA = 86400000;
 const hoje = new Date();
 const emHoras = (h, m = 0) => { const d = new Date(hoje); d.setHours(h, m, 0, 0); return d.toISOString(); };
@@ -62,9 +63,10 @@ let notificacoes = [
 
 const RESPOSTAS = {
   ...trainingMock,
+  ...customersMock,
   notifications: () => ({ unread: notificacoes.filter((n) => !n.read).length, items: notificacoes }),
   notificationsRead: ({ all, ids = [] }) => { notificacoes = notificacoes.map((n) => all || ids.includes(n.id) ? { ...n, read: true } : n); return { ok: true }; },
-  list: (col) => col === "leads" ? LEADS_FAKE : col === "customers" ? CLIENTES_FAKE : col === "tasks" ? TAREFAS : col === "task_boards" ? [{ id: "b1", saas: "leverads", columns: [{ key: "todo", name: "A fazer" }, { key: "doing", name: "Em andamento" }, { key: "done", name: "Concluído", done: true }] }] : [],
+  list: (col) => col === "leads" ? LEADS_FAKE : col === "customers" ? CLIENTES_FAKE : col === "tasks" ? TAREFAS : col === "task_boards" ? [{ id: "b1", saas: "leverads", columns: [{ key: "todo", name: "A fazer" }, { key: "doing", name: "Em andamento" }, { key: "done", name: "Concluído", done: true }] }] : (customerCollections[col] ||= []),
   desempenho: () => ({ logs: { leo: { socialSelling: 6 } } }),
   // Meta da janela e pace: é o que o termômetro da Visão geral desenha.
   paceWindow: () => ({

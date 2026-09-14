@@ -189,8 +189,8 @@ function SubscriptionsScreen({ saasId }) {
 
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <div style={{ padding: "12px var(--pad-x)", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+    <div className="customers-billing" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, gap: 14 }}>
+      <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {!saasId && SAAS.length > 1 && (
             <div style={{ display: "flex", gap: 6 }}>
@@ -231,7 +231,7 @@ function SubscriptionsScreen({ saasId }) {
 
       {toast && <div className="mono" style={{ padding: "8px var(--pad-x)", fontSize: 11, color: "var(--accent)", borderBottom: "1px solid var(--line-1)" }}>{toast}</div>}
 
-      <div style={{ flex: 1, overflow: "auto", padding: "20px var(--pad-x)" }}>
+      <div style={{ flex: 1, overflow: "auto", padding: 0 }}>
         {tab !== "plans" && (subs.length > 0 || invoices.length > 0) && (
           <BillingState subs={subs} invoices={invoices} preapprovals={preapprovals}
             mpUnlinked={mpUnlinked} sync={mpData?.sync} mpConfigured={mpConfigured} />
@@ -241,24 +241,22 @@ function SubscriptionsScreen({ saasId }) {
             <EmptyState title="Nenhuma assinatura neste SaaS" hint="Crie uma assinatura ligando um cliente a um plano (ou preço avulso). O ARR do cliente passa a ser derivado daqui — e o MRR do produto via rollup." action={<PrimaryButton onClick={() => openForm("subscriptions", { saas: active })}>+ Criar assinatura</PrimaryButton>} />
           ) : (
             <Table
-              cols="1.4fr 1fr 0.7fr 0.8fr 0.8fr 0.9fr 0.9fr 260px"
-              head={["Cliente", "Plano", "Ciclo", "Preço/ciclo", "ARR", "Status", "Ciclo atual até", ""]}
+              cols="minmax(140px,1.4fr) minmax(110px,1fr) 120px minmax(125px,1fr) 52px"
+              head={["Cliente", "Plano", "Valor", "Situação", ""]}
             >
               {subs.map((s) => {
                 const st = SUB_STATUS[s.status] || { label: s.status, cls: "" };
                 return (
-                  <div key={s.id} style={rowStyle("1.4fr 1fr 0.7fr 0.8fr 0.8fr 0.9fr 0.9fr 260px")}>
+                  <div key={s.id} style={rowStyle("minmax(140px,1.4fr) minmax(110px,1fr) 120px minmax(125px,1fr) 52px")}>
                     <span style={{ fontWeight: 500 }}>{customerName(s.customer)}</span>
-                    <span className="mono dim" style={{ fontSize: 12 }}>{planName(s.plan)}</span>
-                    <span className="mono dim" style={{ fontSize: 12 }}>{CYCLE_LABEL[s.cycle] || s.cycle}</span>
-                    <span className="mono tnum" style={{ fontSize: 12 }}>{window.fmt.money(s.price || 0)}</span>
-                    <span className="mono tnum" style={{ fontSize: 12 }}>{window.fmt.money(annualized(s))}</span>
+                    <span style={{ fontSize: 13 }}>{planName(s.plan)}<small className="billing-subline">{CYCLE_LABEL[s.cycle] || s.cycle}</small></span>
+                    <span className="tnum" style={{ fontSize: 13, fontWeight: 650 }}>{window.fmt.moneyFull(s.price || 0)}<small className="billing-subline">{window.fmt.moneyFull(annualized(s))} / ano</small></span>
                     <span>
                       <span className={"chip " + st.cls} style={{ height: 20 }}>{st.label}</span>
+                      <small className="billing-subline">ciclo até {fmtDate(s.periodEnd)}</small>
                       {s.mpStatus && <span className="mono" style={{ fontSize: 9, display: "block", marginTop: 2, color: s.mpStatus === "authorized" ? "var(--pos)" : "var(--fg-4)" }}>{MP_LABEL[s.mpStatus] || `MP: ${s.mpStatus}`}</span>}
                       {s.pendingChange && <span className="mono dim" style={{ fontSize: 9, display: "block", marginTop: 2 }}>muda em {fmtDate(s.pendingChange.applyAt)}</span>}
                     </span>
-                    <span className="mono dim tnum" style={{ fontSize: 12 }}>{fmtDate(s.periodEnd)}</span>
                     {/* Assinatura ativa não tem ação principal — mexer nela é
                         exceção, então tudo mora no menu. */}
                     <span style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end" }}>
@@ -567,7 +565,7 @@ function ChangeModal({ sub, plans, customerName, onClose, onDone }) {
 
 function Table({ cols, head, children }) {
   return (
-    <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
+    <div className="tbl-x billing-table" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
       <div className="kicker" style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "10px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
         {head.map((h, i) => <span key={i} style={i === head.length - 1 ? { textAlign: "right" } : undefined}>{h}</span>)}
       </div>

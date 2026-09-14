@@ -1,4 +1,6 @@
 import React from "react";
+import "./commercial.css";
+import "./customers.css";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { PageHead, Card, Pill, Segmented } from "../components/viz.jsx";
@@ -201,7 +203,7 @@ function CustomersScreen({ initialTab }) {
   const keyAccounts = activeCustomers.filter(isKeyAccount);
   const coreMrr = activeCustomers.filter((c) => !isKeyAccount(c)).reduce((a, c) => a + (c.arr || 0), 0) / 12;
   const totalContratado = activeCustomers.reduce((a, c) => a + (c.arr || 0), 0);
-  const money = window.fmt.money;
+  const money = window.fmt.moneyFull;
 
   // Coluna Pagamento (o meio com que fechou) e a base do contrato: `fechadoOf` é
   // o VALOR FECHADO (lead.amount do fechamento, fallback no arr do cliente) —
@@ -584,7 +586,7 @@ function CustomersScreen({ initialTab }) {
   if (!product) return <EmptyState title="Nenhum produto cadastrado" hint="Crie o produto em Ajustes." />;
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
+    <div className="commercial-page commercial-standard customers-page">
       <PageHead title="Clientes"
         sub={tab === "indicacoes" && refSummary
           ? refSummary
@@ -603,16 +605,15 @@ function CustomersScreen({ initialTab }) {
       )}
 
       {tab === "base" && (
-      <div style={{ padding: "16px var(--pad-x) 56px" }}>
+      <div className="customers-base">
         {customers.length === 0 ? (
           <EmptyState
             title="Nenhum cliente ainda"
-            hint="Quando um lead fechar, cadastre o cliente e a assinatura aqui (a conversão automática a partir do pipeline chega na fase de pós-venda)."
+            hint="Os clientes chegam pelo fechamento no Pipeline. Você também pode cadastrar um cliente aqui."
             action={<PrimaryButton onClick={() => openForm("customers", { saas: product.id })}>+ Cadastrar cliente</PrimaryButton>}
           />
         ) : (
-          <div className="side-rail" style={{ "--cols": "minmax(0,1fr) 320px", gap: 16, alignItems: "start" }}>
-            <div style={{ display: "grid", gap: 16, minWidth: 0 }}>
+          <div className="customers-layout">
             {/* ── O AVISO SOBE PRO TOPO (14/09, protótipo) ──────────────────
                 "Cobrar agora" era um card no TRILHO, competindo com a fila de
                 cobrança logo abaixo dele e sem ação nenhuma: o número que
@@ -620,7 +621,7 @@ function CustomersScreen({ initialTab }) {
                 terceira coluna. Agora abre a aba, com a baixa da mais antiga
                 ao lado, que é a regra 2 do handoff. */}
             {vencido.n > 0 && (
-              <AvisoTopo
+              <div className="customers-banner"><AvisoTopo
                 titulo={`${money(vencido.total)} vencidos a receber`}
                 nota={(() => {
                   const soon = nextActions.filter((a) => a.status === "soon").length;
@@ -633,13 +634,13 @@ function CustomersScreen({ initialTab }) {
                   disabled: !!payingId,
                   onClick: () => payFromQueue(vencido.maisAntiga),
                 } : null}
-              />
+              /></div>
             )}
             {/* ── A faixa de quatro números (prancha, 14/09) ────────────────
                 É o bloco que abre a tela no protótipo: ativos, MRR, quem ainda
                 não terminou a integração e churn. A análise do dinheiro, que é
                 só do repo, desceu pro fim da coluna. */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 20, padding: "20px var(--inset-x)", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
+            <div className="customers-kpis commercial-card">
               {(() => {
                 const emIntegracao = activeCustomers.filter((c) => {
                   const nm = isKidsWorkspace ? null : nextMilestone(withCycle(c), product);
@@ -658,13 +659,14 @@ function CustomersScreen({ initialTab }) {
               })().map((k) => (
                 <div key={k.rot} style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{k.rot}</div>
-                  <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 30, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.1, marginTop: 3, color: k.tom || "var(--fg-1)" }}>{k.val}</div>
+                  <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.1, marginTop: 3, color: k.tom || "var(--fg-1)" }}>{k.val}</div>
                   <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 2 }}>{k.nota}</div>
                 </div>
               ))}
             </div>
 
-            {/* ── A tabela: 6 colunas em grade, sem rolagem lateral ──────────
+            <div className="customers-main">
+            {/* ── A tabela: 5 colunas em grade, sem rolagem lateral ──────────
                 Eram 13 colunas e minWidth 1360, o que garantia rolagem. Quatro
                 delas (Pagamento, Status pgto., Mercado Pago, Total recebido)
                 respondiam a MESMA pergunta — pagou? — e viraram a coluna
@@ -682,7 +684,7 @@ function CustomersScreen({ initialTab }) {
                   ...(churnedCount > 0 ? [{ id: "churned", label: "Churn", n: churnedCount, title: "contratos encerrados" }] : []),
                   ...(noOwnerCount > 0 ? [{ id: "noowner", label: "Sem dono", n: noOwnerCount, title: "sem dono de conta definido" }] : []),
                 ]} />
-                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar cliente…"
+                <input aria-label="Buscar clientes" value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar cliente…"
                   className="inp" style={{ marginLeft: "auto", width: 200 }} />
               </div>
               <div className="tbl-x">
@@ -693,7 +695,7 @@ function CustomersScreen({ initialTab }) {
                       ? [["Cliente", "cliente"], ["Pacote e valor", "mrr"], ["Dinheiro", "recebido"], ["Jornada", null], ["Situação", "venc"]]
                       : [["Cliente", "cliente"], ["Plano e MRR", "mrr"], ["Dinheiro", "recebido"], ["Marcos", null], ["Situação", "venc"]];
                     const th = (h, k, i) => (
-                      <span key={h} className="kicker" title={k ? "ordenar" : undefined}
+                      <span key={h} className="kicker" role={k ? "button" : undefined} tabIndex={k ? 0 : undefined} onKeyDown={k ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click(); } } : undefined} title={k ? "ordenar" : undefined}
                         onClick={k ? () => setSort((so) => (so?.key === k ? { key: k, dir: -so.dir } : { key: k, dir: 1 })) : undefined}
                         style={{ fontWeight: 600, color: sort?.key === k ? "var(--fg-2)" : "var(--fg-4)", cursor: k ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {h}{sort?.key === k ? (sort.dir === 1 ? " ↑" : " ↓") : ""}
@@ -701,7 +703,7 @@ function CustomersScreen({ initialTab }) {
                     );
                     return (
                       <>
-                        <div style={{ display: "grid", gridTemplateColumns: GRID, gap: TABLE_GRID_GAP, padding: "10px 16px", borderBottom: "1px solid var(--line-1)" }}>
+                        <div className="customers-table-head" style={{ display: "grid", gridTemplateColumns: GRID, gap: TABLE_GRID_GAP, padding: "10px 16px", borderBottom: "1px solid var(--line-1)" }}>
                           {HEADS.map(([h, k], i) => th(h, k, i))}
                         </div>
                         {shownCustomers.map((c) => {
@@ -731,7 +733,7 @@ function CustomersScreen({ initialTab }) {
                           ].filter(Boolean).join(" · ");
                           const cell = { minWidth: 0, fontSize: 13, color: "var(--fg-2)" };
                           return (
-                            <div key={c.id} onClick={() => setSel(c.id)}
+                            <div key={c.id} className="customers-table-row" role="button" tabIndex={0} aria-label={`Abrir cliente: ${c.name}`} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setSel(c.id); } }} onClick={() => setSel(c.id)}
                               style={{ display: "grid", gridTemplateColumns: GRID, gap: TABLE_GRID_GAP, padding: "12px 16px", alignItems: "center", borderBottom: "1px solid var(--line-1)", cursor: "pointer", opacity: isChurned(c) ? 0.55 : 1 }}
                               onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
                               onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
@@ -763,7 +765,7 @@ function CustomersScreen({ initialTab }) {
                               {/* Dinheiro: quanto entrou de quanto, a barra e o status (com o select de marcação manual por cima do rótulo) */}
                               <div style={{ minWidth: 0 }} title={dinheiroTitle}>
                                 <div className="tnum" style={{ fontSize: 13, whiteSpace: "nowrap" }}>
-                                  <b style={{ color: trazido > 0 ? "var(--fg-1)" : "var(--fg-4)" }}>{money(trazido)}</b>
+                                  <b style={{ display: "block", color: trazido > 0 ? "var(--fg-1)" : "var(--fg-4)" }}>{money(trazido)}</b>
                                   <span style={{ color: "var(--fg-4)" }}> de {money(contrato)}</span>
                                   {(acumula || rec) && <span title="cresce a cada parcela/mensalidade que entra" style={{ fontSize: 11, color: "var(--fg-4)" }}> ↻</span>}
                                 </div>
@@ -2265,7 +2267,7 @@ function ReferralsTab({ saasId, onRegister, customers, onSummary, onOpenCustomer
   const GRID = "minmax(150px,1.3fr) 120px 70px 96px minmax(160px,1fr) 150px";
 
   return (
-    <div style={{ padding: "16px var(--pad-x) 56px", display: "grid", gap: 14 }}>
+    <div className="customers-referrals" style={{ display: "grid", gap: 14, minWidth: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         {FILTROS.map(([key, label, n]) => (
           <FilterTab key={key} active={bucket === key} count={n} onClick={() => setBucket(key)}>{label}</FilterTab>
