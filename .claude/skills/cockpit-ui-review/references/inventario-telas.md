@@ -40,6 +40,19 @@ Conferidas **sem diferença**: `proposals`, `offers`, `contracts`, `intform`,
 `analise`, `calls`, `integrations`, `desempenho`. Fora de escopo por decisão do
 Leo: `outbound` e `funcionarios` (seguem `hidden`).
 
+## Continuação do comercial — 14/09/2026
+
+- `intform`: adaptação da prancha 7d, com indicadores compactos, status em ponto
+  e texto, uma ação por linha e menu secundário. A tabela vira cards no celular;
+  carregamento, vazio e falha com nova tentativa têm estados separados. As
+  respostas continuam usando o snapshot do formulário e o termo da API.
+  Smoke SSR (incluindo orçamento de 704px/716px), suíte da API e build web
+  passaram. Conferência no navegador pendente: a sessão não concedeu acesso
+  ao computador.
+- Preview isolado: `/?shell=1#intform`, com dados fictícios; `&intform=empty`
+  e `&intform=error` exercitam vazio e falha recuperável. Nenhum dado real é
+  enviado ao WhatsApp pelo preview.
+
 ## Telas navegáveis
 
 | Rota | Arquivo | Tela (NAV) | Função | Componentes-chave | Revisão |

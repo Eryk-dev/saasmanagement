@@ -1,0 +1,45 @@
+/* Formulário de Integração — prancha 7d do handoff. */
+.intform-page { flex: 1; min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 14px; padding: 26px 24px 48px; }
+.intform-page > :first-child { padding: 0 !important; }
+.intform-page > :first-child > :first-child { min-width: min(260px, 100%) !important; }
+.intform-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.intform-number { font-size: 24px; font-weight: 700; letter-spacing: -.02em; margin: 3px 0; }
+.intform-note { font-size: 11.5px; color: var(--fg-3); text-wrap: pretty; }
+.intform-filters, .intform-tabs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.intform-filters > input { margin-left: auto; width: min(100%, 240px); }
+.intform-feedback { padding: 28px 20px; display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; font-size: 13px; color: var(--fg-3); }
+.intform-table { width: 100%; border-collapse: collapse; }
+.intform-table thead, .intform-table tbody { display: block; }
+.intform-table tr { display: grid; grid-template-columns: var(--form-grid); gap: 12px; padding: 11px 18px; align-items: center; }
+.intform-table thead tr { background: var(--bg-inset); padding-block: 9px; }
+.intform-table th { color: var(--fg-4); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; text-align: left; }
+.intform-table th:last-child { text-align: right; }
+.intform-table tbody tr { border-top: 1px solid var(--line-faint); }
+.intform-table tbody tr:hover { background: var(--bg-inset); }
+.intform-table td { min-width: 0; padding: 0; font-size: 12.5px; color: var(--fg-3); }
+.intform-name { display: block; width: 100%; text-align: left; font-size: 13px; font-weight: 600; color: var(--fg-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.intform-meta { font-family: var(--mono); font-size: 10.5px; color: var(--fg-3); margin-top: 3px; }
+.intform-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; }
+.intform-status > span { width: 6px; height: 6px; border-radius: 999px; background: currentColor; flex-shrink: 0; }
+.intform-summary, .intform-author { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.intform-actions { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
+.intform-link { min-height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0 12px; border: 1px solid var(--line-1); border-radius: var(--r-2); background: var(--bg-1); color: var(--fg-2); font-size: 12.5px; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.intform-actions .intform-link { min-height: 28px; }
+.intform-dialog { min-width: 0; }
+.intform-answer { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+@media (max-width: 900px) {
+  .intform-table thead { display: none; }
+  .intform-table tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px 16px; }
+  .intform-table td:first-child, .intform-table td:last-child { grid-column: 1 / -1; }
+  .intform-table td:nth-child(4) { grid-column: 1 / -1; }
+  .intform-table td[data-label]:not(:first-child)::before { content: attr(data-label); display: block; font-size: 11px; color: var(--fg-3); margin-bottom: 4px; }
+  .intform-table td { overflow-wrap: anywhere; white-space: normal; }
+  .intform-actions { justify-content: flex-start; }
+}
+@media (max-width: 600px) {
+  .intform-page { padding: 24px 16px 48px; }
+  .intform-stats { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .intform-filters > input { width: 100%; }
+  .intform-page button, .intform-page input, .intform-link, .intform-dialog button, .intform-dialog input, .intform-dialog a { min-height: 44px; }
+  .intform-name { white-space: normal; }
+}

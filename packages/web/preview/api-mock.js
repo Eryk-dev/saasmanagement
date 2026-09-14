@@ -1,6 +1,7 @@
 // Dublê da API pro preview de telas (14/09). NÃO entra no build de produção:
 // só o vite.preview.config.js troca lib/api.js por este arquivo, pra conferir
 // o desenho de uma tela sem subir a API nem tocar em banco nenhum.
+import { integrationFormsMock } from "./integration-forms-mock.js";
 import { trainingMock } from "./training-mock.js";
 const DIA = 86400000;
 const hoje = new Date();
@@ -100,7 +101,10 @@ const vazio = () => Promise.resolve(null);
 
 export const api = new Proxy({}, {
   get(_, nome) {
-    if (nome === "list") return (col) => Promise.resolve(RESPOSTAS.list(col));
+    if (Object.hasOwn(integrationFormsMock, nome)) return (col, ...args) => {
+      if (col === "integration_forms") return Promise.resolve().then(() => integrationFormsMock[nome](...args));
+      return Promise.resolve().then(() => RESPOSTAS[nome]?.(col, ...args) ?? null);
+    };
     if (nome === "bootstrap") return () => Promise.resolve(window.SEED);
     if (nome === "listUsers") return () => Promise.resolve(window.SEED.USERS);
     if (RESPOSTAS[nome]) return (...a) => Promise.resolve(RESPOSTAS[nome](...a));
