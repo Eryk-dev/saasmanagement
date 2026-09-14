@@ -2,7 +2,7 @@ import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { PageHead, Card, Pill, Segmented } from "../components/viz.jsx";
-import { AvisoTopo } from "../components/story.jsx";
+import { AvisoTopo, BarraFiltros } from "../components/story.jsx";
 import { Modal } from "../components/overlay.jsx";
 import { EmptyState, PrimaryButton } from "../atoms.jsx";
 import { milestonesFor, nextMilestone, tenureLabel, dueLabel } from "../lib/milestones.js";
@@ -35,7 +35,12 @@ const publicBase = () => import.meta.env.VITE_API_BASE || window.location.origin
 // que este redesign veio tirar — o smoke-ssr trava a conta (TABLE_GRID_BUDGET).
 // As duas colunas flexíveis crescem em tela larga; toda célula tem minWidth 0 +
 // ellipsis, então nada corta no meio da palavra.
-export const TABLE_GRID = "minmax(150px,1.4fr) 80px 76px 150px 100px minmax(100px,1fr)";
+// A grade da prancha (14/09): cliente · plano e MRR · dinheiro · marcos ·
+// situação. "Próxima cobrança" saiu da tabela porque a fila de cobrança do
+// trilho é exatamente ela, e a mesma entidade não se desenha duas vezes; no
+// lugar entrou MARCOS, que é o que a prancha usa pra dizer onde o cliente
+// está na régua de entrega.
+export const TABLE_GRID = "minmax(150px,1.5fr) minmax(90px,0.9fr) minmax(140px,1.4fr) minmax(100px,1fr) minmax(110px,1.2fr)";
 export const TABLE_GRID_GAP = 10;
 export const TABLE_GRID_BUDGET = 716; // 1024px de janela, trilho empilhado
 // Clientes — a base ativa do produto em dois blocos: a tabela de clientes e,
@@ -583,7 +588,7 @@ function CustomersScreen({ initialTab }) {
       <PageHead title="Clientes"
         sub={tab === "indicacoes" && refSummary
           ? refSummary
-          : `${activeCustomers.length} ${activeCustomers.length === 1 ? "ativo" : "ativos"} · ${isKidsWorkspace ? `${money(totalContratado)} contratado` : `MRR ${money(totalMrr)}`}${!isKidsWorkspace && keyAccounts.length ? ` · ${money(coreMrr)} sem ${keyAccounts.length === 1 ? "a conta grande" : `as ${keyAccounts.length} contas grandes`}` : ""}`}>
+          : `${activeCustomers.length} ${activeCustomers.length === 1 ? "cliente ativo" : "clientes ativos"} · ${isKidsWorkspace ? `${window.fmt.moneyFull(totalContratado)} contratado` : `${window.fmt.moneyFull(totalMrr)} de MRR`}${!isKidsWorkspace && keyAccounts.length ? ` · ${window.fmt.moneyFull(coreMrr)} sem ${keyAccounts.length === 1 ? "a conta grande" : `as ${keyAccounts.length} contas grandes`}` : ""}`}>
         <Segmented value={tab} onChange={setTab} options={[{ value: "base", label: "Clientes" }, { value: "indicacoes", label: "Indicações" }, { value: "cases", label: "Cases" }, { value: "billing", label: "Assinaturas" }]} />
         {tab === "base" && <PrimaryButton onClick={() => openForm("customers", { saas: product.id })}>+ novo cliente</PrimaryButton>}
       </PageHead>
@@ -630,8 +635,34 @@ function CustomersScreen({ initialTab }) {
                 } : null}
               />
             )}
-            <CustomersAnalysis customers={customers} subs={subs} invoices={invoices} isKids={isKidsWorkspace}
-              gradeDist={isKidsWorkspace ? null : gradeDist} nivelLegend={isKidsWorkspace ? null : <NivelLegend />} />
+            {/* ── A faixa de quatro números (prancha, 14/09) ────────────────
+                É o bloco que abre a tela no protótipo: ativos, MRR, quem ainda
+                não terminou a integração e churn. A análise do dinheiro, que é
+                só do repo, desceu pro fim da coluna. */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 20, padding: "20px var(--inset-x)", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
+              {(() => {
+                const emIntegracao = activeCustomers.filter((c) => {
+                  const nm = isKidsWorkspace ? null : nextMilestone(withCycle(c), product);
+                  return !!nm;
+                }).length;
+                const churnRecente = customers
+                  .filter((c) => isChurned(c) && c.endedAt)
+                  .sort((a, b) => new Date(b.endedAt) - new Date(a.endedAt))[0];
+                const diasChurn = churnRecente ? Math.max(0, Math.round((Date.now() - new Date(churnRecente.endedAt)) / 86400000)) : null;
+                return [
+                  { rot: "clientes ativos", val: String(activeCustomers.length), nota: "base do produto" },
+                  { rot: "MRR", val: window.fmt.moneyFull(totalMrr), nota: keyAccounts.length ? `${window.fmt.moneyFull(coreMrr)} sem ${keyAccounts.length === 1 ? "a conta grande" : "as contas grandes"}` : "receita recorrente da base" },
+                  { rot: "em integração", val: String(emIntegracao), tom: emIntegracao > 0 ? "var(--warn)" : null, nota: "ainda não conectaram tudo" },
+                  { rot: "churn", val: String(churnedCount), tom: churnedCount > 0 ? "var(--neg)" : null, nota: diasChurn == null ? "nenhum encerramento" : `o mais recente há ${diasChurn} d` },
+                ];
+              })().map((k) => (
+                <div key={k.rot} style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{k.rot}</div>
+                  <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 30, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.1, marginTop: 3, color: k.tom || "var(--fg-1)" }}>{k.val}</div>
+                  <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 2 }}>{k.nota}</div>
+                </div>
+              ))}
+            </div>
 
             {/* ── A tabela: 6 colunas em grade, sem rolagem lateral ──────────
                 Eram 13 colunas e minWidth 1360, o que garantia rolagem. Quatro
@@ -642,29 +673,29 @@ function CustomersScreen({ initialTab }) {
                 LeverAds foi pra ficha. Os pisos das duas colunas flexíveis são
                 obrigatórios: sem eles o nome e a pill de situação cortam. */}
             <Card style={{ overflow: "hidden", minWidth: 0 }}>
+              {/* Pílulas à ESQUERDA e busca à direita, como a prancha: o
+                  filtro é o que se usa primeiro, a busca é o escape. */}
               <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", flexWrap: "wrap" }}>
-                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar por nome, contato ou e-mail…"
-                  style={{ flex: 1, minWidth: 180, height: 30, padding: "0 10px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 }} />
-                {(churnedCount > 0 || noOwnerCount > 0) && (
-                  <Segmented value={baseFilter} onChange={setBaseFilter} options={[
-                    { value: "all", label: `Todos (${customers.length})` },
-                    { value: "active", label: `Ativos (${activeCustomers.length})` },
-                    ...(churnedCount > 0 ? [{ value: "churned", label: `Churn (${churnedCount})` }] : []),
-                    ...(noOwnerCount > 0 ? [{ value: "noowner", label: `Sem dono (${noOwnerCount})` }] : []),
-                  ]} />
-                )}
+                <BarraFiltros valor={baseFilter} onChange={setBaseFilter} filtros={[
+                  { id: "active", label: "Ativos", n: activeCustomers.length, title: "quem está pagando hoje" },
+                  { id: "all", label: "Todos", n: customers.length, title: "ativos e encerrados" },
+                  ...(churnedCount > 0 ? [{ id: "churned", label: "Churn", n: churnedCount, title: "contratos encerrados" }] : []),
+                  ...(noOwnerCount > 0 ? [{ id: "noowner", label: "Sem dono", n: noOwnerCount, title: "sem dono de conta definido" }] : []),
+                ]} />
+                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar cliente…"
+                  className="inp" style={{ marginLeft: "auto", width: 200 }} />
               </div>
               <div className="tbl-x">
                 <div style={{ minWidth: 0 }}>
                   {(() => {
                     const GRID = TABLE_GRID;
                     const HEADS = isKidsWorkspace
-                      ? [["Cliente", "cliente"], ["Pacote", "plano"], ["Valor", "mrr"], ["Dinheiro", "recebido"], ["Próxima consulta", null], ["Jornada", null]]
-                      : [["Cliente", "cliente"], ["Plano", "plano"], ["MRR", "mrr"], ["Dinheiro", "recebido"], ["Próxima cobrança", null], ["Situação", "venc"]];
+                      ? [["Cliente", "cliente"], ["Pacote e valor", "mrr"], ["Dinheiro", "recebido"], ["Jornada", null], ["Situação", "venc"]]
+                      : [["Cliente", "cliente"], ["Plano e MRR", "mrr"], ["Dinheiro", "recebido"], ["Marcos", null], ["Situação", "venc"]];
                     const th = (h, k, i) => (
                       <span key={h} className="kicker" title={k ? "ordenar" : undefined}
                         onClick={k ? () => setSort((so) => (so?.key === k ? { key: k, dir: -so.dir } : { key: k, dir: 1 })) : undefined}
-                        style={{ fontWeight: 600, color: sort?.key === k ? "var(--fg-2)" : "var(--fg-4)", cursor: k ? "pointer" : "default", userSelect: "none", textAlign: i === 2 ? "right" : "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        style={{ fontWeight: 600, color: sort?.key === k ? "var(--fg-2)" : "var(--fg-4)", cursor: k ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {h}{sort?.key === k ? (sort.dir === 1 ? " ↑" : " ↓") : ""}
                       </span>
                     );
@@ -718,14 +749,16 @@ function CustomersScreen({ initialTab }) {
                                   </div>
                                 </div>
                               </div>
-                              {/* Plano / pacote */}
-                              <div style={{ ...cell, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
-                                title={kids ? consultPackageLabel(j.total) : contractPlan(c) || "sem plano"}>
-                                {kids ? consultPackageLabel(j.total) : contractPlan(c) || <span style={{ color: "var(--fg-4)" }}>sem plano</span>}
-                              </div>
-                              {/* MRR (mentoria mostra o contrato) */}
-                              <div className="tnum" style={{ ...cell, textAlign: "right" }}>
-                                {money(kids ? (c.arr || 0) : (c.arr || 0) / 12)}
+              {/* PLANO E MRR numa célula só (prancha): o plano é o rótulo e o
+                  valor mensal é a leitura de baixo. Eram duas colunas pra uma
+                  informação só. */}
+                              <div style={{ minWidth: 0 }} title={kids ? consultPackageLabel(j.total) : contractPlan(c) || "sem plano"}>
+                                <div style={{ fontSize: 13, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: contractPlan(c) || kids ? "var(--fg-1)" : "var(--fg-4)" }}>
+                                  {kids ? consultPackageLabel(j.total) : contractPlan(c) || "sem plano"}
+                                </div>
+                                <div className="tnum" style={{ fontSize: 11.5, color: "var(--fg-4)", whiteSpace: "nowrap" }}>
+                                  {kids ? money(c.arr || 0) : `${money((c.arr || 0) / 12)} /mês`}
+                                </div>
                               </div>
                               {/* Dinheiro: quanto entrou de quanto, a barra e o status (com o select de marcação manual por cima do rótulo) */}
                               <div style={{ minWidth: 0 }} title={dinheiroTitle}>
@@ -749,20 +782,30 @@ function CustomersScreen({ initialTab }) {
                                   </select>
                                 </span>
                               </div>
-                              {/* Próxima cobrança (SaaS) × próxima consulta (mentoria) */}
+                              {/* MARCOS (prancha): onde o cliente está na régua
+                                  de entrega. "Próxima cobrança" saiu daqui: a
+                                  fila de cobrança do trilho é exatamente ela. */}
                               <div style={{ minWidth: 0 }}>
-                                {kids
-                                  ? (j.next
-                                      ? <div className="tnum" style={{ fontSize: 12.5, color: "var(--warn)", whiteSpace: "nowrap" }}>consulta {j.next.n || "?"}<div style={{ fontSize: 11, color: "var(--fg-4)" }}>{fmtNextAt(j.next.at)}</div></div>
-                                      : <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>a marcar</span>)
-                                  : (prox
-                                      ? <div title={`${prox.oque} · ${prox.late ? "venceu" : "vence"} ${fmtDay(prox.due)}`} style={{ minWidth: 0 }}>
-                                          <div className="tnum" style={{ fontSize: 12.5, fontWeight: 600, color: prox.late ? "var(--neg)" : "var(--warn)", whiteSpace: "nowrap" }}>
-                                            {prox.late ? "venceu " : "próx. "}{fmtDay(prox.due)}
-                                          </div>
-                                          <div style={{ fontSize: 11, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{prox.oque}</div>
-                                        </div>
-                                      : <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>—</span>)}
+                                {kids ? (
+                                  j.next
+                                    ? <div className="tnum" style={{ fontSize: 12.5, color: "var(--warn)", whiteSpace: "nowrap" }}>consulta {j.next.n || "?"}<div style={{ fontSize: 11, color: "var(--fg-4)" }}>{fmtNextAt(j.next.at)}</div></div>
+                                    : <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>a marcar</span>
+                                ) : (() => {
+                                  const regua = milestonesFor(withCycle(c), product) || [];
+                                  const feitos = regua.filter((m) => m.doneAt).length;
+                                  const pct = regua.length ? Math.round((feitos / regua.length) * 100) : 0;
+                                  return (
+                                    <div title={nm ? `falta: ${nm.label}` : "régua concluída"}>
+                                      <div className="tnum" style={{ fontSize: 13, fontWeight: 650, whiteSpace: "nowrap" }}>{`${feitos} de ${regua.length || 0}`}</div>
+                                      <div style={{ height: 5, borderRadius: 999, background: "var(--bg-3)", overflow: "hidden", margin: "4px 0 3px" }}>
+                                        <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: pct === 100 ? "var(--pos)" : "var(--accent)" }} />
+                                      </div>
+                                      <div style={{ fontSize: 11, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                        {nm ? `falta: ${nm.label}` : "régua concluída"}
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
                               </div>
                               {/* Situação: assinatura (ou churn) + o próximo marco embaixo */}
                               <div style={{ minWidth: 0 }}>
@@ -798,6 +841,11 @@ function CustomersScreen({ initialTab }) {
                 {filteredCustomers.length > 50 && <button onClick={() => setShowAll((v) => !v)} style={{ fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>{showAll ? "Mostrar 50" : "Ver todos"}</button>}
               </div>
             </Card>
+
+            {/* A análise do dinheiro é só do repo: a prancha não tem, então
+                ela desce pro fim da coluna, fora do primeiro olhar. */}
+            <CustomersAnalysis customers={customers} subs={subs} invoices={invoices} isKids={isKidsWorkspace}
+              gradeDist={isKidsWorkspace ? null : gradeDist} nivelLegend={isKidsWorkspace ? null : <NivelLegend />} />
             </div>
 
             {/* ── Trilho direito: cobrar agora → fila → contas grandes ──────── */}

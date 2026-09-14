@@ -31,6 +31,17 @@ export const LEADS_FAKE = [
   { id: "l14", saas: "leverads", name: "Otávio Braga", company: "Braga Ferramentas", stage: "Call marcada", owner: "leo", closer: "leo", amount: 2850, phone: "5541999990014", callAt: emDias(4, 16), createdAt: emDias(-4), stageSince: emDias(-1) , accounts: "6-10", listings: "≤100" },
 ];
 
+export const CLIENTES_FAKE = [
+  { id: "c1", saas: "leverads", name: "Zpack Embalagens", contact: "Marianna Reis", arr: 28800, plan: "Pro trimestral", startedAt: emDias(-120), milestonesDone: { onboarding: emDias(-118), contas: emDias(-110), carga: emDias(-100), anuncio: emDias(-90), rotina: emDias(-70), resultado: emDias(-40) } },
+  { id: "c2", saas: "leverads", name: "Galante Comércio", contact: "Rodrigo Galante", arr: 300000, plan: "Enterprise anual", keyAccount: true, startedAt: emDias(-260), milestonesDone: { onboarding: emDias(-255), contas: emDias(-250), carga: emDias(-240), anuncio: emDias(-230), rotina: emDias(-200), resultado: emDias(-170) } },
+  { id: "c3", saas: "leverads", name: "Braga Ferramentas", contact: "Otávio Braga", arr: 34200, plan: "Pro anual", startedAt: emDias(-90), milestonesDone: { onboarding: emDias(-88), contas: emDias(-80), carga: emDias(-70), anuncio: emDias(-60) } },
+  { id: "c4", saas: "leverads", name: "RN Distribuidora", contact: "Ricardo Nunes", arr: 57600, plan: "Pro anual", startedAt: emDias(-60), milestonesDone: { onboarding: emDias(-58), contas: emDias(-50), carga: emDias(-40) } },
+  { id: "c5", saas: "leverads", name: "Lojão do Bebê", contact: "Pedro Rocha", arr: 40800, plan: "Pro anual", startedAt: emDias(-45), milestonesDone: { onboarding: emDias(-44), contas: emDias(-40), carga: emDias(-30), anuncio: emDias(-20), rotina: emDias(-10) } },
+  { id: "c6", saas: "leverads", name: "Melo Cosméticos", contact: "Sandra Melo", arr: 19800, plan: "Pro semestral", startedAt: emDias(-150), milestonesDone: { onboarding: emDias(-148), contas: emDias(-140), carga: emDias(-130), anuncio: emDias(-120), rotina: emDias(-100), resultado: emDias(-70) } },
+  { id: "c7", saas: "leverads", name: "Casa Bela Utilidades", contact: "Carla Nunes", arr: 5400, plan: "Essencial mensal", startedAt: emDias(-20), milestonesDone: { onboarding: emDias(-19), contas: emDias(-12) } },
+  { id: "c8", saas: "leverads", name: "Vitrine Pet", contact: "Aline Souza", arr: 10800, plan: "Essencial mensal", startedAt: emDias(-200), endedAt: emDias(-12) },
+];
+
 const TAREFAS = [
   { id: "t1", saas: "leverads", title: "Refazer o roteiro de objeção de preço", assignees: ["leo"], dueDate: new Date(hoje.getTime() - 2 * DIA).toISOString().slice(0, 10), column: "todo", board: "b1", priority: "P1" },
   { id: "t2", saas: "leverads", title: "Gravar vídeo da dor estoque parado", assignees: ["leo"], dueDate: new Date(hoje.getTime() + 4 * DIA).toISOString().slice(0, 10), column: "todo", board: "b1" },
@@ -40,7 +51,7 @@ const TAREFAS = [
 ];
 
 const RESPOSTAS = {
-  list: (col) => col === "leads" ? LEADS_FAKE : col === "tasks" ? TAREFAS : col === "task_boards" ? [{ id: "b1", saas: "leverads", columns: [{ key: "todo", name: "A fazer" }, { key: "doing", name: "Em andamento" }, { key: "done", name: "Concluído", done: true }] }] : [],
+  list: (col) => col === "leads" ? LEADS_FAKE : col === "customers" ? CLIENTES_FAKE : col === "tasks" ? TAREFAS : col === "task_boards" ? [{ id: "b1", saas: "leverads", columns: [{ key: "todo", name: "A fazer" }, { key: "doing", name: "Em andamento" }, { key: "done", name: "Concluído", done: true }] }] : [],
   desempenho: () => ({ logs: { leo: { socialSelling: 6 } } }),
   scoreboard: () => ({ sdr: [{ user: "leo", contacted: 6, callsBooked: 3, leadsNew: 4 }], closer: [] }),
   listActivities: () => [],
