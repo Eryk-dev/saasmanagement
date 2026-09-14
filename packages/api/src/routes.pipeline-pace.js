@@ -2,6 +2,7 @@
 // TCV/MRR entram só como contexto. O gap de caixa é desdobrado de trás pra
 // frente em metas diárias de ganho, call, agendamento, contato e lead.
 
+import { metricsReader } from "./metrics-reader.js";
 import { TOUCH_TYPES } from "./stages.js";
 import {
   DAY_MS as DAY, round2, dayKey, isRealLead, isSaleLead, keyAccountIds, isKeyAccountLead,
@@ -156,7 +157,55 @@ function planMetric(remaining, days, today) {
   };
 }
 
+// Ticket compartilhado pelo pace e pela meta da janela. Não precisa de
+// timeline, WhatsApp, anúncios nem propostas para calcular uma entrada média.
+function averageEntryOf(product, { invoices, leads, customers, goals }, now) {
+  const today = dayKey(now);
+  const since90 = dayKey(new Date(now.getTime() - 89 * DAY));
+  const inRange = (iso, since) => {
+    const day = dayKey(iso);
+    return day && day >= since && day <= today;
+  };
+  const methodOf = paymentMethodOf(customers);
+  const paid = invoices.filter((i) => isRealReceipt(i, methodOf));
+  const leadById = new Map(leads.map((l) => [l.id, l]));
+  const customerStartByLead = customerStartMap(customers);
+  const winLeadsIn = (test) => [...winsIn(product, leads, test, customerStartByLead).keys()]
+    .map((id) => leadById.get(id)).filter(Boolean);
+  // Entrada média por nova venda: 1ª fatura paga de cada assinatura/cliente.
+  // Sem esse vínculo, degrada pra qualquer fatura paga recente; depois TCV ganho
+  // e, por último, ticket configurado — a fonte volta explícita pra interface.
+  //
+  // CONTA GRANDE (customer.keyAccount, ex.: Galante) fica FORA do ticket médio:
+  // um fechamento de R$ 120 mil no meio de vendas de R$ 3-7 mil quebra a cadeia
+  // inteira (meta de contratos, calls, leads). O dinheiro dela segue contando em
+  // caixa e vendido; só as MÉDIAS e as metas derivadas ignoram.
+  const keyCustomerIds = keyAccountIds(customers);
+  const isKeyInvoice = (i) => keyCustomerIds.has(i.customer);
+  const isKeyLead = (l) => isKeyAccountLead(keyCustomerIds, l);
+  const firstPaid = new Map();
+  for (const inv of [...paid].sort((a, b) => String(a.paidAt).localeCompare(String(b.paidAt)))) {
+    const key = inv.subscription ? `sub:${inv.subscription}` : inv.customer ? `customer:${inv.customer}` : "";
+    if (key && !firstPaid.has(key)) firstPaid.set(key, inv);
+  }
+  const initialRecent = [...firstPaid.values()].filter((i) => inRange(i.paidAt, since90) && !isKeyInvoice(i));
+  const paidRecent = paid.filter((i) => inRange(i.paidAt, since90) && !isKeyInvoice(i));
+  const wonRecent90 = winLeadsIn((iso) => inRange(iso, since90)).filter((l) => !isKeyLead(l));
+  const configuredTicket = goals.find((g) => g.scope === "role" && g.key === "closer" && g.metric === "ticket");
+  let averageEntry = averageAmount(initialRecent);
+  let averageEntrySource = averageEntry != null ? "initial_payments" : "";
+  if (averageEntry == null) { averageEntry = averageAmount(paidRecent); averageEntrySource = averageEntry != null ? "paid_invoices" : ""; }
+  if (averageEntry == null) { averageEntry = averageAmount(wonRecent90); averageEntrySource = averageEntry != null ? "won_tcv" : ""; }
+  if (averageEntry == null && Number(configuredTicket?.target) > 0) {
+    averageEntry = Number(configuredTicket.target);
+    averageEntrySource = "configured_ticket";
+  }
+
+  return { averageEntry, averageEntrySource };
+}
+
 export async function computePipelinePace(repo, product, now = new Date()) {
+  repo = metricsReader(repo, product.id);
   const [allInvoices, allLeads, allActivities, allCustomers, allProposals, allGoals, allInsights, waMessages, users, mpPayments] = await Promise.all([
     repo.list("invoices"),
     repo.list("leads"),
@@ -174,7 +223,6 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   const calendar = monthCalendar(today);
   const monthEnd = `${month}-${calendar.lastDay}`;
   const since30 = dayKey(new Date(now.getTime() - 29 * DAY));
-  const since90 = dayKey(new Date(now.getTime() - 89 * DAY));
   const inRange = (iso, since, until = today) => {
     const day = dayKey(iso);
     return day && day >= since && day <= until;
@@ -240,34 +288,9 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   });
   const receivableAmount = round2(receivables.reduce((a, i) => a + (Number(i.amount) || 0), 0));
 
-  // Entrada média por nova venda: 1ª fatura paga de cada assinatura/cliente.
-  // Sem esse vínculo, degrada pra qualquer fatura paga recente; depois TCV ganho
-  // e, por último, ticket configurado — a fonte volta explícita pra interface.
-  //
-  // CONTA GRANDE (customer.keyAccount, ex.: Galante) fica FORA do ticket médio:
-  // um fechamento de R$ 120 mil no meio de vendas de R$ 3-7 mil quebra a cadeia
-  // inteira (meta de contratos, calls, leads). O dinheiro dela segue contando em
-  // caixa e vendido; só as MÉDIAS e as metas derivadas ignoram.
   const keyCustomerIds = keyAccountIds(customers);
-  const isKeyInvoice = (i) => keyCustomerIds.has(i.customer);
   const isKeyLead = (l) => isKeyAccountLead(keyCustomerIds, l);
-  const firstPaid = new Map();
-  for (const inv of [...paid].sort((a, b) => String(a.paidAt).localeCompare(String(b.paidAt)))) {
-    const key = inv.subscription ? `sub:${inv.subscription}` : inv.customer ? `customer:${inv.customer}` : "";
-    if (key && !firstPaid.has(key)) firstPaid.set(key, inv);
-  }
-  const initialRecent = [...firstPaid.values()].filter((i) => inRange(i.paidAt, since90) && !isKeyInvoice(i));
-  const paidRecent = paid.filter((i) => inRange(i.paidAt, since90) && !isKeyInvoice(i));
-  const wonRecent90 = winLeadsIn((iso) => inRange(iso, since90)).filter((l) => !isKeyLead(l));
-  const configuredTicket = goals.find((g) => g.scope === "role" && g.key === "closer" && g.metric === "ticket");
-  let averageEntry = averageAmount(initialRecent);
-  let averageEntrySource = averageEntry != null ? "initial_payments" : "";
-  if (averageEntry == null) { averageEntry = averageAmount(paidRecent); averageEntrySource = averageEntry != null ? "paid_invoices" : ""; }
-  if (averageEntry == null) { averageEntry = averageAmount(wonRecent90); averageEntrySource = averageEntry != null ? "won_tcv" : ""; }
-  if (averageEntry == null && Number(configuredTicket?.target) > 0) {
-    averageEntry = Number(configuredTicket.target);
-    averageEntrySource = "configured_ticket";
-  }
+  const { averageEntry, averageEntrySource } = averageEntryOf(product, { invoices, leads, customers, goals }, now);
 
   // ── Taxas da cadeia: os 30 DIAS MÓVEIS (decisão do Leo, 25/08/2026) ────────
   // Antes a janela era o mês fechado anterior (08/08: "o correto é o funil").
@@ -686,11 +709,22 @@ function monthBizDays(month) {
 }
 
 export async function computeWindowGoal(repo, product, since, until, now = new Date()) {
+  repo = metricsReader(repo, product.id);
   const today = dayKey(now);
+  const [allLeads, allCustomers, allInvoices, mpPayments, allGoals] = await Promise.all([
+    repo.list("leads"), repo.list("customers"),
+    repo.list("invoices"), repo.list("mp_payments").catch(() => []), repo.list("goals"),
+  ]);
+  const customers = allCustomers.filter((c) => c.saas === product.id);
   // Ticket sem contas grandes e a meta de contratos digitada: a MESMA régua do
   // pace do mês corrente, pra as duas faixas nunca divergirem.
-  const pace = await computePipelinePace(repo, product, now);
-  const avg = Number(pace.context.averageEntry) > 0 ? Number(pace.context.averageEntry) : null;
+  const { averageEntry } = averageEntryOf(product, {
+    invoices: allInvoices.filter((i) => i.saas === product.id),
+    leads: allLeads.filter((l) => l.saas === product.id && isRealLead(l)),
+    customers,
+    goals: allGoals.filter((g) => !g.saas || g.saas === product.id),
+  }, now);
+  const avg = Number(averageEntry) > 0 ? Number(averageEntry) : null;
   const companyContracts = Number(product.monthlyContractsTarget) > 0 ? Math.round(Number(product.monthlyContractsTarget)) : null;
 
   // Meta da janela: soma da fatia diária (dias úteis) de cada mês coberto.
@@ -712,12 +746,7 @@ export async function computeWindowGoal(repo, product, since, until, now = new D
   // Vendido na janela: régua oficial da venda (isWonLead + wonAt) sobre a base
   // do DINHEIRO — a mentoria entra normal (Leo, 16/08) e o R$ é o RECONHECIDO
   // (faturado/recorrente só pelo que entrou, Leo 29/08).
-  const [allLeads, allCustomers, allInvoices, mpPayments] = await Promise.all([
-    repo.list("leads"), repo.list("customers"),
-    repo.list("invoices"), repo.list("mp_payments").catch(() => []),
-  ]);
   const leads = allLeads.filter((l) => l.saas === product.id && isSaleLead(l));
-  const customers = allCustomers.filter((c) => c.saas === product.id);
   const inWin = (iso) => { const d = dayKey(iso); return d && d >= since && d <= until; };
   const winAt = winsIn(product, leads, inWin, customerStartMap(customers));
   // CONTA GRANDE fora do RESULTADO (Leo, 19/08): um bespoke de R$ 120 mil no
