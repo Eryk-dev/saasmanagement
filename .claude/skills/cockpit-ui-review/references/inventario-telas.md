@@ -12,6 +12,34 @@ Rota = hash (`#pipeline`). Arquivos em `packages/web/src/screens/`.
 > leitura linha a linha dos 12 blocos (nível Meu dia) fica como refinamento
 > contínuo quando cada tela for mexida.
 
+## Rodada do protótipo de 33 telas (14/09/2026)
+
+O Leo entregou um protótipo funcional hi-fi das 33 telas (`design/handoff-cockpit/`,
+com `MAPA-ESTRUTURAL.md` indexando onde fica a prancha de cada uma). Conferi as
+33 contra o código. **A maioria já estava no desenho**, porque o protótipo foi
+construído lendo este repo depois do pacote de 12-13/09. O que a rodada mudou:
+
+| Onde | O que |
+|---|---|
+| `components/story.jsx` (novo) | as seis peças da história, uma vez só |
+| `components/overlay.jsx` (novo) | `Modal`/`Drawer`/`PassosDoPainel` sobre um véu e uma escala |
+| `today` | fila numerada, busca, progresso do dia, "Sem data" fora do trilho |
+| `pipeline` | a seleção deixou de ser controle morto (barra de massa) + busca no kanban |
+| `customers` | o vencido subiu do trilho pro topo, com a baixa ao lado; ficha ganhou Esc |
+| `agenda` | os três avisos da semana (furou · sem remarcar · sem confirmar) |
+| `social` | as fatias mediam alcance e diziam "seguidores" |
+| `metrics` | a corrente era flex-wrap (último passo órfão) |
+| `overview` | a meta virou termômetro, com o follow-up empilhado e a distância do pace em dinheiro |
+| `eloapp` | abria com 5 tiles e o funil de lado; agora aviso + funil + foto em linha |
+| `settings` | seletor de telas recortado + dois `className` que se anulavam |
+| app inteiro | `⋯` recortado dentro de `.tbl-x`; 17 véus escritos na mão |
+
+Conferidas **sem diferença**: `proposals`, `offers`, `contracts`, `intform`,
+`whatsapp`, `tasks`, `consultas`, `training`, `disparos`, `blog`, `forms`,
+`landingpages`, `creative`, `metas`, `remuneracao`, `expenses`, `mindmaps`,
+`analise`, `calls`, `integrations`, `desempenho`. Fora de escopo por decisão do
+Leo: `outbound` e `funcionarios` (seguem `hidden`).
+
 ## Telas navegáveis
 
 | Rota | Arquivo | Tela (NAV) | Função | Componentes-chave | Revisão |
