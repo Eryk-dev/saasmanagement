@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node scripts/smoke-ssr.mjs"
+    "test": "node scripts/smoke-ssr.mjs",
+    "preview:tela": "vite --config vite.preview.config.js"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

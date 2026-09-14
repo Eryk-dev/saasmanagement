@@ -759,12 +759,22 @@ try {
   try {
     const T = await server.ssrLoadModule("/src/screens/today.jsx");
     const cols = T.QUEUE_GRID.trim().split(/\s+(?![^(]*\))/);
-    if (cols.length !== 7) throw new Error(`esperava 7 colunas, achei ${cols.length}`);
-    // A 1ª coluna é a ORDEM (14/09): a tela promete "a ordem é a prioridade do
-    // processo" e sem o número a promessa só existe no subtítulo.
+    // A grade da prancha: ordem · quando · o que fazer · lead · etapa e dono ·
+    // ações (14/09).
+    if (cols.length !== 6) throw new Error(`esperava 6 colunas, achei ${cols.length}`);
     if (cols[0] !== "24px") throw new Error(`a coluna da ordem sumiu da fila (1ª coluna = ${cols[0]})`);
+    // As colunas de TEXTO têm piso ZERO de propósito: abreviam em reticências
+    // em vez de empurrar os botões pra fora da seção (crítica 2 da rodada 2 do
+    // handoff). Piso em px numa delas devolve o defeito, então o teste recusa.
+    const flex = cols.filter((c) => c.startsWith("minmax("));
+    if (flex.length !== 3) throw new Error(`esperava 3 colunas flexíveis, achei ${flex.length}`);
+    for (const c of flex) {
+      if (!/^minmax\(0\s*,/.test(c)) throw new Error(`coluna de texto com piso em px devolve a rolagem: ${c}`);
+    }
     const floorOf = (c) => {
-      const mm = c.match(/^minmax\((\d+)px/) || c.match(/^(\d+)px$/);
+      if (c.startsWith("minmax(0")) return 0;
+      if (c === "auto") return 176; // a coluna de ações: WhatsApp + roteiro
+      const mm = c.match(/^(\d+)px$/);
       if (!mm) throw new Error(`coluna sem piso em px: ${c}`);
       return Number(mm[1]);
     };

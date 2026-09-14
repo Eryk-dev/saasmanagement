@@ -1,0 +1,70 @@
+import React from "react";
+import { createRoot } from "react-dom/client";
+import { fmt } from "../src/lib/format.js";
+import { LEADS_FAKE } from "./api-mock.js";
+import "../src/tokens.css";
+
+// Preview de tela (14/09): monta UMA tela do cockpit com dado falso, pra
+// conferir o desenho contra a prancha do protótipo sem subir a API. O
+// vite.preview.config.js troca lib/api.js pelo dublê. Fora do build de produção.
+window.fmt = fmt;
+const DIA = 86400000;
+const hoje = new Date();
+const iso = (n, h = 9) => { const d = new Date(hoje.getTime() + n * DIA); d.setHours(h, 0, 0, 0); return d.toISOString(); };
+
+window.SEED = {
+  SAAS: [{
+    id: "leverads", name: "LeverAds", mrr: 54013, arr: 648150, customers: 88,
+    funnel: [
+      { stage: "Novo lead", kind: "novo" },
+      { stage: "Qualificação", kind: "qualificacao" },
+      { stage: "Call marcada", kind: "call" },
+      { stage: "Proposta", kind: "proposta" },
+      { stage: "Ganho", kind: "ganho" },
+      { stage: "Perdido", kind: "perdido" },
+    ],
+    leadQuestions: [],
+  }],
+  USERS: [
+    { id: "leo", name: "Leonardo", roles: ["sdr", "admin"], saas: "" },
+    { id: "lucas", name: "Lucas", roles: ["closer"], saas: "" },
+    { id: "tiago", name: "Tiago", roles: ["closer"], saas: "" },
+  ],
+  LEADS: LEADS_FAKE, CUSTOMERS: [], PORTFOLIO: {}, ATTENTION: [], PEOPLE: {},
+  NPS: [], LEADERBOARD_MONTH: [], LEADERBOARD_ALL: [], GOALS: [],
+  AGENDA_BLOCKS: [], CONSULTATION_SLOTS: [],
+  CONFIG: { meta: { configured: false }, mp: { configured: false }, proposals: { nativeSaas: [] } },
+  ME: { id: "leo", name: "Leonardo", roles: ["sdr", "admin"] },
+};
+try {
+  localStorage.setItem("cockpit_today_person", "leo");
+  localStorage.setItem("cockpit_active_saas", "leverads");
+} catch { /* ignore */ }
+
+const TELAS = {
+  today: () => import("../src/screens/today.jsx").then((m) => m.TodayScreen),
+  pipeline: () => import("../src/screens/pipeline.jsx").then((m) => m.PipelineScreen),
+  overview: () => import("../src/screens/overview.jsx").then((m) => m.OverviewScreen),
+};
+
+function App() {
+  const id = (location.hash.replace("#", "") || "today");
+  const [Tela, setTela] = React.useState(null);
+  React.useEffect(() => { (TELAS[id] || TELAS.today)().then((c) => setTela(() => c)); }, [id]);
+  if (!Tela) return <div className="mono dim" style={{ padding: 24 }}>carregando a tela…</div>;
+  return (
+    <div style={{ display: "flex", height: "100vh", background: "var(--bg-0)" }}>
+      {/* Moldura mínima: a barra lateral real não importa pro desenho da tela. */}
+      <div style={{ width: 220, flexShrink: 0, background: "var(--btn-bg)", color: "var(--btn-fg)", padding: 16, fontSize: 12.5 }}>
+        <div style={{ fontWeight: 700 }}>LeverAds</div>
+        <div style={{ opacity: 0.5, fontSize: 11 }}>preview de tela</div>
+      </div>
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <Tela onOpenLead={() => {}} onOpenWhatsapp={() => {}} onNav={() => {}} />
+      </div>
+    </div>
+  );
+}
+
+createRoot(document.getElementById("root")).render(<App />);
+window.addEventListener("hashchange", () => location.reload());
