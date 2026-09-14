@@ -149,3 +149,11 @@ e escuro. Interações verificadas: navegação entre telas, respostas e editor 
 form, seleção de campanha, troca de canal, variáveis e salvamento fictício,
 ficha do Blog, troca de slides e exportação de PNG. Integrações externas não
 foram acionadas. Cada tela tem commit próprio; CSS e preview são compartilhados.
+
+## Apresentação C — ordem e provas sociais (14/09/2026)
+
+Revisão pontual do deck em `packages/api/src/proposal-slides-page.js`:
+“Anúncio perfeito” antecede “Efeito teia”, com os rótulos de sequência ajustados.
+Os quatro cases publicados (Motvia, Lupa Autopeças, Dyno Nutri e 123tudo) foram
+recuperados na cópia vazia da apresentação aberta via API REST, preservando
+a configuração e os preços. Ordem e página 12 conferidas no navegador.
