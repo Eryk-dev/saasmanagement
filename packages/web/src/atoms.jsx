@@ -413,14 +413,30 @@ function WaButton({ href, onClick, children, title, block, small }) {
 // ───────────────────────────────────────────────────── Botão secundário
 // A escala de controles do DS: 28 denso · 32 padrão · 40 CTA. Secundário =
 // borda line-2 sobre bg-1 (o "const btn" que cada tela redeclarava).
-function SecondaryButton({ onClick, children, title, size = "md", disabled, style }) {
-  const h = size === "sm" ? 28 : size === "lg" ? 40 : 32;
+// ── A escala de botão da prancha, medida no DOM do protótipo (14/09) ───────
+// Cinco tamanhos, e cada um com a sua fonte e o seu peso. Três coisas que o
+// repo fazia diferente e apareciam em TODA tela:
+//   · nenhum botão do protótipo tem sombra (o primário do repo tinha);
+//   · a borda do secundário é --line-1 (#E4E8EB), não --line-2 (#CBD4DA), que
+//     deixava todo botão fantasma mais pesado do que devia;
+//   · o primário é peso 650, não 600.
+const BTN = {
+  xs: { h: 28, pad: "0 11px", fs: 12,   fwP: 650, fwS: 500, r: "var(--r-1)" },
+  sm: { h: 32, pad: "0 12px", fs: 12,   fwP: 600, fwS: 500, r: "var(--r-2)" },
+  md: { h: 34, pad: "0 14px", fs: 12.5, fwP: 650, fwS: 600, r: "var(--r-2)" },
+  lg: { h: 38, pad: "0 16px", fs: 13,   fwP: 650, fwS: 600, r: "var(--r-2)" },
+  xl: { h: 42, pad: "0 18px", fs: 13.5, fwP: 650, fwS: 600, r: "var(--r-2)" },
+};
+
+function SecondaryButton({ onClick, children, title, size = "md", tom, disabled, style, type }) {
+  const b = BTN[size] || BTN.md;
   return (
-    <button onClick={onClick} title={title} disabled={disabled} style={{
-      height: h, padding: size === "sm" ? "0 10px" : "0 14px",
-      borderRadius: "var(--r-2)", border: "1px solid var(--line-2)",
-      background: "var(--bg-1)", color: "var(--fg-2)",
-      fontSize: size === "sm" ? 12 : 12.5, fontWeight: 500,
+    <button type={type} onClick={onClick} title={title} disabled={disabled} style={{
+      display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+      height: b.h, padding: b.pad,
+      borderRadius: b.r, border: "1px solid var(--line-1)",
+      background: "var(--bg-1)", color: tom === "neg" ? "var(--neg)" : size === "xs" || size === "sm" ? "var(--fg-2)" : "var(--fg-1)",
+      fontSize: b.fs, fontWeight: b.fwS,
       opacity: disabled ? 0.5 : 1, cursor: disabled ? "not-allowed" : "pointer",
       transition: "var(--transition-ui)", ...style,
     }}>{children}</button>
@@ -429,20 +445,21 @@ function SecondaryButton({ onClick, children, title, size = "md", disabled, styl
 
 // Primary CTA button — shared so empty states and toolbars create records the
 // same way. `onClick` opens the relevant EntityForm.
-function PrimaryButton({ onClick, children, disabled }) {
+function PrimaryButton({ onClick, children, disabled, size = "md", title, style, type }) {
+  const b = BTN[size] || BTN.md;
   return (
-    <button onClick={onClick} disabled={disabled} style={{
-      display: "inline-flex", alignItems: "center", gap: 6,
-      height: 32, padding: "0 15px",
+    <button type={type} onClick={onClick} disabled={disabled} title={title} style={{
+      display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+      height: b.h, padding: b.pad,
       background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))",
-      boxShadow: "var(--shadow-btn)",
-      borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 600,
-      opacity: disabled ? 0.5 : 1,
-      transition: "var(--transition-ui)",
+      border: "1px solid var(--btn-bg, var(--accent))",
+      borderRadius: b.r, fontSize: b.fs, fontWeight: b.fwP,
+      opacity: disabled ? 0.5 : 1, cursor: disabled ? "not-allowed" : "pointer",
+      transition: "var(--transition-ui)", ...style,
     }}>{children}</button>
   );
 }
 
 Object.assign(window, { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, CardHead, Ticker, Led, EmptyState, PrimaryButton, SecondaryButton, RowActions, toast, ToastHost, WaButton });
 
-export { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, CardHead, Ticker, Led, EmptyState, PrimaryButton, SecondaryButton, RowActions, MoreMenu, useEsc, toast, ToastHost, WaButton };
+export { BTN, HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, CardHead, Ticker, Led, EmptyState, PrimaryButton, SecondaryButton, RowActions, MoreMenu, useEsc, toast, ToastHost, WaButton };

@@ -25,9 +25,9 @@ const TRIGGERS = [
 const triggerLabel = (id) => TRIGGERS.find((t) => t.id === id)?.label || id;
 const COOLDOWNS = [[1, "1h"], [6, "6h"], [24, "24h"], [168, "7 dias"]];
 
-const inp = { height: 34, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, width: "100%", boxSizing: "border-box" };
+const inp = { height: 34, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, width: "100%", boxSizing: "border-box" };
 const areaStyle = { ...inp, height: "auto", minHeight: 64, padding: "8px 10px", resize: "vertical", fontFamily: "inherit", lineHeight: 1.45 };
-const btn = { height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, cursor: "pointer" };
+const btn = { height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, cursor: "pointer" };
 
 const EMPTY_RULE = { name: "", trigger: "keyword", keyword: "", reply: "", cooldownHours: 24 };
 
@@ -366,7 +366,7 @@ function CallFlowCard({ product }) {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <button onClick={() => setVars((v) => !v)} className="mono"
-                style={{ height: 24, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-2)", background: vars ? "var(--accent-soft)" : "var(--bg-1)", color: vars ? "var(--accent)" : "var(--fg-3)", fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}>
+                style={{ height: 24, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: vars ? "var(--accent-soft)" : "var(--bg-1)", color: vars ? "var(--accent)" : "var(--fg-3)", fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}>
                 {"{ }"} variáveis
               </button>
               <span className="mono dim" style={{ fontSize: 10 }}>texto vazio usa o padrão</span>
@@ -376,7 +376,7 @@ function CallFlowCard({ product }) {
                 {VARS.map((v) => (
                   <div key={v.t} style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
                     <button onClick={() => insertVar(v.t)} className="mono" title="clique pra inserir no texto, na posição do cursor"
-                      style={{ flexShrink: 0, padding: "2px 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--accent)", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
+                      style={{ flexShrink: 0, padding: "2px 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--accent)", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
                       {v.t}
                     </button>
                     <span style={{ fontSize: 11.5, color: "var(--fg-2)", lineHeight: 1.45 }}>{v.d}</span>

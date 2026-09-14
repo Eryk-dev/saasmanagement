@@ -40,8 +40,8 @@ const chip = (active) => ({
   background: active ? "var(--accent-soft)" : "var(--bg-1)",
   color: active ? "var(--accent)" : "var(--fg-2)", fontWeight: active ? 600 : 500,
 });
-const inputS = { height: 30, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", fontSize: 12.5, minWidth: 0 };
-const btnS = { height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", fontSize: 12.5, fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap" };
+const inputS = { height: 30, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 12.5, minWidth: 0 };
+const btnS = { height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 12.5, fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap" };
 const btnPrimary = { ...btnS, border: "1px solid var(--accent)", background: "var(--accent)", color: "var(--accent-fg, #fff)", fontWeight: 600 };
 
 function fmtDay(iso) {
@@ -179,7 +179,7 @@ function OutboundScreen({ onOpenLead }) {
             <div style={{ fontSize: 12, color: "var(--fg-3)", whiteSpace: "pre-line" }}>{IMPORT_HINT}</div>
             <textarea value={importText} onChange={(e) => setImportText(e.target.value)} rows={6}
               placeholder={"Loja do João; 41999998888; joao@loja.com; @lojadojoao; 1200; autopeças; ML; Curitiba; https://loja.com"}
-              style={{ padding: 9, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", fontSize: 12.5, fontFamily: "var(--mono)", resize: "vertical" }} />
+              style={{ padding: 9, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 12.5, fontFamily: "var(--mono)", resize: "vertical" }} />
             <div style={{ display: "flex", gap: 8 }}>
               <button style={btnPrimary} disabled={busy === "import"} onClick={runImport}>{busy === "import" ? "importando…" : "importar contas"}</button>
               <span style={{ fontSize: 11.5, color: "var(--fg-4)", alignSelf: "center" }}>só o nome é obrigatório; o resto completa depois</span>

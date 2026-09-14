@@ -194,7 +194,7 @@ export function LeadChecklist({ checklist, onPatch, leadId, title = "Dados do le
       <span className="dim" style={{ flex: 1, minWidth: 0, fontSize: 11, lineHeight: 1.35 }}>{c.label}</span>
       {c.type === "select" ? (
         <select value={c.raw || ""} onChange={(e) => onPatch({ [c.key]: e.target.value })}
-          style={{ flexShrink: 0, maxWidth: "48%", height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: c.raw ? "var(--fg-1)" : "var(--fg-4)", fontSize: 12, fontWeight: 500 }}>
+          style={{ flexShrink: 0, maxWidth: "48%", height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: c.raw ? "var(--fg-1)" : "var(--fg-4)", fontSize: 12, fontWeight: 500 }}>
           <option value="">selecionar…</option>
           {c.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           {c.raw && !c.options.some((o) => o.value === c.raw) && <option value={c.raw}>{c.raw}</option>}
@@ -203,7 +203,7 @@ export function LeadChecklist({ checklist, onPatch, leadId, title = "Dados do le
         <input key={leadId + c.key} type="text" defaultValue={c.raw || ""} placeholder="preencher…"
           onBlur={(e) => { if (e.target.value !== (c.raw || "")) onPatch({ [c.key]: e.target.value }); }}
           onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-          style={{ flexShrink: 0, width: "48%", height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontWeight: 500 }} />
+          style={{ flexShrink: 0, width: "48%", height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontWeight: 500 }} />
       )}
     </div>
   );
@@ -416,7 +416,7 @@ export function ScriptBlocks({ script, tokens }) {
               <span className="mono tnum" style={{
                 width: 20, height: 20, borderRadius: 999, flexShrink: 0, marginTop: 1,
                 display: "inline-flex", alignItems: "center", justifyContent: "center",
-                background: "var(--bg-inset)", border: "1px solid var(--line-2)", fontSize: 10.5, fontWeight: 700, color: "var(--fg-3)",
+                background: "var(--bg-inset)", border: "1px solid var(--line-1)", fontSize: 10.5, fontWeight: 700, color: "var(--fg-3)",
               }}>{i + 1}</span>
               <div style={{ minWidth: 0, flex: 1 }}>
                 {p.t && <div style={{ fontSize: 11.5, fontWeight: 600, marginBottom: 1 }}>{p.t}</div>}

@@ -68,7 +68,7 @@ export function MetaConnectCard({ kind, product, metaOn, onConnected }) {
         <div onClick={() => !saving && setOpen(false)}
           style={{ position: "fixed", inset: 0, background: "var(--scrim-soft)", zIndex: "var(--z-modal)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div onClick={(e) => e.stopPropagation()}
-            style={{ width: 460, maxWidth: "100%", maxHeight: "80vh", overflow: "auto", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-pop)", padding: "20px 22px" }}>
+            style={{ width: 460, maxWidth: "100%", maxHeight: "80vh", overflow: "auto", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-pop)", padding: "20px 22px" }}>
             <div style={{ fontSize: 15, fontWeight: 600 }}>{ads ? "Escolha a conta de anúncio" : "Escolha a página"}</div>
             <div className="dim" style={{ fontSize: 12, marginTop: 4 }}>
               {ads ? "Contas que o token do Business Manager alcança." : "Páginas que o token administra — o Instagram vinculado vem junto."}
@@ -108,7 +108,7 @@ export function MetaConnectCard({ kind, product, metaOn, onConnected }) {
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
               <button onClick={() => setOpen(false)} disabled={saving}
-                style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13 }}>
+                style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13 }}>
                 Cancelar
               </button>
               <PrimaryButton onClick={save} disabled={!sel || saving}>{saving ? "Conectando…" : "Conectar"}</PrimaryButton>

@@ -34,7 +34,7 @@ const RATINGS = [
   { rating: 4, label: "Fácil", color: "var(--accent)", bg: "var(--accent-soft)" },
 ];
 
-const btn ={ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, cursor: "pointer" };
+const btn ={ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, cursor: "pointer" };
 const page = { flex: 1, overflow: "auto", padding: "28px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16, minHeight: 0 };
 
 function TrainingScreen() {
@@ -533,7 +533,7 @@ function Session({ saasId, label, cards, dayEnd, onExit, focus, onToggleFocus, r
 
         {/* O card */}
         <div onClick={() => !flipped && setFlipped(true)}
-          style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)",
+          style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)",
             boxShadow: focus ? "0 24px 90px rgba(0,0,0,0.55)" : "var(--shadow-2)",
             padding: focus ? "34px 34px 28px" : "26px 26px 22px", minHeight: focus ? 220 : 190,
             display: "flex", flexDirection: "column", gap: 14, cursor: flipped ? "default" : "pointer" }}>
@@ -805,7 +805,7 @@ function ExamScreen({ saasId, exam, onDone }) {
         ) : (
           <textarea rows={4} value={a.text || ""} placeholder="responda com suas palavras — a IA corrige o conceito, não as palavras exatas"
             onChange={(e) => set({ text: e.target.value })}
-            style={{ width: "100%", padding: "10px 12px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.5, resize: "vertical", fontFamily: "inherit" }} />
+            style={{ width: "100%", padding: "10px 12px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.5, resize: "vertical", fontFamily: "inherit" }} />
         )}
       </div>
 
@@ -1052,7 +1052,7 @@ function Edit({ saasId, mode, setMode }) {
                 novos/dia
                 <input type="number" min={0} max={200} value={settings.newPerDay}
                   onChange={(e) => setSettings((s) => ({ ...s, newPerDay: Math.max(0, Math.min(200, Math.round(Number(e.target.value) || 0))) }))}
-                  style={{ width: 58, height: 26, padding: "0 8px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12 }} />
+                  style={{ width: 58, height: 26, padding: "0 8px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12 }} />
               </label>
               <ExamSettings settings={settings} setSettings={setSettings} />
             </div>
@@ -1084,7 +1084,7 @@ function CardList({ cards, total, q, setQ, sel, onSelect, onAdd, roleLabel }) {
     <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", overflow: "hidden", position: "sticky", top: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 14px", borderBottom: "1px solid var(--line-1)" }}>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar na frente ou no verso…"
-          style={{ flex: 1, minWidth: 0, height: 30, padding: "0 10px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 }} />
+          style={{ flex: 1, minWidth: 0, height: 30, padding: "0 10px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 }} />
         <SecondaryButton size="sm" onClick={onAdd}>+ card</SecondaryButton>
       </div>
       <div style={{ maxHeight: "60vh", overflowY: "auto" }}>
@@ -1125,7 +1125,7 @@ function CardList({ cards, total, q, setQ, sel, onSelect, onAdd, roleLabel }) {
 }
 
 const capStyle = { display: "block", marginBottom: 3 };
-const areaStyle = { width: "100%", padding: "7px 9px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.4, resize: "vertical", fontFamily: "inherit" };
+const areaStyle = { width: "100%", padding: "7px 9px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.4, resize: "vertical", fontFamily: "inherit" };
 const CARD_TYPES = [
   { id: "basic", label: "básico" },
   { id: "cloze", label: "cloze" },
@@ -1138,7 +1138,7 @@ function ExamSettings({ settings, setSettings }) {
   const num = (key, min, max, w = 50) => (
     <input type="number" min={min} max={max} value={settings[key]}
       onChange={(e) => setSettings((s) => ({ ...s, [key]: Math.max(min, Math.min(max, Math.round(Number(e.target.value) || 0))) }))}
-      style={{ width: w, height: 24, padding: "0 7px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12 }} />
+      style={{ width: w, height: 24, padding: "0 7px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12 }} />
   );
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: "8px 12px" }}>
@@ -1176,7 +1176,7 @@ function CardPreview({ card }) {
     <div style={{ minWidth: 0 }}>
       <div className="kicker">Como o time vai ver</div>
       <div onClick={() => setFlip((f) => !f)}
-        style={{ marginTop: 8, border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", boxShadow: "var(--shadow-2)", padding: "14px 16px", cursor: "pointer", display: "flex", flexDirection: "column", gap: 10, minHeight: 150 }}>
+        style={{ marginTop: 8, border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", boxShadow: "var(--shadow-2)", padding: "14px 16px", cursor: "pointer", display: "flex", flexDirection: "column", gap: 10, minHeight: 150 }}>
         <div className="kicker">{flip ? "verso" : "frente"}{sub ? ` · ${sub}` : ""}</div>
         <CardFace card={{ ...card, sub }} flipped={flip} />
       </div>
@@ -1896,7 +1896,7 @@ function TrainingGate({ saasId, active }) {
   if (!active || !gated || !pending) return null;
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: "var(--z-alarme)", background: "color-mix(in srgb, var(--bg-0) 88%, transparent)", backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div style={{ width: "min(440px, 100%)", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 26, textAlign: "center" }}>
+      <div style={{ width: "min(440px, 100%)", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 26, textAlign: "center" }}>
         <div style={{ fontSize: 34 }}>🧠</div>
         <div style={{ fontFamily: "var(--display)", fontSize: 19, fontWeight: 700, marginTop: 8 }}>Treino do dia primeiro</div>
         <div style={{ fontSize: 13.5, color: "var(--fg-2)", lineHeight: 1.55, marginTop: 8 }}>

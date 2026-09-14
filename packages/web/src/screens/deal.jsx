@@ -96,7 +96,7 @@ function DateTimeEditor({ value, onSave, validate, style }) {
       style={style} />
     <button type="button" onClick={save} disabled={status !== "dirty"}
       className="mono" title="Salvar a nova data e hora"
-      style={{ height: 26, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: status === "dirty" ? "var(--accent)" : "var(--bg-2)", color: status === "dirty" ? "var(--accent-fg)" : status === "saved" ? "var(--pos)" : "var(--fg-4)", fontSize: 10.5, fontWeight: 700, cursor: status === "dirty" ? "pointer" : "default" }}>
+      style={{ height: 26, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: status === "dirty" ? "var(--accent)" : "var(--bg-2)", color: status === "dirty" ? "var(--accent-fg)" : status === "saved" ? "var(--pos)" : "var(--fg-4)", fontSize: 10.5, fontWeight: 700, cursor: status === "dirty" ? "pointer" : "default" }}>
       {status === "saving" ? "salvando…" : status === "saved" ? "salvo ✓" : "salvar horário"}
     </button>
   </>);
@@ -412,9 +412,9 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   // card e o painel de atividade terem o mesmo respiro.
   const box = leadBox;
   const rowLabel = { fontSize: 11, width: 104, flexShrink: 0 };
-  const presetBtn = { height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 500 };
+  const presetBtn = { height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 500 };
   // Linha rótulo→campo pra edição inline do Resumo.
-  const editInput = { flex: 1, minWidth: 0, height: 28, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 };
+  const editInput = { flex: 1, minWidth: 0, height: 28, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 };
   const EditRow = ({ label, children }) => (
     <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <span className="mono dim" style={{ width: 92, flexShrink: 0, fontSize: 10.5 }}>{label}</span>
@@ -435,7 +435,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
     }} onClick={close}>
       <div onClick={e => e.stopPropagation()} style={{
         width: "min(1120px, 100%)", maxHeight: "min(92vh, 100%)", background: "var(--bg-1)",
-        border: "1px solid var(--line-2)", borderRadius: "var(--r-3)",
+        border: "1px solid var(--line-1)", borderRadius: "var(--r-3)",
         display: "flex", flexDirection: "column",
         boxShadow: "var(--shadow-pop)",
       }}>
@@ -478,7 +478,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                   </div>
                 </div>
               ))}
-              <button onClick={close} aria-label="Fechar" className="mono dim" style={{ fontSize: 16, flexShrink: 0, width: 36, height: 36, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)" }}>✕</button>
+              <button onClick={close} aria-label="Fechar" className="mono dim" style={{ fontSize: 16, flexShrink: 0, width: 36, height: 36, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)" }}>✕</button>
             </div>
           </div>
 
@@ -532,7 +532,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                   precisa cobrar sem procurar. */}
               <button onClick={() => setPayLink(true)}
                 title={lead.mpChargeUrl ? "Abrir/refazer o link de pagamento deste lead" : "Criar o link de pagamento deste lead (Mercado Pago)"}
-                style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+                style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
                 {lead.mpChargeUrl ? (lead.mpChargeKind === "recurring" ? "link da assinatura" : "link de pagamento") : "link de pagamento"}
               </button>
               <MoreMenu size={30} items={[
@@ -581,7 +581,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                   // aqui deixava a devolução sem mover o card.
                   if (back) moveStage(back);
                 }}
-                  style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 }}>
+                  style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 }}>
                   devolver pro SDR
                 </button>
               </div>
@@ -1006,7 +1006,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                 <span className="mono dim" style={{ fontSize: 10.5, flexShrink: 0 }}>mover de etapa</span>
                 <select value={lead.stage || ""} onChange={(e) => moveStage(e.target.value)}
-                  style={{ height: 26, maxWidth: 190, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 }}>
+                  style={{ height: 26, maxWidth: 190, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 }}>
                   {(saasCfg?.funnel || []).map((f) => <option key={f.stage} value={f.stage}>{f.stage}</option>)}
                   {saasCfg?.funnel?.every((f) => f.stage !== lead.stage) && lead.stage && <option value={lead.stage}>{lead.stage}</option>}
                 </select>
@@ -1147,12 +1147,12 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                 <button disabled={!!cBusy || !consulta.at}
                   onClick={() => consultaAction("meet", () => api.consultationMeet(consulta.id))}
                   title={consulta.at ? "cria o Meet no horário da consulta e envia o convite por e-mail" : "a consulta está sem horário"}
-                  style={{ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>{cBusy === "meet" ? "criando…" : "Criar Meet"}</button>
+                  style={{ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>{cBusy === "meet" ? "criando…" : "Criar Meet"}</button>
               )}
               <button disabled={!!cBusy || !consulta.meetUrl}
                 onClick={() => consultaAction("sum", () => api.consultationSummary(consulta.id, true))}
                 title="busca a transcrição do Meet e resume (também acontece sozinho após a consulta)"
-                style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 12.5 }}>{cBusy === "sum" ? "resumindo…" : "↻ Resumir com IA"}</button>
+                style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 12.5 }}>{cBusy === "sum" ? "resumindo…" : "↻ Resumir com IA"}</button>
             </div>
             {!consulta.meetUrl && (
               <div className="dim" style={{ fontSize: 11 }}>
@@ -1204,7 +1204,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                   </WaButton>}
               {onOpenWhatsapp && (
                 <a href={wa} target="_blank" rel="noopener noreferrer" title={`Abrir no WhatsApp Web/app · ${lead.phone}`}
-                  style={{ flex: "0 1 auto", textAlign: "center", padding: "10px 14px", background: "var(--bg-1)", color: "var(--fg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}>
+                  style={{ flex: "0 1 auto", textAlign: "center", padding: "10px 14px", background: "var(--bg-1)", color: "var(--fg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}>
                   Web ↗
                 </a>
               )}
@@ -1230,7 +1230,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                 )}
                 {perdido && (
                   <button onClick={() => moveStage(perdido)} title="Marcar como perdido (o motivo da perda é obrigatório)"
-                    style={{ height: 38, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--neg)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                    style={{ height: 38, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--neg)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
                     marcar perdido
                   </button>
                 )}

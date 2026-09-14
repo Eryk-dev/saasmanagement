@@ -235,11 +235,11 @@ export function ActivityComposer({ lead, onLogged }) {
         }}
         rows={2}
         placeholder={type === "note" ? "anotação… (cole um print pra anexar)" : "o que rolou nesse contato? (⌘↵ registra · cole um print pra anexar)"}
-        style={{ width: "100%", padding: "7px 9px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5, resize: "vertical" }}
+        style={{ width: "100%", padding: "7px 9px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5, resize: "vertical" }}
       />
       {photo && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
-          <img src={photo.preview} alt="anexo" style={{ width: 46, height: 46, objectFit: "cover", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)" }} />
+          <img src={photo.preview} alt="anexo" style={{ width: 46, height: 46, objectFit: "cover", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)" }} />
           <span className="mono dim" style={{ fontSize: 10.5, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{photo.name}</span>
           <button onClick={dropPhoto} title="remover anexo" className="mono dim" style={{ fontSize: 10.5, textDecoration: "underline", textUnderlineOffset: 3 }}>remover</button>
         </div>
@@ -255,7 +255,7 @@ export function ActivityComposer({ lead, onLogged }) {
         <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)" }}>registrar + próximo:</span>
         {NEXT_PRESETS.map((p) => (
           <button key={p.key} disabled={busy} onClick={() => log(p.ms)} title={`registra o ${TYPE_META[type].label} e marca o próximo contato pra ${p.label}`}
-            style={{ height: 22, padding: "0 8px", borderRadius: 4, fontSize: 10.5, fontFamily: "var(--mono)", background: "var(--bg-2)", border: "1px solid var(--line-2)", color: "var(--fg-2)", cursor: "pointer" }}>
+            style={{ height: 22, padding: "0 8px", borderRadius: 4, fontSize: 10.5, fontFamily: "var(--mono)", background: "var(--bg-2)", border: "1px solid var(--line-1)", color: "var(--fg-2)", cursor: "pointer" }}>
             {p.label}
           </button>
         ))}

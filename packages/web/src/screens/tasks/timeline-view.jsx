@@ -105,7 +105,7 @@ export function TimelineView({ groups, usersById, actions, mobile, today = today
         <div style={{ display: "inline-flex", gap: 2, padding: 3, borderRadius: 9, background: "var(--bg-2)" }}>
           {[["day", "Dia"], ["week", "Semana"], ["month", "Mês"]].map(([k, l]) => <button key={k} type="button" onClick={() => setZoom(k)} style={{ padding: "5px 12px", borderRadius: 7, fontSize: 12.5, fontWeight: zoom === k ? 600 : 500, background: zoom === k ? "var(--bg-1)" : "transparent", boxShadow: zoom === k ? "var(--shadow-segment)" : "none", color: zoom === k ? "var(--fg-1)" : "var(--fg-3)" }}>{l}</button>)}
         </div>
-        <button type="button" onClick={() => { const el = scroller.current; if (el) el.scrollTo({ left: Math.max(0, xOf(today) - el.clientWidth / 3), behavior: "smooth" }); }} style={{ height: 30, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", fontSize: 12.5, fontWeight: 500 }}>Hoje</button>
+        <button type="button" onClick={() => { const el = scroller.current; if (el) el.scrollTo({ left: Math.max(0, xOf(today) - el.clientWidth / 3), behavior: "smooth" }); }} style={{ height: 30, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 12.5, fontWeight: 500 }}>Hoje</button>
         <span className="dim" style={{ fontSize: 12 }}>arraste a barra pra mudar as datas · as bordas mudam início e prazo</span>
         {undated.length > 0 && <span className="dim" style={{ fontSize: 12, marginLeft: "auto" }}>{undated.length} sem prazo (não aparecem)</span>}
       </div>

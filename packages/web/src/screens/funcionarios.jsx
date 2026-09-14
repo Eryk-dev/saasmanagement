@@ -69,7 +69,7 @@ function FuncionariosScreen({ onNav }) {
               <div key={`${item.person.user}-${item.label}`} style={{ display: "flex", gap: 12, alignItems: "center", padding: "13px var(--inset-x)", borderTop: "1px solid var(--line-faint)", flexWrap: "wrap" }}>
                 <span style={{ fontSize: 13.5, fontWeight: 600, width: 120, flexShrink: 0 }}>{item.person.name}</span>
                 <span style={{ fontSize: 13, color: "var(--fg-2)", flex: 1, minWidth: "min(220px, 100%)" }}>{item.label} {asRate(item.value)} vs. meta {asRate(item.target)} · {item.advice}</span>
-                <button onClick={() => openPerson(item.person.user)} style={{ height: 30, padding: "0 12px", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", fontSize: 12.5, fontWeight: 600 }}>Abrir pipeline</button>
+                <button onClick={() => openPerson(item.person.user)} style={{ height: 30, padding: "0 12px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", fontSize: 12.5, fontWeight: 600 }}>Abrir pipeline</button>
               </div>
             ))}
           </section>

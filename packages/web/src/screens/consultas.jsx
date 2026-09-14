@@ -546,9 +546,9 @@ function ConsultaModal({ c, customers, consultas = [], onClose, onSaved }) {
           </div>
         )}
 
-        {err && <div style={{ fontSize: 11.5, color: "#e5484d", marginTop: 10 }}>{err}</div>}
+        {err && <div style={{ fontSize: 11.5, color: "var(--neg)", marginTop: 10 }}>{err}</div>}
         <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-          {!isNew && <button disabled={!!busy} onClick={removeConsulta} style={{ ...chip(false), color: "#e5484d" }}>apagar</button>}
+          {!isNew && <button disabled={!!busy} onClick={removeConsulta} style={{ ...chip(false), color: "var(--neg)" }}>apagar</button>}
           <span style={{ flex: 1 }} />
           <button onClick={onClose} style={chip(false)}>cancelar</button>
           <button disabled={!!busy} onClick={save} style={{ ...chip(false), background: "var(--accent)", color: "var(--accent-fg, #fff)", border: "none", fontWeight: 700 }}>{busy === "save" ? "salvando…" : "Salvar"}</button>
@@ -727,14 +727,14 @@ function ManualEditor({ m, onClose, refresh }) {
             {!!s.sources?.length && <div className="mono dim" style={{ fontSize: 9.5, marginTop: 4 }}>modulada pelas consultas {s.sources.join(", ")}</div>}
           </div>
         ))}
-        {err && <div style={{ fontSize: 11.5, color: "#e5484d" }}>{err}</div>}
+        {err && <div style={{ fontSize: 11.5, color: "var(--neg)" }}>{err}</div>}
     </Modal>
   );
 }
 
 // ── estilos ───────────────────────────────────────────────────────────────────
 const chip = (on) => ({ display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 11px", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"), background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-2)" });
-const navBtn = { height: 28, minWidth: 32, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, cursor: "pointer" };
+const navBtn = { height: 28, minWidth: 32, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, cursor: "pointer" };
 const sheet = { background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "18px 20px", boxShadow: "0 24px 80px rgba(2, 16, 28, 0.35)" };
 const lab = { display: "flex", flexDirection: "column", gap: 5, fontSize: 11.5, color: "var(--fg-3)", fontWeight: 600 };
-const inp = { width: "100%", padding: "8px 10px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5, fontWeight: 400 };
+const inp = { width: "100%", padding: "8px 10px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5, fontWeight: 400 };

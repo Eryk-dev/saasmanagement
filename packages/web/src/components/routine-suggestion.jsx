@@ -40,14 +40,14 @@ export function RoutineSuggestion({ lead, patch }) {
           {busy ? "gerando…" : (text ? "↻ Regenerar" : "✦ Gerar sugestão")}
         </button>
       </div>
-      {err && <div style={{ fontSize: 11, color: "#e5484d", marginBottom: 6 }}>{err}</div>}
+      {err && <div style={{ fontSize: 11, color: "var(--neg)", marginBottom: 6 }}>{err}</div>}
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
         onBlur={save}
         rows={5}
         placeholder={aiOn ? "clique em Gerar pra criar a sugestão a partir do desafio, ou escreva a sua" : "escreva a sugestão de solução (IA indisponível)"}
-        style={{ width: "100%", padding: "9px 11px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5, lineHeight: 1.5, resize: "vertical", minHeight: 90 }}
+        style={{ width: "100%", padding: "9px 11px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5, lineHeight: 1.5, resize: "vertical", minHeight: 90 }}
       />
       <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>editável, ajuste como precisar antes da call</div>
     </div>

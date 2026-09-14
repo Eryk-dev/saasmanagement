@@ -157,7 +157,7 @@ const Num = ({ v, tone, title }) => (
 function Stepper({ value, onInc, busy }) {
   const btn = (label, d) => (
     <button onClick={(e) => { e.stopPropagation(); onInc(d); }} disabled={busy}
-      style={{ width: 24, height: 24, borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 700, lineHeight: 1, opacity: busy ? 0.5 : 1 }}>{label}</button>
+      style={{ width: 24, height: 24, borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 700, lineHeight: 1, opacity: busy ? 0.5 : 1 }}>{label}</button>
   );
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }} onClick={(e) => e.stopPropagation()}>

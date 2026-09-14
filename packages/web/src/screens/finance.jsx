@@ -108,7 +108,7 @@ function FinanceTab({ product }) {
   }
 
   const TILE = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-1)", padding: "12px 16px", flex: "1 1 150px", minWidth: 140 };
-  const btn = { height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 };
+  const btn = { height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 };
 
   return (
     <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 14 }}>
@@ -199,7 +199,7 @@ function FinanceTab({ product }) {
                       ) : (
                         <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
                           <select value={linking[p.id] || ""} onChange={(e) => setLinking((m) => ({ ...m, [p.id]: e.target.value }))}
-                            style={{ height: 26, maxWidth: 160, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 }}>
+                            style={{ height: 26, maxWidth: 160, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 }}>
                             <option value="">vincular a…</option>
                             {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                           </select>

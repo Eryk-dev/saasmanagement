@@ -47,7 +47,7 @@ export function moveGate(saasCfg, lead, toStage) {
 
 const field = {
   width: "100%", height: 32, padding: "0 10px",
-  background: "var(--bg-2)", border: "1px solid var(--line-2)",
+  background: "var(--bg-2)", border: "1px solid var(--line-1)",
   borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13,
 };
 const label = { display: "block", marginBottom: 4 };
@@ -301,7 +301,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
         )}
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
-          <button onClick={onCancel} style={{ height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5 }}>cancelar</button>
+          <button onClick={onCancel} style={{ height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5 }}>cancelar</button>
           <PrimaryButton onClick={confirm} disabled={!ready}>confirmar movimento</PrimaryButton>
         </div>
     </Modal>

@@ -147,7 +147,7 @@ export function WaHotAlert({ onOpenThread, onOpenLeadWhatsapp, onOpenLeadCard })
     go?.(cur);
   }
 
-  const btn = { height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 600, cursor: "pointer" };
+  const btn = { height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 600, cursor: "pointer" };
   const chipStyle = (bg, fg) => ({ display: "inline-flex", alignItems: "center", gap: 5, height: 22, padding: "0 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: bg, color: fg });
 
   return (
@@ -159,7 +159,7 @@ export function WaHotAlert({ onOpenThread, onOpenLeadWhatsapp, onOpenLeadCard })
             {isLead ? "Lead novo, ninguém falou com ele ainda" : "Lead respondeu no WhatsApp"}
           </span>
           {visible.length > 1 && <span className="mono dim" style={{ fontSize: 10.5 }}>+{visible.length - 1} esperando</span>}
-          {saasName && <span className="mono" style={{ fontSize: 10, color: "var(--fg-3)", border: "1px solid var(--line-2)", borderRadius: 999, padding: "2px 8px" }}>{saasName}</span>}
+          {saasName && <span className="mono" style={{ fontSize: 10, color: "var(--fg-3)", border: "1px solid var(--line-1)", borderRadius: 999, padding: "2px 8px" }}>{saasName}</span>}
         </div>
 
         <div style={{ padding: "14px 16px" }}>
@@ -203,7 +203,7 @@ export function WaHotAlert({ onOpenThread, onOpenLeadWhatsapp, onOpenLeadCard })
           <textarea ref={box} value={reply} onChange={(e) => setReply(e.target.value)} rows={2}
             placeholder="responde na hora que o lead está quente…"
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-            style={{ width: "100%", marginTop: 10, padding: "9px 11px", background: "var(--bg-0)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, resize: "vertical", fontFamily: "inherit" }} />
+            style={{ width: "100%", marginTop: 10, padding: "9px 11px", background: "var(--bg-0)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, resize: "vertical", fontFamily: "inherit" }} />
           {err && <div style={{ marginTop: 6, fontSize: 12, color: "var(--neg)" }}>{err}</div>}
 
           <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center" }}>

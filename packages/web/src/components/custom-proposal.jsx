@@ -17,9 +17,9 @@ const CYCLES = [
   ["parcelado", "parcelado"],
 ];
 
-const field = { height: 34, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, width: "100%", minWidth: 0 };
+const field = { height: 34, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, width: "100%", minWidth: 0 };
 const label = { display: "block", marginBottom: 5 };
-const ghost = { height: 32, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" };
+const ghost = { height: 32, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" };
 const primary = { ...ghost, border: "1px solid var(--accent)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))" };
 
 export function CustomProposalModal({ lead, onClose, onSaved }) {
@@ -72,7 +72,7 @@ export function CustomProposalModal({ lead, onClose, onSaved }) {
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--scrim)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: "var(--z-modal)", padding: 16 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(520px, 100%)", maxHeight: "calc(100vh - 40px)", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(520px, 100%)", maxHeight: "calc(100vh - 40px)", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
           <div style={{ fontSize: 15.5, fontWeight: 600 }}>Proposta personalizada</div>
           <span className="dim" style={{ fontSize: 12 }}>· {lead.name || "cliente"}</span>

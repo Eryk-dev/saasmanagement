@@ -17,7 +17,7 @@ import { allUsers, currentUser, displayName } from "../lib/users.js";
 //               placar e da meta de upsell do CS.
 const { useState, useMemo } = React;
 
-const inputSt = { height: 28, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 };
+const inputSt = { height: 28, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 };
 const selectSt = { ...inputSt, padding: "0 6px" };
 const dateSt = { ...inputSt, padding: "0 6px", fontSize: 12, fontFamily: "var(--mono)" };
 const lbl = { fontSize: 10.5, display: "inline-flex", alignItems: "center", gap: 5 };
@@ -141,7 +141,7 @@ export function UpsellPanel({ customer, product, mpOn, onDone, onCancel }) {
         <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="observação (opcional)"
           onKeyDown={(e) => e.key === "Enter" && save()}
           style={{ ...inputSt, flex: "1 1 160px", minWidth: 130 }} />
-        <button onClick={onCancel} style={{ height: 28, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 12.5 }}>cancelar</button>
+        <button onClick={onCancel} style={{ height: 28, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 12.5 }}>cancelar</button>
         <button onClick={save} disabled={!canSave}
           style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "none", background: "var(--accent)", color: "#fff", fontSize: 12.5, fontWeight: 600, opacity: canSave ? 1 : 0.5 }}>
           {saving ? "registrando…" : payment === "link" ? "registrar e gerar link" : "registrar upsell"}

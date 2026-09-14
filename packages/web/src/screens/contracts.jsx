@@ -252,7 +252,7 @@ function ContractsScreen() {
     copyTimer.current = setTimeout(() => setCopied(false), 1600);
     registerIssue(c);
   }
-  const btn = { height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", boxShadow: "var(--shadow-1)" };
+  const btn = { height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", boxShadow: "var(--shadow-1)" };
   // Os três passos do preenchimento (1 cliente · 2 quadro resumo · 3 gerar).
   // Eram um parágrafo de instruções no PÉ da tela, longe de onde a ação
   // acontece; agora são o cabeçalho do drawer e marcam onde você está.
@@ -260,7 +260,7 @@ function ContractsScreen() {
   const selDone = selFields.filter((f) => String(fill[f.key] || "").trim()).length;
   const passo = !fillClient ? 1 : selDone < selFields.length ? 2 : 3;
   const PASSOS = [[1, "cliente"], [2, "quadro resumo"], [3, "gerar"]];
-  const inp = { width: "100%", height: 34, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
+  const inp = { width: "100%", height: 34, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -603,14 +603,14 @@ function ContractsScreen() {
                 </div>
                 <div style={{ flex: 1, minHeight: 0, padding: "0 20px 12px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <textarea value={draft.body} onChange={(e) => setDraft((d) => ({ ...d, body: e.target.value }))} spellCheck={false}
-                    className="mono" style={{ resize: "none", padding: 12, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-1)", fontSize: 11.5, lineHeight: 1.55 }} />
+                    className="mono" style={{ resize: "none", padding: 12, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-1)", fontSize: 11.5, lineHeight: 1.55 }} />
                   <iframe title="preview" srcDoc={fullHtml({ ...draft })} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "#fff", width: "100%", height: "100%" }} />
                 </div>
                 <div style={{ padding: "12px 20px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)", display: "flex", gap: 8 }}>
                   <button onClick={saveDraft} disabled={busy || !draft.name.trim()} style={{ flex: 1, padding: "9px 12px", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500, opacity: busy || !draft.name.trim() ? 0.6 : 1 }}>
                     {busy ? "Salvando…" : "Salvar modelo"}
                   </button>
-                  <button onClick={() => (sel ? openView(sel) : close())} style={{ padding: "9px 16px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 13 }}>Cancelar</button>
+                  <button onClick={() => (sel ? openView(sel) : close())} style={{ padding: "9px 16px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 13 }}>Cancelar</button>
                 </div>
               </div>
             )}

@@ -56,7 +56,7 @@ const TAB_OF = {
 
 const th = { textAlign: "left", padding: "10px 14px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", whiteSpace: "nowrap" };
 const td = { padding: "10px 14px", fontSize: 12.5, borderBottom: "1px solid var(--line-faint)", verticalAlign: "top" };
-const act = { height: 26, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600, cursor: "pointer", textDecoration: "none", display: "inline-flex", alignItems: "center" };
+const act = { height: 26, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600, cursor: "pointer", textDecoration: "none", display: "inline-flex", alignItems: "center" };
 
 function OffersScreen({ onOpenLead }) {
   const [product] = useActiveSaas();
@@ -204,7 +204,7 @@ function OffersScreen({ onOpenLead }) {
                   </div>
                 )}
                 <button onClick={() => setTab("aguardando")} title="filtrar só quem está devendo"
-                  style={{ marginLeft: "auto", alignSelf: "center", height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+                  style={{ marginLeft: "auto", alignSelf: "center", height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
                   ver quem está devendo →
                 </button>
               </div>
@@ -348,7 +348,7 @@ function OffersScreen({ onOpenLead }) {
                                 )}
                                 {aberto?.url && (
                                   <button onClick={() => copyLink(aberto.url, `g-${g.key}`)}
-                                    style={{ height: 26, padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, cursor: "pointer" }}>
+                                    style={{ height: 26, padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, cursor: "pointer" }}>
                                     {copied === `g-${g.key}` ? "copiado ✓" : "copiar"}
                                   </button>
                                 )}

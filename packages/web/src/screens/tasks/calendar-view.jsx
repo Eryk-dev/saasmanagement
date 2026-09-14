@@ -51,9 +51,9 @@ export function CalendarView({ tasks, usersById, actions, mobile, today = todayY
   };
   const head = (
     <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px var(--pad-x) 6px", flexShrink: 0 }}>
-      <button type="button" onClick={() => setMonth((m) => shiftMonth(m, -1))} aria-label="Mês anterior" style={{ width: 30, height: 30, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="chevronLeft" size={14} /></button>
-      <button type="button" onClick={() => setMonth((m) => shiftMonth(m, 1))} aria-label="Próximo mês" style={{ width: 30, height: 30, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="chevronRight" size={14} /></button>
-      <button type="button" onClick={() => setMonth(ym(today))} style={{ height: 30, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", fontSize: 12.5, fontWeight: 500 }}>Hoje</button>
+      <button type="button" onClick={() => setMonth((m) => shiftMonth(m, -1))} aria-label="Mês anterior" style={{ width: 30, height: 30, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="chevronLeft" size={14} /></button>
+      <button type="button" onClick={() => setMonth((m) => shiftMonth(m, 1))} aria-label="Próximo mês" style={{ width: 30, height: 30, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="chevronRight" size={14} /></button>
+      <button type="button" onClick={() => setMonth(ym(today))} style={{ height: 30, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 12.5, fontWeight: 500 }}>Hoje</button>
       <span className="sec-title" style={{ textTransform: "capitalize", marginLeft: 6 }}>{MONTHS[Number(month.slice(5, 7)) - 1]} {month.slice(0, 4)}</span>
       <span className="dim" style={{ fontSize: 12, marginLeft: "auto" }}>{noDue.length ? `${noDue.length} sem prazo` : ""}</span>
     </div>

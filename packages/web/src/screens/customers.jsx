@@ -78,7 +78,7 @@ const fmtDay = (d) => (d ? d.toLocaleDateString("pt-BR", { day: "2-digit", month
 const ACOES_FECHADAS = 6;
 
 // Botão das linhas de "Próximas ações" (concluir marco, cobrar, dar baixa).
-const ACAO_BTN = { height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", flexShrink: 0, display: "inline-flex", alignItems: "center", textDecoration: "none", whiteSpace: "nowrap" };
+const ACAO_BTN = { height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", flexShrink: 0, display: "inline-flex", alignItems: "center", textDecoration: "none", whiteSpace: "nowrap" };
 
 function CustomersScreen({ initialTab }) {
   const { CUSTOMERS, LEADS } = window.SEED;
@@ -740,7 +740,7 @@ function CustomersScreen({ initialTab }) {
                                 {isKeyAccount(c) && <span title="conta grande · fora das médias" style={{ color: "var(--accent)", flexShrink: 0 }}>★</span>}
                                 {!isKidsWorkspace && (t.grade
                                   ? <span title={t.label} style={{ width: 20, height: 20, borderRadius: 5, background: t.tone, color: t.badgeFg, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1, flexShrink: 0 }}>{t.grade}</span>
-                                  : <span title="sem nível (lead não respondeu contas/anúncios)" style={{ width: 20, height: 20, borderRadius: 5, border: "1px solid var(--line-2)", color: "var(--fg-4)", fontSize: 11, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>—</span>)}
+                                  : <span title="sem nível (lead não respondeu contas/anúncios)" style={{ width: 20, height: 20, borderRadius: 5, border: "1px solid var(--line-1)", color: "var(--fg-4)", fontSize: 11, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>—</span>)}
                                 <div style={{ minWidth: 0 }}>
                                   <div style={{ fontSize: 13.5, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
                                   <div style={{ fontSize: 11.5, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
@@ -1030,7 +1030,7 @@ function FormAnswersCard({ lead, product, onPatch }) {
             <span className="dim" style={{ flex: 1, minWidth: 0, fontSize: 11, lineHeight: 1.35 }}>{c.label}</span>
             {c.type === "select" ? (
               <select value={c.raw || ""} onChange={(e) => onPatch({ [c.key]: e.target.value })}
-                style={{ flexShrink: 0, maxWidth: "50%", height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: c.raw ? "var(--fg-1)" : "var(--fg-4)", fontSize: 12, fontWeight: 500 }}>
+                style={{ flexShrink: 0, maxWidth: "50%", height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: c.raw ? "var(--fg-1)" : "var(--fg-4)", fontSize: 12, fontWeight: 500 }}>
                 <option value="">selecionar…</option>
                 {c.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 {c.raw && !c.options.some((o) => o.value === c.raw) && <option value={c.raw}>{c.raw}</option>}
@@ -1039,7 +1039,7 @@ function FormAnswersCard({ lead, product, onPatch }) {
               <input key={lead.id + c.key} type="text" defaultValue={c.raw || ""} placeholder="preencher…"
                 onBlur={(e) => { if (e.target.value !== (c.raw || "")) onPatch({ [c.key]: e.target.value }); }}
                 onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-                style={{ flexShrink: 0, width: "50%", height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontWeight: 500 }} />
+                style={{ flexShrink: 0, width: "50%", height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontWeight: 500 }} />
             )}
           </div>
         ))}
@@ -1164,7 +1164,7 @@ function CustomerFacts({ customer, lead, product, leverOrg, onPatch, cicloAte = 
   ].map(([titulo, pares]) => [titulo, pares.filter(([, v]) => v != null && v !== "")]).filter(([, pares]) => pares.length);
   const facts = grupos.flatMap(([, pares]) => pares);
   const patch = (p) => onPatch && onPatch(p);
-  const inputSt = { flex: 1, minWidth: 0, height: 28, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 };
+  const inputSt = { flex: 1, minWidth: 0, height: 28, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 };
   const EditRow = ({ label, children }) => (
     <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <span className="mono dim" style={{ width: 96, flexShrink: 0, fontSize: 10.5 }}>{label}</span>
@@ -1308,7 +1308,7 @@ function CasesTab({ product, customers }) {
               {c.authorizedAt ? " · autorizado" : " · sem autorização"}
             </span>
             <button onClick={() => publicar(c)} disabled={!!ocupado}
-              style={{ marginLeft: "auto", height: 26, padding: "0 11px", borderRadius: 999, fontSize: 11.5, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", cursor: ocupado ? "default" : "pointer" }}>
+              style={{ marginLeft: "auto", height: 26, padding: "0 11px", borderRadius: 999, fontSize: 11.5, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", cursor: ocupado ? "default" : "pointer" }}>
               {c.public ? "despublicar" : "publicar"}
             </button>
           </div>
@@ -1376,7 +1376,7 @@ function ResultsBox({ customer }) {
         <div className="kicker">Resultados</div>
         {data?.hasOrg && (
           <button onClick={enviar} disabled={enviando}
-            style={{ marginLeft: "auto", height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", cursor: enviando ? "default" : "pointer" }}>
+            style={{ marginLeft: "auto", height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", cursor: enviando ? "default" : "pointer" }}>
             {enviando ? "enviando…" : "enviar relatório agora"}
           </button>
         )}
@@ -1441,7 +1441,7 @@ function NpsBox({ customer }) {
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <div className="kicker">NPS</div>
         <button onClick={pedir} disabled={enviando}
-          style={{ marginLeft: "auto", height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", cursor: enviando ? "default" : "pointer" }}>
+          style={{ marginLeft: "auto", height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", cursor: enviando ? "default" : "pointer" }}>
           {enviando ? "pedindo…" : "pedir NPS agora"}
         </button>
       </div>
@@ -1732,14 +1732,14 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
                 finally { btn.disabled = false; btn.textContent = era; }
               }}
                 title="Cria o rascunho de case deste cliente, já com o número do painel (o que os anúncios da Lever venderam na conta dele nos últimos 30 dias). Nada vai a público sem a autorização dele."
-                style={{ height: 28, padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, flexShrink: 0 }}>
+                style={{ height: 28, padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, flexShrink: 0 }}>
                 virar case
               </button>
             )}
             {!editing && (
-              <button onClick={() => setEditing(true)} style={{ height: 28, padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, flexShrink: 0 }}>Editar</button>
+              <button onClick={() => setEditing(true)} style={{ height: 28, padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, flexShrink: 0 }}>Editar</button>
             )}
-            <button onClick={onClose} aria-label="Fechar" style={{ height: 28, width: 28, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 13, flexShrink: 0 }}>✕</button>
+            <button onClick={onClose} aria-label="Fechar" style={{ height: 28, width: 28, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 13, flexShrink: 0 }}>✕</button>
           </div>
           {!editing && (
             <div style={{ marginTop: 12 }}>
@@ -1763,7 +1763,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
               </span>
               <button onClick={undoChurn} disabled={chuSaving}
                 title="Desfaz a marcação de churn (o cliente volta pra base ativa). As assinaturas canceladas NÃO voltam sozinhas — reative na aba Assinaturas se a cobrança continua."
-                style={{ marginLeft: "auto", height: 24, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11, flexShrink: 0, opacity: chuSaving ? 0.5 : 1 }}>
+                style={{ marginLeft: "auto", height: 24, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11, flexShrink: 0, opacity: chuSaving ? 0.5 : 1 }}>
                 {chuSaving ? "…" : "desfazer churn"}
               </button>
             </div>
@@ -1777,15 +1777,15 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
             <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "9px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-1)" }}>
               <span className="mono dim" style={{ fontSize: 10.5 }}>saída</span>
               <input type="date" value={chuDate} onChange={(e) => setChuDate(e.target.value)}
-                style={{ height: 28, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontFamily: "var(--mono)" }} />
+                style={{ height: 28, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontFamily: "var(--mono)" }} />
               <select value={chuReason} onChange={(e) => setChuReason(e.target.value)}
-                style={{ height: 28, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: chuReason ? "var(--fg-1)" : "var(--fg-4)", fontSize: 12.5 }}>
+                style={{ height: 28, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: chuReason ? "var(--fg-1)" : "var(--fg-4)", fontSize: 12.5 }}>
                 <option value="">motivo…</option>
                 {CHURN_REASONS.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
               </select>
               <input type="text" value={chuNote} onChange={(e) => setChuNote(e.target.value)} placeholder="observação (opcional)"
                 onKeyDown={(e) => e.key === "Enter" && saveChurn()}
-                style={{ height: 28, flex: "1 1 160px", minWidth: 130, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 }} />
+                style={{ height: 28, flex: "1 1 160px", minWidth: 130, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 }} />
               <button onClick={saveChurn} disabled={chuSaving || !chuDate}
                 style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "none", background: "var(--neg)", color: "#fff", fontSize: 12.5, fontWeight: 600, opacity: chuSaving || !chuDate ? 0.5 : 1 }}>
                 {chuSaving ? "registrando…" : "confirmar churn"}
@@ -1875,7 +1875,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
           <div className="kicker" style={{ marginBottom: 8, display: "flex", alignItems: "center" }}>
             <span>Jornada de consultas</span>
             <button onClick={() => { onClose(); window.location.hash = "consultas"; }}
-              style={{ marginLeft: "auto", height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
+              style={{ marginLeft: "auto", height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
               abrir Consultas ↗
             </button>
           </div>
@@ -1957,7 +1957,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
                   </div>
                   {m.status !== "done" && (
                     <button onClick={() => onComplete(customer, m.key)}
-                      style={{ alignSelf: "flex-start", height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", flexShrink: 0 }}>
+                      style={{ alignSelf: "flex-start", height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", flexShrink: 0 }}>
                       concluir
                     </button>
                   )}
@@ -2016,7 +2016,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
                 {lead && !paymentUpfront(customer.paymentMethod || lead.paymentMethod) && !paymentCustom(customer.paymentMethod || lead.paymentMethod) && (
                   <select value={String(totalN)} disabled={nSaving} onChange={(e) => changeParcelamento(e.target.value)}
                     title="Mudar o parcelamento refaz as parcelas em aberto; as pagas ficam como estão"
-                    style={{ height: 22, padding: "0 4px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11 }}>
+                    style={{ height: 22, padding: "0 4px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11 }}>
                     {Array.from({ length: 12 }, (_, k) => k + 1).map((n) => <option key={n} value={n}>{n}x</option>)}
                   </select>
                 )}
@@ -2033,7 +2033,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
                       {mpOn && st !== "paid" && (
                         <button onClick={() => invoiceLink(i)}
                           title={i.mpInitPoint ? "copiar o link de pagamento desta parcela" : "gerar o link de pagamento desta parcela no Mercado Pago"}
-                          style={{ height: 20, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--accent)", fontSize: 10.5 }}>
+                          style={{ height: 20, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--accent)", fontSize: 10.5 }}>
                           {i.mpInitPoint ? "copiar link" : "link MP"}
                         </button>
                       )}
@@ -2074,7 +2074,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
                 <span>Parcelas do faturado</span>
                 <select value="" disabled={nSaving} onChange={(e) => e.target.value && changeParcelamento(e.target.value)}
                   title="Gera o cronograma (vencimento mensal a partir do fechamento) pra marcar cada parcela como paga"
-                  style={{ marginLeft: "auto", height: 22, padding: "0 4px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--accent)", fontSize: 11 }}>
+                  style={{ marginLeft: "auto", height: 22, padding: "0 4px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--accent)", fontSize: 11 }}>
                   <option value="">{nSaving ? "gerando…" : "gerar cronograma…"}</option>
                   {Array.from({ length: 12 }, (_, k) => k + 1).map((n) => (
                     <option key={n} value={n}>{n}x de {money((Number(lead.amount) || 0) / n)}</option>
@@ -2096,7 +2096,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
             {!churned && (
               <button onClick={() => { setUpsellOpen(true); setChurnOpen(false); }}
                 title="Registrar um upsell (venda extra pra este cliente) — abre o painel no topo da ficha."
-                style={{ marginLeft: "auto", height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
+                style={{ marginLeft: "auto", height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
                 + upsell
               </button>
             )}
@@ -2120,14 +2120,14 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
               <input type="number" min="0" step="0.01" inputMode="decimal" autoFocus value={chVal}
                 onChange={(e) => setChVal(e.target.value)} placeholder="valor"
                 onKeyDown={(e) => e.key === "Enter" && saveCharge()}
-                className="tnum" style={{ height: 28, width: 96, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, textAlign: "right" }} />
+                className="tnum" style={{ height: 28, width: 96, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, textAlign: "right" }} />
               <input type="text" value={chTitle} onChange={(e) => setChTitle(e.target.value)} placeholder="descrição (aparece no checkout)"
                 onKeyDown={(e) => e.key === "Enter" && saveCharge()}
-                style={{ height: 28, flex: "1 1 150px", minWidth: 120, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 }} />
+                style={{ height: 28, flex: "1 1 150px", minWidth: 120, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 }} />
               <label className="mono dim" style={{ fontSize: 10.5, display: "inline-flex", alignItems: "center", gap: 4 }}>
                 até
                 <select value={chInst} onChange={(e) => setChInst(e.target.value)}
-                  style={{ height: 28, padding: "0 4px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12 }}>
+                  style={{ height: 28, padding: "0 4px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12 }}>
                   {[1, 2, 3, 6, 10, 12].map((n) => <option key={n} value={n}>{n}x</option>)}
                 </select>
               </label>
@@ -2152,7 +2152,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
                 {mpOn && i.status !== "paid" && (
                   <button onClick={() => invoiceLink(i)}
                     title={i.mpInitPoint ? "copiar o link de pagamento desta fatura" : "gerar o link de pagamento desta fatura no Mercado Pago"}
-                    style={{ height: 20, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--accent)", fontSize: 10.5 }}>
+                    style={{ height: 20, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--accent)", fontSize: 10.5 }}>
                     {i.mpInitPoint ? "copiar link" : "link MP"}
                   </button>
                 )}
@@ -2442,7 +2442,7 @@ function CustomerReferrals({ customer, onNewReferral, compact = false, onOpen = 
         <h3 className="card-title">Indicações</h3>
         {link && (
           <button onClick={copyLink}
-            style={{ height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)" }}>
+            style={{ height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)" }}>
             {copied ? "link copiado" : "copiar link de indicação"}
           </button>
         )}
@@ -2475,7 +2475,7 @@ function CustomerReferrals({ customer, onNewReferral, compact = false, onOpen = 
               <span>{sd.name}{sd.phone ? ` · ${sd.phone}` : ""}</span>
               {onNewReferral && (
                 <button onClick={() => onNewReferral(customer, sd)}
-                  style={{ height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", flexShrink: 0 }}>
+                  style={{ height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", flexShrink: 0 }}>
                   registrar indicação
                 </button>
               )}
@@ -2511,7 +2511,7 @@ function CustomerContracts({ customer, onClose }) {
         <span>Contratos gerados</span>
         {rows && rows.length > 0 && <span className="mono dim tnum" style={{ fontSize: 10 }}>{rows.length}</span>}
         <button onClick={() => { onClose && onClose(); window.location.hash = "contracts"; }}
-          style={{ marginLeft: "auto", height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
+          style={{ marginLeft: "auto", height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
           abrir Contratos ↗
         </button>
       </div>
@@ -2533,7 +2533,7 @@ function CustomerContracts({ customer, onClose }) {
             {i.author && <span className="mono dim" style={{ fontSize: 10 }}>{displayName(i.author)}</span>}
             <button onClick={() => { if (!printContract(i, i.values)) window.toast && window.toast("O navegador bloqueou a janela de impressão · libere o popup deste site", "neg"); }}
               title="reimprimir o contrato exatamente como foi gerado"
-              style={{ height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11 }}>
+              style={{ height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11 }}>
               Imprimir / PDF
             </button>
           </span>

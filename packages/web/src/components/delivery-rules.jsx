@@ -15,7 +15,7 @@ const money = (v) => BRL.format(Number(v) || 0);
 const DIAS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 const RULE_LABEL = { agendaFull: "Agenda cheia", weekendOff: "Janela morta", shortFriday: "Sexta curta", budget: "Orçamento", config: "Configuração" };
 
-const numInp = { width: 64, height: 28, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)", textAlign: "right" };
+const numInp = { width: 64, height: 28, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)", textAlign: "right" };
 
 const ddmm = (day) => (day ? `${day.slice(8, 10)}/${day.slice(5, 7)}` : "");
 const logWhen = (iso) => {
@@ -140,7 +140,7 @@ export function DeliveryRulesCard({ saas }) {
           <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--fg-3)" }}>
             janela
             <select value={r.agendaFull.horizon} disabled={busy} onChange={(e) => save({ agendaFull: { horizon: e.target.value } })}
-              style={{ height: 28, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12 }}>
+              style={{ height: 28, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12 }}>
               <option value="pair">par de dias (seg/ter · qua/qui · sex)</option>
               <option value="day">só o dia seguinte</option>
             </select>

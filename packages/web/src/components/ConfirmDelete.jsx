@@ -32,7 +32,7 @@ function ConfirmDelete({ entityKey, record, onClose, onDeleted }) {
         </div>
         {error && <div className="mono" style={{ fontSize: 11, color: "var(--neg)", marginTop: 10 }}>{error}</div>}
         <div style={{ display: "flex", gap: 8, marginTop: 18, justifyContent: "flex-end" }}>
-          <button onClick={onClose} style={{ padding: "8px 14px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 13 }}>Cancelar</button>
+          <button onClick={onClose} style={{ padding: "8px 14px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 13 }}>Cancelar</button>
           <button onClick={confirm} disabled={busy} style={{ padding: "8px 14px", background: "var(--neg)", color: "white", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500, opacity: busy ? 0.6 : 1 }}>{busy ? "Excluindo…" : "Excluir"}</button>
         </div>
     </Modal>

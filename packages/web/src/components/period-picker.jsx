@@ -248,7 +248,7 @@ export function PeriodPicker({ period, custom, onChange, presets }) {
     setOpen(false);
   };
 
-  const btn = { height: 32, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" };
+  const btn = { height: 32, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" };
   const toggle = () => {
     if (open) { setOpen(false); return; }
     const r = ref.current?.getBoundingClientRect();
@@ -270,7 +270,7 @@ export function PeriodPicker({ period, custom, onChange, presets }) {
           <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 69 }} />
           <div style={{
             position: "fixed", top: pos.top, right: pos.right, zIndex: 70,
-            background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)",
+            background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)",
             boxShadow: "var(--shadow-pop)", padding: 14,
             // Largura EXPLÍCITA: sem ela o popover encolhe até caber no bloco de
             // contenção e os calendários vazam. maxHeight + scroll pra lista de

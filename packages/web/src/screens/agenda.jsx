@@ -379,7 +379,7 @@ export function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, o
   // Sem data não tem como derivar: cai no weekday gravado (0 = domingo é dia
   // válido, então nada de `|| 1`, que engolia domingo virando segunda).
   const weekdayLabel = WD_LABEL[date ? new Date(`${date}T12:00:00`).getDay() : (Number(b?.weekday) || 0)];
-  const field = { height: 34, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, minWidth: 0 };
+  const field = { height: 34, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, minWidth: 0 };
   const label = { display: "block", marginBottom: 4 };
   const submit = () => {
     const wd = date ? new Date(`${date}T12:00:00`).getDay() : (Number(b?.weekday) || 0);
@@ -544,7 +544,7 @@ export function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, o
             </button>
           )}
           <span style={{ flex: 1 }} />
-          <button onClick={onClose} style={{ height: 36, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, cursor: "pointer" }}>Cancelar</button>
+          <button onClick={onClose} style={{ height: 36, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, cursor: "pointer" }}>Cancelar</button>
           <PrimaryButton onClick={submit}>{b ? "Salvar" : "Criar"}</PrimaryButton>
         </div>
     </Modal>

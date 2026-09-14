@@ -1085,7 +1085,7 @@ function AtencaoCard({ items, wide }) {
                 <div style={{ fontSize: 11.5, color: "var(--fg-3)", marginTop: 2 }}>{it.sub}</div>
               </div>
               {it.onClick && (
-                <button onClick={it.onClick} style={{ padding: "5px 11px", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 600, background: "var(--bg-1)", whiteSpace: "nowrap" }}>
+                <button onClick={it.onClick} style={{ padding: "5px 11px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 600, background: "var(--bg-1)", whiteSpace: "nowrap" }}>
                   {it.action} →
                 </button>
               )}
@@ -1130,7 +1130,7 @@ function MonthSelect() {
   };
   return (
     <select value={value} onChange={(e) => pick(e.target.value)} aria-label="Filtrar por mês"
-      style={{ height: 32, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+      style={{ height: 32, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
       <option value="" disabled>Mês…</option>
       {months.map(({ key, d }) => (
         <option key={key} value={key}>{MONTH_NAMES[d.getMonth()]} {d.getFullYear()}</option>
