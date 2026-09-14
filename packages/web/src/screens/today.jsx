@@ -82,11 +82,13 @@ function NowClock({ now }) {
   return (
     <span title={`agora · ${day} ${hhmmOf(now)}`} style={{
       display: "inline-flex", alignItems: "center", gap: 7, height: 30, padding: "0 12px", borderRadius: 999,
-      border: "1px solid var(--line-2)", background: "var(--bg-1)", flexShrink: 0,
+      border: "1px solid var(--line-1)", background: "var(--bg-2)", flexShrink: 0,
     }}>
-      <span style={{ color: "var(--accent)", display: "inline-flex" }}><ClockIcon now={now} /></span>
-      <span className="tnum" style={{ fontSize: 13.5, fontWeight: 600, color: "var(--fg-1)" }}>{hhmmOf(now)}</span>
-      <span style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{day}</span>
+      {/* Ordem da prancha: o dia antes da hora, tudo em mono. */}
+      <span style={{ color: "var(--fg-4)", display: "inline-flex" }}><ClockIcon now={now} /></span>
+      <span className="mono tnum" style={{ fontSize: 11.5, color: "var(--fg-3)" }}>{day}</span>
+      <span style={{ fontSize: 11.5, color: "var(--line-2)" }}>·</span>
+      <span className="mono tnum" style={{ fontSize: 11.5, fontWeight: 600, color: "var(--fg-1)" }}>{hhmmOf(now)}</span>
     </span>
   );
 }
@@ -94,18 +96,29 @@ function NowClock({ now }) {
 // Coluna "quando" da fila: a HORA em pílula navy (o dado que a pessoa procura
 // primeiro) e a previsão logo abaixo ("agora", "em 25 min", "atrasado 2d").
 // Item sem hora marcada usa a pílula neutra pra fila não perder o alinhamento.
-function TimeCell({ pill, note, tone, soft }) {
-  const noteColor = tone === "neg" ? "var(--neg)" : tone === "warn" ? "var(--warn)" : tone === "pos" ? "var(--pos)" : "var(--fg-4)";
+// A pílula de horário na medida da prancha (14/09): 22px de altura, raio 6,
+// 11,5px tabular. O TOM pinta a pílula inteira, e é ele que faz a coluna ser
+// lida de longe: cinza = já feito ou sem data, âmbar = perto de vencer, navy =
+// hora marcada com o lead, vermelho = passou da hora.
+const TIME_TONE = {
+  neg:  { bg: "var(--neg)", fg: "oklch(1 0 0)" },
+  warn: { bg: "var(--warn-soft)", fg: "var(--warn)" },
+  appt: { bg: "var(--btn-bg)", fg: "var(--btn-fg)" },
+  mut:  { bg: "var(--bg-2)", fg: "var(--fg-4)" },
+};
+function TimeCell({ pill, note, tone, soft, apagado }) {
+  const t = apagado ? TIME_TONE.mut : (TIME_TONE[soft ? "mut" : tone] || TIME_TONE.mut);
+  const noteColor = apagado ? "var(--fg-4)" : tone === "neg" ? "var(--neg)" : tone === "warn" ? "var(--warn)" : tone === "pos" ? "var(--pos)" : "var(--fg-4)";
   return (
-    <span style={{ width: 66, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 3 }}>
+    <span style={{ minWidth: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 3 }}>
       {/* Instrument Sans com números tabulares (`.tnum`, sem `.mono`): a hora
           lê mais fácil que na JetBrains e as colunas continuam alinhadas. */}
       <span className="tnum" style={{
-        display: "inline-flex", alignItems: "center", height: 22, padding: soft ? "0 8px" : "0 9px", borderRadius: 999,
-        background: soft ? "var(--bg-2)" : "var(--btn-bg)", color: soft ? "var(--fg-2)" : "var(--btn-fg)",
-        fontSize: soft ? 11.5 : 12.5, fontWeight: 600, whiteSpace: "nowrap",
+        display: "inline-flex", alignItems: "center", height: 22, padding: "0 8px", borderRadius: "var(--r-1)",
+        background: t.bg, color: t.fg, fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap", maxWidth: "100%",
+        overflow: "hidden", textOverflow: "ellipsis",
       }}>{pill}</span>
-      {note && <span style={{ fontSize: 10.5, fontWeight: tone === "neg" ? 600 : 500, color: noteColor, paddingLeft: 2, whiteSpace: "nowrap" }}>{note}</span>}
+      {note && <span style={{ fontSize: 10.5, fontWeight: tone === "neg" && !apagado ? 600 : 500, color: noteColor, paddingLeft: 2, whiteSpace: "nowrap" }}>{note}</span>}
     </span>
   );
 }
@@ -134,17 +147,19 @@ const TIER_ORDER = { S: 6, A: 5, B: 4, C: 3, D: 2, E: 1, sem: 0 };
 // quentes) na sequência; depois retomadas, follow-ups, nutrição e sem agenda.
 const GROUP_ORDER = ["confirm", "appt", "novo", "noshow", "qual", "closer", "nutri", "loose"];
 
-// A grade da linha da fila: ordem · quando · o que fazer · nível · quem · dono
-// · ações. Somada com os gaps dá ~646px, dentro do orçamento de 1024px de
-// janela com o trilho de 380px empilhado (748 − 32 do padding). O smoke trava
-// a conta.
+// A grade da linha da fila, medida no DOM da prancha (14/09): ordem · quando ·
+// o que fazer · lead · etapa e dono · ações. As três colunas de texto são
+// `minmax(0, …fr)`, então elas ABREVIAM em vez de empurrar os botões pra fora
+// da seção — foi a crítica 2 da rodada 2 do handoff, quando a linha somava
+// 786px numa coluna de 626px e "WhatsApp" e "roteiro" ficavam 139px fora,
+// sem scroller pra alcançar.
 //
 // A COLUNA DA ORDEM entrou em 14/09 (protótipo do Leo): a tela promete "a
 // ordem é a prioridade do processo, não a hora" e não numerava nada, então a
 // promessa só existia no subtítulo. Com o número, pular a 3ª pra fazer a 7ª
 // vira uma decisão consciente em vez de acidente.
-export const QUEUE_GRID = "24px 76px minmax(120px,156px) 20px minmax(120px,1fr) 38px 176px";
-export const QUEUE_GRID_GAP = 12;
+export const QUEUE_GRID = "24px 72px minmax(0,1.3fr) minmax(0,1.3fr) minmax(0,0.9fr) auto";
+export const QUEUE_GRID_GAP = 10;
 export const QUEUE_GRID_BUDGET = 716;
 
 // ── O grupo VIRA CABEÇALHO na fila (12/09/2026) ─────────────────────────────
@@ -154,24 +169,30 @@ export const QUEUE_GRID_BUDGET = 716;
 // frase diz POR QUE aquele grupo vem antes — é o que ensina a fila.
 const GROUP_META = {
   confirm: ["Confirmar call", "o mais sensível a horário"],
-  appt: ["Compromissos de hoje", ""],
+  appt: ["Compromisso marcado", "hora marcada com o lead"],
   novo: ["Leads novos", "quanto mais fresco, mais responde"],
-  noshow: ["Remarcar", "não apareceu na call"],
+  noshow: ["Furou a call", "retomar no mesmo dia"],
   qual: ["Retomadas", "toque agendado que venceu"],
   closer: ["Follow-up do closer", ""],
-  nutri: ["Reativação", ""],
-  loose: ["Sem agenda", "ninguém marcou o próximo toque"],
+  nutri: ["Nutrição", "fora do funil ativo"],
+  loose: ["Sem data", "ninguém marcou o próximo toque · não entram na contagem do dia"],
 };
 
 // O VERBO da ação (o trabalho), que estava escondido em 12,5px --fg-3 dentro da
 // coluna do nome enquanto a ETAPA ocupava uma coluna de 118px em chip. Usado
 // pelo bloco "Agora" e pela coluna "o que fazer" da linha — uma régua só.
+// O verbo da linha, com as palavras da prancha (14/09) e em minúsculo: é uma
+// ORDEM DE TRABALHO ("positivar a confirmação"), não um rótulo de categoria.
+// A confirmação de 2h manda e a de 10 min positiva, por isso os dois verbos.
 function actionVerb(item) {
-  if (item.confirm) return item.confirmKind === "integracao" ? "Confirmar integração" : "Confirmar call";
-  if (item.group === "noshow") return "Remarcar";
-  if (item.group === "nutri") return "Reativação";
-  const l = ACTION_LABELS[item.kind] || "contato";
-  return l.charAt(0).toUpperCase() + l.slice(1);
+  if (item.confirm) {
+    if (item.confirmKind === "integracao") return "confirmar a integração";
+    return item.confirmWindow === "10min" ? "positivar a confirmação" : "confirmar a call";
+  }
+  if (item.group === "noshow") return "retomada";
+  if (item.group === "nutri") return "reativação";
+  if (item.group === "loose") return "marcar o próximo toque";
+  return ACTION_LABELS[item.kind] || "contato";
 }
 
 // O detalhe embaixo do verbo: a janela da confirmação, a tentativa, a nota do
@@ -396,16 +417,22 @@ function SocialSellingBar({ saasId, person, version, openForm }) {
     } catch (e) { toast(`Não deu pra registrar · ${e?.message || "tente de novo"}`, "neg"); }
     finally { setBusy(false); }
   };
-  const btn = { height: 28, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 };
+  const btn = { height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" };
+  // Rodapé do card da fila (prancha, 14/09): kicker + a frase do porquê à
+  // esquerda, o número e as duas ações à direita.
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", border: "1px solid var(--line-1)", background: "var(--bg-1)", borderRadius: "var(--r-3)", padding: "8px 12px" }}>
-      <span style={{ fontSize: 13, fontWeight: 600 }}>📸 Social selling hoje</span>
-      <span className="tnum" style={{ fontSize: 15, fontWeight: 700, minWidth: 18, textAlign: "center" }}>{count == null ? "—" : count}</span>
-      <button onClick={inc} disabled={busy} title="registra uma abordagem feita no Instagram" style={{ ...btn, background: "var(--btn-bg)", color: "var(--btn-fg)", border: "none", opacity: busy ? 0.6 : 1 }}>+1</button>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)", padding: "12px 16px" }}>
+      <div style={{ flex: 1, minWidth: 220 }}>
+        <div className="kicker">Social selling</div>
+        <div style={{ fontSize: 12, color: "var(--fg-3)", marginTop: 2 }}>cada abordagem no Instagram conta no seu desempenho do dia</div>
+      </div>
+      <span className="tnum" style={{ fontSize: 20, fontWeight: 700, minWidth: 18, textAlign: "center" }}>{count == null ? "—" : count}</span>
+      <button onClick={inc} disabled={busy} title="registra uma abordagem feita no Instagram"
+        style={{ ...btn, background: "var(--btn-bg)", color: "var(--btn-fg)", borderColor: "var(--btn-bg)", opacity: busy ? 0.6 : 1 }}>+1</button>
       {openForm && (
-        <button onClick={() => openForm("leads", { saas: saasId, source: "Social selling", owner: person })} title="cadastra o lead já com a origem Social selling" style={btn}>virou lead · cadastrar</button>
+        <button onClick={() => openForm("leads", { saas: saasId, source: "Social selling", owner: person })}
+          title="cadastra o lead já com a origem Social selling · conta na Análise de Desempenho" style={btn}>cadastrar lead</button>
       )}
-      <span className="dim" style={{ fontSize: 12 }}>conta na Análise de Desempenho</span>
     </div>
   );
 }
@@ -689,7 +716,6 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   const firstPending = q.hoje.find((i) => !i.done);
   const pendingToday = q.hoje.filter((i) => !i.done);
   const doneTodayRows = q.hoje.filter((i) => i.done);
-  const [showDone, setShowDone] = useS(false); // "feitas hoje" é rodapé recolhível da fila
   const [busca, setBusca] = useS("");
   // "Sem data" SAIU do trilho (14/09): estava misturado com "Próximos dias"
   // dentro de um card que diz "nada aqui é para hoje", quando a verdade é o
@@ -739,9 +765,12 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   // como a prancha define) — consulta da mentoria não vira bloco Agora, então
   // nesse caso nada é descontado. `lateCount` é o vencido de verdade (due no
   // passado), que é o número que o cabeçalho da fila cobra.
+  // A fila mostra HOJE INTEIRO, feitas incluídas (prancha, 14/09): a feita fica
+  // na posição dela, riscada, em vez de sumir atrás de um "ver as feitas". É o
+  // que dá onde conferir o "1 de 10 feitos hoje" do cabeçalho.
   const queueRows = firstPending && !firstPending.consulta
-    ? pendingToday.filter((i) => i !== firstPending)
-    : pendingToday;
+    ? q.hoje.filter((i) => i !== firstPending)
+    : q.hoje;
   const lateCount = pendingToday.filter((i) => i.due && i.due.t <= Date.now()).length;
 
   // Busca DENTRO da fila (protótipo, 14/09). Com oito grupos e o dia cheio, a
@@ -792,6 +821,14 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
           <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 6, flexWrap: "wrap" }}>
             <PersonPicker users={users} person={person} counts={queueCounts}
               onChange={setPerson} canPick={users.length > 1 && isAdminUser()} />
+            {/* "Começar a fila →" (prancha, 14/09): abre o roteiro do primeiro
+                pendente. É o mesmo destino do botão do bloco Agora, e existe
+                porque quem chega na tela quer começar sem escolher. */}
+            <button onClick={() => firstPending && setScriptItem(firstPending)} disabled={!firstPending}
+              title={firstPending ? "abre o roteiro do primeiro item da fila" : "fila de hoje zerada"}
+              style={{ height: 34, padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--btn-bg)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 13, fontWeight: 650, cursor: firstPending ? "pointer" : "not-allowed", opacity: firstPending ? 1 : 0.45 }}>
+              Começar a fila →
+            </button>
           </div>
         </div>
 
@@ -807,12 +844,6 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
             </span>
             <button onClick={() => setReload((n) => n + 1)} style={{ marginLeft: "auto", height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--warn-line)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 600, flexShrink: 0, cursor: "pointer" }}>recarregar</button>
           </div>
-        )}
-        {/* A barra do contador +1 segue no fluxo normal (registrar abordagem é
-            coisa do dia inteiro); no estado de fila limpa ela é absorvida pelo
-            bloco único. */}
-        {viewedIsSdr && saasCfg?.id && !daySocialDone && total > 0 && (
-          <SocialSellingBar saasId={saasCfg.id} person={person} version={version} openForm={openForm} />
         )}
         {daySocialDone && total > 0 && (
           <FilaLimpa ig={igStats} contatos={q.doneToday} calls={callsToday.length}
@@ -849,38 +880,31 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
               )}
 
               <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-                <div style={{ padding: "18px var(--inset-x) 12px", display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ padding: "18px 16px 12px", display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
                   <div style={{ flex: 1, minWidth: 180 }}>
-                    <h3 className="card-title" style={{ margin: 0 }}>{queueRows.length ? `${queueRows.length} restantes` : "Fila de hoje"}</h3>
+                    <h3 className="card-title" style={{ margin: 0 }}>Hoje</h3>
                     <div className="card-sub" style={{ marginTop: 3 }}>a ordem é a prioridade do processo, não a hora</div>
                   </div>
-                  <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-                    {lateCount > 0 && (
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--neg)", fontWeight: 600 }}>
-                        <span style={{ width: 6, height: 6, borderRadius: 999, background: "currentColor" }} />
-                        <span className="tnum">{lateCount}</span> {lateCount === 1 ? "atrasada" : "atrasadas"}
-                      </span>
-                    )}
-                    {/* PROGRESSO DO DIA (protótipo, 14/09): "N de M feitos" com
-                        a barra. Os chips diziam quantas faltavam e quantas
-                        saíram, nunca a proporção — e é a proporção que diz se
-                        o dia está ganho ou perdido às 15h. */}
+                  <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                    {/* "N de M feitos hoje" + a barra: é a proporção que diz se
+                        o dia está ganho ou perdido às 15h. O atraso não vira
+                        chip aqui — ele já é lido na pílula vermelha da linha. */}
                     {(doneTodayRows.length > 0 || queueRows.length > 0) && (() => {
                       const feitos = doneTodayRows.length;
                       const totalDia = feitos + pendingToday.length;
                       const pct = totalDia > 0 ? Math.round((feitos / totalDia) * 100) : 0;
                       return (
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
-                          title={`${feitos} de ${totalDia} da fila de hoje já saíram`}>
-                          <span className="tnum" style={{ fontSize: 12.5, fontWeight: 600, color: feitos ? "var(--pos)" : "var(--fg-3)" }}>{`${feitos} de ${totalDia} feitos`}</span>
-                          <span style={{ width: 90, height: 6, borderRadius: 999, background: "var(--bg-3)", overflow: "hidden", flexShrink: 0 }}>
+                          title={`${feitos} de ${totalDia} da fila de hoje já saíram${lateCount ? ` · ${lateCount} ${lateCount === 1 ? "atrasada" : "atrasadas"}` : ""}`}>
+                          <span className="tnum" style={{ fontSize: 12, color: "var(--fg-3)" }}>{`${feitos} de ${totalDia} feitos hoje`}</span>
+                          <span style={{ width: 80, height: 6, borderRadius: 999, background: "var(--bg-3)", overflow: "hidden", flexShrink: 0 }}>
                             <span style={{ display: "block", height: 6, width: `${pct}%`, background: "var(--pos)" }} />
                           </span>
                         </span>
                       );
                     })()}
                     <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar na fila…"
-                      className="inp" style={{ width: 160 }} />
+                      className="inp" style={{ width: 180, height: 34 }} />
                   </div>
                 </div>
                 {queueRows.length === 0 && (
@@ -901,17 +925,18 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                   const anterior = index > 0 ? (queueShown[index - 1].group || "loose") : null;
                   const [rotulo, frase] = GROUP_META[grupo] || [grupo, ""];
                   const nGrupo = queueShown.filter((x) => (x.group || "loose") === grupo).length;
-                  // A numeração é a da fila INTEIRA, não a da lista filtrada:
-                  // buscar não pode mentir sobre a posição do item no dia.
-                  const ordem = queueRows.indexOf(item) + 1 + (firstPending && !firstPending.consulta ? 1 : 0);
+                  // A numeração é a da fila INTEIRA, não a da lista filtrada
+                  // (buscar não pode mentir sobre a posição no dia) e conta só
+                  // os PENDENTES: a feita não ocupa número, como na prancha.
+                  const ordem = item.done ? null
+                    : queueRows.slice(0, queueRows.indexOf(item) + 1).filter((x) => !x.done).length + (firstPending && !firstPending.consulta ? 1 : 0);
                   const key = item.consulta ? `c-${item.consulta.id}` : item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id;
                   return (
                     <React.Fragment key={key}>
                       {grupo !== anterior && (
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px var(--inset-x)", background: "var(--bg-2)", borderTop: "1px solid var(--line-1)" }}>
-                          <span className="kicker" style={{ fontWeight: 600, color: grupo === "confirm" ? "var(--neg)" : "var(--fg-3)" }}>{rotulo}</span>
-                          <span className="tnum" style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{nGrupo}</span>
-                          {frase && <span style={{ fontSize: 11, color: "var(--fg-4)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>· {frase}</span>}
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "7px 16px", background: "var(--bg-2)", borderTop: "1px solid var(--line-1)" }}>
+                          <span className="kicker tnum" style={{ fontWeight: 600, color: "var(--fg-2)" }}>{`${rotulo} · ${nGrupo}`}</span>
+                          {frase && <span style={{ fontSize: 11, color: "var(--fg-4)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{frase}</span>}
                         </div>
                       )}
                       <QueueRow item={item} block="hoje" featured={false} ordem={ordem}
@@ -926,10 +951,9 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                     mesmas ações da fila, e FORA da contagem do dia. */}
                 {semDataShown.length > 0 && (
                   <>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px var(--inset-x)", background: "var(--bg-2)", borderTop: "1px solid var(--line-1)" }}>
-                      <span className="kicker" style={{ fontWeight: 600, color: "var(--fg-3)" }}>Sem data</span>
-                      <span className="tnum" style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{q.semdata.length}</span>
-                      <span style={{ fontSize: 11, color: "var(--fg-4)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>· ninguém marcou o próximo toque · não entram na contagem do dia</span>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "7px 16px", background: "var(--bg-2)", borderTop: "1px solid var(--line-1)" }}>
+                      <span className="kicker tnum" style={{ fontWeight: 600, color: "var(--fg-2)" }}>{`Sem data · ${q.semdata.length}`}</span>
+                      <span style={{ fontSize: 11, color: "var(--fg-4)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>ninguém marcou o próximo toque · não entram na contagem do dia</span>
                     </div>
                     {semDataShown.map((item) => (
                       <QueueRow key={`sd-${item.l?.id || item.consulta?.id}`} item={item} block="semdata" featured={false} ordem={null}
@@ -937,26 +961,21 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                     ))}
                   </>
                 )}
-                {/* "Feitas hoje" era uma section inteira competindo com a fila;
-                    virou o rodapé recolhível dela, com a mesma DoneActivityRow. */}
-                {doneTodayRows.length > 0 && (
-                  <div style={{ borderTop: "1px solid var(--line-1)" }}>
-                    <button onClick={() => setShowDone((v) => !v)} className="mono"
-                      style={{ width: "100%", textAlign: "left", padding: "10px var(--inset-x)", background: "none", border: 0, fontSize: 12, color: "var(--accent)", fontWeight: 600, cursor: "pointer" }}>
-                      {showDone ? `esconder as feitas ▴` : `ver as feitas (${doneTodayRows.length}) ▾`}
-                    </button>
-                    {showDone && doneTodayRows.map((item) => <DoneActivityRow key={item.l.id} item={item} onClick={() => setScriptItem(item)} />)}
-                  </div>
+                {/* SOCIAL SELLING fecha o card (prancha, 14/09): era uma
+                    barra solta acima da fila. */}
+                {viewedIsSdr && saasCfg?.id && (
+                  <SocialSellingBar saasId={saasCfg.id} person={person} version={version} openForm={openForm} />
                 )}
               </section>
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
-              <DayScore {...score} />
-              {myTasks.length > 0 && <TasksCard tasks={myTasks} onDone={completeTask} undo={undoTask} onUndo={revertTask} />}
-              {/* Amanhã e Próximos dias num card só: são consulta, não fluxo —
-                  o trilho tinha quatro cards de peso idêntico. */}
+              {/* A ORDEM é a da prancha (14/09): "O que vem" primeiro, Tarefas
+                  depois. O placar do dia não existe na prancha e desce pro fim
+                  do trilho, que é onde o excedente mora. */}
               <CompactSchedule title="O que vem" rows={q.amanha} laterRows={futureRows} onOpen={openRow} />
+              {myTasks.length > 0 && <TasksCard tasks={myTasks} onDone={completeTask} undo={undoTask} onUndo={revertTask} />}
+              <DayScore {...score} />
             </div>
           </div>
         )}
@@ -1073,36 +1092,47 @@ function QueueRow({ item, block, featured, ordem, onScript, onClaim, onWhatsapp,
 
   // A ETAPA saiu da linha (ia num chip de 118px enquanto a ação, que é o
   // trabalho, ficava em 12,5px dentro do nome): vive no title e no painel.
+  // Linha apagada = já feita: a prancha mantém a feita NA FILA, riscada e sem
+  // número, em vez de escondê-la atrás de um "ver as feitas". É o que faz
+  // "1 de 10 feitos hoje" ter onde ser conferido.
+  const apagado = !!item.done;
+  const risco = apagado ? { textDecoration: "line-through" } : null;
+  const tomTexto = apagado ? "var(--fg-4)" : "var(--fg-1)";
   return (
     <div onClick={onScript} role="button" tabIndex={0}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onScript(); } }}
       title={`Abrir o roteiro · ${stage}${hint ? ` · ${hint}` : ""}`} style={{
-      display: "grid", gridTemplateColumns: QUEUE_GRID, gap: 12, alignItems: "center",
-      padding: "12px var(--inset-x)",
+      display: "grid", gridTemplateColumns: QUEUE_GRID, gap: QUEUE_GRID_GAP, alignItems: "center",
+      padding: "11px 16px",
       borderTop: "1px solid var(--line-faint)", background: featured ? "var(--accent-soft)" : "transparent", cursor: "pointer",
     }}>
-      <span className="mono tnum" style={{ fontSize: 11.5, color: "var(--fg-4)", textAlign: "right" }}>{ordem ?? "—"}</span>
-      <TimeCell pill={when.pill} note={when.note} tone={when.tone} soft={when.soft} />
-      {/* O QUE FAZER ganhou a coluna que era da etapa. */}
+      <span className="mono tnum" style={{ fontSize: 11.5, color: "var(--fg-4)", textAlign: "right" }}>{apagado ? "" : (ordem ?? "—")}</span>
+      <TimeCell pill={when.pill} note={apagado ? "feito" : when.note} tone={when.tone} soft={when.soft} apagado={apagado} />
+      {/* O QUE FAZER: o verbo é a coluna mais larga junto com o lead. */}
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{verbo}</div>
-        {hint && <div style={{ fontSize: 11, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{hint}</div>}
+        <div style={{ fontSize: 13, fontWeight: 650, color: tomTexto, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", ...risco }}>{verbo}</div>
+        {hint && <div style={{ fontSize: 11, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", ...risco }}>{hint}</div>}
       </div>
-      {/* Nível: estava só no painel e no card do pipeline. */}
-      {tier.grade
-        ? <span title={tier.label} style={{ width: 20, height: 20, borderRadius: 5, background: tier.tone, color: tier.badgeFg, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{tier.grade}</span>
-        : <span title="sem qualificação" style={{ width: 20, height: 20, borderRadius: 5, border: "1px solid var(--line-2)", color: "var(--fg-4)", fontSize: 11, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>—</span>}
+      {/* O LEAD com o nível DENTRO da célula (a prancha não dá coluna própria
+          pro nível: ele é um atributo do lead, não uma dimensão da fila). */}
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</div>
-        {l.company && <div style={{ fontSize: 11.5, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.company}</div>}
+        <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+          {tier.grade
+            ? <span title={tier.label} style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, background: apagado ? "var(--bg-2)" : tier.tone, color: apagado ? "var(--fg-4)" : tier.badgeFg, fontSize: 10.5, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{tier.grade}</span>
+            : <span title="sem qualificação" style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, border: "1px solid var(--line-2)", color: "var(--fg-4)", fontSize: 10.5, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>—</span>}
+          <span style={{ fontSize: 13.5, fontWeight: 600, color: tomTexto, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", ...risco }}>{l.name}</span>
+        </div>
+        {l.company && <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.company}</div>}
       </div>
-      {/* Dono: avatar de 24px; sem responsável, o "+" que assume (era um botão
-          com texto que empurrava as ações pra fora da linha). */}
-      <span onClick={(e) => e.stopPropagation()} style={{ display: "inline-flex", justifyContent: "center" }}>
+      {/* ETAPA e DONO em texto, como a prancha. Sem dono, o "+" que assume
+          entra no lugar do nome — é função que a prancha não tem e que o
+          cockpit precisa, no lugar onde o dono seria lido. */}
+      <div style={{ minWidth: 0 }} onClick={(e) => { if (unowned) e.stopPropagation(); }}>
+        <div style={{ fontSize: 12, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{stage}</div>
         {unowned
-          ? <button onClick={onClaim} title="assumir este card" style={{ width: 38, height: 28, borderRadius: "var(--r-2)", border: "1px dashed var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 14, cursor: "pointer" }}>+</button>
-          : <Avatar id={who} name={displayName(who)} size={24} />}
-      </span>
+          ? <button onClick={onClaim} title="assumir este card" style={{ marginTop: 1, height: 18, padding: "0 6px", borderRadius: "var(--r-1)", border: "1px dashed var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 10.5, cursor: "pointer" }}>+ assumir</button>
+          : <div style={{ fontSize: 11.5, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{displayName(who)}</div>}
+      </div>
       <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }} onClick={(e) => e.stopPropagation()}>
         {meet ? (
           <a href={meet} target="_blank" rel="noopener noreferrer" style={{ height: 28, display: "inline-flex", alignItems: "center", padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", color: "var(--fg-2)", fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}>abrir Meet</a>
@@ -1118,17 +1148,18 @@ function QueueRow({ item, block, featured, ordem, onScript, onClaim, onWhatsapp,
         ) : null}
         {/* "roteiro" fica SEMPRE: sem ele, linha não-destaque com WhatsApp só
             abria pelo clique no corpo (invisível pra quem navega por botão). */}
-        <button onClick={onScript} style={{ height: 28, padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid var(--btn-bg, var(--accent))", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", cursor: "pointer" }}>roteiro</button>
+        <button onClick={onScript} style={{ height: 28, padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid " + (apagado ? "var(--line-2)" : "var(--btn-bg, var(--accent))"), background: apagado ? "var(--bg-2)" : "var(--btn-bg, var(--accent))", color: apagado ? "var(--fg-3)" : "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", cursor: "pointer" }}>roteiro</button>
       </div>
     </div>
   );
 }
 
 // ── O bloco "Agora" ────────────────────────────────────────────────────────
-// O primeiro pendente deixa de ser uma linha com fundo colorido e passa a ser o
-// comando da tela: o VERBO em 22px, o atraso ao lado, a identidade embaixo e as
-// duas ações grandes. Ele sai da lista de baixo (a contagem desconta), pra não
-// existir em dois lugares.
+// O primeiro pendente é o comando da tela. Na prancha (14/09) ele é o ÚNICO
+// card de borda navy: a identidade vem primeiro (nível · nome · empresa ·
+// hora), o verbo em negrito embaixo e o detalhe abaixo dele; as duas ações
+// ficam empilhadas à direita, a principal escura em cima. Ele sai da lista de
+// baixo (a contagem desconta), pra não existir em dois lugares.
 function AgoraBlock({ item, onScript, onClaim, onWhatsapp }) {
   const { l, due, stage, who } = item;
   const now = Date.now();
@@ -1136,66 +1167,52 @@ function AgoraBlock({ item, onScript, onClaim, onWhatsapp }) {
   const tier = leadTier(l);
   const wa = waLink(l.phone);
   const meet = item.kind === "call" ? l.callUrl : item.kind === "integracao" ? l.integrationCallUrl : "";
-  const quando = due
-    ? `${item.confirm || due.type === "call" ? `${item.kind === "integracao" ? "integração" : "call"} às ${hhmmOf(due.t)}` : hhmmOf(due.t)} · ${atrasado ? "agora" : untilNote(due.t, now)}`
-    : item.kind === "novo" ? "lead novo · sem hora marcada" : "sem hora marcada";
+  const quando = due ? `${hhmmOf(due.t)} · ${atrasado ? "agora" : untilNote(due.t, now)}` : "sem hora marcada";
+  const detalhe = l.nextActionNote || actionHint(item);
   return (
-    <section style={{ border: `1px solid ${atrasado ? "var(--neg)" : "var(--accent-line)"}`, background: atrasado ? "var(--neg-soft)" : "var(--accent-soft)", borderRadius: "var(--r-4)", padding: "18px var(--inset-x)" }}>
+    <section style={{ border: `1px solid ${atrasado ? "var(--neg)" : "var(--btn-bg)"}`, background: "var(--bg-1)", borderRadius: "var(--r-4)", padding: "18px 22px" }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 240 }}>
-          <div className="kicker" style={{ color: atrasado ? "var(--neg)" : "var(--accent)" }}>Agora</div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 4, flexWrap: "wrap" }}>
-            <span style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, lineHeight: 1.2 }}>{actionVerb(item)}</span>
-            <span style={{ fontSize: 13, color: atrasado ? "var(--neg)" : "var(--fg-3)", fontWeight: atrasado ? 600 : 400 }}>{quando}</span>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+            <span className="kicker" style={{ color: atrasado ? "var(--neg)" : "var(--fg-3)" }}>Agora</span>
+            <span style={{ fontSize: 12, color: "var(--fg-4)" }}>o primeiro da fila</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-            {tier.grade && (
-              <span title={tier.label} style={{ width: 20, height: 20, borderRadius: 5, background: tier.tone, color: tier.badgeFg, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{tier.grade}</span>
-            )}
-            <span style={{ fontSize: 14, fontWeight: 600 }}>{l.name}</span>
+            {tier.grade
+              ? <span title={tier.label} style={{ width: 20, height: 20, borderRadius: 5, background: tier.tone, color: tier.badgeFg, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{tier.grade}</span>
+              : <span title="sem qualificação" style={{ width: 20, height: 20, borderRadius: 5, border: "1px solid var(--line-2)", color: "var(--fg-4)", fontSize: 11, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>—</span>}
+            <span style={{ fontSize: 15.5, fontWeight: 700, letterSpacing: "-0.01em" }}>{l.name}</span>
             {l.company && <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{l.company}</span>}
+            <span className="mono tnum" style={{ fontSize: 11.5, color: atrasado ? "var(--neg)" : "var(--fg-3)", fontWeight: atrasado ? 600 : 400 }}>{quando}</span>
             <span className="mono dim" style={{ fontSize: 11 }}>{stage}</span>
           </div>
-          {(l.nextActionNote || actionHint(item)) && (
-            <div style={{ fontSize: 13, color: "var(--fg-2)", marginTop: 6 }}>{l.nextActionNote || actionHint(item)}</div>
-          )}
+          <div style={{ fontSize: 14, fontWeight: 700, marginTop: 8 }}>{actionVerb(item)}</div>
+          {detalhe && <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 2 }}>{detalhe}</div>}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          {!who && (
-            <button onClick={onClaim} title="assumir este card"
-              style={{ height: 42, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px dashed var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 13, cursor: "pointer" }}>assumir</button>
-          )}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "stretch", minWidth: 150 }}>
           <button onClick={onScript}
-            style={{ height: 42, padding: "0 18px", borderRadius: "var(--r-2)", border: "1px solid var(--btn-bg, var(--accent))", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+            style={{ height: 42, padding: "0 18px", borderRadius: "var(--r-2)", border: "1px solid var(--btn-bg)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 14, fontWeight: 650, cursor: "pointer" }}>
             Abrir o roteiro →
           </button>
           {meet ? (
             <a href={meet} target="_blank" rel="noopener noreferrer"
-              style={{ height: 42, display: "inline-flex", alignItems: "center", padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13.5, fontWeight: 600, textDecoration: "none" }}>abrir Meet ↗</a>
+              style={{ height: 38, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>abrir Meet ↗</a>
           ) : wa ? (
             onWhatsapp ? (
               <button onClick={() => onWhatsapp(l)} title="Abrir a conversa no inbox do cockpit"
-                style={{ height: 42, padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>WhatsApp</button>
+                style={{ height: 38, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>WhatsApp</button>
             ) : (
               <a href={wa} target="_blank" rel="noopener noreferrer"
-                style={{ height: 42, display: "inline-flex", alignItems: "center", padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13.5, fontWeight: 600, textDecoration: "none" }}>WhatsApp ↗</a>
+                style={{ height: 38, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>WhatsApp ↗</a>
             )
           ) : null}
+          {!who && (
+            <button onClick={onClaim} title="assumir este card"
+              style={{ height: 30, borderRadius: "var(--r-2)", border: "1px dashed var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 12, cursor: "pointer" }}>assumir</button>
+          )}
         </div>
       </div>
     </section>
-  );
-}
-
-function DoneActivityRow({ item, onClick }) {
-  const { l } = item;
-  const time = l.lastActivityAt ? new Date(l.lastActivityAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "";
-  return (
-    <button onClick={onClick} style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "12px var(--inset-x)", borderTop: "1px solid var(--line-faint)", textAlign: "left" }}>
-      <span style={{ color: "var(--pos)", fontSize: 13, width: 66, flexShrink: 0 }}>✓</span>
-      <span style={{ fontSize: 13.5, color: "var(--fg-3)", textDecoration: "line-through", flex: 1 }}>{l.name}{l.company ? ` · ${l.company}` : ""} · {ACTION_LABELS[item.kind] || "atividade concluída"}</span>
-      <span className="tnum" style={{ fontSize: 12.5, color: "var(--fg-4)" }}>{time}</span>
-    </button>
   );
 }
 
@@ -1213,10 +1230,9 @@ function ScheduleLane({ label, rows, amanha, onOpen }) {
   const calls = rows.filter((i) => i.due?.type === "call" || i.kind === "call").length;
   return (
     <>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px var(--inset-x)", background: "var(--bg-2)", borderTop: "1px solid var(--line-1)" }}>
-        <span className="kicker" style={{ fontWeight: 600 }}>{label}</span>
-        <span className="tnum" style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{rows.length}</span>
-        {calls > 0 && <span style={{ fontSize: 11, color: "var(--fg-4)" }}>· {calls} {calls === 1 ? "call" : "calls"}</span>}
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "7px var(--inset-x)", background: "var(--bg-2)", borderTop: "1px solid var(--line-1)" }}>
+        <span className="kicker tnum" style={{ fontWeight: 600, color: "var(--fg-2)" }}>{label}</span>
+        {calls > 0 && <span style={{ fontSize: 11, color: "var(--fg-4)" }}>{calls} {calls === 1 ? "call" : "calls"}</span>}
       </div>
       <div style={{ padding: "0 var(--inset-x) 4px" }}>
         {rows.length === 0 && <div style={{ padding: "10px 0 12px", fontSize: 12.5, color: "var(--fg-4)" }}>nenhuma atividade</div>}
@@ -1249,11 +1265,11 @@ function CompactSchedule({ title = "O que vem", rows = [], laterRows = [], onOpe
       <div style={{ padding: "18px var(--inset-x) 12px" }}>
         <h3 className="card-title" style={{ margin: 0 }}>{title}</h3>
         <div className="card-sub" style={{ marginTop: 3 }}>
-          {total ? `${total} ${total === 1 ? "atividade marcada" : "atividades marcadas"}` : "nada marcado ainda"}
+          {total ? "nada aqui é para hoje" : "nada marcado ainda"}
         </div>
       </div>
-      <ScheduleLane label="Amanhã" rows={rows} amanha onOpen={onOpen} />
-      {laterRows.length > 0 && <ScheduleLane label="Próximos dias" rows={laterRows} onOpen={onOpen} />}
+      <ScheduleLane label={`Amanhã · ${rows.length}`} rows={rows} amanha onOpen={onOpen} />
+      {laterRows.length > 0 && <ScheduleLane label={`Próximos dias · ${laterRows.length}`} rows={laterRows} onOpen={onOpen} />}
     </section>
   );
 }
