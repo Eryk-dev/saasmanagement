@@ -207,10 +207,44 @@ test("migração do painel: atualiza o case que já existia em vez de duplicar, 
   assert.equal(todos.filter((c) => c.name === "Dyno Nutri").length, 1, "um card por cliente");
   const depois = todos.find((c) => c.name === "Dyno Nutri");
   assert.equal(depois.id, antes.id, "mesmo registro, número novo");
-  assert.equal(depois.metrics[0].value, "R$ 127 mil");
+  assert.equal(depois.metrics[0].value, "R$ 285 mil");
   assert.equal(depois.metrics[0].source, "painel");
   assert.equal(todos.length, 6); // Unique e Unicoox seguem lá
   assert.equal(await ensurePanelCases(repo), 0, "idempotente: não mexe no que o time editar depois");
+});
+
+test("cases acumulados: usa totais auditados, preserva autorização e retoma uma migração parcial", async () => {
+  const repo = makeMemRepo();
+  const antigo = await repo.create("cases", completo({
+    name: "Motvia", seed: "painel-30d-2026-09", logoUrl: "https://x/logo.png",
+  }));
+  const outroProduto = await repo.create("cases", completo({ id: "ca_outro", saas: "outro", name: "Motvia" }));
+  assert.equal(await ensurePanelCases(repo), 4);
+  const motvia = await repo.get("cases", antigo.id);
+  assert.equal(motvia.metrics[0].value, "R$ 287 mil");
+  assert.equal(motvia.metrics[0].period, "todo o período");
+  assert.equal(motvia.metrics[1].value, "2.229");
+  assert.equal(motvia.metrics[2].value, "95,8 mil h");
+  assert.equal(motvia.metrics[3].value, "R$ 1,3 mi");
+  assert.equal(motvia.evidence.gmvTotal, 286964.72);
+  assert.equal(motvia.evidence.listings, 574780);
+  assert.equal(motvia.public, antigo.public);
+  assert.equal(motvia.authorizedAt, antigo.authorizedAt);
+  assert.equal(motvia.authorizedBy, antigo.authorizedBy);
+  assert.equal(motvia.logoUrl, antigo.logoUrl);
+  assert.equal(motvia.customerId, antigo.customerId);
+  assert.equal(publicCase(motvia).evidence, undefined, "a prova interna não vai para a página pública");
+  assert.deepEqual(await repo.get("cases", outroProduto.id), outroProduto);
+
+  const todos = (await repo.list("cases")).filter((c) => c.saas === "leverads");
+  assert.deepEqual(todos.map((c) => c.metrics[0].value), ["R$ 287 mil", "R$ 168 mil", "R$ 285 mil", "R$ 64,3 mil"]);
+  assert.ok(todos.every((c) => !JSON.stringify(c.metrics).includes("do mês")));
+  const lupa = todos.find((c) => c.name === "Lupa Autopeças");
+  await repo.update("cases", lupa.id, { seed: "painel-30d-2026-09", metrics: [] });
+  assert.equal(await ensurePanelCases(repo), 1, "um case já atualizado não bloqueia a atualização dos demais");
+  await repo.update("cases", motvia.id, { headline: "Revisão posterior do time" });
+  assert.equal(await ensurePanelCases(repo), 0);
+  assert.equal((await repo.get("cases", motvia.id)).headline, "Revisão posterior do time");
 });
 
 // ── Slide 3 e slide de resultados ─────────────────────────────────────────

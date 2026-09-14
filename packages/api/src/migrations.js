@@ -1912,93 +1912,66 @@ export async function ensureKnownCases(repo) {
   return seeds.length;
 }
 
-// Os quatro cases do slide "Quem já está dentro", agora com número do PAINEL.
-//
-// Cada um traz as quatro medidas que o slide mostra: quanto os anúncios da
-// Lever venderam na conta, quanto disso foi o crescimento do mês, quanto tempo
-// de cadastro manual isso poupou e quanto custaria pagar esse tempo. As duas
-// últimas saem de uma régua só, escrita no slide: 10 minutos por anúncio criado,
-// ao custo de um funcionário de R$ 3.000 por mês em 44h semanais (220h, R$ 13,64
-// a hora).
-//
-// POR QUE OS NÚMEROS ESTÃO CONGELADOS AQUI: a janela é móvel (últimos 30 dias),
-// então consultar de novo dá sempre outro valor. Num deck isso é ruim duas
-// vezes: o closer decora um número que mudou e o cliente que confere depois acha
-// divergência. O período fica escrito na métrica e a apuração tem data.
-//
-// ENTRAM COMO RASCUNHO, como todo case desta casa: usar nome e logo de cliente
-// em material comercial pede autorização dele, e o slide promete número
-// conferido. O Leo publica em Clientes › Cases quando tiver o ok de cada um.
-// Idempotente pelo marcador `seed`: roda uma vez e nunca mais mexe (nem
-// sobrescreve o que for editado na tela depois).
-const PANEL_SEED = "painel-30d-2026-09";
+// Os quatro cases do painel: acumulado desde o início de cada cliente.
+// Apuração em 14/09/2026 no org_revenue_generated do PRODUTO, a mesma fonte
+// all-time do orgSnapshot. Não multiplicar uma janela de 30 dias pelo tempo
+// de contrato. Os pedidos também são acumulados; crescimento mensal não é
+// uma medida do período completo. Tempo/custo mantêm a régua do slide:
+// 10 min por anúncio, R$ 3.000 / 220h (jornada de 44h semanais).
+// Snapshot com data e valores brutos para auditoria. O novo marcador atualiza
+// os cases de 30 dias uma vez, preservando autorização e publicação existentes.
+const PANEL_SEED = "painel-acumulado-2026-09-14";
 const nomeChaveCase = (s) => String(s || "")
   .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
 export async function ensurePanelCases(repo) {
-  const atuais = await repo.list("cases").catch(() => []);
-  if (atuais.some((c) => c.seed === PANEL_SEED)) return 0;
-  const clientes = await repo.list("customers").catch(() => []);
+  const atuais = (await repo.list("cases")).filter((c) => c.saas === "leverads");
+  const clientes = (await repo.list("customers")).filter((c) => c.saas === "leverads");
   const clientePorNome = new Map(clientes.map((c) => [nomeChaveCase(c.name), c.id]));
-  const periodo = "30 dias";
-  const met = (label, value, source = "painel") => ({ label, value, period: "", source, proofUrl: "" });
+  const nf = (n, max = 0) => new Intl.NumberFormat("pt-BR", { maximumFractionDigits: max }).format(n);
+  const curto = (n) => n >= 1e6 ? nf(n / 1e6, 1) + " mi"
+    : n >= 1e3 ? nf(n / 1e3, n < 1e5 ? 1 : 0) + " mil" : nf(n);
+  const met = (label, value) => ({ label, value, period: "", source: "painel", proofUrl: "" });
   const seeds = [
-    {
-      name: "Motvia", niche: "Autopeças", order: 1,
-      headline: "574 mil anúncios no ar em 11 contas, sem ninguém digitar um título.",
-      metrics: [
-        { ...met("gerado por anúncios da Lever", "R$ 202 mil"), period: periodo },
-        met("do crescimento do mês", "66%"),
-        met("de cadastro manual poupadas", "95,8 mil h"),
-        met("de custo fixo evitado", "R$ 1,3 mi"),
-      ],
-    },
-    {
-      name: "Lupa Autopeças", niche: "Autopeças", order: 2,
-      headline: "282 mil anúncios criados e o faturamento da loja 47% maior no mês.",
-      metrics: [
-        { ...met("gerado por anúncios da Lever", "R$ 134 mil"), period: periodo },
-        met("do crescimento do mês", "41%"),
-        met("de cadastro manual poupadas", "47,1 mil h"),
-        met("de custo fixo evitado", "R$ 642 mil"),
-      ],
-    },
-    {
-      name: "Dyno Nutri", niche: "Suplementos", order: 3,
-      headline: "71% de tudo que a loja vende hoje sai de um anúncio que a Lever criou.",
-      metrics: [
-        { ...met("gerado por anúncios da Lever", "R$ 127 mil"), period: periodo },
-        met("do crescimento do mês", "66%"),
-        met("de cadastro manual poupadas", "240 h"),
-        met("de custo fixo evitado", "R$ 3,3 mil"),
-      ],
-    },
-    {
-      name: "123tudo", niche: "Variedades", order: 4,
-      headline: "Metade do que a loja cresceu no mês veio de 8,1 mil anúncios criados pela plataforma.",
-      metrics: [
-        { ...met("gerado por anúncios da Lever", "R$ 51 mil"), period: periodo },
-        met("do crescimento do mês", "52%"),
-        met("de cadastro manual poupadas", "1.355 h"),
-        met("de custo fixo evitado", "R$ 18,5 mil"),
-      ],
-    },
-  ];
+    { name: "Motvia", niche: "Autopeças", order: 1,
+      orgId: "102f9143-c7d0-414c-9393-85fdd5fa3da8", gmv: 286964.72, orders: 2229, listings: 574780,
+      computedAt: "2026-09-14T14:04:52.449623Z" },
+    { name: "Lupa Autopeças", niche: "Autopeças", order: 2,
+      orgId: "d70453cc-274c-4494-a77f-0520045aa348", gmv: 167703.48, orders: 926, listings: 282418,
+      computedAt: "2026-09-14T13:55:40.558515Z" },
+    { name: "Dyno Nutri", niche: "Suplementos", order: 3,
+      orgId: "17c39382-db33-4ace-b503-1def9fef62ec", gmv: 284652.41, orders: 1853, listings: 1437,
+      computedAt: "2026-09-14T14:04:52.765219Z" },
+    { name: "123tudo", niche: "Variedades", order: 4,
+      orgId: "766700f7-496b-4572-9dfb-238d08e191c7", gmv: 64252.16, orders: 308, listings: 8128,
+      computedAt: "2026-09-14T03:24:46.163382Z" },
+  ].map(({ orgId, gmv, orders, listings, computedAt, ...identity }) => ({
+    ...identity,
+    headline: nf(listings) + " anúncios criados pela plataforma ao longo da parceria.",
+    metrics: [
+      { ...met("gerado por anúncios da Lever", "R$ " + curto(gmv)), period: "todo o período" },
+      met("pedidos gerados no período", nf(orders)),
+      met("de cadastro manual poupadas", curto(listings / 6) + " h"),
+      met("de custo fixo evitado", "R$ " + curto(listings / 6 * 3000 / 220)),
+    ],
+    evidence: { source: "org_revenue_generated", orgId, gmvTotal: gmv, ordersTotal: orders, listings, computedAt },
+  }));
   let n = 0;
   for (const s of seeds) {
+    const antigo = atuais.find((c) => nomeChaveCase(c.name) === nomeChaveCase(s.name));
+    if (antigo?.seed === PANEL_SEED) continue;
     const doc = {
       ...s,
       saas: "leverads",
       seed: PANEL_SEED,
-      apuradoEm: "2026-09-13",
-      customerId: clientePorNome.get(nomeChaveCase(s.name)) || "",
-      logoUrl: "",
+      apuradoEm: "2026-09-14",
+      customerId: antigo?.customerId || clientePorNome.get(nomeChaveCase(s.name)) || "",
+      logoUrl: antigo?.logoUrl || "",
       updatedAt: new Date().toISOString(),
     };
     // O case do mesmo cliente já existente (Dyno Nutri nasceu no seed antigo,
     // com o número do roteiro do closer) é ATUALIZADO, nunca duplicado: dois
     // cards do mesmo nome no slide seria o pior dos mundos.
-    const antigo = atuais.find((c) => nomeChaveCase(c.name) === nomeChaveCase(s.name));
     if (antigo) await repo.update("cases", antigo.id, doc);
     else await repo.create("cases", { ...doc, public: false, authorizedAt: "", authorizedBy: "", authorizedVia: "", createdAt: new Date().toISOString() });
     n++;

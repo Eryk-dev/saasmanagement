@@ -168,6 +168,16 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
 
 ## Correções de contexto e ferramentas
 
+- **Cases da apresentação C (14/09/2026):** os quatro cases do painel usam o
+  acumulado de cada cliente em `org_revenue_generated`, com valores brutos e
+  data de apuração guardados em `cases.evidence`. São snapshots conferidos,
+  sem extrapolar a janela de 30 dias. Pedidos substituem crescimento mensal;
+  tempo e custo mantêm 10 minutos por anúncio e R$ 3.000 / 220 horas.
+  `ensurePanelCases` atualiza esses registros uma vez por marcador, preservando
+  autorização e publicação. Propostas já geradas guardam cópias em `data.cases`:
+  atualizar o case central não altera essas cópias; correções nelas passam pela
+  API REST e preservam `state`, preços e demais dados da proposta.
+
 - **Handoff de design (14/09/2026):** referência em
   [design/handoff-cockpit](../design/handoff-cockpit/README.md), com índice em
   [MAPA-ESTRUTURAL.md](../design/handoff-cockpit/MAPA-ESTRUTURAL.md). A entrega

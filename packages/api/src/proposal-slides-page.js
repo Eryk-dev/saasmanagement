@@ -524,9 +524,9 @@ const CASE_VAZIO = `
     <div style="background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:32px;display:flex;flex-direction:column;gap:14px">
       <div style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">[CLIENTE] · [NICHO]</div>
       <div style="font-size:54px;font-weight:700;letter-spacing:-0.03em;line-height:1;color:var(--brand);font-variant-numeric:tabular-nums">[R$ xx mil]</div>
-      <div style="font-size:25px;color:var(--ink-muted);line-height:1.35">gerado por anúncios da Lever (30 dias)</div>
+      <div style="font-size:25px;color:var(--ink-muted);line-height:1.35">gerado por anúncios da Lever (todo o período)</div>
       <div style="display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line-faint);padding-top:16px;font-size:23px;line-height:1.25;color:var(--ink-muted)">
-        <div><b style="color:var(--ink)">[xx%]</b> do crescimento do mês</div>
+        <div><b style="color:var(--ink)">[x mil]</b> pedidos gerados no período</div>
         <div><b style="color:var(--ink)">[x mil h]</b> de cadastro manual poupadas</div>
         <div><b style="color:var(--ink)">[R$ xx mil]</b> de custo fixo evitado</div>
       </div>
@@ -541,8 +541,8 @@ const SLIDES = `
   </div>
   <div style="display:flex;flex-direction:column;gap:32px;max-width:1300px">
     <div style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">Proposta comercial</div>
-    <h1 style="margin:0;font-size:104px;line-height:1.02;letter-spacing:-0.03em;font-weight:700;text-wrap:balance">O método que usamos para escalar, rodando na operação de <span data-f="f.empresa"></span>.</h1>
-    <div style="font-size:30px;color:var(--ink-muted);line-height:1.45"><span data-f="planoNome"></span> · <span data-f="parcelas"></span>× R$ <span data-f="mensalFmt"></span></div>
+    <h1 style="margin:0;font-size:104px;line-height:1.02;letter-spacing:-0.03em;font-weight:700;text-wrap:balance">O método que usamos para escalar nossa operação, aplicado ao seu negócio.</h1>
+    <div style="font-size:30px;color:var(--ink-muted);line-height:1.45"><span data-f="planoNome"></span></div>
   </div>
   <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding-top:28px;border-top:1px solid var(--line);font-size:24px;color:var(--ink-faint)">
     <span><span data-f="f.nome"></span> · <span data-f="f.empresa"></span></span>
@@ -687,7 +687,7 @@ const SLIDES = `
     <div style="position:relative;display:flex;flex-direction:column;gap:16px">
       <div style="width:72px;height:72px;border-radius:999px;background:var(--ink);color:#FFFFFF;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-weight:600;font-size:28px;border:8px solid var(--paper)">2</div>
       <div style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">Dia 1–2</div>
-      <div style="font-size:32px;font-weight:600;letter-spacing:-0.015em;line-height:1.2">Call de plano de ação</div>
+      <div style="font-size:32px;font-weight:600;letter-spacing:-0.015em;line-height:1.2">Plano de ação</div>
       <div style="font-size:25px;color:var(--ink-muted);line-height:1.45">Conectamos as <span data-f="f.contas"></span> contas, definimos regras e o que ataca primeiro.</div>
     </div>
     <div style="position:relative;display:flex;flex-direction:column;gap:16px">
@@ -745,7 +745,7 @@ const SLIDES = `
     <span style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">06</span>
   </div>
   <h2 style="margin:0 0 16px;font-size:60px;line-height:1.05;letter-spacing:-0.025em;font-weight:700;max-width:1300px;text-wrap:balance">Sellers com a mesma dor que a sua. <span style="color:var(--brand)">O que mudou.</span></h2>
-  <p style="margin:0 0 44px;font-size:28px;line-height:1.45;color:var(--ink-muted)">Números conferidos no painel, não em depoimento. Tempo e custo pela mesma régua: 10 minutos por anúncio, ao custo de um funcionário de R$ 3.000 em 44 horas semanais.</p>
+  <p style="margin:0 0 44px;font-size:28px;line-height:1.45;color:var(--ink-muted)">Acumulado desde o início de cada cliente na Lever. Tempo e custo pela mesma régua: 10 minutos por anúncio, ao custo de um funcionário de R$ 3.000 em 44 horas semanais.</p>
   <div style="flex:1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px">
     <div data-cases style="display:contents"></div>
     <div data-cases-fallback style="display:contents">${CASE_VAZIO.repeat(4)}</div>
@@ -1182,7 +1182,7 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
   // Card de case real, no molde do cardEntregavel. A 1ª métrica (a que o time
   // pôs em primeiro) vira o número grande; as seguintes viram linhas de valor +
   // rótulo, porque um case do painel conta a história em mais de um número:
-  // quanto vendeu, quanto disso foi crescimento, quanto tempo poupou e quanto
+  // quanto vendeu, quantos pedidos gerou, quanto tempo poupou e quanto
   // custaria fazer na mão. O rodapé é o depoimento ou a manchete do case.
   //
   // A logo entra QUANDO EXISTE e nunca no lugar do nome: logo pequena em slide
@@ -1242,12 +1242,6 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
     if (c.quote) pe.textContent = '"' + c.quote + '"' + (c.quoteAuthor ? " " + c.quoteAuthor : "");
     else pe.textContent = c.headline || "";
     d.appendChild(pe);
-    if (metricas.some(function (x) { return x.source === "painel"; })) {
-      var fonte = document.createElement("div");
-      fonte.setAttribute("style", "font-family:var(--font-mono);font-size:20px;color:var(--ink-faint)");
-      fonte.textContent = "fonte: painel LeverAds";
-      d.appendChild(fonte);
-    }
     return d;
   }
 
