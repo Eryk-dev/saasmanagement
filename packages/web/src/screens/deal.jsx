@@ -430,8 +430,8 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
 
   return (
     <div style={{
-      position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.45)",
-      display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, padding: 12,
+      position: "fixed", inset: 0, background: "var(--scrim)",
+      display: "flex", alignItems: "center", justifyContent: "center", zIndex: "var(--z-drawer)", padding: 12,
     }} onClick={close}>
       <div onClick={e => e.stopPropagation()} style={{
         width: "min(1120px, 100%)", maxHeight: "min(92vh, 100%)", background: "var(--bg-1)",

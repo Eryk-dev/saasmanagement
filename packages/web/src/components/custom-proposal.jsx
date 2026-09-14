@@ -71,7 +71,7 @@ export function CustomProposalModal({ lead, onClose, onSaved }) {
   const canSave = spec.title.trim() && spec.deliverables.some((d) => d.trim());
 
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 95, padding: 16 }}>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--scrim)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: "var(--z-modal)", padding: 16 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(520px, 100%)", maxHeight: "calc(100vh - 40px)", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
           <div style={{ fontSize: 15.5, fontWeight: 600 }}>Proposta personalizada</div>

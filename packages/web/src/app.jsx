@@ -262,7 +262,7 @@ function App() {
       {!isMobile && <NavRail current={scr} onNav={(id) => nav(id)} collapsed={false} onSearch={() => setSearchOpen(true)} />}
       {isMobile && menuOpen && (
         <div onClick={() => setMenuOpen(false)}
-          style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", zIndex: 100, display: "flex" }}>
+          style={{ position: "fixed", inset: 0, background: "var(--scrim-soft)", zIndex: "var(--z-alarme)", display: "flex" }}>
           <div onClick={(e) => e.stopPropagation()} style={{ height: "100%", display: "flex", boxShadow: "var(--shadow-pop)" }}>
             <NavRail current={scr} onNav={(id) => { nav(id); setMenuOpen(false); }} collapsed={false} onSearch={() => { setMenuOpen(false); setSearchOpen(true); }} />
           </div>

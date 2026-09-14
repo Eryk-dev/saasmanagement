@@ -1125,6 +1125,38 @@ try {
       if (/z-index:80\b/.test(html)) throw new Error(`${nome} ainda escreve a camada na mão`);
     }
 
+    // Nenhum véu solto: quem monta overlay usa os tokens, não o hexadecimal.
+    // A varredura é do FONTE, porque o defeito é de escrita, não de render.
+    {
+      const fs = await import("node:fs/promises");
+      const path = await import("node:path");
+      const raiz = join(root, "src");
+      const arquivos = [];
+      const anda = async (dir) => {
+        for (const e of await fs.readdir(dir, { withFileTypes: true })) {
+          const f = path.join(dir, e.name);
+          if (e.isDirectory()) await anda(f);
+          else if (/\.jsx?$/.test(e.name)) arquivos.push(f);
+        }
+      };
+      await anda(raiz);
+      const soltos = [];
+      for (const f of arquivos) {
+        const txt = await fs.readFile(f, "utf8");
+        for (const linha of txt.split("\n")) {
+          if (!/position: "fixed", inset: 0/.test(linha)) continue;
+          if (!/background: "(oklch|rgba|color-mix)/.test(linha)) continue;
+          // Exceções deliberadas: o modo foco do treino (tela cheia escura), o
+          // portão do treino (véu embaçado) e o ErrorBoundary (que não pode
+          // depender de token pra aparecer quando tudo quebrou).
+          if (/training-focus|error-boundary/.test(f)) continue;
+          if (/backdropFilter/.test(linha)) continue;
+          soltos.push(`${path.relative(raiz, f)}: ${linha.trim().slice(0, 80)}`);
+        }
+      }
+      if (soltos.length) throw new Error(`véu escrito na mão em ${soltos.length} lugar(es):\n  ${soltos.join("\n  ")}`);
+    }
+
     console.log("✓ overlay");
   } catch (err) {
     console.error(`✗ overlay: ${err.message}`);

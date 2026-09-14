@@ -151,7 +151,7 @@ export function WaHotAlert({ onOpenThread, onOpenLeadWhatsapp, onOpenLeadCard })
   const chipStyle = (bg, fg) => ({ display: "inline-flex", alignItems: "center", gap: 5, height: 22, padding: "0 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: bg, color: fg });
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 110, background: "color-mix(in srgb, var(--bg-0) 55%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 110, background: "var(--scrim)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div style={{ width: 480, maxWidth: "94vw", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "0 24px 80px -24px rgba(0,0,0,.45)", overflow: "hidden" }}>
         <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--line-1)", display: "flex", alignItems: "center", gap: 10, background: "var(--bg-2)" }}>
           <span style={{ fontSize: 16 }}>{isLead ? "👋" : "🔥"}</span>
