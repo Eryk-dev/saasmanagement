@@ -2,6 +2,7 @@ import React from "react";
 import { Avatar, EmptyState, PrimaryButton } from "../atoms.jsx";
 import { Card, FilterTab, Segmented, StatTile } from "../components/viz.jsx";
 import { Popover } from "../components/popover.jsx";
+import { BarraFiltros } from "../components/story.jsx";
 import { leadAge, leadTier } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
@@ -310,8 +311,20 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
         <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 260 }}>
             <h1 className="page-title">Pipeline</h1>
+            {/* O estado do board é o SUBTÍTULO (prancha, 14/09): atrasados e
+                dinheiro em jogo respondem "como está o funil", que é a
+                pergunta do título, não um controle da barra de filtros. */}
             <div className="page-sub" style={{ marginTop: 4 }}>
-              {openLeads.length} {openLeads.length === 1 ? "lead aberto" : "leads abertos"} · {newWeek} {newWeek === 1 ? "novo" : "novos"} esta semana · arraste (ou toque) para mover
+              {`${openLeads.length} ${openLeads.length === 1 ? "lead aberto" : "leads abertos"} · ${window.fmt.moneyFull(boardState.valor)} em jogo · `}
+              {/* "N atrasados" FILTRA o board: é a pergunta que se faz olhando
+                  o número, e o filtro não tem lugar próprio na prancha. */}
+              <button onClick={() => setOnlyLate((v) => !v)}
+                title={onlyLate ? "mostrar o board inteiro" : "filtrar o board só nos atrasados"}
+                style={{ background: "none", border: 0, padding: 0, font: "inherit", cursor: "pointer",
+                  color: boardState.late ? "var(--neg)" : "var(--fg-3)", fontWeight: onlyLate ? 700 : 600,
+                  textDecoration: onlyLate ? "underline" : "none" }}>
+                {`${boardState.late} ${boardState.late === 1 ? "atrasado" : "atrasados"}`}
+              </button>
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 6, flexWrap: "wrap" }}>
@@ -328,43 +341,25 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
             À direita, o estado do board — e "atrasados" FILTRA. */}
         {view === "kanban" && (
           <Card>
-            <div style={{ padding: "14px 20px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <input value={buscaBoard} onChange={(e) => setBuscaBoard(e.target.value)} placeholder="buscar lead ou empresa…"
                 className="inp" style={{ width: 190 }} />
-              <Segmented value={phase} onChange={setPhase} options={[
-                { value: "all", label: `Todos ${phaseCounts.all}` },
-                { value: "sdr", label: `SDR ${phaseCounts.sdr}` },
-                { value: "closer", label: `Closer ${phaseCounts.closer}` },
+              <span className="kicker">Fase</span>
+              <BarraFiltros valor={phase} onChange={setPhase} filtros={[
+                { id: "all", label: "Todas", n: phaseCounts.all, title: "o funil inteiro" },
+                { id: "sdr", label: "SDR", n: phaseCounts.sdr, title: "pré-venda: da entrada até passar pro closer" },
+                { id: "closer", label: "Closer", n: phaseCounts.closer, title: "da call ao fechamento" },
               ]} />
-              <PersonFilter person={person} leads={saasAll} onChange={setPerson} me={me} />
-              <select value={sortMode} onChange={(e) => setSortMode(e.target.value)} title="ordem das colunas"
-                style={{ height: 30, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5 }}>
-                <option value="toque">próximo toque</option>
-                <option value="ultimo">último toque</option>
-                <option value="qualidade">qualidade</option>
+              <PersonFilter person={person} leads={saasAll} onChange={setPerson} me={me} como="select" />
+              <select value={sortMode} onChange={(e) => setSortMode(e.target.value)} title="vale para todas as colunas de uma vez"
+                className="inp" style={{ width: "auto" }}>
+                <option value="toque">ordem: próximo toque</option>
+                <option value="ultimo">ordem: último toque</option>
+                <option value="qualidade">ordem: qualidade</option>
               </select>
-              {phase !== "closer" && phase !== "cs" && (
-                <FilterTab active={showDiscarded} count={discardedCount || undefined} onClick={() => setShowDiscarded(!showDiscarded)}>
-                  {showDiscarded ? "Ocultar descartados" : "Descartados"}
-                </FilterTab>
-              )}
-              <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-                <button onClick={() => setOnlyLate((v) => !v)}
-                  title={onlyLate ? "mostrar o board inteiro" : "filtrar o board só nos atrasados"}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 30, padding: "0 11px", borderRadius: 999, cursor: "pointer",
-                    border: `1px solid ${onlyLate ? "var(--neg)" : boardState.late ? "color-mix(in srgb, var(--neg) 40%, transparent)" : "var(--line-1)"}`,
-                    background: onlyLate ? "var(--neg-soft)" : "transparent",
-                    color: boardState.late ? "var(--neg)" : "var(--fg-4)", fontSize: 12.5, fontWeight: 600 }}>
-                  <span style={{ width: 6, height: 6, borderRadius: 999, background: "currentColor", flexShrink: 0 }} />
-                  <span className="tnum">{boardState.late}</span> atrasados
-                </button>
-                <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>
-                  <b className="tnum" style={{ color: "var(--fg-1)" }}>{boardState.today}</b> para hoje
-                </span>
-                <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>
-                  <b className="tnum" style={{ color: "var(--fg-1)" }}>{window.fmt.money(boardState.valor)}</b> em jogo
-                </span>
-              </div>
+              <span className="tnum" style={{ marginLeft: "auto", fontSize: 12, color: "var(--fg-4)" }}>
+                {`${Object.values(boardRows).reduce((a, c) => a + c.length, 0)} de ${Object.values(byStage).reduce((a, c) => a + c.length, 0)} leads`}
+              </span>
             </div>
           </Card>
         )}
@@ -400,6 +395,19 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
           showWon={phase !== "sdr"}
         />
       )}
+      {/* Descartados no RODAPÉ (prancha, 14/09): era um FilterTab no meio da
+          barra de filtros, disputando espaço com a fase. Aqui ele é o que é —
+          uma gaveta embaixo do board. */}
+      {view === "kanban" && (discardedCount > 0 || showDiscarded) && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <button onClick={() => setShowDiscarded(!showDiscarded)}
+            style={{ height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+            {showDiscarded ? `esconder descartados · ${discardedCount}` : `mostrar descartados · ${discardedCount}`}
+          </button>
+          <span style={{ fontSize: 12, color: "var(--fg-4)" }}>descartado não conta no funil, mas volta com um clique</span>
+        </div>
+      )}
+
       {view === "list" && <LeadList leads={saasLeads} onOpenLead={onOpenLead} />}
 
       {pendingMove && (
@@ -495,9 +503,23 @@ function stagesForPhase(s, stages, phase) {
 
 // Filtro por pessoa: "meus" (dono, closer OU integrador = usuário logado) ou
 // alguém do time. O contador do chip usa a MESMA régua do personMatch do board.
-function PersonFilter({ person, leads, onChange, me }) {
+function PersonFilter({ person, leads, onChange, me, como = "chips" }) {
   const users = window.SEED?.USERS || [];
   const selected = person === "me" ? me : person;
+  // Modo dropdown (prancha do Pipeline, 14/09): com busca, fase, ordem e
+  // contagem na mesma barra, um botão por pessoa come a linha inteira.
+  if (como === "select") {
+    return (
+      <select value={selected || ""} onChange={(e) => onChange(e.target.value)} title="de quem é a fila"
+        className="inp" style={{ width: "auto" }}>
+        <option value="">time todo</option>
+        {users.map((u) => {
+          const count = leads.filter((l) => [l.owner, l.closer, l.integrator].includes(u.id)).length;
+          return <option key={u.id} value={u.id}>{`${u.name || u.id}${count ? ` · ${count}` : ""}`}</option>;
+        })}
+      </select>
+    );
+  }
   const chip = (active) => ({
     height: 34, padding: "0 13px", borderRadius: 999, fontSize: 13, fontWeight: active ? 600 : 500,
     border: `1px solid ${active ? "var(--line-2)" : "var(--line-1)"}`,
@@ -534,7 +556,11 @@ function KanbanBoard({ s, stages, byStage, fullByStage, sortMode, highlight, onM
     ? stages.length - 1
     : stages.reduce((acc, st, i) => (fullOrder.indexOf(st) < wonPos ? i : acc), stages.length - 1);
   return (
-    <div style={{ flex: 1, overflowX: "auto", paddingBottom: 8, display: "flex", gap: 12, alignItems: "flex-start" }}>
+    // Grid de colunas IGUAIS (prancha, 14/09): o board era um flex com colunas
+    // de 264px fixos, que deixava faixa vazia à direita com poucas etapas e
+    // rolava de lado com muitas. `grid-auto-columns` faz as duas coisas: enche
+    // a largura quando cabe e rola quando não cabe.
+    <div style={{ flex: 1, overflowX: "auto", paddingBottom: 8, display: "grid", gridAutoFlow: "column", gridAutoColumns: "minmax(240px, 1fr)", gap: 12, alignItems: "start" }}>
       {stages.map((st, i) => (
         <React.Fragment key={st}>
           <KanbanColumn
@@ -572,14 +598,42 @@ function WonSummary({ leads }) {
   const label = now.toLocaleDateString("pt-BR", { month: "long", timeZone: "America/Sao_Paulo" });
   // A borda tracejada dava cara de placeholder vazio justamente no bloco que
   // mostra o que já foi fechado. Agora é um bloco --pos soft (12/09).
+  // A coluna do Ganho na prancha (14/09): título com a contagem, o DINHEIRO
+  // grande em verde, o ticket médio embaixo e as vendas do mês em linhas com
+  // o dono à direita. Era um bloco com a CONTAGEM grande e o dinheiro numa
+  // linha de 12,5px — e o que fecha o mês é o dinheiro.
+  const ticket = monthLeads.length ? total / monthLeads.length : 0;
+  const recentes = [...monthLeads].sort((a, b) => new Date(wonAtOf(b) || 0) - new Date(wonAtOf(a) || 0)).slice(0, 6);
   return (
-    <div style={{ width: 220, flexShrink: 0, border: "1px solid color-mix(in srgb, var(--pos) 35%, transparent)", background: "var(--pos-soft)", borderRadius: "var(--r-4)", padding: 16 }}>
-      <div className="kicker" style={{ color: "var(--pos)" }}>Ganho · {label}</div>
-      <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 28, fontWeight: 700, marginTop: 6, lineHeight: 1 }}>{monthLeads.length}</div>
-      <div style={{ fontSize: 12.5, color: "var(--fg-2)", marginTop: 4 }}>
-        {`${monthLeads.length === 1 ? "venda" : "vendas"} · ${window.fmt.money(total)}`}
+    <div style={{ minWidth: 0, border: "1px solid var(--line-1)", background: "var(--bg-1)", borderRadius: "var(--r-4)", padding: 10, boxShadow: "var(--shadow-card)" }}>
+      <div style={{ padding: "4px 4px 10px" }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+          <span style={{ fontSize: 13.5, fontWeight: 700 }}>Ganho em {label}</span>
+          <span className="tnum" style={{ fontSize: 12, color: "var(--fg-4)" }}>{monthLeads.length}</span>
+        </div>
+        <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--pos)", marginTop: 4, lineHeight: 1.1 }}>{window.fmt.moneyFull(total)}</div>
+        {monthLeads.length > 0 && (
+          <div className="tnum" style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 2 }}>{`ticket médio ${window.fmt.moneyFull(ticket)}`}</div>
+        )}
       </div>
-      <a href="#customers" style={{ display: "inline-block", marginTop: 10, fontSize: 12, fontWeight: 600, color: "var(--pos)", textDecoration: "none" }}>ver as vendas →</a>
+      <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+        {recentes.map((l) => {
+          const dono = l.closer || l.owner;
+          return (
+            <div key={l.id} style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "10px 11px" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.company || l.name}</div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 4 }}>
+                <span className="tnum" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--pos)" }}>{window.fmt.moneyFull(l.amount || 0)}</span>
+                {dono && <span style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--fg-4)", whiteSpace: "nowrap" }}>{displayName(dono)}</span>}
+              </div>
+            </div>
+          );
+        })}
+        {monthLeads.length === 0 && (
+          <div style={{ fontSize: 12, color: "var(--fg-4)", textAlign: "center", padding: "16px 0" }}>nenhuma venda fechada no mês</div>
+        )}
+      </div>
+      <a href="#customers" style={{ display: "inline-block", marginTop: 10, padding: "0 4px", fontSize: 12, fontWeight: 600, color: "var(--accent)", textDecoration: "none" }}>ver as vendas →</a>
     </div>
   );
 }
@@ -632,41 +686,29 @@ function KanbanColumn({ s, stage, cards, todos, sortMode, highlight, onDropCard,
       onDragLeave={() => setOver(false)}
       onDrop={(e) => { e.preventDefault(); setOver(false); if (dragging) onDropCard(dragging); }}
       style={{
-        width: "min(264px, 82vw)", flexShrink: 0,
-        background: over ? "var(--accent-soft)" : "var(--bg-2)",
+        minWidth: 0,
+        background: over ? "var(--accent-soft)" : "var(--bg-1)",
+        border: `1px solid ${over ? "var(--accent-line)" : "var(--line-1)"}`,
         borderRadius: "var(--r-4)", padding: 10,
-        boxShadow: highlight ? "0 0 0 2px var(--accent-line)" : "none",
+        boxShadow: highlight ? "0 0 0 2px var(--accent-line)" : "var(--shadow-card)",
         transition: "var(--transition-ui)",
       }}>
-      <div style={{ padding: "6px 8px 10px" }}>
+      {/* Cabeçalho da prancha: nome e contagem à esquerda, o ATRASO à direita
+          na mesma linha, e o dinheiro da coluna na linha de baixo. */}
+      <div style={{ padding: "4px 4px 10px" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
-            {stage}
-            <span className="mono tnum" style={{ fontSize: 11.5, fontWeight: 400, color: "var(--fg-4)" }}>{todosCards.length}</span>
-            {filtrando && <span className="mono tnum" style={{ fontSize: 11, color: "var(--accent)" }}>{cards.length} na busca</span>}
-          </div>
-          <span className="tnum" style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--fg-4)", whiteSpace: "nowrap" }}>{window.fmt.money(total)}</span>
+          <span style={{ fontSize: 13.5, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stage}</span>
+          <span className="tnum" style={{ fontSize: 12, color: "var(--fg-4)" }}>{todosCards.length}</span>
+          {filtrando && <span className="tnum" style={{ fontSize: 11, color: "var(--accent)" }}>{cards.length} na busca</span>}
+          {(colLate > 0 || colToday > 0) && (
+            <span className="tnum" style={{ marginLeft: "auto", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", color: colLate > 0 ? "var(--neg)" : "var(--warn)" }}>
+              {[colLate > 0 ? `${colLate} atrasado${colLate === 1 ? "" : "s"}` : null, colToday > 0 ? `${colToday} hoje` : null].filter(Boolean).join(" · ")}
+            </span>
+          )}
         </div>
-        {/* Atraso da COLUNA (12/09): é o que permite ver a coluna travada sem
-            abrir card nenhum — antes o atraso só existia dentro de cada um. */}
-        {(colLate > 0 || colToday > 0) && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
-            {colLate > 0 && (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--neg)", fontWeight: 600 }}>
-                <span style={{ width: 6, height: 6, borderRadius: 999, background: "currentColor" }} />
-                <span className="tnum">{colLate}</span> atrasados
-              </span>
-            )}
-            {colToday > 0 && (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--fg-3)" }}>
-                <span style={{ width: 6, height: 6, borderRadius: 999, background: "var(--warn)" }} />
-                <span className="tnum">{colToday}</span> hoje
-              </span>
-            )}
-          </div>
-        )}
+        <div className="tnum" style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 2 }}>{window.fmt.moneyFull(total)}</div>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
         {shown.map(l => (
           <LeadCard
             key={l.id} d={l}
@@ -696,6 +738,20 @@ function KanbanColumn({ s, stage, cards, todos, sortMode, highlight, onDropCard,
   );
 }
 
+// O texto do próximo passo quando o lead não tem nota escrita: o compromisso
+// que a etapa espera. É o mesmo vocabulário da fila de Minhas atividades.
+function nextStepText(d, kind, stage) {
+  if (kind === "call" && d.callAt) {
+    const t = new Date(d.callAt);
+    if (Number.isFinite(t.getTime())) {
+      const dia = t.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
+      return `Call ${dia}, ${t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+    }
+  }
+  if (kind === "integracao" && d.integrationAt) return "Integração marcada";
+  return { novo: "Primeiro contato", contato: "Nova tentativa", qualificacao: "Retomar o contato", proposta: "Cobrar retorno da proposta", followup: "Follow-up da proposta" }[kind] || "";
+}
+
 function LeadCard({ d, s, currentStage, onDragStart, selected, onSelect, onOpen }) {
   const saasCfg = s || (window.SEED?.SAAS || []).find((x) => x.id === d.saas);
   const kind = stageKind(saasCfg, currentStage);
@@ -711,38 +767,52 @@ function LeadCard({ d, s, currentStage, onDragStart, selected, onSelect, onOpen 
   const fit = mentoriaFit(d);
   const pend = d.clientPending;
 
+  // O card da prancha (14/09): checkbox VISÍVEL, nível e nome na primeira
+  // linha, empresa, o próximo passo em texto, e valor + prazo no rodapé. A
+  // borda fica vermelha suave quando o card está atrasado, que é o que faz a
+  // coluna travada ser lida de longe sem abrir nada.
+  const atrasado = next?.tone === "var(--neg)";
+  const passo = d.nextActionNote || nextStepText(d, kind, currentStage);
   return (
     <div
       draggable
       onDragStart={onDragStart}
       onClick={(e) => { if (e.shiftKey) onSelect(); else onOpen && onOpen(); }}
       style={{
-        background: "var(--bg-1)", border: `1px solid ${selected ? "var(--accent-line)" : "var(--line-1)"}`,
-        borderRadius: "var(--r-3)", padding: "12px 14px", cursor: "grab", boxShadow: "var(--shadow-card)",
+        background: "var(--bg-1)",
+        border: `1px solid ${selected ? "var(--accent-line)" : atrasado ? "color-mix(in srgb, var(--neg) 28%, var(--bg-1))" : "var(--line-1)"}`,
+        borderRadius: "var(--r-3)", padding: "10px 11px", cursor: "grab", boxShadow: "var(--shadow-card)",
       }}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+        <span onClick={(e) => { e.stopPropagation(); onSelect(); }} role="checkbox" aria-checked={selected}
+          title="selecionar para ação em massa"
+          style={{ flexShrink: 0, width: 14, height: 14, borderRadius: 4, cursor: "pointer",
+            border: `1px solid ${selected ? "var(--accent)" : "var(--line-2)"}`,
+            background: selected ? "var(--accent)" : "var(--bg-1)",
+            color: "oklch(1 0 0)", fontSize: 10, lineHeight: "12px", textAlign: "center" }}>{selected ? "✓" : ""}</span>
         {grade && (
           <span title={tier.label} style={{ flexShrink: 0, width: 18, height: 18, borderRadius: 5, background: tier.tone, color: tier.badgeFg, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>{grade}</span>
         )}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</div>
-          {d.company && (
-            <div style={{ fontSize: 12, color: "var(--fg-3)", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.company}</div>
-          )}
-        </div>
-        {showAvatar && <Avatar id={ownerId} name={displayName(ownerId)} size={24} />}
+        <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
+        {showAvatar && <Avatar id={ownerId} name={displayName(ownerId)} size={20} />}
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+      {d.company && (
+        <div style={{ fontSize: 12, color: "var(--fg-4)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.company}</div>
+      )}
+      {/* O PRÓXIMO PASSO em texto: é o que a prancha põe no card, e é o que
+          diz o que fazer sem abrir o lead. */}
+      <div style={{ fontSize: 12.5, color: passo ? "var(--fg-2)" : "var(--fg-4)", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {passo || "sem próximo passo"}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
         {/* Lead da fila da Mentoria não tem proposta gerada, então o valor do
             card seria sempre R$ 0: no lugar dele entra a oferta que a verba
             declarada encaixa, que é o que decide por qual card começar. */}
         {fit && !d.amount
           ? <span className="tnum" title={`Verba declarada: ${fit.verbaLabel}`} style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)" }}>{mentoriaOfferLine(fit)}</span>
-          : <span className="tnum" style={{ fontSize: 12.5, fontWeight: 600 }}>{window.fmt.money(d.amount || 0)}</span>}
+          : <span className="tnum" style={{ fontSize: 13, fontWeight: 700 }}>{window.fmt.moneyFull(d.amount || 0)}</span>}
         {nextLabel && (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, marginLeft: "auto", fontSize: 11.5, color: next?.tone || "var(--fg-3)", fontWeight: 500, whiteSpace: "nowrap" }}>
-            <span style={{ width: 6, height: 6, borderRadius: 999, background: "currentColor", flexShrink: 0 }} />{nextLabel}
-          </span>
+          <span className="tnum" style={{ marginLeft: "auto", fontSize: 11.5, color: next?.tone || "var(--fg-4)", fontWeight: 600, whiteSpace: "nowrap" }}>{nextLabel}</span>
         )}
       </div>
       {/* Compromisso do CLIENTE em aberto (o que ele ficou de fazer na call de

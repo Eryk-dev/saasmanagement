@@ -37,6 +37,8 @@ window.SEED = {
   ME: { id: "leo", name: "Leonardo", roles: ["sdr", "admin"] },
 };
 try {
+  localStorage.setItem("cockpit_pipeline_view", "kanban");
+  localStorage.setItem("cockpit_pipeline_phase", "all");
   localStorage.setItem("cockpit_today_person", "leo");
   localStorage.setItem("cockpit_active_saas", "leverads");
 } catch { /* ignore */ }
