@@ -110,6 +110,16 @@ export const TaskCard = memo(function TaskCard({ t, colKey, usersById, labelColo
         padding: compact ? "8px 10px" : "10px 12px", cursor: "grab", outline: "none", opacity: done && !renaming ? 0.78 : 1,
       }}>
       {cover && <img src={assetUrl(cover)} alt="" draggable={false} style={{ width: "100%", maxHeight: 120, objectFit: "cover", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", marginBottom: 8, display: "block" }} />}
+      {/* Os LABELS abrem o card (prancha, 14/09): eram a terceira coisa da
+          terceira linha, misturados com prioridade e prazo. No topo eles
+          funcionam como a etiqueta que são, e a linha de baixo fica só com o
+          que tem prazo. */}
+      {labels.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 7 }}>
+          {labels.slice(0, 3).map((l) => <LabelChip key={l} label={l} color={labelColors.get(l) || ""} small={compact} />)}
+          {labels.length > 3 && <span className="mono dim" style={{ fontSize: 11 }}>+{labels.length - 3}</span>}
+        </div>
+      )}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
         <span style={{ paddingTop: 1 }}><CompleteCircle done={done} size={compact ? 18 : 20} onToggle={(v) => actions.complete(t.id, v)} /></span>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -124,11 +134,9 @@ export const TaskCard = memo(function TaskCard({ t, colKey, usersById, labelColo
           </span>
         )}
       </div>
-      {(labels.length > 0 || (fields.priority && t.priority) || (fields.due && t.dueDate)) && (
+      {((fields.priority && t.priority) || (fields.due && t.dueDate)) && (
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 8, paddingLeft: compact ? 26 : 28 }}>
           {fields.priority && <PriorityChip p={t.priority} small={compact} />}
-          {labels.slice(0, 3).map((l) => <LabelChip key={l} label={l} color={labelColors.get(l) || ""} small={compact} />)}
-          {labels.length > 3 && <span className="mono dim" style={{ fontSize: 11 }}>+{labels.length - 3}</span>}
           {fields.due && <DueChip due={t.dueDate} completed={done} small={compact} />}
         </div>
       )}

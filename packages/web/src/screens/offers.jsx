@@ -64,6 +64,9 @@ function OffersScreen({ onOpenLead }) {
   const { win } = usePeriod();
   const mpOn = !!window.SEED?.CONFIG?.mp?.configured;
   const money = window.fmt.money;
+  // A faixa do dinheiro escreve o valor cheio (prancha, 14/09): "R$ 49.550",
+  // não "R$49,6k" — é o número que alguém vai cobrar.
+  const moneyFull = window.fmt.moneyFull;
   const admin = isAdminUser();
 
   const [data, setData] = useS(null);      // { groups, totals, counts, sellers, backlog }
@@ -176,27 +179,27 @@ function OffersScreen({ onOpenLead }) {
                 <div style={{ minWidth: 180 }}
                   title="links gerados no período que ainda não têm pagamento (inclui boleto/PIX emitido e não pago)">
                   <div style={{ fontSize: 12.5, color: "var(--fg-3)" }}>Em aberto</div>
-                  <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 34, fontWeight: 700, lineHeight: 1.05, marginTop: 3, color: totals.waiting > 0 ? "var(--warn)" : "var(--fg-1)" }}>{money(totals.waiting)}</div>
+                  <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 34, fontWeight: 700, lineHeight: 1.05, marginTop: 3, color: totals.waiting > 0 ? "var(--warn)" : "var(--fg-1)" }}>{moneyFull(totals.waiting)}</div>
                   <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 2 }}>
                     {`${counts.groups?.aguardando || 0} ${(counts.groups?.aguardando || 0) === 1 ? "cliente devendo" : "clientes devendo"}`}
                   </div>
                 </div>
                 <div style={{ minWidth: 150 }} title="pagamentos aprovados no Mercado Pago + baixas manuais + faturas baixadas, dos links gerados no período">
                   <div style={{ fontSize: 12.5, color: "var(--fg-3)" }}>Recebido</div>
-                  <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, marginTop: 3, color: "var(--pos)" }}>{money(totals.paid)}</div>
+                  <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, marginTop: 3, color: "var(--pos)" }}>{moneyFull(totals.paid)}</div>
                   <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 2 }}>{`${counts.paid || 0} ${(counts.paid || 0) === 1 ? "link pago" : "links pagos"}`}</div>
                 </div>
                 <div style={{ minWidth: 140 }} title="cada geração vira uma linha; link substituído (gerou de novo pelo mesmo valor) não conta no pedido">
                   <div style={{ fontSize: 12.5, color: "var(--fg-3)" }}>Links gerados</div>
                   <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, marginTop: 3 }}>{counts.links || 0}</div>
-                  <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 2 }}>{`${money(ger)} pedidos`}</div>
+                  <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 2 }}>{`${moneyFull(ger)} pedidos`}</div>
                 </div>
                 {totals.failed > 0 && (
                   <div style={{ minWidth: 130 }} title="links recusados pelo Mercado Pago (cartão negado, pagamento cancelado)">
                     <div style={{ fontSize: 12.5, color: "var(--fg-3)" }}>Recusado</div>
                     <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 5 }}>
                       <span style={dot("var(--neg)")} />
-                      <span className="tnum" style={{ fontSize: 15, fontWeight: 700, color: "var(--neg)" }}>{money(totals.failed)}</span>
+                      <span className="tnum" style={{ fontSize: 15, fontWeight: 700, color: "var(--neg)" }}>{moneyFull(totals.failed)}</span>
                     </div>
                   </div>
                 )}
