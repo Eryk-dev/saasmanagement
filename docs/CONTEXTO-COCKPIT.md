@@ -78,6 +78,7 @@ Os caminhos abaixo são relativos a `packages/`.
 | WhatsApp e SDR | `api/src/routes.whatsapp.js`, módulos `wa-*`, `sdr-flow.js`, `sdr-templates.leverads.js`; telas `whatsapp.jsx`, `calls.jsx`. |
 | Métricas e marketing | `api/src/routes.metrics.js`, `routes.marketing.js`, `routes.funnel-metrics.js`, `routes.scoreboard.js`, `routes.pipeline-pace.js`; telas `metrics.jsx`, `analise.jsx`, `desempenho.jsx`. |
 | Agenda, Google e consultas | `api/src/routes.google.js`, `routes.consultations.js`; telas `agenda.jsx`, `agenda-grid.jsx`, `consultas.jsx`. |
+| Treinamentos | `api/src/routes.flashcards.js`, `fsrs.js`; telas `training.jsx`, `training.css`, `training-focus.jsx`; testes `api/test/routes.flashcards.test.js`. |
 | Tarefas | `api/src/routes.tasks.js`; `web/src/screens/tasks/` (quadro, lista, calendário, drawer, filtros e estado). |
 | Conteúdo e redes sociais | `api/src/routes.blog.js`, `routes.blog-public.js`, `routes.social.js`; telas `blog.jsx` e `social.jsx`. |
 | Componentes e visual | `web/src/tokens.css`, `atoms.jsx`, `components/viz.jsx`, `components/lead-blocks.jsx`, `lib/ui.js`. |
@@ -170,11 +171,17 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
 - **Handoff de design (14/09/2026):** referência em
   [design/handoff-cockpit](../design/handoff-cockpit/README.md), com índice em
   [MAPA-ESTRUTURAL.md](../design/handoff-cockpit/MAPA-ESTRUTURAL.md). A entrega
-  solicitada nesta etapa é a moldura: sidebar, topbar, conta, workspace, busca
-  e notificações. A adaptação do conteúdo das telas segue em etapas posteriores
-  acompanhadas pelo usuário. O preview local `/?shell=1#overview` usa o App
+  inicial foi a moldura: sidebar, topbar, conta, workspace, busca
+  e notificações. A adaptação do conteúdo avançou para Visão Geral, Minhas
+  Atividades e Treinamentos; as próximas telas seguem em etapas acompanhadas
+  pelo usuário. Treinamentos mantém a fila e os intervalos da API, abre estudo
+  e prova em modal e permite estudar um baralho, consultar a equipe e editar
+  a base oficial (admin). O preview local `/?shell=1#overview` usa o App
   real com API fictícia; iniciar com `node node_modules/vite/bin/vite.js
   --config packages/web/vite.preview.config.js` (porta padrão 5199).
+  Treinamentos usa `/?shell=1#training`; `/?shell=1&exam=1#training` inclui uma
+  prova pendente fictícia. Os dados ficam em `preview/training-mock.js` e não
+  entram no build de produção.
 
 - **README:** SQLite, leitura sempre aberta, MCP apenas como manual, seed demo e
   proposta exclusivamente externa são descrições antigas. O código atual usa
