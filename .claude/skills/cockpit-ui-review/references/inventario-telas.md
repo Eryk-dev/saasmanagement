@@ -129,3 +129,23 @@ além do tema escuro. Esta etapa não altera o conteúdo das telas navegáveis.
 4. `whatsapp` (inbox diário)
 5. componentes compartilhados (tabela, botão secundário, toast/loading — maior alavancagem, resolve o resto por tabela)
 6. demais telas por categoria (Comercial → Marketing → Análises → Geral)
+
+## Continuação do handoff — Marketing (14/09/2026)
+
+Adaptação conferida no App real com API fictícia (`?shell=1&marketing=1`):
+
+| Rota | Revisão desta entrega |
+| --- | --- |
+| `social` | Cabeçalho, métricas e listas de audiência; detalhes em ajuda; troca de workspace fecha o criador de post. |
+| `metrics` | Aquisição em duas colunas responsivas, origem dos leads compacta e navegação saindo de Publicidade sem erro. |
+| `forms` | Corrente de visitas até receita, ação de respostas, carregamento/erro com nova tentativa e publicação com estado de espera. Editor e variantes preservados. |
+| `landingpages` | Funil e origem agregada com pedidos/receita juntos; curvas, planos e CTAs recolhidos. Funil ajustado para celular. |
+| `creative` | Templates por formato, prévia e conteúdo por slide, fonte editável, texto adicional e PNG com feedback. |
+| `disparos` | Público, mensagem e conferência numerados; troca de canal insere as variáveis no campo correto; campanhas salvas e sequências preservadas. |
+| `blog` | Revisão pendente no topo e tabela com estado em ponto + texto; editor e bloqueio por erro do pente fino conferidos. |
+
+Conferência visual em desktop e celular de 390px, com amostras nos temas claro
+e escuro. Interações verificadas: navegação entre telas, respostas e editor do
+form, seleção de campanha, troca de canal, variáveis e salvamento fictício,
+ficha do Blog, troca de slides e exportação de PNG. Integrações externas não
+foram acionadas. Cada tela tem commit próprio; CSS e preview são compartilhados.
