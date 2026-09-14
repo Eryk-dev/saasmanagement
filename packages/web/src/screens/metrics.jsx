@@ -1,4 +1,5 @@
 import React from "react";
+import "./marketing.css";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { PageHead, Segmented, Card } from "../components/viz.jsx";
@@ -383,8 +384,8 @@ function MetricsScreen() {
   } : null;
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
-      <PageHead title="Publicidade" sub={<span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>aquisição, funil e campanhas · <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--fg-2)", fontSize: 12.5, fontWeight: 500 }}><span style={{ width: 6, height: 6, borderRadius: 99, background: metaOn && product.metaAdAccount ? "var(--pos)" : "var(--fg-4)" }} />{metaOn && product.metaAdAccount ? "Meta conectada" : "Meta não conectada"}</span></span>}>
+    <div className="marketing-page" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
+      <PageHead className="marketing-head" title="Publicidade" sub={<span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>aquisição, funil e campanhas · <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--fg-2)", fontSize: 12.5, fontWeight: 500 }}><span style={{ width: 6, height: 6, borderRadius: 99, background: metaOn && product.metaAdAccount ? "var(--pos)" : "var(--fg-4)" }} />{metaOn && product.metaAdAccount ? "Meta conectada" : "Meta não conectada"}</span></span>}>
         {metaOn && product.metaAdAccount && (
           <PrimaryButton onClick={() => { setCloneAd((v) => !v); setCreative(false); }}>+ criar anúncio</PrimaryButton>
         )}
@@ -480,7 +481,7 @@ function MetricsScreen() {
                 <div style={{ fontSize: 13, color: "var(--fg-3)", marginTop: 4, lineHeight: 1.55 }}>
                   {metaOn
                     ? "A integração com a Meta está ativa. Configure a conta de anúncio do produto em Ajustes (Integrações) e sincronize."
-                    : "Conecte a Meta (variável META_ACCESS_TOKEN na API + conta de anúncio em Ajustes) ou aguarde a entrada manual de gasto, que chega na fase de marketing."}
+                    : "Conecte a conta da Meta em Ajustes ou registre o investimento pelo botão de gasto manual."}
                 </div>
               </div>
               {metaOn && (
@@ -512,13 +513,14 @@ function MetricsScreen() {
             amanhã" (Leo, 30/08). Toggle e parâmetros por regra + histórico. */}
         <DeliveryRulesCard saas={product.id} />
 
+        <div className="marketing-two-col marketing-acquisition">
         <Card title="Custo por etapa do funil" hint="investimento ÷ leads que chegaram em cada marco · % = quantos chegaram até ali">
-          <div style={{ padding: "16px 24px 22px", display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ padding: "14px var(--inset-x) 18px", display: "flex", flexDirection: "column", gap: 10 }}>
             {milestones.map((s, i) => {
               const conv = i === 0 ? (totalMilestoneLeads ? 100 : 0) : totalMilestoneLeads ? Math.round((s.count / totalMilestoneLeads) * 1000) / 10 : 0;
               const won = stageKind(product, s.stage) === "ganho";
               return (
-                <div key={s.stage} style={{ display: "grid", gridTemplateColumns: "minmax(72px, 150px) 1fr minmax(64px, 92px) minmax(40px, 60px)", gap: 12, alignItems: "center" }}>
+                <div key={s.stage} style={{ display: "grid", gridTemplateColumns: "minmax(72px, 120px) minmax(12px, 1fr) 86px 42px", gap: 12, alignItems: "center" }}>
                   <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.stage}</span>
                   <div style={{ height: 20, borderRadius: 6, background: "var(--bg-2)", overflow: "hidden" }}><div style={{ height: "100%", width: `${Math.max(conv ? 3 : 0, conv)}%`, background: won ? "var(--pos)" : "var(--accent)", borderRadius: 6 }} /></div>
                   <span className="tnum" style={{ textAlign: "right", fontSize: 13.5, fontWeight: 700 }}>{s.costPer != null ? money(s.costPer) : "—"}</span>
@@ -535,7 +537,7 @@ function MetricsScreen() {
             coorte do período e ganhos pela data da venda — origem boa é a que
             senta gente na call e fecha, não a que só enche o topo. */}
         <Card title="Origem dos leads" hint="UTM + referrer do cadastro · calls da coorte do período · ganhos pela data da venda">
-          <div style={{ padding: "16px 24px 22px", display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ padding: "14px var(--inset-x) 18px", display: "flex", flexDirection: "column", gap: 10 }}>
             {(() => {
               const origins = (data && !data.error ? data.origins : []) || [];
               const totalLeads = origins.reduce((a, o) => a + o.leads, 0);
@@ -544,7 +546,7 @@ function MetricsScreen() {
                 const share = totalLeads ? Math.round((o.leads / totalLeads) * 1000) / 10 : 0;
                 const callPct = o.leads ? Math.round((o.calls / o.leads) * 100) : 0;
                 return (
-                  <div key={o.key} style={{ display: "grid", gridTemplateColumns: "minmax(88px, 170px) 1fr minmax(84px, 104px) minmax(96px, 120px) minmax(64px, 92px)", gap: 12, alignItems: "center" }}>
+                  <div key={o.key} className="marketing-origin">
                     <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={o.label}>{o.label}</span>
                     <div style={{ height: 20, borderRadius: 6, background: "var(--bg-2)", overflow: "hidden" }}>
                       <div style={{ height: "100%", width: `${Math.max(o.leads ? 3 : 0, share)}%`, background: o.won ? "var(--pos)" : "var(--accent)", borderRadius: 6 }} />
@@ -558,6 +560,8 @@ function MetricsScreen() {
             })()}
           </div>
         </Card>
+
+        </div>
 
         <Card title="Por dor" hint="código [X] no nome do anúncio · qual roteiro traz lead que fecha, não só lead barato" style={{ overflow: "hidden" }}>
           <PainTable pains={(data && !data.error ? data.pains : []) || []} money={money} />
