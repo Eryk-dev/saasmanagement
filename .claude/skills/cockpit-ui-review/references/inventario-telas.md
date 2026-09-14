@@ -79,6 +79,13 @@ Leo: `outbound` e `funcionarios` (seguem `hidden`).
 
 ## Sub-telas, overlays e chrome (auditar junto da tela-mãe ou como lote próprio)
 
+**Moldura do handoff — 14/09/2026:** NavRail, TopBar, alternador de produto,
+conta, busca global e notificações adaptados à referência. Lateral navy de
+248px, topbar de 58px no desktop e drawer no celular. Conferidos na prévia
+com dados fictícios: navegação/permissões por produto, grupos recolhíveis,
+busca por teclado, período, notificações e conta; larguras 1440, 1024 e 390px,
+além do tema escuro. Esta etapa não altera o conteúdo das telas navegáveis.
+
 | Peça | Arquivo | O que é |
 |---|---|---|
 | LeadDetail | screens/deal.jsx | drawer de lead usado por pipeline/today/whatsapp/agenda (o maior overlay do app) |

@@ -104,6 +104,33 @@ inline. Máximo ~3 níveis por tela.
 
 ## Padrões de tela
 
+### Moldura do handoff — 14/09/2026
+
+A referência aprovada em `design/handoff-cockpit/` orienta a moldura em
+`chrome.jsx`, a busca e as notificações. Esta etapa não redesenha o conteúdo
+das telas.
+
+- Lateral de **248px** (`--rail-width`), navy nos dois temas (`--bg-rail`),
+  com tokens `--rail-*` próprios para texto, linha, hover e seleção. Não
+  sobrescrever `--fg-*` dentro do nav: os popovers continuam usando o tema.
+- Produto/alternador no topo, busca logo abaixo, grupos recolhíveis e conta
+  real no rodapé (perfil, senha, sair). Os grupos mostram todos os itens
+  permitidos quando abertos; entrar numa tela revela seu grupo.
+- Barra superior de **58px** no desktop: breadcrumb, período à esquerda,
+  busca e sino à direita. O ICP foi preservado como controle discreto;
+  o resumo aparece quando há largura. Conta saiu da barra superior.
+- Ícones SVG e logos reais foram preservados; o `reset` do protótipo não é
+  ação de produção. Badges usam as réguas e contadores existentes.
+- Seletor de produto, conta, ICP e notificações usam o `Popover` compartilhado;
+  busca e menu móvel usam `Modal`/`Drawer`. Navegação fecha os periféricos.
+- Abaixo de 900px, o período passa à segunda linha; abaixo de 768px a lateral
+  abre como drawer. Controles globais têm alvos de 44px no mobile.
+- Prévia do App real com API fictícia: `vite.preview.config.js`, URL
+  `/?shell=1#overview`. Mantém os previews individuais existentes. Não inicia
+  API, automações ou conexões com o banco.
+
+### Conteúdo das telas
+
 - Layout padrão: `app-shell` flex → `NavRail` (chrome.jsx; drawer no mobile) + `TopBar` (breadcrumb, busca ⌘K `CommandSearch`, sino, period-picker nas telas de análise) + tela dentro de `ErrorBoundary variant="screen"`
 - Cabeçalho de tela: `PageHead` (viz.jsx) com título + sub + ações à direita; telas antigas hand-rolam o mesmo visual (migrar quando tocar)
 - Barra de filtros: `Segmented` (visões), `FilterTab` (categorias com contagem), busca com `<input>` 30px; período = `components/period-picker.jsx` (atalhos + calendário 2 meses, semana começa segunda) via `usePeriod`/`cockpit_period` — janela GLOBAL, persiste entre telas

@@ -38,7 +38,7 @@ export function Modal({ onClose, fechavel = true, label, largura = 560, padding 
     <Shell onClose={onClose} fechavel={fechavel} label={label}
       camada="var(--z-modal)" veu="var(--scrim)"
       alinhamento={{ justify: "center", align: "center" }} padding={padding} style={style}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true"
+      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={label}
         style={{
           width: `min(${largura}px, 100%)`, maxHeight: "calc(100dvh - 32px)", overflow: "auto",
           background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)",
@@ -56,7 +56,7 @@ export function Drawer({ onClose, fechavel = true, label, largura = 520, childre
     <Shell onClose={onClose} fechavel={fechavel} label={label}
       camada="var(--z-drawer)" veu="var(--scrim-soft)"
       alinhamento={{ justify: "flex-end", align: "stretch" }} padding={0} style={style}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true"
+      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={label}
         style={{
           width: `min(${largura}px, 100%)`, height: "100%", overflow: "auto",
           background: "var(--bg-1)", borderLeft: "1px solid var(--line-1)",

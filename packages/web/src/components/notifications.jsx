@@ -1,9 +1,9 @@
 import React from "react";
 import { api } from "../lib/api.js";
-import { Avatar, useEsc, toast } from "../atoms.jsx";
+import { toast } from "../atoms.jsx";
+import { Popover } from "./popover.jsx";
 import { displayName, canSeeScreen } from "../lib/users.js";
 import { setActiveSaas, getActiveSaasId } from "../lib/workspace.js";
-import { useIsMobile } from "../lib/responsive.js";
 import { taskHash } from "../lib/tasks.js";
 
 // Sino da topbar: caixa de entrada das tarefas (atribuído, mencionado,
@@ -31,15 +31,15 @@ export function NotificationsBell() {
   const [items, setItems] = useState(null);
   const [unread, setUnread] = useState(0);
   const ref = useRef(null);
-  const isMobile = useIsMobile();
-  useEsc(open ? () => setOpen(false) : null);
+  const [error, setError] = useState("");
+  const [marking, setMarking] = useState(false);
 
   const load = useCallback(async (full = false) => {
     try {
       const r = await api.notifications(!full && !open);
       setUnread(r.unread || 0);
-      if (full || open) setItems(r.items || []);
-    } catch { /* sem sessão ou API fora: o sino só não conta */ }
+      if (full || open) { setItems(r.items || []); setError(""); }
+    } catch { if (full || open) setError("Não foi possível carregar as notificações."); }
   }, [open]);
   useEffect(() => { load(open); }, [open, load]);
   useEffect(() => {
@@ -51,22 +51,21 @@ export function NotificationsBell() {
     document.addEventListener("visibilitychange", onVis);
     return () => { clearTimeout(t); clearInterval(iv); window.removeEventListener("cockpit-change", on); document.removeEventListener("visibilitychange", onVis); };
   }, [load, open]);
-  useEffect(() => {
-    if (!open) return undefined;
-    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
-
   const markAll = async () => {
+    if (marking) return;
+    setMarking(true);
     try { await api.notificationsRead({ all: true }); setItems((l) => (l || []).map((n) => ({ ...n, read: true }))); setUnread(0); }
     catch (err) { toast(`Não deu pra marcar como lidas · ${err.message}`, "neg"); }
+    finally { setMarking(false); }
   };
   const openItem = async (n) => {
     if (!n.read) {
       setItems((l) => (l || []).map((x) => (x.id === n.id ? { ...x, read: true } : x)));
       setUnread((u) => Math.max(0, u - 1));
-      api.notificationsRead({ ids: [n.id] }).catch(() => {});
+      api.notificationsRead({ ids: [n.id] }).catch(() => {
+        toast("Não deu para marcar a notificação como lida · tente novamente", "neg");
+        load(true);
+      });
     }
     setOpen(false);
     // Destino que não é tarefa (13/09): o aviso de silêncio no WhatsApp abre a
@@ -87,18 +86,17 @@ export function NotificationsBell() {
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
-      <button type="button" onClick={() => setOpen((o) => !o)} title="Caixa de entrada" aria-label={`Caixa de entrada${unread ? `, ${unread} não lidas` : ""}`}
-        style={{ position: "relative", width: 34, height: 34, borderRadius: "var(--r-2)", display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--fg-3)", background: open ? "var(--hover)" : "transparent" }}>
+      <button type="button" onClick={() => setOpen((o) => !o)} className="chrome-control chrome-bell"
+        title="Notificações" aria-expanded={open} aria-haspopup="dialog" aria-label={`Notificações${unread ? `, ${unread} não lidas` : ""}`}>
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10 21a2 2 0 0 0 4 0" /></svg>
-        {unread > 0 && <span className="tnum" style={{ position: "absolute", top: 2, right: 2, minWidth: 16, height: 16, padding: "0 4px", borderRadius: 999, background: "var(--fg-1)", color: "var(--bg-1)", fontSize: 10.5, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{unread > 9 ? "9+" : unread}</span>}
+        {unread > 0 && <span className="chrome-unread tnum">{unread > 99 ? "99+" : unread}</span>}
       </button>
       {open && (
-        <div role="dialog" aria-label="Caixa de entrada" style={isMobile
-          ? { position: "fixed", left: 8, right: 8, top: 64, zIndex: 80, background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", maxHeight: "70vh", display: "flex", flexDirection: "column" }
-          : { position: "absolute", top: "calc(100% + 5px)", right: 0, width: 400, zIndex: 80, background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", maxHeight: "min(70vh, 560px)", display: "flex", flexDirection: "column" }}>
+        <Popover anchor={ref} onClose={() => setOpen(false)} width={360} align="end" gap={16} label="Notificações"
+          style={{ padding: 0, borderRadius: "var(--r-4)", overflow: "hidden" }} maxHeight="min(70dvh, 560px)">
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 14px 6px" }}>
-            <span className="card-title">Caixa de entrada</span>
-            <button type="button" onClick={markAll} disabled={!unread} style={{ marginLeft: "auto", fontSize: 12, color: unread ? "var(--accent)" : "var(--fg-4)", fontWeight: 600 }}>Marcar todas como lidas</button>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>Notificações</span>
+            <button type="button" onClick={markAll} disabled={!unread || marking} style={{ marginLeft: "auto", fontSize: 12, color: unread ? "var(--accent)" : "var(--fg-4)", fontWeight: 600 }}>{marking ? "Marcando…" : "Marcar todas como lidas"}</button>
           </div>
           <div style={{ display: "flex", gap: 2, padding: "0 10px 8px" }}>
             {TABS.map(([k, l]) => (
@@ -108,35 +106,32 @@ export function NotificationsBell() {
             ))}
           </div>
           <div style={{ overflowY: "auto", minHeight: 0, borderTop: "1px solid var(--line-1)" }}>
-            {items === null && <div className="mono dim" style={{ fontSize: 12, padding: 14 }}>carregando…</div>}
-            {items !== null && list.length === 0 && (
+            {!error && items === null && <div className="mono dim" style={{ fontSize: 12, padding: 14 }}>carregando…</div>}
+            {error && <div role="alert" style={{ padding: 16, fontSize: 12.5, color: "var(--fg-3)" }}>
+              {error}<button onClick={() => load(true)} className="chrome-menu-item" style={{ color: "var(--accent)", marginTop: 8 }}>Tentar novamente</button>
+            </div>}
+            {!error && items !== null && list.length === 0 && (
               <div style={{ padding: "26px 14px", textAlign: "center" }}>
                 <div style={{ fontSize: 13.5, fontWeight: 600 }}>Nenhuma notificação</div>
                 <div className="dim" style={{ fontSize: 12, marginTop: 4 }}>Menções, atribuições, comentários e prazos das suas tarefas aparecem aqui.</div>
               </div>
             )}
             {list.map((n) => (
-              <button key={n.id} type="button" onClick={() => openItem(n)} style={{ display: "flex", gap: 10, width: "100%", padding: "10px 14px", textAlign: "left", background: n.read ? "transparent" : "var(--bg-2)", borderBottom: "1px solid var(--line-1)", alignItems: "flex-start" }}>
-                <span style={{ position: "relative", flexShrink: 0 }}>
-                  <Avatar id={n.by} name={n.by === "api" ? "Cockpit" : displayName(n.by) || n.by} size={26} />
-                  {!n.read && <span style={{ position: "absolute", top: -2, right: -2, width: 8, height: 8, borderRadius: 999, background: "var(--accent)", border: "1.5px solid var(--bg-1)" }} />}
-                </span>
+              <button key={n.id} type="button" onClick={() => openItem(n)} className="notification-item" data-read={n.read || undefined}>
+                <span className="notification-dot" style={{ background: n.read ? "var(--line-2)" : n.type === "wa_waiting" ? "var(--neg)" : "var(--accent)" }} />
                 <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: "block", fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.4 }}>{n.text}</span>
-                  <span className="mono dim" style={{ fontSize: 10.5 }}>{when(n.at)}{n.saas ? ` · ${n.saas}` : ""}</span>
-                </span>
-                {/* O QUE FAZER no próprio item (13/09): a linha inteira era
-                    clicável sem dizer pra onde ia. O verbo fica à vista, e é o
-                    mesmo clique. */}
-                {(n.task || n.link?.screen) && (
-                  <span style={{ flexShrink: 0, alignSelf: "center", fontSize: 11.5, fontWeight: 600, color: n.type === "wa_waiting" ? "var(--neg)" : "var(--accent)" }}>
-                    {n.type === "wa_waiting" ? "responder" : n.type === "mention" ? "responder" : n.type === "assigned" ? "assumir" : "abrir"} →
+                  <span className="notification-text">{n.text}</span>
+                  <span className="notification-meta">
+                    {(n.task || n.link?.screen) && <span className="notification-action">
+                      {n.type === "wa_waiting" ? "Responder" : n.type === "mention" ? "Responder" : n.type === "assigned" ? "Abrir tarefa" : "Abrir"} →
+                    </span>}
+                    <span title={n.by === "api" ? "Cockpit" : displayName(n.by) || n.by}>{when(n.at)}{n.saas ? ` · ${n.saas}` : ""}</span>
                   </span>
-                )}
+                </span>
               </button>
             ))}
           </div>
-        </div>
+        </Popover>
       )}
     </div>
   );

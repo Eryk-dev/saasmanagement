@@ -11,6 +11,8 @@ window.fmt = fmt;
 const DIA = 86400000;
 const hoje = new Date();
 const iso = (n, h = 9) => { const d = new Date(hoje.getTime() + n * DIA); d.setHours(h, 0, 0, 0); return d.toISOString(); };
+const params = new URLSearchParams(location.search);
+const previewShell = params.has("shell");
 
 window.SEED = {
   SAAS: [{
@@ -24,6 +26,7 @@ window.SEED = {
       { stage: "Perdido", kind: "perdido" },
     ],
     leadQuestions: [],
+    icp: { headline: "Operações com várias contas em marketplaces", pill: "2+ contas · 500+ anúncios", profile: ["2+ contas em marketplaces", "500+ anúncios ativos"] },
   }],
   USERS: [
     { id: "leo", name: "Leonardo", roles: ["sdr", "admin"], saas: "" },
@@ -35,8 +38,15 @@ window.SEED = {
   AGENDA_BLOCKS: [], CONSULTATION_SLOTS: [],
   CONFIG: { meta: { configured: false }, mp: { configured: false }, proposals: { nativeSaas: [] } },
   ME: { id: "leo", name: "Leonardo", roles: ["sdr", "admin"] },
+  COUNTERS: { leverads: { tasks: 3, tasksLate: 1, inbox: 2 } },
 };
+if (previewShell) {
+  window.SEED.SAAS.push({ id: "elo", name: "Elo", accent: 55, funnel: [], leadQuestions: [] });
+  // A moldura usa o App real, com API falsa e sem conexão SSE/banco.
+  window.EventSource = class { close() {} };
+}
 try {
+  localStorage.setItem("cockpit_user", JSON.stringify(window.SEED.ME));
   localStorage.setItem("cockpit_pipeline_view", "kanban");
   localStorage.setItem("cockpit_pipeline_phase", "all");
   localStorage.setItem("cockpit_today_person", "leo");
@@ -69,5 +79,11 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")).render(<App />);
-window.addEventListener("hashchange", () => location.reload());
+const root = createRoot(document.getElementById("root"));
+if (previewShell) {
+  const { App: Cockpit } = await import("../src/app.jsx");
+  root.render(<Cockpit />);
+} else {
+  root.render(<App />);
+  window.addEventListener("hashchange", () => location.reload());
+}

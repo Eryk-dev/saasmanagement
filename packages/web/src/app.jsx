@@ -2,7 +2,6 @@ import React from "react";
 import { useTweaks, TweaksPanel, TweakSection, TweakRadio, TweakColor } from "./tweaks-panel.jsx";
 import { NavRail, TopBar, NAV } from "./chrome.jsx";
 import { eventsUrl } from "./lib/api.js";
-import { chromeBtnStyleSmall } from "./lib/ui.js";
 import { OverviewScreen } from "./screens/overview.jsx";
 import { EloOverviewScreen } from "./screens/overview-elo.jsx";
 import { TodayScreen } from "./screens/today.jsx";
@@ -42,6 +41,7 @@ import { LeadDetail } from "./screens/deal.jsx";
 import { CommandSearch } from "./components/CommandSearch.jsx";
 import { ToastHost } from "./atoms.jsx";
 import { ErrorBoundary } from "./components/error-boundary.jsx";
+import { Drawer } from "./components/overlay.jsx";
 import { DataContext, loadSeed } from "./data.jsx";
 import { useActiveSaas } from "./lib/workspace.js";
 import { canSeeScreen } from "./lib/users.js";
@@ -178,7 +178,7 @@ function App() {
 
   // Back/forward do navegador troca a tela junto com o hash.
   useEA(() => {
-    const onHash = () => setScreen(screenFromHash());
+    const onHash = () => { setScreen(screenFromHash()); setSearchOpen(false); setLeadSel(null); setMenuOpen(false); };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
@@ -196,6 +196,9 @@ function App() {
   }, []);
 
   function nav(id, p = {}) {
+    setSearchOpen(false);
+    setLeadSel(null);
+    setMenuOpen(false);
     setScreen(id);
     setParams(prev => ({ ...prev, ...p }));
     try { history.replaceState(null, "", "#" + id); } catch { /* ignore */ }
@@ -261,22 +264,23 @@ function App() {
     <div className="app-shell" style={{ display: "flex", overflow: "hidden", background: "var(--bg-0)" }}>
       {!isMobile && <NavRail current={scr} onNav={(id) => nav(id)} collapsed={false} onSearch={() => setSearchOpen(true)} />}
       {isMobile && menuOpen && (
-        <div onClick={() => setMenuOpen(false)}
-          style={{ position: "fixed", inset: 0, background: "var(--scrim-soft)", zIndex: "var(--z-alarme)", display: "flex" }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ height: "100%", display: "flex", boxShadow: "var(--shadow-pop)" }}>
+        <Drawer onClose={() => setMenuOpen(false)} label="Menu principal" largura={248}
+          style={{ justifyContent: "flex-start" }} painelStyle={{ borderLeft: 0, overflow: "visible" }}>
+          <div style={{ height: "100%", display: "flex" }}>
             <NavRail current={scr} onNav={(id) => { nav(id); setMenuOpen(false); }} collapsed={false} onSearch={() => { setMenuOpen(false); setSearchOpen(true); }} />
           </div>
-        </div>
+        </Drawer>
       )}
 
       <main style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <TopBar
+          key={`${scr}:${activeProduct?.id}`}
           breadcrumb={crumbsFor[scr]}
           onSearch={() => setSearchOpen(true)}
           showPeriod={PERIOD_SCREENS.has(scr)}
           leading={isMobile && (
-            <button onClick={() => setMenuOpen(true)} style={chromeBtnStyleSmall} title="Abrir menu">
-              <span className="mono" style={{ fontSize: 14 }}>☰</span>
+            <button onClick={() => setMenuOpen(true)} className="chrome-control chrome-menu-button" title="Abrir menu" aria-label="Abrir menu" aria-expanded={menuOpen}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
             </button>
           )}
         />

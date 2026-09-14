@@ -102,10 +102,11 @@ Os caminhos abaixo são relativos a `packages/`.
    tela, exceções e acessos administrativos; `lib/users.js` espelha a UI.
    `roles` já participa de regras de acesso — não assumir que é só etiqueta.
    Credenciais e tokens não entram no CRUD/JSON público nem no guia.
-5. **Atualização não pode apagar edição em curso:** o app remonta telas após
-   refresh e contém proteções para quem está digitando. Estado que deve
-   sobreviver segue os stores e padrões existentes. Não adicionar polling por
-   aba quando SSE ou automação no servidor já cobrem a atualização.
+5. **Atualização não pode apagar edição em curso:** o app atual preserva as
+   telas durante refresh (sem `key={dataVersion}`) e contém proteções para quem
+   está digitando. Estado que deve sobreviver segue os stores e padrões
+   existentes. Não adicionar polling por aba quando SSE ou automação no servidor
+   já cobrem a atualização.
 6. **UI segue o sistema existente:** CSS custom properties + componentes
    próprios; tema claro padrão e suporte a escuro. Preferir `atoms.jsx`,
    `components/viz.jsx` e blocos compartilhados. Consultar as regras recentes
@@ -165,6 +166,15 @@ verificação da página/assets correspondentes. Reportar qualquer divergência 
 falha de deploy com a evidência, conforme o acordo de trabalho.
 
 ## Correções de contexto e ferramentas
+
+- **Handoff de design (14/09/2026):** referência em
+  [design/handoff-cockpit](../design/handoff-cockpit/README.md), com índice em
+  [MAPA-ESTRUTURAL.md](../design/handoff-cockpit/MAPA-ESTRUTURAL.md). A entrega
+  solicitada nesta etapa é a moldura: sidebar, topbar, conta, workspace, busca
+  e notificações. A adaptação do conteúdo das telas segue em etapas posteriores
+  acompanhadas pelo usuário. O preview local `/?shell=1#overview` usa o App
+  real com API fictícia; iniciar com `node node_modules/vite/bin/vite.js
+  --config packages/web/vite.preview.config.js` (porta padrão 5199).
 
 - **README:** SQLite, leitura sempre aberta, MCP apenas como manual, seed demo e
   proposta exclusivamente externa são descrições antigas. O código atual usa

@@ -2,6 +2,7 @@ import React from "react";
 import { Avatar } from "../atoms.jsx";
 import { NAV, GROUP_LABELS } from "../chrome.jsx";
 import { canSeeScreen } from "../lib/users.js";
+import { Modal } from "./overlay.jsx";
 
 // Busca ⌘K. Até 13/09 só achava LEAD; com 35 telas no menu, ir pra tela é
 // metade do uso (decisão do Leo, 13/09: telas + ações). Agora devolve três
@@ -30,8 +31,18 @@ function CommandSearch({ open, onClose, onOpenLead, onNav, onNewLead, activeSaas
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
   const inputRef = useRef(null);
+  const panelRef = useRef(null);
 
-  useEffect(() => { if (open) { setQ(""); setSel(0); setTimeout(() => inputRef.current?.focus(), 20); } }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const trigger = document.activeElement;
+    setQ(""); setSel(0);
+    const timer = setTimeout(() => inputRef.current?.focus(), 20);
+    return () => { clearTimeout(timer); if (trigger?.isConnected) trigger.focus(); };
+  }, [open]);
+  useEffect(() => {
+    if (open) panelRef.current?.querySelector(`[data-result="${sel}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [sel, open]);
 
   const saasName = useMemo(() => Object.fromEntries((window.SEED?.SAAS || []).map((s) => [s.id, s.name])), []);
 
@@ -70,7 +81,15 @@ function CommandSearch({ open, onClose, onOpenLead, onNav, onNewLead, activeSaas
   if (!open) return null;
 
   function onKey(e) {
-    if (e.key === "ArrowDown") { e.preventDefault(); setSel((s) => Math.min(s + 1, results.length - 1)); }
+    if (e.key === "Enter" && e.target !== inputRef.current) return;
+    if (e.key === "Tab") {
+      const controls = panelRef.current?.querySelectorAll('input, button');
+      if (!controls?.length) return;
+      const first = controls[0], last = controls[controls.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+    else if (e.key === "ArrowDown") { e.preventDefault(); setSel((s) => Math.max(0, Math.min(s + 1, results.length - 1))); }
     else if (e.key === "ArrowUp") { e.preventDefault(); setSel((s) => Math.max(s - 1, 0)); }
     else if (e.key === "Enter") { e.preventDefault(); escolher(results[sel]); }
     else if (e.key === "Escape") { e.preventDefault(); onClose(); }
@@ -87,17 +106,19 @@ function CommandSearch({ open, onClose, onOpenLead, onNav, onNewLead, activeSaas
   const TITULO = { lead: "Leads e clientes", tela: "Ir para", acao: "Ações" };
 
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: "var(--z-command)", background: "var(--scrim-soft)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "10vh 16px 16px" }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(560px, 100%)", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "70vh" }}>
+    <Modal onClose={onClose} label="Busca global" largura={520}
+      style={{ zIndex: "var(--z-command)", background: "var(--scrim-soft)", alignItems: "flex-start", padding: "14vh 16px 16px" }}
+      painelStyle={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-4)", overflow: "hidden" }}>
+      <div ref={panelRef} onKeyDown={onKey} style={{ display: "flex", flexDirection: "column", maxHeight: "70dvh" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderBottom: "1px solid var(--line-1)" }}>
-          <span className="mono dim" style={{ fontSize: 13 }}>🔍</span>
-          <input ref={inputRef} value={q} onChange={(e) => { setQ(e.target.value); setSel(0); }} onKeyDown={onKey}
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m16 16 5 5" /></svg>
+          <input ref={inputRef} value={q} aria-label="Buscar lead, cliente ou tela" onChange={(e) => { setQ(e.target.value); setSel(0); }}
             placeholder="Buscar lead, cliente, tela…"
-            style={{ flex: 1, border: "none", outline: "none", background: "transparent", color: "var(--fg-1)", fontSize: 15 }} />
-          <span className="kbd" style={{ fontSize: 10 }}>Esc</span>
+            style={{ flex: 1, minWidth: 0, border: "none", outline: "none", background: "transparent", color: "var(--fg-1)", fontSize: 15 }} />
+          <button onClick={onClose} className="kbd" aria-label="Fechar busca" style={{ fontSize: 11, flexShrink: 0 }}>esc</button>
         </div>
 
-        <div style={{ overflowY: "auto", padding: 6 }}>
+        <div style={{ overflowY: "auto", maxHeight: 360, minHeight: 0, padding: "8px 6px" }}>
           {results.length === 0 && (
             <div className="mono dim" style={{ padding: "18px 12px", fontSize: 12.5 }}>
               {q.trim() ? `nada pra "${q.trim()}"` : "digite pra buscar lead, cliente ou tela"}
@@ -109,7 +130,7 @@ function CommandSearch({ open, onClose, onOpenLead, onNav, onNewLead, activeSaas
             const linha = (conteudo, chave) => (
               <React.Fragment key={chave}>
                 {primeiroDoGrupo && <div className="kicker" style={{ padding: "8px 10px 4px", color: "var(--fg-4)" }}>{TITULO[r.kind]}</div>}
-                <button onClick={() => escolher(r)} onMouseEnter={() => setSel(i)}
+                <button data-result={i} onClick={() => escolher(r)} onMouseEnter={() => setSel(i)}
                   style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
                     padding: "8px 10px", borderRadius: "var(--r-2)", background: on ? "var(--accent-soft)" : "transparent" }}>
                   {conteudo}
@@ -163,7 +184,7 @@ function CommandSearch({ open, onClose, onOpenLead, onNav, onNewLead, activeSaas
           <span style={{ marginLeft: "auto" }}>lead · cliente · tela · ação</span>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 

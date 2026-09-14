@@ -32,7 +32,7 @@ function computePos(anchor, { width, align, gap, height = 0 }) {
   return { left, top, width: w };
 }
 
-export function Popover({ anchor, onClose, width = 320, align = "start", gap = 6, title, children, style, maxHeight = 480 }) {
+export function Popover({ anchor, onClose, width = 320, align = "start", gap = 6, title, label = title, children, style, maxHeight = 480 }) {
   const isMobile = useIsMobile();
   const ref = useRef(null);
   const [pos, setPos] = useState(() => computePos(anchor, { width, align, gap }));
@@ -70,7 +70,7 @@ export function Popover({ anchor, onClose, width = 320, align = "start", gap = 6
     return (
       <>
         <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: "calc(var(--z-drawer) - 1)", background: "var(--scrim-soft)" }} />
-        <div ref={ref} data-tk-layer="1" role="dialog" style={{ ...shell, position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 90, borderRadius: "var(--r-4) var(--r-4) 0 0", maxHeight: "72vh", paddingBottom: "env(safe-area-inset-bottom)", ...style }}>
+        <div ref={ref} data-tk-layer="1" role="dialog" aria-label={label} style={{ ...shell, position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 90, borderRadius: "var(--r-4) var(--r-4) 0 0", maxHeight: "72vh", paddingBottom: "env(safe-area-inset-bottom)", ...style }}>
           {title && <div style={{ display: "flex", alignItems: "center", padding: "12px 16px 4px" }}><span className="card-title">{title}</span><button onClick={onClose} aria-label="Fechar" style={{ marginLeft: "auto", fontSize: 16, color: "var(--fg-3)", width: 32, height: 32 }}>✕</button></div>}
           <div style={{ overflowY: "auto", minHeight: 0, padding: 10 }}>{children}</div>
         </div>
@@ -78,7 +78,7 @@ export function Popover({ anchor, onClose, width = 320, align = "start", gap = 6
     );
   }
   return (
-    <div ref={ref} data-tk-layer="1" role="dialog" style={{
+    <div ref={ref} data-tk-layer="1" role="dialog" aria-label={label} style={{
       ...shell, position: "fixed", zIndex: 90, left: pos.left, top: pos.top, width: pos.width,
       maxHeight, padding: 8, ...style,
     }}>

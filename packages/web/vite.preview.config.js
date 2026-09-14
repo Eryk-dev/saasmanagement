@@ -10,8 +10,12 @@ const raiz = path.dirname(fileURLToPath(import.meta.url));
 // Não faz parte do build de produção (vite.config.js segue intocado).
 export default defineConfig({
   root: path.resolve(raiz, "preview"),
+  // A prévia e o app normal podem rodar juntos; caches diferentes impedem
+  // que um otimizador substitua a cópia de React que o outro está servindo.
+  cacheDir: path.resolve(raiz, "node_modules/.vite-preview"),
   plugins: [react()],
   resolve: {
+    dedupe: ["react", "react-dom"],
     // O regex casa o especificador INTEIRO: alias de RegExp troca só o
     // trecho casado, então /\/lib\/api\.js$/ deixaria o "../" na frente.
     alias: [{ find: /^.*\/lib\/api\.js$/, replacement: path.resolve(raiz, "preview/api-mock.js") }],

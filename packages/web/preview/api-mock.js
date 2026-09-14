@@ -50,7 +50,15 @@ const TAREFAS = [
   { id: "t5", saas: "leverads", title: "Texto do e-mail de boas-vindas", assignees: ["leo"], column: "todo", board: "b1" },
 ];
 
+let notificacoes = [
+  { id: "n1", saas: "leverads", by: "leo", type: "wa_waiting", text: "Auto Peças Santos está esperando uma resposta há 3 horas.", at: emDias(0), read: false, link: { screen: "whatsapp", thread: "demo" } },
+  { id: "n2", saas: "leverads", by: "lucas", type: "mention", text: "Lucas mencionou você no roteiro de objeção de preço.", at: emDias(-1), read: false, task: "t1" },
+  { id: "n3", saas: "leverads", by: "tiago", type: "assigned", text: "Ligar para o financeiro da RN Distribuidora.", at: emDias(-1), read: false, task: "t3" },
+];
+
 const RESPOSTAS = {
+  notifications: () => ({ unread: notificacoes.filter((n) => !n.read).length, items: notificacoes }),
+  notificationsRead: ({ all, ids = [] }) => { notificacoes = notificacoes.map((n) => all || ids.includes(n.id) ? { ...n, read: true } : n); return { ok: true }; },
   list: (col) => col === "leads" ? LEADS_FAKE : col === "customers" ? CLIENTES_FAKE : col === "tasks" ? TAREFAS : col === "task_boards" ? [{ id: "b1", saas: "leverads", columns: [{ key: "todo", name: "A fazer" }, { key: "doing", name: "Em andamento" }, { key: "done", name: "Concluído", done: true }] }] : [],
   desempenho: () => ({ logs: { leo: { socialSelling: 6 } } }),
   // Meta da janela e pace: é o que o termômetro da Visão geral desenha.

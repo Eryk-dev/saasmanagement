@@ -8,8 +8,9 @@ import { PeriodPicker, usePeriod } from "./components/period-picker.jsx";
 import { NotificationsBell } from "./components/notifications.jsx";
 import { IcpCard } from "./components/icp-card.jsx";
 import { Modal } from "./components/overlay.jsx";
+import { Popover } from "./components/popover.jsx";
 
-// Filtro de período GLOBAL, no topo ao lado da busca: muda a janela do cockpit
+// Filtro de período GLOBAL, no topo ao lado do breadcrumb: muda a janela do cockpit
 // inteiro de uma vez (lê o store compartilhado do usePeriod). Só aparece nas
 // telas de análise que respeitam o período (App passa `showPeriod`).
 function GlobalPeriod() {
@@ -17,12 +18,9 @@ function GlobalPeriod() {
   return <PeriodPicker period={period} custom={custom} onChange={(p, c) => { setPeriod(p); setCustom(c); }} />;
 }
 
-// Selo ICP na topbar (à esquerda do filtro): o RESUMO do perfil fica à mostra
-// o tempo todo ("2+ contas · 500+ anúncios · R$150k+"), num selo destacado com
-// borda brilhante — pedido do Leo em 08/08: "pra não perdermos o foco nele".
-// O clique abre o cartão completo (com a matriz de nota). Some quando o
-// produto ainda não tem ICP escrito. `icp.pill` (texto livre no produto) vence
-// o resumo derivado dos números do perfil.
+// ICP preservado na topbar como controle compacto; o resumo aparece quando
+// há largura. O clique abre o cartão completo, com a matriz de nota. Some
+// quando o produto não tem ICP. `icp.pill` vence o resumo derivado do perfil.
 function icpPillText(icp) {
   if (icp?.pill) return String(icp.pill);
   const toks = [];
@@ -40,39 +38,25 @@ function icpPillText(icp) {
 function IcpButton() {
   const [product] = useActiveSaas();
   const [open, setOpen] = React.useState(false);
-  React.useEffect(() => {
-    if (!open) return;
-    const onEsc = (e) => { if (e.key === "Escape") setOpen(false); };
-    document.addEventListener("keydown", onEsc);
-    return () => document.removeEventListener("keydown", onEsc);
-  }, [open]);
+  const anchor = React.useRef(null);
   const icp = product?.icp;
   if (!icp || (!icp.headline && !(icp.profile || []).length)) return null;
   const pill = icpPillText(icp);
   return (
     <div style={{ display: "inline-flex" }}>
-      <button onClick={() => setOpen(!open)} className="icp-pill" title={icp.headline || "Nosso ICP · quem a gente caça"}>
-        <span className="icp-tag" style={{ fontWeight: 800, letterSpacing: "0.04em" }}>ICP</span>
-        {pill && <span className="hide-mobile" style={{ fontWeight: 600, opacity: 0.95 }}>{pill}</span>}
+      <button ref={anchor} onClick={() => setOpen(!open)} className="chrome-control chrome-icp" aria-expanded={open} aria-label="Perfil ideal de cliente" title={pill || icp.headline || "Perfil ideal de cliente"}>
+        <span style={{ fontWeight: 700 }}>ICP</span>
+        {pill && <span className="chrome-icp-summary">{pill}</span>}
       </button>
       {open && (
-        <>
-          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 69 }} />
-          <div style={{
-            position: "fixed", top: 64, right: 12, zIndex: 70,
-            width: "min(94vw, 780px)", maxHeight: "calc(100vh - 90px)", overflowY: "auto",
-            borderRadius: "var(--r-4)", boxShadow: "var(--shadow-pop)",
-          }}>
-            <IcpCard compact grade />
-          </div>
-        </>
+        <Popover anchor={anchor} onClose={() => setOpen(false)} width={780} align="end" title="Perfil ideal de cliente" maxHeight="calc(100dvh - 90px)">
+          <IcpCard compact grade />
+        </Popover>
       )}
     </div>
   );
 }
-// App chrome v3 "Operations Terminal" — grouped nav rail + topbar with live clock.
-// A sidebar veste a MARCA do produto ativo (workspace): logo + nome no topo,
-// seletor de produto no pé (a "bolinha" com o contador abre o menu de troca).
+// Moldura do handoff: produto no topo, grupos recolhíveis e conta no rodapé.
 
 const { useState: useS, useEffect: useE, useRef: useR } = React;
 
@@ -85,8 +69,8 @@ const { useState: useS, useEffect: useE, useRef: useR } = React;
 // venda assistida inteira não se aplica lá.
 const NAV = [
   { id: "overview",   label: "Visão geral",       icon: "◈",  group: "main" },
-  { id: "training",   label: "Treinamentos",      icon: "✎",  group: "main", notSaas: "elo" },
   { id: "today",      label: "Minhas atividades", icon: "◷",  group: "main" },
+  { id: "training",   label: "Treinamentos",      icon: "✎",  group: "main", notSaas: "elo" },
 
   { id: "pipeline",   label: "Pipeline",       icon: "≡",  group: "comercial", notSaas: "elo" },
   // hidden (Leo, 10/09/2026): Outbound e Análise de Equipe saem do menu; rotas e telas seguem no código (abrem por URL).
@@ -176,7 +160,6 @@ const GROUP_LABELS = {
 };
 
 function NavRail({ current, onNav, collapsed, onSearch }) {
-  const w = collapsed ? 56 : 228;
   const [product] = useActiveSaas();
   const brand = BRANDS[product?.id] || { label: product?.name || "Cockpit", Icon: GenericMark };
   // Aba do navegador acompanha a marca do workspace ativo.
@@ -218,21 +201,27 @@ function NavRail({ current, onNav, collapsed, onSearch }) {
     if (id === "whatsapp" && cont.inbox > 0) return { n: cont.inbox, texto: String(cont.inbox), tone: "neg", title: `${cont.inbox} conversas não lidas` };
     return null;
   };
-  // GRUPOS QUE RECOLHEM (13/09): 35 itens numa lista só viravam uma coluna de
-  // rolagem em que ninguém achava nada. O grupo da tela aberta fica SEMPRE
-  // aberto (senão você não vê onde está) e a escolha persiste.
+  // Grupos recolhíveis com escolha persistida; marketing e análises começam
+  // fechados conforme o handoff, salvo quando contêm a rota inicial.
   const [fechados, setFechados] = useS(() => {
-    try { return new Set(JSON.parse(localStorage.getItem("cockpit_nav_fechados") || "[]")); } catch { return new Set(); }
+    try { return new Set(JSON.parse(localStorage.getItem("cockpit_nav_fechados") || '["marketing","analises"]')); } catch { return new Set(); }
   });
+  // Entrar numa tela revela seu grupo; depois o usuário pode recolhê-lo.
+  useE(() => {
+    const group = NAV.find((n) => n.id === current)?.group;
+    setFechados((prev) => {
+      if (!prev.has(group)) return prev;
+      const next = new Set(prev); next.delete(group);
+      try { localStorage.setItem("cockpit_nav_fechados", JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
+  }, [current]);
   const alternar = (key) => setFechados((atual) => {
     const proximo = new Set(atual);
     if (proximo.has(key)) proximo.delete(key); else proximo.add(key);
     try { localStorage.setItem("cockpit_nav_fechados", JSON.stringify([...proximo])); } catch { /* ignore */ }
     return proximo;
   });
-  // "mais N em <grupo>": o grupo mostra os 5 primeiros e revela o resto.
-  const [vertudo, setVerTudo] = useS(() => new Set());
-  const LIMITE = 5;
   const groups = [];
   // "settings" aparece pra TODO usuário: quem não tem a tela liberada abre a
   // versão reduzida (só a conexão Google pessoal) — ver SettingsLite.
@@ -243,169 +232,96 @@ function NavRail({ current, onNav, collapsed, onSearch }) {
   });
 
   return (
-    <nav style={{
-      width: w,
-      flexShrink: 0,
-      borderRight: "1px solid var(--line-1)",
-      background: "var(--bg-rail, var(--bg-0))",
-      display: "flex",
-      flexDirection: "column",
-      transition: "width 180ms ease",
-      overflow: "hidden",
-    }}>
-      {/* O PRODUTO ATIVO FICA EXPLÍCITO (13/09): a marca sozinha no topo não
-          dizia que ela É o contexto do cockpit inteiro, e o seletor vivia no
-          pé, longe do nome. Agora é um card só: marca + "produto ativo" + o
-          alternador. */}
-      <div style={{ padding: collapsed ? "10px 8px" : 10, flexShrink: 0, borderBottom: "1px solid var(--line-faint)", display: "flex", flexDirection: "column", gap: 8 }}>
-        <WorkspaceSwitcher collapsed={collapsed} brand={brand} />
-        {!collapsed && onSearch && (
-          <button onClick={onSearch} title="Buscar lead, cliente ou tela (⌘K)"
-            style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", height: 32, padding: "0 8px 0 10px",
-              border: "1px solid var(--line-1)", background: "var(--bg-inset)", borderRadius: "var(--r-2)",
-              color: "var(--fg-4)", fontSize: 12.5, cursor: "pointer" }}>
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>buscar lead, cliente, tela…</span>
-            <span className="kbd" style={{ marginLeft: "auto", fontSize: 9.5 }}>⌘K</span>
-          </button>
-        )}
+    <nav className="cockpit-rail" aria-label="Navegação principal" data-collapsed={collapsed || undefined}>
+      <div className="rail-brand">
+        <WorkspaceSwitcher key={`${current}:${product?.id}`} collapsed={collapsed} brand={brand} />
       </div>
-
-      <div style={{ flex: 1, padding: 10, overflowY: "auto", overflowX: "hidden", display: "flex", flexDirection: "column", gap: 4 }}>
-        {groups.map(g => {
+      {onSearch && (
+        <div className="rail-search-wrap">
+          <button onClick={onSearch} className="rail-search" title="Buscar lead, cliente ou tela (⌘K / Ctrl+K)" aria-label="Buscar lead, cliente ou tela">
+            {!collapsed && <span>buscar lead, cliente, tela…</span>}
+            <kbd>⌘K</kbd>
+          </button>
+        </div>
+      )}
+      <div className="rail-groups">
+        {groups.map((g) => {
           const temLabel = !collapsed && !!GROUP_LABELS[g.key];
-          const daTelaAberta = g.items.some((x) => x.id === current);
-          const aberto = collapsed || !temLabel || daTelaAberta || !fechados.has(g.key);
-          const todos = vertudo.has(g.key) || g.items.length <= LIMITE + 1;
-          const itens = !aberto ? [] : (todos ? g.items : g.items.slice(0, LIMITE));
-          const escondidos = aberto && !todos ? g.items.length - itens.length : 0;
+          const aberto = collapsed || !temLabel || !fechados.has(g.key);
+          const total = badgeDoGrupo(g);
           return (
-          <div key={g.key} style={{ marginBottom: aberto ? 10 : 2 }}>
-            {temLabel && (
-              <button onClick={() => alternar(g.key)}
-                title={aberto ? `recolher ${GROUP_LABELS[g.key]}` : `abrir ${GROUP_LABELS[g.key]}`}
-                style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "10px 10px 6px", background: "transparent", border: 0, cursor: "pointer", textAlign: "left" }}>
-                <span className="kicker" style={{ fontWeight: 600 }}>{GROUP_LABELS[g.key]}</span>
-                {!aberto && badgeDoGrupo(g) > 0 && (
-                  <span className="tnum" style={{ padding: "0 6px", borderRadius: 999, background: "var(--neg-soft)", color: "var(--neg)", fontSize: 10, fontWeight: 700 }}>{badgeDoGrupo(g)}</span>
-                )}
-                <span className="dim" style={{ marginLeft: "auto", fontSize: 9 }}>{aberto ? "▾" : "›"}</span>
-              </button>
-            )}
-            {itens.map(item => {
-              const active = current === item.id;
-              // O MENU DIZ ONDE TEM FOGO (13/09). Pipeline sai da régua do
-              // próprio pipeline (nextTouch "late") com os leads do SEED;
-              // Tarefas, Inbox e Minhas atividades vêm dos contadores que o
-              // servidor manda no bootstrap (mesmas regras das telas donas) —
-              // nunca de uma conta reinventada aqui.
-              const badge = badgeDe(item.id);
-              return (
-                <button key={item.id}
-                  onClick={() => onNav(item.id)}
-                  title={collapsed ? item.label : undefined}
-                  onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "var(--hover)"; }}
-                  onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 9,
-                    width: "100%", padding: "7px 10px",
-                    borderRadius: "var(--r-2)",
-                    background: active ? "var(--accent-soft)" : "transparent",
-                    color: active ? "var(--fg-1)" : "var(--fg-2)",
-                    fontSize: 13.5,
-                    fontWeight: active ? 600 : 500,
-                    marginBottom: 1,
-                    textAlign: "left",
-                  }}>
-                  <span style={{ width: 16, height: 16, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: active ? "var(--accent)" : "var(--fg-4)" }}>{ICONS[item.id] || item.icon}</span>
-                  {!collapsed && <span>{item.label}</span>}
-                  {badge && (
-                    <span className="tnum" title={badge.title}
-                      style={{ marginLeft: "auto", flexShrink: 0, padding: "1px 7px", borderRadius: 999,
-                        background: badge.tone === "neg" ? "var(--neg-soft)" : "var(--bg-2)",
-                        color: badge.tone === "neg" ? "var(--neg)" : "var(--fg-3)",
-                        fontSize: 10.5, fontWeight: 700 }}>
-                      {collapsed ? badge.n : badge.texto}
-                    </span>
-                  )}
+            <div key={g.key} className="rail-group">
+              {temLabel && (
+                <button onClick={() => alternar(g.key)} className="rail-group-toggle"
+                  aria-expanded={aberto} aria-controls={`nav-group-${g.key}`}
+                  title={aberto ? `recolher ${GROUP_LABELS[g.key]}` : `abrir ${GROUP_LABELS[g.key]}`}>
+                  <span>{GROUP_LABELS[g.key]}</span>
+                  <span className="rail-group-line" />
+                  {!aberto && total > 0 && <span className="rail-badge" data-tone="neg">{total}</span>}
+                  <span aria-hidden="true">{aberto ? "▾" : "▸"}</span>
                 </button>
-              );
-            })}
-            {escondidos > 0 && (
-              <button onClick={() => setVerTudo((v) => new Set([...v, g.key]))} className="mono"
-                style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "6px 10px", background: "transparent", border: 0, color: "var(--fg-4)", fontSize: 11, cursor: "pointer", textAlign: "left" }}>
-                <span style={{ width: 16, textAlign: "center" }}>⋯</span>
-                {`mais ${escondidos} em ${GROUP_LABELS[g.key] || "geral"}`}
-              </button>
-            )}
-          </div>
+              )}
+              <div id={`nav-group-${g.key}`} className="rail-items" hidden={!aberto}>
+                {g.items.map((item) => {
+                  const active = current === item.id;
+                  const badge = badgeDe(item.id);
+                  return (
+                    <button key={item.id} onClick={() => onNav(item.id)} className="rail-item"
+                      aria-current={active ? "page" : undefined} title={item.label} aria-label={collapsed ? item.label : undefined}>
+                      <span className="rail-icon" aria-hidden="true">{ICONS[item.id] || item.icon}</span>
+                      {!collapsed && <span className="rail-item-label">{item.label}</span>}
+                      {badge && <span className="rail-badge tnum" data-tone={badge.tone} title={badge.title} aria-label={badge.title}>{badge.n}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           );
         })}
       </div>
-
-      <div style={{ padding: "10px 12px", paddingBottom: "calc(10px + env(safe-area-inset-bottom, 0px))", borderTop: "1px solid var(--line-1)" }}>
-        {!collapsed && (
-          <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)" }}>{`${NAV.filter((n) => !n.hidden).length} telas · ⌘K abre a busca`}</span>
-        )}
+      <div className="rail-footer">
+        <UserMenu key={`${current}:${product?.id}`} collapsed={collapsed} />
       </div>
     </nav>
   );
 }
 
-// Seletor de produto (workspace) no pé da sidebar. Com 1 produto é um chip
-// informativo; com 2+ vira o alternador: a bolinha mostra o contador e o clique
-// abre o menu — o cockpit INTEIRO troca de contexto (telas + cor da marca).
+// Produto e alternador no topo; o menu usa o Popover existente e cabe na viewport.
 function WorkspaceSwitcher({ collapsed = false, brand }) {
   const [product, setProduct] = useActiveSaas();
-  const saas = (window.SEED?.SAAS || []);
+  const saas = window.SEED?.SAAS || [];
   const [open, setOpen] = useS(false);
   const ref = useR(null);
-  useE(() => {
-    function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, []);
   if (!product) return null;
   const single = saas.length <= 1;
-  const Icon = brand?.Icon;
-  if (collapsed) return <span style={{ display: "flex", justifyContent: "center" }}>{Icon ? <Icon /> : null}</span>;
+  const Icon = brand?.Icon || GenericMark;
   return (
-    <div ref={ref} style={{ position: "relative" }}>
-      <button onClick={() => !single && setOpen((o) => !o)}
-        title={single ? product.name : "Trocar de produto (o cockpit inteiro muda de contexto)"}
-        style={{
-          display: "flex", alignItems: "center", gap: 9, width: "100%",
-          padding: "8px 9px", border: "1px solid " + (open ? "var(--accent-line)" : "var(--line-1)"),
-          borderRadius: "var(--r-3)", background: "var(--bg-inset)",
-          cursor: single ? "default" : "pointer", textAlign: "left",
-        }}>
-        {Icon ? <Icon /> : <span className="dot" style={{ color: "var(--accent)", width: 7, height: 7 }} />}
-        <span style={{ minWidth: 0, lineHeight: 1.15 }}>
-          <span style={{ display: "block", fontFamily: "var(--display)", fontSize: 14.5, fontWeight: 700, color: "var(--fg-1)", letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {brand?.label || product.name}
-          </span>
-          <span className="kicker" style={{ fontSize: 9.5 }}>produto ativo</span>
-        </span>
-        {!single && <span className="dim" style={{ marginLeft: "auto", fontSize: 9, flexShrink: 0 }}>{open ? "▴" : "▾"}</span>}
+    <div>
+      <button ref={ref} onClick={() => !single && setOpen((o) => !o)} className="rail-workspace"
+        aria-label={single ? product.name : `Trocar de produto: ${product.name}`}
+        aria-expanded={single ? undefined : open} aria-haspopup={single ? undefined : "dialog"}
+        title={single ? product.name : "Trocar de produto"}>
+        <span className="rail-brand-mark"><Icon /></span>
+        {!collapsed && <span className="rail-workspace-text">
+          <strong>{brand?.label || product.name}</strong>
+          <span>produto ativo</span>
+        </span>}
+        {!single && !collapsed && <span className="rail-chevron" aria-hidden="true">{open ? "▴" : "▾"}</span>}
       </button>
       {open && (
-        <div style={{
-          position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0,
-          border: "1px solid var(--line-2)", background: "var(--bg-1)",
-          borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 5, zIndex: 80,
-        }}>
-          <div className="kicker" style={{ padding: "6px 8px 4px" }}>Produtos</div>
+        <Popover anchor={ref} onClose={() => setOpen(false)} width={248} title="Produtos">
           {saas.map((s2) => {
-            const isActive = s2.id === product.id;
+            const active = s2.id === product.id;
             return (
               <button key={s2.id} onClick={() => { setProduct(s2.id); setOpen(false); }}
-                style={{ ...menuItemStyle, display: "flex", alignItems: "center", gap: 8, fontWeight: isActive ? 600 : 450 }}>
-                <span style={{ width: 7, height: 7, borderRadius: 2, background: window.productTone ? window.productTone(s2) : "var(--accent)", flexShrink: 0 }} />
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s2.name}</span>
-                {isActive && <span style={{ marginLeft: "auto", color: "var(--accent)", fontSize: 11 }}>✓</span>}
+                className="chrome-menu-item" aria-current={active ? "true" : undefined}>
+                <span className="dot" style={{ color: window.productTone ? window.productTone(s2) : "var(--accent)" }} />
+                <span style={{ flex: 1 }}>{s2.name}</span>
+                {active && <span style={{ color: "var(--accent)" }}>✓</span>}
               </button>
             );
           })}
-        </div>
+        </Popover>
       )}
     </div>
   );
@@ -465,55 +381,32 @@ function GenericMark() {
 function Logo() {
   return (
     <svg width="34" height="34" viewBox="328 385 724 724" style={{ flexShrink: 0 }} aria-label="LeverAds">
-      <path fill="var(--fg-1)" d="M519.22,843.75l-45.1,15.11c53.94,77.43,143.68,128.2,245.06,128.2,4.38,0,8.76-.08,13.07-.3l-14.13-45.02c-80.76-.3-152.75-38.68-198.9-97.98ZM719.19,390.03c-164.61,0-298.55,133.94-298.55,298.55,0,29.46,4.31,58.02,12.31,84.91l39.13-29.31c-4-17.9-6.12-36.49-6.12-55.6,0-139.6,113.62-253.22,253.22-253.22s253.15,113.62,253.15,253.22c0,99.49-57.71,185.84-141.42,227.16v49.63c109.39-44.27,186.74-151.69,186.74-276.79,0-164.61-133.86-298.55-298.47-298.55Z" />
+      <path fill="var(--rail-fg)" d="M519.22,843.75l-45.1,15.11c53.94,77.43,143.68,128.2,245.06,128.2,4.38,0,8.76-.08,13.07-.3l-14.13-45.02c-80.76-.3-152.75-38.68-198.9-97.98ZM719.19,390.03c-164.61,0-298.55,133.94-298.55,298.55,0,29.46,4.31,58.02,12.31,84.91l39.13-29.31c-4-17.9-6.12-36.49-6.12-55.6,0-139.6,113.62-253.22,253.22-253.22s253.15,113.62,253.15,253.22c0,99.49-57.71,185.84-141.42,227.16v49.63c109.39-44.27,186.74-151.69,186.74-276.79,0-164.61-133.86-298.55-298.47-298.55Z" />
       <polygon fill="#23D8D3" points="800.7 535.53 800.7 1103.92 763 983.8 749.25 939.91 691.16 754.61 501.54 817.84 457.65 832.42 362.47 864.14 443.6 803.33 481.22 775.08 800.7 535.53" />
     </svg>
   );
 }
 
 function TopBar({ title, leading, breadcrumb, onSearch, showPeriod }) {
+  const crumbs = breadcrumb?.length === 1 ? ["Cockpit", ...breadcrumb] : breadcrumb;
   return (
-    <header style={{
-      height: 58,
-      flexShrink: 0,
-      borderBottom: "1px solid var(--line-1)",
-      background: "var(--bg-topbar, var(--bg-0))",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      padding: "0 min(24px, var(--pad-x))",
-      gap: 12,
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-        {leading}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, overflow: "hidden" }}>
-          {breadcrumb && breadcrumb.map((b, i) => {
-            const last = i === breadcrumb.length - 1;
-            return (
-              <React.Fragment key={i}>
-                {i > 0 && <span style={{ color: "var(--line-strong)", fontSize: 13 }}>/</span>}
-                <span style={{ fontSize: 13, fontWeight: last ? 600 : 450, color: last ? "var(--fg-1)" : "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flexShrink: last ? 1 : 0, minWidth: last ? 0 : undefined }}>{b}</span>
-              </React.Fragment>
-            );
-          })}
-          {!breadcrumb && title && <h1 style={{ margin: 0, fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</h1>}
-        </div>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-        <span className="hide-mobile" style={{ display: "inline-flex" }}><IcpButton /></span>
-        {showPeriod && <GlobalPeriod />}
-        <span className="hide-mobile" style={{ display: "inline-flex" }}><CmdK onClick={onSearch} /></span>
-        {/* No mobile o campo "Buscar lead…" some — a lupa mantém a busca a um toque. */}
-        <button onClick={onSearch} className="show-mobile" title="Buscar lead" aria-label="Buscar lead" style={{
-          width: 38, height: 38, alignItems: "center", justifyContent: "center",
-          borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-inset)", color: "var(--fg-3)",
-        }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-            <circle cx="11" cy="11" r="7" /><path d="M20.4 20.4l-4.2-4.2" />
-          </svg>
-        </button>
+    <header className="cockpit-topbar">
+      {leading}
+      <nav className="chrome-breadcrumb" aria-label="Localização">
+        {crumbs?.map((b, i) => (
+          <React.Fragment key={`${i}:${b}`}>
+            {i > 0 && <span className="chrome-crumb-separator" aria-hidden="true">/</span>}
+            <span className={i === crumbs.length - 1 ? "chrome-crumb-current" : "chrome-crumb-parent"}
+              aria-current={i === crumbs.length - 1 ? "page" : undefined} title={b}>{b}</span>
+          </React.Fragment>
+        ))}
+        {!crumbs && title && <span className="chrome-crumb-current">{title}</span>}
+      </nav>
+      {showPeriod && <div className="chrome-period"><GlobalPeriod /></div>}
+      <div className="chrome-actions">
+        <IcpButton />
+        <CmdK onClick={onSearch} />
         <NotificationsBell />
-        <UserMenu />
       </div>
     </header>
   );
@@ -521,19 +414,11 @@ function TopBar({ title, leading, breadcrumb, onSearch, showPeriod }) {
 
 function CmdK({ onClick }) {
   return (
-    <button onClick={onClick} title="Buscar lead (⌘K / Ctrl+K)" style={{
-      display: "inline-flex", alignItems: "center", gap: 8,
-      height: 32, minWidth: 184, padding: "0 8px 0 11px",
-      border: "1px solid var(--line-1)",
-      background: "var(--bg-inset)",
-      borderRadius: "var(--r-2)",
-      color: "var(--fg-4)",
-      fontSize: 13,
-      whiteSpace: "nowrap",
-      cursor: "pointer",
-    }}>
-      <span>Buscar lead…</span>
-      <span className="kbd" style={{ marginLeft: "auto" }}>⌘K</span>
+    <button onClick={onClick} className="chrome-control chrome-search" title="Buscar lead, cliente ou tela (⌘K / Ctrl+K)" aria-label="Buscar lead, cliente ou tela">
+      <svg className="chrome-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="7" /><path d="M20.4 20.4l-4.2-4.2" />
+      </svg>
+      <span className="chrome-search-label">buscar · <kbd>⌘K</kbd></span>
     </button>
   );
 }
@@ -546,16 +431,11 @@ const cargoOf = (u) => (u?.roles || []).map((r) => ROLE_LABELS[r] || r).join(" �
 // Menu da conta — usuário REAL logado (gravado no login). Meu perfil, trocar
 // senha e sair. Quem entra por API key não tem usuário: mostra "API key", só
 // com sair.
-function UserMenu() {
+function UserMenu({ collapsed = false }) {
   const [open, setOpen] = useS(false);
   const [pwOpen, setPwOpen] = useS(false);
   const [profileOpen, setProfileOpen] = useS(false);
   const ref = useR(null);
-  useE(() => {
-    function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, []);
   // localStorage guarda o usuário do MOMENTO do login; o registro do bootstrap
   // é o fresco (nome/foto trocados em outra sessão aparecem no próximo refresh).
   const stored = currentUser();
@@ -571,58 +451,27 @@ function UserMenu() {
   const name = user?.name || "API key";
   const photo = user ? userPhoto(user.id) : "";
   return (
-    <div ref={ref} style={{ position: "relative" }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        style={{
-          display: "inline-flex", alignItems: "center", gap: 8,
-          height: 34, padding: "0 4px",
-          borderRadius: "var(--r-2)",
-          background: open ? "var(--hover)" : "transparent",
-        }}>
-        <UserDot name={name} photo={photo} />
-        <span className="hide-mobile" style={{ fontSize: 13, color: "var(--fg-2)", fontWeight: 500 }}>{name}</span>
-        <span className="dim" style={{ fontSize: 10 }}>{open ? "▴" : "▾"}</span>
+    <div>
+      <button ref={ref} onClick={() => setOpen((o) => !o)} className="rail-account"
+        aria-label={`Conta de ${name}`} aria-expanded={open} aria-haspopup="dialog">
+        <UserDot name={name} photo={photo} size={28} rail />
+        {!collapsed && <>
+          <span className="rail-account-text"><strong>{name}</strong><span>{user ? cargoOf(user) : "acesso por chave"}</span></span>
+          <span className="rail-chevron" aria-hidden="true">{open ? "▾" : "▴"}</span>
+        </>}
       </button>
       {open && (
-        <div style={{
-          position: "absolute", top: "calc(100% + 5px)", right: 0,
-          width: 220,
-          border: "1px solid var(--line-2)",
-          background: "var(--bg-1)",
-          borderRadius: "var(--r-3)",
-          boxShadow: "var(--shadow-pop)",
-          padding: 5,
-          zIndex: 80,
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 8px" }}>
-            <UserDot name={name} photo={photo} />
-            <div>
-              <div style={{ fontSize: 13, color: "var(--fg-1)" }}>{name}</div>
-              <div className="mono dim" style={{ fontSize: 10 }}>{user ? cargoOf(user) : "acesso por chave"}</div>
-            </div>
-          </div>
-          <div style={{ borderTop: "1px solid var(--line-1)", marginTop: 2, paddingTop: 2 }}>
-            {user && (
-              <button onClick={() => { setOpen(false); setProfileOpen(true); }} style={menuItemStyle}>Meu perfil…</button>
-            )}
-            {user && (
-              <button onClick={() => { setOpen(false); setPwOpen(true); }} style={menuItemStyle}>Trocar senha…</button>
-            )}
-            <button onClick={logout} style={{ ...menuItemStyle, color: "var(--neg)" }}>Sair</button>
-          </div>
-        </div>
+        <Popover anchor={ref} onClose={() => setOpen(false)} width={224} title="Minha conta">
+          {user && <button onClick={() => { setOpen(false); setProfileOpen(true); }} className="chrome-menu-item">Meu perfil…</button>}
+          {user && <button onClick={() => { setOpen(false); setPwOpen(true); }} className="chrome-menu-item">Trocar senha…</button>}
+          <button onClick={logout} className="chrome-menu-item" style={{ color: "var(--neg)" }}>Sair</button>
+        </Popover>
       )}
       {profileOpen && <ProfileModal user={user} onClose={() => setProfileOpen(false)} />}
       {pwOpen && <PasswordModal onClose={() => setPwOpen(false)} />}
     </div>
   );
 }
-
-const menuItemStyle = {
-  display: "block", width: "100%", padding: "8px 8px",
-  borderRadius: "var(--r-2)", fontSize: 13, textAlign: "left", color: "var(--fg-1)",
-};
 
 // Foto do celular vira quadrado de 512px em JPEG antes de subir: o servidor
 // recusa acima de 2MB e o avatar nunca passa de 40px na tela — mandar o
@@ -781,7 +630,7 @@ function PasswordModal({ onClose }) {
 // Bolinha da conta: a foto do usuário quando existe, senão a inicial no
 // contraste forte de sempre. `photo` vem resolvido de fora (URL do servidor ou
 // blob do preview no "Meu perfil").
-function UserDot({ name, photo, size = 30 }) {
+function UserDot({ name, photo, size = 30, rail = false }) {
   const base = {
     width: size, height: size, borderRadius: 999, flex: "0 0 auto",
     display: "inline-flex", alignItems: "center", justifyContent: "center",
@@ -792,8 +641,8 @@ function UserDot({ name, photo, size = 30 }) {
   return (
     <span style={{
       ...base,
-      background: "var(--fg-1)",
-      color: "var(--bg-1)",
+      background: rail ? "var(--rail-brand)" : "var(--fg-1)",
+      color: rail ? "var(--rail-fg)" : "var(--bg-1)",
       fontSize: size * 0.4,
       fontWeight: 600,
     }}>{(name || "?")[0].toUpperCase()}</span>
