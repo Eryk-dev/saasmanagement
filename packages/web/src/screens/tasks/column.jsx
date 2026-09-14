@@ -102,7 +102,7 @@ export function TaskColumn({ col, idx, count, cards, hiddenCount, usersById, lab
         {items}
         {cut > 0 && <button type="button" onClick={() => setExpanded(true)} style={{ fontSize: 12, color: "var(--accent)", fontWeight: 600, padding: "6px 0", textAlign: "left" }}>+{cut} tarefas</button>}
         {expanded && cards.length > CUT && <button type="button" onClick={() => setExpanded(false)} style={{ fontSize: 12, color: "var(--fg-4)", padding: "4px 0", textAlign: "left" }}>mostrar menos</button>}
-        {cards.length === 0 && !composer && !ph && <div className="mono dim" style={{ fontSize: 11, textAlign: "center", padding: "22px 0" }}>{dragging ? "Solte aqui" : "vazio"}</div>}
+        {cards.length === 0 && !composer && !ph && <div className="mono dim" style={{ fontSize: 11, textAlign: "center", padding: "22px 0" }}>{dragging ? "Solte aqui" : "arraste uma tarefa para cá"}</div>}
         {composer && composer.position === "bottom" && <NewTaskCard onSave={(title) => actions.create(col.key, title, "bottom")} onCancel={() => colActions.composer(null)} />}
       </div>
       {(!col.virtual || col.dropPatch) && <button type="button" onClick={() => colActions.composer(col.key, "bottom")} style={{ display: "flex", alignItems: "center", gap: 6, margin: "0 6px 6px", padding: "8px 8px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 500, color: "var(--fg-3)", textAlign: "left", flexShrink: 0 }}
