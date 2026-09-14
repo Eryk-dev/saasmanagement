@@ -53,6 +53,19 @@ const TAREFAS = [
 const RESPOSTAS = {
   list: (col) => col === "leads" ? LEADS_FAKE : col === "customers" ? CLIENTES_FAKE : col === "tasks" ? TAREFAS : col === "task_boards" ? [{ id: "b1", saas: "leverads", columns: [{ key: "todo", name: "A fazer" }, { key: "doing", name: "Em andamento" }, { key: "done", name: "Concluído", done: true }] }] : [],
   desempenho: () => ({ logs: { leo: { socialSelling: 6 } } }),
+  // Meta da janela e pace: é o que o termômetro da Visão geral desenha.
+  paceWindow: () => ({
+    since: "2026-09-01", until: "2026-09-30", today: "2026-09-14",
+    businessDays: 21, businessDaysElapsed: 8, ended: false, current: true, saas: "leverads",
+    sale: { target: 128000, sold: 10950, contracted: 10950, progress: 0.0855, expectedProgress: 0.38, status: "behind" },
+    contracts: { target: 35, sold: 3, progress: 0.0857, expectedProgress: 0.38, status: "behind" },
+  }),
+  pipelinePace: () => ({
+    sale: { target: 128000, sold: 10950, soldToday: 0, gap: 117050, expectedToDate: 48640,
+      progress: 0.0855, expectedProgress: 0.38, status: "behind", projected: 28744,
+      actualDailyPace: 1369, requiredDailyPace: 9004, remainingBusinessDays: 13, targetConfigured: true },
+    contracts: { target: 35, sold: 3, soldToday: 0, gap: 32, progress: 0.0857, expectedToDate: 13, expectedProgress: 0.38, status: "behind" },
+  }),
   scoreboard: () => ({ sdr: [{ user: "leo", contacted: 6, callsBooked: 3, leadsNew: 4 }], closer: [] }),
   listActivities: () => [],
   consultations: () => [],
