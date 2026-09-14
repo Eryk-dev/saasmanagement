@@ -1,7 +1,10 @@
 import React from "react";
-import { FilterTab, Segmented } from "../components/viz.jsx";
+import { Segmented } from "../components/viz.jsx";
 import { usersByRole, userColor, displayName, userById } from "../lib/users.js";
-import { Avatar } from "../atoms.jsx";
+import { Avatar, SecondaryButton } from "../atoms.jsx";
+import { Popover } from "../components/popover.jsx";
+import { InfoLink } from "../components/story.jsx";
+import "./agenda.css";
 import { stageKind } from "../lib/funnel.js";
 import { isNoShowStage } from "../lib/scripts.js";
 
@@ -114,6 +117,8 @@ function PlayLink({ href }) {
 }
 
 function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, people = [], onPerson, view: viewProp, onView }) {
+  const [filtersOpen, setFiltersOpen] = useStP(false);
+  const filtersAnchor = React.useRef(null);
   const [dayOff, setDayOff] = useStP(0); // offset em DIAS a partir de hoje
   const [showTouches, setShowTouchesState] = useStP(() => {
     try { return localStorage.getItem("cockpit_agenda_touches") === "1"; } catch { return false; }
@@ -471,7 +476,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
           O filtro de pessoa era um botão por usuário na tela (num time de oito
           ocupava a largura inteira) e vivia separado dos controles de período
           e tipo, que ficavam aqui dentro: duas barras pra mesma função. */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap", padding: "12px 16px", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
+      <div className="agenda-toolbar">
         {/* A VISÃO abre a barra (prancha, 14/09): ela estava no cabeçalho da
             tela, longe da navegação de período que manda no mesmo eixo. */}
         <Segmented value={view} onChange={setView} options={[
@@ -487,7 +492,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
         </span>
         <span style={{ fontSize: 14, fontWeight: 650, fontFamily: "var(--display)" }}>{label}</span>
         {/* O resumo da janela, ao lado do período: o que a grade tem dentro. */}
-        <span style={{ fontSize: 12, color: "var(--fg-4)" }}>
+        <span style={{ fontSize: 12, color: "var(--fg-3)" }}>
           {`${callCount} ${callCount === 1 ? "call" : "calls"} · ${events.length} ${events.length === 1 ? "item" : "itens"} na grade`}
         </span>
 
@@ -522,33 +527,33 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
           )
         )}
 
-        {/* Tipo de evento: tudo · calls · follow-ups · integrações, com a
-            contagem do período e o pontinho na cor do tipo. */}
-        <span style={{ display: "inline-flex", gap: 2 }}>
-          {[["all", "tudo", null], ["call", "calls", callCount], ["follow-up", "follow-ups", fupCount], ["integração", "integrações", intCount]].map(([v, lbl, n]) => (
-            <FilterTab key={v} active={evKind === v} count={n} onClick={() => setEvKind(v)} style={{ padding: "4px 10px", fontSize: 12 }}>
-              {AGENDA_TYPE_COLORS[v] && (
-                <span style={{ width: 9, height: 9, borderRadius: 3, background: AGENDA_TYPE_COLORS[v].bg, border: `1px solid ${AGENDA_TYPE_COLORS[v].line}` }} />
-              )}
-              {lbl}
-            </FilterTab>
-          ))}
-        </span>
+        <button ref={filtersAnchor} className="agenda-more" aria-expanded={filtersOpen} aria-haspopup="dialog"
+          onClick={() => setFiltersOpen((open) => !open)}
+          title="Filtrar calls, follow-ups e integrações; mostrar toques">
+          {evKind === "all" ? showTouches ? "mais · toques visíveis" : "mais" : `tipo · ${{ call: "calls", "follow-up": "follow-ups", "integração": "integrações" }[evKind] || evKind}`} ▾
+        </button>
+        {filtersOpen && <Popover anchor={filtersAnchor} onClose={() => setFiltersOpen(false)} width={300} align="end" title="Filtros da agenda">
+          <div className="agenda-filter-panel">
+            <label htmlFor="agenda-event-type">Tipo de evento</label>
+            <select id="agenda-event-type" className="inp" value={evKind} onChange={(e) => setEvKind(e.target.value)}>
+              <option value="all">Todos os tipos · {events.length}</option>
+              <option value="call">Calls · {callCount}</option>
+              <option value="follow-up">Follow-ups · {fupCount}</option>
+              <option value="integração">Integrações · {intCount}</option>
+            </select>
+            {evKind === "all" && <label className="agenda-touch-toggle">
+              <input type="checkbox" checked={showTouches} onChange={(e) => setShowTouches(e.target.checked)} /> Mostrar toques
+            </label>}
+            {(evKind !== "all" || showTouches) && <SecondaryButton onClick={() => { setEvKind("all"); setShowTouches(false); }}>Limpar filtros de evento</SecondaryButton>}
+            <SecondaryButton onClick={() => setFiltersOpen(false)}>Concluir</SecondaryButton>
+          </div>
+        </Popover>}
         {evKind !== "all" && hiddenCount > 0 && (
-          <button onClick={() => setEvKind("all")} className="mono"
-            title="Mostrar tudo de novo (todos os tipos de evento, consultas e compromissos)"
-            style={{ height: 24, padding: "0 9px", borderRadius: 999, fontSize: 11, cursor: "pointer",
-              background: "var(--warn-soft)", color: "var(--warn)", border: "1px solid var(--warn-line, transparent)" }}>
+          <button onClick={() => setEvKind("all")} className="agenda-hidden"
+            title="Mostrar tudo de novo (todos os tipos de evento, consultas e compromissos)">
             {hiddenCount} {hiddenCount === 1 ? "evento escondido" : "eventos escondidos"} pelo filtro · ver tudo
           </button>
         )}
-        {evKind === "all" && (
-          <label className="mono" style={{ fontSize: 11, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer" }}>
-            <input type="checkbox" checked={showTouches} onChange={(e) => setShowTouches(e.target.checked)} style={{ accentColor: "var(--accent)" }} />
-            mostrar toques
-          </label>
-        )}
-        <span className="mono" title={LEGENDA} style={{ marginLeft: "auto", fontSize: 11, color: "var(--fg-4)", cursor: "help", borderBottom: "1px dotted var(--line-2)" }}>legenda ⓘ</span>
       </div>
 
       <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
@@ -561,13 +566,14 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
               {c.label}
             </span>
           ))}
-          <span className="mono tnum" style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--fg-4)" }}>{fatoPeriodo}</span>
+          <span className="mono tnum" style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--fg-3)" }}>{fatoPeriodo}</span>
+          <InfoLink texto={LEGENDA}>legenda</InfoLink>
         </div>
         {isMonth ? (
           /* MÊS: carga, não detalhe. Célula de 96px com o número do dia, o
              total à direita e até dois itens; o clique leva pro Dia (marcar
              aqui não faria sentido, o horário não existe nesta visão). */
-          <div>
+          <div className="agenda-month">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
               {["seg", "ter", "qua", "qui", "sex", "sáb", "dom"].map((w) => (
                 <div key={w} className="kicker" style={{ padding: "6px 8px", textAlign: "center", color: "var(--fg-4)" }}>{w}</div>

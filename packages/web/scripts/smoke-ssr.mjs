@@ -213,7 +213,7 @@ try {
       person: null, onPerson() {}, view: "day", onView() {},
       blocking: { blocksFor: () => [], onSlot() {}, onBlock() {} },
     };
-    const html = renderToString(wrap(React.createElement(A.AgendaView, props)));
+    const html = renderToString(wrap(React.createElement(A.AgendaView, props))).replace(/<!--.*?-->/g, "");
     const has = (must) => { if (!html.includes(must)) throw new Error(`a grade não contém "${must}"`); };
     // O filtro de pessoa é PÍLULA quando o time cabe na linha (prancha, 14/09)
     // e vira select a partir de seis, pra não comer a barra inteira.
@@ -251,6 +251,20 @@ try {
     }
     if (!mes.includes("neste mês")) throw new Error("o mês não traz o fato do período");
     if (mes.includes("+ livre das")) throw new Error("o mês não cria compromisso (o horário não existe ali)");
+    // Ao recolher os filtros, o tipo persistido precisa continuar explícito
+    // e o controle de recuperar os eventos ocultos deve continuar acessível.
+    const savedStorage = globalThis.localStorage;
+    try {
+      globalThis.localStorage = { ...savedStorage, getItem: (key) => key === "cockpit_agenda_kind" ? "call" : null };
+      const filtered = renderToString(wrap(React.createElement(A.AgendaView, {
+        ...props,
+        leads: [...leads, { id: "l2", name: "Integração oculta", integrator: "jonathan", integrationAt: iso(hoje), saas: "leverads" }],
+      }))).replace(/<!--.*?-->/g, "");
+      if (!filtered.includes("tipo · calls") || !filtered.includes("evento escondido pelo filtro · ver tudo")) {
+        throw new Error("o filtro recolhido esconde a seleção ativa ou a ação de recuperar os eventos");
+      }
+      if (filtered.includes("Integração oculta")) throw new Error("o filtro calls deixou outro tipo na grade");
+    } finally { globalThis.localStorage = savedStorage; }
     console.log("✓ agenda-controles");
   } catch (err) {
     console.error(`✗ agenda-controles: ${err.message}`);

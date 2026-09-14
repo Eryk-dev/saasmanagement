@@ -1,0 +1,27 @@
+/* Agenda — medidas e hierarquia da prancha 8a–8d. */
+.agenda-page { flex: 1; min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 14px; padding: 26px 24px 48px; }
+.agenda-page > :first-child { padding: 0 !important; }
+.agenda-page > :first-child > :first-child { min-width: min(280px, 100%) !important; }
+.agenda-content { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.agenda-notices > section + section { border-top: 1px solid var(--line-faint) !important; }
+.agenda-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 12px 16px; margin-bottom: 14px; border: 1px solid var(--line-1); border-radius: var(--r-4); background: var(--bg-1); box-shadow: var(--shadow-card); }
+.agenda-more { min-height: 30px; padding: 0 12px; border: 1px solid var(--line-1); border-radius: 999px; color: var(--fg-3); background: var(--bg-1); font-size: 12.5px; font-weight: 600; }
+.agenda-more[aria-expanded="true"] { border-color: var(--accent-line); color: var(--accent); background: var(--accent-soft); }
+.agenda-filter-panel { display: flex; flex-direction: column; gap: 10px; padding: 4px; color: var(--fg-3); font-size: 12.5px; }
+.agenda-filter-panel > label:first-child { font-weight: 600; color: var(--fg-2); }
+.agenda-touch-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.agenda-touch-toggle input { accent-color: var(--accent); }
+.agenda-hidden { min-height: 28px; padding: 0 10px; border-radius: 999px; font-size: 11.5px; color: var(--warn); background: var(--warn-soft); border: 1px solid var(--warn-line, var(--line-1)); }
+.agenda-editor { display: flex; flex-direction: column; gap: 12px; }
+.agenda-month { min-width: 630px; }
+@media (max-width: 700px) {
+  .agenda-page { padding: 24px 16px 48px; }
+  .agenda-toolbar { padding: 12px; }
+  .agenda-toolbar button, .agenda-toolbar select, .agenda-notices button, .agenda-notices a,
+  .agenda-filter-panel select, .agenda-filter-panel button, .agenda-touch-toggle,
+  .agenda-editor button, .agenda-editor select, .agenda-editor input:not([type="checkbox"]),
+  .agenda-page > :first-child button { min-height: 44px; }
+  .agenda-toolbar button[title="dia anterior"], .agenda-toolbar button[title="próximo dia"],
+  .agenda-toolbar button[title="semana anterior"], .agenda-toolbar button[title="próxima semana"],
+  .agenda-toolbar button[title="mês anterior"], .agenda-toolbar button[title="próximo mês"] { min-width: 44px; }
+}

@@ -2,14 +2,15 @@ import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { usersByRole, currentUser, displayName, userColor } from "../lib/users.js";
-import { PageHead, Segmented } from "../components/viz.jsx";
+import { PageHead, Segmented, Card } from "../components/viz.jsx";
 import { PrimaryButton } from "../atoms.jsx";
 import { AgendaView } from "./agenda-grid.jsx";
 import { stageKind } from "../lib/funnel.js";
 import { isNoShowStage } from "../lib/scripts.js";
-import { AvisoTopo } from "../components/story.jsx";
+import { AvisoTopo, Info } from "../components/story.jsx";
 import { Modal } from "../components/overlay.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
+import "./agenda.css";
 
 // Tela Agenda — a agenda DE VERDADE do time, tudo num calendário só:
 //   · calls (lead.callAt) e integrações (integrationAt), cores por responsável,
@@ -250,8 +251,8 @@ export function AgendaScreen({ onOpenLead }) {
   }
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead title="Agenda" sub={`${product?.name || "operação"} · calls, integrações, compromissos e bloqueios do time · clique num horário vazio pra criar`}>
+    <div className="agenda-page">
+      <PageHead title="Agenda" sub={`${product?.name || "operação"} · calls, integrações e compromissos do time`}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
           {notice && (
             <span style={{ padding: "7px 12px", borderRadius: "var(--r-2)", background: "var(--warn-soft)", color: "var(--warn)", fontSize: 12.5, fontWeight: 500 }}>{notice}</span>
@@ -262,11 +263,13 @@ export function AgendaScreen({ onOpenLead }) {
           <PrimaryButton onClick={() => setEditor({ block: null, date: ymd(new Date()), fromHour: 9 })}>+ compromisso</PrimaryButton>
         </span>
       </PageHead>
-      <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div className="agenda-content">
         {/* Os avisos da semana, no máximo dois por vez: o mais urgente é o que
             já furou, depois quem passou do horário sem remarcar, e a
             confirmação de hoje fecha. Três faixas empilhadas empurram a grade
             pra baixo da dobra, que é a lacuna que o próprio protótipo anotou. */}
+        {(avisos.furaram.length + avisos.semRemarcar.length + avisos.semConfirmar.length > 0) && <Card style={{ padding: 0, overflow: "hidden" }}>
+        <div className="agenda-notices">
         {[
           avisos.furaram.length > 0 && {
             key: "furou", tom: "neg",
@@ -287,8 +290,11 @@ export function AgendaScreen({ onOpenLead }) {
             acao: { label: "cobrar confirmação", href: "#today" },
           },
         ].filter(Boolean).slice(0, 2).map((a) => (
-          <AvisoTopo key={a.key} tom={a.tom} titulo={a.titulo} nota={a.nota} acao={a.acao} />
+          <AvisoTopo key={a.key} tom={a.tom} titulo={<>{a.titulo}<Info texto={a.nota} /></>} acao={a.acao}
+            style={{ border: 0, borderRadius: 0, boxShadow: "none", padding: "12px 18px" }} />
         ))}
+        </div>
+        </Card>}
         <AgendaView leads={leads} consultations={consultas} onOpenLead={onOpenLead}
           person={person || null} people={people} onPerson={setPerson}
           view={view} onView={setView}
@@ -394,7 +400,8 @@ export function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, o
 
   return (
     <Modal onClose={onClose} label="compromisso" largura={440} padding={20}
-      painelStyle={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+      painelStyle={{ padding: 18 }}>
+      <div className="agenda-editor">
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontFamily: "var(--display)", fontSize: 16, fontWeight: 700, flex: 1 }}>
             {b ? "Editar item da agenda" : "Novo item na agenda"}
@@ -547,6 +554,7 @@ export function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, o
           <button onClick={onClose} style={{ height: 36, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, cursor: "pointer" }}>Cancelar</button>
           <PrimaryButton onClick={submit}>{b ? "Salvar" : "Criar"}</PrimaryButton>
         </div>
+      </div>
     </Modal>
   );
 }
