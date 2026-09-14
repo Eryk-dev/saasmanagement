@@ -49,9 +49,16 @@ Leo: `outbound` e `funcionarios` (seguem `hidden`).
   Smoke SSR (incluindo orçamento de 704px/716px), suíte da API e build web
   passaram. Conferência no navegador pendente: a sessão não concedeu acesso
   ao computador.
+- `agenda`: cabeçalho com o espaçamento da prancha 8a–8d, avisos agrupados e
+  filtros de tipo/toques recolhidos em “mais”. O filtro ativo e a ação de
+  recuperar eventos ocultos continuam visíveis; a legenda fica junto à grade.
+  Controles e editor têm alvos maiores no celular, e o mês mantém uma largura
+  legível com rolagem. Smoke das quatro visões, sobreposição, conflitos,
+  recorrência e filtro persistido passou, assim como a suíte da API e o build.
+  Conferência no navegador também pendente por falta de acesso ao computador.
 - Preview isolado: `/?shell=1#intform`, com dados fictícios; `&intform=empty`
   e `&intform=error` exercitam vazio e falha recuperável. Nenhum dado real é
-  enviado ao WhatsApp pelo preview.
+  enviado ao WhatsApp pelo preview. A Agenda usa `/?shell=1#agenda`.
 
 ## Telas navegáveis
 
