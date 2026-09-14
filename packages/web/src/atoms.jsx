@@ -1,5 +1,7 @@
 import React from "react";
 import { userPhoto } from "./lib/users.js";
+import { Popover } from "./components/popover.jsx";
+import { useEsc } from "./lib/use-esc.js";
 // Shared atomic components — pure visuals, no business logic.
 // Exposed on window for cross-script use.
 
@@ -303,30 +305,35 @@ function RowActions({ onEdit, onDelete }) {
 // se destaca; o `title` do botão lista o que tem dentro, pra não esconder opção
 // atrás de clique cego. Fecha no Esc e no clique fora.
 // items: [{ label, onClick, tone? }] — entrada falsy é ignorada (condicional).
+// ⋯ da linha: uma ação principal fica visível e o resto vem pra cá, com o
+// title do botão listando o que tem dentro.
+//
+// O menu era `position: absolute` DENTRO da linha (14/09). Toda tabela larga
+// do app vive num `.tbl-x` (overflow-x: auto), e overflow auto num eixo recorta
+// o outro também: o menu das últimas linhas de Contratos, Propostas,
+// Formulário de integração, Assinaturas e Consultas nascia cortado ou fora do
+// hit-test. O protótipo resolveu virando modal em Contratos; aqui a correção
+// vai no componente, que é o que conserta as cinco telas de uma vez: o menu
+// passa pelo Popover, que é `position: fixed`, se prende ao botão, se vira
+// quando não cabe embaixo e no celular abre como folha de baixo.
 function MoreMenu({ items, size = 26, align = "right" }) {
   const [open, setOpen] = React.useState(false);
+  const btn = React.useRef(null);
   const vis = (items || []).filter(Boolean);
-  useEsc(open ? () => setOpen(false) : null);
-  React.useEffect(() => {
-    if (!open) return;
-    const fechar = () => setOpen(false);
-    window.addEventListener("click", fechar);
-    return () => window.removeEventListener("click", fechar);
-  }, [open]);
   if (!vis.length) return null;
   return (
-    <span style={{ position: "relative", display: "inline-flex" }} onClick={(e) => e.stopPropagation()}>
-      <button onClick={() => setOpen((o) => !o)} title={vis.map((i) => i.label).join(" · ")}
+    <span style={{ display: "inline-flex" }} onClick={(e) => e.stopPropagation()}>
+      <button ref={btn} onClick={() => setOpen((o) => !o)} title={vis.map((i) => i.label).join(" · ")}
         style={{ width: size, height: size, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 13, lineHeight: 1, cursor: "pointer" }}>⋯</button>
       {open && (
-        <div style={{ position: "absolute", [align]: 0, top: size + 4, zIndex: 20, minWidth: 186, padding: 4, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)" }}>
+        <Popover anchor={btn} onClose={() => setOpen(false)} width={200} align={align === "right" ? "end" : "start"}>
           {vis.map((i) => (
             <button key={i.label} onClick={() => { setOpen(false); i.onClick(); }}
-              style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 10px", borderRadius: "var(--r-2)", fontSize: 12.5, color: i.tone === "neg" ? "var(--neg)" : "var(--fg-2)", background: "transparent", border: 0, cursor: "pointer", whiteSpace: "nowrap" }}>
+              style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 10px", borderRadius: "var(--r-2)", fontSize: 12.5, color: i.tone === "neg" ? "var(--neg)" : "var(--fg-2)", background: "transparent", border: 0, cursor: "pointer" }}>
               {i.label}
             </button>
           ))}
-        </div>
+        </Popover>
       )}
     </span>
   );
@@ -337,25 +344,8 @@ function MoreMenu({ items, size = 26, align = "right" }) {
 // popup. Pilha por ordem de MONTAGEM: com modal sobre drawer, o Esc fecha só
 // o de cima; o próximo Esc fecha o de baixo. Passe null pra desativar
 // temporariamente (ex.: enquanto salva).
-const escStack = [];
-function useEsc(onClose) {
-  const ref = React.useRef(onClose);
-  ref.current = onClose;
-  React.useEffect(() => {
-    const entry = {};
-    escStack.push(entry);
-    function onKey(e) {
-      if (e.key !== "Escape") return;
-      if (escStack[escStack.length - 1] !== entry || !ref.current) return;
-      // Esc dentro de campo primeiro tira o foco; o próximo Esc fecha.
-      const t = e.target;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) { t.blur(); return; }
-      ref.current();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => { escStack.splice(escStack.indexOf(entry), 1); window.removeEventListener("keydown", onKey); };
-  }, []);
-}
+// useEsc mora em lib/use-esc.js e é re-exportado aqui pra não quebrar os
+// imports existentes (metade do app faz `import { useEsc } from "../atoms.jsx"`).
 
 // ───────────────────────────────────────────────────── Toast global
 // window.toast("não salvou · tente de novo", "neg") — a superfície de erro das

@@ -1,6 +1,7 @@
 import React from "react";
 import { PageHead, StatTile, FilterTab } from "../components/viz.jsx";
-import { EmptyState, PrimaryButton, SecondaryButton, WaButton, MoreMenu, useEsc, toast } from "../atoms.jsx";
+import { EmptyState, PrimaryButton, SecondaryButton, WaButton, MoreMenu, toast } from "../atoms.jsx";
+import { Modal, Drawer } from "../components/overlay.jsx";
 import { waLink } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -92,7 +93,6 @@ function AskModal({ saas, brand, onClose, onCreated }) {
   const [q, setQ] = useS("");
   const [busy, setBusy] = useS(false);
   const [novo, setNovo] = useS(null); // pedido criado: a tela vira "copie o link"
-  useEsc(busy ? null : onClose);
 
   const rows = useM(() => {
     const src = kind === "customer" ? (window.SEED?.CUSTOMERS || []) : (window.SEED?.LEADS || []);
@@ -122,8 +122,7 @@ function AskModal({ saas, brand, onClose, onCreated }) {
   }
 
   return (
-    <div onClick={busy ? undefined : onClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.45)", display: "grid", placeItems: "center", zIndex: 80, padding: 16 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(560px, 100%)", maxHeight: "88vh", overflowY: "auto", background: "var(--bg-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 22 }}>
+    <Modal onClose={onClose} fechavel={!busy} label="solicitar formulário" largura={560} painelStyle={{ padding: 22 }}>
         {!novo ? (
           <>
             <div className="card-title">Solicitar formulário de integração</div>
@@ -176,8 +175,7 @@ function AskModal({ saas, brand, onClose, onCreated }) {
             </div>
           </>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -186,13 +184,11 @@ function AskModal({ saas, brand, onClose, onCreated }) {
 // o questionário evolui, mas a resposta continua sendo lida com os rótulos com
 // que foi feita.
 function AnswersDrawer({ doc, brand, onClose, onRemove }) {
-  useEsc(onClose);
   const a = doc.answers || {};
   const respondido = doc.status === "respondido";
 
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", display: "flex", justifyContent: "flex-end", zIndex: 70 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(760px, 100vw)", height: "100%", background: "var(--bg-1)", borderLeft: "1px solid var(--line-2)", display: "flex", flexDirection: "column", boxShadow: "var(--shadow-pop)" }}>
+    <Drawer onClose={onClose} label="respostas do formulário" largura={760}>
         <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <div style={{ minWidth: 0 }}>
             <div className="kicker">{respondido ? `respondido em ${fmtAt(doc.respondedAt)}` : "aguardando o cliente"}</div>
@@ -287,8 +283,7 @@ function AnswersDrawer({ doc, brand, onClose, onRemove }) {
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Drawer>
   );
 }
 
