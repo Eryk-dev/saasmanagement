@@ -7,6 +7,9 @@ const emHoras = (h, m = 0) => { const d = new Date(hoje); d.setHours(h, m, 0, 0)
 const emDias = (n, h = 9) => { const d = new Date(hoje.getTime() + n * DIA); d.setHours(h, 0, 0, 0); return d.toISOString(); };
 
 export const LEADS_FAKE = [
+  { id: "v1", saas: "leverads", name: "Otávio Braga", company: "Braga Ferramentas", stage: "Ganho", owner: "leo", closer: "lucas", amount: 2850, wonAt: emDias(-2), createdAt: emDias(-20) },
+  { id: "v2", saas: "leverads", name: "Sandra Melo", company: "Melo Cosméticos", stage: "Ganho", owner: "leo", closer: "tiago", amount: 3300, wonAt: emDias(-5), createdAt: emDias(-25) },
+  { id: "v3", saas: "leverads", name: "Ricardo Nunes", company: "RN Distribuidora", stage: "Ganho", owner: "leo", closer: "lucas", amount: 4800, wonAt: emDias(-9), createdAt: emDias(-28) },
   // confirmar call (call hoje, dono != closer)
   { id: "l1", saas: "leverads", name: "Juliana Alves", company: "Sul Importados", stage: "Call marcada", owner: "leo", closer: "lucas", amount: 3100, phone: "5541999990001", callAt: emHoras(15, 50), createdAt: emDias(-3), stageSince: emDias(-1), accounts: "1", listings: "500-2k" },
   // compromisso marcado (call hoje, dono = closer)
@@ -74,7 +77,19 @@ const RESPOSTAS = {
       actualDailyPace: 1369, requiredDailyPace: 9004, remainingBusinessDays: 13, targetConfigured: true },
     contracts: { target: 35, sold: 3, soldToday: 0, gap: 32, progress: 0.0857, expectedToDate: 13, expectedProgress: 0.38, status: "behind" },
   }),
-  scoreboard: () => ({ sdr: [{ user: "leo", contacted: 6, callsBooked: 3, leadsNew: 4 }], closer: [] }),
+  scoreboard: () => ({
+    sdr: [{ user: "leo", name: "Leonardo", contacted: 6, callsBooked: 3, leadsNew: 4, revenue: 10950, won: 3, goals: { revenue: { target: 90000, period: "month" }, won: { target: 25, period: "month" } } }],
+    closer: [
+      { user: "lucas", name: "Lucas", revenue: 7650, won: 2, shown: 5, goals: { revenue: { target: 52000, period: "month" }, won: { target: 14, period: "month" } } },
+      { user: "tiago", name: "Tiago", revenue: 3300, won: 1, shown: 3, goals: { revenue: { target: 44000, period: "month" }, won: { target: 12, period: "month" } } },
+    ],
+    team: { leadsNew: 18, contacted: 14, reachedCohort: 14, contactedCohort: 14, callsBooked: 9, bookedCohort: 9, shown: 7, noShow: 2, won: 3, revenue: 10950, contactRate: 77.8, bookingRate: 64.3, showRate: 77.8, closeRatePeriod: 42.9,
+      monthTargets: { leads: 200, contacts: 160, callsBooked: 48, callsShown: 36, won: 35 },
+      classes: { semente: { leads: 3, won: 1 }, rede: { leads: 9, won: 1 }, alvo: { leads: 6, won: 1 } },
+    },
+  }),
+  marketingMetrics: () => ({ totals: { spend: 1152, cpl: 64, roas: 9.5 } }),
+  metrics: () => ({ window: { cac: 384 }, ltv: { value: 5040, months: 12, ltvCac: 13.1 } }),
   listActivities: () => [],
   consultations: () => [],
 };
