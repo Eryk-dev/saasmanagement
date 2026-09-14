@@ -66,7 +66,7 @@ export function MetaConnectCard({ kind, product, metaOn, onConnected }) {
 
       {open && (
         <div onClick={() => !saving && setOpen(false)}
-          style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", zIndex: 120, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          style={{ position: "fixed", inset: 0, background: "var(--scrim-soft)", zIndex: "var(--z-modal)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div onClick={(e) => e.stopPropagation()}
             style={{ width: 460, maxWidth: "100%", maxHeight: "80vh", overflow: "auto", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-pop)", padding: "20px 22px" }}>
             <div style={{ fontSize: 15, fontWeight: 600 }}>{ads ? "Escolha a conta de anúncio" : "Escolha a página"}</div>

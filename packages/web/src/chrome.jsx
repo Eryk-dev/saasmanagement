@@ -7,6 +7,7 @@ import { buildQueue } from "./screens/today.jsx";
 import { PeriodPicker, usePeriod } from "./components/period-picker.jsx";
 import { NotificationsBell } from "./components/notifications.jsx";
 import { IcpCard } from "./components/icp-card.jsx";
+import { Modal } from "./components/overlay.jsx";
 
 // Filtro de período GLOBAL, no topo ao lado da busca: muda a janela do cockpit
 // inteiro de uma vez (lê o store compartilhado do usePeriod). Só aparece nas
@@ -700,8 +701,8 @@ function ProfileModal({ user, onClose }) {
   }
 
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 90 }}>
-      <form onClick={(e) => e.stopPropagation()} onSubmit={submit} style={{ width: "min(340px, calc(100vw - 24px))", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+    <Modal onClose={onClose} label="meu perfil" largura={340} padding={12} painelStyle={{ padding: 0 }}>
+      <form onSubmit={submit} style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ fontSize: 15, fontWeight: 500 }}>Meu perfil</div>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <UserDot name={name || user?.name} photo={preview} size={64} />
@@ -730,7 +731,7 @@ function ProfileModal({ user, onClose }) {
           <button type="button" onClick={onClose} style={{ padding: "8px 14px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 13 }}>Cancelar</button>
         </div>
       </form>
-    </div>
+    </Modal>
   );
 }
 
@@ -754,8 +755,8 @@ function PasswordModal({ onClose }) {
     }
   }
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 90 }}>
-      <form onClick={(e) => e.stopPropagation()} onSubmit={submit} style={{ width: "min(320px, calc(100vw - 24px))", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 18, display: "flex", flexDirection: "column", gap: 10 }}>
+    <Modal onClose={onClose} label="trocar senha" largura={320} padding={12} painelStyle={{ padding: 0 }}>
+      <form onSubmit={submit} style={{ padding: 18, display: "flex", flexDirection: "column", gap: 10 }}>
         <div style={{ fontSize: 15, fontWeight: 500 }}>Trocar senha</div>
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <span className="kicker">Senha atual</span>
@@ -773,7 +774,7 @@ function PasswordModal({ onClose }) {
           <button type="button" onClick={onClose} style={{ padding: "8px 14px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 13 }}>Cancelar</button>
         </div>
       </form>
-    </div>
+    </Modal>
   );
 }
 

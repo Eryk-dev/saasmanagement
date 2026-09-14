@@ -98,7 +98,7 @@ function Sheet({ items, onCloseAll, title }) {
   const cur = stack.length ? stack[stack.length - 1] : { label: title, items };
   return (
     <>
-      <div onClick={onCloseAll} style={{ position: "fixed", inset: 0, zIndex: 89, background: "oklch(0 0 0 / 0.3)" }} />
+      <div onClick={onCloseAll} style={{ position: "fixed", inset: 0, zIndex: "calc(var(--z-drawer) - 1)", background: "var(--scrim-soft)" }} />
       <div role="menu" data-tk-layer="1" style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 90, background: "var(--bg-1)", borderRadius: "var(--r-4) var(--r-4) 0 0", boxShadow: "var(--shadow-pop)", maxHeight: "72vh", overflowY: "auto", padding: "8px 8px calc(8px + env(safe-area-inset-bottom))" }}>
         <div style={{ display: "flex", alignItems: "center", padding: "6px 8px 8px", gap: 8 }}>
           {stack.length > 0 && <button onClick={() => setStack((s) => s.slice(0, -1))} style={{ fontSize: 13, color: "var(--accent)", fontWeight: 600 }}>← Voltar</button>}

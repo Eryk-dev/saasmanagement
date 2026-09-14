@@ -249,7 +249,7 @@ function EntityForm({ entityKey, record, onClose, onSaved, onOpenLead, bare = fa
 
   return (
     <div
-      style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", display: "flex", justifyContent: "flex-end", zIndex: 70 }}
+      style={{ position: "fixed", inset: 0, background: "var(--scrim-soft)", display: "flex", justifyContent: "flex-end", zIndex: "var(--z-drawer)" }}
       onClick={onClose}
     >
       <form

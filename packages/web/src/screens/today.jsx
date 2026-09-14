@@ -1926,7 +1926,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
   };
 
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 70, padding: 12 }}>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--scrim)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: "var(--z-modal)", padding: 12 }}>
       <div onClick={(e) => e.stopPropagation()} style={{
         width: "min(1100px, 100%)", maxHeight: "min(92vh, 100%)",
         background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)",

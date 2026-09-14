@@ -87,7 +87,7 @@ function CommandSearch({ open, onClose, onOpenLead, onNav, onNewLead, activeSaas
   const TITULO = { lead: "Leads e clientes", tela: "Ir para", acao: "Ações" };
 
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 120, background: "oklch(0 0 0 / 0.4)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "10vh 16px 16px" }}>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: "var(--z-command)", background: "var(--scrim-soft)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "10vh 16px 16px" }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(560px, 100%)", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "70vh" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderBottom: "1px solid var(--line-1)" }}>
           <span className="mono dim" style={{ fontSize: 13 }}>🔍</span>
