@@ -123,6 +123,18 @@ try {
       failed++;
     }
   }
+  // A tabela de formulários precisa caber na janela de 1024px sem rolar.
+  try {
+    const { FORM_GRID, FORM_GRID_GAP, FORM_GRID_BUDGET } = await server.ssrLoadModule("/src/screens/integration-forms.jsx");
+    const columns = FORM_GRID.match(/minmax\([^)]*\)|[\d.]+px/g) || [];
+    const width = columns.reduce((sum, col) => sum + Number(col.match(/[\d.]+/)[0]), 0) + (columns.length - 1) * FORM_GRID_GAP;
+    if (columns.length !== 5 || width > FORM_GRID_BUDGET) throw new Error(`tabela de formulários excede o orçamento: ${width}px de ${FORM_GRID_BUDGET}px`);
+    console.log(`✓ integração-formulários-tabela (${width}px de ${FORM_GRID_BUDGET})`);
+  } catch (err) {
+    console.error(`✗ integração-formulários-tabela: ${err.message}`);
+    failed++;
+  }
+
   // Layout da agenda por CLUSTER de sobreposição: um horário cheio NÃO pode
   // espremer os itens dos outros horários (era o bug — 9 follow-ups às 11h
   // deixavam a call das 14h com 1/9 da largura).

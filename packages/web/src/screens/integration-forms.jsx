@@ -1,11 +1,12 @@
 import React from "react";
-import { PageHead, StatTile, FilterTab } from "../components/viz.jsx";
+import { PageHead, Card, FilterTab, Segmented } from "../components/viz.jsx";
 import { EmptyState, PrimaryButton, SecondaryButton, WaButton, MoreMenu, toast } from "../atoms.jsx";
 import { Modal, Drawer } from "../components/overlay.jsx";
 import { waLink } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { displayName } from "../lib/users.js";
+import "./integration-forms.css";
 
 // Formulário de Integração — a tela que administra o questionário que o cliente
 // RECÉM-FECHADO preenche antes da call de integração.
@@ -24,6 +25,11 @@ import { displayName } from "../lib/users.js";
 // as mesmas pra todo cliente: o botão "ver perguntas" abre a pré-visualização.
 
 const { useState: useS, useEffect: useE, useRef: useR, useMemo: useM } = React;
+
+// Pisos + quatro gaps cabem na área útil de uma janela de 1024px.
+export const FORM_GRID = "minmax(148px, 1.1fr) minmax(145px, 1fr) minmax(125px, 1fr) 86px 152px";
+export const FORM_GRID_GAP = 12;
+export const FORM_GRID_BUDGET = 716;
 
 const publicBase = () => import.meta.env.VITE_API_BASE || window.location?.origin || "";
 const formUrl = (doc) => `${publicBase()}/fi/${doc.id}`;
@@ -123,23 +129,17 @@ function AskModal({ saas, brand, onClose, onCreated }) {
 
   return (
     <Modal onClose={onClose} fechavel={!busy} label="solicitar formulário" largura={560} painelStyle={{ padding: 22 }}>
+      <div className="intform-dialog">
         {!novo ? (
           <>
             <div className="card-title">Solicitar formulário de integração</div>
             <div className="card-sub" style={{ marginTop: 2 }}>Escolha quem vai preencher. O link nasce único pra essa pessoa.</div>
 
-            <div style={{ display: "flex", gap: 6, marginTop: 16 }}>
-              {[["customer", "Cliente"], ["lead", "Lead que fechou"]].map(([id, label]) => (
-                <button key={id} onClick={() => setKind(id)} className="chip" style={{
-                  cursor: "pointer", fontWeight: 600,
-                  background: kind === id ? "var(--accent-soft)" : "var(--bg-2)",
-                  color: kind === id ? "var(--accent)" : "var(--fg-3)",
-                  boxShadow: kind === id ? "inset 0 0 0 1px var(--accent-line)" : "none",
-                }}>{label}</button>
-              ))}
-            </div>
+            <div style={{ marginTop: 16 }}><Segmented value={kind} onChange={(v) => { if (!busy) { setKind(v); setQ(""); } }} options={[
+              { value: "customer", label: "Cliente" }, { value: "lead", label: "Lead que fechou" },
+            ]} /></div>
 
-            <input type="search" autoFocus value={q} onChange={(e) => setQ(e.target.value)} className="inp"
+            <input type="search" aria-label="Buscar destinatário do formulário" autoFocus value={q} onChange={(e) => setQ(e.target.value)} className="inp"
               placeholder={kind === "customer" ? "buscar cliente…" : "buscar lead por nome, e-mail ou telefone…"}
               style={{ width: "100%", marginTop: 10 }} />
 
@@ -160,7 +160,7 @@ function AskModal({ saas, brand, onClose, onCreated }) {
             </div>
 
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
-              <SecondaryButton onClick={onClose}>Fechar</SecondaryButton>
+              <SecondaryButton disabled={busy} onClick={onClose}>Fechar</SecondaryButton>
             </div>
           </>
         ) : (
@@ -175,6 +175,7 @@ function AskModal({ saas, brand, onClose, onCreated }) {
             </div>
           </>
         )}
+      </div>
     </Modal>
   );
 }
@@ -183,12 +184,13 @@ function AskModal({ saas, brand, onClose, onCreated }) {
 // Renderiza o SNAPSHOT gravado no envio (doc.sections), não a definição atual:
 // o questionário evolui, mas a resposta continua sendo lida com os rótulos com
 // que foi feita.
-function AnswersDrawer({ doc, brand, onClose, onRemove }) {
+function AnswersDrawer({ doc, brand, onClose, onRemove, removing }) {
   const a = doc.answers || {};
   const respondido = doc.status === "respondido";
 
   return (
-    <Drawer onClose={onClose} label="respostas do formulário" largura={760}>
+    <Drawer onClose={onClose} fechavel={!removing} label="respostas do formulário" largura={760}>
+      <div className="intform-dialog intform-answer">
         <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <div style={{ minWidth: 0 }}>
             <div className="kicker">{respondido ? `respondido em ${fmtAt(doc.respondedAt)}` : "aguardando o cliente"}</div>
@@ -196,7 +198,7 @@ function AnswersDrawer({ doc, brand, onClose, onRemove }) {
               {doc.customerName || "sem cliente"}
             </div>
           </div>
-          <button onClick={onClose} className="mono dim" style={{ fontSize: 16, padding: "0 4px" }}>✕</button>
+          <button onClick={onClose} disabled={removing} aria-label="Fechar respostas" className="mono dim" style={{ fontSize: 16, padding: "0 4px" }}>✕</button>
         </div>
 
         <div style={{ padding: "16px 20px 40px", overflowY: "auto", flex: 1 }}>
@@ -206,7 +208,7 @@ function AnswersDrawer({ doc, brand, onClose, onRemove }) {
             <a href={formUrl(doc)} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, fontWeight: 600, alignSelf: "center", color: "var(--accent)" }}>abrir ↗</a>
             {respondido && <SecondaryButton size="sm" onClick={() => copiar(answersText(doc), "respostas copiadas")}>Copiar respostas</SecondaryButton>}
             <span style={{ flex: 1 }} />
-            <SecondaryButton size="sm" onClick={onRemove} style={{ color: "var(--neg)" }}>Excluir</SecondaryButton>
+            {removing ? <span role="status" className="intform-note">Excluindo…</span> : <MoreMenu items={[{ label: "excluir formulário", tone: "neg", onClick: onRemove }]} />}
           </div>
 
           {!respondido && (
@@ -239,7 +241,7 @@ function AnswersDrawer({ doc, brand, onClose, onRemove }) {
                                 <div className="resp-cols" style={{ "--cols": "repeat(2, minmax(0, 1fr))", gap: "8px 16px", marginTop: 6 }}>
                                   {(q.fields || []).map((f) => (
                                     <div key={f.key}>
-                                      <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{f.label}</div>
+                                      <div style={{ fontSize: 11.5, color: "var(--fg-3)" }}>{f.label}</div>
                                       <div style={{ fontSize: 12.5, marginTop: 1 }}>{row[f.key] || "—"}</div>
                                     </div>
                                   ))}
@@ -283,6 +285,7 @@ function AnswersDrawer({ doc, brand, onClose, onRemove }) {
             </div>
           )}
         </div>
+      </div>
     </Drawer>
   );
 }
@@ -295,26 +298,37 @@ function IntegrationFormsScreen() {
   const [q, setQ] = useS("");
   const [sel, setSel] = useS(null);
   const [asking, setAsking] = useS(false);
+  const [removing, setRemoving] = useS(null);
+  const requestId = useR(0);
   const brand = product?.name || "LeverAds";
 
   async function load() {
+    const request = ++requestId.current;
+    setErr(null);
     try {
       const all = await api.list("integration_forms", product?.id ? { saas: product.id } : {});
+      if (request !== requestId.current) return;
       setItems((all || []).sort((a, b) => String(b.createdAt || b.id).localeCompare(String(a.createdAt || a.id))));
       setErr(null);
-    } catch (e) { setErr(e.message); setItems([]); }
+    } catch (e) { if (request === requestId.current) { setErr(e.message); setItems([]); } }
   }
   // Trocar de produto zera a tela: o pedido de um workspace não vale no outro.
-  useE(() => { setItems(null); setSel(null); load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [product?.id]);
+  useE(() => {
+    setItems(null); setSel(null); setAsking(false); load();
+    return () => { requestId.current++; };
+  }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function remover(doc) {
+    if (removing) return;
     if (!window.confirm(`Excluir o formulário de ${doc.customerName || "este cliente"}? O link para de funcionar${doc.status === "respondido" ? " e as respostas somem" : ""}.`)) return;
+    setRemoving(doc.id);
     try {
       await api.remove("integration_forms", doc.id);
       setSel(null);
       setItems((cur) => (cur || []).filter((x) => x.id !== doc.id));
       toast("formulário excluído", "pos");
     } catch (e) { toast(`não deu pra excluir: ${e.message}`, "neg"); }
+    finally { setRemoving(null); }
   }
 
   const list = items || [];
@@ -334,120 +348,86 @@ function IntegrationFormsScreen() {
     .filter((x) => !term || `${x.customerName || ""} ${resumo(x)}`.toLowerCase().includes(term));
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+    <div className="intform-page" style={{ "--form-grid": FORM_GRID }}>
       <PageHead
         title="Formulário de Integração"
-        sub="O cliente que acabou de fechar responde como é a operação dele antes da call de integração. Tudo obrigatório, com termo de veracidade assinado."
+        sub="O cliente que acabou de fechar responde como é a operação dele antes da call · com termo de veracidade assinado."
       >
-        <a href={`${publicBase()}/fi/preview`} target="_blank" rel="noreferrer">
-          <SecondaryButton>Ver perguntas</SecondaryButton>
-        </a>
+        <a className="intform-link" href={`${publicBase()}/fi/preview`} target="_blank" rel="noreferrer">Ver perguntas</a>
         <PrimaryButton onClick={() => setAsking(true)}>Solicitar formulário</PrimaryButton>
       </PageHead>
 
-      <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px" }}>
-      {/* ── Faixa (12/09) ───────────────────────────────────────────────────
-          "Total de pedidos" era a soma dos outros dois: número de vitrine. No
-          lugar dele entra o que importa e não aparecia — HÁ QUANTO TEMPO a
-          espera mais longa está de pé (a tabela mostrava a data e o leitor
-          fazia a subtração de cabeça). */}
-      <div className="resp-cols" style={{ "--cols": "repeat(3, 1fr)", gap: 14 }}>
-        <StatTile label="Aguardando resposta" value={items === null ? "…" : pendentes.length}
-          delta={pendentes.length ? "sem o formulário não dá pra marcar a integração" : "ninguém devendo"} />
-        <StatTile label="Espera mais longa" value={items === null ? "…" : (esperaMax == null ? "—" : `${esperaMax} ${esperaMax === 1 ? "dia" : "dias"}`)}
-          tone={esperaMax != null && esperaMax >= 5 ? "down" : "flat"}
-          delta={esperaMax == null ? "nenhum pedido aberto" : esperaMaxNome ? `${esperaMaxNome} é quem mais espera` : ""} />
-        <StatTile label="Prontos para a call" value={items === null ? "…" : respondidos.length}
-          delta={respondidos.length ? "responderam e assinaram o termo" : "nenhum respondido ainda"} />
+      {!err && <section className="intform-stats" aria-label="Situação dos formulários">
+        {[
+          { label: "Aguardando resposta", value: pendentes.length, note: pendentes.length ? "antes de marcar a integração" : "ninguém devendo" },
+          { label: "Espera mais longa", value: esperaMax == null ? "—" : `${esperaMax} ${esperaMax === 1 ? "dia" : "dias"}`, note: esperaMaxNome || "nenhum pedido aberto", tone: esperaMax >= 5 ? "var(--neg)" : "var(--fg-1)" },
+          { label: "Prontos para a call", value: respondidos.length, note: respondidos.length ? "responderam e assinaram o termo" : "nenhum respondido ainda", tone: respondidos.length ? "var(--pos)" : "var(--fg-1)" },
+        ].map((stat) => <Card key={stat.label} style={{ padding: "14px 16px" }}>
+          <div className="kicker">{stat.label}</div>
+          <div className="intform-number tnum" style={{ color: stat.tone }}>{items === null ? "…" : stat.value}</div>
+          <div className="intform-note">{items === null ? "carregando…" : stat.note}</div>
+        </Card>)}
+      </section>}
+
+      <div className="intform-filters">
+        <div className="intform-tabs" aria-label="Filtrar por situação">
+          <FilterTab active={tab === "todos"} count={list.length} onClick={() => setTab("todos")}>Todos</FilterTab>
+          <FilterTab active={tab === "pendente"} count={pendentes.length} onClick={() => setTab("pendente")}>Aguardando</FilterTab>
+          <FilterTab active={tab === "respondido"} count={respondidos.length} onClick={() => setTab("respondido")}>Respondidos</FilterTab>
+        </div>
+        <input type="search" aria-label="Buscar cliente ou resposta" value={q} onChange={(e) => setQ(e.target.value)} className="inp" placeholder="buscar cliente…" />
       </div>
 
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 20, flexWrap: "wrap" }}>
-        <FilterTab active={tab === "todos"} count={list.length} onClick={() => setTab("todos")}>Todos</FilterTab>
-        <FilterTab active={tab === "pendente"} count={pendentes.length} onClick={() => setTab("pendente")}>Aguardando</FilterTab>
-        <FilterTab active={tab === "respondido"} count={respondidos.length} onClick={() => setTab("respondido")}>Respondidos</FilterTab>
-        <span style={{ flex: 1 }} />
-        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} className="inp" placeholder="buscar cliente…" style={{ width: "min(100%, 240px)" }} />
-      </div>
-
-      {err && <div style={{ marginTop: 14, color: "var(--neg)", fontSize: 12.5 }}>não deu pra carregar: {err}</div>}
-
-      <div style={{ marginTop: 14, background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-        {items === null && <div className="mono dim" style={{ fontSize: 12, padding: 20 }}>carregando…</div>}
-        {items !== null && !visiveis.length && (
+      <Card style={{ padding: 0, overflow: "hidden" }}>
+        {err ? <div className="intform-feedback" role="alert">
+          <div>Não foi possível carregar os formulários.</div>
+          <SecondaryButton onClick={() => { setItems(null); load(); }}>Tentar novamente</SecondaryButton>
+        </div> : items === null ? <div className="intform-feedback" role="status">Carregando formulários…</div> : !visiveis.length ? (
           <EmptyState
             title={list.length ? "Nada nesse filtro" : "Nenhum formulário pedido ainda"}
-            hint={list.length ? "Troque a aba ou limpe a busca." : "Fechou um cliente? Peça o formulário antes de marcar a call de integração: o integrador chega sabendo as contas, as rotas de clonagem e as regras de preço."}
-            action={!list.length ? <PrimaryButton onClick={() => setAsking(true)}>Solicitar formulário</PrimaryButton> : null}
+            hint={list.length ? "Troque a aba ou limpe a busca." : "Solicite as informações da operação antes da call de integração."}
+            action={list.length ? <SecondaryButton onClick={() => { setTab("todos"); setQ(""); }}>Limpar filtros</SecondaryButton> : <PrimaryButton onClick={() => setAsking(true)}>Solicitar formulário</PrimaryButton>}
           />
-        )}
-        {items !== null && !!visiveis.length && (
+        ) : (
           <div className="tbl-x">
-            <table className="tbl" style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ background: "var(--bg-2)" }}>
-                  <th className="kicker" style={{ padding: "8px 12px", textAlign: "left", width: "22%" }}>Cliente</th>
-                  <th className="kicker" style={{ padding: "8px 12px", textAlign: "left", width: "20%" }}>Situação</th>
-                  <th className="kicker" style={{ padding: "8px 12px", textAlign: "left" }}>O que veio</th>
-                  <th className="kicker" style={{ padding: "8px 12px", textAlign: "left", width: 110 }}>Pedido por</th>
-                  <th className="kicker" style={{ padding: "8px 12px", textAlign: "right", width: 210 }}>Ação</th>
-                </tr>
-              </thead>
+            <table className="intform-table" aria-label="Formulários de integração">
+              <thead><tr>{["Cliente", "Situação", "O que veio", "Pedido por", "Ação"].map((label) => <th key={label} scope="col">{label}</th>)}</tr></thead>
               <tbody>
-                {visiveis.map((doc) => (
-                  <tr key={doc.id} data-click onClick={() => setSel(doc)}>
-                    <td style={{ fontWeight: 500 }}>
-                      {doc.customerName || "(sem cliente)"}
-                      <div className="mono dim" style={{ fontSize: 10.5 }}>pedido {fmtDay(doc.createdAt)}</div>
+                {visiveis.map((doc) => {
+                  const responded = doc.status === "respondido";
+                  const days = diasDe(doc.createdAt);
+                  const wa = waLink(doc.phone);
+                  const status = responded ? "respondido" : days == null ? "aguardando" : `aguardando há ${days} ${days === 1 ? "dia" : "dias"}`;
+                  return <tr key={doc.id}>
+                    <td data-label="Cliente">
+                      <button className="intform-name" onClick={() => setSel(doc)} title={doc.customerName}>{doc.customerName || "(sem cliente)"}</button>
+                      <div className="intform-meta">pedido {fmtDay(doc.createdAt)}</div>
                     </td>
-                    {/* A ESPERA, não a data: "aguardando há 9 dias" é o que
-                        decide se o integrador cobra hoje. */}
-                    <td>
-                      {doc.status === "respondido" ? (
-                        <>
-                          <span className="chip pos">respondido</span>
-                          <div className="mono dim" style={{ fontSize: 10.5, marginTop: 2 }}>{`${fmtDay(doc.respondedAt)} · termo assinado`}</div>
-                        </>
-                      ) : (() => {
-                        const d = diasDe(doc.createdAt);
-                        const tom = d != null && d >= 5 ? "var(--neg)" : "var(--warn)";
-                        return (
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, color: tom }}>
-                            <span style={{ width: 6, height: 6, borderRadius: 999, background: "currentColor", flexShrink: 0 }} />
-                            {d == null ? "aguardando" : `aguardando há ${d} ${d === 1 ? "dia" : "dias"}`}
-                          </span>
-                        );
-                      })()}
-                    </td>
-                    <td className="dim">{resumo(doc) || "—"}</td>
-                    <td className="dim" style={{ fontSize: 12 }}>{doc.author ? displayName(doc.author) : "—"}</td>
-                    {/* Ação: faltava COBRAR quem está devendo o formulário. */}
-                    <td style={{ textAlign: "right", whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>
-                      <span style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end" }}>
-                        {doc.status === "respondido" ? (
-                          <SecondaryButton size="sm" onClick={() => setSel(doc)}>ver respostas</SecondaryButton>
-                        ) : (() => {
-                          const wa = waLink(doc.phone);
-                          return wa ? (
-                            <a href={`${wa}?text=${encodeURIComponent(waText(doc, brand))}`} target="_blank" rel="noopener noreferrer"
-                              title="abrir o WhatsApp do cliente com o link do formulário"
-                              style={{ height: 28, display: "inline-flex", alignItems: "center", padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid var(--wa-brand)", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 12, fontWeight: 700, textDecoration: "none" }}>
-                              cobrar
-                            </a>
-                          ) : null;
-                        })()}
-                        <SecondaryButton size="sm" onClick={() => copiar(formUrl(doc), "link copiado")}>copiar</SecondaryButton>
-                        <MoreMenu items={[{ label: "excluir formulário", tone: "neg", onClick: () => remover(doc) }]} />
+                    <td data-label="Situação">
+                      <span className="intform-status" style={{ color: responded ? "var(--pos)" : days >= 5 ? "var(--neg)" : "var(--warn)" }}>
+                        <span aria-hidden="true" />{status}
                       </span>
+                      {responded && <div className="intform-meta">{fmtDay(doc.respondedAt)} · termo assinado</div>}
                     </td>
-                  </tr>
-                ))}
+                    <td data-label="O que veio" className="intform-summary" title={resumo(doc)}>{resumo(doc) || "—"}</td>
+                    <td data-label="Pedido por" className="intform-author" title={doc.author ? displayName(doc.author) : ""}>{doc.author ? displayName(doc.author) : "—"}</td>
+                    <td className="intform-actions">
+                      {responded ? <SecondaryButton size="sm" onClick={() => setSel(doc)}>Ver respostas</SecondaryButton>
+                        : wa ? <a className="intform-link" href={`${wa}?text=${encodeURIComponent(waText(doc, brand))}`} target="_blank" rel="noopener noreferrer" title="Abrir WhatsApp com o link do formulário">Cobrar</a>
+                        : <SecondaryButton size="sm" onClick={() => copiar(formUrl(doc), "link copiado")}>Copiar link</SecondaryButton>}
+                      {removing === doc.id ? <span role="status" className="intform-note">Excluindo…</span> : <MoreMenu items={[
+                        { label: "ver formulário", onClick: () => setSel(doc) },
+                        { label: "copiar link", onClick: () => copiar(formUrl(doc), "link copiado") },
+                        !removing && { label: "excluir formulário", tone: "neg", onClick: () => remover(doc) },
+                      ]} />}
+                    </td>
+                  </tr>;
+                })}
               </tbody>
             </table>
           </div>
         )}
-      </div>
-
-      </div>
+      </Card>
 
       {asking && (
         <AskModal
@@ -457,7 +437,7 @@ function IntegrationFormsScreen() {
           onCreated={(doc) => setItems((cur) => [doc, ...(cur || [])])}
         />
       )}
-      {sel && <AnswersDrawer doc={sel} brand={brand} onClose={() => setSel(null)} onRemove={() => remover(sel)} />}
+      {sel && <AnswersDrawer doc={sel} brand={brand} onClose={() => setSel(null)} onRemove={() => remover(sel)} removing={removing === sel.id} />}
     </div>
   );
 }
