@@ -1,5 +1,6 @@
 import React from "react";
-import { PrimaryButton, useEsc } from "../atoms.jsx";
+import { PrimaryButton } from "../atoms.jsx";
+import { Modal } from "./overlay.jsx";
 import { stageKind, phaseOf, isLossKind, isWonKind, lossReasonsOf } from "../lib/funnel.js";
 import { usersByRole, currentUser } from "../lib/users.js";
 import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, withLegacyOption, CONSULT_PACKAGES, CLOSED_PLAN_MONTHS, dealProductsOf, paymentUpfront, paymentRecurring, paymentCustom } from "../lib/payments.js";
@@ -52,7 +53,6 @@ const field = {
 const label = { display: "block", marginBottom: 4 };
 
 export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCancel }) {
-  useEsc(onCancel);
   const isLost = gate.type === "lost";
   const isWonGate = gate.type === "won";
   const reasons = lossReasonsOf(saasCfg);
@@ -154,10 +154,10 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   }
 
   return (
-    <div onClick={onCancel} style={{ position: "fixed", inset: 0, zIndex: 90, background: "color-mix(in srgb, var(--bg-0) 62%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      {/* maxHeight+scroll: com o teclado aberto no celular o gate de ganho
-          (valor/método/pacote) passa da altura visível — rola em vez de cortar. */}
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(420px, 100%)", maxHeight: "min(88dvh, 100%)", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 18 }}>
+    // maxHeight+scroll vêm do Modal: com o teclado aberto no celular o gate de
+    // ganho (valor/método/pacote) passa da altura visível e rola em vez de
+    // cortar.
+    <Modal onClose={onCancel} label="mover lead" largura={420} padding={20} painelStyle={{ padding: 18 }}>
         <div style={{ fontFamily: "var(--display)", fontSize: 16, fontWeight: 700 }}>
           {isLost ? `Mover pra “${toStage}”` : isAdjust ? "Confirmar plano e valor" : isWonGate ? "Fechar como ganho 🎉" : isOffer ? (askOffer ? "Call feita → follow-up" : "Marcar o follow-up") : isCall ? "Marcar a call" : "Passar pro closer"}
         </div>
@@ -304,8 +304,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
           <button onClick={onCancel} style={{ height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5 }}>cancelar</button>
           <PrimaryButton onClick={confirm} disabled={!ready}>confirmar movimento</PrimaryButton>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

@@ -1,6 +1,7 @@
 import React from "react";
 import { Avatar, EmptyState, PrimaryButton } from "../atoms.jsx";
 import { Card, FilterTab, Segmented, StatTile } from "../components/viz.jsx";
+import { Popover } from "../components/popover.jsx";
 import { leadAge, leadTier } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
@@ -8,7 +9,7 @@ import {
   stageKind, phaseOf, openStages, workableStages, ladderOf, isWonStage, isWonLead, wonAtOf,
   nextTouch, nextTouchPill, lossReasonLabel,
 } from "../lib/funnel.js";
-import { usersByRole, userColor, displayName, currentUser } from "../lib/users.js";
+import { usersByRole, userColor, displayName, currentUser, allUsers } from "../lib/users.js";
 import { isNoShowStage } from "../lib/scripts.js";
 import { mentoriaFit, mentoriaOfferLine, VERBA_RANK } from "../lib/mentoria.js";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
@@ -61,6 +62,11 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   useEfP(() => { setLeads(window.SEED.LEADS.map((l) => ({ ...l }))); }, [version]);
   const [highlight, setHighlight] = useStP(jumpFilter?.stage || null);
   const [selected, setSelected] = useStP(new Set());
+  // Busca no KANBAN (protótipo, 14/09): existia só na Lista. Com cinco colunas
+  // e dez cards em cada, achar um lead pelo nome era rolar o board inteiro de
+  // lado. Filtra os cards das colunas; o cabeçalho continua contando a coluna
+  // inteira, senão a busca passa a mentir sobre o tamanho da etapa.
+  const [buscaBoard, setBuscaBoard] = useStP("");
   // Fase do processo (fatia as colunas visíveis — a "view" de cada papel) +
   // pessoa (dono/closer/integrador). Fase persiste: o CS abre direto na view dele.
   const PHASES_OPTS = ["all", "sdr", "closer"];
@@ -222,6 +228,82 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
     return out;
   }, [byStage, onlyLate, activeSaas]);
 
+  // A busca filtra os CARDS, não as colunas: o cabeçalho segue contando a
+  // etapa inteira (byStage), então buscar não encolhe o funil na cara de quem
+  // olha. Nome, empresa e telefone, a mesma régua da Lista.
+  const boardRows = useMP(() => {
+    const t = buscaBoard.trim().toLowerCase();
+    if (!t) return lateOnly;
+    const out = {};
+    for (const st of Object.keys(lateOnly)) {
+      out[st] = (lateOnly[st] || []).filter((l) =>
+        `${l.name || ""} ${l.company || ""} ${l.phone || ""}`.toLowerCase().includes(t));
+    }
+    return out;
+  }, [lateOnly, buscaBoard]);
+
+  // ── Ações em massa ───────────────────────────────────────────────────────
+  // O checkbox do card existia desde sempre e não fazia NADA: selecionar dez
+  // leads não abria ação nenhuma. Controle morto é o defeito que o handoff
+  // mais cobra, então a seleção passa a abrir a barra com mover, atribuir e
+  // registrar toque.
+  const selLeads = useMP(() => leads.filter((l) => selected.has(l.id)), [leads, selected]);
+  // Etapa com PORTÃO (Ganho pede valor e plano, Perdido exige motivo, a
+  // passagem pro closer escolhe quem assume) não entra no "mover para": esses
+  // são um a um, com o modal. A opção some com o motivo no title.
+  const bulkStages = useMP(() => {
+    if (!selLeads.length) return [];
+    return visibleStages.map((st) => {
+      const travada = selLeads.find((l) => l.stage !== st && moveGate(saasCfgOf(l), l, st));
+      return { stage: st, travada: !!travada };
+    });
+  }, [visibleStages.join("|"), selLeads]);
+
+  function bulkPatch(patch, rotulo) {
+    const ids = [...selected];
+    if (!ids.length) return;
+    setLeads((prev) => prev.map((l) => ids.includes(l.id) ? { ...l, ...patch } : l));
+    Promise.allSettled(ids.map((id) => api.update("leads", id, patch)))
+      .then((rs) => {
+        const falhas = rs.filter((r) => r.status === "rejected").length;
+        if (falhas) window.toast?.(`${falhas} de ${ids.length} não salvaram · tente de novo`, "neg");
+        else window.toast?.(`${ids.length} ${ids.length === 1 ? "lead" : "leads"} · ${rotulo}`, "pos");
+      });
+    setSelected(new Set());
+  }
+
+  function bulkMove(stage) {
+    const ids = [...selected];
+    if (!ids.length) return;
+    setLeads((prev) => prev.map((l) => ids.includes(l.id)
+      ? { ...l, stage, stageSince: new Date().toISOString(), stageAttempts: 0 } : l));
+    Promise.allSettled(ids.map((id) => api.update("leads", id, { stage })))
+      .then((rs) => {
+        const falhas = rs.filter((r) => r.status === "rejected").length;
+        if (falhas) window.toast?.(`${falhas} de ${ids.length} não moveram · tente de novo`, "neg");
+        else window.toast?.(`${ids.length} ${ids.length === 1 ? "lead movido" : "leads movidos"} para ${stage}`, "pos");
+      });
+    setSelected(new Set());
+  }
+
+  // Toque em massa: a mesma gravação do "toque e próximo" de Minhas atividades
+  // (tentativa +1, último contato agora), pra varrer uma coluna parada.
+  function bulkTouch() {
+    const alvos = selLeads;
+    if (!alvos.length) return;
+    const agora = new Date().toISOString();
+    const ids = alvos.map((l) => l.id);
+    setLeads((prev) => prev.map((l) => ids.includes(l.id)
+      ? { ...l, stageAttempts: (Number(l.stageAttempts) || 0) + 1, lastActivityAt: agora, lastActivityType: "whatsapp" } : l));
+    Promise.allSettled(alvos.map((l) => api.logActivity({ saas: l.saas, lead: l.id, type: "whatsapp", text: "toque registrado em massa (pipeline)", author: me })))
+      .then((rs) => {
+        const falhas = rs.filter((r) => r.status === "rejected").length;
+        if (falhas) window.toast?.(`${falhas} de ${ids.length} toques não foram registrados · tente de novo`, "neg");
+        else window.toast?.(`${ids.length} ${ids.length === 1 ? "toque registrado" : "toques registrados"}`, "pos");
+      });
+    setSelected(new Set());
+  }
+
   return (
     <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
       <div style={{ padding: "28px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16, minHeight: "100%" }}>
@@ -247,6 +329,8 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
         {view === "kanban" && (
           <Card>
             <div style={{ padding: "14px 20px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <input value={buscaBoard} onChange={(e) => setBuscaBoard(e.target.value)} placeholder="buscar lead ou empresa…"
+                className="inp" style={{ width: 190 }} />
               <Segmented value={phase} onChange={setPhase} options={[
                 { value: "all", label: `Todos ${phaseCounts.all}` },
                 { value: "sdr", label: `SDR ${phaseCounts.sdr}` },
@@ -285,11 +369,27 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
           </Card>
         )}
 
+      {/* ── Ações em massa (14/09) ─────────────────────────────────────────
+          O checkbox do card não fazia nada: dava pra selecionar dez leads e
+          não acontecia ação nenhuma. Agora a seleção abre a barra. */}
+      {view === "kanban" && selected.size > 0 && (
+        <BulkBar
+          n={selected.size}
+          stages={bulkStages}
+          users={allUsers()}
+          onMove={bulkMove}
+          onAssign={(userId, field) => bulkPatch({ [field]: userId }, `atribuídos a ${displayName(userId)}`)}
+          onTouch={bulkTouch}
+          onClear={() => setSelected(new Set())}
+        />
+      )}
+
       {view === "kanban" && (
         <KanbanBoard
           s={s}
           stages={visibleStages}
-          byStage={lateOnly}
+          byStage={boardRows}
+          fullByStage={byStage}
           sortMode={sortMode}
           highlight={highlight}
           onMove={requestMove}
@@ -320,6 +420,56 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
     </div>
   );
 }
+
+// ── Barra de ações em massa ─────────────────────────────────────────────────
+// Aparece quando há card selecionado. "Mover para" não oferece etapa com
+// portão (Ganho pede valor e plano, Perdido exige motivo, a passagem pro
+// closer escolhe quem assume): esses são um a um, com o modal, e a opção some
+// dizendo por quê. "Atribuir" grava no campo da FASE da etapa de destino de
+// cada lead, a mesma régua do assumir em Minhas atividades.
+function BulkBar({ n, stages, users, onMove, onAssign, onTouch, onClear }) {
+  // Âncora por ref, não por e.currentTarget: o synthetic event zera o
+  // currentTarget depois do handler e o popover nasceria no canto da tela.
+  const refMover = React.useRef(null);
+  const refAtribuir = React.useRef(null);
+  const [aberto, setAberto] = useStP(null);
+  return (
+    <section style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "11px 16px", borderRadius: "var(--r-3)", border: "1px solid var(--accent-line)", background: "var(--accent-soft)" }}>
+      <span className="tnum" style={{ fontSize: 13.5, fontWeight: 650, color: "var(--accent)" }}>
+        {n} {n === 1 ? "lead selecionado" : "leads selecionados"}
+      </span>
+      <span style={{ flex: 1 }} />
+      <button ref={refMover} onClick={() => setAberto(aberto === "mover" ? null : "mover")} style={bulkBtn}>mover para ▾</button>
+      <button ref={refAtribuir} onClick={() => setAberto(aberto === "atribuir" ? null : "atribuir")} style={bulkBtn}>atribuir ▾</button>
+      <button onClick={onTouch} title="registra uma tentativa de contato em cada um (tentativa +1 e último contato agora)" style={bulkBtn}>registrar toque</button>
+      <button onClick={onClear} className="mono" style={{ background: "none", border: 0, padding: "0 4px", fontSize: 12, color: "var(--fg-3)", fontWeight: 600, cursor: "pointer" }}>limpar</button>
+      {aberto === "mover" && (
+        <Popover anchor={refMover} onClose={() => setAberto(null)} width={230} title="Mover para" align="end">
+          {stages.map(({ stage, travada }) => (
+            <button key={stage} disabled={travada}
+              title={travada ? "esta etapa pede valor, motivo ou quem assume — mova um a um, pelo card" : ""}
+              onClick={() => { setAberto(null); onMove(stage); }}
+              style={{ ...bulkItem, opacity: travada ? 0.45 : 1, cursor: travada ? "not-allowed" : "pointer" }}>
+              {stage}
+            </button>
+          ))}
+        </Popover>
+      )}
+      {aberto === "atribuir" && (
+        <Popover anchor={refAtribuir} onClose={() => setAberto(null)} width={230} title="Atribuir a" align="end">
+          {users.map((u) => (
+            <button key={u.id} onClick={() => { setAberto(null); onAssign(u.id, "owner"); }} style={bulkItem}>
+              <Avatar id={u.id} name={displayName(u.id)} size={20} />
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName(u.id)}</span>
+            </button>
+          ))}
+        </Popover>
+      )}
+    </section>
+  );
+}
+const bulkBtn = { height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" };
+const bulkItem = { display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 10px", borderRadius: "var(--r-2)", background: "none", border: 0, textAlign: "left", fontSize: 12.5, color: "var(--fg-1)", cursor: "pointer" };
 
 function ViewToggle({ view, onChange }) {
   return <Segmented value={view} onChange={onChange} options={[
@@ -370,7 +520,7 @@ function PersonFilter({ person, leads, onChange, me }) {
 }
 
 // ─────────────────────────────────────────────── Kanban
-function KanbanBoard({ s, stages, byStage, sortMode, highlight, onMove, selected, setSelected, onOpenLead, wonLeads, showWon }) {
+function KanbanBoard({ s, stages, byStage, fullByStage, sortMode, highlight, onMove, selected, setSelected, onOpenLead, wonLeads, showWon }) {
   const [dragging, setDragging] = useStP(null);
   // O resumo do Ganho entra na POSIÇÃO que o FUNIL declara pro ganho: logo depois
   // da última etapa VISÍVEL que vem ANTES do ganho na ordem do funil (Follow-up),
@@ -391,6 +541,7 @@ function KanbanBoard({ s, stages, byStage, sortMode, highlight, onMove, selected
             s={s}
             stage={st}
             cards={byStage[st] || []}
+            todos={(fullByStage || byStage)[st] || []}
             sortMode={sortMode}
             highlight={highlight === st}
             onDropCard={(id) => { onMove(id, st); setDragging(null); }}
@@ -433,10 +584,15 @@ function WonSummary({ leads }) {
   );
 }
 
-function KanbanColumn({ s, stage, cards, sortMode, highlight, onDropCard, dragging, setDragging, selected, setSelected, onOpenLead }) {
+function KanbanColumn({ s, stage, cards, todos, sortMode, highlight, onDropCard, dragging, setDragging, selected, setSelected, onOpenLead }) {
   const [over, setOver] = useStP(false);
   const [expanded, setExpanded] = useStP(false);
-  const total = cards.reduce((a, l) => a + (l.amount || 0), 0);
+  // O cabeçalho (contagem, dinheiro, atraso) mede a ETAPA INTEIRA; o corpo
+  // mostra o que a busca deixou. Senão buscar encolhe o funil na cara de quem
+  // olha, e o board passa a mentir sobre o tamanho da etapa.
+  const todosCards = todos && todos.length >= cards.length ? todos : cards;
+  const filtrando = todosCards.length !== cards.length;
+  const total = todosCards.reduce((a, l) => a + (l.amount || 0), 0);
   // Ordem cronológica pelo próximo contato (atrasado primeiro, depois hoje,
   // amanhã...); sem próximo passo vai pro fim, do mais novo na etapa pro mais
   // antigo (stageSince; fallback createdAt pra cards que ainda não moveram).
@@ -466,8 +622,8 @@ function KanbanColumn({ s, stage, cards, sortMode, highlight, onDropCard, draggi
   // Mesma régua do nextTs acima (nextTouch pelo kind da coluna): o número do
   // cabeçalho e a ordem da coluna nunca discordam.
   const hoje0 = new Date(); hoje0.setHours(0, 0, 0, 0);
-  const colLate = cards.filter((l) => { const t = nextTs(l); return Number.isFinite(t) && t < hoje0.getTime(); }).length;
-  const colToday = cards.filter((l) => { const t = nextTs(l); return Number.isFinite(t) && t >= hoje0.getTime() && t < hoje0.getTime() + 86400000; }).length;
+  const colLate = todosCards.filter((l) => { const t = nextTs(l); return Number.isFinite(t) && t < hoje0.getTime(); }).length;
+  const colToday = todosCards.filter((l) => { const t = nextTs(l); return Number.isFinite(t) && t >= hoje0.getTime() && t < hoje0.getTime() + 86400000; }).length;
   const shown = expanded ? ordered : ordered.slice(0, 10);
   const hidden = ordered.length - shown.length;
   return (
@@ -486,7 +642,8 @@ function KanbanColumn({ s, stage, cards, sortMode, highlight, onDropCard, draggi
         <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
           <div style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
             {stage}
-            <span className="mono tnum" style={{ fontSize: 11.5, fontWeight: 400, color: "var(--fg-4)" }}>{cards.length}</span>
+            <span className="mono tnum" style={{ fontSize: 11.5, fontWeight: 400, color: "var(--fg-4)" }}>{todosCards.length}</span>
+            {filtrando && <span className="mono tnum" style={{ fontSize: 11, color: "var(--accent)" }}>{cards.length} na busca</span>}
           </div>
           <span className="tnum" style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--fg-4)", whiteSpace: "nowrap" }}>{window.fmt.money(total)}</span>
         </div>
@@ -529,7 +686,11 @@ function KanbanColumn({ s, stage, cards, sortMode, highlight, onDropCard, draggi
         {expanded && ordered.length > 10 && (
           <button onClick={() => setExpanded(false)} style={{ textAlign: "center", fontSize: 12, color: "var(--fg-4)", padding: "2px 0" }}>mostrar menos</button>
         )}
-        {cards.length === 0 && <div style={{ fontSize: 12, textAlign: "center", color: "var(--fg-4)", padding: "18px 0" }}>vazio</div>}
+        {cards.length === 0 && (
+          <div style={{ fontSize: 12, textAlign: "center", color: "var(--fg-4)", padding: "18px 0" }}>
+            {filtrando ? "nenhum card nesta busca" : "arraste um lead para cá"}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1435,4 +1596,4 @@ function AnaliseView({ s, leads }) {
   );
 }
 
-export { PipelineScreen, AnaliseView };
+export { PipelineScreen, AnaliseView, BulkBar };

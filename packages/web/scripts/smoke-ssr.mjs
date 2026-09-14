@@ -1128,6 +1128,30 @@ try {
     console.error(`✗ overlay: ${err.message}`);
     failed++;
   }
+
+  // ── Pipeline: a seleção não pode ser controle morto (14/09) ─────────────
+  // O checkbox do card existia desde sempre e não abria ação nenhuma. A barra
+  // de massa é o que o torna vivo, e etapa com portão (Ganho pede valor e
+  // plano, Perdido exige motivo) não pode ser movida em lote.
+  try {
+    const has = (name, html, must) => { if (!html.includes(must)) throw new Error(`${name} não contém "${must}"`); };
+    const P = await server.ssrLoadModule("/src/screens/pipeline.jsx");
+    if (!P.BulkBar) throw new Error("a barra de ações em massa sumiu");
+    const bar = renderToString(wrap(React.createElement(P.BulkBar, {
+      n: 3,
+      stages: [{ stage: "Qualificação", travada: false }, { stage: "Ganho", travada: true }],
+      users: [], onMove() {}, onAssign() {}, onTouch() {}, onClear() {},
+    })));
+    has("massa", bar, "leads selecionados");
+    has("massa", bar, "mover para");
+    has("massa", bar, "atribuir");
+    has("massa", bar, "registrar toque");
+    has("massa", bar, "limpar");
+    console.log("✓ pipeline-massa");
+  } catch (err) {
+    console.error(`✗ pipeline-massa: ${err.message}`);
+    failed++;
+  }
 } finally {
   await server.close();
 }
