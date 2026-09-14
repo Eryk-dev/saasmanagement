@@ -147,10 +147,12 @@ function WaTopStats({ numInfo, stats, onResponder }) {
   ].filter(Boolean).join("\n") : "carregando…";
 
   return (
-    <div style={{ margin: "12px var(--pad-x) 0", display: "flex", flexDirection: "column", gap: 8 }}>
+    // Aviso e resumo do número LADO A LADO (prancha, 14/09): eram duas faixas
+    // empilhadas, e a segunda empurrava a caixa de conversas pra baixo.
+    <div style={{ margin: "12px var(--pad-x) 0", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "stretch" }}>
       {/* O aviso com prazo sobe pro topo, com a ação ao lado. */}
       {waiting > 0 && (
-        <AvisoTopo
+        <AvisoTopo variante="forte" style={{ flex: "1 1 380px", minWidth: 0 }}
           titulo={`${waiting} ${waiting === 1 ? "conversa esperando resposta" : "conversas esperando resposta"}`}
           nota={espera ? `a mais antiga há ${espera}` : null}
           fim={tipica !== "—" ? <span className="mono dim" style={{ fontSize: 11 }}>{`a gente costuma responder em ${tipica}`}</span> : null}
@@ -158,7 +160,7 @@ function WaTopStats({ numInfo, stats, onResponder }) {
         />
       )}
       {/* Resumo do número: uma linha, sem rolagem. */}
-      <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap", padding: "10px 16px", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
+      <div style={{ flex: "1 1 320px", minWidth: 0, display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap", padding: "10px 16px", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
         <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }} title={(health?.messages || []).join("\n") || "conta saudável"}>
           <span className="kicker">Saúde do número</span>
           <span style={{ fontSize: 13.5, fontWeight: 600, color: healthTone.color, display: "inline-flex", alignItems: "center", gap: 5 }}>
@@ -490,7 +492,7 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
       <div style={{ flex: 1, minHeight: 0, display: "flex", gap: 16, padding: "16px var(--pad-x) 56px" }}>
         {/* Lista de conversas */}
         {(!isMobile || !current) && (
-        <div style={{ ...box, width: isMobile ? "100%" : 340, flexShrink: isMobile ? 1 : 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <div style={{ ...box, width: isMobile ? "100%" : 250, flexShrink: isMobile ? 1 : 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
           <div style={{ padding: 10, borderBottom: "1px solid var(--line-1)", display: "flex", flexDirection: "column", gap: 8 }}>
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar por nome ou número"
               style={{ width: "100%", padding: "8px 10px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 }} />
@@ -730,7 +732,7 @@ function DmInbox({ network, saas, isMobile }) {
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", gap: 16, padding: "16px var(--pad-x) 56px" }}>
       {(!isMobile || !sel) && (
-        <div style={{ ...box, width: isMobile ? "100%" : 340, flexShrink: isMobile ? 1 : 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <div style={{ ...box, width: isMobile ? "100%" : 250, flexShrink: isMobile ? 1 : 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
           <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--line-1)", fontSize: 12.5, color: "var(--fg-3)", fontWeight: 600 }}>
             Conversas do {label}
           </div>
