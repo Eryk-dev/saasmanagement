@@ -41,6 +41,15 @@ export const fmt = {
     if (abs >= 1_000) return `${s}R$${(abs / 1_000).toFixed(1).replace(".", ",")}k`;
     return `${s}R$${abs.toFixed(0)}`;
   },
+  // Valor CHEIO ("R$ 4.200"), pro card do kanban e pro total da coluna: ali a
+  // precisão é o que decide por qual lead começar, e "R$4,2k" apaga os 200.
+  // O compacto (`money`) segue valendo em KPI, gráfico e faixa de resumo.
+  moneyFull(n, { sign = false } = {}) {
+    if (n == null) return "—";
+    const abs = Math.abs(n);
+    const s = n < 0 ? "-" : sign && n > 0 ? "+" : "";
+    return `${s}R$ ${abs.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`;
+  },
   pct(n, digits = 0) {
     if (n == null) return "—";
     return `${(n * 100).toFixed(digits)}%`;
