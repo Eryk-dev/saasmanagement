@@ -1,4 +1,7 @@
 import React from "react";
+import "./marketing.css";
+import { PrimaryButton, SecondaryButton } from "../atoms.jsx";
+import { InfoNota } from "../components/story.jsx";
 import { PageHead, Segmented } from "../components/viz.jsx";
 import { useIsMobile } from "../lib/responsive.js";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -644,14 +647,15 @@ const EL = {
 // Elemento avulso adicionado pelo usuário (texto / botão / foto).
 function drawExtra(ctx, ex, x, y, env) {
   const p = pal(env.mode);
+  const size = Math.max(20, Math.min(300, Number(ex.size) || (ex.type === "pill" ? 40 : 54)));
   if (ex.type === "pill") {
-    const m = drawPillShape(ctx, ex.text, x, y, ex.size || 40);
+    const m = drawPillShape(ctx, ex.text, x, y, size);
     return { x, y, w: m.w, h: m.h };
   }
   if (ex.type === "photo") {
     return drawPhotoBox(ctx, { id: "extra:" + ex.id, w: ex.w || 520, h: ex.h || 520, r: 24 }, x, y, env);
   }
-  const m = drawRichText(ctx, { text: ex.text, x, y, maxW: 880, size: ex.size || 54, weight: 600, lineH: Math.round((ex.size || 54) * 1.2), color: p.fg, hl: p.accent });
+  const m = drawRichText(ctx, { text: ex.text, x, y, maxW: 880, size, weight: 600, lineH: Math.round(size * 1.2), color: p.fg, hl: p.accent });
   return { x, y, w: m.w, h: m.h };
 }
 
@@ -668,7 +672,12 @@ function renderSlide(ctx, tpl, i, env, pos, extras, selKey) {
     const d = pos[el.id] || { dx: 0, dy: 0 };
     const yBase = typeof el.y === "number" ? el.y : ((done[el.y.after]?.bottom ?? 0) + el.y.gap);
     const x = el.x + d.dx, y = yBase + d.dy;
-    const bbox = EL[el.type](ctx, el, x, y, e);
+    // Fonte por slide/campo, sem alterar a definição compartilhada do template.
+    const fontSize = Number(env.sizes?.[i + 1]?.[el.field]);
+    const styled = el.size && Number.isFinite(fontSize) && fontSize > 0
+      ? { ...el, size: Math.max(20, Math.min(300, fontSize)), lineH: el.lineH ? Math.round(el.lineH * Math.max(20, Math.min(300, fontSize)) / el.size) : undefined }
+      : el;
+    const bbox = EL[el.type](ctx, styled, x, y, e);
     done[el.id] = { ...bbox, bottom: bbox.y + bbox.h };
     if (el.lock !== true) boxes.push({ key: el.id, ...bbox, el });
   }
@@ -1257,6 +1266,9 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
   const [formato, setFormato] = useS(() => (TEMPLATES.find((t) => t.id === allowed[0]?.id)?.group) || groups[0]);
   const [activeSlide, setActiveSlide] = useS(0);
   const [vals, setVals] = useS(() => defaultsOf(allowed[0] || TEMPLATES[0]));
+  const [sizes, setSizes] = useS({}); // slide -> campo -> tamanho da fonte
+  const [exportBusy, setExportBusy] = useS(false);
+  const [exportError, setExportError] = useS("");
   const [pos, setPos] = useS({});        // offsets de arrasto por elemento
   const [imgs, setImgs] = useS({});      // fotos carregadas por slot
   const [extras, setExtras] = useS([]);  // elementos avulsos
@@ -1272,7 +1284,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
 
   useE(() => { let ok = true; setReady(false); loadAssets().then(() => ok && setReady(true)); return () => { ok = false; }; }, [brandId]);
   useE(() => {
-    setVals(defaultsOf(tpl)); setPos({}); setImgs({}); setExtras([]); setSel(null); setAddSlide(1); setActiveSlide(0);
+    setVals(defaultsOf(tpl)); setSizes({}); setExportError(""); setPos({}); setImgs({}); setExtras([]); setSel(null); setAddSlide(1); setActiveSlide(0);
   }, [tpl.id, brandId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Redesenha os canvases (resolução nativa; o CSS só encolhe a exibição).
@@ -1283,9 +1295,9 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
       if (!c) continue;
       c.width = tpl.w; c.height = tpl.h;
       const ctx = c.getContext("2d");
-      boxesRef.current[i] = renderSlide(ctx, tpl, i, { vals, imgs }, pos, extras, sel);
+      boxesRef.current[i] = renderSlide(ctx, tpl, i, { vals, imgs, sizes }, pos, extras, sel);
     }
-  }, [ready, tpl, vals, pos, imgs, extras, sel, brandId]);
+  }, [ready, tpl, vals, sizes, pos, imgs, extras, sel, brandId]);
 
   // ── Drag & clique no preview ──
   function canvasPoint(e, i) {
@@ -1332,7 +1344,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
     const target = photoTargetRef.current;
     if (!file || !target) return;
     const url = URL.createObjectURL(file);
-    loadImg(url).then((img) => setImgs((p) => ({ ...p, [target]: img })));
+    loadImg(url).then((img) => setImgs((p) => ({ ...p, [target]: img }))).catch(() => setExportError("Não deu para abrir a imagem. Escolha outro arquivo.")).finally(() => URL.revokeObjectURL(url));
   }
 
   // ── Elementos avulsos ──
@@ -1355,30 +1367,32 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
   }
 
   // ── Download ──
-  function download(i) {
+  async function download(i) {
     const c = refs.current[i];
-    if (!c) return;
-    const redraw = sel !== null;
-    if (redraw) {
-      // o outline de seleção não pode sair no PNG
-      boxesRef.current[i] = renderSlide(c.getContext("2d"), tpl, i, { vals, imgs }, pos, extras, null);
-    }
-    const name = `${BRAND.filePrefix}-${tpl.id}${tpl.slides > 1 ? `-${i + 1}de${tpl.slides}` : ""}.png`;
-    c.toBlob((blob) => {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = name; a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 3000);
-      if (redraw) boxesRef.current[i] = renderSlide(c.getContext("2d"), tpl, i, { vals, imgs }, pos, extras, sel);
-    }, "image/png");
+    if (!c || !ready) return;
+    renderSlide(c.getContext("2d"), tpl, i, { vals, imgs, sizes }, pos, extras, null);
+    const blob = await new Promise((resolve) => c.toBlob(resolve, "image/png"));
+    renderSlide(c.getContext("2d"), tpl, i, { vals, imgs, sizes }, pos, extras, sel);
+    if (!blob) throw new Error("Não deu para gerar o PNG. Tente de novo.");
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${BRAND.filePrefix}-${tpl.id}${tpl.slides > 1 ? `-${i + 1}de${tpl.slides}` : ""}.png`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
   }
-  async function downloadAll() {
-    for (let i = 0; i < tpl.slides; i++) {
-      download(i);
-      // navegadores engasgam com downloads simultâneos; respiro entre eles
-      await new Promise((r) => setTimeout(r, 400));
-    }
+  async function exportPng(indices) {
+    if (exportBusy || !ready) return;
+    setExportBusy(true); setExportError("");
+    try {
+      for (const i of indices) {
+        await download(i);
+        if (indices.length > 1) await new Promise((r) => setTimeout(r, 400));
+      }
+    } catch (e) { setExportError(e.message); }
+    finally { setExportBusy(false); }
   }
+  async function downloadAll() { await exportPng(Array.from({ length: tpl.slides }, (_, i) => i)); }
 
   // PNGs finais (sem outline de seleção) — é o que o "Criar post" publica.
   async function getBlobs() {
@@ -1386,9 +1400,9 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
     for (let i = 0; i < tpl.slides; i++) {
       const c = refs.current[i];
       if (!c) continue;
-      renderSlide(c.getContext("2d"), tpl, i, { vals, imgs }, pos, extras, null);
+      renderSlide(c.getContext("2d"), tpl, i, { vals, imgs, sizes }, pos, extras, null);
       const blob = await new Promise((r) => c.toBlob(r, "image/png"));
-      renderSlide(c.getContext("2d"), tpl, i, { vals, imgs }, pos, extras, sel);
+      renderSlide(c.getContext("2d"), tpl, i, { vals, imgs, sizes }, pos, extras, sel);
       if (blob) out.push({ blob, name: `${BRAND.filePrefix}-${tpl.id}-${i + 1}.png` });
     }
     return out;
@@ -1422,81 +1436,89 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
   const moved = Object.keys(pos).length > 0;
 
   if (standalone) {
-    const format = tpl.group === "car" ? "carrossel" : tpl.group === "post" ? "feed" : "story";
-    const formatOptions = [
-      { value: "story", label: "Story", group: "story" },
-      { value: "feed", label: "Feed", group: "post" },
-      { value: "carrossel", label: "Carrossel", group: "car" },
-    ];
-    const setFormat = (value) => {
-      const group = formatOptions.find((option) => option.value === value)?.group;
-      const next = allowed.find((template) => template.group === group);
-      if (next) setTplId(next.id);
-    };
-    const visibleTemplates = allowed.filter((template) => template.group === (formatOptions.find((option) => option.value === format)?.group));
-
-    return (
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-        <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: "none" }} />
-        <PageHead title="Canvas" sub="stories, feed e carrossel · PNG pronto pra postar">
-          <Segmented value={format} onChange={setFormat} options={formatOptions.map(({ value, label }) => ({ value, label }))} />
-          <button onClick={downloadAll} style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 600 }}>Baixar PNG</button>
-          <button onClick={() => { window.location.hash = "social"; }} style={{ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 13, fontWeight: 600 }}>Publicar</button>
-        </PageHead>
-
-        <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 16, alignItems: "start" }}>
-            <div style={{ background: "var(--bg-2)", borderRadius: "var(--r-4)", padding: 32, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 480 }}>
-              {!ready && <div className="mono dim" style={{ fontSize: 12 }}>carregando fontes da marca…</div>}
-              {Array.from({ length: tpl.slides }, (_, i) => (
-                <canvas key={tpl.id + i} ref={(el) => { refs.current[i] = el; }}
-                  onPointerDown={(event) => onDown(event, i)} onPointerMove={(event) => onMove(event, i)} onPointerUp={onUp}
-                  style={{ display: i === activeSlide ? "block" : "none", width: 420, maxWidth: "100%", height: "auto", borderRadius: 4, boxShadow: "var(--shadow-card)", background: B.navy, cursor: "grab", touchAction: "none" }} />
-              ))}
-              {tpl.slides > 1 && <div style={{ display: "flex", gap: 5, marginTop: 12 }}>{Array.from({ length: tpl.slides }, (_, i) => <button key={i} onClick={() => setActiveSlide(i)} aria-label={`slide ${i + 1}`} style={{ width: 8, height: 8, borderRadius: 99, background: i === activeSlide ? "var(--accent)" : "var(--line-2)" }} />)}</div>}
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px 24px" }}>
-                <div className="kicker" style={{ fontWeight: 600 }}>Conteúdo</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 14 }}>
-                  {tpl.fields.map((field) => (
-                    <label key={field.k} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                      <span style={{ fontSize: 12, color: "var(--fg-3)" }}>{field.label}</span>
-                      {field.type === "textarea" ? <textarea rows={2} value={vals[field.k] ?? ""} onChange={(event) => setVals((current) => ({ ...current, [field.k]: event.target.value }))} style={{ ...fieldStyle, minHeight: 64, padding: "9px 11px", resize: "vertical" }} /> : <input value={vals[field.k] ?? ""} onChange={(event) => setVals((current) => ({ ...current, [field.k]: event.target.value }))} style={{ ...fieldStyle, height: 38, padding: "0 11px" }} />}
-                    </label>
-                  ))}
-                  {photoSlots.map((slot) => <div key={slot.id} style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ flex: 1, fontSize: 12, color: "var(--fg-3)" }}>Foto {slot.slide ? `· slide ${slot.slide}` : ""}</span><button onClick={() => openPhoto(slot.id)} style={{ ...smallBtn, height: 30 }}>{imgs[slot.id] ? "Trocar foto" : "Escolher foto"}</button></div>)}
-                </div>
-              </section>
-
-              <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px 24px" }}>
-                <div className="kicker" style={{ fontWeight: 600 }}>Templates</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 14 }}>
-                  {visibleTemplates.map((template) => {
-                    const active = template.id === tpl.id;
-                    return <button key={template.id} onClick={() => setTplId(template.id)} style={{ aspectRatio: "1", background: active ? B.navy : "var(--bg-2)", borderRadius: 6, border: active ? "2px solid var(--accent)" : "1px solid var(--line-1)", display: "flex", alignItems: "center", justifyContent: "center", padding: 8 }}><span style={{ color: active ? B.teal : "var(--fg-3)", fontSize: 10, fontWeight: 700, textAlign: "center" }}>{template.name}</span></button>;
-                  })}
-                </div>
-              </section>
-            </div>
-          </div>
-
-          {/* No workspace do Elo, o manual de marca mora aqui — abaixo das abas
-              de criação, quem monta o criativo consulta a referência sem sair. */}
-          {brandId === "elo" && (
-            <div style={{ marginTop: 28 }}>
-              <EloBrandManual />
-            </div>
-          )}
+    const format = tpl.group === "car" ? "car" : tpl.group === "post" ? "post" : "story";
+    const formatOptions = [["story", "Story", "1080×1920"], ["post", "Feed", "1080×1350"], ["car", "Carrossel", "1080×1350"]];
+    const visibleTemplates = allowed.filter((t) => format === "story" ? ["story", "storyseq"].includes(t.group) : t.group === format);
+    const fields = tpl.fields.filter((f) => !f.slide || f.slide === activeSlide + 1);
+    const fontOf = (f) => tpl.els.find((el) => el.field === f.k && el.size && (el.slide === "all" || (el.slide || 1) === activeSlide + 1));
+    const selectSlide = (i) => { setActiveSlide(i); setAddSlide(i + 1); setSel(null); };
+    const reset = () => { setVals(defaultsOf(tpl)); setSizes({}); setPos({}); setExtras([]); setSel(null); };
+    return <div className="marketing-page" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: "none" }} />
+      <PageHead className="marketing-head" title="Canvas" sub="stories, feed e carrossel · PNG pronto pra postar" />
+      <div className="marketing-body" style={{ flex: 1, overflow: "auto" }}>
+        <div className="marketing-toolbar" aria-label="Formato do criativo">
+          {formatOptions.map(([id, label, size]) => <SecondaryButton key={id} disabled={exportBusy} aria-pressed={format === id}
+            onClick={() => { const next = allowed.find((t) => t.group === id); if (next) setTplId(next.id); }}
+            style={{ borderColor: format === id ? "var(--accent-line)" : undefined, background: format === id ? "var(--accent-soft)" : undefined, color: format === id ? "var(--accent)" : undefined }}>
+            {label} <span className="tnum" style={{ marginLeft: 6, fontSize: 10.5, color: "var(--fg-3)" }}>{size}</span>
+          </SecondaryButton>)}
         </div>
+        {exportError && <div role="alert" style={{ color: "var(--neg)", fontSize: 12.5 }}>{exportError}</div>}
+        <div className="canvas-workspace">
+          <section className="marketing-card">
+            <div className="marketing-kicker" style={{ marginBottom: 10 }}>Templates · {visibleTemplates.length}</div>
+            <div className="canvas-templates">
+              {visibleTemplates.map((t) => <button key={t.id} className="canvas-template" aria-pressed={t.id === tpl.id} disabled={exportBusy} onClick={() => setTplId(t.id)}>
+                <strong>{t.name}</strong><small>{t.slides > 1 ? `${t.slides} ${t.group === "storyseq" ? "stories" : "slides"}` : "1 arte"}</small>
+                {!!photoSlotsOf(t).length && <small>com foto</small>}
+              </button>)}
+            </div>
+          </section>
+          <section className="marketing-card canvas-preview" aria-label="Prévia da arte">
+            <div className="marketing-toolbar" style={{ alignSelf: "stretch", justifyContent: "space-between" }}>
+              <span className="tnum" style={{ fontSize: 10.5, color: "var(--fg-3)" }}>{tpl.w}×{tpl.h}</span>
+              {tpl.slides > 1 && <div className="canvas-slides" aria-label="Slides">{Array.from({ length: tpl.slides }, (_, i) => <button key={i} aria-label={`Slide ${i + 1}`} aria-pressed={activeSlide === i} onClick={() => selectSlide(i)}>{i + 1}</button>)}</div>}
+            </div>
+            {!ready && <div role="status" className="dim">carregando fontes da marca…</div>}
+            {Array.from({ length: tpl.slides }, (_, i) => <canvas key={tpl.id + i} ref={(el) => { refs.current[i] = el; }} aria-label={`${tpl.name} · slide ${i + 1}`}
+              onPointerDown={(event) => onDown(event, i)} onPointerMove={(event) => onMove(event, i)} onPointerUp={onUp} onPointerCancel={onUp}
+              style={{ display: i === activeSlide ? "block" : "none", width: 300, maxWidth: "100%", height: "auto", borderRadius: 4, boxShadow: "var(--shadow-card)", cursor: "grab", touchAction: "none" }} />)}
+            <div className="marketing-toolbar" style={{ justifyContent: "center" }}>
+              <PrimaryButton disabled={!ready || exportBusy} onClick={() => exportPng([activeSlide])}>{exportBusy ? "gerando…" : "Baixar PNG"}</PrimaryButton>
+              {tpl.slides > 1 && <SecondaryButton disabled={!ready || exportBusy} onClick={downloadAll}>Baixar todos</SecondaryButton>}
+              <SecondaryButton disabled={exportBusy} onClick={reset}>Resetar textos</SecondaryButton>
+            </div>
+            <InfoNota>Arraste os elementos na arte. Use *asteriscos* para destacar palavras.</InfoNota>
+          </section>
+          <section className="marketing-card canvas-content">
+            <div className="marketing-kicker">Conteúdo{tpl.slides > 1 ? ` · slide ${activeSlide + 1}` : ""}</div>
+            {fields.map((f) => <div key={f.k} className="canvas-field">
+              <div className="canvas-field-head"><label htmlFor={`canvas-field-${f.k}`}>{f.label}</label>
+                {fontOf(f) && <input className="inp tnum" type="number" min="20" max="300" aria-label={`Fonte de ${f.label} · slide ${activeSlide + 1}`} value={sizes[activeSlide + 1]?.[f.k] ?? fontOf(f).size}
+                  onChange={(e) => { const value = e.target.value; setSizes((prev) => ({ ...prev, [activeSlide + 1]: { ...prev[activeSlide + 1], [f.k]: value } })); }} onBlur={(e) => setSizes((prev) => ({ ...prev, [activeSlide + 1]: { ...prev[activeSlide + 1], [f.k]: Math.max(20, Math.min(300, Number(e.target.value) || fontOf(f).size)) } }))} />}
+              </div>
+              {f.type === "textarea" ? <textarea id={`canvas-field-${f.k}`} rows={2} value={vals[f.k] ?? ""} onChange={(e) => setVals((v) => ({ ...v, [f.k]: e.target.value }))} style={{ ...fieldStyle, resize: "vertical", minHeight: 56 }} />
+                : <input id={`canvas-field-${f.k}`} value={vals[f.k] ?? ""} onChange={(e) => setVals((v) => ({ ...v, [f.k]: e.target.value }))} style={{ ...fieldStyle, height: 32 }} />}
+            </div>)}
+            {photoSlots.filter((slot) => slot.slide === "all" || (slot.slide || 1) === activeSlide + 1).map((slot) => <div key={slot.id} className="marketing-toolbar">
+              <span style={{ flex: 1, fontSize: 12, color: "var(--fg-3)" }}>Foto · slide {activeSlide + 1}</span>
+              <SecondaryButton onClick={() => openPhoto(slot.id)}>{imgs[slot.id] ? "Trocar foto" : "Escolher foto"}</SecondaryButton>
+              {imgs[slot.id] && <button aria-label="Remover foto" onClick={() => setImgs((v) => { const n = { ...v }; delete n[slot.id]; return n; })}>×</button>}
+            </div>)}
+            {extras.filter((ex) => ex.slide === activeSlide + 1).map((ex) => <div key={ex.id} className="canvas-field">
+              <div className="canvas-field-head"><label htmlFor={`canvas-extra-${ex.id}`}>Texto adicional</label>
+                <input className="inp tnum" type="number" min="20" max="300" aria-label={`Fonte do texto adicional ${ex.id}`} value={ex.size} onChange={(e) => { patchExtra(ex.id, { size: e.target.value }); }} onBlur={(e) => patchExtra(ex.id, { size: Math.max(20, Math.min(300, Number(e.target.value) || 60)) })} />
+                <button onClick={() => removeExtra(ex.id)} aria-label={`Remover texto adicional ${ex.id}`}>×</button>
+              </div>
+              <input id={`canvas-extra-${ex.id}`} className="inp" value={ex.text} onChange={(e) => patchExtra(ex.id, { text: e.target.value })} />
+            </div>)}
+            <div className="marketing-toolbar" style={{ borderTop: "1px solid var(--line-1)", paddingTop: 12 }}>
+              <select className="inp" aria-label="Destino do novo elemento" value={addSlide} onChange={(e) => setAddSlide(Number(e.target.value))}>{Array.from({ length: tpl.slides }, (_, i) => <option key={i} value={i + 1}>Slide {i + 1}</option>)}</select>
+              <SecondaryButton onClick={() => { addExtra("text"); setActiveSlide(addSlide - 1); }}>+ elemento de texto</SecondaryButton>
+            </div>
+          </section>
+        </div>
+        {brandId === "elo" && <div style={{ marginTop: 12 }}><EloBrandManual /></div>}
       </div>
-    );
+    </div>;
   }
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: "none" }} />
+
+      {exportError && <div role="alert" style={{ padding: 12, color: "var(--neg)", fontSize: 12.5 }}>{exportError}</div>}
 
       {/* No mobile o editor empilha (galeria → preview → campos); os painéis
           laterais fixos (216+320px) não cabem lado a lado em 390px. */}
@@ -1581,7 +1603,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
                   <span className="mono dim" style={{ fontSize: 10.5 }}>
                     {tpl.slides > 1 ? `slide ${i + 1}/${tpl.slides}` : `${tpl.w}×${tpl.h}`}
                   </span>
-                  <button onClick={() => download(i)} className="mono"
+                  <button disabled={!ready || exportBusy} onClick={() => exportPng([i])} className="mono"
                     style={{ fontSize: 10.5, color: "var(--accent)", padding: "2px 6px" }}>↓ png</button>
                 </div>
               </div>
