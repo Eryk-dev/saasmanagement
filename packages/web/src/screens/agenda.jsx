@@ -6,6 +6,9 @@ import { PageHead, Segmented } from "../components/viz.jsx";
 import { PrimaryButton } from "../atoms.jsx";
 import { AgendaView } from "./agenda-grid.jsx";
 import { stageKind } from "../lib/funnel.js";
+import { isNoShowStage } from "../lib/scripts.js";
+import { AvisoTopo } from "../components/story.jsx";
+import { Modal } from "../components/overlay.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 
 // Tela Agenda — a agenda DE VERDADE do time, tudo num calendário só:
@@ -92,6 +95,38 @@ export function AgendaScreen({ onOpenLead }) {
   // Filtro por pessoa: mostra só os eventos/itens dela ("" = time inteiro).
   const [person, setPersonState] = useS(() => { try { return localStorage.getItem("cockpit_agenda_person") || ""; } catch { return ""; } });
   const setPerson = (id) => { setPersonState(id); try { localStorage.setItem("cockpit_agenda_person", id); } catch { /* ignore */ } };
+
+  // ── Os avisos da semana (protótipo, 14/09) ──────────────────────────────
+  // A tela abria direto na grade: quem furou, quem não confirmou e quem passou
+  // do horário sem remarcar só apareciam pra quem cruzasse o calendário com o
+  // olho. São as três perguntas com PRAZO que a agenda responde, então sobem
+  // pro topo com a ação do lado (regra 2 do handoff).
+  //
+  // Cada número sai dos MESMOS leads que a grade desenha, não de literal.
+  const avisos = useM(() => {
+    const saasCfg = (window.SEED?.SAAS || []).find((x) => x.id === saasId) || null;
+    const agora = Date.now();
+    const hoje0 = new Date(); hoje0.setHours(0, 0, 0, 0);
+    const fimHoje = new Date(); fimHoje.setHours(23, 59, 59, 999);
+    const semana0 = new Date(hoje0); semana0.setDate(semana0.getDate() - ((semana0.getDay() + 6) % 7));
+
+    const furaram = [];      // call marcada que passou e o lead caiu em no-show
+    const semConfirmar = []; // call de HOJE que o lead ainda não confirmou
+    const semRemarcar = [];  // passou do horário e não há novo compromisso
+    for (const l of leads) {
+      const t = l.callAt ? new Date(l.callAt).getTime() : NaN;
+      if (!Number.isFinite(t)) continue;
+      const kind = stageKind(saasCfg, l.stage);
+      if (isNoShowStage(saasCfg, l.stage) && t >= semana0.getTime() && t <= agora) { furaram.push(l); continue; }
+      if (DEAD_CALL_KINDS.has(kind)) continue;
+      if (t >= hoje0.getTime() && t <= fimHoje.getTime() && t > agora && !l.callConfirmed) { semConfirmar.push(l); continue; }
+      if (t < agora) {
+        const prox = l.nextActionAt ? new Date(l.nextActionAt).getTime() : NaN;
+        if (!Number.isFinite(prox) || prox < agora) semRemarcar.push(l);
+      }
+    }
+    return { furaram, semConfirmar, semRemarcar };
+  }, [leads, saasId, version]);
 
   // Participantes do item: dona principal (user) + convidados (users[]).
   const participantsOf = (b) => [...new Set([b.user, ...(Array.isArray(b.users) ? b.users : [])].filter(Boolean))];
@@ -226,6 +261,32 @@ export function AgendaScreen({ onOpenLead }) {
         </span>
       </PageHead>
       <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 14 }}>
+        {/* Os avisos da semana, no máximo dois por vez: o mais urgente é o que
+            já furou, depois quem passou do horário sem remarcar, e a
+            confirmação de hoje fecha. Três faixas empilhadas empurram a grade
+            pra baixo da dobra, que é a lacuna que o próprio protótipo anotou. */}
+        {[
+          avisos.furaram.length > 0 && {
+            key: "furou", tom: "neg",
+            titulo: `${avisos.furaram.length} ${avisos.furaram.length === 1 ? "compromisso furou" : "compromissos furaram"} nesta semana`,
+            nota: avisos.furaram.slice(0, 3).map((l) => l.name).join(" · ") + (avisos.furaram.length > 3 ? ` +${avisos.furaram.length - 3}` : ""),
+            acao: { label: avisos.furaram.length === 1 ? "abrir o lead" : "abrir o primeiro", onClick: () => onOpenLead && onOpenLead(avisos.furaram[0]) },
+          },
+          avisos.semRemarcar.length > 0 && {
+            key: "remarcar", tom: "neg",
+            titulo: `${avisos.semRemarcar.length} ${avisos.semRemarcar.length === 1 ? "lead passou do horário" : "leads passaram do horário"} e não têm novo compromisso`,
+            nota: "sem próximo toque marcado, o card para de aparecer na fila do dia",
+            acao: { label: "abrir a fila", href: "#today" },
+          },
+          avisos.semConfirmar.length > 0 && {
+            key: "confirmar", tom: "warn",
+            titulo: `${avisos.semConfirmar.length} ${avisos.semConfirmar.length === 1 ? "call de hoje sem confirmação" : "calls de hoje sem confirmação"} do lead`,
+            nota: "silêncio na confirmação é o maior sinal de furo",
+            acao: { label: "cobrar confirmação", href: "#today" },
+          },
+        ].filter(Boolean).slice(0, 2).map((a) => (
+          <AvisoTopo key={a.key} tom={a.tom} titulo={a.titulo} nota={a.nota} acao={a.acao} />
+        ))}
         <AgendaView leads={leads} consultations={consultas} onOpenLead={onOpenLead}
           person={person || null} people={people} onPerson={setPerson}
           view={view} onView={setView}
@@ -330,8 +391,8 @@ export function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, o
   };
 
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 90, background: "color-mix(in srgb, var(--bg-0) 62%, transparent)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(440px, 100%)", maxHeight: "min(92vh, 100%)", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+    <Modal onClose={onClose} label="compromisso" largura={440} padding={20}
+      painelStyle={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontFamily: "var(--display)", fontSize: 16, fontWeight: 700, flex: 1 }}>
             {b ? "Editar item da agenda" : "Novo item na agenda"}
@@ -484,7 +545,6 @@ export function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, o
           <button onClick={onClose} style={{ height: 36, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, cursor: "pointer" }}>Cancelar</button>
           <PrimaryButton onClick={submit}>{b ? "Salvar" : "Criar"}</PrimaryButton>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
