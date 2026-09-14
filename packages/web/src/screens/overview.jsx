@@ -257,7 +257,7 @@ function Termometro({ s, goal, lad, naMesa, title }) {
   );
 }
 
-function MetaMesCard({ pace, goal, onNav, links = true }) {
+function MetaMesCard({ pace, goal, onNav, links = true, children }) {
   if (!goal) return null;
   const s = goal.sale || {};
   const c = goal.contracts || {};
@@ -387,6 +387,8 @@ function MetaMesCard({ pace, goal, onNav, links = true }) {
           <PaceFacts pace={curMes ? pace : null} goal={goal} falta={falta} />
         </div>
       )}
+      {/* O funil do mês fecha o card: é ele que explica de onde a meta sai. */}
+      {children && <div style={{ padding: "0 var(--inset-x) 18px" }}>{children}</div>}
       {naoRecebido > 0 && (
         <div style={{ padding: "0 var(--inset-x) 14px", fontSize: 11.5, color: "var(--fg-3)", lineHeight: 1.5 }}
           title="Boleto faturado, PIX parcelado, assinatura recorrente no cartão e condição personalizada só contam na meta pelo que ENTROU na janela (a 1ª parcela, na prática). As parcelas dos meses seguintes seguem no Financeiro, no caixa do mês em que caírem.">
@@ -759,7 +761,9 @@ function ConvRow({ label, pct, metaPct, num, den, worst }) {
   );
 }
 
-function FunilPeriodo({ team, win, pLabel }) {
+// `bare`: o funil desenhado DENTRO do card da meta, como a prancha (14/09).
+// Era um card separado embaixo, o que separava a meta do funil que a explica.
+function FunilPeriodo({ team, win, pLabel, bare = false }) {
   if (team == null) {
     return (
       <Card title="Funil do período" hint={pLabel}>
@@ -804,23 +808,38 @@ function FunilPeriodo({ team, win, pLabel }) {
     if (r < worstRatio) { worstRatio = r; worstIdx = i; }
   });
   const adj = team.paceAdjust;
+  const historico = adj ? (
+    <span className="dim" style={{ fontSize: 11.5, cursor: "help" }}
+      title={`Inclui histórico pré-cockpit: ${["leads", "contacted", "booked", "shown"].filter((k) => adj[k]).map((k) => `+${adj[k]} ${({ leads: "leads", contacted: "contatos", booked: "agendadas", shown: "realizadas" })[k]}`).join(" · ")}. Ganhos seguem os registros.`}>
+      inclui histórico ⓘ
+    </span>
+  ) : null;
+  const linhas = stages.map((s, i) => (
+    <React.Fragment key={s.nm}>
+      {i > 0 && <ConvRow {...convs[i - 1]} worst={worstIdx === i - 1} />}
+      <StageRow nm={s.nm} value={s.v} meta={s.m} expectedFrac={monthFrac} title={s.title} />
+    </React.Fragment>
+  ));
+  if (bare) {
+    return (
+      <div style={{ borderTop: "1px solid var(--line-1)", marginTop: 18, paddingTop: 14 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+          <span className="kicker">Funil do mês</span>
+          <span style={{ fontSize: 11.5, color: "var(--fg-4)" }}
+            title={`${pLabel} · atual vs meta do MÊS por etapa (risquinho = pace) · a conversão entre etapas fica na linha do meio`}>
+            atual vs meta por etapa
+          </span>
+          {historico && <span style={{ marginLeft: "auto" }}>{historico}</span>}
+        </div>
+        {linhas}
+      </div>
+    );
+  }
   return (
     <Card title="Funil do período"
       hint={`${pLabel} · atual vs meta do MÊS por etapa (risquinho = pace) · a conversão entre etapas fica na linha do meio`}
-      action={adj ? (
-        <span className="dim" style={{ fontSize: 11.5, cursor: "help" }}
-          title={`Inclui histórico pré-cockpit: ${["leads", "contacted", "booked", "shown"].filter((k) => adj[k]).map((k) => `+${adj[k]} ${({ leads: "leads", contacted: "contatos", booked: "agendadas", shown: "realizadas" })[k]}`).join(" · ")}. Ganhos seguem os registros.`}>
-          inclui histórico ⓘ
-        </span>
-      ) : null}>
-      <div style={{ padding: "12px var(--inset-x) 18px" }}>
-        {stages.map((s, i) => (
-          <React.Fragment key={s.nm}>
-            {i > 0 && <ConvRow {...convs[i - 1]} worst={worstIdx === i - 1} />}
-            <StageRow nm={s.nm} value={s.v} meta={s.m} expectedFrac={monthFrac} title={s.title} />
-          </React.Fragment>
-        ))}
-      </div>
+      action={historico}>
+      <div style={{ padding: "12px var(--inset-x) 18px" }}>{linhas}</div>
     </Card>
   );
 }
@@ -1244,9 +1263,11 @@ function OverviewScreen({ onNav }) {
 
       <div className="resp-cols" style={{ "--cols": "minmax(0, 1fr) 372px", gap: 16, padding: "16px var(--pad-x) 0", alignItems: "start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
-          <MetaMesCard pace={pace} goal={goal} onNav={onNav} />
-
-          <FunilPeriodo team={score?.team} win={win} pLabel={win.label} />
+          {/* O funil vive DENTRO do card da meta (prancha, 14/09): é ele que
+              explica de onde a meta sai, e estava num card separado embaixo. */}
+          <MetaMesCard pace={pace} goal={goal} onNav={onNav}>
+            <FunilPeriodo team={score?.team} win={win} pLabel={win.label} bare />
+          </MetaMesCard>
 
           <TeamBoard score={score} win={win} onPerson={canSeeScreen("pipeline") ? openPerson : null} />
         </div>

@@ -2,6 +2,7 @@ import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { EmptyState, PrimaryButton, MoreMenu } from "../atoms.jsx";
+import { CorrenteDoDinheiro } from "../components/story.jsx";
 import { inputStyle, sectionTitle, cardStyle, addBtnStyle, THEME_DEFAULTS, LabeledInput, LabeledTextarea, ThemeEditor } from "../components/theme-inputs.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { PageHead, FilterTab } from "../components/viz.jsx";
@@ -330,36 +331,26 @@ function ProposalsScreen({ saasId }) {
       </PageHead>
 
       <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-        {/* Faixa do funil: os três passos com a conversão entre cada par. */}
-        <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px var(--inset-x)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
-            {[["Geradas · 30d", fun.geradas, null], ["Abertas", fun.abertas, pct(fun.abertas, fun.geradas)], ["Fecharam", fun.fecharam, pct(fun.fecharam, fun.abertas)]].map(([label, valor, conv], i) => (
-              <React.Fragment key={label}>
-                {i > 0 && (
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", color: "var(--fg-4)" }}>
-                    <span style={{ fontSize: 14 }}>→</span>
-                    <span className="tnum" style={{ fontSize: 11.5 }}>{conv == null ? "—" : `${conv}%`}</span>
-                  </div>
-                )}
-                <div style={{ minWidth: 96 }}>
-                  <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 26, fontWeight: 700, color: i === 2 ? "var(--pos)" : "var(--fg-1)" }}>{valor}</div>
-                  <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{label}</div>
-                </div>
-              </React.Fragment>
-            ))}
-            {nuncaAbertas.length > 0 && (
-              <div style={{ marginLeft: "auto", textAlign: "right" }}>
-                <div style={{ fontSize: 12.5, color: "var(--neg)", fontWeight: 600 }}>
-                  {`${nuncaAbertas.length} ${nuncaAbertas.length === 1 ? "enviada e nunca aberta" : "enviadas e nunca abertas"}`}
-                </div>
-                <button onClick={() => setFiltro("nunca")} className="mono"
-                  style={{ background: "none", border: 0, padding: 0, fontSize: 12, color: "var(--accent)", fontWeight: 600, cursor: "pointer" }}>
-                  ver quais →
-                </button>
-              </div>
-            )}
-          </div>
-        </section>
+        {/* A faixa do funil é a CorrenteDoDinheiro compartilhada (14/09): o
+            rótulo em cima, o valor embaixo e a conversão NA SETA, com a
+            legenda do que ela mede. Era value-em-cima e a taxa solta. */}
+        <CorrenteDoDinheiro
+          passos={[
+            { rotulo: "Geradas em 30 dias", valor: String(fun.geradas) },
+            { rotulo: "Abertas pelo lead", valor: String(fun.abertas), taxa: pct(fun.abertas, fun.geradas) == null ? "—" : `${pct(fun.abertas, fun.geradas)}%`, taxaNota: "abriram" },
+            { rotulo: "Fecharam", valor: String(fun.fecharam), tom: "pos", taxa: pct(fun.fecharam, fun.abertas) == null ? "—" : `${pct(fun.fecharam, fun.abertas)}%`, taxaNota: "fecharam" },
+          ]}
+          fim={nuncaAbertas.length > 0 ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-end", marginTop: 12, flexWrap: "wrap" }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--neg)", fontWeight: 600 }}>
+                <span style={{ width: 6, height: 6, borderRadius: 999, background: "currentColor" }} />
+                {`${nuncaAbertas.length} ${nuncaAbertas.length === 1 ? "enviada e nunca aberta" : "enviadas e nunca abertas"}`}
+              </span>
+              <button onClick={() => setFiltro("nunca")}
+                style={{ height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>ver quais</button>
+            </div>
+          ) : null}
+        />
 
         {/* Templates em LINHAS, ordenados por conversão: card com três botões
             de peso igual não dizia qual template usar. */}
