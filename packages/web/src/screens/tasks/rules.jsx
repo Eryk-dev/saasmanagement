@@ -1,5 +1,6 @@
 import React from "react";
-import { PrimaryButton, SecondaryButton, useEsc } from "../../atoms.jsx";
+import { PrimaryButton, SecondaryButton } from "../../atoms.jsx";
+import { Modal } from "../../components/overlay.jsx";
 import { UserAvatarRing } from "../../components/user-picker.jsx";
 import { PRIORITIES } from "../../lib/tasks.js";
 import { Icon } from "./icons.jsx";
@@ -9,7 +10,6 @@ const { useState } = React;
 // Regras de uma coluna: o que acontece com o card AO ENTRAR nela (o servidor
 // aplica em tasks-core.js): concluir/reabrir, somar responsável, fixar prioridade.
 export function ColumnRulesModal({ col, users, isDoneCol, onSave, onClose }) {
-  useEsc(onClose);
   const cur = col.rules || {};
   const [complete, setComplete] = useState(cur.complete === true ? "complete" : cur.complete === false ? "reopen" : "");
   const [assign, setAssign] = useState(cur.assign || []);
@@ -33,8 +33,9 @@ export function ColumnRulesModal({ col, users, isDoneCol, onSave, onClose }) {
     </button>
   );
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 80, background: "oklch(0 0 0 / 0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
-      <div role="dialog" aria-label={`Regras da coluna ${col.name}`} data-tk-layer="1" onClick={(e) => e.stopPropagation()} style={{ width: "min(520px, 100%)", maxHeight: "88vh", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: "18px 20px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
+    <Modal onClose={onClose} label={`Regras da coluna ${col.name}`} largura={520} padding={12}
+      painelStyle={{ padding: "18px 20px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div data-tk-layer="1" style={{ display: "contents" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <Icon name="play" size={16} style={{ color: "var(--accent)" }} />
           <span className="card-title">Regras da coluna {col.name}</span>
@@ -69,7 +70,7 @@ export function ColumnRulesModal({ col, users, isDoneCol, onSave, onClose }) {
           <PrimaryButton onClick={save} disabled={busy}>{busy ? "Salvando…" : "Salvar regras"}</PrimaryButton>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 export const rulesSummary = (rules, users = new Map(), doneCol = false) => {

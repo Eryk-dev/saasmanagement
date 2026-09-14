@@ -188,6 +188,20 @@ body[data-theme="dark"] {
   --transition-ui: background 0.12s, border-color 0.12s, color 0.12s;
 }
 
+/* Camadas e véu dos painéis (14/09). Eram cinco cores de fundo diferentes
+   (oklch .45, oklch .4, rgba(8,18,26,.45), rgba(0,0,0,.35) e um color-mix
+   claro) e z-index de 60 a 1200 sem escala nenhuma. components/overlay.jsx é
+   quem consome; tela que abre painel novo usa de lá, não repete o valor. */
+:root {
+  --scrim: oklch(0 0 0 / 0.45);        /* modal centrado */
+  --scrim-soft: oklch(0 0 0 / 0.40);   /* gaveta lateral */
+  --z-popover: 60;
+  --z-drawer: 70;
+  --z-modal: 80;
+  --z-alarme: 100;                     /* o que exige decisão (lead quente, portão do treino) */
+  --z-command: 120;                    /* ⌘K por cima de tudo que é conteúdo */
+}
+
 * { box-sizing: border-box; }
 
 html, body {

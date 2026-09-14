@@ -1,6 +1,6 @@
 import React from "react";
 import { api } from "../lib/api.js";
-import { useEsc } from "../atoms.jsx";
+import { Modal } from "./overlay.jsx";
 import { MANUAL_PAY_METHODS } from "../lib/payments.js";
 
 // Baixa MANUAL de um link de pagamento (tela Links de pagamento): o cliente
@@ -20,7 +20,6 @@ function ManualPaidModal({ link, onClose, onDone }) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  useEsc(onClose);
 
   async function confirm() {
     setBusy(true); setError(null);
@@ -34,11 +33,8 @@ function ManualPaidModal({ link, onClose, onDone }) {
   }
 
   return (
-    <div
-      style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 80 }}
-      onClick={onClose}
-    >
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(420px, calc(100vw - 32px))", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: "20px 22px", display: "flex", flexDirection: "column", gap: 12 }}>
+    <Modal onClose={onClose} fechavel={!busy} label="Marcar como pago" largura={420}
+      painelStyle={{ padding: "20px 22px", display: "flex", flexDirection: "column", gap: 12 }}>
         <div>
           <div style={{ fontSize: 15, fontWeight: 600 }}>Marcar como pago</div>
           <div className="mono dim" style={{ fontSize: 12, marginTop: 6, lineHeight: 1.5 }}>
@@ -73,8 +69,7 @@ function ManualPaidModal({ link, onClose, onDone }) {
             {busy ? "marcando…" : "marcar como pago"}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
