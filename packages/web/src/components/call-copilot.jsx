@@ -214,7 +214,7 @@ export function CallCopilot({ lead }) {
         {phase === "arming" && <span className="mono dim" style={{ fontSize: 11 }}>escolha a guia do Meet e marque "compartilhar áudio da guia"…</span>}
         {phase === "live" && !pipWin && (
           <button onClick={openFloat} title="Abrir numa janelinha que fica por cima de tudo (Meet e apresentação inclusos)"
-            style={{ height: 28, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600 }}>
+            style={{ height: 28, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600 }}>
             ◱ flutuar
           </button>
         )}

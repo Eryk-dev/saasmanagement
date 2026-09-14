@@ -23,7 +23,7 @@ const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || "").trim
 
 export function NextActionButton({ thread, onScheduled, onResolved }) {
   const [open, setOpen] = useS(false);
-  const pill = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 11px", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", flexShrink: 0 };
+  const pill = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 11px", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", flexShrink: 0 };
   if (!thread?.leadId) return null;
   return (
     <>
@@ -146,7 +146,7 @@ function NextActionModal({ leadId, onScheduled, onResolved, onClose }) {
     } finally { setBusy(false); }
   }
 
-  const field = { height: 34, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, minWidth: 0 };
+  const field = { height: 34, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, minWidth: 0 };
   const label = { display: "block", marginBottom: 4 };
   const googleOn = !!window.SEED?.CONFIG?.google?.connected;
   const needsAgenda = dest && !done;
@@ -154,7 +154,7 @@ function NextActionModal({ leadId, onScheduled, onResolved, onClose }) {
   return (
     <>
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: "var(--z-modal)", background: "var(--scrim)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(560px, calc(100vw - 32px))", maxHeight: "min(92dvh, 100%)", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(560px, calc(100vw - 32px))", maxHeight: "min(92dvh, 100%)", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {needsAgenda && (
             <button onClick={() => { setDest(null); setErr(""); }} aria-label="Voltar" className="mono dim" style={{ fontSize: 14, width: 30, height: 30, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>‹</button>
@@ -209,7 +209,7 @@ function NextActionModal({ leadId, onScheduled, onResolved, onClose }) {
                 const setup = setupType(d.kind);
                 return (
                   <button key={d.stage} disabled={busy} onClick={() => pick(d)}
-                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", textAlign: "left", cursor: "pointer", opacity: busy ? 0.6 : 1 }}
+                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", textAlign: "left", cursor: "pointer", opacity: busy ? 0.6 : 1 }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = "var(--bg-1)"; }}>
                     <span className="mono" style={{ flexShrink: 0, width: 18, textAlign: "center", color: "var(--accent)" }}>{meta.glyph || "→"}</span>
@@ -264,7 +264,7 @@ function NextActionModal({ leadId, onScheduled, onResolved, onClose }) {
                 </PrimaryButton>
               )}
               <button onClick={() => schedule(false)} disabled={!closer || !slot || busy}
-                style={{ height: 36, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: googleOn ? "var(--bg-1)" : "var(--btn-bg, var(--accent))", color: googleOn ? "var(--fg-2)" : "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: googleOn ? 500 : 600, cursor: "pointer", opacity: !closer || !slot || busy ? 0.55 : 1 }}>
+                style={{ height: 36, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: googleOn ? "var(--bg-1)" : "var(--btn-bg, var(--accent))", color: googleOn ? "var(--fg-2)" : "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: googleOn ? 500 : 600, cursor: "pointer", opacity: !closer || !slot || busy ? 0.55 : 1 }}>
                 {busy ? "agendando…" : googleOn ? "só agendar (sem convite)" : "Agendar"}
               </button>
               {email.trim() && !validEmail(email) && <span className="mono dim" style={{ fontSize: 10.5 }}>e-mail inválido</span>}

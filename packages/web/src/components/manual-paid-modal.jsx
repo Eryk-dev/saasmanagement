@@ -10,7 +10,7 @@ import { MANUAL_PAY_METHODS } from "../lib/payments.js";
 
 const { useState } = React;
 const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
-const inputStyle = { height: 36, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, width: "100%" };
+const inputStyle = { height: 36, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, width: "100%" };
 const field = { display: "flex", flexDirection: "column", gap: 4 };
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -64,7 +64,7 @@ function ManualPaidModal({ link, onClose, onDone }) {
         </div>
         {error && <div className="mono" style={{ fontSize: 11, color: "var(--neg)" }}>{error}</div>}
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button onClick={onClose} style={{ padding: "8px 14px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 13 }}>Cancelar</button>
+          <button onClick={onClose} style={{ padding: "8px 14px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 13 }}>Cancelar</button>
           <button onClick={confirm} disabled={busy} style={{ padding: "8px 14px", background: "var(--btn-bg)", color: "var(--btn-fg)", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 600, opacity: busy ? 0.6 : 1 }}>
             {busy ? "marcando…" : "marcar como pago"}
           </button>

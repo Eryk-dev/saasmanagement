@@ -32,7 +32,7 @@ const { useState: useS, useEffect: useE } = React;
 const money = (v) => window.fmt.money(Number(v) || 0);
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px 22px" };
-const inputS = { height: 28, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", fontSize: 12.5, width: 92 };
+const inputS = { height: 28, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 12.5, width: 92 };
 const cellIn = { ...inputS, width: 78, height: 26, fontSize: 12 };
 const btnPrimary = { height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--accent)", background: "var(--accent)", color: "var(--accent-fg, #fff)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" };
 const thS = { padding: "6px 8px", textAlign: "left", whiteSpace: "nowrap", borderBottom: "1px solid var(--line-1)" };
@@ -428,7 +428,7 @@ export function TeamBonusCard({ saved, onSave }) {
                 try { await api.compMonthClose(product.id, m.month); carregarMeses(); }
                 catch (e) { window.alert(e?.message || "não consegui recalcular"); }
               }}
-                style={{ height: 24, padding: "0 9px", borderRadius: 999, fontSize: 11, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-3)", cursor: "pointer" }}>
+                style={{ height: 24, padding: "0 9px", borderRadius: 999, fontSize: 11, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-3)", cursor: "pointer" }}>
                 recalcular
               </button>
             </div>

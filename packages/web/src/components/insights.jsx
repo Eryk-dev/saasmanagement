@@ -49,7 +49,7 @@ function InsightRow({ it, onDismiss, onApply }) {
         </button>
       )}
       <button onClick={onDismiss} title="dispensar por 7 dias" aria-label="dispensar insight"
-        style={{ flexShrink: 0, width: 22, height: 22, borderRadius: 5, border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-3)", fontSize: 12, lineHeight: 1 }}>✕</button>
+        style={{ flexShrink: 0, width: 22, height: 22, borderRadius: 5, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-3)", fontSize: 12, lineHeight: 1 }}>✕</button>
     </div>
   );
 }
@@ -62,7 +62,7 @@ function InsightRow({ it, onDismiss, onApply }) {
 // dispensado e `onApplied` deixa a tela recarregar o estado vivo.
 const fieldStyle = {
   width: "100%", padding: "6px 10px",
-  background: "var(--bg-2)", border: "1px solid var(--line-2)",
+  background: "var(--bg-2)", border: "1px solid var(--line-1)",
   borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13,
 };
 function ApplyInsightModal({ item, onCancel, onApplied }) {
@@ -106,7 +106,7 @@ function ApplyInsightModal({ item, onCancel, onApplied }) {
 
   return (
     <div onClick={busy ? undefined : (phase === "done" ? onApplied : onCancel)} style={{ position: "fixed", inset: 0, zIndex: "var(--z-modal)", background: "var(--scrim)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(500px, 100%)", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 18 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(500px, 100%)", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 18 }}>
         <div style={{ fontFamily: "var(--display)", fontSize: 16, fontWeight: 700 }}>{a.label}</div>
         <div style={{ fontSize: 12, color: "var(--fg-3)", marginTop: 4, lineHeight: 1.5 }}>{item.text}</div>
 
@@ -132,7 +132,7 @@ function ApplyInsightModal({ item, onCancel, onApplied }) {
             ))}
             {a.prepare && phase !== "done" && (
               <button onClick={prepare} disabled={busy}
-                style={{ alignSelf: "flex-start", height: 24, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5, opacity: busy ? 0.6 : 1 }}>
+                style={{ alignSelf: "flex-start", height: 24, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5, opacity: busy ? 0.6 : 1 }}>
                 ↻ gerar outra
               </button>
             )}
@@ -162,7 +162,7 @@ function ApplyInsightModal({ item, onCancel, onApplied }) {
             <PrimaryButton onClick={onApplied}>fechar</PrimaryButton>
           ) : (
             <>
-              <button onClick={onCancel} disabled={phase === "running"} style={{ height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5, opacity: phase === "running" ? 0.6 : 1 }}>cancelar</button>
+              <button onClick={onCancel} disabled={phase === "running"} style={{ height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5, opacity: phase === "running" ? 0.6 : 1 }}>cancelar</button>
               {phase !== "prepare-error" ? (
                 <PrimaryButton onClick={run} disabled={busy || !ready}>{phase === "running" ? "aplicando…" : phase === "error" ? "tentar de novo" : "confirmar e aplicar"}</PrimaryButton>
               ) : (

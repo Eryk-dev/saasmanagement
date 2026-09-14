@@ -149,7 +149,7 @@ function CostsTab({ product, month }) {
     catch (err) { setNote({ ok: false, text: err.message || "Falha ao encerrar." }); }
   }
 
-  const inputStyle = { height: 38, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
+  const inputStyle = { height: 38, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
 
   return (
     <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>

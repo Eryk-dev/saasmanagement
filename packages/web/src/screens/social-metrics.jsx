@@ -100,7 +100,7 @@ export function AreaLine({ series, height = 132, cumulative = false, fmt = fmtNu
         <div style={{
           position: "absolute", top: -6, left: `${(hover / (pts.length - 1)) * 100}%`,
           transform: `translate(-50%, -100%)`, pointerEvents: "none",
-          background: "var(--bg-0)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)",
+          background: "var(--bg-0)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)",
           padding: "5px 8px", boxShadow: "var(--shadow-2)", whiteSpace: "nowrap", zIndex: 2,
         }}>
           <div className="mono dim" style={{ fontSize: 9.5 }}>{fmtDay(hp.date)}</div>

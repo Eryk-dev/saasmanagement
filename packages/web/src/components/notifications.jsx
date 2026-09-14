@@ -94,8 +94,8 @@ export function NotificationsBell() {
       </button>
       {open && (
         <div role="dialog" aria-label="Caixa de entrada" style={isMobile
-          ? { position: "fixed", left: 8, right: 8, top: 64, zIndex: 80, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", maxHeight: "70vh", display: "flex", flexDirection: "column" }
-          : { position: "absolute", top: "calc(100% + 5px)", right: 0, width: 400, zIndex: 80, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", maxHeight: "min(70vh, 560px)", display: "flex", flexDirection: "column" }}>
+          ? { position: "fixed", left: 8, right: 8, top: 64, zIndex: 80, background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", maxHeight: "70vh", display: "flex", flexDirection: "column" }
+          : { position: "absolute", top: "calc(100% + 5px)", right: 0, width: 400, zIndex: 80, background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", maxHeight: "min(70vh, 560px)", display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 14px 6px" }}>
             <span className="card-title">Caixa de entrada</span>
             <button type="button" onClick={markAll} disabled={!unread} style={{ marginLeft: "auto", fontSize: 12, color: unread ? "var(--accent)" : "var(--fg-4)", fontWeight: 600 }}>Marcar todas como lidas</button>

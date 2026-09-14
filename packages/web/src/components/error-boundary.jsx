@@ -43,14 +43,14 @@ export class ErrorBoundary extends React.Component {
 
     const msg = String(this.state.error?.message || this.state.error || "erro inesperado");
     const card = (
-      <div role="alert" style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "20px 22px", maxWidth: 440, textAlign: "center", boxShadow: "0 10px 34px rgba(0,0,0,0.20)" }}>
+      <div role="alert" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "20px 22px", maxWidth: 440, textAlign: "center", boxShadow: "0 10px 34px rgba(0,0,0,0.20)" }}>
         <div style={{ fontSize: 14, fontWeight: 700, color: "var(--fg-1)", marginBottom: 6 }}>Algo quebrou aqui</div>
         <div className="mono dim" style={{ fontSize: 11.5, marginBottom: 14, wordBreak: "break-word", lineHeight: 1.5 }}>{msg}</div>
         <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
           <button type="button" onClick={this.reset} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12.5, fontWeight: 600 }}>
             {this.props.onReset ? "Fechar" : "Tentar de novo"}
           </button>
-          <button type="button" onClick={() => location.reload()} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5 }}>
+          <button type="button" onClick={() => location.reload()} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5 }}>
             Recarregar
           </button>
         </div>

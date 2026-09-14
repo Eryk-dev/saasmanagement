@@ -391,18 +391,18 @@ function MetricsScreen() {
         {metaOn && product.metaAdAccount && (
           <button onClick={() => { setCreative((v) => !v); setCloneAd(false); }}
             title="Criar um anúncio do zero (escolhe copy, CTA e link)"
-            style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)" }}>
+            style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)" }}>
             + criativo do zero
           </button>
         )}
         <button onClick={() => setManual(manual ? null : { date: new Date().toISOString().slice(0, 10), name: "", spend: "" })}
-          style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)" }}>
+          style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)" }}>
           + gasto manual
         </button>
         {metaOn && (
           <button onClick={sync} disabled={syncing}
             title="Sincroniza o período filtrado agora (além do automático do servidor)"
-            style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", opacity: syncing ? 0.6 : 1 }}>
+            style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", opacity: syncing ? 0.6 : 1 }}>
             {syncing ? "Sincronizando…" : "↻ sincronizar"}
           </button>
         )}
@@ -454,17 +454,17 @@ function MetricsScreen() {
               <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <span className="kicker">Data</span>
                 <input type="date" value={manual.date} onChange={(e) => setManual({ ...manual, date: e.target.value })}
-                  style={{ height: 30, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)" }} />
+                  style={{ height: 30, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)" }} />
               </label>
               <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 180 }}>
                 <span className="kicker">Campanha (opcional)</span>
                 <input type="text" placeholder="Entrada manual" value={manual.name} onChange={(e) => setManual({ ...manual, name: e.target.value })}
-                  style={{ height: 30, padding: "0 10px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 }} />
+                  style={{ height: 30, padding: "0 10px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 }} />
               </label>
               <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <span className="kicker">Gasto (R$)</span>
                 <input type="number" min="0" step="0.01" placeholder="0,00" value={manual.spend} onChange={(e) => setManual({ ...manual, spend: e.target.value })}
-                  style={{ width: 120, height: 30, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)", textAlign: "right" }} />
+                  style={{ width: 120, height: 30, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)", textAlign: "right" }} />
               </label>
               <button onClick={saveManual} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-1)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: 600 }}>Registrar</button>
               <button onClick={() => setManual(null)} style={{ height: 30, padding: "0 10px", fontSize: 12.5, color: "var(--fg-3)" }}>cancelar</button>
@@ -650,7 +650,7 @@ function ColumnPicker({ visible, onToggle, onReset }) {
     <span style={{ position: "relative", display: "inline-flex" }}>
       <button ref={btnRef} onClick={toggleOpen} title="escolher as colunas da tabela" style={{
         display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px",
-        borderRadius: "var(--r-2)", border: "1px solid var(--line-2)",
+        borderRadius: "var(--r-2)", border: "1px solid var(--line-1)",
         background: open ? "var(--bg-2)" : "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 500,
       }}>
         Colunas <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)" }}>{visible.size}</span>
@@ -661,7 +661,7 @@ function ColumnPicker({ visible, onToggle, onReset }) {
           <div style={{
             position: "fixed", top: pos.top, right: pos.right, zIndex: 61, width: 232,
             maxHeight: "min(420px, 70vh)", overflowY: "auto", background: "var(--bg-1)",
-            border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 6,
+            border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 6,
           }}>
             {ADS_COLS.map((c) => (
               <label key={c.key} title={c.hint} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 6, fontSize: 12.5, color: "var(--fg-1)", cursor: "pointer" }}>
@@ -1683,7 +1683,7 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
   }
 
   const lbl = { display: "flex", flexDirection: "column", gap: 4 };
-  const inp = { height: 30, padding: "0 10px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
+  const inp = { height: 30, padding: "0 10px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
 
   return (
     <Card title="Criar anúncio" hint="clona o conjunto da dor e troca só o vídeo · um anúncio por vídeo, nome «número [dor]»">
@@ -1878,7 +1878,7 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
   }
 
   const lbl = { display: "flex", flexDirection: "column", gap: 4 };
-  const inp = { height: 30, padding: "0 10px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
+  const inp = { height: 30, padding: "0 10px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
   const activeCamps = campaigns.filter((c) => c.effectiveStatus !== "ARCHIVED" && c.effectiveStatus !== "DELETED");
 
   return (

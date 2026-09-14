@@ -300,7 +300,7 @@ export function CustomersAnalysis({ customers, subs = [], invoices = [], isKids 
                 })}
                 {gradeDist.sem > 0 && (
                   <div style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
-                    <span title="sem qualificação (lead não respondeu contas/anúncios)" style={{ width: 22, height: 22, borderRadius: 6, border: "1px solid var(--line-2)", color: "var(--fg-4)", fontSize: 12.5, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1, flexShrink: 0 }}>—</span>
+                    <span title="sem qualificação (lead não respondeu contas/anúncios)" style={{ width: 22, height: 22, borderRadius: 6, border: "1px solid var(--line-1)", color: "var(--fg-4)", fontSize: 12.5, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1, flexShrink: 0 }}>—</span>
                     <span className="tnum" style={{ fontSize: 18, fontWeight: 700, color: "var(--fg-3)" }}>{gradeDist.sem}</span>
                     <span style={{ fontSize: 11.5, color: "var(--fg-4)" }}>sem nível</span>
                   </div>

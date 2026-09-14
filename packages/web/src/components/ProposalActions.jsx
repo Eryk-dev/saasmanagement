@@ -33,7 +33,7 @@ export function useProposalTemplates(saas) {
   // Padrão (publicado) + alternativos marcados; ordena padrão primeiro.
   return all.filter((t) => t.status === "published" || t.selectable);
 }
-const selectStyle = { height: 24, padding: "0 6px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11 };
+const selectStyle = { height: 24, padding: "0 6px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11 };
 
 // Histórico de aberturas da proposta (só no drawer, showViews): busca o registro
 // da proposta e mostra QUEM abriu (cliente × time), quando e de qual dispositivo.

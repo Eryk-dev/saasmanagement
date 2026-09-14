@@ -103,7 +103,7 @@ export function FeedbackWidget({ screenLabel }) {
   };
   const openTask = (t) => { if (!canSeeScreen("tasks")) return; setOpen(false); location.hash = taskHash(t.id); };
 
-  const smallBtn = { height: 26, padding: "0 10px", borderRadius: 999, fontSize: 11.5, fontWeight: 500, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)" };
+  const smallBtn = { height: 26, padding: "0 10px", borderRadius: 999, fontSize: 11.5, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)" };
 
   return (
     <>
@@ -113,7 +113,7 @@ export function FeedbackWidget({ screenLabel }) {
           <div style={{
             position: "fixed", right: 18, bottom: 76, zIndex: 61,
             width: "min(340px, calc(100vw - 36px))", maxHeight: "min(560px, calc(100vh - 100px))", overflowY: "auto",
-            background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)",
+            background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)",
             boxShadow: "var(--shadow-pop)", padding: 16, display: "flex", flexDirection: "column", gap: 10,
           }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
@@ -127,7 +127,7 @@ export function FeedbackWidget({ screenLabel }) {
 
             <textarea value={text} onChange={(e) => setText(e.target.value)} onPaste={onPaste}
               rows={4} placeholder={KIND[kind].placeholder}
-              style={{ width: "100%", padding: "8px 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-inset)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.45, resize: "vertical", fontFamily: "inherit" }} />
+              style={{ width: "100%", padding: "8px 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-inset)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.45, resize: "vertical", fontFamily: "inherit" }} />
 
             {photo ? (
               <div style={{ position: "relative" }}>
@@ -135,7 +135,7 @@ export function FeedbackWidget({ screenLabel }) {
                   <img src={photo} alt="" style={{ width: "100%", maxHeight: 140, objectFit: "cover", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", display: "block" }} />
                 </a>
                 <button onClick={() => setPhoto("")} title="remover o print"
-                  style={{ position: "absolute", top: 6, right: 6, width: 22, height: 22, borderRadius: 999, background: "var(--bg-1)", border: "1px solid var(--line-2)", color: "var(--fg-2)", fontSize: 11, lineHeight: 1 }}>✕</button>
+                  style={{ position: "absolute", top: 6, right: 6, width: 22, height: 22, borderRadius: 999, background: "var(--bg-1)", border: "1px solid var(--line-1)", color: "var(--fg-2)", fontSize: 11, lineHeight: 1 }}>✕</button>
               </div>
             ) : (
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -193,7 +193,7 @@ export function FeedbackWidget({ screenLabel }) {
           style={{
             position: "fixed", right: 74, bottom: 27, zIndex: 59,
             height: 28, padding: "0 12px", borderRadius: 999,
-            background: "var(--bg-1)", border: "1px solid var(--line-2)",
+            background: "var(--bg-1)", border: "1px solid var(--line-1)",
             boxShadow: "var(--shadow-pop)", color: "var(--fg-2)",
             fontSize: 12, fontWeight: 500, whiteSpace: "nowrap", cursor: "pointer",
           }}>

@@ -413,7 +413,7 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
           ))}
           {channel === "whatsapp" && (
             <button onClick={() => setNewTpl(true)} title="cria um template aprovado da Meta (reabre conversa fora das 24h)"
-              style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>
+              style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>
               Criar template
             </button>
           )}
@@ -452,7 +452,7 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
                     {numInfo.numbers.map((n) => (
                       <button key={n.id} className="mono" title="copiar o id do número"
                         onClick={() => { try { navigator.clipboard.writeText(n.id); } catch { window.prompt("Phone number ID:", n.id); } }}
-                        style={{ alignSelf: "flex-start", padding: "4px 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", fontSize: 11.5, cursor: "pointer" }}>
+                        style={{ alignSelf: "flex-start", padding: "4px 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 11.5, cursor: "pointer" }}>
                         {n.id}{n.display ? ` · ${n.display}` : ""}{n.name ? ` · ${n.name}` : ""} ⧉
                       </button>
                     ))}
@@ -495,7 +495,7 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
         <div style={{ ...box, width: isMobile ? "100%" : 250, flexShrink: isMobile ? 1 : 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
           <div style={{ padding: 10, borderBottom: "1px solid var(--line-1)", display: "flex", flexDirection: "column", gap: 8 }}>
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar por nome ou número"
-              style={{ width: "100%", padding: "8px 10px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 }} />
+              style={{ width: "100%", padding: "8px 10px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 }} />
             {/* Respondidas = o lead falou por último; sem resposta = a última é
                 nossa e o lead ainda não voltou (a fila do re-toque). */}
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
@@ -546,7 +546,7 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
                   borderLeft: tone ? `3px solid var(--${tone})` : "3px solid transparent",
                   background: on ? "var(--accent-soft)" : tone ? `var(--${tone}-soft)` : "transparent",
                 }}>
-                  <span style={{ width: 36, height: 36, borderRadius: "50%", flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "var(--bg-3)", border: "1px solid var(--line-2)", fontSize: 12, fontWeight: 700, color: "var(--fg-2)" }}>
+                  <span style={{ width: 36, height: 36, borderRadius: "50%", flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "var(--bg-3)", border: "1px solid var(--line-1)", fontSize: 12, fontWeight: 700, color: "var(--fg-2)" }}>
                     {initials(t.name, t.phone)}
                   </span>
                   <span style={{ minWidth: 0, flex: 1 }}>
@@ -788,7 +788,7 @@ function DmInbox({ network, saas, isMobile }) {
                 <div style={{ display: "flex", gap: 8 }}>
                   <input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()}
                     placeholder={`responder no ${label}…`}
-                    style={{ flex: 1, minWidth: 0, padding: "9px 12px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 }} />
+                    style={{ flex: 1, minWidth: 0, padding: "9px 12px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 }} />
                   <button onClick={send} disabled={busy || !draft.trim()}
                     style={{ padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--accent)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 13, fontWeight: 600, cursor: "pointer", opacity: busy || !draft.trim() ? 0.6 : 1 }}>
                     Enviar
@@ -844,9 +844,9 @@ function LinkLeadButton({ thread, onLinked }) {
       <input autoFocus value={q} onChange={(e) => setQ(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Escape") { setOpen(false); setQ(""); } }}
         placeholder="buscar lead por nome, empresa ou telefone"
-        style={{ height: 28, width: 260, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12 }} />
+        style={{ height: 28, width: 260, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12 }} />
       {!!hits.length && (
-        <div style={{ position: "absolute", top: 32, right: 0, zIndex: 20, width: 300, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", boxShadow: "var(--shadow-2)", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: 32, right: 0, zIndex: 20, width: 300, background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", boxShadow: "var(--shadow-2)", overflow: "hidden" }}>
           {hits.map((l) => (
             <button key={l.id} onClick={() => link(l)} disabled={!!saving}
               style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 10px", fontSize: 12.5, borderBottom: "1px solid var(--line-faint)" }}>
@@ -915,7 +915,7 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
               patch({ stage: toStage });
               onResolved?.(base.id); // moveu o card daqui: sai da fila do inbox na hora
             }}
-            style={{ maxWidth: 170, height: 24, padding: "0 6px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600 }}>
+            style={{ maxWidth: 170, height: 24, padding: "0 6px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600 }}>
             {!lead.stage && <option value="">sem etapa</option>}
             {(saasCfg?.funnel || []).map((f) => <option key={f.stage} value={f.stage}>{f.stage}</option>)}
             {lead.stage && !(saasCfg?.funnel || []).some((f) => f.stage === lead.stage) && <option value={lead.stage}>{lead.stage}</option>}
@@ -963,7 +963,7 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
           <textarea key={base.id + "recap"} defaultValue={lead.recapNote || ""} rows={2} maxLength={280}
             placeholder="ex.: quer as 3 contas espelhadas, decide com o sócio, retomar terça"
             onBlur={(e) => { if (e.target.value !== (base.recapNote || "")) patch({ recapNote: e.target.value }); }}
-            style={{ width: "100%", padding: "6px 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5, lineHeight: 1.45, fontWeight: 500, fontFamily: "inherit", resize: "vertical" }} />
+            style={{ width: "100%", padding: "6px 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5, lineHeight: 1.45, fontWeight: 500, fontFamily: "inherit", resize: "vertical" }} />
         </div>
 
         {/* Qualificação EDITÁVEL (mesmo checklist do roteiro): o lead respondeu
@@ -980,7 +980,7 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
                   </div>
                   {c.type === "select" ? (
                     <select value={c.raw || ""} onChange={(e) => patch({ [c.key]: e.target.value })}
-                      style={{ width: "100%", height: 26, padding: "0 6px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: c.raw ? "var(--fg-1)" : "var(--fg-4)", fontSize: 11.5, fontWeight: 500 }}>
+                      style={{ width: "100%", height: 26, padding: "0 6px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: c.raw ? "var(--fg-1)" : "var(--fg-4)", fontSize: 11.5, fontWeight: 500 }}>
                       <option value="">selecionar…</option>
                       {c.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                       {c.raw && !c.options.some((o) => o.value === c.raw) && <option value={c.raw}>{c.raw}</option>}
@@ -989,7 +989,7 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
                     <input key={base.id + c.key} type="text" defaultValue={c.raw || ""} placeholder="preencher…"
                       onBlur={(e) => { if (e.target.value !== (c.raw || "")) patch({ [c.key]: e.target.value }); }}
                       onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-                      style={{ width: "100%", height: 26, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5, fontWeight: 500 }} />
+                      style={{ width: "100%", height: 26, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5, fontWeight: 500 }} />
                   )}
                 </div>
               ))}
@@ -1024,7 +1024,7 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
       </div>
 
       <div style={{ padding: 10, borderTop: "1px solid var(--line-1)" }}>
-        <button onClick={onOpenLead} style={{ width: "100%", height: 32, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+        <button onClick={onOpenLead} style={{ width: "100%", height: 32, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
           Abrir lead completo ↗
         </button>
       </div>
@@ -1032,7 +1032,7 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
   );
 }
 
-const pill = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 11px", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", flexShrink: 0 };
+const pill = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 11px", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", flexShrink: 0 };
 
 // Parar o robô NESTA conversa (Leo, 24/08): grava lead.sdrOff — o SDR
 // automático inteiro (1º/2º toque, lembretes, resgate e as respostas da IA)
@@ -1107,7 +1107,7 @@ export function WaTemplateCreator({ onClose }) {
   }
 
   const lab = { display: "block", fontSize: 11.5, fontWeight: 600, color: "var(--fg-3)", marginBottom: 4 };
-  const inp = { width: "100%", height: 36, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, boxSizing: "border-box" };
+  const inp = { width: "100%", height: 36, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, boxSizing: "border-box" };
   return (
     <Modal onClose={onClose} label="criar template" largura={560} padding={16} painelStyle={{ padding: 22 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 4 }}>

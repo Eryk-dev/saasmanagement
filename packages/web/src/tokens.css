@@ -8,7 +8,11 @@
    UniqueKids troca o hue em runtime). */
 
 :root {
-  --accent-h: 183;   /* teal Lever Premium ≈ #0F766E */
+  /* Hue MEDIDO do brand da prancha (14/09): #0F766E convertido pra OKLCH dá
+     L .5109 · C .0861 · H 186,4. O hue 183 com C .078 que estava aqui pintava
+     #26766C — mais claro e mais cinza que a marca. O accent continua derivado
+     do hue, que é o que o workspace UniqueKids troca em runtime. */
+  --accent-h: 186.4;   /* teal Lever Premium = #0F766E */
 
   /* ── CLARO (padrão) ──────────────────────────────────────── */
   --bg-0: #f7f8fa;        /* paper: canvas do app */
@@ -31,10 +35,10 @@
   --fg-4: #8b99a4;        /* ink-faint */
   --fg-5: #98a5af;        /* ink-disabled */
 
-  --accent: oklch(0.515 0.078 var(--accent-h));        /* ≈ #0F766E no hue 183 */
-  --accent-hover: oklch(0.445 0.075 var(--accent-h));  /* ≈ brand-deep #0B5D57 */
-  --accent-soft: oklch(0.515 0.078 var(--accent-h) / 0.10);
-  --accent-line: oklch(0.515 0.078 var(--accent-h) / 0.38);
+  --accent: oklch(0.5109 0.0861 var(--accent-h));        /* = #0F766E (brand) */
+  --accent-hover: oklch(0.4323 0.0722 var(--accent-h));  /* = #0B5D57 (brand-deep) */
+  --accent-soft: oklch(0.5109 0.0861 var(--accent-h) / 0.10);
+  --accent-line: oklch(0.5109 0.0861 var(--accent-h) / 0.38);
   --accent-fg: #ffffff;
 
   /* Botão primário do DS: NAVY no claro (teal é seleção, não ação) */
@@ -282,15 +286,17 @@ body[data-density="regular"] { font-size: 14px; }
 .kicker.accent { color: var(--accent); }
 
 /* ── Controles e tabela (DS) ────────────────────────────────────
-   Escala de alturas: 28 denso · 32 padrão · 40 CTA. Input = .inp. */
+   Escala da prancha (medida no DOM do protótipo, 14/09):
+   botão 28 xs · 32 sm · 34 md · 38 lg · 42 xl · campo e segmentado 34/30.
+   Botão não tem sombra, e a borda do fantasma é --line-1. */
 .inp {
-  height: 30px;
-  padding: 0 9px;
-  background: var(--bg-1);
-  border: 1px solid var(--line-2);
-  border-radius: var(--r-2);
-  color: var(--fg-1);
-  font-size: 12.5px;
+  /* Campo na medida da prancha (14/09): 34px, padding 12, 13px, borda
+     --line-1. Era 30px/9px/12,5px com borda --line-2, o que deixava todo
+     campo do app menor e mais pesado que o do protótipo. */
+  height: 34px; padding: 0 12px; border-radius: var(--r-2);
+  border: 1px solid var(--line-1); background: var(--bg-1);
+  color: var(--fg-1); font-size: 13px; font-family: inherit; outline: none;
+  transition: var(--transition-ui);
 }
 /* Tabela padrão: td 12.5 com divisor; linha clicável ganha hover. */
 .tbl td { padding: 9px 12px; font-size: 12.5px; border-top: 1px solid var(--line-1); }

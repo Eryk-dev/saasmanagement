@@ -477,7 +477,7 @@ function FilaLimpa({ ig, contatos, calls, saasId, person, openForm }) {
           {openForm && saasId && (
             <button onClick={() => openForm("leads", { saas: saasId, source: "Social selling", owner: person })}
               title="cadastra o lead já com a origem Social selling e você como dono"
-              style={{ height: 38, padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>
+              style={{ height: 38, padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>
               + cadastrar lead
             </button>
           )}
@@ -513,11 +513,11 @@ function PersonPicker({ users, person, counts, onChange, canPick }) {
   return (
     <span style={{ position: "relative", display: "inline-flex" }} onClick={(e) => e.stopPropagation()}>
       <button onClick={() => setOpen((o) => !o)} title="ver a fila de outra pessoa"
-        style={{ height: 34, display: "inline-flex", alignItems: "center", gap: 7, padding: "0 13px", borderRadius: 999, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", boxShadow: "var(--shadow-1)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+        style={{ height: 34, display: "inline-flex", alignItems: "center", gap: 7, padding: "0 13px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", boxShadow: "var(--shadow-1)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
         {rotulo} <span className="mono dim" style={{ fontSize: 10 }}>▾</span>
       </button>
       {open && (
-        <div style={{ position: "absolute", right: 0, top: 38, zIndex: 30, minWidth: 208, padding: 4, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)" }}>
+        <div style={{ position: "absolute", right: 0, top: 38, zIndex: 30, minWidth: 208, padding: 4, background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)" }}>
           {users.map((u) => {
             const ativo = u.id === person;
             return (
@@ -826,7 +826,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                 porque quem chega na tela quer começar sem escolher. */}
             <button onClick={() => firstPending && setScriptItem(firstPending)} disabled={!firstPending}
               title={firstPending ? "abre o roteiro do primeiro item da fila" : "fila de hoje zerada"}
-              style={{ height: 34, padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--btn-bg)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 13, fontWeight: 650, cursor: firstPending ? "pointer" : "not-allowed", opacity: firstPending ? 1 : 0.45 }}>
+              style={{ height: 38, padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--btn-bg)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 13, fontWeight: 650, cursor: firstPending ? "pointer" : "not-allowed", opacity: firstPending ? 1 : 0.45 }}>
               Começar a fila →
             </button>
           </div>
@@ -1040,7 +1040,7 @@ function ConsultaRow({ item, block, featured, ordem, onOpen }) {
         {c.meetUrl && (
           <a href={c.meetUrl} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: "var(--r-2)", border: `1px solid ${featured ? "var(--btn-bg)" : "var(--line-2)"}`, background: featured ? "var(--btn-bg)" : "var(--bg-1)", color: featured ? "var(--btn-fg)" : "var(--fg-2)", fontSize: 12.5, fontWeight: featured ? 600 : 500, textDecoration: "none" }}>entrar no Meet</a>
         )}
-        <button onClick={onOpen} style={{ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5 }}>abrir card</button>
+        <button onClick={onOpen} style={{ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5 }}>abrir card</button>
       </div>
     </div>
   );
@@ -1119,7 +1119,7 @@ function QueueRow({ item, block, featured, ordem, onScript, onClaim, onWhatsapp,
         <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
           {tier.grade
             ? <span title={tier.label} style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, background: apagado ? "var(--bg-2)" : tier.tone, color: apagado ? "var(--fg-4)" : tier.badgeFg, fontSize: 10.5, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{tier.grade}</span>
-            : <span title="sem qualificação" style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, border: "1px solid var(--line-2)", color: "var(--fg-4)", fontSize: 10.5, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>—</span>}
+            : <span title="sem qualificação" style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, border: "1px solid var(--line-1)", color: "var(--fg-4)", fontSize: 10.5, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>—</span>}
           <span style={{ fontSize: 13.5, fontWeight: 600, color: tomTexto, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", ...risco }}>{l.name}</span>
         </div>
         {l.company && <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.company}</div>}
@@ -1135,20 +1135,20 @@ function QueueRow({ item, block, featured, ordem, onScript, onClaim, onWhatsapp,
       </div>
       <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }} onClick={(e) => e.stopPropagation()}>
         {meet ? (
-          <a href={meet} target="_blank" rel="noopener noreferrer" style={{ height: 28, display: "inline-flex", alignItems: "center", padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", color: "var(--fg-2)", fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}>abrir Meet</a>
+          <a href={meet} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", color: "var(--fg-2)", fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}>abrir Meet</a>
         ) : whatsapp ? (
           // Atalho pro INBOX interno (conversa do lead, com ou sem thread ainda);
           // sem o handler (contexto antigo), cai no deep-link do app.
           onWhatsapp ? (
             <button onClick={() => onWhatsapp(l)} title="Abrir a conversa no inbox do cockpit"
-              style={{ height: 28, display: "inline-flex", alignItems: "center", padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 500, whiteSpace: "nowrap" }}>WhatsApp</button>
+              style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 500, whiteSpace: "nowrap" }}>WhatsApp</button>
           ) : (
-            <a href={whatsapp} target="_blank" rel="noopener noreferrer" style={{ height: 28, display: "inline-flex", alignItems: "center", padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 500, textDecoration: "none", whiteSpace: "nowrap" }}>WhatsApp</a>
+            <a href={whatsapp} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 500, textDecoration: "none", whiteSpace: "nowrap" }}>WhatsApp</a>
           )
         ) : null}
         {/* "roteiro" fica SEMPRE: sem ele, linha não-destaque com WhatsApp só
             abria pelo clique no corpo (invisível pra quem navega por botão). */}
-        <button onClick={onScript} style={{ height: 28, padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid " + (apagado ? "var(--line-2)" : "var(--btn-bg, var(--accent))"), background: apagado ? "var(--bg-2)" : "var(--btn-bg, var(--accent))", color: apagado ? "var(--fg-3)" : "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", cursor: "pointer" }}>roteiro</button>
+        <button onClick={onScript} style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid " + (apagado ? "var(--line-2)" : "var(--btn-bg, var(--accent))"), background: apagado ? "var(--bg-2)" : "var(--btn-bg, var(--accent))", color: apagado ? "var(--fg-3)" : "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", cursor: "pointer" }}>roteiro</button>
       </div>
     </div>
   );
@@ -1180,7 +1180,7 @@ function AgoraBlock({ item, onScript, onClaim, onWhatsapp }) {
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
             {tier.grade
               ? <span title={tier.label} style={{ width: 20, height: 20, borderRadius: 5, background: tier.tone, color: tier.badgeFg, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{tier.grade}</span>
-              : <span title="sem qualificação" style={{ width: 20, height: 20, borderRadius: 5, border: "1px solid var(--line-2)", color: "var(--fg-4)", fontSize: 11, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>—</span>}
+              : <span title="sem qualificação" style={{ width: 20, height: 20, borderRadius: 5, border: "1px solid var(--line-1)", color: "var(--fg-4)", fontSize: 11, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>—</span>}
             <span style={{ fontSize: 15.5, fontWeight: 700, letterSpacing: "-0.01em" }}>{l.name}</span>
             {l.company && <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{l.company}</span>}
             <span className="mono tnum" style={{ fontSize: 11.5, color: atrasado ? "var(--neg)" : "var(--fg-3)", fontWeight: atrasado ? 600 : 400 }}>{quando}</span>
@@ -1191,7 +1191,7 @@ function AgoraBlock({ item, onScript, onClaim, onWhatsapp }) {
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "stretch", minWidth: 150 }}>
           <button onClick={onScript}
-            style={{ height: 42, padding: "0 18px", borderRadius: "var(--r-2)", border: "1px solid var(--btn-bg)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 14, fontWeight: 650, cursor: "pointer" }}>
+            style={{ height: 42, padding: "0 18px", borderRadius: "var(--r-2)", border: "1px solid var(--btn-bg)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 13.5, fontWeight: 650, cursor: "pointer" }}>
             Abrir o roteiro →
           </button>
           {meet ? (
@@ -1507,7 +1507,7 @@ export function CallSummaryCard({ summary, phone, onSend = null }) {
         <div style={{ ...line, marginBottom: msg ? 6 : 0 }}><span className="kicker">{integ ? "Acompanhamento" : "Próximo passo"}</span> · {summary.followup.nota}</div>
       )}
       {msg && (
-        <div style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", padding: "7px 9px" }}>
+        <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-1)", padding: "7px 9px" }}>
           <div className="kicker" style={{ marginBottom: 3 }}>WhatsApp sugerido</div>
           <div style={{ fontSize: 12, lineHeight: 1.5, whiteSpace: "pre-wrap", marginBottom: 6 }}>{msg}</div>
           <div style={{ display: "flex", gap: 6 }}>
@@ -1519,7 +1519,7 @@ export function CallSummaryCard({ summary, phone, onSend = null }) {
             ) : waHref && (
               <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>enviar no WhatsApp ↗</a>
             )}
-            <button onClick={copy} style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5 }}>{copied ? "copiado ✓" : "copiar"}</button>
+            <button onClick={copy} style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5 }}>{copied ? "copiado ✓" : "copiar"}</button>
           </div>
         </div>
       )}
@@ -1608,7 +1608,7 @@ export function IntegrationBriefCard({ brief, phone, deal, onSend = null }) {
             </div>
           )}
           {msg && (
-            <div style={{ border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", padding: "7px 9px" }}>
+            <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-1)", padding: "7px 9px" }}>
               <div className="kicker" style={{ marginBottom: 3 }}>{meetUrl ? "Mensagem com o link da call" : "Mensagem pra marcar a call de vídeo"}</div>
               <div style={{ fontSize: 12, lineHeight: 1.5, whiteSpace: "pre-wrap", marginBottom: 6 }}>{msg}</div>
               <div style={{ display: "flex", gap: 6 }}>
@@ -1620,7 +1620,7 @@ export function IntegrationBriefCard({ brief, phone, deal, onSend = null }) {
                 ) : waHref && (
                   <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>enviar no WhatsApp ↗</a>
                 )}
-                <button onClick={copy} style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5 }}>{copied ? "copiado ✓" : "copiar"}</button>
+                <button onClick={copy} style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5 }}>{copied ? "copiado ✓" : "copiar"}</button>
               </div>
             </div>
           )}
@@ -1662,10 +1662,10 @@ function CallShortcuts({ l, item, wa, onPatch, kind = "call" }) {
     setBusy("");
   }
 
-  const chip = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600, textDecoration: "none", cursor: "pointer" };
+  const chip = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600, textDecoration: "none", cursor: "pointer" };
 
   return (
-    <div style={{ border: "1px solid var(--line-2)", background: "var(--bg-inset)", borderRadius: "var(--r-2)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 9 }}>
+    <div style={{ border: "1px solid var(--line-1)", background: "var(--bg-inset)", borderRadius: "var(--r-2)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 9 }}>
       <div className="kicker accent">Atalhos da {nome}</div>
 
       {/* Link da chamada: entrar · copiar · mandar pro cliente no Whats. */}
@@ -1761,7 +1761,7 @@ function ProposalBlock({ l, wa, item, onPatch }) {
 
   if (!l.proposalUrl && !eligible) return null;
 
-  const chip = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600, textDecoration: "none", cursor: "pointer" };
+  const chip = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600, textDecoration: "none", cursor: "pointer" };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
@@ -1770,7 +1770,7 @@ function ProposalBlock({ l, wa, item, onPatch }) {
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           {altDecks.length > 0 && (
             <select value={tpl} onChange={(e) => setTpl(e.target.value)} disabled={busy === "gen"} title="Qual apresentação gerar"
-              style={{ height: 28, padding: "0 7px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5 }}>
+              style={{ height: 28, padding: "0 7px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5 }}>
               <option value="">Padrão</option>
               {altDecks.map((t) => <option key={t.id} value={t.id}>{t.pickLabel || t.name || t.id}</option>)}
             </select>
@@ -1945,7 +1945,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--scrim)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: "var(--z-modal)", padding: 12 }}>
       <div onClick={(e) => e.stopPropagation()} style={{
         width: "min(1100px, 100%)", maxHeight: "min(92vh, 100%)",
-        background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)",
+        background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)",
         boxShadow: "var(--shadow-pop)", display: "flex", flexDirection: "column",
       }}>
         <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--line-1)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -1985,7 +1985,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
             </div>
           </div>
           {!preview && (
-            <button onClick={onOpenLead} style={{ padding: "6px 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12, flexShrink: 0 }}>
+            <button onClick={onOpenLead} style={{ padding: "6px 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12, flexShrink: 0 }}>
               abrir lead
             </button>
           )}
@@ -2019,7 +2019,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
             {/* Fora da call, quem cobra proposta/follow-up também precisa do
                 atalho de mandar a proposta no Whats (sem os atalhos da call). */}
             {item.kind !== "call" && !preview && PROPOSAL_KINDS.has(item.kind) && (
-              <div style={{ border: "1px solid var(--line-2)", background: "var(--bg-inset)", borderRadius: "var(--r-2)", padding: "10px 12px" }}>
+              <div style={{ border: "1px solid var(--line-1)", background: "var(--bg-inset)", borderRadius: "var(--r-2)", padding: "10px 12px" }}>
                 <ProposalBlock l={l} wa={wa} item={item} onPatch={patch} />
               </div>
             )}
@@ -2165,7 +2165,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
             </button>
           )}
           {item.confirm && !preview && resched && (
-            <div style={{ flex: "1 1 100%", marginTop: 4, padding: 12, borderRadius: "var(--r-2)", background: "var(--bg-1)", border: "1px solid var(--line-2)" }}>
+            <div style={{ flex: "1 1 100%", marginTop: 4, padding: 12, borderRadius: "var(--r-2)", background: "var(--bg-1)", border: "1px solid var(--line-1)" }}>
               <div style={{ fontSize: 12, color: "var(--fg-3)", marginBottom: 8 }}>
                 {item.confirmKind === "integracao"
                   ? "Novo horário da integração · o convite do Meet acompanha o horário novo (o cliente recebe a atualização por e-mail)."
@@ -2175,7 +2175,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
                 busy={callBusyKeys(leads, item.confirmKind === "integracao" ? l.integrator : l.closer, l.id)} />
               <div style={{ display: "flex", gap: 8, marginTop: 10, justifyContent: "flex-end" }}>
                 <button onClick={() => setResched(false)}
-                  style={{ padding: "8px 12px", borderRadius: "var(--r-2)", fontSize: 12.5, background: "transparent", color: "var(--fg-3)", border: "1px solid var(--line-2)" }}>
+                  style={{ padding: "8px 12px", borderRadius: "var(--r-2)", fontSize: 12.5, background: "transparent", color: "var(--fg-3)", border: "1px solid var(--line-1)" }}>
                   cancelar
                 </button>
                 <button onClick={doReschedule} disabled={!rSlot}
@@ -2632,7 +2632,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     setMeetBusy(false);
   }
   const label = { display: "block", marginBottom: 4 };
-  const fieldStyle = { width: "100%", height: 30, padding: "0 8px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 };
+  const fieldStyle = { width: "100%", height: 30, padding: "0 8px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 };
   const slotFmt = (v) => { const d = new Date(v); return Number.isFinite(d.getTime()) ? d.toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""; };
 
   // O que foi vendido — os mesmos campos do gate do board (produto do catálogo,
@@ -2888,7 +2888,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                     border: "1px solid " + (meetReady ? "var(--btn-bg, var(--accent))" : "var(--line-2)"), cursor: meetReady ? "pointer" : "not-allowed",
                   }}>{meetBusy ? "criando Meet e enviando convite…" : "🎥 agendar + criar Meet + convite"}</button>
                   <button onClick={confirm} disabled={!ready || meetBusy} className="mono"
-                    style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, opacity: ready && !meetBusy ? 1 : 0.5 }}>só agendar (sem convite)</button>
+                    style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, opacity: ready && !meetBusy ? 1 : 0.5 }}>só agendar (sem convite)</button>
                   <button onClick={() => setDest(null)} className="mono dim" style={{ fontSize: 11.5 }}>cancelar</button>
                 </div>
                 {meetErr && <div className="mono" style={{ fontSize: 11, color: "var(--neg)" }}>{meetErr} · a call já foi agendada; crie o Meet pela ficha do lead se precisar.</div>}

@@ -173,7 +173,7 @@ function ProposalsScreen({ saasId }) {
   const templateById = new Map(templates.map((t) => [t.id, t]));
   const recentCutoff = Date.now() - 30 * 86400000;
   const outlineButton = {
-    height: 30, padding: "0 12px", border: "1px solid var(--line-2)",
+    height: 30, padding: "0 12px", border: "1px solid var(--line-1)",
     borderRadius: "var(--r-2)", background: "var(--bg-1)", color: "var(--fg-2)",
     fontSize: 12.5, fontWeight: 600, boxShadow: "var(--shadow-1)",
     display: "inline-flex", alignItems: "center", textDecoration: "none",
@@ -311,7 +311,7 @@ function ProposalsScreen({ saasId }) {
                       </a>
                     )}
                     <button onClick={() => { try { navigator.clipboard.writeText(url); setCopied(p.id); setTimeout(() => setCopied(""), 1600); } catch { /* ignore */ } }}
-                      style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, cursor: "pointer" }}>
+                      style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, cursor: "pointer" }}>
                       {copied === p.id ? "copiado ✓" : "copiar"}
                     </button>
                   </span>
@@ -478,7 +478,7 @@ function TemplateEditor({ template, saasId, onDone, onCancel }) {
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <span className={"chip " + (draft.status === "published" ? "pos" : "")} style={{ height: 20 }}>{draft.status === "published" ? "publicado" : "rascunho"}</span>
-            <button onClick={onCancel} style={{ padding: "7px 12px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 12 }}>Cancelar</button>
+            <button onClick={onCancel} style={{ padding: "7px 12px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 12 }}>Cancelar</button>
             <button onClick={save} disabled={busy} style={{ padding: "7px 14px", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 500, opacity: busy ? 0.6 : 1 }}>
               {busy ? "Salvando…" : "Salvar"}
             </button>

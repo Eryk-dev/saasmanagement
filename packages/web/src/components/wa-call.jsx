@@ -209,7 +209,7 @@ export function WaCallButton({ threadId, contactName }) {
   }
 
   const active = phase === "prep" || phase === "ringing" || phase === "connected";
-  const pill = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 11px", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", flexShrink: 0 };
+  const pill = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 11px", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", flexShrink: 0 };
 
   return (
     <>
@@ -232,7 +232,7 @@ export function WaCallButton({ threadId, contactName }) {
         <div style={{
           position: "fixed", left: "50%", top: "50%", transform: "translate(-50%, -50%)", zIndex: 95,
           minWidth: 280, maxWidth: "min(360px, calc(100vw - 32px))",
-          background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)",
+          background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)",
           boxShadow: "var(--shadow-pop)", padding: 16, display: "flex", flexDirection: "column", gap: 10,
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

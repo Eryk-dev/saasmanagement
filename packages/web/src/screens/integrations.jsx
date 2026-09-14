@@ -106,7 +106,7 @@ function IntegrationsScreen({ onOpenLead }) {
                 </span>
                 {data.atrasos.itens?.[0]?.leadId && (
                   <button onClick={() => openRecent(data.atrasos.itens[0].leadId)}
-                    style={{ marginLeft: "auto", height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+                    style={{ marginLeft: "auto", height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
                     abrir o mais antigo
                   </button>
                 )}

@@ -24,7 +24,7 @@ import { ProductOptions, PaymentMethodSelect } from "./lead-blocks.jsx";
 // Só cobrança ÚNICA (checkout): a assinatura recorrente (preapproval) deixou
 // de ser vendida em 10/09/2026. O servidor recusa `mode: "recurring"`.
 
-const inputStyle = { height: 36, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, width: "100%" };
+const inputStyle = { height: 36, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, width: "100%" };
 const field = { display: "flex", flexDirection: "column", gap: 4 };
 
 const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

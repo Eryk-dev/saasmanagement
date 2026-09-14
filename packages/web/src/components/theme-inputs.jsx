@@ -6,12 +6,12 @@ const { useState } = React;
 
 export const inputStyle = {
   width: "100%", height: 32, padding: "0 9px",
-  background: "var(--bg-1)", border: "1px solid var(--line-2)",
+  background: "var(--bg-1)", border: "1px solid var(--line-1)",
   borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, fontFamily: "var(--sans)",
 };
 export const sectionTitle = { margin: "18px 0 8px" };
 export const cardStyle = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: 12, display: "flex", flexDirection: "column", gap: 8, background: "var(--bg-inset)" };
-export const addBtnStyle = { alignSelf: "flex-start", height: 30, padding: "0 10px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 12, color: "var(--fg-2)", boxShadow: "var(--shadow-1)" };
+export const addBtnStyle = { alignSelf: "flex-start", height: 30, padding: "0 10px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 12, color: "var(--fg-2)", boxShadow: "var(--shadow-1)" };
 
 export const THEME_DEFAULTS = { bg: "#0f1115", surface: "#181b22", fg: "#f2f3f5", accent: "#6c5ce7", accentFg: "#ffffff", font: "'Instrument Sans', system-ui, sans-serif", radius: 10, logoUrl: "", logoHeight: 24 };
 

@@ -476,7 +476,7 @@ function BulkBar({ n, stages, users, onMove, onAssign, onTouch, onClear }) {
     </section>
   );
 }
-const bulkBtn = { height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" };
+const bulkBtn = { height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" };
 const bulkItem = { display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 10px", borderRadius: "var(--r-2)", background: "none", border: 0, textAlign: "left", fontSize: 12.5, color: "var(--fg-1)", cursor: "pointer" };
 
 function ViewToggle({ view, onChange }) {
@@ -915,7 +915,7 @@ function LeadList({ leads, onOpenLead }) {
       <Card>
         <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar por nome, empresa ou telefone…"
-            style={{ flex: 1, minWidth: 200, height: 30, padding: "0 10px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 }} />
+            style={{ flex: 1, minWidth: 200, height: 30, padding: "0 10px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 }} />
           <span style={{ fontSize: 12, color: "var(--fg-4)" }}>
             {`${base.length} ${base.length === 1 ? "lead" : "leads"}${needle ? ` de ${leads.length}` : ""}`}
           </span>
@@ -963,7 +963,7 @@ function LeadList({ leads, onOpenLead }) {
                       <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
                         {tier.grade
                           ? <span title={tier.label} style={{ width: 20, height: 20, borderRadius: 5, background: tier.tone, color: tier.badgeFg, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{tier.grade}</span>
-                          : <span title="sem nível" style={{ width: 20, height: 20, borderRadius: 5, border: "1px solid var(--line-2)", color: "var(--fg-4)", fontSize: 11, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>—</span>}
+                          : <span title="sem nível" style={{ width: 20, height: 20, borderRadius: 5, border: "1px solid var(--line-1)", color: "var(--fg-4)", fontSize: 11, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>—</span>}
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</div>
                           <div style={{ fontSize: 11, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
@@ -1465,7 +1465,7 @@ function GoalReversePlan({ data, s, leads }) {
         )}
 
         {data.paceAdjust && (
-          <div style={{ padding: "8px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-2)", fontSize: 11.5, color: "var(--fg-3)" }}>
+          <div style={{ padding: "8px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-1)", fontSize: 11.5, color: "var(--fg-3)" }}>
             <b>Inclui histórico pré-cockpit</b> (dados reais de antes do registro no sistema, somados ao funil):{" "}
             {[
               data.paceAdjust.leads && `+${data.paceAdjust.leads} leads`,

@@ -33,7 +33,7 @@ function dayLabel(iso) {
 // Ticks de status da mensagem enviada (espelha o WhatsApp). Falha mostra o
 // motivo da Meta no title (ex.: "Re-engagement message" = fora da janela de 24h).
 function StatusTicks({ status, error }) {
-  if (status === "failed") return <span title={error ? `falhou: ${error}` : "falhou"} style={{ color: "#e5484d" }}>⚠</span>;
+  if (status === "failed") return <span title={error ? `falhou: ${error}` : "falhou"} style={{ color: "var(--neg)" }}>⚠</span>;
   const read = status === "read";
   return <span title={status || "enviado"} style={{ color: read ? "#4aa3ff" : "var(--fg-4)", letterSpacing: -2 }}>{status === "sent" || status === "received" ? "✓" : "✓✓"}</span>;
 }
@@ -212,7 +212,7 @@ export function WaTemplateComposer({ threadId, contactName = "", onSent }) {
     finally { setBusy(false); }
   }
 
-  const field = { height: 30, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, minWidth: 0 };
+  const field = { height: 30, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, minWidth: 0 };
 
   return (
     <div style={{ border: "1px dashed var(--warn-line, var(--line-2))", borderRadius: "var(--r-2)", padding: "10px 12px", background: "var(--warn-soft)" }}>
@@ -261,7 +261,7 @@ export function WaTemplateComposer({ threadId, contactName = "", onSent }) {
             {headerUrl && <img src={headerUrl} alt="cabeçalho" style={{ maxWidth: 220, maxHeight: 160, borderRadius: 8, display: "block", marginBottom: 6 }} />}
             {preview}
           </div>
-          {err && <div style={{ fontSize: 11, color: "#e5484d" }}>{err}</div>}
+          {err && <div style={{ fontSize: 11, color: "var(--neg)" }}>{err}</div>}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <button disabled={!ready || busy} onClick={send} style={{
               height: 34, padding: "0 16px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 700,
@@ -426,18 +426,18 @@ export function WaComposer({ onSend, onSendMedia, disabled, placeholder, templat
 
   return (
     <div>
-      {err && <div style={{ fontSize: 11, color: "#e5484d", marginBottom: 6 }}>{err}</div>}
+      {err && <div style={{ fontSize: 11, color: "var(--neg)", marginBottom: 6 }}>{err}</div>}
       {groups.length > 0 && (
         <div style={{ position: "relative", marginBottom: 6 }}>
           <button onClick={() => setOpenTpl((v) => !v)} disabled={disabled}
             title="Mensagens prontas do fluxo de qualificação"
-            style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: openTpl ? "var(--bg-2)" : "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600, cursor: "pointer", opacity: disabled ? 0.5 : 1 }}>
+            style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: openTpl ? "var(--bg-2)" : "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600, cursor: "pointer", opacity: disabled ? 0.5 : 1 }}>
             ⚡ modelos
           </button>
           {openTpl && (
             <>
               <div onClick={() => setOpenTpl(false)} style={{ position: "fixed", inset: 0, zIndex: 60 }} />
-              <div style={{ position: "absolute", bottom: "calc(100% + 6px)", left: 0, zIndex: 61, width: 340, maxHeight: "min(52vh, 460px)", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 6 }}>
+              <div style={{ position: "absolute", bottom: "calc(100% + 6px)", left: 0, zIndex: 61, width: 340, maxHeight: "min(52vh, 460px)", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 6 }}>
                 {groups.map((g) => (
                   <div key={g.group} style={{ marginBottom: 4 }}>
                     <div className="kicker" style={{ padding: "6px 8px 4px" }}>{g.group}</div>
@@ -460,10 +460,10 @@ export function WaComposer({ onSend, onSendMedia, disabled, placeholder, templat
       {rec ? (
         // Gravando: linha própria com timer, enviar (▶ para+manda) e descartar.
         <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "7px 4px" }}>
-          <span style={{ width: 9, height: 9, borderRadius: 99, background: "#e5484d", flexShrink: 0 }} />
+          <span style={{ width: 9, height: 9, borderRadius: 99, background: "var(--neg)", flexShrink: 0 }} />
           <span className="mono" style={{ fontSize: 12.5, color: "var(--fg-2)" }}>gravando… {String(Math.floor(recSecs / 60)).padStart(2, "0")}:{String(recSecs % 60).padStart(2, "0")}</span>
           <span style={{ flex: 1 }} />
-          <button onClick={cancelRec} title="descartar" style={{ height: 34, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, cursor: "pointer" }}>descartar</button>
+          <button onClick={cancelRec} title="descartar" style={{ height: 34, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, cursor: "pointer" }}>descartar</button>
           <button onClick={stopRecAndSend} title="enviar a nota de voz" style={{ height: 34, padding: "0 16px", borderRadius: "var(--r-2)", border: "none", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>enviar ↑</button>
         </div>
       ) : (
@@ -472,9 +472,9 @@ export function WaComposer({ onSend, onSendMedia, disabled, placeholder, templat
           <>
             <input ref={fileRef} type="file" accept="audio/*,image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx" onChange={pickFile} style={{ display: "none" }} />
             <button onClick={() => fileRef.current?.click()} disabled={busy} title="Anexar arquivo (áudio, imagem, documento)"
-              style={{ height: 38, width: 38, flexShrink: 0, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 16, cursor: "pointer", opacity: busy ? 0.55 : 1 }}>📎</button>
+              style={{ height: 38, width: 38, flexShrink: 0, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 16, cursor: "pointer", opacity: busy ? 0.55 : 1 }}>📎</button>
             <button onClick={startRec} disabled={busy} title="Gravar nota de voz"
-              style={{ height: 38, width: 38, flexShrink: 0, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 16, cursor: "pointer", opacity: busy ? 0.55 : 1 }}>🎤</button>
+              style={{ height: 38, width: 38, flexShrink: 0, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 16, cursor: "pointer", opacity: busy ? 0.55 : 1 }}>🎤</button>
           </>
         )}
         <textarea
@@ -485,7 +485,7 @@ export function WaComposer({ onSend, onSendMedia, disabled, placeholder, templat
           rows={1}
           disabled={disabled}
           placeholder={disabled ? (placeholder || "sem telefone") : (placeholder || "mensagem… (↵ envia, Shift+↵ quebra linha)")}
-          style={{ flex: 1, padding: "9px 11px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5, resize: "vertical", maxHeight: 140 }}
+          style={{ flex: 1, padding: "9px 11px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5, resize: "vertical", maxHeight: 140 }}
         />
         <button disabled={busy || !text.trim() || disabled} onClick={send} style={{
           height: 38, padding: "0 16px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 700,

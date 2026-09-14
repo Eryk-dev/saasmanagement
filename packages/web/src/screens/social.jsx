@@ -264,7 +264,7 @@ function DiscoveryPanel({ product, sum }) {
   };
   const rmTag = (h) => { const next = tags.filter((x) => x !== h); save({ igHashtags: next }, () => setTags(next)); };
 
-  const inputStyle = { flex: 1, minWidth: 0, fontSize: 12.5, padding: "6px 10px", border: "1px solid var(--line-2)", borderRadius: 8, background: "var(--bg-1)", color: "var(--fg-1)" };
+  const inputStyle = { flex: 1, minWidth: 0, fontSize: 12.5, padding: "6px 10px", border: "1px solid var(--line-1)", borderRadius: 8, background: "var(--bg-1)", color: "var(--fg-1)" };
   const addBtn = { fontSize: 12.5, fontWeight: 600, padding: "6px 12px", borderRadius: 8, border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)", cursor: "pointer" };
   const rowStyle = { display: "flex", alignItems: "center", gap: 8, fontSize: 13, padding: "7px 0", borderTop: "1px solid var(--line-faint)" };
   const dim = { color: "var(--fg-4)", fontSize: 12 };
@@ -373,7 +373,7 @@ function CreativesToday({ saasId, version }) {
     } catch (e) { toast(`Não deu pra registrar · ${e?.message || "tente de novo"}`, "neg"); }
     finally { setBusy(false); }
   };
-  const btn = { width: 28, height: 28, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 14, fontWeight: 700, lineHeight: 1, opacity: busy ? 0.5 : 1 };
+  const btn = { width: 28, height: 28, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 14, fontWeight: 700, lineHeight: 1, opacity: busy ? 0.5 : 1 };
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", border: "1px solid var(--line-1)", background: "var(--bg-1)", borderRadius: "var(--r-3)", padding: "8px 12px" }}>
       <span style={{ fontSize: 13, fontWeight: 600 }}>🎨 Criativos de hoje{target !== me?.id ? ` · ${userById(target)?.name || target}` : ""}</span>
@@ -830,7 +830,7 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
     background: on ? "var(--accent-soft)" : "var(--bg-1)",
     color: "var(--fg-1)",
   });
-  const btn = { height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5 };
+  const btn = { height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5 };
   const primary = { ...btn, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", border: "1px solid var(--btn-bg, var(--accent))", fontWeight: 600 };
 
   const stepLabel = ["", "formato", kind === "video" ? "vídeo" : "arte", "publicar"][step];
@@ -879,7 +879,7 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
                   <div>
                     <label className="kicker" style={{ display: "block", marginBottom: 6 }}>Sobre qual dor é esse post?</label>
                     <select value={dor} onChange={(e) => setDor(e.target.value)}
-                      style={{ width: "100%", height: 34, padding: "0 10px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 }}>
+                      style={{ width: "100%", height: 34, padding: "0 10px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 }}>
                       <option value="">sem dor específica (valor central da LeverAds)</option>
                       {dorOptions.map((d, i) => <option key={i} value={d}>{d}</option>)}
                     </select>
@@ -888,7 +888,7 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
                     <label className="kicker" style={{ display: "block", marginBottom: 6 }}>Sugestão pra criação (opcional)</label>
                     <textarea rows={2} value={suggestion} onChange={(e) => setSuggestion(e.target.value)}
                       placeholder="ex.: cita o case da conta que fez +105%, tom mais provocativo, fala com quem tem 5+ contas…"
-                      style={{ width: "100%", padding: "8px 10px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.4, resize: "vertical", fontFamily: "inherit" }} />
+                      style={{ width: "100%", padding: "8px 10px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.4, resize: "vertical", fontFamily: "inherit" }} />
                   </div>
                   <div className="mono dim" style={{ fontSize: 10.5 }}>
                     {aiConfigured
@@ -953,7 +953,7 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
                   <span className="kicker" style={{ display: "block", marginBottom: 4 }}>Legenda</span>
                   <textarea rows={5} value={caption} onChange={(e) => setCaption(e.target.value)}
                     placeholder={"Escreva a legenda…\n\n#hashtags entram aqui também"}
-                    style={{ width: "100%", padding: "8px 10px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.5, resize: "vertical", fontFamily: "inherit" }} />
+                    style={{ width: "100%", padding: "8px 10px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.5, resize: "vertical", fontFamily: "inherit" }} />
                 </label>
               ) : (
                 <div className="mono dim" style={{ fontSize: 11 }}>story não leva legenda</div>
@@ -1078,7 +1078,7 @@ function CommentsPanel({ saas, onCount }) {
 
   const list = data?.comments || [];
   const ins = data?.insights;
-  const btn = { height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5 };
+  const btn = { height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5 };
   const primary = { ...btn, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", border: "1px solid var(--btn-bg, var(--accent))", fontWeight: 600 };
 
   return (
@@ -1177,7 +1177,7 @@ function CommentsPanel({ saas, onCount }) {
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <textarea autoFocus rows={3} value={drafts[c.id] || ""} onChange={(e) => setDrafts((d) => ({ ...d, [c.id]: e.target.value }))}
                     placeholder={`Responder ${c.author ? (c.network === "instagram" ? "@" + c.author : c.author) : ""}…`}
-                    style={{ width: "100%", padding: "8px 10px", background: "var(--bg-0)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.5, resize: "vertical", fontFamily: "inherit" }} />
+                    style={{ width: "100%", padding: "8px 10px", background: "var(--bg-0)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.5, resize: "vertical", fontFamily: "inherit" }} />
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <button disabled={sending === c.id || !(drafts[c.id] || "").trim()}
                       onClick={() => act(c.id, () => api.socialCommentReply(c.id, drafts[c.id]))}

@@ -127,7 +127,7 @@ export function MindmapsScreen() {
         {!focus && (
           <button onClick={() => setGaveta((v) => !v)}
             title={gaveta ? "esconder a lista de mapas" : "trocar de mapa"}
-            style={{ position: "absolute", top: 10, left: 12, zIndex: 5, height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6, maxWidth: 280 }}>
+            style={{ position: "absolute", top: 10, left: 12, zIndex: 5, height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6, maxWidth: 280 }}>
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{active?.name || "Mapas"}</span>
             <span className="mono dim" style={{ fontSize: 10 }}>{gaveta ? "◂" : "▾"}</span>
           </button>
@@ -820,13 +820,13 @@ function MapEditor({ map, onSaved, focus, setFocus, isMobile }) {
         </div>
       )}
       {focus && (
-        <button onClick={() => setFocus(false)} title={`Sair do foco (Esc ou ${MOD}.)`} style={{ position: "absolute", top: 10, right: 12, zIndex: 6, height: 26, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11.5 }}>sair do foco</button>
+        <button onClick={() => setFocus(false)} title={`Sair do foco (Esc ou ${MOD}.)`} style={{ position: "absolute", top: 10, right: 12, zIndex: 6, height: 26, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11.5 }}>sair do foco</button>
       )}
       {save.state === "conflict" && (
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "8px 12px", background: "var(--warn-soft)", color: "var(--fg-1)", fontSize: 12.5, borderBottom: "1px solid var(--line-1)" }}>
           <span><b>{save.current?.updatedBy ? displayName(save.current.updatedBy) : "Outra pessoa"}</b> editou este mapa enquanto você mexia.</span>
-          <button onClick={() => adoptRemote(save.current)} style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", fontSize: 12 }}>Recarregar (perde o que mudei)</button>
-          <button onClick={() => persist(true)} style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", fontSize: 12 }}>Gravar por cima</button>
+          <button onClick={() => adoptRemote(save.current)} style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 12 }}>Recarregar (perde o que mudei)</button>
+          <button onClick={() => persist(true)} style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 12 }}>Gravar por cima</button>
         </div>
       )}
 

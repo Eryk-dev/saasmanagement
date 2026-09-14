@@ -333,12 +333,12 @@ function DisparosScreen({ onOpenLead }) {
               <Segmented value={channel} onChange={setChannel} options={[{ value: "wa", label: "WhatsApp" }, { value: "email", label: "E-mail" }]} />
               <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                 <span style={{ fontSize: 12, color: "var(--fg-3)" }}>Template</span>
-                <input list="campaign-options" value={camp.name} onChange={(event) => setCamp((current) => ({ ...current, name: event.target.value, email: channel === "email" ? { ...current.email, subject: event.target.value } : current.email }))} placeholder="Retomada · diagnóstico pendente" style={{ width: "100%", height: 38, padding: "0 11px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 }} />
+                <input list="campaign-options" value={camp.name} onChange={(event) => setCamp((current) => ({ ...current, name: event.target.value, email: channel === "email" ? { ...current.email, subject: event.target.value } : current.email }))} placeholder="Retomada · diagnóstico pendente" style={{ width: "100%", height: 38, padding: "0 11px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 }} />
                 <datalist id="campaign-options">{campaigns.map((campaign) => <option key={campaign.id} value={campaign.name || "sem nome"} />)}</datalist>
               </label>
               <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                 <span style={{ fontSize: 12, color: "var(--fg-3)" }}>Mensagem</span>
-                <textarea rows={4} value={channel === "email" ? camp.email.body : camp.wa.text} onChange={(event) => setCamp((current) => channel === "email" ? { ...current, email: { ...current.email, body: event.target.value } } : { ...current, wa: { text: event.target.value } })} placeholder="Oi {{nome}}! Seu diagnóstico da {{empresa}} ficou pronto — posso te mandar o resumo aqui mesmo?" style={{ width: "100%", minHeight: 96, padding: "9px 11px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.5, resize: "vertical", fontFamily: "inherit" }} />
+                <textarea rows={4} value={channel === "email" ? camp.email.body : camp.wa.text} onChange={(event) => setCamp((current) => channel === "email" ? { ...current, email: { ...current.email, body: event.target.value } } : { ...current, wa: { text: event.target.value } })} placeholder="Oi {{nome}}! Seu diagnóstico da {{empresa}} ficou pronto — posso te mandar o resumo aqui mesmo?" style={{ width: "100%", minHeight: 96, padding: "9px 11px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.5, resize: "vertical", fontFamily: "inherit" }} />
               </label>
               <div style={{ fontSize: 12, color: "var(--fg-4)", lineHeight: 1.5 }}>variáveis: nome, empresa, etapa · o envio respeita a janela de 24h do WhatsApp</div>
 
@@ -387,7 +387,7 @@ function DisparosScreen({ onOpenLead }) {
                 )}
                 <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={sendPrimary} disabled={!chosen.length || !messageReady || emailBusy} style={{ height: 40, padding: "0 16px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 13, fontWeight: 600, opacity: !chosen.length || !messageReady || emailBusy ? .5 : 1 }}>{emailBusy ? "Enviando…" : `Disparar para ${chosen.length}`}</button>
-                  <button onClick={() => setTab("sequencias")} style={{ height: 40, padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 600 }}>Agendar</button>
+                  <button onClick={() => setTab("sequencias")} style={{ height: 40, padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 600 }}>Agendar</button>
                 </div>
               </div>
             </section>
@@ -398,9 +398,9 @@ function DisparosScreen({ onOpenLead }) {
   );
 
   const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: 14 };
-  const field = { width: "100%", padding: "8px 10px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 };
+  const field = { width: "100%", padding: "8px 10px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 };
   const chipBtn = (on) => ({ display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 11px", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"), background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-2)" });
-  const sendChip = { display: "inline-flex", alignItems: "center", gap: 5, height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", fontSize: 11.5, fontWeight: 600, textDecoration: "none", cursor: "pointer" };
+  const sendChip = { display: "inline-flex", alignItems: "center", gap: 5, height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 11.5, fontWeight: 600, textDecoration: "none", cursor: "pointer" };
   const num = { fontSize: 12.5, textAlign: "right", fontVariantNumeric: "tabular-nums" };
 
   return (
@@ -424,7 +424,7 @@ function DisparosScreen({ onOpenLead }) {
               style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600 }}>
               {saving ? "salvando…" : "salvar"}
             </button>
-            <button onClick={newCampaign} className="mono dim" style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", fontSize: 12 }}>+ nova</button>
+            <button onClick={newCampaign} className="mono dim" style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-2)", fontSize: 12 }}>+ nova</button>
           </>
         )}
       </PageHead>
@@ -741,7 +741,7 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
   const leadById = Object.fromEntries((leads || []).map((l) => [l.id, l]));
 
   const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: 14 };
-  const field = { width: "100%", padding: "7px 9px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 };
+  const field = { width: "100%", padding: "7px 9px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 };
   const chip = (on) => ({ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", fontSize: 11.5, fontWeight: 600, cursor: "pointer", border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"), background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-2)" });
 
   if (!product) return null;
@@ -759,7 +759,7 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
             {s.name || "sem nome"}
           </button>
         ))}
-        <button onClick={() => setSeq(blankSeq(product?.id, me))} className="mono dim" style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", fontSize: 12 }}>+ nova</button>
+        <button onClick={() => setSeq(blankSeq(product?.id, me))} className="mono dim" style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-2)", fontSize: 12 }}>+ nova</button>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 14 }}>
@@ -832,7 +832,7 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
 
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={save} disabled={busy} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12.5, fontWeight: 600 }}>{busy ? "salvando…" : "salvar sequência"}</button>
-            {seq.id && <button onClick={removeSeq} className="mono dim" style={{ height: 30, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", fontSize: 12, color: "var(--neg)" }}>apagar</button>}
+            {seq.id && <button onClick={removeSeq} className="mono dim" style={{ height: 30, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-2)", fontSize: 12, color: "var(--neg)" }}>apagar</button>}
             {seq.status !== "active" && seq.id && <span className="mono dim" style={{ fontSize: 10.5, alignSelf: "center" }}>ative a sequência pra ela começar a inscrever e disparar</span>}
           </div>
         </div>
@@ -875,7 +875,7 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
                       </span>
                       {waUrl
                         ? <a href={waUrl} target="_blank" rel="noopener noreferrer" onClick={mark} style={{ display: "inline-flex", alignItems: "center", height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--wa-brand)", color: "var(--wa-brand-deep)", fontSize: 11.5, fontWeight: 600, textDecoration: "none" }}>abrir Whats ↗</a>
-                        : <button onClick={mark} className="mono" style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", fontSize: 11.5 }}>{wa ? "marcar enviado" : "sem telefone · marcar"}</button>}
+                        : <button onClick={mark} className="mono" style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 11.5 }}>{wa ? "marcar enviado" : "sem telefone · marcar"}</button>}
                     </div>
                   );
                 })}
@@ -912,7 +912,7 @@ function TemplatesTab({ product }) {
   async function del(id) { if (window.confirm("Apagar template?")) { try { await api.remove("drip_templates", id); reload(); } catch (e) { setNote({ ok: false, text: e.message }); } } }
 
   const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: 14 };
-  const field = { width: "100%", padding: "7px 9px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 };
+  const field = { width: "100%", padding: "7px 9px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 };
   if (!product) return null;
 
   return (

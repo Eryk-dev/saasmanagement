@@ -1407,8 +1407,8 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
   });
 
   const previewW = Math.round((tpl.group === "story" ? 300 : 340) * ZOOMS[zoom]);
-  const fieldStyle = { width: "100%", padding: "6px 9px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "inherit" };
-  const smallBtn = { height: 24, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11 };
+  const fieldStyle = { width: "100%", padding: "6px 9px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "inherit" };
+  const smallBtn = { height: 24, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11 };
 
   // Campos agrupados por slide (carrossel) pra edição não virar uma lista cega.
   const fieldGroups = [];
@@ -1440,7 +1440,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
         <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: "none" }} />
         <PageHead title="Canvas" sub="stories, feed e carrossel · PNG pronto pra postar">
           <Segmented value={format} onChange={setFormat} options={formatOptions.map(({ value, label }) => ({ value, label }))} />
-          <button onClick={downloadAll} style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 600 }}>Baixar PNG</button>
+          <button onClick={downloadAll} style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 600 }}>Baixar PNG</button>
           <button onClick={() => { window.location.hash = "social"; }} style={{ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 13, fontWeight: 600 }}>Publicar</button>
         </PageHead>
 
@@ -1639,7 +1639,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
               {tpl.slides > 1 && (
                 <select value={addSlide} onChange={(e) => setAddSlide(Number(e.target.value))}
                   title="Em qual slide o elemento novo entra"
-                  style={{ height: 24, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11 }}>
+                  style={{ height: 24, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11 }}>
                   {Array.from({ length: tpl.slides }, (_, i) => <option key={i} value={i + 1}>slide {i + 1}</option>)}
                 </select>
               )}

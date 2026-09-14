@@ -334,7 +334,7 @@ function FormsScreen({ saasId }) {
       </div>
 
       {toast && (
-        <div className="mono" style={{ position: "fixed", bottom: 22, left: "50%", transform: "translateX(-50%)", background: "var(--bg-3)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", padding: "8px 14px", fontSize: 12, boxShadow: "var(--shadow-pop)", zIndex: 90 }}>
+        <div className="mono" style={{ position: "fixed", bottom: 22, left: "50%", transform: "translateX(-50%)", background: "var(--bg-3)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "8px 14px", fontSize: 12, boxShadow: "var(--shadow-pop)", zIndex: 90 }}>
           {toast}
         </div>
       )}
@@ -498,7 +498,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <span className={"chip " + (draft.status === "published" ? "pos" : "")} style={{ height: 20 }}>{draft.status === "published" ? "publicado" : "rascunho"}</span>
-            <button onClick={onCancel} style={{ padding: "7px 12px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 12 }}>Cancelar</button>
+            <button onClick={onCancel} style={{ padding: "7px 12px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 12 }}>Cancelar</button>
             <button onClick={save} disabled={busy} style={{ padding: "7px 14px", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 500, opacity: busy ? 0.6 : 1 }}>
               {busy ? "Salvando…" : "Salvar"}
             </button>
@@ -1221,7 +1221,7 @@ function FormsDashboard({ forms }) {
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
         {forms.length > 1 ? (
           <select value={form.id} onChange={(e) => setFormId(e.target.value)}
-            style={{ height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontWeight: 600 }}>
+            style={{ height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontWeight: 600 }}>
             {forms.map((f) => <option key={f.id} value={f.id}>{f.name || f.id}</option>)}
           </select>
         ) : (

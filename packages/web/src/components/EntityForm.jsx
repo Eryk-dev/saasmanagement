@@ -223,7 +223,7 @@ function EntityForm({ entityKey, record, onClose, onSaved, onOpenLead, bare = fa
             Abrir o card existente
           </button>
         )}
-        <button type="button" onClick={() => onSaved()} style={{ padding: "9px 16px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 13 }}>Fechar</button>
+        <button type="button" onClick={() => onSaved()} style={{ padding: "9px 16px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 13 }}>Fechar</button>
       </div>
     </div>
   ) : (
@@ -233,7 +233,7 @@ function EntityForm({ entityKey, record, onClose, onSaved, onOpenLead, bare = fa
         <button type="submit" disabled={busy} style={{ flex: 1, padding: "9px 12px", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500, opacity: busy ? 0.6 : 1 }}>
           {generating ? "Gerando proposta…" : busy ? "Salvando…" : isEdit ? "Salvar" : "Criar"}
         </button>
-        <button type="button" onClick={onClose} style={{ padding: "9px 16px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 13 }}>Cancelar</button>
+        <button type="button" onClick={onClose} style={{ padding: "9px 16px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 13 }}>Cancelar</button>
       </div>
     </div>
   );

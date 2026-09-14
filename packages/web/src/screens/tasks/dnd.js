@@ -65,7 +65,7 @@ export function useBoardDnd({ boardRef, onDrop, getSelection }) {
       if (ids.length > 1) {
         const g = document.createElement("div");
         g.textContent = `${ids.length} tarefas`;
-        Object.assign(g.style, { position: "fixed", top: "-1000px", left: "-1000px", padding: "8px 12px", background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "8px", fontSize: "13px", fontWeight: "600", boxShadow: "var(--shadow-pop)", color: "var(--fg-1)" });
+        Object.assign(g.style, { position: "fixed", top: "-1000px", left: "-1000px", padding: "8px 12px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "8px", fontSize: "13px", fontWeight: "600", boxShadow: "var(--shadow-pop)", color: "var(--fg-1)" });
         document.body.appendChild(g); ghost.current = g;
         try { e.dataTransfer.setDragImage(g, 16, 16); } catch { /* sem suporte */ }
       }

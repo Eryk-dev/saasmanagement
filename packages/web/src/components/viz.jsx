@@ -37,7 +37,9 @@ export function Segmented({ value, options, onChange }) {
     <div style={{ display: "inline-flex", gap: 2, padding: 3, borderRadius: 9, background: "var(--bg-2)", flexShrink: 0 }}>
       {options.map((o) => (
         <button key={o.value} onClick={() => onChange(o.value)} style={{
-          padding: "7px 14px", borderRadius: 7, fontSize: 13, fontWeight: value === o.value ? 600 : 500,
+          /* 30px de altura e 12,5px, medidos na prancha (era 13px sem altura
+             fixa, o que deixava o trilho mais alto que o do protótipo). */
+          height: 30, padding: "0 14px", borderRadius: 7, fontSize: 12.5, fontWeight: value === o.value ? 600 : 500,
           background: value === o.value ? "var(--bg-1)" : "transparent",
           boxShadow: value === o.value ? "var(--shadow-segment)" : "none",
           color: value === o.value ? "var(--fg-1)" : "var(--fg-3)",

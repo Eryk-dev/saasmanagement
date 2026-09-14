@@ -25,7 +25,7 @@ const lastView = { tab: "funnel" };
 
 const inputStyle = {
   width: "100%", height: 32, padding: "0 9px",
-  background: "var(--bg-1)", border: "1px solid var(--line-2)",
+  background: "var(--bg-1)", border: "1px solid var(--line-1)",
   borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12, fontFamily: "var(--sans)",
 };
 const slug = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
@@ -89,7 +89,7 @@ function SettingsScreen({ saasId }) {
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, width: "100%" }}>
       <PageHead title="Configurações" sub={`funil, campos e integrações · ${s?.name}`}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button onClick={() => window.location.reload()} style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>descartar</button>
+          <button onClick={() => window.location.reload()} style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>descartar</button>
           <button onClick={saveAll} disabled={saveState === "busy"} style={{ height: 32, padding: "0 15px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600, transition: "background .15s ease", ...saveLook }}>
             {saveState === "busy" ? "salvando…" : saveState === "done" ? "salvo ✓" : saveState === "error" ? "erro ao salvar" : "salvar alterações"}
           </button>
@@ -293,7 +293,7 @@ function FunnelSettings({ s }) {
             </div>
           </div>
           <div style={{ paddingTop: 14, display: "flex", alignItems: "center", gap: 10 }}>
-            <button type="button" onClick={() => setRows((current) => [...current, { stage: "", kind: "outro", conv: 1, _orig: null }])} style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", fontSize: 12.5, fontWeight: 600 }}>+ etapa</button>
+            <button type="button" onClick={() => setRows((current) => [...current, { stage: "", kind: "outro", conv: 1, _orig: null }])} style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", fontSize: 12.5, fontWeight: 600 }}>+ etapa</button>
             {wonCount !== 1 && <span style={{ fontSize: 12, color: "var(--warn)" }}>{wonCount === 0 ? "adicione um estágio do tipo ganho" : "mantenha apenas um estágio do tipo ganho"}</span>}
           </div>
           <SaveBar onSave={save} hint={migrated != null ? `salvo · ${migrated} card(s) migrados` : ""} />
@@ -326,7 +326,7 @@ function LossReasonsSettings({ s }) {
       <div style={{ padding: "24px var(--pad-x) 0" }}><SettingHeader number="02" title="Motivos de perda" sub="aparecem ao marcar Perdido/Desqualificado" /></div>
       <div style={{ padding: "16px var(--pad-x) 24px", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         {rows.map((r, i) => (
-          <span key={i} style={{ display: "inline-flex", alignItems: "center", height: 34, border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", background: "var(--bg-1)", padding: "0 8px 0 12px" }}>
+          <span key={i} style={{ display: "inline-flex", alignItems: "center", height: 34, border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-1)", padding: "0 8px 0 12px" }}>
             <input value={r.label || ""} placeholder="Novo motivo" onChange={(e) => setRows((current) => current.map((item, index) => index === i ? { ...item, label: e.target.value } : item))} style={{ width: Math.max(64, String(r.label || "Novo motivo").length * 7.5), border: 0, background: "transparent", fontSize: 12.5, fontWeight: 600, color: "var(--fg-2)" }} />
             <button type="button" onClick={() => setRows((current) => current.filter((_, index) => index !== i))} style={{ color: "var(--fg-4)", fontSize: 11, padding: "0 2px" }}>✕</button>
           </span>
@@ -630,7 +630,7 @@ function TeamSettings() {
             </select>
             <ScreensPicker screens={u.screens || []} roles={u.roles || []} onChange={(screens) => setUserScreens(u, screens)} />
             <button onClick={() => removeUser(u)} title={`Remover ${u.name || u.id} do time`}
-              style={{ justifySelf: "center", width: 26, height: 26, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-4)", fontSize: 13, cursor: "pointer" }}
+              style={{ justifySelf: "center", width: 26, height: 26, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-4)", fontSize: 13, cursor: "pointer" }}
               onMouseEnter={(e) => { e.currentTarget.style.color = "var(--neg)"; e.currentTarget.style.borderColor = "var(--neg)"; }}
               onMouseLeave={(e) => { e.currentTarget.style.color = "var(--fg-4)"; e.currentTarget.style.borderColor = "var(--line-2)"; }}>✕</button>
           </div>
@@ -645,7 +645,7 @@ function TeamSettings() {
               title="Senha inicial gerada automaticamente · pode editar antes de criar"
               onChange={(e) => setInvite({ ...invite, password: e.target.value })} style={{ ...inputStyle, width: 130 }} />
             <button type="button" onClick={() => setInvite({ ...invite, password: genPassword() })} title="Gerar outra senha"
-              style={{ width: 26, height: 26, borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-4)", fontSize: 13, cursor: "pointer" }}>↻</button>
+              style={{ width: 26, height: 26, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-4)", fontSize: 13, cursor: "pointer" }}>↻</button>
             <PrimaryButton onClick={createUser} disabled={!invite.name || String(invite.password).length < 4}>criar usuário</PrimaryButton>
             <button onClick={() => setInvite(null)} className="mono dim" style={{ fontSize: 11 }}>cancelar</button>
           </>
@@ -937,13 +937,13 @@ function IntegrationsSettings({ s }) {
               <span className="kicker" style={{ whiteSpace: "nowrap" }}>webhook (tempo real, opcional)</span>
               <code className="mono" style={{ fontSize: 11, padding: "4px 8px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-2)", overflowWrap: "anywhere" }}>{mpWebhookUrl}</code>
               <button onClick={() => { try { navigator.clipboard.writeText(mpWebhookUrl); setMpMsg("URL copiada — cole no painel MP → Webhooks (evento Pagamentos)"); } catch { window.prompt("URL do webhook:", mpWebhookUrl); } }}
-                style={{ height: 24, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11 }}>copiar</button>
+                style={{ height: 24, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11 }}>copiar</button>
               <span className={"chip " + (mpWebhookOn ? "pos" : "")} style={{ height: 20 }} title={mpWebhookOn ? "MERCADOPAGO_WEBHOOK_SECRET definido: eventos assinados" : "sem MERCADOPAGO_WEBHOOK_SECRET: o webhook recusa eventos; o poller de 10 min segue cobrindo tudo"}>
                 {mpWebhookOn ? "assinatura ok" : "sem secret"}
               </span>
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
-              <button onClick={mpSync} disabled={mpBusy} style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, opacity: mpBusy ? 0.6 : 1 }}>
+              <button onClick={mpSync} disabled={mpBusy} style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, opacity: mpBusy ? 0.6 : 1 }}>
                 {mpBusy ? "sincronizando…" : "↻ sincronizar pagamentos agora"}
               </button>
               <span className="mono dim" style={{ fontSize: 10.5 }}>o servidor sincroniza sozinho a cada 10 min (1º boot varre 400 dias)</span>
