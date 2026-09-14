@@ -1,4 +1,6 @@
 import React from "react";
+import "./commercial.css";
+import "./proposals.css";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { EmptyState, PrimaryButton, MoreMenu } from "../atoms.jsx";
@@ -122,7 +124,7 @@ const patchShowIf = (slide, field, v) => {
 // sobram 716px. A soma dos PISOS + gaps de cada tabela tem que caber aí, e o
 // smoke-ssr falha se alguém alargar uma coluna sem perceber.
 export const TPL_GRID = "minmax(150px,1.3fr) 92px minmax(120px,1fr) 76px 180px";
-export const PROP_GRID = "minmax(140px,1.3fr) minmax(110px,1fr) 76px minmax(130px,1fr) 190px";
+export const PROP_GRID = "minmax(130px,1.3fr) minmax(110px,1fr) 76px minmax(120px,1fr) 180px";
 export const GRID_GAP = 12;
 export const GRID_BUDGET = 716;
 
@@ -258,7 +260,7 @@ function ProposalsScreen({ saasId }) {
       ) : (
         <div className="tbl-x">
           <div>
-            <div className="kicker" style={{ display: "grid", gridTemplateColumns: PROP_GRID, gap: 12, padding: "10px var(--inset-x)", fontWeight: 600, borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+            <div className="kicker proposals-table-head" style={{ display: "grid", gridTemplateColumns: PROP_GRID, gap: 12, padding: "10px var(--inset-x)", fontWeight: 600, borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
               <span>Lead</span><span>Template</span><span>Gerada</span><span>O que aconteceu</span><span style={{ textAlign: "right" }}>Ação</span>
             </div>
             {filtrada.map((p) => {
@@ -271,7 +273,7 @@ function ProposalsScreen({ saasId }) {
               const wa = waLink(p.data?.lead?.phone);
               const url = `${publicBase()}/p/${p.id}`;
               return (
-                <div key={p.id} style={{ display: "grid", gridTemplateColumns: PROP_GRID, gap: 12, padding: "12px var(--inset-x)", alignItems: "center", borderTop: "1px solid var(--line-faint)" }}>
+                <div key={p.id} className="proposals-table-row" style={{ display: "grid", gridTemplateColumns: PROP_GRID, gap: 12, padding: "12px var(--inset-x)", alignItems: "center", borderTop: "1px solid var(--line-faint)" }}>
                   <span style={{ minWidth: 0 }}>
                     <span style={{ display: "block", fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{leadName}</span>
                     {company && <span style={{ display: "block", fontSize: 11.5, color: "var(--fg-4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{company}</span>}
@@ -302,15 +304,15 @@ function ProposalsScreen({ saasId }) {
                       funil aqui em cima mente); o WhatsApp e o copiar levam o
                       link limpo. */}
                   <span style={{ textAlign: "right", whiteSpace: "nowrap", display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
-                    <a href={cockpitProposalUrl(url)} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 600 }}>abrir ↗</a>
+                    <a href={cockpitProposalUrl(url)} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)", textDecoration: "none" }}>abrir ↗</a>
                     {!p.accepted && wa && (
                       <a href={`${wa}?text=${encodeURIComponent(`Oi${primeiroNome ? ` ${primeiroNome}` : ""}, te mandei a proposta aqui: ${url}`)}`}
                         target="_blank" rel="noopener noreferrer" title={views > 0 ? "abriu e não respondeu: cobrar resposta" : "nunca abriu: reenviar o link"}
-                        style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--wa-brand)", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>
+                        style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--pos)", background: "var(--pos)", color: "var(--btn-fg)", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>
                         {views > 0 ? "cobrar" : "reenviar"}
                       </a>
                     )}
-                    <button onClick={() => { try { navigator.clipboard.writeText(url); setCopied(p.id); setTimeout(() => setCopied(""), 1600); } catch { /* ignore */ } }}
+                    <button onClick={async () => { try { await navigator.clipboard.writeText(url); setCopied(p.id); setTimeout(() => setCopied(""), 1600); } catch { window.prompt("Copie o link da proposta:", url); } }}
                       style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, cursor: "pointer" }}>
                       {copied === p.id ? "copiado ✓" : "copiar"}
                     </button>
@@ -325,16 +327,16 @@ function ProposalsScreen({ saasId }) {
   );
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+    <div className="commercial-page commercial-standard proposals-page">
       <PageHead title="Propostas" sub="templates por marca · a proposta é gerada a partir do lead">
         <PrimaryButton onClick={() => setEditing({ template: null })}>+ novo template</PrimaryButton>
       </PageHead>
 
-      <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+      <div className="proposals-body" style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
         {/* A faixa do funil é a CorrenteDoDinheiro compartilhada (14/09): o
             rótulo em cima, o valor embaixo e a conversão NA SETA, com a
             legenda do que ela mede. Era value-em-cima e a taxa solta. */}
-        <CorrenteDoDinheiro
+        <CorrenteDoDinheiro tamanho="lg" style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 18 }}
           passos={[
             { rotulo: "Geradas em 30 dias", valor: String(fun.geradas) },
             { rotulo: "Abertas pelo lead", valor: String(fun.abertas), taxa: pct(fun.abertas, fun.geradas) == null ? "—" : `${pct(fun.abertas, fun.geradas)}%`, taxaNota: "abriram" },
@@ -366,14 +368,14 @@ function ProposalsScreen({ saasId }) {
             </div>
             <div className="tbl-x">
               <div>
-                <div className="kicker" style={{ display: "grid", gridTemplateColumns: TPL_GRID, gap: 12, padding: "8px var(--inset-x)", fontWeight: 600, background: "var(--bg-inset)", borderTop: "1px solid var(--line-1)" }}>
+                <div className="kicker proposals-table-head" style={{ display: "grid", gridTemplateColumns: TPL_GRID, gap: 12, padding: "8px var(--inset-x)", fontWeight: 600, background: "var(--bg-inset)", borderTop: "1px solid var(--line-1)" }}>
                   <span>Template</span><span>Estado</span><span>Gerada → aberta → fechou</span><span style={{ textAlign: "right" }}>Conversão</span><span style={{ textAlign: "right" }}>Ação</span>
                 </div>
                 {templatesPorConversao.map(({ t, g, o, c, conv }) => {
                   const pub = t.status === "published";
                   const largura = (n) => (g > 0 ? Math.max(2, Math.min(100, (n / g) * 100)) : 0);
                   return (
-                    <div key={t.id} style={{ display: "grid", gridTemplateColumns: TPL_GRID, gap: 12, padding: "12px var(--inset-x)", alignItems: "center", borderTop: "1px solid var(--line-faint)" }}>
+                    <div key={t.id} className="proposals-table-row" style={{ display: "grid", gridTemplateColumns: TPL_GRID, gap: 12, padding: "12px var(--inset-x)", alignItems: "center", borderTop: "1px solid var(--line-faint)" }}>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: 13.5, fontWeight: 650, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name || t.id}</div>
                         <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{`${(t.slides || []).length} slides`}</div>
@@ -381,12 +383,13 @@ function ProposalsScreen({ saasId }) {
                       {/* Rascunho NÃO é esmaecido: o badge carrega o estado (o
                           opacity derrubava o contraste do texto de 12px). */}
                       <span><span className={pub ? "chip accent" : "chip"}>{pub ? "base" : "rascunho"}</span></span>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ display: "flex", height: 7, borderRadius: 999, overflow: "hidden", background: "var(--bg-2)" }}>
+                      <div className="proposals-conversion" style={{ minWidth: 0 }}>
+                        <span className="tnum">{g}</span>
+                        <div style={{ display: "flex", flex: 1, height: 7, borderRadius: 999, overflow: "hidden", background: "var(--bg-2)" }}>
                           <div style={{ width: `${largura(c)}%`, background: "var(--pos)" }} />
                           <div style={{ width: `${Math.max(0, largura(o) - largura(c))}%`, background: "var(--accent)" }} />
                         </div>
-                        <div className="mono dim tnum" style={{ fontSize: 10.5, marginTop: 3 }}>{`${g} · ${o} · ${c}`}</div>
+                        <span className="tnum" style={{ color: "var(--accent)" }}>{o}</span><span style={{ color: "var(--fg-4)", fontSize: 11 }}>→</span><span className="tnum" style={{ color: "var(--pos)" }}>{c}</span>
                       </div>
                       <span className="tnum" style={{ textAlign: "right", fontSize: 14, fontWeight: 700, color: conv == null ? "var(--fg-4)" : conv >= 20 ? "var(--pos)" : "var(--fg-1)" }}>
                         {conv == null ? "—" : `${conv}%`}
@@ -469,7 +472,7 @@ function TemplateEditor({ template, saasId, onDone, onCancel }) {
   }
 
   return (
-    <div className="editor-split" style={{ flex: 1, "--cols": "minmax(min(100%, 460px), 1fr) minmax(min(100%, 380px), 44%)", minHeight: 0 }}>
+    <div className="editor-split proposals-editor" style={{ flex: 1, "--cols": "minmax(min(100%, 460px), 1fr) minmax(min(100%, 380px), 44%)", minHeight: 0 }}>
       <div style={{ display: "flex", flexDirection: "column", minHeight: 0, borderRight: "1px solid var(--line-1)" }}>
         <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
