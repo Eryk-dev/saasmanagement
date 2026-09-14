@@ -28,6 +28,7 @@
 .intform-dialog { min-width: 0; }
 .intform-answer { display: flex; flex: 1; flex-direction: column; min-height: 0; }
 @media (max-width: 900px) {
+  .tbl-x > .intform-table { min-width: 0; }
   .intform-table thead { display: none; }
   .intform-table tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px 16px; }
   .intform-table td:first-child, .intform-table td:last-child { grid-column: 1 / -1; }
