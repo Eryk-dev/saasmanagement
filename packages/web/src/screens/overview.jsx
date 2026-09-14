@@ -3,7 +3,7 @@ import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { PageHead, Card } from "../components/viz.jsx";
 import { EmptyState, Avatar } from "../atoms.jsx";
-import { stageKind, isRealLead, isWonLead, wonAtOf } from "../lib/funnel.js";
+import { stageKind, isRealLead, isWonLead, wonAtOf, openStages } from "../lib/funnel.js";
 import { bizDay } from "../lib/format.js";
 import { canSeeScreen, userById, displayName } from "../lib/users.js";
 import { levelLabel } from "../lib/levels.js";
@@ -209,6 +209,54 @@ function PaceFacts({ pace, goal, falta }) {
   );
 }
 
+// ── Termômetro da meta ──────────────────────────────────────────────────────
+// Coluna de 96×300: trilha hachurada (o que falta), fechado no teal subindo do
+// chão, em follow-up empilhado por cima num tom mais claro, a marca tracejada
+// do pace atravessando e o rodapé com a porcentagem na cor do estado. A altura
+// é sobre a meta, então passar de 100% satura em 100% e o chip de super meta é
+// quem conta o resto.
+function Termometro({ s, goal, lad, naMesa, title }) {
+  const alvo = Number(s.target) || 0;
+  const pctDe = (v) => (alvo > 0 ? Math.max(0, Math.min(100, (v / alvo) * 100)) : 0);
+  const fechado = pctDe(Number(s.sold) || 0);
+  // A fatia da mesa é o que CABE entre o fechado e o topo: mostrar mais que
+  // isso faria a coluna prometer acima da meta.
+  const mesa = Math.max(0, Math.min(100 - fechado, pctDe(naMesa?.valor || 0)));
+  const pacePct = !goal.ended && s.expectedProgress != null ? Math.max(0, Math.min(100, s.expectedProgress * 100)) : null;
+  const cor = lvlColor(lad?.lvl, "var(--accent)");
+  const pctTxt = `${Math.round((lad ? lad.pct : s.progress || 0) * 100)}%`;
+  return (
+    <div style={{ width: 140, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center" }}>
+      <div style={{ textAlign: "center", marginBottom: 12 }}>
+        <div className="kicker">Meta do mês</div>
+        <div className="tnum" style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.2, marginTop: 3 }}>{money(alvo)}</div>
+      </div>
+      <div title={title} style={{ width: 96, height: 300, borderRadius: "var(--r-3)", border: "1px solid var(--line-1)", overflow: "hidden", display: "flex", flexDirection: "column", cursor: "help" }}>
+        <div className="meta-track" style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+          {pacePct != null && (
+            <>
+              <span style={{ position: "absolute", left: 0, right: 0, bottom: `${pacePct}%`, height: 0, borderTop: `1px dashed ${cor}` }} />
+              <span className="tnum" style={{ position: "absolute", right: 5, bottom: `calc(${pacePct}% + 3px)`, fontSize: 11, fontWeight: 700, color: cor }}>{`pace ${Math.round(pacePct)}%`}</span>
+            </>
+          )}
+          {mesa > 0 && (
+            <div style={{ position: "relative", background: "var(--chart-1)", opacity: 0.55, height: `${mesa}%` }}>
+              <span className="meta-fluxo" />
+            </div>
+          )}
+          <div className="meta-sobe" style={{ position: "relative", background: cor, height: `${fechado}%` }}>
+            <span className="meta-fluxo" />
+          </div>
+        </div>
+        <span className="tnum" style={{ height: 40, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, color: "oklch(1 0 0)", fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", background: cor }}>
+          <span className="meta-viva" style={{ width: 8, height: 8, borderRadius: 999, background: "oklch(1 0 0)", display: "inline-block" }} />
+          {pctTxt}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function MetaMesCard({ pace, goal, onNav, links = true }) {
   if (!goal) return null;
   const s = goal.sale || {};
@@ -239,6 +287,23 @@ function MetaMesCard({ pace, goal, onNav, links = true }) {
     + " À vista e cartão 12x contam o contrato cheio (a adquirente antecipa); boleto faturado, PIX parcelado e assinatura recorrente contam só o que entrou de verdade na janela.";
   const contractsTitle = "Meta de contratos da época (a digitada em Metas vence; senão venda ÷ ticket sem contas grandes), repartida pelos dias úteis da janela.";
   const falta = s.target != null ? Math.max(0, r2((s.target || 0) - (s.sold || 0))) : null;
+  // A distância pro pace EM DINHEIRO (o risquinho só dizia onde a marca está).
+  const esperadoAteAqui = s.target != null && s.expectedProgress != null ? r2((s.target || 0) * s.expectedProgress) : 0;
+  const paceDelta = r2((s.sold || 0) - esperadoAteAqui);
+  // "Em follow-up": o que está aberto no funil. MESMA régua do "em jogo" do
+  // Pipeline (leads em etapa aberta do produto), pra as duas telas nunca
+  // discordarem sobre o tamanho da mesa.
+  const naMesa = React.useMemo(() => {
+    const cfg = (window.SEED?.SAAS || []).find((x) => x.id === goal.saas) || (window.SEED?.SAAS || [])[0];
+    if (!cfg) return { n: 0, valor: 0 };
+    const abertas = new Set(openStages(cfg));
+    let n = 0, valor = 0;
+    for (const l of window.SEED?.LEADS || []) {
+      if (l.saas !== cfg.id || !isRealLead(l) || !abertas.has(l.stage)) continue;
+      n++; valor += Number(l.amount) || 0;
+    }
+    return { n, valor: r2(valor) };
+  }, [goal.saas, goal.since, goal.until]);
   return (
     <Card title={title} hint={`${label} · segue o filtro do topo · a meta vive nos dias úteis`}
       action={links ? <button onClick={() => onNav && onNav("analise")} style={{ fontSize: 12.5, fontWeight: 500, color: "var(--accent)" }}>Ver análise completa →</button> : null}>
@@ -251,23 +316,55 @@ function MetaMesCard({ pace, goal, onNav, links = true }) {
         <div className="resp-cols" style={{ "--cols": "minmax(0, 1fr) 250px", gap: "16px 28px", padding: "18px var(--inset-x) 20px" }}>
           <div style={{ minWidth: 0 }}>
             {s.target != null ? (
-              <>
-                <div title={saleTitle} style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", cursor: "help" }}>
-                  <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 42, fontWeight: 700, letterSpacing: "-0.03em", lineHeight: 1 }}>{money(s.sold)}</span>
-                  <span className="tnum" style={{ fontSize: 14.5, color: "var(--fg-3)" }}>de {money(s.target)} · {Math.round((s.progress || 0) * 100)}%</span>
-                  <LvlChip lvl={sLad?.lvl} label={goal.ended ? endedLabel(sLad?.lvl) : sLad?.chip} />
+              // ── O TERMÔMETRO (14/09, protótipo do Leo) ────────────────────
+              // A régua horizontal de 12px virou coluna de 96×300: a trilha
+              // hachurada é o que falta, o preenchido sobe do chão e a marca
+              // tracejada do pace atravessa a coluna. O que a régua não dizia e
+              // agora diz: quanto está EM FOLLOW-UP (a fatia clara, empilhada
+              // sobre o fechado) e a distância pro pace EM PALAVRAS, não só o
+              // risquinho ("R$ 12.400 atrás · o pace pedia R$ 46.400 até aqui").
+              <div style={{ display: "flex", gap: 26, alignItems: "stretch", flexWrap: "wrap" }}>
+                <Termometro s={s} goal={goal} lad={sLad} naMesa={naMesa} title={saleTitle} />
+                <div style={{ flex: "1 1 240px", minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center", gap: 14 }}>
+                  <div>
+                    <div className="kicker">{`Vendido em ${label}`}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginTop: 4 }}>
+                      <span className="tnum" title={saleTitle}
+                        style={{ fontFamily: "var(--display)", fontSize: 52, fontWeight: 700, letterSpacing: "-0.04em", lineHeight: 1, cursor: "help", color: lvlColor(sLad?.lvl, "var(--fg-1)") }}>
+                        {money(s.sold)}
+                      </span>
+                      <LvlChip lvl={sLad?.lvl} label={goal.ended ? endedLabel(sLad?.lvl) : sLad?.chip} />
+                    </div>
+                    <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginTop: 12 }}>
+                      {!goal.ended && s.expectedProgress != null && (
+                        <div style={{ flex: "1 1 170px", minWidth: 0 }}>
+                          <div style={{ fontSize: 12, color: "var(--fg-3)" }}>contra o pace de hoje</div>
+                          <div className="tnum" style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.025em", lineHeight: 1.2, color: paceDelta >= 0 ? "var(--pos)" : "var(--neg)" }}>
+                            {`${paceDelta >= 0 ? "+" : "−"}${money(Math.abs(paceDelta))}`}
+                          </div>
+                          <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 4 }}>{`o pace pedia ${money(esperadoAteAqui)} até aqui`}</div>
+                        </div>
+                      )}
+                      {naMesa.valor > 0 && (
+                        <div style={{ flex: "1 1 170px", minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ width: 12, height: 12, borderRadius: 3, background: "var(--chart-1)", flexShrink: 0 }} />
+                            <span style={{ fontSize: 12, color: "var(--fg-3)" }}>{`em follow-up · ${int(naMesa.n)}`}</span>
+                          </div>
+                          <div className="tnum" style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.025em", lineHeight: 1.2, marginTop: 2 }}>{money(naMesa.valor)}</div>
+                          <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 4 }}>o que ainda pode virar venda</div>
+                        </div>
+                      )}
+                    </div>
+                    {c.sold > 0 && (
+                      <div style={{ fontSize: 13, color: "var(--fg-3)", marginTop: 10 }}>
+                        {`${int(c.sold)} ${c.sold === 1 ? "contrato assinado" : "contratos assinados"}`}
+                        {c.sold > 0 && s.sold > 0 ? ` · ticket médio ${money(s.sold / c.sold)}` : ""}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div style={{ position: "relative", height: 12, borderRadius: 999, background: "var(--bg-2)", marginTop: 24 }}>
-                  <span className={sLad?.lvl === "gold" ? "super-fill" : undefined}
-                    style={{ position: "absolute", top: 0, bottom: 0, left: 0, minWidth: 4, borderRadius: 999, width: `${Math.min(100, Math.round((sLad ? sLad.pct : s.progress || 0) * 100))}%`, background: lvlColor(sLad?.lvl, "var(--accent)") }} />
-                  {!goal.ended && s.expectedProgress != null && (
-                    <span title="pace: onde a meta deveria estar hoje"
-                      style={{ position: "absolute", top: -5, bottom: -5, left: `${Math.min(100, Math.round(s.expectedProgress * 100))}%`, width: 2, borderRadius: 1, background: "var(--fg-3)" }}>
-                      <span style={{ position: "absolute", top: -15, left: "50%", transform: "translateX(-50%)", fontSize: 9.5, color: "var(--fg-4)", letterSpacing: "0.04em" }}>hoje</span>
-                    </span>
-                  )}
-                </div>
-              </>
+              </div>
             ) : (
               <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Sem meta de venda pra esse período.</div>
             )}

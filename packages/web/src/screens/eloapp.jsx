@@ -3,6 +3,7 @@ import { api } from "../lib/api.js";
 import { fmt } from "../lib/format.js";
 import { PageHead, Segmented, Card, LineChart, StatTile } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
+import { AvisoTopo } from "../components/story.jsx";
 import { FunnelLadder } from "../charts.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { usePeriod } from "../components/period-picker.jsx";
@@ -102,6 +103,10 @@ function EloAppScreen() {
     { stage: "Ativado", count: orders.activated_period || 0, conv: (orders.approved_period || 0) > 0 ? (orders.activated_period || 0) / orders.approved_period : 0 },
   ];
 
+  // Pagou e não ativou: a maior perda do funil do app, derivada dos MESMOS
+  // números que o funil desenha (nunca de literal).
+  const pagouNaoAtivou = Math.max(0, (orders.approved_period || 0) - (orders.activated_period || 0));
+
   const series = (rows, key) => (rows || []).map((r) => ({ x: (r.d || "").slice(5), v: r[key] || 0 }));
   const missionsDaily = d.missions_daily || [];
   const soloTotal = missionsDaily.reduce((n, r) => n + (r.solo || 0), 0);
@@ -120,12 +125,34 @@ function EloAppScreen() {
       {head}
       <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
-          <StatTile label="MRR estimado" value={fmt.money(mrr)} title="assinaturas ativas × preço do plano" delta={`${activeWeb + activeIap} assinantes pagantes`} />
-          <StatTile label="Assinantes ativos" value={String(activeWeb + activeIap)} delta={`${activeWeb} web · ${activeIap} lojas`} />
-          <StatTile label="Trials ativos" value={String(trials.active ?? "—")} delta={`${trials.new_period ?? 0} novos no período`} />
-          <StatTile label="Casais" value={`${couples.accepted ?? 0}/${couples.total ?? 0}`} delta="convite aceito / total" />
-          <StatTile label="Casais ativos no período" value={String(missions.active_couples ?? 0)} delta={`${missions.revealed ?? 0} missões reveladas`} />
+        {/* ── O aviso primeiro, a história depois (14/09) ──────────────────
+            A tela abria com cinco números de peso igual e o funil (que é a
+            história dela) ficava num card ao lado. Quem paga e não ativa é a
+            maior perda do funil do app, então esse é o número que abre. */}
+        {pagouNaoAtivou > 0 && (
+          <AvisoTopo
+            titulo={`${pagouNaoAtivou} ${pagouNaoAtivou === 1 ? "pagou e não ativou o app" : "pagaram e não ativaram o app"}`}
+            nota={`é a maior perda do funil${(orders.in_recovery_now || 0) > 0 ? ` · ${orders.in_recovery_now} em recuperação agora` : ""}`}
+          />
+        )}
+
+        {/* A foto do período numa linha, como o Resumo do Financeiro faz: os
+            cinco números continuam todos aqui, sem virar cinco tiles de 30px
+            competindo com a história. */}
+        <div style={{ display: "flex", gap: 22, flexWrap: "wrap", padding: "12px var(--inset-x)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
+          {[
+            ["MRR estimado", fmt.money(mrr), `${activeWeb + activeIap} assinantes pagantes`, "assinaturas ativas × preço do plano"],
+            ["Assinantes ativos", String(activeWeb + activeIap), `${activeWeb} web · ${activeIap} lojas`, ""],
+            ["Trials ativos", String(trials.active ?? "—"), `${trials.new_period ?? 0} novos no período`, ""],
+            ["Casais", `${couples.accepted ?? 0}/${couples.total ?? 0}`, "convite aceito / total", ""],
+            ["Casais ativos no período", String(missions.active_couples ?? 0), `${missions.revealed ?? 0} missões reveladas`, ""],
+          ].map(([rot, val, nota, tip]) => (
+            <span key={rot} title={tip || undefined} style={{ display: "inline-flex", flexDirection: "column", minWidth: 0 }}>
+              <span className="kicker">{rot}</span>
+              <span className="tnum" style={{ fontSize: 17, fontWeight: 700, marginTop: 2 }}>{val}</span>
+              <span style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{nota}</span>
+            </span>
+          ))}
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>

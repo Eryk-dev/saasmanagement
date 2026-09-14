@@ -87,6 +87,8 @@ try {
   const cases = [
     ["overview", "/src/screens/overview.jsx", "OverviewScreen", { onNav() {}, onOpenLead() {} }, "Visão geral"],
     ["overview-meta", "/src/screens/overview.jsx", "MetaMesCard", { pace: fakePace, goal: fakeGoal, onNav() {} }, "Contratos"],
+    // O termômetro (14/09): a coluna, a marca do pace e a distância em palavras.
+    ["overview-termometro", "/src/screens/overview.jsx", "MetaMesCard", { pace: fakePace, goal: fakeGoal, onNav() {} }, "contra o pace de hoje"],
     ["overview-funil", "/src/screens/overview.jsx", "FunilPeriodo", { team: fakeTeam, win: fakeWin, pLabel: "este mês" }, "Ganhos"],
     ["metrics", "/src/screens/metrics.jsx", "MetricsScreen", {}, "Publicidade"],
     ["expenses", "/src/screens/expenses.jsx", "ExpensesScreen", {}, "Pagamentos"],

@@ -202,6 +202,21 @@ body[data-theme="dark"] {
   --z-command: 120;                    /* ⌘K por cima de tudo que é conteúdo */
 }
 
+/* Termômetro da meta do mês (Visão geral, 14/09 — protótipo do Leo). A régua
+   horizontal virou coluna: a trilha hachurada é o que falta, o preenchido sobe
+   do chão (fechado no teal, em follow-up no teal claro) e a listra correndo
+   diz que o número é de agora. Movimento morre em prefers-reduced-motion. */
+.meta-track { background: repeating-linear-gradient(135deg, var(--bg-inset), var(--bg-inset) 6px, var(--bg-2) 6px, var(--bg-2) 12px); }
+.meta-fluxo { position: absolute; inset: 0; pointer-events: none; background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.16) 0 8px, rgba(255,255,255,0) 8px 16px); animation: meta-fluxo 2.4s linear infinite; }
+@keyframes meta-fluxo { to { background-position: 22.63px 0; } }
+.meta-sobe { animation: meta-sobe .7s cubic-bezier(.22,.61,.36,1) both; }
+@keyframes meta-sobe { from { height: 0; opacity: 0; } }
+.meta-viva { animation: meta-viva 1.8s ease-in-out infinite; }
+@keyframes meta-viva { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .meta-fluxo, .meta-sobe, .meta-viva { animation: none; }
+}
+
 * { box-sizing: border-box; }
 
 html, body {
