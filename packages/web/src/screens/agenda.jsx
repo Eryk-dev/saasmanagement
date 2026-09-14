@@ -256,7 +256,9 @@ export function AgendaScreen({ onOpenLead }) {
           {notice && (
             <span style={{ padding: "7px 12px", borderRadius: "var(--r-2)", background: "var(--warn-soft)", color: "var(--warn)", fontSize: 12.5, fontWeight: 500 }}>{notice}</span>
           )}
-          <Segmented value={view} onChange={setView} options={VIEW_OPTIONS} />
+          {/* A visão desceu pro topo da GRADE (prancha, 14/09): ela manda no
+              mesmo eixo que a navegação de período, e as duas ficavam em
+              barras diferentes. */}
           <PrimaryButton onClick={() => setEditor({ block: null, date: ymd(new Date()), fromHour: 9 })}>+ compromisso</PrimaryButton>
         </span>
       </PageHead>

@@ -41,9 +41,14 @@ const corDe = (tom) => TOM[tom] || TOM.neutro;
 // fica em --fg-2 e o botão fica neutro. A variante "barra" (Visão geral) troca
 // o ponto por uma faixa vertical de 4px e usa o botão escuro, que é o desenho
 // da pilha de avisos daquela tela.
+// variante: "ponto" (o padrão, card branco com o ponto da cor) · "barra" (faixa
+// vertical de 4px e botão escuro, como a pilha de avisos da Visão geral) ·
+// "forte" (borda na cor do tom e botão escuro, como o aviso do Inbox, que é o
+// único da tela e precisa ganhar do resto da linha).
 export function AvisoTopo({ tom = "neg", titulo, nota, fim, acao, variante = "ponto", style }) {
   const cor = corDe(tom);
-  const escuro = variante === "barra";
+  const forte = variante === "forte";
+  const escuro = variante === "barra" || forte;
   const btn = {
     height: 30,
     padding: "0 14px",
@@ -60,8 +65,8 @@ export function AvisoTopo({ tom = "neg", titulo, nota, fim, acao, variante = "po
     color: escuro ? "var(--btn-fg)" : "var(--fg-2)",
   };
   return (
-    <section style={{ ...CARD, padding: "13px 18px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", ...style }}>
-      {escuro
+    <section style={{ ...CARD, border: `1px solid ${forte ? `color-mix(in srgb, ${cor} 45%, var(--bg-1))` : "var(--line-1)"}`, padding: "13px 18px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", ...style }}>
+      {forte ? null : escuro
         ? <span style={{ width: 4, alignSelf: "stretch", minHeight: 26, borderRadius: 999, background: cor, flexShrink: 0 }} />
         : <span style={{ width: 8, height: 8, borderRadius: 999, background: cor, flexShrink: 0 }} />}
       <span style={{ flex: 1, minWidth: 220, fontSize: 13.5, fontWeight: 650, color: cor, textWrap: "pretty" }}>{titulo}</span>

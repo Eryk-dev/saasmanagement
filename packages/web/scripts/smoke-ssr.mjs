@@ -203,7 +203,10 @@ try {
     };
     const html = renderToString(wrap(React.createElement(A.AgendaView, props)));
     const has = (must) => { if (!html.includes(must)) throw new Error(`a grade não contém "${must}"`); };
-    has("agenda de: todos");     // o filtro de pessoa virou UM chip
+    // O filtro de pessoa é PÍLULA quando o time cabe na linha (prancha, 14/09)
+    // e vira select a partir de seis, pra não comer a barra inteira.
+    has("Agenda de");
+    has("todos");
     has("legenda ⓘ");            // os onze itens viraram um title
     has("call agendada");        // a legenda de tipos ficou, no topo da grade
     has("compromisso no dia");   // o fato do período

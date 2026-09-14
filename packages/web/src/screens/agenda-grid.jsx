@@ -1,5 +1,5 @@
 import React from "react";
-import { FilterTab } from "../components/viz.jsx";
+import { FilterTab, Segmented } from "../components/viz.jsx";
 import { usersByRole, userColor, displayName, userById } from "../lib/users.js";
 import { Avatar } from "../atoms.jsx";
 import { stageKind } from "../lib/funnel.js";
@@ -472,23 +472,54 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
           ocupava a largura inteira) e vivia separado dos controles de período
           e tipo, que ficavam aqui dentro: duas barras pra mesma função. */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap", padding: "12px 16px", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
+        {/* A VISÃO abre a barra (prancha, 14/09): ela estava no cabeçalho da
+            tela, longe da navegação de período que manda no mesmo eixo. */}
+        <Segmented value={view} onChange={setView} options={[
+          { value: "day", label: "Dia" },
+          { value: "week", label: "Semana" },
+          { value: "month", label: "Mês" },
+          { value: "team", label: "Equipe" },
+        ]} />
         <span style={{ display: "inline-flex", gap: 4 }}>
           <button style={navBtn} onClick={() => passo(-1)} title={isMonth ? "mês anterior" : isWeek ? "semana anterior" : "dia anterior"}>‹</button>
           <button style={navBtn} onClick={() => setDayOff(0)}>hoje</button>
           <button style={navBtn} onClick={() => passo(1)} title={isMonth ? "próximo mês" : isWeek ? "próxima semana" : "próximo dia"}>›</button>
         </span>
         <span style={{ fontSize: 14, fontWeight: 650, fontFamily: "var(--display)" }}>{label}</span>
+        {/* O resumo da janela, ao lado do período: o que a grade tem dentro. */}
+        <span style={{ fontSize: 12, color: "var(--fg-4)" }}>
+          {`${callCount} ${callCount === 1 ? "call" : "calls"} · ${events.length} ${events.length === 1 ? "item" : "itens"} na grade`}
+        </span>
 
-        {/* Pessoa: chip único no lugar de um botão por usuário. */}
+        {/* Pessoa: pílulas quando o time cabe na linha (é o desenho da
+            prancha) e select a partir de seis, pra não comer a barra. */}
         {(people.length > 0 && onPerson) && (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 4px 0 10px", borderRadius: 999, border: "1px solid " + (person ? "var(--accent-line)" : "var(--line-2)"), background: person ? "var(--accent-soft)" : "var(--bg-1)" }}>
-            {person && <span style={{ width: 8, height: 11, borderRadius: 2, background: toneOf(person) }} />}
-            <select value={person || ""} onChange={(e) => onPerson(e.target.value)} aria-label="Agenda de"
-              style={{ height: 26, border: 0, background: "transparent", color: person ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
-              <option value="">agenda de: todos</option>
-              {people.map((p) => <option key={p.id} value={p.id}>{p.name || displayName(p.id)}</option>)}
-            </select>
-          </span>
+          people.length <= 5 ? (
+            <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span className="kicker">Agenda de</span>
+              {[{ id: "", name: "todos" }, ...people].map((p) => {
+                const on = (person || "") === p.id;
+                return (
+                  <button key={p.id || "todos"} onClick={() => onPerson(p.id)}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 11px", borderRadius: 999, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+                      border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-1)"),
+                      background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-3)" }}>
+                    {p.id && <span style={{ width: 7, height: 10, borderRadius: 2, background: toneOf(p.id) }} />}
+                    {p.name || displayName(p.id)}
+                  </button>
+                );
+              })}
+            </span>
+          ) : (
+            <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 4px 0 10px", borderRadius: 999, border: "1px solid " + (person ? "var(--accent-line)" : "var(--line-2)"), background: person ? "var(--accent-soft)" : "var(--bg-1)" }}>
+              {person && <span style={{ width: 8, height: 11, borderRadius: 2, background: toneOf(person) }} />}
+              <select value={person || ""} onChange={(e) => onPerson(e.target.value)} aria-label="Agenda de"
+                style={{ height: 26, border: 0, background: "transparent", color: person ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+                <option value="">agenda de: todos</option>
+                {people.map((p) => <option key={p.id} value={p.id}>{p.name || displayName(p.id)}</option>)}
+              </select>
+            </span>
+          )
         )}
 
         {/* Tipo de evento: tudo · calls · follow-ups · integrações, com a
