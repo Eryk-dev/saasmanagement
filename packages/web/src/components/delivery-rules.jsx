@@ -72,7 +72,14 @@ export function DeliveryRulesCard({ saas }) {
   const [logOpen, setLogOpen] = useState(false);
 
   const load = () => api.deliveryRules(saas).then(setData).catch((e) => setData({ error: e.message || "não deu pra carregar" }));
-  useEffect(load, [saas]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    let active = true;
+    setData(null);
+    api.deliveryRules(saas)
+      .then((value) => { if (active) setData(value); })
+      .catch((e) => { if (active) setData({ error: e.message || "não deu pra carregar" }); });
+    return () => { active = false; };
+  }, [saas]);
 
   async function save(patch) {
     if (!data?.rules) return;

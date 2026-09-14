@@ -1,5 +1,7 @@
 import React from "react";
+import "./marketing.css";
 import { PageHead, FilterTab, Segmented, Card } from "../components/viz.jsx";
+import { AvisoTopo, InfoLink } from "../components/story.jsx";
 import { Modal as Painel, Drawer } from "../components/overlay.jsx";
 import { EmptyState, PrimaryButton, SecondaryButton, toast } from "../atoms.jsx";
 import { api } from "../lib/api.js";
@@ -72,14 +74,14 @@ const lintCounts = (lint) => {
 function LintChip({ post }) {
   if (!post.body && post.status === "pauta") return <span className="dim">–</span>;
   const { erros, avisos } = lintCounts(post.lint);
-  if (erros) return <span className="chip neg">{erros} {erros === 1 ? "erro" : "erros"}</span>;
-  if (avisos) return <span className="chip warn">{avisos} {avisos === 1 ? "aviso" : "avisos"}</span>;
-  return <span className="chip pos">ok</span>;
+  if (erros) return <span className="marketing-status" style={{ color: "var(--neg)" }}>{erros} {erros === 1 ? "erro" : "erros"}</span>;
+  if (avisos) return <span className="marketing-status" style={{ color: "var(--warn)" }}>{avisos} {avisos === 1 ? "aviso" : "avisos"}</span>;
+  return <span className="marketing-status" style={{ color: "var(--pos)" }}>ok</span>;
 }
 
 function StatusChip({ status }) {
   const s = statusOf(status);
-  return <span className={`chip${s.chip ? ` ${s.chip}` : ""}`}>{s.label.toLowerCase()}</span>;
+  return <span className="marketing-status" style={{ color: s.chip ? `var(--${s.chip})` : "var(--fg-3)" }}>{s.label.toLowerCase()}</span>;
 }
 
 // Data que importa em cada estado: agendado mostra o slot, publicado a data
@@ -220,7 +222,7 @@ function AutomacaoCard({ saas, rules, state, aiConfigured, nextSlot, admin, onRu
               <span style={{ fontWeight: 600 }}>Último erro:</span> {state.lastError}
             </div>
           )}
-          {!aiConfigured && <div className="dim" style={{ fontSize: 11.5, lineHeight: 1.45 }}>Sem OPENROUTER_API_KEY no servidor o motor só publica o que já estiver agendado.</div>}
+          {!aiConfigured && <div className="dim" style={{ fontSize: 11.5, lineHeight: 1.45 }}>Sem a IA configurada, o motor só publica os textos que já estiverem agendados.</div>}
           <div style={{ marginTop: 4 }}>
             <SecondaryButton size="sm" onClick={onDigest}>Ver o que a IA lê</SecondaryButton>
           </div>
@@ -760,52 +762,21 @@ function BlogScreen() {
   const semSaas = data && !saas;
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead
+    <div className="marketing-page" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <PageHead className="marketing-head"
         title="Blog"
-        sub="A IA rascunha a partir do que o cockpit aprende com leads, calls e WhatsApp. Você revisa, o site publica na cadência."
+        sub={`o motor roda a cada 15 minutos · pauta, rascunho e publicação na cadência de ${data?.rules?.cadenciaSemanal || 3} posts por semana`}
       >
         <SecondaryButton disabled={!!busy || !saas || !data?.aiConfigured} title={data && !data.aiConfigured ? "IA não configurada no servidor" : "A IA propõe temas novos agora"} onClick={gerarPautas}>{busy === "pautas" ? "gerando…" : "Gerar pautas"}</SecondaryButton>
-        <SecondaryButton disabled={!!busy || !saas} title="Roda um ciclo do motor agora: pauta, rascunho e publicação do que venceu" onClick={rodarAgora}>{busy === "tick" ? "rodando…" : "Rodar agora"}</SecondaryButton>
-        <PrimaryButton disabled={!saas} onClick={() => setNewOpen(true)}>Nova pauta</PrimaryButton>
+        <SecondaryButton disabled={!!busy || !saas} title="Roda um ciclo do motor agora: pauta, rascunho e publicação do que venceu" onClick={rodarAgora}>{busy === "tick" ? "rodando…" : "Rodar ciclo agora"}</SecondaryButton>
+        <PrimaryButton disabled={!saas} onClick={() => setNewOpen(true)}>+ nova pauta</PrimaryButton>
       </PageHead>
 
       <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px" }}>
-        {/* A ESTEIRA (13/09): os quatro números eram tiles de peso igual, e a
-            relação entre eles (pauta vira rascunho, que vira agendado, que
-            vira publicado) ficava por conta do leitor. Cada passo leva pra sua
-            aba; o que a IA escreveu e espera revisão é o único que pede ação
-            hoje, então ele abre em destaque. */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "14px var(--inset-x)", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
-          {[
-            { id: "pauta", rot: "pautas", nota: "temas esperando texto" },
-            { id: "rascunho", rot: "rascunhos a revisar", nota: "a IA escreveu, falta aprovar", acao: true },
-            { id: "agendado", rot: "agendados", nota: data?.nextSlot ? `próximo ${fmtSlot(data.nextSlot)}` : "nada na agenda" },
-            { id: "publicado", rot: "publicados", nota: data === null ? "" : `${publicados30} nos últimos 30 dias${ultimoPub ? ` · último ${fmtDay(ultimoPub.publishedAt)}` : ""}` },
-          ].map((passo, i) => {
-            const n = data === null ? null : Number(countOf(passo.id)) || 0;
-            const pede = passo.acao && n > 0;
-            return (
-              <React.Fragment key={passo.id}>
-                {i > 0 && <span className="mono dim" style={{ fontSize: 14 }}>→</span>}
-                <button onClick={() => setTab(passo.id)} title={`ver só os ${passo.rot}`}
-                  style={{ textAlign: "left", minWidth: 130, flex: "1 1 130px", background: "transparent", border: 0, cursor: "pointer", padding: 0 }}>
-                  <div className="kicker">{passo.rot}</div>
-                  <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 24, fontWeight: 700, lineHeight: 1.15, color: pede ? "var(--warn)" : "var(--fg-1)" }}>
-                    {data === null ? "…" : n}
-                  </div>
-                  <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{passo.nota}</div>
-                </button>
-              </React.Fragment>
-            );
-          })}
-          {data !== null && Number(countOf("rascunho")) > 0 && (
-            <button onClick={() => setTab("rascunho")}
-              style={{ marginLeft: "auto", height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: 0, background: "var(--warn)", color: "oklch(1 0 0)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
-              revisar agora
-            </button>
-          )}
-        </div>
+        {data && countOf("rascunho") > 0 && <AvisoTopo tom="warn"
+          titulo={`${countOf("rascunho")} rascunho${countOf("rascunho") === 1 ? "" : "s"} esperando revisão`}
+          nota="A IA escreveu. Falta conferir o texto e aprovar a publicação."
+          acao={{ label: "revisar agora", onClick: () => { setTab("rascunho"); setQ(""); } }} />}
 
         {data !== null && !semSaas && (
           <div style={{ marginTop: 16 }}>
@@ -838,38 +809,25 @@ function BlogScreen() {
           )}
           {data !== null && !semSaas && !!visiveis.length && (
             <div className="tbl-x">
-              <table className="tbl" style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ background: "var(--bg-2)" }}>
-                    <th className="kicker" style={{ padding: "8px 12px", textAlign: "left" }}>Título</th>
-                    <th className="kicker" style={{ padding: "8px 12px", textAlign: "left" }}>Categoria</th>
-                    <th className="kicker" style={{ padding: "8px 12px", textAlign: "left" }}>Situação</th>
-                    <th className="kicker" style={{ padding: "8px 12px", textAlign: "left" }}>Pente fino</th>
-                    <th className="kicker" style={{ padding: "8px 12px", textAlign: "left" }}>Data</th>
-                    <th className="kicker" style={{ padding: "8px 12px", textAlign: "right" }}>Palavras</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visiveis.map((p) => (
-                    <tr key={p.id} data-click onClick={() => setSelId(p.id)}>
-                      <td style={{ maxWidth: 420 }}>
-                        <div style={{ fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={p.title}>{p.title || "(sem título)"}</div>
-                        {p.keyword && <div className="mono dim" style={{ fontSize: 10.5, marginTop: 1 }}>{p.keyword}</div>}
-                      </td>
-                      <td className="dim" style={{ whiteSpace: "nowrap" }}>{p.category || "–"}</td>
-                      <td><StatusChip status={p.status} /></td>
-                      <td><LintChip post={p} /></td>
-                      <td className="mono dim" style={{ fontSize: 11.5, whiteSpace: "nowrap" }}>{dateOf(p)}</td>
-                      <td className="tnum dim" style={{ textAlign: "right" }}>{p.wordCount ? p.wordCount.toLocaleString("pt-BR") : "–"}</td>
-                    </tr>
-                  ))}
-                </tbody>
+              <table className="marketing-table" style={{ tableLayout: "fixed", minWidth: 640 }}>
+                <colgroup><col style={{ width: "40%" }} /><col style={{ width: "14%" }} /><col style={{ width: "16%" }} /><col style={{ width: "13%" }} /><col style={{ width: "17%" }} /></colgroup>
+                <thead><tr><th>Título</th><th>Estado</th><th>Categoria</th><th>Pente fino</th><th>Quando</th></tr></thead>
+                <tbody>{visiveis.map((p) => <tr key={p.id}>
+                  <td>
+                    <button onClick={() => setSelId(p.id)} style={{ textAlign: "left", fontSize: 13.5, fontWeight: 600, lineHeight: 1.4, color: "var(--fg-1)", width: "100%" }}>{p.title || "(sem título)"}</button>
+                    <div style={{ fontSize: 11.5, color: "var(--fg-3)", marginTop: 3 }}>{[p.keyword, p.wordCount ? `${p.wordCount.toLocaleString("pt-BR")} palavras` : ""].filter(Boolean).join(" · ")}</div>
+                  </td>
+                  <td><StatusChip status={p.status} /></td>
+                  <td style={{ color: "var(--fg-3)", overflowWrap: "anywhere" }}>{p.category || "–"}</td>
+                  <td><button onClick={() => setSelId(p.id)} title="Abrir a revisão e os motivos do pente fino"><LintChip post={p} /></button></td>
+                  <td className="tnum" style={{ fontSize: 11.5, color: "var(--fg-3)" }}>{dateOf(p)}</td>
+                </tr>)}</tbody>
               </table>
             </div>
           )}
         </div>
         {data !== null && !semSaas && visiveis.length > 0 && (
-          <div className="mono dim" style={{ fontSize: 11, marginTop: 8 }}>{visiveis.length} de {posts.length} posts</div>
+          <div className="mono dim" style={{ fontSize: 11, marginTop: 8 }}>{visiveis.length} de {posts.length} posts · <InfoLink texto={`${publicados30} publicados nos últimos 30 dias${ultimoPub ? ` · última publicação ${fmtDay(ultimoPub.publishedAt)}` : ""}`}>publicações no período</InfoLink></div>
         )}
       </div>
 

@@ -26,7 +26,7 @@ export function MetaConnectCard({ kind, product, metaOn, onConnected }) {
     ? (ads
       ? `Escolha qual conta de anúncio do Business Manager alimenta a Publicidade de ${product?.name || "este produto"}.`
       : `Escolha qual página (com o Instagram vinculado) alimenta as Redes sociais de ${product?.name || "este produto"}.`)
-    : "Antes, defina META_ACCESS_TOKEN no servidor (token do Business Manager, com as permissões de anúncios e Instagram/página). Depois volte aqui pra escolher a conta.";
+    : "Peça ao administrador para configurar a integração da Meta. Depois, volte aqui para escolher a conta de anúncio ou a página do produto.";
 
   async function openPicker() {
     setOpen(true); setError(""); setItems(null); setSel("");

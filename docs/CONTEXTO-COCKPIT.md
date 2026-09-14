@@ -193,6 +193,18 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   prova pendente fictícia. Os dados ficam em `preview/training-mock.js` e não
   entram no build de produção.
 
+- **Marketing — handoff (14/09/2026):** as telas Redes sociais, Publicidade,
+  Formulários, Landing pages, Canvas, Disparos e Blog usam a estrutura do
+  protótipo sobre `screens/marketing.css`. O Canvas mantém o renderer e as
+  marcas existentes, com templates por formato, conteúdo e fonte por slide,
+  elementos adicionais e exportação PNG. Disparos organiza público, mensagem
+  e conferência em três passos e preserva o envio assistido e as sequências.
+  A prévia `/?shell=1&marketing=1#blog` carrega `preview/marketing-mock.js`;
+  aceita `&theme=dark` e `&product=elo#landingpages`. Os cenários são fictícios
+  e não executam anúncios, publicações ou mensagens reais. O preview não entra
+  no build de produção. A navegação saindo de Publicidade foi conferida após
+  corrigir o cleanup do efeito de `DeliveryRulesCard`.
+
 - **README:** SQLite, leitura sempre aberta, MCP apenas como manual, seed demo e
   proposta exclusivamente externa são descrições antigas. O código atual usa
   Postgres, auth sobre as rotas protegidas, MCP com escrita e propostas nativas.

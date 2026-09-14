@@ -1,6 +1,7 @@
 import React from "react";
-import { PageHead, Pill, Card, StatTile } from "../components/viz.jsx";
-import { BarraComposicao } from "../components/story.jsx";
+import "./marketing.css";
+import { PageHead, Pill, Card } from "../components/viz.jsx";
+import { BarraComposicao, InfoLink } from "../components/story.jsx";
 import { Modal } from "../components/overlay.jsx";
 import { EmptyState, useEsc } from "../atoms.jsx";
 import { MetaConnectCard } from "../components/meta-connect.jsx";
@@ -109,12 +110,12 @@ const GENDER_LABEL = { M: "Homens", F: "Mulheres", U: "Não informado" };
 const REACH_FORMAT_LABEL = { FEED: "Feed", POST: "Feed", REELS: "Reels", REEL: "Reels", STORY: "Story", AD: "Anúncio", CAROUSEL_CONTAINER: "Carrossel", IGTV: "IGTV", LIVE: "Live" };
 const INTERACTION_LABEL = { likes: "Curtidas", comments: "Comentários", saves: "Salvos", shares: "Compartilhamentos", replies: "Respostas de story" };
 const TAP_LABEL = { WEBSITE: "site", EMAIL: "e-mail", CALL: "ligação", TEXT: "mensagem", DIRECTION: "rotas", BOOK_NOW: "reserva", INSTANT_EXPERIENCE: "experiência", UNDEFINED: "outros" };
-const GENDER_COLOR = ["var(--accent)", "#7C6FF0", "var(--line-2)"];
+const GENDER_COLOR = ["var(--accent)", "var(--chart-2)", "var(--line-2)"];
 const COUNTRY_LABEL = { BR: "Brasil", PT: "Portugal", US: "Estados Unidos", AR: "Argentina", CL: "Chile", CO: "Colômbia", MX: "México", PY: "Paraguai", UY: "Uruguai", ES: "Espanha", IT: "Itália", DE: "Alemanha", FR: "França", GB: "Reino Unido", JP: "Japão", CA: "Canadá", AU: "Austrália", AO: "Angola", MZ: "Moçambique" };
 const hasDemo = (d) => !!(d && ((d.genders || []).length || (d.ages || []).length || (d.cities || []).length || (d.countries || []).length));
 // Paleta das fatias dos donuts; "Outros" usa a linha neutra. Cores escolhidas
 // pra ler bem no tema claro e no escuro.
-const DONUT_RAMP = ["var(--accent)", "#7C6FF0", "#E8A13A", "#4C8DD6", "#E4677E", "#3FAE7C", "#C98BDB"];
+const DONUT_RAMP = ["var(--accent)", "var(--chart-2)", "var(--warn)", "var(--info)", "var(--neg)", "var(--pos)", "var(--fg-3)"];
 // Vira os itens (key/value já ordenados pelo maior) em fatias com % e cor,
 // somando o resto em "Outros" — pro donut não virar confete de fatias mínimas.
 const toSegments = (items, { topN = 5, label = (k) => k, othersLabel = "Outros", palette = DONUT_RAMP } = {}) => {
@@ -126,55 +127,20 @@ const toSegments = (items, { topN = 5, label = (k) => k, othersLabel = "Outros",
   if (rest > 0) segs.push({ label: othersLabel, value: rest, pct: Math.round((rest / total) * 100), color: "var(--line-2)" });
   return segs;
 };
-// Donut SVG: anel de fatias (dasharray por fatia) com furo no meio destacando a
-// maior. Gira -90° pra começar no topo; a legenda fica ao lado (DonutBlock).
-function Donut({ segments, size = 116, thickness = 17 }) {
-  const total = segments.reduce((s, x) => s + (Number(x.value) || 0), 0) || 1;
-  const r = (size - thickness) / 2, c = 2 * Math.PI * r;
-  const top = segments[0];
-  let offset = 0;
-  return (
-    <div style={{ position: "relative", width: size, height: size, flex: "0 0 auto" }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: "rotate(-90deg)" }}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--bg-2)" strokeWidth={thickness} />
-        {segments.map((seg, i) => {
-          const len = ((Number(seg.value) || 0) / total) * c;
-          const dash = Math.max(0, len - 2); // gap de 2px entre fatias, pra separar
-          const node = <circle key={i} cx={size / 2} cy={size / 2} r={r} fill="none" stroke={seg.color} strokeWidth={thickness} strokeDasharray={`${dash} ${c - dash}`} strokeDashoffset={-offset} />;
-          offset += len;
-          return node;
-        })}
-      </svg>
-      {top && (
-        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1, padding: "0 14px" }}>
-          <span className="tnum" style={{ fontSize: 21, fontWeight: 700, lineHeight: 1, color: "var(--fg-1)" }}>{top.pct}%</span>
-          <span className="kicker" style={{ fontWeight: 600, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{String(top.label).split(",")[0]}</span>
-        </div>
-      )}
-    </div>
-  );
-}
-// Donut + legenda (rótulo · valor · %); cada linha da legenda ecoa a cor da fatia.
-function DonutBlock({ title, segments }) {
+// Listas do protótipo: o valor e a participação ficam na mesma linha.
+function BreakdownList({ title, segments }) {
   if (!segments.length) return null;
-  return (
-    <div>
-      {title ? <div className="kicker" style={{ fontWeight: 600, marginBottom: 10 }}>{title}</div> : null}
-      <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-        <Donut segments={segments} />
-        <div style={{ display: "flex", flexDirection: "column", gap: 7, minWidth: 0, flex: 1 }}>
-          {segments.map((s, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
-              <span style={{ width: 9, height: 9, borderRadius: 3, background: s.color, flex: "0 0 auto" }} />
-              <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--fg-2)" }} title={s.label}>{s.label}</span>
-              <b className="tnum" style={{ flex: "0 0 auto" }}>{fmtNum(s.value)}</b>
-              <span className="tnum" style={{ color: "var(--fg-4)", width: 32, textAlign: "right", flex: "0 0 auto" }}>{s.pct}%</span>
-            </div>
-          ))}
-        </div>
-      </div>
+  return <div>
+    {title && <div className="marketing-kicker" style={{ marginBottom: 10 }}>{title}</div>}
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {segments.map((s) => <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+        <span style={{ width: 9, height: 9, borderRadius: 3, background: s.color, flexShrink: 0 }} />
+        <span style={{ flex: 1, minWidth: 0, color: "var(--fg-2)" }}>{s.label}</span>
+        <b className="tnum">{fmtNum(s.value)}</b>
+        <span className="tnum" style={{ width: 34, textAlign: "right", color: "var(--fg-3)" }}>{s.pct}%</span>
+      </div>)}
     </div>
-  );
+  </div>;
 }
 
 function AudiencePanel({ audience }) {
@@ -206,18 +172,18 @@ function AudiencePanel({ audience }) {
           </div>
         )}
         {hasDemo(demo) ? (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 290px), 340px))", justifyContent: "center", gap: "28px 48px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))", gap: 24 }}>
             {(demo.genders || []).length > 0 && (
-              <DonutBlock title="Gênero" segments={toSegments(demo.genders, { topN: 3, label: (k) => GENDER_LABEL[k] || k, palette: GENDER_COLOR })} />
+              <BreakdownList title="Gênero" segments={toSegments(demo.genders, { topN: 3, label: (k) => GENDER_LABEL[k] || k, palette: GENDER_COLOR })} />
             )}
             {(demo.ages || []).length > 0 && (
-              <DonutBlock title="Faixa etária" segments={toSegments(demo.ages, { topN: 6 })} />
+              <BreakdownList title="Faixa etária" segments={toSegments(demo.ages, { topN: 6 })} />
             )}
             {(demo.cities || []).length > 0 && (
-              <DonutBlock title="Principais cidades" segments={toSegments(demo.cities, { topN: 5, label: (k) => String(k).split(",")[0] })} />
+              <BreakdownList title="Principais cidades" segments={toSegments(demo.cities, { topN: 5, label: (k) => String(k).split(",")[0] })} />
             )}
             {(demo.countries || []).length > 0 && (
-              <DonutBlock title="Principais países" segments={toSegments(demo.countries, { topN: 4, label: (k) => COUNTRY_LABEL[k] || k })} />
+              <BreakdownList title="Principais países" segments={toSegments(demo.countries, { topN: 4, label: (k) => COUNTRY_LABEL[k] || k })} />
             )}
           </div>
         ) : <div className="mono dim" style={{ fontSize: 12, padding: "8px 0" }}>demografia indisponível (o Instagram só libera com ~100+ seguidores)</div>}
@@ -376,10 +342,10 @@ function CreativesToday({ saasId, version }) {
   const btn = { width: 28, height: 28, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 14, fontWeight: 700, lineHeight: 1, opacity: busy ? 0.5 : 1 };
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", border: "1px solid var(--line-1)", background: "var(--bg-1)", borderRadius: "var(--r-3)", padding: "8px 12px" }}>
-      <span style={{ fontSize: 13, fontWeight: 600 }}>🎨 Criativos de hoje{target !== me?.id ? ` · ${userById(target)?.name || target}` : ""}</span>
-      <button onClick={() => bump(-1)} disabled={busy || !(count > 0)} style={btn}>−</button>
+      <span style={{ fontSize: 13, fontWeight: 600 }}>Criativos de hoje{target !== me?.id ? ` · ${userById(target)?.name || target}` : ""}</span>
+      <button aria-label="Diminuir criativos de hoje" onClick={() => bump(-1)} disabled={busy || !(count > 0)} style={btn}>−</button>
       <span className="tnum" style={{ fontSize: 15, fontWeight: 700, minWidth: 18, textAlign: "center" }}>{count == null ? "—" : count}</span>
-      <button onClick={() => bump(1)} disabled={busy} style={btn}>+</button>
+      <button aria-label="Aumentar criativos de hoje" onClick={() => bump(1)} disabled={busy} style={btn}>+</button>
       <span className="dim" style={{ fontSize: 12 }}>anúncios, estáticos e vídeos feitos no dia · conta na Análise de Desempenho</span>
     </div>
   );
@@ -402,11 +368,12 @@ function SocialScreen() {
   // Fila de comentários pendentes — some no badge da aba. Carregada junto com o
   // painel pra o número já aparecer sem abrir a aba.
   const [pending, setPending] = useS(null);
+  useE(() => { setWizard(false); }, [product?.id]);
 
   useE(() => {
     if (!product?.id) return;
     let alive = true;
-    setSum(null); setErr(null); setAudience(null);
+    setSum(null); setErr(null); setAudience(null); setPosts([]); setStories([]);
     Promise.all([api.socialSummary(product.id, days), api.socialPosts(product.id)])
       .then(([s, p]) => { if (alive) { setSum(s); setPosts(p || []); } })
       .catch((e) => alive && setErr(e.message));
@@ -425,6 +392,7 @@ function SocialScreen() {
   useE(() => {
     if (!product?.id) return;
     let alive = true;
+    setPending(null);
     api.socialComments(product.id, "pending")
       .then((r) => alive && setPending(r?.insights?.pending ?? null))
       .catch(() => alive && setPending(null));
@@ -480,8 +448,8 @@ function SocialScreen() {
   const postTitle = (item) => (item.caption || "Publicação sem legenda").split("\n")[0].trim();
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead
+    <div className="marketing-page" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <PageHead className="marketing-head"
         title="Redes sociais"
         sub={<span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>métricas do perfil · <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--fg-2)", fontSize: 12.5, fontWeight: 500 }}><span style={{ width: 6, height: 6, borderRadius: 99, background: sum?.configured ? "var(--pos)" : "var(--fg-4)" }} />{sum?.configured ? `conectado${sum?.account?.username ? ` · @${sum.account.username}` : ""}` : "não conectado"}</span></span>}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -530,29 +498,21 @@ function SocialScreen() {
           <>
             {sum.errors?.setup && <div className="mono" style={{ fontSize: 11.5, color: "var(--warn)" }}>{sum.errors.setup}</div>}
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-              <StatTile label="Seguidores" value={fmtNum(sum?.account?.followers_count)} delta={growth != null ? `${growth > 0 ? "+" : ""}${fmtNum(growth)} no período` : "variação indisponível"} />
-              <StatTile label="Alcance · 30 dias" value={fmtNum(ins.reach)} delta={reachTotal ? `${nonFollowerPct}% não-seguidores` : "divisão indisponível"} />
-              <StatTile label="Engajamento médio" value={eng?.rate != null ? `${String(eng.rate).replace(".", ",")}%` : "—"} delta={eng?.posts != null ? `${eng.posts} posts no período` : "sem posts no período"} />
-              <StatTile label="Posts no mês" value={fmtNum(eng?.posts ?? 0)} delta={`de 12 · meta mensal`} />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))", gap: 12 }}>
+              {[
+                ["Seguidores", fmtNum(sum?.account?.followers_count), growth != null ? `${growth > 0 ? "+" : ""}${fmtNum(growth)} no período` : "variação indisponível"],
+                ["Alcance · 30 dias", fmtNum(ins.reach), reachTotal ? `${nonFollowerPct}% não-seguidores` : "divisão indisponível"],
+                ["Engajamento médio", eng?.rate != null ? `${String(eng.rate).replace(".", ",")}%` : "—", eng?.posts != null ? `${eng.posts} posts no período` : "sem posts no período"],
+                ["Posts no mês", fmtNum(eng?.posts ?? 0), "de 12 · meta mensal"],
+              ].map(([label, value, note]) => <section key={label} className="marketing-card marketing-stat">
+                <div className="marketing-kicker">{label}</div><strong className="tnum">{value}</strong><small>{note}</small>
+              </section>)}
             </div>
-
-            {/* A SEGUNDA faixa de cinco tiles virou "mais números ⓘ" (13/09):
-                são métricas de consulta, não de decisão — ninguém muda o
-                calendário por causa de "cliques no link". O número continua
-                inteiro, num lugar só. */}
-            <div style={{ marginTop: -4 }}>
-              <span className="mono" style={{ fontSize: 11, color: "var(--fg-4)", cursor: "help", borderBottom: "1px dotted var(--line-2)" }}
-                title={[
-                  `views no período: ${fmtNum(ins.views)}`,
-                  `visitas ao perfil: ${fmtNum(ins.profile_views)}`,
-                  `contas engajadas: ${fmtNum(ins.accounts_engaged)}`,
-                  `interações: ${fmtNum(ins.total_interactions)}`,
-                  `cliques no link (perfil e bio): ${fmtNum((ins.profile_links_taps != null || ins.website_clicks != null) ? (ins.profile_links_taps || 0) + (ins.website_clicks || 0) : null)}`,
-                ].join("\n")}>
-                mais números ⓘ
-              </span>
-            </div>
+            <InfoLink texto={[
+              `views no período: ${fmtNum(ins.views)}`, `visitas ao perfil: ${fmtNum(ins.profile_views)}`,
+              `contas engajadas: ${fmtNum(ins.accounts_engaged)}`, `interações: ${fmtNum(ins.total_interactions)}`,
+              `cliques no link (perfil e bio): ${fmtNum((ins.profile_links_taps != null || ins.website_clicks != null) ? (ins.profile_links_taps || 0) + (ins.website_clicks || 0) : null)}`,
+            ].join(" · ")}>mais números</InfoLink>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 16 }}>
               <Card title="Crescimento de seguidores" hint="acumulado · 30 dias">
@@ -607,7 +567,7 @@ function SocialScreen() {
               {interactionSegs.length > 0 && (
                 <Card title="Interações · por tipo" hint="30 dias">
                   <div style={{ padding: "14px 24px 20px" }}>
-                    <DonutBlock title="" segments={interactionSegs} />
+                    <BreakdownList title="" segments={interactionSegs} />
                     {(sum.linkTaps || []).length > 0 && (
                       <div style={{ marginTop: 16, fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.6 }}>
                         <span className="kicker" style={{ fontWeight: 600, marginRight: 8 }}>Cliques no perfil</span>
@@ -621,7 +581,7 @@ function SocialScreen() {
 
             {/* Audiência: quem é o público (demografia). Some sozinho se a
                 conta não libera (endpoint à parte). */}
-            <AudiencePanel audience={audience} />
+            <AudiencePanel key={`audience-${product?.id}`} audience={audience} />
 
             {sum.errors?.media && <div className="mono dim" style={{ fontSize: 11 }}>posts do IG indisponíveis: {sum.errors.media}</div>}
             {sum.errors?.insights && <div className="mono dim" style={{ fontSize: 11 }}>alcance indisponível: {sum.errors.insights}</div>}

@@ -12,6 +12,7 @@ const DIA = 86400000;
 const hoje = new Date();
 const iso = (n, h = 9) => { const d = new Date(hoje.getTime() + n * DIA); d.setHours(h, 0, 0, 0); return d.toISOString(); };
 const params = new URLSearchParams(location.search);
+const marketingPreview = params.has("marketing");
 const previewShell = params.has("shell");
 
 window.SEED = {
@@ -36,7 +37,7 @@ window.SEED = {
   LEADS: LEADS_FAKE, CUSTOMERS: CLIENTES_FAKE, PORTFOLIO: {}, ATTENTION: [], PEOPLE: {},
   NPS: [], LEADERBOARD_MONTH: [], LEADERBOARD_ALL: [], GOALS: [],
   AGENDA_BLOCKS: [], CONSULTATION_SLOTS: [],
-  CONFIG: { meta: { configured: false }, mp: { configured: false }, proposals: { nativeSaas: [] } },
+  CONFIG: { ai: { configured: marketingPreview }, meta: { configured: false }, mp: { configured: false }, proposals: { nativeSaas: [] } },
   ME: { id: "leo", name: "Leonardo", roles: ["sdr", "admin"] },
   COUNTERS: { leverads: { tasks: 3, tasksLate: 1, inbox: 2 } },
 };
@@ -50,7 +51,7 @@ try {
   localStorage.setItem("cockpit_pipeline_view", "kanban");
   localStorage.setItem("cockpit_pipeline_phase", "all");
   localStorage.setItem("cockpit_today_person", "leo");
-  localStorage.setItem("cockpit_active_saas", "leverads");
+  localStorage.setItem("cockpit_active_saas", marketingPreview && params.get("product") === "elo" ? "elo" : "leverads");
 } catch { /* ignore */ }
 
 const TELAS = {
@@ -79,11 +80,24 @@ function App() {
   );
 }
 
+function PreviewTheme({ children }) {
+  React.useEffect(() => {
+    if (marketingPreview) {
+      document.body.dataset.theme = params.get("theme") === "dark" ? "dark" : "light";
+      if (params.get("theme") === "dark") ["--accent", "--accent-hover", "--accent-soft", "--accent-line"].forEach((name) => document.body.style.removeProperty(name));
+    }
+  }, []);
+  return children;
+}
+
 const root = createRoot(document.getElementById("root"));
 if (previewShell) {
   const { App: Cockpit } = await import("../src/app.jsx");
-  root.render(<Cockpit />);
+  root.render(<PreviewTheme><Cockpit /></PreviewTheme>);
 } else {
   root.render(<App />);
   window.addEventListener("hashchange", () => location.reload());
 }
+
+// A troca dos mocks pode reexecutar a entrada no HMR. Libera a raiz anterior.
+if (import.meta.hot) import.meta.hot.dispose(() => root.unmount());
