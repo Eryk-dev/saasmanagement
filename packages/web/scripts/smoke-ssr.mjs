@@ -735,7 +735,8 @@ try {
   try {
     const { TABLE_GRID, TABLE_GRID_GAP, TABLE_GRID_BUDGET } = await server.ssrLoadModule("/src/screens/customers.jsx");
     const cols = TABLE_GRID.trim().split(/\s+(?![^(]*\))/);
-    if (cols.length !== 6) throw new Error(`esperava 6 colunas, achei ${cols.length}`);
+    // A grade da prancha: cliente · plano e MRR · dinheiro · marcos · situação.
+    if (cols.length !== 5) throw new Error(`esperava 5 colunas, achei ${cols.length}`);
     const floorOf = (col) => {
       const mm = col.match(/^minmax\((\d+)px/);
       if (mm) return Number(mm[1]);

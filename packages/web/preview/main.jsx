@@ -1,7 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { fmt } from "../src/lib/format.js";
-import { LEADS_FAKE } from "./api-mock.js";
+import { LEADS_FAKE, CLIENTES_FAKE } from "./api-mock.js";
 import "../src/tokens.css";
 
 // Preview de tela (14/09): monta UMA tela do cockpit com dado falso, pra
@@ -30,7 +30,7 @@ window.SEED = {
     { id: "lucas", name: "Lucas", roles: ["closer"], saas: "" },
     { id: "tiago", name: "Tiago", roles: ["closer"], saas: "" },
   ],
-  LEADS: LEADS_FAKE, CUSTOMERS: [], PORTFOLIO: {}, ATTENTION: [], PEOPLE: {},
+  LEADS: LEADS_FAKE, CUSTOMERS: CLIENTES_FAKE, PORTFOLIO: {}, ATTENTION: [], PEOPLE: {},
   NPS: [], LEADERBOARD_MONTH: [], LEADERBOARD_ALL: [], GOALS: [],
   AGENDA_BLOCKS: [], CONSULTATION_SLOTS: [],
   CONFIG: { meta: { configured: false }, mp: { configured: false }, proposals: { nativeSaas: [] } },
@@ -47,6 +47,7 @@ const TELAS = {
   today: () => import("../src/screens/today.jsx").then((m) => m.TodayScreen),
   pipeline: () => import("../src/screens/pipeline.jsx").then((m) => m.PipelineScreen),
   overview: () => import("../src/screens/overview.jsx").then((m) => m.OverviewScreen),
+  customers: () => import("../src/screens/customers.jsx").then((m) => m.CustomersScreen),
 };
 
 function App() {
