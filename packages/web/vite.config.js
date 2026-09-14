@@ -13,6 +13,8 @@ export default defineConfig({
       // Superfície pública de forms e propostas — testáveis pelo dev server.
       "/f": { target: API_TARGET, changeOrigin: true },
       "/p": { target: API_TARGET, changeOrigin: true },
+      "/s/": { target: API_TARGET, changeOrigin: true }, // portal do Suporte
+
       "/public": { target: API_TARGET, changeOrigin: true },
       "/embed.js": { target: API_TARGET, changeOrigin: true },
     },

@@ -58,4 +58,12 @@ export const apiClient = {
   taskActivity: (id) => req("GET", `/api/tasks/${encodeURIComponent(id)}/activity`),
   tasksBulk: (ids, action, value) => req("POST", "/api/tasks/bulk", { ids, action, value }),
   notifications: (user, unread) => req("GET", `/api/notifications${qs({ user, unread: unread ? "1" : undefined })}`),
+  // Suporte (routes.tickets.js): coleções privadas, só por rota dedicada.
+  tickets: (query = {}) => req("GET", `/api/tickets${qs(query)}`),
+  ticket: (id) => req("GET", `/api/tickets/${encodeURIComponent(id)}`),
+  ticketCreate: (body) => req("POST", "/api/tickets", body),
+  ticketUpdate: (id, patch) => req("PATCH", `/api/tickets/${encodeURIComponent(id)}`, patch),
+  ticketMessage: (id, body) => req("POST", `/api/tickets/${encodeURIComponent(id)}/messages`, body),
+  ticketActivity: (id) => req("GET", `/api/tickets/${encodeURIComponent(id)}/activity`),
+  supportSettings: (saas) => req("GET", `/api/support/settings/${encodeURIComponent(saas)}`),
 };

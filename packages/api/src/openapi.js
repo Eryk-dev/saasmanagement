@@ -5,6 +5,65 @@
 // Caso de uso principal: seus FORMULÁRIOS externos enviam um POST /api/leads e os
 // campos caem nos lugares certos do lead (veja o schema LeadInput, bem anotado).
 
+// Suporte (routes.tickets.js + routes.support-portal.js). Definido antes do
+// objeto principal porque entra por spread em `paths`.
+const idParam = (name = "id") => ({ name, in: "path", required: true, schema: { type: "string" } });
+const json = (schema) => ({ required: true, content: { "application/json": { schema } } });
+const SEC = [{ ApiKeyAuth: [] }];
+const TICKET_STATUS = ["new", "open", "pending_customer", "on_hold", "resolved", "closed"];
+const TICKET_PRIORITY = ["urgent", "high", "normal", "low"];
+const TicketInput = {
+  type: "object",
+  properties: {
+    saas: { type: "string", description: "Produto (obrigatório na criação; não muda depois)" },
+    subject: { type: "string", maxLength: 200 },
+    description: { type: "string" },
+    status: { type: "string", enum: TICKET_STATUS, description: "Só no PATCH. pending_customer pausa a resolução (configurável); resolved/closed encerram o relógio" },
+    priority: { type: "string", enum: TICKET_PRIORITY, description: "Define os prazos de SLA; trocar recalcula a partir da abertura" },
+    category: { type: "string" },
+    customerId: { type: "string", description: "Cliente do MESMO produto; na criação preenche o solicitante" },
+    assignee: { type: "string", description: "Usuário que atende o produto (supportSaas ou admin); '' tira" },
+    requester: { type: "object", properties: { name: { type: "string" }, email: { type: "string" }, phone: { type: "string" } } },
+    channel: { type: "string", enum: ["internal", "whatsapp", "email"], description: "Só na criação; o portal usa a rota pública" },
+  },
+};
+const SUPPORT_PATHS = {
+  "/api/tickets": {
+    get: { tags: ["Suporte"], summary: "Fila de tickets do escopo da sessão (sem a conversa; traz messageCount e lastMessage)", parameters: [
+      { name: "saas", in: "query", schema: { type: "string" } },
+      { name: "status", in: "query", schema: { type: "string" }, description: "vários separados por vírgula" },
+      { name: "priority", in: "query", schema: { type: "string" } },
+      { name: "assignee", in: "query", schema: { type: "string" }, description: "id ou `none`" },
+      { name: "customerId", in: "query", schema: { type: "string" } },
+      { name: "open", in: "query", schema: { type: "string", enum: ["1"] }, description: "só não resolvidos" },
+    ], responses: { 200: { description: "OK" } } },
+    post: { tags: ["Suporte"], summary: "Abre um ticket (numera, calcula SLA, avisa atendentes se não houver responsável)", security: SEC, requestBody: json(TicketInput), responses: { 201: { description: "Ticket" }, 400: { description: "Produto/assunto/cliente/responsável inválido" }, 403: { description: "Produto fora do escopo da sessão" } } },
+  },
+  "/api/tickets/meta": { get: { tags: ["Suporte"], summary: "Status (com kind open/waiting/done), prioridades e canais", responses: { 200: { description: "OK" } } } },
+  "/api/tickets/bulk": { post: { tags: ["Suporte"], summary: "Ação em massa (assign | status | priority) em até 200 tickets; fora do escopo conta como missing", security: SEC, requestBody: json({ type: "object", required: ["ids", "action"], properties: { ids: { type: "array", items: { type: "string" } }, action: { type: "string", enum: ["assign", "status", "priority"] }, value: { type: "string" } } }), responses: { 200: { description: "{ ok[], missing[], failed[] }" } } } },
+  "/api/tickets/{id}": {
+    parameters: [idParam()],
+    get: { tags: ["Suporte"], summary: "Ticket inteiro (conversa, anexos, SLA)", responses: { 200: { description: "OK" }, 404: { description: "Não existe ou está fora do escopo" } } },
+    patch: { tags: ["Suporte"], summary: "Altera status, prioridade, responsável, categoria, cliente ou solicitante", security: SEC, requestBody: json(TicketInput), responses: { 200: { description: "Ticket" }, 400: { description: "Valor inválido" }, 404: { description: "Fora do escopo" } } },
+    delete: { tags: ["Suporte"], summary: "Apaga (só admin/chave mestre): conversa, eventos, notificações e anexos", security: SEC, responses: { 200: { description: "{ ok, removed }" }, 403: { description: "Não é admin" } } },
+  },
+  "/api/tickets/{id}/messages": { parameters: [idParam()], post: { tags: ["Suporte"], summary: "Resposta pública (kind reply: marca a 1ª resposta e pode avisar o cliente por e-mail) ou nota interna (kind note)", security: SEC, requestBody: json({ type: "object", required: ["text"], properties: { text: { type: "string" }, kind: { type: "string", enum: ["reply", "note"] }, status: { type: "string", enum: TICKET_STATUS }, attachments: { type: "array", items: { type: "string" }, description: "ids de anexos do ticket; citados numa resposta ficam visíveis ao cliente" } } }), responses: { 201: { description: "{ message, ticket, emailed }" } } } },
+  "/api/tickets/{id}/activity": { parameters: [idParam()], get: { tags: ["Suporte"], summary: "Eventos em ordem cronológica", responses: { 200: { description: "OK" } } } },
+  "/api/tickets/{id}/portal-link": { parameters: [idParam()], get: { tags: ["Suporte"], summary: "URL pública do chamado (/s/:token)", responses: { 200: { description: "{ url, title }" } } } },
+  "/api/tickets/{id}/attachments": { parameters: [idParam()], post: { tags: ["Suporte"], summary: "Anexa arquivo (multipart `file`, até 5MB). `?public=1` já nasce visível ao cliente", security: SEC, responses: { 201: { description: "{ attachment, ticket }" }, 413: { description: "Acima de 5MB" } } } },
+  "/api/tickets/{id}/attachments/{aid}": { parameters: [idParam(), idParam("aid")],
+    get: { tags: ["Suporte"], summary: "Baixa o anexo (com escopo)", responses: { 200: { description: "Bytes" } } },
+    delete: { tags: ["Suporte"], summary: "Remove o anexo", security: SEC, responses: { 200: { description: "Ticket" } } } },
+  "/api/support/settings/{saas}": { parameters: [idParam("saas")],
+    get: { tags: ["Suporte"], summary: "Configurações de SLA do produto (políticas em minutos, expediente, pausa, aviso, categorias, portal, e-mail)", responses: { 200: { description: "OK" }, 404: { description: "Produto fora do escopo" } } },
+    put: { tags: ["Suporte"], summary: "Salva as configurações (parcial; políticas mesclam por prioridade)", security: SEC, requestBody: json({ type: "object" }), responses: { 200: { description: "Configurações" }, 400: { description: "Resolução menor que a 1ª resposta" } } } },
+  "/api/support/agents": { get: { tags: ["Suporte"], summary: "Usuários com a etiqueta support e os produtos que atendem", responses: { 200: { description: "[{ id, name, support, admin, supportSaas }]" } } } },
+  "/api/support/agents/{userId}": { parameters: [idParam("userId")], put: { tags: ["Suporte"], summary: "Define supportSaas e a etiqueta support. Quem não é admin só mexe nos produtos do próprio escopo", security: SEC, requestBody: json({ type: "object", properties: { supportSaas: { type: "array", items: { type: "string" } }, support: { type: "boolean" } } }), responses: { 200: { description: "Atendente" } } } },
+  "/public/support/{token}": { parameters: [idParam("token")], get: { tags: ["Suporte"], summary: "Portal (sem chave): recorte público do chamado — sem nota interna, anexo interno, responsável ou SLA", responses: { 200: { description: "OK" }, 404: { description: "Token inválido" } } } },
+  "/public/support/{token}/messages": { parameters: [idParam("token")], post: { tags: ["Suporte"], summary: "Portal: resposta do cliente (reabre resolvido/aguardando; fechado = 409). Rate limit + honeypot `_hp`", requestBody: json({ type: "object", properties: { text: { type: "string" }, attachments: { type: "array", items: { type: "string" } } } }), responses: { 201: { description: "{ ok, ticket }" }, 409: { description: "Encerrado" }, 429: { description: "Rate limit" } } } },
+  "/public/support/new/{saas}": { parameters: [idParam("saas")], post: { tags: ["Suporte"], summary: "Portal: abre chamado (só com portal.enabled). Vincula o cliente do produto pelo e-mail ou telefone", requestBody: json({ type: "object", required: ["name", "email", "subject", "description"], properties: { name: { type: "string" }, email: { type: "string" }, phone: { type: "string" }, category: { type: "string" }, subject: { type: "string" }, description: { type: "string" } } }), responses: { 201: { description: "{ ok, number, url }" }, 404: { description: "Portal desligado" } } } },
+};
+
 export const openapi = {
   openapi: "3.0.3",
   info: {
@@ -29,6 +88,7 @@ export const openapi = {
     { name: "Metas", description: "Goals / pacing" },
     { name: "Sistema", description: "Saúde, bootstrap, agregados" },
     { name: "Tarefas", description: "Quadro de tarefas do time (nível Asana): colunas, subtarefas, comentários com menção, anexos, regras de coluna, recorrência, atividade e caixa de entrada. Rotas /api/tasks exigem a tela `tasks`; /api/notifications vale pra qualquer sessão." },
+    { name: "Suporte", description: "Tickets de suporte com SLA por prioridade (tempo útil), conversa com resposta pública x nota interna, anexos, atendentes e portal do cliente. /api/tickets exige a tela `tickets`; /api/support/ exige `support_settings` (leitura também com `tickets`). Além da tela, cada sessão só alcança os produtos de `supportSaas` (admin e chave mestre: todos) — ticket fora do escopo responde 404. Portal público sem chave em /s/:token, /s/new/:saas e /public/support/*." },
     { name: "Blog", description: "Redação do blog SEO (leverads.com.br/blog): pautas mineradas do cockpit, rascunhos por IA, revisão, agenda e publicação. Páginas públicas em /public/blog/* (sem chave)." },
   ],
   components: {
@@ -353,6 +413,7 @@ export const openapi = {
     },
   },
   paths: {
+    ...SUPPORT_PATHS,
     "/api/tasks": {
       get: { tags: ["Tarefas"], summary: "Lista tarefas", parameters: [
         { name: "saas", in: "query", schema: { type: "string" } }, { name: "assignee", in: "query", schema: { type: "string" } }, { name: "column", in: "query", schema: { type: "string" } },

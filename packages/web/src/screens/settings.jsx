@@ -481,6 +481,7 @@ const ROLE_OPTS = [
   ["integrator", "Integração", "faz o setup pós-venda"],
   ["social", "Mídia social", "cuida das redes sociais e do conteúdo"],
   ["admin", "Admin", "dono da operação: não é vaga do funil e não é cobrado no treinamento"],
+  ["support", "Suporte", "atendente de tickets: os produtos que atende ficam em Suporte → Configurações de SLA"],
 ];
 
 // Senha inicial do usuário novo: 10 caracteres com letra maiúscula, minúscula,
@@ -545,6 +546,15 @@ function TeamSettings() {
     setSaving("");
   }
 
+  // Produtos que a pessoa atende no Suporte: é o acesso aos tickets (a API
+  // recusa produto fora da lista). A etiqueta Suporte sozinha não libera nada.
+  async function setUserSupportSaas(u, supportSaas) {
+    setUsers((us) => us.map((x) => (x.id === u.id ? { ...x, supportSaas } : x)));
+    setSaving(u.id);
+    try { await api.updateUser(u.id, { supportSaas }); } catch (e) { console.warn("produtos do suporte não salvos:", e.message); window.toast && window.toast("Os produtos do suporte não foram salvos", "neg"); load(); }
+    setSaving("");
+  }
+
   // Renomear alguém do time (o próprio usuário também troca em Meu perfil, com
   // a foto). Salva ao sair do campo; 409 = nome já usado por outra pessoa.
   async function renameUser(u, name) {
@@ -590,18 +600,19 @@ function TeamSettings() {
       {/* .tbl-x: no mobile a grade (colunas fixas ~900px) rola dentro do card
           em vez de estourar a página — mesmo padrão do Funil abaixo. */}
       <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
-       <div style={{ minWidth: 860 }}>
-        <div className="kicker" style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 96px 140px 120px 44px`, gap: 8, padding: "10px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
+       <div style={{ minWidth: 1100 }}>
+        <div className="kicker" style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 96px 140px 120px 130px 44px`, gap: 8, padding: "10px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
           <span>Usuário</span>
           {ROLE_OPTS.map(([k, l, hint]) => <span key={k} title={hint} style={{ textAlign: "center" }}>{l}</span>)}
           <span title="Nível de carreira (júnior · pleno · sênior): define as metas de contratos e receita de SDR e closer, pelo plano de Remuneração">Nível</span>
           <span title="Vazio = aparece nos pickers de todos os produtos; preenchido = só no workspace daquele produto">Produto</span>
           <span title="Quais telas o usuário vê (menu + rotas da API). Nenhuma marcada = todas">Telas</span>
+          <span title="Produtos cujos tickets de suporte a pessoa atende. Nenhum = não vê tickets (admin vê todos)">Atende (suporte)</span>
           <span />
         </div>
         {users === null && <div className="mono dim" style={{ padding: "12px 14px", fontSize: 12 }}>carregando…</div>}
         {Array.isArray(users) && users.map((u) => (
-          <div key={u.id} style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 96px 140px 120px 44px`, gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
+          <div key={u.id} style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 96px 140px 120px 130px 44px`, gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
             <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 500, minWidth: 0 }}>
               <Avatar id={u.id} name={u.name} size={22} />
               <input defaultValue={u.name || u.id} key={u.name}
@@ -629,6 +640,7 @@ function TeamSettings() {
               {SAAS.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
             </select>
             <ScreensPicker screens={u.screens || []} roles={u.roles || []} onChange={(screens) => setUserScreens(u, screens)} />
+            <SupportProductsPicker value={u.supportSaas || []} roles={u.roles || []} products={SAAS} onChange={(list) => setUserSupportSaas(u, list)} />
             <button onClick={() => removeUser(u)} title={`Remover ${u.name || u.id} do time`}
               style={{ justifySelf: "center", width: 26, height: 26, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-4)", fontSize: 13, cursor: "pointer" }}
               onMouseEnter={(e) => { e.currentTarget.style.color = "var(--neg)"; e.currentTarget.style.borderColor = "var(--neg)"; }}
@@ -714,6 +726,39 @@ function ScreensPicker({ screens, roles, onChange }) {
   );
 }
 
+// Produtos que a pessoa atende no Suporte (user.supportSaas). Admin vê todos;
+// sem produto a fila de tickets fica fechada mesmo com a etiqueta Suporte — o
+// botão avisa em vez de parecer liberado.
+function SupportProductsPicker({ value, roles, products, onChange }) {
+  const [open, setOpen] = useStS(false);
+  const btn = React.useRef(null);
+  const admin = (roles || []).includes("admin");
+  const atendente = (roles || []).includes("support");
+  const names = (products || []).filter((p) => value.includes(p.id)).map((p) => p.name);
+  const label = admin ? "todos (admin)" : names.length ? (names.length === 1 ? names[0] : `${names.length} produtos`) : "nenhum";
+  const alerta = !admin && atendente && !names.length;
+  return (
+    <div style={{ position: "relative" }}>
+      <button ref={btn} onClick={() => !admin && setOpen((o) => !o)} disabled={admin}
+        title={admin ? "admin atende todos os produtos" : alerta ? "etiqueta Suporte marcada, mas nenhum produto: a fila de tickets continua fechada" : names.join(", ") || "sem acesso aos tickets"}
+        style={{ ...inputStyle, height: 26, fontSize: 12, textAlign: "left", cursor: admin ? "default" : "pointer", color: alerta ? "var(--warn)" : undefined, border: "1px solid " + (open ? "var(--accent-line)" : alerta ? "var(--warn)" : "var(--line-1)") }}>
+        {label}
+      </button>
+      {open && (
+        <Popover anchor={btn} onClose={() => setOpen(false)} width={220} align="end" title="Atende no Suporte">
+          {(products || []).map((p) => (
+            <label key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px", fontSize: 12.5, cursor: "pointer" }}>
+              <input type="checkbox" checked={value.includes(p.id)} style={{ accentColor: "var(--accent)" }}
+                onChange={() => onChange(value.includes(p.id) ? value.filter((x) => x !== p.id) : [...value, p.id])} />
+              {p.name}
+            </label>
+          ))}
+          <div className="mono dim" style={{ fontSize: 10.5, padding: 4 }}>sem produto, a pessoa não vê tickets</div>
+        </Popover>
+      )}
+    </div>
+  );
+}
 
 // ───────────────────────────────────────────────────────── Campos custom
 // product.customFields.{deals|customers|leads} — cada campo vira input no

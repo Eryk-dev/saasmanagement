@@ -5,6 +5,7 @@ import { integrationFormsMock } from "./integration-forms-mock.js";
 import { marketingCollections, marketingCrud, marketingMock } from "./marketing-mock.js";
 const marketingPreview = typeof location !== "undefined" && new URLSearchParams(location.search).has("marketing");
 import { trainingMock } from "./training-mock.js";
+import { ticketsMock } from "./tickets-mock.js";
 const DIA = 86400000;
 const hoje = new Date();
 const emHoras = (h, m = 0) => { const d = new Date(hoje); d.setHours(h, m, 0, 0); return d.toISOString(); };
@@ -61,10 +62,12 @@ let notificacoes = [
   { id: "n1", saas: "leverads", by: "leo", type: "wa_waiting", text: "Auto Peças Santos está esperando uma resposta há 3 horas.", at: emDias(0), read: false, link: { screen: "whatsapp", thread: "demo" } },
   { id: "n2", saas: "leverads", by: "lucas", type: "mention", text: "Lucas mencionou você no roteiro de objeção de preço.", at: emDias(-1), read: false, task: "t1" },
   { id: "n3", saas: "leverads", by: "tiago", type: "assigned", text: "Ligar para o financeiro da RN Distribuidora.", at: emDias(-1), read: false, task: "t3" },
+  { id: "n4", saas: "leverads", by: "api", type: "ticket_sla_breach", text: "SLA estourado: #1042 Painel não carrega os anúncios do Mercado Livre passou do prazo de 1ª resposta", at: emDias(0), read: false, task: "tk1", link: { screen: "tickets", thread: "tk1" } },
 ];
 
 const RESPOSTAS = {
   ...trainingMock,
+  ...ticketsMock,
   notifications: () => ({ unread: notificacoes.filter((n) => !n.read).length, items: notificacoes }),
   notificationsRead: ({ all, ids = [] }) => { notificacoes = notificacoes.map((n) => all || ids.includes(n.id) ? { ...n, read: true } : n); return { ok: true }; },
   list: (col) => col === "leads" ? LEADS_FAKE : col === "customers" ? CLIENTES_FAKE : col === "tasks" ? TAREFAS : col === "task_boards" ? [{ id: "b1", saas: "leverads", columns: [{ key: "todo", name: "A fazer" }, { key: "doing", name: "Em andamento" }, { key: "done", name: "Concluído", done: true }] }] : [],

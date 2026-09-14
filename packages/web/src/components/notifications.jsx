@@ -23,7 +23,10 @@ function when(iso) {
   return d.toLocaleDateString("pt-BR", { day: "numeric", month: "short" }).replace(".", "");
 }
 const TABS = [["all", "Todas"], ["mention", "Menções"], ["assigned", "Atribuídas a mim"]];
-const inTab = (n, tab) => tab === "all" || (tab === "mention" ? n.type === "mention" : n.type === "assigned");
+// Suporte (14/09) entra nas mesmas abas: menção em nota e ticket atribuído.
+const inTab = (n, tab) => tab === "all" || (tab === "mention" ? (n.type === "mention" || n.type === "ticket_mention") : (n.type === "assigned" || n.type === "ticket_assigned"));
+const DOT = { wa_waiting: "var(--neg)", ticket_sla_breach: "var(--neg)", ticket_sla_warning: "var(--warn)" };
+const ACTION = { wa_waiting: "Responder", mention: "Responder", assigned: "Abrir tarefa", ticket_reply: "Ver resposta", ticket_mention: "Responder", ticket_sla_breach: "Atender agora", ticket_sla_warning: "Atender", ticket_assigned: "Abrir ticket", ticket_new: "Abrir ticket" };
 
 export function NotificationsBell() {
   const [open, setOpen] = useState(false);
@@ -113,17 +116,17 @@ export function NotificationsBell() {
             {!error && items !== null && list.length === 0 && (
               <div style={{ padding: "26px 14px", textAlign: "center" }}>
                 <div style={{ fontSize: 13.5, fontWeight: 600 }}>Nenhuma notificação</div>
-                <div className="dim" style={{ fontSize: 12, marginTop: 4 }}>Menções, atribuições, comentários e prazos das suas tarefas aparecem aqui.</div>
+                <div className="dim" style={{ fontSize: 12, marginTop: 4 }}>Menções, atribuições, comentários e prazos das suas tarefas e tickets aparecem aqui.</div>
               </div>
             )}
             {list.map((n) => (
               <button key={n.id} type="button" onClick={() => openItem(n)} className="notification-item" data-read={n.read || undefined}>
-                <span className="notification-dot" style={{ background: n.read ? "var(--line-2)" : n.type === "wa_waiting" ? "var(--neg)" : "var(--accent)" }} />
+                <span className="notification-dot" style={{ background: n.read ? "var(--line-2)" : DOT[n.type] || "var(--accent)" }} />
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span className="notification-text">{n.text}</span>
                   <span className="notification-meta">
                     {(n.task || n.link?.screen) && <span className="notification-action">
-                      {n.type === "wa_waiting" ? "Responder" : n.type === "mention" ? "Responder" : n.type === "assigned" ? "Abrir tarefa" : "Abrir"} →
+                      {ACTION[n.type] || "Abrir"} →
                     </span>}
                     <span title={n.by === "api" ? "Cockpit" : displayName(n.by) || n.by}>{when(n.at)}{n.saas ? ` · ${n.saas}` : ""}</span>
                   </span>

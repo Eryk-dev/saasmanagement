@@ -19,6 +19,7 @@ export const SCREEN_IDS = [
   "outbound", "remuneracao",
   "blog", // redação do blog SEO (grupo Marketing)
   "eloapp", "landingpages",
+  "tickets", "support_settings", // grupo Suporte: fila de tickets + configurações de SLA/atendentes
 ];
 
 export const sanitizeScreens = (x) =>
@@ -158,6 +159,10 @@ const ROUTE_SCREENS = [
   ["/api/flashcards", ["training"]],     // treinamentos (flashcards)
   ["/api/tasks", ["tasks"]],
   ["/api/task_boards", ["tasks"]],
+  // Suporte: além da tela, o PRODUTO do ticket passa pelo escopo de
+  // support-scope.js dentro das próprias rotas (routes.tickets.js).
+  ["/api/tickets", ["tickets"]],
+  ["/api/support/", ["support_settings"]],
   ["/api/mindmaps", ["mindmaps"]],       // mapas mentais / estratégia
   ["/api/goals", ["overview"]],
   ["/api/portfolio", ["overview"]],
@@ -184,7 +189,13 @@ const OVERVIEW_READ_PREFIXES = ["/api/marketing", "/api/metrics/", "/api/invoice
 // Leitura de carona por tela: prefixo → tela extra que só ganha no GET. A ficha
 // do cliente mostra os contratos GERADOS pra ele (bloco "Contratos gerados"),
 // mas gerar/excluir registro segue sendo coisa da tela Contratos.
-const EXTRA_READ_SCREENS = [["/api/contract_issues", "customers"]];
+// A fila de tickets lê as categorias/SLA do produto e a lista de atendentes
+// (picker de responsável); editar segue coisa da tela de Configurações de SLA.
+const EXTRA_READ_SCREENS = [
+  ["/api/contract_issues", "customers"],
+  ["/api/support/settings/", "tickets"],
+  ["/api/support/agents", "tickets"],
+];
 
 // ── Ações com o id NO MEIO da rota ──────────────────────────────────────────
 // A régua de prefixo só olha o começo da URL, então `POST /api/customers/:id/

@@ -7,6 +7,7 @@
 
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { sanitizeScreens } from "./screens.js";
+import { sanitizeSupportSaas } from "./support-scope.js";
 
 const SESSION_TTL_MS = 7 * 24 * 3600 * 1000;
 
@@ -49,7 +50,9 @@ export async function ensureDefaultAdmins(repo) {
 // "admin" é a etiqueta de DONO da operação (Leo, Eryk, Jonathan): não é vaga de
 // funil (não entra em picker de SDR/closer) e isenta do treinamento obrigatório
 // — quem cuida do negócio estuda se quiser, não porque a régua cobra.
-export const ROLE_TAGS = ["sdr", "closer", "integrator", "social", "admin"];
+// "support" = atendente do Suporte: recebe ticket novo sem responsável dos
+// produtos em `supportSaas` (support-scope.js — esse sim é ACL).
+export const ROLE_TAGS = ["sdr", "closer", "integrator", "social", "admin", "support"];
 const sanitizeRoles = (x) => (Array.isArray(x) ? x.filter((r) => ROLE_TAGS.includes(r)) : []);
 // `saas` = escopo de produto: vazio = time de TODOS os produtos; preenchido =
 // só aparece nos pickers do workspace daquele produto (ex.: Ana atende só a
@@ -72,6 +75,9 @@ const publicUser = (u) => ({
   // Telas permitidas (screens.js): [] = todas. O SPA usa pra montar o menu e o
   // guard da API usa pra fechar as rotas correspondentes.
   screens: Array.isArray(u.screens) ? u.screens : [],
+  // Produtos cujos tickets de suporte a pessoa atende (support-scope.js). Aqui
+  // é ACL: lista vazia = nenhum ticket (admin vê todos).
+  supportSaas: sanitizeSupportSaas(u.supportSaas),
   // Status da conta Google PESSOAL (só flags — o refresh token NUNCA sai daqui).
   googleConnected: !!u.google?.refreshToken,
   googleAccount: u.google?.account || "",
@@ -243,7 +249,7 @@ export function registerAuthRoutes(app, repo) {
   app.patch("/api/auth/users/:id", async (req, reply) => {
     const user = await repo.get("users", req.params.id);
     if (!user) return reply.code(404).send({ error: "Not found" });
-    const { name, roles, password, saas, screens, compLevel } = req.body || {};
+    const { name, roles, password, saas, screens, compLevel, supportSaas } = req.body || {};
     const patch = {};
     // Nível do plano de remuneração (1 jr · 2 pl · 3 sn): régua das metas de
     // contratos/receita do card da pessoa na Visão geral (comp-plan.js).
@@ -270,6 +276,13 @@ export function registerAuthRoutes(app, repo) {
     if (roles !== undefined) patch.roles = sanitizeRoles(roles);
     if (saas !== undefined) patch.saas = sanitizeSaas(saas); // "" volta a valer pra todos
     if (screens !== undefined) patch.screens = sanitizeScreens(screens); // [] volta a ver tudo
+    // Produtos cujos tickets a pessoa atende (ACL do Suporte). Ajustes → Equipe
+    // é a porta de quem gerencia o time: a tela de Configurações de SLA só abre
+    // pra quem já atende o produto, então sem isto ninguém destravava o primeiro.
+    if (supportSaas !== undefined) {
+      const products = new Set((await repo.list("products")).map((p) => String(p.id)));
+      patch.supportSaas = sanitizeSupportSaas(supportSaas).filter((s) => products.has(s));
+    }
 
     if (password !== undefined) {
       if (!password || String(password).length < 4) return reply.code(400).send({ error: "senha nova precisa de 4+ caracteres" });

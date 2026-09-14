@@ -27,6 +27,7 @@ const SILENT = new Set([
   "wa_media", "wa_calls", "wa_alerts",
   "training_states", "training_attempts",
   "mp_payments", "mp_preapprovals", "social_stories",
+  "ticket_assets", // bytes do anexo; o ticket (QUIET) já avisa a tela
 ]);
 
 // Coleções que EMITEM o evento mas não devem recarregar o SEED do SPA: a tela
@@ -36,7 +37,8 @@ const SILENT = new Set([
 //   task_events    atividade de uma tarefa (o painel da tarefa refaz o fetch)
 //   notifications  caixa de entrada (o sino refaz o fetch)
 //   tasks/task_boards  a tela de Tarefas e o Meu dia refazem o fetch sozinhos
-export const QUIET = new Set(["activities", "task_events", "notifications", "tasks", "task_boards"]);
+//   tickets/ticket_events/ticket_settings  telas do Suporte (fetch próprio)
+export const QUIET = new Set(["activities", "task_events", "notifications", "tasks", "task_boards", "tickets", "ticket_events", "ticket_settings"]);
 
 let rev = 0;
 const listeners = new Set();

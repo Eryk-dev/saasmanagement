@@ -107,6 +107,10 @@ try {
     ["funcionarios", "/src/screens/funcionarios.jsx", "FuncionariosScreen", {}, "Análise de Equipe"],
     ["desempenho", "/src/screens/desempenho.jsx", "DesempenhoScreen", {}, "Análise de Desempenho"],
     ["tasks", "/src/screens/tasks/index.jsx", "TasksScreen", {}, "Tarefas"],
+    ["tickets", "/src/screens/tickets/index.jsx", "TicketsScreen", {}, "Tickets"],
+    ["support-settings", "/src/screens/support-settings.jsx", "SupportSettingsScreen", {}, "Configurações de SLA"],
+    // Detalhe do ticket é MODAL (14/09); no SSR o fetch não roda, então monta com o resumo da fila.
+    ["ticket-detalhe", "/src/screens/tickets/detail.jsx", "TicketDetail", { ticketId: "t1", summary: { id: "t1", number: 7, subject: "Painel fora do ar", status: "new", priority: "urgent", channel: "portal", createdAt: nowIso }, saasId: "leverads", agents: [], onClose() {} }, "Painel fora do ar"],
   ];
   for (const [name, path, exportName, props, mustContain] of cases) {
     try {
@@ -863,6 +867,35 @@ try {
     console.log(`✓ pipeline-lista (${soma}px de ${P.LIST_GRID_BUDGET})`);
   } catch (err) {
     console.error(`✗ pipeline-lista: ${err.message}`);
+    failed++;
+  }
+
+  // ── Suporte (14/09): a lista da fila cabe, o estourado vem primeiro, o SLA
+  // lê os instantes gravados e a nota interna não vira "resposta" na tela ────
+  try {
+    const L = await server.ssrLoadModule("/src/screens/tickets/list-view.jsx");
+    const T = await server.ssrLoadModule("/src/lib/tickets.js");
+    const cols = L.TICKETS_GRID.trim().split(/\s+(?![^(]*\))/);
+    const floorOf = (c) => {
+      const mm = c.match(/^minmax\((\d+)px/) || c.match(/^(\d+)px$/);
+      if (!mm) throw new Error(`coluna sem piso em px: ${c}`);
+      return Number(mm[1]);
+    };
+    const soma = cols.reduce((a, c) => a + floorOf(c), 0) + L.TICKETS_GRID_GAP * (cols.length - 1);
+    if (soma > L.TICKETS_GRID_BUDGET) throw new Error(`a fila volta a rolar: ${soma}px de ${L.TICKETS_GRID_BUDGET}`);
+    if (L.TICKET_SECTIONS[0][0] !== "breached") throw new Error("SLA estourado deveria ser a 1ª seção");
+    const h = 3600000, agora = Date.parse("2026-09-14T15:00:00Z");
+    const base = { status: "open", createdAt: "2026-09-14T12:00:00Z", sla: { firstResponseDue: "2026-09-14T13:00:00Z", firstResponseWarnAt: "2026-09-14T12:48:00Z", resolutionDue: "2026-09-14T20:00:00Z", resolutionWarnAt: "2026-09-14T18:24:00Z", breached: {} } };
+    if (T.slaState(base, agora).overall !== "breached") throw new Error("1ª resposta vencida precisa ler como estourada");
+    const respondido = { ...base, sla: { ...base.sla, firstResponseAt: "2026-09-14T12:30:00Z" } };
+    if (T.slaState(respondido, agora).overall !== "ok") throw new Error("respondido no prazo e resolução correndo = ok");
+    if (T.slaState(respondido, agora + 4 * h).resolution !== "warning") throw new Error("o aviso usa o instante gravado (tempo útil)");
+    if (L.sectionOf({ ...respondido, status: "pending_customer", sla: { ...respondido.sla, pausedAt: "2026-09-14T14:00:00Z" } }, agora) !== "paused") throw new Error("aguardando o cliente vai pra seção de pausados");
+    const lista = renderToString(wrap(React.createElement(L.TicketsList, { tickets: [base, { ...respondido, id: "b", number: 2, subject: "Outro" }].map((t, i) => ({ id: t.id || "a", number: t.number || 1, subject: t.subject || "Fora do ar", ...t })), agentName: (x) => x, onOpen() {}, now: agora })));
+    if (!lista.includes("SLA estourado") || !lista.includes("Fora do ar")) throw new Error("a lista não montou as seções");
+    console.log(`✓ tickets-lista (${soma}px de ${L.TICKETS_GRID_BUDGET})`);
+  } catch (err) {
+    console.error(`✗ tickets-lista: ${err.message}`);
     failed++;
   }
 

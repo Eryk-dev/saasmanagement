@@ -1,0 +1,434 @@
+import React from "react";
+import { api } from "../../lib/api.js";
+import { PrimaryButton, SecondaryButton, toast } from "../../atoms.jsx";
+import { Modal } from "../../components/overlay.jsx";
+import { SelectPopover } from "../../components/select-popover.jsx";
+import { UserPicker, UserAvatarRing } from "../../components/user-picker.jsx";
+import { isAdminUser } from "../../lib/users.js";
+import {
+  TICKET_STATUSES, STATUS_BY_KEY, TICKET_PRIORITIES, PRIORITY_BY_KEY, CHANNEL_LABEL,
+  slaState, SLA_TONE, distance, agentHandles, portalUrl,
+} from "../../lib/tickets.js";
+
+const { useState, useEffect, useRef, useCallback } = React;
+
+// Detalhe do ticket em MODAL (14/09): o painel lateral espremia o quadro e a
+// conversa ficava abaixo da dobra, depois de oito campos. Agora a conversa é a
+// coluna principal, com a resposta sempre à mão embaixo, e os dados do
+// atendimento (status, prazos, cliente, anexos) moram numa coluna lateral.
+// No celular as duas colunas empilham: dados, conversa e resposta.
+
+const fmtWhen = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "");
+const fmtSize = (n) => (n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+// Opções dos seletores: status e prioridade carregam o ponto da cor da fila.
+const STATUS_OPTIONS = TICKET_STATUSES.map((st) => ({ value: st.key, label: st.label, tone: st.tone }));
+const PRIORITY_OPTIONS = TICKET_PRIORITIES.map((p) => ({ value: p.key, label: p.label, tone: p.tone, color: p.key === "urgent" ? "var(--neg)" : undefined }));
+const iconBtn = { width: 32, height: 32, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 14, flexShrink: 0 };
+
+// Campo que salva sozinho (régua do painel de Tarefas): o rascunho manda
+// enquanto está sujo e fechar com rascunho sujo grava.
+function useAutosave(serverValue, save) {
+  const [draft, setDraft] = useState(serverValue ?? "");
+  const dirty = useRef(false);
+  const draftRef = useRef(draft); draftRef.current = draft;
+  const saveRef = useRef(save); saveRef.current = save;
+  const [status, setStatus] = useState("");
+  useEffect(() => { if (!dirty.current) setDraft(serverValue ?? ""); }, [serverValue]);
+  const commit = useCallback(async () => {
+    if (!dirty.current) return true;
+    dirty.current = false;
+    setStatus("saving");
+    const ok = await saveRef.current(draftRef.current);
+    setStatus(ok ? "saved" : "error");
+    if (ok) setTimeout(() => setStatus((s) => (s === "saved" ? "" : s)), 1500);
+    else dirty.current = true;
+    return ok;
+  }, []);
+  useEffect(() => () => { if (dirty.current) saveRef.current(draftRef.current); }, []);
+  return { draft, onChange: (v) => { setDraft(v); dirty.current = true; }, commit, status };
+}
+function SaveStatus({ status, onRetry }) {
+  if (!status) return null;
+  if (status === "error") return <button type="button" onClick={onRetry} style={{ fontSize: 11, color: "var(--neg)", fontWeight: 600, flexShrink: 0 }}>não salvou · tentar de novo</button>;
+  return <span className="mono dim" style={{ fontSize: 11, flexShrink: 0 }}>{status === "saving" ? "salvando…" : "salvo"}</span>;
+}
+
+// ── Coluna lateral ──────────────────────────────────────────────────────────
+function Section({ title, aside, children }) {
+  return (
+    <section className="support-detail-section">
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <span className="kicker">{title}</span>
+        {aside && <span style={{ marginLeft: "auto" }}>{aside}</span>}
+      </div>
+      {children}
+    </section>
+  );
+}
+function Field({ label, children, anchorRef }) {
+  return (
+    <div className="support-detail-field">
+      <span>{label}</span>
+      <div ref={anchorRef}>{children}</div>
+    </div>
+  );
+}
+
+const CLOCK_WORD = { ok: "no prazo", warning: "vence em breve", breached: "estourado", paused: "pausado", met: "cumprido", none: "sem prazo" };
+function SlaClock({ label, state, due, doneAt, doneLabel }) {
+  const tone = SLA_TONE[state] || "var(--fg-3)";
+  let main;
+  if (doneAt) main = `${doneLabel} ${fmtWhen(doneAt)}`;
+  else if (state === "paused") main = "aguardando o cliente";
+  else if (state === "none" || !due) main = "—";
+  else if (state === "breached") main = `passou há ${distance(new Date(due) - Date.now())}`;
+  else main = `vence em ${distance(new Date(due) - Date.now())}`;
+  return (
+    <div className="support-clock">
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{label}</span>
+        <span className="support-status" style={{ "--dot": tone, marginLeft: "auto", color: state === "breached" ? "var(--neg)" : state === "warning" ? "var(--warn)" : "var(--fg-2)", fontWeight: 600 }}>{CLOCK_WORD[state] || state}</span>
+      </div>
+      <div style={{ fontSize: 13.5, fontWeight: 600, color: state === "breached" ? "var(--neg)" : "var(--fg-1)", marginTop: 3 }}>{main}</div>
+      {due && !doneAt && state !== "none" && <div className="mono dim" style={{ fontSize: 11, marginTop: 1 }}>prazo {fmtWhen(due)}</div>}
+    </div>
+  );
+}
+
+function Attachments({ ticket, onChange }) {
+  const [busy, setBusy] = useState(null);
+  const [isPublic, setIsPublic] = useState(false);
+  const fileRef = useRef(null);
+  const list = ticket.attachments || [];
+  const send = async (files) => {
+    for (const file of Array.from(files || [])) {
+      if (file.size > 5 * 1024 * 1024) { toast(`${file.name}: arquivo acima de 5MB`, "warn"); continue; }
+      setBusy(0);
+      try { const r = await api.ticketAttachment(ticket.id, file, { isPublic }, (p) => setBusy(p)); onChange(r.ticket); }
+      catch (err) { toast(`Não deu pra anexar ${file.name} · ${err.message || "tente de novo"}`, "neg"); }
+      finally { setBusy(null); }
+    }
+  };
+  const open = async (a) => {
+    try { const url = await api.ticketAttachmentUrl(ticket.id, a.id); window.open(url, "_blank", "noopener"); }
+    catch (err) { toast(`Não deu pra abrir ${a.name || "o arquivo"} · ${err.message}`, "neg"); }
+  };
+  const remove = async (a) => {
+    if (!window.confirm(`Remover o anexo ${a.name || ""}? O cliente também deixa de ver.`)) return;
+    try { onChange(await api.ticketAttachmentDelete(ticket.id, a.id)); }
+    catch (err) { toast(`Não deu pra remover · ${err.message}`, "neg"); }
+  };
+  return (
+    <Section title={`Anexos${list.length ? ` · ${list.length}` : ""}`}
+      aside={<SecondaryButton size="sm" type="button" onClick={() => fileRef.current?.click()} disabled={busy != null}>{busy != null ? `${Math.round(busy * 100)}%` : "Anexar"}</SecondaryButton>}>
+      <input ref={fileRef} type="file" multiple style={{ display: "none" }} onChange={(e) => { send(e.target.files); e.target.value = ""; }} />
+      {list.length === 0 && <div className="mono dim" style={{ fontSize: 11.5 }}>nenhum arquivo · até 5MB cada</div>}
+      {list.map((a) => (
+        <div key={a.id} className="tk-row" style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderTop: "1px solid var(--line-1)", fontSize: 12.5 }}>
+          <button type="button" onClick={() => open(a)} className="support-ellipsis" title={a.name} style={{ flex: 1, textAlign: "left", color: "var(--accent)" }}>{a.name || "arquivo"}</button>
+          <span style={{ fontSize: 11, color: a.public ? "var(--pos)" : "var(--fg-4)", whiteSpace: "nowrap" }} title={a.public ? "aparece no portal do cliente" : "só a equipe vê"}>{a.public ? "cliente vê" : "interno"}</span>
+          <span className="mono dim" style={{ fontSize: 10.5, whiteSpace: "nowrap" }}>{fmtSize(a.size || 0)}</span>
+          <button type="button" className="tk-hover" aria-label={`Remover ${a.name || "anexo"}`} title="Remover anexo" onClick={() => remove(a)} style={{ color: "var(--neg)", fontSize: 12 }}>✕</button>
+        </div>
+      ))}
+      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--fg-3)", marginTop: 8 }} title="Sem marcar, o arquivo fica interno até ser citado numa resposta ao cliente">
+        <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} style={{ accentColor: "var(--accent)" }} />novos anexos já visíveis ao cliente
+      </label>
+    </Section>
+  );
+}
+
+function RequesterFields({ ticket, save }) {
+  const r = ticket.requester || {};
+  const field = (key, placeholder, type = "text") => (
+    <input key={`${ticket.id}:${key}:${r[key] || ""}`} className="inp" type={type} defaultValue={r[key] || ""} placeholder={placeholder} aria-label={placeholder}
+      onBlur={(e) => { const v = e.target.value.trim(); if (v !== (r[key] || "")) save({ requester: { [key]: v } }); }}
+      onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") e.currentTarget.blur(); }}
+      style={{ width: "100%", boxSizing: "border-box", fontSize: 12.5 }} />
+  );
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {field("name", "nome do solicitante")}
+      {field("email", "e-mail (recebe o aviso de resposta)", "email")}
+      {field("phone", "telefone", "tel")}
+    </div>
+  );
+}
+
+// ── Conversa ────────────────────────────────────────────────────────────────
+function Conversation({ ticket, agentName, description }) {
+  const [editing, setEditing] = useState(false);
+  const items = ticket.messages || [];
+  const endRef = useRef(null);
+  useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [items.length]);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div className="support-msg" data-kind="customer">
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          <span className="kicker">pedido · {ticket.requester?.name || CHANNEL_LABEL[ticket.channel] || "cliente"} · {fmtWhen(ticket.createdAt)}</span>
+          <span style={{ marginLeft: "auto", display: "inline-flex", gap: 8, alignItems: "center" }}>
+            <SaveStatus status={description.status} onRetry={description.commit} />
+            <button type="button" onClick={() => { if (editing) description.commit(); setEditing((v) => !v); }} style={{ fontSize: 11.5, color: "var(--accent)", fontWeight: 600 }}>{editing ? "concluir" : "editar"}</button>
+          </span>
+        </div>
+        {editing ? (
+          <textarea autoFocus value={description.draft} rows={4} className="inp" placeholder="o que o cliente pediu"
+            onChange={(e) => description.onChange(e.target.value)} onBlur={description.commit} onKeyDown={(e) => e.stopPropagation()}
+            style={{ width: "100%", boxSizing: "border-box", height: "auto", padding: "8px 10px", resize: "vertical", font: "inherit", fontSize: 13 }} />
+        ) : (description.draft || <span className="dim">sem descrição</span>)}
+      </div>
+      {items.map((m) => {
+        const kind = m.author?.type === "customer" ? "customer" : m.kind === "note" ? "note" : "reply";
+        const who = kind === "customer" ? (m.author?.name || ticket.requester?.name || "cliente") : agentName(m.author?.id);
+        return (
+          <div key={m.id} className="support-msg" data-kind={kind}>
+            <div className="kicker" style={{ marginBottom: 4, color: kind === "note" ? "var(--warn)" : undefined }}>
+              {kind === "note" ? "nota interna" : kind === "reply" ? "resposta ao cliente" : "cliente"} · {who} · {fmtWhen(m.at)}
+            </div>
+            {m.text}
+            {(m.attachments || []).length > 0 && (
+              <div className="mono dim" style={{ fontSize: 11, marginTop: 4 }}>
+                anexos: {(m.attachments || []).map((aid) => (ticket.attachments || []).find((a) => a.id === aid)?.name || "arquivo").join(" · ")}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {items.length === 0 && <div className="mono dim" style={{ fontSize: 12, textAlign: "center", padding: "6px 0" }}>ninguém respondeu ainda · a primeira resposta ao cliente cumpre o SLA de 1ª resposta</div>}
+      <div ref={endRef} />
+    </div>
+  );
+}
+
+const EVENT_TEXT = {
+  created: (d) => `abriu o ticket (${CHANNEL_LABEL[d.channel] || d.channel || "equipe"})`,
+  status_changed: (d) => `mudou o status: ${STATUS_BY_KEY[d.from]?.label || d.from} → ${STATUS_BY_KEY[d.to]?.label || d.to}`,
+  priority_changed: (d) => `mudou a prioridade: ${PRIORITY_BY_KEY[d.from]?.label || d.from} → ${PRIORITY_BY_KEY[d.to]?.label || d.to}`,
+  assigned: (d, name) => (d.to ? `atribuiu a ${name(d.to)}` : "tirou o responsável"),
+  updated: (d) => `editou ${(d.fields || []).join(", ")}`,
+  message: (d) => (d.authorType === "customer" ? "cliente respondeu" : d.kind === "note" ? "deixou uma nota interna" : "respondeu ao cliente"),
+  attachment_added: (d) => `anexou ${d.name || "um arquivo"}${d.public ? " (visível ao cliente)" : ""}`,
+  attachment_removed: (d) => `removeu ${d.name || "um anexo"}`,
+  sla_breached: (d) => `SLA de ${d.clock === "firstResponse" ? "1ª resposta" : "resolução"} estourou`,
+};
+function Activity({ ticketId, version, agentName }) {
+  const [items, setItems] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    api.ticketActivity(ticketId).then((r) => { if (vivo) setItems(r || []); }).catch(() => { if (vivo) setItems([]); });
+    return () => { vivo = false; };
+  }, [ticketId, version]);
+  if (items === null) return <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>;
+  if (!items.length) return <div className="mono dim" style={{ fontSize: 12 }}>sem atividade registrada</div>;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+      {items.map((e) => (
+        <div key={e.id} style={{ fontSize: 12.5, color: "var(--fg-2)", display: "flex", gap: 10 }}>
+          <span className="mono dim" style={{ fontSize: 11, flexShrink: 0, width: 84 }}>{fmtWhen(e.at)}</span>
+          <span><b style={{ fontWeight: 600 }}>{e.by === "portal" ? "Cliente" : e.by === "api" ? "Cockpit" : agentName(e.by)}</b> {(EVENT_TEXT[e.type] || (() => e.type))(e.data || {}, agentName)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Responder (vai pro cliente) ou nota interna (fica no cockpit), e o status
+// que o ticket assume no mesmo envio. Avisa quem está acima se há rascunho.
+function Composer({ ticket, onSent, onDraft }) {
+  const [kind, setKind] = useState("reply");
+  const [text, setText] = useState("");
+  const [after, setAfter] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { onDraft(!!text.trim()); }, [text]); // eslint-disable-line react-hooks/exhaustive-deps
+  const send = async () => {
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    try {
+      const r = await api.ticketMessage(ticket.id, { kind, text, status: after || undefined });
+      setText(""); setAfter("");
+      onSent(r.ticket);
+      toast(kind === "note" ? "Nota salva" : r.emailed ? "Resposta enviada · o cliente recebeu o aviso por e-mail" : "Resposta enviada", "pos");
+    } catch (err) {
+      toast(`Não deu pra enviar · ${err.message || "tente de novo"}`, "neg");
+    } finally { setBusy(false); }
+  };
+  return (
+    <div className="support-composer" data-kind={kind}>
+      <div style={{ display: "flex", gap: 2, marginBottom: 6 }}>
+        {[["reply", "Responder ao cliente"], ["note", "Nota interna"]].map(([k, l]) => (
+          <button key={k} type="button" onClick={() => setKind(k)} aria-pressed={kind === k}
+            style={{ padding: "5px 10px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: kind === k ? 600 : 500, background: kind === k ? "var(--bg-2)" : "transparent", color: kind === k ? (k === "note" ? "var(--warn)" : "var(--fg-1)") : "var(--fg-3)" }}>{l}</button>
+        ))}
+        <span className="mono dim hide-mobile" style={{ marginLeft: "auto", fontSize: 11, alignSelf: "center" }}>{kind === "note" ? "só a equipe vê · @nome avisa" : "o cliente vê no portal"}</span>
+      </div>
+      <textarea className="inp" value={text} onChange={(e) => setText(e.target.value)} disabled={busy} aria-label={kind === "note" ? "Nota interna" : "Resposta ao cliente"}
+        placeholder={kind === "note" ? "Escreva uma nota para a equipe…" : "Escreva a resposta ao cliente…"}
+        onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send(); }} />
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+        {/* div, não label: o clique na opção subiria até o label e reabriria a lista */}
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--fg-3)" }}>
+          e marcar como
+          <span style={{ width: 200 }}>
+            <SelectPopover size="sm" label="Depois de enviar" value={after} onChange={setAfter}
+              options={[{ value: "", label: `manter ${STATUS_BY_KEY[ticket.status]?.label.toLowerCase() || "o status"}` }, ...STATUS_OPTIONS.filter((o) => o.value !== ticket.status && o.value !== "new")]} />
+          </span>
+        </div>
+        <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 10 }}>
+          <span className="mono dim hide-mobile" style={{ fontSize: 11 }}>Ctrl+Enter</span>
+          <PrimaryButton type="button" onClick={send} disabled={busy || !text.trim()}>{busy ? "Enviando…" : kind === "note" ? "Salvar nota" : "Enviar resposta"}</PrimaryButton>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ── Modal ───────────────────────────────────────────────────────────────────
+export function TicketDetail({ ticketId, summary, saasId, agents, settings, mobile, refreshKey, activityVersion, onClose, onChange, onDeleted }) {
+  const [ticket, setTicket] = useState(null);
+  const [error, setError] = useState("");
+  const [tab, setTab] = useState("conversation");
+  const [picker, setPicker] = useState(false);
+  const [draft, setDraft] = useState(false);
+  const assigneeRef = useRef(null);
+
+  useEffect(() => {
+    let vivo = true;
+    api.ticket(ticketId)
+      .then((t) => { if (vivo) { setTicket(t); setError(""); } })
+      .catch((err) => { if (vivo) setError(err.status === 404 ? "Ticket não encontrado ou fora dos produtos que você atende." : (err.message || "erro")); });
+    return () => { vivo = false; };
+  }, [ticketId, refreshKey]);
+
+  const apply = useCallback((t) => { if (!t?.id) return; setTicket(t); onChange && onChange(t); }, [onChange]);
+  const save = useCallback(async (patch) => {
+    const before = ticket;
+    setTicket((t) => (t ? { ...t, ...patch, ...(patch.requester ? { requester: { ...(t.requester || {}), ...patch.requester } } : {}) } : t));
+    try { apply(await api.ticketUpdate(ticketId, patch)); return true; }
+    catch (err) { setTicket(before); toast(`Não deu pra salvar · ${err.message || "tente de novo"}`, "neg"); return false; }
+  }, [ticket, ticketId, apply]);
+
+  const subject = useAutosave(ticket?.subject ?? summary?.subject, (v) => (v.trim() ? save({ subject: v.trim() }) : Promise.resolve(false)));
+  const description = useAutosave(ticket?.description ?? "", (v) => save({ description: v }));
+
+  const agentName = useCallback((id) => agents?.find((a) => a.id === id)?.name || id || "—", [agents]);
+  const assignable = (agents || []).filter((a) => agentHandles(a, saasId));
+  const customers = (window.SEED?.CUSTOMERS || []).filter((c) => c.saas === saasId);
+
+  // Fechar com resposta escrita pela metade pede confirmação; o véu e o Esc
+  // ficam travados enquanto houver rascunho (fechavel={false}).
+  const close = () => { if (draft && !window.confirm("Descartar a resposta que você está escrevendo?")) return; onClose(); };
+  const remove = async () => {
+    if (!window.confirm(`Apagar o ticket #${ticket?.number}? A conversa, os anexos e o histórico somem. Para encerrar o atendimento, prefira Fechado.`)) return;
+    try { await api.ticketDelete(ticketId); toast("Ticket apagado", "pos"); onDeleted && onDeleted(ticketId); }
+    catch (err) { toast(`Não deu pra apagar · ${err.message}`, "neg"); }
+  };
+
+  const t = ticket || summary;
+  const sla = ticket ? slaState(ticket) : null;
+  const status = STATUS_BY_KEY[t?.status];
+
+  return (
+    <Modal onClose={close} fechavel={!draft} label={t ? `Ticket #${t.number}` : "Ticket"} largura={1080} padding={mobile ? 0 : 16}
+      painelStyle={{ height: mobile ? "100dvh" : "min(860px, calc(100dvh - 32px))", maxHeight: mobile ? "100dvh" : undefined, borderRadius: mobile ? 0 : undefined, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <header className="support-detail-head">
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="mono dim support-ellipsis" style={{ fontSize: 11.5 }}>
+            #{t?.number || "…"}{t ? ` · ${CHANNEL_LABEL[t.channel] || "equipe"} · aberto ${fmtWhen(t.createdAt)}` : ""}
+          </div>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 2 }}>
+            <textarea value={subject.draft} rows={1} placeholder="Assunto" aria-label="Assunto" className="tk-panel-field support-detail-subject" disabled={!ticket}
+              onChange={(e) => subject.onChange(e.target.value)} onBlur={subject.commit}
+              onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") { e.preventDefault(); e.target.blur(); } }} />
+            <SaveStatus status={subject.status} onRetry={subject.commit} />
+          </div>
+          {t && (
+            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginTop: 4, fontSize: 12.5 }}>
+              {status && <span className="support-status" style={{ "--dot": status.tone }}>{status.label}</span>}
+              {PRIORITY_BY_KEY[t.priority] && <span style={{ color: t.priority === "urgent" ? "var(--neg)" : "var(--fg-3)", fontWeight: t.priority === "urgent" ? 600 : 400 }}>prioridade {PRIORITY_BY_KEY[t.priority].label.toLowerCase()}</span>}
+              <span style={{ color: t.assignee ? "var(--fg-3)" : "var(--warn)" }}>{t.assignee ? `com ${agentName(t.assignee)}` : "sem responsável"}</span>
+              {sla && (sla.overall === "breached" || sla.overall === "warning") && (
+                <span style={{ color: sla.overall === "breached" ? "var(--neg)" : "var(--warn)", fontWeight: 600 }}>{sla.overall === "breached" ? "SLA estourado" : "SLA vencendo"}</span>
+              )}
+            </div>
+          )}
+        </div>
+        {/* Uma ação só pro portal: abrir como o cliente vê (o link copiável é a própria barra de endereço). */}
+        <button type="button" title="Ver como o cliente vê" aria-label="Ver como o cliente vê" disabled={!ticket}
+          onClick={() => window.open(`${portalUrl(ticket)}?from=cockpit`, "_blank", "noopener")}
+          style={{ ...iconBtn, display: "inline-flex", alignItems: "center", justifyContent: "center", opacity: ticket ? 1 : 0.5 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" /><circle cx="12" cy="12" r="3" />
+          </svg>
+        </button>
+        <button type="button" title="Fechar (Esc)" aria-label="Fechar" onClick={close} style={iconBtn}>✕</button>
+      </header>
+
+      {error && <div style={{ margin: 18, padding: "12px 14px", borderRadius: "var(--r-3)", background: "var(--warn-soft)", color: "var(--warn)", fontSize: 12.5 }}>{error}</div>}
+      {!error && !ticket && <div className="mono dim" style={{ fontSize: 12, padding: 18 }}>carregando…</div>}
+      {!error && ticket && (
+        <div className="support-detail-body">
+          <div className="support-detail-main">
+            <div style={{ display: "flex", gap: 2, padding: "10px 18px 0", flexShrink: 0 }}>
+              {[["conversation", `Conversa${(ticket.messages || []).length ? ` · ${ticket.messages.length}` : ""}`], ["activity", "Atividade"]].map(([k, l]) => (
+                <button key={k} type="button" onClick={() => setTab(k)} aria-pressed={tab === k} style={{ padding: "5px 10px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: tab === k ? 600 : 500, background: tab === k ? "var(--bg-2)" : "transparent", color: tab === k ? "var(--fg-1)" : "var(--fg-3)" }}>{l}</button>
+              ))}
+            </div>
+            <div className="support-detail-thread">
+              {tab === "conversation"
+                ? <Conversation ticket={ticket} agentName={agentName} description={description} />
+                : <Activity ticketId={ticket.id} version={activityVersion} agentName={agentName} />}
+            </div>
+            <Composer ticket={ticket} onSent={apply} onDraft={setDraft} />
+          </div>
+
+          <aside className="support-detail-side" aria-label="Dados do atendimento">
+            <Section title="Atendimento">
+              <Field label="Status">
+                <SelectPopover label="Status" value={ticket.status} options={STATUS_OPTIONS} onChange={(v) => save({ status: v })} />
+              </Field>
+              <Field label="Prioridade">
+                <SelectPopover label="Prioridade" value={ticket.priority} options={PRIORITY_OPTIONS} onChange={(v) => save({ priority: v })} />
+              </Field>
+              <Field label="Responsável" anchorRef={assigneeRef}>
+                <button type="button" className="inp" onClick={() => setPicker(true)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 6, textAlign: "left", fontSize: 12.5, color: ticket.assignee ? "var(--fg-1)" : "var(--warn)" }}>
+                  {ticket.assignee ? <><UserAvatarRing id={ticket.assignee} name={agentName(ticket.assignee)} size={18} /><span className="support-ellipsis">{agentName(ticket.assignee)}</span></> : "atribuir…"}
+                </button>
+                {picker && <UserPicker anchor={assigneeRef} users={assignable} value={ticket.assignee} multi={false} allowNone noneLabel="Sem responsável" title="Responsável"
+                  onChange={(id) => save({ assignee: id })} onClose={() => setPicker(false)} />}
+              </Field>
+              <Field label="Categoria">
+                <SelectPopover label="Categoria" value={ticket.category || ""} onChange={(v) => save({ category: v })}
+                  options={[{ value: "", label: "sem categoria", color: "var(--fg-3)" }, ...[...new Set([...(settings?.categories || []), ...(ticket.category ? [ticket.category] : [])])].map((c) => ({ value: c, label: c }))]} />
+              </Field>
+            </Section>
+
+            <Section title="Prazos (SLA)">
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }} title="em tempo útil, pelo expediente de Configurações de SLA">
+                <SlaClock label="1ª resposta" state={sla.firstResponse} due={ticket.sla?.firstResponseDue} doneAt={ticket.sla?.firstResponseAt} doneLabel="respondido" />
+                <SlaClock label="Resolução" state={sla.resolution} due={ticket.sla?.resolutionDue} doneAt={ticket.sla?.resolvedAt} doneLabel="resolvido" />
+              </div>
+            </Section>
+
+            <Section title="Cliente">
+              <div style={{ marginBottom: 6 }}>
+                <SelectPopover label="Cliente vinculado" value={ticket.customerId || ""} onChange={(v) => save({ customerId: v })} searchable={customers.length > 6}
+                  options={[{ value: "", label: "sem cliente vinculado", color: "var(--fg-3)" }, ...customers.map((c) => ({ value: c.id, label: c.name, hint: c.contact || "" }))]} />
+              </div>
+              <RequesterFields ticket={ticket} save={save} />
+            </Section>
+
+            <Attachments ticket={ticket} onChange={apply} />
+
+            {/* Destrutiva e rara (só admin): no pé da coluna, longe do fluxo de atendimento. */}
+            {isAdminUser() && (
+              <div className="support-detail-section" style={{ paddingTop: 10 }}>
+                <button type="button" onClick={remove} style={{ fontSize: 12, color: "var(--neg)", fontWeight: 600 }}>Apagar ticket</button>
+                <div className="dim" style={{ fontSize: 11.5, marginTop: 2 }}>para encerrar o atendimento, prefira o status Fechado</div>
+              </div>
+            )}
+          </aside>
+        </div>
+      )}
+    </Modal>
+  );
+}

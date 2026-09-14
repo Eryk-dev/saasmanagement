@@ -21,6 +21,7 @@ import { startSdrFlow } from "./sdr-flow.js";
 import { startTrainingReminder } from "./training-reminder.js";
 import { startTaskReminder } from "./task-reminder.js";
 import { startWaWaitingReminder } from "./wa-waiting-reminder.js";
+import { startTicketSla } from "./ticket-sla-runner.js";
 import { startCustomerMilestones } from "./customer-milestones.js";
 import { startNpsAsks } from "./nps.js";
 import { startCustomerReports } from "./customer-reports.js";
@@ -59,6 +60,10 @@ const OPEN_PREFIXES = ["/f/", "/public/forms/", "/fi/", "/public/integration-for
   // NPS (routes.nps.js): o cliente responde a nota pelo link do e-mail/WhatsApp,
   // sem login. O token de 32 hex do link é quem identifica a avaliação.
   "/public/nps/",
+  // Portal do Suporte (routes.support-portal.js): o cliente abre, acompanha e
+  // responde o chamado pelo link. O token de 32 hex identifica o chamado; abrir
+  // chamado novo só funciona com o portal ligado no produto.
+  "/s/", "/public/support/",
   // Cases públicos (routes.cases.js): o site da LeverAds faz proxy com cache
   // deste JSON. Só case autorizado e marcado como público sai daqui.
   "/public/cases"];
@@ -133,6 +138,9 @@ try {
   // Silêncio nosso no WhatsApp: cliente falou e ninguém voltou em N horas (3 por
   // padrão) vira aviso na caixa de entrada de quem cuida do lead.
   startWaWaitingReminder(repo, { log: app.log });
+  // SLA dos tickets de suporte: aviso a 80% e estouro (1ª resposta/resolução)
+  // na caixa de entrada de quem atende + fechamento automático dos resolvidos.
+  startTicketSla(repo, { log: app.log });
   // Régua de marcos do cliente (onboarding, check-in de mês 1, revisão de mês 3,
   // upsell de mês 6, renovação): cada marco que chega a hora vira tarefa do dono
   // da conta. Marco vencido há mais de 30 dias fica pra trás de propósito.

@@ -35,6 +35,8 @@ import { CustomersScreen } from "./screens/customers.jsx";
 import { EloAppScreen } from "./screens/eloapp.jsx";
 import { LandingPagesScreen } from "./screens/landingpages.jsx";
 import { TasksScreen } from "./screens/tasks/index.jsx";
+import { TicketsScreen } from "./screens/tickets/index.jsx";
+import { SupportSettingsScreen } from "./screens/support-settings.jsx";
 import { MindmapsScreen } from "./screens/mindmaps.jsx";
 import { SettingsScreen, SettingsLite } from "./screens/settings.jsx";
 import { LeadDetail } from "./screens/deal.jsx";
@@ -227,6 +229,8 @@ function App() {
     agenda:      ["Comercial", "Agenda"],
     whatsapp:    ["Comercial", "Inbox"],
     consultas:   ["Comercial", "Consultas"],
+    tickets:     ["Suporte", "Tickets"],
+    support_settings: ["Suporte", "Configurações de SLA"],
     social:      ["Marketing", "Redes sociais"],
     metrics:     ["Marketing", "Publicidade"],
     landingpages: ["Marketing", "Landing pages"],
@@ -328,6 +332,8 @@ function App() {
           {scr === "training"    && <TrainingScreen />}
           {scr === "subscriptions" && <CustomersScreen initialTab="billing" />}
           {scr === "tasks"       && <TasksScreen />}
+          {scr === "tickets"     && <TicketsScreen />}
+          {scr === "support_settings" && <SupportSettingsScreen />}
           {scr === "mindmaps"    && <MindmapsScreen />}
           {scr === "settings"    && (canSeeScreen("settings") ? <SettingsScreen saasId={params.saas} /> : <SettingsLite />)}
         </div>

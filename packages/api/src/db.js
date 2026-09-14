@@ -73,6 +73,10 @@ const INDEXES = [
   ["task_events_task_idx", "task_events", `((json->>'task'))`],
   ["notifications_user_read_idx", "notifications", `((json->>'user'), (json->>'read'))`],
   ["tasks_parent_idx", "tasks", `((json->>'parentId'))`],
+  ["tickets_saas_status_idx", "tickets", `((json->>'saas'), (json->>'status'))`],
+  ["tickets_portal_token_idx", "tickets", `((json->>'portalToken'))`],
+  ["ticket_events_ticket_idx", "ticket_events", `((json->>'ticket'))`],
+  ["notifications_task_idx", "notifications", `((json->>'task'))`],
 ];
 
 async function createTables() {

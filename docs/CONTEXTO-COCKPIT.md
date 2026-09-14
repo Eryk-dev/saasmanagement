@@ -80,6 +80,7 @@ Os caminhos abaixo são relativos a `packages/`.
 | Agenda, Google e consultas | `api/src/routes.google.js`, `routes.consultations.js`; telas `agenda.jsx`, `agenda-grid.jsx`, `consultas.jsx`. |
 | Treinamentos | `api/src/routes.flashcards.js`, `fsrs.js`; telas `training.jsx`, `training.css`, `training-focus.jsx`; testes `api/test/routes.flashcards.test.js`. |
 | Tarefas | `api/src/routes.tasks.js`; `web/src/screens/tasks/` (quadro, lista, calendário, drawer, filtros e estado). |
+| Suporte (tickets) | `api/src/tickets-core.js`, `tickets-sla.js`, `support-scope.js`, `routes.tickets.js`, `ticket-sla-runner.js`, `routes.support-portal.js`, `support-page.js`; `web/src/screens/tickets/`, `support-settings.jsx`, `lib/tickets.js`, `components/customer-tickets.jsx`; testes `routes.tickets`, `tickets-sla`, `ticket-sla-runner`, `routes.support-portal`. |
 | Conteúdo e redes sociais | `api/src/routes.blog.js`, `routes.blog-public.js`, `routes.social.js`; telas `blog.jsx` e `social.jsx`. |
 | Componentes e visual | `web/src/tokens.css`, `atoms.jsx`, `components/viz.jsx`, `components/lead-blocks.jsx`, `lib/ui.js`. |
 | Testes da API | `api/test/*.test.js`; repositório em memória em `api/test/helpers/mem-repo.js`. |
@@ -214,6 +215,27 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   no build de produção. A navegação saindo de Publicidade foi conferida após
   corrigir o cleanup do efeito de `DeliveryRulesCard`.
 
+- **Suporte — tickets (14/09/2026):** grupo novo "Suporte" no menu com Tickets
+  (Kanban por status e Lista agrupada pelo SLA; detalhe em modal `#tickets/<id>`) e
+  Configurações de SLA. Invariantes: (1) o **escopo de produto é ACL no
+  servidor** — sessão sem etiqueta `admin` só alcança os produtos de
+  `user.supportSaas` (lista vazia = nenhum ticket; ticket fora do escopo
+  responde 404, criar responde 403). A etiqueta `support` sozinha não libera
+  nada: a lista é editada em Ajustes → Equipe (coluna "Atende (suporte)",
+  `PATCH /api/auth/users/:id`) ou, por quem já atende o produto, em
+  Configurações de SLA → Atendentes (`PUT /api/support/agents/:id`). As quatro coleções (`tickets`,
+  `ticket_events`, `ticket_assets`, `ticket_settings`) são `PRIVATE` no CRUD
+  genérico. (2) Status tem semântica fixa (`kind` open/waiting/done). (3) SLA
+  por prioridade em minutos úteis (expediente do produto, relógio de
+  Brasília): prazos e instantes de aviso ficam gravados no ticket, então fila,
+  contador do menu e `ticket-sla-runner.js` concordam; mudar a configuração vale
+  para tickets abertos ou alterados depois. (4) **Nota interna nunca sai pelo
+  portal** — `/s/:token` e `/public/support/*` só usam `publicTicket`. Portal de
+  abertura `/s/new/:saas` nasce desligado; aviso ao cliente por e-mail só com o
+  toggle do produto e o Gmail conectado. Prévia: `/?shell=1#tickets`,
+  `&ticketsView=list`, `#tickets/tk5`, `#support_settings` (dados em
+  `preview/tickets-mock.js`). Fora desta entrega: ticket a partir de
+  WhatsApp/e-mail recebido, CSAT, macros e relatórios.
 - **README (revisado em 14/09/2026):** as descrições antigas (SQLite, leitura
   aberta, MCP só como manual, seed demo) foram substituídas. Pendência registrada
   lá: o `packages/web/nginx.conf` do `docker-compose.yml` não faz proxy das rotas
