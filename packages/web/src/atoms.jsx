@@ -428,10 +428,10 @@ const BTN = {
   xl: { h: 42, pad: "0 18px", fs: 13.5, fwP: 650, fwS: 600, r: "var(--r-2)" },
 };
 
-function SecondaryButton({ onClick, children, title, size = "md", tom, disabled, style, type }) {
+function SecondaryButton({ onClick, children, title, size = "md", tom, disabled, style, type, ...props }) {
   const b = BTN[size] || BTN.md;
   return (
-    <button type={type} onClick={onClick} title={title} disabled={disabled} style={{
+    <button {...props} type={type} onClick={onClick} title={title} disabled={disabled} style={{
       display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
       height: b.h, padding: b.pad,
       borderRadius: b.r, border: "1px solid var(--line-1)",

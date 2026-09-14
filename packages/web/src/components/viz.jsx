@@ -19,9 +19,9 @@ export function useWidth(initial = 600) {
   return [ref, w];
 }
 
-export function PageHead({ title, sub, children }) {
+export function PageHead({ title, sub, children, className }) {
   return (
-    <div style={{ display: "flex", alignItems: "flex-start", gap: 16, rowGap: 10, flexWrap: "wrap", padding: "var(--page-head-top) var(--pad-x) 0", flexShrink: 0 }}>
+    <div className={className} style={{ display: "flex", alignItems: "flex-start", gap: 16, rowGap: 10, flexWrap: "wrap", padding: "var(--page-head-top) var(--pad-x) 0", flexShrink: 0 }}>
       <div style={{ flex: 1, minWidth: 260 }}>
         <h1 className="page-title">{title}</h1>
         {sub && <div className="page-sub" style={{ marginTop: 4 }}>{sub}</div>}

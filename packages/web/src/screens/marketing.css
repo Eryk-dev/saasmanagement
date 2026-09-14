@@ -1,0 +1,77 @@
+/* Marketing — estrutura e medidas do handoff, sobre os tokens do cockpit. */
+.marketing-page { min-width: 0; --inset-x: 18px; --page-head-top: 28px; }
+.marketing-head > div:first-child { flex: 1 1 100% !important; min-width: 0 !important; }
+.marketing-head > div:nth-child(2) { justify-content: flex-start !important; padding-top: 0 !important; }
+.marketing-head .page-sub { max-width: 100%; }
+.marketing-body { padding: 16px var(--pad-x) 56px; display: flex; flex-direction: column; gap: 16px; }
+.marketing-body > section { flex-shrink: 0; }
+.marketing-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.marketing-card { background: var(--bg-1); border: 1px solid var(--line-1); border-radius: var(--r-4); padding: 16px 18px; min-width: 0; box-shadow: var(--shadow-card); }
+.marketing-kicker { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--fg-4); }
+.marketing-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
+.marketing-status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.marketing-two-col { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.marketing-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.marketing-table th { text-align: left; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--fg-4); background: var(--bg-inset); }
+.marketing-table :is(th, td) { padding: 12px 18px; border-bottom: 1px solid var(--line-1); }
+.marketing-table tr:last-child td { border-bottom: 0; }
+.marketing-table tbody tr:hover { background: var(--bg-inset); }
+.marketing-stat { padding: 14px 16px; }
+.marketing-stat strong { display: block; font-size: 24px; line-height: 1.3; letter-spacing: -.02em; }
+.marketing-stat small { font-size: 11.5px; color: var(--fg-3); }
+.marketing-detail { border: 1px solid var(--line-1); border-radius: var(--r-4); background: var(--bg-1); }
+.marketing-detail > summary { padding: 14px 18px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--fg-2); }
+.marketing-detail > div { padding: 0 18px 18px; }
+.marketing-page :is(input, select, textarea) { max-width: 100%; }
+.marketing-page button:focus-visible, .marketing-page summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (max-width: 1100px) {
+  .marketing-two-col { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  .marketing-page { --inset-x: 14px; }
+  .marketing-head > div:nth-child(2) { width: 100%; }
+  .marketing-head > div:nth-child(2) > div { max-width: 100%; flex-wrap: wrap; }
+  .marketing-card { padding: 14px; }
+  .marketing-table :is(th, td) { padding: 11px 12px; }
+}
+
+.marketing-origin { display: grid; grid-template-columns: minmax(88px, 1.2fr) minmax(12px, .5fr) minmax(64px, .8fr) minmax(70px, 1fr) 62px; gap: 10px; align-items: center; }
+.canvas-workspace { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.canvas-templates { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.canvas-template { padding: 10px; text-align: left; border: 1px solid var(--line-1); background: var(--bg-1); border-radius: var(--r-3); min-width: 0; }
+.canvas-template[aria-pressed="true"] { border-color: var(--accent-line); background: var(--accent-soft); }
+.canvas-template strong { display: block; font-size: 12.5px; font-weight: 600; color: var(--fg-1); }
+.canvas-template small { display: block; margin-top: 3px; color: var(--fg-3); font-size: 10.5px; }
+.canvas-preview { background: var(--bg-inset); display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.canvas-content { display: flex; flex-direction: column; gap: 12px; }
+.canvas-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.canvas-field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--fg-3); }
+.canvas-field-head input { width: 62px; height: 26px; text-align: right; font-size: 11px; }
+.canvas-slides { display: flex; gap: 4px; flex-wrap: wrap; }
+.canvas-slides button { width: 28px; height: 28px; border: 1px solid var(--line-1); border-radius: var(--r-1); color: var(--fg-3); font-size: 11.5px; }
+.canvas-slides button[aria-pressed="true"] { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent); }
+@media (max-width: 1150px) {
+  .canvas-workspace { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .canvas-workspace > :first-child { grid-column: 1 / -1; }
+}
+@media (max-width: 700px) {
+  .canvas-workspace { grid-template-columns: minmax(0, 1fr); }
+  .canvas-slides button { width: 36px; height: 36px; }
+  .marketing-origin { grid-template-columns: minmax(80px, 1fr) 70px 80px 60px; gap: 6px; }
+  .marketing-origin > :nth-child(2) { display: none; }
+}
+
+@media (max-width: 600px) {
+  .marketing-page :is(button, select, input:not([type="checkbox"]):not([type="radio"])) { min-height: 44px; }
+  .canvas-slides button { min-width: 44px; }
+  .marketing-toolbar > * { max-width: 100%; }
+  .marketing-acquisition .marketing-origin { grid-template-columns: minmax(60px, 1fr) 62px 72px 54px; }
+}
+
+.marketing-table input[type="checkbox"] { width: 16px; min-width: 16px; height: 16px; vertical-align: middle; accent-color: var(--accent); }
+
+@media (max-width: 600px) {
+  .marketing-lp-funnel > section > div { display: grid !important; grid-template-columns: minmax(64px, .9fr) minmax(32px, 1fr) 52px 42px; gap: 8px !important; }
+  .marketing-lp-funnel > section > div > span { min-width: 0 !important; }
+  .marketing-lp-funnel > section > div > span:nth-child(5) { grid-column: 2 / -1; text-align: right; }
+}
