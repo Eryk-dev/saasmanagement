@@ -601,6 +601,14 @@ export const api = {
     if (!res.ok) throw new Error(res.status === 404 ? "arquivo não encontrado" : proxyMessage(res.status));
     return URL.createObjectURL(await res.blob());
   },
+  // Respostas rápidas (da equipe e pessoais) + variáveis. O servidor resolve o
+  // texto: `ticketQuickReply` com os dados do ticket, `quickReplyPreview` com exemplo.
+  quickReplies: (saas) => req("GET", `/api/support/quick-replies?saas=${encodeURIComponent(saas)}`),
+  quickReplyCreate: (body) => req("POST", "/api/support/quick-replies", body),
+  quickReplyUpdate: (id, patch) => req("PATCH", `/api/support/quick-replies/${encodeURIComponent(id)}`, patch),
+  quickReplyDelete: (id) => req("DELETE", `/api/support/quick-replies/${encodeURIComponent(id)}`),
+  quickReplyPreview: (saas, body) => req("POST", "/api/support/quick-replies/preview", { saas, body }),
+  ticketQuickReply: (ticketId, qrId) => req("POST", `/api/tickets/${encodeURIComponent(ticketId)}/quick-replies/${encodeURIComponent(qrId)}/render`, {}),
   supportSettings: (saas) => req("GET", `/api/support/settings/${encodeURIComponent(saas)}`),
   supportSettingsSave: (saas, body) => req("PUT", `/api/support/settings/${encodeURIComponent(saas)}`, body),
   supportAgents: () => req("GET", "/api/support/agents"),

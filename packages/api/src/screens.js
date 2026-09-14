@@ -19,7 +19,7 @@ export const SCREEN_IDS = [
   "outbound", "remuneracao",
   "blog", // redação do blog SEO (grupo Marketing)
   "eloapp", "landingpages",
-  "tickets", "support_settings", // grupo Suporte: fila de tickets + configurações de SLA/atendentes
+  "tickets", "quick_replies", "support_settings", // grupo Suporte: fila, respostas rápidas e configurações de SLA/atendentes
 ];
 
 export const sanitizeScreens = (x) =>
@@ -162,6 +162,8 @@ const ROUTE_SCREENS = [
   // Suporte: além da tela, o PRODUTO do ticket passa pelo escopo de
   // support-scope.js dentro das próprias rotas (routes.tickets.js).
   ["/api/tickets", ["tickets"]],
+  // Respostas rápidas: a página e o chat do ticket (quem só atende também usa e cria as pessoais).
+  ["/api/support/quick-replies", ["quick_replies", "tickets"]],
   ["/api/support/", ["support_settings"]],
   ["/api/mindmaps", ["mindmaps"]],       // mapas mentais / estratégia
   ["/api/goals", ["overview"]],
@@ -194,6 +196,7 @@ const OVERVIEW_READ_PREFIXES = ["/api/marketing", "/api/metrics/", "/api/invoice
 const EXTRA_READ_SCREENS = [
   ["/api/contract_issues", "customers"],
   ["/api/support/settings/", "tickets"],
+  ["/api/support/settings/", "quick_replies"], // variáveis customizadas na página de respostas rápidas (editar segue em support_settings)
   ["/api/support/agents", "tickets"],
 ];
 

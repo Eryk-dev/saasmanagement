@@ -37,6 +37,7 @@ import { LandingPagesScreen } from "./screens/landingpages.jsx";
 import { TasksScreen } from "./screens/tasks/index.jsx";
 import { TicketsScreen } from "./screens/tickets/index.jsx";
 import { SupportSettingsScreen } from "./screens/support-settings.jsx";
+import { QuickRepliesScreen } from "./screens/quick-replies.jsx";
 import { MindmapsScreen } from "./screens/mindmaps.jsx";
 import { SettingsScreen, SettingsLite } from "./screens/settings.jsx";
 import { LeadDetail } from "./screens/deal.jsx";
@@ -230,6 +231,7 @@ function App() {
     whatsapp:    ["Comercial", "Inbox"],
     consultas:   ["Comercial", "Consultas"],
     tickets:     ["Suporte", "Tickets"],
+    quick_replies: ["Suporte", "Respostas rápidas"],
     support_settings: ["Suporte", "Configurações de SLA"],
     social:      ["Marketing", "Redes sociais"],
     metrics:     ["Marketing", "Publicidade"],
@@ -333,6 +335,7 @@ function App() {
           {scr === "subscriptions" && <CustomersScreen initialTab="billing" />}
           {scr === "tasks"       && <TasksScreen />}
           {scr === "tickets"     && <TicketsScreen />}
+          {scr === "quick_replies" && <QuickRepliesScreen />}
           {scr === "support_settings" && <SupportSettingsScreen />}
           {scr === "mindmaps"    && <MindmapsScreen />}
           {scr === "settings"    && (canSeeScreen("settings") ? <SettingsScreen saasId={params.saas} /> : <SettingsLite />)}

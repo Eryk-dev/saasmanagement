@@ -10,6 +10,11 @@
 
 import { randomUUID } from "node:crypto";
 import { ticketScope, inScope, isAdminUser, sanitizeSupportSaas } from "./support-scope.js";
+import { canScreen } from "./screens.js";
+import {
+  BUILTIN_VARIABLES, listQuickReplies, createQuickReply, updateQuickReply, deleteQuickReply,
+  canEdit as canEditQuickReply, visibleTo as quickReplyVisible, variableValues, renderTemplate,
+} from "./quick-replies.js";
 import {
   ACTOR_API, httpError, createTicket, patchTicket, addMessage, addTicketAttachment, removeTicketAttachment,
   deleteTicket, bulkTickets, listTickets, ticketActivity, loadSettings, saveSettings,
@@ -190,6 +195,63 @@ export function registerTicketRoutes(app, repo, { mailer = null } = {}) {
     if (!(await loadScoped(req))) return notFound(reply);
     const r = await removeTicketAttachment(repo, req.params.id, req.params.aid, { by: actorOf(req) });
     return r ? r.ticket : notFound(reply);
+  }));
+
+  // ── Respostas rápidas ─────────────────────────────────────────────────────
+  // Da equipe (edita quem tem Configurações de SLA) e pessoais (só o dono).
+  // O texto é resolvido aqui, com o contexto do ticket: a prévia da página e a
+  // inserção no chat usam as mesmas variáveis.
+  const qrCtx = (req) => ({
+    scope: scopeOf(req), userId: req.authUser?.id || "",
+    canEditShared: !req.authUser || canScreen(req.authUser, "support_settings"),
+  });
+  const saasParam = (v) => {
+    const saas = String(v ?? "").trim().toLowerCase();
+    if (!saas) throw httpError(400, "informe o produto (saas)", "saas_required");
+    return saas;
+  };
+  app.get("/api/support/quick-replies", guarded(async (req, reply) => {
+    const saas = saasParam(req.query?.saas);
+    const ctx = qrCtx(req);
+    if (!inScope(ctx.scope, saas)) return notFound(reply);
+    const [items, settings] = await Promise.all([listQuickReplies(repo, { saas, ...ctx }), loadSettings(repo, saas)]);
+    return {
+      items: items.map((q) => ({ ...q, editable: canEditQuickReply(q, ctx) })),
+      canEditShared: ctx.canEditShared,
+      variables: { builtin: BUILTIN_VARIABLES.map(({ key, label }) => ({ key, label })), custom: settings.variables },
+    };
+  }));
+  app.post("/api/support/quick-replies", guarded(async (req, reply) => {
+    const ctx = qrCtx(req);
+    const created = await createQuickReply(repo, req.body || {}, { ...ctx, user: req.authUser });
+    return reply.code(201).send({ ...created, editable: true });
+  }));
+  app.post("/api/support/quick-replies/preview", guarded(async (req, reply) => {
+    const saas = saasParam(req.body?.saas);
+    if (!inScope(scopeOf(req), saas)) return notFound(reply);
+    const settings = await loadSettings(repo, saas);
+    const values = await variableValues(repo, { user: req.authUser, saas, settings, baseUrl: baseUrlOf(req) });
+    return renderTemplate(req.body?.body, values);
+  }));
+  app.patch("/api/support/quick-replies/:id", guarded(async (req, reply) => {
+    const ctx = qrCtx(req);
+    const saved = await updateQuickReply(repo, req.params.id, req.body || {}, ctx);
+    return saved ? { ...saved, editable: true } : notFound(reply);
+  }));
+  app.delete("/api/support/quick-replies/:id", guarded(async (req, reply) => {
+    const r = await deleteQuickReply(repo, req.params.id, qrCtx(req));
+    return r ? { ok: true, ...r } : notFound(reply);
+  }));
+  // Inserir no chat: resolve as variáveis com o ticket e conta o uso.
+  app.post("/api/tickets/:id/quick-replies/:qrId/render", guarded(async (req, reply) => {
+    const t = await loadScoped(req);
+    const qr = t ? await repo.get("quick_replies", req.params.qrId) : null;
+    const ctx = qrCtx(req);
+    if (!t || !qr || !quickReplyVisible(qr, ctx) || (qr.saas && qr.saas !== t.saas)) return notFound(reply);
+    const settings = await loadSettings(repo, t.saas);
+    const values = await variableValues(repo, { ticket: t, user: req.authUser, saas: t.saas, settings, baseUrl: baseUrlOf(req) });
+    await repo.update("quick_replies", qr.id, { uses: (Number(qr.uses) || 0) + 1, lastUsedAt: new Date().toISOString() }, { silent: true });
+    return { id: qr.id, title: qr.title, ...renderTemplate(qr.body, values) };
   }));
 
   // ── Configurações de SLA por produto ──────────────────────────────────────

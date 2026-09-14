@@ -38,6 +38,31 @@ let settings = {
   portal: { enabled: true, intro: "Respondemos em até 1 dia útil." }, notifyCustomerByEmail: false,
 };
 
+// Respostas rápidas: o dublê resolve as variáveis por substituição simples
+// (a régua de verdade é a do servidor, em quick-replies.js).
+let quickReplies = [
+  { id: "qr1", scope: "shared", saas: "leverads", owner: "", title: "Boas-vindas", shortcut: "boas-vindas", body: "{{saudacao}}, {{cliente.primeiro_nome}}!\n\nRecebemos o seu chamado #{{ticket.numero}} e já estamos olhando. Nosso horário de atendimento é {{horario_atendimento}}.\n\n{{atendente.primeiro_nome}} · {{produto.nome}}", uses: 42 },
+  { id: "qr2", scope: "shared", saas: "leverads", owner: "", title: "Pedir print da tela", shortcut: "print", body: "{{cliente.primeiro_nome}}, consegue me mandar um print da tela com o erro? Pode responder por aqui: {{ticket.link}}", uses: 17 },
+  { id: "qr3", scope: "shared", saas: "leverads", owner: "", title: "Resolvido", shortcut: "resolvido", body: "Pronto, {{cliente.primeiro_nome}}! O chamado #{{ticket.numero}} foi resolvido. Se precisar de algo, é só responder esta mensagem.", uses: 9 },
+  { id: "qr4", scope: "personal", saas: "", owner: "leo", title: "Minha assinatura", shortcut: "assinatura", body: "Abraço,\n{{atendente.nome}}\nSuporte {{produto.nome}}", uses: 3 },
+];
+let variaveis = [{ key: "horario_atendimento", value: "de segunda a sexta, das 8h às 18h", label: "" }, { key: "link_ajuda", value: "https://ajuda.leverads.com.br", label: "" }];
+const BUILTIN = [
+  ["saudacao", "Bom dia, boa tarde ou boa noite (horário de Brasília)"], ["cliente.primeiro_nome", "Primeiro nome do solicitante"], ["cliente.nome", "Nome completo do solicitante"],
+  ["cliente.email", "E-mail do solicitante"], ["cliente.empresa", "Cliente vinculado ao ticket"], ["ticket.numero", "Número do ticket"], ["ticket.assunto", "Assunto do ticket"],
+  ["ticket.status", "Status atual"], ["ticket.prioridade", "Prioridade"], ["ticket.prazo", "Prazo de resolução do SLA"], ["ticket.link", "Link do chamado no portal do cliente"],
+  ["atendente.primeiro_nome", "Seu primeiro nome"], ["atendente.nome", "Seu nome completo"], ["produto.nome", "Nome do produto"], ["hoje", "Data de hoje"],
+].map(([key, label]) => ({ key, label }));
+const renderMock = (body, t) => {
+  const v = { saudacao: "Boa tarde", "atendente.nome": "Leonardo", "atendente.primeiro_nome": "Leonardo", "produto.nome": "LeverAds", hoje: new Date().toLocaleDateString("pt-BR"),
+    "cliente.nome": t?.requester?.name || "Carla Nunes", "cliente.primeiro_nome": (t?.requester?.name || "Carla").split(" ")[0], "cliente.email": t?.requester?.email || "", "cliente.empresa": "",
+    "ticket.numero": String(t?.number || 1042), "ticket.assunto": t?.subject || "Relatório mensal", "ticket.status": "Em atendimento", "ticket.prioridade": "Normal", "ticket.prazo": "15/09 às 18:00",
+    "ticket.link": `${location.origin}/s/${t?.portalToken || "demo"}`, ...Object.fromEntries(variaveis.map((x) => [x.key, x.value])) };
+  const missing = [], empty = [];
+  const text = String(body).replace(/\{\{\s*([a-z][a-z0-9_.]*)\s*\}\}/gi, (all, k) => { if (!(k in v)) { missing.push(k); return all; } if (!v[k]) empty.push(k); return v[k]; });
+  return { text, missing, empty };
+};
+
 const resumo = (t) => { const { messages = [], ...rest } = t; const last = messages[messages.length - 1]; return { ...rest, messageCount: messages.length, lastMessage: last ? { kind: last.kind, authorType: last.author.type, at: last.at, excerpt: last.text.slice(0, 120) } : null }; };
 const achar = (id) => tickets.find((t) => t.id === id);
 const trocar = (id, patch) => { tickets = tickets.map((t) => (t.id === id ? { ...t, ...patch, updatedAt: new Date().toISOString() } : t)); return achar(id); };
@@ -59,7 +84,13 @@ export const ticketsMock = {
   ticketActivity: (id) => [{ id: "e1", type: "created", by: "api", at: achar(id)?.createdAt, data: { channel: achar(id)?.channel } }],
   ticketsBulk: () => ({ ok: [], missing: [], failed: [] }),
   supportAgents: () => agents,
-  supportSettings: () => settings,
-  supportSettingsSave: (_saas, body) => { settings = { ...settings, ...body }; return settings; },
+  supportSettings: () => ({ ...settings, variables: variaveis }),
+  supportSettingsSave: (_saas, body) => { if (body.variables) variaveis = body.variables; settings = { ...settings, ...body }; return { ...settings, variables: variaveis }; },
+  quickReplies: () => ({ items: quickReplies.map((q) => ({ ...q, editable: true })), canEditShared: true, variables: { builtin: BUILTIN, custom: variaveis } }),
+  quickReplyCreate: (body) => { const q = { id: `qr${Date.now()}`, uses: 0, owner: body.scope === "personal" ? "leo" : "", ...body }; quickReplies = [...quickReplies, q]; return { ...q, editable: true }; },
+  quickReplyUpdate: (id, patch) => { quickReplies = quickReplies.map((q) => (q.id === id ? { ...q, ...patch } : q)); return { ...quickReplies.find((q) => q.id === id), editable: true }; },
+  quickReplyDelete: (id) => { quickReplies = quickReplies.filter((q) => q.id !== id); return { ok: true }; },
+  quickReplyPreview: (_saas, body) => renderMock(body, null),
+  ticketQuickReply: (ticketId, qrId) => { const q = quickReplies.find((x) => x.id === qrId); return { id: qrId, title: q.title, ...renderMock(q.body, achar(ticketId)) }; },
   supportAgentSave: (id, body) => { const a = agents.find((x) => x.id === id); Object.assign(a, body); return a; },
 };

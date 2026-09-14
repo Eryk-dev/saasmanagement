@@ -89,6 +89,7 @@ const NAV = [
   // Suporte (14/09/2026): fila de tickets com SLA por prioridade + as regras do
   // relógio e quem atende cada produto. Vale pra todo produto (Elo inclusive).
   { id: "tickets",          label: "Tickets",              icon: "✉", group: "suporte" },
+  { id: "quick_replies",    label: "Respostas rápidas",    icon: "⚡", group: "suporte" },
   { id: "support_settings", label: "Configurações de SLA", icon: "◷", group: "suporte" },
 
   { id: "social",     label: "Redes sociais",  icon: "◍",  group: "marketing" },
@@ -133,6 +134,7 @@ const ICONS = {
   contracts: <NavSvg><path d="M13.5 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5z" /><path d="M13.5 3v5.5H19" /><path d="M8.6 17.4c.9-1.6 1.8-1.6 2.6 0 .8 1.4 1.6 1.4 2.4 0 .5-.9 1-.9 1.8 0" /></NavSvg>,
   agenda: <NavSvg><rect x="3.4" y="4.6" width="17.2" height="16.4" rx="2" /><path d="M3.4 9.6h17.2" /><path d="M8.2 2.6v4M15.8 2.6v4" /></NavSvg>,
   tickets: <NavSvg><path d="M3.5 7.5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v2.2a2.3 2.3 0 0 0 0 4.6v2.2a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-2.2a2.3 2.3 0 0 0 0-4.6z" /><path d="M9 9.5h6M9 14.5h4" /></NavSvg>,
+  quick_replies: <NavSvg><path d="M4.5 5.5h15a1.5 1.5 0 0 1 1.5 1.5v8.5a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 3.5V17H4.5A1.5 1.5 0 0 1 3 15.5V7a1.5 1.5 0 0 1 1.5-1.5z" /><path d="M12.8 8.2l-2.4 3.4h3.2l-2.4 3.4" /></NavSvg>,
   support_settings: <NavSvg><circle cx="12" cy="13" r="7.6" /><path d="M12 9.2V13l2.6 1.6" /><path d="M9.6 2.8h4.8M12 2.8v2.6" /></NavSvg>,
   whatsapp: <NavSvg><path d="M5.2 3.2h3.6l1.6 4.3-2.2 1.9a12.6 12.6 0 0 0 6.4 6.4l1.9-2.2 4.3 1.6v3.6a2 2 0 0 1-2.1 2A16.3 16.3 0 0 1 3.2 5.3a2 2 0 0 1 2-2.1z" /></NavSvg>,
   social: <NavSvg><circle cx="6" cy="12" r="2.7" /><circle cx="17.6" cy="5.6" r="2.7" /><circle cx="17.6" cy="18.4" r="2.7" /><path d="M8.5 10.8l6.7-3.9M8.5 13.2l6.7 3.9" /></NavSvg>,

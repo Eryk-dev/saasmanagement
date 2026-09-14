@@ -80,7 +80,7 @@ Os caminhos abaixo são relativos a `packages/`.
 | Agenda, Google e consultas | `api/src/routes.google.js`, `routes.consultations.js`; telas `agenda.jsx`, `agenda-grid.jsx`, `consultas.jsx`. |
 | Treinamentos | `api/src/routes.flashcards.js`, `fsrs.js`; telas `training.jsx`, `training.css`, `training-focus.jsx`; testes `api/test/routes.flashcards.test.js`. |
 | Tarefas | `api/src/routes.tasks.js`; `web/src/screens/tasks/` (quadro, lista, calendário, drawer, filtros e estado). |
-| Suporte (tickets) | `api/src/tickets-core.js`, `tickets-sla.js`, `support-scope.js`, `routes.tickets.js`, `ticket-sla-runner.js`, `routes.support-portal.js`, `support-page.js`; `web/src/screens/tickets/`, `support-settings.jsx`, `lib/tickets.js`, `components/customer-tickets.jsx`; testes `routes.tickets`, `tickets-sla`, `ticket-sla-runner`, `routes.support-portal`. |
+| Suporte (tickets) | `api/src/tickets-core.js`, `tickets-sla.js`, `support-scope.js`, `routes.tickets.js`, `quick-replies.js`, `ticket-sla-runner.js`, `routes.support-portal.js`, `support-page.js`; `web/src/screens/tickets/`, `support-settings.jsx`, `quick-replies.jsx`, `lib/tickets.js`, `components/customer-tickets.jsx`; testes `routes.tickets`, `routes.quick-replies`, `tickets-sla`, `ticket-sla-runner`, `routes.support-portal`. |
 | Conteúdo e redes sociais | `api/src/routes.blog.js`, `routes.blog-public.js`, `routes.social.js`; telas `blog.jsx` e `social.jsx`. |
 | Componentes e visual | `web/src/tokens.css`, `atoms.jsx`, `components/viz.jsx`, `components/lead-blocks.jsx`, `lib/ui.js`. |
 | Testes da API | `api/test/*.test.js`; repositório em memória em `api/test/helpers/mem-repo.js`. |
@@ -235,7 +235,15 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   toggle do produto e o Gmail conectado. Prévia: `/?shell=1#tickets`,
   `&ticketsView=list`, `#tickets/tk5`, `#support_settings` (dados em
   `preview/tickets-mock.js`). Fora desta entrega: ticket a partir de
-  WhatsApp/e-mail recebido, CSAT, macros e relatórios.
+  WhatsApp/e-mail recebido, CSAT e relatórios.
+- **Suporte — respostas rápidas (14/09/2026):** página no grupo Suporte e uso no
+  chat do ticket (botão ou `/atalho`). Coleção `quick_replies` (PRIVATE):
+  `shared` por produto, editada por quem tem `support_settings`; `personal`
+  só do dono (`saas` vazio = todos os produtos que ele atende). Variáveis
+  automáticas (`{{cliente.primeiro_nome}}`, `{{ticket.link}}`…) e do produto
+  em `ticket_settings.variables`; o texto é SEMPRE resolvido no servidor
+  (`variableValues` + `renderTemplate`), prévia e chat usam a mesma função.
+  Embutida sem ponto precisa constar em `RESERVED_VARIABLE_KEYS`.
 - **README (revisado em 14/09/2026):** as descrições antigas (SQLite, leitura
   aberta, MCP só como manual, seed demo) foram substituídas. Pendência registrada
   lá: o `packages/web/nginx.conf` do `docker-compose.yml` não faz proxy das rotas

@@ -3,6 +3,7 @@ import { api } from "../../lib/api.js";
 import { PrimaryButton, SecondaryButton, toast } from "../../atoms.jsx";
 import { Modal } from "../../components/overlay.jsx";
 import { SelectPopover } from "../../components/select-popover.jsx";
+import { QuickReplyList, useQuickReplies, filterQuickReplies, orderForPicker, slashTokenAt } from "./quick-reply-picker.jsx";
 import { UserPicker, UserAvatarRing } from "../../components/user-picker.jsx";
 import { isAdminUser } from "../../lib/users.js";
 import {
@@ -240,6 +241,43 @@ function Composer({ ticket, onSent, onDraft }) {
   const [after, setAfter] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => { onDraft(!!text.trim()); }, [text]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Respostas rápidas: botão (lista com busca) ou "/" no texto (a busca é o que
+  // vem depois da barra). O servidor devolve o texto com as variáveis do ticket.
+  const areaRef = useRef(null), qrBtnRef = useRef(null);
+  const { items: quickReplies } = useQuickReplies(ticket.saas);
+  const [qr, setQr] = useState(null); // { mode: "button" | "slash", query, start }
+  const [qrActive, setQrActive] = useState(0);
+  const [inserting, setInserting] = useState(false);
+  const qrList = qr ? orderForPicker(filterQuickReplies(quickReplies || [], qr.query)) : [];
+  useEffect(() => { setQrActive(0); }, [qr?.mode, qr?.query]);
+  const onTextChange = (e) => {
+    const value = e.target.value;
+    setText(value);
+    const tok = slashTokenAt(value, e.target.selectionStart);
+    if (tok) setQr({ mode: "slash", ...tok });
+    else if (qr?.mode === "slash") setQr(null);
+  };
+  const insertQuickReply = async (item) => {
+    const origin = qr;
+    setQr(null);
+    const el = areaRef.current;
+    const start = origin?.mode === "slash" ? origin.start : (el ? el.selectionStart : text.length);
+    const end = origin?.mode === "slash" ? origin.start + 1 + origin.query.length : (el ? el.selectionEnd : text.length);
+    setInserting(true);
+    try {
+      const r = await api.ticketQuickReply(ticket.id, item.id);
+      setText((cur) => cur.slice(0, Math.min(start, cur.length)) + r.text + cur.slice(Math.min(end, cur.length)));
+      requestAnimationFrame(() => { if (!el) return; el.focus(); const pos = start + r.text.length; el.setSelectionRange(pos, pos); });
+      const avisos = [
+        r.missing?.length ? `variável que não existe: ${r.missing.map((k) => `{{${k}}}`).join(", ")}` : "",
+        r.empty?.length ? `sem valor neste ticket: ${r.empty.map((k) => `{{${k}}}`).join(", ")}` : "",
+      ].filter(Boolean);
+      if (avisos.length) toast(`Confira antes de enviar · ${avisos.join(" · ")}`, "warn", 7000);
+    } catch (err) {
+      toast(`Não deu pra inserir a resposta rápida · ${err.message || "tente de novo"}`, "neg");
+    } finally { setInserting(false); }
+  };
   const send = async () => {
     if (!text.trim() || busy) return;
     setBusy(true);
@@ -260,10 +298,34 @@ function Composer({ ticket, onSent, onDraft }) {
             style={{ padding: "5px 10px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: kind === k ? 600 : 500, background: kind === k ? "var(--bg-2)" : "transparent", color: kind === k ? (k === "note" ? "var(--warn)" : "var(--fg-1)") : "var(--fg-3)" }}>{l}</button>
         ))}
         <span className="mono dim hide-mobile" style={{ marginLeft: "auto", fontSize: 11, alignSelf: "center" }}>{kind === "note" ? "só a equipe vê · @nome avisa" : "o cliente vê no portal"}</span>
+        <button ref={qrBtnRef} type="button" aria-expanded={qr?.mode === "button"} title="Respostas rápidas (ou digite / no texto)"
+          onClick={() => setQr((cur) => (cur?.mode === "button" ? null : { mode: "button", query: "" }))}
+          style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600, marginLeft: 8,
+            color: "var(--accent)", background: qr?.mode === "button" ? "var(--accent-soft)" : "transparent" }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M13 2.5L4.5 13.5H12l-1 8 8.5-11H12z" /></svg>
+          {inserting ? "Inserindo…" : "Respostas rápidas"}
+        </button>
       </div>
-      <textarea className="inp" value={text} onChange={(e) => setText(e.target.value)} disabled={busy} aria-label={kind === "note" ? "Nota interna" : "Resposta ao cliente"}
-        placeholder={kind === "note" ? "Escreva uma nota para a equipe…" : "Escreva a resposta ao cliente…"}
-        onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send(); }} />
+      <textarea ref={areaRef} className="inp" value={text} onChange={onTextChange} disabled={busy} aria-label={kind === "note" ? "Nota interna" : "Resposta ao cliente"}
+        placeholder={kind === "note" ? "Escreva uma nota para a equipe…" : "Escreva a resposta ao cliente… digite / para respostas rápidas"}
+        onClick={(e) => { if (qr?.mode === "slash" && !slashTokenAt(text, e.currentTarget.selectionStart)) setQr(null); }}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (qr?.mode === "slash" && qrList.length) {
+            if (e.key === "ArrowDown") { e.preventDefault(); setQrActive((a) => Math.min(qrList.length - 1, a + 1)); return; }
+            if (e.key === "ArrowUp") { e.preventDefault(); setQrActive((a) => Math.max(0, a - 1)); return; }
+            if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); insertQuickReply(qrList[qrActive]); return; }
+          }
+          if (qr?.mode === "slash" && e.key === "Escape") { e.preventDefault(); setQr(null); return; }
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send();
+        }} />
+      {qr?.mode === "button" && (
+        <QuickReplyList anchor={qrBtnRef} withSearch items={qrList} query={qr.query} onQuery={(query) => setQr({ mode: "button", query })}
+          active={qrActive} onActive={setQrActive} onPick={insertQuickReply} onClose={() => setQr(null)} loading={quickReplies === null} />
+      )}
+      {qr?.mode === "slash" && qrList.length > 0 && (
+        <QuickReplyList anchor={areaRef} items={qrList} query={qr.query} active={qrActive} onActive={setQrActive} onPick={insertQuickReply} onClose={() => setQr(null)} />
+      )}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
         {/* div, não label: o clique na opção subiria até o label e reabriria a lista */}
         <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--fg-3)" }}>

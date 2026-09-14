@@ -95,7 +95,7 @@ const PRIVATE = new Set(["users", "sessions", "user_assets", "activity_assets", 
   "comp_months",
   // Suporte: isolamento por produto (support-scope.js) só pelas rotas
   // dedicadas de routes.tickets.js — o CRUD genérico seria porta dos fundos.
-  "tickets", "ticket_events", "ticket_assets", "ticket_settings"]);
+  "tickets", "ticket_events", "ticket_assets", "ticket_settings", "quick_replies"]);
 const isExposed = (c) => COLLECTION_NAMES.includes(c) && !PRIVATE.has(c);
 
 // Collections external SaaS are allowed to write to via REST/MCP.

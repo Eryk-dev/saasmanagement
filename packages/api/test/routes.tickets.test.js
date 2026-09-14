@@ -288,7 +288,7 @@ test("contadores do menu respeitam o escopo de suporte", async (t) => {
 test("guard: rotas do suporte por tela", () => {
   assert.deepEqual(screenForRequest("POST", "/api/tickets/t1/messages"), ["tickets"]);
   assert.deepEqual(screenForRequest("PUT", "/api/support/settings/alpha"), ["support_settings"]);
-  assert.deepEqual(screenForRequest("GET", "/api/support/settings/alpha"), ["support_settings", "tickets"]);
+  assert.deepEqual(screenForRequest("GET", "/api/support/settings/alpha"), ["support_settings", "tickets", "quick_replies"]);
   assert.deepEqual(screenForRequest("GET", "/api/support/agents"), ["support_settings", "tickets"]);
   assert.deepEqual(screenForRequest("PUT", "/api/support/agents/x"), ["support_settings"]);
 });

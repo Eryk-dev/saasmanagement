@@ -68,6 +68,18 @@ const lockKey = (id) => `ticket:${id}`;
 export const ticketTitle = (t) => `#${t.number || "?"} ${t.subject || "(sem assunto)"}`;
 
 // ── Configurações por produto ────────────────────────────────────────────────
+// Variáveis customizadas das respostas rápidas (quick-replies.js): chave sem
+// ponto, que não colide com as embutidas sem ponto.
+export const RESERVED_VARIABLE_KEYS = new Set(["saudacao", "hoje"]);
+const VARIABLE_KEY_RE = /^[a-z][a-z0-9_]{0,39}$/;
+export function sanitizeVariables(list) {
+  const seen = new Set();
+  return (Array.isArray(list) ? list : [])
+    .map((v) => ({ key: str(v?.key, 40).toLowerCase(), value: String(v?.value ?? "").slice(0, 500), label: str(v?.label, 120) }))
+    .filter((v) => VARIABLE_KEY_RE.test(v.key) && !RESERVED_VARIABLE_KEYS.has(v.key) && !seen.has(v.key) && seen.add(v.key))
+    .slice(0, 50);
+}
+
 export function normalizeSettings(doc, saas, product = null) {
   const src = isObj(doc) ? doc : {};
   const policies = {};
@@ -91,6 +103,7 @@ export function normalizeSettings(doc, saas, product = null) {
     warnAt: Number.isFinite(warn) && warn >= 0.5 && warn <= 0.95 ? warn : SETTINGS_DEFAULTS.warnAt,
     portal: { enabled: src.portal?.enabled === true, intro: String(src.portal?.intro ?? "").slice(0, 1000) },
     notifyCustomerByEmail: src.notifyCustomerByEmail === true,
+    variables: sanitizeVariables(src.variables),
     updatedAt: String(src.updatedAt || ""), updatedBy: String(src.updatedBy || ""),
   };
 }
@@ -112,7 +125,7 @@ export async function saveSettings(repo, saas, body, { by = ACTOR_API, now = now
   const cur = normalizeSettings(doc, saas, product);
   const src = isObj(body) ? body : {};
   const merged = { ...cur };
-  for (const k of ["pauseOn", "categories", "autoCloseResolvedDays", "warnAt", "notifyCustomerByEmail"]) if (k in src) merged[k] = src[k];
+  for (const k of ["pauseOn", "categories", "autoCloseResolvedDays", "warnAt", "notifyCustomerByEmail", "variables"]) if (k in src) merged[k] = src[k];
   if (isObj(src.businessHours)) merged.businessHours = { ...cur.businessHours, ...src.businessHours };
   if (isObj(src.portal)) merged.portal = { ...cur.portal, ...src.portal };
   if (isObj(src.policies)) {

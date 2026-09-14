@@ -109,6 +109,7 @@ try {
     ["tasks", "/src/screens/tasks/index.jsx", "TasksScreen", {}, "Tarefas"],
     ["tickets", "/src/screens/tickets/index.jsx", "TicketsScreen", {}, "Tickets"],
     ["support-settings", "/src/screens/support-settings.jsx", "SupportSettingsScreen", {}, "Configurações de SLA"],
+    ["quick-replies", "/src/screens/quick-replies.jsx", "QuickRepliesScreen", {}, "Respostas rápidas"],
     // Detalhe do ticket é MODAL (14/09); no SSR o fetch não roda, então monta com o resumo da fila.
     ["ticket-detalhe", "/src/screens/tickets/detail.jsx", "TicketDetail", { ticketId: "t1", summary: { id: "t1", number: 7, subject: "Painel fora do ar", status: "new", priority: "urgent", channel: "portal", createdAt: nowIso }, saasId: "leverads", agents: [], onClose() {} }, "Painel fora do ar"],
   ];
@@ -893,6 +894,13 @@ try {
     if (L.sectionOf({ ...respondido, status: "pending_customer", sla: { ...respondido.sla, pausedAt: "2026-09-14T14:00:00Z" } }, agora) !== "paused") throw new Error("aguardando o cliente vai pra seção de pausados");
     const lista = renderToString(wrap(React.createElement(L.TicketsList, { tickets: [base, { ...respondido, id: "b", number: 2, subject: "Outro" }].map((t, i) => ({ id: t.id || "a", number: t.number || 1, subject: t.subject || "Fora do ar", ...t })), agentName: (x) => x, onOpen() {}, now: agora })));
     if (!lista.includes("SLA estourado") || !lista.includes("Fora do ar")) throw new Error("a lista não montou as seções");
+    // Respostas rápidas no chat: a "/" só abre a lista no começo da linha ou depois de espaço.
+    const QR = await server.ssrLoadModule("/src/screens/tickets/quick-reply-picker.jsx");
+    const tok = QR.slashTokenAt("Oi /boas", 8);
+    if (!tok || tok.start !== 3 || tok.query !== "boas") throw new Error("atalho / não reconhecido");
+    if (QR.slashTokenAt("24/7", 4) || QR.slashTokenAt("https://x", 8)) throw new Error("barra no meio de palavra/URL abriu a lista");
+    const achadas = QR.filterQuickReplies([{ id: "a", title: "Pedir print", shortcut: "print", body: "" }, { id: "b", title: "Boas-vindas", shortcut: "boas-vindas", body: "oi" }], "boa");
+    if (achadas[0]?.id !== "b") throw new Error("atalho que começa com o termo deveria vir primeiro");
     console.log(`✓ tickets-lista (${soma}px de ${L.TICKETS_GRID_BUDGET})`);
   } catch (err) {
     console.error(`✗ tickets-lista: ${err.message}`);

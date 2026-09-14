@@ -63,6 +63,7 @@ export const COLLECTIONS = {
   tickets: [],         // ticket de suporte: status, prioridade, conversa (reply/note), SLA, token do portal
   ticket_events: [],   // atividade de cada ticket — GET /api/tickets/:id/activity
   ticket_assets: [],   // anexo do ticket (base64, preso ao ticket; servido com escopo ou pelo token do portal)
+  quick_replies: [],   // respostas rápidas do chat do ticket: da equipe (por produto) ou pessoais (owner) — quick-replies.js
   ticket_settings: [], // um doc por produto (id = saas): políticas de SLA, expediente, categorias, portal
   agenda_blocks: [], // bloqueios de agenda (tela Agenda): horários que o closer/CS trava p/ compromisso externo — { user, recur, date/weekday, allDay, fromHour, toHour, reason }
   mindmaps: [], // mapas mentais / estratégia (tela Mapas mentais): { name, nodes[], links[] }
