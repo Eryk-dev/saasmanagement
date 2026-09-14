@@ -84,12 +84,18 @@ export function AvisoTopo({ tom = "neg", titulo, nota, fim, acao, variante = "po
 //
 // passos: [{ rotulo, valor, nota, tom, title, taxa, taxaNota }]
 //   taxa/taxaNota descrevem a seta que ENTRA no passo (ignoradas no primeiro).
-export function CorrenteDoDinheiro({ passos = [], tamanho = "md", fim, bare = false, style }) {
+export function CorrenteDoDinheiro({ passos = [], tamanho = "md", titulo, sub, fim, bare = false, style }) {
   const grande = tamanho === "lg";
   const vis = passos.filter(Boolean);
   if (!vis.length) return null;
   return (
     <section style={{ ...(bare ? null : CARD), padding: bare ? 0 : "20px var(--inset-x)", ...style }}>
+      {(titulo || sub) && (
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+          {titulo && <h3 className="card-title" style={{ margin: 0 }}>{titulo}</h3>}
+          {sub && <span className="card-sub">{sub}</span>}
+        </div>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(${grande ? 170 : 150}px, 1fr))`, gap: "14px 4px", alignItems: "start" }}>
         {vis.map((p, i) => (
           <div key={p.rotulo ?? i} style={{ display: "flex", alignItems: "flex-start", gap: 4, minWidth: 0 }}>
@@ -104,6 +110,9 @@ export function CorrenteDoDinheiro({ passos = [], tamanho = "md", fim, bare = fa
               <div style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{p.rotulo}</div>
               <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: grande ? 26 : 24, fontWeight: 700, letterSpacing: "-0.02em", marginTop: 2, color: corDe(p.tom) }}>{p.valor}</div>
               {p.nota && <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 3, textWrap: "pretty" }}>{p.nota}</div>}
+              {/* A linha extra (CAC, LTV/CAC, "24 fora do perfil"): o número
+                  que qualifica o passo sem disputar com o valor grande. */}
+              {p.alerta && <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 1 }}>{p.alerta}</div>}
             </div>
           </div>
         ))}

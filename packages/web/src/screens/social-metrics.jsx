@@ -53,31 +53,6 @@ export function BarList({ items, fmt = fmtNum, color = "var(--accent)", labelW =
   );
 }
 
-// Barra part-to-whole de 2+ segmentos (alcance seguidor × não-seguidor). Gap de
-// 2px entre fills, legenda sempre presente (≥2 séries), % direto no rótulo.
-export function SplitBar({ segments }) {
-  const total = segments.reduce((s, x) => s + x.value, 0) || 1;
-  return (
-    <div>
-      <div style={{ display: "flex", height: 34, borderRadius: 6, overflow: "hidden", gap: 2, background: "var(--bg-3)" }}>
-        {segments.map((s) => (
-          <div key={s.label} title={`${s.label}: ${fmtNum(s.value)} (${Math.round((s.value / total) * 100)}%)`}
-            style={{ width: `${(s.value / total) * 100}%`, background: s.color, minWidth: s.value > 0 ? 3 : 0 }} />
-        ))}
-      </div>
-      <div style={{ display: "flex", gap: 18, marginTop: 10, flexWrap: "wrap" }}>
-        {segments.map((s) => (
-          <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <span style={{ width: 10, height: 10, borderRadius: 3, background: s.color, flexShrink: 0 }} />
-            <span style={{ fontSize: 12, color: "var(--fg-2)" }}>{s.label}</span>
-            <span className="tnum" style={{ fontSize: 12, fontWeight: 700, color: "var(--fg-1)" }}>{fmtNum(s.value)}</span>
-            <span className="mono dim" style={{ fontSize: 11 }}>{Math.round((s.value / total) * 100)}%</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 // Linha/área de uma série no tempo, com crosshair + tooltip no hover. `cumulative`
 // soma a série (curva de trajetória, pro ganho de seguidores). Um hue só.

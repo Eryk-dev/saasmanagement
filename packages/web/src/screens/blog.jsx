@@ -1,6 +1,7 @@
 import React from "react";
 import { PageHead, FilterTab, Segmented, Card } from "../components/viz.jsx";
-import { EmptyState, PrimaryButton, SecondaryButton, useEsc, toast } from "../atoms.jsx";
+import { Modal as Painel, Drawer } from "../components/overlay.jsx";
+import { EmptyState, PrimaryButton, SecondaryButton, toast } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { displayName, isAdminUser } from "../lib/users.js";
@@ -237,14 +238,13 @@ const Line = ({ k, v, tone }) => (
 );
 
 // ── Modal simples (nova pauta, digest) ──────────────────────────────────────
+// O Modal local do Blog virou casca do compartilhado (14/09): o véu, a camada,
+// o Esc e o ErrorBoundary vêm de components/overlay.jsx.
 function Modal({ onClose, busy, width = 560, children }) {
-  useEsc(busy ? null : onClose);
   return (
-    <div onClick={busy ? undefined : onClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.45)", display: "grid", placeItems: "center", zIndex: 80, padding: 16 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: `min(${width}px, 100%)`, maxHeight: "88vh", overflowY: "auto", background: "var(--bg-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 22 }}>
-        {children}
-      </div>
-    </div>
+    <Painel onClose={onClose} fechavel={!busy} label="blog" largura={width} painelStyle={{ padding: 22 }}>
+      {children}
+    </Painel>
   );
 }
 
@@ -364,7 +364,6 @@ function PostDrawer({ saas, id, rules, nextSlot, admin, onClose, onChanged }) {
     if (dirty && !window.confirm("Descartar as alterações não salvas deste post?")) return;
     onClose();
   }
-  useEsc(busy ? null : tryClose);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -427,8 +426,7 @@ function PostDrawer({ saas, id, rules, nextSlot, admin, onClose, onChanged }) {
   const siteUrl = `leverads.com.br/blog/${form?.slug || ""}`;
 
   return (
-    <div onClick={tryClose} style={{ position: "fixed", inset: 0, background: "oklch(0 0 0 / 0.4)", display: "flex", justifyContent: "flex-end", zIndex: 70 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(880px, 100vw)", height: "100%", background: "var(--bg-1)", borderLeft: "1px solid var(--line-2)", display: "flex", flexDirection: "column", boxShadow: "var(--shadow-pop)" }}>
+    <Drawer onClose={tryClose} fechavel={!busy} label="post do blog" largura={880}>
         <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexShrink: 0 }}>
           <div style={{ minWidth: 0 }}>
             <div className="kicker" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -675,8 +673,7 @@ function PostDrawer({ saas, id, rules, nextSlot, admin, onClose, onChanged }) {
             )}
           </div>
         )}
-      </div>
-    </div>
+    </Drawer>
   );
 }
 
