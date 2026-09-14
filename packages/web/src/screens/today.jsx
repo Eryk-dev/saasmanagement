@@ -1,4 +1,7 @@
 import React from "react";
+import "./today.css";
+import { Modal } from "../components/overlay.jsx";
+import { Popover } from "../components/popover.jsx";
 import { EmptyState, useEsc, toast, WaButton, Avatar, MoreMenu } from "../atoms.jsx";
 import { ErrorBoundary } from "../components/error-boundary.jsx";
 import { Pill } from "../components/viz.jsx";
@@ -107,7 +110,7 @@ const TIME_TONE = {
   mut:  { bg: "var(--bg-2)", fg: "var(--fg-4)" },
 };
 function TimeCell({ pill, note, tone, soft, apagado }) {
-  const t = apagado ? TIME_TONE.mut : (TIME_TONE[soft ? "mut" : tone] || TIME_TONE.mut);
+  const t = apagado || soft ? TIME_TONE.mut : tone === "warn" ? TIME_TONE.warn : TIME_TONE.appt;
   const noteColor = apagado ? "var(--fg-4)" : tone === "neg" ? "var(--neg)" : tone === "warn" ? "var(--warn)" : tone === "pos" ? "var(--pos)" : "var(--fg-4)";
   return (
     <span style={{ minWidth: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 3 }}>
@@ -494,30 +497,24 @@ function FilaLimpa({ ig, contatos, calls, saasId, person, openForm }) {
 // admin vê só o rótulo da própria fila.
 function PersonPicker({ users, person, counts, onChange, canPick }) {
   const [open, setOpen] = useS(false);
-  useEsc(open ? () => setOpen(false) : null);
-  useE(() => {
-    if (!open) return;
-    const fechar = () => setOpen(false);
-    window.addEventListener("click", fechar);
-    return () => window.removeEventListener("click", fechar);
-  }, [open]);
+  const anchor = React.useRef(null);
   const atual = users.find((u) => u.id === person);
   const rotulo = `${atual?.name || atual?.id || "fila"}${counts[person] != null ? ` · ${counts[person]}` : ""}`;
   if (!canPick) {
     return (
-      <span style={{ height: 34, display: "inline-flex", alignItems: "center", padding: "0 13px", borderRadius: 999, border: "1px solid var(--line-1)", color: "var(--fg-3)", fontSize: 13 }}>
+      <span style={{ height: 38, display: "inline-flex", alignItems: "center", padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", color: "var(--fg-3)", fontSize: 13 }}>
         {rotulo}
       </span>
     );
   }
   return (
     <span style={{ position: "relative", display: "inline-flex" }} onClick={(e) => e.stopPropagation()}>
-      <button onClick={() => setOpen((o) => !o)} title="ver a fila de outra pessoa"
-        style={{ height: 34, display: "inline-flex", alignItems: "center", gap: 7, padding: "0 13px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", boxShadow: "var(--shadow-1)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+      <button ref={anchor} onClick={() => setOpen((o) => !o)} title="ver a fila de outra pessoa" aria-label="Pessoa da fila" aria-expanded={open}
+        style={{ height: 38, display: "inline-flex", alignItems: "center", gap: 7, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", boxShadow: "var(--shadow-1)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
         {rotulo} <span className="mono dim" style={{ fontSize: 10 }}>▾</span>
       </button>
       {open && (
-        <div style={{ position: "absolute", right: 0, top: 38, zIndex: 30, minWidth: 208, padding: 4, background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)" }}>
+        <Popover anchor={anchor} onClose={() => setOpen(false)} width={230} label="Pessoa da fila">
           {users.map((u) => {
             const ativo = u.id === person;
             return (
@@ -528,7 +525,7 @@ function PersonPicker({ users, person, counts, onChange, canPick }) {
               </button>
             );
           })}
-        </div>
+        </Popover>
       )}
     </span>
   );
@@ -761,16 +758,10 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
     local: { contacted: q.doneToday, contactedGoal, calls: callsDone, callsGoal: Math.max(callsToday.length, 1) },
   });
 
-  // A fila mostrada exclui o item que virou o bloco "Agora" (ele sai da lista,
-  // como a prancha define) — consulta da mentoria não vira bloco Agora, então
-  // nesse caso nada é descontado. `lateCount` é o vencido de verdade (due no
-  // passado), que é o número que o cabeçalho da fila cobra.
-  // A fila mostra HOJE INTEIRO, feitas incluídas (prancha, 14/09): a feita fica
-  // na posição dela, riscada, em vez de sumir atrás de um "ver as feitas". É o
-  // que dá onde conferir o "1 de 10 feitos hoje" do cabeçalho.
-  const queueRows = firstPending && !firstPending.consulta
-    ? q.hoje.filter((i) => i !== firstPending)
-    : q.hoje;
+  // A lista mostra o dia inteiro, incluindo o item resumido em Agora e as
+  // atividades feitas. O resumo destaca o próximo passo; a lista permite
+  // conferir a ordem e o progresso sem descontar um item visualmente.
+  const queueRows = q.hoje;
   const lateCount = pendingToday.filter((i) => i.due && i.due.t <= Date.now()).length;
 
   // Busca DENTRO da fila (protótipo, 14/09). Com oito grupos e o dia cheio, a
@@ -801,8 +792,9 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   }, [daySocialDone, saasCfg?.id]);
 
   return (
-    <div style={{ flex: 1, overflow: "auto" }}>
-      <div style={{ padding: "28px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="today-screen">
+      <div className="today-layout">
+      <div className="today-main">
         <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 260 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -824,7 +816,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
             {/* "Começar a fila →" (prancha, 14/09): abre o roteiro do primeiro
                 pendente. É o mesmo destino do botão do bloco Agora, e existe
                 porque quem chega na tela quer começar sem escolher. */}
-            <button onClick={() => firstPending && setScriptItem(firstPending)} disabled={!firstPending}
+            <button onClick={() => firstPending && openRow(firstPending)} disabled={!firstPending}
               title={firstPending ? "abre o roteiro do primeiro item da fila" : "fila de hoje zerada"}
               style={{ height: 38, padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--btn-bg)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 13, fontWeight: 650, cursor: firstPending ? "pointer" : "not-allowed", opacity: firstPending ? 1 : 0.45 }}>
               Começar a fila →
@@ -867,8 +859,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
             )}
           </>
         ) : (
-          <div className="resp-cols" style={{ "--cols": "minmax(0, 1fr) minmax(300px, 380px)", gap: 16, alignItems: "start" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+          <>
               {/* ── AGORA: o comando da tela (12/09) ────────────────────────
                   O primeiro pendente era só fundo --accent-soft numa linha
                   igual às outras: a tela prometia "hoje em ordem de execução"
@@ -903,8 +894,8 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                         </span>
                       );
                     })()}
-                    <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar na fila…"
-                      className="inp" style={{ width: 180, height: 34 }} />
+                    <input aria-label="Buscar na fila" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar na fila…"
+                      className="inp" style={{ width: 200, maxWidth: "100%", height: 34 }} />
                   </div>
                 </div>
                 {queueRows.length === 0 && (
@@ -929,7 +920,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                   // (buscar não pode mentir sobre a posição no dia) e conta só
                   // os PENDENTES: a feita não ocupa número, como na prancha.
                   const ordem = item.done ? null
-                    : queueRows.slice(0, queueRows.indexOf(item) + 1).filter((x) => !x.done).length + (firstPending && !firstPending.consulta ? 1 : 0);
+                    : queueRows.slice(0, queueRows.indexOf(item) + 1).filter((x) => !x.done).length;
                   const key = item.consulta ? `c-${item.consulta.id}` : item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id;
                   return (
                     <React.Fragment key={key}>
@@ -940,7 +931,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                         </div>
                       )}
                       <QueueRow item={item} block="hoje" featured={false} ordem={ordem}
-                        onScript={() => setScriptItem(item)} onClaim={() => claim(item)} onWhatsapp={onOpenWhatsapp} onOpen={() => openConsulta(item)} />
+                        onScript={() => setScriptItem(item)} onClaim={() => claim(item)} onWhatsapp={onOpenWhatsapp} onOpen={() => item.consulta ? openConsulta(item) : onOpenLead?.(item.l)} />
                     </React.Fragment>
                   );
                 })}
@@ -957,7 +948,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                     </div>
                     {semDataShown.map((item) => (
                       <QueueRow key={`sd-${item.l?.id || item.consulta?.id}`} item={item} block="semdata" featured={false} ordem={null}
-                        onScript={() => setScriptItem(item)} onClaim={() => claim(item)} onWhatsapp={onOpenWhatsapp} onOpen={() => openConsulta(item)} />
+                        onScript={() => setScriptItem(item)} onClaim={() => claim(item)} onWhatsapp={onOpenWhatsapp} onOpen={() => item.consulta ? openConsulta(item) : onOpenLead?.(item.l)} />
                     ))}
                   </>
                 )}
@@ -967,18 +958,14 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                   <SocialSellingBar saasId={saasCfg.id} person={person} version={version} openForm={openForm} />
                 )}
               </section>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
-              {/* A ORDEM é a da prancha (14/09): "O que vem" primeiro, Tarefas
-                  depois. O placar do dia não existe na prancha e desce pro fim
-                  do trilho, que é onde o excedente mora. */}
-              <CompactSchedule title="O que vem" rows={q.amanha} laterRows={futureRows} onOpen={openRow} />
-              {myTasks.length > 0 && <TasksCard tasks={myTasks} onDone={completeTask} undo={undoTask} onUndo={revertTask} />}
-              <DayScore {...score} />
-            </div>
-          </div>
+          </>
         )}
+      </div>
+      <aside className="today-aside">
+        <CompactSchedule title="O que vem" rows={q.amanha} laterRows={futureRows} onOpen={openRow} />
+        {total > 0 && myTasks.length > 0 && <TasksCard tasks={myTasks} onDone={completeTask} undo={undoTask} onUndo={revertTask} />}
+        <details className="today-score-details"><summary>Placar do dia</summary><DayScore {...score} /></details>
+      </aside>
       </div>
 
       {scriptItem && (
@@ -1090,8 +1077,6 @@ function QueueRow({ item, block, featured, ordem, onScript, onClaim, onWhatsapp,
   const verbo = actionVerb(item);
   const hint = actionHint(item);
 
-  // A ETAPA saiu da linha (ia num chip de 118px enquanto a ação, que é o
-  // trabalho, ficava em 12,5px dentro do nome): vive no title e no painel.
   // Linha apagada = já feita: a prancha mantém a feita NA FILA, riscada e sem
   // número, em vez de escondê-la atrás de um "ver as feitas". É o que faz
   // "1 de 10 feitos hoje" ter onde ser conferido.
@@ -1099,8 +1084,8 @@ function QueueRow({ item, block, featured, ordem, onScript, onClaim, onWhatsapp,
   const risco = apagado ? { textDecoration: "line-through" } : null;
   const tomTexto = apagado ? "var(--fg-4)" : "var(--fg-1)";
   return (
-    <div onClick={onScript} role="button" tabIndex={0}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onScript(); } }}
+    <div className="today-queue-row" onClick={onScript} role="button" tabIndex={0}
+      onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onScript(); } }}
       title={`Abrir o roteiro · ${stage}${hint ? ` · ${hint}` : ""}`} style={{
       display: "grid", gridTemplateColumns: QUEUE_GRID, gap: QUEUE_GRID_GAP, alignItems: "center",
       padding: "11px 16px",
@@ -1115,7 +1100,7 @@ function QueueRow({ item, block, featured, ordem, onScript, onClaim, onWhatsapp,
       </div>
       {/* O LEAD com o nível DENTRO da célula (a prancha não dá coluna própria
           pro nível: ele é um atributo do lead, não uma dimensão da fila). */}
-      <div style={{ minWidth: 0 }}>
+      <button onClick={(e) => { e.stopPropagation(); onOpen?.(); }} title="Abrir lead" className="today-queue-lead" style={{ minWidth: 0, textAlign: "left" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
           {tier.grade
             ? <span title={tier.label} style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, background: apagado ? "var(--bg-2)" : tier.tone, color: apagado ? "var(--fg-4)" : tier.badgeFg, fontSize: 10.5, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{tier.grade}</span>
@@ -1123,7 +1108,7 @@ function QueueRow({ item, block, featured, ordem, onScript, onClaim, onWhatsapp,
           <span style={{ fontSize: 13.5, fontWeight: 600, color: tomTexto, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", ...risco }}>{l.name}</span>
         </div>
         {l.company && <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.company}</div>}
-      </div>
+      </button>
       {/* ETAPA e DONO em texto, como a prancha. Sem dono, o "+" que assume
           entra no lugar do nome — é função que a prancha não tem e que o
           cockpit precisa, no lugar onde o dono seria lido. */}
@@ -1170,9 +1155,9 @@ function AgoraBlock({ item, onScript, onClaim, onWhatsapp }) {
   const quando = due ? `${hhmmOf(due.t)} · ${atrasado ? "agora" : untilNote(due.t, now)}` : "sem hora marcada";
   const detalhe = l.nextActionNote || actionHint(item);
   return (
-    <section style={{ border: `1px solid ${atrasado ? "var(--neg)" : "var(--btn-bg)"}`, background: "var(--bg-1)", borderRadius: "var(--r-4)", padding: "18px 22px" }}>
+    <section className="today-now" style={{ border: "1px solid var(--btn-bg)", background: "var(--bg-1)", borderRadius: "var(--r-4)", padding: "18px 22px" }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: 240 }}>
+        <div style={{ flex: 1, minWidth: "min(280px, 100%)" }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
             <span className="kicker" style={{ color: atrasado ? "var(--neg)" : "var(--fg-3)" }}>Agora</span>
             <span style={{ fontSize: 12, color: "var(--fg-4)" }}>o primeiro da fila</span>
@@ -1181,10 +1166,10 @@ function AgoraBlock({ item, onScript, onClaim, onWhatsapp }) {
             {tier.grade
               ? <span title={tier.label} style={{ width: 20, height: 20, borderRadius: 5, background: tier.tone, color: tier.badgeFg, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{tier.grade}</span>
               : <span title="sem qualificação" style={{ width: 20, height: 20, borderRadius: 5, border: "1px solid var(--line-1)", color: "var(--fg-4)", fontSize: 11, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>—</span>}
-            <span style={{ fontSize: 15.5, fontWeight: 700, letterSpacing: "-0.01em" }}>{l.name}</span>
+            <span style={{ fontSize: 16, fontWeight: 650, letterSpacing: "-0.01em" }}>{l.name}</span>
             {l.company && <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{l.company}</span>}
             <span className="mono tnum" style={{ fontSize: 11.5, color: atrasado ? "var(--neg)" : "var(--fg-3)", fontWeight: atrasado ? 600 : 400 }}>{quando}</span>
-            <span className="mono dim" style={{ fontSize: 11 }}>{stage}</span>
+
           </div>
           <div style={{ fontSize: 14, fontWeight: 700, marginTop: 8 }}>{actionVerb(item)}</div>
           {detalhe && <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 2 }}>{detalhe}</div>}
@@ -1277,54 +1262,35 @@ function CompactSchedule({ title = "O que vem", rows = [], laterRows = [], onOpe
 // Tarefas do kanban na fila do dia: as abertas da pessoa (ou sem responsável),
 // vencidas em vermelho, ✓ conclui direto. O card inteiro leva pro kanban.
 function TasksCard({ tasks, onDone, undo, onUndo }) {
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const fmtDue = (d) => {
-    const dt = new Date(d + "T00:00:00");
-    return isNaN(dt) ? d : dt.toLocaleDateString("pt-BR", { day: "numeric", month: "short" }).replace(".", "");
+  const [busy, setBusy] = useS(null);
+  const todayStr = bizDay(new Date());
+  const daysUntil = (d) => Math.round((new Date(`${d}T12:00:00`) - new Date(`${todayStr}T12:00:00`)) / DAY);
+  const dueLabel = (d) => {
+    if (!d) return "sem prazo";
+    const n = daysUntil(d);
+    return n < 0 ? `venceu há ${Math.abs(n)} d` : n === 0 ? "hoje" : n === 1 ? "amanhã" : `em ${n} d`;
   };
-  const priTone = (p) => (p === "P0" ? "var(--neg)" : p === "P1" ? "var(--warn)" : "var(--fg-4)");
+  const late = tasks.filter((t) => t.dueDate && t.dueDate < todayStr).length;
+  const shown = tasks.slice(0, 5);
   return (
-    <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "20px var(--inset-x) 12px" }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <h3 className="card-title" style={{ margin: 0 }}>Tarefas</h3>
-          <div className="card-sub" style={{ marginTop: 3 }}>{tasks.length} {tasks.length === 1 ? "aberta" : "abertas"}</div>
-        </div>
-        <button onClick={() => { location.hash = "#tasks"; }} style={{ fontSize: 12.5, fontWeight: 500, color: "var(--accent)", flexShrink: 0 }}>kanban →</button>
+    <section className="today-tasks">
+      <div className="today-tasks-head">
+        <div><h3 className="card-title">Tarefas</h3><div className="card-sub">{tasks.length} abertas{late ? ` · ${late} vencidas` : ""}{tasks.length > 5 ? " · mostrando 5" : ""}</div></div>
+        <button onClick={() => { location.hash = "#tasks"; }}>kanban →</button>
       </div>
-      <div style={{ padding: "0 var(--inset-x) 8px" }}>
-        {undo && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: "1px solid var(--line-faint)", fontSize: 12.5 }}>
-            <span style={{ color: "var(--pos)", flexShrink: 0 }}>✓</span>
-            <span className="dim" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{undo.task.title || "tarefa"} concluída</span>
-            <button onClick={onUndo} style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)", flexShrink: 0 }}>desfazer</button>
-          </div>
-        )}
-        {tasks.slice(0, 8).map((t) => {
-          const overdue = t.dueDate && t.dueDate < todayStr;
-          return (
-            <div key={t.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "9px 0", borderTop: "1px solid var(--line-faint)" }}>
-              <button onClick={() => onDone(t)} title="Concluir tarefa" style={{
-                width: 28, height: 28, flexShrink: 0, borderRadius: 8, border: "1.5px solid var(--line-2)",
-                display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--fg-4)", fontSize: 13,
-              }}>✓</button>
-              <button onClick={() => { location.hash = taskHash(t.id); }} title="Abrir a tarefa" style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                <span style={{ display: "block", fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title || "(sem título)"}</span>
-                {(t.priority || t.dueDate) && (
-                  <span style={{ display: "flex", gap: 8, fontSize: 11.5, marginTop: 1 }}>
-                    {t.priority && <span className="mono" style={{ color: priTone(t.priority), fontWeight: 600 }}>{t.priority}</span>}
-                    {t.dueDate && <span className="mono tnum" style={{ color: overdue ? "var(--neg)" : "var(--fg-4)" }}>{overdue ? "venceu " : ""}{fmtDue(t.dueDate)}</span>}
-                  </span>
-                )}
-              </button>
-            </div>
-          );
-        })}
-        {tasks.length > 8 && (
-          <button onClick={() => { location.hash = "#tasks"; }} style={{ width: "100%", textAlign: "left", padding: "9px 0", borderTop: "1px solid var(--line-faint)", fontSize: 12.5, color: "var(--accent)", fontWeight: 500 }}>
-            +{tasks.length - 8} no kanban →
+      <div className="today-tasks-list">
+        {undo && <div className="today-task-undo"><span>{undo.task.title || "Tarefa"} concluída</span><button onClick={onUndo}>desfazer</button></div>}
+        {shown.map((t) => <div className="today-task-row" key={t.id}>
+          <button className="today-task-open" onClick={() => { location.hash = taskHash(t.id); }} title="Abrir a tarefa">
+            <span className="today-task-title">{t.title || "(sem título)"}</span>
+            <span className="today-task-meta">{(t.assignees || []).map(displayName).filter(Boolean).join(", ") || "sem responsável"}{t.priority ? ` · ${t.priority}` : ""}</span>
           </button>
-        )}
+          <span className="today-task-due" style={{ color: !t.dueDate ? "var(--fg-3)" : t.dueDate < todayStr ? "var(--neg)" : t.dueDate === todayStr ? "var(--warn)" : "var(--fg-3)" }} title={t.dueDate || undefined}>{dueLabel(t.dueDate)}</span>
+          <button className="today-task-done" title="Concluir tarefa" aria-label={`Concluir tarefa: ${t.title}`} disabled={busy === t.id}
+            onClick={async () => { setBusy(t.id); try { await onDone(t); } finally { setBusy(null); } }}>{busy === t.id ? "…" : "✓"}</button>
+        </div>)}
+        {!tasks.length && <div className="card-sub" style={{ padding: "12px 0" }}>Nenhuma tarefa aberta.</div>}
+        {tasks.length > 5 && <button className="today-more-tasks" onClick={() => { location.hash = "#tasks"; }}>+{tasks.length - 5} no kanban →</button>}
       </div>
     </section>
   );
@@ -1831,7 +1797,6 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
     setL((prev) => ({ ...prev, ...p }));
     onPatch && onPatch(item.l.id, p);
   }
-  useEsc(onClose); // o painel mais aberto do dia fecha no Esc
   // Remarcação na confirmação: o cliente pediu pra mudar de horário. O SDR escolhe
   // um novo slot na agenda do closer; salvamos o novo callAt E registramos um TOQUE
   // (meta.event="reschedule") — assim conta como "contatado" no placar do SDR e
@@ -1942,12 +1907,9 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
   };
 
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--scrim)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: "var(--z-modal)", padding: 12 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{
-        width: "min(1100px, 100%)", maxHeight: "min(92vh, 100%)",
-        background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)",
-        boxShadow: "var(--shadow-pop)", display: "flex", flexDirection: "column",
-      }}>
+    <Modal onClose={onClose} label="Roteiro da atividade" largura={1120} padding={20}
+      painelStyle={{ maxHeight: "calc(100dvh - 40px)", display: "flex", flexDirection: "column", overflow: "hidden", borderRadius: "var(--r-4)" }}>
+      <div className="today-script" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
         <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--line-1)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           {/* O TÍTULO é a AÇÃO (12/09): "Follow-up · tentativa 2" diz o que
               se vem fazer aqui. O nome do lead desce pra segunda linha, com o
@@ -1955,7 +1917,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
               roteiro, na coluna. */}
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-              <span style={{ fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>
+              <span style={{ fontFamily: "var(--display)", fontSize: 20, fontWeight: 700 }}>
                 {actionVerb(item)}{Number(l.stageAttempts) > 0 && !item.confirm ? ` · tentativa ${l.stageAttempts}` : ""}
                 {item.confirm ? ` · ${item.confirmWindow === "10min" ? "10 min antes" : "2h antes"}` : ""}
               </span>
@@ -1998,7 +1960,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
         </div>
 
         {/* Corpo rolável: duas colunas (CLIENTE | ROTEIRO) + o destino do card. */}
-        <div style={{ padding: "12px 18px", display: "flex", flexDirection: "column", gap: 14, overflowY: "auto", minHeight: 0 }}>
+        <div className="today-script-body" style={{ padding: "18px 20px", display: "flex", flexDirection: "column", gap: 14, overflowY: "auto", minHeight: 0, background: "var(--bg-0)" }}>
         {/* ── As colunas TROCARAM DE LADO (12/09) ────────────────────────
             O roteiro é o que a pessoa LÊ enquanto fala: estava na coluna da
             direita, enquanto os dados do cliente (consulta) ocupavam a
@@ -2088,7 +2050,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
             fecha o item exigia a maior rolagem. Agora é a barra do rodapé.
             Item de confirmação não move etapa: no lugar dos destinos, ele
             mantém os botões próprios (confirmou / sem resposta / remarcar). */}
-        <div style={{ marginTop: "auto", padding: "10px 18px", borderTop: "2px solid var(--line-2)", background: "var(--bg-1)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <div className="today-script-footer" style={{ marginTop: "auto", padding: "10px 18px", borderTop: "2px solid var(--line-2)", background: "var(--bg-1)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           {!item.confirm && !preview && (
             <div style={{ flexBasis: "100%", minWidth: 0 }}>
               <DestinoSection saasCfg={saasCfg} lead={l} leads={leads} callSummary={callSummary}
@@ -2119,8 +2081,8 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
             // Atende DENTRO do cockpit (inbox); sem o handler (pré-visualização
             // em Ajustes → Scripts), cai no deep-link do app.
             onWhatsapp
-              ? <WaButton block onClick={() => onWhatsapp(l)} title={`Abrir a conversa no inbox · ${l.phone}`}>WhatsApp</WaButton>
-              : <WaButton block href={wa} title={`WhatsApp · ${l.phone}`}>WhatsApp ↗</WaButton>
+              ? <button className="today-script-whatsapp" onClick={() => onWhatsapp(l)} title={`Abrir a conversa no inbox · ${l.phone}`}>WhatsApp</button>
+              : <a className="today-script-whatsapp" href={wa} target="_blank" rel="noopener noreferrer" title={`WhatsApp · ${l.phone}`}>WhatsApp ↗</a>
           )}
           {/* Confirmação: o SDR marca quando o cliente responde à mensagem de 1h;
               o roteiro troca o passo de 10 min (positiva) sozinho. */}
@@ -2199,7 +2161,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
           />
         )}
       </div>
-    </div>
+    </Modal>
   );
 }
 
