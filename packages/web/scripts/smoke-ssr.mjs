@@ -123,6 +123,27 @@ try {
       failed++;
     }
   }
+  // A régua usa a meta base: ultrapassar 100% não pode fazer o percentual
+  // voltar para trás por causa da escala da próxima super meta.
+  try {
+    const { MetaMesCard } = await server.ssrLoadModule("/src/screens/overview.jsx");
+    const renderGoal = (sale, ended = false) => renderToString(wrap(React.createElement(MetaMesCard, {
+      goal: { ...fakeGoal, ended, sale: { ...fakeGoal.sale, ...sale } }, links: false,
+    })));
+    const visible = renderGoal({}).split('<details')[0];
+    for (const text of ["Esperado até hoje", "14.400", "Falta para a meta", "26.000"]) {
+      if (!visible.includes(text)) throw new Error(`${text} precisa aparecer sem abrir os detalhes`);
+    }
+    const superMeta = renderGoal({ sold: 66000, progress: 1.1 }).split('<details')[0];
+    if (!superMeta.includes("110%") || !superMeta.includes("Meta batida") || !superMeta.includes("6.000")) throw new Error("super meta deve mostrar 110% realizado e o excedente");
+    const closed = renderGoal({}, true).split('<details')[0];
+    if (closed.includes("Esperado até hoje") || !closed.includes("Faltou para a meta")) throw new Error("período encerrado não deve cobrar pace de hoje");
+    console.log("✓ overview-meta-legível");
+  } catch (err) {
+    console.error(`✗ overview-meta-legível: ${err.message}`);
+    failed++;
+  }
+
   // A tabela de formulários precisa caber na janela de 1024px sem rolar.
   try {
     const { FORM_GRID, FORM_GRID_GAP, FORM_GRID_BUDGET } = await server.ssrLoadModule("/src/screens/integration-forms.jsx");

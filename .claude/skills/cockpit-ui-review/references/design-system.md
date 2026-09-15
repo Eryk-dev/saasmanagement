@@ -156,6 +156,15 @@ celular na rua: **toda tela precisa continuar usável a 390px** (PR #361) usando
 gerencial — linhas compactas, muito dado por tela; `body[data-density]` existe
 (compact 13.5 / regular 14).
 
+**Régua de meta — revisão de 14/09/2026:** o termômetro da Visão Geral usa
+preenchimento sólido para o realizado sobre a meta base. A marca tracejada do
+pace fica acima da barra, com rótulo externo “Esperado até hoje”, valor em reais
+e percentual. O valor que falta fica sempre visível; follow-up continua como
+contexto ao lado. Acima de 100%, o percentual mantém a meta base e o excedente
+é explícito. Período encerrado mostra “Faltou para a meta” e não cobra pace de
+hoje. Referência: `Termometro` em `screens/overview.jsx` e `.vg-goal-*` em
+`screens/overview.css`.
+
 ## Dívidas conhecidas
 
 Rodada de 2026-08-08 EXECUTADA (PRs #621, #631, #633, #634): kickers e títulos
