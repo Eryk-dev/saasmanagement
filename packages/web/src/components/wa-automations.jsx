@@ -94,7 +94,7 @@ function RulesCard({ product }) {
   const [busy, setBusy] = useState(false);
 
   const load = () => api.list("wa_automations").then((r) => setRules((Array.isArray(r) ? r : r.items || []).filter((x) => !x.saas || x.saas === product.id))).catch(() => setRules([]));
-  useEffect(load, [product.id, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [product.id, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function save(f) {
     setBusy(true);
@@ -162,7 +162,7 @@ function TemplatesCard() {
   const [creating, setCreating] = useState(false);
 
   const load = () => api.waMetaTemplates().then(setData).catch((e) => setData({ error: e.message || "não deu pra listar" }));
-  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Card title="Templates do WhatsApp (Meta)" hint="mensagem aprovada pela Meta reabre conversa fora da janela de 24h">
@@ -195,7 +195,7 @@ function FlowsCard({ product }) {
   const [rows, setRows] = useState(null);
 
   const load = () => api.sequenceMetrics(product.id).then((r) => setRows(r.sequences || r || [])).catch(() => setRows([]));
-  useEffect(load, [product.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [product.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function toggle(s) {
     const next = s.status === "active" ? "paused" : "active";
@@ -565,7 +565,7 @@ function ConversationFlowsCard({ product }) {
   const [editor, setEditor] = useState(null); // { initial } | null
 
   const load = () => api.list("wa_flows").then((r) => setFlows((Array.isArray(r) ? r : []).filter((f) => !f.saas || f.saas === product.id))).catch(() => setFlows([]));
-  useEffect(load, [product.id, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [product.id, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function toggle(f) {
     try { await api.update("wa_flows", f.id, { active: !f.active }); load(); } catch (e) { window.alert(e.message || "falhou"); }
@@ -779,14 +779,18 @@ function SdrBotCard({ product }) {
 export function WaAutomationsPanel({ product }) {
   if (!product) return <EmptyState title="Nenhum produto cadastrado" hint="Crie o produto em Ajustes." />;
   return (
-    <div style={{ flex: 1, overflowY: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 14, maxWidth: 980 }}>
+    <div className="inbox-automations">
+      <div className="inbox-automations-column">
       <SdrBotCard key={"sdr-" + product.id} product={product} />
       <ConversationFlowsCard product={product} />
       <RulesCard product={product} />
       <CallFlowCard key={product.id} product={product} />
-      <TemplatesCard />
       <FlowsCard product={product} />
-      <QuickRepliesCard product={product} />
+      </div>
+      <div className="inbox-automations-column">
+        <TemplatesCard />
+        <QuickRepliesCard product={product} />
+      </div>
     </div>
   );
 }

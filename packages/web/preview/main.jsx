@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { fmt } from "../src/lib/format.js";
 import { LEADS_FAKE, CLIENTES_FAKE } from "./api-mock.js";
 import "../src/tokens.css";
+import { setupInboxPreview } from "./inbox-mock.js";
 
 // Preview de tela (14/09): monta UMA tela do cockpit com dado falso, pra
 // conferir o desenho contra a prancha do protótipo sem subir a API. O
@@ -41,6 +42,7 @@ window.SEED = {
   ME: { id: "leo", name: "Leonardo", roles: ["sdr", "admin"] },
   COUNTERS: { leverads: { tasks: 3, tasksLate: 1, inbox: 2 } },
 };
+if (params.has("inbox")) setupInboxPreview(window.SEED, params);
 if (previewShell) {
   window.SEED.SAAS.push({ id: "elo", name: "Elo", accent: 55, funnel: [], leadQuestions: [] });
   // A moldura usa o App real, com API falsa e sem conexão SSE/banco.

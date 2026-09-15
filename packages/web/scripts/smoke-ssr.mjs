@@ -85,6 +85,8 @@ try {
   const fakeWin = { since: "2026-08-01", until: "2026-08-08", businessDays: 6, days: 8, label: "este mês", short: "mês" };
 
   const cases = [
+    ["inbox", "/src/screens/whatsapp.jsx", "WhatsappInboxScreen", {}, "Inbox"],
+    ["inbox-mensagens", "/src/components/wa-thread.jsx", "WaBubbles", { variant: "inbox", messages: [{ id: "wa-test", direction: "out", author: "sdr-bot", text: "Mensagem do robô", at: nowIso, status: "read" }] }, "Mensagem do robô"],
     ["overview", "/src/screens/overview.jsx", "OverviewScreen", { onNav() {}, onOpenLead() {} }, "Visão geral"],
     ["overview-meta", "/src/screens/overview.jsx", "MetaMesCard", { pace: fakePace, goal: fakeGoal, onNav() {} }, "Contratos"],
     // O termômetro (14/09): a coluna, a marca do pace e a distância em palavras.

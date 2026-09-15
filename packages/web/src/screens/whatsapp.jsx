@@ -1,8 +1,11 @@
 import React from "react";
-import { PageHead } from "../components/viz.jsx";
+import { PageHead, Segmented } from "../components/viz.jsx";
 import { AvisoTopo } from "../components/story.jsx";
 import { Modal } from "../components/overlay.jsx";
-import { EmptyState } from "../atoms.jsx";
+import { Popover } from "../components/popover.jsx";
+import { stageKind } from "../lib/funnel.js";
+import "./whatsapp.css";
+import { EmptyState, PrimaryButton, SecondaryButton } from "../atoms.jsx";
 import { WaBubbles, WaComposer, WaTemplateComposer, waWindowOpen } from "../components/wa-thread.jsx";
 // (o discador do cockpit — WaCallButton/wa-call.jsx — saiu da tela em 22/08/2026
 // junto com o pedido de permissão de ligação: violação
@@ -114,21 +117,22 @@ function dur(min) {
 // número em uma linha; o resto do painel de números vive no title do
 // "detalhes do número ⓘ", que é onde ele era consultado de vez em quando.
 function WaTopStats({ numInfo, stats, onResponder }) {
+  const [detailsOpen, setDetailsOpen] = React.useState(false);
   const health = window.SEED?.CONFIG?.whatsapp?.health || null;
   const healthTone = health?.level === "danger" ? { label: "em risco", color: "var(--neg)" }
     : health?.level === "warn" ? { label: "atenção", color: "var(--warn)" }
-    : { label: "alta", color: "var(--pos)" };
+    : (QUALITY[String(numInfo?.quality || "").toUpperCase()] || { label: "não informada", color: "var(--fg-3)" });
   const q = QUALITY[String(numInfo?.quality || "").toUpperCase()];
   const tier = numInfo?.tier ? (TIER_LABEL[numInfo.tier] || String(numInfo.tier).replace("TIER_", "").toLowerCase()) : null;
   const waiting = stats?.awaiting || 0;
   const espera = stats?.oldestWaitHours != null ? dur(Math.round(stats.oldestWaitHours * 60)) : null;
   const tipica = dur(stats?.medianReplyMinutes);
 
-  const item = (label, value, tone) => (
-    <span key={label} style={{ display: "inline-flex", alignItems: "baseline", gap: 6, whiteSpace: "nowrap" }}>
-      <span className="kicker">{label}</span>
-      <span className="tnum" style={{ fontSize: 13.5, fontWeight: 600, color: tone || "var(--fg-1)" }}>{value}</span>
-    </span>
+  const item = (label, value) => (
+    <div className="inbox-stat" key={label}>
+      <span className="inbox-kicker">{label}</span>
+      <strong className="tnum">{value}</strong>
+    </div>
   );
   // O que saiu da faixa continua legível, num lugar só.
   const detalhes = stats ? [
@@ -136,7 +140,9 @@ function WaTopStats({ numInfo, stats, onResponder }) {
     q ? `qualidade ${q.label}` : null,
     tier ? `limite de envio ${tier}` : null,
     numInfo?.throughput ? `vazão ${numInfo.throughput === "STANDARD" ? "padrão" : String(numInfo.throughput).toLowerCase()}` : null,
+    `esperando resposta ${waiting}`,
     `não lidas ${stats.unread}`,
+    `resposta típica ${tipica}`,
     `recebidas ${stats.inbound} · enviadas ${stats.outbound}`,
     stats.withoutLead > 0 ? `sem lead ${stats.withoutLead}` : null,
     stats.form && stats.form.formLeads > 0
@@ -147,32 +153,28 @@ function WaTopStats({ numInfo, stats, onResponder }) {
   ].filter(Boolean).join("\n") : "carregando…";
 
   return (
-    // Aviso e resumo do número LADO A LADO (prancha, 14/09): eram duas faixas
-    // empilhadas, e a segunda empurrava a caixa de conversas pra baixo.
-    <div style={{ margin: "12px var(--pad-x) 0", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "stretch" }}>
-      {/* O aviso com prazo sobe pro topo, com a ação ao lado. */}
+    <div className="inbox-stats">
       {waiting > 0 && (
-        <AvisoTopo variante="forte" style={{ flex: "1 1 380px", minWidth: 0 }}
+        <AvisoTopo variante="forte" style={{ flex: "1.1 1 320px", minWidth: 0, padding: "14px 18px" }}
           titulo={`${waiting} ${waiting === 1 ? "conversa esperando resposta" : "conversas esperando resposta"}`}
-          nota={espera ? `a mais antiga há ${espera}` : null}
-          fim={tipica !== "—" ? <span className="mono dim" style={{ fontSize: 11 }}>{`a gente costuma responder em ${tipica}`}</span> : null}
+          nota={[espera ? `a mais antiga há ${espera}` : null, tipica !== "—" ? `a gente costuma responder em ${tipica}` : null].filter(Boolean).join(" · ")}
           acao={{ label: "responder agora", onClick: onResponder }}
         />
       )}
-      {/* Resumo do número: uma linha, sem rolagem. */}
-      <div style={{ flex: "1 1 320px", minWidth: 0, display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap", padding: "10px 16px", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" }}>
-        <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }} title={(health?.messages || []).join("\n") || "conta saudável"}>
-          <span className="kicker">Saúde do número</span>
-          <span style={{ fontSize: 13.5, fontWeight: 600, color: healthTone.color, display: "inline-flex", alignItems: "center", gap: 5 }}>
-            <span style={{ width: 7, height: 7, borderRadius: 99, background: healthTone.color }} />{healthTone.label}
+      <div className="inbox-number">
+        <div className="inbox-stat" title={(health?.messages || []).join("\n")}>
+          <span className="inbox-kicker">Saúde do número</span>
+          <span className="inbox-health" style={{ color: healthTone.color }}>
+            <i style={{ background: "currentColor" }} />{healthTone.label}{tier ? ` · ${tier.replace(" conversas", "")}` : ""}
           </span>
-          {tier && <span className="mono dim" style={{ fontSize: 11 }}>{tier}</span>}
-        </span>
-        {stats && item("Janela aberta", stats.openWindow)}
-        {stats && item(`Conversas · ${stats.days}d`, stats.activeThreads)}
-        {stats && waiting === 0 && item("Sem resposta", "0", "var(--pos)")}
-        <span className="mono" title={detalhes} style={{ marginLeft: "auto", fontSize: 11, color: "var(--fg-4)", cursor: "help", borderBottom: "1px dotted var(--line-2)" }}>detalhes do número ⓘ</span>
+        </div>
+        {item("Janela aberta", stats?.openWindow ?? "—")}
+        {item(`Conversas · ${stats?.days || 7} d`, stats?.activeThreads ?? "—")}
+        <button className="inbox-info" title={detalhes} onClick={() => setDetailsOpen(true)}>detalhes do número ⓘ</button>
       </div>
+      {detailsOpen && <Modal onClose={() => setDetailsOpen(false)} largura={480} label="Detalhes do número">
+        <div style={{ padding: 24 }}><h2 className="card-title">Detalhes do número</h2><p style={{ whiteSpace: "pre-line", lineHeight: 1.7, color: "var(--fg-3)", fontSize: 13 }}>{detalhes}</p><SecondaryButton onClick={() => setDetailsOpen(false)}>Fechar</SecondaryButton></div>
+      </Modal>}
     </div>
   );
 }
@@ -223,10 +225,10 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
   React.useEffect(() => { if (initialDraft) pendingDraft.current = String(initialDraft); }, [initialDraft]);
   const [msgs, setMsgs] = React.useState([]);
   const [q, setQ] = React.useState("");
-  // Filtro da lista: quem respondeu (lead falou por último) × sem resposta
-  // (a gente falou por último e o lead ainda não voltou).
-  const [answerFilter, setAnswerFilter] = React.useState("all"); // all | in | out
-  const [maisFiltros, setMaisFiltros] = React.useState(false); // "mais ▾": pra humano · respondidas · encerradas
+  // Sem resposta = cliente falou por último, mesma definição de awaiting
+  // na API. Aguardando cliente mantém a fila em que nossa equipe falou por último.
+  const [answerFilter, setAnswerFilter] = React.useState("in"); // in = cliente aguardando resposta; out = aguardando cliente
+  const [maisFiltros, setMaisFiltros] = React.useState(false); // filtros adicionais, sem esconder a seleção ativa
   // Card do cliente ao lado da conversa (desktop) — preferência lembrada.
   const [sideOpen, setSideOpen] = React.useState(() => { try { return localStorage.getItem("cockpit_wa_sidecard") !== "0"; } catch { return true; } });
   const toggleSide = () => setSideOpen((v) => { const n = !v; try { localStorage.setItem("cockpit_wa_sidecard", n ? "1" : "0"); } catch { /* ignore */ } return n; });
@@ -326,12 +328,17 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
     // pro time (handoff pedido) — o termômetro da automação no dia a dia.
     if (answerFilter === "bot") return open.filter((t) => botStateOf(t) === "bot");
     if (answerFilter === "handoff") return open.filter((t) => botStateOf(t) === "handoff");
+    if (answerFilter === "lead") return open.filter((t) => t.leadId);
+    if (answerFilter === "orphan") return open.filter((t) => !t.leadId);
     return open;
   }, [threads, q, answerFilter]);
   const answerCounts = React.useMemo(() => {
     const base = threads || [];
     const open = base.filter((t) => (t.status || "open") !== "closed");
     return {
+      all: open.length,
+      lead: open.filter((t) => t.leadId).length,
+      orphan: open.filter((t) => !t.leadId).length,
       in: open.filter((t) => t.lastDir === "in").length,
       out: open.filter((t) => t.lastDir === "out").length,
       closed: base.length - open.length,
@@ -374,11 +381,16 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
 
   // Encerrar/reabrir a conversa (status do inbox, separado da etapa do card).
   // Otimista: some da lista viva na hora; o servidor confirma e o SSE alinha.
-  function toggleClosed() {
+  async function toggleClosed() {
     if (!current) return;
+    const thread = current;
     const closed = (current.status || "open") !== "closed";
     setThreads((prev) => (prev || []).map((t) => (t.id === current.id ? { ...t, status: closed ? "closed" : "open" } : t)));
-    api.waThreadClose(current.id, closed).catch(() => {});
+    try { await api.waThreadClose(thread.id, closed); refresh(); }
+    catch {
+      setThreads((prev) => (prev || []).map((t) => t.id === thread.id ? { ...t, status: thread.status || "open" } : t));
+      window.toast?.("Não foi possível atualizar a conversa · tente de novo", "neg");
+    }
   }
 
   // Vincular conversa órfã a um lead. Otimista como o encerrar: o SSE traz o
@@ -388,38 +400,28 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
     setThreads((prev) => (prev || []).map((t) => (t.id === current.id ? { ...t, leadId } : t)));
   }
 
-  const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" };
-
   const unreadLabel = totalUnread ? `${totalUnread} não lida${totalUnread > 1 ? "s" : ""}` : "conversas com os leads";
   const sub = !configured ? "não configurado no servidor"
     : numInfo?.ok && numInfo.display ? `enviando por ${numInfo.display}${numInfo.name ? ` · ${numInfo.name}` : ""} · ${unreadLabel}`
     : unreadLabel;
 
-  const [newTpl, setNewTpl] = React.useState(false);
   // Canal do inbox: WhatsApp (fluxo completo, com leads/fila) ou as DMs de
   // Instagram/Messenger (lidas e respondidas pela página).
   const [channel, setChannel] = React.useState("whatsapp");
+  const [creatingLead, setCreatingLead] = React.useState(false);
+  React.useEffect(() => { setCreatingLead(false); }, [channel, sel]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+    <div className="inbox-screen">
       <PageHead title="Inbox" sub={channel === "whatsapp" ? sub : channel === "instagram" ? "direct do Instagram · respondido pela página" : channel === "facebook" ? "Messenger da página" : "regras automáticas, templates, fluxos e respostas rápidas do WhatsApp"}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          {[["whatsapp", "WhatsApp"], ["instagram", "Instagram"], ["facebook", "Facebook"], ["automacoes", "Automações"]].map(([id, label]) => (
-            <button key={id} onClick={() => setChannel(id)}
-              style={{ height: 32, padding: "0 13px", border: "1px solid " + (channel === id ? "var(--accent-line)" : "var(--line-2)"), borderRadius: "var(--r-2)",
-                background: channel === id ? "var(--accent-soft)" : "var(--bg-1)", color: channel === id ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
-              {label}
-            </button>
-          ))}
-          {channel === "whatsapp" && (
-            <button onClick={() => setNewTpl(true)} title="cria um template aprovado da Meta (reabre conversa fora das 24h)"
-              style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>
-              Criar template
-            </button>
-          )}
+        <div className="inbox-channels">
+          <Segmented value={channel} onChange={setChannel} options={[
+            { value: "whatsapp", label: "WhatsApp" }, { value: "instagram", label: "Instagram" },
+            { value: "facebook", label: "Facebook" }, { value: "automacoes", label: "Automações" },
+          ]} />
+          <SecondaryButton onClick={() => setChannel("automacoes")} title="Os templates aprovados pela Meta ficam em Automações">ver templates</SecondaryButton>
         </div>
       </PageHead>
-      {newTpl && <WaTemplateCreator onClose={() => setNewTpl(false)} />}
 
       {(channel === "instagram" || channel === "facebook") && <DmInbox key={`${product?.id}:${channel}`} network={channel} saas={product?.id} isMobile={isMobile} />}
 
@@ -431,8 +433,8 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
       {configured && <WaTopStats numInfo={numInfo} stats={stats} onResponder={() => {
         // Filtra a fila e já abre a conversa que espera há mais tempo: o aviso
         // só vale se levar pra ação.
-        setAnswerFilter("out");
-        const fila = (threads || []).filter((t) => t.status !== "closed" && t.lastDir === "out");
+        setAnswerFilter("in"); setQ("");
+        const fila = (threads || []).filter((t) => t.status !== "closed" && t.lastDir === "in");
         const antiga = fila.slice().sort((a, b) => new Date(a.lastAt || 0) - new Date(b.lastAt || 0))[0];
         if (antiga) { setSel(antiga.id); setVirtual(null); }
       }} />}
@@ -489,64 +491,44 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
 
       {/* Mobile = painel único (WhatsApp de celular): lista OU conversa, com
           "‹ conversas" no cabeçalho pra voltar. Desktop segue lado a lado. */}
-      <div style={{ flex: 1, minHeight: 0, display: "flex", gap: 16, padding: "16px var(--pad-x) 56px" }}>
+      <div className="inbox-board">
         {/* Lista de conversas */}
         {(!isMobile || !current) && (
-        <div style={{ ...box, width: isMobile ? "100%" : 250, flexShrink: isMobile ? 1 : 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
-          <div style={{ padding: 10, borderBottom: "1px solid var(--line-1)", display: "flex", flexDirection: "column", gap: 8 }}>
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar por nome ou número"
-              style={{ width: "100%", padding: "8px 10px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 }} />
-            {/* Respondidas = o lead falou por último; sem resposta = a última é
-                nossa e o lead ainda não voltou (a fila do re-toque). */}
-            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-              {/* Seis filtros viram TRÊS + "mais ▾" (13/09): todas, sem
-                  resposta e robô resolvem o dia; pra humano, respondidas e
-                  encerradas são consulta, não rotina. O filtro escondido que
-                  está ATIVO continua aparecendo, senão a lista filtra e a barra
-                  não diz por quê. */}
-              {[["all", "todas", null], ["out", "sem resposta", answerCounts.out], ["bot", "robô", answerCounts.bot],
-                ...(maisFiltros || ["handoff", "in", "closed"].includes(answerFilter)
-                  ? [["handoff", "pra humano", answerCounts.handoff], ["in", "respondidas", answerCounts.in], ["closed", "encerradas", answerCounts.closed]]
-                  : [])].map(([id, label, n]) => {
-                const on = answerFilter === id;
-                return (
-                  <button key={id} onClick={() => setAnswerFilter(id)}
-                    title={id === "bot" ? "o SDR automático está atendendo (verde = call marcada · amarelo = lead respondeu · vermelho = sem resposta)" : id === "handoff" ? "o robô pediu gente: atendimento passou pro time" : id === "in" ? "o lead falou por último" : id === "out" ? "a gente falou por último, esperando o lead" : "todas as conversas"}
-                    style={{ height: 26, padding: "0 10px", borderRadius: 999, fontSize: 11.5, fontWeight: 600, cursor: "pointer",
-                      background: on ? "var(--accent-soft)" : "transparent", color: on ? "var(--accent)" : "var(--fg-3)",
-                      border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)") }}>
-                    {label}{n != null ? <span className="tnum" style={{ marginLeft: 5, opacity: 0.75 }}>{n}</span> : null}
-                  </button>
-                );
-              })}
-              {!maisFiltros && !["handoff", "in", "closed"].includes(answerFilter) && (
-                <button onClick={() => setMaisFiltros(true)} className="mono"
-                  style={{ height: 26, padding: "0 8px", borderRadius: 999, fontSize: 11, color: "var(--fg-4)", border: "1px dashed var(--line-2)", background: "transparent", cursor: "pointer" }}>
-                  mais ▾
-                </button>
-              )}
+        <section className="inbox-list inbox-panel" aria-label="Conversas">
+          <div className="inbox-list-controls">
+            <div className="inbox-search-row">
+              <input className="inp" aria-label="Buscar conversa" value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar conversa" />
+              <button className="inbox-filter" aria-expanded={maisFiltros} title="Com lead · encerradas · pra humano · sem lead · aguardando cliente" onClick={() => setMaisFiltros((v) => !v)}>{maisFiltros ? "menos ▴" : "mais ▾"}</button>
+            </div>
+            <div className="inbox-filters">
+              {[["in", "Sem resposta"], ["all", "Todas"], ["bot", "Robô"],
+                ...[["lead", "Com lead"], ["closed", "Encerradas"], ["handoff", "Pra humano"], ["orphan", "Sem lead"], ["out", "Aguardando cliente"]].filter(([id]) => maisFiltros || id === answerFilter),
+              ].map(([id, label]) => <button key={id} className="inbox-filter" aria-pressed={answerFilter === id}
+                onClick={() => setAnswerFilter(id)} title={id === "in" ? "O cliente falou por último e espera nossa resposta" : id === "out" ? "Nossa equipe falou por último e espera o cliente" : label}>
+                {label} <span className="tnum">{answerCounts[id]}</span>
+              </button>)}
             </div>
           </div>
           <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
             {threads === null ? (
               <div className="mono dim" style={{ fontSize: 11.5, padding: 16 }}>carregando…</div>
             ) : list.length === 0 ? (
-              <div style={{ padding: 20 }}><EmptyState title="Nenhuma conversa" hint={configured ? "quando um lead responder, a conversa aparece aqui" : "configure o WhatsApp pra começar"} /></div>
+              <div style={{ padding: 20 }}><EmptyState title="Nenhuma conversa" hint={q || answerFilter !== "all" ? "nenhuma conversa neste filtro" : configured ? "quando um lead responder, a conversa aparece aqui" : "configure o WhatsApp pra começar"} /></div>
             ) : list.map((t) => {
               const on = t.id === sel;
               // Conversa do SDR automático ganha cor de status: verde = call
               // marcada, amarelo = lead respondeu, vermelho = sem resposta.
               const tone = botToneOf(t);
               return (
-                <button key={t.id} onClick={() => setSel(t.id)}
+                <button className="inbox-conversation" aria-pressed={on} key={t.id} onClick={() => setSel(t.id)}
                   title={tone === "pos" ? "SDR automático · call marcada" : tone === "warn" ? "SDR automático · lead respondeu, em conversa" : tone === "neg" ? "SDR automático · lead ainda não respondeu" : undefined}
                   style={{
                   width: "100%", textAlign: "left", display: "flex", gap: 10, alignItems: "center", padding: "10px 12px",
                   border: "none", borderBottom: "1px solid var(--line-1)", cursor: "pointer",
-                  borderLeft: tone ? `3px solid var(--${tone})` : "3px solid transparent",
-                  background: on ? "var(--accent-soft)" : tone ? `var(--${tone}-soft)` : "transparent",
+                  borderLeft: `3px solid ${on ? "var(--accent)" : botStateOf(t) ? "var(--inbox-bot)" : "transparent"}`,
+                  background: on ? "var(--accent-soft)" : botStateOf(t) ? "var(--inbox-bot-faint)" : "var(--bg-1)",
                 }}>
-                  <span style={{ width: 36, height: 36, borderRadius: "50%", flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "var(--bg-3)", border: "1px solid var(--line-1)", fontSize: 12, fontWeight: 700, color: "var(--fg-2)" }}>
+                  <span style={{ width: 34, height: 34, borderRadius: "50%", flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", background: on ? "var(--bg-1)" : "var(--bg-2)", border: "1px solid var(--line-1)", fontSize: 11.5, fontWeight: 700, color: "var(--fg-2)" }}>
                     {initials(t.name, t.phone)}
                   </span>
                   <span style={{ minWidth: 0, flex: 1 }}>
@@ -558,30 +540,34 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
                     </span>
                     <span style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
                       <span className="dim" style={{ fontSize: 11.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>
-                        {t.lastDir === "out" ? "→ " : ""}{t.lastText || "—"}
+                        {t.lastOutAuthor === "sdr-bot" && t.lastDir === "out" ? "robô: " : t.lastDir === "out" ? "→ " : ""}{t.lastText || "—"}
                       </span>
                       {t.unread > 0 && (
                         <span style={{ flexShrink: 0, minWidth: 18, height: 18, padding: "0 5px", borderRadius: 999, background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 10.5, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{t.unread}</span>
                       )}
+                      <span className="inbox-thread-mark" style={{ color: tone ? `var(--${tone})` : "var(--fg-3)" }}>
+                        {botStateOf(t) === "handoff" ? "humano" : botStateOf(t) === "bot" ? "robô" : !t.leadId ? "sem lead" : t.lastDir === "in" ? dur(Math.max(0, Math.round((Date.now() - new Date(t.lastAt)) / 60000))) : ""}
+                      </span>
                     </span>
                   </span>
                 </button>
               );
             })}
           </div>
-        </div>
+          {threads && <div className="inbox-list-count">{list.length} de {threads.length} conversas</div>}
+        </section>
         )}
 
         {/* Conversa aberta */}
         {(!isMobile || current) && (
-        <div style={{ ...box, flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <div className="inbox-chat inbox-panel">
           {!current ? (
             <div style={{ margin: "auto", padding: 24 }}>
               <EmptyState title="Escolha uma conversa" hint="selecione um contato à esquerda pra ver e responder" />
             </div>
           ) : (
             <>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderBottom: "1px solid var(--line-1)", flexWrap: "wrap" }}>
+              <div className="inbox-chat-head">
                 {isMobile && (
                   <button onClick={() => setSel(null)} aria-label="Voltar pra lista de conversas"
                     style={{ ...pill, padding: "0 9px", fontSize: 14 }}>‹</button>
@@ -599,61 +585,31 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
                 {(current.status || "open") === "closed" && (
                   <span style={{ ...flowChip, background: "var(--warn-soft)", color: "var(--warn)", border: "1px solid var(--warn-line)" }}>encerrada</span>
                 )}
-                {!current.virtual && (
-                  <button onClick={toggleClosed} style={pill}
-                    title={(current.status || "open") === "closed" ? "volta pra lista viva do inbox" : "tira da lista viva (não mexe na etapa do card); mensagem nova do lead reabre sozinha"}>
-                    {(current.status || "open") === "closed" ? "reabrir" : "encerrar"}
-                  </button>
-                )}
-                {/* O pedido de permissão de ligação (e os chips dele) saiu em
-                    22/08/2026 — a solicitação de ligação foi removida pra
-                    proteger o número (violação de taxa de atendimento). */}
                 {current.leadId ? (
-                  <>
-                    {/* A conversa andou? O card anda junto: destinos da etapa
-                        atual (agendar call, fechar, perda…), tudo refletindo no
-                        pipeline/fila na hora. */}
-                    <NextActionButton thread={current} onScheduled={(draft) => composerApi.current?.insert?.(draft)} onResolved={markResolved} />
-                    <BotStopButton leadId={current.leadId} />
-                    {!isMobile && (
-                      <button onClick={toggleSide} style={{ ...pill, ...(sideOpen ? { background: "var(--accent-soft)", color: "var(--accent)", borderColor: "var(--accent-line)" } : {}) }}
-                        title={sideOpen ? "Esconder o card do cliente" : "Mostrar o card do cliente ao lado da conversa"}>▤ card</button>
-                    )}
-                    <button onClick={openLead} style={pill}>Abrir lead ↗</button>
-                  </>
-                ) : (
-                  <LinkLeadButton thread={current} onLinked={linkLead} />
-                )}
-                {/* Ligação: SÓ pelo app do WhatsApp (número pessoal de quem
-                    atende). O discador do cockpit (Calling API) saiu em
-                    22/08/2026 — a taxa de atendimento das ligações da API não
-                    está no nosso controle e derrubou a saúde da conta. */}
-                {waLink(current.phone) && (
-                  <a href={waLink(current.phone)} target="_blank" rel="noopener noreferrer"
-                    title="Abre a conversa no SEU WhatsApp pra ligar por lá (a ligação pela API foi desativada pra proteger o número)"
-                    style={{ ...pill, textDecoration: "none" }}>✆ Ligar no app ↗</a>
-                )}
+                  <span className="inbox-next-action"><NextActionButton key={current.id} thread={current} onScheduled={(draft) => composerApi.current?.insert?.(draft)} onResolved={markResolved} /></span>
+                ) : <PrimaryButton onClick={() => setCreatingLead(true)}>cadastrar como lead</PrimaryButton>}
+                <ConversationMenu key={current.id} current={current} onClosed={toggleClosed} onOpenLead={openLead} onToggleSide={toggleSide} sideOpen={sideOpen} />
               </div>
 
-              <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", padding: "6px 12px" }}>
-                <WaBubbles messages={msgs} emptyHint={configured ? "manda a primeira mensagem abaixo" : "nenhuma mensagem"} />
+              <div className="inbox-chat-history">
+                <WaBubbles variant="inbox" messages={msgs} emptyHint={configured ? "manda a primeira mensagem abaixo" : "nenhuma mensagem"} />
               </div>
 
-              <div style={{ padding: 12, borderTop: "1px solid var(--line-1)" }}>
+              <div className="inbox-compose">
                 {configured ? (
                   !msgsReady ? (
                     <div className="mono dim" style={{ fontSize: 11 }}>…</div>
                   ) : waWindowOpen(msgs) ? (
                     <>
-                      <WaComposer templates={templates} apiRef={composerApi}
+                      <WaComposer key={current.id} variant="inbox" templates={templates} quickGroup={quickGroupFor(current)} apiRef={composerApi}
                         onSend={(t) => api.waThreadSend(current.id, t).then(() => { afterContact(); return api.waThread(current.id).then((r) => setMsgs(r.messages || [])); })}
                         onSendMedia={(blob, opts) => api.waSendMedia(current.id, blob, opts).then(() => { afterContact(); return api.waThread(current.id).then((r) => setMsgs(r.messages || [])); })} />
-                      <div className="mono dim" style={{ fontSize: 9.5, marginTop: 5 }}>fora de 24h desde a última resposta do cliente, a Meta exige um template aprovado</div>
+                      <WindowNote messages={msgs} />
                     </>
                   ) : (
                     // Janela de 24h fechada: texto livre seria recusado (131047) —
                     // troca pro composer de template aprovado.
-                    <WaTemplateComposer threadId={current.id} contactName={current.name || ""}
+                    <WaTemplateComposer key={current.id} threadId={current.id} contactName={current.name || ""}
                       onSent={() => { afterContact(); return api.waThread(current.id).then((r) => setMsgs(r.messages || [])); }} />
                   )
                 ) : (
@@ -669,14 +625,89 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
 
         {/* Card do cliente sempre à vista enquanto conversa (desktop): o resumo
             de qualificação do roteiro, a call marcada e o atalho pro drawer. */}
-        {!isMobile && current?.leadId && sideOpen && (
-          <LeadSideCard leadId={current.leadId} version={version} onOpenLead={openLead} onResolved={markResolved}
+        {current?.leadId && sideOpen && (
+          <LeadSideCard key={current.leadId} leadId={current.leadId} version={version} onOpenLead={openLead} onResolved={markResolved}
             leadStarted={msgsReady && msgs.length ? msgs[0].direction === "in" : null} />
         )}
+        {current && !current.leadId && sideOpen && <aside className="inbox-client inbox-panel inbox-orphan">
+          <span className="inbox-kicker">Sem lead no funil</span>
+          <p>Este número ainda não tem um card. Cadastre o contato com origem WhatsApp ou vincule a conversa a um lead existente.</p>
+          <LinkLeadButton key={current.id} thread={current} onLinked={linkLead} />
+        </aside>}
       </div>
+      {creatingLead && current && <InboxLeadCreator key={current.id} thread={current} product={product}
+        onClose={() => setCreatingLead(false)} onCreated={(id) => { linkLead(id); setCreatingLead(false); refresh(); }} />}
       </>}
     </div>
   );
+}
+
+function quickGroupFor(thread) {
+  const lead = (window.SEED?.LEADS || []).find((l) => l.id === thread.leadId);
+  const product = (window.SEED?.SAAS || []).find((s) => s.id === lead?.saas);
+  const kind = stageKind(product, lead?.stage);
+  return kind === "qualificacao" ? "Qualificação" : kind === "call" ? "Antes e depois da call" : kind === "proposta" ? "Prova e valor" : "Abertura";
+}
+
+function WindowNote({ messages }) {
+  const lastIn = [...messages].reverse().find((m) => m.direction === "in");
+  const minutes = Math.max(0, Math.ceil((new Date(lastIn?.at).getTime() + 86400000 - Date.now()) / 60000));
+  return <div className="inbox-window-note" style={{ color: minutes < 180 ? "var(--warn)" : "var(--fg-3)" }}>
+    Janela de 24 h aberta · restam {dur(minutes)} <span title="Fora da janela, só é possível enviar um template aprovado. Uma nova mensagem do cliente reabre a janela.">ⓘ</span>
+  </div>;
+}
+
+function ConversationMenu({ current, onClosed, onOpenLead, onToggleSide, sideOpen }) {
+  const [open, setOpen] = React.useState(false);
+  const anchor = React.useRef(null);
+  const action = (fn) => () => { setOpen(false); fn(); };
+  return <>
+    <button className="inbox-more" ref={anchor} onClick={() => setOpen((v) => !v)} aria-label="Mais ações da conversa" aria-expanded={open}
+      title="Abrir lead · mostrar card · pausar robô · encerrar conversa · ligar no app">⋯</button>
+    {open && <Popover anchor={anchor} onClose={() => setOpen(false)} width={250} align="end" label="Ações da conversa">
+      <div className="inbox-conversation-menu">
+        {current.leadId && <button onClick={action(onOpenLead)}>Abrir o lead ↗</button>}
+        <button onClick={action(onToggleSide)}>{sideOpen ? "Esconder" : "Mostrar"} card do cliente</button>
+        {current.leadId && <BotStopButton leadId={current.leadId} />}
+        {!current.virtual && <button onClick={action(onClosed)}>{current.status === "closed" ? "Reabrir" : "Encerrar"} a conversa</button>}
+        {waLink(current.phone) && <a href={waLink(current.phone)} target="_blank" rel="noopener noreferrer" onClick={() => setOpen(false)}>Ligar no app ↗</a>}
+      </div>
+    </Popover>}
+  </>;
+}
+
+function InboxLeadCreator({ thread, product, onClose, onCreated }) {
+  const [name, setName] = React.useState(thread.name || "");
+  const [company, setCompany] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState("");
+  const created = React.useRef(null);
+  async function save(e) {
+    e.preventDefault();
+    if (busy || !name.trim() || !product?.id) return;
+    setBusy(true); setError("");
+    try {
+      // As duas operações usam os contratos existentes. Se o vínculo falhar,
+      // a próxima tentativa reaproveita o lead criado e não duplica o cadastro.
+      if (!created.current) created.current = await api.create("leads", {
+        name: name.trim(), company: company.trim(), phone: thread.phone,
+        saas: product.id, owner: currentUser()?.id || "", source: "whatsapp",
+      });
+      await api.waLinkThread(thread.id, created.current.id);
+      onCreated(created.current.id);
+    } catch (err) { setError(err.message || "Não foi possível cadastrar o contato. Tente de novo."); }
+    finally { setBusy(false); }
+  }
+  return <Modal label="Cadastrar como lead" onClose={onClose} fechavel={!busy} largura={440}>
+    <form onSubmit={save} className="inbox-lead-form">
+      <h2 className="card-title">Cadastrar como lead</h2>
+      <p>{prettyPhone(thread.phone)} · {product?.name}</p>
+      <label>Nome do contato<input className="inp" autoFocus required value={name} disabled={busy || !!created.current} onChange={(e) => setName(e.target.value)} /></label>
+      <label>Empresa<input className="inp" value={company} disabled={busy || !!created.current} onChange={(e) => setCompany(e.target.value)} /></label>
+      {error && <p role="alert" style={{ color: "var(--neg)" }}>{error}</p>}
+      <div className="inbox-lead-actions"><SecondaryButton onClick={onClose} disabled={busy}>Cancelar</SecondaryButton><PrimaryButton type="submit" disabled={busy || !name.trim()}>{busy ? "Salvando…" : created.current ? "Vincular conversa" : "Cadastrar e vincular"}</PrimaryButton></div>
+    </form>
+  </Modal>;
 }
 
 // ── DMs de Instagram/Messenger: lista + conversa + resposta ─────────────────
@@ -726,7 +757,7 @@ function DmInbox({ network, saas, isMobile }) {
     setBusy(false);
   }
 
-  const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)" };
+
   const label = network === "instagram" ? "Instagram" : "Messenger";
 
   return (
@@ -809,7 +840,9 @@ function DmInbox({ network, saas, isMobile }) {
 // vira a ação de amarrar. O casamento automático já resolve o caso claro; isto
 // cobre o resto (e desfaz, se amarrar errado).
 function LinkLeadButton({ thread, onLinked }) {
+  const [product] = useActiveSaas();
   const [open, setOpen] = React.useState(false);
+  const anchor = React.useRef(null);
   const [q, setQ] = React.useState("");
   const [saving, setSaving] = React.useState("");
   const leads = window.SEED?.LEADS || [];
@@ -817,9 +850,10 @@ function LinkLeadButton({ thread, onLinked }) {
     const s = q.trim().toLowerCase();
     if (!s) return [];
     return leads
+      .filter((l) => l.saas === (thread.saas || product?.id))
       .filter((l) => `${l.name || ""} ${l.company || ""} ${l.phone || ""}`.toLowerCase().includes(s))
       .slice(0, 6);
-  }, [q, leads]);
+  }, [q, leads, thread.saas, product?.id]);
 
   async function link(lead) {
     setSaving(lead.id);
@@ -831,22 +865,18 @@ function LinkLeadButton({ thread, onLinked }) {
     finally { setSaving(""); }
   }
 
-  if (!open) {
-    return (
-      <button onClick={() => setOpen(true)} style={{ ...pill, borderStyle: "dashed" }}
+  return <>
+      <button ref={anchor} onClick={() => setOpen((v) => !v)} style={{ ...pill, borderStyle: "dashed" }}
         title="Esta conversa não está ligada a nenhum lead — o fluxo automático não roda e o card não aparece aqui">
-        sem lead · vincular
+        vincular a um lead existente
       </button>
-    );
-  }
-  return (
-    <div style={{ position: "relative" }}>
+    {open && <Popover anchor={anchor} onClose={() => setOpen(false)} width={310} title="Vincular conversa">
       <input autoFocus value={q} onChange={(e) => setQ(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Escape") { setOpen(false); setQ(""); } }}
         placeholder="buscar lead por nome, empresa ou telefone"
-        style={{ height: 28, width: 260, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12 }} />
+        aria-label="Buscar lead para vincular" className="inp" style={{ width: "100%", fontSize: 12 }} />
       {!!hits.length && (
-        <div style={{ position: "absolute", top: 32, right: 0, zIndex: 20, width: 300, background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", boxShadow: "var(--shadow-2)", overflow: "hidden" }}>
+        <div style={{ marginTop: 8 }}>
           {hits.map((l) => (
             <button key={l.id} onClick={() => link(l)} disabled={!!saving}
               style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 10px", fontSize: 12.5, borderBottom: "1px solid var(--line-faint)" }}>
@@ -857,8 +887,9 @@ function LinkLeadButton({ thread, onLinked }) {
           ))}
         </div>
       )}
-    </div>
-  );
+      {q.trim() && !hits.length && <p style={{ fontSize: 12, color: "var(--fg-3)" }}>Nenhum lead encontrado neste produto.</p>}
+    </Popover>}
+  </>;
 }
 
 // Card lateral do cliente: as perguntas de qualificação EDITÁVEIS (preenche
@@ -894,16 +925,13 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
       : "";
   };
   return (
-    <div style={{ width: 300, flexShrink: 0, border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--line-1)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lead.name}</span>
-          {tier.grade && (
-            <span className="tnum" style={{ width: 18, height: 18, borderRadius: 5, display: "inline-flex", alignItems: "center", justifyContent: "center", background: tier.tone, color: tier.badgeFg, fontFamily: "var(--display)", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{tier.grade}</span>
-          )}
-        </div>
-        {lead.company && <div style={{ fontSize: 12, color: "var(--fg-3)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lead.company}</div>}
-        <div style={{ marginTop: 7, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+    <aside className="inbox-client inbox-panel">
+      <div className="inbox-client-heading">
+        <div className="inbox-client-title"><span className="inbox-kicker">Card do cliente</span><button onClick={onOpenLead}>abrir ↗</button></div>
+        <h2>{lead.company || lead.name}</h2>
+        <p>{lead.company ? lead.name : prettyPhone(lead.phone)}</p>
+        <div className="inbox-client-badges">
+          {tier.grade && <span className="chip accent" title={tier.label}>Nível {tier.grade}</span>}
           {/* Etapa EDITÁVEL: mover daqui vale como mover no pipeline (mesmos
               gates de ganho/perda/handoff; o servidor agenda o GPS e o resto). */}
           <select value={lead.stage || ""} title="Mover o card de etapa (mesmo efeito do pipeline)"
@@ -944,6 +972,23 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
       )}
 
       <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "10px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
+        <div className="inbox-client-facts">
+          <div><span>valor</span><strong className="tnum">{lead.amount ? Number(lead.amount).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}</strong></div>
+          <div><span>no funil</span><b>{lead.createdAt ? `${Math.max(0, Math.floor((Date.now() - new Date(lead.createdAt)) / 86400000))} dias · ${lead.stage || "sem etapa"}` : lead.stage || "—"}</b></div>
+          <div><span>anúncios</span><b>{checklist.find((c) => c.key === "listings")?.value || lead.listings || "não informado"}</b></div>
+        </div>
+        <div className="inbox-client-section">
+          <div className="inbox-kicker">Qualificação</div>
+          <p>{lead.recapNote || [pain?.label, ...checklist.filter((c) => c.value).map((c) => `${c.label}: ${c.value}`)].filter(Boolean).join(" · ") || "Sem qualificação registrada."}</p>
+        </div>
+        <div className="inbox-client-section">
+          <div className="inbox-kicker">Próximo passo</div>
+          <b>{lead.nextActionNote || (lead.callAt ? "Call marcada" : "Definir a próxima ação")}</b>
+          {(lead.nextActionAt || lead.callAt) && <div style={{ fontSize: 12, marginTop: 4, color: new Date(lead.nextActionAt || lead.callAt) < new Date() ? "var(--neg)" : "var(--warn)" }}>{fmtDT(lead.nextActionAt || lead.callAt)}</div>}
+        </div>
+        <details className="inbox-client-editor">
+          <summary>Editar qualificação e combinado</summary>
+          <div className="inbox-client-editor-content">
         {pain && (
           <div style={{ padding: "6px 9px", borderRadius: "var(--r-2)", background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
             <span className="kicker accent">dor do anúncio</span>
@@ -997,6 +1042,11 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
           </div>
         )}
 
+          </div>
+        </details>
+        <details className="inbox-client-editor">
+          <summary>Mais dados do cliente</summary>
+          <div className="inbox-client-editor-content">
         <div>
           <div className="kicker" style={{ marginBottom: 4 }}>Resumo do cliente</div>
           {facts.map(([k, v]) => (
@@ -1018,17 +1068,10 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
             ))}
           </div>
         )}
-        {lead.nextActionAt && (
-          <div className="mono dim" style={{ fontSize: 10.5 }}>próximo toque {fmtDT(lead.nextActionAt)}{lead.nextActionNote ? ` · ${lead.nextActionNote}` : ""}</div>
-        )}
+          </div>
+        </details>
       </div>
-
-      <div style={{ padding: 10, borderTop: "1px solid var(--line-1)" }}>
-        <button onClick={onOpenLead} style={{ width: "100%", height: 32, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
-          Abrir lead completo ↗
-        </button>
-      </div>
-    </div>
+    </aside>
   );
 }
 

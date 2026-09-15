@@ -2,6 +2,7 @@ import React from "react";
 import { Mp3Encoder } from "@breezystack/lamejs";
 import { api } from "../lib/api.js";
 import { useEsc } from "../atoms.jsx";
+import { Popover } from "./popover.jsx";
 
 // Peças de conversa de WhatsApp reusadas pelo inbox (tela) e pelo chat do drawer:
 // WaBubbles (histórico) + WaComposer (texto livre) + WaTemplateComposer (fora da
@@ -95,7 +96,8 @@ function MediaBubble({ msg, out }) {
   );
 }
 
-export function WaBubbles({ messages, emptyHint }) {
+export function WaBubbles({ messages, emptyHint, variant }) {
+  const inbox = variant === "inbox";
   const ref = React.useRef(null);
   React.useEffect(() => { const el = ref.current; if (el) el.scrollTop = el.scrollHeight; }, [messages.length]);
   if (!messages.length) {
@@ -103,18 +105,20 @@ export function WaBubbles({ messages, emptyHint }) {
   }
   let lastDay = "";
   return (
-    <div ref={ref} style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 5, padding: "6px 4px" }}>
+    <div ref={ref} className={inbox ? "inbox-bubbles" : undefined} style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: inbox ? 10 : 5, padding: inbox ? 16 : "6px 4px" }}>
       {messages.map((m) => {
         const out = m.direction === "out";
+        const bot = out && m.author === "sdr-bot";
         const day = dayLabel(m.at);
         const sep = day && day !== lastDay ? (lastDay = day) : null;
         return (
           <React.Fragment key={m.id}>
             {sep && (
-              <div style={{ alignSelf: "center", margin: "6px 0", fontSize: 10, fontFamily: "var(--mono)", color: "var(--fg-4)", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: 999, padding: "2px 10px" }}>{sep}</div>
+              <div className={inbox ? "inbox-day" : undefined} style={{ alignSelf: "center", margin: "6px 0", fontSize: 10, fontFamily: "var(--mono)", color: "var(--fg-4)", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: 999, padding: "2px 10px" }}>{sep}</div>
             )}
-            <div style={{ alignSelf: out ? "flex-end" : "flex-start", maxWidth: "80%" }}>
-              <div style={{
+            <div className={inbox ? "inbox-message" : undefined} data-direction={m.direction} data-bot={bot || undefined} style={{ alignSelf: out ? "flex-end" : "flex-start", maxWidth: "80%" }}>
+              {inbox && bot && <span className="inbox-bot-label">robô</span>}
+              <div className={inbox ? "inbox-bubble" : undefined} style={{
                 padding: "7px 10px", borderRadius: 10, fontSize: 12.5, lineHeight: 1.4, whiteSpace: "pre-wrap", overflowWrap: "break-word",
                 background: out ? "var(--wa-out, #d6f5cf)" : "var(--bg-3)", color: out ? "#0c2318" : "var(--fg-1)",
                 borderBottomRightRadius: out ? 3 : 10, borderBottomLeftRadius: out ? 10 : 3,
@@ -125,10 +129,12 @@ export function WaBubbles({ messages, emptyHint }) {
                   <MediaBubble msg={m} out={out} />
                   {m.media?.captioned && m.text ? <div style={{ marginTop: 6 }}>{m.text}</div> : null}
                 </>
-              ) : m.text}</div>
-              <div className="mono" style={{ fontSize: 9.5, color: "var(--fg-4)", marginTop: 2, display: "flex", gap: 4, justifyContent: out ? "flex-end" : "flex-start" }}>
-                {hhmm(m.at)}{out && <StatusTicks status={m.status} error={m.error} />}
+              ) : m.text}
+                {inbox && <div className="inbox-message-time">{hhmm(m.at)} {out && <StatusTicks status={m.status} error={m.error} />}</div>}
               </div>
+              {!inbox && <div className="mono" style={{ fontSize: 9.5, color: "var(--fg-4)", marginTop: 2, display: "flex", gap: 4, justifyContent: out ? "flex-end" : "flex-start" }}>
+                {hhmm(m.at)}{out && <StatusTicks status={m.status} error={m.error} />}
+              </div>}
             </div>
           </React.Fragment>
         );
@@ -319,7 +325,9 @@ async function toMp3(blob) {
   return new Blob(out, { type: "audio/mpeg" });
 }
 
-export function WaComposer({ onSend, onSendMedia, disabled, placeholder, templates, apiRef }) {
+export function WaComposer({ onSend, onSendMedia, disabled, placeholder, templates, apiRef, variant, quickGroup }) {
+  const inbox = variant === "inbox";
+  const templateAnchor = React.useRef(null);
   const [text, setText] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState("");
@@ -424,20 +432,21 @@ export function WaComposer({ onSend, onSendMedia, disabled, placeholder, templat
 
   const groups = Array.isArray(templates) ? templates.filter((g) => g?.items?.length) : [];
 
+  const quickReplies = (groups.find((g) => g.group === quickGroup) || groups[0])?.items.slice(0, 3) || [];
+
   return (
-    <div>
-      {err && <div style={{ fontSize: 11, color: "var(--neg)", marginBottom: 6 }}>{err}</div>}
+    <div className={inbox ? "inbox-composer" : undefined}>
+      {err && <div role="alert" style={{ fontSize: 11, color: "var(--neg)", marginBottom: 6 }}>{err}</div>}
       {groups.length > 0 && (
-        <div style={{ position: "relative", marginBottom: 6 }}>
-          <button onClick={() => setOpenTpl((v) => !v)} disabled={disabled}
+        <div className={inbox ? "inbox-quick-replies" : undefined} style={{ position: "relative", marginBottom: 6 }}>
+          {inbox && quickReplies.map((it) => <button key={it.label} className="inbox-filter" disabled={disabled || busy} title={it.text} onClick={() => useTemplate(it.text)}>{it.label}</button>)}
+          <button ref={templateAnchor} onClick={() => setOpenTpl((v) => !v)} disabled={disabled}
             title="Mensagens prontas do fluxo de qualificação"
             style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: openTpl ? "var(--bg-2)" : "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600, cursor: "pointer", opacity: disabled ? 0.5 : 1 }}>
-            ⚡ modelos
+            {inbox ? "mais respostas ▾" : "⚡ modelos"}
           </button>
           {openTpl && (
-            <>
-              <div onClick={() => setOpenTpl(false)} style={{ position: "fixed", inset: 0, zIndex: 60 }} />
-              <div style={{ position: "absolute", bottom: "calc(100% + 6px)", left: 0, zIndex: 61, width: 340, maxHeight: "min(52vh, 460px)", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 6 }}>
+            <Popover anchor={templateAnchor} onClose={() => setOpenTpl(false)} width={340} label="Respostas rápidas">
                 {groups.map((g) => (
                   <div key={g.group} style={{ marginBottom: 4 }}>
                     <div className="kicker" style={{ padding: "6px 8px 4px" }}>{g.group}</div>
@@ -452,8 +461,7 @@ export function WaComposer({ onSend, onSendMedia, disabled, placeholder, templat
                     ))}
                   </div>
                 ))}
-              </div>
-            </>
+            </Popover>
           )}
         </div>
       )}
@@ -467,13 +475,13 @@ export function WaComposer({ onSend, onSendMedia, disabled, placeholder, templat
           <button onClick={stopRecAndSend} title="enviar a nota de voz" style={{ height: 34, padding: "0 16px", borderRadius: "var(--r-2)", border: "none", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>enviar ↑</button>
         </div>
       ) : (
-      <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
+      <div className={inbox ? "inbox-compose-row" : undefined} style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
         {canMedia && (
           <>
             <input ref={fileRef} type="file" accept="audio/*,image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx" onChange={pickFile} style={{ display: "none" }} />
-            <button onClick={() => fileRef.current?.click()} disabled={busy} title="Anexar arquivo (áudio, imagem, documento)"
+            <button className={inbox ? "inbox-attach" : undefined} onClick={() => fileRef.current?.click()} disabled={busy} title="Anexar arquivo (áudio, imagem, documento)"
               style={{ height: 38, width: 38, flexShrink: 0, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 16, cursor: "pointer", opacity: busy ? 0.55 : 1 }}>📎</button>
-            <button onClick={startRec} disabled={busy} title="Gravar nota de voz"
+            <button className={inbox ? "inbox-record" : undefined} onClick={startRec} disabled={busy} title="Gravar nota de voz"
               style={{ height: 38, width: 38, flexShrink: 0, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 16, cursor: "pointer", opacity: busy ? 0.55 : 1 }}>🎤</button>
           </>
         )}
@@ -482,12 +490,13 @@ export function WaComposer({ onSend, onSendMedia, disabled, placeholder, templat
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-          rows={1}
+          rows={inbox ? 2 : 1}
+          aria-label="Mensagem"
           disabled={disabled}
-          placeholder={disabled ? (placeholder || "sem telefone") : (placeholder || "mensagem… (↵ envia, Shift+↵ quebra linha)")}
+          placeholder={disabled ? (placeholder || "sem telefone") : (placeholder || (inbox ? "escreva a resposta…" : "mensagem… (↵ envia, Shift+↵ quebra linha)"))}
           style={{ flex: 1, padding: "9px 11px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5, resize: "vertical", maxHeight: 140 }}
         />
-        <button disabled={busy || !text.trim() || disabled} onClick={send} style={{
+        <button className={inbox ? "inbox-send" : undefined} disabled={busy || !text.trim() || disabled} onClick={send} style={{
           height: 38, padding: "0 16px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 700,
           background: "var(--wa-brand)", color: "var(--wa-brand-fg)", border: "none", cursor: "pointer", opacity: busy || !text.trim() || disabled ? 0.55 : 1, flexShrink: 0,
         }}>{busy ? "…" : "Enviar"}</button>
