@@ -463,10 +463,9 @@ function personRows(p, bizDays, elapsedFrac, monthFrac) {
   return rows;
 }
 
-// ── Linha da LISTA do time (aprovada pelo Leo em 08/08, no lugar dos cards) ──
-// Uma linha por pessoa: identidade | régua de receita | régua de contratos |
-// submetas do papel em linha única. As barras alinhadas em coluna deixam a
-// comparação entre as pessoas imediata; ✦ = super meta (120%+).
+// ── Cards compactos do time (Leo, 15/09) ─────────────────────────────────────
+// Uma pessoa por card, duas réguas curtas e detalhes recolhidos. A grade
+// aproveita a largura disponível; ✦ continua indicando super meta (120%+).
 // As duas pernas mostram a meta CHEIA do mês (Leo, 08/08: "Manuela
 // R$19,5k/90k"), com o risquinho do pace e a cor dizendo se está no ritmo;
 // bateu 100%, a barra rearma pro degrau seguinte (120, 140… de 20 em 20).
@@ -481,17 +480,17 @@ function MiniRegua({ value, target, isMoney, expectedFrac }) {
   const exp = lad != null && expectedFrac > 0 && expectedFrac < 1 ? Math.round(expectedFrac * 100) : null;
   return (
     <div className="vg-team-meter" style={{ minWidth: 0, cursor: title ? "help" : undefined }} title={title}>
-      <div className="kicker">{isMoney ? "Receita" : "Contratos"}</div>
-      <div className="tnum" style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, fontSize: 11.5, marginBottom: 5 }}>
-        <span style={{ whiteSpace: "nowrap" }}>
+      <div className="vg-team-meter-line">
+        <span className="vg-team-meter-label">{isMoney ? "Receita" : "Contratos"}</span>
+        <span className="vg-team-meter-value">
           <b style={{ fontWeight: 650 }}>{value == null ? "—" : fmtV(value)}</b>
           {target > 0 && <span style={{ color: "var(--fg-4)" }}> / {isMoney ? compactMoney(target) : int(target)}</span>}
         </span>
         <span style={{ fontWeight: 700, color: lvlColor(lad?.lvl, "var(--fg-4)"), whiteSpace: "nowrap" }}>
-          {ratio == null ? "sem meta" : `${Math.round(ratio * 100)}%${lad.lvl === "gold" ? " ✦" : ""}${lad.tier > 1 ? ` · rumo a ${Math.round(lad.tier * 100)}%` : ""}`}
+          {ratio == null ? "sem meta" : `${Math.round(ratio * 100)}%${lad.lvl === "gold" ? " ✦" : ""}`}
         </span>
       </div>
-      <div className="meta-track" style={{ position: "relative", height: 12, borderRadius: 3, border: "1px solid var(--line-1)", overflow: "hidden" }}>
+      <div className="vg-team-meter-track">
         {lad != null && (
           <span className={lad.lvl === "gold" ? "super-fill" : undefined}
             style={{ position: "absolute", top: 0, bottom: 0, left: 0, minWidth: 4, borderRadius: 2, width: `${Math.min(100, Math.round(lad.pct * 100))}%`, background: lvlColor(lad.lvl, "var(--accent)") }} />
@@ -501,6 +500,7 @@ function MiniRegua({ value, target, isMoney, expectedFrac }) {
             style={{ position: "absolute", top: -2, bottom: -2, left: `${exp}%`, width: 2, borderRadius: 1, background: "var(--fg-3)" }} />
         )}
       </div>
+      {lad?.tier > 1 && <div className="vg-team-meter-tier">rumo a {Math.round(lad.tier * 100)}%</div>}
     </div>
   );
 }
@@ -533,7 +533,7 @@ function SubBadge({ r }) {
   const t = LVL_SOFT[r.lvl] || LVL_SOFT.none;
   return (
     <span className="tnum" title={r.title}
-      style={{ display: "inline-flex", alignItems: "baseline", gap: 4, fontSize: 11, borderRadius: "var(--r-1)", padding: "3px 9px", background: t.bg, color: t.fg, whiteSpace: "nowrap", cursor: r.title ? "help" : undefined }}>
+      style={{ display: "inline-flex", flexWrap: "wrap", maxWidth: "100%", alignItems: "baseline", gap: 4, fontSize: 11, borderRadius: "var(--r-1)", padding: "3px 9px", background: t.bg, color: t.fg, cursor: r.title ? "help" : undefined }}>
       <span style={{ opacity: 0.75 }}>{r.label}</span>
       <b style={{ fontWeight: 650 }}>{r.valueText}</b>
       {r.metaText != null && <span style={{ opacity: 0.6 }}>/ {r.metaText}</span>}
@@ -541,24 +541,23 @@ function SubBadge({ r }) {
   );
 }
 
-function PersonRow({ p, rank, bizDays, elapsedFrac, monthFrac, onPerson, teamBonus }) {
+function PersonCard({ p, rank, bizDays, elapsedFrac, monthFrac, onPerson, teamBonus }) {
   // As duas pernas do plano de remuneração (receita + contratos) — closer e SDR
   // têm meta própria pelo nível (comp_plans); CS/mídia mostram só as submetas.
   const leg = p.closer || p.sdr || null;
   const revTarget = leg ? monthGoal(leg.goals?.revenue) : null;
   const wonTarget = leg ? monthGoal(leg.goals?.won) : null;
   const rows = personRows(p, bizDays, elapsedFrac, monthFrac);
-  const semPerna = <span style={{ fontSize: 11.5, color: "var(--fg-4)" }}>—</span>;
   return (
-    <div className="vg-trow">
-      <button className="vg-team-person" onClick={() => onPerson?.(p.user)} disabled={!onPerson} style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, textAlign: "left" }}>
+    <article className="vg-team-card" aria-label={p.name}>
+      <button className="vg-team-person" onClick={() => onPerson?.(p.user)} disabled={!onPerson}>
         {rank != null && (
           <span className="tnum" style={{ width: 18, fontSize: 11, color: "var(--fg-4)", flexShrink: 0 }}>{rank}</span>
         )}
         <Avatar id={p.user} name={p.name} size={28} />
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
-          <div className="kicker" style={{ whiteSpace: "nowrap" }}>
+          <div className="vg-team-name" title={p.name}>{p.name}</div>
+          <div className="vg-team-role">
             {roleLabel(p)}
             {nivelDaMeta(leg) && (
               <span style={{ color: "var(--accent)" }}
@@ -569,12 +568,15 @@ function PersonRow({ p, rank, bizDays, elapsedFrac, monthFrac, onPerson, teamBon
           </div>
         </div>
       </button>
-      {leg ? <MiniRegua value={leg.revenue} target={revTarget} isMoney expectedFrac={monthFrac} /> : semPerna}
-      {leg ? <MiniRegua value={leg.won} target={wonTarget} expectedFrac={monthFrac} /> : semPerna}
-      {/* Submetas do papel embaixo das duas réguas (Leo, 12/09), todas com o
-          mesmo badge — a coluna da "mais atrasada" saiu: ela repetia uma
-          submeta que já estava aqui e a cor vermelha do badge já a denuncia. */}
-      <details className="vg-tsub"><summary>Metas por papel e detalhes</summary><div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, minWidth: 0 }}>
+      {leg ? <div className="vg-team-card-metrics">
+        <MiniRegua value={leg.revenue} target={revTarget} isMoney expectedFrac={monthFrac} />
+        <MiniRegua value={leg.won} target={wonTarget} expectedFrac={monthFrac} />
+      </div> : <dl className="vg-team-role-metrics">
+        {rows.slice(0, 2).map((r) => <div key={r.label} title={r.title}>
+          <dt>{r.label}</dt><dd><strong>{r.valueText}</strong>{r.metaText != null && <span> / {r.metaText}</span>}</dd>
+        </div>)}
+      </dl>}
+      <details className="vg-team-details"><summary aria-label={`Metas e detalhes de ${p.name}`}>Detalhes</summary><div className="vg-team-details-body">
         {rows.map((r) => <SubBadge key={r.label} r={r} />)}
         {/* Bônus de time: a parcela COLETIVA. Mesmo badge das submetas, mas com
             as duas condições no title — o time precisa saber por qual das duas
@@ -593,19 +595,19 @@ function PersonRow({ p, rank, bizDays, elapsedFrac, monthFrac, onPerson, teamBon
             contrato cheio aparece aqui pra ninguém achar que a venda sumiu.
             É NOTA, não submeta — por isso fica sem badge, no fim da linha. */}
         {leg?.contracted > (leg?.revenue || 0) && (
-          <span className="tnum" style={{ fontSize: 11, color: "var(--fg-4)", whiteSpace: "nowrap", cursor: "help" }}
+          <span className="vg-team-detail-note"
             title="Boleto faturado, PIX parcelado, assinatura recorrente no cartão e condição personalizada contam na meta só pelo que ENTROU na janela (a 1ª parcela, na prática). O resto das parcelas segue no Financeiro, no caixa do mês em que cair.">
             não recebido R$ {compactMoney(leg.contracted - (leg.revenue || 0))}
           </span>
         )}
         {leg?.keyWon > 0 && (
-          <span className="tnum" style={{ fontSize: 11, color: "var(--fg-4)", whiteSpace: "nowrap", cursor: "help" }}
+          <span className="vg-team-detail-note"
             title="Conta grande fica fora do placar desde 19/08 (um bespoke de R$ 120 mil não é a régua da operação). O dinheiro segue cheio no caixa e no Financeiro.">
             fora do placar {leg.keyWon} conta grande · R$ {compactMoney(leg.keyRevenue || 0)}
           </span>
         )}
       </div></details>
-    </div>
+    </article>
   );
 }
 
@@ -643,14 +645,14 @@ function TeamBoard({ score, win, onPerson }) {
     return list.map((p) => ({ p, pct: pctOf(p) })).sort((a, b) => b.pct - a.pct);
   }, [score, win.businessDays]);
   return (
-    <Card title="Desempenho do time" hint="ranqueado por % da meta · a régua é a meta do mês e o risquinho é o pace">
+    <Card title="Desempenho do time" hint="ranking por % da meta · traço = pace do mês">
       <div style={{ padding: "8px var(--inset-x) 20px" }}>
         {score == null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
         {score != null && !people.length && <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Sem atividade nesse período.</div>}
         {people.length > 0 && (
-          <div>
+          <div className="vg-team-grid">
             {people.map(({ p, pct }, i) => (
-              <PersonRow key={p.user} p={p} rank={pct >= 0 ? i + 1 : null} bizDays={win.businessDays} elapsedFrac={elapsedFrac} monthFrac={monthFrac} onPerson={onPerson} teamBonus={score?.team?.teamBonus} />
+              <PersonCard key={p.user} p={p} rank={pct >= 0 ? i + 1 : null} bizDays={win.businessDays} elapsedFrac={elapsedFrac} monthFrac={monthFrac} onPerson={onPerson} teamBonus={score?.team?.teamBonus} />
             ))}
           </div>
         )}
@@ -1206,4 +1208,4 @@ function OverviewScreen({ onNav, onOpenLead }) {
   );
 }
 
-export { OverviewScreen, MetaMesCard, FunilPeriodo, TeamBoard, PersonRow };
+export { OverviewScreen, MetaMesCard, FunilPeriodo, TeamBoard, PersonCard, PersonCard as PersonRow };

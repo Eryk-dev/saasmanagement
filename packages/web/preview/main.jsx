@@ -4,6 +4,7 @@ import { fmt } from "../src/lib/format.js";
 import { LEADS_FAKE, CLIENTES_FAKE } from "./api-mock.js";
 import "../src/tokens.css";
 import { setupInboxPreview } from "./inbox-mock.js";
+import { setupTeamPreview } from "./team-mock.js";
 
 // Preview de tela (14/09): monta UMA tela do cockpit com dado falso, pra
 // conferir o desenho contra a prancha do protótipo sem subir a API. O
@@ -43,6 +44,7 @@ window.SEED = {
   COUNTERS: { leverads: { tasks: 3, tasksLate: 1, inbox: 2 } },
 };
 if (params.has("inbox")) setupInboxPreview(window.SEED, params);
+if (params.has("team")) setupTeamPreview(window.SEED);
 if (previewShell) {
   window.SEED.SAAS.push({ id: "elo", name: "Elo", accent: 55, funnel: [], leadQuestions: [] });
   // A moldura usa o App real, com API falsa e sem conexão SSE/banco.
@@ -84,7 +86,7 @@ function App() {
 
 function PreviewTheme({ children }) {
   React.useEffect(() => {
-    if (marketingPreview || params.has("inbox")) {
+    if (marketingPreview || params.has("inbox") || params.has("team")) {
       const dark = params.get("theme") === "dark" || params.has("dark");
       document.body.dataset.theme = dark ? "dark" : "light";
       if (dark) ["--accent", "--accent-hover", "--accent-soft", "--accent-line"].forEach((name) => document.body.style.removeProperty(name));
