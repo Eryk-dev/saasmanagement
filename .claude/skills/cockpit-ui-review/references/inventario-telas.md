@@ -29,7 +29,7 @@ construído lendo este repo depois do pacote de 12-13/09. O que a rodada mudou:
 | `agenda` | os três avisos da semana (furou · sem remarcar · sem confirmar) |
 | `social` | as fatias mediam alcance e diziam "seguidores" |
 | `metrics` | a corrente era flex-wrap (último passo órfão) |
-| `overview` | a meta virou termômetro, com o follow-up empilhado e a distância do pace em dinheiro |
+| `overview` | termômetro com realizado sobre a meta base, pace tracejado com rótulo externo em reais/% e saldo sempre visível; follow-up no contexto ao lado (revisão pontual de 14/09) |
 | `eloapp` | abria com 5 tiles e o funil de lado; agora aviso + funil + foto em linha |
 | `settings` | seletor de telas recortado + dois `className` que se anulavam |
 | app inteiro | `⋯` recortado dentro de `.tbl-x`; 17 véus escritos na mão |
@@ -63,6 +63,14 @@ Leo: `outbound` e `funcionarios` (seguem `hidden`).
 - Preview isolado: `/?shell=1#intform`, com dados fictícios; `&intform=empty`
   e `&intform=error` exercitam vazio e falha recuperável. Nenhum dado real é
   enviado ao WhatsApp pelo preview. A Agenda usa `/?shell=1#agenda`.
+
+## Cards de leads — 14/09/2026
+
+Padronizados conforme o handoff: cards do kanban, ficha global (`LeadDetail`),
+painel de roteiro de Minhas Atividades e resumo do lead no inbox. A ficha global
+atende também Agenda, Propostas, busca e as demais entradas de `openLead`.
+Componentes compartilhados em `components/lead-card.jsx`/`lead-blocks.jsx`;
+campos, gates de movimento e operações via API preservados.
 
 ## Telas navegáveis
 

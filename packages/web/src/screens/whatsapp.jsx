@@ -17,7 +17,8 @@ import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { waLink, leadTier } from "../lib/ui.js";
 import { useIsMobile } from "../lib/responsive.js";
-import { clientSummary } from "./today.jsx";
+import { clientSummary, ClientSummaryCard, AttributionCard } from "../components/lead-blocks.jsx";
+import { LeadGrade, LeadSection } from "../components/lead-card.jsx";
 import { currentUser, usersByRole } from "../lib/users.js";
 import { scriptChecklist } from "../lib/scripts.js";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
@@ -925,13 +926,13 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
       : "";
   };
   return (
-    <aside className="inbox-client inbox-panel">
+    <aside className="inbox-client inbox-panel lead-panel" style={{ "--lead-inset": "14px" }}>
       <div className="inbox-client-heading">
         <div className="inbox-client-title"><span className="inbox-kicker">Card do cliente</span><button onClick={onOpenLead}>abrir ↗</button></div>
         <h2>{lead.company || lead.name}</h2>
         <p>{lead.company ? lead.name : prettyPhone(lead.phone)}</p>
         <div className="inbox-client-badges">
-          {tier.grade && <span className="chip accent" title={tier.label}>Nível {tier.grade}</span>}
+          <LeadGrade tier={tier} size={20} />
           {/* Etapa EDITÁVEL: mover daqui vale como mover no pipeline (mesmos
               gates de ganho/perda/handoff; o servidor agenda o GPS e o resto). */}
           <select value={lead.stage || ""} title="Mover o card de etapa (mesmo efeito do pipeline)"
@@ -989,13 +990,6 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
         <details className="inbox-client-editor">
           <summary>Editar qualificação e combinado</summary>
           <div className="inbox-client-editor-content">
-        {pain && (
-          <div style={{ padding: "6px 9px", borderRadius: "var(--r-2)", background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
-            <span className="kicker accent">dor do anúncio</span>
-            <div style={{ fontSize: 12.5, fontWeight: 600, marginTop: 2 }}>[{pain.code}] {pain.label}</div>
-          </div>
-        )}
-
         {/* O que ficou combinado: a nota curta do que a conversa resolveu, que
             é o que ninguém lembra ao reabrir o chat dias depois. Fica ACIMA da
             qualificação de propósito (é o primeiro contexto que se procura) e
@@ -1003,13 +997,12 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
             continuar sendo recado, não ata de reunião: a transcrição da call e
             a timeline já guardam o detalhe. Aparece no card completo do lead
             (clientSummary full), então o closer lê sem abrir o inbox. */}
-        <div>
-          <div className="kicker" style={{ marginBottom: 4 }}>O que ficou combinado</div>
+        <LeadSection title="O que ficou combinado">
           <textarea key={base.id + "recap"} defaultValue={lead.recapNote || ""} rows={2} maxLength={280}
             placeholder="ex.: quer as 3 contas espelhadas, decide com o sócio, retomar terça"
             onBlur={(e) => { if (e.target.value !== (base.recapNote || "")) patch({ recapNote: e.target.value }); }}
             style={{ width: "100%", padding: "6px 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5, lineHeight: 1.45, fontWeight: 500, fontFamily: "inherit", resize: "vertical" }} />
-        </div>
+        </LeadSection>
 
         {/* Qualificação EDITÁVEL (mesmo checklist do roteiro): o lead respondeu
             no chat → preenche aqui e grava na hora. Amarelo = falta responder. */}
@@ -1047,27 +1040,10 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
         <details className="inbox-client-editor">
           <summary>Mais dados do cliente</summary>
           <div className="inbox-client-editor-content">
-        <div>
-          <div className="kicker" style={{ marginBottom: 4 }}>Resumo do cliente</div>
-          {facts.map(([k, v]) => (
-            <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11.5, padding: "3px 0", borderBottom: "1px solid var(--line-faint)" }}>
-              <span className="mono dim" style={{ flexShrink: 0, fontSize: 10 }}>{k}</span>
-              <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0, overflowWrap: "anywhere" }}>{v}</span>
-            </div>
-          ))}
-          {!facts.length && <div className="mono dim" style={{ fontSize: 11 }}>sem qualificação ainda</div>}
-        </div>
-        {attribution.length > 0 && (
-          <div>
-            <div className="kicker" style={{ marginBottom: 4 }}>De onde veio</div>
-            {attribution.map(([k, v]) => (
-              <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11, padding: "3px 0", borderBottom: "1px solid var(--line-faint)" }}>
-                <span className="mono dim" style={{ flexShrink: 0, fontSize: 10 }}>{k}</span>
-                <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0, overflowWrap: "anywhere" }}>{v}</span>
-              </div>
-            ))}
-          </div>
-        )}
+            <ClientSummaryCard pain={pain} facts={facts}>
+              {!facts.length && <div className="lead-script-copy">Sem qualificação ainda.</div>}
+            </ClientSummaryCard>
+            <AttributionCard rows={attribution} />
           </div>
         </details>
       </div>

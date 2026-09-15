@@ -1,4 +1,5 @@
 import React from "react";
+import { LeadGrade, LeadSection } from "../components/lead-card.jsx";
 import "./today.css";
 import { Modal } from "../components/overlay.jsx";
 import { Popover } from "../components/popover.jsx";
@@ -1102,9 +1103,7 @@ function QueueRow({ item, block, featured, ordem, onScript, onClaim, onWhatsapp,
           pro nível: ele é um atributo do lead, não uma dimensão da fila). */}
       <button onClick={(e) => { e.stopPropagation(); onOpen?.(); }} title="Abrir lead" className="today-queue-lead" style={{ minWidth: 0, textAlign: "left" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-          {tier.grade
-            ? <span title={tier.label} style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, background: apagado ? "var(--bg-2)" : tier.tone, color: apagado ? "var(--fg-4)" : tier.badgeFg, fontSize: 10.5, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{tier.grade}</span>
-            : <span title="sem qualificação" style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, border: "1px solid var(--line-1)", color: "var(--fg-4)", fontSize: 10.5, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>—</span>}
+          <LeadGrade tier={tier} muted={apagado} placeholder size={18} />
           <span style={{ fontSize: 13.5, fontWeight: 600, color: tomTexto, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", ...risco }}>{l.name}</span>
         </div>
         {l.company && <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.company}</div>}
@@ -1163,9 +1162,7 @@ function AgoraBlock({ item, onScript, onClaim, onWhatsapp }) {
             <span style={{ fontSize: 12, color: "var(--fg-4)" }}>o primeiro da fila</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-            {tier.grade
-              ? <span title={tier.label} style={{ width: 20, height: 20, borderRadius: 5, background: tier.tone, color: tier.badgeFg, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{tier.grade}</span>
-              : <span title="sem qualificação" style={{ width: 20, height: 20, borderRadius: 5, border: "1px solid var(--line-1)", color: "var(--fg-4)", fontSize: 11, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>—</span>}
+            <LeadGrade tier={tier} placeholder />
             <span style={{ fontSize: 16, fontWeight: 650, letterSpacing: "-0.01em" }}>{l.name}</span>
             {l.company && <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{l.company}</span>}
             <span className="mono tnum" style={{ fontSize: 11.5, color: atrasado ? "var(--neg)" : "var(--fg-3)", fontWeight: atrasado ? 600 : 400 }}>{quando}</span>
@@ -1909,8 +1906,8 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
   return (
     <Modal onClose={onClose} label="Roteiro da atividade" largura={1120} padding={20}
       painelStyle={{ maxHeight: "calc(100dvh - 40px)", display: "flex", flexDirection: "column", overflow: "hidden", borderRadius: "var(--r-4)" }}>
-      <div className="today-script" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
-        <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--line-1)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+      <div className="today-script lead-panel" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <div className="today-script-header">
           {/* O TÍTULO é a AÇÃO (12/09): "Follow-up · tentativa 2" diz o que
               se vem fazer aqui. O nome do lead desce pra segunda linha, com o
               nível, a etapa e o contato; o script.titulo virou sub-rótulo do
@@ -1936,9 +1933,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
               )}
             </div>
             <div style={{ fontSize: 13.5, marginTop: 4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              {tier.grade && (
-                <span className="tnum" title={tier.label} style={{ width: 18, height: 18, borderRadius: 5, display: "inline-flex", alignItems: "center", justifyContent: "center", background: tier.tone, color: tier.badgeFg, fontFamily: "var(--display)", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{tier.grade}</span>
-              )}
+              <LeadGrade tier={tier} />
               <span style={{ fontWeight: 600 }}>{l.name}</span>
               <span className="chip">{item.stage}</span>
               {(l.company || l.phone) && (
@@ -1956,7 +1951,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
               { label: l.mpChargeUrl ? (l.mpChargeKind === "recurring" ? "link da assinatura" : "link de pagamento") : "criar link de pagamento", onClick: () => setPayLink(true) },
             ]} />
           )}
-          <button onClick={onClose} aria-label="Fechar" className="mono dim" style={{ fontSize: 16, flexShrink: 0, width: 36, height: 36, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "var(--r-2)" }}>✕</button>
+          <button onClick={onClose} aria-label="Fechar roteiro" className="lead-panel-close">✕</button>
         </div>
 
         {/* Corpo rolável: duas colunas (CLIENTE | ROTEIRO) + o destino do card. */}
@@ -1964,16 +1959,13 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
         {/* ── As colunas TROCARAM DE LADO (12/09) ────────────────────────
             O roteiro é o que a pessoa LÊ enquanto fala: estava na coluna da
             direita, enquanto os dados do cliente (consulta) ocupavam a
-            esquerda. Agora roteiro à esquerda (1,15fr) e cliente à direita. */}
-        <div className="resp-cols" style={{ "--cols": "minmax(0,1.15fr) minmax(0,1fr)", gap: 16 }}>
+            esquerda. Roteiro à esquerda e cliente à direita, em colunas iguais. */}
+        <div className="today-script-columns">
           <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
             <div>
               <div className="kicker" style={{ color: "var(--fg-3)" }}>Roteiro</div>
               <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 1 }}>{script.titulo}{script.custom ? " · personalizado" : ""}</div>
             </div>
-            {/* Resumo da última call por IA em cima do roteiro do estágio. */}
-            <CallSummaryCard summary={callSummary} phone={l.phone}
-              onSend={onWhatsapp ? (msg) => onWhatsapp(l, msg) : null} />
             {/* Call agendada: atalhos do closer no topo (link da call + mandar pro
                 cliente no Whats + proposta), antes do passo a passo. A integração
                 (tarefa e confirmação) ganha os mesmos atalhos com a sala DELA. */}
@@ -1988,41 +1980,32 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
             {/* Como se comportar + objetivo + passo a passo: bloco único
                 compartilhado com o card do lead (lead-blocks.jsx). */}
             <ScriptBlocks script={script} tokens={tokens} />
+            {/* Resumo da última call abaixo do roteiro, como no handoff. */}
+            <CallSummaryCard summary={callSummary} phone={l.phone}
+              onSend={onWhatsapp ? (msg) => onWhatsapp(l, msg) : null} />
+
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
-            <div className="kicker" style={{ color: "var(--fg-3)" }}>Cliente</div>
+            <div className="kicker" style={{ color: "var(--fg-3)" }}>O cliente</div>
               {/* Resumo do cliente, atribuição e checklist: os MESMOS blocos do
                   card do lead (components/lead-blocks.jsx) — quem trabalha a
                   fila e depois abre o card vê a mesma coisa no mesmo lugar. */}
               <ClientSummaryCard pain={pain} facts={facts} />
 
-            {/* ── "Anotar o que rolou" em bloco PRÓPRIO (12/09) ─────────────
-                O composer e os últimos contatos viviam ANINHADOS dentro do card
-                de resumo, como se fossem detalhe do cliente — são o registro do
-                toque. Mesmo dado e mesmo composer do card do pipeline. */}
-            <div style={{ ...leadBox }}>
-              <div className="kicker" style={{ marginBottom: 6 }}>Anotar o que rolou</div>
-                {!preview && (
-                  <div style={{ marginBottom: 10 }}>
-                    <ActivityComposer lead={l} onLogged={() => setActsReload((n) => n + 1)} />
-                  </div>
-                )}
-                <div style={{ marginTop: 8 }}>
-                  <div className="kicker" style={{ marginBottom: 3 }}>Últimos contatos</div>
-                  {acts === null && <div className="mono dim" style={{ fontSize: 11 }}>carregando…</div>}
-                  {acts !== null && acts.length === 0 && <div className="mono dim" style={{ fontSize: 11 }}>nenhum contato registrado ainda · você abre a conversa</div>}
-                  {(acts || []).map((a) => (
-                    <div key={a.id} style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 11.5, padding: "2px 0", minWidth: 0 }}>
-                      <span className="mono" style={{ flexShrink: 0, color: "var(--fg-3)", fontSize: 10.5 }}>{fmtWhen(a.at)}</span>
-                      <span className="mono" style={{ flexShrink: 0, color: "var(--accent)", fontSize: 10.5 }}>{ACT_LABELS[a.type] || a.type}</span>
-                      <span className="dim" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {a.type === "stage" ? `${a.meta?.from || "?"} → ${a.meta?.to || "?"}` : (a.text || "")}
-                      </span>
-                    </div>
-                  ))}
+            {!preview && <LeadSection title="Anotar o que rolou">
+              <ActivityComposer embedded lead={l} onLogged={() => setActsReload((n) => n + 1)} />
+            </LeadSection>}
+            <LeadSection title="Histórico">
+              {acts === null && <div className="lead-script-copy">Carregando histórico…</div>}
+              {acts !== null && acts.length === 0 && <div className="lead-script-copy">Nenhum contato registrado ainda.</div>}
+              {(acts || []).map((a) => (
+                <div key={a.id} className="today-lead-history-row">
+                  <time>{fmtWhen(a.at)}</time>
+                  <div><strong>{ACT_LABELS[a.type] || a.type}</strong><span>{a.type === "stage" ? `${a.meta?.from || "?"} → ${a.meta?.to || "?"}` : (a.text || "")}</span></div>
                 </div>
-            </div>
+              ))}
+            </LeadSection>
 
             {/* Atribuição e checklist viram links quietos: são consulta, e
                 ocupavam dois cards inteiros na coluna. O checklist mostra o
@@ -2050,7 +2033,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
             fecha o item exigia a maior rolagem. Agora é a barra do rodapé.
             Item de confirmação não move etapa: no lugar dos destinos, ele
             mantém os botões próprios (confirmou / sem resposta / remarcar). */}
-        <div className="today-script-footer" style={{ marginTop: "auto", padding: "10px 18px", borderTop: "2px solid var(--line-2)", background: "var(--bg-1)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <div className="today-script-footer" style={{ marginTop: "auto", padding: "14px 20px", borderTop: "1px solid var(--line-2)", background: "var(--bg-1)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           {!item.confirm && !preview && (
             <div style={{ flexBasis: "100%", minWidth: 0 }}>
               <DestinoSection saasCfg={saasCfg} lead={l} leads={leads} callSummary={callSummary}
@@ -2065,7 +2048,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
           {/* A próxima da fila, ANTES de agir: é o mesmo nextAfter que o "toque
               e próximo" já usa, agora visível. */}
           {nextItem && !preview && (
-            <div style={{ flexBasis: "100%", display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: "var(--fg-4)", paddingBottom: 2 }}>
+            <div className="today-next-lead" style={{ flex: "1 1 240px", display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: "var(--fg-3)", paddingBottom: 2 }}>
               <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {`a próxima da fila é ${nextItem.l.name}${Number(nextItem.l.stageAttempts) ? ` · tentativa ${nextItem.l.stageAttempts}` : ""}`}
               </span>
@@ -2633,8 +2616,8 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   );
 
   return (
-    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: "12px 14px" }}>
-      <div className="kicker" style={{ marginBottom: 8 }}>Depois da ação · pra onde vai esse card</div>
+    <div className="today-destinations">
+      <div className="kicker" style={{ marginBottom: 10 }}>Depois da ação</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {dests.map((d, i) => {
           // Chip de retry: não atendeu / não fechou hoje → registra a tentativa
@@ -2649,10 +2632,10 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                   ? `Não atendeu ou ainda não fechou · registra a tentativa, vai pra ${d.stage} e você escolhe quando voltar`
                   : "Não atendeu · registra a tentativa e você escolhe o dia e a hora de voltar"}
                 style={{
-                  display: "inline-flex", alignItems: "center", gap: 7, height: 30, padding: "0 12px", borderRadius: "var(--r-2)",
+                  display: "inline-flex", alignItems: "center", gap: 7, height: 42, padding: "0 16px", borderRadius: "var(--r-2)",
                   background: on ? "var(--accent-soft)" : "var(--bg-1)",
-                  border: "1px dashed " + (on ? "var(--accent-line)" : "var(--line-strong)"),
-                  color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: on ? 600 : 500,
+                  border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-strong)"),
+                  color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 13, fontWeight: 600,
                 }}>
                 <span style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
                 {d.promote ? `${d.stage} · retomar` : "Retomar"}
@@ -2663,10 +2646,10 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
           const color = stageMeta[d.stage]?.color || "var(--accent)";
           return (
             <button key={d.stage} onClick={() => chooseDest(d)} style={{
-              display: "inline-flex", alignItems: "center", gap: 7, height: 30, padding: "0 12px", borderRadius: "var(--r-2)",
+              display: "inline-flex", alignItems: "center", gap: 7, height: 42, padding: "0 16px", borderRadius: "var(--r-2)",
               background: on ? "var(--accent-soft)" : "var(--bg-1)",
               border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"),
-              color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: on ? 600 : 500,
+              color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 13, fontWeight: 600,
             }}>
               <span style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
               {d.stage} {on ? "" : "→"}

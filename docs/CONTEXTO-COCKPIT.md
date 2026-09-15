@@ -216,6 +216,14 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   prova pendente fictícia. Os dados ficam em `preview/training-mock.js` e não
   entram no build de produção.
 
+- **Cards de leads (14/09/2026):** a ficha global `LeadDetail` usa `Drawer` de
+  520px seguindo o protótipo: próximo passo, ação e histórico antes dos dados
+  complementares. `components/lead-card.jsx`/`lead-card.css` fornecem superfícies,
+  expansão e marcador de qualificação. `lead-blocks.jsx` mantém a compilação dos
+  dados e os blocos de resumo/roteiro compartilhados por ficha, Minhas Atividades
+  e inbox. A abertura pelas outras telas continua no `openLead` global; movimentos
+  e agendamentos usam os mesmos handlers e gates existentes.
+
 - **Marketing — handoff (14/09/2026):** as telas Redes sociais, Publicidade,
   Formulários, Landing pages, Canvas, Disparos e Blog usam a estrutura do
   protótipo sobre `screens/marketing.css`. O Canvas mantém o renderer e as
@@ -227,6 +235,14 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   e não executam anúncios, publicações ou mensagens reais. O preview não entra
   no build de produção. A navegação saindo de Publicidade foi conferida após
   corrigir o cleanup do efeito de `DeliveryRulesCard`.
+
+- **Inbox (14/09/2026):** `whatsapp.jsx` + `whatsapp.css` seguem a prancha do
+  handoff, com lista/chat/card responsivos. O filtro “Sem resposta” usa
+  `lastDir === "in"`, como `awaiting` da API; “Aguardando cliente” guarda a
+  fila de saída. Cadastro e vínculo usam o CRUD de leads e `waLinkThread`
+  existentes. Preview fictício: `/?shell=1&inbox=1#whatsapp`; acrescente
+  `&empty=1` para vazio ou `&dark=1` para tema escuro. O smoke inclui Inbox
+  e mensagens do robô; envio e navegação também pedem conferência no browser.
 
 - **README (revisado em 14/09/2026):** as descrições antigas (SQLite, leitura
   aberta, MCP só como manual, seed demo) foram substituídas. Pendência registrada
