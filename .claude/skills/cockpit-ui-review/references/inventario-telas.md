@@ -171,3 +171,9 @@ Revisão pontual do deck em `packages/api/src/proposal-slides-page.js`:
 Os quatro cases publicados (Motvia, Lupa Autopeças, Dyno Nutri e 123tudo) foram
 recuperados na cópia vazia da apresentação aberta via API REST, preservando
 a configuração e os preços. Ordem e página 12 conferidas no navegador.
+
+**Reorganização de 15/09/2026:** os três badges da operação ficam abaixo do
+texto institucional em “Quem somos”. O parágrafo de resultado agregado aparece
+abaixo dos quatro cases em “Quem já está dentro”. O slide “A operação em
+números” foi removido; o contador acompanha a nova quantidade de páginas.
+Espaçamentos e tipografia ajustados ao palco 16:9, mantendo os textos e valores.
