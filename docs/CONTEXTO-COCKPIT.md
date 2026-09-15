@@ -191,6 +191,13 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
 
 ## Correções de contexto e ferramentas
 
+- **Calls realizadas nos formulários (15/09/2026):** `/api/forms/:id/funnel`
+  retorna `callsShown`: leads únicos dos envios externos do período que
+  compareceram à call, pela regra de `callOutcome`/`callWitness`. A janela
+  seleciona os envios; o desfecho acompanha o lead, como nos ganhos do form.
+  A lista mostra envios → calls realizadas → clientes; `variants[].calls`
+  continua medindo agendamentos do teste A/B.
+
 - **Cases da apresentação C (14/09/2026):** os quatro cases do painel usam o
   acumulado de cada cliente em `org_revenue_generated`, com valores brutos e
   data de apuração guardados em `cases.evidence`. São snapshots conferidos,

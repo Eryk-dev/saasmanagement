@@ -254,6 +254,72 @@ test("lead interno fica fora do CPL/leads das métricas de marketing", async () 
   await app.close();
 });
 
+test("funil do formulário conta calls realizadas pela régua de comparecimento", async (t) => {
+  const date = "2026-09-10T12:00:00.000Z";
+  const summary = (temperatura, at = date, kind = "call") => ({ type: "system", at, meta: { event: "call_summary", kind, summary: { temperatura } } });
+  const stage = (to) => ({ type: "stage", at: date, meta: { to } });
+  const cases = [
+    { name: "agendamento futuro", lead: { stage: "Conversa", callAt: "2026-10-01T12:00:00.000Z" }, count: 0 },
+    { name: "agendamento vencido sem comparecimento", lead: { stage: "Conversa", callAt: date }, count: 0 },
+    { name: "transcrição morna com callAt limpo", lead: { stage: "Entrada" }, acts: [summary("morno")], count: 1 },
+    { name: "transcrição quente com call remarcada", lead: { stage: "Conversa", callAt: "2026-10-01T12:00:00.000Z" }, acts: [summary("quente")], count: 1 },
+    { name: "transcrição fria prevalece sobre avanço", lead: { stage: "Oferta" }, acts: [summary("frio")], count: 0 },
+    { name: "resumo mais recente prevalece", lead: { stage: "Oferta" }, acts: [summary("frio", "2026-09-12T12:00:00.000Z"), summary("quente")], count: 0 },
+    { name: "resumo de integração não é call comercial", lead: { stage: "Entrada" }, acts: [summary("quente", date, "integracao")], count: 0 },
+    { name: "avanço por estágio semântico", lead: { stage: "Oferta" }, count: 1 },
+    { name: "histórico de avanço após voltar para entrada", lead: { stage: "Entrada" }, acts: [stage("Oferta")], count: 1 },
+    { name: "perda após agendamento por outro motivo", lead: { stage: "Encerrado", lostReason: "preco" }, acts: [stage("Conversa")], count: 1 },
+    { name: "perda por falta", lead: { stage: "Encerrado", callAt: date, lostReason: "nao_compareceu" }, count: 0 },
+    { name: "perda sem passar por call", lead: { stage: "Encerrado", lostReason: "sem_fit" }, count: 0 },
+    { name: "ganho prevalece sobre transcrição fria", lead: { stage: "Cliente" }, acts: [summary("frio")], count: 1 },
+    { name: "cliente que já saiu do estágio de ganho", lead: { stage: "Entrada", customerId: "cliente" }, count: 1 },
+  ];
+  for (const c of cases) await t.test(c.name, async () => {
+    const { app, repo } = await buildApp({ forms: { now: () => new Date("2026-09-15T12:00:00.000Z") } });
+    try {
+      await repo.create("products", { id: "leverads", funnel: [
+        { stage: "Entrada", kind: "novo" }, { stage: "Conversa", kind: "call" },
+        { stage: "Oferta", kind: "proposta" }, { stage: "Cliente", kind: "ganho" },
+        { stage: "Encerrado", kind: "perdido" },
+      ] });
+      await repo.create("leads", { id: "lead", saas: "leverads", ...c.lead });
+      await repo.create("form_submissions", { form: "fo_test", saas: "leverads", lead: "lead", createdAt: date });
+      for (const a of c.acts || []) await repo.create("activities", { saas: "leverads", lead: "lead", ...a });
+      const res = await app.inject({ url: "/api/forms/fo_test/funnel" });
+      assert.equal(res.statusCode, 200);
+      assert.equal(res.json().callsShown, c.count);
+    } finally { await app.close(); }
+  });
+});
+
+test("calls realizadas respeitam formulário, período, workspace e leads únicos sem tráfego interno", async () => {
+  const { app, repo } = await buildApp();
+  try {
+    await repo.create("products", { id: "leverads", funnel: [{ stage: "Proposta", kind: "proposta" }] });
+    const date = "2026-09-10T12:00:00.000Z";
+    const add = async (id, lead = {}, sub = {}) => {
+      await repo.create("leads", { id, saas: "leverads", stage: "Proposta", ...lead });
+      await repo.create("form_submissions", { saas: "leverads", form: "fo_test", createdAt: date, lead: id, ...sub });
+    };
+    await add("real");
+    await repo.create("form_submissions", { saas: "leverads", form: "fo_test", createdAt: date, lead: "real" });
+    await add("outro-form", {}, { form: "fo_draft" });
+    await add("antes", {}, { createdAt: "2026-08-31T12:00:00.000Z" });
+    await add("depois", {}, { createdAt: "2026-10-01T12:00:00.000Z" });
+    await add("sub-interna", {}, { internal: true });
+    await add("lead-interno", { internal: true });
+    await add("outro-produto", { saas: "elo" });
+    await add("atividade-outro-produto", { stage: "Novo lead" });
+    await repo.create("activities", { saas: "elo", lead: "atividade-outro-produto", type: "system", at: date, meta: { event: "call_summary", summary: { temperatura: "quente" } } });
+    await repo.create("form_submissions", { form: "fo_test", createdAt: date, lead: "apagado" });
+    const res = await app.inject({ url: "/api/forms/fo_test/funnel?since=2026-09-01T00:00:00.000Z&until=2026-09-30T23:59:59.999Z" });
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.json().callsShown, 1);
+    const empty = await app.inject({ url: "/api/forms/fo_test/funnel?since=2027-01-01T00:00:00.000Z" });
+    assert.equal(empty.json().callsShown, 0);
+  } finally { await app.close(); }
+});
+
 test("GET /funnel?until= fecha o range (hoje/ontem/data custom)", async () => {
   const { app, repo } = await buildApp();
   const mk = (sess, day) => repo.create("form_events", { id: `fe_${sess}`, form: "fo_test", saas: "leverads", session: sess, event: "view", key: "", createdAt: `${day}T12:00:00.000Z` });
