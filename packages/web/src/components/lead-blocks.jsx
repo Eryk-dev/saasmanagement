@@ -9,10 +9,10 @@
 // bater o olho de um painel no outro dava trabalho. O que é exclusivo de um
 // painel (GPS/timeline no drawer, atalhos da call no roteiro) continua lá.
 //
-// O inbox do WhatsApp (screens/whatsapp.jsx) usa o clientSummary daqui, mas
-// desenha na coluna de 300px com densidade própria — fora desta régua.
+// O inbox do WhatsApp também usa estes blocos, adaptados à coluna estreita.
 
 import React from "react";
+import { LeadSection } from "./lead-card.jsx";
 import { leadTier, leadScoreLabel, leadAge } from "../lib/ui.js";
 import { cadenceOf, lossReasonLabel } from "../lib/funnel.js";
 import { leadPain } from "../lib/pains.js";
@@ -35,8 +35,8 @@ export function referralLine(lead) {
   return `${c?.name || id}${who}`;
 }
 
-// Caixa padrão dos blocos do painel (tile interno: bg-inset + r-2).
-export const leadBox = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "10px 12px", background: "var(--bg-inset)" };
+// Superfície do handoff: cards brancos sobre o fundo da ficha/roteiro.
+export const leadBox = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "16px var(--lead-inset, 18px)", background: "var(--bg-1)" };
 
 // Resumo compilado do cliente: a dor do anúncio (gancho da conversa), os fatos
 // relevantes e a atribuição (de onde o lead veio). Só entra o que está
@@ -113,37 +113,18 @@ export function clientSummary(saasCfg, lead, stage, cat, { full = false } = {}) 
 
 // Linha chave→valor dos grids de fato/atribuição.
 export function FactRow({ k, v }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, padding: "3px 0", borderBottom: "1px solid var(--line-1)" }}>
-      <span className="mono dim" style={{ flexShrink: 0, fontSize: 10.5 }}>{k}</span>
-      <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0, overflowWrap: "anywhere" }}>{v}</span>
-    </div>
-  );
+  return <div className="lead-fact"><span className="lead-fact-label">{k}</span><span className="lead-fact-value">{v}</span></div>;
 }
 
-// Resumo do cliente: dor do anúncio em destaque + os fatos num grid.
-// `action` = botão do cabeçalho (o "✎ editar" do drawer). `facts` nulo esconde
-// o grid (o drawer troca por um formulário durante a edição). `children` entra
-// depois do grid (registrar contato / últimos contatos, no roteiro).
+// Mesmos fatos e mesma ordem na ficha, no roteiro e no inbox.
 export function ClientSummaryCard({ pain, facts, action = null, children = null, style = null }) {
   return (
-    <div style={{ ...leadBox, ...(style || {}) }}>
-      <div className="kicker" style={{ marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}>
-        <span>Resumo do cliente</span>
-        {action}
-      </div>
-      {pain && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 9px", marginBottom: 8, borderRadius: "var(--r-2)", background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
-          <span className="kicker accent" style={{ flexShrink: 0 }}>dor do anúncio</span>
-          <span style={{ fontSize: 12.5, fontWeight: 600, minWidth: 0 }}>[{pain.code}] {pain.label}</span>
-        </div>
-      )}
-      {facts && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "4px 14px" }}>
-          {facts.map(([k, v]) => <FactRow key={k} k={k} v={v} />)}
-        </div>
-      )}
-      {children}
+    <div style={style}>
+      <LeadSection title="Resumo do cliente" action={action}>
+        {facts && <div className="lead-summary-facts">{facts.map(([k, v]) => <FactRow key={k} k={k} v={v} />)}</div>}
+        {children}
+        {pain && <div className="lead-summary-pain"><span>dor do anúncio</span><strong>[{pain.code}] {pain.label}</strong></div>}
+      </LeadSection>
     </div>
   );
 }
@@ -399,46 +380,30 @@ export function ScriptBlocks({ script, tokens }) {
     catch { window.prompt("Copie a mensagem:", t); }
   };
   return (
-    <>
-      <div style={{ ...leadBox, background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
-        <div className="kicker accent" style={{ marginBottom: 4 }}>Como se comportar</div>
-        <div style={{ fontSize: 12, lineHeight: 1.45 }}>{script.resumo}</div>
+    <LeadSection className="lead-script">
+      <div className="kicker">Como se comportar</div>
+      <div className="lead-script-copy">{script.resumo}</div>
+      <div className="lead-script-objective">
+        <div className="kicker">Objetivo deste toque</div>
+        <div className="lead-script-copy" style={{ fontWeight: 600, color: "var(--fg-1)" }}>{script.objetivo}</div>
       </div>
-      <div style={leadBox}>
-        <div className="kicker" style={{ marginBottom: 4 }}>Objetivo do contato</div>
-        <div style={{ fontSize: 12, lineHeight: 1.45, fontWeight: 500 }}>{script.objetivo}</div>
-      </div>
-      <div>
-        <div className="kicker" style={{ marginBottom: 6 }}>Passo a passo</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-          {(script.passos || []).map((p, i) => (
-            <div key={i} style={{ display: "flex", gap: 10 }}>
-              <span className="mono tnum" style={{
-                width: 20, height: 20, borderRadius: 999, flexShrink: 0, marginTop: 1,
-                display: "inline-flex", alignItems: "center", justifyContent: "center",
-                background: "var(--bg-inset)", border: "1px solid var(--line-1)", fontSize: 10.5, fontWeight: 700, color: "var(--fg-3)",
-              }}>{i + 1}</span>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                {p.t && <div style={{ fontSize: 11.5, fontWeight: 600, marginBottom: 1 }}>{p.t}</div>}
-                {/* Passo sem fala é ação pura (ex.: "ligar 2 vezes"): só a dica. */}
-                {p.fala && (
-                  <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
-                    <div style={{ flex: 1, minWidth: 0, fontSize: 12.5, lineHeight: 1.5, color: "var(--fg-1)", borderLeft: "3px solid var(--accent-line)", paddingLeft: 10, whiteSpace: "pre-wrap" }}>
-                      {renderFala(p.fala)}
-                    </div>
-                    <button onClick={() => copyFala(p.fala, i)} title="Copiar a mensagem (com os dados preenchidos) pra colar no WhatsApp"
-                      style={{ flexShrink: 0, height: 24, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid " + (copiedStep === i ? "var(--pos)" : "var(--line-2)"),
-                        background: "var(--bg-2)", color: copiedStep === i ? "var(--pos)" : "var(--fg-3)", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
-                      {copiedStep === i ? "copiado ✓" : "⧉ copiar"}
-                    </button>
-                  </div>
-                )}
-                {p.dica && <div className="dim" style={{ fontSize: 10.5, marginTop: 2, paddingLeft: 13 }}>{renderFala(p.dica)}</div>}
-              </div>
+      <ol className="lead-script-steps" aria-label="Passo a passo">
+        {(script.passos || []).map((p, i) => (
+          <li key={i}>
+            <div className="lead-script-step-head"><span className="lead-script-step-number tnum">{i + 1}</span>{p.t}</div>
+            <div className="lead-script-step-body">
+              {p.fala && <div className="lead-script-copy">{renderFala(p.fala)}</div>}
+              {(p.dica || p.fala) && <div className="lead-script-step-tools">
+                {p.dica && <small>{renderFala(p.dica)}</small>}
+                {p.fala && <button className="lead-script-copy-button" onClick={() => copyFala(p.fala, i)}
+                  title="Copiar a mensagem com os dados do lead" style={copiedStep === i ? { color: "var(--pos)" } : undefined}>
+                  {copiedStep === i ? "copiado ✓" : "copiar"}
+                </button>}
+              </div>}
             </div>
-          ))}
-        </div>
-      </div>
-    </>
+          </li>
+        ))}
+      </ol>
+    </LeadSection>
   );
 }

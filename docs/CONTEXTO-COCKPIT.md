@@ -216,6 +216,14 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   prova pendente fictícia. Os dados ficam em `preview/training-mock.js` e não
   entram no build de produção.
 
+- **Cards de leads (14/09/2026):** a ficha global `LeadDetail` usa `Drawer` de
+  520px seguindo o protótipo: próximo passo, ação e histórico antes dos dados
+  complementares. `components/lead-card.jsx`/`lead-card.css` fornecem superfícies,
+  expansão e marcador de qualificação. `lead-blocks.jsx` mantém a compilação dos
+  dados e os blocos de resumo/roteiro compartilhados por ficha, Minhas Atividades
+  e inbox. A abertura pelas outras telas continua no `openLead` global; movimentos
+  e agendamentos usam os mesmos handlers e gates existentes.
+
 - **Marketing — handoff (14/09/2026):** as telas Redes sociais, Publicidade,
   Formulários, Landing pages, Canvas, Disparos e Blog usam a estrutura do
   protótipo sobre `screens/marketing.css`. O Canvas mantém o renderer e as

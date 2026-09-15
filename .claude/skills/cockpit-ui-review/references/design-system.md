@@ -102,6 +102,23 @@ inline. Máximo ~3 níveis por tela.
 - Estado vazio: `EmptyState` (atoms.jsx: título 15/600 + hint + ação central)
 - Skeleton de carregamento: não existe — padrão OFICIAL é texto `mono dim` 12px ("carregando…") no lugar do bloco; lista cortada mostra "+N" expansível (nunca corte silencioso)
 
+### Cards e ficha do lead — handoff de 14/09/2026
+
+- `components/lead-card.jsx` e `lead-card.css` concentram `LeadGrade`,
+  `LeadSection` e `LeadDisclosure`. Cards brancos, borda `--line-1`, raio
+  `--r-3`, padding 16px × 18px (14px no celular).
+- `LeadDetail` é a ficha global em `Drawer` de 520px: identidade e fatos,
+  próximo passo, ação de agora, histórico e dados do cliente. Agenda detalhada,
+  qualificação e roteiro são expansíveis; todos os movimentos continuam nos
+  gates existentes, inclusive voltar, ganhar e perder.
+- `ScriptPanel` mantém o modal de 1120px com duas colunas iguais: roteiro à
+  esquerda, cliente e histórico à direita, “Depois da ação” no rodapé. Abaixo
+  de 760px, as colunas se empilham.
+- `ClientSummaryCard` e `ScriptBlocks` usam a mesma superfície em todos os
+  contextos. O roteiro fica em um único card, com comportamento, objetivo e
+  passos numerados; as falas continuam copiáveis. O resumo usa fatos em grade
+  e a dor abaixo, sem outra caixa colorida. O inbox reutiliza o mesmo resumo.
+
 ## Padrões de tela
 
 ### Moldura do handoff — 14/09/2026

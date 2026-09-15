@@ -14,7 +14,8 @@ import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { waLink, leadTier } from "../lib/ui.js";
 import { useIsMobile } from "../lib/responsive.js";
-import { clientSummary } from "./today.jsx";
+import { clientSummary, ClientSummaryCard, AttributionCard } from "../components/lead-blocks.jsx";
+import { LeadGrade, LeadSection } from "../components/lead-card.jsx";
 import { currentUser, usersByRole } from "../lib/users.js";
 import { scriptChecklist } from "../lib/scripts.js";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
@@ -894,13 +895,11 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
       : "";
   };
   return (
-    <div style={{ width: 300, flexShrink: 0, border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", display: "flex", flexDirection: "column", minHeight: 0 }}>
+    <div className="lead-panel" style={{ "--lead-inset": "14px", width: 300, flexShrink: 0, border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--line-1)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
           <span style={{ fontSize: 14, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lead.name}</span>
-          {tier.grade && (
-            <span className="tnum" style={{ width: 18, height: 18, borderRadius: 5, display: "inline-flex", alignItems: "center", justifyContent: "center", background: tier.tone, color: tier.badgeFg, fontFamily: "var(--display)", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{tier.grade}</span>
-          )}
+          <LeadGrade tier={tier} size={18} />
         </div>
         {lead.company && <div style={{ fontSize: 12, color: "var(--fg-3)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lead.company}</div>}
         <div style={{ marginTop: 7, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
@@ -943,14 +942,7 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
         />
       )}
 
-      <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "10px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
-        {pain && (
-          <div style={{ padding: "6px 9px", borderRadius: "var(--r-2)", background: "var(--accent-soft)", border: "1px solid var(--accent-line)" }}>
-            <span className="kicker accent">dor do anúncio</span>
-            <div style={{ fontSize: 12.5, fontWeight: 600, marginTop: 2 }}>[{pain.code}] {pain.label}</div>
-          </div>
-        )}
-
+      <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: 12, background: "var(--bg-0)", display: "flex", flexDirection: "column", gap: 14 }}>
         {/* O que ficou combinado: a nota curta do que a conversa resolveu, que
             é o que ninguém lembra ao reabrir o chat dias depois. Fica ACIMA da
             qualificação de propósito (é o primeiro contexto que se procura) e
@@ -958,13 +950,12 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
             continuar sendo recado, não ata de reunião: a transcrição da call e
             a timeline já guardam o detalhe. Aparece no card completo do lead
             (clientSummary full), então o closer lê sem abrir o inbox. */}
-        <div>
-          <div className="kicker" style={{ marginBottom: 4 }}>O que ficou combinado</div>
+        <LeadSection title="O que ficou combinado">
           <textarea key={base.id + "recap"} defaultValue={lead.recapNote || ""} rows={2} maxLength={280}
             placeholder="ex.: quer as 3 contas espelhadas, decide com o sócio, retomar terça"
             onBlur={(e) => { if (e.target.value !== (base.recapNote || "")) patch({ recapNote: e.target.value }); }}
             style={{ width: "100%", padding: "6px 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5, lineHeight: 1.45, fontWeight: 500, fontFamily: "inherit", resize: "vertical" }} />
-        </div>
+        </LeadSection>
 
         {/* Qualificação EDITÁVEL (mesmo checklist do roteiro): o lead respondeu
             no chat → preenche aqui e grava na hora. Amarelo = falta responder. */}
@@ -997,27 +988,10 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
           </div>
         )}
 
-        <div>
-          <div className="kicker" style={{ marginBottom: 4 }}>Resumo do cliente</div>
-          {facts.map(([k, v]) => (
-            <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11.5, padding: "3px 0", borderBottom: "1px solid var(--line-faint)" }}>
-              <span className="mono dim" style={{ flexShrink: 0, fontSize: 10 }}>{k}</span>
-              <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0, overflowWrap: "anywhere" }}>{v}</span>
-            </div>
-          ))}
-          {!facts.length && <div className="mono dim" style={{ fontSize: 11 }}>sem qualificação ainda</div>}
-        </div>
-        {attribution.length > 0 && (
-          <div>
-            <div className="kicker" style={{ marginBottom: 4 }}>De onde veio</div>
-            {attribution.map(([k, v]) => (
-              <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11, padding: "3px 0", borderBottom: "1px solid var(--line-faint)" }}>
-                <span className="mono dim" style={{ flexShrink: 0, fontSize: 10 }}>{k}</span>
-                <span style={{ fontWeight: 500, textAlign: "right", minWidth: 0, overflowWrap: "anywhere" }}>{v}</span>
-              </div>
-            ))}
-          </div>
-        )}
+        <ClientSummaryCard pain={pain} facts={facts}>
+          {!facts.length && <div className="lead-script-copy">Sem qualificação ainda.</div>}
+        </ClientSummaryCard>
+        <AttributionCard rows={attribution} />
         {lead.nextActionAt && (
           <div className="mono dim" style={{ fontSize: 10.5 }}>próximo toque {fmtDT(lead.nextActionAt)}{lead.nextActionNote ? ` · ${lead.nextActionNote}` : ""}</div>
         )}
