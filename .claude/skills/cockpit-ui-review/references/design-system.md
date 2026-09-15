@@ -173,13 +173,14 @@ celular na rua: **toda tela precisa continuar usável a 390px** (PR #361) usando
 gerencial — linhas compactas, muito dado por tela; `body[data-density]` existe
 (compact 13.5 / regular 14).
 
-**Régua de meta — revisão de 14/09/2026:** o termômetro da Visão Geral usa
-preenchimento sólido para o realizado sobre a meta base. A marca tracejada do
-pace fica acima da barra, com rótulo externo “Esperado até hoje”, valor em reais
-e percentual. O valor que falta fica sempre visível; follow-up continua como
-contexto ao lado. Acima de 100%, o percentual mantém a meta base e o excedente
-é explícito. Período encerrado mostra “Faltou para a meta” e não cobra pace de
-hoje. Referência: `Termometro` em `screens/overview.jsx` e `.vg-goal-*` em
+**Régua de meta — decisão de 14/09/2026:** manter as dimensões originais
+(coluna de 140px; barra de 96 × 300px) e todos os efeitos: hachura, listras em
+movimento, preenchimento subindo, follow-up empilhado e ponto pulsante no
+percentual. O pace é apenas uma marca tracejada contrastante acima dos efeitos,
+sem texto ou valor junto dela. O saldo para atingir a meta aparece no contexto
+ao lado, sem ampliar o termômetro. O percentual continua sobre a meta base,
+inclusive acima de 100%; período encerrado não mostra marca de pace.
+Referência: `Termometro` em `screens/overview.jsx` e `.vg-meta-pace-marker` em
 `screens/overview.css`.
 
 ## Dívidas conhecidas

@@ -131,13 +131,14 @@ try {
       goal: { ...fakeGoal, ended, sale: { ...fakeGoal.sale, ...sale } }, links: false,
     })));
     const visible = renderGoal({}).split('<details')[0];
-    for (const text of ["Esperado até hoje", "14.400", "Falta para a meta", "26.000"]) {
+    for (const text of ["14.400", "Falta para a meta", "26.000"]) {
       if (!visible.includes(text)) throw new Error(`${text} precisa aparecer sem abrir os detalhes`);
     }
+    if (!visible.includes('class="vg-meta-pace-marker"') || visible.includes('vg-goal-pace-label')) throw new Error("pace deve ter apenas uma marca, sem rótulo externo");
     const superMeta = renderGoal({ sold: 66000, progress: 1.1 }).split('<details')[0];
     if (!superMeta.includes("110%") || !superMeta.includes("Meta batida") || !superMeta.includes("6.000")) throw new Error("super meta deve mostrar 110% realizado e o excedente");
     const closed = renderGoal({}, true).split('<details')[0];
-    if (closed.includes("Esperado até hoje") || !closed.includes("Faltou para a meta")) throw new Error("período encerrado não deve cobrar pace de hoje");
+    if (closed.includes('class="vg-meta-pace-marker"') || !closed.includes("Faltou para a meta")) throw new Error("período encerrado não deve cobrar pace de hoje");
     console.log("✓ overview-meta-legível");
   } catch (err) {
     console.error(`✗ overview-meta-legível: ${err.message}`);
