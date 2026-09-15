@@ -3,6 +3,7 @@ import "./overview.css";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { Card } from "../components/viz.jsx";
+import { Info } from "../components/story.jsx";
 import { EmptyState, Avatar } from "../atoms.jsx";
 import { stageKind, isRealLead, isWonLead, wonAtOf, openStages } from "../lib/funnel.js";
 import { bizDay } from "../lib/format.js";
@@ -798,40 +799,35 @@ function FunilPeriodo({ team, win, pLabel, bare = false, onNav }) {
   );
 }
 
-// ── Tiles pequenos (Aquisição / Carteira) ────────────────────────────────────
-function MiniTile({ label, dot, big, sub, title }) {
+// ── Resumos da Carteira e Aquisição ─────────────────────────────────────────
+function AcquisitionMetric({ label, value, caption, title, empty = false }) {
   return (
-    <div title={title} style={{ background: "var(--bg-inset)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "10px 8px", minWidth: 0, cursor: title ? "help" : "default", textAlign: "left" }}>
-      <div className="kicker" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        {dot && <span style={{ width: 8, height: 8, borderRadius: 3, background: dot, flexShrink: 0 }} />}
-        {label}
-      </div>
-      <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 16, fontWeight: 700, letterSpacing: "-0.02em", marginTop: 2, whiteSpace: "nowrap" }}>{big}</div>
-      {sub != null && <div className="tnum" style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 1 }}>{sub}</div>}
+    <div className="vg-acquisition-metric" title={title}>
+      <dt>{label}</dt>
+      <dd>
+        <strong className={`vg-acquisition-value${empty ? " is-empty" : ""}`}>{value}</strong>
+        <span>{caption}</span>
+      </dd>
     </div>
   );
 }
 
-// Linha rótulo/valor (12/09): no trilho da direita a Carteira e as classes de
-// lead viram lista — 12 tiles iguais empilhados eram uma parede de números.
-function KVRow({ label, dot, value, sub, title, last }) {
+// O valor e seu contexto compartilham a mesma borda direita, mesmo quando
+// o contexto é mais comprido que o número. Os dois cards usam a mesma linha.
+function KVRow({ label, detail, dot, value, sub, title, primary = false }) {
   return (
-    <div title={title} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, padding: "8px 0", borderBottom: last ? "none" : "1px solid var(--line-1)", cursor: title ? "help" : undefined }}>
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12.5, color: "var(--fg-2)", minWidth: 0 }}>
-        {dot && <span style={{ width: 8, height: 8, borderRadius: 3, background: dot, flexShrink: 0 }} />}
-        {label}
-      </span>
-      <span className="tnum" style={{ fontSize: 14, fontWeight: 650, whiteSpace: "nowrap" }}>
-        {value}
-        {sub != null && <span style={{ fontSize: 11.5, fontWeight: 400, color: "var(--fg-3)", display: "block", whiteSpace: "normal", textAlign: "right" }}>{sub}</span>}
-      </span>
+    <div className={`vg-summary-row${primary ? " vg-summary-primary" : ""}`} title={title}>
+      <dt className="vg-summary-label">
+        {dot && <span className="vg-summary-dot" style={{ background: dot }} aria-hidden="true" />}
+        <span><span>{label}</span>{detail && <span className="vg-summary-detail">{detail}</span>}</span>
+      </dt>
+      <dd className="vg-summary-reading">
+        <strong>{value}</strong>
+        {sub != null && <span className="vg-summary-detail">{sub}</span>}
+      </dd>
     </div>
   );
 }
-
-// 3 tiles por linha, fixo (pedido do Leo: 3 em cima, 3 embaixo) — auto-fit
-// quebrava em 4+2 e as duas metades ficavam tortas.
-const tilesGrid = { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 };
 
 function AquisicaoCard({ marketing, biz, classes, pShort }) {
   const cpl = marketing?.totals?.spend > 0 && marketing?.totals?.cpl != null ? marketing.totals.cpl : null;
@@ -839,22 +835,25 @@ function AquisicaoCard({ marketing, biz, classes, pShort }) {
   const cac = biz?.window?.cac ?? null;
   return (
     <Card title="Aquisição" hint={`${pShort} · dinheiro pela data da venda`}>
-      <div style={{ padding: "14px var(--inset-x) 4px", ...tilesGrid }}>
-        <MiniTile label="CPL" big={cpl != null ? money(cpl) : "sem gasto"}
+      <dl className="vg-acquisition-metrics" aria-label="Custos e retorno da aquisição">
+        <AcquisitionMetric label="CPL" value={cpl != null ? money(cpl) : "sem gasto"} caption="por lead" empty={cpl == null}
           title={cpl != null ? `Custo por lead · ${money(marketing.totals.spend)} investidos no período` : "conecte o Meta em Publicidade"} />
-        <MiniTile label="CAC" big={cac != null ? money(cac) : "—"}
+        <AcquisitionMetric label="CAC" value={cac != null ? money(cac) : "—"} caption="por cliente"
           title="Investimento em anúncios ÷ clientes novos do período" />
-        <MiniTile label="ROAS" big={roas != null ? String(roas).replace(".", ",") + "x" : "—"}
+        <AcquisitionMetric label="ROAS" value={roas != null ? String(roas).replace(".", ",") + "x" : "—"} caption="retorno"
           title="Receita dos ganhos atribuída pela data da venda ÷ investimento" />
-      </div>
-      <div style={{ padding: "12px var(--inset-x) 18px" }}>
-        <KVRow label="Semente · indicação e base" dot="var(--chart-1)" value={int(classes?.semente?.leads)}
-          title={`Indicação e boca a boca · ${int(classes?.semente?.won)} ganhos no período`} />
-        <KVRow label="Rede · marketing" dot="var(--chart-2)" value={int(classes?.rede?.leads)}
-          title={`Tráfego pago, form, social · ${int(classes?.rede?.won)} ganhos no período`} />
-        <KVRow label="Alvo · outbound" dot="var(--chart-3)" value={int(classes?.alvo?.leads)} last
-          title={`Prospecção ativa · ${int(classes?.alvo?.won)} ganhos no período`} />
-      </div>
+      </dl>
+      <section className="vg-acquisition-origins" aria-label="Leads por origem">
+        <h4>Leads por origem</h4>
+        <dl className="vg-summary-list">
+          <KVRow label="Semente" detail="Indicação e base" dot="var(--chart-1)" value={int(classes?.semente?.leads)}
+            title={`Indicação e boca a boca · ${int(classes?.semente?.won)} ganhos no período`} />
+          <KVRow label="Rede" detail="Marketing" dot="var(--chart-2)" value={int(classes?.rede?.leads)}
+            title={`Tráfego pago, form, social · ${int(classes?.rede?.won)} ganhos no período`} />
+          <KVRow label="Alvo" detail="Outbound" dot="var(--chart-3)" value={int(classes?.alvo?.leads)}
+            title={`Prospecção ativa · ${int(classes?.alvo?.won)} ganhos no período`} />
+        </dl>
+      </section>
     </Card>
   );
 }
@@ -973,24 +972,25 @@ function CarteiraCard({ customers, ltv, win, pShort }) {
   const churnPct = baseInicio.length ? Math.round((churned / baseInicio.length) * 1000) / 10 : null;
   const semCG = (v) => (cg.length ? money(v) : null);
   return (
-    <Card title="Carteira" hint={`${pShort} · a base como estava no fim do período`}>
-      <div style={{ padding: "12px var(--inset-x) 18px" }}>
-        <KVRow label="MRR" value={money(arrAll / 12)} sub={semCG(arrCore / 12) ? `${semCG(arrCore / 12)} sem CG` : null}
-          title={cg.length ? "Valor da direita: sem conta grande" : "contratos ÷ 12"} />
-        <KVRow label="Clientes" value={int(ativos.length)} sub={cg.length ? `${int(core.length)} CP · ${int(cg.length)} CG` : null}
+    <Card title="Carteira" hint={`${pShort} · base no fim do período`}
+      action={cg.length ? <Info texto="CG = conta grande. O valor principal inclui toda a base; o valor sem CG exclui essas contas." /> : null}>
+      <dl className="vg-summary-list vg-portfolio-list">
+        <KVRow label="MRR" detail="Receita mensal" primary value={money(arrAll / 12)} sub={semCG(arrCore / 12) ? `${semCG(arrCore / 12)} sem CG` : null}
+          title={cg.length ? "Valor principal: toda a base. Abaixo: sem contas grandes." : "contratos ÷ 12"} />
+        <KVRow label="Clientes" detail="Base ativa" value={int(ativos.length)} sub={cg.length ? `${int(core.length)} padrão · ${int(cg.length)} ${cg.length === 1 ? "grande" : "grandes"}` : null}
           title={`Clientes ativos no fim de ${win.range || win.label} · CP = cliente padrão, CG = conta grande (fora das médias)`} />
-        <KVRow label="Ticket médio" value={ticketAll != null ? money(ticketAll) : "—"} sub={cg.length && ticketCore != null ? `${money(ticketCore)} sem CG` : null}
-          title={cg.length ? "Valor da direita: sem conta grande — o ticket que alimenta as metas por contrato" : "valor médio de contrato da base"} />
-        <KVRow label="ARR" value={money(arrAll)} sub={semCG(arrCore) ? `${semCG(arrCore)} sem CG` : null}
-          title={cg.length ? "Valor da direita: sem conta grande" : "soma dos contratos ativos"} />
-        <KVRow label="LTV" value={ltv?.value != null ? money(ltv.value) : "—"} sub={ltv?.ltvCac ? `LTV/CAC ${String(ltv.ltvCac).replace(".", ",")}x` : null}
+        <KVRow label="Ticket médio" detail="Por contrato" value={ticketAll != null ? money(ticketAll) : "—"} sub={cg.length && ticketCore != null ? `${money(ticketCore)} sem CG` : null}
+          title={cg.length ? "Valor principal: toda a base. Abaixo: sem contas grandes, o ticket que alimenta as metas por contrato." : "valor médio de contrato da base"} />
+        <KVRow label="ARR" detail="Receita anual" value={money(arrAll)} sub={semCG(arrCore) ? `${semCG(arrCore)} sem CG` : null}
+          title={cg.length ? "Valor principal: toda a base. Abaixo: sem contas grandes." : "soma dos contratos ativos"} />
+        <KVRow label="LTV" detail="Valor estimado" value={ltv?.value != null ? money(ltv.value) : "—"} sub={ltv?.ltvCac ? `LTV/CAC ${String(ltv.ltvCac).replace(".", ",")}x` : null}
           title={ltv?.value != null ? `Estimado: ticket mensal × ${ltv.months} meses de permanência (premissa até existir churn real)` : "precisa de assinaturas ativas"} />
-        <KVRow label="Churn" value={churnPct == null ? "—" : `${String(churnPct).replace(".", ",")}%`} last
+        <KVRow label="Churn" detail="Saídas no período" value={churnPct == null ? "—" : `${String(churnPct).replace(".", ",")}%`}
           sub={churned ? `${int(churned)} ${churned === 1 ? "saiu" : "saíram"}` : null}
           title={churnPct == null
             ? "Sem base no começo do período pra calcular a taxa."
             : `Quem saiu DENTRO de ${pShort} (${int(churned)}) ÷ os ${int(baseInicio.length)} clientes que existiam no começo do período.`} />
-      </div>
+      </dl>
     </Card>
   );
 }

@@ -186,6 +186,13 @@ inclusive acima de 100%; período encerrado não mostra marca de pace.
 Referência: `Termometro` em `screens/overview.jsx` e `.vg-meta-pace-marker` em
 `screens/overview.css`.
 
+**Carteira e Aquisição — 14/09/2026:** os dois resumos usam listas de definição
+com rótulo e contexto à esquerda, valor e complemento alinhados à direita.
+O MRR tem destaque; CG é explicado no cabeçalho. CPL, CAC e ROAS ficam na mesma
+faixa, com unidade de leitura; a lista abaixo é nomeada "Leads por origem" e
+separa o nome da origem de sua descrição. As contas e o recorte por período
+continuam iguais. Referências: `KVRow`, `AcquisitionMetric` e `overview.css`.
+
 ## Dívidas conhecidas
 
 Rodada de 2026-08-08 EXECUTADA (PRs #621, #631, #633, #634): kickers e títulos
