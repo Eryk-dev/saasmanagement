@@ -49,6 +49,24 @@ const cfgBase = {
   price: false, priceTier: "essencial", oem: false, oemPack: "1000", periodo: "anual",
 };
 
+test("apresentação C e preview usam apenas autopeças publicadas, sem mudar o nicho do lead", async () => {
+  const repo = await seedRepo();
+  for (const [name, niche, authorizedAt] of [["Auto A", "Autopeças", "2026-09-01"], ["Casa B", "casa", "2026-09-01"], ["Auto pendente", "autopecas", ""]]) {
+    await repo.create("cases", { saas: "leverads", name, niche, authorizedAt, public: true, metrics: [{ value: "R$ 100", label: "vendas", source: "painel" }] });
+  }
+  const lead = await repo.create("leads", { id: "ld_case_auto", saas: "leverads", name: "Cliente", niche: "casa" });
+  const result = await runNativeProposal(repo, lead, { template: "pt_leverads_slides", baseUrl: "http://x" });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.proposal.data.cases.map(c => c.name), ["Auto A"]);
+  assert.equal((await repo.get("leads", lead.id)).niche, "casa");
+  const app = Fastify();
+  registerProposalRoutes(app, repo);
+  const response = await app.inject({ url: "/p/t/pt_leverads_slides?niche=casa" });
+  assert.match(response.body, /"name":"Auto A"/);
+  assert.doesNotMatch(response.body, /"name":"Casa B"|"name":"Auto pendente"/);
+  await app.close();
+});
+
 test("migração: o deck de slides nasce selecionável e com o catálogo do deck padrão; idempotente", async () => {
   const repo = await seedRepo();
   const t = await repo.get("proposal_templates", "pt_leverads_slides");

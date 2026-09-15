@@ -201,6 +201,22 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   atualizar o case central não altera essas cópias; correções nelas passam pela
   API REST e preservam `state`, preços e demais dados da proposta.
 
+- **Resumo vivo da apresentação C (15/09/2026):** o texto abaixo dos cases
+  recebe `leveradsPresentationResults()` ao servir o HTML, inclusive em
+  propostas antigas e no preview. Faturamento, receita da Lever e percentual
+  usam juntos `since_gmv` / `since_leverads` do `dashboard_portfolio`, com a
+  mesma cobertura por cliente e a operação interna excluída. O all-time de
+  `org_revenue_generated` não é o numerador dessa comparação. A página mostra
+  a data inicial da base e a data da consulta; não afirma receita incremental
+  causal. O servidor aquece e renova o cache a cada seis horas. Falhas mantêm
+  o último resumo bom com sua data; cache frio mostra indisponibilidade, sem
+  os antigos valores fixos. Estado comercial e preços congelados continuam
+  iguais. Testes: `api/test/leverads-results.test.js`.
+  Novas apresentações C e o preview de LeverAds escolhem apenas cases
+  publicados e autorizados de autopeças. Os outros decks mantêm sua seleção
+  por nicho; cópias de cases em apresentações antigas ainda exigem atualização
+  explícita via REST.
+
 - **Handoff de design (14/09/2026):** referência em
   [design/handoff-cockpit](../design/handoff-cockpit/README.md), com índice em
   [MAPA-ESTRUTURAL.md](../design/handoff-cockpit/MAPA-ESTRUTURAL.md). A entrega

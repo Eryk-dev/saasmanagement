@@ -70,6 +70,15 @@ test("pickCases: rascunho e case sem autorização ficam de fora", () => {
   assert.deepEqual(pickCases([]), []);
 });
 
+test("pickCases: seleção estrita de autopeças não completa a fileira com outro nicho", () => {
+  const rows = [
+    completo({ name: "Auto A", niche: "Autopeças" }),
+    completo({ name: "Suplementos", niche: "suplementos" }),
+    completo({ name: "Auto pendente", authorizedAt: "" }),
+  ];
+  assert.deepEqual(pickCases(rows, { niche: "autopecas", strictNiche: true }).map(c => c.name), ["Auto A"]);
+});
+
 // ── Rotas ─────────────────────────────────────────────────────────────────
 async function buildApp(repo, over = {}) {
   const app = Fastify();

@@ -177,3 +177,8 @@ texto institucional em “Quem somos”. O parágrafo de resultado agregado apar
 abaixo dos quatro cases em “Quem já está dentro”. O slide “A operação em
 números” foi removido; o contador acompanha a nova quantidade de páginas.
 Espaçamentos e tipografia ajustados ao palco 16:9, mantendo os textos e valores.
+
+**Resultados reais (15/09/2026):** o rodapé dos cases usa os totais do painel
+LeverAds na mesma janela por cliente, com participação calculada e data da
+consulta visível. Valores antigos fixos saíram; falha de consulta mantém a
+última leitura identificada. Atualização automática no servidor a cada seis horas.
