@@ -160,7 +160,7 @@ function shrinkImage(file) {
   });
 }
 
-export function ActivityComposer({ lead, onLogged }) {
+export function ActivityComposer({ lead, onLogged, embedded = false }) {
   const [type, setType] = React.useState("whatsapp");
   const [text, setText] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -219,11 +219,12 @@ export function ActivityComposer({ lead, onLogged }) {
   );
 
   return (
-    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: 8 }}>
+    <div style={embedded ? undefined : { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: 8 }}>
       <div style={{ display: "flex", gap: 2, marginBottom: 6, flexWrap: "wrap" }}>
         {seg("whatsapp", "wpp")}{seg("call", "call")}{seg("meeting", "reunião")}{seg("email", "e-mail")}{seg("note", "nota")}
       </div>
       <textarea
+        aria-label="Anotar o que rolou"
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) log(); }}

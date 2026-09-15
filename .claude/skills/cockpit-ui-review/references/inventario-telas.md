@@ -64,6 +64,14 @@ Leo: `outbound` e `funcionarios` (seguem `hidden`).
   e `&intform=error` exercitam vazio e falha recuperável. Nenhum dado real é
   enviado ao WhatsApp pelo preview. A Agenda usa `/?shell=1#agenda`.
 
+## Cards de leads — 14/09/2026
+
+Padronizados conforme o handoff: cards do kanban, ficha global (`LeadDetail`),
+painel de roteiro de Minhas Atividades e resumo do lead no inbox. A ficha global
+atende também Agenda, Propostas, busca e as demais entradas de `openLead`.
+Componentes compartilhados em `components/lead-card.jsx`/`lead-blocks.jsx`;
+campos, gates de movimento e operações via API preservados.
+
 ## Telas navegáveis
 
 | Rota | Arquivo | Tela (NAV) | Função | Componentes-chave | Revisão |
