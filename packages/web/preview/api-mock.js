@@ -7,6 +7,8 @@ const marketingPreview = typeof location !== "undefined" && new URLSearchParams(
 import { inboxMock } from "./inbox-mock.js";
 const inboxPreview = typeof location !== "undefined" && new URLSearchParams(location.search).has("inbox");
 import { trainingMock } from "./training-mock.js";
+import { teamPreviewScore } from "./team-mock.js";
+const teamPreview = typeof location !== "undefined" && new URLSearchParams(location.search).has("team");
 const DIA = 86400000;
 const hoje = new Date();
 const emHoras = (h, m = 0) => { const d = new Date(hoje); d.setHours(h, m, 0, 0); return d.toISOString(); };
@@ -105,6 +107,7 @@ const vazio = () => Promise.resolve(null);
 
 export const api = new Proxy({}, {
   get(_, nome) {
+    if (teamPreview && nome === "scoreboard") return () => Promise.resolve({ ...RESPOSTAS.scoreboard(), ...teamPreviewScore });
     if (inboxPreview && Object.hasOwn(inboxMock, nome)) return (...args) => Promise.resolve().then(() => inboxMock[nome](...args));
     if (inboxPreview && nome === "update") return (col, id, patch) => Promise.resolve().then(() => { const row = (window.SEED[col.toUpperCase()] || []).find((r) => r.id === id); if (row) Object.assign(row, patch); return row; });
     if (marketingPreview && Object.hasOwn(marketingMock, nome)) return (...args) => Promise.resolve().then(() => marketingMock[nome](...args));

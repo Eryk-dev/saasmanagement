@@ -215,6 +215,10 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   Treinamentos usa `/?shell=1#training`; `/?shell=1&exam=1#training` inclui uma
   prova pendente fictícia. Os dados ficam em `preview/training-mock.js` e não
   entram no build de produção.
+  O desempenho do time usa `/?shell=1&team=1#overview`, com oito pessoas
+  fictícias em `preview/team-mock.js`: SDR, closer, CS, mídia, metas zeradas,
+  ausentes e acima de 100%. Aceita `&theme=dark` para conferir os cards;
+  a fixture também fica restrita ao preview.
 
 - **Cards de leads (14/09/2026):** a ficha global `LeadDetail` usa `Drawer` de
   520px seguindo o protótipo: próximo passo, ação e histórico antes dos dados

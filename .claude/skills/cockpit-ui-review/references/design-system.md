@@ -193,6 +193,15 @@ faixa, com unidade de leitura; a lista abaixo é nomeada "Leads por origem" e
 separa o nome da origem de sua descrição. As contas e o recorte por período
 continuam iguais. Referências: `KVRow`, `AcquisitionMetric` e `overview.css`.
 
+**Desempenho do time — 15/09/2026:** uma pessoa por card, em grade de uma a
+quatro colunas conforme o espaço (mínimo de 260px, limitado à largura disponível).
+Nome, papel, receita e contratos ficam visíveis, com réguas lisas de 6px.
+CS e mídia mostram dois indicadores do próprio papel. Todas as submetas e
+notas continuam no expansível "Detalhes"; clicar na identidade abre o pipeline
+filtrado pela pessoa.
+Preservar ranking, metas mensais, marca de pace e degraus de super meta.
+Referências: `TeamBoard`, `PersonCard` e `.vg-team-grid` em `overview.css`.
+
 ## Dívidas conhecidas
 
 Rodada de 2026-08-08 EXECUTADA (PRs #621, #631, #633, #634): kickers e títulos
