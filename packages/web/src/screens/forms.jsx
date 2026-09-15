@@ -210,6 +210,7 @@ function FormsScreen({ saasId }) {
               const visits = Number(stat?.views) || 0;
               const starts = Number(stat?.starts) || 0;
               const leads = Number(stat?.submits) || 0;
+              const callsShown = Number(stat?.callsShown) || 0;
               const pct = (a, b) => b > 0 ? `${((a / b) * 100).toFixed(1).replace(".", ",")}%` : "0%";
               // Teste A/B visível no card: headline REAL de cada variante (base e
               // por dor, com herança de campo vazio), agrupado por dor e com o
@@ -258,7 +259,8 @@ function FormsScreen({ saasId }) {
                           { rotulo: `visitas · ${win.label}`, valor: window.fmt.int(visits) },
                           { rotulo: "começaram", valor: window.fmt.int(starts), taxa: pct(starts, visits), taxaNota: "das visitas" },
                           { rotulo: "envios", valor: window.fmt.int(leads), taxa: pct(leads, starts), taxaNota: "de quem começou" },
-                          { rotulo: "viraram cliente", valor: window.fmt.int(Number(stat?.won) || 0), taxa: pct(Number(stat?.won) || 0, leads), taxaNota: "dos envios", tom: "pos" },
+                          { rotulo: "calls realizadas", valor: window.fmt.int(callsShown), taxa: pct(callsShown, leads), taxaNota: "dos envios", title: "Leads dos envios do período que compareceram à call, contados uma vez por formulário." },
+                          { rotulo: "viraram cliente", valor: window.fmt.int(Number(stat?.won) || 0), taxa: pct(Number(stat?.won) || 0, callsShown), taxaNota: "das calls", tom: "pos" },
                           { rotulo: "receita fechada", valor: window.fmt.money(Number(stat?.revenue) || 0), tom: "pos" },
                         ]} />
                         <div className="marketing-toolbar" style={{ marginTop: 12, justifyContent: "space-between" }}>

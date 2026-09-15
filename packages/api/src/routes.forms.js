@@ -13,6 +13,7 @@ import { classificar } from "./classificacao.js";
 import { leadGrade } from "./routes.marketing.js";
 import { attributionPain } from "./attribution.js";
 import { isWonLead, kindOf } from "./stages.js";
+import { callOutcome, callWitness, dayKey, FORWARD_KINDS } from "./metrics-core.js";
 import { formPageHtml, EMBED_JS } from "./form-page.js";
 import { CREATE_DEFAULTS, dispatchProposal, publicBase } from "./routes.js";
 import { stageByKind, firstStage } from "./stages.js";
@@ -495,11 +496,34 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // do período viraram contrato e quanto renderam.
     const todosLeads = subs.map((x) => leadsById.get(x.lead)).filter(Boolean);
     const ganhos = todosLeads.filter((l) => isWonLead(product, l));
+    // Calls da mesma safra de envios, uma vez por lead. O período seleciona
+    // a entrada no formulário; o comparecimento acompanha o desfecho atual,
+    // assim como os ganhos. Agendamento sozinho não comprova realização.
+    const callActs = new Map();
+    const callLeads = [...new Map(todosLeads
+      .filter((l) => !l.internal && l.saas === form.saas)
+      .map((l) => [l.id, l])).values()];
+    if (callLeads.length) {
+      const leadIds = new Set(callLeads.map((l) => l.id));
+      const activities = await Promise.all(["stage", "system"].map((type) =>
+        repo.listWhere("activities", { saas: form.saas, type }, { fields: ["lead", "type", "meta", "at"] })));
+      for (const a of activities.flat()) {
+        if (!leadIds.has(a.lead)) continue;
+        if (!callActs.has(a.lead)) callActs.set(a.lead, []);
+        callActs.get(a.lead).push(a);
+      }
+    }
+    const actsOf = (id) => callActs.get(id) || [];
+    const callStage = (stage) => kindOf(product, stage) === "call" || FORWARD_KINDS.has(kindOf(product, stage));
+    const attended = callOutcome(product, callLeads.filter((l) =>
+      isWonLead(product, l) || l.callAt || callStage(l.stage) || callWitness(actsOf(l.id)) ||
+      actsOf(l.id).some((a) => a.type === "stage" && callStage(a.meta?.to))), actsOf, dayKey(now()));
     return {
       views: uniq((e) => e.event === "view"),
       starts: uniq((e) => e.event === "start"),
       submits: uniq((e) => e.event === "submit"),
       leads: subs.length,
+      callsShown: attended.shown,
       won: ganhos.length,
       revenue: ganhos.reduce((sum, l) => sum + (Number(l.amount) || 0), 0),
       lastSubmitAt: subs.map((x) => String(x.createdAt || "")).filter(Boolean).sort().pop() || null,
