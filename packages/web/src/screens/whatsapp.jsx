@@ -917,6 +917,7 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
     api.update("leads", base.id, p).catch((err) => { console.warn("lead não salvo:", err.message); window.toast && window.toast("Alteração no lead não foi salva · tente de novo", "neg"); });
   };
   const checklist = scriptChecklist(saasCfg, lead);
+  const answered = checklist.filter((c) => c.value);
   const { pain, facts, attribution } = clientSummary(saasCfg, lead, lead.stage || saasCfg?.funnel?.[0]?.stage || "", null);
   const tier = leadTier(lead);
   const fmtDT = (iso) => {
@@ -978,9 +979,22 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
           <div><span>no funil</span><b>{lead.createdAt ? `${Math.max(0, Math.floor((Date.now() - new Date(lead.createdAt)) / 86400000))} dias · ${lead.stage || "sem etapa"}` : lead.stage || "—"}</b></div>
           <div><span>anúncios</span><b>{checklist.find((c) => c.key === "listings")?.value || lead.listings || "não informado"}</b></div>
         </div>
+        {lead.recapNote && <div className="inbox-client-section">
+          <div className="inbox-kicker">O que ficou combinado</div>
+          <p className="inbox-client-note">{lead.recapNote}</p>
+        </div>}
         <div className="inbox-client-section">
           <div className="inbox-kicker">Qualificação</div>
-          <p>{lead.recapNote || [pain?.label, ...checklist.filter((c) => c.value).map((c) => `${c.label}: ${c.value}`)].filter(Boolean).join(" · ") || "Sem qualificação registrada."}</p>
+          {pain || answered.length ? <dl className="inbox-qualification">
+            {pain && <div>
+              <dt>Dor do anúncio</dt>
+              <dd>{pain.label}</dd>
+            </div>}
+            {answered.map((c) => <div key={c.key}>
+              <dt>{c.label}</dt>
+              <dd>{c.value}</dd>
+            </div>)}
+          </dl> : <p>Sem qualificação registrada.</p>}
         </div>
         <div className="inbox-client-section">
           <div className="inbox-kicker">Próximo passo</div>

@@ -76,6 +76,13 @@ campos, gates de movimento e operações via API preservados.
 
 ## Telas navegáveis
 
+**Inbox · qualificação (15/09/2026):** revisão pontual do card lateral. Perguntas
+e respostas saíram do parágrafo concatenado para uma lista com hierarquia,
+divisores e quebra de texto. O combinado aparece em bloco próprio sem ocultar
+respostas. Conferidos desktop e celular de 390px, claro/escuro, resposta longa,
+edição e estado vazio com o preview `?shell=1&inbox=1&qualification=full#whatsapp`
+(variantes `note` e `empty`). Suíte da API, smoke SSR e build web passaram.
+
 | Rota | Arquivo | Tela (NAV) | Função | Componentes-chave | Revisão |
 |---|---|---|---|---|---|
 | `overview` | overview.jsx | Visão geral | placar do funil, metas e pace por pessoa (modelo ago/2026: réguas+donuts) | StatTile, IcpCard, charts, period-picker | ✓ padronização + funcional + passe fino (ago/2026) |

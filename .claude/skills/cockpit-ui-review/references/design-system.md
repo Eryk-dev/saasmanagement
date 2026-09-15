@@ -232,3 +232,7 @@ confirmação, `SecondaryButton` + `.inp` + `.tbl` criados.
   `Popover` e o cadastro de contato usa `Modal`.
 - O resumo do cliente fica visível; edição de qualificação/combinado e dados
   complementares ficam em seções expansíveis. Nenhum dado foi descartado.
+- Qualificação no card lateral (15/09): lista de perguntas com resposta abaixo,
+  em 12px/fg-3 e 13.5px/fg-1, respectivamente. Divisores usam `--line-1`;
+  respostas preservam quebras de linha e quebram e-mails longos. A dor do
+  anúncio tem rótulo próprio e o combinado fica separado das respostas.
