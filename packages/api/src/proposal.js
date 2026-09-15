@@ -80,6 +80,7 @@ export async function syncProposalLeadSnapshot(repo, proposal) {
   if (!lead) return proposal;
 
   const data = {
+    ...proposal.data,
     lead: { ...(proposal.data?.lead || {}) },
     answers: { ...(proposal.data?.answers || {}) },
   };

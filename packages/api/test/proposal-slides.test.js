@@ -67,6 +67,50 @@ test("apresentação C e preview usam apenas autopeças publicadas, sem mudar o 
   await app.close();
 });
 
+test("cases sobrevivem à abertura pelo closer, atualização do lead e compartilhamento do mesmo link", async (t) => {
+  const repo = await seedRepo();
+  const caseDoc = await repo.create("cases", {
+    name: "Auto Peças Teste", niche: "Autopeças", public: true, authorizedAt: "2026-09-01",
+    metrics: [{ value: "R$ 100 mil", label: "vendas", source: "painel", proofUrl: "https://interno/prova" }],
+  });
+  const lead = await repo.create("leads", { id: "ld_case_sync", saas: "leverads", name: "Ana", niche: "autopecas", amount: 0 });
+  const generated = await runNativeProposal(repo, lead, { template: "pt_leverads_slides" });
+  assert.equal(generated.ok, true);
+  const originalCases = structuredClone(generated.proposal.data.cases);
+  assert.equal(originalCases.length, 1);
+  assert.equal(originalCases[0].metrics[0].proofUrl, undefined);
+  // Gerar o deck atualiza o valor do lead. A primeira abertura já sincroniza
+  // data.lead.amount, que antes descartava os outros campos de data.
+  assert.notEqual((await repo.get("leads", lead.id)).amount, generated.proposal.data.lead.amount);
+  const app = Fastify();
+  t.after(() => app.close());
+  registerProposalRoutes(app, repo);
+  const editUrl = `/p/${generated.proposal.id}?k=${generated.proposal.editKey}`;
+  assert.equal((await app.inject({ url: editUrl })).statusCode, 200);
+  let parent = await repo.get("proposals", generated.proposal.id);
+  assert.deepEqual(parent.data.cases, originalCases, "abrir o deck mantém o snapshot dos cases");
+  await repo.update("proposals", parent.id, { state: { ...parent.state, deckC: cfgBase } });
+  parent = await repo.get("proposals", parent.id);
+  const sent = await shareProposalOffer(repo, parent, 1);
+  assert.equal(sent.ok, true);
+  assert.deepEqual(sent.proposal.data.cases, originalCases);
+  const sentOffer = structuredClone(sent.proposal.state.deckOferta);
+
+  await repo.update("leads", lead.id, { company: "Auto Peças Nova" });
+  await repo.update("cases", caseDoc.id, { name: "Nome alterado no cadastro central" });
+  await app.inject({ url: editUrl });
+  parent = await repo.get("proposals", parent.id);
+  assert.equal(parent.data.lead.company, "Auto Peças Nova");
+  assert.deepEqual(parent.data.cases, originalCases, "atualização do lead preserva a prova já selecionada");
+  const reshared = await shareProposalOffer(repo, parent, 1);
+  assert.equal(reshared.proposal.id, sent.proposal.id, "correção mantém o link enviado");
+  assert.deepEqual(reshared.proposal.data.cases, originalCases);
+  assert.deepEqual(reshared.proposal.state.deckOferta, sentOffer);
+  const clientPage = await app.inject({ url: `/p/${sent.proposal.id}?from=cockpit` });
+  assert.match(clientPage.body, /"name":"Auto Peças Teste"/);
+  assert.doesNotMatch(clientPage.body, /Nome alterado no cadastro central|https:\/\/interno\/prova/);
+});
+
 test("migração: o deck de slides nasce selecionável e com o catálogo do deck padrão; idempotente", async () => {
   const repo = await seedRepo();
   const t = await repo.get("proposal_templates", "pt_leverads_slides");

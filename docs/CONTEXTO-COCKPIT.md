@@ -200,6 +200,9 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   autorização e publicação. Propostas já geradas guardam cópias em `data.cases`:
   atualizar o case central não altera essas cópias; correções nelas passam pela
   API REST e preservam `state`, preços e demais dados da proposta.
+  A sincronização dos dados do lead ao abrir o modo closer preserva os demais
+  campos de `data`, incluindo `cases`; o compartilhamento copia esse snapshot
+  para o mesmo link do cliente. Cobertura: `proposal-slides.test.js`.
 
 - **Resumo vivo da apresentação C (15/09/2026):** o texto abaixo dos cases
   recebe `leveradsPresentationResults()` ao servir o HTML, inclusive em
