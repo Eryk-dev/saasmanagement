@@ -495,8 +495,10 @@ export async function runNativeProposal(repo, lead, opts = {}) {
   // todo o resto: o link já enviado não pode mudar de prova depois. Só case
   // público e autorizado entra (cases.js); sem nenhum, o slide 06 fica nos
   // colchetes, que é o estado honesto.
+  // Deck C da LeverAds: seleção só de autopeças (Leo, 15/09).
   try {
-    data.cases = pickCases(await repo.list("cases"), { niche: data.answers?.niche || "", limit: 4 }).map(publicCase);
+    const autopecas = template.layout === "slides" && lead.saas === "leverads";
+    data.cases = pickCases(await repo.list("cases"), { niche: autopecas ? "autopecas" : data.answers?.niche || "", strictNiche: autopecas, limit: 4 }).map(publicCase);
   } catch { data.cases = []; }
   const calc = { ...CALC_DEFAULTS, ...(template.calc || {}) };
   let proposal;

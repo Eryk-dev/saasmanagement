@@ -521,7 +521,7 @@ const FOTOS = {
 // cada número, pra que o closer veja na tela o que falta autorizar em vez de um
 // slide que some.
 const CASE_VAZIO = `
-    <div style="background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:32px;display:flex;flex-direction:column;gap:14px">
+    <div style="background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:24px;display:flex;flex-direction:column;gap:12px">
       <div style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">[CLIENTE] · [NICHO]</div>
       <div style="font-size:54px;font-weight:700;letter-spacing:-0.03em;line-height:1;color:var(--brand);font-variant-numeric:tabular-nums">[R$ xx mil]</div>
       <div style="font-size:25px;color:var(--ink-muted);line-height:1.35">gerado por anúncios da Lever (todo o período)</div>
@@ -729,18 +729,18 @@ const SLIDES = `
   </div>
 </section>
 
-<section data-if="resultados" data-label="Quem já está dentro" data-screen-label="06 Resultados" data-speaker-notes="Cases escolhidos pelo nicho deste cliente. Sem case do nicho, entram os mais fortes. Sem case nenhum publicado, a tela volta pros colchetes. Feche com o resultado agregado: R$ 8 mi faturados, R$ 1 mi vindo dos anúncios criados pela plataforma e 12% do faturamento." style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding-bottom:24px;border-bottom:1px solid var(--line);margin-bottom:28px">
+<section data-if="resultados" data-label="Quem já está dentro" data-screen-label="06 Resultados" data-speaker-notes="Cases escolhidos pelo nicho deste cliente. Sem case do nicho, entram os mais fortes. Sem case nenhum publicado, a tela volta pros colchetes. Feche com os totais atualizados do painel: faturamento dos clientes, receita dos anúncios e participação no mesmo período." style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:72px 112px 80px;display:flex;flex-direction:column">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding-bottom:24px;border-bottom:1px solid var(--line);margin-bottom:20px">
     <span style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">Quem já está dentro</span>
     <span style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">06</span>
   </div>
-  <h2 style="margin:0 0 16px;font-size:54px;line-height:1.05;letter-spacing:-0.025em;font-weight:700;text-wrap:balance">Sellers com a mesma dor que a sua. <span style="color:var(--brand)">O que mudou.</span></h2>
-  <p style="margin:0 0 28px;font-size:24px;line-height:1.45;color:var(--ink-muted)">Acumulado desde o início de cada cliente na Lever. Tempo e custo pela mesma régua: 10 minutos por anúncio, ao custo de um funcionário de R$ 3.000 em 44 horas semanais.</p>
+  <h2 style="margin:0 0 16px;font-size:52px;line-height:1.05;letter-spacing:-0.025em;font-weight:700;text-wrap:balance">Sellers com a mesma dor que a sua. <span style="color:var(--brand)">O que mudou.</span></h2>
+  <p style="margin:0 0 20px;font-size:24px;line-height:1.45;color:var(--ink-muted)">Acumulado desde o início de cada cliente na Lever. Tempo e custo pela mesma régua: 10 minutos por anúncio, ao custo de um funcionário de R$ 3.000 em 44 horas semanais.</p>
   <div style="flex:1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px">
     <div data-cases style="display:contents"></div>
     <div data-cases-fallback style="display:contents">${CASE_VAZIO.repeat(4)}</div>
   </div>
-  <p style="margin:28px 0 0;font-size:36px;line-height:1.3;letter-spacing:-0.02em;font-weight:500;text-wrap:pretty">O resultado: nossos clientes já faturaram <strong style="font-weight:700">R$ 8 mi</strong> dentro da Lever. E <strong style="font-weight:700">R$ 1 mi</strong> disso veio de anúncios que a própria plataforma criou. <strong style="font-weight:700;color:var(--brand)">12% do faturamento deles</strong> não existiria sem o nosso método.</p>
+  <!--RESULTADOS_VIVOS-->
 </section>
 
 <section data-label="Entregáveis" data-screen-label="07 Entregáveis" data-speaker-notes="Recapitule item a item o que entra no plano montado no configurador. É a ponte para o preço." style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
@@ -1082,7 +1082,22 @@ function cfgScreen() {
 </section>`;
 }
 
-export function proposalSlidesPageHtml(p, { editable = false, previewBanner = false, catalog = null, suggested = "" } = {}) {
+// Só números conferidos pelo servidor. Sem cache válido, não reutilizar os
+// antigos R$ 8 mi / R$ 1 mi / 12% como se fossem resultados atuais.
+function presentationResultsHtml(results) {
+  if (!results) return '<p style="margin:24px 0 0;font-size:24px;color:var(--ink-muted)">Resultados agregados temporariamente indisponíveis.</p>';
+  const money = (n) => "R$ " + new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 }).format(n >= 1e6 ? n / 1e6 : n >= 1e3 ? n / 1e3 : n) + (n >= 1e6 ? " mi" : n >= 1e3 ? " mil" : "");
+  const pct = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 }).format(results.participation) + "%";
+  const updated = new Date(results.updatedAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
+  const since = results.periodStart ? results.periodStart.split("-").reverse().join("/") : "";
+  const exact = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+  return `<div data-live-results style="margin-top:24px" title="${escHtml(exact.format(results.gmv) + ' de faturamento; ' + exact.format(results.generated) + ' em anúncios da LeverAds. Mesma cobertura por cliente, na janela de até 180 dias do painel.')}">
+    <p style="margin:0;font-size:34px;line-height:1.3;letter-spacing:-0.02em;font-weight:500;text-wrap:pretty">O resultado: no período acompanhado, nossos clientes faturaram <strong>${money(results.gmv)}</strong>. Desse total, <strong>${money(results.generated)}</strong> vieram de anúncios criados pela LeverAds — <strong style="color:var(--brand)">${pct} do faturamento deles</strong>.</p>
+    <p style="margin:10px 0 0;font-size:18px;line-height:1.3;color:var(--ink-muted)">Fonte: painel LeverAds · período acompanhado por cliente${since ? ' · base desde ' + escHtml(since) : ''} · atualizado em ${escHtml(updated)}</p>
+  </div>`;
+}
+
+export function proposalSlidesPageHtml(p, { editable = false, previewBanner = false, catalog = null, suggested = "", results = null } = {}) {
   const cfg = deckConfig(p, { suggested });
   const slim = slimCatalog(catalog || {});
   // Link do CLIENTE: a oferta vai congelada no snapshot (shareProposalOffer) —
@@ -1119,7 +1134,7 @@ export function proposalSlidesPageHtml(p, { editable = false, previewBanner = fa
 <body>
 ${previewBanner ? '<div class="fita">Pré-visualização do template · nada aqui é salvo</div>' : ""}
 <div class="stage">
-  <div class="canvas" id="canvas">${editable ? cfgScreen() : ""}${SLIDES}</div>
+  <div class="canvas" id="canvas">${editable ? cfgScreen() : ""}${SLIDES.replace("<!--RESULTADOS_VIVOS-->", presentationResultsHtml(results))}</div>
 </div>
 <div class="hud" id="hud">
   <button type="button" data-act="prev" aria-label="Slide anterior">‹</button>
@@ -1181,7 +1196,7 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
   // todo mundo. Sem logo, o card é o de sempre.
   function cardCase(c) {
     var d = document.createElement("div");
-    d.setAttribute("style", "background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:32px;display:flex;flex-direction:column;gap:14px;min-width:0");
+    d.setAttribute("style", "background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:24px;display:flex;flex-direction:column;gap:12px;min-width:0");
     var metricas = c.metrics || [];
     var m = metricas[0] || {};
     if (c.logoUrl) {

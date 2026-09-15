@@ -10,7 +10,7 @@ import { pickCases, publicCase } from "./cases.js";
 import { applyCatalog, catalogAmount, catalogUI, activeProduct } from "./proposal-catalog.js";
 import { proposalPageHtml } from "./proposal-page.js";
 import { proposalSlidesPageHtml, deckConfig } from "./proposal-slides-page.js";
-import { leveradsResults } from "./leverads-results.js";
+import { leveradsResults, leveradsPresentationResults } from "./leverads-results.js";
 import { makeRateLimiter } from "./forms.js";
 import { convertWonLead } from "./routes.js";
 import { logActivity, applyStageMove } from "./lead-flow.js";
@@ -31,6 +31,7 @@ function renderProposal(p, { editable = false, previewBanner = false } = {}) {
       editable, previewBanner,
       catalog: (p.calc && p.calc.catalog) || null,
       suggested: activeProduct(p),
+      results: !p.saas || p.saas === "leverads" ? leveradsPresentationResults() : null,
     });
   }
   const transformed = applyCatalog(p);
@@ -52,6 +53,7 @@ function renderProposal(p, { editable = false, previewBanner = false } = {}) {
 function previewFromTemplate(t, { data, state, answers, cases } = {}) {
   return {
     id: "preview",
+    saas: t.saas || "",
     name: t.name || "Proposta",
     layout: t.layout || "",
     theme: t.theme || {},
@@ -116,10 +118,11 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     }
     if (typeof q.volume === "string" && (t.calc?.volumeMid || {})[q.volume] != null) fake.state.volume = q.volume;
     if (typeof q.niche === "string" && q.niche) fake.data.answers.niche = q.niche.slice(0, 40);
-    // Preview mostra os cases DE VERDADE (escolhidos pelo nicho da query): é
-    // aqui que o closer confere como o slide 06 vai sair na call.
+    // Preview usa a mesma seleção das novas propostas: só autopeças no deck C
+    // de LeverAds, nicho da query nos outros decks.
     try {
-      fake.data.cases = pickCases(await repo.list("cases"), { niche: fake.data.answers.niche || "", limit: 4 }).map(publicCase);
+      const autopecas = t.layout === "slides" && t.saas === "leverads";
+      fake.data.cases = pickCases(await repo.list("cases"), { niche: autopecas ? "autopecas" : fake.data.answers.niche || "", strictNiche: autopecas, limit: 4 }).map(publicCase);
     } catch { fake.data.cases = []; }
     if (typeof q.product === "string") fake.state.product = q.product.slice(0, 20);
     if (typeof q.pain === "string") fake.state.pain = q.pain.slice(0, 8);
