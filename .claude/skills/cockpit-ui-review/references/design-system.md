@@ -202,3 +202,13 @@ confirmação, `SecondaryButton` + `.inp` + `.tbl` criados.
 | Contraste: fg-4 em 10px ≈ 2.9:1 (checklist pede 4.5:1) | kickers/fineprints do app inteiro | DECISÃO DO LEO: escurecer `--fg-4` (claro) ou aceitar como micro-texto decorativo |
 | Persistência de filtros locais (busca/aba por tela) | customers, forms, listas | padrão localStorage `cockpit_<tela>_<filtro>` como o Meu dia faz com a pessoa |
 | Auditoria de checklist completo (12 blocos) tela a tela | todas menos Meu dia | funcional global (estados/Esc/toast/destrutivas/busy) FEITO no app; resta o passe fino por tela seguindo a ordem do inventário |
+
+### Inbox — handoff de 14/09/2026
+
+- Lista de 250px, conversa flexível e card de 300px; abaixo de 1360px, o card
+  passa para baixo. No celular, lista e conversa são telas alternadas.
+- `wa-thread.jsx` recebe `variant="inbox"` para bolhas, identificação do robô
+  e respostas rápidas; os demais chats mantêm sua apresentação. Menus usam
+  `Popover` e o cadastro de contato usa `Modal`.
+- O resumo do cliente fica visível; edição de qualificação/combinado e dados
+  complementares ficam em seções expansíveis. Nenhum dado foi descartado.

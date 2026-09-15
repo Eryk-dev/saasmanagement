@@ -236,6 +236,14 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   no build de produção. A navegação saindo de Publicidade foi conferida após
   corrigir o cleanup do efeito de `DeliveryRulesCard`.
 
+- **Inbox (14/09/2026):** `whatsapp.jsx` + `whatsapp.css` seguem a prancha do
+  handoff, com lista/chat/card responsivos. O filtro “Sem resposta” usa
+  `lastDir === "in"`, como `awaiting` da API; “Aguardando cliente” guarda a
+  fila de saída. Cadastro e vínculo usam o CRUD de leads e `waLinkThread`
+  existentes. Preview fictício: `/?shell=1&inbox=1#whatsapp`; acrescente
+  `&empty=1` para vazio ou `&dark=1` para tema escuro. O smoke inclui Inbox
+  e mensagens do robô; envio e navegação também pedem conferência no browser.
+
 - **README (revisado em 14/09/2026):** as descrições antigas (SQLite, leitura
   aberta, MCP só como manual, seed demo) foram substituídas. Pendência registrada
   lá: o `packages/web/nginx.conf` do `docker-compose.yml` não faz proxy das rotas
