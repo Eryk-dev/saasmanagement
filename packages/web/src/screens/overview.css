@@ -6,6 +6,19 @@
 .vg-meta-card { padding: 24px 26px 16px; background: var(--bg-1); border: 1px solid var(--line-1); border-radius: var(--r-4); box-shadow: var(--shadow-card); min-width: 0; }
 .vg-meta-columns { display: flex; align-items: stretch; gap: 26px; flex-wrap: wrap; }
 .vg-meta-pace-marker { position: absolute; z-index: 2; left: 0; right: 0; height: 3px; border-top: 2px dashed var(--fg-1); background: var(--bg-1); box-shadow: 0 0 0 1px var(--bg-1); pointer-events: none; }
+.vg-meta-liquid-track { background: var(--bg-2); overflow: hidden; }
+.vg-meta-liquid { --meta-liquid-color: var(--accent); --meta-liquid-surface: color-mix(in srgb, var(--meta-liquid-color) 93%, var(--bg-1)); position: relative; flex-shrink: 0; color: var(--meta-liquid-surface); background: linear-gradient(to top, var(--meta-liquid-color), var(--meta-liquid-surface)); }
+.vg-meta-liquid-followup { --meta-liquid-color: var(--chart-1); opacity: .55; }
+.vg-meta-wave { position: absolute; width: 200%; height: 10px; left: 0; top: -5px; fill: currentColor; pointer-events: none; animation: vg-meta-wave 4s linear infinite; }
+.vg-meta-wave-back { top: -7px; opacity: .35; animation-duration: 6s; animation-direction: reverse; }
+.vg-meta-liquid-reflection { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.vg-meta-liquid-reflection::after { content: ""; position: absolute; inset: -50% 0; background: linear-gradient(165deg, transparent 35%, color-mix(in srgb, var(--bg-1) 16%, transparent) 50%, transparent 65%); animation: vg-meta-reflection 6s ease-in-out infinite; }
+@keyframes vg-meta-wave { to { transform: translateX(-50%); } }
+@keyframes vg-meta-reflection { 0% { transform: translateY(70%); opacity: 0; } 20%, 70% { opacity: 1; } 100% { transform: translateY(-70%); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .vg-meta-wave, .vg-meta-liquid-reflection::after { animation: none; }
+  .vg-meta-liquid-reflection { display: none; }
+}
 .vg-meta-story { flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 16px; }
 .vg-meta-numbers { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 4px; }
 .vg-sold { font-size: 52px; font-weight: 700; letter-spacing: -.04em; line-height: 1; overflow-wrap: anywhere; }
