@@ -561,6 +561,11 @@ const SLIDES = `
       <div style="font-size:34px;font-weight:600;color:var(--brand);margin-bottom:34px;letter-spacing:-0.015em">Longe disso.</div>
       <p style="margin:0 0 22px;font-size:28px;line-height:1.5;color:var(--ink-muted);text-wrap:pretty">A Lever foi feita de seller pra seller. Ninguém aqui aprendeu marketplace em curso: a gente construiu uma operação de verdade, do primeiro barracão ao galpão de hoje, girando produto todo dia.</p>
       <p style="margin:0;font-size:28px;line-height:1.5;color:var(--ink-muted);text-wrap:pretty">Cada fluxo dentro da plataforma nasceu de uma dor nossa. A dor de uma operação que fatura dezenas de milhões por ano e precisava crescer sem inchar a equipe.</p>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:32px">
+        <div style="background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:20px"><div style="font-size:40px;font-weight:700;letter-spacing:-0.03em;line-height:1;font-variant-numeric:tabular-nums">+R$ 30 mi</div><div style="font-size:20px;line-height:1.3;color:var(--ink-muted);margin-top:10px">de faturamento próprio em 2026</div></div>
+        <div style="background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:20px"><div style="font-size:40px;font-weight:700;letter-spacing:-0.03em;line-height:1;font-variant-numeric:tabular-nums">+10 mil</div><div style="font-size:20px;line-height:1.3;color:var(--ink-muted);margin-top:10px">pedidos por mês</div></div>
+        <div style="background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:20px"><div style="font-size:40px;font-weight:700;letter-spacing:-0.03em;line-height:1;font-variant-numeric:tabular-nums">+10 anos</div><div style="font-size:20px;line-height:1.3;color:var(--ink-muted);margin-top:10px">de marketplace</div></div>
+      </div>
     </div>
     <div style="min-width:0;display:flex;flex-direction:column;gap:16px">
       <div style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">A operação por dentro</div>
@@ -571,21 +576,6 @@ const SLIDES = `
       </div>
       <div style="font-size:24px;color:var(--ink-faint);line-height:1.45">Milhares de peças girando todo dia. A operação que virou ferramenta.</div>
     </div>
-  </div>
-</section>
-
-<section data-label="A operação em números" data-screen-label="01b Números" data-speaker-notes="Prova em número. R$ 8 mi faturados pelos clientes dentro da Lever, R$ 1 mi vindo de anúncios criados pela plataforma. Deixe o 12% no ar antes de virar o slide." style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding-bottom:24px;border-bottom:1px solid var(--line);margin-bottom:56px">
-    <span style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">A operação em números</span>
-    <span style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">01</span>
-  </div>
-  <div style="flex:1;display:flex;flex-direction:column;justify-content:center">
-  <p style="margin:0 0 64px;font-size:52px;line-height:1.25;letter-spacing:-0.02em;font-weight:500;max-width:1500px;text-wrap:pretty">O resultado: nossos clientes já faturaram <strong style="font-weight:700">R$ 8 mi</strong> dentro da Lever. E <strong style="font-weight:700">R$ 1 mi</strong> disso veio de anúncios que a própria plataforma criou. <strong style="font-weight:700;color:var(--brand)">12% do faturamento deles</strong> não existiria sem o nosso método.</p>
-  <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px">
-    <div style="background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:36px"><div style="font-size:68px;font-weight:700;letter-spacing:-0.03em;line-height:1;font-variant-numeric:tabular-nums">+R$ 30 mi</div><div style="font-size:26px;color:var(--ink-muted);margin-top:14px">de faturamento próprio em 2026</div></div>
-    <div style="background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:36px"><div style="font-size:68px;font-weight:700;letter-spacing:-0.03em;line-height:1;font-variant-numeric:tabular-nums">+10 mil</div><div style="font-size:26px;color:var(--ink-muted);margin-top:14px">pedidos por mês</div></div>
-    <div style="background:var(--paper-card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-card);padding:36px"><div style="font-size:68px;font-weight:700;letter-spacing:-0.03em;line-height:1;font-variant-numeric:tabular-nums">+10 anos</div><div style="font-size:26px;color:var(--ink-muted);margin-top:14px">de marketplace</div></div>
-  </div>
   </div>
 </section>
 
@@ -739,17 +729,18 @@ const SLIDES = `
   </div>
 </section>
 
-<section data-if="resultados" data-label="Quem já está dentro" data-screen-label="06 Resultados" data-speaker-notes="Cases escolhidos pelo nicho deste cliente. Sem case do nicho, entram os mais fortes. Sem case nenhum publicado, a tela volta pros colchetes." style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding-bottom:24px;border-bottom:1px solid var(--line);margin-bottom:44px">
+<section data-if="resultados" data-label="Quem já está dentro" data-screen-label="06 Resultados" data-speaker-notes="Cases escolhidos pelo nicho deste cliente. Sem case do nicho, entram os mais fortes. Sem case nenhum publicado, a tela volta pros colchetes. Feche com o resultado agregado: R$ 8 mi faturados, R$ 1 mi vindo dos anúncios criados pela plataforma e 12% do faturamento." style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding-bottom:24px;border-bottom:1px solid var(--line);margin-bottom:28px">
     <span style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">Quem já está dentro</span>
     <span style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">06</span>
   </div>
-  <h2 style="margin:0 0 16px;font-size:60px;line-height:1.05;letter-spacing:-0.025em;font-weight:700;max-width:1300px;text-wrap:balance">Sellers com a mesma dor que a sua. <span style="color:var(--brand)">O que mudou.</span></h2>
-  <p style="margin:0 0 44px;font-size:28px;line-height:1.45;color:var(--ink-muted)">Acumulado desde o início de cada cliente na Lever. Tempo e custo pela mesma régua: 10 minutos por anúncio, ao custo de um funcionário de R$ 3.000 em 44 horas semanais.</p>
+  <h2 style="margin:0 0 16px;font-size:54px;line-height:1.05;letter-spacing:-0.025em;font-weight:700;text-wrap:balance">Sellers com a mesma dor que a sua. <span style="color:var(--brand)">O que mudou.</span></h2>
+  <p style="margin:0 0 28px;font-size:24px;line-height:1.45;color:var(--ink-muted)">Acumulado desde o início de cada cliente na Lever. Tempo e custo pela mesma régua: 10 minutos por anúncio, ao custo de um funcionário de R$ 3.000 em 44 horas semanais.</p>
   <div style="flex:1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px">
     <div data-cases style="display:contents"></div>
     <div data-cases-fallback style="display:contents">${CASE_VAZIO.repeat(4)}</div>
   </div>
+  <p style="margin:28px 0 0;font-size:36px;line-height:1.3;letter-spacing:-0.02em;font-weight:500;text-wrap:pretty">O resultado: nossos clientes já faturaram <strong style="font-weight:700">R$ 8 mi</strong> dentro da Lever. E <strong style="font-weight:700">R$ 1 mi</strong> disso veio de anúncios que a própria plataforma criou. <strong style="font-weight:700;color:var(--brand)">12% do faturamento deles</strong> não existiria sem o nosso método.</p>
 </section>
 
 <section data-label="Entregáveis" data-screen-label="07 Entregáveis" data-speaker-notes="Recapitule item a item o que entra no plano montado no configurador. É a ponte para o preço." style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
