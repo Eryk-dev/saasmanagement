@@ -894,6 +894,28 @@ try {
     if (L.sectionOf({ ...respondido, status: "pending_customer", sla: { ...respondido.sla, pausedAt: "2026-09-14T14:00:00Z" } }, agora) !== "paused") throw new Error("aguardando o cliente vai pra seção de pausados");
     const lista = renderToString(wrap(React.createElement(L.TicketsList, { tickets: [base, { ...respondido, id: "b", number: 2, subject: "Outro" }].map((t, i) => ({ id: t.id || "a", number: t.number || 1, subject: t.subject || "Fora do ar", ...t })), agentName: (x) => x, onOpen() {}, now: agora })));
     if (!lista.includes("SLA estourado") || !lista.includes("Fora do ar")) throw new Error("a lista não montou as seções");
+    // Meu atendimento (15/09): fila e risco pelo responsável atual; SLA cumprido
+    // só conta resolvido dentro da janela; 1ª resposta é mediana do tempo corrido.
+    {
+      const resolvido = (id, assignee, estourou, resolvedAt = "2026-09-13T12:00:00Z") => ({ id, assignee, status: "resolved", createdAt: "2026-09-13T10:00:00Z",
+        sla: { firstResponseDue: "2026-09-13T11:00:00Z", firstResponseAt: "2026-09-13T10:30:00Z", resolutionDue: "2026-09-13T18:00:00Z", resolvedAt, breached: { resolution: estourou } } });
+      const fila = [
+        { ...base, id: "q1", assignee: "lia", priority: "urgent" },
+        { ...respondido, id: "q2", assignee: "lia", status: "pending_customer" },
+        { ...respondido, id: "q3", assignee: "tiago" },
+        resolvido("r1", "lia", false), resolvido("r2", "lia", true), resolvido("r3", "tiago", false),
+        resolvido("velho", "lia", true, "2026-07-01T12:00:00Z"),
+      ];
+      const st = T.agentStats(fila, "lia", agora);
+      if (st.queue !== 2 || st.waiting !== 1 || st.urgent !== 1) throw new Error(`fila do atendente errada: ${JSON.stringify(st)}`);
+      if (st.breached !== 1) throw new Error("o ticket com 1ª resposta vencida precisa contar como estourado");
+      if (st.me.slaBase !== 2 || st.me.slaRate !== 0.5) throw new Error(`SLA cumprido fora da janela ou mal contado: ${JSON.stringify(st.me)}`);
+      if (st.team.slaRate == null || Math.abs(st.team.slaRate - 2 / 3) > 1e-9) throw new Error("a régua do time é o produto inteiro na mesma janela");
+      if (st.me.firstResponseMs !== 30 * 60000) throw new Error("1ª resposta é a mediana do tempo corrido");
+      const K = await server.ssrLoadModule("/src/screens/tickets/agent-kpis.jsx");
+      const bloco = renderToString(wrap(React.createElement(K.AgentKpis, { stats: st, user: { id: "lia", name: "Lia Atendente" }, productName: "LeverAds", onQueue() {}, onRisk() {} })));
+      for (const must of ["Lia Atendente", "seu atendimento em LeverAds", "últimos 30 dias", "Na fila", "Em risco", "50%", "time 67%", "30 min", "agent-meter-mark"]) if (!bloco.includes(must)) throw new Error(`o bloco Meu atendimento não mostra "${must}"`);
+    }
     // Respostas rápidas no chat: a "/" só abre a lista no começo da linha ou depois de espaço.
     const QR = await server.ssrLoadModule("/src/screens/tickets/quick-reply-picker.jsx");
     const tok = QR.slashTokenAt("Oi /boas", 8);

@@ -4,12 +4,12 @@ import { api } from "../../lib/api.js";
 import { useData } from "../../data.jsx";
 import { EmptyState, PrimaryButton, toast } from "../../atoms.jsx";
 import { PageHead, Segmented } from "../../components/viz.jsx";
-import { AvisoTopo, BarraFiltros } from "../../components/story.jsx";
+import { BarraFiltros } from "../../components/story.jsx";
 import { SearchInput } from "../../components/search-input.jsx";
 import { useActiveSaas } from "../../lib/workspace.js";
 import { currentUser } from "../../lib/users.js";
 import { useIsMobile } from "../../lib/responsive.js";
-import { TICKET_STATUSES, STATUS_BY_KEY, PRIORITY_RANK, kindOf, isDone, slaState, supportScope, fold, noScopeHint } from "../../lib/tickets.js";
+import { TICKET_STATUSES, STATUS_BY_KEY, PRIORITY_RANK, kindOf, isDone, slaState, agentStats, supportScope, fold, noScopeHint } from "../../lib/tickets.js";
 import { useBoardDnd } from "../../components/kanban/dnd.js";
 import { useTicketsStore } from "./store.js";
 import { parseTicketHash, openTicketHash, clearTicketHash, useTicketHash } from "./hash.js";
@@ -17,6 +17,7 @@ import { TicketsBoard } from "./board.jsx";
 import { TicketsList } from "./list-view.jsx";
 import { TicketDetail } from "./detail.jsx";
 import { NewTicketModal } from "./new-ticket.jsx";
+import { AgentKpis } from "./agent-kpis.jsx";
 
 // Suporte · fila de tickets do produto ativo. Mesmo desenho das Tarefas: a
 // tela busca a própria lista (fora do SEED), escuta o cockpit-change, muda com
@@ -142,16 +143,10 @@ export function TicketsScreen() {
   }, [mine, q]);
   const counts = useMemo(() => Object.fromEntries(FILTERS.map((f) => [f, searched.filter((t) => matchesFilter(t, f, { me, now })).length])), [searched, me, now]);
   const visible = useMemo(() => searched.filter((t) => matchesFilter(t, filter, { me, now })).sort(queueOrder(now)), [searched, filter, me, now]);
-  const risk = useMemo(() => {
+  const totals = useMemo(() => {
     const open = mine.filter((t) => kindOf(t.status) !== "done");
-    const states = open.map((t) => slaState(t, now).overall);
-    return {
-      breached: states.filter((s) => s === "breached").length,
-      warning: states.filter((s) => s === "warning").length,
-      unassigned: open.filter((t) => !t.assignee).length,
-      open: open.length,
-    };
-  }, [mine, now]);
+    return { unassigned: open.filter((t) => !t.assignee).length, open: open.length };
+  }, [mine]);
   const columns = useMemo(() => {
     const done = { ...DONE_COLUMN, tickets: searched.filter((t) => inDoneColumn(t, filter, { me })).sort((a, b) => doneAt(b) - doneAt(a)) };
     if (filter === "done") return [done];
@@ -161,6 +156,7 @@ export function TicketsScreen() {
   }, [searched, visible, filter, me]);
   const agentName = useCallback((id) => (agents || []).find((a) => a.id === id)?.name || id || "—", [agents]);
   const byId = useMemo(() => new Map(mine.map((t) => [t.id, t])), [mine]);
+  const myStats = useMemo(() => (me ? agentStats(mine, me, now) : null), [mine, me, now]);
 
   // ── Painel ───────────────────────────────────────────────────────────────
   useTicketHash((id) => setPanelId(id));
@@ -210,16 +206,8 @@ export function TicketsScreen() {
     { id: "all", label: "Todos", n: counts.all },
   ];
 
-  const aviso = risk.breached > 0
-    ? { tom: "neg", titulo: `${risk.breached} ${risk.breached === 1 ? "ticket estourou" : "tickets estouraram"} o SLA`, nota: risk.warning ? `e ${risk.warning} ${risk.warning === 1 ? "vence" : "vencem"} em breve` : "" }
-    : risk.warning > 0
-      ? { tom: "warn", titulo: `${risk.warning} ${risk.warning === 1 ? "ticket vence" : "tickets vencem"} o prazo em breve`, nota: "passaram de 80% do SLA" }
-      : risk.unassigned > 0
-        ? { tom: "info", titulo: `${risk.unassigned} ${risk.unassigned === 1 ? "ticket sem responsável" : "tickets sem responsável"}`, nota: "ninguém foi atribuído ainda", filtro: "unassigned" }
-        : null;
-
   const sub = !handles ? "fila de suporte"
-    : ["fila de suporte", `${risk.open} ${risk.open === 1 ? "aberto" : "abertos"}`, risk.unassigned ? `${risk.unassigned} sem responsável` : null].filter(Boolean).join(" · ");
+    : ["fila de suporte", `${totals.open} ${totals.open === 1 ? "aberto" : "abertos"}`, totals.unassigned ? `${totals.unassigned} sem responsável` : null].filter(Boolean).join(" · ");
 
   const panel = panelId && handles ? (
     <TicketDetail key={panelId} ticketId={panelId} summary={byId.get(panelId)} saasId={saasId} agents={agents} settings={settings} mobile={isMobile}
@@ -239,10 +227,9 @@ export function TicketsScreen() {
           hint={noScopeHint(product?.name)} />
       ) : (
         <>
-          {aviso && (
+          {state.loaded && mine.length > 0 && myStats && (
             <div style={{ padding: "14px var(--pad-x) 0", flexShrink: 0 }}>
-              <AvisoTopo tom={aviso.tom} titulo={aviso.titulo} nota={aviso.nota}
-                acao={{ label: "Ver na lista", onClick: () => { setFilter(aviso.filtro || "risk"); setView("list"); } }} />
+              <AgentKpis stats={myStats} user={currentUser()} productName={product?.name || ""} onQueue={() => setFilter("mine")} onRisk={() => { setFilter("mine"); setView("list"); }} />
             </div>
           )}
           <div className="support-bar">

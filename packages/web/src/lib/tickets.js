@@ -118,6 +118,45 @@ export function slaLabel(ticket, now = Date.now()) {
   return { tone: SLA_TONE[state] || SLA_TONE.ok, text: `${what} em ${distance(diff)}`, state };
 }
 
+// ── Números do atendente (bloco "Meu atendimento" da fila) ──────────────────
+// Conta pelo responsável ATUAL do ticket. Fila e risco são o agora; SLA
+// cumprido e 1ª resposta olham a janela de `days` e vêm com a régua do time
+// (o produto inteiro) do lado, pra o número ter com o que comparar.
+const DAY_MS = 86_400_000;
+const median = (xs) => {
+  if (!xs.length) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+function deliveryStats(list, now, days) {
+  const since = ms(now) - days * DAY_MS;
+  const resolved = list.filter((t) => isDone(t) && t.sla?.resolvedAt && ms(t.sla.resolvedAt) >= since);
+  const withSla = resolved.filter((t) => t.sla?.resolutionDue);
+  const met = withSla.filter((t) => { const s = slaState(t, now); return s.resolution !== "breached" && s.firstResponse !== "breached"; }).length;
+  const firstResponses = list
+    .filter((t) => t.sla?.firstResponseAt && t.createdAt && ms(t.createdAt) >= since)
+    .map((t) => ms(t.sla.firstResponseAt) - ms(t.createdAt))
+    .filter((v) => v >= 0);
+  return { resolved: resolved.length, slaBase: withSla.length, slaRate: withSla.length ? met / withSla.length : null, firstResponseMs: median(firstResponses) };
+}
+export function agentStats(tickets, me, now = Date.now(), { days = 30 } = {}) {
+  const all = tickets || [];
+  const mine = all.filter((t) => !!me && t.assignee === me);
+  const open = mine.filter((t) => !isDone(t));
+  const states = open.map((t) => slaState(t, now).overall);
+  return {
+    days,
+    queue: open.length,
+    waiting: open.filter((t) => kindOf(t.status) === "waiting").length,
+    urgent: open.filter((t) => t.priority === "urgent").length,
+    breached: states.filter((s) => s === "breached").length,
+    warning: states.filter((s) => s === "warning").length,
+    me: deliveryStats(mine, now, days),
+    team: deliveryStats(all, now, days),
+  };
+}
+
 // Espera em dias ("há 3 dias"), com --warn até 4 e --neg a partir de 5.
 export function waitingSince(iso, now = Date.now()) {
   if (!iso) return null;
