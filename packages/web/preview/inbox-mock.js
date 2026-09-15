@@ -31,7 +31,6 @@ export function setupInboxPreview(seed, params) {
     return { id, phone: id, name, company, leadId, saas: "leverads", waPhoneId: "preview-number", stage: lead?.stage, status, unread: direction === "in" ? 2 : 0, hasIn: true, lastAt: ago(hours), lastDir: direction, lastText: msgs.at(-1).text, lastOutAuthor: author || "leo", sdrHandoffAt: i === 2 ? ago(0.2) : null };
   });
   if (params.has("empty")) rows = [];
-  if (params.has("dark")) { document.body.dataset.theme = "dark"; localStorage.setItem("cockpit_theme", "dark"); }
 }
 
 function send(id, text) {

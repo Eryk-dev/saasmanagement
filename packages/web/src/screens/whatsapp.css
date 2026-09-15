@@ -46,6 +46,7 @@
 .inbox-conversation-menu > button, .inbox-conversation-menu > a { width: 100%; height: auto !important; min-height: 36px; padding: 8px 10px !important; border: 0 !important; border-radius: var(--r-2); text-align: left; font-size: 12.5px !important; font-weight: 500 !important; color: var(--fg-2); text-decoration: none; }
 .inbox-conversation-menu > :hover { background: var(--bg-2) !important; }
 .inbox-chat-history { flex: 1; min-height: 120px; display: flex; flex-direction: column; background: var(--bg-inset); }
+.inbox-bubbles::before { content: ""; flex: 1 0 0; }
 .inbox-bubble { padding: 9px 13px !important; border-radius: 12px !important; font-size: 13.5px !important; line-height: 1.45 !important; background: var(--bg-1) !important; color: var(--fg-1) !important; border: 1px solid var(--line-1); }
 .inbox-message[data-direction="out"] .inbox-bubble { background: var(--accent-soft) !important; border-color: var(--accent-line); }
 .inbox-message[data-bot="true"] .inbox-bubble { background: var(--inbox-bot-soft) !important; border-color: color-mix(in srgb, var(--inbox-bot) 38%, transparent); }

@@ -84,9 +84,10 @@ function App() {
 
 function PreviewTheme({ children }) {
   React.useEffect(() => {
-    if (marketingPreview) {
-      document.body.dataset.theme = params.get("theme") === "dark" ? "dark" : "light";
-      if (params.get("theme") === "dark") ["--accent", "--accent-hover", "--accent-soft", "--accent-line"].forEach((name) => document.body.style.removeProperty(name));
+    if (marketingPreview || params.has("inbox")) {
+      const dark = params.get("theme") === "dark" || params.has("dark");
+      document.body.dataset.theme = dark ? "dark" : "light";
+      if (dark) ["--accent", "--accent-hover", "--accent-soft", "--accent-line"].forEach((name) => document.body.style.removeProperty(name));
     }
   }, []);
   return children;
