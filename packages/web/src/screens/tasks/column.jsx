@@ -1,12 +1,12 @@
 import React from "react";
 import { Menu } from "../../components/menu.jsx";
+import { KanbanColumn } from "../../components/kanban/board.jsx";
 import { COLUMN_COLORS } from "../../lib/tasks.js";
 import { Icon } from "./icons.jsx";
 import { TaskCard, NewTaskCard } from "./card.jsx";
 import { rulesSummary } from "./rules.jsx";
 
 const { useState, useRef, useEffect } = React;
-const CUT = 60;
 
 function ColumnName({ name, editing, onStart, onSave }) {
   const ref = useRef(null);
@@ -18,31 +18,16 @@ function ColumnName({ name, editing, onStart, onSave }) {
         onBlur={(e) => onSave(e.target.value)} style={{ height: 26, fontSize: 13, fontWeight: 600, width: "100%", minWidth: 0 }} />
     );
   }
-  return <button type="button" onDoubleClick={onStart} title="Duplo clique renomeia" style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, textAlign: "left", color: "var(--fg-1)" }}>{name}</button>;
+  return <button type="button" onDoubleClick={onStart} title="Duplo clique renomeia" className="kb-col-name" style={{ textAlign: "left" }}>{name}</button>;
 }
 
-export function TaskColumn({ col, idx, count, cards, hiddenCount, usersById, labelColors, isDoneCol, collapsed, hideEmpty, fields, compact, sortManual, dnd, placeholder, dragging, composer, focusId, selection, renamingId, subCounts, blockedIds, actions, colActions }) {
-  const listRef = useRef(null);
+// Coluna do quadro de tarefas sobre a casca do Kanban: aqui fica só o que é
+// de tarefa (renomear, menu da coluna, regras, composer, ordem manual).
+export function TaskColumn({ col, idx, count, cards, hiddenCount, usersById, labelColors, isDoneCol, collapsed, hideEmpty, fields, compact, sortManual, dnd, composer, focusId, selection, renamingId, subCounts, blockedIds, actions, colActions }) {
   const rulesTitle = "Regras: " + rulesSummary(col.column?.rules, usersById, isDoneCol);
   const [menu, setMenu] = useState(null);
   const [editing, setEditing] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-  const over = placeholder && placeholder.colKey === col.key;
-  const shown = expanded ? cards : cards.slice(0, CUT);
-  const cut = cards.length - shown.length;
-
-  if (collapsed) {
-    return (
-      <div onClick={() => colActions.collapse(col.key, false)} title={`${col.name} · ${cards.length}. Clique para expandir`}
-        {...dnd.listDropProps(col.key, listRef, { canReorder: false })}
-        style={{ width: 44, flexShrink: 0, background: over ? "var(--accent-soft)" : "var(--bg-2)", borderRadius: "var(--r-4)", border: "1px solid " + (over ? "var(--accent-line)" : "transparent"), display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "12px 0", cursor: "pointer", minHeight: 160 }}>
-        <span className="mono tnum" style={{ fontSize: 11.5, fontWeight: 600, color: "var(--fg-3)" }}>{cards.length}</span>
-        <span className="tk-strip" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--fg-2)", maxHeight: 220, overflow: "hidden", textOverflow: "ellipsis" }}>{col.name}</span>
-        {col.color && <span style={{ width: 8, height: 8, borderRadius: 2, background: col.color }} />}
-        <span ref={listRef} data-col-list="1" style={{ display: "none" }} />
-      </div>
-    );
-  }
+  const canAdd = !col.virtual || !!col.dropPatch;
 
   const menuItems = [
     { label: "Renomear", onClick: () => setEditing(true) },
@@ -68,47 +53,42 @@ export function TaskColumn({ col, idx, count, cards, hiddenCount, usersById, lab
     { sep: true },
     { label: "Voltar a agrupar por coluna", onClick: () => colActions.ungroup() },
   ];
-  const ph = over && placeholder.index >= 0 && dragging ? <div key="ph" style={{ height: dragging.height || 56, border: "1px dashed var(--accent-line)", borderRadius: "var(--r-3)", background: "var(--accent-soft)", flexShrink: 0 }} /> : null;
-  const items = [];
-  shown.forEach((t, i) => {
-    if (ph && placeholder.index === i) items.push(ph);
-    items.push(
-      <TaskCard key={t.id} t={t} colKey={col.key} usersById={usersById} labelColors={labelColors}
-        done={!!t.completed} focused={focusId === t.id} selected={!!selection && selection.has(t.id)} renaming={renamingId === t.id}
-        blocked={blockedIds.has(t.id)} subDone={subCounts.get(t.id)?.done || 0} subTotal={subCounts.get(t.id)?.total || 0}
-        fields={fields} compact={compact} dragProps={dnd.cardDragProps} actions={actions} />,
-    );
-  });
-  if (ph && placeholder.index >= shown.length) items.push(ph);
+
+  const before = (col.color || col.column?.rules || isDoneCol) ? (
+    <>
+      {col.color && <span style={{ width: 8, height: 8, borderRadius: 2, background: col.color, flexShrink: 0 }} />}
+      {!collapsed && (col.column?.rules || isDoneCol) && <span title={rulesTitle} style={{ color: "var(--accent)", display: "inline-flex", flexShrink: 0 }}><Icon name="play" size={12} /></span>}
+    </>
+  ) : null;
 
   return (
-    <div style={{ width: "min(272px, 82vw)", flexShrink: 0, maxHeight: "100%", display: "flex", flexDirection: "column", background: "var(--bg-2)", borderRadius: "var(--r-4)", border: "1px solid " + (over ? "var(--accent-line)" : "transparent"), scrollSnapAlign: "start", transition: "border-color .12s" }}>
-      <div className="tk-col-head" style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 8px 6px 12px", flexShrink: 0 }}>
-        {col.color && <span style={{ width: 8, height: 8, borderRadius: 2, background: col.color, flexShrink: 0 }} />}
-        {(col.column?.rules || isDoneCol) && <span title={rulesTitle} style={{ color: "var(--accent)", display: "inline-flex", flexShrink: 0 }}><Icon name="play" size={12} /></span>}
-        <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
-          <ColumnName name={col.name} editing={editing && !col.virtual} onStart={() => { if (!col.virtual) setEditing(true); }} onSave={(v) => { setEditing(false); if (v != null && v.trim() && v.trim() !== col.name) colActions.rename(col.key, v.trim()); }} />
-          <span className="mono tnum dim" style={{ fontSize: 11.5, flexShrink: 0 }} title={hiddenCount ? `${hiddenCount} escondida(s) pelo filtro ou pela busca` : undefined}>{cards.length}{hiddenCount ? <span style={{ opacity: 0.7 }}> +{hiddenCount}</span> : null}</span>
-        </div>
-        <span className="tk-hover" style={{ display: "inline-flex", gap: 2, flexShrink: 0 }}>
-          {(!col.virtual || col.dropPatch) && <button type="button" title="Adicionar tarefa no topo" aria-label="Adicionar tarefa no topo" onClick={() => colActions.composer(col.key, "top")} style={{ width: 26, height: 26, borderRadius: 6, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="plus" size={14} /></button>}
-          <button type="button" title={col.virtual ? "Opções do grupo" : "Mais ações da coluna"} aria-label={col.virtual ? "Opções do grupo" : "Mais ações da coluna"} onClick={(e) => setMenu(e.currentTarget.getBoundingClientRect())} style={{ width: 26, height: 26, borderRadius: 6, color: "var(--fg-3)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="more" size={14} /></button>
-        </span>
-        {menu && <Menu anchor={menu} items={col.virtual ? virtualItems : menuItems} onClose={() => setMenu(null)} title={col.name} />}
-      </div>
-      <div ref={listRef} data-col-list="1" {...dnd.listDropProps(col.key, listRef, { canReorder: sortManual })}
-        style={{ flex: 1, minHeight: 60, overflowY: "auto", padding: "2px 10px 6px", display: "flex", flexDirection: "column", gap: 8 }}>
-        {composer && composer.position === "top" && <NewTaskCard onSave={(title) => actions.create(col.key, title, "top")} onCancel={() => colActions.composer(null)} />}
-        {items}
-        {cut > 0 && <button type="button" onClick={() => setExpanded(true)} style={{ fontSize: 12, color: "var(--accent)", fontWeight: 600, padding: "6px 0", textAlign: "left" }}>+{cut} tarefas</button>}
-        {expanded && cards.length > CUT && <button type="button" onClick={() => setExpanded(false)} style={{ fontSize: 12, color: "var(--fg-4)", padding: "4px 0", textAlign: "left" }}>mostrar menos</button>}
-        {cards.length === 0 && !composer && !ph && <div className="mono dim" style={{ fontSize: 11, textAlign: "center", padding: "22px 0" }}>{dragging ? "Solte aqui" : "arraste uma tarefa para cá"}</div>}
-        {composer && composer.position === "bottom" && <NewTaskCard onSave={(title) => actions.create(col.key, title, "bottom")} onCancel={() => colActions.composer(null)} />}
-      </div>
-      {(!col.virtual || col.dropPatch) && <button type="button" onClick={() => colActions.composer(col.key, "bottom")} style={{ display: "flex", alignItems: "center", gap: 6, margin: "0 6px 6px", padding: "8px 8px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 500, color: "var(--fg-3)", textAlign: "left", flexShrink: 0 }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; e.currentTarget.style.color = "var(--fg-1)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--fg-3)"; }}>
-        <Icon name="plus" size={14} /> Adicionar tarefa
-      </button>}
-    </div>
+    <>
+      <KanbanColumn colKey={col.key} dnd={dnd} label={col.name} items={cards} canReorder={sortManual}
+        collapsed={collapsed} onExpand={() => colActions.collapse(col.key, false)}
+        before={before}
+        title={<ColumnName name={col.name} editing={editing && !col.virtual} onStart={() => { if (!col.virtual) setEditing(true); }} onSave={(v) => { setEditing(false); if (v != null && v.trim() && v.trim() !== col.name) colActions.rename(col.key, v.trim()); }} />}
+        count={<span title={hiddenCount ? `${hiddenCount} escondida(s) pelo filtro ou pela busca` : undefined}>{cards.length}{hiddenCount ? <span style={{ opacity: 0.7 }}> +{hiddenCount}</span> : null}</span>}
+        actions={<>
+          {canAdd && <button type="button" className="kb-col-btn" title="Adicionar tarefa no topo" aria-label="Adicionar tarefa no topo" onClick={() => colActions.composer(col.key, "top")}><Icon name="plus" size={14} /></button>}
+          <button type="button" className="kb-col-btn" title={col.virtual ? "Opções do grupo" : "Mais ações da coluna"} aria-label={col.virtual ? "Opções do grupo" : "Mais ações da coluna"} onClick={(e) => setMenu(e.currentTarget.getBoundingClientRect())}><Icon name="more" size={14} /></button>
+        </>}
+        renderItem={(t) => (
+          <TaskCard key={t.id} t={t} colKey={col.key} usersById={usersById} labelColors={labelColors}
+            done={!!t.completed} focused={focusId === t.id} selected={!!selection && selection.has(t.id)} renaming={renamingId === t.id}
+            blocked={blockedIds.has(t.id)} subDone={subCounts.get(t.id)?.done || 0} subTotal={subCounts.get(t.id)?.total || 0}
+            fields={fields} compact={compact} dragProps={dnd.cardDragProps} actions={actions} />
+        )}
+        moreLabel={(n) => `+${n} tarefas`}
+        emptyText="arraste uma tarefa para cá"
+        top={composer && composer.position === "top" ? <NewTaskCard onSave={(title) => actions.create(col.key, title, "top")} onCancel={() => colActions.composer(null)} /> : null}
+        bottom={composer && composer.position === "bottom" ? <NewTaskCard onSave={(title) => actions.create(col.key, title, "bottom")} onCancel={() => colActions.composer(null)} /> : null}
+        footer={canAdd ? (
+          <button type="button" onClick={() => colActions.composer(col.key, "bottom")} style={{ display: "flex", alignItems: "center", gap: 6, margin: "0 6px 6px", padding: "8px 8px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 500, color: "var(--fg-3)", textAlign: "left", flexShrink: 0 }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; e.currentTarget.style.color = "var(--fg-1)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--fg-3)"; }}>
+            <Icon name="plus" size={14} /> Adicionar tarefa
+          </button>
+        ) : null} />
+      {menu && <Menu anchor={menu} items={col.virtual ? virtualItems : menuItems} onClose={() => setMenu(null)} title={col.name} />}
+    </>
   );
 }

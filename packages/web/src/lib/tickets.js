@@ -5,6 +5,7 @@
 // runner concordam sem a tela recalcular expediente.
 
 import { userById, currentUser } from "./users.js";
+import { COLUMN_COLORS } from "./tasks.js";
 
 export const TICKET_STATUSES = [
   { key: "new", label: "Novo", kind: "open", tone: "var(--info)" },
@@ -26,6 +27,17 @@ export const TICKET_PRIORITIES = [
 ];
 export const PRIORITY_BY_KEY = Object.fromEntries(TICKET_PRIORITIES.map((p) => [p.key, p]));
 export const PRIORITY_RANK = { urgent: 0, high: 1, normal: 2, low: 3 };
+
+// Categoria não tem cor salva: a cor sai do nome, na paleta das labels das
+// Tarefas, então a mesma categoria tem sempre a mesma cor em todo card.
+const LABEL_PALETTE = COLUMN_COLORS.filter(Boolean);
+export function categoryColor(name) {
+  const s = String(name || "");
+  if (!s) return "";
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return LABEL_PALETTE[h % LABEL_PALETTE.length];
+}
 
 export const CHANNEL_LABEL = { internal: "aberto pela equipe", portal: "portal do cliente", whatsapp: "WhatsApp", email: "e-mail" };
 

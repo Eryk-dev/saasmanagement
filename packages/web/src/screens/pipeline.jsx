@@ -16,6 +16,8 @@ import { mentoriaFit, mentoriaOfferLine, VERBA_RANK } from "../lib/mentoria.js";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
 import { useActiveSaas, pinActiveSaas } from "../lib/workspace.js";
 import { bizDay } from "../lib/format.js";
+import { KanbanBoard, KanbanColumn } from "../components/kanban/board.jsx";
+import { useBoardDnd } from "../components/kanban/dnd.js";
 // Pipeline — Kanban + Lista. Drag-and-drop between columns.
 // Funil unificado: os LEADS são os cards do pipeline (window.SEED.LEADS). Cada
 // lead já carrega seu `saas` + `stage`. Uma cópia local deixa o drag-and-drop
@@ -380,7 +382,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
       )}
 
       {view === "kanban" && (
-        <KanbanBoard
+        <PipelineBoard
           s={s}
           stages={visibleStages}
           byStage={boardRows}
@@ -542,8 +544,11 @@ function PersonFilter({ person, leads, onChange, me, como = "chips" }) {
 }
 
 // ─────────────────────────────────────────────── Kanban
-function KanbanBoard({ s, stages, byStage, fullByStage, sortMode, highlight, onMove, selected, setSelected, onOpenLead, wonLeads, showWon }) {
-  const [dragging, setDragging] = useStP(null);
+function PipelineBoard({ s, stages, byStage, fullByStage, sortMode, highlight, onMove, selected, setSelected, onOpenLead, wonLeads, showWon }) {
+  const boardRef = React.useRef(null);
+  // Arrastar e soltar da casca compartilhada (components/kanban). Um lead por
+  // vez: movimento com portão abre o modal, e a seleção tem a barra de massa.
+  const dnd = useBoardDnd({ boardRef, onDrop: ({ ids, toKey }) => ids.forEach((id) => onMove(id, toKey)) });
   // O resumo do Ganho entra na POSIÇÃO que o FUNIL declara pro ganho: logo depois
   // da última etapa VISÍVEL que vem ANTES do ganho na ordem do funil (Follow-up),
   // e a entrega (Integração) segue à direita dele. Ancorar por "última etapa de
@@ -558,21 +563,19 @@ function KanbanBoard({ s, stages, byStage, fullByStage, sortMode, highlight, onM
   return (
     // Grid de colunas IGUAIS (prancha, 14/09): o board era um flex com colunas
     // de 264px fixos, que deixava faixa vazia à direita com poucas etapas e
-    // rolava de lado com muitas. `grid-auto-columns` faz as duas coisas: enche
-    // a largura quando cabe e rola quando não cabe.
-    <div style={{ flex: 1, overflowX: "auto", paddingBottom: 8, display: "grid", gridAutoFlow: "column", gridAutoColumns: "minmax(240px, 1fr)", gap: 12, alignItems: "start" }}>
+    // rolava de lado com muitas. O layout "fill" da casca faz as duas coisas:
+    // enche a largura quando cabe e rola quando não cabe.
+    <KanbanBoard boardRef={boardRef} layout="fill">
       {stages.map((st, i) => (
         <React.Fragment key={st}>
-          <KanbanColumn
+          <StageColumn
             s={s}
             stage={st}
             cards={byStage[st] || []}
             todos={(fullByStage || byStage)[st] || []}
             sortMode={sortMode}
             highlight={highlight === st}
-            onDropCard={(id) => { onMove(id, st); setDragging(null); }}
-            dragging={dragging}
-            setDragging={setDragging}
+            dnd={dnd}
             selected={selected}
             setSelected={setSelected}
             onOpenLead={onOpenLead}
@@ -581,7 +584,7 @@ function KanbanBoard({ s, stages, byStage, fullByStage, sortMode, highlight, onM
         </React.Fragment>
       ))}
       {showWon && stages.length === 0 && <WonSummary leads={wonLeads} />}
-    </div>
+    </KanbanBoard>
   );
 }
 
@@ -638,9 +641,7 @@ function WonSummary({ leads }) {
   );
 }
 
-function KanbanColumn({ s, stage, cards, todos, sortMode, highlight, onDropCard, dragging, setDragging, selected, setSelected, onOpenLead }) {
-  const [over, setOver] = useStP(false);
-  const [expanded, setExpanded] = useStP(false);
+function StageColumn({ s, stage, cards, todos, sortMode, highlight, dnd, selected, setSelected, onOpenLead }) {
   // O cabeçalho (contagem, dinheiro, atraso) mede a ETAPA INTEIRA; o corpo
   // mostra o que a busca deixou. Senão buscar encolhe o funil na cara de quem
   // olha, e o board passa a mentir sobre o tamanho da etapa.
@@ -678,63 +679,37 @@ function KanbanColumn({ s, stage, cards, todos, sortMode, highlight, onDropCard,
   const hoje0 = new Date(); hoje0.setHours(0, 0, 0, 0);
   const colLate = todosCards.filter((l) => { const t = nextTs(l); return Number.isFinite(t) && t < hoje0.getTime(); }).length;
   const colToday = todosCards.filter((l) => { const t = nextTs(l); return Number.isFinite(t) && t >= hoje0.getTime() && t < hoje0.getTime() + 86400000; }).length;
-  const shown = expanded ? ordered : ordered.slice(0, 10);
-  const hidden = ordered.length - shown.length;
+  // Cabeçalho da prancha: nome e contagem à esquerda, o ATRASO à direita na
+  // mesma linha, e o dinheiro da coluna na linha de baixo.
   return (
-    <div
-      onDragOver={(e) => { e.preventDefault(); setOver(true); }}
-      onDragLeave={() => setOver(false)}
-      onDrop={(e) => { e.preventDefault(); setOver(false); if (dragging) onDropCard(dragging); }}
-      style={{
-        minWidth: 0,
-        background: over ? "var(--accent-soft)" : "var(--bg-1)",
-        border: `1px solid ${over ? "var(--accent-line)" : "var(--line-1)"}`,
-        borderRadius: "var(--r-4)", padding: 10,
-        boxShadow: highlight ? "0 0 0 2px var(--accent-line)" : "var(--shadow-card)",
-        transition: "var(--transition-ui)",
-      }}>
-      {/* Cabeçalho da prancha: nome e contagem à esquerda, o ATRASO à direita
-          na mesma linha, e o dinheiro da coluna na linha de baixo. */}
-      <div style={{ padding: "4px 4px 10px" }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-          <span style={{ fontSize: 13.5, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stage}</span>
-          <span className="tnum" style={{ fontSize: 12, color: "var(--fg-4)" }}>{todosCards.length}</span>
-          {filtrando && <span className="tnum" style={{ fontSize: 11, color: "var(--accent)" }}>{cards.length} na busca</span>}
-          {(colLate > 0 || colToday > 0) && (
-            <span className="tnum" style={{ marginLeft: "auto", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", color: colLate > 0 ? "var(--neg)" : "var(--warn)" }}>
-              {[colLate > 0 ? `${colLate} atrasado${colLate === 1 ? "" : "s"}` : null, colToday > 0 ? `${colToday} hoje` : null].filter(Boolean).join(" · ")}
-            </span>
-          )}
-        </div>
-        <div className="tnum" style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 2 }}>{window.fmt.moneyFull(total)}</div>
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-        {shown.map(l => (
-          <LeadCard
-            key={l.id} d={l}
-            s={s}
-            currentStage={stage}
-            onDragStart={() => setDragging(l.id)}
-            selected={selected.has(l.id)}
-            onSelect={() => {
-              const next = new Set(selected); next.has(l.id) ? next.delete(l.id) : next.add(l.id); setSelected(next);
-            }}
-            onOpen={() => onOpenLead && onOpenLead(l)}
-          />
-        ))}
-        {hidden > 0 && (
-          <button onClick={() => setExpanded(true)} style={{ textAlign: "center", fontSize: 12, color: "var(--fg-4)", padding: "6px 0 2px" }}>+ {hidden} leads</button>
+    <KanbanColumn
+      colKey={stage} dnd={dnd} label={stage} items={ordered} cut={10} highlight={highlight}
+      count={todosCards.length}
+      meta={<>
+        {filtrando && <span className="tnum" style={{ fontSize: 11, color: "var(--accent)", whiteSpace: "nowrap" }}>{cards.length} na busca</span>}
+        {(colLate > 0 || colToday > 0) && (
+          <span className="tnum" style={{ marginLeft: "auto", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", color: colLate > 0 ? "var(--neg)" : "var(--warn)" }}>
+            {[colLate > 0 ? `${colLate} atrasado${colLate === 1 ? "" : "s"}` : null, colToday > 0 ? `${colToday} hoje` : null].filter(Boolean).join(" · ")}
+          </span>
         )}
-        {expanded && ordered.length > 10 && (
-          <button onClick={() => setExpanded(false)} style={{ textAlign: "center", fontSize: 12, color: "var(--fg-4)", padding: "2px 0" }}>mostrar menos</button>
-        )}
-        {cards.length === 0 && (
-          <div style={{ fontSize: 12, textAlign: "center", color: "var(--fg-4)", padding: "18px 0" }}>
-            {filtrando ? "nenhum card nesta busca" : "arraste um lead para cá"}
-          </div>
-        )}
-      </div>
-    </div>
+      </>}
+      subtitle={window.fmt.moneyFull(total)}
+      moreLabel={(n) => `+${n} leads`}
+      emptyText={filtrando ? "nenhum card nesta busca" : "arraste um lead para cá"}
+      renderItem={(l) => (
+        <LeadCard
+          key={l.id} d={l}
+          s={s}
+          currentStage={stage}
+          dragProps={dnd.cardDragProps(l, stage)}
+          selected={selected.has(l.id)}
+          onSelect={() => {
+            const next = new Set(selected); next.has(l.id) ? next.delete(l.id) : next.add(l.id); setSelected(next);
+          }}
+          onOpen={() => onOpenLead && onOpenLead(l)}
+        />
+      )}
+    />
   );
 }
 
@@ -752,7 +727,7 @@ function nextStepText(d, kind, stage) {
   return { novo: "Primeiro contato", contato: "Nova tentativa", qualificacao: "Retomar o contato", proposta: "Cobrar retorno da proposta", followup: "Follow-up da proposta" }[kind] || "";
 }
 
-function LeadCard({ d, s, currentStage, onDragStart, selected, onSelect, onOpen }) {
+function LeadCard({ d, s, currentStage, dragProps, selected, onSelect, onOpen }) {
   const saasCfg = s || (window.SEED?.SAAS || []).find((x) => x.id === d.saas);
   const kind = stageKind(saasCfg, currentStage);
   const phase = phaseOf(kind);
@@ -775,13 +750,12 @@ function LeadCard({ d, s, currentStage, onDragStart, selected, onSelect, onOpen 
   const passo = d.nextActionNote || nextStepText(d, kind, currentStage);
   return (
     <div
-      draggable
-      onDragStart={onDragStart}
+      {...dragProps}
       onClick={(e) => { if (e.shiftKey) onSelect(); else onOpen && onOpen(); }}
       style={{
         background: "var(--bg-1)",
         border: `1px solid ${selected ? "var(--accent-line)" : atrasado ? "color-mix(in srgb, var(--neg) 28%, var(--bg-1))" : "var(--line-1)"}`,
-        borderRadius: "var(--r-3)", padding: "10px 11px", cursor: "grab", boxShadow: "var(--shadow-card)",
+        borderRadius: "var(--r-3)", padding: "10px 11px", boxShadow: "var(--shadow-card)",
       }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
         <span onClick={(e) => { e.stopPropagation(); onSelect(); }} role="checkbox" aria-checked={selected}

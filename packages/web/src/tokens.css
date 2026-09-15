@@ -502,7 +502,7 @@ body[data-density="regular"] { font-size: 14px; }
 .tk-card.is-selected { border-color: var(--accent-line) !important; background: var(--accent-soft) !important; }
 .tk-card.is-dragging { opacity: .45; }
 .tk-hover { opacity: 0; transition: opacity .12s; }
-.tk-card:hover .tk-hover, .tk-card:focus-within .tk-hover, .tk-col-head:hover .tk-hover, .tk-col-head:focus-within .tk-hover, .tk-row:hover .tk-hover, .tk-row:focus-within .tk-hover { opacity: 1; }
+.tk-card:hover .tk-hover, .tk-card:focus-within .tk-hover, .kb-col-head:hover .tk-hover, .kb-col-head:focus-within .tk-hover, .tk-row:hover .tk-hover, .tk-row:focus-within .tk-hover { opacity: 1; }
 @media (pointer: coarse) { .tk-hover { opacity: 1; } }
 @keyframes tk-pop { 0% { transform: scale(.8); } 55% { transform: scale(1.18); } 100% { transform: scale(1); } }
 .tk-pop { animation: tk-pop .22s ease; }

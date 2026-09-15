@@ -5,11 +5,12 @@ import { useData } from "../../data.jsx";
 import { EmptyState, PrimaryButton, toast } from "../../atoms.jsx";
 import { PageHead, Segmented } from "../../components/viz.jsx";
 import { AvisoTopo, BarraFiltros } from "../../components/story.jsx";
+import { SearchInput } from "../../components/search-input.jsx";
 import { useActiveSaas } from "../../lib/workspace.js";
 import { currentUser } from "../../lib/users.js";
 import { useIsMobile } from "../../lib/responsive.js";
-import { TICKET_STATUSES, STATUS_BY_KEY, PRIORITY_RANK, kindOf, slaState, supportScope, fold, noScopeHint } from "../../lib/tickets.js";
-import { useBoardDnd } from "../tasks/dnd.js";
+import { TICKET_STATUSES, STATUS_BY_KEY, PRIORITY_RANK, kindOf, isDone, slaState, supportScope, fold, noScopeHint } from "../../lib/tickets.js";
+import { useBoardDnd } from "../../components/kanban/dnd.js";
 import { useTicketsStore } from "./store.js";
 import { parseTicketHash, openTicketHash, clearTicketHash, useTicketHash } from "./hash.js";
 import { TicketsBoard } from "./board.jsx";
@@ -45,6 +46,22 @@ export function matchesFilter(t, filter, { me, now }) {
     default: return true;
   }
 }
+// Coluna Concluídos do Kanban: Resolvido e Fechado juntos, o mais recente no
+// topo. Segue o recorte de pessoa do filtro (Meus, Sem responsável); nos
+// filtros de trabalho em aberto (SLA em risco, Aguardando) fica vazia, mas
+// continua lá pra receber o card arrastado.
+export const DONE_COLUMN = { key: "done", label: "Concluídos", tone: "var(--pos)" };
+export function inDoneColumn(t, filter, { me }) {
+  if (!isDone(t)) return false;
+  switch (filter) {
+    case "mine": return !!me && t.assignee === me;
+    case "unassigned": return !t.assignee;
+    case "risk": case "waiting": return false;
+    default: return true;
+  }
+}
+const doneAt = (t) => new Date(t.sla?.resolvedAt || t.closedAt || t.updatedAt || 0).getTime() || 0;
+
 // Fila: o SLA mais apertado primeiro, depois a prioridade, depois o mais antigo.
 export function queueOrder(now) {
   const due = (t) => new Date((t.sla?.firstResponseAt ? t.sla?.resolutionDue : t.sla?.firstResponseDue) || 8.64e15).getTime();
@@ -136,11 +153,12 @@ export function TicketsScreen() {
     };
   }, [mine, now]);
   const columns = useMemo(() => {
-    const showDone = filter === "done" || filter === "all";
-    return TICKET_STATUSES
-      .filter((s) => (filter === "done" ? s.kind === "done" : s.kind !== "done" || showDone))
-      .map((status) => ({ status, tickets: visible.filter((t) => t.status === status.key) }));
-  }, [visible, filter]);
+    const done = { ...DONE_COLUMN, tickets: searched.filter((t) => inDoneColumn(t, filter, { me })).sort((a, b) => doneAt(b) - doneAt(a)) };
+    if (filter === "done") return [done];
+    const open = TICKET_STATUSES.filter((s) => s.kind !== "done")
+      .map((s) => ({ key: s.key, label: s.label, tone: s.tone, tickets: visible.filter((t) => t.status === s.key) }));
+    return [...open, done];
+  }, [searched, visible, filter, me]);
   const agentName = useCallback((id) => (agents || []).find((a) => a.id === id)?.name || id || "—", [agents]);
   const byId = useMemo(() => new Map(mine.map((t) => [t.id, t])), [mine]);
 
@@ -151,22 +169,33 @@ export function TicketsScreen() {
   const onTicketChange = useCallback((t) => dispatch({ type: "UPSERT", ticket: t }), [dispatch]);
   const onDeleted = useCallback((id) => { dispatch({ type: "REMOVE", ids: [id] }); closePanel(); }, [dispatch, closePanel]);
 
-  // ── Kanban: arrastar muda o status ───────────────────────────────────────
-  const move = useCallback(({ ids, fromKey, toKey }) => {
-    if (!toKey || toKey === fromKey) return;
+  // ── Kanban: arrastar muda o status; soltar em Concluídos resolve ─────────
+  const setStatus = useCallback((id, status, label) => {
+    const before = byId.get(id);
+    if (!before || before.status === status) return;
+    mutate({
+      ids: [id], silent: false, label: label || `#${before.number} em ${STATUS_BY_KEY[status]?.label || status}`,
+      optimistic: () => dispatch({ type: "PATCH_LOCAL", id, patch: { status } }),
+      request: () => api.ticketUpdate(id, { status }),
+      apply: (saved) => { dispatch({ type: "UPSERT", ticket: saved }); if (panelId === id) setPanelRefresh((v) => v + 1); },
+      rollback: () => dispatch({ type: "PATCH_LOCAL", id, patch: { status: before.status } }),
+    });
+  }, [byId, mutate, dispatch, panelId]);
+  const move = useCallback(({ ids, toKey }) => {
     for (const id of ids) {
       const before = byId.get(id);
       if (!before) continue;
-      mutate({
-        ids: [id], silent: false, label: `#${before.number} em ${STATUS_BY_KEY[toKey]?.label || toKey}`,
-        optimistic: () => dispatch({ type: "PATCH_LOCAL", id, patch: { status: toKey } }),
-        request: () => api.ticketUpdate(id, { status: toKey }),
-        apply: (saved) => { dispatch({ type: "UPSERT", ticket: saved }); if (panelId === id) setPanelRefresh((v) => v + 1); },
-        rollback: () => dispatch({ type: "PATCH_LOCAL", id, patch: { status: before.status } }),
-      });
+      if (toKey === DONE_COLUMN.key) { if (!isDone(before)) setStatus(id, "resolved", `#${before.number} concluído`); }
+      else setStatus(id, toKey);
     }
-  }, [byId, mutate, dispatch, panelId]);
-  const dnd = useBoardDnd({ boardRef, onDrop: move, getSelection: () => null });
+  }, [byId, setStatus]);
+  // O círculo do card: concluir = Resolvido; reabrir volta pra Em atendimento.
+  const complete = useCallback((id, value) => {
+    const before = byId.get(id);
+    if (!before || isDone(before) === value) return;
+    setStatus(id, value ? "resolved" : "open", `#${before.number} ${value ? "concluído" : "reaberto"}`);
+  }, [byId, setStatus]);
+  const dnd = useBoardDnd({ boardRef, onDrop: move, getSelection: () => null, ghostLabel: (n) => `${n} tickets` });
   dndRef.current = dnd;
 
   const filtros = [
@@ -200,6 +229,7 @@ export function TicketsScreen() {
   return (
     <div className="support-page">
       <PageHead title="Tickets" sub={sub}>
+        {handles && <SearchInput value={q} onChange={setQ} placeholder="Buscar nº, assunto, cliente" label="Buscar tickets" width={230} />}
         {handles && <Segmented value={view} onChange={setView} options={[{ value: "kanban", label: "Kanban" }, { value: "list", label: "Lista" }]} />}
         {handles && <PrimaryButton onClick={() => setCreating(true)}>+ Ticket</PrimaryButton>}
       </PageHead>
@@ -216,7 +246,6 @@ export function TicketsScreen() {
             </div>
           )}
           <div className="support-bar">
-            <input className="inp support-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar nº, assunto, cliente…" aria-label="Buscar tickets" />
             <BarraFiltros valor={filter} onChange={setFilter} filtros={filtros} escondidos={escondidos} />
           </div>
           <div className="support-body">
@@ -238,7 +267,7 @@ export function TicketsScreen() {
               )}
               {state.loaded && mine.length > 0 && (view === "list"
                 ? <TicketsList tickets={visible} agentName={agentName} selectedId={panelId} onOpen={openPanel} now={now} />
-                : <TicketsBoard boardRef={boardRef} columns={columns} dnd={dnd} agentName={agentName} selectedId={panelId} onOpen={openPanel} now={now} />)}
+                : <TicketsBoard boardRef={boardRef} columns={columns} dnd={dnd} agentName={agentName} selectedId={panelId} onOpen={openPanel} onComplete={complete} now={now} />)}
             </div>
           </div>
           {panel}

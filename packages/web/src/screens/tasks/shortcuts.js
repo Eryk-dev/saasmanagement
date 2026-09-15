@@ -77,7 +77,6 @@ export function useShortcuts({ rootRef, enabled = true, get, actions }) {
         case "ArrowUp": case "ArrowDown": case "ArrowLeft": case "ArrowRight": e.preventDefault(); a.moveFocus(e.key); return;
         case "Enter": if (focused) { e.preventDefault(); a.open(focused); } return;
         case "n": case "N": if (!e.shiftKey) { e.preventDefault(); a.compose(focused); } return;
-        case "/": e.preventDefault(); a.search(); return;
         case "?": e.preventDefault(); a.help(); return;
         case "Delete": case "Backspace": if (focused || s.selectionSize) { e.preventDefault(); a.remove(); } return;
         case "F10": if (e.shiftKey && focused) { e.preventDefault(); a.menu(focused); } return;

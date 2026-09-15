@@ -1,4 +1,5 @@
 import React from "react";
+import { KanbanBoard } from "../../components/kanban/board.jsx";
 import { Icon } from "./icons.jsx";
 import { TaskColumn } from "./column.jsx";
 
@@ -11,7 +12,7 @@ export function Board({ boardRef, groups, hiddenByColumn, prefs, dnd, composer, 
   const dragging = dnd.drag;
   const virtual = groups.some((g) => g.virtual);
   return (
-    <div ref={boardRef} data-board="1" style={{ flex: 1, minHeight: 0, display: "flex", gap: 12, alignItems: "stretch", padding: "12px var(--pad-x) 20px", overflowX: "auto", overflowY: "hidden", scrollSnapType: "x proximity" }}>
+    <KanbanBoard boardRef={boardRef}>
       {groups.map((col, i) => {
         const cards = col.tasks || [];
         if (prefs.hideEmpty && !cards.length && !dragging && !(composer && composer.colKey === col.key)) return null;
@@ -20,7 +21,7 @@ export function Board({ boardRef, groups, hiddenByColumn, prefs, dnd, composer, 
           <TaskColumn key={col.key} col={col} idx={i} count={groups.length} cards={cards} hiddenCount={hiddenByColumn[col.key] || 0}
             usersById={usersById} labelColors={labelColors} isDoneCol={!col.virtual && doneKey === col.key}
             collapsed={!!prefs.collapsed[col.key]} hideEmpty={prefs.hideEmpty} fields={prefs.fields} compact={prefs.compact} sortManual={sortManual && !col.virtual}
-            dnd={dnd} placeholder={dnd.placeholder} dragging={dragging} composer={composer && composer.colKey === col.key ? composer : null}
+            dnd={dnd} composer={composer && composer.colKey === col.key ? composer : null}
             focusId={focusId} selection={selection} renamingId={renamingId} subCounts={subCounts} blockedIds={blockedIds}
             actions={actions} colActions={colActions} />
         );
@@ -30,6 +31,6 @@ export function Board({ boardRef, groups, hiddenByColumn, prefs, dnd, composer, 
         onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-2)"; e.currentTarget.style.color = "var(--fg-1)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--fg-3)"; }}>
         <Icon name="plus" size={15} /> Adicionar coluna
       </button>}
-    </div>
+    </KanbanBoard>
   );
 }

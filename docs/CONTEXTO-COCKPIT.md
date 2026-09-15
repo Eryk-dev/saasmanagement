@@ -83,6 +83,7 @@ Os caminhos abaixo são relativos a `packages/`.
 | Suporte (tickets) | `api/src/tickets-core.js`, `tickets-sla.js`, `support-scope.js`, `routes.tickets.js`, `quick-replies.js`, `ticket-sla-runner.js`, `routes.support-portal.js`, `support-page.js`; `web/src/screens/tickets/`, `support-settings.jsx`, `quick-replies.jsx`, `lib/tickets.js`, `components/customer-tickets.jsx`; testes `routes.tickets`, `routes.quick-replies`, `tickets-sla`, `ticket-sla-runner`, `routes.support-portal`. |
 | Conteúdo e redes sociais | `api/src/routes.blog.js`, `routes.blog-public.js`, `routes.social.js`; telas `blog.jsx` e `social.jsx`. |
 | Componentes e visual | `web/src/tokens.css`, `atoms.jsx`, `components/viz.jsx`, `components/lead-blocks.jsx`, `lib/ui.js`. |
+| Kanban compartilhado | `web/src/components/kanban/` (`KanbanBoard`/`KanbanColumn` + `useBoardDnd`): quadro, coluna, soltar, placeholder, corte "+N" e coluna recolhida. Tarefas, Tickets e Pipeline montam só o card e o que é do domínio em cima dela; layout `scroll` (colunas fixas que rolam sozinhas) ou `fill` (grid de colunas iguais, Pipeline). |
 | Testes da API | `api/test/*.test.js`; repositório em memória em `api/test/helpers/mem-repo.js`. |
 
 ## Regras que precisam sobreviver às mudanças
@@ -216,7 +217,8 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   corrigir o cleanup do efeito de `DeliveryRulesCard`.
 
 - **Suporte — tickets (14/09/2026):** grupo novo "Suporte" no menu com Tickets
-  (Kanban por status e Lista agrupada pelo SLA; detalhe em modal `#tickets/<id>`) e
+  (Kanban por status, com Resolvido e Fechado juntos na coluna Concluídos e o
+  círculo de concluir no card, e Lista agrupada pelo SLA; detalhe em modal `#tickets/<id>`) e
   Configurações de SLA. Invariantes: (1) o **escopo de produto é ACL no
   servidor** — sessão sem etiqueta `admin` só alcança os produtos de
   `user.supportSaas` (lista vazia = nenhum ticket; ticket fora do escopo

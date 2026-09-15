@@ -1,0 +1,39 @@
+/* Kanban compartilhado (components/kanban/board.jsx): Tarefas, Tickets e Pipeline. */
+
+/* layout "scroll": colunas de largura fixa, cada uma rola sozinha */
+.kb-board { flex: 1; min-height: 0; display: flex; gap: 12px; align-items: stretch; padding: 12px var(--pad-x) 20px; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x proximity; }
+.kb-col { width: min(272px, 82vw); flex-shrink: 0; max-height: 100%; display: flex; flex-direction: column; background: var(--bg-2); border-radius: var(--r-4); border: 1px solid transparent; scroll-snap-align: start; transition: border-color .12s, background-color .12s; }
+.kb-col[data-over="1"] { border-color: var(--accent-line); background: var(--accent-soft); }
+.kb-col[data-highlight="1"] { box-shadow: 0 0 0 2px var(--accent-line); }
+.kb-col-head { padding: 10px 8px 6px 12px; flex-shrink: 0; }
+.kb-col-row { display: flex; align-items: center; gap: 8px; min-height: 26px; }
+.kb-col-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.kb-col-name { font-size: 13px; font-weight: 600; color: var(--fg-1); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-col-count { font-size: 11.5px; flex-shrink: 0; }
+.kb-col-actions { display: inline-flex; gap: 2px; flex-shrink: 0; }
+.kb-col-btn { width: 26px; height: 26px; border-radius: 6px; color: var(--fg-3); display: inline-flex; align-items: center; justify-content: center; }
+.kb-col-btn:hover { background: var(--hover); color: var(--fg-1); }
+.kb-col-sub { font-size: 11.5px; color: var(--fg-4); margin-top: 2px; }
+.kb-col-list { flex: 1; min-height: 60px; overflow-y: auto; padding: 2px 10px 6px; display: flex; flex-direction: column; gap: 8px; }
+.kb-col-list:last-child { padding-bottom: 10px; }
+.kb-placeholder { flex-shrink: 0; border: 1px dashed var(--accent-line); border-radius: var(--r-3); background: var(--accent-soft); }
+.kb-empty { font-size: 11px; text-align: center; padding: 22px 0; }
+.kb-more { font-size: 12px; color: var(--accent); font-weight: 600; padding: 6px 0; text-align: left; }
+.kb-less { font-size: 12px; color: var(--fg-4); padding: 4px 0; text-align: left; }
+[data-kanban-card] { cursor: grab; }
+[data-kanban-card]:active { cursor: grabbing; }
+[data-kanban-card].is-dragging { opacity: .45; }
+
+/* Coluna recolhida: faixa de 44px com o nome na vertical */
+.kb-col-collapsed { width: 44px; flex-shrink: 0; min-height: 160px; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 0; background: var(--bg-2); border-radius: var(--r-4); border: 1px solid transparent; cursor: pointer; }
+.kb-col-collapsed[data-over="1"] { border-color: var(--accent-line); background: var(--accent-soft); }
+.kb-collapsed-count { font-size: 11.5px; font-weight: 600; color: var(--fg-3); }
+.kb-collapsed-name { font-size: 12.5px; font-weight: 600; color: var(--fg-2); max-height: 220px; overflow: hidden; text-overflow: ellipsis; }
+
+/* layout "fill": grid de colunas iguais, a página rola na vertical */
+.kb-board[data-layout="fill"] { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(240px, 1fr); align-items: start; min-height: auto; padding: 0 0 8px; overflow-y: visible; scroll-snap-type: none; }
+.kb-board[data-layout="fill"] > .kb-col { width: auto; min-width: 0; max-height: none; padding: 10px; background: var(--bg-1); border-color: var(--line-1); box-shadow: var(--shadow-card); }
+.kb-board[data-layout="fill"] > .kb-col[data-over="1"] { background: var(--accent-soft); border-color: var(--accent-line); }
+.kb-board[data-layout="fill"] > .kb-col[data-highlight="1"] { box-shadow: 0 0 0 2px var(--accent-line); }
+.kb-board[data-layout="fill"] .kb-col-head { padding: 4px 4px 10px; }
+.kb-board[data-layout="fill"] .kb-col-list { min-height: 0; overflow: visible; padding: 0; gap: 9px; }
