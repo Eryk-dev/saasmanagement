@@ -211,48 +211,48 @@ function PaceFacts({ pace, goal, falta }) {
 }
 
 // ── Termômetro da meta ──────────────────────────────────────────────────────
-// Coluna de 96×300: trilha hachurada (o que falta), fechado no teal subindo do
-// chão, em follow-up empilhado por cima num tom mais claro, a marca tracejada
-// do pace atravessando e o rodapé com a porcentagem na cor do estado. A altura
-// é sobre a meta, então passar de 100% satura em 100% e o chip de super meta é
-// quem conta o resto.
-function Termometro({ s, goal, lad, naMesa, title, label }) {
+// Preenchimento = realizado sobre a meta base. O pace fica fora da área
+// recortada da barra, acima do preenchimento, com valor e percentual legíveis.
+function Termometro({ s, goal, lad, title, label }) {
   const alvo = Number(s.target) || 0;
-  const pctDe = (v) => (alvo > 0 ? Math.max(0, Math.min(100, (v / alvo) * 100)) : 0);
-  const fechado = pctDe(Number(s.sold) || 0);
-  // A fatia da mesa é o que CABE entre o fechado e o topo: mostrar mais que
-  // isso faria a coluna prometer acima da meta.
-  const mesa = Math.max(0, Math.min(100 - fechado, pctDe(naMesa?.valor || 0)));
+  const vendido = Number(s.sold) || 0;
+  const progresso = alvo > 0 ? Math.max(0, vendido / alvo) : 0;
+  const fechado = Math.min(100, progresso * 100);
+  const falta = Math.max(0, r2(alvo - vendido));
+  const excedente = Math.max(0, r2(vendido - alvo));
   const pacePct = !goal.ended && s.expectedProgress != null ? Math.max(0, Math.min(100, s.expectedProgress * 100)) : null;
+  const esperado = pacePct != null ? r2(alvo * pacePct / 100) : null;
   const cor = lvlColor(lad?.lvl, "var(--accent)");
-  const pctTxt = `${Math.round((lad ? lad.pct : s.progress || 0) * 100)}%`;
+  const pctTxt = `${Math.round(progresso * 100)}%`;
+  const moneyFull = window.fmt.moneyFull;
   return (
-    <div style={{ width: 140, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center" }}>
-      <div style={{ textAlign: "center", marginBottom: 12 }}>
+    <div className="vg-goal-meter" style={{ "--goal-color": cor }}>
+      <div className="vg-goal-heading">
         <div className="kicker">{label}</div>
-        <div className="tnum" style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.2, marginTop: 3 }}>{window.fmt.moneyFull(alvo)}</div>
+        <strong className="tnum">{moneyFull(alvo)}</strong>
       </div>
-      <div title={title} style={{ width: 96, height: 300, borderRadius: "var(--r-3)", border: "1px solid var(--line-1)", overflow: "hidden", display: "flex", flexDirection: "column", cursor: "help" }}>
-        <div className="meta-track" style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
-          {pacePct != null && (
-            <>
-              <span style={{ position: "absolute", left: 0, right: 0, bottom: `${pacePct}%`, height: 0, borderTop: `1px dashed ${cor}` }} />
-              <span className="tnum" style={{ position: "absolute", right: 5, bottom: `calc(${pacePct}% + 3px)`, fontSize: 11, fontWeight: 700, color: cor }}>{`pace ${Math.round(pacePct)}%`}</span>
-            </>
-          )}
-          {mesa > 0 && (
-            <div style={{ position: "relative", background: "var(--chart-1)", opacity: 0.55, height: `${mesa}%` }}>
-              <span className="meta-fluxo" />
-            </div>
-          )}
-          <div className="meta-sobe" style={{ position: "relative", background: "var(--accent)", height: `${fechado}%` }}>
-            <span className="meta-fluxo" />
-          </div>
+      <div className="vg-goal-chart">
+        <div className="vg-goal-track" role="progressbar" aria-label={label}
+          aria-valuemin={0} aria-valuemax={100} aria-valuenow={fechado}
+          aria-valuetext={`${pctTxt} realizado: ${moneyFull(vendido)} de ${moneyFull(alvo)}${esperado != null ? `. Esperado até hoje: ${moneyFull(esperado)}` : ""}`} title={title}>
+          <div className="vg-goal-fill" style={{ height: `${fechado}%` }} />
         </div>
-        <span className="tnum" style={{ height: 40, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, color: "oklch(1 0 0)", fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", background: cor }}>
-          <span className="meta-viva" style={{ width: 8, height: 8, borderRadius: 999, background: "oklch(1 0 0)", display: "inline-block" }} />
-          {pctTxt}
-        </span>
+        {pacePct != null && (
+          <div className="vg-goal-pace" style={{ bottom: `${pacePct}%` }}>
+            <span className="vg-goal-pace-line" aria-hidden="true" />
+            <div className="vg-goal-pace-label">
+              <span>Esperado até hoje</span>
+              <strong className="tnum">{moneyFull(esperado)}</strong>
+              <span className="tnum">Pace · {Math.round(pacePct)}%</span>
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="vg-goal-progress"><strong className="tnum">{pctTxt}</strong><span>da meta realizada</span></div>
+      <div className="vg-goal-remaining">
+        <span>{falta > 0 ? (goal.ended ? "Faltou para a meta" : "Falta para a meta") : "Meta batida"}</span>
+        <strong className="tnum">{falta > 0 ? moneyFull(falta) : excedente > 0 ? `+${moneyFull(excedente)}` : moneyFull(0)}</strong>
+        {excedente > 0 && <span>acima da meta</span>}
       </div>
     </div>
   );
@@ -314,7 +314,7 @@ function MetaMesCard({ pace, goal, onNav, links = true, children }) {
         </div>
       ) : (
         <div className="vg-meta-columns">
-          {s.target != null && <Termometro s={s} goal={goal} lad={sLad} naMesa={naMesa} title={saleTitle} label={title} />}
+          {s.target != null && <Termometro s={s} goal={goal} lad={sLad} title={saleTitle} label={title} />}
           <div className="vg-meta-story">
             <div>
               <div className="kicker">Vendido em {label}</div>
