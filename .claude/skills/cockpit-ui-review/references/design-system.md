@@ -173,10 +173,13 @@ celular na rua: **toda tela precisa continuar usável a 390px** (PR #361) usando
 gerencial — linhas compactas, muito dado por tela; `body[data-density]` existe
 (compact 13.5 / regular 14).
 
-**Régua de meta — decisão de 14/09/2026:** manter as dimensões originais
-(coluna de 140px; barra de 96 × 300px) e todos os efeitos: hachura, listras em
-movimento, preenchimento subindo, follow-up empilhado e ponto pulsante no
-percentual. O pace é apenas uma marca tracejada contrastante acima dos efeitos,
+**Régua de meta — decisão de 14/09/2026, atualizada após a escolha da opção 2:**
+manter as dimensões originais (coluna de 140px; barra de 96 × 300px). O
+preenchimento tem superfície líquida com duas ondas contínuas (4 e 6 segundos)
+e reflexo interno discreto; o trilho vazio é liso. Preservar a entrada subindo,
+o follow-up empilhado e o ponto pulsante no percentual. Não desenhar líquido
+para uma fatia zerada. Os movimentos respeitam `prefers-reduced-motion`.
+O pace é apenas uma marca tracejada contrastante acima dos efeitos,
 sem texto ou valor junto dela. O saldo para atingir a meta aparece no contexto
 ao lado, sem ampliar o termômetro. O percentual continua sobre a meta base,
 inclusive acima de 100%; período encerrado não mostra marca de pace.

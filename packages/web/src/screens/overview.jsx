@@ -211,11 +211,25 @@ function PaceFacts({ pace, goal, falta }) {
 }
 
 // ── Termômetro da meta ──────────────────────────────────────────────────────
-// Coluna de 96×300: trilha hachurada (o que falta), fechado no teal subindo do
-// chão, em follow-up empilhado por cima num tom mais claro, a marca tracejada
+// Coluna de 96×300: fechado no teal com superfície líquida em movimento,
+// em follow-up empilhado por cima num tom mais claro, a marca tracejada
 // do pace atravessando e o rodapé com a porcentagem na cor do estado. A altura
 // é sobre a meta, então passar de 100% satura em 100% e o chip de super meta é
 // quem conta o resto. O pace fica acima dos efeitos, apenas como marca.
+function LiquidoMeta({ height, followup = false }) {
+  if (!(height > 0)) return null;
+  // Dois períodos idênticos: deslocar metade da largura fecha o loop sem salto.
+  const onda = "M0 6 Q12 0 24 6 T48 6 T72 6 T96 6 V12 H0Z";
+  return (
+    <div className={`vg-meta-liquid ${followup ? "vg-meta-liquid-followup" : "meta-sobe"}`}
+      style={{ height: `${height}%` }} aria-hidden="true">
+      <svg className="vg-meta-wave vg-meta-wave-back" viewBox="0 0 96 12" preserveAspectRatio="none"><path d={onda} /></svg>
+      <svg className="vg-meta-wave" viewBox="0 0 96 12" preserveAspectRatio="none"><path d={onda} /></svg>
+      <span className="vg-meta-liquid-reflection" />
+    </div>
+  );
+}
+
 function Termometro({ s, goal, lad, naMesa, title, label }) {
   const alvo = Number(s.target) || 0;
   const pctDe = (v) => (alvo > 0 ? Math.max(0, Math.min(100, (v / alvo) * 100)) : 0);
@@ -233,15 +247,9 @@ function Termometro({ s, goal, lad, naMesa, title, label }) {
         <div className="tnum" style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.2, marginTop: 3 }}>{window.fmt.moneyFull(alvo)}</div>
       </div>
       <div className="vg-meta-thermometer-bar" title={title} style={{ width: 96, height: 300, borderRadius: "var(--r-3)", border: "1px solid var(--line-1)", overflow: "hidden", display: "flex", flexDirection: "column", cursor: "help" }}>
-        <div className="meta-track" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={fechado} aria-valuetext={`${pctTxt} realizado: ${window.fmt.moneyFull(s.sold)} de ${window.fmt.moneyFull(alvo)}`} style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
-          {mesa > 0 && (
-            <div style={{ position: "relative", background: "var(--chart-1)", opacity: 0.55, height: `${mesa}%` }}>
-              <span className="meta-fluxo" />
-            </div>
-          )}
-          <div className="meta-sobe" style={{ position: "relative", background: "var(--accent)", height: `${fechado}%` }}>
-            <span className="meta-fluxo" />
-          </div>
+        <div className="vg-meta-liquid-track" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={fechado} aria-valuetext={`${pctTxt} realizado: ${window.fmt.moneyFull(s.sold)} de ${window.fmt.moneyFull(alvo)}`} style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+          <LiquidoMeta height={mesa} followup />
+          <LiquidoMeta height={fechado} />
           {pacePct != null && <span className="vg-meta-pace-marker" aria-hidden="true"
             style={{ bottom: `clamp(0px, ${pacePct}%, calc(100% - 3px))` }} />}
         </div>

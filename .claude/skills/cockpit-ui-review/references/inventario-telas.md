@@ -29,7 +29,7 @@ construído lendo este repo depois do pacote de 12-13/09. O que a rodada mudou:
 | `agenda` | os três avisos da semana (furou · sem remarcar · sem confirmar) |
 | `social` | as fatias mediam alcance e diziam "seguidores" |
 | `metrics` | a corrente era flex-wrap (último passo órfão) |
-| `overview` | termômetro no tamanho original com todos os efeitos e follow-up empilhado; pace apenas tracejado acima da barra e saldo no contexto ao lado (decisão de 14/09) |
+| `overview` | termômetro no tamanho original com ondas líquidas contínuas, reflexo discreto e follow-up empilhado; pace tracejado fixo e movimento reduzido respeitado (opção 2, decisão de 14/09) |
 | `eloapp` | abria com 5 tiles e o funil de lado; agora aviso + funil + foto em linha |
 | `settings` | seletor de telas recortado + dois `className` que se anulavam |
 | app inteiro | `⋯` recortado dentro de `.tbl-x`; 17 véus escritos na mão |
