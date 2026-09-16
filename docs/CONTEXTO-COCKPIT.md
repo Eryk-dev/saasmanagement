@@ -169,9 +169,11 @@ local, porque as rotinas do boot usam credenciais reais se existirem. Em
 produto e `seed:leverads-questions`); o único aviso esperado é
 `[leverads-results]`, pois a função do Levercopy não existe localmente.
 
-Após a validação, seguir o acordo em `AGENTS.md`: verificar `origin/main`,
-commitar os arquivos da tarefa e fazer push para `origin/main`, sem force-push
-e sem incluir mudanças alheias. O push dispara o deploy do EasyPanel.
+Após a validação, seguir a autorização do Leonardo: verificar `origin/main`,
+commitar os arquivos da tarefa na branch de trabalho, fazer push, abrir e
+mesclar o PR para `main`, sem force-push nem mudanças alheias. O redeploy no
+EasyPanel é manual pelo Leonardo; lembrar após o merge e verificar a produção
+quando a nova versão estiver disponível.
 
 Endereço registrado e acessível na análise:
 `https://extrator-mp-saasmngmnt.gnnc3f.easypanel.host`.
@@ -190,6 +192,19 @@ verificação da página/assets correspondentes. Reportar qualquer divergência 
 falha de deploy com a evidência, conforme o acordo de trabalho.
 
 ## Correções de contexto e ferramentas
+
+- **Múltiplas contas Meta por produto (16/09/2026):** `metaAdAccount` continua
+  sendo a conta principal para criação de criativos e automações de veiculação.
+  `metaAdAccounts` é uma lista adicional de IDs para leitura, configurável pelo
+  PATCH do produto; `meta-accounts.js` normaliza `act_` e deduplica a união.
+  Sync manual/automático, catálogo de atribuição, objetos de anúncio e
+  posicionamentos leem todas as contas do produto. Insights guardam `accountId`
+  e preservam o upsert por produto+anúncio+dia. Falha parcial retorna `ok:false`
+  e relatório por conta; mantém dados da conta indisponível e não atualiza o
+  horário de sincronização completa. Posicionamentos só mostram o total quando
+  todas responderam. Cache inclui a lista de contas. Não altera permissões Meta,
+  orçamentos nem as contas de outros produtos. Testes em
+  `api/test/routes.marketing-accounts.test.js`.
 
 - **Formulários por linha (16/09/2026):** a decisão é usar 100% dos novos
   formulários: `[OEM]` → `fo_oem_v2`, `[ADS]` e dores legadas A–E → `fo_ads_v2`,
