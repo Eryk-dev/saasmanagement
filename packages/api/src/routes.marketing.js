@@ -22,6 +22,7 @@ import { kindOf } from "./stages.js";
 import { dayKey, isRealLead, isSaleLead, winsIn, customerStartMap, leadOrigin, LEAD_ORIGINS, callOutcome, upsellSalesIn, upsellContractedOf, leadGrade } from "./metrics-core.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 import { painCode } from "./attribution.js";
+import { metaAdAccounts } from "./meta-accounts.js";
 export { painCode };
 
 const DAY_MS = 86400000;
@@ -172,14 +173,31 @@ async function upsertInsight(repo, row) {
 // upsert idempotente. Carimba o horário pro "ao vivo" da tela.
 const lastSyncAt = new Map(); // saas -> ISO do último sync (memória do processo)
 async function syncProductInsights(repo, meta, product, { since, until }) {
-  const rows = await meta.adInsights(product.metaAdAccount, { since, until });
+  const accounts = metaAdAccounts(product);
+  const results = await Promise.allSettled(accounts.map((id) => meta.adInsights(id, { since, until })));
+  const complete = results.every((r) => r.status === "fulfilled");
+  const replacedCampaigns = new Set(results.filter((r) => r.status === "fulfilled").flatMap((r) => r.value.map((row) => row.campaignId)));
+  // Em falha parcial, só substitui agregados das campanhas que responderam;
+  // uma conta sem permissão não pode apagar seu histórico disponível.
   const legacy = (await repo.list("ad_insights")).filter(
-    (r) => r.saas === product.id && !r.adId && !String(r.campaignId || "").startsWith("manual_") && r.date >= since && r.date <= until,
+    (r) => r.saas === product.id && !r.adId && !String(r.campaignId || "").startsWith("manual_") && r.date >= since && r.date <= until
+      && (complete || replacedCampaigns.has(r.campaignId)),
   );
   for (const r of legacy) await repo.remove("ad_insights", r.id);
-  for (const r of rows) await upsertInsight(repo, { saas: product.id, ...r });
-  lastSyncAt.set(product.id, new Date().toISOString());
-  return rows.length;
+  const report = { ok: complete, rows: 0, accounts: {} };
+  for (const [i, result] of results.entries()) {
+    const accountId = accounts[i];
+    if (result.status === "rejected") {
+      report.accounts[accountId] = { ok: false, error: String(result.reason?.message || result.reason).slice(0, 200) };
+      continue;
+    }
+    for (const r of result.value) await upsertInsight(repo, { ...r, saas: product.id, accountId });
+    report.accounts[accountId] = { ok: true, rows: result.value.length };
+    report.rows += result.value.length;
+  }
+  if (complete) lastSyncAt.set(product.id, new Date().toISOString());
+  else report.error = Object.entries(report.accounts).filter(([, r]) => !r.ok).map(([id, r]) => `${id}: ${r.error}`).join("; ");
+  return report;
 }
 
 // Sync automático NO SERVIDOR — chamado só pelo index.js (testes montam o app
@@ -192,14 +210,15 @@ export function startMarketingAutoSync(repo, { meta = defaultMeta, intervalMs = 
     if (running || !meta.configured()) return;
     running = true;
     try {
-      const products = (await repo.list("products")).filter((p) => p.metaAdAccount);
+      const products = (await repo.list("products")).filter((p) => metaAdAccounts(p).length);
       const range = { since: dayStr(Date.now() - DAY_MS), until: dayStr(Date.now()) };
       for (const p of products) {
         // Enquanto uma leva de vídeos sobe, o sync fica fora do caminho: as duas
         // coisas dividem a MESMA cota da conta na Meta, e o sync pode esperar.
         if ([...videoJobs.values()].some((j) => j.saas === p.id && j.status === "running")) continue;
         try {
-          await syncProductInsights(repo, meta, p, range);
+          const result = await syncProductInsights(repo, meta, p, range);
+          if (!result.ok) log.warn?.(`Meta auto-sync parcial (${p.id}): ${result.error}`);
         } catch (err) {
           log.warn?.(`Meta auto-sync falhou (${p.id}): ${String(err.message || err).slice(0, 200)}`);
         }
@@ -221,19 +240,20 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     if (!meta.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
     const { since, until } = rangeFromQuery(req.body || {});
     const products = (await repo.list("products"))
-      .filter((p) => p.metaAdAccount && (!req.body?.saas || p.id === req.body.saas));
+      .filter((p) => metaAdAccounts(p).length && (!req.body?.saas || p.id === req.body.saas));
     if (!products.length) return reply.code(400).send({ error: "nenhum SaaS com metaAdAccount configurado (Ajustes → Integrações)" });
 
     const report = {};
     for (const p of products) {
       try {
-        report[p.id] = { ok: true, rows: await syncProductInsights(repo, meta, p, { since, until }) };
+        report[p.id] = await syncProductInsights(repo, meta, p, { since, until });
+        if (!report[p.id].ok) req.log.warn({ saas: p.id, err: report[p.id].error }, "Meta: sync parcial");
       } catch (err) {
         req.log.warn({ saas: p.id, err: err.message }, "Meta: sync falhou");
         report[p.id] = { ok: false, error: String(err.message || err).slice(0, 200) };
       }
     }
-    return { ok: true, since, until, report };
+    return { ok: Object.values(report).every((r) => r.ok), since, until, report };
   });
 
   // Contas de anúncio que o token alcança — alimenta o "Conectar" da tela
@@ -311,30 +331,30 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     if (!meta.configured()) return reply.code(NOT_CONFIGURED).send({ error: "Meta não configurada (META_ACCESS_TOKEN)" });
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "Not found" });
-    if (!product.metaAdAccount) return reply.code(400).send({ error: "conta de anúncio não configurada (Ajustes → Integrações)" });
+    const accounts = metaAdAccounts(product);
+    if (!accounts.length) return reply.code(400).send({ error: "conta de anúncio não configurada (Ajustes → Integrações)" });
     // allSettled: um nível com erro (rate limit numa página, etc.) não derruba
     // os outros — devolve o que veio + `errors` por nível. Arquivados/deletados
     // ficam de fora (a Graph retorna ARCHIVED por padrão e toggle neles não faz
     // sentido; o catálogo de ATRIBUIÇÃO continua vendo tudo, é outra rota).
-    const settled = await Promise.allSettled([
-      meta.listCampaigns(product.metaAdAccount),
-      meta.listAccountAdsets(product.metaAdAccount),
-      meta.listAccountAds(product.metaAdAccount),
-    ]);
     const KEYS = ["campaigns", "adsets", "ads"];
+    const methods = ["listCampaigns", "listAccountAdsets", "listAccountAds"];
+    const requests = accounts.flatMap((accountId) => methods.map((method, i) => ({ accountId, method, key: KEYS[i] })));
+    const settled = await Promise.allSettled(requests.map(({ accountId, method }) => meta[method](accountId)));
     if (settled.every((r) => r.status === "rejected")) {
       req.log.warn({ err: settled[0].reason?.message }, "Meta: adobjects falhou");
       return reply.code(UPSTREAM_FAILED).send({ error: String(settled[0].reason?.message || "Meta indisponível").slice(0, 300) });
     }
     const alive = (o) => o.effectiveStatus !== "ARCHIVED" && o.effectiveStatus !== "DELETED";
-    const out = {};
+    const out = { campaigns: [], adsets: [], ads: [] };
     const errors = {};
     settled.forEach((r, i) => {
-      if (r.status === "fulfilled") out[KEYS[i]] = r.value.filter(alive);
+      const { accountId, key } = requests[i];
+      if (r.status === "fulfilled") out[key].push(...r.value.filter(alive).map((row) => ({ ...row, accountId })));
       else {
-        out[KEYS[i]] = [];
-        errors[KEYS[i]] = String(r.reason?.message || r.reason).slice(0, 200);
-        req.log.warn({ level: KEYS[i], err: errors[KEYS[i]] }, "Meta: adobjects nível falhou");
+        const error = `${accountId}: ${String(r.reason?.message || r.reason).slice(0, 200)}`;
+        errors[key] = errors[key] ? `${errors[key]}; ${error}` : error;
+        req.log.warn({ accountId, level: key, err: error }, "Meta: adobjects nível falhou");
       }
     });
     return Object.keys(errors).length ? { ...out, errors } : out;
@@ -903,13 +923,22 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
   app.get("/api/marketing/:saas/placements", async (req, reply) => {
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "Not found" });
-    if (!meta.configured() || !product.metaAdAccount) return { placements: [], configured: false };
+    const accounts = metaAdAccounts(product);
+    if (!meta.configured() || !accounts.length) return { placements: [], configured: false };
     const { since, until } = rangeFromQuery(req.query || {});
-    const key = `${product.id}|${since}|${until}`;
+    const key = `${product.id}|${accounts.join(",")}|${since}|${until}`;
     let cached = placementCache.get(key);
     if (!cached || Date.now() - cached.at >= 300_000) {
       try {
-        cached = { at: Date.now(), rows: await meta.placementInsights(product.metaAdAccount, { since, until }) };
+        const rows = (await Promise.all(accounts.map((id) => meta.placementInsights(id, { since, until })))).flat();
+        const grouped = new Map();
+        for (const row of rows) {
+          const groupKey = JSON.stringify([row.platform, row.position]);
+          const aggregate = grouped.get(groupKey) || { platform: row.platform, position: row.position, spend: 0, impressions: 0, clicks: 0, linkClicks: 0, metaLeads: 0 };
+          for (const field of ["spend", "impressions", "clicks", "linkClicks", "metaLeads"]) aggregate[field] += Number(row[field]) || 0;
+          grouped.set(groupKey, aggregate);
+        }
+        cached = { at: Date.now(), rows: [...grouped.values()] };
         placementCache.set(key, cached);
       } catch (err) {
         req.log.warn({ err: err.message }, "Meta: placementInsights falhou");
@@ -949,12 +978,20 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
       if (r.adsetId) adsets[r.adsetId] = { name: r.adsetName || "", campaignId: r.campaignId || "" };
       if (r.adId) ads[r.adId] = { name: r.adName || "", adsetId: r.adsetId || "", campaignId: r.campaignId || "" };
     }
-    if (meta.configured() && product.metaAdAccount) {
+    const accounts = metaAdAccounts(product);
+    if (meta.configured() && accounts.length) {
       try {
-        let cached = liveAdsCache.get(product.id);
+        const key = `${product.id}|${accounts.join(",")}`;
+        let cached = liveAdsCache.get(key);
         if (!cached || Date.now() - cached.at >= 300_000) {
-          cached = { at: Date.now(), rows: await meta.listAccountAds(product.metaAdAccount) };
-          liveAdsCache.set(product.id, cached);
+          const results = await Promise.allSettled(accounts.map((id) => meta.listAccountAds(id)));
+          for (const [i, r] of results.entries()) {
+            if (r.status === "rejected") req.log.warn({ accountId: accounts[i], err: r.reason?.message }, "Meta: catálogo da conta indisponível");
+          }
+          cached = { at: Date.now(), rows: results.filter((r) => r.status === "fulfilled").flatMap((r) => r.value) };
+          // Uma falha não impede a outra conta de resolver seus anúncios; só
+          // guarda o catálogo completo, para tentar a conta ausente novamente.
+          if (results.every((r) => r.status === "fulfilled")) liveAdsCache.set(key, cached);
         }
         for (const a of cached.rows) {
           if (a.id && a.name && !ads[a.id]) ads[a.id] = { name: a.name, adsetId: a.adsetId || "", campaignId: a.campaignId || "" };
