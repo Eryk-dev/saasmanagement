@@ -540,7 +540,9 @@ export function registerFormRoutes(app, repo, opts = {}) {
 
   // Dor do anúncio de origem: utm_content = ad id → nome do anúncio (insights
   // sincronizados) → código "[X]". "" quando não dá pra resolver (sem utm, ad
-  // ainda sem sync) — a página cai na welcome base.
+  // ainda sem sync). Nesse caso consulta o nome vivo na Meta com cache curto:
+  // antes, todo anúncio novo/fora da conta sincronizada caía em Ads.
+  const adPainCache = new Map(); // saas:adId -> { until, promise }
   async function adPainOf(content, saas) {
     if (!content) return "";
     const rows = await repo.listWhere("ad_insights", { adId: String(content), ...(saas ? { saas } : {}) }, {
@@ -548,7 +550,21 @@ export function registerFormRoutes(app, repo, opts = {}) {
     });
     // Nome mais recente vence em caso de rename na Meta.
     const row = rows.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))[0];
-    return attributionPain(row);
+    const known = attributionPain(row);
+    if (known || !/^\d{5,30}$/.test(content) || !opts.meta?.configured?.() || !opts.meta.adAttribution) return known;
+    const key = `${saas}:${content}`;
+    const cached = adPainCache.get(key);
+    if (cached && cached.until > Date.now()) return cached.promise;
+    const entry = { until: Date.now() + 300_000 };
+    entry.promise = opts.meta.adAttribution(content).then(attributionPain).catch(() => {
+      entry.until = Date.now() + 60_000; // falha não vira rajada de consultas
+      app.log.warn({ adId: content, saas }, "Form: origem do anúncio indisponível na Meta");
+      return "";
+    });
+    adPainCache.delete(key);
+    if (adPainCache.size >= 500) adPainCache.delete(adPainCache.keys().next().value);
+    adPainCache.set(key, entry);
+    return entry.promise;
   }
   // welcome específica da dor sobrescreve a base (título/CTA/variantes da dor);
   // byPain nunca vai pro client inteiro — só a versão já resolvida.
@@ -583,7 +599,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
     });
     if (alvo) {
       const variante = await publishedForm(alvo);
-      if (variante) form = variante; // variante despublicada = fica no controle
+      if (variante && variante.saas === form.saas) form = variante; // sem cruzar produtos
     }
     // Grava a adesão só quando há semente, pra o mesmo visitante não trocar de
     // formulário no meio do preenchimento ao recarregar.

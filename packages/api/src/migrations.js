@@ -1809,6 +1809,29 @@ export async function ensureFormsV2(repo) {
   return criados;
 }
 
+// Leonardo, 16/09/2026: encerrar o split e usar 100% dos formulários novos.
+// Ativa junto do código que resolve anúncios ainda sem insights e PRICE.
+// Só uma vez e com os três destinos já publicados; não publica rascunhos nem
+// sobrescreve ajustes operacionais feitos depois desta migração.
+export async function ensureFormsV2FullRouting(repo) {
+  const { FORM_IDS } = await import("./forms-v2.leverads.js");
+  const { FORM_AB_FLAG } = await import("./form-ab.js");
+  const cfg = await repo.get("app_config", FORM_AB_FLAG);
+  if (!cfg || cfg.fullRoutingV1) return false;
+  const forms = await Promise.all(Object.values(FORM_IDS).map((id) => repo.get("forms", id)));
+  if (forms.some((f) => !f || f.saas !== "leverads" || f.status !== "published")) return false;
+  await repo.update("app_config", FORM_AB_FLAG, {
+    enabled: true, pct: 100, onlyForms: ["fo_diagnostico_leverads"],
+    byPain: {
+      OEM: FORM_IDS.oem, ADS: FORM_IDS.ads, PRICE: FORM_IDS.price,
+      ...Object.fromEntries(["A", "B", "C", "D", "E"].map((code) => [code, FORM_IDS.ads])),
+    },
+    fallback: FORM_IDS.ads, fullRoutingV1: true,
+    nota: "100% nos formulários novos: OEM → Lever OEM, ADS/A–E → Lever Ads, PRICE → Lever Price. Sem origem, entrada antiga → Ads.",
+  });
+  return true;
+}
+
 // ── Etapas de cadência (10/09/2026) ───────────────────────────────────────
 // Insere "Dia 2".."Dia 7" entre "Novo lead" e "Qualificando". Atrás de flag
 // porque muda o BOARD de todo mundo no mesmo instante — e porque, com o
@@ -2007,6 +2030,7 @@ export async function runStartupMigrations(repo) {
   try {
     const n = await ensureFormsV2(repo);
     if (n) console.log(`[migration] formulários v2 + config do A/B criados (${n} objeto(s)) — em rascunho, split desligado`);
+    if (await ensureFormsV2FullRouting(repo)) console.log("[migration] formulários OEM/Ads/Price com 100% do tráfego");
   } catch (err) {
     console.error("[migration] ensureFormsV2 falhou:", err?.message || err);
   }

@@ -343,7 +343,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // função só é chamada em request; cache de 1h mora no makeSalesWhatsapp).
   let whatsappClient = null;
   const salesWhatsapp = makeSalesWhatsapp(() => whatsappClient);
-  registerFormRoutes(app, repo, { ...(opts.forms || {}), discord: discordClient, metaCapi: metaCapiClient, anthropic: anthropicClient, salesWhatsapp });
+  const metaClient = opts.meta || defaultMetaClient;
+  registerFormRoutes(app, repo, { ...(opts.forms || {}), discord: discordClient, metaCapi: metaCapiClient, meta: metaClient, anthropic: anthropicClient, salesWhatsapp });
   // Webhooks de entrada (Shopify da UniqueKids → lead pra Ana). Rota aberta,
   // autenticada por assinatura HMAC da Shopify (ver routes.webhooks.js).
   registerWebhookRoutes(app, repo, { ...(opts.webhooks || {}) });
@@ -358,7 +359,6 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // (tick manual + report do dry-run; o poller vive no index.js).
   registerLeveradsAccessRoutes(app, repo, { ...(opts.leveradsAccess || {}) });
   // Marketing: sync de insights da Meta + métricas cruzadas com o funil.
-  const metaClient = opts.meta || defaultMetaClient;
   registerMarketingRoutes(app, repo, { meta: metaClient });
   // Regras de veiculação (agenda cheia pausa, janela de fim de semana, sexta
   // curta, orçamento alvo) — config/estado/log + tick manual; poller no index.js.

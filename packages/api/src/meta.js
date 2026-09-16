@@ -56,7 +56,7 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
 
   // Uma resposta da Graph vira objeto ou erro legível. Limite de chamadas não
   // vira erro na hora: espera e tenta de novo, porque passa sozinho.
-  async function call(doFetch) {
+  async function call(doFetch, { retry = true } = {}) {
     for (let tentativa = 0; ; tentativa++) {
       const res = await doFetch();
       const text = await res.text();
@@ -64,7 +64,7 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
       try { body = JSON.parse(text); } catch { body = {}; }
       if (res.status < 400 && !body.error) return body;
 
-      if (isRateLimited(body.error) && tentativa < RETRY_WAITS_MS.length) {
+      if (retry && isRateLimited(body.error) && tentativa < RETRY_WAITS_MS.length) {
         const waitMs = RETRY_WAITS_MS[tentativa];
         onThrottle?.({ waitMs, attempt: tentativa + 1, total: RETRY_WAITS_MS.length });
         await sleep(waitMs);
@@ -74,7 +74,7 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
       const err = new Error(`Meta API -> ${res.status}: ${msg}`);
       err.status = res.status;
       err.rateLimited = isRateLimited(body.error);
-      if (err.rateLimited) err.message += " — a conta segue no limite depois de 4 tentativas; espere alguns minutos";
+      if (err.rateLimited && retry) err.message += " — a conta segue no limite depois de 4 tentativas; espere alguns minutos";
       throw err;
     }
   }
@@ -93,6 +93,25 @@ export function makeMeta({ fetch: f = globalThis.fetch, accessToken, sleep = (ms
 
   return {
     configured,
+
+    // Origem de um clique antes do sync de insights (inclusive anúncio de
+    // outra conta acessível pelo token). Página pública não espera o backoff
+    // dos jobs de vídeo: uma tentativa, com prazo curto e fallback no caller.
+    async adAttribution(adId) {
+      if (!configured()) throw new Error("Meta não configurada — defina META_ACCESS_TOKEN");
+      if (!/^\d{5,30}$/.test(String(adId))) throw new Error("id de anúncio inválido");
+      const params = new URLSearchParams({
+        fields: "id,name,adset{id,name},campaign{id,name}", access_token: accessToken,
+      });
+      const body = await call(() => f(`${GRAPH}/${adId}?${params}`, {
+        signal: AbortSignal.timeout(2500),
+      }), { retry: false });
+      return {
+        adId: String(body.id || adId), adName: body.name || "",
+        adsetId: body.adset?.id || "", adsetName: body.adset?.name || "",
+        campaignId: body.campaign?.id || "", campaignName: body.campaign?.name || "",
+      };
+    },
 
     // Insights diários por campanha no intervalo [since, until] (YYYY-MM-DD).
     // Segue a paginação do Graph até o fim. Retorna linhas normalizadas:
