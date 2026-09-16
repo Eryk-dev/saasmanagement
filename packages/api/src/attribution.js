@@ -3,9 +3,10 @@
 // as três convenções, então olhar só o anúncio perde a origem de parte dos leads.
 
 // Código "[X]" em qualquer posição do nome. O limite de 1-3 caracteres evita
-// que rótulos operacionais como "[TESTE]" virem uma dor inexistente.
+// que rótulos operacionais como "[TESTE]" virem uma dor inexistente. PRICE é
+// uma linha de produto explícita e também precisa participar do roteamento.
 export function painCode(name) {
-  const m = String(name || "").match(/\[([A-Za-z0-9]{1,3})\]/);
+  const m = String(name || "").match(/\[(PRICE|[A-Za-z0-9]{1,3})\]/i);
   return m ? m[1].toUpperCase() : null;
 }
 

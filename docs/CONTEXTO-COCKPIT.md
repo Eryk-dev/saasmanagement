@@ -191,6 +191,21 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
 
 ## Correções de contexto e ferramentas
 
+- **Formulários por linha (16/09/2026):** a decisão é usar 100% dos novos
+  formulários: `[OEM]` → `fo_oem_v2`, `[ADS]` e dores legadas A–E → `fo_ads_v2`,
+  `[PRICE]` → `fo_price_v2`. A entrada antiga sem origem usa Ads; links diretos
+  dos novos sem origem preservam a linha. `form_ab` continua sendo a configuração
+  operacional, com `pct: 100` independente de cookie/fbclid. A migração
+  `ensureFormsV2FullRouting` ativa uma vez, quando os três destinos já estiverem
+  publicados, e preserva ajustes posteriores pelo marcador `fullRoutingV1`.
+  O roteamento em `/f/:id` mantém a URL/UTMs e serve a definição do destino;
+  eventos e envios ficam no formulário servido. `formProduct` vem dessa
+  definição e acompanha o lead/classificação. Anúncio ausente dos insights
+  resolve o nome na Meta (anúncio → conjunto → campanha), com cache limitado,
+  prazo de 2,5 s e sem retentativas demoradas. Falha usa o destino padrão.
+  Não criar insights fictícios para resolver atribuição. Testes específicos:
+  `form-ab.test.js` e `routes.form-routing.test.js`.
+
 - **Calls realizadas nos formulários (15/09/2026):** `/api/forms/:id/funnel`
   retorna `callsShown`: leads únicos dos envios externos do período que
   compareceram à call, pela regra de `callOutcome`/`callWitness`. A janela
