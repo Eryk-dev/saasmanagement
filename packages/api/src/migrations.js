@@ -325,6 +325,25 @@ export async function migrateIntegracaoNoFollowup(repo) {
   return changed;
 }
 
+// Nutrição já está no default do follow-up, mas os próximos passos salvos por
+// roteiro substituem esse default. Atualiza esses roteiros uma vez, preservando
+// a ordem das outras ações e futuras edições em Ajustes → Próximos passos.
+export async function migrateNutricaoNoFollowup(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product || product.nutricaoNoFollowupV1) return false;
+  const nextSteps = { ...(product.nextSteps || {}) };
+  let changed = false;
+  for (const [key, list] of Object.entries(nextSteps)) {
+    if (!/^followup/.test(key) || !Array.isArray(list) || !list.length || list.includes("nutricao")) continue;
+    const i = list.indexOf("desqualificado");
+    nextSteps[key] = i === -1 ? [...list, "nutricao"]
+      : [...list.slice(0, i), "nutricao", ...list.slice(i)];
+    changed = true;
+  }
+  await repo.update("products", "leverads", { nutricaoNoFollowupV1: true, ...(changed ? { nextSteps } : {}) });
+  return changed;
+}
+
 // ── Flashcards: cotas de OEM nos cards de produto (31/08/2026) ──────────────
 // O combo Parcial + OEM passou a entregar 250 anúncios/mês (antes 125), e uma
 // leva de cards ainda ensinava o catálogo aposentado em 21/08 (200 no FULL,
@@ -2267,6 +2286,12 @@ export async function runStartupMigrations(repo) {
     if (changed) console.log("[migration] próximos passos do Follow-up ganharam o destino Integração (leverads)");
   } catch (err) {
     console.error("[migration] migrateIntegracaoNoFollowup falhou:", err?.message || err);
+  }
+  try {
+    const changed = await migrateNutricaoNoFollowup(repo);
+    if (changed) console.log("[migration] próximos passos do Follow-up ganharam o destino Nutrição (leverads)");
+  } catch (err) {
+    console.error("[migration] migrateNutricaoNoFollowup falhou:", err?.message || err);
   }
   // Depois da reordenação: quem está na entrega passa a ser venda, então ganha
   // cliente e assinatura como se tivesse passado pelo Ganho.
