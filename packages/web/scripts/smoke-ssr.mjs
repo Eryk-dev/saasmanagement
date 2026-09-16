@@ -413,6 +413,21 @@ try {
     eq("follow-up ganha Nutrição antes de Desqualificado", names({ funnel }, { id: "l1", stage: "Follow-up" }), ["retry", "Ganho", "Integração", "Nutrição", "Desqualificado"]);
     const semNutri = funnel.filter((f) => f.stage !== "Nutrição");
     eq("sem etapa Nutrição, o botão some", names({ funnel: semNutri }, { id: "l1", stage: "Follow-up" }), ["retry", "Ganho", "Integração", "Desqualificado"]);
+    // Configurações antigas substituem o default: validar o produto migrado
+    // nos três roteiros que Minhas atividades escolhe conforme as tentativas.
+    const { makeMemRepo } = await import("../../api/test/helpers/mem-repo.js");
+    const { migrateNutricaoNoFollowup } = await import("../../api/src/migrations.js");
+    const repo = makeMemRepo();
+    await repo.create("products", { id: "leverads", funnel, nextSteps: {
+      followup1: ["retry", "ganho", "integracao", "desqualificado"],
+      followup2: ["retry", "ganho", "integracao", "desqualificado"],
+      followup3: ["retry", "ganho", "integracao", "desqualificado"],
+    } });
+    await migrateNutricaoNoFollowup(repo);
+    const migrated = await repo.get("products", "leverads");
+    for (const stageAttempts of [0, 1, 2, 5]) {
+      eq(`roteiro salvo com ${stageAttempts} tentativas oferece Nutrição`, names(migrated, { id: "l1", stage: "Follow-up", stageAttempts }), ["retry", "Ganho", "Integração", "Nutrição", "Desqualificado"]);
+    }
     console.log("✓ destino-nutricao");
   } catch (err) {
     console.error(`✗ destino-nutricao: ${err.message}`);
