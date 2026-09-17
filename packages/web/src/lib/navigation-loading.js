@@ -45,9 +45,27 @@ export function createNavigationLoad({ minimumMs = 180, quietMs = 80, slowMs = 1
 }
 
 let currentLoad;
+// Telas carregam sob demanda (React.lazy em app.jsx). O loader do lazy roda no
+// RENDER, antes do layout effect que ativa a navegação nova — então o chunk
+// não é visto como leitura pendente e o splash revelaria em `minimumMs` com o
+// arquivo ainda baixando; os GETs da tela chegariam com `ready` já verdadeiro
+// (begin() vira no-op) e a tela entraria vazia. Por isso o chunk SEMPRE entra
+// numa fila, drenada pela próxima activateNavigation: é exatamente a
+// navegação que aquele render criou, no epoch certo (A→B→C rápido não vaza:
+// o chunk de B fica preso ao load de B, que é descartado com ele).
+const queuedChunks = [];
+export function trackChunk(promise) {
+  queuedChunks.push(promise);
+  return promise;
+}
+
 export function activateNavigation(load) {
   currentLoad = load;
   load.start();
+  for (const chunk of queuedChunks.splice(0)) {
+    const finish = load.begin();
+    chunk.then(finish, finish);
+  }
   return () => {
     load.dispose();
     if (currentLoad === load) currentLoad = undefined;

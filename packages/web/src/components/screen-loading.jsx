@@ -1,7 +1,35 @@
 import React from "react";
-import { activateNavigation, createNavigationLoad } from "../lib/navigation-loading.js";
+import { activateNavigation, createNavigationLoad, trackChunk } from "../lib/navigation-loading.js";
 import { ErrorBoundary } from "./error-boundary.jsx";
 import "./screen-loading.css";
+
+// Tela carregada sob demanda: o bundle deixou de ser um arquivo só de 2 MB com
+// as 35 telas (17/09/2026) — cada tela vira um chunk que o navegador baixa na
+// primeira visita. O download conta como leitura da navegação (trackChunk),
+// então o splash segura até chunk + GETs iniciais da tela.
+// Falha no download = quase sempre deploy no meio do caminho: o container novo
+// não tem mais os chunks com hash antigo que esta aba conhece. Recarrega UMA vez
+// (o index.html é no-store, então vem o shell novo); se falhar de novo, o erro
+// sobe pro ErrorBoundary da tela como qualquer outro.
+const CHUNK_RELOAD_KEY = "cockpit_chunk_reload";
+export function lazyScreen(loader, exportName) {
+  return React.lazy(() => trackChunk(loader()).then(
+    (mod) => {
+      try { sessionStorage.removeItem(CHUNK_RELOAD_KEY); } catch { /* sem storage */ }
+      return { default: mod[exportName] };
+    },
+    (err) => {
+      try {
+        if (!sessionStorage.getItem(CHUNK_RELOAD_KEY)) {
+          sessionStorage.setItem(CHUNK_RELOAD_KEY, "1");
+          location.reload();
+          return new Promise(() => {}); // a página vai embora; não renderiza erro no meio
+        }
+      } catch { /* sem storage: cai no erro */ }
+      throw err;
+    },
+  ));
+}
 
 const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 // The SSR smoke harness has a document stub, but no DOM to paint.
@@ -24,7 +52,7 @@ export function LoadingSplash({ compact = false, fullscreen = false, leaving = f
 }
 
 export function ScreenTransition({ navigationKey, overview, onReady, suppressSplash = false, children }) {
-  const load = React.useMemo(() => createNavigationLoad({ minimumMs: reducedMotion() ? 0 : overview ? 650 : 180 }), [navigationKey, overview]);
+  const load = React.useMemo(() => createNavigationLoad({ minimumMs: reducedMotion() ? 0 : 180 }), [navigationKey]);
   const state = React.useSyncExternalStore(load.subscribe, load.getSnapshot, load.getSnapshot);
   const [dismissed, setDismissed] = React.useState(null);
   const readyCallback = React.useRef(onReady);
@@ -34,9 +62,11 @@ export function ScreenTransition({ navigationKey, overview, onReady, suppressSpl
   React.useEffect(() => {
     if (!state.ready) return;
     readyCallback.current?.();
-    const timer = setTimeout(() => setDismissed(load), reducedMotion() ? 0 : overview ? 450 : 180);
+    // Mesmo ritmo em toda tela (17/09: a Visão geral tinha 650 ms de mínimo e
+    // 450 ms de saída, ~0,7 s a mais por abertura além do tempo real).
+    const timer = setTimeout(() => setDismissed(load), reducedMotion() ? 0 : 180);
     return () => clearTimeout(timer);
-  }, [load, state.ready, overview]);
+  }, [load, state.ready]);
   return <div className="screen-transition" aria-busy={!state.ready}>
     <div className="screen-transition__content" data-ready={state.ready} aria-hidden={!state.ready ? true : undefined} inert={!state.ready ? "" : undefined}>
       {children}
@@ -46,7 +76,9 @@ export function ScreenTransition({ navigationKey, overview, onReady, suppressSpl
 }
 
 // Keep one splash mounted from bootstrap through the first screen's queries.
-// loadApp must resolve only after SEED exists (some screen modules read it on import).
+// loadApp resolves with SEED already in place (main.jsx espera o bootstrap e o
+// chunk do app juntos): nenhum módulo pode ler window.SEED em escopo de módulo,
+// só dentro de função/componente — o app.jsx agora é avaliado em paralelo.
 export function AppStartup({ loadApp, renderError }) {
   const [App, setApp] = React.useState(null);
   const [error, setError] = React.useState(null);

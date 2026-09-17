@@ -78,8 +78,31 @@ const publicUser = (u) => ({
 });
 
 // Token de sessão → usuário (null se inexistente/expirado).
+//
+// Cache: cada tela do cockpit dispara ~11 GETs e cada um fazia DUAS idas ao
+// banco (sessions + users) só pra saber quem é. A entrada vale enquanto
+// ninguém escreveu neste processo (repo.writeRev(), o mesmo carimbo do
+// compute-cache) e por no máximo SESSION_CACHE_MS. Logout/troca de papel passam
+// pelo repo → writeRev sobe → a entrada morre na hora. Repo sem writeRev
+// (double antigo de teste) passa direto, sem cache.
+const SESSION_CACHE_MS = 30_000;
+const sessionCache = new WeakMap(); // repo -> Map(token -> { user, at, rev })
 export async function sessionUser(repo, token) {
   if (!token || token.length < 32) return null;
+  const rev = typeof repo?.writeRev === "function" ? repo.writeRev() : null;
+  let table = null;
+  if (rev != null) {
+    table = sessionCache.get(repo);
+    if (!table) { table = new Map(); sessionCache.set(repo, table); }
+    const hit = table.get(token);
+    if (hit && hit.rev === rev && Date.now() - hit.at < SESSION_CACHE_MS) return hit.user;
+  }
+  const user = await lookupSessionUser(repo, token);
+  if (table) { if (user) table.set(token, { user, at: Date.now(), rev }); else table.delete(token); }
+  return user;
+}
+
+async function lookupSessionUser(repo, token) {
   const session = await repo.get("sessions", token);
   if (!session) return null;
   if (session.expiresAt && new Date(session.expiresAt) < new Date()) {

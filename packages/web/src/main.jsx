@@ -1,7 +1,8 @@
-// Boot sequence: load tokens, install fmt on window, fetch the full dataset from
-// the API into window.SEED while the app bundle downloads in parallel, then
-// render. window.fmt exists before any module evaluates; window.SEED only after
-// loadSeed — no module may read SEED at import time (the SSR smoke checks that).
+// Boot sequence: load tokens, install fmt on window, then fetch the dataset into
+// window.SEED AND download the app chunk in parallel (17/09/2026: esperar o
+// bootstrap pra só então pedir o app.js custava um round-trip inteiro a mais).
+// The App only renders after both settle, so components still find SEED — but
+// NO module may read window.SEED at import time (only inside functions).
 //
 // Auth: if the API answers 401, we show a small unlock screen. The entered key is
 // stored (localStorage) and every request carries it from then on.
@@ -100,13 +101,7 @@ function Login() {
 }
 
 async function loadApp() {
-  // O bundle do app (2 MB, todas as telas) começa a baixar e compilar JUNTO
-  // com o /api/bootstrap, não depois dele: eram dois passos em série no
-  // arranque. O smoke (scripts/smoke-ssr.mjs) prova que nenhum módulo lê
-  // window.SEED na importação, então a ordem de avaliação não importa.
-  const appMod = import("./app.jsx");
-  await loadSeed();
-  const { App } = await appMod;
+  const [, { App }] = await Promise.all([loadSeed(), import("./app.jsx")]);
   return App;
 }
 

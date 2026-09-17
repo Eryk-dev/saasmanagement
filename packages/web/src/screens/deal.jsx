@@ -158,6 +158,17 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
     api.listActivities(initial.id).then((a) => alive && setActivities(a)).catch(() => alive && setActivities([]));
     return () => { alive = false; };
   }, [initial?.id, version]);
+  // O SEED vem SEM os campos que só este card lê (sourceUrl: "página de entrada"
+  // da atribuição) — 1 MB a menos em todo bootstrap. Busca o lead inteiro ao
+  // abrir e completa a cópia local sem sobrescrever o que já foi editado aqui.
+  React.useEffect(() => {
+    if (!initial?.id) return;
+    let alive = true;
+    api.get("leads", initial.id)
+      .then((full) => { if (alive && full?.id) setLead((cur) => (cur && cur.id === full.id ? { ...cur, sourceUrl: full.sourceUrl } : cur)); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [initial?.id]);
   // Consultas 1:1 ligadas a este lead OU cliente (UniqueKids) — pra centralizar o
   // Meet e o resumo da mentoria no próprio card, sem abrir a tela de Consultas.
   React.useEffect(() => {
