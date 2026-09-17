@@ -133,16 +133,36 @@ test("morno: degrau do meio é a de novidades e leva o nome do SDR", async () =>
 });
 
 // ── Travas ───────────────────────────────────────────────────────────────
-test("humano falou depois da âncora: o robô não entra na conversa", async () => {
+// Raio-x de 17/09: "humano falou por último" calava o robô PRA SEMPRE (238
+// leads parados sem retomada nenhuma). Agora a fala humana vira a âncora do
+// silêncio: recente, segura; velha (3 dias do morno), a escada segue.
+test("humano falou depois da âncora há pouco: o robô espera", async () => {
   const repo = await world({
     messages: [
+      { id: "m0", direction: "in", text: "oi", at: ISO("2026-08-12T12:00:00Z") },
+      { id: "m1", direction: "out", author: "sdr-bot", text: "Oiii...", at: ISO("2026-08-13T12:00:00Z") },
+      { id: "m2", direction: "out", author: "sdr", text: "oi, aqui é a Manuela", at: ISO("2026-08-18T12:00:00Z") },
+    ],
+  });
+  const wa = makeWa();
+  await tickOf(repo, wa); // 20/08: 2 dias depois da Manuela
+  assert.equal(tplsOf(wa).length, 0);
+});
+
+test("humano falou depois da âncora há dias: o silêncio conta da fala dele e a escada segue", async () => {
+  const repo = await world({
+    messages: [
+      { id: "m0", direction: "in", text: "oi", at: ISO("2026-08-12T12:00:00Z") },
       { id: "m1", direction: "out", author: "sdr-bot", text: "Oiii...", at: ISO("2026-08-13T12:00:00Z") },
       { id: "m2", direction: "out", author: "sdr", text: "oi, aqui é a Manuela", at: ISO("2026-08-14T12:00:00Z") },
     ],
   });
   const wa = makeWa();
-  await tickOf(repo, wa);
-  assert.equal(tplsOf(wa).length, 0);
+  await tickOf(repo, wa); // 20/08: 6 dias depois da Manuela → degrau 1 do morno
+  assert.deepEqual(tplsOf(wa), ["sdr_retomada_conversa"]);
+  const st = (await repo.get("leads", "L1")).sdrLog.ladder;
+  assert.equal(st.at, ISO("2026-08-14T12:00:00Z")); // âncora = a fala humana
+  assert.equal(st.warm, true);
 });
 
 test("mensagem do robô recente: o piso de 3 dias segura o degrau", async () => {

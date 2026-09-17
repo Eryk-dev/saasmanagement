@@ -97,6 +97,50 @@ const REDIRECT_RX = /wa\.me\/|api\.whatsapp\.com|whatsapp\.com\/send|\b\d{4}[-\s
 const PRICE_ASK_RX = /pre[çc]o|\bvalor(es)?\b|quanto (custa|fica|sai|é|e)\b|mensalidade|qual o (investimento|custo)|tabela de pre[çc]/i;
 
 const firstName = (v) => String(v || "").trim().split(/\s+/)[0] || "";
+
+// ── Piso de preço (raio-x 17/09) ────────────────────────────────────────────
+// O robô pode dizer "a partir de R$ X por mês" UMA vez, com X vindo do catálogo
+// do template de proposta (proposal_templates.calc.catalog.products: o menor
+// total ANUAL de cada linha ÷ 12). Nunca de cabeça: mudou o preço no banco, o
+// robô fala o novo. Cache curto por produto (o catálogo muda raramente).
+const fmtBRL = (n) => Math.round(n).toLocaleString("pt-BR");
+const floorCache = new Map();
+export async function priceFloorOf(repo, saas, { now = Date.now(), ttlMs = 10 * 60_000 } = {}) {
+  const hit = floorCache.get(saas);
+  if (hit && now - hit.at < ttlMs) return hit.floor;
+  let floor = null;
+  try {
+    const tpls = (await repo.list("proposal_templates")).filter((t) => t.saas === saas && t.calc?.catalog?.products);
+    const min = { oem: null, ads: null };
+    for (const t of tpls) {
+      for (const [key, P] of Object.entries(t.calc.catalog.products || {})) {
+        const line = key.startsWith("oem_") ? "oem" : key.startsWith("ads_") ? "ads" : null;
+        const total = Number(P?.anu?.total);
+        if (!line || !Number.isFinite(total) || total <= 0) continue;
+        if (min[line] == null || total < min[line]) min[line] = total;
+      }
+    }
+    if (min.oem || min.ads) {
+      floor = {
+        oem: min.oem ? `a partir de R$ ${fmtBRL(min.oem / 12)} por mês no plano anual` : "",
+        ads: min.ads ? `a partir de R$ ${fmtBRL(min.ads / 12)} por mês no plano anual` : "",
+        // Números que a trava de preço ACEITA na resposta: o mensal e o anual
+        // de cada linha (com e sem separador de milhar).
+        numbers: new Set([min.oem, min.ads].filter(Boolean).flatMap((t) => [String(Math.round(t / 12)), String(t), fmtBRL(t / 12), fmtBRL(t)])),
+      };
+    }
+  } catch { floor = null; }
+  floorCache.set(saas, { at: now, floor });
+  return floor;
+}
+// A resposta cita SÓ números do piso? (sem número nenhum também passa). Hora
+// ("14h", "9h30") e data ("22/08") não contam como preço.
+export function onlyFloorNumbers(text, floor) {
+  if (!floor?.numbers?.size) return false;
+  const cleaned = String(text || "").replace(/\b\d{1,2}h(\d{2})?\b/gi, " ").replace(/\b\d{1,2}[:/]\d{2}\b/g, " ").replace(/\b\d{1,2}\s*(min|minutos|dias?)\b/gi, " ");
+  const nums = cleaned.match(/\d[\d.]*/g) || [];
+  return nums.every((n) => floor.numbers.has(n) || floor.numbers.has(n.replace(/\./g, "")));
+}
 const lastInboundText = (msgs) => {
   const m = [...msgs].reverse().find((x) => x.direction === "in");
   return String(m?.transcript || m?.text || "");
@@ -280,7 +324,15 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     return messageId;
   }
 
-  const stamp = (lead, patch) => repo.update("leads", lead.id, { sdrLog: { ...(lead.sdrLog || {}), ...patch } });
+  // Merge em cima do sdrLog FRESCO do banco (17/09): dois carimbos na mesma
+  // decisão (handoffAt e depois firstTouchAt na 1ª resposta) sobrescreviam um
+  // ao outro quando partiam do objeto local, já velho.
+  const stamp = async (lead, patch) => {
+    const cur = (await repo.get("leads", lead.id).catch(() => null))?.sdrLog || lead.sdrLog || {};
+    const sdrLog = { ...cur, ...patch };
+    lead.sdrLog = sdrLog;
+    return repo.update("leads", lead.id, { sdrLog });
+  };
 
   // ── Walk-in: conversa SEM lead ──────────────────────────────────────────
   // Contato que chegou direto no número (sem passar pelo form) não tinha card,
@@ -353,12 +405,33 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
   // varredura): o segundo disparo pra ela é ignorado, senão sairiam duas
   // respostas. Reinício zera o conjunto — aí a varredura é quem entra.
   const inflight = new Set();
+  // USO DA IA POR DIA (17/09): até aqui o robô recebia model/usage de cada
+  // decisão e jogava fora, então ninguém sabia quanto custava nem qual modelo
+  // respondeu. Um doc por produto e dia em app_config (sdr_ai_usage_<saas>_<dia>)
+  // soma chamadas, tokens e latência por modelo. Best-effort: contagem nunca
+  // derruba a resposta.
+  async function bumpAiUsage(saas, meta) {
+    if (!saas || !meta?.model) return;
+    const day = now().toISOString().slice(0, 10);
+    const id = `sdr_ai_usage_${saas}_${day}`;
+    const u = meta.usage || {};
+    const add = (a = {}) => ({
+      calls: (a.calls || 0) + 1, in: (a.in || 0) + (u.in || 0), out: (a.out || 0) + (u.out || 0),
+      cacheRead: (a.cacheRead || 0) + (u.cacheRead || 0), cacheWrite: (a.cacheWrite || 0) + (u.cacheWrite || 0),
+      ms: (a.ms || 0) + (meta.ms || 0),
+    });
+    const cur = await repo.get("app_config", id).catch(() => null);
+    const next = { ...(cur || { id, saas, day }), ...add(cur || {}), byModel: { ...(cur?.byModel || {}), [meta.model]: add(cur?.byModel?.[meta.model] || {}) } };
+    if (cur) await repo.update("app_config", id, next); else await repo.create("app_config", next);
+  }
+
   async function handleInbound({ message, resumed = false } = {}) {
     if (message?.id && inflight.has(message.id)) return "inflight";
     if (message?.id) inflight.add(message.id);
     let action;
+    const meta = {}; // model/usage/ms da decisão, preenchido pelo decide
     try {
-      action = await decide({ message, resumed });
+      action = await decide({ message, resumed, meta });
     } catch (err) {
       log.warn?.({ err: err.message }, "sdr-brain falhou");
       try {
@@ -376,7 +449,8 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     if (message?.id && action !== "superseded") {
       try {
         const thread = await findThreadByPhone(repo, message.from || "");
-        if (thread) await repo.update("wa_threads", thread.id, { brain: { msgId: message.id, action: action || "gate", at: now().toISOString() } });
+        if (thread) await repo.update("wa_threads", thread.id, { brain: { msgId: message.id, action: action || "gate", at: now().toISOString(), ...(meta.model ? { model: meta.model, usage: meta.usage || null, ms: meta.ms || 0 } : {}) } });
+        if (meta.model) await bumpAiUsage(thread?.saas || meta.saas || "", meta);
       } catch { /* carimbo é best-effort: sem ele a varredura só tenta de novo */ }
     }
     if (message?.id) inflight.delete(message.id);
@@ -408,7 +482,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     return done;
   }
 
-  async function decide({ message, resumed = false }) {
+  async function decide({ message, resumed = false, meta = {} }) {
     const at = now();
     const thread = await findThreadByPhone(repo, message?.from || "");
     if (!thread) return null;
@@ -503,6 +577,8 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     // valendo pra AGENDAR quando o lead pede um horário específico.
     const offerPool = wholeHourSlots(slotList);
     const suggestedPair = spreadPair(offerPool);
+    // Piso de preço do catálogo (chave sdrBot.priceFloor, ligada por padrão).
+    const priceFloor = cfg.priceFloor ? await priceFloorOf(repo, product.id, { now: nowMs }) : null;
     // Nota de voz que disparou a decisão vira texto (as antigas já carregam o
     // transcript gravado); sem transcrição possível, fica "🎤 áudio" e o
     // prompt manda pra humano.
@@ -556,7 +632,10 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       slotsOffered,
       firstReply,
       suggestedPair,
+      priceFloor,
     });
+    // Quem respondeu e quanto custou: vai pro carimbo da thread e pro uso do dia.
+    Object.assign(meta, { model: decision.model || "", usage: decision.usage || null, ms: decision.ms || 0, saas: product.id });
 
     // Envio em PARTES, como gente digitando (Leo, 23/08): a 1ª mensagem sai
     // depois do atraso de resposta; as seguintes com 5s entre cada uma.
@@ -577,6 +656,14 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       return !lastIn || lastIn.id === message.id;
     };
     let aborted = false;
+    // 1º TOQUE PELA IA (raio-x 17/09): quando o lead escreve primeiro (clique do
+    // form) a resposta da IA É o primeiro toque, mas nada carimbava
+    // sdrLog.firstTouchAt. Sem o carimbo, 355 dos 536 leads novos ficavam fora
+    // do 2º toque de 24h (seção 1b) e do passe barato da escada (1c): 98 dos
+    // 152 sem resposta nunca receberam retomada. Carimba na primeira mensagem
+    // do robô nesta conversa; via "brain" não dispara o alerta quente do
+    // handleSdrInbound (a conversa com IA já cuida da resposta).
+    const firstBotReply = !msgs.some((m) => m.direction === "out" && m.author === SDR_AUTHOR);
     const send = async (textOrParts) => {
       const parts = (Array.isArray(textOrParts) ? textOrParts : [textOrParts])
         .map((t) => String(t || "").trim()).filter(Boolean).slice(0, 3);
@@ -585,6 +672,11 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
         await sleep(i === 0 ? replyDelayMs : partDelayMs);
         if (!(await stillMyTurn())) { aborted = true; return; }
         await sendBot({ phone: to, text: parts[i].slice(0, 900), phoneId, saas: product.id, leadId: lead.id });
+        if (i === 0 && firstBotReply && !lead.sdrLog?.firstTouchAt) {
+          const stampAt = new Date(nowMs).toISOString();
+          await stamp(lead, { firstTouchAt: stampAt, firstTouchVia: "brain" }).catch(() => {});
+          lead.sdrLog = { ...(lead.sdrLog || {}), firstTouchAt: stampAt, firstTouchVia: "brain" };
+        }
       }
     };
 
@@ -680,10 +772,15 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       await send(priceBridgeText(nome));
       return "preco-humano";
     }
-    if (PRICE_RX.test(parts.join(" "))) {
+    // Com piso no contexto, a resposta que cita SÓ os números do piso passa
+    // (é o "a partir de" do catálogo); qualquer outro número segue travado.
+    if (PRICE_RX.test(parts.join(" ")) && !onlyFloorNumbers(parts.join(" "), priceFloor)) {
       await send(priceDeferral(nome));
       await stamp(lead, { priceGuardAt: new Date(nowMs).toISOString() });
       return "preco-travado";
+    }
+    if (priceFloor && PRICE_RX.test(parts.join(" ")) && !lead.sdrLog?.priceFloorAt) {
+      await stamp(lead, { priceFloorAt: new Date(nowMs).toISOString() });
     }
     // TRAVA DE REDIRECIONAMENTO: a resposta manda o lead pra outro número ou
     // link de WhatsApp. Isso nunca é certo (o robô já ESTÁ no canal) e, quando

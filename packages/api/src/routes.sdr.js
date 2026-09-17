@@ -17,18 +17,49 @@ export function registerSdrRoutes(app, repo, { whatsapp: wa, anthropic = null } 
   // POST dispara em background (as chamadas de IA levam minutos); GET lê o
   // estado/relatório parcial. Ligar a conversa com IA sem rodar isso antes é
   // pular o teste com as conversas reais — não faça.
+  // `model` (opcional) roda a MESMA bateria com outro modelo do provedor
+  // configurado; `tag` grava num doc próprio (sdr_replay_<tag>) pra comparar
+  // rodadas lado a lado sem sobrescrever (17/09).
   app.post("/api/sdr/replay", async (req, reply) => {
     const r = replay.start({
       saas: String(req.body?.saas || "leverads"),
       threads: Math.min(60, Math.max(1, Number(req.body?.threads) || 25)),
       turns: Math.min(5, Math.max(1, Number(req.body?.turns) || 3)),
+      model: String(req.body?.model || "").slice(0, 80),
+      tag: String(req.body?.tag || "").slice(0, 40),
     });
     if (r.busy) return reply.code(409).send({ error: "já tem uma bateria rodando — acompanhe pelo GET" });
     if (r.error) return reply.code(NOT_CONFIGURED).send({ error: r.error });
     return { ok: true, started: true };
   });
 
-  app.get("/api/sdr/replay", async () => replay.status());
+  app.get("/api/sdr/replay", async (req) => replay.status(String(req.query?.tag || "")));
+  // Todas as rodadas gravadas (sem as amostras): a comparação entre modelos.
+  app.get("/api/sdr/replay/runs", async () => ({ runs: await replay.runs() }));
+
+  // Uso da IA do robô por dia e por modelo (chamadas, tokens, latência), somado
+  // pelo sdr-brain em app_config sdr_ai_usage_<saas>_<dia>. Últimos N dias.
+  app.get("/api/sdr/ai-usage", async (req) => {
+    const saas = String(req.query?.saas || "leverads");
+    const days = Math.min(90, Math.max(1, Number(req.query?.days) || 14));
+    const cutoff = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+    const prefix = `sdr_ai_usage_${saas}_`;
+    const docs = (await repo.list("app_config")).filter((d) => String(d.id || "").startsWith(prefix) && String(d.day || "") >= cutoff);
+    const total = { calls: 0, in: 0, out: 0, cacheRead: 0, cacheWrite: 0, ms: 0 };
+    const byModel = {};
+    for (const d of docs) {
+      for (const k of Object.keys(total)) total[k] += Number(d[k]) || 0;
+      for (const [m, u] of Object.entries(d.byModel || {})) {
+        byModel[m] = byModel[m] || { calls: 0, in: 0, out: 0, cacheRead: 0, cacheWrite: 0, ms: 0 };
+        for (const k of Object.keys(total)) byModel[m][k] += Number(u?.[k]) || 0;
+      }
+    }
+    return {
+      saas, days, model: anthropic?.model || "", provider: anthropic?.provider || "",
+      total, byModel,
+      daily: docs.map((d) => ({ day: d.day, calls: d.calls || 0, in: d.in || 0, out: d.out || 0, cacheRead: d.cacheRead || 0, ms: d.ms || 0, byModel: d.byModel || {} })).sort((a, b) => String(a.day).localeCompare(String(b.day))),
+    };
+  });
 
   // Próximos horários livres pro lead (ou pra uma nota S-E avulsa), já com a
   // régua de roteamento por nível de closer aplicada (agenda-slots.js).

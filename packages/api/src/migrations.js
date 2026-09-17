@@ -628,6 +628,38 @@ export async function ensureSemWhatsappReason(repo) {
   return changed;
 }
 
+// 1º TOQUE DA IA NA BASE VELHA (raio-x 17/09). O sdr-brain passou a carimbar
+// sdrLog.firstTouchAt na primeira resposta; quem já tinha conversado com a IA
+// antes disso não tem carimbo nenhum de toque e por isso ficava fora do passe
+// barato da escada de retomada (96 dos 100 leads novos parados) e do 2º toque.
+// Aqui a primeira mensagem do robô em cada conversa vira o carimbo. Uma vez
+// (marcador em app_config); lead com qualquer carimbo de toque fica como está.
+export async function ensureSdrBrainFirstTouch(repo) {
+  const FLAG = "sdr_brain_first_touch_v1";
+  if (await repo.get("app_config", FLAG).catch(() => null)) return 0;
+  const leads = await repo.list("leads");
+  const need = new Map(leads
+    .filter((l) => !l.internal && !l.sdrLog?.firstTouchAt && !l.sdrLog?.secondTouchAt && !l.sdrLog?.backlogRescueAt)
+    .map((l) => [l.id, l]));
+  let changed = 0;
+  if (need.size) {
+    const bot = await repo.listWhere("wa_messages", { author: "sdr-bot" }, { fields: ["leadId", "at"] }).catch(() => []);
+    const firstByLead = new Map();
+    for (const m of bot) {
+      if (!m?.leadId || !need.has(m.leadId) || !m.at) continue;
+      const cur = firstByLead.get(m.leadId);
+      if (!cur || String(m.at) < String(cur)) firstByLead.set(m.leadId, String(m.at));
+    }
+    for (const [id, at] of firstByLead) {
+      const lead = need.get(id);
+      await repo.update("leads", id, { sdrLog: { ...(lead.sdrLog || {}), firstTouchAt: at, firstTouchVia: "brain" } });
+      changed++;
+    }
+  }
+  await repo.create("app_config", { id: FLAG, at: new Date().toISOString(), changed });
+  return changed;
+}
+
 // Metas de SDR por TAXA (benchmark de SaaS inbound morno) — o alvo é a taxa,
 // que já se normaliza pelo volume de leads (o alvo absoluto de calls sai de
 // leads × taxa na UI). Semeadas como role-scope na coleção goals, uma vez por
@@ -2258,6 +2290,12 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] motivo "sem WhatsApp" verificado em ${n} produto(s)`);
   } catch (err) {
     console.error("[migration] ensureSemWhatsappReason falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureSdrBrainFirstTouch(repo);
+    if (n) console.log(`[migration] 1º toque da IA carimbado em ${n} lead(s) (escada de retomada)`);
+  } catch (err) {
+    console.error("[migration] ensureSdrBrainFirstTouch falhou:", err?.message || err);
   }
   try {
     const n = await ensureSdrGoals(repo);

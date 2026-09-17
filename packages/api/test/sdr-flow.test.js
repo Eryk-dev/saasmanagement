@@ -188,8 +188,8 @@ test("véspera, 2h e 10min saem uma vez cada, gravam no confirmLog e o 10min lev
   nowRef.t = new Date("2026-08-20T11:05:00Z"); // 8h05 BRT, janela do 2h
   await r.tick();
   assert.equal(wa.sent.length, 2);
-  assert.match(wa.sent[1].text, /Está tudo certo pra nossa conversa hoje às 10h\?/);
-  assert.match(wa.sent[1].text, /Me confirma por aqui/);
+  assert.match(wa.sent[1].text, /Nossa conversa é hoje às 10h/);
+  assert.match(wa.sent[1].text, /celular ou pelo computador\?/);
 
   nowRef.t = new Date("2026-08-20T12:52:00Z"); // 9h52, janela do 10min
   await r.tick();
