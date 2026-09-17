@@ -246,6 +246,7 @@ function buildQueue(leads, consultas, saasCfg, person) {
   const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
   const endToday = new Date(); endToday.setHours(23, 59, 59, 999);
   const endTomorrow = new Date(endToday); endTomorrow.setDate(endTomorrow.getDate() + 1);
+  const todayStr = startToday.toDateString(); // uma vez, não 2 Date + toDateString por lead
 
   const g = { hoje: [], amanha: [], proximos: [], semdata: [] };
   let doneToday = 0;
@@ -288,7 +289,7 @@ function buildQueue(leads, consultas, saasCfg, person) {
     // Progresso do dia: todo lead trabalhável tocado hoje conta, mesmo que o
     // toque já tenha re-agendado o GPS (o item muda de bloco, o feito fica).
     if (TOUCH_TYPES.has(l.lastActivityType) && l.lastActivityAt &&
-      new Date(l.lastActivityAt).toDateString() === new Date().toDateString()) doneToday++;
+      new Date(l.lastActivityAt).toDateString() === todayStr) doneToday++;
 
     // Tarefa de confirmação: NÃO vence no horário da call. Vira DUAS tarefas com
     // o horário já descontado — 2h antes (manda a confirmação; era 1h até 30/08:
@@ -354,7 +355,7 @@ function buildQueue(leads, consultas, saasCfg, person) {
 
     // Toque já registrado hoje = item cumprido (fica na fila, riscado).
     const done = due?.type !== "call" && TOUCH_TYPES.has(l.lastActivityType) &&
-      l.lastActivityAt && new Date(l.lastActivityAt).toDateString() === new Date().toDateString();
+      l.lastActivityAt && new Date(l.lastActivityAt).toDateString() === todayStr;
 
     // Grupo de prioridade (define a ordem e o rótulo da ação).
     const group = !due
@@ -731,7 +732,14 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   // da contagem do dia (não têm prazo pra hoje).
   const futureRows = q.proximos;
   // Memo: buildQueue de TODOS os usuários a cada render travava a digitação no painel.
-  const queueCounts = useM(() => Object.fromEntries(users.map((u) => [u.id, buildQueue(leads, consultas, saasCfg, u.id).hoje.filter((i) => !i.done).length])), [leads, consultas, saasCfg, users]);
+  // Só os leads que a fila pode mostrar (produto ativo + etapa trabalhável),
+  // filtrados UMA vez: buildQueue descartaria os mesmos, mas varrendo os ~2 mil
+  // leads do seed pra cada pessoa do seletor.
+  const queueCounts = useM(() => {
+    const workable = new Set(workableStages(saasCfg));
+    const pool = leads.filter((l) => (!saasCfg || l.saas === saasCfg.id) && (!l.stage || workable.has(l.stage)));
+    return Object.fromEntries(users.map((u) => [u.id, buildQueue(pool, consultas, saasCfg, u.id).hoje.filter((i) => !i.done).length]));
+  }, [leads, consultas, saasCfg, users]);
   // Meta de "Contatados" é de contato (leads): consultas não contam pro placar.
   const contactedGoal = Math.max(q.doneToday + pendingToday.filter((i) => i.l).length, q.doneToday, 1);
   const callsToday = q.hoje.filter((i) => i.kind === "call" && !i.confirm);

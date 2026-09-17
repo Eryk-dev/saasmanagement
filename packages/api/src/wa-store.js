@@ -201,10 +201,13 @@ async function promoverPorResposta(repo, leadId) {
 // disparar o wa.me do obrigado é mais quente. Conta, na janela: leads de FORM
 // criados no período × quantos têm conversa INICIADA POR ELES (1ª mensagem
 // inbound). Casamento tolerante ao nono dígito (waMatchKey).
-export async function waFormEngagement(repo, { days = 30, now = Date.now() } = {}) {
+// `threads`/`messages` opcionais: quem já leu as coleções (o /insights chama
+// esta e a waInsights na mesma requisição) passa por aqui e evita reparsear
+// os ~7 MB de wa_messages duas vezes.
+export async function waFormEngagement(repo, { days = 30, now = Date.now(), threads: pThreads, messages: pMessages } = {}) {
   const since = now - Math.max(1, Number(days) || 30) * 24 * 3600_000;
   const [threads, messages, leads] = await Promise.all([
-    repo.list("wa_threads"), repo.list("wa_messages"), repo.list("leads"),
+    pThreads || repo.list("wa_threads"), pMessages || repo.list("wa_messages"), repo.list("leads"),
   ]);
   const at = (m) => new Date(m.at || 0).getTime();
   const firstByThread = new Map();
@@ -355,8 +358,8 @@ export async function listThreads(repo) {
 // resposta; "esperando" e "janela" são SEMPRE do estado atual — o que está em
 // aberto agora é o que muda a ação, não o recorte do período.
 const HOUR = 3_600_000;
-export async function waInsights(repo, { days = 30, now = Date.now() } = {}) {
-  const [threads, messages] = await Promise.all([repo.list("wa_threads"), repo.list("wa_messages")]);
+export async function waInsights(repo, { days = 30, now = Date.now(), threads: pThreads, messages: pMessages } = {}) {
+  const [threads, messages] = await Promise.all([pThreads || repo.list("wa_threads"), pMessages || repo.list("wa_messages")]);
   const since = now - Math.max(1, Number(days) || 30) * 24 * HOUR;
   const at = (m) => new Date(m.at || 0).getTime();
   const inWindowOf = (t) => t >= now - 24 * HOUR;

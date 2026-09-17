@@ -52,7 +52,7 @@ export function LoadingSplash({ compact = false, fullscreen = false, leaving = f
 }
 
 export function ScreenTransition({ navigationKey, overview, onReady, suppressSplash = false, children }) {
-  const load = React.useMemo(() => createNavigationLoad({ minimumMs: reducedMotion() ? 0 : overview ? 650 : 180 }), [navigationKey, overview]);
+  const load = React.useMemo(() => createNavigationLoad({ minimumMs: reducedMotion() ? 0 : 180 }), [navigationKey]);
   const state = React.useSyncExternalStore(load.subscribe, load.getSnapshot, load.getSnapshot);
   const [dismissed, setDismissed] = React.useState(null);
   const readyCallback = React.useRef(onReady);
@@ -62,9 +62,11 @@ export function ScreenTransition({ navigationKey, overview, onReady, suppressSpl
   React.useEffect(() => {
     if (!state.ready) return;
     readyCallback.current?.();
-    const timer = setTimeout(() => setDismissed(load), reducedMotion() ? 0 : overview ? 450 : 180);
+    // Mesmo ritmo em toda tela (17/09: a Visão geral tinha 650 ms de mínimo e
+    // 450 ms de saída, ~0,7 s a mais por abertura além do tempo real).
+    const timer = setTimeout(() => setDismissed(load), reducedMotion() ? 0 : 180);
     return () => clearTimeout(timer);
-  }, [load, state.ready, overview]);
+  }, [load, state.ready]);
   return <div className="screen-transition" aria-busy={!state.ready}>
     <div className="screen-transition__content" data-ready={state.ready} aria-hidden={!state.ready ? true : undefined} inert={!state.ready ? "" : undefined}>
       {children}

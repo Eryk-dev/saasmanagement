@@ -3,8 +3,29 @@ import react from "@vitejs/plugin-react";
 
 const API_TARGET = process.env.API_TARGET || "http://localhost:8787";
 
+// O app entra por `import("./app.jsx")` (main.jsx pede o chunk em paralelo com
+// o /api/bootstrap desde 17/09), mas o Vite não pré-carrega import dinâmico:
+// `modulepreload` no index.html faz o navegador baixar e compilar o shell antes
+// mesmo do index.js rodar, sem EXECUTAR (nenhum módulo lê window.SEED no import).
+function preloadAppChunk() {
+  return {
+    name: "cockpit-preload-app-chunk",
+    apply: "build",
+    transformIndexHtml: {
+      order: "post",
+      handler(html, ctx) {
+        const chunk = Object.values(ctx.bundle || {}).find((c) => c.type === "chunk" && /[\\/]src[\\/]app\.jsx$/.test(c.facadeModuleId || ""));
+        if (!chunk) return html;
+        const tags = [{ tag: "link", attrs: { rel: "modulepreload", href: `/${chunk.fileName}`, crossorigin: true }, injectTo: "head" }];
+        for (const css of chunk.viteMetadata?.importedCss || []) tags.push({ tag: "link", attrs: { rel: "preload", as: "style", href: `/${css}` }, injectTo: "head" });
+        return { html, tags };
+      },
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), preloadAppChunk()],
   build: {
     // As telas carregam sob demanda (React.lazy em app.jsx): o shell (chrome,
     // drawer do lead, libs) é um chunk, cada tela é outro. React/react-dom num
