@@ -72,6 +72,20 @@ entre requisições. A meta de uma janela compartilha o cálculo do ticket com o
 pace, sem recalcular todo o funil. A regressão de custo e equivalência está em
 `api/test/overview-loading.test.js`.
 
+A entrada usa `AppStartup`: busca o SEED antes de importar o App e mantém o
+splash até a primeira tela concluir suas leituras. `ScreenTransition` cobre só
+o conteúdo nas mudanças de rota/produto; menu e topo permanecem disponíveis.
+`lib/navigation-loading.js` acompanha os GETs iniciais de `lib/api.js`, incluindo
+parse/erro e consultas encadeadas, com uma janela de estabilização de 80ms.
+Depois de revelar a tela, polling/SSE não reabre o splash nem remonta formulários.
+Uma espera acima de 12s oferece ação de saída; não há percentual fictício ou
+liberação automática que esconda uma consulta pendente. A referência original
+está em `design/splash-loading-crm/`; seu runtime de editor não é executado no app.
+`npm test` no web roda os testes do ciclo de navegação/cliente REST e o smoke SSR.
+Prévia isolada: `npm run preview:tela -- --port 5202` em `packages/web`, URL
+`/?shell&splash&delay=1500#overview`; `fail=scoreboard` e `hang=scoreboard` simulam
+falha e espera longa sem banco/API.
+
 O nginx do container comprime JSON, JavaScript, CSS e outros textos com gzip,
 com `Vary: Accept-Encoding`. Streams SSE não entram nos tipos comprimidos e
 o MCP mantém compressão desabilitada. A validação de produção dessa melhoria

@@ -1,5 +1,6 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
+import { AppStartup } from "../src/components/screen-loading.jsx";
 import { fmt } from "../src/lib/format.js";
 import { LEADS_FAKE, CLIENTES_FAKE } from "./api-mock.js";
 import "../src/tokens.css";
@@ -86,7 +87,7 @@ function App() {
 
 function PreviewTheme({ children }) {
   React.useEffect(() => {
-    if (marketingPreview || params.has("inbox") || params.has("team") || params.has("finance")) {
+    if (marketingPreview || params.has("inbox") || params.has("team") || params.has("finance") || params.has("splash")) {
       const dark = params.get("theme") === "dark" || params.has("dark");
       document.body.dataset.theme = dark ? "dark" : "light";
       if (dark) ["--accent", "--accent-hover", "--accent-soft", "--accent-line"].forEach((name) => document.body.style.removeProperty(name));
@@ -97,8 +98,14 @@ function PreviewTheme({ children }) {
 
 const root = createRoot(document.getElementById("root"));
 if (previewShell) {
-  const { App: Cockpit } = await import("../src/app.jsx");
-  root.render(<PreviewTheme><Cockpit /></PreviewTheme>);
+  const loadCockpit = async () => {
+    if (params.has("splash")) await new Promise((resolve) => setTimeout(resolve, Number(params.get("delay")) || 0));
+    const { App: Cockpit } = await import("../src/app.jsx");
+    return function PreviewCockpit(props) { return <PreviewTheme><Cockpit {...props} /></PreviewTheme>; };
+  };
+  root.render(params.has("splash")
+    ? <PreviewTheme><AppStartup loadApp={loadCockpit} renderError={(error) => <div role="alert">{error.message}</div>} /></PreviewTheme>
+    : <PreviewTheme>{React.createElement(await loadCockpit())}</PreviewTheme>);
 } else {
   root.render(<App />);
   window.addEventListener("hashchange", () => location.reload());

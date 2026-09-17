@@ -1,3 +1,4 @@
+import { beginPageRequest } from "../src/lib/navigation-loading.js";
 // Dublê da API pro preview de telas (14/09). NÃO entra no build de produção:
 // só o vite.preview.config.js troca lib/api.js por este arquivo, pra conferir
 // o desenho de uma tela sem subir a API nem tocar em banco nenhum.
@@ -107,7 +108,7 @@ const RESPOSTAS = {
 
 const vazio = () => Promise.resolve(null);
 
-export const api = new Proxy({}, {
+const mockApi = new Proxy({}, {
   get(_, nome) {
     if (financePreview && nome === "fin") return (...args) => Promise.resolve(financeMock(...args));
     if (financePreview && nome === "expensesSummary") return () => Promise.resolve({ ai: 0, wa: 0 });
@@ -125,6 +126,27 @@ export const api = new Proxy({}, {
     if (RESPOSTAS[nome]) return (...a) => Promise.resolve(RESPOSTAS[nome](...a));
     if (nome === "then") return undefined;
     return (...a) => { console.info("[preview] api." + String(nome), a); return vazio(); };
+  },
+});
+
+// Simula consultas desencontradas sem subir API/banco. ?splash&delay=1500
+// &fail=scoreboard ou &hang=scoreboard exercitam erro e a saída de espera longa.
+const loadingParams = new URLSearchParams(location.search);
+const delay = loadingParams.has("splash") ? Math.max(0, Number(loadingParams.get("delay")) || 0) : 0;
+export const api = new Proxy(mockApi, {
+  get(target, name) {
+    const fn = target[name];
+    if (typeof fn !== "function") return fn;
+    return async (...args) => {
+      const method = /^(create|update|delete|save|send|set|remove|login|logout)/.test(String(name)) ? "POST" : "GET";
+      const finish = beginPageRequest(method);
+      try {
+        if (loadingParams.has("splash") && loadingParams.get("hang") === name) await new Promise(() => {});
+        if (delay) await new Promise((resolve) => setTimeout(resolve, name === "scoreboard" ? delay * 2 : delay));
+        if (loadingParams.has("splash") && loadingParams.get("fail") === name) throw new Error("Falha simulada na prévia");
+        return await fn(...args);
+      } finally { finish(); }
+    };
   },
 });
 

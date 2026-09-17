@@ -5,6 +5,8 @@
 // kept in localStorage; every request carries it as `x-api-key`. VITE_API_KEY is
 // a build-time fallback (mostly for local dev convenience).
 
+import { beginPageRequest } from "./navigation-loading.js";
+
 const BASE = import.meta.env.VITE_API_BASE || "";
 const STORAGE_KEY = "cockpit_key";
 
@@ -25,38 +27,43 @@ function proxyMessage(status) {
 }
 
 async function req(method, path, body) {
-  const headers = {};
-  if (body !== undefined) headers["content-type"] = "application/json";
-  const key = getKey();
-  if (key) headers["x-api-key"] = key;
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    // Erro nosso vem em JSON com `error`. Quando não vem, quem respondeu foi o
-    // proxy com uma página HTML inteira — despejar isso na tela (já aconteceu)
-    // esconde o problema em vez de mostrar.
-    let msg = "";
-    try {
-      const body = JSON.parse(text);
-      msg = body.error || "";
-      // `detail` é o motivo que o serviço externo deu (ex.: o que o Mercado Pago
-      // respondeu). Sem ele a tela dizia só "MP recusou a criação do link" e
-      // ninguém sabia o que consertar.
-      if (msg && body.detail) msg += ` · ${String(body.detail).slice(0, 220)}`;
-    } catch { /* HTML do proxy */ }
-    const err = new Error(msg || proxyMessage(res.status));
-    err.status = res.status;
-    err.path = path;
-    // Corpo inteiro pra quem precisa de mais que a mensagem (ex.: o blog devolve
-    // a lista do lint junto com a 422).
-    try { err.body = JSON.parse(text); } catch { err.body = null; }
-    throw err;
+  const finish = beginPageRequest(method);
+  try {
+    const headers = {};
+    if (body !== undefined) headers["content-type"] = "application/json";
+    const key = getKey();
+    if (key) headers["x-api-key"] = key;
+    const res = await fetch(`${BASE}${path}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      // Erro nosso vem em JSON com `error`. Quando não vem, quem respondeu foi o
+      // proxy com uma página HTML inteira — despejar isso na tela (já aconteceu)
+      // esconde o problema em vez de mostrar.
+      let msg = "";
+      try {
+        const body = JSON.parse(text);
+        msg = body.error || "";
+        // `detail` é o motivo que o serviço externo deu (ex.: o que o Mercado Pago
+        // respondeu). Sem ele a tela dizia só "MP recusou a criação do link" e
+        // ninguém sabia o que consertar.
+        if (msg && body.detail) msg += ` · ${String(body.detail).slice(0, 220)}`;
+      } catch { /* HTML do proxy */ }
+      const err = new Error(msg || proxyMessage(res.status));
+      err.status = res.status;
+      err.path = path;
+      // Corpo inteiro pra quem precisa de mais que a mensagem (ex.: o blog devolve
+      // a lista do lint junto com a 422).
+      try { err.body = JSON.parse(text); } catch { err.body = null; }
+      throw err;
+    }
+    return res.status === 204 ? null : await res.json();
+  } finally {
+    finish();
   }
-  return res.status === 204 ? null : res.json();
 }
 
 // POST multipart (vídeo/áudio/imagem) via XHR — não é preciosismo: fetch não

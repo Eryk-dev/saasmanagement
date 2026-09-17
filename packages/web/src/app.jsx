@@ -40,6 +40,7 @@ import { SettingsScreen, SettingsLite } from "./screens/settings.jsx";
 import { LeadDetail } from "./screens/deal.jsx";
 import { CommandSearch } from "./components/CommandSearch.jsx";
 import { ToastHost } from "./atoms.jsx";
+import { ScreenTransition } from "./components/screen-loading.jsx";
 import { ErrorBoundary } from "./components/error-boundary.jsx";
 import { Drawer } from "./components/overlay.jsx";
 import { DataContext, loadSeed } from "./data.jsx";
@@ -70,7 +71,7 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "density": "regular"
 }/*EDITMODE-END*/;
 
-function App() {
+function App({ onInitialReady, initialLoading = false } = {}) {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
   // Workspace: o produto ativo tinge o cockpit com a cor da marca dele
   // (product.accent = hue oklch; Lever teal 183 · UniqueKids azul 250).
@@ -291,6 +292,7 @@ function App() {
         {/* Fronteira por TELA: um crash de render (na tela ou num popup dela)
             mostra um cartão e mantém a sidebar/topo vivos; troca de tela (resetKey)
             limpa o erro sozinho. */}
+        <ScreenTransition navigationKey={`${scr}:${activeProduct?.id}`} overview={scr === "overview"} onReady={onInitialReady} suppressSplash={initialLoading}>
         <ErrorBoundary variant="screen" label={`tela:${scr}`} resetKey={scr}>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
           {/* Workspace Elo (B2C self-serve): a Visão geral é a do APP — meta de
@@ -332,6 +334,7 @@ function App() {
           {scr === "settings"    && (canSeeScreen("settings") ? <SettingsScreen saasId={params.saas} /> : <SettingsLite />)}
         </div>
         </ErrorBoundary>
+        </ScreenTransition>
       </main>
 
       {/* Modais globais: cada um numa fronteira própria — se o popup quebrar, o
