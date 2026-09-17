@@ -56,6 +56,12 @@ export function setupInboxPreview(seed, params) {
       }
     }
   }
+  // Leads que ENTRARAM e ainda não têm conversa (o caso que o filtro "Novos" e
+  // a etiqueta NOVO existem pra mostrar): um sem ninguém abrir, um já visto.
+  seed.LEADS.push(
+    { id: "l-novo-1", saas: "leverads", name: "Tatiane Moreira", company: "TM Cosméticos", phone: "5541999900111", stage: seed.LEADS[0]?.stage, createdAt: ago(0.3) },
+    { id: "l-novo-2", saas: "leverads", name: "Everton Lima", company: "Lima Auto Peças", phone: "5541999900112", stage: seed.LEADS[0]?.stage, createdAt: ago(20), inboxSeenAt: ago(19) },
+  );
   if (params.has("empty")) rows = [];
 }
 
