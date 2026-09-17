@@ -71,6 +71,28 @@ function botToneOf(t) {
   return t.hasIn ? "warn" : "neg";
 }
 
+// LEADS NOVOS NO INBOX (Leo, 17/09/2026). O inbox só mostrava quem já tinha
+// conversa; lead que entrou e o robô NÃO abordou ficava invisível, que é
+// justamente o caso que a gente precisa enxergar pra saber se o SDR automático
+// está funcionando. Regras:
+//   · lead que entrou nos últimos NEW_LEAD_DAYS dias aparece na lista mesmo sem
+//     conversa (item "sem conversa ainda"; clicar abre a conversa vazia, como o
+//     atalho do Meu dia);
+//   · filtro "Novos" lista esses leads por ordem de entrada, com ou sem conversa;
+//   · etiqueta NOVO enquanto ninguém do time abriu a conversa; abrir grava
+//     lead.inboxSeenAt no servidor, então some pra todo mundo (é checagem do
+//     time, não de quem está olhando). O auto-abrir da primeira conversa NÃO
+//     marca: só o clique deliberado.
+const NEW_LEAD_DAYS = 7;
+const NEW_LEAD_MS = NEW_LEAD_DAYS * 86_400_000;
+const isRecentLead = (l, now = Date.now()) => {
+  const t = new Date(l?.createdAt || 0).getTime();
+  return Number.isFinite(t) && now - t <= NEW_LEAD_MS;
+};
+// Mesma pessoa em grafias diferentes do número (nono dígito, DDI): compara o
+// fim do número, que é o que não muda.
+const phoneKey = (v) => String(v || "").replace(/\D/g, "").slice(-8);
+
 // Banner de saúde do WhatsApp: mora em components/wa-health-banner.jsx (Disparos
 // usa sem arrastar o inbox inteiro); re-exportado por compatibilidade.
 export { WaHealthBanner };
@@ -215,6 +237,8 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
   // Sem resposta = cliente falou por último, mesma definição de awaiting
   // na API. Aguardando cliente mantém a fila em que nossa equipe falou por último.
   const [answerFilter, setAnswerFilter] = React.useState("in"); // in = cliente aguardando resposta; out = aguardando cliente
+  // Etiqueta NOVO tirada na hora do clique (o SEED confirma no próximo refresh).
+  const [seenNow, setSeenNow] = React.useState(() => new Set());
   const [maisFiltros, setMaisFiltros] = React.useState(false); // filtros adicionais, sem esconder a seleção ativa
   // Card do cliente ao lado da conversa (desktop) — preferência lembrada.
   const [sideOpen, setSideOpen] = React.useState(() => { try { return localStorage.getItem("cockpit_wa_sidecard") !== "0"; } catch { return true; } });
@@ -290,10 +314,38 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
     return () => clearTimeout(t);
   }, [msgsReady, sel, initialDraft]);
 
+  // Conversas + leads novos sem conversa, numa lista só. Lead recente que já
+  // tem thread só ganha a marca de novo; sem thread vira item sintético (id =
+  // dígitos do telefone, o mesmo que openByLead usa, pra seleção bater).
+  const entries = React.useMemo(() => {
+    if (threads === null) return null;
+    const now = Date.now();
+    const leads = (window.SEED?.LEADS || []).filter((l) => (!product?.id || l.saas === product.id) && isRecentLead(l, now));
+    const byLead = new Map(threads.filter((t) => t.leadId).map((t) => [t.leadId, t]));
+    const byPhone = new Map(threads.map((t) => [phoneKey(t.phone || t.id), t]));
+    const marks = new Map(); // thread.id -> { leadCreatedAt, leadNew, leadSeen }
+    const extra = [];
+    for (const l of leads) {
+      const seen = !!l.inboxSeenAt || seenNow.has(l.id);
+      const t = byLead.get(l.id) || (phoneKey(l.phone) ? byPhone.get(phoneKey(l.phone)) : null);
+      if (t) { if (!marks.has(t.id)) marks.set(t.id, { leadCreatedAt: l.createdAt, leadNew: true, leadSeen: seen, newLeadId: l.id }); continue; }
+      const digits = String(l.phone || "").replace(/\D/g, "");
+      if (!digits || byPhone.has(phoneKey(digits))) continue;
+      extra.push({
+        id: digits, phone: digits, name: l.name || "", company: l.company || "", leadId: l.id, saas: l.saas || "",
+        status: "open", unread: 0, hasIn: false, lastAt: l.createdAt, lastDir: "", lastText: "", lastOutAuthor: "",
+        noThread: true, leadCreatedAt: l.createdAt, leadNew: true, leadSeen: seen, newLeadId: l.id,
+      });
+    }
+    const marked = threads.map((t) => (marks.has(t.id) ? { ...t, ...marks.get(t.id) } : t));
+    if (!extra.length) return marked;
+    return [...marked, ...extra].sort((a, b) => String(b.lastAt || "").localeCompare(String(a.lastAt || "")));
+  }, [threads, product?.id, seenNow, version]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-seleciona a primeira conversa; marca como lida ao abrir.
   const list = React.useMemo(() => {
     const s = norm(q.trim());
-    const base = threads || [];
+    const base = entries || [];
     // A busca por NOME não filtrava nada (Leo, 17/08): a parte do telefone
     // comparava com os dígitos da busca, e numa busca sem dígito isso vira
     // `phone.includes("")`, que é VERDADEIRO pra toda conversa — a lista voltava
@@ -309,6 +361,9 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
     // têm o próprio filtro — mensagem nova do lead reabre e ela volta sozinha.
     const open = byQ.filter((t) => (t.status || "open") !== "closed");
     if (answerFilter === "closed") return byQ.filter((t) => t.status === "closed");
+    // Novos = quem ENTROU nos últimos dias, por ordem de entrada, tenha ou não
+    // conversa: é aqui que se confere se o robô abordou cada um.
+    if (answerFilter === "novos") return open.filter((t) => t.leadNew).sort((a, b) => String(b.leadCreatedAt || "").localeCompare(String(a.leadCreatedAt || "")));
     if (answerFilter === "in") return open.filter((t) => t.lastDir === "in");
     if (answerFilter === "out") return open.filter((t) => t.lastDir === "out");
     // Robô × humano: quem o SDR automático está atendendo e o que ele passou
@@ -318,12 +373,13 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
     if (answerFilter === "lead") return open.filter((t) => t.leadId);
     if (answerFilter === "orphan") return open.filter((t) => !t.leadId);
     return open;
-  }, [threads, q, answerFilter]);
+  }, [entries, q, answerFilter]);
   const answerCounts = React.useMemo(() => {
-    const base = threads || [];
+    const base = entries || [];
     const open = base.filter((t) => (t.status || "open") !== "closed");
     return {
       all: open.length,
+      novos: open.filter((t) => t.leadNew).length,
       lead: open.filter((t) => t.leadId).length,
       orphan: open.filter((t) => !t.leadId).length,
       in: open.filter((t) => t.lastDir === "in").length,
@@ -332,12 +388,28 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
       bot: open.filter((t) => botStateOf(t) === "bot").length,
       handoff: open.filter((t) => botStateOf(t) === "handoff").length,
     };
-  }, [threads]);
+  }, [entries]);
 
   // No mobile a lista é a tela inicial: não auto-abre conversa (abrir = navegar).
+  // Lead sem conversa não é auto-aberto: abrir ele é ato deliberado (e tira o NOVO).
   React.useEffect(() => {
-    if (!isMobile && !sel && list.length) setSel(list[0].id);
+    if (isMobile || sel || !list.length) return;
+    const first = list.find((t) => !t.noThread);
+    if (first) setSel(first.id);
   }, [list, sel, isMobile]);
+
+  // Clique na lista: abre a conversa e, se o lead é novo e ninguém tinha
+  // aberto, registra no servidor (a etiqueta some pra todo o time).
+  function abrir(t) {
+    if (t.noThread) {
+      const l = (window.SEED?.LEADS || []).find((x) => x.id === t.leadId);
+      if (l) openByLead(l); else setSel(t.id);
+    } else setSel(t.id);
+    if (t.leadNew && !t.leadSeen && t.newLeadId) {
+      setSeenNow((cur) => new Set(cur).add(t.newLeadId));
+      api.update("leads", t.newLeadId, { inboxSeenAt: new Date().toISOString() }).catch(() => { /* etiqueta volta no próximo refresh */ });
+    }
+  }
 
   const current = (threads || []).find((t) => t.id === sel) || (virtual && virtual.id === sel ? virtual : null) || null;
   // Contatou o lead na conversa: tira ele da fila (Minhas atividades) e recarrega
@@ -488,10 +560,10 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
               <button className="inbox-filter" aria-expanded={maisFiltros} title="Com lead · encerradas · pra humano · sem lead · aguardando cliente" onClick={() => setMaisFiltros((v) => !v)}>{maisFiltros ? "menos ▴" : "mais ▾"}</button>
             </div>
             <div className="inbox-filters">
-              {[["in", "Sem resposta"], ["all", "Todas"], ["bot", "Robô"],
+              {[["in", "Sem resposta"], ["novos", "Novos"], ["all", "Todas"], ["bot", "Robô"],
                 ...[["lead", "Com lead"], ["closed", "Encerradas"], ["handoff", "Pra humano"], ["orphan", "Sem lead"], ["out", "Aguardando cliente"]].filter(([id]) => maisFiltros || id === answerFilter),
               ].map(([id, label]) => <button key={id} className="inbox-filter" aria-pressed={answerFilter === id}
-                onClick={() => setAnswerFilter(id)} title={id === "in" ? "O cliente falou por último e espera nossa resposta" : id === "out" ? "Nossa equipe falou por último e espera o cliente" : label}>
+                onClick={() => setAnswerFilter(id)} title={id === "in" ? "O cliente falou por último e espera nossa resposta" : id === "out" ? "Nossa equipe falou por último e espera o cliente" : id === "novos" ? `Leads que entraram nos últimos ${NEW_LEAD_DAYS} dias, por ordem de entrada, com ou sem conversa` : label}>
                 {label} <span className="tnum">{answerCounts[id]}</span>
               </button>)}
             </div>
@@ -500,15 +572,16 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
             {threads === null ? (
               <div className="mono dim" style={{ fontSize: 11.5, padding: 16 }}>carregando…</div>
             ) : list.length === 0 ? (
-              <div style={{ padding: 20 }}><EmptyState title="Nenhuma conversa" hint={q || answerFilter !== "all" ? "nenhuma conversa neste filtro" : configured ? "quando um lead responder, a conversa aparece aqui" : "configure o WhatsApp pra começar"} /></div>
+              <div style={{ padding: 20 }}><EmptyState title={answerFilter === "novos" && !q ? "Nenhum lead novo" : "Nenhuma conversa"} hint={answerFilter === "novos" && !q ? `nenhum lead entrou nos últimos ${NEW_LEAD_DAYS} dias` : q || answerFilter !== "all" ? "nenhuma conversa neste filtro" : configured ? "quando um lead responder, a conversa aparece aqui" : "configure o WhatsApp pra começar"} /></div>
             ) : list.map((t) => {
-              const on = t.id === sel;
+              const on = t.id === sel || (!!t.noThread && !!current?.virtual && current.leadId === t.leadId);
               // Conversa do SDR automático ganha cor de status: verde = call
               // marcada, amarelo = lead respondeu, vermelho = sem resposta.
               const tone = botToneOf(t);
+              const novo = t.leadNew && !t.leadSeen;
               return (
-                <button className="inbox-conversation" aria-pressed={on} key={t.id} onClick={() => setSel(t.id)}
-                  title={tone === "pos" ? "SDR automático · call marcada" : tone === "warn" ? "SDR automático · lead respondeu, em conversa" : tone === "neg" ? "SDR automático · lead ainda não respondeu" : undefined}
+                <button className="inbox-conversation" aria-pressed={on} key={t.id} onClick={() => abrir(t)}
+                  title={t.noThread ? `Lead novo, sem conversa ainda · entrou ${when(t.leadCreatedAt)}` : tone === "pos" ? "SDR automático · call marcada" : tone === "warn" ? "SDR automático · lead respondeu, em conversa" : tone === "neg" ? "SDR automático · lead ainda não respondeu" : undefined}
                   style={{
                   width: "100%", textAlign: "left", display: "flex", gap: 10, alignItems: "center", padding: "10px 12px",
                   border: "none", borderBottom: "1px solid var(--line-1)", cursor: "pointer",
@@ -523,17 +596,18 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
                       <span style={{ fontSize: 13, fontWeight: 600, color: "var(--fg-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>
                         {t.name || prettyPhone(t.phone)}
                       </span>
+                      {novo && <span className="inbox-new-tag" title="Lead novo: ninguém do time abriu esta conversa ainda">NOVO</span>}
                       <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)", flexShrink: 0 }}>{when(t.lastAt)}</span>
                     </span>
                     <span style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
                       <span className="dim" style={{ fontSize: 11.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>
-                        {t.lastOutAuthor === "sdr-bot" && t.lastDir === "out" ? "robô: " : t.lastDir === "out" ? "→ " : ""}{t.lastText || "—"}
+                        {t.noThread ? "lead novo · o robô ainda não mandou nada" : `${t.lastOutAuthor === "sdr-bot" && t.lastDir === "out" ? "robô: " : t.lastDir === "out" ? "→ " : ""}${t.lastText || "—"}`}
                       </span>
                       {t.unread > 0 && (
                         <span style={{ flexShrink: 0, minWidth: 18, height: 18, padding: "0 5px", borderRadius: 999, background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 10.5, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{t.unread}</span>
                       )}
-                      <span className="inbox-thread-mark" style={{ color: tone ? `var(--${tone})` : "var(--fg-3)" }}>
-                        {botStateOf(t) === "handoff" ? "humano" : botStateOf(t) === "bot" ? "robô" : !t.leadId ? "sem lead" : t.lastDir === "in" ? dur(Math.max(0, Math.round((Date.now() - new Date(t.lastAt)) / 60000))) : ""}
+                      <span className="inbox-thread-mark" style={{ color: t.noThread ? "var(--warn)" : tone ? `var(--${tone})` : "var(--fg-3)" }}>
+                        {t.noThread ? "sem conversa" : botStateOf(t) === "handoff" ? "humano" : botStateOf(t) === "bot" ? "robô" : !t.leadId ? "sem lead" : t.lastDir === "in" ? dur(Math.max(0, Math.round((Date.now() - new Date(t.lastAt)) / 60000))) : ""}
                       </span>
                     </span>
                   </span>
@@ -541,7 +615,7 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
               );
             })}
           </div>
-          {threads && <div className="inbox-list-count">{list.length} de {threads.length} conversas</div>}
+          {entries && <div className="inbox-list-count">{list.length} de {entries.length} conversas</div>}
         </section>
         )}
 
