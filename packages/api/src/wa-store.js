@@ -144,6 +144,10 @@ export async function recordMessage(repo, { id, phone, direction, text = "", at,
     // O número da conversa: fixa por onde ela ENTROU (resposta sai pelo mesmo).
     waPhoneId: waPhoneId || prev?.waPhoneId || "",
     lastText: text, lastAt: when, lastDir: direction,
+    // Id da última mensagem RECEBIDA: é o que a varredura do sdr-brain compara
+    // com o carimbo da última decisão (thread.brain.msgId) pra achar mensagem
+    // que ficou sem decisão (processo reiniciou no meio do debounce).
+    lastInId: direction === "in" ? msgId : prev?.lastInId || "",
     // Sinais do inbox: o lead JÁ respondeu alguma vez nesta conversa? e quem
     // falou por último do NOSSO lado (humano ou sdr-bot)? Alimentam o filtro
     // robô × humano e as cores de status do SDR automático na lista.

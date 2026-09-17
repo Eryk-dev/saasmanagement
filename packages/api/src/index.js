@@ -18,6 +18,7 @@ import { startConsultationSummaries } from "./consultations.js";
 import { startDripSequences } from "./drip-runner.js";
 import { startCadencia } from "./cadencia-runner.js";
 import { startSdrFlow } from "./sdr-flow.js";
+import { startSdrBrainSweep } from "./sdr-brain.js";
 import { startTrainingReminder } from "./training-reminder.js";
 import { startTaskReminder } from "./task-reminder.js";
 import { startWaWaitingReminder } from "./wa-waiting-reminder.js";
@@ -127,6 +128,10 @@ try {
   // poller de 60s, no-op sem product.sdrBot.enabled. Age em nome do SDR dono,
   // com autoria interna "sdr-bot" (fora da régua de contato humano).
   startSdrFlow(repo, { ...app.integrationClients, log: app.log });
+  // Retomada do SDR conversacional: mensagem recebida que ficou SEM decisão
+  // (a API reiniciou no meio do debounce/IA/atraso de resposta) é tratada de
+  // novo no ciclo seguinte, em vez de morrer no silêncio (16/09: Vinicius).
+  startSdrBrainSweep(app.integrationClients.sdrBrain, { log: app.log });
   // Lembrete diário de treinamento (flashcards vencendo) — no-op sem Discord.
   startTrainingReminder(repo, { log: app.log });
   // Lembrete diário das tarefas (vence hoje / atrasada) na caixa de entrada de
