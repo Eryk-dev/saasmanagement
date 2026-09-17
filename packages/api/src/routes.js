@@ -59,6 +59,18 @@ import { discord as defaultDiscord } from "./discord.js";
 import { currentRev, subscribe as subscribeChanges, QUIET } from "./changes.js";
 import { isWon, isPostSaleStage, firstStage, kindOf, stageByKind, isNoShowStage } from "./stages.js";
 import { logActivity, applyStageMove, onActivityCreated, initialNextActionAt, appointmentAt, autoLeadOwner, brtToIso } from "./lead-flow.js";
+import { toNaiveBrt } from "./agenda-slots.js";
+
+// COMPROMISSO SEMPRE NA FORMA CANÔNICA (17/09): callAt/followupAt/integrationAt
+// são "YYYY-MM-DDTHH:MM" no relógio de Brasília. Cliente que manda ISO em UTC
+// ("2026-09-16T13:00:00.000Z", visto no card do Renan) fazia o lembrete dizer
+// "hoje às 13h" pra uma call das 10h. Converte na entrada, POST e PATCH.
+const WHEN_FIELDS = ["callAt", "followupAt", "integrationAt"];
+function canonWhen(body) {
+  if (!body || typeof body !== "object") return body;
+  for (const k of WHEN_FIELDS) if (typeof body[k] === "string" && body[k]) body[k] = toNaiveBrt(body[k]);
+  return body;
+}
 import { findDuplicateLead, dedupMergePatch } from "./lead-dedup.js";
 import { referralPatch, logReferralCollected } from "./referrals.js";
 import { registerFunnelMetricsRoutes } from "./routes.funnel-metrics.js";
@@ -811,6 +823,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     }
     const now = new Date().toISOString();
     const stamp = {};
+    if (collection === "leads") canonWhen(req.body);
     if ((collection === "leads" || collection === "consultations" || collection === "deliverables") && !req.body.createdAt) stamp.createdAt = now;
     // Consulta nasce com a responsável = quem marcou (a Ana marca as próprias).
     if (collection === "consultations" && !req.body.owner && req.authUser?.id) stamp.owner = req.authUser.id;
@@ -986,6 +999,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     const { collection, id } = req.params;
     if (!WRITABLE.has(collection)) return reply.code(404).send({ error: `Unknown collection: ${collection}` });
     if (!req.body || typeof req.body !== "object") return reply.code(400).send({ error: "JSON body required" });
+    if (collection === "leads") canonWhen(req.body);
     const before = collection === "subscriptions" ? await repo.get(collection, id) : null;
     // Movimento de estágio de LEAD passa pelo applyStageMove (lead-flow.js):
     // recarimba stageSince (respeitando o explícito do optimistic move), zera o

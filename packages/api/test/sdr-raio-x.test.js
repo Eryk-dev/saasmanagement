@@ -218,8 +218,11 @@ test("migração: lead que só conversou com a IA ganha firstTouchAt da 1ª mens
 });
 
 // ── Confirmação com ação e link ─────────────────────────────────────────────
-test("reminderText: 2h pede ação (com link, por onde entra; sem link, o ok), 10min sem link pede o ok", () => {
-  assert.match(reminderText("2h", { nome: "Rafael", quando: "hoje às 14h", link: "https://meet.google.com/x" }), /link pra entrar é este: https:\/\/meet\.google\.com\/x\. Você vai entrar pelo celular ou pelo computador\?/);
+test("reminderText: 2h leva o link e a dica do computador, sem perguntar por onde entra (Leo, 17/09); sem link, pede o ok; 10min sem link pede o ok", () => {
+  const t2h = reminderText("2h", { nome: "Rafael", quando: "hoje às 14h", link: "https://meet.google.com/x" });
+  assert.match(t2h, /link pra entrar é este: https:\/\/meet\.google\.com\/x\. Se for entrar pelo celular, vale ter um computador por perto/);
+  assert.match(t2h, /Me confirma por aqui que está tudo certo\?$/);
+  assert.doesNotMatch(t2h, /celular ou pelo computador/);
   assert.match(reminderText("2h", { nome: "Rafael", quando: "hoje às 14h", link: "" }), /Me manda um ok por aqui que eu já te passo o link/);
   assert.match(reminderText("10min", { nome: "", quando: "hoje às 14h", link: "" }), /Me manda um ok que te passo o link de acesso agora/);
   assert.doesNotMatch(reminderText("10min", { nome: "", quando: "", link: "" }), /Te espero lá/);
@@ -231,11 +234,21 @@ test("lembrete de 2h com janela fechada e sala criada sai pelo template COM link
     lead: { stage: "Call agendada", callAt: "2026-08-20T10:00", closer: "pl", callUrl: "https://meet.google.com/abc-defg", createdAt: ISO("2026-08-10T10:00:00Z") },
     messages: [], // lead nunca escreveu: janela fechada
   });
-  const wa = makeWa({ approved: ["sdr_lembrete_link", "sdr_lembrete_conversa"] });
+  // v2 (sem a pergunta do celular) na frente; v1 ainda vale enquanto o v2 não é aprovado.
+  const wa = makeWa({ approved: ["sdr_lembrete_link2", "sdr_lembrete_link", "sdr_lembrete_conversa"] });
   await tickOf(repo, wa, new Date("2026-08-20T11:05:00Z")); // 8h05 BRT, janela do 2h
   const t = wa.sent.find((s) => s.kind === "template");
-  assert.equal(t.name, "sdr_lembrete_link");
+  assert.equal(t.name, "sdr_lembrete_link2");
   assert.deepEqual(t.params, ["Rafael", "hoje às 10h", "https://meet.google.com/abc-defg"]);
+  const repo1 = await world({
+    sdrBot: { reminders: true },
+    lead: { stage: "Call agendada", callAt: "2026-08-20T10:00", closer: "pl", callUrl: "https://meet.google.com/abc-defg", createdAt: ISO("2026-08-10T10:00:00Z") },
+  });
+  const wa1 = makeWa({ approved: ["sdr_lembrete_link", "sdr_lembrete_conversa"] });
+  await tickOf(repo1, wa1, new Date("2026-08-20T11:05:00Z"));
+  const t1 = wa1.sent.find((s) => s.kind === "template");
+  assert.equal(t1.name, "sdr_lembrete_link");
+  assert.deepEqual(t1.params, ["Rafael", "hoje às 10h", "https://meet.google.com/abc-defg"]);
 
   // Sem o template com link aprovado, cai no genérico de sempre.
   const repo2 = await world({

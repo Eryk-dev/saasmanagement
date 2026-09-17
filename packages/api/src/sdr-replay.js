@@ -27,7 +27,7 @@ const WEEKDAYS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "
 // O que o raio-x de 17/09 mediu como copy que perde o lead.
 const REFLEX_RX = /algum\s+d(os|esses|aqueles)\s+hor[áa]rios|hor[áa]rios?\s+que\s+(eu\s+)?(te\s+)?(passei|mandei|enviei)/i;
 const VERIFY_RX = /vou (verificar|confirmar|checar|ver) (com|isso|aqui|junto)|deixa eu (confirmar|verificar) com (o|a) (time|especialista|equipe)/i;
-const BRIDGE_RX = /google meet|20 minutos|ao vivo/i;
+const BRIDGE_RX = /google meet|ao vivo/i;
 
 export const docIdOf = (tag) => (tag ? `${DOC_ID}_${String(tag).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").slice(0, 40)}` : DOC_ID);
 

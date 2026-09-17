@@ -194,7 +194,7 @@ export function sdrBotConfig(product) {
       reminder: cfg.templates?.reminder || "sdr_lembrete_conversa",
       // Lembrete COM o link do Meet no corpo (raio-x 17/09): sai na frente do
       // genérico sempre que a sala já existe. Submeter à Meta pelo sdr-setup.
-      reminderLink: cfg.templates?.reminderLink || "sdr_lembrete_link",
+      reminderLink: cfg.templates?.reminderLink || "sdr_lembrete_link2",
       rescue: cfg.templates?.rescue || "sdr_resgate_conversa",
       secondTouch: cfg.templates?.secondTouch || "sdr_retomada_conversa",
       // Variações aprovadas da retomada: o lote de 2º toque sorteia entre elas
@@ -299,13 +299,18 @@ const REMINDERS = [
 // entrar e já entrega o link quando ele existe; o 10min sempre leva o link, e
 // sem link pede o ok pra mandar (nunca "te espero lá" sem lugar nenhum: ~22
 // conversas ficaram sem o link no WhatsApp).
+export const DEVICE_TIP = "Se for entrar pelo celular, vale ter um computador por perto: na tela grande você acompanha e entende melhor a demonstração.";
 export function reminderText(key, { nome, quando, link }) {
   const oi = nome ? `Oi ${nome}!` : "Oi!";
   if (key === "24h") return `${oi} Confirmando nossa conversa ${quando}, tudo certo? Qualquer imprevisto me fala por aqui que eu remarco sem problema.`;
+  // SEM perguntar por onde a pessoa entra (Leo, 17/09): a pergunta "celular ou
+  // computador?" saiu; fica só a recomendação de ter um computador por perto
+  // (na tela grande o lead acompanha e entende melhor a demonstração) e o
+  // pedido de confirmação, que é o que alimenta o alerta de ligação (2b).
   if (key === "2h") {
     return link
-      ? `${oi} Nossa conversa é ${quando}, nosso especialista já separou o horário. O link pra entrar é este: ${link}. Você vai entrar pelo celular ou pelo computador?`
-      : `${oi} Nossa conversa é ${quando}, nosso especialista já separou o horário. Me manda um ok por aqui que eu já te passo o link de acesso, pode ser?`;
+      ? `${oi} Nossa conversa é ${quando}, nosso especialista já separou o horário. O link pra entrar é este: ${link}. ${DEVICE_TIP} Me confirma por aqui que está tudo certo?`
+      : `${oi} Nossa conversa é ${quando}, nosso especialista já separou o horário. ${DEVICE_TIP} Me manda um ok por aqui que eu já te passo o link de acesso, pode ser?`;
   }
   return link
     ? `${nome ? nome + ", nossa" : "Nossa"} conversa começa em 10 minutos! Link pra entrar: ${link}`
@@ -784,9 +789,11 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
             // Com link do Meet e o template COM link aprovado, ele vai na
             // frente: janela fechada era exatamente onde o lead ficava sem
             // link (o "te espero lá" do template antigo não tem lugar).
-            const tplLembrete = [callUrl ? cfg.templates.reminderLink : "", cfg.templates.reminder, "sdr_lembrete_call"].filter(Boolean).find((n) => names.has(n));
+            // Com link: o v2 (sem a pergunta do celular) na frente; o v1 ainda
+            // vale enquanto o v2 não é aprovado (link entregue > pergunta a mais).
+            const tplLembrete = [callUrl ? cfg.templates.reminderLink : "", callUrl ? "sdr_lembrete_link" : "", cfg.templates.reminder, "sdr_lembrete_call"].filter(Boolean).find((n) => names.has(n));
             if (tplLembrete) {
-              const params = tplLembrete === cfg.templates.reminderLink ? [nome || "tudo bem", quando, callUrl] : [nome || "tudo bem", quando];
+              const params = [cfg.templates.reminderLink, "sdr_lembrete_link"].includes(tplLembrete) ? [nome || "tudo bem", quando, callUrl] : [nome || "tudo bem", quando];
               await sendTemplate({ phone: to, name: tplLembrete, params, phoneId, saas: product.id, leadId: lead.id });
             } else {
               await raiseAlert(repo, thread || { id: digits(phone), phone: digits(phone), name: lead.name || "", leadId: lead.id, saas: product.id }, {

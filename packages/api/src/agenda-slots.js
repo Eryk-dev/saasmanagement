@@ -37,12 +37,29 @@ const pad2 = (n) => String(n).padStart(2, "0");
 // Data naive "YYYY-MM-DD[THH:MM]" → Date com campos UTC = relógio de parede.
 export function wallFromNaive(v) {
   const s = String(v || "").trim();
+  // ISO COM FUSO ("2026-09-16T13:00:00.000Z"): callAt gravado em UTC por um
+  // cliente que mandou Date.toISOString() (visto 16/09, Renan: a call era 10h
+  // BRT e o lembrete disse "hoje às 13h", porque o "13:00" era lido como
+  // parede). Com fuso, converte pro relógio BRT em vez de fatiar o texto.
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s) && /(?:[Zz]|[+-]\d{2}:?\d{2})$/.test(s)) {
+    const d = new Date(s);
+    return Number.isFinite(d.getTime()) ? wallNow(d) : null;
+  }
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
   if (!m) return null;
   return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4] || 0), Number(m[5] || 0)));
 }
 // O "agora" real no relógio de parede BRT (UTC-3 fixo, sem horário de verão).
 export const wallNow = (at = new Date()) => new Date(new Date(at).getTime() - BRT_MS);
+// Qualquer forma de data-hora ("YYYY-MM-DDTHH:MM" ou ISO com fuso) → a forma
+// canônica naive BRT que o cockpit grava. É o que a API aplica em callAt,
+// followupAt e integrationAt antes de gravar (routes.js).
+export function toNaiveBrt(v) {
+  const s = String(v || "").trim();
+  if (!s) return "";
+  const w = wallFromNaive(s);
+  return w ? slotValOf(w) : s;
+}
 
 const wallYmd = (w) => `${w.getUTCFullYear()}-${pad2(w.getUTCMonth() + 1)}-${pad2(w.getUTCDate())}`;
 const cellKeyOf = (w) => `${wallYmd(w)}-${pad2(w.getUTCHours())}-${w.getUTCMinutes() < 30 ? "00" : "30"}`;
