@@ -113,11 +113,16 @@ export function registerCampaignRoutes(app, repo, { anthropic, mailer } = {}) {
   app.get("/api/campaigns/metrics/:saas", async (req, reply) => {
     const saas = req.params.saas;
     const product = await repo.get("products", saas);
-    const camps = (await repo.list("campaigns")).filter((c) => c.saas === saas);
-    const acts = await repo.list("activities");
+    // Só as mudanças de etapa DESTE produto, filtradas no Postgres (índice
+    // activities(saas,type)): a tabela inteira são 10 mil linhas / 7 MB por
+    // abertura da tela, e só `stage` do produto interessa aqui.
+    const [camps, acts] = await Promise.all([
+      repo.list("campaigns").then((all) => all.filter((c) => c.saas === saas)),
+      repo.listWhere("activities", { saas, type: "stage" }, { fields: ["lead", "type", "meta", "at"] }),
+    ]);
     const stageByLead = new Map();
     for (const a of acts) {
-      if (a.type !== "stage" || !a.lead) continue;
+      if (!a.lead) continue;
       if (!stageByLead.has(a.lead)) stageByLead.set(a.lead, []);
       stageByLead.get(a.lead).push(a);
     }

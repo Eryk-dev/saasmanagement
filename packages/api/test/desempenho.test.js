@@ -12,7 +12,7 @@ import {
   callOutcome, callResultOf, dayKey,
 } from "../src/metrics-core.js";
 import { registerRoutes } from "../src/routes.js";
-import { startStoriesCapture } from "../src/routes.desempenho.js";
+import { startStoriesCapture, invalidateMediaCache } from "../src/routes.desempenho.js";
 import { invalidateStoriesSync } from "../src/social-stories.js";
 
 const NOW = new Date("2026-09-10T18:00:00.000Z"); // 15h em Brasília, 10/09
@@ -33,9 +33,10 @@ const WIN3 = "?since=2026-09-10&until=2026-09-12";
 const inDay = (iso) => iso && dayKey(iso) === "2026-09-10";
 
 // Instagram falso: 2 posts + 1 reel no dia, 1 post de ontem; 2 stories vivos.
-const fakeSocial = ({ fail = false } = {}) => ({
+const fakeSocial = ({ fail = false, calls = {} } = {}) => ({
   configured: () => true,
   async igMedia() {
+    calls.igMedia = (calls.igMedia || 0) + 1;
     if (fail) throw new Error("Graph indisponível");
     return [
       { id: "m1", type: "IMAGE", at: "2026-09-10T12:00:00.000Z", permalink: "https://ig/m1", caption: "post 1" },
@@ -116,6 +117,7 @@ test("callResultOf é o mesmo classificador que o callOutcome soma", () => {
 });
 
 async function buildApp({ social = fakeSocial(), user = null } = {}) {
+  invalidateMediaCache(); // o feed do Instagram fica em cache por conta entre requisições
   const repo = makeMemRepo();
   await repo.create("products", PRODUCT);
   await repo.create("users", { id: "sdr", name: "Manuela", roles: ["sdr"] });
@@ -223,6 +225,17 @@ test("GET /api/desempenho: Graph fora do ar não derruba a rota (erro no payload
   assert.equal(d.social.feed, null);
   assert.match(d.social.errors.feed, /Graph/);
   assert.equal(d.social.stories, 1);
+  await app.close();
+});
+
+test("GET /api/desempenho: feed do Instagram em cache de 10 min (a Graph não entra em toda abertura da tela)", async () => {
+  const calls = {};
+  const { app } = await buildApp({ social: fakeSocial({ calls }) });
+  const d1 = (await app.inject({ url: `/api/desempenho/leverads${DAY}` })).json();
+  const d2 = (await app.inject({ url: `/api/desempenho/leverads${DAY}` })).json();
+  assert.equal(calls.igMedia, 1, "segunda abertura vem do cache");
+  assert.equal(d1.social.feed, 3);
+  assert.equal(d2.social.feed, 3);
   await app.close();
 });
 

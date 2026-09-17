@@ -23,6 +23,7 @@ import { dayKey, isRealLead, isSaleLead, winsIn, customerStartMap, leadOrigin, L
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 import { painCode } from "./attribution.js";
 import { metaAdAccounts } from "./meta-accounts.js";
+import { makeTtlCache } from "./ttl-cache.js";
 export { painCode };
 
 const DAY_MS = 86400000;
@@ -639,10 +640,30 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     // Ordena por data: a resolução de nome (campanha/conjunto) é last-write-wins
     // no loop abaixo, e o sync só rescreve o nome nas linhas da janela — a linha
     // mais recente é a que tem o nome atual (repo.list vem em ordem de id).
-    const rows = (await repo.list("ad_insights"))
+    // As 7 leituras do banco saem JUNTAS: em série somavam ~600 ms por request
+    // (leads ~100 ms, form_events ~270 ms, activities ~240 ms, medido no
+    // pg_stat_statements em 17/09) e a tela chama isto a cada 60 s.
+    const [insightRows, leadsAll, formEventsRaw, customersAll, invoicesAll, stageActs, systemActs] = await Promise.all([
+      repo.list("ad_insights"),
+      repo.list("leads"),
+      // form_events é a maior tabela do cockpit e `ua`/`utm` não são usados aqui.
+      // O Postgres corta por uma janela UTC FOLGADA de um dia pra cada lado (o
+      // corte fino por dia do NEGÓCIO fica em JS, logo abaixo).
+      repo.listWhere(
+        "form_events",
+        { saas: product.id, createdAt: { gte: shiftDay(since, -1), lt: shiftDay(until, 2) } },
+        { fields: ["event", "session", "createdAt"] },
+      ),
+      repo.list("customers"),
+      repo.list("invoices").catch(() => []),
+      // Só as mudanças de estágio DESTE produto (stagePassCounts lê type e meta).
+      repo.listWhere("activities", { saas: product.id, type: "stage" }, { fields: ["lead", "type", "meta"] }),
+      // Resumos de call por IA (testemunha do comparecimento), projetados.
+      repo.listWhere("activities", { saas: product.id, type: "system" }, { fields: ["lead", "type", "meta", "at"] }),
+    ]);
+    const rows = insightRows
       .filter((r) => r.saas === product.id && r.date >= since && r.date <= until)
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
-    const leadsAll = await repo.list("leads");
     // Leads do PRODUTO (a base do dinheiro, sem recorte de janela) e a COORTE
     // da janela (criados nela — a base de CPL/atribuição de lead).
     const productLeads = leadsAll.filter((l) => l.saas === product.id && isRealLead(l));
@@ -665,11 +686,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     // não dá pra comparar o ISO UTC direto). O Postgres corta por uma janela UTC
     // FOLGADA de um dia pra cada lado: some ~99% das linhas sem mexer na régua.
     // form_events é a maior tabela do cockpit e `ua`/`utm` não são usados aqui.
-    const formEvents = (await repo.listWhere(
-      "form_events",
-      { saas: product.id, createdAt: { gte: shiftDay(since, -1), lt: shiftDay(until, 2) } },
-      { fields: ["event", "session", "createdAt"] },
-    )).filter((e) => dayStr(e.createdAt) >= since && dayStr(e.createdAt) <= until);
+    const formEvents = formEventsRaw.filter((e) => dayStr(e.createdAt) >= since && dayStr(e.createdAt) <= until);
     const formSessions = (ev) => new Set(formEvents.filter((e) => e.event === ev).map((e) => e.session)).size;
 
     const sum = (k) => rows.reduce((a, r) => a + (Number(r[k]) || 0), 0);
@@ -686,12 +703,12 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     // em JULHO (Leo, 25/07). A atribuição (campanha/conjunto/anúncio/dor)
     // continua pelo UTM do lead, mesmo que ele tenha entrado noutro período.
     const inWin = (iso) => { const d = dayStr(iso); return d && d >= since && d <= until; };
-    const customerStartByLead = customerStartMap((await repo.list("customers")).filter((c) => c.saas === product.id));
+    const customerStartByLead = customerStartMap(customersAll.filter((c) => c.saas === product.id));
     const wonIds = winsIn(product, saleLeads, inWin, customerStartByLead);
     const wonAll = saleLeads.filter((l) => wonIds.has(l.id));
     // Upsell é venda (Leo, 09/09): entra no fecho do período (nº e R$ do
     // contrato, a régua daqui) — a atribuição por campanha segue só pelo lead.
-    const upsells = upsellSalesIn(await repo.list("invoices").catch(() => []), inWin, { saas: product.id });
+    const upsells = upsellSalesIn(invoicesAll, inWin, { saas: product.id });
     const revenueAll = wonAll.reduce((s, l) => s + (Number(l.amount) || 0), 0) + upsellContractedOf(upsells);
 
     // Custo por etapa: leads que PASSARAM por cada estágio da régua de progresso
@@ -700,8 +717,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     // sem histórico cai na aproximação pelo estágio atual (comportamento
     // pré-CRM). Terminais de perda não são progresso.
     const stageActsByLead = new Map();
-    // Só as mudanças de estágio DESTE produto (stagePassCounts lê type e meta).
-    for (const a of await repo.listWhere("activities", { saas: product.id, type: "stage" }, { fields: ["lead", "type", "meta"] })) {
+    for (const a of stageActs) {
       if (!a.lead) continue;
       if (!stageActsByLead.has(a.lead)) stageActsByLead.set(a.lead, []);
       stageActsByLead.get(a.lead).push(a);
@@ -720,7 +736,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     // call_summary), que separa compareceu de furo mesmo com callAt remarcado
     // ou limpo. Só as do produto, projetadas (meta.summary é o maior campo útil).
     const witnessByLead = new Map();
-    for (const a of await repo.listWhere("activities", { saas: product.id, type: "system" }, { fields: ["lead", "type", "meta", "at"] })) {
+    for (const a of systemActs) {
       if (!a.lead || a.meta?.event !== "call_summary" || !a.meta.summary) continue;
       if (!witnessByLead.has(a.lead)) witnessByLead.set(a.lead, []);
       witnessByLead.get(a.lead).push(a);
@@ -919,7 +935,9 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
   // o gasto acontece — Facebook/Instagram/Audience Network e feed/stories/reels.
   // Não persiste (breakdown multiplica linhas e não cruza com lead por UTM);
   // cache curto por saas+range pra não bater na Graph a cada render.
-  const placementCache = new Map(); // `${saas}|${since}|${until}` -> { at, rows }
+  // Com valor guardado, a falha da Meta devolve o velho em vez de sumir com o
+  // card (stale-while-revalidate do ttl-cache).
+  const placementCache = makeTtlCache({ ttl: 300_000, staleTtl: 30 * 60_000 }); // `${saas}|${contas}|${since}|${until}` -> rows
   app.get("/api/marketing/:saas/placements", async (req, reply) => {
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "Not found" });
@@ -927,9 +945,9 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     if (!meta.configured() || !accounts.length) return { placements: [], configured: false };
     const { since, until } = rangeFromQuery(req.query || {});
     const key = `${product.id}|${accounts.join(",")}|${since}|${until}`;
-    let cached = placementCache.get(key);
-    if (!cached || Date.now() - cached.at >= 300_000) {
-      try {
+    let cachedRows;
+    try {
+      const { value, status } = await placementCache.getWithMeta(key, async () => {
         const rows = (await Promise.all(accounts.map((id) => meta.placementInsights(id, { since, until })))).flat();
         const grouped = new Map();
         for (const row of rows) {
@@ -938,14 +956,15 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
           for (const field of ["spend", "impressions", "clicks", "linkClicks", "metaLeads"]) aggregate[field] += Number(row[field]) || 0;
           grouped.set(groupKey, aggregate);
         }
-        cached = { at: Date.now(), rows: [...grouped.values()] };
-        placementCache.set(key, cached);
-      } catch (err) {
-        req.log.warn({ err: err.message }, "Meta: placementInsights falhou");
-        return reply.code(UPSTREAM_FAILED).send({ error: "Meta indisponível pros placements" });
-      }
+        return [...grouped.values()];
+      });
+      cachedRows = value;
+      reply.header("x-cache", status);
+    } catch (err) {
+      req.log.warn({ err: err.message }, "Meta: placementInsights falhou");
+      return reply.code(UPSTREAM_FAILED).send({ error: "Meta indisponível pros placements" });
     }
-    const placements = cached.rows
+    const placements = cachedRows
       .map((r) => ({
         ...r,
         spend: Math.round(r.spend * 100) / 100,
@@ -961,7 +980,7 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
   // nenhuma chamada à Meta. Complemento: a listagem VIVA de anúncios da conta
   // preenche ids que ainda não têm insight (anúncio recém-criado resolve nome
   // e dor antes do 1º sync), com cache curto pra não bater na Graph à toa.
-  const liveAdsCache = new Map(); // saas -> { at, rows }
+  const liveAdsCache = makeTtlCache({ ttl: 300_000, staleTtl: 30 * 60_000 }); // `${saas}|${contas}` -> rows
   app.get("/api/marketing/:saas/attribution", async (req, reply) => {
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "Not found" });
@@ -982,18 +1001,24 @@ export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) 
     if (meta.configured() && accounts.length) {
       try {
         const key = `${product.id}|${accounts.join(",")}`;
-        let cached = liveAdsCache.get(key);
-        if (!cached || Date.now() - cached.at >= 300_000) {
-          const results = await Promise.allSettled(accounts.map((id) => meta.listAccountAds(id)));
-          for (const [i, r] of results.entries()) {
-            if (r.status === "rejected") req.log.warn({ accountId: accounts[i], err: r.reason?.message }, "Meta: catálogo da conta indisponível");
-          }
-          cached = { at: Date.now(), rows: results.filter((r) => r.status === "fulfilled").flatMap((r) => r.value) };
-          // Uma falha não impede a outra conta de resolver seus anúncios; só
-          // guarda o catálogo completo, para tentar a conta ausente novamente.
-          if (results.every((r) => r.status === "fulfilled")) liveAdsCache.set(key, cached);
+        let liveRows;
+        try {
+          liveRows = await liveAdsCache.get(key, async () => {
+            const results = await Promise.allSettled(accounts.map((id) => meta.listAccountAds(id)));
+            for (const [i, r] of results.entries()) {
+              if (r.status === "rejected") req.log.warn({ accountId: accounts[i], err: r.reason?.message }, "Meta: catálogo da conta indisponível");
+            }
+            const rows = results.filter((r) => r.status === "fulfilled").flatMap((r) => r.value);
+            // Uma falha não impede a outra conta de resolver seus anúncios; só
+            // guarda o catálogo completo, para tentar a conta ausente novamente
+            // (o erro carrega o parcial; com catálogo velho guardado, sai o velho).
+            if (results.some((r) => r.status !== "fulfilled")) throw Object.assign(new Error("catálogo parcial"), { partialRows: rows });
+            return rows;
+          });
+        } catch (err) {
+          liveRows = err.partialRows || [];
         }
-        for (const a of cached.rows) {
+        for (const a of liveRows) {
           if (a.id && a.name && !ads[a.id]) ads[a.id] = { name: a.name, adsetId: a.adsetId || "", campaignId: a.campaignId || "" };
         }
       } catch (err) {

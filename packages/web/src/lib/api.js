@@ -179,6 +179,16 @@ export const api = {
     if (until) q.set("until", until);
     return req("GET", `/api/forms/${id}/funnel${q.toString() ? `?${q}` : ""}`);
   },
+  // Lista de forms do produto + contagem de respostas por form + 6 recentes,
+  // numa ida só (antes baixava todas as respostas pra isso).
+  formsOverview: (saas) => req("GET", `/api/forms/overview?saas=${encodeURIComponent(saas)}`),
+  // Funil de todos os forms publicados do produto na janela: { [formId]: funnel }.
+  formFunnels: (saas, { since, until } = {}) => {
+    const q = new URLSearchParams({ saas });
+    if (since) q.set("since", since);
+    if (until) q.set("until", until);
+    return req("GET", `/api/forms/funnels?${q}`);
+  },
   // Gerenciamento de campanha Meta (status/orçamento direto do cockpit).
   metaAdsets: (campaignId) => req("GET", `/api/marketing/campaigns/${campaignId}/adsets`),
   adObjects: (saas) => req("GET", `/api/marketing/${saas}/adobjects`),

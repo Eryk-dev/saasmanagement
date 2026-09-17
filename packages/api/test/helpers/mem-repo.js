@@ -4,11 +4,13 @@
 export function makeMemRepo() {
   const store = new Map(); // name -> Map(id -> record)
   let seq = 0;             // desempate de ids criados no mesmo ms (espelha db.js)
+  let writeRev = 0;        // contador de escrita (espelha db.js; chave do compute-cache)
   const col = (name) => {
     if (!store.has(name)) store.set(name, new Map());
     return store.get(name);
   };
   return {
+    writeRev: () => writeRev,
     async list(name) {
       // Mesma semântica do db.js: ORDER BY id (ordem estável entre produtos).
       return [...col(name).values()].map((r) => ({ ...r })).sort((a, b) => String(a.id).localeCompare(String(b.id)));
@@ -40,6 +42,7 @@ export function makeMemRepo() {
       const id = obj.id != null ? String(obj.id) : `${name.slice(0, 2)}_${Date.now().toString(36)}${(seq = (seq + 1) % 1296).toString(36).padStart(2, "0")}`;
       const record = { ...obj, id };
       col(name).set(id, record);
+      writeRev++;
       return { ...record };
     },
     async update(name, id, patch) {
@@ -47,9 +50,11 @@ export function makeMemRepo() {
       if (!cur) return null;
       const record = { ...cur, ...patch, id: cur.id };
       col(name).set(String(id), record);
+      writeRev++;
       return { ...record };
     },
     async remove(name, id) {
+      writeRev++;
       return col(name).delete(String(id));
     },
   };
