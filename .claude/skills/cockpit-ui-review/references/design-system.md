@@ -125,8 +125,12 @@ inline. Máximo ~3 níveis por tela.
 
 - `GastosCard` em `finance-hub.jsx`: gráfico de pizza abaixo do fluxo de caixa,
   com categorias da DRE em ordem de valor e legenda com percentual e moeda.
-- A base é o total de despesas do mês, incluindo deduções, IA e WhatsApp;
-  subtotais de setor não entram novamente. Mês sem despesas mostra estado vazio.
+- A base é `fin.receber.recebidosMes` (recebido no mês). Os custos incluem
+  deduções, IA e WhatsApp, sem duplicar subtotais, e o restante vira uma fatia
+  neutra de saldo. Sem despesas, o saldo ocupa 100% do círculo.
+- Sem recebimentos, os percentuais ficam indisponíveis. Quando os custos
+  excedem os recebidos, mostrar déficit e percentuais na legenda, sem pizza:
+  nunca trocar a base para despesas nem desenhar fatias negativas.
 - SVG e legenda usam tokens do tema; a legenda desce quando falta largura.
   Cada fatia tem título com categoria, valor e percentual.
 
