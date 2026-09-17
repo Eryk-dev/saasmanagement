@@ -7,6 +7,8 @@ const marketingPreview = typeof location !== "undefined" && new URLSearchParams(
 import { inboxMock } from "./inbox-mock.js";
 const inboxPreview = typeof location !== "undefined" && new URLSearchParams(location.search).has("inbox");
 import { trainingMock } from "./training-mock.js";
+import { financeMock } from "./finance-mock.js";
+const financePreview = typeof location !== "undefined" && new URLSearchParams(location.search).has("finance");
 import { teamPreviewScore } from "./team-mock.js";
 const teamPreview = typeof location !== "undefined" && new URLSearchParams(location.search).has("team");
 const DIA = 86400000;
@@ -107,6 +109,8 @@ const vazio = () => Promise.resolve(null);
 
 export const api = new Proxy({}, {
   get(_, nome) {
+    if (financePreview && nome === "fin") return (...args) => Promise.resolve(financeMock(...args));
+    if (financePreview && nome === "expensesSummary") return () => Promise.resolve({ ai: 0, wa: 0 });
     if (teamPreview && nome === "scoreboard") return () => Promise.resolve({ ...RESPOSTAS.scoreboard(), ...teamPreviewScore });
     if (inboxPreview && Object.hasOwn(inboxMock, nome)) return (...args) => Promise.resolve().then(() => inboxMock[nome](...args));
     if (inboxPreview && nome === "update") return (col, id, patch) => Promise.resolve().then(() => { const row = (window.SEED[col.toUpperCase()] || []).find((r) => r.id === id); if (row) Object.assign(row, patch); return row; });

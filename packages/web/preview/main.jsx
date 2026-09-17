@@ -86,7 +86,7 @@ function App() {
 
 function PreviewTheme({ children }) {
   React.useEffect(() => {
-    if (marketingPreview || params.has("inbox") || params.has("team")) {
+    if (marketingPreview || params.has("inbox") || params.has("team") || params.has("finance")) {
       const dark = params.get("theme") === "dark" || params.has("dark");
       document.body.dataset.theme = dark ? "dark" : "light";
       if (dark) ["--accent", "--accent-hover", "--accent-soft", "--accent-line"].forEach((name) => document.body.style.removeProperty(name));

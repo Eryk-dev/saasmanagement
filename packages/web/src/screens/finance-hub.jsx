@@ -3,7 +3,7 @@ import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { StatTile, Card, Pill } from "../components/viz.jsx";
 import { AvisoTopo } from "../components/story.jsx";
-import { Avatar } from "../atoms.jsx";
+import { Avatar, EmptyState } from "../atoms.jsx";
 import { allUsers } from "../lib/users.js";
 import { mpMethodLabel } from "../lib/payments.js";
 
@@ -114,6 +114,79 @@ function FluxoCard({ fluxo, previsto, month }) {
   );
 }
 
+const EXPENSE_COLORS = [
+  "var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--info)",
+  "var(--pos)", "var(--neg)", "var(--fg-3)",
+  "color-mix(in srgb, var(--chart-2) 55%, var(--neg))",
+  "color-mix(in srgb, var(--chart-1) 55%, var(--info))",
+];
+
+export function GastosCard({ setores, month }) {
+  // Só as categorias da DRE: somar também os subtotais de setor duplicaria
+  // as despesas. COGS já chega com IA e WhatsApp, como na DRE ao lado.
+  const porCategoria = {};
+  for (const itens of Object.values(setores || {})) {
+    for (const [key, raw] of Object.entries(itens || {})) {
+      const value = Number(raw);
+      if (Number.isFinite(value) && value > 0) porCategoria[key] = (porCategoria[key] || 0) + value;
+    }
+  }
+  const itens = Object.entries(porCategoria).sort((a, b) => b[1] - a[1]);
+  const total = itens.reduce((sum, [, value]) => sum + value, 0);
+  let accumulated = 0;
+  const fatias = itens.map(([key, value], i) => {
+    const share = value / total;
+    const start = accumulated * Math.PI * 2 - Math.PI / 2;
+    accumulated += share;
+    const end = accumulated * Math.PI * 2 - Math.PI / 2;
+    return {
+      key, value, label: PAY_CAT_LABEL[key] || key, color: EXPENSE_COLORS[i % EXPENSE_COLORS.length],
+      pct: share < 0.001 ? "<0,1%" : window.fmt.pct(share, 1).replace(".", ","),
+      path: `M 110 110 L ${110 + 104 * Math.cos(start)} ${110 + 104 * Math.sin(start)} A 104 104 0 ${share > 0.5 ? 1 : 0} 1 ${110 + 104 * Math.cos(end)} ${110 + 104 * Math.sin(end)} Z`,
+    };
+  });
+
+  return (
+    <Card title="Para onde vai o dinheiro" hint={`${mesLongo(month)} · participação de cada categoria nas despesas`}>
+      {!fatias.length ? <EmptyState title="Sem despesas neste mês" hint="O gráfico aparece quando houver despesas na DRE." /> : (
+        <div style={{ padding: "18px var(--inset-x) 22px", display: "flex", flexWrap: "wrap", gap: 24, alignItems: "center" }}>
+          <figure style={{ margin: "0 auto", width: 200, maxWidth: "100%", flexShrink: 0 }}>
+            <svg viewBox="0 0 220 220" role="img" aria-label={`Distribuição das despesas de ${mesLongo(month)} por categoria`} style={{ display: "block", width: "100%" }}>
+              <title>Despesas por categoria · {money(total)}</title>
+              {fatias.map((f) => fatias.length === 1 ? (
+                <circle key={f.key} cx="110" cy="110" r="104" fill={f.color}>
+                  <title>{f.label}: {money(f.value)} · {f.pct}</title>
+                </circle>
+              ) : (
+                <path key={f.key} d={f.path} fill={f.color} stroke="var(--bg-1)" strokeWidth="1.5" strokeLinejoin="round">
+                  <title>{f.label}: {money(f.value)} · {f.pct}</title>
+                </path>
+              ))}
+            </svg>
+            <figcaption style={{ marginTop: 10, textAlign: "center", fontSize: 12, color: "var(--fg-3)" }}>
+              Total de despesas <strong className="tnum" style={{ display: "block", marginTop: 3, fontSize: 20, color: "var(--fg-1)" }}>{money(total)}</strong>
+            </figcaption>
+          </figure>
+          <dl style={{ flex: "1 1 220px", minWidth: 0, margin: 0 }}>
+            {fatias.map((f) => (
+              <div key={f.key} style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--line-1)", fontSize: 12.5 }}>
+                <dt style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "baseline", gap: 8, color: "var(--fg-2)" }}>
+                  <span aria-hidden="true" style={{ width: 9, height: 9, borderRadius: 3, background: f.color, flexShrink: 0 }} />
+                  <span style={{ overflowWrap: "anywhere" }}>{f.label}</span>
+                </dt>
+                <dd className="tnum" style={{ margin: 0, textAlign: "right", flexShrink: 0 }}>
+                  <strong style={{ color: "var(--fg-1)" }}>{f.pct}</strong>
+                  <span style={{ display: "block", marginTop: 2, fontSize: 11.5, color: "var(--fg-3)" }}>{money(f.value)}</span>
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function DreRow({ label, value, strong, neg, indent, title }) {
   return (
     <div title={title} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "6px 0", borderBottom: "1px solid var(--line-faint)", fontSize: strong ? 13.5 : 12.5, cursor: title ? "help" : "default" }}>
@@ -214,7 +287,10 @@ export function ResumoTab({ product, month, onTab }) {
       </div>
 
       <div className="resp-cols" style={{ "--cols": "1fr 1fr", gap: 16 }}>
-        <FluxoCard fluxo={fin.fluxo} previsto={fin.previsto} month={month} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+          <FluxoCard fluxo={fin.fluxo} previsto={fin.previsto} month={month} />
+          <GastosCard setores={{ ...S, cogs }} month={month} />
+        </div>
         <Card title="DRE do mês" hint="P&L de SaaS: receita · deduções · custo do serviço · margem bruta · setores">
           <div style={{ padding: "10px var(--inset-x) 18px" }}>
             {Object.entries(fin.dre.receita).sort((a, b) => b[1] - a[1]).map(([k, v]) => (

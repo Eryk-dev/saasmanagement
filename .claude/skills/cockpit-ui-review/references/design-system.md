@@ -121,6 +121,15 @@ inline. Máximo ~3 níveis por tela.
 
 ## Padrões de tela
 
+### Financeiro — distribuição de despesas (16/09/2026)
+
+- `GastosCard` em `finance-hub.jsx`: gráfico de pizza abaixo do fluxo de caixa,
+  com categorias da DRE em ordem de valor e legenda com percentual e moeda.
+- A base é o total de despesas do mês, incluindo deduções, IA e WhatsApp;
+  subtotais de setor não entram novamente. Mês sem despesas mostra estado vazio.
+- SVG e legenda usam tokens do tema; a legenda desce quando falta largura.
+  Cada fatia tem título com categoria, valor e percentual.
+
 ### Moldura do handoff — 14/09/2026
 
 A referência aprovada em `design/handoff-cockpit/` orienta a moldura em
