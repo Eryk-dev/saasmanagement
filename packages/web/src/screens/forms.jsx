@@ -3,7 +3,7 @@ import "./marketing.css";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { chromeBtnStyleSmall, GRADE_STYLE } from "../lib/ui.js";
-import { EmptyState, PrimaryButton } from "../atoms.jsx";
+import { EmptyState, PrimaryButton, Skeleton } from "../atoms.jsx";
 import { inputStyle, sectionTitle, cardStyle, addBtnStyle, THEME_DEFAULTS, LabeledInput, ThemeEditor } from "../components/theme-inputs.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { useAttribution } from "../lib/pains.js";
@@ -108,16 +108,11 @@ function FormsScreen({ saasId }) {
     const epoch = ++loadEpoch.current;
     setLoading(true); setLoadError("");
     try {
-      const [fs, subs] = await Promise.all([
-        api.list("forms", { saas: active }),
-        api.list("form_submissions", { saas: active }),
-      ]);
+      // Uma ida só: forms ordenados, contagem por form e as 6 respostas mais
+      // recentes (antes baixava TODAS as respostas do produto só pra isso).
+      const ov = await api.formsOverview(active);
       if (epoch !== loadEpoch.current) return;
-      fs.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
-      const c = {};
-      for (const s of subs) c[s.form] = (c[s.form] || 0) + 1;
-      subs.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
-      setForms(fs); setCounts(c); setSubmissions(subs);
+      setForms(ov.forms || []); setCounts(ov.counts || {}); setSubmissions(ov.recent || []);
     } catch (e) {
       if (epoch === loadEpoch.current) setLoadError(e.message || "Tente carregar novamente.");
     } finally {
@@ -127,25 +122,17 @@ function FormsScreen({ saasId }) {
 
   useEffect(() => { load(); return () => { loadEpoch.current++; }; }, [load, version]);
 
-  // Métricas de funil por form publicado (tiles do topo E tabela do A/B saem
-  // daqui, então o período manda nas duas). Fetch SEPARADO do load: trocar de
-  // período não precisa rebuscar forms e respostas, que não dependem da janela.
-  const pubIds = useMemo(
-    () => forms.filter((f) => f.status === "published").map((f) => f.id).join(","),
-    [forms],
-  );
+  // Métricas de funil dos forms publicados (tiles do topo E tabela do A/B saem
+  // daqui, então o período manda nas duas). Fetch SEPARADO do load e disparado
+  // JUNTO com ele (não espera a lista chegar): trocar de período não precisa
+  // rebuscar forms e respostas, que não dependem da janela. Uma chamada só pro
+  // produto inteiro em vez de uma por form.
   useEffect(() => {
-    const ids = pubIds ? pubIds.split(",") : [];
-    if (!ids.length) { setStats({}); return; }
+    if (!active) { setStats({}); return; }
     let alive = true;
-    Promise.allSettled(ids.map((id) => api.formFunnel(id, range))).then((results) => {
-      if (!alive) return;
-      const st = {};
-      results.forEach((r, i) => { if (r.status === "fulfilled") st[ids[i]] = r.value; });
-      setStats(st);
-    });
+    api.formFunnels(active, range).then((st) => { if (alive) setStats(st || {}); }).catch(() => {});
     return () => { alive = false; };
-  }, [pubIds, range.since, range.until, version]);
+  }, [active, range.since, range.until, version]);
 
   // Troca de produto (workspace) volta pra lista e limpa as linhas antigas —
   // editor/respostas do produto anterior não podem ficar abertos sob a marca
@@ -195,7 +182,7 @@ function FormsScreen({ saasId }) {
 
       <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         {loadError && <EmptyState title="Não deu para carregar os formulários" hint={loadError} action={<button className="inp" onClick={load}>Tentar de novo</button>} />}
-        {loading && <div className="dim" role="status">carregando formulários…</div>}
+        {loading && !forms.length && <FormsSkeleton />}
         {!forms.length ? (!loading && !loadError && (
           <EmptyState
             title="Nenhum form neste SaaS"
@@ -349,6 +336,27 @@ function FormsScreen({ saasId }) {
           {toast}
         </div>
       )}
+    </div>
+  );
+}
+
+// Estrutura da lista enquanto o overview carrega: 3 cards com a medida real
+// (título, status, 4 tiles), no lugar do texto solto ou do EmptyState falso.
+function FormsSkeleton() {
+  return (
+    <div role="status" aria-label="carregando formulários" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 380px), 1fr))", gap: 14 }}>
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="marketing-card" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <Skeleton w="55%" h={16} />
+            <Skeleton w={72} h={20} r={999} />
+          </div>
+          <Skeleton w="80%" h={12} />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+            {[0, 1, 2, 3].map((k) => <Skeleton key={k} h={46} r={8} />)}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
