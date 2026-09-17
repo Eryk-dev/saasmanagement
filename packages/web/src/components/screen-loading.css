@@ -6,7 +6,7 @@
 .screen-splash__mark { display: block; animation: screen-mark-in .65s cubic-bezier(.2,.75,.25,1) both; }
 .screen-splash__orbit { stroke: var(--accent); animation: screen-orbit .8s linear infinite, screen-ring-in .7s ease-out both; }
 .screen-splash--compact { --splash-exit: .18s; }
-.screen-splash--compact .screen-splash__mark { width: 64px; height: 70px; animation-duration: .18s; }
+.screen-splash--compact .screen-splash__mark { animation-duration: .18s; }
 .screen-splash--leaving { pointer-events: none; animation: screen-splash-out var(--splash-exit) ease both; }
 .screen-splash--leaving .screen-splash__mark { animation: screen-mark-out var(--splash-exit) cubic-bezier(.45,0,.9,.6) both; }
 .screen-splash__slow { position: absolute; top: calc(50% + 90px); left: 20px; right: 20px; text-align: center; font: 13px/1.5 var(--sans); color: var(--fg-3); }
