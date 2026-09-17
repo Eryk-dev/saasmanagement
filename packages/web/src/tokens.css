@@ -69,6 +69,7 @@
   --wa-out: #d6f5cf;      /* bolha de saída do WhatsApp */
 
   /* Verde do WhatsApp (marca, igual nos 2 temas): botão de abrir conversa */
+  --brand-mark: #23d8d3; /* seta original LeverAds, igual nos dois temas */
   --wa-brand: #25d366;
   --wa-brand-fg: #06120c;
   --wa-brand-deep: #128c4b;

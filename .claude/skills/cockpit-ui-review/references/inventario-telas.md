@@ -135,6 +135,7 @@ além do tema escuro. Esta etapa não altera o conteúdo das telas navegáveis.
 | Análise de clientes | customers-analysis.jsx | bloco dentro de Clientes |
 | Métricas sociais | social-metrics.jsx | bloco dentro de Redes sociais |
 | Elo (marca) | brand-elo.jsx, overview-elo.jsx | variantes do workspace Elo |
+| Splash e transições (16/09/2026) | components/screen-loading.jsx | ✓ referência Splash Loading CRM: entrada, Visão Geral e transição compartilhada; espera pelas consultas, saída de espera longa, temas e mobile |
 | NavRail + TopBar | chrome.jsx | sidebar, breadcrumb, sino, seletor de produto |
 | CommandSearch | components/CommandSearch.jsx | busca global ⌘K |
 | Widget de feedback | components/feedback-widget.jsx | FAB bug/melhoria em toda tela |

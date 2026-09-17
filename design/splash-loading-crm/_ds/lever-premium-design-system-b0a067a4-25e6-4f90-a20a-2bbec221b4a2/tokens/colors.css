@@ -1,0 +1,103 @@
+/* Lever Premium Design — cores
+   Regra de ouro: no máximo UMA cor forte por linha de UI.
+   Status = ponto 6px + palavra. Marketplace = dot 8px + nome (nunca pílula de fundo). */
+
+:root {
+  /* Superfícies */
+  --paper: #F7F8FA;         /* fundo de página */
+  --paper-card: #FFFFFF;    /* cards */
+  --paper-tinted: #EEF1F3;  /* trilhos, pílulas neutras, hovers de filtro */
+  --paper-subtle: #FBFCFD;  /* campos, sub-cards, hover de linha */
+
+  /* Tinta */
+  --ink: #0C1D2B;           /* texto principal, botão primário, navy */
+  --ink-soft: #3D4F5C;      /* texto de botões outline, chips */
+  --ink-muted: #5A6B77;     /* texto secundário, subtítulos */
+  --ink-faint: #8B99A4;     /* meta, rótulos de seção, placeholders fortes */
+  --ink-disabled: #98A5AF;  /* placeholder, texto desabilitado */
+
+  /* Linhas */
+  --line: #E4E8EB;          /* bordas padrão */
+  --line-strong: #CBD4DA;   /* borda hover, dashed */
+  --line-faint: #EEF1F3;    /* divisórias internas de tabela */
+
+  /* Marca (teal) */
+  --brand: #0F766E;
+  --brand-deep: #0B5D57;
+  --brand-soft: #E9F5F3;
+
+  /* Semânticas */
+  --success: #177A4C;
+  --warning: #A16207;
+  --warning-soft: #FBF4E6;
+  --info: #175CD3;
+  --info-soft: #EDF3FC;
+  --danger: #B42318;
+  --danger-soft: #FDF3F2;
+
+  /* Marketplaces — apenas dots de 8px */
+  --ml-yellow: #EBC800;
+  --shopee-orange: #EE4D2D;
+
+  /* Controles */
+  --control-disabled-bg: #F1F3F5;
+  --control-disabled-text: #98A5AF;
+  --toggle-off: #D6DDE2;
+
+  /* Botão primário (navy, sem glow) */
+  --btn-primary-bg: var(--ink);
+  --btn-primary-bg-hover: #1B3140;
+  --btn-primary-text: #FFFFFF;
+
+  /* Aliases semânticos */
+  --surface-page: var(--paper);
+  --surface-card: var(--paper-card);
+  --surface-hover: var(--paper-subtle);
+  --text-body: var(--ink);
+  --text-secondary: var(--ink-muted);
+  --text-tertiary: var(--ink-faint);
+  --link: var(--brand);
+  --focus-ring: var(--ink);
+}
+
+/* Tema escuro — aplicar data-theme="dark" no html/body ou num contêiner */
+[data-theme="dark"] {
+  --paper: #0B141D;
+  --paper-card: #101E29;
+  --paper-tinted: #1D2B36;
+  --paper-subtle: #0B141D;
+
+  --ink: #EDF2F5;
+  --ink-soft: #B9C7D1;
+  --ink-muted: #8CA0AD;
+  --ink-faint: #5E7280;
+  --ink-disabled: #4C5E6B;
+
+  --line: #1D2B36;
+  --line-strong: #263643;
+  --line-faint: #1D2B36;
+
+  --brand: #3ECCBF;
+  --brand-deep: #5BD9CE;
+  --brand-soft: rgba(62, 204, 191, 0.1);
+
+  --success: #4FBE84;
+  --warning: #D6A249;
+  --warning-soft: rgba(214, 162, 73, 0.12);
+  --info: #7EA9E8;
+  --info-soft: rgba(126, 169, 232, 0.12);
+  --danger: #E2695A;
+  --danger-soft: rgba(226, 105, 90, 0.12);
+
+  --control-disabled-bg: #1D2B36;
+  --control-disabled-text: #5E7280;
+  --toggle-off: #263643;
+
+  /* Botão primário vira claro-sobre-escuro */
+  --btn-primary-bg: #EDF2F5;
+  --btn-primary-bg-hover: #FFFFFF;
+  --btn-primary-text: #0C1D2B;
+
+  --surface-hover: #13212C;
+  --focus-ring: #EDF2F5;
+}
