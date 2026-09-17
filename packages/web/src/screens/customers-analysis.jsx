@@ -2,62 +2,66 @@ import React from "react";
 import { Card } from "../components/viz.jsx";
 import { GRADE_STYLE } from "../lib/ui.js";
 import { usePeriod } from "../components/period-picker.jsx";
-import { paymentUpfront } from "../lib/payments.js";
+import { api } from "../lib/api.js";
+import { useData } from "../data.jsx";
+import { useActiveSaas } from "../lib/workspace.js";
+import { InfoNota } from "../components/story.jsx";
 
 // Análise da base de clientes — números do período sobre a coleção customers:
-// total faturado (valor dos contratos fechados), clientes novos, ticket médio,
+// contratado anualizado, clientes novos, ticket médio,
 // preço mensal médio, churn e LTV. O período filtra por startedAt (entradas) e
-// endedAt (churn); "Tudo" olha a base inteira. Nada aqui é gravado: é leitura
-// dos mesmos campos que o gate de fechamento e o form de cliente preenchem.
+// endedAt (churn). O caixa confirmado é consultado na API pela data de
+// recebimento e inclui clientes que entraram antes da janela.
 
-const { useState, useMemo } = React;
+const { useState, useEffect, useMemo } = React;
 const DAY = 86_400_000;
 
 // customer.arr guarda o valor ANUAL (mensal ×12, semestral ×2 no convertWonLead).
 
-// Divide o ARR ANUAL de um cliente entre já RECEBIDO e A RECEBER, de modo que
-// os dois SEMPRE somem ao Total contratado (ARR). Regras de recebimento:
-//  · CRONOGRAMA EXPLÍCITO (faturas kind:"installment") → é a VERDADE: recebido =
-//    parcelas pagas, a receber = as em aberto. Cobre acordos sob medida que não
-//    cabem no ciclo padrão (ex.: 40k em 4x + 80.788 em 12x do Galante).
-//  · à vista / cartão 12x → a empresa recebe o valor do CICLO no fechamento de
-//    cada ciclo. Anual: o ano todo de uma vez. Semestral: 1 semestre agora, o
-//    outro só quando renovar (fica "a receber"). Único/sem plano: tudo agora.
-//  · faturado / parcelado → uma parcela por mês ao longo do ano (12 parcelas).
-// Cliente churnado para de gerar: o que faltava NÃO vira a receber.
-function cashSplit(c, now, invoices = []) {
-  const annual = Number(c.arr) || 0;
-  if (annual <= 0) return { cash: 0, future: 0 };
-  // Cronograma explícito vence a heurística: soma o que está pago × em aberto.
-  const schedule = invoices.filter((i) => i.customer === c.id && i.kind === "installment");
-  if (schedule.length) {
-    const round = (n) => Math.round(n * 100) / 100;
-    const cash = round(schedule.filter((i) => i.status === "paid").reduce((a, i) => a + (Number(i.amount) || 0), 0));
-    const churnedNow = c.endedAt && new Date(c.endedAt).getTime() <= now;
-    const future = churnedNow ? 0 : round(schedule.filter((i) => i.status !== "paid").reduce((a, i) => a + (Number(i.amount) || 0), 0));
-    return { cash, future };
-  }
-  const start = c.startedAt ? new Date(c.startedAt).getTime() : now;
-  const churnT = c.endedAt ? new Date(c.endedAt).getTime() : null;
-  const stop = churnT != null ? Math.min(churnT, now) : now;
-  const monthsIn = Math.max(1, Math.floor((stop - start) / (30 * DAY)) + 1); // 1ª entrada no fechamento
-  const t = String(c.plan || "").toLowerCase();
-  let cash;
-  if (paymentUpfront(c.paymentMethod)) {
-    if (t.includes("semestral")) {
-      const started = Math.min(2, Math.floor((monthsIn - 1) / 6) + 1); // quantos semestres já começaram
-      cash = (annual / 2) * started;
-    } else if (t.includes("mensal")) {
-      cash = (annual / 12) * Math.min(12, monthsIn);
-    } else {
-      cash = annual; // anual, serviço único, sem plano: recebe tudo no fechamento
-    }
-  } else {
-    cash = (annual / 12) * Math.min(12, monthsIn); // faturado/parcelado: 1 parcela por mês
-  }
-  cash = Math.min(annual, cash);
-  const future = churnT != null && churnT <= now ? 0 : annual - cash;
-  return { cash, future };
+// O caixa vem da API por data de recebimento, incluindo clientes antigos.
+// A chave impede que valores da janela/produto anterior apareçam na troca;
+// o cancelamento ignora respostas antigas que terminam depois da nova.
+function useCustomerCash(saas, win, version) {
+  const [retry, setRetry] = useState(0);
+  const [state, setState] = useState(null);
+  const key = JSON.stringify([saas, win.since, win.until, version, retry]);
+  useEffect(() => {
+    if (!saas) return;
+    let alive = true;
+    api.billingCash(saas, { since: win.since, until: win.until })
+      .then((cash) => {
+        if (!cash || !Number.isFinite(cash.received) || !Number.isFinite(cash.receivable)) throw new Error("resposta inválida");
+        if (alive) setState({ key, cash });
+      })
+      .catch(() => { if (alive) setState({ key, error: true }); });
+    return () => { alive = false; };
+  }, [saas, win.since, win.until, key]);
+  const current = state?.key === key ? state : null;
+  return { cash: current?.cash, error: current?.error, loading: !current, onRetry: () => setRetry((n) => n + 1) };
+}
+
+export function CustomerCashValues({ cash, loading = false, error = false, onRetry }) {
+  const value = (n) => cash ? window.fmt.money(n) : "—";
+  return (
+    <div aria-busy={loading} style={{ minWidth: 0 }}>
+      <div style={{ display: "flex", gap: 28, flexWrap: "wrap" }}>
+        <div>
+          <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, color: "var(--pos)" }}>{value(cash?.received)}</div>
+          <div style={{ fontSize: 12, color: "var(--fg-3)" }}>recebido no período</div>
+          <div style={{ fontSize: 11, color: "var(--fg-4)", marginTop: 3 }}>pagamentos confirmados · toda a base</div>
+        </div>
+        <div>
+          <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, color: "var(--warn)" }}>{value(cash?.receivable)}</div>
+          <div style={{ fontSize: 12, color: "var(--fg-3)" }}>a receber no período</div>
+          <div style={{ fontSize: 11, color: "var(--fg-4)", marginTop: 3 }}>cobranças em aberto com vencimento no período</div>
+        </div>
+      </div>
+      {loading && <div role="status" style={{ fontSize: 11.5, color: "var(--fg-3)", marginTop: 8 }}>carregando recebimentos…</div>}
+      {error && <div role="alert" style={{ fontSize: 12, color: "var(--neg)", marginTop: 8 }}>
+        Não foi possível carregar os recebimentos. <button onClick={onRetry} style={{ color: "var(--accent)", textDecoration: "underline" }}>Tentar novamente</button>
+      </div>}
+    </div>
+  );
 }
 
 // Ciclo da assinatura → rótulo (mesma régua da lista/card do cliente).
@@ -79,7 +83,7 @@ const PLAN_ORDER = ["Anual", "Semestral", "Trimestral", "Serviço único", "Mens
 
 // `isKids` = workspace de mentoria (compra única, sem recorrência): as métricas
 // de assinatura (preço mensal médio e LTV, que derivam de MRR ÷ churn) não
-// significam nada ali e saem — o resto (faturado, caixa, futuro, ticket, churn
+// significam nada ali e saem — o resto (contratado, caixa, cobranças abertas, ticket, churn
 // de famílias) vale igual.
 // `gradeDist`/`nivelLegend` vêm da tela (o nível sai do lead, que só ela tem na
 // mão): a saúde da carteira junta churn, LTV e distribuição de nível num bloco,
@@ -91,6 +95,9 @@ export function CustomersAnalysis({ customers, subs = [], invoices = [], isKids 
   // Janela GLOBAL do cockpit (filtro unico no topo, 08/08): a coorte, o caixa
   // e o churn seguem a mesma janela do resto do cockpit.
   const { win } = usePeriod();
+  const [product] = useActiveSaas();
+  const { version } = useData();
+  const cashState = useCustomerCash(product?.id, win, version);
 
   // Plano do cliente como o card/lista mostram: a ASSINATURA manda (ciclo →
   // anual/semestral/…), o campo c.plan é só o fallback. Assim "sem plano" só
@@ -119,33 +126,17 @@ export function CustomersAnalysis({ customers, subs = [], invoices = [], isKids 
     // Total contratado = soma do valor ANUAL (arr) de todos os clientes — o
     // valor real da carteira. Antes usava contractValue (arr ÷ ciclo), que
     // contava semestral pela metade e mensal por 1/12, encolhendo o total e
-    // divergindo da meta vendida. O contractValue segue só no caixa/futuro
-    // (ali importa o valor de UMA parcela do ciclo, não o anual).
+    // divergindo da meta vendida. O caixa é consultado separadamente na API.
     const faturado = cohort.reduce((a, c) => a + (Number(c.arr) || 0), 0);
-    // Caixa × dinheiro futuro dos contratos do período (parcelados entram mês a mês).
-    let caixa = 0, futuro = 0;
-    for (const c of cohort) {
-      const s = cashSplit(c, now, invoices);
-      caixa += s.cash;
-      futuro += s.future;
-    }
-    // UPSELL do período (Leo, 09/09): a venda extra registrada na ficha, datada
-    // pelo registro (soldAt), de QUALQUER cliente (o upsell é de cliente antigo
-    // por natureza — a coorte de entrada não o alcança). Contratado soma no
-    // Total contratado; pago no Recebido; em aberto no A receber — os três
-    // continuam fechando. O acréscimo RECORRENTE já vive no arr do cliente;
-    // aqui entra só o que foi cobrado na venda (amount).
+    // Upsell vendido na janela continua compondo o contratado. O pagamento
+    // dele entra no caixa da API pela data da baixa, mesmo se vendido antes.
     const upsellAt = (i) => i.soldAt || i.paidAt || i.dueDate || i.createdAt || "";
     const upsells = invoices.filter((i) => i.kind === "upsell" && (fromT == null ? true : inPeriod(upsellAt(i))));
     const sum = (list) => Math.round(list.reduce((a, i) => a + (Number(i.amount) || 0), 0) * 100) / 100;
     const upsell = {
       n: upsells.length,
       total: sum(upsells),
-      paid: sum(upsells.filter((i) => i.status === "paid")),
-      open: sum(upsells.filter((i) => i.status !== "paid")),
     };
-    caixa += upsell.paid;
-    futuro += upsell.open;
     const withMrr = cohort.filter((c) => (Number(c.arr) || 0) > 0);
     const mrrMedio = withMrr.length ? withMrr.reduce((a, c) => a + (Number(c.arr) || 0) / 12, 0) / withMrr.length : 0;
     // Ticket = contrato dos clientes novos (sem upsell, que é venda pra cliente antigo).
@@ -179,7 +170,7 @@ export function CustomersAnalysis({ customers, subs = [], invoices = [], isKids 
     const lifeMonths = churnMonthly > 0 ? 1 / churnMonthly : null;
     const ltv = lifeMonths != null && mrrMedio > 0 ? mrrMedio * lifeMonths : null;
 
-    return { cohort, faturado, contratado, upsell, caixa, futuro, mrrMedio, ticket, planos, churned, baseStart, churnPct, lifeMonths, ltv };
+    return { cohort, faturado, contratado, upsell, mrrMedio, ticket, planos, churned, baseStart, churnPct, lifeMonths, ltv };
   }, [customers, invoices, win.since, win.until, planOf]);
 
   const pct = (v) => `${Math.round(v * 100)}%`;
@@ -198,15 +189,11 @@ export function CustomersAnalysis({ customers, subs = [], invoices = [], isKids 
   const novos = m.cohort.length;
 
   // ── 1.1 Dinheiro do período ────────────────────────────────────────────────
-  // Eram dez StatTile de peso igual: a pessoa lia dez números pra descobrir se
-  // o mês estava bom. Agora um número manda (o contratado) e a barra empilhada
-  // mostra de onde ele vem — recebido e a receber SEMPRE somam o contratado, que
-  // é a invariante que o cashSplit garante.
-  const recebidoPct = m.contratado > 0 ? (m.caixa / m.contratado) * 100 : 0;
-  const dot = (color) => ({ width: 6, height: 6, borderRadius: 999, background: color, flexShrink: 0 });
+  // Contratado anualizado, caixa recebido e cobranças abertas têm bases
+  // distintas. Não desenhar composição/percentual entre esses valores.
   const rodape = [
     ["Ticket médio", money(m.ticket), "ARR ÷ clientes novos (sem upsell)"],
-    ["Upsell", money(m.upsell.total), m.upsell.n ? `${m.upsell.n} ${m.upsell.n === 1 ? "venda" : "vendas"} · ${money(m.upsell.paid)} recebido` : "nenhum no período"],
+    ["Upsell", money(m.upsell.total), m.upsell.n ? `${m.upsell.n} ${m.upsell.n === 1 ? "venda registrada" : "vendas registradas"} no período` : "nenhum no período"],
     ...(isKids ? [] : [["Preço mensal médio", money(m.mrrMedio), "média do mensal (ARR ÷ 12)"]]),
   ];
 
@@ -219,38 +206,12 @@ export function CustomersAnalysis({ customers, subs = [], invoices = [], isKids 
               <div className="kicker accent">Dinheiro do período</div>
               <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 38, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.05, marginTop: 6 }}>{money(m.contratado)}</div>
               <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 3 }}>
-                {`contratado · ${janela} · ${novos} ${novos === 1 ? "cliente novo" : "clientes novos"}`}
+                {`contratado anualizado · ${janela} · ${novos} ${novos === 1 ? "cliente novo" : "clientes novos"}`}
               </div>
             </div>
-            <div style={{ display: "flex", gap: 28, flexWrap: "wrap" }}>
-              <div>
-                <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, color: "var(--pos)" }}>{money(m.caixa)}</div>
-                <div style={{ fontSize: 12, color: "var(--fg-3)" }}>recebido</div>
-              </div>
-              <div>
-                <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, color: "var(--warn)" }}>{money(m.futuro)}</div>
-                <div style={{ fontSize: 12, color: "var(--fg-3)" }}>a receber</div>
-              </div>
-            </div>
+            <CustomerCashValues {...cashState} />
           </div>
-
-          {m.contratado > 0 && (
-            <>
-              <div style={{ display: "flex", height: 14, borderRadius: 999, overflow: "hidden", background: "var(--bg-2)", marginTop: 16 }}
-                title={`${money(m.caixa)} já entraram · ${money(m.futuro)} a receber · os dois somam o contratado`}>
-                <div style={{ width: `${recebidoPct}%`, background: "var(--pos)" }} />
-                <div style={{ width: `${100 - recebidoPct}%`, background: "var(--warn)" }} />
-              </div>
-              <div style={{ display: "flex", gap: 18, marginTop: 8, flexWrap: "wrap" }}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--fg-3)" }}>
-                  <span style={dot("var(--pos)")} />{`recebido · ${Math.round(recebidoPct)}%`}
-                </span>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--fg-3)" }}>
-                  <span style={dot("var(--warn)")} />{`a receber · parcelas e renovações a vencer no ano`}
-                </span>
-              </div>
-            </>
-          )}
+          <InfoNota style={{ marginTop: 16 }}>Recebimentos seguem a data do pagamento e incluem clientes antigos. O contratado mostra o valor anualizado das novas vendas.</InfoNota>
 
           <div style={{ display: "grid", gridTemplateColumns: `repeat(${rodape.length}, minmax(0,1fr))`, gap: 16, marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--line-1)" }}>
             {rodape.map(([label, value, hint]) => (

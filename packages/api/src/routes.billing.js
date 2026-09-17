@@ -9,6 +9,7 @@ import { mirrorSubscriptionToMp, createCustomerCharge } from "./routes.mp.js";
 import { markCustomerChurn, clearCustomerChurn } from "./churn.js";
 import { parseUpsellBody, recordUpsell } from "./upsell.js";
 import { NOT_CONFIGURED } from "./http-status.js";
+import { customerCashIn, rangeFromQuery } from "./metrics-core.js";
 
 export function registerBillingRoutes(app, repo, { mp, discord } = {}) {
   // ── Churn manual (botão da ficha do cliente) ──────────────────────────────
@@ -262,6 +263,23 @@ export function registerBillingRoutes(app, repo, { mp, discord } = {}) {
       add(i.customer, Number(i.amount) || 0);
     }
     return received;
+  });
+
+  app.get("/api/billing/cash/:saas", async (req, reply) => {
+    const { since, until } = rangeFromQuery(req.query);
+    const validDay = (day) => typeof day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(day)
+      && Number.isFinite(Date.parse(day)) && new Date(day).toISOString().slice(0, 10) === day;
+    if (!validDay(since) || !validDay(until) || since > until) {
+      return reply.code(400).send({ error: "período inválido: informe início e fim em AAAA-MM-DD" });
+    }
+    const saas = req.params.saas;
+    const [customers, invoices, mpPayments] = await Promise.all([
+      repo.listWhere("customers", { saas }), repo.listWhere("invoices", { saas }),
+      // Vínculos antigos podem ter cliente/lead e saas vazio. A função
+      // restringe à base do produto, como o endpoint received acima.
+      repo.list("mp_payments"),
+    ]);
+    return customerCashIn({ customers, invoices, mpPayments, saas, since, until });
   });
 
   // Tick do motor: mudanças agendadas + renovações + dunning + sync de ARR.
