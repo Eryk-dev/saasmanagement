@@ -99,6 +99,49 @@ test("GET /funnel?since= filtra o período; form inexistente é 404", async () =
   await app.close();
 });
 
+test("GET /forms/funnels agrega só os publicados do produto, igual ao /:id/funnel; forms falhando ficam de fora", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("forms", { ...FORM, id: "fo_outro", saas: "outro" });
+  for (const [session, keys] of [["s1", ["niche"]], ["s2", []]]) {
+    await post(app, { session, event: "view" });
+    if (keys.length) await post(app, { session, event: "start" });
+    for (const key of keys) await post(app, { session, event: "step", key });
+  }
+  await post(app, { session: "s1", event: "submit" });
+  const one = (await app.inject({ method: "GET", url: "/api/forms/fo_test/funnel" })).json();
+  const all = (await app.inject({ method: "GET", url: "/api/forms/funnels?saas=leverads" })).json();
+  assert.deepEqual(Object.keys(all), ["fo_test"]); // rascunho e outro produto ficam fora
+  assert.deepEqual(all.fo_test, one);
+  const win = (await app.inject({ method: "GET", url: "/api/forms/funnels?saas=leverads&since=2999-01-01T00:00:00.000Z" })).json();
+  assert.equal(win.fo_test.views, 0);
+  await app.close();
+});
+
+test("GET /forms/overview: forms por nome, contagem por form (inclui internas) e 6 recentes sem internas", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("forms", { ...FORM, id: "fo_b", name: "Zeta" });
+  await repo.create("forms", { ...FORM, id: "fo_a", name: "Alfa" });
+  await repo.create("forms", { ...FORM, id: "fo_outro", saas: "outro" });
+  for (let i = 0; i < 8; i++) {
+    await repo.create("form_submissions", { id: `su_${i}`, form: i % 2 ? "fo_a" : "fo_test", saas: "leverads", answers: { nome: `p${i}` }, createdAt: `2026-07-0${i + 1}T10:00:00.000Z` });
+  }
+  await repo.create("form_submissions", { id: "su_int", form: "fo_test", saas: "leverads", internal: true, answers: {}, createdAt: "2026-07-09T10:00:00.000Z" });
+  await repo.create("form_submissions", { id: "su_x", form: "fo_outro", saas: "outro", answers: {}, createdAt: "2026-07-10T10:00:00.000Z" });
+
+  const ov = (await app.inject({ method: "GET", url: "/api/forms/overview?saas=leverads" })).json();
+  assert.equal(ov.forms.length, 4); // fo_test, fo_draft, fo_a, fo_b (o de outro produto fica fora)
+  assert.equal(ov.forms[0].id, "fo_a");                       // Alfa primeiro
+  assert.equal(ov.forms[ov.forms.length - 1].id, "fo_b");     // Zeta por último
+  assert.deepEqual(ov.forms.map((f) => f.name), [...ov.forms.map((f) => f.name)].sort((a, b) => a.localeCompare(b)));
+  assert.ok(ov.forms.every((f) => f.saas === "leverads"));
+  assert.deepEqual(ov.counts, { fo_test: 5, fo_a: 4 }); // a interna conta (régua antiga)
+  assert.equal(ov.recent.length, 6);
+  assert.ok(ov.recent.every((s) => !s.internal && s.saas === "leverads"));
+  assert.deepEqual(ov.recent.map((s) => s.id), ["su_7", "su_6", "su_5", "su_4", "su_3", "su_2"]); // mais novas primeiro
+  assert.deepEqual(ov.recent[0].answers, { nome: "p7" }); // as recentes vêm inteiras
+  await app.close();
+});
+
 test("rate-limit dos eventos é separado do de submissions", async () => {
   const { app } = await buildApp({ forms: { rateLimit: 1, eventRateLimit: 3 } });
   assert.equal((await post(app, { session: "s1", event: "view" })).statusCode, 201);

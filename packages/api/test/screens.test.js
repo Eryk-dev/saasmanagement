@@ -97,7 +97,7 @@ test("usuário restrito (pipeline+tasks): funil libera, financeiro/clientes/ajus
   assert.equal((await app.inject({ url: "/api/auth/users", headers: H })).statusCode, 200);
 
   // Telas que ele NÃO tem: 403 na API, não só menu escondido.
-  for (const url of ["/api/customers", "/api/expenses", "/api/expenses/summary/leverads", "/api/marketing/leverads", "/api/metrics/leverads", "/api/proposal_templates", "/api/forms", "/api/portfolio", "/api/ad_insights"]) {
+  for (const url of ["/api/customers", "/api/expenses", "/api/expenses/summary/leverads", "/api/marketing/leverads", "/api/metrics/leverads", "/api/proposal_templates", "/api/forms", "/api/forms/overview?saas=leverads", "/api/forms/funnels?saas=leverads", "/api/portfolio", "/api/ad_insights"]) {
     assert.equal((await app.inject({ url, headers: H })).statusCode, 403, `esperava 403 em ${url}`);
   }
   // Escritas administrativas também.

@@ -460,6 +460,13 @@ function PrimaryButton({ onClick, children, disabled, size = "md", title, style,
   );
 }
 
-Object.assign(window, { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, CardHead, Ticker, Led, EmptyState, PrimaryButton, SecondaryButton, RowActions, toast, ToastHost, WaButton });
+// Placeholder de carregamento: um bloco pulsando com a medida do conteúdo que
+// vai chegar (título, linha, tile). A tela monta a estrutura de verdade e troca
+// pelo dado quando ele vem, em vez de um "carregando…" solto ou tela vazia.
+function Skeleton({ w = "100%", h = 14, r = 6, style }) {
+  return <div className="skel" aria-hidden="true" style={{ width: w, height: h, borderRadius: r, ...style }} />;
+}
 
-export { BTN, HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, CardHead, Ticker, Led, EmptyState, PrimaryButton, SecondaryButton, RowActions, MoreMenu, useEsc, toast, ToastHost, WaButton };
+Object.assign(window, { HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, CardHead, Ticker, Led, EmptyState, PrimaryButton, SecondaryButton, RowActions, toast, ToastHost, WaButton, Skeleton });
+
+export { BTN, HealthArc, Sparkline, Delta, TrendBadge, SeverityDot, Avatar, FunnelHeatmap, SectionHead, CardHead, Ticker, Led, EmptyState, PrimaryButton, SecondaryButton, RowActions, MoreMenu, useEsc, toast, ToastHost, WaButton, Skeleton };
