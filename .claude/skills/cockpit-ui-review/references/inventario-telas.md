@@ -144,6 +144,11 @@ além do tema escuro. Esta etapa não altera o conteúdo das telas navegáveis.
 
 ## Ordem sugerida de auditoria (uso diário primeiro)
 
+Revisão pontual em 16/09/2026: `expenses` → Resumo ganhou pizza de despesas
+por categoria abaixo do fluxo de caixa, com percentual e valor na legenda.
+Conferidos desktop, celular de 390px, temas claro/escuro e troca de mês.
+Preview com dados fictícios: `/?shell=1&finance=1#expenses`.
+
 1. `today` (fila do dia — a tela mais usada pelo time)
 2. `pipeline` + LeadDetail (coração do comercial)
 3. `overview` (a tela do gestor)
