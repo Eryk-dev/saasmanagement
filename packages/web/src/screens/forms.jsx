@@ -9,7 +9,7 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { useAttribution } from "../lib/pains.js";
 import { InsightsList } from "../components/insights.jsx";
 import { sourceLabel } from "../lib/sources.js";
-import { AbcCell } from "./metrics.jsx";
+import { AbcCell } from "../components/abc-cell.jsx";
 import { CorrenteDoDinheiro } from "../components/story.jsx";
 import { PageHead, Card } from "../components/viz.jsx";
 import { usePeriod } from "../components/period-picker.jsx";

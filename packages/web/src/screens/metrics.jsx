@@ -11,6 +11,7 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { EmptyState, PrimaryButton } from "../atoms.jsx";
 import { stageKind } from "../lib/funnel.js";
 import { GRADE_STYLE } from "../lib/ui.js";
+import { AbcCell, GRADES } from "../components/abc-cell.jsx";
 import { InsightsCard } from "../components/insights.jsx";
 import { DeliveryRulesCard } from "../components/delivery-rules.jsx";
 import { MetaConnectCard } from "../components/meta-connect.jsx";
@@ -200,12 +201,21 @@ function MetricsScreen() {
   // `loadEpoch` descarta resposta atrasada de um load anterior (troca rápida de
   // produto A→B→A não pode assentar com dados/campanhas do produto errado).
   const loadEpoch = React.useRef(0);
+  const loadedProduct = React.useRef(null);
+  const [refreshing, setRefreshing] = useState(false); // período novo em voo, dado antigo à mostra
   const load = (reset = true) => {
     if (!product) return;
     const ep = ++loadEpoch.current;
     const fresh = (set) => (v) => { if (ep === loadEpoch.current) set(v); };
-    if (reset) { setData(null); setObjects(null); setPlacements(null); setNote(null); }
-    api.marketingMetrics(product.id, { since, until }).then(fresh(setData)).catch(() => fresh(setData)({ error: true }));
+    // Só a troca de PRODUTO zera a tela (os números do outro produto não podem
+    // ficar à mostra). Trocar de período mantém o dado anterior visível com a
+    // marca "atualizando" até o novo chegar, em vez de piscar tudo em "…".
+    const productChanged = loadedProduct.current !== product.id;
+    loadedProduct.current = product.id;
+    if (reset && productChanged) { setData(null); setObjects(null); setPlacements(null); }
+    if (reset) { setNote(null); setRefreshing(true); }
+    api.marketingMetrics(product.id, { since, until }).then(fresh(setData)).catch(() => fresh(setData)({ error: true }))
+      .finally(() => { if (ep === loadEpoch.current) setRefreshing(false); });
     api.metrics(product.id, { days: rangeDays, months: 12 }).then(fresh(setBiz)).catch(() => fresh(setBiz)(null));
     if (reset && metaOn && product.metaAdAccount) {
       api.adObjects(product.id).then(fresh(setObjects)).catch((e) => fresh(setObjects)({ error: e.message }));
@@ -239,8 +249,12 @@ function MetricsScreen() {
     return () => clearInterval(id);
   }, [product?.id, since, until, metaOn]); // eslint-disable-line react-hooks/exhaustive-deps
   const liveAt = data?.syncedAt ? new Date(data.syncedAt) : null;
-  const insights = (data && !data.error ? buildInsights(data, placements, objects) : [])
-    .map((it) => withInsightAction(it, { data, objects }));
+  // buildInsights varre campanhas/conjuntos/anúncios/dores; memoizado pra não
+  // refazer a cada tecla/hover da tela (só quando o dado muda).
+  const insights = React.useMemo(
+    () => (data && !data.error ? buildInsights(data, placements, objects) : []).map((it) => withInsightAction(it, { data, objects })),
+    [data, placements, objects],
+  );
   // Aplicou uma ação (pausa/orçamento) → recarrega o estado vivo da conta,
   // igual ao pós-toggle do card Anúncios.
   const reloadObjects = () => { if (product?.metaAdAccount) api.adObjects(product.id).then(setObjects).catch(() => { /* mantém o atual */ }); };
@@ -374,18 +388,18 @@ function MetricsScreen() {
   const totalMilestoneLeads = milestones[0]?.count || 0;
   // O card Anúncios lê as métricas do RANGE PRÓPRIO dele (adsData); o resto da
   // tela segue no range do filtro do topo (data).
-  const metricMaps = adsData && !adsData.error ? {
+  const metricMaps = React.useMemo(() => (adsData && !adsData.error ? {
     campaigns: Object.fromEntries((adsData.campaigns || []).map((g) => [String(g.id), g])),
     adsets: Object.fromEntries((adsData.adsets || []).map((g) => [String(g.id), g])),
     ads: Object.fromEntries((adsData.ads || []).map((g) => [String(g.id), g])),
-  } : null;
+  } : null), [adsData]);
   const compactObjects = objects && !objects.error ? objects : adsData && !adsData.error ? {
     campaigns: adsData.campaigns || [], adsets: adsData.adsets || [], ads: adsData.ads || [],
   } : null;
 
   return (
     <div className="marketing-page" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
-      <PageHead className="marketing-head" title="Publicidade" sub={<span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>aquisição, funil e campanhas · <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--fg-2)", fontSize: 12.5, fontWeight: 500 }}><span style={{ width: 6, height: 6, borderRadius: 99, background: metaOn && product.metaAdAccount ? "var(--pos)" : "var(--fg-4)" }} />{metaOn && product.metaAdAccount ? "Meta conectada" : "Meta não conectada"}</span></span>}>
+      <PageHead className="marketing-head" title="Publicidade" sub={<span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>aquisição, funil e campanhas · <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--fg-2)", fontSize: 12.5, fontWeight: 500 }}><span style={{ width: 6, height: 6, borderRadius: 99, background: metaOn && product.metaAdAccount ? "var(--pos)" : "var(--fg-4)" }} />{metaOn && product.metaAdAccount ? "Meta conectada" : "Meta não conectada"}</span>{refreshing && data && !data.error ? <span className="dim" style={{ fontSize: 12 }}>· atualizando…</span> : null}</span>}>
         {metaOn && product.metaAdAccount && (
           <PrimaryButton onClick={() => { setCloneAd((v) => !v); setCreative(false); }}>+ criar anúncio</PrimaryButton>
         )}
@@ -1393,24 +1407,10 @@ function PlacementTable({ placements, money }) {
 // Célula de cliente A/B/C: contagem forte na cor da grade + quanto custou CADA
 // um daquela grade (investido do grupo ÷ clientes da grade). "—" quando a
 // dor/anúncio não trouxe ninguém da grade.
-const GRADES = ["S", "A", "B", "C", "D", "E"];
-// Clientes A/B/C numa célula só, uma linha por grade ("2 A · R$ 43,00 cada") —
-// o MESMO formato da coluna Clientes ABC da tabela de anúncios. Exportado pra
-// o teste A/B dos Formulários usar a MESMA célula (sem custo lá).
-export function AbcCell({ abc, abcCost, money }) {
-  return (
-    <span className="tnum" style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1, fontSize: 11.5 }}>
-      {abc && GRADES.some((g) => abc[g] > 0)
-        ? GRADES.filter((g) => abc[g] > 0).map((g) => (
-          <span key={g} style={{ whiteSpace: "nowrap", color: "var(--fg-3)" }}>
-            <span style={{ fontWeight: 700, color: GRADE_STYLE[g].ink }}>{abc[g]} {g}</span>
-            {abcCost?.[g] != null ? ` · ${money(abcCost[g])} cada` : ""}
-          </span>
-        ))
-        : <span style={{ color: "var(--fg-4)", fontSize: 13.5 }}>—</span>}
-    </span>
-  );
-}
+// Clientes A/B/C numa célula só: mora em components/abc-cell.jsx (Formulários
+// usa a MESMA célula sem arrastar esta tela inteira); re-exportado por
+// compatibilidade.
+export { AbcCell };
 
 // Ganhos com a grade de quem fechou: "2 A · 1 B" embaixo do total. Ganho sem
 // grade (lead sem dados de contas/anúncios) vira "s/ grade" pra conta fechar.

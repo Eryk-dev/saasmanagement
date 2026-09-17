@@ -13,6 +13,8 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // Stubs mínimos de browser pro código que toca window/localStorage no render.
 globalThis.window = globalThis;
+// `location` existe sempre no navegador (consultas.jsx lê origin na importação).
+globalThis.location = { origin: "http://localhost", href: "http://localhost/", pathname: "/", hash: "", search: "" };
 globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
 // useIsMobile (lib/responsive.js) lê matchMedia no initializer do useState.
 globalThis.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
@@ -49,6 +51,20 @@ let failed = 0;
 try {
   const { fmt } = await server.ssrLoadModule("/src/lib/format.js");
   window.fmt = fmt;
+  // Boot em paralelo (main.jsx): o app é importado ENQUANTO o bootstrap corre,
+  // então nenhum módulo pode ler window.SEED na importação. Importa a árvore
+  // inteira sem SEED, ANTES de qualquer outro load (o Vite cacheia módulos), e
+  // falha se alguém ler cedo demais.
+  try {
+    const saved = window.SEED;
+    window.SEED = undefined;
+    try { await server.ssrLoadModule("/src/app.jsx"); }
+    finally { window.SEED = saved; }
+    console.log("✓ app-sem-seed");
+  } catch (err) {
+    console.error(`✗ app-sem-seed: ${err.message}`);
+    failed++;
+  }
   const { DataContext } = await server.ssrLoadModule("/src/data.jsx");
   const ctx = { version: 0, refresh() {}, openForm() {}, openDelete() {} };
   const wrap = (el) => React.createElement(DataContext.Provider, { value: ctx }, el);
@@ -105,6 +121,10 @@ try {
     ["subscriptions", "/src/screens/subscriptions.jsx", "SubscriptionsScreen", { saasId: "leverads" }, ""],
     ["settings", "/src/screens/settings.jsx", "SettingsScreen", { saasId: "leverads" }, ""],
     ["social", "/src/screens/social.jsx", "SocialScreen", {}, "Comentários"],
+    // Módulos pequenos que saíram de telas grandes pra não pesar em Disparos/Formulários.
+    ["wa-health-banner", "/src/components/wa-health-banner.jsx", "WaHealthBanner", {}, ""],
+    ["abc-cell", "/src/components/abc-cell.jsx", "AbcCell", { abc: { A: 2 }, abcCost: { A: 43 }, money: (v) => `R$ ${v}` }, "R$ 43 cada"],
+    ["disparos", "/src/screens/disparos.jsx", "DisparosScreen", {}, "Disparos"],
     ["contracts", "/src/screens/contracts.jsx", "ContractsScreen", {}, "Contratos gerados"],
     ["intform", "/src/screens/integration-forms.jsx", "IntegrationFormsScreen", {}, "Formulário de Integração"],
     ["blog", "/src/screens/blog.jsx", "BlogScreen", {}, "Blog"],
