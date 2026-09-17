@@ -10,6 +10,7 @@ import { legacyDoneKey, DEFAULT_COLUMNS as TASK_DEFAULT_COLUMNS, assetIdFromUrl 
 import { catalogAmount } from "./proposal-catalog.js";
 import { createClosedSubscription } from "./billing.js";
 import { FLASHCARD_DEFAULTS } from "./routes.flashcards.js";
+import { LEVERADS_DECKS, LEVERADS_V2 } from "./flashcard-decks.leverads.js";
 import { LEVERADS_EXPANSION } from "./flashcard-decks.leverads.js";
 import { mergeLeadQuestions } from "./forms.js";
 import { waMatchKey } from "./wa-store.js";
@@ -272,6 +273,67 @@ export async function migrateFlashcardsDeckExpansion(repo) {
     deckExpansionV1: true,
   });
   return missing.length;
+}
+
+// ── Flashcards: catálogo v2 + call otimizada (16/09/2026) ────────────────────
+// Os mapas mentais de 10/09 trocaram o modelo (Lever OEM / Ads / Price ×
+// Essencial / Escala / Enterprise, só anual + semestral, call em 10 passos,
+// robô em 4 passos, ICP por linha). O deck em código já nasce atualizado; se um
+// doc `flashcards` tiver sido materializado pela tela, ele recebe o MESMO
+// conserto: card reescrito ganha o texto novo (imagem/máscaras do dono ficam),
+// card retirado sai (ensinava FULL/Parcial/recorrente) e card novo entra.
+// One-shot com marcador catalogV2FlashcardsV1; sem doc é no-op.
+export async function migrateFlashcardsCatalogV2(repo) {
+  const doc = await repo.get("flashcards", "leverads");
+  if (!doc || doc.catalogV2FlashcardsV1) return 0;
+  const byId = new Map(LEVERADS_DECKS.map((c) => [c.id, c]));
+  const rewritten = new Set(LEVERADS_V2.rewritten);
+  const retired = new Set(LEVERADS_V2.retired);
+  let touched = 0;
+  const kept = [];
+  for (const c of doc.cards || []) {
+    if (!c || !c.id) continue;
+    if (retired.has(c.id)) { touched++; continue; }
+    const fresh = byId.get(c.id);
+    if (rewritten.has(c.id) && fresh) {
+      touched++;
+      kept.push({ ...c, type: fresh.type || "basic", front: fresh.front, back: fresh.back });
+    } else kept.push(c);
+  }
+  const have = new Set(kept.map((c) => c.id));
+  for (const id of LEVERADS_V2.added) {
+    const fresh = byId.get(id);
+    if (fresh && !have.has(id)) { kept.push({ ...fresh }); touched++; }
+  }
+  await repo.update("flashcards", "leverads", { cards: kept, catalogV2FlashcardsV1: true });
+  return touched;
+}
+
+// Estado de estudo dos cards que MUDARAM DE RESPOSTA: quem já tinha o card
+// "maduro" ficaria semanas sem rever um conteúdo que agora é outro (preço,
+// plano, passo da call). Apaga o estado FSRS (e a vaga no gradPool) das entradas
+// dos cards reescritos e retirados, em todos os usuários do leverads; o card
+// volta como novo na fila. `newDone` é contagem por dia, fica. Guard no
+// produto (o doc `flashcards` não existe em produção).
+export async function migrateTrainingStatesCatalogV2(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product || product.flashcardsCatalogV2RelearnV1) return 0;
+  const ids = [...LEVERADS_V2.rewritten, ...LEVERADS_V2.retired];
+  const hit = (key) => ids.some((id) => key === id || key.startsWith(id + "::"));
+  let docs = 0;
+  for (const st of await repo.list("training_states")) {
+    if (!st || st.saas !== "leverads") continue;
+    const cards = { ...(st.cards || {}) };
+    let changed = false;
+    for (const k of Object.keys(cards)) if (hit(k)) { delete cards[k]; changed = true; }
+    const pool = Array.isArray(st.gradPool) ? st.gradPool.filter((k) => !hit(k)) : null;
+    if (pool && pool.length !== st.gradPool.length) changed = true;
+    if (!changed) continue;
+    await repo.update("training_states", st.id, { cards, ...(pool ? { gradPool: pool } : {}) });
+    docs++;
+  }
+  await repo.update("products", "leverads", { flashcardsCatalogV2RelearnV1: true });
+  return docs;
 }
 
 // ── Ganho como destino da Integração (31/08/2026) ───────────────────────────
@@ -2148,6 +2210,18 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] flashcards: cotas de OEM atualizadas em ${n} card(s) de produto (combo 250/mês)`);
   } catch (err) {
     console.error("[migration] migrateFlashcardsOemQuotas falhou:", err?.message || err);
+  }
+  try {
+    const n = await migrateFlashcardsCatalogV2(repo);
+    if (n) console.log(`[migration] flashcards: catálogo v2 + call otimizada aplicados em ${n} card(s) do doc salvo`);
+  } catch (err) {
+    console.error("[migration] migrateFlashcardsCatalogV2 falhou:", err?.message || err);
+  }
+  try {
+    const n = await migrateTrainingStatesCatalogV2(repo);
+    if (n) console.log(`[migration] treino: estado FSRS zerado em ${n} pessoa(s) pros cards que mudaram de resposta`);
+  } catch (err) {
+    console.error("[migration] migrateTrainingStatesCatalogV2 falhou:", err?.message || err);
   }
   try {
     const n = await ensureFunnelKinds(repo);
