@@ -14,7 +14,10 @@ function preloadAppChunk() {
     transformIndexHtml: {
       order: "post",
       handler(html, ctx) {
-        const chunk = Object.values(ctx.bundle || {}).find((c) => c.type === "chunk" && /[\\/]src[\\/]app\.jsx$/.test(c.facadeModuleId || ""));
+        // Com as telas em chunks separados o shell deixa de ter "fachada" única
+        // (facadeModuleId vazio): acha pelo módulo que ele contém.
+        const isApp = (id) => /[\\/]src[\\/]app\.jsx$/.test(id || "");
+        const chunk = Object.values(ctx.bundle || {}).find((c) => c.type === "chunk" && (isApp(c.facadeModuleId) || (c.moduleIds || []).some(isApp)));
         if (!chunk) return html;
         const tags = [{ tag: "link", attrs: { rel: "modulepreload", href: `/${chunk.fileName}`, crossorigin: true }, injectTo: "head" }];
         for (const css of chunk.viteMetadata?.importedCss || []) tags.push({ tag: "link", attrs: { rel: "preload", as: "style", href: `/${css}` }, injectTo: "head" });
