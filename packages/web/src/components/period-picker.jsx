@@ -1,4 +1,6 @@
 import React from "react";
+import { Popover } from "./popover.jsx";
+import { useIsMobile } from "../lib/responsive.js";
 
 // Filtro de período do cockpit — um só componente pra Visão geral, Aquisição e
 // Funcionários (antes cada tela repetia uma fileira de chips e um par de inputs
@@ -177,25 +179,17 @@ function MonthGrid({ month, sel, today, onPick, onHover, hover }) {
   );
 }
 
-// Dois calendários só quando cabem (atalhos 150 + 2×212 + espaços ≈ 620). Em
-// tela estreita fica um só, senão o segundo mês vaza pra fora do popover.
-const twoMonths = () => (typeof window === "undefined" ? true : window.innerWidth >= 640);
-
 // ── O filtro ─────────────────────────────────────────────────────────────────
 // `period`/`custom` são o estado APLICADO (a tela guarda e recarrega com ele);
 // o popover trabalha num rascunho e só devolve em "aplicar".
 export function PeriodPicker({ period, custom, onChange, presets }) {
   const [open, setOpen] = useState(false);
+  const two = !useIsMobile();
   const [draft, setDraft] = useState({ period, custom });
   const [sel, setSel] = useState({ since: "", until: "" });
   const [hover, setHover] = useState("");
   const [view, setView] = useState(() => startOfMonth(new Date()));
   const ref = useRef(null);
-  // Posição MEDIDA + position:fixed (mesmo desenho do filtro da Publicidade).
-  // Com `absolute` o popover é encolhido pela largura do wrapper do botão (o
-  // bloco de contenção), e os dois calendários vazavam pra fora da caixa; e
-  // dentro de um container com overflow ele ainda seria cortado.
-  const [pos, setPos] = useState(null);
   const today = ymd(new Date());
   const list = useMemo(() => (presets ? PRESETS.filter((p) => presets.includes(p.key)) : PRESETS), [presets]);
   const applied = useMemo(() => periodWindow(period, custom), [period, custom?.since, custom?.until]);
@@ -211,18 +205,9 @@ export function PeriodPicker({ period, custom, onChange, presets }) {
     // Abre com o mês do FIM à direita: um intervalo de "mês passado" fica
     // visível sem ter que navegar. Com um calendário só (tela estreita), mostra
     // o mês do fim, que é onde está a ponta que a pessoa costuma ajustar.
-    const back = twoMonths() ? 1 : 0;
+    const back = two ? 1 : 0;
     setView(startOfMonth(new Date(end.getFullYear(), end.getMonth() - back, 1, 12)));
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    const onEsc = (e) => { if (e.key === "Escape") setOpen(false); };
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onEsc);
-    return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("keydown", onEsc); };
-  }, [open]);
 
   const pickPreset = (key) => {
     const w = periodWindow(key, null);
@@ -249,38 +234,18 @@ export function PeriodPicker({ period, custom, onChange, presets }) {
   };
 
   const btn = { height: 32, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" };
-  const toggle = () => {
-    if (open) { setOpen(false); return; }
-    const r = ref.current?.getBoundingClientRect();
-    if (r) setPos({ top: r.bottom + 6, right: Math.max(8, window.innerWidth - r.right) });
-    setOpen(true);
-  };
-  const two = twoMonths();
+  const toggle = () => setOpen((value) => !value);
   return (
     <div ref={ref} style={{ display: "inline-flex", maxWidth: "100%" }}>
-      <button type="button" onClick={toggle} style={{ ...btn, display: "inline-flex", alignItems: "center", gap: 8, maxWidth: "100%", overflow: "hidden" }}>
+      <button type="button" onClick={toggle} aria-haspopup="dialog" aria-expanded={open} style={{ ...btn, display: "inline-flex", alignItems: "center", gap: 8, maxWidth: "100%", overflow: "hidden" }}>
         <span style={{ textTransform: "capitalize", whiteSpace: "nowrap" }}>{applied.label}</span>
         <span className="mono dim tnum hide-mobile" style={{ fontSize: 11, fontWeight: 500, whiteSpace: "nowrap" }}>{applied.range}</span>
         <span className="dim" style={{ fontSize: 9 }}>{open ? "▴" : "▾"}</span>
       </button>
-      {open && pos && (
-        <>
-          {/* Fundo que fecha no clique fora: com position:fixed o popover sai do
-              fluxo, então o "clicou fora?" pelo contains() do wrapper não pega. */}
-          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 69 }} />
-          <div style={{
-            position: "fixed", top: pos.top, right: pos.right, zIndex: 70,
-            background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)",
-            boxShadow: "var(--shadow-pop)", padding: 14,
-            // Largura EXPLÍCITA: sem ela o popover encolhe até caber no bloco de
-            // contenção e os calendários vazam. maxHeight + scroll pra lista de
-            // atalhos não estourar a tela em janela baixa.
-            // 648 = 28 de padding + 150 de atalhos + 16 de espaço + 2×212 de
-            // calendário + 14 entre eles, com folga pra arredondamento.
-            width: two ? 648 : "min(94vw, 320px)", maxWidth: "94vw",
-            maxHeight: "calc(100vh - 90px)", overflowY: "auto",
-            display: "flex", flexDirection: two ? "row" : "column", gap: 16, alignItems: "flex-start",
-          }}>
+      {open && (
+        <Popover anchor={ref} onClose={() => setOpen(false)} width={648} align="end"
+          label="Selecionar período" maxHeight="calc(100dvh - 16px)" style={{ padding: 14 }}>
+          <div style={{ display: "flex", flexDirection: two ? "row" : "column", gap: 16, alignItems: two ? "flex-start" : "stretch" }}>
             <div style={two
               ? { display: "flex", flexDirection: "column", gap: 1, flex: "0 0 150px" }
               : { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2, width: "100%" }}>
@@ -326,7 +291,7 @@ export function PeriodPicker({ period, custom, onChange, presets }) {
               </div>
             </div>
           </div>
-        </>
+        </Popover>
       )}
     </div>
   );
