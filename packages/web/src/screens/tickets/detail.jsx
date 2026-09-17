@@ -4,6 +4,7 @@ import { PrimaryButton, SecondaryButton, toast } from "../../atoms.jsx";
 import { Modal } from "../../components/overlay.jsx";
 import { SelectPopover } from "../../components/select-popover.jsx";
 import { QuickReplyList, useQuickReplies, filterQuickReplies, orderForPicker, slashTokenAt } from "./quick-reply-picker.jsx";
+import { LinearMarkdown } from "./linear-markdown.jsx";
 import { UserPicker, UserAvatarRing } from "../../components/user-picker.jsx";
 import { isAdminUser } from "../../lib/users.js";
 import {
@@ -74,6 +75,9 @@ function Field({ label, children, anchorRef }) {
     </div>
   );
 }
+
+// Mensagens do atendimento (sem os comentários espelhados do Linear).
+export const conversationMessages = (ticket) => (ticket?.messages || []).filter((m) => m.source?.type !== "linear");
 
 const CLOCK_WORD = { ok: "no prazo", warning: "vence em breve", breached: "estourado", paused: "pausado", met: "cumprido", none: "sem prazo" };
 function SlaClock({ label, state, due, doneAt, doneLabel }) {
@@ -157,9 +161,13 @@ function RequesterFields({ ticket, save }) {
 }
 
 // ── Conversa ────────────────────────────────────────────────────────────────
+// A Conversa é o REGISTRO DO ATENDIMENTO: pedido do cliente, respostas e notas
+// da equipe. O que veio do Linear (comentário de dev espelhado como nota) fica
+// fora daqui e vive na aba Linear — misturar as duas conversas fazia a thread
+// do cliente sumir no meio da discussão técnica.
 function Conversation({ ticket, agentName, description }) {
   const [editing, setEditing] = useState(false);
-  const items = ticket.messages || [];
+  const items = conversationMessages(ticket);
   const endRef = useRef(null);
   useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [items.length]);
   return (
@@ -180,7 +188,9 @@ function Conversation({ ticket, agentName, description }) {
       </div>
       {items.map((m) => {
         const kind = m.author?.type === "customer" ? "customer" : m.kind === "note" ? "note" : "reply";
-        const who = kind === "customer" ? (m.author?.name || ticket.requester?.name || "cliente") : agentName(m.author?.id);
+        // Nota vinda de comentário no Linear entra com o ator `linear` (não é
+        // gente do cockpit): mostra a origem no lugar do id cru.
+        const who = kind === "customer" ? (m.author?.name || ticket.requester?.name || "cliente") : (ACTOR_NAME[m.author?.id] || agentName(m.author?.id));
         return (
           <div key={m.id} className="support-msg" data-kind={kind}>
             <div className="kicker" style={{ marginBottom: 4, color: kind === "note" ? "var(--warn)" : undefined }}>
@@ -211,7 +221,14 @@ const EVENT_TEXT = {
   attachment_added: (d) => `anexou ${d.name || "um arquivo"}${d.public ? " (visível ao cliente)" : ""}`,
   attachment_removed: (d) => `removeu ${d.name || "um anexo"}`,
   sla_breached: (d) => `SLA de ${d.clock === "firstResponse" ? "1ª resposta" : "resolução"} estourou`,
+  linear_linked: (d) => `${d.manual ? "vinculou" : "espelhou"} no Linear${d.identifier ? ` (${d.identifier})` : ""}`,
+  linear_issue_updated: (d) => `mudou pelo Linear${d.state ? ` · coluna ${d.state}` : ""}${d.status ? ` → ${STATUS_BY_KEY[d.status]?.label || d.status}` : ""}`,
+  linear_unlinked: (d) => `desvinculou do Linear${d.identifier ? ` (${d.identifier})` : ""}`,
+  // O texto do comentário não é copiado pro ticket (vive na aba Linear): a
+  // atividade guarda quem comentou e o começo do que disse.
+  linear_comment: (d) => `${d.author || "alguém"} comentou em ${d.identifier || "Linear"}${d.excerpt ? `: ${d.excerpt}` : ""}`,
 };
+const ACTOR_NAME = { portal: "Cliente", api: "Cockpit", linear: "Linear" };
 function Activity({ ticketId, version, agentName }) {
   const [items, setItems] = useState(null);
   useEffect(() => {
@@ -226,7 +243,7 @@ function Activity({ ticketId, version, agentName }) {
       {items.map((e) => (
         <div key={e.id} style={{ fontSize: 12.5, color: "var(--fg-2)", display: "flex", gap: 10 }}>
           <span className="mono dim" style={{ fontSize: 11, flexShrink: 0, width: 84 }}>{fmtWhen(e.at)}</span>
-          <span><b style={{ fontWeight: 600 }}>{e.by === "portal" ? "Cliente" : e.by === "api" ? "Cockpit" : agentName(e.by)}</b> {(EVENT_TEXT[e.type] || (() => e.type))(e.data || {}, agentName)}</span>
+          <span><b style={{ fontWeight: 600 }}>{ACTOR_NAME[e.by] || agentName(e.by)}</b> {(EVENT_TEXT[e.type] || (() => e.type))(e.data || {}, agentName)}</span>
         </div>
       ))}
     </div>
@@ -344,6 +361,166 @@ function Composer({ ticket, onSent, onDraft }) {
   );
 }
 
+// ── Aba Linear ──────────────────────────────────────────────────────────────
+// O que mora na ISSUE: descrição e comentários, lidos do Linear na hora (o
+// ticket guarda só o espelho, que pode estar um ciclo atrás). Se o Linear não
+// responde, a aba cai para o que já está gravado no ticket e diz isso — a aba
+// nunca vira tela de erro.
+const PRIO_LINEAR = { 0: "sem prioridade", 1: "urgente", 2: "alta", 3: "média", 4: "baixa" };
+
+// Relato longo (o de uma issue real passa de 19 mil caracteres) entra recolhido:
+// a aba abre mostrando o começo e quem precisa do resto pede.
+function Recolhivel({ children, altura = 280 }) {
+  const [aberto, setAberto] = useState(false);
+  return (
+    <div>
+      <div style={{ maxHeight: aberto ? "none" : altura, overflow: "hidden", position: "relative" }}>
+        {children}
+        {!aberto && <div style={{ position: "absolute", inset: "auto 0 0 0", height: 48, background: "linear-gradient(transparent, var(--bg-inset))" }} />}
+      </div>
+      <button type="button" onClick={() => setAberto((v) => !v)} style={{ fontSize: 11.5, fontWeight: 600, color: "var(--accent)", marginTop: 4 }}>
+        {aberto ? "recolher" : "ver tudo"}
+      </button>
+    </div>
+  );
+}
+
+function LinearPane({ ticket }) {
+  const [data, setData] = useState(null);
+  const [erro, setErro] = useState("");
+  const [busy, setBusy] = useState(false);
+  const lidoEm = useRef(0);
+  const load = useCallback(async () => {
+    setBusy(true);
+    try { setData(await api.ticketLinear(ticket.id)); setErro(""); lidoEm.current = Date.now(); }
+    catch (err) { setErro(err.message || "erro"); }
+    finally { setBusy(false); }
+  }, [ticket.id]);
+  useEffect(() => { load(); }, [load]);
+  // Os links de anexo do Linear são assinados e valem ~5 minutos: voltar pra
+  // aba depois de um tempo relê a issue, senão os prints aparecem quebrados.
+  useEffect(() => {
+    const aoVoltar = () => { if (!document.hidden && Date.now() - lidoEm.current > 3 * 60_000) load(); };
+    document.addEventListener("visibilitychange", aoVoltar);
+    window.addEventListener("focus", aoVoltar);
+    return () => { document.removeEventListener("visibilitychange", aoVoltar); window.removeEventListener("focus", aoVoltar); };
+  }, [load]);
+
+  if (erro) return <div style={{ fontSize: 12.5, color: "var(--neg)" }}>Não deu pra ler a issue · {erro} <button type="button" onClick={load} style={{ fontWeight: 600, textDecoration: "underline", color: "inherit" }}>tentar de novo</button></div>;
+  if (!data) return <div className="mono dim" style={{ fontSize: 12 }}>carregando a issue…</div>;
+
+  const { issue, comments = [] } = data;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <a href={data.url || "#"} target="_blank" rel="noopener noreferrer" className="chip accent" style={{ fontWeight: 600 }}>{data.identifier || "issue"} ↗</a>
+        {data.state?.name && <span className="support-status" style={{ "--dot": data.state.type === "completed" ? "var(--pos)" : data.state.type === "canceled" ? "var(--fg-4)" : "var(--accent)" }}>{data.state.name}</span>}
+        {issue && <span className="mono dim" style={{ fontSize: 11 }}>{PRIO_LINEAR[issue.priority] ?? ""}{issue.assignee ? ` · ${issue.assignee}` : ""}{issue.project ? ` · ${issue.project}` : ""}</span>}
+        <button type="button" onClick={load} disabled={busy} className="mono dim" style={{ marginLeft: "auto", fontSize: 11, textDecoration: "underline" }}>{busy ? "lendo…" : "recarregar"}</button>
+      </div>
+
+      {data.stale && (
+        <div style={{ fontSize: 12, color: "var(--warn)" }}>
+          {data.configured === false
+            ? "Linear não configurado no servidor — mostrando o que já está gravado no ticket."
+            : `Não consegui ler a issue agora (${data.error || "sem resposta"}) — mostrando o que já está gravado no ticket.`}
+        </div>
+      )}
+
+      {issue && (
+        <>
+          <span className="kicker">Descrição da issue</span>
+          <div className="support-msg" data-kind="linear-desc">
+            {issue.description
+              ? (issue.description.length > 1200
+                ? <Recolhivel><LinearMarkdown text={issue.description} onExpired={load} /></Recolhivel>
+                : <LinearMarkdown text={issue.description} onExpired={load} />)
+              : <span className="dim">sem descrição no Linear</span>}
+          </div>
+        </>
+      )}
+
+      <span className="kicker">Comentários{comments.length ? ` · ${comments.length}` : ""}</span>
+      {comments.length === 0 && (
+        <div className="mono dim" style={{ fontSize: 12 }}>
+          {data.stale ? "não deu pra ler os comentários agora — abra a issue no Linear" : "nenhum comentário na issue"}
+        </div>
+      )}
+      {comments.map((c) => (
+        <div key={c.id} className="support-msg" data-kind="linear">
+          <div className="kicker" style={{ marginBottom: 4, display: "flex", gap: 8, alignItems: "center" }}>
+            <span>{c.user?.name || "alguém"} · {fmtWhen(c.createdAt)}</span>
+            {c.fromCockpit && <span className="chip" title="saiu daqui: resposta ou nota do ticket espelhada na issue">do cockpit</span>}
+          </div>
+          {c.body.length > 1200
+            ? <Recolhivel altura={200}><LinearMarkdown text={c.body} onExpired={load} /></Recolhivel>
+            : <LinearMarkdown text={c.body} onExpired={load} />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Linear: vínculo e ações (coluna lateral) ────────────────────────────────
+// Só aparece quando o produto espelha (ou quando este ticket já tem issue): a
+// coluna de atendimento não carrega caixa de integração que ninguém usa.
+// O espelho é automático — os botões daqui são o empurrão manual (mandar agora,
+// vincular a uma issue que já existe) e o desvincular.
+function LinearSection({ ticket, settings, onChange }) {
+  const [busy, setBusy] = useState("");
+  const [colando, setColando] = useState(false);
+  const [issue, setIssue] = useState("");
+  const l = ticket.linear || {};
+  if (!settings?.linear?.enabled && !l.issueId) return null;
+
+  const run = async (acao, fn) => {
+    setBusy(acao);
+    try { onChange(await fn()); return true; }
+    catch (err) { toast(`Linear · ${err.message || "não deu pra falar com o Linear"}`, "neg", 6000); return false; }
+    finally { setBusy(""); }
+  };
+  const vincular = async () => {
+    if (!issue.trim()) return;
+    if (await run("link", () => api.ticketLinearSync(ticket.id, issue.trim()))) { setIssue(""); setColando(false); toast("Ticket vinculado à issue", "pos"); }
+  };
+  const desvincular = async () => {
+    if (!window.confirm(`Desvincular ${l.identifier || "a issue"}? A issue continua no Linear; este ticket é que para de espelhar.`)) return;
+    if (await run("unlink", () => api.ticketLinearUnlink(ticket.id))) toast("Ticket desvinculado", "pos");
+  };
+
+  return (
+    <Section title="Linear" aside={l.issueId
+      ? <SecondaryButton size="sm" type="button" disabled={!!busy} onClick={() => run("sync", () => api.ticketLinearSync(ticket.id))}>{busy === "sync" ? "Enviando…" : "Sincronizar"}</SecondaryButton>
+      : <SecondaryButton size="sm" type="button" disabled={!!busy} onClick={() => run("sync", () => api.ticketLinearSync(ticket.id))}>{busy === "sync" ? "Enviando…" : "Enviar agora"}</SecondaryButton>}>
+      {l.issueId ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12.5 }}>
+            <a href={l.url || "#"} target="_blank" rel="noopener noreferrer" className="chip accent" style={{ fontWeight: 600 }} title="Abrir a issue no Linear">
+              {l.identifier || "issue"} ↗
+            </a>
+            {l.stateName && <span className="support-status" style={{ "--dot": l.stateType === "completed" ? "var(--pos)" : l.stateType === "canceled" ? "var(--fg-4)" : "var(--accent)" }}>{l.stateName}</span>}
+          </div>
+          <div className="mono dim" style={{ fontSize: 11 }}>
+            {l.syncedAt ? `espelhado ${fmtWhen(l.syncedAt)}` : "aguardando a primeira sincronização"}
+          </div>
+          {l.error && <div style={{ fontSize: 11.5, color: "var(--neg)" }}>não sincronizou · {l.error}</div>}
+          <button type="button" onClick={desvincular} disabled={!!busy} style={{ alignSelf: "flex-start", fontSize: 11.5, color: "var(--fg-4)", textDecoration: "underline" }}>desvincular</button>
+        </div>
+      ) : colando ? (
+        <form onSubmit={(e) => { e.preventDefault(); vincular(); }} style={{ display: "flex", gap: 6 }}>
+          <input className="inp" autoFocus value={issue} onChange={(e) => setIssue(e.target.value)} placeholder="ENG-123 ou a URL" style={{ flex: 1, fontSize: 12.5 }}
+            onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") setColando(false); }} />
+          <SecondaryButton size="sm" type="submit" disabled={!issue.trim() || !!busy}>{busy === "link" ? "…" : "Vincular"}</SecondaryButton>
+        </form>
+      ) : (
+        <div className="mono dim" style={{ fontSize: 11.5 }}>
+          ainda sem issue · <button type="button" onClick={() => setColando(true)} style={{ color: "var(--accent)", fontWeight: 600 }}>vincular a uma existente</button>
+        </div>
+      )}
+    </Section>
+  );
+}
+
 // ── Modal ───────────────────────────────────────────────────────────────────
 export function TicketDetail({ ticketId, summary, saasId, agents, settings, mobile, refreshKey, activityVersion, onClose, onChange, onDeleted }) {
   const [ticket, setTicket] = useState(null);
@@ -389,6 +566,18 @@ export function TicketDetail({ ticketId, summary, saasId, agents, settings, mobi
   const sla = ticket ? slaState(ticket) : null;
   const status = STATUS_BY_KEY[t?.status];
 
+  // Abas: a do Linear só existe com issue vinculada. Desvincular no meio do
+  // caminho devolve quem estava nela para a Conversa.
+  const conversa = ticket ? conversationMessages(ticket) : [];
+  const abas = [
+    ["conversation", `Conversa${conversa.length ? ` · ${conversa.length}` : ""}`],
+    ...(ticket?.linear?.issueId ? [["linear", "Linear"]] : []),
+    ["activity", "Atividade"],
+  ];
+  useEffect(() => {
+    if (tab === "linear" && ticket && !ticket.linear?.issueId) setTab("conversation");
+  }, [tab, ticket]);
+
   return (
     <Modal onClose={close} fechavel={!draft} label={t ? `Ticket #${t.number}` : "Ticket"} largura={1080} padding={mobile ? 0 : 16}
       painelStyle={{ height: mobile ? "100dvh" : "min(860px, calc(100dvh - 32px))", maxHeight: mobile ? "100dvh" : undefined, borderRadius: mobile ? 0 : undefined, overflow: "hidden", display: "flex", flexDirection: "column" }}>
@@ -431,14 +620,14 @@ export function TicketDetail({ ticketId, summary, saasId, agents, settings, mobi
         <div className="support-detail-body">
           <div className="support-detail-main">
             <div style={{ display: "flex", gap: 2, padding: "10px 18px 0", flexShrink: 0 }}>
-              {[["conversation", `Conversa${(ticket.messages || []).length ? ` · ${ticket.messages.length}` : ""}`], ["activity", "Atividade"]].map(([k, l]) => (
+              {abas.map(([k, l]) => (
                 <button key={k} type="button" onClick={() => setTab(k)} aria-pressed={tab === k} style={{ padding: "5px 10px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: tab === k ? 600 : 500, background: tab === k ? "var(--bg-2)" : "transparent", color: tab === k ? "var(--fg-1)" : "var(--fg-3)" }}>{l}</button>
               ))}
             </div>
             <div className="support-detail-thread">
-              {tab === "conversation"
-                ? <Conversation ticket={ticket} agentName={agentName} description={description} />
-                : <Activity ticketId={ticket.id} version={activityVersion} agentName={agentName} />}
+              {tab === "conversation" ? <Conversation ticket={ticket} agentName={agentName} description={description} />
+                : tab === "linear" ? <LinearPane ticket={ticket} />
+                  : <Activity ticketId={ticket.id} version={activityVersion} agentName={agentName} />}
             </div>
             <Composer ticket={ticket} onSent={apply} onDraft={setDraft} />
           </div>
@@ -480,6 +669,8 @@ export function TicketDetail({ ticketId, summary, saasId, agents, settings, mobi
             </Section>
 
             <Attachments ticket={ticket} onChange={apply} />
+
+            <LinearSection ticket={ticket} settings={settings} onChange={apply} />
 
             {/* Destrutiva e rara (só admin): no pé da coluna, longe do fluxo de atendimento. */}
             {isAdminUser() && (

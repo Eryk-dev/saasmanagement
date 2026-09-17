@@ -19,9 +19,11 @@ import { randomUUID } from "node:crypto";
 import { httpError, withTaskLock, parseMentions, upsertNotification, ACTOR_API } from "./tasks-core.js";
 import { nextSla, normalizeHours } from "./tickets-sla.js";
 import { canHandleSaas } from "./support-scope.js";
+import { normalizeLinearSettings } from "./ticket-linear.js";
 
 export { httpError, ACTOR_API };
 export const ACTOR_PORTAL = "portal"; // cliente pelo portal público (sem sessão)
+export const ACTOR_LINEAR = "linear"; // veio da issue espelhada (ticket-linear.js)
 
 export const TICKET_STATUSES = [
   { key: "new", label: "Novo", kind: "open" },
@@ -102,6 +104,7 @@ export function normalizeSettings(doc, saas, product = null) {
     autoCloseResolvedDays: Number.isFinite(days) && days >= 0 && days <= 90 ? days : SETTINGS_DEFAULTS.autoCloseResolvedDays,
     warnAt: Number.isFinite(warn) && warn >= 0.5 && warn <= 0.95 ? warn : SETTINGS_DEFAULTS.warnAt,
     portal: { enabled: src.portal?.enabled === true, intro: String(src.portal?.intro ?? "").slice(0, 1000) },
+    linear: normalizeLinearSettings(src.linear),
     notifyCustomerByEmail: src.notifyCustomerByEmail === true,
     variables: sanitizeVariables(src.variables),
     updatedAt: String(src.updatedAt || ""), updatedBy: String(src.updatedBy || ""),
@@ -128,6 +131,13 @@ export async function saveSettings(repo, saas, body, { by = ACTOR_API, now = now
   for (const k of ["pauseOn", "categories", "autoCloseResolvedDays", "warnAt", "notifyCustomerByEmail", "variables"]) if (k in src) merged[k] = src[k];
   if (isObj(src.businessHours)) merged.businessHours = { ...cur.businessHours, ...src.businessHours };
   if (isObj(src.portal)) merged.portal = { ...cur.portal, ...src.portal };
+  // Linear: merge raso com de-para aninhado próprio — a tela manda só o que
+  // mexeu (ligar/desligar, time, projeto) sem reenviar os mapas inteiros.
+  if (isObj(src.linear)) {
+    merged.linear = { ...cur.linear, ...src.linear };
+    if (isObj(src.linear.statusMap)) merged.linear.statusMap = { ...cur.linear.statusMap, ...src.linear.statusMap };
+    if (isObj(src.linear.stateBack)) merged.linear.stateBack = { ...cur.linear.stateBack, ...src.linear.stateBack };
+  }
   if (isObj(src.policies)) {
     merged.policies = { ...cur.policies };
     for (const p of TICKET_PRIORITIES) if (isObj(src.policies[p])) merged.policies[p] = { ...cur.policies[p], ...src.policies[p] };
@@ -144,6 +154,7 @@ export async function saveSettings(repo, saas, body, { by = ACTOR_API, now = now
 // ── Pessoas ──────────────────────────────────────────────────────────────────
 const nameOf = (users, id, ticket = null) => {
   if (id === ACTOR_PORTAL) return ticket?.requester?.name || "O cliente";
+  if (id === ACTOR_LINEAR) return "Linear";
   if (!id || id === ACTOR_API) return "API";
   return users.find((u) => u.id === id)?.name || id;
 };
@@ -217,6 +228,8 @@ export function composeTicket(input, { by = ACTOR_API, now = nowIso() } = {}) {
     messages: [],
     attachments: [],
     sla: {},
+    linear: {},        // espelho da issue (ticket-linear.js) — nunca vem do input
+    linearIssueId: "", // id da issue no TOPO do doc: é por ele que o listWhere acha o ticket
     portalToken: randomUUID().replaceAll("-", ""),
     lastMessageAt: "", lastCustomerAt: "", lastAgentAt: "",
     createdAt: now, createdBy: by, updatedAt: now, updatedBy: by, closedAt: "",
@@ -225,7 +238,7 @@ export function composeTicket(input, { by = ACTOR_API, now = nowIso() } = {}) {
 }
 
 const MANAGED = new Set(["id", "number", "saas", "channel", "messages", "attachments", "sla", "portalToken", "createdAt", "createdBy",
-  "updatedAt", "updatedBy", "closedAt", "version", "lastMessageAt", "lastCustomerAt", "lastAgentAt"]);
+  "updatedAt", "updatedBy", "closedAt", "version", "lastMessageAt", "lastCustomerAt", "lastAgentAt", "linear", "linearIssueId"]);
 
 export function sanitizeTicketPatch(body, cur) {
   const src = isObj(body) ? body : {};
@@ -362,6 +375,23 @@ export async function ticketActivity(repo, ticket, { limit = 300 } = {}) {
   return events.sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")) || String(a.id).localeCompare(String(b.id))).slice(-n);
 }
 
+// ── Gancho de saída (integrações) ───────────────────────────────────────────
+// Um assinante só, instalado no boot pelo runner do Linear
+// (ticket-linear-runner.js). Fica AQUI, e não nas rotas, porque toda porta de
+// escrita passa por writeTicket/createTicket — tela, portal do cliente, MCP,
+// ação em massa e o runner de SLA entram no espelho pelo mesmo caminho.
+// Best-effort: integração fora do ar nunca derruba o atendimento.
+let ticketSink = null;
+export function setTicketSink(fn) {
+  const next = typeof fn === "function" ? fn : null;
+  ticketSink = next;
+  return () => { if (ticketSink === next) ticketSink = null; };
+}
+async function emitTicketChange(repo, ticket, events, ctx) {
+  if (!ticketSink || !events?.length) return;
+  try { await ticketSink(repo, ticket, events, ctx); } catch { /* best-effort */ }
+}
+
 // ── Escrita ──────────────────────────────────────────────────────────────────
 // Carimbo + SLA + eventos + notificações: caminho único de toda alteração.
 async function writeTicket(repo, cur, draft, { by, now, users, settings, extraEvents = [] }) {
@@ -374,6 +404,7 @@ async function writeTicket(repo, cur, draft, { by, now, users, settings, extraEv
   const events = [...diffTicket(cur, saved), ...extraEvents];
   await recordTicketEvents(repo, saved, events, { by, now });
   await notifyTicketEvents(repo, saved, events, { by, users, now });
+  await emitTicketChange(repo, saved, events, { by, now });
   return { ticket: saved, events };
 }
 
@@ -406,6 +437,7 @@ export async function createTicket(repo, input, { by = ACTOR_API, now = nowIso()
   const notify = [...events];
   if (!saved.assignee) notify.push({ type: "unassigned_new", data: { agents: agentsOf(users, saved.saas).map((u) => u.id) } });
   await notifyTicketEvents(repo, saved, notify, { by, users, now });
+  await emitTicketChange(repo, saved, events, { by, now });
   return saved;
 }
 
@@ -433,7 +465,10 @@ export async function patchTicket(repo, id, body, { by = ACTOR_API, now = nowIso
 // Mensagem na conversa. `author.type` "customer" = veio do portal (sempre
 // pública); atendente escolhe resposta (pública) ou nota (interna) e pode
 // mudar o status no mesmo envio (ex.: responder e aguardar o cliente).
-export async function addMessage(repo, id, { kind = "reply", text = "", status = "", attachments = [] } = {}, { by = ACTOR_API, now = nowIso(), customerName = "" } = {}) {
+// `source` marca a mensagem que veio de fora (hoje: comentário do Linear) — é
+// o que faz o dedupe (a mesma entrega chega pelo webhook e pela reconciliação)
+// e o que impede o espelho de devolver ao Linear o que veio de lá.
+export async function addMessage(repo, id, { kind = "reply", text = "", status = "", attachments = [], source = null } = {}, { by = ACTOR_API, now = nowIso(), customerName = "" } = {}) {
   const body = String(text ?? "").trim();
   const isCustomer = by === ACTOR_PORTAL;
   const wanted = strArr(attachments);
@@ -448,11 +483,20 @@ export async function addMessage(repo, id, { kind = "reply", text = "", status =
     const [users, settings] = await Promise.all([repo.list("users"), loadSettings(repo, cur.saas)]);
     const known = new Set((cur.attachments || []).map((a) => a.id));
     const mentions = isCustomer ? [] : parseMentions(body, mentionUsers(users));
+    const src = isObj(source) && source.type
+      ? { type: str(source.type, 20), commentId: str(source.commentId, 120), author: str(source.author, 120) }
+      : null;
+    // Dedupe dentro do lock: a mesma origem externa não vira duas mensagens.
+    if (src?.commentId) {
+      const dup = (cur.messages || []).find((m) => m.source?.type === src.type && m.source?.commentId === src.commentId);
+      if (dup) return { message: dup, ticket: cur, duplicate: true };
+    }
     const message = {
       id: shortId("tm"), kind: msgKind,
       author: isCustomer ? { type: "customer", name: str(customerName, 200) || cur.requester?.name || "" } : { type: "agent", id: by },
       text: body, at: now, mentions,
       attachments: wanted.filter((a) => known.has(a)),
+      ...(src ? { source: src } : {}),
     };
     const next = { ...cur, messages: [...(cur.messages || []), message], lastMessageAt: now, sla: { ...(cur.sla || {}) } };
     if (msgKind === "reply" && isCustomer) {

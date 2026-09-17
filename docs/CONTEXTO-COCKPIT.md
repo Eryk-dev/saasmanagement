@@ -80,7 +80,7 @@ Os caminhos abaixo são relativos a `packages/`.
 | Agenda, Google e consultas | `api/src/routes.google.js`, `routes.consultations.js`; telas `agenda.jsx`, `agenda-grid.jsx`, `consultas.jsx`. |
 | Treinamentos | `api/src/routes.flashcards.js`, `fsrs.js`; telas `training.jsx`, `training.css`, `training-focus.jsx`; testes `api/test/routes.flashcards.test.js`. |
 | Tarefas | `api/src/routes.tasks.js`; `web/src/screens/tasks/` (quadro, lista, calendário, drawer, filtros e estado). |
-| Suporte (tickets) | `api/src/tickets-core.js`, `tickets-sla.js`, `support-scope.js`, `routes.tickets.js`, `quick-replies.js`, `ticket-sla-runner.js`, `routes.support-portal.js`, `support-page.js`; `web/src/screens/tickets/`, `support-settings.jsx`, `quick-replies.jsx`, `lib/tickets.js`, `components/customer-tickets.jsx`; testes `routes.tickets`, `routes.quick-replies`, `tickets-sla`, `ticket-sla-runner`, `routes.support-portal`. |
+| Suporte (tickets) | `api/src/tickets-core.js`, `tickets-sla.js`, `support-scope.js`, `routes.tickets.js`, `quick-replies.js`, `ticket-sla-runner.js`, `routes.support-portal.js`, `support-page.js`; espelho com o Linear em `linear.js`, `ticket-linear.js`, `ticket-linear-runner.js` e a rota `/api/webhooks/linear` (`routes.webhooks.js`); `web/src/screens/tickets/`, `support-settings.jsx`, `quick-replies.jsx`, `lib/tickets.js`, `components/customer-tickets.jsx`; testes `routes.tickets`, `routes.quick-replies`, `tickets-sla`, `ticket-sla-runner`, `routes.support-portal`, `ticket-linear`. |
 | Conteúdo e redes sociais | `api/src/routes.blog.js`, `routes.blog-public.js`, `routes.social.js`; telas `blog.jsx` e `social.jsx`. |
 | Componentes e visual | `web/src/tokens.css`, `atoms.jsx`, `components/viz.jsx`, `components/lead-blocks.jsx`, `lib/ui.js`. |
 | Kanban compartilhado | `web/src/components/kanban/` (`KanbanBoard`/`KanbanColumn` + `useBoardDnd`): quadro, coluna, soltar, placeholder, corte "+N" e coluna recolhida. Tarefas, Tickets e Pipeline montam só o card e o que é do domínio em cima dela; layout `scroll` (colunas fixas que rolam sozinhas) ou `fill` (grid de colunas iguais, Pipeline). |
@@ -246,6 +246,37 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   em `ticket_settings.variables`; o texto é SEMPRE resolvido no servidor
   (`variableValues` + `renderTemplate`), prévia e chat usam a mesma função.
   Embutida sem ponto precisa constar em `RESERVED_VARIABLE_KEYS`.
+- **Suporte — espelho com o Linear (17/09/2026):** ligado por produto em
+  Configurações de SLA → Linear (time + projeto do Linear). Com o espelho
+  ligado, TODO ticket do produto vira issue no projeto escolhido e cada mensagem
+  vira comentário; de volta, a coluna da issue move o status e o comentário do
+  dev vira **aviso** (evento `linear_comment` + sino), sem cópia do texto no
+  ticket — quem mostra a conversa da issue é a aba Linear, que lê ao vivo.
+  Invariantes: (1) **conversa de engenharia nunca chega ao cliente** —
+  `publicTicket` segue sendo a única porta do portal, e o texto do comentário
+  nem entra no doc; o dedupe do que já foi anunciado mora em
+  `ticket.linear.seenComments` (não na mensagem, que pode ser apagada); (2) **anti-ping-pong**: o
+  que entra do Linear é gravado com o ator `linear` (`ACTOR_LINEAR`) e o gancho
+  de saída (`setTicketSink` em `tickets-core.js`) ignora esse ator; o espelho do
+  que já subiu mora em `ticket.linear.mirror`, então só a diferença real é
+  enviada; (3) o espelho é **calculado pelo doc do ticket**, não por evento — a
+  fila `linear_outbox` (PRIVATE) só marca "sujo", com backoff e desistência após
+  10 tentativas (o erro fica em `ticket.linear.error`); (4) a volta chega por
+  `POST /api/webhooks/linear` com assinatura HMAC conferida
+  (`LINEAR_WEBHOOK_SECRET`; sem segredo a rota recusa) e pela **reconciliação**
+  de 10 em 10 minutos, que repõe entrega perdida — comentário repetido não
+  duplica (dedupe por id em `message.source.commentId` e `linear.posted`);
+  (5) no detalhe do ticket, **Conversa é só o atendimento** (pedido, respostas e
+  notas da equipe) e o que é da issue vive na aba **Linear** (descrição e
+  comentários lidos na hora por `GET /api/tickets/:id/linear`, com queda para o
+  que está gravado quando o Linear não responde) — o filtro é a origem
+  `message.source.type === "linear"`;
+  (6) ligar o espelho enfileira só os tickets **abertos** do produto, e
+  desvincular nunca apaga issue no Linear. `LINEAR_API_KEY` vazia deixa tudo
+  dormente. `ticket.linearIssueId` fica no topo do doc (índice
+  `tickets_linear_issue_idx`) porque é por ele que o webhook acha o ticket.
+  Fora desta entrega: anexo do ticket virar anexo da issue, de-para de pessoas
+  (responsável) e ferramenta de MCP própria.
 - **README (revisado em 14/09/2026):** as descrições antigas (SQLite, leitura
   aberta, MCP só como manual, seed demo) foram substituídas. Pendência registrada
   lá: o `packages/web/nginx.conf` do `docker-compose.yml` não faz proxy das rotas

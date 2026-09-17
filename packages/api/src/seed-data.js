@@ -64,7 +64,8 @@ export const COLLECTIONS = {
   ticket_events: [],   // atividade de cada ticket — GET /api/tickets/:id/activity
   ticket_assets: [],   // anexo do ticket (base64, preso ao ticket; servido com escopo ou pelo token do portal)
   quick_replies: [],   // respostas rápidas do chat do ticket: da equipe (por produto) ou pessoais (owner) — quick-replies.js
-  ticket_settings: [], // um doc por produto (id = saas): políticas de SLA, expediente, categorias, portal
+  ticket_settings: [], // um doc por produto (id = saas): políticas de SLA, expediente, categorias, portal, espelho do Linear
+  linear_outbox: [],   // fila do espelho com o Linear: 1 linha por ticket sujo, drenada por ticket-linear-runner.js
   agenda_blocks: [], // bloqueios de agenda (tela Agenda): horários que o closer/CS trava p/ compromisso externo — { user, recur, date/weekday, allDay, fromHour, toHour, reason }
   mindmaps: [], // mapas mentais / estratégia (tela Mapas mentais): { name, nodes[], links[] }
   app_config: [], // chave-valor de integrações (ex.: google_oauth = refresh token da conta conectada)

@@ -18,8 +18,12 @@ import {
 import {
   ACTOR_API, httpError, createTicket, patchTicket, addMessage, addTicketAttachment, removeTicketAttachment,
   deleteTicket, bulkTickets, listTickets, ticketActivity, loadSettings, saveSettings,
-  TICKET_STATUSES, TICKET_PRIORITIES, PRIORITY_LABEL, TICKET_CHANNELS, ticketTitle,
+  TICKET_STATUSES, TICKET_PRIORITIES, PRIORITY_LABEL, TICKET_CHANNELS, STATUS_KIND, ticketTitle,
 } from "./tickets-core.js";
+import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
+import { defaultLinear } from "./linear.js";
+import { issueKeyFromInput, linkTicketToIssue, unlinkTicket, syncTicketToLinear } from "./ticket-linear.js";
+import { enqueueTicketSync } from "./ticket-linear-runner.js";
 
 const MAX_ASSET = 5 * 1024 * 1024;
 
@@ -110,7 +114,7 @@ export async function emailCustomerReply(repo, { mailer, ticket, message, baseUr
   }
 }
 
-export function registerTicketRoutes(app, repo, { mailer = null } = {}) {
+export function registerTicketRoutes(app, repo, { mailer = null, linear = defaultLinear } = {}) {
   const scopeOf = (req) => ticketScope(req.authUser);
   const loadScoped = async (req) => {
     const t = await repo.get("tickets", req.params.id);
@@ -263,7 +267,108 @@ export function registerTicketRoutes(app, repo, { mailer = null } = {}) {
   app.put("/api/support/settings/:saas", guarded(async (req, reply) => {
     const saas = String(req.params.saas || "").toLowerCase();
     if (!inScope(scopeOf(req), saas)) return notFound(reply);
-    return saveSettings(repo, saas, req.body || {}, { by: actorOf(req) });
+    const antes = await loadSettings(repo, saas);
+    const saved = await saveSettings(repo, saas, req.body || {}, { by: actorOf(req) });
+    // Ligar o espelho (ou trocar de time/projeto) POVOA o projeto: entram na
+    // fila os tickets ainda abertos deste produto. Ticket já concluído fica
+    // fora de propósito — o arquivo do suporte não vira backlog do time.
+    const l = saved.linear || {}, a = antes.linear || {};
+    if (l.enabled && l.teamId && (!a.enabled || a.teamId !== l.teamId || a.projectId !== l.projectId)) {
+      const abertos = (await repo.listWhere("tickets", { saas })).filter((t) => STATUS_KIND[t.status] !== "done");
+      for (const t of abertos) await enqueueTicketSync(repo, t.id, { saas, reset: true });
+      return { ...saved, queued: abertos.length };
+    }
+    return saved;
+  }));
+
+  // ── Linear: espelho ticket ↔ issue ────────────────────────────────────────
+  // Catálogo pra tela de configuração (time, estados do fluxo, projetos). Sem
+  // LINEAR_API_KEY responde `configured: false` — a tela mostra o passo que
+  // falta em vez de um erro.
+  app.get("/api/support/linear/catalog", guarded(async () => {
+    const webhook = !!process.env.LINEAR_WEBHOOK_SECRET;
+    if (!linear?.configured?.()) return { configured: false, webhook, teams: [] };
+    const [teams, me] = await Promise.all([linear.catalog(), linear.viewer().catch(() => null)]);
+    return { configured: true, webhook, teams, viewer: me?.user?.name || "", organization: me?.organization?.name || "" };
+  }));
+
+  // Conteúdo da issue pra aba Linear do ticket: descrição e comentários como
+  // estão LÁ AGORA (o ticket guarda só o espelho). Nunca derruba a aba — se o
+  // Linear não responde, devolve o retrato local com `stale` e o motivo, que a
+  // tela mostra como aviso em vez de tela de erro.
+  app.get("/api/tickets/:id/linear", guarded(async (req, reply) => {
+    const t = await loadScoped(req);
+    if (!t) return notFound(reply);
+    const link = t.linear || {};
+    const locais = (t.messages || [])
+      .filter((m) => m.source?.type === "linear")
+      .map((m) => ({ id: m.source.commentId, body: m.text, createdAt: m.at, user: { name: m.source.author || "" }, fromCockpit: false }));
+    const base = {
+      linked: !!link.issueId,
+      identifier: link.identifier || "", url: link.url || "",
+      state: { name: link.stateName || "", type: link.stateType || "" },
+      project: link.projectId ? { id: link.projectId } : null,
+    };
+    if (!link.issueId) return { ...base, configured: !!linear?.configured?.(), issue: null, comments: [] };
+    if (!linear?.configured?.()) return { ...base, configured: false, stale: true, issue: null, comments: locais };
+    try {
+      const r = await linear.issueWithComments(link.issueId);
+      if (!r) return { ...base, configured: true, stale: true, error: "issue não encontrada no Linear", issue: null, comments: locais };
+      const postados = new Set(link.posted || []);
+      return {
+        ...base, configured: true, stale: false,
+        identifier: r.issue.identifier || base.identifier, url: r.issue.url || base.url,
+        state: r.issue.state || base.state,
+        issue: {
+          id: r.issue.id, title: r.issue.title || "", description: r.issue.description || "",
+          priority: r.issue.priority ?? 0, createdAt: r.issue.createdAt || "", updatedAt: r.issue.updatedAt || "",
+          assignee: r.issue.assignee?.name || "", project: r.issue.project?.name || "",
+        },
+        comments: r.comments.map((c) => ({
+          id: c.id, body: c.body || "", createdAt: c.createdAt, url: c.url || "",
+          user: { name: c.user?.name || "" },
+          fromCockpit: postados.has(c.id), // saiu daqui como resposta/nota espelhada
+        })),
+      };
+    } catch (err) {
+      app.log?.warn?.(`linear (aba do ticket ${t.id}): ${err.message}`);
+      return { ...base, configured: true, stale: true, error: err.message, issue: null, comments: locais };
+    }
+  }));
+
+  // Vincular a uma issue que já existe (body.issue = ENG-123, URL ou uuid) ou,
+  // sem corpo, mandar o ticket pro Linear agora (cria se ainda não tem issue).
+  app.post("/api/tickets/:id/linear", guarded(async (req, reply) => {
+    const t = await loadScoped(req);
+    if (!t) return notFound(reply);
+    if (!linear?.configured?.()) throw httpError(NOT_CONFIGURED, "Linear não configurado (LINEAR_API_KEY)", "linear_not_configured");
+    const wanted = String(req.body?.issue ?? "").trim();
+    try {
+      if (wanted) {
+        const issue = await linear.issue(issueKeyFromInput(wanted));
+        if (!issue) throw httpError(404, "issue não encontrada no Linear", "issue_not_found");
+        const saved = await linkTicketToIssue(repo, t.id, issue, { by: actorOf(req) });
+        await enqueueTicketSync(repo, t.id, { saas: t.saas, reset: true });
+        return saved;
+      }
+      await syncTicketToLinear(repo, t.id, { linear, log: app.log });
+      return await repo.get("tickets", t.id);
+    } catch (err) {
+      if (err?.statusCode && err.statusCode < 500) throw err;
+      // Erro do lado do Linear sai como 4xx (http-status.js): 5xx o proxy
+      // engole e a tela mostraria "serviço fora do ar" no lugar do motivo.
+      return reply.code(UPSTREAM_FAILED).send({ error: err?.message || "o Linear não respondeu", code: "linear_failed" });
+    }
+  }));
+
+  // Desvincular: o ticket segue vivo aqui e a issue segue viva lá — o cockpit
+  // nunca apaga issue. Sai da fila pra não recriar no próximo ciclo.
+  app.delete("/api/tickets/:id/linear", guarded(async (req, reply) => {
+    const t = await loadScoped(req);
+    if (!t) return notFound(reply);
+    const saved = await unlinkTicket(repo, t.id, { by: actorOf(req) });
+    await repo.remove("linear_outbox", `lq_${t.id}`).catch(() => {});
+    return saved || notFound(reply);
   }));
 
   // ── Atendentes: quem atende qual produto ──────────────────────────────────

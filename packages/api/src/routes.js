@@ -95,7 +95,7 @@ const PRIVATE = new Set(["users", "sessions", "user_assets", "activity_assets", 
   "comp_months",
   // Suporte: isolamento por produto (support-scope.js) só pelas rotas
   // dedicadas de routes.tickets.js — o CRUD genérico seria porta dos fundos.
-  "tickets", "ticket_events", "ticket_assets", "ticket_settings", "quick_replies"]);
+  "tickets", "ticket_events", "ticket_assets", "ticket_settings", "quick_replies", "linear_outbox"]);
 const isExposed = (c) => COLLECTION_NAMES.includes(c) && !PRIVATE.has(c);
 
 // Collections external SaaS are allowed to write to via REST/MCP.
@@ -722,7 +722,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
 
   // Suporte: tickets (fila, kanban, conversa, SLA), configurações de SLA por
   // produto e atendentes (routes.tickets.js). Antes do CRUD genérico.
-  registerTicketRoutes(app, repo, { mailer: mailerClient });
+  registerTicketRoutes(app, repo, { mailer: mailerClient, ...(opts.linear ? { linear: opts.linear } : {}) });
   // Portal público do cliente: /s/:token (chamado) e /s/new/:saas (abrir).
   registerSupportPortalRoutes(app, repo, opts.supportPortal);
 

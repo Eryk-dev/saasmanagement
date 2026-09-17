@@ -22,6 +22,7 @@ import { startTrainingReminder } from "./training-reminder.js";
 import { startTaskReminder } from "./task-reminder.js";
 import { startWaWaitingReminder } from "./wa-waiting-reminder.js";
 import { startTicketSla } from "./ticket-sla-runner.js";
+import { startLinearSync } from "./ticket-linear-runner.js";
 import { startCustomerMilestones } from "./customer-milestones.js";
 import { startNpsAsks } from "./nps.js";
 import { startCustomerReports } from "./customer-reports.js";
@@ -141,6 +142,10 @@ try {
   // SLA dos tickets de suporte: aviso a 80% e estouro (1ª resposta/resolução)
   // na caixa de entrada de quem atende + fechamento automático dos resolvidos.
   startTicketSla(repo, { log: app.log });
+  // Espelho dos tickets com o Linear: drena a fila de saída (issue criada e
+  // atualizada, mensagem vira comentário) e reconcilia as issues mudadas lá —
+  // a rede de segurança do webhook /api/webhooks/linear. No-op sem LINEAR_API_KEY.
+  startLinearSync(repo, { log: app.log });
   // Régua de marcos do cliente (onboarding, check-in de mês 1, revisão de mês 3,
   // upsell de mês 6, renovação): cada marco que chega a hora vira tarefa do dono
   // da conta. Marco vencido há mais de 30 dias fica pra trás de propósito.

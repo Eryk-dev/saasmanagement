@@ -7,7 +7,7 @@ import { Card, PageHead } from "../components/viz.jsx";
 import { Info, InfoNota } from "../components/story.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { currentUser, isAdminUser } from "../lib/users.js";
-import { TICKET_PRIORITIES, supportScope, noScopeHint } from "../lib/tickets.js";
+import { TICKET_PRIORITIES, TICKET_STATUSES, supportScope, noScopeHint } from "../lib/tickets.js";
 import { SelectPopover } from "../components/select-popover.jsx";
 import { Checkbox, HoursInput, SwitchRow } from "../components/form-controls.jsx";
 
@@ -63,10 +63,14 @@ export function SupportSettingsScreen() {
   const save = async () => {
     setBusy(true);
     try {
-      const body = { policies: draft.policies, businessHours: draft.businessHours, pauseOn: draft.pauseOn, categories: draft.categories, autoCloseResolvedDays: Number(draft.autoCloseResolvedDays) || 0, warnAt: draft.warnAt, portal: draft.portal, notifyCustomerByEmail: draft.notifyCustomerByEmail };
-      const s = await api.supportSettingsSave(saasId, body);
+      const body = { policies: draft.policies, businessHours: draft.businessHours, pauseOn: draft.pauseOn, categories: draft.categories, autoCloseResolvedDays: Number(draft.autoCloseResolvedDays) || 0, warnAt: draft.warnAt, portal: draft.portal, notifyCustomerByEmail: draft.notifyCustomerByEmail, linear: draft.linear };
+      // `queued` é recibo da resposta (quantos tickets foram pra fila do
+      // Linear), não configuração: fora do que compara rascunho x salvo.
+      const { queued, ...s } = await api.supportSettingsSave(saasId, body);
       setSaved(s); setDraft(s);
-      toast("Configurações de SLA salvas · valem para os tickets abertos ou alterados daqui em diante", "pos", 5000);
+      toast(queued
+        ? `Configurações salvas · ${queued} ticket${queued > 1 ? "s abertos entraram" : " aberto entrou"} na fila do Linear`
+        : "Configurações de SLA salvas · valem para os tickets abertos ou alterados daqui em diante", "pos", 5000);
     } catch (err) {
       toast(`Não deu pra salvar · ${err.message || "tente de novo"}`, "neg", 6000);
     } finally { setBusy(false); }
@@ -188,12 +192,115 @@ export function SupportSettingsScreen() {
                 <InfoNota>Nota interna nunca aparece no portal. Anexo só aparece quando é marcado como visível ou citado numa resposta ao cliente.</InfoNota>
               </div>
             </Card>
+
+            <LinearCard draft={draft} set={set} />
           </div>
 
           <AgentsCard saasId={saasId} version={version} />
         </div>
       )}
     </div>
+  );
+}
+
+// ── Linear ──────────────────────────────────────────────────────────────────
+// O espelho é AUTOMÁTICO: ligado aqui, todo ticket deste produto vira issue no
+// time/projeto escolhido e cada mensagem vira comentário. De volta, a coluna da
+// issue move o status do ticket e o comentário do dev entra como nota interna.
+// Ligar (ou trocar de projeto) manda os tickets ABERTOS pra fila; os já
+// encerrados ficam de fora — arquivo de suporte não vira backlog do time.
+const MESSAGE_MODES = [
+  { value: "all", label: "respostas e notas internas" },
+  { value: "public", label: "só as respostas ao cliente" },
+  { value: "none", label: "nenhuma (só o ticket)" },
+];
+// De-para de volta pelo TIPO da coluna: cada time batiza as colunas como quer.
+const STATE_BACK_ROWS = [
+  ["completed", "Concluída (Done)"],
+  ["canceled", "Cancelada"],
+  ["started", "Em andamento"],
+  ["duplicate", "Duplicada"],
+];
+const STATUS_OPTIONS = [{ value: "", label: "não mexer no ticket", color: "var(--fg-3)" },
+  ...TICKET_STATUSES.map((s) => ({ value: s.key, label: s.label, tone: s.tone }))];
+
+function LinearCard({ draft, set }) {
+  const [catalog, setCatalog] = useState(null);
+  const [erro, setErro] = useState("");
+  const l = draft.linear || {};
+  useEffect(() => {
+    let vivo = true;
+    api.linearCatalog().then((c) => { if (vivo) setCatalog(c); }).catch((err) => { if (vivo) { setCatalog({ configured: false, teams: [] }); setErro(err.message || "erro"); } });
+    return () => { vivo = false; };
+  }, []);
+  const setL = (patch) => set({ linear: { ...l, ...patch } });
+  const teams = catalog?.teams || [];
+  const team = teams.find((t) => t.id === l.teamId) || null;
+  const webhookUrl = `${typeof location !== "undefined" ? location.origin : ""}/api/webhooks/linear`;
+
+  return (
+    <Card title="Linear" hint="espelho dos tickets deste produto com as issues do time">
+      <div style={{ padding: "12px var(--inset-x) 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+        {catalog === null && <div className="mono dim" style={{ fontSize: 12 }}>carregando o catálogo do Linear…</div>}
+        {catalog && !catalog.configured && (
+          <div style={{ fontSize: 12.5, color: "var(--warn)" }}>
+            Falta a chave da API do Linear no servidor (<code className="mono">LINEAR_API_KEY</code>). Sem ela, o espelho fica desligado.{erro ? ` · ${erro}` : ""}
+          </div>
+        )}
+        {catalog?.configured && (
+          <>
+            <SwitchRow checked={l.enabled === true} onChange={(v) => setL({ enabled: v })}
+              title="Espelhar os tickets deste produto no Linear"
+              hint={catalog.organization ? `conectado em ${catalog.organization}${catalog.viewer ? ` como ${catalog.viewer}` : ""}` : "todo ticket novo vira issue; ao ligar, os tickets abertos entram na fila"} />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, opacity: l.enabled ? 1 : 0.55 }}>
+              <Field label="Time">
+                <SelectPopover label="Time do Linear" value={l.teamId || ""} disabled={!l.enabled}
+                  options={[{ value: "", label: "escolha o time", color: "var(--fg-3)" }, ...teams.map((t) => ({ value: t.id, label: `${t.key} · ${t.name}` }))]}
+                  onChange={(v) => setL({ teamId: v, teamKey: teams.find((t) => t.id === v)?.key || "", teamName: teams.find((t) => t.id === v)?.name || "", projectId: "", projectName: "" })} />
+              </Field>
+              <Field label="Projeto" hint="onde os tickets deste produto vão parar; sem projeto, a issue nasce solta no time">
+                <SelectPopover label="Projeto do Linear" value={l.projectId || ""} disabled={!l.enabled || !team}
+                  options={[{ value: "", label: "sem projeto", color: "var(--fg-3)" }, ...(team?.projects || []).map((p) => ({ value: p.id, label: p.name }))]}
+                  onChange={(v) => setL({ projectId: v, projectName: (team?.projects || []).find((p) => p.id === v)?.name || "" })} />
+              </Field>
+              <Field label="Mandar pro Linear" hint="a mensagem do cliente e a da equipe viram comentário na issue">
+                <SelectPopover label="Mensagens espelhadas" value={l.mirrorMessages || "all"} disabled={!l.enabled} options={MESSAGE_MODES}
+                  onChange={(v) => setL({ mirrorMessages: v })} />
+              </Field>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, opacity: l.enabled ? 1 : 0.55 }}>
+              <span className="kicker">Quando a issue muda de coluna no Linear<Info texto="o de-para é pelo tipo da coluna (Done, Canceled, In Progress), então vale para qualquer nome que o time use" /></span>
+              {STATE_BACK_ROWS.map(([type, label]) => (
+                <div key={type} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--fg-3)" }}>
+                  <span style={{ width: 150, flexShrink: 0 }}>{label}</span>
+                  <span style={{ flex: 1, maxWidth: 260 }}>
+                    <SelectPopover size="sm" label={`Status do ticket quando a issue fica ${label}`} disabled={!l.enabled}
+                      value={l.stateBack?.[type] || ""} options={STATUS_OPTIONS}
+                      onChange={(v) => setL({ stateBack: { ...(l.stateBack || {}), [type]: v } })} />
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, opacity: l.enabled ? 1 : 0.55 }}>
+              <Checkbox checked={l.syncPriority !== false} disabled={!l.enabled} onChange={(v) => setL({ syncPriority: v })}>
+                espelhar a prioridade nos dois sentidos
+              </Checkbox>
+              <Checkbox checked={l.syncStatus !== false} disabled={!l.enabled} onChange={(v) => setL({ syncStatus: v })}>
+                concluir o ticket move a issue para a coluna de concluído
+              </Checkbox>
+              <Checkbox checked={l.titleBack !== false} disabled={!l.enabled} onChange={(v) => setL({ titleBack: v })}>
+                título editado no Linear renomeia o ticket
+              </Checkbox>
+            </div>
+            <InfoNota>
+              Para o Linear avisar o cockpit na hora, cadastre <code className="mono">{webhookUrl}</code> em Settings → API → Webhooks, com os eventos <b>Issues</b> e <b>Comments</b>.
+              {catalog.webhook ? " O segredo do webhook já está configurado no servidor." : " Falta o segredo no servidor (LINEAR_WEBHOOK_SECRET) — sem ele a rota recusa, e a volta só chega na reconciliação."}
+              {" "}Comentário do dev vira aviso no ticket e aparece na aba Linear — nunca no portal do cliente.
+            </InfoNota>
+          </>
+        )}
+      </div>
+    </Card>
   );
 }
 

@@ -929,6 +929,47 @@ try {
     failed++;
   }
 
+  // ── Aba Linear (17/09): o markdown da issue vira mídia e texto legível ────
+  // A descrição real chega com dez linhas de `![print](url com 600 caracteres
+  // de JWT)`. Isso tem que sair como <img>, nunca como texto na tela.
+  try {
+    const M = await server.ssrLoadModule("/src/screens/tickets/linear-markdown.jsx");
+    const url = "https://uploads.linear.app/a20a/386d/c060?signature=eyJhbGciOiJIUzI1NiJ9.eyJwYXRoIjoiL2EyMGEifQ.9wAEIodQFWad";
+    const texto = [
+      "## Prints (02/09)",
+      "",
+      `![King Auto — chat Luciana 03:31 cobrou Shopee](${url})`,
+      "",
+      `![King Auto — ML venda SKU 800 Abs Gol](${url}2)`,
+      "",
+      "> **Correção PO** — clarificação do cliente",
+      "- SKU `5697` sem baixa",
+      "Veja https://linear.app/leverad/issue/LEV-88 e [o painel](https://cockpit.exemplo/#tickets/tk1).",
+      "javascript:alert(1)",
+      `![ruim](javascript:alert(2))`,
+    ].join("\n");
+
+    const blocos = M.parseBlocks(texto);
+    const galeria = blocos.find((b) => b.tipo === "galeria");
+    if (!galeria || galeria.itens.length !== 2) throw new Error("imagens seguidas deveriam virar uma galeria só");
+    if (!blocos.some((b) => b.tipo === "titulo" && b.texto.startsWith("Prints"))) throw new Error("## não virou título");
+    if (!blocos.some((b) => b.tipo === "citacao") || !blocos.some((b) => b.tipo === "lista")) throw new Error("citação/lista não reconhecidas");
+
+    const html = renderToString(wrap(React.createElement(M.LinearMarkdown, { text: texto, onExpired() {} })));
+    if (!html.includes("<img") || !html.includes(url)) throw new Error("a imagem não foi renderizada");
+    if (html.includes("![")) throw new Error("sobrou markdown de imagem como texto na tela");
+    if (/(?:src|href)="javascript:/.test(html)) throw new Error("URL insegura chegou ao DOM");
+    if (!html.includes("ruim")) throw new Error("imagem com URL insegura deveria sobrar como legenda");
+    if (!html.includes("King Auto — chat Luciana")) throw new Error("a legenda (alt) deveria aparecer sob a miniatura");
+    if (!html.includes("linear.app ↗")) throw new Error("URL solta deveria virar link curto pelo domínio");
+    if (!html.includes(">o painel<")) throw new Error("link markdown deveria manter o rótulo");
+    if (!html.includes("<b>Correção PO</b>")) throw new Error("negrito não renderizou");
+    console.log("✓ linear-markdown");
+  } catch (err) {
+    console.error(`✗ linear-markdown: ${err.message}`);
+    failed++;
+  }
+
   // ── Contratos: modelos e histórico viraram tabela (redesign de 12/09) ───
   // As duas tabelas nasceram de cards/linhas soltas e têm o mesmo risco das
   // outras: alguém alarga uma coluna e a rolagem horizontal volta calada.

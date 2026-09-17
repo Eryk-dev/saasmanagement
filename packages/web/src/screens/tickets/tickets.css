@@ -74,6 +74,11 @@ button.agent-metric:hover .agent-metric-go { color: var(--fg-1); transform: tran
 .support-msg[data-kind="customer"] { background: var(--bg-inset); margin-right: 32px; }
 .support-msg[data-kind="reply"] { background: var(--accent-soft); border-color: var(--accent-line); margin-left: 32px; }
 .support-msg[data-kind="note"] { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 30%, var(--bg-1)); margin-left: 32px; }
+/* Aba Linear: o que mora na issue (descrição e comentários). Sem margem
+   lateral de propósito — não é fala do cliente nem resposta nossa, é o outro
+   sistema; a Conversa fica só com o atendimento. */
+.support-msg[data-kind="linear"] { background: var(--bg-1); }
+.support-msg[data-kind="linear-desc"] { background: var(--bg-inset); }
 .support-composer textarea { width: 100%; box-sizing: border-box; min-height: 56px; height: 64px; resize: vertical; font: inherit; font-size: 13px; line-height: 1.5; padding: 8px 10px; }
 .support-composer[data-kind="note"] textarea { background: var(--warn-soft); }
 

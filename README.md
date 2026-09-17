@@ -312,6 +312,7 @@ documentadas, com o que cada uma liga, no [`.env.example`](.env.example).
 | LeverAds / Levercopy | liberação de acesso por pagamento, propostas, resultados de clientes |
 | Elo | análises do app (banco próprio, só leitura) |
 | Shopify | pedidos pagos da UniqueKids viram leads |
+| Linear | espelho dos tickets de suporte com as issues do time (mão dupla) |
 | Discord | avisos do funil |
 
 ---

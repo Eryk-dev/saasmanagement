@@ -611,6 +611,13 @@ export const api = {
   ticketQuickReply: (ticketId, qrId) => req("POST", `/api/tickets/${encodeURIComponent(ticketId)}/quick-replies/${encodeURIComponent(qrId)}/render`, {}),
   supportSettings: (saas) => req("GET", `/api/support/settings/${encodeURIComponent(saas)}`),
   supportSettingsSave: (saas, body) => req("PUT", `/api/support/settings/${encodeURIComponent(saas)}`, body),
+  // Espelho com o Linear: catálogo pra tela de configuração (times, projetos e
+  // colunas do fluxo) e as ações de um ticket (mandar agora, vincular a uma
+  // issue que já existe, desvincular).
+  linearCatalog: () => req("GET", "/api/support/linear/catalog"),
+  ticketLinear: (id) => req("GET", `/api/tickets/${encodeURIComponent(id)}/linear`),
+  ticketLinearSync: (id, issue = "") => req("POST", `/api/tickets/${encodeURIComponent(id)}/linear`, issue ? { issue } : {}),
+  ticketLinearUnlink: (id) => req("DELETE", `/api/tickets/${encodeURIComponent(id)}/linear`),
   supportAgents: () => req("GET", "/api/support/agents"),
   supportAgentSave: (id, body) => req("PUT", `/api/support/agents/${encodeURIComponent(id)}`, body),
   notifications: (unread = false) => req("GET", `/api/notifications${unread ? "?unread=1" : ""}`),

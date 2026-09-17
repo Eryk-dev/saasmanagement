@@ -2,6 +2,8 @@
 
 > **Status (15/09/2026): planejado, não iniciado.** Espera a reestruturação que unifica a autenticação de LeverAds, LeverPrice e cockpit num único Supabase (Auth/JWT). Antes de executar, revisar a Fase 1 (chaves de integração e hook de auth em `auth.js`) e a Fase 4 (autenticação do MCP) contra o modelo de identidade novo: a ideia de integração como identidade própria, sem usuário, com escopos, produtos e revogação continua valendo, mas o armazenamento e a verificação das chaves podem mudar para o Supabase. As demais fases (idempotência, mensagem de cliente sem mexer no SLA, webhooks de saída, WhatsApp ↔ ticket, MCP por perfil) independem do auth.
 
+> **Atualização (17/09/2026):** o espelho de tickets com o **Linear** já foi entregue (`linear.js`, `ticket-linear.js`, `ticket-linear-runner.js`, `POST /api/webhooks/linear`). Ele estreou o gancho de saída único em `tickets-core.js` (`setTicketSink`) e a fila `linear_outbox` com backoff — a **Fase 2** (webhooks de saída genéricos) deve reaproveitar esse gancho em vez de criar um segundo, e `addMessage` já aceita `source` (dedupe por id externo), que a Fase 0 previa.
+
 ## Contexto
 
 Hoje um bot só consegue abrir ticket usando a **chave mestre** (acesso total ao cockpit) ou o MCP, que também usa a chave mestre. Tudo que ele faz aparece como "API", sem identidade, sem idempotência (retry = ticket duplicado) e sem origem. Pior: mensagem de cliente repassada pelo bot via `/api/tickets/:id/messages` é gravada como **resposta de atendente**, marcando a 1ª resposta do SLA e disparando e-mail. O inbox de WhatsApp é só de vendas (leads/SDR) e não conversa com tickets; o webhook da Meta nem verifica assinatura.
