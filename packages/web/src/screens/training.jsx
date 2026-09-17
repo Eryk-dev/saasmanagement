@@ -1784,12 +1784,16 @@ function TrainingGate({ saasId, active }) {
   const gated = !!me && !isAdminUser(me) && (me.roles || []).some((r) => GATE_ROLES.includes(r));
   useE(() => {
     if (!saasId || !gated) { setPending(null); return; }
+    // Na própria tela de treino o portão não aparece e a tela já pede /queue:
+    // pedir de novo aqui era a mesma fila em dobro a cada abertura e a cada
+    // tick do SSE. Ao sair da tela (`active` volta) o efeito rebusca.
+    if (!active) return;
     let alive = true;
     api.trainingQueue(saasId)
       .then((q) => { if (alive) setPending((q.decks || []).reduce((a, d) => a + d.counts.new + d.counts.learning + d.counts.review, 0)); })
       .catch(() => alive && setPending(null));
     return () => { alive = false; };
-  }, [saasId, gated, version]);
+  }, [saasId, gated, active, version]);
 
   if (!active || !gated || !pending) return null;
   return (
