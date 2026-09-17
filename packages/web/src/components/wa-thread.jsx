@@ -1,5 +1,4 @@
 import React from "react";
-import { Mp3Encoder } from "@breezystack/lamejs";
 import { api } from "../lib/api.js";
 import { useEsc } from "../atoms.jsx";
 import { Popover } from "./popover.jsx";
@@ -314,6 +313,9 @@ async function toMp3(blob) {
   }
   const pcm = new Int16Array(n);
   for (let i = 0; i < n; i++) { const s = Math.max(-1, Math.min(1, mono[i])); pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff; }
+  // lamejs (260 KB) só entra quando alguém grava um áudio: import dinâmico pra
+  // ficar fora do bundle de quem nunca abre o composer (17/09/2026).
+  const { Mp3Encoder } = await import("@breezystack/lamejs");
   const enc = new Mp3Encoder(1, rate, 64);
   const out = [];
   for (let i = 0; i < pcm.length; i += 1152) {

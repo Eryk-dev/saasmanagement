@@ -73,6 +73,7 @@ const INDEXES = [
   ["task_events_task_idx", "task_events", `((json->>'task'))`],
   ["notifications_user_read_idx", "notifications", `((json->>'user'), (json->>'read'))`],
   ["tasks_parent_idx", "tasks", `((json->>'parentId'))`],
+  ["activities_lead_idx", "activities", `((json->>'lead'))`], // timeline do lead (GET /api/activities?lead=)
 ];
 
 async function createTables() {

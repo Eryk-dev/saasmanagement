@@ -2,45 +2,13 @@ import React from "react";
 import { useTweaks, TweaksPanel, TweakSection, TweakRadio, TweakColor } from "./tweaks-panel.jsx";
 import { NavRail, TopBar, NAV } from "./chrome.jsx";
 import { eventsUrl } from "./lib/api.js";
-import { OverviewScreen } from "./screens/overview.jsx";
-import { EloOverviewScreen } from "./screens/overview-elo.jsx";
-import { TodayScreen } from "./screens/today.jsx";
-import { MetricsScreen } from "./screens/metrics.jsx";
-import { ExpensesScreen } from "./screens/expenses.jsx";
-import { PipelineScreen } from "./screens/pipeline.jsx";
-import { FormsScreen } from "./screens/forms.jsx";
-import { ProposalsScreen } from "./screens/proposals.jsx";
-import { CreativeScreen } from "./screens/creative.jsx";
-import { SocialScreen } from "./screens/social.jsx";
-import { OffersScreen } from "./screens/offers.jsx";
-import { ContractsScreen } from "./screens/contracts.jsx";
-import { IntegrationFormsScreen } from "./screens/integration-forms.jsx";
-import { BlogScreen } from "./screens/blog.jsx";
-import { DisparosScreen } from "./screens/disparos.jsx";
-import { OutboundScreen } from "./screens/outbound.jsx";
-import { RemuneracaoScreen } from "./screens/remuneracao.jsx";
-import { WhatsappInboxScreen } from "./screens/whatsapp.jsx";
 import { WaHotAlert } from "./components/wa-hot-alert.jsx";
 import { FeedbackWidget } from "./components/feedback-widget.jsx";
-import { AgendaScreen } from "./screens/agenda.jsx";
-import { ConsultasScreen } from "./screens/consultas.jsx";
-import { CallsScreen } from "./screens/calls.jsx";
-import { IntegrationsScreen } from "./screens/integrations.jsx";
-import { AnaliseScreen } from "./screens/analise.jsx";
-import { FuncionariosScreen } from "./screens/funcionarios.jsx";
-import { DesempenhoScreen } from "./screens/desempenho.jsx";
-import { MetasScreen } from "./screens/metas.jsx";
-import { TrainingScreen, TrainingGate } from "./screens/training.jsx";
-import { CustomersScreen } from "./screens/customers.jsx";
-import { EloAppScreen } from "./screens/eloapp.jsx";
-import { LandingPagesScreen } from "./screens/landingpages.jsx";
-import { TasksScreen } from "./screens/tasks/index.jsx";
-import { MindmapsScreen } from "./screens/mindmaps.jsx";
-import { SettingsScreen, SettingsLite } from "./screens/settings.jsx";
+import { TrainingGate } from "./components/training-gate.jsx";
 import { LeadDetail } from "./screens/deal.jsx";
 import { CommandSearch } from "./components/CommandSearch.jsx";
 import { ToastHost } from "./atoms.jsx";
-import { ScreenTransition } from "./components/screen-loading.jsx";
+import { ScreenTransition, lazyScreen } from "./components/screen-loading.jsx";
 import { ErrorBoundary } from "./components/error-boundary.jsx";
 import { Drawer } from "./components/overlay.jsx";
 import { DataContext, loadSeed } from "./data.jsx";
@@ -50,6 +18,47 @@ import { EntityForm } from "./components/EntityForm.jsx";
 import { ConfirmDelete } from "./components/ConfirmDelete.jsx";
 import { useIsMobile } from "./lib/responsive.js";
 // Main app — routing, persona switching, tweaks integration.
+
+// ── Telas sob demanda (17/09/2026) ──────────────────────────────────────────
+// Cada tela é um chunk que o navegador baixa na primeira visita, em vez de um
+// app.js único de 2 MB com as 35 telas. Ficam no shell (import estático acima)
+// só o que aparece em toda tela: moldura, drawer do lead, busca, modais globais.
+// O Meu dia continua no shell de qualquer jeito (chrome/deal importam helpers
+// dele), então o lazy dele é inócuo — mas mantém a regra uniforme.
+const OverviewScreen = lazyScreen(() => import("./screens/overview.jsx"), "OverviewScreen");
+const EloOverviewScreen = lazyScreen(() => import("./screens/overview-elo.jsx"), "EloOverviewScreen");
+const TodayScreen = lazyScreen(() => import("./screens/today.jsx"), "TodayScreen");
+const MetricsScreen = lazyScreen(() => import("./screens/metrics.jsx"), "MetricsScreen");
+const ExpensesScreen = lazyScreen(() => import("./screens/expenses.jsx"), "ExpensesScreen");
+const PipelineScreen = lazyScreen(() => import("./screens/pipeline.jsx"), "PipelineScreen");
+const FormsScreen = lazyScreen(() => import("./screens/forms.jsx"), "FormsScreen");
+const ProposalsScreen = lazyScreen(() => import("./screens/proposals.jsx"), "ProposalsScreen");
+const CreativeScreen = lazyScreen(() => import("./screens/creative.jsx"), "CreativeScreen");
+const SocialScreen = lazyScreen(() => import("./screens/social.jsx"), "SocialScreen");
+const OffersScreen = lazyScreen(() => import("./screens/offers.jsx"), "OffersScreen");
+const ContractsScreen = lazyScreen(() => import("./screens/contracts.jsx"), "ContractsScreen");
+const IntegrationFormsScreen = lazyScreen(() => import("./screens/integration-forms.jsx"), "IntegrationFormsScreen");
+const BlogScreen = lazyScreen(() => import("./screens/blog.jsx"), "BlogScreen");
+const DisparosScreen = lazyScreen(() => import("./screens/disparos.jsx"), "DisparosScreen");
+const OutboundScreen = lazyScreen(() => import("./screens/outbound.jsx"), "OutboundScreen");
+const RemuneracaoScreen = lazyScreen(() => import("./screens/remuneracao.jsx"), "RemuneracaoScreen");
+const WhatsappInboxScreen = lazyScreen(() => import("./screens/whatsapp.jsx"), "WhatsappInboxScreen");
+const AgendaScreen = lazyScreen(() => import("./screens/agenda.jsx"), "AgendaScreen");
+const ConsultasScreen = lazyScreen(() => import("./screens/consultas.jsx"), "ConsultasScreen");
+const CallsScreen = lazyScreen(() => import("./screens/calls.jsx"), "CallsScreen");
+const IntegrationsScreen = lazyScreen(() => import("./screens/integrations.jsx"), "IntegrationsScreen");
+const AnaliseScreen = lazyScreen(() => import("./screens/analise.jsx"), "AnaliseScreen");
+const FuncionariosScreen = lazyScreen(() => import("./screens/funcionarios.jsx"), "FuncionariosScreen");
+const DesempenhoScreen = lazyScreen(() => import("./screens/desempenho.jsx"), "DesempenhoScreen");
+const MetasScreen = lazyScreen(() => import("./screens/metas.jsx"), "MetasScreen");
+const TrainingScreen = lazyScreen(() => import("./screens/training.jsx"), "TrainingScreen");
+const CustomersScreen = lazyScreen(() => import("./screens/customers.jsx"), "CustomersScreen");
+const EloAppScreen = lazyScreen(() => import("./screens/eloapp.jsx"), "EloAppScreen");
+const LandingPagesScreen = lazyScreen(() => import("./screens/landingpages.jsx"), "LandingPagesScreen");
+const TasksScreen = lazyScreen(() => import("./screens/tasks/index.jsx"), "TasksScreen");
+const MindmapsScreen = lazyScreen(() => import("./screens/mindmaps.jsx"), "MindmapsScreen");
+const SettingsScreen = lazyScreen(() => import("./screens/settings.jsx"), "SettingsScreen");
+const SettingsLite = lazyScreen(() => import("./screens/settings.jsx"), "SettingsLite");
 
 const { useState: useStA, useEffect: useEA, useCallback: useCbA } = React;
 
@@ -294,6 +303,9 @@ function App({ onInitialReady, initialLoading = false } = {}) {
             limpa o erro sozinho. */}
         <ScreenTransition navigationKey={`${scr}:${activeProduct?.id}`} overview={scr === "overview"} onReady={onInitialReady} suppressSplash={initialLoading}>
         <ErrorBoundary variant="screen" label={`tela:${scr}`} resetKey={scr}>
+        {/* Suspense DENTRO do ScreenTransition: o splash cobre o download do
+            chunk (trackChunk) — o fallback não precisa desenhar nada. */}
+        <React.Suspense fallback={null}>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
           {/* Workspace Elo (B2C self-serve): a Visão geral é a do APP — meta de
               receita do checkout, ativação e retenção — não a de venda assistida. */}
@@ -333,6 +345,7 @@ function App({ onInitialReady, initialLoading = false } = {}) {
           {scr === "mindmaps"    && <MindmapsScreen />}
           {scr === "settings"    && (canSeeScreen("settings") ? <SettingsScreen saasId={params.saas} /> : <SettingsLite />)}
         </div>
+        </React.Suspense>
         </ErrorBoundary>
         </ScreenTransition>
       </main>

@@ -1,7 +1,8 @@
-// Boot sequence: load tokens, install fmt on window, fetch the full dataset from
-// the API into window.SEED, THEN dynamically import the app. The dynamic import
-// guarantees every (faithful) component module evaluates after window.SEED/window.fmt
-// exist — so modules that read window.SEED at import time keep working unchanged.
+// Boot sequence: load tokens, install fmt on window, then fetch the dataset into
+// window.SEED AND download the app chunk in parallel (17/09/2026: esperar o
+// bootstrap pra só então pedir o app.js custava um round-trip inteiro a mais).
+// The App only renders after both settle, so components still find SEED — but
+// NO module may read window.SEED at import time (only inside functions).
 //
 // Auth: if the API answers 401, we show a small unlock screen. The entered key is
 // stored (localStorage) and every request carries it from then on.
@@ -100,8 +101,7 @@ function Login() {
 }
 
 async function loadApp() {
-  await loadSeed();
-  const { App } = await import("./app.jsx");
+  const [, { App }] = await Promise.all([loadSeed(), import("./app.jsx")]);
   return App;
 }
 

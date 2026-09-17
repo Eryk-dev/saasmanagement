@@ -28,7 +28,19 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
   const configured = () => !!(clientId && clientSecret);
   let cache = { token: "", exp: 0 }; // access token em memória (refresh sob demanda)
 
-  const stored = async () => (repo ? repo.get("app_config", "google_oauth") : null);
+  // Memo curto do registro de conexão: o bootstrap pergunta connected/account/
+  // gmailReady em sequência — eram 3 SELECTs iguais por boot de cada aba. Só o
+  // hit positivo entra (conexão nova gravada direto no repo aparece na próxima
+  // leitura) e exchangeCode zera ao gravar.
+  let storedMemo = null; // { rec, at }
+  const STORED_TTL_MS = 30_000;
+  const stored = async () => {
+    if (!repo) return null;
+    if (storedMemo && Date.now() - storedMemo.at < STORED_TTL_MS) return storedMemo.rec;
+    const rec = await repo.get("app_config", "google_oauth");
+    if (rec) storedMemo = { rec, at: Date.now() };
+    return rec;
+  };
   const connected = async () => !!(await stored())?.refreshToken;
   const teamAccount = async () => (await stored())?.account || "";
   // tokenSource: prende ESTA instância ao token/conta de outro dono (forUser,
@@ -87,6 +99,7 @@ export function makeGoogle({ fetch: f = globalThis.fetch, clientId = "", clientS
     };
     if (prev) await repo.update("app_config", "google_oauth", rec);
     else await repo.create("app_config", rec);
+    storedMemo = null;
     cache = { token: b.access_token || "", exp: Date.now() + (Number(b.expires_in) || 3600) * 1000 - 60_000 };
     return rec;
   }
