@@ -292,21 +292,41 @@ function loadImg(src) {
   });
 }
 
+// Folha de fontes da marca (Google Fonts): resolve quando o <link> carregou
+// (ou falhou, ou passou 3 s) — é o que garante que document.fonts.load conheça
+// as @font-face antes de pedir cada peso. Uma promise por marca.
+const fontLinks = new Map(); // linkId -> Promise<void>
+function ensureFontLink(id) {
+  const linkId = "creative-fonts-" + id;
+  if (fontLinks.has(linkId)) return fontLinks.get(linkId);
+  const p = new Promise((resolve) => {
+    if (document.getElementById(linkId)) return resolve();
+    const link = document.createElement("link");
+    link.id = linkId;
+    link.rel = "stylesheet";
+    link.href = BRAND.fontsHref;
+    link.onload = () => resolve();
+    link.onerror = () => resolve();
+    setTimeout(resolve, 3000);
+    document.head.appendChild(link);
+  });
+  fontLinks.set(linkId, p);
+  return p;
+}
+
 // Fontes (Google Fonts) + logos prontos pra desenhar. Idempotente POR MARCA —
 // trocar de workspace zera o cache (applyBrand) e recarrega na marca nova.
+//
+// Duas promises separadas: `icons` é o que o drawImage precisa e libera o
+// canvas em ~ms; `fonts` chega depois e a tela redesenha com a fonte certa.
+// Antes a tela ficava em BRANCO até `document.fonts.ready`, que espera TODAS
+// as fontes do documento (não só as da marca), mesmo já em cache.
 let assetsPromise = null;
 function loadAssets() {
   if (assetsPromise && ASSETS.for === BRAND_ID) return assetsPromise;
   const id = BRAND_ID;
-  assetsPromise = (async () => {
-    const linkId = "creative-fonts-" + id;
-    if (!document.getElementById(linkId)) {
-      const link = document.createElement("link");
-      link.id = linkId;
-      link.rel = "stylesheet";
-      link.href = BRAND.fontsHref;
-      document.head.appendChild(link);
-    }
+  const linkReady = ensureFontLink(id);
+  const icons = (async () => {
     if (id === "elo") {
       // Ícone oficial (gradiente ouro — funciona nos dois fundos). O SVG do
       // asset não tem width/height, então injeta pro drawImage ter intrínseco.
@@ -323,14 +343,17 @@ function loadAssets() {
       ]);
     }
     ASSETS.for = id;
+  })();
+  const fonts = (async () => {
+    await linkReady;
     const want = [
       `700 100px ${FD}`, `600 60px ${FD}`, `500 44px ${FD}`, `400 40px ${FD}`,
       `600 32px ${FM}`, `500 30px ${FM}`, `400 28px ${FM}`,
       `700 44px ${BRAND.wordmarkFont}`,
     ];
     await Promise.all(want.map((f) => document.fonts.load(f, `${BRAND.wordmark} ✓ →`).catch(() => {})));
-    await document.fonts.ready;
-  })();
+  })().catch(() => {});
+  assetsPromise = { icons, fonts };
   return assetsPromise;
 }
 
@@ -1282,7 +1305,17 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
   const photoTargetRef = useR(null);
   const extraSeq = useR(0);
 
-  useE(() => { let ok = true; setReady(false); loadAssets().then(() => ok && setReady(true)); return () => { ok = false; }; }, [brandId]);
+  // `ready` = ícones no lugar (o canvas já desenha, com a fonte de fallback);
+  // `fontsAt` = fontes da marca chegaram → redesenha (entra nas deps abaixo).
+  const [fontsAt, setFontsAt] = useS(0);
+  useE(() => {
+    let ok = true;
+    setReady(false); setFontsAt(0);
+    const a = loadAssets();
+    a.icons.then(() => ok && setReady(true)).catch(() => {});
+    a.fonts.then(() => ok && setFontsAt(Date.now()));
+    return () => { ok = false; };
+  }, [brandId]);
   useE(() => {
     setVals(defaultsOf(tpl)); setSizes({}); setExportError(""); setPos({}); setImgs({}); setExtras([]); setSel(null); setAddSlide(1); setActiveSlide(0);
   }, [tpl.id, brandId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1297,7 +1330,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
       const ctx = c.getContext("2d");
       boxesRef.current[i] = renderSlide(ctx, tpl, i, { vals, imgs, sizes }, pos, extras, sel);
     }
-  }, [ready, tpl, vals, sizes, pos, imgs, extras, sel, brandId]);
+  }, [ready, fontsAt, tpl, vals, sizes, pos, imgs, extras, sel, brandId]);
 
   // ── Drag & clique no preview ──
   function canvasPoint(e, i) {
@@ -1370,6 +1403,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
   async function download(i) {
     const c = refs.current[i];
     if (!c || !ready) return;
+    await loadAssets().fonts; // nunca exporta com a fonte de fallback
     renderSlide(c.getContext("2d"), tpl, i, { vals, imgs, sizes }, pos, extras, null);
     const blob = await new Promise((resolve) => c.toBlob(resolve, "image/png"));
     renderSlide(c.getContext("2d"), tpl, i, { vals, imgs, sizes }, pos, extras, sel);
@@ -1397,6 +1431,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
   // PNGs finais (sem outline de seleção) — é o que o "Criar post" publica.
   async function getBlobs() {
     const out = [];
+    await loadAssets().fonts; // nunca publica com a fonte de fallback
     for (let i = 0; i < tpl.slides; i++) {
       const c = refs.current[i];
       if (!c) continue;
@@ -1470,7 +1505,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
               <span className="tnum" style={{ fontSize: 10.5, color: "var(--fg-3)" }}>{tpl.w}×{tpl.h}</span>
               {tpl.slides > 1 && <div className="canvas-slides" aria-label="Slides">{Array.from({ length: tpl.slides }, (_, i) => <button key={i} aria-label={`Slide ${i + 1}`} aria-pressed={activeSlide === i} onClick={() => selectSlide(i)}>{i + 1}</button>)}</div>}
             </div>
-            {!ready && <div role="status" className="dim">carregando fontes da marca…</div>}
+            {!fontsAt && <div role="status" className="dim">carregando fontes da marca…</div>}
             {Array.from({ length: tpl.slides }, (_, i) => <canvas key={tpl.id + i} ref={(el) => { refs.current[i] = el; }} aria-label={`${tpl.name} · slide ${i + 1}`}
               onPointerDown={(event) => onDown(event, i)} onPointerMove={(event) => onMove(event, i)} onPointerUp={onUp} onPointerCancel={onUp}
               style={{ display: i === activeSlide ? "block" : "none", width: 300, maxWidth: "100%", height: "auto", borderRadius: 4, boxShadow: "var(--shadow-card)", cursor: "grab", touchAction: "none" }} />)}
@@ -1590,7 +1625,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
               ↓ baixar {tpl.slides > 1 ? `${tpl.slides} PNGs` : "PNG"}
             </button>
           </div>
-          {!ready && <div className="mono dim" style={{ fontSize: 12 }}>carregando fontes da marca…</div>}
+          {!fontsAt && <div className="mono dim" style={{ fontSize: 12 }}>carregando fontes da marca…</div>}
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
             {Array.from({ length: tpl.slides }, (_, i) => (
               <div key={tpl.id + i} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
