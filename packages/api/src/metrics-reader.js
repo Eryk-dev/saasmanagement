@@ -31,6 +31,10 @@ export function metricsReader(repo, saas) {
       return once(`where:${JSON.stringify(args)}`, () => repo.listWhere(...args));
     },
   };
+  // O compute-cache.js precisa do repo de verdade (o leitor nasce por
+  // requisição): `base` é a chave do cache e `writeRev` a régua de validade.
+  reader.base = repo.base || repo;
+  if (typeof reader.base.writeRev === "function") reader.writeRev = () => reader.base.writeRev();
   readers.set(reader, saas);
   return reader;
 }

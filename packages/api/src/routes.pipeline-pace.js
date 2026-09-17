@@ -4,6 +4,7 @@
 
 import { metricsReader } from "./metrics-reader.js";
 import { TOUCH_TYPES } from "./stages.js";
+import { memoCompute } from "./compute-cache.js";
 import {
   DAY_MS as DAY, round2, dayKey, isRealLead, isSaleLead, keyAccountIds, isKeyAccountLead,
   bookedLeadsIn, callOutcome, callCohortIn, winsIn, customerStartMap, tcvOf, firstResponseAttribution,
@@ -204,21 +205,33 @@ function averageEntryOf(product, { invoices, leads, customers, goals }, now) {
   return { averageEntry, averageEntrySource };
 }
 
+// Propostas criadas HOJE, filtradas no Postgres. `proposals` é a maior coleção
+// do banco (1.750 snapshots de 28 kB = 47 MB, 17/09/2026), acima do teto do
+// cache de list() — carregar a tabela inteira pra contar as de hoje custava
+// 47 MB de egress e 1 s por chamada de pace (e o placar chama o pace por
+// dentro). createdAt é ISO em UTC e o dia de negócio é UTC-3, então pede do dia
+// anterior em diante (texto ordena como data) e fecha a régua exata com dayKey.
+async function proposalsCreatedToday(repo, saas, today) {
+  const from = dayKey(new Date(Date.parse(`${today}T12:00:00Z`) - DAY));
+  const rows = await repo.listWhere("proposals", { saas, createdAt: { gte: from } }, { fields: ["createdAt"] });
+  return rows.filter((p) => dayKey(p.createdAt) === today).length;
+}
+
 export async function computePipelinePace(repo, product, now = new Date()) {
   repo = metricsReader(repo, product.id);
-  const [allInvoices, allLeads, allActivities, allCustomers, allProposals, allGoals, allInsights, waMessages, users, mpPayments] = await Promise.all([
+  const today = dayKey(now);
+  const [allInvoices, allLeads, allActivities, allCustomers, proposalsToday, allGoals, allInsights, waMessages, users, mpPayments] = await Promise.all([
     repo.list("invoices"),
     repo.list("leads"),
     repo.list("activities"),
     repo.list("customers"),
-    repo.list("proposals"),
+    proposalsCreatedToday(repo, product.id, today),
     repo.list("goals"),
     repo.list("ad_insights"),
     repo.list("wa_messages").catch(() => []),
     repo.list("users").catch(() => []),
     repo.list("mp_payments").catch(() => []), // espelho do MP (metade da régua do recebido)
   ]);
-  const today = dayKey(now);
   const month = today.slice(0, 7);
   const calendar = monthCalendar(today);
   const monthEnd = `${month}-${calendar.lastDay}`;
@@ -234,7 +247,6 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   const leads = allLeads.filter((l) => l.saas === product.id && isRealLead(l));
   const activities = allActivities.filter((a) => a.saas === product.id && a.lead);
   const customers = allCustomers.filter((c) => c.saas === product.id);
-  const proposals = allProposals.filter((p) => p.saas === product.id);
   const goals = allGoals.filter((g) => !g.saas || g.saas === product.id);
   const leadById = new Map(leads.map((l) => [l.id, l]));
   const actsByLead = new Map();
@@ -675,11 +687,18 @@ export async function computePipelinePace(repo, product, now = new Date()) {
       contacts: planMetric(contactsRemaining, calendar.remaining, todayContacts),
       callsBooked: planMetric(bookingsRemaining, calendar.remaining, todayBooked),
       calls: planMetric(callsRemaining, calendar.remaining, leads.filter((l) => dayKey(l.callAt) === today).length),
-      proposals: { today: proposals.filter((p) => dayKey(p.createdAt) === today).length },
+      proposals: { today: proposalsToday },
       wins: planMetric(winsRemaining, calendar.remaining, soldTodayN),
       onboardings: planMetric(winsRemaining, calendar.remaining, customers.filter((c) => dayKey(c.startedAt) === today).length),
     },
   };
+}
+
+// Pace com cache de resultado (compute-cache.js): a rota, a Visão geral e o
+// placar (que calcula o pace por dentro) compartilham um cálculo só até a
+// próxima escrita no banco. `fresh` pula o cache (?fresh=1, depuração).
+export function cachedPipelinePace(repo, product, now = new Date(), { fresh = false } = {}) {
+  return memoCompute(repo, `pace:${product.id}:${dayKey(now)}`, () => computePipelinePace(repo, product, now), { fresh });
 }
 
 // ── Meta de uma JANELA qualquer (mês passado, semana, dia) ───────────────────
@@ -825,7 +844,7 @@ export function registerPipelinePaceRoutes(app, repo, { now = () => new Date() }
   app.get("/api/pipeline-pace/:saas", async (req, reply) => {
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "Not found" });
-    return computePipelinePace(repo, product, now());
+    return cachedPipelinePace(repo, product, now(), { fresh: String(req.query?.fresh || "") === "1" });
   });
   // Meta de uma janela qualquer (a faixa da Visão geral seguindo o filtro).
   app.get("/api/pipeline-pace/:saas/window", async (req, reply) => {

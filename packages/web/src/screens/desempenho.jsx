@@ -16,7 +16,7 @@ import { fmt, bizDay } from "../lib/format.js";
 // manuais do dia vêm do /api/desempenho. Clicar na linha abre o detalhe (quem
 // furou, quem não respondeu, objeções); "copiar relatório" gera o texto da
 // revisão. Sem envio automático: a tela É o relatório.
-const { useState, useEffect, useMemo, useCallback } = React;
+const { useState, useEffect, useMemo, useCallback, useRef } = React;
 
 // ── Janela: Dia · Semana · Mês (+ ◀ ▶) sobre o período GLOBAL ─────────────────
 const MODE_KEY = "cockpit_desempenho_mode";
@@ -321,14 +321,23 @@ function DesempenhoScreen({ onOpenLead }) {
     return api.desempenho(product.id, win).then(setExtra).catch((e) => { setExtra(null); setErr(e.message); });
   }, [product?.id, win.since, win.until]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Troca de produto/janela zera a tela (loading); o tick do tempo real
+  // (`version`) recarrega em SILÊNCIO, mantendo o dado na tela até o novo
+  // chegar — antes cada gravação de qualquer um piscava a Análise inteira.
+  const winKey = `${product?.id}|${period}|${custom.since}|${custom.until}`;
+  const lastWinKey = useRef(null);
   useEffect(() => {
     if (!product?.id) return;
-    let alive = true; setSb(null); setExtra(null); setErr(null);
+    let alive = true;
+    const silent = lastWinKey.current === winKey;
+    lastWinKey.current = winKey;
+    if (!silent) { setSb(null); setExtra(null); }
+    setErr(null);
     Promise.all([api.scoreboard(product.id, win), api.desempenho(product.id, win)])
       .then(([s, d]) => { if (!alive) return; setSb(s); setExtra(d); })
       .catch((e) => alive && setErr(e.message));
     return () => { alive = false; };
-  }, [product?.id, period, custom.since, custom.until, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [winKey, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Lente individual: sem etiqueta admin, só a própria linha (mesma regra da Visão geral).
   const mine = (rows) => (admin ? rows : rows.filter((r) => r.user === me));

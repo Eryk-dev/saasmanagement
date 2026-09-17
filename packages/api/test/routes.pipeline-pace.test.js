@@ -79,6 +79,11 @@ test("pace usa faturas pagas, dias úteis e desdobra o gap pelas conversões rea
   await repo.create("activities", { id: "b2", saas: "leverads", lead: "l2", type: "stage", meta: { from: "Novo lead", to: "Call agendada" }, at: "2026-07-13T14:00:00.000Z" });
   await repo.create("activities", { id: "b3", saas: "leverads", lead: "l3", type: "stage", meta: { from: "Novo lead", to: "Call agendada" }, at: "2026-07-08T14:00:00.000Z" });
   await repo.create("proposals", { id: "p1", saas: "leverads", lead: "l2", createdAt: "2026-07-13T16:00:00.000Z" });
+  // Propostas vêm filtradas do Postgres (listWhere, a coleção é grande demais
+  // pro list): a régua do "hoje" continua sendo o dia de negócio em UTC-3.
+  await repo.create("proposals", { id: "p2", saas: "leverads", lead: "l4", createdAt: "2026-07-14T01:00:00.000Z" }); // 22h de 13/07 em Brasília = hoje
+  await repo.create("proposals", { id: "p3", saas: "leverads", lead: "l5", createdAt: "2026-07-13T02:00:00.000Z" }); // 23h de 12/07 em Brasília = ontem
+  await repo.create("proposals", { id: "p4", saas: "outro", lead: "x", createdAt: "2026-07-13T16:00:00.000Z" }); // outro produto
 
   const res = await app.inject({ url: "/api/pipeline-pace/leverads" });
   assert.equal(res.statusCode, 200);
@@ -122,7 +127,14 @@ test("pace usa faturas pagas, dias úteis e desdobra o gap pelas conversões rea
   assert.equal(r.plan.calls.today, 1);
   assert.equal(r.plan.wins.today, 1);
   assert.equal(r.plan.onboardings.today, 1);
-  assert.equal(r.plan.proposals.today, 1);
+  assert.equal(r.plan.proposals.today, 2);
+
+  // Cache de resultado: mesma resposta sem escrita; escrita renova na hora.
+  const again = (await app.inject({ url: "/api/pipeline-pace/leverads" })).json();
+  assert.deepEqual(again, r);
+  await repo.create("proposals", { id: "p5", saas: "leverads", lead: "l6", createdAt: "2026-07-13T17:00:00.000Z" });
+  assert.equal((await app.inject({ url: "/api/pipeline-pace/leverads" })).json().plan.proposals.today, 3);
+  assert.equal((await app.inject({ url: "/api/pipeline-pace/leverads?fresh=1" })).json().plan.proposals.today, 3);
 
   await app.close();
 });
