@@ -12,6 +12,7 @@ import { transcriber as defaultTranscriber } from "./transcribe.js";
 import { formatSummaryText } from "./call-summaries.js";
 import { logActivity, onOutboundMessage } from "./lead-flow.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
+import { makeTtlCache } from "./ttl-cache.js";
 
 // Mensagem enviada pelo inbox: lead NOVO ganha o toque de 1º contato e lead
 // em CONTATO vai pra qualificação — quem recebeu mensagem nossa já está sendo
@@ -291,7 +292,8 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
   // SEMPRE 200, com o resultado dentro do corpo: o proxy da hospedagem troca o
   // corpo de qualquer 5xx pela página de erro dele, então status de erro faria
   // a UI receber HTML no lugar da mensagem da Meta (foi o que aconteceu).
-  app.get("/api/whatsapp/number", async (req) => {
+  const numberCache = makeTtlCache({ ttl: 10 * 60_000, staleTtl: 60 * 60_000 });
+  app.get("/api/whatsapp/number", async (req, reply) => {
     // Número DO PRODUTO ativo (?saas=): cada SaaS mostra o seu no topo do inbox.
     const saas = String(req.query?.saas || "");
     const phoneId = await resolvePhoneId({ saas });
@@ -301,7 +303,13 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
     // "chegou alguma coisa aqui?" sem depender do envio estar certo.
     const webhook = (await getWaHealth(repo)).webhook || {};
     try {
-      return { ok: true, webhook, ...(await wa.numberInfo({ phoneId })) };
+      // Nome/qualidade/limite do número mudam devagar e a leitura na Meta
+      // custava ~1,2 s a cada abertura de Disparos/Inbox: cache por número,
+      // só do caminho que deu certo (erro continua saindo na hora, é
+      // diagnóstico de configuração).
+      const { value, status } = await numberCache.getWithMeta(phoneId, () => wa.numberInfo({ phoneId }), { force: String(req.query?.refresh || "") === "1" });
+      reply.header("x-cache", status);
+      return { ok: true, webhook, ...value };
     } catch (err) {
       // Ler os dados do número exige whatsapp_business_management no token;
       // ENVIAR exige whatsapp_business_messaging. Token só com messaging cai

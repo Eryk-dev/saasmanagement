@@ -21,6 +21,17 @@ import { publicBase } from "./routes.js";
 import { upsertComment, syncComments, listComments, commentInsights, invalidateSync, postTitleOf } from "./social-comments.js";
 import { syncStories, listStories } from "./social-stories.js";
 import { UPSTREAM_FAILED } from "./http-status.js";
+import { makeTtlCache } from "./ttl-cache.js";
+
+// Cada abertura da tela Redes sociais custava dezenas de chamadas à Graph
+// (summary ~11, audiência 12 sequenciais): 8 s medidos em produção (17/09).
+// Métrica de perfil muda devagar, então a resposta fica em cache por produto
+// e a tela recebe o valor guardado na hora (stale-while-revalidate); o botão
+// de atualizar da tela força (`?refresh=1`).
+const SUMMARY_TTL = { ttl: 2 * 60_000, staleTtl: 30 * 60_000 };
+const AUDIENCE_TTL = { ttl: 6 * 3600_000, staleTtl: 7 * 86400_000 };
+const DISCOVERY_TTL = { ttl: 30 * 60_000, staleTtl: 24 * 3600_000 };
+const wantsRefresh = (req) => String(req.query?.refresh || "") === "1";
 
 const IMG_MAX = 15 * 1024 * 1024;   // PNG de 1080×1920 fica bem abaixo disso
 const VID_MAX = 80 * 1024 * 1024;   // reel curto; acima disso o jsonb sofre
@@ -87,6 +98,10 @@ function growthInsights({ reachBreakdown, formats, engagement, followerGrowth, i
 export function registerSocialRoutes(app, repo, { social = defaultSocial, meta = defaultMeta, anthropic = null } = {}) {
   // Descoberta page/IG por saas (cache do processo; muda raro).
   const discovered = new Map();
+  // Caches por instância (o teste sobe várias apps com clientes fake distintos).
+  const summaryCache = makeTtlCache(SUMMARY_TTL);
+  const audienceCache = makeTtlCache(AUDIENCE_TTL);
+  const discoveryCache = makeTtlCache(DISCOVERY_TTL);
   // O id do IG é gravado como `metaIgUser` pela descoberta do marketing
   // (routes.marketing.js) — `metaIgUserId` era o nome só desta tela e nunca
   // chegou a existir no banco. Ler os dois: com só o nome antigo, o webhook não
@@ -157,17 +172,34 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
     // seletor de dor do "criar post". Rótulos únicos, sem os códigos vazios.
     const pains = [...new Set(Object.values(product.painMap || {}).filter((v) => v && String(v).trim()))].map((label) => ({ label }));
     const days = ALLOWED_DAYS.has(Number(req.query?.days)) ? Number(req.query.days) : 30;
+    const base = { configured: true, days, igUserId, pageId, aiConfigured: !!anthropic?.configured?.(), pains };
+    if (!igUserId && !pageId) {
+      return {
+        ...base, account: null, insights: null, reachBreakdown: null,
+        followerSeries: null, reachSeries: null, followerGrowth: null,
+        followsBreakdown: null, interactionTypes: null, reachByFormat: null, linkTaps: null,
+        engagement: null, formats: [], insightsText: [], media: [], page: null,
+        errors: { setup: "sem Instagram/página: configure metaIgUser/metaPageId no produto ou rode um anúncio na conta pra descoberta automática" },
+      };
+    }
+    // Só o bloco que bate na Graph fica em cache; o que vem do produto
+    // (dores, IA) é montado por request e não envelhece.
+    const { value, status } = await summaryCache.getWithMeta(
+      `${product.id}|${igUserId}|${pageId}|${days}`,
+      () => fetchSummary({ igUserId, pageId, days }),
+      { force: wantsRefresh(req) },
+    );
+    reply.header("x-cache", status);
+    return { ...base, ...value, errors: { ...value.errors } };
+  });
+
+  async function fetchSummary({ igUserId, pageId, days }) {
     const out = {
-      configured: true, days, igUserId, pageId, aiConfigured: !!anthropic?.configured?.(), pains,
       account: null, insights: null, reachBreakdown: null,
       followerSeries: null, reachSeries: null, followerGrowth: null,
       followsBreakdown: null, interactionTypes: null, reachByFormat: null, linkTaps: null,
       engagement: null, formats: [], insightsText: [], media: [], page: null, errors: {},
     };
-    if (!igUserId && !pageId) {
-      out.errors.setup = "sem Instagram/página: configure metaIgUser/metaPageId no produto ou rode um anúncio na conta pra descoberta automática";
-      return out;
-    }
     const range = { since: dayStr(Date.now() - (days - 1) * 86400e3), until: dayStr(Date.now()) };
     // Cada bloco falha sozinho (permissão faltando não derruba a tela inteira).
     if (igUserId) {
@@ -215,7 +247,7 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
       await social.pageInfo(pageId).then((p) => { out.page = p; }).catch((e) => { out.errors.page = e.message; });
     }
     return out;
-  });
+  }
 
   // ── Audiência: demografia + melhor horário (snapshot, sem intervalo) ──────
   // Separado do summary porque são chamadas caras e não dependem do período;
@@ -226,6 +258,18 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
     if (!social.configured()) return { configured: false };
     const { igUserId } = await idsFor(product);
     if (!igUserId) return { configured: true, demographics: null, onlineFollowers: null, errors: { setup: "sem Instagram configurado" } };
+    // Snapshot (lifetime + últimos 30d): vale por horas. Era o gargalo da tela
+    // (12 chamadas sequenciais à Graph, 8 s medidos).
+    const { value, status } = await audienceCache.getWithMeta(
+      `${product.id}|${igUserId}`,
+      () => fetchAudience(igUserId),
+      { force: wantsRefresh(req) },
+    );
+    reply.header("x-cache", status);
+    return { ...value, errors: { ...value.errors } };
+  });
+
+  async function fetchAudience(igUserId) {
     const out = { configured: true, demographics: null, reached: null, engaged: null, onlineFollowers: null, bestHours: null, errors: {} };
     // Três recortes da audiência: quem SEGUE (lifetime), quem ALCANÇAMOS e quem
     // ENGAJA (últimos 30d). As duas últimas dependem de a conta liberar e ter
@@ -247,7 +291,7 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
         .sort((a, b) => a - b);
     }
     return out;
-  });
+  }
 
   // ── Stories: captura (a Graph só entrega insight de story VIVO) + histórico ─
   app.get("/api/social/stories", async (req, reply) => {
@@ -257,10 +301,17 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
     if (social.configured()) {
       const { igUserId } = await idsFor(product);
       if (igUserId) {
-        try {
-          const r = await syncStories(repo, social, { saas: product.id, igUserId, force: String(req.query?.sync || "") === "1" });
-          Object.assign(out.errors, r.errors || {});
-        } catch (e) { out.errors.stories = e.message; }
+        // `?sync=1` é ação explícita e espera a captura (o erro volta na hora).
+        // A abertura normal da tela só DISPARA a captura (syncStories tem
+        // throttle de 10 min) e responde o histórico do banco sem esperar a
+        // Graph: o que foi capturado aparece na próxima abertura.
+        const force = String(req.query?.sync || "") === "1";
+        const run = syncStories(repo, social, { saas: product.id, igUserId, force });
+        if (force) {
+          try { Object.assign(out.errors, (await run).errors || {}); } catch (e) { out.errors.stories = e.message; }
+        } else {
+          run.catch((e) => req.log?.warn?.({ err: e.message }, "stories: captura em segundo plano falhou"));
+        }
       }
     }
     // O histórico sai do banco mesmo com a captura falhando.
@@ -332,10 +383,21 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
     if (!product) return;
     if (!social.configured()) return { configured: false };
     const { igUserId } = await idsFor(product);
-    const out = { configured: true, tagged: [], competitors: [], hashtags: [], errors: {} };
-    if (!igUserId) { out.errors.setup = "sem Instagram configurado"; return out; }
+    if (!igUserId) return { configured: true, tagged: [], competitors: [], hashtags: [], errors: { setup: "sem Instagram configurado" } };
     const comps = Array.isArray(product.igCompetitors) ? product.igCompetitors.slice(0, 6) : [];
     const tags = Array.isArray(product.igHashtags) ? product.igHashtags.slice(0, 5) : [];
+    // As listas entram na chave: editar concorrente/hashtag reflete na hora.
+    const { value, status } = await discoveryCache.getWithMeta(
+      `${product.id}|${igUserId}|${comps.join(",")}|${tags.join(",")}`,
+      () => fetchDiscovery({ igUserId, comps, tags }),
+      { force: wantsRefresh(req) },
+    );
+    reply.header("x-cache", status);
+    return { ...value, errors: { ...value.errors } };
+  });
+
+  async function fetchDiscovery({ igUserId, comps, tags }) {
+    const out = { configured: true, tagged: [], competitors: [], hashtags: [], errors: {} };
     // Posts/semana estimado pelo espaçamento dos recentes públicos.
     const postsPerWeek = (recent) => {
       const ts = recent.map((m) => new Date(m.at || 0).getTime()).filter(Boolean).sort((a, b) => a - b);
@@ -368,7 +430,7 @@ export function registerSocialRoutes(app, repo, { social = defaultSocial, meta =
     ]);
     out.competitors.sort((a, b) => (b.followers || 0) - (a.followers || 0));
     return out;
-  });
+  }
 
   // ── Upload de mídia (multipart) → asset com URL pública ──────────────────
   app.post("/api/social/assets", async (req, reply) => {
