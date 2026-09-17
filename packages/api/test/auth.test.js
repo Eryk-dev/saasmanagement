@@ -324,3 +324,37 @@ test("nível: mudar compLevel apenda o histórico; o mesmo nível não duplica",
   bia = await repo.get("users", "bia");
   assert.equal(bia.compLevelHistory.length, 2);
 });
+
+test("sessão em cache: 2ª requisição não vai ao banco; escrita no repo e expiração invalidam", async () => {
+  const { sessionUser } = await import("../src/auth.js");
+  const repo = makeMemRepo();
+  await ensureDefaultAdmins(repo);
+  const app = buildApp(repo);
+  const res = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "eryk", password: "1234" } });
+  const { token } = res.json();
+
+  // conta as idas ao banco por trás do sessionUser
+  let gets = 0;
+  const rawGet = repo.get.bind(repo);
+  repo.get = async (name, id) => { if (name === "sessions" || name === "users") gets++; return rawGet(name, id); };
+
+  assert.equal((await sessionUser(repo, token))?.id, "eryk");
+  assert.equal(gets, 2); // sessions + users
+  assert.equal((await sessionUser(repo, token))?.id, "eryk");
+  assert.equal(gets, 2); // hit: nada no banco
+
+  // qualquer escrita neste processo derruba o cache (papel trocado, logout…)
+  await repo.update("users", "eryk", { name: "Eryk B." });
+  assert.equal((await sessionUser(repo, token))?.name, "Eryk B.");
+  assert.equal(gets, 4);
+
+  // logout apaga a sessão pelo repo → próxima consulta é miss e devolve null
+  await app.inject({ method: "POST", url: "/api/auth/logout", headers: { "x-api-key": token } });
+  assert.equal(await sessionUser(repo, token), null);
+
+  // token inválido nunca entra no cache
+  gets = 0;
+  assert.equal(await sessionUser(repo, "x".repeat(40)), null);
+  assert.equal(await sessionUser(repo, "x".repeat(40)), null);
+  assert.equal(gets, 2);
+});

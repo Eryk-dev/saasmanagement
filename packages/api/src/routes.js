@@ -550,6 +550,16 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       }
     } catch { /* contador é enfeite: falhar aqui não pode derrubar o bootstrap */ }
 
+    // Cookies do Pixel (`fbc`/`fbp`) ficam no banco pra Meta CAPI (submit do
+    // form, mais abaixo) e ninguém no navegador lê: eram ~420 KB de string
+    // aleatória por bootstrap, que o gzip não encolhe.
+    const stripTracking = ({ fbc, fbp, ...l }) => l; // eslint-disable-line no-unused-vars
+    // O que o CONFIG precisa do banco/integrações vai numa leva só: eram cinco
+    // awaits em série no meio do objeto (templates, 3× app_config do Google,
+    // saúde do WhatsApp), cada um uma ida ao pooler do Supabase.
+    const [proposalTemplates, googleConnected, googleAccount, gmailReady, waHealth] = await Promise.all([
+      repo.list("proposal_templates"), googleClient.connected(), googleClient.account(), googleClient.gmailReady(), getWaHealth(repo),
+    ]);
     return {
       SAAS: saas,
       COUNTERS: contadores,
@@ -563,7 +573,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       // "Cliente" VAZIA e não dava pra gerar o link (foi o que travou o
       // Jonathan em 27/08/2026 — e o Vitor, do outro lado, em 24/08).
       CUSTOMERS: can("customers") ? customers : customers.map(pickCustomer),
-      LEADS: can("pipeline") || can("today") || can("analise") ? leads : [], // Meu dia e Análise do pipeline = views dos mesmos leads
+      LEADS: can("pipeline") || can("today") || can("analise") ? leads.map(stripTracking) : [], // Meu dia e Análise do pipeline = views dos mesmos leads
       AGENDA_BLOCKS: agendaBlocks, // bloqueios de horário por pessoa (tela Agenda) — alimentam a "agenda ocupada" ao marcar call/integração
       // Consulta da mentoria ocupa a agenda de quem atende: sem isso dava pra
       // marcar call de venda por cima do encontro de um cliente. Vai SÓ a
@@ -586,8 +596,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
         // (banco): o gate de fechamento do card monta o select de produto e
         // sugere o valor a partir daqui, então mexer no preço no banco vale na
         // hora, sem deploy. SaaS sem catálogo (UniqueKids) simplesmente não entra.
-        proposals: await (async () => {
-          const templates = await repo.list("proposal_templates");
+        proposals: (() => {
+          const templates = proposalTemplates;
           const published = templates.filter((t) => t.status === "published");
           const catalog = {};
           const add = (saas, rows) => {
@@ -608,10 +618,10 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
         // meetCalendar: onde o evento do Meet nasce (GOOGLE_MEET_CALENDAR_ID).
         // Aparece em Ajustes → Integrações porque é a causa nº 1 de "não cria o
         // link": calendário de outra identidade, invisível pra conta conectada.
-        google: { configured: googleClient.configured(), connected: await googleClient.connected(), account: await googleClient.account(), gmail: await googleClient.gmailReady(), meetCalendar: process.env.GOOGLE_MEET_CALENDAR_ID || "primary" },
+        google: { configured: googleClient.configured(), connected: googleConnected, account: googleAccount, gmail: gmailReady, meetCalendar: process.env.GOOGLE_MEET_CALENDAR_ID || "primary" },
         ai: { configured: anthropicClient.configured() },
         discord: { configured: discordClient.configured() },
-        whatsapp: { configured: whatsappClient.configured(), health: waHealthSummary(await getWaHealth(repo)) },
+        whatsapp: { configured: whatsappClient.configured(), health: waHealthSummary(waHealth) },
       },
     };
   });

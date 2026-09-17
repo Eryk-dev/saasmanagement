@@ -347,10 +347,12 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
 
   app.get("/api/whatsapp/insights", async (req) => {
     const days = Math.min(365, Math.max(1, Number(req.query?.days) || 30));
+    // wa_messages (~7 MB) e wa_threads lidos UMA vez pras duas réguas.
+    const [threads, messages] = await Promise.all([repo.list("wa_threads"), repo.list("wa_messages")]);
     const [stats, health, form, costs] = await Promise.all([
-      waInsights(repo, { days }),
+      waInsights(repo, { days, threads, messages }),
       getWaHealth(repo),
-      waFormEngagement(repo, { days }).catch(() => null),
+      waFormEngagement(repo, { days, threads, messages }).catch(() => null),
       wa.configured() ? periodCost(days) : null,
     ]);
     return { ...stats, health: waHealthSummary(health), form, costs };
