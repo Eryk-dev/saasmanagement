@@ -121,7 +121,7 @@ const EXPENSE_COLORS = [
   "color-mix(in srgb, var(--chart-1) 55%, var(--info))",
 ];
 
-export function GastosCard({ setores, month }) {
+export function GastosCard({ setores, recebidosMes, month }) {
   // Só as categorias da DRE: somar também os subtotais de setor duplicaria
   // as despesas. COGS já chega com IA e WhatsApp, como na DRE ao lado.
   const porCategoria = {};
@@ -132,39 +132,59 @@ export function GastosCard({ setores, month }) {
     }
   }
   const itens = Object.entries(porCategoria).sort((a, b) => b[1] - a[1]);
-  const total = itens.reduce((sum, [, value]) => sum + value, 0);
+  const total = r2(itens.reduce((sum, [, value]) => sum + value, 0));
+  const recebidos = Number.isFinite(Number(recebidosMes)) ? Math.max(0, Number(recebidosMes)) : 0;
+  const saldo = r2(recebidos - total);
+  // O círculo representa os recebidos, nunca uma normalização das despesas.
+  // Sem base ou com déficit, mantemos valores/percentuais na legenda e
+  // explicamos o resultado, sem desenhar fatias negativas ou acima de 100%.
+  const mostraPizza = recebidos > 0 && saldo >= 0;
+  const categorias = itens.map(([key, value], i) => ({
+    key, value, label: PAY_CAT_LABEL[key] || key, color: EXPENSE_COLORS[i % EXPENSE_COLORS.length],
+  }));
+  if (saldo > 0) categorias.push({ key: "__saldo", value: saldo, label: "Saldo após despesas", color: "var(--line-2)" });
   let accumulated = 0;
-  const fatias = itens.map(([key, value], i) => {
-    const share = value / total;
+  const fatias = categorias.map((item) => {
+    const share = recebidos > 0 ? item.value / recebidos : 0;
     const start = accumulated * Math.PI * 2 - Math.PI / 2;
     accumulated += share;
     const end = accumulated * Math.PI * 2 - Math.PI / 2;
     return {
-      key, value, label: PAY_CAT_LABEL[key] || key, color: EXPENSE_COLORS[i % EXPENSE_COLORS.length],
-      pct: share < 0.001 ? "<0,1%" : window.fmt.pct(share, 1).replace(".", ","),
-      path: `M 110 110 L ${110 + 104 * Math.cos(start)} ${110 + 104 * Math.sin(start)} A 104 104 0 ${share > 0.5 ? 1 : 0} 1 ${110 + 104 * Math.cos(end)} ${110 + 104 * Math.sin(end)} Z`,
+      ...item,
+      pct: recebidos <= 0 ? "—" : share < 0.001 ? "<0,1%" : window.fmt.pct(share, 1).replace(".", ","),
+      path: mostraPizza ? `M 110 110 L ${110 + 104 * Math.cos(start)} ${110 + 104 * Math.sin(start)} A 104 104 0 ${share > 0.5 ? 1 : 0} 1 ${110 + 104 * Math.cos(end)} ${110 + 104 * Math.sin(end)} Z` : null,
     };
   });
 
   return (
-    <Card title="Para onde vai o dinheiro" hint={`${mesLongo(month)} · participação de cada categoria nas despesas`}>
-      {!fatias.length ? <EmptyState title="Sem despesas neste mês" hint="O gráfico aparece quando houver despesas na DRE." /> : (
+    <Card title="Para onde vai o dinheiro" hint={`${mesLongo(month)} · custos como % do recebido no mês`}>
+      {!fatias.length ? <EmptyState title="Sem recebimentos neste mês" hint="Ainda não há recebimentos nem despesas para comparar." /> : (
         <div style={{ padding: "18px var(--inset-x) 22px", display: "flex", flexWrap: "wrap", gap: 24, alignItems: "center" }}>
           <figure style={{ margin: "0 auto", width: 200, maxWidth: "100%", flexShrink: 0 }}>
-            <svg viewBox="0 0 220 220" role="img" aria-label={`Distribuição das despesas de ${mesLongo(month)} por categoria`} style={{ display: "block", width: "100%" }}>
-              <title>Despesas por categoria · {money(total)}</title>
+            {mostraPizza ? <svg viewBox="0 0 220 220" role="img" aria-label={`Custos e saldo sobre os recebimentos de ${mesLongo(month)}`} style={{ display: "block", width: "100%" }}>
+              <title>{`Recebido no mês · ${money(recebidos)}`}</title>
               {fatias.map((f) => fatias.length === 1 ? (
                 <circle key={f.key} cx="110" cy="110" r="104" fill={f.color}>
-                  <title>{f.label}: {money(f.value)} · {f.pct}</title>
+                  <title>{`${f.label}: ${money(f.value)} · ${f.pct}`}</title>
                 </circle>
               ) : (
                 <path key={f.key} d={f.path} fill={f.color} stroke="var(--bg-1)" strokeWidth="1.5" strokeLinejoin="round">
-                  <title>{f.label}: {money(f.value)} · {f.pct}</title>
+                  <title>{`${f.label}: ${money(f.value)} · ${f.pct}`}</title>
                 </path>
               ))}
-            </svg>
+            </svg> : (
+              <div style={{ padding: "20px 0", textAlign: "center" }}>
+                <div style={{ fontSize: 13.5, fontWeight: 650, color: recebidos > 0 ? "var(--neg)" : "var(--fg-2)" }}>
+                  {recebidos > 0 ? "Despesas acima dos recebimentos" : "Sem recebimentos neste mês"}
+                </div>
+                <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.5, color: "var(--fg-3)" }}>
+                  {recebidos > 0 ? `Déficit de ${money(-saldo)} · custos equivalem a ${window.fmt.pct(total / recebidos, 1).replace(".", ",")} do recebido.` : "Os percentuais ficam disponíveis quando houver recebimentos."}
+                </div>
+              </div>
+            )}
             <figcaption style={{ marginTop: 10, textAlign: "center", fontSize: 12, color: "var(--fg-3)" }}>
-              Total de despesas <strong className="tnum" style={{ display: "block", marginTop: 3, fontSize: 20, color: "var(--fg-1)" }}>{money(total)}</strong>
+              Recebido no mês <strong className="tnum" style={{ display: "block", marginTop: 3, fontSize: 20, color: "var(--fg-1)" }}>{money(recebidos)}</strong>
+              <span style={{ display: "block", marginTop: 5 }}>Despesas: {money(total)}</span>
             </figcaption>
           </figure>
           <dl style={{ flex: "1 1 220px", minWidth: 0, margin: 0 }}>
@@ -289,7 +309,7 @@ export function ResumoTab({ product, month, onTab }) {
       <div className="resp-cols" style={{ "--cols": "1fr 1fr", gap: 16 }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
           <FluxoCard fluxo={fin.fluxo} previsto={fin.previsto} month={month} />
-          <GastosCard setores={{ ...S, cogs }} month={month} />
+          <GastosCard setores={{ ...S, cogs }} recebidosMes={fin.receber.recebidosMes} month={month} />
         </div>
         <Card title="DRE do mês" hint="P&L de SaaS: receita · deduções · custo do serviço · margem bruta · setores">
           <div style={{ padding: "10px var(--inset-x) 18px" }}>

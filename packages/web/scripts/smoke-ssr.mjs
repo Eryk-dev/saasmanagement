@@ -94,9 +94,9 @@ try {
     ["overview-funil", "/src/screens/overview.jsx", "FunilPeriodo", { team: fakeTeam, win: fakeWin, pLabel: "este mês" }, "Ganhos"],
     ["metrics", "/src/screens/metrics.jsx", "MetricsScreen", {}, "Publicidade"],
     ["expenses", "/src/screens/expenses.jsx", "ExpensesScreen", {}, "Pagamentos"],
-    ["financeiro-pizza", "/src/screens/finance-hub.jsx", "GastosCard", { month: "2026-09", setores: { deducoes: { imposto: 600 }, cogs: { ia: 200, wa: 100 }, sm: { ads: 100 } } }, "60,0%"],
-    ["financeiro-pizza-vazio", "/src/screens/finance-hub.jsx", "GastosCard", { month: "2026-09", setores: { cogs: { ia: 0 } } }, "Sem despesas neste mês"],
-    ["financeiro-pizza-unico", "/src/screens/finance-hub.jsx", "GastosCard", { month: "2026-09", setores: { sm: { ads: 100 } } }, "100,0%"],
+    ["financeiro-pizza", "/src/screens/finance-hub.jsx", "GastosCard", { month: "2026-09", recebidosMes: 2000, setores: { deducoes: { imposto: 600 }, cogs: { ia: 200, wa: 100 }, sm: { ads: 100 } } }, "30,0%"],
+    ["financeiro-pizza-vazio", "/src/screens/finance-hub.jsx", "GastosCard", { month: "2026-09", recebidosMes: 0, setores: { cogs: { ia: 0 } } }, "Sem recebimentos neste mês"],
+    ["financeiro-pizza-unico", "/src/screens/finance-hub.jsx", "GastosCard", { month: "2026-09", recebidosMes: 100, setores: { sm: { ads: 100 } } }, "100,0%"],
     ["customers", "/src/screens/customers.jsx", "CustomersScreen", {}, "Cliente Teste"],
     ["pipeline", "/src/screens/pipeline.jsx", "PipelineScreen", { onOpenLead() {} }, "Lead Novo"],
     ["chrome", "/src/chrome.jsx", "NavRail", { current: "overview", onNav() {} }, "Visão geral"],
@@ -127,6 +127,33 @@ try {
       console.error(`✗ ${name}: ${err.message}`);
       failed++;
     }
+  }
+  // Pizza do Financeiro: a mesma despesa muda de participação conforme o
+  // recebido; déficit e ausência de receita nunca viram uma pizza enganosa.
+  try {
+    const { GastosCard } = await server.ssrLoadModule("/src/screens/finance-hub.jsx");
+    const renderPizza = (recebidosMes, setores = { deducoes: { imposto: 600 }, cogs: { ia: 200, wa: 100 }, sm: { ads: 100 } }) =>
+      renderToString(React.createElement(GastosCard, { month: "2026-09", recebidosMes, setores })).replace(/<!--.*?-->/g, "");
+    const normal = renderPizza(2000);
+    for (const expected of ["Impostos sobre receita (DAS): R$600 · 30,0%", "Saldo após despesas: R$1,0k · 50,0%", "Recebido no mês · R$2,0k"]) {
+      if (!normal.includes(expected)) throw new Error(`a pizza precisa mostrar ${expected}`);
+    }
+    const deficit = renderPizza(500);
+    if (!deficit.includes("120,0%") || !deficit.includes("Déficit de R$500") || !deficit.includes("200,0% do recebido") || deficit.includes("<svg") || deficit.includes("Saldo após despesas")) {
+      throw new Error("déficit deve preservar percentuais sobre recebidos, sem fatias inválidas ou saldo positivo");
+    }
+    const noIncome = renderPizza(0);
+    if (!noIncome.includes("Sem recebimentos neste mês") || !noIncome.includes("R$600") || noIncome.includes("<svg") || /NaN|Infinity|100,0%/.test(noIncome)) {
+      throw new Error("sem recebimentos deve manter as despesas, sem inventar percentuais");
+    }
+    const noExpenses = renderPizza(2000, {});
+    if (!noExpenses.includes("Saldo após despesas: R$2,0k · 100,0%") || !noExpenses.includes("<circle")) {
+      throw new Error("sem despesas, todo o recebido deve aparecer como saldo");
+    }
+    console.log("✓ financeiro-pizza-base-recebidos");
+  } catch (err) {
+    console.error(`✗ financeiro-pizza-base-recebidos: ${err.message}`);
+    failed++;
   }
   // A régua usa a meta base: ultrapassar 100% não pode fazer o percentual
   // voltar para trás por causa da escala da próxima super meta.

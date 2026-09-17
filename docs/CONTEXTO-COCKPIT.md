@@ -193,6 +193,13 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
 
 ## Correções de contexto e ferramentas
 
+- **Pizza do Financeiro (16/09/2026):** `GastosCard` usa
+  `fin.receber.recebidosMes` como 100%; as categorias da DRE (incluindo IA e
+  WhatsApp) mostram custo ÷ recebido e o restante aparece como saldo. A base
+  acompanha produto/mês e é a mesma do indicador "recebido no mês". Sem receita,
+  não há percentual; com déficit, a legenda preserva os percentuais reais e
+  mostra o excedente sem desenhar uma pizza ou normalizar pelo total de custos.
+
 - **Múltiplas contas Meta por produto (16/09/2026):** `metaAdAccount` continua
   sendo a conta principal para criação de criativos e automações de veiculação.
   `metaAdAccounts` é uma lista adicional de IDs para leitura, configurável pelo
