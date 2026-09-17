@@ -11,6 +11,9 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 const { registerRoutes } = await import("../src/routes.js");
 const { makeAnthropic } = await import("../src/anthropic.js");
 const { makeIntegrationBriefer, formatBriefText, factsOf } = await import("../src/integration-brief.js");
+// system pode vir como string ou como blocos (cache de prompt, 17/09)
+const sysOf = (b) => (typeof b?.system === "string" ? b.system : (Array.isArray(b?.system) ? b.system.map((x) => x?.text || "").join("\n") : ""));
+
 
 const BRIEF = {
   resumo: "JCimport vende autopeças no ML e na Shopee, fechou o anual pra clonar anúncios entre 4 contas.",
@@ -84,8 +87,8 @@ test("cliente de IA: briefIntegration manda o schema do briefing com os dados do
   const props = req.body.output_config.format.schema.properties;
   // três blocos objetivos + a mensagem: o passo a passo mora no roteiro da etapa
   assert.deepEqual(Object.keys(props), ["resumo", "entregas", "atencao", "primeiraMensagem"]);
-  assert.ok(req.body.system.includes("travessão"));           // regra de copy do Leo
-  assert.ok(req.body.system.includes("NÃO participou"));      // o briefing é pra quem não estava na call
+  assert.ok(sysOf(req.body).includes("travessão"));           // regra de copy do Leo
+  assert.ok(sysOf(req.body).includes("NÃO participou"));      // o briefing é pra quem não estava na call
   assert.ok(req.body.messages[0].content.includes("Contas de marketplace: 3 a 5"));
   assert.ok(req.body.messages[0].content.includes("Transcrição da call de venda"));
 });
@@ -97,19 +100,19 @@ test("o briefing parte do negócio JÁ FECHADO: nada de vender de novo", async (
   const req = f.calls[0];
 
   // o enquadramento é explícito no system E no contexto da mensagem
-  assert.ok(req.body.system.includes("O NEGÓCIO JÁ ESTÁ FECHADO"));
-  assert.ok(req.body.system.includes("ENTREGA, não venda"));
-  assert.ok(/NUNCA:.*negociar preço/s.test(req.body.system));   // proibição explícita de reabrir venda
-  assert.ok(req.body.system.includes("RISCO DE ENTREGA"));      // objeção em aberto muda de natureza
+  assert.ok(sysOf(req.body).includes("O NEGÓCIO JÁ ESTÁ FECHADO"));
+  assert.ok(sysOf(req.body).includes("ENTREGA, não venda"));
+  assert.ok(/NUNCA:.*negociar preço/s.test(sysOf(req.body)));   // proibição explícita de reabrir venda
+  assert.ok(sysOf(req.body).includes("RISCO DE ENTREGA"));      // objeção em aberto muda de natureza
   assert.ok(req.body.messages[0].content.includes("STATUS: NEGÓCIO FECHADO"));
   assert.ok(req.body.messages[0].content.includes("JÁ FOI GANHA"));
   // pagamento JÁ FEITO: pedir pra confirmar/cobrar passa insegurança pro cliente
-  assert.ok(req.body.system.includes("FECHADO E PAGO"));
-  assert.ok(/NUNCA peça pra confirmar, cobrar ou checar pagamento/.test(req.body.system));
-  assert.ok(req.body.system.includes("SEJA CURTO"));
+  assert.ok(sysOf(req.body).includes("FECHADO E PAGO"));
+  assert.ok(/NUNCA peça pra confirmar, cobrar ou checar pagamento/.test(sysOf(req.body)));
+  assert.ok(sysOf(req.body).includes("SEJA CURTO"));
   // o integrador não fala de dinheiro com o cliente: o card já mostra o contratado
-  assert.ok(req.body.system.includes("DINHEIRO NÃO ENTRA NO TEXTO"));
-  assert.ok(/OBJETIVOS DA ENTREGA NUNCA VÊM VAZIOS/.test(req.body.system));
+  assert.ok(sysOf(req.body).includes("DINHEIRO NÃO ENTRA NO TEXTO"));
+  assert.ok(/OBJETIVOS DA ENTREGA NUNCA VÊM VAZIOS/.test(sysOf(req.body)));
 
   // e o schema conta a mesma história pros campos que mais escorregam pra venda
   const props = req.body.output_config.format.schema.properties;
@@ -129,17 +132,17 @@ test("a integração acontece por CALL DE VÍDEO: o briefing organiza o fluxo em
   await makeAnthropic({ fetch: f, apiKey: "sk-test" }).briefIntegration({ transcript: "Leo: fechado", lead: { name: "Hiago" } });
   const req = f.calls[0];
 
-  assert.ok(req.body.system.includes("CALL DE VÍDEO"));
-  assert.ok(req.body.system.includes("primeiro movimento do integrador é MARCAR essa call"));
+  assert.ok(sysOf(req.body).includes("CALL DE VÍDEO"));
+  assert.ok(sysOf(req.body).includes("primeiro movimento do integrador é MARCAR essa call"));
   // dia/horário/link são da AGENDA REAL: a UI completa a mensagem por cima, e a
   // IA propor um horário próprio faria a mensagem se contradizer.
-  assert.ok(req.body.system.includes("NUNCA escreva dia, horário ou link da call"));
+  assert.ok(sysOf(req.body).includes("NUNCA escreva dia, horário ou link da call"));
 
   const props = req.body.output_config.format.schema.properties;
   assert.ok(props.primeiraMensagem.description.includes("CALL DE INTEGRAÇÃO POR VÍDEO"));
   assert.ok(/propor dia\/hora\/link/.test(props.primeiraMensagem.description));
   assert.ok(/perguntar disponibilidade/.test(props.primeiraMensagem.description), "perguntar horário duplicaria a agenda que o cockpit acrescenta");
-  assert.ok(req.body.system.includes("passo a passo da call NÃO é seu trabalho"));
+  assert.ok(sysOf(req.body).includes("passo a passo da call NÃO é seu trabalho"));
 });
 
 test("briefLead: lê a transcrição da VENDA, grava a activity com o texto formatado e carimba o lead", async () => {

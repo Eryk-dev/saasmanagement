@@ -173,6 +173,10 @@ export function sdrBotConfig(product) {
     // experiência completa no próprio WhatsApp sem tocar nenhum lead real, e
     // sem sujar métrica (lead interno segue fora do isRealLead).
     conversationTest: cfg.conversationTest === true,
+    // PISO DE PREÇO na conversa com IA (raio-x 17/09): o robô diz "a partir de
+    // R$ X por mês" uma vez, com X do catálogo do template de proposta. Ligado
+    // por padrão; `priceFloor: false` volta ao desvio sem número.
+    priceFloor: cfg.priceFloor !== false,
     firstTouchDelayMin: num(cfg.firstTouchDelayMin, 3), // "um humano viu" > resposta em 2s
     // Debounce de RAJADA (Leo, 23/08): ao receber mensagem, o cérebro espera
     // esse tempo; chegou outra no meio, só a última responde, compilando a
@@ -188,6 +192,9 @@ export function sdrBotConfig(product) {
       // "call" nunca chega no lead (Leo, 23/08): templates novos falam
       // "conversa"; os antigos aprovados seguem de fallback até a revisão.
       reminder: cfg.templates?.reminder || "sdr_lembrete_conversa",
+      // Lembrete COM o link do Meet no corpo (raio-x 17/09): sai na frente do
+      // genérico sempre que a sala já existe. Submeter à Meta pelo sdr-setup.
+      reminderLink: cfg.templates?.reminderLink || "sdr_lembrete_link",
       rescue: cfg.templates?.rescue || "sdr_resgate_conversa",
       secondTouch: cfg.templates?.secondTouch || "sdr_retomada_conversa",
       // Variações aprovadas da retomada: o lote de 2º toque sorteia entre elas
@@ -286,13 +293,23 @@ const REMINDERS = [
 // Leo, 30/08: sai 2h antes pra dar tempo do silêncio virar ligação do SDR
 // ainda antes da call; ver o alerta de ligação na seção 2b); o de 10min
 // entrega o link. Tudo sem emoji, no tom da persona do número.
-function reminderText(key, { nome, quando, link }) {
+// LEMBRETE QUE PEDE AÇÃO (raio-x 17/09, 84 furos lidos): "ok" solto ao lembrete
+// virou furo em 11 conversas e 33 nunca responderam; quem entrou disse algo
+// concreto ("estou no aguardo do link"). O 2h pergunta por onde a pessoa vai
+// entrar e já entrega o link quando ele existe; o 10min sempre leva o link, e
+// sem link pede o ok pra mandar (nunca "te espero lá" sem lugar nenhum: ~22
+// conversas ficaram sem o link no WhatsApp).
+export function reminderText(key, { nome, quando, link }) {
   const oi = nome ? `Oi ${nome}!` : "Oi!";
   if (key === "24h") return `${oi} Confirmando nossa conversa ${quando}, tudo certo? Qualquer imprevisto me fala por aqui que eu remarco sem problema.`;
-  if (key === "2h") return `${oi} Está tudo certo pra nossa conversa ${quando}? Nosso especialista vai estar te esperando pra te fazer a demonstração ao vivo. Me confirma por aqui, por favor!`;
+  if (key === "2h") {
+    return link
+      ? `${oi} Nossa conversa é ${quando}, nosso especialista já separou o horário. O link pra entrar é este: ${link}. Você vai entrar pelo celular ou pelo computador?`
+      : `${oi} Nossa conversa é ${quando}, nosso especialista já separou o horário. Me manda um ok por aqui que eu já te passo o link de acesso, pode ser?`;
+  }
   return link
     ? `${nome ? nome + ", nossa" : "Nossa"} conversa começa em 10 minutos! Link pra entrar: ${link}`
-    : `${nome ? nome + ", nossa" : "Nossa"} conversa começa em 10 minutos! Te espero lá.`;
+    : `${nome ? nome + ", nossa" : "Nossa"} conversa começa em 10 minutos! Me manda um ok que te passo o link de acesso agora.`;
 }
 
 // A mensagem de resgate é a que o time já usa e recupera no-show (mineração:
@@ -497,7 +514,11 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           const thread = await findThreadByPhone(repo, phone);
           if (thread) {
             const msgs = await listMessages(repo, thread.id);
-            if (thread.hasIn || msgs.some((m) => m.direction === "in")) continue;
+            // "Nenhuma resposta" = nada do lead DEPOIS do 1º toque (raio-x
+            // 17/09): a mensagem pronta do form chega ANTES da nossa e não é
+            // resposta; contar ela como hasIn deixava 98 dos 152 leads sem
+            // resposta fora do 2º toque.
+            if (msgs.some((m) => m.direction === "in" && Date.parse(m.at || 0) > t0)) continue;
             const lastOut = [...msgs].reverse().find((m) => m.direction === "out");
             if (lastOut && lastOut.author && lastOut.author !== SDR_AUTHOR) continue; // humano já falou
           }
@@ -587,10 +608,15 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           // define o público e reinicia a escada sozinha.
           const lastBot = [...msgs].reverse().find((m) => m.direction === "out" && m.author === SDR_AUTHOR);
           const warm = Number.isFinite(inMs);
-          const anchor = warm ? inMs : (Date.parse(lead.sdrLog?.firstTouchAt || "") || touchedAt(lead, lastBot));
-          // Humano na conversa depois da âncora: a conversa é dele, não do robô.
+          let anchor = warm ? inMs : (Date.parse(lead.sdrLog?.firstTouchAt || "") || touchedAt(lead, lastBot));
+          // Humano falou DEPOIS da última mensagem do lead (raio-x 17/09): antes
+          // isso calava o robô pra sempre, e como a Manuela fecha quase toda
+          // conversa, 238 leads parados há 3+ dias ficaram sem retomada nenhuma
+          // (nem dela, nem do robô). Agora o silêncio conta a partir da fala
+          // humana: ela vira a âncora e a escada segue com os mesmos degraus.
           const lastHumanOut = [...msgs].reverse().find((m) => m.direction === "out" && humanIds.has(m.author));
-          if (lastHumanOut && Date.parse(lastHumanOut.at || 0) >= anchor) continue;
+          const humanMs = lastHumanOut ? Date.parse(lastHumanOut.at || 0) : NaN;
+          if (Number.isFinite(humanMs) && humanMs >= anchor) anchor = humanMs;
           const steps = warm ? cfg.ladderWarmDays : [cfg.ladderColdDays];
           const st = lead.sdrLog?.ladder || {};
           const anchorIso = new Date(anchor).toISOString();
@@ -755,9 +781,13 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           // calado.
           const viaTemplate = async () => {
             const names = await approvedNames();
-            const tplLembrete = [cfg.templates.reminder, "sdr_lembrete_call"].find((n) => names.has(n));
+            // Com link do Meet e o template COM link aprovado, ele vai na
+            // frente: janela fechada era exatamente onde o lead ficava sem
+            // link (o "te espero lá" do template antigo não tem lugar).
+            const tplLembrete = [callUrl ? cfg.templates.reminderLink : "", cfg.templates.reminder, "sdr_lembrete_call"].filter(Boolean).find((n) => names.has(n));
             if (tplLembrete) {
-              await sendTemplate({ phone: to, name: tplLembrete, params: [nome || "tudo bem", quando], phoneId, saas: product.id, leadId: lead.id });
+              const params = tplLembrete === cfg.templates.reminderLink ? [nome || "tudo bem", quando, callUrl] : [nome || "tudo bem", quando];
+              await sendTemplate({ phone: to, name: tplLembrete, params, phoneId, saas: product.id, leadId: lead.id });
             } else {
               await raiseAlert(repo, thread || { id: digits(phone), phone: digits(phone), name: lead.name || "", leadId: lead.id, saas: product.id }, {
                 text: `Lembrete ${due.key} da call não entregue (janela fechada, sem template aprovado) · confirmar na mão`,
@@ -780,6 +810,46 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           } catch (err) {
             log.warn?.({ lead: lead.id, err: err.message }, "sdr: lembrete falhou");
             await repo.update("leads", lead.id, { confirmLog: { ...log0, [due.key]: "erro:" + String(err.message || err).slice(0, 120) } });
+          }
+        }
+      }
+
+      // ── 2c. Positiva ao lembrete recebe o LINK (raio-x 17/09) ────────────
+      // O lembrete de 2h pede "um ok que te passo o link". O ok chegou
+      // (callConfirmed pelo handleSdrInbound) e o link ainda não foi: vai agora,
+      // pelo mesmo caminho dos lembretes, uma vez por horário. Sem sala ainda,
+      // o 10min entrega. Janela de 24h está aberta por definição (o lead acabou
+      // de escrever), mas a checagem fica pra o caso de confirmação manual.
+      if (cfg.reminders || cfg.conversationTest) {
+        for (const lead of leads) {
+          if (sends >= CAP) break;
+          if (!eligible(lead) || !passOn(cfg.reminders, lead)) continue;
+          if (kindOf(product, lead.stage) !== "call" || !lead.callAt || !lead.callConfirmed || !lead.callUrl) continue;
+          const log0 = lead.confirmLog && lead.confirmLog.at === lead.callAt ? lead.confirmLog : null;
+          if (!log0?.confirmed || log0.linkSentAt || log0["10min"]) continue;
+          const confirmedMs = Date.parse(log0.confirmed);
+          if (!Number.isFinite(confirmedMs) || nowMs - confirmedMs > 3 * HOUR) continue; // positiva velha: o 10min cobre
+          const callMs = Date.parse(brtToIso(lead.callAt));
+          if (!Number.isFinite(callMs) || callMs <= nowMs) continue;
+          const phone = lead.waPhone || lead.phone;
+          const thread = await findThreadByPhone(repo, phone);
+          if (!thread) continue;
+          const msgs = await listMessages(repo, thread.id);
+          const lastIn = [...msgs].reverse().find((m) => m.direction === "in");
+          if (!lastIn || nowMs - Date.parse(lastIn.at || 0) >= 24 * HOUR) continue;
+          // Gente já mandou o link ou falou depois da positiva: não repete.
+          if (msgs.some((m) => m.direction === "out" && Date.parse(m.at || 0) > confirmedMs && (humanIds.has(m.author) || String(m.text || "").includes(lead.callUrl)))) {
+            await repo.update("leads", lead.id, { confirmLog: { ...log0, linkSentAt: "humano" } });
+            continue;
+          }
+          const nome = greetName(lead.name);
+          try {
+            await sendText({ phone: thread.phone || phone, text: `${nome ? `Perfeito ${nome}` : "Perfeito"}, o link pra entrar é este: ${lead.callUrl}. Te espero ${slotLabel(lead.callAt, wnow)}!`, phoneId, saas: product.id, leadId: lead.id });
+            sends++; stats.reminders++;
+            await repo.update("leads", lead.id, { confirmLog: { ...log0, linkSentAt: nowIso } });
+          } catch (err) {
+            log.warn?.({ lead: lead.id, err: err.message }, "sdr: link pós-positiva falhou");
+            await repo.update("leads", lead.id, { confirmLog: { ...log0, linkSentAt: "erro:" + String(err.message || err).slice(0, 120) } });
           }
         }
       }
@@ -1112,6 +1182,8 @@ export async function handleSdrInbound(repo, { message, now = new Date() } = {})
     const verdict = classifyReminderReply(message?.text || "");
     if (verdict === "confirm") {
       if (!lead.callConfirmed) {
+        // O link do Meet vai na sequência, pelo poller (seção 2c): o lembrete
+        // pediu "um ok que te passo o link", e o ok tem que virar link.
         await repo.update("leads", lead.id, { callConfirmed: true, confirmLog: { ...log0, confirmed: now.toISOString() } });
       }
       return "confirmed";

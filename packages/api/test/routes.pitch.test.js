@@ -8,6 +8,9 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import { registerPitchRoutes, buildCallsDigest, aggregateCalls } from "../src/routes.pitch.js";
 import { makeAnthropic } from "../src/anthropic.js";
+// system pode vir como string ou como blocos (cache de prompt, 17/09)
+const sysOf = (b) => (typeof b?.system === "string" ? b.system : (Array.isArray(b?.system) ? b.system.map((x) => x?.text || "").join("\n") : ""));
+
 
 test("buildCallsDigest: agrega objeções (normaliza case), dores e temperatura, sem travessão", () => {
   const digest = buildCallsDigest([
@@ -122,7 +125,7 @@ test("anthropic.improvePitch: manda schema pitch_improvement + roteiro atual + d
   assert.equal(suggestion.diagnostico, "d");
   const req = calls[0];
   assert.equal(req.body.output_config.format.schema.properties.sugestao.properties.passos.items.properties.t.type, "string");
-  assert.ok(req.body.system.includes("travessão")); // regra de copy do Leo no prompt
+  assert.ok(sysOf(req.body).includes("travessão")); // regra de copy do Leo no prompt
   assert.ok(req.body.messages[0].content.includes("ROTEIRO ATUAL"));
   assert.ok(req.body.messages[0].content.includes("Oi {{nome}}")); // roteiro atual vai no contexto
   assert.ok(req.body.messages[0].content.includes("Calls analisadas: 3")); // digest das calls vai junto

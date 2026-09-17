@@ -191,6 +191,7 @@ const GROUP_META = {
 function actionVerb(item) {
   if (item.confirm) {
     if (item.confirmKind === "integracao") return "confirmar a integração";
+    if (item.confirmWindow === "ligar") return "ligar pro cliente (sem positiva)";
     return item.confirmWindow === "10min" ? "positivar a confirmação" : "confirmar a call";
   }
   if (item.group === "noshow") return "retomada";
@@ -206,7 +207,7 @@ function actionHint(item) {
   const tent = Number(l.stageAttempts) || 0;
   const partes = [];
   if (item.confirm) {
-    partes.push(item.confirmWindow === "10min" ? "10 min antes" : "2h antes");
+    partes.push(item.confirmWindow === "10min" ? "10 min antes" : item.confirmWindow === "ligar" ? "1h antes · sem resposta na confirmação" : "2h antes");
     const at = item.confirmKind === "integracao" ? l.integrationAt : l.callAt;
     if (at) partes.push(`${item.confirmKind === "integracao" ? "integração" : "call"} ${hhmmOf(at)}`);
   } else if (l.nextActionNote) {
@@ -300,6 +301,14 @@ function buildQueue(leads, consultas, saasCfg, person) {
       // passo (confirmStepDone), senão a tarefa continua pendente. Cliente que
       // confirmou já resolve a de 2h; a de 10min segue (positiva ou ligação).
       g.hoje.push({ l, kind, phase, who, due: { t: callT - 120 * M, type: "confirm" }, done: confirmStepDone(l, "2h", l.callAt) || !!l.callConfirmed, stage, group: "confirm", confirm: true, confirmWindow: "2h" });
+      // LIGAÇÃO OBRIGATÓRIA (raio-x 17/09): sem positiva até 1h antes, o robô
+      // levanta o alerta (sdrLog.ringAlertFor = horário da call) e a metade
+      // furava mesmo assim, porque alerta não vira ligação. Aqui o alerta é
+      // uma TAREFA da fila, 1h antes, feita quando o SDR registra o resultado
+      // (atendeu/confirmou ou não atendeu) ou quando o cliente confirma.
+      if (l.sdrLog?.ringAlertFor === l.callAt) {
+        g.hoje.push({ l, kind, phase, who, due: { t: callT - 60 * M, type: "confirm" }, done: confirmStepDone(l, "ligar", l.callAt) || !!l.callConfirmed, stage, group: "confirm", confirm: true, confirmWindow: "ligar" });
+      }
       g.hoje.push({ l, kind, phase, who, due: { t: callT - 10 * M, type: "confirm" }, done: confirmStepDone(l, "10min", l.callAt), stage, group: "confirm", confirm: true, confirmWindow: "10min" });
       continue;
     }
@@ -1836,13 +1845,17 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
     const p = { confirmLog: { ...prev, [win]: new Date().toISOString() } };
     if (replied) p[isInteg ? "integrationConfirmed" : "callConfirmed"] = true;
     patch(p);
+    // Janela "ligar": o registro é da LIGAÇÃO (atendeu e confirmou / não
+    // atendeu), tipo call, pra ficar na timeline como ligação e não como
+    // mensagem (raio-x 17/09: o alerta de ligar não virava ligação).
+    const ligar = win === "ligar";
     api.logActivity({
-      saas: l.saas, lead: l.id, type: "whatsapp",
+      saas: l.saas, lead: l.id, type: ligar ? "call" : "whatsapp",
       text: replied
-        ? (isInteg ? "cliente confirmou a integração" : "cliente confirmou a call")
-        : `sem resposta na confirmação de ${win}`,
+        ? (isInteg ? "cliente confirmou a integração" : ligar ? "liguei: atendeu e confirmou a call" : "cliente confirmou a call")
+        : ligar ? "liguei 1h antes: não atendeu" : `sem resposta na confirmação de ${win}`,
       author: currentUser()?.id || "",
-      meta: { reschedule: false, event: replied ? "confirm" : "confirm_noreply", window: win },
+      meta: { reschedule: false, event: replied ? "confirm" : ligar ? "ring_noanswer" : "confirm_noreply", window: win },
     }).catch((err) => { console.warn("confirmação não registrada:", err.message); toast("A confirmação não entrou na timeline", "warn"); });
     if (onAfter) onAfter(); else onClose && onClose();
   }
@@ -1916,7 +1929,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
             <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
               <span style={{ fontFamily: "var(--display)", fontSize: 20, fontWeight: 700 }}>
                 {actionVerb(item)}{Number(l.stageAttempts) > 0 && !item.confirm ? ` · tentativa ${l.stageAttempts}` : ""}
-                {item.confirm ? ` · ${item.confirmWindow === "10min" ? "10 min antes" : "2h antes"}` : ""}
+                {item.confirm ? ` · ${item.confirmWindow === "10min" ? "10 min antes" : item.confirmWindow === "ligar" ? "1h antes" : "2h antes"}` : ""}
               </span>
               {/* O estado do toque: vencido é o que muda a conversa. */}
               {!preview && item.due && (
@@ -2082,7 +2095,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
                 style={{ padding: "8px 14px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
                   background: on ? "var(--pos)" : "var(--bg-1)", color: on ? "var(--wa-brand-fg)" : "var(--fg-2)",
                   border: "1px solid " + (on ? "var(--pos)" : "var(--line-2)") }}>
-                {on ? "✓ cliente confirmou" : "cliente confirmou"}
+                {on ? "✓ cliente confirmou" : item.confirmWindow === "ligar" ? "atendeu e confirmou" : "cliente confirmou"}
               </button>
             );
           })()}
@@ -2090,12 +2103,14 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
               janela de 2h o próximo passo é a de 10 min; nela, é ligar. */}
           {item.confirm && !preview && (
             <button onClick={() => markConfirm(false)}
-              title={item.confirmWindow === "2h" && item.confirmKind !== "integracao"
-                ? "Não respondeu: registra a tentativa e segue pro passo de 10 min (nele o roteiro manda ligar)"
-                : "Não respondeu: registra a tentativa — ligue no horário, a call segue reservada"}
+              title={item.confirmWindow === "ligar"
+                ? "Ligou e não atendeu: registra a ligação na timeline; manda o link no WhatsApp e a call segue reservada"
+                : item.confirmWindow === "2h" && item.confirmKind !== "integracao"
+                  ? "Não respondeu: registra a tentativa e segue pro passo de 10 min (nele o roteiro manda ligar)"
+                  : "Não respondeu: registra a tentativa — ligue no horário, a call segue reservada"}
               style={{ padding: "8px 14px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
                 background: "var(--bg-1)", color: "var(--fg-2)", border: "1px dashed var(--line-strong)" }}>
-              sem resposta
+              {item.confirmWindow === "ligar" ? "não atendeu" : "sem resposta"}
             </button>
           )}
           {/* Cliente pediu pra remarcar na confirmação: escolhe novo horário na

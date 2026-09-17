@@ -7,6 +7,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 const { makeAnthropic } = await import("../src/anthropic.js");
+// system pode vir como string ou como blocos (cache de prompt, 17/09)
+const sysOf = (b) => (typeof b?.system === "string" ? b.system : (Array.isArray(b?.system) ? b.system.map((x) => x?.text || "").join("\n") : ""));
+
 
 const DECISION = {
   status: 200,
@@ -23,7 +26,7 @@ async function decideWith(lead) {
   const ai = makeAnthropic({ fetch, apiKey: "test-key" });
   await ai.sdrDecide({ lead, pain: null, conversation: [{ who: "lead", text: "quero saber mais" }] });
   const userMsg = sentBody.messages.find((m) => m.role === "user").content;
-  return { userMsg, system: sentBody.system || "" };
+  return { userMsg, system: sysOf(sentBody) };
 }
 
 test("sdrDecide sem dor: lead de autopeças recebe a instrução do OEM como segundo benefício", async () => {

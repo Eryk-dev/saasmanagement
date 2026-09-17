@@ -94,6 +94,17 @@ export const SDR_TEMPLATES = [
     body: "Oi {{1}}! Está tudo certo pra nossa conversa {{2}}? Nosso especialista vai estar te esperando pra te mostrar como escalar sua operação nos marketplaces. Te espero lá!",
     example: ["Rafael", "hoje às 14h"],
   },
+  // Lembrete COM o link do Meet (raio-x 17/09): com a janela de 24h fechada o
+  // lembrete antigo saía sem lugar nenhum e ~22 leads ficaram perguntando "vão
+  // mandar algum link?". Pede uma ação concreta (por onde vai entrar) em vez de
+  // um "ok" solto, que foi furo em 11 conversas.
+  {
+    name: "sdr_lembrete_link",
+    category: "UTILITY",
+    language: "pt_BR",
+    body: "Oi {{1}}! Nossa conversa é {{2}} e nosso especialista já separou o horário. O link pra entrar é este: {{3}}. Você vai entrar pelo celular ou pelo computador?",
+    example: ["Rafael", "hoje às 14h", "https://meet.google.com/abc-defg-hij"],
+  },
   // 2ª tentativa do NO-SHOW (24h depois do furo, Leo 24/08). Sai sempre por
   // template: um dia depois a janela de 24h da Meta já fechou. Leva os DOIS
   // horários reais da agenda no corpo — oferta fechada converte muito mais que
