@@ -1,4 +1,5 @@
 import { beginPageRequest } from "../src/lib/navigation-loading.js";
+import { customersCashMock } from "./customers-cash-mock.js";
 // Dublê da API pro preview de telas (14/09). NÃO entra no build de produção:
 // só o vite.preview.config.js troca lib/api.js por este arquivo, pra conferir
 // o desenho de uma tela sem subir a API nem tocar em banco nenhum.
@@ -71,6 +72,7 @@ let notificacoes = [
 ];
 
 const RESPOSTAS = {
+  ...customersCashMock,
   ...trainingMock,
   notifications: () => ({ unread: notificacoes.filter((n) => !n.read).length, items: notificacoes }),
   notificationsRead: ({ all, ids = [] }) => { notificacoes = notificacoes.map((n) => all || ids.includes(n.id) ? { ...n, read: true } : n); return { ok: true }; },

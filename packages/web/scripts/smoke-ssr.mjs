@@ -801,7 +801,7 @@ try {
     has("billing", billing, "Faturas vencidas");
     if (!/Inadimplentes[\s\S]{0,240}>1</.test(billing)) throw new Error("inadimplente deveria contar PESSOA (1), não fatura (2)");
 
-    // O dinheiro do período: a barra empilhada e o rodapé.
+    // Contratado anualizado e caixa confirmado têm bases distintas.
     const analise = R(React.createElement(A.CustomersAnalysis, {
       customers: window.SEED.CUSTOMERS, subs: [], invoices: [], isKids: false,
       gradeDist: { counts: { A: 2, C: 1 }, sem: 1 }, nivelLegend: null,
@@ -810,6 +810,18 @@ try {
     has("análise", analise, "recebido");
     has("análise", analise, "Churn");
     has("análise", analise, "Ticket médio");
+    has("análise", analise, "contratado anualizado");
+    has("análise", analise, "recebido no período");
+    has("análise", analise, "carregando recebimentos");
+    if (analise.includes("os dois somam o contratado") || analise.includes("renovações a vencer no ano")) throw new Error("análise ainda apresenta caixa como parte do ARR");
+    const caixa = R(React.createElement(A.CustomerCashValues, { cash: { received: 25450, receivable: 900 } }));
+    has("caixa confirmado", caixa, window.fmt.money(25450));
+    has("caixa confirmado", caixa, "pagamentos confirmados");
+    const caixaVazio = R(React.createElement(A.CustomerCashValues, { cash: { received: 0, receivable: 0 } }));
+    has("caixa vazio", caixaVazio, window.fmt.money(0));
+    const caixaErro = R(React.createElement(A.CustomerCashValues, { error: true, onRetry() {} }));
+    has("caixa erro", caixaErro, "Tentar novamente");
+    if (caixaErro.includes(window.fmt.money(0))) throw new Error("falha de caixa foi exibida como zero");
 
     // Base vazia: a tela oferece o cadastro em vez de uma tabela oca.
     const vazia = (() => {

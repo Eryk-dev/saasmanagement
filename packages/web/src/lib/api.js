@@ -497,6 +497,7 @@ export const api = {
   payInvoice: (id) => req("POST", `/api/invoices/${id}/pay`),
   // Dinheiro real recebido por cliente ({ customerId: total }) — Status pgto.
   billingReceived: (saas) => req("GET", `/api/billing/received/${encodeURIComponent(saas)}`),
+  billingCash: (saas, { since, until }) => req("GET", `/api/billing/cash/${encodeURIComponent(saas)}?${new URLSearchParams({ since, until })}`),
   unpayInvoice: (id) => req("POST", `/api/invoices/${id}/unpay`),
   runBilling: () => req("POST", "/api/billing/run", {}),
   // Mercado Pago: devolve o link de autorização de uma assinatura ANTIGA

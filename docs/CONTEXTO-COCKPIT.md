@@ -122,6 +122,15 @@ Os caminhos abaixo são relativos a `packages/`.
    atuais de pagamentos faturados, PIX parcelado e cartão recorrente passam por
    `metrics-core.js`; não somar `lead.amount` indiscriminadamente nas metas.
    Referências: `revenue-on-receipt.test.js` e `metrics-consistency.test.js`.
+   Em Clientes, `GET /api/billing/cash/:saas?since=&until=` soma recebimentos
+   confirmados de toda a base por `dateApproved` do MP ou `paidAt` da baixa,
+   no dia de São Paulo. Reutiliza `cashReceivedByCustomer`, sem presumir a
+   data pela criação do pagamento. Deduplica MP/fatura e exclui faturas
+   nascidas pagas e pagamentos estornados. O a receber considera cobranças
+   abertas/vencidas com vencimento na janela. Esses totais não compõem o
+   contratado anualizado; o card não usa ARR para estimar caixa ou renovações.
+   Referência: `customer-cash.test.js`. O endpoint `billing/received` continua
+   sendo o acumulado por cliente usado na ficha e no status de pagamento.
 3. **Estágio é semântico:** usar `funnel[].kind` e os helpers de `stages.js` /
    `web/src/lib/funnel.js`, em vez de comparar nomes visíveis. Reusar
    `applyStageMove` para preservar histórico, `stageSince`, cadência e efeitos
