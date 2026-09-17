@@ -92,6 +92,13 @@ o MCP mantém compressão desabilitada. A validação de produção dessa melhor
 deve conferir `Content-Encoding: gzip` no bootstrap com `Accept-Encoding: gzip`,
 além do hash da API: só o hash não comprova a configuração do nginx.
 
+`proposals` é a maior coleção (snapshots de ~28 kB por proposta, dezenas de MB)
+e fica acima do teto do cache de `list()`: rota quente lê propostas **só** por
+`listWhere` (índice `proposals_saas_created_idx`). Os cálculos caros (pace em
+`routes.pipeline-pace.js`, placar em `routes.scoreboard.js`) passam por
+`compute-cache.js`: resultado memoizado por chave, válido até a próxima escrita
+no repo (`repo.writeRev()`) ou 60 s; `?fresh=1` pula o cache.
+
 ## Mapa para encontrar a mudança
 
 Os caminhos abaixo são relativos a `packages/`.

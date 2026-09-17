@@ -73,6 +73,9 @@ const INDEXES = [
   ["task_events_task_idx", "task_events", `((json->>'task'))`],
   ["notifications_user_read_idx", "notifications", `((json->>'user'), (json->>'read'))`],
   ["tasks_parent_idx", "tasks", `((json->>'parentId'))`],
+  // proposals é a maior coleção do banco (47 MB de snapshots, acima do teto do
+  // cache de list()); o pace só precisa das criadas HOJE por produto.
+  ["proposals_saas_created_idx", "proposals", `((json->>'saas'), (json->>'createdAt'))`],
 ];
 
 async function createTables() {
@@ -163,13 +166,21 @@ const CACHE_MAX_BYTES = 8 * 1024 * 1024;
 const CACHE_ON = process.env.COCKPIT_LIST_CACHE !== "0";
 const listCache = new Map(); // name -> { raw: string[], at: number }
 
+// Contador de ESCRITA neste processo: sobe a cada create/update/remove/seed de
+// qualquer coleção (inclusive as SILENT do changes.js, que não acordam o SSE
+// mas mudam número). É a chave de invalidação do compute-cache.js — o cálculo
+// caro (pace, placar) só vale enquanto ninguém escreveu nada.
+let writeRev = 0;
+
 function invalidate(name) {
   listCache.delete(name);
+  writeRev++;
 }
 
 const RANGE_OPS = { gte: ">=", lte: "<=", gt: ">", lt: "<" };
 
 export const repo = {
+  writeRev: () => writeRev,
   async list(name) {
     const hit = CACHE_ON ? listCache.get(name) : null;
     if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.raw.map((s) => JSON.parse(s));
