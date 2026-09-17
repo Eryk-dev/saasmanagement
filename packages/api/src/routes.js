@@ -38,6 +38,7 @@ import { syncConsultationCalendar, syncConsultationMeetEvent } from "./consultat
 import { newManual, sameFamily } from "./deliverables.js";
 import { registerIntegrationRoutes } from "./routes.integrations.js";
 import { registerIntegrationFormRoutes } from "./routes.integration-forms.js";
+import { formKind } from "./integration-form.js";
 import { registerMetasRoutes } from "./routes.metas.js";
 import { registerFlashcardRoutes } from "./routes.flashcards.js";
 import { registerGoogleRoutes } from "./routes.google.js";
@@ -840,6 +841,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     if (collection === "integration_forms") {
       stamp.id = "if_" + randomUUID().replace(/-/g, "").slice(0, 20);
       stamp.status = "pendente";
+      stamp.kind = formKind({ kind: req.body.kind }); // tipo desconhecido vira o de integração
       stamp.createdAt = now;
       if (req.authUser?.id) stamp.author = req.authUser.id;
     }
