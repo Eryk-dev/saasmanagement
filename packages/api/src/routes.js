@@ -441,7 +441,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Poller de resumos (index.js) usa os MESMOS clients das rotas.
   // autoCallMeet vai junto: o poller do SDR cria a sala que falta na hora do
   // lembrete de 2h (sem link, o lembrete de 10min chamava pra lugar nenhum).
-  if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, googleUser, anthropic: anthropicClient, mailer: mailerClient, whatsapp: whatsappClient, autoCallMeet, blogEngine });
+  if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, googleUser, anthropic: anthropicClient, mailer: mailerClient, whatsapp: whatsappClient, autoCallMeet, blogEngine, sdrBrain });
   // NPS: página pública da nota (/public/nps/:token) + pedido manual pela ficha.
   // Depois do mailer/whatsapp: o pedido sai por e-mail e, dentro da janela de
   // 24h, por WhatsApp.

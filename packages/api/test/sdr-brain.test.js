@@ -729,3 +729,99 @@ test("confirmação avisa do convite por e-mail SÓ quando o card tem e-mail", a
   await brainOf(repo, fakes).handleInbound(INBOUND);
   assert.match(fakes.sent[0].text, /o convite vai chegar no seu e-mail/);
 });
+
+// ── Carimbo da decisão + varredura de mensagem sem decisão (16/09) ─────────
+// O disparo do webhook morre com o processo (deploy no meio do debounce): a
+// resposta sumia sem alerta. Agora toda decisão carimba thread.brain e o
+// poller retoma o que ficou sem carimbo.
+const TID = "5541999990000";
+
+test("carimbo: toda mensagem tratada deixa id + ação em thread.brain (inclusive silêncio)", async () => {
+  const repo = await world({ messages: [{ direction: "in", text: "ok", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes = makeFakes({ decisions: [{ acao: "silencio" }] });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: TID, text: "ok", id: "m1" } });
+  assert.equal(r, "silencio");
+  const t = await repo.get("wa_threads", TID);
+  assert.equal(t.brain.msgId, "m1");
+  assert.equal(t.brain.action, "silencio");
+  assert.equal(t.brain.at, NOW.toISOString());
+});
+
+test("carimbo: disparo superado pela rajada NÃO carimba (quem carimba é o disparo da última mensagem)", async () => {
+  const repo = await world({ messages: [
+    { direction: "in", text: "oi tudo bem", at: ISO("2026-08-19T12:58:00Z") },
+    { direction: "in", text: "sim como faço?", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const fakes = makeFakes();
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: TID, text: "oi tudo bem", id: "m1" } });
+  assert.equal(r, "superseded");
+  assert.equal((await repo.get("wa_threads", TID)).brain, undefined);
+  assert.equal(fakes.calls.length, 0);
+});
+
+test("varredura: mensagem recebida há 3 min sem carimbo é retomada sem debounce e respondida", async () => {
+  const repo = await world({ messages: [
+    { direction: "out", author: "sdr-bot", text: "Oiii Vinicius, tudo bem?", at: ISO("2026-08-19T12:56:00Z") },
+    { direction: "in", text: "sim como faço?", at: ISO("2026-08-19T12:57:00Z") },
+  ] });
+  await repo.update("wa_threads", TID, { lastDir: "in", lastAt: ISO("2026-08-19T12:57:00Z"), lastText: "sim como faço?", lastInId: "m2" });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Na demonstração o especialista te mostra o passo a passo, qual período fica melhor?" }] });
+  let slept = 0;
+  const brain = makeSdrBrain({
+    repo, whatsapp: fakes.wa, anthropic: fakes.anthropic, log: { warn: () => {}, info: () => {} }, now: () => NOW,
+    replyDelayMs: 0, sleep: async (ms) => { slept += ms; },
+  });
+  const done = await brain.resumeStalled();
+  assert.deepEqual(done, [{ thread: TID, action: "responder" }]);
+  assert.equal(slept, 0, "retomada não dorme o debounce");
+  assert.equal(fakes.sent.length, 1);
+  assert.match(fakes.sent[0].text, /passo a passo/);
+  assert.equal((await repo.get("wa_threads", TID)).brain.msgId, "m2");
+  // Segundo passe: já carimbada, nada a retomar.
+  assert.deepEqual(await brain.resumeStalled(), []);
+  assert.equal(fakes.calls.length, 1);
+});
+
+test("varredura: ignora mensagem fresca (o webhook ainda está tratando), já carimbada, velha demais ou com a vez do lado de cá", async () => {
+  const mk = async (patch) => {
+    const repo = await world({ messages: [{ direction: "in", text: "sim", at: ISO("2026-08-19T12:57:00Z") }] });
+    await repo.update("wa_threads", TID, { lastDir: "in", lastAt: ISO("2026-08-19T12:57:00Z"), lastText: "sim", lastInId: "m1", ...patch });
+    const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Perfeito, qual período fica melhor?" }] });
+    return { done: await brainOf(repo, fakes).resumeStalled(), fakes };
+  };
+  assert.deepEqual((await mk({ lastAt: ISO("2026-08-19T12:59:40Z") })).done, [], "20s atrás: ainda é do webhook");
+  assert.deepEqual((await mk({ brain: { msgId: "m1", action: "silencio" } })).done, [], "já decidida");
+  assert.deepEqual((await mk({ lastAt: ISO("2026-08-19T09:00:00Z") })).done, [], "4h atrás: fora da janela");
+  assert.deepEqual((await mk({ lastDir: "out" })).done, [], "última fala é nossa");
+  assert.deepEqual((await mk({ lastInId: "" })).done, [], "thread antiga sem lastInId");
+});
+
+test("varredura: gates continuam valendo na retomada (humano falou há pouco = robô calado, mas carimba)", async () => {
+  const repo = await world({ messages: [
+    { direction: "out", author: "sdr", text: "Oi, sou a Manuela", at: ISO("2026-08-19T12:50:00Z") },
+    { direction: "in", text: "oi Manuela", at: ISO("2026-08-19T12:57:00Z") },
+  ] });
+  await repo.update("wa_threads", TID, { lastDir: "in", lastAt: ISO("2026-08-19T12:57:00Z"), lastText: "oi Manuela", lastInId: "m2" });
+  const fakes = makeFakes();
+  const done = await brainOf(repo, fakes).resumeStalled();
+  assert.deepEqual(done, [{ thread: TID, action: "human-active" }]);
+  assert.equal(fakes.sent.length, 0);
+  assert.equal((await repo.get("wa_threads", TID)).brain.msgId, "m2");
+});
+
+test("mesma mensagem em tratamento (IA lenta): segundo disparo é ignorado, sem resposta dupla", async () => {
+  const repo = await world({ messages: [{ direction: "in", text: "sim como faço?", at: ISO("2026-08-19T12:57:00Z") }] });
+  await repo.update("wa_threads", TID, { lastDir: "in", lastAt: ISO("2026-08-19T12:57:00Z"), lastText: "sim como faço?", lastInId: "m1" });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Perfeito, qual período fica melhor?" }, { acao: "responder", mensagem: "Perfeito, qual período fica melhor?" }] });
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const slowAi = { configured: () => true, sdrDecide: async (ctx) => { await gate; return fakes.anthropic.sdrDecide(ctx); } };
+  const brain = makeSdrBrain({ repo, whatsapp: fakes.wa, anthropic: slowAi, log: { warn: () => {}, info: () => {} }, now: () => NOW, replyDelayMs: 0, sleep: async () => {} });
+  const first = brain.handleInbound({ message: { from: TID, text: "sim como faço?", id: "m1" } });
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(await brain.resumeStalled(), [{ thread: TID, action: "inflight" }]);
+  release();
+  assert.equal(await first, "responder");
+  assert.equal(fakes.sent.length, 1);
+  assert.equal((await repo.get("wa_threads", TID)).brain.action, "responder");
+});

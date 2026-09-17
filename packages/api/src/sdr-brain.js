@@ -342,9 +342,23 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
 
   // Uma mensagem recebida → uma decisão aplicada. Devolve a ação executada (ou
   // null quando o gate segurou). NUNCA lança: falha vira log + alerta espaçado.
-  async function handleInbound({ message } = {}) {
+  //
+  // CARIMBO DA DECISÃO (16/09): toda mensagem tratada deixa em thread.brain o
+  // id dela e a ação tomada (inclusive silêncio e gate). É o que permite à
+  // varredura (resumeStalled) saber que uma mensagem recebida ficou SEM
+  // decisão — o caso do processo reiniciando no meio do debounce/IA/atraso, em
+  // que a resposta morria com ele sem alerta nenhum (Vinicius, 16/09 22:06).
+  // `resumed` = disparo da varredura: sem debounce (o lead já esperou).
+  // Mensagem em tratamento neste processo (IA lenta passando dos 90s da
+  // varredura): o segundo disparo pra ela é ignorado, senão sairiam duas
+  // respostas. Reinício zera o conjunto — aí a varredura é quem entra.
+  const inflight = new Set();
+  async function handleInbound({ message, resumed = false } = {}) {
+    if (message?.id && inflight.has(message.id)) return "inflight";
+    if (message?.id) inflight.add(message.id);
+    let action;
     try {
-      return await decide({ message });
+      action = await decide({ message, resumed });
     } catch (err) {
       log.warn?.({ err: err.message }, "sdr-brain falhou");
       try {
@@ -355,11 +369,46 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
           await stamp(lead, { brainErrorAlertAt: new Date().toISOString() });
         }
       } catch { /* alerta é best-effort */ }
-      return "error";
+      action = "error";
     }
+    // "superseded" não carimba: a decisão desta mensagem é do disparo mais
+    // novo, e é ELE quem carimba (se morrer no caminho, a varredura o retoma).
+    if (message?.id && action !== "superseded") {
+      try {
+        const thread = await findThreadByPhone(repo, message.from || "");
+        if (thread) await repo.update("wa_threads", thread.id, { brain: { msgId: message.id, action: action || "gate", at: now().toISOString() } });
+      } catch { /* carimbo é best-effort: sem ele a varredura só tenta de novo */ }
+    }
+    if (message?.id) inflight.delete(message.id);
+    return action;
   }
 
-  async function decide({ message }) {
+  // VARREDURA DE MENSAGEM SEM DECISÃO. Conversa cuja última mensagem é do lead
+  // (lastDir=in), recebida há mais que o tempo normal de resposta e há menos
+  // que `maxAgeMs`, e cujo carimbo (thread.brain.msgId) NÃO é essa mensagem:
+  // o disparo do webhook morreu no meio (deploy/crash) e ninguém respondeu.
+  // Chama o mesmo handleInbound, sem debounce; todos os gates valem igual
+  // (humano ativo, handoff, teto, elegibilidade), então retomar nunca fala por
+  // cima de gente. Poucas por ciclo: retomada é conserto, não rajada.
+  async function resumeStalled({ minAgeMs = 90_000, maxAgeMs = 2 * HOUR, limit = 5 } = {}) {
+    const nowMs = now().getTime();
+    const threads = await repo.listWhere("wa_threads", { lastDir: "in", lastAt: { gte: new Date(nowMs - maxAgeMs).toISOString() } });
+    const stalled = threads.filter((t) => {
+      const age = nowMs - (Date.parse(t.lastAt || "") || 0);
+      if (!(age >= minAgeMs && age <= maxAgeMs)) return false;
+      if (!t.lastInId) return false; // thread antiga sem o id: fica pro webhook
+      return t.brain?.msgId !== t.lastInId;
+    }).sort((a, b) => String(a.lastAt || "").localeCompare(String(b.lastAt || ""))).slice(0, limit);
+    const done = [];
+    for (const t of stalled) {
+      const action = await handleInbound({ message: { from: t.phone || t.id, text: t.lastText || "", id: t.lastInId }, resumed: true });
+      log.info?.({ thread: t.id, msg: t.lastInId, action }, "sdr-brain: mensagem sem decisão retomada");
+      done.push({ thread: t.id, action });
+    }
+    return done;
+  }
+
+  async function decide({ message, resumed = false }) {
     const at = now();
     const thread = await findThreadByPhone(repo, message?.from || "");
     if (!thread) return null;
@@ -391,7 +440,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     // acordar, se chegou mensagem MAIS NOVA que a que disparou esta decisão,
     // aborta — o disparo da última mensagem é quem responde, lendo a rajada
     // inteira e compilando um retorno só.
-    if (cfg.debounceSec > 0) await sleep(cfg.debounceSec * 1000);
+    if (cfg.debounceSec > 0 && !resumed) await sleep(cfg.debounceSec * 1000);
     const msgs = await listMessages(repo, thread.id);
     if (message?.id) {
       const lastIn = [...msgs].reverse().find((m) => m.direction === "in");
@@ -721,5 +770,22 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     return "responder";
   }
 
-  return { handleInbound };
+  return { handleInbound, resumeStalled };
+}
+
+// Poller da varredura: 60s, single-flight, no-op sem cérebro. Ver resumeStalled.
+export function startSdrBrainSweep(brain, { intervalMs = 60_000, log = console } = {}) {
+  if (!brain?.resumeStalled) return { stop: () => {}, run: async () => {} };
+  let running = false;
+  const run = async () => {
+    if (running) return;
+    running = true;
+    try { await brain.resumeStalled(); }
+    catch (err) { log.warn?.({ err: err.message }, "varredura do sdr-brain falhou"); }
+    finally { running = false; }
+  };
+  const timer = setInterval(run, intervalMs);
+  timer.unref?.();
+  setTimeout(run, 40_000).unref?.();
+  return { stop: () => clearInterval(timer), run };
 }
