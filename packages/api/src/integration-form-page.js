@@ -1,4 +1,6 @@
-// Página pública do Formulário de Integração (/fi/:id). HTML standalone servido
+// Página pública do Formulário de Integração e dos irmãos dele (/fi/:id): o
+// TIPO do documento (integracao, nota_fiscal) só muda título, texto de abertura,
+// perguntas e termo, que chegam prontos no payload. HTML standalone servido
 // pela API, no design system Lever Premium (paper claro, ink navy, teal com
 // parcimônia) — o mesmo visual do form de captação, mas com estrutura de
 // FORMULÁRIO LONGO (tudo numa página, seções numeradas, revisão antes de
@@ -109,21 +111,20 @@ function doneHtml(f, { justSent = false } = {}) {
     <div class="mark">✓</div>
     <h1>${justSent ? "Recebemos tudo, obrigado!" : "Este formulário já foi enviado"}</h1>
     <p>${justSent
-      ? "Suas respostas foram para o time de integração. A gente usa exatamente elas pra configurar as suas contas, e o resto a gente resolve junto na call."
+      ? esc(f.doneText || "Recebemos as suas respostas.")
       : `As respostas chegaram${when ? ` em ${when}` : ""}. Se alguma informação mudou, fale com o time da LeverAds que a gente atualiza aqui.`}</p>
   </div>`;
 }
 
 export function integrationFormPageHtml(f, { done = false } = {}) {
-  const title = "Formulário de Integração · LeverAds";
+  const title = `${f.title || "Formulário de Integração"} · LeverAds`;
   const body = done || f.status === "respondido"
     ? doneHtml(f)
     : `
   <header class="hero">
     <div class="brand"><img src="${BRAND_ICON}" alt=""><span>LeverAds</span></div>
-    <h1>Formulário de Integração</h1>
-    <p>Antes da call de integração a gente precisa conhecer a sua operação: quais contas entram, de onde os anúncios saem, para onde vão, o que não pode ser clonado e como fica o estoque. É o que a gente configura na sua conta, então vale responder com calma.</p>
-    <p>São poucos minutos. Tudo aqui é obrigatório, menos a última parte (indicação), que fica a seu critério.</p>
+    <h1>${esc(f.title || "Formulário de Integração")}</h1>
+    ${(Array.isArray(f.hero) ? f.hero : []).map((p) => `<p>${esc(p)}</p>`).join("\n    ")}
     ${f.clientName ? `<div class="who">${esc(f.clientName)}</div>` : ""}
   </header>
   <form id="form" novalidate></form>
@@ -191,6 +192,7 @@ const CLIENT_JS = `
       n = el('input');
       n.type = type === 'email' ? 'email' : type === 'phone' ? 'tel' : 'text';
       if (type === 'phone') n.inputMode = 'tel';
+      if (opts && opts.digits) n.inputMode = 'numeric';
     }
     if (value) n.value = value;
     n.addEventListener('input', function () { onChange(n.value); });
@@ -266,7 +268,7 @@ const CLIENT_JS = `
       if (q.help) wrap.appendChild(el('div', 'help', q.help));
       wrap.appendChild(el('div', 'err'));
     } else {
-      ctl = field(q.type, q.options, '', function (v) { answers[q.key] = v; sync(); });
+      ctl = field(q.type, q.digits ? { digits: q.digits } : q.options, '', function (v) { answers[q.key] = v; sync(); });
       wrap.appendChild(ctl);
       wrap.appendChild(el('div', 'err'));
     }
@@ -364,6 +366,8 @@ const CLIENT_JS = `
         msg = 'E-mail inválido.';
       } else if (q.type === 'phone' && String(v).replace(/\\D/g, '').length < 10) {
         msg = 'Telefone inválido (com DDD).';
+      } else if (q.digits && String(v).replace(/\\D/g, '').length !== q.digits) {
+        msg = 'Precisa ter ' + q.digits + ' dígitos.';
       }
       if (msg) { setBad(b.node, msg); if (!first) first = b.node; }
     });

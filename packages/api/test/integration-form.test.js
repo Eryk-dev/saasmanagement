@@ -285,3 +285,126 @@ test("formPendencias: formulário vazio não inventa pendência", () => {
   assert.deepEqual(formPendencias({}), []);
   assert.deepEqual(formPendencias(), []);
 });
+
+// ── Dados pra nota fiscal (kind: "nota_fiscal", Leo 17/09/2026) ──────────────
+// Segundo questionário na MESMA máquina: link opaco, envio único, snapshot e
+// termo. O que muda é o conteúdo (cadastro do tomador) e o destino: a ficha do
+// cliente recebe `fiscal`, pronto pro financeiro emitir a NFS-e.
+import { FORM_KINDS } from "../src/integration-form.js";
+import { fiscalRecord, fiscalSummary } from "../src/fiscal-form.js";
+
+const FISCAL_PJ = {
+  nome: "Ricardo Nunes", funcao: "Sócio", whatsapp: "41999990004", email: "ricardo@rn.example",
+  tipo: "Pessoa jurídica (CNPJ)",
+  razao_social: "RN Distribuidora de Ferramentas LTDA", nome_fantasia: "RN Distribuidora",
+  cnpj: "12.345.678/0001-90", inscricao_estadual: "Isento", regime: "Simples Nacional",
+  cep: "80010000", logradouro: "Rua XV de Novembro", numero: "100", bairro: "Centro", cidade: "Curitiba", uf: "PR",
+  email_nf: "financeiro@rn.example", momento: "Depois do pagamento (padrão)",
+  confere_receita: true, confere_mudanca: true,
+  termo_aceite: true, assinatura: "Ricardo Nunes", assinatura_doc: "123.456.789-00",
+};
+
+const criarFiscal = (app, extra = {}) => app.inject({
+  method: "POST", url: "/api/integration_forms",
+  payload: { saas: "leverads", kind: "nota_fiscal", customerId: "cu_1", customerName: "RN Distribuidora", leadId: "le_1", ...extra },
+});
+
+test("nota fiscal: o pedido guarda o tipo, e tipo inventado vira integração", async (t) => {
+  const app = buildApp(makeMemRepo());
+  t.after(() => app.close());
+  const doc = (await criarFiscal(app)).json();
+  assert.equal(doc.kind, "nota_fiscal");
+  assert.match(doc.id, /^if_[a-f0-9]{20}$/);
+  const outro = (await criarFiscal(app, { kind: "qualquer" })).json();
+  assert.equal(outro.kind, "integracao");
+  const semKind = (await criar(app)).json();
+  assert.equal(semKind.kind, "integracao");
+});
+
+test("nota fiscal: a página abre com o título e as perguntas fiscais, e a prévia aceita ?kind", async (t) => {
+  const app = buildApp(makeMemRepo());
+  t.after(() => app.close());
+  const { id } = (await criarFiscal(app)).json();
+  const page = await app.inject({ method: "GET", url: `/fi/${id}` });
+  assert.equal(page.statusCode, 200);
+  assert.ok(page.body.includes("Dados para nota fiscal"));
+  assert.ok(page.body.includes("Endereço fiscal"), "as seções fiscais vão inline pra página");
+  assert.ok(!page.body.includes("Suas contas de marketplace"), "as perguntas de integração ficam de fora");
+
+  const prev = await app.inject({ method: "GET", url: "/fi/preview?kind=nota_fiscal" });
+  assert.ok(prev.body.includes("Dados para nota fiscal"));
+  const prevInt = await app.inject({ method: "GET", url: "/fi/preview" });
+  assert.ok(prevInt.body.includes("Suas contas de marketplace"), "sem kind a prévia é a de integração");
+
+  const qs = await app.inject({ method: "GET", url: "/api/integration-forms/questions?kind=nota_fiscal" });
+  assert.equal(qs.json().kind, "nota_fiscal");
+  assert.deepEqual(qs.json().kinds.map((k) => k.key), ["integracao", "nota_fiscal"]);
+});
+
+test("nota fiscal: PJ exige CNPJ com 14 dígitos e não pede CPF; PF é o inverso", () => {
+  const secs = FORM_KINDS.nota_fiscal.sections;
+  assert.deepEqual(validateIntegrationAnswers(FISCAL_PJ, secs), []);
+  assert.ok(validateIntegrationAnswers({ ...FISCAL_PJ, cnpj: "12.345.678/0001-9" }, secs).some((e) => e.key === "cnpj"));
+  assert.ok(validateIntegrationAnswers({ ...FISCAL_PJ, cep: "8001" }, secs).some((e) => e.key === "cep"));
+  assert.ok(validateIntegrationAnswers({ ...FISCAL_PJ, uf: "XX" }, secs).some((e) => e.key === "uf"));
+
+  const { razao_social, cnpj, inscricao_estadual, regime, ...semPj } = FISCAL_PJ;
+  const pf = { ...semPj, tipo: "Pessoa física (CPF)", nome_pf: "Ricardo Nunes", cpf: "123.456.789-00" };
+  assert.deepEqual(validateIntegrationAnswers(pf, secs), []);
+  assert.ok(validateIntegrationAnswers({ ...pf, cpf: "" }, secs).some((e) => e.key === "cpf"));
+  // O que é da PJ não viaja junto quando a resposta é PF.
+  const limpo = sanitizeIntegrationAnswers({ ...pf, cnpj: "12.345.678/0001-90" }, secs);
+  assert.equal(limpo.cnpj, undefined);
+  assert.equal(limpo.nome_fantasia, undefined, "opcional da PJ nem é guardado na resposta PF");
+  assert.equal(limpo.complemento, "", "opcional visível em branco fica vazio, não falta");
+});
+
+test("nota fiscal: o envio vai pra ficha do cliente e pro card do lead, sem mexer na integração", async (t) => {
+  const repo = makeMemRepo();
+  await repo.create("customers", { id: "cu_1", saas: "leverads", name: "RN Distribuidora" });
+  await repo.create("leads", { id: "le_1", saas: "leverads", name: "Ricardo" });
+  const app = buildApp(repo);
+  t.after(() => app.close());
+  const { id } = (await criarFiscal(app)).json();
+
+  const faltando = await app.inject({ method: "POST", url: `/public/integration-forms/${id}`, payload: { answers: { ...FISCAL_PJ, confere_receita: false } } });
+  assert.equal(faltando.statusCode, 400);
+
+  const res = await app.inject({ method: "POST", url: `/public/integration-forms/${id}`, payload: { answers: FISCAL_PJ } });
+  assert.equal(res.statusCode, 201);
+
+  const doc = await repo.get("integration_forms", id);
+  assert.equal(doc.status, "respondido");
+  assert.equal(doc.kind, "nota_fiscal");
+  assert.equal(doc.sections[0].key, "responsavel", "o snapshot é o das perguntas fiscais");
+  assert.equal(doc.term, FORM_KINDS.nota_fiscal.term);
+  assert.equal(doc.respondent.name, "Ricardo Nunes");
+
+  const customer = await repo.get("customers", "cu_1");
+  assert.equal(customer.fiscal.nome, "RN Distribuidora de Ferramentas LTDA");
+  assert.equal(customer.fiscal.documento, "12.345.678/0001-90");
+  assert.equal(customer.fiscal.endereco.cep, "80010-000");
+  assert.equal(customer.fiscal.emailNf, "financeiro@rn.example");
+  assert.equal(customer.fiscalFormId, id);
+
+  const lead = await repo.get("leads", "le_1");
+  assert.equal(lead.fiscalFormId, id);
+  assert.equal(lead.integrationFormId, undefined, "não é o formulário de integração");
+  const acts = await repo.list("activities");
+  assert.equal(acts.length, 1);
+  assert.equal(acts[0].meta.event, "fiscal_form");
+  assert.match(acts[0].meta.summary, /RN Distribuidora de Ferramentas LTDA · 12\.345\.678\/0001-90 · Curitiba\/PR · Simples Nacional/);
+
+  const again = await app.inject({ method: "POST", url: `/public/integration-forms/${id}`, payload: { answers: FISCAL_PJ } });
+  assert.equal(again.statusCode, 409);
+});
+
+test("fiscalRecord/fiscalSummary: PF sai com CPF formatado e sem regime", () => {
+  const pf = { tipo: "Pessoa física (CPF)", nome_pf: "Ana Souza", cpf: "98765432100", cidade: "Curitiba", uf: "PR", cep: "80010000" };
+  assert.equal(fiscalSummary(pf), "Ana Souza · 987.654.321-00 · Curitiba/PR");
+  const r = fiscalRecord(pf, { formId: "if_x", at: "2026-09-17T12:00:00.000Z" });
+  assert.equal(r.tipo, "PF");
+  assert.equal(r.documento, "987.654.321-00");
+  assert.equal(r.regime, "");
+  assert.equal(r.formId, "if_x");
+});
