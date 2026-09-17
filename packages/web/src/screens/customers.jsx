@@ -159,9 +159,13 @@ function CustomersScreen({ initialTab }) {
   }, [isLeverads]);
 
   useEffect(() => {
-    api.list("subscriptions").then((rows) => setSubs(rows.filter((s) => s.saas === product?.id))).catch(() => {});
-    api.list("plans").then((rows) => setPlans(rows.filter((p) => p.saas === product?.id))).catch(() => {});
-    api.list("invoices").then((rows) => setInvoices(rows.filter((i) => i.saas === product?.id))).catch(() => {});
+    // Filtro por produto NO SERVIDOR (o predicado existe em listFilter): antes
+    // baixava as tabelas inteiras dos 3 produtos pra jogar 2/3 fora aqui.
+    if (!product?.id) return;
+    const q = { saas: product.id };
+    api.list("subscriptions", q).then((rows) => setSubs(rows.filter((s) => s.saas === product?.id))).catch(() => {});
+    api.list("plans", q).then((rows) => setPlans(rows.filter((p) => p.saas === product?.id))).catch(() => {});
+    api.list("invoices", q).then((rows) => setInvoices(rows.filter((i) => i.saas === product?.id))).catch(() => {});
   }, [product?.id, version]);
 
   useEffect(() => {

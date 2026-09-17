@@ -257,6 +257,19 @@ async function peopleObject(repo) {
   return obj;
 }
 
+const isTruthyFlag = (v) => v === "1" || v === "true";
+
+// Lista de propostas = o que a tela Propostas e o card do lead mostram: quem,
+// quando, aberturas, aceite. Projetado no Postgres (listWhere + fields) pra não
+// parsear o snapshot inteiro; `data` fica só com o lead (nome/empresa/telefone
+// pro botão de WhatsApp), sem as respostas do formulário.
+const PROPOSAL_SUMMARY_FIELDS = ["saas", "lead", "template", "name", "origin", "layout", "createdAt", "updatedAt", "accepted", "acceptedAt", "views", "lastViewedAt", "data"];
+function summarizeProposal(p) {
+  const l = p?.data?.lead || {};
+  const { editKey, data, ...rest } = p; // eslint-disable-line no-unused-vars
+  return { ...rest, data: { lead: { name: l.name ?? null, company: l.company ?? null, firstName: l.firstName ?? null, phone: l.phone ?? null } } };
+}
+
 // Filters applied to GET list endpoints. Each returns a predicate or null.
 function listFilter(collection, q) {
   if (collection === "deals") {
@@ -495,7 +508,44 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   const pickCustomer = (c) =>
     Object.fromEntries(CUSTOMER_PICK_KEYS.filter((k) => c?.[k] !== undefined).map((k) => [k, c[k]]));
 
+  // Campos do lead que NENHUMA tela lê do SEED (medido em 17/09/2026: fbc/fbp
+  // são cookies do Pixel guardados pra Meta CAPI, classificacao não tem leitor
+  // no web; sourceUrl só aparece no drawer, que busca o lead inteiro em
+  // GET /api/leads/:id ao abrir). Juntos eram ~1,1 MB
+  // dos 4,4 MB de leads que todo bootstrap arrastava. PATCH faz merge no
+  // servidor, então a cópia sem esses campos nunca os apaga.
+  const LEAD_SEED_DROP = ["fbc", "fbp", "classificacao", "sourceUrl"];
+  const slimLead = (l) => {
+    if (!l || !LEAD_SEED_DROP.some((k) => k in l)) return l;
+    const c = { ...l };
+    for (const k of LEAD_SEED_DROP) delete c[k];
+    return c;
+  };
+
+  // Memo do bootstrap por usuário × revisão do banco: o SSE faz TODA aba aberta
+  // recarregar o bootstrap no mesmo segundo depois de qualquer escrita — N abas
+  // viravam N leituras de 15 coleções + serialização de 4 MB. A chave leva o
+  // rev (changes.js: qualquer escrita com bump muda) e o dia (tasksLate compara
+  // com hoje); o TTL curto cobre escrita `silent` que o bootstrap lê. Guardamos
+  // a PROMISE pra requisições simultâneas coalescerem numa computação só.
+  // Só com o repo real: o mem-repo dos testes nunca chama bump, o rev ficaria
+  // em 0 e os testes leriam resposta velha depois de escrever.
+  const bootstrapMemo = repo === defaultRepo ? new Map() : null;
+  const BOOTSTRAP_TTL_MS = 20_000;
   app.get("/api/bootstrap", async (req) => {
+    if (!bootstrapMemo) return buildBootstrap(req);
+    const now = Date.now();
+    const key = `${req.authUser?.id || "key"}|${currentRev()}|${new Date().toISOString().slice(0, 10)}`;
+    const hit = bootstrapMemo.get(key);
+    if (hit && now - hit.at < BOOTSTRAP_TTL_MS) return hit.promise;
+    const promise = buildBootstrap(req);
+    bootstrapMemo.set(key, { at: now, promise });
+    promise.catch(() => bootstrapMemo.delete(key));
+    if (bootstrapMemo.size > 64) for (const [k, v] of bootstrapMemo) if (now - v.at > BOOTSTRAP_TTL_MS) bootstrapMemo.delete(k);
+    return promise;
+  });
+
+  async function buildBootstrap(req) {
     const can = (screen) => canScreen(req.authUser, screen);
     const [products, customers, attention, leads, nps, lbMonth, lbAll, goals, portfolio, people, agendaBlocks, consultations] =
       await Promise.all([
@@ -550,10 +600,6 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       }
     } catch { /* contador é enfeite: falhar aqui não pode derrubar o bootstrap */ }
 
-    // Cookies do Pixel (`fbc`/`fbp`) ficam no banco pra Meta CAPI (submit do
-    // form, mais abaixo) e ninguém no navegador lê: eram ~420 KB de string
-    // aleatória por bootstrap, que o gzip não encolhe.
-    const stripTracking = ({ fbc, fbp, ...l }) => l; // eslint-disable-line no-unused-vars
     // O que o CONFIG precisa do banco/integrações vai numa leva só: eram cinco
     // awaits em série no meio do objeto (templates, 3× app_config do Google,
     // saúde do WhatsApp), cada um uma ida ao pooler do Supabase.
@@ -573,7 +619,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       // "Cliente" VAZIA e não dava pra gerar o link (foi o que travou o
       // Jonathan em 27/08/2026 — e o Vitor, do outro lado, em 24/08).
       CUSTOMERS: can("customers") ? customers : customers.map(pickCustomer),
-      LEADS: can("pipeline") || can("today") || can("analise") ? leads.map(stripTracking) : [], // Meu dia e Análise do pipeline = views dos mesmos leads
+      LEADS: can("pipeline") || can("today") || can("analise") ? leads.map(slimLead) : [], // Meu dia e Análise do pipeline = views dos mesmos leads
       AGENDA_BLOCKS: agendaBlocks, // bloqueios de horário por pessoa (tela Agenda) — alimentam a "agenda ocupada" ao marcar call/integração
       // Consulta da mentoria ocupa a agenda de quem atende: sem isso dava pra
       // marcar call de venda por cima do encontro de um cliente. Vai SÓ a
@@ -624,7 +670,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
         whatsapp: { configured: whatsappClient.configured(), health: waHealthSummary(waHealth) },
       },
     };
-  });
+  }
 
   app.get("/api/portfolio", async () => await computePortfolio(repo));
 
@@ -716,6 +762,23 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   app.get("/api/:collection", async (req, reply) => {
     const { collection } = req.params;
     if (!isExposed(collection)) return reply.code(404).send({ error: `Unknown collection: ${collection}` });
+    // Propostas: cada documento é um SNAPSHOT inteiro (slides, calc, tema,
+    // respostas) e a tabela passa de 38 MB — listar tudo custava 2 s de servidor
+    // e 27 MB no fio pra uma tela que só mostra nome, data, aberturas e aceite.
+    // A lista devolve o RESUMO, projetado no Postgres (listWhere + fields), e
+    // nunca o editKey (segredo de edição). `?full=1` traz o documento inteiro.
+    if (collection === "proposals" && !isTruthyFlag(req.query.full)) {
+      const { saas, lead, template } = req.query;
+      const rows = await repo.listWhere("proposals", { saas, lead, template }, { fields: PROPOSAL_SUMMARY_FIELDS });
+      return rows.map(summarizeProposal);
+    }
+    // Timeline: a tabela de activities é a mais escrita do cockpit (o cache de
+    // list() cai a cada toque), então filtrar em JS era um SELECT frio de 7 MB
+    // por drawer aberto. Com filtro, o Postgres faz o corte (índice por lead).
+    if (collection === "activities" && (req.query.lead || req.query.saas || req.query.type || req.query.since)) {
+      const { lead, saas, type, since } = req.query;
+      return repo.listWhere("activities", { lead, saas, type, at: { gte: since } });
+    }
     let items = await repo.list(collection);
     const f = listFilter(collection, req.query);
     if (f) items = items.filter(f);

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { activateNavigation, beginPageRequest, createNavigationLoad } from "../src/lib/navigation-loading.js";
+import { activateNavigation, beginPageRequest, createNavigationLoad, trackChunk } from "../src/lib/navigation-loading.js";
 
 function clock() {
   let now = 0, id = 0;
@@ -60,6 +60,48 @@ test("slow reads keep loading until the user chooses to see partial content", ()
   assert.deepEqual(load.getSnapshot(), { ready: false, slow: true });
   load.reveal(); finish(); finish(); time.tick(100);
   assert.deepEqual(load.getSnapshot(), { ready: true, slow: false }); stop();
+});
+
+// Chunks de tela (React.lazy): o loader roda no render, antes da navegação ser
+// ativada — o download entra na fila e vira leitura pendente da PRÓXIMA
+// navegação, no epoch dela.
+const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+test("a screen chunk queued before activation holds the reveal until it lands", async () => {
+  const time = clock();
+  let resolveChunk;
+  trackChunk(new Promise((resolve) => { resolveChunk = resolve; }));
+  const load = createNavigationLoad(time), stop = activateNavigation(load);
+  time.tick(1000);
+  assert.equal(load.getSnapshot().ready, false, "minimumMs passou mas o chunk ainda não chegou");
+  resolveChunk({}); await flush();
+  time.tick(79); assert.equal(load.getSnapshot().ready, false);
+  time.tick(1); assert.equal(load.getSnapshot().ready, true);
+  stop();
+});
+
+test("a chunk that fails to download still releases the page", async () => {
+  const time = clock();
+  let rejectChunk;
+  trackChunk(new Promise((_, reject) => { rejectChunk = reject; })).catch(() => {});
+  const load = createNavigationLoad(time), stop = activateNavigation(load);
+  time.tick(1000); assert.equal(load.getSnapshot().ready, false);
+  rejectChunk(new Error("404")); await flush();
+  time.tick(80); assert.equal(load.getSnapshot().ready, true);
+  stop();
+});
+
+test("a chunk drained into one navigation never touches the next one", async () => {
+  const time = clock();
+  let resolveChunk;
+  trackChunk(new Promise((resolve) => { resolveChunk = resolve; }));
+  const first = createNavigationLoad(time), stopFirst = activateNavigation(first);
+  const second = createNavigationLoad(time), stopSecond = activateNavigation(second); stopFirst();
+  const finish = beginPageRequest("GET");
+  resolveChunk({}); await flush(); time.tick(1000);
+  assert.equal(second.getSnapshot().ready, false, "o chunk era da navegação anterior");
+  finish(); time.tick(80); assert.equal(second.getSnapshot().ready, true);
+  stopSecond();
 });
 
 test("unmounted pages cancel timers and do not publish stale completions", () => {

@@ -3,11 +3,10 @@ import react from "@vitejs/plugin-react";
 
 const API_TARGET = process.env.API_TARGET || "http://localhost:8787";
 
-// O app entra por `import("./app.jsx")` DEPOIS do /api/bootstrap (main.jsx: os
-// módulos leem window.SEED no import), então o Vite não sabe pré-carregar o
-// chunk e o navegador só começava a baixar os ~580 KB (gzip) do app quando o
-// bootstrap acabava. `modulepreload` baixa e compila sem EXECUTAR — a regra do
-// SEED continua valendo — e o download sai do caminho crítico.
+// O app entra por `import("./app.jsx")` (main.jsx pede o chunk em paralelo com
+// o /api/bootstrap desde 17/09), mas o Vite não pré-carrega import dinâmico:
+// `modulepreload` no index.html faz o navegador baixar e compilar o shell antes
+// mesmo do index.js rodar, sem EXECUTAR (nenhum módulo lê window.SEED no import).
 function preloadAppChunk() {
   return {
     name: "cockpit-preload-app-chunk",
@@ -15,7 +14,10 @@ function preloadAppChunk() {
     transformIndexHtml: {
       order: "post",
       handler(html, ctx) {
-        const chunk = Object.values(ctx.bundle || {}).find((c) => c.type === "chunk" && /[\\/]src[\\/]app\.jsx$/.test(c.facadeModuleId || ""));
+        // Com as telas em chunks separados o shell deixa de ter "fachada" única
+        // (facadeModuleId vazio): acha pelo módulo que ele contém.
+        const isApp = (id) => /[\\/]src[\\/]app\.jsx$/.test(id || "");
+        const chunk = Object.values(ctx.bundle || {}).find((c) => c.type === "chunk" && (isApp(c.facadeModuleId) || (c.moduleIds || []).some(isApp)));
         if (!chunk) return html;
         const tags = [{ tag: "link", attrs: { rel: "modulepreload", href: `/${chunk.fileName}`, crossorigin: true }, injectTo: "head" }];
         for (const css of chunk.viteMetadata?.importedCss || []) tags.push({ tag: "link", attrs: { rel: "preload", as: "style", href: `/${css}` }, injectTo: "head" });
@@ -27,6 +29,20 @@ function preloadAppChunk() {
 
 export default defineConfig({
   plugins: [react(), preloadAppChunk()],
+  build: {
+    // As telas carregam sob demanda (React.lazy em app.jsx): o shell (chrome,
+    // drawer do lead, libs) é um chunk, cada tela é outro. React/react-dom num
+    // chunk próprio pra não trocar de hash a cada mudança de tela.
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (/\/node_modules\/(react|react-dom|scheduler)\//.test(id)) return "vendor-react";
+          return undefined;
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     // Proxy API calls to the Fastify server so the browser stays same-origin in dev.

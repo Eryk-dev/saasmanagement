@@ -1765,57 +1765,11 @@ function RolesGuide() {
   );
 }
 
-// ── Portão do treino diário ──────────────────────────────────────────────────
-// Quem tem vaga operacional (etiqueta sdr/closer/integrator/social) só começa a
-// trabalhar depois de zerar a fila do dia: qualquer tela fora dos Treinamentos
-// fica atrás deste overlay enquanto houver card pendente. A cada revisão o SSE
-// atualiza a contagem; zerou, o cockpit libera sozinho. Falha da API nunca
-// tranca a tela (fail-open).
-// ADMIN NUNCA É TRAVADO, mesmo tendo vaga: Leo e Jonathan fecham venda e o Eryk
-// integra, mas o treinamento é opcional pra quem toca o negócio. Sem esta
-// exceção o portão prendia justamente quem precisa entrar no cockpit pra
-// trabalhar.
-const GATE_ROLES = ["sdr", "closer", "integrator", "social"];
+// O portão do treino diário (TrainingGate) mora em components/training-gate.jsx:
+// o app monta ele em toda tela, e aqui dentro arrastava o baralho inteiro pro shell.
 
-function TrainingGate({ saasId, active }) {
-  const { version } = useData();
-  const [pending, setPending] = useS(null); // null = sem dado (não trava)
-  const me = currentUser();
-  const gated = !!me && !isAdminUser(me) && (me.roles || []).some((r) => GATE_ROLES.includes(r));
-  useE(() => {
-    if (!saasId || !gated) { setPending(null); return; }
-    // Na própria tela de treino o portão não aparece e a tela já pede /queue:
-    // pedir de novo aqui era a mesma fila em dobro a cada abertura e a cada
-    // tick do SSE. Ao sair da tela (`active` volta) o efeito rebusca.
-    if (!active) return;
-    let alive = true;
-    api.trainingQueue(saasId)
-      .then((q) => { if (alive) setPending((q.decks || []).reduce((a, d) => a + d.counts.new + d.counts.learning + d.counts.review, 0)); })
-      .catch(() => alive && setPending(null));
-    return () => { alive = false; };
-  }, [saasId, gated, active, version]);
-
-  if (!active || !gated || !pending) return null;
-  return (
-    <div style={{ position: "fixed", inset: 0, zIndex: "var(--z-alarme)", background: "color-mix(in srgb, var(--bg-0) 88%, transparent)", backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div style={{ width: "min(440px, 100%)", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 26, textAlign: "center" }}>
-        <div style={{ fontSize: 34 }}>🧠</div>
-        <div style={{ fontFamily: "var(--display)", fontSize: 19, fontWeight: 700, marginTop: 8 }}>Treino do dia primeiro</div>
-        <div style={{ fontSize: 13.5, color: "var(--fg-2)", lineHeight: 1.55, marginTop: 8 }}>
-          Você tem <b>{pending} {pending === 1 ? "card" : "cards"}</b> na sua fila de hoje.
-          Zerou a fila, o cockpit libera sozinho.
-        </div>
-        <div style={{ marginTop: 16 }}>
-          <PrimaryButton onClick={() => { try { location.hash = "#training"; } catch { /* ignore */ } }}>Começar o treino →</PrimaryButton>
-        </div>
-        <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", marginTop: 12 }}>uns minutos por dia · repetição espaçada é o que fixa</div>
-      </div>
-    </div>
-  );
-}
-
-// TrainingScreen/TrainingGate são o que o app monta. Os outros saem daqui pro
+// TrainingScreen é o que o app monta. Os outros saem daqui pro
 // smoke de render (scripts/smoke-ssr.mjs) poder exercitar os estados que o SSR
 // não alcança pela tela inteira (fila vazia, raio-x, card sem frente): os
 // dados chegam por efeito, que não roda no SSR.
-export { TrainingScreen, TrainingGate, StartCard, DeckList, MemoryCard, NextExamCard, SessionProgress, PersonDetail, CardList, urgencyOf, needsAttention };
+export { TrainingScreen, StartCard, DeckList, MemoryCard, NextExamCard, SessionProgress, PersonDetail, CardList, urgencyOf, needsAttention };

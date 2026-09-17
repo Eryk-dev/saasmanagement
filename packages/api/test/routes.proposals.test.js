@@ -90,6 +90,39 @@ test("dispatcher: template publicado → provider native, lead recebe URLs, snap
   await app.close();
 });
 
+test("GET /api/proposals lista o RESUMO (sem slides/calc/editKey, data só com o lead); ?full=1 traz o snapshot inteiro", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("leads", { ...LEAD });
+  await repo.create("leads", { ...LEAD, id: "le_p2", name: "Bruno Lima", company: "Loja Y" });
+  await repo.create("products", { id: "outro", name: "Outro", funnel: [{ stage: "Inbox" }] });
+  await app.inject({ method: "POST", url: "/api/leads/le_p1/proposal" });
+  await app.inject({ method: "POST", url: "/api/leads/le_p2/proposal" });
+  await repo.create("proposals", { id: "pr_outro", saas: "outro", lead: "le_x", slides: [{}], editKey: "segredo", data: { lead: { name: "Z" } } });
+
+  const list = (await app.inject({ url: "/api/proposals?saas=leverads" })).json();
+  assert.equal(list.length, 2);
+  const p = list.find((x) => x.lead === "le_p1");
+  assert.equal(p.saas, "leverads");
+  assert.equal(p.template, "pt_lever");
+  assert.ok(p.createdAt);
+  assert.equal(p.views, 0);
+  assert.deepEqual(p.data, { lead: { name: "Ana Souza", company: "Loja X", firstName: "Ana", phone: "" } });
+  for (const k of ["slides", "calc", "theme", "state", "editKey", "viewLog"]) assert.equal(k in p, false, `${k} não pode ir na lista`);
+  assert.equal("answers" in p.data, false);
+
+  // filtros por lead e template continuam valendo
+  assert.deepEqual((await app.inject({ url: "/api/proposals?lead=le_p2" })).json().map((x) => x.lead), ["le_p2"]);
+  assert.equal((await app.inject({ url: "/api/proposals?template=pt_lever" })).json().length, 2);
+  assert.equal((await app.inject({ url: "/api/proposals" })).json().length, 3);
+
+  // ?full=1 é o documento inteiro (uso do MCP/scripts)
+  const full = (await app.inject({ url: "/api/proposals?saas=leverads&full=1" })).json().find((x) => x.lead === "le_p1");
+  assert.equal(full.slides.length, 2);
+  assert.ok(full.editKey);
+  assert.equal(full.data.answers.accounts, "3-5");
+  await app.close();
+});
+
 test("POST /api/leads (espelho de SaaS externo) auto-gera a proposta nativa e sobrescreve o proposalUrl externo", async () => {
   const { app, repo } = await buildApp();
   // simula o espelho do leverads.com.br: lead criado pela rota genérica já com um
