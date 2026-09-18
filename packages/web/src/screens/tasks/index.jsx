@@ -13,7 +13,7 @@ import { allUsers, currentUser } from "../../lib/users.js";
 import { useIsMobile } from "../../lib/responsive.js";
 import { columnsOf, doneKeyOf, colKeyOf, byOrder, assigneesOf, taskUrl, fmtDue, todayYmd } from "../../lib/tasks.js";
 import { useTasksStore } from "./store.js";
-import { useBoardDnd } from "./dnd.js";
+import { useBoardDnd } from "../../components/kanban/dnd.js";
 import { loadPrefs, savePrefs, DEFAULT_FILTERS } from "./prefs.js";
 import { parseTaskHash, openTaskHash, clearTaskHash, useTaskHash } from "./hash.js";
 import { applyFilters, sortTasks, groupTasks, strip } from "./filters.js";
@@ -91,7 +91,6 @@ export function TasksScreen() {
   const lastClick = useRef(null);
   const boardRef = useRef(null);
   const rootRef = useRef(null);
-  const searchRef = useRef(null);
   const lastPointer = useRef({ x: 80, y: 120 });
   useEffect(() => {
     const on = (e) => { lastPointer.current = { x: e.clientX, y: e.clientY }; };
@@ -406,7 +405,7 @@ export function TasksScreen() {
 
   // ── Arrastar e soltar ────────────────────────────────────────────────────
   const selRef = useRef(selection); selRef.current = selection;
-  const dnd = useBoardDnd({ boardRef, onDrop: (p) => A.current.moveCards(p), getSelection: () => selRef.current });
+  const dnd = useBoardDnd({ boardRef, onDrop: (p) => A.current.moveCards(p), getSelection: () => selRef.current, ghostLabel: (n) => `${n} tarefas` });
   dndRef.current = dnd;
 
   // ── Teclado ──────────────────────────────────────────────────────────────
@@ -433,7 +432,6 @@ export function TasksScreen() {
       },
       open: (id) => openPanel(id),
       compose: (id) => { const g = groupsRef.current.find((x) => x.tasks.some((t) => t.id === id)) || groupsRef.current[0]; if (g) { setPrefs((p) => ({ ...p, collapsed: { ...p.collapsed, [g.key]: false } })); setComposer({ colKey: g.key, position: "top" }); } },
-      search: () => searchRef.current?.focus(),
       help: () => setHelp(true),
       remove: () => { if (selection.size > 1) A.current.bulkDelete(); else if (focusId) A.current.remove(focusId); },
       menu: (id) => { const r = rectOf(id); setMenu({ id, at: r ? { x: r.left + 24, y: r.top + 24 } : pointAnchor(lastPointer.current) }); },
@@ -504,7 +502,7 @@ export function TasksScreen() {
           "? atalhos",
         ].filter(Boolean).join(" · ");
       })()}>
-        <Toolbar prefs={prefs} setPrefs={setPrefs} users={users} labelOptions={labelOptions} labelColors={labelColors} columns={columns} q={q} setQ={setQ} searchRef={searchRef} onHelp={() => setHelp(true)}
+        <Toolbar prefs={prefs} setPrefs={setPrefs} users={users} labelOptions={labelOptions} labelColors={labelColors} columns={columns} q={q} setQ={setQ} onHelp={() => setHelp(true)}
           onNew={<PrimaryButton onClick={() => { const key = groups[0]?.key || columns[0].key; setPrefs((p) => ({ ...p, view: "board", collapsed: { ...p.collapsed, [key]: false } })); setComposer({ colKey: key, position: "top" }); boardRef.current?.scrollTo({ left: 0, behavior: "smooth" }); }}>+ Tarefa</PrimaryButton>} />
       </PageHead>
       <ActiveFiltersStrip prefs={prefs} setPrefs={setPrefs} users={users} columns={columns} />

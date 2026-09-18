@@ -3,6 +3,7 @@ import { SecondaryButton } from "../../atoms.jsx";
 import { Segmented } from "../../components/viz.jsx";
 import { Popover } from "../../components/popover.jsx";
 import { UserAvatarRing } from "../../components/user-picker.jsx";
+import { SearchInput } from "../../components/search-input.jsx";
 import { PRIORITIES } from "../../lib/tasks.js";
 import { DEFAULT_FILTERS, DEFAULT_FIELDS } from "./prefs.js";
 import { SORTS, GROUPS, activeFilterCount } from "./filters.js";
@@ -32,7 +33,7 @@ const TBtn = ({ btnRef, on, count, icon, label, onClick, hideLabelOnMobile = tru
 const toggleIn = (list, v) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
 
 export const VIEWS = [{ value: "board", label: "Quadro" }, { value: "list", label: "Lista" }, { value: "calendar", label: "Calendário" }, { value: "timeline", label: "Cronograma" }];
-export function Toolbar({ prefs, setPrefs, users, labelOptions, labelColors, columns, q, setQ, searchRef, onHelp, onNew }) {
+export function Toolbar({ prefs, setPrefs, users, labelOptions, labelColors, columns, q, setQ, onHelp, onNew }) {
   const [open, setOpen] = useState(null); // filter | sort | group | options
   const refs = { filter: useRef(null), sort: useRef(null), group: useRef(null), options: useRef(null) };
   const f = { ...DEFAULT_FILTERS, ...(prefs.filters || {}) };
@@ -45,13 +46,7 @@ export function Toolbar({ prefs, setPrefs, users, labelOptions, labelColors, col
   const close = () => setOpen(null);
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-      <div style={{ position: "relative" }}>
-        <span style={{ position: "absolute", left: 8, top: 8, color: "var(--fg-4)" }}><Icon name="search" size={14} /></span>
-        <input ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar tarefas" className="inp" aria-label="Buscar tarefas" style={{ width: 190, height: 32, paddingLeft: 28, paddingRight: q ? 26 : 30 }}
-          onKeyDown={(e) => { if (e.key === "Escape") { setQ(""); e.target.blur(); } }} />
-        {q ? <button type="button" onClick={() => setQ("")} aria-label="Limpar busca" style={{ position: "absolute", right: 6, top: 7, color: "var(--fg-4)" }}><Icon name="x" size={13} /></button>
-          : <span className="kbd hide-mobile" style={{ position: "absolute", right: 7, top: 7 }}>/</span>}
-      </div>
+      <SearchInput value={q} onChange={setQ} placeholder="Buscar tarefas" />
       <TBtn btnRef={refs.filter} on={nFilters > 0} count={nFilters} icon="filter" label="Filtrar" onClick={() => setOpen(open === "filter" ? null : "filter")} />
       <TBtn btnRef={refs.sort} on={sortOn} icon="sort" label="Ordenar" onClick={() => setOpen(open === "sort" ? null : "sort")} />
       <TBtn btnRef={refs.group} on={groupOn} icon="group" label="Agrupar" onClick={() => setOpen(open === "group" ? null : "group")} />

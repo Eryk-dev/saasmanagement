@@ -1,4 +1,5 @@
-// Webhooks de sistemas externos → cockpit. Hoje: Shopify da UniqueKids.
+// Webhooks de sistemas externos → cockpit. Hoje: Shopify da UniqueKids e
+// Linear (issue espelhada de um ticket de suporte).
 //
 // A cada pedido PAGO do produto "tarefas diárias" (ou compra acima de um piso),
 // cria um lead na UniqueKids pra Ana ligar oferecendo a consulta grátis. A rota
@@ -11,6 +12,7 @@ import { CREATE_DEFAULTS } from "./routes.js";
 import { firstStage } from "./stages.js";
 import { initialNextActionAt, logActivity, autoLeadOwner } from "./lead-flow.js";
 import { NOT_CONFIGURED } from "./http-status.js";
+import { applyLinearIssue, applyLinearComment } from "./ticket-linear.js";
 
 // "tarefas diárias" com tolerância a acento/plural (título do item ou do produto).
 const RE_TAREFAS = /tarefas?\s*di[aá]ri/i;
@@ -28,6 +30,23 @@ async function uniquekidsOwner(repo) {
   if (closers.length === 1) return closers[0].id;
   return null;
 }
+
+// Assinatura do Linear: HMAC-SHA256 do corpo CRU em hex, no header
+// `linear-signature`. Mesma postura da Shopify — sem segredo configurado, a
+// rota recusa (integração aberta seria porta pra qualquer um mexer em ticket).
+export function verifyLinearSignature(rawBody, sentHeader, secret) {
+  if (!secret || !sentHeader) return false;
+  const digest = crypto.createHmac("sha256", secret).update(rawBody || Buffer.alloc(0)).digest("hex");
+  const a = Buffer.from(String(sentHeader));
+  const b = Buffer.from(digest);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// Reenvio antigo (replay) não entra: o Linear carimba o instante no corpo.
+export const linearTimestampOk = (ts, { now = Date.now(), toleranceMs = 5 * 60_000 } = {}) => {
+  const n = Number(ts);
+  return !Number.isFinite(n) || n <= 0 ? true : Math.abs(now - n) <= toleranceMs;
+};
 
 // Verifica a assinatura HMAC-SHA256 (base64) do corpo cru com o segredo. Tempo
 // constante; comprimentos diferentes = inválido (timingSafeEqual exige igualdade).
@@ -170,6 +189,41 @@ export function registerWebhookRoutes(app, repo = defaultRepo, opts = {}) {
       if (!created) return reply.code(200).send({ ok: true, duplicate: true, lead: lead.id });
       req.log?.info(`shopify → lead uniquekids ${lead.id} (${reason})`);
       return reply.code(200).send({ ok: true, lead: lead.id });
+    });
+
+    // Linear → ticket de suporte. Cadastre a URL em Settings → API → Webhooks
+    // com os eventos "Issues" e "Comments" (LINEAR_WEBHOOK_SECRET = o segredo
+    // mostrado lá). Estado da issue vira status do ticket e comentário vira
+    // aviso na atividade e no sino (ticket-linear.js). Issue sem ticket: 200 e ignora
+    // — o webhook é do workspace inteiro, não só dos tickets.
+    wh.post("/api/webhooks/linear", async (req, reply) => {
+      const secret = opts.linearSecret || process.env.LINEAR_WEBHOOK_SECRET || "";
+      if (!secret) {
+        req.log?.error("webhook linear: segredo não configurado (LINEAR_WEBHOOK_SECRET)");
+        return reply.code(NOT_CONFIGURED).send("not configured");
+      }
+      if (!verifyLinearSignature(req.rawBody, req.headers["linear-signature"], secret)) {
+        return reply.code(401).send("invalid signature");
+      }
+      const body = req.body || {};
+      if (!linearTimestampOk(body.webhookTimestamp)) return reply.code(200).send("stale");
+      const data = body.data || {};
+      try {
+        if (body.type === "Issue" && (body.action === "create" || body.action === "update")) {
+          const r = await applyLinearIssue(repo, data, { log: req.log });
+          return reply.code(200).send({ ok: true, ticket: r?.ticket || null });
+        }
+        if (body.type === "Comment" && (body.action === "create" || body.action === "update")) {
+          const issueId = data.issueId || data.issue?.id || "";
+          const r = await applyLinearComment(repo, { issueId, comment: data, log: req.log });
+          return reply.code(200).send({ ok: true, ticket: r?.ticket || null });
+        }
+      } catch (err) {
+        // 500 faria o Linear reenviar; o estado certo volta na reconciliação.
+        req.log?.warn(`webhook linear (${body.type}/${body.action}): ${err.message}`);
+        return reply.code(200).send({ ok: false, error: "aplicado depois" });
+      }
+      return reply.code(200).send("ignored");
     });
   });
 }

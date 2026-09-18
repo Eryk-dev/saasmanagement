@@ -56,6 +56,9 @@ const CustomersScreen = lazyScreen(() => import("./screens/customers.jsx"), "Cus
 const EloAppScreen = lazyScreen(() => import("./screens/eloapp.jsx"), "EloAppScreen");
 const LandingPagesScreen = lazyScreen(() => import("./screens/landingpages.jsx"), "LandingPagesScreen");
 const TasksScreen = lazyScreen(() => import("./screens/tasks/index.jsx"), "TasksScreen");
+const TicketsScreen = lazyScreen(() => import("./screens/tickets/index.jsx"), "TicketsScreen");
+const SupportSettingsScreen = lazyScreen(() => import("./screens/support-settings.jsx"), "SupportSettingsScreen");
+const QuickRepliesScreen = lazyScreen(() => import("./screens/quick-replies.jsx"), "QuickRepliesScreen");
 const MindmapsScreen = lazyScreen(() => import("./screens/mindmaps.jsx"), "MindmapsScreen");
 const SettingsScreen = lazyScreen(() => import("./screens/settings.jsx"), "SettingsScreen");
 const SettingsLite = lazyScreen(() => import("./screens/settings.jsx"), "SettingsLite");
@@ -237,6 +240,9 @@ function App({ onInitialReady, initialLoading = false } = {}) {
     agenda:      ["Comercial", "Agenda"],
     whatsapp:    ["Comercial", "Inbox"],
     consultas:   ["Comercial", "Consultas"],
+    tickets:     ["Suporte", "Tickets"],
+    quick_replies: ["Suporte", "Respostas rápidas"],
+    support_settings: ["Suporte", "Configurações de SLA"],
     social:      ["Marketing", "Redes sociais"],
     metrics:     ["Marketing", "Publicidade"],
     landingpages: ["Marketing", "Landing pages"],
@@ -342,6 +348,9 @@ function App({ onInitialReady, initialLoading = false } = {}) {
           {scr === "training"    && <TrainingScreen />}
           {scr === "subscriptions" && <CustomersScreen initialTab="billing" />}
           {scr === "tasks"       && <TasksScreen />}
+          {scr === "tickets"     && <TicketsScreen />}
+          {scr === "quick_replies" && <QuickRepliesScreen />}
+          {scr === "support_settings" && <SupportSettingsScreen />}
           {scr === "mindmaps"    && <MindmapsScreen />}
           {scr === "settings"    && (canSeeScreen("settings") ? <SettingsScreen saasId={params.saas} /> : <SettingsLite />)}
         </div>

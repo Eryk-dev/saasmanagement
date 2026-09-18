@@ -592,6 +592,52 @@ export const api = {
   taskCover: (id, attachmentId) => req("POST", `/api/tasks/${encodeURIComponent(id)}/cover`, { attachmentId }),
   taskActivity: (id) => req("GET", `/api/tasks/${encodeURIComponent(id)}/activity`),
   tasksBulk: (ids, action, value) => req("POST", "/api/tasks/bulk", { ids, action, value }),
+  // Suporte (routes.tickets.js): o servidor aplica o escopo de produto de cada
+  // atendente (404 fora dele), calcula SLA, eventos e avisos.
+  tickets: (query = {}) => {
+    const qs = new URLSearchParams(Object.entries(query).filter(([, v]) => v != null && v !== "")).toString();
+    return req("GET", `/api/tickets${qs ? `?${qs}` : ""}`);
+  },
+  ticket: (id) => req("GET", `/api/tickets/${encodeURIComponent(id)}`),
+  ticketCreate: (body) => req("POST", "/api/tickets", body),
+  ticketUpdate: (id, patch) => req("PATCH", `/api/tickets/${encodeURIComponent(id)}`, patch),
+  ticketDelete: (id) => req("DELETE", `/api/tickets/${encodeURIComponent(id)}`),
+  ticketMessage: (id, body) => req("POST", `/api/tickets/${encodeURIComponent(id)}/messages`, body),
+  ticketActivity: (id) => req("GET", `/api/tickets/${encodeURIComponent(id)}/activity`),
+  ticketsBulk: (ids, action, value) => req("POST", "/api/tickets/bulk", { ids, action, value }),
+  ticketAttachment: (id, file, { isPublic = false } = {}, onProgress) => {
+    const fd = new FormData();
+    fd.append("file", file, file.name || "anexo");
+    return upload(`/api/tickets/${encodeURIComponent(id)}/attachments${isPublic ? "?public=1" : ""}`, fd, onProgress);
+  },
+  ticketAttachmentDelete: (id, aid) => req("DELETE", `/api/tickets/${encodeURIComponent(id)}/attachments/${encodeURIComponent(aid)}`),
+  // O anexo do ticket não é público (escopo de produto): <a>/<img> não mandam
+  // o header, então baixa com a chave e devolve uma URL de blob local.
+  ticketAttachmentUrl: async (id, aid) => {
+    const key = getKey();
+    const res = await fetch(`${BASE}/api/tickets/${encodeURIComponent(id)}/attachments/${encodeURIComponent(aid)}`, { headers: key ? { "x-api-key": key } : {} });
+    if (!res.ok) throw new Error(res.status === 404 ? "arquivo não encontrado" : proxyMessage(res.status));
+    return URL.createObjectURL(await res.blob());
+  },
+  // Respostas rápidas (da equipe e pessoais) + variáveis. O servidor resolve o
+  // texto: `ticketQuickReply` com os dados do ticket, `quickReplyPreview` com exemplo.
+  quickReplies: (saas) => req("GET", `/api/support/quick-replies?saas=${encodeURIComponent(saas)}`),
+  quickReplyCreate: (body) => req("POST", "/api/support/quick-replies", body),
+  quickReplyUpdate: (id, patch) => req("PATCH", `/api/support/quick-replies/${encodeURIComponent(id)}`, patch),
+  quickReplyDelete: (id) => req("DELETE", `/api/support/quick-replies/${encodeURIComponent(id)}`),
+  quickReplyPreview: (saas, body) => req("POST", "/api/support/quick-replies/preview", { saas, body }),
+  ticketQuickReply: (ticketId, qrId) => req("POST", `/api/tickets/${encodeURIComponent(ticketId)}/quick-replies/${encodeURIComponent(qrId)}/render`, {}),
+  supportSettings: (saas) => req("GET", `/api/support/settings/${encodeURIComponent(saas)}`),
+  supportSettingsSave: (saas, body) => req("PUT", `/api/support/settings/${encodeURIComponent(saas)}`, body),
+  // Espelho com o Linear: catálogo pra tela de configuração (times, projetos e
+  // colunas do fluxo) e as ações de um ticket (mandar agora, vincular a uma
+  // issue que já existe, desvincular).
+  linearCatalog: () => req("GET", "/api/support/linear/catalog"),
+  ticketLinear: (id) => req("GET", `/api/tickets/${encodeURIComponent(id)}/linear`),
+  ticketLinearSync: (id, issue = "") => req("POST", `/api/tickets/${encodeURIComponent(id)}/linear`, issue ? { issue } : {}),
+  ticketLinearUnlink: (id) => req("DELETE", `/api/tickets/${encodeURIComponent(id)}/linear`),
+  supportAgents: () => req("GET", "/api/support/agents"),
+  supportAgentSave: (id, body) => req("PUT", `/api/support/agents/${encodeURIComponent(id)}`, body),
   notifications: (unread = false) => req("GET", `/api/notifications${unread ? "?unread=1" : ""}`),
   notificationsRead: (body) => req("POST", "/api/notifications/read", body),
   // Foto anexada a uma TAREFA → asset servido em /public/tasks/:id; a URL vai

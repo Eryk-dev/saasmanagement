@@ -86,6 +86,12 @@ const NAV = [
   { id: "agenda",     label: "Agenda",         icon: "▦",  group: "comercial", notSaas: "elo" },
   { id: "whatsapp",   label: "Inbox",          icon: "✆",  group: "comercial", notSaas: "elo" }, // WhatsApp + DMs de IG/Messenger
 
+  // Suporte (14/09/2026): fila de tickets com SLA por prioridade + as regras do
+  // relógio e quem atende cada produto. Vale pra todo produto (Elo inclusive).
+  { id: "tickets",          label: "Tickets",              icon: "✉", group: "suporte" },
+  { id: "quick_replies",    label: "Respostas rápidas",    icon: "⚡", group: "suporte" },
+  { id: "support_settings", label: "Configurações de SLA", icon: "◷", group: "suporte" },
+
   { id: "social",     label: "Redes sociais",  icon: "◍",  group: "marketing" },
   { id: "metrics",    label: "Publicidade",    icon: "∿",  group: "marketing" },
   { id: "landingpages", label: "Landing pages", icon: "▭", group: "marketing", saas: "elo" }, // visitas + conversão do checkout web
@@ -127,6 +133,9 @@ const ICONS = {
   intform: <NavSvg><rect x="4.4" y="3.4" width="15.2" height="17.2" rx="2" /><path d="M9 2.4h6v2.6H9z" /><path d="M8.4 11.2l2 2 4.4-4.6" /><path d="M9 17h6" /></NavSvg>,
   contracts: <NavSvg><path d="M13.5 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5z" /><path d="M13.5 3v5.5H19" /><path d="M8.6 17.4c.9-1.6 1.8-1.6 2.6 0 .8 1.4 1.6 1.4 2.4 0 .5-.9 1-.9 1.8 0" /></NavSvg>,
   agenda: <NavSvg><rect x="3.4" y="4.6" width="17.2" height="16.4" rx="2" /><path d="M3.4 9.6h17.2" /><path d="M8.2 2.6v4M15.8 2.6v4" /></NavSvg>,
+  tickets: <NavSvg><path d="M3.5 7.5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v2.2a2.3 2.3 0 0 0 0 4.6v2.2a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-2.2a2.3 2.3 0 0 0 0-4.6z" /><path d="M9 9.5h6M9 14.5h4" /></NavSvg>,
+  quick_replies: <NavSvg><path d="M4.5 5.5h15a1.5 1.5 0 0 1 1.5 1.5v8.5a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 3.5V17H4.5A1.5 1.5 0 0 1 3 15.5V7a1.5 1.5 0 0 1 1.5-1.5z" /><path d="M12.8 8.2l-2.4 3.4h3.2l-2.4 3.4" /></NavSvg>,
+  support_settings: <NavSvg><circle cx="12" cy="13" r="7.6" /><path d="M12 9.2V13l2.6 1.6" /><path d="M9.6 2.8h4.8M12 2.8v2.6" /></NavSvg>,
   whatsapp: <NavSvg><path d="M5.2 3.2h3.6l1.6 4.3-2.2 1.9a12.6 12.6 0 0 0 6.4 6.4l1.9-2.2 4.3 1.6v3.6a2 2 0 0 1-2.1 2A16.3 16.3 0 0 1 3.2 5.3a2 2 0 0 1 2-2.1z" /></NavSvg>,
   social: <NavSvg><circle cx="6" cy="12" r="2.7" /><circle cx="17.6" cy="5.6" r="2.7" /><circle cx="17.6" cy="18.4" r="2.7" /><path d="M8.5 10.8l6.7-3.9M8.5 13.2l6.7 3.9" /></NavSvg>,
   metrics: <NavSvg><path d="M3 17.6l5.8-5.9 3.9 3.9L20.5 7.5" /><path d="M14.8 7.2h5.7V13" /></NavSvg>,
@@ -154,6 +163,7 @@ const ICONS = {
 const GROUP_LABELS = {
   main: null,
   comercial: "comercial",
+  suporte: "suporte",
   marketing: "marketing",
   analises: "análises",
   geral: "geral",
@@ -199,6 +209,8 @@ function NavRail({ current, onNav, collapsed, onSearch }) {
     if (id === "today" && filaHoje > 0) return { n: filaHoje, texto: String(filaHoje), tone: "mut", title: `${filaHoje} na sua fila de hoje` };
     if (id === "tasks" && cont.tasks > 0) return { n: cont.tasks, texto: String(cont.tasks), tone: cont.tasksLate > 0 ? "neg" : "mut", title: `${cont.tasks} tarefas abertas${cont.tasksLate ? ` · ${cont.tasksLate} atrasadas` : ""}` };
     if (id === "whatsapp" && cont.inbox > 0) return { n: cont.inbox, texto: String(cont.inbox), tone: "neg", title: `${cont.inbox} conversas não lidas` };
+    // Tickets: abertos meus ou sem dono, pela régua do servidor (escopo de suporte + SLA gravado).
+    if (id === "tickets" && cont.tickets > 0) return { n: cont.tickets, texto: String(cont.tickets), tone: cont.ticketsBreached > 0 ? "neg" : "mut", title: `${cont.tickets} tickets abertos (seus ou sem responsável)${cont.ticketsBreached ? ` · ${cont.ticketsBreached} com SLA estourado` : ""}` };
     return null;
   };
   // Grupos recolhíveis com escolha persistida; marketing e análises começam

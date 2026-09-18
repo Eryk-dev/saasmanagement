@@ -4,42 +4,18 @@ import { userColor } from "../../lib/users.js";
 import { assetUrl } from "../../lib/api.js";
 import { assigneesOf, dueState, priTone, priSoft } from "../../lib/tasks.js";
 import { Icon } from "./icons.jsx";
-import { useLongPress } from "./dnd.js";
+import { useLongPress } from "../../components/kanban/dnd.js";
+import { CompleteCircle } from "../../components/complete-circle.jsx";
+import { LabelChip } from "../../components/label-chip.jsx";
 
-const { memo, useState, useRef, useEffect, useLayoutEffect } = React;
+const { memo, useRef, useEffect, useLayoutEffect } = React;
 
-// Círculo de concluir (22px, área de toque 44px). Animação ao marcar.
-export function CompleteCircle({ done, onToggle, size = 22, title }) {
-  const [pop, setPop] = useState(false);
-  return (
-    <button type="button" aria-label={title || (done ? "Reabrir" : "Marcar como concluída")} title={title || (done ? "Reabrir" : "Marcar como concluída")}
-      onClick={(e) => { e.stopPropagation(); setPop(true); setTimeout(() => setPop(false), 260); onToggle(!done); }}
-      onPointerDown={(e) => e.stopPropagation()}
-      style={{ width: size + 12, height: size + 12, margin: -6, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, background: "transparent" }}>
-      <span className={pop ? "tk-pop" : ""} style={{
-        width: size, height: size, borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center",
-        border: `1.5px solid ${done ? "var(--pos)" : "var(--line-strong)"}`, background: done ? "var(--pos)" : "transparent", color: done ? "#fff" : "var(--fg-4)",
-        transition: "background .15s, border-color .15s",
-      }}>
-        <Icon name="check" size={size * 0.6} style={{ opacity: done ? 1 : 0.55 }} />
-      </span>
-    </button>
-  );
-}
+// O círculo de concluir e a etiqueta moram em components/ (os Tickets usam os mesmos).
+export { CompleteCircle, LabelChip };
 
 export function PriorityChip({ p, small }) {
   if (!p) return null;
   return <span className="chip" style={{ background: priSoft(p), color: priTone(p), minHeight: small ? 18 : 20, fontSize: small ? 10.5 : 11 }}>{p}</span>;
-}
-export function LabelChip({ label, color, small, onRemove }) {
-  const bg = color ? `color-mix(in srgb, ${color} 16%, var(--bg-1))` : "var(--bg-2)";
-  return (
-    <span className="chip" style={{ background: bg, color: "var(--fg-1)", minHeight: small ? 18 : 20, fontSize: small ? 10.5 : 11, maxWidth: 140 }}>
-      {color && <span style={{ width: 6, height: 6, borderRadius: 999, background: color, flexShrink: 0 }} />}
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
-      {onRemove && <button type="button" onClick={(e) => { e.stopPropagation(); onRemove(); }} aria-label={`Tirar ${label}`} style={{ marginLeft: 2, color: "var(--fg-4)", fontSize: 11, lineHeight: 1 }}>✕</button>}
-    </span>
-  );
 }
 export function DueChip({ due, completed, small }) {
   const s = dueState(due, { completed });
@@ -107,7 +83,7 @@ export const TaskCard = memo(function TaskCard({ t, colKey, usersById, labelColo
       onFocus={() => actions.focus(t.id)}
       style={{
         background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-card)",
-        padding: compact ? "8px 10px" : "10px 12px", cursor: "grab", outline: "none", opacity: done && !renaming ? 0.78 : 1,
+        padding: compact ? "8px 10px" : "10px 12px", outline: "none", opacity: done && !renaming ? 0.78 : 1,
       }}>
       {cover && <img src={assetUrl(cover)} alt="" draggable={false} style={{ width: "100%", maxHeight: 120, objectFit: "cover", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", marginBottom: 8, display: "block" }} />}
       {/* Os LABELS abrem o card (prancha, 14/09): eram a terceira coisa da

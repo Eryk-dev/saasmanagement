@@ -1,12 +1,14 @@
 import React from "react";
-// Arrastar e soltar nativo (HTML5) do quadro, sem biblioteca: setData (sem ele
-// o Firefox nem começa o arrasto), fantasma "N tarefas" no multi-arrasto,
-// placeholder calculado pela posição do ponteiro, contador de profundidade
-// (dragenter/leave nos filhos não pisca) e auto-scroll nas bordas.
+// Arrastar e soltar nativo (HTML5) dos Kanbans (Tarefas, Tickets, Pipeline),
+// sem biblioteca: setData (sem ele o Firefox nem começa o arrasto), fantasma
+// "N cards" no multi-arrasto, placeholder calculado pela posição do ponteiro,
+// contador de profundidade (dragenter/leave nos filhos não pisca) e
+// auto-scroll nas bordas. O card se marca sozinho com `data-kanban-card` ao
+// espalhar o cardDragProps; é por ele que a posição de soltar é medida.
 
 const { useRef, useState, useEffect, useCallback } = React;
 
-export function useBoardDnd({ boardRef, onDrop, getSelection }) {
+export function useBoardDnd({ boardRef, onDrop, getSelection, ghostLabel = (n) => `${n} cards` }) {
   const dragRef = useRef(null);        // { ids, fromKey, height }
   const [drag, setDrag] = useState(null);
   const [placeholder, setPlaceholder] = useState(null); // { colKey, index }
@@ -16,6 +18,7 @@ export function useBoardDnd({ boardRef, onDrop, getSelection }) {
   const ghost = useRef(null);
   const onDropRef = useRef(onDrop); onDropRef.current = onDrop;
   const selRef = useRef(getSelection); selRef.current = getSelection;
+  const ghostRef = useRef(ghostLabel); ghostRef.current = ghostLabel;
 
   useEffect(() => {
     const onOver = (e) => { pointer.current = { x: e.clientX, y: e.clientY }; };
@@ -50,12 +53,13 @@ export function useBoardDnd({ boardRef, onDrop, getSelection }) {
     if (ghost.current) { ghost.current.remove(); ghost.current = null; }
   }, []);
 
-  const rectsOf = (listEl, ids) => Array.from(listEl?.querySelectorAll("[data-task]") || [])
-    .filter((el) => !ids.has(el.dataset.task))
-    .map((el) => { const r = el.getBoundingClientRect(); return { id: el.dataset.task, mid: r.top + r.height / 2 }; });
+  const rectsOf = (listEl, ids) => Array.from(listEl?.querySelectorAll("[data-kanban-card]") || [])
+    .filter((el) => !ids.has(el.dataset.kanbanCard))
+    .map((el) => { const r = el.getBoundingClientRect(); return { id: el.dataset.kanbanCard, mid: r.top + r.height / 2 }; });
 
   const cardDragProps = useCallback((task, colKey) => ({
     draggable: true,
+    "data-kanban-card": task.id,
     onDragStart: (e) => {
       const sel = selRef.current ? selRef.current() : null;
       const ids = sel && sel.has(task.id) && sel.size > 1 ? [...sel] : [task.id];
@@ -64,7 +68,7 @@ export function useBoardDnd({ boardRef, onDrop, getSelection }) {
       dragRef.current = { ids, fromKey: colKey, height: e.currentTarget.offsetHeight };
       if (ids.length > 1) {
         const g = document.createElement("div");
-        g.textContent = `${ids.length} tarefas`;
+        g.textContent = ghostRef.current(ids.length);
         Object.assign(g.style, { position: "fixed", top: "-1000px", left: "-1000px", padding: "8px 12px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "8px", fontSize: "13px", fontWeight: "600", boxShadow: "var(--shadow-pop)", color: "var(--fg-1)" });
         document.body.appendChild(g); ghost.current = g;
         try { e.dataTransfer.setDragImage(g, 16, 16); } catch { /* sem suporte */ }

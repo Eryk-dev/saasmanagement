@@ -87,6 +87,11 @@ import { registerEloRoutes } from "./elo.js";
 import { registerTaskRoutes } from "./routes.tasks.js";
 import { createTask, patchTask, deleteTask, sanitizeBoardPatch, TASK_DEFAULTS, BOARD_DEFAULTS, brtToday, normalizeBoard } from "./tasks-core.js";
 import { completeMilestoneTasks } from "./customer-milestones.js";
+import { registerTicketRoutes } from "./routes.tickets.js";
+import { registerSupportPortalRoutes } from "./routes.support-portal.js";
+import { STATUS_KIND } from "./tickets-core.js";
+import { slaState } from "./tickets-sla.js";
+import { ticketScope, inScope } from "./support-scope.js";
 
 // Auth interna fica FORA do CRUD genérico: passwordHash/token de sessão nunca
 // saem pela API. Gestão via rotas dedicadas (/api/auth/*).
@@ -100,7 +105,10 @@ import { completeMilestoneTasks } from "./customer-milestones.js";
 const PRIVATE = new Set(["users", "sessions", "user_assets", "activity_assets", "task_assets", "task_events", "notifications", "wa_threads", "wa_messages", "wa_media", "wa_template_media", "blog_posts",
   // comp_months tem R$ por pessoa: só pelas rotas /api/comp/, que exigem
   // etiqueta admin (ADMIN_PREFIXES), nunca pelo CRUD genérico.
-  "comp_months"]);
+  "comp_months",
+  // Suporte: isolamento por produto (support-scope.js) só pelas rotas
+  // dedicadas de routes.tickets.js — o CRUD genérico seria porta dos fundos.
+  "tickets", "ticket_events", "ticket_assets", "ticket_settings", "quick_replies", "linear_outbox"]);
 const isExposed = (c) => COLLECTION_NAMES.includes(c) && !PRIVATE.has(c);
 
 // Collections external SaaS are allowed to write to via REST/MCP.
@@ -588,12 +596,15 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     // telas donas (coluna de concluído do board; unread da thread).
     const contadores = {};
     try {
-      const [tarefas, boards, threads] = await Promise.all([
+      const escopoSuporte = ticketScope(req.authUser);
+      const [tarefas, boards, threads, tickets] = await Promise.all([
         can("tasks") ? repo.list("tasks").catch(() => []) : [],
         can("tasks") ? repo.list("task_boards").catch(() => []) : [],
         can("whatsapp") ? repo.list("wa_threads").catch(() => []) : [],
+        can("tickets") && (escopoSuporte === null || escopoSuporte.length) ? repo.list("tickets").catch(() => []) : [],
       ]);
       const hoje = new Date().toISOString().slice(0, 10);
+      const agora = new Date().toISOString();
       const meuId = req.authUser?.id || "";
       for (const p of products) {
         const board = normalizeBoard(boards.find((b) => b.saas === p.id) || boards.find((b) => !b.saas));
@@ -605,10 +616,17 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
           const donos = Array.isArray(t.assignees) ? t.assignees : (t.assignee ? [t.assignee] : []);
           return !donos.length || !meuId || donos.includes(meuId);
         });
+        // Tickets: abertos (não resolvidos) do produto, meus ou sem dono — só
+        // se o produto está no escopo de suporte da sessão.
+        const fila = inScope(escopoSuporte, p.id)
+          ? tickets.filter((t) => t.saas === p.id && STATUS_KIND[t.status] !== "done" && (!t.assignee || !meuId || t.assignee === meuId))
+          : [];
         contadores[p.id] = {
           tasks: minhas.length,
           tasksLate: minhas.filter((t) => t.dueDate && String(t.dueDate) < hoje).length,
           inbox: threads.filter((t) => (!t.saas || t.saas === p.id) && Number(t.unread) > 0 && t.status !== "closed").length,
+          tickets: fila.length,
+          ticketsBreached: fila.filter((t) => slaState(t, agora).overall === "breached").length,
         };
       }
     } catch { /* contador é enfeite: falhar aqui não pode derrubar o bootstrap */ }
@@ -770,6 +788,12 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Quadro de Tarefas: mover, concluir, comentários, subtarefas, anexos,
   // ações em massa, atividade + caixa de entrada (routes.tasks.js).
   registerTaskRoutes(app, repo);
+
+  // Suporte: tickets (fila, kanban, conversa, SLA), configurações de SLA por
+  // produto e atendentes (routes.tickets.js). Antes do CRUD genérico.
+  registerTicketRoutes(app, repo, { mailer: mailerClient, ...(opts.linear ? { linear: opts.linear } : {}) });
+  // Portal público do cliente: /s/:token (chamado) e /s/new/:saas (abrir).
+  registerSupportPortalRoutes(app, repo, opts.supportPortal);
 
   // ── Generic CRUD over every collection ───────────────────────────────────
   app.get("/api/:collection", async (req, reply) => {

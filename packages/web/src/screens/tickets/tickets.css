@@ -1,0 +1,122 @@
+/* Suporte — fila de tickets e configurações de SLA, sobre os tokens do cockpit. */
+.support-page { flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.support-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 14px var(--pad-x) 0; flex-shrink: 0; }
+.support-body { flex: 1; min-height: 0; display: flex; }
+.support-main { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+.support-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; color: var(--fg-2); }
+.support-status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--dot, currentColor); flex-shrink: 0; }
+
+/* Perfil do atendente: identidade solta (sem card) e as quatro métricas
+   compactas numa linha logo abaixo */
+.agent-profile { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.agent-profile-who { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.agent-profile-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.agent-profile-name { min-width: 0; font-size: 15px; font-weight: 650; letter-spacing: -0.01em; color: var(--fg-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent-profile-sub { font-size: 12px; color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent-profile-period { display: inline-flex; align-items: center; flex-shrink: 0; height: 20px; padding: 0 8px; border-radius: 999px; background: var(--bg-2); color: var(--fg-3); font-size: 11px; font-weight: 600; }
+.agent-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; min-width: 0; }
+.agent-metric { --tone: var(--accent); --tone-soft: var(--accent-soft); position: relative; overflow: hidden; display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: 9px; align-items: center; min-width: 0; padding: 7px 10px; text-align: left; background: var(--bg-1); border: 1px solid var(--line-1); border-radius: var(--r-3); box-shadow: var(--shadow-card); transition: border-color .15s, box-shadow .15s; }
+.agent-metric[data-tone="pos"] { --tone: var(--pos); --tone-soft: var(--pos-soft); }
+.agent-metric[data-tone="warn"] { --tone: var(--warn); --tone-soft: var(--warn-soft); }
+.agent-metric[data-tone="neg"] { --tone: var(--neg); --tone-soft: var(--neg-soft); }
+button.agent-metric { cursor: pointer; }
+button.agent-metric:hover { border-color: var(--line-2); box-shadow: var(--shadow-2); }
+button.agent-metric:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.agent-metric-icon { grid-row: 1 / span 2; width: 26px; height: 26px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; background: var(--tone-soft); color: var(--tone); }
+.agent-metric-head { grid-column: 2; grid-row: 1; display: flex; align-items: center; gap: 5px; min-width: 0; }
+.agent-metric-label { font-size: 11.5px; font-weight: 600; color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent-metric-hint { font-size: 10.5px; color: var(--fg-4); cursor: help; }
+.agent-metric-go { grid-row: 1 / span 2; grid-column: 3; font-size: 16px; line-height: 1; color: var(--fg-4); transition: transform .15s, color .15s; }
+button.agent-metric:hover .agent-metric-go { color: var(--fg-1); transform: translateX(2px); }
+.agent-metric-line { grid-column: 2; grid-row: 2; display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.agent-metric-value { font-family: var(--display); font-size: 16px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; color: var(--fg-1); flex-shrink: 0; }
+.agent-metric[data-tone="neg"] .agent-metric-value, .agent-metric[data-tone="warn"] .agent-metric-value { color: var(--tone); }
+.agent-metric-ctx { font-size: 11.5px; color: var(--fg-4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* Barra do SLA: fio no pé do cartão; trilho claro da mesma cor e a marca do time */
+.agent-meter { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--tone-soft); }
+.agent-meter[data-tone="empty"] { display: none; }
+.agent-meter-fill { position: absolute; inset: 0 auto 0 0; background: var(--tone); }
+.agent-meter-mark { position: absolute; top: -3px; bottom: 0; width: 2px; margin-left: -1px; background: var(--fg-2); }
+@media (max-width: 1000px) {
+  .agent-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Card do Kanban (a coluna e o quadro vêm de components/kanban) */
+.support-card { text-align: left; width: 100%; background: var(--bg-1); border: 1px solid var(--line-1); border-radius: var(--r-3); padding: 10px 12px; box-shadow: var(--shadow-card); display: flex; flex-direction: column; gap: 6px; }
+.support-card:hover { border-color: var(--line-2); }
+.support-card[aria-current="true"] { border-color: var(--accent-line); box-shadow: 0 0 0 2px var(--accent-soft); }
+.support-card-subject { font-size: 13px; font-weight: 600; color: var(--fg-1); line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.support-card-meta { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--fg-3); min-width: 0; }
+
+/* Lista */
+.support-list { flex: 1; min-height: 0; overflow: auto; padding: 12px var(--pad-x) 24px; }
+.support-row { display: grid; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--line-1); align-items: center; font-size: 13px; cursor: pointer; width: 100%; text-align: left; background: transparent; }
+.support-row:hover { background: var(--hover); }
+.support-row[aria-current="true"] { background: var(--accent-soft); }
+.support-ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* Detalhe do ticket (modal): conversa à esquerda, dados do atendimento à direita */
+.support-detail-head { display: flex; align-items: flex-start; gap: 8px; padding: 16px 18px 12px; border-bottom: 1px solid var(--line-1); flex-shrink: 0; }
+.support-detail-subject { flex: 1; min-width: 0; font-size: 19px; font-weight: 700; line-height: 1.3; letter-spacing: -0.01em; border: 1px solid transparent; border-radius: var(--r-2); padding: 3px 6px; margin: 0 -6px; background: transparent; resize: none; font-family: inherit; color: var(--fg-1); outline: none; }
+.support-detail-subject:hover, .support-detail-subject:focus { border-color: var(--line-2); background: var(--bg-1); }
+.support-detail-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 320px; }
+.support-detail-main { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.support-detail-thread { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 18px 16px; }
+.support-detail-side { border-left: 1px solid var(--line-1); background: var(--bg-inset); overflow-y: auto; min-height: 0; }
+.support-detail-section { padding: 14px 16px; border-bottom: 1px solid var(--line-1); }
+.support-detail-section:last-child { border-bottom: 0; }
+.support-detail-field { display: grid; grid-template-columns: 88px minmax(0, 1fr); align-items: center; gap: 8px; margin-top: 6px; }
+.support-detail-field:first-of-type { margin-top: 0; }
+.support-detail-field > span { font-size: 12.5px; color: var(--fg-3); }
+.support-clock { background: var(--bg-1); border: 1px solid var(--line-1); border-radius: var(--r-2); padding: 9px 11px; }
+.support-composer { border-top: 1px solid var(--line-1); background: var(--bg-0); padding: 10px 18px 14px; flex-shrink: 0; }
+.support-msg { border-radius: var(--r-3); padding: 9px 12px; font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; border: 1px solid var(--line-1); }
+.support-msg[data-kind="customer"] { background: var(--bg-inset); margin-right: 32px; }
+.support-msg[data-kind="reply"] { background: var(--accent-soft); border-color: var(--accent-line); margin-left: 32px; }
+.support-msg[data-kind="note"] { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 30%, var(--bg-1)); margin-left: 32px; }
+/* Aba Linear: o que mora na issue (descrição e comentários). Sem margem
+   lateral de propósito — não é fala do cliente nem resposta nossa, é o outro
+   sistema; a Conversa fica só com o atendimento. */
+.support-msg[data-kind="linear"] { background: var(--bg-1); }
+.support-msg[data-kind="linear-desc"] { background: var(--bg-inset); }
+.support-composer textarea { width: 100%; box-sizing: border-box; min-height: 56px; height: 64px; resize: vertical; font: inherit; font-size: 13px; line-height: 1.5; padding: 8px 10px; }
+.support-composer[data-kind="note"] textarea { background: var(--warn-soft); }
+
+/* Respostas rápidas */
+.qr-layout { padding: 16px var(--pad-x) 56px; display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+.qr-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line-1); cursor: pointer; }
+.qr-row:last-child { border-bottom: 0; }
+.qr-row:hover { background: var(--hover); }
+.qr-excerpt { font-size: 12.5px; color: var(--fg-3); margin-top: 3px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.qr-editor { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 18px; padding: 16px var(--inset-x) 4px; }
+/* Nome em cima (inteiro, é o que se digita no texto) e valor embaixo; ✕ ao lado do nome. */
+.qr-var-row { display: grid; grid-template-columns: minmax(0, 1fr) 18px; gap: 4px 6px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line-1); }
+.qr-var-row:first-of-type { border-top: 0; }
+.qr-var-row > :nth-child(2) { grid-column: 1 / -1; grid-row: 2; }
+.qr-picker-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 7px 8px; border-radius: 6px; text-align: left; }
+
+/* Configurações */
+.support-settings-body { padding: 16px var(--pad-x) 56px; display: flex; flex-direction: column; gap: 16px; }
+.support-policy { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(130px, 1fr) minmax(130px, 1fr); gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line-1); }
+.support-agents { display: grid; gap: 8px; align-items: center; padding: 9px 14px; border-bottom: 1px solid var(--line-1); font-size: 13px; }
+
+@media (max-width: 1100px) {
+  .qr-layout { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 800px) {
+  .qr-editor { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 900px) {
+  /* No celular o modal rola inteiro: dados, conversa e resposta, nessa ordem. */
+  .support-detail-body { display: flex; flex-direction: column; overflow-y: auto; }
+  .support-detail-side { order: -1; border-left: 0; border-bottom: 1px solid var(--line-1); overflow: visible; }
+  .support-detail-main, .support-detail-thread { min-height: auto; overflow: visible; }
+  .support-detail-head { padding: 12px 14px 10px; }
+  .support-composer { padding: 10px 14px calc(12px + env(safe-area-inset-bottom)); }
+}
+@media (max-width: 600px) {
+  .support-msg[data-kind="customer"] { margin-right: 12px; }
+  .support-msg[data-kind="reply"], .support-msg[data-kind="note"] { margin-left: 12px; }
+  .support-policy { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .support-policy > :first-child { grid-column: 1 / -1; }
+}

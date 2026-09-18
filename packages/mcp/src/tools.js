@@ -205,6 +205,85 @@ export function registerTools(server) {
     try { return out(await apiClient.notifications(user, !!unread)); } catch (e) { return fail(e); }
   });
 
+  // ════════════════ SUPORTE (tickets) ════════════════
+  // Coleções privadas: nada de list_records/update_record. A chave mestre vê
+  // todos os produtos; o escopo por atendente vale para sessões de usuário.
+  const PRIORITY = z.enum(["urgent", "high", "normal", "low"]);
+  const STATUS = z.enum(["new", "open", "pending_customer", "on_hold", "resolved", "closed"]);
+  server.registerTool("list_tickets", {
+    title: "Listar tickets de suporte",
+    description: "Fila de tickets (sem a conversa) com status, prioridade, responsável e prazos de SLA gravados (sla.firstResponseDue, sla.resolutionDue, sla.breached). Filtros opcionais; status e priority aceitam vários separados por vírgula.",
+    inputSchema: {
+      saas: z.string().optional().describe("id do produto"),
+      status: z.string().optional().describe("new,open,pending_customer,on_hold,resolved,closed"),
+      priority: z.string().optional().describe("urgent,high,normal,low"),
+      assignee: z.string().optional().describe("id do usuário, ou 'none' para sem responsável"),
+      customerId: z.string().optional(),
+      open: z.boolean().optional().describe("true = só os não resolvidos/fechados"),
+    },
+  }, async ({ open, ...query }) => {
+    try { return out(await apiClient.tickets({ ...query, open: open ? "1" : undefined })); } catch (e) { return fail(e); }
+  });
+  server.registerTool("get_ticket", {
+    title: "Ler um ticket",
+    description: "Ticket inteiro: conversa (messages com kind reply = pública, note = interna), anexos, solicitante e SLA.",
+    inputSchema: { id: z.string() },
+  }, async ({ id }) => {
+    try { return out(await apiClient.ticket(id)); } catch (e) { return fail(e); }
+  });
+  server.registerTool("create_ticket", {
+    title: "Abrir ticket de suporte",
+    description: "Abre um ticket. O servidor numera, calcula o SLA pela prioridade e avisa os atendentes do produto quando não há responsável. customerId preenche o solicitante com o contato do cliente.",
+    inputSchema: {
+      saas: z.string().describe("id do produto"),
+      subject: z.string(),
+      description: z.string().optional(),
+      priority: PRIORITY.optional(),
+      category: z.string().optional().describe("uma das categorias do produto (Configurações de SLA)"),
+      customerId: z.string().optional(),
+      assignee: z.string().optional().describe("id de quem atende o produto"),
+      requester: z.object({ name: z.string().optional(), email: z.string().optional(), phone: z.string().optional() }).optional(),
+      channel: z.enum(["internal", "whatsapp", "email"]).optional(),
+    },
+  }, async (body) => {
+    try { return out(await apiClient.ticketCreate(body)); } catch (e) { return fail(e); }
+  });
+  server.registerTool("update_ticket", {
+    title: "Alterar ticket",
+    description: "Muda status, prioridade, responsável, categoria, cliente ou solicitante. Status resolvido/fechado encerra o relógio; aguardando cliente pausa a resolução (se configurado). O produto do ticket não muda.",
+    inputSchema: {
+      id: z.string(),
+      status: STATUS.optional(), priority: PRIORITY.optional(),
+      assignee: z.string().optional().describe("'' tira o responsável"),
+      category: z.string().optional(), customerId: z.string().optional(),
+      subject: z.string().optional(), description: z.string().optional(),
+      requester: z.object({ name: z.string().optional(), email: z.string().optional(), phone: z.string().optional() }).optional(),
+    },
+  }, async ({ id, ...patch }) => {
+    try { return out(await apiClient.ticketUpdate(id, patch)); } catch (e) { return fail(e); }
+  });
+  server.registerTool("reply_ticket", {
+    title: "Responder ou anotar num ticket",
+    description: "kind 'reply' = resposta PÚBLICA (o cliente vê no portal, marca a 1ª resposta e, se ligado no produto, avisa o cliente por e-mail); kind 'note' = nota interna (@menções notificam). status opcional aplica junto (ex.: pending_customer).",
+    inputSchema: { id: z.string(), text: z.string(), kind: z.enum(["reply", "note"]).default("reply"), status: STATUS.optional() },
+  }, async ({ id, ...body }) => {
+    try { return out(await apiClient.ticketMessage(id, body)); } catch (e) { return fail(e); }
+  });
+  server.registerTool("ticket_activity", {
+    title: "Atividade de um ticket",
+    description: "Eventos do ticket em ordem cronológica (abertura, status, prioridade, atribuição, mensagens, anexos, estouro de SLA).",
+    inputSchema: { id: z.string() },
+  }, async ({ id }) => {
+    try { return out(await apiClient.ticketActivity(id)); } catch (e) { return fail(e); }
+  });
+  server.registerTool("support_settings", {
+    title: "Configurações de SLA de um produto",
+    description: "Prazos por prioridade (minutos), expediente, pausa, categorias, portal e aviso por e-mail do produto.",
+    inputSchema: { saas: z.string() },
+  }, async ({ saas }) => {
+    try { return out(await apiClient.supportSettings(saas)); } catch (e) { return fail(e); }
+  });
+
   server.registerTool("leaderboard", {
     title: "Ranking",
     description: "Ranking de vendas/CS. scope 'month' (mensal) ou 'all' (carreira).",

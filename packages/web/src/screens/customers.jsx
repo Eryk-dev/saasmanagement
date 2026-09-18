@@ -12,6 +12,7 @@ import { SubscriptionsScreen } from "./subscriptions.jsx";
 import { CustomersAnalysis } from "./customers-analysis.jsx";
 import { EntityForm } from "../components/EntityForm.jsx";
 import { WhatsappChat } from "../components/whatsapp-chat.jsx";
+import { CustomerTickets } from "../components/customer-tickets.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { leadTier, waLink, GRADE_STYLE, GRADE_GRID, GRADE_ACCOUNTS, GRADE_LISTINGS } from "../lib/ui.js";
 import { scriptChecklist } from "../lib/scripts.js";
@@ -2188,6 +2189,9 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
         {/* Inbox do WhatsApp conectado: a MESMA conversa da tela #whatsapp,
             pra mandar mensagem pro cliente sem sair do popup. */}
         <WhatsappChat lead={lead} phone={customer.phone} />
+
+        {/* Pedidos ao Suporte (só com a tela Tickets e o produto no escopo). */}
+        <CustomerTickets customer={customer} />
 
         <CustomerHistory customer={customer} />
 

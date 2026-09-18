@@ -42,7 +42,7 @@ window.SEED = {
   AGENDA_BLOCKS: [], CONSULTATION_SLOTS: [],
   CONFIG: { ai: { configured: marketingPreview }, meta: { configured: false }, mp: { configured: false }, proposals: { nativeSaas: [] } },
   ME: { id: "leo", name: "Leonardo", roles: ["sdr", "admin"] },
-  COUNTERS: { leverads: { tasks: 3, tasksLate: 1, inbox: 2 } },
+  COUNTERS: { leverads: { tasks: 3, tasksLate: 1, inbox: 2, tickets: 3, ticketsBreached: 1 } },
 };
 if (params.has("inbox")) setupInboxPreview(window.SEED, params);
 if (params.has("team")) setupTeamPreview(window.SEED);
@@ -56,6 +56,8 @@ try {
   localStorage.setItem("cockpit_pipeline_view", "kanban");
   localStorage.setItem("cockpit_pipeline_phase", "all");
   localStorage.setItem("cockpit_today_person", "leo");
+  // Suporte: `&ticketsView=list` abre a fila direto na Lista.
+  localStorage.setItem("cockpit_tickets_view", params.get("ticketsView") === "list" ? "list" : "kanban");
   localStorage.setItem("cockpit_active_saas", marketingPreview && params.get("product") === "elo" ? "elo" : "leverads");
 } catch { /* ignore */ }
 

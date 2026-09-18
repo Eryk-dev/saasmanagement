@@ -1,0 +1,410 @@
+// Rotas do módulo de Suporte. Duas camadas de acesso:
+//   1. tela (screens.js): /api/tickets → `tickets`; /api/support/ →
+//      `support_settings` (com leitura de carona pra `tickets`);
+//   2. produto (support-scope.js): ticket de produto fora do escopo da sessão
+//      responde 404, criar nele responde 403. A chave mestre vê tudo.
+//
+// `tickets`, `ticket_events`, `ticket_assets` e `ticket_settings` são PRIVATE
+// no CRUD genérico (routes.js): o isolamento não pode ter porta dos fundos.
+// Erro de domínio sai em 4xx com { error, code } (mesma régua de routes.tasks.js).
+
+import { randomUUID } from "node:crypto";
+import { ticketScope, inScope, isAdminUser, sanitizeSupportSaas } from "./support-scope.js";
+import { canScreen } from "./screens.js";
+import {
+  BUILTIN_VARIABLES, listQuickReplies, createQuickReply, updateQuickReply, deleteQuickReply,
+  canEdit as canEditQuickReply, visibleTo as quickReplyVisible, variableValues, renderTemplate,
+} from "./quick-replies.js";
+import {
+  ACTOR_API, httpError, createTicket, patchTicket, addMessage, addTicketAttachment, removeTicketAttachment,
+  deleteTicket, bulkTickets, listTickets, ticketActivity, loadSettings, saveSettings,
+  TICKET_STATUSES, TICKET_PRIORITIES, PRIORITY_LABEL, TICKET_CHANNELS, STATUS_KIND, ticketTitle,
+} from "./tickets-core.js";
+import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
+import { defaultLinear } from "./linear.js";
+import { issueKeyFromInput, linkTicketToIssue, unlinkTicket, syncTicketToLinear } from "./ticket-linear.js";
+import { enqueueTicketSync } from "./ticket-linear-runner.js";
+
+const MAX_ASSET = 5 * 1024 * 1024;
+
+const guarded = (fn) => async (req, reply) => {
+  try {
+    return await fn(req, reply);
+  } catch (err) {
+    if (err?.statusCode && err.statusCode < 500) return reply.code(err.statusCode).send({ error: err.message, code: err.code || "" });
+    throw err;
+  }
+};
+const actorOf = (req) => req.authUser?.id || ACTOR_API;
+const notFound = (reply) => reply.code(404).send({ error: "Not found" });
+
+// Base do link público (e-mail ao cliente, portal-link do MCP). Mesma régua do
+// publicBase de routes.js: env manda; host local é http (era https fixo e o
+// link saía https://localhost:8787, que não abre); host público é https.
+export const baseUrlOf = (req) => {
+  const env = process.env.COCKPIT_PUBLIC_URL || process.env.PUBLIC_BASE_URL;
+  if (env) return env.replace(/\/+$/, "");
+  const host = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
+  if (!host) return `http://localhost:${process.env.API_PORT || 8787}`;
+  const local = /^(localhost|127\.|0\.0\.0\.0|\[::1\])/.test(host);
+  return `${local ? "http" : "https"}://${host}`;
+};
+export const portalLink = (baseUrl, ticket) => `${baseUrl}/s/${ticket.portalToken}`;
+
+// Arquivo do ticket: bytes em base64 em `ticket_assets`, preso ao ticket
+// (`ticket`), servido só por rota com escopo (interna) ou pelo token (portal).
+export async function readTicketUpload(req, reply, repo, ticketId, by) {
+  let file;
+  try { file = await req.file({ limits: { fileSize: MAX_ASSET } }); }
+  catch (err) { reply.code(413).send({ error: "arquivo acima de 5MB", code: "asset_too_large", detail: err?.message }); return null; }
+  if (!file) { reply.code(400).send({ error: "envie um arquivo (multipart, campo file)" }); return null; }
+  let buf;
+  try { buf = await file.toBuffer(); }
+  catch { reply.code(413).send({ error: "arquivo acima de 5MB", code: "asset_too_large" }); return null; }
+  if (buf.length > MAX_ASSET) { reply.code(413).send({ error: "arquivo acima de 5MB", code: "asset_too_large" }); return null; }
+  const id = `tia_${randomUUID()}`;
+  await repo.create("ticket_assets", {
+    id, ticket: ticketId, mime: file.mimetype || "application/octet-stream", size: buf.length, name: file.filename || "",
+    data: buf.toString("base64"), by, at: new Date().toISOString(),
+  });
+  return { id, name: file.filename || "", mime: file.mimetype || "", size: buf.length };
+}
+
+export async function sendTicketAsset(reply, repo, ticket, aid) {
+  const ref = (ticket.attachments || []).find((a) => a.id === aid);
+  const doc = ref ? await repo.get("ticket_assets", aid) : null;
+  if (!doc || doc.ticket !== ticket.id) return reply.code(404).send({ error: "arquivo não encontrado" });
+  const mime = doc.mime || "application/octet-stream";
+  // O mime vem de quem enviou (inclusive o cliente anônimo do portal): só
+  // imagem raster e PDF abrem no navegador; SVG/HTML baixam, e o sandbox impede
+  // script de rodar na origem do cockpit.
+  const inline = /^image\/(png|jpe?g|gif|webp)$/i.test(mime) || mime === "application/pdf";
+  const safeName = String(doc.name || doc.id).replace(/[^\w.\-() ]+/g, "_").slice(0, 120);
+  reply.header("cache-control", "private, max-age=3600");
+  reply.header("x-content-type-options", "nosniff");
+  reply.header("content-security-policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
+  reply.header("content-disposition", `${inline ? "inline" : "attachment"}; filename="${safeName}"`);
+  return reply.type(mime).send(Buffer.from(doc.data || "", "base64"));
+}
+
+// Aviso ao cliente de que o atendente respondeu (só com o toggle do produto,
+// e-mail do solicitante e mailer pronto). Nunca derruba a resposta.
+export async function emailCustomerReply(repo, { mailer, ticket, message, baseUrl, log } = {}) {
+  try {
+    if (!mailer || message?.kind !== "reply" || message?.author?.type !== "agent") return false;
+    const email = ticket?.requester?.email;
+    if (!email || !ticket.portalToken || !baseUrl) return false;
+    const settings = await loadSettings(repo, ticket.saas);
+    if (!settings.notifyCustomerByEmail) return false;
+    if (!(await mailer.ready())) return false;
+    const product = await repo.get("products", ticket.saas).catch(() => null);
+    const brand = product?.name || "Suporte";
+    const link = portalLink(baseUrl, ticket);
+    const hello = ticket.requester?.name ? `Olá, ${ticket.requester.name.split(" ")[0]}!` : "Olá!";
+    await mailer.send({
+      to: email,
+      fromName: brand,
+      subject: `[${brand}] Nova resposta no chamado #${ticket.number}: ${ticket.subject}`,
+      text: `${hello}\n\nRespondemos o seu chamado #${ticket.number} (${ticket.subject}):\n\n${message.text}\n\nPara ver a conversa completa ou responder, acesse:\n${link}\n\n${brand}`,
+    });
+    return true;
+  } catch (err) {
+    log?.warn?.(`ticket e-mail: ${err.message}`);
+    return false;
+  }
+}
+
+export function registerTicketRoutes(app, repo, { mailer = null, linear = defaultLinear } = {}) {
+  const scopeOf = (req) => ticketScope(req.authUser);
+  const loadScoped = async (req) => {
+    const t = await repo.get("tickets", req.params.id);
+    return t && inScope(scopeOf(req), t.saas) ? t : null;
+  };
+  const canAdmin = (req) => !req.authUser || isAdminUser(req.authUser);
+
+  // Vocabulário do módulo (SPA e MCP não duplicam a lista).
+  app.get("/api/tickets/meta", async () => ({
+    statuses: TICKET_STATUSES,
+    priorities: TICKET_PRIORITIES.map((key) => ({ key, label: PRIORITY_LABEL[key] })),
+    channels: TICKET_CHANNELS,
+  }));
+
+  app.get("/api/tickets", guarded(async (req) => listTickets(repo, scopeOf(req), req.query)));
+
+  app.post("/api/tickets", guarded(async (req, reply) => {
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const saas = String(body.saas ?? "").trim().toLowerCase();
+    if (saas && !inScope(scopeOf(req), saas)) throw httpError(403, "você não atende tickets deste produto", "saas_out_of_scope");
+    const created = await createTicket(repo, { ...body, channel: body.channel === "portal" ? "internal" : body.channel }, { by: actorOf(req) });
+    return reply.code(201).send(created);
+  }));
+
+  app.post("/api/tickets/bulk", guarded(async (req) => {
+    const scope = scopeOf(req);
+    return bulkTickets(repo, req.body || {}, { by: actorOf(req), allowed: (t) => inScope(scope, t.saas) });
+  }));
+
+  app.get("/api/tickets/:id", guarded(async (req, reply) => (await loadScoped(req)) || notFound(reply)));
+
+  app.patch("/api/tickets/:id", guarded(async (req, reply) => {
+    if (!(await loadScoped(req))) return notFound(reply);
+    const r = await patchTicket(repo, req.params.id, req.body || {}, { by: actorOf(req) });
+    return r ? r.ticket : notFound(reply);
+  }));
+
+  app.delete("/api/tickets/:id", guarded(async (req, reply) => {
+    if (!(await loadScoped(req))) return notFound(reply);
+    if (!canAdmin(req)) throw httpError(403, "só admin apaga ticket; feche-o em vez disso", "delete_forbidden");
+    const r = await deleteTicket(repo, req.params.id);
+    return r ? { ok: true, ...r } : notFound(reply);
+  }));
+
+  app.post("/api/tickets/:id/messages", guarded(async (req, reply) => {
+    if (!(await loadScoped(req))) return notFound(reply);
+    const b = req.body || {};
+    const r = await addMessage(repo, req.params.id, { kind: b.kind, text: b.text, status: b.status, attachments: b.attachments }, { by: actorOf(req) });
+    if (!r) return notFound(reply);
+    const emailed = await emailCustomerReply(repo, { mailer, ticket: r.ticket, message: r.message, baseUrl: baseUrlOf(req), log: app.log });
+    return reply.code(201).send({ ...r, emailed });
+  }));
+
+  app.get("/api/tickets/:id/activity", guarded(async (req, reply) => {
+    const t = await loadScoped(req);
+    return t ? ticketActivity(repo, t, { limit: req.query?.limit }) : notFound(reply);
+  }));
+
+  // Link do portal pro atendente copiar (a URL pública depende do host).
+  app.get("/api/tickets/:id/portal-link", guarded(async (req, reply) => {
+    const t = await loadScoped(req);
+    return t ? { url: portalLink(baseUrlOf(req), t), title: ticketTitle(t) } : notFound(reply);
+  }));
+
+  // ── Anexos ────────────────────────────────────────────────────────────────
+  // ?public=1: já nasce visível no portal. Sem isso, fica interno até ser
+  // citado numa resposta pública.
+  app.post("/api/tickets/:id/attachments", guarded(async (req, reply) => {
+    const t = await loadScoped(req);
+    if (!t) return notFound(reply);
+    const up = await readTicketUpload(req, reply, repo, t.id, actorOf(req));
+    if (!up) return reply;
+    const isPublic = req.query?.public === "1" || req.query?.public === "true";
+    const r = await addTicketAttachment(repo, t.id, up, { by: actorOf(req), isPublic });
+    return reply.code(201).send(r);
+  }));
+  app.get("/api/tickets/:id/attachments/:aid", guarded(async (req, reply) => {
+    const t = await loadScoped(req);
+    return t ? sendTicketAsset(reply, repo, t, req.params.aid) : notFound(reply);
+  }));
+  app.delete("/api/tickets/:id/attachments/:aid", guarded(async (req, reply) => {
+    if (!(await loadScoped(req))) return notFound(reply);
+    const r = await removeTicketAttachment(repo, req.params.id, req.params.aid, { by: actorOf(req) });
+    return r ? r.ticket : notFound(reply);
+  }));
+
+  // ── Respostas rápidas ─────────────────────────────────────────────────────
+  // Da equipe (edita quem tem Configurações de SLA) e pessoais (só o dono).
+  // O texto é resolvido aqui, com o contexto do ticket: a prévia da página e a
+  // inserção no chat usam as mesmas variáveis.
+  const qrCtx = (req) => ({
+    scope: scopeOf(req), userId: req.authUser?.id || "",
+    canEditShared: !req.authUser || canScreen(req.authUser, "support_settings"),
+  });
+  const saasParam = (v) => {
+    const saas = String(v ?? "").trim().toLowerCase();
+    if (!saas) throw httpError(400, "informe o produto (saas)", "saas_required");
+    return saas;
+  };
+  app.get("/api/support/quick-replies", guarded(async (req, reply) => {
+    const saas = saasParam(req.query?.saas);
+    const ctx = qrCtx(req);
+    if (!inScope(ctx.scope, saas)) return notFound(reply);
+    const [items, settings] = await Promise.all([listQuickReplies(repo, { saas, ...ctx }), loadSettings(repo, saas)]);
+    return {
+      items: items.map((q) => ({ ...q, editable: canEditQuickReply(q, ctx) })),
+      canEditShared: ctx.canEditShared,
+      variables: { builtin: BUILTIN_VARIABLES.map(({ key, label }) => ({ key, label })), custom: settings.variables },
+    };
+  }));
+  app.post("/api/support/quick-replies", guarded(async (req, reply) => {
+    const ctx = qrCtx(req);
+    const created = await createQuickReply(repo, req.body || {}, { ...ctx, user: req.authUser });
+    return reply.code(201).send({ ...created, editable: true });
+  }));
+  app.post("/api/support/quick-replies/preview", guarded(async (req, reply) => {
+    const saas = saasParam(req.body?.saas);
+    if (!inScope(scopeOf(req), saas)) return notFound(reply);
+    const settings = await loadSettings(repo, saas);
+    const values = await variableValues(repo, { user: req.authUser, saas, settings, baseUrl: baseUrlOf(req) });
+    return renderTemplate(req.body?.body, values);
+  }));
+  app.patch("/api/support/quick-replies/:id", guarded(async (req, reply) => {
+    const ctx = qrCtx(req);
+    const saved = await updateQuickReply(repo, req.params.id, req.body || {}, ctx);
+    return saved ? { ...saved, editable: true } : notFound(reply);
+  }));
+  app.delete("/api/support/quick-replies/:id", guarded(async (req, reply) => {
+    const r = await deleteQuickReply(repo, req.params.id, qrCtx(req));
+    return r ? { ok: true, ...r } : notFound(reply);
+  }));
+  // Inserir no chat: resolve as variáveis com o ticket e conta o uso.
+  app.post("/api/tickets/:id/quick-replies/:qrId/render", guarded(async (req, reply) => {
+    const t = await loadScoped(req);
+    const qr = t ? await repo.get("quick_replies", req.params.qrId) : null;
+    const ctx = qrCtx(req);
+    if (!t || !qr || !quickReplyVisible(qr, ctx) || (qr.saas && qr.saas !== t.saas)) return notFound(reply);
+    const settings = await loadSettings(repo, t.saas);
+    const values = await variableValues(repo, { ticket: t, user: req.authUser, saas: t.saas, settings, baseUrl: baseUrlOf(req) });
+    await repo.update("quick_replies", qr.id, { uses: (Number(qr.uses) || 0) + 1, lastUsedAt: new Date().toISOString() }, { silent: true });
+    return { id: qr.id, title: qr.title, ...renderTemplate(qr.body, values) };
+  }));
+
+  // ── Configurações de SLA por produto ──────────────────────────────────────
+  app.get("/api/support/settings/:saas", guarded(async (req, reply) => {
+    const saas = String(req.params.saas || "").toLowerCase();
+    if (!inScope(scopeOf(req), saas) || !(await repo.get("products", saas))) return notFound(reply);
+    return loadSettings(repo, saas);
+  }));
+  app.put("/api/support/settings/:saas", guarded(async (req, reply) => {
+    const saas = String(req.params.saas || "").toLowerCase();
+    if (!inScope(scopeOf(req), saas)) return notFound(reply);
+    const antes = await loadSettings(repo, saas);
+    const saved = await saveSettings(repo, saas, req.body || {}, { by: actorOf(req) });
+    // Ligar o espelho (ou trocar de time/projeto) POVOA o projeto: entram na
+    // fila os tickets ainda abertos deste produto. Ticket já concluído fica
+    // fora de propósito — o arquivo do suporte não vira backlog do time.
+    const l = saved.linear || {}, a = antes.linear || {};
+    if (l.enabled && l.teamId && (!a.enabled || a.teamId !== l.teamId || a.projectId !== l.projectId)) {
+      const abertos = (await repo.listWhere("tickets", { saas })).filter((t) => STATUS_KIND[t.status] !== "done");
+      for (const t of abertos) await enqueueTicketSync(repo, t.id, { saas, reset: true });
+      return { ...saved, queued: abertos.length };
+    }
+    return saved;
+  }));
+
+  // ── Linear: espelho ticket ↔ issue ────────────────────────────────────────
+  // Catálogo pra tela de configuração (time, estados do fluxo, projetos). Sem
+  // LINEAR_API_KEY responde `configured: false` — a tela mostra o passo que
+  // falta em vez de um erro.
+  app.get("/api/support/linear/catalog", guarded(async () => {
+    const webhook = !!process.env.LINEAR_WEBHOOK_SECRET;
+    if (!linear?.configured?.()) return { configured: false, webhook, teams: [] };
+    const [teams, me] = await Promise.all([linear.catalog(), linear.viewer().catch(() => null)]);
+    return { configured: true, webhook, teams, viewer: me?.user?.name || "", organization: me?.organization?.name || "" };
+  }));
+
+  // Conteúdo da issue pra aba Linear do ticket: descrição e comentários como
+  // estão LÁ AGORA (o ticket guarda só o espelho). Nunca derruba a aba — se o
+  // Linear não responde, devolve o retrato local com `stale` e o motivo, que a
+  // tela mostra como aviso em vez de tela de erro.
+  app.get("/api/tickets/:id/linear", guarded(async (req, reply) => {
+    const t = await loadScoped(req);
+    if (!t) return notFound(reply);
+    const link = t.linear || {};
+    const locais = (t.messages || [])
+      .filter((m) => m.source?.type === "linear")
+      .map((m) => ({ id: m.source.commentId, body: m.text, createdAt: m.at, user: { name: m.source.author || "" }, fromCockpit: false }));
+    const base = {
+      linked: !!link.issueId,
+      identifier: link.identifier || "", url: link.url || "",
+      state: { name: link.stateName || "", type: link.stateType || "" },
+      project: link.projectId ? { id: link.projectId } : null,
+    };
+    if (!link.issueId) return { ...base, configured: !!linear?.configured?.(), issue: null, comments: [] };
+    if (!linear?.configured?.()) return { ...base, configured: false, stale: true, issue: null, comments: locais };
+    try {
+      const r = await linear.issueWithComments(link.issueId);
+      if (!r) return { ...base, configured: true, stale: true, error: "issue não encontrada no Linear", issue: null, comments: locais };
+      const postados = new Set(link.posted || []);
+      return {
+        ...base, configured: true, stale: false,
+        identifier: r.issue.identifier || base.identifier, url: r.issue.url || base.url,
+        state: r.issue.state || base.state,
+        issue: {
+          id: r.issue.id, title: r.issue.title || "", description: r.issue.description || "",
+          priority: r.issue.priority ?? 0, createdAt: r.issue.createdAt || "", updatedAt: r.issue.updatedAt || "",
+          assignee: r.issue.assignee?.name || "", project: r.issue.project?.name || "",
+        },
+        comments: r.comments.map((c) => ({
+          id: c.id, body: c.body || "", createdAt: c.createdAt, url: c.url || "",
+          user: { name: c.user?.name || "" },
+          fromCockpit: postados.has(c.id), // saiu daqui como resposta/nota espelhada
+        })),
+      };
+    } catch (err) {
+      app.log?.warn?.(`linear (aba do ticket ${t.id}): ${err.message}`);
+      return { ...base, configured: true, stale: true, error: err.message, issue: null, comments: locais };
+    }
+  }));
+
+  // Vincular a uma issue que já existe (body.issue = ENG-123, URL ou uuid) ou,
+  // sem corpo, mandar o ticket pro Linear agora (cria se ainda não tem issue).
+  app.post("/api/tickets/:id/linear", guarded(async (req, reply) => {
+    const t = await loadScoped(req);
+    if (!t) return notFound(reply);
+    if (!linear?.configured?.()) throw httpError(NOT_CONFIGURED, "Linear não configurado (LINEAR_API_KEY)", "linear_not_configured");
+    const wanted = String(req.body?.issue ?? "").trim();
+    try {
+      if (wanted) {
+        const issue = await linear.issue(issueKeyFromInput(wanted));
+        if (!issue) throw httpError(404, "issue não encontrada no Linear", "issue_not_found");
+        const saved = await linkTicketToIssue(repo, t.id, issue, { by: actorOf(req) });
+        await enqueueTicketSync(repo, t.id, { saas: t.saas, reset: true });
+        return saved;
+      }
+      await syncTicketToLinear(repo, t.id, { linear, log: app.log });
+      return await repo.get("tickets", t.id);
+    } catch (err) {
+      if (err?.statusCode && err.statusCode < 500) throw err;
+      // Erro do lado do Linear sai como 4xx (http-status.js): 5xx o proxy
+      // engole e a tela mostraria "serviço fora do ar" no lugar do motivo.
+      return reply.code(UPSTREAM_FAILED).send({ error: err?.message || "o Linear não respondeu", code: "linear_failed" });
+    }
+  }));
+
+  // Desvincular: o ticket segue vivo aqui e a issue segue viva lá — o cockpit
+  // nunca apaga issue. Sai da fila pra não recriar no próximo ciclo.
+  app.delete("/api/tickets/:id/linear", guarded(async (req, reply) => {
+    const t = await loadScoped(req);
+    if (!t) return notFound(reply);
+    const saved = await unlinkTicket(repo, t.id, { by: actorOf(req) });
+    await repo.remove("linear_outbox", `lq_${t.id}`).catch(() => {});
+    return saved || notFound(reply);
+  }));
+
+  // ── Atendentes: quem atende qual produto ──────────────────────────────────
+  const agentView = (u) => {
+    const roles = Array.isArray(u.roles) ? u.roles : [];
+    return {
+      id: u.id, name: u.name || u.id, photo: u.photo || "",
+      support: roles.includes("support"), admin: roles.includes("admin"),
+      supportSaas: sanitizeSupportSaas(u.supportSaas),
+    };
+  };
+  app.get("/api/support/agents", guarded(async () => (await repo.list("users")).map(agentView)));
+
+  // Só mexe em `supportSaas` e na etiqueta `support`. Quem não é admin só
+  // inclui/remove produtos do PRÓPRIO escopo — não dá pra se promover a um
+  // produto que não atende.
+  app.put("/api/support/agents/:userId", guarded(async (req, reply) => {
+    const user = await repo.get("users", req.params.userId);
+    if (!user) return notFound(reply);
+    const b = req.body || {};
+    const patch = {};
+    if ("supportSaas" in b) {
+      const products = new Set((await repo.list("products")).map((p) => String(p.id)));
+      const wanted = sanitizeSupportSaas(b.supportSaas).filter((s) => products.has(s));
+      const scope = scopeOf(req);
+      const current = sanitizeSupportSaas(user.supportSaas);
+      patch.supportSaas = scope === null
+        ? wanted
+        : [...current.filter((s) => !scope.includes(s)), ...wanted.filter((s) => scope.includes(s))];
+    }
+    if ("support" in b) {
+      const roles = Array.isArray(user.roles) ? user.roles.filter((r) => r !== "support") : [];
+      patch.roles = b.support === true ? [...roles, "support"] : roles;
+    }
+    if (!Object.keys(patch).length) throw httpError(400, "nada para alterar (supportSaas, support)", "patch_empty");
+    const updated = await repo.update("users", user.id, patch);
+    return agentView(updated);
+  }));
+}

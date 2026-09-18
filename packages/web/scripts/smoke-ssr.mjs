@@ -132,6 +132,11 @@ try {
     ["funcionarios", "/src/screens/funcionarios.jsx", "FuncionariosScreen", {}, "Análise de Equipe"],
     ["desempenho", "/src/screens/desempenho.jsx", "DesempenhoScreen", {}, "Análise de Desempenho"],
     ["tasks", "/src/screens/tasks/index.jsx", "TasksScreen", {}, "Tarefas"],
+    ["tickets", "/src/screens/tickets/index.jsx", "TicketsScreen", {}, "Tickets"],
+    ["support-settings", "/src/screens/support-settings.jsx", "SupportSettingsScreen", {}, "Configurações de SLA"],
+    ["quick-replies", "/src/screens/quick-replies.jsx", "QuickRepliesScreen", {}, "Respostas rápidas"],
+    // Detalhe do ticket é MODAL (14/09); no SSR o fetch não roda, então monta com o resumo da fila.
+    ["ticket-detalhe", "/src/screens/tickets/detail.jsx", "TicketDetail", { ticketId: "t1", summary: { id: "t1", number: 7, subject: "Painel fora do ar", status: "new", priority: "urgent", channel: "portal", createdAt: nowIso }, saasId: "leverads", agents: [], onClose() {} }, "Painel fora do ar"],
   ];
   for (const [name, path, exportName, props, mustContain] of cases) {
     try {
@@ -964,6 +969,105 @@ try {
     console.log(`✓ pipeline-lista (${soma}px de ${P.LIST_GRID_BUDGET})`);
   } catch (err) {
     console.error(`✗ pipeline-lista: ${err.message}`);
+    failed++;
+  }
+
+  // ── Suporte (14/09): a lista da fila cabe, o estourado vem primeiro, o SLA
+  // lê os instantes gravados e a nota interna não vira "resposta" na tela ────
+  try {
+    const L = await server.ssrLoadModule("/src/screens/tickets/list-view.jsx");
+    const T = await server.ssrLoadModule("/src/lib/tickets.js");
+    const cols = L.TICKETS_GRID.trim().split(/\s+(?![^(]*\))/);
+    const floorOf = (c) => {
+      const mm = c.match(/^minmax\((\d+)px/) || c.match(/^(\d+)px$/);
+      if (!mm) throw new Error(`coluna sem piso em px: ${c}`);
+      return Number(mm[1]);
+    };
+    const soma = cols.reduce((a, c) => a + floorOf(c), 0) + L.TICKETS_GRID_GAP * (cols.length - 1);
+    if (soma > L.TICKETS_GRID_BUDGET) throw new Error(`a fila volta a rolar: ${soma}px de ${L.TICKETS_GRID_BUDGET}`);
+    if (L.TICKET_SECTIONS[0][0] !== "breached") throw new Error("SLA estourado deveria ser a 1ª seção");
+    const h = 3600000, agora = Date.parse("2026-09-14T15:00:00Z");
+    const base = { status: "open", createdAt: "2026-09-14T12:00:00Z", sla: { firstResponseDue: "2026-09-14T13:00:00Z", firstResponseWarnAt: "2026-09-14T12:48:00Z", resolutionDue: "2026-09-14T20:00:00Z", resolutionWarnAt: "2026-09-14T18:24:00Z", breached: {} } };
+    if (T.slaState(base, agora).overall !== "breached") throw new Error("1ª resposta vencida precisa ler como estourada");
+    const respondido = { ...base, sla: { ...base.sla, firstResponseAt: "2026-09-14T12:30:00Z" } };
+    if (T.slaState(respondido, agora).overall !== "ok") throw new Error("respondido no prazo e resolução correndo = ok");
+    if (T.slaState(respondido, agora + 4 * h).resolution !== "warning") throw new Error("o aviso usa o instante gravado (tempo útil)");
+    if (L.sectionOf({ ...respondido, status: "pending_customer", sla: { ...respondido.sla, pausedAt: "2026-09-14T14:00:00Z" } }, agora) !== "paused") throw new Error("aguardando o cliente vai pra seção de pausados");
+    const lista = renderToString(wrap(React.createElement(L.TicketsList, { tickets: [base, { ...respondido, id: "b", number: 2, subject: "Outro" }].map((t, i) => ({ id: t.id || "a", number: t.number || 1, subject: t.subject || "Fora do ar", ...t })), agentName: (x) => x, onOpen() {}, now: agora })));
+    if (!lista.includes("SLA estourado") || !lista.includes("Fora do ar")) throw new Error("a lista não montou as seções");
+    // Meu atendimento (15/09): fila e risco pelo responsável atual; SLA cumprido
+    // só conta resolvido dentro da janela; 1ª resposta é mediana do tempo corrido.
+    {
+      const resolvido = (id, assignee, estourou, resolvedAt = "2026-09-13T12:00:00Z") => ({ id, assignee, status: "resolved", createdAt: "2026-09-13T10:00:00Z",
+        sla: { firstResponseDue: "2026-09-13T11:00:00Z", firstResponseAt: "2026-09-13T10:30:00Z", resolutionDue: "2026-09-13T18:00:00Z", resolvedAt, breached: { resolution: estourou } } });
+      const fila = [
+        { ...base, id: "q1", assignee: "lia", priority: "urgent" },
+        { ...respondido, id: "q2", assignee: "lia", status: "pending_customer" },
+        { ...respondido, id: "q3", assignee: "tiago" },
+        resolvido("r1", "lia", false), resolvido("r2", "lia", true), resolvido("r3", "tiago", false),
+        resolvido("velho", "lia", true, "2026-07-01T12:00:00Z"),
+      ];
+      const st = T.agentStats(fila, "lia", agora);
+      if (st.queue !== 2 || st.waiting !== 1 || st.urgent !== 1) throw new Error(`fila do atendente errada: ${JSON.stringify(st)}`);
+      if (st.breached !== 1) throw new Error("o ticket com 1ª resposta vencida precisa contar como estourado");
+      if (st.me.slaBase !== 2 || st.me.slaRate !== 0.5) throw new Error(`SLA cumprido fora da janela ou mal contado: ${JSON.stringify(st.me)}`);
+      if (st.team.slaRate == null || Math.abs(st.team.slaRate - 2 / 3) > 1e-9) throw new Error("a régua do time é o produto inteiro na mesma janela");
+      if (st.me.firstResponseMs !== 30 * 60000) throw new Error("1ª resposta é a mediana do tempo corrido");
+      const K = await server.ssrLoadModule("/src/screens/tickets/agent-kpis.jsx");
+      const bloco = renderToString(wrap(React.createElement(K.AgentKpis, { stats: st, user: { id: "lia", name: "Lia Atendente" }, productName: "LeverAds", onQueue() {}, onRisk() {} })));
+      for (const must of ["Lia Atendente", "seu atendimento em LeverAds", "últimos 30 dias", "Na fila", "Em risco", "50%", "time 67%", "30 min", "agent-meter-mark"]) if (!bloco.includes(must)) throw new Error(`o bloco Meu atendimento não mostra "${must}"`);
+    }
+    // Respostas rápidas no chat: a "/" só abre a lista no começo da linha ou depois de espaço.
+    const QR = await server.ssrLoadModule("/src/screens/tickets/quick-reply-picker.jsx");
+    const tok = QR.slashTokenAt("Oi /boas", 8);
+    if (!tok || tok.start !== 3 || tok.query !== "boas") throw new Error("atalho / não reconhecido");
+    if (QR.slashTokenAt("24/7", 4) || QR.slashTokenAt("https://x", 8)) throw new Error("barra no meio de palavra/URL abriu a lista");
+    const achadas = QR.filterQuickReplies([{ id: "a", title: "Pedir print", shortcut: "print", body: "" }, { id: "b", title: "Boas-vindas", shortcut: "boas-vindas", body: "oi" }], "boa");
+    if (achadas[0]?.id !== "b") throw new Error("atalho que começa com o termo deveria vir primeiro");
+    console.log(`✓ tickets-lista (${soma}px de ${L.TICKETS_GRID_BUDGET})`);
+  } catch (err) {
+    console.error(`✗ tickets-lista: ${err.message}`);
+    failed++;
+  }
+
+  // ── Aba Linear (17/09): o markdown da issue vira mídia e texto legível ────
+  // A descrição real chega com dez linhas de `![print](url com 600 caracteres
+  // de JWT)`. Isso tem que sair como <img>, nunca como texto na tela.
+  try {
+    const M = await server.ssrLoadModule("/src/screens/tickets/linear-markdown.jsx");
+    const url = "https://uploads.linear.app/a20a/386d/c060?signature=eyJhbGciOiJIUzI1NiJ9.eyJwYXRoIjoiL2EyMGEifQ.9wAEIodQFWad";
+    const texto = [
+      "## Prints (02/09)",
+      "",
+      `![King Auto — chat Luciana 03:31 cobrou Shopee](${url})`,
+      "",
+      `![King Auto — ML venda SKU 800 Abs Gol](${url}2)`,
+      "",
+      "> **Correção PO** — clarificação do cliente",
+      "- SKU `5697` sem baixa",
+      "Veja https://linear.app/leverad/issue/LEV-88 e [o painel](https://cockpit.exemplo/#tickets/tk1).",
+      "javascript:alert(1)",
+      `![ruim](javascript:alert(2))`,
+    ].join("\n");
+
+    const blocos = M.parseBlocks(texto);
+    const galeria = blocos.find((b) => b.tipo === "galeria");
+    if (!galeria || galeria.itens.length !== 2) throw new Error("imagens seguidas deveriam virar uma galeria só");
+    if (!blocos.some((b) => b.tipo === "titulo" && b.texto.startsWith("Prints"))) throw new Error("## não virou título");
+    if (!blocos.some((b) => b.tipo === "citacao") || !blocos.some((b) => b.tipo === "lista")) throw new Error("citação/lista não reconhecidas");
+
+    const html = renderToString(wrap(React.createElement(M.LinearMarkdown, { text: texto, onExpired() {} })));
+    if (!html.includes("<img") || !html.includes(url)) throw new Error("a imagem não foi renderizada");
+    if (html.includes("![")) throw new Error("sobrou markdown de imagem como texto na tela");
+    if (/(?:src|href)="javascript:/.test(html)) throw new Error("URL insegura chegou ao DOM");
+    if (!html.includes("ruim")) throw new Error("imagem com URL insegura deveria sobrar como legenda");
+    if (!html.includes("King Auto — chat Luciana")) throw new Error("a legenda (alt) deveria aparecer sob a miniatura");
+    if (!html.includes("linear.app ↗")) throw new Error("URL solta deveria virar link curto pelo domínio");
+    if (!html.includes(">o painel<")) throw new Error("link markdown deveria manter o rótulo");
+    if (!html.includes("<b>Correção PO</b>")) throw new Error("negrito não renderizou");
+    console.log("✓ linear-markdown");
+  } catch (err) {
+    console.error(`✗ linear-markdown: ${err.message}`);
     failed++;
   }
 

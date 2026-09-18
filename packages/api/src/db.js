@@ -73,6 +73,11 @@ const INDEXES = [
   ["task_events_task_idx", "task_events", `((json->>'task'))`],
   ["notifications_user_read_idx", "notifications", `((json->>'user'), (json->>'read'))`],
   ["tasks_parent_idx", "tasks", `((json->>'parentId'))`],
+  ["tickets_saas_status_idx", "tickets", `((json->>'saas'), (json->>'status'))`],
+  ["tickets_portal_token_idx", "tickets", `((json->>'portalToken'))`],
+  ["tickets_linear_issue_idx", "tickets", `((json->>'linearIssueId'))`],
+  ["ticket_events_ticket_idx", "ticket_events", `((json->>'ticket'))`],
+  ["notifications_task_idx", "notifications", `((json->>'task'))`],
   ["activities_lead_idx", "activities", `((json->>'lead'))`], // timeline do lead (GET /api/activities?lead=)
   // proposals é a maior coleção do banco (47 MB de snapshots, acima do teto do
   // cache de list()); o pace só precisa das criadas HOJE por produto.
