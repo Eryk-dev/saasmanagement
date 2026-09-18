@@ -1,4 +1,4 @@
-// Apresentação em SLIDES (opção C) — página pública /p/:id no formato de deck
+// Apresentação em SLIDES (nasceu como opção C; oficial desde 18/09/2026) — página pública /p/:id no formato de deck
 // 16:9, portada do arquivo que o Leo trouxe em 12/09/2026
 // (Lever-Apresentacao-Slides-standalone.html).
 //
@@ -770,7 +770,7 @@ const SLIDES = `
   </div>
 </section>
 
-<section data-label="Na prática" data-screen-label="09 Tangibilidade" data-speaker-notes="Traduza a parcela em pedidos: com o ticket médio informado, são poucas vendas a mais por mês. Tudo acima disso é lucro novo." style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
+<section data-if="pratica" data-label="Na prática" data-screen-label="09 Tangibilidade" data-speaker-notes="Traduza a parcela em pedidos: com o ticket médio informado, são poucas vendas a mais por mês. Tudo acima disso é lucro novo." style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
   <div style="display:flex;align-items:center;justify-content:space-between;gap:24px;padding-bottom:24px;border-bottom:1px solid var(--line);margin-bottom:48px">
     <span style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">Na prática</span>
     <span style="font-family:var(--font-mono);font-size:24px;color:var(--ink-faint)">09</span>
@@ -914,10 +914,12 @@ export function calcOferta(cat, st) {
 
   var vistaPct = Math.min(90, Math.max(0, Number(st.vistaPct) || 0));
   var vista = mensal * parcelas * (1 - vistaPct / 100);
-  var ticket = Math.max(1, Number(st.ticket) || 1);
-  var vendas = mensal ? Math.ceil(mensal / ticket) : 0;
+  // Ticket e pedidos vêm da CALL (o formulário não pergunta): sem os dois o
+  // slide "Na prática" sai da apresentação em vez de mostrar uma conta falsa.
+  var ticket = Math.max(0, Number(st.ticket) || 0);
+  var vendas = mensal && ticket ? Math.ceil(mensal / ticket) : 0;
   var pedidos = Math.max(0, Number(st.pedidos) || 0);
-  var pct = pedidos ? (vendas / pedidos * 100) : 0;
+  var pct = pedidos && vendas ? (vendas / pedidos * 100) : 0;
   var demo = nomes.length ? nomes.join(", ").replace(/, ([^,]*)$/, " e $1") : "a plataforma";
 
   return {
@@ -939,26 +941,41 @@ export function calcOferta(cat, st) {
       ads: !!plat,
       oem: st.linha === "oem" && !!plat ? true : !!pack,
       price: !!price,
+      pratica: vendas > 0 && pedidos > 0,
       resultados: true
     }
   };
 }
 
+// Contas que o lead declarou no FORMULÁRIO. A pergunta é por faixa
+// ("3-5", "6-10", "10+"): vale o piso da faixa, que é o único número que o
+// formulário garante; o closer sobe na call. Sem resposta, 0 (em branco).
+export function contasDoForm(answers, calc) {
+  const key = (calc && calc.seatsKey) || "accounts";
+  const raw = String((answers || {})[key] ?? "").trim();
+  if (!raw) return 0;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
 // Configuração da apresentação: o que a tela zero guarda (state.deckC). Nasce
-// dos dados do lead e do produto que a régua do catálogo já sugere — o closer
-// abre a tela zero com o plano montado, não em branco.
+// do que o FORMULÁRIO trouxe (nome, empresa, contas) e do produto que a régua
+// do catálogo sugere. Pedidos/mês, ticket médio e desconto à vista o form não
+// pergunta: ficam em branco pro closer preencher na call (Leo, 18/09/2026),
+// nunca um número inventado que o cliente pudesse levar a sério.
 export function deckConfig(p, { suggested = "" } = {}) {
   const s = (p.state && p.state.deckC) || {};
   const lead = (p.data && p.data.lead) || {};
+  const answers = (p.data && p.data.answers) || {};
   const [linhaSug, tierSug] = String(suggested || "ads_essencial").split("_");
   const num = (v, d) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.round(Number(v)) : d);
   return {
     nome: String(s.nome || lead.firstName || lead.name || "").slice(0, 60),
     empresa: String(s.empresa || lead.company || "").slice(0, 80),
-    contas: num(s.contas, num(p.state && p.state.seats, 2)),
-    pedidos: num(s.pedidos, 300),
-    ticket: num(s.ticket, 120),
-    vistaPct: Math.min(90, Math.max(0, Number(s.vistaPct != null ? s.vistaPct : 20) || 0)),
+    contas: num(s.contas, contasDoForm(answers, p.calc)),
+    pedidos: num(s.pedidos, 0),
+    ticket: num(s.ticket, 0),
+    vistaPct: Math.min(90, Math.max(0, Number(s.vistaPct) || 0)),
     plataforma: s.plataforma != null ? !!s.plataforma : true,
     linha: ["ads", "oem"].includes(String(s.linha || "")) ? String(s.linha) : (linhaSug === "oem" ? "oem" : "ads"),
     tier: ["essencial", "escala"].includes(String(s.tier || "")) ? String(s.tier) : (tierSug === "escala" ? "escala" : "essencial"),
@@ -1012,21 +1029,22 @@ function cfgScreen() {
     <div style="display:grid;grid-template-columns:300px minmax(0,1fr) 300px;gap:20px;align-items:start">
       <div class="cfg-card">
         <div class="cfg-kicker">Cliente</div>
+        <div style="font-size:12px;color:var(--ink-faint);line-height:1.4;margin-top:-6px">Nome, empresa e contas vêm do formulário. O que está em branco você preenche na call.</div>
         <label style="display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--ink-muted)"><span>Nome</span>
           <input class="cfg-input" data-cfg="nome"></label>
         <label style="display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--ink-muted)"><span>Empresa</span>
           <input class="cfg-input" data-cfg="empresa"></label>
         <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px">
           <label style="min-width:0;display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--ink-muted)"><span>Contas</span>
-            <input class="cfg-input" type="number" min="1" data-cfg="contas"></label>
+            <input class="cfg-input" type="number" min="1" placeholder="na call" data-cfg="contas"></label>
           <label style="min-width:0;display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--ink-muted)"><span>Pedidos/mês</span>
-            <input class="cfg-input" type="number" min="0" data-cfg="pedidos"></label>
+            <input class="cfg-input" type="number" min="0" placeholder="na call" data-cfg="pedidos"></label>
         </div>
         <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px">
           <label style="min-width:0;display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--ink-muted)"><span>Ticket médio (R$)</span>
-            <input class="cfg-input" type="number" min="1" data-cfg="ticket"></label>
+            <input class="cfg-input" type="number" min="1" placeholder="na call" data-cfg="ticket"></label>
           <label style="min-width:0;display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--ink-muted)"><span>Desc. à vista (%)</span>
-            <input class="cfg-input" type="number" min="0" max="90" data-cfg="vistaPct"></label>
+            <input class="cfg-input" type="number" min="0" max="90" placeholder="0" data-cfg="vistaPct"></label>
         </div>
       </div>
 
@@ -1254,7 +1272,7 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
   function pintar() {
     var o = oferta();
     var vals = {
-      "f.nome": cfg.nome, "f.empresa": cfg.empresa || "sua operação", "f.contas": cfg.contas,
+      "f.nome": cfg.nome, "f.empresa": cfg.empresa || "sua operação", "f.contas": cfg.contas > 0 ? cfg.contas : "[contas]",
       hoje: D.hoje, planoNome: o.planoNome, demoLista: o.demoLista, periodoLabel: o.periodoLabel,
       parcelas: o.parcelas, mensalFmt: o.mensalFmt, vistaFmt: o.vistaFmt, setupFmt: o.setupFmt,
       oemPackFmt: o.oemPackFmt, pedidosFmt: o.pedidosFmt, ticketFmt: o.ticketFmt,
@@ -1419,6 +1437,7 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
       [].forEach.call(document.querySelectorAll("[data-cfg]"), function (el) {
         var k = el.getAttribute("data-cfg");
         if (el.type === "checkbox") el.checked = !!cfg[k];
+        else if (el.type === "number") el.value = Number(cfg[k]) > 0 ? cfg[k] : "";
         else if (el.tagName !== "SELECT") el.value = cfg[k];
       });
       var linhas = ["ads", "oem"].filter(function (l) { return D.catalog.products[l + "_essencial"] || D.catalog.products[l + "_escala"]; })

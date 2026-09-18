@@ -1,4 +1,4 @@
-// Opção C: a apresentação em SLIDES (12/09/2026). O que este teste protege:
+// A apresentação em SLIDES (12/09/2026; oficial desde 18/09). O que este teste protege:
 // a conta do plano sai do CATÁLOGO (nada de preço escrito no deck), o link do
 // cliente não leva a tabela de preço no fonte, a tela zero só existe no modo
 // closer e a configuração dela vira `state.product`/`state.cycle` — que é o que
@@ -111,14 +111,24 @@ test("cases sobrevivem à abertura pelo closer, atualização do lead e comparti
   assert.doesNotMatch(clientPage.body, /Nome alterado no cadastro central|https:\/\/interno\/prova/);
 });
 
-test("migração: o deck de slides nasce selecionável e com o catálogo do deck padrão; idempotente", async () => {
+test("migração: o deck de slides é o publicado do leverads, com o catálogo do pt_leverads; A e B arquivadas; idempotente", async () => {
   const repo = await seedRepo();
   const t = await repo.get("proposal_templates", "pt_leverads_slides");
   assert.equal(t.layout, "slides", "é o renderer novo");
-  assert.equal(t.selectable, true, "aparece no select do card do lead");
-  assert.equal(t.status, "draft", "não vira o padrão do produto");
+  assert.equal(t.status, "published", "é o padrão do produto: gera sozinho no form e no 'gerar proposta'");
+  assert.equal(t.selectable, false, "não aparece duplicado no select (o padrão já é ele)");
+  assert.equal(t.officialSince, "2026-09-18");
   assert.equal(t.calc.catalog.products.ads_escala.anu.per, 999, "preço vem do catálogo, não do deck");
+  const a = await repo.get("proposal_templates", "pt_leverads");
+  assert.equal(a.status, "draft", "a apresentação A saiu do padrão");
+  assert.match(a.name, /^\[ARQUIVO 2026-09-18\]/, "carimbada como arquivo, no padrão dos backups");
+  assert.ok(a.calc.catalog, "o catálogo continua morando nela (as migrações escrevem lá)");
   assert.equal(await ensureSlidesDeck(repo), false, "segunda execução não mexe");
+
+  // Despublicar de propósito depois não é desfeito pela migração.
+  await repo.update("proposal_templates", "pt_leverads_slides", { status: "draft" });
+  assert.equal(await ensureSlidesDeck(repo), false, "o carimbo officialSince segura a promoção");
+  await repo.update("proposal_templates", "pt_leverads_slides", { status: "published" });
 
   // Preço novo no deck padrão entra no de slides sozinho.
   const base = await repo.get("proposal_templates", "pt_leverads");
@@ -170,33 +180,78 @@ test("sem produto escolhido, a apresentação não inventa preço", async () => 
   assert.equal(vazio.mostra.ads, false, "o slide do produto sai da apresentação");
 });
 
-test("a tangibilidade traduz a parcela em vendas com o ticket informado", async () => {
+test("a tangibilidade traduz a parcela em vendas com o ticket informado; sem ticket/pedidos o slide sai", async () => {
   const repo = await seedRepo();
   const cat = await catalogoDoTemplate(repo);
   const o = calcOferta(cat, { ...cfgBase, tier: "escala", ticket: 200, pedidos: 400 });
   assert.equal(o.vendasNecessarias, 5, "999 / 200 arredondado pra cima");
   assert.equal(o.percentualExtra, "1,3%", "5 vendas sobre 400 pedidos");
+  assert.equal(o.mostra.pratica, true);
+  // O form não pergunta ticket nem pedidos: em branco, nada de conta falsa.
+  const semTicket = calcOferta(cat, { ...cfgBase, ticket: 0, pedidos: 0 });
+  assert.equal(semTicket.mensal, 497, "o preço do plano não depende disso");
+  assert.equal(semTicket.vendasNecessarias, 0);
+  assert.equal(semTicket.percentualExtra, "—");
+  assert.equal(semTicket.mostra.pratica, false, "o slide 'Na prática' some da apresentação");
+  const soTicket = calcOferta(cat, { ...cfgBase, ticket: 120, pedidos: 0 });
+  assert.equal(soTicket.mostra.pratica, false, "sem pedidos/mês também some (o texto compara com o que já vende)");
 });
 
-test("a configuração nasce do lead e do produto que a régua sugere", async () => {
+test("a configuração nasce do formulário e do produto que a régua sugere; o que o form não pergunta fica em branco", async () => {
   const p = {
     state: { seats: 4 },
-    data: { lead: { name: "Viviane Souza", firstName: "Viviane", company: "Zpack Autopeças" } },
+    calc: { seatsKey: "accounts" },
+    data: {
+      lead: { name: "Viviane Souza", firstName: "Viviane", company: "Zpack Autopeças" },
+      answers: { accounts: "3-5", niche: "autopecas" },
+    },
   };
   const c = deckConfig(p, { suggested: "oem_escala" });
   assert.equal(c.nome, "Viviane");
   assert.equal(c.empresa, "Zpack Autopeças");
-  assert.equal(c.contas, 4, "contas vêm dos assentos do snapshot");
+  assert.equal(c.contas, 3, "faixa do form vale o piso (o closer sobe na call), não os assentos da fórmula");
+  assert.equal(c.pedidos, 0, "o form não pergunta pedidos/mês: em branco pra call");
+  assert.equal(c.ticket, 0, "o form não pergunta ticket médio: em branco pra call");
+  assert.equal(c.vistaPct, 0, "desconto à vista é decisão da call, não default");
   assert.equal(c.linha, "oem");
   assert.equal(c.tier, "escala");
   assert.equal(c.periodo, "anual", "a apresentação abre no anual");
+  assert.equal(deckConfig({ ...p, data: { ...p.data, answers: { accounts: "2" } } }).contas, 2, "resposta exata vale como está");
+  assert.equal(deckConfig({ ...p, data: { ...p.data, answers: { accounts: "10+" } } }).contas, 10);
+  assert.equal(deckConfig({ ...p, data: { ...p.data, answers: {} } }).contas, 0, "sem resposta, em branco (não 2)");
+  // O que o closer salvou na tela zero vence o form.
+  assert.equal(deckConfig({ ...p, state: { deckC: { contas: 7, pedidos: 900, ticket: 85, vistaPct: 10 } } }).contas, 7);
+  assert.equal(deckConfig({ ...p, state: { deckC: { pedidos: 900, ticket: 85 } } }).ticket, 85);
   // Lixo não entra: enum inválido cai no padrão e número vira número.
   const sujo = deckConfig({ state: { deckC: { linha: "hack", tier: "ouro", contas: "-3", vistaPct: 999, periodo: "mensal" } } }, { suggested: "ads_essencial" });
   assert.equal(sujo.linha, "ads");
   assert.equal(sujo.tier, "essencial");
-  assert.equal(sujo.contas, 2);
+  assert.equal(sujo.contas, 0);
   assert.equal(sujo.vistaPct, 90, "desconto à vista tem teto");
   assert.equal(sujo.periodo, "anual");
+});
+
+test("sem template escolhido, o lead ganha a apresentação em slides (é o publicado)", async () => {
+  // A e B já existem quando a migração roda em produção: a Starter entra antes.
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [{ stage: "Inbox" }] });
+  await repo.create("proposal_templates", JSON.parse(JSON.stringify(TEMPLATE)));
+  await repo.create("proposal_templates", { id: "pt_leverads_starter", saas: "leverads", name: "Starter", status: "draft", selectable: true, slides: [] });
+  await ensureProposalCatalog(repo);
+  await ensureSlidesDeck(repo);
+  const lead = await repo.create("leads", { id: "ld_auto", saas: "leverads", name: "Bia Lima", accounts: "6-10", niche: "moda" });
+  const r = await runNativeProposal(repo, lead, { baseUrl: "http://x" });
+  assert.equal(r.ok, true);
+  assert.equal(r.proposal.template, "pt_leverads_slides");
+  assert.equal(r.proposal.layout, "slides");
+  const cfg = deckConfig(r.proposal);
+  assert.equal(cfg.nome, "Bia");
+  assert.equal(cfg.contas, 6, "contas do form");
+  assert.equal(cfg.ticket, 0);
+  // A e B não aparecem mais como opção (selectable) nem como padrão.
+  const b = await repo.get("proposal_templates", "pt_leverads_starter");
+  assert.equal(b.selectable, false);
+  assert.match(b.name, /^\[ARQUIVO/);
 });
 
 test("rota: o closer recebe a tela zero e a tabela; o cliente recebe só os números", async () => {
@@ -293,6 +348,7 @@ test("o link do cliente do deck de slides existe e vai com o preço congelado", 
   assert.equal(filho.layout, "slides");
   assert.equal(filho.editKey, "", "link do cliente nunca abre a tela zero");
   assert.equal(filho.state.deckOferta.mensalFmt, "999", "oferta congelada no snapshot");
+  assert.equal(filho.state.deckOferta.mostra.pratica, true, "com ticket e pedidos, o slide 'Na prática' vai");
   assert.equal(filho.calc.catalog, undefined, "a tabela de preço não viaja no link do cliente");
 
   // Preço novo no catálogo não mexe no que o cliente já recebeu.
