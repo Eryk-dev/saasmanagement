@@ -19,10 +19,9 @@ import { kindOf, firstStage } from "./stages.js";
 import { leadGrade } from "./routes.marketing.js";
 import { slotsForLead, slotLabel, wallNow, spreadPair, wholeHourSlots, OFFER_HOURS, OFFER_HORIZON_DAYS } from "./agenda-slots.js";
 import { leadDigest, leadPainFocus, SDR_AUTHOR } from "./sdr-flow.js";
-import { priceFloorOf, onlyFloorNumbers } from "./sdr-brain.js";
+import { PRICE_RX } from "./sdr-brain.js";
 
 export const DOC_ID = "sdr_replay";
-const PRICE_RX = /r\$\s*\d|\b\d{2,}\s*(reais|por m[eê]s|\/m[eê]s|mensais)\b|\ba partir de\s*\d/i;
 const WEEKDAYS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 // O que o raio-x de 17/09 mediu como copy que perde o lead.
 const REFLEX_RX = /algum\s+d(os|esses|aqueles)\s+hor[áa]rios|hor[áa]rios?\s+que\s+(eu\s+)?(te\s+)?(passei|mandei|enviei)/i;
@@ -88,14 +87,12 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
     const nowLabel = `${WEEKDAYS[wnow.getUTCDay()]}, ${p2(wnow.getUTCDate())}/${p2(wnow.getUTCMonth() + 1)}, ${wnow.getUTCHours()}h${p2(wnow.getUTCMinutes())} (hora de Brasília)`;
     const product = await repo.get("products", saas);
     const picked = await pickThreads(saas, Math.min(60, Math.max(1, maxThreads)));
-    const priceFloor = product?.sdrBot?.priceFloor === false ? null : await priceFloorOf(repo, saas, { now: now().getTime() });
 
     const report = {
       saas, startedAt, model: model || ai?.model || "", tag,
       threads: picked.length, turns: 0, errors: 0,
       actions: { responder: 0, agendar: 0, remarcar: 0, desmarcar: 0, humano: 0, silencio: 0 },
-      priceGuardHits: 0,          // respostas da IA com número FORA do piso (a trava trocaria)
-      priceFloorSaid: 0,          // respostas que disseram o piso do catálogo
+      priceGuardHits: 0,          // respostas da IA com valor (a trava de preço trocaria: preço só na call)
       invalidSlotPicks: 0,        // agendar com horário fora da lista (o motor re-oferta)
       realBookedThreads: 0,       // nas conversas da amostra, quantas viraram call na vida real
       wouldBookThreads: 0,        // em quantas o robô teria marcado em algum turno
@@ -159,7 +156,6 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
             suggestedPair: spreadPair(wholeHourSlots(slotList)),
             slotsOffered,
             firstReply: !msgs.slice(0, i).some((x) => x.direction === "out"),
-            priceFloor,
           });
           report.actions[d.acao] = (report.actions[d.acao] || 0) + 1;
           if ((d.acao === "agendar" || d.acao === "remarcar")) {
@@ -167,10 +163,7 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
             else report.invalidSlotPicks++;
           }
           const text = String(d.mensagem || "");
-          if (text && PRICE_RX.test(text)) {
-            if (priceFloor && onlyFloorNumbers(text, priceFloor)) report.priceFloorSaid++;
-            else report.priceGuardHits++;
-          }
+          if (text && PRICE_RX.test(text)) report.priceGuardHits++;
           if (REFLEX_RX.test(text)) report.reflexPhrase++;
           if (VERIFY_RX.test(text)) report.verifyLater++;
           if (d.acao === "responder" && text && !text.includes("?")) report.noQuestion++;

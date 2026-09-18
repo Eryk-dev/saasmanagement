@@ -44,7 +44,24 @@ const PITCH_RX = /t[íi]tulo de 200|part number|compatibilidade inteira|clonagem
 // rotulava o dia errado ao re-citar de cabeça).
 const SLOTS_RX = /(hoje|amanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo) às \d{1,2}h/i;
 const DAILY_CAP = 15;             // mensagens do robô por conversa por dia
-const PRICE_RX = /r\$\s*\d|\b\d{2,}\s*(reais|por m[eê]s|\/m[eê]s|mensais)\b|\ba partir de\s*\d/i;
+// VALOR dito por nós. PREÇO É CONVERSA DA CALL (Leo, 18/09): a LeverAds tem
+// planos diferentes e o plano certo sai da escuta das dores na call de vendas,
+// então nenhum número, faixa, parcela, desconto ou NOME de plano sai do robô
+// (nem de gente pelo WhatsApp: ver a escada de preço lá embaixo). O "piso de
+// preço" do raio-x de 17/09 (robô dizia "a partir de R$ X") durou um dia:
+// saiu por decisão do Leo em 18/09. A régua é única: o replay importa daqui.
+export const PRICE_RX = new RegExp([
+  /r\$/,                                                                                   // "R$ 299", "R$ mil"
+  /\b\d{2,}\s*(reais|por m[eê]s|\/m[eê]s|mensais|mensal|ao m[eê]s|por ano|\/ano|anuais|anual)\b/,
+  /\b\d[\d.,]*\s*(mil|k)\s*(reais|por m[eê]s|\/m[eê]s|mensais|de investimento)/,            // "2 mil reais", "1,5k/mês"
+  /\b(cem|duzentos|trezentos|quatrocentos|quinhentos|seiscentos|setecentos|oitocentos|novecentos|mil)(\s+e\s+\w+)?\s+reais\b/,
+  /\ba partir de\s*(r\$)?\s*\d/,
+  /\b(custa|sai por|fica em|fica por|em torno de|por volta de|cerca de|na faixa de)\s*(uns\s+)?\d[\d.,]*\s*(reais|mil\b|k\b|por m[eê]s|\/m[eê]s|mensais|,\d{2}\b)/,
+  /\b\d{1,2}x\s*de\s*(r\$)?\s*\d/,                                                          // "12x de 250"
+  /\bparcelas?\s+de\s*(r\$)?\s*\d/,
+  /\b\d{1,3}\s*%\s*(de\s+)?desconto|\bdesconto\s+de\s+\d/,
+  /\bplano\s+(essencial|escala|enterprise)\b/,                                              // nome do plano = escolha da call
+].map((r) => r.source).join("|"), "i");
 // Auto-atendimento do OUTRO lado (visto 23/08: "MAF Imports agradece seu
 // contato. Como podemos ajudar? informe os 7 últimos números do chassi"):
 // resposta instantânea de loja não é gente — responder vira robô falando com
@@ -145,59 +162,32 @@ const PRICE_ASK_RX = /pre[çc]o|\bvalor(es)?\b|quanto (custa|fica|sai|é|e)\b|me
 
 const firstName = (v) => String(v || "").trim().split(/\s+/)[0] || "";
 
-// ── Piso de preço (raio-x 17/09) ────────────────────────────────────────────
-// O robô pode dizer "a partir de R$ X por mês" UMA vez, com X vindo do catálogo
-// do template de proposta (proposal_templates.calc.catalog.products: o menor
-// total ANUAL de cada linha ÷ 12). Nunca de cabeça: mudou o preço no banco, o
-// robô fala o novo. Cache curto por produto (o catálogo muda raramente).
-const fmtBRL = (n) => Math.round(n).toLocaleString("pt-BR");
-const floorCache = new Map();
-export async function priceFloorOf(repo, saas, { now = Date.now(), ttlMs = 10 * 60_000 } = {}) {
-  const hit = floorCache.get(saas);
-  if (hit && now - hit.at < ttlMs) return hit.floor;
-  let floor = null;
-  try {
-    const tpls = (await repo.list("proposal_templates")).filter((t) => t.saas === saas && t.calc?.catalog?.products);
-    const min = { oem: null, ads: null };
-    for (const t of tpls) {
-      for (const [key, P] of Object.entries(t.calc.catalog.products || {})) {
-        const line = key.startsWith("oem_") ? "oem" : key.startsWith("ads_") ? "ads" : null;
-        const total = Number(P?.anu?.total);
-        if (!line || !Number.isFinite(total) || total <= 0) continue;
-        if (min[line] == null || total < min[line]) min[line] = total;
-      }
-    }
-    if (min.oem || min.ads) {
-      floor = {
-        oem: min.oem ? `a partir de R$ ${fmtBRL(min.oem / 12)} por mês no plano anual` : "",
-        ads: min.ads ? `a partir de R$ ${fmtBRL(min.ads / 12)} por mês no plano anual` : "",
-        // Números que a trava de preço ACEITA na resposta: o mensal e o anual
-        // de cada linha (com e sem separador de milhar).
-        numbers: new Set([min.oem, min.ads].filter(Boolean).flatMap((t) => [String(Math.round(t / 12)), String(t), fmtBRL(t / 12), fmtBRL(t)])),
-      };
-    }
-  } catch { floor = null; }
-  floorCache.set(saas, { at: now, floor });
-  return floor;
-}
-// A resposta cita SÓ números do piso? (sem número nenhum também passa). Hora
-// ("14h", "9h30") e data ("22/08") não contam como preço.
-export function onlyFloorNumbers(text, floor) {
-  if (!floor?.numbers?.size) return false;
-  const cleaned = String(text || "").replace(/\b\d{1,2}h(\d{2})?\b/gi, " ").replace(/\b\d{1,2}[:/]\d{2}\b/g, " ").replace(/\b\d{1,2}\s*(min|minutos|dias?)\b/gi, " ");
-  const nums = cleaned.match(/\d[\d.]*/g) || [];
-  return nums.every((n) => floor.numbers.has(n) || floor.numbers.has(n.replace(/\./g, "")));
-}
 const lastInboundText = (msgs) => {
   const m = [...msgs].reverse().find((x) => x.direction === "in");
   return String(m?.transcript || m?.text || "");
 };
 
-// Ponte pro humano quando o lead insiste no preço: promete gente, não número
-// (o valor é conversa do closer). O alerta quente sai junto, então a promessa
-// tem quem cumpra.
+// Ponte pro humano quando o lead insiste no preço pela TERCEIRA vez: promete
+// gente, nunca número nem "te passo o valor por aqui" (o preço só aparece na
+// call, e o alerta que sai junto diz isso pra quem assume).
 function priceBridgeText(nome) {
-  return `Deixa eu ver isso certinho com o time aqui${nome ? ` ${nome}` : ""} e já te falo por aqui`;
+  return `Entendo${nome ? ` ${nome}` : ""}, vou pedir pra alguém do time falar contigo por aqui`;
+}
+
+// SEGUNDA vez que o lead pede preço (Leo, 18/09). Nem repetir a parede (foi o
+// que fez a lead da RT Eleven encerrar em 24/08), nem gente mandar o valor
+// pelo WhatsApp (o remendo depois daquele dia), nem o piso do catálogo (o
+// raio-x de 17/09): o robô explica o PORQUÊ com honestidade e puxa pra call,
+// que é onde o preço existe. São planos diferentes, e o certo pra cada
+// operação sai da escuta das dores.
+function priceExplainText(nome, { callAt, slots, slotsOffered, wnow }) {
+  const oi = nome ? `Te explico o porquê ${nome}:` : "Te explico o porquê:";
+  const motivo = `${oi} a gente tem planos diferentes, e qual faz sentido pra você depende da sua operação. Por isso o valor a gente só fecha na call, depois de ouvir o seu cenário, senão eu te passo um número que não é o seu.`;
+  if (callAt) return `${motivo} Na nossa call de ${slotLabelFull(callAt, wnow)} o especialista já te mostra o plano certo e o valor.`;
+  if (slotsOffered) return `${motivo} Qual dos horários que te passei fica melhor pra você?`;
+  if (slots.length >= 2) return `${motivo} Consigo ${slotLabel(slots[0].at, wnow)} ou ${slotLabel(slots[1].at, wnow)}, qual fica melhor pra você?`;
+  if (slots.length === 1) return `${motivo} Consigo ${slotLabel(slots[0].at, wnow)}, fica bom pra você?`;
+  return `${motivo} Qual período fica melhor pra você, manhã ou tarde?`;
 }
 
 // A resposta é requentada? Compara com o que o robô JÁ mandou nesta conversa,
@@ -624,8 +614,6 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     // valendo pra AGENDAR quando o lead pede um horário específico.
     const offerPool = wholeHourSlots(slotList);
     const suggestedPair = spreadPair(offerPool);
-    // Piso de preço do catálogo (chave sdrBot.priceFloor, ligada por padrão).
-    const priceFloor = cfg.priceFloor ? await priceFloorOf(repo, product.id, { now: nowMs }) : null;
     // Nota de voz que disparou a decisão vira texto (as antigas já carregam o
     // transcript gravado); sem transcrição possível, fica "🎤 áudio" e o
     // prompt manda pra humano.
@@ -688,7 +676,6 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       firstReply,
       engaged,
       suggestedPair,
-      priceFloor,
     });
     // Quem respondeu e quanto custou: vai pro carimbo da thread e pro uso do dia.
     Object.assign(meta, { model: decision.model || "", usage: decision.usage || null, ms: decision.ms || 0, saas: product.id });
@@ -757,6 +744,29 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     }
 
     if (decision.acao === "silencio") return "silencio";
+
+    // ESCADA DE PREÇO (Leo, 18/09), determinística e na frente da ação da IA:
+    //   1ª vez  → a IA desvia com a resposta oficial (a trava PRICE_RX embaixo
+    //             garante que nenhum número passe);
+    //   2ª vez  → o motor explica o porquê (planos diferentes, o certo sai da
+    //             call) e puxa pra call;
+    //   3ª vez+ → gente assume, com o alerta dizendo que PREÇO SÓ NA CALL.
+    // Lead escolhendo horário tem prioridade: agendar/remarcar/desmarcar seguem.
+    const askingNow = PRICE_ASK_RX.test(lastInboundText(msgs));
+    const priceAsks = msgs.filter((m) => m.direction === "in" && PRICE_ASK_RX.test(m.transcript || m.text || "")).length;
+    const insisting = priceAsks >= 2 || (lead.sdrLog?.priceGuardAt && askingNow);
+    if (insisting && !["agendar", "remarcar", "desmarcar"].includes(decision.acao)) {
+      const iso = new Date(nowMs).toISOString();
+      if (!lead.sdrLog?.priceExplainedAt) {
+        await send(priceExplainText(nome, { callAt: lead.callAt, slots: suggestedPair.length ? suggestedPair : offerPool.slice(0, 1), slotsOffered, wnow }));
+        await stamp(lead, { priceGuardAt: lead.sdrLog?.priceGuardAt || iso, priceExplainedAt: iso });
+        return "preco-explicado";
+      }
+      await raiseAlert(repo, thread, { text: `Insistiu no preço ${priceAsks}x · assume a conversa, mas PREÇO SÓ NA CALL (planos diferentes, o certo sai da escuta das dores): não fala valor por aqui, leva pra call: "${String(message?.text || "").slice(0, 140)}"` });
+      await stamp(lead, { handoffAt: iso, priceHandoffAt: iso });
+      await send(priceBridgeText(nome));
+      return "preco-humano";
+    }
 
     if (decision.acao === "humano") {
       await raiseAlert(repo, thread, { text: `SDR IA pediu humano: ${decision.motivoHumano || "precisa de gente"} · "${String(message?.text || "").slice(0, 140)}"` });
@@ -840,28 +850,12 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     const parts = (Array.isArray(decision.mensagens) && decision.mensagens.length
       ? decision.mensagens : [decision.mensagem]).map((t) => String(t || "").trim()).filter(Boolean);
     if (!parts.length) return "silencio";
-    // PREÇO PELA SEGUNDA VEZ = GENTE (Leo, 24/08). A resposta oficial desvia uma
-    // vez; repetida, vira parede. Em prod 24/08 a lead da RT Eleven perguntou o
-    // valor, ouviu o desvio, insistiu, ouviu o MESMO desvio com outras palavras
-    // e encerrou ("sem todo esse processo de vendas") — e voltou interessada uma
-    // hora depois, quando a SDR mandou o preço por áudio. Insistiu duas vezes,
-    // o robô sai da frente.
-    const priceAsks = msgs.filter((m) => m.direction === "in" && PRICE_ASK_RX.test(m.transcript || m.text || "")).length;
-    if (priceAsks >= 2 || (lead.sdrLog?.priceGuardAt && PRICE_ASK_RX.test(lastInboundText(msgs)))) {
-      await raiseAlert(repo, thread, { text: `Insistiu no preço ${priceAsks}x · assume e fala de valor: "${String(message?.text || "").slice(0, 140)}"` });
-      await stamp(lead, { handoffAt: new Date(nowMs).toISOString(), priceHandoffAt: new Date(nowMs).toISOString() });
-      await send(priceBridgeText(nome));
-      return "preco-humano";
-    }
-    // Com piso no contexto, a resposta que cita SÓ os números do piso passa
-    // (é o "a partir de" do catálogo); qualquer outro número segue travado.
-    if (PRICE_RX.test(parts.join(" ")) && !onlyFloorNumbers(parts.join(" "), priceFloor)) {
+    // TRAVA DE PREÇO (1ª vez): a IA citou valor → sai a resposta oficial no
+    // lugar. A 2ª e a 3ª insistência já foram tratadas pela escada lá em cima.
+    if (PRICE_RX.test(parts.join(" "))) {
       await send(priceDeferral(nome));
       await stamp(lead, { priceGuardAt: new Date(nowMs).toISOString() });
       return "preco-travado";
-    }
-    if (priceFloor && PRICE_RX.test(parts.join(" ")) && !lead.sdrLog?.priceFloorAt) {
-      await stamp(lead, { priceFloorAt: new Date(nowMs).toISOString() });
     }
     // TRAVA DE REDIRECIONAMENTO: a resposta manda o lead pra outro número ou
     // link de WhatsApp. Isso nunca é certo (o robô já ESTÁ no canal) e, quando

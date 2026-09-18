@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeSdrBrain, bookCall, stripDuration, stripDeviceAsk } from "../src/sdr-brain.js";
+import { makeSdrBrain, bookCall, stripDuration, stripDeviceAsk, PRICE_RX } from "../src/sdr-brain.js";
 
 // Relógio dos testes: quarta 19/08/2026, 10h BRT (13h UTC). Com o closer livre
 // e aviso mínimo de 2h, o primeiro horário OFERTÁVEL é 13:00 do próprio dia
@@ -365,6 +365,98 @@ test("trava de preço: resposta da IA com valor vira o desvio com autoridade (se
   assert.ok(!/às \d/.test(fakes.sent[0].text), "resposta de preço não re-oferece horário");
   assert.ok((await repo.get("leads", "L1")).sdrLog.priceGuardAt);
 });
+
+test("PRICE_RX: pega valor escrito de todo jeito e deixa passar contagem de anúncios, minutos e hora", () => {
+  for (const t of ["R$ 299", "299 reais", "a partir de 300", "1.500 por mês", "custa 2 mil reais", "12x de 250",
+    "quinhentos reais", "10% de desconto", "no plano Escala", "sai por R$ 1.200,00", "fica em torno de 800,00", "R$ mil"]) {
+    assert.ok(PRICE_RX.test(t), `devia travar: ${t}`);
+  }
+  for (const t of ["clona 200 anúncios", "a demonstração leva 30 minutos", "cerca de 20 contas", "amanhã às 14h",
+    "escalar a operação", "fica em 2 contas", "12 anúncios por dia"]) {
+    assert.ok(!PRICE_RX.test(t), `não devia travar: ${t}`);
+  }
+});
+
+test("preço pela 2ª vez: robô explica os planos e puxa pra call, sem número, sem gente e sem prometer valor por aqui", async () => {
+  const repo = await world({
+    lead: { sdrLog: { priceGuardAt: ISO("2026-08-19T12:31:00Z") } },
+    messages: [
+      { direction: "in", text: "quanto custa?", at: ISO("2026-08-19T12:30:00Z") },
+      { direction: "out", author: "sdr-bot", text: "O investimento é de acordo com as necessidades da sua operação: primeiro a gente entende o seu cenário.", at: ISO("2026-08-19T12:31:00Z") },
+      { direction: "in", text: "só me diz a faixa de preço pra ver a viabilidade", at: ISO("2026-08-19T12:59:00Z") },
+    ],
+  });
+  // Mesmo que a IA ainda peça gente, o motor manda a explicação e segue.
+  const fakes = makeFakes({ decisions: [{ acao: "humano", motivoHumano: "insistiu no preço" }] });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "só me diz a faixa de preço pra ver a viabilidade" } });
+  assert.equal(r, "preco-explicado");
+  assert.equal(fakes.sent.length, 1);
+  const t = fakes.sent[0].text;
+  assert.match(t, /planos diferentes/);
+  assert.match(t, /só fecha na call/);
+  assert.ok(!PRICE_RX.test(t), `explicação sem valor: ${t}`);
+  assert.match(t, /Consigo .* ou .*, qual fica melhor/, "puxa pra call com os 2 horários reais");
+  assert.equal((await repo.list("wa_alerts")).length, 0, "2ª vez não chama gente");
+  const lead = await repo.get("leads", "L1");
+  assert.ok(lead.sdrLog.priceExplainedAt);
+  assert.ok(!lead.sdrLog.handoffAt);
+});
+
+test("preço pela 2ª vez com call já marcada: aponta pra call marcada em vez de oferecer horário", async () => {
+  const repo = await world({
+    lead: { stage: "Call agendada", callAt: "2026-08-20T10:00", sdrLog: { priceGuardAt: ISO("2026-08-19T12:31:00Z") } },
+    messages: [
+      { direction: "in", text: "qual o valor?", at: ISO("2026-08-19T12:30:00Z") },
+      { direction: "out", author: "sdr-bot", text: "O investimento é de acordo com as necessidades da sua operação.", at: ISO("2026-08-19T12:31:00Z") },
+      { direction: "in", text: "me passa o preço antes da call", at: ISO("2026-08-19T12:59:00Z") },
+    ],
+  });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Claro!" }] });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "me passa o preço antes da call" } });
+  assert.equal(r, "preco-explicado");
+  assert.match(fakes.sent[0].text, /Na nossa call de amanhã \(20\/08\) às 10h o especialista já te mostra o plano certo e o valor/);
+  assert.ok(!/Consigo/.test(fakes.sent[0].text));
+});
+
+test("preço pela 3ª vez: gente assume, o alerta manda levar pra call e o robô não promete valor por aqui", async () => {
+  const repo = await world({
+    lead: { sdrLog: { priceGuardAt: ISO("2026-08-19T12:31:00Z"), priceExplainedAt: ISO("2026-08-19T12:41:00Z") } },
+    messages: [
+      { direction: "in", text: "quanto custa?", at: ISO("2026-08-19T12:30:00Z") },
+      { direction: "out", author: "sdr-bot", text: "O investimento é de acordo com as necessidades da sua operação.", at: ISO("2026-08-19T12:31:00Z") },
+      { direction: "in", text: "só me diz a faixa", at: ISO("2026-08-19T12:40:00Z") },
+      { direction: "out", author: "sdr-bot", text: "Te explico o porquê: a gente tem planos diferentes, por isso o valor a gente só fecha na call.", at: ISO("2026-08-19T12:41:00Z") },
+      { direction: "in", text: "sem preço eu não marco nada", at: ISO("2026-08-19T12:59:00Z") },
+    ],
+  });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Entendo, quer marcar?" }] });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "sem preço eu não marco nada" } });
+  assert.equal(r, "preco-humano");
+  const alerts = await repo.list("wa_alerts");
+  assert.equal(alerts.length, 1);
+  assert.match(alerts[0].text, /PREÇO SÓ NA CALL/);
+  assert.ok(!/fala de valor/.test(alerts[0].text));
+  assert.equal(fakes.sent.length, 1);
+  assert.ok(!/valor|pre[çc]o|te falo/i.test(fakes.sent[0].text), `ponte sem promessa de valor: ${fakes.sent[0].text}`);
+  const lead = await repo.get("leads", "L1");
+  assert.ok(lead.sdrLog.handoffAt && lead.sdrLog.priceHandoffAt);
+});
+
+test("lead pede preço e escolhe horário na mesma mensagem: agendar vence a escada de preço", async () => {
+  const repo = await world({
+    lead: { sdrLog: { priceGuardAt: ISO("2026-08-19T12:31:00Z") } },
+    messages: [
+      { direction: "in", text: "quanto custa?", at: ISO("2026-08-19T12:30:00Z") },
+      { direction: "out", author: "sdr-bot", text: "O investimento é de acordo com as necessidades da sua operação.", at: ISO("2026-08-19T12:31:00Z") },
+      { direction: "in", text: "ok, pode ser 13h, e o preço me fala na call então", at: ISO("2026-08-19T12:59:00Z") },
+    ],
+  });
+  const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: SLOT1 }] });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "ok, pode ser 13h, e o preço me fala na call então" } });
+  assert.equal(r, "agendar");
+  assert.equal((await repo.get("leads", "L1")).callAt, SLOT1);
+});
+
 
 test("agendar com horário da lista: card vai pra etapa de call pelo caminho canônico, com confirmação comprovada e Meet automático", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "pode ser meio dia", at: ISO("2026-08-19T12:59:00Z") }] });
