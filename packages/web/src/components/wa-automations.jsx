@@ -36,7 +36,7 @@ const EMPTY_RULE = { name: "", trigger: "keyword", keyword: "", reply: "", coold
 const RULE_EXAMPLES = [
   { name: "Boas-vindas", trigger: "first_message", keyword: "", cooldownHours: 168, reply: "Oi {{nome}}! Recebemos sua mensagem aqui na LeverAds. Já vou te responder. Me adianta uma coisa: hoje você anuncia em quantas contas?" },
   { name: "Fora do horário", trigger: "off_hours", keyword: "", cooldownHours: 24, reply: "Oi {{nome}}! Estamos fora do horário agora (seg a sex, 8h às 18h). Deixa sua mensagem que amanhã cedo te respondo." },
-  { name: "Pergunta de preço", trigger: "keyword", keyword: "preço", cooldownHours: 24, reply: "Oi {{nome}}! O investimento depende do tamanho da sua operação. Me diz quantas contas você opera hoje que eu já te passo o plano certo." },
+  { name: "Pergunta de preço", trigger: "keyword", keyword: "preço", cooldownHours: 24, reply: "Oi {{nome}}! O investimento depende da sua operação: a gente tem planos diferentes, e o certo pra você a gente define na call, depois de entender o seu cenário. Quer que eu já veja um horário?" },
 ];
 
 function RuleForm({ initial, onSave, onCancel, busy }) {

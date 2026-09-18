@@ -173,10 +173,6 @@ export function sdrBotConfig(product) {
     // experiência completa no próprio WhatsApp sem tocar nenhum lead real, e
     // sem sujar métrica (lead interno segue fora do isRealLead).
     conversationTest: cfg.conversationTest === true,
-    // PISO DE PREÇO na conversa com IA (raio-x 17/09): o robô diz "a partir de
-    // R$ X por mês" uma vez, com X do catálogo do template de proposta. Ligado
-    // por padrão; `priceFloor: false` volta ao desvio sem número.
-    priceFloor: cfg.priceFloor !== false,
     firstTouchDelayMin: num(cfg.firstTouchDelayMin, 3), // "um humano viu" > resposta em 2s
     // Debounce de RAJADA (Leo, 23/08): ao receber mensagem, o cérebro espera
     // esse tempo; chegou outra no meio, só a última responde, compilando a

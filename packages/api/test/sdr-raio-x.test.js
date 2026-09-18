@@ -1,11 +1,12 @@
 // Raio-X do robô SDR (17/09/2026): passo zero (modelo e uso registrados, cache
 // de prompt, replay por modelo) + os três P0 do relatório (confirmação com
-// ação e link, ponte/FAQ/piso de preço, escada de retomada consertada).
+// ação e link, ponte/FAQ, escada de retomada consertada). O piso de preço
+// do raio-x saiu em 18/09 (Leo: preço só na call).
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import { makeAnthropic } from "../src/anthropic.js";
-import { makeSdrBrain, priceFloorOf, onlyFloorNumbers } from "../src/sdr-brain.js";
+import { makeSdrBrain } from "../src/sdr-brain.js";
 import { makeSdrRunner, reminderText } from "../src/sdr-flow.js";
 import { makeSdrReplay, docIdOf } from "../src/sdr-replay.js";
 import { ensureSdrBrainFirstTouch } from "../src/migrations.js";
@@ -85,7 +86,7 @@ test("anthropic: system vai como bloco cacheado, uso é normalizado, clone troca
     return { status: 200, json: async () => ({ content: [{ type: "text", text: JSON.stringify({ acao: "responder", mensagens: ["ok?"], horario: "", email: "", motivoHumano: "" }) }], stop_reason: "end_turn", usage: { input_tokens: 900, output_tokens: 40, cache_read_input_tokens: 800, cache_creation_input_tokens: 0 }, model: "claude-x" }) };
   };
   const ai = makeAnthropic({ fetch, apiKey: "sk-ant-test", model: "claude-a" });
-  const d = await ai.sdrDecide({ lead: { name: "Rafael" }, conversation: [{ who: "LEAD", text: "quanto custa?" }], priceFloor: { oem: "a partir de R$ 497 por mês no plano anual", ads: "" } });
+  const d = await ai.sdrDecide({ lead: { name: "Rafael" }, conversation: [{ who: "LEAD", text: "quanto custa?" }] });
   assert.deepEqual(d.usage, { in: 900, out: 40, cacheRead: 800, cacheWrite: 0 });
   assert.equal(d.model, "claude-x");
   assert.ok(d.ms >= 0);
@@ -94,7 +95,7 @@ test("anthropic: system vai como bloco cacheado, uso é normalizado, clone troca
   assert.match(sys[0].text, /PONTE ANTES DOS HORÁRIOS/);
   assert.match(sys[0].text, /FRASE PROIBIDA: "algum dos horários que te passei encaixa\?"/);
   const user = bodies[0].body.messages.find((m) => m.role === "user").content;
-  assert.match(user, /PISO DE PREÇO.*OEM: a partir de R\$ 497 por mês/);
+  assert.doesNotMatch(user, /PISO DE PREÇO/, "piso de preço saiu em 18/09: o robô não fala valor");
 
   const b = ai.clone({ model: "claude-b" });
   await b.sdrDecide({ lead: {}, conversation: [] });
@@ -112,40 +113,6 @@ test("anthropic via OpenRouter: modelo OpenAI mantém system string; uso vem de 
   const d = await ai.sdrDecide({ lead: {}, conversation: [] });
   assert.equal(typeof sent.messages[0].content, "string");
   assert.deepEqual(d.usage, { in: 500, out: 12, cacheRead: 400, cacheWrite: 0 });
-});
-
-// ── Piso de preço ────────────────────────────────────────────────────────────
-test("priceFloorOf lê o menor anual de cada linha do catálogo e a trava aceita só esses números", async () => {
-  const repo = await world();
-  const floor = await priceFloorOf(repo, "leverads", { now: 0, ttlMs: 0 });
-  assert.equal(floor.oem, "a partir de R$ 497 por mês no plano anual");
-  assert.equal(floor.ads, "a partir de R$ 497 por mês no plano anual");
-  assert.equal(onlyFloorNumbers("Só o OEM sai a partir de R$ 497 por mês no anual. Consigo hoje às 14h ou às 16h?", floor), true);
-  assert.equal(onlyFloorNumbers("São R$ 5.964 no ano", floor), true);
-  assert.equal(onlyFloorNumbers("a partir de R$ 350 por mês", floor), false);
-  assert.equal(onlyFloorNumbers("12x de R$ 497", floor), false);
-  assert.equal(onlyFloorNumbers("qualquer coisa", null), false);
-});
-
-test("brain: resposta com o piso do catálogo passa e carimba priceFloorAt; outro número cai no desvio", async () => {
-  const repo = await world({ messages: [{ direction: "in", text: "quanto custa?", at: ISO("2026-08-19T12:59:00Z") }] });
-  const ai = fakeAi([{ acao: "responder", mensagens: ["Só o OEM sai a partir de R$ 497 por mês no plano anual", "O pacote certo pro teu volume a gente fecha na demonstração, consigo hoje às 14h ou amanhã às 9h?"] }]);
-  const wa = makeWa();
-  assert.equal(await brainOf(repo, ai, wa).handleInbound({ message: { from: THREAD.id, text: "quanto custa?", id: "m1" } }), "responder");
-  assert.match(wa.sent[0].text, /a partir de R\$ 497/);
-  assert.equal(ai.calls[0].priceFloor.oem, "a partir de R$ 497 por mês no plano anual");
-  assert.ok((await repo.get("leads", "L1")).sdrLog.priceFloorAt);
-
-  const repo2 = await world({ messages: [{ direction: "in", text: "quanto custa?", at: ISO("2026-08-19T12:59:00Z") }] });
-  const wa2 = makeWa();
-  assert.equal(await brainOf(repo2, fakeAi([{ acao: "responder", mensagens: ["Sai R$ 350 por mês"] }]), wa2).handleInbound({ message: { from: THREAD.id, text: "quanto custa?", id: "m1" } }), "preco-travado");
-  assert.doesNotMatch(wa2.sent[0].text, /350/);
-
-  // Chave desligada: sem piso no contexto.
-  const repo3 = await world({ sdrBot: { priceFloor: false }, messages: [{ direction: "in", text: "quanto custa?", at: ISO("2026-08-19T12:59:00Z") }] });
-  const ai3 = fakeAi([{ acao: "silencio" }]);
-  await brainOf(repo3, ai3).handleInbound({ message: { from: THREAD.id, text: "quanto custa?", id: "m1" } });
-  assert.equal(ai3.calls[0].priceFloor, null);
 });
 
 // ── Passo zero no cérebro: carimbo de modelo/uso + 1º toque pela IA ─────────
@@ -299,8 +266,7 @@ test("replay: model/tag rodam com o clone, gravam doc próprio com uso e latênc
   const report = await replay.run({ saas: "leverads", model: "fake-2", tag: "Modelo B" });
   assert.equal(report.model, "fake-2");
   assert.equal(report.turns, 1);
-  assert.equal(report.priceFloorSaid, 1);
-  assert.equal(report.priceGuardHits, 0);
+  assert.equal(report.priceGuardHits, 1, "resposta com R$ conta como trava (preço só na call)");
   assert.equal(report.usage.in, 120);
   assert.equal(report.msTotal, 7);
   assert.equal(docIdOf("Modelo B"), "sdr_replay_modelo-b");
