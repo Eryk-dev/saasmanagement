@@ -1,7 +1,9 @@
 import React from "react";
-import { Avatar, useEsc, WaButton, MoreMenu } from "../atoms.jsx";
+import { MoreMenu } from "../atoms.jsx";
 import { Pill } from "../components/viz.jsx";
-import { ActivityList, ActivityComposer } from "../components/timeline.jsx";
+import { Drawer } from "../components/overlay.jsx";
+import { LeadGrade, LeadSection, LeadDisclosure } from "../components/lead-card.jsx";
+import { ActivityList, ActivityComposer, mergeTimeline } from "../components/timeline.jsx";
 import { RoutineSuggestion } from "../components/routine-suggestion.jsx";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
 import { clientSummary, leadBox, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks } from "../components/lead-blocks.jsx";
@@ -121,14 +123,14 @@ function consultaWhen(at) {
 }
 
 function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
-  useEsc(onClose); // drawer fecha no Esc; modal aberto por cima fecha primeiro (pilha)
   const { refresh, version } = useData();
   // Cópia local: as ações rápidas (etapa, próximo contato) editam aqui e
   // persistem otimisticamente; o pipeline ressincroniza no fechar (refresh).
   const [lead, setLead] = React.useState(initial);
   const dirty = React.useRef(false);
   const [editResumo, setEditResumo] = React.useState(false); // lápis do Resumo → edita inline
-  const [showTimeline, setShowTimeline] = React.useState(false); // timeline recolhida por padrão
+  const [showTimeline, setShowTimeline] = React.useState(false);
+  const [showComposer, setShowComposer] = React.useState(false);
   // Próximo passo nasce ABERTO (12/09): recolhido, escondia justamente o que
   // se vem fazer no card. O que recolhe agora é só "outra data" e a logística.
   const [showGps, setShowGps] = React.useState(true);
@@ -156,6 +158,17 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
     api.listActivities(initial.id).then((a) => alive && setActivities(a)).catch(() => alive && setActivities([]));
     return () => { alive = false; };
   }, [initial?.id, version]);
+  // O SEED vem SEM os campos que só este card lê (sourceUrl: "página de entrada"
+  // da atribuição) — 1 MB a menos em todo bootstrap. Busca o lead inteiro ao
+  // abrir e completa a cópia local sem sobrescrever o que já foi editado aqui.
+  React.useEffect(() => {
+    if (!initial?.id) return;
+    let alive = true;
+    api.get("leads", initial.id)
+      .then((full) => { if (alive && full?.id) setLead((cur) => (cur && cur.id === full.id ? { ...cur, sourceUrl: full.sourceUrl } : cur)); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [initial?.id]);
   // Consultas 1:1 ligadas a este lead OU cliente (UniqueKids) — pra centralizar o
   // Meet e o resumo da mentoria no próprio card, sem abrir a tela de Consultas.
   React.useEffect(() => {
@@ -412,7 +425,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   // card e o painel de atividade terem o mesmo respiro.
   const box = leadBox;
   const rowLabel = { fontSize: 11, width: 104, flexShrink: 0 };
-  const presetBtn = { height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 500 };
+  const presetBtn = { height: 32, padding: "0 13px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 500 };
   // Linha rótulo→campo pra edição inline do Resumo.
   const editInput = { flex: 1, minWidth: 0, height: 28, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 };
   const EditRow = ({ label, children }) => (
@@ -428,214 +441,57 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   const scriptTk = scriptTokens(lead, saasCfg, salesSummary);
   const checklist = scriptChecklist(saasCfg, lead);
 
+  const funnel = saasCfg?.funnel || [];
+  const stageIndex = funnel.findIndex((f) => f.stage === lead.stage);
+  const nextStage = isOpen && stageIndex >= 0 ? funnel[stageIndex + 1] : null;
+  const previousStage = isOpen && stageIndex > 0 ? funnel[stageIndex - 1] : null;
+  const history = mergeTimeline(timelineActs, lead.comments);
+  const daysSince = (at) => at && Number.isFinite(new Date(at).getTime()) ? `${Math.max(0, Math.floor((Date.now() - new Date(at).getTime()) / 86400000))}d` : "—";
+
   return (
-    <div style={{
-      position: "fixed", inset: 0, background: "var(--scrim)",
-      display: "flex", alignItems: "center", justifyContent: "center", zIndex: "var(--z-drawer)", padding: 12,
-    }} onClick={close}>
-      <div onClick={e => e.stopPropagation()} style={{
-        width: "min(1120px, 100%)", maxHeight: "min(92vh, 100%)", background: "var(--bg-1)",
-        border: "1px solid var(--line-1)", borderRadius: "var(--r-3)",
-        display: "flex", flexDirection: "column",
-        boxShadow: "var(--shadow-pop)",
-      }}>
-        {/* ── Cabeçalho em DUAS FAIXAS (redesign de 12/09) ─────────────────
-            Identidade em cima (quem é, em que etapa, quem atende) e os FATOS do
-            lead embaixo, em colunas. O estado do lead — valor, tempo no funil,
-            tempo parado na etapa, tentativas, origem — já estava todo no dado e
-            não aparecia sem abrir bloco.
-            As cinco ações de peso idêntico (apresentar, personalizada, proposta
-            no Whats, + personalizada, + link) viraram uma principal, uma
-            secundária e o resto no menu: a hierarquia passa a dizer qual é a
-            ação da etapa. */}
-        <div style={{ flexShrink: 0, borderBottom: "1px solid var(--line-1)" }}>
-          <div style={{ padding: "14px 18px 12px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <span style={{ fontFamily: "var(--display)", fontSize: 20, fontWeight: 700, minWidth: 0 }}>{lead.name}</span>
-                {tier.grade && (
-                  <span className="tnum" title={`${tier.label} · soma de contas operadas + anúncios publicados`}
-                    style={{ width: 20, height: 20, borderRadius: 5, display: "inline-flex", alignItems: "center", justifyContent: "center", background: tier.tone, color: tier.badgeFg, fontFamily: "var(--display)", fontSize: 11.5, fontWeight: 700, flexShrink: 0 }}>{tier.grade}</span>
-                )}
-                {lead.stage && <Pill tone={isOpen ? "accent" : isLossKind(kind) ? "neg" : "pos"}>{lead.stage}</Pill>}
-                <span className="mono dim" style={{ fontSize: 11 }}>{String(lead.id).toUpperCase()}</span>
+    <>
+      <Drawer onClose={close} label={`Lead · ${lead.name}`} largura={520} painelStyle={{ background: "var(--bg-0)" }}>
+        <div className="lead-panel">
+          <header className="lead-panel-header">
+            <div className="lead-panel-title-row">
+              <div>
+                <h2 className="lead-panel-title"><LeadGrade tier={tier} />{lead.name}</h2>
+                <div className="lead-panel-subtitle">{[lead.company, lead.source].filter(Boolean).join(" · ")}</div>
               </div>
-              {(lead.company || lead.phone || lead.email) && (
-                <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 4, overflowWrap: "anywhere" }}>
-                  {[lead.company, lead.phone, lead.email].filter(Boolean).join(" · ")}
-                </div>
-              )}
+              <button className="lead-panel-close" onClick={close} aria-label="Fechar lead">✕</button>
             </div>
-            {/* Quem atende, COM rótulo: dois avatares de 18px sem legenda não
-                dizem quem é SDR e quem é closer. */}
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 14, flexShrink: 0 }}>
-              {[["SDR", lead.owner], ["Closer", lead.closer]].filter(([, id]) => id).map(([rot, id]) => (
-                <div key={rot} style={{ textAlign: "right" }}>
-                  <div className="kicker">{rot}</div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
-                    <Avatar id={id} name={displayName(id)} size={18} />
-                    <span style={{ fontSize: 12.5, fontWeight: 500, whiteSpace: "nowrap" }}>{displayName(id)}</span>
-                  </div>
-                </div>
-              ))}
-              <button onClick={close} aria-label="Fechar" className="mono dim" style={{ fontSize: 16, flexShrink: 0, width: 36, height: 36, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)" }}>✕</button>
+            <dl className="lead-panel-facts">
+              <div><dt>valor</dt><dd className="tnum">{window.fmt.moneyFull(lead.amount || 0)}</dd></div>
+              <div><dt>etapa</dt><dd>{lead.stage || "—"}</dd></div>
+              <div><dt>no funil</dt><dd className="tnum">{daysSince(lead.createdAt)}</dd></div>
+              <div><dt>tentativas</dt><dd className="tnum">{Number(lead.stageAttempts) || 0}</dd></div>
+            </dl>
+            <div className="lead-panel-owners">
+              {[["SDR", lead.owner], ["Closer", lead.closer], ["Integrador", lead.integrator]].filter(([, id]) => id).map(([role, id]) => <span key={role}>{role} · {displayName(id)}</span>)}
+              <span title={`Lead ${lead.id}`}>Nesta etapa · {daysSince(lead.stageSince || lead.createdAt)}</span>
             </div>
-          </div>
-
-          {/* Faixa de fatos + a ação da etapa. "Nesta etapa" fica vermelho
-              quando o toque está VENCIDO (não inventei SLA por etapa: é a mesma
-              régua do nextTouch, como o handoff pede). */}
-          <div style={{ borderTop: "1px solid var(--line-1)", display: "flex", alignItems: "stretch", flexWrap: "wrap" }}>
-            {(() => {
-              const dias = (iso) => {
-                const t = iso ? new Date(iso).getTime() : NaN;
-                return Number.isFinite(t) ? Math.max(0, Math.floor((Date.now() - t) / 86400000)) : null;
-              };
-              const noFunil = dias(lead.createdAt);
-              const naEtapa = dias(lead.stageSince || lead.createdAt);
-              const atrasado = next?.key === "late";
-              const tent = Number(lead.stageAttempts) || 0;
-              const fatos = [
-                ["Valor", lead.amount ? window.fmt.money(lead.amount) : "—", null],
-                ["No funil", noFunil == null ? "—" : `${noFunil}d`, null],
-                ["Nesta etapa", naEtapa == null ? "—" : `${naEtapa}d`, atrasado ? "var(--neg)" : null],
-                ["Tentativas", `${tent} de 5`, tent >= 5 ? "var(--warn)" : null],
-                ["Origem", lead.source || "—", null],
-              ];
-              return fatos.map(([rot, val, cor], i) => (
-                <div key={rot} title={rot === "Nesta etapa" && atrasado ? "o toque desta etapa está vencido" : undefined}
-                  style={{ padding: "10px 16px", minWidth: 104, borderLeft: i === 0 ? "none" : "1px solid var(--line-1)" }}>
-                  <div className="kicker">{rot}</div>
-                  <div className="tnum" style={{ fontSize: 14, fontWeight: 600, marginTop: 2, color: cor || "var(--fg-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 170 }}>{val}</div>
-                </div>
-              ));
-            })()}
-            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, padding: "10px 18px", flexWrap: "wrap" }}>
-              {(onOpenWhatsapp || wa) && (
-                <button onClick={propostaNoWhats} disabled={propBusy}
-                  title={lead.proposalUrl
-                    ? "Abrir o WhatsApp Web com o produto escolhido em apresentar, já pronto para o cliente"
-                    : "Gerar a apresentação e abrir o WhatsApp Web com a versão pronta para o cliente"}
-                  style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--wa-brand)", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 12.5, fontWeight: 700, cursor: "pointer", opacity: propBusy ? 0.6 : 1 }}>
-                  {propBusy ? "gerando…" : "➤ proposta no Whats"}
-                </button>
-              )}
-              {lead.proposal_edit_url && (
-                <a href={lead.proposal_edit_url} target="_blank" rel="noreferrer"
-                  title="Abrir a apresentação do closer (tela zero com régua e SPIN)"
-                  style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)", fontSize: 12.5, fontWeight: 600, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
-                  apresentar ↗
-                </a>
-              )}
-              {/* Link de pagamento à vista no CARD (Leo, 13/09): estava dentro
-                  do ⋯, e é o passo seguinte à apresentação — quem fecha na call
-                  precisa cobrar sem procurar. */}
-              <button onClick={() => setPayLink(true)}
-                title={lead.mpChargeUrl ? "Abrir/refazer o link de pagamento deste lead" : "Criar o link de pagamento deste lead (Mercado Pago)"}
-                style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
-                {lead.mpChargeUrl ? (lead.mpChargeKind === "recurring" ? "link da assinatura" : "link de pagamento") : "link de pagamento"}
-              </button>
-              <MoreMenu size={30} items={[
-                ...altDecks.map((t) => ({ label: `gerar ${t.pickLabel || t.name}`, onClick: () => gerarCom(t) })),
-                lead.customProposalUrl && { label: "abrir proposta personalizada ↗", onClick: () => window.open(cockpitProposalUrl(lead.customProposalUrl), "_blank", "noreferrer") },
-                { label: lead.customProposalUrl ? "editar proposta personalizada" : "montar proposta personalizada", onClick: () => setCustomProp(true) },
-              ]} />
-            </div>
-          </div>
-        </div>
-
-        {/* Corpo rolável: duas colunas (Cliente | Roteiro) — mesma divisão do
-            painel de atividade do Meu dia. */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "12px 18px", minHeight: 0 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 16, alignItems: "start" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
-            <div className="kicker" style={{ color: "var(--fg-3)" }}>Cliente</div>
-
-          {/* Requalificação (Receita Previsível): a oportunidade que o SDR
-              passou só CONTA quando o closer requalifica e ACEITA (fit + decisor
-              + quer avançar). Aparece nas etapas do closer enquanto não houver
-              aceite; devolver manda o card de volta pra qualificação com o
-              motivo gravado no lead (o SDR vê no card). */}
-          {isOpen && !lead.customerId && ["call", "proposta", "followup"].includes(kind) && (
-            lead.oppAccepted ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: "var(--r-2)", background: "var(--pos-soft, var(--bg-inset))", border: "1px solid var(--line-1)", fontSize: 11.5, color: "var(--fg-3)" }}>
-                <span style={{ color: "var(--pos)" }}>✓</span>
-                <span>Oportunidade aceita{lead.oppAcceptedBy ? ` por ${displayName(lead.oppAcceptedBy)}` : ""} em {new Date(lead.oppAccepted).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</span>
-              </div>
-            ) : (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "9px 10px", borderRadius: "var(--r-2)", background: "var(--warn-soft)", border: "1px solid var(--line-1)" }}>
-                <div style={{ flex: "1 1 180px", minWidth: 0 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 600 }}>Oportunidade aguardando o seu aceite</div>
-                  <div style={{ fontSize: 11, color: "var(--fg-3)", marginTop: 1 }}>Requalifique: tem fit, o decisor participa e quer o próximo passo?</div>
-                </div>
-                <button onClick={() => patch({ oppAccepted: new Date().toISOString(), oppAcceptedBy: currentUser()?.id || "" })}
-                  style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--pos)", background: "var(--pos)", color: "#fff", fontSize: 12, fontWeight: 600 }}>
-                  ✓ aceitar
-                </button>
-                <button onClick={() => {
-                  const nota = window.prompt("Por que está devolvendo pro SDR? (fica no card)");
-                  if (nota == null) return;
-                  patch({ oppReturned: new Date().toISOString(), oppReturnNote: nota, oppAccepted: "", oppAcceptedBy: "" });
-                  const back = stageByKind(saasCfg, "qualificacao");
-                  // stageByKind devolve o NOME da etapa (string) — ler `.stage`
-                  // aqui deixava a devolução sem mover o card.
-                  if (back) moveStage(back);
-                }}
-                  style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 }}>
-                  devolver pro SDR
-                </button>
-              </div>
-            )
-          )}
-          {/* A devolução fica visível pro SDR retrabalhar com o motivo na mão. */}
-          {lead.oppReturnNote && ["novo", "contato", "qualificacao"].includes(kind) && (
-            <div style={{ padding: "7px 10px", borderRadius: "var(--r-2)", background: "var(--warn-soft)", border: "1px solid var(--line-1)", fontSize: 11.5, color: "var(--fg-2)" }}>
-              <b>Devolvida pelo closer:</b> {lead.oppReturnNote}
-            </div>
-          )}
-          {/* ── O PRÓXIMO PASSO VEM PRIMEIRO (redesign de 12/09) ─────────
-              Era o último bloco da coluna e nascia recolhido, embora seja o
-              motivo de abrir o card. Agora abre em cima, já aberto. */}
-          {/* GPS: etapa (gateada) + próximo toque + call agendada, sem sair do
-              drawer. RECOLHÍVEL: fechado, o cabeçalho segura o resumo (o pill
-              de atraso continua visível). */}
+          </header>
+          <div className="lead-panel-body">
+          {/* Próximo passo e agendamento mantêm os handlers da ficha. */}
         <div style={{ ...box, display: "flex", flexDirection: "column", gap: 10 }}>
-          {/* A LINHA GRANDE: o compromisso REAL da etapa (call na etapa de call,
-              integração na entrega, senão o toque), colorido por atrasado/hoje/
-              futuro. É o "próximo passo"; etapa, call, proposta e entrega viram
-              contexto por fase, recolhido abaixo. */}
-          {/* Lead finalizado TAMBÉM abre: desqualificado/perdido que volta a
-              falar (e às vezes fecha) precisa voltar pro funil por aqui — o
-              bloco fechado virava beco sem saída e o jeito era abrir card novo,
-              perdendo histórico, origem e proposta. */}
           <div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
               <span className="kicker" style={{ flexShrink: 0 }}>Próximo passo</span>
-              {lead.nextActionAt && (
-                <span className="mono dim" style={{ fontSize: 12.5 }}>
-                  {`era ${new Date(lead.nextActionAt).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).replace(".", "")}`}
-                </span>
-              )}
               <button onClick={() => setShowGps((v) => !v)} className="mono"
                 title={showGps ? "Recolher os editores" : "Abrir os editores de toque e etapa"}
                 style={{ marginLeft: "auto", background: "none", border: 0, padding: 0, fontSize: 10.5, color: "var(--fg-4)", cursor: "pointer", flexShrink: 0 }}>
                 {showGps ? "▴ recolher" : "▾ editar"}
               </button>
             </div>
-            <div style={{ fontSize: 19, fontWeight: 700, lineHeight: 1.25, marginTop: 3, color: !isOpen ? "var(--fg-3)" : next && next.key !== "none" ? next.tone : "var(--warn)" }}>
-              {!isOpen
-                ? `lead finalizado${lead.lostReason ? ` · ${lossReasonLabel(saasCfg, lead.lostReason)}` : ""}`
-                : next && next.key !== "none"
-                  ? `${primaryStep.label} · ${next.text.replace(/^[◆●]\s*/, "")}`
-                  : `sem ${primaryStep.label.toLowerCase()} · ${primaryStep.verb}`}
+            <div className="lead-panel-step">
+              {!isOpen ? `Lead finalizado${lead.lostReason ? ` · ${lossReasonLabel(saasCfg, lead.lostReason)}` : ""}` : lead.nextActionNote || primaryStep.label}
             </div>
-            {lead.nextActionNote && (
-              <div style={{ fontSize: 13, color: "var(--fg-2)", marginTop: 4 }}>{lead.nextActionNote}</div>
-            )}
+            {isOpen && <div className="lead-panel-deadline" style={{ color: next?.tone || "var(--fg-3)" }}>
+              {next && next.key !== "none" ? next.text.replace(/^[◆●]\s*/, "") : `Sem horário · ${primaryStep.verb}`}
+            </div>}
           </div>
           {showGps && isOpen && (<>
           <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-            <span className="mono dim" style={{ ...rowLabel, paddingTop: 6 }}>Próximo toque</span>
             <div style={{ display: "flex", gap: 5, flex: 1, flexWrap: "wrap", alignItems: "center" }}>
               {/* Atalhos curtos tocam a semana; os longos (15 a 60 dias) são pra
                   quem pediu pra voltar depois, que hoje virava data digitada na
@@ -646,11 +502,9 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               {[["hoje +1h", () => { const t = new Date(); t.setHours(t.getHours() + 1, 0, 0, 0); return t; }, true],
                 ["amanhã 9h", () => { const t = new Date(); t.setDate(t.getDate() + 1); t.setHours(9, 0, 0, 0); return t; }, false],
                 ["+2d", emDias(2), false],
-                ["+1sem", emDias(7), false]].map(([label, mk, primary]) => (
+                ["+1sem", emDias(7), false]].map(([label, mk]) => (
                 <button key={label} onClick={() => patch({ nextActionAt: mk().toISOString() })}
-                  style={primary
-                    ? { ...presetBtn, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderColor: "var(--btn-bg, var(--accent))", fontWeight: 600 }
-                    : presetBtn}>
+                  style={presetBtn}>
                   {label}
                 </button>
               ))}
@@ -679,6 +533,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                 style={{ flexBasis: "100%", height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5 }} />
             </div>
           </div>
+          <LeadDisclosure title="Agenda e detalhes da call" open={kind === "call"}>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <span className="mono dim" style={rowLabel}>Call agendada</span>
             {/* Em etapa de follow-up a fila do Meu dia vence pelo nextActionAt,
@@ -821,6 +676,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               (transcrição + roteiro se marcando + resposta pra objeção). */}
           {window.SEED?.CONFIG?.ai?.configured && <CallCopilot lead={lead} />}
           </>)}
+          </LeadDisclosure>
           {(kind === "proposta" || kind === "followup") && (
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <span className="mono dim" style={rowLabel}>Proposta</span>
@@ -994,40 +850,103 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
           )}
         </div>
 
-          {/* ── ETAPA em bloco próprio (12/09) ─────────────────────────────
-              O funil inteiro visível como trilha e o "mover de etapa" no canto:
-              mover o card é a segunda coisa mais feita e estava a dois cliques,
-              dentro do recolhível do próximo passo. O select continua sendo o
-              MESMO caminho gateado (moveStage → moveGate), inclusive pra
-              reclassificar perda (desqualificado ↔ perdido). */}
-          <div style={{ ...box, display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span className="kicker" style={{ flexShrink: 0 }}>Etapa</span>
-              <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                <span className="mono dim" style={{ fontSize: 10.5, flexShrink: 0 }}>mover de etapa</span>
-                <select value={lead.stage || ""} onChange={(e) => moveStage(e.target.value)}
-                  style={{ height: 26, maxWidth: 190, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 }}>
-                  {(saasCfg?.funnel || []).map((f) => <option key={f.stage} value={f.stage}>{f.stage}</option>)}
-                  {saasCfg?.funnel?.every((f) => f.stage !== lead.stage) && lead.stage && <option value={lead.stage}>{lead.stage}</option>}
-                </select>
-              </span>
+          <LeadSection title="A ação de agora">
+            {wa ? (onOpenWhatsapp
+              ? <button className="lead-panel-button primary" onClick={() => onOpenWhatsapp(lead)}>Abrir conversa no WhatsApp</button>
+              : <a className="lead-panel-button primary" href={wa} target="_blank" rel="noopener noreferrer">Abrir WhatsApp ↗</a>)
+              : <button className="lead-panel-button primary" onClick={() => setShowComposer(true)}>Registrar contato</button>}
+            <div className="lead-panel-actions" style={{ marginTop: 10 }}>
+              {nextStage && <button className="lead-panel-button" style={{ flex: 1 }} onClick={() => moveStage(nextStage.stage)}>avançar etapa →</button>}
+              {previousStage && <button className="lead-panel-button" onClick={() => moveStage(previousStage.stage)}>← voltar</button>}
+              {onOpenWhatsapp && wa && <a className="lead-panel-button" href={wa} target="_blank" rel="noopener noreferrer" title="Abrir no WhatsApp Web">Web ↗</a>}
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-              {(saasCfg?.funnel || []).map((f, i) => {
-                const atual = f.stage === lead.stage;
-                return (
-                  <React.Fragment key={f.stage}>
-                    {i > 0 && <span className="mono dim" style={{ fontSize: 9.5 }}>›</span>}
-                    {atual
-                      ? <span style={{ fontSize: 11.5, fontWeight: 600, padding: "2px 8px", borderRadius: "var(--r-1)", background: "var(--accent-soft)", color: "var(--accent)", whiteSpace: "nowrap" }}>{f.stage}</span>
-                      : <button onClick={() => moveStage(f.stage)} title={`Mover pra “${f.stage}”`}
-                          style={{ fontSize: 11.5, color: "var(--fg-4)", background: "none", border: 0, padding: "2px 2px", cursor: "pointer", whiteSpace: "nowrap" }}>{f.stage}</button>}
-                  </React.Fragment>
-                );
-              })}
+            <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12, fontSize: 12, color: "var(--fg-3)" }}>
+              Mover de etapa
+              <select aria-label="Mover de etapa" value={lead.stage || ""} onChange={(e) => moveStage(e.target.value)} className="inp" style={{ flex: 1, minWidth: 0 }}>
+                {funnel.map((f) => <option key={f.stage} value={f.stage}>{f.stage}</option>)}
+                {funnel.every((f) => f.stage !== lead.stage) && lead.stage && <option value={lead.stage}>{lead.stage}</option>}
+              </select>
+            </label>
+            <div className="lead-panel-actions" style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line-1)" }}>
+              {(onOpenWhatsapp || wa) && (
+                <button onClick={propostaNoWhats} disabled={propBusy}
+                  title={lead.proposalUrl
+                    ? "Abrir o WhatsApp Web com o produto escolhido em apresentar, já pronto para o cliente"
+                    : "Gerar a apresentação e abrir o WhatsApp Web com a versão pronta para o cliente"}
+                  style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 700, cursor: "pointer", opacity: propBusy ? 0.6 : 1 }}>
+                  {propBusy ? "gerando…" : "➤ proposta no Whats"}
+                </button>
+              )}
+              {lead.proposal_edit_url && (
+                <a href={lead.proposal_edit_url} target="_blank" rel="noreferrer"
+                  title="Abrir a apresentação do closer (tela zero com régua e SPIN)"
+                  style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)", fontSize: 12.5, fontWeight: 600, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
+                  apresentar ↗
+                </a>
+              )}
+              {/* Link de pagamento à vista no CARD (Leo, 13/09): estava dentro
+                  do ⋯, e é o passo seguinte à apresentação — quem fecha na call
+                  precisa cobrar sem procurar. */}
+              <button onClick={() => setPayLink(true)}
+                title={lead.mpChargeUrl ? "Abrir/refazer o link de pagamento deste lead" : "Criar o link de pagamento deste lead (Mercado Pago)"}
+                style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+                {lead.mpChargeUrl ? (lead.mpChargeKind === "recurring" ? "link da assinatura" : "link de pagamento") : "link de pagamento"}
+              </button>
+              <MoreMenu size={30} items={[
+                ...altDecks.map((t) => ({ label: `gerar ${t.pickLabel || t.name}`, onClick: () => gerarCom(t) })),
+                lead.customProposalUrl && { label: "abrir proposta personalizada ↗", onClick: () => window.open(cockpitProposalUrl(lead.customProposalUrl), "_blank", "noreferrer") },
+                { label: lead.customProposalUrl ? "editar proposta personalizada" : "montar proposta personalizada", onClick: () => setCustomProp(true) },
+              ]} />
             </div>
-          </div>
+          </LeadSection>
 
+          <LeadSection title="Histórico" action={<button className="lead-script-copy-button" onClick={() => setShowComposer((v) => !v)} aria-expanded={showComposer}>{showComposer ? "fechar anotação" : "registrar contato"}</button>}>
+            {showComposer && <div style={{ marginBottom: 14 }}><ActivityComposer embedded lead={lead} onLogged={refetchTimeline} /></div>}
+            {activities === null ? <div className="lead-script-copy">Carregando histórico…</div> : <ActivityList activities={showTimeline ? history : history.slice(0, 3)} />}
+            {history.length > 3 && <button className="lead-script-copy-button" style={{ marginTop: 10 }} onClick={() => setShowTimeline((v) => !v)}>{showTimeline ? "mostrar menos" : "ver histórico completo"}</button>}
+          </LeadSection>
+          {/* Requalificação (Receita Previsível): a oportunidade que o SDR
+              passou só CONTA quando o closer requalifica e ACEITA (fit + decisor
+              + quer avançar). Aparece nas etapas do closer enquanto não houver
+              aceite; devolver manda o card de volta pra qualificação com o
+              motivo gravado no lead (o SDR vê no card). */}
+          {isOpen && !lead.customerId && ["call", "proposta", "followup"].includes(kind) && (
+            lead.oppAccepted ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: "var(--r-2)", background: "var(--pos-soft, var(--bg-inset))", border: "1px solid var(--line-1)", fontSize: 11.5, color: "var(--fg-3)" }}>
+                <span style={{ color: "var(--pos)" }}>✓</span>
+                <span>Oportunidade aceita{lead.oppAcceptedBy ? ` por ${displayName(lead.oppAcceptedBy)}` : ""} em {new Date(lead.oppAccepted).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</span>
+              </div>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "9px 10px", borderRadius: "var(--r-2)", background: "var(--warn-soft)", border: "1px solid var(--line-1)" }}>
+                <div style={{ flex: "1 1 180px", minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 600 }}>Oportunidade aguardando o seu aceite</div>
+                  <div style={{ fontSize: 11, color: "var(--fg-3)", marginTop: 1 }}>Requalifique: tem fit, o decisor participa e quer o próximo passo?</div>
+                </div>
+                <button onClick={() => patch({ oppAccepted: new Date().toISOString(), oppAcceptedBy: currentUser()?.id || "" })}
+                  style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--pos)", background: "var(--pos)", color: "#fff", fontSize: 12, fontWeight: 600 }}>
+                  ✓ aceitar
+                </button>
+                <button onClick={() => {
+                  const nota = window.prompt("Por que está devolvendo pro SDR? (fica no card)");
+                  if (nota == null) return;
+                  patch({ oppReturned: new Date().toISOString(), oppReturnNote: nota, oppAccepted: "", oppAcceptedBy: "" });
+                  const back = stageByKind(saasCfg, "qualificacao");
+                  // stageByKind devolve o NOME da etapa (string) — ler `.stage`
+                  // aqui deixava a devolução sem mover o card.
+                  if (back) moveStage(back);
+                }}
+                  style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 }}>
+                  devolver pro SDR
+                </button>
+              </div>
+            )
+          )}
+          {/* A devolução fica visível pro SDR retrabalhar com o motivo na mão. */}
+          {lead.oppReturnNote && ["novo", "contato", "qualificacao"].includes(kind) && (
+            <div style={{ padding: "7px 10px", borderRadius: "var(--r-2)", background: "var(--warn-soft)", border: "1px solid var(--line-1)", fontSize: 11.5, color: "var(--fg-2)" }}>
+              <b>Devolvida pelo closer:</b> {lead.oppReturnNote}
+            </div>
+          )}
           {/* Resumo do cliente: MESMO bloco do painel de atividade (dor em
               destaque + os fatos na mesma ordem). O lápis é exclusivo da ficha:
               abre a edição INLINE dos campos do lead, no lugar do grid. */}
@@ -1069,45 +988,15 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
             )}
           </ClientSummaryCard>
 
-          {/* Contatos logo abaixo do resumo, como no painel de atividade (lá é
-              "registrar contato · últimos contatos"). Aqui é a timeline COMPLETA
-              e nasce recolhida: o histórico é consulta, não fluxo do dia. */}
-          <div style={{ ...box, display: "flex", flexDirection: "column", ...(showTimeline ? { minHeight: 160 } : {}) }}>
-            <button onClick={() => setShowTimeline((v) => !v)}
-              title={showTimeline ? "Recolher a timeline" : "Abrir a timeline (histórico + registrar contato)"}
-              className="kicker" style={{ display: "flex", alignItems: "center", width: "100%", background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
-              <span>Contatos · timeline {activities ? `· ${timelineActs.length + (lead.comments?.length || 0)}` : ""}</span>
-              <span style={{ marginLeft: "auto", fontSize: 10 }}>{showTimeline ? "▴ recolher" : "▾ registrar contato"}</span>
-            </button>
-            {showTimeline && (
-              <>
-                <div style={{ marginTop: 10 }}>
-                  <ActivityComposer lead={lead} onLogged={refetchTimeline} />
-                </div>
-                <div style={{ marginTop: 8 }}>
-                  {activities === null
-                    ? <div className="mono dim" style={{ fontSize: 11.5, padding: "10px 0" }}>carregando…</div>
-                    : <ActivityList activities={timelineActs} comments={lead.comments} />}
-                </div>
-              </>
-            )}
-          </div>
-
           {/* De onde veio · atribuição do anúncio: mesmo bloco (e mesmo lugar,
               depois dos contatos) do painel de atividade. Recolhível porque a
               ficha lista a atribuição inteira. */}
           <AttributionCard rows={attribution} open={showFrom} onToggle={() => setShowFrom((v) => !v)} />
 
-          {/* Dados do lead: mesmo checklist, mesmo título do painel de atividade. */}
-          <LeadChecklist key={lead.id} checklist={checklist} onPatch={patch} leadId={lead.id} />
+          <LeadDisclosure title="Dados do lead" hint={`${checklist.filter((c) => c.value).length} de ${checklist.length} preenchidos`}>
+            <LeadChecklist key={lead.id} checklist={checklist} onPatch={patch} leadId={lead.id} />
+          </LeadDisclosure>
 
-
-          </div>
-
-          {/* Coluna direita: o ROTEIRO do estágio (mesmo nome e mesma ordem do
-              painel de atividade do Meu dia) + o que é da entrega/mentoria. */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
-            <div className="kicker" style={{ color: "var(--fg-3)" }}>Roteiro · {lead.stage || (saasCfg?.funnel?.[0]?.stage ?? "")}</div>
             {/* Briefing de passagem em cima de tudo: é o que o integrador lê
                 primeiro quando abre o card que acabou de chegar nele. */}
             <IntegrationBriefCard brief={integrationBrief} phone={lead.phone}
@@ -1120,10 +1009,9 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
                 (some quando o briefing já cobre a call de venda). */}
             <CallSummaryCard summary={showCallSummary ? callSummary : null} phone={lead.phone}
               onSend={onOpenWhatsapp ? (msg) => onOpenWhatsapp(lead, msg) : null} />
-            {/* Como se comportar + objetivo + passo a passo: bloco único
-                compartilhado com o painel de atividade — inclusive o "copiar"
-                de cada fala, que só existia lá. */}
-            <ScriptBlocks script={script} tokens={scriptTk} />
+            <LeadDisclosure title="Roteiro da conversa" hint={lead.stage}>
+              <ScriptBlocks script={script} tokens={scriptTk} />
+            </LeadDisclosure>
 
             {/* UniqueKids: sugestão de solução da rotina (IA · método R.O.T.I.N.A),
                 gerada do desafio + exemplo e editável pela Ana. Só aparece quando há desafio. */}
@@ -1183,35 +1071,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
           </div>
         )}
 
-          </div>{/* fim coluna Roteiro */}
-        </div>{/* fim grid duas colunas */}
-        </div>
-
-        {/* Rodapé no mesmo desenho do painel de atividade: o WhatsApp esticado
-            (WaButton do DS). O "Web ↗" ao lado é da ficha, pra quem prefere
-            atender do WhatsApp Web em vez do inbox. */}
-        <div style={{ flexShrink: 0, padding: "10px 18px", borderTop: "1px solid var(--line-1)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", background: "var(--bg-inset)" }}>
-          {wa ? (
-            <>
-              {/* O WhatsApp carrega o VERBO do toque: "WhatsApp · cobrar
-                  proposta" diz o que fazer na conversa que vai abrir. */}
-              {onOpenWhatsapp
-                ? <WaButton block onClick={() => onOpenWhatsapp(lead)} title={`Abrir a conversa no inbox do cockpit · ${lead.phone}`}>
-                    {lead.nextActionNote ? `WhatsApp · ${lead.nextActionNote}` : "WhatsApp"}
-                  </WaButton>
-                : <WaButton block href={wa} title={`WhatsApp · ${lead.phone}`}>
-                    {lead.nextActionNote ? `WhatsApp · ${lead.nextActionNote} ↗` : "WhatsApp ↗"}
-                  </WaButton>}
-              {onOpenWhatsapp && (
-                <a href={wa} target="_blank" rel="noopener noreferrer" title={`Abrir no WhatsApp Web/app · ${lead.phone}`}
-                  style={{ flex: "0 1 auto", textAlign: "center", padding: "10px 14px", background: "var(--bg-1)", color: "var(--fg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 13.5, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}>
-                  Web ↗
-                </a>
-              )}
-            </>
-          ) : (
-            <span className="mono dim" style={{ flex: 1, textAlign: "center", padding: "10px 12px", fontSize: 12 }}>sem telefone cadastrado</span>
-          )}
+          <div className="lead-panel-actions">
           {/* Os dois movimentos TERMINAIS a um clique (só existiam dentro do
               select de etapa). Os dois continuam passando pelo moveGate: ganho
               pede valor e pagamento, perda pede motivo — e o `confirm` de
@@ -1221,16 +1081,16 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
             const perdido = stageByKind(saasCfg, "perdido") || stageByKind(saasCfg, "desqualificado");
             if (!ganho && !perdido) return null;
             return (
-              <span style={{ marginLeft: "auto", display: "inline-flex", gap: 8, flexShrink: 0 }}>
+              <span style={{ display: "flex", gap: 8, flex: 1, flexWrap: "wrap" }}>
                 {ganho && (
                   <button onClick={() => moveStage(ganho)} title="Marcar como ganho (pede valor, produto e pagamento)"
-                    style={{ height: 38, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--pos)", background: "var(--pos-soft)", color: "var(--pos)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                    style={{ flex: 1, height: 38, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--pos)", background: "var(--bg-1)", color: "var(--pos)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
                     marcar ganho
                   </button>
                 )}
                 {perdido && (
                   <button onClick={() => moveStage(perdido)} title="Marcar como perdido (o motivo da perda é obrigatório)"
-                    style={{ height: 38, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--neg)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                    style={{ flex: 1, height: 38, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--neg)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
                     marcar perdido
                   </button>
                 )}
@@ -1238,6 +1098,10 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
             );
           })()}
         </div>
+
+          </div>
+        </div>
+      </Drawer>
 
         {pendingMove && (
           <MoveLeadModal
@@ -1270,8 +1134,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
             onSaved={(r) => { dirty.current = true; setLead((prev) => ({ ...prev, ...(r.lead || {}) })); }}
           />
         )}
-      </div>
-    </div>
+    </>
   );
 }
 

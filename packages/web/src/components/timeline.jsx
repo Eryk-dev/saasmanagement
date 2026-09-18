@@ -26,6 +26,8 @@ const SYSTEM_TEXT = {
   proposal_shared: (m) => `Proposta enviada pro cliente${m.label ? ` · ${m.label}` : ""}`,
   proposal_accepted: (m) => `Proposta aceita${m.stage ? ` → “${m.stage}”` : ""}`,
   customer_created: () => "Virou cliente 🎉",
+  integration_form: (m) => `Formulário de integração respondido${m.summary ? ` · ${m.summary}` : ""}`,
+  fiscal_form: (m) => `Dados pra nota fiscal recebidos${m.summary ? ` · ${m.summary}` : ""}`,
   client_pending: (m) => `${m.count || 1} compromisso${(m.count || 1) === 1 ? "" : "s"} do cliente ${(m.count || 1) === 1 ? "virou tarefa" : "viraram tarefas"}${m.source === "form" ? " (formulário de integração)" : ""}`,
 };
 
@@ -160,7 +162,7 @@ function shrinkImage(file) {
   });
 }
 
-export function ActivityComposer({ lead, onLogged }) {
+export function ActivityComposer({ lead, onLogged, embedded = false }) {
   const [type, setType] = React.useState("whatsapp");
   const [text, setText] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -219,11 +221,12 @@ export function ActivityComposer({ lead, onLogged }) {
   );
 
   return (
-    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: 8 }}>
+    <div style={embedded ? undefined : { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: 8 }}>
       <div style={{ display: "flex", gap: 2, marginBottom: 6, flexWrap: "wrap" }}>
         {seg("whatsapp", "wpp")}{seg("call", "call")}{seg("meeting", "reunião")}{seg("email", "e-mail")}{seg("note", "nota")}
       </div>
       <textarea
+        aria-label="Anotar o que rolou"
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) log(); }}

@@ -112,7 +112,7 @@ test("lembrete sai normalmente quando a última fala humana é antiga", async ()
   const wa = makeWa();
   await runnerOf(repo, wa).tick();
   assert.equal(wa.sent.length, 1);
-  assert.match(wa.sent[0].text, /Está tudo certo pra nossa conversa/);
+  assert.match(wa.sent[0].text, /Nossa conversa é/);
 });
 
 // ── A4 · véspera não confirma o que acabou de ser combinado ─────────────────
@@ -173,7 +173,7 @@ test("lembrete de 2h cria a sala que falta; 10min sem link levanta alerta pro ti
   };
   await runnerOf(repo, wa, { autoCallMeet }).tick();
   assert.deepEqual(meets, ["L1"]);
-  assert.match(wa.sent[0].text, /Está tudo certo/);
+  assert.match(wa.sent[0].text, /Nossa conversa é/);
 
   // Agora o passo de 10min, com a sala já criada: o link vai no texto. O lead
   // confirmou (senão o alerta de ligação da 2b entraria por cima do "sem link").
@@ -389,7 +389,11 @@ const brainOf = (repo, fakes, extra = {}) => makeSdrBrain({
   log: { warn: () => {}, info: () => {} }, now: () => NOW, replyDelayMs: 0, partDelayMs: 0, sleep: async () => {}, ...extra,
 });
 
-test("preço pela segunda vez: robô sai da frente e chama gente (caso RT Eleven)", async () => {
+// Caso RT Eleven (24/08) relido em 18/09 (Leo): preço SÓ na call, porque são
+// planos diferentes e o certo sai da escuta das dores. Na 2ª insistência o
+// robô explica o porquê e puxa pra call (não repete a parede nem chama gente
+// pra mandar valor pelo WhatsApp); gente só entra na 3ª.
+test("preço pela segunda vez: robô explica os planos e puxa pra call, sem repetir a parede (caso RT Eleven)", async () => {
   const repo = await brainWorld({
     messages: [
       { direction: "in", text: "Gostaria de saber o valor", at: ISO("2026-08-19T12:44:00Z") },
@@ -399,13 +403,14 @@ test("preço pela segunda vez: robô sai da frente e chama gente (caso RT Eleven
   });
   const fakes = brainFakes({ decisions: [{ acao: "responder", mensagem: "O investimento é de acordo com as necessidades da sua operação, primeiro a gente entende o cenário" }] });
   const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "No caso eu quero saber primeiro o preço para ver a viabilidade", id: "bm3" } });
-  assert.equal(r, "preco-humano");
-  const alerts = await repo.list("wa_alerts");
-  assert.equal(alerts.length, 1);
-  assert.match(alerts[0].text, /Insistiu no preço/);
-  assert.ok((await repo.get("leads", "L1")).sdrLog.handoffAt, "conversa entregue pro humano");
+  assert.equal(r, "preco-explicado");
+  assert.equal((await repo.list("wa_alerts")).length, 0, "2ª vez ainda não chama gente");
+  assert.ok(!(await repo.get("leads", "L1")).sdrLog.handoffAt, "conversa segue com o robô");
   assert.equal(fakes.sent.length, 1);
   assert.doesNotMatch(fakes.sent[0].text, /investimento é de acordo/, "não repete a parede");
+  assert.match(fakes.sent[0].text, /planos diferentes/);
+  assert.match(fakes.sent[0].text, /só fecha na call/);
+  assert.doesNotMatch(fakes.sent[0].text, /R\$|\d+ reais/, "sem número");
 });
 
 test("resposta que só requenta o que já foi dito não sai: vira handoff", async () => {

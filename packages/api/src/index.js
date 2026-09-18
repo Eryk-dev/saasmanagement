@@ -18,6 +18,7 @@ import { startConsultationSummaries } from "./consultations.js";
 import { startDripSequences } from "./drip-runner.js";
 import { startCadencia } from "./cadencia-runner.js";
 import { startSdrFlow } from "./sdr-flow.js";
+import { startSdrBrainSweep } from "./sdr-brain.js";
 import { startTrainingReminder } from "./training-reminder.js";
 import { startTaskReminder } from "./task-reminder.js";
 import { startWaWaitingReminder } from "./wa-waiting-reminder.js";
@@ -38,10 +39,10 @@ import { startMpOutflowSync } from "./routes.fin.js";
 import { mp as defaultMp } from "./mp.js";
 import { startBilling } from "./billing-runner.js";
 import { startLeveradsAccessSync } from "./leverads-access.js";
-import { refreshResults } from "./leverads-results.js";
+import { refreshResults, RESULTS_TTL_MS } from "./leverads-results.js";
 import { ensureDefaultAdmins, makeAuthHook } from "./auth.js";
 import { makeScreenGuardHook } from "./screens.js";
-import { runStartupMigrations } from "./migrations.js";
+import { runStartupMigrations, regenerateOpenLeadsToSlides } from "./migrations.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: join(__dirname, "..", "..", "..", ".env") });
@@ -88,6 +89,8 @@ await ensureDefaultAdmins(repo);
 await runStartupMigrations(repo);
 
 const app = Fastify({ logger: true });
+let resultsTimer;
+app.addHook("onClose", async () => clearInterval(resultsTimer));
 
 await app.register(cors, { origin: true });
 // Upload de criativo (vídeo) pra Meta — limite folgado pra vídeo de anúncio.
@@ -112,6 +115,11 @@ try {
   // Sync automático da Meta no servidor (uma execução pro time inteiro; no-op
   // sem META_ACCESS_TOKEN). O SPA só lê — não faz mais polling por aba.
   startMarketingAutoSync(repo, { log: app.log });
+  // Leads abertos que ainda apontam pro deck antigo (A/B) ganham a apresentação
+  // em slides. É uma proposta nova por lead, então roda depois de ouvir.
+  regenerateOpenLeadsToSlides(repo, { baseUrl: process.env.COCKPIT_PUBLIC_URL || "", log: app.log })
+    .then((n) => { if (n) app.log.info(`[migration] apresentação em slides regerada pra ${n} lead(s) aberto(s)`); })
+    .catch((err) => app.log.error(`[migration] regenerateOpenLeadsToSlides falhou: ${err?.message || err}`));
   // Regras de veiculação dos anúncios (agenda cheia pausa, janela de fim de
   // semana, orçamento alvo): tick invariante de 60s; regra nasce desligada, o
   // toggle vive na tela Publicidade. No-op sem META_ACCESS_TOKEN.
@@ -131,6 +139,10 @@ try {
   // poller de 60s, no-op sem product.sdrBot.enabled. Age em nome do SDR dono,
   // com autoria interna "sdr-bot" (fora da régua de contato humano).
   startSdrFlow(repo, { ...app.integrationClients, log: app.log });
+  // Retomada do SDR conversacional: mensagem recebida que ficou SEM decisão
+  // (a API reiniciou no meio do debounce/IA/atraso de resposta) é tratada de
+  // novo no ciclo seguinte, em vez de morrer no silêncio (16/09: Vinicius).
+  startSdrBrainSweep(app.integrationClients.sdrBrain, { log: app.log });
   // Lembrete diário de treinamento (flashcards vencendo) — no-op sem Discord.
   startTrainingReminder(repo, { log: app.log });
   // Lembrete diário das tarefas (vence hoje / atrasada) na caixa de entrada de
@@ -200,10 +212,11 @@ try {
   // billing daqui. No-op sem LEVERADS_ADMIN_EMAIL/PASSWORD; dry-run por padrão
   // (LEVERADS_ACCESS_APPLY=1 pra valer). Só toca orgs com de-para explícito.
   startLeveradsAccessSync(repo, { log: app.log });
-  // Aquece o resultado dos clientes que o slide `impacto` da proposta mostra:
-  // sem isso, a primeira apresentação depois de um deploy abriria com o número
-  // escrito no deck (o fallback) em vez do número do dia.
+  // Aquece os resultados das propostas (incluindo o resumo do deck C) e
+  // renova a cada seis horas, mesmo sem uma nova abertura para disparar o cache.
   refreshResults().catch(() => {});
+  resultsTimer = setInterval(() => refreshResults().catch(() => {}), RESULTS_TTL_MS);
+  resultsTimer.unref();
 } catch (err) {
   app.log.error(err);
   process.exit(1);

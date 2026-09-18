@@ -5,29 +5,53 @@
 // ações (responder/agendar/humano/silêncio) + quantas respostas cairiam na
 // trava de preço.
 //
+// COMPARAÇÃO DE MODELOS (17/09): a mesma bateria roda com OUTRO modelo
+// (`model`, via anthropic.clone) e grava num doc próprio (`tag`), sem
+// sobrescrever a rodada anterior. Além das ações, o relatório mede o que o
+// raio-x apontou como vazamento de copy: frase-reflexo ("algum dos horários
+// que te passei"), "vou verificar/confirmar com o especialista", resposta sem
+// pergunta, tamanho médio da mensagem, tokens e latência por decisão.
+//
 // Roda em BACKGROUND (as chamadas de IA levam minutos no total): POST inicia,
-// GET lê o estado — o resultado fica em app_config "sdr_replay", com progresso
-// parcial gravado a cada conversa pra dar pra acompanhar.
+// GET lê o estado — o resultado fica em app_config "sdr_replay" (ou
+// "sdr_replay_<tag>"), com progresso parcial gravado a cada conversa.
 import { kindOf, firstStage } from "./stages.js";
 import { leadGrade } from "./routes.marketing.js";
 import { slotsForLead, slotLabel, wallNow, spreadPair, wholeHourSlots, OFFER_HOURS, OFFER_HORIZON_DAYS } from "./agenda-slots.js";
 import { leadDigest, leadPainFocus, SDR_AUTHOR } from "./sdr-flow.js";
+import { PRICE_RX } from "./sdr-brain.js";
 
-const DOC_ID = "sdr_replay";
-const PRICE_RX = /r\$\s*\d|\b\d{2,}\s*(reais|por m[eê]s|\/m[eê]s|mensais)\b|\ba partir de\s*\d/i;
+export const DOC_ID = "sdr_replay";
 const WEEKDAYS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+// O que o raio-x de 17/09 mediu como copy que perde o lead.
+const REFLEX_RX = /algum\s+d(os|esses|aqueles)\s+hor[áa]rios|hor[áa]rios?\s+que\s+(eu\s+)?(te\s+)?(passei|mandei|enviei)/i;
+const VERIFY_RX = /vou (verificar|confirmar|checar|ver) (com|isso|aqui|junto)|deixa eu (confirmar|verificar) com (o|a) (time|especialista|equipe)/i;
+const BRIDGE_RX = /google meet|ao vivo/i;
 
-async function saveDoc(repo, doc) {
-  const cur = await repo.get("app_config", DOC_ID).catch(() => null);
-  const next = { ...doc, id: DOC_ID };
-  return cur ? repo.update("app_config", DOC_ID, next) : repo.create("app_config", next);
+export const docIdOf = (tag) => (tag ? `${DOC_ID}_${String(tag).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").slice(0, 40)}` : DOC_ID);
+
+async function saveDoc(repo, id, doc) {
+  const cur = await repo.get("app_config", id).catch(() => null);
+  const next = { ...doc, id };
+  return cur ? repo.update("app_config", id, next) : repo.create("app_config", next);
 }
 
 export function makeSdrReplay({ repo, anthropic, log = console, now = () => new Date() } = {}) {
   let running = false;
 
-  async function status() {
-    return (await repo.get("app_config", DOC_ID).catch(() => null)) || { id: DOC_ID, status: "idle" };
+  async function status(tag = "") {
+    const id = docIdOf(tag);
+    return (await repo.get("app_config", id).catch(() => null)) || { id, status: "idle" };
+  }
+
+  // Todas as rodadas gravadas (a padrão e as por tag), mais recente primeiro:
+  // é o que a comparação entre modelos lê.
+  async function runs() {
+    const all = await repo.list("app_config");
+    return all
+      .filter((d) => d.id === DOC_ID || String(d.id || "").startsWith(`${DOC_ID}_`))
+      .map((d) => ({ id: d.id, tag: d.tag || "", model: d.model || d.report?.model || "", status: d.status, startedAt: d.startedAt, finishedAt: d.finishedAt, progress: d.progress, report: d.report ? { ...d.report, samples: undefined } : null }))
+      .sort((a, b) => String(b.startedAt || "").localeCompare(String(a.startedAt || "")));
   }
 
   // Seleciona as conversas: com lead vinculado, com ida E volta, mais recentes
@@ -54,7 +78,9 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
       .slice(0, maxThreads);
   }
 
-  async function run({ saas = "leverads", threads: maxThreads = 25, turns: turnsPerThread = 3 } = {}) {
+  async function run({ saas = "leverads", threads: maxThreads = 25, turns: turnsPerThread = 3, model = "", tag = "" } = {}) {
+    const ai = model && typeof anthropic?.clone === "function" ? anthropic.clone({ model }) : anthropic;
+    const docId = docIdOf(tag);
     const startedAt = now().toISOString();
     const wnow = wallNow(now());
     const p2 = (n) => String(n).padStart(2, "0");
@@ -63,16 +89,26 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
     const picked = await pickThreads(saas, Math.min(60, Math.max(1, maxThreads)));
 
     const report = {
-      saas, startedAt,
+      saas, startedAt, model: model || ai?.model || "", tag,
       threads: picked.length, turns: 0, errors: 0,
       actions: { responder: 0, agendar: 0, remarcar: 0, desmarcar: 0, humano: 0, silencio: 0 },
-      priceGuardHits: 0,          // respostas da IA que a trava de preço trocaria
+      priceGuardHits: 0,          // respostas da IA com valor (a trava de preço trocaria: preço só na call)
       invalidSlotPicks: 0,        // agendar com horário fora da lista (o motor re-oferta)
       realBookedThreads: 0,       // nas conversas da amostra, quantas viraram call na vida real
       wouldBookThreads: 0,        // em quantas o robô teria marcado em algum turno
+      // Copy que o raio-x de 17/09 mediu como vazamento:
+      reflexPhrase: 0,            // "algum dos horários que te passei"
+      verifyLater: 0,             // "vou verificar/confirmar com o especialista"
+      noQuestion: 0,              // resposta sem pergunta nem próximo passo
+      bridgeBeforeSlots: 0,       // ponte (o que é a demonstração) junto da oferta
+      offersWithSlots: 0,         // respostas que ofereceram horário
+      avgChars: 0,                // tamanho médio da resposta (soma / turnos)
+      usage: { in: 0, out: 0, cacheRead: 0, cacheWrite: 0 }, // tokens somados
+      msTotal: 0,                 // latência somada (÷ turns = média)
       samples: [],
     };
-    await saveDoc(repo, { status: "running", startedAt, saas, progress: { done: 0, total: picked.length }, report });
+    let chars = 0;
+    await saveDoc(repo, docId, { status: "running", startedAt, saas, tag, model: report.model, progress: { done: 0, total: picked.length }, report });
 
     for (let ti = 0; ti < picked.length; ti++) {
       const { lead, msgs } = picked[ti];
@@ -101,10 +137,11 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
           who: x.direction === "in" ? "LEAD" : "VOCÊ",
           text: String(x.text || "").slice(0, 500) || "[mensagem]",
         }));
+        const slotsOffered = msgs.slice(0, i).some((x) => x.direction === "out" && /(hoje|amanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo) às \d{1,2}h/i.test(x.text || ""));
         try {
-          const d = await anthropic.sdrDecide({
+          const d = await ai.sdrDecide({
             sdrName: "Manuela",
-            lead: { name: lead.name, company: lead.company, email: lead.email },
+            lead: { name: lead.name, company: lead.company, email: lead.email, niche: lead.niche },
             digest: leadDigest(product, lead),
             grade: leadGrade(lead) || "",
             stage: lead.stage || firstStage(product),
@@ -117,14 +154,25 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
             gapMin,
             demoOffered,
             suggestedPair: spreadPair(wholeHourSlots(slotList)),
-            slotsOffered: msgs.slice(0, i).some((x) => x.direction === "out" && /(hoje|amanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo) às \d{1,2}h/i.test(x.text || "")),
+            slotsOffered,
+            firstReply: !msgs.slice(0, i).some((x) => x.direction === "out"),
           });
           report.actions[d.acao] = (report.actions[d.acao] || 0) + 1;
           if ((d.acao === "agendar" || d.acao === "remarcar")) {
             if (slotList.some((s) => s.at === d.horario)) bookedHere = true;
             else report.invalidSlotPicks++;
           }
-          if (d.mensagem && PRICE_RX.test(d.mensagem)) report.priceGuardHits++;
+          const text = String(d.mensagem || "");
+          if (text && PRICE_RX.test(text)) report.priceGuardHits++;
+          if (REFLEX_RX.test(text)) report.reflexPhrase++;
+          if (VERIFY_RX.test(text)) report.verifyLater++;
+          if (d.acao === "responder" && text && !text.includes("?")) report.noQuestion++;
+          const offered = /(hoje|amanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta) às \d{1,2}h/i.test(text);
+          if (offered) { report.offersWithSlots++; if (!slotsOffered && BRIDGE_RX.test(text)) report.bridgeBeforeSlots++; }
+          chars += text.length;
+          if (d.usage) for (const k of ["in", "out", "cacheRead", "cacheWrite"]) report.usage[k] += Number(d.usage[k]) || 0;
+          report.msTotal += Number(d.ms) || 0;
+          if (!report.model && d.model) report.model = d.model;
           if (report.samples.length < 40) {
             report.samples.push({
               lead: lead.name || lead.id,
@@ -133,7 +181,7 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
               leadMsg: String(m.text || "").slice(0, 220),
               real: String(realNext.text || "").slice(0, 220),
               realAuthor: realNext.author === SDR_AUTHOR ? "sdr-bot" : realNext.author || "",
-              bot: { acao: d.acao, mensagem: String(d.mensagem || "").slice(0, 260), horario: d.horario || "", motivoHumano: d.motivoHumano || "" },
+              bot: { acao: d.acao, mensagem: text.slice(0, 260), horario: d.horario || "", motivoHumano: d.motivoHumano || "" },
             });
           }
         } catch (err) {
@@ -142,11 +190,12 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
         }
       }
       if (bookedHere) report.wouldBookThreads++;
-      await saveDoc(repo, { status: "running", startedAt, saas, progress: { done: ti + 1, total: picked.length }, report });
+      report.avgChars = report.turns ? Math.round(chars / report.turns) : 0;
+      await saveDoc(repo, docId, { status: "running", startedAt, saas, tag, model: report.model, progress: { done: ti + 1, total: picked.length }, report });
     }
 
     const finishedAt = now().toISOString();
-    await saveDoc(repo, { status: "done", startedAt, finishedAt, saas, progress: { done: picked.length, total: picked.length }, report });
+    await saveDoc(repo, docId, { status: "done", startedAt, finishedAt, saas, tag, model: report.model, progress: { done: picked.length, total: picked.length }, report });
     return report;
   }
 
@@ -158,11 +207,11 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
     run(opts)
       .catch(async (err) => {
         log.warn?.({ err: err.message }, "sdr-replay falhou");
-        await saveDoc(repo, { status: "error", error: String(err.message || err).slice(0, 300), finishedAt: now().toISOString() }).catch(() => {});
+        await saveDoc(repo, docIdOf(opts.tag), { status: "error", error: String(err.message || err).slice(0, 300), finishedAt: now().toISOString() }).catch(() => {});
       })
       .finally(() => { running = false; });
     return { started: true };
   }
 
-  return { start, status, run };
+  return { start, status, runs, run };
 }

@@ -13,6 +13,8 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // Stubs mínimos de browser pro código que toca window/localStorage no render.
 globalThis.window = globalThis;
+// `location` existe sempre no navegador (consultas.jsx lê origin na importação).
+globalThis.location = { origin: "http://localhost", href: "http://localhost/", pathname: "/", hash: "", search: "" };
 globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
 // useIsMobile (lib/responsive.js) lê matchMedia no initializer do useState.
 globalThis.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
@@ -49,6 +51,20 @@ let failed = 0;
 try {
   const { fmt } = await server.ssrLoadModule("/src/lib/format.js");
   window.fmt = fmt;
+  // Boot em paralelo (main.jsx): o app é importado ENQUANTO o bootstrap corre,
+  // então nenhum módulo pode ler window.SEED na importação. Importa a árvore
+  // inteira sem SEED, ANTES de qualquer outro load (o Vite cacheia módulos), e
+  // falha se alguém ler cedo demais.
+  try {
+    const saved = window.SEED;
+    window.SEED = undefined;
+    try { await server.ssrLoadModule("/src/app.jsx"); }
+    finally { window.SEED = saved; }
+    console.log("✓ app-sem-seed");
+  } catch (err) {
+    console.error(`✗ app-sem-seed: ${err.message}`);
+    failed++;
+  }
   const { DataContext } = await server.ssrLoadModule("/src/data.jsx");
   const ctx = { version: 0, refresh() {}, openForm() {}, openDelete() {} };
   const wrap = (el) => React.createElement(DataContext.Provider, { value: ctx }, el);
@@ -85,6 +101,8 @@ try {
   const fakeWin = { since: "2026-08-01", until: "2026-08-08", businessDays: 6, days: 8, label: "este mês", short: "mês" };
 
   const cases = [
+    ["inbox", "/src/screens/whatsapp.jsx", "WhatsappInboxScreen", {}, "Inbox"],
+    ["inbox-mensagens", "/src/components/wa-thread.jsx", "WaBubbles", { variant: "inbox", messages: [{ id: "wa-test", direction: "out", author: "sdr-bot", text: "Mensagem do robô", at: nowIso, status: "read" }] }, "Mensagem do robô"],
     ["overview", "/src/screens/overview.jsx", "OverviewScreen", { onNav() {}, onOpenLead() {} }, "Visão geral"],
     ["overview-meta", "/src/screens/overview.jsx", "MetaMesCard", { pace: fakePace, goal: fakeGoal, onNav() {} }, "Contratos"],
     // O termômetro (14/09): a coluna, a marca do pace e a distância em palavras.
@@ -92,6 +110,9 @@ try {
     ["overview-funil", "/src/screens/overview.jsx", "FunilPeriodo", { team: fakeTeam, win: fakeWin, pLabel: "este mês" }, "Ganhos"],
     ["metrics", "/src/screens/metrics.jsx", "MetricsScreen", {}, "Publicidade"],
     ["expenses", "/src/screens/expenses.jsx", "ExpensesScreen", {}, "Pagamentos"],
+    ["financeiro-pizza", "/src/screens/finance-hub.jsx", "GastosCard", { month: "2026-09", recebidosMes: 2000, setores: { deducoes: { imposto: 600 }, cogs: { ia: 200, wa: 100 }, sm: { ads: 100 } } }, "30,0%"],
+    ["financeiro-pizza-vazio", "/src/screens/finance-hub.jsx", "GastosCard", { month: "2026-09", recebidosMes: 0, setores: { cogs: { ia: 0 } } }, "Sem recebimentos neste mês"],
+    ["financeiro-pizza-unico", "/src/screens/finance-hub.jsx", "GastosCard", { month: "2026-09", recebidosMes: 100, setores: { sm: { ads: 100 } } }, "100,0%"],
     ["customers", "/src/screens/customers.jsx", "CustomersScreen", {}, "Cliente Teste"],
     ["pipeline", "/src/screens/pipeline.jsx", "PipelineScreen", { onOpenLead() {} }, "Lead Novo"],
     ["chrome", "/src/chrome.jsx", "NavRail", { current: "overview", onNav() {} }, "Visão geral"],
@@ -100,6 +121,10 @@ try {
     ["subscriptions", "/src/screens/subscriptions.jsx", "SubscriptionsScreen", { saasId: "leverads" }, ""],
     ["settings", "/src/screens/settings.jsx", "SettingsScreen", { saasId: "leverads" }, ""],
     ["social", "/src/screens/social.jsx", "SocialScreen", {}, "Comentários"],
+    // Módulos pequenos que saíram de telas grandes pra não pesar em Disparos/Formulários.
+    ["wa-health-banner", "/src/components/wa-health-banner.jsx", "WaHealthBanner", {}, ""],
+    ["abc-cell", "/src/components/abc-cell.jsx", "AbcCell", { abc: { A: 2 }, abcCost: { A: 43 }, money: (v) => `R$ ${v}` }, "R$ 43 cada"],
+    ["disparos", "/src/screens/disparos.jsx", "DisparosScreen", {}, "Disparos"],
     ["contracts", "/src/screens/contracts.jsx", "ContractsScreen", {}, "Contratos gerados"],
     ["intform", "/src/screens/integration-forms.jsx", "IntegrationFormsScreen", {}, "Formulário de Integração"],
     ["blog", "/src/screens/blog.jsx", "BlogScreen", {}, "Blog"],
@@ -128,6 +153,55 @@ try {
       failed++;
     }
   }
+  // Pizza do Financeiro: a mesma despesa muda de participação conforme o
+  // recebido; déficit e ausência de receita nunca viram uma pizza enganosa.
+  try {
+    const { GastosCard } = await server.ssrLoadModule("/src/screens/finance-hub.jsx");
+    const renderPizza = (recebidosMes, setores = { deducoes: { imposto: 600 }, cogs: { ia: 200, wa: 100 }, sm: { ads: 100 } }) =>
+      renderToString(React.createElement(GastosCard, { month: "2026-09", recebidosMes, setores })).replace(/<!--.*?-->/g, "");
+    const normal = renderPizza(2000);
+    for (const expected of ["Impostos sobre receita (DAS): R$600 · 30,0%", "Saldo após despesas: R$1,0k · 50,0%", "Recebido no mês · R$2,0k"]) {
+      if (!normal.includes(expected)) throw new Error(`a pizza precisa mostrar ${expected}`);
+    }
+    const deficit = renderPizza(500);
+    if (!deficit.includes("120,0%") || !deficit.includes("Déficit de R$500") || !deficit.includes("200,0% do recebido") || deficit.includes("<svg") || deficit.includes("Saldo após despesas")) {
+      throw new Error("déficit deve preservar percentuais sobre recebidos, sem fatias inválidas ou saldo positivo");
+    }
+    const noIncome = renderPizza(0);
+    if (!noIncome.includes("Sem recebimentos neste mês") || !noIncome.includes("R$600") || noIncome.includes("<svg") || /NaN|Infinity|100,0%/.test(noIncome)) {
+      throw new Error("sem recebimentos deve manter as despesas, sem inventar percentuais");
+    }
+    const noExpenses = renderPizza(2000, {});
+    if (!noExpenses.includes("Saldo após despesas: R$2,0k · 100,0%") || !noExpenses.includes("<circle")) {
+      throw new Error("sem despesas, todo o recebido deve aparecer como saldo");
+    }
+    console.log("✓ financeiro-pizza-base-recebidos");
+  } catch (err) {
+    console.error(`✗ financeiro-pizza-base-recebidos: ${err.message}`);
+    failed++;
+  }
+  // A régua usa a meta base: ultrapassar 100% não pode fazer o percentual
+  // voltar para trás por causa da escala da próxima super meta.
+  try {
+    const { MetaMesCard } = await server.ssrLoadModule("/src/screens/overview.jsx");
+    const renderGoal = (sale, ended = false) => renderToString(wrap(React.createElement(MetaMesCard, {
+      goal: { ...fakeGoal, ended, sale: { ...fakeGoal.sale, ...sale } }, links: false,
+    })));
+    const visible = renderGoal({}).split('<details')[0];
+    for (const text of ["14.400", "Falta para a meta", "26.000"]) {
+      if (!visible.includes(text)) throw new Error(`${text} precisa aparecer sem abrir os detalhes`);
+    }
+    if (!visible.includes('class="vg-meta-pace-marker"') || visible.includes('vg-goal-pace-label')) throw new Error("pace deve ter apenas uma marca, sem rótulo externo");
+    const superMeta = renderGoal({ sold: 66000, progress: 1.1 }).split('<details')[0];
+    if (!superMeta.includes("110%") || !superMeta.includes("Meta batida") || !superMeta.includes("6.000")) throw new Error("super meta deve mostrar 110% realizado e o excedente");
+    const closed = renderGoal({}, true).split('<details')[0];
+    if (closed.includes('class="vg-meta-pace-marker"') || !closed.includes("Faltou para a meta")) throw new Error("período encerrado não deve cobrar pace de hoje");
+    console.log("✓ overview-meta-legível");
+  } catch (err) {
+    console.error(`✗ overview-meta-legível: ${err.message}`);
+    failed++;
+  }
+
   // A tabela de formulários precisa caber na janela de 1024px sem rolar.
   try {
     const { FORM_GRID, FORM_GRID_GAP, FORM_GRID_BUDGET } = await server.ssrLoadModule("/src/screens/integration-forms.jsx");
@@ -394,6 +468,21 @@ try {
     eq("follow-up ganha Nutrição antes de Desqualificado", names({ funnel }, { id: "l1", stage: "Follow-up" }), ["retry", "Ganho", "Integração", "Nutrição", "Desqualificado"]);
     const semNutri = funnel.filter((f) => f.stage !== "Nutrição");
     eq("sem etapa Nutrição, o botão some", names({ funnel: semNutri }, { id: "l1", stage: "Follow-up" }), ["retry", "Ganho", "Integração", "Desqualificado"]);
+    // Configurações antigas substituem o default: validar o produto migrado
+    // nos três roteiros que Minhas atividades escolhe conforme as tentativas.
+    const { makeMemRepo } = await import("../../api/test/helpers/mem-repo.js");
+    const { migrateNutricaoNoFollowup } = await import("../../api/src/migrations.js");
+    const repo = makeMemRepo();
+    await repo.create("products", { id: "leverads", funnel, nextSteps: {
+      followup1: ["retry", "ganho", "integracao", "desqualificado"],
+      followup2: ["retry", "ganho", "integracao", "desqualificado"],
+      followup3: ["retry", "ganho", "integracao", "desqualificado"],
+    } });
+    await migrateNutricaoNoFollowup(repo);
+    const migrated = await repo.get("products", "leverads");
+    for (const stageAttempts of [0, 1, 2, 5]) {
+      eq(`roteiro salvo com ${stageAttempts} tentativas oferece Nutrição`, names(migrated, { id: "l1", stage: "Follow-up", stageAttempts }), ["retry", "Ganho", "Integração", "Nutrição", "Desqualificado"]);
+    }
     console.log("✓ destino-nutricao");
   } catch (err) {
     console.error(`✗ destino-nutricao: ${err.message}`);
@@ -737,7 +826,7 @@ try {
     has("billing", billing, "Faturas vencidas");
     if (!/Inadimplentes[\s\S]{0,240}>1</.test(billing)) throw new Error("inadimplente deveria contar PESSOA (1), não fatura (2)");
 
-    // O dinheiro do período: a barra empilhada e o rodapé.
+    // Contratado anualizado e caixa confirmado têm bases distintas.
     const analise = R(React.createElement(A.CustomersAnalysis, {
       customers: window.SEED.CUSTOMERS, subs: [], invoices: [], isKids: false,
       gradeDist: { counts: { A: 2, C: 1 }, sem: 1 }, nivelLegend: null,
@@ -746,6 +835,18 @@ try {
     has("análise", analise, "recebido");
     has("análise", analise, "Churn");
     has("análise", analise, "Ticket médio");
+    has("análise", analise, "contratado anualizado");
+    has("análise", analise, "recebido no período");
+    has("análise", analise, "carregando recebimentos");
+    if (analise.includes("os dois somam o contratado") || analise.includes("renovações a vencer no ano")) throw new Error("análise ainda apresenta caixa como parte do ARR");
+    const caixa = R(React.createElement(A.CustomerCashValues, { cash: { received: 25450, receivable: 900 } }));
+    has("caixa confirmado", caixa, window.fmt.money(25450));
+    has("caixa confirmado", caixa, "pagamentos confirmados");
+    const caixaVazio = R(React.createElement(A.CustomerCashValues, { cash: { received: 0, receivable: 0 } }));
+    has("caixa vazio", caixaVazio, window.fmt.money(0));
+    const caixaErro = R(React.createElement(A.CustomerCashValues, { error: true, onRetry() {} }));
+    has("caixa erro", caixaErro, "Tentar novamente");
+    if (caixaErro.includes(window.fmt.money(0))) throw new Error("falha de caixa foi exibida como zero");
 
     // Base vazia: a tela oferece o cadastro em vez de uma tabela oca.
     const vazia = (() => {

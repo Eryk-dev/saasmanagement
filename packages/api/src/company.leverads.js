@@ -11,7 +11,7 @@ export const LEVERADS_COMPANY = {
   vision: "Ser a plataforma padrão de operação de marketplace no Brasil, o sistema que roda por trás de quem vende em escala.",
   facts: [
     { k: "Produto", v: "Plataforma SaaS de operação em marketplace (Mercado Livre e Shopee): publicação em várias contas, sincronização, estoque integrado e IA na ficha técnica." },
-    { k: "Modelo", v: "Assinatura anual com preço fixo, sem percentual por pedido. Tudo que lançamos durante o contrato entra sem custo extra." },
+    { k: "Modelo", v: "Três linhas de produto (Lever OEM pra autopeças, Lever Ads pros demais nichos e Lever Price pra precificação), cada uma em Essencial, Escala ou Enterprise. Assinatura anual (ou semestral) com preço fixo por pacote, sem percentual por pedido. Tudo que lançamos durante o contrato entra sem custo extra." },
     { k: "Mercado", v: "Lojistas que já vendem em marketplace e querem crescer operando mais contas sem inchar o time." },
     { k: "Como operamos", v: "Time enxuto em 4 frentes (mídia social, pré-venda, vendas e sucesso do cliente), com processo e métrica de ponta a ponta no cockpit." },
   ],

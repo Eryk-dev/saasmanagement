@@ -922,7 +922,7 @@ function Heatmap({ days, today, cell: cellPx = 11, weeksCount = 18, compact = fa
 // ── Editar: a base oficial do time ───────────────────────────────────────────
 // Ordem das abas: baralhos de conhecimentos gerais primeiro (todo mundo passa
 // por eles), depois as vagas do funil. Role desconhecido cai no fim.
-const ROLE_ORDER = ["geral_negocio", "geral_marketplace", "sdr", "closer", "integrator", "social"];
+const ROLE_ORDER = ["geral_negocio", "geral_marketplace", "geral_vendas", "sdr", "closer", "integrator", "social"];
 const roleOrderIdx = (r) => { const i = ROLE_ORDER.indexOf(r); return i < 0 ? ROLE_ORDER.length : i; };
 
 // Criação rápida acima da lista; o editor completo abre em uma janela.
@@ -1243,7 +1243,7 @@ function CardEditor({ card, saasId, onPatch, onRemove }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <label><span className="kicker" style={capStyle}>{type === "cloze" ? <>Texto · marque deleções com {"{{c1::…}}"}</> : "Frente · a pergunta"}</span>
               <textarea ref={frontRef} rows={3} value={card.front || ""} onChange={(e) => onPatch(card.id, "front", e.target.value)}
-                placeholder={type === "cloze" ? "ex.: A escada é {{c1::anual}} → {{c2::semestral}} → {{c3::serviço único}}" : "ex.: Objeção: 'tá caro'"}
+                placeholder={type === "cloze" ? "ex.: O {{c1::anual}} abre a apresentação e o {{c2::semestral}} é o degrau" : "ex.: Objeção: 'tá caro'"}
                 style={{ ...areaStyle, minHeight: 76 }} /></label>
             <label><span className="kicker" style={capStyle}>{type === "cloze" ? "Verso (opcional) · contexto extra" : "Verso · a resposta"}</span>
               <textarea rows={4} value={card.back || ""} onChange={(e) => onPatch(card.id, "back", e.target.value)} placeholder={type === "cloze" ? "" : "a técnica / resposta ideal"}
@@ -1633,7 +1633,7 @@ const COMPANY = {
   vision: "Ser a plataforma padrão de operação de marketplace no Brasil, o sistema que roda por trás de quem vende em escala.",
   facts: [
     { k: "Produto", v: "Plataforma SaaS de operação em marketplace (Mercado Livre e Shopee): publicação em várias contas, sincronização, estoque integrado e IA na ficha técnica." },
-    { k: "Modelo", v: "Assinatura anual com preço fixo, sem percentual por pedido. Tudo que lançamos durante o contrato entra sem custo extra." },
+    { k: "Modelo", v: "Três linhas de produto (Lever OEM pra autopeças, Lever Ads pros demais nichos e Lever Price pra precificação), cada uma em Essencial, Escala ou Enterprise. Assinatura anual (ou semestral) com preço fixo por pacote, sem percentual por pedido. Tudo que lançamos durante o contrato entra sem custo extra." },
     { k: "Mercado", v: "Lojistas que já vendem em marketplace e querem crescer operando mais contas sem inchar o time." },
     { k: "Como operamos", v: "Time enxuto em 4 frentes (mídia social, pré-venda, vendas e sucesso do cliente), com processo e métrica de ponta a ponta no cockpit." },
   ],
@@ -1662,7 +1662,7 @@ const ROLE_GUIDES = [
     respons: "É quem fala primeiro com o lead que se cadastrou. Liga rápido, entende o tamanho da operação e marca a conversa com o especialista.",
     processo: [
       "Liga pra quem se cadastrou o mais rápido possível (lead novo é sempre a prioridade)",
-      "Confirma as informações básicas: o que vende, quantas contas tem, quantos anúncios",
+      "Confirma o tamanho da operação: só online ou também físico (quantas lojas), contas no ML e na Shopee, pedidos por mês, ticket médio, o problema e o que fez procurar agora",
       "Marca a call com o especialista oferecendo 2 opções de horário",
       "Antes da call, confirma a presença e lembra o cliente de entrar logado nas contas",
       "Se o lead some, insiste um pouco, descansa e tenta de novo depois; furou a call, remarca",
@@ -1672,10 +1672,10 @@ const ROLE_GUIDES = [
     role: "closer", title: "Closer", tagline: "A call de venda: mostrar funcionando e fechar",
     respons: "É quem conduz a call e transforma interesse em cliente. Mostra a plataforma funcionando ao vivo na operação do próprio lead e fecha o negócio ainda na conversa.",
     processo: [
-      "Começa entendendo a operação do cliente: o que vende, quantas contas, qual a maior dor",
-      "Mostra a plataforma AO VIVO publicando anúncios de verdade nas contas dele",
-      "Usa resultados reais de clientes pra dar segurança (a Unique cresceu 105% no 1º mês)",
-      "Apresenta o plano e fecha com pagamento ainda na call",
+      "Abre com conexão e entrevista: história da operação, estrutura física e online, vendas por dia, como cria anúncios hoje e qual o processo por trás",
+      "Mostra a plataforma AO VIVO na funcionalidade que o lead disse que mais vale pra ele, e passa rápido por 1 ou 2 ligadas à operação dele",
+      "Prova espelhada: volta pra apresentação no case mais parecido com a operação do lead, com número real (a Unique cresceu 105% no 1º mês)",
+      "Apresenta o pacote sugerido pela régua (anual; semestral é o degrau), pede a venda e sai com o pagamento ainda na call",
       "Sai da call com a integração agendada pro dia seguinte; não fechou, combina o próximo passo com data",
     ],
   },
@@ -1765,53 +1765,11 @@ function RolesGuide() {
   );
 }
 
-// ── Portão do treino diário ──────────────────────────────────────────────────
-// Quem tem vaga operacional (etiqueta sdr/closer/integrator/social) só começa a
-// trabalhar depois de zerar a fila do dia: qualquer tela fora dos Treinamentos
-// fica atrás deste overlay enquanto houver card pendente. A cada revisão o SSE
-// atualiza a contagem; zerou, o cockpit libera sozinho. Falha da API nunca
-// tranca a tela (fail-open).
-// ADMIN NUNCA É TRAVADO, mesmo tendo vaga: Leo e Jonathan fecham venda e o Eryk
-// integra, mas o treinamento é opcional pra quem toca o negócio. Sem esta
-// exceção o portão prendia justamente quem precisa entrar no cockpit pra
-// trabalhar.
-const GATE_ROLES = ["sdr", "closer", "integrator", "social"];
+// O portão do treino diário (TrainingGate) mora em components/training-gate.jsx:
+// o app monta ele em toda tela, e aqui dentro arrastava o baralho inteiro pro shell.
 
-function TrainingGate({ saasId, active }) {
-  const { version } = useData();
-  const [pending, setPending] = useS(null); // null = sem dado (não trava)
-  const me = currentUser();
-  const gated = !!me && !isAdminUser(me) && (me.roles || []).some((r) => GATE_ROLES.includes(r));
-  useE(() => {
-    if (!saasId || !gated) { setPending(null); return; }
-    let alive = true;
-    api.trainingQueue(saasId)
-      .then((q) => { if (alive) setPending((q.decks || []).reduce((a, d) => a + d.counts.new + d.counts.learning + d.counts.review, 0)); })
-      .catch(() => alive && setPending(null));
-    return () => { alive = false; };
-  }, [saasId, gated, version]);
-
-  if (!active || !gated || !pending) return null;
-  return (
-    <div style={{ position: "fixed", inset: 0, zIndex: "var(--z-alarme)", background: "color-mix(in srgb, var(--bg-0) 88%, transparent)", backdropFilter: "blur(3px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div style={{ width: "min(440px, 100%)", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 26, textAlign: "center" }}>
-        <div style={{ fontSize: 34 }}>🧠</div>
-        <div style={{ fontFamily: "var(--display)", fontSize: 19, fontWeight: 700, marginTop: 8 }}>Treino do dia primeiro</div>
-        <div style={{ fontSize: 13.5, color: "var(--fg-2)", lineHeight: 1.55, marginTop: 8 }}>
-          Você tem <b>{pending} {pending === 1 ? "card" : "cards"}</b> na sua fila de hoje.
-          Zerou a fila, o cockpit libera sozinho.
-        </div>
-        <div style={{ marginTop: 16 }}>
-          <PrimaryButton onClick={() => { try { location.hash = "#training"; } catch { /* ignore */ } }}>Começar o treino →</PrimaryButton>
-        </div>
-        <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", marginTop: 12 }}>uns minutos por dia · repetição espaçada é o que fixa</div>
-      </div>
-    </div>
-  );
-}
-
-// TrainingScreen/TrainingGate são o que o app monta. Os outros saem daqui pro
+// TrainingScreen é o que o app monta. Os outros saem daqui pro
 // smoke de render (scripts/smoke-ssr.mjs) poder exercitar os estados que o SSR
 // não alcança pela tela inteira (fila vazia, raio-x, card sem frente): os
 // dados chegam por efeito, que não roda no SSR.
-export { TrainingScreen, TrainingGate, StartCard, DeckList, MemoryCard, NextExamCard, SessionProgress, PersonDetail, CardList, urgencyOf, needsAttention };
+export { TrainingScreen, StartCard, DeckList, MemoryCard, NextExamCard, SessionProgress, PersonDetail, CardList, urgencyOf, needsAttention };

@@ -654,3 +654,26 @@ test("send-template usa a foto PADRÃO salva: sobe pra Meta, manda o header e ca
   const cached = await repo.get("wa_media", "wamid.T1"); // bolha não depende do id da Meta
   assert.equal(cached.mime, "image/png");
 });
+
+test("GET /number: o número fica em cache (2ª leitura não vai à Meta); erro não entra no cache", async () => {
+  const repo = makeMemRepo();
+  let calls = 0;
+  const ok = await appWith(repo, { ...fakeWa(), async numberInfo() { calls++; return { phoneNumberId: "PN1", display: "+55 41 93618-3835", name: "LeverAds", quality: "GREEN" }; } });
+  const r1 = await ok.inject({ method: "GET", url: "/api/whatsapp/number" });
+  const r2 = await ok.inject({ method: "GET", url: "/api/whatsapp/number" });
+  assert.equal(r1.headers["x-cache"], "miss");
+  assert.equal(r2.headers["x-cache"], "hit");
+  assert.equal(calls, 1);
+  assert.deepEqual(r2.json(), r1.json());
+  await ok.inject({ method: "GET", url: "/api/whatsapp/number?refresh=1" });
+  assert.equal(calls, 2);
+  await ok.close();
+
+  let fails = 0;
+  const bad = await appWith(repo, { ...fakeWa(), async numberInfo() { fails++; throw Object.assign(new Error("Object with ID 'PN9' does not exist"), { code: 100, status: 400 }); } });
+  await bad.inject({ method: "GET", url: "/api/whatsapp/number" });
+  const rBad = await bad.inject({ method: "GET", url: "/api/whatsapp/number" });
+  assert.equal(rBad.json().reason, "meta_error");
+  assert.equal(fails, 2); // cada abertura tenta de novo enquanto está errado
+  await bad.close();
+});

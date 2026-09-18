@@ -29,7 +29,9 @@ construído lendo este repo depois do pacote de 12-13/09. O que a rodada mudou:
 | `agenda` | os três avisos da semana (furou · sem remarcar · sem confirmar) |
 | `social` | as fatias mediam alcance e diziam "seguidores" |
 | `metrics` | a corrente era flex-wrap (último passo órfão) |
-| `overview` | a meta virou termômetro, com o follow-up empilhado e a distância do pace em dinheiro |
+| `overview` | termômetro no tamanho original com ondas líquidas contínuas, reflexo discreto e follow-up empilhado; pace tracejado fixo e movimento reduzido respeitado (opção 2, decisão de 14/09) |
+| `overview` · Carteira e Aquisição | valores e complementos alinhados à direita, MRR destacado, CG explicado; custos agrupados e leads identificados por origem (14/09) |
+| `overview` · Desempenho do time | cards compactos em até quatro colunas, receita e contratos com barras curtas, indicadores próprios para CS/mídia e detalhes recolhidos (15/09) |
 | `eloapp` | abria com 5 tiles e o funil de lado; agora aviso + funil + foto em linha |
 | `settings` | seletor de telas recortado + dois `className` que se anulavam |
 | app inteiro | `⋯` recortado dentro de `.tbl-x`; 17 véus escritos na mão |
@@ -47,20 +49,39 @@ Leo: `outbound` e `funcionarios` (seguem `hidden`).
   carregamento, vazio e falha com nova tentativa têm estados separados. As
   respostas continuam usando o snapshot do formulário e o termo da API.
   Smoke SSR (incluindo orçamento de 704px/716px), suíte da API e build web
-  passaram. Conferência no navegador pendente: a sessão não concedeu acesso
-  ao computador.
+  passaram. Conferido no Chrome em desktop e celular de 380px: filtros, busca,
+  respostas, solicitação e cópia de link fictício, vazio e recuperação de erro.
+  A revisão corrigiu a largura mínima herdada da tabela: os cards ocupam 347px
+  no celular, sem rolagem lateral. A exclusão só teve a confirmação aberta;
+  nenhuma exclusão foi confirmada.
 - `agenda`: cabeçalho com o espaçamento da prancha 8a–8d, avisos agrupados e
   filtros de tipo/toques recolhidos em “mais”. O filtro ativo e a ação de
   recuperar eventos ocultos continuam visíveis; a legenda fica junto à grade.
   Controles e editor têm alvos maiores no celular, e o mês mantém uma largura
   legível com rolagem. Smoke das quatro visões, sobreposição, conflitos,
   recorrência e filtro persistido passou, assim como a suíte da API e o build.
-  Conferência no navegador também pendente por falta de acesso ao computador.
+  Conferidas no Chrome a navegação nas quatro visões, aplicação e limpeza de
+  filtro, layout em 1024px e 380px e abertura/cancelamento do editor no celular.
 - Preview isolado: `/?shell=1#intform`, com dados fictícios; `&intform=empty`
   e `&intform=error` exercitam vazio e falha recuperável. Nenhum dado real é
   enviado ao WhatsApp pelo preview. A Agenda usa `/?shell=1#agenda`.
 
+## Cards de leads — 14/09/2026
+
+Padronizados conforme o handoff: cards do kanban, ficha global (`LeadDetail`),
+painel de roteiro de Minhas Atividades e resumo do lead no inbox. A ficha global
+atende também Agenda, Propostas, busca e as demais entradas de `openLead`.
+Componentes compartilhados em `components/lead-card.jsx`/`lead-blocks.jsx`;
+campos, gates de movimento e operações via API preservados.
+
 ## Telas navegáveis
+
+**Inbox · qualificação (15/09/2026):** revisão pontual do card lateral. Perguntas
+e respostas saíram do parágrafo concatenado para uma lista com hierarquia,
+divisores e quebra de texto. O combinado aparece em bloco próprio sem ocultar
+respostas. Conferidos desktop e celular de 390px, claro/escuro, resposta longa,
+edição e estado vazio com o preview `?shell=1&inbox=1&qualification=full#whatsapp`
+(variantes `note` e `empty`). Suíte da API, smoke SSR e build web passaram.
 
 | Rota | Arquivo | Tela (NAV) | Função | Componentes-chave | Revisão |
 |---|---|---|---|---|---|
@@ -69,13 +90,13 @@ Leo: `outbound` e `funcionarios` (seguem `hidden`).
 | `today` | today.jsx | Minhas atividades | fila do dia por grupo de prioridade + painel de roteiro (exporta peças que Agenda/Consultas/Ajustes usam) | AgoraBlock, QueueRow, ScriptPanel, DayScore, TasksCard, SlotGrid | **REDESENHADA 12/09/2026** (handoff do Leo, 3 blocos: #924/#925/#926) · bloco Agora, grupo virou cabeçalho, ação no lugar da etapa, Depois da ação no rodapé, um chip de pessoa · orçamento da linha no smoke |
 | `pipeline` | pipeline.jsx | Pipeline | Kanban + Lista (Agenda e Análise viraram telas próprias, que IMPORTAM AgendaView/AnaliseView daqui) | Segmented, FilterTab, Card, LeadCard, LeadDetail (deal.jsx) | **REDESENHADA 12/09/2026** (handoff do Leo, 3 blocos: #920/#921/#922) · card do lead com faixa de fatos e próximo passo no topo, board com estado clicável, Lista começando por Atrasados (LIST_SECTIONS + orçamento no smoke) |
 | `outbound` | outbound.jsx | Comercial · Outbound | prospecção ativa (classes Semente/Rede/Alvo, Receita Previsível) | tabela manual | ✓ padronização + funcional + passe fino (ago/2026) |
-| `customers` | customers.jsx | Clientes | base ativa, ficha do cliente, indicações e assinaturas (aba) | CustomersAnalysis, CustomerModal, ReferralsTab, SubscriptionsScreen, Segmented, FilterTab | **REDESENHADA 12/09/2026** (handoff do Leo, 4 blocos: #915/#916/#917/#918) · tabela de 13 colunas → 6 sem rolagem (orçamento no smoke), ficha em 4 abas, fila de indicação, faixa de estado do billing |
+| `customers` | customers.jsx | Clientes | base ativa, ficha do cliente, indicações e assinaturas (aba) | CustomersAnalysis, CustomerModal, ReferralsTab, SubscriptionsScreen, Segmented, FilterTab | **REDESENHADA 12/09/2026** (handoff do Leo, 4 blocos: #915/#916/#917/#918) · tabela de 13 colunas → 6 sem rolagem (orçamento no smoke), ficha em 4 abas, fila de indicação, faixa de estado do billing · **ajuste 16/09/2026:** dinheiro do período e saúde da carteira no topo, antes da lista e da fila de cobrança; caixa confirmado por data via API, separado do contratado anualizado, com estados de carga/erro e filtro de período |
 | `proposals` | proposals.jsx | Comercial · Propostas | templates e propostas (snapshots), editor + preview | editor-split, ProposalActions, FilterTab, MoreMenu | **REDESENHADA 12/09/2026** (handoff 4telas: #931) · faixa do funil (geradas 30d → abertas → fecharam com a conversão entre os passos), templates em linhas ordenadas por conversão, UMA tabela de geradas com filtros (a aba "Geradas" e a seção "Geradas recentemente" eram a mesma lista) · `abrir ↗` usa `cockpitProposalUrl` pra conferência do time não contar como abertura · TPL_GRID/PROP_GRID no smoke |
 | `offers` | offers.jsx | Comercial · Links de pagamento | histórico dos links gerados por lead/cliente (status pago/aguardando vindo do MP) + gerar link; os 3 links fixos viraram seção recolhida no pé | StatTile, FilterTab, Pill, payment-link-modal, WaButton | **REDESENHADA 12/09/2026** (handoff 4telas: #928) · faixa de dinheiro com "Em aberto" primeiro e barra empilhada, rodapé de 6 linhas virou "como o status funciona ⓘ", filtro padrão "Devendo", 8 → 7 colunas (Gerado sai, é soma) e a ação que faltava: **cobrar** no WhatsApp com o link em aberto |
 | `contracts` | contracts.jsx | Comercial · Contratos | biblioteca de modelos + histórico do que já saiu pra assinatura (contract_issues) | MoreMenu, CardHead, IssueViewer, lib/contracts.js | **REDESENHADA 12/09/2026** (handoff 4telas: #932) · modelos em linhas com "usar →" primário (imprimir em branco foi pro ⋯, porque não registra nada), drawer com os 3 passos (1 cliente · 2 quadro resumo · 3 gerar) e o bloco de gerar no pé da coluna que se preenche, "+N campos ▾" no quadro longo, histórico em tabela · o parágrafo de instruções do pé da tela saiu · MODEL_GRID/HIST_GRID no smoke |
-| `intform` | integration-forms.jsx | Comercial · Formulário de Integração | pedidos do questionário que o cliente fechado responde antes da call (link /fi/:id) | FilterTab, MoreMenu, WaButton | **REDESENHADA 12/09/2026** (handoff 4telas: #929/#930) · faixa com Aguardando / espera mais longa / Prontos para a call ("Total de pedidos" saiu, era soma), "aguardando há N dias" na linha (warn <5, neg ≥5) e ação de **cobrar** no WhatsApp |
+| `intform` | integration-forms.jsx | Comercial · Formulário de Integração | pedidos dos questionários que o cliente fechado responde pelo link /fi/:id: integração (antes da call) e **dados pra nota fiscal** (kind `nota_fiscal`, 17/09/2026: seletor no pedido, etiqueta na linha, filtro por tipo, cadastro vai pra `customer.fiscal`) | FilterTab, MoreMenu, WaButton | **REDESENHADA 12/09/2026** (handoff 4telas: #929/#930) · faixa com Aguardando / espera mais longa / Prontos para a call ("Total de pedidos" saiu, era soma), "aguardando há N dias" na linha (warn <5, neg ≥5) e ação de **cobrar** no WhatsApp |
 | `agenda` | agenda.jsx + **agenda-grid.jsx** | Comercial · Agenda | agenda única do time: calls, integrações, consultas, compromissos e bloqueios | AgendaView (4 visões), AgendaItemModal, Segmented, FilterTab, Avatar | **REDESENHADA 12/09/2026** (handoff do Leo, 5 blocos: #934-#939) · a grade saiu do pipeline pra módulo próprio; uma barra de controles no lugar de duas, legenda de 11 itens virou title, card com valor/▶/✓, conflito vivo no modal, visões **Mês** e **Equipe** (com os vãos livres clicáveis) |
-| `whatsapp` | whatsapp.jsx | Comercial · Inbox | inbox multi-número + chat (Cloud API), promove lead no 1º toque | whatsapp-chat, wa-thread | **REDESENHADA 13/09/2026** (pacote Cockpit e design system, 9b: #943) · treze números viraram o aviso da fila no topo (com "responder agora") + resumo do número em uma linha; seis filtros viraram três + "mais ▾" |
+| `whatsapp` | whatsapp.jsx + whatsapp.css | Comercial · Inbox | inbox multi-número + chat (Cloud API), promove lead no 1º toque | wa-thread, Popover, Modal, Segmented | **ADAPTADA AO PROTÓTIPO 14/09/2026** · lista/chat/card responsivos, canais agrupados, ações no ⋯, respostas rápidas, cadastro e vínculo de contato, filtro Sem resposta alinhado à API; validação no navegador com dados fictícios |
 | `consultas` | consultas.jsx | Comercial · Consultas | consultas UniqueKids (agenda, jornadas e o Manual da Família) | MoreMenu | **REDESENHADA 13/09/2026** (pacote, 9c/9d: #943) · jornadas em linhas ordenadas por RISCO (sem próxima marcada primeiro) + aviso no topo; manuais em linhas com uma ação principal |
 | `social` | social.jsx | Marketing · Redes sociais | publicar IG/FB, métricas, comentários (webhook) | social-metrics | **REDESENHADA 13/09/2026** (pacote, 11a/11b: #945) · 2ª faixa de tiles virou "mais números ⓘ", publicações por alcance (não pela ordem do feed) e os comentários viraram fila com o aviso no topo |
 | `metrics` | metrics.jsx | Marketing · Publicidade | gerenciador Meta Ads + **a aquisição inteira** (a tela Análise de Aquisição foi fundida aqui em 13/09) | CorrenteDoDinheiro, insights, meta-connect | **REDESENHADA 13/09/2026** (pacote, 10a + decisão de fundir: #944) · sete tiles viraram "Do anúncio ao dinheiro" (investido → visitas → leads → CPL → clientes → receita) |
@@ -114,6 +135,8 @@ além do tema escuro. Esta etapa não altera o conteúdo das telas navegáveis.
 | Análise de clientes | customers-analysis.jsx | bloco dentro de Clientes |
 | Métricas sociais | social-metrics.jsx | bloco dentro de Redes sociais |
 | Elo (marca) | brand-elo.jsx, overview-elo.jsx | variantes do workspace Elo |
+| Splash e transições (16/09/2026) | components/screen-loading.jsx | ✓ referência Splash Loading CRM: entrada, Visão Geral e transição compartilhada; espera pelas consultas, saída de espera longa, temas e mobile |
+| Seletor global de datas (17/09/2026) | components/period-picker.jsx | ✓ Popover limitado à viewport; desktop, celular e janela baixa; aplicar, cancelar e Esc conferidos |
 | NavRail + TopBar | chrome.jsx | sidebar, breadcrumb, sino, seletor de produto |
 | CommandSearch | components/CommandSearch.jsx | busca global ⌘K |
 | Widget de feedback | components/feedback-widget.jsx | FAB bug/melhoria em toda tela |
@@ -122,6 +145,11 @@ além do tema escuro. Esta etapa não altera o conteúdo das telas navegáveis.
 | SettingsLite | settings.jsx | Configurações reduzida p/ quem não tem a tela |
 
 ## Ordem sugerida de auditoria (uso diário primeiro)
+
+Revisão pontual em 16/09/2026: `expenses` → Resumo ganhou pizza de despesas
+por categoria abaixo do fluxo de caixa, com percentual e valor na legenda.
+Conferidos desktop, celular de 390px, temas claro/escuro e troca de mês.
+Preview com dados fictícios: `/?shell=1&finance=1#expenses`.
 
 1. `today` (fila do dia — a tela mais usada pelo time)
 2. `pipeline` + LeadDetail (coração do comercial)
@@ -149,3 +177,22 @@ e escuro. Interações verificadas: navegação entre telas, respostas e editor 
 form, seleção de campanha, troca de canal, variáveis e salvamento fictício,
 ficha do Blog, troca de slides e exportação de PNG. Integrações externas não
 foram acionadas. Cada tela tem commit próprio; CSS e preview são compartilhados.
+
+## Apresentação C — ordem e provas sociais (14/09/2026)
+
+Revisão pontual do deck em `packages/api/src/proposal-slides-page.js`:
+“Anúncio perfeito” antecede “Efeito teia”, com os rótulos de sequência ajustados.
+Os quatro cases publicados (Motvia, Lupa Autopeças, Dyno Nutri e 123tudo) foram
+recuperados na cópia vazia da apresentação aberta via API REST, preservando
+a configuração e os preços. Ordem e página 12 conferidas no navegador.
+
+**Reorganização de 15/09/2026:** os três badges da operação ficam abaixo do
+texto institucional em “Quem somos”. O parágrafo de resultado agregado aparece
+abaixo dos quatro cases em “Quem já está dentro”. O slide “A operação em
+números” foi removido; o contador acompanha a nova quantidade de páginas.
+Espaçamentos e tipografia ajustados ao palco 16:9, mantendo os textos e valores.
+
+**Resultados reais (15/09/2026):** o rodapé dos cases usa os totais do painel
+LeverAds na mesma janela por cliente, com participação calculada e data da
+consulta visível. Valores antigos fixos saíram; falha de consulta mantém a
+última leitura identificada. Atualização automática no servidor a cada seis horas.

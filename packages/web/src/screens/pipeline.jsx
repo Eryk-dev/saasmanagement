@@ -1,4 +1,5 @@
 import React from "react";
+import { LeadGrade } from "../components/lead-card.jsx";
 import { Avatar, EmptyState, PrimaryButton } from "../atoms.jsx";
 import { Card, FilterTab, Segmented, StatTile } from "../components/viz.jsx";
 import { Popover } from "../components/popover.jsx";
@@ -738,7 +739,6 @@ function LeadCard({ d, s, currentStage, dragProps, selected, onSelect, onOpen })
   // Qualidade do cliente (A/B/C) pela régua de contas × anúncios — a mesma do
   // Publicidade e do drawer. Só mostra quando o lead respondeu a qualificação.
   const tier = leadTier(d);
-  const grade = tier?.grade || "";
   const fit = mentoriaFit(d);
   const pend = d.clientPending;
 
@@ -750,6 +750,9 @@ function LeadCard({ d, s, currentStage, dragProps, selected, onSelect, onOpen })
   const passo = d.nextActionNote || nextStepText(d, kind, currentStage);
   return (
     <div
+      className="lead-board-card"
+      role="button" tabIndex={0} aria-label={`Abrir lead: ${d.name}`}
+      onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen?.(); } }}
       {...dragProps}
       onClick={(e) => { if (e.shiftKey) onSelect(); else onOpen && onOpen(); }}
       style={{
@@ -758,24 +761,22 @@ function LeadCard({ d, s, currentStage, dragProps, selected, onSelect, onOpen })
         borderRadius: "var(--r-3)", padding: "10px 11px", boxShadow: "var(--shadow-card)",
       }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-        <span onClick={(e) => { e.stopPropagation(); onSelect(); }} role="checkbox" aria-checked={selected}
+        <button onClick={(e) => { e.stopPropagation(); onSelect(); }} role="checkbox" aria-checked={selected} aria-label={`Selecionar ${d.name}`}
           title="selecionar para ação em massa"
-          style={{ flexShrink: 0, width: 14, height: 14, borderRadius: 4, cursor: "pointer",
+          style={{ flexShrink: 0, width: 16, height: 16, borderRadius: 4, cursor: "pointer",
             border: `1px solid ${selected ? "var(--accent)" : "var(--line-2)"}`,
             background: selected ? "var(--accent)" : "var(--bg-1)",
-            color: "oklch(1 0 0)", fontSize: 10, lineHeight: "12px", textAlign: "center" }}>{selected ? "✓" : ""}</span>
-        {grade && (
-          <span title={tier.label} style={{ flexShrink: 0, width: 18, height: 18, borderRadius: 5, background: tier.tone, color: tier.badgeFg, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>{grade}</span>
-        )}
-        <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
+            padding: 0, color: "oklch(1 0 0)", fontSize: 10, lineHeight: "12px", textAlign: "center" }}>{selected ? "✓" : ""}</button>
+        <LeadGrade tier={tier} size={18} />
+        <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 650, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
         {showAvatar && <Avatar id={ownerId} name={displayName(ownerId)} size={20} />}
       </div>
       {d.company && (
-        <div style={{ fontSize: 12, color: "var(--fg-4)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.company}</div>
+        <div style={{ fontSize: 11.5, color: "var(--fg-3)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.company}</div>
       )}
       {/* O PRÓXIMO PASSO em texto: é o que a prancha põe no card, e é o que
           diz o que fazer sem abrir o lead. */}
-      <div style={{ fontSize: 12.5, color: passo ? "var(--fg-2)" : "var(--fg-4)", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      <div style={{ fontSize: 11.5, color: "var(--fg-3)", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {passo || "sem próximo passo"}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>

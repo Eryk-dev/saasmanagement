@@ -1,0 +1,33 @@
+/* Lever Premium Design — espaçamento, raios, sombras, movimento */
+:root {
+  /* Raios */
+  --radius-card: 12px;    /* cards de nível de página */
+  --radius-inner: 10px;   /* cards internos, campos, barras */
+  --radius-control: 8px;  /* botões, inputs, filtros */
+  --radius-segment: 9px;  /* trilho de segmented control */
+  --radius-badge: 5px;    /* badges retangulares */
+  --radius-pill: 999px;   /* chips, contadores, toggles */
+
+  /* Sombras (sutis; nunca glow) */
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.03);
+  --shadow-btn: 0 1px 2px rgba(16, 24, 40, 0.1);
+  --shadow-segment: 0 1px 2px rgba(16, 24, 40, 0.08);
+  --shadow-knob: 0 1px 2px rgba(16, 24, 40, 0.15);
+
+  /* Espaçamento */
+  --space-card: 28px;               /* padding de card */
+  --space-card-y: 20px;             /* linhas de tabela/preferência: 20px 24px */
+  --space-page: 40px 32px 64px;     /* padding da coluna central */
+  --page-max: 1000px;               /* largura padrão */
+  --page-max-narrow: 860px;         /* fila de leitura (Perguntas) */
+
+  /* Topbar */
+  --topbar-height: 58px;
+  --topbar-pad-x: 28px;
+
+  /* Movimento — sem transform, sem glow */
+  --transition-ui: background 0.12s, border-color 0.12s, color 0.12s; /* @kind other */
+}
+
+/* Foco visível padrão */
+:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }

@@ -103,9 +103,40 @@ inline. Máximo ~3 níveis por tela.
 - Botão WhatsApp: `WaButton` (atoms.jsx) ou tokens `--wa-brand/-fg/-deep`; nunca hex solto
 - Blocos do LEAD: `components/lead-blocks.jsx` — `clientSummary` (os fatos compilados, `{ full: true }` na ficha), `ClientSummaryCard`, `AttributionCard`, `LeadChecklist`, `ScriptBlocks` (como se comportar + objetivo + passo a passo com "copiar") e `DealProductField` (produto vendido no fechamento: select do catálogo real vindo do SEED + os preços como atalho pro valor). REGRA (12/08): o card do lead (deal.jsx) e o painel de atividade (today.jsx) mostram a MESMA informação com o mesmo título, a mesma ordem e o mesmo desenho — painel novo que fale de lead usa estes blocos em vez de remontar
 - Estado vazio: `EmptyState` (atoms.jsx: título 15/600 + hint + ação central)
-- Skeleton de carregamento: não existe — padrão OFICIAL é texto `mono dim` 12px ("carregando…") no lugar do bloco; lista cortada mostra "+N" expansível (nunca corte silencioso)
+- Carregamento inicial/navegação: `AppStartup` + `ScreenTransition` usam o splash LeverAds aprovado em `design/splash-loading-crm/`. Logo 64 × 70 em todas as telas, incluindo entrada/Visão Geral, órbita de 800ms e saída suave (450ms/180ms). O conteúdo monta oculto e inerte; aparece quando as consultas GET iniciais terminam. Menu/topo continuam disponíveis na navegação. Após 12s, oferecer saída da espera. Respeitar `prefers-reduced-motion`; sem percentuais fictícios. SSE/polling não reabre o splash.
+- Carregamento pontual de um bloco/ação: texto `mono dim` 12px ("carregando…"). Lista cortada mostra "+N" expansível (nunca corte silencioso)
+
+### Cards e ficha do lead — handoff de 14/09/2026
+
+- `components/lead-card.jsx` e `lead-card.css` concentram `LeadGrade`,
+  `LeadSection` e `LeadDisclosure`. Cards brancos, borda `--line-1`, raio
+  `--r-3`, padding 16px × 18px (14px no celular).
+- `LeadDetail` é a ficha global em `Drawer` de 520px: identidade e fatos,
+  próximo passo, ação de agora, histórico e dados do cliente. Agenda detalhada,
+  qualificação e roteiro são expansíveis; todos os movimentos continuam nos
+  gates existentes, inclusive voltar, ganhar e perder.
+- `ScriptPanel` mantém o modal de 1120px com duas colunas iguais: roteiro à
+  esquerda, cliente e histórico à direita, “Depois da ação” no rodapé. Abaixo
+  de 760px, as colunas se empilham.
+- `ClientSummaryCard` e `ScriptBlocks` usam a mesma superfície em todos os
+  contextos. O roteiro fica em um único card, com comportamento, objetivo e
+  passos numerados; as falas continuam copiáveis. O resumo usa fatos em grade
+  e a dor abaixo, sem outra caixa colorida. O inbox reutiliza o mesmo resumo.
 
 ## Padrões de tela
+
+### Financeiro — distribuição de despesas (16/09/2026)
+
+- `GastosCard` em `finance-hub.jsx`: gráfico de pizza abaixo do fluxo de caixa,
+  com categorias da DRE em ordem de valor e legenda com percentual e moeda.
+- A base é `fin.receber.recebidosMes` (recebido no mês). Os custos incluem
+  deduções, IA e WhatsApp, sem duplicar subtotais, e o restante vira uma fatia
+  neutra de saldo. Sem despesas, o saldo ocupa 100% do círculo.
+- Sem recebimentos, os percentuais ficam indisponíveis. Quando os custos
+  excedem os recebidos, mostrar déficit e percentuais na legenda, sem pizza:
+  nunca trocar a base para despesas nem desenhar fatias negativas.
+- SVG e legenda usam tokens do tema; a legenda desce quando falta largura.
+  Cada fatia tem título com categoria, valor e percentual.
 
 ### Moldura do handoff — 14/09/2026
 
@@ -136,6 +167,7 @@ das telas.
 
 - Layout padrão: `app-shell` flex → `NavRail` (chrome.jsx; drawer no mobile) + `TopBar` (breadcrumb, busca ⌘K `CommandSearch`, sino, period-picker nas telas de análise) + tela dentro de `ErrorBoundary variant="screen"`
 - Cabeçalho de tela: `PageHead` (viz.jsx) com título + sub + ações à direita; telas antigas hand-rolam o mesmo visual (migrar quando tocar)
+- Seletor global de período: usa o `Popover` compartilhado, com largura de 648px limitada à janela e margem de 8px nas bordas no desktop. Ajusta posição no resize/scroll; altura limitada à viewport com rolagem interna. No celular, folha inferior com um calendário. Não alinhar por `right` sem descontar a largura do painel.
 - Barra de filtros: `Segmented` (visões), `FilterTab` (categorias com contagem), busca com `<input>` 30px; período = `components/period-picker.jsx` (atalhos + calendário 2 meses, semana começa segunda) via `usePeriod`/`cockpit_period` — janela GLOBAL, persiste entre telas
 - Listagem com paginação: não há paginação — o seed vem inteiro e filtra em memória; lista longa mostra contagem ("N de M") e corta com busca/filtro
 - Formulário de cadastro/edição: `EntityForm` genérico (label kicker em cima do campo, grid responsivo, salvar primário à direita); dedup de lead avisa mescla
@@ -159,6 +191,35 @@ celular na rua: **toda tela precisa continuar usável a 390px** (PR #361) usando
 gerencial — linhas compactas, muito dado por tela; `body[data-density]` existe
 (compact 13.5 / regular 14).
 
+**Régua de meta — decisão de 14/09/2026, atualizada após a escolha da opção 2:**
+manter as dimensões originais (coluna de 140px; barra de 96 × 300px). O
+preenchimento tem superfície líquida com duas ondas contínuas (4 e 6 segundos)
+e reflexo interno discreto; o trilho vazio é liso. Preservar a entrada subindo,
+o follow-up empilhado e o ponto pulsante no percentual. Não desenhar líquido
+para uma fatia zerada. Os movimentos respeitam `prefers-reduced-motion`.
+O pace é apenas uma marca tracejada contrastante acima dos efeitos,
+sem texto ou valor junto dela. O saldo para atingir a meta aparece no contexto
+ao lado, sem ampliar o termômetro. O percentual continua sobre a meta base,
+inclusive acima de 100%; período encerrado não mostra marca de pace.
+Referência: `Termometro` em `screens/overview.jsx` e `.vg-meta-pace-marker` em
+`screens/overview.css`.
+
+**Carteira e Aquisição — 14/09/2026:** os dois resumos usam listas de definição
+com rótulo e contexto à esquerda, valor e complemento alinhados à direita.
+O MRR tem destaque; CG é explicado no cabeçalho. CPL, CAC e ROAS ficam na mesma
+faixa, com unidade de leitura; a lista abaixo é nomeada "Leads por origem" e
+separa o nome da origem de sua descrição. As contas e o recorte por período
+continuam iguais. Referências: `KVRow`, `AcquisitionMetric` e `overview.css`.
+
+**Desempenho do time — 15/09/2026:** uma pessoa por card, em grade de uma a
+quatro colunas conforme o espaço (mínimo de 260px, limitado à largura disponível).
+Nome, papel, receita e contratos ficam visíveis, com réguas lisas de 6px.
+CS e mídia mostram dois indicadores do próprio papel. Todas as submetas e
+notas continuam no expansível "Detalhes"; clicar na identidade abre o pipeline
+filtrado pela pessoa.
+Preservar ranking, metas mensais, marca de pace e degraus de super meta.
+Referências: `TeamBoard`, `PersonCard` e `.vg-team-grid` em `overview.css`.
+
 ## Dívidas conhecidas
 
 Rodada de 2026-08-08 EXECUTADA (PRs #621, #631, #633, #634): kickers e títulos
@@ -179,3 +240,17 @@ confirmação, `SecondaryButton` + `.inp` + `.tbl` criados.
 | Contraste: fg-4 em 10px ≈ 2.9:1 (checklist pede 4.5:1) | kickers/fineprints do app inteiro | DECISÃO DO LEO: escurecer `--fg-4` (claro) ou aceitar como micro-texto decorativo |
 | Persistência de filtros locais (busca/aba por tela) | customers, forms, listas | padrão localStorage `cockpit_<tela>_<filtro>` como o Meu dia faz com a pessoa |
 | Auditoria de checklist completo (12 blocos) tela a tela | todas menos Meu dia | funcional global (estados/Esc/toast/destrutivas/busy) FEITO no app; resta o passe fino por tela seguindo a ordem do inventário |
+
+### Inbox — handoff de 14/09/2026
+
+- Lista de 250px, conversa flexível e card de 300px; abaixo de 1360px, o card
+  passa para baixo. No celular, lista e conversa são telas alternadas.
+- `wa-thread.jsx` recebe `variant="inbox"` para bolhas, identificação do robô
+  e respostas rápidas; os demais chats mantêm sua apresentação. Menus usam
+  `Popover` e o cadastro de contato usa `Modal`.
+- O resumo do cliente fica visível; edição de qualificação/combinado e dados
+  complementares ficam em seções expansíveis. Nenhum dado foi descartado.
+- Qualificação no card lateral (15/09): lista de perguntas com resposta abaixo,
+  em 12px/fg-3 e 13.5px/fg-1, respectivamente. Divisores usam `--line-1`;
+  respostas preservam quebras de linha e quebram e-mails longos. A dor do
+  anúncio tem rótulo próprio e o combinado fica separado das respostas.

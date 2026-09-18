@@ -246,26 +246,37 @@ function retentionOf(reviews) {
 // vejam números diferentes do mesmo dado). Pedido explícito passa por cima do
 // filtro de admin: o dono da operação não é cobrado no quadro, mas vê a
 // própria memória quando estuda.
-export async function teamSnapshot(repo, saas, cardsBase, now = new Date(), { onlyUser = "" } = {}) {
+// `preloaded`: listas/docs que o chamador já leu (o /stats lê reviews, 4fun e
+// o estado da pessoa pra si mesmo) — evita reler as mesmas coleções na mesma
+// requisição. Faltando alguma, lê do repo como sempre.
+export async function teamSnapshot(repo, saas, cardsBase, now = new Date(), { onlyUser = "", preloaded = {} } = {}) {
   const end = dayEnd(now);
   const today = dayKey(now);
-  const users = (await repo.list("users"))
+  const [usersAll, reviewsAll, examsAll, funAll] = await Promise.all([
+    repo.list("users"),
+    preloaded.reviews || repo.list("training_reviews"),
+    preloaded.exams || repo.list("training_exams"),
+    preloaded.funLog || repo.list("training_fun"),
+  ]);
+  const users = usersAll
     .filter((u) => !u.saas || u.saas === saas) // respeita o escopo de produto do usuário
     // Admin fica FORA do quadro de cobrança: treinamento é opcional pra quem
     // toca o negócio, então listar ele como "atrasado" seria ruído.
     .filter((u) => (onlyUser ? u.id === onlyUser : !isAdmin(u)))
     .map((u) => ({ id: u.id, name: u.name, roles: Array.isArray(u.roles) ? u.roles : [] }));
-  const reviews = (await repo.list("training_reviews")).filter((r) => r.saas === saas);
-  const exams = (await repo.list("training_exams")).filter((e) => e.saas === saas);
+  const reviews = reviewsAll.filter((r) => r.saas === saas);
+  const exams = examsAll.filter((e) => e.saas === saas);
   // 4fun: estudo livre além da cota. Fica FORA de tudo que é cobrança (due,
   // retenção, sequência) e aparece em coluna própria — é mérito, não meta.
-  const funLog = (await repo.list("training_fun")).filter((r) => r.saas === saas);
+  const funLog = funAll.filter((r) => r.saas === saas);
+  // Estado de cada pessoa numa leva só (era um await por usuário dentro do laço).
+  const stateDocs = await Promise.all(users.map((u) => preloaded.states?.[u.id] || repo.get("training_states", stateDocId(saas, u.id))));
   const rows = [];
-  for (const u of users) {
+  for (const [i, u] of users.entries()) {
     const roles = rolesForUser(u);
     // o baralho conta ENTRIES (cloze/occlusion viram vários itens de estudo)
     const deck = cardsBase.filter((c) => roles.includes(c.role)).flatMap((c) => cardEntries(c).map((e) => ({ ...e, role: c.role })));
-    const statesDoc = (await repo.get("training_states", stateDocId(saas, u.id))) || EMPTY_STATES(saas, u.id);
+    const statesDoc = stateDocs[i] || EMPTY_STATES(saas, u.id);
     let dueToday = 0, overdue = 0, seen = 0, mature = 0, young = 0;
     const forecast = Array.from({ length: 7 }, (_, i) => ({ day: dayKey(new Date(end.getTime() + i * 864e5)), n: 0 }));
     for (const { entryId } of deck) {
@@ -419,8 +430,9 @@ export function registerFlashcardRoutes(app, repo, { anthropic = null } = {}) {
       decks.push({ role, label: ROLE_LABELS[role], total, counts: { ...deck.counts, new: alloc[role] }, learned: deck.learned });
       queue[role] = deck.cards.slice(0, deck.counts.learning + deck.counts.review + alloc[role]);
     }
-    const pendingExam = (await repo.list("training_exams"))
-      .find((e) => e.saas === product.id && e.user === user.id && e.status === "pending");
+    // Filtro no Postgres: a coleção inteira (cada prova com o banco de questões
+    // e gabarito) eram ~216 KB parseados pra achar UMA linha da pessoa.
+    const pendingExam = (await repo.listWhere("training_exams", { saas: product.id, user: user.id, status: "pending" }, { fields: ["coveredEntries"] }))[0] || null;
     return {
       saas: product.id, today: dayKey(now), dayEnd: dayEnd(now).toISOString(), newPerDay: settings.newPerDay, decks, queue,
       exam: pendingExam ? { id: pendingExam.id, count: pendingExam.coveredEntries.length } : null,
@@ -704,7 +716,13 @@ export function registerFlashcardRoutes(app, repo, { anthropic = null } = {}) {
     if (!product) return reply.code(404).send({ error: "produto não encontrado" });
     const now = new Date();
     const today = dayKey(now);
-    const mine = (await repo.list("training_reviews")).filter((r) => r.saas === product.id && r.user === user.id);
+    // Uma leva só de leituras (eram seis awaits em série, e o teamSnapshot lá
+    // embaixo relia reviews e 4fun): é GET que segura o splash da tela.
+    const [reviewsAll, funAll, { cards, settings }, statesDoc] = await Promise.all([
+      repo.list("training_reviews"), repo.list("training_fun"), baseDoc(product.id),
+      repo.get("training_states", stateDocId(product.id, user.id)).then((d) => d || EMPTY_STATES(product.id, user.id)),
+    ]);
+    const mine = reviewsAll.filter((r) => r.saas === product.id && r.user === user.id);
     const counts = {};
     for (const r of mine) {
       const d = dayKey(new Date(r.at));
@@ -723,7 +741,7 @@ export function registerFlashcardRoutes(app, repo, { anthropic = null } = {}) {
     }
     // 4fun entra SEPARADO: não soma em streak/feitas hoje (não é compromisso),
     // mas aparece pra pessoa ver o quanto estudou a mais.
-    const funMine = (await repo.list("training_fun")).filter((r) => r.saas === product.id && r.user === user.id);
+    const funMine = funAll.filter((r) => r.saas === product.id && r.user === user.id);
     const fun30 = funMine.filter((r) => now - new Date(r.at) <= 30 * 864e5);
     const fun = {
       doneToday: funMine.filter((r) => dayKey(new Date(r.at)) === today).length,
@@ -734,8 +752,7 @@ export function registerFlashcardRoutes(app, repo, { anthropic = null } = {}) {
     // dashboard do gestor, então o aluno via a própria consistência mas não
     // sabia se estava lembrando. Reusa teamSnapshot recortado nele mesmo em vez
     // de recalcular: régua única, número igual ao que o gestor vê.
-    const { cards, settings } = await baseDoc(product.id);
-    const [me] = await teamSnapshot(repo, product.id, cards, now, { onlyUser: user.id });
+    const [me] = await teamSnapshot(repo, product.id, cards, now, { onlyUser: user.id, preloaded: { reviews: reviewsAll, funLog: funAll, states: { [user.id]: statesDoc } } });
     const memory = me ? {
       retention30d: me.retention30d?.pct ?? null,
       reviews30d: me.retention30d?.n ?? 0,
@@ -746,7 +763,6 @@ export function registerFlashcardRoutes(app, repo, { anthropic = null } = {}) {
     } : null;
     // Quantos cards graduados já esperam a prova: a MESMA pilha que dispara o
     // checkpoint (statesDoc.gradPool), então a barra nunca mente sobre o gatilho.
-    const statesDoc = (await repo.get("training_states", stateDocId(product.id, user.id))) || EMPTY_STATES(product.id, user.id);
     const pool = (statesDoc.gradPool || []).length;
     const nextExam = settings.examEvery > 0
       ? { every: settings.examEvery, pass: settings.examPass, pool, remaining: Math.max(0, settings.examEvery - pool) }

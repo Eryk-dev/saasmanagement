@@ -38,6 +38,7 @@ import { syncConsultationCalendar, syncConsultationMeetEvent } from "./consultat
 import { newManual, sameFamily } from "./deliverables.js";
 import { registerIntegrationRoutes } from "./routes.integrations.js";
 import { registerIntegrationFormRoutes } from "./routes.integration-forms.js";
+import { formKind } from "./integration-form.js";
 import { registerMetasRoutes } from "./routes.metas.js";
 import { registerFlashcardRoutes } from "./routes.flashcards.js";
 import { registerGoogleRoutes } from "./routes.google.js";
@@ -59,6 +60,18 @@ import { discord as defaultDiscord } from "./discord.js";
 import { currentRev, subscribe as subscribeChanges, QUIET } from "./changes.js";
 import { isWon, isPostSaleStage, firstStage, kindOf, stageByKind, isNoShowStage } from "./stages.js";
 import { logActivity, applyStageMove, onActivityCreated, initialNextActionAt, appointmentAt, autoLeadOwner, brtToIso } from "./lead-flow.js";
+import { toNaiveBrt } from "./agenda-slots.js";
+
+// COMPROMISSO SEMPRE NA FORMA CANÔNICA (17/09): callAt/followupAt/integrationAt
+// são "YYYY-MM-DDTHH:MM" no relógio de Brasília. Cliente que manda ISO em UTC
+// ("2026-09-16T13:00:00.000Z", visto no card do Renan) fazia o lembrete dizer
+// "hoje às 13h" pra uma call das 10h. Converte na entrada, POST e PATCH.
+const WHEN_FIELDS = ["callAt", "followupAt", "integrationAt"];
+function canonWhen(body) {
+  if (!body || typeof body !== "object") return body;
+  for (const k of WHEN_FIELDS) if (typeof body[k] === "string" && body[k]) body[k] = toNaiveBrt(body[k]);
+  return body;
+}
 import { findDuplicateLead, dedupMergePatch } from "./lead-dedup.js";
 import { referralPatch, logReferralCollected } from "./referrals.js";
 import { registerFunnelMetricsRoutes } from "./routes.funnel-metrics.js";
@@ -265,6 +278,19 @@ async function peopleObject(repo) {
   return obj;
 }
 
+const isTruthyFlag = (v) => v === "1" || v === "true";
+
+// Lista de propostas = o que a tela Propostas e o card do lead mostram: quem,
+// quando, aberturas, aceite. Projetado no Postgres (listWhere + fields) pra não
+// parsear o snapshot inteiro; `data` fica só com o lead (nome/empresa/telefone
+// pro botão de WhatsApp), sem as respostas do formulário.
+const PROPOSAL_SUMMARY_FIELDS = ["saas", "lead", "template", "name", "origin", "layout", "createdAt", "updatedAt", "accepted", "acceptedAt", "views", "lastViewedAt", "data"];
+function summarizeProposal(p) {
+  const l = p?.data?.lead || {};
+  const { editKey, data, ...rest } = p; // eslint-disable-line no-unused-vars
+  return { ...rest, data: { lead: { name: l.name ?? null, company: l.company ?? null, firstName: l.firstName ?? null, phone: l.phone ?? null } } };
+}
+
 // Filters applied to GET list endpoints. Each returns a predicate or null.
 function listFilter(collection, q) {
   if (collection === "deals") {
@@ -351,7 +377,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // função só é chamada em request; cache de 1h mora no makeSalesWhatsapp).
   let whatsappClient = null;
   const salesWhatsapp = makeSalesWhatsapp(() => whatsappClient);
-  registerFormRoutes(app, repo, { ...(opts.forms || {}), discord: discordClient, metaCapi: metaCapiClient, anthropic: anthropicClient, salesWhatsapp });
+  const metaClient = opts.meta || defaultMetaClient;
+  registerFormRoutes(app, repo, { ...(opts.forms || {}), discord: discordClient, metaCapi: metaCapiClient, meta: metaClient, anthropic: anthropicClient, salesWhatsapp });
   // Webhooks de entrada (Shopify da UniqueKids → lead pra Ana). Rota aberta,
   // autenticada por assinatura HMAC da Shopify (ver routes.webhooks.js).
   registerWebhookRoutes(app, repo, { ...(opts.webhooks || {}) });
@@ -366,7 +393,6 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // (tick manual + report do dry-run; o poller vive no index.js).
   registerLeveradsAccessRoutes(app, repo, { ...(opts.leveradsAccess || {}) });
   // Marketing: sync de insights da Meta + métricas cruzadas com o funil.
-  const metaClient = opts.meta || defaultMetaClient;
   registerMarketingRoutes(app, repo, { meta: metaClient });
   // Regras de veiculação (agenda cheia pausa, janela de fim de semana, sexta
   // curta, orçamento alvo) — config/estado/log + tick manual; poller no index.js.
@@ -449,7 +475,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Poller de resumos (index.js) usa os MESMOS clients das rotas.
   // autoCallMeet vai junto: o poller do SDR cria a sala que falta na hora do
   // lembrete de 2h (sem link, o lembrete de 10min chamava pra lugar nenhum).
-  if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, googleUser, anthropic: anthropicClient, mailer: mailerClient, whatsapp: whatsappClient, autoCallMeet, blogEngine });
+  if (!app.hasDecorator("integrationClients")) app.decorate("integrationClients", { google: googleClient, googleUser, anthropic: anthropicClient, mailer: mailerClient, whatsapp: whatsappClient, autoCallMeet, blogEngine, sdrBrain });
   // NPS: página pública da nota (/public/nps/:token) + pedido manual pela ficha.
   // Depois do mailer/whatsapp: o pedido sai por e-mail e, dentro da janela de
   // 24h, por WhatsApp.
@@ -503,7 +529,44 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   const pickCustomer = (c) =>
     Object.fromEntries(CUSTOMER_PICK_KEYS.filter((k) => c?.[k] !== undefined).map((k) => [k, c[k]]));
 
+  // Campos do lead que NENHUMA tela lê do SEED (medido em 17/09/2026: fbc/fbp
+  // são cookies do Pixel guardados pra Meta CAPI, classificacao não tem leitor
+  // no web; sourceUrl só aparece no drawer, que busca o lead inteiro em
+  // GET /api/leads/:id ao abrir). Juntos eram ~1,1 MB
+  // dos 4,4 MB de leads que todo bootstrap arrastava. PATCH faz merge no
+  // servidor, então a cópia sem esses campos nunca os apaga.
+  const LEAD_SEED_DROP = ["fbc", "fbp", "classificacao", "sourceUrl"];
+  const slimLead = (l) => {
+    if (!l || !LEAD_SEED_DROP.some((k) => k in l)) return l;
+    const c = { ...l };
+    for (const k of LEAD_SEED_DROP) delete c[k];
+    return c;
+  };
+
+  // Memo do bootstrap por usuário × revisão do banco: o SSE faz TODA aba aberta
+  // recarregar o bootstrap no mesmo segundo depois de qualquer escrita — N abas
+  // viravam N leituras de 15 coleções + serialização de 4 MB. A chave leva o
+  // rev (changes.js: qualquer escrita com bump muda) e o dia (tasksLate compara
+  // com hoje); o TTL curto cobre escrita `silent` que o bootstrap lê. Guardamos
+  // a PROMISE pra requisições simultâneas coalescerem numa computação só.
+  // Só com o repo real: o mem-repo dos testes nunca chama bump, o rev ficaria
+  // em 0 e os testes leriam resposta velha depois de escrever.
+  const bootstrapMemo = repo === defaultRepo ? new Map() : null;
+  const BOOTSTRAP_TTL_MS = 20_000;
   app.get("/api/bootstrap", async (req) => {
+    if (!bootstrapMemo) return buildBootstrap(req);
+    const now = Date.now();
+    const key = `${req.authUser?.id || "key"}|${currentRev()}|${new Date().toISOString().slice(0, 10)}`;
+    const hit = bootstrapMemo.get(key);
+    if (hit && now - hit.at < BOOTSTRAP_TTL_MS) return hit.promise;
+    const promise = buildBootstrap(req);
+    bootstrapMemo.set(key, { at: now, promise });
+    promise.catch(() => bootstrapMemo.delete(key));
+    if (bootstrapMemo.size > 64) for (const [k, v] of bootstrapMemo) if (now - v.at > BOOTSTRAP_TTL_MS) bootstrapMemo.delete(k);
+    return promise;
+  });
+
+  async function buildBootstrap(req) {
     const can = (screen) => canScreen(req.authUser, screen);
     const [products, customers, attention, leads, nps, lbMonth, lbAll, goals, portfolio, people, agendaBlocks, consultations] =
       await Promise.all([
@@ -568,6 +631,12 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       }
     } catch { /* contador é enfeite: falhar aqui não pode derrubar o bootstrap */ }
 
+    // O que o CONFIG precisa do banco/integrações vai numa leva só: eram cinco
+    // awaits em série no meio do objeto (templates, 3× app_config do Google,
+    // saúde do WhatsApp), cada um uma ida ao pooler do Supabase.
+    const [proposalTemplates, googleConnected, googleAccount, gmailReady, waHealth] = await Promise.all([
+      repo.list("proposal_templates"), googleClient.connected(), googleClient.account(), googleClient.gmailReady(), getWaHealth(repo),
+    ]);
     return {
       SAAS: saas,
       COUNTERS: contadores,
@@ -581,7 +650,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       // "Cliente" VAZIA e não dava pra gerar o link (foi o que travou o
       // Jonathan em 27/08/2026 — e o Vitor, do outro lado, em 24/08).
       CUSTOMERS: can("customers") ? customers : customers.map(pickCustomer),
-      LEADS: can("pipeline") || can("today") || can("analise") ? leads : [], // Meu dia e Análise do pipeline = views dos mesmos leads
+      LEADS: can("pipeline") || can("today") || can("analise") ? leads.map(slimLead) : [], // Meu dia e Análise do pipeline = views dos mesmos leads
       AGENDA_BLOCKS: agendaBlocks, // bloqueios de horário por pessoa (tela Agenda) — alimentam a "agenda ocupada" ao marcar call/integração
       // Consulta da mentoria ocupa a agenda de quem atende: sem isso dava pra
       // marcar call de venda por cima do encontro de um cliente. Vai SÓ a
@@ -604,8 +673,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
         // (banco): o gate de fechamento do card monta o select de produto e
         // sugere o valor a partir daqui, então mexer no preço no banco vale na
         // hora, sem deploy. SaaS sem catálogo (UniqueKids) simplesmente não entra.
-        proposals: await (async () => {
-          const templates = await repo.list("proposal_templates");
+        proposals: (() => {
+          const templates = proposalTemplates;
           const published = templates.filter((t) => t.status === "published");
           const catalog = {};
           const add = (saas, rows) => {
@@ -626,13 +695,13 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
         // meetCalendar: onde o evento do Meet nasce (GOOGLE_MEET_CALENDAR_ID).
         // Aparece em Ajustes → Integrações porque é a causa nº 1 de "não cria o
         // link": calendário de outra identidade, invisível pra conta conectada.
-        google: { configured: googleClient.configured(), connected: await googleClient.connected(), account: await googleClient.account(), gmail: await googleClient.gmailReady(), meetCalendar: process.env.GOOGLE_MEET_CALENDAR_ID || "primary" },
+        google: { configured: googleClient.configured(), connected: googleConnected, account: googleAccount, gmail: gmailReady, meetCalendar: process.env.GOOGLE_MEET_CALENDAR_ID || "primary" },
         ai: { configured: anthropicClient.configured() },
         discord: { configured: discordClient.configured() },
-        whatsapp: { configured: whatsappClient.configured(), health: waHealthSummary(await getWaHealth(repo)) },
+        whatsapp: { configured: whatsappClient.configured(), health: waHealthSummary(waHealth) },
       },
     };
-  });
+  }
 
   app.get("/api/portfolio", async () => await computePortfolio(repo));
 
@@ -730,6 +799,23 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   app.get("/api/:collection", async (req, reply) => {
     const { collection } = req.params;
     if (!isExposed(collection)) return reply.code(404).send({ error: `Unknown collection: ${collection}` });
+    // Propostas: cada documento é um SNAPSHOT inteiro (slides, calc, tema,
+    // respostas) e a tabela passa de 38 MB — listar tudo custava 2 s de servidor
+    // e 27 MB no fio pra uma tela que só mostra nome, data, aberturas e aceite.
+    // A lista devolve o RESUMO, projetado no Postgres (listWhere + fields), e
+    // nunca o editKey (segredo de edição). `?full=1` traz o documento inteiro.
+    if (collection === "proposals" && !isTruthyFlag(req.query.full)) {
+      const { saas, lead, template } = req.query;
+      const rows = await repo.listWhere("proposals", { saas, lead, template }, { fields: PROPOSAL_SUMMARY_FIELDS });
+      return rows.map(summarizeProposal);
+    }
+    // Timeline: a tabela de activities é a mais escrita do cockpit (o cache de
+    // list() cai a cada toque), então filtrar em JS era um SELECT frio de 7 MB
+    // por drawer aberto. Com filtro, o Postgres faz o corte (índice por lead).
+    if (collection === "activities" && (req.query.lead || req.query.saas || req.query.type || req.query.since)) {
+      const { lead, saas, type, since } = req.query;
+      return repo.listWhere("activities", { lead, saas, type, at: { gte: since } });
+    }
     let items = await repo.list(collection);
     const f = listFilter(collection, req.query);
     if (f) items = items.filter(f);
@@ -762,6 +848,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     }
     const now = new Date().toISOString();
     const stamp = {};
+    if (collection === "leads") canonWhen(req.body);
     if ((collection === "leads" || collection === "consultations" || collection === "deliverables") && !req.body.createdAt) stamp.createdAt = now;
     // Consulta nasce com a responsável = quem marcou (a Ana marca as próprias).
     if (collection === "consultations" && !req.body.owner && req.authUser?.id) stamp.owner = req.authUser.id;
@@ -778,6 +865,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     if (collection === "integration_forms") {
       stamp.id = "if_" + randomUUID().replace(/-/g, "").slice(0, 20);
       stamp.status = "pendente";
+      stamp.kind = formKind({ kind: req.body.kind }); // tipo desconhecido vira o de integração
       stamp.createdAt = now;
       if (req.authUser?.id) stamp.author = req.authUser.id;
     }
@@ -937,6 +1025,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     const { collection, id } = req.params;
     if (!WRITABLE.has(collection)) return reply.code(404).send({ error: `Unknown collection: ${collection}` });
     if (!req.body || typeof req.body !== "object") return reply.code(400).send({ error: "JSON body required" });
+    if (collection === "leads") canonWhen(req.body);
     const before = collection === "subscriptions" ? await repo.get(collection, id) : null;
     // Movimento de estágio de LEAD passa pelo applyStageMove (lead-flow.js):
     // recarimba stageSince (respeitando o explícito do optimistic move), zera o

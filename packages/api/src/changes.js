@@ -25,7 +25,7 @@
 const SILENT = new Set([
   "sessions", "form_events", "ad_insights",
   "wa_media", "wa_calls", "wa_alerts",
-  "training_states", "training_attempts",
+  "training_states", "training_attempts", "training_reviews", "training_fun", "training_exams",
   "mp_payments", "mp_preapprovals", "social_stories",
   "ticket_assets", // bytes do anexo; o ticket (QUIET) já avisa a tela
 ]);

@@ -3,7 +3,8 @@ import "./marketing.css";
 import { PageHead, Pill, Card } from "../components/viz.jsx";
 import { BarraComposicao, InfoLink } from "../components/story.jsx";
 import { Modal } from "../components/overlay.jsx";
-import { EmptyState, useEsc } from "../atoms.jsx";
+import { EmptyState, useEsc, Skeleton } from "../atoms.jsx";
+import { useSwr } from "../lib/swr.js";
 import { MetaConnectCard } from "../components/meta-connect.jsx";
 import { ErrorBoundary } from "../components/error-boundary.jsx";
 import { api } from "../lib/api.js";
@@ -12,7 +13,9 @@ import { useData } from "../data.jsx";
 import { currentUser, isAdminUser, userById, usersByRole } from "../lib/users.js";
 import { bizDay } from "../lib/format.js";
 import { toast } from "../atoms.jsx";
-import { CreativeEditor } from "./creative.jsx";
+// O editor de canvas (100 KB) só entra quando o wizard de post abre; carregado
+// sob demanda pra não pesar na abertura da tela (React.lazy + Suspense).
+const CreativeEditor = React.lazy(() => import("./creative.jsx").then((m) => ({ default: m.CreativeEditor })));
 import { useIsMobile } from "../lib/responsive.js";
 import { usePeriod } from "../components/period-picker.jsx";
 import { AreaLine, fmtNum } from "./social-metrics.jsx";
@@ -351,17 +354,48 @@ function CreativesToday({ saasId, version }) {
   );
 }
 
+// Estrutura do painel enquanto o summary carrega: 4 tiles + 1 bloco de gráfico,
+// com a medida real, no lugar do texto solto.
+function SocialSkeleton() {
+  return (
+    <div role="status" aria-label="carregando métricas" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="marketing-card marketing-stat" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <Skeleton w="60%" h={11} />
+            <Skeleton w="45%" h={24} />
+          </div>
+        ))}
+      </div>
+      <div className="marketing-card" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <Skeleton w="30%" h={14} />
+        <Skeleton h={160} r={8} />
+      </div>
+    </div>
+  );
+}
+
 function SocialScreen() {
   const [product] = useActiveSaas();
   const { version } = useData(); // SSE: o registro de criativos acompanha o resto
-  const [sum, setSum] = useS(null);
-  const [posts, setPosts] = useS([]);
-  const [audience, setAudience] = useS(null); // demografia + melhor horário (endpoint à parte, caro)
-  const [stories, setStories] = useS([]);     // histórico capturado (endpoint à parte, dispara a captura)
   // Janela GLOBAL do cockpit (filtro unico no topo, 08/08).
   const { win } = usePeriod();
   const days = win.days;
-  const [err, setErr] = useS(null);
+  // Leituras com cache no cliente (lib/swr.js): sair e voltar pra tela, ou
+  // trocar de período e voltar, mostra o dado guardado NA HORA e revalida
+  // atrás. Audiência e stories não dependem do período (chave sem `days`), então
+  // trocar o filtro não os refaz. O servidor também guarda (ttl-cache.js), então
+  // a revalidação raramente bate na Graph.
+  const pid = product?.id || "";
+  const sumQ = useSwr(pid && `social/summary/${pid}/${days}`, () => api.socialSummary(pid, days), { ttl: 2 * 60_000 });
+  const postsQ = useSwr(pid && `social/posts/${pid}`, () => api.socialPosts(pid), { ttl: 60_000 });
+  const audienceQ = useSwr(pid && `social/audience/${pid}`, () => api.socialAudience(pid), { ttl: 6 * 3600_000 });
+  const storiesQ = useSwr(pid && `social/stories/${pid}`, () => api.socialStories(pid), { ttl: 10 * 60_000 });
+  const sum = sumQ.data ?? null;
+  const posts = postsQ.data || [];
+  const audience = audienceQ.data ?? null; // demografia + melhor horário (endpoint à parte, caro)
+  const stories = storiesQ.data?.stories || []; // histórico capturado (endpoint à parte, dispara a captura)
+  const err = sum ? null : (sumQ.error?.message || null);
   const [wizard, setWizard] = useS(false);
   const [tab, setTabState] = useS(() => { try { return localStorage.getItem("cockpit_social_tab") || "painel"; } catch { return "painel"; } }); // persiste
   const setTab = (t) => { setTabState(t); try { localStorage.setItem("cockpit_social_tab", t); } catch { /* ignore */ } };
@@ -369,22 +403,6 @@ function SocialScreen() {
   // painel pra o número já aparecer sem abrir a aba.
   const [pending, setPending] = useS(null);
   useE(() => { setWizard(false); }, [product?.id]);
-
-  useE(() => {
-    if (!product?.id) return;
-    let alive = true;
-    setSum(null); setErr(null); setAudience(null); setPosts([]); setStories([]);
-    Promise.all([api.socialSummary(product.id, days), api.socialPosts(product.id)])
-      .then(([s, p]) => { if (alive) { setSum(s); setPosts(p || []); } })
-      .catch((e) => alive && setErr(e.message));
-    // Audiência (demografia + melhor horário) carrega em paralelo, sem travar o
-    // painel — são chamadas caras e não dependem do período.
-    api.socialAudience(product.id).then((a) => alive && setAudience(a)).catch(() => {});
-    // Stories: a chamada também DISPARA a captura dos que estão no ar (a Graph
-    // só entrega métrica de story vivo — abrir a tela é o gatilho).
-    api.socialStories(product.id).then((r) => alive && setStories(r?.stories || [])).catch(() => {});
-    return () => { alive = false; };
-  }, [product?.id, days]);
 
   // Contagem de comentários pendentes pro badge da aba. Fora do carregamento do
   // painel de propósito: varrer os comentários na Meta é lento e não pode
@@ -403,9 +421,7 @@ function SocialScreen() {
   // dos efeitos acima). Substitui o antigo load() removido no refactor de período.
   function reloadSocial() {
     if (!product?.id) return;
-    Promise.all([api.socialSummary(product.id, days), api.socialPosts(product.id)])
-      .then(([s, p]) => { setSum(s); setPosts(p || []); })
-      .catch((e) => setErr(e.message));
+    sumQ.refresh(); postsQ.refresh();
   }
 
   const ins = sum?.insights || {};
@@ -484,7 +500,8 @@ function SocialScreen() {
       <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
         <CreativesToday saasId={product?.id} version={version} />
         {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
-        {!sum && !err && <div className="mono dim" style={{ fontSize: 12 }}>carregando métricas…</div>}
+        {!sum && !err && <SocialSkeleton />}
+        {sum && sumQ.refreshing && <div className="mono dim" role="status" style={{ fontSize: 11 }}>atualizando…</div>}
         {/* Sem token no servidor: o cartão explica o passo de infra. Com token
             mas sem página/IG no PRODUTO (UniqueKids, Elo, futuros): o Conectar
             lista as páginas do token e grava a escolha no cadastro. */}
@@ -875,7 +892,9 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
                   <span className="mono dim" style={{ fontSize: 10.5, marginLeft: "auto" }}>troque o template e gere de novo se quiser</span>
                 </div>
               )}
-              <CreativeEditor groups={editorGroups} zoomIndex={2} apiRef={editorRef} />
+              <React.Suspense fallback={<Skeleton h={360} r={10} />}>
+                <CreativeEditor groups={editorGroups} zoomIndex={2} apiRef={editorRef} />
+              </React.Suspense>
             </div>
           )}
 

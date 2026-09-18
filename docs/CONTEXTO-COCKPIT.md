@@ -64,6 +64,41 @@ O repositório usa cache de listagem com invalidação e `listWhere` para filtro
 no Postgres. Em tabelas volumosas, procurar os acessos existentes antes de
 adicionar um `list()` completo ou carregar registros no bootstrap.
 
+Na Visão Geral, `metrics-reader.js` compartilha leituras apenas dentro de um
+cálculo do placar/pace/meta. Atividades são filtradas por produto; mensagens
+mantêm os registros legados sem `saas`, mas trafegam sem texto/mídia. Propostas
+levam só os campos usados no contador. Não reutilizar esse leitor em CRUD ou
+entre requisições. A meta de uma janela compartilha o cálculo do ticket com o
+pace, sem recalcular todo o funil. A regressão de custo e equivalência está em
+`api/test/overview-loading.test.js`.
+
+A entrada usa `AppStartup`: busca o SEED antes de importar o App e mantém o
+splash até a primeira tela concluir suas leituras. `ScreenTransition` cobre só
+o conteúdo nas mudanças de rota/produto; menu e topo permanecem disponíveis.
+`lib/navigation-loading.js` acompanha os GETs iniciais de `lib/api.js`, incluindo
+parse/erro e consultas encadeadas, com uma janela de estabilização de 80ms.
+Depois de revelar a tela, polling/SSE não reabre o splash nem remonta formulários.
+Uma espera acima de 12s oferece ação de saída; não há percentual fictício ou
+liberação automática que esconda uma consulta pendente. A referência original
+está em `design/splash-loading-crm/`; seu runtime de editor não é executado no app.
+`npm test` no web roda os testes do ciclo de navegação/cliente REST e o smoke SSR.
+Prévia isolada: `npm run preview:tela -- --port 5202` em `packages/web`, URL
+`/?shell&splash&delay=1500#overview`; `fail=scoreboard` e `hang=scoreboard` simulam
+falha e espera longa sem banco/API.
+
+O nginx do container comprime JSON, JavaScript, CSS e outros textos com gzip,
+com `Vary: Accept-Encoding`. Streams SSE não entram nos tipos comprimidos e
+o MCP mantém compressão desabilitada. A validação de produção dessa melhoria
+deve conferir `Content-Encoding: gzip` no bootstrap com `Accept-Encoding: gzip`,
+além do hash da API: só o hash não comprova a configuração do nginx.
+
+`proposals` é a maior coleção (snapshots de ~28 kB por proposta, dezenas de MB)
+e fica acima do teto do cache de `list()`: rota quente lê propostas **só** por
+`listWhere` (índice `proposals_saas_created_idx`). Os cálculos caros (pace em
+`routes.pipeline-pace.js`, placar em `routes.scoreboard.js`) passam por
+`compute-cache.js`: resultado memoizado por chave, válido até a próxima escrita
+no repo (`repo.writeRev()`) ou 60 s; `?fresh=1` pula o cache.
+
 ## Mapa para encontrar a mudança
 
 Os caminhos abaixo são relativos a `packages/`.
@@ -96,6 +131,15 @@ Os caminhos abaixo são relativos a `packages/`.
    atuais de pagamentos faturados, PIX parcelado e cartão recorrente passam por
    `metrics-core.js`; não somar `lead.amount` indiscriminadamente nas metas.
    Referências: `revenue-on-receipt.test.js` e `metrics-consistency.test.js`.
+   Em Clientes, `GET /api/billing/cash/:saas?since=&until=` soma recebimentos
+   confirmados de toda a base por `dateApproved` do MP ou `paidAt` da baixa,
+   no dia de São Paulo. Reutiliza `cashReceivedByCustomer`, sem presumir a
+   data pela criação do pagamento. Deduplica MP/fatura e exclui faturas
+   nascidas pagas e pagamentos estornados. O a receber considera cobranças
+   abertas/vencidas com vencimento na janela. Esses totais não compõem o
+   contratado anualizado; o card não usa ARR para estimar caixa ou renovações.
+   Referência: `customer-cash.test.js`. O endpoint `billing/received` continua
+   sendo o acumulado por cliente usado na ficha e no status de pagamento.
 3. **Estágio é semântico:** usar `funnel[].kind` e os helpers de `stages.js` /
    `web/src/lib/funnel.js`, em vez de comparar nomes visíveis. Reusar
    `applyStageMove` para preservar histórico, `stageSince`, cadência e efeitos
@@ -157,9 +201,11 @@ local, porque as rotinas do boot usam credenciais reais se existirem. Em
 produto e `seed:leverads-questions`); o único aviso esperado é
 `[leverads-results]`, pois a função do Levercopy não existe localmente.
 
-Após a validação, seguir o acordo em `AGENTS.md`: verificar `origin/main`,
-commitar os arquivos da tarefa e fazer push para `origin/main`, sem force-push
-e sem incluir mudanças alheias. O push dispara o deploy do EasyPanel.
+Após a validação, seguir a autorização do Leonardo: verificar `origin/main`,
+commitar os arquivos da tarefa na branch de trabalho, fazer push, abrir e
+mesclar o PR para `main`, sem force-push nem mudanças alheias. O redeploy no
+EasyPanel é manual pelo Leonardo; lembrar após o merge e verificar a produção
+quando a nova versão estiver disponível.
 
 Endereço registrado e acessível na análise:
 `https://extrator-mp-saasmngmnt.gnnc3f.easypanel.host`.
@@ -179,6 +225,48 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
 
 ## Correções de contexto e ferramentas
 
+- **Pizza do Financeiro (16/09/2026):** `GastosCard` usa
+  `fin.receber.recebidosMes` como 100%; as categorias da DRE (incluindo IA e
+  WhatsApp) mostram custo ÷ recebido e o restante aparece como saldo. A base
+  acompanha produto/mês e é a mesma do indicador "recebido no mês". Sem receita,
+  não há percentual; com déficit, a legenda preserva os percentuais reais e
+  mostra o excedente sem desenhar uma pizza ou normalizar pelo total de custos.
+
+- **Múltiplas contas Meta por produto (16/09/2026):** `metaAdAccount` continua
+  sendo a conta principal para criação de criativos e automações de veiculação.
+  `metaAdAccounts` é uma lista adicional de IDs para leitura, configurável pelo
+  PATCH do produto; `meta-accounts.js` normaliza `act_` e deduplica a união.
+  Sync manual/automático, catálogo de atribuição, objetos de anúncio e
+  posicionamentos leem todas as contas do produto. Insights guardam `accountId`
+  e preservam o upsert por produto+anúncio+dia. Falha parcial retorna `ok:false`
+  e relatório por conta; mantém dados da conta indisponível e não atualiza o
+  horário de sincronização completa. Posicionamentos só mostram o total quando
+  todas responderam. Cache inclui a lista de contas. Não altera permissões Meta,
+  orçamentos nem as contas de outros produtos. Testes em
+  `api/test/routes.marketing-accounts.test.js`.
+
+- **Formulários por linha (16/09/2026):** a decisão é usar 100% dos novos
+  formulários: `[OEM]` → `fo_oem_v2`, `[ADS]` e dores legadas A–E → `fo_ads_v2`,
+  `[PRICE]` → `fo_price_v2`. A entrada antiga sem origem usa Ads; links diretos
+  dos novos sem origem preservam a linha. `form_ab` continua sendo a configuração
+  operacional, com `pct: 100` independente de cookie/fbclid. A migração
+  `ensureFormsV2FullRouting` ativa uma vez, quando os três destinos já estiverem
+  publicados, e preserva ajustes posteriores pelo marcador `fullRoutingV1`.
+  O roteamento em `/f/:id` mantém a URL/UTMs e serve a definição do destino;
+  eventos e envios ficam no formulário servido. `formProduct` vem dessa
+  definição e acompanha o lead/classificação. Anúncio ausente dos insights
+  resolve o nome na Meta (anúncio → conjunto → campanha), com cache limitado,
+  prazo de 2,5 s e sem retentativas demoradas. Falha usa o destino padrão.
+  Não criar insights fictícios para resolver atribuição. Testes específicos:
+  `form-ab.test.js` e `routes.form-routing.test.js`.
+
+- **Calls realizadas nos formulários (15/09/2026):** `/api/forms/:id/funnel`
+  retorna `callsShown`: leads únicos dos envios externos do período que
+  compareceram à call, pela regra de `callOutcome`/`callWitness`. A janela
+  seleciona os envios; o desfecho acompanha o lead, como nos ganhos do form.
+  A lista mostra envios → calls realizadas → clientes; `variants[].calls`
+  continua medindo agendamentos do teste A/B.
+
 - **Cases da apresentação C (14/09/2026):** os quatro cases do painel usam o
   acumulado de cada cliente em `org_revenue_generated`, com valores brutos e
   data de apuração guardados em `cases.evidence`. São snapshots conferidos,
@@ -188,6 +276,25 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   autorização e publicação. Propostas já geradas guardam cópias em `data.cases`:
   atualizar o case central não altera essas cópias; correções nelas passam pela
   API REST e preservam `state`, preços e demais dados da proposta.
+  A sincronização dos dados do lead ao abrir o modo closer preserva os demais
+  campos de `data`, incluindo `cases`; o compartilhamento copia esse snapshot
+  para o mesmo link do cliente. Cobertura: `proposal-slides.test.js`.
+
+- **Resumo vivo da apresentação C (15/09/2026):** o texto abaixo dos cases
+  recebe `leveradsPresentationResults()` ao servir o HTML, inclusive em
+  propostas antigas e no preview. Faturamento, receita da Lever e percentual
+  usam juntos `since_gmv` / `since_leverads` do `dashboard_portfolio`, com a
+  mesma cobertura por cliente e a operação interna excluída. O all-time de
+  `org_revenue_generated` não é o numerador dessa comparação. A página mostra
+  a data inicial da base e a data da consulta; não afirma receita incremental
+  causal. O servidor aquece e renova o cache a cada seis horas. Falhas mantêm
+  o último resumo bom com sua data; cache frio mostra indisponibilidade, sem
+  os antigos valores fixos. Estado comercial e preços congelados continuam
+  iguais. Testes: `api/test/leverads-results.test.js`.
+  Novas apresentações C e o preview de LeverAds escolhem apenas cases
+  publicados e autorizados de autopeças. Os outros decks mantêm sua seleção
+  por nicho; cópias de cases em apresentações antigas ainda exigem atualização
+  explícita via REST.
 
 - **Handoff de design (14/09/2026):** referência em
   [design/handoff-cockpit](../design/handoff-cockpit/README.md), com índice em
@@ -203,6 +310,18 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   Treinamentos usa `/?shell=1#training`; `/?shell=1&exam=1#training` inclui uma
   prova pendente fictícia. Os dados ficam em `preview/training-mock.js` e não
   entram no build de produção.
+  O desempenho do time usa `/?shell=1&team=1#overview`, com oito pessoas
+  fictícias em `preview/team-mock.js`: SDR, closer, CS, mídia, metas zeradas,
+  ausentes e acima de 100%. Aceita `&theme=dark` para conferir os cards;
+  a fixture também fica restrita ao preview.
+
+- **Cards de leads (14/09/2026):** a ficha global `LeadDetail` usa `Drawer` de
+  520px seguindo o protótipo: próximo passo, ação e histórico antes dos dados
+  complementares. `components/lead-card.jsx`/`lead-card.css` fornecem superfícies,
+  expansão e marcador de qualificação. `lead-blocks.jsx` mantém a compilação dos
+  dados e os blocos de resumo/roteiro compartilhados por ficha, Minhas Atividades
+  e inbox. A abertura pelas outras telas continua no `openLead` global; movimentos
+  e agendamentos usam os mesmos handlers e gates existentes.
 
 - **Marketing — handoff (14/09/2026):** as telas Redes sociais, Publicidade,
   Formulários, Landing pages, Canvas, Disparos e Blog usam a estrutura do
@@ -277,6 +396,14 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   `tickets_linear_issue_idx`) porque é por ele que o webhook acha o ticket.
   Fora desta entrega: anexo do ticket virar anexo da issue, de-para de pessoas
   (responsável) e ferramenta de MCP própria.
+- **Inbox (14/09/2026):** `whatsapp.jsx` + `whatsapp.css` seguem a prancha do
+  handoff, com lista/chat/card responsivos. O filtro “Sem resposta” usa
+  `lastDir === "in"`, como `awaiting` da API; “Aguardando cliente” guarda a
+  fila de saída. Cadastro e vínculo usam o CRUD de leads e `waLinkThread`
+  existentes. Preview fictício: `/?shell=1&inbox=1#whatsapp`; acrescente
+  `&empty=1` para vazio ou `&dark=1` para tema escuro. O smoke inclui Inbox
+  e mensagens do robô; envio e navegação também pedem conferência no browser.
+
 - **README (revisado em 14/09/2026):** as descrições antigas (SQLite, leitura
   aberta, MCP só como manual, seed demo) foram substituídas. Pendência registrada
   lá: o `packages/web/nginx.conf` do `docker-compose.yml` não faz proxy das rotas

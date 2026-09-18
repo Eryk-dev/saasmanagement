@@ -359,3 +359,63 @@ test("new-followers: sem IG configurado = configured:false, count null", async (
   assert.equal(r.configured, false);
   assert.equal(r.count, null);
 });
+
+// ── Cache das leituras da Graph (ttl-cache.js) ──────────────────────────────
+// A tela abria com 8 s por causa da audiência (12 chamadas sequenciais). A 2ª
+// abertura tem que sair do cache, e `?refresh=1` tem que voltar a bater.
+function countingSocial() {
+  const s = fakeSocialOk();
+  const hits = { audience: 0, summary: 0, discovery: 0 };
+  const base = { igDemographics: s.igDemographics, igOnlineFollowers: s.igOnlineFollowers, igAccount: s.igAccount };
+  s.igDemographics = async (...a) => { hits.audience++; return base.igDemographics(...a); };
+  s.igOnlineFollowers = async (...a) => { hits.audience++; return base.igOnlineFollowers(...a); };
+  s.igAccount = async (...a) => { hits.summary++; return base.igAccount(...a); };
+  s.igTaggedMedia = async () => { hits.discovery++; return []; };
+  s.igBusinessDiscovery = async (ig, u) => { hits.discovery++; return { username: u, name: u, followers: 10, mediaCount: 3, recent: [] }; };
+  s.hits = hits;
+  return s;
+}
+
+test("cache: audience/summary/discovery não batem na Graph na 2ª chamada; refresh=1 força; chaves por período e listas", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", metaIgUserId: "ig1", igCompetitors: ["@a"] });
+  const social = countingSocial();
+  const app = buildApp(repo, social);
+
+  const a1 = await app.inject({ method: "GET", url: "/api/social/audience?saas=leverads" });
+  assert.equal(a1.headers["x-cache"], "miss");
+  assert.equal(social.hits.audience, 4); // 3 demografias + online
+  const a2 = await app.inject({ method: "GET", url: "/api/social/audience?saas=leverads" });
+  assert.equal(a2.headers["x-cache"], "hit");
+  assert.equal(social.hits.audience, 4);
+  assert.deepEqual(a2.json(), a1.json());
+  await app.inject({ method: "GET", url: "/api/social/audience?saas=leverads&refresh=1" });
+  assert.equal(social.hits.audience, 8);
+
+  await app.inject({ method: "GET", url: "/api/social/summary?saas=leverads&days=7" });
+  await app.inject({ method: "GET", url: "/api/social/summary?saas=leverads&days=7" });
+  assert.equal(social.hits.summary, 1);
+  const s30 = await app.inject({ method: "GET", url: "/api/social/summary?saas=leverads&days=30" });
+  assert.equal(social.hits.summary, 2); // período diferente = chave diferente
+  assert.equal(s30.json().days, 30);   // o que vem do request não envelhece no cache
+
+  await app.inject({ method: "GET", url: "/api/social/discovery?saas=leverads" });
+  await app.inject({ method: "GET", url: "/api/social/discovery?saas=leverads" });
+  assert.equal(social.hits.discovery, 2); // tagged + 1 concorrente, uma vez só
+  await repo.update("products", "leverads", { igCompetitors: ["@a", "@b"] });
+  await app.inject({ method: "GET", url: "/api/social/discovery?saas=leverads" });
+  assert.equal(social.hits.discovery, 5); // lista mudou = chave nova
+});
+
+test("cache: produto sem IG não guarda nada (configurar depois já bate na Graph)", async () => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds" });
+  const social = countingSocial();
+  const app = buildApp(repo, social);
+  const r0 = (await app.inject({ method: "GET", url: "/api/social/audience?saas=leverads" })).json();
+  assert.equal(r0.errors.setup, "sem Instagram configurado");
+  await repo.update("products", "leverads", { metaIgUser: "ig1" });
+  const r1 = (await app.inject({ method: "GET", url: "/api/social/audience?saas=leverads" })).json();
+  assert.equal(r1.demographics.countries[0].key, "BR");
+  assert.equal(social.hits.audience, 4);
+});

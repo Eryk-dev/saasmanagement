@@ -13,6 +13,7 @@ import { classificar } from "./classificacao.js";
 import { leadGrade } from "./routes.marketing.js";
 import { attributionPain } from "./attribution.js";
 import { isWonLead, kindOf } from "./stages.js";
+import { callOutcome, callWitness, dayKey, FORWARD_KINDS } from "./metrics-core.js";
 import { formPageHtml, EMBED_JS } from "./form-page.js";
 import { CREATE_DEFAULTS, dispatchProposal, publicBase } from "./routes.js";
 import { stageByKind, firstStage } from "./stages.js";
@@ -414,6 +415,60 @@ export function registerFormRoutes(app, repo, opts = {}) {
     if (!form) return reply.code(404).send({ error: "Not found" });
     const since = String(req.query.since || "");
     const until = String(req.query.until || ""); // range fechado (hoje/ontem/data custom)
+    return funnelOf(form, { since, until });
+  });
+
+  // Resumo da lista de formulários do produto numa ida só: a tela baixava
+  // TODAS as respostas (364 KB medidos) só pra contar por form e mostrar as 6
+  // mais recentes. Aqui a contagem sai de 3 campos projetados no Postgres e só
+  // as 6 recentes vêm inteiras.
+  app.get("/api/forms/overview", async (req) => {
+    const saas = String(req.query.saas || "");
+    const [forms, subs] = await Promise.all([
+      repo.listWhere("forms", { saas }),
+      repo.listWhere("form_submissions", { saas }, { fields: ["form", "internal", "createdAt"] }),
+    ]);
+    forms.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+    const counts = {};
+    for (const s of subs) counts[s.form] = (counts[s.form] || 0) + 1; // mesma régua de antes (inclui internas)
+    const recentIds = subs
+      .filter((s) => !s.internal)
+      .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
+      .slice(0, 6)
+      .map((s) => s.id);
+    const recent = (await Promise.all(recentIds.map((id) => repo.get("form_submissions", id)))).filter(Boolean);
+    return { forms, counts, recent };
+  });
+
+  // Funil de TODOS os forms publicados do produto numa chamada: a tela fazia
+  // uma requisição por form, cada uma relendo a tabela de leads inteira, e só
+  // depois da lista de forms chegar (cascata). Leads, produto e activities são
+  // lidos uma vez e os forms rodam em paralelo; um form que falhar fica de fora
+  // sem derrubar os outros.
+  app.get("/api/forms/funnels", async (req) => {
+    const saas = String(req.query.saas || "");
+    const since = String(req.query.since || "");
+    const until = String(req.query.until || "");
+    const [forms, product, leadsAll, activities] = await Promise.all([
+      repo.listWhere("forms", { saas, status: "published" }),
+      saas ? repo.get("products", saas) : null,
+      repo.list("leads"),
+      Promise.all(["stage", "system"].map((type) =>
+        repo.listWhere("activities", { saas, type }, { fields: ["lead", "type", "meta", "at"] }))).then((r) => r.flat()),
+    ]);
+    const leadsById = new Map(leadsAll.map((l) => [l.id, l]));
+    const out = {};
+    await Promise.all(forms.map(async (form) => {
+      try { out[form.id] = await funnelOf(form, { since, until, product, leadsById, activities }); }
+      catch (err) { req.log?.warn?.({ err: err.message, form: form.id }, "funil do form falhou"); }
+    }));
+    return out;
+  });
+
+  // Funil agregado de UM form na janela [since, until] (ISO). `product`,
+  // `leadsById` e `activities` podem vir prontos de quem agrega vários forms
+  // (/api/forms/funnels); sem eles, lê do banco.
+  async function funnelOf(form, { since = "", until = "", product: productIn, leadsById: leadsIn, activities: actsIn } = {}) {
     // Filtro no Postgres e só as chaves que o funil usa: form_events é a maior
     // tabela do cockpit (~19k linhas) e `ua` sozinho é metade do documento —
     // trazer a tabela inteira aqui era o maior consumidor de egress do projeto.
@@ -430,7 +485,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
     const groupKeys = [...new Set(events.filter((e) => e.variant).map((e) => `${e.pain || ""}|${e.variant}`))].sort();
     // Fechamento por variante: submission carimbada → lead → estágio de ganho.
     // É o que elege campeã de verdade (headline que vira CONTRATO, não clique).
-    const product = form.saas ? await repo.get("products", form.saas) : null;
+    const product = productIn !== undefined ? productIn : (form.saas ? await repo.get("products", form.saas) : null);
     // `internal` fica no JS: ausente/false/true no documento, o `->>` só compara
     // o que existe. Form e janela vão pro Postgres.
     // As submissões (e os leads) do período são lidas SEMPRE, não só quando há
@@ -441,7 +496,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
       { form: form.id, createdAt: { gte: since, lte: until } },
       { fields: ["lead", "variant", "pain", "internal", "createdAt"] },
     )).filter((x) => !x.internal);
-    const leadsById = new Map((await repo.list("leads")).map((l) => [l.id, l]));
+    const leadsById = leadsIn || new Map((await repo.list("leads")).map((l) => [l.id, l]));
     const variants = groupKeys.map((gk) => {
       const [pain, vid] = gk.split("|");
       const mine = (e) => (e.variant || "") === vid && (e.pain || "") === pain;
@@ -495,11 +550,34 @@ export function registerFormRoutes(app, repo, opts = {}) {
     // do período viraram contrato e quanto renderam.
     const todosLeads = subs.map((x) => leadsById.get(x.lead)).filter(Boolean);
     const ganhos = todosLeads.filter((l) => isWonLead(product, l));
+    // Calls da mesma safra de envios, uma vez por lead. O período seleciona
+    // a entrada no formulário; o comparecimento acompanha o desfecho atual,
+    // assim como os ganhos. Agendamento sozinho não comprova realização.
+    const callActs = new Map();
+    const callLeads = [...new Map(todosLeads
+      .filter((l) => !l.internal && l.saas === form.saas)
+      .map((l) => [l.id, l])).values()];
+    if (callLeads.length) {
+      const leadIds = new Set(callLeads.map((l) => l.id));
+      const activities = actsIn || (await Promise.all(["stage", "system"].map((type) =>
+        repo.listWhere("activities", { saas: form.saas, type }, { fields: ["lead", "type", "meta", "at"] })))).flat();
+      for (const a of activities) {
+        if (!leadIds.has(a.lead)) continue;
+        if (!callActs.has(a.lead)) callActs.set(a.lead, []);
+        callActs.get(a.lead).push(a);
+      }
+    }
+    const actsOf = (id) => callActs.get(id) || [];
+    const callStage = (stage) => kindOf(product, stage) === "call" || FORWARD_KINDS.has(kindOf(product, stage));
+    const attended = callOutcome(product, callLeads.filter((l) =>
+      isWonLead(product, l) || l.callAt || callStage(l.stage) || callWitness(actsOf(l.id)) ||
+      actsOf(l.id).some((a) => a.type === "stage" && callStage(a.meta?.to))), actsOf, dayKey(now()));
     return {
       views: uniq((e) => e.event === "view"),
       starts: uniq((e) => e.event === "start"),
       submits: uniq((e) => e.event === "submit"),
       leads: subs.length,
+      callsShown: attended.shown,
       won: ganhos.length,
       revenue: ganhos.reduce((sum, l) => sum + (Number(l.amount) || 0), 0),
       lastSubmitAt: subs.map((x) => String(x.createdAt || "")).filter(Boolean).sort().pop() || null,
@@ -512,11 +590,13 @@ export function registerFormRoutes(app, repo, opts = {}) {
         sessions: uniq((e) => e.event === "step" && e.key === q.key),
       })),
     };
-  });
+  }
 
   // Dor do anúncio de origem: utm_content = ad id → nome do anúncio (insights
   // sincronizados) → código "[X]". "" quando não dá pra resolver (sem utm, ad
-  // ainda sem sync) — a página cai na welcome base.
+  // ainda sem sync). Nesse caso consulta o nome vivo na Meta com cache curto:
+  // antes, todo anúncio novo/fora da conta sincronizada caía em Ads.
+  const adPainCache = new Map(); // saas:adId -> { until, promise }
   async function adPainOf(content, saas) {
     if (!content) return "";
     const rows = await repo.listWhere("ad_insights", { adId: String(content), ...(saas ? { saas } : {}) }, {
@@ -524,7 +604,21 @@ export function registerFormRoutes(app, repo, opts = {}) {
     });
     // Nome mais recente vence em caso de rename na Meta.
     const row = rows.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))[0];
-    return attributionPain(row);
+    const known = attributionPain(row);
+    if (known || !/^\d{5,30}$/.test(content) || !opts.meta?.configured?.() || !opts.meta.adAttribution) return known;
+    const key = `${saas}:${content}`;
+    const cached = adPainCache.get(key);
+    if (cached && cached.until > Date.now()) return cached.promise;
+    const entry = { until: Date.now() + 300_000 };
+    entry.promise = opts.meta.adAttribution(content).then(attributionPain).catch(() => {
+      entry.until = Date.now() + 60_000; // falha não vira rajada de consultas
+      app.log.warn({ adId: content, saas }, "Form: origem do anúncio indisponível na Meta");
+      return "";
+    });
+    adPainCache.delete(key);
+    if (adPainCache.size >= 500) adPainCache.delete(adPainCache.keys().next().value);
+    adPainCache.set(key, entry);
+    return entry.promise;
   }
   // welcome específica da dor sobrescreve a base (título/CTA/variantes da dor);
   // byPain nunca vai pro client inteiro — só a versão já resolvida.
@@ -559,7 +653,7 @@ export function registerFormRoutes(app, repo, opts = {}) {
     });
     if (alvo) {
       const variante = await publishedForm(alvo);
-      if (variante) form = variante; // variante despublicada = fica no controle
+      if (variante && variante.saas === form.saas) form = variante; // sem cruzar produtos
     }
     // Grava a adesão só quando há semente, pra o mesmo visitante não trocar de
     // formulário no meio do preenchimento ao recarregar.

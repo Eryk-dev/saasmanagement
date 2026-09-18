@@ -26,8 +26,18 @@
 .intform-link { min-height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0 12px; border: 1px solid var(--line-1); border-radius: var(--r-2); background: var(--bg-1); color: var(--fg-2); font-size: 12.5px; font-weight: 600; text-decoration: none; white-space: nowrap; }
 .intform-actions .intform-link { min-height: 28px; }
 .intform-dialog { min-width: 0; }
+/* Escolha do tipo no pedido (integração × nota fiscal) e a etiqueta na lista. */
+.intform-kinds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
+.intform-kind { text-align: left; padding: 10px 12px; border-radius: var(--r-2); border: 1px solid var(--line-1); background: var(--bg-1); cursor: pointer; }
+.intform-kind[data-on] { border-color: var(--accent-line); background: var(--accent-soft); }
+.intform-kind-title { font-size: 13px; font-weight: 600; color: var(--fg-1); margin-bottom: 2px; }
+.intform-kind[data-on] .intform-kind-title { color: var(--accent); }
+.intform-kind-tag { font-weight: 600; color: var(--fg-2); }
+.intform-filters > .intform-kind-select { margin-left: auto; width: auto; }
+.intform-filters > .intform-kind-select + input { margin-left: 0; }
 .intform-answer { display: flex; flex: 1; flex-direction: column; min-height: 0; }
 @media (max-width: 900px) {
+  .tbl-x > .intform-table { min-width: 0; }
   .intform-table thead { display: none; }
   .intform-table tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px 16px; }
   .intform-table td:first-child, .intform-table td:last-child { grid-column: 1 / -1; }
@@ -40,6 +50,8 @@
   .intform-page { padding: 24px 16px 48px; }
   .intform-stats { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .intform-filters > input { width: 100%; }
+  .intform-kinds { grid-template-columns: minmax(0, 1fr); }
+  .intform-filters > .intform-kind-select { width: 100%; }
   .intform-page button, .intform-page input, .intform-link, .intform-dialog button, .intform-dialog input, .intform-dialog a { min-height: 44px; }
   .intform-name { white-space: normal; }
 }

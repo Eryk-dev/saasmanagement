@@ -7,10 +7,12 @@
 // stageSince/callAt/amount, activities de stage/toque, customers, proposals).
 // Retenção lê o evento de churn do cliente (customer.endedAt — churn.js).
 
+import { metricsReader } from "./metrics-reader.js";
 import { cadenceOf, firstStage, isLoss, kindOf, TOUCH_TYPES } from "./stages.js";
 import { teamBonusProducts, compGoalFor, compLevelOf, careerRuleOf, promotionEligibility, leveledRoleOf } from "./comp-plan.js";
 import { TEAM_METRICS, META_CATALOG, deriveGoalsFromPace } from "./routes.metas.js";
-import { computeWindowGoal, RATE_BENCHMARKS, computePipelinePace } from "./routes.pipeline-pace.js";
+import { computeWindowGoal, RATE_BENCHMARKS, cachedPipelinePace } from "./routes.pipeline-pace.js";
+import { memoCompute } from "./compute-cache.js";
 import {
   DAY_MS as DAY, round2, dayKey, rangeFromQuery, isRealLead, isSaleLead, isWonLead,
   callOutcome as coreCallOutcome, callResultOf as coreCallResultOf, callCohortIn,
@@ -80,6 +82,7 @@ export async function teamBonusStatus(repo, product, until, { customers = null, 
 }
 
 export async function computeScoreboard(repo, product, query = {}, { now = () => new Date() } = {}) {
+    repo = metricsReader(repo, product.id);
     const { since, until } = rangeFromQuery(query || {});
     // Hoje (dia do negócio): separa call já VENCIDA (não veio) de call marcada
     // pro FUTURO (ainda vai acontecer) no comparecimento — ver callOutcome.
@@ -93,12 +96,10 @@ export async function computeScoreboard(repo, product, query = {}, { now = () =>
     const hasPrev = /^\d{4}-\d{2}-\d{2}$/.test(prevSince) && /^\d{4}-\d{2}-\d{2}$/.test(prevUntil);
     const inPrev = (iso) => iso && dayKey(iso) >= prevSince && dayKey(iso) <= prevUntil;
 
-    const [allLeads, allActs, allCustomers, proposals, subs, users, goalsAll, npsAll, waMessages, invoicesAll, compPlansAll, mpPaymentsAll] = await Promise.all([
+    const [allLeads, allActs, allCustomers, users, goalsAll, npsAll, waMessages, invoicesAll, compPlansAll, mpPaymentsAll] = await Promise.all([
       repo.list("leads"),
       repo.list("activities"),
       repo.list("customers"),
-      repo.list("proposals"),
-      repo.list("subscriptions"),
       repo.list("users").catch(() => []),
       repo.list("goals"),
       repo.list("nps").catch(() => []),
@@ -170,7 +171,7 @@ export async function computeScoreboard(repo, product, query = {}, { now = () =>
     let derivado = {};
     let derivedChain = null; // a cadeia inteira (leads→contatos→calls→ganhos) — vira team.monthTargets
     try {
-      const d = deriveGoalsFromPace(await computePipelinePace(repo, product), { contractsTarget: product.monthlyContractsTarget });
+      const d = deriveGoalsFromPace(await cachedPipelinePace(repo, product), { contractsTarget: product.monthlyContractsTarget });
       derivado = Object.fromEntries((d?.goals || []).map((g) => [`${g.role}.${g.metric}`, Number(g.target)]));
       derivedChain = d;
     } catch { derivado = {}; }
@@ -998,9 +999,14 @@ export async function computeScoreboard(repo, product, query = {}, { now = () =>
 }
 
 export function registerScoreboardRoutes(app, repo, { now = () => new Date() } = {}) {
+  // Placar com cache de resultado (compute-cache.js): Visão geral, Análise de
+  // Equipe e Análise de Desempenho pedem o mesmo placar da mesma janela; vale
+  // até a próxima escrita no banco (ou 60 s). ?fresh=1 pula o cache.
   app.get("/api/scoreboard/:saas", async (req, reply) => {
     const product = await repo.get("products", req.params.saas);
     if (!product) return reply.code(404).send({ error: "Not found" });
-    return computeScoreboard(repo, product, req.query || {}, { now });
+    const q = req.query || {};
+    const key = `scoreboard:${product.id}:${q.since || ""}:${q.until || ""}:${q.prevSince || ""}:${q.prevUntil || ""}:${dayKey(now())}`;
+    return memoCompute(repo, key, () => computeScoreboard(repo, product, q, { now }), { fresh: String(q.fresh || "") === "1" });
   });
 }

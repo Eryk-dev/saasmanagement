@@ -21,6 +21,9 @@
 //   text · textarea · email · phone · select · ack (declaração que precisa ser
 //   marcada) · list (bloco que repete: uma linha por conta, por rota…)
 //
+// `digits: N` (texto que precisa ter exatamente N dígitos: CNPJ, CPF, CEP) vale
+// nos dois lados, servidor e página.
+//
 // `optional: true` é a ÚNICA exceção à régua "tudo que está visível é
 // obrigatório" (que existe pra não faltar informação na integração): serve pra
 // pergunta que não é da integração, como o pedido de indicação. Em branco não
@@ -29,6 +32,8 @@
 // Condicional: `showIf: { key, in: [valores] }`. A regra vale nos DOIS lados —
 // a página esconde, o servidor não exige o que está escondido (nem aceita como
 // obrigatório o que não deveria aparecer).
+
+import { FISCAL_SECTIONS, FISCAL_TERM_TEXT, FISCAL_FORM_VERSION, fiscalSummary } from "./fiscal-form.js";
 
 export const INTEGRATION_FORM_VERSION = 3; // 3 = pedido de indicação (opcional) no fim
 
@@ -281,10 +286,50 @@ export const SECTIONS = [
   },
 ];
 
+// ── Tipos de formulário ──────────────────────────────────────────────────────
+// A mesma máquina (link opaco, envio único, snapshot, termo assinado) serve
+// mais de um questionário. `kind` no documento diz qual; sem kind, é o de
+// integração (documentos anteriores a 17/09/2026 não têm o campo).
+//   integracao  · a operação do cliente antes da call de integração (SECTIONS)
+//   nota_fiscal · o cadastro do tomador pro financeiro emitir a NFS-e
+export const FORM_KINDS = {
+  integracao: {
+    key: "integracao",
+    label: "Formulário de Integração",
+    short: "integração",
+    version: INTEGRATION_FORM_VERSION,
+    sections: SECTIONS,
+    term: TERM_TEXT,
+    hero: [
+      "Antes da call de integração a gente precisa conhecer a sua operação: quais contas entram, de onde os anúncios saem, para onde vão, o que não pode ser clonado e como fica o estoque. É o que a gente configura na sua conta, então vale responder com calma.",
+      "São poucos minutos. Tudo aqui é obrigatório, menos a última parte (indicação), que fica a seu critério.",
+    ],
+    done: "Suas respostas foram para o time de integração. A gente usa exatamente elas pra configurar as suas contas, e o resto a gente resolve junto na call.",
+    summary: (answers) => integrationSummary(answers),
+  },
+  nota_fiscal: {
+    key: "nota_fiscal",
+    label: "Dados para nota fiscal",
+    short: "nota fiscal",
+    version: FISCAL_FORM_VERSION,
+    sections: FISCAL_SECTIONS,
+    term: FISCAL_TERM_TEXT,
+    hero: [
+      "Pra emitir a sua nota fiscal do jeito certo a gente precisa do cadastro de quem recebe a nota: razão social, CNPJ, endereço fiscal, regime tributário e o e-mail que recebe a nota e o boleto.",
+      "Leva uns dois minutos. Tenha o cartão CNPJ por perto: a nota sai exatamente com o que você escrever aqui.",
+    ],
+    done: "Seus dados foram para o financeiro da LeverAds. A próxima nota já sai com eles; se algo mudar, é só avisar a gente.",
+    summary: (answers) => fiscalSummary(answers),
+  },
+};
+export const DEFAULT_KIND = "integracao";
+export const formKind = (doc) => (doc && FORM_KINDS[doc.kind] ? doc.kind : DEFAULT_KIND);
+export const kindDef = (kind) => FORM_KINDS[kind] || FORM_KINDS[DEFAULT_KIND];
+
 // Definição enviada pra página pública (hoje é a definição inteira; existe como
 // função pra o dia em que houver campo interno que o cliente não deva ver).
-export function publicSections() {
-  return SECTIONS.map((s) => ({
+export function publicSections(kind = DEFAULT_KIND) {
+  return kindDef(kind).sections.map((s) => ({
     key: s.key, title: s.title, intro: s.intro || "", term: !!s.term,
     questions: (s.questions || []).map((q) => ({ ...q })),
   }));
@@ -337,6 +382,7 @@ export function validateIntegrationAnswers(answers, sections = SECTIONS) {
     if (q.type === "select" && !(q.options || []).includes(String(val))) errors.push({ key: q.key, error: "Opção inválida" });
     if (q.type === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(val))) errors.push({ key: q.key, error: "E-mail inválido" });
     if (q.type === "phone" && String(val).replace(/\D/g, "").length < 10) errors.push({ key: q.key, error: "Telefone inválido" });
+    if (q.digits && String(val).replace(/\D/g, "").length !== q.digits) errors.push({ key: q.key, error: `Precisa ter ${q.digits} dígitos` });
   }
   return errors;
 }
@@ -401,4 +447,9 @@ export function integrationSummary(answers = {}) {
   if (answers.sync) partes.push(`estoque: ${String(answers.sync).toLowerCase()}`);
   if (answers.erp && answers.erp !== "Não uso") partes.push(`ERP: ${answers.erp}`);
   return partes.join(" · ");
+}
+
+// Resumo pelo TIPO do documento (lista da tela, timeline, Discord).
+export function formSummary(doc, answers = doc?.answers) {
+  return kindDef(formKind(doc)).summary(answers || {});
 }

@@ -105,18 +105,21 @@ function ContractsScreen() {
   const lastIssueKey = useR("");
 
   async function load() {
-    try {
-      const all = await api.list("contracts");
-      setItems((all || []).filter((c) => !c.saas || c.saas === product?.id));
-    } catch (e) { setErr(e.message); }
-    // O histórico carrega em separado: se ele falhar, a biblioteca de modelos
-    // continua de pé — e a falha NÃO pode virar "nenhum contrato gerado".
-    try {
-      const hist = await api.list("contract_issues");
-      setIssues((hist || []).filter((c) => !c.saas || c.saas === product?.id).sort(byIssuedDesc));
+    // Os dois fetches vão JUNTOS (eram em série: o histórico só saía depois da
+    // biblioteca voltar). O histórico já vem filtrado por produto do servidor.
+    // Continuam independentes: se o histórico falhar, a biblioteca de modelos
+    // fica de pé — e a falha NÃO pode virar "nenhum contrato gerado".
+    const [lib, hist] = await Promise.allSettled([
+      api.list("contracts"),
+      api.list("contract_issues", product?.id ? { saas: product.id } : {}),
+    ]);
+    if (lib.status === "fulfilled") setItems((lib.value || []).filter((c) => !c.saas || c.saas === product?.id));
+    else setErr(lib.reason?.message || String(lib.reason));
+    if (hist.status === "fulfilled") {
+      setIssues((hist.value || []).filter((c) => !c.saas || c.saas === product?.id).sort(byIssuedDesc));
       setIssuesErr(false);
-    } catch (e) {
-      console.warn("histórico de contratos não carregou:", e.message);
+    } else {
+      console.warn("histórico de contratos não carregou:", hist.reason?.message);
       setIssues([]);
       setIssuesErr(true);
     }

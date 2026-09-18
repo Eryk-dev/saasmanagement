@@ -26,6 +26,27 @@ const igIdOf = (p) => String(p?.metaIgUser || p?.metaIgUserId || "");
 // reel (VIDEO). Story vem por outro caminho (social_stories).
 const FEED_TYPES = new Set(["IMAGE", "CAROUSEL_ALBUM", "VIDEO"]);
 
+// Feed do Instagram com cache de 10 min por conta (mesmo ritmo do syncStories).
+// A Graph responde em 1–2 s e a chamada ficava DENTRO da requisição da tela,
+// em série, a cada abertura e a cada tick do tempo real — a Análise de
+// Desempenho levava 5 s pra abrir. Graph fora do ar: serve a última leitura
+// boa; sem leitura nenhuma, propaga o erro (a tela mostra em errors.feed).
+const MEDIA_TTL_MS = 10 * 60_000;
+const mediaCache = new Map(); // igUserId -> { at, media }
+export function invalidateMediaCache() { mediaCache.clear(); }
+async function feedMedia(social, igUserId) {
+  const hit = mediaCache.get(igUserId);
+  if (hit && Date.now() - hit.at < MEDIA_TTL_MS) return hit.media;
+  try {
+    const media = (await social.igMedia(igUserId, { limit: 50 })) || [];
+    mediaCache.set(igUserId, { at: Date.now(), media });
+    return media;
+  } catch (e) {
+    if (hit) return hit.media;
+    throw e;
+  }
+}
+
 export function registerDesempenhoRoutes(app, repo, { social = defaultSocial, now = () => new Date() } = {}) {
   app.get("/api/desempenho/:saas", async (req, reply) => {
     const product = await repo.get("products", req.params.saas);
@@ -38,8 +59,17 @@ export function registerDesempenhoRoutes(app, repo, { social = defaultSocial, no
     // só recebe o próprio recorte.
     const visible = (uid) => admin || uid === me?.id;
 
-    const [leads, acts, users, logsAll] = await Promise.all([
+    // Instagram (feed em cache + captura de stories, throttle de 10 min) roda
+    // em PARALELO com as listas do banco, não depois delas. O histórico de
+    // stories é lido depois da captura, pra contar o que acabou de entrar.
+    const igUserId = igIdOf(product);
+    const configured = !!social?.configured?.();
+    const capture = configured && !!igUserId;
+    const [leads, acts, users, logsAll, feed, storiesRes] = await Promise.all([
       repo.list("leads"), repo.list("activities"), repo.list("users").catch(() => []), repo.list("daily_logs").catch(() => []),
+      capture ? feedMedia(social, igUserId).then((media) => ({ media })).catch((e) => ({ error: e.message })) : null,
+      (capture ? syncStories(repo, social, { saas: product.id, igUserId }).catch((e) => ({ errors: { stories: e.message } })) : Promise.resolve(null))
+        .then(async (sync) => ({ sync, rows: await repo.list("social_stories").catch(() => []) })),
     ]);
     const leadById = new Map(leads.filter((l) => l.saas === product.id).map((l) => [l.id, l]));
 
@@ -87,26 +117,22 @@ export function registerDesempenhoRoutes(app, repo, { social = defaultSocial, no
     }
 
     // ── Produção do social (a conta é uma só) ─────────────────────────────────
-    const out = { feed: null, posts: 0, reels: 0, stories: null, items: [], storyItems: [], errors: {}, configured: !!social?.configured?.() };
-    const igUserId = igIdOf(product);
-    if (out.configured && igUserId) {
-      try {
-        const media = await social.igMedia(igUserId, { limit: 50 });
-        const inside = (media || []).filter((m) => FEED_TYPES.has(m.type) && inWin(m.at));
+    const out = { feed: null, posts: 0, reels: 0, stories: null, items: [], storyItems: [], errors: {}, configured };
+    if (capture) {
+      if (feed?.error) out.errors.feed = feed.error;
+      else {
+        const inside = (feed?.media || []).filter((m) => FEED_TYPES.has(m.type) && inWin(m.at));
         out.posts = inside.filter((m) => m.type !== "VIDEO").length;
         out.reels = inside.filter((m) => m.type === "VIDEO").length;
         out.feed = inside.length;
         out.items = inside.slice(0, 30).map((m) => ({ id: m.id, at: m.at, type: m.type, permalink: m.permalink || "", caption: String(m.caption || "").split("\n")[0].slice(0, 90) }));
-      } catch (e) { out.errors.feed = e.message; }
-      try {
-        const r = await syncStories(repo, social, { saas: product.id, igUserId });
-        Object.assign(out.errors, r?.errors || {});
-      } catch (e) { out.errors.stories = e.message; }
-    } else if (out.configured) {
+      }
+      Object.assign(out.errors, storiesRes?.sync?.errors || {});
+    } else if (configured) {
       out.errors.setup = "sem Instagram no produto: configure metaIgUser em Ajustes ou abra a tela Redes sociais pra descoberta";
     }
     // O histórico de stories sai do banco mesmo com a captura falhando.
-    const stories = (await repo.list("social_stories").catch(() => [])).filter((s) => s.saas === product.id && inWin(s.at));
+    const stories = (storiesRes?.rows || []).filter((s) => s.saas === product.id && inWin(s.at));
     out.stories = stories.length;
     out.storyItems = stories.sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 30).map((s) => ({ id: s.id, at: s.at, type: s.type || "", permalink: s.permalink || "", caption: String(s.caption || "").slice(0, 90) }));
 

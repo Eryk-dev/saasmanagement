@@ -82,9 +82,10 @@ export function publicCase(doc = {}) {
 
 // Escolha pro deck: público e autorizado, nicho do lead primeiro, depois a ordem
 // que o time definiu e os mais recentes. Sem nicho, só a ordem.
-export function pickCases(cases = [], { niche = "", limit = 4 } = {}) {
+export function pickCases(cases = [], { niche = "", limit = 4, strictNiche = false } = {}) {
   const alvo = normalizeNiche(niche);
-  const elegiveis = (cases || []).filter((c) => c?.public === true && c?.authorizedAt && canPublish(c));
+  const elegiveis = (cases || []).filter((c) => c?.public === true && c?.authorizedAt && canPublish(c)
+    && (!strictNiche || normalizeNiche(c.niche) === alvo));
   const peso = (c) => (alvo && normalizeNiche(c.niche) === alvo ? 0 : 1);
   return elegiveis
     .sort((a, b) => peso(a) - peso(b)

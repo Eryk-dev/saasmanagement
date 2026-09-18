@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   ensureIntegrationStage, migrateLeverAdsCrmFunnel, migrateLeverAdsSdrCadence, migrateNutricaoSevenDays, ensureFunnelKinds,
-  migrateGanhoAntesIntegracao, migrateGanhoNaIntegracao, migrateIntegracaoNoFollowup, backfillWonAt, backfillPostSaleCustomers,
+  migrateGanhoAntesIntegracao, migrateGanhoNaIntegracao, migrateIntegracaoNoFollowup, migrateNutricaoNoFollowup, backfillWonAt, backfillPostSaleCustomers,
   ensureLossReasons, ensureNoShowReason, ensureSdrGoals, ensureCloserGoals, ensureCloseRateUnica, ensureSocialGoals, ensureUserRoles, ensureUserSaasScope, ensureUserScreens, DEFAULT_LOSS_REASONS,
   migrateExpensePctBases,
 } from "../src/migrations.js";
@@ -500,6 +500,47 @@ test("migrateIntegracaoNoFollowup: devolve a Integração aos próximos passos d
   await repo.update("products", "leverads", { nextSteps: { ...p.nextSteps, followup1: ["retry", "ganho"] } });
   assert.equal(await migrateIntegracaoNoFollowup(repo), false);
   assert.deepEqual((await repo.get("products", "leverads")).nextSteps.followup1, ["retry", "ganho"]);
+});
+
+test("migrateNutricaoNoFollowup: inclui Nutrição nos roteiros salvos sem alterar outras ações ou produtos", async () => {
+  const repo = makeMemRepo();
+  const nextSteps = {
+    followup1: ["retry", "ganho", "integracao", "desqualificado"],
+    followup2: ["retry", "ganho"],
+    followup3: ["nutricao", "retry", "desqualificado"],
+    followup: ["retry", "desqualificado"],
+    followup4: [],
+    followup5: null,
+    call1: ["retry", "ganho"],
+    qualificacao1: ["retry", "contato", "desqualificado"],
+  };
+  await repo.create("products", { id: "leverads", nextSteps });
+  await repo.create("products", { id: "elo", nextSteps });
+  await repo.create("leads", { id: "l1", saas: "leverads", stage: "Follow-up" });
+
+  assert.equal(await migrateNutricaoNoFollowup(repo), true);
+  const p = await repo.get("products", "leverads");
+  assert.deepEqual(p.nextSteps, {
+    ...nextSteps,
+    followup1: ["retry", "ganho", "integracao", "nutricao", "desqualificado"],
+    followup2: ["retry", "ganho", "nutricao"],
+    followup: ["retry", "nutricao", "desqualificado"],
+  });
+  assert.equal(p.nutricaoNoFollowupV1, true);
+  assert.deepEqual(await repo.get("products", "elo"), { id: "elo", nextSteps });
+  assert.equal((await repo.get("leads", "l1")).stage, "Follow-up", "oferece a ação sem mover leads");
+
+  await repo.update("products", "leverads", { nextSteps: { ...p.nextSteps, followup1: ["retry", "ganho"] } });
+  assert.equal(await migrateNutricaoNoFollowup(repo), false);
+  assert.deepEqual((await repo.get("products", "leverads")).nextSteps.followup1, ["retry", "ganho"], "edições posteriores são respeitadas");
+});
+
+test("migrateNutricaoNoFollowup: sem configuração salva, mantém os defaults", async () => {
+  const repo = makeMemRepo();
+  assert.equal(await migrateNutricaoNoFollowup(repo), false);
+  await repo.create("products", { id: "leverads" });
+  assert.equal(await migrateNutricaoNoFollowup(repo), false);
+  assert.deepEqual(await repo.get("products", "leverads"), { id: "leverads", nutricaoNoFollowupV1: true });
 });
 
 test("migrateGanhoAntesIntegracao: one-shot e não mexe em funil já na ordem nova", async () => {

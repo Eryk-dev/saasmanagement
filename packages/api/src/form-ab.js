@@ -7,7 +7,8 @@
 //
 // A divisão das campanhas vem do código de dor no NOME do anúncio, que já é a
 // convenção da casa (attribution.js): `[OEM]` são as de OEM, `[A]`-`[E]` e os
-// sem código são as de Lever Ads.
+// sem código são as de Lever Ads; [PRICE] vai para Lever Price. Em 100%,
+// o roteamento é integral, inclusive sem cookie/fbclid e nos links novos.
 //
 // Config em app_config `form_ab`, então percentual e destino mudam sem deploy:
 //   { enabled, pct, onlyForms: [ids], byPain: { OEM: "fo_oem_v2" }, fallback: "fo_ads_v2" }
@@ -40,16 +41,21 @@ export function pickForm({ cfg, pain, seed, currentId }) {
   const pct = Number(cfg.pct);
   if (!Number.isFinite(pct) || pct <= 0) return null;
 
-  // Só entra no teste quem chegou pelo formulário de controle declarado. Sem
-  // isso, um lead que JÁ está no form novo seria re-sorteado e poderia ser
-  // jogado de volta pro antigo no meio do preenchimento.
+  // No experimento, só sorteia entradas do controle. Na adoção integral,
+  // corrige também links de variantes quando o anúncio identifica o destino.
+  // Um link direto de OEM/Price SEM origem continua no formulário escolhido.
   const only = Array.isArray(cfg.onlyForms) ? cfg.onlyForms : [];
-  if (only.length && !only.includes(currentId)) return null;
+  const control = !only.length || only.includes(currentId);
+  const mapped = pain && cfg.byPain?.[pain];
+  const destinations = new Set([cfg.fallback, ...Object.values(cfg.byPain || {})]);
+  if (!control && !(pct >= 100 && mapped && destinations.has(currentId))) return null;
 
-  const b = bucketFor(seed);
-  if (b == null || b >= pct) return null;
+  if (pct < 100) {
+    const b = bucketFor(seed);
+    if (b == null || b >= pct) return null;
+  }
 
-  const alvo = (pain && cfg.byPain && cfg.byPain[pain]) || cfg.fallback || "";
+  const alvo = mapped || cfg.fallback || "";
   return alvo && alvo !== currentId ? String(alvo) : null;
 }
 

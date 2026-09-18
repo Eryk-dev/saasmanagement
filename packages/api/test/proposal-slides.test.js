@@ -1,4 +1,4 @@
-// Opção C: a apresentação em SLIDES (12/09/2026). O que este teste protege:
+// A apresentação em SLIDES (12/09/2026; oficial desde 18/09). O que este teste protege:
 // a conta do plano sai do CATÁLOGO (nada de preço escrito no deck), o link do
 // cliente não leva a tabela de preço no fonte, a tela zero só existe no modo
 // closer e a configuração dela vira `state.product`/`state.cycle` — que é o que
@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { ensureProposalCatalog, ensureSlidesDeck } = await import("../src/migrations.js");
+const { ensureProposalCatalog, ensureSlidesDeck, regenerateOpenLeadsToSlides } = await import("../src/migrations.js");
 const { runNativeProposal, shareProposalOffer, proposalOffersOf } = await import("../src/proposal.js");
 const { registerProposalRoutes } = await import("../src/routes.proposals.js");
 const { calcOferta, deckConfig, slimCatalog, proposalSlidesPageHtml } = await import("../src/proposal-slides-page.js");
@@ -49,14 +49,86 @@ const cfgBase = {
   price: false, priceTier: "essencial", oem: false, oemPack: "1000", periodo: "anual",
 };
 
-test("migração: o deck de slides nasce selecionável e com o catálogo do deck padrão; idempotente", async () => {
+test("apresentação C e preview usam apenas autopeças publicadas, sem mudar o nicho do lead", async () => {
+  const repo = await seedRepo();
+  for (const [name, niche, authorizedAt] of [["Auto A", "Autopeças", "2026-09-01"], ["Casa B", "casa", "2026-09-01"], ["Auto pendente", "autopecas", ""]]) {
+    await repo.create("cases", { saas: "leverads", name, niche, authorizedAt, public: true, metrics: [{ value: "R$ 100", label: "vendas", source: "painel" }] });
+  }
+  const lead = await repo.create("leads", { id: "ld_case_auto", saas: "leverads", name: "Cliente", niche: "casa" });
+  const result = await runNativeProposal(repo, lead, { template: "pt_leverads_slides", baseUrl: "http://x" });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.proposal.data.cases.map(c => c.name), ["Auto A"]);
+  assert.equal((await repo.get("leads", lead.id)).niche, "casa");
+  const app = Fastify();
+  registerProposalRoutes(app, repo);
+  const response = await app.inject({ url: "/p/t/pt_leverads_slides?niche=casa" });
+  assert.match(response.body, /"name":"Auto A"/);
+  assert.doesNotMatch(response.body, /"name":"Casa B"|"name":"Auto pendente"/);
+  await app.close();
+});
+
+test("cases sobrevivem à abertura pelo closer, atualização do lead e compartilhamento do mesmo link", async (t) => {
+  const repo = await seedRepo();
+  const caseDoc = await repo.create("cases", {
+    name: "Auto Peças Teste", niche: "Autopeças", public: true, authorizedAt: "2026-09-01",
+    metrics: [{ value: "R$ 100 mil", label: "vendas", source: "painel", proofUrl: "https://interno/prova" }],
+  });
+  const lead = await repo.create("leads", { id: "ld_case_sync", saas: "leverads", name: "Ana", niche: "autopecas", amount: 0 });
+  const generated = await runNativeProposal(repo, lead, { template: "pt_leverads_slides" });
+  assert.equal(generated.ok, true);
+  const originalCases = structuredClone(generated.proposal.data.cases);
+  assert.equal(originalCases.length, 1);
+  assert.equal(originalCases[0].metrics[0].proofUrl, undefined);
+  // Gerar o deck atualiza o valor do lead. A primeira abertura já sincroniza
+  // data.lead.amount, que antes descartava os outros campos de data.
+  assert.notEqual((await repo.get("leads", lead.id)).amount, generated.proposal.data.lead.amount);
+  const app = Fastify();
+  t.after(() => app.close());
+  registerProposalRoutes(app, repo);
+  const editUrl = `/p/${generated.proposal.id}?k=${generated.proposal.editKey}`;
+  assert.equal((await app.inject({ url: editUrl })).statusCode, 200);
+  let parent = await repo.get("proposals", generated.proposal.id);
+  assert.deepEqual(parent.data.cases, originalCases, "abrir o deck mantém o snapshot dos cases");
+  await repo.update("proposals", parent.id, { state: { ...parent.state, deckC: cfgBase } });
+  parent = await repo.get("proposals", parent.id);
+  const sent = await shareProposalOffer(repo, parent, 1);
+  assert.equal(sent.ok, true);
+  assert.deepEqual(sent.proposal.data.cases, originalCases);
+  const sentOffer = structuredClone(sent.proposal.state.deckOferta);
+
+  await repo.update("leads", lead.id, { company: "Auto Peças Nova" });
+  await repo.update("cases", caseDoc.id, { name: "Nome alterado no cadastro central" });
+  await app.inject({ url: editUrl });
+  parent = await repo.get("proposals", parent.id);
+  assert.equal(parent.data.lead.company, "Auto Peças Nova");
+  assert.deepEqual(parent.data.cases, originalCases, "atualização do lead preserva a prova já selecionada");
+  const reshared = await shareProposalOffer(repo, parent, 1);
+  assert.equal(reshared.proposal.id, sent.proposal.id, "correção mantém o link enviado");
+  assert.deepEqual(reshared.proposal.data.cases, originalCases);
+  assert.deepEqual(reshared.proposal.state.deckOferta, sentOffer);
+  const clientPage = await app.inject({ url: `/p/${sent.proposal.id}?from=cockpit` });
+  assert.match(clientPage.body, /"name":"Auto Peças Teste"/);
+  assert.doesNotMatch(clientPage.body, /Nome alterado no cadastro central|https:\/\/interno\/prova/);
+});
+
+test("migração: o deck de slides é o publicado do leverads, com o catálogo do pt_leverads; A e B arquivadas; idempotente", async () => {
   const repo = await seedRepo();
   const t = await repo.get("proposal_templates", "pt_leverads_slides");
   assert.equal(t.layout, "slides", "é o renderer novo");
-  assert.equal(t.selectable, true, "aparece no select do card do lead");
-  assert.equal(t.status, "draft", "não vira o padrão do produto");
+  assert.equal(t.status, "published", "é o padrão do produto: gera sozinho no form e no 'gerar proposta'");
+  assert.equal(t.selectable, false, "não aparece duplicado no select (o padrão já é ele)");
+  assert.equal(t.officialSince, "2026-09-18");
   assert.equal(t.calc.catalog.products.ads_escala.anu.per, 999, "preço vem do catálogo, não do deck");
+  const a = await repo.get("proposal_templates", "pt_leverads");
+  assert.equal(a.status, "draft", "a apresentação A saiu do padrão");
+  assert.match(a.name, /^\[ARQUIVO 2026-09-18\]/, "carimbada como arquivo, no padrão dos backups");
+  assert.ok(a.calc.catalog, "o catálogo continua morando nela (as migrações escrevem lá)");
   assert.equal(await ensureSlidesDeck(repo), false, "segunda execução não mexe");
+
+  // Despublicar de propósito depois não é desfeito pela migração.
+  await repo.update("proposal_templates", "pt_leverads_slides", { status: "draft" });
+  assert.equal(await ensureSlidesDeck(repo), false, "o carimbo officialSince segura a promoção");
+  await repo.update("proposal_templates", "pt_leverads_slides", { status: "published" });
 
   // Preço novo no deck padrão entra no de slides sozinho.
   const base = await repo.get("proposal_templates", "pt_leverads");
@@ -108,33 +180,78 @@ test("sem produto escolhido, a apresentação não inventa preço", async () => 
   assert.equal(vazio.mostra.ads, false, "o slide do produto sai da apresentação");
 });
 
-test("a tangibilidade traduz a parcela em vendas com o ticket informado", async () => {
+test("a tangibilidade traduz a parcela em vendas com o ticket informado; sem ticket/pedidos o slide sai", async () => {
   const repo = await seedRepo();
   const cat = await catalogoDoTemplate(repo);
   const o = calcOferta(cat, { ...cfgBase, tier: "escala", ticket: 200, pedidos: 400 });
   assert.equal(o.vendasNecessarias, 5, "999 / 200 arredondado pra cima");
   assert.equal(o.percentualExtra, "1,3%", "5 vendas sobre 400 pedidos");
+  assert.equal(o.mostra.pratica, true);
+  // O form não pergunta ticket nem pedidos: em branco, nada de conta falsa.
+  const semTicket = calcOferta(cat, { ...cfgBase, ticket: 0, pedidos: 0 });
+  assert.equal(semTicket.mensal, 497, "o preço do plano não depende disso");
+  assert.equal(semTicket.vendasNecessarias, 0);
+  assert.equal(semTicket.percentualExtra, "—");
+  assert.equal(semTicket.mostra.pratica, false, "o slide 'Na prática' some da apresentação");
+  const soTicket = calcOferta(cat, { ...cfgBase, ticket: 120, pedidos: 0 });
+  assert.equal(soTicket.mostra.pratica, false, "sem pedidos/mês também some (o texto compara com o que já vende)");
 });
 
-test("a configuração nasce do lead e do produto que a régua sugere", async () => {
+test("a configuração nasce do formulário e do produto que a régua sugere; o que o form não pergunta fica em branco", async () => {
   const p = {
     state: { seats: 4 },
-    data: { lead: { name: "Viviane Souza", firstName: "Viviane", company: "Zpack Autopeças" } },
+    calc: { seatsKey: "accounts" },
+    data: {
+      lead: { name: "Viviane Souza", firstName: "Viviane", company: "Zpack Autopeças" },
+      answers: { accounts: "3-5", niche: "autopecas" },
+    },
   };
   const c = deckConfig(p, { suggested: "oem_escala" });
   assert.equal(c.nome, "Viviane");
   assert.equal(c.empresa, "Zpack Autopeças");
-  assert.equal(c.contas, 4, "contas vêm dos assentos do snapshot");
+  assert.equal(c.contas, 3, "faixa do form vale o piso (o closer sobe na call), não os assentos da fórmula");
+  assert.equal(c.pedidos, 0, "o form não pergunta pedidos/mês: em branco pra call");
+  assert.equal(c.ticket, 0, "o form não pergunta ticket médio: em branco pra call");
+  assert.equal(c.vistaPct, 0, "desconto à vista é decisão da call, não default");
   assert.equal(c.linha, "oem");
   assert.equal(c.tier, "escala");
   assert.equal(c.periodo, "anual", "a apresentação abre no anual");
+  assert.equal(deckConfig({ ...p, data: { ...p.data, answers: { accounts: "2" } } }).contas, 2, "resposta exata vale como está");
+  assert.equal(deckConfig({ ...p, data: { ...p.data, answers: { accounts: "10+" } } }).contas, 10);
+  assert.equal(deckConfig({ ...p, data: { ...p.data, answers: {} } }).contas, 0, "sem resposta, em branco (não 2)");
+  // O que o closer salvou na tela zero vence o form.
+  assert.equal(deckConfig({ ...p, state: { deckC: { contas: 7, pedidos: 900, ticket: 85, vistaPct: 10 } } }).contas, 7);
+  assert.equal(deckConfig({ ...p, state: { deckC: { pedidos: 900, ticket: 85 } } }).ticket, 85);
   // Lixo não entra: enum inválido cai no padrão e número vira número.
   const sujo = deckConfig({ state: { deckC: { linha: "hack", tier: "ouro", contas: "-3", vistaPct: 999, periodo: "mensal" } } }, { suggested: "ads_essencial" });
   assert.equal(sujo.linha, "ads");
   assert.equal(sujo.tier, "essencial");
-  assert.equal(sujo.contas, 2);
+  assert.equal(sujo.contas, 0);
   assert.equal(sujo.vistaPct, 90, "desconto à vista tem teto");
   assert.equal(sujo.periodo, "anual");
+});
+
+test("sem template escolhido, o lead ganha a apresentação em slides (é o publicado)", async () => {
+  // A e B já existem quando a migração roda em produção: a Starter entra antes.
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [{ stage: "Inbox" }] });
+  await repo.create("proposal_templates", JSON.parse(JSON.stringify(TEMPLATE)));
+  await repo.create("proposal_templates", { id: "pt_leverads_starter", saas: "leverads", name: "Starter", status: "draft", selectable: true, slides: [] });
+  await ensureProposalCatalog(repo);
+  await ensureSlidesDeck(repo);
+  const lead = await repo.create("leads", { id: "ld_auto", saas: "leverads", name: "Bia Lima", accounts: "6-10", niche: "moda" });
+  const r = await runNativeProposal(repo, lead, { baseUrl: "http://x" });
+  assert.equal(r.ok, true);
+  assert.equal(r.proposal.template, "pt_leverads_slides");
+  assert.equal(r.proposal.layout, "slides");
+  const cfg = deckConfig(r.proposal);
+  assert.equal(cfg.nome, "Bia");
+  assert.equal(cfg.contas, 6, "contas do form");
+  assert.equal(cfg.ticket, 0);
+  // A e B não aparecem mais como opção (selectable) nem como padrão.
+  const b = await repo.get("proposal_templates", "pt_leverads_starter");
+  assert.equal(b.selectable, false);
+  assert.match(b.name, /^\[ARQUIVO/);
 });
 
 test("rota: o closer recebe a tela zero e a tabela; o cliente recebe só os números", async () => {
@@ -231,6 +348,7 @@ test("o link do cliente do deck de slides existe e vai com o preço congelado", 
   assert.equal(filho.layout, "slides");
   assert.equal(filho.editKey, "", "link do cliente nunca abre a tela zero");
   assert.equal(filho.state.deckOferta.mensalFmt, "999", "oferta congelada no snapshot");
+  assert.equal(filho.state.deckOferta.mostra.pratica, true, "com ticket e pedidos, o slide 'Na prática' vai");
   assert.equal(filho.calc.catalog, undefined, "a tabela de preço não viaja no link do cliente");
 
   // Preço novo no catálogo não mexe no que o cliente já recebeu.
@@ -247,4 +365,47 @@ test("o link do cliente do deck de slides existe e vai com o preço congelado", 
   const nada = await shareProposalOffer(repo, semPlano, 1, { baseUrl: "http://x" });
   assert.equal(nada.ok, false);
   assert.match(nada.error, /monte o plano/);
+});
+
+test("leads abertos com o deck antigo ganham a apresentação em slides; fechado, aceito, fixado e mentoria ficam", async () => {
+  const repo = makeMemRepo();
+  const funnel = [{ stage: "Novo lead" }, { stage: "Qualificando" }, { stage: "Follow-up" }, { stage: "Ganho", kind: "ganho" }, { stage: "Integração", kind: "integracao" }, { stage: "Desqualificado", kind: "desqualificado" }];
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel });
+  await repo.create("proposal_templates", JSON.parse(JSON.stringify(TEMPLATE)));
+  await repo.create("proposal_templates", { id: "pt_leverads_starter", saas: "leverads", name: "Starter", status: "draft", selectable: true, slides: [] });
+  await ensureProposalCatalog(repo);
+  // Antes da promoção: cada lead nasce com o deck A ou B, como em produção.
+  const mk = async (id, stage, extra = {}, template = "pt_leverads") => {
+    const lead = await repo.create("leads", { id, saas: "leverads", name: id, stage, accounts: "3-5", ...extra });
+    const r = await runNativeProposal(repo, lead, { baseUrl: "https://levermoney.com.br", template });
+    assert.equal(r.ok, true);
+    return r.lead;
+  };
+  await mk("ld_qual", "Qualificando");
+  await mk("ld_fup", "Follow-up", {}, "pt_leverads_starter");
+  await mk("ld_ganho", "Ganho", { wonAt: "2026-09-01T12:00:00.000Z" });
+  await mk("ld_desq", "Desqualificado");
+  await mk("ld_integ", "Integração");
+  const fixado = await mk("ld_fix", "Qualificando", { proposalPinned: true });
+  const aceito = await mk("ld_aceito", "Qualificando");
+  await repo.update("proposals", aceito.proposta_id, { accepted: true });
+  const antes = Object.fromEntries((await repo.list("leads")).map((l) => [l.id, l.proposta_id]));
+
+  await ensureSlidesDeck(repo);
+  const n = await regenerateOpenLeadsToSlides(repo);
+  assert.equal(n, 2, "só os dois abertos com A/B");
+  const depois = Object.fromEntries((await repo.list("leads")).map((l) => [l.id, l]));
+  for (const id of ["ld_qual", "ld_fup"]) {
+    assert.notEqual(depois[id].proposta_id, antes[id], id + " aponta pra proposta nova");
+    const p = await repo.get("proposals", depois[id].proposta_id);
+    assert.equal(p.layout, "slides");
+    assert.equal(p.template, "pt_leverads_slides");
+    assert.match(depois[id].proposal_edit_url, /^https:\/\/levermoney\.com\.br\/p\/pr_[a-z0-9]+\?k=/, "base vem dos links que já existem");
+    assert.ok(await repo.get("proposals", antes[id]), "o link antigo continua de pé pra quem já recebeu");
+  }
+  for (const id of ["ld_ganho", "ld_desq", "ld_integ", "ld_fix", "ld_aceito"]) {
+    assert.equal(depois[id].proposta_id, antes[id], id + " não mexe");
+  }
+  assert.equal(fixado.proposalPinned, true);
+  assert.equal(await regenerateOpenLeadsToSlides(repo), 0, "segunda passada não tem o que fazer");
 });

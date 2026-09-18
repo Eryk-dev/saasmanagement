@@ -8,7 +8,7 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { pickForm, bucketFor, seedFrom, readAbCookie, abCookieHeader, FORM_AB_FLAG } = await import("../src/form-ab.js");
 const { FORMS_V2, FORM_IDS, formV2 } = await import("../src/forms-v2.leverads.js");
-const { ensureFormsV2 } = await import("../src/migrations.js");
+const { ensureFormsV2, ensureFormsV2FullRouting } = await import("../src/migrations.js");
 const { validateAnswers, publicForm } = await import("../src/forms.js");
 const { QUESTION_TYPES } = await import("../src/forms.js");
 
@@ -65,6 +65,25 @@ test("sem semente estável não sorteia — vai pro controle", () => {
   assert.equal(seedFrom({}), "");
   assert.equal(seedFrom({ fbclid: "xyz" }), "xyz");
   assert.equal(seedFrom({ cookie: "antigo", fbclid: "novo" }), "antigo", "cookie tem que vencer o fbclid");
+});
+
+test("adoção de 100% não depende de cookie nem fbclid e respeita as três linhas", () => {
+  const cfg = { ...CFG, pct: 100, byPain: { OEM: FORM_IDS.oem, ADS: FORM_IDS.ads, PRICE: FORM_IDS.price } };
+  for (const [pain, expected] of [["OEM", FORM_IDS.oem], ["ADS", FORM_IDS.ads], ["PRICE", FORM_IDS.price], ["", FORM_IDS.ads]]) {
+    for (const seed of ["", "visitante-controle", "outro-clique"]) {
+      assert.equal(pickForm({ cfg, pain, seed, currentId: CONTROLE }), expected);
+    }
+  }
+});
+
+test("adoção integral corrige link novo com origem conhecida, mas preserva link direto sem origem", () => {
+  const cfg = { ...CFG, pct: 100, byPain: { OEM: FORM_IDS.oem, ADS: FORM_IDS.ads, PRICE: FORM_IDS.price } };
+  assert.equal(pickForm({ cfg, pain: "OEM", currentId: FORM_IDS.ads }), FORM_IDS.oem);
+  assert.equal(pickForm({ cfg, pain: "PRICE", currentId: FORM_IDS.oem }), FORM_IDS.price);
+  for (const currentId of Object.values(FORM_IDS)) {
+    assert.equal(pickForm({ cfg, pain: "", currentId }), null);
+  }
+  assert.equal(pickForm({ cfg, pain: "OEM", currentId: "outro-formulario" }), null);
 });
 
 test("quem já está numa variante não é re-sorteado no meio do preenchimento", () => {
@@ -142,6 +161,28 @@ test("migração cria tudo em rascunho e com o split desligado", async () => {
 
   // idempotente
   assert.equal(await ensureFormsV2(repo), 0);
+});
+
+test("rollout integral só ativa com os três formulários publicados e preserva ajustes posteriores", async () => {
+  const repo = makeMemRepo();
+  await ensureFormsV2(repo);
+  assert.equal(await ensureFormsV2FullRouting(repo), false);
+  assert.equal((await repo.get("app_config", FORM_AB_FLAG)).enabled, false);
+  for (const id of Object.values(FORM_IDS)) await repo.update("forms", id, { status: "published" });
+  await repo.update("forms", FORM_IDS.price, { saas: "outro" });
+  assert.equal(await ensureFormsV2FullRouting(repo), false);
+  await repo.update("forms", FORM_IDS.price, { saas: "leverads" });
+  assert.equal(await ensureFormsV2FullRouting(repo), true);
+  const cfg = await repo.get("app_config", FORM_AB_FLAG);
+  assert.equal(cfg.pct, 100);
+  assert.equal(cfg.enabled, true);
+  for (const [pain, id] of [["OEM", FORM_IDS.oem], ["ADS", FORM_IDS.ads], ["PRICE", FORM_IDS.price], ["A", FORM_IDS.ads]]) {
+    assert.equal(pickForm({ cfg, pain, currentId: CONTROLE }), id);
+  }
+  await repo.update("app_config", FORM_AB_FLAG, { pct: 40, enabled: false });
+  assert.equal(await ensureFormsV2FullRouting(repo), false);
+  assert.equal((await repo.get("app_config", FORM_AB_FLAG)).pct, 40);
+  assert.equal((await repo.get("app_config", FORM_AB_FLAG)).enabled, false);
 });
 
 test("as opções de faixa batem com o que a classificação sabe ler", async () => {

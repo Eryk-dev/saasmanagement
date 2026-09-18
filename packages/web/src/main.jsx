@@ -1,7 +1,8 @@
-// Boot sequence: load tokens, install fmt on window, fetch the full dataset from
-// the API into window.SEED, THEN dynamically import the app. The dynamic import
-// guarantees every (faithful) component module evaluates after window.SEED/window.fmt
-// exist — so modules that read window.SEED at import time keep working unchanged.
+// Boot sequence: load tokens, install fmt on window, then fetch the dataset into
+// window.SEED AND download the app chunk in parallel (17/09/2026: esperar o
+// bootstrap pra só então pedir o app.js custava um round-trip inteiro a mais).
+// The App only renders after both settle, so components still find SEED — but
+// NO module may read window.SEED at import time (only inside functions).
 //
 // Auth: if the API answers 401, we show a small unlock screen. The entered key is
 // stored (localStorage) and every request carries it from then on.
@@ -12,7 +13,7 @@ import { createRoot } from "react-dom/client";
 import { fmt } from "./lib/format.js";
 import { loadSeed } from "./data.jsx";
 import { api, setKey } from "./lib/api.js";
-import { ErrorBoundary } from "./components/error-boundary.jsx";
+import { AppStartup } from "./components/screen-loading.jsx";
 
 // O cockpit NÃO usa service worker. Um SW zumbi (registrado por site que morou
 // no domínio antes) intercepta a navegação e serve um shell velho do cache pra
@@ -42,17 +43,14 @@ function Shell({ children }) {
   );
 }
 
-function Loading({ error }) {
-  return (
-    <Shell>
-      {error
-        ? <div style={{ fontSize: 12, color: "var(--neg)", maxWidth: 420, textAlign: "center" }}>
-            Could not reach the API.<br />Is it running on the configured base? <br />
-            <span className="mono" style={{ fontSize: 11 }}>{String(error.message || error)}</span>
-          </div>
-        : <div style={{ fontSize: 12 }}>loading portfolio…</div>}
-    </Shell>
-  );
+function StartupError({ error }) {
+  if (error?.status === 401) return <Login />;
+  return <Shell>
+    <div role="alert" style={{ maxWidth: 360, padding: 20, textAlign: "center", fontSize: 13 }}>
+      Não foi possível carregar o cockpit. Tente novamente em instantes.
+    </div>
+    <button type="button" onClick={() => location.reload()} style={{ padding: "10px 16px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)" }}>Tentar novamente</button>
+  </Shell>;
 }
 
 // Login do time (substitui a tela de chave). O token de sessão vai pro mesmo
@@ -102,20 +100,10 @@ function Login() {
   );
 }
 
-async function boot() {
-  try {
-    await loadSeed();
-    const { App } = await import("./app.jsx");
-    // Rede de segurança final: se algo na árvore quebrar sem ser contido por uma
-    // fronteira mais interna, mostra um cartão em vez da tela branca.
-    root.render(<ErrorBoundary label="app"><App /></ErrorBoundary>);
-  } catch (err) {
-    if (err && err.status === 401) { root.render(<Login />); return; }
-    console.error(err);
-    root.render(<Loading error={err} />);
-  }
+async function loadApp() {
+  const [, { App }] = await Promise.all([loadSeed(), import("./app.jsx")]);
+  return App;
 }
 
 window.fmt = fmt;
-root.render(<Loading />);
-boot();
+root.render(<AppStartup loadApp={loadApp} renderError={(error) => <StartupError error={error} />} />);

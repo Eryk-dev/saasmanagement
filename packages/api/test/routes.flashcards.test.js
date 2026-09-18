@@ -164,7 +164,11 @@ test("team: contadores por pessoa, respeitando escopo de produto do usuário", a
   const t = (await app.inject({ method: "GET", url: "/api/flashcards/leverads/team" })).json();
   assert.ok(!t.users.some((u) => u.id === "zoe")); // zoe é do produto "outro"
   const ana = t.users.find((u) => u.id === "ana");
-  assert.equal(ana.deckSize, 606);     // gerais (3 × 150) + SDR (150); os 2 cloze do Negócio somam 6 entries extras
+  // gerais (3 × 150) + vaga (150), contando cada índice de cloze como uma entry.
+  const entriesOf = (roles) => FLASHCARD_DEFAULTS.leverads.filter((c) => roles.has(c.role))
+    .reduce((n, c) => n + (c.type === "cloze" ? Math.max(1, new Set([...c.front.matchAll(/\{\{c(\d+)::/g)].map((m) => m[1])).size) : 1), 0);
+  const GENERAL = ["geral_negocio", "geral_marketplace", "geral_vendas"];
+  assert.equal(ana.deckSize, entriesOf(new Set([...GENERAL, "sdr"])));
   assert.equal(ana.seen, 2);
   assert.equal(ana.dueToday, 2);       // os dois voltam ainda hoje (learning)
   assert.equal(ana.doneToday, 2);
@@ -172,7 +176,7 @@ test("team: contadores por pessoa, respeitando escopo de produto do usuário", a
   assert.equal(ana.again7dPct, 50);    // 1 Errei em 2
   const bob = t.users.find((u) => u.id === "bob");
   assert.equal(bob.doneToday, 0);
-  assert.equal(bob.deckSize, 606);     // gerais (3 × 150) + closer (150), com as entries extras dos cloze
+  assert.equal(bob.deckSize, entriesOf(new Set([...GENERAL, "closer"])));
 });
 
 test("stats: revisões por dia, streak atual e melhor sequência do usuário logado", async () => {
@@ -525,6 +529,77 @@ test("defaults: ids únicos, roles válidos, limites de tamanho e zero travessã
     assert.ok(c.back.length <= 1200, `back além do sanitize em ${c.id} (${c.back.length})`);
     assert.ok(!/[—–]/.test(c.front + c.back), `travessão/meia-risca em ${c.id}`);
   }
+});
+
+// Catálogo v2 + call otimizada (16/09/2026): nenhum card ensina o modelo velho
+// (FULL/Parcial/recorrente/trial/12x 599) e "clonar" só vive no integrator
+// (mecânica interna) e nos 3 meta-cards que falam DA regra de não dizer clonar.
+test("defaults: vocabulário aposentado fora e clonagem só no integrator", async () => {
+  const { LEVERADS_V2 } = await import("../src/flashcard-decks.leverads.js");
+  const cards = FLASHCARD_DEFAULTS.leverads;
+  // Nomes de plano em caixa alta são case-sensitive: "Mercado Envios Full" e o
+  // "clone" mecânico do integrator são legítimos.
+  const RETIRED_CS = /LeverAds FULL|\bFULL\b|\+OEM|\bParcial\b|CLONE\+OEM|\bCLONE\b/;
+  const RETIRED_CI = /12x (de )?(599|349|189)|clonar 10|10 anúncios|10 dos (seus|teus) melhores|Shift\+2|499\/m[êe]s|7\.188|8\.976|4\.536|\btrial\b|teste gr[áa]tis|10% (de )?desconto|garantia de 100%|devolvemos/i;
+  const RETIRED_RX = { test: (t) => RETIRED_CS.test(t) || RETIRED_CI.test(t), hit: (t) => (t.match(RETIRED_CS) || t.match(RETIRED_CI))?.[0] };
+  const CLONE_OK = new Set(["ger_v_147", "soc_127", "soc_128"]);
+  for (const c of cards) {
+    const text = `${c.front} ${c.back}`;
+    assert.ok(!RETIRED_RX.test(text), `vocabulário aposentado em ${c.id}: ${RETIRED_RX.hit(text)}`);
+    if (c.role !== "integrator" && !CLONE_OK.has(c.id)) assert.ok(!/\bclon/i.test(text), `"clonar" fora do integrator em ${c.id}`);
+  }
+  // Menções mínimas do modelo novo, por baralho.
+  const byRole = (role, rx) => cards.filter((c) => c.role === role && rx.test(`${c.front} ${c.back}`)).length;
+  assert.ok(byRole("geral_negocio", /Lever Price/) >= 2 && byRole("closer", /Lever Price/) >= 2, "Price presente");
+  assert.ok(byRole("closer", /Diagnóstico Inicial/) >= 1, "passo 3 da call presente");
+  assert.ok(byRole("sdr", /4 passos|Pergunta de intenção|pergunta de intenção/) >= 2, "robô em 4 passos presente");
+  // A lista da rodada bate com os defaults: reescritos/novos existem, retirados não.
+  const ids = new Set(cards.map((c) => c.id));
+  for (const id of [...LEVERADS_V2.rewritten, ...LEVERADS_V2.added]) assert.ok(ids.has(id), `LEVERADS_V2 cita id inexistente: ${id}`);
+  for (const id of LEVERADS_V2.retired) assert.ok(!ids.has(id), `card retirado ainda na base: ${id}`);
+  assert.ok(ids.has("ger_n_1"), "ger_n_1 é referência do blog e fica");
+});
+
+test("migração 16/09: doc salvo recebe os cards reescritos, perde os retirados e ganha os novos; dono e imagem preservados", async () => {
+  const { migrateFlashcardsCatalogV2 } = await import("../src/migrations.js");
+  const { LEVERADS_V2 } = await import("../src/flashcard-decks.leverads.js");
+  const { repo } = await buildApp();
+  assert.equal(await migrateFlashcardsCatalogV2(repo), 0, "sem doc = no-op");
+  const rew = LEVERADS_V2.rewritten[0], ret = LEVERADS_V2.retired[0], add = LEVERADS_V2.added[0];
+  const fresh = FLASHCARD_DEFAULTS.leverads.find((c) => c.id === rew);
+  await repo.create("flashcards", { id: "leverads", cards: [
+    { id: rew, role: fresh.role, type: "basic", front: "Texto velho", back: "Plano FULL 12x 599", image: "img_1" },
+    { id: ret, role: "closer", front: "Retirado", back: "Ensina Parcial" },
+    { id: "clo_999", role: "closer", front: "Do dono", back: "Card criado pela tela, fica igual." },
+  ] });
+  assert.equal(await migrateFlashcardsCatalogV2(repo), 2 + LEVERADS_V2.added.length, "1 reescrito + 1 retirado + todos os novos");
+  const doc = await repo.get("flashcards", "leverads");
+  const by = Object.fromEntries(doc.cards.map((c) => [c.id, c]));
+  assert.equal(by[rew].back, fresh.back, "reescrito recebe o texto novo");
+  assert.equal(by[rew].image, "img_1", "imagem do dono fica");
+  assert.equal(by[ret], undefined, "retirado sai");
+  assert.equal(by.clo_999.back, "Card criado pela tela, fica igual.");
+  assert.ok(by[add], "novo entra");
+  assert.equal(doc.cards.length, 2 + LEVERADS_V2.added.length);
+  assert.equal(await migrateFlashcardsCatalogV2(repo), 0, "idempotente");
+});
+
+test("migração 16/09: estado FSRS dos cards que mudaram de resposta é zerado só no leverads", async () => {
+  const { migrateTrainingStatesCatalogV2 } = await import("../src/migrations.js");
+  const { LEVERADS_V2 } = await import("../src/flashcard-decks.leverads.js");
+  const { repo } = await buildApp();
+  const rew = LEVERADS_V2.rewritten[0], ret = LEVERADS_V2.retired[0];
+  await repo.create("training_states", { id: "leverads__ana", saas: "leverads", user: "ana",
+    cards: { [rew]: { s: 1 }, [`${ret}::c1`]: { s: 1 }, sdr_5: { s: 1 } }, gradPool: [rew, "sdr_5"], newDone: { "2026-09-16": { sdr: 3 } } });
+  await repo.create("training_states", { id: "outro__zoe", saas: "outro", user: "zoe", cards: { [rew]: { s: 1 } } });
+  assert.equal(await migrateTrainingStatesCatalogV2(repo), 1);
+  const ana = await repo.get("training_states", "leverads__ana");
+  assert.deepEqual(Object.keys(ana.cards), ["sdr_5"]);
+  assert.deepEqual(ana.gradPool, ["sdr_5"]);
+  assert.deepEqual(ana.newDone, { "2026-09-16": { sdr: 3 } }, "contagem do dia não muda");
+  assert.deepEqual(Object.keys((await repo.get("training_states", "outro__zoe")).cards), [rew], "outro produto intacto");
+  assert.equal((await repo.get("products", "leverads")).flashcardsCatalogV2RelearnV1, true);
+  assert.equal(await migrateTrainingStatesCatalogV2(repo), 0, "idempotente");
 });
 
 // O card "Sua memória" e o "Próxima prova" da aba Estudar: o aluno via a

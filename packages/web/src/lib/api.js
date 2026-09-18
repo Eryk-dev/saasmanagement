@@ -5,6 +5,8 @@
 // kept in localStorage; every request carries it as `x-api-key`. VITE_API_KEY is
 // a build-time fallback (mostly for local dev convenience).
 
+import { beginPageRequest } from "./navigation-loading.js";
+
 const BASE = import.meta.env.VITE_API_BASE || "";
 const STORAGE_KEY = "cockpit_key";
 
@@ -25,38 +27,43 @@ function proxyMessage(status) {
 }
 
 async function req(method, path, body) {
-  const headers = {};
-  if (body !== undefined) headers["content-type"] = "application/json";
-  const key = getKey();
-  if (key) headers["x-api-key"] = key;
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    // Erro nosso vem em JSON com `error`. Quando não vem, quem respondeu foi o
-    // proxy com uma página HTML inteira — despejar isso na tela (já aconteceu)
-    // esconde o problema em vez de mostrar.
-    let msg = "";
-    try {
-      const body = JSON.parse(text);
-      msg = body.error || "";
-      // `detail` é o motivo que o serviço externo deu (ex.: o que o Mercado Pago
-      // respondeu). Sem ele a tela dizia só "MP recusou a criação do link" e
-      // ninguém sabia o que consertar.
-      if (msg && body.detail) msg += ` · ${String(body.detail).slice(0, 220)}`;
-    } catch { /* HTML do proxy */ }
-    const err = new Error(msg || proxyMessage(res.status));
-    err.status = res.status;
-    err.path = path;
-    // Corpo inteiro pra quem precisa de mais que a mensagem (ex.: o blog devolve
-    // a lista do lint junto com a 422).
-    try { err.body = JSON.parse(text); } catch { err.body = null; }
-    throw err;
+  const finish = beginPageRequest(method);
+  try {
+    const headers = {};
+    if (body !== undefined) headers["content-type"] = "application/json";
+    const key = getKey();
+    if (key) headers["x-api-key"] = key;
+    const res = await fetch(`${BASE}${path}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      // Erro nosso vem em JSON com `error`. Quando não vem, quem respondeu foi o
+      // proxy com uma página HTML inteira — despejar isso na tela (já aconteceu)
+      // esconde o problema em vez de mostrar.
+      let msg = "";
+      try {
+        const body = JSON.parse(text);
+        msg = body.error || "";
+        // `detail` é o motivo que o serviço externo deu (ex.: o que o Mercado Pago
+        // respondeu). Sem ele a tela dizia só "MP recusou a criação do link" e
+        // ninguém sabia o que consertar.
+        if (msg && body.detail) msg += ` · ${String(body.detail).slice(0, 220)}`;
+      } catch { /* HTML do proxy */ }
+      const err = new Error(msg || proxyMessage(res.status));
+      err.status = res.status;
+      err.path = path;
+      // Corpo inteiro pra quem precisa de mais que a mensagem (ex.: o blog devolve
+      // a lista do lint junto com a 422).
+      try { err.body = JSON.parse(text); } catch { err.body = null; }
+      throw err;
+    }
+    return res.status === 204 ? null : await res.json();
+  } finally {
+    finish();
   }
-  return res.status === 204 ? null : res.json();
 }
 
 // POST multipart (vídeo/áudio/imagem) via XHR — não é preciosismo: fetch não
@@ -171,6 +178,16 @@ export const api = {
     if (since) q.set("since", since);
     if (until) q.set("until", until);
     return req("GET", `/api/forms/${id}/funnel${q.toString() ? `?${q}` : ""}`);
+  },
+  // Lista de forms do produto + contagem de respostas por form + 6 recentes,
+  // numa ida só (antes baixava todas as respostas pra isso).
+  formsOverview: (saas) => req("GET", `/api/forms/overview?saas=${encodeURIComponent(saas)}`),
+  // Funil de todos os forms publicados do produto na janela: { [formId]: funnel }.
+  formFunnels: (saas, { since, until } = {}) => {
+    const q = new URLSearchParams({ saas });
+    if (since) q.set("since", since);
+    if (until) q.set("until", until);
+    return req("GET", `/api/forms/funnels?${q}`);
   },
   // Gerenciamento de campanha Meta (status/orçamento direto do cockpit).
   metaAdsets: (campaignId) => req("GET", `/api/marketing/campaigns/${campaignId}/adsets`),
@@ -490,6 +507,7 @@ export const api = {
   payInvoice: (id) => req("POST", `/api/invoices/${id}/pay`),
   // Dinheiro real recebido por cliente ({ customerId: total }) — Status pgto.
   billingReceived: (saas) => req("GET", `/api/billing/received/${encodeURIComponent(saas)}`),
+  billingCash: (saas, { since, until }) => req("GET", `/api/billing/cash/${encodeURIComponent(saas)}?${new URLSearchParams({ since, until })}`),
   unpayInvoice: (id) => req("POST", `/api/invoices/${id}/unpay`),
   runBilling: () => req("POST", "/api/billing/run", {}),
   // Mercado Pago: devolve o link de autorização de uma assinatura ANTIGA

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   closerPools, slotsForLead, occupyCells, addBusinessDaysNaive, slotLabel, slotLabelFull, wallFromNaive, spreadPair, OFFER_HOURS,
-  OFFER_HORIZON_DAYS,
+  OFFER_HORIZON_DAYS, toNaiveBrt,
 } from "../src/agenda-slots.js";
 
 // Quarta-feira 19/08/2026, 8h da manhã no relógio de Brasília (ver
@@ -284,4 +284,22 @@ test("janela de oferta do robô bloqueia o almoço (12h-13h) e o par sugerido te
   // Sem opção espaçada, cai no adjacente.
   const apertado = spreadPair([{ at: "2026-08-19T09:00" }, { at: "2026-08-19T09:30" }]);
   assert.equal(apertado[1].at, "2026-08-19T09:30");
+});
+
+
+test("callAt em ISO com fuso (…Z) é lido no relógio BRT: rótulo, forma canônica e ocupação da agenda", async () => {
+  // Caso Renan (16/09): "2026-09-16T13:00:00.000Z" é 10h em Brasília, não 13h.
+  assert.equal(slotLabel("2026-09-16T13:00:00.000Z", wallFromNaive("2026-09-16T08:00")), "hoje às 10h");
+  assert.equal(slotLabelFull("2026-09-16T13:00:00.000Z", wallFromNaive("2026-09-16T08:00")), "hoje (16/09) às 10h");
+  assert.equal(toNaiveBrt("2026-09-16T13:00:00.000Z"), "2026-09-16T10:00");
+  assert.equal(toNaiveBrt("2026-09-16T13:00:00-03:00"), "2026-09-16T13:00");
+  assert.equal(toNaiveBrt("2026-09-16T10:00"), "2026-09-16T10:00");
+  assert.equal(toNaiveBrt(""), "");
+  const { repo, fill } = seedRepo({
+    users: [{ id: "pl", roles: ["closer"], compLevel: 2 }],
+    leads: [{ id: "x", saas: "leverads", stage: "Call agendada", closer: "pl", callAt: "2026-08-19T13:00:00.000Z" }],
+  });
+  await fill();
+  const { slots } = await slotsForLead(repo, { lead: { id: "L", accounts: "3-5", listings: "1000-5000" }, saas: "leverads", now: NOW, limit: 3 });
+  assert.ok(!slots.some((s) => s.at === "2026-08-19T10:00"), "10h BRT está ocupado pela call gravada em UTC");
 });

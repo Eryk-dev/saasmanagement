@@ -10,7 +10,8 @@ import { waLink } from "../lib/ui.js";
 import { currentUser } from "../lib/users.js";
 import { stageKind, workableStages } from "../lib/funnel.js";
 import { scriptTokens } from "../lib/scripts.js";
-import { WaHealthBanner } from "./whatsapp.jsx";
+import { WaHealthBanner } from "../components/wa-health-banner.jsx";
+import { useSwr } from "../lib/swr.js";
 
 // Disparos — campanhas de e-mail + WhatsApp pros leads QUALIFICADOS (nutrição /
 // reativação em massa). O operador: (1) escolhe o PÚBLICO por etapa do funil,
@@ -244,15 +245,13 @@ function DisparosScreen({ onOpenLead }) {
   // Passo 3 (13/09): o que o disparo custa e o que o número aguenta hoje, ANTES
   // do botão. O custo médio sai do que a Meta já cobrou no período (insights do
   // inbox), não de um preço inventado; o limite vem do número conectado.
-  const [numInfo, setNumInfo] = useS(null);
-  const [waStats, setWaStats] = useS(null);
-  useE(() => {
-    let vivo = true;
-    setNumInfo(null); setWaStats(null);
-    api.waNumber(product?.id).then((n) => vivo && setNumInfo(n)).catch(() => {});
-    api.waInsights().then((x) => vivo && setWaStats(x)).catch(() => {});
-    return () => { vivo = false; };
-  }, [product?.id]);
+  // Número conectado e insights do WhatsApp com cache no cliente: quem sai e
+  // volta pra tela vê o valor guardado na hora (o servidor também guarda o
+  // número por 10 min, então nem a revalidação bate na Meta). A chave leva o
+  // produto: trocar de workspace não mostra o número do outro.
+  const pid = product?.id || "";
+  const numInfo = useSwr(pid && `wa/number/${pid}`, () => api.waNumber(pid), { ttl: 10 * 60_000 }).data ?? null;
+  const waStats = useSwr(pid && "wa/insights", () => api.waInsights(), { ttl: 60_000 }).data ?? null;
   const limiteDia = Number(String(numInfo?.tier || "").replace(/\D/g, "")) || null;
   const custoMedio = waStats?.costs?.messages > 0 ? Number(waStats.costs.cost) / Number(waStats.costs.messages) : null;
   const messageReady = channel === "email" ? !!camp.email.body : !!camp.wa.text;

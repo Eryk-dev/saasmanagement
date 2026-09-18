@@ -505,7 +505,8 @@ function TeamSettings() {
   const [users, setUsers] = useStS(null);
   const [saving, setSaving] = useStS("");
   const [invite, setInvite] = useStS(null); // { name, password }
-  const [created, setCreated] = useStS(null); // { name, password } do último criado, fica na tela pro Leo copiar
+  const [created, setCreated] = useStS(null); // { name, password, reset? } do último criado/resetado, fica na tela pro Leo copiar
+  const [reset, setReset] = useStS(null); // { user, password }: senha nova sendo definida pra alguém do time
 
   const load = () => api.listUsers().then(setUsers).catch(() => setUsers([]));
   React.useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -577,6 +578,21 @@ function TeamSettings() {
     } catch (e) { alert("não criou: " + e.message); }
   }
 
+  // Resetar a senha de alguém (Leo, 18/09): o PATCH de gestão não pede a senha
+  // atual — é o caminho pra destravar quem esqueceu. Nasce gerada, dá pra
+  // editar antes de salvar; a senha só aparece UMA vez, igual à do convite.
+  async function resetPassword() {
+    if (!reset?.user || String(reset.password || "").length < 4) return;
+    const u = reset.user;
+    setSaving(u.id);
+    try {
+      await api.updateUser(u.id, { password: reset.password });
+      setCreated({ name: u.name || u.id, password: reset.password, reset: true });
+      setReset(null);
+    } catch (e) { alert("não resetou: " + e.message); }
+    setSaving("");
+  }
+
   // Remover usuário. O servidor bloqueia (409) quem ainda é responsável por
   // leads; aí perguntamos se quer forçar (o dono reatribui depois).
   async function removeUser(u) {
@@ -600,8 +616,8 @@ function TeamSettings() {
       {/* .tbl-x: no mobile a grade (colunas fixas ~900px) rola dentro do card
           em vez de estourar a página — mesmo padrão do Funil abaixo. */}
       <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
-       <div style={{ minWidth: 1100 }}>
-        <div className="kicker" style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 96px 140px 120px 130px 44px`, gap: 8, padding: "10px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
+       <div style={{ minWidth: 1140 }}>
+        <div className="kicker" style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 96px 140px 120px 130px 82px`, gap: 8, padding: "10px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
           <span>Usuário</span>
           {ROLE_OPTS.map(([k, l, hint]) => <span key={k} title={hint} style={{ textAlign: "center" }}>{l}</span>)}
           <span title="Nível de carreira (júnior · pleno · sênior): define as metas de contratos e receita de SDR e closer, pelo plano de Remuneração">Nível</span>
@@ -612,7 +628,7 @@ function TeamSettings() {
         </div>
         {users === null && <div className="mono dim" style={{ padding: "12px 14px", fontSize: 12 }}>carregando…</div>}
         {Array.isArray(users) && users.map((u) => (
-          <div key={u.id} style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 96px 140px 120px 130px 44px`, gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
+          <div key={u.id} style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 96px 140px 120px 130px 82px`, gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
             <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 500, minWidth: 0 }}>
               <Avatar id={u.id} name={u.name} size={22} />
               <input defaultValue={u.name || u.id} key={u.name}
@@ -641,16 +657,35 @@ function TeamSettings() {
             </select>
             <ScreensPicker screens={u.screens || []} roles={u.roles || []} onChange={(screens) => setUserScreens(u, screens)} />
             <SupportProductsPicker value={u.supportSaas || []} roles={u.roles || []} products={SAAS} onChange={(list) => setUserSupportSaas(u, list)} />
-            <button onClick={() => removeUser(u)} title={`Remover ${u.name || u.id} do time`}
-              style={{ justifySelf: "center", width: 26, height: 26, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-4)", fontSize: 13, cursor: "pointer" }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--neg)"; e.currentTarget.style.borderColor = "var(--neg)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--fg-4)"; e.currentTarget.style.borderColor = "var(--line-2)"; }}>✕</button>
+            <span style={{ display: "flex", gap: 6, justifyContent: "center" }}>
+              <button type="button" onClick={() => { setCreated(null); setInvite(null); setReset({ user: u, password: genPassword() }); }}
+                title={`Resetar a senha de ${u.name || u.id} (gera uma nova, sem pedir a atual)`}
+                style={{ height: 26, padding: "0 7px", borderRadius: "var(--r-2)", border: "1px solid " + (reset?.user?.id === u.id ? "var(--accent)" : "var(--line-1)"), background: "var(--bg-1)", color: reset?.user?.id === u.id ? "var(--accent)" : "var(--fg-4)", fontSize: 11, cursor: "pointer" }}>senha</button>
+              <button onClick={() => removeUser(u)} title={`Remover ${u.name || u.id} do time`}
+                style={{ width: 26, height: 26, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-4)", fontSize: 13, cursor: "pointer" }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = "var(--neg)"; e.currentTarget.style.borderColor = "var(--neg)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = "var(--fg-4)"; e.currentTarget.style.borderColor = "var(--line-2)"; }}>✕</button>
+            </span>
           </div>
         ))}
        </div>
       </div>
       <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        {invite ? (
+        {reset ? (
+          <>
+            <span style={{ fontSize: 12 }}>senha nova pra <b>{reset.user.name || reset.user.id}</b>:</span>
+            <input value={reset.password} type="text" className="mono" placeholder="Senha (4+)" autoFocus
+              title="Senha gerada automaticamente · pode editar antes de salvar"
+              onChange={(e) => setReset({ ...reset, password: e.target.value })}
+              onKeyDown={(e) => { if (e.key === "Enter") resetPassword(); if (e.key === "Escape") setReset(null); }}
+              style={{ ...inputStyle, width: 130 }} />
+            <button type="button" onClick={() => setReset({ ...reset, password: genPassword() })} title="Gerar outra senha"
+              style={{ width: 26, height: 26, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-4)", fontSize: 13, cursor: "pointer" }}>↻</button>
+            <PrimaryButton onClick={resetPassword} disabled={String(reset.password).length < 4 || saving === reset.user.id}>salvar senha nova</PrimaryButton>
+            <button onClick={() => setReset(null)} className="mono dim" style={{ fontSize: 11 }}>cancelar</button>
+            <span className="mono dim" style={{ fontSize: 11 }}>a senha atual deixa de valer na hora</span>
+          </>
+        ) : invite ? (
           <>
             <input value={invite.name} placeholder="Nome" onChange={(e) => setInvite({ ...invite, name: e.target.value })} style={{ ...inputStyle, width: 160 }} />
             <input value={invite.password} type="text" className="mono" placeholder="Senha (4+)"
@@ -662,19 +697,19 @@ function TeamSettings() {
             <button onClick={() => setInvite(null)} className="mono dim" style={{ fontSize: 11 }}>cancelar</button>
           </>
         ) : (
-          <button type="button" onClick={() => { setCreated(null); setInvite({ name: "", password: genPassword() }); }} style={{ ...chromeBtnStyleSmall }}>
+          <button type="button" onClick={() => { setCreated(null); setReset(null); setInvite({ name: "", password: genPassword() }); }} style={{ ...chromeBtnStyleSmall }}>
             <span style={{ fontSize: 11 }}>+ usuário do time</span>
           </button>
         )}
         {created && (
           <span style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", fontSize: 12 }}>
-            <span>✓ <b>{created.name}</b> no time · senha: <b className="mono code">{created.password}</b> · anote e passe pro responsável (não aparece de novo)</span>
+            <span>✓ <b>{created.name}</b> {created.reset ? "com senha nova" : "no time"} · senha: <b className="mono code">{created.password}</b> · anote e passe pro responsável (não aparece de novo)</span>
             <button type="button" className="mono" style={{ fontSize: 11, cursor: "pointer" }}
               onClick={() => { try { navigator.clipboard.writeText(created.password); window.toast && window.toast("Senha copiada", "pos"); } catch { window.prompt("Senha:", created.password); } }}>copiar</button>
             <button type="button" className="mono dim" style={{ fontSize: 11, cursor: "pointer" }} title="Fechar (a senha some da tela)" onClick={() => setCreated(null)}>✕</button>
           </span>
         )}
-        <span className="mono dim" style={{ fontSize: 11 }}>papéis salvam ao clicar · senha troca em Ajustes do usuário (ou peça pro admin resetar)</span>
+        {!reset && <span className="mono dim" style={{ fontSize: 11 }}>papéis salvam ao clicar · cada um troca a própria senha em Meu perfil · "senha" na linha reseta sem pedir a atual</span>}
       </div>
     </div>
   );

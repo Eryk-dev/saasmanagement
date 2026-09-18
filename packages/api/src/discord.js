@@ -173,9 +173,9 @@ export function makeDiscord({ fetch: f = globalThis.fetch, webhookUrl = "" } = {
 
     // Formulário de integração respondido pelo cliente recém-fechado: o
     // integrador pode preparar a call sem esperar ninguém avisar.
-    integrationFormFilled({ customerName, productName, summary, url } = {}) {
+    integrationFormFilled({ formLabel, customerName, productName, summary, url } = {}) {
       return send({
-        title: `📋 Formulário de integração respondido: ${customerName || "cliente"}`,
+        title: `📋 ${formLabel || "Formulário de integração"} respondido: ${customerName || "cliente"}`,
         color: COLORS.blue,
         fields: [
           { name: "SaaS", value: productName },

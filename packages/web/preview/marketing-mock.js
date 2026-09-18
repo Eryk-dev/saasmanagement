@@ -24,7 +24,7 @@ let posts = ['rascunho', 'rascunho', 'pauta', 'agendado', 'publicado'].map((stat
 }));
 const postById = (id) => { const p = posts.find((p) => p.id === id); if (!p) throw new Error('Post não encontrado na prévia'); return p; };
 const state = { lastTickAt: ago(), lastMineAt: ago(1), lastDraftAt: ago(), lastPublishAt: ago(3) };
-const funnel = { views: 1200, starts: 780, submits: 168, leads: 168, won: 6, revenue: 19800, lastSubmitAt: ago(), questions: [], sources: [], daily: [],
+const funnel = { views: 1200, starts: 780, submits: 168, leads: 168, callsShown: 30, won: 6, revenue: 19800, lastSubmitAt: ago(), questions: [], sources: [], daily: [],
   variants: [{ id: 'A', views: 600, starts: 420, submits: 96, leads: 96, calls: 28, won: 4, revenue: 13200, grades: { A: 30, B: 42, C: 24 } }, { id: 'B', views: 600, starts: 360, submits: 72, leads: 72, calls: 18, won: 2, revenue: 6600, grades: { A: 20, B: 30, C: 22 } }] };
 const demo = { genders: [{ key: 'M', value: 640 }, { key: 'F', value: 360 }], ages: [{ key: '25-34', value: 550 }, { key: '35-44', value: 450 }], cities: [{ key: 'São Paulo', value: 430 }, { key: 'Curitiba', value: 260 }, { key: 'Rio de Janeiro', value: 180 }], countries: [{ key: 'BR', value: 950 }, { key: 'PT', value: 50 }] };
 let creatives = 3;

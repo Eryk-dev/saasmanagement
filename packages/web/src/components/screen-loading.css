@@ -1,0 +1,24 @@
+.screen-transition { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 0; isolation: isolate; }
+.screen-transition__content { flex: 1; display: flex; flex-direction: column; min-height: 0; opacity: 0; visibility: hidden; }
+.screen-transition__content[data-ready="true"] { opacity: 1; visibility: visible; animation: screen-content-in .24s ease both; }
+.screen-splash { --splash-exit: .45s; position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; background: var(--bg-0); color: var(--fg-1); }
+.screen-splash--fullscreen { position: fixed; z-index: 9999; }
+.screen-splash__mark { display: block; animation: screen-mark-in .65s cubic-bezier(.2,.75,.25,1) both; }
+.screen-splash__orbit { stroke: var(--accent); animation: screen-orbit .8s linear infinite, screen-ring-in .7s ease-out both; }
+.screen-splash--compact { --splash-exit: .18s; }
+.screen-splash--compact .screen-splash__mark { animation-duration: .18s; }
+.screen-splash--leaving { pointer-events: none; animation: screen-splash-out var(--splash-exit) ease both; }
+.screen-splash--leaving .screen-splash__mark { animation: screen-mark-out var(--splash-exit) cubic-bezier(.45,0,.9,.6) both; }
+.screen-splash__slow { position: absolute; top: calc(50% + 90px); left: 20px; right: 20px; text-align: center; font: 13px/1.5 var(--sans); color: var(--fg-3); }
+.screen-splash__slow p { margin: 0 0 12px; }
+.screen-splash__slow button { min-height: 44px; padding: 6px 14px; border: 1px solid var(--line-2); border-radius: var(--r-2); color: var(--fg-1); background: var(--bg-1); cursor: pointer; }
+@keyframes screen-orbit { to { stroke-dashoffset: -2136.3px; } }
+@keyframes screen-ring-in { from { stroke-opacity: 0; } to { stroke-opacity: .8; } }
+@keyframes screen-mark-in { from { opacity: 0; transform: scale(.93); } to { opacity: 1; transform: scale(1); } }
+@keyframes screen-mark-out { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(1.07); } }
+@keyframes screen-splash-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes screen-content-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .screen-transition__content[data-ready="true"], .screen-splash, .screen-splash .screen-splash__mark, .screen-splash__orbit { animation: none; }
+  .screen-splash--leaving { opacity: 0; }
+}

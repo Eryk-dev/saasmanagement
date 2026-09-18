@@ -6,6 +6,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 const { makeAnthropic, BLOG_VOICE, BLOG_PROMPT_VERSION } = await import("../src/anthropic.js");
+// system pode vir como string ou como blocos (cache de prompt, 17/09)
+const sysOf = (b) => (typeof b?.system === "string" ? b.system : (Array.isArray(b?.system) ? b.system.map((x) => x?.text || "").join("\n") : ""));
+
 
 // fetch fake: grava o corpo e responde no formato do provedor escolhido.
 function fakeFetch(parsed, { openrouter = false } = {}) {
@@ -40,12 +43,12 @@ test("blogPautas: prompt leva digest, existentes, categorias e n; schema blog_pa
   });
   assert.equal(r.pautas.length, 1);
   assert.equal(r.pautas[0].keyword, "várias contas mercado livre");
-  assert.deepEqual(r.usage, { input_tokens: 5, output_tokens: 7 });
+  assert.deepEqual(r.usage, { in: 5, out: 7, cacheRead: 0, cacheWrite: 0 });
   const body = calls[0].body;
   assert.equal(body.max_tokens, 16000);
   assert.equal(body.output_config.format.type, "json_schema");
   assert.equal(body.output_config.format.schema.required[0], "pautas");
-  assert.match(body.system, /EDITOR-CHEFE/);
+  assert.match(sysOf(body), /EDITOR-CHEFE/);
   const userMsg = body.messages[0].content;
   assert.match(userMsg, /autopeças 49%/);
   assert.match(userMsg, /Post antigo sobre estoque/);
@@ -84,7 +87,7 @@ test("blogDraft: seções PAUTA/EVIDÊNCIAS/CONHECIMENTO/REGRAS EXTRAS + CTA; sc
     const body = calls[0].body;
     assert.equal(body.max_tokens, 24000);
     const userMsg = openrouter ? body.messages[1].content : body.messages[0].content;
-    const system = openrouter ? body.messages[0].content : body.system;
+    const system = openrouter ? body.messages[0].content : sysOf(body);
     assert.match(system, /REDATOR/);
     for (const sec of ["PAUTA:", "EVIDÊNCIAS:", "CONHECIMENTO:", "REGRAS EXTRAS:"]) assert.ok(userMsg.includes(sec), `falta ${sec}`);
     assert.match(userMsg, /"keyword": "várias contas mercado livre"/);
@@ -114,7 +117,7 @@ test("blogRevise: INSTRUÇÃO + PROBLEMAS DO LINT + ARTIGO ATUAL; schema blog_re
   assert.equal(r.revised.changeNote, "tirei o travessão");
   const body = calls[0].body;
   assert.equal(body.max_tokens, 24000);
-  assert.match(body.system, /REVISOR/);
+  assert.match(sysOf(body), /REVISOR/);
   const userMsg = body.messages[0].content;
   assert.match(userMsg, /INSTRUÇÃO:\ndeixe mais curto/);
   assert.match(userMsg, /- travessao: tem travessão no corpo/);

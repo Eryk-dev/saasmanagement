@@ -160,9 +160,13 @@ function CustomersScreen({ initialTab }) {
   }, [isLeverads]);
 
   useEffect(() => {
-    api.list("subscriptions").then((rows) => setSubs(rows.filter((s) => s.saas === product?.id))).catch(() => {});
-    api.list("plans").then((rows) => setPlans(rows.filter((p) => p.saas === product?.id))).catch(() => {});
-    api.list("invoices").then((rows) => setInvoices(rows.filter((i) => i.saas === product?.id))).catch(() => {});
+    // Filtro por produto NO SERVIDOR (o predicado existe em listFilter): antes
+    // baixava as tabelas inteiras dos 3 produtos pra jogar 2/3 fora aqui.
+    if (!product?.id) return;
+    const q = { saas: product.id };
+    api.list("subscriptions", q).then((rows) => setSubs(rows.filter((s) => s.saas === product?.id))).catch(() => {});
+    api.list("plans", q).then((rows) => setPlans(rows.filter((p) => p.saas === product?.id))).catch(() => {});
+    api.list("invoices", q).then((rows) => setInvoices(rows.filter((i) => i.saas === product?.id))).catch(() => {});
   }, [product?.id, version]);
 
   useEffect(() => {
@@ -605,6 +609,12 @@ function CustomersScreen({ initialTab }) {
 
       {tab === "base" && (
       <div style={{ padding: "16px var(--pad-x) 56px" }}>
+        {customers.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <CustomersAnalysis customers={customers} subs={subs} invoices={invoices} isKids={isKidsWorkspace}
+              gradeDist={isKidsWorkspace ? null : gradeDist} nivelLegend={isKidsWorkspace ? null : <NivelLegend />} />
+          </div>
+        )}
         {customers.length === 0 ? (
           <EmptyState
             title="Nenhum cliente ainda"
@@ -637,9 +647,8 @@ function CustomersScreen({ initialTab }) {
               />
             )}
             {/* ── A faixa de quatro números (prancha, 14/09) ────────────────
-                É o bloco que abre a tela no protótipo: ativos, MRR, quem ainda
-                não terminou a integração e churn. A análise do dinheiro, que é
-                só do repo, desceu pro fim da coluna. */}
+                Resumo operacional da base: ativos, MRR, quem ainda não
+                terminou a integração e churn. */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 20, padding: "20px var(--inset-x)", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
               {(() => {
                 const emIntegracao = activeCustomers.filter((c) => {
@@ -843,10 +852,6 @@ function CustomersScreen({ initialTab }) {
               </div>
             </Card>
 
-            {/* A análise do dinheiro é só do repo: a prancha não tem, então
-                ela desce pro fim da coluna, fora do primeiro olhar. */}
-            <CustomersAnalysis customers={customers} subs={subs} invoices={invoices} isKids={isKidsWorkspace}
-              gradeDist={isKidsWorkspace ? null : gradeDist} nivelLegend={isKidsWorkspace ? null : <NivelLegend />} />
             </div>
 
             {/* ── Trilho direito: cobrar agora → fila → contas grandes ──────── */}

@@ -67,7 +67,7 @@ function levercopyQuery(sql, params = []) {
 const EXCLUDE = String(process.env.LEVERADS_PORTFOLIO_EXCLUDE || "00000000-0000-0000-0000-000000000001")
   .split(",").map((s) => s.trim()).filter(Boolean);
 
-const TTL_MS = 6 * 3_600_000;
+export const RESULTS_TTL_MS = 6 * 3_600_000;
 const MIN_PACE_DAYS = 7;   // <7 dias anualiza um dia bom; o produto usa a mesma régua
 const MINUTES_PER_LISTING = 15;
 
@@ -77,6 +77,7 @@ with p as (select public.dashboard_portfolio($1::uuid[]) as j),
      m as (
        select (org->>'since_gmv')::numeric        as gmv,
               (org->>'since_leverads')::numeric   as lev,
+              greatest((org->>'first_sale')::date, (org->>'covered_from')::date) as inicio,
               (org->>'generated_total')::numeric  as gerado,
               (org->>'listings_created')::int     as anuncios,
               case when (org->>'post_days')::int >= $2
@@ -109,6 +110,9 @@ with p as (select public.dashboard_portfolio($1::uuid[]) as j),
        join public.orgs g on g.id = v.org_id and g.active = true
      )
 select (select count(*) from m)::int                                          as clientes,
+       (select sum(gmv) from m)::float8                                       as gmv_periodo,
+       (select sum(lev) from m)::float8                                       as gerado_periodo,
+       (select min(inicio) from m)::text                                      as inicio_periodo,
        d30.mes::float8                                                        as mes,
        d30.mes_clientes::float8                                               as mes_clientes,
        d30.mes_nosso::float8                                                  as mes_nosso,
@@ -170,7 +174,22 @@ export function resultTokens(row) {
   return out;
 }
 
-let cache = { tokens: null, at: 0 };
+// Resumo do deck C: numerador e denominador vêm da MESMA janela por cliente
+// no dashboard_portfolio. Não dividir o all-time de org_revenue_generated
+// pelo faturamento de uma janela menor. A operação interna fica fora de ambos.
+export function presentationResults(row, updatedAt) {
+  if (row?.gmv_periodo == null || row?.gerado_periodo == null) return null;
+  const gmv = Number(row.gmv_periodo), generated = Number(row.gerado_periodo);
+  if (!(Number(row.clientes) > 0) || !Number.isFinite(gmv) || gmv <= 0
+      || !Number.isFinite(generated) || generated < 0 || generated > gmv) return null;
+  return {
+    gmv, generated, participation: generated / gmv * 100,
+    periodStart: /^\d{4}-\d{2}-\d{2}$/.test(row.inicio_periodo || "") ? row.inicio_periodo : null,
+    updatedAt: new Date(updatedAt).toISOString(),
+  };
+}
+
+let cache = { tokens: null, summary: null, at: 0 };
 let inFlight = null;
 
 export async function refreshResults({ query = levercopyQuery, now = Date.now } = {}) {
@@ -181,7 +200,10 @@ export async function refreshResults({ query = levercopyQuery, now = Date.now } 
       const tokens = resultTokens(rows?.[0]);
       // Consulta que volta sem base (portfólio vazio) não apaga o que já temos:
       // deck com número velho é melhor que deck sem número.
-      if (tokens) cache = { tokens, at: now() };
+      if (tokens) {
+        const at = now();
+        cache = { tokens, summary: presentationResults(rows?.[0], at) || cache.summary, at };
+      }
       return tokens;
     } catch (e) {
       // Fail-open: sem os tokens o slide cai no literal do template.
@@ -196,11 +218,16 @@ export async function refreshResults({ query = levercopyQuery, now = Date.now } 
 
 // O que o renderer recebe. NUNCA espera a consulta: devolve o cache (mesmo
 // vencido) e manda recalcular por fora quando passou do TTL.
-export function leveradsResults({ now = Date.now, ttlMs = TTL_MS, refresh = refreshResults } = {}) {
+export function leveradsResults({ now = Date.now, ttlMs = RESULTS_TTL_MS, refresh = refreshResults } = {}) {
   if (!cache.tokens || now() - cache.at > ttlMs) {
     Promise.resolve(refresh()).catch(() => {});
   }
   return cache.tokens;
+}
+
+export function leveradsPresentationResults(options) {
+  leveradsResults(options);
+  return cache.summary;
 }
 
 // ── Prova POR CLIENTE (fila de colheita de indicação) ───────────────────────
@@ -319,7 +346,7 @@ export async function influencedByOrg(orgIds = [], { query = levercopyQuery, now
 
 // Só pros testes: zera o estado de módulo entre casos.
 export function _resetResultsCache() {
-  cache = { tokens: null, at: 0 };
+  cache = { tokens: null, summary: null, at: 0 };
   inFlight = null;
   orgCache = { map: new Map(), at: 0, keys: "" };
   orgInFlight = null;

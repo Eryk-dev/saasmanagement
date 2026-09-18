@@ -315,7 +315,7 @@ export const isPayOnReceipt = (method) => {
 // pagamento aprovado no MP + fatura baixada, contando UMA vez quando a fatura
 // foi baixada por aquele pagamento, e SEM a fatura que nasce paga no
 // fechamento — fechar no cartão não é receber (caso Marianna, 13/08).
-export function cashReceivedByCustomer({ invoices = [], mpPayments = [], customers = [], inWin = () => true } = {}) {
+export function cashReceivedByCustomer({ invoices = [], mpPayments = [], customers = [], inWin = () => true, paymentDateOf = (p) => p.dateApproved || p.dateCreated } = {}) {
   const ids = new Set(customers.map((c) => c.id));
   const byLead = new Map(customers.filter((c) => c.leadId).map((c) => [c.leadId, c.id]));
   const cash = new Map();
@@ -328,7 +328,7 @@ export function cashReceivedByCustomer({ invoices = [], mpPayments = [], custome
     // Marca ANTES da janela: a fatura baixada por este pagamento não pode
     // entrar de novo por outra data (a data que vale é a da APROVAÇÃO).
     countedMp.add(String(p.mpId));
-    if (!inWin(p.dateApproved || p.dateCreated)) continue;
+    if (!inWin(paymentDateOf(p))) continue;
     add(cid, Number(p.amount) || 0);
   }
   for (const i of invoices) {
@@ -341,6 +341,44 @@ export function cashReceivedByCustomer({ invoices = [], mpPayments = [], custome
     add(i.customer, Number(i.amount) || 0);
   }
   return cash;
+}
+
+// Caixa da tela Clientes: toda a base do produto, por dia de recebimento em
+// São Paulo. Sem data de aprovação não se presume que o MP caiu na criação.
+// Em aberto é cobrança CADASTRADA com vencimento na janela; não inclui ARR
+// projetado nem renovações que ainda não geraram fatura.
+export function customerCashIn({ customers = [], invoices = [], mpPayments = [], saas, since, until }) {
+  const base = customers.filter((c) => c.saas === saas);
+  const ids = new Set(base.map((c) => c.id));
+  const scopedInvoices = invoices.filter((i) => ids.has(i.customer) && (!i.saas || i.saas === saas));
+  const byMp = new Map(mpPayments.filter((p) => p.mpId).map((p) => [String(p.mpId), p]));
+  const invoiceCustomer = new Map(scopedInvoices.filter((i) => i.mpPaymentId).map((i) => [String(i.mpPaymentId), i.customer]));
+  const inWin = (iso) => {
+    const day = dayKey(iso);
+    return !!day && day >= since && day <= until;
+  };
+  const cash = cashReceivedByCustomer({
+    customers: base, inWin, paymentDateOf: (p) => p.dateApproved,
+    mpPayments: mpPayments.filter((p) => !p.saas || p.saas === saas).map((p) => ({
+      ...p, customer: p.customer || invoiceCustomer.get(String(p.mpId)) || "",
+    })),
+    invoices: scopedInvoices.filter((i) => {
+      const payment = i.mpPaymentId && byMp.get(String(i.mpPaymentId));
+      // O estado atual do MP prevalece sobre uma fatura que ficou marcada
+      // paga depois de estorno/cancelamento. Sem espelho, vale a baixa datada.
+      return !payment || (payment.status === "approved" && (!payment.saas || payment.saas === saas));
+    }),
+  });
+  const open = scopedInvoices.filter((i) => {
+    if ((i.status !== "open" && i.status !== "overdue") || !inWin(i.dueDate)) return false;
+    return !i.mpPaymentId || byMp.get(String(i.mpPaymentId))?.status !== "approved";
+  });
+  return {
+    saas, since, until,
+    received: round2([...cash.values()].reduce((sum, amount) => sum + amount, 0)),
+    receivable: round2(open.reduce((sum, i) => sum + (Number(i.amount) || 0), 0)),
+    openCount: open.length,
+  };
 }
 
 // Valor de UMA venda pela régua acima, pronto pra somar. Monte um valuer por

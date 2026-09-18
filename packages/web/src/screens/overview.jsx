@@ -3,6 +3,7 @@ import "./overview.css";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { Card } from "../components/viz.jsx";
+import { Info } from "../components/story.jsx";
 import { EmptyState, Avatar } from "../atoms.jsx";
 import { stageKind, isRealLead, isWonLead, wonAtOf, openStages } from "../lib/funnel.js";
 import { bizDay } from "../lib/format.js";
@@ -211,11 +212,25 @@ function PaceFacts({ pace, goal, falta }) {
 }
 
 // ── Termômetro da meta ──────────────────────────────────────────────────────
-// Coluna de 96×300: trilha hachurada (o que falta), fechado no teal subindo do
-// chão, em follow-up empilhado por cima num tom mais claro, a marca tracejada
+// Coluna de 96×300: fechado no teal com superfície líquida em movimento,
+// em follow-up empilhado por cima num tom mais claro, a marca tracejada
 // do pace atravessando e o rodapé com a porcentagem na cor do estado. A altura
 // é sobre a meta, então passar de 100% satura em 100% e o chip de super meta é
-// quem conta o resto.
+// quem conta o resto. O pace fica acima dos efeitos, apenas como marca.
+function LiquidoMeta({ height, followup = false }) {
+  if (!(height > 0)) return null;
+  // Dois períodos idênticos: deslocar metade da largura fecha o loop sem salto.
+  const onda = "M0 6 Q12 0 24 6 T48 6 T72 6 T96 6 V12 H0Z";
+  return (
+    <div className={`vg-meta-liquid ${followup ? "vg-meta-liquid-followup" : "meta-sobe"}`}
+      style={{ height: `${height}%` }} aria-hidden="true">
+      <svg className="vg-meta-wave vg-meta-wave-back" viewBox="0 0 96 12" preserveAspectRatio="none"><path d={onda} /></svg>
+      <svg className="vg-meta-wave" viewBox="0 0 96 12" preserveAspectRatio="none"><path d={onda} /></svg>
+      <span className="vg-meta-liquid-reflection" />
+    </div>
+  );
+}
+
 function Termometro({ s, goal, lad, naMesa, title, label }) {
   const alvo = Number(s.target) || 0;
   const pctDe = (v) => (alvo > 0 ? Math.max(0, Math.min(100, (v / alvo) * 100)) : 0);
@@ -225,29 +240,19 @@ function Termometro({ s, goal, lad, naMesa, title, label }) {
   const mesa = Math.max(0, Math.min(100 - fechado, pctDe(naMesa?.valor || 0)));
   const pacePct = !goal.ended && s.expectedProgress != null ? Math.max(0, Math.min(100, s.expectedProgress * 100)) : null;
   const cor = lvlColor(lad?.lvl, "var(--accent)");
-  const pctTxt = `${Math.round((lad ? lad.pct : s.progress || 0) * 100)}%`;
+  const pctTxt = `${Math.round(alvo > 0 ? Math.max(0, (Number(s.sold) || 0) / alvo) * 100 : 0)}%`;
   return (
-    <div style={{ width: 140, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center" }}>
+    <div className="vg-meta-thermometer" style={{ width: 140, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center" }}>
       <div style={{ textAlign: "center", marginBottom: 12 }}>
         <div className="kicker">{label}</div>
         <div className="tnum" style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.2, marginTop: 3 }}>{window.fmt.moneyFull(alvo)}</div>
       </div>
-      <div title={title} style={{ width: 96, height: 300, borderRadius: "var(--r-3)", border: "1px solid var(--line-1)", overflow: "hidden", display: "flex", flexDirection: "column", cursor: "help" }}>
-        <div className="meta-track" style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
-          {pacePct != null && (
-            <>
-              <span style={{ position: "absolute", left: 0, right: 0, bottom: `${pacePct}%`, height: 0, borderTop: `1px dashed ${cor}` }} />
-              <span className="tnum" style={{ position: "absolute", right: 5, bottom: `calc(${pacePct}% + 3px)`, fontSize: 11, fontWeight: 700, color: cor }}>{`pace ${Math.round(pacePct)}%`}</span>
-            </>
-          )}
-          {mesa > 0 && (
-            <div style={{ position: "relative", background: "var(--chart-1)", opacity: 0.55, height: `${mesa}%` }}>
-              <span className="meta-fluxo" />
-            </div>
-          )}
-          <div className="meta-sobe" style={{ position: "relative", background: "var(--accent)", height: `${fechado}%` }}>
-            <span className="meta-fluxo" />
-          </div>
+      <div className="vg-meta-thermometer-bar" title={title} style={{ width: 96, height: 300, borderRadius: "var(--r-3)", border: "1px solid var(--line-1)", overflow: "hidden", display: "flex", flexDirection: "column", cursor: "help" }}>
+        <div className="vg-meta-liquid-track" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={fechado} aria-valuetext={`${pctTxt} realizado: ${window.fmt.moneyFull(s.sold)} de ${window.fmt.moneyFull(alvo)}`} style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+          <LiquidoMeta height={mesa} followup />
+          <LiquidoMeta height={fechado} />
+          {pacePct != null && <span className="vg-meta-pace-marker" aria-hidden="true"
+            style={{ bottom: `clamp(0px, ${pacePct}%, calc(100% - 3px))` }} />}
         </div>
         <span className="tnum" style={{ height: 40, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, color: "oklch(1 0 0)", fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", background: cor }}>
           <span className="meta-viva" style={{ width: 8, height: 8, borderRadius: 999, background: "oklch(1 0 0)", display: "inline-block" }} />
@@ -288,6 +293,7 @@ function MetaMesCard({ pace, goal, onNav, links = true, children }) {
     + " À vista e cartão 12x contam o contrato cheio (a adquirente antecipa); boleto faturado, PIX parcelado e assinatura recorrente contam só o que entrou de verdade na janela.";
   const contractsTitle = "Meta de contratos da época (a digitada em Metas vence; senão venda ÷ ticket sem contas grandes), repartida pelos dias úteis da janela.";
   const falta = s.target != null ? Math.max(0, r2((s.target || 0) - (s.sold || 0))) : null;
+  const excedente = s.target != null ? Math.max(0, r2((s.sold || 0) - (s.target || 0))) : 0;
   // A distância pro pace EM DINHEIRO (o risquinho só dizia onde a marca está).
   const esperadoAteAqui = s.target != null && s.expectedProgress != null ? r2((s.target || 0) * s.expectedProgress) : 0;
   const paceDelta = r2((s.sold || 0) - esperadoAteAqui);
@@ -321,6 +327,11 @@ function MetaMesCard({ pace, goal, onNav, links = true, children }) {
               <div className="vg-meta-numbers">
                 <span className="vg-sold tnum" title={saleTitle} style={{ color: lvlColor(sLad?.lvl) }}>{window.fmt.moneyFull(s.sold)}</span>
                 <LvlChip lvl={sLad?.lvl} label={goal.ended ? endedLabel(sLad?.lvl) : sLad?.chip} />
+                {falta != null && <div className="vg-meta-fact">
+                  <div>{falta > 0 ? (goal.ended ? "Faltou para a meta" : "Falta para a meta") : "Meta batida"}</div>
+                  <strong className="tnum">{falta > 0 ? window.fmt.moneyFull(falta) : `${excedente > 0 ? "+" : ""}${window.fmt.moneyFull(excedente)}`}</strong>
+                  {excedente > 0 && <span>acima da meta</span>}
+                </div>}
                 {!goal.ended && s.expectedProgress != null && <div className="vg-meta-fact">
                   <div>contra o pace de hoje</div>
                   <strong className="tnum" style={{ color: paceDelta >= 0 ? "var(--pos)" : "var(--neg)" }}>{`${paceDelta >= 0 ? "+" : "−"}${window.fmt.moneyFull(Math.abs(paceDelta))}`}</strong>
@@ -452,10 +463,9 @@ function personRows(p, bizDays, elapsedFrac, monthFrac) {
   return rows;
 }
 
-// ── Linha da LISTA do time (aprovada pelo Leo em 08/08, no lugar dos cards) ──
-// Uma linha por pessoa: identidade | régua de receita | régua de contratos |
-// submetas do papel em linha única. As barras alinhadas em coluna deixam a
-// comparação entre as pessoas imediata; ✦ = super meta (120%+).
+// ── Cards compactos do time (Leo, 15/09) ─────────────────────────────────────
+// Uma pessoa por card, duas réguas curtas e detalhes recolhidos. A grade
+// aproveita a largura disponível; ✦ continua indicando super meta (120%+).
 // As duas pernas mostram a meta CHEIA do mês (Leo, 08/08: "Manuela
 // R$19,5k/90k"), com o risquinho do pace e a cor dizendo se está no ritmo;
 // bateu 100%, a barra rearma pro degrau seguinte (120, 140… de 20 em 20).
@@ -470,17 +480,17 @@ function MiniRegua({ value, target, isMoney, expectedFrac }) {
   const exp = lad != null && expectedFrac > 0 && expectedFrac < 1 ? Math.round(expectedFrac * 100) : null;
   return (
     <div className="vg-team-meter" style={{ minWidth: 0, cursor: title ? "help" : undefined }} title={title}>
-      <div className="kicker">{isMoney ? "Receita" : "Contratos"}</div>
-      <div className="tnum" style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, fontSize: 11.5, marginBottom: 5 }}>
-        <span style={{ whiteSpace: "nowrap" }}>
+      <div className="vg-team-meter-line">
+        <span className="vg-team-meter-label">{isMoney ? "Receita" : "Contratos"}</span>
+        <span className="vg-team-meter-value">
           <b style={{ fontWeight: 650 }}>{value == null ? "—" : fmtV(value)}</b>
           {target > 0 && <span style={{ color: "var(--fg-4)" }}> / {isMoney ? compactMoney(target) : int(target)}</span>}
         </span>
         <span style={{ fontWeight: 700, color: lvlColor(lad?.lvl, "var(--fg-4)"), whiteSpace: "nowrap" }}>
-          {ratio == null ? "sem meta" : `${Math.round(ratio * 100)}%${lad.lvl === "gold" ? " ✦" : ""}${lad.tier > 1 ? ` · rumo a ${Math.round(lad.tier * 100)}%` : ""}`}
+          {ratio == null ? "sem meta" : `${Math.round(ratio * 100)}%${lad.lvl === "gold" ? " ✦" : ""}`}
         </span>
       </div>
-      <div className="meta-track" style={{ position: "relative", height: 12, borderRadius: 3, border: "1px solid var(--line-1)", overflow: "hidden" }}>
+      <div className="vg-team-meter-track">
         {lad != null && (
           <span className={lad.lvl === "gold" ? "super-fill" : undefined}
             style={{ position: "absolute", top: 0, bottom: 0, left: 0, minWidth: 4, borderRadius: 2, width: `${Math.min(100, Math.round(lad.pct * 100))}%`, background: lvlColor(lad.lvl, "var(--accent)") }} />
@@ -490,6 +500,7 @@ function MiniRegua({ value, target, isMoney, expectedFrac }) {
             style={{ position: "absolute", top: -2, bottom: -2, left: `${exp}%`, width: 2, borderRadius: 1, background: "var(--fg-3)" }} />
         )}
       </div>
+      {lad?.tier > 1 && <div className="vg-team-meter-tier">rumo a {Math.round(lad.tier * 100)}%</div>}
     </div>
   );
 }
@@ -522,7 +533,7 @@ function SubBadge({ r }) {
   const t = LVL_SOFT[r.lvl] || LVL_SOFT.none;
   return (
     <span className="tnum" title={r.title}
-      style={{ display: "inline-flex", alignItems: "baseline", gap: 4, fontSize: 11, borderRadius: "var(--r-1)", padding: "3px 9px", background: t.bg, color: t.fg, whiteSpace: "nowrap", cursor: r.title ? "help" : undefined }}>
+      style={{ display: "inline-flex", flexWrap: "wrap", maxWidth: "100%", alignItems: "baseline", gap: 4, fontSize: 11, borderRadius: "var(--r-1)", padding: "3px 9px", background: t.bg, color: t.fg, cursor: r.title ? "help" : undefined }}>
       <span style={{ opacity: 0.75 }}>{r.label}</span>
       <b style={{ fontWeight: 650 }}>{r.valueText}</b>
       {r.metaText != null && <span style={{ opacity: 0.6 }}>/ {r.metaText}</span>}
@@ -530,24 +541,23 @@ function SubBadge({ r }) {
   );
 }
 
-function PersonRow({ p, rank, bizDays, elapsedFrac, monthFrac, onPerson, teamBonus }) {
+function PersonCard({ p, rank, bizDays, elapsedFrac, monthFrac, onPerson, teamBonus }) {
   // As duas pernas do plano de remuneração (receita + contratos) — closer e SDR
   // têm meta própria pelo nível (comp_plans); CS/mídia mostram só as submetas.
   const leg = p.closer || p.sdr || null;
   const revTarget = leg ? monthGoal(leg.goals?.revenue) : null;
   const wonTarget = leg ? monthGoal(leg.goals?.won) : null;
   const rows = personRows(p, bizDays, elapsedFrac, monthFrac);
-  const semPerna = <span style={{ fontSize: 11.5, color: "var(--fg-4)" }}>—</span>;
   return (
-    <div className="vg-trow">
-      <button className="vg-team-person" onClick={() => onPerson?.(p.user)} disabled={!onPerson} style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, textAlign: "left" }}>
+    <article className="vg-team-card" aria-label={p.name}>
+      <button className="vg-team-person" onClick={() => onPerson?.(p.user)} disabled={!onPerson}>
         {rank != null && (
           <span className="tnum" style={{ width: 18, fontSize: 11, color: "var(--fg-4)", flexShrink: 0 }}>{rank}</span>
         )}
         <Avatar id={p.user} name={p.name} size={28} />
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
-          <div className="kicker" style={{ whiteSpace: "nowrap" }}>
+          <div className="vg-team-name" title={p.name}>{p.name}</div>
+          <div className="vg-team-role">
             {roleLabel(p)}
             {nivelDaMeta(leg) && (
               <span style={{ color: "var(--accent)" }}
@@ -558,12 +568,15 @@ function PersonRow({ p, rank, bizDays, elapsedFrac, monthFrac, onPerson, teamBon
           </div>
         </div>
       </button>
-      {leg ? <MiniRegua value={leg.revenue} target={revTarget} isMoney expectedFrac={monthFrac} /> : semPerna}
-      {leg ? <MiniRegua value={leg.won} target={wonTarget} expectedFrac={monthFrac} /> : semPerna}
-      {/* Submetas do papel embaixo das duas réguas (Leo, 12/09), todas com o
-          mesmo badge — a coluna da "mais atrasada" saiu: ela repetia uma
-          submeta que já estava aqui e a cor vermelha do badge já a denuncia. */}
-      <details className="vg-tsub"><summary>Metas por papel e detalhes</summary><div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, minWidth: 0 }}>
+      {leg ? <div className="vg-team-card-metrics">
+        <MiniRegua value={leg.revenue} target={revTarget} isMoney expectedFrac={monthFrac} />
+        <MiniRegua value={leg.won} target={wonTarget} expectedFrac={monthFrac} />
+      </div> : <dl className="vg-team-role-metrics">
+        {rows.slice(0, 2).map((r) => <div key={r.label} title={r.title}>
+          <dt>{r.label}</dt><dd><strong>{r.valueText}</strong>{r.metaText != null && <span> / {r.metaText}</span>}</dd>
+        </div>)}
+      </dl>}
+      <details className="vg-team-details"><summary aria-label={`Metas e detalhes de ${p.name}`}>Detalhes</summary><div className="vg-team-details-body">
         {rows.map((r) => <SubBadge key={r.label} r={r} />)}
         {/* Bônus de time: a parcela COLETIVA. Mesmo badge das submetas, mas com
             as duas condições no title — o time precisa saber por qual das duas
@@ -582,19 +595,19 @@ function PersonRow({ p, rank, bizDays, elapsedFrac, monthFrac, onPerson, teamBon
             contrato cheio aparece aqui pra ninguém achar que a venda sumiu.
             É NOTA, não submeta — por isso fica sem badge, no fim da linha. */}
         {leg?.contracted > (leg?.revenue || 0) && (
-          <span className="tnum" style={{ fontSize: 11, color: "var(--fg-4)", whiteSpace: "nowrap", cursor: "help" }}
+          <span className="vg-team-detail-note"
             title="Boleto faturado, PIX parcelado, assinatura recorrente no cartão e condição personalizada contam na meta só pelo que ENTROU na janela (a 1ª parcela, na prática). O resto das parcelas segue no Financeiro, no caixa do mês em que cair.">
             não recebido R$ {compactMoney(leg.contracted - (leg.revenue || 0))}
           </span>
         )}
         {leg?.keyWon > 0 && (
-          <span className="tnum" style={{ fontSize: 11, color: "var(--fg-4)", whiteSpace: "nowrap", cursor: "help" }}
+          <span className="vg-team-detail-note"
             title="Conta grande fica fora do placar desde 19/08 (um bespoke de R$ 120 mil não é a régua da operação). O dinheiro segue cheio no caixa e no Financeiro.">
             fora do placar {leg.keyWon} conta grande · R$ {compactMoney(leg.keyRevenue || 0)}
           </span>
         )}
       </div></details>
-    </div>
+    </article>
   );
 }
 
@@ -632,14 +645,14 @@ function TeamBoard({ score, win, onPerson }) {
     return list.map((p) => ({ p, pct: pctOf(p) })).sort((a, b) => b.pct - a.pct);
   }, [score, win.businessDays]);
   return (
-    <Card title="Desempenho do time" hint="ranqueado por % da meta · a régua é a meta do mês e o risquinho é o pace">
+    <Card title="Desempenho do time" hint="ranking por % da meta · traço = pace do mês">
       <div style={{ padding: "8px var(--inset-x) 20px" }}>
         {score == null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
         {score != null && !people.length && <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Sem atividade nesse período.</div>}
         {people.length > 0 && (
-          <div>
+          <div className="vg-team-grid">
             {people.map(({ p, pct }, i) => (
-              <PersonRow key={p.user} p={p} rank={pct >= 0 ? i + 1 : null} bizDays={win.businessDays} elapsedFrac={elapsedFrac} monthFrac={monthFrac} onPerson={onPerson} teamBonus={score?.team?.teamBonus} />
+              <PersonCard key={p.user} p={p} rank={pct >= 0 ? i + 1 : null} bizDays={win.businessDays} elapsedFrac={elapsedFrac} monthFrac={monthFrac} onPerson={onPerson} teamBonus={score?.team?.teamBonus} />
             ))}
           </div>
         )}
@@ -788,40 +801,35 @@ function FunilPeriodo({ team, win, pLabel, bare = false, onNav }) {
   );
 }
 
-// ── Tiles pequenos (Aquisição / Carteira) ────────────────────────────────────
-function MiniTile({ label, dot, big, sub, title }) {
+// ── Resumos da Carteira e Aquisição ─────────────────────────────────────────
+function AcquisitionMetric({ label, value, caption, title, empty = false }) {
   return (
-    <div title={title} style={{ background: "var(--bg-inset)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "10px 8px", minWidth: 0, cursor: title ? "help" : "default", textAlign: "left" }}>
-      <div className="kicker" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        {dot && <span style={{ width: 8, height: 8, borderRadius: 3, background: dot, flexShrink: 0 }} />}
-        {label}
-      </div>
-      <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 16, fontWeight: 700, letterSpacing: "-0.02em", marginTop: 2, whiteSpace: "nowrap" }}>{big}</div>
-      {sub != null && <div className="tnum" style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 1 }}>{sub}</div>}
+    <div className="vg-acquisition-metric" title={title}>
+      <dt>{label}</dt>
+      <dd>
+        <strong className={`vg-acquisition-value${empty ? " is-empty" : ""}`}>{value}</strong>
+        <span>{caption}</span>
+      </dd>
     </div>
   );
 }
 
-// Linha rótulo/valor (12/09): no trilho da direita a Carteira e as classes de
-// lead viram lista — 12 tiles iguais empilhados eram uma parede de números.
-function KVRow({ label, dot, value, sub, title, last }) {
+// O valor e seu contexto compartilham a mesma borda direita, mesmo quando
+// o contexto é mais comprido que o número. Os dois cards usam a mesma linha.
+function KVRow({ label, detail, dot, value, sub, title, primary = false }) {
   return (
-    <div title={title} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, padding: "8px 0", borderBottom: last ? "none" : "1px solid var(--line-1)", cursor: title ? "help" : undefined }}>
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12.5, color: "var(--fg-2)", minWidth: 0 }}>
-        {dot && <span style={{ width: 8, height: 8, borderRadius: 3, background: dot, flexShrink: 0 }} />}
-        {label}
-      </span>
-      <span className="tnum" style={{ fontSize: 14, fontWeight: 650, whiteSpace: "nowrap" }}>
-        {value}
-        {sub != null && <span style={{ fontSize: 11.5, fontWeight: 400, color: "var(--fg-3)", display: "block", whiteSpace: "normal", textAlign: "right" }}>{sub}</span>}
-      </span>
+    <div className={`vg-summary-row${primary ? " vg-summary-primary" : ""}`} title={title}>
+      <dt className="vg-summary-label">
+        {dot && <span className="vg-summary-dot" style={{ background: dot }} aria-hidden="true" />}
+        <span><span>{label}</span>{detail && <span className="vg-summary-detail">{detail}</span>}</span>
+      </dt>
+      <dd className="vg-summary-reading">
+        <strong>{value}</strong>
+        {sub != null && <span className="vg-summary-detail">{sub}</span>}
+      </dd>
     </div>
   );
 }
-
-// 3 tiles por linha, fixo (pedido do Leo: 3 em cima, 3 embaixo) — auto-fit
-// quebrava em 4+2 e as duas metades ficavam tortas.
-const tilesGrid = { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 };
 
 function AquisicaoCard({ marketing, biz, classes, pShort }) {
   const cpl = marketing?.totals?.spend > 0 && marketing?.totals?.cpl != null ? marketing.totals.cpl : null;
@@ -829,22 +837,25 @@ function AquisicaoCard({ marketing, biz, classes, pShort }) {
   const cac = biz?.window?.cac ?? null;
   return (
     <Card title="Aquisição" hint={`${pShort} · dinheiro pela data da venda`}>
-      <div style={{ padding: "14px var(--inset-x) 4px", ...tilesGrid }}>
-        <MiniTile label="CPL" big={cpl != null ? money(cpl) : "sem gasto"}
+      <dl className="vg-acquisition-metrics" aria-label="Custos e retorno da aquisição">
+        <AcquisitionMetric label="CPL" value={cpl != null ? money(cpl) : "sem gasto"} caption="por lead" empty={cpl == null}
           title={cpl != null ? `Custo por lead · ${money(marketing.totals.spend)} investidos no período` : "conecte o Meta em Publicidade"} />
-        <MiniTile label="CAC" big={cac != null ? money(cac) : "—"}
+        <AcquisitionMetric label="CAC" value={cac != null ? money(cac) : "—"} caption="por cliente"
           title="Investimento em anúncios ÷ clientes novos do período" />
-        <MiniTile label="ROAS" big={roas != null ? String(roas).replace(".", ",") + "x" : "—"}
+        <AcquisitionMetric label="ROAS" value={roas != null ? String(roas).replace(".", ",") + "x" : "—"} caption="retorno"
           title="Receita dos ganhos atribuída pela data da venda ÷ investimento" />
-      </div>
-      <div style={{ padding: "12px var(--inset-x) 18px" }}>
-        <KVRow label="Semente · indicação e base" dot="var(--chart-1)" value={int(classes?.semente?.leads)}
-          title={`Indicação e boca a boca · ${int(classes?.semente?.won)} ganhos no período`} />
-        <KVRow label="Rede · marketing" dot="var(--chart-2)" value={int(classes?.rede?.leads)}
-          title={`Tráfego pago, form, social · ${int(classes?.rede?.won)} ganhos no período`} />
-        <KVRow label="Alvo · outbound" dot="var(--chart-3)" value={int(classes?.alvo?.leads)} last
-          title={`Prospecção ativa · ${int(classes?.alvo?.won)} ganhos no período`} />
-      </div>
+      </dl>
+      <section className="vg-acquisition-origins" aria-label="Leads por origem">
+        <h4>Leads por origem</h4>
+        <dl className="vg-summary-list">
+          <KVRow label="Semente" detail="Indicação e base" dot="var(--chart-1)" value={int(classes?.semente?.leads)}
+            title={`Indicação e boca a boca · ${int(classes?.semente?.won)} ganhos no período`} />
+          <KVRow label="Rede" detail="Marketing" dot="var(--chart-2)" value={int(classes?.rede?.leads)}
+            title={`Tráfego pago, form, social · ${int(classes?.rede?.won)} ganhos no período`} />
+          <KVRow label="Alvo" detail="Outbound" dot="var(--chart-3)" value={int(classes?.alvo?.leads)}
+            title={`Prospecção ativa · ${int(classes?.alvo?.won)} ganhos no período`} />
+        </dl>
+      </section>
     </Card>
   );
 }
@@ -963,24 +974,25 @@ function CarteiraCard({ customers, ltv, win, pShort }) {
   const churnPct = baseInicio.length ? Math.round((churned / baseInicio.length) * 1000) / 10 : null;
   const semCG = (v) => (cg.length ? money(v) : null);
   return (
-    <Card title="Carteira" hint={`${pShort} · a base como estava no fim do período`}>
-      <div style={{ padding: "12px var(--inset-x) 18px" }}>
-        <KVRow label="MRR" value={money(arrAll / 12)} sub={semCG(arrCore / 12) ? `${semCG(arrCore / 12)} sem CG` : null}
-          title={cg.length ? "Valor da direita: sem conta grande" : "contratos ÷ 12"} />
-        <KVRow label="Clientes" value={int(ativos.length)} sub={cg.length ? `${int(core.length)} CP · ${int(cg.length)} CG` : null}
+    <Card title="Carteira" hint={`${pShort} · base no fim do período`}
+      action={cg.length ? <Info texto="CG = conta grande. O valor principal inclui toda a base; o valor sem CG exclui essas contas." /> : null}>
+      <dl className="vg-summary-list vg-portfolio-list">
+        <KVRow label="MRR" detail="Receita mensal" primary value={money(arrAll / 12)} sub={semCG(arrCore / 12) ? `${semCG(arrCore / 12)} sem CG` : null}
+          title={cg.length ? "Valor principal: toda a base. Abaixo: sem contas grandes." : "contratos ÷ 12"} />
+        <KVRow label="Clientes" detail="Base ativa" value={int(ativos.length)} sub={cg.length ? `${int(core.length)} padrão · ${int(cg.length)} ${cg.length === 1 ? "grande" : "grandes"}` : null}
           title={`Clientes ativos no fim de ${win.range || win.label} · CP = cliente padrão, CG = conta grande (fora das médias)`} />
-        <KVRow label="Ticket médio" value={ticketAll != null ? money(ticketAll) : "—"} sub={cg.length && ticketCore != null ? `${money(ticketCore)} sem CG` : null}
-          title={cg.length ? "Valor da direita: sem conta grande — o ticket que alimenta as metas por contrato" : "valor médio de contrato da base"} />
-        <KVRow label="ARR" value={money(arrAll)} sub={semCG(arrCore) ? `${semCG(arrCore)} sem CG` : null}
-          title={cg.length ? "Valor da direita: sem conta grande" : "soma dos contratos ativos"} />
-        <KVRow label="LTV" value={ltv?.value != null ? money(ltv.value) : "—"} sub={ltv?.ltvCac ? `LTV/CAC ${String(ltv.ltvCac).replace(".", ",")}x` : null}
+        <KVRow label="Ticket médio" detail="Por contrato" value={ticketAll != null ? money(ticketAll) : "—"} sub={cg.length && ticketCore != null ? `${money(ticketCore)} sem CG` : null}
+          title={cg.length ? "Valor principal: toda a base. Abaixo: sem contas grandes, o ticket que alimenta as metas por contrato." : "valor médio de contrato da base"} />
+        <KVRow label="ARR" detail="Receita anual" value={money(arrAll)} sub={semCG(arrCore) ? `${semCG(arrCore)} sem CG` : null}
+          title={cg.length ? "Valor principal: toda a base. Abaixo: sem contas grandes." : "soma dos contratos ativos"} />
+        <KVRow label="LTV" detail="Valor estimado" value={ltv?.value != null ? money(ltv.value) : "—"} sub={ltv?.ltvCac ? `LTV/CAC ${String(ltv.ltvCac).replace(".", ",")}x` : null}
           title={ltv?.value != null ? `Estimado: ticket mensal × ${ltv.months} meses de permanência (premissa até existir churn real)` : "precisa de assinaturas ativas"} />
-        <KVRow label="Churn" value={churnPct == null ? "—" : `${String(churnPct).replace(".", ",")}%`} last
+        <KVRow label="Churn" detail="Saídas no período" value={churnPct == null ? "—" : `${String(churnPct).replace(".", ",")}%`}
           sub={churned ? `${int(churned)} ${churned === 1 ? "saiu" : "saíram"}` : null}
           title={churnPct == null
             ? "Sem base no começo do período pra calcular a taxa."
             : `Quem saiu DENTRO de ${pShort} (${int(churned)}) ÷ os ${int(baseInicio.length)} clientes que existiam no começo do período.`} />
-      </div>
+      </dl>
     </Card>
   );
 }
@@ -1196,4 +1208,4 @@ function OverviewScreen({ onNav, onOpenLead }) {
   );
 }
 
-export { OverviewScreen, MetaMesCard, FunilPeriodo, TeamBoard, PersonRow };
+export { OverviewScreen, MetaMesCard, FunilPeriodo, TeamBoard, PersonCard, PersonCard as PersonRow };

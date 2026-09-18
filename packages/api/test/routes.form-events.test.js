@@ -99,6 +99,49 @@ test("GET /funnel?since= filtra o período; form inexistente é 404", async () =
   await app.close();
 });
 
+test("GET /forms/funnels agrega só os publicados do produto, igual ao /:id/funnel; forms falhando ficam de fora", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("forms", { ...FORM, id: "fo_outro", saas: "outro" });
+  for (const [session, keys] of [["s1", ["niche"]], ["s2", []]]) {
+    await post(app, { session, event: "view" });
+    if (keys.length) await post(app, { session, event: "start" });
+    for (const key of keys) await post(app, { session, event: "step", key });
+  }
+  await post(app, { session: "s1", event: "submit" });
+  const one = (await app.inject({ method: "GET", url: "/api/forms/fo_test/funnel" })).json();
+  const all = (await app.inject({ method: "GET", url: "/api/forms/funnels?saas=leverads" })).json();
+  assert.deepEqual(Object.keys(all), ["fo_test"]); // rascunho e outro produto ficam fora
+  assert.deepEqual(all.fo_test, one);
+  const win = (await app.inject({ method: "GET", url: "/api/forms/funnels?saas=leverads&since=2999-01-01T00:00:00.000Z" })).json();
+  assert.equal(win.fo_test.views, 0);
+  await app.close();
+});
+
+test("GET /forms/overview: forms por nome, contagem por form (inclui internas) e 6 recentes sem internas", async () => {
+  const { app, repo } = await buildApp();
+  await repo.create("forms", { ...FORM, id: "fo_b", name: "Zeta" });
+  await repo.create("forms", { ...FORM, id: "fo_a", name: "Alfa" });
+  await repo.create("forms", { ...FORM, id: "fo_outro", saas: "outro" });
+  for (let i = 0; i < 8; i++) {
+    await repo.create("form_submissions", { id: `su_${i}`, form: i % 2 ? "fo_a" : "fo_test", saas: "leverads", answers: { nome: `p${i}` }, createdAt: `2026-07-0${i + 1}T10:00:00.000Z` });
+  }
+  await repo.create("form_submissions", { id: "su_int", form: "fo_test", saas: "leverads", internal: true, answers: {}, createdAt: "2026-07-09T10:00:00.000Z" });
+  await repo.create("form_submissions", { id: "su_x", form: "fo_outro", saas: "outro", answers: {}, createdAt: "2026-07-10T10:00:00.000Z" });
+
+  const ov = (await app.inject({ method: "GET", url: "/api/forms/overview?saas=leverads" })).json();
+  assert.equal(ov.forms.length, 4); // fo_test, fo_draft, fo_a, fo_b (o de outro produto fica fora)
+  assert.equal(ov.forms[0].id, "fo_a");                       // Alfa primeiro
+  assert.equal(ov.forms[ov.forms.length - 1].id, "fo_b");     // Zeta por último
+  assert.deepEqual(ov.forms.map((f) => f.name), [...ov.forms.map((f) => f.name)].sort((a, b) => a.localeCompare(b)));
+  assert.ok(ov.forms.every((f) => f.saas === "leverads"));
+  assert.deepEqual(ov.counts, { fo_test: 5, fo_a: 4 }); // a interna conta (régua antiga)
+  assert.equal(ov.recent.length, 6);
+  assert.ok(ov.recent.every((s) => !s.internal && s.saas === "leverads"));
+  assert.deepEqual(ov.recent.map((s) => s.id), ["su_7", "su_6", "su_5", "su_4", "su_3", "su_2"]); // mais novas primeiro
+  assert.deepEqual(ov.recent[0].answers, { nome: "p7" }); // as recentes vêm inteiras
+  await app.close();
+});
+
 test("rate-limit dos eventos é separado do de submissions", async () => {
   const { app } = await buildApp({ forms: { rateLimit: 1, eventRateLimit: 3 } });
   assert.equal((await post(app, { session: "s1", event: "view" })).statusCode, 201);
@@ -252,6 +295,72 @@ test("lead interno fica fora do CPL/leads das métricas de marketing", async () 
   const m = (await app.inject({ url: "/api/marketing/leverads" })).json();
   assert.equal(m.totals.leads, 1); // só o lead real conta
   await app.close();
+});
+
+test("funil do formulário conta calls realizadas pela régua de comparecimento", async (t) => {
+  const date = "2026-09-10T12:00:00.000Z";
+  const summary = (temperatura, at = date, kind = "call") => ({ type: "system", at, meta: { event: "call_summary", kind, summary: { temperatura } } });
+  const stage = (to) => ({ type: "stage", at: date, meta: { to } });
+  const cases = [
+    { name: "agendamento futuro", lead: { stage: "Conversa", callAt: "2026-10-01T12:00:00.000Z" }, count: 0 },
+    { name: "agendamento vencido sem comparecimento", lead: { stage: "Conversa", callAt: date }, count: 0 },
+    { name: "transcrição morna com callAt limpo", lead: { stage: "Entrada" }, acts: [summary("morno")], count: 1 },
+    { name: "transcrição quente com call remarcada", lead: { stage: "Conversa", callAt: "2026-10-01T12:00:00.000Z" }, acts: [summary("quente")], count: 1 },
+    { name: "transcrição fria prevalece sobre avanço", lead: { stage: "Oferta" }, acts: [summary("frio")], count: 0 },
+    { name: "resumo mais recente prevalece", lead: { stage: "Oferta" }, acts: [summary("frio", "2026-09-12T12:00:00.000Z"), summary("quente")], count: 0 },
+    { name: "resumo de integração não é call comercial", lead: { stage: "Entrada" }, acts: [summary("quente", date, "integracao")], count: 0 },
+    { name: "avanço por estágio semântico", lead: { stage: "Oferta" }, count: 1 },
+    { name: "histórico de avanço após voltar para entrada", lead: { stage: "Entrada" }, acts: [stage("Oferta")], count: 1 },
+    { name: "perda após agendamento por outro motivo", lead: { stage: "Encerrado", lostReason: "preco" }, acts: [stage("Conversa")], count: 1 },
+    { name: "perda por falta", lead: { stage: "Encerrado", callAt: date, lostReason: "nao_compareceu" }, count: 0 },
+    { name: "perda sem passar por call", lead: { stage: "Encerrado", lostReason: "sem_fit" }, count: 0 },
+    { name: "ganho prevalece sobre transcrição fria", lead: { stage: "Cliente" }, acts: [summary("frio")], count: 1 },
+    { name: "cliente que já saiu do estágio de ganho", lead: { stage: "Entrada", customerId: "cliente" }, count: 1 },
+  ];
+  for (const c of cases) await t.test(c.name, async () => {
+    const { app, repo } = await buildApp({ forms: { now: () => new Date("2026-09-15T12:00:00.000Z") } });
+    try {
+      await repo.create("products", { id: "leverads", funnel: [
+        { stage: "Entrada", kind: "novo" }, { stage: "Conversa", kind: "call" },
+        { stage: "Oferta", kind: "proposta" }, { stage: "Cliente", kind: "ganho" },
+        { stage: "Encerrado", kind: "perdido" },
+      ] });
+      await repo.create("leads", { id: "lead", saas: "leverads", ...c.lead });
+      await repo.create("form_submissions", { form: "fo_test", saas: "leverads", lead: "lead", createdAt: date });
+      for (const a of c.acts || []) await repo.create("activities", { saas: "leverads", lead: "lead", ...a });
+      const res = await app.inject({ url: "/api/forms/fo_test/funnel" });
+      assert.equal(res.statusCode, 200);
+      assert.equal(res.json().callsShown, c.count);
+    } finally { await app.close(); }
+  });
+});
+
+test("calls realizadas respeitam formulário, período, workspace e leads únicos sem tráfego interno", async () => {
+  const { app, repo } = await buildApp();
+  try {
+    await repo.create("products", { id: "leverads", funnel: [{ stage: "Proposta", kind: "proposta" }] });
+    const date = "2026-09-10T12:00:00.000Z";
+    const add = async (id, lead = {}, sub = {}) => {
+      await repo.create("leads", { id, saas: "leverads", stage: "Proposta", ...lead });
+      await repo.create("form_submissions", { saas: "leverads", form: "fo_test", createdAt: date, lead: id, ...sub });
+    };
+    await add("real");
+    await repo.create("form_submissions", { saas: "leverads", form: "fo_test", createdAt: date, lead: "real" });
+    await add("outro-form", {}, { form: "fo_draft" });
+    await add("antes", {}, { createdAt: "2026-08-31T12:00:00.000Z" });
+    await add("depois", {}, { createdAt: "2026-10-01T12:00:00.000Z" });
+    await add("sub-interna", {}, { internal: true });
+    await add("lead-interno", { internal: true });
+    await add("outro-produto", { saas: "elo" });
+    await add("atividade-outro-produto", { stage: "Novo lead" });
+    await repo.create("activities", { saas: "elo", lead: "atividade-outro-produto", type: "system", at: date, meta: { event: "call_summary", summary: { temperatura: "quente" } } });
+    await repo.create("form_submissions", { form: "fo_test", createdAt: date, lead: "apagado" });
+    const res = await app.inject({ url: "/api/forms/fo_test/funnel?since=2026-09-01T00:00:00.000Z&until=2026-09-30T23:59:59.999Z" });
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.json().callsShown, 1);
+    const empty = await app.inject({ url: "/api/forms/fo_test/funnel?since=2027-01-01T00:00:00.000Z" });
+    assert.equal(empty.json().callsShown, 0);
+  } finally { await app.close(); }
 });
 
 test("GET /funnel?until= fecha o range (hoje/ontem/data custom)", async () => {

@@ -23,6 +23,11 @@ import "./integration-forms.css";
 //
 // As PERGUNTAS moram no servidor (packages/api/src/integration-form.js) e são
 // as mesmas pra todo cliente: o botão "ver perguntas" abre a pré-visualização.
+//
+// TIPOS (17/09/2026): a mesma máquina serve mais de um questionário. Hoje são
+// dois, `integracao` (o de sempre) e `nota_fiscal` (o cadastro do tomador pro
+// financeiro emitir a NFS-e, definido em packages/api/src/fiscal-form.js). O
+// pedido escolhe o tipo; o documento guarda em `kind` (sem kind = integração).
 
 const { useState: useS, useEffect: useE, useRef: useR, useMemo: useM } = React;
 
@@ -33,6 +38,21 @@ export const FORM_GRID_BUDGET = 716;
 
 const publicBase = () => import.meta.env.VITE_API_BASE || window.location?.origin || "";
 const formUrl = (doc) => `${publicBase()}/fi/${doc.id}`;
+const previewUrl = (kind) => `${publicBase()}/fi/preview?kind=${encodeURIComponent(kind)}`;
+
+const KINDS = {
+  integracao: {
+    key: "integracao", label: "integração", full: "Formulário de Integração",
+    hint: "como é a operação: contas, rotas, preço, estoque",
+    wa: (nome, brand, url) => `Oi ${nome}! Aqui é da ${brand}. Antes da nossa call de integração, preenche este formulário rapidinho pra gente já deixar as suas contas configuradas do jeito certo: ${url}`,
+  },
+  nota_fiscal: {
+    key: "nota_fiscal", label: "nota fiscal", full: "Dados para nota fiscal",
+    hint: "cadastro do tomador: razão social, CNPJ, endereço, e-mail da nota",
+    wa: (nome, brand, url) => `Oi ${nome}! Aqui é do financeiro da ${brand}. Pra emitir a sua nota fiscal certinho, preenche este formulário com os dados da empresa (leva uns dois minutos): ${url}`,
+  },
+};
+const kindOf = (doc) => (doc && KINDS[doc.kind] ? doc.kind : "integracao");
 
 const fmtAt = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—");
 const fmtDay = (iso) => (iso ? new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "—");
@@ -41,7 +61,7 @@ const firstName = (s) => String(s || "").trim().split(/\s+/)[0] || "";
 // Mensagem pronta do pedido. A marca vem do workspace ativo (a tela existe pra
 // LeverAds hoje, mas o texto não fica preso a ela).
 function waText(doc, brand) {
-  return `Oi ${firstName(doc.customerName)}! Aqui é da ${brand || "LeverAds"}. Antes da nossa call de integração, preenche este formulário rapidinho pra gente já deixar as suas contas configuradas do jeito certo: ${formUrl(doc)}`;
+  return KINDS[kindOf(doc)].wa(firstName(doc.customerName), brand || "LeverAds", formUrl(doc));
 }
 
 // Resumo de uma linha da resposta (mesma régua do servidor): é o que a lista
@@ -49,6 +69,14 @@ function waText(doc, brand) {
 function resumo(doc) {
   const a = doc.answers || {};
   const partes = [];
+  if (kindOf(doc) === "nota_fiscal") {
+    const pj = String(a.tipo || "").startsWith("Pessoa jurídica");
+    if (pj ? a.razao_social : a.nome_pf) partes.push(pj ? a.razao_social : a.nome_pf);
+    if (pj ? a.cnpj : a.cpf) partes.push(pj ? a.cnpj : a.cpf);
+    if (a.cidade || a.uf) partes.push([a.cidade, a.uf].filter(Boolean).join("/"));
+    if (pj && a.regime) partes.push(a.regime);
+    return partes.join(" · ");
+  }
   if (Array.isArray(a.contas) && a.contas.length) partes.push(`${a.contas.length} ${a.contas.length === 1 ? "conta" : "contas"}`);
   if (Array.isArray(a.rotas) && a.rotas.length) partes.push(`${a.rotas.length} ${a.rotas.length === 1 ? "rota" : "rotas"}`);
   if (a.erp && a.erp !== "Não uso") partes.push(a.erp);
@@ -60,7 +88,7 @@ function resumo(doc) {
 // integrador colar no card, no Notion ou na conversa sem abrir a tela.
 function answersText(doc) {
   const a = doc.answers || {};
-  const linhas = [`FORMULÁRIO DE INTEGRAÇÃO · ${doc.customerName || "cliente"}`, `respondido em ${fmtAt(doc.respondedAt)}`, ""];
+  const linhas = [`${KINDS[kindOf(doc)].full.toUpperCase()} · ${doc.customerName || "cliente"}`, `respondido em ${fmtAt(doc.respondedAt)}`, ""];
   for (const sec of doc.sections || []) {
     linhas.push(`## ${sec.title}`);
     for (const q of sec.questions || []) {
@@ -95,7 +123,8 @@ const copiar = (texto, msg) => {
 // Mesma régua do seletor de "quem vai pagar" (payment-link-modal): busca
 // digitável sobre o SEED do workspace, porque select com 1.200 leads não serve.
 function AskModal({ saas, brand, onClose, onCreated }) {
-  const [kind, setKind] = useS("customer");
+  const [formKind, setFormKind] = useS("integracao"); // qual questionário
+  const [kind, setKind] = useS("customer");           // quem preenche: cliente ou lead
   const [q, setQ] = useS("");
   const [busy, setBusy] = useS(false);
   const [novo, setNovo] = useS(null); // pedido criado: a tela vira "copie o link"
@@ -115,6 +144,7 @@ function AskModal({ saas, brand, onClose, onCreated }) {
     try {
       const created = await api.create("integration_forms", {
         saas,
+        kind: formKind,
         customerId: kind === "customer" ? doc.id : doc.customerId || "",
         customerName: doc.company || doc.name || "",
         leadId: kind === "lead" ? doc.id : "",
@@ -132,10 +162,21 @@ function AskModal({ saas, brand, onClose, onCreated }) {
       <div className="intform-dialog">
         {!novo ? (
           <>
-            <div className="card-title">Solicitar formulário de integração</div>
-            <div className="card-sub" style={{ marginTop: 2 }}>Escolha quem vai preencher. O link nasce único pra essa pessoa.</div>
+            <div className="card-title">Solicitar formulário</div>
+            <div className="card-sub" style={{ marginTop: 2 }}>Escolha o formulário e quem vai preencher. O link nasce único pra essa pessoa.</div>
 
-            <div style={{ marginTop: 16 }}><Segmented value={kind} onChange={(v) => { if (!busy) { setKind(v); setQ(""); } }} options={[
+            {/* Qual questionário: cada tipo tem as próprias perguntas, o próprio termo e a própria mensagem de WhatsApp. */}
+            <div className="intform-kinds" role="radiogroup" aria-label="Qual formulário">
+              {Object.values(KINDS).map((k) => (
+                <button key={k.key} type="button" role="radio" aria-checked={formKind === k.key} disabled={busy}
+                  className="intform-kind" data-on={formKind === k.key || undefined} onClick={() => setFormKind(k.key)}>
+                  <div className="intform-kind-title">{k.full}</div>
+                  <div className="intform-note">{k.hint}</div>
+                </button>
+              ))}
+            </div>
+
+            <div style={{ marginTop: 14 }}><Segmented value={kind} onChange={(v) => { if (!busy) { setKind(v); setQ(""); } }} options={[
               { value: "customer", label: "Cliente" }, { value: "lead", label: "Lead que fechou" },
             ]} /></div>
 
@@ -166,7 +207,7 @@ function AskModal({ saas, brand, onClose, onCreated }) {
         ) : (
           <>
             <div className="card-title">Link criado para {novo.customerName || "o cliente"}</div>
-            <div className="card-sub" style={{ marginTop: 2 }}>Mande no WhatsApp. O formulário só pode ser respondido uma vez.</div>
+            <div className="card-sub" style={{ marginTop: 2 }}>{KINDS[kindOf(novo)].full}. Mande no WhatsApp; o formulário só pode ser respondido uma vez.</div>
             <div className="mono" style={{ marginTop: 14, padding: "10px 12px", background: "var(--bg-2)", borderRadius: "var(--r-2)", fontSize: 11.5, wordBreak: "break-all" }}>{formUrl(novo)}</div>
             <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
               <PrimaryButton onClick={() => copiar(formUrl(novo), "link copiado")}>Copiar link</PrimaryButton>
@@ -193,7 +234,7 @@ function AnswersDrawer({ doc, brand, onClose, onRemove, removing }) {
       <div className="intform-dialog intform-answer">
         <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <div style={{ minWidth: 0 }}>
-            <div className="kicker">{respondido ? `respondido em ${fmtAt(doc.respondedAt)}` : "aguardando o cliente"}</div>
+            <div className="kicker">{`${KINDS[kindOf(doc)].full} · ${respondido ? `respondido em ${fmtAt(doc.respondedAt)}` : "aguardando o cliente"}`}</div>
             <div style={{ fontSize: 17, fontWeight: 600, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {doc.customerName || "sem cliente"}
             </div>
@@ -214,7 +255,9 @@ function AnswersDrawer({ doc, brand, onClose, onRemove, removing }) {
           {!respondido && (
             <EmptyState
               title="O cliente ainda não respondeu"
-              hint="Mande o link no WhatsApp. Assim que ele enviar, as respostas aparecem aqui e o card do lead recebe o registro na timeline."
+              hint={kindOf(doc) === "nota_fiscal"
+                ? "Mande o link no WhatsApp. Assim que ele enviar, o cadastro fiscal aparece aqui e vai pra ficha do cliente, pronto pro financeiro emitir."
+                : "Mande o link no WhatsApp. Assim que ele enviar, as respostas aparecem aqui e o card do lead recebe o registro na timeline."}
             />
           )}
 
@@ -295,6 +338,7 @@ function IntegrationFormsScreen() {
   const [items, setItems] = useS(null);
   const [err, setErr] = useS(null);
   const [tab, setTab] = useS("todos");
+  const [tipo, setTipo] = useS("todos"); // integracao · nota_fiscal · todos
   const [q, setQ] = useS("");
   const [sel, setSel] = useS(null);
   const [asking, setAsking] = useS(false);
@@ -331,7 +375,7 @@ function IntegrationFormsScreen() {
     finally { setRemoving(null); }
   }
 
-  const list = items || [];
+  const list = (items || []).filter((x) => tipo === "todos" || kindOf(x) === tipo);
   const pendentes = list.filter((x) => x.status !== "respondido");
   const respondidos = list.filter((x) => x.status === "respondido");
   // A espera de cada pedido aberto (de createdAt): é a régua da faixa e da linha.
@@ -351,9 +395,11 @@ function IntegrationFormsScreen() {
     <div className="intform-page" style={{ "--form-grid": FORM_GRID }}>
       <PageHead
         title="Formulário de Integração"
-        sub="O cliente que acabou de fechar responde como é a operação dele antes da call · com termo de veracidade assinado."
+        sub="O cliente que fechou responde pelo link: como é a operação dele (antes da call) e os dados pra nota fiscal · com termo de veracidade assinado."
       >
-        <a className="intform-link" href={`${publicBase()}/fi/preview`} target="_blank" rel="noreferrer">Ver perguntas</a>
+        {Object.values(KINDS).map((k) => (
+          <a key={k.key} className="intform-link" href={previewUrl(k.key)} target="_blank" rel="noreferrer">{`Perguntas · ${k.label}`}</a>
+        ))}
         <PrimaryButton onClick={() => setAsking(true)}>Solicitar formulário</PrimaryButton>
       </PageHead>
 
@@ -361,7 +407,7 @@ function IntegrationFormsScreen() {
         {[
           { label: "Aguardando resposta", value: pendentes.length, note: pendentes.length ? "antes de marcar a integração" : "ninguém devendo" },
           { label: "Espera mais longa", value: esperaMax == null ? "—" : `${esperaMax} ${esperaMax === 1 ? "dia" : "dias"}`, note: esperaMaxNome || "nenhum pedido aberto", tone: esperaMax >= 5 ? "var(--neg)" : "var(--fg-1)" },
-          { label: "Prontos para a call", value: respondidos.length, note: respondidos.length ? "responderam e assinaram o termo" : "nenhum respondido ainda", tone: respondidos.length ? "var(--pos)" : "var(--fg-1)" },
+          { label: "Respondidos", value: respondidos.length, note: respondidos.length ? `${respondidos.filter((x) => kindOf(x) === "integracao").length} integração · ${respondidos.filter((x) => kindOf(x) === "nota_fiscal").length} nota fiscal` : "nenhum respondido ainda", tone: respondidos.length ? "var(--pos)" : "var(--fg-1)" },
         ].map((stat) => <Card key={stat.label} style={{ padding: "14px 16px" }}>
           <div className="kicker">{stat.label}</div>
           <div className="intform-number tnum" style={{ color: stat.tone }}>{items === null ? "…" : stat.value}</div>
@@ -375,6 +421,10 @@ function IntegrationFormsScreen() {
           <FilterTab active={tab === "pendente"} count={pendentes.length} onClick={() => setTab("pendente")}>Aguardando</FilterTab>
           <FilterTab active={tab === "respondido"} count={respondidos.length} onClick={() => setTab("respondido")}>Respondidos</FilterTab>
         </div>
+        <select aria-label="Tipo de formulário" value={tipo} onChange={(e) => setTipo(e.target.value)} className="inp intform-kind-select">
+          <option value="todos">todos os formulários</option>
+          {Object.values(KINDS).map((k) => <option key={k.key} value={k.key}>{k.full}</option>)}
+        </select>
         <input type="search" aria-label="Buscar cliente ou resposta" value={q} onChange={(e) => setQ(e.target.value)} className="inp" placeholder="buscar cliente…" />
       </div>
 
@@ -385,12 +435,12 @@ function IntegrationFormsScreen() {
         </div> : items === null ? <div className="intform-feedback" role="status">Carregando formulários…</div> : !visiveis.length ? (
           <EmptyState
             title={list.length ? "Nada nesse filtro" : "Nenhum formulário pedido ainda"}
-            hint={list.length ? "Troque a aba ou limpe a busca." : "Solicite as informações da operação antes da call de integração."}
-            action={list.length ? <SecondaryButton onClick={() => { setTab("todos"); setQ(""); }}>Limpar filtros</SecondaryButton> : <PrimaryButton onClick={() => setAsking(true)}>Solicitar formulário</PrimaryButton>}
+            hint={list.length ? "Troque a aba, o tipo ou limpe a busca." : "Solicite as informações da operação antes da call de integração, e os dados pra nota fiscal pro financeiro emitir sem pedir CNPJ no WhatsApp."}
+            action={list.length ? <SecondaryButton onClick={() => { setTab("todos"); setTipo("todos"); setQ(""); }}>Limpar filtros</SecondaryButton> : <PrimaryButton onClick={() => setAsking(true)}>Solicitar formulário</PrimaryButton>}
           />
         ) : (
           <div className="tbl-x">
-            <table className="intform-table" aria-label="Formulários de integração">
+            <table className="intform-table" aria-label="Formulários pedidos aos clientes">
               <thead><tr>{["Cliente", "Situação", "O que veio", "Pedido por", "Ação"].map((label) => <th key={label} scope="col">{label}</th>)}</tr></thead>
               <tbody>
                 {visiveis.map((doc) => {
@@ -401,7 +451,7 @@ function IntegrationFormsScreen() {
                   return <tr key={doc.id}>
                     <td data-label="Cliente">
                       <button className="intform-name" onClick={() => setSel(doc)} title={doc.customerName}>{doc.customerName || "(sem cliente)"}</button>
-                      <div className="intform-meta">pedido {fmtDay(doc.createdAt)}</div>
+                      <div className="intform-meta"><b className="intform-kind-tag">{KINDS[kindOf(doc)].label}</b> · pedido {fmtDay(doc.createdAt)}</div>
                     </td>
                     <td data-label="Situação">
                       <span className="intform-status" style={{ color: responded ? "var(--pos)" : days >= 5 ? "var(--neg)" : "var(--warn)" }}>

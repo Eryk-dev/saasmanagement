@@ -1,11 +1,19 @@
+import { beginPageRequest } from "../src/lib/navigation-loading.js";
+import { customersCashMock } from "./customers-cash-mock.js";
 // Dublê da API pro preview de telas (14/09). NÃO entra no build de produção:
 // só o vite.preview.config.js troca lib/api.js por este arquivo, pra conferir
 // o desenho de uma tela sem subir a API nem tocar em banco nenhum.
 import { integrationFormsMock } from "./integration-forms-mock.js";
 import { marketingCollections, marketingCrud, marketingMock } from "./marketing-mock.js";
 const marketingPreview = typeof location !== "undefined" && new URLSearchParams(location.search).has("marketing");
+import { inboxMock } from "./inbox-mock.js";
+const inboxPreview = typeof location !== "undefined" && new URLSearchParams(location.search).has("inbox");
 import { trainingMock } from "./training-mock.js";
 import { ticketsMock } from "./tickets-mock.js";
+import { financeMock } from "./finance-mock.js";
+const financePreview = typeof location !== "undefined" && new URLSearchParams(location.search).has("finance");
+import { teamPreviewScore } from "./team-mock.js";
+const teamPreview = typeof location !== "undefined" && new URLSearchParams(location.search).has("team");
 const DIA = 86400000;
 const hoje = new Date();
 const emHoras = (h, m = 0) => { const d = new Date(hoje); d.setHours(h, m, 0, 0); return d.toISOString(); };
@@ -66,6 +74,7 @@ let notificacoes = [
 ];
 
 const RESPOSTAS = {
+  ...customersCashMock,
   ...trainingMock,
   ...ticketsMock,
   notifications: () => ({ unread: notificacoes.filter((n) => !n.read).length, items: notificacoes }),
@@ -104,8 +113,13 @@ const RESPOSTAS = {
 
 const vazio = () => Promise.resolve(null);
 
-export const api = new Proxy({}, {
+const mockApi = new Proxy({}, {
   get(_, nome) {
+    if (financePreview && nome === "fin") return (...args) => Promise.resolve(financeMock(...args));
+    if (financePreview && nome === "expensesSummary") return () => Promise.resolve({ ai: 0, wa: 0 });
+    if (teamPreview && nome === "scoreboard") return () => Promise.resolve({ ...RESPOSTAS.scoreboard(), ...teamPreviewScore });
+    if (inboxPreview && Object.hasOwn(inboxMock, nome)) return (...args) => Promise.resolve().then(() => inboxMock[nome](...args));
+    if (inboxPreview && nome === "update") return (col, id, patch) => Promise.resolve().then(() => { const row = (window.SEED[col.toUpperCase()] || []).find((r) => r.id === id); if (row) Object.assign(row, patch); return row; });
     if (marketingPreview && Object.hasOwn(marketingMock, nome)) return (...args) => Promise.resolve().then(() => marketingMock[nome](...args));
     if (Object.hasOwn(integrationFormsMock, nome) || (marketingPreview && Object.hasOwn(marketingCrud, nome))) return (col, ...args) => Promise.resolve().then(() => {
       if (col === "integration_forms" && integrationFormsMock[nome]) return integrationFormsMock[nome](...args);
@@ -117,6 +131,27 @@ export const api = new Proxy({}, {
     if (RESPOSTAS[nome]) return (...a) => Promise.resolve(RESPOSTAS[nome](...a));
     if (nome === "then") return undefined;
     return (...a) => { console.info("[preview] api." + String(nome), a); return vazio(); };
+  },
+});
+
+// Simula consultas desencontradas sem subir API/banco. ?splash&delay=1500
+// &fail=scoreboard ou &hang=scoreboard exercitam erro e a saída de espera longa.
+const loadingParams = new URLSearchParams(location.search);
+const delay = loadingParams.has("splash") ? Math.max(0, Number(loadingParams.get("delay")) || 0) : 0;
+export const api = new Proxy(mockApi, {
+  get(target, name) {
+    const fn = target[name];
+    if (typeof fn !== "function") return fn;
+    return async (...args) => {
+      const method = /^(create|update|delete|save|send|set|remove|login|logout)/.test(String(name)) ? "POST" : "GET";
+      const finish = beginPageRequest(method);
+      try {
+        if (loadingParams.has("splash") && loadingParams.get("hang") === name) await new Promise(() => {});
+        if (delay) await new Promise((resolve) => setTimeout(resolve, name === "scoreboard" ? delay * 2 : delay));
+        if (loadingParams.has("splash") && loadingParams.get("fail") === name) throw new Error("Falha simulada na prévia");
+        return await fn(...args);
+      } finally { finish(); }
+    };
   },
 });
 

@@ -1,8 +1,11 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
+import { AppStartup } from "../src/components/screen-loading.jsx";
 import { fmt } from "../src/lib/format.js";
 import { LEADS_FAKE, CLIENTES_FAKE } from "./api-mock.js";
 import "../src/tokens.css";
+import { setupInboxPreview } from "./inbox-mock.js";
+import { setupTeamPreview } from "./team-mock.js";
 
 // Preview de tela (14/09): monta UMA tela do cockpit com dado falso, pra
 // conferir o desenho contra a prancha do protótipo sem subir a API. O
@@ -41,6 +44,8 @@ window.SEED = {
   ME: { id: "leo", name: "Leonardo", roles: ["sdr", "admin"] },
   COUNTERS: { leverads: { tasks: 3, tasksLate: 1, inbox: 2, tickets: 3, ticketsBreached: 1 } },
 };
+if (params.has("inbox")) setupInboxPreview(window.SEED, params);
+if (params.has("team")) setupTeamPreview(window.SEED);
 if (previewShell) {
   window.SEED.SAAS.push({ id: "elo", name: "Elo", accent: 55, funnel: [], leadQuestions: [] });
   // A moldura usa o App real, com API falsa e sem conexão SSE/banco.
@@ -84,9 +89,10 @@ function App() {
 
 function PreviewTheme({ children }) {
   React.useEffect(() => {
-    if (marketingPreview) {
-      document.body.dataset.theme = params.get("theme") === "dark" ? "dark" : "light";
-      if (params.get("theme") === "dark") ["--accent", "--accent-hover", "--accent-soft", "--accent-line"].forEach((name) => document.body.style.removeProperty(name));
+    if (marketingPreview || params.has("inbox") || params.has("team") || params.has("finance") || params.has("splash")) {
+      const dark = params.get("theme") === "dark" || params.has("dark");
+      document.body.dataset.theme = dark ? "dark" : "light";
+      if (dark) ["--accent", "--accent-hover", "--accent-soft", "--accent-line"].forEach((name) => document.body.style.removeProperty(name));
     }
   }, []);
   return children;
@@ -94,8 +100,14 @@ function PreviewTheme({ children }) {
 
 const root = createRoot(document.getElementById("root"));
 if (previewShell) {
-  const { App: Cockpit } = await import("../src/app.jsx");
-  root.render(<PreviewTheme><Cockpit /></PreviewTheme>);
+  const loadCockpit = async () => {
+    if (params.has("splash")) await new Promise((resolve) => setTimeout(resolve, Number(params.get("delay")) || 0));
+    const { App: Cockpit } = await import("../src/app.jsx");
+    return function PreviewCockpit(props) { return <PreviewTheme><Cockpit {...props} /></PreviewTheme>; };
+  };
+  root.render(params.has("splash")
+    ? <PreviewTheme><AppStartup loadApp={loadCockpit} renderError={(error) => <div role="alert">{error.message}</div>} /></PreviewTheme>
+    : <PreviewTheme>{React.createElement(await loadCockpit())}</PreviewTheme>);
 } else {
   root.render(<App />);
   window.addEventListener("hashchange", () => location.reload());

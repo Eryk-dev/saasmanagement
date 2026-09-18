@@ -10,11 +10,12 @@ import { legacyDoneKey, DEFAULT_COLUMNS as TASK_DEFAULT_COLUMNS, assetIdFromUrl 
 import { catalogAmount } from "./proposal-catalog.js";
 import { createClosedSubscription } from "./billing.js";
 import { FLASHCARD_DEFAULTS } from "./routes.flashcards.js";
+import { LEVERADS_DECKS, LEVERADS_V2 } from "./flashcard-decks.leverads.js";
 import { LEVERADS_EXPANSION } from "./flashcard-decks.leverads.js";
 import { mergeLeadQuestions } from "./forms.js";
 import { waMatchKey } from "./wa-store.js";
 import { backfillPaymentLinks } from "./payment-links.js";
-import { slideVisible } from "./proposal.js";
+import { slideVisible, runNativeProposal } from "./proposal.js";
 import { mentoriaTemplateDoc, mentoriaCalcBlock } from "./mentoria.js";
 import { BLOG_DEFAULT_RULES, BLOG_DEFAULT_STATE, blogCfgId } from "./blog-config.js";
 
@@ -274,6 +275,67 @@ export async function migrateFlashcardsDeckExpansion(repo) {
   return missing.length;
 }
 
+// ── Flashcards: catálogo v2 + call otimizada (16/09/2026) ────────────────────
+// Os mapas mentais de 10/09 trocaram o modelo (Lever OEM / Ads / Price ×
+// Essencial / Escala / Enterprise, só anual + semestral, call em 10 passos,
+// robô em 4 passos, ICP por linha). O deck em código já nasce atualizado; se um
+// doc `flashcards` tiver sido materializado pela tela, ele recebe o MESMO
+// conserto: card reescrito ganha o texto novo (imagem/máscaras do dono ficam),
+// card retirado sai (ensinava FULL/Parcial/recorrente) e card novo entra.
+// One-shot com marcador catalogV2FlashcardsV1; sem doc é no-op.
+export async function migrateFlashcardsCatalogV2(repo) {
+  const doc = await repo.get("flashcards", "leverads");
+  if (!doc || doc.catalogV2FlashcardsV1) return 0;
+  const byId = new Map(LEVERADS_DECKS.map((c) => [c.id, c]));
+  const rewritten = new Set(LEVERADS_V2.rewritten);
+  const retired = new Set(LEVERADS_V2.retired);
+  let touched = 0;
+  const kept = [];
+  for (const c of doc.cards || []) {
+    if (!c || !c.id) continue;
+    if (retired.has(c.id)) { touched++; continue; }
+    const fresh = byId.get(c.id);
+    if (rewritten.has(c.id) && fresh) {
+      touched++;
+      kept.push({ ...c, type: fresh.type || "basic", front: fresh.front, back: fresh.back });
+    } else kept.push(c);
+  }
+  const have = new Set(kept.map((c) => c.id));
+  for (const id of LEVERADS_V2.added) {
+    const fresh = byId.get(id);
+    if (fresh && !have.has(id)) { kept.push({ ...fresh }); touched++; }
+  }
+  await repo.update("flashcards", "leverads", { cards: kept, catalogV2FlashcardsV1: true });
+  return touched;
+}
+
+// Estado de estudo dos cards que MUDARAM DE RESPOSTA: quem já tinha o card
+// "maduro" ficaria semanas sem rever um conteúdo que agora é outro (preço,
+// plano, passo da call). Apaga o estado FSRS (e a vaga no gradPool) das entradas
+// dos cards reescritos e retirados, em todos os usuários do leverads; o card
+// volta como novo na fila. `newDone` é contagem por dia, fica. Guard no
+// produto (o doc `flashcards` não existe em produção).
+export async function migrateTrainingStatesCatalogV2(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product || product.flashcardsCatalogV2RelearnV1) return 0;
+  const ids = [...LEVERADS_V2.rewritten, ...LEVERADS_V2.retired];
+  const hit = (key) => ids.some((id) => key === id || key.startsWith(id + "::"));
+  let docs = 0;
+  for (const st of await repo.list("training_states")) {
+    if (!st || st.saas !== "leverads") continue;
+    const cards = { ...(st.cards || {}) };
+    let changed = false;
+    for (const k of Object.keys(cards)) if (hit(k)) { delete cards[k]; changed = true; }
+    const pool = Array.isArray(st.gradPool) ? st.gradPool.filter((k) => !hit(k)) : null;
+    if (pool && pool.length !== st.gradPool.length) changed = true;
+    if (!changed) continue;
+    await repo.update("training_states", st.id, { cards, ...(pool ? { gradPool: pool } : {}) });
+    docs++;
+  }
+  await repo.update("products", "leverads", { flashcardsCatalogV2RelearnV1: true });
+  return docs;
+}
+
 // ── Ganho como destino da Integração (31/08/2026) ───────────────────────────
 // A reordenação de julho tirou o "ganho" dos próximos passos da entrega (era
 // andar pra trás na régua). Na prática o card às vezes vai de Call direto pra
@@ -322,6 +384,25 @@ export async function migrateIntegracaoNoFollowup(repo) {
     changed = true;
   }
   await repo.update("products", "leverads", { integracaoNoFollowupV1: true, ...(changed ? { nextSteps } : {}) });
+  return changed;
+}
+
+// Nutrição já está no default do follow-up, mas os próximos passos salvos por
+// roteiro substituem esse default. Atualiza esses roteiros uma vez, preservando
+// a ordem das outras ações e futuras edições em Ajustes → Próximos passos.
+export async function migrateNutricaoNoFollowup(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product || product.nutricaoNoFollowupV1) return false;
+  const nextSteps = { ...(product.nextSteps || {}) };
+  let changed = false;
+  for (const [key, list] of Object.entries(nextSteps)) {
+    if (!/^followup/.test(key) || !Array.isArray(list) || !list.length || list.includes("nutricao")) continue;
+    const i = list.indexOf("desqualificado");
+    nextSteps[key] = i === -1 ? [...list, "nutricao"]
+      : [...list.slice(0, i), "nutricao", ...list.slice(i)];
+    changed = true;
+  }
+  await repo.update("products", "leverads", { nutricaoNoFollowupV1: true, ...(changed ? { nextSteps } : {}) });
   return changed;
 }
 
@@ -544,6 +625,38 @@ export async function ensureSemWhatsappReason(repo) {
     await repo.update("products", product.id, patch);
     changed++;
   }
+  return changed;
+}
+
+// 1º TOQUE DA IA NA BASE VELHA (raio-x 17/09). O sdr-brain passou a carimbar
+// sdrLog.firstTouchAt na primeira resposta; quem já tinha conversado com a IA
+// antes disso não tem carimbo nenhum de toque e por isso ficava fora do passe
+// barato da escada de retomada (96 dos 100 leads novos parados) e do 2º toque.
+// Aqui a primeira mensagem do robô em cada conversa vira o carimbo. Uma vez
+// (marcador em app_config); lead com qualquer carimbo de toque fica como está.
+export async function ensureSdrBrainFirstTouch(repo) {
+  const FLAG = "sdr_brain_first_touch_v1";
+  if (await repo.get("app_config", FLAG).catch(() => null)) return 0;
+  const leads = await repo.list("leads");
+  const need = new Map(leads
+    .filter((l) => !l.internal && !l.sdrLog?.firstTouchAt && !l.sdrLog?.secondTouchAt && !l.sdrLog?.backlogRescueAt)
+    .map((l) => [l.id, l]));
+  let changed = 0;
+  if (need.size) {
+    const bot = await repo.listWhere("wa_messages", { author: "sdr-bot" }, { fields: ["leadId", "at"] }).catch(() => []);
+    const firstByLead = new Map();
+    for (const m of bot) {
+      if (!m?.leadId || !need.has(m.leadId) || !m.at) continue;
+      const cur = firstByLead.get(m.leadId);
+      if (!cur || String(m.at) < String(cur)) firstByLead.set(m.leadId, String(m.at));
+    }
+    for (const [id, at] of firstByLead) {
+      const lead = need.get(id);
+      await repo.update("leads", id, { sdrLog: { ...(lead.sdrLog || {}), firstTouchAt: at, firstTouchVia: "brain" } });
+      changed++;
+    }
+  }
+  await repo.create("app_config", { id: FLAG, at: new Date().toISOString(), changed });
   return changed;
 }
 
@@ -1809,6 +1922,29 @@ export async function ensureFormsV2(repo) {
   return criados;
 }
 
+// Leonardo, 16/09/2026: encerrar o split e usar 100% dos formulários novos.
+// Ativa junto do código que resolve anúncios ainda sem insights e PRICE.
+// Só uma vez e com os três destinos já publicados; não publica rascunhos nem
+// sobrescreve ajustes operacionais feitos depois desta migração.
+export async function ensureFormsV2FullRouting(repo) {
+  const { FORM_IDS } = await import("./forms-v2.leverads.js");
+  const { FORM_AB_FLAG } = await import("./form-ab.js");
+  const cfg = await repo.get("app_config", FORM_AB_FLAG);
+  if (!cfg || cfg.fullRoutingV1) return false;
+  const forms = await Promise.all(Object.values(FORM_IDS).map((id) => repo.get("forms", id)));
+  if (forms.some((f) => !f || f.saas !== "leverads" || f.status !== "published")) return false;
+  await repo.update("app_config", FORM_AB_FLAG, {
+    enabled: true, pct: 100, onlyForms: ["fo_diagnostico_leverads"],
+    byPain: {
+      OEM: FORM_IDS.oem, ADS: FORM_IDS.ads, PRICE: FORM_IDS.price,
+      ...Object.fromEntries(["A", "B", "C", "D", "E"].map((code) => [code, FORM_IDS.ads])),
+    },
+    fallback: FORM_IDS.ads, fullRoutingV1: true,
+    nota: "100% nos formulários novos: OEM → Lever OEM, ADS/A–E → Lever Ads, PRICE → Lever Price. Sem origem, entrada antiga → Ads.",
+  });
+  return true;
+}
+
 // ── Etapas de cadência (10/09/2026) ───────────────────────────────────────
 // Insere "Dia 2".."Dia 7" entre "Novo lead" e "Qualificando". Atrás de flag
 // porque muda o BOARD de todo mundo no mesmo instante — e porque, com o
@@ -2007,6 +2143,7 @@ export async function runStartupMigrations(repo) {
   try {
     const n = await ensureFormsV2(repo);
     if (n) console.log(`[migration] formulários v2 + config do A/B criados (${n} objeto(s)) — em rascunho, split desligado`);
+    if (await ensureFormsV2FullRouting(repo)) console.log("[migration] formulários OEM/Ads/Price com 100% do tráfego");
   } catch (err) {
     console.error("[migration] ensureFormsV2 falhou:", err?.message || err);
   }
@@ -2107,6 +2244,18 @@ export async function runStartupMigrations(repo) {
     console.error("[migration] migrateFlashcardsOemQuotas falhou:", err?.message || err);
   }
   try {
+    const n = await migrateFlashcardsCatalogV2(repo);
+    if (n) console.log(`[migration] flashcards: catálogo v2 + call otimizada aplicados em ${n} card(s) do doc salvo`);
+  } catch (err) {
+    console.error("[migration] migrateFlashcardsCatalogV2 falhou:", err?.message || err);
+  }
+  try {
+    const n = await migrateTrainingStatesCatalogV2(repo);
+    if (n) console.log(`[migration] treino: estado FSRS zerado em ${n} pessoa(s) pros cards que mudaram de resposta`);
+  } catch (err) {
+    console.error("[migration] migrateTrainingStatesCatalogV2 falhou:", err?.message || err);
+  }
+  try {
     const n = await ensureFunnelKinds(repo);
     if (n) console.log(`[migration] kind garantido no funil de ${n} produto(s)`);
   } catch (err) {
@@ -2141,6 +2290,12 @@ export async function runStartupMigrations(repo) {
     if (n) console.log(`[migration] motivo "sem WhatsApp" verificado em ${n} produto(s)`);
   } catch (err) {
     console.error("[migration] ensureSemWhatsappReason falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureSdrBrainFirstTouch(repo);
+    if (n) console.log(`[migration] 1º toque da IA carimbado em ${n} lead(s) (escada de retomada)`);
+  } catch (err) {
+    console.error("[migration] ensureSdrBrainFirstTouch falhou:", err?.message || err);
   }
   try {
     const n = await ensureSdrGoals(repo);
@@ -2244,6 +2399,12 @@ export async function runStartupMigrations(repo) {
   } catch (err) {
     console.error("[migration] migrateIntegracaoNoFollowup falhou:", err?.message || err);
   }
+  try {
+    const changed = await migrateNutricaoNoFollowup(repo);
+    if (changed) console.log("[migration] próximos passos do Follow-up ganharam o destino Nutrição (leverads)");
+  } catch (err) {
+    console.error("[migration] migrateNutricaoNoFollowup falhou:", err?.message || err);
+  }
   // Depois da reordenação: quem está na entrega passa a ser venda, então ganha
   // cliente e assinatura como se tivesse passado pelo Ganho.
   try {
@@ -2279,11 +2440,11 @@ export async function runStartupMigrations(repo) {
   } catch (err) {
     console.error("[migration] backfillCatalogPricing falhou:", err?.message || err);
   }
-  // Depois do catálogo vigente: o deck de slides (opção C) nasce/atualiza com a
-  // MESMA tabela de preço do deck padrão.
+  // Depois do catálogo vigente: a apresentação em slides (o deck publicado)
+  // nasce/atualiza com a MESMA tabela de preço do pt_leverads, onde o catálogo mora.
   try {
     const changed = await ensureSlidesDeck(repo);
-    if (changed) console.log("[migration] proposta: deck de slides (opção C) pronto no select do card");
+    if (changed) console.log("[migration] proposta: apresentação em slides é o deck publicado do leverads (A e B arquivadas)");
   } catch (err) {
     console.error("[migration] ensureSlidesDeck falhou:", err?.message || err);
   }
@@ -2376,28 +2537,52 @@ export async function assignMentoriaOwner(repo) {
 //
 // Idempotente e respeitosa: template que já existe só ganha o bloco de preços
 // quando ele falta. Slides editados pelo dono nunca são reescritos.
-// ── Opção C: a apresentação em SLIDES (Leo, 12/09/2026) ─────────────────────
-// Deck alternativo pra testar na call de vendas, ao lado do deck de sempre e do
-// Starter. O documento é só a CASCA: nome, layout e o catálogo — os slides e a
-// tela zero moram no código (proposal-slides-page.js), porque este deck não é
-// montado campo a campo, e sim pela configuração do plano (linha, pacote,
-// Price, pacote de OEM, período). `selectable` é o que faz o deck aparecer no
-// select do card do lead; `status: draft` mantém o padrão do produto como está.
+// ── A apresentação em SLIDES é a oficial (Leo, 12/09 → 18/09/2026) ─────────
+// Nasceu como "Opção C", deck alternativo pra A/B na call ao lado do deck de
+// sempre (pt_leverads, a "A") e do Starter (a "B"). Em 18/09 virou a ÚNICA:
+// é o template publicado do leverads (o que gera sozinho quando o lead entra
+// pelo form e o que "gerar proposta" usa), e A e B foram arquivadas: rascunho
+// sem `selectable`, com o nome carimbado, no mesmo padrão dos backups. Não são
+// apagadas porque o pt_leverads é onde o catálogo de preço mora (as migrações
+// do catálogo escrevem lá e este deck copia), e as propostas já geradas são
+// snapshots, então nada que já foi mandado muda.
 //
-// O catálogo ACOMPANHA o do pt_leverads: preço novo entra nos dois decks no
-// mesmo deploy, sem ninguém lembrar de copiar.
+// O documento é só a CASCA: nome, layout e o catálogo — os slides e a tela
+// zero moram no código (proposal-slides-page.js), porque este deck não é
+// montado campo a campo, e sim pela configuração do plano (linha, pacote,
+// Price, pacote de OEM, período).
+//
+// O catálogo ACOMPANHA o do pt_leverads: preço novo entra nos dois no mesmo
+// deploy, sem ninguém lembrar de copiar.
+const SLIDES_DECK_OFFICIAL_SINCE = "2026-09-18";
+const ARQUIVO_PREFIX = `[ARQUIVO ${SLIDES_DECK_OFFICIAL_SINCE}] `;
+
+async function archiveDeck(repo, id) {
+  const t = await repo.get("proposal_templates", id);
+  if (!t) return false;
+  const patch = {};
+  if (t.status !== "draft") patch.status = "draft";
+  if (t.selectable) patch.selectable = false;
+  if (!String(t.name || "").startsWith("[ARQUIVO")) patch.name = ARQUIVO_PREFIX + (t.name || id);
+  if (!Object.keys(patch).length) return false;
+  await repo.update("proposal_templates", id, patch);
+  return true;
+}
+
 export async function ensureSlidesDeck(repo) {
   const base = await repo.get("proposal_templates", "pt_leverads");
   const catalogo = base?.calc?.catalog ? JSON.parse(JSON.stringify(base.calc.catalog)) : null;
   const cur = await repo.get("proposal_templates", "pt_leverads_slides");
+  let changed = false;
   if (!cur) {
     await repo.create("proposal_templates", {
       id: "pt_leverads_slides",
       saas: "leverads",
-      name: "Opção C · Apresentação em slides",
-      pickLabel: "Opção C · slides",
-      status: "draft",
-      selectable: true,
+      name: "Apresentação · LeverAds",
+      pickLabel: "Apresentação",
+      status: "published",
+      selectable: false,
+      officialSince: SLIDES_DECK_OFFICIAL_SINCE,
       layout: "slides",
       theme: base?.theme || {},
       slides: [],
@@ -2405,18 +2590,87 @@ export async function ensureSlidesDeck(repo) {
       calc: catalogo ? { ...(base?.calc || {}), catalog: catalogo } : { ...(base?.calc || {}) },
       createdAt: new Date().toISOString(),
     });
-    return true;
+    changed = true;
+  } else {
+    const patch = {};
+    if (cur.layout !== "slides") patch.layout = "slides";
+    // Promoção a oficial: roda UMA vez (o carimbo `officialSince` segura). Se
+    // o Leo despublicar de propósito depois, a migração não briga.
+    if (!cur.officialSince) {
+      patch.officialSince = SLIDES_DECK_OFFICIAL_SINCE;
+      patch.status = "published";
+      patch.selectable = false;
+      patch.name = "Apresentação · LeverAds";
+      patch.pickLabel = "Apresentação";
+    }
+    if (catalogo && JSON.stringify(cur.calc?.catalog || null) !== JSON.stringify(catalogo)) {
+      patch.calc = { ...(cur.calc || {}), catalog: catalogo };
+    }
+    if (Object.keys(patch).length) {
+      await repo.update("proposal_templates", "pt_leverads_slides", patch);
+      changed = true;
+    }
   }
-  const patch = {};
-  if (cur.layout !== "slides") patch.layout = "slides";
-  if (!cur.selectable) patch.selectable = true;
-  if (!cur.pickLabel) patch.pickLabel = "Opção C · slides";
-  if (catalogo && JSON.stringify(cur.calc?.catalog || null) !== JSON.stringify(catalogo)) {
-    patch.calc = { ...(cur.calc || {}), catalog: catalogo };
+  // A e B saem do select e do padrão junto com a promoção (mesma passada).
+  if (!cur?.officialSince) {
+    for (const id of ["pt_leverads", "pt_leverads_starter"]) {
+      if (await archiveDeck(repo, id)) changed = true;
+    }
   }
-  if (!Object.keys(patch).length) return false;
-  await repo.update("proposal_templates", "pt_leverads_slides", patch);
-  return true;
+  return changed;
+}
+
+// ── Leads abertos trocam pro deck de slides (Leo, 18/09/2026) ───────────────
+// Promover o template não muda quem já tinha link: "apresentar ao vivo" abre o
+// snapshot gravado no lead, e ~1.100 leads abertos nasceram com o deck antigo
+// (A) ou o Starter (B). Regera a apresentação desses leads com o deck
+// publicado, pelo mesmo caminho do botão "re-gerar" do card (runNativeProposal
+// com force): o link antigo continua de pé pra quem já recebeu, o lead passa
+// a apontar pro novo e o valor do card acompanha.
+//
+// Fica de fora quem não tem o que apresentar de novo: lead fechado ou perdido,
+// pós-venda, proposta aceita (preço na mão do cliente), deck fixado sob medida
+// e quem já está no deck de slides ou na Mentoria. Idempotente por natureza:
+// depois da troca o template do lead deixa de ser A/B.
+//
+// Roda DEPOIS de a API ouvir (index.js), não no boot: é uma proposta nova por
+// lead e o health check não pode esperar.
+const ARCHIVED_DECKS = new Set(["pt_leverads", "pt_leverads_starter"]);
+
+function baseUrlFromLeads(leads) {
+  for (const l of leads) {
+    const m = String(l.proposalUrl || "").match(/^(https?:\/\/[^/]+)\/p\//);
+    if (m) return m[1];
+  }
+  return "";
+}
+
+export async function regenerateOpenLeadsToSlides(repo, { baseUrl = "", log = null } = {}) {
+  const deck = await repo.get("proposal_templates", "pt_leverads_slides");
+  if (!deck || deck.status !== "published") return 0;
+  const products = new Map((await repo.list("products")).map((p) => [p.id, p]));
+  const leads = (await repo.list("leads")).filter((l) =>
+    l.saas === "leverads" && l.proposta_id && !l.proposalPinned && !l.planClosed && !l.wonAt);
+  if (!leads.length) return 0;
+  // Só o cabeçalho de cada proposta: a coleção inteira é dezenas de MB.
+  const proposals = new Map((await repo.listWhere("proposals", { saas: "leverads" }, { fields: ["template", "accepted"] }))
+    .map((p) => [p.id, p]));
+  const base = String(baseUrl || "").replace(/\/+$/, "") || baseUrlFromLeads(leads);
+  let n = 0;
+  for (const lead of leads) {
+    const product = products.get(lead.saas);
+    if (TERMINAL_KINDS.has(kindOf(product, lead.stage)) || isPostSaleStage(product, lead.stage)) continue;
+    const p = proposals.get(lead.proposta_id);
+    if (!p || p.accepted || !ARCHIVED_DECKS.has(p.template)) continue;
+    try {
+      const r = await runNativeProposal(repo, lead, { force: true, baseUrl: base });
+      if (r.ok) n++;
+      else if (log) log.warn(`[migration] apresentação do lead ${lead.id} não regerada: ${r.skipped || r.error || "?"}`);
+    } catch (err) {
+      if (log) log.warn(`[migration] apresentação do lead ${lead.id} falhou: ${err?.message || err}`);
+    }
+  }
+  return n;
 }
 
 export async function ensureMentoriaTemplate(repo) {

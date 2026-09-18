@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  resultTokens, refreshResults, leveradsResults, _resetResultsCache,
+  resultTokens, refreshResults, leveradsResults, presentationResults, leveradsPresentationResults, _resetResultsCache,
 } from "../src/leverads-results.js";
 
 const ROW = {
@@ -16,6 +16,64 @@ const ROW = {
   gerado: 995461.02, gerado_clientes: 689296.97, gerado_nosso: 306164.05,
   anuncios: 738756, ritmo: 10426.47, dias: 3, participacao: 13.8,
 };
+
+const SUMMARY_ROW = { ...ROW, gmv_periodo: 18_634_412.87, gerado_periodo: 2_059_468.45, inicio_periodo: "2026-06-26" };
+
+test("resumo do deck C calcula a participação na mesma janela, sem usar o all-time", () => {
+  const summary = presentationResults(SUMMARY_ROW, Date.parse("2026-09-15T11:00:00Z"));
+  assert.equal(summary.gmv, 18_634_412.87);
+  assert.equal(summary.generated, 2_059_468.45);
+  assert.equal(summary.participation, SUMMARY_ROW.gerado_periodo / SUMMARY_ROW.gmv_periodo * 100);
+  assert.equal(summary.periodStart, "2026-06-26");
+  assert.equal(summary.updatedAt, "2026-09-15T11:00:00.000Z");
+  assert.equal(presentationResults({ ...SUMMARY_ROW, gerado_periodo: 0 }, 0).participation, 0);
+  for (const patch of [{ gmv_periodo: 0 }, { gmv_periodo: null }, { gerado_periodo: null }, { gerado_periodo: -1 }, { gerado_periodo: Infinity }, { gerado_periodo: 20_000_000 }]) {
+    assert.equal(presentationResults({ ...SUMMARY_ROW, ...patch }, 0), null);
+  }
+});
+
+test("resumo mantém a última consulta boa e sua data durante falha, e atualiza no recálculo", async () => {
+  _resetResultsCache();
+  assert.equal(leveradsPresentationResults({ refresh: () => {} }), null);
+  await refreshResults({ query: async () => [SUMMARY_ROW], now: () => 1_000 });
+  const before = leveradsPresentationResults({ now: () => 1_001 });
+  await refreshResults({ query: async () => { throw new Error("offline"); }, now: () => 2_000 });
+  assert.deepEqual(leveradsPresentationResults({ now: () => 2_001 }), before);
+  await refreshResults({ query: async () => [{ ...SUMMARY_ROW, gerado_periodo: 2_100_000 }], now: () => 3_000 });
+  const after = leveradsPresentationResults({ now: () => 3_001 });
+  assert.equal(after.generated, 2_100_000);
+  assert.equal(after.updatedAt, "1970-01-01T00:00:03.000Z");
+});
+
+test("deck C já gerado recebe totais atuais ao abrir, preservando seu estado comercial", async () => {
+  const Fastify = (await import("fastify")).default;
+  const { makeMemRepo } = await import("./helpers/mem-repo.js");
+  const { registerProposalRoutes } = await import("../src/routes.proposals.js");
+  _resetResultsCache();
+  await refreshResults({ query: async () => [SUMMARY_ROW] });
+  const repo = makeMemRepo();
+  const state = { frozen: true, customPriceCents: 123456 };
+  await repo.create("proposals", { id: "pr_live_c", saas: "leverads", layout: "slides", state, editKey: "k_live", data: { lead: {} } });
+  await repo.create("proposal_templates", { id: "pt_live_c", saas: "leverads", layout: "slides" });
+  const app = Fastify();
+  registerProposalRoutes(app, repo);
+  for (const url of ["/p/pr_live_c?k=k_live", "/p/t/pt_live_c"]) {
+    const response = await app.inject({ url });
+    assert.equal(response.statusCode, 200);
+    assert.match(response.body, /R\$ 18,6 mi/);
+    assert.match(response.body, /R\$ 2,1 mi/);
+    assert.match(response.body, /11,1% do faturamento/);
+    assert.match(response.body, /base desde 26\/06\/2026/);
+    assert.doesNotMatch(response.body, /12% do faturamento deles/);
+  }
+  assert.deepEqual((await repo.get("proposals", "pr_live_c")).state, state);
+  _resetResultsCache();
+  const { proposalSlidesPageHtml } = await import("../src/proposal-slides-page.js");
+  const empty = proposalSlidesPageHtml({ state: {}, data: {} });
+  assert.match(empty, /Resultados agregados temporariamente indisponíveis/);
+  assert.doesNotMatch(empty, /<strong[^>]*>R\$ 8 mi/);
+  await app.close();
+});
 
 test("linha do banco vira o texto que o deck mostra", () => {
   assert.deepEqual(resultTokens(ROW), {

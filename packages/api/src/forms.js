@@ -248,6 +248,8 @@ export function leadFromSubmission(form, answers) {
   const amount = Number(mapped("amount"));
   if (Number.isFinite(amount) && amount > 0) lead.amount = amount;
   lead.form = form.id;
+  // A linha vem da definição servida, não de uma resposta do visitante.
+  if (form.formProduct) lead.formProduct = form.formProduct;
   return lead;
 }
 

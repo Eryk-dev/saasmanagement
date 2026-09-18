@@ -10,6 +10,9 @@ const { registerRoutes } = await import("../src/routes.js");
 const { makeGoogle } = await import("../src/google.js");
 const { makeAnthropic } = await import("../src/anthropic.js");
 const { makeCallSummarizer, formatSummaryText } = await import("../src/call-summaries.js");
+// system pode vir como string ou como blocos (cache de prompt, 17/09)
+const sysOf = (b) => (typeof b?.system === "string" ? b.system : (Array.isArray(b?.system) ? b.system.map((x) => x?.text || "").join("\n") : ""));
+
 
 const SUMMARY = {
   resumo: "Ana quer operar 3 contas no ML sem risco de banimento e curtiu a demo.",
@@ -65,7 +68,7 @@ test("anthropic client: manda opus-4-8 + structured output e devolve o resumo pa
   assert.deepEqual(req.body.thinking, { type: "adaptive" });
   assert.equal(req.body.output_config.format.type, "json_schema");
   assert.equal(req.body.output_config.format.schema.properties.temperatura.enum.length, 3);
-  assert.ok(req.body.system.includes("travessão")); // regra de copy do Leo no prompt
+  assert.ok(sysOf(req.body).includes("travessão")); // regra de copy do Leo no prompt
   assert.ok(req.body.messages[0].content.includes("Transcrição da call"));
 
   assert.equal(makeAnthropic({}).configured(), false);
