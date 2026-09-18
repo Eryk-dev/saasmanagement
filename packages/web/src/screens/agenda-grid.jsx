@@ -327,11 +327,16 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
     const t = team.findIndex((u) => u.id === id);
     return 100 + (t >= 0 ? t : 50);
   };
-  // Bloqueio de UMA pessoa mora na faixa dela; de time (vários/ninguém) cobre
-  // o dia inteiro, atrás das pílulas.
-  const blockPerson = (b) => {
+  // Participantes do item (dona + convidados). Bloqueio/compromisso mora na
+  // faixa de CADA participante; só o item sem ninguém (legado) cobre o dia
+  // inteiro atrás das pílulas. Antes, item com 2+ pessoas era tratado como "de
+  // time" e fechava a grade toda (Leo, 18/09: bloqueio MELI do Jonathan e do
+  // Leonardo apagou a agenda de todo mundo). Participante que não existe mais
+  // no time (usuário removido) não ganha faixa: o bloqueio dele fica invisível
+  // em vez de abrir uma coluna com o id cru.
+  const blockPersons = (b) => {
     const us = Array.isArray(b.users) && b.users.length ? b.users : (b.user ? [b.user] : []);
-    return us.length === 1 ? us[0] : null;
+    return [...new Set(us.filter((id) => id && userById(id)))];
   };
   // Faixas fixas: filtrado por pessoa, só a coluna dela; senão, todos os
   // closers do workspace — mesmo sem nada marcado no dia.
@@ -355,16 +360,16 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
     const persons = [...new Set([
       ...baseLanes,
       ...dayEvents.map(e => e.who || ""),
-      ...rawBlocks.map(x => blockPerson(x.b)).filter(Boolean),
+      ...rawBlocks.flatMap(x => blockPersons(x.b)),
     ])].sort((a, b) => personRank(a) - personRank(b) || String(a).localeCompare(String(b)));
     const laneOf = new Map(persons.map((p, i) => [p, i]));
     const placed = persons.flatMap((p) => laneByCluster(
       dayEvents.filter(e => (e.who || "") === p), e => e.t.getTime(), e => e.t.getTime() + 3600000,
     ).map((e) => ({ ...e, personLane: laneOf.get(p), personLanes: persons.length, sub: e.lane, subs: e.lanes })));
-    const blocks = rawBlocks.map((x) => {
-      const who = blockPerson(x.b);
-      const lane = who != null && laneOf.has(who) ? laneOf.get(who) : null;
-      return { ...x, personLane: lane, personLanes: persons.length };
+    const blocks = rawBlocks.flatMap((x) => {
+      const who = blockPersons(x.b);
+      if (!who.length) return [{ ...x, personLane: null, personLanes: persons.length }];
+      return who.filter((id) => laneOf.has(id)).map((id) => ({ ...x, personLane: laneOf.get(id), personLanes: persons.length }));
     });
     return { placed, blocks, persons };
   };
@@ -770,9 +775,9 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
                   ));
                 })}
                 {(() => {
-                  // Bloqueios/compromissos: o de UMA pessoa mora na faixa dela;
-                  // o de time (vários participantes) cobre o dia inteiro, atrás
-                  // das pílulas. Filtro de tipo ligado tira tudo do caminho.
+                  // Bloqueios/compromissos: uma cópia na faixa de cada
+                  // participante; só o item sem ninguém cobre o dia inteiro,
+                  // atrás das pílulas. Filtro de tipo ligado tira tudo do caminho.
                   return dayBlocks.map(({ b, from, to, personLane, personLanes }) => {
                     const pw = personLanes > 0 ? 100 / personLanes : 100;
                     const left = personLane != null ? personLane * pw : 0;
@@ -780,7 +785,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
                     const tone = b._tone || null; // com tom = compromisso; sem = bloqueio vermelho
                     const label = b._label || `bloqueado${b.recur === "weekly" ? " ↻" : ""}${b.reason ? ` · ${b.reason}` : ""}`;
                     return (
-                      <div key={`blk-${b.id}`}
+                      <div key={`blk-${b.id}-${personLane ?? "all"}`}
                         onClick={(e) => { e.stopPropagation(); blocking.onBlock && blocking.onBlock(b); }}
                         title={`${b._who ? b._who + " · " : ""}${label}${b.recur === "weekly" ? " · toda semana" : ""}${blocking.onBlock ? " · clique pra editar" : ""}`}
                         style={{
