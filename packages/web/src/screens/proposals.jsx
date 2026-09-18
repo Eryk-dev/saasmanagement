@@ -376,7 +376,7 @@ function ProposalsScreen({ saasId }) {
                     <div key={t.id} style={{ display: "grid", gridTemplateColumns: TPL_GRID, gap: 12, padding: "12px var(--inset-x)", alignItems: "center", borderTop: "1px solid var(--line-faint)" }}>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: 13.5, fontWeight: 650, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name || t.id}</div>
-                        <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{`${(t.slides || []).length} slides`}</div>
+                        <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{t.layout === "slides" ? "apresentação em slides · montada pela tela zero, não por slide" : `${(t.slides || []).length} slides`}</div>
                       </div>
                       {/* Rascunho NÃO é esmaecido: o badge carrega o estado (o
                           opacity derrubava o contraste do texto de 12px). */}

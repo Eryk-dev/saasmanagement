@@ -2440,11 +2440,11 @@ export async function runStartupMigrations(repo) {
   } catch (err) {
     console.error("[migration] backfillCatalogPricing falhou:", err?.message || err);
   }
-  // Depois do catálogo vigente: o deck de slides (opção C) nasce/atualiza com a
-  // MESMA tabela de preço do deck padrão.
+  // Depois do catálogo vigente: a apresentação em slides (o deck publicado)
+  // nasce/atualiza com a MESMA tabela de preço do pt_leverads, onde o catálogo mora.
   try {
     const changed = await ensureSlidesDeck(repo);
-    if (changed) console.log("[migration] proposta: deck de slides (opção C) pronto no select do card");
+    if (changed) console.log("[migration] proposta: apresentação em slides é o deck publicado do leverads (A e B arquivadas)");
   } catch (err) {
     console.error("[migration] ensureSlidesDeck falhou:", err?.message || err);
   }
@@ -2537,28 +2537,52 @@ export async function assignMentoriaOwner(repo) {
 //
 // Idempotente e respeitosa: template que já existe só ganha o bloco de preços
 // quando ele falta. Slides editados pelo dono nunca são reescritos.
-// ── Opção C: a apresentação em SLIDES (Leo, 12/09/2026) ─────────────────────
-// Deck alternativo pra testar na call de vendas, ao lado do deck de sempre e do
-// Starter. O documento é só a CASCA: nome, layout e o catálogo — os slides e a
-// tela zero moram no código (proposal-slides-page.js), porque este deck não é
-// montado campo a campo, e sim pela configuração do plano (linha, pacote,
-// Price, pacote de OEM, período). `selectable` é o que faz o deck aparecer no
-// select do card do lead; `status: draft` mantém o padrão do produto como está.
+// ── A apresentação em SLIDES é a oficial (Leo, 12/09 → 18/09/2026) ─────────
+// Nasceu como "Opção C", deck alternativo pra A/B na call ao lado do deck de
+// sempre (pt_leverads, a "A") e do Starter (a "B"). Em 18/09 virou a ÚNICA:
+// é o template publicado do leverads (o que gera sozinho quando o lead entra
+// pelo form e o que "gerar proposta" usa), e A e B foram arquivadas: rascunho
+// sem `selectable`, com o nome carimbado, no mesmo padrão dos backups. Não são
+// apagadas porque o pt_leverads é onde o catálogo de preço mora (as migrações
+// do catálogo escrevem lá e este deck copia), e as propostas já geradas são
+// snapshots, então nada que já foi mandado muda.
 //
-// O catálogo ACOMPANHA o do pt_leverads: preço novo entra nos dois decks no
-// mesmo deploy, sem ninguém lembrar de copiar.
+// O documento é só a CASCA: nome, layout e o catálogo — os slides e a tela
+// zero moram no código (proposal-slides-page.js), porque este deck não é
+// montado campo a campo, e sim pela configuração do plano (linha, pacote,
+// Price, pacote de OEM, período).
+//
+// O catálogo ACOMPANHA o do pt_leverads: preço novo entra nos dois no mesmo
+// deploy, sem ninguém lembrar de copiar.
+const SLIDES_DECK_OFFICIAL_SINCE = "2026-09-18";
+const ARQUIVO_PREFIX = `[ARQUIVO ${SLIDES_DECK_OFFICIAL_SINCE}] `;
+
+async function archiveDeck(repo, id) {
+  const t = await repo.get("proposal_templates", id);
+  if (!t) return false;
+  const patch = {};
+  if (t.status !== "draft") patch.status = "draft";
+  if (t.selectable) patch.selectable = false;
+  if (!String(t.name || "").startsWith("[ARQUIVO")) patch.name = ARQUIVO_PREFIX + (t.name || id);
+  if (!Object.keys(patch).length) return false;
+  await repo.update("proposal_templates", id, patch);
+  return true;
+}
+
 export async function ensureSlidesDeck(repo) {
   const base = await repo.get("proposal_templates", "pt_leverads");
   const catalogo = base?.calc?.catalog ? JSON.parse(JSON.stringify(base.calc.catalog)) : null;
   const cur = await repo.get("proposal_templates", "pt_leverads_slides");
+  let changed = false;
   if (!cur) {
     await repo.create("proposal_templates", {
       id: "pt_leverads_slides",
       saas: "leverads",
-      name: "Opção C · Apresentação em slides",
-      pickLabel: "Opção C · slides",
-      status: "draft",
-      selectable: true,
+      name: "Apresentação · LeverAds",
+      pickLabel: "Apresentação",
+      status: "published",
+      selectable: false,
+      officialSince: SLIDES_DECK_OFFICIAL_SINCE,
       layout: "slides",
       theme: base?.theme || {},
       slides: [],
@@ -2566,18 +2590,34 @@ export async function ensureSlidesDeck(repo) {
       calc: catalogo ? { ...(base?.calc || {}), catalog: catalogo } : { ...(base?.calc || {}) },
       createdAt: new Date().toISOString(),
     });
-    return true;
+    changed = true;
+  } else {
+    const patch = {};
+    if (cur.layout !== "slides") patch.layout = "slides";
+    // Promoção a oficial: roda UMA vez (o carimbo `officialSince` segura). Se
+    // o Leo despublicar de propósito depois, a migração não briga.
+    if (!cur.officialSince) {
+      patch.officialSince = SLIDES_DECK_OFFICIAL_SINCE;
+      patch.status = "published";
+      patch.selectable = false;
+      patch.name = "Apresentação · LeverAds";
+      patch.pickLabel = "Apresentação";
+    }
+    if (catalogo && JSON.stringify(cur.calc?.catalog || null) !== JSON.stringify(catalogo)) {
+      patch.calc = { ...(cur.calc || {}), catalog: catalogo };
+    }
+    if (Object.keys(patch).length) {
+      await repo.update("proposal_templates", "pt_leverads_slides", patch);
+      changed = true;
+    }
   }
-  const patch = {};
-  if (cur.layout !== "slides") patch.layout = "slides";
-  if (!cur.selectable) patch.selectable = true;
-  if (!cur.pickLabel) patch.pickLabel = "Opção C · slides";
-  if (catalogo && JSON.stringify(cur.calc?.catalog || null) !== JSON.stringify(catalogo)) {
-    patch.calc = { ...(cur.calc || {}), catalog: catalogo };
+  // A e B saem do select e do padrão junto com a promoção (mesma passada).
+  if (!cur?.officialSince) {
+    for (const id of ["pt_leverads", "pt_leverads_starter"]) {
+      if (await archiveDeck(repo, id)) changed = true;
+    }
   }
-  if (!Object.keys(patch).length) return false;
-  await repo.update("proposal_templates", "pt_leverads_slides", patch);
-  return true;
+  return changed;
 }
 
 export async function ensureMentoriaTemplate(repo) {

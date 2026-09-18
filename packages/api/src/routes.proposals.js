@@ -219,7 +219,9 @@ export function registerProposalRoutes(app, repo, opts = {}) {
       const chave = c.linha + "_" + c.tier;
       if (c.plataforma && catalogProducts[chave]) state.product = chave;
       state.cycle = c.periodo === "semestral" ? "semiannual" : "annual";
-      state.seats = c.contas;
+      // Contas em branco (form sem resposta, closer ainda não perguntou) não
+      // zera os assentos que a fórmula por assentos usa.
+      if (c.contas > 0) state.seats = c.contas;
     }
     // Camada de produto (catálogo): o select "Apresentar" da tela zero. Vazio =
     // seguir a sugestão da régua; produto fora do catálogo não entra.
