@@ -40,7 +40,7 @@ import { startLeveradsAccessSync } from "./leverads-access.js";
 import { refreshResults, RESULTS_TTL_MS } from "./leverads-results.js";
 import { ensureDefaultAdmins, makeAuthHook } from "./auth.js";
 import { makeScreenGuardHook } from "./screens.js";
-import { runStartupMigrations } from "./migrations.js";
+import { runStartupMigrations, regenerateOpenLeadsToSlides } from "./migrations.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: join(__dirname, "..", "..", "..", ".env") });
@@ -109,6 +109,11 @@ try {
   // Sync automático da Meta no servidor (uma execução pro time inteiro; no-op
   // sem META_ACCESS_TOKEN). O SPA só lê — não faz mais polling por aba.
   startMarketingAutoSync(repo, { log: app.log });
+  // Leads abertos que ainda apontam pro deck antigo (A/B) ganham a apresentação
+  // em slides. É uma proposta nova por lead, então roda depois de ouvir.
+  regenerateOpenLeadsToSlides(repo, { baseUrl: process.env.COCKPIT_PUBLIC_URL || "", log: app.log })
+    .then((n) => { if (n) app.log.info(`[migration] apresentação em slides regerada pra ${n} lead(s) aberto(s)`); })
+    .catch((err) => app.log.error(`[migration] regenerateOpenLeadsToSlides falhou: ${err?.message || err}`));
   // Regras de veiculação dos anúncios (agenda cheia pausa, janela de fim de
   // semana, orçamento alvo): tick invariante de 60s; regra nasce desligada, o
   // toggle vive na tela Publicidade. No-op sem META_ACCESS_TOKEN.

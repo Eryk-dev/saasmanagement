@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { ensureProposalCatalog, ensureSlidesDeck } = await import("../src/migrations.js");
+const { ensureProposalCatalog, ensureSlidesDeck, regenerateOpenLeadsToSlides } = await import("../src/migrations.js");
 const { runNativeProposal, shareProposalOffer, proposalOffersOf } = await import("../src/proposal.js");
 const { registerProposalRoutes } = await import("../src/routes.proposals.js");
 const { calcOferta, deckConfig, slimCatalog, proposalSlidesPageHtml } = await import("../src/proposal-slides-page.js");
@@ -365,4 +365,47 @@ test("o link do cliente do deck de slides existe e vai com o preço congelado", 
   const nada = await shareProposalOffer(repo, semPlano, 1, { baseUrl: "http://x" });
   assert.equal(nada.ok, false);
   assert.match(nada.error, /monte o plano/);
+});
+
+test("leads abertos com o deck antigo ganham a apresentação em slides; fechado, aceito, fixado e mentoria ficam", async () => {
+  const repo = makeMemRepo();
+  const funnel = [{ stage: "Novo lead" }, { stage: "Qualificando" }, { stage: "Follow-up" }, { stage: "Ganho", kind: "ganho" }, { stage: "Integração", kind: "integracao" }, { stage: "Desqualificado", kind: "desqualificado" }];
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel });
+  await repo.create("proposal_templates", JSON.parse(JSON.stringify(TEMPLATE)));
+  await repo.create("proposal_templates", { id: "pt_leverads_starter", saas: "leverads", name: "Starter", status: "draft", selectable: true, slides: [] });
+  await ensureProposalCatalog(repo);
+  // Antes da promoção: cada lead nasce com o deck A ou B, como em produção.
+  const mk = async (id, stage, extra = {}, template = "pt_leverads") => {
+    const lead = await repo.create("leads", { id, saas: "leverads", name: id, stage, accounts: "3-5", ...extra });
+    const r = await runNativeProposal(repo, lead, { baseUrl: "https://levermoney.com.br", template });
+    assert.equal(r.ok, true);
+    return r.lead;
+  };
+  await mk("ld_qual", "Qualificando");
+  await mk("ld_fup", "Follow-up", {}, "pt_leverads_starter");
+  await mk("ld_ganho", "Ganho", { wonAt: "2026-09-01T12:00:00.000Z" });
+  await mk("ld_desq", "Desqualificado");
+  await mk("ld_integ", "Integração");
+  const fixado = await mk("ld_fix", "Qualificando", { proposalPinned: true });
+  const aceito = await mk("ld_aceito", "Qualificando");
+  await repo.update("proposals", aceito.proposta_id, { accepted: true });
+  const antes = Object.fromEntries((await repo.list("leads")).map((l) => [l.id, l.proposta_id]));
+
+  await ensureSlidesDeck(repo);
+  const n = await regenerateOpenLeadsToSlides(repo);
+  assert.equal(n, 2, "só os dois abertos com A/B");
+  const depois = Object.fromEntries((await repo.list("leads")).map((l) => [l.id, l]));
+  for (const id of ["ld_qual", "ld_fup"]) {
+    assert.notEqual(depois[id].proposta_id, antes[id], id + " aponta pra proposta nova");
+    const p = await repo.get("proposals", depois[id].proposta_id);
+    assert.equal(p.layout, "slides");
+    assert.equal(p.template, "pt_leverads_slides");
+    assert.match(depois[id].proposal_edit_url, /^https:\/\/levermoney\.com\.br\/p\/pr_[a-z0-9]+\?k=/, "base vem dos links que já existem");
+    assert.ok(await repo.get("proposals", antes[id]), "o link antigo continua de pé pra quem já recebeu");
+  }
+  for (const id of ["ld_ganho", "ld_desq", "ld_integ", "ld_fix", "ld_aceito"]) {
+    assert.equal(depois[id].proposta_id, antes[id], id + " não mexe");
+  }
+  assert.equal(fixado.proposalPinned, true);
+  assert.equal(await regenerateOpenLeadsToSlides(repo), 0, "segunda passada não tem o que fazer");
 });
