@@ -2438,6 +2438,19 @@ const RETRY_PRESETS = [
 function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet, onAfter, onTouch }) {
   const dests = destinationsFor(saasCfg, lead);
   const stageMeta = Object.fromEntries((saasCfg?.funnel || []).map((f) => [f.stage, f]));
+  // "Follow-up feito · +1 tentativa" (Leo, 18/09): no último contato os
+  // próximos passos configurados tiram o Retomar da barra, mas o closer às
+  // vezes faz MAIS um follow-up e precisa assinalar que fez. Mesmo registro do
+  // Retomar (tentativa +1, próximo toque pela cadência da etapa; sem cadência,
+  // amanhã 9h), sem mover o card. Só entra quando o Retomar não está na barra,
+  // senão seria a mesma ação duas vezes.
+  const curStageName = lead.stage || firstStage(saasCfg);
+  const touchAgain = stageKind(saasCfg, curStageName) === "followup" && !dests.some((d) => d.retry);
+  function registrarMaisUma() {
+    if (!onTouch) return;
+    const cad = cadenceOf(saasCfg, curStageName);
+    onTouch(cad.retryDays ? "" : retryPreset(1));
+  }
   const closers = usersByRole("closer");
   const integrators = usersByRole("integrator");
   const reasons = lossReasonsOf(saasCfg);
@@ -2642,6 +2655,17 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     <div className="today-destinations">
       <div className="kicker" style={{ marginBottom: 10 }}>Depois da ação</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {touchAgain && (
+          <button key="touch-again" onClick={registrarMaisUma}
+            title={`Fez mais um follow-up: registra a tentativa ${(Number(lead.stageAttempts) || 0) + 1}, o card fica em ${curStageName} e o próximo toque entra pela cadência da etapa`}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 7, height: 30, padding: "0 12px", borderRadius: "var(--r-2)",
+              background: "var(--bg-1)", border: "1px dashed var(--line-strong)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 500,
+            }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: stageMeta[curStageName]?.color || "var(--fg-3)", flexShrink: 0 }} />
+            Follow-up feito · +1 tentativa
+          </button>
+        )}
         {dests.map((d, i) => {
           // Chip de retry: não atendeu / não fechou hoje → registra a tentativa
           // e abre a escolha de quando voltar (num lead novo, o toque promove
