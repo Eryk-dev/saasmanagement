@@ -15,7 +15,7 @@ import { LEVERADS_EXPANSION } from "./flashcard-decks.leverads.js";
 import { mergeLeadQuestions } from "./forms.js";
 import { waMatchKey } from "./wa-store.js";
 import { backfillPaymentLinks } from "./payment-links.js";
-import { slideVisible } from "./proposal.js";
+import { slideVisible, runNativeProposal } from "./proposal.js";
 import { mentoriaTemplateDoc, mentoriaCalcBlock } from "./mentoria.js";
 import { BLOG_DEFAULT_RULES, BLOG_DEFAULT_STATE, blogCfgId } from "./blog-config.js";
 
@@ -2618,6 +2618,59 @@ export async function ensureSlidesDeck(repo) {
     }
   }
   return changed;
+}
+
+// ── Leads abertos trocam pro deck de slides (Leo, 18/09/2026) ───────────────
+// Promover o template não muda quem já tinha link: "apresentar ao vivo" abre o
+// snapshot gravado no lead, e ~1.100 leads abertos nasceram com o deck antigo
+// (A) ou o Starter (B). Regera a apresentação desses leads com o deck
+// publicado, pelo mesmo caminho do botão "re-gerar" do card (runNativeProposal
+// com force): o link antigo continua de pé pra quem já recebeu, o lead passa
+// a apontar pro novo e o valor do card acompanha.
+//
+// Fica de fora quem não tem o que apresentar de novo: lead fechado ou perdido,
+// pós-venda, proposta aceita (preço na mão do cliente), deck fixado sob medida
+// e quem já está no deck de slides ou na Mentoria. Idempotente por natureza:
+// depois da troca o template do lead deixa de ser A/B.
+//
+// Roda DEPOIS de a API ouvir (index.js), não no boot: é uma proposta nova por
+// lead e o health check não pode esperar.
+const ARCHIVED_DECKS = new Set(["pt_leverads", "pt_leverads_starter"]);
+
+function baseUrlFromLeads(leads) {
+  for (const l of leads) {
+    const m = String(l.proposalUrl || "").match(/^(https?:\/\/[^/]+)\/p\//);
+    if (m) return m[1];
+  }
+  return "";
+}
+
+export async function regenerateOpenLeadsToSlides(repo, { baseUrl = "", log = null } = {}) {
+  const deck = await repo.get("proposal_templates", "pt_leverads_slides");
+  if (!deck || deck.status !== "published") return 0;
+  const products = new Map((await repo.list("products")).map((p) => [p.id, p]));
+  const leads = (await repo.list("leads")).filter((l) =>
+    l.saas === "leverads" && l.proposta_id && !l.proposalPinned && !l.planClosed && !l.wonAt);
+  if (!leads.length) return 0;
+  // Só o cabeçalho de cada proposta: a coleção inteira é dezenas de MB.
+  const proposals = new Map((await repo.listWhere("proposals", { saas: "leverads" }, { fields: ["template", "accepted"] }))
+    .map((p) => [p.id, p]));
+  const base = String(baseUrl || "").replace(/\/+$/, "") || baseUrlFromLeads(leads);
+  let n = 0;
+  for (const lead of leads) {
+    const product = products.get(lead.saas);
+    if (TERMINAL_KINDS.has(kindOf(product, lead.stage)) || isPostSaleStage(product, lead.stage)) continue;
+    const p = proposals.get(lead.proposta_id);
+    if (!p || p.accepted || !ARCHIVED_DECKS.has(p.template)) continue;
+    try {
+      const r = await runNativeProposal(repo, lead, { force: true, baseUrl: base });
+      if (r.ok) n++;
+      else if (log) log.warn(`[migration] apresentação do lead ${lead.id} não regerada: ${r.skipped || r.error || "?"}`);
+    } catch (err) {
+      if (log) log.warn(`[migration] apresentação do lead ${lead.id} falhou: ${err?.message || err}`);
+    }
+  }
+  return n;
 }
 
 export async function ensureMentoriaTemplate(repo) {
