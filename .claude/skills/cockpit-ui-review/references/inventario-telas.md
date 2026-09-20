@@ -934,5 +934,29 @@ Validação: 1.739 testes da API, testes web/smoke, build e revisão visual apro
   atuais. Datas e responsáveis reais tornam as linhas mais completas que a prancha.
 
 Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
-As demais 8 páginas aguardam esta rodada; registros históricos não são aceite
+
+### 23. Análise de Integração (`#integrations`) — validada
+
+- **Importante, corrigido:** cabeçalho, risco navy, faixa de atrasos, distribuição
+  de sentimento e padrões em duas colunas seguem `TelaAnaliseIntegracao.dc.html`.
+  Reusa cards, barras e lista acessível da Análise de Pitches.
+- **Bloqueante, corrigido:** leitura oferece carga, falha e retry; respostas de
+  contexto antigo são ignoradas e trocar produto reinicia a tela. Risco/atraso
+  só permitem abrir leads disponíveis no produto ativo.
+- **Importante, corrigido:** integrações recentes abrem por teclado, trazem
+  data/hora BRT e o link separado da gravação retornada pela API. No celular,
+  resumo e ações quebram linha sem rolagem horizontal na página.
+- **Evidências:** `npm run test:review:integrations -w packages/web`, capturas e
+  `geometry.json` em `packages/web/.review-artifacts/integrations/`. **30 medidas**
+  estruturais em 1440/1920, diferença máxima **0px**, para título/cabeçalho,
+  risco e atrasos. Abertura de risco/atraso/recentes por teclado, gravação,
+  erro/retry, carga, troca de produto, sem risco, vazio, amostra pequena,
+  lead indisponível, 390/1024px e escuro conferidos com mocks.
+- **Fora do escopo:** sentimento, pendências, deduplicação e responsabilidade
+  dos atrasos mantêm as regras da API. A prancha mostra métricas de tempo e
+  contas conectadas que o endpoint não entrega; elas não foram inventadas.
+  Risco é histórico das calls resumidas e recentes continuam limitadas a 25.
+
+Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
+As demais 7 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.
