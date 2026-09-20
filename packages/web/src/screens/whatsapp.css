@@ -120,3 +120,11 @@
   .inbox-attach, .inbox-record { width: 44px !important; }
   .inbox-conversation-menu > button, .inbox-conversation-menu > a { min-height: 44px; }
 }
+
+/* CRM final: detached conversation panels and pill-shaped queue rows. */
+.inbox-stats { margin-top: 12px; gap: 12px; }
+.inbox-stats > .capsule-navy { border-radius: 999px; }
+.inbox-number, .inbox-panel { border: 0; border-radius: 24px; box-shadow: var(--shadow-card); }
+.inbox-board { gap: 12px; padding-top: 12px; }
+@media (min-width: 1450px) { .inbox-board { grid-template-columns: minmax(250px,.9fr) minmax(340px,1.8fr) minmax(250px,.85fr); } }
+@media (max-width: 600px) { .inbox-stats > .capsule-navy { border-radius: 24px; } }
