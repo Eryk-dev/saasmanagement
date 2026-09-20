@@ -1,8 +1,9 @@
 import React from "react";
 import "./marketing.css";
+import "./forms.css";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { chromeBtnStyleSmall, GRADE_STYLE } from "../lib/ui.js";
+import { chromeBtnStyleSmall, GRADE_STYLE, leadTier } from "../lib/ui.js";
 import { EmptyState, PrimaryButton, Skeleton } from "../atoms.jsx";
 import { inputStyle, sectionTitle, cardStyle, addBtnStyle, THEME_DEFAULTS, LabeledInput, ThemeEditor } from "../components/theme-inputs.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -11,7 +12,7 @@ import { InsightsList } from "../components/insights.jsx";
 import { sourceLabel } from "../lib/sources.js";
 import { AbcCell } from "../components/abc-cell.jsx";
 import { CorrenteDoDinheiro } from "../components/story.jsx";
-import { PageHead, Card } from "../components/viz.jsx";
+import { Card } from "../components/viz.jsx";
 import { usePeriod } from "../components/period-picker.jsx";
 // Form builder — formulários de captação por SaaS, estilo Typeform: uma pergunta
 // por vez, branching por opção, tema por marca. Lista → editor (com preview
@@ -65,7 +66,7 @@ const slug = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
 // grid fracionário, número forte + contexto pequeno na linha de baixo.
 // Uma coluna só "Clientes ABC" (mesma célula da Publicidade), no lugar das 6
 // colunas separadas por grade.
-const AB_GRID = "minmax(240px, 2.4fr) .5fr .8fr .8fr minmax(120px, 1fr) .75fr .8fr .85fr";
+const AB_GRID = "minmax(200px,1.7fr) 74px 104px 104px 132px 96px 104px 96px";
 
 // Célula numérica: contagem em negrito em cima, subtexto (%) embaixo; zero
 // vira "—" — zero cinza repetido em toda célula é o que deixava a leitura ruim.
@@ -91,7 +92,10 @@ function FormsScreen({ saasId }) {
   const [publishing, setPublishing] = useState(null);
   const loadEpoch = useRef(0);
   const [counts, setCounts] = useState({}); // formId -> nº de respostas
-  const [stats, setStats] = useState({});   // formId -> { views, submits } · 30d (funil)
+  const [stats, setStats] = useState({});
+  const [statsLoading,setStatsLoading]=useState(true), [statsError,setStatsError]=useState(null), [statsAttempt,setStatsAttempt]=useState(0);
+  const currentProduct=useRef(active);currentProduct.current=active;
+  const publishWriting=useRef(false);   // formId -> { views, submits } · 30d (funil)
   const [submissions, setSubmissions] = useState([]);
   const [view, setView] = useState({ mode: "list" }); // list | edit | subs
   const [toast, setToast] = useState(null);
@@ -129,10 +133,10 @@ function FormsScreen({ saasId }) {
   // produto inteiro em vez de uma por form.
   useEffect(() => {
     if (!active) { setStats({}); return; }
-    let alive = true;
-    api.formFunnels(active, range).then((st) => { if (alive) setStats(st || {}); }).catch(() => {});
+    let alive = true;setStatsLoading(true);setStatsError(null);
+    api.formFunnels(active, range).then((st) => { if (alive) setStats(st || {}); }).catch(e=>{if(alive)setStatsError(e.message);}).finally(()=>{if(alive)setStatsLoading(false);});
     return () => { alive = false; };
-  }, [active, range.since, range.until, version]);
+  }, [active, range.since, range.until, version, statsAttempt]);
 
   // Troca de produto (workspace) volta pra lista e limpa as linhas antigas —
   // editor/respostas do produto anterior não podem ficar abertos sob a marca
@@ -148,14 +152,15 @@ function FormsScreen({ saasId }) {
     catch { window.prompt("Copie:", text); }
   }
   async function togglePublish(f) {
-    if (publishing) return;
-    setPublishing(f.id);
+    if (publishWriting.current) return;
+    publishWriting.current=true;setPublishing(f.id);
     try {
       await api.update("forms", f.id, { status: f.status === "published" ? "draft" : "published" });
-      await load();
+      if(currentProduct.current!==active)return;
+      await load();setStatsAttempt(n=>n+1);
       flash(f.status === "published" ? "Formulário despublicado" : "Formulário publicado");
     } catch (e) { window.toast?.(`Não deu para alterar a publicação: ${e.message}`, "neg"); }
-    finally { setPublishing(null); }
+    finally { publishWriting.current=false;setPublishing(null); }
   }
 
   if (!SAAS.length) return (
@@ -164,23 +169,20 @@ function FormsScreen({ saasId }) {
 
   if (view.mode === "edit") return (
     <FormEditor
-      form={view.form} saasId={active}
-      onDone={async () => { setView({ mode: "list" }); await load(); }}
+      key={view.form?.id || `new-${active}`} form={view.form} saasId={active}
+      onDone={async () => { if(currentProduct.current!==active)return; setView({ mode: "list" }); await load(); }}
       onCancel={() => setView({ mode: "list" })}
     />
   );
   if (view.mode === "subs") return (
-    <SubmissionsView form={view.form} onBack={() => setView({ mode: "list" })} />
+    <SubmissionsView key={view.form.id} form={view.form} initialOpen={view.subId} stat={stats[view.form.id]} statsLoading={statsLoading} statsError={statsError} retryStats={()=>setStatsAttempt(n=>n+1)} periodLabel={win.label} onBack={() => setView({ mode: "list" })} />
   );
 
 
   return (
-    <div className="marketing-page" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead className="marketing-head" title="Formulários" sub="captação por produto · visitas, leads e receita na mesma régua">
-        <PrimaryButton onClick={() => setView({ mode: "edit", form: null })}>+ novo formulário</PrimaryButton>
-      </PageHead>
-
-      <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="marketing-page forms-page">
+      <header className="forms-head"><h1>Formulários</h1><PrimaryButton onClick={() => setView({ mode: "edit", form: null })}>Criar formulário</PrimaryButton></header>
+      <div className="forms-body">
         {loadError && <EmptyState title="Não deu para carregar os formulários" hint={loadError} action={<button className="inp" onClick={load}>Tentar de novo</button>} />}
         {loading && !forms.length && <FormsSkeleton />}
         {!forms.length ? (!loading && !loadError && (
@@ -190,7 +192,7 @@ function FormsScreen({ saasId }) {
             action={<PrimaryButton onClick={() => setView({ mode: "edit", form: null })}>+ Criar form</PrimaryButton>}
           />
         )) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 380px), 1fr))", gap: 14, alignItems: "start" }}>
+          <div className="forms-list">
             {[...forms].sort((a, b) => (b.status === "published" ? 1 : 0) - (a.status === "published" ? 1 : 0)).map((f) => {
               const pub = f.status === "published";
               const stat = stats[f.id];
@@ -223,34 +225,33 @@ function FormsScreen({ saasId }) {
               return (
                 // Publicado ocupa a LARGURA TODA (a tabela do teste A/B precisa de
                 // área); rascunho/backup vira um bloco compacto abaixo, sem esticar.
-                <div key={f.id} style={{ background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: pub ? "18px var(--inset-x)" : "16px 18px", ...(pub ? { gridColumn: "1 / -1" } : {}) }}>
+                <section key={f.id} className="forms-card" data-published={pub}>
                   <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "inline-flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                         <span style={{ fontSize: 15.5, fontWeight: 600, letterSpacing: "-.01em" }}>{f.name || f.id}</span>
                         <button disabled={!!publishing} onClick={() => togglePublish(f)} title={pub ? "despublicar" : "publicar"} style={{ display: "inline-flex", alignItems: "center", gap: 6, color: pub ? "var(--pos)" : "var(--warn)", fontSize: 12, fontWeight: 600 }}><span style={{ width: 6, height: 6, borderRadius: 99, background: "currentColor" }} />{publishing === f.id ? "salvando…" : pub ? "publicado" : "rascunho"}</button>
                       </div>
-                      <div className="mono code" style={{ fontSize: 12, color: "var(--fg-4)", marginTop: 4 }}>/f/{f.id}</div>
+                      <div className="forms-url" style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 4 }}>/f/{f.id}</div>
                     </div>
-                    <div style={{ display: "flex", gap: 6 }}>
+                    <div className="forms-card-actions">
                       {pub && <button onClick={() => copy(formUrl(f), "Link copiado")} style={{ ...chromeBtnStyleSmall, height: 30, padding: "0 11px" }}>Copiar link</button>}
                       <button onClick={() => setView({ mode: "edit", form: f })} style={{ ...chromeBtnStyleSmall, height: 30, padding: "0 11px" }}>Editar</button>
                       {!pub && <button disabled={!!publishing} onClick={() => togglePublish(f)} style={{ height: 30, padding: "0 12px", borderRadius: 999, background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 12.5, fontWeight: 600 }}>Publicar</button>}
                     </div>
                   </div>
 
-                  {pub ? (
-                    <>
-                      <div style={{ marginTop: 18 }}>
+                  {pub ? (statsLoading || statsError ? <div className="forms-metrics-state" role={statsError ? "alert" : "status"}>{statsError ? <>Não foi possível carregar os indicadores. <button onClick={()=>setStatsAttempt(n=>n+1)}>Tentar novamente</button></> : "Carregando indicadores…"}</div> : <>
+                      <div className="forms-funnel" style={{ marginTop: 18 }}>
                         <CorrenteDoDinheiro bare passos={[
                           { rotulo: `visitas · ${win.label}`, valor: window.fmt.int(visits) },
                           { rotulo: "começaram", valor: window.fmt.int(starts), taxa: pct(starts, visits), taxaNota: "das visitas" },
                           { rotulo: "envios", valor: window.fmt.int(leads), taxa: pct(leads, starts), taxaNota: "de quem começou" },
                           { rotulo: "calls realizadas", valor: window.fmt.int(callsShown), taxa: pct(callsShown, leads), taxaNota: "dos envios", title: "Leads dos envios do período que compareceram à call, contados uma vez por formulário." },
                           { rotulo: "viraram cliente", valor: window.fmt.int(Number(stat?.won) || 0), taxa: pct(Number(stat?.won) || 0, callsShown), taxaNota: "das calls", tom: "pos" },
-                          { rotulo: "receita fechada", valor: window.fmt.money(Number(stat?.revenue) || 0), tom: "pos" },
+                          { rotulo: "receita fechada", valor: window.fmt.moneyFull(Number(stat?.revenue) || 0), tom: "pos" },
                         ]} />
-                        <div className="marketing-toolbar" style={{ marginTop: 12, justifyContent: "space-between" }}>
+                        <div className="marketing-toolbar forms-funnel-footer">
                           <span style={{ fontSize: 11.5, color: "var(--fg-3)" }}>{stat?.lastSubmitAt ? `último envio ${new Date(stat.lastSubmitAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}` : "sem envios no período"}</span>
                           <button onClick={() => setView({ mode: "subs", form: f })} style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)" }}>Ver respostas →</button>
                         </div>
@@ -267,8 +268,8 @@ function FormsScreen({ saasId }) {
                               lugar de zero (zero cinza em toda célula vira ruído) — funil
                               (visitas → começar → lead), potencial (cliente A/B/C), call
                               agendada e fechamento (ganhos + receita). */}
-                          <div className="tbl-x" style={{ border: "1px solid var(--line-faint)", borderRadius: "var(--r-3)", overflow: "auto" }}>
-                            <div style={{ minWidth: 1010 }}>
+                          <div className="tbl-x forms-ab">
+                            <div style={{ minWidth: 1030 }}>
                               <div className="kicker" style={{ display: "grid", gridTemplateColumns: AB_GRID, gap: 12, padding: "10px 18px", fontWeight: 600, background: "var(--bg-inset)" }}>
                                 <span title="texto da welcome que o lead viu">Headline</span>
                                 <span style={{ textAlign: "right" }} title="sessões únicas que viram a variante">Visitas</span>
@@ -292,7 +293,7 @@ function FormsScreen({ saasId }) {
                                     const gr = v.grades || {};
                                     const vLeads = v.leads ?? v.submits;
                                     return (
-                                      <div key={v.id} style={{ display: "grid", gridTemplateColumns: AB_GRID, gap: 12, padding: "13px 18px", alignItems: "center", borderTop: "1px solid var(--line-faint)", fontSize: 13.5 }}>
+                                      <div key={v.id} style={{ display: "grid", gridTemplateColumns: AB_GRID, gap: 12, padding: "13px 18px", alignItems: "center", borderTop: "1px solid var(--line-faint)", fontSize: 13 }}>
                                         <div style={{ minWidth: 0 }}>
                                           <div style={{ display: "flex", alignItems: "baseline", gap: 7, minWidth: 0 }}>
                                             <span className="mono code" style={{ flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: "var(--fg-4)" }}>{v.id}</span>
@@ -303,10 +304,10 @@ function FormsScreen({ saasId }) {
                                         <span className="tnum" style={{ textAlign: "right" }}>{window.fmt.int(v.views)}</span>
                                         <AbNum count={v.starts} sub={`${pct(v.starts, v.views)} das visitas`} />
                                         <AbNum count={vLeads} sub={`${pct(v.submits, v.views)} das visitas`} />
-                                        <span style={{ justifySelf: "end" }}><AbcCell abc={gr} abcCost={null} money={window.fmt.money} /></span>
+                                        <span style={{ justifySelf: "end" }}><AbcCell abc={gr} abcCost={null} money={window.fmt.moneyFull} /></span>
                                         <AbNum count={v.calls || 0} sub={`${pct(v.calls || 0, vLeads || 0)} dos leads`} />
                                         <AbNum count={v.won || 0} sub={`${pct(v.won || 0, vLeads || 0)} dos leads`} ink="var(--pos)" />
-                                        <span className="tnum" style={{ textAlign: "right", fontWeight: 600, color: v.revenue ? "var(--fg-1)" : "var(--fg-4)" }}>{v.revenue ? window.fmt.money(v.revenue) : "—"}</span>
+                                        <span className="tnum" style={{ textAlign: "right", fontWeight: 600, color: v.revenue ? "var(--fg-1)" : "var(--fg-4)" }}>{v.revenue ? window.fmt.moneyFull(v.revenue) : "—"}</span>
                                       </div>
                                     );
                                   })}
@@ -322,13 +323,13 @@ function FormsScreen({ saasId }) {
                       {(f.questions || []).length} perguntas · rascunho guardado, publique para começar a captar leads.
                     </div>
                   )}
-                </div>
+                </section>
               );
             })}
           </div>
         )}
 
-        {forms.length > 0 && <RecentSubmissions submissions={submissions} forms={forms} onOpen={(form) => setView({ mode: "subs", form })} />}
+        {forms.length > 0 && <RecentSubmissions submissions={submissions} forms={forms} onOpen={(form,subId) => setView({ mode: "subs", form, subId })} />}
       </div>
 
       {toast && (
@@ -395,7 +396,7 @@ function RecentSubmissions({ submissions, forms, onOpen }) {
         const attribution = submission.utm?.content || submission.utm?.campaign;
         return (
           <div key={submission.id} style={{ display: "grid", gridTemplateColumns: "1.2fr 1.4fr 1fr 1.2fr .6fr", gap: 12, padding: "13px 24px", alignItems: "center", borderTop: "1px solid var(--line-faint)", fontSize: 13.5 }}>
-            <button onClick={() => form && onOpen(form)} style={{ textAlign: "left", fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mapped(submission, "name") || "Sem nome"}</button>
+            <button onClick={() => form && onOpen(form,submission.id)} style={{ textAlign: "left", fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mapped(submission, "name") || "Sem nome"}</button>
             <span className="mono code" style={{ fontSize: 12, color: "var(--fg-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mapped(submission, "email") || "—"}</span>
             <span style={{ color: "var(--fg-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mapped(submission, "company") || "—"}</span>
             <span className="mono code" style={{ fontSize: 12, color: "var(--fg-4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{source}{attribution ? ` · ${attribution}` : ""}</span>
@@ -430,19 +431,25 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
     : newForm(saasId));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const set = (patch) => setDraft((d) => ({ ...d, ...patch }));
+  const writing=useRef(false), original=useRef(JSON.stringify(draft));
+  const dirty=JSON.stringify(draft)!==original.current;
+  const set = (patch) => {if(!writing.current)setDraft((d) => ({ ...d, ...patch }));};
+  const close=()=>{if(writing.current)return;if(dirty&&!window.confirm("Descartar as alterações não salvas do formulário?"))return;onCancel();};
+  useEffect(()=>{if(!dirty)return;const guard=e=>{e.preventDefault();e.returnValue="";};window.addEventListener("beforeunload",guard);return()=>window.removeEventListener("beforeunload",guard);},[dirty]);
 
   // Preview server-side (mesmo HTML da página pública), debounced.
   const [previewHtml, setPreviewHtml] = useState("");
   const timer = useRef(null);
+  const [previewError,setPreviewError]=useState(null),[previewAttempt,setPreviewAttempt]=useState(0),[previewLoading,setPreviewLoading]=useState(false);
   useEffect(() => {
-    clearTimeout(timer.current);
+    let alive=true;clearTimeout(timer.current);setPreviewLoading(true);setPreviewError(null);
     timer.current = setTimeout(async () => {
-      try { setPreviewHtml((await api.formPreview(draft)).html); }
-      catch { /* preview é best-effort */ }
+      try {const result=await api.formPreview(draft);if(alive)setPreviewHtml(result.html);}
+      catch(e) {if(alive)setPreviewError(e.message);}
+      finally {if(alive)setPreviewLoading(false);}
     }, 500);
-    return () => clearTimeout(timer.current);
-  }, [draft]);
+    return () => {alive=false;clearTimeout(timer.current);};
+  }, [draft,previewAttempt]);
 
   function validate() {
     if (!String(draft.name).trim()) return "Dê um nome ao form";
@@ -455,9 +462,10 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
   }
 
   async function save() {
+    if(writing.current)return;
     const err = validate();
     if (err) { setError(err); return; }
-    setBusy(true); setError(null);
+    writing.current=true;setBusy(true); setError(null);
     const payload = {
       name: draft.name.trim(), saas: draft.saas, status: draft.status,
       theme: draft.theme,
@@ -500,36 +508,19 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
       else await api.create("forms", payload);
       await onDone();
     } catch (e) {
-      setBusy(false); setError(e.message || String(e));
-    }
+      setError(e.message || String(e));
+    } finally {writing.current=false;setBusy(false);}
   }
 
   const qKeys = (draft.questions || []).filter((q) => q.key && q.type !== "insight").map((q) => ({ value: q.key, label: q.label || q.key }));
 
   return (
-    <div className="editor-split" style={{ flex: 1, "--cols": "minmax(min(100%, 440px), 1fr) minmax(min(100%, 380px), 46%)", minHeight: 0 }}>
-      {/* coluna do editor */}
-      <div style={{ display: "flex", flexDirection: "column", minHeight: 0, borderRight: "1px solid var(--line-1)" }}>
-        <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <div className="kicker">{isEdit ? "Editar form" : "Novo form"}</div>
-            <div style={{ fontSize: 16, fontWeight: 500, marginTop: 2 }}>{draft.name || "Sem nome"}</div>
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <span className={"chip " + (draft.status === "published" ? "pos" : "")} style={{ height: 20 }}>{draft.status === "published" ? "publicado" : "rascunho"}</span>
-            <button onClick={onCancel} style={{ padding: "7px 12px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: 999, fontSize: 12 }}>Cancelar</button>
-            <button onClick={save} disabled={busy} style={{ padding: "7px 14px", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderRadius: 999, fontSize: 12, fontWeight: 500, opacity: busy ? 0.6 : 1 }}>
-              {busy ? "Salvando…" : "Salvar"}
-            </button>
-          </div>
-        </div>
-
-        <div style={{ flex: 1, overflow: "auto", padding: "14px 20px 32px" }}>
-          {error && <div className="mono" style={{ fontSize: 11, color: "var(--neg)", marginBottom: 10 }}>{error}</div>}
-
-          <div className="kicker" style={sectionTitle}>Básico</div>
+    <div className="marketing-page forms-page forms-editor">
+      <header className="forms-head"><h1>{isEdit ? "Editar formulário" : "Novo formulário"}</h1><div className="forms-editor-actions"><span className="dim">{draft.status==="published" ? "Publicado" : "Rascunho"}</span><button disabled={busy} onClick={close}>Cancelar</button><PrimaryButton onClick={save} disabled={busy}>{busy ? "Salvando…" : "Salvar"}</PrimaryButton></div></header>
+      <div className="forms-editor-grid">
+        <fieldset disabled={busy} className="forms-editor-fields">
+          {error && <div role="alert" className="forms-error">{error}</div>}
           <LabeledInput label="Nome do form" value={draft.name} onChange={(v) => set({ name: v })} placeholder="Diagnóstico · LeverAds" />
-          <LabeledInput label="Texto do botão de enviar (última tela)" value={draft.submitLabel || ""} onChange={(v) => set({ submitLabel: v })} placeholder="Enviar" />
 
           <div className="kicker" style={sectionTitle}>Boas-vindas (opcional)</div>
           {!draft.welcome ? (
@@ -537,6 +528,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
           ) : (
             <div style={cardStyle}>
               <LabeledInput label="Título" value={draft.welcome.title} onChange={(v) => set({ welcome: { ...draft.welcome, title: v } })} />
+              <details className="forms-advanced"><summary>Opções de boas-vindas e teste A/B</summary>
               <LabeledInput label="Subtítulo" value={draft.welcome.subtitle} onChange={(v) => set({ welcome: { ...draft.welcome, subtitle: v } })} />
               <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
                 <LabeledInput label="Texto do botão" value={draft.welcome.button} onChange={(v) => set({ welcome: { ...draft.welcome, button: v } })} />
@@ -544,6 +536,7 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
               </div>
               <VariantsEditor welcome={draft.welcome} onChange={(w) => set({ welcome: w })} />
               <PainWelcomesEditor welcome={draft.welcome} saas={draft.saas} onChange={(w) => set({ welcome: w })} />
+              </details>
             </div>
           )}
 
@@ -558,6 +551,8 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
           />
 
           <div className="kicker" style={sectionTitle}>Tela final (qualificado)</div>
+          <LabeledInput label="Texto do botão de enviar (última tela)" value={draft.submitLabel || ""} onChange={(v) => set({ submitLabel: v })} placeholder="Enviar" />
+
           <div style={cardStyle}>
             <LabeledInput label="Título" value={draft.thanks?.title || ""} onChange={(v) => set({ thanks: { ...draft.thanks, title: v } })} />
             <LabeledInput label="Subtítulo" value={draft.thanks?.subtitle || ""} onChange={(v) => set({ thanks: { ...draft.thanks, subtitle: v } })} />
@@ -634,23 +629,25 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
 
           <div className="kicker" style={sectionTitle}>Tema da marca</div>
           <ThemeEditor theme={draft.theme} onChange={(theme) => set({ theme })} />
-        </div>
-      </div>
+        </fieldset>
 
       {/* coluna do preview */}
-      <div style={{ display: "flex", flexDirection: "column", minHeight: 0, background: "var(--bg-inset)" }}>
+      <div className="forms-preview">
         <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span className="kicker">Preview ao vivo</span>
           {isEdit && draft.status === "published" && (
             <a href={formUrl(draft)} target="_blank" rel="noreferrer" className="mono" style={{ fontSize: 11, color: "var(--accent)" }}>abrir página pública ↗</a>
           )}
         </div>
+        {previewError && <div className="forms-error" role="alert">Não foi possível atualizar a prévia. <button onClick={()=>setPreviewAttempt(n=>n+1)}>Tentar novamente</button></div>}
+        {previewLoading && <div className="forms-preview-status" role="status">Atualizando prévia…</div>}
         <iframe
           title="Preview do form"
           srcDoc={previewHtml}
           sandbox="allow-scripts allow-same-origin"
           style={{ flex: 1, border: 0, width: "100%", background: draft.theme.bg }}
         />
+      </div>
       </div>
     </div>
   );
@@ -690,10 +687,10 @@ function QuestionsBuilder({ questions, onChange, exits }) {
         const isInsight = q.type === "insight";
         const hasOptions = q.type === "select" || q.type === "multiselect";
         return (
-          <div key={i} style={cardStyle}>
+          <div className="forms-question" key={i} style={cardStyle}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <span className="mono dim tnum" style={{ fontSize: 11, width: 18 }}>{String(i + 1).padStart(2, "0")}</span>
-              <input
+              <input aria-label={`Pergunta ${i+1}`}
                 value={q.label || ""} placeholder={isInsight ? "Título do insight (*palavra* destaca)" : "Pergunta"}
                 onChange={(e) => {
                   const patch = { label: e.target.value };
@@ -702,20 +699,20 @@ function QuestionsBuilder({ questions, onChange, exits }) {
                 }}
                 style={{ ...inputStyle, flex: 1 }}
               />
-              <input
+              <input aria-label={`Chave da pergunta ${i+1}`}
                 value={q.key || ""} placeholder="chave" title="Chave da resposta (vira campo do lead)"
                 onChange={(e) => update(i, { key: slug(e.target.value) || e.target.value, _keyTouched: true })}
                 className="mono" style={{ ...inputStyle, width: 120, fontSize: 12 }}
               />
               <div style={{ display: "flex" }}>
-                <button type="button" onClick={() => move(i, -1)} disabled={i === 0} style={arrowStyle(i === 0)}>↑</button>
-                <button type="button" onClick={() => move(i, 1)} disabled={i === questions.length - 1} style={arrowStyle(i === questions.length - 1)}>↓</button>
+                <button type="button" aria-label={`Mover pergunta ${i+1} para cima`} onClick={() => move(i, -1)} disabled={i === 0} style={arrowStyle(i === 0)}>↑</button>
+                <button type="button" aria-label={`Mover pergunta ${i+1} para baixo`} onClick={() => move(i, 1)} disabled={i === questions.length - 1} style={arrowStyle(i === questions.length - 1)}>↓</button>
               </div>
-              <button type="button" onClick={() => remove(i)} className="mono dim" style={{ fontSize: 13, padding: "0 6px" }}>✕</button>
+              <button type="button" aria-label={`Remover pergunta ${i+1}`} onClick={() => remove(i)} className="mono dim" style={{ fontSize: 13, padding: "0 6px" }}>✕</button>
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 10, paddingLeft: 24, flexWrap: "wrap" }}>
-              <select value={q.type || "text"} onChange={(e) => update(i, { type: e.target.value })} style={{ ...inputStyle, width: 180 }}>
+              <select aria-label={`Tipo da pergunta ${i+1}`} value={q.type || "text"} onChange={(e) => update(i, { type: e.target.value })} style={{ ...inputStyle, width: 180 }}>
                 {QUESTION_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
               {!isInsight && (
@@ -774,7 +771,7 @@ function QuestionsBuilder({ questions, onChange, exits }) {
 
             <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 24, flexWrap: "wrap" }}>
               <span className="mono dim" style={{ fontSize: 10, letterSpacing: "0.04em" }}>depois desta pergunta:</span>
-              <select value={q.to || ""} onChange={(e) => update(i, { to: e.target.value })} style={{ ...inputStyle, width: 200, maxWidth: "100%", fontSize: 12 }}>
+              <select aria-label={`Destino da pergunta ${i+1}`} value={q.to || ""} onChange={(e) => update(i, { to: e.target.value })} style={{ ...inputStyle, width: 200, maxWidth: "100%", fontSize: 12 }}>
                 {jumpOptions(q.key).map((j) => <option key={j.value} value={j.value}>{j.label}</option>)}
               </select>
             </div>
@@ -788,70 +785,43 @@ function QuestionsBuilder({ questions, onChange, exits }) {
 
 // ── Respostas ───────────────────────────────────────────────────────────────
 
-function SubmissionsView({ form, onBack }) {
-  const [subs, setSubs] = useState(null);
-  const [open, setOpen] = useState(null); // id expandido
-  const labels = Object.fromEntries((form.questions || []).map((q) => [q.key, q.label]));
-
-  useEffect(() => {
-    api.list("form_submissions", { form: form.id }).then((rows) => {
-      rows.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
-      setSubs(rows);
-    });
-  }, [form.id]);
-
-  const headline = (s) => {
-    const m = form.mapping || {};
-    const name = m.name && s.answers?.[m.name];
-    const email = m.email && s.answers?.[m.email];
-    return [name, email].filter(Boolean).join(" · ") || Object.values(s.answers || {})[0] || s.id;
-  };
-  const fmtDate = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
-
-  return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <div style={{ padding: "12px var(--pad-x)", borderBottom: "1px solid var(--line-1)", display: "flex", alignItems: "center", gap: 12 }}>
-        <button onClick={onBack} style={chromeBtnStyleSmall}><span style={{ fontSize: 12 }}>← forms</span></button>
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 500 }}>{form.name}</div>
-          <div className="mono dim" style={{ fontSize: 11 }}>{subs ? `${subs.length} resposta${subs.length === 1 ? "" : "s"}` : "carregando…"}</div>
-        </div>
-      </div>
-
-      <div style={{ flex: 1, overflow: "auto", padding: "20px var(--pad-x)" }}>
-        {subs && !subs.length && (
-          <EmptyState title="Nenhuma resposta ainda" hint="Publique o form e compartilhe o link — cada envio aparece aqui e vira um lead no pipeline." />
-        )}
-        {subs && subs.length > 0 && (
-          <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", overflow: "hidden", background: "var(--bg-1)" }}>
-            {subs.map((s) => (
-              <div key={s.id} style={{ borderBottom: "1px solid var(--line-1)" }}>
-                <button
-                  onClick={() => setOpen(open === s.id ? null : s.id)}
-                  style={{ display: "grid", gridTemplateColumns: "150px 1fr 20px", width: "100%", padding: "10px 14px", alignItems: "center", textAlign: "left", fontSize: 13, color: "var(--fg-1)", gap: 10 }}
-                >
-                  <span className="mono dim" style={{ fontSize: 11 }}>{fmtDate(s.createdAt)}</span>
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{headline(s)}</span>
-                  <span className="mono dim">{open === s.id ? "▾" : "▸"}</span>
-                </button>
-                {open === s.id && (
-                  <div style={{ padding: "4px 14px 14px min(174px, 18%)", display: "flex", flexDirection: "column", gap: 6 }}>
-                    {Object.entries(s.answers || {}).map(([k, v]) => (
-                      <div key={k} style={{ fontSize: 12.5 }}>
-                        <span className="mono dim" style={{ fontSize: 11 }}>{labels[k] || k}: </span>
-                        <span>{Array.isArray(v) ? v.join(", ") : String(v)}</span>
-                      </div>
-                    ))}
-                    {s.lead && <div className="mono dim" style={{ fontSize: 10.5, marginTop: 4 }}>lead: {s.lead}</div>}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+function SubmissionsView({ form, onBack, stat, statsLoading, statsError, retryStats, periodLabel, initialOpen }) {
+  useData();
+  const [subs,setSubs]=useState(null),[error,setError]=useState(null),[attempt,setAttempt]=useState(0);
+  const [open,setOpen]=useState(initialOpen || null),[filter,setFilter]=useState("all");
+  const labels=Object.fromEntries((form.questions || []).map(q=>[q.key,q.label]));
+  useEffect(()=>{let alive=true;setError(null);api.list("form_submissions",{form:form.id}).then(rows=>{if(alive)setSubs(rows.slice().sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||""))));}).catch(e=>{if(alive)setError(e.message);});return()=>{alive=false;};},[form.id,attempt]);
+  const leads=new Map((window.SEED?.LEADS || []).filter(l=>l.saas===form.saas).map(l=>[String(l.id),l]));
+  const mapped=(s,field)=>s.answers?.[form.mapping?.[field]] || s.answers?.[field] || s.answers?.[{name:"nome",company:"empresa"}[field]] || "";
+  const grade=s=>{const lead=leads.get(String(s.lead));return lead ? leadTier(lead)?.grade : null;};
+  const recent=s=>{const age=Date.now()-new Date(s.createdAt).getTime();return age>=0 && age<=48*3600_000;};
+  const filters=[["all","Todas",subs?.length || 0],["hot","Nível S e A",(subs || []).filter(s=>["S","A"].includes(grade(s))).length],["recent","Últimas 48h",(subs || []).filter(recent).length]];
+  const rows=(subs || []).filter(s=>filter==="all" || (filter==="hot" ? ["S","A"].includes(grade(s)) : recent(s)));
+  const date=iso=>iso ? new Date(iso).toLocaleString("pt-BR",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) : "—";
+  return <div className="marketing-page forms-page forms-submissions">
+    <header className="forms-head"><h1>{form.name || "Respostas"}</h1><button onClick={onBack}>← Formulários</button></header>
+    <div className="forms-body">
+      {statsLoading ? <div role="status">Carregando indicadores…</div> : statsError ? <div role="alert" className="forms-error">Não foi possível carregar os indicadores. <button onClick={retryStats}>Tentar novamente</button></div> : <section className="forms-response-kpis">{[
+        ["Respostas",window.fmt.int(stat?.submits || 0),periodLabel],
+        ["Conversão",stat?.views>0 ? `${((stat.submits || 0)/stat.views*100).toFixed(1).replace(".",",")}%` : "—","visita → envio"],
+        ["Viraram cliente",window.fmt.int(stat?.won || 0),"envios do período"],
+        ["Receita",window.fmt.moneyFull(stat?.revenue || 0),"receita fechada"],
+      ].map(([label,value,note])=><div key={label}><span>{label}</span><strong>{value}</strong><small>{note}</small></div>)}</section>}
+      <section className="forms-responses-card">
+        <div className="forms-response-filters"><div>{filters.map(([id,label,count])=><button key={id} aria-pressed={filter===id} onClick={()=>setFilter(id)}>{label} <span>{count}</span></button>)}</div><span>Histórico completo · nível atual do lead</span></div>
+        {error && <div role="alert" className="forms-error">Não foi possível carregar as respostas. <button onClick={()=>setAttempt(n=>n+1)}>Tentar novamente</button></div>}
+        {!subs && !error && <div role="status" className="forms-response-empty">Carregando respostas…</div>}
+        <div className="tbl-x"><div className="forms-response-table">
+          <div className="forms-response-row forms-response-labels"><span>Quem respondeu</span><span>Empresa</span><span>Contas</span><span>Nível</span><span>Variante</span><span>Enviado</span></div>
+          {rows.map(s=>{const level=grade(s),lead=leads.get(String(s.lead));return <React.Fragment key={s.id}>
+            <div className="forms-response-row"><button aria-expanded={open===s.id} onClick={()=>setOpen(open===s.id ? null : s.id)}><strong>{mapped(s,"name") || Object.values(s.answers || {})[0] || "Sem nome"}</strong><small>{mapped(s,"email") || mapped(s,"phone") || "—"}</small></button><span>{mapped(s,"company") || "—"}</span><span className="tnum">{lead?.accounts || s.answers?.accounts || "—"}</span><span title="Classificação atual do lead vinculado" style={{color:level ? GRADE_STYLE[level]?.ink : "var(--fg-3)",fontWeight:700}}>{level || "—"}</span><span>{[s.variant,s.pain && `[${s.pain}]`].filter(Boolean).join(" · ") || "—"}</span><time>{date(s.createdAt)}</time></div>
+            {open===s.id && <div className="forms-response-detail">{Object.entries(s.answers || {}).map(([k,v])=><div key={k}><span>{labels[k] || k}: </span>{Array.isArray(v) ? v.join(", ") : String(v)}</div>)}{s.lead && <small>Lead vinculado: {s.lead}</small>}</div>}
+          </React.Fragment>;})}
+        </div></div>
+        {subs && !rows.length && !error && <div className="forms-response-empty">{subs.length ? "Nenhuma resposta com este filtro." : "Nenhuma resposta ainda. Publique o formulário e compartilhe o link para começar."}</div>}
+      </section>
     </div>
-  );
+  </div>;
 }
 
 // ── Welcome por DOR (anúncio → headline) ─────────────────────────────────────
