@@ -14,10 +14,42 @@ import { ErrorBoundary } from "./error-boundary.jsx";
 // useEsc(null) já fazia. Alarme que exige decisão (WaHotAlert, TrainingGate)
 // segue sendo exceção deliberada e não usa estas peças.
 
+const focusStack = [];
+const focusable = 'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex]:not([tabindex="-1"]), [contenteditable="true"]';
+
 function Shell({ onClose, fechavel = true, label, camada, veu, alinhamento, padding, children, style }) {
   useEsc(fechavel ? onClose : null);
+  const root = React.useRef(null);
+  React.useEffect(() => {
+    const panel = root.current?.querySelector('[role="dialog"]');
+    if (!panel) return;
+    const previous = document.activeElement;
+    const token = {};
+    focusStack.push(token);
+    const controls = () => [...panel.querySelectorAll(focusable)].filter(el => el.getClientRects().length && !el.closest('[inert], [hidden]'));
+    if (!panel.contains(document.activeElement)) (controls()[0] || panel).focus({ preventScroll: true });
+    const trap = event => {
+      if (event.key !== 'Tab' || focusStack.at(-1) !== token) return;
+      // A portaled popover owns its own keyboard interaction while open.
+      const currentDialog = document.activeElement?.closest('[role="dialog"]');
+      if (currentDialog && currentDialog !== panel && !panel.contains(currentDialog)) return;
+      const items = controls();
+      const first = items[0] || panel, last = items.at(-1) || panel;
+      if (!panel.contains(document.activeElement) || !items.length || (event.shiftKey ? document.activeElement === first || document.activeElement === panel : document.activeElement === last)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      }
+    };
+    document.addEventListener('keydown', trap);
+    return () => {
+      document.removeEventListener('keydown', trap);
+      const wasTop = focusStack.at(-1) === token;
+      focusStack.splice(focusStack.indexOf(token), 1);
+      if (wasTop && previous?.isConnected) previous.focus({ preventScroll: true });
+    };
+  }, []);
   return (
-    <div
+    <div ref={root}
       onClick={fechavel ? onClose : undefined}
       style={{
         position: "fixed", inset: 0, zIndex: camada, background: veu,
@@ -38,7 +70,7 @@ export function Modal({ onClose, fechavel = true, label, largura = 560, padding 
     <Shell onClose={onClose} fechavel={fechavel} label={label}
       camada="var(--z-modal)" veu="var(--scrim)"
       alinhamento={{ justify: "center", align: "center" }} padding={padding} style={style}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={label}
+      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={label} tabIndex={-1}
         style={{
           width: `min(${largura}px, 100%)`, maxHeight: "calc(100dvh - 32px)", overflow: "auto",
           background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)",
@@ -56,7 +88,7 @@ export function Drawer({ onClose, fechavel = true, label, largura = 520, childre
     <Shell onClose={onClose} fechavel={fechavel} label={label}
       camada="var(--z-drawer)" veu="var(--scrim-soft)"
       alinhamento={{ justify: "flex-end", align: "stretch" }} padding={12} style={style}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={label}
+      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={label} tabIndex={-1}
         style={{
           width: `min(${largura}px, 100%)`, height: "100%", overflow: "auto", borderRadius: "var(--r-4)",
           background: "var(--bg-1)", borderLeft: 0,

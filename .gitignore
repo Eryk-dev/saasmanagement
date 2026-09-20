@@ -10,3 +10,6 @@ packages/api/data/*.db-*
 # artefatos locais de sessão do Claude (skills são versionadas)
 .claude/worktrees/
 .claude/scheduled_tasks.lock
+
+# Local browser-review evidence
+.review-artifacts/

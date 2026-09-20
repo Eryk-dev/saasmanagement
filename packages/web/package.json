@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test test/*.test.js && node scripts/smoke-ssr.mjs",
-    "preview:tela": "vite --config vite.preview.config.js"
+    "preview:tela": "vite --config vite.preview.config.js",
+    "test:review:overview": "node scripts/review/overview.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
@@ -17,6 +18,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
+    "playwright": "1.59.1",
     "vite": "^6.0.7"
   }
 }
