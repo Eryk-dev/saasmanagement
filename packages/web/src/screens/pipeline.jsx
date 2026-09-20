@@ -1,10 +1,10 @@
 import React from "react";
+import "./pipeline.css";
 import { LeadGrade } from "../components/lead-card.jsx";
 import { Avatar, EmptyState, PrimaryButton } from "../atoms.jsx";
 import { Card, FilterTab, Segmented, StatTile } from "../components/viz.jsx";
 import { Popover } from "../components/popover.jsx";
-import { BarraFiltros } from "../components/story.jsx";
-import { leadAge, leadTier } from "../lib/ui.js";
+import { leadTier } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import {
@@ -43,13 +43,8 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   const [activeProduct] = useActiveSaas();
   const activeSaas = activeProduct?.id;
   useEfP(() => { pinActiveSaas(saasId); }, [saasId]);
-  // Aba ativa persistida (localStorage): sobrevive ao refresh da página e à
-  // remontagem da tela quando o tempo real recarrega o SEED. As antigas abas
-  // "Análise" (e o alias "forecast") e "Agenda" viraram TELAS próprias (menu
-  // Análises e Agenda no comercial); preferência salva nesses valores cai no
-  // Kanban. "all" (Todos os pipelines) foi aposentada com o workspace por
-  // produto: cada marca tem o cockpit inteiro só dela.
-  const VIEWS = ["kanban", "list"];
+  // A preferência da visualização acompanha as três abas do CRM final.
+  const VIEWS = ["kanban", "list", "analysis"];
   const [view, setViewState] = useStP(() => {
     try {
       const v = localStorage.getItem("cockpit_pipeline_view");
@@ -116,6 +111,8 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   // Gate de movimento pendente (handoff / motivo de perda).
   const [pendingMove, setPendingMove] = useStP(null); // { lead, toStage, gate, saasCfg }
 
+  useEfP(() => { setSelected(new Set()); setPendingMove(null); }, [activeSaas]);
+
   const s = SAAS.find(x => x.id === activeSaas) || SAAS[0];
   const saasCfgOf = (l) => SAAS.find(x => x.id === l.saas);
 
@@ -144,7 +141,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
     return base.filter((st) => {
       const k = stageKind(s, st);
       if (k === "ganho" || k === "perdido") return false;
-      if (k === "desqualificado") return showDiscarded;
+      if (k === "desqualificado") return false;
       return true;
     });
   }, [stages.join("|"), phase, activeSaas, showDiscarded]);
@@ -192,31 +189,11 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   // Abertos = régua antes do ganho (pós-venda/descarte ficam fora da conta).
   const open = openStages(s);
   const openLeads = saasAll.filter(l => open.includes(l.stage));
-  const newWeek = saasAll.filter(l => l.createdAt && Date.now() - new Date(l.createdAt).getTime() <= 7 * 86400000).length;
   const phaseCounts = {
-    all: saasAll.length,
-    sdr: saasAll.filter((l) => phaseOf(stageKind(s, l.stage)) === "sdr").length,
-    closer: saasAll.filter((l) => ["closer", "entrega"].includes(phaseOf(stageKind(s, l.stage)))).length,
+    all: openLeads.length,
+    sdr: openLeads.filter((l) => phaseOf(stageKind(s, l.stage)) === "sdr").length,
+    closer: openLeads.filter((l) => ["closer", "entrega"].includes(phaseOf(stageKind(s, l.stage)))).length,
   };
-  // ── Estado do BOARD (12/09): o board não dizia onde está o problema — o
-  // atraso só existia como pílula pequena dentro de cada card. Mesma régua das
-  // colunas (nextTouch pelo kind da etapa), sobre o que está visível no board.
-  const boardState = useMP(() => {
-    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-    const amanha = hoje.getTime() + 86400000;
-    let late = 0, today = 0, valor = 0;
-    for (const st of visibleStages) {
-      const kind = stageKind(s, st);
-      for (const l of (byStage[st] || [])) {
-        valor += Number(l.amount) || 0;
-        const at = nextTouch(l, { kind })?.at;
-        if (at == null || !Number.isFinite(at)) continue;
-        if (at < hoje.getTime()) late++;
-        else if (at < amanha) today++;
-      }
-    }
-    return { late, today, valor };
-  }, [byStage, visibleStages.join("|"), activeSaas]);
   // "N atrasados" filtra o board: é a pergunta que se faz olhando o número.
   const lateOnly = useMP(() => {
     if (!onlyLate) return byStage;
@@ -309,64 +286,31 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
   }
 
   return (
-    <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-      <div style={{ padding: "28px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16, minHeight: "100%" }}>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
-          <div style={{ flex: 1, minWidth: 260 }}>
-            <h1 className="page-title">Pipeline</h1>
-            {/* O estado do board é o SUBTÍTULO (prancha, 14/09): atrasados e
-                dinheiro em jogo respondem "como está o funil", que é a
-                pergunta do título, não um controle da barra de filtros. */}
-            <div className="page-sub" style={{ marginTop: 4 }}>
-              {`${openLeads.length} ${openLeads.length === 1 ? "lead aberto" : "leads abertos"} · ${window.fmt.moneyFull(boardState.valor)} em jogo · `}
-              {/* "N atrasados" FILTRA o board: é a pergunta que se faz olhando
-                  o número, e o filtro não tem lugar próprio na prancha. */}
-              <button onClick={() => setOnlyLate((v) => !v)}
-                title={onlyLate ? "mostrar o board inteiro" : "filtrar o board só nos atrasados"}
-                style={{ background: "none", border: 0, padding: 0, font: "inherit", cursor: "pointer",
-                  color: boardState.late ? "var(--neg)" : "var(--fg-3)", fontWeight: onlyLate ? 700 : 600,
-                  textDecoration: onlyLate ? "underline" : "none" }}>
-                {`${boardState.late} ${boardState.late === 1 ? "atrasado" : "atrasados"}`}
-              </button>
-            </div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 6, flexWrap: "wrap" }}>
+    <div className="pipeline-page">
+      <div className="pipeline-content">
+        <header className="pipeline-header">
+          <div><h1 className="page-title">Pipeline</h1><div style={{marginTop:6}} /></div>
+          <div className="pipeline-header-actions">
             <ViewToggle view={view} onChange={setView} />
-            <PrimaryButton onClick={() => openForm("leads", { saas: activeSaas })}>+ novo lead</PrimaryButton>
+            <button className="pipeline-create" onClick={() => openForm("leads", { saas: activeSaas })}>Cadastrar lead</button>
           </div>
-        </div>
-
-        {/* ── UMA barra de controles (12/09) ─────────────────────────────────
-            Eram quatro grupos com micro-rótulos em texto ("fase:", "pessoa:",
-            "ordenar:") competindo numa linha que quebrava. A forma do controle
-            já diz o que ele é: fase no Segmented (com a contagem no rótulo),
-            pessoa nos chips, ordenação num select e descartados no FilterTab.
-            À direita, o estado do board — e "atrasados" FILTRA. */}
-        {view === "kanban" && (
-          <Card>
-            <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <input value={buscaBoard} onChange={(e) => setBuscaBoard(e.target.value)} placeholder="buscar lead ou empresa…"
-                className="inp" style={{ width: 190 }} />
-              <span className="kicker">Fase</span>
-              <BarraFiltros valor={phase} onChange={setPhase} filtros={[
-                { id: "all", label: "Todas", n: phaseCounts.all, title: "o funil inteiro" },
-                { id: "sdr", label: "SDR", n: phaseCounts.sdr, title: "pré-venda: da entrada até passar pro closer" },
-                { id: "closer", label: "Closer", n: phaseCounts.closer, title: "da call ao fechamento" },
-              ]} />
-              <PersonFilter person={person} leads={saasAll} onChange={setPerson} me={me} como="select" />
-              <select value={sortMode} onChange={(e) => setSortMode(e.target.value)} title="vale para todas as colunas de uma vez"
-                className="inp" style={{ width: "auto" }}>
-                <option value="toque">ordem: próximo toque</option>
-                <option value="ultimo">ordem: último toque</option>
-                <option value="qualidade">ordem: qualidade</option>
-              </select>
-              <span className="tnum" style={{ marginLeft: "auto", fontSize: 12, color: "var(--fg-4)" }}>
-                {`${Object.values(boardRows).reduce((a, c) => a + c.length, 0)} de ${Object.values(byStage).reduce((a, c) => a + c.length, 0)} leads`}
-              </span>
-            </div>
-          </Card>
-        )}
-
+        </header>
+        <section className="pipeline-filters" aria-label="Filtros do pipeline">
+          <label className="pipeline-search">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20.4 20.4-4.2-4.2"/></svg>
+            <input aria-label="Buscar lead ou empresa" value={buscaBoard} onChange={e => setBuscaBoard(e.target.value)} placeholder="buscar lead ou empresa…" />
+          </label>
+          <span className="pipeline-kicker">fase</span>
+          <div className="pipeline-segment" aria-label="Fase">
+            {[["all","Todas"],["sdr","SDR"],["closer","Closer"]].map(([id,label]) => <button key={id} aria-pressed={phase===id} onClick={()=>setPhase(id)}>{label} <span>{phaseCounts[id]}</span></button>)}
+          </div>
+          <PersonFilter person={person} leads={saasAll} onChange={setPerson} me={me} />
+          <select className="pipeline-order" aria-label="Ordenar leads" value={sortMode} onChange={e=>setSortMode(e.target.value)}>
+            <option value="toque">Próximo toque</option><option value="ultimo">Último toque</option><option value="qualidade">Qualidade</option>
+          </select>
+          {(buscaBoard || phase!=="all" || person || onlyLate || sortMode!=="toque") && <button className="pipeline-clear" onClick={()=>{setBuscaBoard("");setPhase("all");setPerson("");setOnlyLate(false);setSortMode("toque");}}>Limpar filtros</button>}
+          <span className="pipeline-count">{visibleStages.reduce((n,st)=>n+(boardRows[st]?.length||0),0)} leads</span>
+        </section>
       {/* ── Ações em massa (14/09) ─────────────────────────────────────────
           O checkbox do card não fazia nada: dava pra selecionar dez leads e
           não acontecia ação nenhuma. Agora a seleção abre a barra. */}
@@ -387,7 +331,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
           s={s}
           stages={visibleStages}
           byStage={boardRows}
-          fullByStage={byStage}
+          fullByStage={boardRows}
           sortMode={sortMode}
           highlight={highlight}
           onMove={requestMove}
@@ -396,22 +340,16 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
           onOpenLead={onOpenLead}
           wonLeads={saasAll.filter((l) => isWonLead(s, l))}
           showWon={phase !== "sdr"}
+          onLate={() => setOnlyLate(v=>!v)}
         />
       )}
-      {/* Descartados no RODAPÉ (prancha, 14/09): era um FilterTab no meio da
-          barra de filtros, disputando espaço com a fase. Aqui ele é o que é —
-          uma gaveta embaixo do board. */}
-      {view === "kanban" && (discardedCount > 0 || showDiscarded) && (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <button onClick={() => setShowDiscarded(!showDiscarded)}
-            style={{ height: 30, padding: "0 12px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
-            {showDiscarded ? `esconder descartados · ${discardedCount}` : `mostrar descartados · ${discardedCount}`}
-          </button>
-          <span style={{ fontSize: 12, color: "var(--fg-4)" }}>descartado não conta no funil, mas volta com um clique</span>
-        </div>
-      )}
-
-      {view === "list" && <LeadList leads={saasLeads} onOpenLead={onOpenLead} />}
+      {view === "list" && <LeadList leads={visibleStages.flatMap(st=>boardRows[st]||[])} s={s} sortMode={sortMode} onOpenLead={onOpenLead} />}
+      {view === "analysis" && <PipelineAnalysis s={s} leads={visibleStages.flatMap(st=>boardRows[st]||[])} />}
+      <footer className="pipeline-discarded">
+        <button onClick={() => setShowDiscarded(!showDiscarded)} aria-expanded={showDiscarded}>{showDiscarded ? "Esconder" : "Mostrar"} descartados · {discardedCount}</button>
+        <span>descartado não conta no funil, mas volta com um clique</span>
+        {showDiscarded && <div className="pipeline-discarded-leads">{saasLeads.filter(l=>stageKind(s,l.stage)==="desqualificado").map(l=><button key={l.id} onClick={()=>requestMove(l.id,open[0])}>{l.name} <span>voltar ↩</span></button>)}</div>}
+      </footer>
 
       {pendingMove && (
         <MoveLeadModal
@@ -483,10 +421,7 @@ const bulkBtn = { height: 30, padding: "0 12px", borderRadius: 999, border: "1px
 const bulkItem = { display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 10px", borderRadius: "var(--r-2)", background: "none", border: 0, textAlign: "left", fontSize: 12.5, color: "var(--fg-1)", cursor: "pointer" };
 
 function ViewToggle({ view, onChange }) {
-  return <Segmented value={view} onChange={onChange} options={[
-    { value: "kanban", label: "Kanban" },
-    { value: "list", label: "Lista" },
-  ]} />;
+  return <div className="pipeline-views" aria-label="Visualização">{[["kanban","Kanban"],["list","Lista"],["analysis","Análise"]].map(([id,label])=><button key={id} aria-pressed={view===id} onClick={()=>onChange(id)}>{label}</button>)}</div>;
 }
 
 // Recorte do board por fase do processo — a "view" de cada papel do time:
@@ -506,46 +441,18 @@ function stagesForPhase(s, stages, phase) {
 
 // Filtro por pessoa: "meus" (dono, closer OU integrador = usuário logado) ou
 // alguém do time. O contador do chip usa a MESMA régua do personMatch do board.
-function PersonFilter({ person, leads, onChange, me, como = "chips" }) {
+function PersonFilter({ person, leads, onChange, me }) {
   const users = window.SEED?.USERS || [];
   const selected = person === "me" ? me : person;
-  // Modo dropdown (prancha do Pipeline, 14/09): com busca, fase, ordem e
-  // contagem na mesma barra, um botão por pessoa come a linha inteira.
-  if (como === "select") {
-    return (
-      <select value={selected || ""} onChange={(e) => onChange(e.target.value)} title="de quem é a fila"
-        className="inp" style={{ width: "auto" }}>
-        <option value="">time todo</option>
-        {users.map((u) => {
-          const count = leads.filter((l) => [l.owner, l.closer, l.integrator].includes(u.id)).length;
-          return <option key={u.id} value={u.id}>{`${u.name || u.id}${count ? ` · ${count}` : ""}`}</option>;
-        })}
-      </select>
-    );
-  }
-  const chip = (active) => ({
-    height: 34, padding: "0 13px", borderRadius: 999, fontSize: 13, fontWeight: active ? 600 : 500,
-    border: `1px solid ${active ? "var(--line-2)" : "var(--line-1)"}`,
-    background: active ? "var(--bg-1)" : "transparent",
-    color: active ? "var(--fg-1)" : "var(--fg-3)", boxShadow: active ? "var(--shadow-1)" : "none",
-  });
-  return (
-    <div style={{ display: "contents" }}>
-      <button onClick={() => onChange("")} style={chip(!selected)}>Todos</button>
-      {users.map((u) => {
-        const count = leads.filter((l) => [l.owner, l.closer, l.integrator].includes(u.id)).length;
-        return (
-          <button key={u.id} onClick={() => onChange(u.id)} style={chip(selected === u.id)}>
-            {u.name || u.id}{count > 0 && <span className="tnum" style={{ marginLeft: 7, fontSize: 12, color: "var(--fg-4)" }}>{count}</span>}
-          </button>
-        );
-      })}
-    </div>
-  );
+  return <div className="pipeline-segment pipeline-people" aria-label="Responsável">
+    <button aria-pressed={!selected} onClick={()=>onChange("")}>Todos</button>
+    {users.map(u=><button key={u.id} aria-label={u.name || u.id} title={u.name || u.id} aria-pressed={selected===u.id} onClick={()=>onChange(u.id)}>{initials(u.name || u.id)}</button>)}
+  </div>;
 }
+const initials = name => String(name || "").split(/\s+/).slice(0,2).map(w=>w[0]).join("").toUpperCase();
 
 // ─────────────────────────────────────────────── Kanban
-function PipelineBoard({ s, stages, byStage, fullByStage, sortMode, highlight, onMove, selected, setSelected, onOpenLead, wonLeads, showWon }) {
+function PipelineBoard({ s, stages, byStage, fullByStage, sortMode, highlight, onMove, selected, setSelected, onOpenLead, wonLeads, showWon, onLate }) {
   const boardRef = React.useRef(null);
   // Arrastar e soltar da casca compartilhada (components/kanban). Um lead por
   // vez: movimento com portão abre o modal, e a seleção tem a barra de massa.
@@ -575,6 +482,7 @@ function PipelineBoard({ s, stages, byStage, fullByStage, sortMode, highlight, o
             cards={byStage[st] || []}
             todos={(fullByStage || byStage)[st] || []}
             sortMode={sortMode}
+            onLate={onLate}
             highlight={highlight === st}
             dnd={dnd}
             selected={selected}
@@ -607,42 +515,19 @@ function WonSummary({ leads }) {
   // o dono à direita. Era um bloco com a CONTAGEM grande e o dinheiro numa
   // linha de 12,5px — e o que fecha o mês é o dinheiro.
   const ticket = monthLeads.length ? total / monthLeads.length : 0;
-  const recentes = [...monthLeads].sort((a, b) => new Date(wonAtOf(b) || 0) - new Date(wonAtOf(a) || 0)).slice(0, 6);
-  return (
-    <div className="capsule-navy pipeline-won" style={{ minWidth: 0, padding: "16px 14px", boxShadow: "var(--shadow-card)" }}>
-      <div style={{ padding: "4px 4px 10px" }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-          <span style={{ fontSize: 13.5, fontWeight: 700 }}>Ganho em {label}</span>
-          <span className="tnum" style={{ fontSize: 12, color: "var(--fg-4)" }}>{monthLeads.length}</span>
-        </div>
-        <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--pos)", marginTop: 4, lineHeight: 1.1 }}>{window.fmt.moneyFull(total)}</div>
-        {monthLeads.length > 0 && (
-          <div className="tnum" style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 2 }}>{`ticket médio ${window.fmt.moneyFull(ticket)}`}</div>
-        )}
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-        {recentes.map((l) => {
-          const dono = l.closer || l.owner;
-          return (
-            <div key={l.id} style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "10px 11px" }}>
-              <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.company || l.name}</div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 4 }}>
-                <span className="tnum" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--pos)" }}>{window.fmt.moneyFull(l.amount || 0)}</span>
-                {dono && <span style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--fg-4)", whiteSpace: "nowrap" }}>{displayName(dono)}</span>}
-              </div>
-            </div>
-          );
-        })}
-        {monthLeads.length === 0 && (
-          <div style={{ fontSize: 12, color: "var(--fg-4)", textAlign: "center", padding: "16px 0" }}>nenhuma venda fechada no mês</div>
-        )}
-      </div>
-      <a href="#customers" style={{ display: "inline-block", marginTop: 10, padding: "0 4px", fontSize: 12, fontWeight: 600, color: "var(--accent)", textDecoration: "none" }}>ver as vendas →</a>
+  const recentes = [...monthLeads].sort((a, b) => new Date(wonAtOf(b) || 0) - new Date(wonAtOf(a) || 0));
+  return <section className="capsule-navy pipeline-won">
+    <header><div className="pipeline-won-title"><span>Ganho em {label}</span><span className="pipeline-won-count">{monthLeads.length}</span></div>
+      <div className="pipeline-won-total">{window.fmt.moneyFull(total)}</div>
+      <div className="pipeline-won-ticket">ticket médio {window.fmt.moneyFull(ticket)}</div>
+    </header>
+    <div className="pipeline-won-list">{recentes.map(l=><div className="pipeline-won-row" key={l.id}><span>{l.company || l.name}</span><strong>{window.fmt.moneyFull(l.amount||0)}</strong><small>{initials(displayName(l.closer||l.owner))}</small></div>)}
+      {!recentes.length && <div className="pipeline-empty">nenhuma venda fechada no mês</div>}
     </div>
-  );
+  </section>;
 }
 
-function StageColumn({ s, stage, cards, todos, sortMode, highlight, dnd, selected, setSelected, onOpenLead }) {
+function StageColumn({ s, stage, cards, todos, sortMode, highlight, dnd, selected, setSelected, onOpenLead, onLate }) {
   // O cabeçalho (contagem, dinheiro, atraso) mede a ETAPA INTEIRA; o corpo
   // mostra o que a busca deixou. Senão buscar encolhe o funil na cara de quem
   // olha, e o board passa a mentir sobre o tamanho da etapa.
@@ -684,14 +569,14 @@ function StageColumn({ s, stage, cards, todos, sortMode, highlight, dnd, selecte
   // mesma linha, e o dinheiro da coluna na linha de baixo.
   return (
     <KanbanColumn
-      colKey={stage} dnd={dnd} label={stage} items={ordered} cut={10} highlight={highlight}
+      colKey={stage} dnd={dnd} label={stage} items={ordered} cut={Infinity} highlight={highlight}
       count={todosCards.length}
       meta={<>
         {filtrando && <span className="tnum" style={{ fontSize: 11, color: "var(--accent)", whiteSpace: "nowrap" }}>{cards.length} na busca</span>}
         {(colLate > 0 || colToday > 0) && (
-          <span className="tnum" style={{ marginLeft: "auto", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", color: colLate > 0 ? "var(--neg)" : "var(--warn)" }}>
+          <button className="pipeline-late" onClick={onLate} aria-label={`Filtrar atrasados de ${stage}`} style={{ marginLeft: "auto", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", color: colLate > 0 ? "var(--neg)" : "var(--warn)" }}>
             {[colLate > 0 ? `${colLate} atrasado${colLate === 1 ? "" : "s"}` : null, colToday > 0 ? `${colToday} hoje` : null].filter(Boolean).join(" · ")}
-          </span>
+          </button>
         )}
       </>}
       subtitle={window.fmt.moneyFull(total)}
@@ -734,13 +619,12 @@ function LeadCard({ d, s, currentStage, dragProps, selected, onSelect, onOpen })
   const phase = phaseOf(kind);
   const next = nextTouchPill(d, { isOpen: workableStages(saasCfg).includes(currentStage), kind });
   const ownerId = phase === "entrega" ? (d.integrator || d.closer || d.owner) : (d.closer || d.owner);
-  const showAvatar = phase !== "sdr" && ownerId;
+  const showAvatar = ownerId;
   const nextLabel = next?.text?.replace(/^[◆●]\s*/, "") || "";
   // Qualidade do cliente (A/B/C) pela régua de contas × anúncios — a mesma do
   // Publicidade e do drawer. Só mostra quando o lead respondeu a qualificação.
   const tier = leadTier(d);
   const fit = mentoriaFit(d);
-  const pend = d.clientPending;
 
   // O card da prancha (14/09): checkbox VISÍVEL, nível e nome na primeira
   // linha, empresa, o próximo passo em texto, e valor + prazo no rodapé. A
@@ -750,7 +634,7 @@ function LeadCard({ d, s, currentStage, dragProps, selected, onSelect, onOpen })
   const passo = d.nextActionNote || nextStepText(d, kind, currentStage);
   return (
     <div
-      className="lead-board-card"
+      className="lead-board-card" data-late={atrasado || undefined} data-selected={selected || undefined}
       role="button" tabIndex={0} aria-label={`Abrir lead: ${d.name}`}
       onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen?.(); } }}
       {...dragProps}
@@ -767,9 +651,9 @@ function LeadCard({ d, s, currentStage, dragProps, selected, onSelect, onOpen })
             border: `1px solid ${selected ? "var(--accent)" : "var(--line-2)"}`,
             background: selected ? "var(--accent)" : "var(--bg-1)",
             padding: 0, color: "oklch(1 0 0)", fontSize: 10, lineHeight: "12px", textAlign: "center" }}>{selected ? "✓" : ""}</button>
-        <LeadGrade tier={tier} size={18} />
+        <LeadGrade tier={tier} size={20} placeholder />
         <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 650, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
-        {showAvatar && <Avatar id={ownerId} name={displayName(ownerId)} size={20} />}
+        {showAvatar && <span className="pipeline-owner" title={displayName(ownerId)}>{initials(displayName(ownerId))}</span>}
       </div>
       {d.company && (
         <div style={{ fontSize: 11.5, color: "var(--fg-3)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.company}</div>
@@ -790,215 +674,56 @@ function LeadCard({ d, s, currentStage, dragProps, selected, onSelect, onOpen })
           <span className="tnum" style={{ marginLeft: "auto", fontSize: 11.5, color: next?.tone || "var(--fg-4)", fontWeight: 600, whiteSpace: "nowrap" }}>{nextLabel}</span>
         )}
       </div>
-      {/* Compromisso do CLIENTE em aberto (o que ele ficou de fazer na call de
-          integração). Fica fora da régua de atraso do board de propósito:
-          esperar o cliente não é atraso nosso, mas quem olha o card precisa
-          saber que a integração está parada e por quê. */}
-      {phase === "entrega" && pend?.open > 0 && (
-        <div title={(pend.items || []).map((i) => `· ${i.item}`).join("\n")}
-          style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, color: pend.overdue ? "var(--neg)" : "var(--warn)" }}>
-          <span style={{ width: 6, height: 6, borderRadius: 999, background: "currentColor", flexShrink: 0 }} />
-          {pend.overdue ? `cliente atrasado · ${pend.overdue}` : `aguardando cliente · ${pend.open}`}
-        </div>
-      )}
     </div>
   );
 }
 
 // ─────────────────────────────────────────────── List view
-// ── A LISTA: a melhor ferramenta diária da tela ─────────────────────────────
-// Agrupada pelo próximo passo do GPS. O que mudou em 12/09:
-//  · ATRASADOS vira a PRIMEIRA seção. Era a 5ª, depois de Hoje, Amanhã,
-//    Próximos dias e Sem próximo passo — o que está vencido era a última coisa
-//    que se via numa tela de trabalho;
-//  · o horário saiu de sufixo mono de 10,5px dentro do nome e virou coluna
-//    própria ("Próximo passo": o que é, quando e a tentativa);
-//  · Idade e Score deixam de ser coluna (viram sub-linha e title) e entram
-//    Nível e a ação de quem está sem próximo passo;
-//  · busca e linha clicável (a lista não abria o card).
-//
-// Pisos somados com os gaps dão ~710px: é o que caber em 1024px de janela
-// exige (748 de conteúdo − 32 do padding). O smoke trava a conta.
-export const LIST_GRID = "minmax(150px,1.6fr) 100px minmax(140px,1fr) 86px 104px 80px";
+// Grade aprovada; em janelas menores a rolagem fica dentro da tabela.
+export const LIST_GRID = "26px minmax(180px,1fr) 132px minmax(150px,1fr) 86px 96px";
 export const LIST_GRID_GAP = 10;
-export const LIST_GRID_BUDGET = 716;
-// A ordem das seções. Atrasados era a 5ª, depois de Hoje, Amanhã, Próximos dias
-// e Sem próximo passo: o vencido era a última coisa que se via numa tela de
-// trabalho diário. O smoke garante que ele continua primeiro.
-export const LIST_SECTIONS = [
-  ["late", "Atrasados"],
-  ["today", "Hoje"],
-  ["tomorrow", "Amanhã"],
-  ["upcoming", "Próximos dias"],
-  ["none", "Sem próximo passo"],
-  ["closed", "Finalizados"],
-];
-
-function LeadList({ leads, onOpenLead }) {
-  const [q, setQ] = useStP("");
-  const [showAll, setShowAll] = useStP(false); // "Próximos dias" e "Finalizados" nascem recolhidas
-  const saasCfg = (window.SEED?.SAAS || []).find((x) => x.id === leads[0]?.saas);
-  const workable = new Set(workableStages(saasCfg));
-  const fold = (v) => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  const needle = fold(q).trim();
-  const base = needle
-    ? leads.filter((l) => [l.name, l.company, l.phone, l.email].some((v) => fold(v).includes(needle)))
-    : leads;
-  const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
-  const endToday = new Date(); endToday.setHours(23, 59, 59, 999);
-  const endTomorrow = new Date(endToday); endTomorrow.setDate(endTomorrow.getDate() + 1);
-  const g = { today: [], tomorrow: [], upcoming: [], none: [], late: [], closed: [] };
-  for (const l of base) {
-    if (l.stage && !workable.has(l.stage)) { g.closed.push({ l, at: 0, t: null }); continue; }
-    const t = nextTouch(l, { kind: stageKind(saasCfg, l.stage) });
-    if (!t) { g.none.push({ l, at: 0, t: null }); continue; }
-    if (t.at < startToday.getTime()) g.late.push({ l, at: t.at, t });
-    else if (t.at <= endToday.getTime()) g.today.push({ l, at: t.at, t });
-    else if (t.at <= endTomorrow.getTime()) g.tomorrow.push({ l, at: t.at, t });
-    else g.upcoming.push({ l, at: t.at, t });
-  }
-  for (const k of ["today", "tomorrow", "upcoming"]) g[k].sort((a, b) => a.at - b.at);
-  g.late.sort((a, b) => a.at - b.at); // o mais vencido primeiro
-  const byScore = (a, b) => (Number(b.l.score) || 0) - (Number(a.l.score) || 0);
-  g.none.sort(byScore);
-  g.closed.sort(byScore);
-
-  const money = window.fmt.money;
-  const soma = (rows) => rows.reduce((a, r) => a + (Number(r.l.amount) || 0), 0);
-  const calls = (rows) => rows.filter((r) => r.t?.type === "meeting").length;
-  // Cada cabeçalho carrega um FATO, não só a contagem: é o que diz se a seção
-  // merece a próxima hora.
-  const fatoDe = (key, rows) => {
-    if (key === "late") return `${money(soma(rows))} esperando toque`;
-    if (key === "today" || key === "tomorrow") {
-      const c = calls(rows), f = rows.length - c;
-      return [c ? `${c} ${c === 1 ? "call" : "calls"}` : "", f ? `${f} follow-up${f === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ");
-    }
-    if (key === "none") return "ninguém marcou o que fazer";
-    if (key === "upcoming") return rows.length ? `até ${new Date(rows[rows.length - 1].at).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "")}` : "";
-    return `${money(soma(rows))} no total`;
-  };
-  const TONE = { late: "var(--neg)", today: "var(--accent)", tomorrow: "var(--warn)", upcoming: "var(--fg-4)", none: "var(--warn)", closed: "var(--fg-4)" };
-  // ATRASADOS primeiro (LIST_SECTIONS): é uma linha de ordem que decide o que o
-  // time vê ao abrir a tela, então mora numa constante testada.
-  const ordem = LIST_SECTIONS.map(([key, label]) => [key, label, g[key]]);
-  const dobradas = new Set(showAll ? [] : ["upcoming", "closed"]);
-  const sections = ordem.filter(([, , rows]) => rows.length > 0);
-
-  return (
-    <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 12 }}>
-      <Card>
-        <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar por nome, empresa ou telefone…"
-            style={{ flex: 1, minWidth: 200, height: 30, padding: "0 10px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: 999, color: "var(--fg-1)", fontSize: 12.5 }} />
-          <span style={{ fontSize: 12, color: "var(--fg-4)" }}>
-            {`${base.length} ${base.length === 1 ? "lead" : "leads"}${needle ? ` de ${leads.length}` : ""}`}
-          </span>
-        </div>
-      </Card>
-
-      <div className="tbl-x" style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-        <div>
-          <div className="kicker" style={{ display: "grid", gridTemplateColumns: LIST_GRID, gap: LIST_GRID_GAP, padding: "8px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
-            <span>Lead</span><span>Etapa</span><span>Próximo passo</span>
-            <span style={{ textAlign: "right" }}>Valor</span><span>Dono</span><span>Origem</span>
-          </div>
-          {sections.map(([key, label, rows]) => {
-            const fechada = dobradas.has(key);
-            return (
-              <React.Fragment key={key}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
-                  <span style={{ width: 6, height: 6, borderRadius: 999, background: TONE[key], flexShrink: 0 }} />
-                  <span style={{ fontSize: 12.5, fontWeight: 700, color: key === "late" ? "var(--neg)" : "var(--fg-1)" }}>{label}</span>
-                  <span className="tnum" style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{rows.length}</span>
-                  <span style={{ fontSize: 11.5, color: "var(--fg-4)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {fatoDe(key, rows) ? `— ${fatoDe(key, rows)}` : ""}
-                  </span>
-                  {fechada && (
-                    <button onClick={() => setShowAll(true)} className="mono"
-                      style={{ marginLeft: "auto", background: "none", border: 0, padding: 0, fontSize: 11.5, color: "var(--accent)", fontWeight: 600, cursor: "pointer", flexShrink: 0 }}>
-                      mostrar tudo
-                    </button>
-                  )}
-                </div>
-                {!fechada && rows.map(({ l, at, t }) => {
-                  const tier = leadTier(l);
-                  const tent = Number(l.stageAttempts) || 0;
-                  const quando = at > 0
-                    ? new Date(at).toLocaleString("pt-BR", key === "today" || key === "tomorrow"
-                        ? { hour: "2-digit", minute: "2-digit" }
-                        : { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).replace(".", "")
-                    : "";
-                  const oque = t?.type === "meeting" ? (t.note || "call") : (l.nextActionNote || "toque");
-                  return (
-                    <div key={l.id} onClick={() => onOpenLead && onOpenLead(l)}
-                      style={{ display: "grid", gridTemplateColumns: LIST_GRID, gap: LIST_GRID_GAP, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", fontSize: 13, cursor: onOpenLead ? "pointer" : "default", opacity: key === "closed" ? 0.65 : 1 }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-                        {tier.grade
-                          ? <span title={tier.label} style={{ width: 20, height: 20, borderRadius: 5, background: tier.tone, color: tier.badgeFg, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{tier.grade}</span>
-                          : <span title="sem nível" style={{ width: 20, height: 20, borderRadius: 5, border: "1px solid var(--line-1)", color: "var(--fg-4)", fontSize: 11, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>—</span>}
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</div>
-                          <div style={{ fontSize: 11, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
-                            title={[l.company, `${leadAge(l)} no funil`, l.score != null && l.score !== "" ? `score ${l.score}` : ""].filter(Boolean).join(" · ")}>
-                            {[l.company, leadAge(l) ? `${leadAge(l)} no funil` : ""].filter(Boolean).join(" · ") || "—"}
-                          </div>
-                        </div>
-                      </div>
-                      <span className="mono dim" style={{ fontSize: 11.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={l.stage}>{l.stage}</span>
-                      {/* O que fazer ganhou coluna: era sufixo mono dentro do nome. */}
-                      <div style={{ minWidth: 0 }}>
-                        {key === "none" ? (
-                          <button onClick={(e) => { e.stopPropagation(); onOpenLead && onOpenLead(l); }}
-                            title="abrir o card pra marcar o próximo toque"
-                            style={{ height: 24, padding: "0 10px", borderRadius: 999, border: "1px solid var(--warn)", background: "var(--warn-soft)", color: "var(--warn)", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
-                            marcar o próximo
-                          </button>
-                        ) : (
-                          <>
-                            <div style={{ fontSize: 12.5, color: key === "late" ? "var(--neg)" : "var(--fg-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={oque}>
-                              {oque}
-                            </div>
-                            <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", whiteSpace: "nowrap" }}>
-                              {[quando, tent ? `tentativa ${tent}/5` : ""].filter(Boolean).join(" · ")}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                      <span className="mono tnum" style={{ textAlign: "right", fontSize: 12.5 }}>{l.amount ? money(l.amount) : "—"}</span>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, minWidth: 0 }}>
-                        {l.owner && <Avatar id={l.owner} name={displayName(l.owner)} size={20} />}
-                        <span style={{ fontSize: 12, color: "var(--fg-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.owner ? displayName(l.owner) : "—"}</span>
-                      </span>
-                      <span className="mono dim" style={{ fontSize: 11, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={l.source}>{l.source || "—"}</span>
-                    </div>
-                  );
-                })}
-              </React.Fragment>
-            );
-          })}
-          {!sections.length && (
-            <div style={{ padding: "20px 14px", fontSize: 12.5, color: "var(--fg-4)" }}>
-              {needle ? `nada com "${q.trim()}"` : "nenhum lead neste produto"}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {!showAll && (g.upcoming.length > 0 || g.closed.length > 0) && (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "var(--fg-4)" }}>
-          <span>
-            {[g.upcoming.length ? `Próximos dias · ${g.upcoming.length}` : "", g.closed.length ? `Finalizados · ${g.closed.length}` : ""].filter(Boolean).join(" · ")}
-          </span>
-          <button onClick={() => setShowAll(true)} className="mono" style={{ background: "none", border: 0, padding: 0, fontSize: 12, color: "var(--accent)", fontWeight: 600, cursor: "pointer" }}>
-            mostrar tudo
-          </button>
-        </div>
-      )}
+export const LIST_GRID_BUDGET = 820;
+// Legacy grouping helper retained for consumers; the approved list is continuous.
+export const LIST_SECTIONS = [["late","Atrasados"],["today","Hoje"],["tomorrow","Amanhã"],["upcoming","Próximos dias"],["none","Sem próximo passo"],["closed","Finalizados"]];
+function orderLeads(leads,s,sortMode) {
+  const touch = l => nextTouch(l,{kind:stageKind(s,l.stage)})?.at ?? Infinity;
+  const byTouch = (a,b) => touch(a)-touch(b) || new Date(b.stageSince||b.createdAt||0)-new Date(a.stageSince||a.createdAt||0);
+  const rank = l => mentoriaFit(l) ? VERBA_RANK[l.aprender_verba] ?? 8 : tierRank(l);
+  return [...leads].sort(sortMode==="qualidade" ? (a,b)=>rank(a)-rank(b)||byTouch(a,b) : sortMode==="ultimo" ? (a,b)=>byTouch(b,a) : byTouch);
+}
+function LeadList({ leads, s, sortMode, onOpenLead }) {
+  return <section className="pipeline-list">
+    <div className="pipeline-list-table">
+      <div className="pipeline-list-head">{["nv","lead","etapa","próximo passo","valor","prazo"].map(t=><span key={t}>{t}</span>)}</div>
+      <div className="pipeline-list-rows">{orderLeads(leads,s,sortMode).map(l=>{
+        const kind=stageKind(s,l.stage), due=nextTouchPill(l,{kind,isOpen:workableStages(s).includes(l.stage)});
+        return <button className="pipeline-list-row" data-late={due?.tone === "var(--neg)" || undefined} key={l.id} onClick={()=>onOpenLead?.(l)} aria-label={`Abrir lead: ${l.name}`}>
+          <span><LeadGrade tier={leadTier(l)} size={18} placeholder /></span>
+          <span><strong>{l.name}</strong><small>{l.company}</small></span>
+          <span>{l.stage}</span><span>{l.nextActionNote||nextStepText(l,kind,l.stage)||"sem próximo passo"}</span>
+          <span>{window.fmt.moneyFull(l.amount||0)}</span><span style={{color:due?.tone}}>{due?.key === "none" ? "sem data" : due?.text?.replace(/^[◆●]\s*/,"")||"sem data"}</span>
+        </button>;
+      })}{!leads.length&&<div className="pipeline-empty">nenhum lead com esses filtros</div>}</div>
     </div>
-  );
+  </section>;
+}
+function PipelineAnalysis({s,leads}) {
+  const {version}=useData();
+  const [read,setRead]=useStP({key:null}), [attempt,setAttempt]=useStP(0);
+  useEfP(()=>{let alive=true;setRead({key:s.id});api.pipelinePace(s.id).then(data=>{if(alive)setRead({key:s.id,data});}).catch(error=>{if(alive)setRead({key:s.id,error});});return()=>{alive=false;};},[s.id,version,attempt]);
+  const data=read.key===s.id?read.data:null;
+  const buckets=analysisBuckets(s,leads,data?.conversions);
+  const total=buckets.reduce((n,b)=>n+b.weighted,0), max=Math.max(1,...buckets.map(b=>b.weighted));
+  return <section className="pipeline-analysis">
+    <header><div><h2><i/>esteira aberta</h2><p>{buckets.reduce((n,b)=>n+b.count,0)} leads nas etapas comerciais</p></div><div className="pipeline-forecast"><span>forecast ponderado</span><strong>{data?window.fmt.moneyFull(total):"—"}</strong><small>{data?"valor × probabilidade de ganhar":""}</small></div></header>
+    {read.error ? <div role="alert" className="pipeline-empty">Não foi possível carregar a análise. <button onClick={()=>setAttempt(n=>n+1)}>Tentar novamente</button></div> : !data ? <div role="status" className="pipeline-empty">Calculando análise…</div> : <>
+      <div className="pipeline-analysis-scroll"><div className="pipeline-analysis-table">
+        <div className="pipeline-analysis-head">{["etapa","","leads","em jogo","prob.","ponderado"].map((t,i)=><span key={i}>{t}</span>)}</div>
+        {buckets.map(b=><div className="pipeline-analysis-row" key={b.stage}><span>{b.stage}</span><span className="pipeline-bar"><i style={{width:`${Math.max(3,b.weighted/max*100)}%`}}/></span><strong>{b.count}</strong><span>{window.fmt.moneyFull(b.tcv)}</span><span>{rateFmt(b.prob)}</span><strong>{window.fmt.moneyFull(b.weighted)}</strong></div>)}
+      </div></div>
+      <div className="pipeline-analysis-note">Probabilidades pelas conversões reais do funil; etapas sem histórico usam as taxas configuradas. Entrega e descartados ficam fora da esteira aberta.</div>
+    </>}
+  </section>;
 }
 
 // ─────────────────────────────────────────────── Análise (forecast + funil real)
