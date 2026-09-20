@@ -68,7 +68,8 @@ Para reproduzir Visão geral com dados fixos e testes no navegador, usar
 `npm run test:review:sla -w packages/web`; para Redes sociais,
 `npm run test:review:social -w packages/web`; para Publicidade,
 `npm run test:review:metrics -w packages/web`; para Formulários,
-`npm run test:review:forms -w packages/web` (Chromium do Playwright instalado
+`npm run test:review:forms -w packages/web`; para Canvas,
+`npm run test:review:creative -w packages/web` (Chromium do Playwright instalado
 com `npx playwright install chromium`, se necessário). O comando sobe só Vite
 com mocks, sem API/banco, e grava medidas/capturas em `.review-artifacts` do web.
 Na ficha de formulário, respostas enviadas continuam lendo `doc.sections`

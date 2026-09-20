@@ -1,0 +1,44 @@
+/* Canvas — moldura CRM; as artes mantêm a identidade da marca ativa. */
+.canvas-page {gap:12px;margin:0 -4px;padding:0 4px;}
+.canvas-head {flex-shrink:0;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px;}
+.canvas-head h1 {margin:0;font:700 30px/1.05 var(--display);letter-spacing:-.03em;}
+.canvas-head p {font-size:11.5px;color:var(--fg-3);margin:6px 0 0;}
+.canvas-formats {display:inline-flex;gap:3px;padding:4px;border-radius:999px;background:var(--bg-1);box-shadow:var(--shadow-card);flex-wrap:wrap;}
+.canvas-formats button {height:32px;padding:0 14px;border-radius:999px;font-size:12.5px;color:var(--fg-3);white-space:nowrap;}
+.canvas-formats button[aria-pressed=true] {background:var(--btn-bg);color:var(--btn-fg);}
+.canvas-formats span {font-size:10px;opacity:.7;}
+.canvas-body {flex:1;min-height:0;overflow:auto;padding-bottom:24px;}
+.canvas-gallery {padding:16px 14px 14px;}
+.canvas-page .marketing-kicker {font-size:10px;letter-spacing:.12em;color:var(--fg-3);}
+.canvas-gallery > .marketing-kicker {padding:0 4px;margin-bottom:9px!important;}
+.canvas-page .canvas-templates {display:flex;flex-direction:column;gap:3px;}
+.canvas-page .canvas-template {padding:8px 10px;border:0;border-radius:14px;background:transparent;}
+.canvas-page .canvas-template[aria-pressed=true] {background:var(--accent-soft);}
+.canvas-template > span {display:flex;align-items:center;gap:7px;min-width:0;}
+.canvas-template strong {flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500;}
+.canvas-template[aria-pressed=true] strong {font-weight:650;}
+.canvas-template em {font-size:9px;font-style:normal;color:var(--fg-3);}
+.canvas-page .canvas-template small {font-size:10px;margin-top:2px;}
+.canvas-help {margin:12px 0 0;padding:10px 10px 0;border-top:1px solid var(--line-faint);font-size:10px;line-height:1.7;color:var(--fg-3);}
+.canvas-page .canvas-preview {padding:14px 16px 16px;gap:11px;background:var(--bg-1);}
+.canvas-page .canvas-preview button {height:38px!important;padding:0 14px!important;border:0!important;border-radius:999px;font-size:12.5px!important;}
+.canvas-page .canvas-preview .canvas-slides button {width:24px;height:24px!important;padding:0!important;font:700 11.5px var(--display)!important;}
+.canvas-page .canvas-preview .canvas-slides button[aria-pressed=true] {background:var(--btn-bg);color:var(--btn-fg);}
+.canvas-tip {margin:0;font-size:10.5px;text-align:center;color:var(--fg-3);text-wrap:pretty;}
+.canvas-page .canvas-content {padding:16px 18px;margin:0;gap:11px;}
+.canvas-page .canvas-field-head {font-size:10.5px;font-weight:600;color:var(--fg-3);}
+.canvas-page .canvas-field-head label {flex:1;}
+.canvas-page .canvas-field input,.canvas-page .canvas-field textarea {font-size:12px!important;border-radius:999px!important;background:var(--bg-inset)!important;border-color:var(--line-1)!important;}
+.canvas-page .canvas-field input:not([type=number]) {height:34px!important;padding:7px 14px!important;}
+.canvas-page .canvas-field textarea {min-height:54px!important;padding:9px 13px!important;border-radius:14px!important;line-height:1.5;}
+.canvas-page .canvas-field-head input {height:24px;width:56px;padding:0 8px;}
+.canvas-page .canvas-content .marketing-toolbar button {height:30px!important;padding:0 13px!important;border:0!important;border-radius:999px;font-size:11.5px!important;background:var(--bg-2);color:var(--accent);}
+.canvas-error {padding:12px;color:var(--neg);font-size:12.5px;}
+.canvas-error button {text-decoration:underline;}
+@media(max-width:1150px) and (min-width:701px){.canvas-page .canvas-templates{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));}}
+@media(max-width:768px){.canvas-page {overflow:auto;}.canvas-body {overflow:visible;padding-bottom:90px;}.canvas-page button,.canvas-page input,.canvas-page select{min-height:44px;}.canvas-page .canvas-preview .canvas-slides button {min-width:44px;}.canvas-formats{border-radius:24px;}.canvas-content .marketing-toolbar{align-items:stretch;}.canvas-content .marketing-toolbar select{flex:1 1 100%;}}
+
+.canvas-page .canvas-field-head input[type=number] {width:68px;padding-inline:8px!important;flex-shrink:0;}
+.canvas-page .canvas-secondary,.canvas-page .canvas-content .marketing-toolbar button {background:var(--bg-2)!important;}
+@media(max-width:700px){.canvas-page .canvas-templates {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));max-height:200px;overflow:auto;}.canvas-page button,.canvas-page input,.canvas-page textarea {scroll-margin-block:100px;}}
+@media(max-width:768px){.canvas-body {flex:none;}}

@@ -1,8 +1,7 @@
 import React from "react";
 import "./marketing.css";
+import "./creative.css";
 import { PrimaryButton, SecondaryButton } from "../atoms.jsx";
-import { InfoNota } from "../components/story.jsx";
-import { PageHead, Segmented } from "../components/viz.jsx";
 import { useIsMobile } from "../lib/responsive.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { EloBrandManual } from "./brand-elo.jsx";
@@ -1304,18 +1303,35 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
   const fileRef = useR(null);
   const photoTargetRef = useR(null);
   const extraSeq = useR(0);
+  const exporting = useR(false);
+  const templateRevision = useR(0);
+  const [assetError, setAssetError] = useS("");
+  const [assetAttempt, setAssetAttempt] = useS(0);
+  const dirty = JSON.stringify(vals) !== JSON.stringify(defaultsOf(tpl)) || Object.keys(sizes).length > 0 || Object.keys(pos).length > 0 || Object.keys(imgs).length > 0 || extras.length > 0;
+  function chooseTemplate(id) {
+    if (exporting.current || id === tpl.id) return;
+    if (standalone && dirty && !window.confirm("Trocar de template e descartar as alterações da arte atual?")) return;
+    templateRevision.current++;
+    setTplId(id);
+  }
+  useE(() => {
+    if (!standalone || !dirty) return;
+    const warn = (event) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [standalone, dirty]);
 
   // `ready` = ícones no lugar (o canvas já desenha, com a fonte de fallback);
   // `fontsAt` = fontes da marca chegaram → redesenha (entra nas deps abaixo).
   const [fontsAt, setFontsAt] = useS(0);
   useE(() => {
     let ok = true;
-    setReady(false); setFontsAt(0);
+    setReady(false); setFontsAt(0); setAssetError("");
     const a = loadAssets();
-    a.icons.then(() => ok && setReady(true)).catch(() => {});
+    a.icons.then(() => ok && setReady(true)).catch(() => ok && setAssetError("Não foi possível carregar a marca. Tente novamente."));
     a.fonts.then(() => ok && setFontsAt(Date.now()));
     return () => { ok = false; };
-  }, [brandId]);
+  }, [brandId, assetAttempt]);
   useE(() => {
     setVals(defaultsOf(tpl)); setSizes({}); setExportError(""); setPos({}); setImgs({}); setExtras([]); setSel(null); setAddSlide(1); setActiveSlide(0);
   }, [tpl.id, brandId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1339,6 +1355,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
     return { x: (e.clientX - r.left) * (tpl.w / r.width), y: (e.clientY - r.top) * (tpl.h / r.height) };
   }
   function onDown(e, i) {
+    if (exporting.current) return;
     const p = canvasPoint(e, i);
     const boxes = boxesRef.current[i] || [];
     let hit = null;
@@ -1376,8 +1393,9 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
     e.target.value = "";
     const target = photoTargetRef.current;
     if (!file || !target) return;
+    const revision = templateRevision.current;
     const url = URL.createObjectURL(file);
-    loadImg(url).then((img) => setImgs((p) => ({ ...p, [target]: img }))).catch(() => setExportError("Não deu para abrir a imagem. Escolha outro arquivo.")).finally(() => URL.revokeObjectURL(url));
+    loadImg(url).then((img) => { if (revision === templateRevision.current) setImgs((p) => ({ ...p, [target]: img })); }).catch(() => setExportError("Não deu para abrir a imagem. Escolha outro arquivo.")).finally(() => URL.revokeObjectURL(url));
   }
 
   // ── Elementos avulsos ──
@@ -1401,12 +1419,12 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
 
   // ── Download ──
   async function download(i) {
-    const c = refs.current[i];
-    if (!c || !ready) return;
+    if (!refs.current[i] || !ready) return;
+    const c = document.createElement("canvas");
+    c.width = tpl.w; c.height = tpl.h;
     await loadAssets().fonts; // nunca exporta com a fonte de fallback
     renderSlide(c.getContext("2d"), tpl, i, { vals, imgs, sizes }, pos, extras, null);
     const blob = await new Promise((resolve) => c.toBlob(resolve, "image/png"));
-    renderSlide(c.getContext("2d"), tpl, i, { vals, imgs, sizes }, pos, extras, sel);
     if (!blob) throw new Error("Não deu para gerar o PNG. Tente de novo.");
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -1416,7 +1434,8 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
     setTimeout(() => URL.revokeObjectURL(url), 3000);
   }
   async function exportPng(indices) {
-    if (exportBusy || !ready) return;
+    if (exporting.current || !ready) return;
+    exporting.current = true;
     setExportBusy(true); setExportError("");
     try {
       for (const i of indices) {
@@ -1424,7 +1443,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
         if (indices.length > 1) await new Promise((r) => setTimeout(r, 400));
       }
     } catch (e) { setExportError(e.message); }
-    finally { setExportBusy(false); }
+    finally { exporting.current = false; setExportBusy(false); }
   }
   async function downloadAll() { await exportPng(Array.from({ length: tpl.slides }, (_, i) => i)); }
 
@@ -1477,46 +1496,48 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
     const fields = tpl.fields.filter((f) => !f.slide || f.slide === activeSlide + 1);
     const fontOf = (f) => tpl.els.find((el) => el.field === f.k && el.size && (el.slide === "all" || (el.slide || 1) === activeSlide + 1));
     const selectSlide = (i) => { setActiveSlide(i); setAddSlide(i + 1); setSel(null); };
-    const reset = () => { setVals(defaultsOf(tpl)); setSizes({}); setPos({}); setExtras([]); setSel(null); };
-    return <div className="marketing-page" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+    const reset = () => { if (exporting.current || (dirty && !window.confirm("Restaurar os textos e posições do template? Textos adicionais serão removidos. As fotos do template serão mantidas."))) return; setVals(defaultsOf(tpl)); setSizes({}); setPos({}); setExtras([]); setSel(null); };
+    return <div className="marketing-page canvas-page" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: "none" }} />
-      <PageHead className="marketing-head" title="Canvas" sub="stories, feed e carrossel · PNG pronto pra postar" />
-      <div className="marketing-body" style={{ flex: 1, overflow: "auto" }}>
-        <div className="marketing-toolbar" aria-label="Formato do criativo">
-          {formatOptions.map(([id, label, size]) => <SecondaryButton key={id} disabled={exportBusy} aria-pressed={format === id}
-            onClick={() => { const next = allowed.find((t) => t.group === id); if (next) setTplId(next.id); }}
-            style={{ borderColor: format === id ? "var(--accent-line)" : undefined, background: format === id ? "var(--accent-soft)" : undefined, color: format === id ? "var(--accent)" : undefined }}>
-            {label} <span className="tnum" style={{ marginLeft: 6, fontSize: 10.5, color: "var(--fg-3)" }}>{size}</span>
-          </SecondaryButton>)}
+      <header className="canvas-head">
+        <div><h1>Canvas</h1><p>stories, feed e carrossel · PNG pronto pra postar</p></div>
+        <div className="canvas-formats" aria-label="Formato do criativo">
+          {formatOptions.map(([id, label, size]) => <button key={id} disabled={exportBusy} aria-pressed={format === id}
+            onClick={() => { const next = allowed.find((t) => t.group === id); if (next && format !== id) chooseTemplate(next.id); }}>
+            {label} <span>{size}</span>
+          </button>)}
         </div>
+      </header>
+      <div className="canvas-body">
+        {assetError && <div role="alert" className="canvas-error">{assetError} <button onClick={() => { assetsPromise = null; setAssetAttempt((n) => n + 1); }}>Tentar novamente</button></div>}
         {exportError && <div role="alert" style={{ color: "var(--neg)", fontSize: 12.5 }}>{exportError}</div>}
         <div className="canvas-workspace">
-          <section className="marketing-card">
+          <section className="marketing-card canvas-gallery">
             <div className="marketing-kicker" style={{ marginBottom: 10 }}>Templates · {visibleTemplates.length}</div>
             <div className="canvas-templates">
-              {visibleTemplates.map((t) => <button key={t.id} className="canvas-template" aria-pressed={t.id === tpl.id} disabled={exportBusy} onClick={() => setTplId(t.id)}>
-                <strong>{t.name}</strong><small>{t.slides > 1 ? `${t.slides} ${t.group === "storyseq" ? "stories" : "slides"}` : "1 arte"}</small>
-                {!!photoSlotsOf(t).length && <small>com foto</small>}
+              {visibleTemplates.map((t) => <button key={t.id} className="canvas-template" aria-pressed={t.id === tpl.id} disabled={exportBusy} onClick={() => chooseTemplate(t.id)}>
+                <span><strong>{t.name}</strong>{!!photoSlotsOf(t).length && <em>foto</em>}</span><small>{t.slides > 1 ? `${t.slides} ${t.group === "storyseq" ? "stories" : "slides"}` : "1 arte"}</small>
               </button>)}
             </div>
+            <p className="canvas-help">*palavra* = destaque na cor da marca<br />arraste na prévia para mover<br />clique no espaço da foto para escolher</p>
           </section>
           <section className="marketing-card canvas-preview" aria-label="Prévia da arte">
             <div className="marketing-toolbar" style={{ alignSelf: "stretch", justifyContent: "space-between" }}>
               <span className="tnum" style={{ fontSize: 10.5, color: "var(--fg-3)" }}>{tpl.w}×{tpl.h}</span>
-              {tpl.slides > 1 && <div className="canvas-slides" aria-label="Slides">{Array.from({ length: tpl.slides }, (_, i) => <button key={i} aria-label={`Slide ${i + 1}`} aria-pressed={activeSlide === i} onClick={() => selectSlide(i)}>{i + 1}</button>)}</div>}
+              {tpl.slides > 1 && <div className="canvas-slides" aria-label="Slides">{Array.from({ length: tpl.slides }, (_, i) => <button key={i} aria-label={`Slide ${i + 1}`} aria-pressed={activeSlide === i} disabled={exportBusy} onClick={() => selectSlide(i)}>{i + 1}</button>)}</div>}
             </div>
             {!fontsAt && <div role="status" className="dim">carregando fontes da marca…</div>}
             {Array.from({ length: tpl.slides }, (_, i) => <canvas key={tpl.id + i} ref={(el) => { refs.current[i] = el; }} aria-label={`${tpl.name} · slide ${i + 1}`}
               onPointerDown={(event) => onDown(event, i)} onPointerMove={(event) => onMove(event, i)} onPointerUp={onUp} onPointerCancel={onUp}
-              style={{ display: i === activeSlide ? "block" : "none", width: 300, maxWidth: "100%", height: "auto", borderRadius: 4, boxShadow: "var(--shadow-card)", cursor: "grab", touchAction: "none" }} />)}
+              style={{ display: i === activeSlide ? "block" : "none", width: 300, maxWidth: "100%", height: "auto", borderRadius: 6, boxShadow: "var(--shadow-card)", cursor: "grab", touchAction: "none" }} />)}
             <div className="marketing-toolbar" style={{ justifyContent: "center" }}>
               <PrimaryButton disabled={!ready || exportBusy} onClick={() => exportPng([activeSlide])}>{exportBusy ? "gerando…" : "Baixar PNG"}</PrimaryButton>
-              {tpl.slides > 1 && <SecondaryButton disabled={!ready || exportBusy} onClick={downloadAll}>Baixar todos</SecondaryButton>}
-              <SecondaryButton disabled={exportBusy} onClick={reset}>Resetar textos</SecondaryButton>
+              {tpl.slides > 1 && <SecondaryButton className="canvas-secondary" disabled={!ready || exportBusy} onClick={downloadAll}>Baixar todos</SecondaryButton>}
+              <SecondaryButton className="canvas-secondary" disabled={exportBusy} onClick={reset}>Resetar</SecondaryButton>
             </div>
-            <InfoNota>Arraste os elementos na arte. Use *asteriscos* para destacar palavras.</InfoNota>
+            <p className="canvas-tip">Arraste os elementos na arte. Use *asteriscos* para destacar palavras.</p>
           </section>
-          <section className="marketing-card canvas-content">
+          <fieldset disabled={exportBusy} className="marketing-card canvas-content" aria-label="Conteúdo do criativo">
             <div className="marketing-kicker">Conteúdo{tpl.slides > 1 ? ` · slide ${activeSlide + 1}` : ""}</div>
             {fields.map((f) => <div key={f.k} className="canvas-field">
               <div className="canvas-field-head"><label htmlFor={`canvas-field-${f.k}`}>{f.label}</label>
@@ -1532,17 +1553,18 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
               {imgs[slot.id] && <button aria-label="Remover foto" onClick={() => setImgs((v) => { const n = { ...v }; delete n[slot.id]; return n; })}>×</button>}
             </div>)}
             {extras.filter((ex) => ex.slide === activeSlide + 1).map((ex) => <div key={ex.id} className="canvas-field">
-              <div className="canvas-field-head"><label htmlFor={`canvas-extra-${ex.id}`}>Texto adicional</label>
+              <div className="canvas-field-head"><label htmlFor={`canvas-extra-${ex.id}`}>{ex.type === "pill" ? "Botão adicional" : "Texto adicional"}</label>
                 <input className="inp tnum" type="number" min="20" max="300" aria-label={`Fonte do texto adicional ${ex.id}`} value={ex.size} onChange={(e) => { patchExtra(ex.id, { size: e.target.value }); }} onBlur={(e) => patchExtra(ex.id, { size: Math.max(20, Math.min(300, Number(e.target.value) || 60)) })} />
-                <button onClick={() => removeExtra(ex.id)} aria-label={`Remover texto adicional ${ex.id}`}>×</button>
+                <button onClick={() => removeExtra(ex.id)} aria-label={`Remover ${ex.type === "pill" ? "botão" : "texto"} adicional ${ex.id}`}>×</button>
               </div>
               <input id={`canvas-extra-${ex.id}`} className="inp" value={ex.text} onChange={(e) => patchExtra(ex.id, { text: e.target.value })} />
             </div>)}
             <div className="marketing-toolbar" style={{ borderTop: "1px solid var(--line-1)", paddingTop: 12 }}>
               <select className="inp" aria-label="Destino do novo elemento" value={addSlide} onChange={(e) => setAddSlide(Number(e.target.value))}>{Array.from({ length: tpl.slides }, (_, i) => <option key={i} value={i + 1}>Slide {i + 1}</option>)}</select>
-              <SecondaryButton onClick={() => { addExtra("text"); setActiveSlide(addSlide - 1); }}>+ elemento de texto</SecondaryButton>
+              <SecondaryButton onClick={() => { addExtra("text"); setActiveSlide(addSlide - 1); }}>Adicionar texto</SecondaryButton>
+              <SecondaryButton onClick={() => { addExtra("pill"); setActiveSlide(addSlide - 1); }}>Adicionar botão</SecondaryButton>
             </div>
-          </section>
+          </fieldset>
         </div>
         {brandId === "elo" && <div style={{ marginTop: 12 }}><EloBrandManual /></div>}
       </div>
@@ -1744,7 +1766,8 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
 
 // ── Tela Estáticos (o editor completo, standalone) ──────────────────────────
 function CreativeScreen() {
-  return <CreativeEditor standalone />;
+  const [product] = useActiveSaas();
+  return <CreativeEditor key={product?.id} standalone />;
 }
 
 export { CreativeScreen, CreativeEditor, TEMPLATES, renderSlide };
