@@ -12,6 +12,14 @@ Rota = hash (`#pipeline`). Arquivos em `packages/web/src/screens/`.
 > leitura linha a linha dos 12 blocos (nível Meu dia) fica como refinamento
 > contínuo quando cada tela for mexida.
 
+## Revisão da moldura CRM final — 20/09/2026
+
+NavRail/TopBar/conta conferidos contra a prancha em 1440 e 1920px, com fontes
+carregadas e estados equivalentes (Visão geral recolhida e Clientes/Comercial
+aberto). Geometria, hierarquia, ícones, tipografia e controles corrigidos em
+`chrome.css`; mobile 390px e interações da moldura conferidos com mocks.
+As telas internas permanecem fora do escopo desta revisão.
+
 ## Rodada CRM final — 20/09/2026
 
 As 30 rotas do novo protótipo receberam a direção Cápsula. O

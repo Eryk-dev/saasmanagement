@@ -182,7 +182,7 @@ function MonthGrid({ month, sel, today, onPick, onHover, hover }) {
 // ── O filtro ─────────────────────────────────────────────────────────────────
 // `period`/`custom` são o estado APLICADO (a tela guarda e recarrega com ele);
 // o popover trabalha num rascunho e só devolve em "aplicar".
-export function PeriodPicker({ period, custom, onChange, presets }) {
+export function PeriodPicker({ period, custom, onChange, presets, variant }) {
   const [open, setOpen] = useState(false);
   const two = !useIsMobile();
   const [draft, setDraft] = useState({ period, custom });
@@ -233,14 +233,15 @@ export function PeriodPicker({ period, custom, onChange, presets }) {
     setOpen(false);
   };
 
+  const chrome = variant === "chrome";
   const btn = { height: 32, padding: "0 12px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" };
   const toggle = () => setOpen((value) => !value);
   return (
     <div ref={ref} style={{ display: "inline-flex", maxWidth: "100%" }}>
-      <button type="button" onClick={toggle} aria-haspopup="dialog" aria-expanded={open} style={{ ...btn, display: "inline-flex", alignItems: "center", gap: 8, maxWidth: "100%", overflow: "hidden" }}>
-        <span style={{ textTransform: "capitalize", whiteSpace: "nowrap" }}>{applied.label}</span>
-        <span className="mono dim tnum hide-mobile" style={{ fontSize: 11, fontWeight: 500, whiteSpace: "nowrap" }}>{applied.range}</span>
-        <span className="dim" style={{ fontSize: 9 }}>{open ? "▴" : "▾"}</span>
+      <button type="button" onClick={toggle} aria-haspopup="dialog" aria-expanded={open} className={chrome ? "chrome-period-button" : undefined} style={chrome ? undefined : { ...btn, display: "inline-flex", alignItems: "center", gap: 8, maxWidth: "100%", overflow: "hidden" }}>
+        <span style={{ textTransform: chrome ? undefined : "capitalize", whiteSpace: "nowrap" }}>{chrome ? applied.label.charAt(0).toUpperCase() + applied.label.slice(1) : applied.label}</span>
+        <span className={chrome ? "chrome-period-range" : "mono dim tnum hide-mobile"} style={chrome ? undefined : { fontSize: 11, fontWeight: 500, whiteSpace: "nowrap" }}>{applied.range}</span>
+        <span className={chrome ? "chrome-period-chevron" : "dim"} style={chrome ? undefined : { fontSize: 9 }}>{open ? "▴" : "▾"}</span>
       </button>
       {open && (
         <Popover anchor={ref} onClose={() => setOpen(false)} width={648} align="end"

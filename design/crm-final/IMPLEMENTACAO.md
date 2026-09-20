@@ -86,3 +86,24 @@ manual do Leonardo após o merge, conforme sua autorização para esta entrega.
 
 Resultado desta entrega: API 1.729 testes aprovados; web 9 testes de navegação/cliente
 aprovados e smoke SSR completo; build de produção aprovado.
+
+## Revisão de fidelidade da moldura — 20/09/2026
+
+A moldura agora tem uma única fonte de estilos em `packages/web/src/chrome.css`.
+O modo `responsive.html?width=1440&prototype=1` abre esta prancha no mesmo
+iframe usado pela implementação. A seleção de telas no protótipo é pelo menu.
+O runtime `support.js` é usado somente nessa referência de desenvolvimento.
+
+Comparação no Chrome, com fontes carregadas e viewport interno confirmado:
+
+| Conferência | Resultado |
+|---|---|
+| 1440×1000, Visão geral e Comercial expandido | Lateral, marca, busca, grupos, subitens, rodapé, topo e sino com as mesmas posições e dimensões; diferença do breadcrumb inferior a 0,03px. |
+| 1920×1000, Clientes com Comercial ativo | Diferença de geometria 0px na lateral, marca, busca, rodapé, topo, sino e 16 linhas visíveis do menu. |
+| 390×844 | Menu em drawer rolável; controles de 44px; navegação fecha o drawer; topo e seletor de período cabem na largura. |
+| Interações com mocks | Busca/⌘K/Esc, expansão por Enter, grupo ativo sempre aberto, troca LeverAds/Elo, conta, ICP, notificações e aplicação de período. |
+
+Nome/cargo/foto, contadores, critérios do ICP e datas continuam reais. Por isso,
+a largura dos textos/selos e o conteúdo dos painéis podem diferir da demonstração.
+O calendário personalizado, as abas de notificações e a matriz do ICP preservam
+as funções existentes. Esta conferência cobre a moldura, não o conteúdo das telas.
