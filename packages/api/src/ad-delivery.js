@@ -91,7 +91,7 @@ export async function loadDeliveryCfg(repo, saas) {
     rules: mergeRules(rec?.rules),
     state: {
       day: "", pausedCampaigns: [], pauseReason: "", pausedAt: "",
-      agendaPausedDay: "", weekendPausedDay: "", lastBudgetDay: "",
+      agendaPausedDay: "", weekendPausedDay: "", lastBudgetDay: "", lastFailure: "",
       ...(rec?.state || {}),
     },
     log: Array.isArray(rec?.log) ? rec.log : [],
@@ -109,6 +109,22 @@ async function saveDeliveryCfg(repo, saas, cfg) {
 const logLine = (cfg, rule, action, detail) => {
   cfg.log.unshift({ at: new Date().toISOString(), rule, action, detail });
 };
+
+// Falha da Meta na TELA, não só no log do servidor (20/09: a conta de anúncio
+// nova só tinha leitura no token, e a régua passou a madrugada inteira sem
+// conseguir religar — o card não dizia nada e o erro morria no EasyPanel).
+// Uma vez por motivo por dia: o tick tenta de novo a cada 60s, e uma linha por
+// minuto viraria metralhadora no log (120 linhas) e no tempo real (cada save
+// acorda o SSE de todo mundo). Motivo novo ou virada do dia registram de novo.
+const errMsg = (err) => String(err?.message || err).slice(0, 160);
+
+function logFailure(cfg, rule, detail) {
+  const key = `${cfg.state.day}|${rule}|${detail}`;
+  if (cfg.state.lastFailure === key) return false;
+  cfg.state.lastFailure = key;
+  logLine(cfg, rule, "falhou", detail);
+  return true;
+}
 
 // ── Agenda: quanto cabe e quanto já tem ─────────────────────────────────────
 // "Horário desbloqueado" na régua do Leo = início de call em HORA CHEIA dentro
@@ -242,27 +258,35 @@ async function pauseAll(cfg, meta, adAccount, reason, detail, log) {
   const active = campaigns.filter((c) => c.status === "ACTIVE");
   if (!active.length) return 0;
   const paused = [];
+  const falhas = [];
   for (const c of active) {
     try { await meta.setObjectStatus(c.id, "PAUSED"); paused.push(c.id); }
-    catch (err) { log?.warn?.(`ad-delivery: pausar ${c.id} falhou: ${String(err.message || err).slice(0, 120)}`); }
+    catch (err) { falhas.push(errMsg(err)); log?.warn?.(`ad-delivery: pausar ${c.id} falhou: ${errMsg(err)}`); }
   }
   cfg.state.pausedCampaigns = [...new Set([...(cfg.state.pausedCampaigns || []), ...paused])];
   cfg.state.pauseReason = reason;
   cfg.state.pausedAt = new Date().toISOString();
-  if (paused.length) logLine(cfg, reason === "fim de semana" ? "weekendOff" : "agendaFull", "pausou", `${paused.length} campanha${paused.length > 1 ? "s" : ""} · ${detail}`);
+  const rule = reason === "fim de semana" ? "weekendOff" : "agendaFull";
+  if (paused.length) logLine(cfg, rule, "pausou", `${paused.length} campanha${paused.length > 1 ? "s" : ""} · ${detail}`);
+  if (falhas.length) logFailure(cfg, rule, `não consegui pausar ${falhas.length} campanha${falhas.length > 1 ? "s" : ""} na Meta: ${falhas[0]}`);
   return paused.length;
 }
 
 async function resumeAll(cfg, meta, log) {
   const remaining = [];
+  const falhas = [];
   let ok = 0;
+  const rule = cfg.state.pauseReason === "fim de semana" ? "weekendOff" : "agendaFull";
   for (const id of cfg.state.pausedCampaigns || []) {
     try { await meta.setObjectStatus(id, "ACTIVE"); ok++; }
-    catch (err) { remaining.push(id); log?.warn?.(`ad-delivery: religar ${id} falhou: ${String(err.message || err).slice(0, 120)}`); }
+    catch (err) { remaining.push(id); falhas.push(errMsg(err)); log?.warn?.(`ad-delivery: religar ${id} falhou: ${errMsg(err)}`); }
   }
   cfg.state.pausedCampaigns = remaining;
   if (!remaining.length) { cfg.state.pauseReason = ""; cfg.state.pausedAt = ""; }
   if (ok) logLine(cfg, "agendaFull", "religou", `${ok} campanha${ok > 1 ? "s" : ""} na virada do dia`);
+  // Campanha presa é o pior dos erros silenciosos: o anúncio devia estar no ar
+  // agora e não está. Some da tela só quando religar de verdade.
+  if (falhas.length) logFailure(cfg, rule, `não consegui religar ${falhas.length} campanha${falhas.length > 1 ? "s" : ""} na Meta: ${falhas[0]}`);
   return ok;
 }
 
@@ -299,12 +323,14 @@ async function adjustBudgets(cfg, meta, adAccount, { target, booked, cost, today
     return;
   }
   let applied = 0, newTotal = 0;
+  const falhas = [];
   for (const c of carriers) {
     const next = Math.max(1, Math.round(c.budget * factor * 100) / 100);
     try { await meta.setObjectBudget(c.id, next); applied++; newTotal += next; }
-    catch (err) { newTotal += c.budget; log?.warn?.(`ad-delivery: orçamento ${c.id} falhou: ${String(err.message || err).slice(0, 120)}`); }
+    catch (err) { newTotal += c.budget; falhas.push(errMsg(err)); log?.warn?.(`ad-delivery: orçamento ${c.id} falhou: ${errMsg(err)}`); }
   }
   cfg.state.lastBudgetDay = today;
+  if (falhas.length) logFailure(cfg, "budget", `não consegui mudar o orçamento de ${falhas.length} objeto${falhas.length > 1 ? "s" : ""} na Meta: ${falhas[0]}`);
   logLine(cfg, "budget", factor > 1 ? "subiu" : "desceu",
     `${brl(total)} → ${brl(Math.round(newTotal * 100) / 100)}/dia em ${applied} objeto${applied === 1 ? "" : "s"} ` +
     `(alvo ${brl(alvoTotal)} = ${vagas} vaga${vagas === 1 ? "" : "s"} × ${brl(cost.costPerCall)}/call · trava ±${cfg.rules.budget.maxStepPct}%)`);
@@ -335,7 +361,8 @@ export async function adDeliveryTick(repo, { meta = defaultMeta, saas = "", now 
       const changedBlock = await syncShortFridayBlock(repo, { saas: product.id, rule: cfg.rules.shortFriday, users });
       if (changedBlock) logLine(cfg, "shortFriday", changedBlock, `bloqueio semanal de sexta depois das ${cfg.rules.shortFriday.lastCallHour}h`);
     } catch (err) {
-      log?.warn?.(`ad-delivery: bloqueio de sexta falhou (${product.id}): ${String(err.message || err).slice(0, 120)}`);
+      logFailure(cfg, "shortFriday", `não consegui manter o bloqueio de sexta: ${errMsg(err)}`);
+      log?.warn?.(`ad-delivery: bloqueio de sexta falhou (${product.id}): ${errMsg(err)}`);
     }
     const [blocks, leads, insights] = await Promise.all([
       repo.list("agenda_blocks"), repo.list("leads"), repo.list("ad_insights"),
@@ -352,7 +379,11 @@ export async function adDeliveryTick(repo, { meta = defaultMeta, saas = "", now 
         cfg.state.weekendPausedDay = today;
         if (!(cfg.state.pausedCampaigns || []).length) {
           try { await pauseAll(cfg, meta, product.metaAdAccount, "fim de semana", "janela morta (sem agenda no dia seguinte)", log); }
-          catch (err) { cfg.state.weekendPausedDay = ""; log?.warn?.(`ad-delivery: pausa de janela falhou (${product.id}): ${String(err.message || err).slice(0, 120)}`); }
+          catch (err) {
+            cfg.state.weekendPausedDay = "";
+            logFailure(cfg, "weekendOff", `não consegui pausar pela janela morta: ${errMsg(err)}`);
+            log?.warn?.(`ad-delivery: pausa de janela falhou (${product.id}): ${errMsg(err)}`);
+          }
         }
       }
 
@@ -360,7 +391,10 @@ export async function adDeliveryTick(repo, { meta = defaultMeta, saas = "", now 
       //    volta (é a virada — retry automático enquanto restar campanha presa).
       if (!offToday && (cfg.state.pausedCampaigns || []).length && cfg.state.agendaPausedDay !== today) {
         try { await resumeAll(cfg, meta, log); }
-        catch (err) { log?.warn?.(`ad-delivery: religar falhou (${product.id}): ${String(err.message || err).slice(0, 120)}`); }
+        catch (err) {
+          logFailure(cfg, "agendaFull", `não consegui religar as campanhas: ${errMsg(err)}`);
+          log?.warn?.(`ad-delivery: religar falhou (${product.id}): ${errMsg(err)}`);
+        }
       }
 
       // 3) Orçamento do dia (1x, na primeira passada depois da virada) — as
@@ -369,7 +403,10 @@ export async function adDeliveryTick(repo, { meta = defaultMeta, saas = "", now 
         const win = windowStats({ users, blocks, leads, products, saas: product.id, days: winDays, callsPerCloser: cfg.rules.agendaFull.callsPerCloser });
         const cost = costPerCall({ leads, insights, saas: product.id, now, windowDays: cfg.rules.budget.windowDays });
         try { await adjustBudgets(cfg, meta, product.metaAdAccount, { target: win.target, booked: win.booked, cost, today }, log); }
-        catch (err) { log?.warn?.(`ad-delivery: ajuste de orçamento falhou (${product.id}): ${String(err.message || err).slice(0, 120)}`); }
+        catch (err) {
+          logFailure(cfg, "budget", `não consegui ler/ajustar os orçamentos na Meta: ${errMsg(err)}`);
+          log?.warn?.(`ad-delivery: ajuste de orçamento falhou (${product.id}): ${errMsg(err)}`);
+        }
       }
 
       // 4) A janela bateu o alvo → pausa (e não religa até a virada). Com o par
@@ -383,7 +420,8 @@ export async function adDeliveryTick(repo, { meta = defaultMeta, saas = "", now 
               `janela (${windowLabel(winDays)}) com ${win.booked}/${win.target} calls · ${porDia} · ${win.capacity} desbloqueado${win.capacity === 1 ? "" : "s"}`, log);
             if (n >= 0) cfg.state.agendaPausedDay = today;
           } catch (err) {
-            log?.warn?.(`ad-delivery: pausa por agenda falhou (${product.id}): ${String(err.message || err).slice(0, 120)}`);
+            logFailure(cfg, "agendaFull", `não consegui pausar com a agenda cheia: ${errMsg(err)}`);
+            log?.warn?.(`ad-delivery: pausa por agenda falhou (${product.id}): ${errMsg(err)}`);
           }
         }
       }
