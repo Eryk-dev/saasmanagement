@@ -56,7 +56,7 @@ export function BarList({ items, fmt = fmtNum, color = "var(--accent)", labelW =
 
 // Linha/área de uma série no tempo, com crosshair + tooltip no hover. `cumulative`
 // soma a série (curva de trajetória, pro ganho de seguidores). Um hue só.
-export function AreaLine({ series, height = 132, cumulative = false, fmt = fmtNum, valueLabel = "" }) {
+export function AreaLine({ series, height = 132, cumulative = false, bars = false, fmt = fmtNum, valueLabel = "" }) {
   const ref = useR(null);
   const [hover, setHover] = useS(null);
   if (!series || series.length < 2) return <div className="mono dim" style={{ fontSize: 11, padding: "20px 0" }}>série indisponível pra esse período</div>;
@@ -85,8 +85,10 @@ export function AreaLine({ series, height = 132, cumulative = false, fmt = fmtNu
     <div ref={ref} style={{ position: "relative" }} onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" style={{ display: "block", overflow: "visible" }}>
         {lo < 0 && <line x1={padX} x2={W - padX} y1={zeroY} y2={zeroY} stroke="var(--line-2)" strokeWidth="1" strokeDasharray="3 3" />}
-        <path d={area} fill="var(--accent)" opacity="0.12" />
-        <path d={line} fill="none" stroke="var(--accent)" strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+        {bars ? pts.map((p,i) => <rect key={`${p.date}-${i}`} x={padX + i * (W - 2 * padX) / pts.length} y={Math.min(y(p.value),zeroY)} width={Math.max(1,(W - 2 * padX) / pts.length - 3)} height={Math.max(1,Math.abs(y(p.value)-zeroY))} rx={2} fill="var(--accent)" opacity={.25 + .65 * (i + 1) / pts.length}><title>{`${fmtDay(p.date)}: ${fmt(p.value)} ${valueLabel}`}</title></rect>) : <>
+          <path d={area} fill="var(--accent)" opacity="0.12" />
+          <path d={line} fill="none" stroke="var(--accent)" strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+        </>}
         {hp && <>
           <line x1={x(hover)} x2={x(hover)} y1={padT} y2={H - padB} stroke="var(--fg-4)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
           <circle cx={x(hover)} cy={y(hp.value)} r="4" fill="var(--accent)" stroke="var(--bg-1)" strokeWidth="2" vectorEffect="non-scaling-stroke" />

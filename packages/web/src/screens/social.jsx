@@ -1,9 +1,11 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import "./marketing.css";
-import { PageHead, Pill, Card } from "../components/viz.jsx";
+import "./social.css";
+import { Pill, Card } from "../components/viz.jsx";
 import { BarraComposicao, InfoLink } from "../components/story.jsx";
 import { Modal } from "../components/overlay.jsx";
-import { EmptyState, useEsc, Skeleton, PrimaryButton } from "../atoms.jsx";
+import { EmptyState, Skeleton, PrimaryButton } from "../atoms.jsx";
 import { useSwr } from "../lib/swr.js";
 import { MetaConnectCard } from "../components/meta-connect.jsx";
 import { ErrorBoundary } from "../components/error-boundary.jsx";
@@ -46,7 +48,7 @@ const KIND_HINTS = {
 // Só os tipos "criados aqui" abrem o editor (e ganham dor + copy por IA).
 const CREATED_HERE = new Set(["image", "carousel", "sequence"]);
 // Colunas da tabela de publicações (header e linhas compartilham o grid).
-const POSTS_GRID = "2fr .7fr .55fr .55fr .55fr .55fr .5fr .55fr .6fr .5fr .55fr .5fr .6fr .55fr .55fr .7fr";
+const POSTS_GRID = "minmax(190px,1.7fr) 96px 78px 74px 78px 74px 72px 78px 84px 66px 74px 74px 84px 74px 74px 82px";
 // Colunas da tabela de stories (histórico capturado).
 const STORIES_GRID = "1.5fr .55fr .55fr .65fr .6fr .55fr .55fr .6fr .55fr .5fr .5fr .85fr";
 const fmtPct = (x) => `${(Math.round(x * 10) / 10).toFixed(1).replace(".", ",")}%`;
@@ -205,18 +207,21 @@ function DiscoveryPanel({ product, sum }) {
   const [compIn, setCompIn] = React.useState("");
   const [tagIn, setTagIn] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const writing = React.useRef(false);
+  const [readError,setReadError] = React.useState(null), [saveError,setSaveError] = React.useState(null);
   const load = React.useCallback(() => {
     if (!product?.id) return;
-    api.socialDiscovery(product.id).then(setDisc).catch(() => setDisc(null));
+    setReadError(null);
+    api.socialDiscovery(product.id).then(setDisc).catch(e => setReadError(e.message));
   }, [product?.id]);
   React.useEffect(() => { setDisc(null); load(); }, [load]);
 
   async function save(patch, apply) {
-    if (busy) return;
-    setBusy(true);
+    if (writing.current) return;
+    writing.current=true; setBusy(true); setSaveError(null);
     try { await api.update("products", product.id, patch); apply(); setDisc(null); load(); }
-    catch { /* mantém a lista anterior */ }
-    setBusy(false);
+    catch (e) { setSaveError(e.message); }
+    finally { writing.current=false; setBusy(false); }
   }
   const addComp = () => {
     const u = compIn.trim().replace(/^@/, "");
@@ -248,6 +253,7 @@ function DiscoveryPanel({ product, sum }) {
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 16 }}>
+      {(readError || saveError) && <div className="social-error" role="alert" style={{gridColumn:"1 / -1"}}>{saveError || readError} {readError && <button onClick={load}>Tentar novamente</button>}</div>}
       <Card title="Concorrentes" hint="dados públicos · curtidas e comentários por post">
         <div style={{ padding: "10px var(--inset-x) 18px" }}>
           <div className="kicker" style={{ display: "grid", gridTemplateColumns: "1.4fr .8fr .7fr .7fr .6fr 24px", gap: 8, fontWeight: 600, padding: "4px 0" }}>
@@ -264,12 +270,12 @@ function DiscoveryPanel({ product, sum }) {
                     <span className="tnum" style={{ textAlign: "right" }}>{c.avgComments != null ? String(c.avgComments).replace(".", ",") : "—"}</span>
                     <span className="tnum" style={{ textAlign: "right" }}>{c.postsPerWeek != null ? String(c.postsPerWeek).replace(".", ",") : "—"}</span>
                   </>}
-              {c.us ? <span /> : <button onClick={() => rmComp(c.username)} title="remover" style={{ border: "none", background: "none", color: "var(--fg-4)", cursor: "pointer", fontSize: 13 }}>✕</button>}
+              {c.us ? <span /> : <button disabled={busy} onClick={() => rmComp(c.username)} aria-label={`Remover concorrente ${c.username}`} style={{ border: "none", background: "none", color: "var(--fg-4)", cursor: "pointer", fontSize: 13 }}>✕</button>}
             </div>
           ))}
           {!comps.length && <div style={{ ...dim, padding: "8px 0" }}>adicione contas concorrentes pra comparar (precisa ser conta business)</div>}
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-            <input value={compIn} onChange={(e) => setCompIn(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addComp()} placeholder="@concorrente" style={inputStyle} />
+            <input aria-label="Adicionar concorrente" disabled={busy} value={compIn} onChange={(e) => setCompIn(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addComp()} placeholder="@concorrente" style={inputStyle} />
             <button onClick={addComp} disabled={busy} style={addBtn}>Adicionar</button>
           </div>
         </div>
@@ -286,7 +292,7 @@ function DiscoveryPanel({ product, sum }) {
             </div>
           ))}
           {disc && !(disc.tagged || []).length && <div style={{ ...dim, padding: "8px 0" }}>ninguém marcou a conta ainda</div>}
-          {!disc && <div style={{ ...dim, padding: "8px 0" }}>carregando…</div>}
+          {!disc && !readError && <div style={{ ...dim, padding: "8px 0" }}>carregando…</div>}
         </div>
       </Card>
 
@@ -298,12 +304,12 @@ function DiscoveryPanel({ product, sum }) {
               {h.error
                 ? <span style={{ ...dim, flex: 1 }}>indisponível</span>
                 : <span style={{ ...dim, flex: 1 }}>top {h.top} · mediana <b className="tnum" style={{ color: "var(--fg-2)" }}>{fmtNum(h.medianLikes)}</b> curtidas · pico <b className="tnum" style={{ color: "var(--fg-2)" }}>{fmtNum(h.maxLikes)}</b></span>}
-              <button onClick={() => rmTag(h.name)} title="remover" style={{ border: "none", background: "none", color: "var(--fg-4)", cursor: "pointer", fontSize: 13 }}>✕</button>
+              <button disabled={busy} onClick={() => rmTag(h.name)} aria-label={`Remover hashtag ${h.name}`} style={{ border: "none", background: "none", color: "var(--fg-4)", cursor: "pointer", fontSize: 13 }}>✕</button>
             </div>
           ))}
           {!tags.length && <div style={{ ...dim, padding: "8px 0" }}>monitore hashtags do teu nicho (ex.: mercadolivre)</div>}
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-            <input value={tagIn} onChange={(e) => setTagIn(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addTag()} placeholder="#hashtag" style={inputStyle} />
+            <input aria-label="Adicionar hashtag" disabled={busy} value={tagIn} onChange={(e) => setTagIn(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addTag()} placeholder="#hashtag" style={inputStyle} />
             <button onClick={addTag} disabled={busy} style={addBtn}>Adicionar</button>
           </div>
         </div>
@@ -342,16 +348,14 @@ function CreativesToday({ saasId, version, onCreate }) {
     } catch (e) { toast(`Não deu pra registrar · ${e?.message || "tente de novo"}`, "neg"); }
     finally { setBusy(false); }
   };
-  const btn = { width: 28, height: 28, borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 14, fontWeight: 700, lineHeight: 1, opacity: busy ? 0.5 : 1 };
   return (
-    <div className="capsule-navy" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "20px 22px" }}>
-      <span style={{ fontSize: 13, fontWeight: 600 }}>Criativos de hoje{target !== me?.id ? ` · ${userById(target)?.name || target}` : ""}</span>
-      <button aria-label="Diminuir criativos de hoje" onClick={() => bump(-1)} disabled={busy || !(count > 0)} style={btn}>−</button>
-      <span className="tnum" style={{ fontSize: 15, fontWeight: 700, minWidth: 18, textAlign: "center" }}>{count == null ? "—" : count}</span>
-      <button aria-label="Aumentar criativos de hoje" onClick={() => bump(1)} disabled={busy} style={btn}>+</button>
-      <span className="dim" style={{ fontSize: 12 }}>anúncios, estáticos e vídeos feitos no dia · conta na Análise de Desempenho</span>
-      <PrimaryButton onClick={onCreate} style={{ marginLeft: "auto" }}>Criar post →</PrimaryButton>
-    </div>
+    <section className="social-today capsule-navy">
+      <div className="social-today-copy"><div className="social-today-kicker">Criativos de hoje</div>
+        <div className="social-today-title">{count == null ? "Registro indisponível" : `${count} ${count === 1 ? "criativo registrado" : "criativos registrados"} hoje`}</div>
+        <div className="social-today-note">{target !== me?.id ? `${userById(target)?.name || target} · ` : ""}Anúncios, estáticos e vídeos feitos no dia · conta na Análise de Desempenho</div>
+      </div>
+      <div className="social-today-actions"><button aria-label="Diminuir criativos de hoje" onClick={() => bump(-1)} disabled={busy || !(count > 0)}>−</button><span className="tnum">{count == null ? "—" : count}</span><button aria-label="Aumentar criativos de hoje" onClick={() => bump(1)} disabled={busy || count == null}>+</button><PrimaryButton onClick={onCreate}>Publicar o de hoje →</PrimaryButton></div>
+    </section>
   );
 }
 
@@ -465,42 +469,26 @@ function SocialScreen() {
   const postTitle = (item) => (item.caption || "Publicação sem legenda").split("\n")[0].trim();
 
   return (
-    <div className="marketing-page" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead className="marketing-head"
-        title="Redes sociais"
-        sub={<span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>métricas do perfil · <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--fg-2)", fontSize: 12.5, fontWeight: 500 }}><span style={{ width: 6, height: 6, borderRadius: 99, background: sum?.configured ? "var(--pos)" : "var(--fg-4)" }} />{sum?.configured ? `conectado${sum?.account?.username ? ` · @${sum.account.username}` : ""}` : "não conectado"}</span></span>}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          {[["painel", "Painel", null], ["comentarios", "Comentários", pending]].map(([id, label, badge]) => (
-            <button key={id} onClick={() => setTab(id)}
-              style={{
-                height: 32, padding: "0 12px", borderRadius: 999, fontSize: 13,
-                fontWeight: tab === id ? 600 : 500,
-                display: "inline-flex", alignItems: "center", gap: 6,
-                border: "1px solid " + (tab === id ? "var(--accent-line)" : "var(--line-2)"),
-                background: tab === id ? "var(--accent-soft)" : "transparent",
-                color: tab === id ? "var(--fg-1)" : "var(--fg-3)",
-              }}>
-              {label}
-              {badge > 0 && (
-                <span className="tnum" style={{ minWidth: 18, height: 18, padding: "0 5px", borderRadius: 99, background: "var(--warn)", color: "var(--bg-0)", fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{badge}</span>
-              )}
-            </button>
-          ))}
-          <button onClick={() => setWizard(true)}
-            style={{ height: 32, padding: "0 14px", marginLeft: 6, borderRadius: 999, background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 13, fontWeight: 600 }}>
-            + criar post
-          </button>
-        </div>
-      </PageHead>
+    <div className="marketing-page social-page">
+      <header className="social-head"><div><h1>Redes sociais</h1><div className="social-sub">
+        <span className="social-connection"><i style={{background:sum?.configured ? "var(--pos)" : "var(--fg-4)"}}/>{sumQ.error && !sum ? "conexão indisponível" : !sum ? "verificando conexão…" : sum.configured ? `conectado${sum.account?.username ? ` · @${sum.account.username}` : ""}` : "não conectado"}</span>
+        {sum?.configured && (<InfoLink style={{lineHeight:"15px"}} texto={[
+              `views no período: ${fmtNum(ins.views)}`, `visitas ao perfil: ${fmtNum(ins.profile_views)}`,
+              `contas engajadas: ${fmtNum(ins.accounts_engaged)}`, `interações: ${fmtNum(ins.total_interactions)}`,
+              `cliques no link (perfil e bio): ${fmtNum((ins.profile_links_taps != null || ins.website_clicks != null) ? (ins.profile_links_taps || 0) + (ins.website_clicks || 0) : null)}`,
+            ].join(" · ")}>mais números</InfoLink>)}
+      </div></div><div className="social-head-actions"><div className="social-tabs">
+        {[["painel","Painel",null],["comentarios","Comentários",pending]].map(([id,label,badge]) => <button type="button" key={id} aria-pressed={tab===id} onClick={() => setTab(id)}>{label}{badge>0 && <span className="social-tab-badge">{badge}</span>}</button>)}
+      </div><PrimaryButton onClick={() => setWizard(true)}>Criar post</PrimaryButton></div></header>
 
       {tab === "comentarios" ? (
         <ErrorBoundary label="comentarios">
           <CommentsPanel saas={product?.id} onCount={setPending} />
         </ErrorBoundary>
       ) : (
-      <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+      <div className="social-body">
         <CreativesToday saasId={product?.id} version={version} onCreate={() => setWizard(true)} />
-        {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
+        {sumQ.error && <div role="alert" className="social-error">{sum ? "Não deu para atualizar as métricas. Os últimos dados continuam abaixo." : "Não deu para carregar as métricas."} <button onClick={sumQ.refresh}>Tentar novamente</button></div>}
         {!sum && !err && <SocialSkeleton />}
         {sum && sumQ.refreshing && <div className="mono dim" role="status" style={{ fontSize: 11 }}>atualizando…</div>}
         {/* Sem token no servidor: o cartão explica o passo de infra. Com token
@@ -516,26 +504,22 @@ function SocialScreen() {
           <>
             {sum.errors?.setup && <div className="mono" style={{ fontSize: 11.5, color: "var(--warn)" }}>{sum.errors.setup}</div>}
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))", gap: 12 }}>
+            <section className="social-kpis">
               {[
                 ["Seguidores", fmtNum(sum?.account?.followers_count), growth != null ? `${growth > 0 ? "+" : ""}${fmtNum(growth)} no período` : "variação indisponível"],
-                ["Alcance · 30 dias", fmtNum(ins.reach), reachTotal ? `${nonFollowerPct}% não-seguidores` : "divisão indisponível"],
+                [`Alcance · ${days} dias`, fmtNum(ins.reach), reachTotal ? `${nonFollowerPct}% não-seguidores` : "divisão indisponível"],
                 ["Engajamento médio", eng?.rate != null ? `${String(eng.rate).replace(".", ",")}%` : "—", eng?.posts != null ? `${eng.posts} posts no período` : "sem posts no período"],
                 ["Posts no mês", fmtNum(eng?.posts ?? 0), "de 12 · meta mensal"],
-              ].map(([label, value, note]) => <section key={label} className="marketing-card marketing-stat">
+              ].map(([label, value, note]) => <div key={label} className="social-kpi">
                 <div className="marketing-kicker">{label}</div><strong className="tnum">{value}</strong><small>{note}</small>
-              </section>)}
-            </div>
-            <InfoLink texto={[
-              `views no período: ${fmtNum(ins.views)}`, `visitas ao perfil: ${fmtNum(ins.profile_views)}`,
-              `contas engajadas: ${fmtNum(ins.accounts_engaged)}`, `interações: ${fmtNum(ins.total_interactions)}`,
-              `cliques no link (perfil e bio): ${fmtNum((ins.profile_links_taps != null || ins.website_clicks != null) ? (ins.profile_links_taps || 0) + (ins.website_clicks || 0) : null)}`,
-            ].join(" · ")}>mais números</InfoLink>
+              </div>)}
+            </section>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 16 }}>
-              <Card title="Crescimento de seguidores" hint="acumulado · 30 dias">
+
+            <div className="social-charts">
+              <Card title="Crescimento de seguidores" hint={`acumulado · ${days} dias`}>
                 <div style={{ padding: "8px 16px 12px" }}>
-                  <AreaLine series={sum.followerSeries || []} cumulative valueLabel="seguidores" />
+                  <AreaLine series={sum.followerSeries || []} cumulative bars height={150} valueLabel="seguidores" />
                 </div>
                 {/* Bruto do período: o líquido do gráfico esconde o churn. */}
                 {sum.followsBreakdown && (sum.followsBreakdown.follows > 0 || sum.followsBreakdown.unfollows > 0) && (
@@ -546,7 +530,7 @@ function SocialScreen() {
                 )}
               </Card>
 
-              <Card title="Alcance: seguidores × não-seguidores" hint="quanto do alcance é gente nova">
+              <Card title="Alcance" hint="quanto do alcance é gente nova">
                 <div style={{ padding: "18px 24px 22px" }}>
                   {/* As fatias medem ALCANCE, então o rótulo diz alcance
                       (14/09). "Seguidores 50.076" na barra com "Seguidores
@@ -564,7 +548,7 @@ function SocialScreen() {
                   {(officialFormats.length > 0 || sum.formats?.length > 0) && (
                     <div style={{ marginTop: 20 }}>
                       <div className="kicker" style={{ fontWeight: 600, marginBottom: 10 }}>
-                        {officialFormats.length ? "Alcance por formato · 30 dias" : "Alcance médio por formato"}
+                        {officialFormats.length ? `Alcance por formato · ${days} dias` : "Alcance médio por formato"}
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                         {(officialFormats.length ? officialFormats : (sum.formats || []).map((f) => ({ label: f.label, value: f.avgReach }))).map((f) => (
@@ -580,26 +564,12 @@ function SocialScreen() {
                 </div>
               </Card>
 
-              {/* Raio-x das interações: o total do tile aberto por tipo, e os
-                  cliques do perfil por botão. Some sem dado (conta não expõe). */}
-              {interactionSegs.length > 0 && (
-                <Card title="Interações · por tipo" hint="30 dias">
-                  <div style={{ padding: "14px 24px 20px" }}>
-                    <BreakdownList title="" segments={interactionSegs} />
-                    {(sum.linkTaps || []).length > 0 && (
-                      <div style={{ marginTop: 16, fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.6 }}>
-                        <span className="kicker" style={{ fontWeight: 600, marginRight: 8 }}>Cliques no perfil</span>
-                        {sum.linkTaps.slice(0, 4).map((t) => `${TAP_LABEL[t.key] || String(t.key).toLowerCase()} ${fmtNum(t.value)}`).join(" · ")}
-                      </div>
-                    )}
-                  </div>
-                </Card>
-              )}
+
             </div>
 
             {/* Audiência: quem é o público (demografia). Some sozinho se a
                 conta não libera (endpoint à parte). */}
-            <AudiencePanel key={`audience-${product?.id}`} audience={audience} />
+
 
             {sum.errors?.media && <div className="mono dim" style={{ fontSize: 11 }}>posts do IG indisponíveis: {sum.errors.media}</div>}
             {sum.errors?.insights && <div className="mono dim" style={{ fontSize: 11 }}>alcance indisponível: {sum.errors.insights}</div>}
@@ -610,9 +580,9 @@ function SocialScreen() {
                 até sumir e a página "não rolava" pra mostrar o resto. */}
             <Card title="Publicações" hint={ordemPosts === "alcance" ? "as que mais renderam primeiro" : "na ordem do feed"} style={{ overflow: "hidden", flexShrink: 0 }}
               action={(
-                <span style={{ display: "inline-flex", gap: 2 }}>
+                <span className="social-order">
                   {[["alcance", "por alcance"], ["data", "por data"]].map(([id, rot]) => (
-                    <button key={id} onClick={() => setOrdemPosts(id)} className="mono"
+                    <button key={id} aria-pressed={ordemPosts===id} onClick={() => setOrdemPosts(id)} className="mono"
                       style={{ height: 26, padding: "0 10px", borderRadius: 999, fontSize: 11, fontWeight: 600, cursor: "pointer",
                         background: ordemPosts === id ? "var(--accent-soft)" : "transparent",
                         color: ordemPosts === id ? "var(--accent)" : "var(--fg-3)",
@@ -624,12 +594,13 @@ function SocialScreen() {
               )}>
              {/* .tbl-x: as colunas de métricas (todas as que o Instagram libera)
                  rolam na horizontal. */}
-             <div className="tbl-x"><div style={{ minWidth: 1500 }}>
-              <div className="kicker" style={{ display: "grid", gridTemplateColumns: POSTS_GRID, gap: 12, padding: "10px 24px", fontWeight: 600, borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
+             <div className="tbl-x social-posts"><div style={{ minWidth: 1542 }}>
+              <div className="kicker" style={{ display: "grid", gridTemplateColumns: POSTS_GRID, gap: 10, padding: "10px 20px", fontWeight: 600, borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
                 <span>Post</span><span>Formato</span><span style={{ textAlign: "right" }} title="contas únicas que viram o conteúdo">Alcance</span><span style={{ textAlign: "right" }} title="visualizações totais (impressões) — vale pra todos os formatos">Views</span><span style={{ textAlign: "right" }}>Curtidas</span><span style={{ textAlign: "right" }}>Coment.</span><span style={{ textAlign: "right" }}>Salvos</span><span style={{ textAlign: "right" }}>Compart.</span><span style={{ textAlign: "right" }} title="interações totais do post (curtidas + comentários + salvos + compartilhamentos)">Interações</span><span style={{ textAlign: "right" }} title="interações totais ÷ alcance">Eng.</span><span style={{ textAlign: "right" }} title="visitas ao perfil vindas deste post">Visitas</span><span style={{ textAlign: "right" }} title="novos seguidores ganhos a partir deste post">Seguiu</span><span style={{ textAlign: "right" }} title="tempo médio assistido ÷ duração do vídeo">Retenção</span><span style={{ textAlign: "right" }} title="% de views que passaram dos 3 primeiros segundos">Play 3s</span><span style={{ textAlign: "right" }} title="quantas vezes o reel foi reassistido">Replays</span><span style={{ textAlign: "right" }}>Publicado</span>
               </div>
+              {postsQ.error && <div role="alert" className="social-error">Não deu para carregar o histórico local. <button onClick={postsQ.refresh}>Tentar novamente</button></div>}
               {recent.map((item) => (
-                <div key={item.id} style={{ display: "grid", gridTemplateColumns: POSTS_GRID, gap: 12, padding: "13px 24px", alignItems: "center", borderTop: "1px solid var(--line-faint)", fontSize: 13.5 }}>
+                <div key={item.id} style={{ display: "grid", gridTemplateColumns: POSTS_GRID, gap: 10, padding: "12px 20px", alignItems: "center", borderTop: "1px solid var(--line-faint)", fontSize: 13.5 }}>
                   {item.permalink ? <a href={item.permalink} target="_blank" rel="noreferrer" style={{ color: "inherit", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{postTitle(item)}</a> : <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{postTitle(item)}</span>}
                   <span><Pill tone="mut">{formatLabel(item)}</Pill></span>
                   <span className="tnum" style={{ textAlign: "right" }}>{item.reach != null ? fmtNum(item.reach) : "—"}</span>
@@ -648,7 +619,7 @@ function SocialScreen() {
                   <span className="tnum" style={{ textAlign: "right", color: "var(--fg-3)" }}>{item.at ? new Date(item.at).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "") : "—"}</span>
                 </div>
               ))}
-              {!recent.length && <div style={{ padding: "18px 24px", borderTop: "1px solid var(--line-1)", color: "var(--fg-4)", fontSize: 13 }}>nenhuma publicação ainda</div>}
+              {!postsQ.loading && !postsQ.error && !recent.length && <div style={{ padding: "18px 24px", borderTop: "1px solid var(--line-1)", color: "var(--fg-4)", fontSize: 13 }}>nenhuma publicação ainda</div>}
              </div></div>
             </Card>
 
@@ -656,10 +627,11 @@ function SocialScreen() {
                 (24h) — o cockpit fotografa quando a tela abre e guarda o
                 histórico. flexShrink 0 pelo mesmo motivo da tabela de posts. */}
             <Card title="Stories" hint="capturados enquanto no ar · histórico" style={{ overflow: "hidden", flexShrink: 0 }}>
-             <div className="tbl-x"><div style={{ minWidth: 1150 }}>
+             <div className="tbl-x social-stories"><div style={{ minWidth: 1150 }}>
               <div className="kicker" style={{ display: "grid", gridTemplateColumns: STORIES_GRID, gap: 12, padding: "10px 24px", fontWeight: 600, borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
                 <span>Story</span><span style={{ textAlign: "right" }}>Alcance</span><span style={{ textAlign: "right" }}>Views</span><span style={{ textAlign: "right" }} title="respostas por DM">Respostas</span><span style={{ textAlign: "right" }}>Compart.</span><span style={{ textAlign: "right" }} title="visitas ao perfil vindas do story">Visitas</span><span style={{ textAlign: "right" }} title="novos seguidores vindos do story">Seguiu</span><span style={{ textAlign: "right" }} title="toques pra avançar">Avançou</span><span style={{ textAlign: "right" }} title="toques pra voltar (reassistiu)">Voltou</span><span style={{ textAlign: "right" }} title="fechou os stories aqui">Saiu</span><span style={{ textAlign: "right" }} title="pulou pra próxima conta">Pulou</span><span style={{ textAlign: "right" }}>Publicado</span>
               </div>
+              {storiesQ.error && <div role="alert" className="social-error">Não deu para carregar os stories. <button onClick={storiesQ.refresh}>Tentar novamente</button></div>}
               {stories.map((s) => (
                 <div key={s.id} style={{ display: "grid", gridTemplateColumns: STORIES_GRID, gap: 12, padding: "13px 24px", alignItems: "center", borderTop: "1px solid var(--line-faint)", fontSize: 13.5 }}>
                   <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(s.caption || "").split("\n")[0].trim() || `Story · ${s.type === "VIDEO" ? "vídeo" : "imagem"}`}</span>
@@ -676,10 +648,26 @@ function SocialScreen() {
                   <span className="tnum" style={{ textAlign: "right", color: "var(--fg-3)" }}>{s.at ? new Date(s.at).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).replace(".", "") : "—"}</span>
                 </div>
               ))}
-              {!stories.length && <div style={{ padding: "18px 24px", borderTop: "1px solid var(--line-1)", color: "var(--fg-4)", fontSize: 13 }}>nenhum story capturado ainda · o cockpit fotografa os que estiverem no ar quando a tela abre</div>}
+              {!storiesQ.loading && !storiesQ.error && !stories.length && <div style={{ padding: "18px 24px", borderTop: "1px solid var(--line-1)", color: "var(--fg-4)", fontSize: 13 }}>nenhum story capturado ainda · o cockpit fotografa os que estiverem no ar quando a tela abre</div>}
              </div></div>
             </Card>
 
+              {/* Raio-x das interações: o total do tile aberto por tipo, e os
+                  cliques do perfil por botão. Some sem dado (conta não expõe). */}
+              {interactionSegs.length > 0 && (
+                <Card title="Interações · por tipo" hint={`${days} dias`}>
+                  <div style={{ padding: "14px 24px 20px" }}>
+                    <BreakdownList title="" segments={interactionSegs} />
+                    {(sum.linkTaps || []).length > 0 && (
+                      <div style={{ marginTop: 16, fontSize: 12.5, color: "var(--fg-2)", lineHeight: 1.6 }}>
+                        <span className="kicker" style={{ fontWeight: 600, marginRight: 8 }}>Cliques no perfil</span>
+                        {sum.linkTaps.slice(0, 4).map((t) => `${TAP_LABEL[t.key] || String(t.key).toLowerCase()} ${fmtNum(t.value)}`).join(" · ")}
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              )}
+            {audienceQ.error ? <div className="social-error" role="alert">Não foi possível carregar a audiência. <button onClick={audienceQ.refresh}>Tentar novamente</button></div> : <AudiencePanel key={`audience-${product?.id}`} audience={audience} />}
             {/* Radar do mercado: concorrentes, marcações e hashtags. */}
             <DiscoveryPanel key={product?.id} product={product} sum={sum} />
           </>
@@ -704,7 +692,6 @@ function SocialScreen() {
 
 // ── Wizard "Criar post" ──────────────────────────────────────────────────────
 function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
-  useEsc(onClose);
   const isMobile = useIsMobile();
   const [step, setStep] = useS(1);
   const [format, setFormat] = useS("feed");
@@ -722,12 +709,20 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
   const [aiBusy, setAiBusy] = useS(false);
   const [aiErr, setAiErr] = useS(null);
   const [aiDone, setAiDone] = useS(false);
+  const publishing = useR(false), generating = useR(false);
+  const publishedSome = Object.values(result?.results || {}).some(r => r.ok);
+  const close = () => {
+    if (publishing.current || generating.current) return;
+    if (!publishedSome && (step > 1 || caption || suggestion || dor || videoFile) && !window.confirm("Descartar o post que você está preparando?")) return;
+    onClose();
+  };
 
   // Lista de dores: as do produto (painMap) + as base, sem repetir.
   const dorOptions = [...new Set([...(pains || []).map((p) => p.label), ...DEFAULT_PAINS])];
 
   async function generateCopy() {
-    setAiBusy(true); setAiErr(null);
+    if (generating.current || publishing.current) return;
+    generating.current = true; setAiBusy(true); setAiErr(null);
     try {
       const ed = editorRef.current;
       if (!ed) throw new Error("editor não carregou");
@@ -740,7 +735,7 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
       if (cap) setCaption(cap);
       setAiDone(true);
     } catch (e) { setAiErr(e.message); }
-    finally { setAiBusy(false); }
+    finally { generating.current = false; setAiBusy(false); }
   }
 
   useE(() => () => { if (videoUrl) URL.revokeObjectURL(videoUrl); }, [videoUrl]);
@@ -771,7 +766,8 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
   }
 
   async function publish() {
-    setResult(null);
+    if (publishing.current || generating.current || publishedSome || !netsPicked || !contentReady) return;
+    publishing.current = true; setResult(null);
     try {
       let assetIds = [];
       if (kind === "video") {
@@ -799,7 +795,7 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
     } catch (e) {
       setResult({ ok: false, results: { erro: { ok: false, error: e.message } } });
     } finally {
-      setBusy(null);
+      publishing.current = false; setBusy(null);
     }
   }
   const bigChip = (on) => ({
@@ -813,13 +809,13 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
 
   const stepLabel = ["", "formato", kind === "video" ? "vídeo" : "arte", "publicar"][step];
 
-  return (
-    <Modal onClose={onClose} label="criar post" largura={1400} padding={10}
+  const panel = (
+    <Modal onClose={close} fechavel={!busy && !aiBusy} label="criar post" largura={1400} padding={10}
       painelStyle={{ height: "min(92dvh, 100%)", background: "var(--bg-0)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--line-1)", display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontFamily: "var(--display)", fontSize: 15, fontWeight: 700 }}>Criar post</span>
           <span className="mono dim" style={{ fontSize: 11 }}>passo {step}/3 · {stepLabel}</span>
-          <button onClick={onClose} className="mono dim" style={{ marginLeft: "auto", fontSize: 15 }}>✕</button>
+          <button onClick={close} disabled={!!busy || aiBusy} aria-label="Fechar criação de post" className="mono dim" style={{ marginLeft: "auto", fontSize: 15 }}>✕</button>
         </div>
 
         {/* No mobile o passo 2 (editor empilhado) precisa rolar; o hidden é só
@@ -856,7 +852,7 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
                 <div style={{ borderTop: "1px solid var(--line-1)", paddingTop: 16, display: "flex", flexDirection: "column", gap: 12, maxWidth: 620 }}>
                   <div>
                     <label className="kicker" style={{ display: "block", marginBottom: 6 }}>Sobre qual dor é esse post?</label>
-                    <select value={dor} onChange={(e) => setDor(e.target.value)}
+                    <select aria-label="Dor do post" value={dor} onChange={(e) => setDor(e.target.value)}
                       style={{ width: "100%", height: 34, padding: "0 10px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: 999, color: "var(--fg-1)", fontSize: 13 }}>
                       <option value="">sem dor específica (valor central da LeverAds)</option>
                       {dorOptions.map((d, i) => <option key={i} value={d}>{d}</option>)}
@@ -864,7 +860,7 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
                   </div>
                   <div>
                     <label className="kicker" style={{ display: "block", marginBottom: 6 }}>Sugestão pra criação (opcional)</label>
-                    <textarea rows={2} value={suggestion} onChange={(e) => setSuggestion(e.target.value)}
+                    <textarea aria-label="Sugestão para criação" rows={2} value={suggestion} onChange={(e) => setSuggestion(e.target.value)}
                       placeholder="ex.: cita o case da conta que fez +105%, tom mais provocativo, fala com quem tem 5+ contas…"
                       style={{ width: "100%", padding: "8px 10px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.4, resize: "vertical", fontFamily: "inherit" }} />
                   </div>
@@ -931,7 +927,7 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
               {hasCaption ? (
                 <label>
                   <span className="kicker" style={{ display: "block", marginBottom: 4 }}>Legenda</span>
-                  <textarea rows={5} value={caption} onChange={(e) => setCaption(e.target.value)}
+                  <textarea aria-label="Legenda" disabled={!!busy || publishedSome} rows={5} value={caption} onChange={(e) => setCaption(e.target.value)}
                     placeholder={"Escreva a legenda…\n\n#hashtags entram aqui também"}
                     style={{ width: "100%", padding: "8px 10px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.5, resize: "vertical", fontFamily: "inherit" }} />
                 </label>
@@ -943,12 +939,12 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
                 <span className="kicker" style={{ display: "block", marginBottom: 6 }}>Publicar em</span>
                 <div style={{ display: "flex", gap: 14 }}>
                   <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}>
-                    <input type="checkbox" checked={nets.instagram} onChange={(e) => setNets((n) => ({ ...n, instagram: e.target.checked }))} />
+                    <input type="checkbox" disabled={!!busy || publishedSome} checked={nets.instagram} onChange={(e) => setNets((n) => ({ ...n, instagram: e.target.checked }))} />
                     Instagram
                   </label>
                   <label title={fbAllowed ? "" : "página do Facebook só recebe post de feed"}
                     style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, opacity: fbAllowed ? 1 : 0.45 }}>
-                    <input type="checkbox" disabled={!fbAllowed} checked={nets.facebook && fbAllowed} onChange={(e) => setNets((n) => ({ ...n, facebook: e.target.checked }))} />
+                    <input type="checkbox" disabled={!fbAllowed || !!busy || publishedSome} checked={nets.facebook && fbAllowed} onChange={(e) => setNets((n) => ({ ...n, facebook: e.target.checked }))} />
                     Página do Facebook
                   </label>
                 </div>
@@ -971,23 +967,25 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
         </div>
 
         <div style={{ padding: "10px 16px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)", display: "flex", gap: 8, alignItems: "center" }}>
-          {step > 1 && !result?.ok && <button onClick={() => setStep(step - 1)} style={btn}>← voltar</button>}
+          {step > 1 && !publishedSome && <button disabled={!!busy || aiBusy} onClick={() => setStep(step - 1)} style={btn}>← voltar</button>}
           {step < 3 && (
-            <button onClick={() => setStep(step + 1)} disabled={step === 2 && !contentReady}
+            <button onClick={() => setStep(step + 1)} disabled={aiBusy || (step === 2 && !contentReady)}
               style={{ ...primary, opacity: step === 2 && !contentReady ? 0.5 : 1 }}>
               continuar →
             </button>
           )}
-          {step === 3 && !result?.ok && (
+          {step === 3 && !publishedSome && (
             <button onClick={publish} disabled={!!busy || !netsPicked} style={{ ...primary, opacity: busy || !netsPicked ? 0.6 : 1 }}>
               {busy ? "publicando…" : "publicar agora"}
             </button>
           )}
+          {publishedSome && !result?.ok && <span role="status" style={{fontSize:12,color:"var(--warn)"}}>Parte foi publicada. Confira os resultados antes de criar outro post.</span>}
           {result?.ok && <span className="mono" style={{ fontSize: 12, color: "var(--pos)" }}>publicado ✓</span>}
-          <button onClick={onClose} className="mono dim" style={{ marginLeft: "auto", fontSize: 12 }}>fechar</button>
+          <button onClick={close} disabled={!!busy || aiBusy} className="mono dim" style={{ marginLeft: "auto", fontSize: 12 }}>fechar</button>
         </div>
     </Modal>
   );
+  return typeof document !== "undefined" && document.body?.nodeType === 1 ? createPortal(panel, document.body) : panel;
 }
 
 // ── Aba "Comentários" ────────────────────────────────────────────────────────
@@ -1028,32 +1026,39 @@ function CommentsPanel({ saas, onCount }) {
   const [open, setOpen] = useS("");
   const [drafts, setDrafts] = useS({});
   const [sending, setSending] = useS("");
+  const writing = useR(false), request = useR(0), currentQuery = useR("");
+  currentQuery.current = `${saas}/${status}`;
   const [actionErr, setActionErr] = useS({});
 
   const load = React.useCallback(async (force = false) => {
-    if (!saas) return;
+    if (!saas || currentQuery.current !== `${saas}/${status}`) return;
+    const token = ++request.current;
     if (force) setBusy(true);
     try {
       const r = await api.socialComments(saas, status, force);
+      if (token !== request.current) return;
       setData(r); setErr(null);
       if (onCount) onCount(r?.insights?.pending ?? null);
-    } catch (e) { setErr(e.message); }
-    finally { setBusy(false); }
+    } catch (e) { if (token === request.current) setErr(e.message); }
+    finally { if (token === request.current) setBusy(false); }
   }, [saas, status]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const latestLoad = useR(load); latestLoad.current = load;
+  useE(() => { setData(null); setErr(null); return () => { request.current++; }; }, [load]);
   useE(() => { load(false); }, [load, version]);
 
   async function act(id, fn) {
-    setSending(id);
+    if (writing.current) return;
+    writing.current = true; setSending(id);
     setActionErr((m) => ({ ...m, [id]: null }));
     try {
       await fn();
       setOpen("");
       setDrafts((d) => ({ ...d, [id]: "" }));
-      await load(false);
+      await latestLoad.current(false);
     } catch (e) {
       setActionErr((m) => ({ ...m, [id]: e.message }));
-    } finally { setSending(""); }
+    } finally { writing.current = false; setSending(""); }
   }
 
   const list = data?.comments || [];
@@ -1062,8 +1067,8 @@ function CommentsPanel({ saas, onCount }) {
   const primary = { ...btn, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", border: "1px solid var(--btn-bg, var(--accent))", fontWeight: 600 };
 
   return (
-    <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-      {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
+    <div className="social-comments">
+      {err && <div role="alert" className="social-error">Não deu para carregar os comentários. <button onClick={() => load(true)}>Tentar novamente</button></div>}
       {data && data.configured === false && (
         <EmptyState title="Meta não conectada" hint="Defina META_ACCESS_TOKEN no servidor com instagram_manage_comments (Instagram) e pages_manage_engagement (página do Facebook)." />
       )}
@@ -1102,9 +1107,9 @@ function CommentsPanel({ saas, onCount }) {
         </div>
       )}
 
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      <div className="social-comment-filters">
         {STATUSES.map((s) => (
-          <button key={s.id} onClick={() => setStatus(s.id)}
+          <button key={s.id} aria-pressed={status===s.id} onClick={() => setStatus(s.id)}
             style={{ ...btn, ...(status === s.id ? { background: "var(--accent-soft)", border: "1px solid var(--accent-line)", color: "var(--fg-1)", fontWeight: 600 } : {}) }}>
             {s.label}
           </button>
@@ -1127,11 +1132,11 @@ function CommentsPanel({ saas, onCount }) {
           hint={status === "pending" ? "Tudo respondido. Comentário novo aparece aqui sozinho, sem precisar recarregar." : "Troque o filtro pra ver os outros comentários."} />
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div className="social-comment-list">
         {list.map((c) => {
           const late = c.pending && c.waitingHours >= 24;
           return (
-            <div key={c.id} style={{ border: "1px solid " + (late ? "var(--warn)" : "var(--line-1)"), borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+            <div key={c.id} className="social-comment" style={{ border: "1px solid " + (late ? "var(--warn)" : "var(--line-1)"), borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <Pill tone="mut">{NET_LABEL[c.network] || c.network}</Pill>
                 <span style={{ fontSize: 13.5, fontWeight: 600 }}>{c.author ? (c.network === "instagram" ? `@${c.author}` : c.author) : "alguém"}</span>
@@ -1155,27 +1160,27 @@ function CommentsPanel({ saas, onCount }) {
 
               {open === c.id ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <textarea autoFocus rows={3} value={drafts[c.id] || ""} onChange={(e) => setDrafts((d) => ({ ...d, [c.id]: e.target.value }))}
+                  <textarea aria-label={`Responder ${c.author || "comentário"}`} disabled={!!sending} autoFocus rows={3} value={drafts[c.id] || ""} onChange={(e) => setDrafts((d) => ({ ...d, [c.id]: e.target.value }))}
                     placeholder={`Responder ${c.author ? (c.network === "instagram" ? "@" + c.author : c.author) : ""}…`}
                     style={{ width: "100%", padding: "8px 10px", background: "var(--bg-0)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13, lineHeight: 1.5, resize: "vertical", fontFamily: "inherit" }} />
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <button disabled={sending === c.id || !(drafts[c.id] || "").trim()}
+                    <button disabled={!!sending || !(drafts[c.id] || "").trim()}
                       onClick={() => act(c.id, () => api.socialCommentReply(c.id, drafts[c.id]))}
                       style={{ ...primary, opacity: sending === c.id || !(drafts[c.id] || "").trim() ? 0.6 : 1 }}>
                       {sending === c.id ? "publicando…" : "responder"}
                     </button>
-                    <button onClick={() => setOpen("")} style={btn}>cancelar</button>
+                    <button disabled={!!sending} onClick={() => setOpen("")} style={btn}>cancelar</button>
                   </div>
                 </div>
               ) : (
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button onClick={() => setOpen(c.id)} style={primary}>responder</button>
+                  <button disabled={!!sending} onClick={() => setOpen(c.id)} style={primary}>responder</button>
                   {!c.answered && (
-                    <button disabled={sending === c.id} onClick={() => act(c.id, () => api.socialCommentDone(c.id, !c.done))} style={btn}>
+                    <button disabled={!!sending} onClick={() => act(c.id, () => api.socialCommentDone(c.id, !c.done))} style={btn}>
                       {c.done ? "reabrir" : "resolver sem responder"}
                     </button>
                   )}
-                  <button disabled={sending === c.id} onClick={() => act(c.id, () => api.socialCommentHide(c.id, !c.hidden))}
+                  <button disabled={!!sending} onClick={() => act(c.id, () => api.socialCommentHide(c.id, !c.hidden))}
                     title="ocultar tira o comentário da vista de todo mundo menos de quem escreveu"
                     style={btn}>
                     {c.hidden ? "mostrar de novo" : "ocultar"}
@@ -1183,7 +1188,7 @@ function CommentsPanel({ saas, onCount }) {
                 </div>
               )}
 
-              {actionErr[c.id] && <div className="mono" style={{ fontSize: 11.5, color: "var(--neg)" }}>{actionErr[c.id]}</div>}
+              {actionErr[c.id] && <div role="alert" className="mono" style={{ fontSize: 11.5, color: "var(--neg)" }}>{actionErr[c.id]}</div>}
             </div>
           );
         })}
