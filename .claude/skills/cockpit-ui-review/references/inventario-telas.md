@@ -504,5 +504,40 @@ Validação: 1.729 testes da API, testes web/smoke, build e revisão visual apro
   metadados de `fields`. Nenhuma regra de contrato, API ou banco foi alterada.
 
 Validação: 1.729 testes da API, testes web/smoke, build e revisão visual aprovados.
-As demais 22 páginas aguardam esta rodada; registros históricos não são aceite
+### 09. Formulário de Integração (`#intform`) — validada
+
+- **Importante, corrigido:** cabeçalho sem subtítulo adicional, faixa navy
+  com espera/retorno e ação de cobrança, filtros dentro do card e tabela
+  de cinco colunas seguem a prancha. Pedidos pendentes aparecem primeiro,
+  com os mais antigos no topo. Tipo, situação e busca permanecem ao fechar
+  a ficha; listas extensas mostram mais 50 registros por vez.
+- **Importante, corrigido:** ficha de 470px com seções de respostas, termo e
+  ações no rodapé. Arrays, campos booleanos, texto longo e dados da assinatura
+  continuam íntegros. `doc.sections` permanece a fonte dos rótulos de respostas
+  enviadas; perguntas de pedidos pendentes e a prévia usam a definição atual
+  pelo endpoint existente `GET /api/integration-forms/questions?kind=`.
+- **Bloqueante, corrigido:** falha inicial não mostra contadores zerados;
+  leitura tem retry e ignora respostas de uma navegação anterior. Solicitação
+  e exclusão bloqueiam repetição e fechamento durante o envio. Falha preserva
+  o contexto para tentar novamente. Cópia só confirma depois da conclusão.
+- **Importante, corrigido:** modais em portal, com foco/Escape compartilhados;
+  campos e ações de toque têm 44px. Tabelas rolam internamente em 390px e a
+  ficha comporta respostas longas sem extravasar. Contato sem telefone oferece
+  cópia do link; não apresenta um destino de WhatsApp inexistente.
+- **Evidências:** `npm run test:review:intform -w packages/web`; capturas e
+  `geometry.json` em `packages/web/.review-artifacts/intform/`. **352 medidas
+  em 1440/1920**, diferença máxima **0,016px**, para faixa, filtros, tabela,
+  células e estrutura da ficha. Conteúdo interno usa perguntas e respostas
+  reais, portanto varia em relação ao texto resumido demonstrativo.
+  Conferidos filtros/busca, cobrança e URLs, cópia de respostas/mensagem/link,
+  perguntas dos dois tipos, pedido para cliente/lead, exclusão/cancelamento,
+  erro/retry de leitura/gravação/perguntas, espera longa, clipboard bloqueado,
+  vazio, paginação, foco, alvos desobstruídos, mobile e tema escuro.
+- **Fora do escopo:** o CTA demonstrativo de marcar a call não possuía handler
+  de agendamento nesta tela. Mantida a ação real de copiar respostas, sem
+  introduzir um segundo fluxo de agenda. Tipos, snapshots, termo, autor,
+  permissões e geração dos links continuam nos endpoints existentes.
+
+Validação: 1.729 testes da API, testes web/smoke, build e revisão visual aprovados.
+As demais 21 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.

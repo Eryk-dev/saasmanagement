@@ -109,6 +109,7 @@ export function eventsUrl() {
 }
 
 export const api = {
+  integrationFormQuestions: (kind) => req("GET", `/api/integration-forms/questions?kind=${encodeURIComponent(kind)}`),
   bootstrap: () => req("GET", "/api/bootstrap"),
   // Orgs do produto LeverAds pro select de vínculo do sync de acesso
   // (424 quando a credencial LEVERADS_* não está configurada na API).
