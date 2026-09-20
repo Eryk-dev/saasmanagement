@@ -1105,7 +1105,7 @@ try {
   try {
     const P = await server.ssrLoadModule("/src/screens/proposals.jsx");
     const html = renderToString(wrap(React.createElement(P.ProposalsScreen, { saasId: "leverads" })));
-    for (const must of ["Geradas em 30 dias", "Abertas", "Fecharam", "Propostas geradas"]) {
+    for (const must of ["Propostas", "Criar template", "Carregando propostas…"]) {
       if (!html.includes(must)) throw new Error(`a tela não contém "${must}"`);
     }
     if (html.includes("Geradas recentemente")) throw new Error("a seção duplicada voltou");
