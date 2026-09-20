@@ -7,10 +7,10 @@ const { useState } = React;
 // Lista da fila, agrupada pelo que exige ação primeiro: SLA estourado, depois o
 // que vence logo, o resto no prazo, os pausados (esperando o cliente) e, por
 // último, os resolvidos. A grade tem piso por coluna e um orçamento que o smoke
-// confere: cabe em 1024px de janela sem rolar (mesma régua de pipeline.jsx).
-export const TICKETS_GRID = "minmax(180px,1.8fr) 112px 72px minmax(112px,1fr) 100px 64px";
-export const TICKETS_GRID_GAP = 10;
-export const TICKETS_GRID_BUDGET = 716;
+// confere; em janelas menores, a rolagem fica dentro da tabela.
+export const TICKETS_GRID = "minmax(230px,2fr) minmax(120px,.9fr) minmax(100px,.7fr) minmax(150px,1.1fr) minmax(120px,.8fr) minmax(110px,.8fr)";
+export const TICKETS_GRID_GAP = 12;
+export const TICKETS_GRID_BUDGET = 926;
 export const TICKET_SECTIONS = [
   ["breached", "SLA estourado", "var(--neg)"],
   ["warning", "Vence em breve", "var(--warn)"],
@@ -36,9 +36,9 @@ export function TicketsList({ tickets, agentName, selectedId, onOpen, now }) {
   if (!sections.length) return null;
   return (
     <div className="support-list">
-      <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
-        <div>
-          <div className="kicker" style={{ display: "grid", gridTemplateColumns: TICKETS_GRID, gap: TICKETS_GRID_GAP, padding: "8px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
+      <div className="tbl-x" style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
+        <div style={{ minWidth: TICKETS_GRID_BUDGET }}>
+          <div className="kicker" style={{ display: "grid", gridTemplateColumns: TICKETS_GRID, gap: TICKETS_GRID_GAP, padding: "11px 18px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
             <span>Ticket</span><span>Status</span><span>Prioridade</span><span>SLA</span><span>Responsável</span><span>Atividade</span>
           </div>
           {sections.map(([key, label, tone]) => {
@@ -46,7 +46,7 @@ export function TicketsList({ tickets, agentName, selectedId, onOpen, now }) {
             const folded = key === "done" && !showDone;
             return (
               <React.Fragment key={key}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 18px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
                   <span style={{ width: 6, height: 6, borderRadius: 999, background: tone, flexShrink: 0 }} />
                   <span style={{ fontSize: 12.5, fontWeight: 700, color: key === "breached" ? "var(--neg)" : "var(--fg-1)" }}>{label}</span>
                   <span className="tnum" style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{rows.length}</span>
@@ -64,7 +64,7 @@ export function TicketsList({ tickets, agentName, selectedId, onOpen, now }) {
                   return (
                     <div key={t.id} role="button" tabIndex={0} className="support-row" aria-current={selectedId === t.id ? "true" : undefined}
                       style={{ gridTemplateColumns: TICKETS_GRID, gap: TICKETS_GRID_GAP, opacity: key === "done" ? 0.7 : 1 }}
-                      onClick={() => onOpen(t.id)} onKeyDown={(e) => { if (e.key === "Enter") onOpen(t.id); }}>
+                      onClick={() => onOpen(t.id)} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(t.id); } }}>
                       <div style={{ minWidth: 0 }}>
                         <div className="support-ellipsis" style={{ fontWeight: 600 }}>
                           <span className="mono tnum" style={{ color: "var(--fg-4)", fontWeight: 400, marginRight: 6 }}>#{t.number}</span>{t.subject}

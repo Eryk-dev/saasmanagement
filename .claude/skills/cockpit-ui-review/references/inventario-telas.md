@@ -597,5 +597,32 @@ Validação: 1.739 testes da API, testes web/smoke, build e revisão visual apro
   Edição otimista de qualificação e cálculos de atendimento não foram refeitos.
 
 Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
-As demais 19 páginas aguardam esta rodada; registros históricos não são aceite
+
+
+### 12. Tickets (`#tickets`) — validada
+
+- **Importante, corrigido:** cabeçalho, faixa compacta do atendente, filtros,
+  Kanban e Lista seguem `TelaTickets.dc.html`. Colunas preservam a rolagem
+  interna, conclusão, arraste, contadores e filtros reais. Linhas/cards abrem
+  com Enter ou Espaço sem interceptar os botões internos.
+- **Importante, corrigido:** detalhe em gaveta de 560px com Conversa, Atividade
+  e Dados. A aba Linear permanece quando vinculada. Histórico rola dentro da
+  gaveta; resposta fica acessível no rodapé. Campos, SLA, anexos e responsáveis
+  usam os mesmos componentes/endpoints. Assunto cresce para caber no celular.
+- **Bloqueante, corrigido:** criação, resposta e exclusão bloqueiam repetição
+  e fechamento durante a requisição. Falha conserva o preenchimento e permite
+  nova tentativa. Criar/fechar confirma descarte; excluir confirma a consequência.
+  Leitura da ficha tem retry explícito. Sobreposições usam portal e foco comum.
+- **Evidências:** `npm run test:review:tickets -w packages/web`, capturas e
+  `geometry.json` em `packages/web/.review-artifacts/tickets/`. **48 medidas**
+  em 1440/1920, diferença máxima **0px**, para título/cabeçalho, faixa, filtros,
+  quadro e coluna. Lista/gaveta, busca, filtros, abas, CRUD e resposta mock,
+  falha/retry, gravações demoradas, teclado, vazio, mobile e escuro conferidos.
+- **Fora do escopo:** regras de SLA, autorização, conclusão/arraste otimistas,
+  vínculo Linear, anexos e autosave existentes foram preservados. A aba Dados
+  contém mais campos que a demonstração. Falhas de leitura de atividade ainda
+  seguem o tratamento anterior; esta rodada não refez integrações de suporte.
+
+Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
+As demais 18 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.

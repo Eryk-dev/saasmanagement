@@ -68,8 +68,9 @@ const achar = (id) => tickets.find((t) => t.id === id);
 const trocar = (id, patch) => { tickets = tickets.map((t) => (t.id === id ? { ...t, ...patch, updatedAt: new Date().toISOString() } : t)); return achar(id); };
 
 export const ticketsMock = {
-  tickets: (q = {}) => tickets.filter((t) => (!q.saas || t.saas === q.saas) && (!q.customerId || t.customerId === q.customerId)).map(resumo),
+  tickets: (q = {}) => new URLSearchParams(location.search).has("empty") ? [] : tickets.filter((t) => (!q.saas || t.saas === q.saas) && (!q.customerId || t.customerId === q.customerId)).map(resumo),
   ticket: (id) => achar(id),
+  ticketDelete: (id) => { tickets = tickets.filter(t => t.id !== id); return {ok:true}; },
   ticketCreate: (body) => {
     const t = { id: `tk${Date.now()}`, number: 1044 + tickets.length, status: body.assignee ? "open" : "new", channel: "internal", followers: [], messages: [], attachments: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), sla: sla(0, 8, 48), portalToken: "demo", requester: { name: "", email: "", phone: "" }, ...body };
     tickets = [t, ...tickets];

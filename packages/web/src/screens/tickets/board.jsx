@@ -26,7 +26,7 @@ export const TicketCard = memo(function TicketCard({ t, agentName, selected, onO
   const toggle = (v) => { setMarked(v); setTimeout(() => onComplete(t.id, v), v ? 450 : 0); };
   return (
     <div role="button" tabIndex={0} className="support-card" aria-current={selected ? "true" : undefined} style={{ opacity: done ? 0.78 : 1 }}
-      onClick={() => onOpen(t.id)} onKeyDown={(e) => { if (e.key === "Enter") onOpen(t.id); }} {...(dragProps || {})}>
+      onClick={() => onOpen(t.id)} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(t.id); } }} {...(dragProps || {})}>
       <div className="support-card-meta">
         <span className="mono tnum" style={{ color: "var(--fg-4)" }}>#{t.number}</span>
         <span className="support-status" style={{ "--dot": pri.tone, color: t.priority === "urgent" ? pri.tone : "var(--fg-3)", fontSize: 11.5 }}>{pri.label}</span>
