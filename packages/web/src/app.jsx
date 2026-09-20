@@ -280,7 +280,7 @@ function App({ onInitialReady, initialLoading = false } = {}) {
     <div className="app-shell" data-screen={scr} style={{ display: "flex", overflow: "hidden", background: "var(--bg-0)" }}>
       {!isMobile && <NavRail current={scr} onNav={(id) => nav(id)} collapsed={false} onSearch={() => setSearchOpen(true)} />}
       {isMobile && menuOpen && (
-        <Drawer onClose={() => setMenuOpen(false)} label="Menu principal" largura={248}
+        <Drawer onClose={() => setMenuOpen(false)} label="Menu principal" largura={244}
           style={{ justifyContent: "flex-start" }} painelStyle={{ borderLeft: 0, overflow: "visible" }}>
           <div style={{ height: "100%", display: "flex" }}>
             <NavRail current={scr} onNav={(id) => { nav(id); setMenuOpen(false); }} collapsed={false} onSearch={() => { setMenuOpen(false); setSearchOpen(true); }} />

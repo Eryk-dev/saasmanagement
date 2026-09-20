@@ -46,9 +46,11 @@ sem assumir que representam todo o renderer atual.
 O layout aprovado em 20/09/2026 é o **CRM final**, versionado em
 [design/crm-final/IMPLEMENTACAO.md](../design/crm-final/IMPLEMENTACAO.md), com o
 mapa das 30 telas. `support.js` é apenas referência do editor; a aplicação não
-depende dele. `capsule.css` e os componentes existentes aplicam a moldura e os
-tokens. A prévia `responsive.html?width=390&screen=overview` (também 1440/1920)
-usa mocks locais, sem API/banco. Atividades abre o roteiro lateral no desktop
+depende dele. `chrome.css` concentra a moldura compartilhada e `capsule.css`
+aplica as superfícies comuns. O grupo da rota atual permanece expandido;
+as preferências dos demais grupos continuam persistidas. A prévia `responsive.html?width=390&screen=overview` (também 1440/1920)
+usa mocks locais, sem API/banco; `&prototype=1` abre a prancha na mesma
+largura para comparação visual. Atividades abre o roteiro lateral no desktop
 e em modal até 1100px, preservando os mesmos handlers e estado.
 
 ## Arquitetura confirmada

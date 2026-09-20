@@ -1,4 +1,5 @@
 import React from "react";
+import "./chrome.css";
 import { api, clearKey } from "./lib/api.js";
 import { useActiveSaas } from "./lib/workspace.js";
 import { canSeeScreen, currentUser, hasExplicitScreen, isAdminUser, userById, userPhoto } from "./lib/users.js";
@@ -15,7 +16,7 @@ import { Popover } from "./components/popover.jsx";
 // telas de análise que respeitam o período (App passa `showPeriod`).
 function GlobalPeriod() {
   const { period, custom, setPeriod, setCustom } = usePeriod();
-  return <PeriodPicker period={period} custom={custom} onChange={(p, c) => { setPeriod(p); setCustom(c); }} />;
+  return <PeriodPicker variant="chrome" period={period} custom={custom} onChange={(p, c) => { setPeriod(p); setCustom(c); }} />;
 }
 
 // ICP preservado na topbar como controle compacto; o resumo aparece quando
@@ -45,7 +46,7 @@ function IcpButton() {
   return (
     <div style={{ display: "inline-flex" }}>
       <button ref={anchor} onClick={() => setOpen(!open)} className="chrome-control chrome-icp" aria-expanded={open} aria-label="Perfil ideal de cliente" title={pill || icp.headline || "Perfil ideal de cliente"}>
-        <span style={{ fontWeight: 700 }}>ICP</span>
+        <span className="chrome-icp-tag">ICP</span>
         {pill && <span className="chrome-icp-summary">{pill}</span>}
       </button>
       {open && (
@@ -117,12 +118,12 @@ const NAV = [
 
 // Ícones SVG do NAV (traço 1.8, currentColor) — substituem os caracteres
 // unicode, cujo peso variava com a fonte do sistema. Chaveados pelo id do item.
-const NavSvg = ({ children }) => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+const NavSvg = ({ children, size = 16 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
     strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
 );
 const ICONS = {
-  overview: <NavSvg><rect x="3" y="3" width="7" height="9" rx="1.5" /><rect x="14" y="3" width="7" height="5" rx="1.5" /><rect x="14" y="12" width="7" height="9" rx="1.5" /><rect x="3" y="16" width="7" height="5" rx="1.5" /></NavSvg>,
+  overview: <NavSvg><rect x="3" y="3" width="7" height="9" rx="2.5" /><rect x="14" y="3" width="7" height="5" rx="2.5" /><rect x="14" y="12" width="7" height="9" rx="2.5" /><rect x="3" y="16" width="7" height="5" rx="2.5" /></NavSvg>,
   training: <NavSvg><path d="M2.5 5h6a3 3 0 0 1 3 3v12a2.5 2.5 0 0 0-2.5-2h-6.5z" /><path d="M21.5 5h-6a3 3 0 0 0-3 3v12a2.5 2.5 0 0 1 2.5-2h6.5z" /></NavSvg>,
   today: <NavSvg><circle cx="12" cy="12" r="8.7" /><path d="M12 7.2V12l3.2 2" /></NavSvg>,
   pipeline: <NavSvg><rect x="3" y="4" width="4.6" height="11" rx="1.4" /><rect x="9.7" y="4" width="4.6" height="16" rx="1.4" /><rect x="16.4" y="4" width="4.6" height="8" rx="1.4" /></NavSvg>,
@@ -157,6 +158,14 @@ const ICONS = {
   metas: <NavSvg><circle cx="12" cy="12" r="8.6" /><circle cx="12" cy="12" r="4.9" /><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" /></NavSvg>,
   expenses: <NavSvg><rect x="2.8" y="5.4" width="18.4" height="13.6" rx="2" /><path d="M21.2 10.2h-4.7a1.9 1.9 0 0 0 0 3.8h4.7" /></NavSvg>,
   settings: <NavSvg><path d="M4 6.4h8.6M16.9 6.4H20M4 12h2.8M11.1 12H20M4 17.6h8.6M16.9 17.6H20" /><circle cx="14.8" cy="6.4" r="2" /><circle cx="9" cy="12" r="2" /><circle cx="14.8" cy="17.6" r="2" /></NavSvg>,
+};
+
+const GROUP_ICONS = {
+  comercial: <NavSvg size={19}><path d="M3 17.2l5.4-5.4 3.4 3.4L21 6" /><path d="M15.4 6H21v5.6" /></NavSvg>,
+  suporte: <NavSvg size={19}><path d="M4.4 12.4a7.6 7.6 0 0 1 15.2 0" /><rect x="2.6" y="12.2" width="4" height="6.4" rx="2" /><rect x="17.4" y="12.2" width="4" height="6.4" rx="2" /><path d="M19.4 18.6v.6a2.4 2.4 0 0 1-2.4 2.4h-2.6" /></NavSvg>,
+  marketing: <NavSvg size={19}><path d="M4 9.8v4.4a1.6 1.6 0 0 0 1.6 1.6H8l6 4.2V4L8 8.2H5.6A1.6 1.6 0 0 0 4 9.8z" /><path d="M18 9.4a4 4 0 0 1 0 5.2" /></NavSvg>,
+  analises: <NavSvg size={19}><circle cx="12" cy="12" r="8.6" /><path d="M12 3.4v8.6l6 4.2" /></NavSvg>,
+  geral: <NavSvg size={19}><rect x="3.4" y="3.4" width="7" height="7" rx="2" /><rect x="13.6" y="3.4" width="7" height="7" rx="2" /><rect x="3.4" y="13.6" width="7" height="7" rx="2" /><rect x="13.6" y="13.6" width="7" height="7" rx="2" /></NavSvg>,
 };
 
 // Grupo "main" não leva rótulo (é a espinha do app); os demais levam.
@@ -218,22 +227,18 @@ function NavRail({ current, onNav, collapsed, onSearch }) {
   const [fechados, setFechados] = useS(() => {
     try { return new Set(JSON.parse(localStorage.getItem("cockpit_nav_fechados") || '["comercial","suporte","marketing","analises","geral"]')); } catch { return new Set(); }
   });
-  // Entrar numa tela revela seu grupo; depois o usuário pode recolhê-lo.
-  useE(() => {
-    const group = NAV.find((n) => n.id === current)?.group;
-    setFechados((prev) => {
-      if (!prev.has(group)) return prev;
-      const next = new Set(prev); next.delete(group);
-      try { localStorage.setItem("cockpit_nav_fechados", JSON.stringify([...next])); } catch { /* ignore */ }
-      return next;
+  // A rota revela seu grupo sem alterar a preferência dos outros grupos.
+  // O grupo ativo permanece aberto, inclusive após clicar no cabeçalho.
+  const activeGroup = NAV.find((n) => n.id === current)?.group;
+  const alternar = (key) => {
+    if (key === activeGroup) return;
+    setFechados((atual) => {
+      const proximo = new Set(atual);
+      if (proximo.has(key)) proximo.delete(key); else proximo.add(key);
+      try { localStorage.setItem("cockpit_nav_fechados", JSON.stringify([...proximo])); } catch { /* ignore */ }
+      return proximo;
     });
-  }, [current]);
-  const alternar = (key) => setFechados((atual) => {
-    const proximo = new Set(atual);
-    if (proximo.has(key)) proximo.delete(key); else proximo.add(key);
-    try { localStorage.setItem("cockpit_nav_fechados", JSON.stringify([...proximo])); } catch { /* ignore */ }
-    return proximo;
-  });
+  };
   const groups = [];
   // "settings" aparece pra TODO usuário: quem não tem a tela liberada abre a
   // versão reduzida (só a conexão Google pessoal) — ver SettingsLite.
@@ -251,6 +256,7 @@ function NavRail({ current, onNav, collapsed, onSearch }) {
       {onSearch && (
         <div className="rail-search-wrap">
           <button onClick={onSearch} className="rail-search" title="Buscar lead, cliente ou tela (⌘K / Ctrl+K)" aria-label="Buscar lead, cliente ou tela">
+            <svg className="rail-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20.4 20.4l-4.2-4.2" /></svg>
             {!collapsed && <span>buscar…</span>}
             <kbd>⌘K</kbd>
           </button>
@@ -259,36 +265,36 @@ function NavRail({ current, onNav, collapsed, onSearch }) {
       <div className="rail-groups">
         {groups.map((g) => {
           const temLabel = !collapsed && !!GROUP_LABELS[g.key];
-          const aberto = collapsed || !temLabel || !fechados.has(g.key);
+          const ativo = g.key === activeGroup;
+          const aberto = collapsed || !temLabel || ativo || !fechados.has(g.key);
           const total = badgeDoGrupo(g);
           return (
-            <div key={g.key} className="rail-group">
+            <React.Fragment key={g.key}>
               {temLabel && (
-                <button onClick={() => alternar(g.key)} className="rail-group-toggle"
+                <button onClick={() => alternar(g.key)} className="rail-group-toggle" data-active={ativo || undefined}
                   aria-expanded={aberto} aria-controls={`nav-group-${g.key}`}
-                  title={aberto ? `recolher ${GROUP_LABELS[g.key]}` : `abrir ${GROUP_LABELS[g.key]}`}>
-                  <span className="rail-icon" aria-hidden="true">{ICONS[{ comercial: "pipeline", suporte: "tickets", marketing: "metrics", analises: "analise", geral: "tasks" }[g.key]]}</span>
-                  <span>{GROUP_LABELS[g.key].charAt(0).toUpperCase() + GROUP_LABELS[g.key].slice(1)}</span>
-                  <span className="rail-group-spacer" />
+                  title={ativo ? `${GROUP_LABELS[g.key]} · tela atual` : aberto ? `recolher ${GROUP_LABELS[g.key]}` : `abrir ${GROUP_LABELS[g.key]}`}>
+                  <span className="rail-icon" aria-hidden="true">{GROUP_ICONS[g.key]}</span>
+                  <span className="rail-item-label">{GROUP_LABELS[g.key].charAt(0).toUpperCase() + GROUP_LABELS[g.key].slice(1)}</span>
                   {!aberto && total > 0 && <span className="rail-badge" data-tone="neg">{total}</span>}
-                  <span aria-hidden="true">{aberto ? "▾" : "▸"}</span>
+                  <span className="rail-group-chevron" aria-hidden="true">›</span>
                 </button>
               )}
-              <div id={`nav-group-${g.key}`} className="rail-items" hidden={!aberto}>
+              <div id={`nav-group-${g.key}`} className={`rail-items${g.key === "main" ? " rail-shortcuts" : ""}`} hidden={!aberto}>
                 {g.items.map((item) => {
                   const active = current === item.id;
                   const badge = badgeDe(item.id);
                   return (
                     <button key={item.id} onClick={() => onNav(item.id)} className="rail-item"
                       aria-current={active ? "page" : undefined} title={item.label} aria-label={collapsed ? item.label : undefined}>
-                      <span className="rail-icon" aria-hidden="true">{ICONS[item.id] || item.icon}</span>
+                      {(g.key === "main" || collapsed) && <span className="rail-icon" aria-hidden="true">{ICONS[item.id] || item.icon}</span>}
                       {!collapsed && <span className="rail-item-label">{item.label}</span>}
                       {badge && <span className="rail-badge tnum" data-tone={badge.tone} title={badge.title} aria-label={badge.title}>{badge.n}</span>}
                     </button>
                   );
                 })}
               </div>
-            </div>
+            </React.Fragment>
           );
         })}
       </div>
@@ -401,7 +407,8 @@ function Logo() {
 }
 
 function TopBar({ title, leading, breadcrumb, onSearch, showPeriod }) {
-  const crumbs = breadcrumb?.length === 1 ? ["Cockpit", ...breadcrumb] : breadcrumb;
+  const page = breadcrumb?.at(-1) || title;
+  const crumbs = page ? ["CRM", page] : [];
   return (
     <header className="cockpit-topbar">
       {leading}
@@ -413,7 +420,6 @@ function TopBar({ title, leading, breadcrumb, onSearch, showPeriod }) {
               aria-current={i === crumbs.length - 1 ? "page" : undefined} title={b}>{b}</span>
           </React.Fragment>
         ))}
-        {!crumbs && title && <span className="chrome-crumb-current">{title}</span>}
       </nav>
       {showPeriod && <div className="chrome-period"><GlobalPeriod /></div>}
       <div className="chrome-actions">
@@ -467,7 +473,7 @@ function UserMenu({ collapsed = false }) {
     <div>
       <button ref={ref} onClick={() => setOpen((o) => !o)} className="rail-account"
         aria-label={`Conta de ${name}`} aria-expanded={open} aria-haspopup="dialog">
-        <UserDot name={name} photo={photo} size={28} rail />
+        <UserDot name={name} photo={photo} size={30} rail />
         {!collapsed && <>
           <span className="rail-account-text"><strong>{name}</strong><span>{user ? cargoOf(user) : "acesso por chave"}</span></span>
           <span className="rail-chevron" aria-hidden="true">{open ? "▾" : "▴"}</span>
@@ -654,10 +660,11 @@ function UserDot({ name, photo, size = 30, rail = false }) {
   return (
     <span style={{
       ...base,
-      background: rail ? "var(--rail-brand)" : "var(--fg-1)",
-      color: rail ? "var(--rail-fg)" : "var(--bg-1)",
-      fontSize: size * 0.4,
-      fontWeight: 600,
+      background: rail ? "linear-gradient(150deg,#0C8F83,#23D8D3)" : "var(--fg-1)",
+      color: rail ? "#051C2C" : "var(--bg-1)",
+      fontFamily: rail ? "var(--display)" : undefined,
+      fontSize: rail ? 13 : size * 0.4,
+      fontWeight: rail ? 700 : 600,
     }}>{(name || "?")[0].toUpperCase()}</span>
   );
 }

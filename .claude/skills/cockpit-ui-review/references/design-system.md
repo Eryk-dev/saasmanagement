@@ -14,8 +14,13 @@ O protótipo novo substitui os tokens visuais das rodadas abaixo. Fonte e mapa:
   de contraste para textos, estados e controles.
 - Glow restrito ao ICP e porcentagem da meta na Visão geral; sem animação
   contínua nas ondas, reflexos ou ponto da meta.
-- `capsule.css` guarda a moldura e os papéis comuns; geometria de cada tela
-  fica no CSS da tela. Drawer tem margem 12px e cantos de 24px.
+- `chrome.css` é a fonte única da moldura; `capsule.css` guarda as superfícies
+  comuns e a geometria de cada tela fica no CSS da tela. Drawer tem margem
+  12px e cantos de 24px.
+- Moldura conferida contra a prancha: atalhos/grupos 38px, subitens 32px sem
+  ícones e recuo 44px; grupo ativo sempre aberto. Breadcrumb `CRM / tela`
+  em Outfit 15/700, topo com padding 9/14/9/20px; ICP/sino 34px.
+  No mobile, os controles mantêm alvos de 44px.
 - Atividades usa roteiro lateral em desktop e Modal até 1100px. Preservar
   o mesmo componente e handlers nos dois formatos.
 
