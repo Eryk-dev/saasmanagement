@@ -624,5 +624,37 @@ Validação: 1.739 testes da API, testes web/smoke, build e revisão visual apro
   seguem o tratamento anterior; esta rodada não refez integrações de suporte.
 
 Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
-As demais 18 páginas aguardam esta rodada; registros históricos não são aceite
+
+
+### 13. Respostas rápidas (`#quick_replies`) — validada
+
+- **Importante, corrigido:** cabeçalho, filtros, lista e coluna de variáveis de
+  330px seguem `TelaRespostasRapidas.dc.html`. Duplicação pessoal fica visível
+  na linha; ações reais de editar/ver/excluir continuam no menu. Variáveis
+  embutidas vêm antes das personalizadas, com cópia e identificação acessível.
+- **Importante, corrigido:** editor em portal de 620px, campos e prévia em uma
+  coluna, conteúdo rolável e ações fixas. Campos têm nomes acessíveis, e
+  controles de toque têm 44px. Escopo continua bloqueado em respostas existentes.
+- **Bloqueante, corrigido:** guardar/apagar/duplicar bloqueiam repetição; o
+  editor bloqueia fechamento e edição durante a gravação. Falha mantém dados
+  para retry. Escape e véu passam pela confirmação de descarte. A prévia mostra
+  falha/retry e ignora retornos antigos; o mock agora recebe o texto como a API.
+- **Importante, corrigido:** variáveis em edição sobrevivem à atualização da
+  listagem, têm validação de nomes e salvamento explícito com erro local. O
+  token compartilhado `--line-faint` é recalculado no tema escuro, corrigindo
+  divisores claros também em Tickets e outras listas que usam esse token.
+- **Evidências:** `npm run test:review:quick-replies -w packages/web`, capturas e
+  `geometry.json` em `packages/web/.review-artifacts/quick_replies/`. **36 medidas**
+  estruturais em 1440/1920, diferença máxima **0px**, para cabeçalho, barra,
+  posição/largura das duas colunas. CRUD, duplicação, busca/filtros, variáveis,
+  inserção por teclado, clipboard, falha/retry, espera, leitura sem permissão
+  de edição, descarte, vazio, mobile e escuro conferidos; Tickets revalidado.
+- **Fora do escopo:** renderização de variáveis, escopos, validação definitiva
+  e permissões continuam na API. O painel usa descrições reais das variáveis
+  em vez de valores fictícios fixos; nomes personalizados continuam editáveis.
+  A altura das listas depende do conteúdo. Não há confirmação de saída da
+  rota SPA para variáveis não salvas; Descartar/Salvar permanecem explícitos.
+
+Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
+As demais 17 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.
