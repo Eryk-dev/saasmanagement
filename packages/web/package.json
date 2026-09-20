@@ -31,7 +31,8 @@
     "test:review:blog": "node scripts/review/blog.mjs",
     "test:review:analise": "node scripts/review/analise.mjs",
     "test:review:calls": "node scripts/review/calls.mjs",
-    "test:review:integrations": "node scripts/review/integrations.mjs"
+    "test:review:integrations": "node scripts/review/integrations.mjs",
+    "test:review:desempenho": "node scripts/review/desempenho.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

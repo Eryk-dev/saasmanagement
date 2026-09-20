@@ -958,5 +958,37 @@ Validação: 1.739 testes da API, testes web/smoke, build e revisão visual apro
   Risco é histórico das calls resumidas e recentes continuam limitadas a 25.
 
 Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
-As demais 7 páginas aguardam esta rodada; registros históricos não são aceite
+
+### 24. Análise de Desempenho (`#desempenho`) — validada
+
+- **Importante, corrigido:** seções por papel, cabeçalhos compactos, ritmo,
+  métricas e detalhes seguem `TelaAnaliseDesempenho.dc.html`. Valores de receita
+  e ticket aparecem completos, inclusive no relatório copiado. A cópia fica
+  no detalhe da pessoa, junto das evidências, como na prancha.
+- **Bloqueante, corrigido:** leitura combina placar e detalhes sem converter
+  falhas em zeros ou em equipe vazia; oferece retry e identifica dados da
+  leitura anterior quando uma atualização falha. Troca de janela/produto
+  remove dados do contexto anterior e ignora respostas antigas.
+- **Bloqueante, corrigido:** contadores usam trava contra repetição; período,
+  relatório e outros incrementos ficam bloqueados durante a gravação. Se a
+  gravação foi aceita e só a releitura falhou, a UI explica e o retry apenas
+  relê os dados, evitando repetir um incremento aceito.
+- **Importante, corrigido:** botão da pessoa abre detalhes por teclado, com
+  estado expandido; contadores nomeiam ação, métrica e pessoa. Ritmo tem
+  descrição acessível. Tabelas têm rolagem própria no celular, com detalhes
+  ajustados à viewport e controles de toque de 44px.
+- **Evidências:** `npm run test:review:desempenho -w packages/web`, capturas e
+  `geometry.json` em `packages/web/.review-artifacts/desempenho/`. **20 medidas**
+  estruturais em 1440/1920, diferença máxima **0,5px**, para título/cabeçalho e
+  posição/largura da primeira seção. Dia/semana/mês, navegação de período,
+  detalhes/lead, cópia real no clipboard de teste, contadores, falhas de leitura
+  e gravação, aceitação antes de falhar, espera, produto, lente individual,
+  Instagram parcial, vazio, 390/1024px e escuro conferidos com mocks.
+- **Fora do escopo:** métricas, ICP S/A/B, financeiro reconhecido, atribuição,
+  produção da conta e permissões mantêm as regras reais. Controles de período
+  e contadores existentes foram preservados, embora simplificados na prancha.
+  Altura de linha depende das objeções retornadas; não há dados inventados.
+
+Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
+As demais 6 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.

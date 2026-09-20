@@ -1,6 +1,7 @@
 import React from "react";
-import { PageHead, Segmented } from "../components/viz.jsx";
-import { EmptyState, Avatar, SectionHead, SecondaryButton, toast } from "../atoms.jsx";
+import "./desempenho.css";
+import { Segmented } from "../components/viz.jsx";
+import { EmptyState, Avatar, SecondaryButton, toast } from "../atoms.jsx";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
@@ -16,7 +17,7 @@ import { fmt, bizDay } from "../lib/format.js";
 // manuais do dia vêm do /api/desempenho. Clicar na linha abre o detalhe (quem
 // furou, quem não respondeu, objeções); "copiar relatório" gera o texto da
 // revisão. Sem envio automático: a tela É o relatório.
-const { useState, useEffect, useMemo, useCallback, useRef } = React;
+const { useState, useEffect, useMemo, useRef } = React;
 
 // ── Janela: Dia · Semana · Mês (+ ◀ ▶) sobre o período GLOBAL ─────────────────
 const MODE_KEY = "cockpit_desempenho_mode";
@@ -121,7 +122,7 @@ export function reportText({ role, row, extra, label, socialTotals }) {
   } else if (role === "closer") {
     lines.push(`No-show: ${n(row.noShow)}`);
     lines.push(`Calls realizadas: ${n(row.callsShown)}`);
-    lines.push(`Receita: ${fmt.money(row.revenue)} · ticket médio ${row.ticket != null ? fmt.money(row.ticket) : "—"}`);
+    lines.push(`Receita: ${fmt.moneyFull(row.revenue)} · ticket médio ${row.ticket != null ? fmt.moneyFull(row.ticket) : "—"}`);
     lines.push(`Follow-ups executados: ${n(row.followupsDone)}`);
     if (row.detail?.noShow?.length) lines.push(`Não compareceram: ${joinNames(row.detail.noShow)}`);
     const ob = extra?.objections?.[row.user];
@@ -154,10 +155,10 @@ const Num = ({ v, tone, title }) => (
   <td className="tnum" title={title} style={{ textAlign: "right", fontWeight: 600, color: tone === "neg" && v > 0 ? "var(--neg)" : "var(--fg-1)" }}>{v == null ? "—" : typeof v === "string" ? v : fmt.int(v)}</td>
 );
 
-function Stepper({ value, onInc, busy }) {
-  const btn = (label, d) => (
-    <button onClick={(e) => { e.stopPropagation(); onInc(d); }} disabled={busy}
-      style={{ width: 24, height: 24, borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 700, lineHeight: 1, opacity: busy ? 0.5 : 1 }}>{label}</button>
+function Stepper({ value, onInc, busy, label }) {
+  const btn = (glyph, d) => (
+    <button aria-label={`${d > 0 ? "Adicionar" : "Reduzir"} ${label}`} onClick={(e) => { e.stopPropagation(); onInc(d); }} disabled={busy || (d < 0 && value <= 0)}
+      style={{ width: 24, height: 24, borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 700, lineHeight: 1, opacity: busy ? 0.5 : 1 }}>{glyph}</button>
   );
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }} onClick={(e) => e.stopPropagation()}>
@@ -242,7 +243,7 @@ function Ritmo({ serie, dias }) {
     return d ? `${new Date(`${d}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "")}: ${serie[i]} toques` : `${serie[i]} toques`;
   };
   return (
-    <span title={`${total} toques nos últimos 7 dias`} style={{ display: "inline-flex", alignItems: "flex-end", gap: 2, height: 22 }}>
+    <span role="img" aria-label={`${total} toques nos últimos 7 dias. ${serie.map((_,i)=>rotulo(i)).join("; ")}`} title={`${total} toques nos últimos 7 dias`} style={{ display: "inline-flex", alignItems: "flex-end", gap: 2, height: 22 }}>
       {serie.map((v, i) => (
         <span key={i} title={rotulo(i)} style={{ width: 5, height: Math.max(2, Math.round((v / max) * 20)), borderRadius: 1, background: v ? "var(--accent)" : "var(--line-2)", opacity: v ? 0.85 : 1 }} />
       ))}
@@ -251,93 +252,43 @@ function Ritmo({ serie, dias }) {
   );
 }
 
-function PersonCell({ row }) {
-  return (
-    <td style={{ minWidth: 180 }}>
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 9 }}>
-        <Avatar id={row.user} name={row.name} size={26} />
-        <span style={{ fontWeight: 600, fontSize: 13 }}>{row.name || displayName(row.user)}</span>
-      </span>
-    </td>
-  );
+function PersonCell({ row, expanded, onToggle, detailId }) {
+  return <td className="performance-person"><button onClick={e=>{e.stopPropagation();onToggle();}} aria-expanded={expanded} aria-controls={detailId} aria-label={`Detalhes de ${row.name||displayName(row.user)}`}><Avatar id={row.user} name={row.name} size={30}/><span>{row.name||displayName(row.user)}</span><span aria-hidden="true">{expanded?"−":"+"}</span></button></td>;
 }
-
-function ReportCell({ onCopy }) {
-  return (
-    <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-      <SecondaryButton size="sm" onClick={(e) => { e.stopPropagation(); onCopy(); }} title="copia o texto da revisão">copiar relatório</SecondaryButton>
-    </td>
-  );
-}
-
-function Section({ title, sub, cols, rows, render, renderDetail, emptyTitle, emptyHint }) {
-  const [open, setOpen] = useState(null);
-  return (
-    <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <SectionHead title={title} sub={sub} />
-      {!rows.length ? <EmptyState title={emptyTitle} hint={emptyHint} /> : (
-        <div className="tbl-x" style={{ background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
-          <table className="tbl" style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
-            <thead><tr><Th>Pessoa</Th>{cols.map((c) => <Th key={c.label} right={c.right !== false} title={c.title}>{c.label}</Th>)}<Th right> </Th></tr></thead>
-            <tbody>
-              {rows.map((row) => (
-                <React.Fragment key={row.user}>
-                  <tr data-click onClick={() => setOpen(open === row.user ? null : row.user)} style={{ background: open === row.user ? "var(--accent-soft)" : undefined }}>
-                    {render(row)}
-                  </tr>
-                  {open === row.user && (
-                    <tr><td colSpan={cols.length + 2} style={{ background: "var(--bg-inset)", padding: "14px 16px 18px" }}>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 20 }}>{renderDetail(row)}</div>
-                    </td></tr>
-                  )}
-                </React.Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
-  );
+function Section({ id, title, sub, cols, rows, render, renderDetail, emptyTitle, emptyHint, onCopy, disabled }) {
+  const [open,setOpen]=useState(null);
+  return <section className={`performance-section performance-${id}`}><header><h2>{title}</h2><span title={sub}>{sub}</span></header>
+    {!rows.length?<EmptyState title={emptyTitle} hint={emptyHint}/>:<div className="tbl-x"><table className="performance-table"><thead><tr><Th>Pessoa</Th>{cols.map(c=><Th key={c.label} right={c.right!==false} title={c.title}>{c.label}</Th>)}</tr></thead><tbody>{rows.map(row=>{
+      const expanded=open===row.user,toggle=()=>setOpen(expanded?null:row.user),detailId=`performance-${id}-${row.user}`;
+      return <React.Fragment key={row.user}><tr className="performance-row" data-open={expanded||undefined} onClick={toggle}>{render(row,{expanded,onToggle:toggle,detailId})}</tr>{expanded&&<tr><td colSpan={cols.length+1} className="performance-detail"><div id={detailId}>{renderDetail(row)}<div className="performance-copy"><SecondaryButton disabled={disabled} onClick={()=>onCopy(row)}>Copiar relatório</SecondaryButton></div></div></td></tr>}</React.Fragment>;
+    })}</tbody></table></div>}
+  </section>;
 }
 
 // ── A tela ───────────────────────────────────────────────────────────────────
-function DesempenhoScreen({ onOpenLead }) {
-  const { version } = useData();
-  const [product] = useActiveSaas();
+function DesempenhoScreen({onOpenLead}) {
+  const [product]=useActiveSaas();
+  if(!product)return <EmptyState title="Sem produto ativo" hint="Escolha um produto na barra lateral."/>;
+  return <DesempenhoWorkspace key={product.id} product={product} onOpenLead={onOpenLead}/>;
+}
+function DesempenhoWorkspace({product,onOpenLead}) {
+  const {version}=useData();
   const nav = useWindowNav();
-  const { win, period, custom } = nav;
-  const [sb, setSb] = useState(null);
-  const [extra, setExtra] = useState(null);
-  const [err, setErr] = useState(null);
-  const [busy, setBusy] = useState(false);
-  // Lente: admin vê todo mundo; acesso por chave mestra (sem usuário no
-  // localStorage) conta como gestão, igual à Visão geral (#468).
-  const meUser = currentUser();
-  const admin = !meUser || isAdminUser(meUser);
-  const me = meUser?.id || "";
-
-  const loadExtra = useCallback(() => {
-    if (!product?.id) return Promise.resolve();
-    return api.desempenho(product.id, win).then(setExtra).catch((e) => { setExtra(null); setErr(e.message); });
-  }, [product?.id, win.since, win.until]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Troca de produto/janela zera a tela (loading); o tick do tempo real
-  // (`version`) recarrega em SILÊNCIO, mantendo o dado na tela até o novo
-  // chegar — antes cada gravação de qualquer um piscava a Análise inteira.
-  const winKey = `${product?.id}|${period}|${custom.since}|${custom.until}`;
-  const lastWinKey = useRef(null);
-  useEffect(() => {
-    if (!product?.id) return;
-    let alive = true;
-    const silent = lastWinKey.current === winKey;
-    lastWinKey.current = winKey;
-    if (!silent) { setSb(null); setExtra(null); }
-    setErr(null);
-    Promise.all([api.scoreboard(product.id, win), api.desempenho(product.id, win)])
-      .then(([s, d]) => { if (!alive) return; setSb(s); setExtra(d); })
-      .catch((e) => alive && setErr(e.message));
-    return () => { alive = false; };
-  }, [winKey, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { win } = nav;
+  const winKey=`${product.id}|${win.since}|${win.until}`;
+  const context=useRef(winKey);context.current=winKey;
+  const request=useRef(0),writing=useRef(false);
+  const [read,setRead]=useState({}),[attempt,setAttempt]=useState(0),[busy,setBusy]=useState(false),[writeError,setWriteError]=useState(null);
+  const current=read.key===winKey?read:{},sb=current.sb||null,extra=current.extra||null,err=current.error;
+  const meUser=currentUser(),admin=!meUser||isAdminUser(meUser),me=meUser?.id||"";
+  useEffect(()=>{
+    if(writing.current)return;
+    let alive=true;const token=++request.current;
+    setRead(prev=>prev.key===winKey?{...prev,loading:true,error:null}:{key:winKey,loading:true});setWriteError(null);
+    Promise.all([api.scoreboard(product.id,win),api.desempenho(product.id,win)]).then(([sb,extra])=>{if(alive&&request.current===token)setRead({key:winKey,sb,extra,loading:false});}).catch(error=>{if(alive&&request.current===token)setRead(prev=>({...prev,loading:false,error}));});
+    return()=>{alive=false;if(request.current===token)request.current++;};
+  },[winKey,version,attempt]); // API windows are captured by their dates.
+  useEffect(()=>()=>{request.current++;},[]);
 
   // Lente individual: sem etiqueta admin, só a própria linha (mesma regra da Visão geral).
   const mine = (rows) => (admin ? rows : rows.filter((r) => r.user === me));
@@ -348,64 +299,71 @@ function DesempenhoScreen({ onOpenLead }) {
   const canEdit = (uid) => nav.singleDay && (admin || uid === me);
 
   const openLead = (ref) => {
-    const l = (window.SEED?.LEADS || []).find((x) => x.id === ref.id);
+    const l = (window.SEED?.LEADS || []).find((x) => x.id === ref.id && x.saas === product.id);
     if (l && onOpenLead) onOpenLead(l);
     else toast("Esse lead não está no seu escopo de leads", "warn");
   };
-  const bump = async (uid, field, d) => {
-    if (!product?.id || busy) return;
-    setBusy(true);
+  const bump = async (uid,field,d) => {
+    if(writing.current||!canEdit(uid)||!extra||current.loading||err)return;
+    writing.current=true;setBusy(true);setWriteError(null);const token=++request.current,key=winKey;
+    let saved=false;
     try {
-      await api.desempenhoLog(product.id, { user: uid, day: win.since, inc: { [field]: d } });
-      await loadExtra();
-    } catch (e) { toast(`Não deu pra registrar · ${e.message || "tente de novo"}`, "neg"); }
-    finally { setBusy(false); }
+      await api.desempenhoLog(product.id,{user:uid,day:win.since,inc:{[field]:d}});saved=true;
+      const updated=await api.desempenho(product.id,win);
+      if(request.current===token&&context.current===key){setRead(prev=>({...prev,extra:updated,error:null}));toast("Registro atualizado","pos");}
+    } catch(error) {
+      if(request.current===token&&context.current===key){
+        if(saved)setRead(prev=>({...prev,error:new Error("O registro foi salvo, mas os totais não puderam ser atualizados. Use Tentar novamente para reler os dados.")}));
+        else setWriteError(error.message||"Não foi possível registrar. Tente novamente.");
+      }
+    } finally {writing.current=false;setBusy(false);if(context.current!==key)setAttempt(n=>n+1);}
   };
   const counter = (uid, field) => {
     const v = logOf(uid)[field] || 0;
     return canEdit(uid)
-      ? <td style={{ textAlign: "right" }}><Stepper value={v} busy={busy} onInc={(d) => bump(uid, field, d)} /></td>
+      ? <td style={{ textAlign: "right" }}><Stepper value={v} label={`${field === "socialSelling" ? "social selling" : "criativos"} de ${displayName(uid)}`} busy={busy || current.loading || !!err} onInc={(d) => bump(uid, field, d)} /></td>
       : <Num v={v} title={nav.singleDay ? "registrado no dia" : "soma dos dias da janela"} />;
   };
-  const copy = (role, row) => copyText(reportText({ role, row, extra, label: nav.label, socialTotals: extra?.social }));
+  const copy = (role, row) => !busy && !current.loading && !err && copyText(reportText({ role, row, extra, label: nav.label, socialTotals: extra?.social }));
 
   if (!product) return <EmptyState title="Sem produto ativo" hint="Escolha um produto no seletor da barra lateral." />;
   const loading = sb == null && !err;
   const soc = extra?.social || {};
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
-      <PageHead title="Análise de Desempenho" sub="por pessoa · dia, semana ou mês · clique na linha pra ver quem é quem">
+    <div className="performance-page">
+      <header className="performance-head"><h1>Análise de Desempenho</h1><fieldset disabled={busy}>
         <Segmented value={nav.mode} onChange={nav.setMode} options={[{ value: "dia", label: "Dia" }, { value: "semana", label: "Semana" }, { value: "mes", label: "Mês" }]} />
         <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-          <SecondaryButton size="sm" onClick={() => nav.step(-1)} title="anterior">◀</SecondaryButton>
+          <SecondaryButton size="sm" onClick={() => nav.step(-1)} title="Período anterior" aria-label="Período anterior">◀</SecondaryButton>
           <span className="tnum" style={{ minWidth: 120, textAlign: "center", fontSize: 12.5, fontWeight: 600, color: "var(--fg-2)" }}>{nav.label}</span>
-          <SecondaryButton size="sm" onClick={() => nav.step(1)} disabled={nav.atNow} title="próximo">▶</SecondaryButton>
+          <SecondaryButton size="sm" onClick={() => nav.step(1)} disabled={nav.atNow} title="Próximo período" aria-label="Próximo período">▶</SecondaryButton>
         </span>
-      </PageHead>
-      <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 22 }}>
-        {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
-        {loading && <div className="dim" style={{ fontSize: 12.5 }}>carregando…</div>}
-        {!loading && (
+      </fieldset></header>
+      <div className="performance-body">
+        {err && <div role="alert" className="performance-state">{err.message?.startsWith("O registro foi salvo") ? err.message : "Não foi possível atualizar o desempenho."}{sb && <span> Os números exibidos são da última leitura.</span>} <button disabled={busy} onClick={()=>setAttempt(n=>n+1)}>Tentar novamente</button></div>}
+        {writeError && <div role="alert" className="performance-state">Não deu para registrar: {writeError}</div>}
+        {loading && <div role="status" className="performance-state">Carregando desempenho…</div>}
+        {sb && extra && (
           <>
             <Section
-              title="SDR" sub="prospecção · contatos, agenda e social selling"
+              key={`sdr-${winKey}`} id="sdr" onCopy={r=>copy("sdr",r)} disabled={busy || current.loading || !!err} title="SDR" sub="prospecção · contatos, agenda e social selling"
               rows={sdrRows}
               emptyTitle="Nenhum SDR neste produto" emptyHint="Marque a etiqueta SDR em Ajustes → Equipe pra pessoa aparecer aqui."
               cols={[
-                { label: "Ritmo · 7 dias", title: "toques por dia nos últimos 7 dias corridos (mesma régua do funil: toque na timeline pelo autor)", right: false },
+                { label: "Ritmo · 7d", title: "toques por dia nos últimos 7 dias corridos (mesma régua do funil: toque na timeline pelo autor)", right: false },
                 { label: "No-show", title: "calls dos leads dela que não aconteceram (call vencida sem virar nada, furo marcado ou IA frio)" },
-                { label: "Calls agendadas", title: "calls dos leads dela pela data da call" },
-                { label: "Calls com ICP", title: "das agendadas, as com nota S/A/B (a faixa que vai pro closer sênior)" },
-                { label: "Contatos feitos", title: "leads cujo 1º contato humano na janela foi dela" },
-                { label: "Não responderam", title: "dos contatados por ela, os sem mensagem recebida no WhatsApp depois do 1º contato" },
-                { label: "Social selling", title: "registrado por ela no Meu dia (+1 social selling)" },
-                { label: "Viraram leads", title: "leads com origem Social selling criados na janela com ela de dona" },
+                { label: "Agendadas", title: "calls dos leads dela pela data da call" },
+                { label: "Com ICP", title: "das agendadas, as com nota S/A/B (a faixa que vai pro closer sênior)" },
+                { label: "Contatos", title: "leads cujo 1º contato humano na janela foi dela" },
+                { label: "Sem resposta", title: "dos contatados por ela, os sem mensagem recebida no WhatsApp depois do 1º contato" },
+                { label: "Social", title: "registrado por ela no Meu dia (+1 social selling)" },
+                { label: "Viraram lead", title: "leads com origem Social selling criados na janela com ela de dona" },
                 { label: "O que ouve na call", title: "objeções das calls de qualificação resumidas por IA na janela", right: false },
               ]}
-              render={(r) => (
+              render={(r, detail) => (
                 <>
-                  <PersonCell row={r} />
+                  <PersonCell row={r} {...detail} />
                   <td><Ritmo serie={extra?.ritmo?.[r.user]} dias={extra?.ritmoDays} /></td>
                   <Num v={r.noShow} tone="neg" />
                   <Num v={r.callsBooked} />
@@ -430,7 +388,6 @@ function DesempenhoScreen({ onOpenLead }) {
                       );
                     })()}
                   </td>
-                  <ReportCell onCopy={() => copy("sdr", r)} />
                 </>
               )}
               renderDetail={(r) => (
@@ -445,7 +402,7 @@ function DesempenhoScreen({ onOpenLead }) {
             />
 
             <Section
-              title="Mídia social" sub={`produção da conta${soc.errors?.feed ? " · Instagram indisponível agora" : ""}`}
+              key={`social-${winKey}`} id="social" onCopy={r=>copy("social",r)} disabled={busy || current.loading || !!err} title="Mídia social" sub={`produção da conta${soc.errors?.feed ? " · Instagram indisponível agora" : ""}`}
               rows={socialRows}
               emptyTitle="Ninguém com o papel Mídia social" emptyHint="Marque a etiqueta em Ajustes → Equipe pra pessoa aparecer aqui."
               cols={[
@@ -453,13 +410,12 @@ function DesempenhoScreen({ onOpenLead }) {
                 { label: "Stories", title: "stories capturados do Instagram na janela (captura de hora em hora)" },
                 { label: "Criativos", title: "anotado por ela/ele na tela Redes sociais (criativos de hoje)" },
               ]}
-              render={(r) => (
+              render={(r, detail) => (
                 <>
-                  <PersonCell row={r} />
+                  <PersonCell row={r} {...detail} />
                   <Num v={soc.feed == null ? null : soc.feed} title={soc.feed == null ? (soc.errors?.feed || soc.errors?.setup || "sem dado") : `${soc.posts || 0} posts · ${soc.reels || 0} reels`} />
                   <Num v={soc.stories} />
                   {counter(r.user, "creatives")}
-                  <ReportCell onCopy={() => copy("social", r)} />
                 </>
               )}
               renderDetail={() => (
@@ -479,28 +435,28 @@ function DesempenhoScreen({ onOpenLead }) {
             />
 
             <Section
-              title="Closer" sub="fechamento · calls, receita e follow-up"
+              key={`closer-${winKey}`} id="closer" onCopy={r=>copy("closer",r)} disabled={busy || current.loading || !!err} title="Closer" sub="fechamento · calls, receita e follow-up"
               rows={closerRows}
               emptyTitle="Nenhum closer neste produto" emptyHint="Marque a etiqueta closer em Ajustes → Equipe pra pessoa aparecer aqui."
               cols={[
-                { label: "Ritmo · 7 dias", title: "toques por dia nos últimos 7 dias corridos (mesma régua do funil: toque na timeline pelo autor)", right: false },
+                { label: "Ritmo · 7d", title: "toques por dia nos últimos 7 dias corridos (mesma régua do funil: toque na timeline pelo autor)", right: false },
                 { label: "No-show", title: "calls dele na janela que não aconteceram" },
-                { label: "Calls realizadas", title: "calls que aconteceram com ele (inclui a parte do histórico pré-cockpit)" },
+                { label: "Realizadas", title: "calls que aconteceram com ele (inclui a parte do histórico pré-cockpit)" },
                 { label: "Receita", title: "receita reconhecida na janela (faturado/recorrente só pelo que entrou); conta grande fora" },
                 { label: "Ticket médio", title: "receita ÷ fechamentos da janela" },
                 { label: "Follow-ups", title: "follow-ups executados: toque humano em lead em Follow-up, 1 por lead por dia" },
                 { label: "Objeções", title: "objeções das calls resumidas por IA na janela", right: false },
               ]}
-              render={(r) => {
+              render={(r, detail) => {
                 const ob = extra?.objections?.[r.user];
                 return (
                   <>
-                    <PersonCell row={r} />
+                    <PersonCell row={r} {...detail} />
                     <td><Ritmo serie={extra?.ritmo?.[r.user]} dias={extra?.ritmoDays} /></td>
                     <Num v={r.noShow} tone="neg" />
                     <Num v={r.callsShown} />
-                    <Num v={fmt.money(r.revenue)} />
-                    <Num v={r.ticket != null ? fmt.money(r.ticket) : null} />
+                    <Num v={fmt.moneyFull(r.revenue)} />
+                    <Num v={r.ticket != null ? fmt.moneyFull(r.ticket) : null} />
                     <Num v={r.followupsDone} />
                     <td style={{ maxWidth: 320 }}>
                       {ob?.count ? (
@@ -511,7 +467,6 @@ function DesempenhoScreen({ onOpenLead }) {
                         </span>
                       ) : <span className="dim" style={{ fontSize: 12 }}>sem call resumida</span>}
                     </td>
-                    <ReportCell onCopy={() => copy("closer", r)} />
                   </>
                 );
               }}
