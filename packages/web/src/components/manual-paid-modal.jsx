@@ -21,12 +21,16 @@ function ManualPaidModal({ link, onClose, onDone }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
+  const submitting = React.useRef(false);
   async function confirm() {
+    if (submitting.current) return;
+    submitting.current = true;
     setBusy(true); setError(null);
     try {
       const r = await api.payPaymentLink(link.id, { at, method, note: note.trim() });
       await onDone(r);
     } catch (err) {
+      submitting.current = false;
       setBusy(false);
       setError(err.message || String(err));
     }
@@ -57,14 +61,14 @@ function ManualPaidModal({ link, onClose, onDone }) {
         <label style={field}>
           <span className="kicker">Observação</span>
           <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="opcional: comprovante, quem confirmou…"
-            onKeyDown={(e) => { if (e.key === "Enter") confirm(); }} style={inputStyle} autoFocus />
+            onKeyDown={(e) => { if (e.key === "Enter") confirm(); }} style={inputStyle} />
         </label>
         <div className="mono dim" style={{ fontSize: 10.5, lineHeight: 1.5 }}>
           vale pra dinheiro que entrou FORA deste link. Pagamento pelo próprio link o Mercado Pago confirma sozinho. Fica registrado na timeline quem marcou.
         </div>
-        {error && <div className="mono" style={{ fontSize: 11, color: "var(--neg)" }}>{error}</div>}
+        {error && <div role="alert" className="mono" style={{ fontSize: 11, color: "var(--neg)" }}>{error}</div>}
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button onClick={onClose} style={{ padding: "8px 14px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 13 }}>Cancelar</button>
+          <button onClick={onClose} disabled={busy} style={{ padding: "8px 14px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 13 }}>Cancelar</button>
           <button onClick={confirm} disabled={busy} style={{ padding: "8px 14px", background: "var(--btn-bg)", color: "var(--btn-fg)", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 600, opacity: busy ? 0.6 : 1 }}>
             {busy ? "marcando…" : "marcar como pago"}
           </button>

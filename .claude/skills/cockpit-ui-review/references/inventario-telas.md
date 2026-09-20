@@ -434,5 +434,42 @@ Validação: 1.729 testes da API, testes web/smoke, build e revisão visual apro
   catálogo/renderer requer revisão de domínio separada.
 
 Validação: 1.729 testes da API, testes web/smoke, build e revisão visual aprovados.
-As demais 24 páginas aguardam esta rodada; registros históricos não são aceite
+### 07. Links de pagamento (`#offers`) — validada
+
+- **Importante, corrigido:** cabeçalho sem subtítulo, faixa de valores, filtros
+  dentro do card, grupos por cliente e expansão compacta seguem a referência.
+  Aviso de saldo anterior ao período, contagem no rodapé e metadados adicionais
+  de cada recibo saíram da apresentação, sem remoção de dados. Valores de cobrança
+  mantêm centavos; totais, contagens e grupos continuam vindo prontos da API.
+- **Bloqueante, corrigido:** Cobrar/Copiar não apareciam porque a interface
+  comparava o objeto retornado por `linkStatusOf` com uma string. A seleção do
+  link aberto usa o status existente; WhatsApp abre a URL correta e cópia só
+  confirma após concluir. Abrir checkout, copiar e desfazer baixa permanecem no
+  menu do link; pagamento do MP não ganha ação de estorno manual.
+- **Bloqueante, corrigido:** leituras têm retry e proteção contra respostas
+  antigas; atualizações preservam tabela, filtros, expansão e foco. A primeira
+  carga não mostra dinheiro zerado. Falha ao atualizar identifica os dados
+  anteriores. Baixa de fatura, baixa manual e geração usam os endpoints reais,
+  bloqueiam repetição e preservam o formulário após erro. Desfazer baixa pede
+  confirmação; nenhum cálculo ou autorização foi alterado.
+- **Importante, corrigido:** expansão por teclado, foco visível, rolagem interna
+  da tabela e controles de toque de 44px. Modais desta rota são portais para
+  manter a camada acima do feedback. Autofocus dos modais de pagamento foi
+  removido para o controle compartilhado restaurar o foco ao fechar; a geração
+  bloqueia saída/troca de alvo durante o envio.
+- **Evidências:** `npm run test:review:offers -w packages/web`; capturas e
+  `geometry.json` em `packages/web/.review-artifacts/offers/`. **368 medidas em
+  1440/1920**, incluindo faixa, tabela, células e expansão; diferença máxima
+  **0px**. Conferidos abas, busca/limpeza, vendedor, cópia/URL de cobrança,
+  geração para lead/cliente, baixa manual/fatura, desfazer/cancelar,
+  falhas de leitura/gravação, espera longa, envio pendente, vazio, conta
+  desconectada, perfil closer, teclado/foco, mobile e tema escuro. Regressão
+  dos consumidores anteriores do modal de pagamento: Pipeline e Clientes.
+- **Fora do escopo:** Pagos continua incluindo grupos com algum recebimento,
+  mesmo com saldo aberto; o protótipo conta só grupos sem saldo. Preservada a
+  régua financeira existente. Filtros de período e vendedor continuam globais/
+  autorizados pelo backend; não houve mudança em API, schema ou banco.
+
+Validação: 1.729 testes da API, testes web/smoke, build e revisão visual aprovados.
+As demais 23 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.
