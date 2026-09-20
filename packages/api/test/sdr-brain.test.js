@@ -4,11 +4,10 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 import { makeSdrBrain, bookCall, stripDuration, stripDeviceAsk, PRICE_RX } from "../src/sdr-brain.js";
 
 // Relógio dos testes: quarta 19/08/2026, 10h BRT (13h UTC). Com o closer livre
-// e aviso mínimo de 2h, o primeiro horário OFERTÁVEL é 13:00 do próprio dia
-// (12:00-13:00 é o almoço bloqueado na janela de oferta do robô).
+// o primeiro horário OFERTÁVEL é 09:00 do próximo dia útil.
 const NOW = new Date("2026-08-19T13:00:00Z");
 const ISO = (s) => new Date(s).toISOString();
-const SLOT1 = "2026-08-19T13:00";
+const SLOT1 = "2026-08-20T09:00";
 
 const FUNNEL = [
   { stage: "Novo lead", kind: "novo" },
@@ -29,7 +28,7 @@ async function world({ lead = {}, messages = [], sdrBot = {}, users } = {}) {
   for (const u of users || [
     { id: "sdr", name: "Manuela", roles: ["sdr"] },
     { id: "leonardo", name: "Leonardo", roles: ["admin"] },
-    { id: "pl", name: "Plena", roles: ["closer"], compLevel: 2 },
+    { id: "pl", name: "Jonathan", roles: ["closer"], compLevel: 2 },
   ]) await repo.create("users", u);
   await repo.create("leads", {
     id: "L1", saas: "leverads", owner: "sdr", name: "Rafael Silva", phone: "41999990000",
@@ -173,11 +172,11 @@ test("auto-atendimento de loja na 1ª resposta: silêncio, sem gastar IA", async
 test("remarcar: confirmação CURTA, sem repetir sócio e lembrete", async () => {
   const repo = await world({
     lead: { stage: "Call agendada", callAt: "2026-08-19T16:00", email: "r@x.com", callUrl: "https://meet.google.com/abc", closer: "pl" },
-    messages: [{ direction: "in", text: "consegue mais cedo?", at: ISO("2026-08-19T12:59:00Z") }],
+    messages: [{ direction: "in", text: "pode remarcar para amanhã às 9h?", at: ISO("2026-08-19T12:59:00Z") }],
   });
   const fakes = makeFakes({ decisions: [{ acao: "remarcar", horario: SLOT1 }] });
   assert.equal(await brainOf(repo, fakes).handleInbound(INBOUND), "remarcar");
-  assert.match(fakes.sent[0].text, /remarcado então pra hoje \(19\/08\) às 13h/);
+  assert.match(fakes.sent[0].text, /remarcado então pra amanhã \(20\/08\) às 9h/);
   assert.match(fakes.sent[0].text, /convite atualizado/);
   assert.ok(!/sócio/.test(fakes.sent[0].text), "remarcação não repete o bloco do sócio");
   assert.equal((await repo.get("leads", "L1")).callAt, SLOT1);
@@ -197,13 +196,13 @@ test("trava de beco: interesse respondido sem pergunta ganha a oferta do par; ad
 
   // Horários JÁ oferecidos: repescagem curta, sem re-listar.
   const repo2 = await world({ messages: [
-    { direction: "out", author: "sdr-bot", text: "Consigo hoje às 13h ou hoje às 15h, qual fica melhor?", at: ISO("2026-08-19T12:50:00Z") },
+    { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor?", at: ISO("2026-08-19T12:50:00Z") },
     { direction: "in", text: "pode ser sim", at: ISO("2026-08-19T12:59:00Z") },
   ] });
   const fakes2 = makeFakes({ decisions: [{ acao: "responder", mensagem: "Maravilha, vai ser uma ótima conversa" }] });
   await brainOf(repo2, fakes2).handleInbound({ message: { from: "5541999990000", text: "pode ser sim" } });
   // Sem "algum dos horários que te passei" (frase proibida, Leo 17/09): os horários vão escritos.
-  assert.match(fakes2.sent.at(-1).text, /^Fica melhor hoje às 13h ou hoje às 15h\?$/);
+  assert.match(fakes2.sent.at(-1).text, /^Fica melhor amanhã às 9h ou amanhã às 11h\?$/);
 
   // Lead ADIANDO ("vou pensar e te falo"): resposta sem pergunta passa sem empurrão.
   const repo3 = await world({ messages: [
@@ -246,7 +245,7 @@ test("oferta fantasma: 'os horários que te passei' sem ter passado vira a ofert
 
 test("horário JÁ oferecido antes: a referência é legítima e passa", async () => {
   const repo = await world({ messages: [
-    { direction: "out", author: "sdr-bot", text: "Consigo hoje às 13h ou hoje às 15h, qual fica melhor?", at: ISO("2026-08-19T12:00:00Z") },
+    { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor?", at: ISO("2026-08-19T12:00:00Z") },
     { direction: "in", text: "vou ver aqui", at: ISO("2026-08-19T12:59:00Z") },
   ] });
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Tranquilo! Algum dos horários que te passei encaixa?" }] });
@@ -264,18 +263,18 @@ test("dia solto sem hora vira oferta concreta (o mais cedo primeiro)", async () 
   await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "sim, ajudaria" } });
   const ultima = fakes.sent.at(-1).text;
   assert.match(ultima, /às \d/, "sai com hora escrita");
-  // O relógio do teste é 10h BRT e há vaga HOJE às 13h: a oferta começa por hoje.
-  assert.match(fakes.sent.map((x) => x.text).join(" "), /hoje às 13h/);
+  // O relógio do teste é 10h BRT e há vaga hoje, mas a oferta começa amanhã às 9h.
+  assert.match(fakes.sent.map((x) => x.text).join(" "), /amanhã às 9h/);
 });
 
 test("resposta que já traz hora não é mexida", async () => {
   const repo = await world({ messages: [
     { direction: "in", text: "sim, quero", at: ISO("2026-08-19T12:59:00Z") },
   ] });
-  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Perfeito! Consigo hoje às 13h ou hoje às 15h, qual fica melhor pra você?" }] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Perfeito! Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor pra você?" }] });
   await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "sim, quero" } });
   assert.equal(fakes.sent.length, 1);
-  assert.match(fakes.sent[0].text, /hoje às 13h ou hoje às 15h/);
+  assert.match(fakes.sent[0].text, /amanhã às 9h ou amanhã às 11h/);
 });
 
 test("afiliado da Shopee: robô não agenda, desmarca o que estava marcado e chama gente", async () => {
@@ -312,10 +311,10 @@ test("horário preenchido no meio do caminho: pede desculpa e diz que outro clie
   // Caso Gabriel (25/08): escolheu um horário que NÓS oferecemos e ouviu
   // "Esse horário não consigo" seco.
   const repo = await world({ messages: [
-    { direction: "out", author: "sdr-bot", text: "Consigo hoje às 13h ou hoje às 15h, qual fica melhor?", at: ISO("2026-08-19T12:50:00Z") },
+    { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor?", at: ISO("2026-08-19T12:50:00Z") },
     { direction: "in", text: "as 15h fica melhor", at: ISO("2026-08-19T12:59:00Z") },
   ] });
-  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Esse horário não consigo, mas tenho hoje às 13h" }] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Esse horário não consigo, mas tenho amanhã às 9h" }] });
   await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "as 15h fica melhor" } });
   const texto = fakes.sent.map((x) => x.text).join(" ");
   assert.ok(!/não consigo/i.test(texto), "a recusa seca não sai");
@@ -330,7 +329,7 @@ test("re-oferta determinística (horário inventado pela IA) também pede descul
   const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: "2026-08-19T09:00" }] });
   assert.equal(await brainOf(repo, fakes).handleInbound(INBOUND), "reoferta");
   assert.match(fakes.sent[0].text, /preenchido por outro cliente, me desculpa/);
-  assert.match(fakes.sent[0].text, /hoje às 13h/);
+  assert.match(fakes.sent[0].text, /amanhã às 9h/);
 });
 
 test("oferta só em hora cheia; hora quebrada só quando o LEAD pede", async () => {
@@ -348,10 +347,10 @@ test("oferta só em hora cheia; hora quebrada só quando o LEAD pede", async () 
 
 test("lead que pede hora quebrada é agendado nela", async () => {
   const repo = await world({ messages: [{ direction: "in", text: "consigo só 13h30", at: ISO("2026-08-19T12:59:00Z") }] });
-  const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: "2026-08-19T13:30" }] });
+  const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: "2026-08-20T13:30" }] });
   const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "consigo só 13h30" } });
   assert.equal(r, "agendar");
-  assert.equal((await repo.get("leads", "L1")).callAt, "2026-08-19T13:30");
+  assert.equal((await repo.get("leads", "L1")).callAt, "2026-08-20T13:30");
 });
 
 test("trava de preço: resposta da IA com valor vira o desvio com autoridade (sem número)", async () => {
@@ -448,18 +447,18 @@ test("lead pede preço e escolhe horário na mesma mensagem: agendar vence a esc
     messages: [
       { direction: "in", text: "quanto custa?", at: ISO("2026-08-19T12:30:00Z") },
       { direction: "out", author: "sdr-bot", text: "O investimento é de acordo com as necessidades da sua operação.", at: ISO("2026-08-19T12:31:00Z") },
-      { direction: "in", text: "ok, pode ser 13h, e o preço me fala na call então", at: ISO("2026-08-19T12:59:00Z") },
+      { direction: "in", text: "ok, pode ser 9h, e o preço me fala na call então", at: ISO("2026-08-19T12:59:00Z") },
     ],
   });
   const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: SLOT1 }] });
-  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "ok, pode ser 13h, e o preço me fala na call então" } });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "ok, pode ser 9h, e o preço me fala na call então" } });
   assert.equal(r, "agendar");
   assert.equal((await repo.get("leads", "L1")).callAt, SLOT1);
 });
 
 
 test("agendar com horário da lista: card vai pra etapa de call pelo caminho canônico, com confirmação comprovada e Meet automático", async () => {
-  const repo = await world({ messages: [{ direction: "in", text: "pode ser meio dia", at: ISO("2026-08-19T12:59:00Z") }] });
+  const repo = await world({ messages: [{ direction: "in", text: "pode ser 9h", at: ISO("2026-08-19T12:59:00Z") }] });
   const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: SLOT1 }] });
   const r = await brainOf(repo, fakes).handleInbound(INBOUND);
   assert.equal(r, "agendar");
@@ -474,7 +473,7 @@ test("agendar com horário da lista: card vai pra etapa de call pelo caminho can
   assert.equal(stageActs[0].meta.to, "Call agendada");
   // Confirmação enxuta (Leo, 23/08) e com a data cravada (Leo, 24/08):
   // combinado + sócio + lembrete, sem re-descrever a demo e sem pedir e-mail.
-  assert.match(fakes.sent[0].text, /Perfeito Rafael, agendado então pra hoje \(19\/08\) às 13h/);
+  assert.match(fakes.sent[0].text, /Perfeito Rafael, agendado então pra amanhã \(20\/08\) às 9h/);
   assert.ok(!/entrar nas suas contas/.test(fakes.sent[0].text), "a gente não entra nas contas do lead");
   assert.match(fakes.sent[0].text, /sócio/);
   assert.deepEqual(fakes.meets, ["L1"]);
@@ -488,7 +487,7 @@ test("agendar com horário INVENTADO: nada é marcado, re-oferta determinística
   const lead = await repo.get("leads", "L1");
   assert.equal(lead.stage, "Qualificando");
   assert.equal(lead.callAt || "", "");
-  assert.match(fakes.sent[0].text, /hoje às 13h/);
+  assert.match(fakes.sent[0].text, /amanhã às 9h/);
 });
 
 test("humano: alerta quente + transição curta, e o robô fica calado até gente falar", async () => {
@@ -539,7 +538,7 @@ test("teto diário por conversa: depois de 15 mensagens do robô, vira handoff c
 test("remarcar: callAt antigo já passado vai pro histórico e o GPS segue o horário novo", async () => {
   const repo = await world({
     lead: { stage: "Call agendada", callAt: "2026-08-18T10:00", closer: "pl", callConfirmed: true },
-    messages: [{ direction: "in", text: "consegui não, pode ser meio dia hoje?", at: ISO("2026-08-19T12:59:00Z") }],
+    messages: [{ direction: "in", text: "consegui não, pode ser 9h amanhã?", at: ISO("2026-08-19T12:59:00Z") }],
   });
   const fakes = makeFakes({ decisions: [{ acao: "remarcar", horario: SLOT1 }] });
   const r = await brainOf(repo, fakes).handleInbound(INBOUND);
@@ -549,7 +548,7 @@ test("remarcar: callAt antigo já passado vai pro histórico e o GPS segue o hor
   assert.equal(lead.stage, "Call agendada");
   assert.equal(lead.callConfirmed, false, "confirmação é do horário novo");
   assert.deepEqual(lead.callHistory, [{ at: "2026-08-18T10:00", closer: "pl" }]);
-  assert.equal(lead.nextActionAt, new Date("2026-08-19T13:00:00-03:00").toISOString());
+  assert.equal(lead.nextActionAt, new Date("2026-08-20T09:00:00-03:00").toISOString());
 });
 
 test("desmarcar: call sai da agenda de verdade, Meet cancelado, time avisado e remarcação oferecida", async () => {
@@ -625,17 +624,17 @@ test("nota de voz é transcrita antes da decisão: áudio com horário vira agen
   const repo = await world({ messages: [{ direction: "in", text: "🎤 áudio", media: { kind: "audio", id: "MID1", mime: "audio/ogg" }, at: ISO("2026-08-19T12:59:00Z") }] });
   await repo.create("wa_media", { id: "m1", mime: "audio/ogg", data: Buffer.from("a".repeat(2048)).toString("base64") });
   const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: SLOT1 }] });
-  const transcriber = { configured: () => true, transcribe: async () => "pode ser meio dia então" };
+  const transcriber = { configured: () => true, transcribe: async () => "pode ser 9h então" };
   const brain = makeSdrBrain({
     repo, whatsapp: fakes.wa, anthropic: fakes.anthropic, autoCallMeet: fakes.autoCallMeet, transcriber,
     log: { warn: () => {} }, now: () => NOW, replyDelayMs: 0, sleep: async () => {},
   });
   assert.equal(await brain.handleInbound(INBOUND), "agendar");
   // A IA viu o texto transcrito, não o "🎤 áudio"…
-  assert.match(fakes.calls[0].conversation.at(-1).text, /\[áudio\] pode ser meio dia/);
+  assert.match(fakes.calls[0].conversation.at(-1).text, /\[áudio\] pode ser 9h/);
   // …e o transcript ficou gravado na mensagem (conversa legível pra sempre).
   const msg = (await repo.list("wa_messages")).find((m) => m.media?.kind === "audio");
-  assert.equal(msg.transcript, "pode ser meio dia então");
+  assert.equal(msg.transcript, "pode ser 9h então");
 });
 
 test("sem transcrição configurada, o áudio segue como áudio (e o prompt manda pra humano)", async () => {
@@ -804,7 +803,7 @@ test("confirmação de agendamento enxuta: sem re-descrever a demo e sem pedir e
   const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: SLOT1 }] });
   await brainOf(repo, fakes).handleInbound(INBOUND);
   const text = fakes.sent[0].text;
-  assert.match(text, /Perfeito Rafael, agendado então pra hoje \(19\/08\) às 13h/);
+  assert.match(text, /Perfeito Rafael, agendado então pra amanhã \(20\/08\) às 9h/);
   assert.ok(!/\bcall\b/i.test(text), "a palavra call nunca chega no lead");
   assert.match(text, /sócio/);
   assert.match(text, /lembrete/);
@@ -943,7 +942,7 @@ test("trava de duração: '20 minutos' sai da conversa; o '5 minutos' do pitch O
   ] });
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagens: [
     "É uma conversa de 20 minutos no Google Meet, nosso especialista roda um código OEM seu ao vivo",
-    "Consigo hoje às 13h ou hoje às 15h, qual fica melhor pra você?",
+    "Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor pra você?",
   ] }] });
   await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "Opa sim" } });
   assert.equal(fakes.sent[0].text, "É uma conversa no Google Meet, nosso especialista roda um código OEM seu ao vivo");
@@ -998,7 +997,7 @@ test("descoberta antes do horário: a mensagem do form não é interesse; oferta
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagens: [
     "Oi Eduardo, tudo certo?",
     "Vi que agora você mencionou autopeças, sua operação hoje é de eletrônicos ou autopeças?",
-    "Consigo hoje às 13h ou hoje às 15h, qual fica melhor pra você?",
+    "Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor pra você?",
   ] }] });
   await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: form } });
   assert.equal(fakes.calls[0].engaged, false);
@@ -1020,13 +1019,13 @@ test("descoberta antes do horário: a mensagem do form não é interesse; oferta
     { direction: "out", author: "sdr-bot", text: "Isso ajudaria na sua operação?", at: ISO("2026-08-19T12:50:00Z") },
     { direction: "in", text: "Ajudaria sim", at: ISO("2026-08-19T12:59:00Z") },
   ] });
-  const fakes3 = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Perfeito", "Consigo hoje às 13h ou hoje às 15h, qual fica melhor pra você?"] }] });
+  const fakes3 = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Perfeito", "Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor pra você?"] }] });
   await brainOf(repo3, fakes3).handleInbound({ message: { from: "5541999990000", text: "Ajudaria sim" } });
   assert.equal(fakes3.calls[0].engaged, true);
-  assert.equal(fakes3.sent.at(-1).text, "Consigo hoje às 13h ou hoje às 15h, qual fica melhor pra você?");
+  assert.equal(fakes3.sent.at(-1).text, "Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor pra você?");
 });
 
-test("mais cedo primeiro: oferta que pula a vaga de hoje sem o lead pedir é reescrita com o par sugerido", async () => {
+test("mais cedo primeiro: oferta que pula a primeira vaga de amanhã sem o lead pedir é reescrita com o par sugerido", async () => {
   const msgs = [
     { direction: "out", author: "sdr-bot", text: "Isso ajudaria na sua operação?", at: ISO("2026-08-19T12:50:00Z") },
     { direction: "in", text: "Ajudaria sim", at: ISO("2026-08-19T12:59:00Z") },
@@ -1034,11 +1033,11 @@ test("mais cedo primeiro: oferta que pula a vaga de hoje sem o lead pedir é ree
   const repo = await world({ messages: msgs });
   const fakes = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Perfeito Leonardo, nosso especialista pode te mostrar isso na prática", "Consigo amanhã às 11h ou amanhã às 13h, qual fica melhor pra você?"] }] });
   await brainOf(repo, fakes).handleInbound({ message: { id: "m2", from: "5541999990000", text: "Ajudaria sim" } });
-  assert.equal(fakes.sent[1].text, "Consigo hoje às 13h ou hoje às 15h, qual fica melhor pra você?");
+  assert.equal(fakes.sent[1].text, "Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor pra você?");
   assert.ok((await repo.get("leads", "L1")).sdrLog.earliestGuardAt);
   const thread = await repo.get("wa_threads", "5541999990000");
-  assert.deepEqual(thread.brain.pair, ["hoje às 13h", "hoje às 15h"]);
-  assert.equal(thread.brain.slots[0], "hoje às 13h");
+  assert.deepEqual(thread.brain.pair, ["amanhã às 9h", "amanhã às 11h"]);
+  assert.equal(thread.brain.slots[0], "amanhã às 9h");
 
   // Lead pediu período/dia: a oferta da IA fica como está.
   const repo2 = await world({ messages: [
@@ -1074,7 +1073,7 @@ test("gente escreveu no meio da fala do robô: o resto das partes é descartado"
     { direction: "out", author: "sdr-bot", text: "Isso ajudaria na sua operação?", at: ISO("2026-08-19T12:50:00Z") },
     { direction: "in", text: "Ajudaria sim", at: ISO("2026-08-19T12:59:00Z") },
   ] });
-  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Perfeito", "Nosso especialista te mostra na prática", "Consigo hoje às 13h ou hoje às 15h, qual fica melhor pra você?"] }] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Perfeito", "Nosso especialista te mostra na prática", "Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor pra você?"] }] });
   const orig = fakes.wa.sendText;
   fakes.wa.sendText = async (to, text) => {
     const r = await orig(to, text);
@@ -1084,4 +1083,58 @@ test("gente escreveu no meio da fala do robô: o resto das partes é descartado"
   const r = await brainOf(repo, fakes).handleInbound({ message: { id: "m2", from: "5541999990000", text: "Ajudaria sim" } });
   assert.equal(r, "abortado");
   assert.equal(fakes.sent.length, 1);
+});
+
+test("agenda SDR: sem pedido do lead, modelo não oferece nem agenda D+2, mesmo com amanhã cheio", async () => {
+  for (const decision of [
+    { acao: "agendar", horario: "2026-08-21T14:00" },
+    { acao: "responder", mensagem: "Consigo sexta às 14h, pode ser?" },
+    { acao: "responder", mensagem: "Consigo sexta, pode ser?" },
+  ]) {
+    const repo = await world({ messages: [{ direction: "in", text: "Sim, quero", at: ISO("2026-08-19T12:59:00Z") }] });
+    await repo.create("agenda_blocks", { id: "full", user: "pl", recur: "once", date: "2026-08-20", allDay: true });
+    const fakes = makeFakes({ decisions: [decision] });
+    await brainOf(repo, fakes).handleInbound(INBOUND);
+    assert.deepEqual(fakes.calls[0].slots, []);
+    assert.ok(!(await repo.get("leads", "L1")).callAt);
+    assert.deepEqual(fakes.meets, []);
+    assert.doesNotMatch(fakes.sent.map((x) => x.text).join(" "), /sexta|21\/08/);
+    assert.match(fakes.sent.at(-1).text, /Qual outra data/);
+  }
+});
+
+test("agenda SDR: pedido de sexta persiste quando o cliente escolhe a hora na mensagem seguinte", async () => {
+  const repo = await world({ messages: [
+    { direction: "in", text: "Só consigo sexta, tem às 14h?", at: ISO("2026-08-19T12:55:00Z") },
+    { direction: "out", author: "sdr-bot", text: "Consigo sexta às 14h ou sexta às 16h, qual fica melhor?", at: ISO("2026-08-19T12:57:00Z") },
+    { direction: "in", text: "14h", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: "2026-08-21T14:00" }] });
+  assert.equal(await brainOf(repo, fakes).handleInbound(INBOUND), "agendar");
+  assert.equal((await repo.get("leads", "L1")).callAt, "2026-08-21T14:00");
+  assert.ok(fakes.calls[0].slots.every((s) => s.at.startsWith("2026-08-21T")));
+});
+
+test("agenda SDR: áudio pedindo data posterior libera só o dia transcrito antes de montar a lista", async () => {
+  const repo = await world({ messages: [{ direction: "in", text: "🎤 áudio", media: { kind: "audio", id: "MID1", mime: "audio/ogg" }, at: ISO("2026-08-19T12:59:00Z") }] });
+  await repo.create("wa_media", { id: "m1", mime: "audio/ogg", data: Buffer.from("a".repeat(2048)).toString("base64") });
+  const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: "2026-08-21T14:00" }] });
+  const brain = makeSdrBrain({ repo, whatsapp: fakes.wa, anthropic: fakes.anthropic,
+    transcriber: { configured: () => true, transcribe: async () => "Amanhã não consigo, pode ser sexta às 14h?" },
+    log: { warn: () => {} }, now: () => NOW, replyDelayMs: 0, sleep: async () => {},
+  });
+  assert.equal(await brain.handleInbound(INBOUND), "agendar");
+  assert.equal(fakes.calls[0].offerDate, "2026-08-21");
+  assert.equal(fakes.calls[0].requestedDate, true);
+  assert.equal((await repo.get("leads", "L1")).callAt, "2026-08-21T14:00");
+});
+
+test("agenda SDR: pedido de sexta não autoriza agendar segunda por conta própria", async () => {
+  const repo = await world({ messages: [
+    { direction: "in", text: "Pode ser sexta às 14h?", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: "2026-08-24T14:00" }] });
+  assert.equal(await brainOf(repo, fakes).handleInbound(INBOUND), "reoferta");
+  assert.ok(!(await repo.get("leads", "L1")).callAt);
+  assert.doesNotMatch(fakes.sent[0].text, /segunda/);
 });

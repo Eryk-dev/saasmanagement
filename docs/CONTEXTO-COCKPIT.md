@@ -157,6 +157,20 @@ Os caminhos abaixo são relativos a `packages/`.
 
 ## Regras que precisam sobreviver às mudanças
 
+**Agenda do SDR (20/09/2026):** a oferta automática usa `sdr-agenda.js`, com
+S/A/B para Leonardo/Jonan/Jonathan e C/D/E (ou sem nota) primeiro para Vitor.
+A seleção é nominal no workspace LeverAds, independente de `compLevel`;
+Vitor também é elegível quando cadastrado como integrador. Se Vitor não tiver
+horário no dia consultado, C/D/E usa a equipe de S/A/B nesse mesmo dia; S/A/B
+nunca desce para Vitor. A oferta espontânea fica somente no próximo dia útil
+(sexta/sábado/domingo → segunda), sem ampliar a janela quando lota. Outro dia
+depende de pedido do cliente por texto ou áudio transcrito; o pedido persiste
+na escolha da hora, mas não libera datas fora do período solicitado. Conversa,
+resgate de no-show e replay usam a mesma política. Horário comercial, almoço,
+ocupação e reservas continuam valendo. A rota manual `/api/agenda/free-slots`
+mantém sua régua existente. Testes: `sdr-agenda.test.js`, `sdr-brain.test.js`,
+`sdr-flow.test.js` e `sdr-humanizacao.test.js`.
+
 1. **Receita de produto:** `rollupProduct` deriva clientes, ARR e MRR de
    `customers`, excluindo os churnados segundo `churn.js`. Não usar os números
    crus do produto. `syncCustomerArr` reconcilia assinaturas e preserva o

@@ -25,7 +25,8 @@ import { kindOf, firstStage, stageByKind, isWonLead } from "./stages.js";
 import { brtToIso, applyStageMove, onOutboundMessage, autoLeadOwner, logActivity, initialNextActionAt } from "./lead-flow.js";
 import { raiseAlert } from "./wa-call-flow.js";
 import { leadGrade } from "./routes.marketing.js";
-import { slotsForLead, slotLabel, slotLabelFull, wallNow, spreadPair, wholeHourSlots, OFFER_HOURS, OFFER_HORIZON_DAYS, activeHolds, holdSlots, releaseHolds, withoutHeld } from "./agenda-slots.js";
+import { slotLabel, slotLabelFull, wallNow, spreadPair, wholeHourSlots, activeHolds, holdSlots, releaseHolds } from "./agenda-slots.js";
+import { sdrSlotsForLead, sdrAgendaWindow } from "./sdr-agenda.js";
 import { sdrBotConfig, leadDigest, conversationActive, leadPainFocus, greetName, SDR_AUTHOR, DEVICE_TIP } from "./sdr-flow.js";
 import { transcriber as defaultTranscriber } from "./transcribe.js";
 
@@ -264,7 +265,7 @@ function reofferText(nome, slots, wnow) {
   const desculpa = `${oi}esse horário acabou de ser preenchido por outro cliente, me desculpa!`;
   if (slots.length >= 2) return `${desculpa} Consigo ${slotLabel(slots[0].at, wnow)} ou ${slotLabel(slots[1].at, wnow)}, qual fica melhor pra você?`;
   if (slots.length === 1) return `${desculpa} Consigo ${slotLabel(slots[0].at, wnow)}, fica bom pra você?`;
-  return `${desculpa} Me diz um horário que fica bom pra você que eu vejo aqui na agenda.`;
+  return "Não tenho horário disponível nesse dia. Qual outra data fica melhor pra você?";
 }
 
 // Marca (ou remarca) a call pelo MESMO caminho do PATCH da API: applyStageMove
@@ -602,18 +603,6 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     const typing = () => { if (message?.id && wa.sendTyping) wa.sendTyping(message.id, { phoneId }).catch(() => {}); };
     typing();
 
-    // Contexto pra decisão: agenda real + conversa + relógio BRT.
-    const wnow = wallNow(at);
-    const { slots } = await slotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 16, ...OFFER_HOURS, horizonDays: OFFER_HORIZON_DAYS });
-    // Horário que OUTRO lead está decidindo agora sai da oferta: era o que fazia
-    // o robô oferecer "amanhã às 10h" e, na resposta do lead 27 minutos depois,
-    // negar o próprio horário (prod 24/08, Guilherme). Ver agenda-slots.js.
-    const holds = await activeHolds(repo, product.id, { now: at }).catch(() => []);
-    const slotList = withoutHeld(slots, holds, lead.id).map((s) => ({ ...s, label: slotLabel(s.at, wnow) }));
-    // A OFERTA sai só de hora cheia; slotList inteiro (com as quebradas) segue
-    // valendo pra AGENDAR quando o lead pede um horário específico.
-    const offerPool = wholeHourSlots(slotList);
-    const suggestedPair = spreadPair(offerPool);
     // Nota de voz que disparou a decisão vira texto (as antigas já carregam o
     // transcript gravado); sem transcrição possível, fica "🎤 áudio" e o
     // prompt manda pra humano.
@@ -622,6 +611,18 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       const t = await transcriptOf(lastIn, lead);
       if (t) lastIn.transcript = t;
     }
+    // Contexto pra decisão: agenda real + conversa + relógio BRT.
+    const wnow = wallNow(at);
+    // Horário que OUTRO lead está decidindo agora sai da oferta: era o que fazia
+    // o robô oferecer "amanhã às 10h" e, na resposta do lead 27 minutos depois,
+    // negar o próprio horário (prod 24/08, Guilherme). Ver agenda-slots.js.
+    const holds = await activeHolds(repo, product.id, { now: at }).catch(() => []);
+    const { slots, requested: requestedDate, startDate: offerDate } = await sdrSlotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 0, messages: msgs, holds });
+    const slotList = slots.map((s) => ({ ...s, label: slotLabel(s.at, wnow) }));
+    // A OFERTA sai só de hora cheia; slotList inteiro (com as quebradas) segue
+    // valendo pra AGENDAR quando o lead pede um horário específico.
+    const offerPool = wholeHourSlots(slotList);
+    const suggestedPair = spreadPair(offerPool);
     // A resposta automática entra na conversa SEM O CONTEÚDO: só o rótulo. O
     // texto de um menu automático costuma vir em forma de ordem ("clique no
     // link", "digite 1", "para vendas chame o outro número") e a IA obedecia
@@ -676,6 +677,8 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       firstReply,
       engaged,
       suggestedPair,
+      requestedDate,
+      offerDate,
     });
     // Quem respondeu e quanto custou: vai pro carimbo da thread e pro uso do dia.
     Object.assign(meta, { model: decision.model || "", usage: decision.usage || null, ms: decision.ms || 0, saas: product.id });
@@ -882,6 +885,27 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     }
     parts.length = 0;
     parts.push(...fresh);
+    // A lista é a autorização do motor, não só uma sugestão no prompt.
+    // Oferta com dia/hora fora dela vira o par permitido, inclusive quando
+    // a IA tenta abrir outros dias porque amanhã lotou.
+    const offerMentions = /(?:(?:hoje|amanh[ãa]|segunda(?:-feira)?|ter[çc]a(?:-feira)?|quarta(?:-feira)?|quinta(?:-feira)?|sexta(?:-feira)?|s[áa]bado|domingo)(?: \d{1,2}\/\d{1,2})?|\d{1,2}\/\d{1,2}|\d{4}-\d{2}-\d{2})\s+(?:[àa]s?\s+)?\d{1,2}(?:h\d{0,2}|:\d{2})/gi;
+    const allowedLabels = new Set(slotList.map((s) => s.label.toLowerCase()));
+    const allowedDays = new Set(slotList.map((s) => s.at.slice(0, 10)));
+    const actualOffer = suggestedPair.length >= 2
+      ? `Consigo ${suggestedPair[0].label} ou ${suggestedPair[1].label}, qual fica melhor pra você?`
+      : suggestedPair.length ? `Consigo ${suggestedPair[0].label}, fica bom pra você?`
+        : "Não tenho horário disponível nesse dia. Qual outra data fica melhor pra você?";
+    let replacedOffer = false;
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const mentions = [...parts[i].matchAll(offerMentions)];
+      const offeredWindow = sdrAgendaWindow([{ direction: "in", text: parts[i] }], wnow);
+      const wrongDay = offeredWindow.requested && !allowedDays.has(offeredWindow.startDate);
+      if ((!lead.callAt || OFFER_CUE_RX.test(parts[i])) && (mentions.some((m) => !allowedLabels.has(m[0].toLowerCase())) || wrongDay)) {
+        parts.splice(i, 1);
+        replacedOffer = true;
+      }
+    }
+    if (replacedOffer) parts.push(actualOffer);
     // TRAVA DE RECUSA SECA: o horário que a gente ofereceu caiu, e a resposta
     // devolve um "não consigo" sem explicação nem desculpa (visto 25/08 com o
     // Gabriel, que tinha escolhido um horário NOSSO). Troca pela re-oferta com

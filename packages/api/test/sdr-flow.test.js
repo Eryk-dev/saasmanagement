@@ -50,7 +50,7 @@ async function world({ leads = [], users, product = {}, threads = [], messages =
   for (const u of users || [
     { id: "sdr", name: "Manuela", roles: ["sdr"] },
     { id: "leonardo", name: "Leonardo", roles: ["admin"] },
-    { id: "pl", name: "Plena", roles: ["closer"], compLevel: 2 },
+    { id: "pl", name: "Jonathan", roles: ["closer"], compLevel: 2 },
   ]) await repo.create("users", u);
   for (const l of leads) await repo.create("leads", { saas: "leverads", owner: "sdr", ...l });
   for (const t of threads) await repo.create("wa_threads", t);
@@ -518,8 +518,8 @@ test("no-show sem resposta ganha 2ª tentativa 24h depois, com horários concret
   const out = wa.sent.filter((s) => s.name === "sdr_remarcar_noshow");
   assert.equal(out.length, 1);
   assert.equal(out[0].params[0], "Rafael");
-  assert.match(out[0].params[1], /às \d/, "1º horário concreto");
-  assert.match(out[0].params[2], /às \d/, "2º horário concreto");
+  assert.match(out[0].params[1], /^amanhã às \d/, "1º horário concreto, apenas amanhã");
+  assert.match(out[0].params[2], /^amanhã às \d/, "2º horário concreto, apenas amanhã");
   const lead = await repo.get("leads", "L1");
   assert.equal(lead.sdrLog.noshow2Via, "template");
   // Não repete no tick seguinte.

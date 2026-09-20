@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   closerPools, slotsForLead, occupyCells, addBusinessDaysNaive, slotLabel, slotLabelFull, wallFromNaive, spreadPair, OFFER_HOURS,
-  OFFER_HORIZON_DAYS, toNaiveBrt,
+  toNaiveBrt,
 } from "../src/agenda-slots.js";
 
 // Quarta-feira 19/08/2026, 8h da manhã no relógio de Brasília (ver
@@ -145,76 +145,6 @@ test("com o dia do pleno esgotado, o júnior volta pra oferta", async () => {
   const doJunior = r.slots.filter((s) => s.closer === "jr");
   assert.ok(doJunior.length > 0, "o júnior segue ofertado nos dias seguintes");
   assert.ok(doJunior.every((s) => s.at.slice(0, 10) > "2026-08-19"));
-});
-
-// ── Horizonte da oferta: o robô não marca pra depois de amanhã ────────────
-// Medido em produção (13/09/2026): furo do robô por distância do agendamento
-// D+0 45,5% · D+1 49,3% · D+2 59,1%. Cada dia de espera custa comparecimento.
-test("horizonte: a oferta do robô para no próximo dia útil", async () => {
-  const { repo, fill } = seedRepo({
-    users: [PL],
-    // Quarta e quinta ocupadas o dia inteiro: sem horizonte a oferta iria pra
-    // sexta (D+2); com horizonte, esse dia não pode entrar.
-    blocks: [
-      { id: "b1", user: "pl", kind: "block", recur: "once", date: "2026-08-19", allDay: true },
-      { id: "b2", user: "pl", kind: "block", recur: "once", date: "2026-08-20", allDay: true },
-    ],
-  });
-  await fill();
-  const lead = { id: "lh", saas: "leverads", accounts: "10+" }; // nota A
-  const largo = await slotsForLead(repo, { lead, saas: "leverads", now: NOW, days: 5, limit: 3, ...OFFER_HOURS });
-  assert.equal(largo.slots[0].at.slice(0, 10), "2026-08-21", "sem horizonte, a oferta vai pra sexta");
-
-  const curto = await slotsForLead(repo, { lead, saas: "leverads", now: NOW, days: 5, horizonDays: OFFER_HORIZON_DAYS, limit: 3, ...OFFER_HOURS });
-  // Ninguém tem horário em D+0/D+1: a válvula abre o prazo cheio, mas AVISA.
-  assert.equal(curto.beyondHorizon, true);
-  assert.equal(curto.horizonDays, OFFER_HORIZON_DAYS);
-  assert.equal(curto.slots[0].at.slice(0, 10), "2026-08-21", "melhor uma call longe que lead sem call");
-});
-
-test("horizonte: com vaga hoje e amanhã, nada de depois de amanhã entra na oferta", async () => {
-  const { repo, fill } = seedRepo({ users: [PL] });
-  await fill();
-  const r = await slotsForLead(repo, {
-    lead: { id: "lh2", saas: "leverads", accounts: "10+" }, saas: "leverads",
-    now: NOW, days: 5, horizonDays: OFFER_HORIZON_DAYS, limit: 40, ...OFFER_HOURS,
-  });
-  assert.ok(!r.beyondHorizon, "havia vaga dentro do teto");
-  const dias = [...new Set(r.slots.map((s) => s.at.slice(0, 10)))].sort();
-  assert.deepEqual(dias, ["2026-08-19", "2026-08-20"], "só hoje e amanhã");
-});
-
-test("horizonte: na sexta, o próximo dia útil é segunda (fim de semana não conta)", async () => {
-  const { repo, fill } = seedRepo({
-    users: [PL],
-    blocks: [{ id: "b1", user: "pl", kind: "block", recur: "once", date: "2026-08-21", allDay: true }],
-  });
-  await fill();
-  const sexta = wallFromNaive("2026-08-21T09:00");
-  const r = await slotsForLead(repo, {
-    lead: { id: "lh3", saas: "leverads", accounts: "10+" }, saas: "leverads",
-    now: sexta, days: 5, horizonDays: OFFER_HORIZON_DAYS, limit: 6, ...OFFER_HOURS,
-  });
-  assert.ok(!r.beyondHorizon, "segunda cabe no teto: é o próximo dia ÚTIL");
-  assert.ok(r.slots.every((s) => s.at.slice(0, 10) === "2026-08-24"), "segunda-feira");
-});
-
-test("horizonte: C/D lotado hoje e amanhã no júnior sobe pro pleno DENTRO do teto", async () => {
-  const { repo, fill } = seedRepo({
-    users: [JR, PL],
-    blocks: [
-      { id: "b1", user: "jr", kind: "block", recur: "once", date: "2026-08-19", allDay: true },
-      { id: "b2", user: "jr", kind: "block", recur: "once", date: "2026-08-20", allDay: true },
-    ],
-  });
-  await fill();
-  const r = await slotsForLead(repo, {
-    lead: { id: "lh4", saas: "leverads", accounts: "2" }, saas: "leverads", // nota D
-    now: NOW, days: 5, horizonDays: OFFER_HORIZON_DAYS, limit: 6, ...OFFER_HOURS,
-  });
-  assert.ok(!r.beyondHorizon, "o pleno tinha vaga dentro do teto");
-  assert.equal(r.slots[0].closer, "pl");
-  assert.ok(r.slots.every((s) => s.at.slice(0, 10) <= "2026-08-20"));
 });
 
 test("pool vazio nunca trava: sem pleno/sênior, lead A cai em todos os closers", async () => {
