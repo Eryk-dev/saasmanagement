@@ -55,7 +55,8 @@ Para reproduzir Visão geral com dados fixos e testes no navegador, usar
 `npm run test:review:overview -w packages/web`; para Atividades,
 `npm run test:review:today -w packages/web`; para Treinamentos,
 `npm run test:review:training -w packages/web`; para Pipeline,
-`npm run test:review:pipeline -w packages/web` (Chromium do Playwright instalado
+`npm run test:review:pipeline -w packages/web`; para Clientes,
+`npm run test:review:customers -w packages/web` (Chromium do Playwright instalado
 com `npx playwright install chromium`, se necessário). O comando sobe só Vite
 com mocks, sem API/banco, e grava medidas/capturas em `.review-artifacts` do web.
 Atividades abre o roteiro lateral no desktop
@@ -67,6 +68,10 @@ Pipeline compartilha filtros entre Kanban/Lista/Análise; a esteira usa os
 helpers e o endpoint existentes de pace. A ficha compacta é uma variante de
 LeadDetail usada nesta rota; os handlers e a ficha das demais rotas permanecem.
 O modal de pagamento usa o `Modal` compartilhado para controlar foco/teclado.
+Clientes usa a ficha lateral de 420px com contrato, marcos e dinheiro. Edição,
+upsell, churn e gestão de cobranças abrem os formulários existentes em modal;
+a apresentação compacta recebe os mesmos totais/status da tabela. Leituras
+financeiras têm estado local de carregamento/erro e nova tentativa.
 
 ## Arquitetura confirmada
 

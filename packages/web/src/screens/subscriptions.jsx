@@ -34,8 +34,8 @@ const INV_STATUS = {
 // Eram quatro sub-tabelas densas sem nenhum resumo: não havia como saber se o
 // billing estava saudável sem ler linha por linha. Tudo derivado de subs,
 // invoices e preapprovals, que a tela já carrega.
-function BillingState({ subs, invoices, preapprovals, mpUnlinked, sync, mpConfigured }) {
-  const money = window.fmt.money;
+function BillingState({ subs, invoices, preapprovals, mpUnlinked, sync, mpConfigured, compact = false }) {
+  const money = compact ? window.fmt.moneyFull : window.fmt.money;
   const hoje = Date.now();
   const em7 = hoje + 7 * 86_400_000;
   const ativas = subs.filter((s) => s.status === "active" || s.status === "past_due");
@@ -62,12 +62,12 @@ function BillingState({ subs, invoices, preapprovals, mpUnlinked, sync, mpConfig
     </div>
   );
   return (
-    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px 20px", display: "flex", alignItems: "center", gap: 28, flexWrap: "wrap", marginBottom: 16 }}>
+    <div className={compact ? "customers-billing-kpis" : undefined} style={compact ? undefined : { border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px 20px", display: "flex", alignItems: "center", gap: 28, flexWrap: "wrap", marginBottom: 16 }}>
       {item("MRR das ativas", money(mrr), `${ativas.length} ${ativas.length === 1 ? "assinatura" : "assinaturas"}`)}
       {item("Vencem em 7 dias", String(vencendo.length), vencendo.length ? `${money(vencendoVal)} a renovar` : "nada a renovar", vencendo.length ? "var(--warn)" : undefined)}
       {item("Faturas vencidas", String(vencidas.length), vencidas.length ? `${money(vencidasVal)} parados` : "nenhuma", vencidas.length ? "var(--neg)" : "var(--pos)")}
       {item("Inadimplentes", String(inad.size), inad.size === 1 ? "cliente" : "clientes", inad.size ? "var(--neg)" : undefined)}
-      {mpConfigured && (
+      {mpConfigured && !compact && (
         <div style={{ marginLeft: "auto", textAlign: "right" }}>
           <div style={{ fontSize: 12.5, color: mpUnlinked ? "var(--warn)" : "var(--fg-3)" }}>
             {mpUnlinked
@@ -83,35 +83,46 @@ function BillingState({ subs, invoices, preapprovals, mpUnlinked, sync, mpConfig
   );
 }
 
-function SubscriptionsScreen({ saasId }) {
+function SubscriptionsScreen({ saasId, compact = false }) {
   const { SAAS, CUSTOMERS } = window.SEED;
   const { version, refresh, openForm, openDelete } = useData();
   const [active, setActive] = useState(saasId || SAAS[0]?.id);
   // Embutida em Clientes (saasId controlado): segue o produto da tela-mãe e
   // não mostra seletor próprio — um seletor de SaaS por tela basta.
   useEffect(() => { if (saasId) setActive(saasId); }, [saasId]);
-  const [tab, setTab] = useState("subs"); // subs | invoices | plans | mp
+  const [tab, setTab] = useState(compact ? "invoices" : "subs"); // subs | invoices | plans | mp
   const [subs, setSubs] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [plans, setPlans] = useState([]);
   const [mpData, setMpData] = useState(null); // { preapprovals, sync } — recorrências da conta MP
   const [changing, setChanging] = useState(null); // assinatura no modal de mudança
   const [toast, setToast] = useState(null);
+  const [loading,setLoading]=useState(true), [loadError,setLoadError]=useState(null), [busy,setBusy]=useState(null);
+  const loadSeq=React.useRef(0), loadedKey=React.useRef(null);
+  async function perform(key, action) {
+    if(busy)return;
+    setBusy(key);setLoadError(null);
+    try {await action();}catch(error){setLoadError(error);}finally{setBusy(null);}
+  }
 
   const load = useCallback(async () => {
     if (!active) return;
+    const seq=++loadSeq.current;setLoading(loadedKey.current!==active);setLoadError(null);
     const mpOn = !!window.SEED?.CONFIG?.mp?.configured;
+    try {
     const [ss, ii, pp, mm] = await Promise.all([
       api.list("subscriptions", { saas: active }),
       api.list("invoices", { saas: active }),
       api.list("plans", { saas: active }),
       mpOn ? api.mpPreapprovals({ saas: active }).catch(() => null) : Promise.resolve(null),
     ]);
-    setSubs(ss); setInvoices(ii); setPlans(pp); setMpData(mm);
+    if(seq!==loadSeq.current)return;
+    setSubs(ss); setInvoices(ii); setPlans(pp); setMpData(mm);loadedKey.current=active;
     // O EntityForm de assinatura monta o select de planos daqui (padrão window.SEED).
     window.PLANS_CACHE = pp;
+    }catch(error){if(seq===loadSeq.current)setLoadError(error);}finally{if(seq===loadSeq.current)setLoading(false);}
   }, [active]);
-  useEffect(() => { load(); }, [load, version]);
+  useEffect(() => { load(); return()=>{loadSeq.current++;}; }, [load, version]);
 
   function flash(msg) { setToast(msg); setTimeout(() => setToast(null), 2600); }
 
@@ -187,6 +198,54 @@ function SubscriptionsScreen({ saasId }) {
     <EmptyState title="Nenhum SaaS ainda" hint="Crie um produto em Ajustes — assinaturas, faturas e planos pertencem a um SaaS." />
   );
 
+
+  if(compact && !loading && loadedKey.current !== active && loadError) return <div className="customers-load" role="alert">{loadError.message || "Não foi possível carregar as cobranças."} <button onClick={load}>Tentar novamente</button></div>;
+
+  if(compact && ["invoices","subs"].includes(tab)) {
+    const invoiceCols="minmax(200px,1.4fr) minmax(150px,.9fr) minmax(110px,.8fr) minmax(110px,.9fr) minmax(90px,.9fr) minmax(130px,.8fr)";
+    const subCols="minmax(190px,1.4fr) minmax(170px,1fr) minmax(90px,.7fr) minmax(120px,.8fr) minmax(120px,.8fr) minmax(110px,.9fr) minmax(120px,.9fr)";
+    const money=window.fmt.moneyFull, cols=tab==="invoices"?invoiceCols:subCols;
+    const rank=i=>i.status==="paid"?2:new Date(i.dueDate).getTime()<Date.now()?0:1;
+    return <div className="customers-billing">
+      {loading ? <div role="status" className="customers-load">Carregando cobranças…</div> : <>
+      {loadError&&<div role="alert" className="customers-load">{loadError.message||"Não foi possível carregar as cobranças."} <button onClick={load}>Tentar novamente</button></div>}
+      <BillingState compact subs={subs} invoices={invoices} preapprovals={preapprovals} mpUnlinked={mpUnlinked} sync={mpData?.sync} mpConfigured={mpConfigured}/>
+      <section className="customers-billing-table">
+        <div className="customers-billing-filters"><div className="customers-segment">{[["invoices","Faturas",invoices.length],["subs","Assinaturas",subs.length]].map(([id,label,n])=><button key={id} aria-pressed={tab===id} onClick={()=>setTab(id)}>{label} <span>{n}</span></button>)}</div><span>vencida → aberta → paga</span>
+          <MoreMenu items={[
+            {label:"Nova assinatura",onClick:()=>openForm("subscriptions",{saas:active})},
+            {label:"Planos",onClick:()=>setTab("plans")},
+            mpConfigured&&{label:"Recorrências do Mercado Pago",onClick:()=>setTab("mp")},
+            {label:busy==="billing"?"Executando billing…":"Rodar billing",disabled:!!busy,onClick:()=>perform("billing",runBilling)},
+          ]}/>
+        </div>
+        <div className="tbl-x"><div style={{minWidth:tab==="invoices"?820:1024}}>
+          <div className="customers-billing-head" style={{gridTemplateColumns:cols}}>{(tab==="invoices"?["Cliente","Tipo","Valor","Vencimento","Status",""]:["Cliente","Plano","Ciclo","Preço/ciclo","ARR","Status","Ciclo atual até"]).map((label,i)=><span key={i}>{label}</span>)}</div>
+          {tab==="invoices" ? [...invoices].sort((a,b)=>rank(a)-rank(b)||String(a.dueDate||"").localeCompare(String(b.dueDate||""))).map(i=>{
+            const status=INV_STATUS[i.status]||{label:i.status,cls:""};
+            return <div className="customers-billing-row" style={{gridTemplateColumns:cols}} key={i.id}>
+              <strong>{customerName(i.customer)}</strong><span>{i.title||({renewal:"renovação",prorata:"pró-rata",upsell:"upsell",manual:"manual"})[i.kind]||i.kind}{i.status==="paid"&&mpMethodLabel(i)&&<small>{mpMethodLabel(i)}</small>}</span>
+              <b>{money(i.amount||0)}</b><span>{fmtDate(i.dueDate)}</span><span><span className={`chip ${status.cls}`}>{status.label}</span></span>
+              <div className="customers-billing-actions">{i.status!=="paid"&&<button disabled={!!busy} onClick={()=>perform(i.id,()=>pay(i))}>{busy===i.id?"Baixando…":"Dar baixa"}</button>}{i.status!=="paid"&&mpConfigured&&<MoreMenu items={[{label:i.mpInitPoint?"Copiar link de pagamento":"Gerar link no MP",onClick:()=>perform(i.id,()=>invLink(i))}]}/>}</div>
+            </div>;
+          }) : subs.map(sub=>{const status=SUB_STATUS[sub.status]||{label:sub.status,cls:""};return <div className="customers-billing-row" style={{gridTemplateColumns:cols}} key={sub.id}>
+            <strong>{customerName(sub.customer)}</strong><span>{planName(sub.plan)}</span><span>{CYCLE_LABEL[sub.cycle]||sub.cycle}</span><b>{money(sub.price||0)}</b><b>{money(annualized(sub))}</b><span><span className={`chip ${status.cls}`}>{status.label}</span></span>
+            <div className="customers-billing-actions"><span>{fmtDate(sub.periodEnd)}</span><MoreMenu size={22} items={[
+              mpConfigured&&sub.status!=="canceled"&&sub.mpPreapprovalId&&{label:"Copiar link do MP",onClick:()=>perform(sub.id,()=>mpLink(sub))},
+              sub.status!=="canceled"&&{label:"Mudar plano",onClick:()=>setChanging(sub)},
+              sub.status==="active"&&{label:"Pausar",onClick:()=>perform(sub.id,()=>setStatus(sub,"paused"))},
+              sub.status==="paused"&&{label:"Reativar",onClick:()=>perform(sub.id,()=>setStatus(sub,"active"))},
+              sub.status!=="canceled"&&{label:"Cancelar assinatura",tone:"neg",onClick:()=>{if(window.confirm(`Cancelar a assinatura de ${customerName(sub.customer)}?`))perform(sub.id,()=>setStatus(sub,"canceled"));}},
+              {label:"Excluir registro",tone:"neg",onClick:()=>openDelete("subscriptions",sub)},
+            ]}/></div>
+          </div>;})}
+          {!(tab==="invoices"?invoices:subs).length&&<div className="customers-empty">Nenhuma {tab==="invoices"?"fatura":"assinatura"} neste produto</div>}
+        </div></div>
+      </section></>}
+      {toast&&<div role="status" className="customers-billing-toast">{toast}</div>}
+      {changing&&<ChangeModal sub={changing} plans={plans} customerName={customerName(changing.customer)} onClose={()=>setChanging(null)} onDone={async msg=>{setChanging(null);flash(msg);await refresh();}}/>}
+    </div>;
+  }
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>

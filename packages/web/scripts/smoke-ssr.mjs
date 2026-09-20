@@ -113,7 +113,7 @@ try {
     ["financeiro-pizza", "/src/screens/finance-hub.jsx", "GastosCard", { month: "2026-09", recebidosMes: 2000, setores: { deducoes: { imposto: 600 }, cogs: { ia: 200, wa: 100 }, sm: { ads: 100 } } }, "30,0%"],
     ["financeiro-pizza-vazio", "/src/screens/finance-hub.jsx", "GastosCard", { month: "2026-09", recebidosMes: 0, setores: { cogs: { ia: 0 } } }, "Sem recebimentos neste mês"],
     ["financeiro-pizza-unico", "/src/screens/finance-hub.jsx", "GastosCard", { month: "2026-09", recebidosMes: 100, setores: { sm: { ads: 100 } } }, "100,0%"],
-    ["customers", "/src/screens/customers.jsx", "CustomersScreen", {}, "Cliente Teste"],
+    ["customers", "/src/screens/customers.jsx", "CustomersScreen", {}, "Carregando clientes…"],
     ["pipeline", "/src/screens/pipeline.jsx", "PipelineScreen", { onOpenLead() {} }, "Lead Novo"],
     ["chrome", "/src/chrome.jsx", "NavRail", { current: "overview", onNav() {} }, "Visão geral"],
     ["forms", "/src/screens/forms.jsx", "FormsScreen", { saasId: "leverads" }, ""],
@@ -858,18 +858,16 @@ try {
       try { return R(React.createElement(C.CustomersScreen, {})); }
       finally { window.SEED.CUSTOMERS = antes; }
     })();
-    has("base vazia", vazia, "Nenhum cliente ainda");
+    // SSR não executa a leitura financeira; vazio confirmado é coberto no navegador.
+    has("base aguardando leitura", vazia, "Carregando clientes…");
     console.log("✓ clientes-estados");
   } catch (err) {
     console.error(`✗ clientes-estados: ${err.message}`);
     failed++;
   }
 
-  // ── Clientes: a tabela tem que CABER (redesign de 12/09) ────────────────
-  // O redesign trocou 13 colunas com minWidth 1360 (rolagem garantida) por 6
-  // que cabem. A conta é frágil por natureza: basta alguém alargar uma coluna
-  // pra devolver a rolagem sem perceber. Aqui a soma dos pisos + gaps é
-  // comparada com o orçamento de 1024px de janela.
+  // Clientes: cinco colunas com pisos explícitos; rolagem interna no mobile
+  // é conferida junto dos estados/ações em scripts/review/customers.mjs.
   try {
     const { TABLE_GRID, TABLE_GRID_GAP, TABLE_GRID_BUDGET } = await server.ssrLoadModule("/src/screens/customers.jsx");
     const cols = TABLE_GRID.trim().split(/\s+(?![^(]*\))/);
@@ -884,7 +882,7 @@ try {
     };
     const soma = cols.reduce((a, c) => a + floorOf(c), 0) + TABLE_GRID_GAP * (cols.length - 1);
     if (soma > TABLE_GRID_BUDGET) {
-      throw new Error(`a tabela volta a rolar: pisos + gaps = ${soma}px, orçamento ${TABLE_GRID_BUDGET}px (1024px de janela)`);
+      throw new Error(`pisos + gaps = ${soma}px, acima do orçamento ${TABLE_GRID_BUDGET}px`);
     }
     console.log(`✓ clientes-tabela (${soma}px de ${TABLE_GRID_BUDGET})`);
   } catch (err) {
