@@ -174,7 +174,7 @@ function ProposalsScreen({ saasId }) {
   const recentCutoff = Date.now() - 30 * 86400000;
   const outlineButton = {
     height: 30, padding: "0 12px", border: "1px solid var(--line-1)",
-    borderRadius: "var(--r-2)", background: "var(--bg-1)", color: "var(--fg-2)",
+    borderRadius: 999, background: "var(--bg-1)", color: "var(--fg-2)",
     fontSize: 12.5, fontWeight: 600, boxShadow: "var(--shadow-1)",
     display: "inline-flex", alignItems: "center", textDecoration: "none",
   };
@@ -239,7 +239,7 @@ function ProposalsScreen({ saasId }) {
   // a MESMA lista, a segunda sob um título que dizia "recentemente" enquanto
   // exibia tudo).
   const tabelaGeradas = (
-    <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+    <section style={{ background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px var(--inset-x) 12px", flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 200 }}>
           <h3 className="card-title" style={{ margin: 0 }}>Propostas geradas</h3>
@@ -306,12 +306,12 @@ function ProposalsScreen({ saasId }) {
                     {!p.accepted && wa && (
                       <a href={`${wa}?text=${encodeURIComponent(`Oi${primeiroNome ? ` ${primeiroNome}` : ""}, te mandei a proposta aqui: ${url}`)}`}
                         target="_blank" rel="noopener noreferrer" title={views > 0 ? "abriu e não respondeu: cobrar resposta" : "nunca abriu: reenviar o link"}
-                        style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--wa-brand)", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>
+                        style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: 999, border: "1px solid var(--wa-brand)", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>
                         {views > 0 ? "cobrar" : "reenviar"}
                       </a>
                     )}
                     <button onClick={() => { try { navigator.clipboard.writeText(url); setCopied(p.id); setTimeout(() => setCopied(""), 1600); } catch { /* ignore */ } }}
-                      style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, cursor: "pointer" }}>
+                      style={{ height: 26, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, cursor: "pointer" }}>
                       {copied === p.id ? "copiado ✓" : "copiar"}
                     </button>
                   </span>
@@ -334,7 +334,7 @@ function ProposalsScreen({ saasId }) {
         {/* A faixa do funil é a CorrenteDoDinheiro compartilhada (14/09): o
             rótulo em cima, o valor embaixo e a conversão NA SETA, com a
             legenda do que ela mede. Era value-em-cima e a taxa solta. */}
-        <CorrenteDoDinheiro
+        <CorrenteDoDinheiro navy
           passos={[
             { rotulo: "Geradas em 30 dias", valor: String(fun.geradas) },
             { rotulo: "Abertas pelo lead", valor: String(fun.abertas), taxa: pct(fun.abertas, fun.geradas) == null ? "—" : `${pct(fun.abertas, fun.geradas)}%`, taxaNota: "abriram" },
@@ -347,7 +347,7 @@ function ProposalsScreen({ saasId }) {
                 {`${nuncaAbertas.length} ${nuncaAbertas.length === 1 ? "enviada e nunca aberta" : "enviadas e nunca abertas"}`}
               </span>
               <button onClick={() => setFiltro("nunca")}
-                style={{ height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>ver quais</button>
+                style={{ height: 30, padding: "0 12px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>ver quais</button>
             </div>
           ) : null}
         />
@@ -355,11 +355,11 @@ function ProposalsScreen({ saasId }) {
         {/* Templates em LINHAS, ordenados por conversão: card com três botões
             de peso igual não dizia qual template usar. */}
         {!templates.length ? (
-          <div style={{ minHeight: 230, background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
+          <div style={{ minHeight: 230, background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
             <EmptyState title="Nenhum template neste SaaS" hint="Crie o template base usado para gerar propostas a partir dos leads." action={<PrimaryButton onClick={() => setEditing({ template: null })}>+ criar template</PrimaryButton>} />
           </div>
         ) : (
-          <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+          <section style={{ background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
             <div style={{ padding: "18px var(--inset-x) 12px" }}>
               <h3 className="card-title" style={{ margin: 0 }}>Templates</h3>
               <div className="card-sub" style={{ marginTop: 3 }}>ordenados por conversão de gerada a fechada</div>
@@ -478,8 +478,8 @@ function TemplateEditor({ template, saasId, onDone, onCancel }) {
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <span className={"chip " + (draft.status === "published" ? "pos" : "")} style={{ height: 20 }}>{draft.status === "published" ? "publicado" : "rascunho"}</span>
-            <button onClick={onCancel} style={{ padding: "7px 12px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 12 }}>Cancelar</button>
-            <button onClick={save} disabled={busy} style={{ padding: "7px 14px", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 500, opacity: busy ? 0.6 : 1 }}>
+            <button onClick={onCancel} style={{ padding: "7px 12px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: 999, fontSize: 12 }}>Cancelar</button>
+            <button onClick={save} disabled={busy} style={{ padding: "7px 14px", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderRadius: 999, fontSize: 12, fontWeight: 500, opacity: busy ? 0.6 : 1 }}>
               {busy ? "Salvando…" : "Salvar"}
             </button>
           </div>
