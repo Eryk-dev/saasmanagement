@@ -159,8 +159,8 @@ export const api = new Proxy(mockApi, {
       const method = /^(create|update|delete|save|send|set|remove|login|logout)/.test(String(name)) ? "POST" : "GET";
       const finish = beginPageRequest(method);
       try {
-        if ((overviewReview || todayReview) && loadingParams.get("slow") === name) await new Promise(resolve => setTimeout(resolve, 2000));
-        if ((overviewReview || todayReview) && loadingParams.get("failOnce") === name && !failedOnce.has(name)) { failedOnce.add(name); throw new Error("Falha simulada na prévia"); }
+        if (loadingParams.has("review") && loadingParams.get("slow") === name) await new Promise(resolve => setTimeout(resolve, 2000));
+        if (loadingParams.has("review") && loadingParams.get("failOnce") === name && !failedOnce.has(name)) { failedOnce.add(name); throw new Error("Falha simulada na prévia"); }
         if (loadingParams.has("splash") && loadingParams.get("hang") === name) await new Promise(() => {});
         if (delay) await new Promise((resolve) => setTimeout(resolve, name === "scoreboard" ? delay * 2 : delay));
         if (loadingParams.has("splash") && loadingParams.get("fail") === name) throw new Error("Falha simulada na prévia");
