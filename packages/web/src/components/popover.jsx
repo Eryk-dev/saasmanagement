@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { useEsc } from "../lib/use-esc.js";
 import { useIsMobile } from "../lib/responsive.js";
 // Popover ancorado (position: fixed, preso na viewport, vira pro lado que cabe).
@@ -66,8 +67,10 @@ export function Popover({ anchor, onClose, width = 320, align = "start", gap = 6
     background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)",
     boxShadow: "var(--shadow-pop)", display: "flex", flexDirection: "column", minHeight: 0,
   };
+  // Fora dos contextos de empilhamento das telas: menus devem cobrir o FAB.
+  const portal = node => typeof document !== "undefined" && document.body?.nodeType === 1 ? createPortal(node, document.body) : node;
   if (isMobile) {
-    return (
+    return portal(
       <>
         <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: "calc(var(--z-drawer) - 1)", background: "var(--scrim-soft)" }} />
         <div ref={ref} data-tk-layer="1" role="dialog" aria-label={label} style={{ ...shell, position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 90, borderRadius: "var(--r-4) var(--r-4) 0 0", maxHeight: "72vh", paddingBottom: "env(safe-area-inset-bottom)", ...style }}>
@@ -77,7 +80,7 @@ export function Popover({ anchor, onClose, width = 320, align = "start", gap = 6
       </>
     );
   }
-  return (
+  return portal(
     <div ref={ref} data-tk-layer="1" role="dialog" aria-label={label} style={{
       ...shell, position: "fixed", zIndex: 90, left: pos.left, top: pos.top, width: pos.width,
       maxHeight, padding: 8, ...style,
