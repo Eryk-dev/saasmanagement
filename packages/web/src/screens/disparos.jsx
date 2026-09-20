@@ -1,6 +1,6 @@
 import React from "react";
 import "./marketing.css";
-import { PageHead, Pill, Segmented } from "../components/viz.jsx";
+import "./disparos.css";
 import { InfoNota } from "../components/story.jsx";
 import { EmptyState, PrimaryButton, SecondaryButton } from "../atoms.jsx";
 import { api } from "../lib/api.js";
@@ -21,7 +21,7 @@ import { useSwr } from "../lib/swr.js";
 // Fase 1: WhatsApp por wa.me + e-mail via rascunho no Gmail (sem escopo novo).
 // Fase 2 troca o rascunho por envio nativo em massa pela conta Google conectada.
 
-const { useState: useS, useEffect: useE, useMemo: useM } = React;
+const { useState: useS, useEffect: useE, useMemo: useM, useRef: useR } = React;
 
 // Kinds que contam como "qualificado + Nutrição" (o default do público, escolha
 // do Leo): venda ativa (qualificação, call, proposta, follow-up) + "em contato"
@@ -46,7 +46,32 @@ function blankCamp(me) {
   return { id: null, name: "", status: "draft", channels: { email: false, whatsapp: true }, email: { subject: "", body: "" }, wa: { text: "" }, sent: {}, createdAt: "", createdBy: me };
 }
 
-function DisparosScreen({ onOpenLead }) {
+function useDraftGuard(value, leaveRef, busy = false) {
+  const snapshot = JSON.stringify(value);
+  const saved = useR(snapshot);
+  const dirty = saved.current !== snapshot;
+  const confirm = () => !busy && (!dirty || window.confirm("Descartar as alterações não salvas?"));
+  useE(() => {
+    if (leaveRef) leaveRef.current = confirm;
+    return () => { if (leaveRef) leaveRef.current = null; };
+  });
+  useE(() => {
+    if (!dirty) return;
+    const warn = (event) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+  return { confirm, clean: (next = value) => { saved.current = JSON.stringify(next); } };
+}
+const campaignDraft = (c, stages) => ({ name: c.name, channels: c.channels, email: c.email, wa: c.wa, stages: [...stages].sort() });
+const sequenceDraft = (s) => ({ name: s.name, status: s.status, trigger: s.trigger, exitOn: s.exitOn, steps: s.steps });
+const emptyTemplate = () => ({ id: null, channel: "email", name: "", subject: "", body: "", text: "" });
+
+function DisparosScreen(props) {
+  const [product] = useActiveSaas();
+  return <DisparosWorkspace key={product?.id} {...props} />;
+}
+function DisparosWorkspace({ onOpenLead }) {
   const { version } = useData();
   const [product] = useActiveSaas();
   const me = currentUser()?.id || "";
@@ -64,7 +89,7 @@ function DisparosScreen({ onOpenLead }) {
   );
 
   const [camp, setCamp] = useS(() => blankCamp(me));
-  const [stagesSel, setStagesSel] = useS(() => new Set());
+  const [stagesSel, setStagesSel] = useS(() => new Set(defaultStages));
   const [selected, setSelected] = useS(() => new Set());
   const [search, setSearch] = useS("");
   const [campaigns, setCampaigns] = useS([]);
@@ -77,38 +102,37 @@ function DisparosScreen({ onOpenLead }) {
   const [note, setNote] = useS(null);   // { ok, text }
   const [err, setErr] = useS(null);
   const [tab, setTabState] = useS(() => { try { return localStorage.getItem("cockpit_disparos_tab") || "disparos"; } catch { return "disparos"; } }); // disparos | sequencias | templates · persiste
-  const setTab = (t) => { setTabState(t); try { localStorage.setItem("cockpit_disparos_tab", t); } catch { /* ignore */ } };
+  const leaveRef = useR(null);
+  const [tabBusy, setTabBusy] = useS(false);
+  const writing = useR(false);
+  const busy = saving || aiBusy || emailBusy || assistBusy;
+  const draftGuard = useDraftGuard(campaignDraft(camp, stagesSel), null, busy);
+  const [readError, setReadError] = useS("");
+  const [loading, setLoading] = useS(true);
+  const readVersion = useR(0);
+  const setTab = (t) => { if (t === tab) return; if (busy || tabBusy || (leaveRef.current && !leaveRef.current())) return; setTabState(t); try { localStorage.setItem("cockpit_disparos_tab", t); } catch { /* ignore */ } };
   const gmailOn = !!window.SEED?.CONFIG?.google?.gmail; // escopo de envio concedido?
 
-  // Carrega as campanhas salvas do produto + as métricas + arma o público padrão.
-  useE(() => {
+  async function reload() {
     if (!product?.id) return;
-    setStagesSel(new Set(defaultStages));
-    setCamp(blankCamp(me)); setCampaigns([]); setMetrics([]); setSearch(""); setNote(null); setErr(null);
-    let alive = true;
-    api.list("campaigns", { saas: product.id })
-      .then((cs) => alive && setCampaigns(Array.isArray(cs) ? cs : []))
-      .catch(() => alive && setCampaigns([]));
-    api.campaignMetrics(product.id)
-      .then((r) => alive && setMetrics(Array.isArray(r?.campaigns) ? r.campaigns : []))
-      .catch(() => alive && setMetrics([]));
-    return () => { alive = false; };
-  }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  function refreshMetrics() {
-    if (!product?.id) return;
-    api.campaignMetrics(product.id).then((r) => setMetrics(Array.isArray(r?.campaigns) ? r.campaigns : [])).catch(() => {});
+    const version = ++readVersion.current;
+    setLoading(true); setReadError("");
+    const [cs, ms] = await Promise.allSettled([api.list("campaigns", { saas: product.id }), api.campaignMetrics(product.id)]);
+    if (version !== readVersion.current) return;
+    if (cs.status === "fulfilled") setCampaigns(Array.isArray(cs.value) ? cs.value : []);
+    if (ms.status === "fulfilled") setMetrics(Array.isArray(ms.value?.campaigns) ? ms.value.campaigns : []);
+    if (cs.status === "rejected" || ms.status === "rejected") setReadError("Não foi possível atualizar campanhas e resultados. Os dados anteriores foram mantidos.");
+    setLoading(false);
   }
+  useE(() => { reload(); return () => { readVersion.current++; }; }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const refreshMetrics = reload;
 
   const stagesKey = [...stagesSel].sort().join("|");
   const recipients = useM(() => leads.filter((l) => stagesSel.has(l.stage)), [leads, stagesKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // Público muda → seleciona todo mundo do novo segmento (o operador desmarca quem não quer).
   useE(() => { setSelected(new Set(recipients.map((l) => l.id))); }, [stagesKey, product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function refreshCampaigns() {
-    if (!product?.id) return;
-    api.list("campaigns", { saas: product.id }).then((cs) => setCampaigns(Array.isArray(cs) ? cs : [])).catch(() => {});
-  }
+  const refreshCampaigns = reload;
 
   const draftPayload = () => ({
     name: camp.name?.trim() || "Disparo sem nome",
@@ -133,28 +157,34 @@ function DisparosScreen({ onOpenLead }) {
   }
 
   async function save() {
-    if (!product?.id) return;
+    if (!product?.id || writing.current) return;
+    writing.current = true;
     setSaving(true); setErr(null); setNote(null);
     try {
       if (camp.id) await api.update("campaigns", camp.id, draftPayload());
       else { const c = await api.create("campaigns", { ...draftPayload(), sent: {} }); setCamp((x) => ({ ...x, id: c.id, createdAt: c.createdAt || x.createdAt })); }
       refreshCampaigns();
+      draftGuard.clean();
       setNote({ ok: true, text: "campanha salva" });
     } catch (e) { setNote({ ok: false, text: e.message }); }
-    setSaving(false);
+    writing.current = false; setSaving(false);
   }
 
   function loadCampaign(c) {
-    setCamp({
+    if (!draftGuard.confirm()) return;
+    const next = {
       id: c.id, name: c.name || "", status: c.status || "draft",
       channels: { email: !!c.channels?.email, whatsapp: c.channels?.whatsapp !== false },
       email: { subject: c.email?.subject || "", body: c.email?.body || "" },
       wa: { text: c.wa?.text || "" }, sent: c.sent || {}, createdAt: c.createdAt || "", createdBy: c.createdBy || me,
-    });
+    };
+    draftGuard.clean(campaignDraft(next, c.stages || [])); setCamp(next);
     setStagesSel(new Set(c.stages || []));
     setNote(null); setErr(null);
   }
   function newCampaign() {
+    if (!draftGuard.confirm()) return;
+    draftGuard.clean(campaignDraft(blankCamp(me), defaultStages));
     setCamp(blankCamp(me)); setStagesSel(new Set(defaultStages)); setNote(null); setErr(null);
   }
 
@@ -165,6 +195,7 @@ function DisparosScreen({ onOpenLead }) {
     try {
       const id = await ensureSaved();
       const updated = await api.campaignMark(id, { leadId: lead.id, channel });
+      draftGuard.clean();
       setCamp((c) => ({ ...c, id, status: updated.status || c.status, sent: updated.sent || c.sent }));
       refreshCampaigns();
       return true;
@@ -174,22 +205,28 @@ function DisparosScreen({ onOpenLead }) {
   // Envio NATIVO de e-mail em massa (Gmail): manda pra todo lead selecionado com
   // e-mail e ainda pendente. O servidor pula quem não tem e-mail / descadastrou.
   async function sendEmails() {
+    if (writing.current) return;
     const ids = chosen.filter((l) => l.email && !l.emailOptOut && !camp.sent?.[l.id]?.email).map((l) => l.id);
     if (!ids.length) { setNote({ ok: false, text: "nenhum lead com e-mail pendente na seleção" }); return; }
     if (!camp.email?.subject && !camp.email?.body) { setNote({ ok: false, text: "escreva o assunto/corpo do e-mail primeiro" }); return; }
+    if (!window.confirm(`Enviar ${ids.length} e-mail(s) pela conta Google conectada?`)) return;
+    writing.current = true;
     setEmailBusy(true); setErr(null); setNote(null);
     try {
       const id = await ensureSaved();
       const r = await api.campaignSendEmail(id, ids);
+      draftGuard.clean();
       setCamp((c) => ({ ...c, id, status: "sending", sent: r.sent || c.sent }));
       refreshCampaigns(); refreshMetrics();
       const fail = (r.results || []).filter((x) => !x.ok).length;
       setNote({ ok: r.ok > 0, text: `${r.ok} e-mail(s) enviado(s)${fail ? `, ${fail} pulado(s)` : ""}` });
     } catch (e) { setErr(`falha no envio: ${e.message}`); }
-    setEmailBusy(false);
+    writing.current = false; setEmailBusy(false);
   }
 
   async function genCopy() {
+    if (writing.current) return;
+    writing.current = true;
     setAiBusy(true); setErr(null);
     try {
       const channel = camp.channels.email && camp.channels.whatsapp ? "ambos" : camp.channels.email ? "email" : "whatsapp";
@@ -202,7 +239,7 @@ function DisparosScreen({ onOpenLead }) {
       }));
       setNote({ ok: true, text: "copy gerada pela IA · revise antes de disparar" });
     } catch (e) { setNote({ ok: false, text: e.message }); }
-    setAiBusy(false);
+    writing.current = false; setAiBusy(false);
   }
 
 
@@ -259,34 +296,36 @@ function DisparosScreen({ onOpenLead }) {
     ? waLink(l.phone) && !l.whatsappInvalid && !l.whatsappOptOut && !camp.sent?.[l.id]?.whatsapp
     : l.email && !l.emailOptOut && !camp.sent?.[l.id]?.email);
   async function sendPrimary() {
-    if (!pending.length || !messageReady || assistBusy || emailBusy) return;
+    if (!pending.length || !messageReady || writing.current) return;
     if (channel === "email" && gmailOn) { await sendEmails(); return; }
     const lead = pending[0];
     const tokens = scriptTokens(lead, product);
     const url = channel === "wa"
       ? `${waLink(lead.phone)}?text=${encodeURIComponent(interpolate(camp.wa.text, tokens))}`
       : gmailCompose(lead.email, interpolate(camp.email.subject || camp.name, tokens), interpolate(camp.email.body, tokens));
+    writing.current = true;
     window.open(url, "_blank", "noopener,noreferrer");
     setAssistBusy(true);
     try {
       if (await mark(lead, channel === "wa" ? "whatsapp" : "email")) setNote({ ok: true, text: `${lead.name || "Lead"} aberto para envio · continue pelos selecionados` });
-    } finally { setAssistBusy(false); }
+    } finally { writing.current = false; setAssistBusy(false); }
   }
   if (!product) return <EmptyState title="Sem produto ativo" hint="Escolha um produto no seletor da barra lateral." />;
-  const step = (n, title, sub) => <div className="marketing-toolbar" style={{ marginBottom: 14 }}><span className="tnum" style={{ width: 26, height: 26, borderRadius: 99, background: "var(--btn-bg)", color: "var(--btn-fg)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600 }}>{n}</span><h3 className="card-title" style={{ margin: 0 }}>{title}</h3>{sub && <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{sub}</span>}</div>;
+  const step = (n, title, sub) => <div className="marketing-toolbar disparos-step" style={{ marginBottom: 14 }}><span className="tnum" style={{ width: 26, height: 26, borderRadius: 99, background: "var(--btn-bg)", color: "var(--btn-fg)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600 }}>{n}</span><h3 className="card-title" style={{ margin: 0 }}>{title}</h3>{sub && <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{sub}</span>}</div>;
   const changedBody = (value) => setCamp((c) => channel === "email" ? { ...c, email: { ...c.email, body: value } } : { ...c, wa: { text: value } });
 
-  return <div className="marketing-page" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-    <PageHead className="marketing-head" title="Disparos" sub={tab === "disparos" ? `${recipients.length} no público · ${selected.size} selecionados · campanhas de e-mail e WhatsApp` : tab === "sequencias" ? "sequências automáticas de nutrição" : "biblioteca de conteúdo reutilizável"}>
-      <Segmented value={tab} onChange={setTab} options={[{ value: "disparos", label: "Disparos" }, { value: "sequencias", label: "Sequências" }, { value: "templates", label: "Templates" }]} />
-    </PageHead>
-    {tab === "sequencias" && <SequencesTab key={product.id} product={product} leads={leads} stageOptions={allStages} defaultStages={defaultStages} />}
-    {tab === "templates" && <TemplatesTab key={product.id} product={product} />}
+  return <div className="marketing-page disparos-page" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+    <header className="disparos-head"><h1>Disparos</h1><div className="disparos-tabs" aria-label="Seções de disparos">{[["disparos","Disparos"],["sequencias","Sequências"],["templates","Templates"]].map(([id,label]) => <button key={id} disabled={busy || tabBusy} aria-pressed={tab === id} onClick={() => setTab(id)}>{label}</button>)}</div></header>
+    {tab === "sequencias" && <SequencesTab onBusy={setTabBusy} leaveRef={leaveRef} key={`seq-${product.id}`} product={product} leads={leads} stageOptions={allStages} defaultStages={defaultStages} />}
+    {tab === "templates" && <TemplatesTab onBusy={setTabBusy} leaveRef={leaveRef} key={`tpl-${product.id}`} product={product} />}
     {tab === "disparos" && <div className="marketing-body" style={{ flex: 1, overflow: "auto" }}>
       <WaHealthBanner style={{ margin: 0 }} />
-      {note && <div role="status" className="marketing-card marketing-toolbar" style={{ padding: "11px 16px" }}><span style={{ flex: 1, fontSize: 13, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</span><button aria-label="Fechar aviso" onClick={() => setNote(null)}>×</button></div>}
+      {note && <div role={note.ok ? "status" : "alert"} className="marketing-card marketing-toolbar" style={{ padding: "11px 16px" }}><span style={{ flex: 1, fontSize: 13, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</span><button aria-label="Fechar aviso" onClick={() => setNote(null)}>×</button></div>}
       {err && <div role="alert" style={{ fontSize: 12.5, color: "var(--neg)" }}>{err}</div>}
-      <div className="marketing-two-col">
+      {readError && <div role="alert" className="disparos-error">{readError} <button onClick={reload}>Tentar novamente</button></div>}
+      {loading && <div role="status" className="dim">Atualizando campanhas…</div>}
+      <fieldset className="disparos-fields" disabled={busy}>
+      <div className="marketing-two-col disparos-grid">
         <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
           <section className="marketing-card">
             {step(1, "Para quem", "etapas do funil")}
@@ -294,7 +333,7 @@ function DisparosScreen({ onOpenLead }) {
               {stageOptions.map((stage) => <button key={stage} aria-pressed={stagesSel.has(stage)} onClick={() => toggleStage(stage)} style={{ height: 32, padding: "0 12px", borderRadius: 999, border: `1px solid ${stagesSel.has(stage) ? "var(--accent-line)" : "var(--line-2)"}`, background: stagesSel.has(stage) ? "var(--accent-soft)" : "var(--bg-1)", color: stagesSel.has(stage) ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>{stage} <span className="tnum" style={{ marginLeft: 5, opacity: .7 }}>{stageCount(stage)}</span></button>)}
             </div>
             <input className="inp" type="search" aria-label="Buscar público" placeholder="buscar por nome ou empresa" value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: "100%", margin: "14px 0 10px" }} />
-            <div className="tbl-x" style={{ maxHeight: 400, border: "1px solid var(--line-1)", borderRadius: "var(--r-3)" }}>
+            <div className="tbl-x" style={{ maxHeight: 368, border: "1px solid var(--line-1)", borderRadius: "var(--r-3)" }}>
               <table className="marketing-table" style={{ minWidth: 470, tableLayout: "fixed" }}><colgroup><col style={{ width: 56 }} /><col style={{ width: "32%" }} /><col style={{ width: "24%" }} /><col style={{ width: "22%" }} /><col /></colgroup>
                 <thead><tr><th><input type="checkbox" aria-label="Selecionar todo o público" checked={allSelected} onChange={toggleAll} /></th><th>Lead</th><th>Empresa</th><th>Etapa</th><th>Na etapa</th></tr></thead>
                 <tbody>{shown.map((lead) => {
@@ -310,20 +349,20 @@ function DisparosScreen({ onOpenLead }) {
             </div>
             <div className="marketing-toolbar" style={{ marginTop: 12, justifyContent: "space-between" }}><button onClick={toggleAll} style={{ fontSize: 12.5, fontWeight: 600 }}>{allSelected ? "Limpar seleção" : `Selecionar todos (${recipients.length})`}</button><span style={{ fontSize: 11.5, color: "var(--fg-3)" }}>{shown.length} na lista · {selected.size} selecionados</span></div>
           </section>
-          <section className="marketing-card">
-            <h3 className="card-title" style={{ margin: "0 0 12px" }}>Campanhas salvas</h3>
-            <div className="marketing-toolbar"><select className="inp" aria-label="Carregar campanha" value={camp.id || ""} onChange={(e) => { const c = campaigns.find((x) => x.id === e.target.value); if (c) loadCampaign(c); else newCampaign(); }} style={{ flex: 1, minWidth: 160 }}><option value="">Nova campanha</option>{campaigns.map((c) => <option key={c.id} value={c.id}>{c.name || "sem nome"} · {Object.keys(c.sent || {}).length} env.</option>)}</select><SecondaryButton onClick={newCampaign}>+ nova</SecondaryButton></div>
-          </section>
+
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
           <section className="marketing-card">
             {step(2, "A mensagem")}
-            <Segmented value={channel} onChange={setChannel} options={[{ value: "wa", label: "WhatsApp" }, { value: "email", label: "E-mail" }]} />
+            <div className="disparos-channel" aria-label="Canal da campanha">{[["wa","WhatsApp"],["email","E-mail"]].map(([id,label]) => <button key={id} aria-pressed={channel === id} onClick={() => setChannel(id)}>{label}</button>)}</div>
             <label className="canvas-field" style={{ marginTop: 14, fontSize: 12.5 }}>Nome da campanha<input className="inp" value={camp.name} onChange={(e) => setCamp((c) => ({ ...c, name: e.target.value }))} placeholder="Retomada · diagnóstico pendente" /></label>
             {channel === "email" && <label className="canvas-field" style={{ marginTop: 12, fontSize: 12.5 }}>Assunto do e-mail<input className="inp" value={camp.email.subject} onFocus={() => setActiveField("subject")} onChange={(e) => setCamp((c) => ({ ...c, email: { ...c.email, subject: e.target.value } }))} /></label>}
-            <label className="canvas-field" style={{ marginTop: 12, fontSize: 12.5 }}>Mensagem<textarea className="inp" value={channel === "email" ? camp.email.body : camp.wa.text} onFocus={() => setActiveField(channel === "email" ? "body" : "wa")} onChange={(e) => changedBody(e.target.value)} placeholder="Oi {{nome}}! Seu diagnóstico da {{empresa}} ficou pronto." rows={5} style={{ minHeight: 112, padding: "9px 11px", resize: "vertical", lineHeight: 1.5 }} /></label>
+            <label className="canvas-field" style={{ marginTop: 12, fontSize: 12.5 }}>Mensagem<textarea className="inp" aria-label="Mensagem" value={channel === "email" ? camp.email.body : camp.wa.text} onFocus={() => setActiveField(channel === "email" ? "body" : "wa")} onChange={(e) => changedBody(e.target.value)} placeholder="Oi {{nome}}! Seu diagnóstico da {{empresa}} ficou pronto." rows={5} style={{ minHeight: 112, padding: "9px 11px", resize: "vertical", lineHeight: 1.5 }} /></label>
             <div className="marketing-toolbar" style={{ marginTop: 10 }}>{TOKENS.map(([key, label]) => <button key={key} title={`Inserir ${label}`} onClick={() => insertToken(key)} style={{ fontSize: 11.5, color: "var(--fg-3)", border: "1px solid var(--line-1)", borderRadius: 999, padding: "4px 7px" }}>{`{{${key}}}`}</button>)}</div>
-            <div className="marketing-toolbar" style={{ marginTop: 14 }}><SecondaryButton onClick={save} disabled={saving || assistBusy || emailBusy}>{saving ? "salvando…" : "Salvar campanha"}</SecondaryButton>{window.SEED?.CONFIG?.ai?.configured && <SecondaryButton onClick={genCopy} disabled={aiBusy}>{aiBusy ? "gerando…" : "Gerar com IA"}</SecondaryButton>}</div>
+            <div className="marketing-toolbar" style={{ marginTop: 14 }}><SecondaryButton className="disparos-secondary" onClick={save} disabled={saving || assistBusy || emailBusy}>{saving ? "salvando…" : "Salvar campanha"}</SecondaryButton>{window.SEED?.CONFIG?.ai?.configured && <SecondaryButton className="disparos-secondary" onClick={genCopy} disabled={aiBusy}>{aiBusy ? "gerando…" : "Gerar com IA"}</SecondaryButton>}</div>
+          <div className="disparos-saved">
+            <div className="marketing-toolbar"><select className="inp" aria-label="Carregar campanha" value={camp.id || ""} onChange={(e) => { const c = campaigns.find((x) => x.id === e.target.value); if (c) loadCampaign(c); else newCampaign(); }} style={{ flex: 1, minWidth: 160 }}><option value="">Nova campanha</option>{campaigns.map((c) => <option key={c.id} value={c.id}>{c.name || "sem nome"} · {Object.keys(c.sent || {}).length} env.</option>)}</select><SecondaryButton className="disparos-secondary" onClick={newCampaign}>+ nova</SecondaryButton></div>
+          </div>
           </section>
           <section className="marketing-card">
             {step(3, "Conferir e disparar")}
@@ -333,16 +372,17 @@ function DisparosScreen({ onOpenLead }) {
               {channel === "wa" && <><div><div className="marketing-kicker">custo estimado</div><strong className="tnum">{custoMedio != null ? (custoMedio * chosen.length).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}</strong></div><div><div className="marketing-kicker">limite do número</div><strong className="tnum">{limiteDia?.toLocaleString("pt-BR") || "—"}</strong></div></>}
             </div>
             {channel === "wa" && limiteDia && chosen.length > limiteDia * .6 && <div role="status" style={{ padding: 12, borderRadius: "var(--r-2)", background: "var(--warn-soft)", color: "var(--warn)", fontSize: 12.5, marginBottom: 12 }}>{chosen.length > limiteDia ? `O público passa do limite de ${limiteDia} do número. Divida o disparo em dias.` : "O público passa de 60% do limite do número. Confira a saúde antes de continuar."}</div>}
-            <div className="marketing-toolbar"><PrimaryButton disabled={!pending.length || !messageReady || saving || emailBusy || assistBusy} onClick={sendPrimary}>{emailBusy || assistBusy ? "processando…" : channel === "email" && gmailOn ? `Disparar ${pending.length} e-mails` : channel === "wa" ? "Abrir próximo WhatsApp ↗" : "Abrir próximo Gmail ↗"}</PrimaryButton><SecondaryButton onClick={() => setTab("sequencias")}>Criar sequência</SecondaryButton></div>
+            <div className="marketing-toolbar"><PrimaryButton disabled={!pending.length || !messageReady || saving || emailBusy || assistBusy} onClick={sendPrimary}>{emailBusy || assistBusy ? "processando…" : channel === "email" && gmailOn ? `Disparar ${pending.length} e-mails` : channel === "wa" ? "Abrir próximo WhatsApp ↗" : "Abrir próximo Gmail ↗"}</PrimaryButton><SecondaryButton className="disparos-secondary" onClick={() => setTab("sequencias")}>Criar sequência</SecondaryButton></div>
             <InfoNota style={{ marginTop: 12 }}>{channel === "email" && gmailOn ? "Os e-mails saem pela conta Google conectada. Quem já recebeu ou se descadastrou fica fora do envio." : "Envio assistido: a conversa abre com a mensagem preenchida. Confira e envie no aplicativo; depois continue para o próximo contato."}</InfoNota>
           </section>
         </div>
       </div>
-      <section className="marketing-card">
+      <section className="marketing-card disparos-results">
         <h3 className="card-title" style={{ margin: "0 0 12px" }}>Resultados das campanhas</h3>
         {!metrics.length ? <InfoNota>A conversão aparece depois dos primeiros disparos.</InfoNota> : <div className="tbl-x"><table className="marketing-table" style={{ minWidth: 540 }}><thead><tr><th>Campanha</th><th>Enviados</th><th>Avançaram</th><th>Calls</th><th>Ganhos</th><th>Conversão</th></tr></thead><tbody>{[...metrics].sort((a, b) => b.won - a.won || b.advanced - a.advanced).map((m) => <tr key={m.id}><td>{m.name || "sem nome"}</td><td className="tnum">{m.sent}</td><td className="tnum">{m.advanced}</td><td className="tnum">{m.booked}</td><td className="tnum" style={{ color: m.won ? "var(--pos)" : "var(--fg-3)" }}>{m.won}</td><td className="tnum">{m.sent ? Math.round(m.won / m.sent * 100) : 0}%</td></tr>)}</tbody></table></div>}
         <InfoNota style={{ marginTop: 12 }}>Avanços no funil nos 30 dias após o disparo, atribuídos pela timeline.</InfoNota>
       </section>
+      </fieldset>
     </div>}
   </div>;
 }
@@ -369,7 +409,7 @@ function blankSeq(saas, me) {
 }
 const interpolateSeq = (text, toks) => String(text || "").replace(/\{\{(\w+)\}\}/g, (_, k) => (toks && toks[k] != null ? toks[k] : `{{${k}}}`));
 
-function SequencesTab({ product, leads, stageOptions, defaultStages }) {
+function SequencesTab({ product, leads, stageOptions, defaultStages, leaveRef, onBusy }) {
   const { version } = useData();
   const me = currentUser()?.id || "";
   const [list, setList] = useS([]);
@@ -379,16 +419,23 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
   const [templates, setTemplates] = useS([]);
   const [busy, setBusy] = useS(false);
   const [note, setNote] = useS(null);
+  const writing = useR(false);
+  const guard = useDraftGuard(sequenceDraft(seq), leaveRef, busy);
+  useE(() => { onBusy(busy); return () => onBusy(false); }, [busy, onBusy]);
+  const [readError, setReadError] = useS("");
+  const [loading, setLoading] = useS(true);
+  const readVersion = useR(0);
 
-  function reload() {
+  async function reload() {
     if (!product?.id) return;
-    api.list("sequences", { saas: product.id }).then((r) => setList(Array.isArray(r) ? r : [])).catch(() => setList([]));
-    api.list("sequence_enrollments", { saas: product.id, status: "waiting" }).then((r) => setEnrollments(Array.isArray(r) ? r : [])).catch(() => setEnrollments([]));
-    api.sequenceMetrics(product.id).then((r) => setMetrics(r?.sequences || [])).catch(() => setMetrics([]));
-    api.list("drip_templates", { saas: product.id }).then((r) => setTemplates(Array.isArray(r) ? r : [])).catch(() => setTemplates([]));
+    const version = ++readVersion.current; setLoading(true); setReadError("");
+    const results = await Promise.allSettled([api.list("sequences", { saas: product.id }), api.list("sequence_enrollments", { saas: product.id, status: "waiting" }), api.sequenceMetrics(product.id), api.list("drip_templates", { saas: product.id })]);
+    if (version !== readVersion.current) return;
+    results.forEach((r, i) => { if (r.status === "fulfilled") [setList, setEnrollments, setMetrics, setTemplates][i](i === 2 ? r.value?.sequences || [] : Array.isArray(r.value) ? r.value : []); });
+    if (results.some((r) => r.status === "rejected")) setReadError("Não foi possível atualizar todos os dados das sequências.");
+    setLoading(false);
   }
-  useE(() => { setSeq(blankSeq(product?.id, me)); reload(); }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  useE(() => { reload(); }, [version]); // eslint-disable-line react-hooks/exhaustive-deps
+  useE(() => { reload(); return () => { readVersion.current++; }; }, [product?.id, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const payload = () => ({
     name: seq.name?.trim() || "Sequência sem nome", saas: product.id, status: seq.status || "draft",
@@ -396,24 +443,28 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
     createdBy: seq.createdBy || me, createdAt: seq.createdAt || new Date().toISOString(),
   });
   async function save() {
-    if (!product?.id) return;
+    if (!product?.id || writing.current) return;
+    writing.current = true;
     setBusy(true); setNote(null);
     try {
       if (seq.id) await api.update("sequences", seq.id, payload());
       else { const c = await api.create("sequences", payload()); setSeq((s) => ({ ...s, id: c.id })); }
-      reload(); setNote({ ok: true, text: "sequência salva" });
+      guard.clean(); reload(); setNote({ ok: true, text: "sequência salva" });
     } catch (e) { setNote({ ok: false, text: e.message }); }
-    setBusy(false);
+    writing.current = false; setBusy(false);
   }
   async function removeSeq() {
-    if (!seq.id || !window.confirm("Apagar esta sequência? As inscrições param.")) return;
-    try { await api.remove("sequences", seq.id); setSeq(blankSeq(product?.id, me)); reload(); } catch (e) { setNote({ ok: false, text: e.message }); }
+    if (writing.current || !seq.id || !window.confirm(`Apagar a sequência “${seq.name || "sem nome"}”? As inscrições param.`)) return;
+    writing.current = true; setBusy(true);
+    try { await api.remove("sequences", seq.id); const next = blankSeq(product?.id, me); guard.clean(sequenceDraft(next)); setSeq(next); reload(); setNote({ ok: true, text: "sequência apagada" }); } catch (e) { setNote({ ok: false, text: e.message }); }
+    finally { writing.current = false; setBusy(false); }
   }
   function loadSeq(s) {
-    setSeq({ id: s.id, saas: s.saas, name: s.name || "", status: s.status || "draft",
+    if (!guard.confirm()) return;
+    const next = s ? { id: s.id, saas: s.saas, name: s.name || "", status: s.status || "draft",
       trigger: { stages: s.trigger?.stages || [] }, exitOn: exitOnOf(s.exitOn),
-      steps: (s.steps || []).map((st) => ({ ...st })), createdAt: s.createdAt, createdBy: s.createdBy });
-    setNote(null);
+      steps: (s.steps || []).map((st) => ({ ...st })), createdAt: s.createdAt, createdBy: s.createdBy } : blankSeq(product?.id, me);
+    guard.clean(sequenceDraft(next)); setSeq(next); setNote(null);
   }
   const setStep = (i, patch) => setSeq((s) => ({ ...s, steps: s.steps.map((st, j) => (j === i ? { ...st, ...patch } : st)) }));
   const addStep = (channel) => setSeq((s) => ({ ...s, steps: [...s.steps, channel === "whatsapp" ? { channel: "whatsapp", delayDays: 3, text: "" } : { channel: "email", delayDays: 3, subject: "", body: "" }] }));
@@ -430,8 +481,10 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
   if (!product) return null;
 
   return (
-    <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-      {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
+    <fieldset disabled={busy} className="disparos-tab disparos-sequences">
+      {readError && <div role="alert" className="disparos-error">{readError} <button onClick={reload}>Tentar novamente</button></div>}
+      {loading && <div role="status" className="dim">Atualizando sequências…</div>}
+      {note && <div role={note.ok ? "status" : "alert"} className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
 
       {/* Sequências salvas */}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
@@ -442,19 +495,19 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
             {s.name || "sem nome"}
           </button>
         ))}
-        <button onClick={() => setSeq(blankSeq(product?.id, me))} className="mono dim" style={{ height: 26, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-2)", fontSize: 12 }}>+ nova</button>
+        <button onClick={() => loadSeq(null)} className="mono dim" style={{ height: 26, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-2)", fontSize: 12 }}>+ nova</button>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 14 }}>
         {/* Editor da sequência */}
-        <div style={{ ...box, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div className="disparos-sequence-editor" style={{ ...box, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <input value={seq.name} onChange={(e) => setSeq((s) => ({ ...s, name: e.target.value }))} placeholder="nome da sequência" style={{ ...field, flex: 1 }} />
-            <select value={seq.status} onChange={(e) => setSeq((s) => ({ ...s, status: e.target.value }))} style={{ ...field, width: 120 }}>
+            <label className="disparos-label" style={{flex:1}}>Nome da sequência<input aria-label="Nome da sequência" value={seq.name} onChange={(e) => setSeq((s) => ({ ...s, name: e.target.value }))} placeholder="nome da sequência" style={{ ...field, flex: 1 }} /></label>
+            <label className="disparos-label">Estado<select aria-label="Estado da sequência" value={seq.status} onChange={(e) => setSeq((s) => ({ ...s, status: e.target.value }))} style={{ ...field, width: 120 }}>
               <option value="draft">rascunho</option>
               <option value="active">ativa</option>
               <option value="paused">pausada</option>
-            </select>
+            </select></label>
           </div>
 
           <div>
@@ -479,12 +532,12 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
                   <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
                     <span className="mono" style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)" }}>{i + 1}. {CH_LABEL[st.channel]}</span>
                     <span className="mono dim" style={{ fontSize: 10.5, marginLeft: "auto" }}>esperar</span>
-                    <input type="number" min="0" value={st.delayDays ?? 0} onChange={(e) => setStep(i, { delayDays: Number(e.target.value) })} style={{ ...field, width: 58, padding: "4px 6px" }} />
+                    <input aria-label={`Espera do passo ${i + 1} em dias`} type="number" min="0" value={st.delayDays ?? 0} onChange={(e) => setStep(i, { delayDays: Number(e.target.value) })} style={{ ...field, width: 58, padding: "4px 6px" }} />
                     <span className="mono dim" style={{ fontSize: 10.5 }}>dias</span>
-                    <button onClick={() => removeStep(i)} className="mono dim" title="remover passo" style={{ fontSize: 13, color: "var(--neg)" }}>✕</button>
+                    <button aria-label={`Remover passo ${i + 1}`} onClick={() => removeStep(i)} className="mono dim" title="remover passo" style={{ fontSize: 13, color: "var(--neg)" }}>✕</button>
                   </div>
                   {templates.filter((t) => t.channel === st.channel).length > 0 && (
-                    <select defaultValue="" onChange={(e) => { const t = templates.find((x) => x.id === e.target.value); if (t) setStep(i, st.channel === "email" ? { subject: t.subject || "", body: t.body || "" } : { text: t.text || "" }); e.target.value = ""; }}
+                    <select aria-label={`Template do passo ${i + 1}`} defaultValue="" onChange={(e) => { const t = templates.find((x) => x.id === e.target.value); if (t) setStep(i, st.channel === "email" ? { subject: t.subject || "", body: t.body || "" } : { text: t.text || "" }); e.target.value = ""; }}
                       style={{ ...field, marginBottom: 6, fontSize: 11.5, color: "var(--fg-3)" }}>
                       <option value="">usar template…</option>
                       {templates.filter((t) => t.channel === st.channel).map((t) => <option key={t.id} value={t.id}>{t.name || "sem nome"}</option>)}
@@ -492,11 +545,11 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
                   )}
                   {st.channel === "email" ? (
                     <>
-                      <input value={st.subject || ""} onChange={(e) => setStep(i, { subject: e.target.value })} placeholder="assunto · {{nome}}" style={{ ...field, marginBottom: 6 }} />
-                      <textarea value={st.body || ""} onChange={(e) => setStep(i, { body: e.target.value })} rows={3} placeholder="corpo do e-mail · {{nome}} {{empresa}}" style={{ ...field, resize: "vertical", fontFamily: "inherit" }} />
+                      <input aria-label={`Assunto do passo ${i + 1}`} value={st.subject || ""} onChange={(e) => setStep(i, { subject: e.target.value })} placeholder="assunto · {{nome}}" style={{ ...field, marginBottom: 6 }} />
+                      <textarea aria-label={`Mensagem do passo ${i + 1}`} value={st.body || ""} onChange={(e) => setStep(i, { body: e.target.value })} rows={3} placeholder="corpo do e-mail · {{nome}} {{empresa}}" style={{ ...field, resize: "vertical", fontFamily: "inherit" }} />
                     </>
                   ) : (
-                    <textarea value={st.text || ""} onChange={(e) => setStep(i, { text: e.target.value })} rows={3} placeholder="mensagem de WhatsApp · {{nome}} (o operador manda pela fila)" style={{ ...field, resize: "vertical", fontFamily: "inherit" }} />
+                    <textarea aria-label={`Mensagem do passo ${i + 1}`} value={st.text || ""} onChange={(e) => setStep(i, { text: e.target.value })} rows={3} placeholder="mensagem de WhatsApp · {{nome}} (o operador manda pela fila)" style={{ ...field, resize: "vertical", fontFamily: "inherit" }} />
                   )}
                 </div>
               ))}
@@ -549,15 +602,15 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
                   const wa = lead && waLink(lead.phone);
                   const txt = step?.text && lead ? interpolateSeq(step.text, scriptTokens(lead, product)) : "";
                   const waUrl = wa && txt ? `${wa}?text=${encodeURIComponent(txt)}` : null;
-                  const mark = async () => { try { await api.sequenceWaSent(en.id); reload(); } catch (e) { setNote({ ok: false, text: e.message }); } };
+                  const mark = async () => { if (writing.current) return; writing.current = true; setBusy(true); try { await api.sequenceWaSent(en.id); reload(); } catch (e) { setNote({ ok: false, text: e.message }); } finally { writing.current = false; setBusy(false); } };
                   return (
-                    <div key={en.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)" }}>
+                    <div key={en.id} className="disparos-queue-row" style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)" }}>
                       <span style={{ minWidth: 0, flex: 1, display: "flex", gap: 6, alignItems: "baseline" }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lead?.name || en.lead}</span>
+                        <span title={lead?.name || en.lead} style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lead?.name || en.lead}</span>
                         <span className="mono dim" style={{ fontSize: 10 }}>{s?.name || ""} · passo {en.stepIndex + 1}</span>
                       </span>
                       {waUrl
-                        ? <a href={waUrl} target="_blank" rel="noopener noreferrer" onClick={mark} style={{ display: "inline-flex", alignItems: "center", height: 26, padding: "0 10px", borderRadius: 999, border: "1px solid var(--wa-brand)", color: "var(--wa-brand-deep)", fontSize: 11.5, fontWeight: 600, textDecoration: "none" }}>abrir Whats ↗</a>
+                        ? <a href={waUrl} target="_blank" rel="noopener noreferrer" aria-disabled={busy} onClick={(event) => { if (writing.current) event.preventDefault(); else mark(); }} style={{ display: "inline-flex", alignItems: "center", height: 26, padding: "0 10px", borderRadius: 999, border: "1px solid var(--wa-brand)", color: "var(--wa-brand-deep)", fontSize: 11.5, fontWeight: 600, textDecoration: "none" }}>abrir Whats ↗</a>
                         : <button onClick={mark} className="mono" style={{ height: 26, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 11.5 }}>{wa ? "marcar enviado" : "sem telefone · marcar"}</button>}
                     </div>
                   );
@@ -567,61 +620,85 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
           </div>
         </div>
       </div>
-    </div>
+    </fieldset>
   );
 }
 
 // ─────────────────────────────────────────────── Templates ──────────────────
 // Biblioteca de conteúdo reutilizável pros passos das sequências (e disparos).
-function TemplatesTab({ product }) {
+function TemplatesTab({ product, leaveRef, onBusy }) {
   const { version } = useData();
   const [list, setList] = useS([]);
-  const [t, setT] = useS(() => ({ id: null, channel: "email", name: "", subject: "", body: "", text: "" }));
+  const [t, setT] = useS(emptyTemplate);
   const [note, setNote] = useS(null);
+  const [busy, setBusy] = useS(false);
+  const writing = useR(false);
+  const guard = useDraftGuard(t, leaveRef, busy);
+  useE(() => { onBusy(busy); return () => onBusy(false); }, [busy, onBusy]);
+  const [readError, setReadError] = useS("");
+  const [loading, setLoading] = useS(true);
+  const readVersion = useR(0);
+  function edit(next) { if (!guard.confirm()) return; guard.clean(next); setT(next); setNote(null); }
 
-  function reload() { if (product?.id) api.list("drip_templates", { saas: product.id }).then((r) => setList(Array.isArray(r) ? r : [])).catch(() => setList([])); }
-  useE(() => { reload(); setT({ id: null, channel: "email", name: "", subject: "", body: "", text: "" }); }, [product?.id, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  async function reload() {
+    const revision = ++readVersion.current; setLoading(true); setReadError("");
+    try { const rows = await api.list("drip_templates", { saas: product.id }); if (revision === readVersion.current) setList(Array.isArray(rows) ? rows : []); }
+    catch { if (revision === readVersion.current) setReadError("Não foi possível atualizar a biblioteca."); }
+    finally { if (revision === readVersion.current) setLoading(false); }
+  }
+  useE(() => { reload(); return () => { readVersion.current++; }; }, [product?.id, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function save() {
+    if (writing.current) return;
+    writing.current = true; setBusy(true);
     setNote(null);
     const doc = { name: t.name?.trim() || "Template", saas: product.id, channel: t.channel, subject: t.subject || "", body: t.body || "", text: t.text || "" };
     try {
       if (t.id) await api.update("drip_templates", t.id, doc);
       else await api.create("drip_templates", doc);
-      setT({ id: null, channel: "email", name: "", subject: "", body: "", text: "" });
+      guard.clean(emptyTemplate()); setT(emptyTemplate());
       reload(); setNote({ ok: true, text: "template salvo" });
     } catch (e) { setNote({ ok: false, text: e.message }); }
+    finally { writing.current = false; setBusy(false); }
   }
-  async function del(id) { if (window.confirm("Apagar template?")) { try { await api.remove("drip_templates", id); reload(); } catch (e) { setNote({ ok: false, text: e.message }); } } }
+  async function del(row) {
+    if (writing.current || !window.confirm(`Apagar o template “${row.name || "sem nome"}” da biblioteca?`)) return;
+    writing.current = true; setBusy(true);
+    try { await api.remove("drip_templates", row.id); if (t.id === row.id) { guard.clean(emptyTemplate()); setT(emptyTemplate()); } reload(); setNote({ ok: true, text: "template apagado" }); }
+    catch (e) { setNote({ ok: false, text: e.message }); }
+    finally { writing.current = false; setBusy(false); }
+  }
 
   const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: 14 };
   const field = { width: "100%", padding: "7px 9px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 };
   if (!product) return null;
 
   return (
-    <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-      {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
+    <fieldset disabled={busy} className="disparos-tab disparos-templates">
+      {readError && <div role="alert" className="disparos-error">{readError} <button onClick={reload}>Tentar novamente</button></div>}
+      {loading && <div role="status" className="dim">Atualizando biblioteca…</div>}
+      {note && <div role={note.ok ? "status" : "alert"} className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 14 }}>
         <div style={{ ...box, display: "flex", flexDirection: "column", gap: 8 }}>
           <div className="kicker">{t.id ? "editar template" : "novo template"}</div>
           <div style={{ display: "flex", gap: 8 }}>
-            <input value={t.name} onChange={(e) => setT((x) => ({ ...x, name: e.target.value }))} placeholder="nome" style={{ ...field, flex: 1 }} />
-            <select value={t.channel} onChange={(e) => setT((x) => ({ ...x, channel: e.target.value }))} style={{ ...field, width: 130 }}>
+            <label className="disparos-label" style={{flex:1}}>Nome<input aria-label="Nome do template" value={t.name} onChange={(e) => setT((x) => ({ ...x, name: e.target.value }))} placeholder="nome" style={{ ...field, flex: 1 }} /></label>
+            <label className="disparos-label">Canal<select aria-label="Canal do template" value={t.channel} onChange={(e) => setT((x) => ({ ...x, channel: e.target.value }))} style={{ ...field, width: 130 }}>
               <option value="email">E-mail</option>
               <option value="whatsapp">WhatsApp</option>
-            </select>
+            </select></label>
           </div>
           {t.channel === "email" ? (
             <>
-              <input value={t.subject} onChange={(e) => setT((x) => ({ ...x, subject: e.target.value }))} placeholder="assunto · {{nome}}" style={field} />
-              <textarea value={t.body} onChange={(e) => setT((x) => ({ ...x, body: e.target.value }))} rows={5} placeholder="corpo · {{nome}} {{empresa}}" style={{ ...field, resize: "vertical", fontFamily: "inherit" }} />
+              <label className="disparos-label">Assunto<input aria-label="Assunto do template" value={t.subject} onChange={(e) => setT((x) => ({ ...x, subject: e.target.value }))} placeholder="assunto · {{nome}}" style={field} /></label>
+              <label className="disparos-label">Mensagem<textarea aria-label="Mensagem do template" value={t.body} onChange={(e) => setT((x) => ({ ...x, body: e.target.value }))} rows={5} placeholder="corpo · {{nome}} {{empresa}}" style={{ ...field, resize: "vertical", fontFamily: "inherit" }} /></label>
             </>
           ) : (
-            <textarea value={t.text} onChange={(e) => setT((x) => ({ ...x, text: e.target.value }))} rows={4} placeholder="mensagem · {{nome}}" style={{ ...field, resize: "vertical", fontFamily: "inherit" }} />
+            <label className="disparos-label">Mensagem<textarea aria-label="Mensagem do template" value={t.text} onChange={(e) => setT((x) => ({ ...x, text: e.target.value }))} rows={4} placeholder="mensagem · {{nome}}" style={{ ...field, resize: "vertical", fontFamily: "inherit" }} /></label>
           )}
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={save} style={{ height: 30, padding: "0 14px", borderRadius: 999, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12.5, fontWeight: 600 }}>{t.id ? "salvar" : "criar template"}</button>
-            {t.id && <button onClick={() => setT({ id: null, channel: "email", name: "", subject: "", body: "", text: "" })} className="mono dim" style={{ fontSize: 12 }}>cancelar</button>}
+            <button onClick={save} style={{ height: 30, padding: "0 14px", borderRadius: 999, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12.5, fontWeight: 600 }}>{busy ? "salvando…" : t.id ? "salvar" : "criar template"}</button>
+            {t.id && <button onClick={() => edit(emptyTemplate())} className="mono dim" style={{ fontSize: 12 }}>cancelar</button>}
           </div>
         </div>
 
@@ -630,18 +707,18 @@ function TemplatesTab({ product }) {
           {list.length === 0 ? <div className="mono dim" style={{ fontSize: 12 }}>nenhum template ainda</div> : (
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {list.map((x) => (
-                <div key={x.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)" }}>
+                <div key={x.id} className="disparos-library-row" style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)" }}>
                   <span className="mono" style={{ fontSize: 10, color: "var(--accent)", width: 58 }}>{CH_LABEL[x.channel] || x.channel}</span>
-                  <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{x.name || "sem nome"}</span>
-                  <button onClick={() => setT({ id: x.id, channel: x.channel || "email", name: x.name || "", subject: x.subject || "", body: x.body || "", text: x.text || "" })} className="mono dim" style={{ fontSize: 11 }}>editar</button>
-                  <button onClick={() => del(x.id)} className="mono dim" style={{ fontSize: 11, color: "var(--neg)" }}>apagar</button>
+                  <span title={x.name} style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{x.name || "sem nome"}</span>
+                  <button onClick={() => edit({ id: x.id, channel: x.channel || "email", name: x.name || "", subject: x.subject || "", body: x.body || "", text: x.text || "" })} className="mono dim" style={{ fontSize: 11 }}>editar</button>
+                  <button onClick={() => del(x)} className="mono dim" style={{ fontSize: 11, color: "var(--neg)" }}>apagar</button>
                 </div>
               ))}
             </div>
           )}
         </div>
       </div>
-    </div>
+    </fieldset>
   );
 }
 
