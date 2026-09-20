@@ -883,5 +883,29 @@ Validação: 1.739 testes da API, testes web/smoke, build e revisão visual apro
   de rascunho; fechar o editor ou a janela tem proteção local.
 
 Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
-As demais 10 páginas aguardam esta rodada; registros históricos não são aceite
+
+### 21. Análise de Pace (`#analise`) — validada
+
+- **Importante, corrigido:** cabeçalho, resumo da meta, gráfico, engenharia
+  reversa e forecast seguem `TelaAnalisePace.dc.html`, com superfícies de 24px,
+  hierarquia de títulos e valores completos nos indicadores e tabela.
+- **Importante, corrigido:** detalhes de ritmo diário, histórico e origem das
+  taxas ficam em seção expansível; cobertura da esteira e taxa que impede o
+  cálculo permanecem visíveis. Link para Pipeline respeita a permissão existente.
+- **Bloqueante, corrigido:** falha de leitura oferece nova tentativa, carregamento
+  é explícito e respostas antigas são ignoradas. Produto reinicia o contexto.
+  Gráfico tem descrição acessível e não excede a largura no celular; tabela
+  mantém rolagem própria. Textos secundários usam contraste legível no escuro.
+- **Evidências:** `npm run test:review:analise -w packages/web`, capturas e
+  `geometry.json` em `packages/web/.review-artifacts/analise/`. **22 medidas**
+  estruturais em 1440/1920, diferença máxima **0px**, para título/cabeçalho e
+  resumo da meta. Meta batida, supermeta, taxa zerada, vazio, carga, erro/retry,
+  detalhes, 390/1024px e escuro conferidos com dados fictícios.
+- **Fora do escopo:** API de Pace só fornece mês corrente; meses anteriores da
+  prancha não viraram filtros sem dados. Preservados reconhecimento financeiro,
+  probabilidades, calibração, dias úteis e cálculo de leads novos. O gráfico
+  conserva a série diária real, e a cadeia mantém todos os passos da aplicação.
+
+Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
+As demais 9 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.

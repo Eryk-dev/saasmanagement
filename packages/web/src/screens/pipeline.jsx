@@ -11,7 +11,7 @@ import {
   stageKind, phaseOf, openStages, workableStages, ladderOf, isWonStage, isWonLead, wonAtOf,
   nextTouch, nextTouchPill, lossReasonLabel,
 } from "../lib/funnel.js";
-import { usersByRole, userColor, displayName, currentUser, allUsers } from "../lib/users.js";
+import { usersByRole, userColor, displayName, currentUser, allUsers, canSeeScreen } from "../lib/users.js";
 import { isNoShowStage } from "../lib/scripts.js";
 import { mentoriaFit, mentoriaOfferLine, VERBA_RANK } from "../lib/mentoria.js";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
@@ -739,9 +739,13 @@ const dailyFmt = (value) => value == null
 const wholeFmt = (value) => value == null ? "—" : Math.round(value).toLocaleString("pt-BR");
 const rateFmt = (rate) => rate == null ? "—" : `${Math.round(rate * 100)}%`;
 
+function PaceSection({title,hint,children,className=""}) {
+  return <section className={`pace-section ${className}`}><header><h2>{title}</h2>{hint && <p>{hint}</p>}</header>{children}</section>;
+}
+
 function PaceMini({ label, value, sub, tone }) {
   return (
-    <div style={{ minWidth: 0, padding: "11px 12px", borderRadius: "var(--r-2)", background: "var(--bg-2)", border: "1px solid var(--line-1)" }}>
+    <div className="pace-mini">
       <div className="kicker">{label}</div>
       <div className="tnum" style={{ marginTop: 4, fontFamily: "var(--display)", fontSize: 18, fontWeight: 700, color: tone || "var(--fg-1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
       <div style={{ marginTop: 2, fontSize: 10.5, lineHeight: 1.35, color: "var(--fg-3)" }}>{sub}</div>
@@ -751,7 +755,7 @@ function PaceMini({ label, value, sub, tone }) {
 
 function EquationStep({ value, label, money, sub }) {
   return (
-    <div style={{ minWidth: 92, flex: "1 1 92px", padding: "9px 10px", textAlign: "center", borderRadius: "var(--r-2)", background: "var(--bg-2)", border: "1px solid var(--line-1)" }}>
+    <div className="pace-equation-step">
       <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 18, fontWeight: 700 }}>{money ? window.fmt.money(value || 0) : wholeFmt(value)}</div>
       <div className="kicker" style={{ marginTop: 1 }}>{label}</div>
       {sub && <div style={{ marginTop: 1, fontSize: 9.5, color: "var(--fg-4)" }}>{sub}</div>}
@@ -893,7 +897,7 @@ function PaceChart({ data, s, leads }) {
     if (!el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver((entries) => {
       const cw = entries[0]?.contentRect?.width;
-      if (cw) setW(Math.max(300, Math.round(cw)));
+      if (cw) setW(Math.max(200, Math.round(cw)));
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -938,7 +942,7 @@ function PaceChart({ data, s, leads }) {
   const axis = { fontFamily: "var(--mono)", fontSize: 10, fill: "var(--fg-4)" };
   return (
     <div ref={wrapRef} style={{ width: "100%" }}>
-      <svg width={w} height={H} style={{ display: "block" }}>
+      <svg role="img" aria-label={`Vendido acumulado em ${monthLabel}: ${window.fmt.moneyFull(lastValue)}. ${targetLabel}.`} width={w} height={H} style={{ display: "block", maxWidth: "100%" }}>
         {[max, max / 2, 0].map((value) => (
           <React.Fragment key={value}>
             <line x1={padL} y1={y(value)} x2={w - padR} y2={y(value)} stroke="var(--line-faint)" strokeWidth="1" />
@@ -983,31 +987,31 @@ function AnalysisPaceSummary({ data, s, leads }) {
           igual, e a relação entre eles — que é a leitura da tela — ficava por
           conta de quem olha. Aqui o fechado e o projetado aparecem contra a
           meta, com a barra de quanto já foi. */}
-      <section style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px var(--inset-x)" }}>
-        <div style={{ display: "flex", gap: 22, flexWrap: "wrap", alignItems: "flex-start" }}>
-          <div style={{ minWidth: 150 }}>
+      <section className="pace-summary">
+        <div className="pace-summary-values">
+          <div style={{ minWidth: 142 }}>
             <div className="kicker">fechado no mês</div>
-            <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 26, fontWeight: 700, lineHeight: 1.15 }}>{window.fmt.money(closed)}</div>
+            <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 26, fontWeight: 700, lineHeight: 1.15 }}>{window.fmt.moneyFull(closed)}</div>
             <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{`${data.context.wonMonth} ganhos até dia ${Number(data.today.slice(8, 10))}`}</div>
           </div>
-          <div style={{ minWidth: 150 }}>
+          <div style={{ minWidth: 142 }}>
             <div className="kicker">pace projetado</div>
-            <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 26, fontWeight: 700, lineHeight: 1.15, color: paceVsTarget == null ? "var(--fg-1)" : paceVsTarget >= 0 ? "var(--pos)" : "var(--neg)" }}>{window.fmt.money(pace)}</div>
+            <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 26, fontWeight: 700, lineHeight: 1.15, color: paceVsTarget == null ? "var(--fg-1)" : paceVsTarget >= 0 ? "var(--pos)" : "var(--neg)" }}>{window.fmt.moneyFull(pace)}</div>
             <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>
               {paceVsTarget == null ? `ritmo atual até ${data.sale.totalBusinessDays} dias úteis` : `${Math.abs(paceVsTarget)}% ${paceVsTarget >= 0 ? "acima" : "abaixo"} da ${alvo}`}
             </div>
           </div>
-          <div style={{ minWidth: 150 }}>
+          <div style={{ minWidth: 142 }}>
             <div className="kicker">{metaLabel.toLowerCase()}</div>
-            <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 26, fontWeight: 700, lineHeight: 1.15 }}>{window.fmt.money(target)}</div>
+            <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 26, fontWeight: 700, lineHeight: 1.15 }}>{window.fmt.moneyFull(target)}</div>
             <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{`${data.sale.elapsedBusinessDays} de ${data.sale.totalBusinessDays} dias úteis corridos`}</div>
           </div>
-          <div style={{ minWidth: 150 }}>
+          <div style={{ minWidth: 142 }}>
             <div className="kicker">forecast ponderado</div>
-            <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 26, fontWeight: 700, lineHeight: 1.15 }}>{window.fmt.money(forecast)}</div>
+            <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 26, fontWeight: 700, lineHeight: 1.15 }}>{window.fmt.moneyFull(forecast)}</div>
             <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>pipeline aberto × probabilidade real</div>
           </div>
-          <div style={{ minWidth: 150 }}>
+          <div style={{ minWidth: 142 }}>
             <div className="kicker">{`leads novos pra ${alvo}`}</div>
             <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 26, fontWeight: 700, lineHeight: 1.15, color: g.gap === 0 || g.newLeads === 0 ? "var(--pos)" : "var(--fg-1)" }}>{g.gap === 0 ? "0" : wholeFmt(g.newLeads)}</div>
             <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{leadsDelta}</div>
@@ -1015,7 +1019,7 @@ function AnalysisPaceSummary({ data, s, leads }) {
         </div>
         {/* Onde o mês está contra a meta, e onde DEVERIA estar hoje. */}
         {target > 0 && (
-          <div style={{ marginTop: 14 }}>
+          <div style={{ marginTop: 16 }}>
             <div style={{ position: "relative", height: 10, borderRadius: 999, background: "var(--bg-2)", overflow: "visible" }}>
               <div style={{ height: "100%", width: `${Math.min(100, Math.round((closed / target) * 100))}%`, background: "var(--accent)", borderRadius: 999 }} />
               {data.sale.totalBusinessDays > 0 && (
@@ -1023,15 +1027,15 @@ function AnalysisPaceSummary({ data, s, leads }) {
                   style={{ position: "absolute", top: -3, left: `${Math.min(100, Math.round((data.sale.elapsedBusinessDays / data.sale.totalBusinessDays) * 100))}%`, width: 2, height: 16, background: "var(--fg-3)" }} />
               )}
             </div>
-            <div className="mono dim" style={{ fontSize: 10.5, marginTop: 4 }}>
+            <div className="pace-progress-note">
               {`${Math.round((closed / target) * 100)}% da meta · o risquinho é onde o pace deveria estar hoje (${Math.round((data.sale.elapsedBusinessDays / Math.max(1, data.sale.totalBusinessDays)) * 100)}%)`}
             </div>
           </div>
         )}
       </section>
-      <Card title={`Pace de venda · ${monthLabel}`} hint="vendido reconhecido (faturado só pelo recebido) vs. meta, dia a dia">
-        <div style={{ padding: "8px 16px 12px" }}><PaceChart data={data} s={s} leads={leads} /></div>
-      </Card>
+      <PaceSection className="pace-chart" title={`Pace de venda · ${monthLabel}`} hint="vendido reconhecido (faturado só pelo recebido) vs. meta, dia a dia">
+        <div className="pace-chart-plot"><PaceChart data={data} s={s} leads={leads} /></div><div className="pace-chart-legend"><span>━ vendido acumulado</span><span>┄ linha da meta</span></div>
+      </PaceSection>
     </>
   );
 }
@@ -1042,7 +1046,7 @@ function GoalReversePlan({ data, s, leads }) {
   const g = goalMath(data, s, leads);
   const conversions = data.conversions;
   const plan = data.plan || {};
-  const money = window.fmt.money;
+  const money = window.fmt.moneyFull;
   const perDay = (n) => (n == null || g.daysLeft <= 0 ? null : n / g.daysLeft);
   // Janela das taxas no rótulo: "real jul · 12/44" (mês fechado) ou "real 30d".
   const rateJanela = data.rateWindow?.mode === "month"
@@ -1067,17 +1071,17 @@ function GoalReversePlan({ data, s, leads }) {
   const alvo = g.superMode ? `super meta ${g.chasePct}%` : "meta";
   if (g.gap === 0) {
     return (
-      <Card title="Engenharia reversa da meta" hint={g.closed > g.baseTarget ? "todas as super metas batidas" : "meta do mês batida"}>
+      <PaceSection className="pace-reverse" title="Engenharia reversa da meta" hint={g.closed > g.baseTarget ? "todas as super metas batidas" : "meta do mês batida"}>
         <div style={{ padding: "14px 24px 20px", fontSize: 13.5, color: "var(--fg-2)" }}>
           Fechado {money(g.closed)}{g.closed > g.baseTarget ? `, ${Math.round((g.closed / g.baseTarget) * 100)}% da meta base` : ` de ${money(g.baseTarget)}`}. Tudo que a esteira render agora é gordura no mês.
         </div>
-      </Card>
+      </PaceSection>
     );
   }
 
   return (
-    <Card title={`Para fechar os ${money(g.gap)} que faltam`} hint={`de trás pra frente, com as conversões reais dos últimos ${rateJanela === "30d" ? "30 dias" : rateJanela}`}>
-      <div style={{ padding: "16px 24px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
+    <PaceSection className="pace-reverse" title={`Para fechar os ${money(g.gap)} que faltam`} hint={`de trás pra frente, com as conversões reais dos últimos ${rateJanela === "30d" ? "30 dias" : rateJanela}`}>
+      <div className="pace-reverse-body">
         {/* COMPROMISSOS, não texto (13/09): a cadeia de setas dizia a mesma
             coisa, mas ninguém sai dela sabendo o que prometer. Cada linha é uma
             promessa com o número e a taxa que a justifica. */}
@@ -1092,7 +1096,7 @@ function GoalReversePlan({ data, s, leads }) {
             },
             g.investNew != null && g.newLeads > 0 ? { n: money(g.investNew), o: "de verba a mais", porque: `CPL ${money(g.cpl)}` } : null,
           ].filter(Boolean).map((c, i) => (
-            <div key={c.o} style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "10px 0", borderTop: i === 0 ? "none" : "1px solid var(--line-faint)" }}>
+            <div key={c.o} className="pace-commitment" style={{borderTop: i ? "1px solid var(--line-faint)" : undefined}}>
               <span className="tnum" style={{ minWidth: 92, fontFamily: "var(--display)", fontSize: 22, fontWeight: 700, lineHeight: 1.1 }}>{c.n}</span>
               <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: "var(--fg-1)" }}>{c.o}</span>
               <span className="mono dim" style={{ fontSize: 11, whiteSpace: "nowrap" }}>{c.porque}</span>
@@ -1121,20 +1125,10 @@ function GoalReversePlan({ data, s, leads }) {
           <EquationStep value={g.gap} label={`falta pra ${alvo}`} money />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
-          <PaceMini label="Leads novos/dia útil" value={dailyFmt(perDay(g.newLeads))} sub={`hoje ${wholeFmt(plan.leads?.today)} · ${g.daysLeft} dias úteis restantes`} />
-          <PaceMini label="Contatos/dia útil" value={dailyFmt(perDay(g.contacts))} sub={`hoje ${wholeFmt(plan.contacts?.today)} leads tocados`} />
-          <PaceMini label="Calls/dia útil" value={dailyFmt(perDay(g.calls))} sub={`hoje ${wholeFmt(plan.calls?.today)} na agenda`} />
-          <PaceMini label="Ganhos/dia útil" value={dailyFmt(perDay(g.wins))} sub={`hoje ${wholeFmt(plan.wins?.today)} · ticket ${g.ticket ? money(g.ticket) : "indisponível"}`} />
-          {g.investNew != null && g.newLeads > 0 && (
-            <PaceMini label="Mídia/dia útil" value={money(perDay(g.investNew) || 0)} sub={`${money(g.investNew)} pros ${wholeFmt(g.newLeads)} leads novos`} />
-          )}
-        </div>
-
         {/* O parágrafo de rodapé (esteira, demanda bruta, calibração) virou
             um ⓘ: é a explicação da conta, consultada uma vez, não lida todo
             dia. */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", fontSize: 12.5, color: "var(--fg-2)" }}>
+        <div className="pace-coverage">
           <span>
             {g.newLeads === 0
               ? `A esteira aberta (${g.pipeCount} leads trabalháveis) já cobre o gap: o jogo é converter o que está dentro.`
@@ -1156,6 +1150,7 @@ function GoalReversePlan({ data, s, leads }) {
             ].filter(Boolean).join("\n")}>
             como a conta é feita ⓘ
           </span>
+          {canSeeScreen("pipeline") && <a className="pace-pipeline-link" href="#pipeline">Abrir o pipeline →</a>}
         </div>
 
         {g.blockedBy && (
@@ -1163,6 +1158,17 @@ function GoalReversePlan({ data, s, leads }) {
             O desdobramento parou em {g.blockedBy}: a base atual é zero ou insuficiente pra calcular.
           </div>
         )}
+
+        <details className="pace-details"><summary>Ritmo diário e origem das taxas</summary><div className="pace-details-body">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
+          <PaceMini label="Leads novos/dia útil" value={dailyFmt(perDay(g.newLeads))} sub={`hoje ${wholeFmt(plan.leads?.today)} · ${g.daysLeft} dias úteis restantes`} />
+          <PaceMini label="Contatos/dia útil" value={dailyFmt(perDay(g.contacts))} sub={`hoje ${wholeFmt(plan.contacts?.today)} leads tocados`} />
+          <PaceMini label="Calls/dia útil" value={dailyFmt(perDay(g.calls))} sub={`hoje ${wholeFmt(plan.calls?.today)} na agenda`} />
+          <PaceMini label="Ganhos/dia útil" value={dailyFmt(perDay(g.wins))} sub={`hoje ${wholeFmt(plan.wins?.today)} · ticket ${g.ticket ? money(g.ticket) : "indisponível"}`} />
+          {g.investNew != null && g.newLeads > 0 && (
+            <PaceMini label="Mídia/dia útil" value={money(perDay(g.investNew) || 0)} sub={`${money(g.investNew)} pros ${wholeFmt(g.newLeads)} leads novos`} />
+          )}
+        </div>
 
         {data.paceAdjust && (
           <div style={{ padding: "8px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-1)", fontSize: 11.5, color: "var(--fg-3)" }}>
@@ -1202,42 +1208,24 @@ function GoalReversePlan({ data, s, leads }) {
             </div>
           ))}
         </div>
+        </div></details>
       </div>
-    </Card>
+    </PaceSection>
   );
 }
 
 function ForecastView({ s, leads, conversions }) {
   const buckets = analysisBuckets(s, leads, conversions);
-  const totals = buckets.reduce((sum, bucket) => ({ count: sum.count + bucket.count, tcv: sum.tcv + bucket.tcv, weighted: sum.weighted + bucket.weighted }), { count: 0, tcv: 0, weighted: 0 });
-  const cols = "1.2fr .6fr .9fr .7fr .9fr";
-  return (
-    <section style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "20px 24px 14px", flexWrap: "wrap" }}>
-        <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-.01em" }}>Forecast por etapa</h3>
-        <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>pipeline aberto × probabilidade real de virar ganho (taxas 30d)</span>
-      </div>
-      <div className="tbl-x">
-        <div style={{ minWidth: 700 }}>
-          <div className="kicker" style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 24px", fontWeight: 600, borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
-            <span>Etapa</span><span style={{ textAlign: "right" }}>Leads</span><span style={{ textAlign: "right" }}>Valor aberto</span><span style={{ textAlign: "right" }}>Prob.</span><span style={{ textAlign: "right" }}>Ponderado</span>
-          </div>
-          {buckets.map((bucket) => (
-            <div key={bucket.stage} style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "12px 24px", alignItems: "center", borderTop: "1px solid var(--line-faint)", fontSize: 13.5 }}>
-              <span style={{ fontWeight: 600 }}>{bucket.stage}</span>
-              <span className="tnum" style={{ textAlign: "right" }}>{bucket.count}</span>
-              <span className="tnum" style={{ textAlign: "right" }}>{window.fmt.money(bucket.tcv)}</span>
-              <span className="tnum" style={{ textAlign: "right", color: "var(--fg-3)" }}>{Math.round(bucket.prob * 100)}%</span>
-              <span className="tnum" style={{ textAlign: "right", fontWeight: 600 }}>{window.fmt.money(bucket.weighted)}</span>
-            </div>
-          ))}
-          <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "12px 24px", alignItems: "center", borderTop: "1px solid var(--line-1)", fontSize: 13.5, background: "var(--bg-inset)" }}>
-            <span style={{ fontWeight: 700 }}>Total ponderado</span><span className="tnum" style={{ textAlign: "right" }}>{totals.count}</span><span className="tnum" style={{ textAlign: "right" }}>{window.fmt.money(totals.tcv)}</span><span /><span className="tnum" style={{ textAlign: "right", fontWeight: 700 }}>{window.fmt.money(totals.weighted)}</span>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
+  const totals = buckets.reduce((sum, b) => ({count:sum.count+b.count,tcv:sum.tcv+b.tcv,weighted:sum.weighted+b.weighted}),{count:0,tcv:0,weighted:0});
+  const max = Math.max(1,...buckets.map(b=>b.weighted));
+  return <section className="pace-section pace-forecast">
+    <header><h2>Forecast da esteira</h2><div><strong>{window.fmt.moneyFull(totals.weighted)}</strong><span>{totals.count} leads na esteira aberta</span></div></header>
+    <div className="tbl-x"><table><thead><tr><th>Etapa</th><th aria-label="Participação no forecast"/><th>Leads</th><th>Em jogo</th><th>Prob.</th><th>Ponderado</th></tr></thead>
+      <tbody>{buckets.map(b=><tr key={b.stage}><th scope="row">{b.stage}</th><td><span className="pace-forecast-bar"><i style={{width:`${b.weighted ? Math.max(3,b.weighted/max*100) : 0}%`}}/></span></td><td>{b.count}</td><td>{window.fmt.moneyFull(b.tcv)}</td><td>{rateFmt(b.prob)}</td><td>{window.fmt.moneyFull(b.weighted)}</td></tr>)}</tbody>
+      <tfoot><tr><th>Total ponderado</th><td/><td>{totals.count}</td><td>{window.fmt.moneyFull(totals.tcv)}</td><td/><td>{window.fmt.moneyFull(totals.weighted)}</td></tr></tfoot></table></div>
+    {!totals.count && <p>Nenhum lead nas etapas comerciais do produto ativo.</p>}
+    <p>Probabilidade = produto das taxas que faltam até o ganho. As conversões reais têm prioridade; etapas sem histórico usam as taxas configuradas do funil.</p>
+  </section>;
 }
 
 // Saúde do PROCESSO: conversão real estágio→estágio (histórico da timeline),
@@ -1343,27 +1331,20 @@ function FunnelAnalytics({ s }) {
 // em 12/09 pra screens/agenda-grid.jsx.
 function AnaliseView({ s, leads }) {
   const { version } = useData();
-  const [data, setData] = useStP(null);
-  const [err, setErr] = useStP(null);
+  const [read, setRead] = useStP({});
+  const [attempt,setAttempt] = useStP(0);
   useEfP(() => {
     let alive = true;
-    setData(null); setErr(null);
-    api.pipelinePace(s.id).then((d) => alive && setData(d)).catch((e) => alive && setErr(e));
+    setRead({});
+    api.pipelinePace(s.id).then(data => {if(alive)setRead({data});}).catch(error => {if(alive)setRead({error});});
     return () => { alive = false; };
-  }, [s.id, version]);
-  return (
-    <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-      {err && <div style={{ ...paceCard, padding: 16 }}><div className="mono dim" style={{ fontSize: 12 }}>análise indisponível ({err.status || "erro"})</div></div>}
-      {!err && !data && <div style={{ ...paceCard, padding: 16 }}><div className="mono dim" style={{ fontSize: 12 }}>calculando análise…</div></div>}
-      {!err && data && (
-        <>
-          <AnalysisPaceSummary data={data} s={s} leads={leads} />
-          <GoalReversePlan data={data} s={s} leads={leads} />
-          <ForecastView s={s} leads={leads} conversions={data.conversions} />
-        </>
-      )}
-    </div>
-  );
+  }, [s.id, version, attempt]);
+  const {data,error}=read;
+  return <div className="pace-body">
+    {error ? <div role="alert" className="pace-state">Não foi possível carregar a análise. <button onClick={()=>setAttempt(n=>n+1)}>Tentar novamente</button></div>
+      : !data ? <div role="status" className="pace-state">Calculando análise…</div>
+      : <><AnalysisPaceSummary data={data} s={s} leads={leads}/><GoalReversePlan data={data} s={s} leads={leads}/><ForecastView s={s} leads={leads} conversions={data.conversions}/></>}
+  </div>;
 }
 
 export { PipelineScreen, AnaliseView, BulkBar };
