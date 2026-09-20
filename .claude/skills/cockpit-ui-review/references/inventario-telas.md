@@ -851,5 +851,37 @@ Validação: 1.739 testes da API, testes web/smoke, build e revisão visual apro
   tem confirmação de rascunho; a proteção cobre as ações e abas desta tela.
 
 Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
-As demais 11 páginas aguardam esta rodada; registros históricos não são aceite
+### 20. Blog (`#blog`) — validada
+
+- **Importante, corrigido:** cabeçalho, chamada de revisão, motor em duas
+  colunas e lista seguem `TelaBlog.dc.html`. Switches usam o componente comum;
+  cadência/dias ficam visíveis e estado detalhado/CTA ficam em seção expansível.
+  Falta de IA e último erro do motor permanecem visíveis sem abrir os detalhes.
+- **Bloqueante, corrigido:** pauta usa um único submit e bloqueia repetição,
+  edição e fechamento durante criação; Cancelar confirma descarte. Editor e
+  modais usam as molduras compartilhadas em portal, com foco e Escape.
+- **Bloqueante, corrigido:** salvar, reescrever, aprovar e montar prévia usam
+  exclusão mútua na UI. Falha ao salvar interrompe a abertura da prévia e
+  preserva o rascunho. Tags entram imediatamente no estado de edição e no
+  aviso de descarte. Leitura do post/digest oferece retry; exclusão concluída
+  não tenta reler o post apagado.
+- **Importante, corrigido:** automação bloqueia gravações simultâneas, informa
+  erro local e mantém rollback. Revalidação preserva campos ainda em edição;
+  retorno antigo não sobrescreve regras recém-salvas. Trocar produto reinicia
+  o estado local. Posts publicados ficam com campos desabilitados para não-admin.
+- **Evidências:** `npm run test:review:blog -w packages/web`, capturas e
+  `geometry.json` em `packages/web/.review-artifacts/blog/`. **28 medidas**
+  estruturais em 1440/1920, diferença máxima **0px**, para título/cabeçalho,
+  aviso e posição/largura do motor. Filtros, pauta sem duplicação, texto/tags,
+  prévia, agendamento BRT, publicação/despublicação/arquivo/exclusão, IA,
+  regras, erro/retry, espera, descarte, 390/1024px, vazio, escuro e permissões
+  conferidos com mock. Nenhum artigo real foi publicado ou removido.
+- **Fora do escopo:** lint, motor, cadência, autorização e URLs mantêm a API
+  existente. O editor conserva metadados, FAQ, evidências e histórico reais,
+  ocupando uma gaveta mais larga que o exemplo simplificado. Detalhes extras
+  alteram a altura do motor. A navegação SPA global ainda não confirma saída
+  de rascunho; fechar o editor ou a janela tem proteção local.
+
+Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
+As demais 10 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.

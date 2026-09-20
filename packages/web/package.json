@@ -27,7 +27,8 @@
     "test:review:metrics": "node scripts/review/metrics.mjs",
     "test:review:forms": "node scripts/review/forms.mjs",
     "test:review:creative": "node scripts/review/creative.mjs",
-    "test:review:disparos": "node scripts/review/disparos.mjs"
+    "test:review:disparos": "node scripts/review/disparos.mjs",
+    "test:review:blog": "node scripts/review/blog.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
