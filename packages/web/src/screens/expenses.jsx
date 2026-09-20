@@ -149,7 +149,7 @@ function CostsTab({ product, month }) {
     catch (err) { setNote({ ok: false, text: err.message || "Falha ao encerrar." }); }
   }
 
-  const inputStyle = { height: 38, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
+  const inputStyle = { height: 38, padding: "0 12px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
 
   return (
     <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
@@ -216,7 +216,7 @@ function CostsTab({ product, month }) {
               <input type="checkbox" checked={!!form.recurring} onChange={(e) => setForm({ ...form, recurring: e.target.checked })} />
               recorrente todo mês
             </label>
-            <button onClick={addExpense} style={{ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 12.5, fontWeight: 600 }}>
+            <button onClick={addExpense} style={{ height: 32, padding: "0 14px", borderRadius: 999, background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 12.5, fontWeight: 600 }}>
               + registrar
             </button>
           </div>
