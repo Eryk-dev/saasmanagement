@@ -1,0 +1,3 @@
+@media (max-width:768px) {
+  .insight-modal-content button, .insight-modal-content input {min-height:44px;}
+}

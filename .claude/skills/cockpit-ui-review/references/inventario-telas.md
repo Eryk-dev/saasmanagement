@@ -722,5 +722,43 @@ Validação: 1.739 testes da API, testes web/smoke, build e revisão visual apro
   idênticos nos gráficos, conteúdo e controles reais.
 
 Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
-As demais 15 páginas aguardam esta rodada; registros históricos não são aceite
+
+
+### 16. Publicidade (`#metrics`) — validada
+
+- **Importante, corrigido:** cabeçalho compacto, faixa navy, recomendações em
+  linhas, regras de veiculação expansíveis e painéis na proporção 2:1 seguem
+  `TelaPublicidade.dc.html`. Valores monetários mantêm centavos e deixam de
+  cortar no celular. Explicações e parâmetros das regras continuam disponíveis.
+- **Bloqueante, corrigido:** gasto manual e sincronização bloqueiam repetição;
+  registro mantém valores em falhas, confirma descarte e mostra conclusão.
+  Campos e cancelamento da criação de anúncios ficam bloqueados enquanto
+  enviam/processam; um job aceito impede repetir a criação pelo mesmo painel.
+  Resultados de outro produto não substituem o aviso atual, e a conclusão
+  atualiza as métricas da janela vigente.
+- **Importante, corrigido:** gerenciador mantém todos os níveis, filtros,
+  colunas, orçamentos e totais reais. Nomes e ordenação funcionam por teclado;
+  orçamento e seleção têm rótulos acessíveis. Colunas usa Popover em portal,
+  com folha mobile. Prévia do criativo também usa portal e oferece retry.
+- **Bloqueante, corrigido:** recomendações usam o Modal compartilhado com
+  foco/Escape e bloqueio de fechamento/gravações concorrentes. O componente
+  também atende Formulários; botões descrevem a ação e Dispensa fica visível.
+  Regras de veiculação mostram erros locais e impedem gravação simultânea
+  com checagem; falha de leitura oferece nova tentativa.
+- **Evidências:** `npm run test:review:metrics -w packages/web`, capturas e
+  `geometry.json` em `packages/web/.review-artifacts/metrics/`. **20 medidas**
+  em 1440/1920, diferença máxima **0px**, para título/cabeçalho e posição/largura
+  da faixa. Gasto manual, teclado, drilldown, filtros, colunas, prévia, orçamento,
+  liga/desliga, regras, recomendação, dois criadores de anúncio, falha/retry,
+  processamento recusado, espera, descarte, 390/1024px, escuro, vazio e sem Meta
+  conferidos com mock. Nenhuma campanha ou verba externa foi alterada.
+- **Fora do escopo:** cálculos, atribuição, orçamento, limites, jobs e regras
+  automáticas continuam na API. A faixa mantém visitas/CPL/CAC/LTV reais, em
+  vez de trocar definições para copiar números da prancha. As alturas dependem
+  de observações e dados reais; a referência simplifica as regras de veiculação.
+  Os criadores inline e seus seletores existentes foram preservados. Navegação
+  global ainda pode sair de um job em andamento; o processamento é do servidor.
+
+Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
+As demais 14 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.

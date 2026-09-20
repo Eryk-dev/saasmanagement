@@ -1,5 +1,6 @@
 import React from "react";
 import { api } from "../lib/api.js";
+import { Switch } from "./form-controls.jsx";
 import { Card } from "./viz.jsx";
 // Regras de veiculação — a estratégia "anúncio existe pra encher a agenda de
 // AMANHÃ" (Leo, 30/08) em quatro regras com liga/desliga e parâmetros:
@@ -47,22 +48,9 @@ function NumParam({ label, suffix, value, onCommit, min, max, disabled }) {
 }
 
 function RuleRow({ name, desc, on, busy, onToggle, children, status }) {
-  return (
-    <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-1)", flexWrap: "wrap", opacity: busy ? 0.7 : 1 }}>
-      <div style={{ flex: 1, minWidth: 230 }}>
-        <div style={{ fontSize: 13, fontWeight: 600 }}>{name}</div>
-        <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 3, lineHeight: 1.5 }}>{desc}</div>
-        {status && <div className="mono" style={{ fontSize: 11, marginTop: 5, color: "var(--fg-2)" }}>{status}</div>}
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        {children}
-        <button onClick={onToggle} disabled={busy} className={"chip " + (on ? "pos" : "")} style={{ cursor: "pointer" }}
-          title={on ? "desligar: a regra para de agir na hora" : "ligar: a regra começa a agir no próximo tick (1 min)"}>
-          {on ? "ligada" : "desligada"}
-        </button>
-      </div>
-    </div>
-  );
+  const brief = {"Pausa por agenda cheia":"Pausa as campanhas quando a janela atinge o alvo de calls.","Janela de fim de semana":"Pausa nos dias escolhidos e religa fora da janela.","Sexta curta":"Limita os horários de call disponíveis na sexta-feira.","Orçamento alvo":"Ajusta a verba diária conforme vagas e custo por call."};
+  return <div className="ads-rule"><div className="ads-rule-main"><Switch checked={on} onChange={onToggle} label={name} disabled={busy}/><div><strong>{name}</strong><p>{brief[name]}</p></div><span className="ads-rule-status">{on ? "Ligada" : "Desligada"}</span></div>
+    <details><summary>Configurar e ver detalhes</summary><p>{desc}</p>{status && <p>{status}</p>}<div className="ads-rule-params">{children}</div></details></div>;
 }
 
 export function DeliveryRulesCard({ saas }) {
@@ -70,6 +58,8 @@ export function DeliveryRulesCard({ saas }) {
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
+  const working=React.useRef(false);
+  const [actionError,setActionError]=useState(null);
 
   const load = () => api.deliveryRules(saas).then(setData).catch((e) => setData({ error: e.message || "não deu pra carregar" }));
   useEffect(() => {
@@ -82,26 +72,27 @@ export function DeliveryRulesCard({ saas }) {
   }, [saas]);
 
   async function save(patch) {
-    if (!data?.rules) return;
-    setBusy(true);
+    if (!data?.rules || working.current) return;
+    working.current=true;setBusy(true);setActionError(null);
     try {
       const rules = { ...data.rules };
       for (const [k, v] of Object.entries(patch)) rules[k] = { ...rules[k], ...v };
       setData(await api.saveDeliveryRules(saas, rules));
-    } catch (e) { window.alert(e.message || "não deu pra salvar"); load(); }
-    finally { setBusy(false); }
+    } catch (e) { setActionError(e.message || "Não foi possível salvar a regra. Tente novamente."); }
+    finally { working.current=false;setBusy(false); }
   }
 
   async function checkNow() {
-    setChecking(true);
+    if(working.current)return;working.current=true;
+    setChecking(true);setActionError(null);
     try { await api.runDeliveryRules(saas); await load(); }
-    catch (e) { window.alert(e.message || "a checagem falhou"); }
-    finally { setChecking(false); }
+    catch (e) { setActionError(e.message || "A checagem falhou. Tente novamente."); }
+    finally { working.current=false;setChecking(false); }
   }
 
-  const hint = "o anúncio existe pra encher a agenda dos próximos dias (pares seg/ter · qua/qui · sex) · as regras rodam no servidor a cada minuto · regra nasce desligada";
+  const hint = "execução automática · configurações para preencher a agenda dos próximos dias";
   if (data?.error) {
-    return <Card title="Regras de veiculação" hint={hint}><div style={{ padding: "14px var(--inset-x)", fontSize: 13, color: "var(--fg-3)" }}>{data.error}</div></Card>;
+    return <Card title="Regras de veiculação" hint={hint}><div role="alert" className="ads-error">{data.error} <button onClick={load}>Tentar novamente</button></div></Card>;
   }
   if (!data) {
     return <Card title="Regras de veiculação" hint={hint}><div className="mono dim" style={{ padding: "14px var(--inset-x)", fontSize: 12 }}>carregando…</div></Card>;
@@ -116,7 +107,7 @@ export function DeliveryRulesCard({ saas }) {
 
   return (
     <Card title="Regras de veiculação" hint={hint}>
-      <div style={{ padding: "12px var(--inset-x) 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+      <fieldset disabled={busy || checking} className="ads-rules"><div>{actionError && <div role="alert" className="ads-error">{actionError}</div>}</div>
 
         {/* O que as regras enxergam agora — a régua inteira à vista. */}
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 12.5, color: "var(--fg-2)" }}>
@@ -148,7 +139,7 @@ export function DeliveryRulesCard({ saas }) {
           </button>
         </div>
 
-        <RuleRow name="Pausa por agenda cheia" busy={busy} on={r.agendaFull.enabled}
+        <RuleRow name="Pausa por agenda cheia" busy={busy || checking} on={r.agendaFull.enabled}
           onToggle={() => save({ agendaFull: { enabled: !r.agendaFull.enabled } })}
           desc="bateu o alvo de calls da janela (calls por closer × closers ativos, limitado aos horários desbloqueados), pausa todas as campanhas. No par de dias, a janela anda em pares fixos: domingo mira seg+ter, terça mira qua+qui, quinta mira a sexta — segunda lotada não pausa enquanto a terça tiver buraco. Não religa no meio do dia; volta na virada."
           status={`alvo da janela: ${p.target} call${p.target === 1 ? "" : "s"} · marcadas: ${p.booked}`}>
@@ -164,7 +155,7 @@ export function DeliveryRulesCard({ saas }) {
             onCommit={(n) => save({ agendaFull: { callsPerCloser: n } })} />
         </RuleRow>
 
-        <RuleRow name="Janela de fim de semana" busy={busy} on={r.weekendOff.enabled}
+        <RuleRow name="Janela de fim de semana" busy={busy || checking} on={r.weekendOff.enabled}
           onToggle={() => save({ weekendOff: { enabled: !r.weekendOff.enabled } })}
           desc="dias sem verba (a agenda do dia seguinte seria fim de semana). Religa na virada do primeiro dia fora da janela — sexta+sábado marcados = volta domingo 00:00 pra encher a segunda.">
           <div style={{ display: "flex", gap: 4 }}>
@@ -181,14 +172,14 @@ export function DeliveryRulesCard({ saas }) {
           </div>
         </RuleRow>
 
-        <RuleRow name="Sexta curta" busy={busy} on={r.shortFriday.enabled}
+        <RuleRow name="Sexta curta" busy={busy || checking} on={r.shortFriday.enabled}
           onToggle={() => save({ shortFriday: { enabled: !r.shortFriday.enabled } })}
           desc="bloqueia a agenda de TODOS os closers na sexta depois da última call — vale pro robô do SDR, pra marcação manual e aparece na tela Agenda. Quinta o alvo passa a ser essa agenda curta.">
           <NumParam label="última call às" suffix="h" value={r.shortFriday.lastCallHour} min={8} max={19} disabled={busy}
             onCommit={(n) => save({ shortFriday: { lastCallHour: n } })} />
         </RuleRow>
 
-        <RuleRow name="Orçamento alvo" busy={busy} on={r.budget.enabled}
+        <RuleRow name="Orçamento alvo" busy={busy || checking} on={r.budget.enabled}
           onToggle={() => save({ budget: { enabled: !r.budget.enabled } })}
           desc="1x por dia (na virada) ajusta o orçamento diário na Meta rumo a: vagas restantes da janela × custo por call agendada. Fator único proporcional em cada campanha CBO/conjunto ABO — parte dos valores atuais e anda no máximo o passo por dia. Agenda cheia derruba o alvo e o orçamento também desce."
           status={p.cost.costPerCall != null
@@ -215,7 +206,7 @@ export function DeliveryRulesCard({ saas }) {
             )}
           </div>
         )}
-      </div>
+      </fieldset>
     </Card>
   );
 }

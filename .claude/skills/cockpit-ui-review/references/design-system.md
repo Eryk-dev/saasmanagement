@@ -21,6 +21,8 @@ O protótipo novo substitui os tokens visuais das rodadas abaixo. Fonte e mapa:
   resolvido no `:root` retinha a cor clara mesmo com `--bg-2` escuro.
 - `Popover` usa portal no `document.body`, preservando a posição ancorada
   no desktop e a folha mobile sem ficar preso ao empilhamento da tela.
+- Recomendações de Publicidade/Formulários usam `Modal` em portal, com
+  foco/Escape, bloqueio durante execução e botões que nomeiam a ação.
 - Moldura conferida contra a prancha: atalhos/grupos 38px, subitens 32px sem
   ícones e recuo 44px; grupo ativo sempre aberto. Breadcrumb `CRM / tela`
   em Outfit 15/700, topo com padding 9/14/9/20px; ICP/sino 34px.
