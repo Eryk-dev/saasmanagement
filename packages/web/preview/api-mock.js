@@ -1,3 +1,4 @@
+import {formsReview,formsReviewMock} from "./forms-review-mock.js";
 import {metricsReview,metricsReviewMock} from "./metrics-review-mock.js";
 import { socialReview, socialReviewMock } from "./social-review-mock.js";
 import { agendaReview, agendaReviewMock } from "./agenda-review-mock.js";
@@ -134,6 +135,7 @@ const vazio = () => Promise.resolve(null);
 
 const mockApi = new Proxy({}, {
   get(_, nome) {
+    if (formsReview && Object.hasOwn(formsReviewMock,nome)) return formsReviewMock[nome];
     if (metricsReview && Object.hasOwn(metricsReviewMock,nome)) return metricsReviewMock[nome];
     if (socialReview && Object.hasOwn(socialReviewMock,nome)) return socialReviewMock[nome];
     if (agendaReview && Object.hasOwn(agendaReviewMock,nome)) return agendaReviewMock[nome];

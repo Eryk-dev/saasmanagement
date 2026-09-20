@@ -760,5 +760,36 @@ Validação: 1.739 testes da API, testes web/smoke, build e revisão visual apro
   global ainda pode sair de um job em andamento; o processamento é do servidor.
 
 Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
-As demais 14 páginas aguardam esta rodada; registros históricos não são aceite
+### 17. Formulários (`#forms`) — validada
+
+- **Importante, corrigido:** cabeçalho, lista contínua, cards arredondados,
+  ações em pills e funil seguem `TelaFormularios.dc.html`. Receitas mostram
+  números completos. Métricas, conversões e decisão de vencedor A/B mantêm
+  os cálculos existentes; falha de leitura oferece nova tentativa.
+- **Importante, corrigido:** editor em duas colunas dá prioridade a nome,
+  chamada inicial e perguntas. Boas-vindas e teste A/B ficam em seção
+  expansível; todos os campos e a prévia da identidade pública permanecem.
+  Perguntas têm rótulos acessíveis e controles adaptados ao celular.
+- **Bloqueante, corrigido:** gravação e publicação impedem repetição; falhas
+  preservam o rascunho. Cancelar confirma descarte. Prévia ignora retornos
+  antigos e oferece retry. Resultados de outro produto não fecham o editor atual.
+- **Importante, corrigido:** respostas têm indicadores do período, filtros
+  Todas/Nível S e A/Últimas 48h, tabela e expansão das respostas completas.
+  O histórico completo é identificado separadamente dos KPIs do período.
+  O nível vem do helper real do lead vinculado, no mesmo produto, e é rotulado
+  como nível atual; leads ausentes não recebem classificação fictícia.
+- **Evidências:** `npm run test:review:forms -w packages/web`, capturas e
+  `geometry.json` em `packages/web/.review-artifacts/forms/`. **20 medidas**
+  estruturais em 1440/1920, diferença máxima **0px**, para cabeçalho, título
+  e posição/largura do primeiro card. Clipboard, criação, edição, publicação,
+  respostas/filtros, falha/retry, espera, descarte, 390/1024px, vazio e escuro
+  conferidos com mock. Nenhum formulário real foi publicado.
+- **Fora do escopo:** perguntas, ramificações, publicação, conversões e A/B
+  continuam com os contratos REST existentes. A prévia mantém a marca do
+  formulário; o editor real tem mais opções que a prancha. As alturas dependem
+  dos dados e variantes reais. Navegação global SPA ainda não confirma saída
+  de rascunho; Cancelar e fechamento da janela têm proteção local.
+
+Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
+As demais 13 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.
