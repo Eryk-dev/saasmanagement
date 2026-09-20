@@ -87,11 +87,11 @@ export const ticketsMock = {
   supportAgents: () => agents,
   supportSettings: () => ({ ...settings, variables: variaveis }),
   supportSettingsSave: (_saas, body) => { if (body.variables) variaveis = body.variables; settings = { ...settings, ...body }; return { ...settings, variables: variaveis }; },
-  quickReplies: () => ({ items: quickReplies.map((q) => ({ ...q, editable: true })), canEditShared: true, variables: { builtin: BUILTIN, custom: variaveis } }),
+  quickReplies: () => ({ items: (new URLSearchParams(location.search).has("empty") ? [] : quickReplies).map((q) => ({ ...q, editable: q.scope === "personal" || !new URLSearchParams(location.search).has("readonly") })), canEditShared: !new URLSearchParams(location.search).has("readonly"), variables: { builtin: BUILTIN, custom: variaveis } }),
   quickReplyCreate: (body) => { const q = { id: `qr${Date.now()}`, uses: 0, owner: body.scope === "personal" ? "leo" : "", ...body }; quickReplies = [...quickReplies, q]; return { ...q, editable: true }; },
   quickReplyUpdate: (id, patch) => { quickReplies = quickReplies.map((q) => (q.id === id ? { ...q, ...patch } : q)); return { ...quickReplies.find((q) => q.id === id), editable: true }; },
   quickReplyDelete: (id) => { quickReplies = quickReplies.filter((q) => q.id !== id); return { ok: true }; },
-  quickReplyPreview: (_saas, body) => renderMock(body, null),
+  quickReplyPreview: (_saas, body) => renderMock(typeof body === "string" ? body : body.body, null),
   ticketQuickReply: (ticketId, qrId) => { const q = quickReplies.find((x) => x.id === qrId); return { id: qrId, title: q.title, ...renderMock(q.body, achar(ticketId)) }; },
   supportAgentSave: (id, body) => { const a = agents.find((x) => x.id === id); Object.assign(a, body); return a; },
 };
