@@ -66,6 +66,7 @@ export function setupInboxPreview(seed, params) {
 }
 
 function send(id, text) {
+  (window.__inboxSent ||= []).push({id,text});
   const message = { id: `${id}-${Date.now()}`, direction: "out", author: "leo", text, at: ago(0), status: "sent" };
   messages.set(id, [...(messages.get(id) || []), message]);
   rows = rows.map((t) => t.id === id ? { ...t, lastAt: message.at, lastDir: "out", lastText: text, lastOutAuthor: "leo", unread: 0 } : t);
@@ -80,10 +81,10 @@ export const inboxMock = {
   },
   waNumber: () => ({ ok: true, display: "+55 (41) 99900-0000", name: "LeverAds", quality: "GREEN", tier: "TIER_250", platform: "CLOUD_API", throughput: "STANDARD" }),
   waThreads: () => ({ threads: rows.map((t) => ({ ...t })) }),
-  waThread: (id) => ({ thread: id, messages: [...(messages.get(id) || [])] }),
+  waThread: (id) => { if (window.__failInboxRead) throw new Error("Falha simulada no histórico"); return { thread: id, messages: [...(messages.get(id) || [])] }; },
   waThreadRead: (id) => { rows = rows.map((t) => t.id === id ? { ...t, unread: 0 } : t); return { ok: true }; },
   waThreadClose: (id, closed) => { rows = rows.map((t) => t.id === id ? { ...t, status: closed ? "closed" : "open" } : t); return { ok: true }; },
-  waThreadSend: send,
+  waThreadSend: async (id, text) => { if (new URLSearchParams(location.search).has("holdSend")) await new Promise(resolve=>window.__releaseInboxSend=resolve); return send(id,text); },
   waThreadSendTemplate: (id, { params }) => send(id, `Oi ${params[0]}, podemos retomar nossa conversa?`),
   waInsights: () => {
     const open = rows.filter((t) => t.status !== "closed");

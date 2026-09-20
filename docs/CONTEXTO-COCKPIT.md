@@ -61,7 +61,8 @@ Para reproduzir Visão geral com dados fixos e testes no navegador, usar
 `npm run test:review:offers -w packages/web`; para Contratos,
 `npm run test:review:contracts -w packages/web`; para Formulário de Integração,
 `npm run test:review:intform -w packages/web`; para Agenda,
-`npm run test:review:agenda -w packages/web` (Chromium do Playwright instalado
+`npm run test:review:agenda -w packages/web`; para Inbox,
+`npm run test:review:whatsapp -w packages/web` (Chromium do Playwright instalado
 com `npx playwright install chromium`, se necessário). O comando sobe só Vite
 com mocks, sem API/banco, e grava medidas/capturas em `.review-artifacts` do web.
 Na ficha de formulário, respostas enviadas continuam lendo `doc.sections`
