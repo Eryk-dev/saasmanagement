@@ -1,6 +1,9 @@
 import React from "react";
+import "./insights.css";
+import { createPortal } from "react-dom";
+import { Modal } from "./overlay.jsx";
 import { Card } from "./viz.jsx";
-import { PrimaryButton, useEsc } from "../atoms.jsx";
+import { PrimaryButton } from "../atoms.jsx";
 
 // Insights compartilhados (Publicidade e Forms): sugestões por REGRA, cada uma
 // com o porquê nos números e um ✕ pra dispensar. A dispensa vive no localStorage
@@ -39,17 +42,17 @@ function useVisibleInsights(items, scope) {
 
 function InsightRow({ it, onDismiss, onApply }) {
   return (
-    <div style={{ display: "flex", gap: 10, alignItems: "flex-start", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: "10px 12px" }}>
+    <div className="insight-row" style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap:"wrap", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: "10px 12px" }}>
       <span className="kicker" style={{ fontWeight: 600, color: TONES[it.tone] || "var(--fg-3)", border: "1px solid currentColor", borderRadius: 999, padding: "2px 8px", flexShrink: 0, marginTop: 1 }}>{it.tag}</span>
-      <span style={{ fontSize: 12.5, lineHeight: 1.55, color: "var(--fg-2)", flex: 1 }}>{it.text}</span>
+      <span style={{ fontSize: 12.5, lineHeight: 1.55, color: "var(--fg-2)", flex: "1 1 240px" }}>{it.text}</span>
       {it.action && (
         <button onClick={onApply} title={it.action.label}
-          style={{ flexShrink: 0, height: 22, padding: "0 9px", borderRadius: 5, border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)", fontSize: 11, fontWeight: 600, lineHeight: 1 }}>
-          aplicar
+          style={{ flexShrink: 0, height: 30, padding: "0 12px", borderRadius: 999, border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)", fontSize: 11, fontWeight: 600, lineHeight: 1 }}>
+          {it.action.label}
         </button>
       )}
       <button onClick={onDismiss} title="dispensar por 7 dias" aria-label="dispensar insight"
-        style={{ flexShrink: 0, width: 22, height: 22, borderRadius: 5, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-3)", fontSize: 12, lineHeight: 1 }}>✕</button>
+        style={{ flexShrink: 0, padding:"0 10px", height: 30, borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-3)", fontSize: 12, lineHeight: 1 }}>Dispensar</button>
     </div>
   );
 }
@@ -72,9 +75,11 @@ function ApplyInsightModal({ item, onCancel, onApplied }) {
   const [fields, setFields] = React.useState(null); // [{ key, label, value, multiline }]
   const [error, setError] = React.useState("");
   const busy = phase === "running" || phase === "preparing";
-  useEsc(busy ? null : (phase === "done" ? onApplied : onCancel));
+  const working=React.useRef(false);
+  const close=()=>{if(!working.current && !busy)(phase==="done" ? onApplied : onCancel)();};
 
   async function prepare() {
+    if(working.current)return;working.current=true;
     setPhase("preparing");
     setError("");
     try {
@@ -83,7 +88,7 @@ function ApplyInsightModal({ item, onCancel, onApplied }) {
     } catch (e) {
       setError(String(e?.message || e).slice(0, 300));
       setPhase("prepare-error");
-    }
+    } finally {working.current=false;}
   }
   React.useEffect(() => { if (a.prepare) prepare(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -92,8 +97,8 @@ function ApplyInsightModal({ item, onCancel, onApplied }) {
   const ready = !a.prepare || (fields && fields.every((f) => f.optional || String(f.value || "").trim()));
 
   async function run() {
-    if (busy || !ready) return;
-    setPhase("running");
+    if (working.current || busy || !ready) return;
+    working.current=true;setPhase("running");
     setError("");
     try {
       await a.execute(values());
@@ -101,12 +106,12 @@ function ApplyInsightModal({ item, onCancel, onApplied }) {
     } catch (e) {
       setError(String(e?.message || e).slice(0, 300));
       setPhase("error");
-    }
+    } finally {working.current=false;}
   }
 
-  return (
-    <div onClick={busy ? undefined : (phase === "done" ? onApplied : onCancel)} style={{ position: "fixed", inset: 0, zIndex: "var(--z-modal)", background: "var(--scrim)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(500px, 100%)", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: 18 }}>
+  const panel = (
+    <Modal onClose={close} fechavel={!busy} label={a.label} largura={520} padding={20} painelStyle={{padding:22,borderRadius:24}}>
+      <div className="insight-modal-content">
         <div style={{ fontFamily: "var(--display)", fontSize: 16, fontWeight: 700 }}>{a.label}</div>
         <div style={{ fontSize: 12, color: "var(--fg-3)", marginTop: 4, lineHeight: 1.5 }}>{item.text}</div>
 
@@ -123,10 +128,10 @@ function ApplyInsightModal({ item, onCancel, onApplied }) {
               <div key={f.key}>
                 <label className="kicker" style={{ display: "block", marginBottom: 4 }}>{f.label}</label>
                 {f.multiline ? (
-                  <textarea value={f.value} rows={2} onChange={(e) => setField(f.key, e.target.value)} disabled={busy}
+                  <textarea aria-label={f.label} value={f.value} rows={2} onChange={(e) => setField(f.key, e.target.value)} disabled={busy}
                     style={{ ...fieldStyle, resize: "vertical" }} />
                 ) : (
-                  <input value={f.value} onChange={(e) => setField(f.key, e.target.value)} disabled={busy} style={fieldStyle} />
+                  <input aria-label={f.label} value={f.value} onChange={(e) => setField(f.key, e.target.value)} disabled={busy} style={fieldStyle} />
                 )}
               </div>
             ))}
@@ -162,7 +167,7 @@ function ApplyInsightModal({ item, onCancel, onApplied }) {
             <PrimaryButton onClick={onApplied}>fechar</PrimaryButton>
           ) : (
             <>
-              <button onClick={onCancel} disabled={phase === "running"} style={{ height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5, opacity: phase === "running" ? 0.6 : 1 }}>cancelar</button>
+              <button onClick={close} disabled={busy} style={{ height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5, opacity: phase === "running" ? 0.6 : 1 }}>cancelar</button>
               {phase !== "prepare-error" ? (
                 <PrimaryButton onClick={run} disabled={busy || !ready}>{phase === "running" ? "aplicando…" : phase === "error" ? "tentar de novo" : "confirmar e aplicar"}</PrimaryButton>
               ) : (
@@ -172,8 +177,9 @@ function ApplyInsightModal({ item, onCancel, onApplied }) {
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
+  return typeof document!=="undefined" && document.body?.nodeType===1 ? createPortal(panel,document.body) : panel;
 }
 
 // Lista crua (pra embutir em containers próprios, como o dashboard de forms).
@@ -206,7 +212,7 @@ export function InsightsCard({ title = "Insights", hint, items, scope, onApplied
   if (!visible.length) return null;
   return (
     <Card title={title} hint={hint}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "12px 16px 14px" }}>
+      <div className="insights-card-list" style={{ display: "flex", flexDirection: "column", gap: 8, padding: "12px 16px 14px" }}>
         {visible.map((it) => (
           <InsightRow key={it.id} it={it} onDismiss={() => dismiss(it.id)} onApply={() => setApplying(it)} />
         ))}
