@@ -105,8 +105,8 @@ export const TaskCard = memo(function TaskCard({ t, colKey, usersById, labelColo
         </div>
         {!renaming && (
           <span className="tk-hover" style={{ display: "inline-flex", gap: 2, marginTop: -3, marginRight: -6, flexShrink: 0 }}>
-            <button type="button" title="Renomear" aria-label="Renomear" onClick={(e) => { e.stopPropagation(); actions.rename(t.id); }} onPointerDown={(e) => e.stopPropagation()} style={{ width: 24, height: 24, borderRadius: 6, color: "var(--fg-4)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="pencil" size={13} /></button>
-            <button type="button" title="Mais ações" aria-label="Mais ações" onClick={(e) => { e.stopPropagation(); actions.menu(t.id, e.currentTarget.getBoundingClientRect()); }} onPointerDown={(e) => e.stopPropagation()} style={{ width: 24, height: 24, borderRadius: 6, color: "var(--fg-4)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="more" size={14} /></button>
+            <button type="button" title="Renomear" aria-label="Renomear" onClick={(e) => { e.stopPropagation(); actions.rename(t.id); }} onPointerDown={(e) => e.stopPropagation()} style={{ width: 24, height: 24, borderRadius: 999, color: "var(--fg-4)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="pencil" size={13} /></button>
+            <button type="button" title="Mais ações" aria-label="Mais ações" onClick={(e) => { e.stopPropagation(); actions.menu(t.id, e.currentTarget.getBoundingClientRect()); }} onPointerDown={(e) => e.stopPropagation()} style={{ width: 24, height: 24, borderRadius: 999, color: "var(--fg-4)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="more" size={14} /></button>
           </span>
         )}
       </div>

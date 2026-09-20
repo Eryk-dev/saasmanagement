@@ -83,7 +83,7 @@ export function TaskColumn({ col, idx, count, cards, hiddenCount, usersById, lab
         top={composer && composer.position === "top" ? <NewTaskCard onSave={(title) => actions.create(col.key, title, "top")} onCancel={() => colActions.composer(null)} /> : null}
         bottom={composer && composer.position === "bottom" ? <NewTaskCard onSave={(title) => actions.create(col.key, title, "bottom")} onCancel={() => colActions.composer(null)} /> : null}
         footer={canAdd ? (
-          <button type="button" onClick={() => colActions.composer(col.key, "bottom")} style={{ display: "flex", alignItems: "center", gap: 6, margin: "0 6px 6px", padding: "8px 8px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 500, color: "var(--fg-3)", textAlign: "left", flexShrink: 0 }}
+          <button type="button" onClick={() => colActions.composer(col.key, "bottom")} style={{ display: "flex", alignItems: "center", gap: 6, margin: "0 6px 6px", padding: "8px 8px", borderRadius: 999, fontSize: 12.5, fontWeight: 500, color: "var(--fg-3)", textAlign: "left", flexShrink: 0 }}
             onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; e.currentTarget.style.color = "var(--fg-1)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--fg-3)"; }}>
             <Icon name="plus" size={14} /> Adicionar tarefa
           </button>
