@@ -907,5 +907,32 @@ Validação: 1.739 testes da API, testes web/smoke, build e revisão visual apro
   conserva a série diária real, e a cadeia mantém todos os passos da aplicação.
 
 Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
-As demais 9 páginas aguardam esta rodada; registros históricos não são aceite
+
+### 22. Análise de Pitches (`#calls`) — validada
+
+- **Importante, corrigido:** cabeçalho, filtro de grupo/pessoa, temperatura em
+  papel, padrões em duas colunas e diagnóstico navy seguem `TelaAnalisePitches.dc.html`.
+  Barras, distribuição e calls recentes têm componentes de análise reutilizáveis.
+- **Bloqueante, corrigido:** leitura tem carga, erro e retry. Troca de grupo/pessoa
+  remove o diagnóstico anterior imediatamente; troca de produto reinicia a tela.
+  Respostas antigas são ignoradas, inclusive a IA após sair do contexto.
+- **Bloqueante, corrigido:** geração usa bloqueio contra repetição e desabilita
+  filtros enquanto está em curso. Falha oferece nova tentativa; ausência de IA
+  tem explicação visível. Nenhum roteiro é aplicado automaticamente.
+- **Importante, corrigido:** calls recentes abrem por botão/teclado, com gravação
+  em link separado, data/hora BRT e nome completo no rótulo acessível. Leads
+  indisponíveis ou de outro produto não oferecem abertura. Atalhos para treino
+  e configurações respeitam as permissões das telas.
+- **Evidências:** `npm run test:review:calls -w packages/web`, capturas e
+  `geometry.json` em `packages/web/.review-artifacts/calls/`. **30 medidas**
+  estruturais em 1440/1920, diferença máxima **0px**, para título/cabeçalho,
+  filtros e temperatura. Grupo, pessoa, parâmetros do diagnóstico, erro/retry,
+  repetição, troca de produto durante IA, abertura por teclado, gravação,
+  390/1024px, escuro, vazio, amostra pequena e IA indisponível conferidos com mock.
+- **Fora do escopo:** agregações e deduplicação da API mantidas; a tela identifica
+  o histórico do grupo, sem inventar período. IA e treino conservam os contratos
+  atuais. Datas e responsáveis reais tornam as linhas mais completas que a prancha.
+
+Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
+As demais 8 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.
