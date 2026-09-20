@@ -394,7 +394,7 @@ COMO TRATAR O QUE APARECE (padrões que comprovadamente viram call):
 
 QUANDO AGENDAR (NUNCA na sua primeira mensagem da conversa: lá é descoberta, salvo pedido explícito de horário do lead): o lead topou call, pediu horário ou indicou período ("pode ser de manhã") → escolha o horário da lista de HORÁRIOS LIVRES que melhor encaixa no que ele disse e devolva acao agendar com esse horário EXATO. Se ele propôs um horário que não está na lista, NÃO invente: acao responder oferecendo os 2 primeiros da lista como alternativas. HORÁRIO QUE VOCÊ MESMO OFERECEU e sumiu da lista (foi preenchido entre a sua oferta e a resposta dele): PEÇA DESCULPA e diga o que houve de verdade, que outro cliente pegou aquele horário ("Ahh Gabriel, esse horário acabou de ser preenchido por outro cliente, me desculpa!"), e só então ofereça os novos. NUNCA responda com "esse horário não consigo" seco depois de ter oferecido: a falha é da nossa agenda, não do lead, e a mensagem soa descaso. Se já existe call marcada e ele quer mudar, acao remarcar com o novo horário da lista. Ao CITAR um horário em texto, copie o RÓTULO exato que veio na lista (nunca recalcule "amanhã/segunda" de cabeça: o rótulo da lista é a verdade). Ao oferecer DUAS opções, elas devem ter pelo menos 2 horas entre si quando a agenda permitir: use o PAR SUGERIDO do contexto.
 OFEREÇA SEMPRE EM HORA CHEIA (9h, 10h, 14h...): nunca proponha 9h30, 14h30, 16h30 por conta própria — hora quebrada soa sobra de agenda. Hora quebrada só entra quando o LEAD pede ("consigo só 14h30"): aí pode agendar nela normalmente, se estiver na lista de horários livres.
-O MAIS CEDO PRIMEIRO: a lista já começa no horário livre mais próximo. Se existe vaga HOJE, ofereça HOJE como primeira opção — lead quente esfria de um dia pro outro, e empurrar pra amanhã sem motivo joga fora a vaga de hoje. Vale mesmo que a vaga de hoje seja daqui a poucas horas (visto 16/09: "hoje às 14h" livre e o robô ofereceu "amanhã às 11h"). Só pule o dia de hoje se o LEAD pediu outro dia ou período; sem esse pedido, a sua oferta TEM que conter o primeiro horário do PAR SUGERIDO (o motor confere e reescreve a oferta que pular a vaga de hoje).
+REGRA DA AGENDA (20/09): a oferta espontânea é SOMENTE para o próximo dia útil, mesmo com vaga hoje ou com esse dia cheio. Datas diferentes só entram quando o CLIENTE pede. A lista recebida já aplica essa autorização: use somente os dias e horários dela. Sem vaga, pergunte qual outra data o cliente prefere; nunca avance sozinho. Dentro da janela autorizada, ofereça o primeiro horário do PAR SUGERIDO, salvo pedido de período ou hora específica do cliente.
 NUNCA cite um DIA SOLTO sem hora ("retomar amanhã", "conseguimos essa semana", "que tal na terça?"): dia sem hora não dá o que responder e obriga mais uma rodada. Todo convite sai com o horário escrito ("hoje às 15h ou amanhã às 9h"), copiado do rótulo da lista.
 
 QUANDO DESMARCAR (acao desmarcar): existe conversa marcada e o lead avisa que NÃO vai conseguir, sem escolher horário novo ("não vou conseguir hoje", "surgiu um imprevisto", "entro em contato pra reagendar"): acao desmarcar, mensagens vazia — o sistema confirma pro lead, tira o compromisso da agenda e já oferece novos horários sozinho. Se ele já indicou o horário ou período novo, é remarcar (horário da lista) ou responder oferecendo opções. NUNCA responda um cancelamento com acao responder deixando a conversa marcada de pé: o lembrete automático continuaria disparando pra uma conversa que o lead já cancelou.
@@ -927,12 +927,12 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
   // Decisão do SDR conversacional pra UMA mensagem recebida no WhatsApp.
   // Devolve ação fechada + texto; quem valida horário, trava preço e executa é
   // o motor (sdr-brain.js) — aqui é só a cabeça.
-  async function sdrDecide({ sdrName = "", lead = {}, digest = "", grade = "", stage = "", callAt = "", nowLabel = "", slots = [], conversation = [], pain = null, canGreet = true, gapMin = null, demoOffered = false, slotsOffered = false, firstReply = false, engaged = true, suggestedPair = [] }) {
+  async function sdrDecide({ sdrName = "", lead = {}, digest = "", grade = "", stage = "", callAt = "", nowLabel = "", slots = [], conversation = [], pain = null, canGreet = true, gapMin = null, demoOffered = false, slotsOffered = false, firstReply = false, engaged = true, suggestedPair = [], requestedDate = false, offerDate = "" }) {
     if (!configured()) throw new Error("IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor");
     const t0 = Date.now();
     const slotLines = slots.length
       ? slots.map((s) => `- ${s.at} (${s.label || s.at})`).join("\n")
-      : "(nenhum horário livre nos próximos dias: não ofereça horário, pergunte o melhor período e acao responder)";
+      : "(nenhum horário livre na janela autorizada: não ofereça outra data por conta própria; pergunte qual outra data o cliente prefere, acao responder)";
     const convo = conversation.slice(-24).map((m) => `${m.who}: ${m.text}`).join("\n");
     const context = [
       sdrName ? `Você responde em nome de ${sdrName}, do time LeverAds.` : "",
@@ -959,16 +959,16 @@ export function makeAnthropic({ fetch: f = globalThis.fetch, apiKey = "", model 
         ? "PITCH JÁ FEITO nesta conversa (o 1º toque ou uma mensagem sua anterior já listou as capacidades): PROIBIDO re-listar qualquer capacidade já dita (fotos, título de 200 caracteres, descrição, compatibilidade, 5 minutos, clonagem, estoque, atendimento, edição, gerenciar múltiplas contas) e proibido repetir o convite da demonstração descrevendo-a de novo. Se precisar referenciar, seja curto ('como te falei') e traga SÓ o novo: responda a pergunta e avance pro próximo passo."
         : "",
       !slotsOffered
-        ? "VOCÊ AINDA NÃO OFERECEU NENHUM HORÁRIO nesta conversa. É PROIBIDO escrever \"os horários que te passei\", \"algum dos horários\", \"aqueles horários\" ou qualquer referência a uma oferta que não existe — o lead não recebeu horário nenhum e a mensagem soa mentirosa. Quando for a hora de agendar, ESCREVA os horários por extenso, usando o PAR SUGERIDO (ex.: \"Consigo hoje às 15h ou amanhã às 9h, qual fica melhor pra você?\")."
+        ? "VOCÊ AINDA NÃO OFERECEU NENHUM HORÁRIO nesta conversa. É PROIBIDO escrever \"os horários que te passei\", \"algum dos horários\", \"aqueles horários\" ou qualquer referência a uma oferta que não existe — o lead não recebeu horário nenhum e a mensagem soa mentirosa. Quando for a hora de agendar, ESCREVA os horários por extenso, usando o PAR SUGERIDO (ex.: \"Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor pra você?\")."
         : "",
       slotsOffered
         ? "HORÁRIOS JÁ OFERECIDOS nesta conversa e o lead ainda não escolheu: NÃO repita horários na sua resposta. Responda o que ele perguntou e, no máximo, pergunte curto se algum dos horários que você já passou encaixa (sem re-listar). Só cite horários específicos de novo se ele pedir outras opções ou disser que nenhum serve (aí use a lista atual)."
         : "",
       "",
       "HORÁRIOS LIVRES, em ordem (é uma AMOSTRA dos próximos livres, não a agenda inteira; pra agendar/remarcar use SOMENTE valores desta lista, copiando exato; se o período que o lead pediu não aparece aqui, NUNCA afirme que não existe: ofereça o mais próximo da lista e diga que consegue ver outras opções):",
-      slots.some((x) => String(x.label || "").startsWith("hoje"))
-        ? `TEM VAGA HOJE na agenda: ${slots.filter((x) => String(x.label || "").startsWith("hoje")).map((x) => x.label).join(", ")}. Ofereça hoje como PRIMEIRA opção (só pule o dia de hoje se o lead pedir outro dia).`
-        : "SEM vaga hoje: a primeira opção da lista já é o mais cedo possível.",
+      requestedDate
+        ? `O CLIENTE PEDIU OUTRA DATA/PERÍODO. A lista foi limitada a esse pedido, começando em ${offerDate}. Não proponha dias fora dela; pedido de data ainda precisa da escolha do horário para agendar.`
+        : `OFERTA ESPONTÂNEA: somente ${offerDate || "o próximo dia útil"}. Não ofereça hoje nem dias posteriores, mesmo se esse dia estiver cheio. Sem vaga, pergunte qual outra data o cliente prefere, sem sugerir uma por conta própria.`,
       suggestedPair.length >= 2
         ? `PAR SUGERIDO pra quando você oferecer DUAS opções (já espaçado em 2h+): ${suggestedPair[0].label || suggestedPair[0].at} (${suggestedPair[0].at}) ou ${suggestedPair[1].label || suggestedPair[1].at} (${suggestedPair[1].at}). Use este par; só fuja dele se o lead pedir um encaixe específico.`
         : "",

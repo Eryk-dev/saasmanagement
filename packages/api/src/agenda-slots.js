@@ -133,15 +133,27 @@ export function closerPools(users, saas) {
   };
 }
 
+// Equipe do SDR LeverAds (Leonardo, 20/09/2026). IDs legados são nomes;
+// cadastros com UUID usam o primeiro nome completo, sem correspondência parcial.
+// A atribuição explícita também vale para Vitor cadastrado como integrador.
+export function sdrCloserPools(users, saas) {
+  const normalize = (v) => String(v || "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const members = (users || []).filter((u) => !u.saas || u.saas === saas);
+  const named = (u, names) => names.includes(normalize(u.id)) || names.includes(normalize(u.name).split(/\s+/)[0]);
+  const upper = members.filter((u) => u.roles?.includes("closer") && named(u, ["leonardo", "jonan", "jonathan"]));
+  const junior = members.filter((u) => named(u, ["vitor"]));
+  return { upper, junior, all: [...upper, ...junior] };
+}
+
 // ── Horários livres de um pool ──────────────────────────────────────────────
 // Varre os próximos `days` DIAS ÚTEIS e devolve, por slot livre, o closer com
 // MENOS calls no dia (balanceamento; empate = ordem estável). Um item por
 // horário: [{ at: "YYYY-MM-DDTHH:MM", closer, level }...], em ordem cronológica.
-export function freeSlotsForPool({ pool, now, days = 5, minNoticeMin = 120, limit = 0, busyFns, callCountOf, fromHour = CALL_H0, toHour = CALL_H1, lunchFrom = null, lunchTo = null }) {
+export function freeSlotsForPool({ pool, now, startDate, days = 5, minNoticeMin = 120, limit = 0, busyFns, callCountOf, fromHour = CALL_H0, toHour = CALL_H1, lunchFrom = null, lunchTo = null }) {
   if (!pool.length) return [];
   const out = [];
   const floor = new Date(now.getTime() + minNoticeMin * 60_000);
-  const day = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const day = startDate ? wallFromNaive(startDate) : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   let scanned = 0;
   while (scanned < days) {
     const dow = day.getUTCDay();
@@ -191,20 +203,6 @@ export function addBusinessDaysNaive(at, n) {
 // exige a call TERMINANDO dentro da janela, por isso o teto é 20.
 export const OFFER_HOURS = { fromHour: 9, toHour: 20, lunchFrom: 12, lunchTo: 13 };
 
-// HORIZONTE DA OFERTA (Leo, 13/09/2026): o robô não marca pra depois de amanhã.
-// Medido em produção sobre as 349 calls já vencidas do LeverAds, o furo cresce
-// com a distância do agendamento (só o robô: D+0 45,5% · D+1 49,3% · D+2 59,1%),
-// então cada dia a mais de espera custa comparecimento. 2 = hoje + o PRÓXIMO DIA
-// ÚTIL (o `days` do freeSlotsForPool conta dias úteis, então sexta alcança
-// segunda, que é o mais perto que existe).
-//
-// É teto da OFERTA AUTOMÁTICA, não da agenda: quem marca na mão pelo cockpit
-// segue enxergando tudo (decisão humana sempre ganha, mesma regra da reserva).
-// Válvula: se NINGUÉM tem horário dentro do teto, a oferta abre pro prazo cheio
-// em vez de deixar o lead sem call — furo de 50% ainda é melhor que lead frio,
-// e o `beyondHorizon` no retorno deixa isso visível pra quem for medir.
-export const OFFER_HORIZON_DAYS = 2;
-
 // Dia do slot no relógio de parede ("YYYY-MM-DDTHH:MM" → "YYYY-MM-DD"). É a
 // unidade do overflow: "a agenda do júnior encheu" é uma pergunta sobre o DIA,
 // não sobre a hora.
@@ -213,7 +211,7 @@ const dayOfSlot = (at) => String(at || "").slice(0, 10);
 // ── A régua completa: horários pro LEAD ─────────────────────────────────────
 // Nota do lead (matriz S-E) → pool elegível → próximos horários. Devolve
 // { slots, pool: "upper"|"junior"|"junior+upper"|"all", grade }.
-export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wallNow(), days = 5, horizonDays = 0, minNoticeMin = 120, limit = 6, fromHour, toHour, lunchFrom, lunchTo } = {}) {
+export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wallNow(), startDate, days = 5, minNoticeMin = 120, limit = 6, fromHour, toHour, lunchFrom, lunchTo, sdr = false, holds = [] } = {}) {
   const sid = saas || lead?.saas || "";
   const [users, leads, blocks, consultations, products] = await Promise.all([
     repo.list("users"),
@@ -223,7 +221,7 @@ export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wal
     repo.list("products"),
   ]);
   const productById = new Map(products.map((p) => [p.id, p]));
-  const pools = closerPools(users, sid);
+  const pools = sdr && sid === "leverads" ? sdrCloserPools(users, sid) : closerPools(users, sid);
   const grade = gradeIn || leadGrade(lead || {}) || null;
 
   const ctx = { leads, blocks, consultations, productById, excludeLeadId: lead?.id || "" };
@@ -240,12 +238,22 @@ export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wal
   };
   const compute = (pool, lim, janela) => {
     ensureBusy(pool);
-    return freeSlotsForPool({ pool, now, days: janela, minNoticeMin, limit: lim, busyFns, callCountOf, ...(fromHour != null ? { fromHour } : {}), ...(toHour != null ? { toHour } : {}), ...(lunchFrom != null ? { lunchFrom } : {}), ...(lunchTo != null ? { lunchTo } : {}) });
+    const slots = freeSlotsForPool({ pool, now, startDate, days: janela, minNoticeMin, limit: holds.length ? 0 : lim, busyFns, callCountOf, ...(fromHour != null ? { fromHour } : {}), ...(toHour != null ? { toHour } : {}), ...(lunchFrom != null ? { lunchFrom } : {}), ...(lunchTo != null ? { lunchTo } : {}) });
+    return withoutHeld(slots, holds, lead?.id).slice(0, lim || undefined);
   };
 
-  // A resolução inteira é função da JANELA de dias, pra o horizonte da oferta
-  // poder rodar a mesma régua num prazo curto e, se não achar nada pra ninguém,
-  // repetir no prazo cheio.
+  // SDR: a equipe indicada independe da remuneração. A preferência do Vitor
+  // é por DIA, inclusive quando o cliente pede uma semana inteira.
+  if (sdr && sid === "leverads") {
+    if (grade && UPPER_GRADES.has(grade)) return { slots: compute(pools.upper, limit, days), pool: "upper", grade };
+    const junior = compute(pools.junior, 0, days);
+    const juniorDays = new Set(junior.map((s) => dayOfSlot(s.at)));
+    const upper = compute(pools.upper, 0, days).filter((s) => !juniorDays.has(dayOfSlot(s.at)));
+    const slots = [...junior, ...upper].sort((a, b) => a.at.localeCompare(b.at)).slice(0, limit || undefined);
+    return { slots, pool: junior.length ? (upper.length ? "junior+upper" : "junior") : "upper", grade };
+  }
+
+  // Roteamento legado da agenda manual e dos demais produtos.
   const resolve = (janela) => {
   // S/A/B: pleno/sênior, nunca desce pro júnior. Sem ninguém no pool de cima,
   // cai pra todos (agendamento nunca trava por cadastro incompleto de nível).
@@ -274,13 +282,7 @@ export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wal
   return { slots: jr, pool: "junior", grade };
   };
 
-  // Sem horizonte, a régua é a de sempre (é o caminho da tela e da rota manual).
-  if (!(horizonDays > 0) || horizonDays >= days) return resolve(days);
-  const perto = resolve(horizonDays);
-  if (perto.slots.length) return { ...perto, horizonDays };
-  // Ninguém tem horário dentro do teto: abre o prazo cheio em vez de deixar o
-  // lead sem call, e diz que abriu.
-  return { ...resolve(days), horizonDays, beyondHorizon: true };
+  return resolve(days);
 }
 
 // ── Reserva curta do horário OFERTADO ───────────────────────────────────────

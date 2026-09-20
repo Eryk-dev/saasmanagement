@@ -47,7 +47,7 @@ async function world({ leads = [], threads = [], messages = [], sdrBot = {}, use
   });
   for (const u of users || [
     { id: "sdr", name: "Manuela", roles: ["sdr"] },
-    { id: "pl", name: "Plena", roles: ["closer"], compLevel: 2 },
+    { id: "pl", name: "Jonathan", roles: ["closer"], compLevel: 2 },
   ]) await repo.create("users", u);
   for (const l of leads) await repo.create("leads", { saas: "leverads", owner: "sdr", ...l });
   for (const t of threads) await repo.create("wa_threads", t);
@@ -358,7 +358,7 @@ async function brainWorld({ lead = {}, messages = [] } = {}) {
     sdrBot: { enabled: true, enabledAt: ISO("2026-08-01T00:00:00Z"), conversation: true },
   });
   await repo.create("users", { id: "sdr", name: "Manuela", roles: ["sdr"] });
-  await repo.create("users", { id: "pl", name: "Plena", roles: ["closer"], compLevel: 2 });
+  await repo.create("users", { id: "pl", name: "Jonathan", roles: ["closer"], compLevel: 2 });
   await repo.create("leads", {
     id: "L1", saas: "leverads", owner: "sdr", name: "Maycon", phone: "41999990000",
     stage: "Qualificando", createdAt: ISO("2026-08-19T12:00:00Z"), ...lead,
@@ -546,10 +546,10 @@ test("mensagem nova do lead no meio do envio aborta o resto da fala", async () =
 
 test("bookCall carimba callSetAt (é o que segura a véspera precoce)", async () => {
   const repo = await brainWorld({});
-  const fakes = brainFakes({ decisions: [{ acao: "agendar", horario: "2026-08-19T13:00" }] });
-  await repo.create("wa_messages", { id: "bmx", thread: "5541999990000", leadId: "L1", direction: "in", text: "pode ser 13h", at: ISO("2026-08-19T12:59:00Z") });
-  await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "pode ser 13h", id: "bmx" } });
+  const fakes = brainFakes({ decisions: [{ acao: "agendar", horario: "2026-08-20T09:00" }] });
+  await repo.create("wa_messages", { id: "bmx", thread: "5541999990000", leadId: "L1", direction: "in", text: "pode ser 9h", at: ISO("2026-08-19T12:59:00Z") });
+  await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "pode ser 9h", id: "bmx" } });
   const lead = await repo.get("leads", "L1");
-  assert.equal(lead.callAt, "2026-08-19T13:00");
+  assert.equal(lead.callAt, "2026-08-20T09:00");
   assert.equal(lead.callSetAt, NOW.toISOString());
 });
