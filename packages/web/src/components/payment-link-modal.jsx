@@ -1,5 +1,5 @@
 import React from "react";
-import { useEsc } from "../atoms.jsx";
+import { Modal } from "./overlay.jsx";
 import { waLink } from "../lib/ui.js";
 import { api } from "../lib/api.js";
 import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, withLegacyOption, DEAL_PRODUCTS_ACTIVE, dealProductLabel, dealProductsOf } from "../lib/payments.js";
@@ -101,14 +101,13 @@ function TargetPicker({ saas, onPick }) {
 }
 
 function PaymentLinkModal({ lead, customer, saas, origin = "card", onClose, onSaved }) {
-  useEsc(onClose);
   const [target, setTarget] = React.useState(() =>
     lead ? { kind: "lead", doc: lead } : customer ? { kind: "customer", doc: customer } : null);
   const pickable = !lead && !customer; // aberto pela tela: dá pra trocar de alvo
 
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--scrim)", zIndex: "var(--z-command)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(100%, 500px)", maxHeight: "90vh", overflowY: "auto", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 14 }}>
+    <Modal label="Link de pagamento" onClose={onClose} largura={500}
+      painelStyle={{padding:"16px 18px",display:"flex",flexDirection:"column",gap:14}}>
         {!target ? (
           <>
             <Header title="Novo link de pagamento" sub="escolha o lead ou o cliente que vai pagar" onClose={onClose} />
@@ -118,8 +117,7 @@ function PaymentLinkModal({ lead, customer, saas, origin = "card", onClose, onSa
           <LinkForm key={`${target.kind}:${target.doc.id}`} target={target} origin={origin} saas={saas}
             onBack={pickable ? () => setTarget(null) : null} onClose={onClose} onSaved={onSaved} />
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 

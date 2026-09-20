@@ -363,7 +363,7 @@ function App({ onInitialReady, initialLoading = false } = {}) {
           cartão é dismissível (Fechar chama o onClose) e o resto do app segue. */}
       {leadSel && (
         <ErrorBoundary variant="modal" label="lead" resetKey={leadSel.id} onReset={() => setLeadSel(null)}>
-          <LeadDetail lead={leadSel} onClose={() => setLeadSel(null)}
+          <LeadDetail pipeline={scr === "pipeline"} lead={leadSel} onClose={() => setLeadSel(null)}
             onOpenWhatsapp={(l, draft) => { setLeadSel(null); nav("whatsapp", { waLead: l.id, waThread: "", waDraft: draft || "" }); }} />
         </ErrorBoundary>
       )}

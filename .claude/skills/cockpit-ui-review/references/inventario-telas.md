@@ -330,5 +330,42 @@ Validação: API, testes web/smoke, build e revisão visual aprovados.
   avançada, inclusão, salvamento e releitura dos cards no mock.
 
 Validação: 1.729 testes API, testes web/smoke, build e revisão visual aprovados.
-As demais 27 páginas aguardam esta rodada; registros históricos não são aceite
+### 04. Pipeline (`#pipeline`) — validada
+
+- **Importante, corrigido:** cabeçalho com subtítulo extra, duas visões com
+  filtros separados e quadro sem limite vertical substituídos pela composição
+  aprovada. Kanban, Lista e Análise compartilham busca, fase, pessoa e ordem.
+  Colunas de 262px, cards de 115px e rolagem interna mantêm a moldura estável.
+- **Importante, corrigido:** lista contínua com nível, lead/empresa, etapa,
+  próximo passo, valor e prazo. Origem, responsável redundante, idade e grupos
+  antigos deixaram a apresentação. Descartados ficam no rodapé com retorno
+  pelo mesmo handler de movimento. Ganhos usam mês comercial e `wonAt` reais.
+- **Importante, corrigido:** Análise apresenta a esteira e o forecast usando
+  `analysisBuckets`/`winProbByKind` e `pipelinePace`, sem mudar as definições de
+  domínio. A barra mede valor ponderado. Carregamento e erro/retry são locais;
+  as demais abas continuam utilizáveis.
+- **Importante, corrigido:** ficha de 428px a 18px da borda, com resumo,
+  respostas, origem, histórico e anotações. Próximo passo fica no rodapé.
+  Fatos duplicados do cabeçalho e campos extras saíram da apresentação. A
+  edição, propostas, pagamento, requalificação e agendamento mantêm seus
+  handlers. Logística real de call/integração continua no editor de agendamento;
+  os gates reais permanecem em modal para comportar horários e validações.
+- **Bloqueante, corrigido:** modal compartilhado de pagamento passou a usar
+  `Modal`, com papel de diálogo, foco inicial, contenção e restauração do foco.
+  Antes, o teclado podia permanecer preso na ficha sob o modal. A seleção em
+  massa é limpa na troca de produto. O cadastro de entidades usa `Drawer`,
+  com foco controlado, Escape e fechamento bloqueado durante o salvamento.
+- **Evidências:** `npm run test:review:pipeline -w packages/web`; capturas e
+  `geometry.json` em `packages/web/.review-artifacts/pipeline/`. São comparados
+  quadro, filtros, lista/células, análise e limites da ficha em 1440/1920:
+  **148 medidas por largura**, diferença máxima **1px**. Foram exercitados
+  busca, fase/pessoa/ordem, persistência entre abas, seleção/toque em massa,
+  arrasto, retorno de descartado, anotações, adiamento, gates, geração de
+  proposta, pagamento, cadastro, vazio, erro/retry, carga lenta e mobile390.
+  Fluxos usam `preview/pipeline-mock.js`; nenhuma API/banco é iniciada.
+- **Fora do escopo:** os handlers existentes de movimento/edição e ações em
+  massa são otimistas. Uma falha de persistência gera aviso, mas o rollback
+  requer revisão própria. Não foram alteradas regras financeiras ou de etapa.
+
+As demais 26 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.

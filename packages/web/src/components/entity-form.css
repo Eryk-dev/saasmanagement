@@ -1,0 +1,4 @@
+@media (max-width:700px) {
+  .entity-form :is(button,input:not([type=checkbox]),select) { min-height:44px; }
+  .entity-form button[aria-label="Fechar formulário"] { min-width:44px; }
+}

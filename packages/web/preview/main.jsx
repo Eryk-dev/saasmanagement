@@ -1,3 +1,4 @@
+import { pipelineReview, setupPipelineReview } from "./pipeline-mock.js";
 import { todayReview, setupTodayReview } from "./today-mock.js";
 import React from "react";
 import { overviewReview, setupOverviewReview } from "./overview-mock.js";
@@ -51,6 +52,7 @@ if (params.has("inbox")) setupInboxPreview(window.SEED, params);
 if (params.has("team")) setupTeamPreview(window.SEED);
 if (overviewReview) setupOverviewReview(window.SEED);
 if (todayReview) setupTodayReview(window.SEED);
+if (pipelineReview) setupPipelineReview(window.SEED);
 if (previewShell) {
   window.SEED.SAAS.push({ id: "elo", name: "Elo", accent: 55, funnel: [], leadQuestions: [] });
   // A moldura usa o App real, com API falsa e sem conexão SSE/banco.

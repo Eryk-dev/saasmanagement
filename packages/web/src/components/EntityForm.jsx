@@ -1,6 +1,7 @@
 import React from "react";
+import "./entity-form.css";
 import { ENTITIES, leadQuestionFields, customEntityFields } from "../lib/entities.js";
-import { useEsc } from "../atoms.jsx";
+import { Drawer } from "./overlay.jsx";
 import { api } from "../lib/api.js";
 // Reusable create/edit modal, driven by the per-entity config in entities.js.
 // Mirrors deal.jsx's right-drawer overlay. Create vs edit is decided by record.id.
@@ -137,7 +138,6 @@ function toPayload(fields, values) {
 // `bare`: renderiza só o form (campos + rodapé), sem o overlay/drawer próprio —
 // pra embutir dentro de outro popup (ex.: edição inline no popup do cliente).
 function EntityForm({ entityKey, record, onClose, onSaved, onOpenLead, bare = false }) {
-  useEsc(bare ? null : onClose); // inline (bare) nao captura Esc
   const cfg = ENTITIES[entityKey];
   const isEdit = !!(record && record.id);
   const [values, setValues] = useState(() => toInputs(effectiveFields(cfg, record || {}), record));
@@ -228,19 +228,19 @@ function EntityForm({ entityKey, record, onClose, onSaved, onOpenLead, bare = fa
     </div>
   ) : (
     <div style={{ padding: "12px 20px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
-      {error && <div className="mono" style={{ fontSize: 11, color: "var(--neg)", marginBottom: 8 }}>{error}</div>}
+      {error && <div role="alert" className="mono" style={{ fontSize: 11, color: "var(--neg)", marginBottom: 8 }}>{error}</div>}
       <div style={{ display: "flex", gap: 8 }}>
         <button type="submit" disabled={busy} style={{ flex: 1, padding: "9px 12px", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500, opacity: busy ? 0.6 : 1 }}>
           {generating ? "Gerando proposta…" : busy ? "Salvando…" : isEdit ? "Salvar" : "Criar"}
         </button>
-        <button type="button" onClick={onClose} style={{ padding: "9px 16px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 13 }}>Cancelar</button>
+        <button type="button" disabled={busy} onClick={onClose} style={{ padding: "9px 16px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 13 }}>Cancelar</button>
       </div>
     </div>
   );
 
   if (bare) {
     return (
-      <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <form className="entity-form" onSubmit={submit} style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
         <div style={{ padding: "16px 20px" }}>{fieldsGrid}</div>
         {footer}
       </form>
@@ -248,28 +248,25 @@ function EntityForm({ entityKey, record, onClose, onSaved, onOpenLead, bare = fa
   }
 
   return (
-    <div
-      style={{ position: "fixed", inset: 0, background: "var(--scrim-soft)", display: "flex", justifyContent: "flex-end", zIndex: "var(--z-drawer)" }}
-      onClick={onClose}
-    >
-      <form
+    <Drawer label={`${isEdit ? "Editar" : "Novo"} ${cfg.singular}`} onClose={onClose} fechavel={!busy} largura={560}>
+      <form className="entity-form"
         onClick={(e) => e.stopPropagation()}
         onSubmit={submit}
-        style={{ width: "min(560px, 100vw)", height: "100%", background: "var(--bg-1)", borderLeft: "1px solid var(--line-2)", display: "flex", flexDirection: "column", boxShadow: "var(--shadow-pop)" }}
+        style={{ width: "100%", height: "100%", minHeight:0, display: "flex", flexDirection: "column" }}
       >
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <div className="kicker">{isEdit ? "Editar" : "Novo"}</div>
             <div style={{ fontSize: 18, fontWeight: 500, marginTop: 2 }}>{cfg.singular}</div>
           </div>
-          <button type="button" onClick={onClose} className="mono dim" style={{ fontSize: 16 }}>✕</button>
+          <button type="button" disabled={busy} onClick={onClose} aria-label="Fechar formulário" className="mono dim" style={{ fontSize: 16 }}>✕</button>
         </div>
 
         <div style={{ flex: 1, overflow: "auto", padding: "16px 20px" }}>{fieldsGrid}</div>
 
         {footer}
       </form>
-    </div>
+    </Drawer>
   );
 }
 

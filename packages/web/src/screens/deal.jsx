@@ -1,7 +1,7 @@
 import React from "react";
 import { MoreMenu } from "../atoms.jsx";
 import { Pill } from "../components/viz.jsx";
-import { Drawer } from "../components/overlay.jsx";
+import { Drawer, Modal } from "../components/overlay.jsx";
 import { LeadGrade, LeadSection, LeadDisclosure } from "../components/lead-card.jsx";
 import { ActivityList, ActivityComposer, mergeTimeline } from "../components/timeline.jsx";
 import { RoutineSuggestion } from "../components/routine-suggestion.jsx";
@@ -122,7 +122,8 @@ function consultaWhen(at) {
   return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(", ", " · ");
 }
 
-function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
+function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }) {
+  const [scheduleEditor, setScheduleEditor] = React.useState(false);
   const { refresh, version } = useData();
   // Cópia local: as ações rápidas (etapa, próximo contato) editam aqui e
   // persistem otimisticamente; o pipeline ressincroniza no fechar (refresh).
@@ -263,7 +264,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   // recebe exatamente o produto decidido pelo closer, sem setup, sem edição e
   // com benefícios/preço já visíveis (nada depende de Espaço/Shift+Espaço).
   const [propBusy, setPropBusy] = React.useState(false);
-  async function gerarCom(t) {
+  async function gerarCom(t = {}) {
     const rotulo = t.pickLabel || t.name || "esta apresentação";
     if (lead.proposta_id && !window.confirm(`Este lead já tem apresentação gerada. Gerar "${rotulo}" substitui o link atual (o que já foi mandado pro cliente continua de pé). Continuar?`)) return;
     // A aba abre DENTRO do clique: depois do await o navegador trata como popup.
@@ -448,31 +449,46 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
   const history = mergeTimeline(timelineActs, lead.comments);
   const daysSince = (at) => at && Number.isFinite(new Date(at).getTime()) ? `${Math.max(0, Math.floor((Date.now() - new Date(at).getTime()) / 86400000))}d` : "—";
 
-  return (
-    <>
-      <Drawer onClose={close} label={`Lead · ${lead.name}`} largura={520} painelStyle={{ background: "var(--bg-0)" }}>
-        <div className="lead-panel">
-          <header className="lead-panel-header">
-            <div className="lead-panel-title-row">
-              <div>
-                <h2 className="lead-panel-title"><LeadGrade tier={tier} />{lead.name}</h2>
-                <div className="lead-panel-subtitle">{[lead.company, lead.source].filter(Boolean).join(" · ")}</div>
+  const summaryCard = (
+          <ClientSummaryCard
+            pain={pipeline ? null : pain}
+            facts={editResumo ? null : pipeline ? summaryFacts.filter(([key])=>["Potencial","Temperatura","Faixa de faturamento","Etapa","Toques na etapa","Valor","Origem","Indicado por","SDR / closer","Próximo passo (nota)","Proposta na mesa","Telefone","E-mail","Entrada"].includes(key)) : summaryFacts}
+            action={(
+              <button onClick={() => setEditResumo((v) => !v)} title={editResumo ? "Concluir edição" : "Editar os dados do cliente aqui mesmo"}
+                style={{ marginLeft: "auto", height: 22, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid " + (editResumo ? "var(--accent)" : "var(--line-2)"), background: editResumo ? "var(--accent)" : "var(--bg-1)", color: editResumo ? "var(--accent-fg)" : "var(--fg-3)", fontSize: 11 }}>
+                {editResumo ? "✓ pronto" : "✎ editar"}
+              </button>
+            )}>
+            {editResumo && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                <EditRow label="Nome"><input defaultValue={lead.name || ""} onBlur={(e) => e.target.value !== (lead.name || "") && patch({ name: e.target.value })} style={editInput} /></EditRow>
+                <EditRow label="Empresa"><input defaultValue={lead.company || ""} onBlur={(e) => e.target.value !== (lead.company || "") && patch({ company: e.target.value })} style={editInput} /></EditRow>
+                <EditRow label="Prioridade">
+                  <select value={lead.priority || ""} onChange={(e) => patch({ priority: e.target.value })} style={editInput}>
+                    <option value="">—</option><option value="P0">P0</option><option value="P1">P1</option><option value="P2">P2</option>
+                  </select>
+                </EditRow>
+                <EditRow label={lead.planClosed === "mensal" ? "Valor mensal (R$)" : "Valor (R$)"}><input type="number" defaultValue={lead.amount ?? ""} onBlur={(e) => patch({ amount: e.target.value === "" ? "" : Number(e.target.value) })} style={editInput} /></EditRow>
+                <EditRow label="Faixa"><input defaultValue={lead.value || ""} onBlur={(e) => e.target.value !== (lead.value || "") && patch({ value: e.target.value })} style={editInput} /></EditRow>
+                <EditRow label="E-mail"><input defaultValue={lead.email || ""} onBlur={(e) => e.target.value !== (lead.email || "") && patch({ email: e.target.value })} style={editInput} /></EditRow>
+                <EditRow label="Telefone"><input defaultValue={lead.phone || ""} onBlur={(e) => e.target.value !== (lead.phone || "") && patch({ phone: e.target.value })} style={editInput} /></EditRow>
+                {[["Dono (SDR)", "owner", "sdr"], ["Closer", "closer", "closer"], ["Integrador", "integrator", "integrator"]].map(([label, field, role]) => {
+                  const opts = usersByRole(role);
+                  return (
+                    <EditRow key={field} label={label}>
+                      <select value={lead[field] || ""} onChange={(e) => patch({ [field]: e.target.value })} style={editInput}>
+                        <option value="">—</option>
+                        {opts.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
+                        {lead[field] && !opts.some((u) => u.id === lead[field]) && <option value={lead[field]}>{displayName(lead[field])}</option>}
+                      </select>
+                    </EditRow>
+                  );
+                })}
               </div>
-              <button className="lead-panel-close" onClick={close} aria-label="Fechar lead">✕</button>
-            </div>
-            <dl className="lead-panel-facts">
-              <div><dt>valor</dt><dd className="tnum">{window.fmt.moneyFull(lead.amount || 0)}</dd></div>
-              <div><dt>etapa</dt><dd>{lead.stage || "—"}</dd></div>
-              <div><dt>no funil</dt><dd className="tnum">{daysSince(lead.createdAt)}</dd></div>
-              <div><dt>tentativas</dt><dd className="tnum">{Number(lead.stageAttempts) || 0}</dd></div>
-            </dl>
-            <div className="lead-panel-owners">
-              {[["SDR", lead.owner], ["Closer", lead.closer], ["Integrador", lead.integrator]].filter(([, id]) => id).map(([role, id]) => <span key={role}>{role} · {displayName(id)}</span>)}
-              <span title={`Lead ${lead.id}`}>Nesta etapa · {daysSince(lead.stageSince || lead.createdAt)}</span>
-            </div>
-          </header>
-          <div className="lead-panel-body">
-          {/* Próximo passo e agendamento mantêm os handlers da ficha. */}
+            )}
+          </ClientSummaryCard>
+  );
+  const scheduleCard = (
         <div style={{ ...box, display: "flex", flexDirection: "column", gap: 10 }}>
           <div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
@@ -849,62 +865,8 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
             </div>
           )}
         </div>
-
-          <LeadSection title="A ação de agora">
-            {wa ? (onOpenWhatsapp
-              ? <button className="lead-panel-button primary" onClick={() => onOpenWhatsapp(lead)}>Abrir conversa no WhatsApp</button>
-              : <a className="lead-panel-button primary" href={wa} target="_blank" rel="noopener noreferrer">Abrir WhatsApp ↗</a>)
-              : <button className="lead-panel-button primary" onClick={() => setShowComposer(true)}>Registrar contato</button>}
-            <div className="lead-panel-actions" style={{ marginTop: 10 }}>
-              {nextStage && <button className="lead-panel-button" style={{ flex: 1 }} onClick={() => moveStage(nextStage.stage)}>avançar etapa →</button>}
-              {previousStage && <button className="lead-panel-button" onClick={() => moveStage(previousStage.stage)}>← voltar</button>}
-              {onOpenWhatsapp && wa && <a className="lead-panel-button" href={wa} target="_blank" rel="noopener noreferrer" title="Abrir no WhatsApp Web">Web ↗</a>}
-            </div>
-            <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12, fontSize: 12, color: "var(--fg-3)" }}>
-              Mover de etapa
-              <select aria-label="Mover de etapa" value={lead.stage || ""} onChange={(e) => moveStage(e.target.value)} className="inp" style={{ flex: 1, minWidth: 0 }}>
-                {funnel.map((f) => <option key={f.stage} value={f.stage}>{f.stage}</option>)}
-                {funnel.every((f) => f.stage !== lead.stage) && lead.stage && <option value={lead.stage}>{lead.stage}</option>}
-              </select>
-            </label>
-            <div className="lead-panel-actions" style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line-1)" }}>
-              {(onOpenWhatsapp || wa) && (
-                <button onClick={propostaNoWhats} disabled={propBusy}
-                  title={lead.proposalUrl
-                    ? "Abrir o WhatsApp Web com o produto escolhido em apresentar, já pronto para o cliente"
-                    : "Gerar a apresentação e abrir o WhatsApp Web com a versão pronta para o cliente"}
-                  style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 700, cursor: "pointer", opacity: propBusy ? 0.6 : 1 }}>
-                  {propBusy ? "gerando…" : "➤ proposta no Whats"}
-                </button>
-              )}
-              {lead.proposal_edit_url && (
-                <a href={lead.proposal_edit_url} target="_blank" rel="noreferrer"
-                  title="Abrir a apresentação do closer (tela zero com régua e SPIN)"
-                  style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)", fontSize: 12.5, fontWeight: 600, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
-                  apresentar ↗
-                </a>
-              )}
-              {/* Link de pagamento à vista no CARD (Leo, 13/09): estava dentro
-                  do ⋯, e é o passo seguinte à apresentação — quem fecha na call
-                  precisa cobrar sem procurar. */}
-              <button onClick={() => setPayLink(true)}
-                title={lead.mpChargeUrl ? "Abrir/refazer o link de pagamento deste lead" : "Criar o link de pagamento deste lead (Mercado Pago)"}
-                style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
-                {lead.mpChargeUrl ? (lead.mpChargeKind === "recurring" ? "link da assinatura" : "link de pagamento") : "link de pagamento"}
-              </button>
-              <MoreMenu size={30} items={[
-                ...altDecks.map((t) => ({ label: `gerar ${t.pickLabel || t.name}`, onClick: () => gerarCom(t) })),
-                lead.customProposalUrl && { label: "abrir proposta personalizada ↗", onClick: () => window.open(cockpitProposalUrl(lead.customProposalUrl), "_blank", "noreferrer") },
-                { label: lead.customProposalUrl ? "editar proposta personalizada" : "montar proposta personalizada", onClick: () => setCustomProp(true) },
-              ]} />
-            </div>
-          </LeadSection>
-
-          <LeadSection title="Histórico" action={<button className="lead-script-copy-button" onClick={() => setShowComposer((v) => !v)} aria-expanded={showComposer}>{showComposer ? "fechar anotação" : "registrar contato"}</button>}>
-            {showComposer && <div style={{ marginBottom: 14 }}><ActivityComposer embedded lead={lead} onLogged={refetchTimeline} /></div>}
-            {activities === null ? <div className="lead-script-copy">Carregando histórico…</div> : <ActivityList activities={showTimeline ? history : history.slice(0, 3)} />}
-            {history.length > 3 && <button className="lead-script-copy-button" style={{ marginTop: 10 }} onClick={() => setShowTimeline((v) => !v)}>{showTimeline ? "mostrar menos" : "ver histórico completo"}</button>}
-          </LeadSection>
+  );
+  const qualificationCard = (<>
           {/* Requalificação (Receita Previsível): a oportunidade que o SDR
               passou só CONTA quando o closer requalifica e ACEITA (fit + decisor
               + quer avançar). Aparece nas etapas do closer enquanto não houver
@@ -947,56 +909,9 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
               <b>Devolvida pelo closer:</b> {lead.oppReturnNote}
             </div>
           )}
-          {/* Resumo do cliente: MESMO bloco do painel de atividade (dor em
-              destaque + os fatos na mesma ordem). O lápis é exclusivo da ficha:
-              abre a edição INLINE dos campos do lead, no lugar do grid. */}
-          <ClientSummaryCard
-            pain={pain}
-            facts={editResumo ? null : summaryFacts}
-            action={(
-              <button onClick={() => setEditResumo((v) => !v)} title={editResumo ? "Concluir edição" : "Editar os dados do cliente aqui mesmo"}
-                style={{ marginLeft: "auto", height: 22, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid " + (editResumo ? "var(--accent)" : "var(--line-2)"), background: editResumo ? "var(--accent)" : "var(--bg-1)", color: editResumo ? "var(--accent-fg)" : "var(--fg-3)", fontSize: 11 }}>
-                {editResumo ? "✓ pronto" : "✎ editar"}
-              </button>
-            )}>
-            {editResumo && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                <EditRow label="Nome"><input defaultValue={lead.name || ""} onBlur={(e) => e.target.value !== (lead.name || "") && patch({ name: e.target.value })} style={editInput} /></EditRow>
-                <EditRow label="Empresa"><input defaultValue={lead.company || ""} onBlur={(e) => e.target.value !== (lead.company || "") && patch({ company: e.target.value })} style={editInput} /></EditRow>
-                <EditRow label="Prioridade">
-                  <select value={lead.priority || ""} onChange={(e) => patch({ priority: e.target.value })} style={editInput}>
-                    <option value="">—</option><option value="P0">P0</option><option value="P1">P1</option><option value="P2">P2</option>
-                  </select>
-                </EditRow>
-                <EditRow label={lead.planClosed === "mensal" ? "Valor mensal (R$)" : "Valor (R$)"}><input type="number" defaultValue={lead.amount ?? ""} onBlur={(e) => patch({ amount: e.target.value === "" ? "" : Number(e.target.value) })} style={editInput} /></EditRow>
-                <EditRow label="Faixa"><input defaultValue={lead.value || ""} onBlur={(e) => e.target.value !== (lead.value || "") && patch({ value: e.target.value })} style={editInput} /></EditRow>
-                <EditRow label="E-mail"><input defaultValue={lead.email || ""} onBlur={(e) => e.target.value !== (lead.email || "") && patch({ email: e.target.value })} style={editInput} /></EditRow>
-                <EditRow label="Telefone"><input defaultValue={lead.phone || ""} onBlur={(e) => e.target.value !== (lead.phone || "") && patch({ phone: e.target.value })} style={editInput} /></EditRow>
-                {[["Dono (SDR)", "owner", "sdr"], ["Closer", "closer", "closer"], ["Integrador", "integrator", "integrator"]].map(([label, field, role]) => {
-                  const opts = usersByRole(role);
-                  return (
-                    <EditRow key={field} label={label}>
-                      <select value={lead[field] || ""} onChange={(e) => patch({ [field]: e.target.value })} style={editInput}>
-                        <option value="">—</option>
-                        {opts.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
-                        {lead[field] && !opts.some((u) => u.id === lead[field]) && <option value={lead[field]}>{displayName(lead[field])}</option>}
-                      </select>
-                    </EditRow>
-                  );
-                })}
-              </div>
-            )}
-          </ClientSummaryCard>
 
-          {/* De onde veio · atribuição do anúncio: mesmo bloco (e mesmo lugar,
-              depois dos contatos) do painel de atividade. Recolhível porque a
-              ficha lista a atribuição inteira. */}
-          <AttributionCard rows={attribution} open={showFrom} onToggle={() => setShowFrom((v) => !v)} />
-
-          <LeadDisclosure title="Dados do lead" hint={`${checklist.filter((c) => c.value).length} de ${checklist.length} preenchidos`}>
-            <LeadChecklist key={lead.id} checklist={checklist} onPatch={patch} leadId={lead.id} />
-          </LeadDisclosure>
-
+  </>);
+  const meetingDetails = (<>
             {/* Briefing de passagem em cima de tudo: é o que o integrador lê
                 primeiro quando abre o card que acabou de chegar nele. */}
             <IntegrationBriefCard brief={integrationBrief} phone={lead.phone}
@@ -1058,6 +973,145 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
           </div>
         )}
 
+
+  </>);
+  return (
+    <>
+      <Drawer onClose={close} label={`Lead · ${lead.name}`} largura={pipeline ? 428 : 520}
+        style={pipeline ? {padding:"80px 18px 18px",background:"transparent"} : undefined}
+        painelStyle={{ background: pipeline ? "var(--bg-1)" : "var(--bg-0)", overflow:pipeline?"hidden":"auto" }}>
+        {pipeline ? <div className="pipeline-lead-panel">
+          <header><LeadGrade tier={tier} size={28} placeholder/><div><h2>{lead.name}</h2><p>{lead.company}</p></div><button aria-label="Fechar lead" onClick={close}>✕</button></header>
+          <div className="pipeline-lead-body">
+            {summaryCard}
+            <LeadDisclosure title="Respostas do formulário" hint={`${checklist.filter(c=>c.value).length} de ${checklist.length}`}><LeadChecklist key={lead.id} checklist={checklist} onPatch={patch} leadId={lead.id}/></LeadDisclosure>
+            <AttributionCard rows={attribution} open={showFrom} onToggle={()=>setShowFrom(v=>!v)} />
+            <LeadDisclosure title="Histórico de ações" hint={`${history.length} registros`}>
+              {activities===null ? <div role="status">Carregando histórico…</div> : <ActivityList activities={history}/>}
+              <button className="lead-panel-button" onClick={()=>setShowComposer(v=>!v)}>{showComposer?"Fechar registro":"Registrar contato"}</button>
+              {showComposer&&<ActivityComposer embedded lead={lead} onLogged={refetchTimeline}/>}
+            </LeadDisclosure>
+            <LeadDisclosure title="Anotações" hint={lead.recapNote?"com anotação":"sem anotação"}>
+              <textarea aria-label="Anotações" defaultValue={lead.recapNote||""} onBlur={e=>{if(e.target.value!==(lead.recapNote||""))patch({recapNote:e.target.value});}} placeholder="o que ficou combinado, quem decide, objeção que apareceu…"/>
+            </LeadDisclosure>
+            {qualificationCard}
+            <div className="pipeline-lead-send"><h3>enviar pro cliente</h3>
+              <button disabled={propBusy} onClick={()=>gerarCom()}><span aria-hidden="true">▣</span><span>{propBusy?"Gerando…":"Gerar apresentação"}</span></button>
+              <button onClick={()=>setPayLink(true)}><span aria-hidden="true">▤</span><span>Link de pagamento</span></button>
+              <button disabled={propBusy} onClick={propostaNoWhats}><span aria-hidden="true">✆</span><span>Enviar proposta no WhatsApp</span></button>
+              <MoreMenu size={30} items={[
+                ...altDecks.map(t=>({label:`gerar ${t.pickLabel||t.name}`,onClick:()=>gerarCom(t)})),
+                lead.proposal_edit_url&&{label:"apresentar ↗",onClick:()=>window.open(lead.proposal_edit_url,"_blank","noreferrer")},
+                lead.customProposalUrl&&{label:"abrir proposta personalizada ↗",onClick:()=>window.open(cockpitProposalUrl(lead.customProposalUrl),"_blank","noreferrer")},
+                {label:lead.customProposalUrl?"editar proposta personalizada":"montar proposta personalizada",onClick:()=>setCustomProp(true)},
+                wa&&{label:"Abrir conversa no WhatsApp",onClick:()=>onOpenWhatsapp?onOpenWhatsapp(lead):window.open(wa,"_blank","noreferrer")},
+              ]}/>
+            </div>
+          </div>
+          <footer className="pipeline-lead-footer">
+            <div><span>próximo passo</span><small style={{color:next?.tone}}>{next?.text?.replace(/^[◆●]\s*/,"")||"sem data"}</small></div>
+            <strong>{isOpen?(lead.nextActionNote||primaryStep.label):"Lead finalizado"}</strong>
+            <input aria-label="Nota do próximo toque" defaultValue={lead.nextActionNote||""} onBlur={e=>{if(e.target.value!==(lead.nextActionNote||""))patch({nextActionNote:e.target.value});}} placeholder="o que fazer nesse toque?"/>
+            <div className="pipeline-lead-postpone"><span>adiar o toque</span>{[1,2].map(n=><button key={n} onClick={()=>patch({nextActionAt:emDias(n)().toISOString()})}>Adiar {n}d</button>)}<button onClick={()=>setScheduleEditor(true)}>Agendamento</button></div>
+            <div><select aria-label="Mover de etapa" value={lead.stage||""} onChange={e=>moveStage(e.target.value)}>{funnel.map(f=><option key={f.stage} value={f.stage}>{f.stage}</option>)}</select>{nextStage&&<button className="pipeline-lead-advance" onClick={()=>moveStage(nextStage.stage)}>Avançar →</button>}</div>
+            {isOpen&&<button className="pipeline-lead-discard" onClick={()=>moveStage(stageByKind(saasCfg,"desqualificado")||stageByKind(saasCfg,"perdido"))}>Descartar lead</button>}
+          </footer>
+        </div> : (
+        <div className="lead-panel">
+          <header className="lead-panel-header">
+            <div className="lead-panel-title-row">
+              <div>
+                <h2 className="lead-panel-title"><LeadGrade tier={tier} />{lead.name}</h2>
+                <div className="lead-panel-subtitle">{[lead.company, lead.source].filter(Boolean).join(" · ")}</div>
+              </div>
+              <button className="lead-panel-close" onClick={close} aria-label="Fechar lead">✕</button>
+            </div>
+            <dl className="lead-panel-facts">
+              <div><dt>valor</dt><dd className="tnum">{window.fmt.moneyFull(lead.amount || 0)}</dd></div>
+              <div><dt>etapa</dt><dd>{lead.stage || "—"}</dd></div>
+              <div><dt>no funil</dt><dd className="tnum">{daysSince(lead.createdAt)}</dd></div>
+              <div><dt>tentativas</dt><dd className="tnum">{Number(lead.stageAttempts) || 0}</dd></div>
+            </dl>
+            <div className="lead-panel-owners">
+              {[["SDR", lead.owner], ["Closer", lead.closer], ["Integrador", lead.integrator]].filter(([, id]) => id).map(([role, id]) => <span key={role}>{role} · {displayName(id)}</span>)}
+              <span title={`Lead ${lead.id}`}>Nesta etapa · {daysSince(lead.stageSince || lead.createdAt)}</span>
+            </div>
+          </header>
+          <div className="lead-panel-body">
+          {/* Próximo passo e agendamento mantêm os handlers da ficha. */}
+        {scheduleCard}
+
+          <LeadSection title="A ação de agora">
+            {wa ? (onOpenWhatsapp
+              ? <button className="lead-panel-button primary" onClick={() => onOpenWhatsapp(lead)}>Abrir conversa no WhatsApp</button>
+              : <a className="lead-panel-button primary" href={wa} target="_blank" rel="noopener noreferrer">Abrir WhatsApp ↗</a>)
+              : <button className="lead-panel-button primary" onClick={() => setShowComposer(true)}>Registrar contato</button>}
+            <div className="lead-panel-actions" style={{ marginTop: 10 }}>
+              {nextStage && <button className="lead-panel-button" style={{ flex: 1 }} onClick={() => moveStage(nextStage.stage)}>avançar etapa →</button>}
+              {previousStage && <button className="lead-panel-button" onClick={() => moveStage(previousStage.stage)}>← voltar</button>}
+              {onOpenWhatsapp && wa && <a className="lead-panel-button" href={wa} target="_blank" rel="noopener noreferrer" title="Abrir no WhatsApp Web">Web ↗</a>}
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12, fontSize: 12, color: "var(--fg-3)" }}>
+              Mover de etapa
+              <select aria-label="Mover de etapa" value={lead.stage || ""} onChange={(e) => moveStage(e.target.value)} className="inp" style={{ flex: 1, minWidth: 0 }}>
+                {funnel.map((f) => <option key={f.stage} value={f.stage}>{f.stage}</option>)}
+                {funnel.every((f) => f.stage !== lead.stage) && lead.stage && <option value={lead.stage}>{lead.stage}</option>}
+              </select>
+            </label>
+            <div className="lead-panel-actions" style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line-1)" }}>
+              {(onOpenWhatsapp || wa) && (
+                <button onClick={propostaNoWhats} disabled={propBusy}
+                  title={lead.proposalUrl
+                    ? "Abrir o WhatsApp Web com o produto escolhido em apresentar, já pronto para o cliente"
+                    : "Gerar a apresentação e abrir o WhatsApp Web com a versão pronta para o cliente"}
+                  style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 700, cursor: "pointer", opacity: propBusy ? 0.6 : 1 }}>
+                  {propBusy ? "gerando…" : "➤ proposta no Whats"}
+                </button>
+              )}
+              {lead.proposal_edit_url && (
+                <a href={lead.proposal_edit_url} target="_blank" rel="noreferrer"
+                  title="Abrir a apresentação do closer (tela zero com régua e SPIN)"
+                  style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--accent-line)", background: "var(--accent-soft)", color: "var(--accent)", fontSize: 12.5, fontWeight: 600, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
+                  apresentar ↗
+                </a>
+              )}
+              {/* Link de pagamento à vista no CARD (Leo, 13/09): estava dentro
+                  do ⋯, e é o passo seguinte à apresentação — quem fecha na call
+                  precisa cobrar sem procurar. */}
+              <button onClick={() => setPayLink(true)}
+                title={lead.mpChargeUrl ? "Abrir/refazer o link de pagamento deste lead" : "Criar o link de pagamento deste lead (Mercado Pago)"}
+                style={{ height: 30, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+                {lead.mpChargeUrl ? (lead.mpChargeKind === "recurring" ? "link da assinatura" : "link de pagamento") : "link de pagamento"}
+              </button>
+              <MoreMenu size={30} items={[
+                ...altDecks.map((t) => ({ label: `gerar ${t.pickLabel || t.name}`, onClick: () => gerarCom(t) })),
+                lead.customProposalUrl && { label: "abrir proposta personalizada ↗", onClick: () => window.open(cockpitProposalUrl(lead.customProposalUrl), "_blank", "noreferrer") },
+                { label: lead.customProposalUrl ? "editar proposta personalizada" : "montar proposta personalizada", onClick: () => setCustomProp(true) },
+              ]} />
+            </div>
+          </LeadSection>
+
+          <LeadSection title="Histórico" action={<button className="lead-script-copy-button" onClick={() => setShowComposer((v) => !v)} aria-expanded={showComposer}>{showComposer ? "fechar anotação" : "registrar contato"}</button>}>
+            {showComposer && <div style={{ marginBottom: 14 }}><ActivityComposer embedded lead={lead} onLogged={refetchTimeline} /></div>}
+            {activities === null ? <div className="lead-script-copy">Carregando histórico…</div> : <ActivityList activities={showTimeline ? history : history.slice(0, 3)} />}
+            {history.length > 3 && <button className="lead-script-copy-button" style={{ marginTop: 10 }} onClick={() => setShowTimeline((v) => !v)}>{showTimeline ? "mostrar menos" : "ver histórico completo"}</button>}
+          </LeadSection>
+          {qualificationCard}
+          {/* Resumo do cliente: MESMO bloco do painel de atividade (dor em
+              destaque + os fatos na mesma ordem). O lápis é exclusivo da ficha:
+              abre a edição INLINE dos campos do lead, no lugar do grid. */}
+          {summaryCard}
+
+          {/* De onde veio · atribuição do anúncio: mesmo bloco (e mesmo lugar,
+              depois dos contatos) do painel de atividade. Recolhível porque a
+              ficha lista a atribuição inteira. */}
+          <AttributionCard rows={attribution} open={showFrom} onToggle={() => setShowFrom((v) => !v)} />
+
+          <LeadDisclosure title="Dados do lead" hint={`${checklist.filter((c) => c.value).length} de ${checklist.length} preenchidos`}>
+            <LeadChecklist key={lead.id} checklist={checklist} onPatch={patch} leadId={lead.id} />
+          </LeadDisclosure>
+
+          {meetingDetails}
         {/* Aviso de número inválido / descadastro (dos webhooks do WhatsApp): o
             operador vê antes de tentar mandar, e os disparos já pulam sozinhos. */}
         {(lead.whatsappInvalid || lead.whatsappOptOut) && (
@@ -1101,7 +1155,11 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp }) {
 
           </div>
         </div>
+        )}
       </Drawer>
+      {pipeline&&scheduleEditor&&<Modal label="Agendamento do lead" onClose={()=>setScheduleEditor(false)} largura={520}>
+        <div style={{padding:20}}><button className="lead-panel-button" onClick={()=>setScheduleEditor(false)}>Fechar agendamento</button>{scheduleCard}{meetingDetails}</div>
+      </Modal>}
 
         {pendingMove && (
           <MoveLeadModal

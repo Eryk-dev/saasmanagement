@@ -11,7 +11,8 @@
     "preview:tela": "vite --config vite.preview.config.js",
     "test:review:overview": "node scripts/review/overview.mjs",
     "test:review:today": "node scripts/review/today.mjs",
-    "test:review:training": "node scripts/review/training.mjs"
+    "test:review:training": "node scripts/review/training.mjs",
+    "test:review:pipeline": "node scripts/review/pipeline.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
