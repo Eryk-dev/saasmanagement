@@ -791,5 +791,34 @@ Validação: 1.739 testes da API, testes web/smoke, build e revisão visual apro
   de rascunho; Cancelar e fechamento da janela têm proteção local.
 
 Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
-As demais 13 páginas aguardam esta rodada; registros históricos não são aceite
+### 18. Canvas (`#creative`) — validada
+
+- **Importante, corrigido:** cabeçalho com formatos, galeria em lista,
+  prévia e campos seguem `TelaCanvas.dc.html`. Os três painéis mantêm a
+  proporção da referência; controles usam pills e tipografia do cockpit.
+  A galeria fica compacta no celular e os controles têm alvos de 44px.
+- **Bloqueante, corrigido:** trocar de template e resetar pedem confirmação
+  quando há alterações. A exportação bloqueia repetição e edição local;
+  falha preserva a arte e permite repetir. O PNG usa canvas separado, sem
+  levar o contorno de seleção. Falhas dos assets da marca têm retry.
+- **Importante, corrigido:** elementos adicionais de botão ficam disponíveis
+  junto aos textos, usando o renderer existente. Tamanho da fonte permanece
+  legível e limitado ao intervalo anterior. Fotos atrasadas de outro template
+  são ignoradas. O editor reinicia ao trocar de produto.
+- **Evidências:** `npm run test:review:creative -w packages/web`, capturas e
+  `geometry.json` em `packages/web/.review-artifacts/creative/`. **32 medidas**
+  estruturais em 1440/1920, diferença máxima **0px**, para título/cabeçalho e
+  posição/largura das três colunas. Edição, descarte, fontes, fotos, slides,
+  PNG individual e quatro arquivos do carrossel, falha/retry, espera, 390/1024px,
+  escuro e marca Elo conferidos. PNGs inspecionados em 1080×1920 e 1080×1350.
+- **Fora do escopo:** as artes mantêm identidade, copy e fontes públicas da
+  marca, distintas da UI do CRM. A galeria conserva os nove modelos reais
+  de stories, incluindo sequências; alturas diferem do catálogo simplificado
+  da prancha. O contrato do editor embutido em Redes sociais foi preservado.
+  Navegação global SPA ainda pode descartar a edição; a proteção de saída é
+  local ao template/reset e ao fechamento da janela. Arquitetura do renderer,
+  persistência da arte e dependência de fontes externas não foram refeitas.
+
+Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
+As demais 12 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.

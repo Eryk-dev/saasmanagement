@@ -10,6 +10,7 @@ const raiz = path.dirname(fileURLToPath(import.meta.url));
 // Não faz parte do build de produção (vite.config.js segue intocado).
 export default defineConfig({
   root: path.resolve(raiz, "preview"),
+  publicDir: path.resolve(raiz, "public"),
   // A prévia e o app normal podem rodar juntos; caches diferentes impedem
   // que um otimizador substitua a cópia de React que o outro está servindo.
   cacheDir: path.resolve(raiz, "node_modules/.vite-preview"),

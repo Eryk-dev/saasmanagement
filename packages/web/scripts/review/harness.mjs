@@ -3,7 +3,7 @@ import path from 'node:path';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 
-export async function reviewHarness(screen, heading, prototypeNavigation) {
+export async function reviewHarness(screen, heading, prototypeNavigation, {nativeTimers = false} = {}) {
   const output = path.resolve(`.review-artifacts/${screen}`);
   await fs.mkdir(output, {recursive:true});
   const server = await createServer({configFile:path.resolve('vite.preview.config.js'),server:{port:0,strictPort:false}});
@@ -15,7 +15,9 @@ export async function reviewHarness(screen, heading, prototypeNavigation) {
     const page=await browser.newPage({viewport:{width,height:width===390?844:1000},reducedMotion:'reduce',timezoneId:'America/Sao_Paulo',permissions:['clipboard-read','clipboard-write']});
     page.setDefaultTimeout(10000);
     page.on('pageerror',error=>errors.push(error.message));
-    await page.clock.install({time:new Date('2026-09-18T15:00:00-03:00')});
+    const time = new Date('2026-09-18T15:00:00-03:00');
+    if (nativeTimers) await page.clock.setFixedTime(time);
+    else await page.clock.install({time});
     await page.route('**/*',route=>{
       const url=new URL(route.request().url());
       return url.origin===new URL(base).origin || /^(fonts\.googleapis\.com|fonts\.gstatic\.com)$/.test(url.hostname) || (reference&&url.hostname==='unpkg.com') ? route.continue() : route.abort();
