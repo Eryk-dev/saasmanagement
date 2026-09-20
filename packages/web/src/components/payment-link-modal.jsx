@@ -75,7 +75,7 @@ function TargetPicker({ saas, onPick }) {
         {tab("lead", "Lead do pipeline")}
         {tab("customer", "Cliente")}
       </div>
-      <input type="search" autoFocus value={q} onChange={(e) => setQ(e.target.value)}
+      <input type="search" value={q} onChange={(e) => setQ(e.target.value)}
         placeholder={kind === "lead" ? "buscar lead por nome, e-mail ou telefone…" : "buscar cliente…"}
         style={inputStyle} />
       <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: 260, overflowY: "auto" }}>
@@ -103,19 +103,23 @@ function TargetPicker({ saas, onPick }) {
 function PaymentLinkModal({ lead, customer, saas, origin = "card", onClose, onSaved }) {
   const [target, setTarget] = React.useState(() =>
     lead ? { kind: "lead", doc: lead } : customer ? { kind: "customer", doc: customer } : null);
+  const [saving, setSaving] = React.useState(false);
+  const savingRef = React.useRef(false);
+  const onBusyChange = value => { savingRef.current = value; setSaving(value); };
+  const close = () => { if (!savingRef.current) onClose(); };
   const pickable = !lead && !customer; // aberto pela tela: dá pra trocar de alvo
 
   return (
-    <Modal label="Link de pagamento" onClose={onClose} largura={500}
+    <Modal label="Link de pagamento" onClose={close} fechavel={!saving} largura={500}
       painelStyle={{padding:"16px 18px",display:"flex",flexDirection:"column",gap:14}}>
         {!target ? (
           <>
-            <Header title="Novo link de pagamento" sub="escolha o lead ou o cliente que vai pagar" onClose={onClose} />
+            <Header title="Novo link de pagamento" sub="escolha o lead ou o cliente que vai pagar" onClose={close} />
             <TargetPicker saas={saas} onPick={setTarget} />
           </>
         ) : (
           <LinkForm key={`${target.kind}:${target.doc.id}`} target={target} origin={origin} saas={saas}
-            onBack={pickable ? () => setTarget(null) : null} onClose={onClose} onSaved={onSaved} />
+            onBack={pickable ? () => { if (!savingRef.current) setTarget(null); } : null} onClose={close} onSaved={onSaved} onBusyChange={onBusyChange} />
         )}
     </Modal>
   );
@@ -136,7 +140,7 @@ function Header({ title, sub, onClose, onBack }) {
   );
 }
 
-function LinkForm({ target, origin, saas, onBack, onClose, onSaved }) {
+function LinkForm({ target, origin, saas, onBack, onClose, onSaved, onBusyChange }) {
   const doc = target.doc;
   const isLead = target.kind === "lead";
   const product = (window.SEED?.SAAS || []).find((s) => s.id === (doc.saas || saas));
@@ -159,6 +163,7 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved }) {
   const [description, setDescription] = React.useState("");
   const [url, setUrl] = React.useState(isLead ? (doc.mpChargeUrl || "") : "");
   const [busy, setBusy] = React.useState(false);
+  const submitting = React.useRef(false);
   const [err, setErr] = React.useState(null);
   const [copied, setCopied] = React.useState(false);
   const wa = waLink(doc.phone);
@@ -174,10 +179,11 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved }) {
   }
 
   async function create() {
+    if (submitting.current) return;
     const value = Number(String(amount).replace(",", "."));
     if (!(value > 0)) { setErr("Informe o valor da cobrança."); return; }
     const contractValue = Number(String(contract).replace(",", "."));
-    setBusy(true); setErr(null);
+    submitting.current = true; setBusy(true); onBusyChange(true); setErr(null);
     try {
       const r = isLead
         ? await api.mpLeadLink(doc.id, {
@@ -198,7 +204,7 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved }) {
       setCopied(false);
       onSaved && onSaved(r);
     } catch (e) { setErr(e.message || "MP não respondeu"); }
-    finally { setBusy(false); }
+    finally { submitting.current = false; setBusy(false); onBusyChange(false); }
   }
 
   async function copy() {
@@ -221,7 +227,7 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved }) {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 96px", gap: 8 }}>
           <label style={field}>
             <span className="kicker">Valor da cobrança (R$)</span>
-            <input type="number" min="0" step="0.01" placeholder="0,00" value={amount} autoFocus
+            <input type="number" min="0" step="0.01" placeholder="0,00" value={amount}
               onChange={(e) => setAmount(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") create(); }}
               style={{ ...inputStyle, fontFamily: "var(--mono)", textAlign: "right" }} />
@@ -309,7 +315,7 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved }) {
         </button>
       </div>
 
-      {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
+      {err && <div role="alert" className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
 
       {url && (
         <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "10px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-1)", minWidth: 0 }}>

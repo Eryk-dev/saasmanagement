@@ -14,7 +14,8 @@
     "test:review:training": "node scripts/review/training.mjs",
     "test:review:pipeline": "node scripts/review/pipeline.mjs",
     "test:review:customers": "node scripts/review/customers.mjs",
-    "test:review:proposals": "node scripts/review/proposals.mjs"
+    "test:review:proposals": "node scripts/review/proposals.mjs",
+    "test:review:offers": "node scripts/review/offers.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

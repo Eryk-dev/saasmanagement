@@ -113,6 +113,7 @@ try {
     ["financeiro-pizza", "/src/screens/finance-hub.jsx", "GastosCard", { month: "2026-09", recebidosMes: 2000, setores: { deducoes: { imposto: 600 }, cogs: { ia: 200, wa: 100 }, sm: { ads: 100 } } }, "30,0%"],
     ["financeiro-pizza-vazio", "/src/screens/finance-hub.jsx", "GastosCard", { month: "2026-09", recebidosMes: 0, setores: { cogs: { ia: 0 } } }, "Sem recebimentos neste mês"],
     ["financeiro-pizza-unico", "/src/screens/finance-hub.jsx", "GastosCard", { month: "2026-09", recebidosMes: 100, setores: { sm: { ads: 100 } } }, "100,0%"],
+    ["offers", "/src/screens/offers.jsx", "OffersScreen", {}, "Carregando histórico…"],
     ["customers", "/src/screens/customers.jsx", "CustomersScreen", {}, "Carregando clientes…"],
     ["pipeline", "/src/screens/pipeline.jsx", "PipelineScreen", { onOpenLead() {} }, "Lead Novo"],
     ["chrome", "/src/chrome.jsx", "NavRail", { current: "overview", onNav() {} }, "Visão geral"],
