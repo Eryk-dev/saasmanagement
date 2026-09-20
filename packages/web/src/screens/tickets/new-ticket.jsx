@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { api } from "../../lib/api.js";
 import { PrimaryButton, SecondaryButton, toast } from "../../atoms.jsx";
 import { Modal } from "../../components/overlay.jsx";
@@ -17,9 +18,12 @@ export function NewTicketModal({ saasId, initial = {}, agents = null, categories
   }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const pending = React.useRef(false);
+  const dirty = React.useRef(false);
+  const close = () => { if (pending.current) return; if (dirty.current && !window.confirm("Descartar o ticket que você está preenchendo?")) return; onClose(); };
   const [loaded, setLoaded] = useState({ agents, categories });
-  const set = (patch) => setForm((f) => ({ ...f, ...patch }));
-  const setReq = (patch) => setForm((f) => ({ ...f, requester: { ...f.requester, ...patch } }));
+  const set = (patch) => { dirty.current = true; setForm((f) => ({ ...f, ...patch })); };
+  const setReq = (patch) => { dirty.current = true; setForm((f) => ({ ...f, requester: { ...f.requester, ...patch } })); };
 
   // Aberto da ficha do cliente, a tela não tem os atendentes/categorias em mãos.
   useEffect(() => {
@@ -44,15 +48,16 @@ export function NewTicketModal({ saasId, initial = {}, agents = null, categories
 
   const submit = async (e) => {
     e?.preventDefault?.();
+    if (pending.current) return;
     if (!form.subject.trim()) { setError("Escreva o assunto do ticket."); return; }
-    setBusy(true); setError("");
+    pending.current = true; setBusy(true); setError("");
     try {
       const created = await api.ticketCreate({ ...form, saas: saasId, subject: form.subject.trim() });
       toast(`Ticket #${created.number} aberto`, "pos");
       onCreated && onCreated(created);
     } catch (err) {
       setError(err.message || "Não deu pra abrir o ticket.");
-    } finally { setBusy(false); }
+    } finally { pending.current = false; setBusy(false); }
   };
 
   // Seletor não mora dentro de <label>: o clique na opção do popover subiria
@@ -65,14 +70,14 @@ export function NewTicketModal({ saasId, initial = {}, agents = null, categories
       </Tag>
     );
   };
-  return (
-    <Modal onClose={onClose} fechavel={!busy} label="Novo ticket" largura={640}>
-      <form onSubmit={submit} style={{ padding: "20px var(--inset-x)", display: "flex", flexDirection: "column", gap: 14 }}>
+  const panel = (
+    <Modal onClose={close} fechavel={!busy} label="Novo ticket" largura={620}>
+      <form className="ticket-new-form" onChange={() => { dirty.current = true; }} onSubmit={submit} style={{ padding: "20px var(--inset-x)", display: "flex", flexDirection: "column", gap: 14 }}>
         <div>
           <h2 className="card-title" style={{ margin: 0 }}>Novo ticket</h2>
           <div className="card-sub" style={{ marginTop: 3 }}>o prazo de SLA começa a contar quando o ticket é aberto</div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+        <fieldset disabled={busy} style={{ margin: 0, padding: 0, border: 0, minWidth: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(220px, 100%), 1fr))", gap: 12 }}>
           {label("Assunto", <input className="inp" autoFocus value={form.subject} maxLength={200} onChange={(e) => set({ subject: e.target.value })} placeholder="Ex.: não consigo acessar o painel" />, true)}
           {label("Cliente", (
             <SelectPopover label="Cliente" value={form.customerId} onChange={(v) => set({ customerId: v })} searchable={customers.length > 6}
@@ -80,7 +85,7 @@ export function NewTicketModal({ saasId, initial = {}, agents = null, categories
           ), false, false)}
           {label("Solicitante", <input className="inp" value={form.requester.name} onChange={(e) => setReq({ name: e.target.value })} placeholder="nome de quem pediu" />)}
           {label("E-mail", <input className="inp" type="email" value={form.requester.email} onChange={(e) => setReq({ email: e.target.value })} placeholder="recebe o link do portal" />)}
-          {label("Telefone", <input className="inp" value={form.requester.phone} onChange={(e) => setReq({ phone: e.target.value })} />)}
+          {label("Telefone", <input type="tel" className="inp" value={form.requester.phone} onChange={(e) => setReq({ phone: e.target.value })} />)}
           {label("Prioridade", (
             <SelectPopover label="Prioridade" value={form.priority} onChange={(v) => set({ priority: v })}
               options={TICKET_PRIORITIES.map((p) => ({ value: p.key, label: p.label, tone: p.tone, color: p.key === "urgent" ? "var(--neg)" : undefined }))} />
@@ -94,13 +99,14 @@ export function NewTicketModal({ saasId, initial = {}, agents = null, categories
               options={[{ value: "", label: "sem responsável (avisa os atendentes)", color: "var(--fg-3)" }, ...assignable.map((a) => ({ value: a.id, label: a.name }))]} />
           ), false, false)}
           {label("Descrição", <textarea className="inp" rows={4} value={form.description} onChange={(e) => set({ description: e.target.value })} placeholder="o que aconteceu, desde quando, prints ou links" style={{ height: "auto", padding: "8px 10px", resize: "vertical", font: "inherit", fontSize: 13 }} />, true)}
-        </div>
+        </fieldset>
         {error && <div role="alert" style={{ fontSize: 12.5, color: "var(--neg)" }}>{error}</div>}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <SecondaryButton type="button" onClick={onClose} disabled={busy}>Cancelar</SecondaryButton>
+          <SecondaryButton type="button" onClick={close} disabled={busy}>Cancelar</SecondaryButton>
           <PrimaryButton type="submit" disabled={busy}>{busy ? "Abrindo…" : "Abrir ticket"}</PrimaryButton>
         </div>
       </form>
     </Modal>
   );
+  return typeof document !== "undefined" && document.body?.nodeType === 1 ? createPortal(panel, document.body) : panel;
 }

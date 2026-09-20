@@ -3,8 +3,7 @@ import "./tickets.css";
 import { api } from "../../lib/api.js";
 import { useData } from "../../data.jsx";
 import { EmptyState, PrimaryButton, toast } from "../../atoms.jsx";
-import { PageHead, Segmented } from "../../components/viz.jsx";
-import { BarraFiltros } from "../../components/story.jsx";
+import { Segmented } from "../../components/viz.jsx";
 import { SearchInput } from "../../components/search-input.jsx";
 import { useActiveSaas } from "../../lib/workspace.js";
 import { currentUser } from "../../lib/users.js";
@@ -21,7 +20,7 @@ import { AgentKpis } from "./agent-kpis.jsx";
 
 // Suporte · fila de tickets do produto ativo. Mesmo desenho das Tarefas: a
 // tela busca a própria lista (fora do SEED), escuta o cockpit-change, muda com
-// mutação otimista e abre o ticket num modal (#tickets/<id>). Duas
+// mutação otimista e abre o ticket numa gaveta (#tickets/<id>). Duas
 // visões, como o Pipeline: Kanban por status e Lista agrupada pelo SLA.
 // O servidor aplica o escopo de produto de cada atendente; aqui só se evita
 // mostrar uma fila que a API vai recusar.
@@ -215,12 +214,12 @@ export function TicketsScreen() {
   ) : null;
 
   return (
-    <div className="support-page">
-      <PageHead title="Tickets" sub={sub}>
+    <div className="support-page tickets-page">
+      <header className="tickets-head"><h1>Tickets</h1><div className="tickets-head-actions">
         {handles && <SearchInput value={q} onChange={setQ} placeholder="Buscar nº, assunto, cliente" label="Buscar tickets" width={230} />}
         {handles && <Segmented value={view} onChange={setView} options={[{ value: "kanban", label: "Kanban" }, { value: "list", label: "Lista" }]} />}
-        {handles && <PrimaryButton onClick={() => setCreating(true)}>+ Ticket</PrimaryButton>}
-      </PageHead>
+        {handles && <PrimaryButton onClick={() => setCreating(true)}>Abrir ticket</PrimaryButton>}
+      </div></header>
 
       {!handles ? (
         <EmptyState title={`Você não atende tickets de ${product?.name || "este produto"}`}
@@ -228,12 +227,12 @@ export function TicketsScreen() {
       ) : (
         <>
           {state.loaded && mine.length > 0 && myStats && (
-            <div className="support-agent-summary capsule-navy" style={{ padding: "16px 22px", marginTop: 12, flexShrink: 0 }}>
+            <div className="support-agent-summary capsule-navy" style={{ padding: "16px 22px", flexShrink: 0 }}>
               <AgentKpis stats={myStats} user={currentUser()} productName={product?.name || ""} onQueue={() => setFilter("mine")} onRisk={() => { setFilter("mine"); setView("list"); }} />
             </div>
           )}
           <div className="support-bar">
-            <BarraFiltros valor={filter} onChange={setFilter} filtros={filtros} escondidos={escondidos} />
+            {[...filtros, ...escondidos].map((f,i) => <React.Fragment key={f.id}>{i === filtros.length && <span className="tickets-filter-divider" />}<button className="tickets-filter" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)} title={f.title}>{f.label} <span>{f.n}</span></button></React.Fragment>)}
           </div>
           <div className="support-body">
             <div className="support-main">

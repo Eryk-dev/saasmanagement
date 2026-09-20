@@ -1,7 +1,8 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { api } from "../../lib/api.js";
 import { PrimaryButton, SecondaryButton, toast } from "../../atoms.jsx";
-import { Modal } from "../../components/overlay.jsx";
+import { Drawer } from "../../components/overlay.jsx";
 import { SelectPopover } from "../../components/select-popover.jsx";
 import { QuickReplyList, useQuickReplies, filterQuickReplies, orderForPicker, slashTokenAt } from "./quick-reply-picker.jsx";
 import { LinearMarkdown } from "./linear-markdown.jsx";
@@ -14,11 +15,8 @@ import {
 
 const { useState, useEffect, useRef, useCallback } = React;
 
-// Detalhe do ticket em MODAL (14/09): o painel lateral espremia o quadro e a
-// conversa ficava abaixo da dobra, depois de oito campos. Agora a conversa é a
-// coluna principal, com a resposta sempre à mão embaixo, e os dados do
-// atendimento (status, prazos, cliente, anexos) moram numa coluna lateral.
-// No celular as duas colunas empilham: dados, conversa e resposta.
+// Gaveta do ticket: conversa e resposta ficam juntas; a aba Dados reúne
+// status, prazos, cliente e anexos sem comprimir a leitura.
 
 const fmtWhen = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "");
 const fmtSize = (n) => (n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
@@ -252,11 +250,12 @@ function Activity({ ticketId, version, agentName }) {
 
 // Responder (vai pro cliente) ou nota interna (fica no cockpit), e o status
 // que o ticket assume no mesmo envio. Avisa quem está acima se há rascunho.
-function Composer({ ticket, onSent, onDraft }) {
+function Composer({ ticket, onSent, onDraft, onBusy }) {
   const [kind, setKind] = useState("reply");
   const [text, setText] = useState("");
   const [after, setAfter] = useState("");
   const [busy, setBusy] = useState(false);
+  const pending = useRef(false);
   useEffect(() => { onDraft(!!text.trim()); }, [text]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Respostas rápidas: botão (lista com busca) ou "/" no texto (a busca é o que
@@ -296,8 +295,8 @@ function Composer({ ticket, onSent, onDraft }) {
     } finally { setInserting(false); }
   };
   const send = async () => {
-    if (!text.trim() || busy) return;
-    setBusy(true);
+    if (!text.trim() || pending.current) return;
+    pending.current = true; setBusy(true); onBusy?.(true);
     try {
       const r = await api.ticketMessage(ticket.id, { kind, text, status: after || undefined });
       setText(""); setAfter("");
@@ -305,17 +304,17 @@ function Composer({ ticket, onSent, onDraft }) {
       toast(kind === "note" ? "Nota salva" : r.emailed ? "Resposta enviada · o cliente recebeu o aviso por e-mail" : "Resposta enviada", "pos");
     } catch (err) {
       toast(`Não deu pra enviar · ${err.message || "tente de novo"}`, "neg");
-    } finally { setBusy(false); }
+    } finally { pending.current = false; setBusy(false); onBusy?.(false); }
   };
   return (
     <div className="support-composer" data-kind={kind}>
       <div style={{ display: "flex", gap: 2, marginBottom: 6 }}>
         {[["reply", "Responder ao cliente"], ["note", "Nota interna"]].map(([k, l]) => (
-          <button key={k} type="button" onClick={() => setKind(k)} aria-pressed={kind === k}
+          <button key={k} type="button" disabled={busy} onClick={() => setKind(k)} aria-pressed={kind === k}
             style={{ padding: "5px 10px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: kind === k ? 600 : 500, background: kind === k ? "var(--bg-2)" : "transparent", color: kind === k ? (k === "note" ? "var(--warn)" : "var(--fg-1)") : "var(--fg-3)" }}>{l}</button>
         ))}
         <span className="mono dim hide-mobile" style={{ marginLeft: "auto", fontSize: 11, alignSelf: "center" }}>{kind === "note" ? "só a equipe vê · @nome avisa" : "o cliente vê no portal"}</span>
-        <button ref={qrBtnRef} type="button" aria-expanded={qr?.mode === "button"} title="Respostas rápidas (ou digite / no texto)"
+        <button ref={qrBtnRef} type="button" disabled={busy || inserting} aria-expanded={qr?.mode === "button"} title="Respostas rápidas (ou digite / no texto)"
           onClick={() => setQr((cur) => (cur?.mode === "button" ? null : { mode: "button", query: "" }))}
           style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600, marginLeft: 8,
             color: "var(--accent)", background: qr?.mode === "button" ? "var(--accent-soft)" : "transparent" }}>
@@ -348,7 +347,7 @@ function Composer({ ticket, onSent, onDraft }) {
         <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--fg-3)" }}>
           e marcar como
           <span style={{ width: 200 }}>
-            <SelectPopover size="sm" label="Depois de enviar" value={after} onChange={setAfter}
+            <SelectPopover size="sm" disabled={busy} label="Depois de enviar" value={after} onChange={setAfter}
               options={[{ value: "", label: `manter ${STATUS_BY_KEY[ticket.status]?.label.toLowerCase() || "o status"}` }, ...STATUS_OPTIONS.filter((o) => o.value !== ticket.status && o.value !== "new")]} />
           </span>
         </div>
@@ -525,6 +524,10 @@ function LinearSection({ ticket, settings, onChange }) {
 export function TicketDetail({ ticketId, summary, saasId, agents, settings, mobile, refreshKey, activityVersion, onClose, onChange, onDeleted }) {
   const [ticket, setTicket] = useState(null);
   const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const [removing, setRemoving] = useState(false);
+  const [sending, setSending] = useState(false);
+  const deleting = useRef(false);
   const [tab, setTab] = useState("conversation");
   const [picker, setPicker] = useState(false);
   const [draft, setDraft] = useState(false);
@@ -536,7 +539,7 @@ export function TicketDetail({ ticketId, summary, saasId, agents, settings, mobi
       .then((t) => { if (vivo) { setTicket(t); setError(""); } })
       .catch((err) => { if (vivo) setError(err.status === 404 ? "Ticket não encontrado ou fora dos produtos que você atende." : (err.message || "erro")); });
     return () => { vivo = false; };
-  }, [ticketId, refreshKey]);
+  }, [ticketId, refreshKey, attempt]);
 
   const apply = useCallback((t) => { if (!t?.id) return; setTicket(t); onChange && onChange(t); }, [onChange]);
   const save = useCallback(async (patch) => {
@@ -553,13 +556,15 @@ export function TicketDetail({ ticketId, summary, saasId, agents, settings, mobi
   const assignable = (agents || []).filter((a) => agentHandles(a, saasId));
   const customers = (window.SEED?.CUSTOMERS || []).filter((c) => c.saas === saasId);
 
-  // Fechar com resposta escrita pela metade pede confirmação; o véu e o Esc
-  // ficam travados enquanto houver rascunho (fechavel={false}).
-  const close = () => { if (draft && !window.confirm("Descartar a resposta que você está escrevendo?")) return; onClose(); };
+  // Fechar por botão, véu ou Esc confirma o descarte e aguarda mutações pendentes.
+  const close = () => { if (deleting.current || sending) return; if (draft && !window.confirm("Descartar a resposta que você está escrevendo?")) return; onClose(); };
   const remove = async () => {
+    if (deleting.current || sending) return;
     if (!window.confirm(`Apagar o ticket #${ticket?.number}? A conversa, os anexos e o histórico somem. Para encerrar o atendimento, prefira Fechado.`)) return;
+    deleting.current = true; setRemoving(true);
     try { await api.ticketDelete(ticketId); toast("Ticket apagado", "pos"); onDeleted && onDeleted(ticketId); }
     catch (err) { toast(`Não deu pra apagar · ${err.message}`, "neg"); }
+    finally { deleting.current = false; setRemoving(false); }
   };
 
   const t = ticket || summary;
@@ -573,14 +578,15 @@ export function TicketDetail({ ticketId, summary, saasId, agents, settings, mobi
     ["conversation", `Conversa${conversa.length ? ` · ${conversa.length}` : ""}`],
     ...(ticket?.linear?.issueId ? [["linear", "Linear"]] : []),
     ["activity", "Atividade"],
+    ["data", "Dados"],
   ];
   useEffect(() => {
     if (tab === "linear" && ticket && !ticket.linear?.issueId) setTab("conversation");
   }, [tab, ticket]);
 
-  return (
-    <Modal onClose={close} fechavel={!draft} label={t ? `Ticket #${t.number}` : "Ticket"} largura={1080} padding={mobile ? 0 : 16}
-      painelStyle={{ height: mobile ? "100dvh" : "min(860px, calc(100dvh - 32px))", maxHeight: mobile ? "100dvh" : undefined, borderRadius: mobile ? 0 : undefined, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+  const panel = (
+    <Drawer onClose={close} fechavel={!removing && !sending} label={t ? `Ticket #${t.number}` : "Ticket"} largura={560}
+      painelStyle={{ position: "fixed", right: mobile ? 14 : 26, top: mobile ? 14 : 90, bottom: mobile ? 14 : 26, height: "auto", maxWidth: "calc(100% - 28px)", overflow: "hidden" }}>
       <header className="support-detail-head">
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="mono dim support-ellipsis" style={{ fontSize: 11.5 }}>
@@ -611,28 +617,28 @@ export function TicketDetail({ ticketId, summary, saasId, agents, settings, mobi
             <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" /><circle cx="12" cy="12" r="3" />
           </svg>
         </button>
-        <button type="button" title="Fechar (Esc)" aria-label="Fechar" onClick={close} style={iconBtn}>✕</button>
+        <button type="button" title="Fechar (Esc)" aria-label="Fechar" disabled={removing || sending} onClick={close} style={iconBtn}>✕</button>
       </header>
 
-      {error && <div style={{ margin: 18, padding: "12px 14px", borderRadius: "var(--r-3)", background: "var(--warn-soft)", color: "var(--warn)", fontSize: 12.5 }}>{error}</div>}
+      {error && <div role="alert" style={{ margin: 18, padding: "12px 14px", borderRadius: "var(--r-3)", background: "var(--warn-soft)", color: "var(--warn)", fontSize: 12.5 }}>{error} <button onClick={() => { setError(""); setAttempt((n) => n + 1); }}>Tentar novamente</button></div>}
       {!error && !ticket && <div className="mono dim" style={{ fontSize: 12, padding: 18 }}>carregando…</div>}
-      {!error && ticket && (
-        <div className="support-detail-body">
-          <div className="support-detail-main">
-            <div style={{ display: "flex", gap: 2, padding: "10px 18px 0", flexShrink: 0 }}>
+      {!error && ticket && (<>
+            <div className="support-detail-tabs">
               {abas.map(([k, l]) => (
                 <button key={k} type="button" onClick={() => setTab(k)} aria-pressed={tab === k} style={{ padding: "5px 10px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: tab === k ? 600 : 500, background: tab === k ? "var(--bg-2)" : "transparent", color: tab === k ? "var(--fg-1)" : "var(--fg-3)" }}>{l}</button>
               ))}
             </div>
+        <div className="support-detail-body">
+          <div className="support-detail-main" hidden={tab === "data"}>
             <div className="support-detail-thread">
               {tab === "conversation" ? <Conversation ticket={ticket} agentName={agentName} description={description} />
                 : tab === "linear" ? <LinearPane ticket={ticket} />
                   : <Activity ticketId={ticket.id} version={activityVersion} agentName={agentName} />}
             </div>
-            <Composer ticket={ticket} onSent={apply} onDraft={setDraft} />
+            <Composer ticket={ticket} onSent={apply} onDraft={setDraft} onBusy={setSending} />
           </div>
 
-          <aside className="support-detail-side" aria-label="Dados do atendimento">
+          <aside className="support-detail-side" aria-label="Dados do atendimento" hidden={tab !== "data"}>
             <Section title="Atendimento">
               <Field label="Status">
                 <SelectPopover label="Status" value={ticket.status} options={STATUS_OPTIONS} onChange={(v) => save({ status: v })} />
@@ -675,13 +681,14 @@ export function TicketDetail({ ticketId, summary, saasId, agents, settings, mobi
             {/* Destrutiva e rara (só admin): no pé da coluna, longe do fluxo de atendimento. */}
             {isAdminUser() && (
               <div className="support-detail-section" style={{ paddingTop: 10 }}>
-                <button type="button" onClick={remove} style={{ fontSize: 12, color: "var(--neg)", fontWeight: 600 }}>Apagar ticket</button>
+                <button type="button" disabled={removing || sending} onClick={remove} style={{ fontSize: 12, color: "var(--neg)", fontWeight: 600 }}>Apagar ticket</button>
                 <div className="dim" style={{ fontSize: 11.5, marginTop: 2 }}>para encerrar o atendimento, prefira o status Fechado</div>
               </div>
             )}
           </aside>
-        </div>
+        </div></>
       )}
-    </Modal>
+    </Drawer>
   );
+  return typeof document !== "undefined" && document.body?.nodeType === 1 ? createPortal(panel, document.body) : panel;
 }

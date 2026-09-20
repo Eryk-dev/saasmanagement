@@ -68,13 +68,12 @@ export function AgentKpis({ stats, user, productName = "", onQueue, onRisk }) {
   return (
     <section className="agent-profile" aria-label={`Seu atendimento: ${name}`}>
       <div className="agent-profile-who">
-        <UserAvatarRing id={user.id} name={name} size={40} />
+        <UserAvatarRing id={user.id} name={name} size={38} />
         <div style={{ minWidth: 0 }}>
           <div className="agent-profile-title">
             <span className="agent-profile-name">{name}</span>
-            <span className="agent-profile-period">{`últimos ${days} dias`}</span>
           </div>
-          <div className="agent-profile-sub">{`seu atendimento${productName ? ` em ${productName}` : ""}`}</div>
+          <div className="agent-profile-sub">{`seu atendimento${productName ? ` em ${productName}` : ""} · últimos ${days} dias`}</div>
         </div>
       </div>
       <div className="agent-metrics">
