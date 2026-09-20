@@ -567,5 +567,35 @@ build e revisão visual aprovados.
   A leitura de consultas continua com o tratamento de falha anterior.
 
 Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
-As demais 20 páginas aguardam esta rodada; registros históricos não são aceite
+### 11. Inbox (`#whatsapp`) — validada
+
+- **Importante, corrigido:** cabeçalho, faixa navy única de atendimento/saúde,
+  proporções dos três painéis, filas, tipografia, bolhas e composição seguem
+  `TelaInbox.dc.html`. Filtros da referência ficam visíveis; Encerradas e Pra
+  humano continuam em Mais. Indicadores e conteúdo dependem dos dados reais.
+- **Bloqueante, corrigido:** falha ao carregar conversas ou mensagens tem erro
+  explícito e nova tentativa, sem simular lista vazia ou janela fechada. Falha
+  nos indicadores informa indisponibilidade. Após um envio aceito, falha na
+  releitura não mantém o texto como se não tivesse sido enviado.
+- **Bloqueante, corrigido:** Instagram/Messenger usavam `box` inexistente e
+  quebravam a renderização. Agora usam a superfície compartilhada dos painéis;
+  a indisponibilidade do canal aparece normalmente. Detalhes do número abrem
+  em portal, fora do contexto de empilhamento da faixa navy.
+- **Importante, corrigido:** no celular, abrir a conversa recolhe cabeçalho e
+  indicadores para dar espaço ao histórico/composer; voltar recupera a lista.
+  A ficha continua acessível por rolagem e pelo menu da conversa. Automações
+  têm rolagem própria e continuam disponíveis como canal adicional.
+- **Evidências:** `npm run test:review:whatsapp -w packages/web`, capturas e
+  `geometry.json` em `packages/web/.review-artifacts/whatsapp/`. **56 medidas**
+  em 1440/1920, diferença máxima **0px**, para cabeçalho, faixa e três painéis.
+  Busca, filtros, detalhes, resposta mock, erro/retry, envio demorado, releitura
+  após envio, janela fechada, encerramento, canais, vazio, 390/1024px e tema
+  escuro conferidos. Nenhuma mensagem externa foi enviada.
+- **Fora do escopo:** qualificação completa, gates do funil, respostas por etapa,
+  anexos/áudio, templates e automações permanecem nos componentes reais. A ficha
+  tem mais campos que a demonstração; Próxima ação mantém a lógica existente.
+  Edição otimista de qualificação e cálculos de atendimento não foram refeitos.
+
+Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
+As demais 19 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.
