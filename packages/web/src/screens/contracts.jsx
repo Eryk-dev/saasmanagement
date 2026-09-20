@@ -255,7 +255,7 @@ function ContractsScreen() {
     copyTimer.current = setTimeout(() => setCopied(false), 1600);
     registerIssue(c);
   }
-  const btn = { height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", boxShadow: "var(--shadow-1)" };
+  const btn = { height: 32, padding: "0 13px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", boxShadow: "var(--shadow-1)" };
   // Os três passos do preenchimento (1 cliente · 2 quadro resumo · 3 gerar).
   // Eram um parágrafo de instruções no PÉ da tela, longe de onde a ação
   // acontece; agora são o cabeçalho do drawer e marcam onde você está.
@@ -263,7 +263,7 @@ function ContractsScreen() {
   const selDone = selFields.filter((f) => String(fill[f.key] || "").trim()).length;
   const passo = !fillClient ? 1 : selDone < selFields.length ? 2 : 3;
   const PASSOS = [[1, "cliente"], [2, "quadro resumo"], [3, "gerar"]];
-  const inp = { width: "100%", height: 34, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
+  const inp = { width: "100%", height: 34, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -276,7 +276,7 @@ function ContractsScreen() {
         {!items && !err && <div className="mono dim" style={{ fontSize: 12 }}>carregando modelos…</div>}
 
         {items && items.length === 0 && (
-          <div style={{ minHeight: 240, background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
+          <div style={{ minHeight: 240, background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
             <EmptyState title="Nenhum modelo ainda" hint="Crie o primeiro modelo de contrato deste produto." action={<PrimaryButton onClick={openNew}>+ novo modelo</PrimaryButton>} />
           </div>
         )}
@@ -285,7 +285,7 @@ function ContractsScreen() {
             NÃO registra nada) tinha o mesmo peso de "Abrir": agora a linha tem
             uma ação primária só, "usar →", e o resto mora no ⋯. */}
         {items && items.length > 0 && (
-          <section style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+          <section style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
             <div style={{ padding: "18px var(--inset-x) 12px" }}>
               <h3 className="card-title" style={{ margin: 0 }}>Modelos</h3>
               <div className="card-sub" style={{ marginTop: 3 }}>abra o modelo, escolha o cliente e preencha o Quadro Resumo</div>
@@ -335,7 +335,7 @@ function ContractsScreen() {
         {/* Histórico do produto: o que JÁ SAIU pra assinatura, do mais novo pro
             mais antigo. A MESMA lista aparece na ficha do cliente (tela
             Clientes) filtrada por ele — aqui é a visão do produto inteiro. */}
-        <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "20px var(--inset-x)" }}>
+        <div style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "20px var(--inset-x)" }}>
           <CardHead
             kicker="Histórico" accent
             title="Contratos gerados"
@@ -610,10 +610,10 @@ function ContractsScreen() {
                   <iframe title="preview" srcDoc={fullHtml({ ...draft })} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "#fff", width: "100%", height: "100%" }} />
                 </div>
                 <div style={{ padding: "12px 20px", borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)", display: "flex", gap: 8 }}>
-                  <button onClick={saveDraft} disabled={busy || !draft.name.trim()} style={{ flex: 1, padding: "9px 12px", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500, opacity: busy || !draft.name.trim() ? 0.6 : 1 }}>
+                  <button onClick={saveDraft} disabled={busy || !draft.name.trim()} style={{ flex: 1, padding: "9px 12px", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderRadius: 999, fontSize: 13, fontWeight: 500, opacity: busy || !draft.name.trim() ? 0.6 : 1 }}>
                     {busy ? "Salvando…" : "Salvar modelo"}
                   </button>
-                  <button onClick={() => (sel ? openView(sel) : close())} style={{ padding: "9px 16px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 13 }}>Cancelar</button>
+                  <button onClick={() => (sel ? openView(sel) : close())} style={{ padding: "9px 16px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: 999, fontSize: 13 }}>Cancelar</button>
                 </div>
               </div>
             )}
