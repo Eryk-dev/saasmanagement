@@ -107,8 +107,8 @@ function LabelsField({ value, options, colors, onChange, onColor }) {
           style={{ height: 26, width: 130, fontSize: 12 }} />
         {open && (sugg.length > 0 || q.trim()) && (
           <Popover anchor={ref} onClose={() => setOpen(false)} width={220}>
-            {sugg.map((o) => <button key={o} type="button" onMouseDown={(e) => { e.preventDefault(); add(o); }} className="tk-menu-item" style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "6px 8px", borderRadius: 6, textAlign: "left", fontSize: 12.5 }}><LabelChip label={o} color={colors.get(o) || ""} /></button>)}
-            {q.trim() && !options.some((o) => o.toLowerCase() === q.trim().toLowerCase()) && <button type="button" onMouseDown={(e) => { e.preventDefault(); add(q); }} className="tk-menu-item" style={{ display: "flex", width: "100%", padding: "6px 8px", borderRadius: 6, textAlign: "left", fontSize: 12.5, color: "var(--accent)" }}>Criar "{q.trim()}"</button>}
+            {sugg.map((o) => <button key={o} type="button" onMouseDown={(e) => { e.preventDefault(); add(o); }} className="tk-menu-item" style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "6px 8px", borderRadius: 999, textAlign: "left", fontSize: 12.5 }}><LabelChip label={o} color={colors.get(o) || ""} /></button>)}
+            {q.trim() && !options.some((o) => o.toLowerCase() === q.trim().toLowerCase()) && <button type="button" onMouseDown={(e) => { e.preventDefault(); add(q); }} className="tk-menu-item" style={{ display: "flex", width: "100%", padding: "6px 8px", borderRadius: 999, textAlign: "left", fontSize: 12.5, color: "var(--accent)" }}>Criar "{q.trim()}"</button>}
           </Popover>
         )}
       </div>
@@ -156,8 +156,8 @@ function AttachmentsSection({ task, onTaskChange }) {
                 </a>
                 {isCover(a) && <span className="chip accent" style={{ position: "absolute", top: 4, left: 4, minHeight: 16, fontSize: 9.5 }}>capa</span>}
                 <span className="tk-hover" style={{ position: "absolute", top: 4, right: 4, display: "inline-flex", gap: 2 }}>
-                  {img && <button type="button" title={isCover(a) ? "Remover capa" : "Definir como capa"} onClick={() => act(() => api.taskCover(task.id, isCover(a) ? "" : a.id), "Não deu pra mudar a capa")} style={{ width: 22, height: 22, borderRadius: 6, background: "var(--bg-1)", border: "1px solid var(--line-1)", color: "var(--fg-2)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="image" size={12} /></button>}
-                  <button type="button" title="Remover anexo" onClick={() => { if (window.confirm(`Remover o anexo ${a.name || ""}?`)) act(() => api.taskAttachmentDelete(task.id, a.id), "Não deu pra remover"); }} style={{ width: 22, height: 22, borderRadius: 6, background: "var(--bg-1)", border: "1px solid var(--line-1)", color: "var(--neg)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="x" size={12} /></button>
+                  {img && <button type="button" title={isCover(a) ? "Remover capa" : "Definir como capa"} onClick={() => act(() => api.taskCover(task.id, isCover(a) ? "" : a.id), "Não deu pra mudar a capa")} style={{ width: 22, height: 22, borderRadius: 999, background: "var(--bg-1)", border: "1px solid var(--line-1)", color: "var(--fg-2)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="image" size={12} /></button>}
+                  <button type="button" title="Remover anexo" onClick={() => { if (window.confirm(`Remover o anexo ${a.name || ""}?`)) act(() => api.taskAttachmentDelete(task.id, a.id), "Não deu pra remover"); }} style={{ width: 22, height: 22, borderRadius: 999, background: "var(--bg-1)", border: "1px solid var(--line-1)", color: "var(--neg)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="x" size={12} /></button>
                 </span>
               </div>
             );
@@ -211,12 +211,12 @@ function Row({ label, children, anchorRef }) {
     </div>
   );
 }
-const ghostBtn = { display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 8px", borderRadius: "var(--r-2)", fontSize: 12.5, color: "var(--fg-2)", background: "transparent", border: "1px dashed transparent" };
+const ghostBtn = { display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 8px", borderRadius: 999, fontSize: 12.5, color: "var(--fg-2)", background: "transparent", border: "1px dashed transparent" };
 const hoverIn = (e) => { e.currentTarget.style.background = "var(--hover)"; };
 const hoverOut = (e) => { e.currentTarget.style.background = "transparent"; };
 const IconBtn = ({ title, onClick, active, danger, children, btnRef }) => (
   <button ref={btnRef} type="button" title={title} aria-label={title} onClick={onClick} onMouseEnter={hoverIn} onMouseLeave={hoverOut}
-    style={{ width: 32, height: 32, borderRadius: "var(--r-2)", display: "inline-flex", alignItems: "center", justifyContent: "center", color: danger ? "var(--neg)" : active ? "var(--accent)" : "var(--fg-3)", background: "transparent" }}>{children}</button>
+    style={{ width: 32, height: 32, borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center", color: danger ? "var(--neg)" : active ? "var(--accent)" : "var(--fg-3)", background: "transparent" }}>{children}</button>
 );
 
 export function TaskPanel({ task, tasks, columns, board, users, usersById, labelColors, labelOptions, me, mobile, expanded, onToggleExpand, onClose, onOpen, stack, onBack, saveField, actions, activityVersion, onTaskChange, focusHint }) {
@@ -288,7 +288,7 @@ export function TaskPanel({ task, tasks, columns, board, users, usersById, label
       {/* Cabeçalho */}
       <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "10px 12px 10px 16px", borderBottom: "1px solid var(--line-1)", flexShrink: 0 }}>
         {stack.length > 0 && parent && <button type="button" onClick={onBack} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12.5, color: "var(--accent)", fontWeight: 600, marginRight: 6, maxWidth: 200 }}><Icon name="arrowLeft" size={14} /><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{parent.title || "tarefa-mãe"}</span></button>}
-        <button type="button" onClick={() => actions.complete(task.id, !done)} style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 30, padding: "0 10px 0 6px", borderRadius: "var(--r-2)", border: `1px solid ${done ? "var(--pos)" : "var(--line-2)"}`, background: done ? "var(--pos-soft)" : "var(--bg-1)", color: done ? "var(--pos)" : "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>
+        <button type="button" onClick={() => actions.complete(task.id, !done)} style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 30, padding: "0 10px 0 6px", borderRadius: 999, border: `1px solid ${done ? "var(--pos)" : "var(--line-2)"}`, background: done ? "var(--pos-soft)" : "var(--bg-1)", color: done ? "var(--pos)" : "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>
           <span style={{ width: 18, height: 18, borderRadius: 999, border: `1.5px solid ${done ? "var(--pos)" : "var(--line-strong)"}`, background: done ? "var(--pos)" : "transparent", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="check" size={11} /></span>
           {done ? "Concluída" : "Marcar como concluída"}
         </button>
@@ -371,7 +371,7 @@ export function TaskPanel({ task, tasks, columns, board, users, usersById, label
       <div style={{ borderTop: "1px solid var(--line-1)", padding: mobile ? "10px 18px calc(12px + env(safe-area-inset-bottom))" : "10px 72px 12px 18px", background: "var(--bg-0)", flexShrink: 0, maxHeight: "46%", display: "flex", flexDirection: "column", minHeight: 0 }}>
         <div style={{ display: "flex", gap: 2, marginBottom: 8, flexShrink: 0 }}>
           {[["comments", `Comentários${(task.comments || []).length ? ` · ${task.comments.length}` : ""}`], ["activity", "Atividade"]].map(([k, l]) => (
-            <button key={k} type="button" onClick={() => setTab(k)} style={{ padding: "5px 10px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: tab === k ? 600 : 500, background: tab === k ? "var(--bg-2)" : "transparent", color: tab === k ? "var(--fg-1)" : "var(--fg-3)" }}>{l}</button>
+            <button key={k} type="button" onClick={() => setTab(k)} style={{ padding: "5px 10px", borderRadius: 999, fontSize: 12.5, fontWeight: tab === k ? 600 : 500, background: tab === k ? "var(--bg-2)" : "transparent", color: tab === k ? "var(--fg-1)" : "var(--fg-3)" }}>{l}</button>
           ))}
         </div>
         <div style={{ overflowY: "auto", minHeight: 0, flex: 1, marginBottom: 10 }}>

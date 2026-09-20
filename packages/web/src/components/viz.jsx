@@ -21,7 +21,7 @@ export function useWidth(initial = 600) {
 
 export function PageHead({ title, sub, children, className }) {
   return (
-    <div className={className} style={{ display: "flex", alignItems: "flex-start", gap: 16, rowGap: 10, flexWrap: "wrap", padding: "var(--page-head-top) var(--pad-x) 0", flexShrink: 0 }}>
+    <div className={["capsule-page-head", className].filter(Boolean).join(" ")} style={{ display: "flex", alignItems: "flex-start", gap: 16, rowGap: 10, flexWrap: "wrap", padding: "var(--page-head-top) var(--pad-x) 0", flexShrink: 0 }}>
       <div style={{ flex: 1, minWidth: 260 }}>
         <h1 className="page-title">{title}</h1>
         {sub && <div className="page-sub" style={{ marginTop: 4 }}>{sub}</div>}
@@ -34,12 +34,12 @@ export function PageHead({ title, sub, children, className }) {
 // Seletor segmentado (período, view). options: [{ value, label }]
 export function Segmented({ value, options, onChange }) {
   return (
-    <div style={{ display: "inline-flex", gap: 2, padding: 3, borderRadius: 9, background: "var(--bg-2)", flexShrink: 0 }}>
+    <div style={{ display: "inline-flex", gap: 2, padding: 3, borderRadius: 999, background: "var(--bg-2)", flexShrink: 0 }}>
       {options.map((o) => (
         <button key={o.value} onClick={() => onChange(o.value)} style={{
           /* 30px de altura e 12,5px, medidos na prancha (era 13px sem altura
              fixa, o que deixava o trilho mais alto que o do protótipo). */
-          height: 30, padding: "0 14px", borderRadius: 7, fontSize: 12.5, fontWeight: value === o.value ? 600 : 500,
+          height: 30, padding: "0 14px", borderRadius: 999, fontSize: 12.5, fontWeight: value === o.value ? 600 : 500,
           background: value === o.value ? "var(--bg-1)" : "transparent",
           boxShadow: value === o.value ? "var(--shadow-segment)" : "none",
           color: value === o.value ? "var(--fg-1)" : "var(--fg-3)",
@@ -55,7 +55,7 @@ export function FilterTab({ active, count, children, onClick, style }) {
   return (
     <button onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} style={{
       display: "inline-flex", alignItems: "center", gap: 7,
-      padding: "7px 13px", borderRadius: "var(--r-2)",
+      padding: "7px 13px", borderRadius: 999,
       background: active ? "var(--btn-bg)" : hover ? "var(--bg-2)" : "transparent",
       color: active ? "var(--btn-fg)" : hover ? "var(--fg-1)" : "var(--fg-3)",
       fontSize: 13, fontWeight: active ? 600 : 500,
@@ -70,7 +70,7 @@ export function FilterTab({ active, count, children, onClick, style }) {
 export function StatTile({ label, value, small, delta, tone = "flat", title }) {
   const valueColor = tone === "down" ? "var(--neg)" : "var(--fg-1)";
   return (
-    <section title={title} style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px var(--inset-x)", minWidth: 0, minHeight: 116 }}>
+    <section title={title} className="capsule-card" style={{ background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px var(--inset-x)", minWidth: 0, minHeight: 116 }}>
       <div style={{ fontSize: 12.5, fontWeight: 500, color: "var(--fg-3)", marginBottom: 6, display: "flex", alignItems: "center", gap: 5 }}>
         {label}{title && <span className="dim" style={{ fontSize: 10.5, cursor: "help" }} title={title}>ⓘ</span>}
       </div>
@@ -86,7 +86,7 @@ export function StatTile({ label, value, small, delta, tone = "flat", title }) {
 
 export function Card({ title, hint, action, children, style }) {
   return (
-    <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", minWidth: 0, ...style }}>
+    <section className="capsule-card" style={{ background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", minWidth: 0, ...style }}>
       {(title || hint) && (
         // Cabeçalho na régua do DS: título 15/700, hint SEMPRE na linha de
         // baixo (nunca inline), ação encostada à direita.

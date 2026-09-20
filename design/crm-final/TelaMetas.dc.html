@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Metas</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-gaveta-sai{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-gaveta-sai{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;margin:0 -4px;padding:0 4px 24px">
+
+      <header class="cap-rise" style="flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+        <div style="min-width:0">
+          <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Metas</h1>
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#5a6b77;margin-top:6px;text-wrap:pretty">metas por vaga e por pessoa · valem em todo campo que mostra meta</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button onClick="{{ descartar }}" style="{{ estDescartar }}">Descartar</button>
+          <button onClick="{{ salvar }}" style="{{ estSalvar }}">{{ rotuloSalvar }}</button>
+        </div>
+      </header>
+
+      <sc-if value="{{ temNota }}" hint-placeholder-val="{{ false }}">
+        <div style="{{ estNota }}">{{ nota }}</div>
+      </sc-if>
+
+      <section class="cap-rise" style="flex:0 0 auto;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:20px 22px 22px">
+        <div style="display:flex;align-items:center;gap:7px">
+          <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+          <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">meta do mês</span>
+        </div>
+        <div style="font-size:12px;color:#8b99a4;margin-top:5px;padding-left:12px;text-wrap:pretty">{{ subMeta }}</div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:18px 34px;margin-top:18px">
+          <div style="min-width:0;display:flex;flex-direction:column;gap:13px">
+            <div>
+              <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">régua de receita</span>
+                <span style="font-size:12px;color:#5a6b77"><b style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;color:#0c1d2b">{{ receita.feito }}</b> / {{ receita.alvo }} · {{ receita.pct }}</span>
+              </div>
+              <div style="position:relative;height:9px;border-radius:999px;background:#eff2f3;margin-top:8px;overflow:hidden">
+                <span class="cap-grow" style="{{ receita.estBarra }}"></span>
+              </div>
+              <div style="position:relative;height:0">
+                <span style="{{ receita.estPace }}"></span>
+              </div>
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;margin-top:9px">{{ receita.nota }}</div>
+            </div>
+            <label style="display:flex;align-items:center;gap:10px">
+              <span style="flex:1;min-width:0">
+                <span style="display:block;font-size:13px;font-weight:600">Meta de venda do mês</span>
+                <span style="{{ estDicaVenda }}">{{ dicaVenda }}</span>
+              </span>
+              <span style="display:inline-flex;align-items:center;gap:5px">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4">R$</span>
+                <input value="{{ campoVenda }}" onChange="{{ mudarVenda }}" placeholder="{{ placeholderVenda }}" style="width:128px;height:34px;text-align:right;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 13px;font-family:'Outfit',sans-serif;font-size:13.5px;font-weight:650;color:#0c1d2b;outline:none" />
+              </span>
+            </label>
+          </div>
+
+          <div style="min-width:0;display:flex;flex-direction:column;gap:13px">
+            <div>
+              <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">régua de contratos</span>
+                <span style="font-size:12px;color:#5a6b77"><b style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;color:#0c1d2b">{{ contratos.feito }}</b> / {{ contratos.alvo }} · {{ contratos.pct }}</span>
+              </div>
+              <div style="position:relative;height:9px;border-radius:999px;background:#eff2f3;margin-top:8px;overflow:hidden">
+                <span class="cap-grow" style="{{ contratos.estBarra }}"></span>
+              </div>
+              <div style="position:relative;height:0">
+                <span style="{{ contratos.estPace }}"></span>
+              </div>
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;margin-top:9px">{{ contratos.nota }}</div>
+            </div>
+            <label style="display:flex;align-items:center;gap:10px">
+              <span style="flex:1;min-width:0">
+                <span style="display:block;font-size:13px;font-weight:600">Meta de contratos no mês</span>
+                <span style="{{ estDicaContratos }}">{{ dicaContratos }}</span>
+                <button onClick="{{ usarDivisao }}" style="{{ estAvisoContratos }}">{{ avisoContratos }}</button>
+              </span>
+              <span style="display:inline-flex;align-items:center;gap:5px">
+                <input value="{{ campoContratos }}" onChange="{{ mudarContratos }}" placeholder="{{ placeholderContratos }}" style="width:94px;height:34px;text-align:right;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 13px;font-family:'Outfit',sans-serif;font-size:13.5px;font-weight:650;color:#0c1d2b;outline:none" />
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4">contratos</span>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div style="border-top:1px solid #edf1f3;margin-top:18px;padding-top:15px">
+          <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:14px;font-weight:700;letter-spacing:-.01em">A cadeia dessa meta</div>
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4;margin-top:3px;text-wrap:pretty">{{ subCadeia }}</div>
+            </div>
+            <button onClick="{{ derivar }}" title="Preenche os campos de VOLUME das vagas com o desdobramento abaixo. As taxas ficam como estão: são a ambição que alimenta a cadeia, não resultado dela." style="{{ estDerivar }}">{{ rotuloDerivar }}</button>
+          </div>
+          <div style="overflow-x:auto;margin:0 -4px;padding:0 4px">
+            <div style="display:flex;align-items:stretch;min-width:680px">
+              <sc-for list="{{ cadeia }}" as="c" hint-placeholder-count="11">
+                <div style="{{ c.est }}" title="{{ c.title }}">
+                  <span style="{{ c.estBig }}">{{ c.big }}</span>
+                  <span style="{{ c.estNm }}">{{ c.nm }}</span>
+                  <span style="{{ c.estSub }}">{{ c.sub }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:12px">
+        <sc-for list="{{ vagas }}" as="v" hint-placeholder-count="3">
+          <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:18px 20px 16px;min-width:0">
+            <div style="display:flex;align-items:center;gap:7px">
+              <span style="{{ v.estPonto }}"></span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">{{ v.label }}</span>
+            </div>
+            <div style="font-size:11.5px;color:#8b99a4;margin-top:5px;padding-left:12px;text-wrap:pretty">{{ v.hint }}</div>
+            <div style="margin-top:12px">
+              <sc-for list="{{ v.metricas }}" as="m" hint-placeholder-count="4">
+                <label style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #f1f4f5">
+                  <span style="flex:1;min-width:0">
+                    <span style="display:block;font-size:12.5px;color:#3d4f5c">{{ m.label }}</span>
+                    <span style="{{ m.estHint }}">{{ m.hint }}</span>
+                    <span style="{{ m.estSeguindo }}">{{ m.seguindo }}</span>
+                    <button onClick="{{ m.usar }}" style="{{ m.estAviso }}">{{ m.aviso }}</button>
+                  </span>
+                  <span style="display:inline-flex;align-items:center;gap:4px">
+                    <span style="{{ m.estPrefixo }}">R$</span>
+                    <input value="{{ m.valor }}" onChange="{{ m.mudar }}" placeholder="{{ m.placeholder }}" style="{{ m.estInput }}" />
+                    <span style="{{ m.estSufixo }}">{{ m.sufixo }}</span>
+                  </span>
+                </label>
+              </sc-for>
+            </div>
+          </section>
+        </sc-for>
+      </div>
+
+      <section class="cap-rise" style="flex:0 0 auto;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+        <div style="padding:18px 20px 12px">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">meta por pessoa</span>
+          </div>
+          <div style="font-size:12px;color:#8b99a4;margin-top:5px;padding-left:12px;text-wrap:pretty">classifique o nível e a meta segue · em branco persegue, nesta ordem: o ajuste daqui, o nível no plano de Remuneração, a meta da vaga repartida e a derivada do mês</div>
+        </div>
+        <div style="overflow-x:auto">
+          <div style="min-width:560px">
+            <div style="display:grid;grid-template-columns:minmax(150px,1.6fr) 110px 128px 132px;gap:10px;padding:10px 20px;background:#f7f9fa;border-top:1px solid #edf1f3;border-bottom:1px solid #edf1f3;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#8b99a4">
+              <span>Pessoa</span><span>Nível</span><span style="text-align:right">Contratos no mês</span><span style="text-align:right">Receita no mês</span>
+            </div>
+            <sc-for list="{{ pessoas }}" as="p" hint-placeholder-count="4">
+              <div style="display:grid;grid-template-columns:minmax(150px,1.6fr) 110px 128px 132px;gap:10px;padding:9px 20px;align-items:center;border-bottom:1px solid #edf1f3">
+                <span style="display:flex;align-items:center;gap:8px;min-width:0">
+                  <span style="{{ p.estAvatar }}">{{ p.ini }}</span>
+                  <span style="min-width:0">
+                    <span style="display:block;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.nome }}</span>
+                    <span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:#8b99a4">{{ p.vaga }}</span>
+                  </span>
+                </span>
+                <span style="min-width:0">
+                  <select value="{{ p.nivel }}" onChange="{{ p.mudarNivel }}" style="{{ p.estNivel }}">
+                    <sc-for list="{{ p.niveis }}" as="n" hint-placeholder-count="3">
+                      <option value="{{ n.v }}">{{ n.label }}</option>
+                    </sc-for>
+                  </select>
+                  <span style="{{ p.estPromo }}">{{ p.promo }}</span>
+                </span>
+                <span style="display:flex;justify-content:flex-end">
+                  <input value="{{ p.contratos }}" onChange="{{ p.mudarContratos }}" placeholder="{{ p.phContratos }}" title="{{ p.titleContratos }}" style="width:84px;height:32px;text-align:right;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 11px;font-family:'Outfit',sans-serif;font-size:12.5px;font-weight:650;color:#0c1d2b;outline:none" />
+                </span>
+                <span style="display:flex;justify-content:flex-end;align-items:center;gap:4px">
+                  <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#8b99a4">R$</span>
+                  <input value="{{ p.receita }}" onChange="{{ p.mudarReceita }}" placeholder="{{ p.phReceita }}" title="{{ p.titleReceita }}" style="width:96px;height:32px;text-align:right;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 11px;font-family:'Outfit',sans-serif;font-size:12.5px;font-weight:650;color:#0c1d2b;outline:none" />
+                </span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </section>
+
+      <section class="cap-rise" style="flex:0 0 auto;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:18px 20px 18px">
+        <div style="display:flex;align-items:center;gap:7px">
+          <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+          <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">agenda de metas</span>
+        </div>
+        <div style="font-size:12px;color:#8b99a4;margin-top:5px;padding-left:12px;text-wrap:pretty">mês sem valor próprio segue a regra de crescimento · na virada, o mês novo assume sozinho</div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px">
+          <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#5a6b77">crescimento ao mês</span>
+          <span style="display:inline-flex;align-items:center;gap:4px">
+            <input value="{{ campoCrescimento }}" onChange="{{ mudarCrescimento }}" placeholder="8" style="width:64px;height:32px;text-align:right;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 11px;font-family:'Outfit',sans-serif;font-size:12.5px;font-weight:650;color:#0c1d2b;outline:none" />
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4">%</span>
+          </span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:2px;margin-top:12px">
+          <sc-for list="{{ agenda }}" as="a" hint-placeholder-count="4">
+            <label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid #f1f4f5">
+              <span style="flex:1;min-width:0">
+                <span style="display:block;font-size:12.5px;font-weight:600;text-transform:capitalize">{{ a.mes }}</span>
+                <span style="{{ a.estOrigem }}">{{ a.origem }}</span>
+              </span>
+              <span style="display:inline-flex;align-items:center;gap:5px">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4">R$</span>
+                <input value="{{ a.valor }}" onChange="{{ a.mudar }}" placeholder="{{ a.placeholder }}" style="width:118px;height:32px;text-align:right;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 12px;font-family:'Outfit',sans-serif;font-size:12.5px;font-weight:650;color:#0c1d2b;outline:none" />
+              </span>
+            </label>
+          </sc-for>
+        </div>
+      </section>
+    </div>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Metas (screens/metas.jsx): a meta de venda do mês desce pela MESMA cadeia da
+  // Análise de Pace — venda ÷ ticket = ganhos, ganhos ÷ conversão = calls
+  // realizadas, ÷ comparecimento = agendadas, ÷ agendamento = contatos,
+  // ÷ contato = leads. Campo de vaga vazio segue a cadeia; digitado vence, e
+  // quando briga com ela (>15%) a tela avisa em vez de deixar duas verdades.
+  static TAXAS = { contato: .822, agendamento: .347, comparecimento: .77, conversao: .17 };
+  static TICKET = 14050;
+  static VENDIDO = 112400;
+  static GANHOS_FEITOS = 8;
+  static DIA_UTIL = 13;
+  static UTEIS = 22;
+  static NIVEIS = [[1, "júnior"], [2, "pleno"], [3, "sênior"]];
+  // metaContracts/metaRevenue por nível (plano de Remuneração)
+  static PLANO = { 1: [3, 42000], 2: [4, 60000], 3: [6, 90000] };
+  static TIME = [
+    { id: "mc", nome: "Manuela Costa", vaga: "sdr", nivel: 2, elegivel: false },
+    { id: "rm", nome: "Rafael Moura", vaga: "closer", nivel: 3, elegivel: false },
+    { id: "ba", nome: "Bruno Alencar", vaga: "closer", nivel: 2, elegivel: true, sobe: 3 },
+    { id: "vn", nome: "Vitor Nunes", vaga: "cs", nivel: 1, elegivel: false },
+  ];
+  static VAGAS = [
+    { role: "sdr", label: "SDR", cor: "#175cd3", hint: "prospecção e agendamento · meta de volume é do time, repartida por pessoa",
+      metricas: [["contacts", "Contatos no mês", "volume", ""], ["callsBooked", "Calls agendadas", "volume", ""],
+        ["contactRate", "Taxa de contato", "pct", "dos leads que entraram"], ["bookingRate", "Taxa de agendamento", "pct", "dos leads trabalhados"]] },
+    { role: "closer", label: "Closer", cor: "#0F766E", hint: "condução da call e fechamento · o ticket sustenta a cadeia inteira",
+      metricas: [["won", "Contratos no mês", "volume", ""], ["revenue", "Receita no mês", "money", ""],
+        ["showRate", "Comparecimento", "pct", "das calls que já deviam ter acontecido"], ["closeRate", "Call → ganho", "pct", "das calls realizadas"],
+        ["ticket", "Ticket médio", "money", "1ª fatura paga de cada cliente"]] },
+    { role: "cs", label: "Integração e CS", cor: "#5b6bd6", hint: "entrega, retenção e indicação · não entra na cadeia de venda nova",
+      metricas: [["retention", "Retenção", "pct", "da base no fim do mês"], ["nps", "NPS", "volume", ""],
+        ["referrals", "Indicações por cliente", "volume", "pedidas no pós-venda"]] },
+  ];
+  static DERIVADO_FIXO = { contactRate: 82.2, bookingRate: 34.7, showRate: 77, closeRate: 17, ticket: 14050, retention: 95, nps: 80, referrals: 2 };
+
+  state = { venda: "", contratos: "", crescimento: "8", vaga: {}, pessoa: {}, niveis: {}, meses: {}, salvo: null, sujo: 0 };
+  componentWillUnmount() { clearTimeout(this._n); }
+
+  money(n) { return "R$ " + Math.round(n).toLocaleString("pt-BR"); }
+  int(n) { return Math.round(n).toLocaleString("pt-BR"); }
+  pct(v) { return (Math.round(v * 1000) / 10).toString().replace(".", ",") + "%"; }
+  num(v) { const n = Number(String(v ?? "").trim().replace(",", ".")); return n > 0 ? n : 0; }
+  // divergente(): 15% de folga, porque arredondamento de cadeia sempre sobra
+  divergente(digitado, derivado) {
+    const v = this.num(digitado);
+    if (!v || !(derivado > 0)) return false;
+    return Math.abs(v - derivado) / derivado > 0.15;
+  }
+  mesLabel(off) {
+    const d = new Date(2026, 8 + off, 1);
+    return d.toLocaleDateString("pt-BR", { month: "short", year: "numeric" }).replace(".", "");
+  }
+  metaDoMes() { return this.num(this.state.venda) || 180000; }
+  // A cadeia: venda → ganhos → realizadas → agendadas → contatos → leads
+  derivado() {
+    const T = Component.TAXAS;
+    const alvo = this.metaDoMes();
+    const wonFromTicket = Math.round(alvo / Component.TICKET);
+    const won = this.num(this.state.contratos) || wonFromTicket;
+    const realizadas = Math.round(won / T.conversao);
+    const agendadas = Math.round(realizadas / T.comparecimento);
+    const contatos = Math.round(agendadas / T.agendamento);
+    const leads = Math.round(contatos / T.contato);
+    // super meta: a base já caiu, a cadeia passa a perseguir 115% dela
+    const superMode = Component.VENDIDO >= alvo;
+    return { alvo, won, wonFromTicket, realizadas, agendadas, contatos, leads, superMode, chasePct: 115,
+      digitado: !!this.num(this.state.contratos) };
+  }
+  derivadoDe(role, metric) {
+    const d = this.derivado();
+    const nSdr = 1, nCloser = 2;
+    const M = {
+      contacts: d.contatos / nSdr, callsBooked: d.agendadas / nSdr,
+      won: d.won / nCloser, revenue: d.alvo / nCloser, realizadas: d.realizadas,
+    };
+    if (M[metric] != null) return M[metric];
+    return Component.DERIVADO_FIXO[metric] ?? null;
+  }
+  marcarSujo() { this.setState({ sujo: 1, salvo: null }); }
+  setVaga(role, metric, v) { this.setState((s2) => ({ vaga: Object.assign({}, s2.vaga, { [role + ":" + metric]: v }), sujo: 1, salvo: null })); }
+
+  renderVals() {
+    const st = this.state;
+    const d = this.derivado();
+    const T = Component.TAXAS;
+    const paceEsperado = Component.DIA_UTIL / Component.UTEIS;
+    const regua = (feito, alvo, money) => {
+      const p = alvo > 0 ? Math.min(1.2, feito / alvo) : 0;
+      const atras = p < paceEsperado - 0.03;
+      const cor = p >= 1 ? "#177a4c" : atras ? "linear-gradient(90deg,#d0524a,#b42318)" : "linear-gradient(90deg,#0C8F83,#0F766E)";
+      return {
+        feito: money ? this.money(feito) : this.int(feito),
+        alvo: money ? this.money(alvo) : this.int(alvo),
+        pct: Math.round((alvo > 0 ? feito / alvo : 0) * 100) + "%",
+        estBarra: "display:block;height:100%;width:" + Math.min(100, p * 100) + "%;border-radius:999px;background:" + cor,
+        estPace: "position:absolute;top:-11px;left:" + (paceEsperado * 100) + "%;width:2px;height:9px;border-radius:1px;background:#0c1d2b;opacity:.45",
+        nota: atras ? "abaixo do pace do dia útil " + Component.DIA_UTIL + " de " + Component.UTEIS
+          : p >= 1 ? "meta batida · a cadeia passa a perseguir a super meta" : "no pace · traço = onde o dia útil pede",
+      };
+    };
+
+    // ── a cadeia como funil horizontal (caixa · seta com a taxa · caixa) ──
+    const cx = (nm, big, sub, title) => ({
+      nm, big, sub: sub || "", title: title || "",
+      est: "flex:1 1 0;min-width:92px;padding:4px 6px;text-align:center;display:flex;flex-direction:column;gap:2px;" + (title ? "cursor:help" : ""),
+      estBig: "font-family:'Outfit',sans-serif;font-size:19px;font-weight:700;letter-spacing:-.025em;color:#0c1d2b",
+      estNm: "font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77",
+      estSub: sub ? "font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#8b99a4" : "display:none",
+    });
+    const sp = (big, nm, title) => ({
+      nm, big, sub: "", title,
+      est: "flex:0 0 auto;align-self:center;padding:0 6px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:1px;cursor:help",
+      estBig: "font-family:'Outfit',sans-serif;font-size:12.5px;font-weight:700;color:#0F766E",
+      estNm: "font-family:'Plus Jakarta Sans',sans-serif;font-size:9px;color:#8b99a4;white-space:nowrap",
+      estSub: "display:none",
+    });
+    const janela = "medida no funil de " + this.mesLabel(-1);
+    const cadeia = [
+      cx("Leads", this.int(d.leads), "marketing entrega", "Entrada do funil: quem entrega é o marketing, então não vira meta de vaga."),
+      sp(this.pct(T.contato), "contato", "Taxa de contato: " + janela + " (176 de 214 leads contatados)."),
+      cx("Contatos", this.int(d.contatos), "1 SDR", "Contatos no mês (meta do time de SDR)."),
+      sp(this.pct(T.agendamento), "agendamento", "Taxa de agendamento: " + janela + " (61 de 176 leads trabalhados marcaram call)."),
+      cx("Agendadas", this.int(d.agendadas), "1 SDR", "Calls agendadas no mês (meta do time de SDR)."),
+      sp(this.pct(T.comparecimento), "comparecimento", "Comparecimento: " + janela + " (47 de 61 que já deviam ter acontecido)."),
+      cx("Realizadas", this.int(d.realizadas), "", "Calls realizadas no mês, sem contar no-show (meta do time de closer)."),
+      sp(this.pct(T.conversao), "conversão", "Conversão da call: " + janela + " (8 de 47 calls realizadas)."),
+      cx("Ganhos", this.int(d.won), (d.digitado ? "digitado vence · " : "") + this.int(d.won / 2) + " por closer",
+        d.digitado ? "Meta de contratos digitada na Meta do mês: vence a divisão venda ÷ ticket." : "Meta de venda ÷ ticket médio."),
+      sp(this.money(Component.TICKET), "× ticket médio", "Ticket médio: 1ª fatura paga de cada cliente."),
+      cx(d.superMode ? "Super " + d.chasePct + "%" : "Venda", this.money(d.superMode ? Math.round(d.alvo * d.chasePct / 100) : d.alvo),
+        d.superMode ? "base " + this.money(d.alvo) + " batida" : "meta do mês",
+        d.superMode ? "A meta base já caiu; a cadeia inteira persegue a próxima super meta." : "A meta de venda do mês corrente."),
+    ];
+
+    const vals = {
+      mov: this.props.movimento === false ? "off" : "on",
+      subMeta: this.mesLabel(0) + " · digitar move a régua na hora, salvar é o que grava",
+      receita: regua(Component.VENDIDO, d.alvo, true),
+      contratos: regua(Component.GANHOS_FEITOS, d.won, false),
+      campoVenda: st.venda, placeholderVenda: "180000",
+      mudarVenda: (e) => this.setState({ venda: e.target.value, sujo: 1, salvo: null }),
+      dicaVenda: st.venda === "" ? "sem valor próprio · vale o padrão do produto (" + this.money(180000) + ")" : "",
+      estDicaVenda: st.venda === "" ? "display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4;margin-top:2px" : "display:none",
+      campoContratos: st.contratos, placeholderContratos: d.wonFromTicket + " pela venda",
+      mudarContratos: (e) => this.setState({ contratos: e.target.value, sujo: 1, salvo: null }),
+      dicaContratos: st.contratos === "" ? "seguindo a venda ÷ ticket: " + d.wonFromTicket : "",
+      estDicaContratos: st.contratos === "" ? "display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#0F766E;margin-top:2px" : "display:none",
+      avisoContratos: "a venda ÷ ticket dá " + d.wonFromTicket + " · usar esse",
+      estAvisoContratos: this.divergente(st.contratos, d.wonFromTicket)
+        ? "display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:600;color:#a16207;text-align:left;margin-top:3px" : "display:none",
+      usarDivisao: () => this.setState({ contratos: String(d.wonFromTicket), sujo: 1, salvo: null }),
+      subCadeia: d.superMode ? "meta base batida · perseguindo a super meta " + d.chasePct + "%"
+        : "o que a meta do mês exige de cada etapa · as taxas são as do funil do último mês fechado",
+      cadeia,
+      rotuloDerivar: "Derivar metas do pace",
+      estDerivar: "height:30px;padding:0 13px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:11.5px;font-weight:650;white-space:nowrap;transition:background 150ms ease",
+      derivar: () => {
+        const v = {};
+        for (const vg of Component.VAGAS) for (const [metric, , tipo] of vg.metricas) {
+          if (tipo !== "pct") { const x = this.derivadoDe(vg.role, metric); if (x != null) v[vg.role + ":" + metric] = String(Math.round(x)); }
+        }
+        this.setState((s2) => ({ vaga: Object.assign({}, s2.vaga, v), sujo: 1, salvo: { ok: true, texto: "volumes das vagas preenchidos pela cadeia · nada gravado até salvar" } }));
+        clearTimeout(this._n); this._n = setTimeout(() => this.setState({ salvo: null }), 4000);
+      },
+      estDescartar: "height:32px;padding:0 13px;border-radius:999px;background:#fff;color:#3d4f5c;font-size:12.5px;font-weight:600;box-shadow:0 1px 2px rgba(12,29,43,.05);transition:opacity 150ms ease;opacity:" + (st.sujo ? "1" : ".5"),
+      descartar: () => { if (!st.sujo) return; this.setState({ venda: "", contratos: "", crescimento: "8", vaga: {}, pessoa: {}, niveis: {}, meses: {}, sujo: 0, salvo: { ok: false, texto: "alterações descartadas" } }); clearTimeout(this._n); this._n = setTimeout(() => this.setState({ salvo: null }), 3000); },
+      rotuloSalvar: st.sujo ? "Salvar metas" : "Nada a salvar",
+      estSalvar: "height:32px;padding:0 15px;border-radius:999px;font-size:12.5px;font-weight:650;transition:background 150ms ease;" +
+        (st.sujo ? "background:#0c1d2b;color:#fff" : "background:#eef1f3;color:#8b99a4;cursor:default"),
+      salvar: () => {
+        if (!st.sujo) return;
+        this.setState({ sujo: 0, salvo: { ok: true, texto: "metas salvas · valem em todo campo que mostra meta" } });
+        clearTimeout(this._n); this._n = setTimeout(() => this.setState({ salvo: null }), 4000);
+      },
+      temNota: !!st.salvo, nota: st.salvo ? st.salvo.texto : "",
+      estNota: "flex:0 0 auto;padding:10px 18px;border-radius:999px;font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:600;" +
+        (st.salvo && st.salvo.ok ? "background:#E9F5F3;color:#0b6b64" : "background:#fbf4e6;color:#a16207"),
+      campoCrescimento: st.crescimento,
+      mudarCrescimento: (e) => this.setState({ crescimento: e.target.value, sujo: 1, salvo: null }),
+    };
+
+    vals.vagas = Component.VAGAS.map((vg) => ({
+      label: vg.label, hint: vg.hint,
+      estPonto: "width:5px;height:14px;border-radius:999px;flex-shrink:0;background:" + vg.cor,
+      metricas: vg.metricas.map(([metric, label, tipo, hint]) => {
+        const k = vg.role + ":" + metric;
+        const valor = st.vaga[k] ?? "";
+        const der = this.derivadoDe(vg.role, metric);
+        const money = tipo === "money", pctTipo = tipo === "pct";
+        return {
+          label, hint,
+          estHint: hint ? "display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;margin-top:2px" : "display:none",
+          seguindo: der != null ? "seguindo " + (d.superMode ? "a super meta " + d.chasePct + "%" : "a meta do mês") + ": " + (money ? this.money(der) : Math.round(der)) : "",
+          estSeguindo: valor === "" && der != null ? "display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#0F766E;margin-top:2px" : "display:none",
+          aviso: der != null ? (d.superMode ? "a super meta" : "a meta do mês") + " pede " + Math.round(der) + " · usar esse" : "",
+          estAviso: this.divergente(valor, der) ? "display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;font-weight:600;color:#a16207;text-align:left;margin-top:2px" : "display:none",
+          usar: () => { if (der != null) this.setVaga(vg.role, metric, String(Math.round(der))); },
+          valor, placeholder: der != null ? String(Math.round(der)) : "—",
+          mudar: (e) => this.setVaga(vg.role, metric, e.target.value),
+          estPrefixo: money ? "font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4" : "display:none",
+          sufixo: pctTipo ? "%" : "", estSufixo: pctTipo ? "font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4" : "display:none",
+          estInput: "width:" + (money ? 100 : 72) + "px;height:32px;text-align:right;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 11px;font-family:'Outfit',sans-serif;font-size:12.5px;font-weight:650;color:#0c1d2b;outline:none",
+        };
+      }),
+    }));
+
+    vals.pessoas = Component.TIME.map((u) => {
+      const nivel = st.niveis[u.id] ?? u.nivel;
+      const plano = Component.PLANO[nivel] || [0, 0];
+      const temNivel = u.vaga === "sdr" || u.vaga === "closer";
+      const derCon = u.vaga === "closer" ? d.won / 2 : d.won;
+      const derRec = u.vaga === "closer" ? d.alvo / 2 : d.alvo;
+      const vigCon = temNivel ? plano[0] : Math.round(derCon);
+      const vigRec = temNivel ? plano[1] : Math.round(derRec);
+      const origem = temNivel ? "nível " + (Component.NIVEIS.find((n) => n[0] === nivel) || [0, ""])[1] + " no plano" : "meta da vaga repartida";
+      return {
+        nome: u.nome, vaga: u.vaga === "cs" ? "integração" : u.vaga,
+        ini: u.nome.split(" ").map((x) => x[0]).join(""),
+        estAvatar: "flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:999px;background:#0c1d2b;color:#fff;font-family:'Outfit',sans-serif;font-size:10px;font-weight:700",
+        nivel: String(nivel),
+        niveis: temNivel ? Component.NIVEIS.map(([v, label]) => ({ v: String(v), label })) : [{ v: String(nivel), label: "—" }],
+        estNivel: "width:100%;max-width:104px;height:30px;border:0;border-radius:999px;box-shadow:inset 0 0 0 1px #e4e9eb;background:" + (temNivel ? "#fff" : "#f7f9fa") + ";padding:0 9px;font-family:inherit;font-size:11.5px;font-weight:600;color:" + (temNivel ? "#0c1d2b" : "#b6c0c7") + ";cursor:" + (temNivel ? "pointer" : "default"),
+        mudarNivel: (e) => { if (!temNivel) return; this.setState((s2) => ({ niveis: Object.assign({}, s2.niveis, { [u.id]: Number(e.target.value) }) })); },
+        promo: u.elegivel ? "elegível a " + (Component.NIVEIS.find((n) => n[0] === u.sobe) || [0, ""])[1] : "",
+        estPromo: u.elegivel ? "display:inline-flex;align-items:center;height:18px;padding:0 8px;margin-top:4px;border-radius:999px;background:#E9F5F3;color:#0b6b64;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;white-space:nowrap" : "display:none",
+        contratos: st.pessoa[u.id + ":won"] ?? "", phContratos: String(vigCon),
+        titleContratos: "Hoje persegue " + vigCon + " (" + origem + "). Digite pra dar outro alvo só pra " + u.nome.split(" ")[0] + "; apague pra voltar.",
+        mudarContratos: (e) => this.setState((s2) => ({ pessoa: Object.assign({}, s2.pessoa, { [u.id + ":won"]: e.target.value }), sujo: 1, salvo: null })),
+        receita: st.pessoa[u.id + ":revenue"] ?? "", phReceita: String(vigRec),
+        titleReceita: "Hoje persegue " + this.money(vigRec) + " (" + origem + ").",
+        mudarReceita: (e) => this.setState((s2) => ({ pessoa: Object.assign({}, s2.pessoa, { [u.id + ":revenue"]: e.target.value }), sujo: 1, salvo: null })),
+      };
+    });
+
+    const cresc = this.num(st.crescimento) / 100 || 0;
+    let base = d.alvo;
+    vals.agenda = [0, 1, 2, 3].map((off) => {
+      const chave = "m" + off;
+      if (off > 0) base = Math.round(base * (1 + cresc) / 100) * 100;
+      const proprio = off === 0 ? st.venda : (st.meses[chave] ?? "");
+      const efetivo = this.num(proprio) || base;
+      return {
+        mes: this.mesLabel(off) + (off === 0 ? " · mês corrente" : ""),
+        origem: proprio === "" ? (off === 0 ? "vale o padrão do produto" : "segue a regra de crescimento (" + this.money(base) + ")") : "valor próprio",
+        estOrigem: "display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:" + (proprio === "" ? "#8b99a4" : "#0F766E") + ";margin-top:2px",
+        valor: proprio, placeholder: String(base),
+        mudar: (e) => { const v = e.target.value; if (off === 0) this.setState({ venda: v, sujo: 1, salvo: null }); else this.setState((s2) => ({ meses: Object.assign({}, s2.meses, { [chave]: v }), sujo: 1, salvo: null })); },
+      };
+    });
+    return vals;
+  }
+}
+</script>
+</body>
+</html>

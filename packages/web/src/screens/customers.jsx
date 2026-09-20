@@ -609,21 +609,7 @@ function CustomersScreen({ initialTab }) {
 
       {tab === "base" && (
       <div style={{ padding: "16px var(--pad-x) 56px" }}>
-        {customers.length > 0 && (
-          <div style={{ marginBottom: 16 }}>
-            <CustomersAnalysis customers={customers} subs={subs} invoices={invoices} isKids={isKidsWorkspace}
-              gradeDist={isKidsWorkspace ? null : gradeDist} nivelLegend={isKidsWorkspace ? null : <NivelLegend />} />
-          </div>
-        )}
-        {customers.length === 0 ? (
-          <EmptyState
-            title="Nenhum cliente ainda"
-            hint="Quando um lead fechar, cadastre o cliente e a assinatura aqui (a conversão automática a partir do pipeline chega na fase de pós-venda)."
-            action={<PrimaryButton onClick={() => openForm("customers", { saas: product.id })}>+ Cadastrar cliente</PrimaryButton>}
-          />
-        ) : (
-          <div className="side-rail" style={{ "--cols": "minmax(0,1fr) 320px", gap: 16, alignItems: "start" }}>
-            <div style={{ display: "grid", gap: 16, minWidth: 0 }}>
+        <div className="customers-summary">
             {/* ── O AVISO SOBE PRO TOPO (14/09, protótipo) ──────────────────
                 "Cobrar agora" era um card no TRILHO, competindo com a fila de
                 cobrança logo abaixo dele e sem ação nenhuma: o número que
@@ -631,7 +617,7 @@ function CustomersScreen({ initialTab }) {
                 terceira coluna. Agora abre a aba, com a baixa da mais antiga
                 ao lado, que é a regra 2 do handoff. */}
             {vencido.n > 0 && (
-              <AvisoTopo
+              <AvisoTopo navy
                 titulo={`${money(vencido.total)} vencidos a receber`}
                 nota={(() => {
                   const soon = nextActions.filter((a) => a.status === "soon").length;
@@ -649,7 +635,7 @@ function CustomersScreen({ initialTab }) {
             {/* ── A faixa de quatro números (prancha, 14/09) ────────────────
                 Resumo operacional da base: ativos, MRR, quem ainda não
                 terminou a integração e churn. */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 20, padding: "20px var(--inset-x)", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 20, padding: "20px var(--inset-x)", background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
               {(() => {
                 const emIntegracao = activeCustomers.filter((c) => {
                   const nm = isKidsWorkspace ? null : nextMilestone(withCycle(c), product);
@@ -674,6 +660,17 @@ function CustomersScreen({ initialTab }) {
               ))}
             </div>
 
+        </div>
+        {customers.length > 0 && <details className="customers-analysis"><summary>Análise da carteira</summary><CustomersAnalysis customers={customers} subs={subs} invoices={invoices} isKids={isKidsWorkspace} gradeDist={isKidsWorkspace ? null : gradeDist} nivelLegend={isKidsWorkspace ? null : <NivelLegend />} /></details>}
+        {customers.length === 0 ? (
+          <EmptyState
+            title="Nenhum cliente ainda"
+            hint="Quando um lead fechar, cadastre o cliente e a assinatura aqui (a conversão automática a partir do pipeline chega na fase de pós-venda)."
+            action={<PrimaryButton onClick={() => openForm("customers", { saas: product.id })}>+ Cadastrar cliente</PrimaryButton>}
+          />
+        ) : (
+          <div className="side-rail" style={{ "--cols": "minmax(0,1fr) 340px", gap: 12, alignItems: "start" }}>
+            <div style={{ display: "grid", gap: 16, minWidth: 0 }}>
             {/* ── A tabela: 6 colunas em grade, sem rolagem lateral ──────────
                 Eram 13 colunas e minWidth 1360, o que garantia rolagem. Quatro
                 delas (Pagamento, Status pgto., Mercado Pago, Total recebido)
@@ -1036,7 +1033,7 @@ function FormAnswersCard({ lead, product, onPatch }) {
             <span className="dim" style={{ flex: 1, minWidth: 0, fontSize: 11, lineHeight: 1.35 }}>{c.label}</span>
             {c.type === "select" ? (
               <select value={c.raw || ""} onChange={(e) => onPatch({ [c.key]: e.target.value })}
-                style={{ flexShrink: 0, maxWidth: "50%", height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: c.raw ? "var(--fg-1)" : "var(--fg-4)", fontSize: 12, fontWeight: 500 }}>
+                style={{ flexShrink: 0, maxWidth: "50%", height: 26, padding: "0 6px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: c.raw ? "var(--fg-1)" : "var(--fg-4)", fontSize: 12, fontWeight: 500 }}>
                 <option value="">selecionar…</option>
                 {c.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 {c.raw && !c.options.some((o) => o.value === c.raw) && <option value={c.raw}>{c.raw}</option>}
@@ -1045,7 +1042,7 @@ function FormAnswersCard({ lead, product, onPatch }) {
               <input key={lead.id + c.key} type="text" defaultValue={c.raw || ""} placeholder="preencher…"
                 onBlur={(e) => { if (e.target.value !== (c.raw || "")) onPatch({ [c.key]: e.target.value }); }}
                 onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-                style={{ flexShrink: 0, width: "50%", height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontWeight: 500 }} />
+                style={{ flexShrink: 0, width: "50%", height: 26, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontWeight: 500 }} />
             )}
           </div>
         ))}
@@ -1086,7 +1083,7 @@ export function ValorContrato({ customer, onPatch, inputSt }) {
   const tab = (id, label) => (
     <button key={id} onClick={() => setUnit(id)} title={id === "mes" ? "digitar a mensalidade" : "digitar o valor do ano"}
       style={{
-        height: 28, padding: "0 8px", borderRadius: "var(--r-2)", fontSize: 11, fontWeight: 600, cursor: "pointer",
+        height: 28, padding: "0 8px", borderRadius: 999, fontSize: 11, fontWeight: 600, cursor: "pointer",
         border: "1px solid " + (unit === id ? "var(--accent-line)" : "var(--line-2)"),
         background: unit === id ? "var(--accent-soft)" : "var(--bg-1)",
         color: unit === id ? "var(--accent)" : "var(--fg-3)",
@@ -1170,7 +1167,7 @@ function CustomerFacts({ customer, lead, product, leverOrg, onPatch, cicloAte = 
   ].map(([titulo, pares]) => [titulo, pares.filter(([, v]) => v != null && v !== "")]).filter(([, pares]) => pares.length);
   const facts = grupos.flatMap(([, pares]) => pares);
   const patch = (p) => onPatch && onPatch(p);
-  const inputSt = { flex: 1, minWidth: 0, height: 28, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 };
+  const inputSt = { flex: 1, minWidth: 0, height: 28, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 };
   const EditRow = ({ label, children }) => (
     <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <span className="mono dim" style={{ width: 96, flexShrink: 0, fontSize: 10.5 }}>{label}</span>
@@ -1188,7 +1185,7 @@ function CustomerFacts({ customer, lead, product, leverOrg, onPatch, cicloAte = 
         <span>Dados do cliente</span>
         {onPatch && (
           <button onClick={() => setEdit((v) => !v)} title={edit ? "Concluir edição" : "Editar os dados aqui mesmo"}
-            style={{ marginLeft: "auto", height: 22, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid " + (edit ? "var(--accent)" : "var(--line-2)"), background: edit ? "var(--accent)" : "var(--bg-1)", color: edit ? "var(--accent-fg)" : "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
+            style={{ marginLeft: "auto", height: 22, padding: "0 8px", borderRadius: 999, border: "1px solid " + (edit ? "var(--accent)" : "var(--line-2)"), background: edit ? "var(--accent)" : "var(--bg-1)", color: edit ? "var(--accent-fg)" : "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
             {edit ? "✓ pronto" : "✎ editar"}
           </button>
         )}
@@ -1714,14 +1711,14 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
             {!editing && !churned && (
               <button onClick={() => { setUpsellOpen((v) => !v); setChurnOpen(false); }}
                 title="Registrar um upsell (venda extra pra este cliente): o que foi vendido, valor, pago / a receber / link do Mercado Pago e quem vendeu. Entra no caixa, no placar e na meta de upsell do CS."
-                style={{ height: 28, padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid color-mix(in srgb, var(--pos) 45%, transparent)", background: "var(--bg-1)", color: "var(--pos)", fontSize: 12, flexShrink: 0 }}>
+                style={{ height: 28, padding: "0 11px", borderRadius: 999, border: "1px solid color-mix(in srgb, var(--pos) 45%, transparent)", background: "var(--bg-1)", color: "var(--pos)", fontSize: 12, flexShrink: 0 }}>
                 {upsellOpen ? "cancelar" : "registrar upsell"}
               </button>
             )}
             {!editing && !churned && (
               <button onClick={() => { setChurnOpen((v) => !v); setUpsellOpen(false); }}
                 title="Registrar a saída deste cliente (churn): data + motivo. Cancela as assinaturas em aberto (espelha no Mercado Pago quando vinculadas) e tira o cliente do MRR e da base ativa — o histórico e o valor do contrato ficam registrados."
-                style={{ height: 28, padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid color-mix(in srgb, var(--neg) 40%, transparent)", background: "var(--bg-1)", color: "var(--neg)", fontSize: 12, flexShrink: 0 }}>
+                style={{ height: 28, padding: "0 11px", borderRadius: 999, border: "1px solid color-mix(in srgb, var(--neg) 40%, transparent)", background: "var(--bg-1)", color: "var(--neg)", fontSize: 12, flexShrink: 0 }}>
                 {churnOpen ? "cancelar" : "registrar churn"}
               </button>
             )}
@@ -1738,14 +1735,14 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
                 finally { btn.disabled = false; btn.textContent = era; }
               }}
                 title="Cria o rascunho de case deste cliente, já com o número do painel (o que os anúncios da Lever venderam na conta dele nos últimos 30 dias). Nada vai a público sem a autorização dele."
-                style={{ height: 28, padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, flexShrink: 0 }}>
+                style={{ height: 28, padding: "0 11px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, flexShrink: 0 }}>
                 virar case
               </button>
             )}
             {!editing && (
-              <button onClick={() => setEditing(true)} style={{ height: 28, padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, flexShrink: 0 }}>Editar</button>
+              <button onClick={() => setEditing(true)} style={{ height: 28, padding: "0 11px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, flexShrink: 0 }}>Editar</button>
             )}
-            <button onClick={onClose} aria-label="Fechar" style={{ height: 28, width: 28, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 13, flexShrink: 0 }}>✕</button>
+            <button onClick={onClose} aria-label="Fechar" style={{ height: 28, width: 28, borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 13, flexShrink: 0 }}>✕</button>
           </div>
           {!editing && (
             <div style={{ marginTop: 12 }}>
@@ -1783,17 +1780,17 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
             <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "9px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-1)" }}>
               <span className="mono dim" style={{ fontSize: 10.5 }}>saída</span>
               <input type="date" value={chuDate} onChange={(e) => setChuDate(e.target.value)}
-                style={{ height: 28, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontFamily: "var(--mono)" }} />
+                style={{ height: 28, padding: "0 6px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12, fontFamily: "var(--mono)" }} />
               <select value={chuReason} onChange={(e) => setChuReason(e.target.value)}
-                style={{ height: 28, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: chuReason ? "var(--fg-1)" : "var(--fg-4)", fontSize: 12.5 }}>
+                style={{ height: 28, padding: "0 6px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: chuReason ? "var(--fg-1)" : "var(--fg-4)", fontSize: 12.5 }}>
                 <option value="">motivo…</option>
                 {CHURN_REASONS.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
               </select>
               <input type="text" value={chuNote} onChange={(e) => setChuNote(e.target.value)} placeholder="observação (opcional)"
                 onKeyDown={(e) => e.key === "Enter" && saveChurn()}
-                style={{ height: 28, flex: "1 1 160px", minWidth: 130, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 }} />
+                style={{ height: 28, flex: "1 1 160px", minWidth: 130, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 }} />
               <button onClick={saveChurn} disabled={chuSaving || !chuDate}
-                style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "none", background: "var(--neg)", color: "#fff", fontSize: 12.5, fontWeight: 600, opacity: chuSaving || !chuDate ? 0.5 : 1 }}>
+                style={{ height: 28, padding: "0 12px", borderRadius: 999, border: "none", background: "var(--neg)", color: "#fff", fontSize: 12.5, fontWeight: 600, opacity: chuSaving || !chuDate ? 0.5 : 1 }}>
                 {chuSaving ? "registrando…" : "confirmar churn"}
               </button>
             </div>
@@ -1881,7 +1878,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
           <div className="kicker" style={{ marginBottom: 8, display: "flex", alignItems: "center" }}>
             <span>Jornada de consultas</span>
             <button onClick={() => { onClose(); window.location.hash = "consultas"; }}
-              style={{ marginLeft: "auto", height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
+              style={{ marginLeft: "auto", height: 22, padding: "0 9px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
               abrir Consultas ↗
             </button>
           </div>
@@ -2022,7 +2019,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
                 {lead && !paymentUpfront(customer.paymentMethod || lead.paymentMethod) && !paymentCustom(customer.paymentMethod || lead.paymentMethod) && (
                   <select value={String(totalN)} disabled={nSaving} onChange={(e) => changeParcelamento(e.target.value)}
                     title="Mudar o parcelamento refaz as parcelas em aberto; as pagas ficam como estão"
-                    style={{ height: 22, padding: "0 4px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11 }}>
+                    style={{ height: 22, padding: "0 4px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11 }}>
                     {Array.from({ length: 12 }, (_, k) => k + 1).map((n) => <option key={n} value={n}>{n}x</option>)}
                   </select>
                 )}
@@ -2080,7 +2077,7 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
                 <span>Parcelas do faturado</span>
                 <select value="" disabled={nSaving} onChange={(e) => e.target.value && changeParcelamento(e.target.value)}
                   title="Gera o cronograma (vencimento mensal a partir do fechamento) pra marcar cada parcela como paga"
-                  style={{ marginLeft: "auto", height: 22, padding: "0 4px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--accent)", fontSize: 11 }}>
+                  style={{ marginLeft: "auto", height: 22, padding: "0 4px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--accent)", fontSize: 11 }}>
                   <option value="">{nSaving ? "gerando…" : "gerar cronograma…"}</option>
                   {Array.from({ length: 12 }, (_, k) => k + 1).map((n) => (
                     <option key={n} value={n}>{n}x de {money((Number(lead.amount) || 0) / n)}</option>
@@ -2102,20 +2099,20 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
             {!churned && (
               <button onClick={() => { setUpsellOpen(true); setChurnOpen(false); }}
                 title="Registrar um upsell (venda extra pra este cliente) — abre o painel no topo da ficha."
-                style={{ marginLeft: "auto", height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
+                style={{ marginLeft: "auto", height: 22, padding: "0 9px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
                 + upsell
               </button>
             )}
             {mpOn && (
               <button onClick={() => setChargeOpen((v) => !v)}
                 title="Gerar uma cobrança pelo Mercado Pago: cria a fatura e o link de pagamento anexado ao cliente. A baixa é automática quando pagar."
-                style={{ marginLeft: churned ? "auto" : 0, height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--accent-line, var(--line-2))", background: "var(--bg-1)", color: "var(--accent)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
+                style={{ marginLeft: churned ? "auto" : 0, height: 22, padding: "0 9px", borderRadius: 999, border: "1px solid var(--accent-line, var(--line-2))", background: "var(--bg-1)", color: "var(--accent)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
                 {chargeOpen ? "cancelar" : "+ cobrança"}
               </button>
             )}
             <button onClick={revertWin} disabled={reverting}
               title="Avançou errado? Desfaz o fechamento: remove ESTE cliente, a assinatura e as faturas automáticas, limpa o carimbo de venda e devolve o card do lead pro funil. As métricas (ganho do mês, MRR, caixa) descontam sozinhas. Cobrança real do Mercado Pago bloqueia o desfazer."
-              style={{ height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid color-mix(in srgb, var(--neg) 40%, transparent)", background: "var(--bg-1)", color: "var(--neg)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
+              style={{ height: 22, padding: "0 9px", borderRadius: 999, border: "1px solid color-mix(in srgb, var(--neg) 40%, transparent)", background: "var(--bg-1)", color: "var(--neg)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
               {reverting ? "desfazendo…" : "desfazer venda"}
             </button>
           </div>
@@ -2126,19 +2123,19 @@ function CustomerModal({ customer, lead, product, subs, invoices, planLabel, las
               <input type="number" min="0" step="0.01" inputMode="decimal" autoFocus value={chVal}
                 onChange={(e) => setChVal(e.target.value)} placeholder="valor"
                 onKeyDown={(e) => e.key === "Enter" && saveCharge()}
-                className="tnum" style={{ height: 28, width: 96, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, textAlign: "right" }} />
+                className="tnum" style={{ height: 28, width: 96, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, textAlign: "right" }} />
               <input type="text" value={chTitle} onChange={(e) => setChTitle(e.target.value)} placeholder="descrição (aparece no checkout)"
                 onKeyDown={(e) => e.key === "Enter" && saveCharge()}
-                style={{ height: 28, flex: "1 1 150px", minWidth: 120, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 }} />
+                style={{ height: 28, flex: "1 1 150px", minWidth: 120, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 }} />
               <label className="mono dim" style={{ fontSize: 10.5, display: "inline-flex", alignItems: "center", gap: 4 }}>
                 até
                 <select value={chInst} onChange={(e) => setChInst(e.target.value)}
-                  style={{ height: 28, padding: "0 4px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12 }}>
+                  style={{ height: 28, padding: "0 4px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12 }}>
                   {[1, 2, 3, 6, 10, 12].map((n) => <option key={n} value={n}>{n}x</option>)}
                 </select>
               </label>
               <button onClick={saveCharge} disabled={!(Number(chVal) > 0) || chSaving}
-                style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "none", background: "var(--accent)", color: "#fff", fontSize: 12.5, fontWeight: 600, opacity: !(Number(chVal) > 0) || chSaving ? 0.5 : 1 }}>
+                style={{ height: 28, padding: "0 12px", borderRadius: 999, border: "none", background: "var(--accent)", color: "#fff", fontSize: 12.5, fontWeight: 600, opacity: !(Number(chVal) > 0) || chSaving ? 0.5 : 1 }}>
                 {chSaving ? "gerando…" : "gerar link"}
               </button>
             </div>
@@ -2520,7 +2517,7 @@ function CustomerContracts({ customer, onClose }) {
         <span>Contratos gerados</span>
         {rows && rows.length > 0 && <span className="mono dim tnum" style={{ fontSize: 10 }}>{rows.length}</span>}
         <button onClick={() => { onClose && onClose(); window.location.hash = "contracts"; }}
-          style={{ marginLeft: "auto", height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
+          style={{ marginLeft: "auto", height: 22, padding: "0 9px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11, textTransform: "none", letterSpacing: 0 }}>
           abrir Contratos ↗
         </button>
       </div>
@@ -2542,7 +2539,7 @@ function CustomerContracts({ customer, onClose }) {
             {i.author && <span className="mono dim" style={{ fontSize: 10 }}>{displayName(i.author)}</span>}
             <button onClick={() => { if (!printContract(i, i.values)) window.toast && window.toast("O navegador bloqueou a janela de impressão · libere o popup deste site", "neg"); }}
               title="reimprimir o contrato exatamente como foi gerado"
-              style={{ height: 22, padding: "0 9px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11 }}>
+              style={{ height: 22, padding: "0 9px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11 }}>
               Imprimir / PDF
             </button>
           </span>

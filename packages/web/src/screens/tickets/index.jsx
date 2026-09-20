@@ -228,7 +228,7 @@ export function TicketsScreen() {
       ) : (
         <>
           {state.loaded && mine.length > 0 && myStats && (
-            <div style={{ padding: "14px var(--pad-x) 0", flexShrink: 0 }}>
+            <div className="support-agent-summary capsule-navy" style={{ padding: "16px 22px", marginTop: 12, flexShrink: 0 }}>
               <AgentKpis stats={myStats} user={currentUser()} productName={product?.name || ""} onQueue={() => setFilter("mine")} onRisk={() => { setFilter("mine"); setView("list"); }} />
             </div>
           )}

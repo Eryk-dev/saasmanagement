@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Formulário de Integração</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-gaveta-sai{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-gaveta-sai{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;margin:0 -4px;padding:0 4px 24px">
+
+      <header class="cap-rise" style="flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+        <div style="flex:1 1 320px;min-width:0">
+          <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Formulário de Integração</h1>
+          
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+          <button onClick="{{ verPerguntas }}" style="height:34px;padding:0 15px;border-radius:999px;background:#fff;color:#0F766E;font-size:12.5px;font-weight:600;box-shadow:0 1px 2px rgba(12,29,43,.05);transition:background 150ms ease" style-hover="background:#E9F5F3">{{ rotuloPerguntas }}</button>
+          <button onClick="{{ solicitar }}" style="height:40px;padding:0 20px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:13px;font-weight:650;transition:background 150ms ease" style-hover="background:#1b3140">Solicitar formulário</button>
+        </div>
+      </header>
+
+      <section class="cap-rise" style="position:relative;overflow:hidden;flex:0 0 auto;border-radius:24px;background:linear-gradient(168deg,#0a2434,#051C2C 70%);box-shadow:0 1px 2px rgba(5,28,44,.14),0 18px 40px -24px rgba(5,28,44,.6);padding:22px 24px">
+        <span style="position:absolute;right:-34px;top:-30px;width:180px;height:180px;color:#23D8D3;opacity:.07;pointer-events:none"><svg width="180" height="180" viewBox="355 525 455 590"><polygon fill="currentColor" points="800.7 535.53 800.7 1103.92 763 983.8 749.25 939.91 691.16 754.61 501.54 817.84 457.65 832.42 362.47 864.14 443.6 803.33 481.22 775.08 800.7 535.53"></polygon></svg></span>
+        <div style="position:relative;display:flex;align-items:flex-start;gap:30px;flex-wrap:wrap">
+          <div style="min-width:190px">
+            <div style="display:flex;align-items:center;gap:7px">
+              <span style="width:5px;height:14px;border-radius:999px;background:#23D8D3;flex-shrink:0"></span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#23D8D3">aguardando resposta</span>
+            </div>
+            <div style="font-family:'Outfit',sans-serif;font-size:34px;font-weight:700;line-height:1.05;margin-top:8px;color:#F3FBFF">{{ nPendentes }}</div>
+            <div style="font-size:11.5px;color:rgba(243,251,255,.55);margin-top:3px">{{ pendentesNota }}</div>
+          </div>
+          <div style="min-width:170px;padding-top:6px">
+            <div style="font-size:12.5px;color:rgba(243,251,255,.6)">Espera mais longa</div>
+            <div style="font-family:'Outfit',sans-serif;font-size:22px;font-weight:700;margin-top:4px;color:{{ corEspera }}">{{ esperaMax }}</div>
+            <div style="font-size:11.5px;color:rgba(243,251,255,.45);margin-top:2px">{{ esperaNome }}</div>
+          </div>
+          <div style="min-width:170px;padding-top:6px">
+            <div style="font-size:12.5px;color:rgba(243,251,255,.6)">Respondidos</div>
+            <div style="font-family:'Outfit',sans-serif;font-size:22px;font-weight:700;margin-top:4px;color:#23D8D3">{{ nRespondidos }}</div>
+            <div style="font-size:11.5px;color:rgba(243,251,255,.45);margin-top:2px">{{ respondidosNota }}</div>
+          </div>
+          <button onClick="{{ verAtrasados }}" style="{{ estAtrasados }}">{{ rotuloAtrasados }}</button>
+        </div>
+      </section>
+
+      <section class="cap-rise" style="flex:0 0 auto;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+        <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;flex-wrap:wrap;border-bottom:1px solid #edf1f3">
+          <div style="display:inline-flex;flex-wrap:wrap;max-width:100%;gap:3px;padding:3px;border-radius:999px;background:#f1f4f5">
+            <sc-for list="{{ abas }}" as="a" hint-placeholder-count="3">
+              <button onClick="{{ a.escolher }}" style="{{ a.est }}">{{ a.label }} <span style="font-family:'Outfit',sans-serif">{{ a.n }}</span></button>
+            </sc-for>
+          </div>
+          <select value="{{ tipo }}" onChange="{{ mudarTipo }}" style="height:34px;padding:0 13px;border-radius:999px;border:0;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;font-family:inherit;font-size:12.5px;font-weight:600;color:#3d4f5c;cursor:pointer">
+            <option value="todos">todos os formulários</option>
+            <option value="integracao">Formulário de Integração</option>
+            <option value="nota_fiscal">Dados para nota fiscal</option>
+          </select>
+          <label style="display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 15px;border-radius:999px;background:#f1f4f5;color:#5a6b77;margin-left:auto;min-width:190px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><circle cx="11" cy="11" r="7"></circle><path d="M20.4 20.4l-4.2-4.2"></path></svg>
+            <input value="{{ busca }}" onChange="{{ mudarBusca }}" placeholder="buscar cliente…" style="flex:1;min-width:0;border:0;background:none;outline:none;font-family:inherit;font-size:12.5px;color:#0c1d2b">
+          </label>
+        </div>
+        <div style="overflow-x:auto">
+        <div style="min-width:860px">
+          <div style="display:grid;grid-template-columns:minmax(180px,1.4fr) minmax(150px,1fr) minmax(190px,1.3fr) 130px 190px;gap:12px;padding:11px 16px;border-bottom:1px solid #edf1f3;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#8b99a4">
+            <span>Cliente</span><span>Situação</span><span>O que veio</span><span>Pedido por</span><span style="text-align:right">Ação</span>
+          </div>
+          <sc-for list="{{ linhas }}" as="l" hint-placeholder-count="6">
+            <div style="display:grid;grid-template-columns:minmax(180px,1.4fr) minmax(150px,1fr) minmax(190px,1.3fr) 130px 190px;gap:12px;padding:12px 16px;align-items:center;border-bottom:1px solid #edf1f3">
+              <div style="min-width:0">
+                <button onClick="{{ l.abrir }}" style="display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:650;text-align:left">{{ l.cliente }}</button>
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;margin-top:2px;white-space:nowrap"><span style="{{ l.estTipo }}">{{ l.tipo }}</span> · pedido {{ l.pedidoEm }}</div>
+              </div>
+              <div style="min-width:0">
+                <span style="{{ l.estStatus }}"><span style="{{ l.estPonto }}"></span>{{ l.status }}</span>
+                <div style="{{ l.estTermo }}">{{ l.termo }}</div>
+              </div>
+              <div style="min-width:0;font-size:12px;line-height:1.45;color:{{ l.corResumo }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ l.resumo }}</div>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#8b99a4;white-space:nowrap">{{ l.autor }}</span>
+              <span style="display:flex;gap:6px;justify-content:flex-end;align-items:center">
+                <button onClick="{{ l.principal }}" style="{{ l.estPrincipal }}">{{ l.rotuloPrincipal }}</button>
+                <button onClick="{{ l.copiar }}" style="height:28px;padding:0 11px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:11.5px;font-weight:600;white-space:nowrap;transition:background 150ms ease" style-hover="background:#e7ecee">{{ l.rotuloCopiar }}</button>
+              </span>
+            </div>
+          </sc-for>
+          <sc-if value="{{ vazio }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:26px 16px;font-family:'Plus Jakarta Sans',sans-serif;font-size:12.5px;color:#8b99a4">{{ vazioTexto }} · <button onClick="{{ limpar }}" style="color:#0F766E;font-weight:600">Limpar filtros</button></div>
+          </sc-if>
+        </div>
+        </div>
+      </section>
+    </div>
+
+    <sc-if value="{{ temSel }}" hint-placeholder-val="{{ false }}">
+      <aside class="{{ classeGaveta }}" style="position:absolute;right:14px;top:14px;bottom:14px;width:470px;max-width:calc(100% - 28px);z-index:20;display:flex;flex-direction:column;overflow:hidden;border-radius:24px;background:#fff;box-shadow:0 2px 6px rgba(12,29,43,.08),0 30px 60px -28px rgba(12,29,43,.55)">
+        <div style="flex:0 0 auto;display:flex;align-items:flex-start;gap:11px;padding:20px 20px 14px">
+          <div style="flex:1;min-width:0">
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">{{ sel.cabecalho }}</div>
+            <div style="font-family:'Outfit',sans-serif;font-size:19px;font-weight:700;letter-spacing:-.025em;line-height:1.2;margin-top:4px">{{ sel.cliente }}</div>
+          </div>
+          <button onClick="{{ fechar }}" style="flex-shrink:0;width:30px;height:30px;border-radius:999px;background:#f1f4f5;color:#5a6b77;font-size:13px;transition:background 150ms ease" style-hover="background:#e7ecee;color:#0c1d2b">✕</button>
+        </div>
+        <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:0 20px 18px">
+          <sc-if value="{{ sel.respondido }}" hint-placeholder-val="{{ true }}">
+            <sc-for list="{{ sel.secoes }}" as="s" hint-placeholder-count="3">
+              <div style="padding:14px 16px;border-radius:20px;background:#f7f9fa">
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">{{ s.titulo }}</div>
+                <div style="display:flex;flex-direction:column;gap:2px;margin-top:9px">
+                  <sc-for list="{{ s.itens }}" as="i" hint-placeholder-count="4">
+                    <div style="display:grid;grid-template-columns:minmax(110px,.8fr) minmax(0,1.2fr);gap:10px;padding:7px 0;border-top:1px solid #edf1f3;align-items:baseline">
+                      <span style="font-size:11.5px;color:#5a6b77;text-wrap:pretty">{{ i.k }}</span>
+                      <span style="font-size:12.5px;font-weight:600;text-wrap:pretty">{{ i.v }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+            <div style="display:flex;align-items:center;gap:9px;padding:12px 16px;border-radius:20px;background:#E9F5F3">
+              <span style="color:#0F766E;font-size:14px">✓</span>
+              <span style="flex:1;min-width:0;font-size:12px;line-height:1.5;color:#0b6b64;text-wrap:pretty">{{ sel.termoTexto }}</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{ sel.aguardando }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:16px;border-radius:20px;background:#fbf4e6">
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#a16207">aguardando o cliente</div>
+              <div style="font-size:13px;line-height:1.55;color:#6b4708;margin-top:8px;text-wrap:pretty">{{ sel.esperaTexto }}</div>
+            </div>
+            <div style="padding:14px 16px;border-radius:20px;background:#f7f9fa">
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">mensagem pronta</div>
+              <div style="margin-top:9px;padding:11px 13px;border-radius:16px;background:#fff;box-shadow:inset 0 0 0 1px #e4e9eb;font-size:12.5px;line-height:1.55;white-space:pre-line;text-wrap:pretty">{{ sel.waTexto }}</div>
+              <button onClick="{{ copiarWa }}" style="{{ estCopiarWa }}">{{ rotuloCopiarWa }}</button>
+            </div>
+            <div style="padding:14px 16px;border-radius:20px;background:#f7f9fa">
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">o que vai ser perguntado</div>
+              <div style="display:flex;flex-direction:column;gap:6px;margin-top:9px">
+                <sc-for list="{{ sel.perguntas }}" as="p" hint-placeholder-count="4">
+                  <div style="display:flex;gap:9px;align-items:baseline">
+                    <span style="flex-shrink:0;width:5px;height:5px;border-radius:999px;background:#c5cfd4;margin-top:6px"></span>
+                    <span style="flex:1;min-width:0;font-size:12px;line-height:1.45;color:#3d4f5c;text-wrap:pretty">{{ p }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+        <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:9px;padding:14px 20px 16px;border-top:1px solid #edf1f3">
+          <button onClick="{{ acaoSel }}" style="{{ estAcaoSel }}">{{ rotuloAcaoSel }}</button>
+          <button onClick="{{ excluir }}" style="height:30px;border-radius:999px;background:transparent;color:#b42318;font-size:11.5px;font-weight:600;transition:background 150ms ease" style-hover="background:#fdf3f2">Excluir formulário</button>
+        </div>
+      </aside>
+    </sc-if>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Formulário de Integração (screens/integration-forms.jsx): dois questionários
+  // (KINDS integracao e nota_fiscal), cada um com as próprias perguntas, termo de
+  // veracidade e mensagem de WhatsApp. A régua da faixa é a espera de cada pedido
+  // aberto — 5 dias ou mais fica vermelho, como no diasDe da fonte.
+  static KINDS = {
+    integracao: { label: "integração", full: "Formulário de Integração", hint: "como é a operação: contas, rotas, preço, estoque",
+      wa: (nome, url) => "Oi " + nome + "! Aqui é da LeverAds. Antes da nossa call de integração, preenche este formulário rapidinho pra gente já deixar as suas contas configuradas do jeito certo: " + url },
+    nota_fiscal: { label: "nota fiscal", full: "Dados para nota fiscal", hint: "cadastro do tomador: razão social, CNPJ, endereço, e-mail da nota",
+      wa: (nome, url) => "Oi " + nome + "! Aqui é do financeiro da LeverAds. Pra emitir a sua nota fiscal certinho, preenche este formulário com os dados da empresa (leva uns dois minutos): " + url },
+  };
+  static PERGUNTAS = {
+    integracao: ["Quais contas de marketplace entram (nome, plataforma e quem é a conta-mãe)",
+      "Rotas de clonagem: de qual conta para quais contas", "Regra de preço por rota (igual, com acréscimo ou tabela própria)",
+      "Sincroniza estoque entre as contas?", "Usa ERP? Qual (Bling, Tiny, outro)",
+      "Quantos anúncios entram na primeira leva", "Quem do time acompanha a integração"],
+    nota_fiscal: ["Pessoa jurídica ou física", "Razão social / nome completo", "CNPJ / CPF",
+      "Inscrição municipal e regime tributário", "Endereço completo com CEP", "E-mail para receber a nota", "Responsável pelo financeiro"],
+  };
+
+  static gerar() {
+    // cliente, tipo, diasEsperando (null = respondido), autor, respostas por seção
+    // O pedido vai pro contato do cliente (o firstName da fonte usa o nome de
+    // quem responde, não a razão social).
+    const CONTATO = { "Studio Kern": "Marina Kern", "Clínica Arbo": "Diego Arbo", "Mercado Ponto": "Tatiana Ponto",
+      "Grupo Vante": "Rogério Vante", "Menezes Auto": "Caio Menezes", "Padaria Dovale": "Lúcia Dovale",
+      "Instituto Rima": "André Rima", "Nutri Vitta": "Helena Vitta", "Unique Baby": "Carla Bueno" };
+    const L = [
+      ["Studio Kern", "integracao", null, "Vitor Nunes", 2, [
+        ["Contas e conta-mãe", [["Contas que entram", "Studio Kern ML (mãe) · Studio Kern Shopee · Kern Outlet ML"], ["Conta-mãe", "Studio Kern ML"]]],
+        ["Rotas e preço", [["Rotas de clonagem", "ML mãe → Shopee · ML mãe → Kern Outlet"], ["Regra de preço", "Shopee com acréscimo de 8% · Outlet igual"]]],
+        ["Estoque e ERP", [["Sincroniza estoque", "Sim, pela conta-mãe"], ["ERP", "Bling"], ["Primeira leva", "1.840 anúncios"]]],
+      ]],
+      ["Clínica Arbo", "integracao", null, "Vitor Nunes", 7, [
+        ["Contas e conta-mãe", [["Contas que entram", "Arbo Saúde ML (mãe) · Arbo Saúde Shopee"], ["Conta-mãe", "Arbo Saúde ML"]]],
+        ["Rotas e preço", [["Rotas de clonagem", "ML mãe → Shopee"], ["Regra de preço", "Tabela própria na Shopee"]]],
+        ["Estoque e ERP", [["Sincroniza estoque", "Sim, pela conta-mãe"], ["ERP", "Tiny"], ["Primeira leva", "620 anúncios"]]],
+      ]],
+      ["Mercado Ponto", "nota_fiscal", null, "Leo Sander", 9, [
+        ["Tomador", [["Tipo", "Pessoa jurídica"], ["Razão social", "Mercado Ponto Comércio de Alimentos LTDA"], ["CNPJ", "28.114.907/0001-33"]]],
+        ["Fiscal", [["Regime", "Simples Nacional"], ["Inscrição municipal", "8.221.904-7"]]],
+        ["Endereço e contato", [["Endereço", "Rua Ipiranga, 1.204 · São Paulo/SP · CEP 01046-010"], ["E-mail da nota", "fiscal@mercadoponto.com.br"], ["Responsável", "Tatiana Ponto"]]],
+      ]],
+      ["Grupo Vante", "integracao", 6, "Vitor Nunes", null, []],
+      ["Menezes Auto", "nota_fiscal", 5, "Leo Sander", null, []],
+      ["Padaria Dovale", "integracao", 3, "Vitor Nunes", null, []],
+      ["Instituto Rima", "nota_fiscal", 1, "Leo Sander", null, []],
+      ["Nutri Vitta", "integracao", null, "Vitor Nunes", 14, [
+        ["Contas e conta-mãe", [["Contas que entram", "Nutri Vitta ML (mãe) · Nutri Vitta Shopee · Vitta Suplementos ML"], ["Conta-mãe", "Nutri Vitta ML"]]],
+        ["Rotas e preço", [["Rotas de clonagem", "ML mãe → Shopee · ML mãe → Vitta Suplementos"], ["Regra de preço", "Igual em todas"]]],
+        ["Estoque e ERP", [["Sincroniza estoque", "Não, controle separado"], ["ERP", "Não uso"], ["Primeira leva", "3.100 anúncios"]]],
+      ]],
+    ];
+    return L.map(([cliente, tipo, espera, autor, respDias, secoes], i) => ({
+      id: i, cliente, tipo, espera, autor, respDias, secoes, contato: CONTATO[cliente] || cliente,
+      respondido: espera == null,
+      url: "leverads.app/fi/" + (7300 + i * 11),
+      pedidoDias: espera == null ? (respDias || 0) + 2 : espera,
+    }));
+  }
+
+  state = { aba: "todos", tipo: "todos", busca: "", docs: Component.gerar(), sel: null, fechando: false,
+    copiado: null, enviado: null, copiadoWa: false, perguntasDe: "integracao" };
+  componentWillUnmount() { clearTimeout(this._t); clearTimeout(this._c); }
+
+  data(dias) { const d = new Date(2026, 8, 19 - dias); return d.toLocaleDateString("pt-BR"); }
+  seg(ativo) {
+    return "height:30px;padding:0 14px;border-radius:999px;font-size:12px;white-space:nowrap;transition:background 150ms ease,color 150ms ease;" +
+      (ativo ? "background:#fff;color:#0c1d2b;font-weight:650;box-shadow:0 1px 2px rgba(12,29,43,.06)" : "background:transparent;color:#5a6b77;font-weight:500");
+  }
+  abrir(id) { clearTimeout(this._t); this.setState({ sel: id, fechando: false, copiadoWa: false }); }
+  fechar() {
+    if (this.state.fechando) return;
+    this.setState({ fechando: true });
+    this._t = setTimeout(() => this.setState({ sel: null, fechando: false }), 160);
+  }
+  flash(campo, valor) {
+    this.setState({ [campo]: valor });
+    clearTimeout(this._c);
+    this._c = setTimeout(() => this.setState({ [campo]: campo === "copiadoWa" ? false : null }), 2000);
+  }
+  // resumo(doc) da fonte: o que veio, sem abrir a ficha
+  resumo(d) {
+    if (!d.respondido) return "—";
+    const flat = {};
+    for (const [, itens] of d.secoes) for (const [k, v] of itens) flat[k] = v;
+    if (d.tipo === "nota_fiscal") return [flat["Razão social"], flat["CNPJ"], flat["Regime"]].filter(Boolean).join(" · ");
+    const contas = (flat["Contas que entram"] || "").split(" · ").filter(Boolean).length;
+    const rotas = (flat["Rotas de clonagem"] || "").split(" · ").filter(Boolean).length;
+    const partes = [];
+    if (contas) partes.push(contas + (contas === 1 ? " conta" : " contas"));
+    if (rotas) partes.push(rotas + (rotas === 1 ? " rota" : " rotas"));
+    if (flat["ERP"] && flat["ERP"] !== "Não uso") partes.push(flat["ERP"]);
+    if (String(flat["Sincroniza estoque"] || "").startsWith("Sim")) partes.push("sincroniza estoque");
+    return partes.join(" · ");
+  }
+
+  renderVals() {
+    const st = this.state;
+    const doTipo = st.docs.filter((d) => st.tipo === "todos" || d.tipo === st.tipo);
+    const pendentes = doTipo.filter((d) => !d.respondido);
+    const respondidos = doTipo.filter((d) => d.respondido);
+    const maisLonga = pendentes.slice().sort((a, b) => b.espera - a.espera)[0] || null;
+    const q = st.busca.trim().toLowerCase();
+    const daAba = st.aba === "pendente" ? pendentes : st.aba === "respondido" ? respondidos : doTipo;
+    const visiveis = daAba.filter((d) => !q || (d.cliente + " " + this.resumo(d)).toLowerCase().includes(q))
+      .slice().sort((a, b) => (a.respondido ? 1 : 0) - (b.respondido ? 1 : 0) || (b.espera || 0) - (a.espera || 0));
+    const selDoc = st.sel != null ? st.docs.find((d) => d.id === st.sel) : null;
+    const atrasados = pendentes.filter((d) => d.espera >= 5).length;
+
+    const vals = {
+      mov: this.props.movimento === false ? "off" : "on",
+      nPendentes: String(pendentes.length),
+      pendentesNota: pendentes.length ? "antes de marcar a integração" : "ninguém devendo",
+      esperaMax: maisLonga ? maisLonga.espera + (maisLonga.espera === 1 ? " dia" : " dias") : "—",
+      corEspera: maisLonga && maisLonga.espera >= 5 ? "#ff9d90" : "#F3FBFF",
+      esperaNome: maisLonga ? maisLonga.cliente : "nenhum pedido aberto",
+      nRespondidos: String(respondidos.length),
+      respondidosNota: respondidos.length
+        ? respondidos.filter((d) => d.tipo === "integracao").length + " integração · " + respondidos.filter((d) => d.tipo === "nota_fiscal").length + " nota fiscal"
+        : "nenhum respondido ainda",
+      rotuloAtrasados: atrasados ? "Cobrar " + atrasados + (atrasados === 1 ? " atrasado →" : " atrasados →") : "Nada atrasado",
+      estAtrasados: "margin-left:auto;align-self:center;height:34px;padding:0 15px;border-radius:999px;font-size:12.5px;font-weight:600;white-space:nowrap;transition:background 150ms ease;" +
+        (atrasados ? "background:rgba(255,157,144,.16);color:#ff9d90" : "background:rgba(255,255,255,.07);color:rgba(243,251,255,.5);cursor:default"),
+      verAtrasados: () => { if (atrasados) this.setState({ aba: "pendente", busca: "" }); },
+      rotuloPerguntas: "Perguntas · " + Component.KINDS[st.perguntasDe].label,
+      verPerguntas: () => this.setState((s2) => {
+        const outro = s2.perguntasDe === "integracao" ? "nota_fiscal" : "integracao";
+        return { perguntasDe: outro, tipo: outro, aba: "todos" };
+      }),
+      solicitar: () => this.setState((s2) => ({
+        aba: "pendente", tipo: "todos",
+        docs: [{ id: 100 + s2.docs.length, cliente: "Unique Baby", tipo: "integracao", espera: 0, autor: "Leo Sander",
+          respDias: null, secoes: [], respondido: false, contato: "Carla Bueno", url: "leverads.app/fi/7401", pedidoDias: 0 }].concat(s2.docs),
+      })),
+      abas: [["todos", "Todos", doTipo.length], ["pendente", "Aguardando", pendentes.length], ["respondido", "Respondidos", respondidos.length]]
+        .map(([id, label, n]) => ({ label, n, est: this.seg(st.aba === id), escolher: () => this.setState({ aba: id }) })),
+      tipo: st.tipo, mudarTipo: (e) => this.setState({ tipo: e.target.value }),
+      busca: st.busca, mudarBusca: (e) => this.setState({ busca: e.target.value }),
+      limpar: () => this.setState({ aba: "todos", tipo: "todos", busca: "" }),
+      vazio: visiveis.length === 0,
+      vazioTexto: doTipo.length ? "nada nesse filtro" : "nenhum formulário pedido ainda",
+      linhas: visiveis.map((d) => {
+        const k = Component.KINDS[d.tipo];
+        const atrasado = !d.respondido && d.espera >= 5;
+        const cor = d.respondido ? "#177a4c" : atrasado ? "#b42318" : "#a16207";
+        return {
+          cliente: d.cliente, tipo: k.label, pedidoEm: this.data(d.pedidoDias),
+          estTipo: "display:inline-block;height:17px;line-height:17px;padding:0 8px;border-radius:999px;background:#eef1f3;color:#3d4f5c;font-size:9.5px;font-weight:600;letter-spacing:.04em",
+          status: d.respondido ? "respondido" : d.espera === 0 ? "aguardando" : "aguardando há " + d.espera + (d.espera === 1 ? " dia" : " dias"),
+          estStatus: "display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;white-space:nowrap;color:" + cor,
+          estPonto: "width:6px;height:6px;border-radius:999px;flex-shrink:0;background:" + cor,
+          termo: d.respondido ? this.data(d.respDias) + " · termo assinado" : "",
+          estTermo: d.respondido ? "font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;margin-top:3px;white-space:nowrap" : "display:none",
+          resumo: d.respondido ? this.resumo(d) : k.hint,
+          corResumo: d.respondido ? "#3d4f5c" : "#a9b4bc",
+          autor: d.autor,
+          abrir: () => this.abrir(d.id),
+          rotuloPrincipal: d.respondido ? "Ver respostas" : st.enviado === d.id ? "Enviado ✓" : "Cobrar",
+          estPrincipal: "height:28px;padding:0 12px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap;transition:background 150ms ease;" +
+            (d.respondido ? "background:#0c1d2b;color:#fff"
+              : st.enviado === d.id ? "background:#E9F5F3;color:#0b6b64;cursor:default" : "background:#25d366;color:#06120c;font-weight:700"),
+          principal: () => { if (d.respondido) this.abrir(d.id); else this.flash("Enviado", d.id); },
+          rotuloCopiar: st.copiado === d.id ? "Copiado ✓" : d.respondido ? "Copiar respostas" : "Copiar link",
+          copiar: () => {
+            const txt = d.respondido
+              ? [k.full.toUpperCase() + " · " + d.cliente].concat(d.secoes.map(([t, itens]) => "## " + t + "\n" + itens.map(([a, b]) => a + ": " + b).join("\n"))).join("\n")
+              : d.url;
+            if (navigator.clipboard) navigator.clipboard.writeText(txt).catch(() => {});
+            this.flash("copiado", d.id);
+          },
+        };
+      }),
+      temSel: !!selDoc,
+      classeGaveta: st.fechando ? "cap-gaveta-sai" : "cap-gaveta-entra",
+      fechar: () => this.fechar(),
+    };
+
+    if (selDoc) {
+      const k = Component.KINDS[selDoc.tipo];
+      const nome = (selDoc.contato || selDoc.cliente).split(" ")[0];
+      vals.sel = {
+        cliente: selDoc.cliente,
+        cabecalho: k.full + " · " + (selDoc.respondido ? "respondido em " + this.data(selDoc.respDias) : "aguardando o cliente"),
+        respondido: selDoc.respondido, aguardando: !selDoc.respondido,
+        secoes: selDoc.secoes.map(([titulo, itens]) => ({ titulo, itens: itens.map(([kk, vv]) => ({ k: kk, v: vv })) })),
+        termoTexto: "Termo de veracidade assinado pelo cliente em " + this.data(selDoc.respDias) + " · as respostas valem como declaração dele.",
+        esperaTexto: selDoc.espera === 0
+          ? "Pedido enviado hoje. O formulário só pode ser respondido uma vez."
+          : "Pedido há " + selDoc.espera + (selDoc.espera === 1 ? " dia" : " dias") + (selDoc.espera >= 5 ? " · passou do ponto, vale ligar em vez de insistir no WhatsApp." : " · a integração não deve ser marcada antes da resposta."),
+        waTexto: k.wa(nome, selDoc.url),
+        perguntas: Component.PERGUNTAS[selDoc.tipo],
+      };
+      vals.rotuloCopiarWa = st.copiadoWa ? "Mensagem copiada ✓" : "Copiar a mensagem";
+      vals.estCopiarWa = "margin-top:10px;height:34px;padding:0 15px;border-radius:999px;font-size:12px;font-weight:700;transition:background 150ms ease;" +
+        (st.copiadoWa ? "background:#E9F5F3;color:#0b6b64;cursor:default" : "background:#25d366;color:#06120c");
+      vals.copiarWa = () => {
+        if (st.copiadoWa) return;
+        if (navigator.clipboard) navigator.clipboard.writeText(k.wa(nome, selDoc.url)).catch(() => {});
+        this.flash("copiadoWa", true);
+      };
+      vals.rotuloAcaoSel = selDoc.respondido ? "Marcar a call de integração" : st.enviado === selDoc.id ? "Cobrança enviada ✓" : "Cobrar no WhatsApp";
+      vals.estAcaoSel = "height:42px;border-radius:999px;font-size:13px;font-weight:700;transition:background 150ms ease;" +
+        (selDoc.respondido ? "background:#0c1d2b;color:#fff"
+          : st.enviado === selDoc.id ? "background:#E9F5F3;color:#0b6b64;cursor:default" : "background:#25d366;color:#06120c");
+      vals.acaoSel = () => { if (!selDoc.respondido) this.flash("Enviado", selDoc.id); };
+      vals.excluir = () => this.setState((s2) => ({ docs: s2.docs.filter((d) => d.id !== selDoc.id), sel: null }));
+    }
+    return vals;
+  }
+}
+</script>
+</body>
+</html>

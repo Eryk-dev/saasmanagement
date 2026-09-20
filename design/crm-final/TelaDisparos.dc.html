@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Disparos</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-gaveta-sai{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-gaveta-sai{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;margin:0 -4px;padding:0 4px 24px">
+
+      <header class="cap-rise" style="flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+        <div style="min-width:0">
+          <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Disparos</h1>
+          
+        </div>
+        <div style="display:inline-flex;gap:3px;padding:4px;border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.05)">
+          <sc-for list="{{ abas }}" as="a" hint-placeholder-count="3">
+            <button onClick="{{ a.escolher }}" style="{{ a.est }}">{{ a.label }}</button>
+          </sc-for>
+        </div>
+      </header>
+
+      <sc-if value="{{ temAviso }}" hint-placeholder-val="{{ false }}">
+        <div style="{{ estAviso }}">
+          <span style="flex:1;font-size:12.5px;text-wrap:pretty">{{ aviso }}</span>
+          <button onClick="{{ fecharAviso }}" style="flex-shrink:0;width:24px;height:24px;border-radius:999px;background:rgba(255,255,255,.6);color:inherit;font-size:12px">✕</button>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ abaDisparos }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="cap-2col" style="align-items:start">
+
+          <section class="cap-rise" style="min-width:0;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:18px 20px 16px">
+            <div style="display:flex;align-items:center;gap:9px;margin-bottom:12px">
+              <span style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:999px;background:#0c1d2b;color:#fff;font-family:'Outfit',sans-serif;font-size:11px;font-weight:700">1</span>
+              <span style="font-size:14.5px;font-weight:650">Para quem</span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4">etapas do funil</span>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">
+              <sc-for list="{{ etapas }}" as="e" hint-placeholder-count="6">
+                <button onClick="{{ e.alternar }}" style="{{ e.est }}">{{ e.nome }} <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;opacity:.7">{{ e.n }}</span></button>
+              </sc-for>
+            </div>
+            <label style="display:flex;align-items:center;gap:8px;height:34px;padding:0 14px;border-radius:999px;background:#f1f4f5;color:#5a6b77;margin:13px 0 10px">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><circle cx="11" cy="11" r="7"></circle><path d="M20.4 20.4l-4.2-4.2"></path></svg>
+              <input value="{{ busca }}" onChange="{{ mudarBusca }}" placeholder="buscar por nome ou empresa" style="flex:1;min-width:0;border:0;background:none;outline:none;font-family:inherit;font-size:12.5px;color:#0c1d2b">
+            </label>
+            <div style="border-radius:18px;box-shadow:inset 0 0 0 1px #edf1f3;overflow:hidden">
+              <div style="display:grid;grid-template-columns:34px minmax(0,1.5fr) minmax(0,1.1fr) minmax(0,.9fr) minmax(0,.8fr);gap:10px;padding:9px 14px;background:#f7f9fa;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#8b99a4">
+                <button onClick="{{ marcarTodos }}" title="selecionar todo o público" style="{{ estCheckTodos }}">{{ checkTodos }}</button>
+                <span>Lead</span><span>Empresa</span><span>Etapa</span><span>Na etapa</span>
+              </div>
+              <div style="max-height:320px;overflow-y:auto">
+                <sc-for list="{{ publico }}" as="p" hint-placeholder-count="6">
+                  <div style="display:grid;grid-template-columns:34px minmax(0,1.5fr) minmax(0,1.1fr) minmax(0,.9fr) minmax(0,.8fr);gap:10px;padding:10px 14px;align-items:center;border-top:1px solid #edf1f3">
+                    <button onClick="{{ p.alternar }}" style="{{ p.estCheck }}">{{ p.check }}</button>
+                    <button onClick="{{ p.abrir }}" style="min-width:0;text-align:left">
+                      <span style="display:block;font-size:12.5px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.nome }}</span>
+                      <span style="{{ p.estStatus }}">{{ p.status }}</span>
+                    </button>
+                    <span style="font-size:11.5px;color:#5a6b77;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.empresa }}</span>
+                    <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#5a6b77;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.etapa }}</span>
+                    <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;white-space:nowrap">{{ p.naEtapa }}</span>
+                  </div>
+                </sc-for>
+                <sc-if value="{{ publicoVazio }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:20px 14px;font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;color:#8b99a4;border-top:1px solid #edf1f3">nenhum lead neste público</div>
+                </sc-if>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:11px">
+              <button onClick="{{ marcarTodos }}" style="font-size:12.5px;font-weight:650;color:#0F766E">{{ rotuloTodos }}</button>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4">{{ contagemPublico }}</span>
+            </div>
+          </section>
+
+          <div style="min-width:0;display:flex;flex-direction:column;gap:12px">
+            <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:18px 20px 16px">
+              <div style="display:flex;align-items:center;gap:9px;margin-bottom:12px">
+                <span style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:999px;background:#0c1d2b;color:#fff;font-family:'Outfit',sans-serif;font-size:11px;font-weight:700">2</span>
+                <span style="font-size:14.5px;font-weight:650">A mensagem</span>
+              </div>
+              <div style="display:inline-flex;gap:3px;padding:3px;border-radius:999px;background:#f1f4f5">
+                <button onClick="{{ canalWa }}" style="{{ estCanalWa }}">WhatsApp</button>
+                <button onClick="{{ canalEmail }}" style="{{ estCanalEmail }}">E-mail</button>
+              </div>
+              <label style="display:flex;flex-direction:column;gap:5px;margin-top:13px">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;font-weight:600;color:#5a6b77">nome da campanha</span>
+                <input value="{{ nomeCamp }}" onChange="{{ mudarNome }}" placeholder="Retomada · diagnóstico pendente" style="height:36px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 14px;font-family:inherit;font-size:12.5px;color:#0c1d2b;outline:none">
+              </label>
+              <label style="{{ estAssunto }}">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;font-weight:600;color:#5a6b77">assunto do e-mail</span>
+                <input value="{{ assunto }}" onChange="{{ mudarAssunto }}" placeholder="Seu diagnóstico ficou pronto" style="height:36px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 14px;font-family:inherit;font-size:12.5px;color:#0c1d2b;outline:none">
+              </label>
+              <label style="display:flex;flex-direction:column;gap:5px;margin-top:11px">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;font-weight:600;color:#5a6b77">mensagem</span>
+                <textarea value="{{ corpo }}" onChange="{{ mudarCorpo }}" placeholder="Oi {{nome}}! Seu diagnóstico da {{empresa}} ficou pronto." style="min-height:104px;resize:vertical;border:0;border-radius:18px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:11px 14px;font-family:inherit;font-size:12.5px;line-height:1.5;color:#0c1d2b;outline:none"></textarea>
+              </label>
+              <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:9px">
+                <sc-for list="{{ tokens }}" as="t" hint-placeholder-count="4">
+                  <button onClick="{{ t.inserir }}" title="{{ t.title }}" style="height:26px;padding:0 9px;border-radius:8px;background:#fff;box-shadow:inset 0 0 0 1px #e4e9eb;color:#5a6b77;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;transition:background 150ms ease" style-hover="background:#f1f4f5">{{ t.label }}</button>
+                </sc-for>
+              </div>
+              <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:13px">
+                <button onClick="{{ salvarCamp }}" style="{{ estSalvar }}">{{ rotuloSalvar }}</button>
+                <select value="{{ campSel }}" onChange="{{ mudarCampSel }}" style="height:36px;border:0;border-radius:999px;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;padding:0 13px;font-family:inherit;font-size:12px;font-weight:600;color:#3d4f5c;cursor:pointer">
+                  <option value="">Nova campanha</option>
+                  <sc-for list="{{ campanhas }}" as="c" hint-placeholder-count="2">
+                    <option value="{{ c.id }}">{{ c.label }}</option>
+                  </sc-for>
+                </select>
+              </div>
+            </section>
+
+            <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:18px 20px 16px">
+              <div style="display:flex;align-items:center;gap:9px;margin-bottom:12px">
+                <span style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:999px;background:#0c1d2b;color:#fff;font-family:'Outfit',sans-serif;font-size:11px;font-weight:700">3</span>
+                <span style="font-size:14.5px;font-weight:650">Conferir e disparar</span>
+              </div>
+              <div style="{{ estPrevia }}">
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77;margin-bottom:6px">prévia · {{ previaNome }}</div>
+                <div style="{{ estPreviaAssunto }}">{{ previaAssunto }}</div>
+                <div style="font-size:12.5px;line-height:1.55;white-space:pre-line;text-wrap:pretty">{{ previaCorpo }}</div>
+              </div>
+              <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:13px">
+                <div>
+                  <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">pessoas no disparo</div>
+                  <div style="font-family:'Outfit',sans-serif;font-size:22px;font-weight:700;margin-top:2px">{{ nEscolhidos }}</div>
+                  <div style="font-size:11px;color:#8b99a4">{{ notaPendentes }}</div>
+                </div>
+                <div style="{{ estCusto }}">
+                  <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">custo estimado</div>
+                  <div style="font-family:'Outfit',sans-serif;font-size:22px;font-weight:700;margin-top:2px">{{ custo }}</div>
+                  <div style="font-size:11px;color:#8b99a4">R$ 0,31 por conversa</div>
+                </div>
+                <div style="{{ estCusto }}">
+                  <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">limite do número</div>
+                  <div style="font-family:'Outfit',sans-serif;font-size:22px;font-weight:700;margin-top:2px">1.000</div>
+                  <div style="font-size:11px;color:#8b99a4">conversas por dia</div>
+                </div>
+              </div>
+              <div style="{{ estLimite }}">{{ textoLimite }}</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button onClick="{{ disparar }}" style="{{ estDisparar }}">{{ rotuloDisparar }}</button>
+                <button onClick="{{ irSequencias }}" style="height:38px;padding:0 15px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:12.5px;font-weight:600;transition:background 150ms ease" style-hover="background:#e7ecee">Criar sequência</button>
+              </div>
+              <div style="display:flex;align-items:flex-start;gap:8px;margin-top:12px;padding:11px 13px;border-radius:16px;background:#f7f9fa">
+                <span style="flex-shrink:0;color:#8b99a4;font-size:11px">ⓘ</span>
+                <span style="flex:1;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;line-height:1.55;color:#5a6b77;text-wrap:pretty">{{ notaEnvio }}</span>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <section class="cap-rise" style="flex:0 0 auto;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+          <div style="padding:18px 20px 12px">
+            <div style="font-size:14.5px;font-weight:650">Resultados das campanhas</div>
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4;margin-top:4px">avanços no funil nos 30 dias após o disparo, atribuídos pela timeline</div>
+          </div>
+          <div style="overflow-x:auto"><div style="min-width:560px">
+            <div style="display:grid;grid-template-columns:minmax(0,1.6fr) 84px 96px 74px 80px 96px;gap:10px;padding:9px 20px;border-top:1px solid #edf1f3;border-bottom:1px solid #edf1f3;background:#f7f9fa;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#8b99a4">
+              <span>Campanha</span><span style="text-align:right">Enviados</span><span style="text-align:right">Avançaram</span><span style="text-align:right">Calls</span><span style="text-align:right">Ganhos</span><span style="text-align:right">Conversão</span>
+            </div>
+            <sc-for list="{{ resultados }}" as="r" hint-placeholder-count="3">
+              <div style="display:grid;grid-template-columns:minmax(0,1.6fr) 84px 96px 74px 80px 96px;gap:10px;padding:11px 20px;align-items:center;border-bottom:1px solid #edf1f3;font-size:12.5px">
+                <span style="min-width:0"><span style="display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.nome }}</span><span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4">{{ r.quando }}</span></span>
+                <span style="text-align:right">{{ r.enviados }}</span>
+                <span style="text-align:right">{{ r.avancaram }}</span>
+                <span style="text-align:right">{{ r.calls }}</span>
+                <span style="{{ r.estGanhos }}">{{ r.ganhos }}</span>
+                <span style="text-align:right;font-family:'Outfit',sans-serif;font-weight:700">{{ r.conv }}</span>
+              </div>
+            </sc-for>
+          </div></div>
+        </section>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ abaSequencias }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:0 8px">
+          <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">sequências</span>
+          <sc-for list="{{ seqs }}" as="s" hint-placeholder-count="2">
+            <button onClick="{{ s.escolher }}" style="{{ s.est }}">{{ s.nome }} <span style="{{ s.estStatus }}">{{ s.status }}</span></button>
+          </sc-for>
+          <button onClick="{{ novaSeq }}" style="height:28px;padding:0 12px;border-radius:999px;background:#fff;color:#0F766E;font-size:11.5px;font-weight:600;box-shadow:0 1px 2px rgba(12,29,43,.05)">Criar sequência</button>
+        </div>
+        <div class="cap-2col" style="align-items:start">
+          <section class="cap-rise" style="min-width:0;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:18px 20px 18px;display:flex;flex-direction:column;gap:14px">
+            <label style="display:flex;flex-direction:column;gap:5px">
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;font-weight:600;color:#5a6b77">nome da sequência</span>
+              <input value="{{ seq.nome }}" onChange="{{ mudarSeqNome }}" placeholder="Nutrição · lead frio" style="height:36px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 14px;font-family:inherit;font-size:12.5px;color:#0c1d2b;outline:none">
+            </label>
+            <div>
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">gatilho · entra quem está nestas etapas</div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+                <sc-for list="{{ gatilhos }}" as="g" hint-placeholder-count="6">
+                  <button onClick="{{ g.alternar }}" style="{{ g.est }}">{{ g.nome }}</button>
+                </sc-for>
+              </div>
+            </div>
+            <div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">passos</span>
+                <span style="display:inline-flex;gap:5px">
+                  <button onClick="{{ addPassoEmail }}" style="height:24px;padding:0 10px;border-radius:999px;background:#f1f4f5;color:#0F766E;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;font-weight:600">Adicionar e-mail</button>
+                  <button onClick="{{ addPassoWa }}" style="height:24px;padding:0 10px;border-radius:999px;background:#f1f4f5;color:#0F766E;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;font-weight:600">Adicionar WhatsApp</button>
+                </span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:7px;margin-top:9px">
+                <sc-for list="{{ passos }}" as="p" hint-placeholder-count="3">
+                  <div style="padding:11px 13px;border-radius:18px;background:#f7f9fa">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                      <span style="{{ p.estCanal }}">{{ p.canal }}</span>
+                      <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#5a6b77">espera</span>
+                      <input value="{{ p.delay }}" onChange="{{ p.mudarDelay }}" style="width:46px;height:26px;border:0;border-radius:999px;background:#fff;box-shadow:inset 0 0 0 1px #e4e9eb;text-align:center;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#3d4f5c;outline:none">
+                      <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#5a6b77">dias</span>
+                      <button onClick="{{ p.remover }}" title="remover passo" style="margin-left:auto;width:24px;height:24px;border-radius:999px;background:#fff;color:#b42318;font-size:11px">✕</button>
+                    </div>
+                    <textarea value="{{ p.texto }}" onChange="{{ p.mudarTexto }}" placeholder="o que essa mensagem diz" style="width:100%;min-height:52px;resize:vertical;border:0;border-radius:14px;background:#fff;box-shadow:inset 0 0 0 1px #e4e9eb;padding:9px 12px;margin-top:9px;font-family:inherit;font-size:12px;line-height:1.5;color:#0c1d2b;outline:none"></textarea>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div>
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">sai quando</div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+                <sc-for list="{{ saidas }}" as="x" hint-placeholder-count="4">
+                  <button onClick="{{ x.alternar }}" style="{{ x.est }}">{{ x.label }}</button>
+                </sc-for>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:12px;border-top:1px solid #edf1f3">
+              <button onClick="{{ salvarSeq }}" style="{{ estSalvarSeq }}">{{ rotuloSalvarSeq }}</button>
+              <button onClick="{{ ligarSeq }}" style="{{ estLigarSeq }}">{{ rotuloLigarSeq }}</button>
+            </div>
+          </section>
+          <div style="min-width:0;display:flex;flex-direction:column;gap:12px">
+            <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:18px 20px 16px">
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">conversão desta sequência</div>
+              <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:12px">
+                <sc-for list="{{ metricasSeq }}" as="m" hint-placeholder-count="4">
+                  <div>
+                    <div style="font-family:'Outfit',sans-serif;font-size:22px;font-weight:700;color:{{ m.cor }}">{{ m.val }}</div>
+                    <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77;margin-top:2px">{{ m.rot }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </section>
+            <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:18px 20px 16px">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">fila de whatsapp assistido</span>
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4">{{ filaNota }}</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:7px;margin-top:11px">
+                <sc-for list="{{ fila }}" as="f" hint-placeholder-count="3">
+                  <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:18px;background:#f7f9fa">
+                    <div style="flex:1;min-width:0">
+                      <div style="font-size:12.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.nome }}</div>
+                      <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#5a6b77;margin-top:2px;text-wrap:pretty">{{ f.passo }}</div>
+                    </div>
+                    <button onClick="{{ f.enviar }}" style="{{ f.est }}">{{ f.acao }}</button>
+                  </div>
+                </sc-for>
+                <sc-if value="{{ filaVazia }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:14px 12px;border-radius:16px;background:#f0f8f4;font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#177a4c;text-align:center">fila vazia · nada esperando envio</div>
+                </sc-if>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ abaTemplates }}" hint-placeholder-val="{{ false }}">
+      <div class="cap-2col" style="align-items:start">
+        <section class="cap-rise" style="min-width:0;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:18px 20px 18px;display:flex;flex-direction:column;gap:12px">
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">{{ tituloTpl }}</div>
+          <input value="{{ tpl.nome }}" onChange="{{ mudarTplNome }}" placeholder="nome do template" style="height:36px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 14px;font-family:inherit;font-size:12.5px;color:#0c1d2b;outline:none">
+          <input value="{{ tpl.assunto }}" onChange="{{ mudarTplAssunto }}" placeholder="assunto (só e-mail)" style="height:36px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 14px;font-family:inherit;font-size:12.5px;color:#0c1d2b;outline:none">
+          <textarea value="{{ tpl.corpo }}" onChange="{{ mudarTplCorpo }}" placeholder="corpo da mensagem · use {{nome}} e {{empresa}}" style="min-height:96px;resize:vertical;border:0;border-radius:18px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:11px 14px;font-family:inherit;font-size:12.5px;line-height:1.5;color:#0c1d2b;outline:none"></textarea>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button onClick="{{ salvarTpl }}" style="{{ estSalvarTpl }}">{{ rotuloSalvarTpl }}</button>
+            <button onClick="{{ limparTpl }}" style="height:36px;padding:0 14px;border-radius:999px;background:transparent;color:#5a6b77;font-size:12.5px;font-weight:600;transition:background 150ms ease" style-hover="background:#f1f4f5">Limpar</button>
+          </div>
+        </section>
+        <section class="cap-rise" style="min-width:0;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:18px 20px 16px">
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">biblioteca · {{ nTpls }}</div>
+          <div style="display:flex;flex-direction:column;gap:7px;margin-top:11px">
+            <sc-for list="{{ tpls }}" as="t" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:18px;background:#f7f9fa">
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:12.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.nome }}</div>
+                  <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ t.previa }}</div>
+                </div>
+                <button onClick="{{ t.usar }}" style="flex-shrink:0;height:28px;padding:0 12px;border-radius:999px;background:#fff;color:#0F766E;font-size:11.5px;font-weight:600;box-shadow:0 1px 2px rgba(12,29,43,.06)">Usar</button>
+                <button onClick="{{ t.editar }}" style="flex-shrink:0;height:28px;padding:0 11px;border-radius:999px;background:#fff;color:#3d4f5c;font-size:11.5px;font-weight:600;box-shadow:0 1px 2px rgba(12,29,43,.06)">Editar</button>
+                <button onClick="{{ t.remover }}" title="excluir" style="flex-shrink:0;width:26px;height:26px;border-radius:999px;background:#fff;color:#b42318;font-size:11px">✕</button>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+      </div>
+      </sc-if>
+    </div>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Disparos (screens/disparos.jsx): três abas. Disparo em três passos (para
+  // quem → mensagem → conferir), sequências com gatilho por etapa e passos com
+  // delay, e a biblioteca de templates. O envio é ASSISTIDO: a conversa abre
+  // preenchida e o operador confirma — por isso o limite do número aparece
+  // antes do botão, não depois do erro da Meta.
+  static ETAPAS = ["Novo lead", "Em contato", "Qualificando", "Call agendada", "Proposta enviada", "Follow-up"];
+  static TOKENS = [["nome", "primeiro nome do lead"], ["empresa", "empresa do lead"], ["nicho", "nicho que ele respondeu"], ["contas", "quantas contas ele opera"]];
+  static CUSTO = 0.31; static LIMITE = 1000;
+  static SAIDAS = [["respondeu", "respondeu", 1], ["avancou", "avançou de etapa", 1], ["ganho", "virou cliente", 1], ["descartado", "foi descartado", 1], ["call", "marcou call", 0]];
+
+  static gerar() {
+    const L = [
+      ["Paula Bittencourt", "Vitta Odonto", 0, 2, 0, 1],
+      ["Marcos Aguiar", "Grupo MA", 0, 1, 0, 1],
+      ["Nina Castro", "Castro Pet", 0, 4, 1, 0],
+      ["Sérgio Prado", "Oficina Prado", 1, 3, 0, 1],
+      ["Otávio Braga", "Braga Fit", 1, 6, 0, 1],
+      ["Renata Dias", "Clínica RD", 2, 5, 0, 1],
+      ["Lúcia Amaral", "Amaral Studio", 2, 9, 0, 1],
+      ["Bruno Sato", "Sato Imports", 2, 12, 1, 1],
+      ["Eduardo Galante", "Galante Holding", 2, 4, 0, 1],
+      ["Caio Menezes", "Menezes Auto", 3, 1, 0, 1],
+      ["Marina Kern", "Studio Kern", 3, 2, 0, 1],
+      ["Diego Arbo", "Clínica Arbo", 4, 1, 0, 1],
+      ["Tatiana Ponto", "Mercado Ponto", 4, 3, 0, 1],
+      ["Rogério Vante", "Grupo Vante", 4, 7, 0, 1],
+      ["Fernanda Luz", "Luz Odontologia", 5, 3, 0, 1],
+      ["Paulo Ferraz", "Ferraz Advocacia", 5, 5, 0, 1],
+      ["Isabel Corrêa", "Corrêa Pets", 5, 8, 1, 1],
+      ["Tiago Nogueira", "Nogueira Imports", 5, 14, 0, 0],
+    ];
+    const NICHOS = ["moda", "autopeças", "pet", "suplementos", "casa e decoração"];
+    return L.map(([nome, empresa, st, dias, semContato, temWa], i) => ({
+      id: i, nome, empresa, etapa: Component.ETAPAS[st], stage: st, dias,
+      semContato: !!semContato, temWa: !!temWa,
+      nicho: NICHOS[i % 5], contas: 1 + (i % 4),
+    }));
+  }
+
+  state = { aba: "disparos", etapas: { Qualificando: 1, "Follow-up": 1 }, busca: "", sel: {},
+    canal: "wa", nome: "Retomada · diagnóstico pendente", assunto: "Seu diagnóstico ficou pronto",
+    corpo: "Oi {{nome}}! O diagnóstico da {{empresa}} ficou pronto: achei 3 pontos que estão travando as suas {{contas}} contas. Posso te mostrar em 15 minutos?",
+    leads: Component.gerar(), enviados: {}, campSel: "", salvo: false, aviso: null, avisoOk: true,
+    campanhas: [
+      { id: "c1", nome: "Retomada · proposta parada", enviados: 34, avancaram: 11, calls: 6, ganhos: 2, dias: 12 },
+      { id: "c2", nome: "Convite · diagnóstico grátis", enviados: 86, avancaram: 24, calls: 14, ganhos: 3, dias: 26 },
+      { id: "c3", nome: "Reativação · base fria", enviados: 52, avancaram: 6, calls: 2, ganhos: 0, dias: 40 },
+    ],
+    seqSel: "s1", seqSalvo: false,
+    seqs: [
+      { id: "s1", nome: "Nutrição · lead frio", status: "ligada", gatilhos: ["Qualificando"],
+        passos: [{ canal: "email", delay: 0, texto: "Oi {{nome}}, separei um caso de uma loja do seu nicho ({{nicho}}) que dobrou a segunda conta." },
+          { canal: "whatsapp", delay: 2, texto: "Oi {{nome}}! Viu o e-mail? Consigo te mostrar rodando na sua conta em 15 min." },
+          { canal: "email", delay: 5, texto: "Última ideia, {{nome}}: se replicar catálogo não é o gargalo agora, me diz qual é." }],
+        saidas: { respondeu: 1, avancou: 1, ganho: 1, descartado: 1, call: 0 },
+        metricas: { inscritos: 37, avancou: 14, call: 8, ganho: 3 } },
+      { id: "s2", nome: "Pós-proposta · 3 toques", status: "rascunho", gatilhos: ["Proposta enviada"],
+        passos: [{ canal: "whatsapp", delay: 1, texto: "Oi {{nome}}, conseguiu abrir a proposta?" },
+          { canal: "email", delay: 3, texto: "{{nome}}, deixo aqui o resumo em uma página." }],
+        saidas: { respondeu: 1, avancou: 1, ganho: 1, descartado: 1, call: 0 },
+        metricas: { inscritos: 0, avancou: 0, call: 0, ganho: 0 } },
+    ],
+    filaEnviada: {},
+    tpl: { id: null, nome: "", assunto: "", corpo: "" }, tplSalvo: false,
+    tpls: [
+      { id: "t1", nome: "Retomada simples", assunto: "Continuamos?", corpo: "Oi {{nome}}, retomando: faz sentido olhar as {{contas}} contas da {{empresa}} essa semana?" },
+      { id: "t2", nome: "Convite pro diagnóstico", assunto: "Diagnóstico da {{empresa}}", corpo: "Oi {{nome}}! Rodo um diagnóstico gratuito nos seus anúncios e te mostro onde está travando." },
+      { id: "t3", nome: "Case do nicho", assunto: "Uma loja de {{nicho}} que dobrou", corpo: "{{nome}}, esse caso é de uma loja de {{nicho}} igual a sua. Mando o print?" },
+    ] };
+  componentWillUnmount() { clearTimeout(this._a); }
+
+  money(n) { return "R$ " + Number(n).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  seg(ativo, alt) {
+    if (alt) return "height:28px;padding:0 12px;border-radius:999px;font-size:11.5px;white-space:nowrap;display:inline-flex;align-items:center;gap:5px;transition:background 150ms ease,color 150ms ease;" +
+      (ativo ? "background:#E9F5F3;color:#0b6b64;font-weight:650;box-shadow:inset 0 0 0 1px rgba(15,118,110,.3)" : "background:#f1f4f5;color:#5a6b77;font-weight:500");
+    return "height:32px;padding:0 15px;border-radius:999px;font-size:12.5px;white-space:nowrap;transition:background 150ms ease,color 150ms ease;" +
+      (ativo ? "background:#0c1d2b;color:#fff;font-weight:650" : "background:transparent;color:#5a6b77;font-weight:500");
+  }
+  check(on) {
+    return "flex-shrink:0;width:18px;height:18px;border-radius:6px;font-size:10px;line-height:1;display:inline-flex;align-items:center;justify-content:center;transition:background 150ms ease;" +
+      (on ? "background:#0F766E;color:#fff" : "background:#fff;color:transparent;box-shadow:inset 0 0 0 1.5px #c5cfd4");
+  }
+  flash(txt, ok) { this.setState({ aviso: txt, avisoOk: ok !== false }); clearTimeout(this._a); this._a = setTimeout(() => this.setState({ aviso: null }), 3600); }
+  interp(txt, l) {
+    if (!l) return String(txt || "");
+    const t = { nome: l.nome.split(" ")[0], empresa: l.empresa, nicho: l.nicho, contas: String(l.contas) };
+    return String(txt || "").replace(/\{\{(\w+)\}\}/g, (_, k) => (t[k] != null ? t[k] : "{{" + k + "}}"));
+  }
+  seqAtual() { return this.state.seqs.find((s) => s.id === this.state.seqSel) || this.state.seqs[0]; }
+  patchSeq(mud) {
+    this.setState((s2) => ({ seqSalvo: false, seqs: s2.seqs.map((x) => x.id === s2.seqSel ? Object.assign({}, x, mud) : x) }));
+  }
+
+  renderVals() {
+    const st = this.state;
+    const canalWa = st.canal === "wa";
+    const etapasOn = Object.keys(st.etapas).filter((k) => st.etapas[k]);
+    const publico = st.leads.filter((l) => !etapasOn.length || etapasOn.includes(l.etapa));
+    const q = st.busca.trim().toLowerCase();
+    const mostrados = publico.filter((l) => !q || (l.nome + " " + l.empresa).toLowerCase().includes(q));
+    const valido = (l) => canalWa ? (l.temWa && !l.semContato) : !l.semContato;
+    const enviado = (l) => !!(st.enviados[l.id] || {})[st.canal];
+    const escolhidos = publico.filter((l) => st.sel[l.id]);
+    const pendentes = escolhidos.filter((l) => valido(l) && !enviado(l));
+    const todosMarcados = publico.length > 0 && publico.every((l) => st.sel[l.id]);
+    const amostra = escolhidos[0] || mostrados[0] || st.leads[0];
+    const pronto = !!(canalWa ? st.corpo.trim() : (st.corpo.trim() && st.assunto.trim()));
+    const custo = Component.CUSTO * escolhidos.length;
+    const seq = this.seqAtual();
+
+    const vals = {
+      mov: this.props.movimento === false ? "off" : "on",
+      subtitulo: st.aba === "disparos" ? publico.length + " no público · " + escolhidos.length + " selecionados · campanhas de e-mail e WhatsApp"
+        : st.aba === "sequencias" ? "sequências automáticas por etapa · o WhatsApp para na fila assistida"
+        : "biblioteca de conteúdo reaproveitada nos disparos e nas sequências",
+      abas: [["disparos", "Disparos"], ["sequencias", "Sequências"], ["templates", "Templates"]].map(([id, label]) => ({
+        label, est: this.seg(st.aba === id), escolher: () => this.setState({ aba: id }),
+      })),
+      abaDisparos: st.aba === "disparos", abaSequencias: st.aba === "sequencias", abaTemplates: st.aba === "templates",
+      temAviso: !!st.aviso, aviso: st.aviso || "",
+      estAviso: "display:flex;align-items:center;gap:10px;padding:11px 16px;border-radius:999px;" +
+        (st.avisoOk ? "background:#e9f6ef;color:#177a4c;box-shadow:inset 0 0 0 1px rgba(23,122,76,.3)" : "background:#fdf3f2;color:#b42318;box-shadow:inset 0 0 0 1px rgba(180,35,24,.3)"),
+      fecharAviso: () => this.setState({ aviso: null }),
+
+      etapas: Component.ETAPAS.map((nome) => ({
+        nome, n: String(st.leads.filter((l) => l.etapa === nome).length),
+        est: this.seg(!!st.etapas[nome], true),
+        alternar: () => this.setState((s2) => ({ etapas: Object.assign({}, s2.etapas, { [nome]: !s2.etapas[nome] }) })),
+      })),
+      busca: st.busca, mudarBusca: (e) => this.setState({ busca: e.target.value }),
+      estCheckTodos: this.check(todosMarcados), checkTodos: todosMarcados ? "✓" : "",
+      marcarTodos: () => this.setState((s2) => {
+        const sel = Object.assign({}, s2.sel);
+        if (todosMarcados) { for (const l of publico) delete sel[l.id]; }
+        else { for (const l of publico) sel[l.id] = 1; }
+        return { sel };
+      }),
+      rotuloTodos: todosMarcados ? "Limpar seleção" : "Selecionar todos (" + publico.length + ")",
+      contagemPublico: mostrados.length + " na lista · " + escolhidos.length + " selecionados",
+      publicoVazio: mostrados.length === 0,
+      publico: mostrados.map((l) => {
+        const env = enviado(l), inv = !valido(l);
+        return {
+          nome: l.nome, empresa: l.empresa, etapa: l.etapa,
+          naEtapa: l.dias === 1 ? "1 dia" : l.dias + " dias",
+          status: env ? "já enviado" : inv ? "sem contato disponível" : "pendente",
+          estStatus: "display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;margin-top:3px;color:" + (env ? "#177a4c" : inv ? "#b42318" : "#8b99a4"),
+          check: st.sel[l.id] ? "✓" : "", estCheck: this.check(!!st.sel[l.id]),
+          alternar: () => this.setState((s2) => {
+            const sel = Object.assign({}, s2.sel);
+            if (sel[l.id]) delete sel[l.id]; else sel[l.id] = 1;
+            return { sel };
+          }),
+          abrir: () => window.dispatchEvent(new CustomEvent("cockpit:ir", { detail: { tela: "Pi" } })),
+        };
+      }),
+
+      estCanalWa: this.seg(canalWa), estCanalEmail: this.seg(!canalWa),
+      canalWa: () => this.setState({ canal: "wa" }), canalEmail: () => this.setState({ canal: "email" }),
+      nomeCamp: st.nome, mudarNome: (e) => this.setState({ nome: e.target.value, salvo: false }),
+      estAssunto: canalWa ? "display:none" : "display:flex;flex-direction:column;gap:5px;margin-top:11px",
+      assunto: st.assunto, mudarAssunto: (e) => this.setState({ assunto: e.target.value, salvo: false }),
+      corpo: st.corpo, mudarCorpo: (e) => this.setState({ corpo: e.target.value, salvo: false }),
+      tokens: Component.TOKENS.map(([k, title]) => ({
+        label: "{{" + k + "}}", title: "inserir " + title,
+        inserir: () => this.setState((s2) => ({ corpo: s2.corpo + (s2.corpo && !/\s$/.test(s2.corpo) ? " " : "") + "{{" + k + "}}", salvo: false })),
+      })),
+      rotuloSalvar: st.salvo ? "Campanha salva ✓" : "Salvar campanha",
+      estSalvar: "height:36px;padding:0 16px;border-radius:999px;font-size:12.5px;font-weight:650;transition:background 150ms ease;" +
+        (st.salvo ? "background:#E9F5F3;color:#0b6b64;cursor:default" : "background:#f1f4f5;color:#0c1d2b"),
+      salvarCamp: () => {
+        if (st.salvo) return;
+        this.setState({ salvo: true });
+        this.flash("Campanha \"" + (st.nome || "sem nome") + "\" salva · pode disparar em lotes");
+      },
+      campSel: st.campSel,
+      campanhas: st.campanhas.map((c) => ({ id: c.id, label: c.nome + " · " + c.enviados + " env." })),
+      mudarCampSel: (e) => {
+        const c = st.campanhas.find((x) => x.id === e.target.value);
+        if (c) this.setState({ campSel: c.id, nome: c.nome, salvo: false });
+        else this.setState({ campSel: "", nome: "", corpo: "", salvo: false });
+      },
+
+      estPrevia: amostra && pronto ? "padding:11px 13px;border-radius:18px;background:#f7f9fa;margin-bottom:13px" : "display:none",
+      previaNome: amostra ? amostra.nome : "",
+      estPreviaAssunto: canalWa ? "display:none" : "display:block;font-size:12.5px;font-weight:700;margin-bottom:5px",
+      previaAssunto: this.interp(st.assunto, amostra),
+      previaCorpo: this.interp(st.corpo, amostra),
+      nEscolhidos: String(escolhidos.length),
+      notaPendentes: pendentes.length + " pendentes com contato válido",
+      estCusto: canalWa ? "" : "display:none",
+      custo: this.money(custo),
+      estLimite: canalWa && escolhidos.length > Component.LIMITE * 0.6
+        ? "padding:11px 13px;border-radius:16px;margin-bottom:12px;font-size:12px;line-height:1.5;background:#fbf4e6;color:#6b4708" : "display:none",
+      textoLimite: escolhidos.length > Component.LIMITE
+        ? "O público passa do limite de " + Component.LIMITE + " conversas do número. Divida o disparo em dias."
+        : "O público passa de 60% do limite do número. Confira a saúde antes de continuar.",
+      rotuloDisparar: !pendentes.length ? "Nada pendente" : !pronto ? "Escreva a mensagem"
+        : canalWa ? "Abrir próximo WhatsApp ↗" : "Disparar " + pendentes.length + " e-mails",
+      estDisparar: "height:38px;padding:0 18px;border-radius:999px;font-size:12.5px;font-weight:700;transition:background 150ms ease;" +
+        (pendentes.length && pronto ? (canalWa ? "background:#25d366;color:#06120c" : "background:#0c1d2b;color:#fff") : "background:#eef1f3;color:#8b99a4;cursor:not-allowed"),
+      disparar: () => {
+        if (!pendentes.length || !pronto) return;
+        if (canalWa) {
+          const l = pendentes[0];
+          this.setState((s2) => ({ enviados: Object.assign({}, s2.enviados, { [l.id]: Object.assign({}, s2.enviados[l.id], { wa: 1 }) }) }));
+          this.flash("Conversa de " + l.nome + " aberta com a mensagem preenchida · confirme no WhatsApp e siga pro próximo");
+        } else {
+          const ids = pendentes.map((l) => l.id);
+          this.setState((s2) => {
+            const env = Object.assign({}, s2.enviados);
+            for (const id of ids) env[id] = Object.assign({}, env[id], { email: 1 });
+            return { enviados: env };
+          });
+          this.flash(ids.length + (ids.length === 1 ? " e-mail disparado" : " e-mails disparados") + " pela conta conectada · quem já recebeu ficou de fora");
+        }
+      },
+      irSequencias: () => this.setState({ aba: "sequencias" }),
+      notaEnvio: canalWa
+        ? "Envio assistido: a conversa abre com a mensagem preenchida. Confira e envie no aplicativo; depois continue para o próximo contato."
+        : "Os e-mails saem pela conta Google conectada. Quem já recebeu ou se descadastrou fica fora do envio.",
+      resultados: st.campanhas.slice().sort((a, b) => b.ganhos - a.ganhos || b.avancaram - a.avancaram).map((c) => ({
+        nome: c.nome, quando: "disparada há " + c.dias + " dias",
+        enviados: String(c.enviados), avancaram: String(c.avancaram), calls: String(c.calls),
+        ganhos: c.ganhos ? String(c.ganhos) : "—",
+        estGanhos: "text-align:right;font-family:'Outfit',sans-serif;font-weight:700;color:" + (c.ganhos ? "#177a4c" : "#8b99a4"),
+        conv: c.enviados ? Math.round((c.ganhos / c.enviados) * 100) + "%" : "0%",
+      })),
+
+      seqs: st.seqs.map((s) => ({
+        nome: s.nome, status: s.status,
+        est: "height:28px;padding:0 12px;border-radius:999px;font-size:11.5px;display:inline-flex;align-items:center;gap:6px;transition:background 150ms ease;" +
+          (s.id === seq.id ? "background:#0c1d2b;color:#fff;font-weight:650" : "background:#fff;color:#3d4f5c;font-weight:500;box-shadow:0 1px 2px rgba(12,29,43,.05)"),
+        estStatus: "font-family:'Plus Jakarta Sans',sans-serif;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:" + (s.status === "ligada" ? "#23D8D3" : "#8b99a4"),
+        escolher: () => this.setState({ seqSel: s.id, seqSalvo: false }),
+      })),
+      novaSeq: () => this.setState((s2) => {
+        const id = "s" + (s2.seqs.length + 1);
+        return { seqSel: id, seqSalvo: false, seqs: s2.seqs.concat([{ id, nome: "", status: "rascunho", gatilhos: [],
+          passos: [{ canal: "email", delay: 0, texto: "" }], saidas: { respondeu: 1, avancou: 1, ganho: 1, descartado: 1, call: 0 },
+          metricas: { inscritos: 0, avancou: 0, call: 0, ganho: 0 } }]) };
+      }),
+      seq: { nome: seq.nome },
+      mudarSeqNome: (e) => this.patchSeq({ nome: e.target.value }),
+      gatilhos: Component.ETAPAS.map((nome) => ({
+        nome, est: this.seg(seq.gatilhos.includes(nome), true),
+        alternar: () => this.patchSeq({ gatilhos: seq.gatilhos.includes(nome) ? seq.gatilhos.filter((x) => x !== nome) : seq.gatilhos.concat([nome]) }),
+      })),
+      addPassoEmail: () => this.patchSeq({ passos: seq.passos.concat([{ canal: "email", delay: 2, texto: "" }]) }),
+      addPassoWa: () => this.patchSeq({ passos: seq.passos.concat([{ canal: "whatsapp", delay: 2, texto: "" }]) }),
+      passos: seq.passos.map((p, i) => ({
+        canal: p.canal === "email" ? "E-mail" : "WhatsApp",
+        estCanal: "display:inline-flex;align-items:center;height:22px;padding:0 10px;border-radius:999px;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:700;letter-spacing:.04em;" +
+          (p.canal === "email" ? "background:#eef1f3;color:#3d4f5c" : "background:rgba(37,211,102,.16);color:#0a6b33"),
+        delay: String(p.delay), texto: p.texto,
+        mudarDelay: (e) => { const v = e.target.value; this.patchSeq({ passos: seq.passos.map((x, k) => k === i ? Object.assign({}, x, { delay: Math.max(0, Number(v) || 0) }) : x) }); },
+        mudarTexto: (e) => { const v = e.target.value; this.patchSeq({ passos: seq.passos.map((x, k) => k === i ? Object.assign({}, x, { texto: v }) : x) }); },
+        remover: () => this.patchSeq({ passos: seq.passos.filter((_, k) => k !== i) }),
+      })),
+      saidas: Component.SAIDAS.map(([k, label]) => ({
+        label, est: this.seg(!!seq.saidas[k], true),
+        alternar: () => this.patchSeq({ saidas: Object.assign({}, seq.saidas, { [k]: seq.saidas[k] ? 0 : 1 }) }),
+      })),
+      rotuloSalvarSeq: st.seqSalvo ? "Sequência salva ✓" : "Salvar sequência",
+      estSalvarSeq: "height:38px;padding:0 16px;border-radius:999px;font-size:12.5px;font-weight:650;transition:background 150ms ease;" +
+        (st.seqSalvo ? "background:#E9F5F3;color:#0b6b64;cursor:default" : "background:#f1f4f5;color:#0c1d2b"),
+      salvarSeq: () => { if (!st.seqSalvo) { this.setState({ seqSalvo: true }); this.flash("Sequência salva · o gatilho passa a valer no próximo lead que entrar na etapa"); } },
+      rotuloLigarSeq: seq.status === "ligada" ? "Pausar sequência" : "Ligar sequência",
+      estLigarSeq: "height:38px;padding:0 16px;border-radius:999px;font-size:12.5px;font-weight:650;transition:background 150ms ease;" +
+        (seq.status === "ligada" ? "background:#fbf4e6;color:#6b4708" : "background:#0c1d2b;color:#fff"),
+      ligarSeq: () => {
+        const liga = seq.status !== "ligada";
+        if (liga && !seq.gatilhos.length) { this.flash("Escolha ao menos uma etapa no gatilho antes de ligar", false); return; }
+        this.patchSeq({ status: liga ? "ligada" : "rascunho" });
+        this.flash(liga ? "Sequência ligada · quem entrar em " + seq.gatilhos.join(" ou ") + " começa a receber" : "Sequência pausada · ninguém novo entra");
+      },
+      metricasSeq: [["inscritos", seq.metricas.inscritos, "#0c1d2b"], ["avançou", seq.metricas.avancou, "#0c1d2b"],
+        ["marcou call", seq.metricas.call, "#0c1d2b"], ["fechou", seq.metricas.ganho, seq.metricas.ganho ? "#177a4c" : "#8b99a4"]]
+        .map(([rot, val, cor]) => ({ rot, val: String(val), cor })),
+      filaNota: seq.status === "ligada" ? "os passos de WhatsApp param aqui" : "sequência pausada",
+      fila: (seq.status === "ligada" ? [
+        { id: "f1", nome: "Lúcia Amaral · Amaral Studio", passo: "passo 2 · WhatsApp · venceu há 1 dia" },
+        { id: "f2", nome: "Bruno Sato · Sato Imports", passo: "passo 2 · WhatsApp · vence hoje" },
+        { id: "f3", nome: "Renata Dias · Clínica RD", passo: "passo 2 · WhatsApp · vence hoje" },
+      ] : []).filter((f) => !st.filaEnviada[f.id]).map((f) => ({
+        nome: f.nome, passo: f.passo,
+        acao: "Abrir ↗",
+        est: "flex-shrink:0;height:30px;padding:0 13px;border-radius:999px;background:#25d366;color:#06120c;font-size:11.5px;font-weight:700;transition:filter 150ms ease",
+        enviar: () => {
+          this.setState((s2) => ({ filaEnviada: Object.assign({}, s2.filaEnviada, { [f.id]: 1 }) }));
+          this.flash("Conversa aberta com o passo preenchido · " + f.nome.split(" · ")[0]);
+        },
+      })),
+      filaVazia: seq.status !== "ligada" || [1, 2, 3].every((n) => st.filaEnviada["f" + n]),
+
+      tituloTpl: st.tpl.id ? "editar template" : "novo template",
+      tpl: { nome: st.tpl.nome, assunto: st.tpl.assunto, corpo: st.tpl.corpo },
+      mudarTplNome: (e) => this.setState((s2) => ({ tpl: Object.assign({}, s2.tpl, { nome: e.target.value }), tplSalvo: false })),
+      mudarTplAssunto: (e) => this.setState((s2) => ({ tpl: Object.assign({}, s2.tpl, { assunto: e.target.value }), tplSalvo: false })),
+      mudarTplCorpo: (e) => this.setState((s2) => ({ tpl: Object.assign({}, s2.tpl, { corpo: e.target.value }), tplSalvo: false })),
+      rotuloSalvarTpl: st.tplSalvo ? "Salvo ✓" : st.tpl.nome.trim() && st.tpl.corpo.trim() ? (st.tpl.id ? "Salvar template" : "Criar template") : "Nome e corpo primeiro",
+      estSalvarTpl: "height:36px;padding:0 16px;border-radius:999px;font-size:12.5px;font-weight:650;transition:background 150ms ease;" +
+        (st.tplSalvo ? "background:#E9F5F3;color:#0b6b64;cursor:default" : (st.tpl.nome.trim() && st.tpl.corpo.trim()) ? "background:#0c1d2b;color:#fff" : "background:#eef1f3;color:#8b99a4;cursor:not-allowed"),
+      salvarTpl: () => {
+        const t = st.tpl;
+        if (st.tplSalvo || !t.nome.trim() || !t.corpo.trim()) return;
+        this.setState((s2) => ({
+          tplSalvo: true,
+          tpls: t.id ? s2.tpls.map((x) => x.id === t.id ? Object.assign({}, t) : x)
+            : s2.tpls.concat([Object.assign({}, t, { id: "t" + (s2.tpls.length + 1) + "-novo" })]),
+        }));
+        this.flash(t.id ? "Template atualizado" : "Template criado · já aparece nos passos da sequência");
+      },
+      limparTpl: () => this.setState({ tpl: { id: null, nome: "", assunto: "", corpo: "" }, tplSalvo: false }),
+      nTpls: String(st.tpls.length),
+      tpls: st.tpls.map((t) => ({
+        nome: t.nome, previa: t.corpo,
+        usar: () => { this.setState({ aba: "disparos", corpo: t.corpo, assunto: t.assunto || st.assunto, salvo: false }); this.flash("Template \"" + t.nome + "\" carregado no disparo"); },
+        editar: () => this.setState({ tpl: Object.assign({}, t), tplSalvo: false }),
+        remover: () => this.setState((s2) => ({ tpls: s2.tpls.filter((x) => x.id !== t.id) })),
+      })),
+    };
+    return vals;
+  }
+}
+</script>
+</body>
+</html>

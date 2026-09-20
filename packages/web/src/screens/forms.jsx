@@ -223,7 +223,7 @@ function FormsScreen({ saasId }) {
               return (
                 // Publicado ocupa a LARGURA TODA (a tabela do teste A/B precisa de
                 // área); rascunho/backup vira um bloco compacto abaixo, sem esticar.
-                <div key={f.id} style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: pub ? "18px var(--inset-x)" : "16px 18px", ...(pub ? { gridColumn: "1 / -1" } : {}) }}>
+                <div key={f.id} style={{ background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: pub ? "18px var(--inset-x)" : "16px 18px", ...(pub ? { gridColumn: "1 / -1" } : {}) }}>
                   <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "inline-flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -235,7 +235,7 @@ function FormsScreen({ saasId }) {
                     <div style={{ display: "flex", gap: 6 }}>
                       {pub && <button onClick={() => copy(formUrl(f), "Link copiado")} style={{ ...chromeBtnStyleSmall, height: 30, padding: "0 11px" }}>Copiar link</button>}
                       <button onClick={() => setView({ mode: "edit", form: f })} style={{ ...chromeBtnStyleSmall, height: 30, padding: "0 11px" }}>Editar</button>
-                      {!pub && <button disabled={!!publishing} onClick={() => togglePublish(f)} style={{ height: 30, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 12.5, fontWeight: 600 }}>Publicar</button>}
+                      {!pub && <button disabled={!!publishing} onClick={() => togglePublish(f)} style={{ height: 30, padding: "0 12px", borderRadius: 999, background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 12.5, fontWeight: 600 }}>Publicar</button>}
                     </div>
                   </div>
 
@@ -517,8 +517,8 @@ function FormEditor({ form, saasId, onDone, onCancel }) {
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <span className={"chip " + (draft.status === "published" ? "pos" : "")} style={{ height: 20 }}>{draft.status === "published" ? "publicado" : "rascunho"}</span>
-            <button onClick={onCancel} style={{ padding: "7px 12px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 12 }}>Cancelar</button>
-            <button onClick={save} disabled={busy} style={{ padding: "7px 14px", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 500, opacity: busy ? 0.6 : 1 }}>
+            <button onClick={onCancel} style={{ padding: "7px 12px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: 999, fontSize: 12 }}>Cancelar</button>
+            <button onClick={save} disabled={busy} style={{ padding: "7px 14px", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderRadius: 999, fontSize: 12, fontWeight: 500, opacity: busy ? 0.6 : 1 }}>
               {busy ? "Salvando…" : "Salvar"}
             </button>
           </div>
@@ -1208,7 +1208,7 @@ function FormsDashboard({ forms }) {
   const dateInput = (key) => (
     <input type="date" value={custom[key]}
       onChange={(e) => { setCustom((c) => ({ ...c, [key]: e.target.value })); setPreset("custom"); }}
-      style={{ height: 24, padding: "0 6px", borderRadius: "var(--r-2)", fontSize: 10.5, fontFamily: "var(--mono)",
+      style={{ height: 24, padding: "0 6px", borderRadius: 999, fontSize: 10.5, fontFamily: "var(--mono)",
         border: "1px solid " + (preset === "custom" ? "var(--accent-line)" : "var(--line-1)"),
         background: "var(--bg-1)", color: "var(--fg-1)" }} />
   );
@@ -1240,7 +1240,7 @@ function FormsDashboard({ forms }) {
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
         {forms.length > 1 ? (
           <select value={form.id} onChange={(e) => setFormId(e.target.value)}
-            style={{ height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontWeight: 600 }}>
+            style={{ height: 26, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontWeight: 600 }}>
             {forms.map((f) => <option key={f.id} value={f.id}>{f.name || f.id}</option>)}
           </select>
         ) : (
@@ -1250,7 +1250,7 @@ function FormsDashboard({ forms }) {
         <span style={{ flex: 1 }} />
         {DASH_PRESETS.map(([v, label]) => (
           <button key={v || "all"} onClick={() => setPreset(v)} className="mono" style={{
-            height: 24, padding: "0 10px", borderRadius: "var(--r-2)", fontSize: 11,
+            height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11,
             border: "1px solid " + (preset === v ? "var(--line-strong)" : "var(--line-1)"),
             background: preset === v ? "var(--bg-3)" : "var(--bg-2)",
             color: preset === v ? "var(--fg-1)" : "var(--fg-3)",

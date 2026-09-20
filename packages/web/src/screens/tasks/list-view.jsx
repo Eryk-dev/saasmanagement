@@ -27,7 +27,7 @@ export function ListView({ groups, usersById, users, labelColors, columns, prefs
     </th>
   );
   const cell = { padding: "6px 10px", fontSize: 12.5, borderTop: "1px solid var(--line-1)", verticalAlign: "middle" };
-  const ghost = { display: "inline-flex", alignItems: "center", gap: 6, height: 26, padding: "0 6px", borderRadius: "var(--r-2)", fontSize: 12.5, color: "var(--fg-3)", background: "transparent", maxWidth: "100%" };
+  const ghost = { display: "inline-flex", alignItems: "center", gap: 6, height: 26, padding: "0 6px", borderRadius: 999, fontSize: 12.5, color: "var(--fg-3)", background: "transparent", maxWidth: "100%" };
   const submitNew = async (again) => {
     const v = (inputRef.current?.value || "").trim();
     if (!v) { if (!again) setAdding(null); return; }
@@ -98,7 +98,7 @@ export function ListView({ groups, usersById, users, labelColors, columns, prefs
                       <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
                         {(t.comments || []).length > 0 && <span className="tnum" style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11.5 }}><Icon name="comment" size={12} />{t.comments.length}</span>}
                         {(t.attachments || []).length > 0 && <span className="tnum" style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11.5 }}><Icon name="paperclip" size={12} />{t.attachments.length}</span>}
-                        <button type="button" className="tk-hover" title="Mais ações" onClick={(e) => actions.menu(t.id, e.currentTarget.getBoundingClientRect())} style={{ width: 24, height: 24, borderRadius: 6, color: "var(--fg-4)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="more" size={14} /></button>
+                        <button type="button" className="tk-hover" title="Mais ações" onClick={(e) => actions.menu(t.id, e.currentTarget.getBoundingClientRect())} style={{ width: 24, height: 24, borderRadius: 999, color: "var(--fg-4)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="more" size={14} /></button>
                       </span>
                     </td>
                   </tr>

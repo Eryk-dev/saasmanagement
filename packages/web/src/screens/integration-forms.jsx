@@ -187,7 +187,7 @@ function AskModal({ saas, brand, onClose, onCreated }) {
             <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 8 }}>
               {rows.map((d) => (
                 <button key={d.id} disabled={busy} onClick={() => criar(d)}
-                  style={{ textAlign: "left", padding: "9px 10px", borderRadius: "var(--r-2)", background: "transparent", border: "1px solid transparent", cursor: busy ? "default" : "pointer" }}
+                  style={{ textAlign: "left", padding: "9px 10px", borderRadius: 999, background: "transparent", border: "1px solid transparent", cursor: busy ? "default" : "pointer" }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-2)"; }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
                   <div style={{ fontSize: 13, fontWeight: 500 }}>{d.company || d.name || "(sem nome)"}</div>
@@ -403,12 +403,12 @@ function IntegrationFormsScreen() {
         <PrimaryButton onClick={() => setAsking(true)}>Solicitar formulário</PrimaryButton>
       </PageHead>
 
-      {!err && <section className="intform-stats" aria-label="Situação dos formulários">
+      {!err && <section className="intform-stats capsule-navy" aria-label="Situação dos formulários">
         {[
           { label: "Aguardando resposta", value: pendentes.length, note: pendentes.length ? "antes de marcar a integração" : "ninguém devendo" },
           { label: "Espera mais longa", value: esperaMax == null ? "—" : `${esperaMax} ${esperaMax === 1 ? "dia" : "dias"}`, note: esperaMaxNome || "nenhum pedido aberto", tone: esperaMax >= 5 ? "var(--neg)" : "var(--fg-1)" },
           { label: "Respondidos", value: respondidos.length, note: respondidos.length ? `${respondidos.filter((x) => kindOf(x) === "integracao").length} integração · ${respondidos.filter((x) => kindOf(x) === "nota_fiscal").length} nota fiscal` : "nenhum respondido ainda", tone: respondidos.length ? "var(--pos)" : "var(--fg-1)" },
-        ].map((stat) => <Card key={stat.label} style={{ padding: "14px 16px" }}>
+        ].map((stat) => <Card key={stat.label} style={{ padding: "14px 16px", background: "transparent", boxShadow: "none" }}>
           <div className="kicker">{stat.label}</div>
           <div className="intform-number tnum" style={{ color: stat.tone }}>{items === null ? "…" : stat.value}</div>
           <div className="intform-note">{items === null ? "carregando…" : stat.note}</div>

@@ -15,17 +15,17 @@ const { useRef, useState } = React;
 const chip = (on) => ({ height: 26, padding: "0 10px", borderRadius: 999, fontSize: 12, fontWeight: 600, border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"), background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-2)", display: "inline-flex", alignItems: "center", gap: 5 });
 const Section = ({ title, children }) => (<div style={{ marginBottom: 10 }}><div className="kicker" style={{ marginBottom: 6 }}>{title}</div><div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>{children}</div></div>);
 const Radio = ({ on, onClick, children }) => (
-  <button type="button" onClick={onClick} className={"tk-menu-item" + (on ? " is-active" : "")} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "6px 8px", borderRadius: 6, textAlign: "left", fontSize: 12.5, color: "var(--fg-1)" }}>
+  <button type="button" onClick={onClick} className={"tk-menu-item" + (on ? " is-active" : "")} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "6px 8px", borderRadius: 999, textAlign: "left", fontSize: 12.5, color: "var(--fg-1)" }}>
     <span style={{ width: 14, height: 14, borderRadius: 999, border: `1.5px solid ${on ? "var(--accent)" : "var(--line-strong)"}`, background: on ? "var(--accent)" : "transparent", boxShadow: on ? "inset 0 0 0 3px var(--bg-1)" : "none", flexShrink: 0 }} />{children}
   </button>
 );
 const Check = ({ on, onClick, children }) => (
-  <button type="button" onClick={onClick} className="tk-menu-item" style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "6px 8px", borderRadius: 6, textAlign: "left", fontSize: 12.5, color: "var(--fg-1)" }}>
+  <button type="button" onClick={onClick} className="tk-menu-item" style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "6px 8px", borderRadius: 999, textAlign: "left", fontSize: 12.5, color: "var(--fg-1)" }}>
     <span style={{ width: 14, height: 14, borderRadius: 4, border: `1.5px solid ${on ? "var(--accent)" : "var(--line-strong)"}`, background: on ? "var(--accent)" : "transparent", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{on && <Icon name="check" size={10} />}</span>{children}
   </button>
 );
 const TBtn = ({ btnRef, on, count, icon, label, onClick, hideLabelOnMobile = true }) => (
-  <button ref={btnRef} type="button" onClick={onClick} title={label} style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 10px", borderRadius: "var(--r-2)", border: `1px solid ${on ? "var(--accent-line)" : "var(--line-2)"}`, background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: 500 }}>
+  <button ref={btnRef} type="button" onClick={onClick} title={label} style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 10px", borderRadius: 999, border: `1px solid ${on ? "var(--accent-line)" : "var(--line-2)"}`, background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: 500 }}>
     <Icon name={icon} size={14} /><span className={hideLabelOnMobile ? "hide-mobile" : ""}>{label}</span>
     {count > 0 && <span className="tnum" style={{ minWidth: 16, height: 16, padding: "0 4px", borderRadius: 999, background: "var(--accent)", color: "#fff", fontSize: 10.5, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{count}</span>}
   </button>

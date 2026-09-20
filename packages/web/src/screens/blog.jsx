@@ -797,7 +797,7 @@ function BlogScreen() {
 
         {err && <div style={{ marginTop: 14, color: "var(--neg)", fontSize: 12.5 }}>não deu pra carregar: {err} <button className="mono" style={{ color: "var(--accent)", marginLeft: 6 }} onClick={load}>tentar de novo</button></div>}
 
-        <div style={{ marginTop: 14, background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+        <div style={{ marginTop: 14, background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
           {data === null && <div className="mono dim" style={{ fontSize: 12, padding: 20 }}>carregando…</div>}
           {data !== null && semSaas && <EmptyState title="Escolha um produto" hint="O blog é por produto: selecione o workspace na barra lateral." />}
           {data !== null && !semSaas && !visiveis.length && (

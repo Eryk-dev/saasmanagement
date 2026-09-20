@@ -431,7 +431,7 @@ function SocialSellingBar({ saasId, person, version, openForm }) {
     } catch (e) { toast(`Não deu pra registrar · ${e?.message || "tente de novo"}`, "neg"); }
     finally { setBusy(false); }
   };
-  const btn = { height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" };
+  const btn = { height: 30, padding: "0 12px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" };
   // Rodapé do card da fila (prancha, 14/09): kicker + a frase do porquê à
   // esquerda, o número e as duas ações à direita.
   return (
@@ -485,13 +485,13 @@ function FilaLimpa({ ig, contatos, calls, saasId, person, openForm }) {
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <a href={igUrl} target="_blank" rel="noopener noreferrer"
-            style={{ height: 38, display: "inline-flex", alignItems: "center", padding: "0 16px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13.5, fontWeight: 700, textDecoration: "none" }}>
+            style={{ height: 38, display: "inline-flex", alignItems: "center", padding: "0 16px", borderRadius: 999, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13.5, fontWeight: 700, textDecoration: "none" }}>
             Abrir o Instagram ↗
           </a>
           {openForm && saasId && (
             <button onClick={() => openForm("leads", { saas: saasId, source: "Social selling", owner: person })}
               title="cadastra o lead já com a origem Social selling e você como dono"
-              style={{ height: 38, padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>
+              style={{ height: 38, padding: "0 16px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>
               + cadastrar lead
             </button>
           )}
@@ -513,7 +513,7 @@ function PersonPicker({ users, person, counts, onChange, canPick }) {
   const rotulo = `${atual?.name || atual?.id || "fila"}${counts[person] != null ? ` · ${counts[person]}` : ""}`;
   if (!canPick) {
     return (
-      <span style={{ height: 38, display: "inline-flex", alignItems: "center", padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", color: "var(--fg-3)", fontSize: 13 }}>
+      <span style={{ height: 38, display: "inline-flex", alignItems: "center", padding: "0 13px", borderRadius: 999, border: "1px solid var(--line-1)", color: "var(--fg-3)", fontSize: 13 }}>
         {rotulo}
       </span>
     );
@@ -521,7 +521,7 @@ function PersonPicker({ users, person, counts, onChange, canPick }) {
   return (
     <span style={{ position: "relative", display: "inline-flex" }} onClick={(e) => e.stopPropagation()}>
       <button ref={anchor} onClick={() => setOpen((o) => !o)} title="ver a fila de outra pessoa" aria-label="Pessoa da fila" aria-expanded={open}
-        style={{ height: 38, display: "inline-flex", alignItems: "center", gap: 7, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", boxShadow: "var(--shadow-1)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+        style={{ height: 38, display: "inline-flex", alignItems: "center", gap: 7, padding: "0 13px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", boxShadow: "var(--shadow-1)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
         {rotulo} <span className="mono dim" style={{ fontSize: 10 }}>▾</span>
       </button>
       {open && (
@@ -530,7 +530,7 @@ function PersonPicker({ users, person, counts, onChange, canPick }) {
             const ativo = u.id === person;
             return (
               <button key={u.id} onClick={() => { setOpen(false); onChange(u.id); }}
-                style={{ display: "flex", width: "100%", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: "var(--r-2)", border: 0, background: ativo ? "var(--accent-soft)" : "transparent", color: ativo ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: ativo ? 600 : 400, cursor: "pointer", textAlign: "left" }}>
+                style={{ display: "flex", width: "100%", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 999, border: 0, background: ativo ? "var(--accent-soft)" : "transparent", color: ativo ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: ativo ? 600 : 400, cursor: "pointer", textAlign: "left" }}>
                 <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name || u.id}</span>
                 <span className="tnum" style={{ fontSize: 12, color: ativo ? "var(--accent)" : "var(--fg-4)" }}>{counts[u.id] || 0}</span>
               </button>
@@ -836,7 +836,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                 porque quem chega na tela quer começar sem escolher. */}
             <button onClick={() => firstPending && openRow(firstPending)} disabled={!firstPending}
               title={firstPending ? "abre o roteiro do primeiro item da fila" : "fila de hoje zerada"}
-              style={{ height: 38, padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--btn-bg)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 13, fontWeight: 650, cursor: firstPending ? "pointer" : "not-allowed", opacity: firstPending ? 1 : 0.45 }}>
+              style={{ height: 38, padding: "0 16px", borderRadius: 999, border: "1px solid var(--btn-bg)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 13, fontWeight: 650, cursor: firstPending ? "pointer" : "not-allowed", opacity: firstPending ? 1 : 0.45 }}>
               Começar a fila →
             </button>
           </div>
@@ -852,7 +852,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                 compromisso que não aparece é compromisso furado
               </span>
             </span>
-            <button onClick={() => setReload((n) => n + 1)} style={{ marginLeft: "auto", height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--warn-line)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 600, flexShrink: 0, cursor: "pointer" }}>recarregar</button>
+            <button onClick={() => setReload((n) => n + 1)} style={{ marginLeft: "auto", height: 28, padding: "0 12px", borderRadius: 999, border: "1px solid var(--warn-line)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 600, flexShrink: 0, cursor: "pointer" }}>recarregar</button>
           </div>
         )}
         {daySocialDone && total > 0 && (
@@ -888,7 +888,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                   onClaim={() => claim(firstPending)} onWhatsapp={onOpenWhatsapp} />
               )}
 
-              <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+              <section style={{ background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
                 <div style={{ padding: "18px 16px 12px", display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
                   <div style={{ flex: 1, minWidth: 180 }}>
                     <h3 className="card-title" style={{ margin: 0 }}>Hoje</h3>
@@ -979,16 +979,10 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
           </>
         )}
       </div>
-      <aside className="today-aside">
-        <CompactSchedule title="O que vem" rows={q.amanha} laterRows={futureRows} onOpen={openRow} />
-        {total > 0 && myTasks.length > 0 && <TasksCard tasks={myTasks} onDone={completeTask} undo={undoTask} onUndo={revertTask} />}
-        <details className="today-score-details"><summary>Placar do dia</summary><DayScore {...score} /></details>
-      </aside>
-      </div>
-
+      <aside className="today-aside today-workbench">
       {scriptItem && (
         <ErrorBoundary variant="modal" label="roteiro" resetKey={scriptItem.l?.id} onReset={() => setScriptItem(null)}>
-          <ScriptPanel
+          <ScriptPanel inline
             item={scriptItem}
             saasCfg={saasCfg}
             leads={leads}
@@ -1005,6 +999,18 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
           />
         </ErrorBoundary>
       )}
+        {!scriptItem && <div className="today-script-empty"><span aria-hidden="true">◇</span><strong>Escolha uma atividade</strong><p>O roteiro, a mensagem pronta e as ações aparecem aqui — sem sair da fila.</p></div>}
+        <details className="today-extra"><summary>Agenda, tarefas e placar</summary>
+
+        <CompactSchedule title="O que vem" rows={q.amanha} laterRows={futureRows} onOpen={openRow} />
+        {total > 0 && myTasks.length > 0 && <TasksCard tasks={myTasks} onDone={completeTask} undo={undoTask} onUndo={revertTask} />}
+        <details className="today-score-details"><summary>Placar do dia</summary><DayScore {...score} /></details>
+
+        </details>
+      </aside>
+      </div>
+
+
     </div>
   );
 }
@@ -1043,9 +1049,9 @@ function ConsultaRow({ item, block, featured, ordem, onOpen }) {
       </div>
       <div style={{ display: "flex", gap: 8, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
         {c.meetUrl && (
-          <a href={c.meetUrl} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: "var(--r-2)", border: `1px solid ${featured ? "var(--btn-bg)" : "var(--line-2)"}`, background: featured ? "var(--btn-bg)" : "var(--bg-1)", color: featured ? "var(--btn-fg)" : "var(--fg-2)", fontSize: 12.5, fontWeight: featured ? 600 : 500, textDecoration: "none" }}>entrar no Meet</a>
+          <a href={c.meetUrl} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: 999, border: `1px solid ${featured ? "var(--btn-bg)" : "var(--line-2)"}`, background: featured ? "var(--btn-bg)" : "var(--bg-1)", color: featured ? "var(--btn-fg)" : "var(--fg-2)", fontSize: 12.5, fontWeight: featured ? 600 : 500, textDecoration: "none" }}>entrar no Meet</a>
         )}
-        <button onClick={onOpen} style={{ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5 }}>abrir card</button>
+        <button onClick={onOpen} style={{ height: 32, padding: "0 14px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5 }}>abrir card</button>
       </div>
     </div>
   );
@@ -1131,25 +1137,25 @@ function QueueRow({ item, block, featured, ordem, onScript, onClaim, onWhatsapp,
       <div style={{ minWidth: 0 }} onClick={(e) => { if (unowned) e.stopPropagation(); }}>
         <div style={{ fontSize: 12, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{stage}</div>
         {unowned
-          ? <button onClick={onClaim} title="assumir este card" style={{ marginTop: 1, height: 18, padding: "0 6px", borderRadius: "var(--r-1)", border: "1px dashed var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 10.5, cursor: "pointer" }}>+ assumir</button>
+          ? <button onClick={onClaim} title="assumir este card" style={{ marginTop: 1, height: 18, padding: "0 6px", borderRadius: 999, border: "1px dashed var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 10.5, cursor: "pointer" }}>+ assumir</button>
           : <div style={{ fontSize: 11.5, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{displayName(who)}</div>}
       </div>
       <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }} onClick={(e) => e.stopPropagation()}>
         {meet ? (
-          <a href={meet} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", color: "var(--fg-2)", fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}>abrir Meet</a>
+          <a href={meet} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 12px", borderRadius: 999, border: "1px solid var(--line-1)", color: "var(--fg-2)", fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}>abrir Meet</a>
         ) : whatsapp ? (
           // Atalho pro INBOX interno (conversa do lead, com ou sem thread ainda);
           // sem o handler (contexto antigo), cai no deep-link do app.
           onWhatsapp ? (
             <button onClick={() => onWhatsapp(l)} title="Abrir a conversa no inbox do cockpit"
-              style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 500, whiteSpace: "nowrap" }}>WhatsApp</button>
+              style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 12px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 500, whiteSpace: "nowrap" }}>WhatsApp</button>
           ) : (
-            <a href={whatsapp} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 500, textDecoration: "none", whiteSpace: "nowrap" }}>WhatsApp</a>
+            <a href={whatsapp} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 12px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 500, textDecoration: "none", whiteSpace: "nowrap" }}>WhatsApp</a>
           )
         ) : null}
         {/* "roteiro" fica SEMPRE: sem ele, linha não-destaque com WhatsApp só
             abria pelo clique no corpo (invisível pra quem navega por botão). */}
-        <button onClick={onScript} style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid " + (apagado ? "var(--line-2)" : "var(--btn-bg, var(--accent))"), background: apagado ? "var(--bg-2)" : "var(--btn-bg, var(--accent))", color: apagado ? "var(--fg-3)" : "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", cursor: "pointer" }}>roteiro</button>
+        <button onClick={onScript} style={{ height: 32, padding: "0 12px", borderRadius: 999, border: "1px solid " + (apagado ? "var(--line-2)" : "var(--btn-bg, var(--accent))"), background: apagado ? "var(--bg-2)" : "var(--btn-bg, var(--accent))", color: apagado ? "var(--fg-3)" : "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", cursor: "pointer" }}>roteiro</button>
       </div>
     </div>
   );
@@ -1171,7 +1177,7 @@ function AgoraBlock({ item, onScript, onClaim, onWhatsapp }) {
   const quando = due ? `${hhmmOf(due.t)} · ${atrasado ? "agora" : untilNote(due.t, now)}` : "sem hora marcada";
   const detalhe = l.nextActionNote || actionHint(item);
   return (
-    <section className="today-now" style={{ border: "1px solid var(--btn-bg)", background: "var(--bg-1)", borderRadius: "var(--r-4)", padding: "18px 22px" }}>
+    <section className="today-now capsule-navy" style={{ border: 0, borderRadius: "var(--r-4)", padding: "18px 22px" }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: "min(280px, 100%)" }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
@@ -1190,24 +1196,24 @@ function AgoraBlock({ item, onScript, onClaim, onWhatsapp }) {
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "stretch", minWidth: 150 }}>
           <button onClick={onScript}
-            style={{ height: 42, padding: "0 18px", borderRadius: "var(--r-2)", border: "1px solid var(--btn-bg)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 13.5, fontWeight: 650, cursor: "pointer" }}>
+            style={{ height: 42, padding: "0 18px", borderRadius: 999, border: "1px solid var(--btn-bg)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 13.5, fontWeight: 650, cursor: "pointer" }}>
             Abrir o roteiro →
           </button>
           {meet ? (
             <a href={meet} target="_blank" rel="noopener noreferrer"
-              style={{ height: 38, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>abrir Meet ↗</a>
+              style={{ height: 38, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 16px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>abrir Meet ↗</a>
           ) : wa ? (
             onWhatsapp ? (
               <button onClick={() => onWhatsapp(l)} title="Abrir a conversa no inbox do cockpit"
-                style={{ height: 38, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>WhatsApp</button>
+                style={{ height: 38, borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>WhatsApp</button>
             ) : (
               <a href={wa} target="_blank" rel="noopener noreferrer"
-                style={{ height: 38, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>WhatsApp ↗</a>
+                style={{ height: 38, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>WhatsApp ↗</a>
             )
           ) : null}
           {!who && (
             <button onClick={onClaim} title="assumir este card"
-              style={{ height: 30, borderRadius: "var(--r-2)", border: "1px dashed var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 12, cursor: "pointer" }}>assumir</button>
+              style={{ height: 30, borderRadius: 999, border: "1px dashed var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 12, cursor: "pointer" }}>assumir</button>
           )}
         </div>
       </div>
@@ -1260,7 +1266,7 @@ function ScheduleLane({ label, rows, amanha, onOpen }) {
 function CompactSchedule({ title = "O que vem", rows = [], laterRows = [], onOpen }) {
   const total = rows.length + laterRows.length;
   return (
-    <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+    <section style={{ background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
       <div style={{ padding: "18px var(--inset-x) 12px" }}>
         <h3 className="card-title" style={{ margin: 0 }}>{title}</h3>
         <div className="card-sub" style={{ marginTop: 3 }}>
@@ -1373,7 +1379,7 @@ export function dayScoreOf({ role, row, today, local }) {
 function DayScore({ title = "Placar do dia", scope = "fila de hoje", lines = [] }) {
   const show = (v, kind) => (kind === "money" ? window.fmt.money(Number(v) || 0) : window.fmt.int(Number(v) || 0));
   return (
-    <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px var(--inset-x)" }}>
+    <section style={{ background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", padding: "20px var(--inset-x)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
         <span className="kicker accent">{title}</span>
         {/* Contra o que o número está sendo cobrado: sem meta configurada, o
@@ -1495,11 +1501,11 @@ export function CallSummaryCard({ summary, phone, onSend = null }) {
                 DAQUI; fora dele (cliente/negócio), segue pro app. */}
             {onSend ? (
               <button onClick={() => onSend(msg)} title="Abre a conversa no inbox com esta mensagem já escrita"
-                style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", border: "none", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>enviar no WhatsApp</button>
+                style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: 999, border: "none", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>enviar no WhatsApp</button>
             ) : waHref && (
-              <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>enviar no WhatsApp ↗</a>
+              <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: 999, background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>enviar no WhatsApp ↗</a>
             )}
-            <button onClick={copy} style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5 }}>{copied ? "copiado ✓" : "copiar"}</button>
+            <button onClick={copy} style={{ height: 26, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5 }}>{copied ? "copiado ✓" : "copiar"}</button>
           </div>
         </div>
       )}
@@ -1596,11 +1602,11 @@ export function IntegrationBriefCard({ brief, phone, deal, onSend = null }) {
                     de mensagem DAQUI; fora dele, segue pro app. */}
                 {onSend && msg ? (
                   <button onClick={() => onSend(msg)} title="Abre a conversa no inbox com esta mensagem já escrita"
-                    style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", border: "none", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>enviar no WhatsApp</button>
+                    style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: 999, border: "none", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>enviar no WhatsApp</button>
                 ) : waHref && (
-                  <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: "var(--r-2)", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>enviar no WhatsApp ↗</a>
+                  <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: 999, background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>enviar no WhatsApp ↗</a>
                 )}
-                <button onClick={copy} style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5 }}>{copied ? "copiado ✓" : "copiar"}</button>
+                <button onClick={copy} style={{ height: 26, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5 }}>{copied ? "copiado ✓" : "copiar"}</button>
               </div>
             </div>
           )}
@@ -1642,7 +1648,7 @@ function CallShortcuts({ l, item, wa, onPatch, kind = "call" }) {
     setBusy("");
   }
 
-  const chip = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600, textDecoration: "none", cursor: "pointer" };
+  const chip = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600, textDecoration: "none", cursor: "pointer" };
 
   return (
     <div style={{ border: "1px solid var(--line-1)", background: "var(--bg-inset)", borderRadius: "var(--r-2)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 9 }}>
@@ -1741,7 +1747,7 @@ function ProposalBlock({ l, wa, item, onPatch }) {
 
   if (!l.proposalUrl && !eligible) return null;
 
-  const chip = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600, textDecoration: "none", cursor: "pointer" };
+  const chip = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600, textDecoration: "none", cursor: "pointer" };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
@@ -1750,7 +1756,7 @@ function ProposalBlock({ l, wa, item, onPatch }) {
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           {altDecks.length > 0 && (
             <select value={tpl} onChange={(e) => setTpl(e.target.value)} disabled={busy === "gen"} title="Qual apresentação gerar"
-              style={{ height: 28, padding: "0 7px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5 }}>
+              style={{ height: 28, padding: "0 7px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5 }}>
               <option value="">Padrão</option>
               {altDecks.map((t) => <option key={t.id} value={t.id}>{t.pickLabel || t.name || t.id}</option>)}
             </select>
@@ -1802,7 +1808,18 @@ function ProposalBlock({ l, wa, item, onPatch }) {
 // conversa) e ROTEIRO à direita (postura, objetivo e o passo a passo com a
 // fala pronta). Em tela estreita as colunas empilham. "Toque e próximo"
 // mantém o operador em fluxo: registra e já abre o cliente seguinte.
-function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfter, onClose, onTouch, onOpenLead, onWhatsapp, preview = false, previewScript = null, nextItem = null, onSkip = null }) {
+function InlineScriptShell({ children, onClose }) {
+  useEsc(onClose);
+  return <section className="today-inline-script" aria-label="Roteiro da atividade">{children}</section>;
+}
+
+function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfter, onClose, onTouch, onOpenLead, onWhatsapp, preview = false, previewScript = null, nextItem = null, onSkip = null }) {
+  // On narrow screens keep the accessible modal: the queue can be much taller
+  // than the viewport, so an inline editor below it would open out of sight.
+  // Choose once per open editor. Changing its wrapper while typing would
+  // remount nested forms and discard their unsaved local state on resize.
+  const [compact] = useS(() => typeof window.matchMedia === "function" && window.matchMedia("(max-width: 1100px)").matches);
+  const PanelShell = inline && !compact ? InlineScriptShell : Modal;
   // Cópia local do lead: a edição inline dos campos reflete na hora aqui (fala
   // interpolada + checklist) e persiste via onPatch (fila + API).
   const [l, setL] = useS(item.l);
@@ -1925,7 +1942,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
   };
 
   return (
-    <Modal onClose={onClose} label="Roteiro da atividade" largura={1120} padding={20}
+    <PanelShell onClose={onClose} label="Roteiro da atividade" largura={1120} padding={20}
       painelStyle={{ maxHeight: "calc(100dvh - 40px)", display: "flex", flexDirection: "column", overflow: "hidden", borderRadius: "var(--r-4)" }}>
       <div className="today-script lead-panel" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
         <div className="today-script-header">
@@ -1963,7 +1980,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
             </div>
           </div>
           {!preview && (
-            <button onClick={onOpenLead} style={{ padding: "6px 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12, flexShrink: 0 }}>
+            <button onClick={onOpenLead} style={{ padding: "6px 12px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12, flexShrink: 0 }}>
               abrir lead
             </button>
           )}
@@ -2100,7 +2117,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
               // marca, credita o toque e vai pro próximo da fila.
               <button onClick={() => (on ? patch(isInteg ? { integrationConfirmed: false } : { callConfirmed: false }) : markConfirm(true))}
                 title={on ? "Cliente confirmou presença (clique pra desmarcar)" : "Cliente respondeu confirmando: marca, credita o contato e vai pro próximo da fila"}
-                style={{ padding: "8px 14px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
+                style={{ padding: "8px 14px", borderRadius: 999, fontSize: 12.5, fontWeight: 600,
                   background: on ? "var(--pos)" : "var(--bg-1)", color: on ? "var(--wa-brand-fg)" : "var(--fg-2)",
                   border: "1px solid " + (on ? "var(--pos)" : "var(--line-2)") }}>
                 {on ? "✓ cliente confirmou" : item.confirmWindow === "ligar" ? "atendeu e confirmou" : "cliente confirmou"}
@@ -2116,7 +2133,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
                 : item.confirmWindow === "2h" && item.confirmKind !== "integracao"
                   ? "Não respondeu: registra a tentativa e segue pro passo de 10 min (nele o roteiro manda ligar)"
                   : "Não respondeu: registra a tentativa — ligue no horário, a call segue reservada"}
-              style={{ padding: "8px 14px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
+              style={{ padding: "8px 14px", borderRadius: 999, fontSize: 12.5, fontWeight: 600,
                 background: "var(--bg-1)", color: "var(--fg-2)", border: "1px dashed var(--line-strong)" }}>
               {item.confirmWindow === "ligar" ? "não atendeu" : "sem resposta"}
             </button>
@@ -2126,7 +2143,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
           {item.confirm && !preview && (
             <button onClick={() => setResched((v) => !v)}
               title="Cliente pediu pra remarcar: escolher novo horário (conta como contato no seu placar)"
-              style={{ padding: "8px 14px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
+              style={{ padding: "8px 14px", borderRadius: 999, fontSize: 12.5, fontWeight: 600,
                 background: resched ? "var(--accent-soft)" : "var(--bg-1)", color: resched ? "var(--accent)" : "var(--fg-2)",
                 border: "1px solid " + (resched ? "var(--accent-line)" : "var(--line-2)") }}>
               ↻ remarcar
@@ -2143,11 +2160,11 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
                 busy={callBusyKeys(leads, item.confirmKind === "integracao" ? l.integrator : l.closer, l.id)} />
               <div style={{ display: "flex", gap: 8, marginTop: 10, justifyContent: "flex-end" }}>
                 <button onClick={() => setResched(false)}
-                  style={{ padding: "8px 12px", borderRadius: "var(--r-2)", fontSize: 12.5, background: "transparent", color: "var(--fg-3)", border: "1px solid var(--line-1)" }}>
+                  style={{ padding: "8px 12px", borderRadius: 999, fontSize: 12.5, background: "transparent", color: "var(--fg-3)", border: "1px solid var(--line-1)" }}>
                   cancelar
                 </button>
                 <button onClick={doReschedule} disabled={!rSlot}
-                  style={{ padding: "8px 14px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 700,
+                  style={{ padding: "8px 14px", borderRadius: 999, fontSize: 12.5, fontWeight: 700,
                     background: rSlot ? "var(--btn-bg, var(--accent))" : "var(--bg-2)", color: rSlot ? "var(--btn-fg, var(--accent-fg))" : "var(--fg-4)",
                     border: "1px solid " + (rSlot ? "var(--btn-bg, var(--accent))" : "var(--line-2)"), cursor: rSlot ? "pointer" : "not-allowed" }}>
                   salvar novo horário
@@ -2167,7 +2184,7 @@ function ScriptPanel({ item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfte
           />
         )}
       </div>
-    </Modal>
+    </PanelShell>
   );
 }
 
@@ -2365,7 +2382,7 @@ export function SlotGrid({ days, day, setDay, slot, setSlot, busy }) {
           const on = sameYMD(d, day);
           return (
             <button key={i} onClick={() => pickDay(d)} style={{
-              height: 30, padding: "0 10px", borderRadius: "var(--r-2)", fontSize: 11, fontFamily: "var(--mono)",
+              height: 30, padding: "0 10px", borderRadius: 999, fontSize: 11, fontFamily: "var(--mono)",
               background: on ? "var(--accent)" : "var(--bg-1)",
               color: on ? "var(--accent-fg)" : "var(--fg-3)",
               border: "1px solid " + (on ? "var(--accent)" : "var(--line-2)"),
@@ -2374,7 +2391,7 @@ export function SlotGrid({ days, day, setDay, slot, setSlot, busy }) {
         })}
         {/* Calendário aberto: escolher qualquer dia/mês (não trava em dia útil). */}
         <label title="escolher qualquer dia no calendário" style={{
-          display: "inline-flex", alignItems: "center", height: 30, padding: "0 8px", borderRadius: "var(--r-2)", cursor: "pointer",
+          display: "inline-flex", alignItems: "center", height: 30, padding: "0 8px", borderRadius: 999, cursor: "pointer",
           background: custom ? "var(--accent)" : "var(--bg-1)",
           color: custom ? "var(--accent-fg)" : "var(--fg-3)",
           border: "1px " + (custom ? "solid var(--accent)" : "dashed var(--line-2)"),
@@ -2401,7 +2418,7 @@ export function SlotGrid({ days, day, setDay, slot, setSlot, busy }) {
           return (
             <button key={`${h}-${m}`} disabled={disabled} onClick={() => setSlot(val)} title={title}
               style={{
-                height: 32, borderRadius: "var(--r-2)", fontSize: 11.5, fontFamily: "var(--mono)",
+                height: 32, borderRadius: 999, fontSize: 11.5, fontFamily: "var(--mono)",
                 background: sel ? "var(--accent)" : occupied ? "var(--neg-soft)" : "var(--bg-1)",
                 color: sel ? "var(--accent-fg)" : occupied ? "var(--neg)" : past ? "var(--fg-4)" : "var(--fg-2)",
                 border: "1px solid " + (sel ? "var(--accent)" : occupied ? "color-mix(in srgb, var(--neg) 30%, var(--line-2))" : "var(--line-2)"),
@@ -2613,7 +2630,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     setMeetBusy(false);
   }
   const label = { display: "block", marginBottom: 4 };
-  const fieldStyle = { width: "100%", height: 30, padding: "0 8px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 };
+  const fieldStyle = { width: "100%", height: 30, padding: "0 8px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: 999, color: "var(--fg-1)", fontSize: 12.5 };
   const slotFmt = (v) => { const d = new Date(v); return Number.isFinite(d.getTime()) ? d.toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""; };
 
   // O que foi vendido — os mesmos campos do gate do board (produto do catálogo,
@@ -2659,7 +2676,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
           <button key="touch-again" onClick={registrarMaisUma}
             title={`Fez mais um follow-up: registra a tentativa ${(Number(lead.stageAttempts) || 0) + 1}, o card fica em ${curStageName} e o próximo toque entra pela cadência da etapa`}
             style={{
-              display: "inline-flex", alignItems: "center", gap: 7, height: 30, padding: "0 12px", borderRadius: "var(--r-2)",
+              display: "inline-flex", alignItems: "center", gap: 7, height: 30, padding: "0 12px", borderRadius: 999,
               background: "var(--bg-1)", border: "1px dashed var(--line-strong)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 500,
             }}>
             <span style={{ width: 8, height: 8, borderRadius: 2, background: stageMeta[curStageName]?.color || "var(--fg-3)", flexShrink: 0 }} />
@@ -2679,7 +2696,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                   ? `Não atendeu ou ainda não fechou · registra a tentativa, vai pra ${d.stage} e você escolhe quando voltar`
                   : "Não atendeu · registra a tentativa e você escolhe o dia e a hora de voltar"}
                 style={{
-                  display: "inline-flex", alignItems: "center", gap: 7, height: 42, padding: "0 16px", borderRadius: "var(--r-2)",
+                  display: "inline-flex", alignItems: "center", gap: 7, height: 42, padding: "0 16px", borderRadius: 999,
                   background: on ? "var(--accent-soft)" : "var(--bg-1)",
                   border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-strong)"),
                   color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 13, fontWeight: 600,
@@ -2693,7 +2710,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
           const color = stageMeta[d.stage]?.color || "var(--accent)";
           return (
             <button key={d.stage} onClick={() => chooseDest(d)} style={{
-              display: "inline-flex", alignItems: "center", gap: 7, height: 42, padding: "0 16px", borderRadius: "var(--r-2)",
+              display: "inline-flex", alignItems: "center", gap: 7, height: 42, padding: "0 16px", borderRadius: 999,
               background: on ? "var(--accent-soft)" : "var(--bg-1)",
               border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"),
               color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 13, fontWeight: 600,
@@ -2720,7 +2737,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                   const on = retryAt === v;
                   return (
                     <button key={txt} onClick={() => setRetryAt(v)} style={{
-                      height: 28, padding: "0 10px", borderRadius: "var(--r-2)",
+                      height: 28, padding: "0 10px", borderRadius: 999,
                       border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"),
                       background: on ? "var(--accent-soft)" : "var(--bg-1)",
                       color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 11.5, fontWeight: on ? 600 : 500,
@@ -2867,7 +2884,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                 <div className="mono" style={{ fontSize: 12, color: "var(--pos)", fontWeight: 600 }}>✓ call agendada · Meet criado · convite enviado{validEmail(email) ? ` pra ${email.trim()}` : ""}</div>
                 {meetRes.callUrl && <a href={meetRes.callUrl} target="_blank" rel="noopener noreferrer" className="mono" style={{ fontSize: 11.5, color: "var(--accent)", wordBreak: "break-all" }}>{meetRes.callUrl}</a>}
                 <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 2 }}>
-                  <button onClick={() => onAfter && onAfter()} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12.5, fontWeight: 600 }}>próximo →</button>
+                  <button onClick={() => onAfter && onAfter()} style={{ height: 30, padding: "0 14px", borderRadius: 999, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12.5, fontWeight: 600 }}>próximo →</button>
                   <button onClick={() => setDest(null)} className="mono dim" style={{ fontSize: 11.5 }}>fechar</button>
                 </div>
               </div>
@@ -2875,12 +2892,12 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   <button onClick={agendarComMeet} disabled={!meetReady} style={{
-                    height: 32, padding: "0 16px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
+                    height: 32, padding: "0 16px", borderRadius: 999, fontSize: 12.5, fontWeight: 600,
                     background: meetReady ? "var(--btn-bg, var(--accent))" : "var(--bg-2)", color: meetReady ? "var(--btn-fg, var(--accent-fg))" : "var(--fg-4)",
                     border: "1px solid " + (meetReady ? "var(--btn-bg, var(--accent))" : "var(--line-2)"), cursor: meetReady ? "pointer" : "not-allowed",
                   }}>{meetBusy ? "criando Meet e enviando convite…" : "🎥 agendar + criar Meet + convite"}</button>
                   <button onClick={confirm} disabled={!ready || meetBusy} className="mono"
-                    style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, opacity: ready && !meetBusy ? 1 : 0.5 }}>só agendar (sem convite)</button>
+                    style={{ height: 32, padding: "0 12px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, opacity: ready && !meetBusy ? 1 : 0.5 }}>só agendar (sem convite)</button>
                   <button onClick={() => setDest(null)} className="mono dim" style={{ fontSize: 11.5 }}>cancelar</button>
                 </div>
                 {meetErr && <div className="mono" style={{ fontSize: 11, color: "var(--neg)" }}>{meetErr} · a call já foi agendada; crie o Meet pela ficha do lead se precisar.</div>}
@@ -2890,7 +2907,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
           ) : (
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <button onClick={confirm} disabled={!ready} style={{
-                height: 32, padding: "0 16px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600,
+                height: 32, padding: "0 16px", borderRadius: 999, fontSize: 12.5, fontWeight: 600,
                 background: ready ? "var(--btn-bg, var(--accent))" : "var(--bg-2)", color: ready ? "var(--btn-fg, var(--accent-fg))" : "var(--fg-4)",
                 border: "1px solid " + (ready ? "var(--btn-bg, var(--accent))" : "var(--line-2)"), cursor: ready ? "pointer" : "not-allowed",
               }}>{isRetry ? "registrar tentativa e retomar →" : setup === "followup" && slot ? "agendar follow-up →" : `mover pra ${dest.stage} →`}</button>

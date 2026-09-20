@@ -157,7 +157,7 @@ const Num = ({ v, tone, title }) => (
 function Stepper({ value, onInc, busy }) {
   const btn = (label, d) => (
     <button onClick={(e) => { e.stopPropagation(); onInc(d); }} disabled={busy}
-      style={{ width: 24, height: 24, borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 700, lineHeight: 1, opacity: busy ? 0.5 : 1 }}>{label}</button>
+      style={{ width: 24, height: 24, borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 700, lineHeight: 1, opacity: busy ? 0.5 : 1 }}>{label}</button>
   );
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }} onClick={(e) => e.stopPropagation()}>
@@ -276,7 +276,7 @@ function Section({ title, sub, cols, rows, render, renderDetail, emptyTitle, emp
     <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <SectionHead title={title} sub={sub} />
       {!rows.length ? <EmptyState title={emptyTitle} hint={emptyHint} /> : (
-        <div className="tbl-x" style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
+        <div className="tbl-x" style={{ background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
           <table className="tbl" style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
             <thead><tr><Th>Pessoa</Th>{cols.map((c) => <Th key={c.label} right={c.right !== false} title={c.title}>{c.label}</Th>)}<Th right> </Th></tr></thead>
             <tbody>

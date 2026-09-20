@@ -1,7 +1,7 @@
 /* Cockpit — design tokens v7 "Lever Premium"
    Retematização sobre o design system Lever Premium (jul/2026): superfícies
    paper (#F7F8FA/#FFF), tinta navy (#0C1D2B), teal da marca usado com
-   parcimônia (#0F766E), sombras quase invisíveis, Instrument Sans em toda a
+   parcimônia (#0F766E), sombras quase invisíveis, Plus Jakarta Sans em toda a
    UI e JetBrains Mono só em dados/IDs. O dark segue o DS (paper #0B141D,
    brand #3ECCBF). Os NOMES das vars são estáveis — as telas estilizam inline
    em cima delas; o accent continua derivando de --accent-h (o workspace
@@ -15,13 +15,13 @@
   --accent-h: 186.4;   /* teal Lever Premium = #0F766E */
 
   /* ── CLARO (padrão) ──────────────────────────────────────── */
-  --bg-0: #f7f8fa;        /* paper: canvas do app */
+  --bg-0: #e7ecee;        /* paper: canvas do app */
   --bg-1: #ffffff;        /* paper-card: painéis / cards */
   --bg-2: #eef1f3;        /* paper-tinted: wells / trilhos / thead */
   --bg-3: #e7ebee;        /* controle legado elevado / trilhos */
   --bg-inset: #fbfcfd;    /* paper-subtle */
   --bg-rail: #0c1d2b;     /* moldura navy do handoff, nos dois temas */
-  --rail-width: 248px;
+  --rail-width: 244px;
   --rail-fg: #ffffff;
   --rail-text: rgba(255,255,255,.82);
   --rail-muted: rgba(255,255,255,.62);
@@ -85,17 +85,17 @@
   --gold: #0c8f83;
   --gold-soft: rgba(12, 143, 131, 0.12);
 
-  /* Tipo — Instrument Sans em TODA a UI (o DS não usa display própria);
+  /* Tipo — Plus Jakarta Sans no corpo; Outfit nos títulos e números;
      JetBrains Mono só em IDs/SKU/dados */
-  --sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --display: "Instrument Sans", var(--sans);
+  --sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --display: "Outfit", var(--sans);
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
   /* Raios (DS: card 12 · interno 10 · controle 8 · badge 5) */
   --r-1: 5px;
   --r-2: 8px;
-  --r-3: 10px;
-  --r-4: 12px;
+  --r-3: 20px;
+  --r-4: 24px;
 
   /* Sombras quase invisíveis (DS: nunca glow) */
   --shadow-1: 0 1px 2px 0 rgba(16,24,40,0.03);
@@ -103,7 +103,7 @@
   --shadow-segment: 0 1px 2px rgba(16,24,40,0.08);
   --shadow-knob: 0 1px 2px rgba(16,24,40,0.15);
   --shadow-2: 0 4px 12px -4px rgba(16,24,40,0.10);
-  --shadow-card: 0 1px 2px 0 rgba(16,24,40,0.03);
+  --shadow-card: 0 2px 3px rgba(5,28,44,.04), 0 18px 30px -22px rgba(5,28,44,.34);
   --shadow-pop: 0 8px 24px -6px rgba(16,24,40,0.14), 0 2px 6px -2px rgba(16,24,40,0.08);
 }
 
@@ -265,7 +265,7 @@ body[data-density="regular"] { font-size: 14px; }
 
 /* ── Atom utilities ─────────────────────────────────────────── */
 /* O app legado usava `.mono` também em rótulos e mensagens. No handoff Lever
-   Premium esses textos são Instrument Sans; JetBrains Mono fica só nos usos
+   Premium esses textos são Plus Jakarta Sans; JetBrains Mono fica só nos usos
    técnicos marcados por `.tnum`, `.code` ou elementos semânticos de código. */
 .mono { font-family: var(--sans); font-variant-numeric: tabular-nums; }
 .mono.tnum, .mono.code, .code, code, pre, kbd { font-family: var(--mono); }
@@ -644,3 +644,5 @@ body[data-tk-panel] .fb-balloon { display: none; }
 .skel { background: var(--bg-2, var(--bg-inset)); animation: skel-pulse 1.4s ease-in-out infinite; flex-shrink: 0; }
 @keyframes skel-pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
+
+/* CRM final: shared capsule surfaces and shell. */

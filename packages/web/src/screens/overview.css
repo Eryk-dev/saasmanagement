@@ -112,3 +112,44 @@
   .vg-funnel-row { min-height: 44px; }
   .vg-meta-details summary { display: flex; align-items: center; min-height: 44px; }
 }
+
+/* CRM final: capsule thermometer + story, with a separate sales rail. */
+.overview-screen { --pad-x: 0px; }
+.vg-page-head { padding: 4px 10px 12px; align-items: center; }
+.vg-layout { padding: 0 0 32px; grid-template-columns: minmax(0,1fr) 340px; gap: 12px; }
+.vg-main,.vg-aside { gap: 12px; }
+.vg-meta-card { padding: 0; border: 0; overflow: hidden; }
+.vg-meta-columns { gap: 0; flex-wrap: nowrap; }
+.vg-meta-thermometer { position: relative; isolation: isolate; width: 236px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 28px 20px; color: #fff; background: linear-gradient(160deg,#0a2434,#051c2c); }
+.vg-meta-thermometer::before { content: ''; position: absolute; inset: 58% -25% -30% 10%; z-index: -1; background: rgba(35,216,211,.045); clip-path: polygon(75% 0,75% 100%,54% 40%,0 57%); }
+.vg-meta-thermometer .kicker { color: #7defe9; }
+.vg-meta-thermometer .tnum { font-family: var(--display); }
+.vg-meta-thermometer-bar { width: 84px; height: 270px; border-radius: 999px; overflow: hidden; display: flex; flex-direction: column; cursor: help; border: 1px solid rgba(255,255,255,.07); }
+.vg-meta-liquid-track { background: rgba(255,255,255,.07); }
+.vg-meta-liquid { --meta-liquid-color: #138a81; --meta-liquid-surface: #23c5bd; }
+.vg-meta-liquid-reflection::after,.vg-meta-wave { animation: none; }
+.vg-meta-pace-marker { border-color: rgba(255,255,255,.72); background: transparent; box-shadow: none; }
+.vg-meta-percent { margin-top: 18px; padding: 0 16px; border-radius: 999px; border: 1px solid rgba(35,216,211,.6); box-shadow: 0 0 16px rgba(35,216,211,.16); }
+.vg-meta-percent small { font-family: var(--sans); font-size: 9px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; }
+.vg-meta-story { padding: 24px 26px; min-width: 0; }
+.vg-meta-numbers { align-items: baseline; gap: 16px; }
+.vg-sold { font-size: 58px; font-family: var(--display); color: var(--fg-1); letter-spacing: -.045em; }
+.vg-meta-facts { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+.vg-meta-fact { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 6px; padding: 8px 14px; border-radius: 999px; background: var(--bg-2); }
+.vg-meta-fact > div { font-size: 9px; letter-spacing: .05em; text-transform: uppercase; }
+.vg-meta-fact > strong { font-family: var(--display); font-size: 17px; }
+.vg-meta-fact > span { font-size: 10px; }
+.vg-meta-details { margin: 0; padding: 8px 24px 12px; }
+.vg-funnel-track,.vg-funnel-track > span { border-radius: 999px; height: 9px; }
+.vg-funnel-row { padding: 10px 12px; border-radius: 999px; }
+.vg-team-card { padding: 16px; border: 0; border-radius: 22px; background: var(--bg-inset); }
+.vg-team-details { border: 0; }
+.vg-team-details summary { border-radius: 999px; padding: 5px 10px; background: var(--bg-2); width: fit-content; font-size: 10px; text-transform: uppercase; }
+.vg-attention-row { border: 0; }
+.vg-attention-action { border-radius: 999px; }
+@media (max-width: 1550px) { .vg-layout { grid-template-columns: minmax(0,1fr) 280px; } .vg-meta-thermometer { width: 180px; } .vg-meta-story { padding: 22px 18px; } .vg-sold { font-size: 44px; } }
+@media (max-width: 1200px) { .vg-layout { grid-template-columns: minmax(0,1fr); } }
+@media (max-width: 650px) { .vg-meta-columns { flex-direction: column; } .vg-meta-thermometer { width: 100%; flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 14px; padding: 20px; } .vg-meta-thermometer-bar { width: 50px; height: 130px; } .vg-meta-percent { margin: 0; } .vg-sold { font-size: 38px; } .vg-meta-story { padding: 20px 14px; } }
+
+.vg-meta-fact { flex: 0 1 auto; min-width: 0; }
+.vg-meta-percent .meta-viva { animation: none; }

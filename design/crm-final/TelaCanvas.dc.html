@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Canvas</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-gaveta-sai{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-gaveta-sai{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;margin:0 -4px;padding:0 4px 24px">
+
+      <header class="cap-rise" style="flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+        <div style="min-width:0">
+          <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Canvas</h1>
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#5a6b77;margin-top:6px">stories, feed e carrossel · PNG pronto pra postar</div>
+        </div>
+        <div style="display:inline-flex;gap:3px;padding:4px;border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.05);flex-wrap:wrap">
+          <sc-for list="{{ formatos }}" as="f" hint-placeholder-count="4">
+            <button onClick="{{ f.escolher }}" style="{{ f.est }}">{{ f.label }} <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;opacity:.7">{{ f.tam }}</span></button>
+          </sc-for>
+        </div>
+      </header>
+
+      <div style="display:grid;grid-template-columns:minmax(0,.75fr) minmax(300px,1.1fr) minmax(0,.95fr);gap:12px;align-items:start" class="canvas-grid">
+
+        <section class="cap-rise" style="min-width:0;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:16px 14px 14px">
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77;padding:0 4px">Templates · {{ nTemplates }}</div>
+          <div style="display:flex;flex-direction:column;gap:3px;margin-top:9px">
+            <sc-for list="{{ templates }}" as="t" hint-placeholder-count="5">
+              <button onClick="{{ t.escolher }}" style="{{ t.est }}">
+                <span style="display:flex;align-items:center;gap:7px;min-width:0">
+                  <span style="flex:1;min-width:0;font-size:12.5px;font-weight:{{ t.peso }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ t.nome }}</span>
+                  <span style="{{ t.estFoto }}" title="template com foto">foto</span>
+                </span>
+                <span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#8b99a4;margin-top:2px">{{ t.nota }}</span>
+              </button>
+            </sc-for>
+          </div>
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;line-height:1.7;color:#8b99a4;margin-top:12px;padding:10px 10px 0;border-top:1px solid #edf1f3">
+            *palavra* = destaque em teal<br />arraste no preview pra mover<br />clique no slot pra pôr a foto
+          </div>
+        </section>
+
+        <section class="cap-rise" style="min-width:0;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:14px 16px 16px;display:flex;flex-direction:column;align-items:center;gap:11px">
+          <div style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px">
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4">{{ dimensao }}</span>
+            <div style="{{ estSlides }}">
+              <sc-for list="{{ slides }}" as="s" hint-placeholder-count="4">
+                <button onClick="{{ s.escolher }}" style="{{ s.est }}">{{ s.n }}</button>
+              </sc-for>
+            </div>
+          </div>
+          <canvas ref="{{ refCanvas }}" onPointerDown="{{ aoApertar }}" onPointerMove="{{ aoMover }}" onPointerUp="{{ aoSoltar }}" onPointerCancel="{{ aoSoltar }}" style="width:100%;max-width:300px;height:auto;border-radius:6px;box-shadow:0 1px 2px rgba(12,29,43,.08),0 14px 30px -20px rgba(12,29,43,.5);cursor:grab;touch-action:none"></canvas>
+          <div style="display:flex;gap:7px;flex-wrap:wrap;justify-content:center">
+            <button onClick="{{ baixar }}" style="height:38px;padding:0 18px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:12.5px;font-weight:650;transition:background 150ms ease" style-hover="background:#1b3140">{{ rotuloBaixar }}</button>
+            <button onClick="{{ baixarTodos }}" style="{{ estBaixarTodos }}">Baixar todos</button>
+            <button onClick="{{ resetar }}" style="height:38px;padding:0 14px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:12.5px;font-weight:600;transition:background 150ms ease" style-hover="background:#e7ecee">Resetar</button>
+          </div>
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;text-align:center;text-wrap:pretty">{{ dica }}</div>
+        </section>
+
+        <section class="cap-rise" style="min-width:0;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:16px 18px 16px;display:flex;flex-direction:column;gap:11px">
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">{{ tituloConteudo }}</div>
+          <sc-for list="{{ campos }}" as="c" hint-placeholder-count="5">
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <label style="flex:1;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;font-weight:600;color:#5a6b77">{{ c.label }}</label>
+                <input value="{{ c.tamanho }}" onChange="{{ c.mudarTamanho }}" title="tamanho da fonte" style="{{ c.estTamanho }}" />
+              </div>
+              <textarea value="{{ c.valor }}" onChange="{{ c.mudar }}" style="{{ c.estCampo }}"></textarea>
+            </div>
+          </sc-for>
+          <sc-if value="{{ temFoto }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;gap:9px;padding-top:4px">
+              <span style="flex:1;font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#5a6b77">{{ notaFoto }}</span>
+              <button onClick="{{ trocarFoto }}" style="height:30px;padding:0 13px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:11.5px;font-weight:600;transition:background 150ms ease" style-hover="background:#e7ecee">{{ rotuloFoto }}</button>
+            </div>
+          </sc-if>
+          <div style="display:flex;gap:7px;flex-wrap:wrap;padding-top:10px;border-top:1px solid #edf1f3">
+            <button onClick="{{ addTexto }}" style="height:30px;padding:0 13px;border-radius:999px;background:#f1f4f5;color:#0F766E;font-size:11.5px;font-weight:600;transition:background 150ms ease" style-hover="background:#E9F5F3">Adicionar texto</button>
+            <button onClick="{{ addPill }}" style="height:30px;padding:0 13px;border-radius:999px;background:#f1f4f5;color:#0F766E;font-size:11.5px;font-weight:600;transition:background 150ms ease" style-hover="background:#E9F5F3">Adicionar botão</button>
+          </div>
+          <sc-for list="{{ extras }}" as="e" hint-placeholder-count="0">
+            <div style="display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:16px;background:#f7f9fa">
+              <input value="{{ e.texto }}" onChange="{{ e.mudar }}" style="flex:1;min-width:0;height:30px;border:0;border-radius:999px;background:#fff;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 12px;font-family:inherit;font-size:12px;color:#0c1d2b;outline:none" />
+              <button onClick="{{ e.remover }}" title="remover" style="flex-shrink:0;width:26px;height:26px;border-radius:999px;background:#fff;color:#b42318;font-size:11px;transition:background 150ms ease" style-hover="background:#fdf3f2">✕</button>
+            </div>
+          </sc-for>
+        </section>
+      </div>
+    </div>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Canvas (screens/creative.jsx): editor de criativos em <canvas> real, com os
+  // primitivos da fonte — logo, kicker, texto rico com *destaque* em teal,
+  // pílula de CTA, checks, barra e slot de foto. Arrastar move o elemento;
+  // baixar exporta o PNG no tamanho de verdade (1080×1920 / 1080×1350).
+  static NAVY = "#051C2C"; static NAVY2 = "#0C1D2B"; static TEAL = "#23D8D3"; static ICE = "#F3FBFF";
+  static ICE_BG = "#EEF6F8";
+  static FD = "'Outfit', sans-serif"; static FM = "'Plus Jakarta Sans', sans-serif";
+  static GRUPOS = [["story", "Stories", "1080×1920"], ["storyseq", "Sequência", "4×"], ["post", "Feed", "1080×1350"], ["car", "Carrossel", "4×"]];
+  static TEMPLATES = [
+    { id: "story-chamada", grupo: "story", nome: "Chamada", w: 1080, h: 1920, slides: 1,
+      campos: [["eyebrow", "Kicker", "LeverAds"], ["title", "Título", "Pare de subir anúncio *um por um*."],
+        ["body", "Texto", "Clone seus anúncios entre todas as suas contas de Mercado Livre e Shopee em minutos, não em semanas."],
+        ["cta", "CTA", "Fala com a gente"], ["handle", "Rodapé", "@lever.ads"]],
+      els: [["logo", "logo", null, 110, 150, 88], ["eyebrow", "eyebrow", "eyebrow", 110, 586, 32],
+        ["title", "rich", "title", 110, 660, 104, null, ["eyebrow", 26]], ["body", "rich", "body", 110, 940, 44, "soft", ["title", 48]],
+        ["cta", "pill", "cta", 110, 1590, 44], ["handle", "handle", "handle", 540, 1800, 34]] },
+    { id: "story-lista", grupo: "story", nome: "Lista", w: 1080, h: 1920, slides: 1,
+      campos: [["eyebrow", "Kicker", "Como funciona"], ["title", "Título", "Sua operação inteira em *3 passos*"],
+        ["item1", "Item 1", "Clonagem em massa entre contas"], ["item2", "Item 2", "Conta-mãe alimenta as filhas sozinha"],
+        ["item3", "Item 3", "Atributos e SKU sempre certos"], ["cta", "CTA", "Quero testar"], ["handle", "Rodapé", "@lever.ads"]],
+      els: [["logo", "logo", null, 110, 150, 88], ["eyebrow", "eyebrow", "eyebrow", 110, 446, 32],
+        ["title", "rich", "title", 110, 520, 88, null, ["eyebrow", 26]], ["item1", "check", "item1", 110, 800, 44, null, ["title", 70]],
+        ["item2", "check", "item2", 110, 900, 44, null, ["item1", 36]], ["item3", "check", "item3", 110, 1000, 44, null, ["item2", 36]],
+        ["cta", "pill", "cta", 110, 1590, 44], ["handle", "handle", "handle", 540, 1800, 34]] },
+    { id: "story-numero", grupo: "story", nome: "Número (claro)", w: 1080, h: 1920, slides: 1, modo: "light",
+      campos: [["eyebrow", "Kicker", "Case real"], ["stat", "Número", "+105%"], ["label", "O que é o número", "em vendas brutas no 1º mês"],
+        ["body", "Texto", "Conta nova clonada da conta-mãe. Prints reais do painel do Mercado Livre."],
+        ["cta", "CTA", "Quero esse resultado"], ["handle", "Rodapé", "@lever.ads"]],
+      els: [["logo", "logo", null, 110, 150, 88], ["eyebrow", "eyebrow", "eyebrow", 110, 566, 32],
+        ["stat", "rich", "stat", 110, 640, 250, "accent", ["eyebrow", 30]], ["bar", "bar", null, 110, 940, 16, null, ["stat", 34]],
+        ["label", "rich", "label", 110, 1010, 56, null, ["bar", 44]], ["body", "rich", "body", 110, 1140, 42, "soft", ["label", 40]],
+        ["cta", "pill", "cta", 110, 1590, 44], ["handle", "handle", "handle", 540, 1800, 34]] },
+    { id: "story-foto", grupo: "story", nome: "Foto", w: 1080, h: 1920, slides: 1, foto: 1,
+      campos: [["title", "Título", "Bastidor de hoje: *a máquina rodando*."], ["cta", "CTA", "Fala com a gente"], ["handle", "Rodapé", "@lever.ads"]],
+      els: [["logo", "logo", null, 110, 150, 88], ["photo", "photo", null, 110, 430, 0],
+        ["title", "rich", "title", 110, 1330, 76], ["cta", "pill", "cta", 110, 1620, 44], ["handle", "handle", "handle", 540, 1800, 34]] },
+    { id: "post-chamada", grupo: "post", nome: "Chamada", w: 1080, h: 1350, slides: 1,
+      campos: [["eyebrow", "Kicker", "LeverAds"], ["title", "Título", "Seu catálogo em *todas as contas* de uma vez."],
+        ["body", "Texto", "A conta-mãe publica e as filhas recebem sozinhas. Sem copiar e colar anúncio."],
+        ["cta", "CTA", "Chama no direct"], ["handle", "Rodapé", "@lever.ads"]],
+      els: [["logo", "logo", null, 96, 110, 76], ["eyebrow", "eyebrow", "eyebrow", 96, 400, 30],
+        ["title", "rich", "title", 96, 470, 92, null, ["eyebrow", 24]], ["body", "rich", "body", 96, 760, 40, "soft", ["title", 42]],
+        ["cta", "pill", "cta", 96, 1080, 40], ["handle", "handle", "handle", 540, 1250, 30]] },
+    { id: "post-numero", grupo: "post", nome: "Número", w: 1080, h: 1350, slides: 1,
+      campos: [["eyebrow", "Kicker", "Na prática"], ["stat", "Número", "3.100"], ["label", "O que é o número", "anúncios clonados em uma tarde"],
+        ["body", "Texto", "Um cliente, três contas, uma call de 20 minutos."], ["cta", "CTA", "Quero ver como"], ["handle", "Rodapé", "@lever.ads"]],
+      els: [["logo", "logo", null, 96, 110, 76], ["eyebrow", "eyebrow", "eyebrow", 96, 380, 30],
+        ["stat", "rich", "stat", 96, 450, 220, "accent", ["eyebrow", 26]], ["bar", "bar", null, 96, 720, 14, null, ["stat", 30]],
+        ["label", "rich", "label", 96, 780, 50, null, ["bar", 38]], ["body", "rich", "body", 96, 900, 38, "soft", ["label", 36]],
+        ["cta", "pill", "cta", 96, 1080, 40], ["handle", "handle", "handle", 540, 1250, 30]] },
+    { id: "post-frase", grupo: "post", nome: "Frase (claro)", w: 1080, h: 1350, slides: 1, modo: "light",
+      campos: [["title", "Frase", "Anúncio parado em conta parada é *venda que já era sua* indo pro concorrente."],
+        ["handle", "Rodapé", "@lever.ads"]],
+      els: [["logo", "logo", null, 96, 110, 76], ["title", "rich", "title", 96, 460, 82],
+        ["handle", "handle", "handle", 540, 1250, 30]] },
+    { id: "car-dor", grupo: "car", nome: "Dor e solução", w: 1080, h: 1350, slides: 4,
+      campos: [["handle", "Rodapé (todos)", "@lever.ads"],
+        ["t1", "Slide 1 · título", "Você abre a 2ª conta e *trava*."], ["b1", "Slide 1 · texto", "Anunciar tudo de novo, na mão, item por item."],
+        ["t2", "Slide 2 · título", "O tempo vira o custo"], ["b2", "Slide 2 · texto", "Duas semanas subindo anúncio é duas semanas sem vender."],
+        ["t3", "Slide 3 · título", "Clona em *minutos*"], ["b3", "Slide 3 · texto", "A conta-mãe replica catálogo, preço e estoque nas filhas."],
+        ["t4", "Slide 4 · título", "Sobra tempo pra *vender*"], ["b4", "Slide 4 · texto", "Chama no direct e a gente mostra rodando na sua conta."]],
+      els: [["logo", "logo", null, 96, 110, 76], ["title", "rich", "t#", 96, 430, 88],
+        ["body", "rich", "b#", 96, 720, 40, "soft", ["title", 44]], ["dots", "dots", null, 540, 1160, 0], ["handle", "handle", "handle", 540, 1250, 30]] },
+    { id: "seq-dor", grupo: "storyseq", nome: "Dor e solução", w: 1080, h: 1920, slides: 4,
+      campos: [["handle", "Rodapé (todos)", "@lever.ads"],
+        ["t1", "Story 1 · título", "Abriu a 2ª conta e *travou*?"], ["b1", "Story 1 · texto", "Subir tudo de novo na mão não é escala, é retrabalho."],
+        ["t2", "Story 2 · título", "Duas semanas *sem vender*"], ["b2", "Story 2 · texto", "É o que custa subir catálogo item por item."],
+        ["t3", "Story 3 · título", "A conta-mãe faz *sozinha*"], ["b3", "Story 3 · texto", "Publica na matriz e as filhas recebem em minutos."],
+        ["t4", "Story 4 · título", "Quer ver na sua conta?"], ["b4", "Story 4 · texto", "Arrasta pra cima e a gente roda um teste junto."]],
+      els: [["seq", "seq", null, 540, 90, 0], ["logo", "logo", null, 110, 190, 88],
+        ["title", "rich", "t#", 110, 640, 96], ["body", "rich", "b#", 110, 960, 44, "soft", ["title", 48]],
+        ["arrow", "arrow", null, 540, 1700, 0], ["handle", "handle", "handle", 540, 1800, 34]] },
+  ];
+
+  state = { formato: "story", tplId: "story-chamada", slide: 0, vals: {}, tam: {}, pos: {}, extras: [],
+    foto: false, sel: null, baixando: false, aviso: null };
+  componentDidMount() { this.pintar(); }
+  componentDidUpdate() { this.pintar(); }
+  componentWillUnmount() { clearTimeout(this._a); }
+
+  tpl() { return Component.TEMPLATES.find((t) => t.id === this.state.tplId) || Component.TEMPLATES[0]; }
+  modoDe(t, i) { return Array.isArray(t.modo) ? t.modo[i] : (t.modo || "dark"); }
+  campoDe(k) { const t = this.tpl(); return (t.campos.find((c) => c[0] === k) || [])[2] || ""; }
+  valor(k) { const st = this.state; return st.vals[k] !== undefined ? st.vals[k] : this.campoDe(k); }
+  // Campo por slide: "t#" vira t1..t4 conforme o slide ativo
+  resolve(f) { return f && f.indexOf("#") >= 0 ? f.replace("#", String(this.state.slide + 1)) : f; }
+  tamanhoDe(el) {
+    const k = this.state.slide + ":" + el[0];
+    const v = this.state.tam[k];
+    return v !== undefined ? Math.max(20, Math.min(300, Number(v) || el[5])) : el[5];
+  }
+  posDe(el) {
+    const k = this.state.slide + ":" + el[0];
+    return this.state.pos[k] || { x: el[3], y: el[4] };
+  }
+
+  // ── primitivos ──────────────────────────────────────────────────────────
+  pal(modo) {
+    return modo === "dark"
+      ? { fg: Component.ICE, soft: "rgba(243,251,255,0.72)", dim: "rgba(243,251,255,0.45)", accent: Component.TEAL }
+      : { fg: Component.NAVY2, soft: "rgba(12,29,43,0.7)", dim: "rgba(12,29,43,0.45)", accent: "#0F766E" };
+  }
+  fundo(ctx, W, H, modo) {
+    if (modo === "dark") {
+      const g = ctx.createLinearGradient(0, 0, W * 0.55, H);
+      g.addColorStop(0, "#0a2434"); g.addColorStop(1, Component.NAVY);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      ctx.save(); ctx.globalAlpha = 0.07; ctx.translate(W * 0.72, H * 0.06);
+      this.seta(ctx, Math.min(W, H) * 0.62, Component.TEAL); ctx.restore();
+    } else {
+      ctx.fillStyle = Component.ICE_BG; ctx.fillRect(0, 0, W, H);
+      ctx.save(); ctx.globalAlpha = 0.06; ctx.translate(W * 0.68, H * 0.05);
+      this.seta(ctx, Math.min(W, H) * 0.6, "#0F766E"); ctx.restore();
+    }
+  }
+  // A seta LeverAds em path (o mesmo polígono do logo)
+  seta(ctx, tam, cor) {
+    const P = [[800.7, 535.53], [800.7, 1103.92], [763, 983.8], [749.25, 939.91], [691.16, 754.61],
+      [501.54, 817.84], [457.65, 832.42], [362.47, 864.14], [443.6, 803.33], [481.22, 775.08]];
+    const minX = 362.47, minY = 535.53, w = 800.7 - minX, k = tam / w;
+    ctx.beginPath();
+    P.forEach(([x, y], i) => { const px = (x - minX) * k, py = (y - minY) * k; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
+    ctx.closePath(); ctx.fillStyle = cor; ctx.fill();
+  }
+  arred(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+  // *asterisco* marca destaque
+  tokens(txt) {
+    const out = []; let hl = false;
+    for (const parte of String(txt || "").split("*")) {
+      for (const p of parte.split(/(\n)/)) { if (p !== "") out.push({ t: p, hl, br: p === "\n" }); }
+      hl = !hl;
+    }
+    return out;
+  }
+  texto(ctx, o) {
+    const size = o.size, lh = o.lineH || Math.round(size * 1.16);
+    ctx.font = (o.weight || 700) + " " + size + "px " + (o.font || Component.FD);
+    ctx.textBaseline = "top";
+    const p = this.pal(o.modo);
+    const base = o.cor === "soft" ? p.soft : o.cor === "dim" ? p.dim : o.cor === "accent" ? p.accent : p.fg;
+    let x = o.x, y = o.y, maxW = o.maxW || 860, larguraMax = 0;
+    const palavras = [];
+    for (const tk of this.tokens(o.text)) {
+      if (tk.br) { palavras.push({ br: true }); continue; }
+      for (const w of tk.t.split(/(\s+)/)) if (w !== "") palavras.push({ t: w, hl: tk.hl });
+    }
+    let linha = [], larg = 0;
+    const desenhaLinha = () => {
+      if (!o.dry) {
+        let cx = o.align === "center" ? o.x - larg / 2 : x;
+        for (const w of linha) { ctx.fillStyle = w.hl ? p.accent : base; ctx.fillText(w.t, cx, y); cx += ctx.measureText(w.t).width; }
+      }
+      larguraMax = Math.max(larguraMax, larg);
+      y += lh; linha = []; larg = 0;
+    };
+    for (const w of palavras) {
+      if (w.br) { desenhaLinha(); continue; }
+      const ww = ctx.measureText(w.t).width;
+      if (larg + ww > maxW && linha.length) desenhaLinha();
+      if (!(larg === 0 && /^\s+$/.test(w.t))) { linha.push(w); larg += ww; }
+    }
+    if (linha.length) desenhaLinha();
+    return { w: larguraMax, h: y - o.y };
+  }
+  pilula(ctx, txt, x, y, size, modo) {
+    ctx.font = "600 " + size + "px " + Component.FD;
+    const tw = ctx.measureText(txt || "").width;
+    const px = size * 0.86, h = Math.round(size * 2.1), w = tw + px * 2;
+    const p = this.pal(modo);
+    this.arred(ctx, x, y, w, h, h / 2);
+    ctx.fillStyle = modo === "dark" ? Component.TEAL : "#0F766E"; ctx.fill();
+    ctx.fillStyle = modo === "dark" ? Component.NAVY : Component.ICE;
+    ctx.textBaseline = "middle"; ctx.fillText(txt || "", x + px, y + h / 2 + 1);
+    ctx.textBaseline = "top";
+    return { w, h };
+  }
+  check(ctx, txt, x, y, size, modo) {
+    const p = this.pal(modo), r = size * 0.62;
+    ctx.beginPath(); ctx.arc(x + r, y + r, r, 0, Math.PI * 2);
+    ctx.fillStyle = modo === "dark" ? "rgba(35,216,211,.18)" : "rgba(15,118,110,.14)"; ctx.fill();
+    ctx.strokeStyle = p.accent; ctx.lineWidth = Math.max(3, size * 0.1);
+    ctx.lineCap = "round"; ctx.beginPath();
+    ctx.moveTo(x + r * 0.62, y + r); ctx.lineTo(x + r * 0.92, y + r * 1.32); ctx.lineTo(x + r * 1.42, y + r * 0.66);
+    ctx.stroke();
+    const m = this.texto(ctx, { text: txt, x: x + r * 2 + size * 0.5, y: y + size * 0.1, size, weight: 600, maxW: 860 - r * 2, modo });
+    return { w: r * 2 + size * 0.5 + m.w, h: Math.max(r * 2, m.h) };
+  }
+  slotFoto(ctx, x, y, w, h, modo) {
+    this.arred(ctx, x, y, w, h, 28);
+    ctx.fillStyle = modo === "dark" ? "rgba(255,255,255,.05)" : "rgba(12,29,43,.05)"; ctx.fill();
+    ctx.save(); ctx.setLineDash([16, 14]); ctx.lineWidth = 4;
+    ctx.strokeStyle = modo === "dark" ? "rgba(243,251,255,.3)" : "rgba(12,29,43,.25)"; ctx.stroke(); ctx.restore();
+    ctx.font = "500 34px " + Component.FM;
+    ctx.fillStyle = this.pal(modo).dim; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("clique pra escolher a foto", x + w / 2, y + h / 2);
+    ctx.textAlign = "left"; ctx.textBaseline = "top";
+    return { w, h };
+  }
+  fotoFake(ctx, x, y, w, h) {
+    this.arred(ctx, x, y, w, h, 28); ctx.save(); ctx.clip();
+    const g = ctx.createLinearGradient(x, y, x + w, y + h);
+    g.addColorStop(0, "#123b4d"); g.addColorStop(.55, "#0f6b63"); g.addColorStop(1, "#0a2434");
+    ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+    ctx.globalAlpha = .18;
+    for (let i = 0; i < 9; i++) { ctx.fillStyle = Component.TEAL; ctx.beginPath(); ctx.arc(x + (i * 137) % w, y + (i * 251) % h, 60 + (i % 3) * 40, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+    ctx.font = "500 30px " + Component.FM; ctx.fillStyle = "rgba(243,251,255,.7)";
+    ctx.textAlign = "center"; ctx.fillText("foto do cliente", x + w / 2, y + h - 56);
+    ctx.textAlign = "left";
+    return { w, h };
+  }
+
+  // Desenha o slide e devolve as caixas (pro arraste)
+  desenhar(ctx, i, medir) {
+    const t = this.tpl(), modo = this.modoDe(t, i), W = t.w, H = t.h;
+    const p = this.pal(modo);
+    ctx.clearRect(0, 0, W, H);
+    this.fundo(ctx, W, H, modo);
+    const caixas = [];
+    // Fluxo vertical como a fonte (y: { after, gap }): o elemento cai depois do
+    // anterior, então texto que cresce empurra o resto em vez de sobrepor.
+    const fim = {};
+    for (const el of t.els) {
+      const [id, tipo, campo] = el;
+      const salvo = this.state.pos[i + ":" + id];
+      const fluxo = el[7];
+      const yBase = fluxo && fim[fluxo[0]] !== undefined ? fim[fluxo[0]] + fluxo[1] : el[4];
+      const pos = salvo || { x: el[3], y: yBase };
+      const size = (() => { const v = this.state.tam[i + ":" + id]; return v !== undefined ? Math.max(20, Math.min(300, Number(v) || el[5])) : el[5]; })();
+      const f = campo && campo.indexOf("#") >= 0 ? campo.replace("#", String(i + 1)) : campo;
+      const txt = f ? (this.state.vals[f] !== undefined ? this.state.vals[f] : (t.campos.find((c) => c[0] === f) || [])[2] || "") : "";
+      let box = { w: 0, h: 0 };
+      if (tipo === "logo") {
+        ctx.save(); ctx.translate(pos.x, pos.y);
+        this.seta(ctx, size, modo === "dark" ? Component.TEAL : "#0F766E");
+        ctx.restore();
+        ctx.font = "700 " + Math.round(size * 0.52) + "px " + Component.FD;
+        ctx.fillStyle = p.fg; ctx.textBaseline = "middle";
+        ctx.fillText("LeverAds", pos.x + size * 1.02, pos.y + size * 0.52);
+        box = { w: size * 1.02 + ctx.measureText("LeverAds").width, h: size };
+        ctx.textBaseline = "top";
+      } else if (tipo === "eyebrow") {
+        ctx.font = "600 " + size + "px " + Component.FM;
+        ctx.fillStyle = p.accent; ctx.textBaseline = "top";
+        const up = String(txt).toUpperCase();
+        let cx = pos.x;
+        for (const ch of up) { ctx.fillText(ch, cx, pos.y); cx += ctx.measureText(ch).width + size * 0.14; }
+        box = { w: cx - pos.x, h: size * 1.2 };
+      } else if (tipo === "rich") {
+        box = this.texto(ctx, { text: txt, x: pos.x, y: pos.y, size, maxW: W - pos.x - 110,
+          cor: el[6], weight: el[6] === "soft" ? 500 : 700, lineH: Math.round(size * 1.16), modo, dry: !!medir });
+      } else if (tipo === "pill") {
+        box = this.pilula(ctx, txt, pos.x, pos.y, size, modo);
+      } else if (tipo === "check") {
+        box = this.check(ctx, txt, pos.x, pos.y, size, modo);
+      } else if (tipo === "handle") {
+        ctx.font = "500 " + size + "px " + Component.FM;
+        ctx.fillStyle = p.dim; ctx.textAlign = "center";
+        ctx.fillText(txt, pos.x, pos.y);
+        box = { w: ctx.measureText(txt).width, h: size * 1.2 };
+        ctx.textAlign = "left";
+      } else if (tipo === "bar") {
+        this.arred(ctx, pos.x, pos.y, 220, size, size / 2);
+        ctx.fillStyle = p.accent; ctx.fill();
+        box = { w: 220, h: size };
+      } else if (tipo === "photo") {
+        const ph = H - pos.y - 620, pw = W - pos.x * 2;
+        box = this.state.foto ? this.fotoFake(ctx, pos.x, pos.y, pw, ph) : this.slotFoto(ctx, pos.x, pos.y, pw, ph, modo);
+      } else if (tipo === "dots") {
+        const n = t.slides, gap = 26, r = 7;
+        let x = W / 2 - ((n - 1) * gap) / 2;
+        for (let k = 0; k < n; k++) {
+          ctx.beginPath(); ctx.arc(x, pos.y, r, 0, Math.PI * 2);
+          ctx.fillStyle = k === i ? p.accent : (modo === "dark" ? "rgba(243,251,255,.25)" : "rgba(12,29,43,.2)");
+          ctx.fill(); x += gap;
+        }
+        box = { w: (n - 1) * gap + r * 2, h: r * 2 };
+      } else if (tipo === "seq") {
+        const M = 90, gap = 12, n = t.slides;
+        const seg = (W - 2 * M - (n - 1) * gap) / n;
+        for (let k = 0; k < n; k++) {
+          this.arred(ctx, M + k * (seg + gap), pos.y, seg, 9, 4.5);
+          ctx.fillStyle = k <= i ? Component.TEAL : "rgba(243,251,255,.22)"; ctx.fill();
+        }
+        box = { w: W - 2 * M, h: 9 };
+      } else if (tipo === "arrow") {
+        ctx.font = "600 32px " + Component.FM; ctx.fillStyle = Component.TEAL;
+        ctx.textAlign = "center"; ctx.fillText("arrasta pra cima ↑", pos.x, pos.y);
+        ctx.textAlign = "left";
+        box = { w: 320, h: 40 };
+      }
+      fim[id] = pos.y + box.h;
+      const bx = tipo === "handle" || tipo === "arrow" || tipo === "seq" || tipo === "dots" ? pos.x - box.w / 2 : pos.x;
+      caixas.push({ id, x: bx, y: pos.y, w: box.w, h: box.h });
+    }
+    for (const ex of this.state.extras.filter((e) => e.slide === i)) {
+      const pos = this.state.pos[i + ":" + ex.id] || { x: ex.x, y: ex.y };
+      let box;
+      if (ex.tipo === "pill") box = this.pilula(ctx, ex.texto, pos.x, pos.y, ex.size, modo);
+      else box = this.texto(ctx, { text: ex.texto, x: pos.x, y: pos.y, size: ex.size, maxW: W - pos.x - 90, weight: 700, modo });
+      caixas.push({ id: ex.id, x: pos.x, y: pos.y, w: box.w, h: box.h });
+    }
+    return caixas;
+  }
+
+  pintar() {
+    const c = this._cv;
+    if (!c) return;
+    const t = this.tpl();
+    // Largura é 1080 em todos os formatos: comparar só ela deixava o carrossel
+    // herdando a altura do story.
+    if (c.width !== t.w || c.height !== t.h) { c.width = t.w; c.height = t.h; }
+    const ctx = c.getContext("2d");
+    this._caixas = this.desenhar(ctx, this.state.slide, false);
+  }
+
+  ponto(e) {
+    const c = this._cv, r = c.getBoundingClientRect(), t = this.tpl();
+    return { x: (e.clientX - r.left) * (t.w / r.width), y: (e.clientY - r.top) * (t.h / r.height) };
+  }
+
+  renderVals() {
+    const st = this.state;
+    const t = this.tpl();
+    const doGrupo = Component.TEMPLATES.filter((x) => x.grupo === st.formato);
+    const campos = t.campos.filter((c) => {
+      const usados = t.els.map((e) => (e[2] || "").replace("#", String(st.slide + 1)));
+      return usados.includes(c[0]);
+    });
+    const elDoCampo = (k) => t.els.find((e) => (e[2] || "").replace("#", String(st.slide + 1)) === k);
+
+    return {
+      mov: this.props.movimento === false ? "off" : "on",
+      formatos: Component.GRUPOS.map(([id, label, tam]) => ({
+        label, tam,
+        est: "height:32px;padding:0 14px;border-radius:999px;font-size:12.5px;white-space:nowrap;transition:background 150ms ease,color 150ms ease;" +
+          (st.formato === id ? "background:#0c1d2b;color:#fff;font-weight:650" : "background:transparent;color:#5a6b77;font-weight:500"),
+        escolher: () => {
+          const primeiro = Component.TEMPLATES.find((x) => x.grupo === id);
+          this.setState({ formato: id, tplId: primeiro ? primeiro.id : st.tplId, slide: 0, sel: null });
+        },
+      })),
+      nTemplates: String(doGrupo.length),
+      templates: doGrupo.map((x) => ({
+        nome: x.nome, peso: x.id === t.id ? "650" : "500",
+        nota: x.slides > 1 ? x.slides + (x.grupo === "storyseq" ? " stories" : " slides") : "1 arte",
+        estFoto: x.foto ? "flex-shrink:0;font-family:'Plus Jakarta Sans',sans-serif;font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#0F766E;background:#E9F5F3;border-radius:999px;padding:2px 7px" : "display:none",
+        est: "width:100%;text-align:left;padding:8px 10px;border-radius:14px;transition:background 150ms ease;" +
+          (x.id === t.id ? "background:#E9F5F3;color:#0c1d2b" : "background:transparent;color:#3d4f5c"),
+        escolher: () => this.setState({ tplId: x.id, slide: 0, sel: null }),
+      })),
+      dimensao: t.w + "×" + t.h,
+      estSlides: t.slides > 1 ? "display:inline-flex;gap:3px;padding:3px;border-radius:999px;background:#f1f4f5" : "display:none",
+      slides: Array.from({ length: t.slides }, (_, i) => ({
+        n: String(i + 1),
+        est: "width:24px;height:24px;border-radius:999px;font-family:'Outfit',sans-serif;font-size:11.5px;font-weight:700;transition:background 150ms ease;" +
+          (i === st.slide ? "background:#0c1d2b;color:#fff" : "background:transparent;color:#5a6b77"),
+        escolher: () => this.setState({ slide: i, sel: null }),
+      })),
+      refCanvas: (el) => { this._cv = el; if (el) this.pintar(); },
+      aoApertar: (e) => {
+        const p = this.ponto(e);
+        const hit = (this._caixas || []).slice().reverse().find((b) => p.x >= b.x - 18 && p.x <= b.x + b.w + 18 && p.y >= b.y - 18 && p.y <= b.y + b.h + 18);
+        if (!hit) return;
+        if (hit.id === "photo") { this.setState((s2) => ({ foto: !s2.foto })); return; }
+        this._drag = { id: hit.id, dx: p.x - hit.x, dy: p.y - hit.y };
+        this.setState({ sel: hit.id });
+        if (e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId);
+      },
+      aoMover: (e) => {
+        if (!this._drag) return;
+        const p = this.ponto(e), d = this._drag, t2 = this.tpl();
+        const el = t2.els.find((x) => x[0] === d.id);
+        const centro = el && (el[1] === "handle" || el[1] === "arrow" || el[1] === "seq" || el[1] === "dots");
+        const cx = Math.max(20, Math.min(t2.w - 20, p.x - d.dx + (centro ? 0 : 0)));
+        this.setState((s2) => ({ pos: Object.assign({}, s2.pos, {
+          [s2.slide + ":" + d.id]: { x: centro ? p.x : Math.max(0, cx), y: Math.max(0, p.y - d.dy) } }) }));
+      },
+      aoSoltar: () => { this._drag = null; },
+      tituloConteudo: "Conteúdo" + (t.slides > 1 ? " · slide " + (st.slide + 1) : ""),
+      campos: campos.map(([k, label, def]) => {
+        const el = elDoCampo(k);
+        const chave = st.slide + ":" + (el ? el[0] : k);
+        const temTam = el && (el[1] === "rich" || el[1] === "pill" || el[1] === "check" || el[1] === "eyebrow");
+        const multi = def.length > 40;
+        return {
+          label, valor: st.vals[k] !== undefined ? st.vals[k] : def,
+          mudar: (e) => { const v = e.target.value; this.setState((s2) => ({ vals: Object.assign({}, s2.vals, { [k]: v }) })); },
+          tamanho: temTam ? String(st.tam[chave] !== undefined ? st.tam[chave] : el[5]) : "",
+          estTamanho: temTam ? "width:52px;height:26px;border:0;border-radius:999px;background:#f1f4f5;text-align:center;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#3d4f5c;outline:none" : "display:none",
+          mudarTamanho: (e) => { const v = e.target.value; this.setState((s2) => ({ tam: Object.assign({}, s2.tam, { [chave]: v }) })); },
+          estCampo: "width:100%;min-height:" + (multi ? "54px" : "34px") + ";resize:vertical;border:0;border-radius:" + (multi ? "14px" : "999px") + ";background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:" + (multi ? "9px 13px" : "7px 14px") + ";font-family:inherit;font-size:12px;line-height:1.5;color:#0c1d2b;outline:none",
+        };
+      }),
+      temFoto: !!t.foto,
+      notaFoto: st.foto ? "foto no lugar · clique nela na arte pra trocar" : "slot vazio · clique no slot na arte",
+      rotuloFoto: st.foto ? "Remover foto" : "Escolher foto",
+      trocarFoto: () => this.setState((s2) => ({ foto: !s2.foto })),
+      addTexto: () => this.setState((s2) => ({ extras: s2.extras.concat([{ id: "ex" + (s2.extras.length + 1), slide: s2.slide, tipo: "text", texto: "Texto novo", size: 60, x: 140, y: 1200 }]) })),
+      addPill: () => this.setState((s2) => ({ extras: s2.extras.concat([{ id: "ex" + (s2.extras.length + 1), slide: s2.slide, tipo: "pill", texto: "Clique aqui", size: 42, x: 140, y: 1300 }]) })),
+      extras: st.extras.filter((e) => e.slide === st.slide).map((e) => ({
+        texto: e.texto,
+        mudar: (ev) => { const v = ev.target.value; this.setState((s2) => ({ extras: s2.extras.map((x) => x.id === e.id ? Object.assign({}, x, { texto: v }) : x) })); },
+        remover: () => this.setState((s2) => ({ extras: s2.extras.filter((x) => x.id !== e.id) })),
+      })),
+      rotuloBaixar: st.baixando ? "Gerando…" : "Baixar PNG",
+      baixar: () => this.exportar([st.slide]),
+      estBaixarTodos: t.slides > 1 ? "height:38px;padding:0 14px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:12.5px;font-weight:600;transition:background 150ms ease" : "display:none",
+      baixarTodos: () => this.exportar(Array.from({ length: t.slides }, (_, i) => i)),
+      resetar: () => this.setState({ vals: {}, tam: {}, pos: {}, extras: [], sel: null }),
+      dica: st.aviso || "Arraste os elementos na arte · use *asteriscos* para destacar palavras",
+    };
+  }
+
+  exportar(indices) {
+    const t = this.tpl();
+    const antes = this.state.slide;
+    this.setState({ baixando: true });
+    setTimeout(() => {
+      for (const i of indices) {
+        const off = document.createElement("canvas");
+        off.width = t.w; off.height = t.h;
+        const ctx = off.getContext("2d");
+        const guardado = this.state.slide;
+        this.desenhar(ctx, i, false);
+        const a = document.createElement("a");
+        a.href = off.toDataURL("image/png");
+        a.download = t.id + (t.slides > 1 ? "-" + (i + 1) : "") + ".png";
+        a.click();
+      }
+      this.setState({ baixando: false, aviso: indices.length > 1 ? indices.length + " PNGs baixados · " + t.w + "×" + t.h : "PNG baixado · " + t.w + "×" + t.h });
+      clearTimeout(this._a);
+      this._a = setTimeout(() => this.setState({ aviso: null }), 3000);
+      this.pintar();
+    }, 30);
+  }
+}
+</script>
+</body>
+</html>

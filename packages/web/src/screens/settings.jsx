@@ -26,7 +26,7 @@ const lastView = { tab: "funnel" };
 const inputStyle = {
   width: "100%", height: 32, padding: "0 9px",
   background: "var(--bg-1)", border: "1px solid var(--line-1)",
-  borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12, fontFamily: "var(--sans)",
+  borderRadius: 999, color: "var(--fg-1)", fontSize: 12, fontFamily: "var(--sans)",
 };
 const slug = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
   .toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
@@ -89,8 +89,8 @@ function SettingsScreen({ saasId }) {
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, width: "100%" }}>
       <PageHead title="Configurações" sub={`funil, campos e integrações · ${s?.name}`}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button onClick={() => window.location.reload()} style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>descartar</button>
-          <button onClick={saveAll} disabled={saveState === "busy"} style={{ height: 32, padding: "0 15px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 600, transition: "background .15s ease", ...saveLook }}>
+          <button onClick={() => window.location.reload()} style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-1)", borderRadius: 999, background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>descartar</button>
+          <button onClick={saveAll} disabled={saveState === "busy"} style={{ height: 32, padding: "0 15px", borderRadius: 999, fontSize: 12.5, fontWeight: 600, transition: "background .15s ease", ...saveLook }}>
             {saveState === "busy" ? "salvando…" : saveState === "done" ? "salvo ✓" : saveState === "error" ? "erro ao salvar" : "salvar alterações"}
           </button>
         </div>
@@ -100,11 +100,11 @@ function SettingsScreen({ saasId }) {
           e quebravam em duas, empurrando o conteúdo. Como coluna, cada seção
           fica legível e a tela ganha o espaço de volta. No mobile o menu volta
           pra cima, em linha rolável, porque ali a coluna comeria a largura. */}
-      <div className="set-cols" style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "grid", gridTemplateColumns: "196px minmax(0, 1fr)", gap: 20, alignItems: "start" }}>
-        <nav className="set-nav" style={{ display: "flex", flexDirection: "column", gap: 2, position: "sticky", top: 0 }}>
+      <div className="set-cols" style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "grid", gridTemplateColumns: "186px minmax(0, 1fr)", gap: 12, alignItems: "start" }}>
+        <nav className="set-nav" style={{ background: "var(--bg-1)", borderRadius: 24, padding: 8, boxShadow: "var(--shadow-card)", display: "flex", flexDirection: "column", gap: 2, position: "sticky", top: 0 }}>
           {TABS.map(([k, l]) => (
             <button key={k} onClick={() => setTab(k)}
-              style={{ textAlign: "left", padding: "9px 12px", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: tab === k ? 650 : 500, cursor: "pointer",
+              style={{ textAlign: "left", padding: "9px 12px", borderRadius: 999, fontSize: 13, fontWeight: tab === k ? 650 : 500, cursor: "pointer",
                 background: tab === k ? "var(--accent-soft)" : "transparent",
                 color: tab === k ? "var(--accent)" : "var(--fg-2)",
                 border: "1px solid " + (tab === k ? "var(--accent-line)" : "transparent") }}>
@@ -255,7 +255,7 @@ function FunnelSettings({ s }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
+      <section style={{ background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
         <div style={{ padding: "24px var(--pad-x) 0" }}><SettingHeader number="01" title="Etapas do funil" sub="a ordem define a régua de progresso" /></div>
         <div style={{ padding: "16px var(--pad-x) 20px" }}>
           <div className="tbl-x">
@@ -293,7 +293,7 @@ function FunnelSettings({ s }) {
             </div>
           </div>
           <div style={{ paddingTop: 14, display: "flex", alignItems: "center", gap: 10 }}>
-            <button type="button" onClick={() => setRows((current) => [...current, { stage: "", kind: "outro", conv: 1, _orig: null }])} style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", fontSize: 12.5, fontWeight: 600 }}>+ etapa</button>
+            <button type="button" onClick={() => setRows((current) => [...current, { stage: "", kind: "outro", conv: 1, _orig: null }])} style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-1)", borderRadius: 999, background: "var(--bg-1)", boxShadow: "var(--shadow-1)", fontSize: 12.5, fontWeight: 600 }}>+ etapa</button>
             {wonCount !== 1 && <span style={{ fontSize: 12, color: "var(--warn)" }}>{wonCount === 0 ? "adicione um estágio do tipo ganho" : "mantenha apenas um estágio do tipo ganho"}</span>}
           </div>
           <SaveBar onSave={save} hint={migrated != null ? `salvo · ${migrated} card(s) migrados` : ""} />
@@ -322,11 +322,11 @@ function LossReasonsSettings({ s }) {
   }
 
   return (
-    <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
+    <section style={{ background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
       <div style={{ padding: "24px var(--pad-x) 0" }}><SettingHeader number="02" title="Motivos de perda" sub="aparecem ao marcar Perdido/Desqualificado" /></div>
       <div style={{ padding: "16px var(--pad-x) 24px", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         {rows.map((r, i) => (
-          <span key={i} style={{ display: "inline-flex", alignItems: "center", height: 34, border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-1)", padding: "0 8px 0 12px" }}>
+          <span key={i} style={{ display: "inline-flex", alignItems: "center", height: 34, border: "1px solid var(--line-1)", borderRadius: 999, background: "var(--bg-1)", padding: "0 8px 0 12px" }}>
             <input value={r.label || ""} placeholder="Novo motivo" onChange={(e) => setRows((current) => current.map((item, index) => index === i ? { ...item, label: e.target.value } : item))} style={{ width: Math.max(64, String(r.label || "Novo motivo").length * 7.5), border: 0, background: "transparent", fontSize: 12.5, fontWeight: 600, color: "var(--fg-2)" }} />
             <button type="button" onClick={() => setRows((current) => current.filter((_, index) => index !== i))} style={{ color: "var(--fg-4)", fontSize: 11, padding: "0 2px" }}>✕</button>
           </span>
@@ -350,7 +350,7 @@ function AutomaticConversionSettings() {
     [false, "Exigir API key nas escritas", "leitura fica aberta pra UI · defina COCKPIT_API_KEY no servidor"],
   ];
   return (
-    <section style={{ background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
+    <section style={{ background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
       <div style={{ padding: "24px var(--pad-x) 0" }}><SettingHeader number="03" title="Conversão automática" sub="quando o lead vira cliente" /></div>
       <div style={{ padding: "16px var(--pad-x) 24px", display: "flex", flexDirection: "column", gap: 16 }}>
         {items.map(([on, title, description]) => (
@@ -449,7 +449,7 @@ function NextStepsSettings({ s }) {
                         <div key={x.kind} style={{ display: "flex", gap: 10, alignItems: "center", padding: "8px 0", borderBottom: i < arr.length - 1 ? "1px solid var(--line-1)" : "none", opacity: x.on ? 1 : 0.55 }}>
                           <button type="button" onClick={() => toggle(it.key, i)}
                             title={x.on ? "aparece — clique pra esconder" : "escondido — clique pra mostrar"}
-                            style={{ width: 18, height: 18, flexShrink: 0, borderRadius: 4, border: "1px solid " + (x.on ? "var(--accent-line)" : "var(--line-strong)"), background: x.on ? "var(--accent)" : "transparent", color: "#fff", fontSize: 11, lineHeight: "16px", textAlign: "center" }}>
+                            style={{ width: 18, height: 18, flexShrink: 0, borderRadius: 999, border: "1px solid " + (x.on ? "var(--accent-line)" : "var(--line-strong)"), background: x.on ? "var(--accent)" : "transparent", color: "#fff", fontSize: 11, lineHeight: "16px", textAlign: "center" }}>
                             {x.on ? "✓" : ""}
                           </button>
                           <span style={{ fontSize: 12.5, color: "var(--fg-1)", flex: 1 }}>{NEXT_STEP_LABELS[x.kind] || x.kind}</span>
@@ -615,7 +615,7 @@ function TeamSettings() {
       <SettingHeader title="Equipe & papéis" sub="quem aparece nos pickers de SDR/closer/integração do pipeline · papel ≠ permissão (todos são admin na v1)" />
       {/* .tbl-x: no mobile a grade (colunas fixas ~900px) rola dentro do card
           em vez de estourar a página — mesmo padrão do Funil abaixo. */}
-      <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
+      <div className="tbl-x" style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
        <div style={{ minWidth: 1140 }}>
         <div className="kicker" style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 96px 140px 120px 130px 82px`, gap: 8, padding: "10px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
           <span>Usuário</span>
@@ -660,9 +660,9 @@ function TeamSettings() {
             <span style={{ display: "flex", gap: 6, justifyContent: "center" }}>
               <button type="button" onClick={() => { setCreated(null); setInvite(null); setReset({ user: u, password: genPassword() }); }}
                 title={`Resetar a senha de ${u.name || u.id} (gera uma nova, sem pedir a atual)`}
-                style={{ height: 26, padding: "0 7px", borderRadius: "var(--r-2)", border: "1px solid " + (reset?.user?.id === u.id ? "var(--accent)" : "var(--line-1)"), background: "var(--bg-1)", color: reset?.user?.id === u.id ? "var(--accent)" : "var(--fg-4)", fontSize: 11, cursor: "pointer" }}>senha</button>
+                style={{ height: 26, padding: "0 7px", borderRadius: 999, border: "1px solid " + (reset?.user?.id === u.id ? "var(--accent)" : "var(--line-1)"), background: "var(--bg-1)", color: reset?.user?.id === u.id ? "var(--accent)" : "var(--fg-4)", fontSize: 11, cursor: "pointer" }}>senha</button>
               <button onClick={() => removeUser(u)} title={`Remover ${u.name || u.id} do time`}
-                style={{ width: 26, height: 26, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-4)", fontSize: 13, cursor: "pointer" }}
+                style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-4)", fontSize: 13, cursor: "pointer" }}
                 onMouseEnter={(e) => { e.currentTarget.style.color = "var(--neg)"; e.currentTarget.style.borderColor = "var(--neg)"; }}
                 onMouseLeave={(e) => { e.currentTarget.style.color = "var(--fg-4)"; e.currentTarget.style.borderColor = "var(--line-2)"; }}>✕</button>
             </span>
@@ -680,7 +680,7 @@ function TeamSettings() {
               onKeyDown={(e) => { if (e.key === "Enter") resetPassword(); if (e.key === "Escape") setReset(null); }}
               style={{ ...inputStyle, width: 130 }} />
             <button type="button" onClick={() => setReset({ ...reset, password: genPassword() })} title="Gerar outra senha"
-              style={{ width: 26, height: 26, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-4)", fontSize: 13, cursor: "pointer" }}>↻</button>
+              style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-4)", fontSize: 13, cursor: "pointer" }}>↻</button>
             <PrimaryButton onClick={resetPassword} disabled={String(reset.password).length < 4 || saving === reset.user.id}>salvar senha nova</PrimaryButton>
             <button onClick={() => setReset(null)} className="mono dim" style={{ fontSize: 11 }}>cancelar</button>
             <span className="mono dim" style={{ fontSize: 11 }}>a senha atual deixa de valer na hora</span>
@@ -692,7 +692,7 @@ function TeamSettings() {
               title="Senha inicial gerada automaticamente · pode editar antes de criar"
               onChange={(e) => setInvite({ ...invite, password: e.target.value })} style={{ ...inputStyle, width: 130 }} />
             <button type="button" onClick={() => setInvite({ ...invite, password: genPassword() })} title="Gerar outra senha"
-              style={{ width: 26, height: 26, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-4)", fontSize: 13, cursor: "pointer" }}>↻</button>
+              style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-4)", fontSize: 13, cursor: "pointer" }}>↻</button>
             <PrimaryButton onClick={createUser} disabled={!invite.name || String(invite.password).length < 4}>criar usuário</PrimaryButton>
             <button onClick={() => setInvite(null)} className="mono dim" style={{ fontSize: 11 }}>cancelar</button>
           </>
@@ -856,7 +856,7 @@ function FieldsSettings({ s }) {
                   )}
                 </div>
               ))}
-              <button type="button" onClick={() => add(g)} style={{ alignSelf: "flex-start", padding: "4px 8px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--fg-2)" }}>+ campo</button>
+              <button type="button" onClick={() => add(g)} style={{ alignSelf: "flex-start", padding: "4px 8px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: 999, fontSize: 11, fontFamily: "var(--mono)", color: "var(--fg-2)" }}>+ campo</button>
             </div>
           </div>
         ))}
@@ -1023,7 +1023,7 @@ function IntegrationsSettings({ s }) {
               </span>
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
-              <button onClick={mpSync} disabled={mpBusy} style={{ height: 26, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, opacity: mpBusy ? 0.6 : 1 }}>
+              <button onClick={mpSync} disabled={mpBusy} style={{ height: 26, padding: "0 12px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, opacity: mpBusy ? 0.6 : 1 }}>
                 {mpBusy ? "sincronizando…" : "↻ sincronizar pagamentos agora"}
               </button>
               <span className="mono dim" style={{ fontSize: 10.5 }}>o servidor sincroniza sozinho a cada 10 min (1º boot varre 400 dias)</span>

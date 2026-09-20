@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Financeiro</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-gaveta-sai{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-gaveta-sai{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;margin:0 -4px;padding:0 4px 24px">
+
+      <header class="cap-rise" style="flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+        <div style="min-width:0">
+          <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Financeiro</h1>
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#5a6b77;margin-top:6px;text-wrap:pretty">{{ subtitulo }}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+          <div style="display:inline-flex;flex-wrap:wrap;max-width:100%;gap:3px;padding:4px;border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.05)">
+            <sc-for list="{{ abas }}" as="a" hint-placeholder-count="6">
+              <button onClick="{{ a.escolher }}" style="{{ a.est }}">{{ a.label }}</button>
+            </sc-for>
+          </div>
+          <div style="{{ estMeses }}">
+            <sc-for list="{{ meses }}" as="m" hint-placeholder-count="4">
+              <button onClick="{{ m.escolher }}" style="{{ m.est }}">{{ m.label }}</button>
+            </sc-for>
+          </div>
+        </div>
+      </header>
+
+      <sc-if value="{{ temAviso }}" hint-placeholder-val="{{ false }}">
+        <div style="{{ estAviso }}">{{ aviso }}</div>
+      </sc-if>
+
+      <sc-if value="{{ ehResumo }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <sc-for list="{{ pendencias }}" as="p" hint-placeholder-count="3">
+            <section class="cap-rise" style="{{ p.est }}">
+              <span style="{{ p.estBarra }}"></span>
+              <div style="flex:1;min-width:0">
+                <strong style="display:block;font-size:14px;font-weight:650;color:{{ p.cor }};text-wrap:pretty">{{ p.titulo }}</strong>
+                <span style="display:block;font-size:12.5px;color:#5a6b77;margin-top:2px;text-wrap:pretty">{{ p.nota }}</span>
+              </div>
+              <button onClick="{{ p.agir }}" style="flex-shrink:0;min-height:34px;padding:0 16px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:12.5px;font-weight:600;white-space:nowrap;transition:background 150ms ease" style-hover="background:#1b3140">{{ p.acao }}</button>
+            </section>
+          </sc-for>
+
+          <section class="cap-rise" style="display:flex;gap:22px;flex-wrap:wrap;padding:14px 22px;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+            <sc-for list="{{ foto }}" as="f" hint-placeholder-count="6">
+              <div style="min-width:128px" title="{{ f.title }}">
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#8b99a4">{{ f.rot }}</div>
+                <div style="font-family:'Outfit',sans-serif;font-size:20px;font-weight:700;line-height:1.2;margin-top:3px;color:{{ f.cor }}">{{ f.v }}</div>
+                <div style="font-size:11px;color:#8b99a4">{{ f.nota }}</div>
+              </div>
+            </sc-for>
+          </section>
+
+          <div class="cap-2col" style="align-items:start">
+            <div style="min-width:0;display:flex;flex-direction:column;gap:12px">
+              <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:18px 20px 18px">
+                <div style="display:flex;align-items:center;gap:7px">
+              <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">fluxo de caixa</span>
+            </div>
+                <div style="font-size:11.5px;color:#8b99a4;margin:5px 0 12px;padding-left:12px;text-wrap:pretty">realizado por mês · entrada = faturas recebidas · saída = contas pagas + custos</div>
+                <div style="display:flex;flex-direction:column;gap:10px">
+                  <sc-for list="{{ fluxo }}" as="f" hint-placeholder-count="4">
+                    <div style="display:grid;grid-template-columns:48px minmax(0,1fr) 106px;gap:10px;align-items:center">
+                      <span style="{{ f.estMes }}">{{ f.mes }}</span>
+                      <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                        <div title="{{ f.tEntrada }}" style="{{ f.estEntrada }}"></div>
+                        <div title="{{ f.tSaida }}" style="{{ f.estSaida }}"></div>
+                      </div>
+                      <span style="{{ f.estSaldo }}">{{ f.saldo }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4;margin-top:11px;text-wrap:pretty">{{ previsto }}</div>
+              </section>
+
+              <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:18px 20px 18px">
+                <div style="display:flex;align-items:center;gap:7px">
+              <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">gastos do mês</span>
+            </div>
+                <div style="font-size:11.5px;color:#8b99a4;margin:5px 0 12px;padding-left:12px">por categoria · o círculo representa os recebidos</div>
+                <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+                  <svg width="132" height="132" viewBox="0 0 132 132" style="flex-shrink:0">
+                    <sc-for list="{{ fatias }}" as="s" hint-placeholder-count="5">
+                      <path d="{{ s.d }}" fill="{{ s.cor }}"></path>
+                    </sc-for>
+                    <circle cx="66" cy="66" r="38" fill="#fff"></circle>
+                  </svg>
+                  <div style="flex:1;min-width:150px;display:flex;flex-direction:column;gap:6px">
+                    <sc-for list="{{ gastos }}" as="g" hint-placeholder-count="5">
+                      <div style="display:flex;align-items:baseline;gap:8px">
+                        <span style="{{ g.estCor }}"></span>
+                        <span style="flex:1;min-width:0;font-size:11.5px;color:#3d4f5c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ g.label }}</span>
+                        <span style="font-family:'Outfit',sans-serif;font-size:12px;font-weight:650;white-space:nowrap">{{ g.valor }}</span>
+                        <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#8b99a4;white-space:nowrap">{{ g.pct }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:18px 20px 18px;min-width:0">
+              <div style="display:flex;align-items:center;gap:7px">
+              <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">dre do mês</span>
+            </div>
+              <div style="font-size:11.5px;color:#8b99a4;margin:5px 0 10px;padding-left:12px;text-wrap:pretty">receita · deduções · custo do serviço · margem bruta · setores</div>
+              <sc-for list="{{ dre }}" as="d" hint-placeholder-count="14">
+                <div style="{{ d.est }}" title="{{ d.title }}">
+                  <span style="{{ d.estLabel }}">{{ d.label }}</span>
+                  <span style="{{ d.estValor }}">{{ d.valor }}</span>
+                </div>
+              </sc-for>
+              <sc-if value="{{ temPendConc }}" hint-placeholder-val="{{ false }}">
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#a16207;margin-top:10px;text-wrap:pretty">{{ pendConc }}</div>
+              </sc-if>
+            </section>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ehConciliacao }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <section class="cap-rise" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:18px;padding:18px 22px;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+            <sc-for list="{{ concTiles }}" as="t" hint-placeholder-count="3">
+              <div style="min-width:0">
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#8b99a4">{{ t.rot }}</div>
+                <div style="font-family:'Outfit',sans-serif;font-size:24px;font-weight:700;line-height:1.15;margin-top:3px;color:{{ t.cor }}">{{ t.v }}</div>
+                <div style="font-size:11px;color:#8b99a4;margin-top:2px">{{ t.nota }}</div>
+              </div>
+            </sc-for>
+          </section>
+
+          <section class="cap-rise" style="overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+            <div style="padding:18px 20px 12px">
+              <div style="display:flex;align-items:center;gap:7px">
+              <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">entradas sem dono</span>
+            </div>
+              <div style="font-size:11.5px;color:#8b99a4;margin-top:5px;padding-left:12px;text-wrap:pretty">todo pagamento aprovado precisa de dono: cliente vinculado ou motivo · vincular ensina a regra pro pagador (documento, e-mail ou nome)</div>
+            </div>
+            <sc-for list="{{ semDono }}" as="p" hint-placeholder-count="3">
+              <div style="display:flex;flex-direction:column;gap:9px;padding:13px 20px;border-top:1px solid #edf1f3">
+                <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+                  <span style="font-size:13px;font-weight:650">{{ p.pagador }}</span>
+                  <span style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:700">{{ p.valor }}</span>
+                  <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4">{{ p.detalhe }}</span>
+                  <span style="{{ p.estRegra }}">{{ p.regra }}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                  <select value="{{ p.escolhido }}" onChange="{{ p.escolher }}" style="height:30px;max-width:190px;border:0;border-radius:999px;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;padding:0 11px;font-family:inherit;font-size:11.5px;color:#3d4f5c;cursor:pointer">
+                    <option value="">vincular ao cliente…</option>
+                    <sc-for list="{{ p.clientes }}" as="c" hint-placeholder-count="4">
+                      <option value="{{ c.id }}">{{ c.nome }}</option>
+                    </sc-for>
+                  </select>
+                  <button onClick="{{ p.vincular }}" style="{{ p.estVincular }}">Vincular</button>
+                  <span style="width:1px;height:20px;background:#e4e9eb;margin:0 3px"></span>
+                  <select value="{{ p.motivo }}" onChange="{{ p.mudarMotivo }}" style="height:30px;max-width:180px;border:0;border-radius:999px;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;padding:0 11px;font-family:inherit;font-size:11.5px;color:#3d4f5c;cursor:pointer">
+                    <option value="">ignorar com motivo…</option>
+                    <sc-for list="{{ motivos }}" as="m" hint-placeholder-count="5">
+                      <option value="{{ m }}">{{ m }}</option>
+                    </sc-for>
+                  </select>
+                  <button onClick="{{ p.ignorar }}" style="{{ p.estIgnorar }}">Ignorar</button>
+                </div>
+              </div>
+            </sc-for>
+            <sc-if value="{{ concLimpa }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:22px 20px;border-top:1px solid #edf1f3;font-family:'Plus Jakarta Sans',sans-serif;font-size:12.5px;color:#177a4c">tudo com dono · nenhuma entrada esperando cliente ou motivo</div>
+            </sc-if>
+          </section>
+
+          <sc-if value="{{ temIgnorados }}" hint-placeholder-val="{{ false }}">
+            <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:16px 20px 16px">
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">ignorados neste mês</div>
+              <div style="display:flex;flex-direction:column;gap:7px;margin-top:10px">
+                <sc-for list="{{ ignorados }}" as="g" hint-placeholder-count="1">
+                  <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+                    <span style="flex:1;min-width:0;font-size:12.5px;color:#3d4f5c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ g.pagador }}</span>
+                    <span style="font-family:'Outfit',sans-serif;font-size:12.5px;font-weight:650">{{ g.valor }}</span>
+                    <span style="font-size:11px;color:#a16207">{{ g.motivo }}</span>
+                    <button onClick="{{ g.voltar }}" style="height:26px;padding:0 11px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:11px;font-weight:600;transition:background 150ms ease" style-hover="background:#e7ecee">Voltar</button>
+                  </div>
+                </sc-for>
+              </div>
+            </section>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ehPagar }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <section class="cap-rise" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:18px;padding:18px 22px;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+            <sc-for list="{{ pagarTiles }}" as="t" hint-placeholder-count="4">
+              <div style="min-width:0">
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#8b99a4">{{ t.rot }}</div>
+                <div style="font-family:'Outfit',sans-serif;font-size:24px;font-weight:700;line-height:1.15;margin-top:3px;color:{{ t.cor }}">{{ t.v }}</div>
+                <div style="font-size:11px;color:#8b99a4;margin-top:2px">{{ t.nota }}</div>
+              </div>
+            </sc-for>
+          </section>
+
+          <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:18px 20px 18px">
+            <div style="display:flex;align-items:center;gap:7px">
+              <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">nova conta a pagar</span>
+            </div>
+            <div style="font-size:11.5px;color:#8b99a4;margin:5px 0 12px;padding-left:12px;text-wrap:pretty">a categoria decide o setor no DRE · salário e pró-labore entram como colaborador e aparecem na Folha · custo automático e percentual mora na aba Custos</div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <input value="{{ novo.desc }}" onChange="{{ mudarDesc }}" placeholder="descrição (ex.: Salário, Contabilidade)" style="height:32px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 12px;font-family:inherit;font-size:12px;color:#0c1d2b;outline:none;flex:2 1 190px;min-width:0" />
+              <select value="{{ novo.cat }}" onChange="{{ mudarCat }}" title="A categoria decide o setor no DRE" style="height:32px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 12px;font-family:inherit;font-size:12px;color:#0c1d2b;outline:none;min-width:190px;background:#fff;cursor:pointer">
+                <sc-for list="{{ categorias }}" as="g" hint-placeholder-count="5">
+                  <optgroup label="{{ g.setor }}">
+                    <sc-for list="{{ g.itens }}" as="c" hint-placeholder-count="4">
+                      <option value="{{ c.k }}">{{ c.label }}</option>
+                    </sc-for>
+                  </optgroup>
+                </sc-for>
+              </select>
+              <select value="{{ novo.favorecido }}" onChange="{{ mudarFavorecido }}" style="height:32px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 12px;font-family:inherit;font-size:12px;color:#0c1d2b;outline:none;min-width:150px;background:#fff;cursor:pointer">
+                <option value="fornecedor">fornecedor</option>
+                <option value="colaborador">colaborador</option>
+              </select>
+              <sc-if value="{{ pedePessoa }}" hint-placeholder-val="{{ false }}">
+                <select value="{{ novo.pessoa }}" onChange="{{ mudarPessoa }}" style="height:32px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 12px;font-family:inherit;font-size:12px;color:#0c1d2b;outline:none;min-width:150px;background:#fff;cursor:pointer">
+                  <option value="">quem recebe…</option>
+                  <sc-for list="{{ time }}" as="u" hint-placeholder-count="4">
+                    <option value="{{ u.id }}">{{ u.nome }}</option>
+                  </sc-for>
+                </select>
+              </sc-if>
+              <span style="display:inline-flex;align-items:center;gap:4px">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4">R$</span>
+                <input value="{{ novo.valor }}" onChange="{{ mudarValor }}" placeholder="0,00" style="height:32px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 12px;font-family:inherit;font-size:12px;color:#0c1d2b;outline:none;width:104px;text-align:right;font-family:'Outfit',sans-serif;font-weight:650" />
+              </span>
+              <input type="date" value="{{ novo.venc }}" onChange="{{ mudarVenc }}" style="height:32px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 12px;font-family:inherit;font-size:12px;color:#0c1d2b;outline:none;width:146px" />
+              <button onClick="{{ alternarRecorrente }}" style="{{ estRecorrente }}">↻ Todo mês</button>
+              <button onClick="{{ lancar }}" style="{{ estLancar }}">{{ rotuloLancar }}</button>
+            </div>
+          </section>
+
+          <section class="cap-rise" style="overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+            <div style="padding:18px 20px 12px">
+              <div style="display:flex;align-items:center;gap:7px">
+              <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">contas de {{ mesLongo }}</span>
+            </div>
+              <div style="font-size:11.5px;color:#8b99a4;margin-top:5px;padding-left:12px">vencidas de meses anteriores aparecem aqui até serem pagas</div>
+            </div>
+            <div style="overflow-x:auto">
+              <div style="min-width:640px">
+                <div style="display:grid;grid-template-columns:minmax(150px,1.4fr) 132px 118px 112px 96px;gap:10px;padding:10px 20px;background:#f7f9fa;border-top:1px solid #edf1f3;border-bottom:1px solid #edf1f3;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#8b99a4">
+                  <span>Conta</span><span>Categoria</span><span style="text-align:right">Valor</span><span>Situação</span><span style="text-align:right">Ação</span>
+                </div>
+                <sc-for list="{{ contas }}" as="c" hint-placeholder-count="6">
+                  <div style="display:grid;grid-template-columns:minmax(150px,1.4fr) 132px 118px 112px 96px;gap:10px;padding:11px 20px;align-items:center;border-bottom:1px solid #edf1f3">
+                    <span style="min-width:0">
+                      <span style="display:flex;align-items:center;gap:6px;min-width:0">
+                        <span style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.desc }}</span>
+                        <span style="{{ c.estRec }}">↻</span>
+                      </span>
+                      <span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#8b99a4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.quem }}</span>
+                    </span>
+                    <span style="font-size:11.5px;color:#5a6b77;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.cat }}</span>
+                    <span style="font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;text-align:right;white-space:nowrap">{{ c.valor }}</span>
+                    <span style="{{ c.estSit }}">{{ c.sit }}</span>
+                    <span style="display:flex;justify-content:flex-end">
+                      <button onClick="{{ c.pagar }}" style="{{ c.estBotao }}">{{ c.acao }}</button>
+                    </span>
+                  </div>
+                </sc-for>
+                <sc-if value="{{ semContas }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:22px 20px;font-family:'Plus Jakarta Sans',sans-serif;font-size:12.5px;color:#8b99a4">Nenhuma conta lançada nesse mês.</div>
+                </sc-if>
+              </div>
+            </div>
+          </section>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ehFolha }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <section class="cap-rise" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:18px;padding:18px 22px;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+            <sc-for list="{{ folhaTiles }}" as="t" hint-placeholder-count="3">
+              <div style="min-width:0" title="{{ t.title }}">
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#8b99a4">{{ t.rot }}</div>
+                <div style="font-family:'Outfit',sans-serif;font-size:24px;font-weight:700;line-height:1.15;margin-top:3px;color:{{ t.cor }}">{{ t.v }}</div>
+                <div style="font-size:11px;color:#8b99a4;margin-top:2px">{{ t.nota }}</div>
+              </div>
+            </sc-for>
+          </section>
+
+          <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:18px 20px 16px">
+            <div style="display:flex;align-items:center;gap:7px">
+              <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">por colaborador</span>
+            </div>
+            <div style="font-size:11.5px;color:#8b99a4;margin:5px 0 8px;padding-left:12px;text-wrap:pretty">salário recorrente lançado 1 vez nasce sozinho todo mês · a saída do MP casada na Conciliação dá baixa aqui</div>
+            <sc-for list="{{ folhaLinhas }}" as="l" hint-placeholder-count="4">
+              <div style="padding:11px 0;border-bottom:1px solid #f1f4f5">
+                <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+                  <span style="{{ l.estAvatar }}">{{ l.ini }}</span>
+                  <span style="flex:1;min-width:110px;font-size:13px;font-weight:650">{{ l.nome }}</span>
+                  <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#5a6b77;white-space:nowrap">{{ l.resumo }}</span>
+                  <button onClick="{{ l.lancar }}" style="height:28px;padding:0 12px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:11.5px;font-weight:600;white-space:nowrap;transition:background 150ms ease" style-hover="background:#e7ecee">Lançar</button>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:5px;margin-top:8px;padding-left:35px">
+                  <sc-for list="{{ l.itens }}" as="i" hint-placeholder-count="2">
+                    <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
+                      <span style="flex:1;min-width:0;font-size:12px;color:#3d4f5c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ i.desc }}</span>
+                      <span style="font-family:'Outfit',sans-serif;font-size:12.5px;font-weight:650;white-space:nowrap">{{ i.valor }}</span>
+                      <span style="{{ i.estSit }}">{{ i.sit }}</span>
+                      <button onClick="{{ i.pagar }}" style="{{ i.estBotao }}">{{ i.acao }}</button>
+                    </div>
+                  </sc-for>
+                  <sc-if value="{{ l.vazio }}" hint-placeholder-val="{{ false }}">
+                    <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#b6c0c7">nada lançado neste mês</span>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-for>
+          </section>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ehCustos }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <section class="cap-rise" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:18px;padding:18px 22px;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+            <sc-for list="{{ custosTiles }}" as="t" hint-placeholder-count="4">
+              <div style="min-width:0" title="{{ t.title }}">
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#8b99a4">{{ t.rot }}</div>
+                <div style="font-family:'Outfit',sans-serif;font-size:24px;font-weight:700;line-height:1.15;margin-top:3px;color:{{ t.cor }}">{{ t.v }}</div>
+                <div style="font-size:11px;color:#8b99a4;margin-top:2px">{{ t.nota }}</div>
+              </div>
+            </sc-for>
+          </section>
+
+          <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:18px 20px 18px">
+            <div style="display:flex;align-items:center;gap:7px">
+              <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">novo custo</span>
+            </div>
+            <div style="font-size:11.5px;color:#8b99a4;margin:5px 0 12px;padding-left:12px;text-wrap:pretty">valor fixo em R$ ou percentual sobre uma base · o percentual recalcula sozinho mês a mês</div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <input value="{{ custo.nome }}" onChange="{{ mudarCustoNome }}" placeholder="descrição (ex.: Aluguel, Comissão do time)" style="height:32px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 12px;font-family:inherit;font-size:12px;color:#0c1d2b;outline:none;flex:2 1 190px;min-width:0" />
+              <div style="display:inline-flex;gap:3px;padding:3px;border-radius:999px;background:#f1f4f5">
+                <button onClick="{{ custoBrl }}" style="{{ estCustoBrl }}">R$ Fixo</button>
+                <button onClick="{{ custoPct }}" style="{{ estCustoPct }}">% Sobre base</button>
+              </div>
+              <span style="display:inline-flex;align-items:center;gap:4px">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4">{{ custoUnidade }}</span>
+                <input value="{{ custo.valor }}" onChange="{{ mudarCustoValor }}" placeholder="0" style="height:32px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 12px;font-family:inherit;font-size:12px;color:#0c1d2b;outline:none;width:92px;text-align:right;font-family:'Outfit',sans-serif;font-weight:650" />
+              </span>
+              <sc-if value="{{ custoEhPct }}" hint-placeholder-val="{{ false }}">
+                <select value="{{ custo.base }}" onChange="{{ mudarCustoBase }}" style="height:32px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 12px;font-family:inherit;font-size:12px;color:#0c1d2b;outline:none;min-width:186px;background:#fff;cursor:pointer">
+                  <option value="won">sobre os ganhos do mês</option>
+                  <option value="card12x">sobre o cartão 12x</option>
+                  <option value="received">sobre o recebido</option>
+                </select>
+              </sc-if>
+              <button onClick="{{ alternarCustoRec }}" style="{{ estCustoRec }}">↻ Todo mês</button>
+              <button onClick="{{ lancarCusto }}" style="{{ estLancarCusto }}">{{ rotuloLancarCusto }}</button>
+            </div>
+          </section>
+
+          <section class="cap-rise" style="overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+            <div style="padding:18px 20px 12px">
+              <div style="display:flex;align-items:center;gap:7px">
+              <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">custos de {{ mesLongo }}</span>
+            </div>
+              <div style="font-size:11.5px;color:#8b99a4;margin-top:5px;padding-left:12px;text-wrap:pretty">mídia, IA e WhatsApp entram sozinhos do que foi medido · o total alimenta o resultado do mês na Visão geral</div>
+            </div>
+            <sc-for list="{{ listaCustos }}" as="c" hint-placeholder-count="6">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:11px 20px;border-top:1px solid #edf1f3">
+                <span style="flex:1;min-width:150px">
+                  <span style="display:flex;align-items:center;gap:6px">
+                    <span style="font-size:12.5px;font-weight:600">{{ c.nome }}</span>
+                    <span style="{{ c.estAuto }}">automático</span>
+                    <span style="{{ c.estRec }}">↻</span>
+                  </span>
+                  <span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;margin-top:2px">{{ c.origem }}</span>
+                </span>
+                <span style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;white-space:nowrap">{{ c.valor }}</span>
+                <button onClick="{{ c.remover }}" style="{{ c.estRemover }}">Remover</button>
+              </div>
+            </sc-for>
+          </section>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ehPagamentos }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <sc-if value="{{ temNaoIdentificados }}" hint-placeholder-val="{{ true }}">
+            <section class="cap-rise" style="position:relative;overflow:hidden;flex:0 0 auto;border-radius:24px;background:linear-gradient(120deg,#0a2434,#051C2C 70%);box-shadow:0 1px 2px rgba(5,28,44,.14),0 14px 30px -24px rgba(5,28,44,.6);padding:14px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+              <span style="position:absolute;right:-28px;top:-48px;width:130px;height:130px;color:#23D8D3;opacity:.07;pointer-events:none"><svg width="130" height="130" viewBox="355 525 455 590"><polygon fill="currentColor" points="800.7 535.53 800.7 1103.92 763 983.8 749.25 939.91 691.16 754.61 501.54 817.84 457.65 832.42 362.47 864.14 443.6 803.33 481.22 775.08 800.7 535.53"></polygon></svg></span>
+              <div style="position:relative;flex:1 1 240px;min-width:0;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+                <div style="display:flex;align-items:center;gap:7px">
+                  <span style="width:5px;height:14px;border-radius:999px;background:#ffb3a8;flex-shrink:0"></span>
+                  <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#ffb3a8">sem dono</span>
+                </div>
+                <span style="font-family:'Outfit',sans-serif;font-size:19px;font-weight:700;letter-spacing:-.025em;color:#F3FBFF;white-space:nowrap">{{ naoIdTitulo }}</span>
+                <span style="font-size:11.5px;color:rgba(243,251,255,.6);text-wrap:pretty">dinheiro que entrou e não achou cliente · vincular é o que dá baixa na fatura</span>
+              </div>
+              <button onClick="{{ filtrarNaoId }}" style="position:relative;height:34px;padding:0 16px;border-radius:999px;background:#F3FBFF;color:#051C2C;font-size:12px;font-weight:700;white-space:nowrap;transition:background 150ms ease" style-hover="background:#fff">Ver quais →</button>
+            </section>
+          </sc-if>
+
+          <section class="cap-rise" style="flex:0 0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:20px;padding:20px 24px;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+            <div style="min-width:0">
+              <div style="font-size:12.5px;color:#5a6b77">Recebido</div>
+              <div style="font-family:'Outfit',sans-serif;font-size:28px;font-weight:700;letter-spacing:-.025em;line-height:1.1;margin-top:3px">{{ recebido }}</div>
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;margin-top:2px">{{ recebidoNota }}</div>
+            </div>
+            <div style="min-width:0">
+              <div style="font-size:12.5px;color:#5a6b77">Aguardando</div>
+              <div style="font-family:'Outfit',sans-serif;font-size:28px;font-weight:700;letter-spacing:-.025em;line-height:1.1;margin-top:3px;color:{{ corAguardando }}">{{ aguardando }}</div>
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;margin-top:2px">{{ aguardandoNota }}</div>
+            </div>
+            <div style="min-width:0;grid-column:span 2">
+              <div style="font-size:12.5px;color:#5a6b77">Por forma de pagamento</div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+                <sc-for list="{{ formas }}" as="f" hint-placeholder-count="3">
+                  <span style="display:inline-flex;align-items:baseline;gap:6px;padding:5px 12px;border-radius:999px;background:#f7f9fa;white-space:nowrap">
+                    <span style="font-size:11.5px;font-weight:600;color:#3d4f5c">{{ f.nome }}</span>
+                    <span style="font-family:'Outfit',sans-serif;font-size:13px;font-weight:700">{{ f.valor }}</span>
+                  </span>
+                </sc-for>
+                <sc-if value="{{ semFormas }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4">nada no período</span>
+                </sc-if>
+              </div>
+            </div>
+          </section>
+
+          <section class="cap-rise" style="flex:0 0 auto;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid #edf1f3">
+              <div style="display:inline-flex;flex-wrap:wrap;max-width:100%;gap:3px;padding:3px;border-radius:999px;background:#f1f4f5">
+                <sc-for list="{{ filtros }}" as="f" hint-placeholder-count="4">
+                  <button onClick="{{ f.escolher }}" style="{{ f.est }}">{{ f.label }} <span style="font-family:'Outfit',sans-serif">{{ f.n }}</span></button>
+                </sc-for>
+              </div>
+              <label style="display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 14px;border-radius:999px;background:#f1f4f5;color:#5a6b77;margin-left:auto;min-width:180px">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><circle cx="11" cy="11" r="7"></circle><path d="M20.4 20.4l-4.2-4.2"></path></svg>
+                <input value="{{ busca }}" onChange="{{ mudarBusca }}" placeholder="buscar pagador, CPF ou cliente" style="flex:1;min-width:0;border:0;background:none;outline:none;font-family:inherit;font-size:12px;color:#0c1d2b" />
+              </label>
+            </div>
+            <div style="overflow-x:auto">
+              <div style="min-width:880px">
+                <div style="display:grid;grid-template-columns:132px minmax(170px,1.5fr) minmax(160px,1.2fr) 104px 120px 108px 96px;gap:10px;padding:10px 16px;background:#f7f9fa;border-bottom:1px solid #edf1f3;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#8b99a4">
+                  <span>Data</span><span>Pagador</span><span>Cliente</span><span style="text-align:right">Valor</span><span>Forma</span><span>Status</span><span>Fatura</span>
+                </div>
+                <sc-for list="{{ linhas }}" as="p" hint-placeholder-count="8">
+                  <div style="display:grid;grid-template-columns:132px minmax(170px,1.5fr) minmax(160px,1.2fr) 104px 120px 108px 96px;gap:10px;padding:11px 16px;align-items:center;border-bottom:1px solid #edf1f3">
+                    <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#5a6b77;white-space:nowrap">{{ p.data }}</span>
+                    <span style="min-width:0">
+                      <span style="display:block;font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.pagador }}</span>
+                      <span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#8b99a4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.doc }}</span>
+                      <span style="{{ p.estBanco }}">{{ p.banco }}</span>
+                    </span>
+                    <span style="min-width:0">
+                      <span style="{{ p.estCliente }}" title="{{ p.tituloCasamento }}">{{ p.cliente }}</span>
+                      <span style="{{ p.estVincular }}">
+                        <select value="{{ p.escolhido }}" onChange="{{ p.escolher }}" style="height:28px;max-width:126px;border:0;border-radius:999px;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;padding:0 9px;font-family:inherit;font-size:11.5px;color:#3d4f5c;cursor:pointer">
+                          <option value="">vincular a…</option>
+                          <sc-for list="{{ p.clientes }}" as="c" hint-placeholder-count="4">
+                            <option value="{{ c.id }}">{{ c.nome }}</option>
+                          </sc-for>
+                        </select>
+                        <button onClick="{{ p.vincular }}" style="{{ p.estOk }}">OK</button>
+                      </span>
+                    </span>
+                    <span style="font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;text-align:right;white-space:nowrap">{{ p.valor }}</span>
+                    <span style="font-size:11.5px;color:#3d4f5c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.forma }}</span>
+                    <span style="min-width:0">
+                      <span style="{{ p.estStatus }}">{{ p.status }}</span>
+                      <span style="{{ p.estMismatch }}">payer difere</span>
+                    </span>
+                    <span style="{{ p.estFatura }}">{{ p.fatura }}</span>
+                  </div>
+                </sc-for>
+                <sc-if value="{{ vazio }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:26px 16px;font-family:'Plus Jakarta Sans',sans-serif;font-size:12.5px;color:#8b99a4">nada neste filtro · <button onClick="{{ limpar }}" style="color:#0F766E;font-weight:600">Limpar</button></div>
+                </sc-if>
+              </div>
+            </div>
+            <div style="padding:11px 16px;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;line-height:1.55;color:#8b99a4;text-wrap:pretty">o casamento acontece pelo link do cockpit (fatura, lead ou assinatura) ou pelo e-mail do pagador · a baixa automática de fatura exige valor exato quando o casamento é por e-mail</div>
+          </section>
+
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Financeiro (screens/expenses.jsx + finance-hub.jsx): seis abas sobre o mesmo
+  // mês — Resumo (fluxo, DRE, pendências), Conciliação (toda entrada precisa de
+  // dono), A pagar, Folha, Pagamentos (Mercado Pago) e Custos. O plano de contas
+  // é o SECTOR_CATS, que decide o setor de cada linha no DRE.
+  static SETORES = [
+    ["deducoes", "Deduções da receita", [["imposto", "Impostos sobre receita (DAS)"]]],
+    ["cogs", "Custo do serviço (COGS)", [["infra", "Infra e hosting"], ["apis", "APIs e IA do produto"], ["suporte", "Suporte e CS"], ["taxas", "Taxas de pagamento"]]],
+    ["sm", "Vendas & Marketing", [["pessoal_com", "Pessoal · comercial"], ["comissao", "Comissões"], ["midia", "Mídia paga (manual)"], ["mkt", "Ferramentas de marketing"]]],
+    ["rd", "Produto & Desenvolvimento", [["pessoal_dev", "Pessoal · produto e dev"], ["dev", "Ferramentas de dev"]]],
+    ["ga", "Administrativo (G&A)", [["prolabore", "Pró-labore"], ["pessoal_adm", "Pessoal · administrativo"], ["contab", "Contabilidade e jurídico"], ["escritorio", "Escritório e estrutura"], ["bancos", "Tarifas bancárias"], ["outros", "Outros"]]],
+  ];
+  static SETOR_LABEL = { deducoes: "Deduções da receita", cogs: "Custo do serviço", sm: "Vendas & Marketing", rd: "Produto & Desenvolvimento", ga: "Administrativo" };
+  static RECEITA_LABEL = { renewal: "Assinaturas", installment: "Parcelas de contrato", manual: "Cobranças avulsas", upsell: "Upsell", prorata: "Upgrade de plano" };
+  static MOTIVOS = ["estorno", "transferência interna", "não é do produto", "teste", "outro"];
+  static CORES = ["#0F766E", "#5b6bd6", "#a16207", "#175cd3", "#177a4c", "#b42318", "#8b99a4", "#c2410c", "#0e7490"];
+  static TIME = [["mc", "Manuela Costa"], ["rm", "Rafael Moura"], ["ba", "Bruno Alencar"], ["vn", "Vitor Nunes"], ["ls", "Leo Sander"]];
+  static CLIENTES = [["c1", "Studio Kern"], ["c2", "Nutri Vitta"], ["c3", "Oficina Prado"], ["c4", "Clínica Arbo"],
+    ["c5", "Mercado Ponto"], ["c6", "Grupo Vante"], ["c7", "Galante Holding"], ["c8", "Unique Baby"], ["c9", "Instituto Rima"]];
+  static MESES = ["2026-06", "2026-07", "2026-08", "2026-09"];
+
+  // Receita recebida no mês (faturas baixadas) e o fluxo dos quatro meses
+  static RECEITA = { "2026-09": { renewal: 74800, installment: 24000, manual: 6400, upsell: 4800, prorata: 2200 },
+    "2026-08": { renewal: 71200, installment: 24000, manual: 4800, upsell: 3200, prorata: 1800 },
+    "2026-07": { renewal: 66400, installment: 14400, manual: 3200, upsell: 2400, prorata: 0 },
+    "2026-06": { renewal: 61200, installment: 9600, manual: 2400, upsell: 1600, prorata: 0 } };
+
+  static contasIniciais() {
+    // desc, categoria, valor, dia do vencimento, mês, favorecido, pessoa, status, recorrente
+    const L = [
+      ["Salário · Manuela Costa", "pessoal_com", 4200, 5, "2026-09", "colaborador", "mc", "paga", true],
+      ["Salário · Rafael Moura", "pessoal_com", 6800, 5, "2026-09", "colaborador", "rm", "paga", true],
+      ["Salário · Bruno Alencar", "pessoal_com", 5200, 5, "2026-09", "colaborador", "ba", "aberta", true],
+      ["Salário · Vitor Nunes", "suporte", 4600, 5, "2026-09", "colaborador", "vn", "aberta", true],
+      ["Pró-labore · Leo Sander", "prolabore", 12000, 5, "2026-09", "colaborador", "ls", "paga", true],
+      ["Comissão de setembro · Rafael", "comissao", 3420, 10, "2026-09", "colaborador", "rm", "aberta", false],
+      ["Contabilidade", "contab", 890, 15, "2026-09", "fornecedor", "", "paga", true],
+      ["Hosting e banco (EasyPanel)", "infra", 640, 12, "2026-09", "fornecedor", "", "paga", true],
+      ["DAS · Simples Nacional", "imposto", 8940, 20, "2026-09", "fornecedor", "", "aberta", true],
+      ["Aluguel do escritório", "escritorio", 3800, 10, "2026-09", "fornecedor", "", "aberta", true],
+      ["Tarifas bancárias", "bancos", 120, 28, "2026-09", "fornecedor", "", "aberta", true],
+      ["Ferramentas de dev (Cursor, GitHub)", "dev", 420, 8, "2026-09", "fornecedor", "", "paga", true],
+      ["Notion e Figma", "mkt", 310, 3, "2026-09", "fornecedor", "", "paga", true],
+      ["Contabilidade · agosto", "contab", 890, 15, "2026-08", "fornecedor", "", "aberta", false],
+    ];
+    return L.map(([desc, cat, valor, dia, mes, favorecido, pessoa, status, rec], i) => ({
+      id: "c" + i, desc, cat, valor, dia, mes, favorecido, pessoa, status, rec,
+    }));
+  }
+  static custosIniciais() {
+    // nome, categoria, valor, unidade, base, automático, recorrente
+    return [
+      { id: "x1", nome: "Mídia paga (Meta)", cat: "ads", valor: 10180, unit: "brl", auto: true, rec: false },
+      { id: "x2", nome: "IA (APIs do produto)", cat: "ia", valor: 840, unit: "brl", auto: true, rec: false },
+      { id: "x3", nome: "WhatsApp (conversas)", cat: "wa", valor: 312, unit: "brl", auto: true, rec: false },
+      { id: "x4", nome: "Taxa da adquirente", cat: "taxas", valor: 3.99, unit: "pct", base: "received", auto: false, rec: true },
+      { id: "x5", nome: "Comissão do time", cat: "comissao", valor: 5, unit: "pct", base: "won", auto: false, rec: true },
+    ];
+  }
+  static pagamentosIniciais() {
+    const L = [
+      [19, "09:12", "MARINA KERN", "123.456.789-01", 24000, "PIX", "approved", "c1", "reference", true, "", false],
+      [19, "08:40", "HELENA VITTA SUPLEMENTOS LTDA", "28.114.907/0001-33", 4800, "Cartão de crédito · 12x", "approved", "c2", "subscription", true, "", false],
+      [18, "17:26", "SERGIO PRADO", "987.654.321-09", 9600, "PIX", "approved", "c3", "email", true, "", false],
+      [18, "14:03", "J. R. SANTOS", "456.789.123-45", 2000, "PIX", "approved", null, "", false, "Banco do Brasil · ag 1234", false],
+      [18, "11:55", "DIEGO ARBO", "321.654.987-00", 24000, "Boleto", "approved", "c4", "reference", true, "", false],
+      [17, "16:18", "MERCADO PONTO COMERCIO", "28.114.907/0001-33", 3200, "Cartão de crédito · 6x", "approved", "c5", "preapproval", true, "", true],
+      [17, "10:31", "PAGAMENTO NAO IDENTIFICADO", "", 800, "PIX", "approved", null, "", false, "Nubank · via QR", false],
+      [16, "15:44", "ROGERIO VANTE", "159.753.486-22", 9600, "Cartão de crédito · 3x", "approved", "c6", "manual", true, "", false],
+      [16, "09:07", "GALANTE HOLDING SA", "11.222.333/0001-44", 8250, "Boleto", "pending", "c7", "reference", false, "", false],
+      [15, "18:52", "UNIQUE BABY COMERCIO LTDA", "55.666.777/0001-88", 10000, "Cartão de crédito · 12x", "rejected", "c8", "subscription", false, "", false],
+      [15, "12:20", "A. M. OLIVEIRA", "", 1200, "PIX", "approved", null, "", false, "Itaú · transferência", false],
+      [14, "14:36", "GALANTE HOLDING SA", "11.222.333/0001-44", 2230, "Boleto", "pending", "c7", "reference", false, "", false],
+      [7, "11:02", "STUDIO KERN LTDA", "123.456.789-01", 2000, "Boleto", "pending", "c1", "reference", false, "", false],
+      [12, "10:14", "STUDIO KERN LTDA", "123.456.789-01", 2000, "Cartão de crédito · 1x", "approved", "c1", "email", false, "", false],
+    ];
+    return L.map(([dia, hora, pagador, doc, valor, forma, status, cliente, casadoPor, fatura, banco, mismatch], i) => ({
+      id: "p" + i, dia, hora, pagador, doc, valor, forma, status, cliente, casadoPor, fatura, banco, mismatch, ignorado: "",
+    }));
+  }
+  static STATUS = {
+    approved: ["aprovado", "#177a4c", "#e9f6ef"], pending: ["pendente", "#a16207", "#fbf4e6"],
+    in_process: ["em análise", "#a16207", "#fbf4e6"], rejected: ["recusado", "#b42318", "#fdf3f2"],
+  };
+  static CASAMENTO = { reference: "casado pela fatura/link do cockpit", subscription: "casado pela assinatura",
+    preapproval: "casado pela assinatura recorrente do MP", email: "casado pelo e-mail do pagador", manual: "vinculado manualmente" };
+
+  state = { aba: "resumo", mes: "2026-09", contas: Component.contasIniciais(), custos: Component.custosIniciais(),
+    pagamentos: Component.pagamentosIniciais(), escolhas: {}, motivos: {}, regras: [],
+    novo: { desc: "", cat: "outros", valor: "", venc: "2026-09-05", favorecido: "fornecedor", pessoa: "", rec: false },
+    custo: { nome: "", valor: "", unit: "brl", base: "won", rec: false },
+    busca: "", filtro: "todos", sync: 0, syncAt: 12, aviso: null };
+  componentWillUnmount() { clearTimeout(this._a); clearTimeout(this._s); }
+
+  money(n) { const v = Math.round(Number(n) || 0); return "R$ " + v.toLocaleString("pt-BR"); }
+  int(n) { return Math.round(Number(n) || 0).toLocaleString("pt-BR"); }
+  num(v) { const n = Number(String(v ?? "").replace(",", ".")); return Number.isFinite(n) ? n : 0; }
+  mesCurto(mk) { return new Date(mk + "-01T12:00:00").toLocaleDateString("pt-BR", { month: "short" }).replace(".", ""); }
+  mesLongoDe(mk) { return new Date(mk + "-01T12:00:00").toLocaleDateString("pt-BR", { month: "long", year: "numeric" }); }
+  hoje() { return 19; }
+  data(dia, hora) { return String(dia).padStart(2, "0") + " set · " + hora; }
+  seg(ativo, alt) {
+    if (alt) return "min-width:34px;height:26px;padding:0 9px;border-radius:999px;font-size:11px;white-space:nowrap;text-transform:capitalize;transition:background 150ms ease;" +
+      (ativo ? "background:#0c1d2b;color:#fff;font-weight:650" : "background:#f1f4f5;color:#5a6b77;font-weight:500");
+    return "height:30px;padding:0 14px;border-radius:999px;font-size:12px;white-space:nowrap;transition:background 150ms ease,color 150ms ease;" +
+      (ativo ? "background:#0c1d2b;color:#fff;font-weight:650" : "background:transparent;color:#5a6b77;font-weight:500");
+  }
+  flash(texto, ok) {
+    this.setState({ aviso: { texto, ok: ok !== false } });
+    clearTimeout(this._a);
+    this._a = setTimeout(() => this.setState({ aviso: null }), 3600);
+  }
+  nomeCliente(id) { return (Component.CLIENTES.find((c) => c[0] === id) || [0, ""])[1]; }
+  nomePessoa(id) { return (Component.TIME.find((u) => u[0] === id) || [0, "Sem vínculo"])[1]; }
+  labelCat(k) {
+    for (const [, , cats] of Component.SETORES) { const hit = cats.find((c) => c[0] === k); if (hit) return hit[1]; }
+    return { ads: "Mídia paga (Meta, automático)", ia: "IA (APIs, automático)", wa: "WhatsApp (conversas, automático)" }[k] || k;
+  }
+  setorDe(k) {
+    for (const [sk, , cats] of Component.SETORES) if (cats.some((c) => c[0] === k)) return sk;
+    return k === "ads" ? "sm" : (k === "ia" || k === "wa" || k === "taxas") ? "cogs" : "ga";
+  }
+  // custo em R$: percentual resolve contra a base do mês
+  valorCusto(c, bases) {
+    if (c.unit !== "pct") return c.valor;
+    return Math.round((bases[c.base] || 0) * c.valor) / 100;
+  }
+
+  renderVals() {
+    const st = this.state;
+    const mes = st.mes;
+    const receita = Component.RECEITA[mes] || {};
+    const receitaTotal = Object.values(receita).reduce((a, v) => a + v, 0);
+    const bases = { received: receitaTotal, won: 112400, card12x: 48000 };
+    const contasMes = st.contas.filter((c) => c.mes === mes || (c.status !== "paga" && c.mes < mes));
+    const custosMes = st.custos.map((c) => Object.assign({}, c, { brl: this.valorCusto(c, bases) }));
+    const custosTotal = custosMes.reduce((a, c) => a + c.brl, 0);
+    const hoje = this.hoje();
+    const situacaoDe = (c) => c.status === "paga" ? "paga" : (c.mes < mes || c.dia < hoje) ? "vencida" : c.dia === hoje ? "vence hoje" : "a vencer";
+    const grupo = (nome) => contasMes.filter((c) => situacaoDe(c) === nome);
+    const somaDe = (l) => l.reduce((a, c) => a + c.valor, 0);
+    const vencidas = grupo("vencida"), hojeL = grupo("vence hoje"), aVencer = grupo("a vencer"), pagas = grupo("paga");
+    const despesasMes = somaDe(contasMes.filter((c) => c.mes === mes)) + custosTotal;
+    const abertasTotal = somaDe(vencidas) + somaDe(hojeL) + somaDe(aVencer);
+    const semDono = st.pagamentos.filter((p) => p.status === "approved" && !p.cliente && !p.ignorado);
+    const ignorados = st.pagamentos.filter((p) => p.ignorado);
+
+    // DRE: receita → deduções → COGS → margem → setores → resultado
+    const porSetor = { deducoes: {}, cogs: {}, sm: {}, rd: {}, ga: {} };
+    for (const c of contasMes.filter((x) => x.mes === mes)) {
+      const s2 = this.setorDe(c.cat);
+      porSetor[s2][c.cat] = (porSetor[s2][c.cat] || 0) + c.valor;
+    }
+    for (const c of custosMes) {
+      const s2 = this.setorDe(c.cat);
+      porSetor[s2][c.cat] = (porSetor[s2][c.cat] || 0) + c.brl;
+    }
+    const somaSet = (o) => Object.values(o).reduce((a, v) => a + v, 0);
+    const ded = somaSet(porSetor.deducoes), cogsT = somaSet(porSetor.cogs);
+    const smT = somaSet(porSetor.sm), rdT = somaSet(porSetor.rd), gaT = somaSet(porSetor.ga);
+    const liquida = receitaTotal - ded;
+    const bruto = liquida - cogsT;
+    const margem = liquida > 0 ? Math.round((bruto / liquida) * 1000) / 10 : null;
+    const resultado = bruto - smT - rdT - gaT;
+    const aReceber = st.pagamentos.filter((p) => p.status === "pending").reduce((a, p) => a + p.valor, 0);
+    const vencidasReceber = st.pagamentos.filter((p) => p.status === "pending" && p.dia < hoje - 2);
+
+    const vals = {
+      mov: this.props.movimento === false ? "off" : "on",
+      subtitulo: {
+        resumo: this.mesLongoDe(mes) + " · a foto do mês: fluxo de caixa, DRE e pendências",
+        conciliacao: "todo pagamento aprovado precisa de dono: cliente vinculado ou motivo",
+        pagar: this.mesLongoDe(mes) + " · contas com vencimento, situação e recorrência",
+        folha: this.mesLongoDe(mes) + " · o que foi pago a cada colaborador",
+        pagamentos: "pagamentos da conta Mercado Pago, casados com clientes e faturas",
+        custos: this.mesLongoDe(mes) + " · o total alimenta o resultado do mês na Visão geral",
+      }[st.aba],
+      abas: [["resumo", "Resumo"], ["conciliacao", "Conciliação"], ["pagar", "A pagar"], ["folha", "Folha"], ["pagamentos", "Pagamentos"], ["custos", "Custos"]]
+        .map(([id, label]) => ({ label, est: this.seg(st.aba === id), escolher: () => this.setState({ aba: id }) })),
+      estMeses: st.aba === "pagamentos" ? "display:none" : "display:inline-flex;align-items:center;gap:4px",
+      meses: Component.MESES.map((mk) => ({ label: this.mesCurto(mk), est: this.seg(mes === mk, true), escolher: () => this.setState({ mes: mk }) })),
+      mesLongo: this.mesLongoDe(mes),
+      temAviso: !!st.aviso, aviso: st.aviso ? st.aviso.texto : "",
+      estAviso: "flex:0 0 auto;padding:10px 18px;border-radius:999px;font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:600;" +
+        (st.aviso && st.aviso.ok ? "background:#E9F5F3;color:#0b6b64" : "background:#fbf4e6;color:#a16207"),
+      ehResumo: st.aba === "resumo", ehConciliacao: st.aba === "conciliacao", ehPagar: st.aba === "pagar",
+      ehFolha: st.aba === "folha", ehPagamentos: st.aba === "pagamentos", ehCustos: st.aba === "custos",
+    };
+
+    // ── Resumo: pendências com prazo primeiro ───────────────────────────
+    const pend = [];
+    if (vencidasReceber.length) pend.push({ tom: "neg", titulo: this.money(vencidasReceber.reduce((a, p) => a + p.valor, 0)) + " vencidos a receber",
+      nota: vencidasReceber.length + (vencidasReceber.length === 1 ? " fatura" : " faturas"), acao: "Cobrar em Clientes ↗", ir: "Cl" });
+    if (vencidas.length) pend.push({ tom: "warn", titulo: vencidas.length + (vencidas.length === 1 ? " conta vencida · " : " contas vencidas · ") + this.money(somaDe(vencidas)),
+      nota: hojeL.length ? "mais " + hojeL.length + " vencendo hoje (" + this.money(somaDe(hojeL)) + ")" : "folha e fornecedores", acao: "Abrir A pagar", aba: "pagar" });
+    if (semDono.length) pend.push({ tom: "info", titulo: semDono.length + (semDono.length === 1 ? " entrada sem dono no Mercado Pago" : " entradas sem dono no Mercado Pago"),
+      nota: this.money(semDono.reduce((a, p) => a + p.valor, 0)) + " esperando cliente ou motivo", acao: "Conciliar", aba: "conciliacao" });
+    const TOM = { neg: ["#b42318", "#fdf3f2"], warn: ["#a16207", "#fbf4e6"], info: ["#175cd3", "#edf3fc"] };
+    vals.pendencias = pend.map((p, i) => ({
+      titulo: p.titulo, nota: p.nota, acao: p.acao, cor: TOM[p.tom][0],
+      est: "display:flex;align-items:center;gap:14px;padding:13px 18px;border-radius:24px;background:" + TOM[p.tom][1] + ";box-shadow:0 1px 2px rgba(12,29,43,.04)",
+      estBarra: "width:4px;height:34px;border-radius:999px;flex-shrink:0;background:" + TOM[p.tom][0],
+      agir: () => { if (p.aba) this.setState({ aba: p.aba }); else window.dispatchEvent(new CustomEvent("cockpit:ir", { detail: { tela: p.ir } })); },
+    }));
+
+    vals.foto = [
+      { rot: "recebido no mês", v: this.money(receitaTotal), nota: "faturas baixadas", cor: "#0c1d2b", title: "Faturas baixadas no mês (a mesma régua de caixa do cockpit)." },
+      { rot: "a receber", v: this.money(aReceber), nota: vencidasReceber.length ? vencidasReceber.length + " vencida(s)" : "nada vencido", cor: "#0c1d2b", title: "Faturas em aberto agora (qualquer mês)." },
+      { rot: "despesas do mês", v: this.money(despesasMes), nota: "contas + custos automáticos", cor: "#0c1d2b", title: "Contas a pagar com competência no mês + custos da aba Custos." },
+      { rot: "a pagar em aberto", v: this.money(abertasTotal), nota: vencidas.length ? vencidas.length + " vencida(s)" : "nada vencido", cor: "#0c1d2b", title: "Contas em aberto: vencidas + vencendo hoje + a vencer." },
+      { rot: "margem bruta", v: margem == null ? "—" : String(margem).replace(".", ",") + "%", nota: "lucro bruto " + this.money(bruto),
+        cor: margem != null && margem < 70 ? "#b42318" : "#0c1d2b", title: "(Receita líquida − custo do serviço) ÷ receita líquida. SaaS saudável opera entre 70% e 85%." },
+      { rot: "resultado do mês", v: this.money(resultado), nota: "recebido − despesas", cor: resultado < 0 ? "#b42318" : "#177a4c",
+        title: "Regime de caixa na receita (faturas baixadas) e competência nas despesas." },
+    ];
+
+    // fluxo dos quatro meses
+    const fluxoBruto = Component.MESES.map((mk) => {
+      const ent = Object.values(Component.RECEITA[mk] || {}).reduce((a, v) => a + v, 0);
+      const pagasMk = st.contas.filter((c) => c.mes === mk && c.status === "paga").reduce((a, c) => a + c.valor, 0);
+      const sai = pagasMk + (mk === mes ? custosTotal : Math.round(custosTotal * 0.92));
+      return { mk, ent, sai };
+    });
+    const maxF = Math.max(1, ...fluxoBruto.map((f) => Math.max(f.ent, f.sai)));
+    vals.fluxo = fluxoBruto.map((f) => {
+      const saldo = f.ent - f.sai;
+      return {
+        mes: this.mesCurto(f.mk),
+        estMes: "font-size:11.5px;text-transform:capitalize;color:" + (f.mk === mes ? "#0c1d2b" : "#8b99a4") + ";font-weight:" + (f.mk === mes ? "650" : "500"),
+        tEntrada: "entrou " + this.money(f.ent), tSaida: "saiu " + this.money(f.sai),
+        estEntrada: "height:8px;border-radius:999px;background:#177a4c;opacity:.85;width:" + Math.max(2, (f.ent / maxF) * 100) + "%",
+        estSaida: "height:8px;border-radius:999px;background:#b42318;opacity:.7;width:" + Math.max(2, (f.sai / maxF) * 100) + "%",
+        saldo: (saldo >= 0 ? "+ " : "− ") + this.money(Math.abs(saldo)),
+        estSaldo: "font-family:'Outfit',sans-serif;font-size:12.5px;font-weight:650;text-align:right;white-space:nowrap;color:" + (saldo >= 0 ? "#177a4c" : "#b42318"),
+      };
+    });
+    vals.previsto = "previsto pra " + this.mesLongoDe(mes) + ": entra " + this.money(aReceber) + " (faturas em aberto do mês) · sai " + this.money(abertasTotal) + " (contas abertas + custos)";
+
+    // gastos por categoria + pizza sobre os recebidos
+    const porCat = {};
+    for (const s2 of Object.values(porSetor)) for (const [k, v] of Object.entries(s2)) porCat[k] = (porCat[k] || 0) + v;
+    const itens = Object.entries(porCat).sort((a, b) => b[1] - a[1]);
+    const totalGastos = itens.reduce((a, x) => a + x[1], 0);
+    const saldoPizza = receitaTotal - totalGastos;
+    const fatiasFonte = itens.map(([k, v], i) => ({ k, v, label: this.labelCat(k), cor: Component.CORES[i % Component.CORES.length] }));
+    if (saldoPizza > 0) fatiasFonte.push({ k: "__s", v: saldoPizza, label: "Saldo após despesas", cor: "#dfe5e8" });
+    let acc = 0;
+    vals.fatias = receitaTotal > 0 && saldoPizza >= 0 ? fatiasFonte.map((f) => {
+      const share = f.v / receitaTotal;
+      const a0 = acc * Math.PI * 2 - Math.PI / 2;
+      acc += share;
+      const a1 = acc * Math.PI * 2 - Math.PI / 2;
+      const R = 62, cx = 66, cy = 66;
+      const x0 = cx + R * Math.cos(a0), y0 = cy + R * Math.sin(a0);
+      const x1 = cx + R * Math.cos(a1), y1 = cy + R * Math.sin(a1);
+      const big = a1 - a0 > Math.PI ? 1 : 0;
+      return { cor: f.cor, d: "M" + cx + " " + cy + " L" + x0.toFixed(1) + " " + y0.toFixed(1) + " A" + R + " " + R + " 0 " + big + " 1 " + x1.toFixed(1) + " " + y1.toFixed(1) + " Z" };
+    }) : [];
+    vals.gastos = fatiasFonte.filter((f) => f.k !== "__s").map((f) => ({
+      label: f.label, valor: this.money(f.v),
+      pct: receitaTotal > 0 ? Math.round((f.v / receitaTotal) * 100) + "%" : "—",
+      estCor: "width:9px;height:9px;border-radius:3px;flex-shrink:0;background:" + f.cor,
+    }));
+
+    const linhaDre = (label, valor, forte, indent, title) => ({
+      label, valor: this.money(valor), title: title || "",
+      est: "display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid #f1f4f5;" + (title ? "cursor:help" : ""),
+      estLabel: "font-size:" + (forte ? "13" : "12") + "px;color:" + (forte ? "#0c1d2b" : "#5a6b77") + ";font-weight:" + (forte ? "650" : "400") + ";" + (indent ? "padding-left:12px" : ""),
+      estValor: "font-family:'Outfit',sans-serif;font-size:" + (forte ? "13" : "12") + "px;font-weight:" + (forte ? "700" : "600") + ";white-space:nowrap;color:" + (valor < 0 ? "#b42318" : "#0c1d2b"),
+    });
+    const dre = [];
+    for (const [k, v] of Object.entries(receita).sort((a, b) => b[1] - a[1])) dre.push(linhaDre(Component.RECEITA_LABEL[k] || k, v, false, true));
+    dre.push(linhaDre("Receita recebida", receitaTotal, true));
+    const bloco = (sk) => {
+      const e = Object.entries(porSetor[sk]).sort((a, b) => b[1] - a[1]);
+      if (!e.length) return;
+      dre.push(linhaDre(Component.SETOR_LABEL[sk], e.reduce((a, x) => a + x[1], 0), true));
+      for (const [k, v] of e) dre.push(linhaDre(this.labelCat(k), v, false, true));
+    };
+    bloco("deducoes");
+    if (ded > 0) dre.push(linhaDre("Receita líquida", liquida, true));
+    bloco("cogs");
+    dre.push(linhaDre("Lucro bruto" + (margem != null ? " · margem " + String(margem).replace(".", ",") + "%" : ""), bruto, true, false, "Benchmark de SaaS: margem bruta saudável entre 70% e 85%."));
+    bloco("sm"); bloco("rd"); bloco("ga");
+    dre.push(linhaDre("Resultado do mês", resultado, true));
+    vals.dre = dre;
+    vals.temPendConc = semDono.length > 0;
+    vals.pendConc = semDono.length + " pagamento" + (semDono.length > 1 ? "s" : "") + " sem dono na conciliação (" + this.money(semDono.reduce((a, p) => a + p.valor, 0)) + ")";
+    return Object.assign(vals, this.valsConciliacao(st, semDono, ignorados, receitaTotal),
+      this.valsPagar(st, mes, contasMes, situacaoDe, vencidas, hojeL, aVencer, pagas, somaDe),
+      this.valsFolha(st, mes, contasMes, situacaoDe),
+      this.valsCustos(st, custosMes, custosTotal, bases, receitaTotal),
+      this.valsPagamentos(st));
+  }
+  // ── Conciliação: cliente vinculado ou motivo, e a regra aprendida ────────
+  valsConciliacao(st, semDono, ignorados, receitaTotal) {
+    const espelho = st.pagamentos.filter((p) => p.status === "approved").reduce((a, p) => a + p.valor, 0);
+    return {
+      motivos: Component.MOTIVOS,
+      concTiles: [
+        { rot: "espelho do MP no mês", v: this.money(espelho), nota: "aprovados na conta", cor: "#0c1d2b" },
+        { rot: "recebido no cockpit", v: this.money(receitaTotal), nota: "faturas baixadas", cor: "#0c1d2b" },
+        { rot: "sem dono", v: this.money(semDono.reduce((a, p) => a + p.valor, 0)), nota: semDono.length + " entrada" + (semDono.length === 1 ? "" : "s"),
+          cor: semDono.length ? "#b42318" : "#177a4c" },
+      ],
+      concLimpa: semDono.length === 0,
+      semDono: semDono.map((p) => {
+        const escolhido = st.escolhas[p.id] || "";
+        const motivo = st.motivos[p.id] || "";
+        // identidade mais forte do pagador vira a regra (bestIdOf da fonte)
+        const id = p.doc ? ["documento " + p.doc, "payerDoc"] : (p.pagador ? [p.pagador, "payerName"] : null);
+        const jaTemRegra = id && st.regras.some((r) => r.valor === (p.doc || p.pagador));
+        return {
+          pagador: p.pagador, valor: this.money(p.valor),
+          detalhe: [String(p.dia).padStart(2, "0") + " set", p.forma, p.banco].filter(Boolean).join(" · "),
+          regra: jaTemRegra ? "regra já criada pra este pagador" : "",
+          estRegra: jaTemRegra ? "font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#0F766E" : "display:none",
+          clientes: Component.CLIENTES.map(([cid, nome]) => ({ id: cid, nome })),
+          escolhido, motivo,
+          escolher: (e) => { const v = e.target.value; this.setState((s2) => ({ escolhas: Object.assign({}, s2.escolhas, { [p.id]: v }) })); },
+          mudarMotivo: (e) => { const v = e.target.value; this.setState((s2) => ({ motivos: Object.assign({}, s2.motivos, { [p.id]: v }) })); },
+          estVincular: escolhido ? "height:30px;padding:0 13px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:11.5px;font-weight:650;transition:background 150ms ease"
+            : "height:30px;padding:0 13px;border-radius:999px;background:#eef1f3;color:#b6c0c7;font-size:11.5px;font-weight:650;cursor:not-allowed",
+          vincular: () => {
+            if (!escolhido) return;
+            const casa = st.pagamentos.some((x) => x.cliente === escolhido && x.valor === p.valor && x.fatura);
+            this.setState((s2) => ({
+              pagamentos: s2.pagamentos.map((x) => x.id === p.id ? Object.assign({}, x, { cliente: escolhido, casadoPor: "manual", fatura: casa }) : x),
+              escolhas: Object.assign({}, s2.escolhas, { [p.id]: "" }),
+              regras: id ? s2.regras.concat([{ tipo: id[1], valor: p.doc || p.pagador, cliente: escolhido }]) : s2.regras,
+            }));
+            this.flash("vinculado a " + this.nomeCliente(escolhido) + (id ? " · regra criada: " + id[0] + " → sempre este cliente" : "") + (casa ? " · fatura de mesmo valor baixada" : ""));
+          },
+          estIgnorar: motivo ? "height:30px;padding:0 13px;border-radius:999px;background:#fbf4e6;color:#a16207;font-size:11.5px;font-weight:650;transition:background 150ms ease"
+            : "height:30px;padding:0 13px;border-radius:999px;background:#f7f9fa;color:#b6c0c7;font-size:11.5px;font-weight:650;cursor:not-allowed",
+          ignorar: () => {
+            if (!motivo) return;
+            this.setState((s2) => ({
+              pagamentos: s2.pagamentos.map((x) => x.id === p.id ? Object.assign({}, x, { ignorado: motivo }) : x),
+              motivos: Object.assign({}, s2.motivos, { [p.id]: "" }),
+            }));
+            this.flash("ignorado como " + motivo + " · sai da conciliação e não entra no DRE");
+          },
+        };
+      }),
+      temIgnorados: ignorados.length > 0,
+      ignorados: ignorados.map((p) => ({
+        pagador: p.pagador, valor: this.money(p.valor), motivo: p.ignorado,
+        voltar: () => {
+          this.setState((s2) => ({ pagamentos: s2.pagamentos.map((x) => x.id === p.id ? Object.assign({}, x, { ignorado: "" }) : x) }));
+          this.flash("voltou pra conciliação", false);
+        },
+      })),
+    };
+  }
+
+  // ── A pagar ──────────────────────────────────────────────────────────────
+  valsPagar(st, mes, contasMes, situacaoDe, vencidas, hojeL, aVencer, pagas, somaDe) {
+    const SIT = { paga: ["#177a4c", "#e9f6ef"], vencida: ["#b42318", "#fdf3f2"], "vence hoje": ["#a16207", "#fbf4e6"], "a vencer": ["#5a6b77", "#f1f4f5"] };
+    const n = st.novo;
+    const pode = !!n.desc.trim() && this.num(n.valor) > 0 && (n.favorecido !== "colaborador" || !!n.pessoa);
+    return {
+      pagarTiles: [
+        { rot: "vencidos", v: this.money(somaDe(vencidas)), nota: vencidas.length + " conta" + (vencidas.length === 1 ? "" : "s"), cor: vencidas.length ? "#b42318" : "#0c1d2b" },
+        { rot: "vencem hoje", v: this.money(somaDe(hojeL)), nota: hojeL.length + " conta" + (hojeL.length === 1 ? "" : "s"), cor: hojeL.length ? "#a16207" : "#0c1d2b" },
+        { rot: "a vencer no mês", v: this.money(somaDe(aVencer)), nota: aVencer.length + " conta" + (aVencer.length === 1 ? "" : "s"), cor: "#0c1d2b" },
+        { rot: "pagos no mês", v: this.money(somaDe(pagas)), nota: pagas.length + " conta" + (pagas.length === 1 ? "" : "s"), cor: "#177a4c" },
+      ],
+      categorias: Component.SETORES.map(([, setor, cats]) => ({ setor, itens: cats.map(([k, label]) => ({ k, label })) })),
+      time: Component.TIME.map(([id, nome]) => ({ id, nome })),
+      novo: { desc: n.desc, cat: n.cat, valor: n.valor, venc: n.venc, favorecido: n.favorecido, pessoa: n.pessoa },
+      pedePessoa: n.favorecido === "colaborador",
+      mudarDesc: (e) => this.setState((s2) => ({ novo: Object.assign({}, s2.novo, { desc: e.target.value }) })),
+      mudarCat: (e) => this.setState((s2) => ({ novo: Object.assign({}, s2.novo, { cat: e.target.value }) })),
+      mudarValor: (e) => this.setState((s2) => ({ novo: Object.assign({}, s2.novo, { valor: e.target.value }) })),
+      mudarVenc: (e) => this.setState((s2) => ({ novo: Object.assign({}, s2.novo, { venc: e.target.value }) })),
+      mudarFavorecido: (e) => this.setState((s2) => ({ novo: Object.assign({}, s2.novo, { favorecido: e.target.value }) })),
+      mudarPessoa: (e) => this.setState((s2) => ({ novo: Object.assign({}, s2.novo, { pessoa: e.target.value }) })),
+      estRecorrente: "height:32px;padding:0 13px;border-radius:999px;font-size:11.5px;font-weight:650;transition:background 150ms ease;" +
+        (n.rec ? "background:#E9F5F3;color:#0b6b64;box-shadow:inset 0 0 0 1px rgba(15,118,110,.3)" : "background:#f1f4f5;color:#5a6b77"),
+      alternarRecorrente: () => this.setState((s2) => ({ novo: Object.assign({}, s2.novo, { rec: !s2.novo.rec }) })),
+      rotuloLancar: pode ? "Lançar conta" : (n.favorecido === "colaborador" && !n.pessoa ? "Escolha quem recebe" : "Preencha descrição e valor"),
+      estLancar: "height:32px;padding:0 15px;border-radius:999px;font-size:12px;font-weight:650;transition:background 150ms ease;" +
+        (pode ? "background:#0c1d2b;color:#fff" : "background:#eef1f3;color:#8b99a4;cursor:not-allowed"),
+      lancar: () => {
+        if (!pode) return;
+        const dia = Number(String(n.venc).slice(8, 10)) || 5;
+        this.setState((s2) => ({
+          contas: s2.contas.concat([{ id: "n" + s2.contas.length, desc: n.desc.trim(), cat: n.cat, valor: this.num(n.valor),
+            dia, mes: String(n.venc).slice(0, 7) || mes, favorecido: n.favorecido, pessoa: n.pessoa, status: "aberta", rec: n.rec }]),
+          novo: { desc: "", cat: "outros", valor: "", venc: mes + "-05", favorecido: "fornecedor", pessoa: "", rec: false },
+        }));
+        this.flash("conta lançada em " + this.labelCat(n.cat) + (n.rec ? " · nasce sozinha todo mês" : "") + (n.favorecido === "colaborador" ? " · aparece na Folha" : ""));
+      },
+      semContas: contasMes.length === 0,
+      contas: contasMes.slice().sort((a, b) => {
+         const ordem = { vencida: 0, "vence hoje": 1, "a vencer": 2, paga: 3 };
+         return ordem[situacaoDe(a)] - ordem[situacaoDe(b)] || a.dia - b.dia;
+      }).map((c) => {
+        const sit = situacaoDe(c);
+        const t = SIT[sit];
+        return {
+          desc: c.desc, cat: this.labelCat(c.cat), valor: this.money(c.valor),
+          quem: [c.favorecido === "colaborador" ? this.nomePessoa(c.pessoa) : "fornecedor", "vence " + String(c.dia).padStart(2, "0") + "/" + c.mes.slice(5)].join(" · "),
+          estRec: c.rec ? "font-size:10px;color:#0F766E;flex-shrink:0" : "display:none",
+          sit: sit === "paga" ? "paga" : sit,
+          estSit: "display:inline-flex;align-items:center;height:21px;padding:0 10px;border-radius:999px;font-size:10.5px;font-weight:600;white-space:nowrap;background:" + t[1] + ";color:" + t[0],
+          acao: c.status === "paga" ? "Paga ✓" : "Dar baixa",
+          estBotao: c.status === "paga"
+            ? "height:28px;padding:0 11px;border-radius:999px;background:transparent;color:#8b99a4;font-size:11px;font-weight:600;cursor:default"
+            : "height:28px;padding:0 12px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:11px;font-weight:650;transition:background 150ms ease",
+          pagar: () => {
+            if (c.status === "paga") return;
+            this.setState((s2) => ({ contas: s2.contas.map((x) => x.id === c.id ? Object.assign({}, x, { status: "paga" }) : x) }));
+            this.flash(this.money(c.valor) + " pago · " + c.desc);
+          },
+        };
+      }),
+    };
+  }
+
+  // ── Folha: as contas de colaborador na lente por pessoa ──────────────────
+  valsFolha(st, mes, contasMes, situacaoDe) {
+    const doMes = contasMes.filter((c) => c.favorecido === "colaborador" && c.mes === mes);
+    const soma = (l) => l.reduce((a, c) => a + c.valor, 0);
+    const pago = soma(doMes.filter((c) => c.status === "paga"));
+    const aberto = soma(doMes.filter((c) => c.status !== "paga"));
+    const SIT = { paga: ["#177a4c", "#e9f6ef"], vencida: ["#b42318", "#fdf3f2"], "vence hoje": ["#a16207", "#fbf4e6"], "a vencer": ["#5a6b77", "#f1f4f5"] };
+    return {
+      folhaTiles: [
+        { rot: "folha de " + this.mesCurto(mes), v: this.money(pago + aberto), nota: doMes.length + " lançamento" + (doMes.length === 1 ? "" : "s"), cor: "#0c1d2b",
+          title: "Todas as contas a pagar do mês com favorecido colaborador (salário, pró-labore, comissão, bônus)." },
+        { rot: "pago", v: this.money(pago), nota: "já saiu", cor: "#177a4c", title: "" },
+        { rot: "em aberto", v: this.money(aberto), nota: aberto > 0 ? "esperando baixa" : "nada em aberto", cor: aberto > 0 ? "#b42318" : "#0c1d2b", title: "" },
+      ],
+      folhaLinhas: Component.TIME.map(([id, nome]) => {
+        const itens = doMes.filter((c) => c.pessoa === id);
+        const p = soma(itens.filter((c) => c.status === "paga")), a = soma(itens.filter((c) => c.status !== "paga"));
+        return {
+          nome, ini: nome.split(" ").map((x) => x[0]).join(""),
+          estAvatar: "flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:999px;background:#0c1d2b;color:#fff;font-family:'Outfit',sans-serif;font-size:10px;font-weight:700",
+          resumo: itens.length ? this.money(p + a) + " · " + (a > 0 ? this.money(a) + " em aberto" : "tudo pago") : "—",
+          vazio: itens.length === 0,
+          lancar: () => this.setState((s2) => ({ aba: "pagar", novo: Object.assign({}, s2.novo, { favorecido: "colaborador", pessoa: id, cat: id === "ls" ? "prolabore" : "pessoal_com" }) })),
+          itens: itens.map((c) => {
+            const sit = situacaoDe(c), t = SIT[sit];
+            return {
+              desc: c.desc + " · " + this.labelCat(c.cat), valor: this.money(c.valor), sit,
+              estSit: "display:inline-flex;align-items:center;height:20px;padding:0 9px;border-radius:999px;font-size:10px;font-weight:600;white-space:nowrap;background:" + t[1] + ";color:" + t[0],
+              acao: c.status === "paga" ? "" : "Dar baixa",
+              estBotao: c.status === "paga" ? "display:none" : "height:26px;padding:0 11px;border-radius:999px;background:#f1f4f5;color:#0c1d2b;font-size:10.5px;font-weight:650;transition:background 150ms ease",
+              pagar: () => {
+                this.setState((s2) => ({ contas: s2.contas.map((x) => x.id === c.id ? Object.assign({}, x, { status: "paga" }) : x) }));
+                this.flash(this.money(c.valor) + " pago a " + nome.split(" ")[0]);
+              },
+            };
+          }),
+        };
+      }),
+    };
+  }
+
+  // ── Custos: fixo em R$ ou percentual sobre base ──────────────────────────
+  valsCustos(st, custosMes, custosTotal, bases, receitaTotal) {
+    const c = st.custo;
+    const v = this.num(c.valor);
+    const pode = !!c.nome.trim() && v > 0 && (c.unit !== "pct" || v <= 100);
+    const autos = custosMes.filter((x) => x.auto), manuais = custosMes.filter((x) => !x.auto);
+    const BASE_LABEL = { won: "ganhos do mês", card12x: "cartão 12x", received: "recebido" };
+    return {
+      custosTiles: [
+        { rot: "custos do mês", v: this.money(custosTotal), nota: custosMes.length + " lançamento" + (custosMes.length === 1 ? "" : "s"), cor: "#0c1d2b", title: "O total alimenta o resultado do mês na Visão geral." },
+        { rot: "automáticos", v: this.money(autos.reduce((a, x) => a + x.brl, 0)), nota: "mídia, IA e WhatsApp medidos", cor: "#0c1d2b", title: "Entram sozinhos do que foi medido no período." },
+        { rot: "percentuais", v: this.money(manuais.filter((x) => x.unit === "pct").reduce((a, x) => a + x.brl, 0)), nota: "recalculam mês a mês", cor: "#0c1d2b", title: "Percentual sobre ganhos, cartão 12x ou recebido." },
+        { rot: "sobre o recebido", v: receitaTotal > 0 ? Math.round((custosTotal / receitaTotal) * 100) + "%" : "—", nota: "quanto do que entrou virou custo",
+          cor: receitaTotal > 0 && custosTotal / receitaTotal > 0.35 ? "#a16207" : "#0c1d2b", title: "" },
+      ],
+      custo: { nome: c.nome, valor: c.valor, base: c.base },
+      custoEhPct: c.unit === "pct", custoUnidade: c.unit === "pct" ? "%" : "R$",
+      estCustoBrl: this.seg(c.unit === "brl"), estCustoPct: this.seg(c.unit === "pct"),
+      custoBrl: () => this.setState((s2) => ({ custo: Object.assign({}, s2.custo, { unit: "brl" }) })),
+      custoPct: () => this.setState((s2) => ({ custo: Object.assign({}, s2.custo, { unit: "pct" }) })),
+      mudarCustoNome: (e) => this.setState((s2) => ({ custo: Object.assign({}, s2.custo, { nome: e.target.value }) })),
+      mudarCustoValor: (e) => this.setState((s2) => ({ custo: Object.assign({}, s2.custo, { valor: e.target.value }) })),
+      mudarCustoBase: (e) => this.setState((s2) => ({ custo: Object.assign({}, s2.custo, { base: e.target.value }) })),
+      estCustoRec: "height:32px;padding:0 13px;border-radius:999px;font-size:11.5px;font-weight:650;transition:background 150ms ease;" +
+        (c.rec ? "background:#E9F5F3;color:#0b6b64;box-shadow:inset 0 0 0 1px rgba(15,118,110,.3)" : "background:#f1f4f5;color:#5a6b77"),
+      alternarCustoRec: () => this.setState((s2) => ({ custo: Object.assign({}, s2.custo, { rec: !s2.custo.rec }) })),
+      rotuloLancarCusto: pode ? "Lançar custo" : (c.unit === "pct" && v > 100 ? "Percentual até 100" : "Preencha descrição e valor"),
+      estLancarCusto: "height:32px;padding:0 15px;border-radius:999px;font-size:12px;font-weight:650;transition:background 150ms ease;" +
+        (pode ? "background:#0c1d2b;color:#fff" : "background:#eef1f3;color:#8b99a4;cursor:not-allowed"),
+      lancarCusto: () => {
+        if (!pode) return;
+        this.setState((s2) => ({
+          custos: s2.custos.concat([{ id: "n" + s2.custos.length, nome: c.nome.trim(), cat: "outros", valor: v, unit: c.unit, base: c.base, auto: false, rec: c.rec }]),
+          custo: { nome: "", valor: "", unit: "brl", base: "won", rec: false },
+        }));
+        this.flash("custo lançado" + (c.unit === "pct" ? " · " + v + "% sobre " + BASE_LABEL[c.base] + " = " + this.money((bases[c.base] || 0) * v / 100) : "") + (c.rec ? " · repete todo mês" : ""));
+      },
+      listaCustos: custosMes.slice().sort((a, b) => b.brl - a.brl).map((x) => ({
+        nome: x.nome, valor: this.money(x.brl),
+        origem: x.unit === "pct" ? x.valor + "% sobre " + BASE_LABEL[x.base] + " (" + this.money(bases[x.base] || 0) + ")" : this.labelCat(x.cat),
+        estAuto: x.auto ? "display:inline-flex;align-items:center;height:17px;padding:0 8px;border-radius:999px;background:#eef1f3;color:#3d4f5c;font-family:'Plus Jakarta Sans',sans-serif;font-size:9px;font-weight:600;letter-spacing:.04em" : "display:none",
+        estRec: x.rec ? "font-size:10px;color:#0F766E" : "display:none",
+        estRemover: x.auto ? "display:none" : "height:28px;padding:0 12px;border-radius:999px;background:transparent;color:#b42318;font-size:11px;font-weight:600;transition:background 150ms ease",
+        remover: () => {
+          if (x.auto) return;
+          this.setState((s2) => ({ custos: s2.custos.filter((y) => y.id !== x.id) }));
+          this.flash("custo removido", false);
+        },
+      })),
+    };
+  }
+  // ── Pagamentos (a aba do Mercado Pago) ───────────────────────────────────
+  valsPagamentos(st) {
+    const ps = st.pagamentos;
+    const aprovados = ps.filter((p) => p.status === "approved");
+    const pendentes = ps.filter((p) => p.status === "pending" || p.status === "in_process");
+    const recusados = ps.filter((p) => p.status === "rejected");
+    const semDono = ps.filter((p) => !p.cliente && !p.ignorado);
+    const porForma = {};
+    for (const p of aprovados) { const k = p.forma.split(" · ")[0]; porForma[k] = (porForma[k] || 0) + p.valor; }
+    const q = st.busca.trim().toLowerCase();
+    const nomeDe = (id) => this.nomeCliente(id);
+    const visiveis = ps.slice().sort((a, b) => b.dia - a.dia || String(b.hora).localeCompare(String(a.hora))).filter((p) => {
+      if (st.filtro === "aprovados" && p.status !== "approved") return false;
+      if (st.filtro === "aguardando" && !(p.status === "pending" || p.status === "in_process")) return false;
+      if (st.filtro === "semdono" && p.cliente) return false;
+      if (q && !((p.pagador + " " + p.doc + " " + nomeDe(p.cliente)).toLowerCase().includes(q))) return false;
+      return true;
+    });
+    return {
+      temNaoIdentificados: semDono.length > 0,
+    naoIdTitulo: semDono.length + (semDono.length === 1 ? " pagamento sem cliente · " : " pagamentos sem cliente · ") + this.money(semDono.reduce((a, p) => a + p.valor, 0)),
+    filtrarNaoId: () => this.setState({ filtro: "semdono", busca: "" }),
+    recebido: this.money(aprovados.reduce((a, p) => a + p.valor, 0)),
+    recebidoNota: aprovados.length + (aprovados.length === 1 ? " pagamento aprovado" : " pagamentos aprovados"),
+    aguardando: this.money(pendentes.reduce((a, p) => a + p.valor, 0)),
+    corAguardando: pendentes.length ? "#a16207" : "#0c1d2b",
+    aguardandoNota: pendentes.length + " pendente" + (pendentes.length === 1 ? "" : "s") + " · " + recusados.length + " recusado" + (recusados.length === 1 ? "" : "s"),
+    formas: Object.entries(porForma).sort((a, b) => b[1] - a[1]).map(([nome, valor]) => ({ nome, valor: this.money(valor) })),
+    semFormas: Object.keys(porForma).length === 0,
+    filtros: [["todos", "Todos", ps.length], ["aprovados", "Aprovados", aprovados.length], ["aguardando", "Aguardando", pendentes.length], ["semdono", "Sem dono", semDono.length]]
+      .map(([id, label, n]) => ({ label, n, est: this.seg(st.filtro === id), escolher: () => this.setState({ filtro: id }) })),
+    busca: st.busca, mudarBusca: (e) => this.setState({ busca: e.target.value }),
+    limpar: () => this.setState({ filtro: "todos", busca: "" }),
+    vazio: visiveis.length === 0,
+    linhas: visiveis.map((p) => {
+      const s2 = Component.STATUS[p.status] || [p.status, "#5a6b77", "#f1f4f5"];
+      const escolhido = st.escolhas[p.id] || "";
+      return {
+        data: this.data(p.dia, p.hora), pagador: p.pagador,
+        doc: p.doc || "sem documento",
+        banco: p.banco ? "via " + p.banco : "",
+        estBanco: p.banco ? "display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#a16207;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" : "display:none",
+        cliente: p.cliente ? nomeDe(p.cliente) : "",
+        tituloCasamento: Component.CASAMENTO[p.casadoPor] || "",
+        estCliente: p.cliente ? "display:block;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:help" : "display:none",
+        estVincular: p.cliente ? "display:none" : "display:inline-flex;align-items:center;gap:5px",
+        clientes: Component.CLIENTES.map(([id, nome]) => ({ id, nome })),
+        escolhido,
+        escolher: (e) => { const v = e.target.value; this.setState((s3) => ({ escolhas: Object.assign({}, s3.escolhas, { [p.id]: v }) })); },
+        estOk: escolhido ? "height:28px;padding:0 11px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:11px;font-weight:700;transition:background 150ms ease" : "display:none",
+        vincular: () => {
+          if (!escolhido) return;
+          // fatura de mesmo valor em aberto baixa junto (regra da fonte)
+          const casa = st.pagamentos.some((x) => x.cliente === escolhido && x.valor === p.valor && x.fatura);
+          this.setState((s3) => ({
+            pagamentos: s3.pagamentos.map((x) => x.id === p.id ? Object.assign({}, x, { cliente: escolhido, casadoPor: "manual", fatura: casa }) : x),
+            escolhas: Object.assign({}, s3.escolhas, { [p.id]: "" }),
+          }));
+          this.flash(casa ? "vinculado — fatura de mesmo valor baixada junto" : "vinculado ao cliente · nenhuma fatura aberta com esse valor exato");
+        },
+        valor: this.money(p.valor), forma: p.forma,
+        status: s2[0],
+        estStatus: "display:inline-flex;align-items:center;height:21px;padding:0 10px;border-radius:999px;font-size:10.5px;font-weight:600;white-space:nowrap;background:" + s2[2] + ";color:" + s2[1],
+        estMismatch: p.mismatch ? "display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:9px;color:#a16207;margin-top:3px" : "display:none",
+        fatura: p.fatura ? "✓ baixada" : (p.cliente && p.status === "approved" ? "sem fatura" : "—"),
+        estFatura: "font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;white-space:nowrap;color:" + (p.fatura ? "#177a4c" : "#8b99a4"),
+      };
+    }),
+
+    };
+  }
+}
+</script>
+</body>
+</html>

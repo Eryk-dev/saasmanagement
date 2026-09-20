@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Configurações de SLA</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-gaveta-sai{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-gaveta-sai{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  /* Configurações de SLA: os quatro cartões têm alturas bem diferentes, e grade
+     de colunas iguais deixa buraco embaixo do mais curto. Fluxo de colunas
+     (masonry) empacota sem sobra em qualquer largura. É a única coisa aqui que
+     não dá pra escrever inline. */
+  .sla-cols{columns:3 330px;column-gap:12px}
+  .sla-cols > section{break-inside:avoid;margin:0 0 12px}
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;margin:0 -4px;padding:0 4px 24px">
+
+      <header class="cap-rise" style="flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+        <div style="min-width:0">
+          <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Configurações de SLA</h1>
+          
+        </div>
+        <div style="display:flex;align-items:center;gap:9px">
+          <span style="{{ estMudou }}">{{ mudouTexto }}</span>
+          <button onClick="{{ descartar }}" style="{{ estDescartar }}">Descartar</button>
+          <button onClick="{{ salvar }}" style="{{ estSalvar }}">{{ rotuloSalvar }}</button>
+        </div>
+      </header>
+
+      <div class="sla-cols">
+
+        <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:20px 22px 18px">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">prazos por prioridade</span>
+          </div>
+
+
+          <div style="font-size:11.5px;color:#8b99a4;margin:5px 0 14px;padding-left:12px;text-wrap:pretty">{{ notaPrazos }}</div>
+          <div style="display:grid;grid-template-columns:minmax(0,1.2fr) minmax(70px,.8fr) minmax(70px,.8fr);gap:10px;padding:0 0 8px;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#8b99a4">
+            <span>Prioridade</span><span style="text-align:right">1ª resposta</span><span style="text-align:right">Resolução</span>
+          </div>
+          <sc-for list="{{ prazos }}" as="p" hint-placeholder-count="4">
+            <div style="display:grid;grid-template-columns:minmax(0,1.2fr) minmax(70px,.8fr) minmax(70px,.8fr);gap:10px;align-items:center;padding:7px 0;border-top:1px solid #edf1f3">
+              <span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600"><span style="{{ p.estPonto }}"></span>{{ p.label }}</span>
+              <span style="display:flex;align-items:center;justify-content:flex-end;gap:5px">
+                <input value="{{ p.resposta }}" onChange="{{ p.mudarResposta }}" style="{{ p.estInput }}">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4">h</span>
+              </span>
+              <span style="display:flex;align-items:center;justify-content:flex-end;gap:5px">
+                <input value="{{ p.resolucao }}" onChange="{{ p.mudarResolucao }}" style="{{ p.estInput }}">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4">h</span>
+              </span>
+            </div>
+          </sc-for>
+          <div style="{{ estErroPrazo }}">A resolução não pode vencer antes da 1ª resposta.</div>
+        </section>
+        <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:20px 22px 18px">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">categorias</span>
+          </div>
+          <div style="font-size:11.5px;color:#8b99a4;margin:5px 0 14px;padding-left:12px">organizam a fila e o relatório</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+            <sc-for list="{{ categorias }}" as="c" hint-placeholder-count="5">
+              <span style="{{ c.est }}">{{ c.nome }}<button onClick="{{ c.tirar }}" style="background:none;color:inherit;opacity:.55;font-size:12px;line-height:1;padding:0 0 0 3px" title="remover">✕</button></span>
+            </sc-for>
+            <input value="{{ novaCat }}" onChange="{{ mudarNovaCat }}" onKeyDown="{{ enterCat }}" placeholder="+ categoria" style="height:28px;min-width:120px;flex:0 1 150px;border:0;border-radius:999px;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;padding:0 12px;font-family:inherit;font-size:12px;color:#0c1d2b;outline:none">
+          </div>
+        </section>
+
+        <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:20px 22px 18px">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">relógio do sla</span>
+          </div>
+          <div style="font-size:11.5px;color:#8b99a4;margin:5px 0 14px;padding-left:12px">quando o prazo corre, pausa e avisa</div>
+          <button onClick="{{ alternarExpediente }}" style="display:flex;align-items:flex-start;gap:11px;width:100%;text-align:left;padding:12px 14px;border-radius:20px;background:#f7f9fa;transition:background 150ms ease" style-hover="background:#eef1f3">
+            <span style="{{ estChave }}"><span style="{{ estBolinha }}"></span></span>
+            <span style="flex:1;min-width:0">
+              <span style="display:block;font-size:13px;font-weight:600">Contar só no expediente</span>
+              <span style="display:block;font-size:11.5px;color:#5a6b77;margin-top:3px;text-wrap:pretty">segunda a sexta, no horário de Brasília; desligado, o prazo corre 24 horas</span>
+            </span>
+          </button>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:12px">
+            <sc-for list="{{ relogio }}" as="c" hint-placeholder-count="4">
+              <label style="display:flex;flex-direction:column;gap:5px;min-width:0;{{ c.opacidade }}">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77" title="{{ c.dica }}">{{ c.rot }}</span>
+                <select value="{{ c.valor }}" onChange="{{ c.mudar }}" style="height:36px;border:0;border-radius:999px;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;padding:0 12px;font-family:inherit;font-size:12.5px;color:#0c1d2b;cursor:pointer">
+                  <sc-for list="{{ c.opcoes }}" as="o" hint-placeholder-count="4">
+                    <option value="{{ o.v }}">{{ o.label }}</option>
+                  </sc-for>
+                </select>
+              </label>
+            </sc-for>
+          </div>
+          <div style="margin-top:12px;padding:11px 14px;border-radius:18px;background:#f7f9fa;font-size:11.5px;color:#5a6b77;line-height:1.5;text-wrap:pretty">{{ exemploRelogio }}</div>
+        </section>
+
+        <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:20px 22px 18px">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">portal do cliente</span>
+          </div>
+          <div style="font-size:11.5px;color:#8b99a4;margin:5px 0 14px;padding-left:12px">o cliente abre e acompanha o chamado sem login</div>
+          <button onClick="{{ alternarPortal }}" style="display:flex;align-items:flex-start;gap:11px;width:100%;text-align:left;padding:12px 14px;border-radius:20px;background:#f7f9fa;transition:background 150ms ease" style-hover="background:#eef1f3">
+            <span style="{{ estChavePortal }}"><span style="{{ estBolinhaPortal }}"></span></span>
+            <span style="flex:1;min-width:0">
+              <span style="display:block;font-size:13px;font-weight:600">Aceitar tickets novos pelo link público</span>
+              <span style="display:block;font-size:11.5px;color:#5a6b77;margin-top:3px;text-wrap:pretty">desligado, o link avisa que o atendimento não está disponível; os chamados já abertos seguem acessíveis</span>
+            </span>
+          </button>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:11px;{{ opacidadePortal }}">
+            <code style="flex:1;min-width:0;display:flex;align-items:center;height:32px;padding:0 12px;border-radius:999px;background:#f7f9fa;font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#3d4f5c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ urlPortal }}</code>
+            <button onClick="{{ copiarUrl }}" style="{{ estCopiarUrl }}">{{ rotuloCopiarUrl }}</button>
+          </div>
+          <button onClick="{{ alternarEmail }}" style="display:flex;align-items:flex-start;gap:11px;width:100%;text-align:left;padding:12px 14px;border-radius:20px;background:#f7f9fa;margin-top:9px;transition:background 150ms ease" style-hover="background:#eef1f3">
+            <span style="{{ estChaveEmail }}"><span style="{{ estBolinhaEmail }}"></span></span>
+            <span style="flex:1;min-width:0">
+              <span style="display:block;font-size:13px;font-weight:600">Avisar o cliente por e-mail quando a equipe responder</span>
+              <span style="display:block;font-size:11.5px;color:#5a6b77;margin-top:3px;text-wrap:pretty">sai pela conta Google conectada, com o link do chamado</span>
+            </span>
+          </button>
+          <div style="margin-top:11px;padding:11px 14px;border-radius:18px;background:#f7f9fa;font-size:11.5px;color:#5a6b77;line-height:1.5;text-wrap:pretty">Nota interna nunca aparece no portal. Anexo só aparece quando é marcado como visível ou citado numa resposta ao cliente.</div>
+        </section>
+
+
+      </div>
+
+      <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:20px 22px 18px">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">atendentes</span>
+          </div>
+          
+          <sc-for list="{{ atendentes }}" as="a" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:11px 0;border-top:1px solid #edf1f3">
+              <span style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:999px;background:#0c1d2b;color:#fff;font-family:'Outfit',sans-serif;font-size:12px;font-weight:700;flex-shrink:0">{{ a.iniciais }}</span>
+              <div style="flex:1 1 170px;min-width:0">
+                <div style="font-size:13.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.nome }}</div>
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;white-space:nowrap">{{ a.papel }}</div>
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <sc-for list="{{ a.produtos }}" as="p" hint-placeholder-count="3">
+                  <button onClick="{{ p.alternar }}" style="{{ p.est }}" title="{{ p.dica }}">{{ p.nome }}</button>
+                </sc-for>
+              </div>
+              <span style="{{ a.estAviso }}">{{ a.aviso }}</span>
+            </div>
+          </sc-for>
+          <div style="{{ estSemNinguem }}">{{ semNinguem }}</div>
+        </section>
+    </div>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Configurações de SLA (screens/support-settings.jsx + api/tickets-core.js):
+  // os prazos por prioridade, o relógio (expediente, aviso, fecho automático),
+  // categorias, portal do cliente e a lista de quem atende — que É o acesso:
+  // fora dela a pessoa não vê os tickets do produto.
+  static PRI = [["urgent", "Urgente", "#b42318", 60, 480], ["high", "Alta", "#a16207", 240, 1440],
+    ["normal", "Normal", "#5a6b77", 480, 2880], ["low", "Baixa", "#8b99a4", 1440, 7200]];
+  static CATS = ["Integração", "Clonagem", "Cobrança", "Conta", "Dúvida"];
+  static PRODUTOS = [["leverads", "LeverAds"], ["uniquekids", "UniqueKids"], ["elo", "Elo"]];
+  static TIME = [
+    ["Vitor Nunes", "VN", "Integração · Suporte", ["leverads", "uniquekids"]],
+    ["Manuela Costa", "MC", "SDR · Suporte", ["leverads"]],
+    ["Leo Sander", "LS", "Admin", null],
+    ["Rafael Moura", "RM", "Closer", []],
+  ];
+  static HORAS = [0.5, 0.7, 0.8, 0.9];
+  static FECHO = [0, 2, 3, 5, 7, 14, 30];
+
+  state = { politicas: null, expediente: true, inicio: 9, fim: 18, aviso: 0.8, fecho: 5,
+    cats: null, novaCat: "", portal: true, email: true, escopos: null, copiado: false, salvo: false };
+  componentWillUnmount() { clearTimeout(this._t); }
+
+  pol() { return this.state.politicas || Object.fromEntries(Component.PRI.map(([k, , , fr, rs]) => [k, [fr, rs]])); }
+  cats() { return this.state.cats || Component.CATS; }
+  escopos() { return this.state.escopos || Object.fromEntries(Component.TIME.map((t) => [t[1], t[3]])); }
+  // O padrão da API em horas; o campo edita horas e guarda minutos.
+  horas(min) { return String(Math.round((min / 60) * 10) / 10).replace(".", ","); }
+  min(h) { const n = Number(String(h).replace(",", ".")); return Number.isFinite(n) && n > 0 ? Math.round(n * 60) : 0; }
+  mudou() {
+    const s = this.state;
+    const pad = Object.fromEntries(Component.PRI.map(([k, , , fr, rs]) => [k, [fr, rs]]));
+    return JSON.stringify(this.pol()) !== JSON.stringify(pad) || !s.expediente || s.inicio !== 9 || s.fim !== 18
+      || s.aviso !== 0.8 || s.fecho !== 5 || JSON.stringify(this.cats()) !== JSON.stringify(Component.CATS)
+      || !s.portal || !s.email || !!s.escopos;
+  }
+  chave(on) {
+    return "flex-shrink:0;width:36px;height:21px;border-radius:999px;margin-top:1px;display:inline-flex;align-items:center;padding:0 3px;transition:background 160ms ease;background:" + (on ? "#0F766E" : "#c5cfd4");
+  }
+  bolinha(on) {
+    return "width:15px;height:15px;border-radius:999px;background:#fff;transition:transform 160ms ease;transform:translateX(" + (on ? "15px" : "0") + ")";
+  }
+  flash() { this.setState({ salvo: true }); clearTimeout(this._t); this._t = setTimeout(() => this.setState({ salvo: false }), 2000); }
+
+  renderVals() {
+    const s = this.state;
+    const pol = this.pol();
+    const cats = this.cats();
+    const esc = this.escopos();
+    const mudou = this.mudou();
+    const erro = Component.PRI.some(([k]) => pol[k][1] < pol[k][0]);
+    const setPol = (k, i, v) => this.setState((st) => {
+      const p = Object.assign({}, st.politicas || Object.fromEntries(Component.PRI.map(([kk, , , fr, rs]) => [kk, [fr, rs]])));
+      const par = p[k].slice();
+      par[i] = this.min(v);
+      p[k] = par;
+      return { politicas: p };
+    });
+    const estInput = "width:64px;height:32px;border:0;border-radius:999px;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;padding:0 11px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;color:#0c1d2b;text-align:right;outline:none";
+
+    return {
+      mov: this.props.movimento === false ? "off" : "on",
+      notaPrazos: s.expediente ? "em horas úteis, dentro do expediente abaixo" : "em horas corridas (expediente desligado)",
+      prazos: Component.PRI.map(([k, label, tone]) => ({
+        label, estPonto: "width:7px;height:7px;border-radius:999px;background:" + tone,
+        resposta: this.horas(pol[k][0]), resolucao: this.horas(pol[k][1]), estInput,
+        mudarResposta: (e) => setPol(k, 0, e.target.value),
+        mudarResolucao: (e) => setPol(k, 1, e.target.value),
+      })),
+      estErroPrazo: erro ? "margin-top:10px;font-size:12.5px;font-weight:600;color:#b42318" : "display:none",
+      estChave: this.chave(s.expediente), estBolinha: this.bolinha(s.expediente),
+      alternarExpediente: () => this.setState({ expediente: !s.expediente }),
+      relogio: [
+        { rot: "início do expediente", dica: "", valor: String(s.inicio), opacidade: s.expediente ? "" : "opacity:.5",
+          opcoes: Array.from({ length: 23 }, (_, h) => ({ v: String(h), label: String(h).padStart(2, "0") + "h" })),
+          mudar: (e) => this.setState({ inicio: Number(e.target.value) }) },
+        { rot: "fim do expediente", dica: "", valor: String(s.fim), opacidade: s.expediente ? "" : "opacity:.5",
+          opcoes: Array.from({ length: 23 }, (_, h) => ({ v: String(h + 1), label: String(h + 1).padStart(2, "0") + "h" })),
+          mudar: (e) => this.setState({ fim: Number(e.target.value) }) },
+        { rot: "avisar o responsável", dica: "a notificação sai quando o ticket passa desta fração do prazo (em tempo útil)", valor: String(s.aviso), opacidade: "",
+          opcoes: Component.HORAS.map((v) => ({ v: String(v), label: "com " + Math.round(v * 100) + "% do prazo" })),
+          mudar: (e) => this.setState({ aviso: Number(e.target.value) }) },
+        { rot: "fechar resolvidos em", dica: "0 = nunca fecha sozinho; o cliente ainda pode responder um ticket resolvido e reabrir", valor: String(s.fecho), opacidade: "",
+          opcoes: Component.FECHO.map((d) => ({ v: String(d), label: d === 0 ? "nunca" : d + " dias" })),
+          mudar: (e) => this.setState({ fecho: Number(e.target.value) }) },
+      ],
+      exemploRelogio: s.expediente
+        ? "Um ticket Urgente aberto às " + String(Math.max(s.inicio, s.fim - 1)).padStart(2, "0") + ":30 vence a 1ª resposta às " +
+          String(Math.min(s.fim, s.inicio + 1)).padStart(2, "0") + ":30 do dia seguinte — o relógio para fora do expediente e no fim de semana."
+        : "Com o expediente desligado o prazo corre 24 horas: um Urgente aberto às 23h vence a 1ª resposta à meia-noite.",
+      categorias: cats.map((nome) => ({
+        nome,
+        est: "display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 6px 0 12px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap;background:#f1f4f5;color:#3d4f5c",
+        tirar: () => this.setState({ cats: cats.filter((c) => c !== nome) }),
+      })),
+      novaCat: s.novaCat,
+      mudarNovaCat: (e) => this.setState({ novaCat: e.target.value }),
+      enterCat: (e) => {
+        if (e.key !== "Enter") return;
+        const v = s.novaCat.trim();
+        if (v && cats.indexOf(v) < 0) this.setState({ cats: cats.concat([v]), novaCat: "" });
+      },
+      estChavePortal: this.chave(s.portal), estBolinhaPortal: this.bolinha(s.portal),
+      alternarPortal: () => this.setState({ portal: !s.portal }),
+      opacidadePortal: s.portal ? "" : "opacity:.55",
+      urlPortal: "cockpit.leverads.com.br/s/abrir/leverads",
+      rotuloCopiarUrl: s.copiado ? "Copiado ✓" : "Copiar",
+      estCopiarUrl: "flex-shrink:0;height:32px;padding:0 14px;border-radius:999px;font-size:11.5px;font-weight:600;transition:background 150ms ease;" +
+        (s.copiado ? "background:#E9F5F3;color:#0b6b64;cursor:default" : "background:#f1f4f5;color:#0c1d2b"),
+      copiarUrl: () => {
+        if (navigator.clipboard) navigator.clipboard.writeText("https://cockpit.leverads.com.br/s/abrir/leverads").catch(() => {});
+        this.setState({ copiado: true });
+        clearTimeout(this._t);
+        this._t = setTimeout(() => this.setState({ copiado: false }), 1800);
+      },
+      estChaveEmail: this.chave(s.email), estBolinhaEmail: this.bolinha(s.email),
+      alternarEmail: () => this.setState({ email: !s.email }),
+      atendentes: Component.TIME.map(([nome, iniciais, papel]) => {
+        const lista = esc[iniciais];
+        const admin = lista === null;
+        return {
+          nome, iniciais, papel,
+          produtos: Component.PRODUTOS.map(([id, pn]) => {
+            const on = admin || (lista || []).indexOf(id) >= 0;
+            return {
+              nome: pn,
+              dica: admin ? "admin vê todos os produtos" : on ? "atende · clique pra tirar" : "não atende · clique pra incluir",
+              est: "height:28px;padding:0 13px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap;transition:background 150ms ease;" +
+                (admin ? "background:#eef1f3;color:#8b99a4;cursor:default"
+                  : on ? "background:#E9F5F3;color:#0b6b64" : "background:#f7f9fa;color:#b6c0c7"),
+              alternar: () => {
+                if (admin) return;
+                this.setState((st) => {
+                  const base = st.escopos || Object.fromEntries(Component.TIME.map((t) => [t[1], t[3]]));
+                  const atual = base[iniciais] || [];
+                  const prox = atual.indexOf(id) >= 0 ? atual.filter((x) => x !== id) : atual.concat([id]);
+                  return { escopos: Object.assign({}, base, { [iniciais]: prox }) };
+                });
+              },
+            };
+          }),
+          aviso: admin ? "admin · vê todos" : (lista || []).length ? "" : "sem produto liberado",
+          estAviso: admin ? "font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;white-space:nowrap"
+            : (lista || []).length ? "display:none" : "font-size:11px;font-weight:600;color:#a16207;white-space:nowrap",
+        };
+      }),
+      semNinguem: "", estSemNinguem: "display:none",
+      mudouTexto: s.salvo ? "Salvo ✓" : mudou ? "alterações não salvas" : "",
+      estMudou: s.salvo ? "font-size:11.5px;font-weight:600;color:#177a4c"
+        : mudou ? "font-size:11.5px;font-weight:600;color:#a16207" : "display:none",
+      estDescartar: mudou ? "height:34px;padding:0 14px;border-radius:999px;background:transparent;color:#5a6b77;font-size:12.5px;font-weight:600;transition:background 150ms ease" : "display:none",
+      descartar: () => this.setState({ politicas: null, expediente: true, inicio: 9, fim: 18, aviso: 0.8, fecho: 5, cats: null, portal: true, email: true, escopos: null }),
+      rotuloSalvar: erro ? "Corrija os prazos" : mudou ? "Salvar" : "Tudo salvo",
+      estSalvar: "height:34px;padding:0 18px;border-radius:999px;font-size:12.5px;font-weight:700;transition:background 150ms ease;" +
+        (erro ? "background:#fdf3f2;color:#b42318;cursor:not-allowed"
+          : mudou ? "background:#0c1d2b;color:#fff" : "background:#eef1f3;color:#8b99a4;cursor:default"),
+      salvar: () => { if (!erro && mudou) this.flash(); },
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -120,3 +120,21 @@ button.agent-metric:hover .agent-metric-go { color: var(--fg-1); transform: tran
   .support-policy { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .support-policy > :first-child { grid-column: 1 / -1; }
 }
+
+/* CRM final: support list, saved replies and policy surfaces. */
+.support-card { border: 0; border-radius: 20px; padding: 14px; }
+.support-card[aria-current="true"] { outline: 2px solid var(--accent-line); }
+.support-row { border: 0; border-radius: 999px; margin-block: 4px; background: var(--bg-1); }
+.agent-metric { border: 0; border-radius: 24px; }
+.agent-metric-value { font-size: 22px; }
+.qr-layout { gap: 12px; grid-template-columns: minmax(0,1fr) 330px; padding-top: 12px; }
+.qr-row { border: 0; border-radius: 24px; margin: 4px 8px; }
+.support-settings-body { gap: 12px; padding-top: 12px; }
+.support-policy { border-bottom: 0; border-radius: 999px; padding: 12px; background: var(--bg-inset); margin-block: 4px; }
+@media (max-width: 1000px) { .qr-layout { grid-template-columns: minmax(0,1fr); } }
+@media (max-width: 600px) { .support-row, .support-policy { border-radius: 20px; } }
+
+.support-agent-summary .agent-profile { flex-direction: row; align-items: center; gap: 24px; flex-wrap: wrap; }
+.support-agent-summary .agent-metrics { flex: 1 1 600px; }
+.support-agent-summary .agent-metric { background: transparent; box-shadow: none; }
+.support-agent-summary .agent-profile-name { color: var(--fg-1); }

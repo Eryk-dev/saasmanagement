@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Agenda</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-gaveta-sai{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-gaveta-sai{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="position:relative;flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;margin:0 -4px;padding:0 4px 24px">
+
+      <header class="cap-rise" style="flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+        <div>
+          <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Agenda</h1>
+          
+        </div>
+        <button onClick="{{ novoCompromisso }}" style="height:40px;padding:0 20px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:13px;font-weight:650;transition:background 150ms ease" style-hover="background:#1b3140">Criar compromisso</button>
+      </header>
+
+      <sc-if value="{{ temAvisos }}" hint-placeholder-val="{{ true }}">
+      <section class="cap-rise" style="flex:0 0 auto;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+        <sc-for list="{{ avisos }}" as="a" hint-placeholder-count="2">
+          <div style="{{ a.est }}">
+            <span style="{{ a.estBarra }}"></span>
+            <div style="flex:1;min-width:0">
+              <strong style="display:block;font-size:14px;font-weight:650;color:{{ a.cor }};text-wrap:pretty">{{ a.titulo }}</strong>
+              <span style="display:block;font-size:12.5px;color:#5a6b77;margin-top:2px;text-wrap:pretty">{{ a.nota }}</span>
+            </div>
+            <button onClick="{{ a.agir }}" style="flex-shrink:0;min-height:34px;padding:0 16px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:12.5px;font-weight:600;white-space:nowrap;transition:background 150ms ease" style-hover="background:#1b3140">{{ a.acao }}</button>
+          </div>
+        </sc-for>
+      </section>
+      </sc-if>
+
+      <section class="cap-rise" style="flex:0 0 auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:11px 14px;border-radius:999px;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+        <div style="display:inline-flex;gap:3px;padding:3px;border-radius:999px;background:#f1f4f5">
+          <sc-for list="{{ visoes }}" as="v" hint-placeholder-count="4">
+            <button onClick="{{ v.escolher }}" style="{{ v.est }}">{{ v.label }}</button>
+          </sc-for>
+        </div>
+        <div style="display:inline-flex;gap:3px;align-items:center">
+          <button onClick="{{ anterior }}" style="width:28px;height:28px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:13px;transition:background 150ms ease" style-hover="background:#e7ecee">‹</button>
+          <button onClick="{{ hoje }}" style="height:28px;padding:0 13px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:12px;font-weight:600;transition:background 150ms ease" style-hover="background:#e7ecee">Hoje</button>
+          <button onClick="{{ proximo }}" style="width:28px;height:28px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:13px;transition:background 150ms ease" style-hover="background:#e7ecee">›</button>
+        </div>
+        <span style="font-family:'Outfit',sans-serif;font-size:14.5px;font-weight:650;letter-spacing:-.01em;white-space:nowrap">{{ rotuloPeriodo }}</span>
+        <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#5a6b77;white-space:nowrap">{{ resumoJanela }}</span>
+        <span style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#8b99a4">agenda de</span>
+          <sc-for list="{{ pessoas }}" as="p" hint-placeholder-count="4">
+            <button onClick="{{ p.escolher }}" style="{{ p.est }}"><span style="{{ p.estCor }}"></span>{{ p.nome }}</button>
+          </sc-for>
+        </span>
+        <select value="{{ tipo }}" onChange="{{ mudarTipo }}" style="height:30px;padding:0 12px;border-radius:999px;border:0;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;font-family:inherit;font-size:12px;font-weight:600;color:#3d4f5c;cursor:pointer">
+          <option value="all">todos os tipos · {{ nTodos }}</option>
+          <option value="call">calls · {{ nCalls }}</option>
+          <option value="follow-up">follow-ups · {{ nFups }}</option>
+          <option value="integração">integrações · {{ nInts }}</option>
+        </select>
+      </section>
+
+      <section class="cap-rise" style="flex:0 0 auto;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:9px 14px;border-bottom:1px solid #edf1f3">
+          <sc-for list="{{ legenda }}" as="l" hint-placeholder-count="4">
+            <span style="display:inline-flex;align-items:center;gap:6px;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#5a6b77;white-space:nowrap">
+              <span style="{{ l.est }}"></span>{{ l.label }}
+            </span>
+          </sc-for>
+          <span style="margin-left:auto;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#5a6b77;text-align:right">{{ fatoPeriodo }}</span>
+        </div>
+
+        <sc-if value="{{ ehMes }}" hint-placeholder-val="{{ false }}">
+          <div>
+            <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));background:#f7f9fa;border-bottom:1px solid #edf1f3">
+              <sc-for list="{{ diasSemana }}" as="w" hint-placeholder-count="7">
+                <div style="padding:7px 8px;text-align:center;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#8b99a4">{{ w }}</div>
+              </sc-for>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr))">
+              <sc-for list="{{ celulas }}" as="c" hint-placeholder-count="35">
+                <div onClick="{{ c.abrirDia }}" style="{{ c.est }}" style-hover="background:#f1f4f5">
+                  <div style="display:flex;align-items:center;gap:5px">
+                    <span style="{{ c.estNumero }}">{{ c.dia }}</span>
+                    <span style="{{ c.estContagem }}">{{ c.n }}</span>
+                  </div>
+                  <sc-for list="{{ c.itens }}" as="i" hint-placeholder-count="2">
+                    <div style="display:flex;align-items:center;gap:5px;margin-top:4px;min-width:0">
+                      <span style="{{ i.estCor }}"></span>
+                      <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;color:#8b99a4;flex-shrink:0">{{ i.hora }}</span>
+                      <span style="font-size:10.5px;color:#3d4f5c;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ i.texto }}</span>
+                    </div>
+                  </sc-for>
+                  <div style="{{ c.estMais }}">{{ c.mais }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ ehGrade }}" hint-placeholder-val="{{ true }}">
+          <div style="overflow-x:auto">
+            <div style="{{ estGradeMin }}">
+              <div style="display:grid;grid-template-columns:{{ colunas }};border-bottom:1px solid #edf1f3;background:#f7f9fa">
+                <span></span>
+                <sc-for list="{{ cabecalhos }}" as="h" hint-placeholder-count="1">
+                  <div style="{{ h.est }}">
+                    <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:{{ h.corRotulo }}">{{ h.rotulo }}</div>
+                    <div style="margin-top:3px"><span style="{{ h.estNumero }}">{{ h.dia }}</span></div>
+                    <div style="{{ h.estFaixas }}">
+                      <sc-for list="{{ h.faixas }}" as="f" hint-placeholder-count="3">
+                        <div style="{{ f.est }}">
+                          <span style="{{ f.estTraco }}"></span>
+                          <span style="{{ f.estAvatar }}">{{ f.iniciais }}</span>
+                          <span style="{{ f.estNome }}">{{ f.nome }}</span>
+                          <span style="{{ f.estPapel }}">{{ f.papel }}</span>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="display:grid;grid-template-columns:{{ colunas }}">
+                <div style="position:relative;height:616px">
+                  <sc-for list="{{ horas }}" as="h" hint-placeholder-count="14">
+                    <span style="{{ h.est }}">{{ h.label }}</span>
+                  </sc-for>
+                </div>
+                <sc-for list="{{ colunasDia }}" as="d" hint-placeholder-count="1">
+                  <div style="{{ d.est }}">
+                    <sc-for list="{{ d.linhas }}" as="l" hint-placeholder-count="13">
+                      <div style="{{ l }}"></div>
+                    </sc-for>
+                    <div style="{{ d.estAgora }}"><span style="position:absolute;left:-1px;top:-4px;width:8px;height:8px;border-radius:999px;background:#0F766E"></span></div>
+                    <sc-for list="{{ d.divisorias }}" as="v" hint-placeholder-count="2">
+                      <div style="{{ v }}"></div>
+                    </sc-for>
+                    <sc-for list="{{ d.vaos }}" as="g" hint-placeholder-count="0">
+                      <button onClick="{{ g.marcar }}" style="{{ g.est }}">{{ g.label }}</button>
+                    </sc-for>
+                    <sc-for list="{{ d.bloqueios }}" as="b" hint-placeholder-count="0">
+                      <div style="{{ b.est }}">{{ b.label }}</div>
+                    </sc-for>
+                    <sc-for list="{{ d.eventos }}" as="e" hint-placeholder-count="3">
+                      <button onClick="{{ e.abrir }}" style="{{ e.est }}" title="{{ e.title }}">
+                        <span style="{{ e.estBarra }}"></span>
+                        <span style="flex:1;min-width:0;padding:5px 7px 5px 9px;text-align:left;display:flex;flex-direction:column;gap:1px;overflow:hidden">
+                          <span style="display:flex;align-items:center;gap:5px;min-width:0">
+                            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;color:oklch(0.4 0.02 250);flex-shrink:0">{{ e.hora }}</span>
+                            <span style="{{ e.estValor }}">{{ e.valor }}</span>
+                            <span style="{{ e.estMarca }}">{{ e.marca }}</span>
+                          </span>
+                          <span style="font-size:11px;font-weight:650;color:oklch(0.22 0.02 250);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ e.lead }}</span>
+                          <span style="{{ e.estEmpresa }}">{{ e.empresa }}</span>
+                        </span>
+                      </button>
+                    </sc-for>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+      </section>
+    </div>
+
+    <sc-if value="{{ temEditor }}" hint-placeholder-val="{{ false }}">
+      <aside class="{{ classeEditor }}" style="position:absolute;right:14px;top:14px;bottom:14px;width:400px;max-width:calc(100% - 28px);z-index:20;display:flex;flex-direction:column;overflow:hidden;border-radius:24px;background:#fff;box-shadow:0 2px 6px rgba(12,29,43,.08),0 30px 60px -28px rgba(12,29,43,.55)">
+        <div style="flex:0 0 auto;display:flex;align-items:flex-start;gap:11px;padding:20px 20px 14px">
+          <div style="flex:1;min-width:0">
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">{{ editor.cabecalho }}</div>
+            <div style="font-family:'Outfit',sans-serif;font-size:19px;font-weight:700;letter-spacing:-.025em;line-height:1.2;margin-top:4px">{{ editor.titulo }}</div>
+          </div>
+          <button onClick="{{ fecharEditor }}" style="flex-shrink:0;width:30px;height:30px;border-radius:999px;background:#f1f4f5;color:#5a6b77;font-size:13px;transition:background 150ms ease" style-hover="background:#e7ecee;color:#0c1d2b">✕</button>
+        </div>
+        <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:0 20px 18px">
+          <div style="display:inline-flex;gap:3px;padding:3px;border-radius:999px;background:#f1f4f5;align-self:flex-start">
+            <button onClick="{{ tipoCompromisso }}" style="{{ estTipoCompromisso }}">Compromisso</button>
+            <button onClick="{{ tipoBloqueio }}" style="{{ estTipoBloqueio }}">Bloqueio</button>
+          </div>
+          <label style="display:flex;flex-direction:column;gap:5px">
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">{{ editor.rotuloTexto }}</span>
+            <input value="{{ editor.texto }}" onChange="{{ mudarTexto }}" placeholder="{{ editor.dicaTexto }}" style="height:38px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 14px;font-family:inherit;font-size:12.5px;color:#0c1d2b;outline:none">
+          </label>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:9px">
+            <label style="display:flex;flex-direction:column;gap:5px">
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">quem</span>
+              <select value="{{ editor.quem }}" onChange="{{ mudarQuem }}" style="height:38px;border:0;border-radius:999px;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;padding:0 13px;font-family:inherit;font-size:12.5px;color:#0c1d2b;cursor:pointer">
+                <sc-for list="{{ editor.pessoas }}" as="p" hint-placeholder-count="4">
+                  <option value="{{ p.id }}">{{ p.nome }}</option>
+                </sc-for>
+              </select>
+            </label>
+            <label style="display:flex;flex-direction:column;gap:5px">
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">hora</span>
+              <select value="{{ editor.hora }}" onChange="{{ mudarHora }}" style="height:38px;border:0;border-radius:999px;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;padding:0 13px;font-family:inherit;font-size:12.5px;color:#0c1d2b;cursor:pointer">
+                <sc-for list="{{ editor.horas }}" as="h" hint-placeholder-count="14">
+                  <option value="{{ h.v }}">{{ h.label }}</option>
+                </sc-for>
+              </select>
+            </label>
+          </div>
+          <div style="padding:13px 15px;border-radius:20px;background:#f7f9fa">
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">quando</div>
+            <div style="font-size:13px;font-weight:650;margin-top:6px">{{ editor.quando }}</div>
+            <div style="font-size:11.5px;color:#5a6b77;margin-top:3px;text-wrap:pretty">{{ editor.nota }}</div>
+          </div>
+        </div>
+        <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:9px;padding:14px 20px 16px;border-top:1px solid #edf1f3">
+          <button onClick="{{ salvarEditor }}" style="{{ estSalvar }}">{{ rotuloSalvar }}</button>
+          <button onClick="{{ fecharEditor }}" style="height:30px;border-radius:999px;background:transparent;color:#5a6b77;font-size:11.5px;font-weight:600;transition:background 150ms ease" style-hover="background:#f1f4f5">Cancelar</button>
+        </div>
+      </aside>
+    </sc-if>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Agenda (screens/agenda.jsx + agenda-grid.jsx): grade de 7h às 21h com
+  // 44px por hora, quatro visões (Dia · Semana · Mês · Equipe), cor do card =
+  // TIPO e barrinha da esquerda = responsável. Call que já passou vira
+  // história (lavada, com ✓); call furada troca a cor pro vermelho suave.
+  // Na Equipe cada pessoa tem coluna e os vãos de 1h+ viram botão.
+  static H0 = 7; static H1 = 21; static HH = 44;
+  static CORES = {
+    call: { bg: "oklch(0.91 0.09 165)", line: "oklch(0.62 0.12 165)", label: "call agendada" },
+    "follow-up": { bg: "oklch(0.93 0.11 92)", line: "oklch(0.65 0.12 92)", label: "follow-up" },
+    "integração": { bg: "oklch(0.91 0.07 268)", line: "oklch(0.62 0.10 268)", label: "integração" },
+    consulta: { bg: "oklch(0.92 0.08 350)", line: "oklch(0.64 0.12 350)", label: "consulta 1:1" },
+  };
+  static NOSHOW = { bg: "oklch(0.90 0.07 25)", line: "oklch(0.60 0.14 25)", label: "no-show" };
+  static PESSOAS = [
+    { id: "rm", nome: "Rafael Moura", papel: "closer", cor: "oklch(0.62 0.12 250)" },
+    { id: "ba", nome: "Bruno Alencar", papel: "closer", cor: "oklch(0.62 0.13 300)" },
+    { id: "vn", nome: "Vitor Nunes", papel: "integrador", cor: "oklch(0.60 0.12 200)" },
+    { id: "mc", nome: "Manuela Costa", papel: "SDR", cor: "oklch(0.62 0.13 30)" },
+  ];
+  // dia (0 = sexta 18/09, base do protótipo), hora, tipo, lead, empresa, quem, valor, estado
+  static EVENTOS = [
+    [0, 9, "call", "Helena Vitta", "Nutri Vitta", "rm", 9600, "feito"],
+    [0, 10.5, "integração", "Marina Kern", "Studio Kern", "vn", 0, "feito"],
+    [0, 14.67, "call", "Camila Reis", "Nutri Vitta", "rm", 9600, "confirmado"],
+    [0, 16.17, "call", "Caio Menezes", "Menezes Auto", "ba", 6400, ""],
+    [0, 16.5, "call", "Marina Kern", "Studio Kern", "rm", 24000, ""],
+    [0, 17, "integração", "Tatiana Ponto", "Mercado Ponto", "vn", 0, ""],
+    [0, 11, "follow-up", "Paulo Ferraz", "Ferraz Advocacia", "ba", 14400, ""],
+    [0, 8, "call", "Eduardo Galante", "Galante Holding", "rm", 24000, "furou"],
+    [1, 9.5, "call", "Paula Bittencourt", "Vitta Odonto", "rm", 0, ""],
+    [1, 11, "call", "Diego Arbo", "Clínica Arbo", "rm", 24000, ""],
+    [1, 10, "integração", "Rogério Vante", "Grupo Vante", "vn", 0, ""],
+    [1, 14, "follow-up", "Nina Castro", "Castro Pet", "ba", 0, ""],
+    [1, 15, "follow-up", "Fernanda Luz", "Luz Odontologia", "rm", 24000, ""],
+    [1, 16.5, "call", "Renata Dias", "Clínica RD", "ba", 6400, ""],
+    [1, 14.5, "integração", "Marina Kern", "Studio Kern", "vn", 0, ""],
+    [2, 9.5, "call", "Luiza Prado", "Prado Fit", "ba", 6400, ""],
+    [2, 11, "consulta", "Isabel Corrêa", "consulta 3 de 8", "vn", 0, ""],
+    [2, 15, "call", "Otávio Braga", "Braga Fit", "rm", 6400, ""],
+    [2, 17, "follow-up", "Bruno Sato", "Sato Imports", "ba", 6400, ""],
+    [3, 10, "integração", "Diego Arbo", "Clínica Arbo", "vn", 0, ""],
+    [3, 14, "call", "Lúcia Amaral", "Amaral Studio", "rm", 9600, ""],
+    [4, 9, "call", "Marcos Aguiar", "Grupo MA", "ba", 0, ""],
+    [4, 16, "follow-up", "Sérgio Prado", "Oficina Prado", "ba", 9600, ""],
+    [-1, 15, "call", "Tiago Nogueira", "Nogueira Imports", "rm", 9600, "furou"],
+    [-2, 11, "call", "Bruno Sato", "Sato Imports", "ba", 6400, "feito"],
+    [7, 10, "integração", "Padaria Dovale", "Padaria Dovale", "vn", 0, ""],
+    [9, 14, "call", "Unique Baby", "Unique Baby", "rm", 24000, ""],
+  ];
+  static BLOQUEIOS = [
+    [0, 12, 13, "almoço", "vn"],
+    [0, 13, 14, "MELI · reunião semanal", "rm"],
+    [1, 12, 13, "almoço", "vn"],
+    [2, 9, 12, "treinamento do time", null],
+  ];
+
+  state = { visao: "day", off: 0, pessoa: "", tipo: "all",
+    editor: null, fechandoEditor: false, criados: [], bloqueiosExtra: [] };
+  componentWillUnmount() { clearTimeout(this._e); }
+
+  // A navegação mora no shell: a tela pede a troca e o shell decide.
+  irPara(tela) { window.dispatchEvent(new CustomEvent("cockpit:ir", { detail: { tela } })); }
+  abrirEditor(init) { clearTimeout(this._e); this.setState({ editor: Object.assign({ kind: "event", texto: "", quem: "rm", hora: 9, dia: this.state.off }, init), fechandoEditor: false }); }
+  fecharEditor() {
+    if (this.state.fechandoEditor) return;
+    this.setState({ fechandoEditor: true });
+    this._e = setTimeout(() => this.setState({ editor: null, fechandoEditor: false }), 160);
+  }
+
+  seg(ativo) {
+    return "height:28px;padding:0 15px;border-radius:999px;font-size:12px;white-space:nowrap;transition:background 150ms ease,color 150ms ease;" +
+      (ativo ? "background:#fff;color:#0c1d2b;font-weight:650;box-shadow:0 1px 2px rgba(12,29,43,.06)" : "background:transparent;color:#5a6b77;font-weight:500");
+  }
+  hora(h) { return String(Math.floor(h)).padStart(2, "0") + ":" + String(Math.round((h % 1) * 60)).padStart(2, "0"); }
+  valorCurto(n) {
+    const v = Number(n) || 0;
+    if (!v) return "";
+    return v >= 1000 ? Math.round(v / 1000) + "k" : "R$" + v;
+  }
+  pessoaDe(id) { return Component.PESSOAS.find((p) => p.id === id) || null; }
+  // sexta 18/09/2026 é o "hoje" do protótipo
+  dataDe(off) { const d = new Date(2026, 8, 18); d.setDate(18 + off); return d; }
+  fmtDia(d, opts) { return d.toLocaleDateString("pt-BR", opts).replace(/\./g, ""); }
+
+  // Eventos da janela atual, já filtrados por pessoa e tipo
+  eventos() {
+    const st = this.state;
+    return Component.EVENTOS.concat(st.criados)
+      .map(([dia, h, tipo, lead, empresa, quem, valor, estado]) => ({ dia, h, tipo, lead, empresa, quem, valor, estado }))
+      .filter((e) => !st.pessoa || e.quem === st.pessoa)
+      .filter((e) => st.tipo === "all" || e.tipo === st.tipo);
+  }
+  diasDaJanela() {
+    const st = this.state;
+    if (st.visao === "week") {
+      const base = this.dataDe(st.off);
+      const seg = st.off - ((base.getDay() + 6) % 7);
+      return Array.from({ length: 7 }, (_, i) => seg + i);
+    }
+    if (st.visao === "month") {
+      const base = this.dataDe(st.off);
+      const primeiro = new Date(base.getFullYear(), base.getMonth(), 1);
+      const offset = (primeiro.getDay() + 6) % 7;
+      const nDias = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
+      const semanas = Math.ceil((offset + nDias) / 7);
+      const hoje = this.dataDe(0);
+      const inicio = new Date(primeiro); inicio.setDate(1 - offset);
+      return Array.from({ length: semanas * 7 }, (_, i) => {
+        const d = new Date(inicio); d.setDate(inicio.getDate() + i);
+        return Math.round((d - hoje) / 86400000);
+      });
+    }
+    return [st.off];
+  }
+  // Faixas por pessoa: Dia mostra os closers sempre; Equipe entra todo mundo com agenda
+  faixasDe(dia) {
+    const st = this.state;
+    if (st.visao === "week") return [];
+    if (st.pessoa) return [st.pessoa];
+    const base = st.visao === "team" ? ["rm", "ba", "vn"] : ["rm", "ba"];
+    const doDia = this.eventos().filter((e) => e.dia === dia).map((e) => e.quem);
+    const blocos = Component.BLOQUEIOS.concat(this.state.bloqueiosExtra).filter((b) => b[0] === dia).map((b) => b[4]).filter(Boolean);
+    return [...new Set(base.concat(doDia, blocos))].filter(Boolean)
+      .sort((a, b) => Component.PESSOAS.findIndex((p) => p.id === a) - Component.PESSOAS.findIndex((p) => p.id === b));
+  }
+  // Horas ocupadas e vãos livres (gapsOf da fonte)
+  vaos(dia, quem) {
+    const ocupadas = new Set();
+    for (const e of this.eventos()) {
+      if (e.dia !== dia) continue;
+      if (quem && e.quem !== quem) continue;
+      const h = Math.floor(e.h);
+      if (h >= Component.H0 && h < Component.H1) ocupadas.add(h);
+    }
+    for (const [d, de, ate, , q] of Component.BLOQUEIOS.concat(this.state.bloqueiosExtra)) {
+      if (d !== dia) continue;
+      if (quem && q && q !== quem) continue;
+      for (let h = de; h < ate; h++) ocupadas.add(h);
+    }
+    const out = [];
+    let inicio = null;
+    for (let h = Component.H0; h < Component.H1; h++) {
+      if (ocupadas.has(h)) { if (inicio != null && h - inicio >= 1) out.push([inicio, h]); inicio = null; }
+      else if (inicio == null) inicio = h;
+    }
+    if (inicio != null && Component.H1 - inicio >= 1) out.push([inicio, Component.H1]);
+    return out;
+  }
+
+  renderVals() {
+    const st = this.state;
+    const H0 = Component.H0, H1 = Component.H1, HH = Component.HH;
+    const dias = this.diasDaJanela();
+    const naJanela = this.eventos().filter((e) => dias.includes(e.dia));
+    const todos = Component.EVENTOS.map(([dia, h, tipo, , , quem]) => ({ dia, h, tipo, quem }))
+      .filter((e) => dias.includes(e.dia) && (!st.pessoa || e.quem === st.pessoa));
+    const ehMes = st.visao === "month", ehSemana = st.visao === "week", ehEquipe = st.visao === "team";
+
+    // avisos da semana (no máximo dois, na ordem da fonte)
+    const furaram = Component.EVENTOS.filter(([d, , , , , q, , est]) => est === "furou" && d >= -6 && d <= 0 && (!st.pessoa || q === st.pessoa));
+    const semConfirmar = Component.EVENTOS.filter(([d, , t, , , q, , est]) => d === 0 && t === "call" && !est && (!st.pessoa || q === st.pessoa));
+    const brutos = [
+      furaram.length && { tom: "neg", titulo: furaram.length + (furaram.length === 1 ? " compromisso furou" : " compromissos furaram") + " nesta semana",
+        nota: furaram.map((f) => f[3]).slice(0, 3).join(" · "), acao: furaram.length === 1 ? "Abrir o lead" : "Abrir o primeiro", destino: "Pi" },
+      semConfirmar.length && { tom: "warn", titulo: semConfirmar.length + (semConfirmar.length === 1 ? " call de hoje sem confirmação" : " calls de hoje sem confirmação") + " do lead",
+        nota: "silêncio na confirmação é o maior sinal de furo", acao: "Cobrar confirmação", destino: "Ma" },
+    ].filter(Boolean).slice(0, 2);
+
+    const vals = {
+      mov: this.props.movimento === false ? "off" : "on",
+      temAvisos: brutos.length > 0,
+      avisos: brutos.map((a, i) => ({
+        titulo: a.titulo, nota: a.nota, acao: a.acao,
+        cor: a.tom === "neg" ? "#b42318" : "#a16207",
+        est: "display:flex;align-items:center;gap:14px;padding:13px 18px;" + (i ? "border-top:1px solid #edf1f3;" : "") + "transition:background 150ms ease",
+        estBarra: "width:4px;height:34px;border-radius:999px;flex-shrink:0;background:" + (a.tom === "neg" ? "#b42318" : "#a16207"),
+        agir: () => this.irPara(a.destino),
+      })),
+      visoes: [["day", "Dia"], ["week", "Semana"], ["month", "Mês"], ["team", "Equipe"]].map(([id, label]) => ({
+        label, est: this.seg(st.visao === id), escolher: () => this.setState({ visao: id }),
+      })),
+      anterior: () => this.setState((s2) => ({ off: s2.off - (s2.visao === "week" ? 7 : s2.visao === "month" ? 30 : 1) })),
+      proximo: () => this.setState((s2) => ({ off: s2.off + (s2.visao === "week" ? 7 : s2.visao === "month" ? 30 : 1) })),
+      hoje: () => this.setState({ off: 0 }),
+      rotuloPeriodo: ehMes ? this.fmtDia(this.dataDe(st.off), { month: "long", year: "numeric" })
+        : ehSemana ? this.fmtDia(this.dataDe(dias[0]), { day: "2-digit", month: "short" }) + " · " + this.fmtDia(this.dataDe(dias[6]), { day: "2-digit", month: "short", year: "numeric" })
+        : this.fmtDia(this.dataDe(st.off), { weekday: "long", day: "2-digit", month: "short", year: "numeric" }),
+      resumoJanela: (() => {
+        const c = naJanela.filter((e) => e.tipo === "call").length;
+        return c + (c === 1 ? " call" : " calls") + " · " + naJanela.length + (naJanela.length === 1 ? " item" : " itens") + " na grade";
+      })(),
+      pessoas: [{ id: "", nome: "todos" }].concat(Component.PESSOAS.map((p) => ({ id: p.id, nome: p.nome.split(" ")[0], cor: p.cor }))).map((p) => ({
+        nome: p.nome,
+        est: "display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap;transition:background 150ms ease;" +
+          ((st.pessoa || "") === p.id ? "background:#E9F5F3;color:#0b6b64;box-shadow:inset 0 0 0 1px rgba(15,118,110,.3)" : "background:#f1f4f5;color:#5a6b77"),
+        estCor: p.cor ? "width:7px;height:10px;border-radius:2px;flex-shrink:0;background:" + p.cor : "display:none",
+        escolher: () => this.setState({ pessoa: p.id }),
+      })),
+      tipo: st.tipo, mudarTipo: (e) => this.setState({ tipo: e.target.value }),
+      nTodos: String(todos.length),
+      nCalls: String(todos.filter((e) => e.tipo === "call").length),
+      nFups: String(todos.filter((e) => e.tipo === "follow-up").length),
+      nInts: String(todos.filter((e) => e.tipo === "integração").length),
+      legenda: Object.entries(Component.CORES).map(([k, c]) => ({
+        label: c.label,
+        est: "width:10px;height:10px;border-radius:3px;background:" + c.bg + ";border:1px " + (k === "follow-up" ? "dashed" : "solid") + " " + c.line,
+      })),
+      novoCompromisso: () => this.abrirEditor({ hora: 9, dia: st.off, quem: st.pessoa || "rm" }),
+      ehMes, ehGrade: !ehMes,
+      diasSemana: ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"],
+    };
+
+    // fato do período (fatoPeriodo da fonte)
+    const base = naJanela.length + (naJanela.length === 1 ? " compromisso" : " compromissos") + (ehMes ? " neste mês" : ehSemana ? " nesta semana" : " no dia");
+    if (ehEquipe) {
+      const maior = this.faixasDe(st.off).map((p) => {
+        const g = this.vaos(st.off, p).slice().sort((a, b) => (b[1] - b[0]) - (a[1] - a[0]))[0];
+        return { p, g };
+      }).filter((x) => x.g && x.g[1] - x.g[0] >= 3).sort((a, b) => (b.g[1] - b.g[0]) - (a.g[1] - a.g[0]))[0];
+      vals.fatoPeriodo = maior
+        ? base + " · " + (this.pessoaDe(maior.p) || { nome: "sem responsável" }).nome.split(" ")[0] + " tem " + (maior.g[1] - maior.g[0]) + "h livres (" + maior.g[0] + "h às " + maior.g[1] + "h)"
+        : base;
+    } else if (st.pessoa && !ehMes) {
+      const n = this.vaos(st.off, st.pessoa).length;
+      vals.fatoPeriodo = n ? base + " · " + n + (n === 1 ? " vão" : " vãos") + " de 1h" : base;
+    } else if (ehSemana) {
+      const porDia = dias.filter((d) => { const wd = this.dataDe(d).getDay(); return wd !== 0 && wd !== 6; })
+        .map((d) => ({ d, n: naJanela.filter((e) => e.dia === d).length })).sort((a, b) => a.n - b.n)[0];
+      const WD = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+      vals.fatoPeriodo = porDia ? base + " · " + WD[this.dataDe(porDia.d).getDay()] + " é o dia mais livre (" + porDia.n + ")" : base;
+    } else vals.fatoPeriodo = base;
+
+    if (ehMes) {
+      const mes = this.dataDe(st.off).getMonth();
+      vals.celulas = dias.map((off) => {
+        const d = this.dataDe(off);
+        const doMes = d.getMonth() === mes, ehHoje = off === 0;
+        const fds = d.getDay() === 0 || d.getDay() === 6;
+        const itens = naJanela.filter((e) => e.dia === off).slice().sort((a, b) => a.h - b.h);
+        return {
+          dia: String(d.getDate()), n: itens.length ? String(itens.length) : "",
+          est: "height:96px;padding:6px 7px;overflow:hidden;cursor:pointer;border-top:1px solid #edf1f3;border-left:1px solid #edf1f3;transition:background 150ms ease;" +
+            (ehHoje ? "background:#E9F5F3" : !doMes || fds ? "background:#f7f9fa" : ""),
+          estNumero: "font-family:'Outfit',sans-serif;font-size:12.5px;font-weight:700;color:" + (ehHoje ? "#0F766E" : doMes ? "#0c1d2b" : "#c5cfd4"),
+          estContagem: itens.length ? "margin-left:auto;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#8b99a4" : "display:none",
+          itens: itens.slice(0, 2).map((e) => ({
+            hora: this.hora(e.h), texto: e.lead,
+            estCor: "width:3px;height:12px;border-radius:2px;flex-shrink:0;background:" + ((Component.CORES[e.tipo] || Component.CORES.call).line),
+          })),
+          mais: itens.length > 2 ? "+" + (itens.length - 2) + " mais" : "",
+          estMais: itens.length > 2 ? "margin-top:4px;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;color:#0F766E" : "display:none",
+          abrirDia: () => this.setState({ visao: "day", off }),
+        };
+      });
+      return vals;
+    }
+
+    // ── grade de horas ────────────────────────────────────────────────────
+    const alt = (H1 - H0) * HH;
+    vals.colunas = ehSemana ? "52px repeat(7, minmax(0, 1fr))" : "52px 1fr";
+    const faixasPorDia = dias.map((d) => this.faixasDe(d));
+    const larguraMin = ehSemana ? 960 : ehEquipe ? Math.max(600, 52 + (faixasPorDia[0].length || 1) * 150) : 0;
+    vals.estGradeMin = larguraMin ? "min-width:" + larguraMin + "px" : "";
+    vals.horas = Array.from({ length: H1 - H0 }, (_, i) => ({
+      label: (H0 + i) + "h",
+      est: "position:absolute;right:7px;top:" + (i === 0 ? 2 : i * HH - 6) + "px;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#8b99a4",
+    }));
+    vals.cabecalhos = dias.map((off, di) => {
+      const d = this.dataDe(off);
+      const ehHoje = off === 0, fds = d.getDay() === 0 || d.getDay() === 6;
+      const faixas = faixasPorDia[di];
+      return {
+        rotulo: (ehHoje ? "hoje · " : "") + this.fmtDia(d, { weekday: "short" }),
+        corRotulo: ehHoje ? "#0F766E" : "#8b99a4",
+        dia: String(d.getDate()),
+        est: "padding:8px 6px;text-align:center;border-left:1px solid #edf1f3;" + (fds && !ehHoje ? "background:#eef1f3" : ""),
+        estNumero: "display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;padding:0 6px;border-radius:999px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;" +
+          (ehHoje ? "background:#0F766E;color:#fff" : "color:#0c1d2b"),
+        estFaixas: faixas.length ? "display:flex;margin-top:6px" : "display:none",
+        faixas: faixas.map((p) => {
+          const pes = this.pessoaDe(p);
+          const nDia = naJanela.filter((e) => e.dia === off && e.quem === p).length;
+          if (!ehEquipe) return {
+            est: "flex:1;min-width:0;display:inline-flex;align-items:center;justify-content:center;gap:4px;overflow:hidden",
+            estTraco: "width:8px;height:10px;border-radius:2px;flex-shrink:0;background:" + (pes ? pes.cor : "#8b99a4"),
+            estAvatar: "display:none", iniciais: "",
+            estNome: "font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;color:#5a6b77;white-space:nowrap;overflow:hidden;text-overflow:ellipsis",
+            nome: pes ? pes.nome.split(" ")[0] : "—", estPapel: "display:none", papel: "",
+          };
+          return {
+            est: "flex:1;min-width:0;padding:6px 6px 2px;display:flex;flex-direction:column;align-items:center;gap:3px;border-left:1px solid #edf1f3",
+            estTraco: "width:26px;height:3px;border-radius:2px;background:" + (pes ? pes.cor : "#8b99a4"),
+            estAvatar: "display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:999px;background:#0c1d2b;color:#fff;font-family:'Outfit',sans-serif;font-size:9.5px;font-weight:700",
+            iniciais: pes ? pes.nome.split(" ").map((x) => x[0]).join("") : "—",
+            estNome: "max-width:100%;font-size:12px;font-weight:650;color:#0c1d2b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis",
+            nome: pes ? pes.nome : "sem responsável",
+            estPapel: "font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;color:#8b99a4;white-space:nowrap",
+            papel: (pes ? pes.papel + " · " : "") + (nDia === 0 ? "dia livre" : nDia + (nDia === 1 ? " compromisso" : " compromissos")),
+          };
+        }),
+      };
+    });
+
+    vals.colunasDia = dias.map((off, di) => {
+      const d = this.dataDe(off);
+      const ehHoje = off === 0, fds = d.getDay() === 0 || d.getDay() === 6;
+      const faixas = faixasPorDia[di];
+      const nF = Math.max(1, faixas.length);
+      const doDia = naJanela.filter((e) => e.dia === off);
+      // sobreposição dentro da faixa (laneByCluster, simplificado por hora)
+      const porFaixa = {};
+      const eventos = doDia.slice().sort((a, b) => a.h - b.h).map((e) => {
+        const chave = ehSemana ? "_" : (e.quem || "");
+        porFaixa[chave] = porFaixa[chave] || [];
+        const conflito = porFaixa[chave].filter((x) => Math.abs(x.h - e.h) < 1).length;
+        porFaixa[chave].push(e);
+        const idx = ehSemana ? 0 : Math.max(0, faixas.indexOf(e.quem));
+        const c = e.estado === "furou" ? Component.NOSHOW : (Component.CORES[e.tipo] || Component.CORES.call);
+        const pes = this.pessoaDe(e.quem);
+        const lavado = e.estado === "feito" || e.estado === "furou" ? (e.estado === "furou" ? 1 : .62) : 1;
+        const pw = (ehSemana ? 100 : 100 / nF);
+        const subs = Math.max(1, conflito + 1);
+        const larg = pw / subs;
+        return {
+          lead: e.lead, empresa: e.empresa, hora: this.hora(e.h),
+          valor: this.valorCurto(e.valor),
+          estValor: e.valor ? "font-family:'Outfit',sans-serif;font-size:10px;font-weight:700;color:oklch(0.22 0.02 250);flex-shrink:0" : "display:none",
+          marca: e.estado === "furou" ? "FUROU" : e.estado === "feito" ? "✓" : e.estado === "confirmado" ? "✓ confirmou" : "",
+          estMarca: e.estado ? "font-family:'Plus Jakarta Sans',sans-serif;font-size:9px;font-weight:700;margin-left:auto;flex-shrink:0;color:" + (e.estado === "furou" ? "oklch(0.45 0.17 25)" : "oklch(0.4 0.12 165)") : "display:none",
+          empresaVisivel: e.empresa,
+          estEmpresa: "font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;color:oklch(0.4 0.02 250);overflow:hidden;text-overflow:ellipsis;white-space:nowrap",
+          title: c.label + " · " + this.hora(e.h) + " · " + e.lead + " (" + e.empresa + ")" + (pes ? " · " + pes.nome : ""),
+          est: "position:absolute;display:flex;overflow:hidden;border-radius:10px;cursor:pointer;z-index:2;text-align:left;" +
+            "top:" + ((e.h - H0) * HH + 2) + "px;height:" + (HH - 5) + "px;" +
+            "left:calc(" + (idx * pw + conflito * larg) + "% + 3px);width:calc(" + larg + "% - 6px);" +
+            "background:" + c.bg + ";box-shadow:inset 0 0 0 1px " + c.line + ";opacity:" + lavado,
+          estBarra: "width:4px;flex-shrink:0;background:" + (pes ? pes.cor : c.line),
+          abrir: () => this.irPara("Pi"),
+        };
+      });
+      return {
+        est: "position:relative;height:" + alt + "px;border-left:1px solid #edf1f3;" +
+          (ehHoje ? "background:rgba(15,118,110,.05);" : fds ? "background:#f7f9fa;" : "") + (ehEquipe ? "cursor:pointer" : ""),
+        linhas: Array.from({ length: H1 - H0 - 1 }, (_, hi) =>
+          "position:absolute;left:0;right:0;top:" + ((hi + 1) * HH) + "px;border-top:1px solid #edf1f3;pointer-events:none"),
+        estAgora: ehHoje ? "position:absolute;left:0;right:0;top:" + ((14.37 - H0) * HH) + "px;border-top:2px solid #0F766E;z-index:3;pointer-events:none" : "display:none",
+        divisorias: faixas.length > 1 ? faixas.slice(1).map((_, si) =>
+          "position:absolute;top:0;bottom:0;left:" + ((si + 1) * (100 / nF)) + "%;border-left:1px dashed #edf1f3;pointer-events:none") : [],
+        vaos: ehEquipe ? faixas.flatMap((p, pi) => this.vaos(off, p).map(([g0, g1]) => ({
+          label: "+ livre das " + g0 + "h às " + g1 + "h",
+          est: "position:absolute;top:" + ((g0 - H0) * HH + 2) + "px;left:calc(" + (pi * (100 / nF)) + "% + 3px);width:calc(" + (100 / nF) + "% - 6px);height:" + ((g1 - g0) * HH - 4) + "px;" +
+            "border-radius:12px;box-shadow:inset 0 0 0 1px #dfe5e8;background:transparent;color:#8b99a4;font-size:10.5px;padding:0 6px;display:flex;align-items:center;justify-content:center;text-align:center;transition:background 150ms ease",
+          marcar: () => this.abrirEditor({ hora: g0, dia: off, quem: p || "rm" }),
+        }))) : [],
+        bloqueios: Component.BLOQUEIOS.concat(st.bloqueiosExtra).filter((b) => b[0] === off && st.tipo === "all" && (!st.pessoa || !b[4] || b[4] === st.pessoa))
+          .flatMap(([, de, ate, label, quem]) => {
+            const idxs = ehSemana || !quem ? [null] : [faixas.indexOf(quem)].filter((x) => x >= 0);
+            return idxs.map((idx) => ({
+              label,
+              est: "position:absolute;display:flex;align-items:center;justify-content:center;border-radius:10px;pointer-events:none;z-index:1;" +
+                "top:" + ((de - H0) * HH + 2) + "px;height:" + ((ate - de) * HH - 4) + "px;" +
+                (idx == null ? "left:3px;right:3px;" : "left:calc(" + (idx * (100 / nF)) + "% + 3px);width:calc(" + (100 / nF) + "% - 6px);") +
+                "background:repeating-linear-gradient(135deg,rgba(180,35,24,.05),rgba(180,35,24,.05) 6px,transparent 6px,transparent 12px);" +
+                "box-shadow:inset 0 0 0 1px rgba(180,35,24,.25);font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;color:#b42318",
+            }));
+          }),
+        eventos,
+      };
+    });
+    const ed = st.editor;
+    vals.temEditor = !!ed;
+    vals.classeEditor = st.fechandoEditor ? "cap-gaveta-sai" : "cap-gaveta-entra";
+    vals.fecharEditor = () => this.fecharEditor();
+    if (ed) {
+      const d = this.dataDe(ed.dia);
+      const ehBloqueio = ed.kind === "block";
+      const conflito = this.eventos().some((e) => e.dia === ed.dia && Math.floor(e.h) === ed.hora && e.quem === ed.quem);
+      vals.editor = {
+        cabecalho: ehBloqueio ? "novo bloqueio" : "novo compromisso",
+        titulo: (ehBloqueio ? "Bloquear " : "Marcar ") + this.hora(ed.hora),
+        rotuloTexto: ehBloqueio ? "motivo" : "título",
+        dicaTexto: ehBloqueio ? "ex.: almoço, treinamento do time" : "ex.: call com o Studio Kern",
+        texto: ed.texto, quem: ed.quem, hora: String(ed.hora),
+        pessoas: Component.PESSOAS.map((p) => ({ id: p.id, nome: p.nome + " · " + p.papel })),
+        horas: Array.from({ length: Component.H1 - Component.H0 }, (_, i) => ({ v: String(Component.H0 + i), label: (Component.H0 + i) + "h" })),
+        quando: this.fmtDia(d, { weekday: "long", day: "2-digit", month: "long" }) + " · " + this.hora(ed.hora) + " às " + this.hora(ed.hora + 1),
+        nota: conflito
+          ? "já existe algo nesse horário pra essa pessoa — dois compromissos no mesmo slot é o que a grade grita"
+          : "uma hora de duração · compromisso ocupa a agenda, então nenhuma call cai em cima",
+      };
+      vals.estTipoCompromisso = this.seg(!ehBloqueio);
+      vals.estTipoBloqueio = this.seg(ehBloqueio);
+      vals.tipoCompromisso = () => this.setState((s2) => ({ editor: { ...s2.editor, kind: "event" } }));
+      vals.tipoBloqueio = () => this.setState((s2) => ({ editor: { ...s2.editor, kind: "block" } }));
+      vals.mudarTexto = (e) => this.setState((s2) => ({ editor: { ...s2.editor, texto: e.target.value } }));
+      vals.mudarQuem = (e) => this.setState((s2) => ({ editor: { ...s2.editor, quem: e.target.value } }));
+      vals.mudarHora = (e) => this.setState((s2) => ({ editor: { ...s2.editor, hora: Number(e.target.value) } }));
+      const pode = !!ed.texto.trim();
+      vals.rotuloSalvar = pode ? (ehBloqueio ? "Bloquear o horário" : "Marcar na agenda") : (ehBloqueio ? "Escreva o motivo" : "Escreva o título");
+      vals.estSalvar = "height:42px;border-radius:999px;font-size:13px;font-weight:700;transition:background 150ms ease;" +
+        (pode ? "background:#0c1d2b;color:#fff" : "background:#eef1f3;color:#8b99a4;cursor:not-allowed");
+      vals.salvarEditor = () => {
+        if (!pode) return;
+        if (ehBloqueio) {
+          this.setState((s2) => ({ bloqueiosExtra: s2.bloqueiosExtra.concat([[ed.dia, ed.hora, ed.hora + 1, ed.texto.trim(), ed.quem]]) }));
+        } else {
+          this.setState((s2) => ({ criados: s2.criados.concat([[ed.dia, ed.hora, "call", ed.texto.trim(), "novo compromisso", ed.quem, 0, ""]]) }));
+        }
+        this.fecharEditor();
+      };
+    }
+    return vals;
+  }
+}
+</script>
+</body>
+</html>

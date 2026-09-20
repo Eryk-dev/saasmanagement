@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Mapas mentais</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-no{from{opacity:0;transform:scale(.94)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-no{animation:cap-no .16s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-gaveta-sai{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-gaveta-sai{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;overflow:hidden;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:12px;margin:0 -4px;padding:0 4px;overflow:hidden">
+
+      <header class="cap-rise" style="{{ estHeader }}">
+        <div style="min-width:0">
+          <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Mapas mentais</h1>
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#5a6b77;margin-top:3px;text-wrap:pretty">pensar em árvore · Tab cria filho, Enter cria irmão, duplo clique edita</div>
+        </div>
+        <button onClick="{{ novoMapa }}" style="height:34px;padding:0 16px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:12.5px;font-weight:650;white-space:nowrap;transition:background 150ms ease" style-hover="background:#1b3140">Criar mapa</button>
+      </header>
+
+      <div style="{{ estCorpo }}">
+        <aside style="{{ estLista }}">
+          <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);overflow:hidden;display:flex;flex-direction:column;max-height:100%">
+            <div style="flex:0 0 auto;padding:14px 16px 10px">
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">mapas</div>
+              <div style="font-size:11.5px;color:#8b99a4;margin-top:4px">{{ resumoMapas }}</div>
+            </div>
+            <div style="flex:1;min-height:0;overflow-y:auto">
+              <sc-for list="{{ mapas }}" as="m" hint-placeholder-count="4">
+                <div style="{{ m.est }}" style-hover="background:#f7f9fa">
+                  <button onClick="{{ m.abrir }}" style="flex:1;min-width:0;text-align:left">
+                    <span style="display:block;font-size:12.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.nome }}</span>
+                    <span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;margin-top:2px">{{ m.meta }}</span>
+                  </button>
+                  <button onClick="{{ m.duplicar }}" title="duplicar" style="flex-shrink:0;width:24px;height:24px;border-radius:999px;background:transparent;color:#8b99a4;font-size:11px;transition:background 150ms ease" style-hover="background:#eef1f3;color:#0c1d2b">⧉</button>
+                  <button onClick="{{ m.apagar }}" title="apagar" style="flex-shrink:0;width:24px;height:24px;border-radius:999px;background:transparent;color:#b42318;font-size:11px;transition:background 150ms ease" style-hover="background:#fdf3f2">✕</button>
+                </div>
+              </sc-for>
+            </div>
+          </section>
+        </aside>
+
+        <section class="cap-rise" style="min-width:0;display:flex;flex-direction:column;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+          <div style="flex:0 0 auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:11px 14px;border-bottom:1px solid #edf1f3">
+            <input value="{{ nomeMapa }}" onChange="{{ mudarNome }}" style="height:30px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 13px;font-family:'Outfit',sans-serif;font-size:13.5px;font-weight:700;color:#0c1d2b;outline:none;flex:1 1 150px;min-width:0" />
+            <div style="display:inline-flex;gap:3px;padding:3px;border-radius:999px;background:#f1f4f5">
+              <button onClick="{{ verMapa }}" style="{{ estVerMapa }}">Mapa</button>
+              <button onClick="{{ verEsboco }}" style="{{ estVerEsboco }}">Esboço</button>
+            </div>
+            <button onClick="{{ desfazer }}" title="desfazer" style="{{ estDesfazer }}">↶</button>
+            <button onClick="{{ refazer }}" title="refazer" style="{{ estRefazer }}">↷</button>
+            <button onClick="{{ verTudo }}" title="a árvore inteira na tela, mesmo pequena" style="height:28px;padding:0 11px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:11px;font-weight:600;white-space:nowrap;transition:background 150ms ease" style-hover="background:#e7ecee">Ver tudo</button>
+            <button onClick="{{ exportarMd }}" title="baixar como texto recuado" style="height:28px;padding:0 11px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:11px;font-weight:600;white-space:nowrap;transition:background 150ms ease" style-hover="background:#e7ecee">.Md</button>
+            <button onClick="{{ alternarFoco }}" style="{{ estFoco }}">{{ rotuloFoco }}</button>
+            <span style="{{ estEstado }}">{{ estadoTexto }}</span>
+          </div>
+
+          <sc-if value="{{ ehMapa }}" hint-placeholder-val="{{ true }}">
+            <div onWheel="{{ onWheel }}" onPointerDown="{{ onFundo }}" ref="{{ palcoRef }}" data-palco="1" style="flex:1;min-height:0;position:relative;overflow:hidden;background:#fbfcfd;cursor:{{ cursorFundo }}">
+              <div style="{{ estPalco }}">
+                <svg width="{{ palco.w }}" height="{{ palco.h }}" style="position:absolute;left:0;top:0;pointer-events:none;overflow:visible">
+                  <sc-for list="{{ arestas }}" as="a" hint-placeholder-count="6">
+                    <path d="{{ a.d }}" fill="none" stroke="{{ a.cor }}" stroke-width="{{ a.w }}" stroke-opacity="{{ a.op }}" stroke-dasharray="{{ a.dash }}" stroke-linecap="round"></path>
+                  </sc-for>
+                </svg>
+                <sc-for list="{{ nos }}" as="n" hint-placeholder-count="7">
+                  <div class="cap-no" onPointerDown="{{ n.pegar }}" onDoubleClick="{{ n.editar }}" style="{{ n.est }}">
+                    <sc-if value="{{ n.editando }}" hint-placeholder-val="{{ false }}">
+                      <input value="{{ n.texto }}" onChange="{{ n.mudarTexto }}" onKeyDown="{{ n.tecla }}" onBlur="{{ n.sair }}" style="{{ n.estInput }}" />
+                    </sc-if>
+                    <sc-if value="{{ n.parado }}" hint-placeholder-val="{{ true }}">
+                      <span style="{{ n.estTexto }}">{{ n.emoji }}{{ n.texto }}</span>
+                    </sc-if>
+                    <span style="{{ n.estNota }}" title="{{ n.nota }}">✎</span>
+                    <span style="{{ n.estLink }}" title="{{ n.link }}">↗</span>
+                    <button onClick="{{ n.recolher }}" style="{{ n.estRecolher }}" title="recolher ou abrir o ramo">{{ n.rotuloRecolher }}</button>
+                  </div>
+                </sc-for>
+              </div>
+
+              <sc-if value="{{ temSel }}" hint-placeholder-val="{{ false }}">
+                <div style="{{ estToolbar }}">
+                  <sc-for list="{{ cores }}" as="c" hint-placeholder-count="6">
+                    <button onClick="{{ c.usar }}" title="{{ c.title }}" style="{{ c.est }}"></button>
+                  </sc-for>
+                  <span style="width:1px;height:18px;background:#e4e9eb"></span>
+                  <sc-for list="{{ acoesNo }}" as="a" hint-placeholder-count="6">
+                    <button onClick="{{ a.agir }}" title="{{ a.title }}" style="{{ a.est }}">{{ a.label }}</button>
+                  </sc-for>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ temPopover }}" hint-placeholder-val="{{ false }}">
+                <div style="{{ estPopover }}">
+                  <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">{{ popover.titulo }}</div>
+                  <input value="{{ popover.valor }}" onChange="{{ mudarPopover }}" placeholder="{{ popover.placeholder }}" style="width:100%;height:32px;margin-top:9px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 13px;font-family:inherit;font-size:12px;color:#0c1d2b;outline:none" />
+                  <div style="display:flex;gap:6px;margin-top:10px">
+                    <button onClick="{{ salvarPopover }}" style="flex:1;height:30px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:11.5px;font-weight:650">Guardar</button>
+                    <button onClick="{{ fecharPopover }}" style="height:30px;padding:0 13px;border-radius:999px;background:#f1f4f5;color:#5a6b77;font-size:11.5px;font-weight:600">Cancelar</button>
+                  </div>
+                </div>
+              </sc-if>
+
+              <div style="position:absolute;left:12px;bottom:12px;display:flex;align-items:center;gap:6px;padding:5px 7px;border-radius:999px;background:rgba(255,255,255,.92);box-shadow:0 1px 2px rgba(12,29,43,.08)">
+                <button onClick="{{ menosZoom }}" style="width:24px;height:24px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:13px">−</button>
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#5a6b77;min-width:34px;text-align:center">{{ zoomTexto }}</span>
+                <button onClick="{{ maisZoom }}" style="width:24px;height:24px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:13px">+</button>
+              </div>
+              <div style="position:absolute;right:12px;bottom:12px;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#b6c0c7;text-align:right;pointer-events:none;text-wrap:pretty">{{ dica }}</div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ ehEsboco }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;min-height:0;overflow-y:auto;padding:14px 18px 20px">
+              <sc-for list="{{ esboco }}" as="l" hint-placeholder-count="7">
+                <div style="{{ l.est }}">
+                  <span style="{{ l.estTraco }}"></span>
+                  <input value="{{ l.texto }}" onChange="{{ l.mudar }}" onKeyDown="{{ l.tecla }}" style="{{ l.estInput }}" />
+                  <span style="{{ l.estFilhos }}">{{ l.filhos }}</span>
+                </div>
+              </sc-for>
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;margin-top:14px;text-wrap:pretty">o esboço é o mesmo mapa · Enter cria irmão, Tab cria filho, e o recuo é a profundidade</div>
+            </div>
+          </sc-if>
+        </section>
+      </div>
+    </div>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Mapas mentais (screens/mindmaps.jsx): lista de mapas + editor de árvore.
+  // O layout é calculado (profundidade = coluna, folhas empilham em faixas), e
+  // arrastar um nó o solta da árvore (auto:false) — a aresta dele vira tracejada.
+  static PALETA = [["#0F766E", "teal"], ["#175cd3", "azul"], ["#7c3aed", "violeta"], ["#a16207", "âmbar"], ["#b42318", "vermelho"], ["#177a4c", "verde"]];
+  static LARGURA_BASE = 96; static POR_CHAR = 7.1; static ALT = 38; static GAP_X = 58; static GAP_Y = 14;
+
+  static mapas() {
+    const funil = [
+      ["r", null, "Funil LeverAds", 0, true],
+      ["a", "r", "Entrada", 0, false],
+      ["a1", "a", "Anúncio no Meta", 0, false],
+      ["a2", "a", "Indicação da base", 5, false],
+      ["a3", "a", "Prospecção ativa", 3, false],
+      ["b", "r", "Qualificação", 3, false],
+      ["b1", "b", "2+ contas", 0, false],
+      ["b2", "b", "R$ 150k+/mês", 0, false],
+      ["b3", "b", "3 anúncios bons", 0, false],
+      ["c", "r", "Call", 1, false],
+      ["c1", "c", "Demo ao vivo", 0, false],
+      ["c2", "c", "Dor do anúncio", 4, false],
+      ["d", "r", "Fechamento", 2, false],
+      ["d1", "d", "Proposta", 0, false],
+      ["d2", "d", "Link de pagamento", 0, false],
+      ["d3", "d", "Contrato", 5, false],
+    ];
+    const roteiro = [
+      ["r", null, "Roteiro do SDR", 0, true],
+      ["p1", "r", "Abertura", 1, false],
+      ["p2", "r", "Diagnóstico", 3, false],
+      ["p3", "r", "Objeções", 4, false],
+      ["p4", "r", "Agendar", 5, false],
+    ];
+    const mk = (arr) => arr.map(([id, parent, texto, cor, raiz]) => ({ id, parent, texto, cor, raiz }));
+    return [
+      { id: "m1", nome: "Funil LeverAds", nos: mk(funil), atualizado: "hoje 23:40" },
+      { id: "m2", nome: "Roteiro do SDR", nos: mk(roteiro), atualizado: "ontem" },
+      { id: "m3", nome: "Onboarding do cliente", nos: [{ id: "r", parent: null, texto: "Onboarding", cor: 0, raiz: true }], atualizado: "12/09" },
+    ];
+  }
+
+  state = (() => {
+    const mapas = Component.mapas();
+    return {
+      mapas, ativo: mapas[0].id, doc: mapas[0].nos.slice(), historico: [], futuro: [],
+      sel: null, editando: null, vista: "mapa", foco: false,
+      view: { x: 40, y: 20, z: 1 }, pop: null, estado: "salvo",
+      recolhidos: {}, panning: false,
+    };
+  })();
+  palcoRef = React.createRef();
+  // O shell monta as 23 telas juntas e só mostra uma: no mount esta pode estar
+  // oculta, e medir 0×0 joga o mapa pra fora da tela. O ResizeObserver espera a
+  // primeira medida real e re-encaixa quando a tela volta a aparecer.
+  componentDidMount() {
+    const el = this.palcoRef.current;
+    if (!el || typeof ResizeObserver === "undefined") { this._f = setTimeout(() => this.encaixar(), 120); return; }
+    this._ro = new ResizeObserver(() => {
+      const w = el.clientWidth, h = el.clientHeight;
+      if (w > 0 && h > 0 && (w !== this._lw || h !== this._lh)) { this._lw = w; this._lh = h; this.encaixar(); }
+    });
+    this._ro.observe(el);
+  }
+  componentWillUnmount() { clearTimeout(this._s); clearTimeout(this._f); if (this._ro) this._ro.disconnect(); }
+
+  commit(fn) {
+    this.setState((s2) => {
+      const antes = s2.doc;
+      const novo = fn(antes.map((n) => Object.assign({}, n)));
+      return { doc: novo, historico: s2.historico.concat([antes]).slice(-40), futuro: [], estado: "alterado" };
+    }, () => this.agendarSalvar());
+  }
+  agendarSalvar() { clearTimeout(this._s); this._s = setTimeout(() => this.setState({ estado: "salvo" }), 900); }
+  noDe(id) { return this.state.doc.find((n) => n.id === id) || null; }
+  filhosDe(id) { return this.state.doc.filter((n) => n.parent === id); }
+  corDe(id) {
+    let n = this.noDe(id);
+    const visto = {};
+    while (n && n.parent && !visto[n.id]) { visto[n.id] = 1; if (n.cor != null) break; n = this.noDe(n.parent); }
+    const i = n && n.cor != null ? n.cor : 0;
+    return Component.PALETA[i % Component.PALETA.length][0];
+  }
+  profundidade(id) { let d = 0, n = this.noDe(id); while (n && n.parent) { d++; n = this.noDe(n.parent); } return d; }
+  larguraDe(n) { return Math.max(Component.LARGURA_BASE, Math.min(230, 30 + String(n.texto || "").length * Component.POR_CHAR)); }
+  layout() {
+    const { doc, recolhidos } = this.state;
+    const rects = {};
+    const alturaDe = (id) => {
+      const fs = recolhidos[id] ? [] : this.filhosDe(id);
+      if (!fs.length) return Component.ALT + Component.GAP_Y;
+      return fs.reduce((a, f) => a + alturaDe(f.id), 0);
+    };
+    const por = (n, col, topo) => {
+      const h = alturaDe(n.id);
+      const y = Math.round(topo + h / 2 - Component.ALT / 2);
+      rects[n.id] = n.solto ? { x: n.x, y: n.y, w: this.larguraDe(n), h: Component.ALT } : { x: col, y, w: this.larguraDe(n), h: Component.ALT };
+      const fs = recolhidos[n.id] ? [] : this.filhosDe(n.id);
+      let t = topo;
+      for (const f of fs) { por(f, col + this.larguraDe(n) + Component.GAP_X, t); t += alturaDe(f.id); }
+    };
+    let cursor = 0;
+    for (const r of doc.filter((n) => !n.parent)) { por(r, 0, cursor); cursor += alturaDe(r.id); }
+    return rects;
+  }
+  caminho(a, b) {
+    const x1 = a.x + a.w, y1 = a.y + a.h / 2, x2 = b.x, y2 = b.y + b.h / 2;
+    const mx = x1 + (x2 - x1) / 2;
+    return "M" + x1 + " " + y1 + " C" + mx + " " + y1 + " " + mx + " " + y2 + " " + x2 + " " + y2;
+  }
+  descendentes(id, acc) {
+    const out = acc || [];
+    for (const f of this.filhosDe(id)) { out.push(f.id); this.descendentes(f.id, out); }
+    return out;
+  }
+  visivel(n) { let p = n.parent; while (p) { if (this.state.recolhidos[p]) return false; p = (this.noDe(p) || {}).parent; } return true; }
+  novoId() { return "n" + Math.random().toString(36).slice(2, 8); }
+  criarFilho(id) {
+    const novo = this.novoId();
+    this.commit((d) => d.concat([{ id: novo, parent: id, texto: "novo", cor: null }]));
+    this.setState((s2) => ({ sel: novo, editando: novo, recolhidos: Object.assign({}, s2.recolhidos, { [id]: false }) }));
+  }
+  criarIrmao(id) {
+    const n = this.noDe(id);
+    if (!n || !n.parent) return this.criarFilho(id);
+    const novo = this.novoId();
+    this.commit((d) => { const i = d.findIndex((x) => x.id === id); const arr = d.slice(); arr.splice(i + 1, 0, { id: novo, parent: n.parent, texto: "novo", cor: null }); return arr; });
+    this.setState({ sel: novo, editando: novo });
+  }
+  apagarNo(id) {
+    const n = this.noDe(id);
+    if (!n || !n.parent) return;
+    const fora = [id].concat(this.descendentes(id));
+    this.commit((d) => d.filter((x) => !fora.includes(x.id)));
+    this.setState({ sel: n.parent, editando: null });
+  }
+  patch(id, mud) { this.commit((d) => d.map((n) => n.id === id ? Object.assign({}, n, mud) : n)); }
+  encaixar(total) {
+    const rects = this.layout();
+    const ids = Object.keys(rects);
+    if (!ids.length) return;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const id of ids) { const r = rects[id]; x0 = Math.min(x0, r.x); y0 = Math.min(y0, r.y); x1 = Math.max(x1, r.x + r.w); y1 = Math.max(y1, r.y + r.h); }
+    const w = x1 - x0 + 60, h = y1 - y0 + 60;
+    const el = this.palcoRef.current;
+    const cw = el && el.clientWidth ? el.clientWidth : 620;
+    const ch = el && el.clientHeight ? el.clientHeight : 380;
+    if (total) {
+      // "ver tudo": a árvore inteira na tela, mesmo pequena — escolha do usuário.
+      const z = Math.max(0.3, Math.min(1.2, Math.min(cw / w, ch / h)));
+      this.setState({ view: { z, x: Math.round((cw - (x1 - x0) * z) / 2 - x0 * z), y: Math.round((ch - (y1 - y0) * z) / 2 - y0 * z) } });
+      return;
+    }
+    // Padrão: encaixa pela LARGURA e põe a RAIZ no meio da altura. Um mapa mental
+    // se lê assim — a linha inteira cabe, a vertical rola, e a ideia central está
+    // sempre à vista. Piso de 0.8 porque abaixo disso o texto do nó fica menor que
+    // 10px e a árvore vira mancha.
+    const z = Math.min(1.2, Math.max(0.8, cw / w));
+    const raiz = this.state.doc.find((n) => !n.parent);
+    const rr = raiz ? rects[raiz.id] : null;
+    const foco = rr ? rr.y + rr.h / 2 : y0 + (y1 - y0) / 2;
+    this.setState({ view: { z, x: Math.round(Math.max(24, (cw - (x1 - x0) * z) / 2) - x0 * z), y: Math.round(ch / 2 - foco * z) } });
+  }
+  pegarNo(e, id, rects) {
+    e.stopPropagation();
+    this.setState({ sel: id });
+    const r = rects[id]; if (!r) return;
+    const z = this.state.view.z, x0 = e.clientX, y0 = e.clientY;
+    let moveu = false;
+    const mover = (ev) => {
+      const dx = (ev.clientX - x0) / z, dy = (ev.clientY - y0) / z;
+      if (!moveu && Math.abs(dx) + Math.abs(dy) < 4) return;
+      moveu = true;
+      this.setState((s2) => ({ doc: s2.doc.map((n) => n.id === id ? Object.assign({}, n, { solto: true, x: Math.round(r.x + dx), y: Math.round(r.y + dy) }) : n), estado: "alterado" }));
+    };
+    const soltar = () => {
+      window.removeEventListener("pointermove", mover);
+      window.removeEventListener("pointerup", soltar);
+      if (moveu) this.agendarSalvar();
+    };
+    window.addEventListener("pointermove", mover);
+    window.addEventListener("pointerup", soltar);
+  }
+  renderVals() {
+    const st = this.state;
+    const rects = this.layout();
+    const mapa = st.mapas.find((m) => m.id === st.ativo) || st.mapas[0];
+    const sel = st.sel ? this.noDe(st.sel) : null;
+    const OUTFIT = "'Outfit',sans-serif", JAK = "'Plus Jakarta Sans',sans-serif";
+    const seg = (a) => "height:26px;padding:0 13px;border-radius:999px;font-size:11.5px;white-space:nowrap;transition:background 150ms ease;" +
+      (a ? "background:#fff;color:#0c1d2b;font-weight:650;box-shadow:0 1px 2px rgba(12,29,43,.06)" : "background:transparent;color:#5a6b77;font-weight:500");
+    const icon = (a) => "width:28px;height:28px;border-radius:999px;font-size:12px;transition:background 150ms ease;" +
+      (a ? "background:#f1f4f5;color:#3d4f5c" : "background:#f7f9fa;color:#c5cfd4;cursor:default");
+
+    const nos = st.doc.filter((n) => rects[n.id] && this.visivel(n)).map((n) => {
+      const r = rects[n.id], cor = this.corDe(n.id), ehSel = st.sel === n.id, raiz = !n.parent;
+      const filhos = this.filhosDe(n.id).length;
+      const oculto = st.recolhidos[n.id] ? this.descendentes(n.id).length : 0;
+      const forma = n.forma || (raiz ? "pill" : "rounded");
+      const raio = forma === "pill" ? "999px" : forma === "rect" ? "6px" : "14px";
+      return {
+        texto: n.texto, emoji: n.emoji ? n.emoji + " " : "", nota: n.nota || "", link: n.link || "",
+        editando: st.editando === n.id, parado: st.editando !== n.id,
+        est: "position:absolute;left:0;top:0;transform:translate(" + r.x + "px," + r.y + "px);width:" + r.w + "px;height:" + r.h + "px;" +
+          "display:flex;align-items:center;gap:6px;padding:0 12px;border-radius:" + raio + ";box-sizing:border-box;cursor:grab;user-select:none;" +
+          "background:" + (raiz ? cor : "#fff") + ";color:" + (raiz ? "#fff" : "#0c1d2b") + ";" +
+          "box-shadow:" + (ehSel ? "inset 0 0 0 2px " + cor + ",0 6px 18px -8px " + cor + "88" : "inset 0 0 0 1.5px " + cor + "55,0 1px 2px rgba(12,29,43,.06)"),
+        estTexto: "flex:1;min-width:0;font-family:" + (raiz ? OUTFIT : "inherit") + ";font-size:" + (raiz ? 14 : 12.5) + "px;font-weight:" + (raiz || n.negrito ? 700 : 500) + ";white-space:nowrap;overflow:hidden;text-overflow:ellipsis",
+        estInput: "flex:1;min-width:0;height:24px;border:0;background:transparent;outline:none;font-family:inherit;font-size:" + (raiz ? 14 : 12.5) + "px;font-weight:" + (raiz ? 700 : 600) + ";color:" + (raiz ? "#fff" : "#0c1d2b"),
+        estNota: n.nota ? "flex-shrink:0;font-size:10px;cursor:help;color:" + (raiz ? "rgba(255,255,255,.75)" : "#8b99a4") : "display:none",
+        estLink: n.link ? "flex-shrink:0;font-size:10px;cursor:help;color:" + (raiz ? "rgba(255,255,255,.75)" : cor) : "display:none",
+        rotuloRecolher: oculto ? "+" + oculto : "−",
+        estRecolher: filhos ? "position:absolute;right:-9px;top:50%;transform:translateY(-50%);width:18px;height:18px;border-radius:999px;background:#fff;font-family:" + JAK + ";font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;z-index:2;color:" + cor + ";box-shadow:0 0 0 1.5px " + cor + "66" : "display:none",
+        recolher: (e) => { e.stopPropagation(); this.setState((s2) => ({ recolhidos: Object.assign({}, s2.recolhidos, { [n.id]: !s2.recolhidos[n.id] }) })); },
+        pegar: (e) => this.pegarNo(e, n.id, rects),
+        editar: () => this.setState({ sel: n.id, editando: n.id }),
+        mudarTexto: (e) => this.patch(n.id, { texto: e.target.value }),
+        sair: () => this.setState({ editando: null }),
+        tecla: (e) => {
+          if (e.key === "Enter") { e.preventDefault(); this.setState({ editando: null }); this.criarIrmao(n.id); }
+          else if (e.key === "Tab") { e.preventDefault(); this.setState({ editando: null }); this.criarFilho(n.id); }
+          else if (e.key === "Escape") this.setState({ editando: null });
+        },
+      };
+    });
+    const visiveis = {};
+    for (const n of st.doc) if (this.visivel(n)) visiveis[n.id] = 1;
+    const arestas = st.doc.filter((n) => n.parent && rects[n.id] && rects[n.parent] && visiveis[n.id]).map((n) => ({
+      d: this.caminho(rects[n.parent], rects[n.id]),
+      cor: this.corDe(n.id), w: Math.max(1.4, 2.6 - this.profundidade(n.id) * 0.45),
+      op: n.solto ? "0.45" : "0.75", dash: n.solto ? "5 4" : "0",
+    }));
+    const bounds = Object.values(rects).reduce((a, r) => ({ w: Math.max(a.w, r.x + r.w + 60), h: Math.max(a.h, r.y + r.h + 60) }), { w: 400, h: 300 });
+
+    const vals = {
+      mov: this.props.movimento === false ? "off" : "on",
+      estHeader: st.foco ? "display:none" : "flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:2px 10px 0",
+      estCorpo: "flex:1;min-height:0;display:grid;grid-template-columns:" + (st.foco ? "minmax(0,1fr)" : "minmax(0,.55fr) minmax(0,2fr)") + ";gap:12px;padding-bottom:12px",
+      estLista: st.foco ? "display:none" : "min-width:0;display:flex;flex-direction:column;max-height:100%",
+      resumoMapas: st.mapas.length + (st.mapas.length === 1 ? " mapa" : " mapas") + " neste produto",
+      mapas: st.mapas.map((m) => ({
+        nome: m.nome, meta: (m.id === st.ativo ? st.doc.length : m.nos.length) + " nós · " + m.atualizado,
+        est: "display:flex;align-items:center;gap:6px;padding:10px 14px;border-top:1px solid #edf1f3;transition:background 150ms ease;" +
+          (m.id === st.ativo ? "background:#E9F5F3;box-shadow:inset 3px 0 0 #0F766E" : ""),
+        abrir: () => {
+          if (m.id === st.ativo) return;
+          this.setState((s2) => ({
+            mapas: s2.mapas.map((x) => x.id === s2.ativo ? Object.assign({}, x, { nos: s2.doc }) : x),
+            ativo: m.id, doc: (s2.mapas.find((x) => x.id === m.id) || m).nos.slice(),
+            sel: null, editando: null, historico: [], futuro: [], recolhidos: {}, view: { x: 40, y: 20, z: 1 },
+          }));
+        },
+        duplicar: () => this.setState((s2) => ({ mapas: [Object.assign({}, m, { id: "d" + Date.now(), nome: m.nome + " · cópia", atualizado: "agora" })].concat(s2.mapas) })),
+        apagar: () => this.setState((s2) => {
+          const resto = s2.mapas.filter((x) => x.id !== m.id);
+          if (!resto.length) return {};
+          if (m.id !== s2.ativo) return { mapas: resto };
+          return { mapas: resto, ativo: resto[0].id, doc: resto[0].nos.slice(), sel: null, historico: [], futuro: [], recolhidos: {} };
+        }),
+      })),
+      nomeMapa: mapa.nome,
+      mudarNome: (e) => { const v = e.target.value; this.setState((s2) => ({ mapas: s2.mapas.map((x) => x.id === s2.ativo ? Object.assign({}, x, { nome: v }) : x), estado: "alterado" }), () => this.agendarSalvar()); },
+      novoMapa: () => {
+        const id = "m" + Date.now();
+        const raiz = [{ id: "r", parent: null, texto: "Ideia central", cor: 0, raiz: true }];
+        this.setState((s2) => ({
+          mapas: [{ id, nome: "Novo mapa", nos: raiz, atualizado: "agora" }].concat(s2.mapas.map((x) => x.id === s2.ativo ? Object.assign({}, x, { nos: s2.doc }) : x)),
+          ativo: id, doc: raiz.slice(), sel: "r", editando: "r", historico: [], futuro: [], recolhidos: {}, view: { x: 40, y: 20, z: 1 },
+        }));
+      },
+      ehMapa: st.vista === "mapa", ehEsboco: st.vista === "esboco",
+      estVerMapa: seg(st.vista === "mapa"), estVerEsboco: seg(st.vista === "esboco"),
+      verMapa: () => this.setState({ vista: "mapa" }), verEsboco: () => this.setState({ vista: "esboco", editando: null }),
+      estDesfazer: icon(st.historico.length > 0), estRefazer: icon(st.futuro.length > 0),
+      desfazer: () => this.setState((s2) => s2.historico.length ? ({ doc: s2.historico[s2.historico.length - 1], historico: s2.historico.slice(0, -1), futuro: [s2.doc].concat(s2.futuro), editando: null }) : {}),
+      refazer: () => this.setState((s2) => s2.futuro.length ? ({ doc: s2.futuro[0], futuro: s2.futuro.slice(1), historico: s2.historico.concat([s2.doc]), editando: null }) : {}),
+      verTudo: () => this.encaixar(true),
+      exportarMd: () => {
+        const linhas = [];
+        const anda = (id, d) => { const n = this.noDe(id); if (!n) return; linhas.push("  ".repeat(d) + "- " + (n.texto || "")); for (const f of this.filhosDe(id)) anda(f.id, d + 1); };
+        for (const r of st.doc.filter((n) => !n.parent)) anda(r.id, 0);
+        const blob = new Blob(["# " + mapa.nome + "\n\n" + linhas.join("\n") + "\n"], { type: "text/markdown" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = mapa.nome.replace(/[^a-z0-9]+/gi, "-").toLowerCase() + ".md";
+        document.body.appendChild(a); a.click(); a.remove();
+        this.setState({ estado: "baixado" }, () => this.agendarSalvar());
+      },
+      rotuloFoco: st.foco ? "Sair do foco" : "◐ foco",
+      estFoco: "height:28px;padding:0 11px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;transition:background 150ms ease;" +
+        (st.foco ? "background:#0c1d2b;color:#fff" : "background:#f1f4f5;color:#3d4f5c"),
+      alternarFoco: () => this.setState((s2) => ({ foco: !s2.foco })),
+      estadoTexto: st.estado,
+      estEstado: "margin-left:auto;font-family:" + JAK + ";font-size:10.5px;white-space:nowrap;color:" + (st.estado === "salvo" ? "#177a4c" : "#a16207"),
+      estPalco: "position:absolute;left:0;top:0;transform:translate(" + st.view.x + "px," + st.view.y + "px) scale(" + st.view.z + ");transform-origin:0 0;will-change:transform",
+      palco: bounds, nos, arestas, palcoRef: this.palcoRef,
+      cursorFundo: st.panning ? "grabbing" : "default",
+      onWheel: (e) => {
+        if (!e.ctrlKey && !e.metaKey) return;
+        e.preventDefault();
+        this.setState((s2) => ({ view: Object.assign({}, s2.view, { z: Math.max(0.35, Math.min(2, s2.view.z * (e.deltaY < 0 ? 1.1 : 0.9))) }) }));
+      },
+      onFundo: (e) => {
+        const x0 = e.clientX, y0 = e.clientY, v0 = st.view;
+        this.setState({ panning: true, sel: null, editando: null, pop: null });
+        const mover = (ev) => this.setState({ view: { z: v0.z, x: v0.x + (ev.clientX - x0), y: v0.y + (ev.clientY - y0) } });
+        const soltar = () => { window.removeEventListener("pointermove", mover); window.removeEventListener("pointerup", soltar); this.setState({ panning: false }); };
+        window.addEventListener("pointermove", mover); window.addEventListener("pointerup", soltar);
+      },
+      zoomTexto: Math.round(st.view.z * 100) + "%",
+      menosZoom: () => this.setState((s2) => ({ view: Object.assign({}, s2.view, { z: Math.max(0.35, s2.view.z - 0.12) }) })),
+      maisZoom: () => this.setState((s2) => ({ view: Object.assign({}, s2.view, { z: Math.min(2, s2.view.z + 0.12) }) })),
+      dica: "arraste o fundo pra mover · ⌘ + roda pra zoom · arraste um nó pra soltá-lo da árvore",
+      temSel: !!sel && st.vista === "mapa",
+    };
+    const rSel = sel ? rects[sel.id] : null;
+    vals.estToolbar = rSel
+      ? "position:absolute;z-index:5;left:" + Math.max(8, rSel.x * st.view.z + st.view.x) + "px;top:" + ((rSel.y + rSel.h) * st.view.z + st.view.y + 10) + "px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;max-width:calc(100% - 20px);padding:6px 8px;border-radius:999px;background:#fff;box-shadow:0 2px 6px rgba(12,29,43,.1),0 14px 30px -18px rgba(12,29,43,.5)"
+      : "display:none";
+    vals.cores = Component.PALETA.map(([hex, nome], i) => ({
+      title: nome,
+      est: "width:18px;height:18px;border-radius:999px;flex-shrink:0;background:" + hex + ";box-shadow:" + (sel && sel.cor === i ? "0 0 0 2px #fff,0 0 0 3.5px " + hex : "inset 0 0 0 1px rgba(0,0,0,.08)"),
+      usar: () => { if (sel) this.patch(sel.id, { cor: i }); },
+    }));
+    const bt = "height:26px;min-width:26px;padding:0 8px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:11px;font-weight:600;white-space:nowrap;transition:background 150ms ease";
+    const btOn = "height:26px;min-width:26px;padding:0 8px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:11px;font-weight:600;white-space:nowrap";
+    const proxForma = { rounded: "pill", pill: "rect", rect: "rounded" };
+    vals.acoesNo = !sel ? [] : [
+      { label: "B", title: "negrito", est: sel.negrito ? btOn : bt, agir: () => this.patch(sel.id, { negrito: !sel.negrito }) },
+      { label: "forma", title: "cápsula → reto → arredondado", est: bt, agir: () => this.patch(sel.id, { forma: proxForma[sel.forma || "rounded"] }) },
+      { label: "✎", title: "nota do nó", est: sel.nota ? btOn : bt, agir: () => this.setState({ pop: { kind: "nota", id: sel.id, valor: sel.nota || "" } }) },
+      { label: "↗", title: "link do nó", est: sel.link ? btOn : bt, agir: () => this.setState({ pop: { kind: "link", id: sel.id, valor: sel.link || "" } }) },
+      { label: "☺", title: "emoji", est: sel.emoji ? btOn : bt, agir: () => this.setState({ pop: { kind: "emoji", id: sel.id, valor: sel.emoji || "" } }) },
+      { label: "+ filho", title: "criar filho (Tab)", est: bt, agir: () => this.criarFilho(sel.id) },
+      { label: "+ irmão", title: "criar irmão (Enter)", est: bt, agir: () => this.criarIrmao(sel.id) },
+      { label: "✕", title: sel.parent ? "apagar o nó e o ramo dele" : "a raiz não se apaga",
+        est: sel.parent ? "height:26px;min-width:26px;border-radius:999px;background:#fdf3f2;color:#b42318;font-size:11px;font-weight:600" : "height:26px;min-width:26px;border-radius:999px;background:#f7f9fa;color:#c5cfd4;font-size:11px;cursor:default",
+        agir: () => this.apagarNo(sel.id) },
+    ];
+    const rPop = st.pop ? rects[st.pop.id] : null;
+    vals.temPopover = !!rPop;
+    vals.popover = st.pop ? {
+      titulo: st.pop.kind === "nota" ? "nota do nó" : st.pop.kind === "link" ? "link do nó" : "emoji",
+      valor: st.pop.valor,
+      placeholder: st.pop.kind === "nota" ? "o que este nó guarda" : st.pop.kind === "link" ? "https://…" : "cole um emoji",
+    } : { titulo: "", valor: "", placeholder: "" };
+    vals.estPopover = rPop
+      ? "position:absolute;z-index:6;left:" + Math.max(8, rPop.x * st.view.z + st.view.x) + "px;top:" + ((rPop.y + rPop.h) * st.view.z + st.view.y + 48) + "px;width:250px;padding:13px 15px;border-radius:20px;background:#fff;box-shadow:0 2px 6px rgba(12,29,43,.1),0 18px 40px -20px rgba(12,29,43,.5)"
+      : "display:none";
+    vals.mudarPopover = (e) => { const v = e.target.value; this.setState((s2) => ({ pop: Object.assign({}, s2.pop, { valor: v }) })); };
+    vals.salvarPopover = () => {
+      const p = st.pop; if (!p) return;
+      const campo = p.kind === "nota" ? "nota" : p.kind === "link" ? "link" : "emoji";
+      this.patch(p.id, { [campo]: p.valor.trim() });
+      this.setState({ pop: null });
+    };
+    vals.fecharPopover = () => this.setState({ pop: null });
+
+    const esboco = [];
+    const anda = (id, d) => {
+      const n = this.noDe(id); if (!n) return;
+      const filhos = this.filhosDe(id).length;
+      esboco.push({
+        texto: n.texto,
+        est: "display:flex;align-items:center;gap:8px;padding:5px 0;padding-left:" + (d * 22) + "px",
+        estTraco: "width:4px;height:16px;border-radius:999px;flex-shrink:0;background:" + this.corDe(id),
+        estInput: "flex:1;min-width:0;height:28px;border:0;border-radius:999px;background:transparent;padding:0 8px;font-family:inherit;font-size:" + (d === 0 ? 13.5 : 12.5) + "px;font-weight:" + (d === 0 ? 700 : 500) + ";color:#0c1d2b;outline:none",
+        filhos: filhos ? filhos + (filhos === 1 ? " filho" : " filhos") : "",
+        estFilhos: filhos ? "font-family:" + JAK + ";font-size:10px;color:#b6c0c7;white-space:nowrap" : "display:none",
+        mudar: (e) => this.patch(id, { texto: e.target.value }),
+        tecla: (e) => {
+          if (e.key === "Enter") { e.preventDefault(); this.criarIrmao(id); }
+          else if (e.key === "Tab") { e.preventDefault(); this.criarFilho(id); }
+        },
+      });
+      for (const f of this.filhosDe(id)) anda(f.id, d + 1);
+    };
+    for (const r of st.doc.filter((n) => !n.parent)) anda(r.id, 0);
+    vals.esboco = esboco;
+    return vals;
+  }
+}
+</script>
+</body>
+</html>

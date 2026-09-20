@@ -56,7 +56,7 @@ const TAB_OF = {
 
 const th = { textAlign: "left", padding: "10px 14px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-inset)", whiteSpace: "nowrap" };
 const td = { padding: "10px 14px", fontSize: 12.5, borderBottom: "1px solid var(--line-faint)", verticalAlign: "top" };
-const act = { height: 26, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600, cursor: "pointer", textDecoration: "none", display: "inline-flex", alignItems: "center" };
+const act = { height: 26, padding: "0 9px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600, cursor: "pointer", textDecoration: "none", display: "inline-flex", alignItems: "center" };
 
 function OffersScreen({ onOpenLead }) {
   const [product] = useActiveSaas();
@@ -174,7 +174,7 @@ function OffersScreen({ onOpenLead }) {
           const pct = (v) => (ger > 0 ? Math.max(0, Math.min(100, (Number(v) || 0) / ger * 100)) : 0);
           const dot = (color) => ({ width: 6, height: 6, borderRadius: 999, background: color, flexShrink: 0 });
           return (
-            <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "20px var(--inset-x)" }}>
+            <div className="capsule-navy" style={{ boxShadow: "var(--shadow-card)", padding: "22px var(--inset-x)" }}>
               <div style={{ display: "flex", alignItems: "flex-start", gap: 28, flexWrap: "wrap" }}>
                 <div style={{ minWidth: 180 }}
                   title="links gerados no período que ainda não têm pagamento (inclui boleto/PIX emitido e não pago)">
@@ -204,7 +204,7 @@ function OffersScreen({ onOpenLead }) {
                   </div>
                 )}
                 <button onClick={() => setTab("aguardando")} title="filtrar só quem está devendo"
-                  style={{ marginLeft: "auto", alignSelf: "center", height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+                  style={{ marginLeft: "auto", alignSelf: "center", height: 32, padding: "0 13px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
                   ver quem está devendo →
                 </button>
               </div>
@@ -258,7 +258,7 @@ function OffersScreen({ onOpenLead }) {
         {!data && !err && <div className="mono dim" style={{ fontSize: 12 }}>carregando histórico…</div>}
 
         {data && !data.groups.length && !hasFilter && (
-          <div style={{ minHeight: 240, background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
+          <div style={{ minHeight: 240, background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
             <EmptyState title={admin ? "Nenhum link de pagamento no período" : "Você ainda não gerou link neste período"}
               hint="Gere a cobrança no nome de um lead ou cliente: o pagamento volta casado com ele e aparece aqui como pago. Pra ver links antigos, amplie o período no topo."
               action={<PrimaryButton onClick={() => setCreating(true)} disabled={!mpOn}>+ gerar link</PrimaryButton>} />
@@ -273,7 +273,7 @@ function OffersScreen({ onOpenLead }) {
         )}
 
         {data && !!rows.length && (
-          <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
+          <div className="tbl-x" style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
             <table style={{ width: "100%", minWidth: 780, borderCollapse: "collapse" }}>
               <thead>
                 <tr>
@@ -342,13 +342,13 @@ function OffersScreen({ onOpenLead }) {
                                 {aberto && wa && (
                                   <a href={`${wa}?text=${encodeURIComponent(texto)}`} target="_blank" rel="noopener noreferrer"
                                     title="abrir o WhatsApp com o link da cobrança em aberto"
-                                    style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid var(--wa-brand)", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>
+                                    style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 11px", borderRadius: 999, border: "1px solid var(--wa-brand)", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>
                                     cobrar
                                   </a>
                                 )}
                                 {aberto?.url && (
                                   <button onClick={() => copyLink(aberto.url, `g-${g.key}`)}
-                                    style={{ height: 26, padding: "0 11px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, cursor: "pointer" }}>
+                                    style={{ height: 26, padding: "0 11px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, cursor: "pointer" }}>
                                     {copied === `g-${g.key}` ? "copiado ✓" : "copiar"}
                                   </button>
                                 )}

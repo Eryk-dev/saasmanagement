@@ -4,6 +4,7 @@ import { AppStartup } from "../src/components/screen-loading.jsx";
 import { fmt } from "../src/lib/format.js";
 import { LEADS_FAKE, CLIENTES_FAKE } from "./api-mock.js";
 import "../src/tokens.css";
+import "../src/capsule.css";
 import { setupInboxPreview } from "./inbox-mock.js";
 import { setupTeamPreview } from "./team-mock.js";
 

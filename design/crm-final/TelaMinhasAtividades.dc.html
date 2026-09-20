@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Minhas atividades</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-saiu{to{opacity:0;transform:translateX(-12px)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-saiu{animation:cap-saiu .16s ease both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-saiu{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-saiu{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  /* Duas colunas: o trilho secundário cede, senão ele fica mais largo que o
+     conteúdo principal (no host de 644px o 1fr resolvia em 282px contra 340px
+     do trilho) e o card herói quebra em duas linhas. Abaixo de 900px o trilho
+     desce pra baixo. Media query é a única coisa aqui que não dá pra inline. */
+  .cap-2col{display:grid;align-items:stretch;gap:12px;grid-template-columns:minmax(0,1.7fr) minmax(250px,.85fr)}
+  @media (max-width:900px){
+    .cap-2col{grid-template-columns:minmax(0,1fr)}
+    .cap-2col > *{grid-column:1!important}
+  }
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="position:relative;flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',sans-serif,ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;overflow:auto;margin:0 -4px;padding:0 4px 24px">
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:stretch;gap:12px">
+
+        <header class="cap-rise" style="grid-column:1 / -1;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+          <div>
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+              <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Minhas atividades</h1>
+              <span style="display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 14px;border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.05)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0F766E" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 12 L 14.1 8.4"></path><path d="M12 12 L 17.5 14.2"></path></svg>
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#5a6b77">sex 18/09</span>
+                <span style="color:#c5cfd4">·</span>
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;font-weight:600">14:22</span>
+              </span>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <label style="position:relative;height:36px;display:inline-flex;align-items:center;gap:8px;padding:0 6px 0 14px;border-radius:999px;background:#fff;color:#0c1d2b;font-size:12.5px;font-weight:600;box-shadow:0 1px 2px rgba(12,29,43,.05);cursor:pointer">
+              <span>{{ pessoaNome }}</span>
+              <span style="display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 7px;border-radius:999px;background:#E9F5F3;color:#0F766E;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;font-weight:600">{{ pessoaAbertos }}</span>
+              <span style="font-size:9px;color:#8b99a4;padding-right:6px">▾</span>
+              <select value="{{ pessoa }}" onChange="{{ mudarPessoa }}" style="position:absolute;inset:0;opacity:0;cursor:pointer;font-family:inherit">
+                <sc-for list="{{ pessoas }}" as="p" hint-placeholder-count="4">
+                  <option value="{{ p.id }}">{{ p.label }}</option>
+                </sc-for>
+              </select>
+            </label>
+            <button onClick="{{ comecarFila }}" style="{{ estComecar }}">{{ rotuloComecar }}</button>
+          </div>
+        </header>
+
+        <div style="grid-column:1;grid-row:2;align-self:start;min-width:0;display:flex;flex-direction:column;gap:12px">
+        <sc-if value="{{ temAgora }}" hint-placeholder-val="{{ true }}">
+        <section class="cap-rise" style="position:relative;overflow:hidden;border-radius:24px;background:linear-gradient(168deg,#0a2434,#051C2C 70%);box-shadow:0 1px 2px rgba(5,28,44,.14),0 18px 40px -24px rgba(5,28,44,.6);padding:16px 20px;display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+          <span style="position:absolute;right:-40px;top:-30px;width:190px;height:190px;color:#23D8D3;opacity:.07;pointer-events:none"><svg width="190" height="190" viewBox="355 525 455 590"><polygon fill="currentColor" points="800.7 535.53 800.7 1103.92 763 983.8 749.25 939.91 691.16 754.61 501.54 817.84 457.65 832.42 362.47 864.14 443.6 803.33 481.22 775.08 800.7 535.53"></polygon></svg></span>
+          <div style="flex:1 1 320px;min-width:0;position:relative">
+            <div style="display:flex;align-items:center;gap:7px">
+              <span style="width:5px;height:14px;border-radius:999px;background:#23D8D3;flex-shrink:0"></span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#23D8D3">{{ agoraKicker }}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px">
+              <span style="{{ agora.estGrade }}">{{ agora.grade }}</span>
+              <span style="font-family:'Outfit',sans-serif;font-size:18px;font-weight:700;letter-spacing:-.025em;color:#F3FBFF">{{ agora.lead }}</span>
+              <span style="font-size:12.5px;color:rgba(243,251,255,.6)">{{ agora.empresa }}</span>
+              <span style="{{ agora.estPrazo }}">
+                <span class="cap-breath" style="{{ agora.estPonto }}"></span>{{ agora.prazo }}
+              </span>
+            </div>
+            <div style="font-family:'Outfit',sans-serif;font-size:16px;font-weight:700;letter-spacing:-.02em;color:#F3FBFF;margin-top:10px">{{ agora.titulo }}</div>
+            
+            
+          </div>
+          <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;position:relative;width:100%">
+            <button onClick="{{ abrirAgora }}" style="flex:1 1 150px;height:36px;padding:0 16px;border-radius:999px;background:#F3FBFF;color:#051C2C;font-size:12.5px;font-weight:700;transition:background 150ms ease" style-hover="background:#fff">Abrir o roteiro →</button>
+            
+          </div>
+        </section>
+        </sc-if>
+
+        <sc-if value="{{ filaLimpa }}" hint-placeholder-val="{{ false }}">
+        <section class="cap-rise" style="position:relative;overflow:hidden;border-radius:24px;background:linear-gradient(168deg,#0a2434,#051C2C 70%);box-shadow:0 1px 2px rgba(5,28,44,.14),0 18px 40px -24px rgba(5,28,44,.6);padding:26px;display:flex;gap:18px;flex-wrap:wrap;align-items:center">
+          <span style="position:absolute;right:-40px;top:-30px;width:190px;height:190px;color:#23D8D3;opacity:.07;pointer-events:none"><svg width="190" height="190" viewBox="355 525 455 590"><polygon fill="currentColor" points="800.7 535.53 800.7 1103.92 763 983.8 749.25 939.91 691.16 754.61 501.54 817.84 457.65 832.42 362.47 864.14 443.6 803.33 481.22 775.08 800.7 535.53"></polygon></svg></span>
+          <div style="position:relative;flex:1 1 300px;min-width:0">
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#23D8D3">fila limpa</div>
+            <div style="font-family:'Outfit',sans-serif;font-size:26px;font-weight:700;letter-spacing:-.03em;color:#F3FBFF;margin-top:10px">{{ limpaTitulo }}</div>
+            <div style="font-size:12.5px;color:rgba(243,251,255,.6);margin-top:5px">{{ limpaSub }}</div>
+          </div>
+          <button onClick="{{ reabrir }}" style="position:relative;flex-shrink:0;height:40px;padding:0 18px;border-radius:999px;background:rgba(255,255,255,.1);color:#F3FBFF;font-size:12.5px;font-weight:600;transition:background 150ms ease" style-hover="background:rgba(255,255,255,.18)">Reabrir a fila</button>
+        </section>
+        </sc-if>
+
+
+        <div style="{{ estCelulaFila }}">
+          <div style="flex:1 1 320px;min-width:280px;display:flex;flex-direction:column;gap:12px">
+          <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);min-width:0;padding:22px 16px 16px">
+            <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 6px 4px">
+              <div>
+                <div style="display:flex;align-items:center;gap:7px">
+                <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">hoje</span>
+              </div>
+                <h3 style="margin:8px 0 0;font-family:'Outfit',sans-serif;font-size:19px;font-weight:700;letter-spacing:-.02em">A ordem é a prioridade do processo</h3>
+              </div>
+              <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                <span style="display:inline-flex;align-items:center;gap:9px;height:34px;padding:0 14px;border-radius:999px;background:#f1f4f5">
+                  <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#5a6b77">{{ progresso }}</span>
+                  <span style="width:70px;height:6px;border-radius:999px;background:#dfe5e8;overflow:hidden;flex-shrink:0"><span style="{{ estProgresso }}"></span></span>
+                </span>
+                <label style="display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 15px;border-radius:999px;background:#f1f4f5;color:#5a6b77;font-size:12.5px;min-width:180px">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><circle cx="11" cy="11" r="7"></circle><path d="M20.4 20.4l-4.2-4.2"></path></svg>
+                  <input value="{{ busca }}" onChange="{{ mudarBusca }}" placeholder="buscar na fila…" style="flex:1;min-width:0;border:0;background:none;outline:none;font-family:inherit;font-size:12.5px;color:#0c1d2b">
+                </label>
+              </div>
+            </div>
+
+            <sc-for list="{{ pagina }}" as="i" hint-placeholder-count="10">
+                <div class="{{ i.classe }}" style="{{ i.est }}" style-hover="background:#f5f7f8">
+                  <span style="display:flex;flex-direction:column;align-items:flex-start;gap:2px">
+                    <span style="{{ i.estHora }}">{{ i.hora }}</span>
+                    <span style="{{ i.estNota }}">{{ i.nota }}</span>
+                  </span>
+                  <button onClick="{{ i.abrir }}" style="min-width:0;text-align:left">
+                    <span style="display:flex;align-items:center;gap:6px;min-width:0">
+                      <span style="{{ i.estGrade }}">{{ i.grade }}</span>
+                      <span style="font-size:12.5px;font-weight:650;color:#0c1d2b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ i.lead }}</span>
+                      <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ i.empresa }}</span>
+                    </span>
+                    <span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#5a6b77;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ i.titulo }}</span>
+                  </button>
+                  <button onClick="{{ i.abrir }}" style="{{ i.estAbrir }}">Abrir roteiro →</button>
+                </div>
+            </sc-for>
+
+            <sc-if value="{{ temPaginas }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:12px 8px 0;padding-top:12px;border-top:1px solid #edf1f3">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#5a6b77">{{ paginaNota }}</span>
+                <span style="flex:1"></span>
+                <button onClick="{{ paginaAnterior }}" style="{{ estPagAnterior }}">‹ Anteriores</button>
+                <button onClick="{{ paginaProxima }}" style="{{ estPagProxima }}">Próximas ›</button>
+              </div>
+            </sc-if>
+              </section></div>
+            
+
+            <sc-if value="{{ semResultado }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:24px 14px;font-size:12.5px;color:#8b99a4">nada na fila com esse termo</div>
+            </sc-if>
+
+            <sc-if value="{{ temFeitos }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:14px 8px 0;padding-top:12px;border-top:1px solid #edf1f3">
+                <button onClick="{{ alternarFeitos }}" style="display:flex;align-items:center;gap:8px;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">
+                  <span>{{ rotuloFeitos }}</span>
+                  <span style="font-size:9px">{{ setaFeitos }}</span>
+                </button>
+                <sc-if value="{{ feitosAbertos }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:2px;margin-top:8px">
+                    <sc-for list="{{ feitos }}" as="f" hint-placeholder-count="2">
+                      <div style="display:flex;align-items:center;gap:10px;padding:8px 6px;opacity:.6">
+                        <span style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:999px;background:#E9F5F3;color:#0F766E;font-size:11px">✓</span>
+                        <span style="flex:1;min-width:0;font-size:12.5px;text-decoration:line-through;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.titulo }} · {{ f.lead }}</span>
+                        <button onClick="{{ f.desfazer }}" style="flex-shrink:0;font-size:11.5px;font-weight:600;color:#0F766E">Desfazer</button>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-if>
+          
+          </div>
+
+
+        </div>
+
+        <div style="grid-column:2;grid-row:2;align-self:start;position:sticky;top:6px;min-width:0;max-height:calc(100vh - 118px);display:flex;flex-direction:column;overflow:hidden">
+          <sc-if value="{{ semSel }}" hint-placeholder-val="{{ true }}">
+            <aside style="align-self:stretch;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;padding:28px 22px;border-radius:24px;background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);text-align:center">
+              <span style="display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:999px;background:#f1f4f5;color:#8b99a4;font-size:15px">◇</span>
+              <div style="font-family:'Outfit',sans-serif;font-size:15px;font-weight:700;letter-spacing:-.02em;color:#0c1d2b">Escolha uma atividade</div>
+              <div style="font-size:12px;line-height:1.5;color:#5a6b77;max-width:230px;text-wrap:pretty">O roteiro, a mensagem pronta e as ações aparecem aqui — sem sair da fila.</div>
+            </aside>
+          </sc-if>
+          <sc-if value="{{ temSel }}" hint-placeholder-val="{{ false }}">
+            <aside class="{{ classeGaveta }}" style="flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;border-radius:24px;background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+              <div style="flex:0 0 auto;display:flex;align-items:flex-start;gap:11px;padding:18px 18px 12px">
+                <span style="{{ sel.estGrade }}">{{ sel.grade }}</span>
+                <div style="flex:1;min-width:0">
+                  <div style="font-family:'Outfit',sans-serif;font-size:17px;font-weight:700;letter-spacing:-.025em;line-height:1.2">{{ sel.lead }}</div>
+                  <div style="font-size:11.5px;color:#5a6b77;margin-top:2px">{{ sel.empresa }} · {{ sel.tipo }}</div>
+                </div>
+                <button onClick="{{ fechar }}" style="flex-shrink:0;width:28px;height:28px;border-radius:999px;background:#f1f4f5;color:#5a6b77;font-size:12px;transition:background 150ms ease" style-hover="background:#e7ecee;color:#0c1d2b">✕</button>
+              </div>
+              <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:9px;padding:0 18px 16px">
+                <div style="padding:13px 15px;border-radius:18px;background:#f7f9fa">
+                  <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">próximo passo</div>
+                  <div style="font-size:13.5px;font-weight:650;margin-top:7px;text-wrap:pretty">{{ sel.titulo }}</div>
+                  <div style="font-size:11.5px;color:#5a6b77;margin-top:4px;text-wrap:pretty">{{ sel.sub }}</div>
+                  <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:10px">
+                    <sc-for list="{{ sel.fatos }}" as="f" hint-placeholder-count="3">
+                      <span style="{{ f.est }}"><span style="opacity:.65">{{ f.k }}</span><b style="font-weight:650">{{ f.v }}</b></span>
+                    </sc-for>
+                  </div>
+                </div>
+                <div style="padding:13px 15px;border-radius:18px;background:#f7f9fa">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">roteiro</span>
+                    <span style="margin-left:auto;font-size:10.5px;font-weight:600;color:#0F766E;background:#E9F5F3;border-radius:999px;padding:3px 9px">{{ sel.passosNota }}</span>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:2px;margin-top:9px">
+                    <sc-for list="{{ sel.passos }}" as="p" hint-placeholder-count="4">
+                      <button onClick="{{ p.alternar }}" style="display:flex;align-items:flex-start;gap:9px;width:100%;text-align:left;padding:7px 9px;border-radius:14px;transition:background 150ms ease" style-hover="background:#fff">
+                        <span style="{{ p.estCheck }}">{{ p.marca }}</span>
+                        <span style="flex:1;min-width:0">
+                          <span style="{{ p.estTexto }}">{{ p.titulo }}</span>
+                          <span style="{{ p.estFala }}">{{ p.fala }}</span>
+                          <span style="{{ p.estDica }}">{{ p.dica }}</span>
+                        </span>
+                      </button>
+                    </sc-for>
+                  </div>
+                </div>
+                <div style="{{ sel.estWa }};padding:13px 15px;border-radius:18px;background:#f7f9fa">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">mensagem</span>
+                    <span style="margin-left:auto;font-size:10.5px;color:#5a6b77">{{ sel.waLabel }}</span>
+                  </div>
+                  <div style="margin-top:8px;padding:10px 12px;border-radius:14px;background:#fff;box-shadow:inset 0 0 0 1px #e4e9eb;font-size:12px;line-height:1.55;white-space:pre-line;text-wrap:pretty">{{ sel.waTexto }}</div>
+                  <button onClick="{{ copiarWa }}" style="{{ estCopiarWa }}">{{ rotuloCopiarWa }}</button>
+                </div>
+                <textarea value="{{ sel.anotacao }}" onChange="{{ mudarNota }}" placeholder="o que ficou dito…" style="width:100%;min-height:52px;resize:vertical;border:0;border-radius:16px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:10px 12px;font-family:inherit;font-size:12px;line-height:1.5;color:#0c1d2b;outline:none"></textarea>
+              </div>
+              <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:8px;padding:12px 18px 14px;border-top:1px solid #edf1f3">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                  <span style="font-size:10.5px;color:#5a6b77;margin-right:2px">adiar</span>
+                  <button onClick="{{ adiar1h }}" style="height:27px;padding:0 11px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:11px;font-weight:600;transition:background 150ms ease" style-hover="background:#e7ecee">Adiar 1h</button>
+                  <button onClick="{{ adiarTarde }}" style="height:27px;padding:0 11px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:11px;font-weight:600;transition:background 150ms ease" style-hover="background:#e7ecee">Fim do dia</button>
+                  <button onClick="{{ adiarAmanha }}" style="height:27px;padding:0 11px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:11px;font-weight:600;transition:background 150ms ease" style-hover="background:#e7ecee">Amanhã</button>
+                </div>
+                <button onClick="{{ concluirSel }}" style="height:42px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:13px;font-weight:700;transition:background 150ms ease" style-hover="background:#1b3140">{{ rotuloConcluirSel }}</button>
+              </div>
+            </aside>
+          </sc-if>
+        </div>
+        
+      </div>
+    </div>
+
+  
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Fila de hoje do screens/today.jsx: a ordem é a prioridade do processo
+  // (confirmar call → primeiro contato → retomar → follow-up → social selling),
+  // o painel navy é sempre o próximo item e o placar do dia é dayScoreOf().
+  // Chaves e rótulos do SCRIPT_CATALOG (lib/scripts.js); passos = DEFAULT_SCRIPTS,
+  // com o título, a fala e a dica de cada passo como estão na fonte.
+  static ORDEM = ["confirmacaoIntegracao", "confirmacao", "novo", "qualificacao2", "qualificacao3", "nutricao1", "call", "proposta", "followup1", "followup2", "followup3", "integracao", "posvenda"];
+  static CATALOGO = {
+    novo: { label: "Novo lead · 1º ato (Dia 1)", phase: "Pré-venda (SDR)" },
+    qualificacao2: { label: "Qualificando · 2ª tentativa", phase: "Pré-venda (SDR)" },
+    qualificacao3: { label: "Qualificando · 3ª tentativa (última)", phase: "Pré-venda (SDR)" },
+    confirmacao: { label: "Confirmação da call", phase: "Pré-venda (SDR)" },
+    nutricao1: { label: "Nutrição · 1º contato (prova)", phase: "Reativação" },
+    call: { label: "Call de fechamento", phase: "Closer" },
+    proposta: { label: "Proposta enviada", phase: "Closer" },
+    followup1: { label: "Follow-up · 1º contato", phase: "Closer" },
+    followup2: { label: "Follow-up · 2º contato", phase: "Closer" },
+    followup3: { label: "Follow-up · 3º contato (último)", phase: "Closer" },
+    confirmacaoIntegracao: { label: "Confirmação da integração", phase: "Entrega" },
+    integracao: { label: "Integração", phase: "Entrega" },
+    posvenda: { label: "Pós-venda", phase: "Entrega" },
+  };
+  static ROTEIROS = {
+    confirmacao: { titulo: "Confirmação da call", objetivo: "Garantir a presença na call e reduzir no-show.", passos: [
+      { t: "2h antes: confirmação (WhatsApp)", fala: "Oi {{nome}}! Tudo bem? Aqui é {{eu}}, da {{produto}}. Tá tudo certo pra nossa call de hoje às {{hora_call}}. O especialista {{closer_responsavel}} já está se preparando pra te receber no link: {{link_call}}. Duas dicas pra call render: entra já logado no Mercado Livre e na Shopee (ele clona anúncios de verdade nas suas contas, ao vivo) e, se alguém decide junto com você, chama pra assistir. Me confirma por aqui, por favor? Te esperamos!", dica: "Logins em mãos e decisor presente são o que mais decide a call: sem login o teste ao vivo não roda; sem o sócio, a decisão adia. Sem resposta até 1h antes da call: LIGA (silêncio na confirmação é 88% de furo)." },
+      { t: "10 min antes: cliente respondeu (WhatsApp)", fala: "Maravilha! Obrigado pelo retorno. Em 10 minutos ele já vai estar te aguardando." },
+      { t: "10 min antes: sem resposta, LIGA", fala: "Oi {{nome}}, é {{eu}}, da {{produto}}. Nossa call é agora, o especialista já está na sala. Tô te mandando o link, entra que já vamos começar.", dica: "Não atendeu? Manda no WhatsApp: o especialista já está te esperando na sala, entra agora: {{link_call}}. Já começamos!" },
+    ] },
+    novo: { titulo: "1º ato · novo lead (prioridade máxima)", objetivo: "Conversa breve de confirmação: dados completos na ordem (nicho, empresa, contas, anúncios, expansão, time), call agendada e o e-mail confirmado no fechamento. Não atendeu? Apresentação no WhatsApp pedindo o melhor horário.", passos: [
+      { t: "Ligar (2 tentativas)", dica: "Ainda sem fala: liga e aguarda. Não atendeu? Liga de novo em seguida. Caiu na caixa duas vezes, manda o WhatsApp do passo 2 e registra o toque." },
+      { t: "Não atendeu: WhatsApp de apresentação", fala: "Olá {{nome}}, tudo bem? Aqui é {{eu}}, da plataforma {{produto}}. Recebemos o seu cadastro dizendo estar interessado no nosso serviço de clonagem de anúncios. Tem algum horário em que a gente possa te retornar pra conversar sobre?", dica: "Depois registra o toque e o GPS marca a retomada pra amanhã." },
+      { t: "Atendeu: identificação", fala: "Olá {{nome}}, tudo bom? Sou {{eu}}, da {{produto}}. Recebi o seu cadastro com interesse na nossa ferramenta de clonar anúncios, você confirma pra mim?" },
+      { t: "Transição", fala: "Que bom! Queria confirmar só algumas informações com você, essa primeira conversa é bem breve." },
+      { t: "Nicho", fala: "Vi que você preencheu que trabalha com {{nicho}}, é isso mesmo?" },
+      { t: "Nome da empresa", fala: "Legal! E qual o nome da sua loja, da sua empresa?", dica: "Preenche no campo ao lado. Abrir a loja na hora cria assunto e arma o closer pra call." },
+      { t: "Contas nos marketplaces", fala: "Hoje você opera quantas contas dentro dos marketplaces? No formulário você marcou {{contas}}." },
+      { t: "Anúncios na maior conta", fala: "E na sua maior conta, quantos anúncios publicados você tem? Você indicou {{anuncios}}." },
+      { t: "Abrir mais contas", fala: "E você pretende abrir mais contas nos próximos meses?", dica: "Resposta do formulário: {{expansao}}." },
+      { t: "Time de marketing", fala: "Quantas pessoas você tem hoje no time de marketing, cuidando dos anúncios?" },
+      { t: "Quem decide junto", fala: "Se a ferramenta fizer sentido pra você, você bate o martelo sozinho ou tem sócio, esposa, consultor que decide junto?", dica: "Registra ao lado. Decisor fora da call não fecha na hora: já convida a pessoa pra call do especialista." },
+      { t: "Agendar a call", fala: "Fechado {{nome}}! Vou te colocar com nosso especialista pra você ver a ferramenta clonando anúncio de verdade na sua operação. Fica melhor amanhã de manhã ou no fim da tarde?", dica: "Sempre 2 opções de horário. Marcou? Registra em Call agendada no lead e gera o link da videochamada." },
+      { t: "Preparar a call (logins + decisor)", fala: "Pra call render de verdade, anota duas coisas: entra já logado no Mercado Livre e na Shopee, porque o especialista clona anúncios de verdade nas suas contas, ao vivo. E se alguém decide junto com você, chama pra assistir, é rapidinho e vale a pena.", dica: "Sem login na call o teste não roda e o fechamento adia. Com sócio na decisão, a call só fecha se a pessoa estiver presente." },
+      { t: "E-mail pra receber o convite", fala: "Perfeito! Pra fechar, me confirma seu melhor e-mail? Te mando o convite da nossa call por ele.", dica: "Preenche no campo ao lado; o convite do Meet vai automático pra ele." },
+    ] },
+    qualificacao2: { titulo: "Qualificando · 2ª tentativa", objetivo: "Falar com o lead (e qualificar + marcar call) ou deixar a mensagem certa pedindo o melhor horário.", passos: [
+      { t: "Ligar (2 tentativas)", dica: "Sem fala: liga e aguarda; não atendeu, liga de novo em seguida." },
+      { t: "Não atendeu: WhatsApp da 2ª tentativa", fala: "Oi, tudo bem? Estou falando com {{nome_completo}}? Sou {{eu}}, da plataforma {{produto}}. Você se cadastrou pra conhecer nossa ferramenta de clonagem de anúncios e ontem não consegui te encontrar. Qual o melhor horário pra gente conversar 5 minutinhos?", dica: "Depois registra o toque: o GPS traz o card de volta amanhã na 3ª (última) tentativa." },
+      { t: "Atendeu: identificação", fala: "Oi {{nome}}, tudo bom? Sou {{eu}}, da {{produto}}. A gente se falou sobre o seu interesse na clonagem de anúncios. Consegue falar rapidinho agora?" },
+      { t: "Rodar a sequência de dados", fala: "Deixa eu confirmar o que tenho: nicho de {{nicho}}, loja {{empresa}}, {{contas}} nos marketplaces e uns {{anuncios}} anúncios na maior conta, confere?", dica: "Siga a ordem dos campos ao lado e complete o que faltar: expansão, time de marketing e quem decide junto. O e-mail fica pro final, depois de marcar a call." },
+      { t: "Agendar a call", fala: "Fechado! Vou te colocar com nosso especialista pra você ver a ferramenta clonando anúncio de verdade na sua operação. Fica melhor amanhã de manhã ou no fim da tarde?", dica: "Sempre 2 opções de horário. Marcou? Registra em Call agendada e gera o link da videochamada." },
+      { t: "Preparar a call (logins + decisor)", fala: "Pra call render de verdade, anota duas coisas: entra já logado no Mercado Livre e na Shopee, porque o especialista clona anúncios de verdade nas suas contas, ao vivo. E se alguém decide junto com você, chama pra assistir, é rapidinho e vale a pena.", dica: "Sem login na call o teste não roda e o fechamento adia. Com sócio na decisão, a call só fecha se a pessoa estiver presente." },
+      { t: "E-mail pra receber o convite", fala: "Perfeito! Pra fechar, me confirma seu melhor e-mail? Te mando o convite da nossa call por ele.", dica: "Preenche no campo ao lado; o convite do Meet vai automático pra ele." },
+    ] },
+    qualificacao3: { titulo: "Qualificando · 3ª tentativa (última)", objetivo: "Última chance de falar e qualificar; sem retorno, encerrar o ciclo mandando o card pra Nutrição.", passos: [
+      { t: "Ligar (2 tentativas)", dica: "Sem fala: liga e aguarda; não atendeu, liga de novo." },
+      { t: "Não atendeu: WhatsApp da 3ª tentativa (encerramento)", fala: "Oi {{nome}}! Tentei falar com você algumas vezes por aqui e não consegui. A gente entende que às vezes o momento não é o ideal. Você ainda quer conhecer a {{produto}} pra clonar seus anúncios entre as contas, ou posso encerrar seu atendimento por enquanto?", dica: "Sem retorno até o fim do dia: mover o card pra Nutrição (o GPS devolve em 7 dias, num dia útil)." },
+      { t: "Atendeu: identificação", fala: "Oi {{nome}}, tudo bom? Sou {{eu}}, da {{produto}}. A gente se falou sobre o seu interesse na clonagem de anúncios. Consegue falar rapidinho agora?" },
+      { t: "Rodar a sequência de dados", fala: "Deixa eu confirmar o que tenho: nicho de {{nicho}}, loja {{empresa}}, {{contas}} nos marketplaces e uns {{anuncios}} anúncios na maior conta, confere?", dica: "Siga a ordem dos campos ao lado e complete o que faltar: expansão, time de marketing e quem decide junto. O e-mail fica pro final, depois de marcar a call." },
+      { t: "Agendar a call", fala: "Fechado! Vou te colocar com nosso especialista pra você ver a ferramenta clonando anúncio de verdade na sua operação. Fica melhor amanhã de manhã ou no fim da tarde?", dica: "Sempre 2 opções de horário. Marcou? Registra em Call agendada e gera o link da videochamada." },
+      { t: "Preparar a call (logins + decisor)", fala: "Pra call render de verdade, anota duas coisas: entra já logado no Mercado Livre e na Shopee, porque o especialista clona anúncios de verdade nas suas contas, ao vivo. E se alguém decide junto com você, chama pra assistir, é rapidinho e vale a pena.", dica: "Sem login na call o teste não roda e o fechamento adia. Com sócio na decisão, a call só fecha se a pessoa estiver presente." },
+      { t: "E-mail pra receber o convite", fala: "Perfeito! Pra fechar, me confirma seu melhor e-mail? Te mando o convite da nossa call por ele.", dica: "Preenche no campo ao lado; o convite do Meet vai automático pra ele." },
+    ] },
+    nutricao1: { titulo: "Nutrição · 1º contato (prova de resultado)", objetivo: "Reabrir a conversa com um resultado concreto, sem cobrar o silêncio.", passos: [
+      { t: "Ligar (1 tentativa)", dica: "Lead frio, 7 dias depois. Liga uma vez; não atendeu, manda o WhatsApp da prova." },
+      { t: "WhatsApp da prova", fala: "Oi {{nome}}! Um cliente nosso clonou o catálogo da conta principal pra segunda conta e no mesmo mês a conta 2 fez +105% de receita, com os mesmos anúncios que ele já tinha. Lembrei da sua operação." },
+      { t: "Atendeu: identificação", fala: "Oi {{nome}}, tudo bom? Sou {{eu}}, da {{produto}}. A gente se falou sobre o seu interesse na clonagem de anúncios. Consegue falar rapidinho agora?" },
+      { t: "Rodar a sequência de dados", fala: "Deixa eu confirmar o que tenho: nicho de {{nicho}}, loja {{empresa}}, {{contas}} nos marketplaces e uns {{anuncios}} anúncios na maior conta, confere?", dica: "Siga a ordem dos campos ao lado e complete o que faltar: expansão, time de marketing e quem decide junto. O e-mail fica pro final, depois de marcar a call." },
+      { t: "Agendar a call", fala: "Fechado! Vou te colocar com nosso especialista pra você ver a ferramenta clonando anúncio de verdade na sua operação. Fica melhor amanhã de manhã ou no fim da tarde?", dica: "Sempre 2 opções de horário. Marcou? Registra em Call agendada e gera o link da videochamada." },
+      { t: "Preparar a call (logins + decisor)", fala: "Pra call render de verdade, anota duas coisas: entra já logado no Mercado Livre e na Shopee, porque o especialista clona anúncios de verdade nas suas contas, ao vivo. E se alguém decide junto com você, chama pra assistir, é rapidinho e vale a pena.", dica: "Sem login na call o teste não roda e o fechamento adia. Com sócio na decisão, a call só fecha se a pessoa estiver presente." },
+      { t: "E-mail pra receber o convite", fala: "Perfeito! Pra fechar, me confirma seu melhor e-mail? Te mando o convite da nossa call por ele.", dica: "Preenche no campo ao lado; o convite do Meet vai automático pra ele." },
+    ] },
+    call: { titulo: "Call de fechamento", objetivo: "Sair com pagamento feito na call e integração agendada com dia e hora. Não fechou? Tarefa concreta, data marcada e o decisor presente na retomada.", passos: [
+      { t: "Raio-X da operação (5 min) · SPIN Situação", fala: "Me conta como está a operação hoje: são {{contas}} e uns {{anuncios}} anúncios, certo? Quem sobe anúncio hoje? E quanto vocês estão faturando por mês?", dica: "Situação do SPIN: confirmar, não redescobrir (o formulário já respondeu). Complete o que faltar; cada lacuna é pergunta." },
+      { t: "Pergunta da suspensão (define a narrativa) · SPIN Problema", fala: "E você já teve conta suspensa ou derrubada no Mercado Livre? Como foi?", dica: "Metade dos leads chega machucado e esse é o gatilho mais forte. Se sim, a call vira PROTEÇÃO; se não, vira CRESCIMENTO." },
+      { t: "Aprofundar a dor · SPIN Problema → Implicação", fala: "E o que isso já te custou? Quanto tempo do teu time vai embora nisso por semana? E enquanto o produto não está nas outras contas, quantas vendas ficam na mesa?", dica: "Faça o lead pôr NÚMERO na dor: dor quantificada é o que fecha." },
+      { t: "Espelho da dor (2 min) · SPIN Necessidade", fala: "Deixa eu ver se entendi: hoje o gargalo é braço. Subir esses {{anuncios}} anúncios em outra conta, na mão, levaria meses, é isso? E se isso rodasse sozinho, o que você faria primeiro: mais contas ou mais produto?", dica: "Devolver a dor nas palavras do lead antes da tese; a resposta do 'o que você faria' é a Necessidade declarada, o gancho da demo." },
+      { t: "Tese em 3 etapas + vacina da canibalização", fala: "Nosso método tem 3 etapas: clonagem entre contas, conta mãe segurando o estoque com baixa automática (sem furo, roda junto com Bling e Tiny) e IA completando título e atributos pro anúncio chegar com nota máxima. E antes que você pergunte: replicar não canibaliza. A Unique dobrou a conta 2 e a conta 1 ainda subiu 20%.", dica: "Responder a canibalização ANTES de perguntarem desarma a objeção mais comum da fase de tese." },
+      { t: "Demo AO VIVO nas contas dele (o coração)", fala: "Bora ver rodando na tua operação? Conecta as contas comigo que eu clono 10 anúncios teus agora, de verdade, na tua frente.", dica: "É aqui que a venda acontece. Sem login não tem demo. Deu erro? Chama o integrador e corrige na hora: vira prova de suporte." },
+      { t: "Prova com números", fala: "Dois exemplos rápidos: a Unique subiu 105% espelhando as contas, e a Dyno Nutri fez 60 mil a mais em 20 dias.", dica: "Case certo pra dor certa: Unique pra quem duvida da estratégia de contas, Dyno Nutri pra quem tem pressa." },
+      { t: "Oferta com âncora única", fala: "O investimento é o plano anual: 7.188, em 12x de 599 sem juros, ou 6.488 à vista no Pix com 10% de desconto. Preço fixo, sem taxa por pedido: a gente não quer ser teu sócio. E tudo que lançarmos durante o teu contrato está incluso.", dica: "A escada (semestral e, por último, o serviço único de réplica) SÓ entra se travar em caixa, e com validade real: a condição vale nesta call." },
+      { t: "Fechamento = agendar a integração", fala: "Então bora deixar rodando: que horário amanhã pro nosso integrador migrar teus {{anuncios}} anúncios, 13h ou 17h?", dica: "Não pergunte 'quer fechar?'. Pagamento ainda na call: Pix na hora ou link do cartão em 12x." },
+      { t: "Não fechou: tarefa + data + decisor", fala: "Fechado, então combina assim: você resolve isso [logins, abrir a Shopee, falar com o sócio] e a gente se fala nesse dia, nesse horário. Se o sócio decide junto, traz ele que eu reapresento em 15 minutos.", dica: "Nunca aceite 'vou pensar' seco. Decisor ausente nunca fechou na call: a remarcação é COM a pessoa." },
+    ] },
+    proposta: { titulo: "Proposta enviada · follow-up", objetivo: "Resposta concreta: aceite, objeção declarada ou próximo passo com data.", passos: [
+      { t: "Retomar", fala: "Oi {{nome}}! Te mandei a proposta pra clonagem das contas da {{empresa}}. Conseguiu ver com calma?" },
+      { t: "Reancorar o valor", fala: "Só lembrando o que travamos lá: seus {{anuncios}} anúncios replicados entre as contas sem trabalho manual." },
+      { t: "Destravar", fala: "Me fala com sinceridade: o que falta pra gente começar? Se for investimento, me conta que eu vejo o que consigo por aqui." },
+    ] },
+    followup1: { titulo: "Follow-up · 1º contato", objetivo: "Decisão (ou a objeção real declarada) e um dia marcado pra bater o martelo.", passos: [
+      { t: "Antes de chamar: ler a call", dica: "Temperatura: {{temperatura_call}}. Objeção em aberto: {{objecao_aberta}}. Dor confirmada: {{dor_call}}. O contato inteiro gira em volta disso." },
+      { t: "Retomar pelo combinado", fala: "Oi {{nome}}! Aqui é {{eu}}, da {{produto}}. Na nossa call a gente combinou: {{combinado_call}}. Como ficou aí do teu lado?" },
+      { t: "Atacar a objeção da call", fala: "Me fala com sinceridade o que ainda está pegando, que eu resolvo contigo agora.", dica: "Responda a objeção de frente antes de pedir a decisão: preço se responde com o valor do primeiro dia, prazo com a integração rodando amanhã." },
+      { t: "Fechar com data", fala: "Fechado. Me diz um dia ainda essa semana pra gente bater o martelo que eu já deixo tudo pronto pra você começar.", dica: "Sai com data no GPS. Sem retorno, volta em 3 dias úteis pro 2º contato." },
+    ] },
+    followup2: { titulo: "Follow-up · 2º contato", objetivo: "Derrubar a objeção em aberto e arrancar um bora, um não ou a dúvida real.", passos: [
+      { t: "Antes de chamar: ler a call", dica: "A mensagem responde a objeção em aberto ({{objecao_aberta}}) e lembra a dor confirmada ({{dor_call}}), nessa ordem." },
+      { t: "Objeção respondida com prova", fala: "Oi {{nome}}! Não vou te deixar sem retorno. Sobre o que ficou no ar na nossa call: cliente nosso na mesma situação subiu 105% espelhando as contas, e o risco do teu lado é baixo, teus anúncios migram no primeiro dia." },
+      { t: "Pedido objetivo", fala: "Me responde só com um 'bora' que eu já reservo teu horário pra fechar, ou me diz o que ainda está te segurando.", dica: "Sem resposta, o GPS devolve em 3 dias úteis pro 3º contato (último)." },
+    ] },
+    confirmacaoIntegracao: { titulo: "Confirmação da integração", objetivo: "Cliente confirmado, com os acessos separados e o link em mãos.", passos: [
+      { t: "2h antes: confirmar (WhatsApp)", fala: "Oi {{nome}}! Aqui é {{eu}}, da {{produto}}. Nossa integração é hoje às {{hora_integracao}}, por vídeo: {{link_integracao}}. Pra já sair rodando, entra pelo computador e deixa os logins das contas em mãos, a gente conecta tudo junto na call. Confirma pra mim?", dica: "Login em mãos e computador (não celular) são o que faz a call render: sem isso não dá pra conectar as contas nem clonar ao vivo." },
+      { t: "Sem resposta até 30 min antes: LIGA", fala: "Oi {{nome}}, é {{eu}}, da {{produto}}. Passando só pra confirmar nossa integração de hoje às {{hora_integracao}}. Você consegue estar no computador com os logins em mãos?", dica: "Não atendeu? Manda o link de novo no WhatsApp e segue pro horário. Cliente pediu pra remarcar? Ajuste a data em Integração no card." },
+    ] },
+    integracao: { titulo: "Integração · call de vídeo", objetivo: "Acessos conectados, conta-mãe definida e a primeira leva clonada na frente dele.", passos: [
+      { t: "1. Marcar a call", fala: "Oi {{nome}}! Aqui é da {{produto}}, sou eu que vou tocar sua integração. A gente faz numa call de vídeo, com tela compartilhada, leva uns 20 minutos e já sai rodando. Qual o melhor dia e horário pra você?" },
+      { t: "2. Antes da call", fala: "Pra render: deixa em mãos os acessos das contas que a gente vai espelhar. Na call eu te mostro exatamente onde conectar cada uma." },
+      { t: "3. Abrir a call", fala: "Vou compartilhar a tela e a gente faz junto. Antes de mexer, me confirma: quais contas entram agora e qual delas é a principal, a que tem os anúncios bons?" },
+      { t: "4. Conta-mãe e acessos", fala: "Essa vira a conta-mãe, a matriz. O que você publicar nela replica pras outras, e o que já está lá a gente clona agora." },
+      { t: "5. Primeira clonagem na tela", fala: "Olha rodando: esses anúncios já estão saindo pras outras contas da {{empresa}}. Daqui pra frente é publicar na matriz e deixar replicar." },
+      { t: "6. Fechar e combinar o acompanhamento", fala: "Ficou alguma dúvida do que a gente fez agora? Eu te acompanho essa semana, me chama aqui a qualquer hora. Semana que vem eu te procuro pra ver como está o volume." },
+      { t: "7. Plantar a indicação", fala: "Última coisa: em alguns dias você já vê os primeiros números. Quando isso acontecer, vou te pedir duas indicações de lojistas que sofrem com isso que a gente acabou de resolver. Vou te lembrar, combinado?", dica: "Semente plantada aqui, colhida na entrega do 1º resultado (pós-venda). Indicação é a classe de lead com maior conversão." },
+    ] },
+    posvenda: { titulo: "Pós-venda · acompanhamento", objetivo: "Cliente saudável, resultado documentado e uma indicação pedida.", passos: [
+      { t: "Check-in de resultado", fala: "Oi {{nome}}! Passando pra ver como a {{produto}} está rodando aí na {{empresa}}. Como está sendo pra vocês?" },
+      { t: "Virar case", fala: "Posso usar esse resultado da {{empresa}} como case nosso? A gente te marca e divulga a loja junto.", dica: "Autorizou? Abra a ficha do cliente e clique em \"virar case\": o número já vem do painel e o case entra no slide 06 da apresentação e na página pública." },
+      { t: "Pedir 2 indicações", fala: "Na integração eu te falei que ia cobrar: quais DOIS lojistas você conhece que sofrem pra replicar anúncio entre contas? Me passa o contato deles que eu cuido bem. Se fechar, tenho uma condição especial pra você.", dica: "Registre cada indicação como lead novo com origem 'Indicação' (vira classe Semente e conta na meta de 7 por cliente do CS)." },
+    ] },
+    followup3: { titulo: "Follow-up · 3º contato (último)", objetivo: "Retomar com prioridade ou encerrar com respeito.", passos: [
+      { t: "Saída elegante", fala: "Oi {{nome}}, vou parar de te chamar pra não virar chateação. Só me diz: resolver {{dor_call}} ainda é prioridade pra tua operação agora?" },
+      { t: "Sim ou não claro", fala: "Se ainda for, eu retomo com prioridade e a gente fecha essa semana. Se não for a hora, me fala que eu encerro por aqui e deixo a porta aberta pra quando quiser voltar.", dica: "Sem resposta depois deste contato: Desqualificado (motivo: sem retorno)." },
+    ] },
+  };
+  // Modelos do lib/wa-templates.js (WA_FLOW), o da conversa que cada roteiro pede.
+  static WA = {
+    confirmacao: { label: "Lembrete no dia", text: "Bom dia, {{nome}}! Confirmando nossa call de hoje às {{hora_call}}. Está de pé?" },
+    novo: { label: "1º contato (veio do formulário)", text: "Oi {{nome}}, tudo bem? Aqui é o {{eu}}, da LeverAds.\n\nVocê preencheu nosso diagnóstico sobre anunciar em várias contas no marketplace. Posso te fazer duas perguntas rápidas pra entender seu cenário?" },
+    qualificacao2: { label: "2ª tentativa (não respondeu ontem)", text: "{{nome}}, passando de novo por aqui. Sei que o dia a dia come o tempo.\n\nMe responde só isso: hoje você sobe os anúncios nas outras contas na mão?" },
+    qualificacao3: { label: "Encerramento (sim ou não)", text: "{{nome}}, pra eu não ficar te incomodando: faz sentido conversarmos agora, ou prefere que eu volte mais pra frente?" },
+    nutricao1: { label: "Case: +105% em 1 mês", text: "Um cliente nosso clonou o catálogo da conta principal pra segunda conta. No mesmo mês, a conta 2 fez *+105% de receita*, com os mesmos anúncios que ele já tinha." },
+    call: { label: "Mandar o link da call", text: "{{nome}}, nossa call é {{call}}.\n\nLink pra entrar: {{link_call}}" },
+    proposta: { label: "Follow-up leve", text: "Oi {{nome}}, chegou a ver minha mensagem? Se preferir, me diz um horário que eu te chamo." },
+    followup1: { label: "Follow-up leve", text: "Oi {{nome}}, chegou a ver minha mensagem? Se preferir, me diz um horário que eu te chamo." },
+    followup2: { label: "Objeção: preciso pensar", text: "Claro. Só me ajuda a entender: o que ainda está te deixando em dúvida? Se for algo que dá pra resolver na call, a gente resolve em 20 minutos." },
+    followup3: { label: "Encerramento (sim ou não)", text: "{{nome}}, pra eu não ficar te incomodando: faz sentido conversarmos agora, ou prefere que eu volte mais pra frente?" },
+    confirmacaoIntegracao: { label: "Confirmação da integração", text: "Oi {{nome}}! Nossa integração é hoje às {{hora_integracao}}, por vídeo: {{link_integracao}}.\n\nEntra pelo computador e deixa os logins das contas em mãos. Confirma pra mim?" },
+    integracao: { label: "Marcar a call de integração", text: "Oi {{nome}}! Sou eu que vou tocar sua integração. A gente faz numa call de vídeo, leva uns 20 minutos e já sai rodando. Qual o melhor dia e horário pra você?" },
+    posvenda: { label: "Depois da call", text: "{{nome}}, foi ótimo falar com você. Qualquer dúvida que surgir, me chama por aqui." },
+  };
+  // GAP_HINTS do lib/scripts.js: token vazio vira [lembrete] em vez de buraco.
+  static DICAS = { nome: "nome do lead", nome_completo: "nome do lead", call: "marcar o horário", hora_call: "o horário da call",
+    closer_responsavel: "o closer da call", link_call: "gerar o link da call", hora_integracao: "o horário da integração", link_integracao: "gerar o link da integração", nicho: "perguntar o nicho", contas: "perguntar quantas contas",
+    anuncios: "perguntar quantos anúncios", empresa: "perguntar o nome da loja", expansao: "perguntar sobre abrir contas",
+    equipe: "perguntar o time de marketing", decisor: "perguntar quem decide", combinado_call: "gerar o resumo da call",
+    objecao_aberta: "gerar o resumo da call", dor_call: "gerar o resumo da call", temperatura_call: "gerar o resumo da call",
+    produto: "produto", eu: "seu nome" };
+  // Elenco compartilhado com a tela Pipeline: nome, empresa, origem e a dor do
+  // anúncio andam juntos, para o mesmo lead ler igual nas duas telas.
+  static ELENCO = {
+    "Paula Bittencourt": { empresa: "Vitta Odonto", origem: "Rede", dor: "C", grade: "C" },
+    "Marcos Aguiar": { empresa: "Grupo MA", origem: "Rede", dor: "A", grade: "B" },
+    "Nina Castro": { empresa: "Castro Pet", origem: "Alvo", dor: "B", grade: "E" },
+    "Sérgio Prado": { empresa: "Oficina Prado", origem: "Semente", dor: "E", indicadoPor: "Helena Vitta", grade: "A" },
+    "Otávio Braga": { empresa: "Braga Fit", origem: "Rede", dor: "C", grade: "C" },
+    "Renata Dias": { empresa: "Clínica RD", origem: "Rede", dor: "B", grade: "B" },
+    "Lúcia Amaral": { empresa: "Amaral Studio", origem: "Rede", dor: "A", grade: "A" },
+    "Eduardo Galante": { empresa: "Galante Holding", origem: "Semente", dor: "E", indicadoPor: "Marina Kern", grade: "S" },
+    "Bruno Sato": { empresa: "Sato Imports", origem: "Rede", dor: "C", grade: "C" },
+    "Helena Vitta": { empresa: "Nutri Vitta", origem: "Semente", dor: "A", indicadoPor: "Diego Arbo", grade: "A" },
+    "Caio Menezes": { empresa: "Menezes Auto", origem: "Rede", dor: "B", grade: "B" },
+    "Marina Kern": { empresa: "Studio Kern", origem: "Rede", dor: "E", grade: "S" },
+    "Diego Arbo": { empresa: "Clínica Arbo", origem: "Rede", dor: "A", grade: "A" },
+    "Tatiana Ponto": { empresa: "Mercado Ponto", origem: "Alvo", dor: "C", grade: "B" },
+    "Rogério Vante": { empresa: "Grupo Vante", origem: "Rede", dor: "B", grade: "B" },
+    "Fernanda Luz": { empresa: "Luz Odontologia", origem: "Semente", dor: "E", indicadoPor: "Sérgio Prado", grade: "S" },
+    "Paulo Ferraz": { empresa: "Ferraz Advocacia", origem: "Rede", dor: "A", grade: "A" },
+    "Isabel Corrêa": { empresa: "Corrêa Pets", origem: "Rede", dor: "C", grade: "B" },
+    "Tiago Nogueira": { empresa: "Nogueira Imports", origem: "Rede", dor: "B", grade: "B" },
+    "Camila Reis": { empresa: "Nutri Vitta", origem: "Rede", dor: "A", grade: "A" },
+    "Luiza Prado": { empresa: "Prado Fit", origem: "Rede", dor: "C", grade: "B" },
+  };
+  // Mesmos rótulos do gerador do Pipeline (DORES).
+  static DORES = { A: "anúncio caro sem venda", B: "não sabe medir o retorno", C: "estoque parado no marketplace", E: "escalar sem perder margem" };
+  // Etapa do pipeline (ou do ciclo do cliente) que cada roteiro atende.
+  static ETAPA = { novo: "Novo lead", qualificacao2: "Qualificando", qualificacao3: "Qualificando", nutricao1: "Nutrição",
+    confirmacao: "Call agendada", call: "Call agendada", proposta: "Proposta enviada",
+    followup1: "Follow-up", followup2: "Follow-up", followup3: "Follow-up",
+    confirmacaoIntegracao: "Integração", integracao: "Integração", posvenda: "Cliente ativo" };
+  static PESSOAS = [["ma", "Manuela Costa"], ["rm", "Rafael Moura"], ["ba", "Bruno Alencar"], ["vn", "Vitor Nunes"]];
+
+  static gerar() {
+    const L = [
+      // pessoa, chave do roteiro, minutos a partir de 14:22 (negativo = atrasado), lead, empresa, grade, contexto, conta, feito
+      ["ma", "confirmacao", 8, "Camila Reis", "Nutri Vitta", "A", "call 14:40 com Rafael Moura · janela de 10 min", "contato", false],
+      ["ma", "confirmacao", 208, "Luiza Prado", "Prado Fit", "B", "call de amanhã 09:30 · confirmar hoje", "contato", false],
+      ["ma", "novo", -2880, "Paula Bittencourt", "Vitta Odonto", "C", "fora do SLA · chegou pelo anúncio há 2 dias e nunca foi contatada", "contato", false],
+      ["ma", "novo", 60, "Marcos Aguiar", "Grupo MA", "B", "chegou hoje pelo formulário", "contato", false],
+      ["ma", "novo", 95, "Nina Castro", "Castro Pet", null, "chegou hoje · formulário sem faturamento", "contato", false],
+      ["ma", "qualificacao3", -1440, "Otávio Braga", "Braga Fit", "C", "duas ligações sem resposta · última tentativa antes da Nutrição", "contato", false],
+      ["ma", "qualificacao2", 150, "Renata Dias", "Clínica RD", "B", "pediu para chamar depois das 16h", "contato", false],
+      ["ma", "nutricao1", 300, "Bruno Sato", "Sato Imports", "C", "lead frio há 7 dias · reabrir com prova", "contato", false],
+      ["ma", "novo", -200, "Tiago Nogueira", "Nogueira Imports", "B", "feito 12:40 · agendou para segunda", "contato", true],
+      ["ma", "confirmacao", -260, "Helena Vitta", "Nutri Vitta", "A", "feito 11:00 · confirmou presença", "contato", true],
+      ["rm", "call", 128, "Marina Kern", "Studio Kern", "S", "16:30 · proposta já aberta 4x", "call", false],
+      ["rm", "followup3", -4320, "Fernanda Luz", "Luz Odontologia", "S", "proposta de R$ 24.000 parada há 3 dias", "contato", false],
+      ["rm", "followup2", 40, "Paulo Ferraz", "Ferraz Advocacia", "A", "abriu a proposta 2x e não respondeu", "contato", false],
+      ["rm", "confirmacao", 218, "Diego Arbo", "Clínica Arbo", "A", "call de amanhã 11:00", "contato", false],
+      ["rm", "followup1", 180, "Lúcia Amaral", "Amaral Studio", "A", "sócio decide junto · chamar os dois", "contato", false],
+      ["rm", "call", -180, "Eduardo Galante", "Galante Holding", "S", "feito 11:20 · pediu proposta revisada", "call", true],
+      ["ba", "followup1", 70, "Isabel Corrêa", "Corrêa Pets", "B", "proposta enviada ontem", "contato", false],
+      ["ba", "followup2", -1440, "Rogério Vante", "Grupo Vante", "B", "prometeu resposta ontem", "contato", false],
+      ["ba", "confirmacao", 98, "Caio Menezes", "Menezes Auto", "B", "call 16:10 · janela de 10 min", "contato", false],
+      ["ba", "proposta", 240, "Sérgio Prado", "Oficina Prado", "A", "cliente antigo · proposta de upsell na mão dele", "contato", false],
+      ["ba", "followup1", -300, "Tatiana Ponto", "Mercado Ponto", "B", "feito 09:20 · fechou", "contato", true],
+      ["vn", "confirmacaoIntegracao", 38, "Marina Kern", "Studio Kern", "S", "integração hoje 15:10 · pagou ontem", "contato", false],
+      ["vn", "confirmacaoIntegracao", 158, "Tatiana Ponto", "Mercado Ponto", "B", "integração hoje 17:00 · primeira conta", "contato", false],
+      ["vn", "integracao", 68, "Diego Arbo", "Clínica Arbo", "A", "call de vídeo · 3 contas para conectar", "call", false],
+      ["vn", "integracao", -1440, "Rogério Vante", "Grupo Vante", "B", "remarcou ontem · sem logins na primeira call", "call", false],
+      ["vn", "posvenda", 200, "Helena Vitta", "Nutri Vitta", "A", "1º resultado entregue · hora de cobrar as indicações", "contato", false],
+      ["vn", "posvenda", -2880, "Sérgio Prado", "Oficina Prado", "A", "check-in de 30 dias atrasado", "contato", false],
+      ["vn", "integracao", -300, "Paulo Ferraz", "Ferraz Advocacia", "A", "feito 10:15 · 2 contas conectadas, 180 anúncios clonados", "call", true],
+    ];
+    return L.map((a, i) => ({
+      id: i, pessoa: a[0], chave: a[1], min: a[2], lead: a[3],
+      empresa: (Component.ELENCO[a[3]] || {}).empresa || a[4], grade: (Component.ELENCO[a[3]] || {}).grade || a[5],
+      sub: a[6], conta: a[7], feito: a[8],
+      telefone: "(11) 9" + (4100 + (i * 173) % 5800) + "-" + (1200 + (i * 97) % 8700),
+      closer: a[1] === "confirmacao" ? ["Rafael Moura", "Bruno Alencar"][i % 2] : null,
+      linkCall: a[1] === "confirmacao" || a[1] === "call" ? "meet.google.com/lev-" + (100 + i) : null,
+      nicho: ["moda", "autopeças", "pet", "suplementos", "casa e decoração"][i % 5],
+      etapa: Component.ETAPA[a[1]] || "Pipeline",
+      valor: [9600, 24000, 6400, 14400][i % 4],
+      origem: (Component.ELENCO[a[3]] || {}).origem || "Rede",
+      indicadoPor: (Component.ELENCO[a[3]] || {}).indicadoPor || null,
+      dor: (function () { const c = (Component.ELENCO[a[3]] || {}).dor; return c ? "[" + c + "] " + Component.DORES[c] : null; })(),
+      aberturas: [4, 2, 0, 1][i % 4],
+      objecao: ["preço", "prazo", "decisor ausente", "já tem quem faça"][i % 4],
+      temperatura: ["quente", "morno", "frio"][i % 3],
+      plano: ["Lever Ads · Escala · anual", "Lever OEM · Essencial · semestral", "Lever Price · Escala · anual"][i % 3],
+      contasConectar: [3, 2, 5, 2][i % 4],
+      anunciosMigrar: [180, 420, 90, 1200][i % 4],
+      clonados: [1840, 620, 3100, 240][i % 4],
+      indicacoes: [0, 1, 2][i % 3],
+      diasDeCasa: [12, 34, 96, 210][i % 4],
+      horaIntegracao: a[1] === "confirmacaoIntegracao" || a[1] === "integracao" ? true : false,
+      contas: ["3 a 5 contas", "2 contas", "6 a 10 contas", "1 conta"][i % 4],
+      anuncios: ["500 a 2 mil", "2 mil a 5 mil", "até 500", "5 mil+"][i % 4],
+      anotacao: "", passos: ((Component.ROTEIROS[a[1]] || {}).passos || []).map(() => false), waCopiado: false,
+    }));
+  }
+
+  static PROXIMOS = [
+    ["ma", "segunda", "09:30", "Paula Bittencourt", "call · Vitta Odonto"],
+    ["ma", "segunda", "11:00", "Marcos Aguiar", "call · Grupo MA"],
+    ["ma", "segunda", "14:00", "Nina Castro", "1º toque · Castro Pet"],
+    ["ma", "segunda", "16:30", "Renata Dias", "2ª tentativa · Clínica RD"],
+    ["ma", "terça", "22/09", "Otávio Braga", "4ª tentativa · Braga Fit"],
+    ["ma", "terça", "22/09", "Luiza Prado", "call · Prado Fit"],
+    ["ma", "terça", "23/09", "3 posts do ICP", "social selling"],
+    ["rm", "segunda", "11:00", "Diego Arbo", "call · Clínica Arbo"],
+    ["rm", "segunda", "15:00", "Fernanda Luz", "follow-up · Luz Odontologia"],
+    ["rm", "terça", "22/09", "Marina Kern", "assinatura · Studio Kern"],
+    ["ba", "segunda", "10:00", "Caio Menezes", "follow-up · Menezes Auto"],
+    ["ba", "segunda", "17:00", "Sérgio Prado", "4ª tentativa · Oficina Prado"],
+    ["ba", "terça", "22/09", "Isabel Corrêa", "follow-up · Corrêa Pets"],
+    ["vn", "segunda", "10:00", "Rogério Vante", "integração · Grupo Vante"],
+    ["vn", "segunda", "14:30", "Marina Kern", "acompanhamento · Studio Kern"],
+    ["vn", "segunda", "16:00", "Tatiana Ponto", "integração · Mercado Ponto"],
+    ["vn", "terça", "22/09", "Diego Arbo", "check-in de 7 dias · Clínica Arbo"],
+    ["vn", "terça", "23/09", "Paulo Ferraz", "pedir indicações · Ferraz Advocacia"],
+  ];
+
+  static TAREFAS = [
+    ["Revisar script de 1º contato", "Manuela Costa · alta", -2, false],
+    ["Subir lista do outbound de setembro", "sem responsável", -1, false],
+    ["Conferir gravação da call da Vitta", "Manuela Costa", 0, false],
+    ["Atualizar perguntas de qualificação", "Manuela Costa · baixa", 3, false],
+    ["Pedir depoimento ao Studio Kern", "Rafael Moura", 6, true],
+  ].map((t, i) => ({ id: i, titulo: t[0], sub: t[1], dias: t[2], feito: t[3] }));
+
+  state = { pessoa: "ma", busca: "", pag: 0, fila: Component.gerar(), tarefas: Component.TAREFAS.slice(),
+    sel: null, roteiro: false, fechando: false, saindo: null, verMais: false, feitosAbertos: false };
+
+  componentWillUnmount() { clearTimeout(this._t); clearTimeout(this._s); clearTimeout(this._w); }
+
+  hora(min) {
+    const t = 14 * 60 + 22 + min;
+    const d = ((t % 1440) + 1440) % 1440;
+    const h = Math.floor(d / 60), m = d % 60;
+    return (h < 10 ? "0" + h : h) + ":" + (m < 10 ? "0" + m : m);
+  }
+  // O chip do item: hora do dia quando é hoje, data quando já virou o dia
+  quando(min) {
+    const d = Math.floor(-min / 1440);
+    if (min < 0 && d >= 1) { const dia = 18 - d; return (dia < 10 ? "0" + dia : dia) + "/09"; }
+    return this.hora(min);
+  }
+  atraso(min) {
+    if (min >= 0) return null;
+    const d = Math.floor(-min / 1440);
+    if (d >= 1) return "venceu há " + d + (d === 1 ? " dia" : " dias");
+    const h = Math.round(-min / 60);
+     return h >= 1 ? "atrasado " + h + "h" : "atrasado";
+  }
+  patch(id, mud) { this.setState((st) => ({ fila: st.fila.map((i) => i.id === id ? Object.assign({}, i, mud) : i) })); }
+  concluir(id) {
+    if (this.state.saindo === id) return;
+    this.setState({ saindo: id });
+    this._s = setTimeout(() => {
+      this.setState((st) => ({ saindo: null, sel: st.sel === id ? null : st.sel,
+        fila: st.fila.map((i) => i.id === id ? Object.assign({}, i, { feito: true, min: -1 }) : i) }));
+    }, 170);
+  }
+  fecharGaveta() {
+    if (this.state.fechando) return;
+    this.setState({ fechando: true });
+    this._t = setTimeout(() => this.setState({ sel: null, fechando: false }), 160);
+  }
+  // Clicar na fila troca quem está no painel "agora" (o card de ação vive lá,
+  // não numa gaveta por cima da tela).
+  // A fila lista e o detalhe aparece ao lado (como o inbox), sem sobrepor a tela.
+  abrir(id) { clearTimeout(this._t); this.setState({ sel: id, fechando: false }); }
+  copiarWa(item) {
+    const wa = Component.WA[item.chave];
+    if (!wa || item.waCopiado) return;
+    const txt = this.preencher(wa.text, item);
+    if (navigator.clipboard) navigator.clipboard.writeText(txt).catch(() => {});
+    this.patch(item.id, { waCopiado: true });
+    clearTimeout(this._w);
+    this._w = setTimeout(() => this.patch(item.id, { waCopiado: false }), 2200);
+  }
+  // Token vazio vira [lembrete], como o fillTemplate do lib/wa-templates.js.
+  preencher(texto, i) {
+    const eu = (Component.PESSOAS.find((p) => p[0] === i.pessoa) || ["", ""])[1].split(" ")[0];
+    const temCall = i.chave === "confirmacao" || i.chave === "call";
+    const T = { nome: i.lead.split(" ")[0], nome_completo: i.lead, eu, produto: "LeverAds", empresa: i.empresa,
+      hora_call: temCall ? this.hora(i.min + 10) : "", call: temCall ? "hoje às " + this.hora(i.min + 10) : "",
+      closer_responsavel: i.closer || "", link_call: i.linkCall || "",
+      hora_integracao: i.horaIntegracao ? this.hora(i.min + 10) : "", link_integracao: i.horaIntegracao ? "meet.google.com/int-" + (200 + i.id) : "",
+      nicho: i.nicho || "", contas: i.contas || "", anuncios: i.anuncios || "" };
+    return String(texto).replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (m, k) => T[k] || "[" + (Component.DICAS[k] || k) + "]");
+  }
+  // O que o card mostra muda com a etapa: cada estágio tem os dados que
+  // decidem a próxima ação (o card do Pipeline segue a mesma régua).
+  fatos(i) {
+    const m = (n) => "R$ " + n.toLocaleString("pt-BR");
+    const T = {
+      novo: [["origem", i.origem], ["anúncio", i.dor], ["nicho", i.nicho]],
+      qualificacao2: [["contas", i.contas], ["anúncios", i.anuncios], ["toque", "2ª tentativa"]],
+      qualificacao3: [["contas", i.contas], ["anúncios", i.anuncios], ["toque", "3ª e última"]],
+      nutricao1: [["frio há", "7 dias"], ["contas", i.contas], ["último toque", "ligação sem resposta"]],
+      confirmacao: [["call", this.hora(i.min + 10)], ["closer", (i.closer || "").split(" ")[0]], ["preparo", "logins + decisor"]],
+      call: [["ticket", m(i.valor)], ["decisor", i.indicacoes ? "decide sozinho" : "sócio decide junto"], ["demo", "ao vivo nas contas dele"]],
+      proposta: [["valor", m(i.valor)], ["aberta", i.aberturas + "x"], ["enviada há", (2 + (i.id % 5)) + " dias"]],
+      followup1: [["valor", m(i.valor)], ["objeção", i.objecao], ["temperatura", i.temperatura]],
+      followup2: [["valor", m(i.valor)], ["objeção", i.objecao], ["temperatura", i.temperatura]],
+      followup3: [["valor", m(i.valor)], ["objeção", i.objecao], ["temperatura", i.temperatura]],
+      confirmacaoIntegracao: [["integração", this.hora(i.min + 10)], ["plano", i.plano.split(" · ")[0]], ["preparo", "computador + logins"]],
+      integracao: [["contas a conectar", String(i.contasConectar)], ["anúncios a migrar", String(i.anunciosMigrar)], ["plano", i.plano.split(" · ")[0]]],
+      posvenda: [["clonados", i.clonados.toLocaleString("pt-BR")], ["de casa", i.diasDeCasa + " dias"], ["indicações", i.indicacoes + " de 2"]],
+    };
+    const DESTAQUE = { objeção: "#b42318", temperatura: "#a16207", preparo: "#a16207", "anúncio": "#b42318", "indicações": "#0F766E" };
+    return (T[i.chave] || []).filter((f) => f[1]).map(([k, v]) => ({
+      k, v,
+      est: "display:inline-flex;align-items:baseline;gap:5px;font-size:10.5px;border-radius:999px;padding:3px 10px;white-space:nowrap;" +
+        (DESTAQUE[k] ? "background:" + (DESTAQUE[k] === "#0F766E" ? "#E9F5F3" : DESTAQUE[k] === "#b42318" ? "#fdf3f2" : "#fbf4e6") + ";color:" + DESTAQUE[k] : "background:#eef1f3;color:#3d4f5c"),
+    }));
+  }
+  estGrade(g, tam) {
+    const T = { S: ["#7c3aed", "#fff"], A: ["#16a34a", "#fff"], B: ["#65a30d", "#fff"], C: ["#eab308", "#463500"], D: ["#ea580c", "#fff"], E: ["#9aa2ad", "#fff"] };
+    const c = T[g] || ["#e4e9eb", "#8b99a4"];
+    const s = tam || 20;
+    return "flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:" + s + "px;height:" + s + "px;border-radius:999px;font-family:'Outfit',sans-serif;font-size:" + Math.round(s * .5) + "px;font-weight:700;background:" + c[0] + ";color:" + c[1];
+  }
+
+  renderVals() {
+    const st = this.state;
+    const daPessoa = st.fila.filter((i) => i.pessoa === st.pessoa);
+    const abertos = daPessoa.filter((i) => !i.feito);
+    const feitos = daPessoa.filter((i) => i.feito);
+    const q = st.busca.trim().toLowerCase();
+    const casa = (i) => !q || (i.lead + " " + i.empresa + " " + i.sub + " " + ((Component.CATALOGO[i.chave] || {}).label || "")).toLowerCase().includes(q);
+    const rank = (i) => Component.ORDEM.indexOf(i.chave) * 10000 + i.min;
+    const ordenados = abertos.filter(casa).sort((a, b) => rank(a) - rank(b));
+    // O painel navy é a PRÓXIMA AÇÃO: o primeiro da fila do dia, na MESMA ordem
+    // cronológica da lista abaixo (o vencido há mais tempo na frente). Abrir outro
+    // roteiro muda só o detalhe ao lado — o painel segue apontando o que vem
+    // primeiro, que é a decisão que ele existe pra tomar.
+    const proximo = abertos.slice().sort((a, b) => a.min - b.min)[0] || null;
+    const selItem = st.sel != null ? st.fila.find((i) => i.id === st.sel) : null;
+
+    const item = (i, pos) => {
+      const rot = Component.ROTEIROS[i.chave] || { titulo: "Contato", passos: [] };
+      const k = i.passos.findIndex((v) => !v);
+      const passo = k >= 0 ? rot.passos[k] : null;
+      return {
+      pos: String(pos), hora: this.quando(i.min), lead: i.lead, empresa: i.empresa, grade: i.grade || "—",
+      titulo: passo ? passo.t : rot.titulo + " · roteiro completo", sub: i.sub,
+      etapa: i.etapa, fatos: this.fatos(i),
+      nota: i.min < 0 ? this.atraso(i.min) : (i.min <= 30 ? "em " + i.min + " min" : "hoje"),
+      estNota: "font-size:10.5px;padding-left:3px;white-space:nowrap;color:" + (i.min < 0 ? "#b42318" : i.min <= 30 ? "#177a4c" : "#8b99a4"),
+      estHora: "display:inline-flex;align-items:center;height:24px;padding:0 11px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap;" +
+        (i.min < 0 ? "background:#fdf3f2;color:#b42318" : i.min <= 30 ? "background:#0c1d2b;color:#fff" : "background:#f1f4f5;color:#3d4f5c"),
+      estGrade: this.estGrade(i.grade),
+      est: "display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;padding:8px 12px;border-radius:22px;transition:background 150ms ease;" + (i.min < 0 ? "background:#fdf3f2" : ""),
+      classe: st.saindo === i.id ? "cap-saiu" : "",
+      acao: i.chave === "confirmacao" ? "Confirmar" : i.chave === "call" ? "Abrir a call" : "Abrir o roteiro",
+      estAbrir: "height:30px;padding:0 13px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap;flex-shrink:0;transition:background 150ms ease;" +
+        (st.sel === i.id ? "background:#0c1d2b;color:#fff" : "background:#f1f4f5;color:#0F766E"),
+      abrir: () => this.abrir(i.id),
+      adiar: () => this.patch(i.id, { min: Math.max(5, i.min) + 60 }),
+      concluir: () => this.concluir(i.id),
+      };
+    };
+
+    // A fila do dia em ordem cronológica (o mais perto primeiro), 10 por página.
+    const POR_PAG = 10;
+    const cronologico = abertos.filter(casa).filter((i) => !proximo || i.id !== proximo.id).slice().sort((a, b) => a.min - b.min);
+    const totalPags = Math.max(1, Math.ceil(cronologico.length / POR_PAG));
+    const pag = Math.min(st.pag, totalPags - 1);
+    const daPagina = cronologico.slice(pag * POR_PAG, pag * POR_PAG + POR_PAG);
+
+    // Placar por papel, como o dayScoreOf do screens/today.jsx: closer vê o
+    // placar do MÊS (contratos e receita); SDR vê a meta do DIA; quem não tem
+    // meta configurada (o CS) cai no fallback e o placar mede a FILA de hoje.
+    const PAPEL = { ma: "sdr", rm: "closer", ba: "closer", vn: "cs" }[st.pessoa];
+    const contados = { contato: 0, call: 0, social: 0 };
+    for (const f of feitos) contados[f.conta] = (contados[f.conta] || 0) + 1;
+    const inicialPorConta = { contato: 0, call: 0, social: 0 };
+    for (const f of Component.gerar().filter((i) => i.pessoa === st.pessoa && i.feito)) inicialPorConta[f.conta]++;
+    const delta = (c) => contados[c] - inicialPorConta[c];
+    const barra = (f, m, money) => {
+      const p = Math.min(100, Math.round((f / Math.max(1, m)) * 100));
+      const cor = p >= 100 ? "#177a4c" : p >= 60 ? "linear-gradient(90deg,#0C8F83,#0F766E)" : "linear-gradient(90deg,#d0524a,#b42318)";
+      return "display:block;height:100%;width:" + p + "%;border-radius:999px;background:" + cor;
+    };
+    const moeda = (n) => "R$ " + Math.round(n).toLocaleString("pt-BR");
+    let placarTitulo = "Placar do dia", placarEscopo = "fila de hoje", linhas = [];
+    if (PAPEL === "closer") {
+      const M = { rm: { won: 6, revenue: 90000, feitoWon: 5, feitoRev: 68400 }, ba: { won: 4, revenue: 60000, feitoWon: 1, feitoRev: 24500 } }[st.pessoa];
+      placarTitulo = "Placar do mês"; placarEscopo = "meta do mês";
+      linhas = [
+        { rot: "contratos", feito: String(M.feitoWon), meta: String(M.won), estBarra: barra(M.feitoWon, M.won) },
+        { rot: "receita", feito: moeda(M.feitoRev), meta: moeda(M.revenue), estBarra: barra(M.feitoRev, M.revenue) },
+      ];
+    } else if (PAPEL === "sdr") {
+      const contato = 23 + delta("contato"), call = 4 + delta("call");
+      placarEscopo = "meta do dia";
+      linhas = [
+        { rot: "contatados", feito: String(contato), meta: "54", estBarra: barra(contato, 54) },
+        { rot: "calls agendadas", feito: String(call), meta: "10", estBarra: barra(call, 10) },
+      ];
+    } else {
+      // Sem meta configurada: o placar mede a fila do dia, não um alvo inventado.
+      const contatos = daPessoa.filter((i) => i.conta === "contato");
+      const calls = daPessoa.filter((i) => i.conta === "call");
+      const fContatos = contatos.filter((i) => i.feito).length, fCalls = calls.filter((i) => i.feito).length;
+      linhas = [
+        { rot: "contatados", feito: String(fContatos), meta: String(contatos.length), estBarra: barra(fContatos, contatos.length) },
+        { rot: "integrações de hoje", feito: String(fCalls), meta: String(calls.length), estBarra: barra(fCalls, calls.length) },
+      ];
+    }
+    const prox = Component.PROXIMOS.filter((p) => p[0] === st.pessoa);
+    const seg = prox.filter((p) => p[1] === "segunda"), ter = prox.filter((p) => p[1] === "terça");
+    const mapProx = (arr) => arr.map((p) => ({ quando: p[2], lead: p[3], sub: p[4] }));
+    const proximos = seg.length ? [{ rotulo: "segunda · " + seg.length, nota: seg.filter((p) => /call|integra/.test(p[4])).length + " na agenda", itens: mapProx(seg) }] : [];
+    if (st.verMais && ter.length) proximos.push({ rotulo: "terça · " + ter.length, nota: "", itens: mapProx(ter) });
+
+    const tarefasAbertas = st.tarefas.filter((t) => !t.feito).length;
+    const total = daPessoa.length;
+
+    const vals = {
+      mov: this.props.movimento === false ? "off" : "on",
+      pessoa: st.pessoa,
+      pessoaNome: (Component.PESSOAS.find((p) => p[0] === st.pessoa) || ["", ""])[1],
+      pessoaAbertos: String(abertos.length),
+      pessoas: Component.PESSOAS.map(([id, nome]) => ({ id, label: nome + " · " + st.fila.filter((i) => i.pessoa === id && !i.feito).length + " abertos" })),
+      mudarPessoa: (e) => this.setState({ pessoa: e.target.value, sel: null, busca: "", pag: 0 }),
+      busca: st.busca, mudarBusca: (e) => this.setState({ busca: e.target.value, pag: 0 }),
+      pagina: daPagina.map((i, k) => item(i, pag * POR_PAG + k + 1)),
+      semResultado: cronologico.length === 0 && abertos.length > 0,
+      temPaginas: totalPags > 1,
+      paginaNota: "mostrando " + (daPagina.length ? pag * POR_PAG + 1 : 0) + "–" + (pag * POR_PAG + daPagina.length) + " de " + cronologico.length + " · página " + (pag + 1) + " de " + totalPags,
+      estPagAnterior: "height:28px;padding:0 13px;border-radius:999px;font-size:11.5px;font-weight:600;transition:background 150ms ease;" +
+        (pag > 0 ? "background:#f1f4f5;color:#3d4f5c" : "background:#f7f9fa;color:#c5cfd4;cursor:default"),
+      estPagProxima: "height:28px;padding:0 13px;border-radius:999px;font-size:11.5px;font-weight:600;transition:background 150ms ease;" +
+        (pag < totalPags - 1 ? "background:#0c1d2b;color:#fff" : "background:#f7f9fa;color:#c5cfd4;cursor:default"),
+      paginaAnterior: () => this.setState((s2) => (s2.pag > 0 ? { pag: s2.pag - 1 } : null)),
+      paginaProxima: () => this.setState((s2) => (s2.pag < totalPags - 1 ? { pag: s2.pag + 1 } : null)),
+      progresso: feitos.length + " de " + total + " feitos",
+      estProgresso: "display:block;height:6px;width:" + Math.round((feitos.length / Math.max(1, total)) * 100) + "%;border-radius:999px;background:#177a4c",
+      temAgora: !!proximo, filaLimpa: !proximo,
+      limpaTitulo: "Você fechou os " + total + " toques de hoje",
+      limpaSub: "o que vem já está na agenda de segunda · nada fora do SLA",
+      reabrir: () => this.setState((s2) => ({ fila: s2.fila.map((i) => i.pessoa === s2.pessoa ? Object.assign({}, i, { feito: false }) : i) })),
+      rotuloComecar: !proximo ? "Fila limpa ✓" : feitos.length > 0 ? "Continuar a fila →" : "Começar a fila →",
+      estComecar: "height:36px;padding:0 18px;border-radius:999px;font-size:13px;font-weight:650;transition:background 150ms ease;" +
+        (proximo ? "background:#0c1d2b;color:#fff" : "background:#E9F5F3;color:#0b6b64;cursor:default"),
+      comecarFila: () => { if (proximo) this.abrir(proximo.id); },
+      temMaisProximos: ter.length > 0,
+      rotuloVerMais: st.verMais ? "Mostrar menos" : "+" + ter.length + " atividades",
+      verMais: () => this.setState((s2) => ({ verMais: !s2.verMais })),
+      proximos,
+      tarefasNota: tarefasAbertas + " abertas de " + st.tarefas.length,
+      tarefas: st.tarefas.map((t) => ({
+        titulo: t.titulo, sub: t.sub,
+        prazo: t.feito ? "feita" : t.dias < 0 ? "venceu há " + (-t.dias) + " d" : t.dias === 0 ? "hoje" : "em " + t.dias + " d",
+        estTitulo: "display:block;font-size:12.5px;font-weight:600;line-height:1.4;" + (t.feito ? "color:#8b99a4;text-decoration:line-through" : ""),
+        estPrazo: "font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;font-weight:600;white-space:nowrap;color:" + (t.feito ? "#8b99a4" : t.dias < 0 ? "#b42318" : t.dias === 0 ? "#a16207" : "#5a6b77"),
+        marca: t.feito ? "✓" : "",
+        estCheck: "width:26px;height:26px;border-radius:999px;font-size:12px;transition:background 150ms ease,color 150ms ease;" +
+          (t.feito ? "background:#0F766E;color:#fff" : "background:#f1f4f5;color:#5a6b77"),
+        alternar: () => this.setState((s2) => ({ tarefas: s2.tarefas.map((x) => x.id === t.id ? Object.assign({}, x, { feito: !x.feito }) : x) })),
+      })),
+      placar: linhas, placarTitulo, placarEscopo,
+      // Social selling é meta de SDR (a rotina existe na fila da Manuela).
+      temSocial: PAPEL === "sdr", social: String(6 + delta("social") * 8),
+      indicacoes: PAPEL === "cs" ? String(daPessoa.filter((i) => i.chave === "posvenda" && i.feito).length * 2) : "",
+      temIndicacoes: PAPEL === "cs",
+      temFeitos: feitos.length > 0, feitosAbertos: st.feitosAbertos,
+      rotuloFeitos: feitos.length + (feitos.length === 1 ? " feito hoje" : " feitos hoje"),
+      setaFeitos: st.feitosAbertos ? "▴" : "▾",
+      alternarFeitos: () => this.setState((s2) => ({ feitosAbertos: !s2.feitosAbertos })),
+      feitos: feitos.map((f) => ({ titulo: (Component.CATALOGO[f.chave] || {}).label || "", lead: f.lead, desfazer: () => this.patch(f.id, { feito: false, min: 30 }) })),
+      temSel: !!selItem,
+      // Com o detalhe aberto a fila usa a largura inteira (lista + detalhe,
+      // como o inbox) e o trilho desce pra linha de baixo.
+      // A fila e o detalhe dividem a linha inteira (o espaço do detalhe fica
+      // reservado, com ou sem atividade escolhida); o trilho sobe pra linha do
+      // painel "agora".
+      // Uma coisa por linha, na ordem em que se usa: o que vem / tarefas /
+      // placar → agora → lista e ações lado a lado.
+      estCelulaFila: "min-width:0;display:flex;flex-direction:column;gap:12px",
+      estTrilho: "grid-column:1 / -1;grid-row:3;min-width:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start;max-height:240px",
+      semSel: !selItem,
+      classeGaveta: st.fechando ? "cap-gaveta-sai" : "cap-gaveta-entra",
+      fechar: () => this.fecharGaveta(),
+    };
+
+    if (proximo) {
+      vals.agora = {
+        lead: proximo.lead, empresa: proximo.empresa, grade: proximo.grade || "—",
+        titulo: (function () { const r = Component.ROTEIROS[proximo.chave] || { titulo: "", passos: [] }; const k = proximo.passos.findIndex((v) => !v); return k >= 0 ? r.passos[k].t : r.titulo; })(),
+        rotulo: (Component.CATALOGO[proximo.chave] || {}).label || "", sub: proximo.sub, fatos: this.fatos(proximo),
+        prazo: proximo.min < 0 ? this.atraso(proximo.min) : this.quando(proximo.min) + " · em " + (proximo.min <= 90 ? proximo.min + " min" : Math.round(proximo.min / 60) + "h"),
+        estGrade: this.estGrade(proximo.grade, 22),
+        estPrazo: "display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 12px;border-radius:999px;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:600;" +
+          (proximo.min < 0 ? "background:rgba(255,157,144,.16);color:#ff9d90" : "background:rgba(35,216,211,.14);color:#23D8D3"),
+        estPonto: "width:6px;height:6px;border-radius:999px;display:inline-block;background:currentColor",
+      };
+      vals.abrirAgora = () => this.abrir(proximo.id);
+      const waProx = Component.WA[proximo.chave];
+      vals.agoraKicker = "próxima ação";
+      vals.rotuloWhatsAgora = !waProx ? "" : proximo.waCopiado ? "Mensagem copiada ✓" : "Copiar a mensagem do WhatsApp";
+      vals.estWhatsAgora = !waProx ? "display:none" : "height:40px;padding:0 18px;border-radius:999px;font-size:13px;font-weight:600;transition:background 150ms ease;" +
+        (proximo.waCopiado ? "background:rgba(35,216,211,.16);color:#23D8D3;cursor:default" : "background:rgba(255,255,255,.08);color:#F3FBFF"),
+      vals.whatsAgora = () => this.copiarWa(proximo);
+    }
+
+    if (selItem) {
+      const rot = Component.ROTEIROS[selItem.chave] || { titulo: "Contato", objetivo: "", passos: [] };
+      const cat = Component.CATALOGO[selItem.chave] || { label: rot.titulo, phase: "" };
+      const wa = Component.WA[selItem.chave];
+      const feitosPasso = selItem.passos.filter(Boolean).length;
+      const k = selItem.passos.findIndex((v) => !v);
+      vals.sel = {
+        lead: selItem.lead, empresa: selItem.empresa, tipo: selItem.etapa + " · " + cat.phase,
+        titulo: k >= 0 ? rot.passos[k].t : rot.titulo + " · roteiro completo",
+        sub: rot.objetivo, anotacao: selItem.anotacao, telefone: selItem.telefone, fatos: this.fatos(selItem),
+        grade: selItem.grade || "—", estGrade: this.estGrade(selItem.grade, 30),
+        passosNota: feitosPasso + " de " + rot.passos.length,
+        waLabel: wa ? wa.label : "", waTexto: wa ? this.preencher(wa.text, selItem) : "",
+        estWa: wa ? "display:block" : "display:none",
+        passos: rot.passos.map((p, j) => ({
+          titulo: p.t, fala: p.fala ? this.preencher(p.fala, selItem) : "", dica: p.dica ? this.preencher(p.dica, selItem) : "",
+          marca: selItem.passos[j] ? "✓" : "",
+          estCheck: "flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:999px;font-size:11px;margin-top:1px;" +
+            (selItem.passos[j] ? "background:#0F766E;color:#fff" : "background:#fff;box-shadow:inset 0 0 0 1.5px #d6dde1;color:transparent"),
+          estTexto: "display:block;font-size:12px;font-weight:650;line-height:1.4;text-wrap:pretty;" + (selItem.passos[j] ? "color:#8b99a4;text-decoration:line-through" : "color:#0c1d2b"),
+          estFala: p.fala ? "display:block;font-size:12px;line-height:1.5;color:#3d4f5c;margin-top:5px;padding-left:9px;border-left:2px solid #d8e3e1;text-wrap:pretty;white-space:pre-line" + (selItem.passos[j] ? ";opacity:.5" : "") : "display:none",
+          estDica: p.dica ? "display:block;font-size:10.5px;line-height:1.45;color:#8b99a4;margin-top:5px;text-wrap:pretty" : "display:none",
+          alternar: () => this.patch(selItem.id, { passos: selItem.passos.map((v, x) => x === j ? !v : v) }),
+        })),
+      };
+      vals.mudarNota = (e) => this.patch(selItem.id, { anotacao: e.target.value });
+      vals.rotuloCopiarWa = selItem.waCopiado ? "Mensagem copiada ✓" : "Copiar a mensagem";
+      vals.estCopiarWa = "height:34px;padding:0 15px;border-radius:999px;font-size:12px;font-weight:700;transition:background 150ms ease;" +
+        (selItem.waCopiado ? "background:#E9F5F3;color:#0b6b64;cursor:default" : "background:#25d366;color:#06120c"),
+      vals.copiarWa = () => this.copiarWa(selItem);
+      vals.adiar1h = () => { this.patch(selItem.id, { min: Math.max(5, selItem.min) + 60 }); this.fecharGaveta(); };
+      vals.adiarTarde = () => { this.patch(selItem.id, { min: 18 * 60 - (14 * 60 + 22) }); this.fecharGaveta(); };
+      vals.adiarAmanha = () => { this.patch(selItem.id, { min: 24 * 60 }); this.fecharGaveta(); };
+      vals.concluirSel = () => this.concluir(selItem.id);
+      vals.rotuloConcluirSel = rot.passos.length > 0 && feitosPasso === rot.passos.length ? "Roteiro completo · concluir ✓" : "Registrar e concluir";
+    }
+    return vals;
+  }
+}
+</script>
+</body>
+</html> 

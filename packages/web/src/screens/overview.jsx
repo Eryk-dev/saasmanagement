@@ -242,23 +242,23 @@ function Termometro({ s, goal, lad, naMesa, title, label }) {
   const cor = lvlColor(lad?.lvl, "var(--accent)");
   const pctTxt = `${Math.round(alvo > 0 ? Math.max(0, (Number(s.sold) || 0) / alvo) * 100 : 0)}%`;
   return (
-    <div className="vg-meta-thermometer" style={{ width: 140, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center" }}>
+    <div className="vg-meta-thermometer" >
       <div style={{ textAlign: "center", marginBottom: 12 }}>
         <div className="kicker">{label}</div>
         <div className="tnum" style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.2, marginTop: 3 }}>{window.fmt.moneyFull(alvo)}</div>
       </div>
-      <div className="vg-meta-thermometer-bar" title={title} style={{ width: 96, height: 300, borderRadius: "var(--r-3)", border: "1px solid var(--line-1)", overflow: "hidden", display: "flex", flexDirection: "column", cursor: "help" }}>
+      <div className="vg-meta-thermometer-bar" title={title} >
         <div className="vg-meta-liquid-track" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={fechado} aria-valuetext={`${pctTxt} realizado: ${window.fmt.moneyFull(s.sold)} de ${window.fmt.moneyFull(alvo)}`} style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
           <LiquidoMeta height={mesa} followup />
           <LiquidoMeta height={fechado} />
           {pacePct != null && <span className="vg-meta-pace-marker" aria-hidden="true"
             style={{ bottom: `clamp(0px, ${pacePct}%, calc(100% - 3px))` }} />}
         </div>
-        <span className="tnum" style={{ height: 40, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, color: "oklch(1 0 0)", fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", background: cor }}>
-          <span className="meta-viva" style={{ width: 8, height: 8, borderRadius: 999, background: "oklch(1 0 0)", display: "inline-block" }} />
-          {pctTxt}
-        </span>
       </div>
+        <span className="tnum vg-meta-percent" style={{ height: 40, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, color: "oklch(1 0 0)", fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em", background: "rgba(35,216,211,.10)" }}>
+          <span className="meta-viva" style={{ width: 8, height: 8, borderRadius: 999, background: cor, display: "inline-block" }} />
+          {pctTxt}<small>{LVL_LABEL[lad?.lvl] || "da meta"}</small>
+        </span>
     </div>
   );
 }
@@ -323,10 +323,12 @@ function MetaMesCard({ pace, goal, onNav, links = true, children }) {
           {s.target != null && <Termometro s={s} goal={goal} lad={sLad} naMesa={naMesa} title={saleTitle} label={title} />}
           <div className="vg-meta-story">
             <div>
-              <div className="kicker">Vendido em {label}</div>
+              <div className="kicker">Funil de vendas <Info texto={saleTitle} /></div>
               <div className="vg-meta-numbers">
-                <span className="vg-sold tnum" title={saleTitle} style={{ color: lvlColor(sLad?.lvl) }}>{window.fmt.moneyFull(s.sold)}</span>
+                <span className="vg-sold tnum" title={saleTitle}>{window.fmt.moneyFull(s.sold)}</span>
                 <LvlChip lvl={sLad?.lvl} label={goal.ended ? endedLabel(sLad?.lvl) : sLad?.chip} />
+              </div>
+              <div className="vg-meta-facts">
                 {falta != null && <div className="vg-meta-fact">
                   <div>{falta > 0 ? (goal.ended ? "Faltou para a meta" : "Falta para a meta") : "Meta batida"}</div>
                   <strong className="tnum">{falta > 0 ? window.fmt.moneyFull(falta) : `${excedente > 0 ? "+" : ""}${window.fmt.moneyFull(excedente)}`}</strong>
@@ -343,6 +345,10 @@ function MetaMesCard({ pace, goal, onNav, links = true, children }) {
                   <span>o que ainda pode virar venda</span>
                 </div>
               </div>
+              {curMes && <div className="vg-meta-facts">
+                {pace.sale.requiredDailyPace != null && <div className="vg-meta-fact"><div>por dia útil</div><strong>{money(pace.sale.requiredDailyPace)}</strong><span>{int(pace.sale.remainingBusinessDays)} restam</span></div>}
+                {pace.sale.projected != null && <div className="vg-meta-fact"><div>projeção</div><strong>{money(pace.sale.projected)}</strong></div>}
+              </div>}
               <div className="vg-meta-caption">{int(c.sold)} contratos assinados{c.sold > 0 && s.sold > 0 ? ` · ticket médio ${window.fmt.moneyFull(s.sold / c.sold)}` : ""}</div>
               {s.target == null && <div className="vg-meta-caption">Sem meta de venda para este período.</div>}
             </div>
@@ -1052,7 +1058,7 @@ function MonthSelect() {
   };
   return (
     <select value={value} onChange={(e) => pick(e.target.value)} aria-label="Filtrar por mês"
-      style={{ height: 32, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+      style={{ height: 32, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
       <option value="" disabled>Mês…</option>
       {months.map(({ key, d }) => (
         <option key={key} value={key}>{MONTH_NAMES[d.getMonth()]} {d.getFullYear()}</option>
@@ -1186,12 +1192,11 @@ function OverviewScreen({ onNav, onOpenLead }) {
 
   return (
     <div className="overview-screen">
+      <header className="vg-page-head" title={`${today} · ${win.label}`}>
+        <h1 className="page-title">Visão geral</h1><MonthSelect />
+      </header>
       <div className="vg-layout">
         <div className="vg-main">
-          <header className="vg-page-head">
-            <div><h1 className="page-title">Visão geral</h1><div className="page-sub">{today} · {win.label}</div></div>
-            <MonthSelect />
-          </header>
           <MetaMesCard pace={pace} goal={goal} onNav={onNav}>
             <FunilPeriodo team={score?.team} win={win} pLabel={win.label} bare onNav={canSeeScreen("pipeline") ? onNav : null} />
           </MetaMesCard>

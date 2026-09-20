@@ -81,7 +81,7 @@ function IntegrationsScreen({ onOpenLead }) {
               if (!sent["em risco"]) return null;
               const nomes = risco.slice(0, 3).map((c) => c.leadName || c.company || "cliente").join(" · ");
               return (
-                <AvisoTopo
+                <AvisoTopo navy
                   titulo={`${sent["em risco"]} ${sent["em risco"] === 1 ? "cliente saiu da integração em risco" : "clientes saíram da integração em risco"}`}
                   nota={risco.length > 0 ? `${nomes}${risco.length > 3 ? ` +${risco.length - 3}` : ""}` : null}
                   fim={<span className="mono dim" style={{ fontSize: 11 }}>churn começa aqui</span>}
@@ -106,7 +106,7 @@ function IntegrationsScreen({ onOpenLead }) {
                 </span>
                 {data.atrasos.itens?.[0]?.leadId && (
                   <button onClick={() => openRecent(data.atrasos.itens[0].leadId)}
-                    style={{ marginLeft: "auto", height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+                    style={{ marginLeft: "auto", height: 30, padding: "0 14px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
                     abrir o mais antigo
                   </button>
                 )}
@@ -114,7 +114,7 @@ function IntegrationsScreen({ onOpenLead }) {
             )}
 
             {/* Como saíram: proporção, não quatro números soltos. */}
-            <section style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px var(--inset-x)" }}>
+            <section style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px var(--inset-x)" }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
                 <h3 className="card-title" style={{ margin: 0 }}>Como saíram da integração</h3>
                 <span className="card-sub">{`${data.count} ${data.count === 1 ? "integração resumida" : "integrações resumidas"}`}</span>

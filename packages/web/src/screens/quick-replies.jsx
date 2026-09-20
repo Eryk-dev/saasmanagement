@@ -47,7 +47,7 @@ export function VariablePicker({ anchor, variables, onPick, onClose }) {
         <React.Fragment key={v.key}>
           {(i === 0 || list[i - 1].group !== v.group) && <div className="kicker" style={{ padding: "6px 6px 2px" }}>{v.group}</div>}
           <button type="button" className="tk-menu-item" onClick={() => { onPick(v.key); onClose(); }}
-            style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", width: "100%", padding: "6px 8px", borderRadius: 6, textAlign: "left" }}>
+            style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", width: "100%", padding: "6px 8px", borderRadius: 999, textAlign: "left" }}>
             <span className="mono" style={{ fontSize: 12, color: "var(--accent)" }}>{`{{${v.key}}}`}</span>
             <span style={{ fontSize: 11.5, color: "var(--fg-3)" }}>{v.label}</span>
           </button>
@@ -63,7 +63,7 @@ function ScopeToggle({ value, onChange, canEditShared, disabled }) {
     const on = value === v;
     return (
       <button type="button" disabled={disabled || off} title={title} aria-pressed={on} onClick={() => onChange(v)}
-        style={{ height: 30, padding: "0 14px", borderRadius: 7, fontSize: 12.5, fontWeight: on ? 600 : 500, background: on ? "var(--bg-1)" : "transparent", boxShadow: on ? "var(--shadow-segment)" : "none", color: on ? "var(--fg-1)" : "var(--fg-3)", opacity: off ? 0.5 : 1, cursor: off || disabled ? "default" : "pointer" }}>{label}</button>
+        style={{ height: 30, padding: "0 14px", borderRadius: 999, fontSize: 12.5, fontWeight: on ? 600 : 500, background: on ? "var(--bg-1)" : "transparent", boxShadow: on ? "var(--shadow-segment)" : "none", color: on ? "var(--fg-1)" : "var(--fg-3)", opacity: off ? 0.5 : 1, cursor: off || disabled ? "default" : "pointer" }}>{label}</button>
     );
   };
   return (
@@ -138,7 +138,7 @@ function Editor({ saasId, initial, canEditShared, variables, onClose, onSaved, o
             {readOnly ? "resposta da equipe · só quem gerencia o suporte edita; você pode duplicar como sua" : "no chat do ticket, digite / e o atalho, ou use o botão Respostas rápidas"}
           </div>
         </div>
-        <button type="button" onClick={close} aria-label="Fechar" style={{ width: 32, height: 32, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)" }}>✕</button>
+        <button type="button" onClick={close} aria-label="Fechar" style={{ width: 32, height: 32, borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)" }}>✕</button>
       </div>
       <div className="qr-editor">
         <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
@@ -244,7 +244,7 @@ function VariablesCard({ saasId, variables, canEditShared, onSaved }) {
           <div className="kicker" style={{ marginBottom: 4 }}>Automáticas</div>
           {(variables?.builtin || []).map((v) => (
             <button key={v.key} type="button" onClick={() => copy(v.key)} className="tk-menu-item" title="Copiar"
-              style={{ display: "flex", alignItems: "baseline", gap: 8, width: "100%", padding: "4px 6px", borderRadius: 6, textAlign: "left" }}>
+              style={{ display: "flex", alignItems: "baseline", gap: 8, width: "100%", padding: "4px 6px", borderRadius: 999, textAlign: "left" }}>
               <span className="mono" style={{ fontSize: 11.5, color: "var(--accent)", flexShrink: 0 }}>{`{{${v.key}}}`}</span>
               <span className="support-ellipsis" style={{ fontSize: 11.5, color: "var(--fg-3)" }}>{v.label}</span>
             </button>

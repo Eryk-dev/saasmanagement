@@ -164,7 +164,7 @@ function WaTopStats({ numInfo, stats, onResponder }) {
   return (
     <div className="inbox-stats">
       {waiting > 0 && (
-        <AvisoTopo variante="forte" style={{ flex: "1.1 1 320px", minWidth: 0, padding: "14px 18px" }}
+        <AvisoTopo navy variante="forte" style={{ flex: "1.1 1 320px", minWidth: 0, padding: "14px 18px" }}
           titulo={`${waiting} ${waiting === 1 ? "conversa esperando resposta" : "conversas esperando resposta"}`}
           nota={[espera ? `a mais antiga há ${espera}` : null, tipica !== "—" ? `a gente costuma responder em ${tipica}` : null].filter(Boolean).join(" · ")}
           acao={{ label: "responder agora", onClick: onResponder }}
@@ -513,7 +513,7 @@ export function WhatsappInboxScreen({ onOpenLead, initialThread, initialLead, in
                     {numInfo.numbers.map((n) => (
                       <button key={n.id} className="mono" title="copiar o id do número"
                         onClick={() => { try { navigator.clipboard.writeText(n.id); } catch { window.prompt("Phone number ID:", n.id); } }}
-                        style={{ alignSelf: "flex-start", padding: "4px 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 11.5, cursor: "pointer" }}>
+                        style={{ alignSelf: "flex-start", padding: "4px 8px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 11.5, cursor: "pointer" }}>
                         {n.id}{n.display ? ` · ${n.display}` : ""}{n.name ? ` · ${n.name}` : ""} ⧉
                       </button>
                     ))}
@@ -880,9 +880,9 @@ function DmInbox({ network, saas, isMobile }) {
                 <div style={{ display: "flex", gap: 8 }}>
                   <input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()}
                     placeholder={`responder no ${label}…`}
-                    style={{ flex: 1, minWidth: 0, padding: "9px 12px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 }} />
+                    style={{ flex: 1, minWidth: 0, padding: "9px 12px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: 999, color: "var(--fg-1)", fontSize: 13 }} />
                   <button onClick={send} disabled={busy || !draft.trim()}
-                    style={{ padding: "0 16px", borderRadius: "var(--r-2)", border: "1px solid var(--accent)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 13, fontWeight: 600, cursor: "pointer", opacity: busy || !draft.trim() ? 0.6 : 1 }}>
+                    style={{ padding: "0 16px", borderRadius: 999, border: "1px solid var(--accent)", background: "var(--accent)", color: "var(--accent-fg)", fontSize: 13, fontWeight: 600, cursor: "pointer", opacity: busy || !draft.trim() ? 0.6 : 1 }}>
                     Enviar
                   </button>
                 </div>
@@ -1005,7 +1005,7 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
               patch({ stage: toStage });
               onResolved?.(base.id); // moveu o card daqui: sai da fila do inbox na hora
             }}
-            style={{ maxWidth: 170, height: 24, padding: "0 6px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600 }}>
+            style={{ maxWidth: 170, height: 24, padding: "0 6px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600 }}>
             {!lead.stage && <option value="">sem etapa</option>}
             {(saasCfg?.funnel || []).map((f) => <option key={f.stage} value={f.stage}>{f.stage}</option>)}
             {lead.stage && !(saasCfg?.funnel || []).some((f) => f.stage === lead.stage) && <option value={lead.stage}>{lead.stage}</option>}
@@ -1092,7 +1092,7 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
                   </div>
                   {c.type === "select" ? (
                     <select value={c.raw || ""} onChange={(e) => patch({ [c.key]: e.target.value })}
-                      style={{ width: "100%", height: 26, padding: "0 6px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: c.raw ? "var(--fg-1)" : "var(--fg-4)", fontSize: 11.5, fontWeight: 500 }}>
+                      style={{ width: "100%", height: 26, padding: "0 6px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: c.raw ? "var(--fg-1)" : "var(--fg-4)", fontSize: 11.5, fontWeight: 500 }}>
                       <option value="">selecionar…</option>
                       {c.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                       {c.raw && !c.options.some((o) => o.value === c.raw) && <option value={c.raw}>{c.raw}</option>}
@@ -1101,7 +1101,7 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
                     <input key={base.id + c.key} type="text" defaultValue={c.raw || ""} placeholder="preencher…"
                       onBlur={(e) => { if (e.target.value !== (c.raw || "")) patch({ [c.key]: e.target.value }); }}
                       onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-                      style={{ width: "100%", height: 26, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5, fontWeight: 500 }} />
+                      style={{ width: "100%", height: 26, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5, fontWeight: 500 }} />
                   )}
                 </div>
               ))}
@@ -1125,7 +1125,7 @@ function LeadSideCard({ leadId, version, onOpenLead, onResolved, leadStarted = n
   );
 }
 
-const pill = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 11px", borderRadius: "var(--r-2)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", flexShrink: 0 };
+const pill = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 11px", borderRadius: 999, fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", flexShrink: 0 };
 
 // Parar o robô NESTA conversa (Leo, 24/08): grava lead.sdrOff — o SDR
 // automático inteiro (1º/2º toque, lembretes, resgate e as respostas da IA)
@@ -1200,7 +1200,7 @@ export function WaTemplateCreator({ onClose }) {
   }
 
   const lab = { display: "block", fontSize: 11.5, fontWeight: 600, color: "var(--fg-3)", marginBottom: 4 };
-  const inp = { width: "100%", height: 36, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, boxSizing: "border-box" };
+  const inp = { width: "100%", height: 36, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, boxSizing: "border-box" };
   return (
     <Modal onClose={onClose} label="criar template" largura={560} padding={16} painelStyle={{ padding: 22 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 4 }}>

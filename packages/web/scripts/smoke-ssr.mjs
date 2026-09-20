@@ -249,7 +249,7 @@ try {
     if (!html.includes("Tarefas")) throw new Error("o menu não renderizou");
     // 14a: produto ativo explícito, busca no rail e grupos que recolhem.
     if (!html.includes("produto ativo")) throw new Error("o topo não diz qual é o produto ativo");
-    if (!html.includes("buscar lead, cliente, tela")) throw new Error("a busca saiu do rail");
+    if (!html.includes('aria-label="Buscar lead, cliente ou tela"') || !html.includes('class="rail-search"')) throw new Error("a busca saiu do rail");
     if (!html.includes("comercial")) throw new Error("os grupos sumiram");
     // O badge só aparece pra quem tem a tela; o número vem do SEED, não de conta local.
     console.log("✓ menu-badges");

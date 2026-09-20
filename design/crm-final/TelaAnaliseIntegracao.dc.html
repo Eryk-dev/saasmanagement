@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Análise de Integração</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-gaveta-sai{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-gaveta-sai{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;margin:0 -4px;padding:0 4px 24px">
+
+      <header class="cap-rise" style="flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+        <div style="min-width:0">
+          <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Análise de Integração</h1>
+          
+        </div>
+      </header>
+
+      <sc-if value="{{ temRisco }}" hint-placeholder-val="{{ true }}">
+      <section class="cap-rise" style="position:relative;overflow:hidden;flex:0 0 auto;border-radius:24px;background:linear-gradient(168deg,#0a2434,#051C2C 70%);box-shadow:0 1px 2px rgba(5,28,44,.14),0 18px 40px -24px rgba(5,28,44,.6);padding:18px 22px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <span style="position:absolute;right:-32px;top:-38px;width:160px;height:160px;color:#23D8D3;opacity:.07;pointer-events:none"><svg width="160" height="160" viewBox="355 525 455 590"><polygon fill="currentColor" points="800.7 535.53 800.7 1103.92 763 983.8 749.25 939.91 691.16 754.61 501.54 817.84 457.65 832.42 362.47 864.14 443.6 803.33 481.22 775.08 800.7 535.53"></polygon></svg></span>
+        <div style="position:relative;flex:1 1 280px;min-width:0">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="width:5px;height:14px;border-radius:999px;background:#ffb3a8;flex-shrink:0"></span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#ffb3a8">churn começa aqui</span>
+          </div>
+          <div style="font-family:'Outfit',sans-serif;font-size:21px;font-weight:700;letter-spacing:-.025em;color:#F3FBFF;margin-top:7px;text-wrap:pretty">{{ riscoTitulo }}</div>
+          <div style="font-size:12px;color:rgba(243,251,255,.6);margin-top:3px;text-wrap:pretty">{{ riscoNomes }}</div>
+        </div>
+        <button onClick="{{ abrirRisco }}" style="position:relative;flex-shrink:0;height:38px;padding:0 18px;border-radius:999px;background:#F3FBFF;color:#051C2C;font-size:12.5px;font-weight:700;white-space:nowrap;transition:background 150ms ease" style-hover="background:#fff">{{ riscoAcao }}</button>
+      </section>
+      </sc-if>
+
+      <sc-if value="{{ temAtraso }}" hint-placeholder-val="{{ true }}">
+      <section class="cap-rise" style="flex:0 0 auto;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 18px;border-radius:24px;background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.05)">
+        <span style="font-size:13.5px;font-weight:650;white-space:nowrap">{{ atrasoTitulo }}</span>
+        <span style="flex:1;min-width:0;font-size:12.5px;color:#5a6b77;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ atrasoItens }}</span>
+        <button onClick="{{ abrirAtraso }}" style="flex-shrink:0;height:30px;padding:0 14px;border-radius:999px;background:#f1f4f5;color:#0c1d2b;font-size:12px;font-weight:600;white-space:nowrap;transition:background 150ms ease" style-hover="background:#e7ecee">Abrir o mais antigo</button>
+      </section>
+      <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;margin:-6px 10px 0;text-wrap:pretty">esperar o cliente não é dever: a fila que o time trabalha é a dos atrasos nossos</div>
+      </sc-if>
+
+      <section class="cap-rise" style="flex:0 0 auto;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:20px 24px 18px">
+        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">como saíram da integração</span>
+          </div>
+          <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4">{{ contagem }}</span>
+        </div>
+        <div style="display:flex;height:12px;border-radius:999px;overflow:hidden;background:#eff2f3;margin-top:14px">
+          <sc-for list="{{ faixas }}" as="f" hint-placeholder-count="3">
+            <span class="cap-grow" style="{{ f.est }}" title="{{ f.title }}"></span>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:12px">
+          <sc-for list="{{ legenda }}" as="l" hint-placeholder-count="3">
+            <span style="display:inline-flex;align-items:baseline;gap:7px">
+              <span style="{{ l.estPonto }}"></span>
+              <span style="font-family:'Outfit',sans-serif;font-size:16px;font-weight:700">{{ l.n }}</span>
+              <span style="font-size:12px;color:#5a6b77">{{ l.rot }}</span>
+            </span>
+          </sc-for>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;padding-top:13px;border-top:1px solid #edf1f3">
+          <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;text-wrap:pretty">{{ notaTempo }}</span>
+          <span style="{{ estSelo }}">{{ selo }}</span>
+        </div>
+      </section>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px">
+        <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:20px 22px 20px">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="width:5px;height:14px;border-radius:999px;background:#b42318;flex-shrink:0"></span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">pendências do onboarding</span>
+          </div>
+          
+          <div style="display:flex;flex-direction:column;gap:13px;margin-top:16px">
+            <sc-for list="{{ pendencias }}" as="p" hint-placeholder-count="5">
+              <div>
+                <div style="display:flex;align-items:baseline;gap:8px">
+                  <span style="flex:1;min-width:0;font-size:12.5px;font-weight:600;text-wrap:pretty">{{ p.label }}</span>
+                  <span style="{{ p.estQuem }}">{{ p.quem }}</span>
+                  <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;white-space:nowrap">{{ p.sub }}</span>
+                </div>
+                <div style="height:8px;border-radius:999px;background:#eff2f3;overflow:hidden;margin-top:6px"><span class="cap-grow" style="{{ p.estBarra }}"></span></div>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+
+        <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:20px 22px 20px">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">o que mais é configurado</span>
+          </div>
+          
+          <div style="display:flex;flex-direction:column;gap:13px;margin-top:16px">
+            <sc-for list="{{ configurado }}" as="c" hint-placeholder-count="5">
+              <div>
+                <div style="display:flex;align-items:baseline;gap:8px">
+                  <span style="flex:1;min-width:0;font-size:12.5px;font-weight:600;text-wrap:pretty">{{ c.label }}</span>
+                  <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;white-space:nowrap">{{ c.sub }}</span>
+                </div>
+                <div style="height:8px;border-radius:999px;background:#eff2f3;overflow:hidden;margin-top:6px"><span class="cap-grow" style="{{ c.estBarra }}"></span></div>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+      </div>
+
+      <section class="cap-rise" style="flex:0 0 auto;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+        <div style="padding:20px 22px 12px">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">integrações recentes</span>
+          </div>
+          
+        </div>
+        <sc-for list="{{ recentes }}" as="c" hint-placeholder-count="6">
+          <button onClick="{{ c.abrir }}" style="display:flex;gap:12px;align-items:center;width:100%;text-align:left;padding:12px 22px;border-top:1px solid #edf1f3;transition:background 150ms ease" style-hover="background:#f7f9fa">
+            <span style="flex-shrink:0;width:128px;font-size:13px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.cliente }}</span>
+            <span style="{{ c.estSent }}">{{ c.sent }}</span>
+            <span style="flex:1;min-width:0;font-size:12px;color:#5a6b77;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.resumo }}</span>
+            <span style="{{ c.estContas }}">{{ c.contas }}</span>
+            <span style="flex-shrink:0;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;white-space:nowrap">{{ c.quando }}</span>
+          </button>
+        </sc-for>
+      </section>
+    </div>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Análise de Integração (screens/integrations.jsx): o resumo das calls de
+  // onboarding vira padrão. "Em risco" sobe pro topo com nome e ação — o churn
+  // começa aqui e o CS tem poucos dias pra reverter. Atrasos ficam separados
+  // por quem deve: esperar o cliente não é estar devendo.
+  // cliente, sentimento, resumo, dias, contas conectadas, anúncios clonados,
+  // pendências [texto, quem], o que foi configurado
+  static INTEGRACOES = [
+    ["Studio Kern", "satisfeito", "3 contas conectadas na call; 1.840 anúncios clonados na frente dele", 2, 3, 1840,
+      [], ["conta-mãe definida", "clonagem automática", "regra de preço por rota"]],
+    ["Clínica Arbo", "satisfeito", "2 contas; pediu para incluir a terceira depois do mês 1", 7, 2, 620,
+      [["terceira conta pendente", "cliente"]], ["conta-mãe definida", "clonagem automática"]],
+    ["Nutri Vitta", "satisfeito", "3 contas, sem ERP; controle de estoque segue separado", 14, 3, 3100,
+      [], ["conta-mãe definida", "clonagem automática", "rotas de clonagem"]],
+    ["Mercado Ponto", "neutro", "conectou 1 conta; a segunda depende do acesso do sócio", 10, 1, 480,
+      [["acesso da segunda conta", "cliente"], ["treinamento do time", "nosso"]], ["conta-mãe definida"]],
+    ["Grupo Vante", "em risco", "remarcou duas vezes; entrou sem os logins e a call rendeu pouco", 4, 0, 0,
+      [["logins em mãos", "cliente"], ["remarcar a call", "nosso"], ["treinamento do time", "nosso"]], []],
+    ["Oficina Prado", "neutro", "conectou tudo, mas não entendeu a regra de preço", 21, 2, 940,
+      [["revisar regra de preço", "nosso"]], ["conta-mãe definida", "clonagem automática"]],
+    ["Padaria Dovale", "satisfeito", "2 contas e integração com o Bling no mesmo dia", 18, 2, 1260,
+      [], ["conta-mãe definida", "clonagem automática", "integração com ERP"]],
+    ["Instituto Rima", "em risco", "achou que o painel faria a gestão de anúncios inteira", 9, 2, 310,
+      [["alinhar expectativa do escopo", "nosso"], ["revisar regra de preço", "nosso"]], ["conta-mãe definida"]],
+    ["Ferraz Advocacia", "neutro", "só uma conta ativa; vai abrir a segunda no trimestre", 25, 1, 220,
+      [["segunda conta", "cliente"]], ["conta-mãe definida", "rotas de clonagem"]],
+    ["Corrêa Pets", "satisfeito", "conectou 2 contas e já pediu indicação de fornecedor", 28, 2, 780,
+      [], ["conta-mãe definida", "clonagem automática", "rotas de clonagem"]],
+  ];
+
+  state = { aberto: null };
+
+  renderVals() {
+    const L = Component.INTEGRACOES;
+    const n = L.length;
+    const sent = { satisfeito: 0, neutro: 0, "em risco": 0 };
+    for (const c of L) sent[c[1]]++;
+    const risco = L.filter((c) => c[1] === "em risco");
+
+    // pendências: contagem e de quem é a bola
+    const pend = {};
+    for (const c of L) for (const [texto, quem] of c[6]) {
+      pend[texto] = pend[texto] || { n: 0, quem };
+      pend[texto].n++;
+    }
+    const pendList = Object.entries(pend).sort((a, b) => b[1].n - a[1].n);
+    const maxPend = Math.max.apply(null, [1].concat(pendList.map((p) => p[1].n)));
+    // atrasos: integração que passou de 7 dias com pendência em aberto
+    const comPend = L.filter((c) => c[6].length > 0);
+    const doCliente = comPend.filter((c) => c[6].some((p) => p[1] === "cliente"));
+    const nossos = comPend.filter((c) => c[6].some((p) => p[1] === "nosso"));
+    const maisAntigo = comPend.slice().sort((a, b) => b[3] - a[3])[0];
+
+    const conf = {};
+    for (const c of L) for (const x of c[7]) conf[x] = (conf[x] || 0) + 1;
+    const confList = Object.entries(conf).sort((a, b) => b[1] - a[1]);
+    const maxConf = Math.max.apply(null, [1].concat(confList.map((c) => c[1])));
+
+    const TOM = { satisfeito: ["#177a4c", "#e9f6ef"], neutro: ["#5a6b77", "#f1f4f5"], "em risco": ["#b42318", "#fdf3f2"] };
+    const irCliente = () => window.dispatchEvent(new CustomEvent("cockpit:ir", { detail: { tela: "Cl" } }));
+    // tempo até a primeira clonagem: o que a integração promete entregar no dia
+    const comClone = L.filter((c) => c[5] > 0);
+    const mediaAnuncios = comClone.length ? Math.round(comClone.reduce((a, c) => a + c[5], 0) / comClone.length) : 0;
+    const pctNoDia = Math.round((comClone.length / n) * 100);
+
+    return {
+      mov: this.props.movimento === false ? "off" : "on",
+      subtitulo: n + (n === 1 ? " integração resumida" : " integrações resumidas") + " · sentimento dos clientes e pendências do onboarding",
+      temRisco: risco.length > 0,
+      riscoTitulo: risco.length + (risco.length === 1 ? " cliente saiu da integração em risco" : " clientes saíram da integração em risco"),
+      riscoNomes: risco.map((c) => c[0]).join(" · "),
+      riscoAcao: risco.length === 1 ? "abrir o cliente" : "Abrir o primeiro dos " + risco.length,
+      abrirRisco: irCliente,
+      temAtraso: comPend.length > 0,
+      atrasoTitulo: "Pendências: " + doCliente.length + " do cliente · " + nossos.length + (nossos.length === 1 ? " nossa" : " nossas"),
+      atrasoItens: comPend.slice().sort((a, b) => b[3] - a[3]).slice(0, 3).map((c) => c[0] + " (" + c[3] + "d)").join(" · "),
+      abrirAtraso: irCliente,
+      contagem: n + (n === 1 ? " integração resumida" : " integrações resumidas"),
+      faixas: [["satisfeito", sent.satisfeito, "#177a4c"], ["neutro", sent.neutro, "#c5cfd4"], ["em risco", sent["em risco"], "#b42318"]]
+        .filter(([, v]) => v > 0).map(([k, v, cor]) => ({
+          title: v + " " + k, est: "display:block;height:100%;width:" + ((v / Math.max(1, n)) * 100) + "%;background:" + cor,
+        })),
+      legenda: [["satisfeitos", sent.satisfeito, "#177a4c"], ["neutros", sent.neutro, "#8b99a4"], ["em risco", sent["em risco"], "#b42318"]].map(([rot, v, cor]) => ({
+        n: String(v), rot: rot + " · " + Math.round((v / n) * 100) + "%",
+        estPonto: "width:8px;height:8px;border-radius:999px;align-self:center;background:" + cor,
+      })),
+      notaTempo: pctNoDia + "% saíram da call já clonando (média de " + mediaAnuncios.toLocaleString("pt-BR") + " anúncios na primeira leva)",
+      selo: sent["em risco"] > 0 ? "atenção" : "saudável",
+      estSelo: "display:inline-flex;align-items:center;height:22px;padding:0 11px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;" +
+        (sent["em risco"] > 0 ? "background:#fdf3f2;color:#b42318" : "background:#e9f6ef;color:#177a4c"),
+      pendencias: pendList.map(([label, o]) => ({
+        label, sub: o.n + "×", quem: o.quem === "cliente" ? "do cliente" : "nossa",
+        estQuem: "display:inline-flex;align-items:center;height:19px;padding:0 9px;border-radius:999px;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;white-space:nowrap;" +
+          (o.quem === "cliente" ? "background:#f1f4f5;color:#5a6b77" : "background:#fdf3f2;color:#b42318"),
+        estBarra: "display:block;height:100%;border-radius:999px;width:" + Math.max(4, Math.round((o.n / maxPend) * 100)) + "%;background:" +
+          (o.quem === "cliente" ? "linear-gradient(90deg,#b6c0c7,#8b99a4)" : "linear-gradient(90deg,#d0524a,#b42318)"),
+      })),
+      configurado: confList.map(([label, v]) => ({
+        label, sub: v + "×",
+        estBarra: "display:block;height:100%;border-radius:999px;width:" + Math.max(4, Math.round((v / maxConf) * 100)) + "%;background:linear-gradient(90deg,#0C8F83,#0F766E)",
+      })),
+      recentes: L.slice().sort((a, b) => a[3] - b[3]).slice(0, 8).map((c) => ({
+        cliente: c[0], resumo: c[2], sent: c[1],
+        estSent: "flex-shrink:0;display:inline-flex;align-items:center;height:20px;padding:0 10px;border-radius:999px;font-size:10.5px;font-weight:600;background:" + TOM[c[1]][1] + ";color:" + TOM[c[1]][0],
+        contas: c[4] ? c[4] + (c[4] === 1 ? " conta" : " contas") : "sem conta",
+        estContas: "flex-shrink:0;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;white-space:nowrap;color:" + (c[4] ? "#5a6b77" : "#b42318"),
+        quando: c[3] === 1 ? "ontem" : "há " + c[3] + " dias",
+        abrir: irCliente,
+      })),
+    };
+  }
+}
+</script>
+</body>
+</html>

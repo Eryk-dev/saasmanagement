@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Tarefas</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-gaveta-sai{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-gaveta-sai{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;margin:0 -4px;padding:0 4px">
+
+      <header class="cap-rise" style="flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+        <div style="min-width:0">
+          <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Tarefas</h1>
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#5a6b77;margin-top:6px;text-wrap:pretty">{{ subtitulo }}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <div style="display:inline-flex;gap:3px;padding:4px;border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.05)">
+            <sc-for list="{{ visoes }}" as="v" hint-placeholder-count="4">
+              <button onClick="{{ v.escolher }}" style="{{ v.est }}">{{ v.label }}</button>
+            </sc-for>
+          </div>
+          <button onClick="{{ novaTarefa }}" style="height:40px;padding:0 18px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:13px;font-weight:650;transition:background 150ms ease" style-hover="background:#1b3140">Criar tarefa</button>
+        </div>
+      </header>
+
+      <section class="cap-rise" style="flex:0 0 auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px;border-radius:999px;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+        <label style="display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 14px;border-radius:999px;background:#f1f4f5;color:#5a6b77;min-width:170px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><circle cx="11" cy="11" r="7"></circle><path d="M20.4 20.4l-4.2-4.2"></path></svg>
+          <input value="{{ busca }}" onChange="{{ mudarBusca }}" placeholder="buscar tarefa" style="flex:1;min-width:0;border:0;background:none;outline:none;font-family:inherit;font-size:12px;color:#0c1d2b" />
+        </label>
+        <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#8b99a4">prioridade</span>
+        <div style="display:inline-flex;gap:4px">
+          <sc-for list="{{ filtrosPri }}" as="p" hint-placeholder-count="3">
+            <button onClick="{{ p.alternar }}" style="{{ p.est }}">{{ p.label }}</button>
+          </sc-for>
+        </div>
+        <select value="{{ grupo }}" onChange="{{ mudarGrupo }}" style="height:32px;border:0;border-radius:999px;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;padding:0 12px;font-family:inherit;font-size:12px;font-weight:600;color:#3d4f5c;cursor:pointer">
+          <sc-for list="{{ opcoesGrupo }}" as="g" hint-placeholder-count="5">
+            <option value="{{ g.v }}">{{ g.label }}</option>
+          </sc-for>
+        </select>
+        <select value="{{ ordem }}" onChange="{{ mudarOrdem }}" style="height:32px;border:0;border-radius:999px;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;padding:0 12px;font-family:inherit;font-size:12px;font-weight:600;color:#3d4f5c;cursor:pointer">
+          <sc-for list="{{ opcoesOrdem }}" as="o" hint-placeholder-count="4">
+            <option value="{{ o.v }}">{{ o.label }}</option>
+          </sc-for>
+        </select>
+        <button onClick="{{ alternarVazias }}" style="{{ estVazias }}">Ocultar colunas vazias</button>
+        <button onClick="{{ alternarCompacto }}" style="{{ estCompacto }}">Compacto</button>
+        <span style="flex:1"></span>
+        <button onClick="{{ desfazer }}" title="⌘Z" style="{{ estDesfazer }}">{{ rotuloDesfazer }}</button>
+      </section>
+
+      <section class="cap-rise" style="flex:0 0 auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:11px 16px;border-radius:24px;background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+          <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#8b99a4">o que o card mostra</span>
+          <sc-for list="{{ campos }}" as="c" hint-placeholder-count="8">
+            <button onClick="{{ c.alternar }}" style="{{ c.est }}">
+              <span style="{{ c.estCheck }}">{{ c.check }}</span>
+              <span style="font-size:11.5px">{{ c.label }}</span>
+            </button>
+          </sc-for>
+      </section>
+
+      <sc-if value="{{ temSelecao }}" hint-placeholder-val="{{ false }}">
+        <section class="cap-rise" style="flex:0 0 auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 16px;border-radius:999px;background:#0c1d2b;box-shadow:0 1px 2px rgba(5,28,44,.14),0 14px 30px -22px rgba(5,28,44,.6)">
+          <span style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;color:#F3FBFF">{{ nSelecao }}</span>
+          <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:rgba(243,251,255,.6)">selecionadas</span>
+          <span style="width:1px;height:20px;background:rgba(255,255,255,.14);margin:0 4px"></span>
+          <sc-for list="{{ acoesLote }}" as="a" hint-placeholder-count="5">
+            <button onClick="{{ a.agir }}" style="{{ a.est }}">{{ a.label }}</button>
+          </sc-for>
+          <button onClick="{{ limparSelecao }}" style="margin-left:auto;height:30px;padding:0 13px;border-radius:999px;background:rgba(255,255,255,.1);color:#F3FBFF;font-size:11.5px;font-weight:600">Limpar</button>
+        </section>
+      </sc-if>
+
+      <sc-if value="{{ ehQuadro }}" hint-placeholder-val="{{ true }}">
+        <div style="flex:1;min-height:0;display:flex;align-items:stretch;gap:10px;overflow-x:auto;padding-bottom:12px">
+          <sc-for list="{{ colunas }}" as="c" hint-placeholder-count="4">
+            <section class="cap-rise" onDragOver="{{ c.sobre }}" onDrop="{{ c.soltar }}" style="{{ c.estSecao }}" data-x="1">
+              <div style="flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:13px 14px 10px">
+                <span style="{{ c.estPonto }}"></span>
+                <input value="{{ c.nome }}" onChange="{{ c.renomear }}" readOnly="{{ c.fixo }}" style="{{ c.estNome }}" />
+                <span style="font-family:'Outfit',sans-serif;font-size:12px;font-weight:700;color:#8b99a4">{{ c.n }}</span>
+                <button onClick="{{ c.recolher }}" title="recolher coluna" style="width:22px;height:22px;border-radius:999px;background:#f1f4f5;color:#5a6b77;font-size:11px;flex-shrink:0;transition:background 150ms ease" style-hover="background:#e7ecee;color:#0c1d2b">‹‹</button>
+                <button onClick="{{ c.adicionar }}" title="nova tarefa aqui" style="width:22px;height:22px;border-radius:999px;background:#f1f4f5;color:#5a6b77;font-size:12px;flex-shrink:0;transition:background 150ms ease" style-hover="background:#E9F5F3;color:#0b6b64">+</button>
+              </div>
+              <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:7px;padding:0 10px 12px">
+                <div style="{{ c.estPlaceholder }}"></div>
+                <sc-for list="{{ c.cards }}" as="t" hint-placeholder-count="3">
+                  <div draggable="{{ t.arrastavel }}" onDragStart="{{ t.pegar }}" onDragEnd="{{ t.largar }}" onDragOver="{{ t.sobreCard }}" style="{{ t.est }}" style-hover="background:#fff">
+                    <div style="display:flex;align-items:flex-start;gap:8px">
+                      <button onClick="{{ t.concluir }}" title="concluir" style="{{ t.estCheck }}">{{ t.check }}</button>
+                      <button onClick="{{ t.abrir }}" style="flex:1;min-width:0;text-align:left;font-size:12.5px;font-weight:600;line-height:1.4;color:{{ t.corTitulo }};text-wrap:pretty">{{ t.titulo }}</button>
+                      <button onClick="{{ t.selecionar }}" title="selecionar" style="{{ t.estSel }}">{{ t.marcaSel }}</button>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;padding-left:24px">
+                      <span style="{{ t.estPri }}">{{ t.pri }}</span>
+                      <span style="{{ t.estPrazo }}">{{ t.prazo }}</span>
+                      <sc-for list="{{ t.labels }}" as="l" hint-placeholder-count="1">
+                        <span style="{{ l.est }}">{{ l.nome }}</span>
+                      </sc-for>
+                      <span style="{{ t.estSub }}">{{ t.sub }}</span>
+                      <span style="{{ t.estCom }}">{{ t.com }}</span>
+                      <span style="margin-left:auto;display:flex;gap:-4px">
+                        <sc-for list="{{ t.donos }}" as="d" hint-placeholder-count="1">
+                          <span style="{{ d.est }}">{{ d.ini }}</span>
+                        </sc-for>
+                      </span>
+                    </div>
+                  </div>
+                </sc-for>
+                <sc-if value="{{ c.vazia }}" hint-placeholder-val="{{ false }}">
+                  <div style="{{ c.estVazio }}">{{ c.textoVazio }}</div>
+                </sc-if>
+              </div>
+            </section>
+          </sc-for>
+          <sc-for list="{{ recolhidas }}" as="r" hint-placeholder-count="0">
+            <button onClick="{{ r.expandir }}" onDragOver="{{ r.sobre }}" onDrop="{{ r.soltar }}" title="expandir coluna" style="{{ r.est }}">
+              <span style="font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;color:#3d4f5c">{{ r.n }}</span>
+              <span style="writing-mode:vertical-rl;font-size:12px;font-weight:650;color:#5a6b77">{{ r.nome }}</span>
+            </button>
+          </sc-for>
+          <sc-if value="{{ podeAddColuna }}" hint-placeholder-val="{{ true }}">
+            <button onClick="{{ addColuna }}" title="Adicionar coluna" style="flex:0 0 272px;width:272px;align-self:flex-start;display:flex;align-items:center;gap:8px;padding:12px 14px;border-radius:24px;border:1px dashed #cbd4da;background:transparent;color:#5a6b77;font-size:13px;font-weight:500;transition:background 150ms ease,color 150ms ease" style-hover="background:#fff;color:#0c1d2b">
+              <span style="font-size:15px">+</span> Adicionar coluna
+            </button>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ehLista }}" hint-placeholder-val="{{ false }}">
+        <section class="cap-rise" style="flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+          <div style="flex:0 0 auto;display:grid;grid-template-columns:30px minmax(0,2.2fr) 120px 110px 96px minmax(0,1fr);gap:10px;padding:10px 16px;background:#f7f9fa;border-bottom:1px solid #edf1f3;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#8b99a4">
+            <span></span>
+            <sc-for list="{{ colsLista }}" as="h" hint-placeholder-count="5">
+              <button onClick="{{ h.ordenar }}" style="{{ h.est }}">{{ h.label }}</button>
+            </sc-for>
+          </div>
+          <div style="flex:1;min-height:0;overflow-y:auto">
+            <sc-for list="{{ lista }}" as="t" hint-placeholder-count="8">
+              <div style="display:grid;grid-template-columns:30px minmax(0,2.2fr) 120px 110px 96px minmax(0,1fr);gap:10px;padding:10px 16px;align-items:center;border-bottom:1px solid #edf1f3">
+                <button onClick="{{ t.concluir }}" style="{{ t.estCheck }}">{{ t.check }}</button>
+                <button onClick="{{ t.abrir }}" style="min-width:0;text-align:left;font-size:12.5px;font-weight:600;color:{{ t.corTitulo }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ t.titulo }}</button>
+                <span style="display:flex;gap:4px"><sc-for list="{{ t.donos }}" as="d" hint-placeholder-count="1"><span style="{{ d.est }}">{{ d.ini }}</span></sc-for></span>
+                <span style="{{ t.estPrazo }}">{{ t.prazo }}</span>
+                <span style="{{ t.estPri }}">{{ t.pri }}</span>
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#5a6b77;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ t.coluna }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+      </sc-if>
+
+      <sc-if value="{{ ehCalendario }}" hint-placeholder-val="{{ false }}">
+        <section class="cap-rise" style="flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+          <div style="flex:0 0 auto;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));background:#f7f9fa;border-bottom:1px solid #edf1f3">
+            <sc-for list="{{ diasSemana }}" as="w" hint-placeholder-count="7">
+              <div style="padding:8px;text-align:center;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#8b99a4">{{ w }}</div>
+            </sc-for>
+          </div>
+          <div style="flex:1;min-height:0;overflow-y:auto;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-auto-rows:minmax(92px,auto)">
+            <sc-for list="{{ celulas }}" as="c" hint-placeholder-count="35">
+              <div style="{{ c.est }}">
+                <div style="display:flex;align-items:center;gap:5px">
+                  <span style="{{ c.estNumero }}">{{ c.dia }}</span>
+                  <span style="{{ c.estN }}">{{ c.n }}</span>
+                </div>
+                <sc-for list="{{ c.itens }}" as="i" hint-placeholder-count="1">
+                  <button onClick="{{ i.abrir }}" style="{{ i.est }}">{{ i.titulo }}</button>
+                </sc-for>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+      </sc-if>
+
+      <sc-if value="{{ ehCronograma }}" hint-placeholder-val="{{ false }}">
+        <section class="cap-rise" style="flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+          <div style="flex:0 0 auto;display:flex;padding:10px 16px;background:#f7f9fa;border-bottom:1px solid #edf1f3">
+            <span style="flex:0 0 200px;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#8b99a4">Tarefa</span>
+            <div style="flex:1;display:flex">
+              <sc-for list="{{ escala }}" as="e" hint-placeholder-count="7">
+                <span style="flex:1;text-align:center;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;color:#8b99a4">{{ e }}</span>
+              </sc-for>
+            </div>
+          </div>
+          <div style="flex:1;min-height:0;overflow-y:auto">
+            <sc-for list="{{ barras }}" as="b" hint-placeholder-count="6">
+              <div style="display:flex;align-items:center;padding:9px 16px;border-bottom:1px solid #edf1f3">
+                <button onClick="{{ b.abrir }}" style="flex:0 0 200px;min-width:0;text-align:left;display:flex;align-items:center;gap:8px">
+                  <span style="{{ b.estTraco }}"></span>
+                  <span style="flex:1;min-width:0;font-size:12.5px;font-weight:600;color:{{ b.corTitulo }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ b.titulo }}</span>
+                </button>
+                <div style="flex:1;position:relative;height:24px">
+                  <div style="{{ b.est }}">{{ b.prazo }}</div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{ temSel }}" hint-placeholder-val="{{ false }}">
+      <aside class="{{ classeGaveta }}" style="position:absolute;right:14px;top:14px;bottom:14px;width:470px;max-width:calc(100% - 28px);z-index:20;display:flex;flex-direction:column;overflow:hidden;border-radius:24px;background:#fff;box-shadow:0 2px 6px rgba(12,29,43,.08),0 30px 60px -28px rgba(12,29,43,.55)">
+        <div style="flex:0 0 auto;display:flex;align-items:flex-start;gap:11px;padding:18px 20px 12px">
+          <button onClick="{{ sel.concluir }}" style="{{ sel.estCheck }}">{{ sel.check }}</button>
+          <div style="flex:1;min-width:0">
+            <input value="{{ sel.titulo }}" onChange="{{ mudarTitulo }}" style="width:100%;border:0;background:none;outline:none;font-family:'Outfit',sans-serif;font-size:17px;font-weight:700;letter-spacing:-.02em;line-height:1.25;color:{{ sel.corTitulo }}" />
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;margin-top:4px">{{ sel.meta }}</div>
+          </div>
+          <button onClick="{{ fechar }}" style="flex-shrink:0;width:30px;height:30px;border-radius:999px;background:#f1f4f5;color:#5a6b77;font-size:13px;transition:background 150ms ease" style-hover="background:#e7ecee;color:#0c1d2b">✕</button>
+        </div>
+        <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:0 20px 18px">
+          <div>
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">prioridade</div>
+            <div style="display:flex;gap:5px;margin-top:7px">
+              <sc-for list="{{ sel.prioridades }}" as="p" hint-placeholder-count="4">
+                <button onClick="{{ p.escolher }}" style="{{ p.est }}">{{ p.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:9px">
+            <label style="display:flex;flex-direction:column;gap:4px">
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">prazo</span>
+              <input type="date" value="{{ sel.prazoISO }}" onChange="{{ mudarPrazo }}" style="height:34px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 13px;font-family:inherit;font-size:12.5px;color:#0c1d2b;outline:none" />
+            </label>
+            <label style="display:flex;flex-direction:column;gap:4px">
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">coluna</span>
+              <select value="{{ sel.coluna }}" onChange="{{ mudarColuna }}" style="height:34px;border:0;border-radius:999px;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;padding:0 12px;font-family:inherit;font-size:12px;font-weight:600;color:#0c1d2b;cursor:pointer">
+                <sc-for list="{{ sel.colunas }}" as="c" hint-placeholder-count="4">
+                  <option value="{{ c.v }}">{{ c.label }}</option>
+                </sc-for>
+              </select>
+            </label>
+          </div>
+          <div>
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">responsáveis</div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px">
+              <sc-for list="{{ sel.pessoas }}" as="p" hint-placeholder-count="4">
+                <button onClick="{{ p.alternar }}" style="{{ p.est }}">{{ p.nome }}</button>
+              </sc-for>
+            </div>
+          </div>
+          <label style="display:flex;flex-direction:column;gap:5px">
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">descrição</span>
+            <textarea value="{{ sel.descricao }}" onChange="{{ mudarDescricao }}" placeholder="o que precisa ser feito" style="min-height:74px;resize:vertical;border:0;border-radius:18px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:11px 13px;font-family:inherit;font-size:12.5px;line-height:1.5;color:#0c1d2b;outline:none"></textarea>
+          </label>
+          <div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">subtarefas</span>
+              <span style="margin-left:auto;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4">{{ sel.subResumo }}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:5px;margin-top:8px">
+              <sc-for list="{{ sel.subs }}" as="s" hint-placeholder-count="2">
+                <button onClick="{{ s.alternar }}" style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:14px;background:#f7f9fa;text-align:left;transition:background 150ms ease" style-hover="background:#eef1f3">
+                  <span style="{{ s.estCheck }}">{{ s.check }}</span>
+                  <span style="flex:1;min-width:0;font-size:12px;color:{{ s.cor }};text-wrap:pretty">{{ s.texto }}</span>
+                </button>
+              </sc-for>
+            </div>
+            <div style="display:flex;gap:7px;margin-top:7px">
+              <input value="{{ novaSub }}" onChange="{{ mudarNovaSub }}" placeholder="+ subtarefa" style="flex:1;min-width:0;height:32px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 13px;font-family:inherit;font-size:12px;color:#0c1d2b;outline:none" />
+              <button onClick="{{ addSub }}" style="{{ estAddSub }}">Adicionar</button>
+            </div>
+          </div>
+          <div>
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">comentários · {{ sel.nComentarios }}</div>
+            <div style="display:flex;flex-direction:column;gap:7px;margin-top:8px">
+              <sc-for list="{{ sel.comentarios }}" as="c" hint-placeholder-count="2">
+                <div style="padding:10px 12px;border-radius:16px;background:#f7f9fa">
+                  <div style="display:flex;align-items:baseline;gap:7px">
+                    <span style="font-size:11.5px;font-weight:650">{{ c.autor }}</span>
+                    <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#8b99a4">{{ c.quando }}</span>
+                  </div>
+                  <div style="font-size:12px;line-height:1.5;color:#3d4f5c;margin-top:4px;text-wrap:pretty">{{ c.texto }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex;gap:7px;margin-top:8px">
+              <input value="{{ novoCom }}" onChange="{{ mudarNovoCom }}" placeholder="escreva um comentário" style="flex:1;min-width:0;height:34px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 13px;font-family:inherit;font-size:12px;color:#0c1d2b;outline:none" />
+              <button onClick="{{ addCom }}" style="{{ estAddCom }}">Enviar</button>
+            </div>
+          </div>
+        </div>
+        <div style="flex:0 0 auto;display:flex;gap:8px;padding:13px 20px 15px;border-top:1px solid #edf1f3">
+          <button onClick="{{ sel.concluir }}" style="{{ sel.estBotaoConcluir }}">{{ sel.rotuloConcluir }}</button>
+          <button onClick="{{ excluir }}" style="height:38px;padding:0 15px;border-radius:999px;background:transparent;color:#b42318;font-size:12px;font-weight:600;transition:background 150ms ease" style-hover="background:#fdf3f2">Excluir</button>
+        </div>
+      </aside>
+    </sc-if>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Tarefas (screens/tasks/*): quatro visões (Quadro · Lista · Calendário ·
+  // Cronograma), prioridades P0–P2, agrupar por campo, ordenar, seleção múltipla
+  // com ações em lote e DESFAZER — a mutação aqui é otimista como no store.js,
+  // então toda ação em lote empilha um desfazer.
+  static COLS = [["afazer", "A fazer", "#8b99a4"], ["fazendo", "Fazendo", "#175cd3"], ["revisar", "Em revisão", "#a16207"], ["feito", "Feito", "#177a4c"]];
+  static PRIS = [["P0", "#b42318", "#fdf3f2"], ["P1", "#a16207", "#fbf4e6"], ["P2", "#5a6b77", "#f1f4f5"]];
+  static PESSOAS = [["ls", "Leo Sander"], ["mc", "Manuela Costa"], ["rm", "Rafael Moura"], ["vn", "Vitor Nunes"], ["ba", "Bruno Alencar"]];
+  static LABELS = { comercial: "#0F766E", produto: "#5b6bd6", conteudo: "#b45309", urgente: "#b42318" };
+  static GRUPOS = [["column", "Coluna (padrão)"], ["assignee", "Responsável"], ["due", "Prazo"], ["priority", "Prioridade"], ["label", "Label"]];
+  static ORDENS = [["manual", "Manual (padrão)"], ["due", "Prazo"], ["priority", "Prioridade"], ["assignee", "Responsável"]];
+
+  static gerar() {
+    // título, coluna, prioridade, dias até o prazo (null = sem), donos, labels, subs [feitas,total], comentários
+    const L = [
+      ["Revisar script de 1º contato", "revisar", "P1", -2, ["mc"], ["comercial"], [2, 3], 2],
+      ["Subir lista do outbound de setembro", "afazer", "P0", -1, [], ["comercial", "urgente"], [0, 4], 1],
+      ["Conferir gravação da call do Galante", "afazer", "P2", 0, ["rm"], [], [0, 0], 0],
+      ["Fechar o contrato do Studio Kern", "fazendo", "P0", 0, ["ls", "rm"], ["comercial", "urgente"], [3, 4], 4],
+      ["Publicar o post de estoque parado", "revisar", "P1", 1, ["ls"], ["conteudo"], [1, 2], 1],
+      ["Integração do Grupo Vante", "fazendo", "P1", 1, ["vn"], [], [2, 5], 2],
+      ["Ajustar o criativo [E] que caiu", "afazer", "P1", 2, ["ls"], ["produto"], [0, 2], 0],
+      ["Pedir depoimento da Nutri Vitta", "afazer", "P2", 3, ["vn"], ["comercial"], [0, 1], 0],
+      ["Revisar o formulário de integração", "fazendo", "P2", 4, ["vn", "ls"], ["produto"], [1, 3], 1],
+      ["Montar o relatório do mês", "afazer", "P1", 5, ["ls"], [], [0, 3], 0],
+      ["Treinar o Bruno em objeção de preço", "afazer", "P2", 7, ["mc"], ["comercial"], [0, 2], 0],
+      ["Atualizar a matriz do ICP", "feito", "P2", -4, ["ls"], ["produto"], [2, 2], 3],
+      ["Migrar os anúncios da Clínica Arbo", "feito", "P1", -6, ["vn"], [], [5, 5], 2],
+      ["Escrever o case do Mercado Ponto", "feito", "P2", -8, ["ls"], ["conteudo"], [3, 3], 1],
+    ];
+    const COM = [["Manuela Costa", "Já revisei a parte da abertura, falta o meio."], ["Leo Sander", "Prioridade alta: isso trava o disparo."],
+      ["Rafael Moura", "Cliente pediu pra adiantar."], ["Vitor Nunes", "Feito, subi na conta-mãe."]];
+    return L.map(([titulo, col, pri, dias, donos, labels, sub, nCom], i) => ({
+      id: "t" + i, titulo, coluna: col, pri, dias, donos, labels,
+      completa: col === "feito",
+      descricao: i % 3 === 0 ? "Sai do que apareceu nas calls da semana. Confirmar com o time antes de fechar." : "",
+      subs: Array.from({ length: sub[1] }, (_, k) => ({ texto: ["Levantar o material", "Escrever a primeira versão", "Revisar com o time", "Aprovar", "Publicar"][k % 5], feita: k < sub[0] })),
+      comentarios: Array.from({ length: nCom }, (_, k) => ({ autor: COM[(i + k) % 4][0], texto: COM[(i + k) % 4][1], quando: "há " + (k + 1) + "d" })),
+      ordem: i,
+    }));
+  }
+
+  static CAMPOS = [["assignee", "Responsável"], ["due", "Prazo"], ["priority", "Prioridade"], ["labels", "Labels"],
+    ["subtasks", "Subtarefas"], ["comments", "Comentários"], ["attachments", "Anexos"], ["cover", "Capa"]];
+  state = { visao: "board", grupo: "column", ordem: "manual", busca: "", pris: {}, ocultarVazias: 0,
+    tarefas: Component.gerar(), sel: null, fechando: false, selecao: {}, desfazer: [],
+    novaSub: "", novoCom: "",
+    // prefs.js: DEFAULT_FIELDS + compact + collapsed por coluna
+    campos: { assignee: 1, due: 1, priority: 1, labels: 1, subtasks: 1, comments: 1, attachments: 1, cover: 1 },
+    compacto: 0, painelCampos: 0, recolhidas: {}, cols: Component.COLS.map((c) => c.slice()),
+    drag: null, sobreCol: null, sobreIdx: -1 };
+  componentWillUnmount() { clearTimeout(this._t); }
+
+  priDe(p) { return Component.PRIS.find((x) => x[0] === p) || ["", "#8b99a4", "#f1f4f5"]; }
+  colDe(k) { return this.state.cols.find((c) => c[0] === k) || ["", k, "#8b99a4"]; }
+  nomeDe(id) { const p = Component.PESSOAS.find((x) => x[0] === id); return p ? p[1] : id; }
+  ini(id) { return this.nomeDe(id).split(" ").map((x) => x[0]).join("").slice(0, 2); }
+  prazo(d) {
+    if (d == null) return "";
+    if (d === 0) return "hoje";
+    if (d === 1) return "amanhã";
+    if (d < 0) return "atrasada " + (-d) + "d";
+    const x = new Date(2026, 8, 19 + d);
+    return x.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+  }
+  prazoISO(d) { if (d == null) return ""; const x = new Date(2026, 8, 19 + d); return x.toISOString().slice(0, 10); }
+  seg(ativo, alt) {
+    if (alt) return "height:26px;padding:0 10px;border-radius:999px;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:650;white-space:nowrap;transition:background 150ms ease;" +
+      (ativo ? "background:#0c1d2b;color:#fff" : "background:#f1f4f5;color:#5a6b77");
+    return "height:32px;padding:0 14px;border-radius:999px;font-size:12px;white-space:nowrap;transition:background 150ms ease,color 150ms ease;" +
+      (ativo ? "background:#0c1d2b;color:#fff;font-weight:650" : "background:transparent;color:#5a6b77;font-weight:500");
+  }
+  check(on, tam) {
+    const s = tam || 18;
+    return "flex-shrink:0;width:" + s + "px;height:" + s + "px;border-radius:999px;font-size:" + Math.round(s * .55) + "px;line-height:1;display:inline-flex;align-items:center;justify-content:center;transition:background 150ms ease;" +
+      (on ? "background:#0F766E;color:#fff" : "background:#fff;color:transparent;box-shadow:inset 0 0 0 1.5px #c5cfd4");
+  }
+  patch(id, mud) { this.setState((s2) => ({ tarefas: s2.tarefas.map((t) => t.id === id ? Object.assign({}, t, mud) : t) })); }
+  // Mutação em lote empilha o desfazer, como o mutate() do store.
+  lote(label, ids, mud) {
+    const antes = this.state.tarefas.filter((t) => ids.includes(t.id)).map((t) => Object.assign({}, t));
+    this.setState((s2) => ({
+      tarefas: s2.tarefas.map((t) => ids.includes(t.id) ? Object.assign({}, t, typeof mud === "function" ? mud(t) : mud) : t),
+      selecao: {},
+      desfazer: s2.desfazer.concat([{ label, antes }]).slice(-20),
+    }));
+  }
+  excluirLote(ids) {
+    const antes = this.state.tarefas.filter((t) => ids.includes(t.id)).map((t) => Object.assign({}, t));
+    this.setState((s2) => ({ tarefas: s2.tarefas.filter((t) => !ids.includes(t.id)), selecao: {},
+      desfazer: s2.desfazer.concat([{ label: "Tarefas excluídas", antes, recriar: true }]).slice(-20) }));
+  }
+  // Arrasto do quadro: a coluna inteira recebe o soltar e a posição sai do card
+  // sob o ponteiro (é o que o kanban/board.jsx faz com o placeholder).
+  soltarEm(colKey, idx) {
+    const d = this.state.drag;
+    if (!d) return;
+    const t = this.state.tarefas.find((x) => x.id === d.id);
+    if (!t) { this.setState({ drag: null, sobreCol: null, sobreIdx: -1 }); return; }
+    const antes = [Object.assign({}, t)];
+    const mud = this.state.grupo === "column" ? { coluna: colKey, completa: colKey === "feito" }
+      : this.state.grupo === "priority" ? { pri: colKey === "__none" ? "" : colKey }
+      : this.state.grupo === "assignee" ? { donos: colKey === "__none" ? [] : [colKey] }
+      : this.state.grupo === "label" ? { labels: colKey === "__none" ? [] : [colKey] }
+      : {};
+    this.setState((s2) => {
+      const semEle = s2.tarefas.filter((x) => x.id !== d.id);
+      const novo = Object.assign({}, t, mud);
+      // ordem manual: entra na posição onde foi solto
+      const alvo = semEle.filter((x) => (s2.grupo === "column" ? x.coluna === colKey : true));
+      const ref = idx >= 0 && alvo[idx] ? alvo[idx].ordem : null;
+      novo.ordem = ref != null ? ref - 0.5 : (Math.max(0, ...semEle.map((x) => x.ordem)) + 1);
+      return { tarefas: semEle.concat([novo]).sort((a, b) => a.ordem - b.ordem).map((x, i) => Object.assign({}, x, { ordem: i })),
+        drag: null, sobreCol: null, sobreIdx: -1,
+        desfazer: s2.desfazer.concat([{ label: "Card movido", antes }]).slice(-20) };
+    });
+  }
+  abrir(id) { clearTimeout(this._t); this.setState({ sel: id, fechando: false, novaSub: "", novoCom: "" }); }
+  fechar() {
+    if (this.state.fechando) return;
+    this.setState({ fechando: true });
+    this._t = setTimeout(() => this.setState({ sel: null, fechando: false }), 160);
+  }
+
+  visiveis() {
+    const st = this.state;
+    const q = st.busca.trim().toLowerCase();
+    const pris = Object.keys(st.pris).filter((k) => st.pris[k]);
+    const RANK = { P0: 0, P1: 1, P2: 2 };
+    return st.tarefas.filter((t) => {
+      if (q && !t.titulo.toLowerCase().includes(q)) return false;
+      if (pris.length && !pris.includes(t.pri)) return false;
+      return true;
+    }).slice().sort((a, b) => {
+      if (st.ordem === "due") return (a.dias == null ? 99 : a.dias) - (b.dias == null ? 99 : b.dias);
+      if (st.ordem === "priority") return (RANK[a.pri] ?? 3) - (RANK[b.pri] ?? 3);
+      if (st.ordem === "assignee") return this.nomeDe(a.donos[0] || "zz").localeCompare(this.nomeDe(b.donos[0] || "zz"));
+      return a.ordem - b.ordem;
+    });
+  }
+  // groupTasks() da fonte: coluna real ou grupo virtual por campo
+  grupos() {
+    const st = this.state, ts = this.visiveis();
+    if (st.grupo === "assignee") {
+      const gs = Component.PESSOAS.map(([k, n]) => ({ key: k, nome: n.split(" ")[0], cor: "#5b6bd6", tasks: [] }));
+      gs.push({ key: "__none", nome: "Sem responsável", cor: "#8b99a4", tasks: [] });
+      for (const t of ts) (gs.find((g) => g.key === (t.donos[0] || "__none")) || gs[gs.length - 1]).tasks.push(t);
+      return gs;
+    }
+    if (st.grupo === "priority") {
+      const gs = Component.PRIS.map(([k, cor]) => ({ key: k, nome: k, cor, tasks: [] }));
+      gs.push({ key: "__none", nome: "Sem prioridade", cor: "#8b99a4", tasks: [] });
+      for (const t of ts) (gs.find((g) => g.key === t.pri) || gs[gs.length - 1]).tasks.push(t);
+      return gs;
+    }
+    if (st.grupo === "due") {
+      const gs = [{ key: "late", nome: "Atrasadas", cor: "#b42318", tasks: [] }, { key: "today", nome: "Hoje", cor: "#a16207", tasks: [] },
+        { key: "week", nome: "Nesta semana", cor: "#175cd3", tasks: [] }, { key: "later", nome: "Depois", cor: "#8b99a4", tasks: [] },
+        { key: "__none", nome: "Sem prazo", cor: "#c5cfd4", tasks: [] }];
+      for (const t of ts) {
+        const k = t.dias == null ? "__none" : t.dias < 0 ? "late" : t.dias === 0 ? "today" : t.dias <= 7 ? "week" : "later";
+        gs.find((g) => g.key === k).tasks.push(t);
+      }
+      return gs;
+    }
+    if (st.grupo === "label") {
+      const gs = Object.entries(Component.LABELS).map(([k, cor]) => ({ key: k, nome: k, cor, tasks: [] }));
+      gs.push({ key: "__none", nome: "Sem label", cor: "#8b99a4", tasks: [] });
+      for (const t of ts) { const k = t.labels[0] || "__none"; (gs.find((g) => g.key === k) || gs[gs.length - 1]).tasks.push(t); }
+      return gs;
+    }
+    return this.state.cols.map(([k, nome, cor]) => ({ key: k, nome, cor, tasks: ts.filter((t) => t.coluna === k), real: true }));
+  }
+
+  renderVals() {
+    const st = this.state;
+    const ts = this.visiveis();
+    const ids = Object.keys(st.selecao).filter((k) => st.selecao[k]);
+    const sel = st.sel ? st.tarefas.find((t) => t.id === st.sel) : null;
+    const atrasadas = st.tarefas.filter((t) => !t.completa && t.dias != null && t.dias < 0).length;
+    const abertas = st.tarefas.filter((t) => !t.completa).length;
+
+    const F = st.campos, comp = st.compacto;
+    const cardDe = (t) => {
+      const p = this.priDe(t.pri);
+      const feitas = t.subs.filter((s) => s.feita).length;
+      const arrastando = st.drag && st.drag.id === t.id;
+      return {
+        arrastavel: true,
+        pegar: (e) => { if (e.dataTransfer) { e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", t.id); } catch (err) {} } this.setState({ drag: { id: t.id, h: 74 } }); },
+        largar: () => this.setState({ drag: null, sobreCol: null, sobreIdx: -1 }),
+        sobreCard: (e) => {
+          const d = this.state.drag;
+          if (!d) return;
+          e.preventDefault(); e.stopPropagation();
+          const col = st.grupo === "column" ? t.coluna : "";
+          const lista = this.visiveis().filter((x) => this.state.grupo !== "column" || x.coluna === t.coluna);
+          const idx = lista.findIndex((x) => x.id === t.id);
+          if (this.state.sobreCol !== (col || "_") || this.state.sobreIdx !== idx) this.setState({ sobreCol: col || "_", sobreIdx: idx });
+        },
+        titulo: t.titulo, corTitulo: t.completa ? "#8b99a4" : "#0c1d2b",
+        est: "cursor:grab;padding:" + (comp ? "8px 10px" : "11px 12px") + ";border-radius:18px;background:" + (st.selecao[t.id] ? "#E9F5F3" : "#f7f9fa") +
+          ";transition:background 150ms ease,opacity 150ms ease" + (t.completa ? ";opacity:.62" : "") + (arrastando ? ";opacity:.38" : "") +
+          (F.cover && t.labels.length ? ";border-top:3px solid " + Component.LABELS[t.labels[0]] + ";padding-top:" + (comp ? 6 : 9) + "px" : "") +
+          (F.attachments && t.subs.length > 3 ? ";border-bottom:2px solid #e4e9eb" : ""),
+        check: t.completa ? "✓" : "", estCheck: this.check(t.completa),
+        marcaSel: st.selecao[t.id] ? "✓" : "○",
+        estSel: "flex-shrink:0;width:18px;height:18px;border-radius:6px;font-size:9px;display:inline-flex;align-items:center;justify-content:center;color:" + (st.selecao[t.id] ? "#0b6b64" : "#c5cfd4"),
+        pri: t.pri, estPri: t.pri && F.priority ? "display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:999px;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:700;background:" + p[2] + ";color:" + p[1] : "display:none",
+        prazo: this.prazo(t.dias),
+        estPrazo: t.dias == null || !F.due ? "display:none" : "font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;color:" + (t.dias < 0 ? "#b42318" : t.dias === 0 ? "#a16207" : "#8b99a4"),
+        labels: (F.labels ? t.labels : []).map((l) => ({ nome: l, est: "display:inline-flex;align-items:center;height:17px;padding:0 7px;border-radius:999px;font-family:'Plus Jakarta Sans',sans-serif;font-size:9px;font-weight:600;background:" + Component.LABELS[l] + "1f;color:" + Component.LABELS[l] })),
+        sub: t.subs.length ? feitas + "/" + t.subs.length : "",
+        estSub: t.subs.length && F.subtasks ? "font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:" + (feitas === t.subs.length ? "#177a4c" : "#8b99a4") : "display:none",
+        com: t.comentarios.length ? "💬 " + t.comentarios.length : "",
+        estCom: t.comentarios.length && F.comments ? "font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#8b99a4" : "display:none",
+        donos: (F.assignee ? t.donos : []).map((d) => ({ ini: this.ini(d), est: "display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:999px;background:#0c1d2b;color:#fff;font-family:'Outfit',sans-serif;font-size:8.5px;font-weight:700;margin-left:-4px;box-shadow:0 0 0 2px #f7f9fa" })),
+        coluna: this.colDe(t.coluna)[1],
+        abrir: () => this.abrir(t.id),
+        concluir: () => this.patch(t.id, { completa: !t.completa, coluna: !t.completa ? "feito" : "afazer" }),
+        selecionar: () => this.setState((s2) => { const x = Object.assign({}, s2.selecao); if (x[t.id]) delete x[t.id]; else x[t.id] = 1; return { selecao: x }; }),
+      };
+    };
+
+    const vals = {
+      mov: this.props.movimento === false ? "off" : "on",
+      subtitulo: abertas + (abertas === 1 ? " tarefa aberta" : " tarefas abertas") + (atrasadas ? " · " + atrasadas + " atrasada" + (atrasadas === 1 ? "" : "s") : " · nada atrasado") + " · quadro do time",
+      visoes: [["board", "Quadro"], ["list", "Lista"], ["calendar", "Calendário"], ["timeline", "Cronograma"]].map(([v, label]) => ({
+        label, est: this.seg(st.visao === v), escolher: () => this.setState({ visao: v }),
+      })),
+      ehQuadro: st.visao === "board", ehLista: st.visao === "list", ehCalendario: st.visao === "calendar", ehCronograma: st.visao === "timeline",
+      novaTarefa: () => {
+        const id = "tn" + st.tarefas.length;
+        this.setState((s2) => ({ tarefas: [{ id, titulo: "Nova tarefa", coluna: "afazer", pri: "P2", dias: null, donos: [], labels: [],
+          completa: false, descricao: "", subs: [], comentarios: [], ordem: -1 }].concat(s2.tarefas) }));
+        this.abrir(id);
+      },
+      busca: st.busca, mudarBusca: (e) => this.setState({ busca: e.target.value }),
+      filtrosPri: Component.PRIS.map(([k]) => ({
+        label: k, est: this.seg(!!st.pris[k], true),
+        alternar: () => this.setState((s2) => ({ pris: Object.assign({}, s2.pris, { [k]: !s2.pris[k] }) })),
+      })),
+      grupo: st.grupo, opcoesGrupo: Component.GRUPOS.map(([v, label]) => ({ v, label: "Agrupar: " + label.toLowerCase() })),
+      mudarGrupo: (e) => this.setState({ grupo: e.target.value }),
+      ordem: st.ordem, opcoesOrdem: Component.ORDENS.map(([v, label]) => ({ v, label: "Ordem: " + label.toLowerCase() })),
+      mudarOrdem: (e) => this.setState({ ordem: e.target.value }),
+      estVazias: "height:32px;padding:0 13px;border-radius:999px;font-size:11.5px;font-weight:600;transition:background 150ms ease;" +
+        (st.ocultarVazias ? "background:#E9F5F3;color:#0b6b64" : "background:#f1f4f5;color:#5a6b77"),
+      alternarVazias: () => this.setState((s2) => ({ ocultarVazias: s2.ocultarVazias ? 0 : 1 })),
+      rotuloDesfazer: st.desfazer.length ? "desfazer · " + st.desfazer[st.desfazer.length - 1].label : "Nada pra desfazer",
+      estDesfazer: "height:32px;padding:0 13px;border-radius:999px;font-size:11.5px;font-weight:600;transition:background 150ms ease;" +
+        (st.desfazer.length ? "background:#f1f4f5;color:#0c1d2b" : "background:transparent;color:#c5cfd4;cursor:default"),
+      desfazer: () => {
+        if (!st.desfazer.length) return;
+        const ultimo = st.desfazer[st.desfazer.length - 1];
+        this.setState((s2) => ({
+          desfazer: s2.desfazer.slice(0, -1),
+          tarefas: ultimo.recriar
+            ? s2.tarefas.concat(ultimo.antes).sort((a, b) => a.ordem - b.ordem)
+            : s2.tarefas.map((t) => { const a = ultimo.antes.find((x) => x.id === t.id); return a ? a : t; }),
+        }));
+      },
+      temSelecao: ids.length > 0, nSelecao: String(ids.length),
+      limparSelecao: () => this.setState({ selecao: {} }),
+      acoesLote: [
+        ["Prazo hoje", () => this.lote("Prazo: hoje", ids, { dias: 0 })],
+        ["P0", () => this.lote("Prioridade P0", ids, { pri: "P0" })],
+        ["Para mim", () => this.lote("Responsável definido", ids, { donos: ["ls"] })],
+        ["Mover p/ Fazendo", () => this.lote("Movidas para Fazendo", ids, { coluna: "fazendo", completa: false })],
+        ["Concluir", () => this.lote("Tarefas concluídas", ids, { completa: true, coluna: "feito" })],
+        ["Excluir", () => this.excluirLote(ids)],
+      ].map(([label, agir]) => ({
+        label, agir,
+        est: "height:30px;padding:0 13px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap;transition:background 150ms ease;" +
+          (label === "Excluir" ? "background:rgba(226,105,90,.22);color:#ffb3a8" : "background:rgba(255,255,255,.12);color:#F3FBFF"),
+      })),
+      colunas: this.grupos().filter((g) => !st.recolhidas[g.key] && !(st.ocultarVazias && !g.tasks.length && !st.drag)).map((g) => ({
+        nome: g.nome, n: String(g.tasks.length), vazia: g.tasks.length === 0,
+        fixo: !g.real,
+        estSecao: "flex:0 0 272px;width:272px;display:flex;flex-direction:column;min-height:0;background:#fff;border-radius:24px;transition:box-shadow 150ms ease;" +
+          (st.sobreCol === g.key && st.drag ? "box-shadow:0 0 0 2px #0F766E,0 18px 40px -26px rgba(12,29,43,.45)" : "box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)"),
+        estNome: "flex:1;min-width:0;border:0;background:none;outline:none;font-family:inherit;font-size:13px;font-weight:650;color:#0c1d2b;" + (g.real ? "cursor:text" : "cursor:default"),
+        renomear: (e) => { if (!g.real) return; const v = e.target.value; this.setState((s2) => ({ cols: s2.cols.map((c) => c[0] === g.key ? [c[0], v, c[2]] : c) })); },
+        recolher: () => this.setState((s2) => ({ recolhidas: Object.assign({}, s2.recolhidas, { [g.key]: 1 }) })),
+        sobre: (e) => { if (!this.state.drag) return; e.preventDefault(); if (this.state.sobreCol !== g.key) this.setState({ sobreCol: g.key, sobreIdx: -1 }); },
+        soltar: (e) => { e.preventDefault(); this.soltarEm(g.key, this.state.sobreCol === g.key ? this.state.sobreIdx : -1); },
+        estPlaceholder: st.drag && st.sobreCol === g.key && st.sobreIdx >= 0
+          ? "height:" + st.drag.h + "px;border-radius:18px;background:rgba(15,118,110,.08);box-shadow:inset 0 0 0 1.5px rgba(15,118,110,.35);order:" + st.sobreIdx : "display:none",
+        textoVazio: st.drag ? "solte aqui" : "nada aqui",
+        estVazio: "padding:16px 8px;text-align:center;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:" + (st.drag ? "#0b6b64" : "#b6c0c7") +
+          (st.drag ? ";border-radius:16px;background:rgba(15,118,110,.06)" : ""),
+        cards: g.tasks.map(cardDe),
+        adicionar: () => {
+          const id = "tn" + st.tarefas.length;
+          const base = { id, titulo: "Nova tarefa", coluna: st.grupo === "column" ? g.key : "afazer", pri: st.grupo === "priority" && g.key !== "__none" ? g.key : "P2",
+            dias: st.grupo === "due" && g.key === "today" ? 0 : null, donos: st.grupo === "assignee" && g.key !== "__none" ? [g.key] : [],
+            labels: st.grupo === "label" && g.key !== "__none" ? [g.key] : [], completa: false, descricao: "", subs: [], comentarios: [], ordem: -1 };
+          this.setState((s2) => ({ tarefas: [base].concat(s2.tarefas) }));
+          this.abrir(id);
+        },
+      })),
+      recolhidas: this.grupos().filter((g) => st.recolhidas[g.key]).map((g) => ({
+        nome: g.nome, n: String(g.tasks.length),
+        est: "flex:0 0 46px;width:46px;display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 0;border-radius:20px;background:#fff;transition:box-shadow 150ms ease;" +
+          (st.sobreCol === g.key && st.drag ? "box-shadow:0 0 0 2px #0F766E" : "box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)"),
+        expandir: () => this.setState((s2) => { const x = Object.assign({}, s2.recolhidas); delete x[g.key]; return { recolhidas: x }; }),
+        sobre: (e) => { if (!this.state.drag) return; e.preventDefault(); if (this.state.sobreCol !== g.key) this.setState({ sobreCol: g.key, sobreIdx: -1 }); },
+        soltar: (e) => { e.preventDefault(); this.soltarEm(g.key, -1); },
+      })),
+      // "Adicionar coluna" só existe no agrupamento real (o virtual não tem coluna)
+      podeAddColuna: st.grupo === "column",
+      addColuna: () => this.setState((s2) => ({ cols: s2.cols.concat([["c" + s2.cols.length, "Nova coluna", "#8b99a4"]]) })),
+      estCompacto: "height:32px;padding:0 13px;border-radius:999px;font-size:11.5px;font-weight:600;transition:background 150ms ease;" +
+        (st.compacto ? "background:#E9F5F3;color:#0b6b64" : "background:#f1f4f5;color:#5a6b77"),
+      alternarCompacto: () => this.setState((s2) => ({ compacto: s2.compacto ? 0 : 1 })),
+      estMenuCampos: "height:32px;padding:0 13px;border-radius:999px;font-size:11.5px;font-weight:600;transition:background 150ms ease;" +
+        (st.painelCampos ? "background:#0c1d2b;color:#fff" : "background:#f1f4f5;color:#5a6b77"),
+      alternarMenuCampos: () => this.setState((s2) => ({ painelCampos: s2.painelCampos ? 0 : 1 })),
+      camposAberto: !!st.painelCampos,
+      campos: Component.CAMPOS.map(([k, label]) => ({
+        label, check: st.campos[k] ? "✓" : "", estCheck: this.check(!!st.campos[k], 15),
+        est: "display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 12px;border-radius:999px;font-weight:600;white-space:nowrap;transition:background 150ms ease;" +
+          (st.campos[k] ? "background:#E9F5F3;color:#0b6b64" : "background:#f1f4f5;color:#8b99a4"),
+        alternar: () => this.setState((s2) => ({ campos: Object.assign({}, s2.campos, { [k]: s2.campos[k] ? 0 : 1 }) })),
+      })),
+      colsLista: [["Tarefa", "manual"], ["Responsável", "assignee"], ["Prazo", "due"], ["Prioridade", "priority"], ["Coluna", null]].map(([label, k]) => ({
+        label: label + (k && st.ordem === k ? " ↓" : ""),
+        est: "text-align:left;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;" +
+          (k ? "cursor:pointer;" : "cursor:default;") + (k && st.ordem === k ? "color:#3d4f5c" : "color:#8b99a4"),
+        ordenar: k ? () => this.setState({ ordem: k }) : () => {},
+      })),
+      lista: ts.map(cardDe),
+      diasSemana: ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"],
+      escala: Array.from({ length: 7 }, (_, i) => { const d = new Date(2026, 8, 19 + i); return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }); }),
+      temSel: !!sel, classeGaveta: st.fechando ? "cap-gaveta-sai" : "cap-gaveta-entra",
+      fechar: () => this.fechar(),
+      novaSub: st.novaSub, mudarNovaSub: (e) => this.setState({ novaSub: e.target.value }),
+      novoCom: st.novoCom, mudarNovoCom: (e) => this.setState({ novoCom: e.target.value }),
+    };
+
+    // calendário do mês (a partir de 01/09/2026, semana começando na segunda)
+    const primeiro = new Date(2026, 8, 1);
+    const off = (primeiro.getDay() + 6) % 7;
+    vals.celulas = Array.from({ length: 35 }, (_, i) => {
+      const d = new Date(2026, 8, 1 - off + i);
+      const delta = Math.round((d - new Date(2026, 8, 19)) / 86400000);
+      const doMes = d.getMonth() === 8, hoje = delta === 0;
+      const itens = ts.filter((t) => t.dias === delta);
+      return {
+        dia: String(d.getDate()), n: itens.length ? String(itens.length) : "",
+        est: "padding:6px 7px;overflow:hidden;border-top:1px solid #edf1f3;border-left:1px solid #edf1f3;" + (hoje ? "background:#E9F5F3" : doMes ? "" : "background:#f7f9fa"),
+        estNumero: "font-family:'Outfit',sans-serif;font-size:12px;font-weight:700;color:" + (hoje ? "#0F766E" : doMes ? "#0c1d2b" : "#c5cfd4"),
+        estN: itens.length ? "margin-left:auto;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;color:#8b99a4" : "display:none",
+        itens: itens.slice(0, 3).map((t) => {
+          const p = this.priDe(t.pri);
+          return {
+            titulo: t.titulo,
+            est: "display:block;width:100%;text-align:left;margin-top:3px;padding:3px 6px;border-radius:7px;background:#fff;box-shadow:inset 0 0 0 1px #edf1f3;border-left:3px solid " + p[1] + ";font-size:10px;font-weight:600;color:" + (t.completa ? "#8b99a4" : "#0c1d2b") + ";overflow:hidden;text-overflow:ellipsis;white-space:nowrap",
+            abrir: () => this.abrir(t.id),
+          };
+        }),
+      };
+    });
+
+    // cronograma: barra no dia do prazo, dentro da janela de 7 dias
+    vals.barras = ts.filter((t) => t.dias != null && t.dias >= 0 && t.dias < 7).map((t) => {
+      const p = this.priDe(t.pri);
+      const cor = t.completa ? "#177a4c" : p[1];
+      return {
+        titulo: t.titulo, corTitulo: t.completa ? "#8b99a4" : "#0c1d2b",
+        estTraco: "flex-shrink:0;width:4px;height:22px;border-radius:2px;background:" + cor,
+        prazo: this.prazo(t.dias),
+        est: "position:absolute;top:0;height:24px;display:flex;align-items:center;padding:0 9px;border-radius:999px;white-space:nowrap;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:650;color:" + cor + ";background:" + cor + "1f;left:" + (t.dias * (100 / 7)) + "%;width:" + (100 / 7) + "%;min-width:64px",
+        abrir: () => this.abrir(t.id),
+      };
+    });
+
+    if (sel) {
+      const feitas = sel.subs.filter((s) => s.feita).length;
+      vals.sel = {
+        titulo: sel.titulo, corTitulo: sel.completa ? "#8b99a4" : "#0c1d2b",
+        check: sel.completa ? "✓" : "", estCheck: this.check(sel.completa, 24),
+        meta: [this.colDe(sel.coluna)[1], sel.dias != null ? this.prazo(sel.dias) : "sem prazo", sel.donos.length ? sel.donos.map((d) => this.nomeDe(d).split(" ")[0]).join(", ") : "sem responsável"].join(" · "),
+        prioridades: Component.PRIS.concat([["", "#8b99a4", "#f1f4f5"]]).map(([k, cor, soft]) => ({
+          label: k || "sem",
+          est: "height:28px;padding:0 12px;border-radius:999px;font-size:11.5px;font-weight:650;transition:background 150ms ease;" +
+            ((sel.pri || "") === k ? "background:" + soft + ";color:" + cor + ";box-shadow:inset 0 0 0 1px " + cor : "background:#fff;color:#8b99a4;box-shadow:inset 0 0 0 1px #e4e9eb"),
+          escolher: () => this.patch(sel.id, { pri: k }),
+        })),
+        prazoISO: this.prazoISO(sel.dias),
+        coluna: sel.coluna, colunas: st.cols.map(([v, label]) => ({ v, label })),
+        pessoas: Component.PESSOAS.map(([k, nome]) => ({
+          nome: nome.split(" ")[0],
+          est: this.seg(sel.donos.includes(k), true),
+          alternar: () => this.patch(sel.id, { donos: sel.donos.includes(k) ? sel.donos.filter((x) => x !== k) : sel.donos.concat([k]) }),
+        })),
+        descricao: sel.descricao,
+        subResumo: sel.subs.length ? feitas + " de " + sel.subs.length + " feitas" : "nenhuma",
+        subs: sel.subs.map((s, i) => ({
+          texto: s.texto, check: s.feita ? "✓" : "", estCheck: this.check(s.feita, 16),
+          cor: s.feita ? "#8b99a4" : "#3d4f5c",
+          alternar: () => this.patch(sel.id, { subs: sel.subs.map((x, k) => k === i ? Object.assign({}, x, { feita: !x.feita }) : x) }),
+        })),
+        nComentarios: String(sel.comentarios.length),
+        comentarios: sel.comentarios,
+        concluir: () => this.patch(sel.id, { completa: !sel.completa, coluna: !sel.completa ? "feito" : "afazer" }),
+        rotuloConcluir: sel.completa ? "Reabrir tarefa" : "Concluir tarefa",
+        estBotaoConcluir: "flex:1;height:38px;border-radius:999px;font-size:12.5px;font-weight:700;transition:background 150ms ease;" +
+          (sel.completa ? "background:#f1f4f5;color:#3d4f5c" : "background:#0c1d2b;color:#fff"),
+      };
+      vals.mudarTitulo = (e) => this.patch(sel.id, { titulo: e.target.value });
+      vals.mudarPrazo = (e) => {
+        const v = e.target.value;
+        if (!v) { this.patch(sel.id, { dias: null }); return; }
+        const d = new Date(v + "T12:00:00");
+        this.patch(sel.id, { dias: Math.round((d - new Date(2026, 8, 19, 12)) / 86400000) });
+      };
+      vals.mudarColuna = (e) => this.patch(sel.id, { coluna: e.target.value, completa: e.target.value === "feito" });
+      vals.mudarDescricao = (e) => this.patch(sel.id, { descricao: e.target.value });
+      vals.estAddSub = "height:32px;padding:0 14px;border-radius:999px;font-size:11.5px;font-weight:650;transition:background 150ms ease;" +
+        (st.novaSub.trim() ? "background:#0c1d2b;color:#fff" : "background:#eef1f3;color:#8b99a4;cursor:not-allowed");
+      vals.addSub = () => {
+        const v = st.novaSub.trim();
+        if (!v) return;
+        this.patch(sel.id, { subs: sel.subs.concat([{ texto: v, feita: false }]) });
+        this.setState({ novaSub: "" });
+      };
+      vals.estAddCom = "height:34px;padding:0 15px;border-radius:999px;font-size:11.5px;font-weight:650;transition:background 150ms ease;" +
+        (st.novoCom.trim() ? "background:#0c1d2b;color:#fff" : "background:#eef1f3;color:#8b99a4;cursor:not-allowed");
+      vals.addCom = () => {
+        const v = st.novoCom.trim();
+        if (!v) return;
+        this.patch(sel.id, { comentarios: [{ autor: "Leo Sander", texto: v, quando: "agora" }].concat(sel.comentarios) });
+        this.setState({ novoCom: "" });
+      };
+      vals.excluir = () => { this.setState((s2) => ({ tarefas: s2.tarefas.filter((t) => t.id !== sel.id) })); this.fechar(); };
+    }
+    return vals;
+  }
+}
+</script>
+</body>
+</html>

@@ -31,10 +31,10 @@ const { useState: useS, useEffect: useE } = React;
 
 const money = (v) => window.fmt.money(Number(v) || 0);
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px 22px" };
-const inputS = { height: 28, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 12.5, width: 92 };
+const box = { border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px 22px" };
+const inputS = { height: 28, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 12.5, width: 92 };
 const cellIn = { ...inputS, width: 78, height: 26, fontSize: 12 };
-const btnPrimary = { height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--accent)", background: "var(--accent)", color: "var(--accent-fg, #fff)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" };
+const btnPrimary = { height: 30, padding: "0 14px", borderRadius: 999, border: "1px solid var(--accent)", background: "var(--accent)", color: "var(--accent-fg, #fff)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" };
 const thS = { padding: "6px 8px", textAlign: "left", whiteSpace: "nowrap", borderBottom: "1px solid var(--line-1)" };
 const tdS = { padding: "5px 8px", borderBottom: "1px solid var(--line-faint)", whiteSpace: "nowrap" };
 
@@ -438,7 +438,7 @@ export function TeamBonusCard({ saved, onSave }) {
 
       {dirty && (
         <button onClick={async () => { setSaving(true); try { await onSave("team", draft); } finally { setSaving(false); } }} disabled={saving}
-          style={{ marginTop: 10, height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: 0, background: "var(--accent)", color: "oklch(1 0 0)", fontSize: 12.5, fontWeight: 600, cursor: saving ? "default" : "pointer" }}>
+          style={{ marginTop: 10, height: 30, padding: "0 14px", borderRadius: 999, border: 0, background: "var(--accent)", color: "oklch(1 0 0)", fontSize: 12.5, fontWeight: 600, cursor: saving ? "default" : "pointer" }}>
           {saving ? "salvando…" : "salvar bônus de time"}
         </button>
       )}

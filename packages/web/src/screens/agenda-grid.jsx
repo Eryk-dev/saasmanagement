@@ -561,7 +561,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
         )}
       </div>
 
-      <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
+      <div className="tbl-x" style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
         {/* A legenda que FICA: as quatro cores de tipo, no topo da grade e não
             embaixo dela, com o fato do período à direita. */}
         <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", padding: "8px 12px", borderBottom: "1px solid var(--line-1)" }}>
@@ -766,7 +766,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
                         position: "absolute", top: (g0 - H0) * hourH + 2,
                         left: `calc(${pi * pw}% + 3px)`, width: `calc(${pw}% - 6px)`,
                         height: (g1 - g0) * hourH - 4,
-                        border: "1px dashed var(--line-2)", borderRadius: 6, background: "transparent",
+                        border: "1px dashed var(--line-2)", borderRadius: 999, background: "transparent",
                         color: "var(--fg-4)", fontSize: 10.5, cursor: "pointer", padding: "0 6px",
                         display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center",
                       }}>

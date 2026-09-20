@@ -55,3 +55,8 @@
   .intform-page button, .intform-page input, .intform-link, .intform-dialog button, .intform-dialog input, .intform-dialog a { min-height: 44px; }
   .intform-name { white-space: normal; }
 }
+/* CRM final: status in a single navy surface above the response list. */
+.intform-page { padding: 8px 0 24px; gap: 12px; }
+.intform-stats { padding: 8px; gap: 12px; }
+.intform-filters { background: var(--bg-1); border-radius: 999px; padding: 10px 16px; }
+@media (max-width: 600px) { .intform-filters { border-radius: 24px; } }

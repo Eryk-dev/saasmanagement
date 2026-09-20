@@ -62,9 +62,9 @@ const mesLongo = (mk) => {
 };
 const dmy = (d) => (d ? `${String(d).slice(8, 10)}/${String(d).slice(5, 7)}` : "");
 
-const inp = { height: 36, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
-const btn = { height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 };
-const btnPri = { height: 32, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 12.5, fontWeight: 600 };
+const inp = { height: 36, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
+const btn = { height: 32, padding: "0 13px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 };
+const btnPri = { height: 32, padding: "0 14px", borderRadius: 999, background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 12.5, fontWeight: 600 };
 
 // A leitura do mês (GET /api/fin) + recarga no SSE.
 function useFin(product, month) {
@@ -266,21 +266,21 @@ export function ResumoTab({ product, month, onTab }) {
           uma linha, e o detalhe continua no DRE logo abaixo. */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {fin.receber.vencidas.n > 0 && (
-          <AvisoTopo
+          <AvisoTopo navy
             titulo={`${money(fin.receber.vencidas.total)} vencidos a receber`}
             nota={`${int(fin.receber.vencidas.n)} ${fin.receber.vencidas.n === 1 ? "fatura" : "faturas"}`}
             acao={{ label: "cobrar em Clientes ↗", href: "#customers" }}
           />
         )}
         {fin.tiles.vencidos.n > 0 && (
-          <AvisoTopo tom="warn"
+          <AvisoTopo navy={fin.receber.vencidas.n === 0} tom="warn"
             titulo={`${int(fin.tiles.vencidos.n)} ${fin.tiles.vencidos.n === 1 ? "conta vencida" : "contas vencidas"} · ${money(fin.tiles.vencidos.total)}`}
             nota={fin.tiles.vencemHoje.n ? `mais ${int(fin.tiles.vencemHoje.n)} vencendo hoje (${money(fin.tiles.vencemHoje.total)})` : "folha e fornecedores"}
             acao={{ label: "abrir A pagar", onClick: () => onTab?.("pagar") }}
           />
         )}
         {fin.conciliacao.pendentes.n > 0 && (
-          <AvisoTopo tom="neutro"
+          <AvisoTopo navy={fin.receber.vencidas.n === 0 && fin.tiles.vencidos.n === 0} tom="neutro"
             titulo={`${int(fin.conciliacao.pendentes.n)} entradas sem dono no Mercado Pago`}
             nota={`${money(fin.conciliacao.pendentes.total)} esperando cliente ou motivo`}
             acao={{ label: "conciliar", onClick: () => onTab?.("conciliacao") }}
@@ -289,7 +289,7 @@ export function ResumoTab({ product, month, onTab }) {
       </div>
 
       {/* A foto do mês: uma linha, com o detalhe no title de sempre. */}
-      <div style={{ display: "flex", gap: 22, flexWrap: "wrap", padding: "12px var(--inset-x)", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
+      <div style={{ display: "flex", gap: 22, flexWrap: "wrap", padding: "12px var(--inset-x)", border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
         {[
           { rot: "recebido no mês", v: money(fin.receber.recebidosMes), nota: `espelho MP ${money(fin.conciliacao.espelhoMes)}`, title: "Faturas baixadas no mês (a mesma régua de caixa do cockpit)." },
           { rot: "a receber", v: money(fin.receber.emAberto.total), nota: fin.receber.vencidas.n ? `${int(fin.receber.vencidas.n)} vencida${fin.receber.vencidas.n > 1 ? "s" : ""}` : "nada vencido", title: "Faturas em aberto agora (qualquer mês)." },

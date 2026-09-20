@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Blog</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-gaveta-sai{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-gaveta-sai{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;margin:0 -4px;padding:0 4px 24px">
+
+      <header class="cap-rise" style="flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+        <div style="min-width:0">
+          <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Blog</h1>
+          
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <button onClick="{{ gerarPautas }}" style="{{ estGerar }}">{{ rotuloGerar }}</button>
+          <button onClick="{{ rodarCiclo }}" style="{{ estCiclo }}">{{ rotuloCiclo }}</button>
+          <button onClick="{{ novaPauta }}" style="height:40px;padding:0 18px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:13px;font-weight:650;transition:background 150ms ease" style-hover="background:#1b3140">Criar pauta</button>
+        </div>
+      </header>
+
+      <sc-if value="{{ temAviso }}" hint-placeholder-val="{{ false }}">
+        <div style="{{ estAviso }}">
+          <span style="flex:1;font-size:12.5px;text-wrap:pretty">{{ aviso }}</span>
+          <button onClick="{{ fecharAviso }}" style="flex-shrink:0;width:24px;height:24px;border-radius:999px;background:rgba(255,255,255,.6);color:inherit;font-size:12px">✕</button>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ temRascunhos }}" hint-placeholder-val="{{ true }}">
+        <section class="cap-rise" style="flex:0 0 auto;display:flex;align-items:center;gap:14px;padding:13px 18px;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+          <span style="width:4px;height:34px;border-radius:999px;flex-shrink:0;background:#a16207"></span>
+          <div style="flex:1;min-width:0">
+            <strong style="display:block;font-size:14px;font-weight:650;color:#a16207;text-wrap:pretty">{{ rascunhosTitulo }}</strong>
+            <span style="display:block;font-size:12.5px;color:#5a6b77;margin-top:2px">A IA escreveu. Falta conferir o texto e aprovar a publicação.</span>
+          </div>
+          <button onClick="{{ revisarAgora }}" style="flex-shrink:0;min-height:34px;padding:0 16px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:12.5px;font-weight:600;white-space:nowrap;transition:background 150ms ease" style-hover="background:#1b3140">Revisar agora</button>
+        </section>
+      </sc-if>
+
+      <section class="cap-rise" style="flex:0 0 auto;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:18px 20px 18px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <div style="min-width:0">
+            <div style="display:flex;align-items:center;gap:7px">
+              <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">o motor</span>
+            </div>
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4;margin-top:5px;padding-left:12px;text-wrap:pretty">{{ motorNota }}</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">próxima publicação</div>
+            <div style="font-family:'Outfit',sans-serif;font-size:16px;font-weight:700;margin-top:3px;color:{{ corSlot }}">{{ proximoSlot }}</div>
+          </div>
+        </div>
+        <div class="cap-2col" style="margin-top:14px;align-items:start">
+          <div style="min-width:0;display:flex;flex-direction:column;gap:9px">
+            <sc-for list="{{ toggles }}" as="t" hint-placeholder-count="4">
+              <button onClick="{{ t.alternar }}" title="{{ t.hint }}" style="{{ t.est }}">
+                <span style="{{ t.estTrilho }}"><span style="{{ t.estBola }}"></span></span>
+                <span style="flex:1;min-width:0;text-align:left">
+                  <span style="display:block;font-size:12.5px;font-weight:650">{{ t.label }}</span>
+                  <span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;line-height:1.45;color:#5a6b77;margin-top:2px;text-wrap:pretty">{{ t.hint }}</span>
+                </span>
+              </button>
+            </sc-for>
+          </div>
+          <div style="min-width:0;display:flex;flex-direction:column;gap:12px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,124px),1fr));gap:10px">
+              <label style="display:flex;flex-direction:column;gap:5px">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">por semana</span>
+                <select value="{{ cadencia }}" onChange="{{ mudarCadencia }}" style="height:34px;border:0;border-radius:999px;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;padding:0 12px;font-family:inherit;font-size:12px;font-weight:600;color:#0c1d2b;cursor:pointer">
+                  <sc-for list="{{ opcoesCadencia }}" as="o" hint-placeholder-count="5">
+                    <option value="{{ o.v }}">{{ o.label }}</option>
+                  </sc-for>
+                </select>
+              </label>
+              <label style="display:flex;flex-direction:column;gap:5px">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">hora (Brasília)</span>
+                <input type="time" value="{{ hora }}" onChange="{{ mudarHora }}" style="height:34px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 12px;font-family:inherit;font-size:12px;color:#0c1d2b;outline:none">
+              </label>
+              <div>
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77;margin-bottom:5px">mínimos na fila</div>
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                  <input value="{{ minPautas }}" onChange="{{ mudarMinPautas }}" style="width:40px;height:34px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;text-align:center;font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;color:#0c1d2b;outline:none">
+                  <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4">pautas</span>
+                  <input value="{{ minRascunhos }}" onChange="{{ mudarMinRascunhos }}" style="width:40px;height:34px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;text-align:center;font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;color:#0c1d2b;outline:none">
+                  <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4">rascunhos</span>
+                </div>
+              </div>
+            </div>
+            <div>
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">dias de publicação</div>
+              <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:7px">
+                <sc-for list="{{ dias }}" as="d" hint-placeholder-count="7">
+                  <button onClick="{{ d.alternar }}" style="{{ d.est }}">{{ d.label }}</button>
+                </sc-for>
+              </div>
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;margin-top:8px;text-wrap:pretty">{{ diasNota }}</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:0 8px">
+        <sc-for list="{{ filtros }}" as="f" hint-placeholder-count="6">
+          <button onClick="{{ f.escolher }}" style="{{ f.est }}">{{ f.label }} <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;opacity:.7">{{ f.n }}</span></button>
+        </sc-for>
+        <span style="flex:1"></span>
+        <label style="display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 14px;border-radius:999px;background:#fff;color:#5a6b77;box-shadow:0 1px 2px rgba(12,29,43,.05);min-width:200px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><circle cx="11" cy="11" r="7"></circle><path d="M20.4 20.4l-4.2-4.2"></path></svg>
+          <input value="{{ busca }}" onChange="{{ mudarBusca }}" placeholder="buscar título, palavra-chave…" style="flex:1;min-width:0;border:0;background:none;outline:none;font-family:inherit;font-size:12px;color:#0c1d2b">
+        </label>
+      </div>
+
+      <section class="cap-rise" style="flex:0 0 auto;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+        <div style="overflow-x:auto"><div style="min-width:660px">
+          <div style="display:grid;grid-template-columns:minmax(0,2.4fr) 110px minmax(0,1fr) 108px 122px;gap:10px;padding:10px 20px;background:#f7f9fa;border-bottom:1px solid #edf1f3;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#8b99a4">
+            <span>Título</span><span>Estado</span><span>Categoria</span><span>Pente fino</span><span style="text-align:right">Quando</span>
+          </div>
+          <sc-for list="{{ linhas }}" as="p" hint-placeholder-count="6">
+            <div style="display:grid;grid-template-columns:minmax(0,2.4fr) 110px minmax(0,1fr) 108px 122px;gap:10px;padding:12px 20px;align-items:center;border-bottom:1px solid #edf1f3">
+              <button onClick="{{ p.abrir }}" style="min-width:0;text-align:left">
+                <span style="display:block;font-size:13.5px;font-weight:650;line-height:1.4;text-wrap:pretty">{{ p.titulo }}</span>
+                <span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4;margin-top:3px">{{ p.sub }}</span>
+              </button>
+              <span style="{{ p.estStatus }}">{{ p.status }}</span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#5a6b77;overflow-wrap:anywhere">{{ p.categoria }}</span>
+              <button onClick="{{ p.abrir }}" title="abrir a revisão e os motivos do pente fino" style="{{ p.estLint }}">{{ p.lint }}</button>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#5a6b77;text-align:right">{{ p.quando }}</span>
+            </div>
+          </sc-for>
+          <sc-if value="{{ vazio }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:26px 20px;text-align:center">
+              <div style="font-size:13.5px;font-weight:650">{{ vazioTitulo }}</div>
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;color:#8b99a4;margin-top:5px;text-wrap:pretty">{{ vazioNota }}</div>
+            </div>
+          </sc-if>
+        </div></div>
+      </section>
+      <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4;padding:0 10px">{{ contagem }}</div>
+    </div>
+
+    <sc-if value="{{ temSel }}" hint-placeholder-val="{{ false }}">
+      <aside class="{{ classeGaveta }}" style="position:absolute;right:14px;top:14px;bottom:14px;width:520px;max-width:calc(100% - 28px);z-index:20;display:flex;flex-direction:column;overflow:hidden;border-radius:24px;background:#fff;box-shadow:0 2px 6px rgba(12,29,43,.08),0 30px 60px -28px rgba(12,29,43,.55)">
+        <div style="flex:0 0 auto;display:flex;align-items:flex-start;gap:11px;padding:18px 20px 12px">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="{{ sel.estStatus }}">{{ sel.status }}</span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4">{{ sel.meta }}</span>
+            </div>
+            <div style="font-family:'Outfit',sans-serif;font-size:18px;font-weight:700;letter-spacing:-.02em;line-height:1.25;margin-top:6px;text-wrap:pretty">{{ sel.titulo }}</div>
+          </div>
+          <button onClick="{{ fechar }}" style="flex-shrink:0;width:30px;height:30px;border-radius:999px;background:#f1f4f5;color:#5a6b77;font-size:13px;transition:background 150ms ease" style-hover="background:#e7ecee;color:#0c1d2b">✕</button>
+        </div>
+        <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:11px;padding:0 20px 18px">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:9px">
+            <label style="display:flex;flex-direction:column;gap:4px">
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">palavra-chave</span>
+              <input value="{{ sel.keyword }}" onChange="{{ mudarKeyword }}" style="height:34px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 13px;font-family:inherit;font-size:12.5px;color:#0c1d2b;outline:none">
+            </label>
+            <label style="display:flex;flex-direction:column;gap:4px">
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">intenção</span>
+              <select value="{{ sel.intent }}" onChange="{{ mudarIntent }}" style="height:34px;border:0;border-radius:999px;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;padding:0 12px;font-family:inherit;font-size:12px;font-weight:600;color:#0c1d2b;cursor:pointer">
+                <sc-for list="{{ intents }}" as="i" hint-placeholder-count="4">
+                  <option value="{{ i.v }}">{{ i.label }}</option>
+                </sc-for>
+              </select>
+            </label>
+          </div>
+          <div style="{{ sel.estLintBloco }}">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:{{ sel.corLint }}">pente fino</span>
+              <span style="margin-left:auto;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#5a6b77">{{ sel.lintResumo }}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;margin-top:9px">
+              <sc-for list="{{ sel.lint }}" as="l" hint-placeholder-count="2">
+                <div style="display:flex;align-items:flex-start;gap:8px">
+                  <span style="{{ l.estPonto }}"></span>
+                  <span style="flex:1;min-width:0;font-size:12px;line-height:1.5;color:#3d4f5c;text-wrap:pretty">{{ l.texto }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <label style="display:flex;flex-direction:column;gap:5px">
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">{{ sel.rotuloCorpo }}</span>
+            <textarea value="{{ sel.corpo }}" onChange="{{ mudarCorpo }}" placeholder="{{ sel.dicaCorpo }}" style="min-height:180px;resize:vertical;border:0;border-radius:18px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:12px 14px;font-family:inherit;font-size:12.5px;line-height:1.6;color:#0c1d2b;outline:none"></textarea>
+          </label>
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4">{{ sel.contagemPalavras }}</div>
+        </div>
+        <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:8px;padding:13px 20px 15px;border-top:1px solid #edf1f3">
+          <div style="display:flex;gap:7px;flex-wrap:wrap">
+            <button onClick="{{ acaoPrimaria }}" style="{{ estAcaoPrimaria }}">{{ rotuloAcaoPrimaria }}</button>
+            <button onClick="{{ salvarPost }}" style="{{ estSalvarPost }}">{{ rotuloSalvarPost }}</button>
+          </div>
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;line-height:1.5;color:#8b99a4;text-wrap:pretty">{{ notaRodape }}</div>
+          <button onClick="{{ arquivar }}" style="{{ estArquivar }}">{{ rotuloArquivar }}</button>
+        </div>
+      </aside>
+    </sc-if>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Blog (screens/blog.jsx): o motor roda a cada 15 minutos e o post caminha
+  // pauta → rascunho → agendado → publicado. O pente fino (lint) é a régua que
+  // libera a publicação: erro bloqueia, aviso passa. "Publicar sem revisão" só
+  // vale pra rascunho aprovado no lint — e pede confirmação, porque o lint não
+  // lê o texto por você.
+  static STATUS = [["pauta", "Pauta", "#175cd3"], ["rascunho", "Rascunho", "#a16207"], ["agendado", "Agendado", "#5b6bd6"], ["publicado", "Publicado", "#177a4c"], ["arquivado", "Arquivado", "#8b99a4"]];
+  static DIAS = [["seg", "seg"], ["ter", "ter"], ["qua", "qua"], ["qui", "qui"], ["sex", "sex"], ["sab", "sáb"], ["dom", "dom"]];
+  static INTENTS = [["informacional", "Informacional"], ["comercial", "Comercial"], ["comparativo", "Comparativo"], ["guia", "Guia"]];
+  static TOGGLES = [
+    ["enabled", "Motor ligado", "Desligado, nada roda: nem pauta, nem rascunho, nem publicação agendada."],
+    ["autoPauta", "Minerar pautas sozinho", "Quando a fila de pautas fica curta, a IA propõe temas novos a partir do que o cockpit aprendeu."],
+    ["autoRascunho", "Escrever rascunhos sozinho", "Um rascunho por ciclo, com limite diário. Você revisa antes de ir pro ar."],
+    ["autoPublicar", "Publicar sem revisão", "Rascunho que passa no lint entra na agenda sem ninguém aprovar."],
+  ];
+
+  static gerar() {
+    // título, status, categoria, keyword, palavras, dias (- passado), lint
+    const L = [
+      ["Como replicar anúncios entre contas do Mercado Livre sem tomar bloqueio", "publicado", "Marketplace", "replicar anúncios mercado livre", 1840, -12, []],
+      ["Conta banida no marketplace: o que fazer nas primeiras 24 horas", "publicado", "Marketplace", "conta banida marketplace", 1620, -6, []],
+      ["Anúncio caro e sem venda: 5 causas que ninguém olha", "publicado", "Tráfego", "anúncio caro sem venda", 2100, -2, []],
+      ["Quantas contas vale a pena operar em 2026?", "agendado", "Estratégia", "quantas contas marketplace", 1450, 1, []],
+      ["Estoque parado: como girar sem queimar margem", "rascunho", "Operação", "estoque parado marketplace", 1280, 0, [
+        ["erro", "preço citado no corpo (\"R$ 599\") · preço muda, o post fica velho"],
+        ["aviso", "travessão no 3º parágrafo · o guia de escrita pede vírgula ou ponto"]]],
+      ["Precificação automática: quando vale e quando atrapalha", "rascunho", "Preço", "precificação automática", 1610, 0, [
+        ["aviso", "nome de cliente no exemplo (\"Studio Kern\") · pedir autorização antes"]]],
+      ["ERP ou planilha: o ponto de virada", "rascunho", "Operação", "erp marketplace", 980, 0, []],
+      ["Guia do anúncio que converte no marketplace", "pauta", "Tráfego", "anúncio que converte", 0, 0, []],
+      ["Como medir retorno de tráfego pago de verdade", "pauta", "Tráfego", "medir retorno tráfego pago", 0, 0, []],
+      ["Multiconta: erros que custam a operação inteira", "pauta", "Marketplace", "multiconta marketplace", 0, 0, []],
+      ["Frete grátis: conta a conta", "arquivado", "Operação", "frete grátis marketplace", 1120, -40, []],
+    ];
+    return L.map(([titulo, status, categoria, keyword, palavras, dias, lint], i) => ({
+      id: "p" + i, titulo, status, categoria, keyword, palavras, dias,
+      intent: Component.INTENTS[i % 4][0],
+      lint: lint.map(([nivel, texto]) => ({ nivel, texto })),
+      corpo: palavras ? "## O problema\n\nQuem opera mais de uma conta conhece a cena: o catálogo bom está numa conta e as outras ficam vazias.\n\n## Como resolver\n\nA clonagem por conta-mãe resolve em minutos o que o time fazia à mão." : "",
+    }));
+  }
+
+  state = { filtro: "todos", busca: "", posts: Component.gerar(), sel: null, fechando: false,
+    regras: { enabled: 1, autoPauta: 1, autoRascunho: 1, autoPublicar: 0, cadencia: 3, hora: "09:00", minPautas: 5, minRascunhos: 2,
+      dias: ["ter", "qui", "sex"] },
+    aviso: null, avisoOk: true, rodando: false, gerando: false, salvoPost: false };
+  componentWillUnmount() { clearTimeout(this._a); clearTimeout(this._t); clearTimeout(this._r); }
+
+  statusDe(id) { return Component.STATUS.find((s) => s[0] === id) || [id, id, "#8b99a4"]; }
+  seg(ativo, alt) {
+    if (alt) return "height:28px;padding:0 12px;border-radius:999px;font-size:11.5px;white-space:nowrap;transition:background 150ms ease,color 150ms ease;" +
+      (ativo ? "background:#E9F5F3;color:#0b6b64;font-weight:650;box-shadow:inset 0 0 0 1px rgba(15,118,110,.3)" : "background:#fff;color:#5a6b77;font-weight:500;box-shadow:0 1px 2px rgba(12,29,43,.05)");
+    return "height:32px;padding:0 14px;border-radius:999px;font-size:12px;white-space:nowrap;transition:background 150ms ease,color 150ms ease;" +
+      (ativo ? "background:#0c1d2b;color:#fff;font-weight:650" : "background:#fff;color:#5a6b77;font-weight:500;box-shadow:0 1px 2px rgba(12,29,43,.05)");
+  }
+  dia(d) { const x = new Date(2026, 8, 19 + d); return x.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }); }
+  flash(txt, ok) { this.setState({ aviso: txt, avisoOk: ok !== false }); clearTimeout(this._a); this._a = setTimeout(() => this.setState({ aviso: null }), 4200); }
+  patchRegra(mud) { this.setState((s2) => ({ regras: Object.assign({}, s2.regras, mud) })); }
+  patchPost(id, mud) { this.setState((s2) => ({ salvoPost: false, posts: s2.posts.map((p) => p.id === id ? Object.assign({}, p, mud) : p) })); }
+  abrir(id) { clearTimeout(this._t); this.setState({ sel: id, fechando: false, salvoPost: false }); }
+  fechar() {
+    if (this.state.fechando) return;
+    this.setState({ fechando: true });
+    this._t = setTimeout(() => this.setState({ sel: null, fechando: false }), 160);
+  }
+  // Próximo slot: o primeiro dia marcado a partir de amanhã, na hora escolhida.
+  proximoSlot() {
+    const r = this.state.regras;
+    if (!r.enabled || !r.dias.length) return null;
+    const MAP = ["dom", "seg", "ter", "qua", "qui", "sex", "sab"];
+    for (let k = 1; k <= 7; k++) {
+      const d = new Date(2026, 8, 19 + k);
+      if (r.dias.includes(MAP[d.getDay()])) {
+        return d.toLocaleDateString("pt-BR", { weekday: "short", timeZone: "America/Sao_Paulo" }).replace(".", "") + " " +
+          d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) + " · " + r.hora;
+      }
+    }
+    return null;
+  }
+
+  renderVals() {
+    const st = this.state, r = st.regras;
+    const conta = (id) => st.posts.filter((p) => p.status === id).length;
+    const q = st.busca.trim().toLowerCase();
+    const visiveis = st.posts.filter((p) => {
+      if (st.filtro === "todos" ? p.status === "arquivado" : p.status !== st.filtro) return false;
+      if (q && !(p.titulo + " " + p.keyword + " " + p.categoria).toLowerCase().includes(q)) return false;
+      return true;
+    }).slice().sort((a, b) => Component.STATUS.findIndex((s) => s[0] === a.status) - Component.STATUS.findIndex((s) => s[0] === b.status) || a.dias - b.dias);
+    const sel = st.sel ? st.posts.find((p) => p.id === st.sel) : null;
+    const slot = this.proximoSlot();
+    const nRasc = conta("rascunho");
+    const publicados30 = st.posts.filter((p) => p.status === "publicado" && p.dias >= -30).length;
+
+    const vals = {
+      mov: this.props.movimento === false ? "off" : "on",
+      subtitulo: "o motor roda a cada 15 minutos · pauta, rascunho e publicação na cadência de " + r.cadencia + " posts por semana",
+      temAviso: !!st.aviso, aviso: st.aviso || "",
+      estAviso: "display:flex;align-items:center;gap:10px;padding:11px 16px;border-radius:999px;" +
+        (st.avisoOk ? "background:#e9f6ef;color:#177a4c;box-shadow:inset 0 0 0 1px rgba(23,122,76,.3)" : "background:#fdf3f2;color:#b42318;box-shadow:inset 0 0 0 1px rgba(180,35,24,.3)"),
+      fecharAviso: () => this.setState({ aviso: null }),
+      temRascunhos: nRasc > 0,
+      rascunhosTitulo: nRasc + (nRasc === 1 ? " rascunho esperando revisão" : " rascunhos esperando revisão"),
+      revisarAgora: () => this.setState({ filtro: "rascunho", busca: "" }),
+
+      rotuloGerar: st.gerando ? "Minerando…" : "Gerar pautas",
+      estGerar: "height:36px;padding:0 15px;border-radius:999px;background:#f1f4f5;color:#0c1d2b;font-size:12.5px;font-weight:600;transition:background 150ms ease" + (st.gerando ? ";opacity:.6;cursor:default" : ""),
+      gerarPautas: () => {
+        if (st.gerando) return;
+        this.setState({ gerando: true });
+        clearTimeout(this._r);
+        this._r = setTimeout(() => {
+          const novas = [
+            ["Kit de anúncio: o que copiar de quem vende muito", "Tráfego", "kit de anúncio marketplace"],
+            ["Quando abrir a terceira conta (e quando não)", "Estratégia", "abrir terceira conta"],
+          ];
+          this.setState((s2) => ({
+            gerando: false, filtro: "pauta",
+            posts: novas.map(([titulo, categoria, keyword], k) => ({
+              id: "pn" + (s2.posts.length + k), titulo, status: "pauta", categoria, keyword, palavras: 0, dias: 0,
+              intent: "informacional", lint: [], corpo: "",
+            })).concat(s2.posts),
+          }));
+          this.flash("2 pautas mineradas do que o cockpit aprendeu com leads, calls e WhatsApp");
+        }, 900);
+      },
+      rotuloCiclo: st.rodando ? "Rodando…" : "Rodar ciclo agora",
+      estCiclo: "height:36px;padding:0 15px;border-radius:999px;background:#f1f4f5;color:#0c1d2b;font-size:12.5px;font-weight:600;transition:background 150ms ease" + (st.rodando ? ";opacity:.6;cursor:default" : ""),
+      rodarCiclo: () => {
+        if (st.rodando) return;
+        if (!r.enabled) { this.flash("Motor desligado: nada roda até você ligar", false); return; }
+        this.setState({ rodando: true });
+        clearTimeout(this._r);
+        this._r = setTimeout(() => {
+          const pauta = st.posts.find((p) => p.status === "pauta");
+          if (r.autoRascunho && pauta) {
+            this.setState((s2) => ({ rodando: false, posts: s2.posts.map((p) => p.id === pauta.id
+              ? Object.assign({}, p, { status: "rascunho", palavras: 1380, corpo: "## O problema\n\nRascunho escrito pelo motor. Revise antes de publicar.\n\n## Como resolver\n\nO texto sai do que o cockpit aprendeu com as calls do período." })
+              : p) }));
+            this.flash("Ciclo rodado · rascunho escrito para \"" + pauta.titulo.slice(0, 40) + "…\" · falta revisar");
+          } else {
+            this.setState({ rodando: false });
+            this.flash(r.autoRascunho ? "Ciclo rodado · nenhuma pauta na fila para escrever" : "Ciclo rodado · escrever rascunhos está desligado");
+          }
+        }, 900);
+      },
+      novaPauta: () => {
+        const id = "pm" + st.posts.length;
+        this.setState((s2) => ({ filtro: "pauta", posts: [{ id, titulo: "Nova pauta", status: "pauta", categoria: "Marketplace",
+          keyword: "", palavras: 0, dias: 0, intent: "informacional", lint: [], corpo: "" }].concat(s2.posts) }));
+        this.abrir(id);
+      },
+
+      motorNota: r.enabled
+        ? "último ciclo há 7 min · " + (r.autoPauta ? "minera pautas" : "pautas na mão") + " · " + (r.autoRascunho ? "escreve rascunho" : "rascunho na mão") + " · " + (r.autoPublicar ? "publica sem revisão" : "publica com sua aprovação")
+        : "motor desligado · nenhuma pauta, rascunho ou publicação acontece sozinha",
+      proximoSlot: slot || "—",
+      corSlot: slot ? "#0c1d2b" : "#8b99a4",
+      toggles: Component.TOGGLES.map(([k, label, hint]) => {
+        const on = !!r[k], travado = k !== "enabled" && !r.enabled;
+        return {
+          label, hint,
+          est: "display:flex;align-items:flex-start;gap:11px;padding:10px 12px;border-radius:18px;background:" + (on ? "#f0f8f6" : "#f7f9fa") + ";transition:background 150ms ease" + (travado ? ";opacity:.45;cursor:not-allowed" : ""),
+          estTrilho: "flex-shrink:0;width:34px;height:20px;border-radius:999px;margin-top:1px;display:inline-flex;align-items:center;padding:0 2px;transition:background 160ms ease;background:" + (on ? "#0F766E" : "#c5cfd4"),
+          estBola: "width:16px;height:16px;border-radius:999px;background:#fff;transition:transform 160ms ease;transform:translateX(" + (on ? "14px" : "0") + ")",
+          alternar: () => {
+            if (travado) { this.flash("Ligue o motor primeiro", false); return; }
+            if (k === "autoPublicar" && !on) {
+              this.flash("Publicar sem revisão ligado · o pente fino bloqueia preço, travessão e nome de cliente, mas não lê o texto por você");
+            }
+            this.patchRegra({ [k]: on ? 0 : 1 });
+          },
+        };
+      }),
+      cadencia: String(r.cadencia),
+      opcoesCadencia: [1, 2, 3, 4, 5].map((n) => ({ v: String(n), label: n + (n === 1 ? " post" : " posts") })),
+      mudarCadencia: (e) => this.patchRegra({ cadencia: Number(e.target.value) }),
+      hora: r.hora, mudarHora: (e) => this.patchRegra({ hora: e.target.value }),
+      minPautas: String(r.minPautas), mudarMinPautas: (e) => this.patchRegra({ minPautas: Math.max(1, Math.min(20, Number(e.target.value) || 1)) }),
+      minRascunhos: String(r.minRascunhos), mudarMinRascunhos: (e) => this.patchRegra({ minRascunhos: Math.max(1, Math.min(10, Number(e.target.value) || 1)) }),
+      dias: Component.DIAS.map(([id, label]) => ({
+        label, est: this.seg(r.dias.includes(id), true),
+        alternar: () => this.patchRegra({ dias: r.dias.includes(id) ? r.dias.filter((x) => x !== id) : r.dias.concat([id]) }),
+      })),
+      diasNota: !r.dias.length ? "sem dia marcado o motor não publica nada"
+        : r.dias.length < r.cadencia ? r.dias.length + (r.dias.length === 1 ? " dia marcado" : " dias marcados") + " para " + r.cadencia + " posts por semana · a fila vai acumular"
+        : "cabe " + r.cadencia + (r.cadencia === 1 ? " post" : " posts") + " por semana nos dias marcados",
+
+      filtros: [["todos", "Todos", st.posts.filter((p) => p.status !== "arquivado").length]]
+        .concat(Component.STATUS.map(([id, label]) => [id, label + "s", conta(id)]))
+        .map(([id, label, n]) => ({ label, n: String(n), est: this.seg(st.filtro === id), escolher: () => this.setState({ filtro: id }) })),
+      busca: st.busca, mudarBusca: (e) => this.setState({ busca: e.target.value }),
+      vazio: visiveis.length === 0,
+      vazioTitulo: st.posts.length ? "Nada nesse filtro" : "Nenhuma pauta ainda",
+      vazioNota: st.posts.length ? "Troque a aba ou limpe a busca." : "Clique em Gerar pautas: a IA lê o que o cockpit aprendeu com leads, calls e WhatsApp.",
+      contagem: visiveis.length + " de " + st.posts.length + " posts · " + publicados30 + " publicados nos últimos 30 dias",
+      linhas: visiveis.map((p) => {
+        const s2 = this.statusDe(p.status);
+        const erros = p.lint.filter((l) => l.nivel === "erro").length;
+        const avisos = p.lint.length - erros;
+        const semLint = !p.palavras && p.status === "pauta";
+        return {
+          titulo: p.titulo,
+          sub: [p.keyword, p.palavras ? p.palavras.toLocaleString("pt-BR") + " palavras" : ""].filter(Boolean).join(" · "),
+          status: s2[1].toLowerCase(),
+          estStatus: "font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:650;color:" + s2[2],
+          categoria: p.categoria || "–",
+          lint: semLint ? "–" : erros ? erros + (erros === 1 ? " erro" : " erros") : avisos ? avisos + (avisos === 1 ? " aviso" : " avisos") : "limpo",
+          estLint: "text-align:left;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:650;color:" +
+            (semLint ? "#c5cfd4" : erros ? "#b42318" : avisos ? "#a16207" : "#177a4c"),
+          quando: p.status === "publicado" ? this.dia(p.dias) : p.status === "agendado" ? (slot || "—") : p.status === "arquivado" ? this.dia(p.dias) : "—",
+          abrir: () => this.abrir(p.id),
+        };
+      }),
+      temSel: !!sel, classeGaveta: st.fechando ? "cap-gaveta-sai" : "cap-gaveta-entra",
+      fechar: () => this.fechar(),
+      intents: Component.INTENTS.map(([v, label]) => ({ v, label })),
+    };
+
+    if (sel) {
+      const s2 = this.statusDe(sel.status);
+      const erros = sel.lint.filter((l) => l.nivel === "erro").length;
+      const avisos = sel.lint.length - erros;
+      const palavras = sel.corpo ? sel.corpo.trim().split(/\s+/).length : 0;
+      vals.sel = {
+        titulo: sel.titulo, keyword: sel.keyword, intent: sel.intent,
+        status: s2[1].toLowerCase(),
+        estStatus: "display:inline-flex;align-items:center;height:20px;padding:0 10px;border-radius:999px;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;background:" + s2[2] + "22;color:" + s2[2],
+        meta: [sel.categoria, sel.palavras ? sel.palavras.toLocaleString("pt-BR") + " palavras" : "sem texto ainda"].filter(Boolean).join(" · "),
+        estLintBloco: sel.lint.length ? "padding:12px 14px;border-radius:18px;background:" + (erros ? "#fdf3f2" : "#fbf4e6") : "display:none",
+        corLint: erros ? "#b42318" : "#a16207",
+        lintResumo: erros ? erros + (erros === 1 ? " erro bloqueia a publicação" : " erros bloqueiam a publicação") : avisos + (avisos === 1 ? " aviso · dá pra publicar" : " avisos · dá pra publicar"),
+        lint: sel.lint.map((l) => ({
+          texto: l.texto,
+          estPonto: "flex-shrink:0;width:6px;height:6px;border-radius:999px;margin-top:6px;background:" + (l.nivel === "erro" ? "#b42318" : "#a16207"),
+        })),
+        rotuloCorpo: sel.status === "pauta" ? "briefing da pauta" : "texto do post",
+        dicaCorpo: sel.status === "pauta" ? "o que esse post precisa responder" : "o texto em markdown",
+        corpo: sel.corpo,
+        contagemPalavras: palavras ? palavras + " palavras no editor" : "nada escrito ainda",
+      };
+      vals.mudarKeyword = (e) => this.patchPost(sel.id, { keyword: e.target.value });
+      vals.mudarIntent = (e) => this.patchPost(sel.id, { intent: e.target.value });
+      vals.mudarCorpo = (e) => this.patchPost(sel.id, { corpo: e.target.value, palavras: e.target.value.trim().split(/\s+/).filter(Boolean).length });
+      vals.rotuloSalvarPost = st.salvoPost ? "Salvo ✓" : "Salvar";
+      vals.estSalvarPost = "height:38px;padding:0 16px;border-radius:999px;font-size:12.5px;font-weight:650;transition:background 150ms ease;" +
+        (st.salvoPost ? "background:#E9F5F3;color:#0b6b64;cursor:default" : "background:#f1f4f5;color:#0c1d2b");
+      vals.salvarPost = () => { if (!st.salvoPost) { this.setState({ salvoPost: true }); this.flash("Post salvo"); } };
+
+      const prox = sel.status === "pauta" ? "Escrever" : sel.status === "rascunho" ? "Agendar" : sel.status === "agendado" ? "Publicar" : null;
+      vals.rotuloAcaoPrimaria = prox === "Escrever" ? "Escrever com IA" : prox === "Agendar" ? (erros ? "Corrija os erros do pente fino" : "Aprovar e agendar") : prox === "Publicar" ? "Publicar agora" : "Já publicado";
+      vals.estAcaoPrimaria = "height:38px;padding:0 18px;border-radius:999px;font-size:12.5px;font-weight:700;transition:background 150ms ease;" +
+        (!prox || (prox === "Agendar" && erros) ? "background:#eef1f3;color:#8b99a4;cursor:not-allowed" : "background:#0c1d2b;color:#fff");
+      vals.acaoPrimaria = () => {
+        if (!prox) return;
+        if (prox === "Escrever") {
+          this.patchPost(sel.id, { status: "rascunho", palavras: 1420,
+            corpo: "## O problema\n\nRascunho escrito pela IA a partir do briefing.\n\n## Como resolver\n\nRevise antes de aprovar: o pente fino não lê o texto por você." });
+          this.flash("Rascunho escrito · agora é revisar");
+          return;
+        }
+        if (prox === "Agendar") {
+          if (erros) { this.flash("O pente fino bloqueia: " + erros + (erros === 1 ? " erro" : " erros") + " no texto", false); return; }
+          if (!slot) { this.flash("Sem dia de publicação marcado no motor", false); return; }
+          this.patchPost(sel.id, { status: "agendado" });
+          this.flash("Agendado para " + slot);
+          return;
+        }
+        this.patchPost(sel.id, { status: "publicado", dias: 0 });
+        this.flash("Publicado · já está no ar");
+      };
+      vals.notaRodape = sel.status === "rascunho"
+        ? (erros ? "Erro do pente fino bloqueia a publicação: preço, travessão e nome de cliente sem autorização." : "Aprovado no pente fino: entra na agenda no próximo slot da cadência.")
+        : sel.status === "pauta" ? "A IA escreve a partir do briefing e da palavra-chave; o texto volta como rascunho pra você revisar."
+        : sel.status === "agendado" ? "Sai sozinho no slot. Publicar agora fura a cadência."
+        : "Publicado em " + this.dia(sel.dias) + ".";
+      vals.rotuloArquivar = sel.status === "arquivado" ? "Tirar do arquivo" : "Arquivar";
+      vals.estArquivar = "height:30px;border-radius:999px;background:transparent;font-size:11.5px;font-weight:600;transition:background 150ms ease;color:" + (sel.status === "arquivado" ? "#5a6b77" : "#b42318");
+      vals.arquivar = () => {
+        this.patchPost(sel.id, { status: sel.status === "arquivado" ? "pauta" : "arquivado" });
+        this.fechar();
+      };
+    }
+    return vals;
+  }
+}
+</script>
+</body>
+</html>

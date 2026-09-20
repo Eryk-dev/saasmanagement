@@ -404,7 +404,7 @@ function PipelineScreen({ saasId, onJump, jumpFilter, onOpenLead }) {
       {view === "kanban" && (discardedCount > 0 || showDiscarded) && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <button onClick={() => setShowDiscarded(!showDiscarded)}
-            style={{ height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+            style={{ height: 30, padding: "0 12px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
             {showDiscarded ? `esconder descartados · ${discardedCount}` : `mostrar descartados · ${discardedCount}`}
           </button>
           <span style={{ fontSize: 12, color: "var(--fg-4)" }}>descartado não conta no funil, mas volta com um clique</span>
@@ -479,7 +479,7 @@ function BulkBar({ n, stages, users, onMove, onAssign, onTouch, onClear }) {
     </section>
   );
 }
-const bulkBtn = { height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" };
+const bulkBtn = { height: 30, padding: "0 12px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" };
 const bulkItem = { display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 10px", borderRadius: "var(--r-2)", background: "none", border: 0, textAlign: "left", fontSize: 12.5, color: "var(--fg-1)", cursor: "pointer" };
 
 function ViewToggle({ view, onChange }) {
@@ -609,7 +609,7 @@ function WonSummary({ leads }) {
   const ticket = monthLeads.length ? total / monthLeads.length : 0;
   const recentes = [...monthLeads].sort((a, b) => new Date(wonAtOf(b) || 0) - new Date(wonAtOf(a) || 0)).slice(0, 6);
   return (
-    <div style={{ minWidth: 0, border: "1px solid var(--line-1)", background: "var(--bg-1)", borderRadius: "var(--r-4)", padding: 10, boxShadow: "var(--shadow-card)" }}>
+    <div className="capsule-navy pipeline-won" style={{ minWidth: 0, padding: "16px 14px", boxShadow: "var(--shadow-card)" }}>
       <div style={{ padding: "4px 4px 10px" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
           <span style={{ fontSize: 13.5, fontWeight: 700 }}>Ganho em {label}</span>
@@ -758,12 +758,12 @@ function LeadCard({ d, s, currentStage, dragProps, selected, onSelect, onOpen })
       style={{
         background: "var(--bg-1)",
         border: `1px solid ${selected ? "var(--accent-line)" : atrasado ? "color-mix(in srgb, var(--neg) 28%, var(--bg-1))" : "var(--line-1)"}`,
-        borderRadius: "var(--r-3)", padding: "10px 11px", boxShadow: "var(--shadow-card)",
+        borderRadius: 18, padding: "12px 14px", boxShadow: "var(--shadow-card)",
       }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
         <button onClick={(e) => { e.stopPropagation(); onSelect(); }} role="checkbox" aria-checked={selected} aria-label={`Selecionar ${d.name}`}
           title="selecionar para ação em massa"
-          style={{ flexShrink: 0, width: 16, height: 16, borderRadius: 4, cursor: "pointer",
+          style={{ flexShrink: 0, width: 16, height: 16, borderRadius: 999, cursor: "pointer",
             border: `1px solid ${selected ? "var(--accent)" : "var(--line-2)"}`,
             background: selected ? "var(--accent)" : "var(--bg-1)",
             padding: 0, color: "oklch(1 0 0)", fontSize: 10, lineHeight: "12px", textAlign: "center" }}>{selected ? "✓" : ""}</button>
@@ -890,14 +890,14 @@ function LeadList({ leads, onOpenLead }) {
       <Card>
         <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="buscar por nome, empresa ou telefone…"
-            style={{ flex: 1, minWidth: 200, height: 30, padding: "0 10px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 }} />
+            style={{ flex: 1, minWidth: 200, height: 30, padding: "0 10px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: 999, color: "var(--fg-1)", fontSize: 12.5 }} />
           <span style={{ fontSize: 12, color: "var(--fg-4)" }}>
             {`${base.length} ${base.length === 1 ? "lead" : "leads"}${needle ? ` de ${leads.length}` : ""}`}
           </span>
         </div>
       </Card>
 
-      <div className="tbl-x" style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+      <div className="tbl-x" style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
         <div>
           <div className="kicker" style={{ display: "grid", gridTemplateColumns: LIST_GRID, gap: LIST_GRID_GAP, padding: "8px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
             <span>Lead</span><span>Etapa</span><span>Próximo passo</span>
@@ -1258,7 +1258,7 @@ function AnalysisPaceSummary({ data, s, leads }) {
           igual, e a relação entre eles — que é a leitura da tela — ficava por
           conta de quem olha. Aqui o fechado e o projetado aparecem contra a
           meta, com a barra de quanto já foi. */}
-      <section style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px var(--inset-x)" }}>
+      <section style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px var(--inset-x)" }}>
         <div style={{ display: "flex", gap: 22, flexWrap: "wrap", alignItems: "flex-start" }}>
           <div style={{ minWidth: 150 }}>
             <div className="kicker">fechado no mês</div>
@@ -1487,7 +1487,7 @@ function ForecastView({ s, leads, conversions }) {
   const totals = buckets.reduce((sum, bucket) => ({ count: sum.count + bucket.count, tcv: sum.tcv + bucket.tcv, weighted: sum.weighted + bucket.weighted }), { count: 0, tcv: 0, weighted: 0 });
   const cols = "1.2fr .6fr .9fr .7fr .9fr";
   return (
-    <section style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+    <section style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "20px 24px 14px", flexWrap: "wrap" }}>
         <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 600, letterSpacing: "-.01em" }}>Forecast por etapa</h3>
         <span style={{ fontSize: 12.5, color: "var(--fg-4)" }}>pipeline aberto × probabilidade real de virar ganho (taxas 30d)</span>
@@ -1553,7 +1553,7 @@ function FunnelAnalytics({ s }) {
         <span style={{ flex: 1 }} />
         {[30, 90].map(d => (
           <button key={d} onClick={() => setDays(d)} style={{
-            height: 22, padding: "0 9px", borderRadius: 4, fontSize: 10.5, fontFamily: "var(--mono)",
+            height: 22, padding: "0 9px", borderRadius: 999, fontSize: 10.5, fontFamily: "var(--mono)",
             background: days === d ? "var(--accent-soft)" : "var(--bg-2)",
             border: "1px solid " + (days === d ? "var(--accent-line)" : "var(--line-1)"),
             color: days === d ? "var(--accent)" : "var(--fg-3)",
