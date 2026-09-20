@@ -206,7 +206,7 @@ try {
     failed++;
   }
 
-  // A tabela de formulários precisa caber na janela de 1024px sem rolar.
+  // Pisos da tabela CRM final; rolagem interna em telas menores é conferida no navegador.
   try {
     const { FORM_GRID, FORM_GRID_GAP, FORM_GRID_BUDGET } = await server.ssrLoadModule("/src/screens/integration-forms.jsx");
     const columns = FORM_GRID.match(/minmax\([^)]*\)|[\d.]+px/g) || [];

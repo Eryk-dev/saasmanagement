@@ -18,6 +18,7 @@ let forms = mode === "empty" ? [] : [
   { id: "fi-demo-elo", saas: "elo", customerName: "Cliente de outro workspace", status: "pendente", createdAt: daysAgo(12), author: "leo" },
 ];
 export const integrationFormsMock = {
+  questions: kind => ({kind, sections: kind === "nota_fiscal" ? FISCAL_SECTIONS : SECTIONS}),
   list: (query = {}) => {
     if (failOnce) { failOnce = false; throw new Error("Falha simulada da prévia"); }
     return forms.filter((f) => !query.saas || f.saas === query.saas).map((f) => ({ ...f }));

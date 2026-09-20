@@ -59,9 +59,13 @@ Para reproduzir Visão geral com dados fixos e testes no navegador, usar
 `npm run test:review:customers -w packages/web`; para Propostas,
 `npm run test:review:proposals -w packages/web`; para Links de pagamento,
 `npm run test:review:offers -w packages/web`; para Contratos,
-`npm run test:review:contracts -w packages/web` (Chromium do Playwright instalado
+`npm run test:review:contracts -w packages/web`; para Formulário de Integração,
+`npm run test:review:intform -w packages/web` (Chromium do Playwright instalado
 com `npx playwright install chromium`, se necessário). O comando sobe só Vite
 com mocks, sem API/banco, e grava medidas/capturas em `.review-artifacts` do web.
+Na ficha de formulário, respostas enviadas continuam lendo `doc.sections`
+(snapshot). A prévia e os pedidos pendentes consultam as perguntas atuais por
+`GET /api/integration-forms/questions?kind=`, através de `lib/api.js`.
 Atividades abre o roteiro lateral no desktop
 e em modal até 1100px, preservando os mesmos handlers e estado.
 Treinamentos mantém a sessão comum dentro do card principal; o modo foco

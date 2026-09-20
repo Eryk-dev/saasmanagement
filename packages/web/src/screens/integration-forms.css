@@ -1,62 +1,708 @@
-/* Formulário de Integração — prancha 7d do handoff. */
-.intform-page { flex: 1; min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 14px; padding: 26px 24px 48px; }
-.intform-page > :first-child { padding: 0 !important; }
-.intform-page > :first-child > :first-child { min-width: min(260px, 100%) !important; }
-.intform-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.intform-number { font-size: 24px; font-weight: 700; letter-spacing: -.02em; margin: 3px 0; }
-.intform-note { font-size: 11.5px; color: var(--fg-3); text-wrap: pretty; }
-.intform-filters, .intform-tabs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.intform-filters > input { margin-left: auto; width: min(100%, 240px); }
-.intform-feedback { padding: 28px 20px; display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; font-size: 13px; color: var(--fg-3); }
-.intform-table { width: 100%; border-collapse: collapse; }
-.intform-table thead, .intform-table tbody { display: block; }
-.intform-table tr { display: grid; grid-template-columns: var(--form-grid); gap: 12px; padding: 11px 18px; align-items: center; }
-.intform-table thead tr { background: var(--bg-inset); padding-block: 9px; }
-.intform-table th { color: var(--fg-4); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; text-align: left; }
-.intform-table th:last-child { text-align: right; }
-.intform-table tbody tr { border-top: 1px solid var(--line-faint); }
-.intform-table tbody tr:hover { background: var(--bg-inset); }
-.intform-table td { min-width: 0; padding: 0; font-size: 12.5px; color: var(--fg-3); }
-.intform-name { display: block; width: 100%; text-align: left; font-size: 13px; font-weight: 600; color: var(--fg-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.intform-meta { font-family: var(--mono); font-size: 10.5px; color: var(--fg-3); margin-top: 3px; }
-.intform-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; }
-.intform-status > span { width: 6px; height: 6px; border-radius: 999px; background: currentColor; flex-shrink: 0; }
-.intform-summary, .intform-author { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.intform-actions { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
-.intform-link { min-height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0 12px; border: 1px solid var(--line-1); border-radius: var(--r-2); background: var(--bg-1); color: var(--fg-2); font-size: 12.5px; font-weight: 600; text-decoration: none; white-space: nowrap; }
-.intform-actions .intform-link { min-height: 28px; }
-.intform-dialog { min-width: 0; }
-/* Escolha do tipo no pedido (integração × nota fiscal) e a etiqueta na lista. */
-.intform-kinds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
-.intform-kind { text-align: left; padding: 10px 12px; border-radius: var(--r-2); border: 1px solid var(--line-1); background: var(--bg-1); cursor: pointer; }
-.intform-kind[data-on] { border-color: var(--accent-line); background: var(--accent-soft); }
-.intform-kind-title { font-size: 13px; font-weight: 600; color: var(--fg-1); margin-bottom: 2px; }
-.intform-kind[data-on] .intform-kind-title { color: var(--accent); }
-.intform-kind-tag { font-weight: 600; color: var(--fg-2); }
-.intform-filters > .intform-kind-select { margin-left: auto; width: auto; }
-.intform-filters > .intform-kind-select + input { margin-left: 0; }
-.intform-answer { display: flex; flex: 1; flex-direction: column; min-height: 0; }
-@media (max-width: 900px) {
-  .tbl-x > .intform-table { min-width: 0; }
-  .intform-table thead { display: none; }
-  .intform-table tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px 16px; }
-  .intform-table td:first-child, .intform-table td:last-child { grid-column: 1 / -1; }
-  .intform-table td:nth-child(4) { grid-column: 1 / -1; }
-  .intform-table td[data-label]:not(:first-child)::before { content: attr(data-label); display: block; font-size: 11px; color: var(--fg-3); margin-bottom: 4px; }
-  .intform-table td { overflow-wrap: anywhere; white-space: normal; }
-  .intform-actions { justify-content: flex-start; }
+/* CRM final: fila de pedidos e ficha de respostas sobre os dados da API. */
+.intform-page {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0 -4px;
+  padding: 0 4px 24px;
+  letter-spacing: -0.006em;
 }
-@media (max-width: 600px) {
-  .intform-page { padding: 24px 16px 48px; }
-  .intform-stats { grid-template-columns: minmax(0, 1fr); gap: 8px; }
-  .intform-filters > input { width: 100%; }
-  .intform-kinds { grid-template-columns: minmax(0, 1fr); }
-  .intform-filters > .intform-kind-select { width: 100%; }
-  .intform-page button, .intform-page input, .intform-link, .intform-dialog button, .intform-dialog input, .intform-dialog a { min-height: 44px; }
-  .intform-name { white-space: normal; }
+.intform-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 10px 2px;
 }
-/* CRM final: status in a single navy surface above the response list. */
-.intform-page { padding: 8px 0 24px; gap: 12px; }
-.intform-stats { padding: 8px; gap: 12px; }
-.intform-filters { background: var(--bg-1); border-radius: 999px; padding: 10px 16px; }
-@media (max-width: 600px) { .intform-filters { border-radius: 24px; } }
+.intform-header > div:first-child {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.intform-header h1 {
+  margin: 0;
+  font: 700 30px/1.05 var(--display);
+  letter-spacing: -0.03em;
+}
+.intform-header > div:last-child {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+.intform-header button {
+  border-radius: 999px;
+  font-weight: 600;
+}
+.intform-preview {
+  height: 34px;
+  padding: 0 15px;
+  background: var(--bg-1);
+  color: var(--accent);
+  font-size: 12.5px;
+  box-shadow: var(--shadow-1);
+}
+.intform-request {
+  height: 40px;
+  padding: 0 20px;
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  font-size: 13px;
+  font-weight: 650 !important;
+}
+:is(.intform-page, .intform-dialog)
+  :is(button, a, input, select, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+:is(.intform-page, .intform-dialog) :is(button, a) {
+  transition:
+    background 150ms ease,
+    color 150ms ease;
+}
+:is(.intform-page, .intform-dialog) button:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+.intform-stats {
+  flex: 0 0 auto;
+  padding: 22px 24px;
+  box-shadow: var(--shadow-card);
+}
+.intform-stats::before {
+  display: none;
+}
+.intform-mark {
+  position: absolute;
+  right: -34px;
+  top: -30px;
+  color: var(--brand-mark);
+  opacity: 0.07;
+  pointer-events: none;
+}
+.intform-stats-values {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 30px;
+  flex-wrap: wrap;
+}
+.intform-stats-values > div {
+  min-width: 170px;
+  padding-top: 6px;
+}
+.intform-stats-values > div > span {
+  display: block;
+  font-size: 12.5px;
+  color: var(--fg-3);
+}
+.intform-stats-values strong {
+  display: block;
+  font-family: var(--display);
+  font-size: 22px;
+  font-weight: 700;
+  margin-top: 4px;
+  color: var(--fg-1);
+}
+.intform-stats-values strong[data-late="true"] {
+  color: var(--neg);
+}
+.intform-stats-values small {
+  display: block;
+  font-size: 11.5px;
+  color: var(--fg-4);
+  margin-top: 2px;
+}
+.intform-stats-values .intform-waiting {
+  min-width: 190px;
+  padding-top: 0;
+}
+.intform-waiting h2 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--brand-mark);
+}
+.intform-waiting i {
+  width: 5px;
+  height: 14px;
+  border-radius: 999px;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.intform-waiting strong {
+  font-size: 34px;
+  line-height: 1.05;
+  margin-top: 8px;
+}
+.intform-waiting small {
+  margin-top: 3px;
+}
+.intform-responded strong {
+  color: var(--brand-mark);
+}
+.intform-stats-values > button {
+  margin-left: auto;
+  align-self: center;
+  height: 34px;
+  padding: 0 15px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--neg);
+  background: color-mix(in srgb, var(--neg) 16%, transparent);
+}
+.intform-stats-values > button:disabled {
+  color: var(--fg-4);
+  background: var(--bg-2);
+}
+.intform-card {
+  flex: 0 0 auto;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--bg-1);
+  border-radius: 24px;
+  box-shadow: var(--shadow-card);
+}
+.intform-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--line-1);
+}
+.intform-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--bg-2);
+}
+.intform-tabs button {
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--fg-3);
+  font-weight: 500;
+}
+.intform-tabs button[aria-pressed="true"] {
+  color: var(--fg-1);
+  background: var(--bg-1);
+  font-weight: 650;
+  box-shadow: var(--shadow-1);
+}
+.intform-tabs span {
+  font-family: var(--display);
+}
+.intform-kind-select {
+  height: 34px;
+  padding: 0 13px;
+  border-radius: 999px;
+  border: 0;
+  box-shadow: inset 0 0 0 1px var(--line-2);
+  background: var(--bg-1);
+  font: 600 12.5px var(--sans);
+  color: var(--fg-2);
+  cursor: pointer;
+}
+.intform-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 15px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  color: var(--fg-3);
+  margin-left: auto;
+  min-width: 190px;
+}
+.intform-search svg {
+  flex-shrink: 0;
+}
+.intform-search input {
+  flex: 1;
+  min-width: 0;
+  width: 138px;
+  border: 0;
+  background: none;
+  outline: none;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--fg-1);
+}
+.intform-search:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.intform-search input:focus-visible {
+  outline: none;
+}
+.intform-table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+}
+.intform-table thead,
+.intform-table tbody {
+  display: block;
+}
+.intform-table tr {
+  display: grid;
+  grid-template-columns: var(--form-grid);
+  gap: 12px;
+  padding: 12px 16px;
+  align-items: center;
+  border-bottom: 1px solid var(--line-1);
+}
+.intform-table thead tr {
+  padding: 11px 16px;
+}
+.intform-table th {
+  padding: 0;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-4);
+}
+.intform-table th:last-child {
+  text-align: right;
+}
+.intform-table td {
+  min-width: 0;
+  padding: 0;
+}
+.intform-name {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 650;
+  text-align: left;
+}
+.intform-meta {
+  font-size: 10.5px;
+  color: var(--fg-4);
+  margin-top: 2px;
+  white-space: nowrap;
+}
+.intform-kind-tag {
+  display: inline-block;
+  height: 17px;
+  line-height: 17px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  color: var(--fg-2);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.intform-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.intform-status i {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  background: currentColor;
+}
+.intform-term {
+  font-size: 10.5px;
+  color: var(--fg-4);
+  margin-top: 3px;
+  white-space: nowrap;
+}
+.intform-summary {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.intform-summary[data-pending="true"] {
+  color: var(--fg-5);
+}
+.intform-author {
+  font-size: 11.5px;
+  color: var(--fg-4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.intform-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  align-items: center;
+}
+.intform-actions > :is(button, a) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  color: var(--fg-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.intform-actions .intform-view {
+  padding: 0 12px;
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+}
+.intform-actions .intform-charge,
+.intform-answer .intform-charge {
+  background: var(--wa-brand);
+  color: var(--wa-brand-fg);
+  font-weight: 700;
+}
+.intform-feedback,
+.intform-empty {
+  padding: 26px 16px;
+  font-size: 12.5px;
+  color: var(--fg-3);
+}
+.intform-feedback[role="alert"] {
+  color: var(--neg);
+}
+.intform-feedback button,
+.intform-empty button,
+.intform-more {
+  color: var(--accent);
+  font-weight: 600;
+}
+.intform-more {
+  padding: 12px 16px;
+}
+.intform-note {
+  font-size: 11.5px;
+  color: var(--fg-3);
+}
+.intform-dialog {
+  min-width: 0;
+}
+.intform-kinds {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+.intform-kind {
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: var(--r-2);
+  border: 1px solid var(--line-1);
+  background: var(--bg-1);
+}
+.intform-kind[data-on] {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.intform-kind-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-1);
+  margin-bottom: 2px;
+}
+.intform-kind[data-on] .intform-kind-title {
+  color: var(--accent);
+}
+.intform-answer {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+.intform-answer-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 20px 20px 14px;
+}
+.intform-answer-head > div {
+  flex: 1;
+  min-width: 0;
+}
+.intform-answer-head > div > span {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+.intform-answer-head h2 {
+  font: 700 19px/1.2 var(--display);
+  letter-spacing: -0.025em;
+  margin: 4px 0 0;
+}
+.intform-answer-head > button {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  color: var(--fg-3);
+  font-size: 13px;
+}
+.intform-answer-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 20px 18px;
+}
+.intform-answer-body > section {
+  flex-shrink: 0;
+  padding: 14px 16px;
+  border-radius: 20px;
+  background: var(--bg-inset);
+  overflow-wrap: anywhere;
+}
+.intform-answer-body h3,
+.intform-questions h3 {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+.intform-answer-values {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 9px;
+}
+.intform-answer-pair {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.8fr) minmax(0, 1.2fr);
+  gap: 10px;
+  padding: 7px 0;
+  border-top: 1px solid var(--line-1);
+  align-items: baseline;
+}
+.intform-answer-pair > span {
+  font-size: 11.5px;
+  color: var(--fg-3);
+  text-wrap: pretty;
+}
+.intform-answer-pair strong {
+  font-size: 12.5px;
+  font-weight: 600;
+  text-wrap: pretty;
+  white-space: pre-wrap;
+}
+.intform-answer-repeat {
+  padding: 8px 0;
+}
+.intform-answer-repeat > div {
+  margin-top: 8px;
+}
+.intform-answer-repeat h4 {
+  margin: 0 0 6px;
+  font-size: 11.5px;
+  color: var(--fg-3);
+  font-weight: 600;
+}
+.intform-answer-body .intform-answer-signed {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 12px 16px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.intform-answer-signed > div {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+.intform-answer-signed p {
+  margin: 4px 0;
+}
+.intform-answer-signed details {
+  margin-top: 8px;
+}
+.intform-answer-signed summary {
+  cursor: pointer;
+}
+.intform-answer-body .intform-answer-wait {
+  padding: 16px;
+  background: var(--warn-soft);
+}
+.intform-answer-wait h3,
+.intform-answer-wait p {
+  color: var(--warn);
+}
+.intform-answer-wait p {
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 8px 0 0;
+  text-wrap: pretty;
+}
+.intform-message {
+  margin-top: 9px;
+  padding: 11px 13px;
+  border-radius: 16px;
+  background: var(--bg-1);
+  box-shadow: inset 0 0 0 1px var(--line-2);
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre-line;
+  text-wrap: pretty;
+}
+.intform-message + button {
+  margin-top: 10px;
+  min-height: 34px;
+  padding: 0 15px;
+  border-radius: 999px;
+  background: var(--wa-brand);
+  color: var(--wa-brand-fg);
+  font-size: 12px;
+  font-weight: 700;
+}
+.intform-answer-footer {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 14px 20px 16px;
+  border-top: 1px solid var(--line-1);
+}
+.intform-answer-primary {
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0 18px;
+  font-size: 13px;
+  font-weight: 700;
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  text-decoration: none;
+}
+.intform-delete {
+  height: 30px;
+  border-radius: 999px;
+  color: var(--neg);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.intform-delete:hover {
+  background: var(--neg-soft);
+}
+.intform-questions {
+  margin-top: 9px;
+  font-size: 12px;
+  color: var(--fg-2);
+}
+.intform-questions > section {
+  margin-bottom: 14px;
+}
+.intform-questions ul {
+  padding-left: 16px;
+  line-height: 1.5;
+}
+.intform-questions li {
+  padding-bottom: 6px;
+}
+.intform-questions-modal {
+  padding: 20px;
+}
+.intform-questions-modal header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.intform-questions-modal h2 {
+  flex: 1;
+  margin: 0;
+  font: 700 19px var(--display);
+}
+.intform-questions-modal header button {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: var(--bg-2);
+}
+.intform-questions-modal > a {
+  color: var(--accent);
+  font-size: 12.5px;
+}
+@media (max-width: 700px) {
+  :is(.intform-page, .intform-dialog) :is(button, a, input, select) {
+    min-height: 44px !important;
+  }
+  .intform-search {
+    width: 100%;
+    height: 44px;
+    margin-left: 0;
+  }
+  .intform-kind-select {
+    max-width: 100%;
+  }
+  .intform-stats-values {
+    gap: 16px;
+  }
+  .intform-stats-values > button {
+    margin-left: 0;
+  }
+  .intform-answer-head > button {
+    min-width: 44px;
+  }
+  [role="dialog"][aria-label="respostas do formulário"] {
+    right: 14px !important;
+    top: 14px !important;
+    bottom: 14px !important;
+  }
+  .intform-kinds {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(.intform-page, .intform-dialog) * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

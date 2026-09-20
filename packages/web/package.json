@@ -16,7 +16,8 @@
     "test:review:customers": "node scripts/review/customers.mjs",
     "test:review:proposals": "node scripts/review/proposals.mjs",
     "test:review:offers": "node scripts/review/offers.mjs",
-    "test:review:contracts": "node scripts/review/contracts.mjs"
+    "test:review:contracts": "node scripts/review/contracts.mjs",
+    "test:review:intform": "node scripts/review/intform.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
