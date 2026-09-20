@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Remuneração</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-gaveta-sai{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-gaveta-sai{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;margin:0 -4px;padding:0 4px 24px">
+
+      <header class="cap-rise" style="flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+        <div style="min-width:0">
+          <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Remuneração</h1>
+          
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button onClick="{{ descartar }}" style="{{ estDescartar }}">Descartar</button>
+          <button onClick="{{ salvar }}" style="{{ estSalvar }}">{{ rotuloSalvar }}</button>
+        </div>
+      </header>
+
+      <sc-if value="{{ temAviso }}" hint-placeholder-val="{{ false }}">
+        <div style="{{ estAviso }}">{{ aviso }}</div>
+      </sc-if>
+
+      <section class="cap-rise" style="flex:0 0 auto;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:18px 20px 16px">
+        <button onClick="{{ alternarRegras }}" style="display:flex;align-items:center;gap:9px;width:100%;text-align:left">
+          <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+          <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">as regras da casa</span>
+          <span style="margin-left:auto;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:600;color:#0F766E">{{ rotuloRegras }}</span>
+        </button>
+        <div style="font-size:11.5px;color:#8b99a4;margin-top:5px;padding-left:14px;text-wrap:pretty">o que manda quando a conta briga com a intuição · a banda é degrau, não rampa</div>
+        <sc-if value="{{ regrasAbertas }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:9px;margin-top:14px">
+            <sc-for list="{{ regras }}" as="r" hint-placeholder-count="11">
+              <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 13px;border-radius:18px;background:#f7f9fa">
+                <span style="flex-shrink:0;width:5px;height:5px;border-radius:999px;background:#0F766E;margin-top:6px"></span>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:12.5px;font-weight:650">{{ r.titulo }}</div>
+                  <div style="font-size:11.5px;line-height:1.55;color:#5a6b77;margin-top:3px;text-wrap:pretty">{{ r.texto }}</div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </section>
+
+      <sc-for list="{{ trilhas }}" as="t" hint-placeholder-count="3">
+        <section class="cap-rise" style="flex:0 0 auto;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+          <div style="padding:18px 20px 12px">
+            <div style="display:flex;align-items:center;gap:7px">
+              <span style="{{ t.estPonto }}"></span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">{{ t.titulo }}</span>
+            </div>
+            <div style="font-size:11.5px;color:#8b99a4;margin-top:5px;padding-left:12px;text-wrap:pretty">{{ t.sub }}</div>
+          </div>
+
+          <div style="overflow-x:auto">
+            <div style="{{ t.estGrade }}">
+              <div style="{{ t.estCabec }}">
+                <sc-for list="{{ t.colunas }}" as="c" hint-placeholder-count="9">
+                  <span style="{{ c.est }}" title="{{ c.title }}">{{ c.label }}</span>
+                </sc-for>
+              </div>
+              <sc-for list="{{ t.linhas }}" as="l" hint-placeholder-count="3">
+                <div style="{{ l.est }}">
+                  <span style="font-size:12px;font-weight:650;text-transform:capitalize">{{ l.nivel }}</span>
+                  <sc-for list="{{ l.campos }}" as="f" hint-placeholder-count="8">
+                    <span style="display:flex;justify-content:flex-end">
+                      <input value="{{ f.valor }}" onChange="{{ f.mudar }}" style="height:30px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 11px;font-family:'Outfit',sans-serif;font-size:12px;font-weight:650;color:#0c1d2b;outline:none;text-align:right;width:100%;max-width:{{ f.largura }}">
+                    </span>
+                  </sc-for>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="margin:12px 20px 18px;padding:13px 15px;border-radius:20px;background:#f7f9fa">
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">simulador · quanto leva no mês</div>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+              <label style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:#5a6b77">nível
+                <select value="{{ t.sim.nivel }}" onChange="{{ t.sim.mudarNivel }}" style="height:28px;border:0;border-radius:999px;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;padding:0 9px;font-family:inherit;font-size:11.5px;color:#0c1d2b;cursor:pointer">
+                  <sc-for list="{{ t.sim.niveis }}" as="n" hint-placeholder-count="3">
+                    <option value="{{ n.v }}">{{ n.label }}</option>
+                  </sc-for>
+                </select>
+              </label>
+              <sc-for list="{{ t.sim.numeros }}" as="c" hint-placeholder-count="2">
+                <label style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:#5a6b77">{{ c.label }}
+                  <input value="{{ c.valor }}" onChange="{{ c.mudar }}" style="height:30px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 11px;font-family:'Outfit',sans-serif;font-size:12px;font-weight:650;color:#0c1d2b;outline:none;text-align:right;height:28px;width:{{ c.largura }}">
+                </label>
+              </sc-for>
+              <sc-for list="{{ t.sim.flags }}" as="f" hint-placeholder-count="2">
+                <button onClick="{{ f.alternar }}" style="{{ f.est }}">{{ f.label }}</button>
+              </sc-for>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:5px;margin-top:11px">
+              <sc-for list="{{ t.sim.linhas }}" as="l" hint-placeholder-count="2">
+                <div style="font-size:11.5px;line-height:1.55;color:#3d4f5c;text-wrap:pretty">{{ l }}</div>
+              </sc-for>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid #e7ecee">
+              <span style="font-size:12px;color:#5a6b77">{{ t.sim.formula }}</span>
+              <span style="font-family:'Outfit',sans-serif;font-size:20px;font-weight:700;letter-spacing:-.02em;color:#177a4c">{{ t.sim.total }}</span>
+            </div>
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;line-height:1.55;color:#8b99a4;margin-top:7px;text-wrap:pretty">{{ t.sim.nota }}</div>
+          </div>
+        </section>
+      </sc-for>
+
+      <section class="cap-rise" style="flex:0 0 auto;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+        <div style="padding:18px 20px 12px">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">bônus de time</span>
+          </div>
+          <div style="font-size:11.5px;color:#8b99a4;margin-top:5px;padding-left:12px;text-wrap:pretty">parcela coletiva · paga quando o mês fecha com as DUAS condições juntas · faltou uma, ninguém leva</div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:12px;padding:0 20px 14px">
+          <sc-for list="{{ condicoes }}" as="c" hint-placeholder-count="2">
+            <div style="{{ c.est }}">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="{{ c.estPonto }}"></span>
+                <span style="font-size:12.5px;font-weight:650;color:{{ c.cor }}">{{ c.titulo }}</span>
+              </div>
+              <div style="font-size:11.5px;color:#5a6b77;margin-top:4px;text-wrap:pretty">{{ c.nota }}</div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="overflow-x:auto">
+          <div style="min-width:440px">
+            <div style="display:grid;grid-template-columns:minmax(120px,1fr) 100px 100px 100px;gap:10px;padding:10px 20px;background:#f7f9fa;border-top:1px solid #edf1f3;border-bottom:1px solid #edf1f3;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#8b99a4">
+              <span>Cargo</span><span style="text-align:right">Júnior</span><span style="text-align:right">Pleno</span><span style="text-align:right">Sênior</span>
+            </div>
+            <sc-for list="{{ timeLinhas }}" as="l" hint-placeholder-count="4">
+              <div style="display:grid;grid-template-columns:minmax(120px,1fr) 100px 100px 100px;gap:10px;padding:9px 20px;align-items:center;border-bottom:1px solid #edf1f3">
+                <span style="font-size:12.5px;font-weight:600">{{ l.cargo }}</span>
+                <sc-for list="{{ l.campos }}" as="f" hint-placeholder-count="3">
+                  <span style="{{ f.estCel }}">
+                    <input value="{{ f.valor }}" onChange="{{ f.mudar }}" style="height:30px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 11px;font-family:'Outfit',sans-serif;font-size:12px;font-weight:650;color:#0c1d2b;outline:none;text-align:right;width:84px">
+                    <span style="{{ f.estNota }}">{{ f.nota }}</span>
+                  </span>
+                </sc-for>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="padding:13px 20px;font-size:12px;color:#5a6b77;text-wrap:pretty">se o mês fechar com as duas condições, o time leva <b style="color:#0c1d2b">{{ totalTime }}</b> ({{ nPessoas }})</div>
+
+        <div style="border-top:1px solid #edf1f3;padding:14px 20px 16px">
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">meses fechados</div>
+          <div style="display:flex;flex-direction:column;gap:2px;margin-top:9px">
+            <sc-for list="{{ mesesFechados }}" as="m" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:7px 0;border-top:1px solid #f1f4f5">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;min-width:58px;text-transform:capitalize">{{ m.mes }}</span>
+                <span style="{{ m.estSelo }}">{{ m.selo }}</span>
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4">{{ m.detalhe }}</span>
+                <span style="margin-left:auto;font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;white-space:nowrap">{{ m.total }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </section>
+
+      <section class="cap-rise" style="flex:0 0 auto;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:18px 20px 18px">
+        <div style="display:flex;align-items:center;gap:7px">
+          <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+          <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">indicações a pagar</span>
+        </div>
+        <div style="font-size:11.5px;color:#8b99a4;margin-top:5px;padding-left:12px;text-wrap:pretty">o que o CS ganhou neste mês pelas indicações da base · fechada paga o valor cheio no lugar do de reunião</div>
+        <div style="display:flex;flex-direction:column;gap:2px;margin-top:12px">
+          <sc-for list="{{ indicacoes }}" as="i" hint-placeholder-count="3">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 0;border-top:1px solid #f1f4f5">
+              <span style="flex:1;min-width:130px">
+                <span style="display:block;font-size:12.5px;font-weight:600">{{ i.lead }}</span>
+                <span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4">{{ i.origem }}</span>
+              </span>
+              <span style="{{ i.estEstado }}">{{ i.estado }}</span>
+              <span style="font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;white-space:nowrap;min-width:74px;text-align:right">{{ i.valor }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin-top:12px;padding-top:11px;border-top:1px solid #edf1f3">
+          <span style="font-size:12px;color:#5a6b77">total do mês pra {{ csNome }}</span>
+          <span style="margin-left:auto;font-family:'Outfit',sans-serif;font-size:18px;font-weight:700;color:#177a4c">{{ totalIndicacoes }}</span>
+        </div>
+      </section>
+    </div>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Remuneração (screens/remuneracao.jsx): o plano por cargo e nível, as regras
+  // que mandam quando a conta briga com a intuição, e o simulador de cada trilha.
+  // A régua do bônus é DEGRAU, não rampa: vale a última banda alcançada.
+  static REGRAS = [
+    ["Duas pernas que somam", "contratos e receita são avaliados separados e cada perna paga o bônus da banda: bater as duas metas em 100% paga o valor da tabela em DOBRO (ex.: 20 contratos + R$ 90 mil no nível 1 do closer = 1.000 + 1.000)."],
+    ["Abaixo de 80% = zero", "a perna que não chega a 80% da meta não paga nada."],
+    ["A banda só paga quando é batida", "o bônus é degrau, não rampa: vale o valor da última banda ALCANÇADA, e nada entre uma e outra. 110% da meta leva o bônus de 100%; o de 120% só entra ao chegar nos 120%."],
+    ["Acima de 140% não tem teto", "cada 20% a mais COMPLETADO paga a diferença entre os dois degraus anteriores + R$ 100, sem limite (closer nível 1: 160% = 2.000 + 500 + 100 = 2.600; 180% = 3.300; e segue)."],
+    ["A receita do SDR é a das oportunidades DELE", "a perna de R$ do SDR conta a receita FECHADA das oportunidades que ele gerou."],
+    ["SDR e closer perseguem o mesmo número", "metas iguais por nível de propósito: a dupla fecha junto (2 pessoas nível 1 a 90 mil = a meta de agosto)."],
+    ["CLT ou PJ só muda o fixo", "a variável do closer é a mesma nos dois regimes."],
+    ["CS por evento, sem banda", "R$ 100 quando a indicação vira reunião FEITA; se converter, R$ 500 no lugar (não soma). Bônus de NPS com NPS ≥ 80 e bônus de churn com churn do mês abaixo de 15%."],
+    ["Subir de nível é o plano de carreira", "3 meses seguidos FECHADOS com 100% da meta nas duas pernas deixam a pessoa elegível. O cockpit marca quem está elegível e avisa; a promoção é decisão da gestão, em Metas → Meta por pessoa. Mês abaixo de 100% em qualquer perna zera a contagem."],
+    ["Bônus de time", "todo mundo do plano leva um valor fixo, pelo cargo e nível, quando o mês fecha com as DUAS condições juntas: meta de venda do mês batida e churn abaixo de 15%. Faltou uma, ninguém leva."],
+  ];
+  static PLANO = {
+    sdr: { titulo: "SDR", cor: "#175cd3", sub: "duas pernas: contratos fechados das SUAS oportunidades + a receita fechada delas",
+      niveis: [
+        { n: 1, fixo: 2200, metaC: 20, metaR: 90000, b80: 300, b100: 550, b120: 750, b140: 950 },
+        { n: 2, fixo: 2600, metaC: 25, metaR: 120000, b80: 450, b100: 750, b120: 1000, b140: 1250 },
+        { n: 3, fixo: 3000, metaC: 35, metaR: 180000, b80: 650, b100: 1000, b120: 1300, b140: 1600 },
+      ] },
+    closer: { titulo: "Closer · Executivo de Contas", cor: "#0F766E", sub: "duas pernas: contratos fechados + receita fechada · CLT ou PJ muda só o fixo",
+      niveis: [
+        { n: 1, fixo: 3000, fixoPj: 4200, metaC: 20, metaR: 90000, b80: 600, b100: 1000, b120: 1500, b140: 2000 },
+        { n: 2, fixo: 4000, fixoPj: 5500, metaC: 25, metaR: 120000, b80: 1000, b100: 1500, b120: 2100, b140: 2700 },
+        { n: 3, fixo: 5500, fixoPj: 7500, metaC: 35, metaR: 180000, b80: 1500, b100: 2500, b120: 3700, b140: 4900 },
+      ] },
+    cs: { titulo: "Integração e CS", cor: "#5b6bd6", sub: "por evento, sem banda · indicação que vira reunião e indicação que fecha, mais NPS e churn",
+      referralMeeting: 100, referralClosed: 500, npsFloor: 80, churnMax: 15,
+      niveis: [
+        { n: 1, fixo: 2200, nps: 500, churn: 500 },
+        { n: 2, fixo: 2600, nps: 700, churn: 700 },
+        { n: 3, fixo: 3000, nps: 1000, churn: 1000 },
+      ] },
+  };
+  static TIME_BONUS = { sdr: [300, 400, 500], closer: [400, 600, 800], cs: [300, 400, 500], social: 200 };
+  static NIVEL_LABEL = ["", "júnior", "pleno", "sênior"];
+  // quem está no plano hoje (as pessoas do time, com nível)
+  static PESSOAS = [["Manuela Costa", "sdr", 2], ["Rafael Moura", "closer", 3], ["Bruno Alencar", "closer", 2], ["Vitor Nunes", "cs", 1], ["Camila Reis", "social", 1]];
+  static EPS = 1e-9;
+
+  state = {
+    plano: JSON.parse(JSON.stringify(Component.PLANO)),
+    timeBonus: JSON.parse(JSON.stringify(Component.TIME_BONUS)),
+    regrasAbertas: false, sujo: 0, aviso: null,
+    sim: {
+      sdr: { nivel: 2, contratos: 25, receita: 120000, time: true },
+      closer: { nivel: 3, contratos: 28, receita: 72400, pj: false, time: true },
+      cs: { nivel: 1, reunioes: 4, fechadas: 1, nps: true, churn: true, time: true },
+    },
+  };
+  componentWillUnmount() { clearTimeout(this._a); }
+
+  money(n) { return "R$ " + Math.round(Number(n) || 0).toLocaleString("pt-BR"); }
+  num(v) { const n = Number(String(v ?? "").replace(",", ".")); return Number.isFinite(n) ? n : 0; }
+  pct(a) { return Number.isFinite(a) ? Math.round(a * 100) + "%" : "—"; }
+  // legBonus(): degrau por banda; acima de 140% cada +20% completo paga o degrau
+  // anterior + R$ 100, sem teto.
+  legBonus(att, b80, b100, b120, b140) {
+    const E = Component.EPS;
+    if (!Number.isFinite(att) || att < 0.8 - E) return 0;
+    if (att < 1 - E) return b80;
+    if (att < 1.2 - E) return b100;
+    if (att < 1.4 - E) return b120;
+    const top = b140 == null ? b120 : b140;
+    const k = Math.floor((att + E - 1.4) / 0.2);
+    if (k <= 0) return top;
+    return top + k * (top - b120) + 100 * ((k * (k + 1)) / 2);
+  }
+  banda(att) {
+    const E = Component.EPS;
+    if (!Number.isFinite(att) || att < 0.8 - E) return "zerada";
+    return Math.floor((att + E) / 0.2) * 20 + "%";
+  }
+  timeBonusDe(cargo, nivel) {
+    const v = this.state.timeBonus[cargo === "integrator" ? "cs" : cargo];
+    if (Array.isArray(v)) return this.num(v[Math.max(0, Math.min(2, nivel - 1))]);
+    return this.num(v);
+  }
+  flash(texto, ok) {
+    this.setState({ aviso: { texto, ok: ok !== false } });
+    clearTimeout(this._a);
+    this._a = setTimeout(() => this.setState({ aviso: null }), 3600);
+  }
+  setNivel(trilha, n, campo, valor) {
+    this.setState((s2) => {
+      const p = JSON.parse(JSON.stringify(s2.plano));
+      const lv = p[trilha].niveis.find((x) => x.n === n);
+      if (lv) lv[campo] = this.num(valor);
+      return { plano: p, sujo: 1, aviso: null };
+    });
+  }
+  setSim(trilha, campo, valor) {
+    this.setState((s2) => ({ sim: Object.assign({}, s2.sim, { [trilha]: Object.assign({}, s2.sim[trilha], { [campo]: valor }) }) }));
+  }
+
+  renderVals() {
+    const st = this.state;
+    const seg = (ativo) => "height:28px;padding:0 13px;border-radius:999px;font-size:11.5px;font-weight:650;white-space:nowrap;transition:background 150ms ease;" +
+      (ativo ? "background:#E9F5F3;color:#0b6b64;box-shadow:inset 0 0 0 1px rgba(15,118,110,.3)" : "background:#f1f4f5;color:#5a6b77");
+
+    // ── trilhas: tabela de níveis + simulador ──────────────────────────────
+    const COLS = {
+      vendas: [["nível", "", "64px"], ["fixo CLT", "o que entra todo mês, independente de meta", "96px"],
+        ["fixo PJ", "mesma variável, fixo diferente", "96px"], ["meta contratos", "perna de contratos", "104px"],
+        ["meta receita", "perna de R$", "108px"], ["banda 80%", "paga quando chega a 80% da meta", "84px"],
+        ["banda 100%", "meta batida", "84px"], ["banda 120%", "", "84px"], ["banda 140%", "acima disso, cada +20% paga o degrau anterior + R$ 100", "84px"]],
+      cs: [["nível", "", "64px"], ["fixo", "", "96px"], ["bônus NPS", "pago com NPS ≥ 80", "104px"], ["bônus churn", "pago com churn do mês abaixo de 15%", "108px"]],
+    };
+    const trilhas = ["sdr", "closer", "cs"].map((k) => {
+      const p = st.plano[k];
+      const ehCs = k === "cs", ehCloser = k === "closer";
+      const cols = ehCs ? COLS.cs : COLS.vendas.filter((c) => ehCloser || c[0] !== "fixo PJ");
+      const grade = cols.map((c) => c[2]).join(" ");
+      const sim = st.sim[k];
+      const lv = p.niveis.find((x) => x.n === Number(sim.nivel)) || p.niveis[0];
+      const linhasSim = [];
+      let total = 0, formula = "";
+      if (ehCs) {
+        const reun = this.num(sim.reunioes) * p.referralMeeting;
+        const fech = this.num(sim.fechadas) * p.referralClosed;
+        const nps = sim.nps ? this.num(lv.nps) : 0;
+        const churn = sim.churn ? this.num(lv.churn) : 0;
+        const time = sim.time ? this.timeBonusDe("cs", lv.n) : 0;
+        const variavel = reun + fech + nps + churn;
+        total = this.num(lv.fixo) + variavel + time;
+        linhasSim.push(this.num(sim.reunioes) + " reunião(ões) feita(s) → " + this.money(reun) + " · " + this.num(sim.fechadas) + " fechada(s) → " + this.money(fech));
+        linhasSim.push("NPS " + (sim.nps ? "≥ 80 → " + this.money(nps) : "abaixo de 80 → R$ 0") + " · churn " + (sim.churn ? "< 15% → " + this.money(churn) : "≥ 15% → R$ 0"));
+        formula = "fixo " + this.money(lv.fixo) + " + variável " + this.money(variavel) + (time ? " + time " + this.money(time) : "") + " =";
+      } else {
+        const attC = this.num(lv.metaC) > 0 ? this.num(sim.contratos) / this.num(lv.metaC) : 0;
+        const attR = this.num(lv.metaR) > 0 ? this.num(sim.receita) / this.num(lv.metaR) : 0;
+        const legC = this.legBonus(attC, this.num(lv.b80), this.num(lv.b100), this.num(lv.b120), this.num(lv.b140));
+        const legR = this.legBonus(attR, this.num(lv.b80), this.num(lv.b100), this.num(lv.b120), this.num(lv.b140));
+        const fixo = ehCloser && sim.pj ? this.num(lv.fixoPj) : this.num(lv.fixo);
+        const time = sim.time ? this.timeBonusDe(k, lv.n) : 0;
+        total = fixo + legC + legR + time;
+        linhasSim.push("perna contratos " + this.pct(attC) + " (banda " + this.banda(attC) + ") → " + this.money(legC));
+        linhasSim.push("perna receita " + this.pct(attR) + " (banda " + this.banda(attR) + ") → " + this.money(legR));
+        formula = "fixo" + (ehCloser ? (sim.pj ? " PJ " : " CLT ") : " ") + this.money(fixo) + " + variável " + this.money(legC + legR) + (time ? " + time " + this.money(time) : "") + " =";
+      }
+      return {
+        titulo: p.titulo, sub: p.sub,
+        estPonto: "width:5px;height:14px;border-radius:999px;flex-shrink:0;background:" + p.cor,
+        estGrade: "min-width:" + (ehCs ? 380 : ehCloser ? 810 : 714) + "px",
+        estCabec: "display:grid;grid-template-columns:" + grade + ";gap:10px;padding:10px 20px;background:#f7f9fa;border-top:1px solid #edf1f3;border-bottom:1px solid #edf1f3",
+        colunas: cols.map((c, i) => ({
+          label: c[0], title: c[1],
+          est: "font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:#8b99a4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" +
+            (i === 0 ? "" : "text-align:right;") + (c[1] ? "cursor:help" : ""),
+        })),
+        linhas: p.niveis.map((n) => ({
+          nivel: Component.NIVEL_LABEL[n.n],
+          est: "display:grid;grid-template-columns:" + grade + ";gap:10px;padding:9px 20px;align-items:center;border-bottom:1px solid #edf1f3",
+          campos: (ehCs ? ["fixo", "nps", "churn"] : (ehCloser ? ["fixo", "fixoPj", "metaC", "metaR", "b80", "b100", "b120", "b140"] : ["fixo", "metaC", "metaR", "b80", "b100", "b120", "b140"]))
+            .map((campo) => ({
+              valor: String(n[campo] ?? 0), largura: "100%",
+              mudar: (e) => this.setNivel(k, n.n, campo, e.target.value),
+            })),
+        })),
+        sim: {
+          nivel: String(sim.nivel),
+          niveis: p.niveis.map((n) => ({ v: String(n.n), label: Component.NIVEL_LABEL[n.n] })),
+          mudarNivel: (e) => this.setSim(k, "nivel", Number(e.target.value)),
+          numeros: ehCs
+            ? [{ label: "reuniões feitas", valor: String(sim.reunioes), largura: "58px", mudar: (e) => this.setSim(k, "reunioes", e.target.value) },
+               { label: "fechadas", valor: String(sim.fechadas), largura: "58px", mudar: (e) => this.setSim(k, "fechadas", e.target.value) }]
+            : [{ label: "contratos", valor: String(sim.contratos), largura: "64px", mudar: (e) => this.setSim(k, "contratos", e.target.value) },
+               { label: "receita R$", valor: String(sim.receita), largura: "104px", mudar: (e) => this.setSim(k, "receita", e.target.value) }],
+          flags: (ehCs
+            ? [["nps", "NPS ≥ 80"], ["churn", "churn < 15%"], ["time", "mês fechou com bônus de time"]]
+            : ehCloser ? [["pj", "regime PJ"], ["time", "mês fechou com bônus de time"]]
+            : [["time", "mês fechou com bônus de time"]]
+          ).map(([campo, label]) => ({ label, est: seg(!!sim[campo]), alternar: () => this.setSim(k, campo, !sim[campo]) })),
+          linhas: linhasSim, formula, total: this.money(total),
+          nota: ehCs
+            ? "fechada paga " + this.money(p.referralClosed) + " no lugar dos " + this.money(p.referralMeeting) + " (não soma)"
+            : "a banda só paga ao ser batida (110% paga o bônus de 100%) · abaixo de 80% a perna zera · acima de 140% cada +20% completo paga o degrau anterior + R$ 100, sem teto",
+        },
+      };
+    });
+
+    // ── bônus de time ──────────────────────────────────────────────────────
+    const metaBatida = false, churnMes = 2.4;
+    const condicoes = [
+      { ok: metaBatida, titulo: metaBatida ? "meta do mês batida" : "meta do mês ainda não batida",
+        nota: "R$ 112.400 de R$ 180.000 · 62% · a mesma faixa da Visão geral" },
+      { ok: churnMes < 15, titulo: churnMes < 15 ? "churn em " + String(churnMes).replace(".", ",") + "% · abaixo de 15%" : "churn acima de 15%",
+        nota: churnMes < 15 ? "condição cumprida · 1 saída na base de 41" : "a condição de churn derruba o bônus do time" },
+    ].map((c) => ({
+      titulo: c.titulo, nota: c.nota, cor: c.ok ? "#0b6b64" : "#a16207",
+      est: "padding:12px 15px;border-radius:20px;background:" + (c.ok ? "#E9F5F3" : "#fbf4e6"),
+      estPonto: "width:7px;height:7px;border-radius:999px;flex-shrink:0;background:" + (c.ok ? "#0F766E" : "#a16207"),
+    }));
+    const totalSeTodos = Component.PESSOAS.reduce((a, [, cargo, nivel]) => a + this.timeBonusDe(cargo, nivel), 0);
+
+    // ── indicações do mês (o payout do CS) ────────────────────────────────
+    const IND = [
+      ["Tiago Nogueira", "indicado por Marina Kern · Studio Kern", "fechada"],
+      ["Luiza Prado", "indicado por Helena Vitta · Nutri Vitta", "reunião feita"],
+      ["Camila Reis", "indicado por Diego Arbo · Clínica Arbo", "reunião feita"],
+      ["André Rima", "indicado por Sérgio Prado · Oficina Prado", "reunião feita"],
+      ["Paula Bueno", "indicado por Tatiana Ponto · Mercado Ponto", "reunião marcada"],
+    ];
+    const cs = st.plano.cs;
+    const valorInd = (estado) => estado === "fechada" ? cs.referralClosed : estado === "reunião feita" ? cs.referralMeeting : 0;
+
+    return {
+      mov: this.props.movimento === false ? "off" : "on",
+      regras: Component.REGRAS.map(([titulo, texto]) => ({ titulo, texto })),
+      regrasAbertas: st.regrasAbertas,
+      rotuloRegras: st.regrasAbertas ? "▴ recolher" : "▾ ler as " + Component.REGRAS.length + " regras",
+      alternarRegras: () => this.setState((s2) => ({ regrasAbertas: !s2.regrasAbertas })),
+      temAviso: !!st.aviso, aviso: st.aviso ? st.aviso.texto : "",
+      estAviso: "flex:0 0 auto;padding:10px 18px;border-radius:999px;font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:600;" +
+        (st.aviso && st.aviso.ok ? "background:#E9F5F3;color:#0b6b64" : "background:#fbf4e6;color:#a16207"),
+      estDescartar: "height:32px;padding:0 13px;border-radius:999px;background:#fff;color:#3d4f5c;font-size:12.5px;font-weight:600;box-shadow:0 1px 2px rgba(12,29,43,.05);transition:opacity 150ms ease;opacity:" + (st.sujo ? "1" : ".5"),
+      descartar: () => {
+        if (!st.sujo) return;
+        this.setState({ plano: JSON.parse(JSON.stringify(Component.PLANO)), timeBonus: JSON.parse(JSON.stringify(Component.TIME_BONUS)), sujo: 0 });
+        this.flash("voltou pro plano aprovado", false);
+      },
+      rotuloSalvar: st.sujo ? "Salvar plano" : "Nada a salvar",
+      estSalvar: "height:32px;padding:0 15px;border-radius:999px;font-size:12.5px;font-weight:650;transition:background 150ms ease;" +
+        (st.sujo ? "background:#0c1d2b;color:#fff" : "background:#eef1f3;color:#8b99a4;cursor:default"),
+      salvar: () => {
+        if (!st.sujo) return;
+        this.setState({ sujo: 0 });
+        this.flash("plano salvo · vale no placar, em Metas e na Folha do mês que vem");
+      },
+      trilhas,
+      condicoes,
+      timeLinhas: [["sdr", "SDR"], ["closer", "Closer"], ["cs", "Integrador · CS"], ["social", "Mídia social"]].map(([k, cargo]) => ({
+        cargo,
+        campos: (k === "social" ? [0] : [0, 1, 2]).map((i) => ({
+          valor: String(k === "social" ? st.timeBonus.social : (st.timeBonus[k] || [])[i] ?? 0),
+          estCel: "display:flex;align-items:center;justify-content:flex-end;gap:8px" + (k === "social" ? ";grid-column:span 3" : ""),
+          nota: k === "social" ? "valor único · a vaga não tem nível" : "",
+          estNota: k === "social" ? "font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4" : "display:none",
+          mudar: (e) => this.setState((s2) => {
+            const t = JSON.parse(JSON.stringify(s2.timeBonus));
+            if (k === "social") t.social = this.num(e.target.value); else t[k][i] = this.num(e.target.value);
+            return { timeBonus: t, sujo: 1, aviso: null };
+          }),
+        })),
+      })),
+      totalTime: this.money(totalSeTodos),
+      nPessoas: Component.PESSOAS.length + " pessoas no plano",
+      mesesFechados: [
+        { mes: "ago 2026", ok: true, total: totalSeTodos, detalhe: "meta batida · churn 1,8%" },
+        { mes: "jul 2026", ok: false, total: 0, detalhe: "meta não batida · churn 2,1%" },
+        { mes: "jun 2026", ok: true, total: 1800, detalhe: "meta batida · churn 0,9%" },
+      ].map((m) => ({
+        mes: m.mes, detalhe: m.detalhe, total: this.money(m.total),
+        selo: m.ok ? "pagou" : "não pagou",
+        estSelo: "display:inline-flex;align-items:center;height:20px;padding:0 10px;border-radius:999px;font-size:10.5px;font-weight:600;white-space:nowrap;" +
+          (m.ok ? "background:#e9f6ef;color:#177a4c" : "background:#f1f4f5;color:#5a6b77"),
+      })),
+      indicacoes: IND.map(([lead, origem, estado]) => ({
+        lead, origem, estado: estado + (valorInd(estado) ? "" : " · ainda não paga"),
+        valor: valorInd(estado) ? this.money(valorInd(estado)) : "—",
+        estEstado: "display:inline-flex;align-items:center;height:21px;padding:0 10px;border-radius:999px;font-size:10.5px;font-weight:600;white-space:nowrap;" +
+          (estado === "fechada" ? "background:#e9f6ef;color:#177a4c" : estado === "reunião feita" ? "background:#E9F5F3;color:#0b6b64" : "background:#f1f4f5;color:#5a6b77"),
+      })),
+      csNome: "Vitor Nunes",
+      totalIndicacoes: this.money(IND.reduce((a, [, , estado]) => a + valorInd(estado), 0)),
+    };
+  }
+}
+</script>
+</body>
+</html>

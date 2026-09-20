@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Redes sociais</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-gaveta-sai{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-gaveta-sai{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;margin:0 -4px;padding:0 4px 24px">
+
+      <header class="cap-rise" style="flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+        <div style="min-width:0">
+          <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Redes sociais</h1>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap">
+            
+            <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:#3d4f5c"><span style="width:6px;height:6px;border-radius:999px;background:#177a4c"></span>conectado · @leverads</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <div style="display:inline-flex;gap:3px;padding:4px;border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.05)">
+            <sc-for list="{{ abas }}" as="a" hint-placeholder-count="2">
+              <button onClick="{{ a.escolher }}" style="{{ a.est }}">{{ a.label }} <span style="{{ a.estBadge }}">{{ a.badge }}</span></button>
+            </sc-for>
+          </div>
+          <button onClick="{{ criarPost }}" style="height:40px;padding:0 18px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:13px;font-weight:650;transition:background 150ms ease" style-hover="background:#1b3140">Criar post</button>
+        </div>
+      </header>
+
+      <sc-if value="{{ mostraPainel }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:12px">
+
+        <section class="cap-rise" style="position:relative;overflow:hidden;flex:0 0 auto;border-radius:24px;background:linear-gradient(168deg,#0a2434,#051C2C 70%);box-shadow:0 1px 2px rgba(5,28,44,.14),0 18px 40px -24px rgba(5,28,44,.6);padding:18px 22px;display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+          <span style="position:absolute;right:-34px;top:-34px;width:170px;height:170px;color:#23D8D3;opacity:.07;pointer-events:none"><svg width="170" height="170" viewBox="355 525 455 590"><polygon fill="currentColor" points="800.7 535.53 800.7 1103.92 763 983.8 749.25 939.91 691.16 754.61 501.54 817.84 457.65 832.42 362.47 864.14 443.6 803.33 481.22 775.08 800.7 535.53"></polygon></svg></span>
+          <div style="position:relative;flex:1 1 250px;min-width:0">
+            <div style="display:flex;align-items:center;gap:7px">
+              <span style="width:5px;height:14px;border-radius:999px;background:#23D8D3;flex-shrink:0"></span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#23D8D3">criativos de hoje</span>
+            </div>
+            <div style="font-family:'Outfit',sans-serif;font-size:20px;font-weight:700;letter-spacing:-.025em;color:#F3FBFF;margin-top:7px;text-wrap:pretty">{{ hoje.titulo }}</div>
+            <div style="font-size:11.5px;color:rgba(243,251,255,.6);margin-top:3px;text-wrap:pretty">{{ hoje.nota }}</div>
+          </div>
+          <div style="position:relative;display:flex;gap:7px;flex-wrap:wrap;align-items:center">
+            <sc-for list="{{ hoje.pautas }}" as="p" hint-placeholder-count="3">
+              <button onClick="{{ p.abrir }}" style="{{ p.est }}"><span style="{{ p.estPonto }}"></span>{{ p.rotulo }}</button>
+            </sc-for>
+            <button onClick="{{ criarPost }}" style="height:34px;padding:0 16px;border-radius:999px;background:#F3FBFF;color:#051C2C;font-size:12px;font-weight:700;white-space:nowrap;transition:background 150ms ease" style-hover="background:#fff">Publicar o de hoje →</button>
+          </div>
+        </section>
+
+        <section class="cap-rise" style="flex:0 0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,168px),1fr));gap:20px;padding:20px 24px;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+          <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+            <div style="min-width:0">
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">{{ k.rot }}</div>
+              <div style="font-family:'Outfit',sans-serif;font-size:28px;font-weight:700;letter-spacing:-.025em;line-height:1.15;margin-top:4px;color:{{ k.cor }}">{{ k.val }}</div>
+              <div style="font-size:11.5px;color:#8b99a4;margin-top:2px;text-wrap:pretty">{{ k.nota }}</div>
+            </div>
+          </sc-for>
+        </section>
+
+        <div class="cap-2col" style="align-items:start">
+          <section class="cap-rise" style="min-width:0;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:20px 22px 18px">
+            <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:10px;flex-wrap:wrap">
+              <div>
+                <div style="display:flex;align-items:center;gap:7px">
+                  <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+                  <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">crescimento de seguidores</span>
+                </div>
+                <div style="font-size:12px;color:#8b99a4;margin-top:5px;padding-left:12px">acumulado no período</div>
+              </div>
+              <span style="font-family:'Outfit',sans-serif;font-size:17px;font-weight:700;color:#177a4c;white-space:nowrap">{{ crescimento.liquido }}</span>
+            </div>
+            <div style="position:relative;height:150px;margin-top:16px">
+              <sc-for list="{{ crescimento.linhas }}" as="l" hint-placeholder-count="3">
+                <span style="{{ l }}"></span>
+              </sc-for>
+              <div style="position:absolute;inset:0;display:flex;align-items:flex-end;gap:3px">
+                <sc-for list="{{ crescimento.barras }}" as="b" hint-placeholder-count="30">
+                  <span title="{{ b.title }}" style="{{ b.est }}"></span>
+                </sc-for>
+              </div>
+            </div>
+            <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid #edf1f3;font-size:12.5px;color:#3d4f5c">
+              <span><b style="font-family:'Outfit',sans-serif;font-weight:700;color:#177a4c">{{ crescimento.seguiram }}</b> seguiram</span>
+              <span><b style="font-family:'Outfit',sans-serif;font-weight:700;color:#b42318">{{ crescimento.sairam }}</b> deixaram de seguir</span>
+            </div>
+          </section>
+
+          <section class="cap-rise" style="min-width:0;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:20px 22px 20px">
+            <div style="display:flex;align-items:center;gap:7px">
+              <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">alcance</span>
+            </div>
+            <div style="font-size:12px;color:#8b99a4;margin:5px 0 14px;padding-left:12px">quanto do alcance é gente nova</div>
+            <div style="display:flex;height:14px;border-radius:999px;overflow:hidden;gap:2px">
+              <span class="cap-grow" style="{{ alcance.estSeguidores }}"></span>
+              <span class="cap-grow" style="{{ alcance.estNovos }}"></span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:7px;margin-top:12px">
+              <sc-for list="{{ alcance.fatias }}" as="f" hint-placeholder-count="2">
+                <div style="display:flex;align-items:baseline;gap:9px">
+                  <span style="{{ f.estPonto }}"></span>
+                  <span style="flex:1;min-width:0;font-size:12.5px;color:#3d4f5c">{{ f.rotulo }}</span>
+                  <span style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;white-space:nowrap">{{ f.valor }}</span>
+                  <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4;width:40px;text-align:right">{{ f.pct }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77;margin:18px 0 10px">alcance por formato</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <sc-for list="{{ alcance.formatos }}" as="f" hint-placeholder-count="4">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span style="width:74px;font-size:12px;color:#5a6b77;flex-shrink:0">{{ f.label }}</span>
+                  <span style="flex:1;min-width:0;height:12px;border-radius:999px;background:#eff2f3;overflow:hidden"><span class="cap-grow" style="{{ f.estBarra }}"></span></span>
+                  <span style="font-family:'Outfit',sans-serif;font-size:12.5px;font-weight:700;width:58px;text-align:right">{{ f.valor }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </section>
+        </div>
+
+        <section class="cap-rise" style="flex:0 0 auto;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:20px 20px 12px">
+            <div>
+              <div style="display:flex;align-items:center;gap:7px">
+                <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">publicações</span>
+              </div>
+              <div style="font-size:12px;color:#8b99a4;margin-top:5px;padding-left:12px">{{ postsNota }}</div>
+            </div>
+            <div style="display:inline-flex;gap:3px;padding:3px;border-radius:999px;background:#f1f4f5">
+              <sc-for list="{{ ordens }}" as="o" hint-placeholder-count="2">
+                <button onClick="{{ o.escolher }}" style="{{ o.est }}">{{ o.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+          <div style="overflow-x:auto">
+          <div style="min-width:1180px">
+            <div style="display:grid;grid-template-columns:minmax(190px,1.7fr) 96px 78px 74px 78px 74px 72px 78px 84px 66px 74px 74px 82px;gap:10px;padding:10px 20px;border-top:1px solid #edf1f3;border-bottom:1px solid #edf1f3;background:#f7f9fa;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#8b99a4">
+              <span>Post</span><span>Formato</span><span style="text-align:right" title="contas únicas que viram">Alcance</span><span style="text-align:right" title="visualizações totais">Views</span><span style="text-align:right">Curtidas</span><span style="text-align:right">Coment.</span><span style="text-align:right">Salvos</span><span style="text-align:right">Compart.</span><span style="text-align:right" title="curtidas + comentários + salvos + compartilhamentos">Interações</span><span style="text-align:right" title="interações ÷ alcance">Eng.</span><span style="text-align:right" title="visitas ao perfil vindas do post">Visitas</span><span style="text-align:right" title="seguidores ganhos a partir do post">Seguiu</span><span style="text-align:right">Publicado</span>
+            </div>
+            <sc-for list="{{ posts }}" as="p" hint-placeholder-count="6">
+              <div style="display:grid;grid-template-columns:minmax(190px,1.7fr) 96px 78px 74px 78px 74px 72px 78px 84px 66px 74px 74px 82px;gap:10px;padding:12px 20px;align-items:center;border-bottom:1px solid #edf1f3;font-size:12.5px">
+                <span style="min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.titulo }}</span>
+                <span><span style="{{ p.estFormato }}">{{ p.formato }}</span></span>
+                <span style="text-align:right;font-family:'Outfit',sans-serif;font-weight:700">{{ p.alcance }}</span>
+                <span style="text-align:right">{{ p.views }}</span>
+                <span style="text-align:right">{{ p.curtidas }}</span>
+                <span style="text-align:right">{{ p.coment }}</span>
+                <span style="text-align:right">{{ p.salvos }}</span>
+                <span style="text-align:right">{{ p.compart }}</span>
+                <span style="text-align:right;font-weight:600">{{ p.interacoes }}</span>
+                <span style="{{ p.estEng }}">{{ p.eng }}</span>
+                <span style="text-align:right">{{ p.visitas }}</span>
+                <span style="text-align:right;color:{{ p.corSeguiu }}">{{ p.seguiu }}</span>
+                <span style="text-align:right;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4">{{ p.quando }}</span>
+              </div>
+            </sc-for>
+          </div>
+          </div>
+        </section>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ mostraComentarios }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <section class="cap-rise" style="flex:0 0 auto;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+          <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;flex-wrap:wrap;border-bottom:1px solid #edf1f3">
+            <div style="display:inline-flex;gap:3px;padding:3px;border-radius:999px;background:#f1f4f5">
+              <sc-for list="{{ filtrosComent }}" as="f" hint-placeholder-count="3">
+                <button onClick="{{ f.escolher }}" style="{{ f.est }}">{{ f.label }} <span style="font-family:'Outfit',sans-serif">{{ f.n }}</span></button>
+              </sc-for>
+            </div>
+            <span style="margin-left:auto;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4">{{ comentNota }}</span>
+          </div>
+          <sc-for list="{{ comentarios }}" as="c" hint-placeholder-count="4">
+            <div style="display:flex;gap:12px;padding:14px 18px;border-bottom:1px solid #edf1f3;align-items:flex-start">
+              <span style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-family:'Outfit',sans-serif;font-size:11px;font-weight:700">{{ c.iniciais }}</span>
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+                  <span style="font-size:13px;font-weight:650">{{ c.autor }}</span>
+                  <span style="{{ c.estTag }}">{{ c.tag }}</span>
+                  <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4">{{ c.quando }} · {{ c.post }}</span>
+                </div>
+                <div style="font-size:12.5px;line-height:1.5;color:#3d4f5c;margin-top:4px;text-wrap:pretty">{{ c.texto }}</div>
+                <div style="{{ c.estResposta }}"><span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#0b6b64">respondido</span><span style="display:block;font-size:12px;line-height:1.5;color:#0b6b64;margin-top:3px;text-wrap:pretty">{{ c.resposta }}</span></div>
+                <div style="{{ c.estAcoes }}">
+                  <button onClick="{{ c.sugerir }}" style="height:28px;padding:0 12px;border-radius:999px;background:#f1f4f5;color:#0F766E;font-size:11.5px;font-weight:600;transition:background 150ms ease" style-hover="background:#E9F5F3">{{ c.rotuloSugerir }}</button>
+                  <button onClick="{{ c.responder }}" style="{{ c.estResponder }}">{{ c.rotuloResponder }}</button>
+                  <button onClick="{{ c.virarLead }}" style="{{ c.estLead }}">{{ c.rotuloLead }}</button>
+                </div>
+              </div>
+            </div>
+          </sc-for>
+          <sc-if value="{{ semComentarios }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:26px 18px;font-family:'Plus Jakarta Sans',sans-serif;font-size:12.5px;color:#8b99a4;text-align:center">{{ vazioComent }}</div>
+          </sc-if>
+        </section>
+      </div>
+      </sc-if>
+    </div>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Redes sociais (screens/social.jsx): painel de métricas do perfil + fila de
+  // comentários. Os quatro KPIs, a divisão do alcance (seguidor × não-seguidor),
+  // o alcance por formato e a tabela de publicações com as colunas que o
+  // Instagram libera, ordenável por alcance ou data (o padrão da fonte é
+  // alcance: a pergunta da tela é "o que funcionou", não "o que saiu ontem").
+  static FORMATOS = { reels: ["Reels", "#5b6bd6"], carrossel: ["Carrossel", "#0f9d90"], estatico: ["Estático", "#8b99a4"], story: ["Story", "#b45309"] };
+  static POSTS = [
+    ["Como clonar 500 anúncios em 1 clique", "reels", 18400, 24100, 1240, 86, 312, 204, 1842, 10.0, 420, 96, 2],
+    ["3 erros que matam sua conta no ML", "carrossel", 12600, 14200, 880, 124, 268, 142, 1414, 11.2, 310, 64, 4],
+    ["Antes e depois: 1 conta → 6 contas", "reels", 9800, 12400, 640, 42, 188, 98, 968, 9.9, 224, 38, 6],
+    ["O que a IA muda no seu anúncio", "estatico", 6400, 7100, 410, 28, 96, 44, 578, 9.0, 142, 18, 8],
+    ["Preço fixo, sem taxa por pedido", "carrossel", 5200, 5900, 298, 34, 74, 30, 436, 8.4, 98, 12, 11],
+    ["Cliente dobrou faturamento em 60 dias", "reels", 4800, 6200, 352, 18, 122, 66, 558, 11.6, 168, 24, 13],
+  ];
+  static COMENTARIOS = [
+    ["Marcos Aguiar", "@marcos.ma", "quanto custa? tenho 3 contas no ML", 2, "Como clonar 500 anúncios", "lead", ""],
+    ["Nina Castro", "@ninacastropet", "isso funciona pra Shopee também?", 5, "3 erros que matam sua conta", "duvida", ""],
+    ["Otávio Braga", "@bragafit", "já uso outra ferramenta, qual a diferença?", 9, "Antes e depois", "duvida", ""],
+    ["Luiza Prado", "@prado.fit", "testei e em 2 dias já tinha tudo replicado 🔥", 14, "O que a IA muda", "elogio", ""],
+    ["Renata Dias", "@clinicard", "preciso de CNPJ pra usar?", 20, "Preço fixo", "duvida", ""],
+    ["Bruno Sato", "@satoimports", "me manda o link por favor", 26, "Cliente dobrou faturamento", "lead", "Te mandei no direct, Bruno! Qualquer dúvida me chama por lá."],
+  ];
+  static PAUTAS = [["reels", "Reels · antes e depois"], ["carrossel", "Carrossel · 3 erros"], ["estatico", "Estático · prova social"]];
+
+  state = { aba: "painel", ordem: "alcance", filtro: "pending",
+    respondidos: [], sugeridos: [], leads: [], postado: false };
+
+  fmtN(n) { return Number(n).toLocaleString("pt-BR"); }
+  seg(ativo, alt) {
+    if (alt) return "height:26px;padding:0 11px;border-radius:999px;font-size:11px;white-space:nowrap;transition:background 150ms ease,color 150ms ease;" +
+      (ativo ? "background:#fff;color:#0c1d2b;font-weight:650;box-shadow:0 1px 2px rgba(12,29,43,.06)" : "background:transparent;color:#5a6b77;font-weight:500");
+    return "height:32px;padding:0 15px;border-radius:999px;font-size:12.5px;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;transition:background 150ms ease,color 150ms ease;" +
+      (ativo ? "background:#0c1d2b;color:#fff;font-weight:600" : "background:transparent;color:#5a6b77;font-weight:500");
+  }
+
+  renderVals() {
+    const st = this.state;
+    const pendentes = Component.COMENTARIOS.filter((c, i) => !c[6] && !st.respondidos.includes(i));
+    const respondidos = Component.COMENTARIOS.filter((c, i) => c[6] || st.respondidos.includes(i));
+    const posts = Component.POSTS.map((p, i) => ({ t: p[0], f: p[1], alc: p[2], views: p[3], cur: p[4], com: p[5], sal: p[6], comp: p[7], inter: p[8], eng: p[9], vis: p[10], seg: p[11], dias: p[12], i }));
+    const ordenados = posts.slice().sort((a, b) => st.ordem === "alcance" ? b.alc - a.alc : a.dias - b.dias);
+    const maxFormato = 22400;
+
+    const vals = {
+      mov: this.props.movimento === false ? "off" : "on",
+      abas: [["painel", "Painel", 0], ["comentarios", "Comentários", pendentes.length]].map(([id, label, badge]) => ({
+        label, badge: badge ? String(badge) : "",
+        estBadge: badge ? "min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#a16207;color:#fff;font-family:'Outfit',sans-serif;font-size:10.5px;font-weight:700;display:inline-flex;align-items:center;justify-content:center" : "display:none",
+        est: this.seg(st.aba === id), escolher: () => this.setState({ aba: id }),
+      })),
+      mostraPainel: st.aba === "painel", mostraComentarios: st.aba === "comentarios",
+      criarPost: () => this.setState({ postado: true, aba: "painel" }),
+      hoje: {
+        titulo: st.postado ? "Reels da semana publicado ✓" : "3 pautas prontas pra hoje",
+        nota: st.postado ? "o número aparece no painel quando o Instagram devolver o alcance" : "a cadência é 12 posts no mês · 4 já saíram",
+        pautas: Component.PAUTAS.map(([f, rotulo]) => ({
+          rotulo,
+          est: "display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 13px;border-radius:999px;background:rgba(255,255,255,.07);color:rgba(243,251,255,.85);font-size:12px;font-weight:600;white-space:nowrap;transition:background 150ms ease",
+          estPonto: "width:7px;height:7px;border-radius:999px;flex-shrink:0;background:" + Component.FORMATOS[f][1],
+          abrir: () => this.setState({ postado: true }),
+        })),
+      },
+      kpis: [
+        { rot: "seguidores", val: "17.441", nota: "+284 no período", cor: "#0c1d2b" },
+        { rot: "alcance · 30 dias", val: "67.517", nota: "62% não-seguidores", cor: "#0c1d2b" },
+        { rot: "engajamento médio", val: "10,0%", nota: (4 + (st.postado ? 1 : 0)) + " posts no período", cor: "#177a4c" },
+        { rot: "posts no mês", val: String(4 + (st.postado ? 1 : 0)), nota: "de 12 · meta mensal", cor: 4 + (st.postado ? 1 : 0) < 12 ? "#a16207" : "#177a4c" },
+      ],
+      crescimento: (() => {
+        const S = [12, 18, 9, 22, 14, 6, 11, 26, 19, 8, 15, 21, 10, 17, 24, 13, 7, 20, 16, 9, 23, 12, 18, 14, 27, 11, 19, 8, 22, 16];
+        const max = Math.max(...S);
+        return {
+          liquido: "+284 no período",
+          seguiram: "+412", sairam: "−128",
+          linhas: [0, 1, 2].map((k) => "position:absolute;left:0;right:0;top:" + (k * 50) + "%;border-top:1px solid #edf1f3"),
+          barras: S.map((v, k) => ({
+            title: "dia " + (k + 1) + " · +" + v + " seguidores",
+            est: "flex:1;min-width:0;height:" + Math.round((v / max) * 100) + "%;border-radius:999px 999px 3px 3px;background:" + (v >= 20 ? "#0F766E" : v >= 12 ? "#4fb0a6" : "#cfe6e3"),
+          })),
+        };
+      })(),
+      alcance: {
+        estSeguidores: "width:38%;background:#8b99a4;border-radius:999px",
+        estNovos: "width:62%;background:#0F766E;border-radius:999px",
+        fatias: [
+          { rotulo: "alcance de quem já segue", valor: "25.656", pct: "38%", estPonto: "width:8px;height:8px;border-radius:999px;background:#8b99a4;flex-shrink:0" },
+          { rotulo: "alcance de quem não segue", valor: "41.861", pct: "62%", estPonto: "width:8px;height:8px;border-radius:999px;background:#0F766E;flex-shrink:0" },
+        ],
+        formatos: [["Reels", 22400], ["Carrossel", 17800], ["Estático", 11600], ["Story", 15700]].map(([label, v]) => ({
+          label, valor: this.fmtN(v),
+          estBarra: "display:block;height:100%;border-radius:999px;width:" + Math.max(4, Math.round((v / maxFormato) * 100)) + "%;background:linear-gradient(90deg,#0C8F83,#0F766E)",
+        })),
+      },
+      ordens: [["alcance", "por alcance"], ["data", "por data"]].map(([id, label]) => ({
+        label, est: this.seg(st.ordem === id, true), escolher: () => this.setState({ ordem: id }),
+      })),
+      postsNota: st.ordem === "alcance" ? "as que mais renderam primeiro" : "na ordem do feed",
+      posts: ordenados.map((p) => {
+        const f = Component.FORMATOS[p.f];
+        return {
+          titulo: p.t, formato: f[0],
+          estFormato: "display:inline-flex;align-items:center;height:20px;padding:0 9px;border-radius:999px;background:#eef1f3;color:#3d4f5c;font-size:10.5px;font-weight:600;white-space:nowrap",
+          alcance: this.fmtN(p.alc), views: this.fmtN(p.views), curtidas: this.fmtN(p.cur),
+          coment: String(p.com), salvos: this.fmtN(p.sal), compart: this.fmtN(p.comp),
+          interacoes: this.fmtN(p.inter),
+          eng: String(p.eng).replace(".", ",") + "%",
+          estEng: "text-align:right;font-weight:700;color:" + (p.eng >= 10 ? "#177a4c" : p.eng >= 8 ? "#0c1d2b" : "#a16207"),
+          visitas: this.fmtN(p.vis), seguiu: "+" + p.seg,
+          corSeguiu: p.seg >= 50 ? "#177a4c" : "#3d4f5c",
+          quando: p.dias === 0 ? "hoje" : "há " + p.dias + "d",
+        };
+      }),
+      filtrosComent: [["pending", "Pendentes", pendentes.length], ["answered", "Respondidos", respondidos.length], ["all", "Todos", Component.COMENTARIOS.length]]
+        .map(([id, label, n]) => ({ label, n, est: this.seg(st.filtro === id, true), escolher: () => this.setState({ filtro: id }) })),
+      comentNota: pendentes.length ? "quem pergunta preço é lead: vira card no pipeline" : "fila limpa",
+      vazioComent: st.filtro === "pending" ? "nenhum comentário esperando resposta" : "nada neste filtro",
+    };
+
+    const lista = Component.COMENTARIOS.map((c, i) => ({ autor: c[0], user: c[1], texto: c[2], dias: c[3], post: c[4], tipo: c[5], resp: c[6], i }))
+      .filter((c) => {
+        const respondido = !!c.resp || st.respondidos.includes(c.i);
+        if (st.filtro === "pending") return !respondido;
+        if (st.filtro === "answered") return respondido;
+        return true;
+      });
+    vals.semComentarios = lista.length === 0;
+    vals.comentarios = lista.map((c) => {
+      const respondido = !!c.resp || st.respondidos.includes(c.i);
+      const sugerido = st.sugeridos.includes(c.i);
+      const virouLead = st.leads.includes(c.i);
+      const TAG = { lead: ["pergunta de preço", "#0F766E", "#E9F5F3"], duvida: ["dúvida", "#a16207", "#fbf4e6"], elogio: ["elogio", "#177a4c", "#e9f6ef"] };
+      const t = TAG[c.tipo];
+      return {
+        autor: c.autor + " · " + c.user, texto: c.texto, post: c.post,
+        iniciais: c.autor.split(" ").map((x) => x[0]).join(""),
+        quando: "há " + c.dias + (c.dias === 1 ? " hora" : " horas"),
+        tag: t[0],
+        estTag: "display:inline-flex;align-items:center;height:19px;padding:0 9px;border-radius:999px;font-size:10px;font-weight:600;white-space:nowrap;background:" + t[2] + ";color:" + t[1],
+        resposta: c.resp || (sugerido ? this.sugestao(c) : ""),
+        estResposta: (respondido || sugerido) ? "margin-top:8px;padding:9px 12px;border-radius:14px;background:#E9F5F3" : "display:none",
+        estAcoes: respondido ? "display:none" : "display:flex;gap:6px;flex-wrap:wrap;margin-top:9px",
+        rotuloSugerir: sugerido ? "Sugestão pronta ✓" : "Sugerir resposta",
+        sugerir: () => this.setState((s2) => ({ sugeridos: s2.sugeridos.concat([c.i]) })),
+        rotuloResponder: sugerido ? "Enviar resposta" : "Responder",
+        estResponder: "height:28px;padding:0 12px;border-radius:999px;font-size:11.5px;font-weight:600;transition:background 150ms ease;" +
+          (sugerido ? "background:#25d366;color:#06120c;font-weight:700" : "background:#0c1d2b;color:#fff"),
+        responder: () => this.setState((s2) => ({ respondidos: s2.respondidos.concat([c.i]), sugeridos: s2.sugeridos.concat([c.i]) })),
+        rotuloLead: virouLead ? "No pipeline ✓" : "Virar lead →",
+        estLead: c.tipo !== "lead" ? "display:none" : "height:28px;padding:0 12px;border-radius:999px;font-size:11.5px;font-weight:600;transition:background 150ms ease;" +
+          (virouLead ? "background:#E9F5F3;color:#0b6b64;cursor:default" : "background:#f1f4f5;color:#0F766E"),
+        virarLead: () => {
+          if (virouLead) return;
+          this.setState((s2) => ({ leads: s2.leads.concat([c.i]) }));
+          window.dispatchEvent(new CustomEvent("cockpit:ir", { detail: { tela: "Pi" } }));
+        },
+      };
+    });
+    return vals;
+  }
+
+  sugestao(c) {
+    const nome = c.autor.split(" ")[0];
+    if (c.tipo === "lead") return "Oi " + nome + "! Te mandei os detalhes no direct pra não poluir os comentários. Dá uma olhada lá 👀";
+    if (c.tipo === "elogio") return "Que bom saber, " + nome + "! Obrigado por contar 🙌";
+    return "Oi " + nome + "! Funciona sim — te explico no direct como fica no seu caso.";
+  }
+}
+</script>
+</body>
+</html>

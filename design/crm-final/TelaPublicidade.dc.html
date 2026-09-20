@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Publicidade</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-gaveta-sai{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-gaveta-sai{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;margin:0 -4px;padding:0 4px 24px">
+
+      <header class="cap-rise" style="flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+        <div style="min-width:0">
+          <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Publicidade</h1>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap">
+            
+            <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:#3d4f5c"><span style="width:6px;height:6px;border-radius:999px;background:#177a4c"></span>Meta conectada · act_4471</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <button onClick="{{ abrirManual }}" style="height:34px;padding:0 14px;border-radius:999px;background:#fff;color:#3d4f5c;font-size:12.5px;font-weight:600;box-shadow:0 1px 2px rgba(12,29,43,.05);transition:background 150ms ease" style-hover="background:#f7f9fa">{{ rotuloManual }}</button>
+          <button onClick="{{ abrirCriar }}" style="height:40px;padding:0 18px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:13px;font-weight:650;transition:background 150ms ease" style-hover="background:#1b3140">{{ rotuloCriar }}</button>
+        </div>
+      </header>
+
+      <sc-if value="{{ temAviso }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:flex-start;gap:10px;padding:12px 15px;border-radius:20px;background:#e9f6ef;box-shadow:inset 0 0 0 1px rgba(23,122,76,.3)">
+          <span style="color:#177a4c;font-size:14px;line-height:1.35">✓</span>
+          <div style="flex:1;font-size:12.5px;line-height:1.5;color:#0c1d2b;text-wrap:pretty">{{ avisoTexto }}</div>
+          <button onClick="{{ fecharAviso }}" title="dispensar" style="color:#5a6b77;font-size:13px;padding:2px">✕</button>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ manualAberto }}" hint-placeholder-val="{{ false }}">
+        <section class="cap-rise" style="flex:0 0 auto;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:16px 18px">
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">registrar gasto manual</div>
+          <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:12px">
+            <label style="display:flex;flex-direction:column;gap:5px">
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">data</span>
+              <input type="date" value="{{ manual.data }}" onChange="{{ mudarManualData }}" style="height:36px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 14px;font-family:inherit;font-size:12.5px;color:#0c1d2b;outline:none">
+            </label>
+            <label style="display:flex;flex-direction:column;gap:5px;flex:1 1 150px;min-width:0">
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">campanha (opcional)</span>
+              <input value="{{ manual.nome }}" onChange="{{ mudarManualNome }}" placeholder="Entrada manual" style="height:36px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 14px;font-family:inherit;font-size:12.5px;color:#0c1d2b;outline:none">
+            </label>
+            <label style="display:flex;flex-direction:column;gap:5px">
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">gasto (R$)</span>
+              <input value="{{ manual.gasto }}" onChange="{{ mudarManualGasto }}" placeholder="0,00" style="width:120px;height:36px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 14px;font-family:inherit;font-size:12.5px;text-align:right;color:#0c1d2b;outline:none">
+            </label>
+            <button onClick="{{ salvarManual }}" style="{{ estSalvarManual }}">Registrar</button>
+            <button onClick="{{ abrirManual }}" style="height:36px;padding:0 12px;font-size:12px;color:#5a6b77;font-weight:600">Cancelar</button>
+          </div>
+        </section>
+      </sc-if>
+
+      <section class="cap-rise" style="position:relative;overflow:hidden;flex:0 0 auto;border-radius:24px;background:linear-gradient(168deg,#0a2434,#051C2C 70%);box-shadow:0 1px 2px rgba(5,28,44,.14),0 18px 40px -24px rgba(5,28,44,.6);padding:20px 22px 18px">
+        <span style="position:absolute;right:-36px;top:-32px;width:180px;height:180px;color:#23D8D3;opacity:.07;pointer-events:none"><svg width="180" height="180" viewBox="355 525 455 590"><polygon fill="currentColor" points="800.7 535.53 800.7 1103.92 763 983.8 749.25 939.91 691.16 754.61 501.54 817.84 457.65 832.42 362.47 864.14 443.6 803.33 481.22 775.08 800.7 535.53"></polygon></svg></span>
+        <div style="position:relative;display:flex;align-items:center;gap:7px">
+          <span style="width:5px;height:14px;border-radius:999px;background:#23D8D3;flex-shrink:0"></span>
+          <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#23D8D3">do anúncio ao dinheiro</span>
+        </div>
+        <div style="position:relative;display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap;margin-top:16px">
+          <sc-for list="{{ corrente }}" as="p" hint-placeholder-count="6">
+            <div style="display:flex;align-items:flex-start;gap:6px;min-width:0">
+              <div style="{{ p.estSeta }}">
+                <span style="font-family:'Outfit',sans-serif;font-size:12.5px;font-weight:600;color:#23D8D3">{{ p.taxa }}</span>
+                <span style="font-size:15px;line-height:1;color:rgba(243,251,255,.4)">→</span>
+              </div>
+              <div style="min-width:0" title="{{ p.title }}">
+                <div style="font-size:11.5px;color:rgba(243,251,255,.6);white-space:nowrap">{{ p.rotulo }}</div>
+                <div style="font-family:'Outfit',sans-serif;font-size:26px;font-weight:700;letter-spacing:-.03em;line-height:1.1;margin-top:2px;color:{{ p.cor }}">{{ p.valor }}</div>
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:rgba(243,251,255,.45);margin-top:2px;white-space:nowrap">{{ p.nota }}</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+
+      <sc-if value="{{ temRegras }}" hint-placeholder-val="{{ true }}">
+      <section class="cap-rise" style="flex:0 0 auto;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+        <div style="padding:20px 20px 12px">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="width:5px;height:14px;border-radius:999px;background:#a16207;flex-shrink:0"></span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">regras do gerenciador</span>
+          </div>
+          
+        </div>
+        <sc-for list="{{ regras }}" as="r" hint-placeholder-count="3">
+          <div style="display:flex;align-items:center;gap:13px;padding:13px 20px;border-top:1px solid #edf1f3;flex-wrap:wrap">
+            <span style="{{ r.estBarra }}"></span>
+            <div style="flex:1 1 260px;min-width:0">
+              <div style="font-size:13.5px;font-weight:650;color:{{ r.cor }};text-wrap:pretty">{{ r.titulo }}</div>
+              <div style="font-size:12px;color:#5a6b77;margin-top:2px;text-wrap:pretty">{{ r.nota }}</div>
+            </div>
+            <sc-if value="{{ r.confirmando }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+                <span style="font-size:11.5px;color:#b42318;font-weight:600">{{ r.pergunta }}</span>
+                <button onClick="{{ r.confirmar }}" style="height:30px;padding:0 14px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:11.5px;font-weight:700;white-space:nowrap">Confirmar</button>
+                <button onClick="{{ r.cancelar }}" style="height:30px;padding:0 10px;font-size:11.5px;color:#5a6b77;font-weight:600">Não</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{ r.parado }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;align-items:center;gap:6px">
+                <button onClick="{{ r.aplicar }}" style="{{ r.estAplicar }}">{{ r.acao }}</button>
+                <button onClick="{{ r.dispensar }}" style="height:30px;padding:0 11px;border-radius:999px;background:transparent;color:#8b99a4;font-size:11.5px;font-weight:600;transition:background 150ms ease" style-hover="background:#f1f4f5">Dispensar</button>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </section>
+      </sc-if>
+
+      <section class="cap-rise" style="flex:0 0 auto;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:20px 22px 18px">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div>
+            <div style="display:flex;align-items:center;gap:7px">
+              <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">regras de veiculação</span>
+            </div>
+            <div style="font-size:12px;color:#8b99a4;margin-top:5px;padding-left:12px;text-wrap:pretty">rodam sozinhas no servidor · estratégia é encher a agenda de amanhã</div>
+          </div>
+          <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4">{{ veiculacaoNota }}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:14px">
+          <sc-for list="{{ veiculacao }}" as="v" hint-placeholder-count="4">
+            <div style="{{ v.est }}">
+              <button onClick="{{ v.alternar }}" style="{{ v.estToggle }}"><span style="{{ v.estBolinha }}"></span></button>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:600;color:{{ v.cor }};text-wrap:pretty">{{ v.nome }}</div>
+                <div style="font-size:11.5px;color:#5a6b77;margin-top:2px;text-wrap:pretty">{{ v.regra }}</div>
+              </div>
+              <span style="{{ v.estUltima }}">{{ v.ultima }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+
+      <div class="cap-2col" style="align-items:start">
+        <section class="cap-rise" style="min-width:0;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:20px 22px 18px">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">custo por etapa do funil</span>
+          </div>
+          
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <sc-for list="{{ etapas }}" as="e" hint-placeholder-count="5">
+              <div style="display:grid;grid-template-columns:minmax(72px,110px) minmax(12px,1fr) 78px 44px;gap:10px;align-items:center">
+                <span style="font-size:12.5px;color:#5a6b77;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ e.etapa }}</span>
+                <span style="height:18px;border-radius:999px;background:#eff2f3;overflow:hidden"><span class="cap-grow" style="{{ e.estBarra }}"></span></span>
+                <span style="text-align:right;font-family:'Outfit',sans-serif;font-size:13px;font-weight:700">{{ e.custo }}</span>
+                <span style="text-align:right;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4">{{ e.pct }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+
+        <section class="cap-rise" style="min-width:0;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:20px 22px 18px">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">origem dos leads</span>
+          </div>
+          
+          <div style="display:flex;flex-direction:column;gap:11px">
+            <sc-for list="{{ origens }}" as="o" hint-placeholder-count="5">
+              <div style="min-width:0">
+                <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+                  <span style="flex:1 1 90px;min-width:0;font-size:12.5px;color:#5a6b77;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ o.label }}</span>
+                  <span style="font-family:'Outfit',sans-serif;font-size:13.5px;font-weight:700;white-space:nowrap">{{ o.leads }}<span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:500;color:#8b99a4"> · {{ o.share }}</span></span>
+                  <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#5a6b77;white-space:nowrap">{{ o.calls }}</span>
+                  <span style="{{ o.estGanhos }}">{{ o.ganhos }}</span>
+                </div>
+                <span style="display:block;height:16px;border-radius:999px;background:#eff2f3;overflow:hidden;margin-top:5px"><span class="cap-grow" style="{{ o.estBarra }}"></span></span>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+      </div>
+
+      <section class="cap-rise" style="flex:0 0 auto;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+        <div style="padding:20px 20px 12px">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">por dor</span>
+          </div>
+          
+        </div>
+        <div style="overflow-x:auto">
+        <div style="min-width:760px">
+          <div style="display:grid;grid-template-columns:minmax(180px,1.6fr) 90px 62px 84px 78px 84px 74px;gap:10px;padding:10px 20px;border-top:1px solid #edf1f3;border-bottom:1px solid #edf1f3;background:#f7f9fa;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#8b99a4">
+            <span>Dor</span><span style="text-align:right">Investido</span><span style="text-align:right">Leads</span><span style="text-align:right">CPL</span><span style="text-align:right">Conversões</span><span style="text-align:right">R$/conv.</span><span style="text-align:right">ROAS</span>
+          </div>
+          <sc-for list="{{ dores }}" as="d" hint-placeholder-count="4">
+            <div style="display:grid;grid-template-columns:minmax(180px,1.6fr) 90px 62px 84px 78px 84px 74px;gap:10px;padding:12px 20px;align-items:center;border-bottom:1px solid #edf1f3;font-size:12.5px">
+              <span style="display:flex;align-items:center;gap:8px;min-width:0"><span style="{{ d.estCod }}">{{ d.cod }}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ d.label }}</span></span>
+              <span style="text-align:right">{{ d.investido }}</span>
+              <span style="text-align:right;font-weight:600">{{ d.leads }}</span>
+              <span style="text-align:right;font-family:'Outfit',sans-serif;font-weight:700">{{ d.cpl }}</span>
+              <span style="text-align:right;font-weight:600">{{ d.conv }}</span>
+              <span style="text-align:right">{{ d.porConv }}</span>
+              <span style="{{ d.estRoas }}">{{ d.roas }}</span>
+            </div>
+          </sc-for>
+        </div>
+        </div>
+      </section>
+
+      <section class="cap-rise" style="flex:0 0 auto;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+        <div style="display:flex;align-items:center;gap:10px;padding:14px 18px 12px;flex-wrap:wrap">
+          <div style="display:inline-flex;gap:3px;padding:3px;border-radius:999px;background:#f1f4f5">
+            <sc-for list="{{ niveis }}" as="n" hint-placeholder-count="3">
+              <button onClick="{{ n.escolher }}" style="{{ n.est }}">{{ n.label }} <span style="font-family:'Outfit',sans-serif">{{ n.n }}</span></button>
+            </sc-for>
+          </div>
+          <sc-if value="{{ temChip }}" hint-placeholder-val="{{ false }}">
+            <button onClick="{{ limparChip }}" style="display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 12px;border-radius:999px;background:#E9F5F3;color:#0b6b64;font-size:11.5px;font-weight:600;white-space:nowrap">{{ chipLabel }} ✕</button>
+          </sc-if>
+          <button onClick="{{ alternarColunas }}" style="{{ estBotaoColunas }}">Colunas ▾</button>
+          <span style="margin-left:auto;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4">{{ gerenciadorNota }}</span>
+        </div>
+        <sc-if value="{{ colunasAbertas }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-wrap:wrap;gap:5px;padding:0 18px 12px">
+            <sc-for list="{{ colunasOpcoes }}" as="c" hint-placeholder-count="8">
+              <button onClick="{{ c.alternar }}" style="{{ c.est }}">{{ c.label }}</button>
+            </sc-for>
+          </div>
+        </sc-if>
+        <div style="overflow-x:auto">
+        <div style="{{ estGerenciadorMin }}">
+          <div style="{{ estCabecalho }}">
+            <span></span>
+            <span>{{ colNome }}</span>
+            <sc-for list="{{ colunas }}" as="c" hint-placeholder-count="8">
+              <button onClick="{{ c.ordenar }}" style="{{ c.est }}" title="{{ c.hint }}">{{ c.label }}</button>
+            </sc-for>
+          </div>
+          <sc-for list="{{ linhas }}" as="l" hint-placeholder-count="6">
+            <div style="{{ l.est }}">
+              <button onClick="{{ l.alternar }}" style="{{ l.estToggle }}"><span style="{{ l.estBolinha }}"></span></button>
+              <button onClick="{{ l.entrar }}" style="min-width:0;text-align:left">
+                <span style="display:block;font-size:12.5px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:{{ l.corNome }}">{{ l.nome }}</span>
+                <span style="{{ l.estSub }}">{{ l.sub }}</span>
+              </button>
+              <sc-for list="{{ l.celulas }}" as="c" hint-placeholder-count="8">
+                <span style="{{ c.est }}">{{ c.v }}</span>
+              </sc-for>
+            </div>
+          </sc-for>
+          <div style="{{ estTotais }}">
+            <span></span>
+            <span style="font-size:12px;font-weight:700">Totais · {{ totaisNota }}</span>
+            <sc-for list="{{ totais }}" as="t" hint-placeholder-count="8">
+              <span style="{{ t.est }}">{{ t.v }}</span>
+            </sc-for>
+          </div>
+        </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Publicidade (screens/metrics.jsx): a corrente do anúncio ao dinheiro (o
+  // CorrenteDaPublicidade, que substituiu a fileira de sete números soltos),
+  // as recomendações do gerenciador com confirmação, as regras de veiculação
+  // que rodam no servidor, custo por etapa, origem dos leads (volume E
+  // aproveitamento), por dor, e o gerenciador em três níveis com colunas
+  // modeláveis, ordenação e linha de totais.
+  static COLS = [
+    ["budget", "Orçamento/dia", "150px", 1, "orçamento diário · editar replica no Gerenciador"],
+    ["spend", "Investido", "100px", 1, ""],
+    ["leads", "Leads", "62px", 1, "leads reais do cockpit atribuídos por UTM · a Meta reporta mais (coluna Leads Meta)"],
+    ["abc", "Clientes ABC", "150px", 1, "clientes A/B/C atribuídos (UTM) · custo por cada"],
+    ["cpl", "CPL", "84px", 1, "investimento ÷ leads reais do cockpit"],
+    ["calls", "Calls", "68px", 1, "leads atribuídos que marcaram ou sentaram"],
+    ["bookRate", "Tx. agend.", "92px", 1, "calls agendadas ÷ leads do período"],
+    ["showRate", "Tx. compar.", "100px", 1, "compareceram ÷ calls já vencidas"],
+    ["ctr", "CTR link", "78px", 1, "cliques no link ÷ impressões"],
+    ["cpc", "CPC link", "86px", 1, "investido ÷ cliques no link"],
+    ["won", "Conversões", "96px", 1, "negócios fechados no período, por UTM"],
+    ["revenue", "Valor conv.", "104px", 1, "soma dos fechados no período"],
+    ["play3s", "3s play", "78px", 1, "reproduções de 3s ÷ impressões"],
+    ["metaLeads", "Leads Meta", "92px", 0, "leads que a META atribui (modelo dela)"],
+    ["impressions", "Impressões", "100px", 0, ""],
+    ["cpm", "CPM", "84px", 0, "custo por mil impressões"],
+    ["roas", "ROAS", "78px", 0, "receita dos fechados ÷ investimento"],
+  ];
+  static DELIVERY = { ACTIVE: ["ativo", "#177a4c"], PAUSED: ["pausado", "#8b99a4"], REVIEW: ["em análise", "#a16207"], ISSUES: ["com problemas", "#b42318"] };
+  // nome, status, orçamento, investido, leads, calls, compareceram, cliques, impressões, conversões, receita, play3s, leadsMeta, pai
+  static CAMPANHAS = [
+    ["[C] Marketplace · estoque parado", "ACTIVE", 180, 4240, 62, 18, 14, 1840, 148200, 2, 28800, 41, 78, null],
+    ["[A] Anúncio caro sem venda", "ACTIVE", 150, 3180, 43, 11, 8, 1320, 104800, 1, 24000, 38, 54, null],
+    ["[B] Não sabe medir retorno", "ACTIVE", 90, 1920, 21, 7, 6, 680, 62400, 1, 9600, 31, 27, null],
+    ["[E] Escalar sem perder margem", "PAUSED", 60, 840, 6, 2, 1, 240, 24600, 0, 0, 24, 9, null],
+  ];
+  static CONJUNTOS = [
+    ["Lookalike 1% compradores", "ACTIVE", 90, 2180, 34, 11, 9, 980, 78400, 1, 14400, 44, 42, 0],
+    ["Interesses · e-commerce", "ACTIVE", 90, 2060, 28, 7, 5, 860, 69800, 1, 14400, 38, 36, 0],
+    ["Retargeting · base 90d", "ACTIVE", 80, 1740, 26, 7, 5, 720, 56200, 1, 24000, 41, 32, 1],
+    ["Interesses · gestão de tráfego", "ACTIVE", 70, 1440, 17, 4, 3, 600, 48600, 0, 0, 35, 22, 1],
+    ["Amplo · sem segmentação", "REVIEW", 90, 1920, 21, 7, 6, 680, 62400, 1, 9600, 31, 27, 2],
+    ["Lookalike 2% leads", "PAUSED", 60, 840, 6, 2, 1, 240, 24600, 0, 0, 24, 9, 3],
+  ];
+  static ANUNCIOS = [
+    ["v3 · antes e depois", "ACTIVE", 0, 1240, 22, 7, 5, 560, 42800, 1, 14400, 52, 28, 0],
+    ["v7 · depoimento cliente", "ACTIVE", 0, 940, 12, 4, 3, 420, 35600, 1, 14400, 46, 15, 0],
+    ["v2 · print do painel", "ISSUES", 0, 680, 7, 2, 1, 280, 24800, 0, 0, 38, 9, 1],
+    ["v4 · fala do fundador", "ACTIVE", 0, 1120, 16, 5, 4, 520, 38200, 1, 24000, 49, 20, 2],
+    ["v1 · gancho de banimento", "ACTIVE", 0, 860, 11, 3, 2, 380, 31400, 1, 9600, 41, 14, 3],
+    ["v5 · comparativo de preço", "PAUSED", 0, 420, 3, 1, 0, 160, 14200, 0, 0, 29, 4, 4],
+  ];
+  static REGRAS = [
+    ["neg", "[E] Escalar sem perder margem · 6 leads, 0 conversão", "R$ 840 investidos e nenhum fechamento em 14 dias · a dor não está trazendo lead que compra", "pausar a campanha", "Pausar [E] agora?"],
+    ["pos", "Lookalike 1% compradores · CPL R$ 32 contra média de R$ 48", "3 conversões e taxa de comparecimento de 73% · é o conjunto que mais senta gente na call", "subir 20% do orçamento", "Subir o orçamento em 20% (R$ 90 → R$ 108)?"],
+    ["warn", "v2 · print do painel está com problemas", "reprovado pela Meta há 2 dias e ainda consumindo verba do conjunto", "desativar o anúncio", "Desativar v2 · print do painel?"],
+  ];
+  static VEICULACAO = [
+    [1, "Agenda cheia pausa", "quando a agenda de amanhã fecha em 9 calls, pausa tudo até liberar", "rodou hoje 11:20"],
+    [1, "Janela de fim de semana", "sábado e domingo entram com 40% do orçamento", "rodou sáb 00:05"],
+    [0, "Sexta curta", "sexta encerra a veiculação às 16h", "desligada"],
+    [1, "Orçamento alvo", "mantém o CPL abaixo de R$ 52 mexendo no orçamento em degraus de 10%", "rodou hoje 08:00"],
+  ];
+  static ETAPAS = [["Leads", 214, 44.86], ["Contatados", 176, 54.55], ["Calls marcadas", 61, 157.38], ["Calls realizadas", 47, 204.26], ["Ganhos", 8, 1200]];
+  // Só Semente e Alvo são dado próprio — a linha da Rede é a soma das campanhas,
+  // senão a mídia paga acaba declarada duas vezes com números diferentes.
+  // As três fecham o funil do mês: 214 leads · 61 calls marcadas · 8 ganhos.
+  static ORIGENS = [["Semente · indicação", 46, 15, 3, 1], ["Alvo · outbound", 36, 8, 1, 0]];
+  static DORES = [["C", "estoque parado no marketplace", 4240, 124, 4, 62400], ["A", "anúncio caro sem venda", 3180, 86, 3, 38400], ["B", "não sabe medir o retorno", 1920, 41, 1, 9600], ["E", "escalar sem perder margem", 840, 12, 0, 0]];
+
+  state = { nivel: "campanhas", chip: null, ordem: "spend", dir: -1,
+    ligados: {}, cols: null, colunasAbertas: false, manual: null, criando: false,
+    aplicadas: [], dispensadas: [], confirmando: null, regrasOn: {}, aviso: null, manuais: [] };
+  componentWillUnmount() { clearTimeout(this._a); }
+
+  money(n) { return "R$ " + Math.round(n).toLocaleString("pt-BR"); }
+  fmtN(n) { return Number(n).toLocaleString("pt-BR"); }
+  pct(a, b, casas) { return b ? (Math.round((a / b) * (casas ? 1000 : 100)) / (casas ? 10 : 1)).toString().replace(".", ",") + "%" : "—"; }
+  seg(ativo, alt) {
+    if (alt) return "height:26px;padding:0 11px;border-radius:999px;font-size:11px;white-space:nowrap;transition:background 150ms ease,color 150ms ease;" +
+      (ativo ? "background:#fff;color:#0c1d2b;font-weight:650;box-shadow:0 1px 2px rgba(12,29,43,.06)" : "background:transparent;color:#5a6b77;font-weight:500");
+    return "height:30px;padding:0 14px;border-radius:999px;font-size:12px;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;transition:background 150ms ease,color 150ms ease;" +
+      (ativo ? "background:#0c1d2b;color:#fff;font-weight:650" : "background:transparent;color:#5a6b77;font-weight:500");
+  }
+  colsAtivas() { return this.state.cols || Component.COLS.filter((c) => c[3]).map((c) => c[0]); }
+  flash(texto) {
+    this.setState({ aviso: texto });
+    clearTimeout(this._a);
+    this._a = setTimeout(() => this.setState({ aviso: null }), 4000);
+  }
+  ligado(nivel, i, padrao) {
+    const k = nivel + ":" + i;
+    return this.state.ligados[k] === undefined ? padrao : this.state.ligados[k];
+  }
+
+  renderVals() {
+    const st = this.state;
+    const cols = this.colsAtivas();
+    const fonte = st.nivel === "campanhas" ? Component.CAMPANHAS : st.nivel === "conjuntos" ? Component.CONJUNTOS : Component.ANUNCIOS;
+    const linhasBase = fonte.map((r, i) => ({
+      nome: r[0], status: r[1], budget: r[2], spend: r[3], leads: r[4], calls: r[5], show: r[6],
+      clicks: r[7], impressions: r[8], won: r[9], revenue: r[10], play3s: r[11], metaLeads: r[12], pai: r[13], i,
+      // Clientes A/B/C atribuídos por UTM: a régua da Publicidade é qualidade
+      // do cliente, não lead barato. A = ticket alto e fica, C = fecha e sai.
+      cA: Math.round(r[9] * 0.5), cB: Math.round(r[9] * 0.3), cC: r[9] - Math.round(r[9] * 0.5) - Math.round(r[9] * 0.3),
+    })).filter((r) => st.chip == null || r.pai === st.chip);
+    const val = (r, k) => {
+      if (k === "abc") return r.cA * 100 + r.cB * 10 + r.cC;
+      if (k === "cpl") return r.leads ? r.spend / r.leads : -Infinity;
+      if (k === "bookRate") return r.leads ? r.calls / r.leads : -Infinity;
+      if (k === "showRate") return r.calls ? r.show / r.calls : -Infinity;
+      if (k === "ctr") return r.impressions ? r.clicks / r.impressions : -Infinity;
+      if (k === "cpc") return r.clicks ? r.spend / r.clicks : -Infinity;
+      if (k === "cpm") return r.impressions ? (r.spend / r.impressions) * 1000 : -Infinity;
+      if (k === "roas") return r.spend ? r.revenue / r.spend : -Infinity;
+      return r[k] == null ? -Infinity : r[k];
+    };
+    const linhas = linhasBase.slice().sort((a, b) => (val(a, st.ordem) - val(b, st.ordem)) * st.dir);
+    const celula = (r, k) => {
+      const D = Component.DELIVERY[r.status] || Component.DELIVERY.PAUSED;
+      if (k === "budget") return r.budget ? this.money(r.budget) : "herda do conjunto";
+      if (k === "spend") return this.money(r.spend);
+      if (k === "leads") return this.fmtN(r.leads);
+      if (k === "abc") {
+        if (!r.won) return "—";
+        const partes = [r.cA && "A " + r.cA, r.cB && "B " + r.cB, r.cC && "C " + r.cC].filter(Boolean).join(" · ");
+        return partes + (r.cA ? " · " + this.money(r.spend / r.cA) + "/A" : "");
+      }
+      if (k === "cpl") return r.leads ? this.money(r.spend / r.leads) : "—";
+      if (k === "calls") return String(r.calls);
+      if (k === "bookRate") return this.pct(r.calls, r.leads, true);
+      if (k === "showRate") return this.pct(r.show, r.calls);
+      if (k === "ctr") return this.pct(r.clicks, r.impressions, true);
+      if (k === "cpc") return r.clicks ? this.money(r.spend / r.clicks) : "—";
+      if (k === "won") return r.won ? String(r.won) : "—";
+      if (k === "revenue") return r.revenue ? this.money(r.revenue) : "—";
+      if (k === "play3s") return r.play3s + "%";
+      if (k === "metaLeads") return String(r.metaLeads);
+      if (k === "impressions") return this.fmtN(r.impressions);
+      if (k === "cpm") return r.impressions ? this.money((r.spend / r.impressions) * 1000) : "—";
+      if (k === "roas") return r.spend ? (Math.round((r.revenue / r.spend) * 10) / 10).toString().replace(".", ",") + "x" : "—";
+      return "—";
+    };
+    const T = linhasBase.reduce((a, r) => ({
+      spend: a.spend + r.spend, leads: a.leads + r.leads, calls: a.calls + r.calls, show: a.show + r.show,
+      clicks: a.clicks + r.clicks, impressions: a.impressions + r.impressions, won: a.won + r.won,
+      revenue: a.revenue + r.revenue, budget: a.budget + r.budget, metaLeads: a.metaLeads + r.metaLeads,
+      cA: a.cA + r.cA, cB: a.cB + r.cB, cC: a.cC + r.cC,
+      play3s: a.play3s + r.play3s * r.impressions,
+    }), { spend: 0, leads: 0, calls: 0, show: 0, clicks: 0, impressions: 0, won: 0, revenue: 0, budget: 0, metaLeads: 0, play3s: 0, cA: 0, cB: 0, cC: 0 });
+    const tot = Object.assign({}, T, { play3s: T.impressions ? Math.round(T.play3s / T.impressions) : 0, status: "ACTIVE", i: -1 });
+    const grade = "46px minmax(200px,1.6fr) " + cols.map((k) => (Component.COLS.find((c) => c[0] === k) || [])[2]).join(" ");
+    const largura = 46 + 200 + cols.reduce((a, k) => a + parseInt((Component.COLS.find((c) => c[0] === k) || ["", "", "90px"])[2]), 0) + cols.length * 10;
+    const alinhaDir = (k) => k !== "budget" && k !== "abc";
+
+    // As três origens do mês: a Rede sai das campanhas, Semente e Alvo são dado
+    // próprio (não têm anúncio atrás).
+    const redeLeads = Component.CAMPANHAS.reduce((a, r) => a + r[4], 0);
+    const totalLeads = redeLeads + Component.ORIGENS.reduce((a, o) => a + o[1], 0);
+    const maxOrigem = Math.max(redeLeads, ...Component.ORIGENS.map((o) => o[1]));
+    // Gasto manual entra no investimento do período (é pra isso que ele existe:
+    // preencher dia que a Meta não sincronizou).
+    const gasto = 10180 + st.manuais.reduce((a, m) => a + m.valor, 0);
+
+    const vals = {
+      mov: this.props.movimento === false ? "off" : "on",
+      temAviso: !!st.aviso, avisoTexto: st.aviso || "", fecharAviso: () => this.setState({ aviso: null }),
+      rotuloManual: st.manual ? "Fechar gasto manual" : "+ gasto manual",
+      abrirManual: () => this.setState((s2) => ({ manual: s2.manual ? null : { data: "2026-09-19", nome: "", gasto: "" } })),
+      manualAberto: !!st.manual,
+      manual: st.manual || { data: "2026-09-19", nome: "", gasto: "" },
+      mudarManualData: (e) => this.setState((s2) => ({ manual: { ...s2.manual, data: e.target.value } })),
+      mudarManualNome: (e) => this.setState((s2) => ({ manual: { ...s2.manual, nome: e.target.value } })),
+      mudarManualGasto: (e) => this.setState((s2) => ({ manual: { ...s2.manual, gasto: e.target.value.replace(/[^\d.,]/g, "") } })),
+      estSalvarManual: "height:36px;padding:0 16px;border-radius:999px;font-size:12.5px;font-weight:650;transition:background 150ms ease;" +
+        (st.manual && st.manual.gasto ? "background:#0c1d2b;color:#fff" : "background:#eef1f3;color:#8b99a4;cursor:not-allowed"),
+      salvarManual: () => {
+        if (!st.manual || !st.manual.gasto) return;
+        const v = Number(String(st.manual.gasto).replace(",", ".")) || 0;
+        this.setState((s2) => ({ manual: null, manuais: s2.manuais.concat([{ valor: v, data: st.manual.data, nome: st.manual.nome }]) }));
+        const d = String(st.manual.data || "").split("-");
+        const dia = d.length === 3 ? d[2] + "/" + d[1] : "hoje";
+        this.flash("Gasto de " + this.money(v) + " registrado em " + dia + (st.manual.nome ? " · " + st.manual.nome : "") + " · entra no investimento do período.");
+      },
+      rotuloCriar: st.criando ? "Anúncio na fila ✓" : "+ criar anúncio",
+      abrirCriar: () => {
+        if (st.criando) return;
+        this.setState({ criando: true });
+        this.flash("Leva de anúncios enviada pra Meta · entram em análise e aparecem no gerenciador quando forem aprovados.");
+      },
+      corrente: (() => {
+        // A corrente é a SOMA das campanhas — a tela mede a mídia paga, não o
+        // funil inteiro (que tem indicação e outbound). Derivar daqui é o que
+        // impede o topo de discordar da linha de totais logo abaixo.
+        const C = Component.CAMPANHAS.reduce((a, r) => ({
+          leads: a.leads + r[4], calls: a.calls + r[5], show: a.show + r[6], won: a.won + r[9], rev: a.rev + r[10],
+        }), { leads: 0, calls: 0, show: 0, won: 0, rev: 0 });
+        const pc = (n, d) => d > 0 ? (Math.round((n / d) * 1000) / 10).toString().replace(".", ",") + "%" : "—";
+        const P = [
+          ["Investido", this.money(gasto), "", "#F3FBFF", "", "gasto no período, Meta + manual"],
+          ["Leads", this.fmtN(C.leads), this.money(gasto / C.leads) + " por lead", "#F3FBFF", "cpl", "leads do cockpit atribuídos por UTM à mídia paga"],
+          ["Calls marcadas", this.fmtN(C.calls), pc(C.calls, C.leads) + " dos leads", "#F3FBFF", pc(C.calls, C.leads), "leads que marcaram call"],
+          ["Calls realizadas", this.fmtN(C.show), pc(C.show, C.calls) + " de comparecimento", "#F3FBFF", pc(C.show, C.calls), "sentaram na call"],
+          ["Ganhos", this.fmtN(C.won), this.money(gasto / Math.max(1, C.won)) + " por cliente", "#23D8D3", pc(C.won, C.show), "fechados pela data da venda"],
+          ["Receita", this.money(C.rev), "ROAS " + (Math.round((C.rev / gasto) * 10) / 10).toString().replace(".", ",") + "x", "#23D8D3", "", "soma dos fechados vindos de anúncio"],
+        ];
+        return P.map(([rotulo, valor, nota, cor, taxa, title], k) => ({
+          rotulo, valor, nota, cor, taxa, title,
+          estSeta: k === 0 ? "display:none" : "display:flex;flex-direction:column;align-items:center;gap:1px;padding:14px 6px 0;flex-shrink:0",
+        }));
+      })(),
+      temRegras: Component.REGRAS.some((r, i) => !st.dispensadas.includes(i) && !st.aplicadas.includes(i)),
+      regras: Component.REGRAS.map((r, i) => ({ tom: r[0], titulo: r[1], nota: r[2], acao: r[3], pergunta: r[4], i }))
+        .filter((r) => !st.dispensadas.includes(r.i) && !st.aplicadas.includes(r.i))
+        .map((r) => {
+          const cor = r.tom === "neg" ? "#b42318" : r.tom === "warn" ? "#a16207" : "#177a4c";
+          return {
+            titulo: r.titulo, nota: r.nota, acao: r.acao, pergunta: r.pergunta, cor,
+            estBarra: "width:4px;height:34px;border-radius:999px;flex-shrink:0;background:" + cor,
+            confirmando: st.confirmando === r.i, parado: st.confirmando !== r.i,
+            estAplicar: "height:30px;padding:0 14px;border-radius:999px;font-size:11.5px;font-weight:650;white-space:nowrap;transition:background 150ms ease;background:" +
+              (r.tom === "pos" ? "#E9F5F3;color:#0b6b64" : "#0c1d2b;color:#fff"),
+            aplicar: () => this.setState({ confirmando: r.i }),
+            cancelar: () => this.setState({ confirmando: null }),
+            confirmar: () => {
+              this.setState((s2) => ({ aplicadas: s2.aplicadas.concat([r.i]), confirmando: null }));
+              this.flash(r.acao.charAt(0).toUpperCase() + r.acao.slice(1) + " · aplicado no Gerenciador da Meta.");
+            },
+            dispensar: () => this.setState((s2) => ({ dispensadas: s2.dispensadas.concat([r.i]) })),
+          };
+        }),
+      veiculacaoNota: (() => {
+        const n = Component.VEICULACAO.filter((v, i) => (st.regrasOn[i] === undefined ? v[0] : st.regrasOn[i])).length;
+        return n + " de " + Component.VEICULACAO.length + (n === 1 ? " regra ligada" : " regras ligadas");
+      })(),
+      veiculacao: Component.VEICULACAO.map(([on0, nome, regra, ultima], i) => {
+        const on = st.regrasOn[i] === undefined ? !!on0 : st.regrasOn[i];
+        return {
+          nome, regra, ultima: on ? ultima : "desligada",
+          cor: on ? "#0c1d2b" : "#8b99a4",
+          est: "display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:20px;background:" + (on ? "#f7f9fa" : "#fbfcfd"),
+          estToggle: "flex-shrink:0;width:38px;height:22px;border-radius:999px;padding:2px;display:flex;align-items:center;transition:background 150ms ease;background:" + (on ? "#0F766E" : "#d7dee2"),
+          estBolinha: "width:18px;height:18px;border-radius:999px;background:#fff;transition:transform 150ms ease;transform:translateX(" + (on ? "16px" : "0") + ")",
+          estUltima: "font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;white-space:nowrap;color:" + (on ? "#177a4c" : "#8b99a4"),
+          alternar: () => this.setState((s2) => ({ regrasOn: Object.assign({}, s2.regrasOn, { [i]: !on }) })),
+        };
+      }),
+      // Custo por etapa da MÍDIA PAGA: dividir o gasto de anúncio por lead de
+      // indicação inflaria a eficiência dela. A cadeia sai das campanhas.
+      etapas: (() => {
+        const C = Component.CAMPANHAS.reduce((a, r) => ({ leads: a.leads + r[4], calls: a.calls + r[5], show: a.show + r[6], won: a.won + r[9] }),
+          { leads: 0, calls: 0, show: 0, won: 0 });
+        const contatados = Math.round(C.leads * 0.822);
+        const cadeia = [["Leads", C.leads], ["Contatados", contatados], ["Calls marcadas", C.calls], ["Calls realizadas", C.show], ["Ganhos", C.won]];
+        return cadeia.map(([etapa, n], k) => ({
+          etapa, custo: n ? this.money(gasto / n) : "—",
+          pct: this.pct(n, C.leads, true),
+          estBarra: "display:block;height:100%;border-radius:999px;width:" + Math.max(3, Math.round((n / C.leads) * 100)) + "%;background:" + (k === 4 ? "#177a4c" : "linear-gradient(90deg,#0C8F83,#0F766E)"),
+        }));
+      })(),
+      origens: (() => {
+        const R = Component.CAMPANHAS.reduce((a, r) => ({ leads: a.leads + r[4], calls: a.calls + r[5], won: a.won + r[9] }), { leads: 0, calls: 0, won: 0 });
+        return [["Rede · Instagram", R.leads, R.calls, R.won, 1]].concat(Component.ORIGENS);
+      })().map(([label, leads, calls, ganhos, bom]) => ({
+        label, leads: this.fmtN(leads), share: this.pct(leads, totalLeads, true),
+        calls: calls + (calls === 1 ? " call" : " calls") + " · " + this.pct(calls, leads),
+        ganhos: ganhos + (ganhos === 1 ? " ganho" : " ganhos"),
+        estGanhos: "font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;white-space:nowrap;font-weight:" + (bom ? "700;color:#177a4c" : "500;color:#8b99a4"),
+        estBarra: "display:block;height:100%;border-radius:999px;width:" + Math.max(3, Math.round((leads / maxOrigem) * 100)) + "%;background:" + (bom ? "#177a4c" : "linear-gradient(90deg,#0C8F83,#0F766E)"),
+      })),
+      // A dor é o código entre colchetes no nome da campanha: agrupar por ele
+      // mantém uma fonte só — antes esta tabela e a de campanhas mostravam
+      // números diferentes pro mesmo dinheiro.
+      dores: Component.DORES.map(([cod, label]) => {
+        const daDor = Component.CAMPANHAS.filter((r) => r[0].indexOf("[" + cod + "]") === 0);
+        const inv = daDor.reduce((a, r) => a + r[3], 0);
+        const leads = daDor.reduce((a, r) => a + r[4], 0);
+        const conv = daDor.reduce((a, r) => a + r[9], 0);
+        const rec = daDor.reduce((a, r) => a + r[10], 0);
+        const roas = inv ? rec / inv : 0;
+        const CORES = { C: "#eab308", A: "#16a34a", B: "#65a30d", E: "#9aa2ad" };
+        return {
+          cod, label,
+          estCod: "flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:21px;height:21px;border-radius:999px;font-family:'Outfit',sans-serif;font-size:10.5px;font-weight:700;background:" + CORES[cod] + ";color:" + (cod === "C" ? "#463500" : "#fff"),
+          investido: this.money(inv), leads: String(leads),
+          cpl: leads ? this.money(inv / leads) : "—",
+          conv: conv ? String(conv) : "—",
+          porConv: conv ? this.money(inv / conv) : "—",
+          roas: roas ? (Math.round(roas * 10) / 10).toString().replace(".", ",") + "x" : "—",
+          estRoas: "text-align:right;font-family:'Outfit',sans-serif;font-weight:700;color:" + (roas >= 8 ? "#177a4c" : roas >= 4 ? "#0c1d2b" : roas > 0 ? "#a16207" : "#b42318"),
+        };
+      }),
+      niveis: [["campanhas", "Campanhas", Component.CAMPANHAS.length], ["conjuntos", "Conjuntos", Component.CONJUNTOS.length], ["anuncios", "Anúncios", Component.ANUNCIOS.length]]
+        .map(([id, label, n]) => ({ label, n, est: this.seg(st.nivel === id), escolher: () => this.setState({ nivel: id, chip: null }) })),
+      temChip: st.chip != null,
+      chipLabel: st.chip != null ? (st.nivel === "conjuntos" ? Component.CAMPANHAS[st.chip] : Component.CONJUNTOS[st.chip] || [])[0] : "",
+      limparChip: () => this.setState({ chip: null }),
+      gerenciadorNota: linhas.length + " de " + fonte.length + " · " + (st.nivel === "anuncios" ? "clique no nome abre o criativo" : "clique no nome desce um nível"),
+      estBotaoColunas: "height:28px;padding:0 13px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap;transition:background 150ms ease;" +
+        (st.colunasAbertas ? "background:#0c1d2b;color:#fff" : "background:#f1f4f5;color:#3d4f5c"),
+      alternarColunas: () => this.setState((s2) => ({ colunasAbertas: !s2.colunasAbertas })),
+      colunasAbertas: st.colunasAbertas,
+      colunasOpcoes: Component.COLS.map(([k, label]) => {
+        const on = cols.includes(k);
+        return {
+          label,
+          est: "height:26px;padding:0 11px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;transition:background 150ms ease;" +
+            (on ? "background:#E9F5F3;color:#0b6b64;box-shadow:inset 0 0 0 1px rgba(15,118,110,.3)" : "background:#f1f4f5;color:#8b99a4"),
+          alternar: () => this.setState((s2) => {
+            const atuais = s2.cols || Component.COLS.filter((c) => c[3]).map((c) => c[0]);
+            const proximas = atuais.includes(k) ? atuais.filter((x) => x !== k) : Component.COLS.map((c) => c[0]).filter((x) => atuais.includes(x) || x === k);
+            return { cols: proximas.length ? proximas : atuais };
+          }),
+        };
+      }),
+      estGerenciadorMin: "min-width:" + largura + "px",
+      estCabecalho: "display:grid;grid-template-columns:" + grade + ";gap:10px;padding:10px 18px;border-top:1px solid #edf1f3;border-bottom:1px solid #edf1f3;background:#f7f9fa;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#8b99a4",
+      colNome: st.nivel === "campanhas" ? "Campanha" : st.nivel === "conjuntos" ? "Conjunto" : "Anúncio",
+      colunas: cols.map((k) => {
+        const c = Component.COLS.find((x) => x[0] === k) || [k, k, "90px", 0, ""];
+        const ativo = st.ordem === k;
+        return {
+          label: c[1] + (ativo ? (st.dir === 1 ? " ↑" : " ↓") : ""), hint: c[4],
+          est: "font-family:inherit;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;text-align:" +
+            (alinhaDir(k) ? "right;" : "left;") + (ativo ? "color:#3d4f5c" : "color:#8b99a4"),
+          ordenar: () => this.setState((s2) => ({ ordem: k, dir: s2.ordem === k ? -s2.dir : -1 })),
+        };
+      }),
+      linhas: linhas.map((r) => {
+        const D = Component.DELIVERY[r.status] || Component.DELIVERY.PAUSED;
+        const on = this.ligado(st.nivel, r.i, r.status === "ACTIVE" || r.status === "REVIEW" || r.status === "ISSUES");
+        return {
+          nome: r.nome,
+          corNome: on ? "#0c1d2b" : "#8b99a4",
+          sub: on ? D[0] : "pausado",
+          estSub: "display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;margin-top:2px;white-space:nowrap;color:" + (on ? D[1] : "#8b99a4"),
+          est: "display:grid;grid-template-columns:" + grade + ";gap:10px;padding:11px 18px;align-items:center;border-bottom:1px solid #edf1f3;font-size:12.5px;" + (on ? "" : "opacity:.55"),
+          estToggle: "flex-shrink:0;width:34px;height:20px;border-radius:999px;padding:2px;display:flex;align-items:center;transition:background 150ms ease;background:" + (on ? "#0F766E" : "#d7dee2"),
+          estBolinha: "width:16px;height:16px;border-radius:999px;background:#fff;transition:transform 150ms ease;transform:translateX(" + (on ? "14px" : "0") + ")",
+          alternar: () => this.setState((s2) => ({ ligados: Object.assign({}, s2.ligados, { [st.nivel + ":" + r.i]: !on }) })),
+          entrar: () => {
+            if (st.nivel === "campanhas") this.setState({ nivel: "conjuntos", chip: r.i });
+            else if (st.nivel === "conjuntos") this.setState({ nivel: "anuncios", chip: r.i });
+          },
+          celulas: cols.map((k) => ({
+            v: celula(r, k),
+            est: "font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:" + (alinhaDir(k) ? "right" : "left") +
+              (k === "cpl" || k === "revenue" ? ";font-family:'Outfit',sans-serif;font-weight:700" : "") +
+              (k === "budget" || k === "abc" ? ";font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#5a6b77" : ""),
+          })),
+        };
+      }),
+      estTotais: "display:grid;grid-template-columns:" + grade + ";gap:10px;padding:12px 18px;align-items:center;background:#f7f9fa;border-top:1px solid #e4e9eb",
+      totaisNota: linhasBase.length + " " + (st.nivel === "campanhas" ? "campanhas" : st.nivel === "conjuntos" ? "conjuntos" : "anúncios"),
+      totais: cols.map((k) => ({
+        v: k === "budget" ? this.money(tot.budget) : celula(tot, k),
+        est: "font-size:12.5px;font-weight:700;white-space:nowrap;text-align:" + (alinhaDir(k) ? "right" : "left") +
+          (k === "budget" || k === "abc" ? ";font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#5a6b77;font-weight:600" : ""),
+      })),
+    };
+    return vals;
+  }
+}
+</script>
+</body>
+</html>

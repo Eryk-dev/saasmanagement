@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Links de pagamento</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-gaveta-sai{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-gaveta-sai{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;margin:0 -4px;padding:0 4px 24px">
+
+      <header class="cap-rise" style="flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+        <div>
+          <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Links de pagamento</h1>
+          
+        </div>
+        <button onClick="{{ gerar }}" style="height:40px;padding:0 20px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:13px;font-weight:650;transition:background 150ms ease" style-hover="background:#1b3140">Gerar link</button>
+      </header>
+
+      <section class="cap-rise" style="position:relative;overflow:hidden;flex:0 0 auto;border-radius:24px;background:linear-gradient(168deg,#0a2434,#051C2C 70%);box-shadow:0 1px 2px rgba(5,28,44,.14),0 18px 40px -24px rgba(5,28,44,.6);padding:22px 24px 20px">
+        <span style="position:absolute;right:-34px;top:-30px;width:180px;height:180px;color:#23D8D3;opacity:.07;pointer-events:none"><svg width="180" height="180" viewBox="355 525 455 590"><polygon fill="currentColor" points="800.7 535.53 800.7 1103.92 763 983.8 749.25 939.91 691.16 754.61 501.54 817.84 457.65 832.42 362.47 864.14 443.6 803.33 481.22 775.08 800.7 535.53"></polygon></svg></span>
+        <div style="position:relative;display:flex;align-items:flex-start;gap:28px;flex-wrap:wrap">
+          <div style="min-width:180px">
+            <div style="display:flex;align-items:center;gap:7px">
+              <span style="width:5px;height:14px;border-radius:999px;background:#ffb3a8;flex-shrink:0"></span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#ffb3a8">em aberto</span>
+            </div>
+            <div style="font-family:'Outfit',sans-serif;font-size:34px;font-weight:700;line-height:1.05;margin-top:8px;color:{{ corAberto }}">{{ emAberto }}</div>
+            <div style="font-size:11.5px;color:rgba(243,251,255,.55);margin-top:3px">{{ devendoNota }}</div>
+          </div>
+          <div style="min-width:150px;padding-top:6px">
+            <div style="font-size:12.5px;color:rgba(243,251,255,.6)">Recebido</div>
+            <div style="font-family:'Outfit',sans-serif;font-size:22px;font-weight:700;margin-top:4px;color:#23D8D3">{{ recebido }}</div>
+            <div style="font-size:11.5px;color:rgba(243,251,255,.45);margin-top:2px">{{ pagosNota }}</div>
+          </div>
+          <div style="min-width:140px;padding-top:6px">
+            <div style="font-size:12.5px;color:rgba(243,251,255,.6)">Links gerados</div>
+            <div style="font-family:'Outfit',sans-serif;font-size:22px;font-weight:700;margin-top:4px;color:#F3FBFF">{{ nLinks }}</div>
+            <div style="font-size:11.5px;color:rgba(243,251,255,.45);margin-top:2px">{{ pedidosNota }}</div>
+          </div>
+          <sc-if value="{{ temRecusado }}" hint-placeholder-val="{{ true }}">
+            <div style="min-width:130px;padding-top:6px">
+              <div style="font-size:12.5px;color:rgba(243,251,255,.6)">Recusado</div>
+              <div style="display:inline-flex;align-items:center;gap:7px;margin-top:6px">
+                <span style="width:6px;height:6px;border-radius:999px;background:#ff9d90"></span>
+                <span style="font-family:'Outfit',sans-serif;font-size:15px;font-weight:700;color:#ff9d90">{{ recusado }}</span>
+              </div>
+            </div>
+          </sc-if>
+          <button onClick="{{ verDevendo }}" style="margin-left:auto;align-self:center;height:34px;padding:0 15px;border-radius:999px;background:rgba(255,255,255,.1);color:#F3FBFF;font-size:12.5px;font-weight:600;white-space:nowrap;transition:background 150ms ease" style-hover="background:rgba(255,255,255,.18)">Ver quem está devendo →</button>
+        </div>
+        <div style="position:relative;display:flex;height:12px;border-radius:999px;overflow:hidden;background:rgba(255,255,255,.08);margin-top:18px">
+          <span class="cap-grow" style="{{ estBarraPago }}"></span>
+          <span class="cap-grow" style="{{ estBarraAberto }}"></span>
+          <span class="cap-grow" style="{{ estBarraRecusado }}"></span>
+        </div>
+        <div style="position:relative;display:flex;gap:16px;margin-top:10px;flex-wrap:wrap;align-items:center">
+          <span style="display:inline-flex;align-items:center;gap:7px;font-size:11.5px;color:rgba(243,251,255,.6)"><span style="width:6px;height:6px;border-radius:999px;background:#23D8D3"></span>pago</span>
+          <span style="display:inline-flex;align-items:center;gap:7px;font-size:11.5px;color:rgba(243,251,255,.6)"><span style="width:6px;height:6px;border-radius:999px;background:#e0a33c"></span>em aberto</span>
+          <span style="display:inline-flex;align-items:center;gap:7px;font-size:11.5px;color:rgba(243,251,255,.6)"><span style="width:6px;height:6px;border-radius:999px;background:#ff9d90"></span>recusado</span>
+          <span title="O status vem do Mercado Pago: o pagamento casa pelo link (referência do lead/fatura) ou pelo e-mail do pagador. Baixa manual = dinheiro que entrou por fora e foi marcado à mão. Substituído = link antigo de quem gerou de novo pelo mesmo valor." style="margin-left:auto;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:rgba(243,251,255,.45);cursor:help">como o status funciona ⓘ</span>
+        </div>
+      </section>
+
+      <section class="cap-rise" style="flex:0 0 auto;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+        <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;flex-wrap:wrap;border-bottom:1px solid #edf1f3">
+          <div style="display:inline-flex;flex-wrap:wrap;max-width:100%;gap:3px;padding:3px;border-radius:999px;background:#f1f4f5">
+            <sc-for list="{{ abas }}" as="a" hint-placeholder-count="4">
+              <button onClick="{{ a.escolher }}" style="{{ a.est }}">{{ a.label }} <span style="font-family:'Outfit',sans-serif">{{ a.n }}</span></button>
+            </sc-for>
+          </div>
+          <label style="display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 15px;border-radius:999px;background:#f1f4f5;color:#5a6b77;margin-left:auto;min-width:230px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><circle cx="11" cy="11" r="7"></circle><path d="M20.4 20.4l-4.2-4.2"></path></svg>
+            <input value="{{ busca }}" onChange="{{ mudarBusca }}" placeholder="buscar por cliente, telefone ou cobrança…" style="flex:1;min-width:0;border:0;background:none;outline:none;font-family:inherit;font-size:12.5px;color:#0c1d2b">
+          </label>
+        </div>
+        <div style="overflow-x:auto">
+        <div style="min-width:860px">
+          <div style="display:grid;grid-template-columns:28px minmax(180px,1.5fr) minmax(70px,.5fr) minmax(120px,.8fr) minmax(130px,.9fr) minmax(120px,.8fr) minmax(150px,.9fr);gap:12px;padding:11px 16px;border-bottom:1px solid #edf1f3;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#8b99a4">
+            <span></span><span>Cliente</span><span style="text-align:right">Links</span><span style="text-align:right">Pago</span><span style="text-align:right">Em aberto</span><span>Último link</span><span style="text-align:right">Ação</span>
+          </div>
+          <sc-for list="{{ grupos }}" as="g" hint-placeholder-count="6">
+            <div>
+              <div onClick="{{ g.alternar }}" style="{{ g.est }}" style-hover="background:#f7f9fa">
+                <span style="text-align:center;font-size:11px;color:#8b99a4">{{ g.seta }}</span>
+                <span style="min-width:0">
+                  <span style="display:block;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ g.nome }}</span>
+                  <span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;white-space:nowrap">{{ g.sub }}</span>
+                </span>
+                <span style="text-align:right;font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;color:#8b99a4">{{ g.nLinks }}</span>
+                <span style="{{ g.estPago }}">{{ g.pago }}</span>
+                <span style="text-align:right;min-width:0">
+                  <span style="{{ g.estAberto }}">{{ g.aberto }}</span>
+                  <span style="{{ g.estPill }}">{{ g.pill }}</span>
+                </span>
+                <span style="min-width:0">
+                  <span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#5a6b77;white-space:nowrap">{{ g.ultimo }}</span>
+                  <span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4">{{ g.desde }}</span>
+                </span>
+                <span style="display:flex;gap:6px;justify-content:flex-end;align-items:center">
+                  <button onClick="{{ g.cobrar }}" style="{{ g.estCobrar }}">{{ g.rotuloCobrar }}</button>
+                  <button onClick="{{ g.copiar }}" style="{{ g.estCopiar }}">{{ g.rotuloCopiar }}</button>
+                </span>
+              </div>
+              <sc-if value="{{ g.aberta }}" hint-placeholder-val="{{ false }}">
+                <div style="background:#f7f9fa;border-bottom:1px solid #edf1f3;padding:4px 16px 12px">
+                  <sc-for list="{{ g.links }}" as="l" hint-placeholder-count="2">
+                    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 12px;margin-top:6px;border-radius:18px;background:#fff">
+                      <span style="{{ l.estStatus }}">{{ l.status }}</span>
+                      <span style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;white-space:nowrap">{{ l.valor }}</span>
+                      <span style="flex:1 1 200px;min-width:0;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#5a6b77;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ l.descricao }}</span>
+                      <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4;white-space:nowrap">{{ l.quando }}</span>
+                      <span style="{{ l.estComo }}">{{ l.como }}</span>
+                      <button onClick="{{ l.baixar }}" style="{{ l.estBaixa }}">{{ l.acao }}</button>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+          <sc-if value="{{ vazio }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:26px 16px;font-family:'Plus Jakarta Sans',sans-serif;font-size:12.5px;color:#8b99a4">nenhum cliente com esse filtro · <button onClick="{{ limpar }}" style="color:#0F766E;font-weight:600">Limpar</button></div>
+          </sc-if>
+        </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Links de pagamento (screens/offers.jsx): a régua é POR CLIENTE — o grupo
+  // soma os links e o saldo decide a aba (Devendo · Pagos · Recusados · Todos).
+  // Status do link vem do LINK_STATUS do lib/payments.js: pago · em aberto ·
+  // substituído; e paidBy diz quem confirmou (Mercado Pago, baixa manual, fatura).
+  static ABAS = [["aguardando", "Devendo"], ["pagos", "Pagos"], ["recusados", "Recusados"], ["todos", "Todos"]];
+  static ORIGENS = ["card do lead", "tela de links", "cobrança da fatura"];
+
+  static gerar() {
+    // cliente/lead, telefone, tipo, [ [status, valor, descrição, diasAtras, comoPagou] ]
+    const G = [
+      ["Galante Holding", "(11) 98421-3307", "cliente", [
+        ["waiting", 8250, "Lever Price · Enterprise · parcela 09/12", 5, null],
+        ["waiting", 2230, "Pacote de OEM avulso", 2, null],
+        ["paid", 16500, "Lever Price · Enterprise · parcela 08/12", 34, "mp"]]],
+      ["Studio Kern", "(11) 99110-4482", "cliente", [
+        ["waiting", 2000, "Lever Ads · Escala · parcela 01/12", 12, null],
+        ["paid", 24000, "Lever Ads · Escala · anual à vista", 2, "mp"]]],
+      ["Fernanda Luz", "(11) 98750-2213", "lead", [
+        ["waiting", 24000, "Lever Ads · Escala · anual", 3, null],
+        ["superseded", 21600, "Lever Ads · Escala · anual (com desconto)", 6, null]]],
+      ["Menezes Auto", "(11) 99632-8140", "cliente", [
+        ["failed", 6400, "Lever OEM · Essencial · cartão recusado", 4, null]]],
+      ["Clínica Arbo", "(11) 98233-9017", "cliente", [
+        ["paid", 24000, "Lever Ads · Escala · anual à vista", 8, "mp"]]],
+      ["Nutri Vitta", "(11) 99024-7781", "cliente", [
+        ["paid", 4800, "Pacote de OEM avulso", 3, "manual"]]],
+      ["Oficina Prado", "(11) 98466-1120", "cliente", [
+        ["paid", 9600, "Lever Ads · Essencial · semestral", 4, "invoice"]]],
+      ["Mercado Ponto", "(11) 99873-5502", "cliente", [
+        ["paid", 6400, "Lever OEM · Essencial · semestral", 10, "mp"]]],
+      ["Grupo Vante", "(11) 98115-6644", "cliente", [
+        ["paid", 9600, "Lever Ads · Essencial · semestral", 15, "mp"]]],
+      ["Paulo Ferraz", "(11) 99341-0072", "lead", [
+        ["waiting", 14400, "Lever Price · Escala · anual", 1, null]]],
+      ["Instituto Rima", "(11) 98620-3391", "cliente", [
+        ["paid", 19600, "Lever Price · Essencial · anual", 22, "mp"]]],
+      ["Padaria Dovale", "(11) 99537-8823", "cliente", [
+        ["paid", 14400, "Lever Price · Escala · anual", 18, "manual"]]],
+    ];
+    let id = 0;
+    return G.map(([nome, tel, tipo, links], gi) => ({
+      chave: "g" + gi, nome, tel, tipo, aberta: false,
+      links: links.map(([status, valor, descricao, dias, como], li) => ({
+        id: id++, status, valor, descricao, dias, como,
+        origem: Component.ORIGENS[(gi + li) % 3],
+        url: "mpago.la/" + (2100 + gi * 7 + li),
+        copiado: false,
+      })),
+    }));
+  }
+
+  state = { aba: "aguardando", busca: "", grupos: Component.gerar(), copiado: null, cobrado: null };
+  componentWillUnmount() { clearTimeout(this._c); }
+
+  fmt(n) { return "R$ " + Math.round(n).toLocaleString("pt-BR"); }
+  data(dias) { const d = new Date(2026, 8, 19 - dias); return d.toLocaleDateString("pt-BR"); }
+  seg(ativo) {
+    return "height:30px;padding:0 14px;border-radius:999px;font-size:12px;white-space:nowrap;transition:background 150ms ease,color 150ms ease;" +
+      (ativo ? "background:#fff;color:#0c1d2b;font-weight:650;box-shadow:0 1px 2px rgba(12,29,43,.06)" : "background:transparent;color:#5a6b77;font-weight:500");
+  }
+  // Soma por grupo, como o servidor faz em counts.groups.
+  totais(g) {
+    let pago = 0, aberto = 0, recusado = 0, gerado = 0;
+    for (const l of g.links) {
+      if (l.status === "superseded") continue;
+      gerado += l.valor;
+      if (l.status === "paid") pago += l.valor;
+      else if (l.status === "failed") recusado += l.valor;
+      else aberto += l.valor;
+    }
+    return { pago, aberto, recusado, gerado };
+  }
+  baixar(id) {
+    this.setState((st) => ({ grupos: st.grupos.map((g) => ({
+      ...g, links: g.links.map((l) => l.id === id ? { ...l, status: "paid", como: "manual", dias: 0 } : l),
+    })) }));
+  }
+  marcar(campo, valor) {
+    this.setState({ [campo]: valor });
+    clearTimeout(this._c);
+    this._c = setTimeout(() => this.setState({ [campo]: null }), 2000);
+  }
+
+  renderVals() {
+    const st = this.state;
+    const LS = { paid: ["pago", "#177a4c", "#e9f6ef"], waiting: ["em aberto", "#a16207", "#fbf4e6"],
+      failed: ["recusado", "#b42318", "#fdf3f2"], superseded: ["substituído", "#5a6b77", "#f1f4f5"] };
+    const COMO = { mp: "Mercado Pago", manual: "baixa manual", invoice: "fatura baixada" };
+
+    let pago = 0, aberto = 0, recusado = 0, gerado = 0, nLinks = 0, nPagos = 0, nDevendo = 0;
+    for (const g of st.grupos) {
+      const t = this.totais(g);
+      pago += t.pago; aberto += t.aberto; recusado += t.recusado; gerado += t.gerado;
+      nLinks += g.links.filter((l) => l.status !== "superseded").length;
+      nPagos += g.links.filter((l) => l.status === "paid").length;
+      if (t.aberto > 0) nDevendo++;
+    }
+    const pct = (v) => gerado > 0 ? Math.max(0, Math.min(100, (v / gerado) * 100)) : 0;
+
+    const q = st.busca.trim().toLowerCase();
+    const daAba = (g) => {
+      const t = this.totais(g);
+      if (st.aba === "aguardando") return t.aberto > 0;
+      if (st.aba === "pagos") return t.aberto === 0 && t.pago > 0;
+      if (st.aba === "recusados") return t.recusado > 0;
+      return true;
+    };
+    const casa = (g) => !q || (g.nome + " " + g.tel + " " + g.links.map((l) => l.descricao).join(" ")).toLowerCase().includes(q);
+    const visiveis = st.grupos.filter((g) => daAba(g) && casa(g));
+    const conta = (aba) => st.grupos.filter((g) => {
+      const t = this.totais(g);
+      return aba === "aguardando" ? t.aberto > 0 : aba === "pagos" ? (t.aberto === 0 && t.pago > 0) : aba === "recusados" ? t.recusado > 0 : true;
+    }).length;
+
+    return {
+      mov: this.props.movimento === false ? "off" : "on",
+      emAberto: this.fmt(aberto), recebido: this.fmt(pago), recusado: this.fmt(recusado),
+      corAberto: aberto > 0 ? "#ffd9a0" : "#F3FBFF",
+      devendoNota: nDevendo + (nDevendo === 1 ? " cliente devendo" : " clientes devendo"),
+      pagosNota: nPagos + (nPagos === 1 ? " link pago" : " links pagos"),
+      nLinks: String(nLinks), pedidosNota: this.fmt(gerado) + " pedidos",
+      temRecusado: recusado > 0,
+      estBarraPago: "display:block;height:100%;background:#23D8D3;width:" + pct(pago) + "%",
+      estBarraAberto: "display:block;height:100%;background:#e0a33c;width:" + pct(aberto) + "%",
+      estBarraRecusado: "display:block;height:100%;background:#ff9d90;width:" + pct(recusado) + "%",
+      verDevendo: () => this.setState({ aba: "aguardando", busca: "" }),
+      gerar: () => this.setState((s2) => ({ aba: "aguardando", grupos: s2.grupos.map((g, i) => i === 0 ? {
+        ...g, aberta: true,
+        links: [{ id: 900 + s2.grupos[0].links.length, status: "waiting", valor: 8250, descricao: "Lever Price · Enterprise · parcela 10/12", dias: 0, como: null, origem: "tela de links", url: "mpago.la/9001", copiado: false }].concat(g.links),
+      } : g) })),
+      abas: Component.ABAS.map(([id, label]) => ({ label, n: conta(id), est: this.seg(st.aba === id), escolher: () => this.setState({ aba: id }) })),
+      busca: st.busca, mudarBusca: (e) => this.setState({ busca: e.target.value }),
+      limpar: () => this.setState({ aba: "todos", busca: "" }),
+      vazio: visiveis.length === 0,
+      grupos: visiveis.map((g) => {
+        const t = this.totais(g);
+        const emAbertoLink = g.links.find((l) => l.status === "waiting");
+        const pill = t.aberto > 0 ? ["em aberto", "#a16207", "#fbf4e6"] : t.pago > 0 ? ["pago", "#177a4c", "#e9f6ef"]
+          : t.recusado > 0 ? ["recusado", "#b42318", "#fdf3f2"] : ["sem cobrança ativa", "#5a6b77", "#f1f4f5"];
+        const ultimo = g.links.slice().sort((a, b) => a.dias - b.dias)[0];
+        return {
+          nome: g.nome, sub: [g.tipo, g.tel].filter(Boolean).join(" · "),
+          nLinks: String(g.links.filter((l) => l.status !== "superseded").length),
+          pago: t.pago > 0 ? this.fmt(t.pago) : "—",
+          aberto: t.aberto > 0 ? this.fmt(t.aberto) : "—",
+          estPago: "text-align:right;white-space:nowrap;font-family:'Outfit',sans-serif;font-size:13.5px;" + (t.pago > 0 ? "font-weight:700;color:#177a4c" : "color:#c5cfd4"),
+          estAberto: "display:block;white-space:nowrap;font-family:'Outfit',sans-serif;font-size:13.5px;" + (t.aberto > 0 ? "font-weight:700;color:#a16207" : "color:#c5cfd4"),
+          pill: pill[0],
+          estPill: "display:inline-flex;align-items:center;height:20px;padding:0 9px;margin-top:4px;border-radius:999px;font-size:10.5px;font-weight:600;white-space:nowrap;background:" + pill[2] + ";color:" + pill[1],
+          ultimo: this.data(ultimo.dias), desde: ultimo.dias === 0 ? "hoje" : "há " + ultimo.dias + "d",
+          seta: g.aberta ? "▾" : "▸", aberta: g.aberta,
+          est: "display:grid;grid-template-columns:28px minmax(180px,1.5fr) minmax(70px,.5fr) minmax(120px,.8fr) minmax(130px,.9fr) minmax(120px,.8fr) minmax(150px,.9fr);gap:12px;padding:12px 16px;align-items:center;border-bottom:1px solid #edf1f3;cursor:pointer;transition:background 150ms ease;" + (g.aberta ? "background:#f7f9fa" : ""),
+          alternar: () => this.setState((s2) => ({ grupos: s2.grupos.map((x) => x.chave === g.chave ? { ...x, aberta: !x.aberta } : x) })),
+          rotuloCobrar: st.cobrado === g.chave ? "Enviado ✓" : "Cobrar",
+          estCobrar: !emAbertoLink ? "display:none" : st.cobrado === g.chave
+            ? "height:26px;padding:0 11px;border-radius:999px;background:#E9F5F3;color:#0b6b64;font-size:11.5px;font-weight:700;cursor:default"
+            : "height:26px;padding:0 11px;border-radius:999px;background:#25d366;color:#06120c;font-size:11.5px;font-weight:700;transition:filter 150ms ease",
+          cobrar: () => { if (emAbertoLink) this.marcar("cobrado", g.chave); },
+          rotuloCopiar: st.copiado === g.chave ? "Copiado ✓" : "Copiar",
+          estCopiar: !emAbertoLink ? "display:none" : "height:26px;padding:0 11px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:11.5px;font-weight:600;transition:background 150ms ease",
+          copiar: () => {
+            if (!emAbertoLink) return;
+            if (navigator.clipboard) navigator.clipboard.writeText(emAbertoLink.url).catch(() => {});
+            this.marcar("copiado", g.chave);
+          },
+          links: g.links.map((l) => {
+            const s2 = LS[l.status] || LS.superseded;
+            return {
+              status: s2[0], valor: this.fmt(l.valor),
+              descricao: l.descricao + " · " + l.origem,
+              quando: l.dias === 0 ? "gerado hoje" : "gerado há " + l.dias + "d",
+              como: l.como ? COMO[l.como] : "",
+              estComo: l.como ? "font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#177a4c;white-space:nowrap" : "display:none",
+              estStatus: "display:inline-flex;align-items:center;height:22px;padding:0 11px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;background:" + s2[2] + ";color:" + s2[1],
+              acao: l.status === "waiting" ? "Dar baixa" : "",
+              estBaixa: l.status === "waiting"
+                ? "height:26px;padding:0 12px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:11px;font-weight:600;white-space:nowrap;transition:background 150ms ease"
+                : "display:none",
+              baixar: () => this.baixar(l.id),
+            };
+          }),
+        };
+      }),
+    };
+  }
+}
+</script>
+</body>
+</html>

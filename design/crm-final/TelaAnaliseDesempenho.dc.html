@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Análise de Desempenho</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-gaveta-sai{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-gaveta-sai{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;margin:0 -4px;padding:0 4px 24px">
+
+      <header class="cap-rise" style="flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+        <div style="min-width:0">
+          <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Análise de Desempenho</h1>
+          
+        </div>
+        
+      </header>
+
+      <sc-for list="{{ secoes }}" as="s" hint-placeholder-count="3">
+        <section class="cap-rise" style="flex:0 0 auto;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+          <div style="padding:18px 20px 12px">
+            <div style="display:flex;align-items:center;gap:7px">
+              <span style="{{ s.estPonto }}"></span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">{{ s.titulo }}</span>
+            </div>
+            
+          </div>
+          <div style="overflow-x:auto">
+            <div style="{{ s.estMin }}">
+              <div style="{{ s.estCabec }}">
+                <sc-for list="{{ s.colunas }}" as="c" hint-placeholder-count="8">
+                  <span style="{{ c.est }}" title="{{ c.title }}">{{ c.label }}</span>
+                </sc-for>
+              </div>
+              <sc-for list="{{ s.linhas }}" as="l" hint-placeholder-count="2">
+                <div>
+                  <button onClick="{{ l.alternar }}" style="{{ l.est }}" style-hover="background:#f7f9fa">
+                    <span style="display:flex;align-items:center;gap:9px;min-width:0">
+                      <span style="{{ l.estAvatar }}">{{ l.iniciais }}</span>
+                      <span style="min-width:0">
+                        <span style="display:block;font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ l.nome }}</span>
+                        <span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#8b99a4;white-space:nowrap">{{ l.papel }}</span>
+                      </span>
+                    </span>
+                    <sc-if value="{{ l.temRitmo }}" hint-placeholder-val="{{ true }}">
+                      <span style="display:flex;align-items:flex-end;gap:2px;height:22px">
+                        <sc-for list="{{ l.ritmo }}" as="b" hint-placeholder-count="7">
+                          <span style="{{ b.est }}" title="{{ b.title }}"></span>
+                        </sc-for>
+                      </span>
+                    </sc-if>
+                    <sc-for list="{{ l.celulas }}" as="c" hint-placeholder-count="6">
+                      <span style="{{ c.est }}">{{ c.v }}</span>
+                    </sc-for>
+                    <span style="{{ l.estChips }}">
+                      <sc-for list="{{ l.chips }}" as="ch" hint-placeholder-count="2">
+                        <span style="{{ ch.est }}" title="{{ ch.title }}">{{ ch.label }}</span>
+                      </sc-for>
+                      <span style="{{ l.estSemChip }}">{{ l.semChip }}</span>
+                    </span>
+                  </button>
+                  <sc-if value="{{ l.aberta }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;flex-wrap:wrap;gap:18px;padding:4px 20px 18px;background:#f7f9fa;border-bottom:1px solid #edf1f3">
+                      <sc-for list="{{ l.detalhes }}" as="d" hint-placeholder-count="4">
+                        <div style="flex:1 1 210px;min-width:0">
+                          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77;margin-bottom:7px">{{ d.titulo }}</div>
+                          <div style="display:flex;flex-wrap:wrap;gap:5px">
+                            <sc-for list="{{ d.itens }}" as="i" hint-placeholder-count="3">
+                              <button onClick="{{ i.abrir }}" style="height:24px;padding:0 10px;border-radius:999px;background:#fff;color:#3d4f5c;font-size:11px;font-weight:600;white-space:nowrap;box-shadow:0 1px 2px rgba(12,29,43,.06);transition:background 150ms ease" style-hover="background:#E9F5F3;color:#0b6b64">{{ i.nome }}</button>
+                            </sc-for>
+                            <span style="{{ d.estVazio }}">{{ d.vazio }}</span>
+                          </div>
+                        </div>
+                      </sc-for>
+                      <div style="flex:0 0 auto;align-self:flex-end">
+                        <button onClick="{{ l.copiar }}" style="{{ l.estCopiar }}">{{ l.rotuloCopiar }}</button>
+                      </div>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </section>
+      </sc-for>
+    </div>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Análise de Desempenho (screens/desempenho.jsx): a revisão de fim de dia por
+  // pessoa, em três seções (SDR · mídia social · closer). Cada linha abre o
+  // detalhe com NOMES — número sem nome não vira conversa. O ritmo de 7 dias é
+  // sparkline porque a FORMA é o que diz se a pessoa está acelerando ou parando.
+  static JANELAS = {
+    dia: { label: "Dia", nomes: ["qui 18/09", "sex 19/09"], atual: 1 },
+    semana: { label: "Semana", nomes: ["08/09–12/09", "15/09–19/09"], atual: 1 },
+    mes: { label: "Mês", nomes: ["julho", "agosto", "setembro"], atual: 2 },
+  };
+  // As vendas do mês, com data e dono — a MESMA lista das "Últimas vendas" da
+  // Visão geral e do GANHOS_BASE do Pipeline. A receita de cada janela é
+  // derivada daqui, então dia ⊂ semana ⊂ mês fecha sozinho e nenhuma venda
+  // troca de dono.  [empresa, valor, closer, dia de setembro]
+  //  [empresa, valor, closer, dia, mês]
+  static VENDAS = [
+    // setembro · 8 contratos · R$ 112.400 (o mês corrente da Visão geral)
+    ["Padaria Dovale", 14400, "Manuela Costa", 2, 9],
+    ["Grupo Vante", 9600, "Bruno Alencar", 4, 9],
+    ["Instituto Rima", 19600, "Rafael Moura", 5, 9],
+    ["Mercado Ponto", 6400, "Manuela Costa", 9, 9],
+    ["Clínica Arbo", 24000, "Rafael Moura", 11, 9],
+    ["Oficina Prado", 9600, "Bruno Alencar", 15, 9],
+    ["Nutri Vitta", 4800, "Rafael Moura", 16, 9],
+    ["Studio Kern", 24000, "Rafael Moura", 17, 9],
+    // agosto · 12 contratos · R$ 171.200 (meta batida, 104%)
+    ["Kern Outlet", 24000, "Rafael Moura", 5, 8],
+    ["Vitta Suplementos", 24000, "Rafael Moura", 8, 8],
+    ["Arbo Estética", 19600, "Rafael Moura", 12, 8],
+    ["Prado Motos", 14400, "Rafael Moura", 19, 8],
+    ["Dovale Doces", 9600, "Rafael Moura", 22, 8],
+    ["Rima Cursos", 6800, "Rafael Moura", 27, 8],
+    ["Vante Atacado", 14400, "Bruno Alencar", 6, 8],
+    ["Ponto Express", 14400, "Bruno Alencar", 14, 8],
+    ["Menezes Peças", 9600, "Bruno Alencar", 20, 8],
+    ["Braga Nutri", 9600, "Bruno Alencar", 28, 8],
+    ["Castro Agro", 14400, "Manuela Costa", 11, 8],
+    ["Luz Estúdio", 10400, "Manuela Costa", 25, 8],
+    // julho · 9 contratos · R$ 138.900 (fechou abaixo da meta)
+    ["Sato Distribuidora", 24000, "Rafael Moura", 4, 7],
+    ["Amaral Joias", 19600, "Rafael Moura", 9, 7],
+    ["Nogueira Casa", 14400, "Rafael Moura", 16, 7],
+    ["Bueno Pet", 9600, "Rafael Moura", 23, 7],
+    ["Tavares Bike", 9200, "Rafael Moura", 30, 7],
+    ["Galante Varejo", 24000, "Bruno Alencar", 7, 7],
+    ["Peixoto Modas", 9600, "Bruno Alencar", 15, 7],
+    ["Camargo Auto", 9600, "Bruno Alencar", 24, 7],
+    ["Sauro Fitness", 18900, "Manuela Costa", 18, 7],
+  ];
+  // Recorte de cada janela: [mês, diaDe, diaAté] (índice casa com JANELAS[modo].nomes).
+  static DIAS_JANELA = {
+    dia: [[9, 18, 18], [9, 19, 19]],
+    semana: [[9, 8, 12], [9, 15, 19]],
+    mes: [[7, 1, 31], [8, 1, 31], [9, 1, 30]],
+  };
+  fechamentos(modo, i, pessoa) {
+    const r = Component.DIAS_JANELA[modo][i];
+    if (!r) return [];
+    return Component.VENDAS.filter((v) => v[4] === r[0] && v[3] >= r[1] && v[3] <= r[2] && v[2] === pessoa);
+  }
+  // Uma entrada POR JANELA em cada modo (índice casa com JANELAS[modo].nomes):
+  // [pessoa, papel, ritmo7, noShow, agendadas, comIcp, contatos, semResposta,
+  //  social, viraramLead, objeções, detalhe]
+  static SDR = {
+    dia: [
+      [["Manuela Costa", "SDR · pleno", [12, 6, 14, 9, 11, 7, 10], 2, 3, 1, 19, 7, 4, 0,
+        [["só tem uma conta", 2, 2]],
+        { "Não compareceram": ["Bruno Sato", "Renata Dias"], "Não responderam": ["André Rima"], "Calls com ICP": ["Eduardo Galante"], "Viraram leads": [] }]],
+      [["Manuela Costa", "SDR · pleno", [8, 12, 6, 14, 9, 11, 7], 1, 4, 3, 23, 6, 6, 1,
+        [["quer saber preço antes de agendar", 1, 1], ["só tem uma conta", 1, 1]],
+        { "Não compareceram": ["Otávio Braga"], "Não responderam": ["Nina Castro", "Luiza Prado"], "Calls com ICP": ["Marcos Aguiar", "Tiago Nogueira", "Paula Bittencourt"], "Viraram leads": ["Camila Reis"] }]],
+    ],
+    semana: [
+      [["Manuela Costa", "SDR · pleno", [9, 11, 7, 12, 8, 10, 6], 5, 14, 8, 78, 21, 19, 3,
+        [["só tem uma conta", 4, 4], ["sem prioridade agora", 3, 3]],
+        { "Não compareceram": ["Bruno Sato", "Renata Dias", "Nina Castro"], "Não responderam": ["André Rima", "Paula Bueno"], "Calls com ICP": ["Eduardo Galante", "Marina Kern"], "Viraram leads": ["Tiago Nogueira"] }]],
+      [["Manuela Costa", "SDR · pleno", [11, 14, 9, 16, 12, 13, 10], 4, 18, 11, 96, 24, 28, 5,
+        [["quer saber preço antes de agendar", 3, 2], ["só tem uma conta", 3, 3], ["sem prioridade agora", 2, 2]],
+        { "Não compareceram": ["Otávio Braga", "Bruno Sato", "Renata Dias", "Nina Castro"], "Não responderam": ["Luiza Prado", "André Rima", "Camila Reis"], "Calls com ICP": ["Marcos Aguiar", "Tiago Nogueira", "Paula Bittencourt", "Eduardo Galante"], "Viraram leads": ["Camila Reis", "Paula Bueno"] }]],
+    ],
+    mes: [
+      [["Manuela Costa", "SDR · pleno", [7, 9, 6, 10, 8, 9, 7], 12, 52, 28, 186, 61, 52, 8,
+        [["só tem uma conta", 14, 12], ["sem prioridade agora", 9, 9]],
+        { "Não compareceram": ["Bruno Sato", "Renata Dias", "Nina Castro", "Otávio Braga"], "Não responderam": ["André Rima", "Paula Bueno"], "Calls com ICP": ["Eduardo Galante", "Marina Kern"], "Viraram leads": ["Tiago Nogueira", "Luiza Prado"] }]],
+      [["Manuela Costa", "SDR · pleno", [10, 13, 9, 15, 11, 13, 10], 10, 68, 39, 198, 55, 71, 11,
+        [["só tem uma conta", 12, 10], ["quer saber preço antes de agendar", 7, 4]],
+        { "Não compareceram": ["Otávio Braga", "Bruno Sato", "Nina Castro"], "Não responderam": ["Luiza Prado", "Camila Reis"], "Calls com ICP": ["Marcos Aguiar", "Marina Kern", "Eduardo Galante"], "Viraram leads": ["Camila Reis", "Tiago Nogueira"] }]],
+      [["Manuela Costa", "SDR · pleno", [12, 15, 11, 18, 14, 16, 13], 9, 61, 38, 214, 52, 84, 14,
+        [["só tem uma conta", 11, 9], ["quer saber preço antes de agendar", 8, 4], ["sem prioridade agora", 6, 6]],
+        { "Não compareceram": ["Otávio Braga", "Bruno Sato", "Renata Dias", "Nina Castro", "Luiza Prado"], "Não responderam": ["André Rima", "Camila Reis", "Paula Bueno"], "Calls com ICP": ["Marcos Aguiar", "Tiago Nogueira", "Paula Bittencourt", "Eduardo Galante", "Marina Kern"], "Viraram leads": ["Camila Reis", "Paula Bueno", "Tiago Nogueira"] }]],
+    ],
+  };
+  // [pessoa, papel, ritmo7, noShow, realizadas, receita, ticket, followups, objeções, detalhe]
+  static CLOSER = {
+    dia: [
+      [["Rafael Moura", "Closer · sênior", [5, 2, 6, 4, 5, 3, 4], 1, 2, 9600, 9600, 5,
+        [["prazo", 1, 1]], { "Não compareceram": ["Lúcia Amaral"], "Follow-ups do dia": ["Fernanda Luz", "Eduardo Galante", "Bruno Sato"] }],
+      ["Bruno Alencar", "Closer · pleno", [3, 1, 4, 2, 3, 2, 3], 0, 3, 0, null, 4,
+        [["preço", 2, 2]], { "Não compareceram": [], "Follow-ups do dia": ["Paulo Ferraz", "Renata Dias"] }]],
+      [["Rafael Moura", "Closer · sênior", [3, 5, 2, 6, 4, 5, 3], 0, 3, 0, null, 4,
+        [["preço", 1, 0]], { "Não compareceram": [], "Follow-ups do dia": ["Fernanda Luz", "Lúcia Amaral", "Eduardo Galante", "Isabel Corrêa"] }],
+      ["Bruno Alencar", "Closer · pleno", [2, 3, 1, 4, 2, 3, 2], 1, 2, 0, null, 3,
+        [["decisor ausente", 1, 1], ["já tem quem faça", 1, 1]], { "Não compareceram": ["Caio Menezes"], "Follow-ups do dia": ["Paulo Ferraz", "Isabel Corrêa", "Renata Dias"] }]],
+    ],
+    semana: [
+      [["Rafael Moura", "Closer · sênior", [4, 5, 3, 6, 4, 5, 4], 2, 9, 28800, 14400, 14,
+        [["preço", 3, 3], ["prazo", 2, 1]], { "Não compareceram": ["Lúcia Amaral", "Bruno Sato"], "Follow-ups do dia": ["Fernanda Luz", "Eduardo Galante"] }],
+      ["Bruno Alencar", "Closer · pleno", [3, 4, 2, 4, 3, 3, 2], 2, 6, 14900, 14900, 10,
+        [["preço", 2, 2], ["decisor ausente", 1, 1]], { "Não compareceram": ["Caio Menezes", "Otávio Braga"], "Follow-ups do dia": ["Paulo Ferraz", "Renata Dias"] }]],
+      [["Rafael Moura", "Closer · sênior", [4, 6, 3, 7, 5, 6, 4], 1, 12, 52800, 17600, 16,
+        [["preço", 4, 2], ["prazo", 2, 2]], { "Não compareceram": ["Fernanda Luz"], "Follow-ups do dia": ["Lúcia Amaral", "Eduardo Galante", "Bruno Sato"] }],
+      ["Bruno Alencar", "Closer · pleno", [2, 4, 2, 5, 3, 4, 2], 3, 8, 9600, 9600, 12,
+        [["decisor ausente", 2, 2], ["preço", 3, 3], ["já tem quem faça", 1, 1]], { "Não compareceram": ["Caio Menezes", "Renata Dias", "Bruno Sato"], "Follow-ups do dia": ["Paulo Ferraz", "Isabel Corrêa"] }]],
+    ],
+    mes: [
+      [["Rafael Moura", "Closer · sênior", [4, 5, 3, 6, 5, 5, 4], 5, 24, 49200, 12300, 51,
+        [["preço", 9, 7], ["prazo", 4, 3]], { "Não compareceram": ["Lúcia Amaral", "Bruno Sato", "Fernanda Luz"], "Follow-ups do dia": ["Eduardo Galante", "Isabel Corrêa"] }],
+      ["Bruno Alencar", "Closer · pleno", [2, 4, 2, 4, 3, 4, 2], 8, 15, 18200, 9100, 39,
+        [["preço", 6, 6], ["decisor ausente", 4, 4]], { "Não compareceram": ["Caio Menezes", "Otávio Braga", "Renata Dias"], "Follow-ups do dia": ["Paulo Ferraz"] }]],
+      [["Rafael Moura", "Closer · sênior", [5, 6, 4, 7, 5, 6, 5], 4, 28, 61200, 12240, 57,
+        [["preço", 8, 6], ["prazo", 3, 3]], { "Não compareceram": ["Fernanda Luz", "Lúcia Amaral"], "Follow-ups do dia": ["Eduardo Galante", "Bruno Sato"] }],
+      ["Bruno Alencar", "Closer · pleno", [3, 4, 2, 5, 3, 4, 3], 7, 16, 21600, 10800, 41,
+        [["preço", 5, 5], ["já tem quem faça", 3, 3]], { "Não compareceram": ["Caio Menezes", "Bruno Sato"], "Follow-ups do dia": ["Isabel Corrêa", "Renata Dias"] }]],
+      [["Rafael Moura", "Closer · sênior", [5, 7, 4, 8, 6, 7, 5], 3, 31, 68400, 13680, 62,
+        [["preço", 7, 5], ["prazo", 3, 2], ["decisor ausente", 2, 2]], { "Não compareceram": ["Fernanda Luz", "Lúcia Amaral", "Bruno Sato"], "Follow-ups do dia": ["Eduardo Galante", "Isabel Corrêa", "Renata Dias"] }],
+      ["Bruno Alencar", "Closer · pleno", [3, 5, 2, 6, 4, 5, 3], 6, 18, 24500, 12250, 44,
+        [["preço", 5, 4], ["decisor ausente", 3, 3], ["já tem quem faça", 2, 2]], { "Não compareceram": ["Caio Menezes", "Renata Dias", "Bruno Sato", "Otávio Braga"], "Follow-ups do dia": ["Paulo Ferraz", "Isabel Corrêa"] }]],
+    ],
+  };
+  // [pessoa, papel, —, feed, stories, criativos, detalhe]
+  static SOCIAL = {
+    dia: [
+      [["Camila Reis", "Mídia social", null, 1, 4, 3, { "Feed do dia": ["carrossel · 3 erros no anúncio"], "Stories": ["bastidor do time", "enquete", "print de resultado", "CTA do formulário"] }]],
+      [["Camila Reis", "Mídia social", null, 2, 5, 4, { "Feed do dia": ["carrossel · dor do marketplace", "reel · clonagem ao vivo"], "Stories": ["bastidor da integração", "enquete de dor", "print de resultado", "CTA do formulário", "repost de cliente"] }]],
+    ],
+    semana: [
+      [["Camila Reis", "Mídia social", null, 7, 21, 15, { "Feed da semana": ["4 carrosséis", "2 reels", "1 post"], "Stories": ["21 capturados na janela"] }]],
+      [["Camila Reis", "Mídia social", null, 9, 26, 18, { "Feed da semana": ["5 carrosséis", "3 reels", "1 post"], "Stories": ["26 capturados na janela"] }]],
+    ],
+    mes: [
+      [["Camila Reis", "Mídia social", null, 26, 88, 61, { "Feed do mês": ["15 carrosséis", "8 reels", "3 posts"], "Stories": ["88 capturados na janela"] }]],
+      [["Camila Reis", "Mídia social", null, 31, 103, 70, { "Feed do mês": ["18 carrosséis", "9 reels", "4 posts"], "Stories": ["103 capturados na janela"] }]],
+      [["Camila Reis", "Mídia social", null, 34, 112, 76, { "Feed do mês": ["19 carrosséis", "11 reels", "4 posts"], "Stories": ["112 capturados na janela"] }]],
+    ],
+  };
+  state = { modo: "dia", idx: null, aberta: null, copiado: null };
+  componentWillUnmount() { clearTimeout(this._c); }
+
+  money(n) { return "R$ " + Math.round(Number(n) || 0).toLocaleString("pt-BR"); }
+  seg(a) {
+    return "height:28px;padding:0 15px;border-radius:999px;font-size:12px;white-space:nowrap;transition:background 150ms ease;" +
+      (a ? "background:#0c1d2b;color:#fff;font-weight:650" : "background:transparent;color:#5a6b77;font-weight:500");
+  }
+  iniciais(nome) { return nome.split(" ").slice(0, 2).map((x) => x[0]).join(""); }
+  idxAtual() { const j = Component.JANELAS[this.state.modo]; return this.state.idx == null ? j.atual : this.state.idx; }
+
+  // ── monta uma seção ────────────────────────────────────────────────────
+  secao(id, titulo, sub, cor, colunas, linhas, chave) {
+    const st = this.state;
+    const larg = colunas.reduce((a, c) => a + parseInt(c[2] || 90), 0) + 220;
+    const grade = "minmax(186px,1.3fr) " + colunas.map((c) => c[2] || "90px").join(" ");
+    return {
+      titulo, sub,
+      estPonto: "width:5px;height:14px;border-radius:999px;flex-shrink:0;background:" + cor,
+      estMin: "min-width:" + larg + "px",
+      estCabec: "display:grid;grid-template-columns:" + grade + ";gap:10px;padding:10px 20px;background:#f7f9fa;border-top:1px solid #edf1f3;border-bottom:1px solid #edf1f3",
+      colunas: [["Pessoa", "", ""]].concat(colunas).map(([label, title], i) => ({
+        label, title,
+        est: "font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:#8b99a4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" +
+          (i === 0 || i === colunas.length ? "" : "text-align:right;") + (title ? "cursor:help" : ""),
+      })),
+      linhas: linhas.map((l, i) => {
+        const abertaId = id + ":" + i;
+        const aberta = st.aberta === abertaId;
+        return Object.assign({
+          nome: l.nome, papel: l.papel, iniciais: this.iniciais(l.nome),
+          est: "display:grid;grid-template-columns:" + grade + ";gap:10px;padding:11px 20px;align-items:center;width:100%;text-align:left;border-bottom:1px solid #edf1f3;cursor:pointer;transition:background 150ms ease;" +
+            (aberta ? "background:#f7f9fa" : ""),
+          estAvatar: "flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:999px;background:#0c1d2b;color:#fff;font-family:'Outfit',sans-serif;font-size:11px;font-weight:700",
+          aberta,
+          alternar: () => this.setState({ aberta: aberta ? null : abertaId }),
+          rotuloCopiar: st.copiado === abertaId ? "Relatório copiado ✓" : "Copiar relatório",
+          estCopiar: "height:30px;padding:0 14px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap;transition:background 150ms ease;" +
+            (st.copiado === abertaId ? "background:#E9F5F3;color:#0b6b64;cursor:default" : "background:#0c1d2b;color:#fff"),
+          copiar: () => {
+            if (navigator.clipboard) navigator.clipboard.writeText(l.relatorio).catch(() => {});
+            this.setState({ copiado: abertaId });
+            clearTimeout(this._c);
+            this._c = setTimeout(() => this.setState({ copiado: null }), 2200);
+          },
+        }, l.extra);
+      }),
+    };
+  }
+
+  cel(v, tom) {
+    return {
+      v: v == null ? "—" : String(v),
+      est: "font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;text-align:right;white-space:nowrap;color:" +
+        (tom === "neg" && Number(v) > 0 ? "#b42318" : tom === "pos" ? "#177a4c" : "#0c1d2b"),
+    };
+  }
+  ritmoDe(serie) {
+    if (!serie) return { temRitmo: false, ritmo: [] };
+    const max = Math.max.apply(null, serie);
+    const DIAS = ["sáb", "dom", "seg", "ter", "qua", "qui", "sex"];
+    return {
+      temRitmo: true,
+      ritmo: serie.map((v, i) => ({
+        title: DIAS[i] + ": " + v + (v === 1 ? " toque" : " toques"),
+        est: "width:5px;border-radius:2px;height:" + Math.max(3, Math.round((v / max) * 22)) + "px;background:" +
+          (i === serie.length - 1 ? "#0F766E" : "#a9d5d0"),
+      })),
+    };
+  }
+  chipsDe(objecoes) {
+    if (!objecoes || !objecoes.length) return { chips: [], semChip: "sem call resumida", estSemChip: "font-size:11.5px;color:#b6c0c7", estChips: "display:flex;flex-wrap:wrap;gap:5px;align-items:center;min-width:0" };
+    const corta = (t) => t.length > 26 ? t.slice(0, 25) + "…" : t;
+    return {
+      estChips: "display:flex;flex-wrap:wrap;gap:5px;align-items:center;min-width:0",
+      estSemChip: "display:none", semChip: "",
+      chips: objecoes.slice(0, 2).map(([texto, total, abertas]) => ({
+        label: corta(texto) + " · " + total, title: texto + " · " + total + "× · " + abertas + " em aberto",
+        est: "display:inline-flex;align-items:center;height:21px;padding:0 10px;border-radius:999px;font-size:10.5px;font-weight:600;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;" +
+          (abertas > 0 ? "background:#fdf3f2;color:#b42318" : "background:#f1f4f5;color:#5a6b77"),
+      })).concat(objecoes.length > 2 ? [{ label: "+" + (objecoes.length - 2), title: objecoes.slice(2).map((o) => o[0]).join(" · "),
+        est: "display:inline-flex;align-items:center;height:21px;padding:0 9px;border-radius:999px;font-size:10.5px;color:#8b99a4;background:#f7f9fa" }] : []),
+    };
+  }
+  detalhesDe(obj) {
+    const ir = () => window.dispatchEvent(new CustomEvent("cockpit:ir", { detail: { tela: "Pi" } }));
+    return Object.entries(obj).map(([titulo, itens]) => ({
+      titulo,
+      itens: itens.map((nome) => ({ nome, abrir: ir })),
+      vazio: itens.length ? "" : "ninguém",
+      estVazio: itens.length ? "display:none" : "font-size:11.5px;color:#b6c0c7",
+    }));
+  }
+  renderVals() {
+    const st = this.state;
+    const jan = Component.JANELAS[st.modo];
+    const i = this.idxAtual();
+    const nomeJanela = jan.nomes[Math.max(0, Math.min(jan.nomes.length - 1, i))];
+    const noAgora = i >= jan.nomes.length - 1;
+    const sufixo = st.modo === "dia" ? "no dia" : st.modo === "semana" ? "na semana" : "no mês";
+
+    const sdr = (Component.SDR[st.modo][i] || []).map((r) => {
+      const [nome, papel, ritmo, noShow, agendadas, icp, contatos, semResp, social, viraram, obj, det] = r;
+      return {
+        nome, papel, relatorio: nome + " · " + nomeJanela + "\n" + contatos + " contatos · " + agendadas + " calls agendadas (" + icp + " com ICP) · " + noShow + " no-show · " + semResp + " não responderam · " + social + " social selling, " + viraram + " viraram lead.",
+        extra: Object.assign({},
+          this.ritmoDe(ritmo),
+          this.chipsDe(obj),
+          { celulas: [this.cel(noShow, "neg"), this.cel(agendadas), this.cel(icp), this.cel(contatos), this.cel(semResp, "neg"), this.cel(social), this.cel(viraram, "pos")],
+            detalhes: this.detalhesDe(det) }),
+      };
+    });
+    const social = (Component.SOCIAL[st.modo][i] || []).map((r) => {
+      const [nome, papel, , feed, stories, criativos, det] = r;
+      return {
+        nome, papel, relatorio: nome + " · " + nomeJanela + "\n" + feed + " publicações no feed · " + stories + " stories · " + criativos + " criativos.",
+        extra: Object.assign({ temRitmo: false, ritmo: [] }, this.chipsDe(null), {
+          celulas: [this.cel(feed), this.cel(stories), this.cel(criativos)],
+          estChips: "display:none", chips: [], semChip: "", estSemChip: "display:none",
+          detalhes: this.detalhesDe(det),
+        }),
+      };
+    });
+    const closer = (Component.CLOSER[st.modo][i] || []).map((r) => {
+      const [nome, papel, ritmo, noShow, realizadas, , , follow, obj, det0] = r;
+      let det = det0;
+      // Receita e fechamentos saem das VENDAS da janela — nunca escritos à mão.
+      const vend = this.fechamentos(st.modo, i, nome);
+      const receita = vend.reduce((a, v) => a + v[1], 0);
+      const ticket = vend.length ? Math.round(receita / vend.length) : null;
+      det = Object.assign({}, det, { Fecharam: vend.map((v) => v[0] + " · " + this.money(v[1])) });
+      return {
+        nome, papel, relatorio: nome + " · " + nomeJanela + "\n" + realizadas + " calls realizadas · " + this.money(receita) + " de receita" + (ticket ? " · ticket " + this.money(ticket) : "") + " · " + noShow + " no-show · " + follow + " follow-ups.",
+        extra: Object.assign({},
+          this.ritmoDe(ritmo),
+          this.chipsDe(obj),
+          { celulas: [this.cel(noShow, "neg"), this.cel(realizadas), { v: this.money(receita), est: "font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;text-align:right;white-space:nowrap;color:" + (receita > 0 ? "#177a4c" : "#8b99a4") }, this.cel(ticket == null ? null : this.money(ticket)), this.cel(follow)],
+            detalhes: this.detalhesDe(det) }),
+      };
+    });
+
+    return {
+      mov: this.props.movimento === false ? "off" : "on",
+      modos: Object.keys(Component.JANELAS).map((k) => ({
+        label: Component.JANELAS[k].label, est: this.seg(st.modo === k),
+        escolher: () => this.setState({ modo: k, idx: null, aberta: null }),
+      })),
+      janela: nomeJanela,
+      anterior: () => this.setState({ idx: Math.max(0, this.idxAtual() - 1), aberta: null }),
+      proximo: () => { if (!noAgora) this.setState({ idx: this.idxAtual() + 1, aberta: null }); },
+      estProximo: "width:30px;height:30px;border-radius:999px;font-size:12px;box-shadow:0 1px 2px rgba(12,29,43,.05);transition:background 150ms ease;" +
+        (noAgora ? "background:#f1f4f5;color:#c5cfd4;cursor:default" : "background:#fff;color:#3d4f5c"),
+      secoes: [
+        this.secao("sdr", "SDR", "prospecção · contatos, agenda e social selling " + sufixo, "#175cd3", [
+          ["Ritmo · 7 dias", "toques por dia nos últimos 7 dias corridos", "78px"],
+          ["No-show", "calls dos leads dela que não aconteceram", "76px"],
+          ["Agendadas", "calls dos leads dela pela data da call", "84px"],
+          ["Com ICP", "das agendadas, as com nota S/A/B", "74px"],
+          ["Contatos", "leads cujo 1º contato humano na janela foi dela", "78px"],
+          ["Sem resposta", "dos contatados, os sem mensagem depois do 1º toque", "92px"],
+          ["Social", "registrado por ela no Meu dia", "64px"],
+          ["Viraram lead", "leads com origem Social selling criados na janela", "90px"],
+          ["O que ouve na call", "objeções das calls de qualificação resumidas por IA", "230px"],
+        ], sdr, "sdr"),
+        this.secao("social", "Mídia social", "produção da conta " + sufixo, "#5b6bd6", [
+          ["Feed", "posts, carrosséis e reels publicados no @ da conta", "76px"],
+          ["Stories", "stories capturados do Instagram na janela", "76px"],
+          ["Criativos", "anotado por ela na tela Redes sociais", "82px"],
+        ], social, "social"),
+        this.secao("closer", "Closer", "fechamento · calls, receita e follow-up " + sufixo, "#0F766E", [
+          ["Ritmo · 7 dias", "toques por dia nos últimos 7 dias corridos", "78px"],
+          ["No-show", "calls dele na janela que não aconteceram", "76px"],
+          ["Realizadas", "calls que aconteceram com ele", "86px"],
+          ["Receita", "receita reconhecida na janela · conta grande fora", "96px"],
+          ["Ticket médio", "receita ÷ fechamentos da janela", "94px"],
+          ["Follow-ups", "toque humano em lead em Follow-up, 1 por lead por dia", "88px"],
+          ["Objeções", "objeções das calls resumidas por IA na janela", "230px"],
+        ], closer, "closer"),
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

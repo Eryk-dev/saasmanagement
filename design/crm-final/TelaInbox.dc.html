@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Inbox</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-gaveta-sai{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-gaveta-sai{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  /* Inbox: três painéis. Estreito (o host do shell tem ~640px) a ficha do lead
+     sai do caminho e a conversa fica com o espaço — colapsar a coluna do meio
+     apagava o centro da tela. Media query é a única coisa aqui que não dá pra
+     escrever inline. */
+  .inbox-3{display:grid;gap:12px;grid-template-columns:minmax(250px,.9fr) minmax(340px,1.8fr) minmax(250px,.85fr)}
+  @media (max-width:1180px){
+    .inbox-3{grid-template-columns:minmax(230px,.85fr) minmax(320px,2fr)}
+    .inbox-3 > aside{display:none!important}
+    .inbox-num-extra{display:none!important}
+    .inbox-nota{display:none!important}
+  }
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;overflow:hidden;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:12px;margin:0 -4px;padding:0 4px">
+
+      <header class="cap-rise" style="flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+        <div>
+          <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Inbox</h1>
+          
+        </div>
+        <div style="display:inline-flex;gap:3px;padding:4px;border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.05)">
+          <sc-for list="{{ canais }}" as="c" hint-placeholder-count="3">
+            <button onClick="{{ c.escolher }}" style="{{ c.est }}">{{ c.label }}</button>
+          </sc-for>
+        </div>
+      </header>
+
+      <sc-if value="{{ temEspera }}" hint-placeholder-val="{{ true }}">
+      <section class="cap-rise" style="position:relative;overflow:hidden;flex:0 0 auto;border-radius:999px;background:linear-gradient(120deg,#0a2434,#051C2C 70%);box-shadow:0 1px 2px rgba(5,28,44,.14),0 12px 28px -22px rgba(5,28,44,.6);padding:10px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <span style="position:absolute;right:-30px;top:-52px;width:130px;height:130px;color:#23D8D3;opacity:.07;pointer-events:none"><svg width="130" height="130" viewBox="355 525 455 590"><polygon fill="currentColor" points="800.7 535.53 800.7 1103.92 763 983.8 749.25 939.91 691.16 754.61 501.54 817.84 457.65 832.42 362.47 864.14 443.6 803.33 481.22 775.08 800.7 535.53"></polygon></svg></span>
+        <div style="position:relative;flex:1 1 240px;min-width:0;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="width:5px;height:14px;border-radius:999px;background:#ffb3a8;flex-shrink:0"></span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#ffb3a8;white-space:nowrap">esperando</span>
+          </div>
+          <div style="font-family:'Outfit',sans-serif;font-size:19px;font-weight:700;letter-spacing:-.025em;color:#F3FBFF;white-space:nowrap">{{ esperaTitulo }}</div>
+          <div class="inbox-nota" style="font-size:11.5px;color:rgba(243,251,255,.6);text-wrap:pretty">{{ esperaNota }}</div>
+        </div>
+        <div style="position:relative;display:flex;gap:18px;flex-wrap:wrap;align-items:center">
+          <div>
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:rgba(243,251,255,.5)">saúde do número</div>
+            <div style="display:inline-flex;align-items:center;gap:7px;margin-top:5px">
+              <span style="width:7px;height:7px;border-radius:999px;background:#23D8D3"></span>
+              <span style="font-size:13px;font-weight:600;color:#23D8D3">alta · 1.000 conversas</span>
+            </div>
+          </div>
+          <div class="inbox-num-extra">
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:rgba(243,251,255,.5)">janela aberta</div>
+            <div style="font-family:'Outfit',sans-serif;font-size:18px;font-weight:700;margin-top:4px;color:#F3FBFF">{{ janelasAbertas }}</div>
+          </div>
+          <div class="inbox-num-extra">
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:rgba(243,251,255,.5)">conversas · 7 d</div>
+            <div style="font-family:'Outfit',sans-serif;font-size:18px;font-weight:700;margin-top:4px;color:#F3FBFF">{{ nConversas }}</div>
+          </div>
+          <button onClick="{{ responderAgora }}" style="height:34px;padding:0 16px;border-radius:999px;background:#F3FBFF;color:#051C2C;font-size:12px;font-weight:700;white-space:nowrap;transition:background 150ms ease" style-hover="background:#fff">Responder agora →</button>
+        </div>
+      </section>
+      </sc-if>
+
+      <div class="inbox-3" style="flex:1;min-height:0;padding-bottom:12px">
+
+        <section class="cap-rise" style="min-width:0;display:flex;flex-direction:column;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+          <div style="flex:0 0 auto;padding:12px 12px 10px;border-bottom:1px solid #edf1f3">
+            <label style="display:flex;align-items:center;gap:8px;height:34px;padding:0 14px;border-radius:999px;background:#f1f4f5;color:#5a6b77">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><circle cx="11" cy="11" r="7"></circle><path d="M20.4 20.4l-4.2-4.2"></path></svg>
+              <input value="{{ busca }}" onChange="{{ mudarBusca }}" placeholder="buscar conversa" style="flex:1;min-width:0;border:0;background:none;outline:none;font-family:inherit;font-size:12.5px;color:#0c1d2b">
+            </label>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:9px">
+              <sc-for list="{{ filtros }}" as="f" hint-placeholder-count="4">
+                <button onClick="{{ f.escolher }}" style="{{ f.est }}">{{ f.label }} <span style="font-family:'Outfit',sans-serif">{{ f.n }}</span></button>
+              </sc-for>
+            </div>
+          </div>
+          <div style="flex:1;min-height:0;overflow-y:auto">
+            <sc-for list="{{ conversas }}" as="c" hint-placeholder-count="6">
+              <button onClick="{{ c.abrir }}" style="{{ c.est }}">
+                <span style="{{ c.estAvatar }}">{{ c.iniciais }}</span>
+                <span style="min-width:0;flex:1">
+                  <span style="display:flex;align-items:baseline;gap:6px">
+                    <span style="flex:1;min-width:0;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.nome }}</span>
+                    <span style="{{ c.estNovo }}">NOVO</span>
+                    <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#8b99a4;flex-shrink:0">{{ c.quando }}</span>
+                  </span>
+                  <span style="display:flex;align-items:center;gap:6px;margin-top:3px">
+                    <span style="flex:1;min-width:0;font-size:11.5px;color:#5a6b77;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.previa }}</span>
+                    <span style="{{ c.estNaoLidas }}">{{ c.naoLidas }}</span>
+                    <span style="{{ c.estMarca }}">{{ c.marca }}</span>
+                  </span>
+                </span>
+              </button>
+            </sc-for>
+            <sc-if value="{{ semConversas }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:24px 16px;font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;color:#8b99a4;text-align:center">nenhuma conversa neste filtro</div>
+            </sc-if>
+          </div>
+          <div style="flex:0 0 auto;padding:9px 14px;border-top:1px solid #edf1f3;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4">{{ contagemLista }}</div>
+        </section>
+
+        <section class="cap-rise" style="min-width:0;display:flex;flex-direction:column;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+          <div style="flex:0 0 auto;display:flex;align-items:center;gap:11px;padding:13px 16px;border-bottom:1px solid #edf1f3">
+            <span style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:999px;background:#0c1d2b;color:#fff;font-family:'Outfit',sans-serif;font-size:12px;font-weight:700;flex-shrink:0">{{ atual.iniciais }}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:14.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ atual.nome }}</div>
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#5a6b77;white-space:nowrap">{{ atual.sub }}</div>
+            </div>
+            <span style="{{ atual.estJanela }}">{{ atual.janela }}</span>
+          </div>
+          <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:7px;padding:16px;background:#f7f9fa">
+            <sc-for list="{{ mensagens }}" as="m" hint-placeholder-count="5">
+              <div style="{{ m.estLinha }}">
+                <div style="{{ m.est }}">
+                  <span style="{{ m.estAutor }}">{{ m.autor }}</span>
+                  <span style="display:block;font-size:12.5px;line-height:1.5;white-space:pre-line;text-wrap:pretty">{{ m.texto }}</span>
+                  <span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;color:#8b99a4;margin-top:4px;text-align:right">{{ m.hora }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="flex:0 0 auto;padding:12px 14px;border-top:1px solid #edf1f3">
+            <sc-if value="{{ atual.janelaAberta }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:9px">
+                <sc-for list="{{ respostasRapidas }}" as="r" hint-placeholder-count="3">
+                  <button onClick="{{ r.usar }}" style="height:26px;padding:0 11px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:11px;font-weight:600;white-space:nowrap;transition:background 150ms ease" style-hover="background:#E9F5F3;color:#0b6b64">{{ r.label }}</button>
+                </sc-for>
+              </div>
+              <div style="display:flex;align-items:flex-end;gap:9px">
+                <textarea value="{{ rascunho }}" onChange="{{ mudarRascunho }}" placeholder="escreva a resposta… (/ puxa uma resposta rápida)" style="flex:1;min-width:0;min-height:44px;max-height:120px;resize:vertical;border:0;border-radius:20px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:12px 14px;font-family:inherit;font-size:12.5px;line-height:1.5;color:#0c1d2b;outline:none"></textarea>
+                <button onClick="{{ enviar }}" style="{{ estEnviar }}">Enviar</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{ atual.janelaFechada }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:13px 15px;border-radius:20px;background:#fbf4e6">
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#a16207">janela de 24 h fechada</div>
+                <div style="font-size:12px;line-height:1.5;color:#6b4708;margin-top:6px;text-wrap:pretty">Texto livre seria recusado pela Meta (131047). Só dá pra reabrir com um template aprovado — a resposta do cliente abre a janela de novo.</div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">
+                  <sc-for list="{{ templates }}" as="t" hint-placeholder-count="2">
+                    <button onClick="{{ t.enviar }}" style="height:30px;padding:0 13px;border-radius:999px;background:#fff;color:#6b4708;font-size:11.5px;font-weight:600;box-shadow:inset 0 0 0 1px rgba(161,98,7,.25);transition:background 150ms ease" style-hover="background:#fdf7ec">{{ t.label }}</button>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </section>
+
+        <aside class="cap-rise" style="min-width:0;display:flex;flex-direction:column;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+          <div style="flex:1;min-height:0;overflow-y:auto;padding:18px 16px">
+            <div style="display:flex;align-items:center;gap:7px">
+              <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">o lead</span>
+            </div>
+            <sc-if value="{{ atual.temLead }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;align-items:center;gap:9px;margin-top:12px">
+                <span style="{{ atual.estGrade }}">{{ atual.grade }}</span>
+                <div style="min-width:0">
+                  <div style="font-size:14px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ atual.nome }}</div>
+                  <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#5a6b77">{{ atual.empresa }}</div>
+                </div>
+              </div>
+              <div style="margin-top:14px">
+                <sc-for list="{{ atual.fatos }}" as="f" hint-placeholder-count="5">
+                  <div style="display:flex;align-items:baseline;gap:10px;padding:6px 0;border-top:1px solid #edf1f3">
+                    <span style="flex:0 0 108px;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#5a6b77">{{ f.k }}</span>
+                    <span style="flex:1;min-width:0;font-size:12px;font-weight:600;text-align:right;text-wrap:pretty">{{ f.v }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="margin-top:16px">
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">o que ficou combinado</div>
+                <textarea value="{{ atual.combinado }}" onChange="{{ mudarCombinado }}" placeholder="ex.: quer as 3 contas espelhadas, decide com o sócio, retomar terça" style="width:100%;min-height:62px;resize:vertical;border:0;border-radius:16px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:10px 12px;margin-top:8px;font-family:inherit;font-size:11.5px;line-height:1.5;color:#0c1d2b;outline:none"></textarea>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:7px;margin-top:14px">
+                <button onClick="{{ agendarCall }}" style="{{ estAgendar }}">{{ rotuloAgendar }}</button>
+                <button onClick="{{ passarHumano }}" style="{{ estHumano }}">{{ rotuloHumano }}</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{ atual.semLead }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:12px;padding:14px 15px;border-radius:20px;background:#fbf4e6">
+                <div style="font-size:12.5px;line-height:1.5;color:#6b4708;text-wrap:pretty">Conversa sem lead: o pagamento e o histórico não têm onde cair. Vincular a um lead é o que faz a conversa contar no funil.</div>
+                <button onClick="{{ vincular }}" style="width:100%;height:34px;margin-top:10px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:12px;font-weight:600;transition:background 150ms ease" style-hover="background:#1b3140">{{ rotuloVincular }}</button>
+              </div>
+            </sc-if>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Inbox (screens/whatsapp.jsx): três painéis — lista de conversas com os
+  // filtros da fonte (Sem resposta · Novos · Todas · Robô + os de "mais"),
+  // a conversa e a ficha do lead. A janela de 24h manda no rodapé: aberta
+  // aceita texto livre; fechada só template aprovado (erro 131047 da Meta).
+  static FILTROS = [["in", "Sem resposta"], ["novos", "Novos"], ["all", "Todas"], ["bot", "Robô"], ["lead", "Com lead"], ["orphan", "Sem lead"], ["out", "Aguardando cliente"]];
+  static RAPIDAS = [
+    ["Preço", "O investimento é o plano anual: R$ 7.188, em 12x de R$ 599 sem juros, ou R$ 6.488 à vista no Pix com 10% de desconto. Preço fixo, sem taxa por pedido."],
+    ["Canibaliza?", "Replicar não canibaliza: a Unique dobrou a conta 2 e a conta 1 ainda subiu 20%. São vitrines diferentes, o mesmo catálogo."],
+    ["Link da call", "Nossa call é hoje às 16:30. Link pra entrar: meet.google.com/lev-221"],
+    ["Prazo da integração", "A integração leva uns 20 minutos numa call de vídeo e no mesmo dia seus anúncios já começam a replicar."],
+  ];
+  static TEMPLATES = [["retomada_lead", "retomada_lead"], ["call_no_show", "call_no_show"]];
+
+  static gerar() {
+    // nome, empresa, grade, minutos desde a última mensagem, direção, estado, novo, mensagens
+    const T = [
+      ["Camila Reis", "Nutri Vitta", "A", 12, "in", "", false, [
+        ["in", "Boa tarde! Consegui ver o link, tá tudo certo pra call de hoje", 14, 10],
+        ["out", "Perfeito, Camila! O Rafael já está se preparando pra te receber.", 14, 12],
+        ["in", "Só uma dúvida: preciso deixar as contas logadas antes?", 14, 22]]],
+      ["Otávio Braga", "Braga Fit", "C", 190, "in", "", false, [
+        ["out", "Oi Otávio! Tentei te ligar hoje, qual o melhor horário pra gente conversar 5 minutinhos?", 9, 40],
+        ["in", "opa, pode ser amanhã de manhã", 11, 12]]],
+      ["Marcos Aguiar", "Grupo MA", "B", 45, "in", "bot", true, [
+        ["out", "Olá Marcos! Aqui é a LeverAds. Recebemos o seu cadastro sobre clonagem de anúncios. Posso te fazer duas perguntas rápidas?", 13, 30],
+        ["in", "pode sim", 13, 38]]],
+      ["Nina Castro", "Castro Pet", "E", 8, "in", "bot", true, [
+        ["out", "Olá Nina! Recebemos o seu cadastro. Hoje você opera quantas contas nos marketplaces?", 14, 5],
+        ["in", "só uma por enquanto, quero abrir a segunda", 14, 26]]],
+      ["Paulo Ferraz", "Ferraz Advocacia", "A", 2880, "out", "", false, [
+        ["out", "Oi Paulo! Te mandei a proposta pra clonagem das contas. Conseguiu ver com calma?", 10, 15],
+        ["out", "Passando só pra deixar registrado: qualquer dúvida me chama por aqui.", 11, 40]]],
+      ["Fernanda Luz", "Luz Odontologia", "S", 4320, "out", "", false, [
+        ["in", "vou avaliar com meu sócio e te falo", 15, 20],
+        ["out", "Combinado, Fernanda! Fico no aguardo.", 15, 24]]],
+      ["(11) 98230-4417", "", null, 300, "in", "orphan", false, [
+        ["in", "boa tarde, é da LeverAds? vi um anúncio de vocês", 9, 30]]],
+      ["Rogério Vante", "Grupo Vante", "B", 60, "in", "handoff", false, [
+        ["out", "Oi Rogério! O integrador vai te chamar pra marcar a call de integração.", 13, 20],
+        ["in", "pode chamar, mas preciso ser depois das 18h", 13, 50]]],
+    ];
+    return T.map(([nome, empresa, grade, min, dir, estado, novo, msgs], i) => ({
+      id: i, nome, empresa, grade, min, dir, estado, novo,
+      naoLidas: dir === "in" && min < 200 ? (i % 3) + 1 : 0,
+      combinado: i === 4 ? "Abriu a proposta 2x, objeção de preço. Sócio decide junto." : "",
+      msgs: msgs.map(([d, texto, h, m]) => ({ d, texto, h, m })),
+      vinculado: estado !== "orphan",
+    }));
+  }
+
+  state = { canal: "whatsapp", filtro: "in", busca: "", sel: 0, rascunho: "",
+    threads: Component.gerar(), enviando: false, agendado: false, humano: false, vinculado: false };
+  componentWillUnmount() { clearTimeout(this._c); }
+
+  seg(ativo, alt) {
+    if (alt) return "height:26px;padding:0 11px;border-radius:999px;font-size:11px;white-space:nowrap;transition:background 150ms ease,color 150ms ease;" +
+      (ativo ? "background:#0c1d2b;color:#fff;font-weight:650" : "background:#f1f4f5;color:#5a6b77;font-weight:500");
+    return "height:28px;padding:0 15px;border-radius:999px;font-size:12px;white-space:nowrap;transition:background 150ms ease,color 150ms ease;" +
+      (ativo ? "background:#0c1d2b;color:#fff;font-weight:600" : "background:transparent;color:#5a6b77;font-weight:500");
+  }
+  // dur() do inbox: minutos → "18 min", "5h", "2d" (24h ainda é hora, não dia)
+  dur(min) {
+    if (min == null) return "—";
+    if (min < 60) return min + " min";
+    const h = Math.floor(min / 60);
+    if (h <= 24) return h + "h";
+    return Math.round(h / 24) + "d";
+  }
+  iniciais(nome) {
+    if (/^\(/.test(nome)) return "#";
+    return nome.split(" ").filter(Boolean).slice(0, 2).map((x) => x[0]).join("").toUpperCase();
+  }
+  estGrade(g, tam) {
+    const T = { S: ["#7c3aed", "#fff"], A: ["#16a34a", "#fff"], B: ["#65a30d", "#fff"], C: ["#eab308", "#463500"], D: ["#ea580c", "#fff"], E: ["#9aa2ad", "#fff"] };
+    const c = T[g] || ["#e4e9eb", "#8b99a4"];
+    const s = tam || 20;
+    return "flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:" + s + "px;height:" + s + "px;border-radius:999px;font-family:'Outfit',sans-serif;font-size:" + Math.round(s * .46) + "px;font-weight:700;background:" + c[0] + ";color:" + c[1];
+  }
+  flash(campo) {
+    this.setState({ [campo]: true });
+    clearTimeout(this._c);
+    this._c = setTimeout(() => this.setState({ [campo]: false }), 2000);
+  }
+
+  renderVals() {
+    const st = this.state;
+    const conta = (id) => st.threads.filter((t) => {
+      if (id === "all") return true;
+      if (id === "in") return t.dir === "in";
+      if (id === "out") return t.dir === "out";
+      if (id === "novos") return t.novo;
+      if (id === "bot") return t.estado === "bot";
+      if (id === "lead") return t.vinculado;
+      if (id === "orphan") return !t.vinculado;
+      return true;
+    }).length;
+    const q = st.busca.trim().toLowerCase();
+    const lista = st.threads.filter((t) => {
+      if (st.filtro === "in" && t.dir !== "in") return false;
+      if (st.filtro === "out" && t.dir !== "out") return false;
+      if (st.filtro === "novos" && !t.novo) return false;
+      if (st.filtro === "bot" && t.estado !== "bot") return false;
+      if (st.filtro === "lead" && !t.vinculado) return false;
+      if (st.filtro === "orphan" && t.vinculado) return false;
+      if (q && !(t.nome + " " + t.empresa).toLowerCase().includes(q)) return false;
+      return true;
+    }).slice().sort((a, b) => a.min - b.min);
+    const atual = st.threads.find((t) => t.id === st.sel) || lista[0] || st.threads[0];
+    const esperando = st.threads.filter((t) => t.dir === "in");
+    const maisAntiga = esperando.slice().sort((a, b) => b.min - a.min)[0];
+    const janelaAberta = atual && atual.min < 1440;
+    const restam = atual ? Math.max(0, 1440 - atual.min) : 0;
+
+    const vals = {
+      mov: this.props.movimento === false ? "off" : "on",
+      subtitulo: st.canal === "whatsapp" ? "WhatsApp oficial · (11) 4000-2211 · LeverAds"
+        : st.canal === "instagram" ? "direct do Instagram · respondido pela página" : "Messenger da página",
+      canais: [["whatsapp", "WhatsApp"], ["instagram", "Instagram"], ["facebook", "Messenger"]].map(([id, label]) => ({
+        label, est: this.seg(st.canal === id), escolher: () => this.setState({ canal: id }),
+      })),
+      temEspera: esperando.length > 0,
+      esperaTitulo: esperando.length + (esperando.length === 1 ? " conversa esperando resposta" : " conversas esperando resposta"),
+      esperaNota: (maisAntiga ? "a mais antiga há " + this.dur(maisAntiga.min) : "") + " · a gente costuma responder em 18 min",
+      janelasAbertas: String(st.threads.filter((t) => t.min < 1440).length),
+      nConversas: String(st.threads.length),
+      responderAgora: () => { if (maisAntiga) this.setState({ filtro: "in", sel: maisAntiga.id }); },
+      filtros: Component.FILTROS.map(([id, label]) => ({
+        label, n: conta(id), est: this.seg(st.filtro === id, true), escolher: () => this.setState({ filtro: id }),
+      })),
+      busca: st.busca, mudarBusca: (e) => this.setState({ busca: e.target.value }),
+      semConversas: lista.length === 0,
+      contagemLista: lista.length + " de " + st.threads.length + " conversas",
+      conversas: lista.map((t) => {
+        const on = atual && t.id === atual.id;
+        const tom = t.estado === "bot" ? "#a16207" : t.estado === "handoff" ? "#175cd3" : !t.vinculado ? "#b42318" : "#5a6b77";
+        return {
+          nome: t.nome, iniciais: this.iniciais(t.nome),
+          quando: this.dur(t.min),
+          previa: (t.msgs[t.msgs.length - 1].d === "out" ? (t.estado === "bot" ? "robô: " : "→ ") : "") + t.msgs[t.msgs.length - 1].texto,
+          est: "width:100%;text-align:left;display:flex;gap:10px;align-items:center;padding:11px 12px;border-bottom:1px solid #edf1f3;cursor:pointer;transition:background 150ms ease;" +
+            "border-left:3px solid " + (on ? "#0F766E" : t.estado === "bot" ? "#e0c68a" : "transparent") + ";" +
+            (on ? "background:#E9F5F3" : t.estado === "bot" ? "background:#fdfaf3" : "background:#fff"),
+          estAvatar: "flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:999px;font-family:'Outfit',sans-serif;font-size:11.5px;font-weight:700;" +
+            (on ? "background:#fff;color:#0b6b64;box-shadow:inset 0 0 0 1px rgba(15,118,110,.25)" : "background:#f1f4f5;color:#3d4f5c"),
+          novo: t.novo,
+          estNovo: t.novo ? "flex-shrink:0;height:16px;padding:0 6px;border-radius:999px;background:#0F766E;color:#fff;font-family:'Plus Jakarta Sans',sans-serif;font-size:8.5px;font-weight:700;letter-spacing:.06em;display:inline-flex;align-items:center" : "display:none",
+          naoLidas: t.naoLidas ? String(t.naoLidas) : "",
+          estNaoLidas: t.naoLidas ? "flex-shrink:0;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#25d366;color:#06120c;font-size:10.5px;font-weight:800;display:inline-flex;align-items:center;justify-content:center" : "display:none",
+          marca: t.estado === "bot" ? "robô" : t.estado === "handoff" ? "humano" : !t.vinculado ? "sem lead" : t.dir === "in" ? this.dur(t.min) : "",
+          estMarca: "flex-shrink:0;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;color:" + tom,
+          abrir: () => this.setState({ sel: t.id, rascunho: "" }),
+        };
+      }),
+      rascunho: st.rascunho,
+      mudarRascunho: (e) => this.setState({ rascunho: e.target.value }),
+      estEnviar: "flex-shrink:0;height:44px;padding:0 20px;border-radius:999px;font-size:12.5px;font-weight:700;transition:background 150ms ease;" +
+        (st.rascunho.trim() ? "background:#25d366;color:#06120c" : "background:#eef1f3;color:#8b99a4;cursor:not-allowed"),
+      enviar: () => {
+        const txt = st.rascunho.trim();
+        if (!txt || !atual) return;
+        this.setState((s2) => ({
+          rascunho: "",
+          threads: s2.threads.map((t) => t.id === atual.id
+            ? { ...t, dir: "out", min: 0, naoLidas: 0, msgs: t.msgs.concat([{ d: "out", texto: txt, h: 14, m: 37 }]) }
+            : t),
+        }));
+      },
+      respostasRapidas: Component.RAPIDAS.map(([label, texto]) => ({
+        label, usar: () => this.setState({ rascunho: texto }),
+      })),
+      templates: Component.TEMPLATES.map(([label]) => ({
+        label,
+        enviar: () => {
+          if (!atual) return;
+          this.setState((s2) => ({ threads: s2.threads.map((t) => t.id === atual.id
+            ? { ...t, dir: "out", min: 0, msgs: t.msgs.concat([{ d: "out", texto: "[template " + label + "] Oi " + t.nome.split(" ")[0] + ", posso retomar nossa conversa?", h: 14, m: 37 }]) }
+            : t) }));
+        },
+      })),
+      mensagens: atual ? atual.msgs.map((m) => ({
+        texto: m.texto,
+        hora: String(m.h).padStart(2, "0") + ":" + String(m.m).padStart(2, "0"),
+        autor: m.d === "out" && atual.estado === "bot" ? "robô" : "",
+        estAutor: m.d === "out" && atual.estado === "bot" ? "display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#a16207;margin-bottom:3px" : "display:none",
+        estLinha: "display:flex;" + (m.d === "out" ? "justify-content:flex-end" : "justify-content:flex-start"),
+        est: "max-width:76%;padding:9px 13px;border-radius:18px;" +
+          (m.d === "out" ? "background:#dcf7e3;border-bottom-right-radius:6px" : "background:#fff;border-bottom-left-radius:6px;box-shadow:0 1px 2px rgba(12,29,43,.06)"),
+      })) : [],
+      mudarCombinado: (e) => {
+        if (!atual) return;
+        const v = e.target.value;
+        this.setState((s2) => ({ threads: s2.threads.map((t) => t.id === atual.id ? { ...t, combinado: v } : t) }));
+      },
+      rotuloAgendar: st.agendado ? "Rascunho na caixa ✓" : "Agendar call",
+      estAgendar: "height:36px;border-radius:999px;font-size:12.5px;font-weight:650;transition:background 150ms ease;" +
+        (st.agendado ? "background:#E9F5F3;color:#0b6b64;cursor:default" : "background:#0c1d2b;color:#fff"),
+      agendarCall: () => {
+        if (st.agendado || !atual) return;
+        this.setState({ rascunho: "Oi " + atual.nome.split(" ")[0] + "! Vou te colocar com nosso especialista. Fica melhor amanhã de manhã ou no fim da tarde?" });
+        this.flash("agendado");
+      },
+      rotuloHumano: st.humano ? "Passou pro humano ✓" : atual && atual.estado === "bot" ? "Assumir do robô" : "Passar pra outro closer",
+      estHumano: "height:34px;border-radius:999px;font-size:12px;font-weight:600;transition:background 150ms ease;" +
+        (st.humano ? "background:#E9F5F3;color:#0b6b64;cursor:default" : "background:#f1f4f5;color:#3d4f5c"),
+      passarHumano: () => { if (!st.humano) this.flash("humano"); },
+      rotuloVincular: st.vinculado ? "Vinculado ✓" : "Vincular a um lead",
+      vincular: () => { if (!st.vinculado) this.flash("vinculado"); },
+    };
+
+    vals.atual = atual ? {
+      nome: atual.nome, empresa: atual.empresa || "sem empresa", iniciais: this.iniciais(atual.nome),
+      sub: [atual.empresa, atual.estado === "bot" ? "SDR automático" : atual.estado === "handoff" ? "passado pra humano" : null].filter(Boolean).join(" · ") || "sem lead vinculado",
+      grade: atual.grade || "—", estGrade: this.estGrade(atual.grade, 30),
+      janela: janelaAberta ? "janela de 24 h · restam " + this.dur(restam) : "janela de 24 h fechada",
+      estJanela: "flex-shrink:0;display:inline-flex;align-items:center;height:26px;padding:0 12px;border-radius:999px;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:600;white-space:nowrap;" +
+        (!janelaAberta ? "background:#fbf4e6;color:#a16207" : restam < 180 ? "background:#fbf4e6;color:#a16207" : "background:#E9F5F3;color:#0b6b64"),
+      janelaAberta, janelaFechada: !janelaAberta,
+      temLead: atual.vinculado, semLead: !atual.vinculado,
+      combinado: atual.combinado,
+      fatos: [
+        ["Potencial", atual.grade ? atual.grade + " · 3 contas · 5 anúncios" : "—"],
+        ["Etapa", atual.estado === "bot" ? "Novo lead" : atual.dir === "out" ? "Follow-up" : "Call agendada"],
+        ["Valor", atual.grade === "S" ? "R$ 24.000" : atual.grade === "A" ? "R$ 14.400" : "R$ 6.400"],
+        ["Dono", atual.estado === "bot" ? "robô (SDR automático)" : "Rafael Moura"],
+        ["Última resposta", this.dur(atual.min) + (atual.dir === "in" ? " · dele" : " · nossa")],
+      ].map(([k, v]) => ({ k, v })),
+    } : {};
+    return vals;
+  }
+}
+</script>
+</body>
+</html>

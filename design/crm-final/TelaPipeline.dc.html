@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Pipeline</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-gaveta-sai{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-gaveta-sai{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;margin:0 -4px;padding:0 4px">
+
+      <header class="cap-rise" style="flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+        <div>
+          <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Pipeline</h1>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap">
+            
+            
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+          <div style="display:inline-flex;gap:3px;padding:4px;border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.05)">
+            <button onClick="{{ verKanban }}" style="{{ estKanban }}">Kanban</button>
+            <button onClick="{{ verLista }}" style="{{ estLista }}">Lista</button>
+            <button onClick="{{ verAnalise }}" style="{{ estAnalise }}">Análise</button>
+          </div>
+          <button onClick="{{ novoLead }}" style="height:40px;padding:0 20px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:13px;font-weight:650;transition:background 150ms ease" style-hover="background:#1b3140">Cadastrar lead</button>
+        </div>
+      </header>
+
+      <section class="cap-rise" style="flex:0 0 auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.05),0 10px 24px -20px rgba(12,29,43,.4)">
+        <label style="display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 15px;border-radius:999px;background:#f1f4f5;color:#5a6b77;min-width:208px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><circle cx="11" cy="11" r="7"></circle><path d="M20.4 20.4l-4.2-4.2"></path></svg>
+          <input value="{{ busca }}" onChange="{{ mudarBusca }}" placeholder="buscar lead ou empresa…" style="flex:1;min-width:0;border:0;background:none;outline:none;font-family:inherit;font-size:12.5px;color:#0c1d2b">
+        </label>
+        <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#8b99a4">fase</span>
+        <div style="display:inline-flex;gap:3px;padding:3px;border-radius:999px;background:#f1f4f5">
+          <button onClick="{{ faseTodas }}" style="{{ estFaseTodas }}">Todas <span style="font-family:'Outfit',sans-serif">{{ nTodas }}</span></button>
+          <button onClick="{{ faseSdr }}" style="{{ estFaseSdr }}">SDR <span style="font-family:'Outfit',sans-serif">{{ nSdr }}</span></button>
+          <button onClick="{{ faseCloser }}" style="{{ estFaseCloser }}">Closer <span style="font-family:'Outfit',sans-serif">{{ nCloser }}</span></button>
+        </div>
+        <div style="display:inline-flex;gap:3px;padding:3px;border-radius:999px;background:#f1f4f5">
+          <button onClick="{{ pessoaTodos }}" style="{{ estPessoaTodos }}">Todos</button>
+          <button onClick="{{ pessoaRM }}" style="{{ estPessoaRM }}">RM</button>
+          <button onClick="{{ pessoaBA }}" style="{{ estPessoaBA }}">BA</button>
+          <button onClick="{{ pessoaMC }}" style="{{ estPessoaMC }}">MC</button>
+        </div>
+        <button onClick="{{ trocarOrdem }}" style="display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 15px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:12.5px;font-weight:600;transition:background 150ms ease" style-hover="background:#e7ecee">{{ ordemLabel }} <span style="font-size:9px;color:#8b99a4">▾</span></button>
+        <button onClick="{{ limpar }}" style="{{ estLimpar }}">Limpar filtros</button>
+        <span style="margin-left:auto;font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#8b99a4">{{ contagem }}</span>
+      </section>
+
+      <sc-if value="{{ ehKanban }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1 1 auto;min-height:340px;display:flex;align-items:stretch;gap:12px;overflow-x:auto;padding:2px 0 6px">
+        <sc-for list="{{ colunas }}" as="c" hint-placeholder-count="6">
+          <section class="cap-rise" style="flex:1 1 262px;min-width:262px;display:flex;flex-direction:column;gap:10px;padding:16px 12px 14px;border-radius:24px;background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+            <div style="flex:0 0 auto;padding:0 6px">
+              <div style="display:flex;align-items:baseline;gap:8px">
+                <span style="font-size:13px;font-weight:700;letter-spacing:-.01em">{{ c.etapa }}</span>
+                <span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:19px;padding:0 7px;border-radius:999px;background:#f1f4f5;font-family:'Outfit',sans-serif;font-size:11px;font-weight:700;color:#3d4f5c">{{ c.n }}</span>
+                <span style="margin-left:auto;font-size:11px;font-weight:600;white-space:nowrap;color:{{ c.alertaCor }}">{{ c.alerta }}</span>
+              </div>
+              <div style="font-family:'Outfit',sans-serif;font-size:15px;font-weight:700;letter-spacing:-.02em;color:{{ c.dinheiroCor }};margin-top:4px">{{ c.dinheiro }}</div>
+            </div>
+            <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:1px 2px 2px 0">
+              <sc-for list="{{ c.cards }}" as="l" hint-placeholder-count="3">
+                <div onClick="{{ l.abrir }}" style="{{ l.est }}" style-hover="background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.06),0 12px 26px -18px rgba(12,29,43,.45)">
+                  <div style="display:flex;align-items:center;gap:8px;min-width:0">
+                    <span style="flex-shrink:0;width:16px;height:16px;border-radius:999px;box-shadow:inset 0 0 0 1.5px #c5cfd4"></span>
+                    <span style="{{ l.estGrade }}">{{ l.grade }}</span>
+                    <span style="flex:1;min-width:0;font-size:13px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ l.nome }}</span>
+                    <span style="{{ l.estDono }}">{{ l.dono }}</span>
+                  </div>
+                  <div style="font-size:11.5px;color:#5a6b77;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ l.empresa }}</div>
+                  <div style="font-size:11.5px;color:#3d4f5c;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ l.passo }}</div>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;color:{{ l.valorCor }}">{{ l.valorFmt }}</span>
+                    <span style="margin-left:auto;font-size:11.5px;font-weight:600;white-space:nowrap;color:{{ l.prazoCor }}">{{ l.prazo }}</span>
+                  </div>
+                </div>
+              </sc-for>
+              <sc-if value="{{ c.vazia }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:14px 12px;border-radius:18px;background:#f7f9fa;font-size:11.5px;color:#8b99a4;text-align:center">nenhum lead com esses filtros</div>
+              </sc-if>
+            </div>
+          </section>
+        </sc-for>
+
+        <section class="cap-rise" style="position:relative;overflow:hidden;flex:1 1 262px;min-width:262px;display:flex;flex-direction:column;gap:10px;padding:16px 14px 16px;border-radius:24px;background:linear-gradient(168deg,#0a2434,#051C2C 70%);box-shadow:0 1px 2px rgba(5,28,44,.14),0 18px 40px -24px rgba(5,28,44,.6)">
+          <span style="position:absolute;right:-44px;bottom:-28px;width:180px;height:180px;color:#23D8D3;opacity:.07;pointer-events:none"><svg width="180" height="180" viewBox="355 525 455 590"><polygon fill="currentColor" points="800.7 535.53 800.7 1103.92 763 983.8 749.25 939.91 691.16 754.61 501.54 817.84 457.65 832.42 362.47 864.14 443.6 803.33 481.22 775.08 800.7 535.53"></polygon></svg></span>
+          <div style="position:relative;flex:0 0 auto;padding:0 6px">
+            <div style="display:flex;align-items:baseline;gap:8px">
+              <span style="font-size:13px;font-weight:700;color:#F3FBFF">Ganho em setembro</span>
+              <span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:19px;padding:0 7px;border-radius:999px;background:rgba(35,216,211,.16);font-family:'Outfit',sans-serif;font-size:11px;font-weight:700;color:#23D8D3">{{ ganhoN }}</span>
+            </div>
+            <div style="font-family:'Outfit',sans-serif;font-size:26px;font-weight:700;letter-spacing:-.03em;line-height:1.1;color:#23D8D3;margin-top:5px">{{ ganhoTotal }}</div>
+            <div style="font-size:11.5px;color:rgba(243,251,255,.55);margin-top:3px">{{ ganhoTicket }}</div>
+          </div>
+          <div style="position:relative;flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
+            <sc-for list="{{ ganhos }}" as="g" hint-placeholder-count="6">
+              <div style="display:flex;align-items:baseline;gap:10px;padding:9px 12px;border-radius:999px;background:rgba(255,255,255,.06)">
+                <span style="flex:1;min-width:0;font-size:12.5px;font-weight:600;color:#F3FBFF;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ g.nome }}</span>
+                <span style="font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;color:#23D8D3;white-space:nowrap">{{ g.valorFmt }}</span>
+                <span style="font-size:11px;color:rgba(243,251,255,.5);white-space:nowrap">{{ g.dono }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ ehLista }}" hint-placeholder-val="{{ false }}">
+      <section class="cap-rise" style="flex:1 1 auto;min-height:340px;display:flex;flex-direction:column;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:16px 10px 12px">
+        <div style="flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px 10px;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:#8b99a4">
+          <span style="width:26px;flex-shrink:0">nv</span>
+          <span style="flex:1 1 180px;min-width:0">lead</span>
+          <span style="flex:0 0 132px">etapa</span>
+          <span style="flex:1 1 150px;min-width:0">próximo passo</span>
+          <span style="flex:0 0 86px;text-align:right">valor</span>
+          <span style="flex:0 0 96px;text-align:right">prazo</span>
+        </div>
+        <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:2px">
+          <sc-for list="{{ lista }}" as="l" hint-placeholder-count="10">
+            <div onClick="{{ l.abrir }}" style="{{ l.estLinha }}" style-hover="background:#f5f7f8">
+              <span style="{{ l.estGrade }}">{{ l.grade }}</span>
+              <span style="flex:1 1 180px;min-width:0"><span style="display:block;font-size:13px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ l.nome }}</span><span style="display:block;font-size:11px;color:#5a6b77;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ l.empresa }}</span></span>
+              <span style="flex:0 0 132px;font-size:11.5px;color:#3d4f5c">{{ l.etapa }}</span>
+              <span style="flex:1 1 150px;min-width:0;font-size:11.5px;color:#5a6b77;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ l.passo }}</span>
+              <span style="flex:0 0 86px;text-align:right;font-family:'Outfit',sans-serif;font-size:13.5px;font-weight:700;color:{{ l.valorCor }}">{{ l.valorFmt }}</span>
+              <span style="flex:0 0 96px;text-align:right;font-size:11.5px;font-weight:600;color:{{ l.prazoCor }}">{{ l.prazo }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+      </sc-if>
+
+      <sc-if value="{{ ehAnalise }}" hint-placeholder-val="{{ false }}">
+      <section class="cap-rise" style="flex:1 1 auto;min-height:340px;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:22px 24px 24px">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <div>
+            <div style="display:flex;align-items:center;gap:7px">
+              <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">esteira aberta</span>
+            </div>
+            <div style="font-size:12px;color:#5a6b77;margin-top:5px;padding-left:12px">{{ analiseNota }}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">forecast ponderado</div>
+            <div style="font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.1;color:#0F766E;margin-top:2px">{{ forecast }}</div>
+            <div style="font-size:11.5px;color:#5a6b77;margin-top:2px">{{ forecastNota }}</div>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:12px;margin:20px 0 6px;padding:0 14px;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:#8b99a4">
+          <span style="flex:0 1 150px;min-width:110px">etapa</span>
+          <span style="flex:1 1 60px;min-width:40px"></span>
+          <span style="flex:0 0 56px;text-align:right">leads</span>
+          <span style="flex:0 0 104px;text-align:right">em jogo</span>
+          <span style="flex:0 0 74px;text-align:right">prob.</span>
+          <span style="flex:0 0 112px;text-align:right">ponderado</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <sc-for list="{{ analise }}" as="a" hint-placeholder-count="6">
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:999px;transition:background 150ms ease" style-hover="background:#f7f9fa">
+              <span style="flex:0 1 150px;min-width:110px;font-size:13px;font-weight:600">{{ a.etapa }}</span>
+              <span style="flex:1 1 60px;min-width:40px;height:12px;border-radius:999px;background:#eff2f3;overflow:hidden"><span class="cap-grow" style="{{ a.estBarra }}"></span></span>
+              <strong style="flex:0 0 56px;text-align:right;font-family:'Outfit',sans-serif;font-size:16px;font-weight:700;letter-spacing:-.02em">{{ a.n }}</strong>
+              <span style="flex:0 0 104px;text-align:right;font-size:12.5px;color:#3d4f5c">{{ a.tcv }}</span>
+              <span style="flex:0 0 74px;text-align:right;font-size:12px;color:#5a6b77">{{ a.prob }}</span>
+              <span style="flex:0 0 112px;text-align:right;font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;color:#0c1d2b">{{ a.ponderado }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="margin-top:18px;padding:14px 16px;border-radius:20px;background:#f7f9fa;font-size:12px;color:#5a6b77;text-wrap:pretty;max-width:760px">{{ taxasNota }}</div>
+      </section>
+      </sc-if>
+
+      <div style="flex:0 0 auto;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:0 10px 2px">
+        <button onClick="{{ toggleDesc }}" style="height:32px;padding:0 15px;border-radius:999px;background:#fff;color:#3d4f5c;font-size:12.5px;font-weight:600;box-shadow:0 1px 2px rgba(12,29,43,.05);transition:background 150ms ease" style-hover="background:#f7f9fa">{{ descLabel }}</button>
+        <span style="font-size:12px;color:#5a6b77">descartado não conta no funil, mas volta com um clique</span>
+        <sc-if value="{{ verDesc }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <sc-for list="{{ descartados }}" as="d" hint-placeholder-count="3">
+              <button onClick="{{ d.voltar }}" style="display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 13px;border-radius:999px;background:#f1f4f5;color:#5a6b77;font-size:11.5px;font-weight:600;transition:background 150ms ease,color 150ms ease" style-hover="background:#E9F5F3;color:#0F766E">{{ d.nome }} <span style="font-size:10px;color:#8b99a4">voltar ↩</span></button>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+
+    <sc-if value="{{ temSel }}" hint-placeholder-val="{{ false }}">
+      <aside class="{{ classeGaveta }}" style="position:fixed;right:18px;top:80px;bottom:18px;width:428px;max-width:calc(100vw - 36px);z-index:20;display:flex;flex-direction:column;overflow:hidden;border-radius:24px;background:#fff;box-shadow:0 2px 6px rgba(12,29,43,.08),0 30px 60px -28px rgba(12,29,43,.55)">
+
+        <div style="flex:0 0 auto;display:flex;align-items:flex-start;gap:11px;padding:20px 20px 14px">
+          <span style="{{ sel.estGrade }}">{{ sel.grade }}</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-family:'Outfit',sans-serif;font-size:20px;font-weight:700;letter-spacing:-.025em;line-height:1.15">{{ sel.nome }}</div>
+            <div style="font-size:12.5px;color:#5a6b77;margin-top:2px">{{ sel.empresa }}</div>
+          </div>
+          <button onClick="{{ fechar }}" style="flex-shrink:0;width:30px;height:30px;border-radius:999px;background:#f1f4f5;color:#5a6b77;font-size:13px;transition:background 150ms ease" style-hover="background:#e7ecee;color:#0c1d2b">✕</button>
+        </div>
+
+        <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:0 20px 18px">
+
+          <div style="padding:15px 16px;border-radius:20px;background:#f7f9fa">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">resumo do cliente</span>
+              <span style="margin-left:auto;font-size:11px;font-weight:600;color:#0F766E;background:#E9F5F3;border-radius:999px;padding:3px 10px;white-space:nowrap">{{ sel.icpPill }}</span>
+            </div>
+            <sc-for list="{{ sel.fatos }}" as="f" hint-placeholder-count="8">
+              <div style="display:flex;align-items:baseline;gap:10px;padding:5px 0;border-top:1px solid #edf1f3">
+                <span style="flex:0 0 132px;font-size:11.5px;color:#5a6b77">{{ f.k }}</span>
+                <span style="flex:1;min-width:0;font-size:12.5px;font-weight:600;text-align:right;text-wrap:pretty">{{ f.v }}</span>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="padding:15px 16px;border-radius:20px;background:#f7f9fa">
+            <button onClick="{{ toggleForm }}" style="display:flex;align-items:center;gap:8px;width:100%;text-align:left">
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">respostas do formulário</span>
+              <span style="margin-left:auto;font-size:11px;color:#8b99a4;white-space:nowrap">{{ sel.formResumo }}</span>
+              <span style="font-size:10px;color:#5a6b77;flex-shrink:0">{{ caretForm }}</span>
+            </button>
+            <sc-if value="{{ abertoForm }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:6px;margin-top:11px">
+                <sc-for list="{{ sel.respostas }}" as="r" hint-placeholder-count="6">
+                  <div style="display:flex;align-items:baseline;gap:9px;padding:8px 12px;border-radius:14px;background:#fff">
+                    <span style="flex-shrink:0;font-size:11px;color:#0F766E">✓</span>
+                    <span style="flex:1 1 128px;min-width:0;font-size:11.5px;color:#5a6b77;text-wrap:pretty">{{ r.pergunta }}</span>
+                    <span style="flex:1;min-width:0;font-size:12px;font-weight:600;text-align:right;text-wrap:pretty">{{ r.resposta }}</span>
+                  </div>
+                </sc-for>
+                <sc-if value="{{ sel.temPendentes }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:6px">
+                    <div style="display:flex;align-items:center;gap:9px;padding:7px 12px;border-radius:14px;border:1px dashed #d8c48a;background:#fdf8ec">
+                      <span style="flex-shrink:0;font-size:11px;color:#a16207">○</span>
+                      <span style="flex:1;font-size:11.5px;color:#8a6a1f">{{ sel.pendentesResumo }}</span>
+                    </div>
+                    <sc-for list="{{ sel.pendentes }}" as="p" hint-placeholder-count="2">
+                      <div style="display:flex;align-items:baseline;gap:9px;padding:8px 12px;border-radius:14px;background:#fdf8ec">
+                        <span style="flex-shrink:0;font-size:11px;color:#a16207">○</span>
+                        <span style="flex:1;min-width:0;font-size:11.5px;color:#8a6a1f;text-wrap:pretty">{{ p.pergunta }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-if>
+          </div>
+
+          <div style="padding:15px 16px;border-radius:20px;background:#f7f9fa">
+            <button onClick="{{ toggleOrigem }}" style="display:flex;align-items:center;gap:8px;width:100%;text-align:left">
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">de onde veio</span>
+              <span style="margin-left:auto;font-size:11px;font-weight:600;color:#3d4f5c;background:#e7ecee;border-radius:999px;padding:3px 10px;white-space:nowrap">{{ sel.origem }}</span>
+              <span style="font-size:10px;color:#5a6b77;flex-shrink:0">{{ caretOrigem }}</span>
+            </button>
+            <sc-if value="{{ abertoOrigem }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:11px">
+            <sc-for list="{{ sel.atribuicao }}" as="a" hint-placeholder-count="4">
+              <div style="display:flex;align-items:baseline;gap:10px;padding:5px 0;border-top:1px solid #edf1f3">
+                <span style="flex:0 0 108px;font-size:11.5px;color:#5a6b77">{{ a.k }}</span>
+                <span style="flex:1;min-width:0;font-size:12px;font-weight:600;text-align:right;overflow-wrap:anywhere">{{ a.v }}</span>
+              </div>
+            </sc-for>
+            <div style="{{ sel.estDor }}">
+              <span style="font-size:11px;color:#5a6b77">dor do anúncio</span>
+              <strong style="font-size:12.5px;font-weight:700;color:#0c1d2b">{{ sel.dor }}</strong>
+            </div>
+            </div>
+            </sc-if>
+          </div>
+
+          <div style="padding:15px 16px;border-radius:20px;background:#f7f9fa">
+            <div style="display:flex;align-items:center;gap:8px">
+              <button onClick="{{ toggleHist }}" style="display:flex;align-items:center;gap:8px;width:100%;text-align:left">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">histórico de ações</span>
+                <span style="margin-left:auto;font-size:11px;color:#8b99a4;white-space:nowrap">{{ sel.histResumo }}</span>
+                <span style="font-size:10px;color:#5a6b77;flex-shrink:0">{{ caretHist }}</span>
+              </button>
+              
+            </div>
+            <sc-if value="{{ abertoHist }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:9px;margin-top:11px">
+              <sc-for list="{{ sel.eventos }}" as="e" hint-placeholder-count="4">
+                <div style="display:flex;align-items:baseline;gap:10px">
+                  <span style="{{ e.estPonto }}"></span>
+                  <span style="flex:1;min-width:0;font-size:12.5px;color:#3d4f5c;text-wrap:pretty">{{ e.texto }}</span>
+                  <span style="flex-shrink:0;font-size:11px;color:#8b99a4;white-space:nowrap">{{ e.quando }}</span>
+                </div>
+              </sc-for>
+            </div>
+            </sc-if>
+          </div>
+
+          <div style="padding:15px 16px;border-radius:20px;background:#f7f9fa">
+            <button onClick="{{ toggleNota }}" style="display:flex;align-items:center;gap:8px;width:100%;text-align:left"><span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">anotações</span>
+              <span style="margin-left:auto;font-size:11px;color:#8b99a4;white-space:nowrap">{{ sel.notaResumo }}</span>
+              <span style="font-size:10px;color:#5a6b77;flex-shrink:0">{{ caretNota }}</span>
+            </button>
+            <sc-if value="{{ abertoNota }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:11px">
+            <textarea value="{{ sel.nota }}" onChange="{{ mudarNota }}" placeholder="o que ficou combinado, quem decide, objeção que apareceu…" style="width:100%;min-height:74px;resize:vertical;border:0;border-radius:16px;background:#fff;box-shadow:inset 0 0 0 1px #e4e9eb;padding:11px 13px;font-family:inherit;font-size:12.5px;line-height:1.5;color:#0c1d2b;outline:none"></textarea>
+            </div>
+            </sc-if>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <div style="padding-left:2px"><span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">enviar pro cliente</span></div>
+            <button onClick="{{ apresentar }}" style="display:flex;align-items:center;gap:10px;height:40px;padding:0 15px;border-radius:999px;background:#f1f4f5;color:#0c1d2b;font-size:12.5px;font-weight:600;text-align:left;transition:background 150ms ease" style-hover="background:#e7ecee">
+              <span style="flex-shrink:0;width:22px;height:22px;border-radius:999px;background:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px">▣</span>
+              <span style="flex:1">Gerar apresentação</span>
+              <span style="font-size:11px;color:#5a6b77">{{ sel.apresentacaoEstado }}</span>
+            </button>
+            <button onClick="{{ gerarLink }}" style="display:flex;align-items:center;gap:10px;height:40px;padding:0 15px;border-radius:999px;background:#f1f4f5;color:#0c1d2b;font-size:12.5px;font-weight:600;text-align:left;transition:background 150ms ease" style-hover="background:#e7ecee">
+              <span style="flex-shrink:0;width:22px;height:22px;border-radius:999px;background:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px">▤</span>
+              <span style="flex:1">Link de pagamento</span>
+              <span style="font-size:11px;color:#5a6b77">{{ sel.linkEstado }}</span>
+            </button>
+            <button onClick="{{ enviarProposta }}" style="display:flex;align-items:center;gap:10px;height:40px;padding:0 15px;border-radius:999px;background:#E9F5F3;color:#0b6b64;font-size:12.5px;font-weight:600;text-align:left;transition:background 150ms ease" style-hover="background:#d8ede9">
+              <span style="flex-shrink:0;width:22px;height:22px;border-radius:999px;background:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px">✆</span>
+              <span style="flex:1">Enviar proposta no WhatsApp</span>
+              <span style="font-size:11px;color:#0b6b64">{{ sel.telefone }}</span>
+            </button>
+          </div>
+        </div>
+
+        <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:10px;padding:14px 20px 16px;border-top:1px solid #edf1f3">
+          <sc-if value="{{ semGate }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;align-items:baseline;gap:10px">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">próximo passo</span>
+                <span style="{{ sel.estPrazoPill }}">{{ sel.prazoTexto }}</span>
+              </div>
+              <div style="font-size:14px;font-weight:650;line-height:1.35;text-wrap:pretty">{{ sel.passo }}</div>
+              <input value="{{ sel.nextActionNote }}" onChange="{{ mudarNotaToque }}" placeholder="o que fazer nesse toque? (ex.: cobrar proposta)" style="width:100%;height:34px;padding:0 13px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;font-family:inherit;font-size:12px;color:#0c1d2b;outline:none">
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                <span style="font-size:11px;color:#5a6b77;margin-right:2px">adiar o toque</span>
+                <button onClick="{{ toque1 }}" style="height:28px;padding:0 12px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:11.5px;font-weight:600;transition:background 150ms ease" style-hover="background:#e7ecee">Adiar 1d</button>
+                <button onClick="{{ toque2 }}" style="height:28px;padding:0 12px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:11.5px;font-weight:600;transition:background 150ms ease" style-hover="background:#e7ecee">Adiar 2d</button>
+                <button onClick="{{ toque7 }}" style="height:28px;padding:0 12px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:11.5px;font-weight:600;transition:background 150ms ease" style-hover="background:#e7ecee">Adiar 1 sem</button>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <select value="{{ sel.stageNome }}" onChange="{{ mudarEtapa }}" style="flex:1;min-width:0;height:40px;padding:0 13px;border-radius:999px;border:0;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;font-family:inherit;font-size:12.5px;font-weight:600;color:#0c1d2b;cursor:pointer">
+                  <sc-for list="{{ etapasOpcoes }}" as="o" hint-placeholder-count="6">
+                    <option value="{{ o.nome }}">{{ o.label }}</option>
+                  </sc-for>
+                </select>
+                <button onClick="{{ avancar }}" style="flex-shrink:0;height:40px;padding:0 18px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:13px;font-weight:650;transition:background 150ms ease" style-hover="background:#1b3140">{{ avancarLabel }}</button>
+              </div>
+              <button onClick="{{ descartar }}" style="height:30px;border-radius:999px;background:transparent;color:#b42318;font-size:11.5px;font-weight:600;transition:background 150ms ease" style-hover="background:#fdf3f2">Descartar lead</button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ temGate }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;align-items:baseline;gap:8px">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">confirmar movimento</span>
+                <span style="margin-left:auto;font-size:11px;color:#8b99a4">{{ gate.nota }}</span>
+              </div>
+              <div style="font-size:14px;font-weight:650;line-height:1.3">{{ gate.titulo }}</div>
+              <sc-for list="{{ gate.campos }}" as="c" hint-placeholder-count="2">
+                <label style="display:flex;flex-direction:column;gap:5px">
+                  <span style="font-size:11px;color:#5a6b77">{{ c.label }}</span>
+                  <sc-if value="{{ c.ehSelect }}" hint-placeholder-val="{{ true }}">
+                    <select value="{{ c.valor }}" onChange="{{ c.mudar }}" style="width:100%;height:36px;padding:0 12px;border-radius:999px;border:0;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;font-family:inherit;font-size:12.5px;font-weight:600;color:#0c1d2b;cursor:pointer">
+                      <sc-for list="{{ c.opcoes }}" as="o" hint-placeholder-count="3">
+                        <option value="{{ o.v }}">{{ o.l }}</option>
+                      </sc-for>
+                    </select>
+                  </sc-if>
+                  <sc-if value="{{ c.ehTexto }}" hint-placeholder-val="{{ false }}">
+                    <input value="{{ c.valor }}" onChange="{{ c.mudar }}" placeholder="{{ c.dica }}" style="width:100%;height:36px;padding:0 13px;border:0;border-radius:999px;background:#fff;box-shadow:inset 0 0 0 1px #e4e9eb;font-family:inherit;font-size:12.5px;color:#0c1d2b;outline:none">
+                  </sc-if>
+                </label>
+              </sc-for>
+              <div style="display:flex;align-items:center;gap:8px;margin-top:2px">
+                <button onClick="{{ cancelarGate }}" style="flex-shrink:0;height:38px;padding:0 16px;border-radius:999px;background:#f1f4f5;color:#5a6b77;font-size:12.5px;font-weight:600;transition:background 150ms ease" style-hover="background:#e7ecee">Cancelar</button>
+                <button onClick="{{ confirmarGate }}" style="{{ gate.estConfirmar }}">{{ gate.confirmarLabel }}</button>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </aside>
+    </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  static ETAPAS = ["Novo lead","Em contato","Qualificando","Call agendada","Proposta enviada","Follow-up"];
+  static FASES = ["sdr","sdr","sdr","closer","closer","closer"];
+  static DONOS = { RM:"Rafael Moura", BA:"Bruno Alencar", MC:"Manuela Costa" };
+  static GRADE_COR = { S:["#7c3aed","#fff"], A:["#16a34a","#fff"], B:["#65a30d","#fff"], C:["#eab308","#463500"], D:["#ea580c","#fff"], E:["#9aa2ad","#fff"] };
+  // Elenco compartilhado com a tela Pipeline: nome, empresa, origem e a dor do
+  // anúncio andam juntos, para o mesmo lead ler igual nas duas telas.
+  static ELENCO = {
+    "Paula Bittencourt": { empresa: "Vitta Odonto", origem: "Rede", dor: "C", grade: "C" },
+    "Marcos Aguiar": { empresa: "Grupo MA", origem: "Rede", dor: "A", grade: "B" },
+    "Nina Castro": { empresa: "Castro Pet", origem: "Alvo", dor: "B", grade: "E" },
+    "Sérgio Prado": { empresa: "Oficina Prado", origem: "Semente", dor: "E", indicadoPor: "Helena Vitta", grade: "A" },
+    "Otávio Braga": { empresa: "Braga Fit", origem: "Rede", dor: "C", grade: "C" },
+    "Renata Dias": { empresa: "Clínica RD", origem: "Rede", dor: "B", grade: "B" },
+    "Lúcia Amaral": { empresa: "Amaral Studio", origem: "Rede", dor: "A", grade: "A" },
+    "Eduardo Galante": { empresa: "Galante Holding", origem: "Semente", dor: "E", indicadoPor: "Marina Kern", grade: "S" },
+    "Bruno Sato": { empresa: "Sato Imports", origem: "Rede", dor: "C", grade: "C" },
+    "Helena Vitta": { empresa: "Nutri Vitta", origem: "Semente", dor: "A", indicadoPor: "Diego Arbo", grade: "A" },
+    "Caio Menezes": { empresa: "Menezes Auto", origem: "Rede", dor: "B", grade: "B" },
+    "Marina Kern": { empresa: "Studio Kern", origem: "Rede", dor: "E", grade: "S" },
+    "Diego Arbo": { empresa: "Clínica Arbo", origem: "Rede", dor: "A", grade: "A" },
+    "Tatiana Ponto": { empresa: "Mercado Ponto", origem: "Alvo", dor: "C", grade: "B" },
+    "Rogério Vante": { empresa: "Grupo Vante", origem: "Rede", dor: "B", grade: "B" },
+    "Fernanda Luz": { empresa: "Luz Odontologia", origem: "Semente", dor: "E", indicadoPor: "Sérgio Prado", grade: "S" },
+    "Paulo Ferraz": { empresa: "Ferraz Advocacia", origem: "Rede", dor: "A", grade: "A" },
+    "Isabel Corrêa": { empresa: "Corrêa Pets", origem: "Rede", dor: "C", grade: "B" },
+    "Tiago Nogueira": { empresa: "Nogueira Imports", origem: "Rede", dor: "B", grade: "B" },
+    "Camila Reis": { empresa: "Nutri Vitta", origem: "Rede", dor: "A", grade: "A" },
+    "Luiza Prado": { empresa: "Prado Fit", origem: "Rede", dor: "C", grade: "B" },
+  };
+  static GANHOS_BASE = [
+    { nome:"Studio Kern", valor:24000, dono:"Rafael" }, { nome:"Nutri Vitta", valor:4800, dono:"Rafael" },
+    { nome:"Oficina Prado", valor:9600, dono:"Bruno" }, { nome:"Clínica Arbo", valor:24000, dono:"Rafael" },
+    { nome:"Mercado Ponto", valor:6400, dono:"Manuela" }, { nome:"Grupo Vante", valor:9600, dono:"Bruno" },
+    { nome:"Padaria Dovale", valor:14400, dono:"Manuela" }, { nome:"Instituto Rima", valor:19600, dono:"Rafael" },
+  ];
+
+  static gerar() {
+    const FIRST = ["Paula","Marcos","Nina","Sérgio","Otávio","Renata","Lúcia","Eduardo","Bruno","Helena","Caio","Marina","Diego","Tatiana","Rogério","Fernanda","Paulo","Isabel","André","Carla"];
+    const LAST = ["Bittencourt","Aguiar","Castro","Prado","Braga","Dias","Amaral","Galante","Sato","Vitta","Menezes","Kern","Arbo","Ponto","Vante","Luz"];
+    const PRE = ["Studio","Clínica","Grupo","Oficina","Mercado","Instituto","Academia","Escola","Padaria","Consultório","Espaço","Casa"];
+    const SUF = ["Kern","Vitta","Prado","Arbo","Ponto","Vante","Dovale","Rima","Mendes","Lira","Bueno","Tavares","Nogueira","Peixoto","Camargo","Sauro"];
+    const GRADES = ["C","B","A","C","S","B","D","A","C","B","E","A"];
+    const VAL = [6400,9600,14400,24000];
+    // Follow-up é o único estágio cujo total já está publicado na Visão geral
+    // ("em follow-up · 14 → R$ 96.500"), então os valores saem calibrados nele.
+    const FOLLOWUP = [24000,14400,9600,9600,6900,6400,6400,6400,6400,6400,0,0,0,0];
+    const POR_ETAPA = [9,14,37,9,11,14];
+    const out = []; let i = 0;
+    for (let st = 0; st < 6; st++) {
+      for (let k = 0; k < POR_ETAPA[st]; k++, i++) {
+        const tone = i % 8 === 0 ? "late" : (i % 8 === 1 ? "hoje" : "");
+        const temValor = st >= 3 || (st === 2 && i % 5 < 2);
+        const ORIGENS = ["Semente","Rede","Rede","Rede","Alvo"];
+        const nomeLead = FIRST[i % 20] + " " + LAST[(i * 7 + Math.floor(i / 20) * 3) % 16];
+        const fixo = Component.ELENCO[nomeLead] || null;
+        const origem = fixo ? fixo.origem : (i % 50 < 11 ? "Semente" : (i % 50 < 42 ? "Rede" : "Alvo"));
+        const FAIXAS = ["R$ 50 a 100 mil/mês","R$ 100 a 250 mil/mês","R$ 250 a 500 mil/mês","R$ 500 mil+/mês"];
+        const CONTAS = { S:[3,5], A:[2,4], B:[2,3], C:[1,3], D:[1,2], E:[1,1] };
+        const ADS = [
+          "LA-[C]-marketplace-estoque-parado-v3",
+          "LA-[A]-anuncio-caro-sem-venda-v7",
+          "LA-[B]-nao-sabe-medir-retorno-v2",
+          "LA-[E]-escalar-sem-perder-margem-v4",
+        ];
+        const DORES = { C:"estoque parado no marketplace", A:"anúncio caro sem venda", B:"não sabe medir o retorno", E:"escalar sem perder margem" };
+        const CAMPANHAS = ["ADV+ · diagnóstico · setembro","ABO · marketplace · setembro","Retargeting · base 90d"];
+        const CONJUNTOS = ["Lookalike 1% compradores","Interesses · e-commerce","Base 90d · compradores excluídos"];
+        const HEADLINES = ["Descubra por que seu anúncio não vende","Quanto seu marketplace deixa na mesa?","Diagnóstico gratuito de tráfego"];
+        const grade = fixo ? fixo.grade : GRADES[i % 12];
+        const codigo = fixo ? fixo.dor : ADS[i % 4].slice(ADS[i % 4].indexOf("[") + 1, ADS[i % 4].indexOf("]"));
+        const ad = ADS.find((x) => x.indexOf("[" + codigo + "]") > 0) || ADS[i % 4];
+        out.push({
+          id: i, stage: st, status: "aberto",
+          nome: nomeLead,
+          empresa: fixo ? fixo.empresa : PRE[i % 12] + " " + SUF[(i * 5 + Math.floor(i / 12)) % 16],
+          grade, valor: st === 5 ? FOLLOWUP[k] : (temValor ? VAL[(i * 3) % 4] : 0),
+          origem, faixa: FAIXAS[i % 4], contas: CONTAS[grade][0], anuncios: CONTAS[grade][1],
+          closer: st < 3 ? null : ["RM","BA","RM","BA"][i % 4],
+          callAt: st === 3 ? ["seg 22/09","ter 23/09","qua 24/09"][i % 3] + " · " + ["09:30","11:00","14:00","16:30"][i % 4] : null,
+          nextActionNote: "", proposalOffer: st === 5 ? ["Lever Ads · Escala","Lever OEM · Essencial","Lever Price · Escala","Lever Ads · Essencial"][i % 4] : null,
+          dealProduct: null, pagamento: null, plano: null,
+          icp: 40 + ((i * 7) % 56), score: 20 + ((i * 11) % 76), diasNaEtapa: 1 + (i % 12), entrada: 2 + (i % 16),
+          telefone: "(11) 9" + (4000 + (i * 137) % 5999) + "-" + (1000 + (i * 79) % 8999),
+          email: (FIRST[i % 20].toLowerCase().normalize("NFD").replace(/[^a-z]/g, "")) + "@" + (SUF[(i * 5 + Math.floor(i / 12)) % 16].toLowerCase()) + ".com.br",
+          anuncio: ad, dor: codigo + " · " + DORES[codigo], campanha: CAMPANHAS[i % 3], conjunto: CONJUNTOS[i % 3], headline: HEADLINES[i % 3],
+          indicadoPor: origem !== "Semente" ? null : (fixo && fixo.indicadoPor) || ["Marina Kern", "Diego Arbo", "Helena Vitta", "Tatiana Ponto"][i % 4],
+          nota: i % 3 === 0 ? "Pediu pra falar depois das 18h. Sócio decide junto." : "",
+          form: {
+            niche: ["Moda e acessórios","Casa e decoração","Auto peças","Pet","Eletrônicos","Ferramentas"][i % 6],
+            company: PRE[i % 12] + " " + SUF[(i * 5 + Math.floor(i / 12)) % 16],
+            accounts: CONTAS[grade][0] + (CONTAS[grade][0] > 1 ? " contas" : " conta"),
+            listings: ["até 500 anúncios","500 a 2 mil anúncios","2 mil a 10 mil anúncios","mais de 10 mil anúncios"][i % 4],
+            revenue: FAIXAS[i % 4],
+            plan_expand: i % 3 === 0 ? "" : ["quer abrir mais contas","já está abrindo a segunda","não pretende agora"][i % 3],
+            staff: i % 2 === 0 ? "" : ["agência cuida do tráfego","1 pessoa interna","time de 3+ pessoas"][i % 3],
+            decider: i % 4 === 1 ? "" : ["decide sozinho","sócio decide junto","diretoria aprova"][i % 3],
+          },
+          eventos: [
+            { tipo: "etapa", texto: "entrou em " + ["Novo lead","Em contato","Qualificando","Call agendada","Proposta enviada","Follow-up"][st], quando: "há " + (1 + (i % 12)) + "d" },
+            { tipo: "contato", texto: i % 2 === 0 ? "WhatsApp respondido" : "ligação sem resposta", quando: "há " + (2 + (i % 9)) + "d" },
+            { tipo: "form", texto: "preencheu o formulário · " + FAIXAS[i % 4], quando: "há " + (2 + (i % 16)) + "d" },
+            { tipo: "lead", texto: origem === "Rede" ? "chegou pelo anúncio " + ad : (origem === "Semente" ? "chegou por indicação" : "prospecção ativa"), quando: "há " + (2 + (i % 16)) + "d" },
+          ],
+          dono: (st < 3 && i % 4 === 1) ? null : "MC",
+          tone, atraso: 1 + (i % 5), dia: 21 + (i % 6), hora: ["09:30","11:00","14:00","16:30"][i % 4], tent: 1 + (i % 3),
+        });
+      }
+    }
+    return out;
+  }
+
+  // DEAL_PRODUCTS_ACTIVE, PAYMENT_METHODS_ACTIVE e CLOSED_PLANS_ACTIVE do
+  // lib/payments.js (os legados ficam fora dos selects) e o padrão de
+  // lossReasonsOf do lib/funnel.js.
+  static PRODUTOS = ["Lever OEM · Essencial","Lever OEM · Escala","Lever Ads · Essencial","Lever Ads · Escala","Lever Price · Essencial","Lever Price · Escala","Lever Price · Enterprise","Pacote de OEM avulso"];
+  static PAGAMENTOS = ["PIX à vista","PIX parcelado","Boleto à vista","Boleto faturado","Cartão de crédito 12x"];
+  static PLANOS = ["Anual","Semestral","Serviço único"];
+  static MOTIVOS = ["Preço","Sem resposta","Sem fit","Timing","Concorrente","Outro"];
+  state = { view:"kanban", fase:"todas", pessoa:"todos", ordem:"toque", busca:"", soAtrasados:false, sel:null, verDesc:false, leads: Component.gerar(), ganhosExtra: [], gate: null, fechando: false, seqLead: 1, abertos: { form: false, origem: false, hist: false, nota: false } };
+
+  // Os cinco momentos que pedem input antes de mover (moveGate do stage-move.jsx):
+  // lost → handoff → offer (Follow-up) → call sem hora → won sem valor/produto.
+  portaoDe(lead, idx) {
+    if (idx === -1) return { tipo: "lost", motivo: "", obs: "" };
+    if (idx >= 3 && lead.stage < 3 && !lead.closer) return { tipo: "handoff", closer: "RM", askCall: idx === 3 && !lead.callAt, dia: "", hora: "" };
+    if (idx === 5) return { tipo: "offer", oferta: lead.proposalOffer || Component.PRODUTOS[0], quando: "", daCall: lead.stage === 3 };
+    if (idx === 3 && !lead.callAt) return { tipo: "call", dia: "", hora: "" };
+    if (idx === 6) return { tipo: "won", valor: lead.valor ? String(lead.valor) : "", produto: lead.dealProduct || "", pagamento: "", plano: "Anual" };
+    return null;
+  }
+  pedirMovimento(lead, idx) {
+    const p = this.portaoDe(lead, idx);
+    if (!p) { this.moverPara(lead, idx); return; }
+    this.setState({ gate: Object.assign({ paraIdx: idx, leadId: lead.id }, p) });
+  }
+  fecharGaveta() {
+    if (this.state.fechando) return;
+    this.setState({ fechando: true, gate: null });
+    this._saida = setTimeout(() => this.setState({ sel: null, fechando: false }), 160);
+  }
+  componentWillUnmount() { clearTimeout(this._saida); }
+  abrirBloco(qual) { this.setState((st) => ({ abertos: Object.assign({}, st.abertos, { [qual]: !st.abertos[qual] }) })); }
+  campoGate(chave, valor) { this.setState((st) => ({ gate: Object.assign({}, st.gate, { [chave]: valor }) })); }
+  confirmar() {
+    const g = this.state.gate;
+    if (!g) return;
+    const lead = this.state.leads.find((l) => l.id === g.leadId);
+    if (!lead) { this.setState({ gate: null }); return; }
+    const ev = (texto, tipo) => ({ tipo: tipo || "etapa", texto, quando: "agora" });
+    let mud = {}, evento = null, ganho = null, fecharSel = false;
+    if (g.tipo === "lost") {
+      if (!g.motivo) return;
+      mud = { status: "descartado", lostReason: g.motivo };
+      evento = ev("perdido · " + g.motivo + (g.obs ? " · " + g.obs : ""), "acao");
+      fecharSel = true;
+    } else if (g.tipo === "handoff") {
+      if (!g.closer || (g.askCall && (!g.dia || !g.hora))) return;
+      mud = { closer: g.closer, stage: g.paraIdx, tone: "hoje", diasNaEtapa: 0, tent: 1 };
+      if (g.askCall) { mud.callAt = g.dia + " · " + g.hora; mud.hora = g.hora; }
+      evento = ev("handoff para " + Component.DONOS[g.closer] + " · " + Component.ETAPAS[g.paraIdx] + (g.askCall ? " · call " + g.dia + " " + g.hora : ""));
+    } else if (g.tipo === "offer") {
+      if (g.daCall && !g.oferta) return;
+      const dias = { "+1d": 1, "+2d": 2, "+1sem": 7 }[g.quando] || 0;
+      mud = { stage: 5, tone: dias ? "" : "hoje", dia: dias ? Math.min(30, 19 + dias) : 19, diasNaEtapa: 0, tent: 1 };
+      if (g.daCall) mud.proposalOffer = g.oferta;
+      evento = ev("movido para Follow-up" + (g.daCall ? " · proposta na mesa: " + g.oferta : "") + (g.quando ? " · cobrar " + g.quando : ""));
+    } else if (g.tipo === "call") {
+      if (!g.dia || !g.hora) return;
+      mud = { stage: 3, callAt: g.dia + " · " + g.hora, tone: "hoje", hora: g.hora, diasNaEtapa: 0, tent: 1 };
+      evento = ev("call marcada para " + g.dia + " · " + g.hora);
+    } else if (g.tipo === "won") {
+      const pgto = g.pagamento === "__custom" ? (g.condicao || "").trim() : g.pagamento;
+      if (!(Number(g.valor) > 0) || !g.produto || !pgto) return;
+      mud = { status: "ganho", valor: Number(g.valor), dealProduct: g.produto, pagamento: pgto, plano: g.plano };
+      evento = ev("ganho · " + g.produto + " · " + this.fmt(Number(g.valor)) + " · " + pgto + " · " + g.plano, "acao");
+      ganho = { nome: lead.empresa, valor: Number(g.valor), dono: (Component.DONOS[lead.closer || lead.dono] || "time").split(" ")[0] };
+      fecharSel = true;
+    }
+    this.setState((st) => ({
+      leads: st.leads.map((l) => l.id === lead.id ? Object.assign({}, l, mud, { eventos: [evento].concat(l.eventos) }) : l),
+      ganhosExtra: ganho ? st.ganhosExtra.concat([ganho]) : st.ganhosExtra,
+      gate: null, sel: st.sel,
+    }));
+    if (fecharSel) this.fecharGaveta();
+  }
+
+  fmt(n) { return "R$ " + Math.round(n).toLocaleString("pt-BR"); }
+  passoDe(l) { return ["Primeiro contato","Nova tentativa · " + l.tent + "ª","Retomar o contato","Confirmar a call","Cobrar retorno da proposta","Follow-up da proposta · " + l.tent + "ª"][l.stage]; }
+  prazoDe(l) { if (l.tone === "late") return "atrasado " + l.atraso + "d"; if (l.tone === "hoje") return l.stage === 3 ? "hoje " + l.hora : "hoje"; return l.dia + "/09"; }
+  prazoCor(l) { return l.tone === "late" ? "#b42318" : l.tone === "hoje" ? "#a16207" : "#5a6b77"; }
+  rank(l) {
+    if (this.state.ordem === "valor") return -l.valor;
+    if (this.state.ordem === "nivel") return "SABCDE".indexOf(l.grade);
+    if (l.tone === "late") return 5 - l.atraso;
+    if (l.tone === "hoje") return 100;
+    return 200 + l.dia;
+  }
+  estGrade(l, tam) {
+    const c = Component.GRADE_COR[l.grade] || ["#e4e9eb","#8b99a4"];
+    const d = tam || 19;
+    return "flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:" + d + "px;height:" + d + "px;border-radius:999px;font-family:'Outfit',sans-serif;font-size:" + (d > 22 ? 14 : 11) + "px;font-weight:700;background:" + c[0] + ";color:" + c[1];
+  }
+  seg(ativo, alt) {
+    const h = alt ? 30 : 32, p = alt ? 15 : 18;
+    return "height:" + h + "px;padding:0 " + p + "px;border-radius:999px;font-size:12" + (alt ? "" : ".5") + "px;transition:background 150ms ease,color 150ms ease;" +
+      (ativo ? (alt ? "background:#fff;color:#0c1d2b;font-weight:650;box-shadow:0 1px 2px rgba(12,29,43,.06)" : "background:#0c1d2b;color:#fff;font-weight:600")
+             : "background:transparent;color:#5a6b77;font-weight:500");
+  }
+  visiveis() {
+    const { fase, pessoa, busca, soAtrasados, leads } = this.state;
+    const q = busca.trim().toLowerCase();
+    return leads.filter((l) => l.status === "aberto"
+      && (fase === "todas" || Component.FASES[l.stage] === fase)
+      && (pessoa === "todos" || l.dono === pessoa || l.closer === pessoa)
+      && (!soAtrasados || l.tone === "late")
+      && (!q || l.nome.toLowerCase().includes(q) || l.empresa.toLowerCase().includes(q)));
+  }
+  patch(id, mud) { this.setState((st) => ({ leads: st.leads.map((l) => l.id === id ? Object.assign({}, l, mud) : l) })); }
+  logar(lead, texto, tipo) { this.evento(lead.id, { tipo: tipo || "acao", texto, quando: "agora" }); }
+  evento(id, ev, mud) {
+    this.setState((st) => ({ leads: st.leads.map((l) => l.id === id ? Object.assign({}, l, mud || {}, { eventos: [ev].concat(l.eventos) }) : l) }));
+  }
+  adiar(lead, dias) { this.patch(lead.id, { tone: "", dia: Math.min(30, 19 + dias) }); }
+  moverPara(lead, idx) {
+    if (idx < 0 || idx > 5 || idx === lead.stage) return;
+    this.evento(lead.id, { tipo: "etapa", texto: "movido para " + Component.ETAPAS[idx], quando: "agora" },
+      { stage: idx, tone: "hoje", diasNaEtapa: 0, tent: 1 });
+  }
+
+  renderVals() {
+    const st = this.state;
+    const abertos = st.leads.filter((l) => l.status === "aberto");
+    const vis = this.visiveis().slice().sort((a, b) => this.rank(a) - this.rank(b));
+    const semFase = st.leads.filter((l) => l.status === "aberto" && (st.pessoa === "todos" || l.dono === st.pessoa || l.closer === st.pessoa));
+    const enriquece = (l) => {
+      const sel = st.sel === l.id;
+      return Object.assign({}, l, {
+        passo: l.nextActionNote || this.passoDe(l), prazo: this.prazoDe(l), prazoCor: this.prazoCor(l),
+        etapa: Component.ETAPAS[l.stage],
+        valorFmt: l.valor ? this.fmt(l.valor) : "R$ 0",
+        valorCor: l.valor ? "#0c1d2b" : "#8b99a4",
+        grade: l.grade, estGrade: this.estGrade(l),
+        dono: l.closer || l.dono || "",
+        estDono: (l.closer || l.dono) ? "flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:999px;background:#0c1d2b;color:#fff;font-family:'Outfit',sans-serif;font-size:9.5px;font-weight:700" : "display:none",
+        est: "display:flex;flex-direction:column;gap:7px;padding:12px 13px;border-radius:20px;cursor:pointer;transition:background 150ms ease,box-shadow 150ms ease;background:" + (l.tone === "late" ? "#fdf3f2" : "#f7f9fa") + (sel ? ";box-shadow:inset 0 0 0 2px #0F766E" : ""),
+        estLinha: "display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:999px;cursor:pointer;transition:background 150ms ease;background:" + (sel ? "#E9F5F3" : l.tone === "late" ? "#fdf3f2" : "transparent"),
+        abrir: () => { clearTimeout(this._saida); this.setState({ sel: l.id, gate: null, fechando: false }); },
+      });
+    };
+    const colunas = Component.ETAPAS.map((etapa, i) => {
+      if (st.fase !== "todas" && Component.FASES[i] !== st.fase) return null;
+      const cards = vis.filter((l) => l.stage === i);
+      const late = cards.filter((l) => l.tone === "late").length;
+      const hoje = cards.filter((l) => l.tone === "hoje").length;
+      const money = cards.reduce((a, l) => a + l.valor, 0);
+      return {
+        etapa, n: cards.length, cards: cards.map(enriquece), vazia: cards.length === 0,
+        alerta: late ? late + " atrasado" + (late > 1 ? "s" : "") : hoje ? hoje + " hoje" : "",
+        alertaCor: late ? "#b42318" : "#a16207",
+        dinheiro: money ? this.fmt(money) : "R$ 0", dinheiroCor: money ? "#0c1d2b" : "#5a6b77",
+      };
+    }).filter(Boolean);
+
+    // Taxas medidas do time (as mesmas do funil da Visão geral) e a cadeia que
+    // falta até o ganho — winProbByKind/analysisBuckets do pipeline.jsx.
+    const TX = { contato: 0.841, agendamento: 0.312, show: 0.760, fechamento: 0.170 };
+    const PROB = [
+      TX.contato * TX.agendamento * TX.show * TX.fechamento,
+      TX.agendamento * TX.show * TX.fechamento,
+      TX.agendamento * TX.show * TX.fechamento,
+      TX.show * TX.fechamento,
+      TX.fechamento,
+      TX.fechamento,
+    ];
+    const buckets = Component.ETAPAS.map((etapa, i) => {
+      const naEtapa = vis.filter((l) => l.stage === i);
+      const tcv = naEtapa.reduce((a, l) => a + l.valor, 0);
+      return { etapa, n: naEtapa.length, tcvNum: tcv, prob: PROB[i], pondNum: tcv * PROB[i] };
+    });
+    const maxPond = Math.max.apply(null, [1].concat(buckets.map((b) => b.pondNum)));
+    const forecastNum = buckets.reduce((a, b) => a + b.pondNum, 0);
+    const ganhosProvaveis = buckets.reduce((a, b) => a + b.n * b.prob, 0);
+    const analise = buckets.map((b) => ({
+      etapa: b.etapa, n: b.n,
+      tcv: b.tcvNum ? this.fmt(b.tcvNum) : "—",
+      prob: Math.round(b.prob * 100) + "%",
+      ponderado: b.pondNum ? this.fmt(b.pondNum) : "—",
+      estBarra: "display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#0C8F83,#0F766E);width:" + Math.max(3, Math.round((b.pondNum / maxPond) * 100)) + "%",
+    }));
+    const ganhos = Component.GANHOS_BASE.concat(st.ganhosExtra).map((g) => ({ nome: g.nome, dono: g.dono, valorFmt: this.fmt(g.valor) }));
+    const ganhoSoma = Component.GANHOS_BASE.concat(st.ganhosExtra).reduce((a, g) => a + g.valor, 0);
+    const descartados = st.leads.filter((l) => l.status === "descartado").map((l) => ({ nome: l.nome, voltar: () => this.patch(l.id, { status: "aberto" }) }));
+    const atrasados = abertos.filter((l) => l.tone === "late").length;
+    const selLead = st.leads.find((l) => l.id === st.sel && l.status === "aberto");
+    const PONTO = { etapa: "#0F766E", contato: "#175cd3", form: "#a16207", lead: "#8b99a4", acao: "#0c1d2b" };
+    let sel = null;
+    if (selLead) {
+      const l = selLead;
+      const fatos = [
+        ["Potencial", l.grade + " · " + l.contas + (l.contas > 1 ? " contas · " : " conta · ") + l.anuncios + (l.anuncios > 1 ? " anúncios" : " anúncio")],
+        ["Temperatura", l.score + " / 100"],
+        ["Faixa de faturamento", l.faixa],
+        ["Etapa", Component.ETAPAS[l.stage] + " · " + l.diasNaEtapa + "d nela"],
+        ["Toques na etapa", String(l.tent)],
+        ["Valor", l.valor ? this.fmt(l.valor) : "sem proposta ainda"],
+        ["Origem", l.origem],
+        l.indicadoPor ? ["Indicado por", l.indicadoPor] : null,
+        ["SDR / closer", [l.dono && Component.DONOS[l.dono], l.closer && Component.DONOS[l.closer]].filter(Boolean).join(" / ") || "sem dono"],
+        l.nextActionNote ? ["Próximo passo (nota)", l.nextActionNote] : null,
+        l.proposalOffer ? ["Proposta na mesa", l.proposalOffer] : null,
+        l.callAt ? ["Call agendada", l.callAt] : null,
+        ["Telefone", l.telefone],
+        ["E-mail", l.email],
+        ["Entrada", String(l.entrada).padStart(2, "0") + "/09 · " + (19 - l.entrada) + "d de vida"],
+      ].filter(Boolean).map(([k, v]) => ({ k, v }));
+      const atribuicao = (l.origem === "Rede"
+        ? [["Anúncio", l.anuncio], ["Conjunto", l.conjunto], ["Campanha", l.campanha], ["Headline do formulário", l.headline]]
+        : l.origem === "Semente"
+          ? [["Canal", "indicação da base"], ["Indicado por", l.indicadoPor || "—"], ["Headline do formulário", l.headline]]
+          : [["Canal", "prospecção ativa (outbound)"], ["Lista", "ICP · " + l.contas + (l.contas > 1 ? " contas · " : " conta · ") + l.anuncios + (l.anuncios > 1 ? " anúncios" : " anúncio")]]
+      ).map(([k, v]) => ({ k, v }));
+      // Mesma ordem do scriptChecklist (lib/scripts.js): nicho → empresa →
+      // contas → anúncios → faturamento → expansão → time → decisor → e-mail.
+      const PERGUNTAS = [
+        ["niche", "Qual o nicho da loja?"],
+        ["company", "Nome da loja / empresa"],
+        ["accounts", "Quantas contas você opera?"],
+        ["listings", "Qual o volume de anúncios?"],
+        ["revenue", "Quanto fatura por mês?"],
+        ["plan_expand", "Pretende abrir mais contas?"],
+        ["staff", "Quem cuida do marketing hoje?"],
+        ["decider", "Quem decide junto com você?"],
+      ];
+      const respondidas = [], pendentes = [];
+      for (const [k, pergunta] of PERGUNTAS) {
+        const v = (l.form || {})[k];
+        if (v) respondidas.push({ pergunta, resposta: v }); else pendentes.push({ pergunta });
+      }
+      respondidas.push({ pergunta: "E-mail (convite da call) · por último", resposta: l.email });
+      sel = Object.assign({}, enriquece(l), {
+        fatos, atribuicao, respostas: respondidas, pendentes,
+        formResumo: respondidas.length + " de " + (PERGUNTAS.length + 1),
+        temPendentes: pendentes.length > 0,
+        pendentesResumo: pendentes.length + (pendentes.length === 1 ? " pergunta pra fazer na conversa" : " perguntas pra fazer na conversa"),
+        histResumo: l.eventos.length + (l.eventos.length === 1 ? " registro" : " registros"),
+        notaResumo: (l.nota || "").trim() ? "escrita" : "vazia",
+        eventos: l.eventos.map((e) => ({ texto: e.texto, quando: e.quando,
+          estPonto: "flex-shrink:0;width:8px;height:8px;border-radius:999px;margin-top:5px;background:" + (PONTO[e.tipo] || "#8b99a4") })),
+        icpPill: "ICP " + l.icp + "%",
+        estDor: l.origem === "Rede" ? "display:flex;align-items:baseline;gap:8px;justify-content:space-between;margin-top:11px;padding:9px 12px;border-radius:999px;background:#fff" : "display:none",
+        stageNome: Component.ETAPAS[l.stage], nextActionNote: l.nextActionNote || "",
+        apresentacaoEstado: l.apresentacao ? "Gerada ✓" : "nenhuma",
+        linkEstado: l.linkPagamento ? "criado ✓" : (l.valor ? this.fmt(l.valor) : "sem valor"),
+        donoNome: l.dono ? Component.DONOS[l.dono] : "sem dono",
+        prazoTexto: l.tone === "late" ? "atrasado " + l.atraso + " dias" : l.tone === "hoje" ? "toque hoje" : "toque " + l.dia + "/09",
+        estGrade: this.estGrade(l, 30),
+        estPrazoPill: "display:inline-flex;align-items:center;height:26px;padding:0 12px;border-radius:999px;font-size:11.5px;font-weight:600;" + (l.tone === "late" ? "background:#fdf3f2;color:#b42318" : l.tone === "hoje" ? "background:#fbf4e6;color:#a16207" : "background:#f1f4f5;color:#5a6b77"),
+      });
+    }
+
+    let gateVals = null;
+    if (st.gate) {
+      const g = st.gate;
+      const gl = st.leads.find((l) => l.id === g.leadId) || {};
+      const sel2 = (chave, opcoes, label) => ({ label, ehSelect: true, ehTexto: false, valor: g[chave] || "", opcoes,
+        mudar: (e) => this.campoGate(chave, e.target.value) });
+      const txt = (chave, label, dica) => ({ label, ehSelect: false, ehTexto: true, valor: g[chave] || "", dica,
+        mudar: (e) => this.campoGate(chave, e.target.value) });
+      const op = (arr, vazio) => (vazio ? [{ v: "", l: vazio }] : []).concat(arr.map((x) => ({ v: x, l: x })));
+      let titulo = "", nota = "", campos = [], pronto = false, label = "Confirmar";
+      if (g.tipo === "lost") {
+        titulo = "Marcar " + (gl.nome || "o lead") + " como perdido";
+        nota = "motivo obrigatório"; label = "Registrar perda";
+        campos = [sel2("motivo", op(Component.MOTIVOS, "selecionar…"), "Motivo da perda"), txt("obs", "Detalhe (opcional)", "o que ele disse")];
+        pronto = !!g.motivo;
+      } else if (g.tipo === "handoff") {
+        titulo = "Passar para a fase do closer";
+        nota = g.askCall ? "sem closer e sem hora da call" : "sem closer marcado"; label = "Confirmar handoff";
+        campos = [sel2("closer", op(["RM","BA"], null).map((o) => ({ v: o.v, l: Component.DONOS[o.v] })), "Closer que assume")]
+          .concat(g.askCall ? [sel2("dia", op(["seg 22/09","ter 23/09","qua 24/09"], "selecionar…"), "Dia da call"), sel2("hora", op(["09:30","11:00","14:00","16:30"], "selecionar…"), "Horário")] : []);
+        pronto = !!g.closer && (!g.askCall || (!!g.dia && !!g.hora));
+      } else if (g.tipo === "offer") {
+        titulo = "Mover para Follow-up";
+        nota = g.daCall ? "saindo da call" : "horário é opcional"; label = "Mover para Follow-up";
+        campos = (g.daCall ? [sel2("oferta", op(Component.PRODUTOS.concat(["não chegou na proposta"]), null), "Proposta que ficou na mesa")] : [])
+          .concat([sel2("quando", op(["+1d","+2d","+1sem"], "sem horário · a cadência cuida"), "Quando cobrar")]);
+        pronto = !g.daCall || !!g.oferta;
+      } else if (g.tipo === "call") {
+        titulo = "Mover para Call agendada";
+        nota = "card em call sem hora não entra na Agenda"; label = "Marcar a call";
+        campos = [sel2("dia", op(["seg 22/09","ter 23/09","qua 24/09"], "selecionar…"), "Dia"), sel2("hora", op(["09:30","11:00","14:00","16:30"], "selecionar…"), "Horário")];
+        pronto = !!g.dia && !!g.hora;
+      } else if (g.tipo === "won") {
+        titulo = "Fechar " + (gl.empresa || "o negócio");
+        nota = "vira receita da campanha"; label = "Marcar ganho";
+        campos = [txt("valor", "Valor do negócio", "ex.: 9600"), sel2("produto", op(Component.PRODUTOS, "selecionar…"), "Produto vendido"),
+          sel2("pagamento", op(Component.PAGAMENTOS, "selecionar…").concat([{ v: "__custom", l: "condição personalizada…" }]), "Forma de pagamento")]
+          .concat(g.pagamento === "__custom" ? [txt("condicao", "Condição personalizada", "ex.: entrada no PIX + 6x no boleto")] : [])
+          .concat([sel2("plano", op(Component.PLANOS, null), "Ciclo")]);
+        pronto = Number(g.valor) > 0 && !!g.produto && !!g.pagamento && (g.pagamento !== "__custom" || !!(g.condicao || "").trim());
+      }
+      gateVals = { titulo, nota, campos, confirmarLabel: label, pronto,
+        estConfirmar: "flex:1;height:38px;border-radius:999px;font-size:12.5px;font-weight:650;transition:background 150ms ease;" +
+          (pronto ? "background:#0c1d2b;color:#fff;cursor:pointer" : "background:#eef1f3;color:#a9b4bd;cursor:not-allowed") };
+    }
+    return {
+      mov: this.props.movimento === false ? "off" : "on",
+      // "+ novo lead": entra na coluna Novo lead e abre a ficha pra completar o
+      // que o formulário de novo lead pede (nicho, contas, anúncios, decisor).
+      novoLead: () => {
+        const id = 9000 + st.seqLead;
+        const novo = {
+          id, stage: 0, status: "aberto", nome: "Lead novo", empresa: "(sem empresa)",
+          grade: "C", valor: 0, origem: "Rede", faixa: "", contas: 1, anuncios: 1,
+          closer: null, callAt: null, nextActionNote: "", proposalOffer: null,
+          dealProduct: null, pagamento: null, plano: null,
+          icp: 40, score: 20, diasNaEtapa: 0, entrada: 0, tent: 1, dia: 19, tone: "hoje", atraso: 0,
+          telefone: "(11) 9", email: "", anuncio: "", dor: null, campanha: "", conjunto: "", headline: "",
+          indicadoPor: null, nota: "", dono: "MC",
+          form: {}, apresentacao: false, linkPagamento: false, waCopiado: false,
+          eventos: [{ tipo: "lead", texto: "cadastrado à mão no pipeline", quando: "agora" }],
+        };
+        clearTimeout(this._saida);
+        this.setState((s2) => ({ seqLead: s2.seqLead + 1, leads: [novo].concat(s2.leads),
+          sel: id, gate: null, fechando: false, view: "kanban", fase: "todas", pessoa: "todos", busca: "", soAtrasados: false }));
+      },
+      colunas, lista: vis.map(enriquece), analise, ganhos, descartados, sel, temSel: !!sel,
+      ehKanban: st.view === "kanban", ehLista: st.view === "lista", ehAnalise: st.view === "analise",
+      estKanban: this.seg(st.view === "kanban"), estLista: this.seg(st.view === "lista"), estAnalise: this.seg(st.view === "analise"),
+      verKanban: () => this.setState({ view: "kanban" }), verLista: () => this.setState({ view: "lista" }), verAnalise: () => this.setState({ view: "analise" }),
+      resumo: abertos.length + " leads abertos · " + this.fmt(abertos.reduce((a, l) => a + l.valor, 0)) + " em jogo ·",
+      atrasadosLabel: st.soAtrasados ? "ver todos os " + abertos.length : atrasados + " atrasados",
+      filtrarAtrasados: () => this.setState({ soAtrasados: !st.soAtrasados }),
+      contagem: vis.length + " de " + abertos.length + " leads",
+      busca: st.busca, mudarBusca: (e) => this.setState({ busca: e.target.value }),
+      nTodas: semFase.length, nSdr: semFase.filter((l) => Component.FASES[l.stage] === "sdr").length, nCloser: semFase.filter((l) => Component.FASES[l.stage] === "closer").length,
+      estFaseTodas: this.seg(st.fase === "todas", true), estFaseSdr: this.seg(st.fase === "sdr", true), estFaseCloser: this.seg(st.fase === "closer", true),
+      faseTodas: () => this.setState({ fase: "todas" }), faseSdr: () => this.setState({ fase: "sdr" }), faseCloser: () => this.setState({ fase: "closer" }),
+      estPessoaTodos: this.seg(st.pessoa === "todos", true), estPessoaRM: this.seg(st.pessoa === "RM", true), estPessoaBA: this.seg(st.pessoa === "BA", true), estPessoaMC: this.seg(st.pessoa === "MC", true),
+      pessoaTodos: () => this.setState({ pessoa: "todos" }), pessoaRM: () => this.setState({ pessoa: "RM" }), pessoaBA: () => this.setState({ pessoa: "BA" }), pessoaMC: () => this.setState({ pessoa: "MC" }),
+      ordemLabel: "Ordem: " + ({ toque: "próximo toque", valor: "valor", nivel: "nível" })[st.ordem],
+      trocarOrdem: () => this.setState({ ordem: st.ordem === "toque" ? "valor" : st.ordem === "valor" ? "nivel" : "toque" }),
+      estLimpar: (st.fase !== "todas" || st.pessoa !== "todos" || st.busca || st.soAtrasados || st.ordem !== "toque")
+        ? "height:34px;padding:0 15px;border-radius:999px;background:#fdf3f2;color:#b42318;font-size:12.5px;font-weight:600;transition:background 150ms ease"
+        : "display:none",
+      limpar: () => this.setState({ fase: "todas", pessoa: "todos", busca: "", soAtrasados: false, ordem: "toque" }),
+      ganhoN: Component.GANHOS_BASE.length + st.ganhosExtra.length, ganhoTotal: this.fmt(ganhoSoma),
+      ganhoTicket: "ticket médio " + this.fmt(ganhoSoma / (Component.GANHOS_BASE.length + st.ganhosExtra.length)),
+      analiseNota: "os " + vis.length + " leads filtrados agora, por etapa",
+      forecast: this.fmt(forecastNum),
+      forecastNota: ganhosProvaveis.toFixed(1).replace(".", ",") + " ganhos prováveis na esteira",
+      taxasNota: "Probabilidade = produto das taxas que faltam até o ganho, medidas no time: contato 84,1% · agendamento 31,2% · comparecimento 76,0% · fechamento 17,0%. É estoque aberto ponderado, não conversão histórica — a passagem real etapa a etapa vive na Saúde do processo, que lê a linha do tempo de cada lead.",
+      verDesc: st.verDesc, descLabel: (st.verDesc ? "Esconder" : "Mostrar") + " descartados · " + descartados.length,
+      toggleDesc: () => this.setState({ verDesc: !st.verDesc }),
+      fechar: () => this.fecharGaveta(),
+      classeGaveta: st.fechando ? "cap-gaveta-sai" : "cap-gaveta-entra",
+      etapasOpcoes: Component.ETAPAS.map((nome, i) => ({ nome, label: (selLead && i === selLead.stage ? "etapa atual · " : "mover para · ") + nome })),
+      avancarLabel: !selLead ? "" : selLead.stage < 5 ? "avançar →" : "Marcar ganho",
+      semGate: !st.gate, temGate: !!st.gate,
+      abertoForm: st.abertos.form, abertoOrigem: st.abertos.origem, abertoHist: st.abertos.hist,
+      abertoNota: st.abertos.nota,
+      caretNota: st.abertos.nota ? "▴ recolher" : "▾ abrir",
+      toggleNota: () => this.abrirBloco("nota"),
+      caretForm: st.abertos.form ? "▴ recolher" : "▾ abrir",
+      caretOrigem: st.abertos.origem ? "▴ recolher" : "▾ abrir",
+      caretHist: st.abertos.hist ? "▴ recolher" : "▾ abrir",
+      toggleForm: () => this.abrirBloco("form"), toggleOrigem: () => this.abrirBloco("origem"), toggleHist: () => this.abrirBloco("hist"),
+      avancar: () => { if (selLead) this.pedirMovimento(selLead, selLead.stage < 5 ? selLead.stage + 1 : 6); },
+      mudarEtapa: (e) => { if (selLead) this.pedirMovimento(selLead, Component.ETAPAS.indexOf(e.target.value)); },
+      mudarNotaToque: (e) => { if (selLead) this.patch(selLead.id, { nextActionNote: e.target.value }); },
+      toque1: () => { if (selLead) this.adiar(selLead, 1); },
+      toque2: () => { if (selLead) this.adiar(selLead, 2); },
+      toque7: () => { if (selLead) this.adiar(selLead, 7); },
+      mudarNota: (e) => { if (selLead) this.patch(selLead.id, { nota: e.target.value }); },
+      registrar: () => { if (selLead) { this.patch(selLead.id, { tone: "", dia: 22 }); this.logar(selLead, "contato registrado agora", "contato"); this.setState((st2) => ({ abertos: Object.assign({}, st2.abertos, { hist: true }) })); } },
+      apresentar: () => { if (selLead) { this.patch(selLead.id, { apresentacao: true }); this.logar(selLead, "apresentação gerada", "acao"); } },
+      gerarLink: () => { if (selLead) { this.patch(selLead.id, { linkPagamento: true }); this.logar(selLead, "link de pagamento criado", "acao"); } },
+      enviarProposta: () => { if (selLead) this.logar(selLead, "proposta enviada no WhatsApp", "acao"); },
+      descartar: () => { if (selLead) this.pedirMovimento(selLead, -1); },
+      gate: gateVals, cancelarGate: () => this.setState({ gate: null }), confirmarGate: () => this.confirmar(),
+    };
+  }
+}
+</script>
+</body>
+</html>

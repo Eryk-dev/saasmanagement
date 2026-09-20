@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Análise de Pace</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-gaveta-sai{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-gaveta-sai{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;margin:0 -4px;padding:0 4px 24px">
+
+      <header class="cap-rise" style="flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+        <div style="min-width:0">
+          <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Análise de Pace</h1>
+          
+        </div>
+        <div style="display:inline-flex;gap:3px;padding:4px;border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.05)">
+          <sc-for list="{{ meses }}" as="m" hint-placeholder-count="3">
+            <button onClick="{{ m.escolher }}" style="{{ m.est }}">{{ m.label }}</button>
+          </sc-for>
+        </div>
+      </header>
+
+      <section class="cap-rise" style="flex:0 0 auto;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:20px 24px 18px">
+        <div style="display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start">
+          <sc-for list="{{ tiles }}" as="t" hint-placeholder-count="5">
+            <div style="min-width:142px">
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">{{ t.rot }}</div>
+              <div style="{{ t.estValor }}">{{ t.v }}</div>
+              <div style="font-size:11.5px;color:#8b99a4;margin-top:2px;text-wrap:pretty">{{ t.nota }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="margin-top:16px">
+          <div style="position:relative;height:10px;border-radius:999px;background:#eff2f3">
+            <span class="cap-grow" style="{{ estBarraMeta }}"></span>
+            <span style="{{ estRisco }}" title="onde o pace deveria estar hoje"></span>
+          </div>
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;margin-top:6px;text-wrap:pretty">{{ notaBarra }}</div>
+        </div>
+      </section>
+
+      <section class="cap-rise" style="flex:0 0 auto;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:20px 24px 20px">
+        <div style="display:flex;align-items:center;gap:7px">
+          <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+          <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">pace de venda · {{ mesNome }}</span>
+        </div>
+        
+        <div style="position:relative;height:190px;margin-top:18px">
+          <svg viewBox="0 0 640 190" preserveAspectRatio="none" style="position:absolute;left:46px;right:0;top:0;bottom:0;width:auto;height:100%;overflow:visible">
+            <sc-for list="{{ grade }}" as="g" hint-placeholder-count="4">
+              <line x1="0" x2="640" y1="{{ g.y }}" y2="{{ g.y }}" stroke="#edf1f3" stroke-width="1"></line>
+            </sc-for>
+            <path d="{{ pathPace }}" fill="none" stroke="#c5cfd4" stroke-width="2" stroke-dasharray="5 4"></path>
+            <path d="{{ pathArea }}" fill="url(#gradPace)" stroke="none"></path>
+            <path d="{{ pathReal }}" fill="none" stroke="#0F766E" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path>
+            <defs><linearGradient id="gradPace" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#0F766E" stop-opacity="0.16"></stop>
+              <stop offset="100%" stop-color="#0F766E" stop-opacity="0"></stop>
+            </linearGradient></defs>
+            <sc-for list="{{ pontos }}" as="p" hint-placeholder-count="13">
+              <circle cx="{{ p.x }}" cy="{{ p.y }}" r="{{ p.r }}" fill="{{ p.cor }}"></circle>
+            </sc-for>
+          </svg>
+          <sc-for list="{{ eixoY }}" as="e" hint-placeholder-count="4">
+            <span style="{{ e.est }}">{{ e.label }}</span>
+          </sc-for>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:8px;padding-left:46px;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#8b99a4">
+          <span>{{ eixoIni }}</span><span>{{ eixoHoje }}</span><span>{{ eixoFim }}</span>
+        </div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#5a6b77">
+          <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:2.5px;border-radius:2px;background:#0F766E"></span>vendido acumulado</span>
+          <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:2px;border-radius:2px;background:#c5cfd4"></span>linha do pace</span>
+        </div>
+      </section>
+
+      <section class="cap-rise" style="flex:0 0 auto;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:20px 24px 20px">
+        <div style="display:flex;align-items:center;gap:7px">
+          <span style="{{ estPontoGap }}"></span>
+          <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">{{ tituloReversa }}</span>
+        </div>
+        
+        <sc-if value="{{ temCadeia }}" hint-placeholder-val="{{ true }}">
+          <div style="margin-top:16px">
+            <sc-for list="{{ compromissos }}" as="c" hint-placeholder-count="4">
+              <div style="{{ c.est }}">
+                <span style="min-width:96px;font-family:'Outfit',sans-serif;font-size:22px;font-weight:700;line-height:1.1">{{ c.n }}</span>
+                <span style="flex:1;min-width:0;font-size:13.5px;text-wrap:pretty">{{ c.o }}</span>
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4;white-space:nowrap">{{ c.porque }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;align-items:stretch;gap:6px;flex-wrap:wrap;margin-top:18px">
+            <sc-for list="{{ equacao }}" as="e" hint-placeholder-count="9">
+              <div style="{{ e.est }}">
+                <sc-if value="{{ e.ehSeta }}" hint-placeholder-val="{{ false }}">
+                  <span style="display:flex;flex-direction:column;align-items:center;gap:1px;padding:0 2px">
+                    <span style="font-size:15px;line-height:1;color:#c5cfd4">→</span>
+                    <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;color:#8b99a4;white-space:nowrap">{{ e.label }}</span>
+                  </span>
+                </sc-if>
+                <sc-if value="{{ e.ehPasso }}" hint-placeholder-val="{{ true }}">
+                  <span style="display:flex;flex-direction:column;gap:2px;padding:9px 13px;border-radius:18px;background:#f7f9fa;min-width:82px">
+                    <span style="font-family:'Outfit',sans-serif;font-size:17px;font-weight:700;letter-spacing:-.02em">{{ e.valor }}</span>
+                    <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#5a6b77;white-space:nowrap">{{ e.label }}</span>
+                    <span style="{{ e.estSub }}">{{ e.sub }}</span>
+                  </span>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px;padding:12px 15px;border-radius:20px;background:#f7f9fa">
+            <span style="font-size:12.5px;color:#3d4f5c;text-wrap:pretty">{{ cobertura }}</span>
+            <button onClick="{{ irPipeline }}" style="margin-left:auto;height:30px;padding:0 14px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:11.5px;font-weight:650;white-space:nowrap;transition:background 150ms ease" style-hover="background:#1b3140">Abrir o pipeline →</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ semGap }}" hint-placeholder-val="{{ false }}">
+          <div style="{{ estTextoBatida }}">{{ textoBatida }}</div>
+        </sc-if>
+      </section>
+
+      <section class="cap-rise" style="flex:0 0 auto;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:20px 24px 20px">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <div>
+            <div style="display:flex;align-items:center;gap:7px">
+              <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">forecast da esteira</span>
+            </div>
+            
+          </div>
+          <div style="text-align:right">
+            <div style="font-family:'Outfit',sans-serif;font-size:24px;font-weight:700;letter-spacing:-.025em;color:#0F766E">{{ forecast }}</div>
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4">{{ forecastNota }}</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 4px 8px;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:#8b99a4">
+          <span style="flex:0 1 150px;min-width:104px">Etapa</span>
+          <span style="flex:1;min-width:60px"></span>
+          <span style="flex:0 0 52px;text-align:right">leads</span>
+          <span style="flex:0 0 100px;text-align:right">em jogo</span>
+          <span style="flex:0 0 66px;text-align:right">prob.</span>
+          <span style="flex:0 0 108px;text-align:right">ponderado</span>
+        </div>
+        <sc-for list="{{ esteira }}" as="a" hint-placeholder-count="6">
+          <div style="display:flex;align-items:center;gap:12px;padding:9px 4px;border-top:1px solid #edf1f3">
+            <span style="flex:0 1 150px;min-width:104px;font-size:13px;font-weight:600">{{ a.etapa }}</span>
+            <span style="flex:1;min-width:60px;height:8px;border-radius:999px;background:#eff2f3;overflow:hidden"><span class="cap-grow" style="{{ a.estBarra }}"></span></span>
+            <strong style="flex:0 0 52px;text-align:right;font-family:'Outfit',sans-serif;font-size:15px;font-weight:700">{{ a.n }}</strong>
+            <span style="flex:0 0 100px;text-align:right;font-size:12.5px;color:#3d4f5c">{{ a.tcv }}</span>
+            <span style="flex:0 0 66px;text-align:right;font-size:12px;color:#5a6b77">{{ a.prob }}</span>
+            <span style="flex:0 0 108px;text-align:right;font-family:'Outfit',sans-serif;font-size:14px;font-weight:700">{{ a.ponderado }}</span>
+          </div>
+        </sc-for>
+        <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;line-height:1.6;color:#8b99a4;margin-top:12px;text-wrap:pretty">{{ taxasNota }}</div>
+      </section>
+    </div>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Análise de Pace (screens/analise.jsx → AnaliseView do pipeline.jsx):
+  // AnalysisPaceSummary + PaceChart + GoalReversePlan + ForecastView.
+  // Tudo deriva do mesmo período: o que a Visão geral mostra, aqui é desdobrado
+  // em "o que falta prometer" — ganhos, calls, leads e verba.
+  static TX = { contato: 0.841, agendamento: 0.312, show: 0.760, fechamento: 0.170 };
+  static ETAPAS = ["Novo lead", "Em contato", "Qualificando", "Call agendada", "Proposta enviada", "Follow-up"];
+  static PERIODOS = {
+    set: { label: "Set", nome: "setembro", meta: 180000, vendido: 112400, contratos: 8, uteis: 13, uteisTotal: 22,
+      ticket: 14050, cpl: 77, midia: 10180,
+      // estoque aberto por etapa (o mesmo do Pipeline) e o dinheiro em jogo
+      esteira: [[9, 0], [14, 0], [37, 48600], [9, 62400], [11, 84200], [14, 96500]],
+      // vendido acumulado por dia útil (13 corridos de 22)
+      curva: [0, 9600, 9600, 24000, 24000, 30400, 54400, 54400, 64000, 73600, 88000, 88000, 112400] },
+    ago: { label: "Ago", nome: "agosto", meta: 165000, vendido: 171200, contratos: 12, uteis: 21, uteisTotal: 21,
+      ticket: 14267, cpl: 77, midia: 9400,
+      esteira: [[7, 0], [11, 0], [29, 38400], [8, 52800], [9, 67200], [10, 71400]],
+      curva: [0, 14400, 14400, 28800, 38400, 38400, 52800, 67200, 76800, 91200, 91200, 105600, 120000, 120000, 129600, 139200, 148800, 148800, 158400, 163200, 171200] },
+    jul: { label: "Jul", nome: "julho", meta: 150000, vendido: 138900, contratos: 9, uteis: 22, uteisTotal: 22,
+      ticket: 15433, cpl: 79, midia: 8900,
+      esteira: [[8, 0], [12, 0], [31, 41600], [7, 44800], [8, 57600], [11, 62400]],
+      curva: [0, 9600, 9600, 24000, 24000, 24000, 38400, 48000, 48000, 62400, 72000, 72000, 86400, 96000, 96000, 105600, 115200, 115200, 124800, 129600, 134400, 138900] },
+  };
+
+  state = { mes: "set" };
+  fmt(n) { return "R$ " + Math.round(Number(n) || 0).toLocaleString("pt-BR"); }
+  pct(n) { return Math.round(n * 100) + "%"; }
+  plural(n, um, muitos) { return (Math.abs(Number(n)) === 1 ? um : muitos); }
+  ganhosTxt(n) { const v = n.toFixed(1).replace(".", ","); return v + " " + this.plural(Math.round(n * 10) / 10, "ganho provável", "ganhos prováveis"); }
+  seg(a) {
+    return "height:28px;padding:0 15px;border-radius:999px;font-size:12px;white-space:nowrap;transition:background 150ms ease;" +
+      (a ? "background:#0c1d2b;color:#fff;font-weight:650" : "background:transparent;color:#5a6b77;font-weight:500");
+  }
+
+  renderVals() {
+    const st = this.state;
+    const p = Component.PERIODOS[st.mes];
+    const TX = Component.TX;
+    const corrente = st.mes === "set";
+
+    // ── pace e meta ───────────────────────────────────────────────────────
+    const pace = p.uteis > 0 ? (p.vendido / p.uteis) * p.uteisTotal : 0;
+    const vsMeta = p.meta > 0 ? Math.round(((pace / p.meta) - 1) * 100) : 0;
+    const gap = Math.max(0, p.meta - p.vendido);
+    const pctMeta = Math.min(100, Math.round((p.vendido / p.meta) * 100));
+    const pctDias = Math.round((p.uteis / p.uteisTotal) * 100);
+
+    // ── esteira: probabilidade = o que falta da cadeia até o ganho ────────
+    const PROB = [
+      TX.contato * TX.agendamento * TX.show * TX.fechamento,
+      TX.agendamento * TX.show * TX.fechamento,
+      TX.agendamento * TX.show * TX.fechamento,
+      TX.show * TX.fechamento,
+      TX.fechamento,
+      TX.fechamento,
+    ];
+    const buckets = Component.ETAPAS.map((etapa, i) => {
+      const [n, tcv] = p.esteira[i];
+      const prob = PROB[i];
+      return { etapa, n, tcv, prob, pond: tcv * prob };
+    });
+    const forecast = buckets.reduce((a, b) => a + b.pond, 0);
+    const ganhosProvaveis = buckets.reduce((a, b) => a + b.n * b.prob, 0);
+    const maxPond = Math.max.apply(null, [1].concat(buckets.map((b) => b.pond)));
+    const pipeCount = buckets.reduce((a, b) => a + b.n, 0);
+
+    // ── engenharia reversa: o gap vira promessas ─────────────────────────
+    const wins = Math.ceil(gap / p.ticket);
+    const calls = Math.ceil(wins / (TX.show * TX.fechamento));
+    // A esteira cobre em DINHEIRO, não em contagem de ganhos: 7 ganhos prováveis
+    // de ticket baixo não fecham um gap grande.
+    const cobertoRS = Math.min(gap, forecast);
+    const gapRestante = Math.max(0, gap - forecast);
+    const winsNovos = Math.ceil(gapRestante / p.ticket);
+    const callsNovas = Math.ceil(winsNovos / (TX.show * TX.fechamento));
+    const leadsNovos = Math.ceil(callsNovas / TX.agendamento);
+    const contatos = Math.ceil(leadsNovos * TX.contato);
+    const verba = leadsNovos * p.cpl;
+    const diasRestam = Math.max(0, p.uteisTotal - p.uteis);
+    // ── gráfico: acumulado contra a linha do pace ────────────────────────
+    const W = 640, H = 190;
+    const teto = Math.max(p.meta, pace, p.vendido) * 1.04;
+    const px = (i) => Math.round((i / Math.max(1, p.uteisTotal - 1)) * W);
+    const py = (v) => Math.round(H - (v / teto) * H);
+    const pts = p.curva.map((v, i) => ({ x: px(i), y: py(v), v }));
+    const pathReal = pts.map((q, i) => (i ? "L" : "M") + q.x + " " + q.y).join(" ");
+    const pathArea = pathReal + " L" + pts[pts.length - 1].x + " " + H + " L" + pts[0].x + " " + H + " Z";
+    const pathPace = "M0 " + py(0) + " L" + W + " " + py(p.meta);
+
+    const vals = {
+      mov: this.props.movimento === false ? "off" : "on",
+      meses: Object.keys(Component.PERIODOS).map((k) => ({
+        label: Component.PERIODOS[k].label, est: this.seg(st.mes === k), escolher: () => this.setState({ mes: k }),
+      })),
+      mesNome: p.nome,
+      tiles: [
+        { rot: "fechado no mês", v: this.fmt(p.vendido), nota: p.contratos + " ganhos" + (corrente ? " até o dia 19" : " no mês"), cor: "#0c1d2b" },
+        corrente
+          ? { rot: "pace projetado", v: this.fmt(pace), nota: Math.abs(vsMeta) + "% " + (vsMeta >= 0 ? "acima" : "abaixo") + " da meta", cor: vsMeta >= 0 ? "#177a4c" : "#b42318" }
+          : { rot: "ticket médio", v: this.fmt(p.ticket), nota: p.contratos + " contratos no mês", cor: "#0c1d2b" },
+        { rot: "meta do mês", v: this.fmt(p.meta), nota: p.uteis + " de " + p.uteisTotal + " dias úteis corridos", cor: "#0c1d2b" },
+        { rot: "forecast ponderado", v: this.fmt(forecast), nota: "esteira aberta × probabilidade real", cor: "#0c1d2b" },
+        { rot: !corrente ? (gap === 0 ? "fechou acima" : "fechou abaixo") : gap === 0 ? "sobra no mês" : "leads novos pra meta",
+          v: !corrente ? this.fmt(Math.abs(p.vendido - p.meta)) : gap === 0 ? this.fmt(p.vendido - p.meta) : String(leadsNovos),
+          nota: !corrente ? (gap === 0 ? "acima da meta do mês" : "abaixo da meta do mês") : gap === 0 ? "meta batida · o resto é gordura" : (leadsNovos === 0 ? "a esteira aberta já cobre o gap" : "~" + Math.ceil(leadsNovos / Math.max(1, diasRestam)) + "/dia útil, além da esteira"),
+          cor: !corrente ? (gap === 0 ? "#177a4c" : "#b42318") : gap === 0 || leadsNovos === 0 ? "#177a4c" : "#0c1d2b" },
+      ].filter(Boolean).map((t) => ({ rot: t.rot, v: t.v, nota: t.nota,
+        estValor: "font-family:'Outfit',sans-serif;font-size:26px;font-weight:700;line-height:1.15;letter-spacing:-.025em;margin-top:3px;color:" + t.cor })),
+      estBarraMeta: "position:absolute;left:0;top:0;bottom:0;border-radius:999px;width:" + pctMeta + "%;background:" + (pctMeta >= 100 ? "#177a4c" : "linear-gradient(90deg,#0C8F83,#0F766E)"),
+      estRisco: corrente ? "position:absolute;top:-3px;height:16px;width:2px;border-radius:1px;background:#5a6b77;left:" + pctDias + "%" : "display:none",
+      notaBarra: pctMeta + "% da meta" + (corrente ? " · o risquinho é onde o pace deveria estar hoje (" + pctDias + "%)" : " · mês fechado"),
+      grade: [0.25, 0.5, 0.75, 1].map((f) => ({ y: Math.round(H - f * H) })),
+      eixoY: [0.25, 0.5, 0.75, 1].map((f) => ({
+        label: "R$ " + Math.round((teto * f) / 1000) + "k",
+        est: "position:absolute;left:0;width:40px;text-align:right;top:" + (Math.round(H - f * H) - 7) + "px;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;color:#b6c0c7",
+      })),
+      pathReal, pathArea, pathPace,
+      pontos: pts.map((q, i) => ({ x: q.x, y: q.y, r: i === pts.length - 1 ? 4 : 2.5, cor: i === pts.length - 1 ? "#0F766E" : "#a9d5d0" })),
+      eixoIni: "01/09", eixoHoje: corrente ? "hoje · dia útil " + p.uteis : "", eixoFim: "dia útil " + p.uteisTotal,
+      // Cadeia só faz sentido quando falta lead novo: com a esteira cobrindo o
+      // gap, uma fileira de zeros não diz nada.
+      // Mês fechado não tem plano: o que sobra é o retrospecto. A cadeia e o
+      // "até o fim do mês" só fazem sentido no mês corrente.
+      temGap: gap > 0, semGap: !corrente || gap === 0 || leadsNovos === 0,
+      temCadeia: corrente && gap > 0 && leadsNovos > 0,
+      estTextoBatida: "margin-top:14px;padding:14px 16px;border-radius:20px;font-size:13px;line-height:1.55;text-wrap:pretty;" +
+        (gap === 0 ? "background:#E9F5F3;color:#0b6b64" : !corrente ? "background:#fbf4e6;color:#6b4708" : "background:#E9F5F3;color:#0b6b64"),
+      estPontoGap: "width:5px;height:14px;border-radius:999px;flex-shrink:0;background:" + (gap === 0 ? "#177a4c" : !corrente ? "#a16207" : "#b42318"),
+      tituloReversa: !corrente ? "como " + p.nome + " fechou" : gap > 0 ? "para fechar os " + this.fmt(gap) + " que faltam" : "engenharia reversa da meta",
+      notaReversa: !corrente ? "mês encerrado · fica o retrospecto" : gap === 0 ? "nada a perseguir neste mês" : leadsNovos === 0 ? "a esteira aberta cobre o gap · o caminho é fazer ela andar" : "de trás pra frente, com as conversões medidas no time",
+      textoBatida: !corrente
+        ? (gap === 0
+            ? p.nome.charAt(0).toUpperCase() + p.nome.slice(1) + " fechou em " + this.fmt(p.vendido) + " · " + Math.round((p.vendido / p.meta) * 100) + "% da meta, " + this.fmt(p.vendido - p.meta) + " acima. " + p.contratos + " contratos, ticket médio " + this.fmt(p.ticket) + "."
+            : p.nome.charAt(0).toUpperCase() + p.nome.slice(1) + " fechou em " + this.fmt(p.vendido) + " · " + Math.round((p.vendido / p.meta) * 100) + "% da meta. Faltaram " + this.fmt(gap) + " — " + this.plural(Math.ceil(gap / p.ticket), "um contrato", Math.ceil(gap / p.ticket) + " contratos") + " no ticket do mês. " + p.contratos + " contratos fechados em " + p.uteisTotal + " dias úteis.")
+        : gap === 0
+        ? "Fechado " + this.fmt(p.vendido) + " de " + this.fmt(p.meta) + " · " + Math.round((p.vendido / p.meta) * 100) + "% da meta. Tudo que a esteira render agora é gordura no mês."
+        : "Faltam " + this.fmt(gap) + " e a esteira aberta já deve entregar " + this.fmt(forecast) + " (" + this.ganhosTxt(ganhosProvaveis) + " de " + pipeCount + " leads). Não precisa de lead novo pra fechar: precisa que a esteira ande — " + calls + " " + this.plural(calls, "call", "calls") + " e " + wins + " " + this.plural(wins, "ganho", "ganhos") + " até o fim do mês.",
+      compromissos: [
+        { n: String(wins), o: "ganhos até o fim do mês", porque: "ticket " + this.fmt(p.ticket) },
+        { n: String(calls), o: "calls precisam acontecer", porque: "call → ganho " + this.pct(TX.show * TX.fechamento) },
+        { n: String(leadsNovos), o: pipeCount > 0 ? "leads novos (além dos " + pipeCount + " no funil)" : "leads novos", porque: "lead → call " + this.pct(TX.agendamento) },
+        { n: this.fmt(verba), o: "de verba a mais", porque: "CPL " + this.fmt(p.cpl) },
+      ].map((c, i) => ({ n: c.n, o: c.o, porque: c.porque,
+        est: "display:flex;align-items:baseline;gap:12px;padding:10px 0;" + (i ? "border-top:1px solid #f1f4f5" : "") })),
+      equacao: (() => {
+        const passo = (valor, label, sub) => ({ ehPasso: true, ehSeta: false, valor, label, sub: sub || "",
+          estSub: sub ? "font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;color:#b6c0c7;white-space:nowrap" : "display:none",
+          est: "display:flex;align-items:stretch" });
+        const seta = (label) => ({ ehSeta: true, ehPasso: false, label, valor: "", sub: "", estSub: "display:none",
+          est: "display:flex;align-items:center" });
+        return [
+          passo(this.fmt(verba), "investimento", "só o lead novo"),
+          seta("CPL " + this.fmt(p.cpl)),
+          passo(String(leadsNovos), "leads novos", pipeCount > 0 ? "+" + pipeCount + " na esteira" : ""),
+          seta(this.pct(TX.contato) + " contatados"),
+          passo(String(contatos), "contatos"),
+          seta(this.pct(TX.agendamento) + " agendam"),
+          passo(String(callsNovas), "calls agendadas"),
+          seta(this.pct(TX.show) + " comparecem"),
+          passo(String(wins), "ganhos"),
+        ];
+      })(),
+      cobertura: cobertoRS > 0
+        ? "A esteira aberta já deve entregar " + this.fmt(cobertoRS) + " dos " + this.fmt(gap) + " (" + this.ganhosTxt(ganhosProvaveis) + " de " + pipeCount + " leads) — os " + leadsNovos + " leads novos cobrem o resto."
+        : "A esteira aberta não cobre nada do gap com as taxas de hoje: os " + leadsNovos + " leads novos são o caminho inteiro.",
+      irPipeline: () => window.dispatchEvent(new CustomEvent("cockpit:ir", { detail: { tela: "Pi" } })),
+      forecast: this.fmt(forecast),
+      forecastNota: this.ganhosTxt(ganhosProvaveis) + " na esteira",
+      esteira: buckets.map((b) => ({
+        etapa: b.etapa, n: String(b.n),
+        tcv: b.tcv ? this.fmt(b.tcv) : "—",
+        prob: this.pct(b.prob),
+        ponderado: b.pond ? this.fmt(b.pond) : "—",
+        estBarra: "display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#0C8F83,#0F766E);width:" + Math.max(3, Math.round((b.pond / maxPond) * 100)) + "%",
+      })),
+      taxasNota: "Probabilidade = produto das taxas que faltam até o ganho, medidas no time: contato " + this.pct(TX.contato) + " · agendamento " + this.pct(TX.agendamento) + " · comparecimento " + this.pct(TX.show) + " · fechamento " + this.pct(TX.fechamento) + ". Proposta e follow-up já passaram pela call, então valem a taxa de fechamento.",
+    };
+    return vals;
+  }
+}
+</script>
+</body>
+</html>

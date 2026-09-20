@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Clientes</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-gaveta-sai{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-gaveta-sai{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="position:relative;flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;margin:0 -4px;padding:0 4px 24px">
+
+      <header class="cap-rise" style="flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+        <div>
+          <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Clientes</h1>
+          
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+          <div style="display:inline-flex;gap:3px;padding:4px;border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.05)">
+            <button onClick="{{ abaBase }}" style="{{ estAbaBase }}">Clientes</button>
+            <span title="ainda não desenhada neste protótipo" style="{{ estAbaInerte }}">Indicações</span>
+            <span title="ainda não desenhada neste protótipo" style="{{ estAbaInerte }}">Cases</span>
+            <button onClick="{{ abaCobr }}" style="{{ estAbaCobr }}">Cobranças</button>
+          </div>
+          <button onClick="{{ novoCliente }}" style="height:40px;padding:0 20px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:13px;font-weight:650;transition:background 150ms ease" style-hover="background:#1b3140">Cadastrar cliente</button>
+        </div>
+      </header>
+
+      <sc-if value="{{ mostraBase }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:12px">
+      <sc-if value="{{ temVencido }}" hint-placeholder-val="{{ true }}">
+      <section class="cap-rise" style="position:relative;overflow:hidden;flex:0 0 auto;border-radius:24px;background:linear-gradient(168deg,#0a2434,#051C2C 70%);box-shadow:0 1px 2px rgba(5,28,44,.14),0 18px 40px -24px rgba(5,28,44,.6);padding:20px 24px">
+        <span style="position:absolute;right:-30px;top:-34px;width:172px;height:172px;color:#23D8D3;opacity:.07;pointer-events:none"><svg width="172" height="172" viewBox="355 525 455 590"><polygon fill="currentColor" points="800.7 535.53 800.7 1103.92 763 983.8 749.25 939.91 691.16 754.61 501.54 817.84 457.65 832.42 362.47 864.14 443.6 803.33 481.22 775.08 800.7 535.53"></polygon></svg></span>
+        <div style="position:relative;display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+          <div style="flex:1 1 300px;min-width:0">
+            <div style="display:flex;align-items:center;gap:7px">
+              <span style="width:5px;height:14px;border-radius:999px;background:#ff9d90;flex-shrink:0"></span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#ff9d90">a receber</span>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-top:8px">
+              <span style="font-family:'Outfit',sans-serif;font-size:34px;font-weight:700;letter-spacing:-.035em;line-height:1.1;color:#F3FBFF">{{ vencidoTotal }}</span>
+              <span style="font-size:14px;color:rgba(243,251,255,.7)">vencidos a receber</span>
+            </div>
+            <div style="font-size:13px;color:rgba(243,251,255,.65);margin-top:4px">{{ vencidoNota }}</div>
+          </div>
+          <button onClick="{{ darBaixaAntiga }}" style="flex-shrink:0;height:42px;padding:0 20px;border-radius:999px;background:#F3FBFF;color:#051C2C;font-size:13px;font-weight:700;transition:background 150ms ease" style-hover="background:#fff">{{ baixaLabel }}</button>
+        </div>
+      </section>
+      </sc-if>
+
+      <section class="cap-rise" style="flex:0 0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:20px;padding:20px 24px;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+        <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+          <div style="min-width:0">
+            <div style="font-size:12.5px;color:#5a6b77">{{ k.rot }}</div>
+            <div style="font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.1;margin-top:3px;color:{{ k.cor }}">{{ k.val }}</div>
+            <div style="font-size:11.5px;color:#8b99a4;margin-top:2px">{{ k.nota }}</div>
+          </div>
+        </sc-for>
+      </section>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,340px);align-items:start;gap:12px">
+
+        <section class="cap-rise" style="min-width:0;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+          <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;flex-wrap:wrap;border-bottom:1px solid #edf1f3">
+            <div style="display:inline-flex;flex-wrap:wrap;max-width:100%;gap:3px;padding:3px;border-radius:999px;background:#f1f4f5">
+              <button onClick="{{ filtroAtivos }}" style="{{ estFiltroAtivos }}">Ativos <span style="font-family:'Outfit',sans-serif">{{ nAtivos }}</span></button>
+              <button onClick="{{ filtroTodos }}" style="{{ estFiltroTodos }}">Todos <span style="font-family:'Outfit',sans-serif">{{ nTodos }}</span></button>
+              <button onClick="{{ filtroChurn }}" style="{{ estFiltroChurn }}">Churn <span style="font-family:'Outfit',sans-serif">{{ nChurn }}</span></button>
+              <button onClick="{{ filtroSemDono }}" style="{{ estFiltroSemDono }}">Sem dono <span style="font-family:'Outfit',sans-serif">{{ nSemDono }}</span></button>
+            </div>
+            <label style="display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 15px;border-radius:999px;background:#f1f4f5;color:#5a6b77;margin-left:auto;min-width:190px">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><circle cx="11" cy="11" r="7"></circle><path d="M20.4 20.4l-4.2-4.2"></path></svg>
+              <input value="{{ busca }}" onChange="{{ mudarBusca }}" placeholder="buscar cliente…" style="flex:1;min-width:0;border:0;background:none;outline:none;font-family:inherit;font-size:12.5px;color:#0c1d2b">
+            </label>
+          </div>
+
+          <div style="overflow-x:auto">
+          <div style="min-width:920px">
+          <div style="display:grid;grid-template-columns:minmax(244px,1.5fr) minmax(190px,1fr) minmax(130px,1.05fr) minmax(182px,.9fr) minmax(90px,.85fr);gap:12px;padding:11px 16px;border-bottom:1px solid #edf1f3">
+            <sc-for list="{{ colunas }}" as="h" hint-placeholder-count="5">
+              <span style="{{ h.estCelula }}">
+                <sc-if value="{{ h.ordenavel }}" hint-placeholder-val="{{ true }}">
+                  <button onClick="{{ h.ordenar }}" style="{{ h.est }}">{{ h.titulo }}</button>
+                </sc-if>
+                <sc-if value="{{ h.fixa }}" hint-placeholder-val="{{ false }}">
+                  <span style="{{ h.est }}">{{ h.titulo }}</span>
+                </sc-if>
+              </span>
+            </sc-for>
+          </div>
+
+          <div>
+            <sc-for list="{{ linhas }}" as="c" hint-placeholder-count="8">
+              <div onClick="{{ c.abrir }}" style="{{ c.est }}" style-hover="background:#f7f9fa">
+                <div style="display:flex;align-items:center;gap:8px;min-width:0">
+                  <span style="{{ c.estEstrela }}">★</span>
+                  <span style="{{ c.estGrade }}">{{ c.grade }}</span>
+                  <div style="min-width:0">
+                    <div style="font-size:13.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.nome }}</div>
+                    <div style="font-size:11.5px;color:#8b99a4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.sub }}</div>
+                  </div>
+                </div>
+                <div style="min-width:0">
+                  <div style="font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.plano }}</div>
+                  <div style="font-size:11.5px;color:#8b99a4;white-space:nowrap">{{ c.mrr }}</div>
+                </div>
+                <div style="min-width:0">
+                  <div style="font-size:13px;font-weight:650;white-space:nowrap">{{ c.trazido }}</div>
+                  <div style="font-size:11px;color:#8b99a4;white-space:nowrap">de {{ c.contrato }}</div>
+                  <div style="height:5px;border-radius:999px;background:#eff2f3;overflow:hidden;margin:5px 0 4px"><span class="cap-grow" style="{{ c.estBarraPago }}"></span></div>
+                  <span style="{{ c.estStatus }}">{{ c.statusPgto }}</span>
+                </div>
+                <div style="min-width:0">
+                  <div style="font-size:13px;font-weight:650;white-space:nowrap">{{ c.marcos }}</div>
+                  <div style="height:5px;border-radius:999px;background:#eff2f3;overflow:hidden;margin:5px 0 4px"><span class="cap-grow" style="{{ c.estBarraMarcos }}"></span></div>
+                  <div style="font-size:11px;color:#8b99a4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.proximoMarco }}</div>
+                </div>
+                <div style="min-width:0">
+                  <span style="{{ c.estSituacao }}">{{ c.situacao }}</span>
+                  <div style="font-size:11px;color:#8b99a4;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.vencimento }}</div>
+                </div>
+              </div>
+            </sc-for>
+            <sc-if value="{{ semLinhas }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:26px 16px;text-align:center;font-size:12.5px;color:#8b99a4">nenhum cliente com esses filtros</div>
+            </sc-if>
+          </div>
+          </div>
+          </div>
+        </section>
+
+        <aside style="min-width:0;display:flex;flex-direction:column;gap:12px">
+          <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:20px 18px 16px">
+            <div style="display:flex;align-items:center;gap:7px">
+                <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">fila de cobrança</span>
+              </div>
+            <div style="font-size:12px;color:#8b99a4;margin:5px 0 12px;padding-left:12px">faturado e assinatura recorrente · vencidos primeiro</div>
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <sc-for list="{{ fila }}" as="f" hint-placeholder-count="5">
+                <div style="{{ f.est }}">
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:12.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.nome }}</div>
+                    <div style="font-size:11px;color:{{ f.cor }};margin-top:2px">{{ f.quando }}</div>
+                  </div>
+                  <span style="font-family:'Outfit',sans-serif;font-size:13.5px;font-weight:700;white-space:nowrap">{{ f.valor }}</span>
+                  <button onClick="{{ f.baixar }}" style="flex-shrink:0;height:28px;padding:0 11px;border-radius:999px;background:#fff;color:#0F766E;font-size:11px;font-weight:600;box-shadow:0 1px 2px rgba(12,29,43,.06);transition:background 150ms ease" style-hover="background:#E9F5F3">Baixa</button>
+                </div>
+              </sc-for>
+              <sc-if value="{{ filaVazia }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:14px 12px;border-radius:16px;background:#f0f8f4;font-size:11.5px;color:#177a4c;text-align:center">nenhuma cobrança em aberto</div>
+              </sc-if>
+            </div>
+          </section>
+
+          <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:20px 18px 18px">
+            <div style="display:flex;align-items:center;gap:7px">
+                <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">contas grandes</span>
+              </div>
+            <div style="font-size:12px;color:#8b99a4;margin:5px 0 12px;padding-left:12px">fora das médias · o dinheiro segue contando</div>
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <sc-for list="{{ grandes }}" as="g" hint-placeholder-count="2">
+                <button onClick="{{ g.abrir }}" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:10px 12px;border-radius:16px;background:#f7f9fa;transition:background 150ms ease" style-hover="background:#eef1f3">
+                  <span style="flex-shrink:0;color:#0F766E">★</span>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:12.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ g.nome }}</div>
+                    <div style="font-size:11px;color:#8b99a4">{{ g.plano }}</div>
+                  </div>
+                  <span style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;white-space:nowrap">{{ g.mrr }}</span>
+                </button>
+              </sc-for>
+            </div>
+          </section>
+        </aside>
+      </div>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ mostraCobrancas }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <section class="cap-rise" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:20px;padding:20px 24px;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+          <sc-for list="{{ billing }}" as="b" hint-placeholder-count="4">
+            <div style="min-width:0">
+              <div style="font-size:12.5px;color:#5a6b77">{{ b.rot }}</div>
+              <div style="font-family:'Outfit',sans-serif;font-size:26px;font-weight:700;letter-spacing:-.02em;line-height:1.15;margin-top:3px;color:{{ b.cor }}">{{ b.val }}</div>
+              <div style="font-size:11.5px;color:#8b99a4;margin-top:2px">{{ b.nota }}</div>
+            </div>
+          </sc-for>
+        </section>
+
+        <section class="cap-rise" style="overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+          <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;flex-wrap:wrap;border-bottom:1px solid #edf1f3">
+            <div style="display:inline-flex;flex-wrap:wrap;max-width:100%;gap:3px;padding:3px;border-radius:999px;background:#f1f4f5">
+              <button onClick="{{ subAbaFaturas }}" style="{{ estSubFaturas }}">Faturas <span style="font-family:'Outfit',sans-serif">{{ nFaturas }}</span></button>
+              <button onClick="{{ subAbaAssin }}" style="{{ estSubAssin }}">Assinaturas <span style="font-family:'Outfit',sans-serif">{{ nAssinaturas }}</span></button>
+            </div>
+            <span style="margin-left:auto;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4">vencida → aberta → paga</span>
+          </div>
+          <div style="overflow-x:auto">
+          <div style="min-width:820px">
+            <sc-if value="{{ mostraFaturas }}" hint-placeholder-val="{{ true }}">
+            <div>
+            <div style="display:grid;grid-template-columns:minmax(200px,1.4fr) minmax(150px,.9fr) minmax(110px,.8fr) minmax(110px,.9fr) minmax(90px,.9fr) minmax(130px,.8fr);gap:12px;padding:11px 16px;border-bottom:1px solid #edf1f3;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#8b99a4">
+              <span>Cliente</span><span>Tipo</span><span>Valor</span><span>Vencimento</span><span>Status</span><span></span>
+            </div>
+            <sc-for list="{{ faturas }}" as="f" hint-placeholder-count="8">
+              <div style="display:grid;grid-template-columns:minmax(200px,1.4fr) minmax(150px,.9fr) minmax(110px,.8fr) minmax(110px,.9fr) minmax(90px,.9fr) minmax(130px,.8fr);gap:12px;padding:12px 16px;align-items:center;border-bottom:1px solid #edf1f3">
+                <span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.cliente }}</span>
+                <span style="min-width:0"><span style="display:block;font-size:12px;color:#5a6b77;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.tipo }}</span><span style="{{ f.estMeio }}">{{ f.meio }}</span></span>
+                <span style="font-family:'Outfit',sans-serif;font-size:13.5px;font-weight:700;white-space:nowrap">{{ f.valor }}</span>
+                <span style="font-size:12px;color:#5a6b77;white-space:nowrap">{{ f.venc }}</span>
+                <span style="{{ f.estStatus }}">{{ f.status }}</span>
+                <span style="display:flex;justify-content:flex-end">
+                  <button onClick="{{ f.pagar }}" style="{{ f.estBotao }}">{{ f.acao }}</button>
+                </span>
+              </div>
+            </sc-for>
+            </div>
+            </sc-if>
+            <sc-if value="{{ mostraAssinaturas }}" hint-placeholder-val="{{ false }}">
+            <div>
+              <div style="display:grid;grid-template-columns:minmax(190px,1.4fr) minmax(170px,1fr) minmax(90px,.7fr) minmax(120px,.8fr) minmax(120px,.8fr) minmax(110px,.9fr) minmax(120px,.9fr);gap:12px;padding:11px 16px;border-bottom:1px solid #edf1f3;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#8b99a4">
+                <span>Cliente</span><span>Plano</span><span>Ciclo</span><span>Preço/ciclo</span><span>ARR</span><span>Status</span><span>Ciclo atual até</span>
+              </div>
+              <sc-for list="{{ assinaturas }}" as="a" hint-placeholder-count="8">
+                <div style="display:grid;grid-template-columns:minmax(190px,1.4fr) minmax(170px,1fr) minmax(90px,.7fr) minmax(120px,.8fr) minmax(120px,.8fr) minmax(110px,.9fr) minmax(120px,.9fr);gap:12px;padding:12px 16px;align-items:center;border-bottom:1px solid #edf1f3">
+                  <span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.cliente }}</span>
+                  <span style="font-size:12px;color:#5a6b77;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.plano }}</span>
+                  <span style="font-size:12px;color:#5a6b77;white-space:nowrap">{{ a.ciclo }}</span>
+                  <span style="font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;white-space:nowrap">{{ a.preco }}</span>
+                  <span style="font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;white-space:nowrap;color:#3d4f5c">{{ a.arr }}</span>
+                  <span style="{{ a.estStatus }}">{{ a.status }}</span>
+                  <span style="font-size:12px;color:#5a6b77;white-space:nowrap">{{ a.ate }}</span>
+                </div>
+              </sc-for>
+            </div>
+            </sc-if>
+          </div>
+          </div>
+        </section>
+      </div>
+      </sc-if>
+
+    </div>
+    <sc-if value="{{ temFicha }}" hint-placeholder-val="{{ false }}">
+      <aside class="{{ classeFicha }}" style="position:absolute;right:14px;top:14px;bottom:14px;width:420px;max-width:calc(100% - 28px);z-index:20;display:flex;flex-direction:column;overflow:hidden;border-radius:24px;background:#fff;box-shadow:0 2px 6px rgba(12,29,43,.08),0 30px 60px -28px rgba(12,29,43,.55)">
+        <div style="flex:0 0 auto;display:flex;align-items:flex-start;gap:11px;padding:20px 20px 14px">
+          <span style="{{ ficha.estGrade }}">{{ ficha.grade }}</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-family:'Outfit',sans-serif;font-size:19px;font-weight:700;letter-spacing:-.025em;line-height:1.2">{{ ficha.nome }}</div>
+            <div style="font-size:12px;color:#5a6b77;margin-top:3px">{{ ficha.sub }}</div>
+          </div>
+          <button onClick="{{ fecharFicha }}" style="flex-shrink:0;width:30px;height:30px;border-radius:999px;background:#f1f4f5;color:#5a6b77;font-size:13px;transition:background 150ms ease" style-hover="background:#e7ecee;color:#0c1d2b">✕</button>
+        </div>
+        <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:0 20px 18px">
+          <div style="padding:15px 16px;border-radius:20px;background:#f7f9fa">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">contrato</span>
+              <span style="{{ ficha.estSituacao }}">{{ ficha.situacao }}</span>
+            </div>
+            <sc-for list="{{ ficha.contrato }}" as="f" hint-placeholder-count="6">
+              <div style="display:flex;align-items:baseline;gap:10px;padding:6px 0;border-top:1px solid #edf1f3">
+                <span style="flex:0 0 128px;font-size:11.5px;color:#5a6b77">{{ f.k }}</span>
+                <span style="flex:1;min-width:0;font-size:12.5px;font-weight:600;text-align:right;text-wrap:pretty">{{ f.v }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="padding:15px 16px;border-radius:20px;background:#f7f9fa">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">régua de marcos</span>
+              <span style="margin-left:auto;font-size:11px;font-weight:600;color:#0F766E;background:#E9F5F3;border-radius:999px;padding:3px 10px;white-space:nowrap">{{ ficha.marcosNota }}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:3px;margin-top:10px">
+              <sc-for list="{{ ficha.marcos }}" as="m" hint-placeholder-count="6">
+                <button onClick="{{ m.alternar }}" style="display:flex;align-items:flex-start;gap:10px;width:100%;text-align:left;padding:7px 9px;border-radius:14px;transition:background 150ms ease" style-hover="background:#fff">
+                  <span style="{{ m.estCheck }}">{{ m.marca }}</span>
+                  <span style="{{ m.estTexto }}">{{ m.label }}</span>
+                </button>
+              </sc-for>
+            </div>
+          </div>
+          <div style="padding:15px 16px;border-radius:20px;background:#f7f9fa">
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">dinheiro</div>
+            <div style="display:flex;align-items:baseline;gap:10px;margin-top:9px">
+              <span style="font-family:'Outfit',sans-serif;font-size:24px;font-weight:700;letter-spacing:-.03em">{{ ficha.trazido }}</span>
+              <span style="font-size:12px;color:#5a6b77">de {{ ficha.contratoValor }}</span>
+            </div>
+            <div style="height:8px;border-radius:999px;background:#e4e9eb;overflow:hidden;margin-top:10px"><span style="{{ ficha.estBarra }}"></span></div>
+            <div style="font-size:11.5px;color:#5a6b77;margin-top:7px">{{ ficha.dinheiroNota }}</div>
+          </div>
+        </div>
+        <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:9px;padding:14px 20px 16px;border-top:1px solid #edf1f3">
+          <button onClick="{{ cobrarFicha }}" style="{{ estCobrarFicha }}">{{ rotuloCobrarFicha }}</button>
+          <button onClick="{{ virarCase }}" style="{{ estVirarCase }}">{{ rotuloVirarCase }}</button>
+        </div>
+      </aside>
+    </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Marcos do lib/milestones.js (DEFAULT_MILESTONES + o de renovação, que entra
+  // 60 dias antes do fim do contrato).
+  // SUB_STATUS do customers.jsx / subscriptions.jsx
+  static PRAZOS_BASE = [7, 30, 90, 100, 180];
+  static SUB_STATUS = { active: ["ativa", "#177a4c", "#e9f6ef"], past_due: ["inadimplente", "#a16207", "#fbf4e6"], paused: ["pausada", "#5a6b77", "#f1f4f5"], canceled: ["cancelada", "#b42318", "#fdf3f2"] };
+  static MARCOS = ["Onboarding","Check-in de mês 1","Revisão de resultado","Pedir depoimento e autorizar case","Conversa de upsell","Contato de renovação"];
+  static PRODUTOS = ["Lever OEM · Essencial","Lever OEM · Escala","Lever Ads · Essencial","Lever Ads · Escala","Lever Price · Essencial","Lever Price · Escala","Lever Price · Enterprise","Pacote de OEM avulso"];
+  static PLANOS = ["Anual","Semestral","Serviço único"];
+  static DONOS = ["Vitor Nunes","Manuela Costa","Rafael Moura"];
+
+  static gerar() {
+    const PRE = ["Studio","Clínica","Grupo","Oficina","Mercado","Instituto","Academia","Escola","Padaria","Consultório","Espaço","Casa"];
+    const SUF = ["Kern","Vitta","Prado","Arbo","Ponto","Vante","Dovale","Rima","Mendes","Lira","Bueno","Tavares","Nogueira","Peixoto","Camargo","Sauro"];
+    const FIRST = ["Marina","Helena","Sérgio","Diego","Tatiana","Rogério","Fernanda","Paulo","Isabel","André","Carla","Bruno","Lúcia","Eduardo","Nina","Caio"];
+    const GRADES = ["A","S","B","A","C","B","A","S","B","C","A","B"];
+    const out = [];
+    const grandes = [["Galante Holding", 16500, "Lever Price · Enterprise", "Anual"], ["Unique Baby", 10000, "Lever Ads · Escala", "Anual"]];
+    const novos = [["Studio Kern", 2000, "Lever Ads · Escala", "Anual", 2], ["Nutri Vitta", 400, "Pacote de OEM avulso", "Serviço único", 3],
+      ["Oficina Prado", 800, "Lever Ads · Essencial", "Semestral", 4], ["Clínica Arbo", 2000, "Lever Ads · Escala", "Anual", 8],
+      ["Mercado Ponto", 533, "Lever OEM · Essencial", "Semestral", 10], ["Grupo Vante", 800, "Lever Ads · Essencial", "Semestral", 15],
+      ["Padaria Dovale", 1200, "Lever Price · Escala", "Anual", 18], ["Instituto Rima", 1633, "Lever Price · Essencial", "Anual", 22]];
+    let i = 0;
+    const add = (nome, mrr, produto, plano, dias, extra) => {
+      const meses = plano === "Anual" ? 12 : plano === "Semestral" ? 6 : 1;
+      const contrato = mrr * meses;
+      const pagoPct = [1, .75, .5, .25, 1, .6][i % 6];
+      out.push(Object.assign({
+        id: i, nome, mrr, produto, plano, contrato, trazido: Math.round(contrato * pagoPct),
+        grade: GRADES[i % 12], grande: false, churn: false, dias, ativo: true, marcosFeitos: 0,
+        contato: FIRST[i % 16] + " " + SUF[(i * 3) % 16],
+        dono: i % 9 === 4 ? null : Component.DONOS[i % 3],
+        sub: i % 13 === 7 ? "paused" : "active",
+      }, extra || {}));
+      i++;
+    };
+    for (const [nome, mrr, produto, plano] of grandes) add(nome, mrr, produto, plano, 210 + i * 40, { grande: true });
+    for (const [nome, mrr, produto, plano, dias] of novos) add(nome, mrr, produto, plano, dias);
+    const POOL = [2800, 3200, 3600, 4200, 4600];
+    const mrrs = [];
+    for (let k = 0; k < 30; k++) mrrs.push(POOL[k % 5]);
+    mrrs.push(121800 - 9366 - mrrs.reduce((a, b) => a + b, 0));
+    mrrs.forEach((mrr, k) => {
+      const nome = PRE[(k * 5 + 3) % 12] + " " + SUF[(k * 7 + 2) % 16];
+      add(nome, mrr, Component.PRODUTOS[k % 8], Component.PLANOS[k % 3 === 2 ? 1 : 0], 40 + k * 21);
+    });
+    out.push({ id: 999, nome: "Academia Lira", mrr: 2400, produto: "Lever Ads · Essencial", plano: "Semestral",
+      contrato: 14400, trazido: 9600, grade: "C", grande: false, churn: true, ativo: false, dias: 240,
+      contato: "Rita Lira", dono: "Vitor Nunes", marcosFeitos: 4, fim: "12/09", motivo: "resultado abaixo do esperado", sub: "canceled" });
+    const PRAZOS = [7, 30, 90, 100, 180];
+    for (const c of out) if (!c.churn) c.marcosFeitos = PRAZOS.filter((d) => c.dias > d + 3).length;
+    for (const c of out) if (["Galante Holding", "Studio Kern"].indexOf(c.nome) >= 0) c.sub = "past_due";
+    return out;
+  }
+
+  static filaInicial() {
+    return [
+      { id: 1, nome: "Galante Holding", valor: 8250, dias: -5 },
+      { id: 2, nome: "Studio Kern", valor: 2000, dias: -12 },
+      { id: 3, nome: "Galante Holding", valor: 2230, dias: -2 },
+      { id: 4, nome: "Unique Baby", valor: 10000, dias: 2 },
+      { id: 5, nome: "Nutri Vitta", valor: 4800, dias: 3 },
+      { id: 6, nome: "Oficina Prado", valor: 9600, dias: 5 },
+      { id: 7, nome: "Instituto Rima", valor: 4500, dias: 7 },
+      { id: 8, nome: "Clínica Arbo", valor: 24000, dias: -20, paga: true, meio: "PIX" },
+      { id: 9, nome: "Mercado Ponto", valor: 3200, dias: -16, paga: true, meio: "Cartão de crédito · 12x" },
+      { id: 10, nome: "Padaria Dovale", valor: 14400, dias: -9, paga: true, meio: "Boleto" },
+    ];
+  }
+
+  static TIPOS = ["renovação", "pró-rata", "upsell", "manual"];
+  state = { aba: "base", subAba: "faturas", filtro: "active", busca: "", ordem: { chave: "mrr", dir: -1 },
+    clientes: Component.gerar(), fila: Component.filaInicial(),
+    sel: null, fechandoFicha: false, cobrado: false, caseFeito: false, seq: 1 };
+  componentWillUnmount() { clearTimeout(this._f); clearTimeout(this._c); }
+  abrirFicha(id) { clearTimeout(this._f); this.setState({ sel: id, fechandoFicha: false, cobrado: false, caseFeito: false }); }
+  fecharFicha() {
+    if (this.state.fechandoFicha) return;
+    this.setState({ fechandoFicha: true });
+    this._f = setTimeout(() => this.setState({ sel: null, fechandoFicha: false }), 160);
+  }
+
+  fmt(n) { return "R$ " + Math.round(n).toLocaleString("pt-BR"); }
+  tempoDeCasa(dias) {
+    if (dias < 60) return dias + (dias === 1 ? " dia" : " dias");
+    const meses = Math.floor(dias / 30);
+    if (meses < 12) return meses + " meses";
+    const anos = Math.floor(meses / 12), resto = meses % 12;
+    return resto ? anos + (anos === 1 ? " ano e " : " anos e ") + resto + (resto === 1 ? " mês" : " meses") : anos + (anos === 1 ? " ano" : " anos");
+  }
+  prazo(dias) { return dias === 0 ? "hoje" : dias > 0 ? "em " + dias + (dias === 1 ? " dia" : " dias") : "há " + (-dias) + (-dias === 1 ? " dia" : " dias"); }
+  statusPgto(c) {
+    if (c.trazido >= c.contrato) return { chave: "paid", rot: "pago", cor: "#177a4c" };
+    if (c.trazido > 0) return { chave: "partial", rot: "parcial", cor: "#a16207" };
+    return { chave: "unpaid", rot: "não pago", cor: "#b42318" };
+  }
+  seg(ativo, alt) {
+    const h = alt ? 30 : 32, p = alt ? 14 : 17;
+    return "height:" + h + "px;padding:0 " + p + "px;border-radius:999px;font-size:12" + (alt ? "" : ".5") + "px;white-space:nowrap;transition:background 150ms ease,color 150ms ease;" +
+      (ativo ? (alt ? "background:#fff;color:#0c1d2b;font-weight:650;box-shadow:0 1px 2px rgba(12,29,43,.06)" : "background:#0c1d2b;color:#fff;font-weight:600")
+             : "background:transparent;color:#5a6b77;font-weight:500");
+  }
+  baixar(id) {
+    this.setState((st) => ({ fila: st.fila.map((f) => f.id === id ? Object.assign({}, f, { paga: true }) : f) }));
+  }
+
+  renderVals() {
+    const st = this.state;
+    const GRID_LINHA = "minmax(244px,1.5fr) minmax(190px,1fr) minmax(130px,1.05fr) minmax(182px,.9fr) minmax(90px,.85fr)";
+    const ativos = st.clientes.filter((c) => c.ativo);
+    const churn = st.clientes.filter((c) => c.churn);
+    const semDono = st.clientes.filter((c) => c.ativo && !c.dono);
+    const mrrTotal = ativos.reduce((a, c) => a + c.mrr, 0);
+    const mrrCore = ativos.filter((c) => !c.grande).reduce((a, c) => a + c.mrr, 0);
+    const emIntegracao = ativos.filter((c) => c.marcosFeitos < 5).length;
+    const abertas = st.fila.filter((f) => !f.paga);
+    const vencidos = abertas.filter((f) => f.dias < 0);
+    const aVencer = abertas.filter((f) => f.dias >= 0);
+    const vencidoTotal = vencidos.reduce((a, f) => a + f.valor, 0);
+    const maisAntiga = vencidos.slice().sort((a, b) => a.dias - b.dias)[0];
+
+    const q = st.busca.trim().toLowerCase();
+    const base = st.clientes.filter((c) => {
+      if (st.filtro === "active" && !c.ativo) return false;
+      if (st.filtro === "churned" && !c.churn) return false;
+      if (st.filtro === "noowner" && (c.dono || !c.ativo)) return false;
+      if (q && !(c.nome.toLowerCase().includes(q) || c.contato.toLowerCase().includes(q) || c.produto.toLowerCase().includes(q))) return false;
+      return true;
+    });
+    const chave = st.ordem.chave, dir = st.ordem.dir;
+    const valorDe = (c) => chave === "cliente" ? c.nome.toLowerCase() : chave === "mrr" ? c.mrr : chave === "recebido" ? (c.contrato ? c.trazido / c.contrato : 0) : c.marcosFeitos;
+    const ordenados = base.slice().sort((a, b) => { const x = valorDe(a), y = valorDe(b); return (x > y ? 1 : x < y ? -1 : 0) * dir; });
+
+    const COLS = [["Cliente", "cliente"], ["Plano e MRR", "mrr"], ["Dinheiro", "recebido"], ["Marcos", "marcos"], ["Situação", null]];
+    const colunas = COLS.map(([titulo, k]) => ({
+      ordenavel: !!k, fixa: !k,
+      estCelula: "min-width:0;display:block",
+      titulo: titulo + (k && chave === k ? (dir === 1 ? " ↑" : " ↓") : ""),
+      est: "font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" +
+        (k ? "cursor:pointer;" : "cursor:default;") + (k && chave === k ? "color:#3d4f5c" : "color:#8b99a4"),
+      ordenar: k ? () => this.setState((s2) => ({ ordem: { chave: k, dir: s2.ordem.chave === k ? -s2.ordem.dir : -1 } })) : () => {},
+    }));
+
+    const TOM_GRADE = { S: ["#7c3aed", "#fff"], A: ["#16a34a", "#fff"], B: ["#65a30d", "#fff"], C: ["#eab308", "#463500"], D: ["#ea580c", "#fff"], E: ["#9aa2ad", "#fff"] };
+    const linhas = ordenados.map((c) => {
+      const ps = this.statusPgto(c);
+      const pagoPct = c.contrato ? Math.min(100, (c.trazido / c.contrato) * 100) : 0;
+      const total = c.plano === "Serviço único" ? 5 : 6;
+      const marcoPct = Math.round((c.marcosFeitos / total) * 100);
+      const g = TOM_GRADE[c.grade] || ["#e4e9eb", "#8b99a4"];
+      const st2 = Component.SUB_STATUS[c.sub] || ["sem assinatura", "#5a6b77", "#f1f4f5"];
+      // dueDays da régua (DEFAULT_MILESTONES) + renovação 60 dias antes do fim
+      const prazos = Component.PRAZOS_BASE.concat(c.plano === "Serviço único" ? [] : [(c.plano === "Anual" ? 365 : 182) - 60]);
+      const prazoMarco = c.marcosFeitos < prazos.length ? this.prazo(prazos[c.marcosFeitos] - c.dias) : "";
+      return {
+        nome: c.nome, grade: c.grade,
+        sub: [c.contato, this.tempoDeCasa(c.dias)].join(" · "),
+        plano: c.produto, mrr: this.fmt(c.mrr) + " /mês · " + c.plano.toLowerCase(),
+        trazido: this.fmt(c.trazido), contrato: this.fmt(c.contrato),
+        marcos: c.churn ? "—" : c.marcosFeitos + " de " + total,
+        proximoMarco: c.churn ? "contrato encerrado" : (c.marcosFeitos >= total ? "régua concluída" : Component.MARCOS[c.marcosFeitos]),
+        statusPgto: ps.rot,
+        situacao: st2[0],
+        vencimento: c.churn ? c.motivo : (c.marcosFeitos >= total ? "" : prazoMarco),
+        est: "display:grid;grid-template-columns:" + GRID_LINHA + ";gap:12px;padding:12px 16px;align-items:center;border-bottom:1px solid #edf1f3;cursor:pointer;transition:background 150ms ease;" + (c.churn ? "opacity:.6" : ""),
+        estGrade: "flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:999px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:700;background:" + g[0] + ";color:" + g[1],
+        estEstrela: c.grande ? "flex-shrink:0;color:#0F766E;font-size:12px" : "display:none",
+        estBarraPago: "display:block;height:100%;border-radius:999px;width:" + pagoPct + "%;background:" + (ps.chave === "paid" ? "#177a4c" : ps.chave === "partial" ? "#d0a02c" : "#b42318"),
+        estBarraMarcos: "display:block;height:100%;border-radius:999px;width:" + marcoPct + "%;background:" + (marcoPct === 100 ? "#177a4c" : "#0F766E"),
+        estStatus: "font-size:11px;font-weight:600;color:" + ps.cor,
+        estSituacao: "display:inline-flex;align-items:center;height:22px;padding:0 10px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;background:" + st2[2] + ";color:" + st2[1],
+        abrir: () => this.abrirFicha(c.id),
+      };
+    });
+
+    const fila = abertas.slice().sort((a, b) => a.dias - b.dias).map((f) => ({
+      nome: f.nome, valor: this.fmt(f.valor), quando: f.dias < 0 ? "venceu " + this.prazo(f.dias) : "vence " + this.prazo(f.dias),
+      cor: f.dias < 0 ? "#b42318" : "#a16207",
+      est: "display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:16px;background:" + (f.dias < 0 ? "#fdf3f2" : "#f7f9fa"),
+      baixar: () => this.baixar(f.id),
+    }));
+
+    const vals = {
+      mov: this.props.movimento === false ? "off" : "on",
+      resumo: ativos.length + " clientes ativos · " + this.fmt(mrrTotal) + " de MRR · " + this.fmt(mrrTotal * 12) + " de ARR",
+      estAbaBase: this.seg(st.aba === "base"), estAbaInd: this.seg(st.aba === "indicacoes"), estAbaCases: this.seg(st.aba === "cases"), estAbaCobr: this.seg(st.aba === "billing"),
+      abaBase: () => this.setState({ aba: "base" }), abaInd: () => this.setState({ aba: "indicacoes" }), abaCases: () => this.setState({ aba: "cases" }), abaCobr: () => this.setState({ aba: "billing" }),
+      temVencido: vencidos.length > 0,
+      vencidoTotal: this.fmt(vencidoTotal),
+      vencidoNota: vencidos.length + (vencidos.length === 1 ? " cobrança vencida" : " cobranças vencidas") + (aVencer.length ? " · " + aVencer.length + (aVencer.length === 1 ? " vence" : " vencem") + " em 7 dias" : ""),
+      baixaLabel: maisAntiga ? "Dar baixa na mais antiga · " + this.fmt(maisAntiga.valor) : "",
+      darBaixaAntiga: () => { if (maisAntiga) this.baixar(maisAntiga.id); },
+      kpis: [
+        { rot: "clientes ativos", val: String(ativos.length), nota: "base do produto", cor: "#0c1d2b" },
+        { rot: "MRR", val: this.fmt(mrrTotal), nota: this.fmt(mrrCore) + " sem as contas grandes", cor: "#0c1d2b" },
+        { rot: "em integração", val: String(emIntegracao), nota: "ainda não terminaram a régua", cor: emIntegracao > 0 ? "#a16207" : "#0c1d2b" },
+        { rot: "churn", val: String(churn.length), nota: churn.length ? "o mais recente há 7 dias" : "nenhum encerramento", cor: churn.length ? "#b42318" : "#0c1d2b" },
+      ],
+      nAtivos: ativos.length, nTodos: st.clientes.length, nChurn: churn.length, nSemDono: semDono.length,
+      estFiltroAtivos: this.seg(st.filtro === "active", true), estFiltroTodos: this.seg(st.filtro === "all", true),
+      estFiltroChurn: this.seg(st.filtro === "churned", true), estFiltroSemDono: this.seg(st.filtro === "noowner", true),
+      filtroAtivos: () => this.setState({ filtro: "active" }), filtroTodos: () => this.setState({ filtro: "all" }),
+      filtroChurn: () => this.setState({ filtro: "churned" }), filtroSemDono: () => this.setState({ filtro: "noowner" }),
+      busca: st.busca, mudarBusca: (e) => this.setState({ busca: e.target.value }),
+      colunas, linhas, semLinhas: linhas.length === 0,
+      mostraBase: st.aba === "base", mostraCobrancas: st.aba === "billing",
+      estAbaInerte: "height:32px;padding:0 17px;border-radius:999px;font-size:12.5px;font-weight:500;white-space:nowrap;display:inline-flex;align-items:center;background:transparent;color:#b6c0c7;cursor:default",
+      billing: [
+        { rot: "MRR das ativas", val: this.fmt(mrrTotal), nota: ativos.length + " assinaturas", cor: "#0c1d2b" },
+        { rot: "Vencem em 7 dias", val: String(aVencer.length), nota: aVencer.length ? this.fmt(aVencer.reduce((a, f) => a + f.valor, 0)) + " a renovar" : "nada a renovar", cor: aVencer.length ? "#a16207" : "#0c1d2b" },
+        { rot: "Faturas vencidas", val: String(vencidos.length), nota: vencidos.length ? this.fmt(vencidoTotal) + " parados" : "nenhuma", cor: vencidos.length ? "#b42318" : "#177a4c" },
+        { rot: "Inadimplentes", val: String(new Set(vencidos.map((f) => f.nome)).size), nota: new Set(vencidos.map((f) => f.nome)).size === 1 ? "cliente" : "clientes", cor: vencidos.length ? "#b42318" : "#0c1d2b" },
+      ],
+      nFaturas: st.fila.length, nAssinaturas: ativos.length,
+      mostraFaturas: st.subAba === "faturas", mostraAssinaturas: st.subAba === "assinaturas",
+      assinaturas: ativos.slice().sort((a, b) => b.mrr - a.mrr).map((c) => {
+        const meses = c.plano === "Anual" ? 12 : c.plano === "Semestral" ? 6 : 1;
+        const s2 = Component.SUB_STATUS[c.sub] || ["sem assinatura", "#5a6b77", "#f1f4f5"];
+        const resto = (meses * 30) - (c.dias % (meses * 30));
+        const d = new Date(2026, 8, 19 + resto);
+        return {
+          cliente: c.nome, plano: c.produto, ciclo: c.plano.toLowerCase(),
+          preco: this.fmt(c.mrr * meses), arr: this.fmt(c.mrr * 12), status: s2[0],
+          ate: d.toLocaleDateString("pt-BR"),
+          estStatus: "display:inline-flex;align-items:center;height:22px;padding:0 10px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;background:" + s2[2] + ";color:" + s2[1],
+        };
+      }),
+      estSubFaturas: this.seg(st.subAba === "faturas", true), estSubAssin: this.seg(st.subAba === "assinaturas", true),
+      subAbaFaturas: () => this.setState({ subAba: "faturas" }), subAbaAssin: () => this.setState({ subAba: "assinaturas" }),
+      faturas: st.fila.slice().sort((a, b) => {
+        const rank = (f) => f.paga ? 2 : f.dias < 0 ? 0 : 1;
+        return rank(a) - rank(b) || a.dias - b.dias;
+      }).map((f, k) => {
+        const status = f.paga ? ["paga", "#177a4c", "#e9f6ef"] : f.dias < 0 ? ["vencida", "#a16207", "#fbf4e6"] : ["aberta", "#5a6b77", "#f1f4f5"];
+        const dia = 19 + f.dias;
+        return {
+          cliente: f.nome, tipo: Component.TIPOS[k % 4], valor: this.fmt(f.valor),
+          venc: (dia < 10 ? "0" + dia : dia) + "/09/2026",
+          status: status[0],
+          meio: f.paga && f.meio ? f.meio : "",
+          estMeio: f.paga && f.meio ? "display:block;font-size:10px;color:#177a4c" : "display:none",
+          estStatus: "display:inline-flex;align-items:center;height:22px;padding:0 10px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;background:" + status[2] + ";color:" + status[1],
+          acao: f.paga ? "Baixada ✓" : "Marcar paga",
+          estBotao: f.paga
+            ? "height:28px;padding:0 12px;border-radius:999px;background:transparent;color:#8b99a4;font-size:11px;font-weight:600;cursor:default"
+            : "height:28px;padding:0 13px;border-radius:999px;background:#f1f4f5;color:#0c1d2b;font-size:11px;font-weight:600;transition:background 150ms ease",
+          pagar: () => { if (!f.paga) this.baixar(f.id); },
+        };
+      }),
+      fila, filaVazia: fila.length === 0,
+      // "+ novo cliente": entra na base e abre a ficha pra completar a régua.
+      novoCliente: () => {
+        const id = 8000 + st.seq;
+        clearTimeout(this._f);
+        // Um setState só: criar e selecionar juntos, senão a ficha abre antes
+        // do cliente existir na lista e o sc-if renderiza sem valores.
+        this.setState((s2) => ({
+          seq: s2.seq + 1, filtro: "active", busca: "", aba: "base",
+          sel: id, fechandoFicha: false, cobrado: false, caseFeito: false,
+          clientes: [{ id, nome: "Cliente novo", mrr: 2800, produto: Component.PRODUTOS[0], plano: "Anual",
+            contrato: 33600, trazido: 0, grade: "C", grande: false, churn: false, ativo: true,
+            dias: 0, contato: "(a definir)", dono: null, marcosFeitos: 0 }].concat(s2.clientes),
+        }));
+      },
+      grandes: ativos.filter((c) => c.grande).map((c) => ({ nome: c.nome, plano: c.produto + " · " + c.plano.toLowerCase(), mrr: this.fmt(c.mrr) + " /mês", abrir: () => this.abrirFicha(c.id) })),
+    };
+
+    const sel = st.sel != null ? st.clientes.find((c) => c.id === st.sel) : null;
+    vals.temFicha = !!sel;
+    vals.classeFicha = st.fechandoFicha ? "cap-gaveta-sai" : "cap-gaveta-entra";
+    vals.fecharFicha = () => this.fecharFicha();
+    if (sel) {
+      const TOM = { S: ["#7c3aed", "#fff"], A: ["#16a34a", "#fff"], B: ["#65a30d", "#fff"], C: ["#eab308", "#463500"], D: ["#ea580c", "#fff"], E: ["#9aa2ad", "#fff"] };
+      const g = TOM[sel.grade] || ["#e4e9eb", "#8b99a4"];
+      const ps = this.statusPgto(sel);
+      const total = sel.plano === "Serviço único" ? 5 : 6;
+      const pago = sel.contrato ? Math.min(100, (sel.trazido / sel.contrato) * 100) : 0;
+      const emAberto = st.fila.filter((f) => f.nome === sel.nome && !f.paga);
+      vals.ficha = {
+        nome: sel.nome, grade: sel.grade,
+        sub: [sel.contato, sel.grande ? "conta grande" : null, this.tempoDeCasa(sel.dias) + " de casa"].filter(Boolean).join(" · "),
+        estGrade: "flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:999px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;background:" + g[0] + ";color:" + g[1],
+        situacao: sel.churn ? "churn " + sel.fim : ps.chave === "paid" ? "em dia" : "ativa",
+        estSituacao: "margin-left:auto;display:inline-flex;align-items:center;height:22px;padding:0 10px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;" +
+          (sel.churn ? "background:#fdf3f2;color:#b42318" : ps.chave === "paid" ? "background:#e9f6ef;color:#177a4c" : "background:#f1f4f5;color:#5a6b77"),
+        contrato: [
+          ["Produto", sel.produto],
+          ["Ciclo", sel.plano.toLowerCase()],
+          ["MRR", this.fmt(sel.mrr) + " /mês"],
+          ["Contrato", this.fmt(sel.contrato)],
+          ["ARR", this.fmt(sel.mrr * 12)],
+          ["Dono da conta", sel.dono || "sem dono"],
+        ].map(([k, v]) => ({ k, v })),
+        marcosNota: sel.marcosFeitos + " de " + total,
+        marcos: Component.MARCOS.slice(0, total).map((label, i) => ({
+          label,
+          marca: i < sel.marcosFeitos ? "✓" : "",
+          estCheck: "flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:999px;font-size:11px;margin-top:1px;" +
+            (i < sel.marcosFeitos ? "background:#0F766E;color:#fff" : "background:#fff;box-shadow:inset 0 0 0 1.5px #d6dde1;color:transparent"),
+          estTexto: "flex:1;min-width:0;font-size:12.5px;line-height:1.45;text-wrap:pretty;" + (i < sel.marcosFeitos ? "color:#8b99a4;text-decoration:line-through" : "color:#3d4f5c"),
+          alternar: () => this.setState((s2) => ({ clientes: s2.clientes.map((c) => c.id === sel.id ? { ...c, marcosFeitos: i < c.marcosFeitos ? i : i + 1 } : c) })),
+        })),
+        trazido: this.fmt(sel.trazido), contratoValor: this.fmt(sel.contrato),
+        estBarra: "display:block;height:100%;border-radius:999px;width:" + pago + "%;background:" + (ps.chave === "paid" ? "#177a4c" : ps.chave === "partial" ? "#d0a02c" : "#b42318"),
+        dinheiroNota: emAberto.length
+          ? emAberto.length + (emAberto.length === 1 ? " cobrança em aberto · " : " cobranças em aberto · ") + this.fmt(emAberto.reduce((a, f) => a + f.valor, 0))
+          : ps.chave === "paid" ? "nada em aberto" : "sem cobrança gerada ainda",
+      };
+      vals.rotuloCobrarFicha = st.cobrado ? "Cobrança enviada ✓" : emAberto.length ? "Cobrar " + this.fmt(emAberto.reduce((a, f) => a + f.valor, 0)) + " no WhatsApp" : "Nada a cobrar";
+      vals.estCobrarFicha = "height:42px;border-radius:999px;font-size:13px;font-weight:700;transition:background 150ms ease;" +
+        (st.cobrado ? "background:#E9F5F3;color:#0b6b64;cursor:default" : emAberto.length ? "background:#25d366;color:#06120c" : "background:#eef1f3;color:#8b99a4;cursor:not-allowed");
+      vals.cobrarFicha = () => {
+        if (st.cobrado || !emAberto.length) return;
+        this.setState({ cobrado: true });
+        clearTimeout(this._c);
+        this._c = setTimeout(() => this.setState({ cobrado: false }), 2200);
+      };
+      const podeCase = sel.marcosFeitos >= 4;
+      vals.rotuloVirarCase = st.caseFeito ? "Case autorizado ✓" : podeCase ? "Virar case" : "Case pede o depoimento (marco 4)";
+      vals.estVirarCase = "height:34px;border-radius:999px;font-size:12px;font-weight:600;transition:background 150ms ease;" +
+        (st.caseFeito ? "background:#E9F5F3;color:#0b6b64;cursor:default" : podeCase ? "background:#f1f4f5;color:#0c1d2b" : "background:transparent;color:#b6c0c7;cursor:not-allowed");
+      vals.virarCase = () => { if (podeCase && !st.caseFeito) this.setState({ caseFeito: true }); };
+    }
+    return vals;
+  }
+}
+</script>
+</body>
+</html>

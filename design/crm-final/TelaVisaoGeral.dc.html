@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Visao geral</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-sheen{0%{background-position:0 0,0% 50%}100%{background-position:0 0,200% 50%}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  .cap-sheen{animation:cap-sheen 3.2s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-sheen{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-sheen{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  /* Duas colunas: o trilho secundário cede, senão ele fica mais largo que o
+     conteúdo principal (no host de 644px o 1fr resolvia em 282px contra 340px
+     do trilho) e o card herói quebra em duas linhas. Abaixo de 900px o trilho
+     desce pra baixo. Media query é a única coisa aqui que não dá pra inline. */
+  .cap-2col{display:grid;align-items:stretch;gap:12px;grid-template-columns:minmax(0,1.7fr) minmax(250px,.85fr)}
+  @media (max-width:900px){
+    .cap-2col{grid-template-columns:minmax(0,1fr)}
+    .cap-2col > *{grid-column:1!important}
+  }
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;overflow:auto;margin:0 -4px;padding:0 4px 24px">
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,340px);align-items:stretch;gap:12px">
+
+        <header class="cap-rise" style="grid-column:1 / -1;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+          <div>
+            <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Visão geral</h1>
+            
+          </div>
+        </header>
+
+
+          
+
+          <section class="cap-rise" style="display:flex;flex-wrap:wrap;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);overflow:hidden;min-width:0">
+
+            <div style="position: relative; flex: 0 0 236px; display: flex; flex-direction: column; align-items: center; padding: 24px 20px 22px; background: linear-gradient(168deg, #0a2434, #051C2C 70%); overflow: hidden">
+              <span style="position:absolute;right:-56px;bottom:-40px;width:210px;height:210px;color:#23D8D3;opacity:.07;pointer-events:none"><svg width="210" height="210" viewBox="355 525 455 590" style="width: 168px; height: 205px"><polygon fill="currentColor" points="800.7 535.53 800.7 1103.92 763 983.8 749.25 939.91 691.16 754.61 501.54 817.84 457.65 832.42 362.47 864.14 443.6 803.33 481.22 775.08 800.7 535.53"></polygon></svg></span>
+              <div style="text-align:center;margin-bottom:14px;position:relative">
+                <div style="font-family: 'Plus Jakarta Sans',sans-serif; font-size: 14.5px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; color: #23D8D3">meta do mês</div>
+                <div style="font-family: 'Outfit',sans-serif; font-size: 24px; font-weight: 700; letter-spacing: -.025em; line-height: 1.2; margin-top: 4px; color: #F3FBFF">{{ metaFmt }}</div>
+              </div>
+              <div style="position:relative;width:84px;height:272px;border-radius:999px;background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;cursor:help">
+                <div class="cap-fill" style="{{ estLiquidoFraco }}">
+                  <svg class="cap-wave" viewBox="0 0 96 10" preserveAspectRatio="none"><path d="M0 5 Q12 0 24 5 T48 5 T72 5 T96 5 V10 H0Z"></path></svg>
+                </div>
+                <div class="cap-fill" style="{{ estLiquidoForte }}">
+                  <svg class="cap-wave" viewBox="0 0 96 10" preserveAspectRatio="none"><path d="M0 5 Q12 0 24 5 T48 5 T72 5 T96 5 V10 H0Z"></path></svg>
+                </div>
+                <span style="{{ estTracoPace }}"></span>
+                <span style="{{ estRotuloPace }}">PACE</span>
+              </div>
+              <div class="cap-sheen" style="margin-top:18px;display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 18px;border:1.5px solid transparent;border-radius:999px;background:linear-gradient(180deg,#0e3a48,#062533) padding-box,linear-gradient(100deg,#0C8F83,#23D8D3 40%,#A9F5F2 50%,#23D8D3 60%,#0C8F83) border-box;background-size:100% 100%,220% 100%;box-shadow:0 0 14px rgba(35,216,211,.28)">
+                <span class="cap-breath" style="width:7px;height:7px;border-radius:999px;background:#23D8D3;display:inline-block"></span>
+                <span style="font-family:'Outfit',sans-serif;font-size:22px;font-weight:700;letter-spacing:-.02em;color:#F3FBFF">{{ pctMeta }}</span>
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;letter-spacing:.08em;color:#23D8D3">{{ selo }}</span>
+              </div>
+            </div>
+
+            <div style="flex:1 1 320px;min-width:0;display:flex;flex-direction:column;gap:18px;padding:24px 26px 22px">
+              <div>
+                <div style="display:flex;align-items:center;gap:7px">
+                  <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+                  <span style="font-family: 'Plus Jakarta Sans',sans-serif; font-size: 14px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: #5a6b77">funil de vendas<br></span>
+                </div>
+                <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-top:8px">
+                  <span style="font-family:'Outfit',sans-serif;font-size:58px;font-weight:700;letter-spacing:-.045em;line-height:.95;color:#0c1d2b">{{ vendidoFmt }}</span>
+                  <span style="{{ estPacePill }}">
+                    <span style="{{ estPacePonto }}"></span>{{ paceTexto }}
+                  </span>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:16px">
+                  <div style="display:flex;align-items:baseline;gap:8px;padding:9px 16px;border-radius:999px;background:#f1f4f5">
+                    <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#5a6b77">falta</span>
+                    <strong style="font-family:'Outfit',sans-serif;font-size:17px;font-weight:700;letter-spacing:-.02em">{{ faltaFmt }}</strong>
+                  </div>
+                  <div style="display:flex;align-items:baseline;gap:8px;padding:9px 16px;border-radius:999px;background:#f1f4f5">
+                    <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#5a6b77">por dia útil</span>
+                    <strong style="font-family:'Outfit',sans-serif;font-size:17px;font-weight:700;letter-spacing:-.02em">{{ porDiaFmt }}</strong>
+                    <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#5a6b77">{{ diasRestam }}</span>
+                  </div>
+                  <div style="display:flex;align-items:baseline;gap:8px;padding:9px 16px;border-radius:999px;background:rgba(15,157,144,.1)">
+                    <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#0b6b64">{{ followRot }}</span>
+                    <strong style="font-family:'Outfit',sans-serif;font-size:17px;font-weight:700;letter-spacing:-.02em;color:#0b6b64">{{ followFmt }}</strong>
+                  </div>
+                  <div style="display:flex;align-items:baseline;gap:8px;padding:9px 16px;border-radius:999px;background:#f1f4f5">
+                    <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#5a6b77">projeção</span>
+                    <strong style="{{ estProjecao }}">{{ projecaoFmt }}</strong>
+                  </div>
+                </div>
+                <div style="color:#5a6b77;font-size:13px;line-height:1.5;margin-top:14px">{{ resumoLinha }}</div>
+              </div>
+
+              <div style="border-top:1px solid #edf1f3;padding-top:16px">
+                
+
+                <sc-for list="{{ funil }}" as="f" hint-placeholder-count="5">
+                  <button onClick="{{ f.abrir }}" style="{{ f.est }}" style-hover="background:#f5f7f8" title="{{ f.title }}">
+                    <span style="flex:0 1 112px;min-width:72px;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ f.etapa }}</span>
+                    <span style="{{ f.estTrilho }}"><span class="cap-grow" style="{{ f.estBarra }}"></span></span>
+                    <strong style="min-width:34px;font-family:'Outfit',sans-serif;font-size:16px;font-weight:700;text-align:right;letter-spacing:-.02em">{{ f.n }}</strong>
+                    <span style="{{ f.estTaxa }}">{{ f.taxa }}</span>
+                  </button>
+                </sc-for>
+                
+              </div>
+            </div>
+          </section>
+
+        <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);min-width:0;padding:22px 14px 23px;display:flex;flex-direction:column">
+            <div style="margin:0 8px 10px">
+              <div style="display:flex;align-items:center;gap:7px">
+                <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+                <span style="font-family: 'Plus Jakarta Sans',sans-serif; font-size: 14px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: #5a6b77">últimas vendas</span>
+              </div>
+              
+              
+            </div>
+            <button onClick="{{ irPi }}" style="width:100%;text-align:left;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 10px;border-radius:999px;transition:background 150ms ease" style-hover="background:#f5f7f8">
+              <div style="display:flex;align-items:center;gap:9px;min-width:0">
+                <span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:999px;background:#eef1f3;flex:0 0 auto;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;color:#3d4f5c">RM</span>
+                <div style="min-width:0">
+                  <div style="font-size:12.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Studio Kern</div>
+                  <div style="font-size:11px;color:#5a6b77;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px">Lever Ads · Escala · anual · Rafael</div>
+                </div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;white-space:nowrap;letter-spacing:-.02em">R$ 24.000</div>
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#8b99a4;margin-top:1px">17/09</div>
+              </div>
+            </button>
+            <button onClick="{{ irPi }}" style="width:100%;text-align:left;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 10px;border-radius:999px;transition:background 150ms ease" style-hover="background:#f5f7f8">
+              <div style="display:flex;align-items:center;gap:9px;min-width:0">
+                <span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:999px;background:#eef1f3;flex:0 0 auto;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;color:#3d4f5c">RM</span>
+                <div style="min-width:0">
+                  <div style="display:flex;align-items:center;gap:6px;min-width:0">
+                    <span style="font-size:12.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Nutri Vitta</span>
+                    <span style="flex-shrink:0;font-family:'Plus Jakarta Sans',sans-serif;font-size:8.5px;font-weight:600;letter-spacing:.1em;color:#0F766E;background:#E9F5F3;border-radius:999px;padding:2px 7px">UPSELL</span>
+                  </div>
+                  <div style="font-size:11px;color:#5a6b77;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px">Pacote de OEM avulso · Rafael</div>
+                </div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;white-space:nowrap;letter-spacing:-.02em">R$ 4.800</div>
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#8b99a4;margin-top:1px">16/09</div>
+              </div>
+            </button>
+            <button onClick="{{ irPi }}" style="width:100%;text-align:left;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 10px;border-radius:999px;transition:background 150ms ease" style-hover="background:#f5f7f8">
+              <div style="display:flex;align-items:center;gap:9px;min-width:0">
+                <span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:999px;background:#eef1f3;flex:0 0 auto;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;color:#3d4f5c">BA</span>
+                <div style="min-width:0">
+                  <div style="font-size:12.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Oficina Prado</div>
+                  <div style="font-size:11px;color:#5a6b77;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px">Lever Ads · Essencial · semestral · Bruno</div>
+                </div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;white-space:nowrap;letter-spacing:-.02em">R$ 9.600</div>
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#8b99a4;margin-top:1px">15/09</div>
+              </div>
+            </button>
+            <button onClick="{{ irPi }}" style="width:100%;text-align:left;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 10px;border-radius:999px;transition:background 150ms ease" style-hover="background:#f5f7f8">
+              <div style="display:flex;align-items:center;gap:9px;min-width:0">
+                <span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:999px;background:#eef1f3;flex:0 0 auto;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;color:#3d4f5c">RM</span>
+                <div style="min-width:0">
+                  <div style="font-size:12.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Clínica Arbo</div>
+                  <div style="font-size:11px;color:#5a6b77;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px">Lever Ads · Escala · anual · Rafael</div>
+                </div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;white-space:nowrap;letter-spacing:-.02em">R$ 24.000</div>
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#8b99a4;margin-top:1px">11/09</div>
+              </div>
+            </button>
+            <button onClick="{{ irPi }}" style="width:100%;text-align:left;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 10px;border-radius:999px;transition:background 150ms ease" style-hover="background:#f5f7f8">
+              <div style="display:flex;align-items:center;gap:9px;min-width:0">
+                <span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:999px;background:#eef1f3;flex:0 0 auto;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;color:#3d4f5c">MC</span>
+                <div style="min-width:0">
+                  <div style="font-size:12.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Mercado Ponto</div>
+                  <div style="font-size:11px;color:#5a6b77;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px">Lever OEM · Essencial · semestral · Manuela</div>
+                </div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;white-space:nowrap;letter-spacing:-.02em">R$ 6.400</div>
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#8b99a4;margin-top:1px">09/09</div>
+              </div>
+            </button>
+            <button onClick="{{ irPi }}" style="width:100%;text-align:left;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 10px;border-radius:999px;transition:background 150ms ease" style-hover="background:#f5f7f8">
+              <div style="display:flex;align-items:center;gap:9px;min-width:0">
+                <span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:999px;background:#eef1f3;flex:0 0 auto;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;color:#3d4f5c">RM</span>
+                <div style="min-width:0">
+                  <div style="font-size:12.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Instituto Rima</div>
+                  <div style="font-size:11px;color:#5a6b77;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px">Lever Price · Essencial · anual · Rafael</div>
+                </div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;white-space:nowrap;letter-spacing:-.02em">R$ 19.600</div>
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#8b99a4;margin-top:1px">05/09</div>
+              </div>
+            </button>
+            <button onClick="{{ irPi }}" style="width:100%;text-align:left;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 10px;border-radius:999px;transition:background 150ms ease" style-hover="background:#f5f7f8">
+              <div style="display:flex;align-items:center;gap:9px;min-width:0">
+                <span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:999px;background:#eef1f3;flex:0 0 auto;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;color:#3d4f5c">BA</span>
+                <div style="min-width:0">
+                  <div style="font-size:12.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Grupo Vante</div>
+                  <div style="font-size:11px;color:#5a6b77;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px">Lever Ads · Essencial · semestral · Bruno</div>
+                </div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;white-space:nowrap;letter-spacing:-.02em">R$ 9.600</div>
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#8b99a4;margin-top:1px">04/09</div>
+              </div>
+            </button>
+
+            <button onClick="{{ irPi }}" style="width:100%;text-align:left;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 10px;border-radius:999px;transition:background 150ms ease" style-hover="background:#f5f7f8">
+              <div style="display:flex;align-items:center;gap:9px;min-width:0">
+                <span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:999px;background:#eef1f3;flex:0 0 auto;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;color:#3d4f5c">MC</span>
+                <div style="min-width:0">
+                  <div style="font-size:12.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Padaria Dovale</div>
+                  <div style="font-size:11px;color:#5a6b77;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px">Lever Price · Escala · anual · Manuela</div>
+                </div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;white-space:nowrap;letter-spacing:-.02em">R$ 14.400</div>
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#8b99a4;margin-top:1px">02/09</div>
+              </div>
+            </button>
+            <span style="flex:1"></span>
+            <button onClick="{{ irPi }}" style="margin:12px 0 0 10px;font-size:12px;font-weight:600;color:#0F766E;align-self:flex-start">Ver todas no pipeline →</button>
+          </section>
+
+        <div style="min-width:0;display:flex;flex-direction:column;gap:12px">
+          <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);min-width:0;padding:22px 22px 24px">
+            <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+              <div>
+                <div style="display:flex;align-items:center;gap:7px">
+                  <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+                  <span style="font-family: 'Plus Jakarta Sans',sans-serif; font-size: 14px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: #5a6b77">desempenho do time</span>
+                </div>
+              </div>
+              
+            </div>
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,255px),1fr));gap:12px;align-items:stretch">
+
+              <sc-for list="{{ time }}" as="p" hint-placeholder-count="3">
+              <article style="min-width:0;display:grid;gap:12px;align-content:start;padding:16px;border-radius:20px;background:#f7f9fa;transition:background 160ms ease,box-shadow 160ms ease" style-hover="background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.06),0 14px 30px -20px rgba(12,29,43,.4)">
+                <button onClick="{{ irMa }}" title="abre a fila de hoje desta pessoa em Minhas atividades" style="display:flex;align-items:center;gap:10px;min-width:0;text-align:left">
+                  <span style="position:relative;flex:0 0 auto"><span style="display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:999px;background:#0c1d2b;color:#fff;font-family:'Outfit',sans-serif;font-size:13px;font-weight:700">{{ p.iniciais }}</span><span style="{{ p.estPosicao }}">{{ p.posicao }}</span></span>
+                  <div style="min-width:0">
+                    <div style="font-size:14px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.nome }}</div>
+                    <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;line-height:1.5;color:#5a6b77;letter-spacing:.06em;text-transform:uppercase">{{ p.papel }}<span style="color:#0F766E"> · {{ p.nivel }}</span></div>
+                  </div>
+                </button>
+                <div style="display:grid;gap:12px">
+                  <sc-for list="{{ p.metricas }}" as="m" hint-placeholder-count="2">
+                    <div style="min-width:0">
+                      <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
+                        <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#5a6b77">{{ m.rot }}</span>
+                        <span style="margin-left:auto;white-space:nowrap;font-size:12px"><b style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:700">{{ m.feito }}</b><span style="color:#8b99a4"> / {{ m.meta }}</span></span>
+                        <span style="{{ m.estPct }}">{{ m.pct }}</span>
+                      </div>
+                      <div style="height:8px;position:relative;overflow:hidden;border-radius:999px;background:#e4e9eb">
+                        <span class="cap-grow" style="{{ m.estBarra }}"></span>
+                        <span style="{{ p.estPace }}"></span>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+                <details><summary style="list-style:none;display:inline-flex;align-items:center;gap:7px;cursor:pointer;width:fit-content;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77;background:#eef1f3;border-radius:999px;padding:6px 13px;transition:background 150ms ease" style-hover="background:#e4e9eb;color:#0c1d2b">submetas · {{ p.nSub }}<span style="font-size:8px;opacity:.7">▾</span></summary>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">
+                  <sc-for list="{{ p.submetas }}" as="sm" hint-placeholder-count="3">
+                    <span style="{{ sm.est }}"><span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;opacity:.7">{{ sm.rot }}</span><b>{{ sm.v }}</b><span style="opacity:.55">{{ sm.meta }}</span></span>
+                  </sc-for>
+                </div></details>
+              </article>
+              </sc-for>
+              <article style="min-width:0;display:grid;gap:12px;align-content:start;padding:16px;border-radius:20px;background:#f7f9fa;transition:background 160ms ease,box-shadow 160ms ease" style-hover="background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.06),0 14px 30px -20px rgba(12,29,43,.4)">
+                <button onClick="{{ irMa }}" title="abre a fila de hoje desta pessoa em Minhas atividades" style="display:flex;align-items:center;gap:10px;min-width:0;text-align:left">
+                  <span style="display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:999px;background:#0c1d2b;color:#fff;font-family:'Outfit',sans-serif;font-size:13px;font-weight:700;flex:0 0 auto">VN</span>
+                  <div style="min-width:0">
+                    <div style="font-size:14px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Vitor Nunes</div>
+                    <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;line-height:1.5;color:#5a6b77;letter-spacing:.06em;text-transform:uppercase">integração</div>
+                  </div>
+                </button>
+                <dl style="margin:0;display:grid;gap:10px">
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;font-size:12px;line-height:1.4">
+                    <dt style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#5a6b77">contas ativas</dt>
+                    <dd style="margin:0"><strong style="font-family:'Outfit',sans-serif;font-size:15px;font-weight:700">38</strong></dd>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;font-size:12px;line-height:1.4">
+                    <dt style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#5a6b77">retenção</dt>
+                    <dd style="margin:0"><strong style="font-family:'Outfit',sans-serif;font-size:15px;font-weight:700">96,4%</strong><span style="color:#8b99a4"> / 95</span></dd>
+                  </div>
+                </dl>
+                <details><summary style="list-style:none;display:inline-flex;align-items:center;gap:7px;cursor:pointer;width:fit-content;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77;background:#eef1f3;border-radius:999px;padding:6px 13px;transition:background 150ms ease" style-hover="background:#e4e9eb;color:#0c1d2b">submetas · 2<span style="font-size:8px;opacity:.7">▾</span></summary>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">
+                  <span style="display:inline-flex;align-items:baseline;gap:5px;font-size:11px;border-radius:999px;padding:4px 11px;background:#fdf3f2;color:#b42318"><span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;opacity:.7">nps</span><b>72</b><span style="opacity:.55">/80</span></span>
+                  <span style="display:inline-flex;align-items:baseline;gap:5px;font-size:11px;border-radius:999px;padding:4px 11px;background:#eef1f3;color:#3d4f5c"><span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;opacity:.7">indicações</span><b>3</b><span style="opacity:.55">/4</span></span>
+                </div></details>
+              </article>
+            </div>
+          </section>
+
+          <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);min-width:0;padding:22px 16px 18px">
+            <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 6px 14px">
+              <div>
+                <div style="display:flex;align-items:center;gap:7px">
+                  <span style="width:5px;height:14px;border-radius:999px;background:#b42318;flex-shrink:0"></span>
+                  <span style="font-family: 'Plus Jakarta Sans',sans-serif; font-size: 14px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: #5a6b77">agora</span>
+                </div>
+                <h3 style="margin:8px 0 0;font-family:'Outfit',sans-serif;font-size:19px;font-weight:700;letter-spacing:-.02em">6 coisas esperando decisão</h3>
+              </div>
+              
+            </div>
+
+            <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:999px;transition:background 150ms ease" style-hover="background:#fdf3f2">
+              <span style="width:4px;height:34px;border-radius:999px;flex-shrink:0;background:#b42318"></span>
+              <div style="flex:1;min-width:0">
+                <strong style="display:block;font-size:14px;font-weight:650;color:#b42318">R$ 12.480 vencidos</strong>
+                <span style="display:block;font-size:12.5px;color:#5a6b77;margin-top:1px">Galante · Studio Kern · 3 faturas em aberto</span>
+              </div>
+              <button onClick="{{ irCl }}" style="min-height:34px;padding:0 16px;background:#0c1d2b;color:#fff;border-radius:999px;font-size:12.5px;font-weight:600;flex-shrink:0;transition:background 150ms ease" style-hover="background:#1b3140">Cobrar agora →</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:999px;transition:background 150ms ease" style-hover="background:#fdf3f2">
+              <span style="width:4px;height:34px;border-radius:999px;flex-shrink:0;background:#b42318"></span>
+              <div style="flex:1;min-width:0">
+                <strong style="display:block;font-size:14px;font-weight:650;color:#b42318">4 leads fora do SLA</strong>
+                <span style="display:block;font-size:12.5px;color:#5a6b77;margin-top:1px">novos nunca contatados além do prazo do 1º toque</span>
+              </div>
+              <button onClick="{{ irPi }}" style="min-height:34px;padding:0 16px;background:#0c1d2b;color:#fff;border-radius:999px;font-size:12.5px;font-weight:600;flex-shrink:0;transition:background 150ms ease" style-hover="background:#1b3140">Abrir pipeline →</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:999px;transition:background 150ms ease" style-hover="background:#fbf4e6">
+              <span style="width:4px;height:34px;border-radius:999px;flex-shrink:0;background:#a16207"></span>
+              <div style="flex:1;min-width:0">
+                <strong style="display:block;font-size:14px;font-weight:650;color:#a16207">37 leads em Qualificação</strong>
+                <span style="display:block;font-size:12.5px;color:#5a6b77;margin-top:1px">12 sem avançar há 3+ dias</span>
+              </div>
+              <button onClick="{{ irMa }}" style="min-height:34px;padding:0 16px;background:#0c1d2b;color:#fff;border-radius:999px;font-size:12.5px;font-weight:600;flex-shrink:0;transition:background 150ms ease" style-hover="background:#1b3140">Abrir fila →</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:999px;transition:background 150ms ease" style-hover="background:#fbf4e6">
+              <span style="width:4px;height:34px;border-radius:999px;flex-shrink:0;background:#a16207"></span>
+              <div style="flex:1;min-width:0">
+                <strong style="display:block;font-size:14px;font-weight:650;color:#a16207">6 conversas esperando</strong>
+                <span style="display:block;font-size:12.5px;color:#5a6b77;margin-top:1px">2 janelas de 24h abertas · inbox do time</span>
+              </div>
+              <button onClick="{{ irIn }}" style="min-height:34px;padding:0 16px;background:#0c1d2b;color:#fff;border-radius:999px;font-size:12.5px;font-weight:600;flex-shrink:0;transition:background 150ms ease" style-hover="background:#1b3140">Abrir inbox →</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:999px;transition:background 150ms ease" style-hover="background:#edf3fc">
+              <span style="width:4px;height:34px;border-radius:999px;flex-shrink:0;background:#175cd3"></span>
+              <div style="flex:1;min-width:0">
+                <strong style="display:block;font-size:14px;font-weight:650;color:#175cd3">R$ 28.900 nos próximos 7 dias</strong>
+                <span style="display:block;font-size:12.5px;color:#5a6b77;margin-top:1px">Nutri Vitta · Oficina Prado · 4 faturas vencem na semana</span>
+              </div>
+              <button onClick="{{ irCl }}" style="min-height:34px;padding:0 16px;background:#0c1d2b;color:#fff;border-radius:999px;font-size:12.5px;font-weight:600;flex-shrink:0;transition:background 150ms ease" style-hover="background:#1b3140">Ver faturas →</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:999px;transition:background 150ms ease" style-hover="background:#e9f6ef">
+              <span style="width:4px;height:34px;border-radius:999px;flex-shrink:0;background:#177a4c"></span>
+              <div style="flex:1;min-width:0">
+                <strong style="display:block;font-size:14px;font-weight:650;color:#177a4c">9 calls marcadas</strong>
+                <span style="display:block;font-size:12.5px;color:#5a6b77;margin-top:1px">confirmar presença 1h antes reduz no-show</span>
+              </div>
+              <button onClick="{{ irAg }}" style="min-height:34px;padding:0 16px;background:#0c1d2b;color:#fff;border-radius:999px;font-size:12.5px;font-weight:600;flex-shrink:0;transition:background 150ms ease" style-hover="background:#1b3140">Abrir agenda →</button>
+            </div>
+          </section>
+        </div>
+
+        <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);min-width:0;padding:22px 22px 23px;display:flex;flex-direction:column">
+            <div style="margin-bottom:14px">
+              <div style="display:flex;align-items:center;gap:7px">
+                <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+                <span style="font-family: 'Plus Jakarta Sans',sans-serif; font-size: 14px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: #5a6b77">carteira</span>
+              </div>
+              
+            </div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:0 0 14px">
+              <div>
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">mrr</div>
+                <div style="font-family:'Outfit',sans-serif;font-size:32px;font-weight:700;letter-spacing:-.035em;line-height:1.1;margin-top:2px">{{ mrrFmt }}</div>
+              </div>
+              <span style="font-size:11.5px;color:#5a6b77;background:#f1f4f5;border-radius:999px;padding:5px 12px;white-space:nowrap">{{ mrrSemCG }}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <div style="display:flex;align-items:baseline;gap:10px;padding:11px 0;border-top:1px solid #edf1f3">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#5a6b77;flex:1">clientes</span>
+                <strong style="font-family:'Outfit',sans-serif;font-size:16px;font-weight:700">{{ nClientes }}</strong>
+                <span style="font-size:11px;color:#5a6b77;white-space:nowrap">{{ clientesNota }}</span>
+              </div>
+              <div style="display:flex;align-items:baseline;gap:10px;padding:11px 0;border-top:1px solid #edf1f3">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#5a6b77;flex:1">ticket médio</span>
+                <strong style="font-family:'Outfit',sans-serif;font-size:16px;font-weight:700">{{ ticketCarteira }}</strong>
+                <span style="font-size:11px;color:#5a6b77;white-space:nowrap">{{ ticketSemCG }}</span>
+              </div>
+              <div style="display:flex;align-items:baseline;gap:10px;padding:11px 0;border-top:1px solid #edf1f3">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#5a6b77;flex:1">arr</span>
+                <strong style="font-family:'Outfit',sans-serif;font-size:16px;font-weight:700">{{ arrFmt }}</strong>
+              </div>
+              <div style="display:flex;align-items:baseline;gap:10px;padding:11px 0;border-top:1px solid #edf1f3">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#5a6b77;flex:1">ltv</span>
+                <strong style="font-family:'Outfit',sans-serif;font-size:16px;font-weight:700">{{ ltvFmt }}</strong>
+                <span style="font-size:11px;color:#5a6b77;white-space:nowrap">{{ ltvCac }}</span>
+              </div>
+              <div style="display:flex;align-items:baseline;gap:10px;padding:11px 0;border-top:1px solid #edf1f3">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#5a6b77;flex:1">churn</span>
+                <strong style="{{ estChurn }}">{{ churnPct }}</strong>
+                <span style="font-size:11px;color:#5a6b77;white-space:nowrap">{{ churnNota }}</span>
+              </div>
+            </div>
+
+            <div style="height:1px;background:#edf1f3;margin:22px 0"></div>
+
+            <div style="margin-bottom:16px">
+              <div style="display:flex;align-items:center;gap:7px">
+                <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+                <span style="font-family: 'Plus Jakarta Sans',sans-serif; font-size: 14px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: #5a6b77">aquisição</span>
+              </div>
+              
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px">
+              <div style="flex:1 1 84px;min-width:0;padding:12px 14px;border-radius:18px;background:#f7f9fa">
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">cpl</div>
+                <div style="font-family: 'Outfit',sans-serif; font-size: 16px; font-weight: 700; letter-spacing: -.025em; margin-top: 3px">{{ cplFmt }}</div>
+              </div>
+              <div style="flex:1 1 84px;min-width:0;padding:12px 14px;border-radius:18px;background:#f7f9fa">
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">cac</div>
+                <div style="font-family: 'Outfit',sans-serif; font-size: 16px; font-weight: 700; letter-spacing: -.025em; margin-top: 3px">{{ cacFmt }}</div>
+              </div>
+              <div style="flex:1 1 84px;min-width:0;padding:12px 14px;border-radius:18px;background:#E9F5F3">
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#0b6b64">roas</div>
+                <div style="font-family: 'Outfit',sans-serif; font-size: 16px; font-weight: 700; letter-spacing: -.025em; margin-top: 3px; color: #0b6b64">{{ roasFmt }}</div>
+              </div>
+            </div>
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77;margin-bottom:10px">{{ origemRot }}</div>
+            <div style="display:flex;height:12px;border-radius:999px;overflow:hidden;gap:2px;margin-bottom:12px">
+              <sc-for list="{{ origens }}" as="o" hint-placeholder-count="3">
+                <span class="cap-grow" style="{{ o.estFatia }}"></span>
+              </sc-for>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <sc-for list="{{ origens }}" as="o" hint-placeholder-count="3">
+                <div style="display:flex;align-items:baseline;gap:9px">
+                  <span style="{{ o.estPonto }}"></span>
+                  <span style="flex:1;min-width:0"><span style="font-size:12.5px;color:#3d4f5c">{{ o.nome }} <span style="color:#5a6b77">· {{ o.canal }}</span></span><span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#5a6b77;margin-top:3px">{{ o.ganhos }}</span></span>
+                  <strong style="font-family:'Outfit',sans-serif;font-size:15px;font-weight:700">{{ o.n }}</strong>
+                </div>
+              </sc-for>
+            </div>
+            <span style="flex:1"></span>
+          </section>
+
+
+
+      </div>
+    </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Visão geral: o período manda em tudo — meta, vendido, pace, funil e o
+  // resumo. Setembro é o mês corrente (13 dias úteis de 22 corridos, como no
+  // overview.jsx); agosto e julho já fecharam, então o pace sai de cena.
+  // As vendas de cada mês, com dono — a mesma lista da Análise de Desempenho.
+  // O card do time SAI daqui: as duas telas não podem divergir.
+  static VENDAS = {
+    set: [["Rafael Moura", 24000], ["Rafael Moura", 4800], ["Rafael Moura", 24000], ["Rafael Moura", 19600],
+      ["Bruno Alencar", 9600], ["Bruno Alencar", 9600], ["Manuela Costa", 14400], ["Manuela Costa", 6400]],
+    ago: [["Rafael Moura", 24000], ["Rafael Moura", 24000], ["Rafael Moura", 19600], ["Rafael Moura", 14400], ["Rafael Moura", 9600], ["Rafael Moura", 6800],
+      ["Bruno Alencar", 14400], ["Bruno Alencar", 14400], ["Bruno Alencar", 9600], ["Bruno Alencar", 9600],
+      ["Manuela Costa", 14400], ["Manuela Costa", 10400]],
+    jul: [["Rafael Moura", 24000], ["Rafael Moura", 19600], ["Rafael Moura", 14400], ["Rafael Moura", 9600], ["Rafael Moura", 9200],
+      ["Bruno Alencar", 24000], ["Bruno Alencar", 9600], ["Bruno Alencar", 9600], ["Manuela Costa", 18900]],
+  };
+  // [nome, iniciais, papel, nível, metaReceita, metaContratos, submetas]
+  static TIME = [
+    ["Rafael Moura", "RM", "closer", "sênior", 90000, 6, [["calls", "31", "/40", 0], ["conv", "16,1%", "/33", 1], ["ticket", "R$ 18,1 mil", "", 0]]],
+    ["Bruno Alencar", "BA", "closer", "pleno", 60000, 4, [["calls", "18", "/40", 1], ["conv", "11,1%", "/33", 1]]],
+    ["Manuela Costa", "MC", "SDR", "pleno", 90000, 6, [["contato", "84,1%", "/80", 2], ["agendamento", "31,2%", "/30", 2], ["show", "76,0%", "/75", 2], ["agendadas", "24", "/30", 1]]],
+  ];
+  static PERIODOS = {
+    set: { label: "Set", nome: "setembro", meta: 180000, vendido: 112400, contratos: 8, diasFeitos: 13, diasTotal: 22,
+      funil: [214, 176, 61, 47, 8], followN: 14, followValor: 96500, corrente: true,
+      // Carteira = base no fim do período · Aquisição = dinheiro pela data da venda
+      mrr: 148300, mrrCG: 26500, clientes: 41, clientesCG: 2, ltv: 86400, churn: 2.4, churnN: 1,
+      midia: 10180, receitaMidia: 62400, ltvCac: 4.1, ganhoOrigem: [3, 4, 1], origem: [46, 132, 36] },
+    ago: { label: "Ago", nome: "agosto", meta: 165000, vendido: 171200, contratos: 12, diasFeitos: 21, diasTotal: 21,
+      funil: [198, 171, 68, 54, 12], followN: 0, followValor: 0, corrente: false,
+      mrr: 139600, mrrCG: 26500, clientes: 38, clientesCG: 2, ltv: 82100, churn: 2.6, churnN: 1,
+      midia: 9400, receitaMidia: 88600, ltvCac: 4.4, ganhoOrigem: [4, 6, 2], origem: [41, 122, 35] },
+    jul: { label: "Jul", nome: "julho", meta: 150000, vendido: 138900, contratos: 9, diasFeitos: 22, diasTotal: 22,
+      funil: [186, 149, 52, 41, 9], followN: 0, followValor: 0, corrente: false,
+      mrr: 128400, mrrCG: 16500, clientes: 34, clientesCG: 1, ltv: 79600, churn: 5.4, churnN: 2,
+      midia: 8900, receitaMidia: 71400, ltvCac: 3.8, ganhoOrigem: [3, 5, 1], origem: [38, 112, 36] },
+  };
+  static ETAPAS = ["Leads", "Contatados", "Calls marcadas", "Calls realizadas", "Ganhos"];
+  static METAS_ETAPA = [null, 80, 30, 75, 33];
+
+  // O período vem da régua do topo (prop do shell); sem prop, cai no mês corrente.
+  state = {};
+
+  fmt(n) { return "R$ " + Math.round(n).toLocaleString("pt-BR"); }
+  pct(n) { return String(n).replace(".", ",") + "%"; }
+  irPara(tela) { window.dispatchEvent(new CustomEvent("cockpit:ir", { detail: { tela } })); }
+
+  renderVals() {
+    const st = this.state;
+    const chave = Component.PERIODOS[this.props.periodo] ? this.props.periodo : "set";
+    const p = Component.PERIODOS[chave];
+    const pctMeta = Math.round((p.vendido / p.meta) * 100);
+    const diasRestantes = Math.max(0, p.diasTotal - p.diasFeitos);
+    const pacePedido = p.meta * (p.diasFeitos / p.diasTotal);
+    const difPace = p.vendido - pacePedido;
+    const falta = Math.max(0, p.meta - p.vendido);
+    const porDia = diasRestantes ? falta / diasRestantes : 0;
+    const ritmo = p.vendido / p.diasFeitos;
+    const projecao = ritmo * p.diasTotal;
+    const ticket = p.contratos ? p.vendido / p.contratos : 0;
+    // O termômetro tem duas camadas: a clara é o que o pace pedia, a forte é o
+    // que entrou. Fechado o mês, o pace não tem mais o que dizer.
+    const pctPace = Math.min(100, Math.round((pacePedido / p.meta) * 100));
+    const alturaForte = Math.min(100, pctMeta);
+    const alturaFraca = Math.max(0, Math.min(100 - alturaForte, pctPace - alturaForte));
+
+    const totalFunil = p.funil[0] || 1;
+    const CORES = ["#cfe6e3", "#a9d5d0", "#6cbdb6", "#2f9a91", "#0F766E"];
+    const funil = Component.ETAPAS.map((etapa, i) => {
+      const n = p.funil[i];
+      const anterior = i ? p.funil[i - 1] : null;
+      const taxa = anterior ? Math.round((n / anterior) * 1000) / 10 : null;
+      const metaEtapa = Component.METAS_ETAPA[i];
+      const ruim = taxa != null && metaEtapa != null && taxa < metaEtapa;
+      const ultimo = i === Component.ETAPAS.length - 1;
+      return {
+        etapa, n: String(n),
+        taxa: taxa == null ? "—" : this.pct(taxa),
+        est: "display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:8px 12px;border-radius:999px;transition:background 150ms ease;" +
+          (ultimo && ruim ? "background:#fdf3f2" : ""),
+        estTrilho: "flex:1 1 40px;min-width:24px;height:12px;border-radius:999px;overflow:hidden;background:" + (ultimo && ruim ? "#f6e2e0" : "#eff2f3"),
+        estBarra: "display:block;height:100%;border-radius:999px;min-width:8px;width:" + Math.max(2, Math.round((n / totalFunil) * 1000) / 10) + "%;background:" + CORES[i] + ";animation-delay:" + (i * .06) + "s",
+        estTaxa: "width:56px;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;text-align:right;" +
+          (taxa == null ? "color:#c5cfd4" : ruim ? "color:#b42318;font-weight:600" : "color:#177a4c"),
+        title: anterior ? etapa + ": " + n + " de " + anterior + (metaEtapa ? " · meta " + metaEtapa + "%" : "") + " · abre o pipeline nesta etapa" : "todos os leads do período · abre o pipeline",
+        abrir: () => this.irPara("Pi"),
+      };
+    });
+
+    const vendasDoMes = Component.VENDAS[chave] || [];
+    const time = Component.TIME.map((t, i) => {
+      const [nome, iniciais, papel, nivel, metaR, metaC, subs] = t;
+      const minhas = vendasDoMes.filter((v) => v[0] === nome);
+      const receita = minhas.reduce((a, v) => a + v[1], 0);
+      const contratos = minhas.length;
+      const pctR = Math.round((receita / metaR) * 100), pctC = Math.round((contratos / metaC) * 100);
+      const cor = (p) => p >= 80 ? "#0F766E" : p >= 50 ? "#a16207" : "#b42318";
+      const barra = (p, atraso) => "position:absolute;top:0;bottom:0;left:0;min-width:6px;border-radius:999px;width:" + Math.min(100, p) + "%;background:" +
+        (p >= 80 ? "linear-gradient(90deg,#0C8F83,#0F766E)" : p >= 50 ? "linear-gradient(90deg,#d6a52f,#a16207)" : "linear-gradient(90deg,#d0524a,#b42318)") + (atraso ? ";animation-delay:.06s" : "");
+      const mil = (v) => "R$ " + (Math.round(v / 100) / 10).toLocaleString("pt-BR") + " mil";
+      return {
+        nome, iniciais, papel, nivel, nSub: String(subs.length),
+        posicao: String(i + 1),
+        estPosicao: "position:absolute;bottom:-3px;right:-3px;display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:999px;background:" +
+          (i === 0 ? "#0F766E" : "#5a6b77") + ";color:#fff;font-family:'Plus Jakarta Sans',sans-serif;font-size:9px;font-weight:600;border:2px solid #f7f9fa",
+        // o traço do pace só existe no mês corrente; mês fechado não tem "onde deveria estar hoje"
+        estPace: p.corrente ? "position:absolute;top:-2px;bottom:-2px;left:" + Math.round((p.diasFeitos / p.diasTotal) * 100) + "%;width:2px;border-radius:999px;background:#0c1d2b;opacity:.45" : "display:none",
+        metricas: [
+          { rot: "receita", feito: mil(receita), meta: mil(metaR).replace("R$ ", ""), pct: pctR + "%",
+            estPct: "font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:600;color:" + cor(pctR), estBarra: barra(pctR) },
+          { rot: "contratos", feito: String(contratos), meta: String(metaC), pct: pctC + "%",
+            estPct: "font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:600;color:" + cor(pctC), estBarra: barra(pctC, true) },
+        ],
+        submetas: subs.map(([rot, v, meta, tom]) => ({
+          rot, v, meta,
+          est: "display:inline-flex;align-items:baseline;gap:5px;font-size:11px;border-radius:999px;padding:4px 11px;" +
+            (tom === 1 ? "background:#fdf3f2;color:#b42318" : tom === 2 ? "background:#e9f6ef;color:#177a4c" : "background:#eef1f3;color:#3d4f5c"),
+        })),
+      };
+    });
+
+    return {
+      time,
+      mov: this.props.movimento === false ? "off" : "on",
+      subtitulo: p.corrente ? "sexta, 18 de setembro · dia útil " + p.diasFeitos + " de " + p.diasTotal : p.nome + " fechado · " + p.diasTotal + " dias úteis",
+      metaFmt: this.fmt(p.meta),
+      pctMeta: pctMeta + "%",
+      selo: !p.corrente ? (pctMeta >= 100 ? "META BATIDA" : "FECHOU ABAIXO") : difPace >= 0 ? "NO PACE" : "ABAIXO DO PACE",
+      estLiquidoForte: "position:relative;flex-shrink:0;height:" + alturaForte + "%;color:#23D8D3;background:linear-gradient(to top,#0C8F83,#23D8D3)",
+      estLiquidoFraco: "position:relative;flex-shrink:0;height:" + alturaFraca + "%;color:#1fa89f;background:linear-gradient(to top,#0C8F83,#1fa89f);opacity:.42;animation-delay:.2s",
+      estTracoPace: p.corrente
+        ? "position:absolute;z-index:2;left:8px;right:8px;bottom:" + pctPace + "%;height:0;border-top:2px dashed rgba(243,251,255,.75);pointer-events:none"
+        : "display:none",
+      estRotuloPace: p.corrente
+        ? "position:absolute;z-index:2;left:0;right:0;bottom:" + pctPace + "%;transform:translateY(-140%);text-align:center;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;letter-spacing:.1em;color:rgba(243,251,255,.7);height:10px"
+        : "display:none",
+      vendidoFmt: this.fmt(p.vendido),
+      paceTexto: !p.corrente
+        ? (pctMeta >= 100 ? this.fmt(p.vendido - p.meta) + " acima da meta" : this.fmt(p.meta - p.vendido) + " abaixo da meta")
+        : (difPace >= 0 ? "+" : "−") + this.fmt(Math.abs(difPace)) + (difPace >= 0 ? " acima do pace" : " abaixo do pace"),
+      estPacePill: "display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;border-radius:999px;padding:5px 12px;white-space:nowrap;" +
+        ((p.corrente ? difPace >= 0 : pctMeta >= 100) ? "color:#0F766E;background:#E9F5F3" : "color:#b42318;background:#fdf3f2"),
+      estPacePonto: "width:6px;height:6px;border-radius:999px;background:" + ((p.corrente ? difPace >= 0 : pctMeta >= 100) ? "#0F766E" : "#b42318"),
+      faltaFmt: falta ? this.fmt(falta) : "meta batida",
+      porDiaFmt: diasRestantes ? this.fmt(porDia) : "—",
+      diasRestam: diasRestantes ? diasRestantes + " restam" : "mês fechado",
+      followRot: p.followN ? "follow-up · " + p.followN : "follow-up",
+      followFmt: p.followValor ? this.fmt(p.followValor) : "nada aberto",
+      projecaoFmt: p.corrente ? this.fmt(projecao) : this.fmt(p.vendido),
+      estProjecao: "font-family:'Outfit',sans-serif;font-size:17px;font-weight:700;letter-spacing:-.02em;color:" +
+        ((p.corrente ? projecao : p.vendido) >= p.meta ? "#177a4c" : "#b42318"),
+      resumoLinha: p.contratos + " contratos assinados · ticket médio " + this.fmt(ticket) +
+        (p.corrente ? " · ritmo atual " + this.fmt(ritmo) + "/dia útil" : " · " + p.nome + " fechado"),
+      funil,
+      // Carteira: a base no fim do período escolhido (é a régua da fonte).
+      mrrFmt: this.fmt(p.mrr),
+      mrrSemCG: this.fmt(p.mrr - p.mrrCG) + " sem CG",
+      nClientes: String(p.clientes),
+      clientesNota: (p.clientes - p.clientesCG) + " padrão · " + p.clientesCG + " CG",
+      ticketCarteira: this.fmt(p.mrr / Math.max(1, p.clientes) * 12),
+      ticketSemCG: (Math.round((p.mrr - p.mrrCG) / Math.max(1, p.clientes - p.clientesCG) * 12 / 100) / 10).toString().replace(".", ",") + "k sem CG",
+      arrFmt: this.fmt(p.mrr * 12),
+      ltvFmt: this.fmt(p.ltv),
+      ltvCac: "LTV/CAC " + p.ltvCac.toString().replace(".", ",") + "x",
+      churnPct: this.pct(p.churn), estChurn: "font-family:'Outfit',sans-serif;font-size:16px;font-weight:700;color:" + (p.churn <= 3 ? "#177a4c" : "#b42318"),
+      churnNota: p.churnN + (p.churnN === 1 ? " saiu" : " saíram"),
+      // Aquisição mede a MÍDIA PAGA, a mesma régua da tela Publicidade: o
+      // investimento dividido pelos leads e clientes que ele trouxe (a origem
+      // Rede). Dividir a verba de anúncio pelos leads de indicação, que não
+      // custam mídia, faria a aquisição parecer melhor do que é.
+      cplFmt: "R$ " + (p.midia / p.origem[1]).toFixed(2).replace(".", ","),
+      cacFmt: this.fmt(p.midia / p.ganhoOrigem[1]),
+      roasFmt: (Math.round((p.receitaMidia / p.midia) * 10) / 10).toString().replace(".", ",") + "x",
+      aquisicaoNota: "só mídia paga · " + this.fmt(p.midia) + " investidos · " + p.origem[1] + " leads e " + p.ganhoOrigem[1] + " clientes vindos de anúncio",
+      origemRot: "leads por origem · " + p.funil[0],
+      origens: [["Semente", "indicação e base", "#0f9d90"], ["Rede", "marketing", "#5b6bd6"], ["Alvo", "outbound", "#b45309"]].map(([nome, canal, cor], i) => {
+        const n = p.origem[i];
+        const g = p.ganhoOrigem[i];
+        return {
+          nome, canal, n: String(n),
+          ganhos: g + (g === 1 ? " ganho no período" : " ganhos no período"),
+          estFatia: "border-radius:999px;background:" + cor + ";animation-delay:" + (i * .06) + "s;width:" + Math.round((n / p.funil[0]) * 1000) / 10 + "%",
+          estPonto: "width:8px;height:8px;border-radius:999px;flex-shrink:0;background:" + cor,
+        };
+      }),
+      irPi: () => this.irPara("Pi"), irMa: () => this.irPara("Ma"), irIn: () => this.irPara("In"),
+      irCl: () => this.irPara("Cl"), irAg: () => this.irPara("Ag"),
+    };
+  }
+}
+</script>
+</body>
+</html>

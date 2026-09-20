@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Respostas rápidas</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-gaveta-sai{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-gaveta-sai{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;margin:0 -4px;padding:0 4px 24px">
+
+      <header class="cap-rise" style="flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+        <div style="min-width:0">
+          <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Respostas rápidas</h1>
+          
+        </div>
+        <button onClick="{{ nova }}" style="height:40px;padding:0 20px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:13px;font-weight:650;white-space:nowrap;transition:background 150ms ease" style-hover="background:#1b3140">Criar resposta rápida</button>
+      </header>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,330px);align-items:start;gap:12px">
+
+        <section class="cap-rise" style="min-width:0;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 18px;border-bottom:1px solid #edf1f3">
+            <div style="display:inline-flex;gap:3px;padding:3px;border-radius:999px;background:#f1f4f5">
+              <sc-for list="{{ abas }}" as="a" hint-placeholder-count="3">
+                <button onClick="{{ a.ir }}" style="{{ a.est }}">{{ a.label }}</button>
+              </sc-for>
+            </div>
+            <label style="display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 14px;border-radius:999px;background:#f7f9fa;color:#5a6b77;margin-left:auto;min-width:200px">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><circle cx="11" cy="11" r="7"></circle><path d="M20.4 20.4l-4.2-4.2"></path></svg>
+              <input value="{{ busca }}" onChange="{{ mudarBusca }}" placeholder="buscar título, atalho ou texto…" style="flex:1;min-width:0;border:0;background:none;outline:none;font-family:inherit;font-size:12.5px;color:#0c1d2b">
+            </label>
+          </div>
+          <sc-for list="{{ respostas }}" as="r" hint-placeholder-count="6">
+            <div onClick="{{ r.abrir }}" style="display:flex;align-items:center;gap:12px;padding:13px 18px;border-bottom:1px solid #edf1f3;cursor:pointer;transition:background 150ms ease" style-hover="background:#f7f9fa">
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0">
+                  <span style="font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.titulo }}</span>
+                  <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#5a6b77;flex-shrink:0">/{{ r.atalho }}</span>
+                  <span style="{{ r.estEscopo }}"><span style="{{ r.estEscopoPonto }}"></span>{{ r.escopo }}</span>
+                </div>
+                <div style="font-size:12px;color:#5a6b77;line-height:1.5;margin-top:4px;text-wrap:pretty">{{ r.trecho }}</div>
+              </div>
+              <span style="flex-shrink:0;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4;white-space:nowrap">{{ r.usos }}</span>
+              <button onClick="{{ r.duplicar }}" style="{{ r.estDuplicar }}" title="cria uma cópia sua, que você pode editar">{{ r.rotuloDuplicar }}</button>
+            </div>
+          </sc-for>
+          <sc-if value="{{ vazio }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:26px 18px;font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;color:#8b99a4">{{ vazioTexto }}</div>
+          </sc-if>
+        </section>
+
+        <section class="cap-rise" style="min-width:0;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:20px 20px 18px">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">variáveis</span>
+          </div>
+          <div style="font-size:11.5px;color:#8b99a4;margin-top:5px;padding-left:12px;text-wrap:pretty">escreva <span style="font-family:'Plus Jakarta Sans',sans-serif;color:#0F766E">{{ chaves }}</span> no texto; o chat troca pelo valor na hora de inserir</div>
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77;margin:16px 0 8px">embutidas</div>
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <sc-for list="{{ embutidas }}" as="v" hint-placeholder-count="8">
+              <button onClick="{{ v.copiar }}" style="{{ v.est }}" title="{{ v.label }}" style-hover="background:#f7f9fa">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#0F766E;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">{{ v.chave }}</span>
+                <span style="flex:1;min-width:0;font-size:11px;color:#8b99a4;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ v.exemplo }}</span>
+              </button>
+            </sc-for>
+          </div>
+          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77;margin:16px 0 8px">do produto</div>
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <sc-for list="{{ custom }}" as="c" hint-placeholder-count="2">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="flex:0 0 130px;display:inline-flex;align-items:center;height:32px;padding:0 11px;border-radius:999px;background:#f7f9fa;font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#0F766E;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.chave }}</span>
+                <input value="{{ c.valor }}" onChange="{{ c.mudar }}" style="flex:1;min-width:0;height:32px;border:0;border-radius:999px;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;padding:0 12px;font-family:inherit;font-size:12px;color:#0c1d2b;outline:none">
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;align-items:center;gap:9px;margin-top:12px">
+            <button onClick="{{ addVar }}" style="height:30px;padding:0 13px;border-radius:999px;background:#f1f4f5;color:#0c1d2b;font-size:11.5px;font-weight:600;transition:background 150ms ease" style-hover="background:#e7ecee">Adicionar variável</button>
+            <span style="{{ estSalvo }}">{{ salvo }}</span>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <sc-if value="{{ temEditor }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ fechar }}" style="position:absolute;inset:0;z-index:30;background:rgba(12,29,43,.35);display:flex;align-items:center;justify-content:center;padding:18px">
+        <div onClick="{{ parar }}" class="cap-gaveta-entra" style="width:100%;max-width:620px;max-height:100%;display:flex;flex-direction:column;overflow:hidden;border-radius:24px;background:#fff;box-shadow:0 2px 6px rgba(12,29,43,.1),0 30px 60px -28px rgba(12,29,43,.6)">
+          <div style="flex:0 0 auto;display:flex;align-items:center;gap:11px;padding:20px 22px 14px">
+            <div style="flex:1;min-width:0">
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">{{ ed.cabec }}</div>
+              <div style="font-family:'Outfit',sans-serif;font-size:19px;font-weight:700;letter-spacing:-.025em;margin-top:4px">{{ ed.titulo }}</div>
+            </div>
+            <button onClick="{{ fechar }}" style="flex-shrink:0;width:30px;height:30px;border-radius:999px;background:#f1f4f5;color:#5a6b77;font-size:13px;transition:background 150ms ease" style-hover="background:#e7ecee;color:#0c1d2b">✕</button>
+          </div>
+          <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:0 22px 18px">
+            <label style="display:flex;flex-direction:column;gap:5px">
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">título</span>
+              <input value="{{ ed.titulo2 }}" onChange="{{ mudarTitulo }}" placeholder="Ex.: Boas-vindas" style="height:38px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 14px;font-family:inherit;font-size:13px;color:#0c1d2b;outline:none">
+            </label>
+            <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,190px);gap:10px">
+              <label style="display:flex;flex-direction:column;gap:5px;min-width:0">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">atalho</span>
+                <div style="display:flex;align-items:center;height:38px;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 14px">
+                  <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12.5px;color:#8b99a4">/</span>
+                  <input value="{{ ed.atalho }}" onChange="{{ mudarAtalho }}" placeholder="boas-vindas" style="flex:1;min-width:0;border:0;background:none;outline:none;font-family:'Plus Jakarta Sans',sans-serif;font-size:12.5px;color:#0c1d2b">
+                </div>
+              </label>
+              <label style="display:flex;flex-direction:column;gap:5px;min-width:0">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">quem vê</span>
+                <select value="{{ ed.escopo }}" onChange="{{ mudarEscopo }}" style="height:38px;border:0;border-radius:999px;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;padding:0 13px;font-family:inherit;font-size:12.5px;color:#0c1d2b;cursor:pointer">
+                  <option value="shared">Equipe · LeverAds</option>
+                  <option value="personal">Só minha</option>
+                </select>
+              </label>
+            </div>
+            <label style="display:flex;flex-direction:column;gap:5px">
+              <span style="display:flex;align-items:baseline;gap:8px;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">texto<span style="margin-left:auto;font-weight:500;letter-spacing:0;text-transform:none;color:#8b99a4">{{ ed.chars }}</span></span>
+              <textarea value="{{ ed.corpo }}" onChange="{{ mudarCorpo }}" placeholder="{{ ed.dica }}" style="width:100%;min-height:150px;resize:vertical;border:0;border-radius:18px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:12px 14px;font-family:inherit;font-size:13px;line-height:1.55;color:#0c1d2b;outline:none"></textarea>
+            </label>
+            <div style="display:flex;flex-wrap:wrap;gap:5px">
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;align-self:center;margin-right:3px">inserir:</span>
+              <sc-for list="{{ atalhosVar }}" as="v" hint-placeholder-count="5">
+                <button onClick="{{ v.inserir }}" style="height:26px;padding:0 11px;border-radius:999px;background:#E9F5F3;color:#0b6b64;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:600;white-space:nowrap;transition:background 150ms ease" style-hover="background:#d8ede9">{{ v.chave }}</button>
+              </sc-for>
+            </div>
+            <div style="padding:14px 16px;border-radius:20px;background:#f7f9fa">
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77;margin-bottom:8px">prévia · com um ticket de exemplo</div>
+              <div style="font-size:13px;line-height:1.6;color:#0c1d2b;white-space:pre-wrap;text-wrap:pretty">{{ ed.previa }}</div>
+              <div style="{{ ed.estFaltando }}">{{ ed.faltando }}</div>
+            </div>
+          </div>
+          <div style="flex:0 0 auto;display:flex;align-items:center;gap:9px;padding:14px 22px 16px;border-top:1px solid #edf1f3">
+            <button onClick="{{ apagar }}" style="{{ estApagar }}">Apagar</button>
+            <button onClick="{{ fechar }}" style="margin-left:auto;height:38px;padding:0 16px;border-radius:999px;background:transparent;color:#5a6b77;font-size:12.5px;font-weight:600;transition:background 150ms ease" style-hover="background:#f1f4f5">Cancelar</button>
+            <button onClick="{{ salvar }}" style="{{ estSalvar }}">{{ rotuloSalvar }}</button>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Respostas rápidas (screens/quick-replies.jsx + api/quick-replies.js): textos
+  // prontos que o atendente insere no chat do ticket. Dois escopos: da EQUIPE
+  // (só quem gerencia o suporte edita) e PESSOAL. As variáveis são resolvidas
+  // pelo servidor — a prévia daqui usa a mesma régua, com um ticket de exemplo.
+  static EMBUTIDAS = [
+    ["saudacao", "Bom dia, boa tarde ou boa noite (horário de Brasília)", "Boa tarde"],
+    ["cliente.primeiro_nome", "Primeiro nome do solicitante", "Marina"],
+    ["cliente.nome", "Nome completo do solicitante", "Marina Kern"],
+    ["cliente.email", "E-mail do solicitante", "marina@studiokern.com.br"],
+    ["cliente.empresa", "Cliente vinculado ao ticket", "Studio Kern"],
+    ["ticket.numero", "Número do ticket", "412"],
+    ["ticket.assunto", "Assunto do ticket", "Anúncios pararam de clonar"],
+    ["ticket.status", "Status atual", "Em atendimento"],
+    ["ticket.prioridade", "Prioridade", "Urgente"],
+    ["ticket.prazo", "Prazo de resolução do SLA", "20/09 às 18:00"],
+    ["ticket.link", "Link do chamado no portal do cliente", "cockpit.leverads.com.br/s/k3f9"],
+    ["atendente.primeiro_nome", "Seu primeiro nome", "Vitor"],
+    ["atendente.nome", "Seu nome completo", "Vitor Nunes"],
+    ["produto.nome", "Nome do produto", "LeverAds"],
+    ["hoje", "Data de hoje", "20/09/2026"],
+  ];
+  static CUSTOM = [["horario_atendimento", "seg a sex, 9h às 18h"], ["prazo_padrao", "até 1 dia útil"]];
+  // [id, título, atalho, escopo, usos, corpo]
+  static BASE = [
+    [1, "Recebemos seu chamado", "recebemos", "shared", 84,
+      "{{saudacao}}, {{cliente.primeiro_nome}}!\n\nRecebemos o seu chamado #{{ticket.numero}} e já estamos olhando. O prazo de retorno é {{ticket.prazo}}.\n\nQualquer novidade eu te aviso por aqui.\n{{atendente.primeiro_nome}} · {{produto.nome}}"],
+    [2, "Pedir os acessos", "acessos", "shared", 61,
+      "{{cliente.primeiro_nome}}, pra eu conseguir olhar isso na sua conta preciso dos acessos das contas envolvidas.\n\nVocê consegue me mandar por aqui? Nosso atendimento é {{horario_atendimento}}."],
+    [3, "Conta suspensa pela Meta", "suspensa", "shared", 37,
+      "{{cliente.primeiro_nome}}, a conta foi suspensa pela própria Meta — não é algo que a gente consiga reverter do nosso lado.\n\nO caminho é abrir o recurso no Gerenciador. Eu te mando o passo a passo e acompanho o chamado #{{ticket.numero}} até sair."],
+    [4, "Clonagem não replicou", "clonagem", "shared", 29,
+      "{{cliente.primeiro_nome}}, olhei aqui: a clonagem não replicou porque a conta-mãe foi trocada depois da última publicação.\n\nVou refazer o vínculo e te aviso quando a próxima leva sair."],
+    [5, "Cobrança duplicada", "cobranca", "shared", 22,
+      "{{cliente.primeiro_nome}}, confirmei a duplicidade no seu cadastro. O estorno cai em até 5 dias úteis no mesmo meio de pagamento.\n\nSegue o chamado pra acompanhar: {{ticket.link}}"],
+    [6, "Fechando o chamado", "fechar", "shared", 71,
+      "{{cliente.primeiro_nome}}, pelo que vi está tudo resolvido — vou fechar o chamado #{{ticket.numero}}.\n\nSe voltar a acontecer é só responder esta mesma conversa que ele reabre.\nAbraço, {{atendente.primeiro_nome}}"],
+    [7, "Vou verificar e volto", "verifico", "personal", 46,
+      "{{cliente.primeiro_nome}}, vou verificar isso com calma aqui e te retorno ainda hoje, {{prazo_padrao}}."],
+    [8, "Agendar call de 15 min", "call", "personal", 18,
+      "{{cliente.primeiro_nome}}, acho que resolvemos mais rápido numa call de 15 minutos com a tela compartilhada.\n\nQual horário funciona melhor pra você?"],
+  ];
+
+  state = { aba: "todas", busca: "", editando: null, extras: [], mudados: {}, apagados: [], seq: 100, custom: null, salvo: false, copiado: "" };
+  componentWillUnmount() { clearTimeout(this._c); clearTimeout(this._s); }
+
+  slug(s) { return String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40); }
+  trecho(s, n) { const t = String(s || "").replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n) + "…" : t; }
+  variaveis() {
+    const m = {};
+    for (const [k, , sample] of Component.EMBUTIDAS) m[k] = sample;
+    for (const [k, v] of (this.state.custom || Component.CUSTOM)) m[k] = v;
+    return m;
+  }
+  // Mesma regra do renderTemplate: variável desconhecida FICA no texto e volta
+  // na lista de faltando; conhecida sem valor vira vazio.
+  render_(corpo) {
+    const vals = this.variaveis();
+    const faltando = [];
+    const texto = String(corpo || "").replace(/\{\{\s*([a-z][a-z0-9_.]*)\s*\}\}/gi, (all, k) => {
+      const key = k.toLowerCase();
+      if (!(key in vals)) { if (faltando.indexOf(key) < 0) faltando.push(key); return all; }
+      return vals[key];
+    });
+    return { texto, faltando };
+  }
+  lista() {
+    const s = this.state;
+    const base = Component.BASE.map((r) => ({ id: r[0], titulo: r[1], atalho: r[2], escopo: r[3], usos: r[4], corpo: r[5] }));
+    return base.concat(s.extras)
+      .filter((r) => s.apagados.indexOf(r.id) < 0)
+      .map((r) => Object.assign({}, r, s.mudados[r.id] || {}))
+      .sort((a, b) => (b.usos || 0) - (a.usos || 0) || a.titulo.localeCompare(b.titulo, "pt-BR"));
+  }
+  seg(a) {
+    return "height:28px;padding:0 14px;border-radius:999px;font-size:12px;white-space:nowrap;transition:background 150ms ease,color 150ms ease;" +
+      (a ? "background:#fff;color:#0c1d2b;font-weight:650;box-shadow:0 1px 2px rgba(12,29,43,.06)" : "background:transparent;color:#5a6b77;font-weight:500");
+  }
+  flash(campo) {
+    this.setState({ [campo]: true });
+    clearTimeout(this._s);
+    this._s = setTimeout(() => this.setState({ [campo]: false }), 1800);
+  }
+  renderVals() {
+    const s = this.state;
+    const todas = this.lista();
+    const equipe = todas.filter((r) => r.escopo === "shared");
+    const minhas = todas.filter((r) => r.escopo === "personal");
+    const q = s.busca.trim().toLowerCase();
+    const daAba = s.aba === "shared" ? equipe : s.aba === "personal" ? minhas : todas;
+    const visiveis = q ? daAba.filter((r) => [r.titulo, r.atalho, r.corpo].some((v) => String(v).toLowerCase().includes(q))) : daAba;
+    const custom = s.custom || Component.CUSTOM;
+    const ed = s.editando;
+
+    const vals = {
+      mov: this.props.movimento === false ? "off" : "on",
+      sub: "suporte · LeverAds: " + equipe.length + " da equipe · " + minhas.length + (minhas.length === 1 ? " sua" : " suas") + " · no chat do ticket, digite / e o atalho",
+      chaves: "{{nome}}",
+      busca: s.busca, mudarBusca: (e) => this.setState({ busca: e.target.value }),
+      abas: [["todas", "Todas " + todas.length], ["shared", "Da equipe " + equipe.length], ["personal", "Minhas " + minhas.length]]
+        .map(([id, label]) => ({ label, est: this.seg(s.aba === id), ir: () => this.setState({ aba: id }) })),
+      vazio: visiveis.length === 0,
+      vazioTexto: "nenhuma resposta " + (q ? 'com "' + s.busca.trim() + '"' : "nesta aba"),
+      respostas: visiveis.map((r) => ({
+        titulo: r.titulo, atalho: r.atalho, trecho: this.trecho(r.corpo, 150),
+        escopo: r.escopo === "shared" ? "equipe" : "sua",
+        estEscopo: "display:inline-flex;align-items:center;gap:5px;flex-shrink:0;font-size:11px;color:#5a6b77",
+        estEscopoPonto: "width:6px;height:6px;border-radius:999px;background:" + (r.escopo === "shared" ? "#0F766E" : "#b6c0c7"),
+        usos: r.usos ? "usada " + r.usos + "×" : "nunca usada",
+        abrir: () => this.setState({ editando: Object.assign({}, r) }),
+        // Resposta da equipe: quem não gerencia o suporte duplica como sua em
+        // vez de editar a do time (é a saída que a fonte oferece no menu).
+        rotuloDuplicar: r.escopo === "shared" ? "Duplicar" : "",
+        estDuplicar: r.escopo === "shared"
+          ? "flex-shrink:0;height:28px;padding:0 12px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:11.5px;font-weight:600;transition:background 150ms ease"
+          : "display:none",
+        duplicar: (e) => {
+          if (e && e.stopPropagation) e.stopPropagation();
+          this.setState((st) => ({
+            seq: st.seq + 1,
+            aba: "personal",
+            extras: st.extras.concat([Object.assign({}, r, { id: st.seq + 1, titulo: r.titulo + " · minha", atalho: r.atalho + "-minha", escopo: "personal", usos: 0 })]),
+          }));
+        },
+      })),
+      embutidas: Component.EMBUTIDAS.map(([chave, label, exemplo]) => ({
+        chave: "{{" + chave + "}}", label, exemplo: s.copiado === chave ? "copiada ✓" : exemplo,
+        est: "display:flex;align-items:baseline;gap:10px;width:100%;text-align:left;padding:6px 10px;border-radius:999px;background:transparent;transition:background 150ms ease",
+        copiar: () => {
+          if (navigator.clipboard) navigator.clipboard.writeText("{{" + chave + "}}").catch(() => {});
+          this.setState({ copiado: chave });
+          clearTimeout(this._c);
+          this._c = setTimeout(() => this.setState({ copiado: "" }), 1600);
+        },
+      })),
+      custom: custom.map(([chave, valor], i) => ({
+        chave: "{{" + chave + "}}", valor,
+        mudar: (e) => {
+          const v = e.target.value;
+          this.setState((st) => {
+            const lista = (st.custom || Component.CUSTOM).map((x, j) => (j === i ? [x[0], v] : x));
+            return { custom: lista };
+          });
+          this.flash("salvo");
+        },
+      })),
+      addVar: () => this.setState((st) => ({ custom: (st.custom || Component.CUSTOM).concat([["nova_variavel", ""]]) })),
+      salvo: s.salvo ? "Salvo ✓" : "",
+      estSalvo: s.salvo ? "font-size:11.5px;font-weight:600;color:#177a4c" : "display:none",
+      nova: () => this.setState({ editando: { titulo: "", atalho: "", escopo: "shared", corpo: "", usos: 0 } }),
+      temEditor: !!ed,
+      fechar: () => this.setState({ editando: null }),
+      parar: (e) => { if (e && e.stopPropagation) e.stopPropagation(); },
+    };
+
+    if (ed) {
+      const previa = this.render_(ed.corpo);
+      const podeSalvar = !!(ed.titulo || "").trim() && !!(ed.corpo || "").trim();
+      vals.ed = {
+        cabec: ed.id ? "editar resposta" : "nova resposta",
+        titulo: ed.id ? ed.titulo : "Nova resposta rápida",
+        titulo2: ed.titulo, atalho: ed.atalho, escopo: ed.escopo, corpo: ed.corpo,
+        chars: (ed.corpo || "").length + " / 5000",
+        dica: "{{saudacao}}, {{cliente.primeiro_nome}}!\n\nRecebemos o seu chamado #{{ticket.numero}} e já estamos olhando.",
+        previa: previa.texto || "escreva o texto pra ver a prévia",
+        faltando: previa.faltando.length ? "variável não reconhecida: " + previa.faltando.map((k) => "{{" + k + "}}").join(" · ") + " — fica no texto como está" : "",
+        estFaltando: previa.faltando.length ? "font-size:11px;font-weight:600;color:#b42318;margin-top:10px;text-wrap:pretty" : "display:none",
+      };
+      vals.mudarTitulo = (e) => {
+        const v = e.target.value;
+        this.setState((st) => ({ editando: Object.assign({}, st.editando, { titulo: v }, st.editando.id || st.editando.atalhoTocado ? {} : { atalho: this.slug(v) }) }));
+      };
+      vals.mudarAtalho = (e) => { const v = e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""); this.setState((st) => ({ editando: Object.assign({}, st.editando, { atalho: v, atalhoTocado: true }) })); };
+      vals.mudarEscopo = (e) => { const v = e.target.value; this.setState((st) => ({ editando: Object.assign({}, st.editando, { escopo: v }) })); };
+      vals.mudarCorpo = (e) => { const v = e.target.value.slice(0, 5000); this.setState((st) => ({ editando: Object.assign({}, st.editando, { corpo: v }) })); };
+      vals.atalhosVar = ["cliente.primeiro_nome", "ticket.numero", "ticket.prazo", "atendente.primeiro_nome", "saudacao"].map((k) => ({
+        chave: "{{" + k + "}}",
+        inserir: () => this.setState((st) => ({ editando: Object.assign({}, st.editando, { corpo: (st.editando.corpo || "") + "{{" + k + "}}" }) })),
+      }));
+      vals.rotuloSalvar = podeSalvar ? (ed.id ? "Salvar" : "Criar resposta") : "Escreva título e texto";
+      vals.estSalvar = "height:38px;padding:0 18px;border-radius:999px;font-size:13px;font-weight:700;transition:background 150ms ease;" +
+        (podeSalvar ? "background:#0c1d2b;color:#fff" : "background:#eef1f3;color:#8b99a4;cursor:not-allowed");
+      vals.salvar = () => {
+        if (!podeSalvar) return;
+        this.setState((st) => {
+          const e2 = st.editando;
+          const limpo = { titulo: e2.titulo.trim(), atalho: this.slug(e2.atalho || e2.titulo), escopo: e2.escopo, corpo: e2.corpo };
+          if (e2.id) return { editando: null, mudados: Object.assign({}, st.mudados, { [e2.id]: limpo }) };
+          return { editando: null, seq: st.seq + 1, aba: e2.escopo === "personal" ? "personal" : "shared", extras: st.extras.concat([Object.assign({ id: st.seq + 1, usos: 0 }, limpo)]) };
+        });
+      };
+      vals.estApagar = ed.id
+        ? "height:38px;padding:0 15px;border-radius:999px;background:transparent;color:#b42318;font-size:12.5px;font-weight:600;transition:background 150ms ease"
+        : "display:none";
+      vals.apagar = () => this.setState((st) => ({ editando: null, apagados: st.apagados.concat([st.editando.id]) }));
+    } else {
+      vals.ed = { cabec: "", titulo: "", titulo2: "", atalho: "", escopo: "shared", corpo: "", chars: "", dica: "", previa: "", faltando: "", estFaltando: "display:none" };
+      vals.mudarTitulo = () => {}; vals.mudarAtalho = () => {}; vals.mudarEscopo = () => {}; vals.mudarCorpo = () => {};
+      vals.atalhosVar = []; vals.rotuloSalvar = ""; vals.estSalvar = "display:none"; vals.salvar = () => {};
+      vals.estApagar = "display:none"; vals.apagar = () => {};
+    }
+    return vals;
+  }
+}
+</script>
+</body>
+</html>

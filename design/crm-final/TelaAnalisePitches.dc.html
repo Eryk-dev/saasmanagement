@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Análise de Pitches</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-gaveta-sai{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-gaveta-sai{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;margin:0 -4px;padding:0 4px 24px">
+
+      <header class="cap-rise" style="flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+        <div style="min-width:0">
+          <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Análise de Pitches</h1>
+          
+        </div>
+      </header>
+
+      <section class="cap-rise" style="flex:0 0 auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:11px 14px;border-radius:999px;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+        <div style="display:inline-flex;gap:3px;padding:3px;border-radius:999px;background:#f1f4f5">
+          <sc-for list="{{ grupos }}" as="g" hint-placeholder-count="2">
+            <button onClick="{{ g.escolher }}" style="{{ g.est }}">{{ g.label }}</button>
+          </sc-for>
+        </div>
+        <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#8b99a4">por pessoa</span>
+        <div style="display:inline-flex;gap:5px;flex-wrap:wrap">
+          <sc-for list="{{ pessoas }}" as="p" hint-placeholder-count="3">
+            <button onClick="{{ p.escolher }}" style="{{ p.est }}">{{ p.nome }} <span style="font-family:'Outfit',sans-serif">{{ p.n }}</span></button>
+          </sc-for>
+        </div>
+      </section>
+
+      <sc-if value="{{ amostraPequena }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:0 0 auto;padding:11px 18px;border-radius:20px;background:#fbf4e6;font-size:12.5px;line-height:1.55;color:#6b4708;text-wrap:pretty">{{ textoAmostra }}</div>
+      </sc-if>
+
+      <section class="cap-rise" style="flex:0 0 auto;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:20px 24px 18px">
+        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">temperatura das calls</span>
+          </div>
+          <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4">{{ contagemPeriodo }}</span>
+        </div>
+        <div style="display:flex;height:12px;border-radius:999px;overflow:hidden;background:#eff2f3;margin-top:14px">
+          <sc-for list="{{ faixas }}" as="f" hint-placeholder-count="3">
+            <span class="cap-grow" style="{{ f.est }}" title="{{ f.title }}"></span>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:12px">
+          <sc-for list="{{ legenda }}" as="l" hint-placeholder-count="3">
+            <span style="display:inline-flex;align-items:baseline;gap:7px">
+              <span style="{{ l.estPonto }}"></span>
+              <span style="font-family:'Outfit',sans-serif;font-size:16px;font-weight:700">{{ l.n }}</span>
+              <span style="font-size:12px;color:#5a6b77">{{ l.rot }}</span>
+            </span>
+          </sc-for>
+        </div>
+        <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;margin-top:10px;text-wrap:pretty">{{ notaTemperatura }}</div>
+      </section>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px">
+        <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:20px 22px 20px">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="width:5px;height:14px;border-radius:999px;background:#b42318;flex-shrink:0"></span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">objeções recorrentes</span>
+          </div>
+          <div style="font-size:11.5px;color:#8b99a4;margin-top:5px;padding-left:12px;text-wrap:pretty">o que mais trava as calls · × vezes e quantas ficaram em aberto</div>
+          <div style="display:flex;flex-direction:column;gap:13px;margin-top:16px">
+            <sc-for list="{{ objecoes }}" as="o" hint-placeholder-count="6">
+              <div style="display:flex;align-items:center;gap:10px">
+                <div style="flex:1;min-width:0">
+                  <div style="display:flex;align-items:baseline;gap:8px">
+                    <span style="flex:1;min-width:0;font-size:12.5px;font-weight:600;text-wrap:pretty">{{ o.label }}</span>
+                    <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:{{ o.corSub }};white-space:nowrap">{{ o.sub }}</span>
+                  </div>
+                  <div style="height:8px;border-radius:999px;background:#eff2f3;overflow:hidden;margin-top:6px"><span class="cap-grow" style="{{ o.estBarra }}"></span></div>
+                </div>
+                <button onClick="{{ o.virarTreino }}" style="{{ o.estBotao }}" title="criar um card de treino com esta objeção">{{ o.rotuloBotao }}</button>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+
+        <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:20px 22px 20px">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="width:5px;height:14px;border-radius:999px;background:#a16207;flex-shrink:0"></span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">dores mais citadas</span>
+          </div>
+          <div style="font-size:11.5px;color:#8b99a4;margin-top:5px;padding-left:12px;text-wrap:pretty">o que os leads mais trazem pra call</div>
+          <div style="display:flex;flex-direction:column;gap:13px;margin-top:16px">
+            <sc-for list="{{ dores }}" as="d" hint-placeholder-count="6">
+              <div>
+                <div style="display:flex;align-items:baseline;gap:8px">
+                  <span style="flex:1;min-width:0;font-size:12.5px;font-weight:600;text-wrap:pretty">{{ d.label }}</span>
+                  <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;white-space:nowrap">{{ d.sub }}</span>
+                </div>
+                <div style="height:8px;border-radius:999px;background:#eff2f3;overflow:hidden;margin-top:6px"><span class="cap-grow" style="{{ d.estBarra }}"></span></div>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+      </div>
+
+      <section class="cap-rise" style="flex:0 0 auto;position:relative;overflow:hidden;border-radius:24px;background:linear-gradient(168deg,#0a2434,#051C2C 70%);box-shadow:0 1px 2px rgba(5,28,44,.14),0 18px 40px -24px rgba(5,28,44,.6);padding:20px 24px 20px">
+        <span style="position:absolute;right:-34px;top:-30px;width:172px;height:172px;color:#23D8D3;opacity:.07;pointer-events:none"><svg width="172" height="172" viewBox="355 525 455 590"><polygon fill="currentColor" points="800.7 535.53 800.7 1103.92 763 983.8 749.25 939.91 691.16 754.61 501.54 817.84 457.65 832.42 362.47 864.14 443.6 803.33 481.22 775.08 800.7 535.53"></polygon></svg></span>
+        <div style="position:relative">
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <div style="min-width:0">
+              <div style="display:flex;align-items:center;gap:7px">
+                <span style="width:5px;height:14px;border-radius:999px;background:#23D8D3;flex-shrink:0"></span>
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#23D8D3">{{ tituloIa }}</span>
+              </div>
+              <div style="font-size:11.5px;color:rgba(243,251,255,.55);margin-top:5px;padding-left:12px;text-wrap:pretty">{{ notaIa }}</div>
+            </div>
+            <button onClick="{{ diagnosticar }}" style="{{ estBotaoIa }}">{{ rotuloIa }}</button>
+          </div>
+          <sc-if value="{{ temDiagnostico }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:13.5px;line-height:1.6;color:#F3FBFF;margin-top:16px;text-wrap:pretty">{{ diagnostico }}</div>
+            <div style="display:flex;flex-direction:column;gap:9px;margin-top:14px">
+              <sc-for list="{{ tratamentos }}" as="t" hint-placeholder-count="3">
+                <div style="padding-left:12px;border-left:3px solid rgba(35,216,211,.5)">
+                  <div style="font-size:12.5px;font-weight:650;color:#F3FBFF">{{ t.objecao }}</div>
+                  <div style="font-size:12px;line-height:1.55;color:rgba(243,251,255,.7);margin-top:3px;text-wrap:pretty">{{ t.como }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.09)">
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:rgba(243,251,255,.5);text-wrap:pretty">{{ notaAplicar }}</span>
+              <button onClick="{{ irConfiguracoes }}" style="margin-left:auto;height:30px;padding:0 14px;border-radius:999px;background:rgba(255,255,255,.1);color:#F3FBFF;font-size:11.5px;font-weight:600;white-space:nowrap;transition:background 150ms ease" style-hover="background:rgba(255,255,255,.18)">Abrir os roteiros →</button>
+            </div>
+          </sc-if>
+        </div>
+      </section>
+
+      <section class="cap-rise" style="flex:0 0 auto;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+        <div style="padding:20px 22px 12px">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:#5a6b77">calls recentes</span>
+          </div>
+          <div style="font-size:11.5px;color:#8b99a4;margin-top:5px;padding-left:12px;text-wrap:pretty">resumidas pela IA quando o Meet gera a transcrição · clique pra abrir o lead</div>
+        </div>
+        <sc-for list="{{ recentes }}" as="c" hint-placeholder-count="6">
+          <button onClick="{{ c.abrir }}" style="display:flex;gap:12px;align-items:center;width:100%;text-align:left;padding:12px 22px;border-top:1px solid #edf1f3;transition:background 150ms ease" style-hover="background:#f7f9fa">
+            <span style="flex-shrink:0;width:132px;font-size:13px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.lead }}</span>
+            <span style="{{ c.estTemp }}">{{ c.temp }}</span>
+            <span style="flex:1;min-width:0;font-size:12px;color:#5a6b77;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.resumo }}</span>
+            <span style="flex-shrink:0;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;white-space:nowrap">{{ c.quando }}</span>
+          </button>
+        </sc-for>
+      </section>
+    </div>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Análise de Pitches (screens/calls.jsx): as calls resumidas pela IA viram
+  // padrão — objeções, dores e temperatura. Venda ≠ qualificação: a call do
+  // closer e a do SDR têm teor diferente, então cada grupo tem a sua análise.
+  static PESSOAS = { rm: "Rafael Moura", ba: "Bruno Alencar", mc: "Manuela Costa" };
+  // lead, empresa, quem, temperatura, resumo, dias atrás, objeções, dores
+  static CALLS = {
+    venda: [
+      ["Marina Kern", "Studio Kern", "rm", "quente", "3 contas, quer espelhar tudo; decide sozinha", 1, ["preço"], ["anúncio caro sem venda"]],
+      ["Diego Arbo", "Clínica Arbo", "rm", "quente", "quer começar com 2 contas e escalar", 2, [], ["estoque parado no marketplace"]],
+      ["Helena Vitta", "Nutri Vitta", "rm", "quente", "já fechou; pediu a integração pra semana que vem", 2, [], ["escalar sem perder margem"]],
+      ["Paulo Ferraz", "Ferraz Advocacia", "ba", "morno", "sócio decide junto; pediu proposta por escrito", 3, ["decisor ausente", "preço"], ["não sabe medir o retorno"]],
+      ["Caio Menezes", "Menezes Auto", "ba", "morno", "comparando com concorrente; quer ver case", 3, ["já tem quem faça"], ["anúncio caro sem venda"]],
+      ["Rogério Vante", "Grupo Vante", "ba", "quente", "fechou na call; pagamento em 12x", 4, ["preço"], ["estoque parado no marketplace"]],
+      ["Fernanda Luz", "Luz Odontologia", "rm", "morno", "gostou, mas quer esperar o fim do trimestre", 5, ["prazo", "preço"], ["escalar sem perder margem"]],
+      ["Otávio Braga", "Braga Fit", "ba", "frio", "não tem segunda conta ainda; fora do ICP hoje", 6, ["fora do ICP"], ["não sabe medir o retorno"]],
+      ["Lúcia Amaral", "Amaral Studio", "rm", "morno", "quer entender a clonagem antes de decidir", 7, ["dúvida técnica"], ["estoque parado no marketplace"]],
+      ["Bruno Sato", "Sato Imports", "ba", "frio", "sumiu no meio da call; remarcar", 8, ["sem prioridade"], ["anúncio caro sem venda"]],
+      ["Tatiana Ponto", "Mercado Ponto", "rm", "quente", "fechou; começa com a conta-mãe do ML", 9, [], ["estoque parado no marketplace"]],
+      ["Isabel Corrêa", "Corrêa Pets", "ba", "morno", "quer ver o painel antes; pediu demo gravada", 10, ["dúvida técnica", "preço"], ["não sabe medir o retorno"]],
+      ["Renata Dias", "Clínica RD", "ba", "frio", "achou caro pro momento da loja", 11, ["preço"], ["escalar sem perder margem"]],
+      ["Eduardo Galante", "Galante Holding", "rm", "morno", "quer contrato anual com desconto", 12, ["preço", "decisor ausente"], ["escalar sem perder margem"]],
+    ],
+    sdr: [
+      ["Paula Bittencourt", "Vitta Odonto", "mc", "morno", "duas contas, fatura ~R$ 120 mil/mês; agendou", 1, [], ["estoque parado no marketplace"]],
+      ["Marcos Aguiar", "Grupo MA", "mc", "quente", "quatro contas e time próprio; agendou pra sexta", 2, [], ["anúncio caro sem venda"]],
+      ["Nina Castro", "Castro Pet", "mc", "frio", "só uma conta; quer abrir a segunda ainda", 3, ["fora do ICP"], ["não sabe medir o retorno"]],
+      ["Luiza Prado", "Prado Fit", "mc", "morno", "não sabia dizer o faturamento; remarcou", 4, ["sem prioridade"], ["não sabe medir o retorno"]],
+      ["Tiago Nogueira", "Nogueira Imports", "mc", "quente", "indicação da Marina; três contas ativas", 5, [], ["estoque parado no marketplace"]],
+      ["André Rima", "Instituto Rima", "mc", "morno", "quer saber preço antes de agendar a call", 6, ["preço"], ["anúncio caro sem venda"]],
+      ["Camila Reis", "Nutri Vitta", "mc", "frio", "não atendeu duas vezes; respondeu no WhatsApp", 7, ["sem prioridade"], []],
+    ],
+  };
+  static DIAG = {
+    venda: {
+      texto: (n, obj, ganhos) => "Preço aparece em " + (obj["preço"] || 0) + " das " + n + " calls, mas quase sempre DEPOIS da demo — o que indica que o valor não ficou claro antes do número. Nas " + ganhos + " calls que fecharam, a clonagem foi mostrada ao vivo na conta do lead antes de qualquer preço. O padrão é esse: quem vê o próprio catálogo replicando não discute o valor do mesmo jeito.",
+      itens: [
+        ["preço", "Não responda o preço na hora que ele aparece: mostre a clonagem na conta dele primeiro e só então traga o número, ancorado no que ele deixa na mesa por mês."],
+        ["decisor ausente", "Pergunte na qualificação quem assina, não na call. As duas calls travadas eram com quem não decide — a proposta ficou esperando o sócio."],
+        ["já tem quem faça", "Peça pra ver como é feito hoje. Na única vez que apareceu, era um estagiário copiando anúncio à mão — a comparação virou o argumento."],
+      ],
+    },
+    sdr: {
+      texto: (n, obj) => "O SDR agenda bem quem tem 2+ contas, mas perde tempo com quem tem uma só: " + ((obj["fora do ICP"] || 0) + (obj["sem prioridade"] || 0)) + " das " + n + " calls travaram por lead fora do perfil ou sem prioridade. A pergunta de faturamento também está saindo tarde — em uma delas nem foi feita, e o lead remarcou.",
+      itens: [
+        ["fora do ICP", "Confirme as contas na PRIMEIRA pergunta. Uma conta só não é lead ruim, é lead de outro momento — vale nutrir, não agendar."],
+        ["sem prioridade", "Quem não atende duas vezes não é frio, é mal abordado. Troque a ligação pelo áudio de 30 segundos citando o anúncio que ele preencheu."],
+        ["preço", "Preço na qualificação é sinal de interesse: agende na hora, não responda. Quem pergunta preço quer comprar."],
+      ],
+    },
+  };
+
+  state = { grupo: "venda", pessoa: null, ia: null, carregandoIa: false, treinos: [] };
+  componentWillUnmount() { clearTimeout(this._t); }
+
+  seg(a) {
+    return "height:28px;padding:0 15px;border-radius:999px;font-size:12px;white-space:nowrap;transition:background 150ms ease;" +
+      (a ? "background:#0c1d2b;color:#fff;font-weight:650" : "background:transparent;color:#5a6b77;font-weight:500");
+  }
+  pill(a) {
+    return "height:28px;padding:0 12px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap;transition:background 150ms ease;" +
+      (a ? "background:#E9F5F3;color:#0b6b64;box-shadow:inset 0 0 0 1px rgba(15,118,110,.3)" : "background:#f1f4f5;color:#5a6b77");
+  }
+  conta(lista, chave) {
+    const m = {};
+    for (const c of lista) for (const x of c[chave === "obj" ? 6 : 7]) m[x] = (m[x] || 0) + 1;
+    return Object.entries(m).sort((a, b) => b[1] - a[1]);
+  }
+
+  renderVals() {
+    const st = this.state;
+    const doGrupo = Component.CALLS[st.grupo];
+    const pessoasIds = [...new Set(doGrupo.map((c) => c[2]))];
+    const vis = st.pessoa ? doGrupo.filter((c) => c[2] === st.pessoa) : doGrupo;
+    const n = vis.length;
+    const temp = { quente: 0, morno: 0, frio: 0 };
+    for (const c of vis) temp[c[3]]++;
+    const objecoes = this.conta(vis, "obj");
+    const dores = this.conta(vis, "dor");
+    const maxObj = Math.max.apply(null, [1].concat(objecoes.map((o) => o[1])));
+    const maxDor = Math.max.apply(null, [1].concat(dores.map((d) => d[1])));
+    // "em aberto" = a objeção apareceu numa call que não virou ganho
+    const GANHOU = ["Marina Kern", "Diego Arbo", "Helena Vitta", "Rogério Vante", "Tatiana Ponto"];
+    const abertasDe = (obj) => vis.filter((c) => c[6].includes(obj) && !GANHOU.includes(c[0])).length;
+    const TOM = { quente: ["#177a4c", "#e9f6ef"], morno: ["#a16207", "#fbf4e6"], frio: ["#5a6b77", "#f1f4f5"] };
+    const diag = Component.DIAG[st.grupo];
+    const pctQuente = n ? Math.round((temp.quente / n) * 100) : 0;
+
+    return {
+      mov: this.props.movimento === false ? "off" : "on",
+      subtitulo: n + (n === 1 ? " call resumida" : " calls resumidas") + " por IA · objeções, dores e temperatura · " +
+        (st.grupo === "sdr" ? "qualificação (SDR)" : "vendas (closer)") + (st.pessoa ? " · " + Component.PESSOAS[st.pessoa] : ""),
+      grupos: [["venda", "Vendas · closer"], ["sdr", "Qualificação · SDR"]].map(([id, label]) => ({
+        label, est: this.seg(st.grupo === id), escolher: () => this.setState({ grupo: id, pessoa: null, ia: null }),
+      })),
+      pessoas: [{ id: null, nome: "Todos", n: doGrupo.length }].concat(pessoasIds.map((id) => ({
+        id, nome: Component.PESSOAS[id].split(" ")[0], n: doGrupo.filter((c) => c[2] === id).length,
+      }))).map((p) => ({ nome: p.nome, n: p.n, est: this.pill(st.pessoa === p.id), escolher: () => this.setState({ pessoa: p.id }) })),
+      amostraPequena: n < 5,
+      textoAmostra: "Ainda juntando calls (" + n + "). Os padrões ficam confiáveis a partir de umas 10 calls — já dá pra olhar, mas leve como amostra pequena.",
+      contagemPeriodo: n + (n === 1 ? " call resumida" : " calls resumidas") + " no período",
+      faixas: [["quente", temp.quente, "#177a4c"], ["morno", temp.morno, "#d0a02c"], ["frio", temp.frio, "#c5cfd4"]]
+        .filter(([, v]) => v > 0).map(([k, v, cor]) => ({
+          title: v + " " + k + (v > 1 ? "s" : ""),
+          est: "display:block;height:100%;width:" + ((v / Math.max(1, n)) * 100) + "%;background:" + cor,
+        })),
+      legenda: [["quentes", temp.quente, "#177a4c"], ["mornas", temp.morno, "#d0a02c"], ["frias", temp.frio, "#8b99a4"]].map(([rot, v, cor]) => ({
+        n: String(v), rot: rot + " · " + (n ? Math.round((v / n) * 100) : 0) + "%",
+        estPonto: "width:8px;height:8px;border-radius:999px;align-self:center;background:" + cor,
+      })),
+      notaTemperatura: pctQuente >= 40
+        ? "Call quente é a que vira cliente: " + pctQuente + "% do período está nessa faixa."
+        : "Só " + pctQuente + "% das calls saíram quentes — a leitura da tela é essa proporção, não o total.",
+      objecoes: objecoes.map(([label, total]) => {
+        const abertas = abertasDe(label);
+        const feito = st.treinos.includes(label);
+        return {
+          label, sub: total + "× · " + abertas + " em aberto",
+          corSub: abertas > 0 ? "#b42318" : "#5a6b77",
+          estBarra: "display:block;height:100%;border-radius:999px;width:" + Math.max(4, Math.round((total / maxObj) * 100)) + "%;background:" + (abertas > 0 ? "linear-gradient(90deg,#d0524a,#b42318)" : "linear-gradient(90deg,#0C8F83,#0F766E)"),
+          rotuloBotao: feito ? "Card criado ✓" : "Virar treino →",
+          estBotao: "flex-shrink:0;height:26px;padding:0 11px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;transition:background 150ms ease;" +
+            (feito ? "background:#E9F5F3;color:#0b6b64;cursor:default" : "background:transparent;color:#0F766E"),
+          virarTreino: () => {
+            if (feito) return;
+            this.setState((s2) => ({ treinos: s2.treinos.concat([label]) }));
+            clearTimeout(this._t);
+            this._t = setTimeout(() => window.dispatchEvent(new CustomEvent("cockpit:ir", { detail: { tela: "Tr" } })), 900);
+          },
+        };
+      }),
+      dores: dores.map(([label, total]) => ({
+        label, sub: total + "×",
+        estBarra: "display:block;height:100%;border-radius:999px;width:" + Math.max(4, Math.round((total / maxDor) * 100)) + "%;background:linear-gradient(90deg,#d9a441,#a16207)",
+      })),
+      tituloIa: st.grupo === "sdr" ? "diagnóstico da qualificação" : "diagnóstico do pitch",
+      notaIa: st.grupo === "sdr" ? "a IA lê as calls do SDR e diz o que ajustar no roteiro de 1º contato" : "a IA lê as calls e diz o que ajustar no roteiro da call",
+      rotuloIa: st.carregandoIa ? "Analisando…" : st.ia ? "Gerar de novo" : "✨ gerar diagnóstico",
+      estBotaoIa: "height:36px;padding:0 17px;border-radius:999px;font-size:12.5px;font-weight:700;white-space:nowrap;transition:background 150ms ease;" +
+        (st.carregandoIa ? "background:rgba(255,255,255,.12);color:rgba(243,251,255,.6);cursor:default" : "background:#F3FBFF;color:#051C2C"),
+      diagnosticar: () => {
+        if (st.carregandoIa) return;
+        this.setState({ carregandoIa: true });
+        clearTimeout(this._t);
+        this._t = setTimeout(() => this.setState({ carregandoIa: false, ia: st.grupo }), 900);
+      },
+      temDiagnostico: st.ia === st.grupo,
+      diagnostico: diag.texto(n, Object.fromEntries(objecoes), vis.filter((c) => GANHOU.includes(c[0])).length),
+      tratamentos: diag.itens.map(([objecao, como]) => {
+        const vezes = (objecoes.find((o) => o[0] === objecao) || [null, 0])[1];
+        return { objecao: objecao + (vezes ? " (" + vezes + "×)" : ""), como };
+      }).filter((t) => /\(\d+×\)/.test(t.objecao)),
+      notaAplicar: "pra aplicar a nova versão, vá em Configurações → Roteiros → " + (st.grupo === "sdr" ? "1º contato" : "Call de fechamento") + ".",
+      irConfiguracoes: () => window.dispatchEvent(new CustomEvent("cockpit:ir", { detail: { tela: "Cf" } })),
+      recentes: vis.slice().sort((a, b) => a[5] - b[5]).slice(0, 8).map((c) => ({
+        lead: c[0], resumo: c[4],
+        temp: c[3],
+        estTemp: "flex-shrink:0;display:inline-flex;align-items:center;height:20px;padding:0 10px;border-radius:999px;font-size:10.5px;font-weight:600;background:" + TOM[c[3]][1] + ";color:" + TOM[c[3]][0],
+        quando: c[5] === 1 ? "ontem" : "há " + c[5] + " dias",
+        abrir: () => window.dispatchEvent(new CustomEvent("cockpit:ir", { detail: { tela: "Pi" } })),
+      })),
+    };
+  }
+}
+</script>
+</body>
+</html>

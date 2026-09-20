@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Treinamentos</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-card-in{from{opacity:0;transform:translateY(8px) scale(.99)}}
+  @keyframes cap-foco-in{from{opacity:0}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-card{animation:cap-card-in .2s cubic-bezier(.22,.61,.36,1) both}
+  .cap-foco{animation:cap-foco-in .22s ease both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-card,[data-mov="off"] .cap-foco{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-card,.cap-foco{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  /* Duas colunas: o trilho secundário cede, senão ele fica mais largo que o
+     conteúdo principal (no host de 644px o 1fr resolvia em 282px contra 340px
+     do trilho) e o card herói quebra em duas linhas. Abaixo de 900px o trilho
+     desce pra baixo. Media query é a única coisa aqui que não dá pra inline. */
+  .cap-2col{display:grid;align-items:stretch;gap:12px;grid-template-columns:minmax(0,1.7fr) minmax(250px,.85fr)}
+  @media (max-width:900px){
+    .cap-2col{grid-template-columns:minmax(0,1fr)}
+    .cap-2col > *{grid-column:1!important}
+  }
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="position:relative;flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',sans-serif,ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;overflow:auto;margin:0 -4px;padding:0 4px 24px">
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,340px);align-items:stretch;gap:12px">
+
+        <header class="cap-rise" style="grid-column:1 / -1;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+          <div>
+            <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Treinamentos</h1>
+            
+          </div>
+          <div style="display:inline-flex;gap:3px;padding:4px;border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.05)">
+            <sc-for list="{{ modos }}" as="m" hint-placeholder-count="3">
+              <button onClick="{{ m.escolher }}" style="{{ m.est }}">{{ m.label }}</button>
+            </sc-for>
+          </div>
+        </header>
+
+        <sc-if value="{{ modoEstudar }}" hint-placeholder-val="{{ true }}">
+        <sc-if value="{{ estudando }}" hint-placeholder-val="{{ false }}">
+        <section class="cap-rise" style="grid-column:1;grid-row:2;position:relative;overflow:hidden;border-radius:24px;background:linear-gradient(168deg,#0a2434,#051C2C 70%);box-shadow:0 1px 2px rgba(5,28,44,.14),0 18px 40px -24px rgba(5,28,44,.6);padding:20px 24px 22px">
+          <span style="position:absolute;right:-40px;top:-30px;width:190px;height:190px;color:#23D8D3;opacity:.07;pointer-events:none"><svg width="190" height="190" viewBox="355 525 455 590"><polygon fill="currentColor" points="800.7 535.53 800.7 1103.92 763 983.8 749.25 939.91 691.16 754.61 501.54 817.84 457.65 832.42 362.47 864.14 443.6 803.33 481.22 775.08 800.7 535.53"></polygon></svg></span>
+          <div style="position:relative;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+            <button onClick="{{ sair }}" style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;color:rgba(243,251,255,.6);transition:color 150ms ease" style-hover="color:#F3FBFF">{{ rotuloSair }}</button>
+            <span style="flex:1"></span>
+            <sc-if value="{{ ehFun }}" hint-placeholder-val="{{ false }}">
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;color:rgba(243,251,255,.7)"><b style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;color:#F3FBFF">{{ naRodada }}</b> na rodada</span>
+            </sc-if>
+            <sc-if value="{{ naoEhFun }}" hint-placeholder-val="{{ true }}">
+              <sc-for list="{{ contadores }}" as="c" hint-placeholder-count="3">
+                <span style="display:inline-flex;align-items:baseline;gap:6px;font-size:12px;color:rgba(243,251,255,.7)">
+                  <span style="{{ c.estPonto }}"></span><b style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;color:#F3FBFF">{{ c.valor }}</b>{{ c.label }}
+                </span>
+              </sc-for>
+            </sc-if>
+            <button onClick="{{ alternarFoco }}" style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;color:rgba(243,251,255,.6);transition:color 150ms ease" style-hover="color:#F3FBFF">◐ Foco</button>
+          </div>
+          <div style="position:relative;display:flex;align-items:center;gap:10px;margin-top:14px">
+            <div style="flex:1;min-width:0;height:5px;border-radius:999px;background:rgba(255,255,255,.1);overflow:hidden">
+              <span style="{{ estProgresso }}"></span>
+            </div>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:rgba(243,251,255,.5);white-space:nowrap">{{ progressoTexto }}</span>
+          </div>
+          <sc-if value="{{ temCard }}" hint-placeholder-val="{{ true }}">
+            <div class="{{ classeCard }}" onClick="{{ virar }}" style="{{ estCartao }}">
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">{{ card.kicker }}</div>
+              <div style="font-family:'Outfit',sans-serif;font-size:21px;font-weight:700;line-height:1.4;margin-top:12px;text-wrap:pretty;white-space:pre-line">{{ card.frente }}</div>
+              <sc-if value="{{ virado }}" hint-placeholder-val="{{ false }}">
+                <div style="height:1px;background:#edf1f3;margin:16px 0 0"></div>
+                <div style="font-size:15px;line-height:1.55;margin-top:14px;color:#3d4f5c;text-wrap:pretty;white-space:pre-line">{{ card.verso }}</div>
+              </sc-if>
+            </div>
+            <sc-if value="{{ naoVirado }}" hint-placeholder-val="{{ true }}">
+              <button onClick="{{ virar }}" style="position:relative;width:100%;height:44px;margin-top:11px;border-radius:999px;background:#F3FBFF;color:#051C2C;font-size:13.5px;font-weight:700;transition:background 150ms ease" style-hover="background:#fff">Mostrar resposta <span style="opacity:.55;font-weight:400">(espaço)</span></button>
+            </sc-if>
+            <sc-if value="{{ virado }}" hint-placeholder-val="{{ false }}">
+              <div style="position:relative;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:11px">
+                <sc-for list="{{ notas }}" as="n" hint-placeholder-count="4">
+                  <button onClick="{{ n.avaliar }}" style="{{ n.est }}">
+                    <span style="display:block">{{ n.label }} <span style="opacity:.6;font-weight:400;font-size:11px">({{ n.tecla }})</span></span>
+                    <span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:500;opacity:.75;margin-top:2px">{{ n.quando }}</span>
+                  </button>
+                </sc-for>
+              </div>
+            </sc-if>
+          </sc-if>
+          <sc-if value="{{ acabou }}" hint-placeholder-val="{{ false }}">
+            <div style="position:relative;margin-top:16px">
+              <div style="font-family:'Outfit',sans-serif;font-size:24px;font-weight:700;letter-spacing:-.03em;color:#F3FBFF">{{ fimTitulo }}</div>
+              <div style="font-size:12.5px;color:rgba(243,251,255,.6);margin-top:5px;text-wrap:pretty">{{ fimNota }}</div>
+              <div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:16px">
+                <button onClick="{{ sortear }}" style="height:38px;padding:0 17px;border-radius:999px;background:rgba(35,216,211,.14);color:#23D8D3;font-size:12.5px;font-weight:600;transition:background 150ms ease" style-hover="background:rgba(35,216,211,.24)">{{ rotuloSortear }}</button>
+                <button onClick="{{ sair }}" style="height:38px;padding:0 17px;border-radius:999px;background:rgba(255,255,255,.08);color:#F3FBFF;font-size:12.5px;font-weight:600;transition:background 150ms ease" style-hover="background:rgba(255,255,255,.16)">← Voltar</button>
+              </div>
+            </div>
+          </sc-if>
+        </section>
+        </sc-if>
+
+        <sc-if value="{{ naFila }}" hint-placeholder-val="{{ true }}">
+        <section class="cap-rise" style="grid-column:1;grid-row:2;position:relative;overflow:hidden;border-radius:24px;background:linear-gradient(168deg,#0a2434,#051C2C 70%);box-shadow:0 1px 2px rgba(5,28,44,.14),0 18px 40px -24px rgba(5,28,44,.6);padding:24px 26px 20px">
+          <span style="position:absolute;right:-40px;top:-30px;width:190px;height:190px;color:#23D8D3;opacity:.07;pointer-events:none"><svg width="190" height="190" viewBox="355 525 455 590"><polygon fill="currentColor" points="800.7 535.53 800.7 1103.92 763 983.8 749.25 939.91 691.16 754.61 501.54 817.84 457.65 832.42 362.47 864.14 443.6 803.33 481.22 775.08 800.7 535.53"></polygon></svg></span>
+          <div style="position:relative;display:flex;align-items:flex-end;gap:18px;flex-wrap:wrap">
+            <div style="flex:1 1 280px;min-width:0">
+              <div style="display:flex;align-items:center;gap:7px">
+                <span style="width:5px;height:14px;border-radius:999px;background:#23D8D3;flex-shrink:0"></span>
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#23D8D3">da vez</span>
+              </div>
+              <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-top:10px">
+                <span style="font-family:'Outfit',sans-serif;font-size:52px;font-weight:700;letter-spacing:-.04em;line-height:1;color:#F3FBFF">{{ totalHoje }}</span>
+                <span style="font-size:15px;color:rgba(243,251,255,.65)">{{ filaNota }}</span>
+              </div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
+                <sc-for list="{{ contadores }}" as="c" hint-placeholder-count="3">
+                  <span style="display:inline-flex;align-items:baseline;gap:7px;height:30px;padding:0 14px;border-radius:999px;background:rgba(255,255,255,.07);font-size:12.5px;color:rgba(243,251,255,.7)">
+                    <span style="{{ c.estPonto }}"></span><b style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;color:#F3FBFF">{{ c.valor }}</b>{{ c.label }}
+                  </span>
+                </sc-for>
+              </div>
+            </div>
+            <div style="display:flex;gap:9px;flex-wrap:wrap;align-items:center">
+              <button onClick="{{ estudar }}" style="{{ estBotaoEstudar }}">{{ rotuloEstudar }}</button>
+              <button onClick="{{ estudarFoco }}" style="height:44px;padding:0 18px;border-radius:999px;background:rgba(255,255,255,.08);color:#F3FBFF;font-size:13px;font-weight:600;transition:background 150ms ease" style-hover="background:rgba(255,255,255,.16)">◐ Foco</button>
+            </div>
+          </div>
+          <div style="position:relative;display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:20px;padding-top:16px;border-top:1px solid rgba(255,255,255,.09)">
+            <span style="font-size:12.5px;color:rgba(243,251,255,.7)">{{ funPergunta }}</span>
+            <button onClick="{{ sortear }}" style="height:32px;padding:0 15px;border-radius:999px;background:rgba(35,216,211,.14);color:#23D8D3;font-size:12px;font-weight:600;transition:background 150ms ease" style-hover="background:rgba(35,216,211,.24)">{{ rotuloSortear }}</button>
+            <span style="font-size:11px;color:rgba(243,251,255,.45);text-wrap:pretty">não conta no compromisso do dia nem mexe na agenda de revisões</span>
+          </div>
+        </section>
+        </sc-if>
+
+        <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);min-width:0;padding:20px 22px 22px;grid-column:2;grid-row:2">
+          <div style="display:flex;align-items:center;gap:7px">
+                <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">consistência</span>
+              </div>
+          <div style="display:flex;align-items:baseline;gap:9px;margin-top:10px">
+            <span style="font-family:'Outfit',sans-serif;font-size:40px;font-weight:700;line-height:1;letter-spacing:-.035em;color:#0F766E">{{ streak }}</span>
+            <span style="font-size:13px;color:#3d4f5c">dias seguidos</span>
+          </div>
+          <div style="font-size:11.5px;color:#5a6b77;margin-top:7px">{{ consistenciaNota }}</div>
+          <div style="display:flex;gap:4px;margin-top:16px;overflow:hidden">
+            <sc-for list="{{ heatmap }}" as="col" hint-placeholder-count="14">
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <sc-for list="{{ col }}" as="cel" hint-placeholder-count="7">
+                  <span style="{{ cel }}"></span>
+                </sc-for>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;align-items:center;gap:7px;margin-top:12px;font-size:10.5px;color:#8b99a4">
+            <span>menos</span>
+            <span style="width:10px;height:10px;border-radius:999px;background:#eff2f3"></span>
+            <span style="width:10px;height:10px;border-radius:999px;background:#cfe6e3"></span>
+            <span style="width:10px;height:10px;border-radius:999px;background:#a9d5d0"></span>
+            <span style="width:10px;height:10px;border-radius:999px;background:#5fb6ae"></span>
+            <span style="width:10px;height:10px;border-radius:999px;background:#0F766E"></span>
+            <span>mais</span>
+          </div>
+        </section>
+
+        <div style="grid-column:1;grid-row:3;min-width:0;display:flex;flex-direction:column;gap:12px">
+          <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);min-width:0;padding:22px 14px 18px">
+            <div style="margin:0 10px 6px">
+              <div style="display:flex;align-items:center;gap:7px">
+                <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">seus baralhos</span>
+              </div>
+              <div style="font-size:12px;color:#5a6b77;margin-top:5px;padding-left:12px">pontuação = cards que você já domina · a fila do dia mistura os temas sozinha</div>
+            </div>
+            <sc-for list="{{ baralhos }}" as="b" hint-placeholder-count="4">
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:12px 14px;border-radius:26px;transition:background 150ms ease" style-hover="background:#f5f7f8">
+                <div style="flex:1 1 180px;min-width:150px">
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <strong style="font-size:13.5px;font-weight:650">{{ b.nome }}</strong>
+                    <span style="{{ b.estEscopo }}">{{ b.escopo }}</span>
+                  </div>
+                  <div style="font-size:11.5px;color:#5a6b77;margin-top:3px">{{ b.dominados }}</div>
+                </div>
+                <strong style="{{ b.estPct }}">{{ b.pct }}</strong>
+                <div style="flex:1 1 150px;min-width:120px">
+                  <div style="height:8px;border-radius:999px;background:#e4e9eb;overflow:hidden"><span class="cap-grow" style="{{ b.estBarra }}"></span></div>
+                  <div style="font-size:11px;color:#5a6b77;margin-top:5px">{{ b.hoje }}</div>
+                </div>
+                <button onClick="{{ b.estudar }}" style="{{ b.estBotao }}">{{ b.rotuloBotao }}</button>
+              </div>
+            </sc-for>
+          </section>
+
+          <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);min-width:0;padding:20px 22px 12px">
+            <div style="display:flex;align-items:center;gap:7px">
+                <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">referências</span>
+              </div>
+            <div style="font-size:12px;color:#5a6b77;margin:5px 0 8px;padding-left:12px">abrem quando você precisa</div>
+            <sc-for list="{{ referencias }}" as="r" hint-placeholder-count="3">
+              <div style="{{ r.est }}">
+                <div style="display:flex;align-items:center;gap:12px">
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:13.5px;font-weight:600">{{ r.titulo }}</div>
+                    <div style="font-size:11.5px;color:#5a6b77;margin-top:2px;text-wrap:pretty">{{ r.hint }}</div>
+                  </div>
+                  <button onClick="{{ r.alternar }}" style="flex-shrink:0;height:30px;padding:0 14px;border-radius:999px;background:#f1f4f5;color:#0F766E;font-size:12px;font-weight:600;transition:background 150ms ease" style-hover="background:#E9F5F3">{{ r.rotulo }}</button>
+                </div>
+                <sc-if value="{{ r.aberta }}" hint-placeholder-val="{{ false }}">
+                  <div style="margin:4px 0 12px;padding:13px 15px;border-radius:20px;background:#f7f9fa">
+                    <sc-for list="{{ r.itens }}" as="i" hint-placeholder-count="3">
+                      <div style="display:flex;gap:9px;align-items:baseline;padding:4px 0">
+                        <span style="flex-shrink:0;width:5px;height:5px;border-radius:999px;background:#0F766E;margin-top:6px"></span>
+                        <span style="flex:1;min-width:0;font-size:12px;line-height:1.5;color:#3d4f5c;text-wrap:pretty">{{ i }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </section>
+        </div>
+
+        <div style="grid-column:2;grid-row:3;min-width:0;display:flex;flex-direction:column;gap:12px;align-items:stretch">
+          <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);min-width:0;padding:20px 22px 20px;flex:1 1 auto;display:flex;flex-direction:column">
+            <div style="display:flex;align-items:center;gap:7px">
+                <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">domínio geral</span>
+              </div>
+            <div style="font-family:'Outfit',sans-serif;font-size:44px;font-weight:700;letter-spacing:-.04em;line-height:1.05;margin-top:10px">{{ dominioPct }}</div>
+            <div style="font-size:12px;color:#5a6b77;margin-top:4px">{{ dominioNota }}</div>
+            <div style="height:1px;background:#edf1f3;margin:18px 0 14px"></div>
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:#0F766E">sua memória</div>
+            <div style="margin-top:8px;display:flex;flex-direction:column;justify-content:space-between;flex:1 1 auto">
+              <sc-for list="{{ memoria }}" as="m" hint-placeholder-count="4">
+                <div style="{{ m.est }}">
+                  <span style="font-size:12.5px;color:#5a6b77">{{ m.rot }}</span>
+                  <span style="text-align:right;white-space:nowrap"><b style="{{ m.estValor }}">{{ m.valor }}</b><span style="{{ m.estExtra }}">{{ m.extra }}</span></span>
+                </div>
+              </sc-for>
+            </div>
+          </section>
+
+          <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);min-width:0;padding:20px 22px 22px">
+            <div style="display:flex;align-items:center;gap:7px">
+                <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">prova de checkpoint</span>
+              </div>
+            <div style="display:flex;align-items:baseline;gap:9px;margin-top:10px">
+              <span style="font-family:'Outfit',sans-serif;font-size:26px;font-weight:700;letter-spacing:-.03em;line-height:1">{{ provaFaltam }}</span>
+              <span style="font-size:12.5px;color:#3d4f5c">{{ provaTexto }}</span>
+            </div>
+            <div style="height:8px;border-radius:999px;background:#e4e9eb;overflow:hidden;margin-top:12px"><span class="cap-grow" style="{{ estProva }}"></span></div>
+            <div style="font-size:10.5px;color:#8b99a4;margin-top:9px">a prova de checkpoint cai a cada 30 cards</div>
+          </section>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ modoEquipe }}" hint-placeholder-val="{{ false }}">
+          <section class="cap-rise" style="grid-column:1 / -1;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);min-width:0">
+            <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;padding:20px 20px 12px">
+              <div style="flex:1;min-width:180px">
+                <div style="display:flex;align-items:center;gap:7px">
+                  <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+                  <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">quem está em dia</span>
+                </div>
+                <div style="font-size:12px;color:#5a6b77;margin-top:5px;padding-left:12px">a fila é individual · o gestor vê o domínio e a consistência de cada um</div>
+              </div>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4">{{ equipeResumo }}</span>
+            </div>
+            <div style="overflow-x:auto">
+            <div style="min-width:720px">
+              <div style="display:grid;grid-template-columns:minmax(170px,1.3fr) minmax(150px,1fr) minmax(110px,.8fr) minmax(90px,.6fr) minmax(120px,.8fr);gap:12px;padding:11px 20px;border-top:1px solid #edf1f3;border-bottom:1px solid #edf1f3;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#8b99a4">
+                <span>Pessoa</span><span>Domínio</span><span>Fila de hoje</span><span>Streak</span><span>Última prova</span>
+              </div>
+              <sc-for list="{{ equipe }}" as="p" hint-placeholder-count="5">
+                <div>
+                <div onClick="{{ p.alternar }}" style="{{ p.est }}" style-hover="background:#f7f9fa">
+                  <div style="display:flex;align-items:center;gap:9px;min-width:0">
+                    <span style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:999px;background:#0c1d2b;color:#fff;font-family:'Outfit',sans-serif;font-size:11px;font-weight:700">{{ p.iniciais }}</span>
+                    <div style="min-width:0">
+                      <div style="font-size:13.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.nome }}</div>
+                      <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#5a6b77;letter-spacing:.06em;text-transform:uppercase">{{ p.papel }}</div>
+                    </div>
+                  </div>
+                  <div style="min-width:0">
+                    <div style="display:flex;align-items:baseline;gap:7px"><b style="font-family:'Outfit',sans-serif;font-size:15px;font-weight:700;color:{{ p.cor }}">{{ p.pct }}</b><span style="font-size:11px;color:#8b99a4">{{ p.dominados }}</span></div>
+                    <div style="height:6px;border-radius:999px;background:#e4e9eb;overflow:hidden;margin-top:5px"><span class="cap-grow" style="{{ p.estBarra }}"></span></div>
+                  </div>
+                  <span style="{{ p.estFila }}">{{ p.fila }}</span>
+                  <span style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;color:{{ p.corStreak }}">{{ p.streak }}</span>
+                  <span style="min-width:0;display:flex;align-items:center;gap:8px">
+                    <span style="min-width:0">
+                      <span style="display:block;font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;color:{{ p.corProva }}">{{ p.prova }}</span>
+                      <span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#8b99a4">{{ p.provaQuando }}</span>
+                    </span>
+                    <span style="margin-left:auto;font-size:11px;color:#8b99a4">{{ p.seta }}</span>
+                  </span>
+                </div>
+                <sc-if value="{{ p.aberta }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:4px 20px 16px;background:#f7f9fa;border-bottom:1px solid #edf1f3">
+                    <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77;padding:8px 0 10px">a memória de {{ p.primeiro }}</div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,128px),1fr));gap:8px">
+                      <sc-for list="{{ p.metricas }}" as="m" hint-placeholder-count="6">
+                        <div style="padding:11px 13px;border-radius:16px;background:#fff">
+                          <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:#5a6b77">{{ m.k }}</div>
+                          <div style="display:flex;align-items:baseline;gap:6px;margin-top:4px">
+                            <b style="font-family:'Outfit',sans-serif;font-size:17px;font-weight:700;color:{{ m.cor }}">{{ m.v }}</b>
+                            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;color:#8b99a4">{{ m.nota }}</span>
+                          </div>
+                        </div>
+                      </sc-for>
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">
+                      <sc-for list="{{ p.baralhos }}" as="b" hint-placeholder-count="4">
+                        <span style="{{ b.est }}"><span style="opacity:.7">{{ b.nome }}</span><b style="font-weight:700">{{ b.pct }}</b></span>
+                      </sc-for>
+                    </div>
+                  </div>
+                </sc-if>
+                </div>
+              </sc-for>
+            </div>
+            </div>
+          </section>
+        </sc-if>
+
+        <sc-if value="{{ modoEditar }}" hint-placeholder-val="{{ false }}">
+          <section class="cap-rise" style="grid-column:1;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);min-width:0">
+            <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;padding:20px 16px 12px">
+              <div style="flex:1;min-width:170px">
+                <div style="display:flex;align-items:center;gap:7px">
+                  <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+                  <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">a base do time</span>
+                </div>
+                <div style="font-size:12px;color:#5a6b77;margin-top:5px;padding-left:12px">o que você escreve aqui é o que o time estuda</div>
+              </div>
+              <select value="{{ deckEdit }}" onChange="{{ mudarDeck }}" style="height:32px;padding:0 12px;border-radius:999px;border:0;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;font-family:inherit;font-size:12px;font-weight:600;color:#3d4f5c;cursor:pointer">
+                <sc-for list="{{ decksOpcoes }}" as="d" hint-placeholder-count="4">
+                  <option value="{{ d.id }}">{{ d.label }}</option>
+                </sc-for>
+              </select>
+              <button onClick="{{ novoCard }}" style="height:32px;padding:0 15px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:12px;font-weight:650;transition:background 150ms ease" style-hover="background:#1b3140">Adicionar card</button>
+            </div>
+            <sc-for list="{{ cardsEdit }}" as="c" hint-placeholder-count="4">
+              <div style="{{ c.est }}">
+                <div style="display:flex;align-items:flex-start;gap:10px">
+                  <span style="{{ c.estEstado }}">{{ c.estado }}</span>
+                  <div style="flex:1;min-width:0">
+                    <textarea value="{{ c.frente }}" onChange="{{ c.mudarFrente }}" placeholder="a pergunta (frente)" style="width:100%;min-height:38px;resize:vertical;border:0;border-radius:14px;background:#fff;box-shadow:inset 0 0 0 1px #e4e9eb;padding:9px 12px;font-family:inherit;font-size:12.5px;font-weight:600;line-height:1.45;color:#0c1d2b;outline:none"></textarea>
+                    <textarea value="{{ c.verso }}" onChange="{{ c.mudarVerso }}" placeholder="a resposta (verso)" style="width:100%;min-height:44px;resize:vertical;border:0;border-radius:14px;background:#fff;box-shadow:inset 0 0 0 1px #e4e9eb;padding:9px 12px;margin-top:6px;font-family:inherit;font-size:12px;line-height:1.5;color:#3d4f5c;outline:none"></textarea>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0">
+                    <button onClick="{{ c.prever }}" style="{{ c.estPrever }}">{{ c.rotuloPrever }}</button>
+                    <button onClick="{{ c.excluir }}" style="height:26px;padding:0 10px;border-radius:999px;background:transparent;color:#b42318;font-size:11px;font-weight:600;transition:background 150ms ease" style-hover="background:#fdf3f2">Excluir</button>
+                  </div>
+                </div>
+                <sc-if value="{{ c.prevendo }}" hint-placeholder-val="{{ false }}">
+                  <div style="margin:10px 0 2px;padding:13px 15px;border-radius:18px;background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.06)">
+                    <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">como o time vai ver</div>
+                    <div style="font-family:'Outfit',sans-serif;font-size:15px;font-weight:700;line-height:1.4;margin-top:8px;text-wrap:pretty">{{ c.frente }}</div>
+                    <div style="height:1px;background:#edf1f3;margin:10px 0"></div>
+                    <div style="font-size:12.5px;line-height:1.55;color:#3d4f5c;text-wrap:pretty">{{ c.verso }}</div>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+            <div style="padding:14px 20px;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4">{{ cardsNota }}</div>
+          </section>
+
+          <aside style="min-width:0;display:flex;flex-direction:column;gap:12px">
+            <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);min-width:0;padding:20px 22px 20px">
+              <div style="display:flex;align-items:center;gap:7px">
+                <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">o baralho</span>
+              </div>
+              <div style="font-family:'Outfit',sans-serif;font-size:19px;font-weight:700;letter-spacing:-.02em;margin-top:10px">{{ deckNome }}</div>
+              <div style="font-size:12px;color:#5a6b77;margin-top:4px">{{ deckEscopo }}</div>
+              <div style="margin-top:16px">
+                <sc-for list="{{ deckNumeros }}" as="d" hint-placeholder-count="3">
+                  <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid #edf1f3">
+                    <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#5a6b77">{{ d.k }}</span>
+                    <b style="font-family:'Outfit',sans-serif;font-size:15px;font-weight:700">{{ d.v }}</b>
+                  </div>
+                </sc-for>
+              </div>
+            </section>
+            <section class="cap-rise" style="background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);min-width:0;padding:18px 20px">
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">como escrever um card</div>
+              <div style="display:flex;flex-direction:column;gap:7px;margin-top:10px">
+                <sc-for list="{{ dicasCard }}" as="d" hint-placeholder-count="3">
+                  <div style="display:flex;gap:9px;align-items:baseline">
+                    <span style="flex-shrink:0;width:5px;height:5px;border-radius:999px;background:#0F766E;margin-top:6px"></span>
+                    <span style="flex:1;min-width:0;font-size:12px;line-height:1.5;color:#3d4f5c;text-wrap:pretty">{{ d }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </section>
+          </aside>
+        </sc-if>
+      </div>
+    </div>
+
+    <sc-if value="{{ foco }}" hint-placeholder-val="{{ false }}">
+      <div class="cap-foco" style="position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:32px;background:#061620">
+        <div style="width:100%;max-width:640px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:center">
+          <sc-if value="{{ ehFun }}" hint-placeholder-val="{{ false }}">
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;color:rgba(255,255,255,.5)"><b style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;color:rgba(255,255,255,.9)">{{ naRodada }}</b> na rodada</span>
+          </sc-if>
+          <sc-if value="{{ naoEhFun }}" hint-placeholder-val="{{ true }}">
+            <sc-for list="{{ contadores }}" as="c" hint-placeholder-count="3">
+              <span style="display:inline-flex;align-items:baseline;gap:6px;font-size:12px;color:rgba(255,255,255,.5)">
+                <span style="{{ c.estPonto }}"></span><b style="font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;color:rgba(255,255,255,.9)">{{ c.valor }}</b>{{ c.label }}
+              </span>
+            </sc-for>
+          </sc-if>
+        </div>
+        <div style="width:100%;max-width:640px;display:flex;align-items:center;gap:10px">
+          <div style="flex:1;min-width:0;height:5px;border-radius:999px;background:rgba(255,255,255,.1);overflow:hidden"><span style="{{ estProgresso }}"></span></div>
+          <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:rgba(255,255,255,.4);white-space:nowrap">{{ progressoTexto }}</span>
+        </div>
+        <sc-if value="{{ temCard }}" hint-placeholder-val="{{ true }}">
+          <div class="{{ classeCard }}" onClick="{{ virar }}" style="width:100%;max-width:640px;border-radius:24px;background:#fff;box-shadow:0 24px 90px rgba(0,0,0,.55);padding:32px 32px 28px;cursor:pointer">
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">{{ card.kicker }}</div>
+            <div style="font-family:'Outfit',sans-serif;font-size:26px;font-weight:700;line-height:1.4;margin-top:14px;text-wrap:pretty;white-space:pre-line">{{ card.frente }}</div>
+            <sc-if value="{{ virado }}" hint-placeholder-val="{{ false }}">
+              <div style="height:1px;background:#edf1f3;margin:18px 0 0"></div>
+              <div style="font-size:16.5px;line-height:1.55;margin-top:16px;color:#3d4f5c;text-wrap:pretty;white-space:pre-line">{{ card.verso }}</div>
+            </sc-if>
+          </div>
+          <div style="width:100%;max-width:640px">
+            <sc-if value="{{ naoVirado }}" hint-placeholder-val="{{ true }}">
+              <button onClick="{{ virar }}" style="width:100%;height:48px;border-radius:999px;background:#F3FBFF;color:#051C2C;font-size:14px;font-weight:700;transition:background 150ms ease" style-hover="background:#fff">Mostrar resposta <span style="opacity:.55;font-weight:400">(espaço)</span></button>
+            </sc-if>
+            <sc-if value="{{ virado }}" hint-placeholder-val="{{ false }}">
+              <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px">
+                <sc-for list="{{ notas }}" as="n" hint-placeholder-count="4">
+                  <button onClick="{{ n.avaliar }}" style="{{ n.estFoco }}">
+                    <span style="display:block">{{ n.label }} <span style="opacity:.6;font-weight:400;font-size:11px">({{ n.tecla }})</span></span>
+                    <span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:500;opacity:.75;margin-top:2px">{{ n.quando }}</span>
+                  </button>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+        <sc-if value="{{ acabou }}" hint-placeholder-val="{{ false }}">
+          <div style="text-align:center;max-width:520px">
+            <div style="font-family:'Outfit',sans-serif;font-size:26px;font-weight:700;color:#F3FBFF">{{ fimTitulo }}</div>
+            <div style="font-size:13px;color:rgba(255,255,255,.55);margin-top:6px;text-wrap:pretty">{{ fimNota }}</div>
+          </div>
+        </sc-if>
+        <button onClick="{{ alternarFoco }}" style="font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;color:rgba(255,255,255,.45);transition:color 150ms ease" style-hover="color:#fff">Sair do foco (esc)</button>
+      </div>
+    </sc-if>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Treinamentos (screens/training.jsx): flashcards com repetição espaçada.
+  // Frente → "Mostrar resposta" (espaço) → os 4 botões do Anki (1 Errei volta
+  // em minutos · 4 Fácil espaça dias). O bucket do card sai do srs.state:
+  // 0 = novo, 1 = aprendendo, 2 = revisão. Modo foco é a MESMA sessão em tela
+  // cheia escura. 4fun sorteia FUN_ROUND = 20 cards e não mexe na agenda.
+  static FUN_ROUND = 20;
+  static NOTAS = [
+    { n: 1, label: "Errei", quando: "em 10 min", cor: "#b42318", bg: "#fdf3f2" },
+    { n: 2, label: "Difícil", quando: "em 1 dia", cor: "#a16207", bg: "#fbf4e6" },
+    { n: 3, label: "Bom", quando: "em 4 dias", cor: "#177a4c", bg: "#e9f6ef" },
+    { n: 4, label: "Fácil", quando: "em 9 dias", cor: "#0F766E", bg: "#E9F5F3" },
+  ];
+  static BARALHOS = [
+    { id: "sdr", nome: "SDR · qualificação", escopo: "sua vaga", dominados: 118, total: 190 },
+    { id: "obj", nome: "Objeções e scripts", escopo: "sua vaga", dominados: 63, total: 85 },
+    { id: "prod", nome: "Produto LeverAds", escopo: "todo o time", dominados: 41, total: 86 },
+    { id: "cult", nome: "Cultura e empresa", escopo: "todo o time", dominados: 14, total: 40 },
+  ];
+  static REFS = [
+    { titulo: "ICP · quem a gente caça", hint: "o perfil que fecha e a matriz da nota (contas × anúncios)", itens: [
+      "2+ contas no marketplace · R$ 150 mil+/mês · 3 anúncios ativos na maior conta",
+      "A nota sai do cruzamento contas × anúncios: S e A fecham, C e D pedem qualificação mais dura",
+      "Quem tem uma conta só entra como Alvo (outbound), não como Rede"] },
+    { titulo: "O papel de cada vaga", hint: "mídia social → SDR → closer → CS · entender o vizinho é parte do jogo", itens: [
+      "Mídia social traz o lead pelo anúncio e pelo formulário",
+      "SDR confirma os dados na ordem e marca a call com o especialista",
+      "Closer roda a call de fechamento com demo ao vivo nas contas do cliente",
+      "CS toca a integração e cobra as duas indicações no pós-venda"] },
+    { titulo: "A empresa · missão, números e cultura", hint: "o mapa que os cards aprofundam", itens: [
+      "LEVER ADS SOFTWARE HOUSE LTDA · CNPJ 67.931.740/0001-12 · Santo André/SP",
+      "41 clientes ativos · R$ 148.300 de MRR · R$ 1.779.600 de ARR",
+      "Preço fixo, sem taxa por pedido: a gente não quer ser sócio do cliente"] },
+  ];
+
+  // Cards por baralho (o conteúdo é o que os roteiros e as referências ensinam).
+  static CARDS = [
+    ["sdr", 0, "Quais são os três critérios do ICP da LeverAds?", "2 ou mais contas no marketplace · faturamento de R$ 150 mil/mês pra cima · pelo menos 3 anúncios ativos na maior conta."],
+    ["sdr", 2, "Na ordem do 1º ato, o que vem ANTES de pedir o e-mail?", "Marcar a call. O e-mail fecha a conversa: é por ele que o convite do Meet sai."],
+    ["sdr", 1, "Quantas tentativas de ligação o 1º ato pede antes do WhatsApp?", "Duas: liga e aguarda; não atendeu, liga de novo em seguida. Caiu na caixa duas vezes, manda a apresentação por WhatsApp."],
+    ["sdr", 0, "O que faz a call render de verdade, além do horário?", "Logins do Mercado Livre e da Shopee em mãos (a demo é ao vivo nas contas dele) e o decisor presente."],
+    ["sdr", 2, "Sem retorno na 3ª tentativa, para onde vai o card?", "Nutrição. O GPS devolve o lead em 7 dias, num dia útil, com o contato de prova de resultado."],
+    ["obj", 1, "O lead diz que replicar vai canibalizar as vendas. O que responder?", "Replicar não canibaliza: a Unique dobrou a conta 2 e a conta 1 ainda subiu 20%. São vitrines diferentes com o mesmo catálogo."],
+    ["obj", 0, "Qual é a âncora única de preço?", "Plano anual: R$ 7.188, em 12x de R$ 599 sem juros, ou R$ 6.488 à vista no Pix (10% de desconto). Preço fixo, sem taxa por pedido."],
+    ["obj", 2, "Quando a escada (semestral e serviço único) entra na conversa?", "Só se o lead travar em caixa — e com validade real: a condição vale nesta call."],
+    ["obj", 1, "Qual pergunta define a narrativa da call de fechamento?", "A da suspensão: \"você já teve conta suspensa ou derrubada no Mercado Livre?\". Se sim, a call vira PROTEÇÃO; se não, vira CRESCIMENTO."],
+    ["prod", 0, "Quais são as três etapas do método?", "Clonagem entre contas · conta-mãe segurando o estoque com baixa automática · IA completando título e atributos pro anúncio nascer com nota máxima."],
+    ["prod", 1, "Com quais ERPs a baixa automática roda junto?", "Bling e Tiny — o estoque da conta-mãe não fura."],
+    ["prod", 2, "O que é a conta-mãe?", "A conta matriz: o que você publica nela replica pras outras, e o que já está lá é clonado na integração."],
+    ["prod", 0, "Quanto tempo leva a call de integração?", "Uns 20 minutos, por vídeo com tela compartilhada — e no mesmo dia os anúncios já começam a replicar."],
+    ["cult", 0, "Qual case usar com quem duvida da estratégia de contas?", "A Unique: +105% de receita na conta 2 espelhando o catálogo, sem perder na conta 1."],
+    ["cult", 1, "Qual case usar com quem tem pressa?", "A Dyno Nutri: R$ 60 mil a mais em 20 dias."],
+    ["cult", 2, "Quantas indicações o CS pede por cliente?", "Duas, no pós-venda — e a semente é plantada na própria integração."],
+    ["sdr", 1, "O formulário já respondeu o nicho. O que fazer com o dado na ligação?", "Confirmar, não redescobrir: \"vi que você trabalha com {nicho}, é isso mesmo?\" — a pergunta crua queima o tempo da conversa."],
+    ["sdr", 2, "Quantas opções de horário oferecer ao marcar a call?", "Sempre duas: \"fica melhor amanhã de manhã ou no fim da tarde?\"."],
+    ["obj", 0, "O lead diz que já tem quem faça isso na mão. Como responder?", "Pergunte quanto tempo do time isso come por semana e quantas vendas ficam na mesa enquanto o produto não está nas outras contas."],
+    ["obj", 2, "Qual é o fechamento da call — a pergunta que se faz?", "Não é \"quer fechar?\". É agendar a integração: \"que horário amanhã pro nosso integrador migrar seus anúncios, 13h ou 17h?\"."],
+    ["prod", 1, "O que a IA faz no anúncio clonado?", "Completa título e atributos pro anúncio chegar com nota máxima na conta destino."],
+    ["prod", 2, "O que acontece com o que a gente lançar durante o contrato?", "Está incluso — o preço é fixo e não tem taxa por pedido."],
+    ["cult", 0, "Quem é a contratada nos contratos?", "LEVER ADS SOFTWARE HOUSE LTDA · CNPJ 67.931.740/0001-12 · Santo André/SP."],
+    ["cult", 1, "Qual é a régua de marcos do cliente novo?", "Onboarding · check-in de mês 1 · revisão de resultado · depoimento e case · conversa de upsell · contato de renovação."],
+  ];
+
+  static gerar() {
+    return Component.CARDS.map(([deck, estado, frente, verso], i) => ({ id: i, deck, estado, frente, verso, visto: 0 }));
+  }
+
+  state = { modo: "Estudar", pessoaAberta: null, deckEdit: "sdr", prevendo: null, seq: 1, sessao: null, fila: [], idx: 0, virado: false, foco: false, fun: false,
+    cards: Component.gerar(), feitosHoje: 14, streak: 12, abertas: {}, total0: 0, provaFeitos: 22 };
+
+  componentDidMount() {
+    this._key = (e) => {
+      if (!this.state.sessao) return;
+      if (e.target && /TEXTAREA|INPUT/.test(e.target.tagName)) return;
+      if (e.key === "Escape" && this.state.foco) { this.setState({ foco: false }); return; }
+      if ((e.key === " " || e.key === "Enter") && !this.state.virado) { e.preventDefault(); this.setState({ virado: true }); return; }
+      if (this.state.virado && ["1", "2", "3", "4"].includes(e.key)) { e.preventDefault(); this.avaliar(Number(e.key)); }
+    };
+    window.addEventListener("keydown", this._key);
+  }
+  componentWillUnmount() { window.removeEventListener("keydown", this._key); }
+
+  seg(ativo) {
+    return "height:32px;padding:0 18px;border-radius:999px;font-size:12.5px;white-space:nowrap;transition:background 150ms ease,color 150ms ease;" +
+      (ativo ? "background:#0c1d2b;color:#fff;font-weight:600" : "background:transparent;color:#5a6b77;font-weight:500");
+  }
+  // fila do dia: novos + aprendendo + a revisar, misturando os temas
+  // Fila do dia: só o que a memória pede hoje. Card graduado nesta sessão
+  // (revisto) ganha data futura e sai da fila — voltar a estudá-lo no mesmo dia
+  // era o texto de "fila zerada" brigando com a fila cheia.
+  filaDoDia(deck) {
+    const base = this.state.cards.filter((c) => (!deck || c.deck === deck) && !c.revistoHoje);
+    const ordem = [1, 0, 2]; // aprendendo primeiro, novo, revisão
+    return base.slice().sort((a, b) => ordem.indexOf(a.estado) - ordem.indexOf(b.estado)).map((c) => c.id);
+  }
+  abrirSessao(deck, foco, fun) {
+    const fila = fun
+      ? this.state.cards.map((c) => c.id).slice().sort(() => Math.random() - .5).slice(0, Component.FUN_ROUND)
+      : this.filaDoDia(deck);
+    this.setState({ sessao: deck || "todos", fila, idx: 0, virado: false, total0: fila.length, foco: !!foco, fun: !!fun });
+  }
+  avaliar(nota) {
+    const st = this.state;
+    const id = st.fila[st.idx];
+    if (id == null) return;
+    this.setState((s2) => {
+      // Errei volta pro fim da fila (em minutos); as outras graduam o card.
+      const fila = nota === 1 ? s2.fila.concat([id]) : s2.fila;
+      const cards = s2.cards.map((c) => {
+        if (c.id !== id) return c;
+        const estado = nota === 1 ? 1 : nota === 2 ? 1 : 2;
+        // Errei/Difícil seguem na fila de hoje; Bom/Fácil marcam a revisão feita.
+        return { ...c, estado, visto: c.visto + 1, revistoHoje: s2.fun ? c.revistoHoje : nota >= 3 };
+      });
+      return { fila, cards, idx: s2.idx + 1, virado: false,
+        feitosHoje: s2.fun ? s2.feitosHoje : s2.feitosHoje + 1,
+        provaFeitos: s2.fun || nota === 1 ? s2.provaFeitos : Math.min(30, s2.provaFeitos + 1) };
+    });
+  }
+
+  renderVals() {
+    const st = this.state;
+    const cardAtual = st.sessao ? st.cards.find((c) => c.id === st.fila[st.idx]) : null;
+    const naFila = !st.sessao;
+    const pendentes = st.cards.filter((c) => !c.revistoHoje);
+    const porEstado = (e) => pendentes.filter((c) => c.estado === e).length;
+    const restantes = st.sessao ? st.fila.slice(st.idx) : st.cards.map((c) => c.id);
+    const contaRestante = (e) => restantes.filter((id) => { const c = st.cards.find((x) => x.id === id); return c && c.estado === e; }).length;
+    const dominados = st.cards.filter((c) => c.estado === 2).length;
+
+    const NOME_DECK = { sdr: "SDR · qualificação", obj: "Objeções e scripts", prod: "Produto LeverAds", cult: "Cultura e empresa" };
+    const BUCKET = { 0: "card novo", 1: "aprendendo", 2: "revisão" };
+
+    const vals = {
+      mov: this.props.movimento === false ? "off" : "on",
+      modos: [["Estudar", "Estudar"], ["equipe", "Equipe"], ["editar", "Editar"]].map(([id, label]) => ({
+        label, est: this.seg(st.modo === id), escolher: () => this.setState({ modo: id }),
+      })),
+      naFila, estudando: !!st.sessao, foco: st.foco,
+      modoEstudar: st.modo === "Estudar", modoEquipe: st.modo === "equipe", modoEditar: st.modo === "editar",
+      // No 4fun a fonte troca os três CountDot por "N na rodada": a rodada não
+      // mexe na agenda de revisões, então mostrar "a revisar" ali engana.
+      ehFun: !!st.fun, naoEhFun: !st.fun,
+      naRodada: String(Math.max(0, st.fila.length - st.idx)),
+      streak: String(st.streak),
+      consistenciaNota: "melhor 21d · " + st.feitosHoje + " feitas hoje · 4fun 60 no total",
+      totalHoje: String(pendentes.length),
+      filaNota: pendentes.length ? "cards no treino de hoje" : "a fila de hoje está zerada",
+      contadores: [
+        { label: "novos", valor: String(st.sessao ? contaRestante(0) : porEstado(0)), cor: "#23D8D3" },
+        { label: "aprendendo", valor: String(st.sessao ? contaRestante(1) : porEstado(1)), cor: "#d6a249" },
+        { label: "a revisar", valor: String(st.sessao ? contaRestante(2) : porEstado(2)), cor: "#4fbe84" },
+      ].map((c) => ({ ...c, estPonto: "width:7px;height:7px;border-radius:999px;align-self:center;flex-shrink:0;background:" + c.cor })),
+      rotuloEstudar: !pendentes.length ? "Fila zerada ✓" : st.feitosHoje > 14 ? "Continuar →" : "Estudar →",
+      estBotaoEstudar: "height:44px;padding:0 22px;border-radius:999px;font-size:14px;font-weight:700;transition:background 150ms ease;" +
+        (pendentes.length ? "background:#F3FBFF;color:#051C2C" : "background:rgba(35,216,211,.16);color:#23D8D3;cursor:default"),
+      estudar: () => { if (pendentes.length) this.abrirSessao(null, false, false); },
+      estudarFoco: () => { if (pendentes.length) this.abrirSessao(null, true, false); },
+      funPergunta: st.sessao ? "Quer continuar fora da fila?" : "Acabou a fila e quer continuar?",
+      rotuloSortear: "Sortear " + Component.FUN_ROUND + " cards · 4fun →",
+      sortear: () => this.abrirSessao(null, st.foco, true),
+      rotuloSair: st.fun ? "← sair do 4fun" : "← baralhos",
+      sair: () => this.setState({ sessao: null, foco: false, fun: false, virado: false }),
+      alternarFoco: () => this.setState((s2) => ({ foco: !s2.foco })),
+      virar: () => { if (!st.virado) this.setState({ virado: true }); },
+      virado: st.virado, naoVirado: !st.virado,
+      temCard: !!cardAtual, acabou: !!st.sessao && !cardAtual,
+      classeCard: "cap-card",
+      estCartao: "position:relative;margin-top:14px;border-radius:20px;background:#fff;box-shadow:0 2px 6px rgba(5,28,44,.18);padding:22px 24px 20px;min-height:150px;display:flex;flex-direction:column;" +
+        (st.virado ? "cursor:default" : "cursor:pointer"),
+      // done / total do SessionProgress: o total cresce quando um card volta
+      // pra fila (Errei), então a barra nunca passa de 100%.
+      estProgresso: "display:block;height:100%;border-radius:999px;background:#23D8D3;width:" +
+        (st.fila.length ? Math.min(100, Math.round((st.idx / st.fila.length) * 100)) : 0) + "%",
+      progressoTexto: st.fila.length ? st.idx + " de " + st.fila.length : "",
+      notas: Component.NOTAS.map((n) => ({
+        label: n.label, tecla: String(n.n), quando: n.quando,
+        est: "height:58px;border-radius:16px;background:" + n.bg + ";color:" + n.cor + ";font-weight:700;font-size:13px;transition:filter 150ms ease",
+        estFoco: "height:58px;border-radius:16px;background:" + n.bg + ";color:" + n.cor + ";font-weight:700;font-size:14px;transition:filter 150ms ease",
+        avaliar: () => this.avaliar(n.n),
+      })),
+      fimTitulo: st.fun ? "Rodada 4fun fechada" : "Fila de hoje zerada",
+      fimSubtitulo: "",
+      fimNota: st.fun
+        ? "O 4fun não conta no compromisso do dia nem mexe na agenda de revisões."
+        : "Você passou pelos " + st.total0 + " cards do treino. A próxima leva volta amanhã, na hora que a memória pede.",
+      baralhos: Component.BARALHOS.map((b) => {
+        const meus = st.cards.filter((c) => c.deck === b.id);
+        const graduados = meus.filter((c) => c.estado === 2).length;
+        const dom = b.dominados + graduados;
+        const pct = Math.round((dom / b.total) * 100);
+        const hoje = meus.filter((c) => !c.revistoHoje).length;
+        const cor = pct >= 70 ? "#177a4c" : pct >= 45 ? "#a16207" : "#b42318";
+        return {
+          nome: b.nome, escopo: b.escopo,
+          estEscopo: "font-size:10.5px;font-weight:600;border-radius:999px;padding:3px 10px;white-space:nowrap;" +
+            (b.escopo === "sua vaga" ? "color:#0F766E;background:#E9F5F3" : "color:#5a6b77;background:#f1f4f5"),
+          dominados: dom + " de " + b.total + " dominados",
+          pct: pct + "%",
+          estPct: "flex:0 0 auto;font-family:'Outfit',sans-serif;font-size:18px;font-weight:700;min-width:44px;text-align:right;color:" + cor,
+          estBarra: "display:block;height:100%;width:" + pct + "%;border-radius:999px;background:" + cor,
+          hoje: hoje ? hoje + " no treino de hoje" : "nada pendente hoje",
+          rotuloBotao: hoje ? "Estudar" : "em dia",
+          estBotao: "flex:0 0 auto;margin-left:auto;height:32px;padding:0 16px;border-radius:999px;font-size:12px;font-weight:600;transition:background 150ms ease;" +
+            (hoje ? "background:#0c1d2b;color:#fff" : "background:#f1f4f5;color:#8b99a4;cursor:default"),
+          estudar: () => { if (hoje) this.abrirSessao(b.id, false, false); },
+        };
+      }),
+      referencias: Component.REFS.map((r, i) => ({
+        titulo: r.titulo, hint: r.hint, itens: r.itens,
+        aberta: !!st.abertas[i],
+        rotulo: st.abertas[i] ? "Recolher ▴" : "Abrir ▾",
+        est: i < Component.REFS.length - 1 || st.abertas[i] ? "border-bottom:1px solid #edf1f3;padding:13px 4px 0" : "padding:13px 4px",
+        alternar: () => this.setState((s2) => ({ abertas: { ...s2.abertas, [i]: !s2.abertas[i] } })),
+      })),
+      dominioPct: Math.round(((236 + dominados) / 401) * 100) + "%",
+      dominioNota: (236 + dominados) + " de 401 cards dominados",
+      memoria: [
+        ["Retenção 30d", "88%", "· 214 rev.", "#177a4c"],
+        ["Cards maduros", String(132 + dominados), "· de 401", "#0c1d2b"],
+        ["Acerto de primeira", "76%", "", "#0c1d2b"],
+        ["Última prova", "92%", "· 3 feitas", "#177a4c"],
+      ].map(([rot, valor, extra, cor], i, arr) => ({
+        rot, valor, extra,
+        est: "display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:9px 0" + (i < arr.length - 1 ? ";border-bottom:1px solid #edf1f3" : ""),
+        estValor: "font-family:'Outfit',sans-serif;font-size:15px;font-weight:700;color:" + cor,
+        estExtra: extra ? "font-size:10.5px;color:#8b99a4;margin-left:5px" : "display:none",
+      })),
+      provaFaltam: String(Math.max(0, 30 - st.provaFeitos)),
+      provaTexto: st.provaFeitos >= 30 ? "prova liberada · pode fazer agora" : "cards aprendidos pra ela cair",
+      estProva: "display:block;height:100%;border-radius:999px;width:" + Math.round((st.provaFeitos / 30) * 100) + "%;background:" +
+        (st.provaFeitos >= 30 ? "#177a4c" : "linear-gradient(90deg,#0C8F83,#0F766E)"),
+      heatmap: (() => {
+        const HEAT = ["#eff2f3", "#cfe6e3", "#a9d5d0", "#5fb6ae", "#0F766E"];
+        let seed = 7;
+        const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+        const cols = [];
+        for (let w = 0; w < 14; w++) {
+          const col = [];
+          for (let d = 0; d < 7; d++) {
+            const fim = w === 13 && d > 5;
+            const r = rnd();
+            const nivel = fim ? 0 : d === 0 || d === 6 ? (r > .75 ? 1 : 0) : r > .82 ? 4 : r > .55 ? 3 : r > .3 ? 2 : r > .12 ? 1 : 0;
+            col.push("width:10px;height:10px;border-radius:999px;background:" + HEAT[nivel]);
+          }
+          cols.push(col);
+        }
+        return cols;
+      })(),
+    };
+
+    // ── Equipe: quem está em dia (o modo EQUIPE da fonte) ─────────────────
+    const TIME = [
+      { nome: "Manuela Costa", papel: "SDR", pct: 62, dom: 118, total: 190, fila: 8, streak: 12, prova: 92, quando: "há 3 dias",
+        ret: 88, maduros: 132, primeira: 76, provas: 3, seg: 9.4, fun: 60, decks: [["SDR", 62], ["Objeções", 74], ["Produto", 48], ["Cultura", 35]] },
+      { nome: "Rafael Moura", papel: "closer · sênior", pct: 88, dom: 75, total: 85, fila: 0, streak: 21, prova: 96, quando: "há 6 dias",
+        ret: 94, maduros: 71, primeira: 89, provas: 5, seg: 6.8, fun: 210, decks: [["SDR", 81], ["Objeções", 96], ["Produto", 92], ["Cultura", 78]] },
+      { nome: "Bruno Alencar", papel: "closer · pleno", pct: 54, dom: 46, total: 85, fila: 11, streak: 3, prova: 71, quando: "há 12 dias",
+        ret: 69, maduros: 38, primeira: 58, provas: 2, seg: 14.1, fun: 20, decks: [["SDR", 44], ["Objeções", 61], ["Produto", 52], ["Cultura", 40]] },
+      { nome: "Vitor Nunes", papel: "integração", pct: 71, dom: 61, total: 86, fila: 4, streak: 9, prova: 88, quando: "há 8 dias",
+        ret: 85, maduros: 55, primeira: 74, provas: 4, seg: 10.2, fun: 40, decks: [["Produto", 84], ["Cultura", 66], ["SDR", 38], ["Objeções", 41]] },
+      { nome: "Leo Sander", papel: "admin · closer", pct: 41, dom: 35, total: 86, fila: 14, streak: 0, prova: 0, quando: "nunca fez",
+        ret: 52, maduros: 21, primeira: 47, provas: 0, seg: 18.7, fun: 0, decks: [["Produto", 52], ["Cultura", 44], ["SDR", 22], ["Objeções", 30]] },
+    ];
+    vals.equipeResumo = TIME.filter((p) => p.fila === 0).length + " de " + TIME.length + " com a fila zerada hoje";
+    vals.equipe = TIME.map((p) => ({
+      nome: p.nome, papel: p.papel,
+      iniciais: p.nome.split(" ").map((x) => x[0]).join(""),
+      pct: p.pct + "%", dominados: p.dom + "/" + p.total,
+      cor: p.pct >= 70 ? "#177a4c" : p.pct >= 50 ? "#a16207" : "#b42318",
+      estBarra: "display:block;height:100%;width:" + p.pct + "%;border-radius:999px;background:" + (p.pct >= 70 ? "#177a4c" : p.pct >= 50 ? "linear-gradient(90deg,#0C8F83,#0F766E)" : "linear-gradient(90deg,#d0524a,#b42318)"),
+      fila: p.fila ? p.fila + " cards" : "zerada ✓",
+      estFila: "font-size:12.5px;font-weight:600;white-space:nowrap;color:" + (p.fila === 0 ? "#177a4c" : p.fila > 10 ? "#b42318" : "#a16207"),
+      streak: p.streak ? p.streak + "d" : "—",
+      corStreak: p.streak >= 7 ? "#177a4c" : p.streak ? "#a16207" : "#c5cfd4",
+      prova: p.prova ? p.prova + "%" : "—",
+      corProva: !p.prova ? "#c5cfd4" : p.prova >= 80 ? "#177a4c" : "#b42318",
+      provaQuando: p.quando,
+      primeiro: p.nome.split(" ")[0],
+      seta: st.pessoaAberta === p.nome ? "▴" : "▾",
+      aberta: st.pessoaAberta === p.nome,
+      est: "display:grid;grid-template-columns:minmax(170px,1.3fr) minmax(150px,1fr) minmax(110px,.8fr) minmax(90px,.6fr) minmax(120px,.8fr);gap:12px;padding:12px 20px;align-items:center;cursor:pointer;transition:background 150ms ease;" +
+        (st.pessoaAberta === p.nome ? "background:#f7f9fa" : "border-bottom:1px solid #edf1f3"),
+      alternar: () => this.setState((s2) => ({ pessoaAberta: s2.pessoaAberta === p.nome ? null : p.nome })),
+      // As mesmas métricas do card "sua memória", agora por pessoa.
+      metricas: [
+        { k: "retenção 30d", v: p.ret + "%", nota: "", cor: p.ret >= 85 ? "#177a4c" : p.ret >= 70 ? "#a16207" : "#b42318" },
+        { k: "cards maduros", v: String(p.maduros), nota: "de " + p.total, cor: "#0c1d2b" },
+        { k: "acerto de primeira", v: p.primeira + "%", nota: "", cor: p.primeira >= 75 ? "#177a4c" : p.primeira >= 60 ? "#a16207" : "#b42318" },
+        { k: "provas feitas", v: String(p.provas), nota: p.provas ? "média " + p.prova + "%" : "nenhuma", cor: p.provas ? "#0c1d2b" : "#b42318" },
+        { k: "tempo por card", v: p.seg.toString().replace(".", ",") + "s", nota: p.seg <= 10 ? "rápido" : "devagar", cor: p.seg <= 10 ? "#177a4c" : "#a16207" },
+        { k: "4fun", v: String(p.fun), nota: "fora da fila", cor: "#0c1d2b" },
+      ],
+      baralhos: p.decks.map(([nome, pct]) => ({
+        nome, pct: pct + "%",
+        est: "display:inline-flex;align-items:baseline;gap:6px;font-size:11px;border-radius:999px;padding:4px 11px;" +
+          (pct >= 70 ? "background:#e9f6ef;color:#177a4c" : pct >= 50 ? "background:#fbf4e6;color:#a16207" : "background:#fdf3f2;color:#b42318"),
+      })),
+    }));
+
+    // ── Editar: a base oficial, por baralho ───────────────────────────────
+    const doDeck = st.cards.filter((c) => c.deck === st.deckEdit);
+    const BUCKET_ROT = { 0: "novo", 1: "aprendendo", 2: "revisão" };
+    const BUCKET_COR = { 0: ["#23D8D3", "#052e2c"], 1: ["#fbf4e6", "#a16207"], 2: ["#e9f6ef", "#177a4c"] };
+    const deckInfo = Component.BARALHOS.find((b) => b.id === st.deckEdit) || Component.BARALHOS[0];
+    vals.deckEdit = st.deckEdit;
+    vals.mudarDeck = (e) => this.setState({ deckEdit: e.target.value, prevendo: null });
+    vals.decksOpcoes = Component.BARALHOS.map((b) => ({ id: b.id, label: b.nome }));
+    vals.deckNome = deckInfo.nome;
+    vals.deckEscopo = deckInfo.escopo === "sua vaga" ? "visível pra quem tem a vaga" : "visível pro time inteiro";
+    vals.deckNumeros = [
+      { k: "cards no baralho", v: String(doDeck.length) },
+      { k: "dominados", v: String(doDeck.filter((c) => c.estado === 2).length) },
+      { k: "na fila de hoje", v: String(doDeck.filter((c) => !c.revistoHoje).length) },
+    ];
+    vals.dicasCard = [
+      "Uma pergunta por card: se precisa de \"e\" na frente, são dois cards.",
+      "A frente pergunta o que a pessoa vai usar na conversa, não a definição.",
+      "O verso traz a resposta pronta pra falar, com o número quando existir.",
+    ];
+    vals.cardsNota = doDeck.length + (doDeck.length === 1 ? " card neste baralho" : " cards neste baralho") + " · o que você salva entra na fila do time";
+    vals.novoCard = () => this.setState((s2) => ({
+      seq: s2.seq + 1, prevendo: null,
+      cards: [{ id: 900 + s2.seq, deck: s2.deckEdit, estado: 0, frente: "", verso: "", visto: 0 }].concat(s2.cards),
+    }));
+    vals.cardsEdit = doDeck.map((c, i) => ({
+      frente: c.frente, verso: c.verso,
+      estado: BUCKET_ROT[c.estado],
+      estEstado: "flex-shrink:0;display:inline-flex;align-items:center;height:20px;padding:0 10px;border-radius:999px;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.04em;margin-top:9px;background:" + BUCKET_COR[c.estado][0] + ";color:" + BUCKET_COR[c.estado][1],
+      est: "padding:14px 16px;border-top:1px solid #edf1f3;background:" + (st.prevendo === c.id ? "#f7f9fa" : "transparent"),
+      prevendo: st.prevendo === c.id,
+      rotuloPrever: st.prevendo === c.id ? "fechar" : "prévia",
+      estPrever: "height:26px;padding:0 11px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;transition:background 150ms ease;" +
+        (st.prevendo === c.id ? "background:#0c1d2b;color:#fff" : "background:#f1f4f5;color:#3d4f5c"),
+      prever: () => this.setState((s2) => ({ prevendo: s2.prevendo === c.id ? null : c.id })),
+      mudarFrente: (e) => { const v = e.target.value; this.setState((s2) => ({ cards: s2.cards.map((x) => x.id === c.id ? { ...x, frente: v } : x) })); },
+      mudarVerso: (e) => { const v = e.target.value; this.setState((s2) => ({ cards: s2.cards.map((x) => x.id === c.id ? { ...x, verso: v } : x) })); },
+      excluir: () => this.setState((s2) => ({ cards: s2.cards.filter((x) => x.id !== c.id), prevendo: null })),
+    }));
+
+    vals.card = cardAtual ? {
+      frente: cardAtual.frente, verso: cardAtual.verso,
+      // Kicker como no training.jsx: deck · bucket. A posição vive na barra de
+      // progresso e no contador ao lado dela, não aqui.
+      kicker: (NOME_DECK[cardAtual.deck] || "treino") + " · " + (st.fun ? "4fun" : BUCKET[cardAtual.estado]),
+    } : { frente: "", verso: "", kicker: "" };
+    return vals;
+  }
+}
+</script>
+</body>
+</html>

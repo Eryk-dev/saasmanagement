@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Formulários</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-gaveta-sai{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-gaveta-sai{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;margin:0 -4px;padding:0 4px 24px">
+
+      <header class="cap-rise" style="flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+        <div style="min-width:0">
+          <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">{{ titulo }}</h1>
+          
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <button onClick="{{ voltar }}" style="{{ estVoltar }}">← Formulários</button>
+          <button onClick="{{ novo }}" style="{{ estNovo }}">Criar formulário</button>
+        </div>
+      </header>
+
+      <sc-if value="{{ temToast }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:10px;padding:11px 15px;border-radius:999px;background:#e9f6ef;box-shadow:inset 0 0 0 1px rgba(23,122,76,.3)">
+          <span style="color:#177a4c;font-size:13px">✓</span>
+          <span style="flex:1;font-size:12.5px;color:#0c1d2b">{{ toast }}</span>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ modoLista }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <sc-for list="{{ forms }}" as="f" hint-placeholder-count="3">
+          <section class="cap-rise" style="{{ f.est }}">
+            <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+              <div style="flex:1;min-width:0">
+                <div style="display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap">
+                  <span style="font-size:15.5px;font-weight:650;letter-spacing:-.01em">{{ f.nome }}</span>
+                  <button onClick="{{ f.publicar }}" title="{{ f.tituloPublicar }}" style="{{ f.estStatus }}"><span style="width:6px;height:6px;border-radius:999px;background:currentColor"></span>{{ f.status }}</button>
+                </div>
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#8b99a4;margin-top:4px">/f/{{ f.id }}</div>
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <button onClick="{{ f.copiar }}" style="{{ f.estCopiar }}">{{ f.rotuloCopiar }}</button>
+                <button onClick="{{ f.editar }}" style="height:30px;padding:0 12px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:12px;font-weight:600;transition:background 150ms ease" style-hover="background:#e7ecee">Editar</button>
+                <button onClick="{{ f.publicar }}" style="{{ f.estBotaoPublicar }}">{{ f.rotuloPublicar }}</button>
+              </div>
+            </div>
+
+            <sc-if value="{{ f.publicado }}" hint-placeholder-val="{{ true }}">
+              <div style="margin-top:18px">
+                <div style="display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap">
+                  <sc-for list="{{ f.corrente }}" as="p" hint-placeholder-count="6">
+                    <div style="display:flex;align-items:flex-start;gap:6px;min-width:0">
+                      <div style="{{ p.estSeta }}">
+                        <span style="font-family:'Outfit',sans-serif;font-size:12px;font-weight:600;color:#0F766E">{{ p.taxa }}</span>
+                        <span style="font-size:14px;line-height:1;color:#c5cfd4">→</span>
+                        <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;color:#8b99a4;white-space:nowrap">{{ p.taxaNota }}</span>
+                      </div>
+                      <div style="min-width:0" title="{{ p.title }}">
+                        <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#5a6b77;white-space:nowrap">{{ p.rotulo }}</div>
+                        <div style="font-family:'Outfit',sans-serif;font-size:23px;font-weight:700;letter-spacing:-.03em;line-height:1.1;margin-top:2px;color:{{ p.cor }}">{{ p.valor }}</div>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid #edf1f3">
+                  <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#5a6b77">{{ f.ultimoEnvio }}</span>
+                  <button onClick="{{ f.verRespostas }}" style="font-size:12px;font-weight:650;color:#0F766E">Ver respostas →</button>
+                </div>
+              </div>
+
+              <sc-if value="{{ f.temAB }}" hint-placeholder-val="{{ true }}">
+                <div style="margin-top:16px">
+                  <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px">
+                    <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">teste A/B · headline</span>
+                    <span style="flex:1"></span>
+                    <button onClick="{{ f.verRespostas }}" style="font-size:11.5px;font-weight:650;color:#0F766E">Análise completa →</button>
+                  </div>
+                  <div style="border-radius:20px;box-shadow:inset 0 0 0 1px #edf1f3;overflow:hidden">
+                    <div style="overflow-x:auto"><div style="min-width:940px">
+                      <div style="display:grid;grid-template-columns:minmax(200px,1.7fr) 74px 104px 104px 132px 96px 104px 96px;gap:12px;padding:10px 18px;background:#f7f9fa;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#8b99a4">
+                        <span title="texto da welcome que o lead viu">Headline</span><span style="text-align:right">Visitas</span><span style="text-align:right" title="clicaram em começar">Começaram</span><span style="text-align:right" title="finalizaram o form">Leads</span><span style="text-align:right" title="clientes por potencial que a variante trouxe">Clientes ABC</span><span style="text-align:right" title="leads com call agendada">Call</span><span style="text-align:right" title="viraram contrato">Fecharam</span><span style="text-align:right">Receita</span>
+                      </div>
+                      <sc-for list="{{ f.grupos }}" as="g" hint-placeholder-count="2">
+                        <div>
+                          <div style="{{ g.estCabecalho }}"><span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;font-weight:700;color:#0F766E">{{ g.cod }}</span> {{ g.label }}</div>
+                          <sc-for list="{{ g.linhas }}" as="v" hint-placeholder-count="2">
+                            <div style="display:grid;grid-template-columns:minmax(200px,1.7fr) 74px 104px 104px 132px 96px 104px 96px;gap:12px;padding:12px 18px;align-items:center;border-top:1px solid #edf1f3;font-size:13px">
+                              <div style="min-width:0">
+                                <div style="display:flex;align-items:baseline;gap:7px;min-width:0">
+                                  <span style="flex-shrink:0;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;font-weight:700;color:#8b99a4">{{ v.id }}</span>
+                                  <span style="flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ v.headline }}">“{{ v.headline }}”</span>
+                                </div>
+                                <div style="{{ v.estVeredito }}">{{ v.veredito }}</div>
+                              </div>
+                              <span style="text-align:right">{{ v.visitas }}</span>
+                              <span style="text-align:right"><b style="font-family:'Outfit',sans-serif;font-weight:700">{{ v.comecaram }}</b><span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;color:#8b99a4">{{ v.comecaramPct }}</span></span>
+                              <span style="text-align:right"><b style="font-family:'Outfit',sans-serif;font-weight:700">{{ v.leads }}</b><span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;color:#8b99a4">{{ v.leadsPct }}</span></span>
+                              <span style="text-align:right;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#5a6b77">{{ v.abc }}</span>
+                              <span style="text-align:right"><b style="font-family:'Outfit',sans-serif;font-weight:700">{{ v.calls }}</b><span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;color:#8b99a4">{{ v.callsPct }}</span></span>
+                              <span style="text-align:right"><b style="{{ v.estFechou }}">{{ v.fecharam }}</b><span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;color:#8b99a4">{{ v.fecharamPct }}</span></span>
+                              <span style="{{ v.estReceita }}">{{ v.receita }}</span>
+                            </div>
+                          </sc-for>
+                        </div>
+                      </sc-for>
+                    </div></div>
+                  </div>
+                </div>
+              </sc-if>
+            </sc-if>
+
+            <sc-if value="{{ f.rascunho }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;padding-top:11px;border-top:1px solid #edf1f3">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#5a6b77;text-wrap:pretty">{{ f.notaRascunho }}</span>
+              </div>
+            </sc-if>
+          </section>
+        </sc-for>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ modoRespostas }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <section class="cap-rise" style="flex:0 0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr));gap:20px;padding:20px 24px;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+          <sc-for list="{{ resumoRespostas }}" as="k" hint-placeholder-count="4">
+            <div style="min-width:0">
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">{{ k.rot }}</div>
+              <div style="font-family:'Outfit',sans-serif;font-size:26px;font-weight:700;letter-spacing:-.025em;line-height:1.15;margin-top:4px;color:{{ k.cor }}">{{ k.val }}</div>
+              <div style="font-size:11.5px;color:#8b99a4;margin-top:2px">{{ k.nota }}</div>
+            </div>
+          </sc-for>
+        </section>
+        <section class="cap-rise" style="flex:0 0 auto;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+          <div style="display:flex;align-items:center;gap:10px;padding:13px 18px;flex-wrap:wrap;border-bottom:1px solid #edf1f3">
+            <div style="display:inline-flex;gap:3px;padding:3px;border-radius:999px;background:#f1f4f5">
+              <sc-for list="{{ filtrosResp }}" as="r" hint-placeholder-count="3">
+                <button onClick="{{ r.escolher }}" style="{{ r.est }}">{{ r.label }} <span style="font-family:'Outfit',sans-serif">{{ r.n }}</span></button>
+              </sc-for>
+            </div>
+            <span style="margin-left:auto;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4">cada resposta virou um lead no pipeline</span>
+          </div>
+          <div style="overflow-x:auto"><div style="min-width:700px">
+            <div style="display:grid;grid-template-columns:minmax(150px,1.3fr) minmax(130px,1fr) 86px 74px 96px 104px;gap:12px;padding:10px 18px;border-bottom:1px solid #edf1f3;background:#f7f9fa;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#8b99a4">
+              <span>Quem respondeu</span><span>Empresa e nicho</span><span style="text-align:right">Contas</span><span style="text-align:right">Nível</span><span>Variante</span><span style="text-align:right">Enviado</span>
+            </div>
+            <sc-for list="{{ respostas }}" as="r" hint-placeholder-count="6">
+              <div style="display:grid;grid-template-columns:minmax(150px,1.3fr) minmax(130px,1fr) 86px 74px 96px 104px;gap:12px;padding:12px 18px;align-items:center;border-bottom:1px solid #edf1f3;font-size:12.5px">
+                <button onClick="{{ r.abrir }}" style="min-width:0;text-align:left">
+                  <span style="display:block;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.nome }}</span>
+                  <span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.contato }}</span>
+                </button>
+                <span style="min-width:0"><span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.empresa }}</span><span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4">{{ r.nicho }}</span></span>
+                <span style="text-align:right;font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#5a6b77">{{ r.contas }}</span>
+                <span style="text-align:right"><span style="{{ r.estGrade }}">{{ r.grade }}</span></span>
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#5a6b77;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.variante }}</span>
+                <span style="text-align:right;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4;white-space:nowrap">{{ r.quando }}</span>
+              </div>
+            </sc-for>
+          </div></div>
+        </section>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ modoEditor }}" hint-placeholder-val="{{ false }}">
+      <div class="cap-2col" style="align-items:start">
+        <section class="cap-rise" style="min-width:0;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:20px 22px 20px;display:flex;flex-direction:column;gap:14px">
+          <label style="display:flex;flex-direction:column;gap:5px">
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">nome do formulário</span>
+            <input value="{{ editor.nome }}" onChange="{{ mudarNome }}" placeholder="ex.: Diagnóstico de tráfego" style="height:38px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 14px;font-family:inherit;font-size:12.5px;color:#0c1d2b;outline:none">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:5px">
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">headline da tela zero</span>
+            <textarea value="{{ editor.headline }}" onChange="{{ mudarHeadline }}" placeholder="a primeira coisa que o lead lê" style="min-height:62px;resize:vertical;border:0;border-radius:18px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:11px 14px;font-family:inherit;font-size:12.5px;line-height:1.5;color:#0c1d2b;outline:none"></textarea>
+          </label>
+          <div>
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77;margin-bottom:8px">perguntas · uma por tela</div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <sc-for list="{{ editor.perguntas }}" as="p" hint-placeholder-count="5">
+                <div style="display:flex;align-items:center;gap:10px;padding:10px 13px;border-radius:18px;background:#f7f9fa">
+                  <span style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:999px;background:#fff;font-family:'Outfit',sans-serif;font-size:10.5px;font-weight:700;color:#5a6b77">{{ p.n }}</span>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:12.5px;font-weight:600;text-wrap:pretty">{{ p.titulo }}</div>
+                    <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;margin-top:2px">{{ p.tipo }}</div>
+                  </div>
+                  <button onClick="{{ p.remover }}" title="remover pergunta" style="flex-shrink:0;width:26px;height:26px;border-radius:999px;background:#fff;color:#b42318;font-size:11px;transition:background 150ms ease" style-hover="background:#fdf3f2">✕</button>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">
+              <sc-for list="{{ tiposPergunta }}" as="t" hint-placeholder-count="4">
+                <button onClick="{{ t.adicionar }}" style="height:28px;padding:0 12px;border-radius:999px;background:#f1f4f5;color:#0F766E;font-size:11.5px;font-weight:600;transition:background 150ms ease" style-hover="background:#E9F5F3">+ {{ t.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;padding-top:14px;border-top:1px solid #edf1f3">
+            <button onClick="{{ salvarEditor }}" style="{{ estSalvarEditor }}">{{ rotuloSalvarEditor }}</button>
+            <button onClick="{{ voltar }}" style="height:38px;padding:0 14px;border-radius:999px;background:transparent;color:#5a6b77;font-size:12.5px;font-weight:600;transition:background 150ms ease" style-hover="background:#f1f4f5">Cancelar</button>
+          </div>
+        </section>
+        <section class="cap-rise" style="min-width:0;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 16px;border-bottom:1px solid #edf1f3;background:#f7f9fa">
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">preview ao vivo</span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4">tela zero</span>
+          </div>
+          <div style="padding:26px 22px 28px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;background:linear-gradient(168deg,#0a2434,#051C2C 70%)">
+            <span style="display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;color:#23D8D3"><svg width="34" height="34" viewBox="355 525 455 590"><polygon fill="currentColor" points="800.7 535.53 800.7 1103.92 763 983.8 749.25 939.91 691.16 754.61 501.54 817.84 457.65 832.42 362.47 864.14 443.6 803.33 481.22 775.08 800.7 535.53"></polygon></svg></span>
+            <div style="font-family:'Outfit',sans-serif;font-size:22px;font-weight:700;letter-spacing:-.03em;line-height:1.2;color:#F3FBFF;text-wrap:pretty">{{ editor.headlinePreview }}</div>
+            <div style="font-size:12.5px;color:rgba(243,251,255,.6);text-wrap:pretty">{{ editor.perguntasNota }}</div>
+            <button style="height:42px;padding:0 24px;border-radius:999px;background:#F3FBFF;color:#051C2C;font-size:13px;font-weight:700;margin-top:4px">Começar →</button>
+          </div>
+        </section>
+      </div>
+      </sc-if>
+    </div>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Formulários (screens/forms.jsx): lista com a corrente do dinheiro por form
+  // (visitas → começaram → envios → calls realizadas → viraram cliente →
+  // receita), o teste A/B da headline agrupado por dor com o veredito do
+  // campeão, a vista de respostas e o editor com preview ao vivo da tela zero.
+  // Publicado ocupa a largura toda (a tabela do A/B precisa de área);
+  // rascunho fica compacto.
+  static FORMS = [
+    { id: "diag-trafego", nome: "Diagnóstico de tráfego", pub: 1,
+      headline: "Descubra por que seu anúncio não vende",
+      visitas: 4820, comecaram: 1640, envios: 214, callsShow: 47, ganhos: 8, receita: 112400, ultimo: 1,
+      variantes: [
+        ["v1", "", "Descubra por que seu anúncio não vende", 1180, 402, 58, 14, 3, 48000, 2, 1, 0],
+        ["v2", "", "Seu anúncio some depois de 3 dias?", 1140, 348, 44, 9, 1, 9600, 1, 0, 0],
+        ["v3", "C", "Quanto seu marketplace deixa na mesa?", 1320, 512, 68, 16, 3, 38400, 2, 1, 0],
+        ["v4", "C", "Estoque parado vira anúncio parado", 1180, 378, 44, 8, 1, 16400, 0, 1, 0],
+      ] },
+    { id: "escala-contas", nome: "Escala de contas · lojistas", pub: 1,
+      headline: "6 contas rodando o mesmo catálogo",
+      visitas: 1840, comecaram: 620, envios: 64, callsShow: 14, ganhos: 2, receita: 24000, ultimo: 4,
+      variantes: [
+        ["v1", "", "6 contas rodando o mesmo catálogo", 960, 348, 38, 9, 2, 24000, 1, 1, 0],
+        ["v2", "", "Clone seus anúncios sem trabalho manual", 880, 272, 26, 5, 0, 0, 0, 0, 0],
+      ] },
+    { id: "nps-clientes", nome: "Pesquisa de satisfação", pub: 0,
+      headline: "Como está sendo usar a LeverAds?",
+      visitas: 0, comecaram: 0, envios: 0, callsShow: 0, ganhos: 0, receita: 0, ultimo: null, variantes: [] },
+  ];
+  static DORES = { C: "estoque parado no marketplace", A: "anúncio caro sem venda", B: "não sabe medir o retorno", E: "escalar sem perder margem" };
+  static RESPOSTAS = [
+    ["Marina Kern", "(11) 94821-3374", "Studio Kern", "moda", 3, "S", "v3", 1],
+    ["Diego Arbo", "(11) 93712-8840", "Clínica Arbo", "pet", 2, "A", "v1", 2],
+    ["Tatiana Ponto", "(11) 97284-1156", "Mercado Ponto", "casa e decoração", 1, "B", "v3", 3],
+    ["Otávio Braga", "(11) 98140-2267", "Braga Fit", "suplementos", 1, "C", "v2", 4],
+    ["Renata Dias", "(11) 96633-7712", "Clínica RD", "pet", 2, "B", "v4", 5],
+    ["Bruno Sato", "(11) 95517-4408", "Sato Imports", "autopeças", 3, "C", "v1", 6],
+    ["Nina Castro", "(11) 94408-2291", "Castro Pet", "pet", 1, "E", "v2", 8],
+    ["Paulo Ferraz", "(11) 93390-1174", "Ferraz Advocacia", "serviços", 2, "A", "v3", 9],
+  ];
+  static TIPOS = [["texto", "texto curto"], ["escolha", "escolha única"], ["multi", "múltipla escolha"], ["numero", "número"], ["telefone", "telefone"]];
+
+  state = { modo: "list", sel: null, pubs: {}, toast: null, copiado: null, filtro: "todas",
+    editor: null, salvo: false };
+  componentWillUnmount() { clearTimeout(this._t); clearTimeout(this._c); }
+
+  money(n) { return "R$ " + Math.round(n).toLocaleString("pt-BR"); }
+  fmtN(n) { return Number(n).toLocaleString("pt-BR"); }
+  pct(a, b) { return b > 0 ? ((a / b) * 100).toFixed(1).replace(".", ",") + "%" : "0%"; }
+  seg(ativo, alt) {
+    if (alt) return "height:26px;padding:0 11px;border-radius:999px;font-size:11px;white-space:nowrap;transition:background 150ms ease,color 150ms ease;" +
+      (ativo ? "background:#fff;color:#0c1d2b;font-weight:650;box-shadow:0 1px 2px rgba(12,29,43,.06)" : "background:transparent;color:#5a6b77;font-weight:500");
+    return "height:30px;padding:0 14px;border-radius:999px;font-size:12px;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;transition:background 150ms ease,color 150ms ease;" +
+      (ativo ? "background:#0c1d2b;color:#fff;font-weight:650" : "background:transparent;color:#5a6b77;font-weight:500");
+  }
+  estGrade(g) {
+    const T = { S: ["#7c3aed", "#fff"], A: ["#16a34a", "#fff"], B: ["#65a30d", "#fff"], C: ["#eab308", "#463500"], D: ["#ea580c", "#fff"], E: ["#9aa2ad", "#fff"] };
+    const c = T[g] || ["#e4e9eb", "#8b99a4"];
+    return "display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:999px;font-family:'Outfit',sans-serif;font-size:11px;font-weight:700;background:" + c[0] + ";color:" + c[1];
+  }
+  publicado(f) { const v = this.state.pubs[f.id]; return v === undefined ? !!f.pub : v; }
+  flash(msg) { this.setState({ toast: msg }); clearTimeout(this._t); this._t = setTimeout(() => this.setState({ toast: null }), 2600); }
+
+  // championVerdicts da fonte: campeão precisa de volume e de margem real
+  vereditos(vs) {
+    const out = {};
+    const porDor = {};
+    for (const v of vs) { const k = v.dor || ""; (porDor[k] = porDor[k] || []).push(v); }
+    for (const k in porDor) {
+      const g = porDor[k].slice().sort((a, b) => (b.visitas ? b.comecaram / b.visitas : 0) - (a.visitas ? a.comecaram / a.visitas : 0));
+      const semVolume = g.some((v) => v.visitas < 400);
+      const t0 = g[0] && g[0].visitas ? g[0].comecaram / g[0].visitas : 0;
+      const t1 = g[1] && g[1].visitas ? g[1].comecaram / g[1].visitas : 0;
+      const margem = t1 ? (t0 - t1) / t1 : 0;
+      g.forEach((v, i) => {
+        const key = (v.dor || "") + "|" + v.id;
+        if (g.length < 2) out[key] = null;
+        else if (semVolume) out[key] = i === 0 ? { label: "à frente · falta volume", cor: "#a16207" } : null;
+        else if (i === 0 && margem >= 0.15) out[key] = { label: "campeã · +" + Math.round(margem * 100) + "% de início", cor: "#177a4c" };
+        else if (i === 0) out[key] = { label: "empate técnico", cor: "#5a6b77" };
+        else if (v.ganhos > g[0].ganhos) out[key] = { label: "perde no início, ganha no fechamento", cor: "#a16207" };
+        else out[key] = null;
+      });
+    }
+    return out;
+  }
+
+  renderVals() {
+    const st = this.state;
+    const selForm = st.sel ? Component.FORMS.find((f) => f.id === st.sel) : null;
+
+    const vals = {
+      mov: this.props.movimento === false ? "off" : "on",
+      titulo: st.modo === "subs" ? (selForm ? selForm.nome : "Respostas") : st.modo === "edit" ? (st.editor && st.editor.novo ? "Novo formulário" : "Editar formulário") : "Formulários",
+      subtitulo: st.modo === "subs" ? "cada resposta virou um lead no pipeline · análise por variante"
+        : st.modo === "edit" ? "uma pergunta por tela · o preview mostra o que o lead vê"
+        : "captação por produto · visitas, leads e receita na mesma régua",
+      estVoltar: st.modo === "list" ? "display:none" : "height:34px;padding:0 14px;border-radius:999px;background:#fff;color:#3d4f5c;font-size:12.5px;font-weight:600;box-shadow:0 1px 2px rgba(12,29,43,.05);transition:background 150ms ease",
+      voltar: () => this.setState({ modo: "list", sel: null, editor: null, salvo: false }),
+      estNovo: st.modo === "list" ? "height:40px;padding:0 18px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:13px;font-weight:650;transition:background 150ms ease" : "display:none",
+      novo: () => this.setState({ modo: "edit", editor: { novo: true, nome: "", headline: "", perguntas: [] }, salvo: false }),
+      temToast: !!st.toast, toast: st.toast || "",
+      modoLista: st.modo === "list", modoRespostas: st.modo === "subs", modoEditor: st.modo === "edit",
+      forms: Component.FORMS.slice().sort((a, b) => (this.publicado(b) ? 1 : 0) - (this.publicado(a) ? 1 : 0)).map((f) => {
+        const pub = this.publicado(f);
+        const vs = f.variantes.map((v) => ({ id: v[0], dor: v[1], headline: v[2], visitas: v[3], comecaram: v[4], leads: v[5], calls: v[6], ganhos: v[7], receita: v[8], cA: v[9], cB: v[10], cC: v[11] }));
+        const ver = this.vereditos(vs);
+        const grupos = [];
+        for (const v of vs) { const k = v.dor || ""; let g = grupos.find((x) => x.dor === k); if (!g) { g = { dor: k, linhas: [] }; grupos.push(g); } g.linhas.push(v); }
+        grupos.sort((a, b) => (a.dor === "" ? -1 : b.dor === "" ? 1 : a.dor.localeCompare(b.dor)));
+        for (const g of grupos) g.linhas.sort((a, b) => (b.visitas ? b.comecaram / b.visitas : 0) - (a.visitas ? a.comecaram / a.visitas : 0));
+        const corrente = [
+          ["visitas · setembro", this.fmtN(f.visitas), "", "", "#0c1d2b", "sessões únicas na página do form"],
+          ["começaram", this.fmtN(f.comecaram), this.pct(f.comecaram, f.visitas), "das visitas", "#0c1d2b", "clicaram em começar"],
+          ["envios", this.fmtN(f.envios), this.pct(f.envios, f.comecaram), "de quem começou", "#0c1d2b", "finalizaram o formulário"],
+          ["calls realizadas", this.fmtN(f.callsShow), this.pct(f.callsShow, f.envios), "dos envios", "#0c1d2b", "leads dos envios do período que compareceram, contados uma vez por formulário"],
+          ["viraram cliente", this.fmtN(f.ganhos), this.pct(f.ganhos, f.callsShow), "das calls", "#177a4c", "fechados pela data da venda"],
+          ["receita fechada", this.money(f.receita), "", "", "#177a4c", "soma dos contratos fechados"],
+        ];
+        return {
+          id: f.id, nome: f.nome, publicado: pub, rascunho: !pub,
+          est: "min-width:0;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45);padding:" + (pub ? "18px 22px 20px" : "16px 18px"),
+          status: pub ? "publicado" : "rascunho",
+          tituloPublicar: pub ? "despublicar" : "Publicar",
+          estStatus: "display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;transition:color 150ms ease;color:" + (pub ? "#177a4c" : "#a16207"),
+          estCopiar: pub ? "height:30px;padding:0 12px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:12px;font-weight:600;transition:background 150ms ease" : "display:none",
+          rotuloCopiar: st.copiado === f.id ? "Link copiado ✓" : "Copiar link",
+          copiar: () => {
+            const url = "leverads.app/f/" + f.id;
+            if (navigator.clipboard) navigator.clipboard.writeText(url).catch(() => {});
+            this.setState({ copiado: f.id });
+            clearTimeout(this._c);
+            this._c = setTimeout(() => this.setState({ copiado: null }), 2000);
+            this.flash("Link copiado · " + url);
+          },
+          editar: () => this.setState({ modo: "edit", sel: f.id, salvo: false,
+            editor: { novo: false, nome: f.nome, headline: f.headline,
+              perguntas: ["Qual o seu nicho?", "Quantas contas você opera hoje?", "Quantos anúncios no total?", "Faixa de faturamento mensal", "Seu WhatsApp"].map((t, i) => ({ titulo: t, tipo: Component.TIPOS[i % 5][1] })) } }),
+          estBotaoPublicar: pub ? "display:none" : "height:30px;padding:0 13px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:12px;font-weight:650;transition:background 150ms ease",
+          rotuloPublicar: "Publicar",
+          publicar: () => {
+            this.setState((s2) => ({ pubs: Object.assign({}, s2.pubs, { [f.id]: !pub }) }));
+            this.flash(pub ? "Formulário despublicado · /f/" + f.id + " sai do ar" : "Formulário publicado · já recebe visita em /f/" + f.id);
+          },
+          corrente: corrente.map(([rotulo, valor, taxa, taxaNota, cor, title], k) => ({
+            rotulo, valor, taxa, taxaNota, cor, title,
+            estSeta: k === 0 ? "display:none" : "display:flex;flex-direction:column;align-items:center;gap:0;padding:12px 6px 0;flex-shrink:0",
+          })),
+          ultimoEnvio: f.ultimo != null ? "último envio " + (19 - f.ultimo) + "/09" : "sem envios no período",
+          verRespostas: () => this.setState({ modo: "subs", sel: f.id, filtro: "todas" }),
+          temAB: vs.length > 1,
+          grupos: grupos.map((g) => ({
+            cod: g.dor ? "[" + g.dor + "]" : "BASE",
+            label: g.dor ? (Component.DORES[g.dor] || "dor " + g.dor) : "sem dor (tráfego direto)",
+            estCabecalho: grupos.length > 1 ? "padding:11px 18px 3px;font-size:11.5px;color:#8b99a4" : "display:none",
+            linhas: g.linhas.map((v) => {
+              const vd = ver[(v.dor || "") + "|" + v.id];
+              const abc = [v.cA && "A " + v.cA, v.cB && "B " + v.cB, v.cC && "C " + v.cC].filter(Boolean).join(" · ");
+              return {
+                id: v.id, headline: v.headline,
+                veredito: vd ? vd.label : "",
+                estVeredito: vd ? "font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;margin-top:3px;color:" + vd.cor : "display:none",
+                visitas: this.fmtN(v.visitas),
+                comecaram: this.fmtN(v.comecaram), comecaramPct: this.pct(v.comecaram, v.visitas) + " das visitas",
+                leads: this.fmtN(v.leads), leadsPct: this.pct(v.leads, v.visitas) + " das visitas",
+                abc: abc || "—",
+                calls: v.calls ? String(v.calls) : "—", callsPct: v.calls ? this.pct(v.calls, v.leads) + " dos leads" : "",
+                fecharam: v.ganhos ? String(v.ganhos) : "—",
+                estFechou: "font-family:'Outfit',sans-serif;font-weight:700;color:" + (v.ganhos ? "#177a4c" : "#8b99a4"),
+                fecharamPct: v.ganhos ? this.pct(v.ganhos, v.leads) + " dos leads" : "",
+                receita: v.receita ? this.money(v.receita) : "—",
+                estReceita: "text-align:right;font-family:'Outfit',sans-serif;font-weight:700;color:" + (v.receita ? "#177a4c" : "#8b99a4"),
+              };
+            }),
+          })),
+          notaRascunho: "rascunho: ninguém vê ainda · publique pra começar a receber visita",
+        };
+      }),
+    };
+
+    if (st.modo === "subs" && selForm) {
+      const todas = Component.RESPOSTAS.map((r, i) => ({ nome: r[0], contato: r[1], empresa: r[2], nicho: r[3], contas: r[4], grade: r[5], variante: r[6], dias: r[7], i }));
+      const quentes = todas.filter((r) => r.grade === "S" || r.grade === "A");
+      const lista = st.filtro === "quentes" ? quentes : st.filtro === "hoje" ? todas.filter((r) => r.dias <= 2) : todas;
+      vals.resumoRespostas = [
+        { rot: "respostas", val: this.fmtN(selForm.envios), nota: "no período", cor: "#0c1d2b" },
+        { rot: "conversão", val: this.pct(selForm.envios, selForm.visitas), nota: "visita → envio", cor: "#0c1d2b" },
+        { rot: "viraram cliente", val: String(selForm.ganhos), nota: this.pct(selForm.ganhos, selForm.envios) + " dos envios", cor: "#177a4c" },
+        { rot: "receita", val: this.money(selForm.receita), nota: "contratos fechados", cor: "#177a4c" },
+      ];
+      vals.filtrosResp = [["todas", "Todas", todas.length], ["quentes", "Nível S e A", quentes.length], ["hoje", "Últimas 48h", todas.filter((r) => r.dias <= 2).length]]
+        .map(([id, label, n]) => ({ label, n, est: this.seg(st.filtro === id, true), escolher: () => this.setState({ filtro: id }) }));
+      vals.respostas = lista.map((r) => ({
+        nome: r.nome, contato: r.contato, empresa: r.empresa,
+        nicho: r.nicho + " · " + r.contas + (r.contas === 1 ? " conta" : " contas"),
+        contas: String(r.contas), grade: r.grade, estGrade: this.estGrade(r.grade),
+        variante: r.variante + " · " + (selForm.variantes.find((v) => v[0] === r.variante) || [,, "—"])[2],
+        quando: r.dias === 0 ? "hoje" : "há " + r.dias + "d",
+        abrir: () => window.dispatchEvent(new CustomEvent("cockpit:ir", { detail: { tela: "Pi" } })),
+      }));
+    }
+
+    if (st.modo === "edit" && st.editor) {
+      const e = st.editor;
+      vals.editor = {
+        nome: e.nome, headline: e.headline,
+        headlinePreview: e.headline || "a headline aparece aqui",
+        perguntasNota: e.perguntas.length ? e.perguntas.length + (e.perguntas.length === 1 ? " pergunta · leva menos de um minuto" : " perguntas · leva menos de um minuto") : "nenhuma pergunta ainda",
+        perguntas: e.perguntas.map((p, i) => ({
+          n: String(i + 1), titulo: p.titulo, tipo: p.tipo,
+          remover: () => this.setState((s2) => ({ editor: Object.assign({}, s2.editor, { perguntas: s2.editor.perguntas.filter((_, k) => k !== i) }) })),
+        })),
+      };
+      vals.mudarNome = (ev) => this.setState((s2) => ({ editor: Object.assign({}, s2.editor, { nome: ev.target.value }) }));
+      vals.mudarHeadline = (ev) => this.setState((s2) => ({ editor: Object.assign({}, s2.editor, { headline: ev.target.value }) }));
+      vals.tiposPergunta = Component.TIPOS.map(([id, label]) => ({
+        label,
+        adicionar: () => this.setState((s2) => ({ editor: Object.assign({}, s2.editor, {
+          perguntas: s2.editor.perguntas.concat([{ titulo: "Nova pergunta de " + label, tipo: label }]) }) })),
+      }));
+      const pode = !!e.nome.trim() && !!e.headline.trim();
+      vals.rotuloSalvarEditor = st.salvo ? "Salvo ✓" : pode ? (e.novo ? "Criar formulário" : "Salvar alterações") : "Nome e headline primeiro";
+      vals.estSalvarEditor = "height:38px;padding:0 18px;border-radius:999px;font-size:12.5px;font-weight:650;transition:background 150ms ease;" +
+        (st.salvo ? "background:#E9F5F3;color:#0b6b64;cursor:default" : pode ? "background:#0c1d2b;color:#fff" : "background:#eef1f3;color:#8b99a4;cursor:not-allowed");
+      vals.salvarEditor = () => {
+        if (!pode || st.salvo) return;
+        this.setState({ salvo: true });
+        this.flash(e.novo ? "Formulário criado como rascunho · publique quando estiver pronto" : "Alterações salvas em " + e.nome);
+      };
+    }
+    return vals;
+  }
+}
+</script>
+</body>
+</html>

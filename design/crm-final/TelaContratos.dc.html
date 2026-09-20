@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Contratos</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-gaveta-sai{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-gaveta-sai{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;margin:0 -4px;padding:0 4px 24px">
+
+      <header class="cap-rise" style="flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+        <div>
+          <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Contratos</h1>
+          
+        </div>
+        <button onClick="{{ novoModelo }}" style="height:40px;padding:0 20px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:13px;font-weight:650;transition:background 150ms ease" style-hover="background:#1b3140">Criar modelo</button>
+      </header>
+
+      <section class="cap-rise" style="flex:0 0 auto;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+        <div style="padding:20px 20px 12px">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">modelos</span>
+          </div>
+          <div style="font-size:12px;color:#8b99a4;margin-top:5px;padding-left:12px">abra o modelo, escolha o cliente e preencha o Quadro Resumo</div>
+        </div>
+        <div style="overflow-x:auto">
+        <div style="min-width:820px">
+          <div style="display:grid;grid-template-columns:minmax(180px,1.4fr) 110px 80px minmax(140px,1fr) 200px;gap:12px;padding:11px 20px;border-top:1px solid #edf1f3;border-bottom:1px solid #edf1f3;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#8b99a4">
+            <span>Modelo</span><span>Etiqueta</span><span style="text-align:right">Gerados</span><span>Último</span><span style="text-align:right">Ação</span>
+          </div>
+          <sc-for list="{{ modelos }}" as="m" hint-placeholder-count="4">
+            <div style="display:grid;grid-template-columns:minmax(180px,1.4fr) 110px 80px minmax(140px,1fr) 200px;gap:12px;padding:12px 20px;align-items:center;border-bottom:1px solid #edf1f3">
+              <div style="min-width:0">
+                <button onClick="{{ m.usar }}" style="display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'Outfit',sans-serif;font-size:14px;font-weight:650;letter-spacing:-.01em;text-align:left">{{ m.nome }}</button>
+                <div style="font-size:11.5px;color:#8b99a4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ m.sub }}</div>
+              </div>
+              <span style="min-width:0"><span style="{{ m.estTag }}">{{ m.tag }}</span></span>
+              <span style="{{ m.estGerados }}">{{ m.gerados }}</span>
+              <span style="min-width:0;font-size:12px;color:{{ m.corUltimo }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ m.ultimo }}</span>
+              <span style="display:flex;gap:6px;justify-content:flex-end;align-items:center">
+                <button onClick="{{ m.usar }}" style="height:28px;padding:0 13px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:11.5px;font-weight:600;white-space:nowrap;transition:background 150ms ease" style-hover="background:#1b3140">Usar →</button>
+                <button onClick="{{ m.duplicar }}" style="height:28px;padding:0 11px;border-radius:999px;background:#f1f4f5;color:#3d4f5c;font-size:11.5px;font-weight:500;white-space:nowrap;transition:background 150ms ease" style-hover="background:#e7ecee">Duplicar</button>
+                <button onClick="{{ m.excluir }}" style="height:28px;padding:0 11px;border-radius:999px;background:transparent;color:#b42318;font-size:11.5px;font-weight:600;transition:background 150ms ease" style-hover="background:#fdf3f2">Excluir</button>
+              </span>
+            </div>
+          </sc-for>
+        </div>
+        </div>
+      </section>
+
+      <section class="cap-rise" style="flex:0 0 auto;overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+        <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;padding:20px 20px 12px">
+          <div style="flex:1;min-width:200px">
+            <div style="display:flex;align-items:center;gap:7px">
+              <span style="width:5px;height:14px;border-radius:999px;background:#0F766E;flex-shrink:0"></span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5a6b77">histórico</span>
+            </div>
+            <h3 style="margin:8px 0 0;font-family:'Outfit',sans-serif;font-size:19px;font-weight:700;letter-spacing:-.02em">{{ histTitulo }}</h3>
+            <div style="font-size:12px;color:#8b99a4;margin-top:4px;text-wrap:pretty">imprimir, baixar ou copiar um modelo preenchido registra o contrato aqui, preso ao cliente</div>
+          </div>
+          <label style="display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 15px;border-radius:999px;background:#f1f4f5;color:#5a6b77;min-width:210px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><circle cx="11" cy="11" r="7"></circle><path d="M20.4 20.4l-4.2-4.2"></path></svg>
+            <input value="{{ busca }}" onChange="{{ mudarBusca }}" placeholder="buscar por cliente ou modelo…" style="flex:1;min-width:0;border:0;background:none;outline:none;font-family:inherit;font-size:12.5px;color:#0c1d2b">
+          </label>
+        </div>
+        <div style="overflow-x:auto">
+        <div style="min-width:820px">
+          <div style="display:grid;grid-template-columns:112px minmax(150px,1.3fr) minmax(140px,1fr) 110px 190px;gap:12px;padding:11px 20px;border-top:1px solid #edf1f3;border-bottom:1px solid #edf1f3;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#8b99a4">
+            <span>Quando</span><span>Cliente</span><span>Modelo</span><span>Gerado por</span><span style="text-align:right">Ação</span>
+          </div>
+          <sc-for list="{{ gerados }}" as="g" hint-placeholder-count="6">
+            <div style="display:grid;grid-template-columns:112px minmax(150px,1.3fr) minmax(140px,1fr) 110px 190px;gap:12px;padding:12px 20px;align-items:center;border-bottom:1px solid #edf1f3">
+              <span style="min-width:0">
+                <span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#5a6b77;white-space:nowrap">{{ g.data }}</span>
+                <span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4">{{ g.desde }}</span>
+              </span>
+              <span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ g.cliente }}</span>
+              <span style="font-size:12px;color:#5a6b77;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ g.modelo }}</span>
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#8b99a4;white-space:nowrap">{{ g.autor }}</span>
+              <span style="display:flex;gap:6px;justify-content:flex-end;align-items:center">
+                <button onClick="{{ g.abrir }}" style="height:28px;padding:0 12px;border-radius:999px;background:#f1f4f5;color:#0c1d2b;font-size:11.5px;font-weight:600;white-space:nowrap;transition:background 150ms ease" style-hover="background:#e7ecee">Abrir</button>
+                <button onClick="{{ g.imprimir }}" style="height:28px;padding:0 12px;border-radius:999px;background:transparent;color:#0F766E;font-size:11.5px;font-weight:600;white-space:nowrap;transition:background 150ms ease" style-hover="background:#E9F5F3">{{ g.rotuloImprimir }}</button>
+              </span>
+            </div>
+          </sc-for>
+          <sc-if value="{{ semGerados }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:26px 20px;font-family:'Plus Jakarta Sans',sans-serif;font-size:12.5px;color:#8b99a4">{{ vazioTexto }}</div>
+          </sc-if>
+        </div>
+        </div>
+      </section>
+    </div>
+
+    <sc-if value="{{ temSel }}" hint-placeholder-val="{{ false }}">
+      <aside class="{{ classeGaveta }}" style="position:absolute;right:14px;top:14px;bottom:14px;width:520px;max-width:calc(100% - 28px);z-index:20;display:flex;flex-direction:column;overflow:hidden;border-radius:24px;background:#fff;box-shadow:0 2px 6px rgba(12,29,43,.08),0 30px 60px -28px rgba(12,29,43,.55)">
+        <div style="flex:0 0 auto;display:flex;align-items:flex-start;gap:11px;padding:20px 20px 14px">
+          <div style="flex:1;min-width:0">
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">modelo de contrato</div>
+            <div style="font-family:'Outfit',sans-serif;font-size:19px;font-weight:700;letter-spacing:-.025em;line-height:1.2;margin-top:4px">{{ sel.nome }}</div>
+          </div>
+          <button onClick="{{ fechar }}" style="flex-shrink:0;width:30px;height:30px;border-radius:999px;background:#f1f4f5;color:#5a6b77;font-size:13px;transition:background 150ms ease" style-hover="background:#e7ecee;color:#0c1d2b">✕</button>
+        </div>
+        <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:0 20px 18px">
+          <div style="padding:15px 16px;border-radius:20px;background:#f7f9fa">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">1 · cliente</span>
+              <span style="margin-left:auto;font-size:11px;color:{{ sel.corPasso1 }}">{{ sel.passo1 }}</span>
+            </div>
+            <select value="{{ sel.cliente }}" onChange="{{ mudarCliente }}" style="width:100%;height:38px;margin-top:9px;padding:0 13px;border-radius:999px;border:0;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;font-family:inherit;font-size:12.5px;color:#0c1d2b;cursor:pointer">
+              <option value="">escolher o cliente…</option>
+              <sc-for list="{{ clientes }}" as="c" hint-placeholder-count="6">
+                <option value="{{ c }}">{{ c }}</option>
+              </sc-for>
+            </select>
+          </div>
+          <div style="padding:15px 16px;border-radius:20px;background:#f7f9fa">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">2 · quadro resumo</span>
+              <span style="margin-left:auto;font-size:11px;font-weight:600;color:{{ sel.corPasso2 }}">{{ sel.passo2 }}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:9px;margin-top:11px">
+              <sc-for list="{{ sel.campos }}" as="c" hint-placeholder-count="5">
+                <label style="display:flex;flex-direction:column;gap:4px">
+                  <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">{{ c.label }}</span>
+                  <input value="{{ c.valor }}" onChange="{{ c.mudar }}" placeholder="{{ c.dica }}" style="height:36px;border:0;border-radius:999px;background:#fff;box-shadow:inset 0 0 0 1px {{ c.borda }};padding:0 13px;font-family:inherit;font-size:12.5px;color:#0c1d2b;outline:none">
+                </label>
+              </sc-for>
+            </div>
+          </div>
+          <div style="padding:15px 16px;border-radius:20px;background:#f7f9fa">
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">3 · prévia do quadro</div>
+            <div style="margin-top:10px;border-radius:16px;overflow:hidden;background:#fff;box-shadow:inset 0 0 0 1px #e4e9eb">
+              <sc-for list="{{ sel.previa }}" as="p" hint-placeholder-count="4">
+                <div style="display:grid;grid-template-columns:118px minmax(0,1fr);gap:10px;padding:10px 13px;border-top:1px solid #edf1f3;align-items:baseline">
+                  <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;font-weight:600;color:#5a6b77">{{ p.k }}</span>
+                  <span style="font-size:12px;line-height:1.5;color:{{ p.cor }};text-wrap:pretty">{{ p.v }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;margin-top:9px;text-wrap:pretty">a contratada é sempre a LEVER ADS SOFTWARE HOUSE LTDA · CNPJ 67.931.740/0001-12</div>
+          </div>
+        </div>
+        <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:9px;padding:14px 20px 16px;border-top:1px solid #edf1f3">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button onClick="{{ registrar }}" style="{{ estRegistrar }}">{{ rotuloRegistrar }}</button>
+            <button onClick="{{ copiar }}" style="{{ estCopiar }}">{{ rotuloCopiar }}</button>
+          </div>
+          <button onClick="{{ emBranco }}" style="{{ estEmBranco }}">{{ rotuloEmBranco }}</button>
+        </div>
+      </aside>
+    </sc-if>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Contratos (screens/contracts.jsx): modelos em linhas com UMA ação primária
+  // ("usar →"), e o histórico registra só o que sai preenchido — imprimir em
+  // branco de propósito NÃO registra nada. O Quadro Resumo tem a contratada
+  // fixa (LEVER ADS SOFTWARE HOUSE LTDA · CNPJ 67.931.740/0001-12).
+  static CAMPOS = [
+    { k: "razao_social", label: "Razão social / Nome", dica: "quem assina" },
+    { k: "cnpj_cpf", label: "CNPJ / CPF", dica: "só números" },
+    { k: "valor_total", label: "Valor total", dica: "ex.: 7.188,00" },
+    { k: "forma_pagamento", label: "Forma de pagamento", dica: "ex.: 12x de 599 no cartão" },
+    { k: "vigencia", label: "Vigência", dica: "ex.: 12 meses" },
+  ];
+  static CLIENTES = ["Galante Holding", "Studio Kern", "Clínica Arbo", "Nutri Vitta", "Oficina Prado",
+    "Mercado Ponto", "Grupo Vante", "Instituto Rima", "Padaria Dovale", "Unique Baby", "Menezes Auto"];
+
+  static MODELOS = [
+    { id: "m1", nome: "Lever Ads · assinatura anual", tag: "assinatura", nota: "plano cheio, 12x de 599 ou à vista no Pix" },
+    { id: "m2", nome: "Lever OEM · assinatura semestral", tag: "assinatura", nota: "meia entrada da escada" },
+    { id: "m3", nome: "Lever Price · Enterprise", tag: "enterprise", nota: "conta grande, valor negociado" },
+    { id: "m4", nome: "Serviço único · réplica de catálogo", tag: "serviço", nota: "último degrau da escada, sem recorrência" },
+  ];
+
+  static GERADOS = [
+    { id: 1, modelo: "m1", cliente: "Studio Kern", autor: "Rafael Moura", dias: 2 },
+    { id: 2, modelo: "m4", cliente: "Nutri Vitta", autor: "Rafael Moura", dias: 3 },
+    { id: 3, modelo: "m2", cliente: "Oficina Prado", autor: "Bruno Alencar", dias: 4 },
+    { id: 4, modelo: "m1", cliente: "Clínica Arbo", autor: "Rafael Moura", dias: 8 },
+    { id: 5, modelo: "m2", cliente: "Mercado Ponto", autor: "Manuela Costa", dias: 10 },
+    { id: 6, modelo: "m2", cliente: "Grupo Vante", autor: "Bruno Alencar", dias: 15 },
+    { id: 7, modelo: "m3", cliente: "Galante Holding", autor: "Rafael Moura", dias: 34 },
+    { id: 8, modelo: "m1", cliente: "Instituto Rima", autor: "Rafael Moura", dias: 22 },
+  ];
+
+  state = { modelos: Component.MODELOS.slice(), gerados: Component.GERADOS.slice(), busca: "",
+    sel: null, fechando: false, cliente: "", fill: {}, registrado: false, copiado: false, seq: 1, impresso: null, impressoBranco: false };
+  componentWillUnmount() { clearTimeout(this._t); clearTimeout(this._c); clearTimeout(this._b); }
+
+  data(dias) { const d = new Date(2026, 8, 19 - dias); return d.toLocaleDateString("pt-BR"); }
+  abrir(id) { clearTimeout(this._t); this.setState({ sel: id, fechando: false, cliente: "", fill: {}, registrado: false, copiado: false }); }
+  fechar() {
+    if (this.state.fechando) return;
+    this.setState({ fechando: true });
+    this._t = setTimeout(() => this.setState({ sel: null, fechando: false }), 160);
+  }
+
+  renderVals() {
+    const st = this.state;
+    const modeloDe = (id) => st.modelos.find((m) => m.id === id) || Component.MODELOS.find((m) => m.id === id) || { nome: "modelo removido" };
+    const q = st.busca.trim().toLowerCase();
+    const gerados = st.gerados.filter((g) => !q || (g.cliente + " " + modeloDe(g.modelo).nome + " " + g.autor).toLowerCase().includes(q))
+      .slice().sort((a, b) => a.dias - b.dias);
+    const selM = st.sel ? modeloDe(st.sel) : null;
+
+    const vals = {
+      mov: this.props.movimento === false ? "off" : "on",
+      histTitulo: "Contratos gerados · " + st.gerados.length,
+      busca: st.busca, mudarBusca: (e) => this.setState({ busca: e.target.value }),
+      semGerados: gerados.length === 0,
+      vazioTexto: q ? "nenhum contrato com esse termo" : "nenhum contrato gerado ainda",
+      novoModelo: () => this.setState((s2) => ({ seq: s2.seq + 1,
+        modelos: s2.modelos.concat([{ id: "novo" + s2.seq, nome: "Novo modelo", tag: "", nota: "comece pelo Quadro Resumo" }]) })),
+      clientes: Component.CLIENTES,
+      modelos: st.modelos.map((m) => {
+        const gs = st.gerados.filter((g) => g.modelo === m.id).sort((a, b) => a.dias - b.dias);
+        const ultimo = gs[0] || null;
+        return {
+          nome: m.nome,
+          sub: Component.CAMPOS.length + " campos no Quadro Resumo" + (m.nota ? " · " + m.nota : ""),
+          tag: m.tag || "—",
+          estTag: m.tag
+            ? "display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;height:22px;line-height:22px;padding:0 11px;border-radius:999px;background:#E9F5F3;color:#0b6b64;font-size:11px;font-weight:600"
+            : "font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#c5cfd4",
+          gerados: String(gs.length),
+          estGerados: "text-align:right;font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;color:" + (gs.length ? "#0c1d2b" : "#c5cfd4"),
+          ultimo: ultimo ? ultimo.cliente + " · " + this.data(ultimo.dias) : "nunca usado",
+          corUltimo: ultimo ? "#5a6b77" : "#c5cfd4",
+          usar: () => this.abrir(m.id),
+          duplicar: () => this.setState((s2) => ({ seq: s2.seq + 1,
+            modelos: s2.modelos.concat([{ ...m, id: m.id + "-c" + s2.seq, nome: m.nome + " · cópia" }]) })),
+          excluir: () => this.setState((s2) => ({ modelos: s2.modelos.filter((x) => x.id !== m.id) })),
+        };
+      }),
+      gerados: gerados.map((g) => ({
+        data: this.data(g.dias), desde: g.dias === 0 ? "hoje" : "há " + g.dias + "d",
+        cliente: g.cliente, modelo: modeloDe(g.modelo).nome, autor: g.autor,
+        abrir: () => this.abrir(g.modelo),
+        rotuloImprimir: st.impresso === g.id ? "Enviado ✓" : "Imprimir",
+        imprimir: () => { this.setState({ impresso: g.id }); clearTimeout(this._c); this._c = setTimeout(() => this.setState({ impresso: null }), 2000); },
+      })),
+      temSel: !!selM,
+      classeGaveta: st.fechando ? "cap-gaveta-sai" : "cap-gaveta-entra",
+      fechar: () => this.fechar(),
+    };
+
+    if (selM) {
+      const preenchidos = Component.CAMPOS.filter((c) => (st.fill[c.k] || "").trim()).length;
+      const completo = preenchidos === Component.CAMPOS.length && !!st.cliente;
+      vals.sel = {
+        nome: selM.nome, cliente: st.cliente,
+        passo1: st.cliente ? "✓ " + st.cliente : "escolha para registrar no cliente",
+        corPasso1: st.cliente ? "#177a4c" : "#8b99a4",
+        passo2: preenchidos + " de " + Component.CAMPOS.length,
+        corPasso2: preenchidos === Component.CAMPOS.length ? "#177a4c" : "#a16207",
+        campos: Component.CAMPOS.map((c) => ({
+          label: c.label, dica: c.dica, valor: st.fill[c.k] || "",
+          borda: (st.fill[c.k] || "").trim() ? "#bfdcd8" : "#e4e9eb",
+          mudar: (e) => this.setState((s2) => ({ fill: { ...s2.fill, [c.k]: e.target.value } })),
+        })),
+        previa: [
+          { k: "Contratada", v: "LEVER ADS SOFTWARE HOUSE LTDA · CNPJ 67.931.740/0001-12", cor: "#0c1d2b" },
+          { k: "Contratante", v: (st.fill.razao_social || "[razão social]") + " · " + (st.fill.cnpj_cpf || "[CNPJ / CPF]"),
+            cor: st.fill.razao_social && st.fill.cnpj_cpf ? "#0c1d2b" : "#a16207" },
+          { k: "Investimento", v: "R$ " + (st.fill.valor_total || "[valor]") + " · " + (st.fill.forma_pagamento || "[forma de pagamento]"),
+            cor: st.fill.valor_total && st.fill.forma_pagamento ? "#0c1d2b" : "#a16207" },
+          { k: "Vigência", v: st.fill.vigencia || "[vigência]", cor: st.fill.vigencia ? "#0c1d2b" : "#a16207" },
+        ],
+      };
+      vals.mudarCliente = (e) => this.setState({ cliente: e.target.value });
+      vals.rotuloRegistrar = st.registrado ? "Registrado no histórico ✓" : completo ? "Registrar e mandar assinar" : "Complete o Quadro Resumo";
+      vals.estRegistrar = "flex:1 1 200px;height:42px;padding:0 18px;border-radius:999px;font-size:13px;font-weight:700;transition:background 150ms ease;" +
+        (st.registrado ? "background:#E9F5F3;color:#0b6b64;cursor:default" : completo ? "background:#0c1d2b;color:#fff" : "background:#eef1f3;color:#8b99a4;cursor:not-allowed");
+      vals.registrar = () => {
+        if (!completo || st.registrado) return;
+        this.setState((s2) => ({ registrado: true,
+          gerados: [{ id: 100 + s2.gerados.length, modelo: selM.id, cliente: s2.cliente, autor: "Leo Sander", dias: 0 }].concat(s2.gerados) }));
+      };
+      vals.rotuloCopiar = st.copiado ? "Copiado ✓" : "Copiar o texto";
+      vals.estCopiar = "flex:0 0 auto;height:42px;padding:0 18px;border-radius:999px;font-size:12.5px;font-weight:600;transition:background 150ms ease;" +
+        (st.copiado ? "background:#E9F5F3;color:#0b6b64;cursor:default" : "background:#f1f4f5;color:#0c1d2b");
+      vals.copiar = () => {
+        if (st.copiado) return;
+        const txt = "Contratada: LEVER ADS SOFTWARE HOUSE LTDA · CNPJ 67.931.740/0001-12\nContratante: " +
+          (st.fill.razao_social || "") + " · " + (st.fill.cnpj_cpf || "") + "\nInvestimento: R$ " + (st.fill.valor_total || "") +
+          " · " + (st.fill.forma_pagamento || "") + "\nVigência: " + (st.fill.vigencia || "");
+        if (navigator.clipboard) navigator.clipboard.writeText(txt).catch(() => {});
+        this.setState({ copiado: true });
+        clearTimeout(this._c);
+        this._c = setTimeout(() => this.setState({ copiado: false }), 2000);
+      };
+      // Imprimir em branco de propósito NÃO registra no histórico (é a régua da
+      // fonte); o retorno diz isso em vez de a gaveta fechar calada.
+      vals.rotuloEmBranco = st.impressoBranco ? "Saiu em branco · nada registrado ✓" : "Imprimir em branco · não registra";
+      vals.estEmBranco = "height:30px;border-radius:999px;font-size:11.5px;font-weight:600;transition:background 150ms ease;" +
+        (st.impressoBranco ? "background:#f1f4f5;color:#5a6b77;cursor:default" : "background:transparent;color:#5a6b77");
+      vals.emBranco = () => {
+        if (st.impressoBranco) return;
+        this.setState({ impressoBranco: true });
+        clearTimeout(this._b);
+        this._b = setTimeout(() => this.setState({ impressoBranco: false }), 2400);
+      };
+    }
+    return vals;
+  }
+}
+</script>
+</body>
+</html>

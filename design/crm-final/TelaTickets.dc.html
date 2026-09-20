@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tela Tickets</title>
+<script src="support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&amp;family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#e7ecee;color:#0c1d2b;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.006em;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;font-size:14px}
+  *{box-sizing:border-box}
+  button{font-family:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;letter-spacing:inherit}
+  a{color:#0F766E;text-decoration:none}a:hover{color:#0B5D57}
+  @keyframes cap-rise{from{opacity:0;transform:translateY(6px)}}
+  @keyframes cap-grow{from{width:0}}
+  @keyframes cap-fill{from{height:0;opacity:.3}}
+  @keyframes cap-wave{to{transform:translateX(-50%)}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-breath{0%,100%{opacity:.5}50%{opacity:1}}
+  @keyframes cap-gaveta-entra{from{opacity:0;transform:translateX(20px) scale(.985)}}
+  @keyframes cap-gaveta-sai{to{opacity:0;transform:translateX(20px) scale(.985)}}
+  .cap-rise{animation:cap-rise .26s cubic-bezier(.22,.61,.36,1) both}
+  .cap-grow{animation:cap-grow .5s cubic-bezier(.22,.61,.36,1) both}
+  .cap-fill{animation:cap-fill .6s cubic-bezier(.22,.61,.36,1) both}
+  .cap-breath{animation:cap-breath 2.2s ease-in-out infinite}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-gaveta-entra{animation:cap-gaveta-entra .18s cubic-bezier(.22,.61,.36,1) both}
+  .cap-gaveta-sai{animation:cap-gaveta-sai .15s cubic-bezier(.4,0,1,1) both}
+  .cap-wave{position:absolute;width:200%;height:8px;left:0;top:-4px;fill:currentColor;pointer-events:none;animation:cap-wave 5s linear infinite}
+  [data-mov="off"] .cap-rise,[data-mov="off"] .cap-grow,[data-mov="off"] .cap-fill,[data-mov="off"] .cap-breath,[data-mov="off"] .cap-wave,[data-mov="off"] .cap-gaveta-entra,[data-mov="off"] .cap-gaveta-sai{animation:none}
+  @media (prefers-reduced-motion:reduce){.cap-rise,.cap-grow,.cap-fill,.cap-breath,.cap-wave,.cap-gaveta-entra,.cap-gaveta-sai{animation:none}}
+  summary::-webkit-details-marker{display:none}
+  summary::marker{content:""}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#c5cfd4;border-radius:999px;border:3px solid #e7ecee}
+</style>
+</helmet>
+<div data-mov="{{ mov }}" style="position:relative;flex:1;min-height:0;display:flex;flex-direction:column;background:#e7ecee;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#0c1d2b;letter-spacing:-0.006em;font-variant-numeric:tabular-nums">
+    <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:12px;margin:0 -4px;padding:0 4px">
+
+      <header class="cap-rise" style="flex:0 0 auto;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px 2px">
+        <div style="min-width:0">
+          <h1 style="margin:0;font-family:'Outfit',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1.05">Tickets</h1>
+          
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+          <label style="display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 15px;border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.05);color:#5a6b77;min-width:210px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><circle cx="11" cy="11" r="7"></circle><path d="M20.4 20.4l-4.2-4.2"></path></svg>
+            <input value="{{ busca }}" onChange="{{ mudarBusca }}" placeholder="Buscar nº, assunto, cliente" style="flex:1;min-width:0;border:0;background:none;outline:none;font-family:inherit;font-size:12.5px;color:#0c1d2b">
+          </label>
+          <div style="display:inline-flex;gap:3px;padding:4px;border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.05)">
+            <button onClick="{{ verKanban }}" style="{{ estKanban }}">Kanban</button>
+            <button onClick="{{ verLista }}" style="{{ estLista }}">Lista</button>
+          </div>
+          <button onClick="{{ novoTicket }}" style="height:40px;padding:0 20px;border-radius:999px;background:#0c1d2b;color:#fff;font-size:13px;font-weight:650;white-space:nowrap;transition:background 150ms ease" style-hover="background:#1b3140">Abrir ticket</button>
+        </div>
+      </header>
+
+      <section class="cap-rise" style="position:relative;overflow:hidden;flex:0 0 auto;border-radius:24px;background:linear-gradient(168deg,#0a2434,#051C2C 70%);box-shadow:0 1px 2px rgba(5,28,44,.14),0 18px 40px -24px rgba(5,28,44,.6);padding:16px 22px;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+        <span style="position:absolute;right:-34px;top:-40px;width:160px;height:160px;color:#23D8D3;opacity:.07;pointer-events:none"><svg width="160" height="160" viewBox="355 525 455 590"><polygon fill="currentColor" points="800.7 535.53 800.7 1103.92 763 983.8 749.25 939.91 691.16 754.61 501.54 817.84 457.65 832.42 362.47 864.14 443.6 803.33 481.22 775.08 800.7 535.53"></polygon></svg></span>
+        <div style="position:relative;display:flex;align-items:center;gap:12px;min-width:0">
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:999px;background:linear-gradient(150deg,#0C8F83,#23D8D3);color:#051C2C;font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;flex-shrink:0">VN</span>
+          <div style="min-width:0">
+            <div style="font-size:14px;font-weight:650;color:#F3FBFF;white-space:nowrap">Vitor Nunes</div>
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:rgba(243,251,255,.55);white-space:nowrap">seu atendimento em LeverAds · últimos 30 dias</div>
+          </div>
+        </div>
+        <div style="position:relative;flex:1;display:flex;gap:22px;flex-wrap:wrap;justify-content:flex-end">
+          <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+            <button onClick="{{ k.ir }}" style="{{ k.est }}" title="{{ k.title }}">
+              <span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:rgba(243,251,255,.5);white-space:nowrap">{{ k.rot }}</span>
+              <span style="display:flex;align-items:baseline;gap:7px;margin-top:4px">
+                <span style="font-family:'Outfit',sans-serif;font-size:21px;font-weight:700;letter-spacing:-.02em;color:{{ k.cor }}">{{ k.v }}</span>
+                <span style="font-size:11px;color:rgba(243,251,255,.55);white-space:nowrap">{{ k.ctx }}</span>
+              </span>
+            </button>
+          </sc-for>
+        </div>
+      </section>
+
+      <section class="cap-rise" style="flex:0 0 auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px;border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.05)">
+        <sc-for list="{{ filtros }}" as="f" hint-placeholder-count="4">
+          <button onClick="{{ f.ir }}" style="{{ f.est }}" title="{{ f.title }}">{{ f.label }} <span style="font-family:'Outfit',sans-serif;font-weight:700">{{ f.n }}</span></button>
+        </sc-for>
+        <span style="width:1px;height:20px;background:#e4e9eb;margin:0 3px"></span>
+        <sc-for list="{{ escondidos }}" as="f" hint-placeholder-count="3">
+          <button onClick="{{ f.ir }}" style="{{ f.est }}">{{ f.label }} <span style="font-family:'Outfit',sans-serif;font-weight:700">{{ f.n }}</span></button>
+        </sc-for>
+      </section>
+
+      <sc-if value="{{ vazio }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:0 0 auto;font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;color:#8b99a4;padding:6px 14px">{{ vazioTexto }} · <button onClick="{{ verAbertos }}" style="color:#0F766E;font-weight:600">Ver os abertos</button></div>
+      </sc-if>
+
+      <sc-if value="{{ ehKanban }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1;min-height:0;display:flex;align-items:stretch;gap:12px;overflow-x:auto;padding:0 0 12px">
+        <sc-for list="{{ colunas }}" as="c" hint-placeholder-count="5">
+          <section class="cap-rise" onDragOver="{{ c.sobre }}" onDrop="{{ c.soltar }}" style="{{ c.est }}">
+            <div style="display:flex;align-items:center;gap:8px;padding:0 6px 2px">
+              <span style="{{ c.estPonto }}"></span>
+              <span style="font-size:13px;font-weight:700;letter-spacing:-.01em;white-space:nowrap">{{ c.label }}</span>
+              <span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:19px;padding:0 7px;border-radius:999px;background:#f1f4f5;font-family:'Outfit',sans-serif;font-size:11px;font-weight:700;color:#3d4f5c">{{ c.n }}</span>
+            </div>
+            <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:0 2px">
+              <sc-for list="{{ c.tickets }}" as="t" hint-placeholder-count="3">
+                <div draggable="{{ true }}" onDragStart="{{ t.arrastar }}" onDragEnd="{{ t.soltou }}" onClick="{{ t.abrir }}" style="{{ t.est }}" style-hover="background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.06),0 12px 26px -18px rgba(12,29,43,.45)">
+                  <div style="display:flex;align-items:center;gap:8px;min-width:0">
+                    <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;white-space:nowrap">#{{ t.numero }}</span>
+                    <span style="{{ t.estPri }}"><span style="{{ t.estPriPonto }}"></span>{{ t.pri }}</span>
+                    <span style="{{ t.estCat }}">{{ t.categoria }}</span>
+                  </div>
+                  <div style="display:flex;align-items:flex-start;gap:8px">
+                    <button onClick="{{ t.concluir }}" style="{{ t.estCirculo }}" title="{{ t.tituloCirculo }}">{{ t.checkTexto }}</button>
+                    <span style="{{ t.estAssunto }}">{{ t.assunto }}</span>
+                  </div>
+                  <div style="font-size:11.5px;color:#5a6b77;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.cliente }}</div>
+                  <div style="display:flex;align-items:center;gap:7px;min-width:0">
+                    <span style="{{ t.estSla }}" title="SLA">{{ t.sla }}</span>
+                    <span style="{{ t.estEspera }}" title="o cliente escreveu por último">· {{ t.espera }}</span>
+                    <span style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;flex-shrink:0">
+                      <span style="{{ t.estMsg }}">{{ t.msg }}</span>
+                      <span style="{{ t.estDono }}" title="{{ t.donoNome }}">{{ t.dono }}</span>
+                    </span>
+                  </div>
+                </div>
+              </sc-for>
+              <sc-if value="{{ c.vazia }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:14px 8px;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#b6c0c7;text-align:center">{{ c.textoVazio }}</div>
+              </sc-if>
+            </div>
+          </section>
+        </sc-for>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ ehLista }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;min-height:0;overflow:auto;padding-bottom:12px">
+        <section class="cap-rise" style="overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)">
+          <div style="overflow-x:auto">
+            <div style="min-width:880px">
+              <div style="display:grid;grid-template-columns:minmax(230px,2fr) minmax(120px,.9fr) minmax(100px,.7fr) minmax(150px,1.1fr) minmax(120px,.8fr) minmax(110px,.8fr);gap:12px;padding:11px 18px;background:#f7f9fa;border-bottom:1px solid #edf1f3;font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#8b99a4">
+                <span>Ticket</span><span>Status</span><span>Prioridade</span><span>SLA</span><span>Responsável</span><span>Atividade</span>
+              </div>
+              <sc-for list="{{ secoes }}" as="s" hint-placeholder-count="3">
+                <div>
+                  <div style="display:flex;align-items:center;gap:8px;padding:9px 18px;background:#f7f9fa;border-bottom:1px solid #edf1f3">
+                    <span style="{{ s.estPonto }}"></span>
+                    <span style="{{ s.estLabel }}">{{ s.label }}</span>
+                    <span style="font-family:'Outfit',sans-serif;font-size:12.5px;color:#5a6b77">{{ s.n }}</span>
+                  </div>
+                  <sc-for list="{{ s.linhas }}" as="t" hint-placeholder-count="3">
+                    <div onClick="{{ t.abrir }}" style="display:grid;grid-template-columns:minmax(230px,2fr) minmax(120px,.9fr) minmax(100px,.7fr) minmax(150px,1.1fr) minmax(120px,.8fr) minmax(110px,.8fr);gap:12px;padding:11px 18px;align-items:center;border-bottom:1px solid #edf1f3;cursor:pointer;transition:background 150ms ease" style-hover="background:#f7f9fa">
+                      <span style="min-width:0">
+                        <span style="display:block;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.assunto }}</span>
+                        <span style="display:block;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">#{{ t.numero }} · {{ t.cliente }}</span>
+                      </span>
+                      <span style="{{ t.estStatus }}">{{ t.status }}</span>
+                      <span style="{{ t.estPri }}"><span style="{{ t.estPriPonto }}"></span>{{ t.pri }}</span>
+                      <span style="{{ t.estSla }}">{{ t.sla }}</span>
+                      <span style="font-size:12px;color:#3d4f5c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.donoNome }}</span>
+                      <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4;white-space:nowrap">{{ t.atividade }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </section>
+      </div>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{ temFicha }}" hint-placeholder-val="{{ false }}">
+      <aside class="{{ classeFicha }}" style="position:absolute;right:14px;top:14px;bottom:14px;width:min(560px,calc(100% - 28px));z-index:20;display:flex;flex-direction:column;overflow:hidden;border-radius:24px;background:#fff;box-shadow:0 2px 6px rgba(12,29,43,.08),0 30px 60px -28px rgba(12,29,43,.55)">
+
+        <div style="flex:0 0 auto;display:flex;align-items:flex-start;gap:11px;padding:18px 20px 12px">
+          <div style="flex:1;min-width:0">
+            <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4">{{ f.origem }}</div>
+            <div style="font-family:'Outfit',sans-serif;font-size:18px;font-weight:700;letter-spacing:-.025em;line-height:1.25;margin-top:3px;text-wrap:pretty">{{ f.assunto }}</div>
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:7px">
+              <span style="{{ f.estStatus }}"><span style="{{ f.estStatusPonto }}"></span>{{ f.status }}</span>
+              <span style="{{ f.estPri }}">prioridade {{ f.pri }}</span>
+              <span style="{{ f.estDono }}">{{ f.donoTexto }}</span>
+              <span style="{{ f.estAlerta }}">{{ f.alerta }}</span>
+            </div>
+          </div>
+          <button onClick="{{ fecharFicha }}" style="flex-shrink:0;width:30px;height:30px;border-radius:999px;background:#f1f4f5;color:#5a6b77;font-size:13px;transition:background 150ms ease" style-hover="background:#e7ecee;color:#0c1d2b">✕</button>
+        </div>
+
+        <div style="flex:0 0 auto;display:flex;gap:3px;padding:0 20px 10px">
+          <sc-for list="{{ f.abas }}" as="a" hint-placeholder-count="2">
+            <button onClick="{{ a.ir }}" style="{{ a.est }}">{{ a.label }}</button>
+          </sc-for>
+        </div>
+
+        <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:0 20px 14px">
+
+          <sc-if value="{{ f.ehConversa }}" hint-placeholder-val="{{ true }}">
+            <div style="padding:13px 15px;border-radius:20px;background:#f7f9fa">
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77;margin-bottom:6px">o que o cliente pediu</div>
+              <div style="font-size:12.5px;line-height:1.55;color:#3d4f5c;text-wrap:pretty">{{ f.descricao }}</div>
+            </div>
+            <sc-for list="{{ f.mensagens }}" as="m" hint-placeholder-count="3">
+              <div style="{{ m.est }}">
+                <div style="{{ m.estKicker }}">{{ m.cabec }}</div>
+                <div style="font-size:12.5px;line-height:1.55;white-space:pre-wrap;text-wrap:pretty">{{ m.texto }}</div>
+              </div>
+            </sc-for>
+            <div style="{{ f.estSemMsg }}">ninguém respondeu ainda · a primeira resposta ao cliente cumpre o SLA de 1ª resposta</div>
+          </sc-if>
+
+          <sc-if value="{{ f.ehAtividade }}" hint-placeholder-val="{{ false }}">
+            <sc-for list="{{ f.atividade }}" as="e" hint-placeholder-count="4">
+              <div style="display:flex;align-items:baseline;gap:10px;padding:4px 2px">
+                <span style="flex-shrink:0;width:7px;height:7px;border-radius:999px;margin-top:5px;background:#c5cfd4"></span>
+                <span style="flex:1;min-width:0;font-size:12.5px;color:#3d4f5c;text-wrap:pretty"><b style="font-weight:650;color:#0c1d2b">{{ e.quem }}</b> {{ e.texto }}</span>
+                <span style="flex-shrink:0;font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;white-space:nowrap">{{ e.quando }}</span>
+              </div>
+            </sc-for>
+          </sc-if>
+
+          <sc-if value="{{ f.ehDados }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));gap:10px">
+              <sc-for list="{{ f.campos }}" as="c" hint-placeholder-count="4">
+                <label style="display:flex;flex-direction:column;gap:5px;min-width:0">
+                  <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">{{ c.rot }}</span>
+                  <select value="{{ c.valor }}" onChange="{{ c.mudar }}" style="height:36px;border:0;border-radius:999px;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;padding:0 12px;font-family:inherit;font-size:12.5px;color:#0c1d2b;cursor:pointer">
+                    <sc-for list="{{ c.opcoes }}" as="o" hint-placeholder-count="4">
+                      <option value="{{ o.v }}">{{ o.label }}</option>
+                    </sc-for>
+                  </select>
+                </label>
+              </sc-for>
+            </div>
+            <div style="padding:14px 16px;border-radius:20px;background:#f7f9fa">
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77;margin-bottom:9px" title="em tempo útil, pelo expediente de Configurações de SLA">prazos (sla)</div>
+              <sc-for list="{{ f.relogios }}" as="r" hint-placeholder-count="2">
+                <div style="display:flex;align-items:center;gap:10px;padding:5px 0">
+                  <span style="{{ r.estPonto }}"></span>
+                  <span style="flex:0 0 96px;font-size:12px;color:#5a6b77">{{ r.rot }}</span>
+                  <span style="{{ r.est }}">{{ r.texto }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="padding:14px 16px;border-radius:20px;background:#f7f9fa">
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77;margin-bottom:9px">cliente</div>
+              <sc-for list="{{ f.cliente }}" as="c" hint-placeholder-count="3">
+                <div style="display:flex;align-items:baseline;gap:10px;padding:4px 0">
+                  <span style="flex:0 0 96px;font-size:11.5px;color:#5a6b77">{{ c.k }}</span>
+                  <span style="flex:1;min-width:0;font-size:12.5px;font-weight:600;text-align:right;overflow-wrap:anywhere">{{ c.v }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+
+        <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:8px;padding:12px 20px 16px;border-top:1px solid #edf1f3;{{ f.estComposer }}">
+          <div style="display:flex;align-items:center;gap:3px;flex-wrap:wrap">
+            <button onClick="{{ modoResposta }}" style="{{ f.estModoResposta }}">Responder ao cliente</button>
+            <button onClick="{{ modoNota }}" style="{{ f.estModoNota }}">Nota interna</button>
+            <span style="margin-left:auto;display:flex;align-items:center;gap:8px">
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;white-space:nowrap">{{ f.avisoModo }}</span>
+              <button onClick="{{ abrirQr }}" style="{{ f.estBotaoQr }}">⚡ REspostas rápidas</button>
+            </span>
+          </div>
+          <div style="position:relative">
+            <textarea value="{{ f.texto }}" onChange="{{ mudarTexto }}" placeholder="{{ f.dicaTexto }}" style="{{ f.estArea }}"></textarea>
+            <sc-if value="{{ f.qrAberto }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;left:0;right:0;bottom:calc(100% + 6px);z-index:5;max-height:250px;overflow-y:auto;border-radius:20px;background:#fff;box-shadow:0 2px 6px rgba(12,29,43,.08),0 20px 44px -22px rgba(12,29,43,.55);padding:8px">
+                <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#8b99a4;padding:4px 10px 6px">{{ f.qrTitulo }}</div>
+                <sc-for list="{{ f.qrLista }}" as="q" hint-placeholder-count="4">
+                  <button onClick="{{ q.inserir }}" style="{{ q.est }}" style-hover="background:#f7f9fa">
+                    <span style="display:flex;align-items:center;gap:8px;width:100%;min-width:0">
+                      <span style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ q.titulo }}</span>
+                      <span style="margin-left:auto;flex-shrink:0;font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;color:#8b99a4">/{{ q.atalho }}</span>
+                    </span>
+                    <span style="display:block;width:100%;font-size:11.5px;color:#5a6b77;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">{{ q.trecho }}</span>
+                  </button>
+                </sc-for>
+                <div style="{{ f.estQrVazio }}">{{ f.qrVazio }}</div>
+              </div>
+            </sc-if>
+          </div>
+          <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+            <span style="font-size:11.5px;color:#5a6b77;white-space:nowrap">e marcar como</span>
+            <select value="{{ f.depois }}" onChange="{{ mudarDepois }}" style="height:32px;min-width:150px;border:0;border-radius:999px;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;padding:0 12px;font-family:inherit;font-size:12px;color:#0c1d2b;cursor:pointer">
+              <sc-for list="{{ f.opcoesDepois }}" as="o" hint-placeholder-count="4">
+                <option value="{{ o.v }}">{{ o.label }}</option>
+              </sc-for>
+            </select>
+            <button onClick="{{ enviar }}" style="{{ f.estEnviar }}">{{ f.rotuloEnviar }}</button>
+          </div>
+        </div>
+      </aside>
+    </sc-if>
+
+    <sc-if value="{{ temNovo }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ fecharNovo }}" style="position:absolute;inset:0;z-index:30;background:rgba(12,29,43,.35);display:flex;align-items:center;justify-content:center;padding:18px">
+        <div onClick="{{ parar }}" class="cap-gaveta-entra" style="width:100%;max-width:620px;max-height:100%;display:flex;flex-direction:column;overflow:hidden;border-radius:24px;background:#fff;box-shadow:0 2px 6px rgba(12,29,43,.1),0 30px 60px -28px rgba(12,29,43,.6)">
+          <div style="flex:0 0 auto;display:flex;align-items:center;gap:11px;padding:20px 22px 12px">
+            <div style="flex:1;min-width:0">
+              <div style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#5a6b77">novo ticket</div>
+              <div style="font-family:'Outfit',sans-serif;font-size:19px;font-weight:700;letter-spacing:-.025em;margin-top:4px">Abrir chamado pela equipe</div>
+            </div>
+            <button onClick="{{ fecharNovo }}" style="flex-shrink:0;width:30px;height:30px;border-radius:999px;background:#f1f4f5;color:#5a6b77;font-size:13px;transition:background 150ms ease" style-hover="background:#e7ecee;color:#0c1d2b">✕</button>
+          </div>
+          <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:11px;padding:0 22px 18px">
+            <div style="font-size:11.5px;color:#5a6b77;text-wrap:pretty">o prazo do SLA começa a contar na abertura, pela prioridade escolhida</div>
+            <sc-for list="{{ novoCampos }}" as="c" hint-placeholder-count="6">
+              <label style="display:flex;flex-direction:column;gap:5px;min-width:0">
+                <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">{{ c.rot }}</span>
+                <input value="{{ c.valor }}" onChange="{{ c.mudar }}" placeholder="{{ c.dica }}" style="{{ c.estInput }}">
+                <select value="{{ c.valorSel }}" onChange="{{ c.mudarSel }}" style="{{ c.estSelect }}">
+                  <sc-for list="{{ c.opcoes }}" as="o" hint-placeholder-count="4">
+                    <option value="{{ o.v }}">{{ o.label }}</option>
+                  </sc-for>
+                </select>
+              </label>
+            </sc-for>
+            <label style="display:flex;flex-direction:column;gap:5px">
+              <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#5a6b77">descrição</span>
+              <textarea value="{{ novoDesc }}" onChange="{{ mudarNovoDesc }}" placeholder="o que aconteceu, desde quando, prints ou links" style="width:100%;min-height:96px;resize:vertical;border:0;border-radius:18px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:11px 13px;font-family:inherit;font-size:13px;line-height:1.55;color:#0c1d2b;outline:none"></textarea>
+            </label>
+            <div style="padding:12px 15px;border-radius:18px;background:#f7f9fa;font-size:11.5px;color:#5a6b77;line-height:1.5;text-wrap:pretty">{{ novoPrazo }}</div>
+          </div>
+          <div style="flex:0 0 auto;display:flex;align-items:center;gap:9px;padding:14px 22px 16px;border-top:1px solid #edf1f3">
+            <button onClick="{{ fecharNovo }}" style="margin-left:auto;height:38px;padding:0 16px;border-radius:999px;background:transparent;color:#5a6b77;font-size:12.5px;font-weight:600;transition:background 150ms ease" style-hover="background:#f1f4f5">Cancelar</button>
+            <button onClick="{{ criar }}" style="{{ estCriar }}">{{ rotuloCriar }}</button>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;movimento&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Movimento&quot;}}">
+class Component extends DCLogic {
+  // Tickets (screens/tickets/): a fila de suporte com SLA. O vocabulário é o do
+  // lib/tickets.js — status com SEMÂNTICA fixa (kind: open/waiting/done), que é
+  // o que o kanban, os filtros e o SLA leem, nunca o rótulo.
+  static STATUSES = [
+    ["new", "Novo", "open", "#175cd3"],
+    ["open", "Em atendimento", "open", "#0F766E"],
+    ["pending_customer", "Aguardando cliente", "waiting", "#a16207"],
+    ["on_hold", "Em espera", "waiting", "#8b99a4"],
+    ["resolved", "Resolvido", "done", "#177a4c"],
+    ["closed", "Fechado", "done", "#8b99a4"],
+  ];
+  static PRI = { urgent: ["Urgente", "#b42318"], high: ["Alta", "#a16207"], normal: ["Normal", "#5a6b77"], low: ["Baixa", "#8b99a4"] };
+  static PRI_RANK = { urgent: 0, high: 1, normal: 2, low: 3 };
+  static SLA_RANK = { breached: 0, warning: 1, ok: 2, paused: 3, met: 4, none: 5 };
+  static SLA_TONE = { breached: "#b42318", warning: "#a16207", ok: "#5a6b77", paused: "#8b99a4", met: "#177a4c", none: "#b6c0c7" };
+  static AGENTES = { vn: "Vitor Nunes", mc: "Manuela Costa", rm: "Rafael Moura" };
+  static CAT_COR = { "Integração": "#5b6bd6", "Cobrança": "#a16207", "Clonagem": "#0F766E", "Conta": "#b42318", "Dúvida": "#5a6b77" };
+
+  // [nº, assunto, cliente, status, prioridade, categoria, dono, minutos até o
+  //  prazo que manda (negativo = estourou), msgs, últimaDoCliente(h), canal]
+  static BASE = [
+    [412, "Anúncios pararam de clonar depois de trocar a conta-mãe", "Studio Kern", "new", "urgent", "Clonagem", "", -95, 2, 4, "portal"],
+    [411, "Cobrança duplicada em setembro", "Galante Holding", "open", "high", "Cobrança", "vn", -40, 6, 26, "whatsapp"],
+    [410, "Não consigo conectar a segunda conta", "Mercado Ponto", "open", "normal", "Integração", "vn", 55, 4, 2, "portal"],
+    [409, "Preço não replicou para 3 SKUs", "Nutri Vitta", "new", "high", "Clonagem", "", 130, 1, 1, "email"],
+    [408, "Quero incluir mais um usuário no painel", "Clínica Arbo", "open", "low", "Conta", "mc", 900, 3, 0, "internal"],
+    [407, "Boleto de agosto não chegou", "Oficina Prado", "pending_customer", "normal", "Cobrança", "vn", 1400, 5, 72, "whatsapp"],
+    [406, "Como funciona a rota de clonagem por marketplace?", "Padaria Dovale", "pending_customer", "low", "Dúvida", "mc", 2100, 2, 120, "portal"],
+    [405, "Conta suspensa pela Meta depois da clonagem", "Instituto Rima", "on_hold", "urgent", "Conta", "vn", 0, 9, 48, "whatsapp"],
+    [404, "Erro 500 ao salvar a regra de preço", "Grupo Vante", "open", "urgent", "Clonagem", "vn", 20, 7, 3, "portal"],
+    [403, "Treinamento do time para o novo painel", "Ferraz Advocacia", "new", "normal", "Dúvida", "", 480, 1, 6, "internal"],
+    [402, "Integração travou no passo 3", "Corrêa Pets", "resolved", "high", "Integração", "vn", 300, 8, 0, "portal"],
+    [401, "Trocar o e-mail da fatura", "Amaral Studio", "resolved", "low", "Cobrança", "mc", 600, 3, 0, "email"],
+    [400, "Relatório de clonagem não abre no Safari", "Sato Imports", "closed", "normal", "Clonagem", "vn", 420, 4, 0, "portal"],
+  ];
+
+  // A conversa de cada ticket: [tipo(cliente|reply|note), quem, quando, texto].
+  static CONVERSA = {
+    412: [["cliente", "Marina Kern", "há 4 h", "Boa tarde! Depois que troquei a conta-mãe ontem, os anúncios pararam de replicar pras outras contas. Já eram uns 1.800 rodando."],
+      ["nota", "Vitor Nunes", "há 2 h", "Vínculo antigo ficou preso. Vou refazer pelo painel e disparar uma leva de teste antes de responder."]],
+    411: [["cliente", "Eduardo Galante", "há 1 dia", "Vocês cobraram duas vezes em setembro. Segue o comprovante das duas."],
+      ["reply", "Vitor Nunes", "há 22 h", "Eduardo, confirmei a duplicidade aqui. Já pedi o estorno — cai em até 5 dias úteis no mesmo cartão."],
+      ["cliente", "Eduardo Galante", "há 3 h", "Beleza. Me avisa quando sair, por favor."]],
+    410: [["cliente", "Tatiana Ponto", "há 2 h", "Consegui conectar a primeira conta na integração, mas a segunda dá erro de permissão."],
+      ["nota", "Vitor Nunes", "há 1 h", "O sócio dela é quem tem acesso de admin na segunda conta. Já pedi o contato."]],
+    405: [["cliente", "André Rima", "há 2 dias", "A conta foi suspensa pela Meta hoje de manhã, logo depois da clonagem."],
+      ["reply", "Vitor Nunes", "há 2 dias", "André, a suspensão veio da própria Meta — não conseguimos reverter do nosso lado. O caminho é o recurso no Gerenciador."],
+      ["nota", "Vitor Nunes", "há 1 dia", "Recurso aberto. Em espera até a Meta responder; SLA pausado."]],
+    404: [["cliente", "Rogério Vante", "há 3 h", "Toda vez que salvo a regra de preço aparece erro 500."],
+      ["nota", "Vitor Nunes", "há 2 h", "Reproduzi. É a regra com faixa vazia. Time de produto avisado."]],
+  };
+  static DESCRICAO = {
+    412: "Cliente trocou a conta-mãe e a clonagem parou. Cerca de 1.840 anúncios envolvidos.",
+    411: "Duas cobranças do mesmo mês no cartão do cliente.",
+    410: "Segunda conta não conecta — erro de permissão.",
+    405: "Conta suspensa pela Meta depois da clonagem; cliente quer saber o que fazer.",
+    404: "Erro 500 ao salvar regra de preço com faixa vazia.",
+  };
+  static ATIVIDADE = {
+    412: [["Portal do cliente", "abriu o ticket (portal do cliente)", "há 4 h"], ["Vitor Nunes", "deixou uma nota interna", "há 2 h"], ["Sistema", "SLA de 1ª resposta estourou", "há 2 h"]],
+    411: [["Eduardo Galante", "abriu o ticket (WhatsApp)", "há 1 dia"], ["Vitor Nunes", "atribuiu a Vitor Nunes", "há 23 h"], ["Vitor Nunes", "respondeu ao cliente", "há 22 h"], ["Eduardo Galante", "cliente respondeu", "há 3 h"]],
+  };
+  state = { vista: "kanban", filtro: "open", busca: "", mudados: {}, arrastando: null, sobre: null, seq: 0,
+    sel: null, fechandoFicha: false, aba: "conversa", modo: "reply", texto: "", depois: "", qr: false,
+    conversas: {}, novo: null, criados: [], proximoNum: 413 };
+  componentWillUnmount() { clearTimeout(this._f); }
+
+  // ── vocabulário ────────────────────────────────────────────────────────
+  st(chave) { return Component.STATUSES.find((s) => s[0] === chave) || Component.STATUSES[0]; }
+  kind(chave) { return this.st(chave)[2]; }
+  ehDone(t) { return this.kind(t.status) === "done"; }
+  // O estado do SLA: o relógio que manda é a 1ª resposta enquanto ela não veio,
+  // depois a resolução. Pausado quando o ticket está em espera.
+  slaEstado(t) {
+    if (this.ehDone(t)) return t.min < 0 ? "breached" : "met";
+    if (t.status === "on_hold") return "paused";
+    if (t.min < 0) return "breached";
+    if (t.min <= 120) return "warning";
+    return "ok";
+  }
+  distancia(min) {
+    const abs = Math.abs(min);
+    if (abs < 60) return Math.max(1, Math.round(abs)) + " min";
+    if (abs < 1440) return Math.round(abs / 60) + " h";
+    const d = Math.round(abs / 1440);
+    return d + (d === 1 ? " dia" : " dias");
+  }
+  slaTexto(t) {
+    const e = this.slaEstado(t);
+    if (this.ehDone(t)) return e === "breached" ? "resolvido fora do prazo" : "resolvido no prazo";
+    if (e === "paused") return "SLA pausado";
+    const oQue = t.msgs <= 2 ? "1ª resposta" : "resolução";
+    return e === "breached" ? oQue + " estourou há " + this.distancia(t.min) : oQue + " em " + this.distancia(t.min);
+  }
+  espera(h) {
+    if (!h) return null;
+    if (h < 24) return { txt: "há " + h + " h", cor: "#5a6b77" };
+    const d = Math.floor(h / 24);
+    return { txt: "há " + d + (d === 1 ? " dia" : " dias"), cor: d >= 5 ? "#b42318" : "#a16207" };
+  }
+
+  tickets() {
+    return Component.BASE.concat(this.state.criados).map((r) => {
+      const mud = this.state.mudados[r[0]] || {};
+      return Object.assign({
+        numero: r[0], assunto: r[1], cliente: r[2], status: r[3], pri: r[4],
+        categoria: r[5], dono: r[6], min: r[7], msgs: r[8], esperaH: r[9], canal: r[10],
+      }, mud);
+    });
+  }
+  mudar(numero, mud) {
+    this.setState((s) => ({ mudados: Object.assign({}, s.mudados, { [numero]: Object.assign({}, s.mudados[numero], mud) }) }));
+  }
+  casa(t, f) {
+    const k = this.kind(t.status);
+    if (f === "open") return k !== "done";
+    if (f === "mine") return k !== "done" && t.dono === "vn";
+    if (f === "unassigned") return k !== "done" && !t.dono;
+    if (f === "risk") { if (k === "done") return false; const e = this.slaEstado(t); return e === "breached" || e === "warning"; }
+    if (f === "waiting") return k === "waiting";
+    if (f === "done") return k === "done";
+    return true;
+  }
+  seg(a) {
+    return "height:30px;padding:0 14px;border-radius:999px;font-size:12px;white-space:nowrap;transition:background 150ms ease,color 150ms ease;" +
+      (a ? "background:#0c1d2b;color:#fff;font-weight:650" : "background:#f1f4f5;color:#5a6b77;font-weight:500");
+  }
+  segVista(a) {
+    return "height:32px;padding:0 17px;border-radius:999px;font-size:12.5px;white-space:nowrap;transition:background 150ms ease,color 150ms ease;" +
+      (a ? "background:#0c1d2b;color:#fff;font-weight:600" : "background:transparent;color:#5a6b77;font-weight:500");
+  }
+  abrirFicha(n) { clearTimeout(this._f); this.setState({ sel: n, fechandoFicha: false, aba: "conversa", modo: "reply", texto: "", depois: "", qr: false }); }
+  fecharFicha() {
+    if (this.state.fechandoFicha) return;
+    this.setState({ fechandoFicha: true });
+    this._f = setTimeout(() => this.setState({ sel: null, fechandoFicha: false }), 160);
+  }
+  conversaDe(n) { return (this.state.conversas[n] || Component.CONVERSA[n] || []); }
+  // As mesmas respostas da tela Respostas rápidas (pessoais primeiro, como o
+  // orderForPicker da fonte). [título, atalho, corpo, escopo]
+  static QR = [
+    ["Vou verificar e volto", "verifico", "{{cliente.primeiro_nome}}, vou verificar isso com calma aqui e te retorno ainda hoje.", "personal"],
+    ["Agendar call de 15 min", "call", "{{cliente.primeiro_nome}}, acho que resolvemos mais rápido numa call de 15 minutos com a tela compartilhada. Qual horário funciona melhor pra você?", "personal"],
+    ["Recebemos seu chamado", "recebemos", "{{saudacao}}, {{cliente.primeiro_nome}}! Recebemos o seu chamado #{{ticket.numero}} e já estamos olhando.", "shared"],
+    ["Pedir os acessos", "acessos", "{{cliente.primeiro_nome}}, pra eu conseguir olhar isso na sua conta preciso dos acessos das contas envolvidas.", "shared"],
+    ["Conta suspensa pela Meta", "suspensa", "{{cliente.primeiro_nome}}, a conta foi suspensa pela própria Meta — não é algo que a gente consiga reverter do nosso lado.", "shared"],
+    ["Clonagem não replicou", "clonagem", "{{cliente.primeiro_nome}}, olhei aqui: a clonagem não replicou porque a conta-mãe foi trocada depois da última publicação.", "shared"],
+    ["Fechando o chamado", "fechar", "{{cliente.primeiro_nome}}, pelo que vi está tudo resolvido — vou fechar o chamado #{{ticket.numero}}.", "shared"],
+  ];
+  trecho(t, n) { const x = String(t || "").replace(/\s+/g, " ").trim(); return x.length > n ? x.slice(0, n) + "…" : x; }
+  qrBusca() {
+    const m = String(this.state.texto || "").match(/(^|\s)\/([a-z0-9_-]{0,40})$/i);
+    return m ? m[2] : "";
+  }
+  // Atalho que começa com o termo vem primeiro, depois título, depois texto.
+  qrFiltradas() {
+    const k = this.qrBusca().toLowerCase();
+    const ord = Component.QR.filter((q) => q[3] === "personal").concat(Component.QR.filter((q) => q[3] === "shared"));
+    if (!k) return ord;
+    const rank = (q) => (q[1].toLowerCase().indexOf(k) === 0 ? 0 : q[0].toLowerCase().includes(k) ? 1 : q[2].toLowerCase().includes(k) ? 2 : 9);
+    return ord.map((q) => [rank(q), q]).filter((p) => p[0] < 9).sort((a, b) => a[0] - b[0]).map((p) => p[1]);
+  }
+  // Insere resolvendo as variáveis pelo ticket aberto (o servidor faz isso na fonte).
+  inserirQr(q) {
+    const t = this.tickets().find((x) => x.numero === this.state.sel);
+    const primeiro = ((Component.CONVERSA[t.numero] || [["", ""]])[0][1] || t.cliente).split(" ")[0];
+    const vals = { saudacao: "Boa tarde", "cliente.primeiro_nome": primeiro, "cliente.nome": primeiro,
+      "cliente.empresa": t.cliente, "ticket.numero": String(t.numero), "ticket.assunto": t.assunto,
+      "atendente.primeiro_nome": "Vitor", "produto.nome": "LeverAds" };
+    const corpo = q[2].replace(/\{\{\s*([a-z][a-z0-9_.]*)\s*\}\}/gi, (all, k) => (k.toLowerCase() in vals ? vals[k.toLowerCase()] : all));
+    this.setState((st) => {
+      const base = String(st.texto || "");
+      const semBarra = base.replace(/(^|\s)\/([a-z0-9_-]{0,40})$/i, "$1");
+      return { texto: semBarra + corpo, qr: false };
+    });
+  }
+
+  renderVals() {
+    const s = this.state;
+    const todos = this.tickets();
+    const q = s.busca.trim().toLowerCase().replace(/^#/, "");
+    const achados = q ? todos.filter((t) => [String(t.numero), t.assunto, t.cliente, t.categoria].some((v) => String(v).toLowerCase().includes(q))) : todos;
+    const conta = (f) => achados.filter((t) => this.casa(t, f)).length;
+    // Fila: o SLA mais apertado primeiro, depois a prioridade, depois o mais antigo.
+    const ordem = (a, b) => (Component.SLA_RANK[this.slaEstado(a)] - Component.SLA_RANK[this.slaEstado(b)])
+      || (a.min - b.min) || (Component.PRI_RANK[a.pri] - Component.PRI_RANK[b.pri]) || (a.numero - b.numero);
+    const visiveis = achados.filter((t) => this.casa(t, s.filtro)).sort(ordem);
+    const abertos = todos.filter((t) => this.kind(t.status) !== "done");
+    const semDono = abertos.filter((t) => !t.dono).length;
+    const meus = abertos.filter((t) => t.dono === "vn");
+    const emRisco = meus.filter((t) => { const e = this.slaEstado(t); return e === "breached" || e === "warning"; });
+    const estourados = meus.filter((t) => this.slaEstado(t) === "breached").length;
+
+    const nome = (id) => Component.AGENTES[id] || "—";
+    const iniciais = (id) => id ? nome(id).split(" ").slice(0, 2).map((x) => x[0]).join("") : "";
+    const card = (t) => {
+      const done = this.ehDone(t);
+      const pri = Component.PRI[t.pri];
+      const est = this.slaEstado(t);
+      const esp = done ? null : this.espera(t.esperaH);
+      return {
+        numero: String(t.numero), assunto: t.assunto, cliente: t.cliente,
+        pri: pri[0], categoria: t.categoria,
+        estPri: "display:inline-flex;align-items:center;gap:5px;font-size:11px;white-space:nowrap;color:" + (t.pri === "urgent" ? pri[1] : "#5a6b77"),
+        estPriPonto: "width:6px;height:6px;border-radius:999px;flex-shrink:0;background:" + pri[1],
+        estCat: t.categoria ? "margin-left:auto;display:inline-flex;align-items:center;height:19px;padding:0 9px;border-radius:999px;font-size:10px;font-weight:600;white-space:nowrap;background:" +
+          (Component.CAT_COR[t.categoria] || "#5a6b77") + "1f;color:" + (Component.CAT_COR[t.categoria] || "#5a6b77") : "display:none",
+        estCirculo: "flex-shrink:0;width:18px;height:18px;border-radius:999px;margin-top:1px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;transition:background 150ms ease;" +
+          (done ? "background:#177a4c;color:#fff" : "background:transparent;box-shadow:inset 0 0 0 1.5px #c5cfd4;color:transparent"),
+        checkTexto: "✓",
+        tituloCirculo: done ? "Reabrir ticket" : "Marcar como concluído",
+        estAssunto: "flex:1;min-width:0;font-size:13px;font-weight:600;line-height:1.35;text-wrap:pretty;color:" + (done ? "#8b99a4" : "#0c1d2b"),
+        sla: this.slaTexto(t),
+        estSla: "font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:" + Component.SLA_TONE[est] +
+          (est === "breached" || est === "warning" ? ";font-weight:600" : ""),
+        espera: esp ? esp.txt : "", estEspera: esp ? "font-size:11px;white-space:nowrap;color:" + esp.cor : "display:none",
+        msg: t.msgs + " msg", estMsg: t.msgs > 0 ? "font-family:'Plus Jakarta Sans',sans-serif;font-size:10.5px;color:#8b99a4;white-space:nowrap" : "display:none",
+        dono: iniciais(t.dono), donoNome: t.dono ? nome(t.dono) : "sem responsável",
+        estDono: t.dono
+          ? "display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:999px;background:#0c1d2b;color:#fff;font-family:'Plus Jakarta Sans',sans-serif;font-size:8.5px;font-weight:700"
+          : "display:inline-block;width:18px;height:18px;border-radius:999px;border:1px dashed #c5cfd4",
+        est: "display:flex;flex-direction:column;gap:7px;padding:11px 12px;border-radius:18px;background:#f7f9fa;cursor:grab;transition:background 150ms ease,box-shadow 150ms ease,opacity 150ms ease;" +
+          (done ? "opacity:.75;" : "") + (s.arrastando === t.numero ? "opacity:.45;" : ""),
+        arrastar: (e) => { try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(t.numero)); } catch (x) {} this.setState({ arrastando: t.numero }); },
+        soltou: () => this.setState({ arrastando: null, sobre: null }),
+        abrir: () => this.abrirFicha(t.numero),
+        concluir: (e) => {
+          if (e && e.stopPropagation) e.stopPropagation();
+          this.mudar(t.numero, { status: done ? "open" : "resolved" });
+        },
+      };
+    };
+
+    // Kanban: uma coluna por status aberto + a de Concluídos, que recebe o card
+    // arrastado e resolve o ticket (mesma régua do move() da fonte).
+    const colunas = Component.STATUSES.filter((x) => x[2] !== "done").map(([chave, label, , tone]) => {
+      const lista = visiveis.filter((t) => t.status === chave);
+      return { chave, label, tone, tickets: lista.map(card), n: lista.length };
+    });
+    const concluidos = achados.filter((t) => this.ehDone(t) && (s.filtro === "done" || s.filtro === "all" || this.state.mudados[t.numero]));
+    colunas.push({ chave: "done", label: "Concluídos", tone: "#177a4c", tickets: concluidos.map(card), n: concluidos.length });
+
+    const SECOES = [["breached", "SLA estourado", "#b42318"], ["warning", "Perto do prazo", "#a16207"], ["ok", "No prazo", "#0F766E"], ["paused", "Pausado ou aguardando", "#8b99a4"], ["done", "Concluídos", "#177a4c"]];
+    const secaoDe = (t) => { const e = this.slaEstado(t); if (e === "met" || this.ehDone(t)) return "done"; if (e === "breached") return "breached"; if (e === "warning") return "warning"; if (e === "paused" || this.kind(t.status) === "waiting") return "paused"; return "ok"; };
+
+    const vals = {
+      mov: this.props.movimento === false ? "off" : "on",
+      sub: ["fila de suporte", abertos.length + (abertos.length === 1 ? " aberto" : " abertos"), semDono ? semDono + " sem responsável" : null].filter(Boolean).join(" · "),
+      busca: s.busca, mudarBusca: (e) => this.setState({ busca: e.target.value }),
+      ehKanban: s.vista === "kanban", ehLista: s.vista === "lista",
+      estKanban: this.segVista(s.vista === "kanban"), estLista: this.segVista(s.vista === "lista"),
+      verKanban: () => this.setState({ vista: "kanban" }), verLista: () => this.setState({ vista: "lista" }),
+      novoTicket: () => this.setState({ novo: { assunto: "", cliente: "", solicitante: "", email: "", pri: "normal", cat: "", dono: "", desc: "" } }),
+      kpis: [
+        { rot: "na sua fila", v: String(meus.length), ctx: meus.filter((t) => this.kind(t.status) === "waiting").length + " aguardando", cor: "#F3FBFF",
+          title: "tickets em que você é o responsável", ir: () => this.setState({ filtro: "mine" }),
+          est: "text-align:left;cursor:pointer;transition:opacity 150ms ease" },
+        { rot: "em risco", v: String(emRisco.length), ctx: estourados ? estourados + " estourados" : "nenhum estourado", cor: estourados ? "#ff9d90" : "#23D8D3",
+          title: "estourados ou passando de 80% do prazo", ir: () => this.setState({ filtro: "risk", vista: "lista" }),
+          est: "text-align:left;cursor:pointer;transition:opacity 150ms ease" },
+        { rot: "sla cumprido", v: "92%", ctx: "time 88%", cor: "#23D8D3", title: "dos resolvidos nos últimos 30 dias · o time fez 88%", ir: () => {}, est: "text-align:left;cursor:default" },
+        { rot: "1ª resposta", v: "38 min", ctx: "mediana · time 1 h", cor: "#F3FBFF", title: "mediana da sua 1ª resposta nos últimos 30 dias", ir: () => {}, est: "text-align:left;cursor:default" },
+      ],
+      filtros: [["open", "Abertos", ""], ["mine", "Meus", ""], ["unassigned", "Sem responsável", ""], ["risk", "SLA em risco", "estourados ou passando de 80% do prazo"]]
+        .map(([id, label, title]) => ({ label, title, n: String(conta(id)), est: this.seg(s.filtro === id), ir: () => this.setState({ filtro: id }) })),
+      escondidos: [["waiting", "Aguardando cliente"], ["done", "Resolvidos e fechados"], ["all", "Todos"]]
+        .map(([id, label]) => ({ label, n: String(conta(id)), est: this.seg(s.filtro === id), ir: () => this.setState({ filtro: id }) })),
+      vazio: visiveis.length === 0,
+      vazioTexto: "Nenhum ticket " + (q ? 'com "' + s.busca.trim() + '"' : "neste filtro"),
+      verAbertos: () => this.setState({ busca: "", filtro: "open" }),
+      colunas: colunas.map((c) => ({
+        label: c.label, n: String(c.n), tickets: c.tickets, vazia: c.n === 0,
+        textoVazio: c.chave === "done" ? "nenhum concluído" : "nenhum ticket",
+        estPonto: "width:7px;height:7px;border-radius:999px;flex-shrink:0;background:" + c.tone,
+        est: "flex:1 1 262px;min-width:262px;display:flex;flex-direction:column;gap:10px;padding:14px 10px 12px;border-radius:24px;transition:background 150ms ease,box-shadow 150ms ease;" +
+          (s.sobre === c.chave ? "background:#eef6f5;box-shadow:inset 0 0 0 2px #0F766E" : "background:#fff;box-shadow:0 1px 2px rgba(12,29,43,.05),0 18px 40px -26px rgba(12,29,43,.45)"),
+        sobre: (e) => { e.preventDefault(); if (s.sobre !== c.chave) this.setState({ sobre: c.chave }); },
+        soltar: (e) => {
+          e.preventDefault();
+          const n = Number(s.arrastando || (e.dataTransfer && e.dataTransfer.getData("text/plain")));
+          if (n) this.mudar(n, { status: c.chave === "done" ? "resolved" : c.chave });
+          this.setState({ arrastando: null, sobre: null });
+        },
+      })),
+      secoes: SECOES.map(([k, label, tone]) => {
+        const linhas = visiveis.filter((t) => secaoDe(t) === k);
+        return {
+          label, n: String(linhas.length),
+          estPonto: "width:7px;height:7px;border-radius:999px;flex-shrink:0;background:" + tone,
+          estLabel: "font-size:12.5px;font-weight:700;color:" + (k === "breached" ? "#b42318" : "#0c1d2b"),
+          linhas: linhas.map((t) => {
+            const c = card(t);
+            const stt = this.st(t.status);
+            const upd = this.espera(Math.max(1, Math.round(Math.abs(t.min) / 60)));
+            return Object.assign({}, c, {
+              status: stt[1],
+              estStatus: "display:inline-flex;align-items:center;height:22px;padding:0 10px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;background:" + stt[3] + "1f;color:" + stt[3],
+              atividade: upd ? upd.txt : "—",
+              abrir: () => this.abrirFicha(t.numero),
+            });
+          }),
+        };
+      }).filter((x) => x.n !== "0"),
+    };
+
+    // ── ficha do ticket ──────────────────────────────────────────────────
+    const sel = s.sel ? todos.find((t) => t.numero === s.sel) : null;
+    vals.temFicha = !!sel;
+    vals.classeFicha = s.fechandoFicha ? "cap-gaveta-sai" : "cap-gaveta-entra";
+    vals.fecharFicha = () => this.fecharFicha();
+    if (sel) {
+      const stt = this.st(sel.status);
+      const est = this.slaEstado(sel);
+      const done = this.ehDone(sel);
+      const conversa = this.conversaDe(sel.numero);
+      const ehNota = s.modo === "note";
+      const podeEnviar = !!s.texto.trim();
+      const CANAL = { portal: "portal do cliente", whatsapp: "WhatsApp", email: "e-mail", internal: "aberto pela equipe" };
+      const KICK = { cliente: ["cliente", "#175cd3"], reply: ["resposta ao cliente", "#0F766E"], nota: ["nota interna", "#a16207"] };
+      const relogio = (rot, feito, estado) => ({
+        rot,
+        texto: feito ? (rot === "1ª resposta" ? "respondido" : "resolvido") + " no prazo" : this.slaTexto(sel),
+        estPonto: "width:8px;height:8px;border-radius:999px;flex-shrink:0;background:" + (feito ? "#177a4c" : Component.SLA_TONE[estado]),
+        est: "font-size:12.5px;font-weight:600;color:" + (feito ? "#177a4c" : Component.SLA_TONE[estado]),
+      });
+      const respondeu = conversa.some((m) => m[0] !== "cliente");
+      const campoSel = (rot, valor, opcoes, mudar) => ({ rot, valor, opcoes, mudar });
+      vals.f = {
+        origem: "#" + sel.numero + " · " + (CANAL[sel.canal] || "equipe") + " · aberto há " + (sel.esperaH || 2) + " h",
+        assunto: sel.assunto,
+        status: stt[1],
+        estStatus: "display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:" + stt[3],
+        estStatusPonto: "width:7px;height:7px;border-radius:999px;background:" + stt[3],
+        pri: Component.PRI[sel.pri][0].toLowerCase(),
+        estPri: "font-size:12.5px;color:" + (sel.pri === "urgent" ? "#b42318" : "#5a6b77") + (sel.pri === "urgent" ? ";font-weight:600" : ""),
+        donoTexto: sel.dono ? "com " + (Component.AGENTES[sel.dono] || sel.dono) : "sem responsável",
+        estDono: "font-size:12.5px;color:" + (sel.dono ? "#5a6b77" : "#a16207"),
+        alerta: est === "breached" ? "SLA estourado" : est === "warning" ? "SLA vencendo" : "",
+        estAlerta: est === "breached" || est === "warning" ? "font-size:12.5px;font-weight:600;color:" + Component.SLA_TONE[est] : "display:none",
+        abas: [["conversa", "Conversa" + (conversa.length ? " · " + conversa.length : "")], ["atividade", "Atividade"], ["dados", "Dados"]].map(([k, label]) => ({
+          label, est: this.seg(s.aba === k), ir: () => this.setState({ aba: k }),
+        })),
+        ehConversa: s.aba === "conversa", ehAtividade: s.aba === "atividade", ehDados: s.aba === "dados",
+        descricao: Component.DESCRICAO[sel.numero] || "sem descrição",
+        mensagens: conversa.map(([tipo, quem, quando, texto]) => {
+          const k = KICK[tipo];
+          return {
+            cabec: k[0] + " · " + quem + " · " + quando,
+            texto,
+            estKicker: "font-family:'Plus Jakarta Sans',sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;margin-bottom:5px;color:" + k[1],
+            est: "padding:12px 14px;border-radius:18px;" + (tipo === "nota" ? "background:#fbf4e6;color:#3d4f5c"
+              : tipo === "cliente" ? "background:#f1f4f5;color:#0c1d2b" : "background:#E9F5F3;color:#0c1d2b"),
+          };
+        }),
+        estSemMsg: conversa.length ? "display:none" : "font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;color:#8b99a4;text-align:center;padding:10px 4px;text-wrap:pretty",
+        atividade: (Component.ATIVIDADE[sel.numero] || [["Equipe", "abriu o ticket", "há " + (sel.esperaH || 2) + " h"]]).map(([quem, texto, quando]) => ({ quem, texto, quando })),
+        campos: [
+          campoSel("status", sel.status, Component.STATUSES.map(([v, label]) => ({ v, label })), (e) => this.mudar(sel.numero, { status: e.target.value })),
+          campoSel("prioridade", sel.pri, Object.keys(Component.PRI).map((v) => ({ v, label: Component.PRI[v][0] })), (e) => this.mudar(sel.numero, { pri: e.target.value })),
+          campoSel("responsável", sel.dono || "", [{ v: "", label: "sem responsável" }].concat(Object.keys(Component.AGENTES).map((v) => ({ v, label: Component.AGENTES[v] }))), (e) => this.mudar(sel.numero, { dono: e.target.value })),
+          campoSel("categoria", sel.categoria || "", [{ v: "", label: "sem categoria" }].concat(Object.keys(Component.CAT_COR).map((v) => ({ v, label: v }))), (e) => this.mudar(sel.numero, { categoria: e.target.value })),
+        ],
+        relogios: [relogio("1ª resposta", respondeu, est), relogio("Resolução", done, est)],
+        cliente: [["empresa", sel.cliente], ["solicitante", (Component.CONVERSA[sel.numero] || [["", "—"]])[0][1] || "—"],
+          ["canal", CANAL[sel.canal] || "equipe"], ["mensagens", String(sel.msgs)]].map(([k, v]) => ({ k, v })),
+        estComposer: done ? "display:none" : "",
+        estModoResposta: this.seg(!ehNota), estModoNota: this.seg(ehNota),
+        avisoModo: ehNota ? "só a equipe vê" : "o cliente vê no portal",
+        texto: s.texto,
+        dicaTexto: ehNota ? "Escreva uma nota para a equipe…" : "Escreva a resposta ao cliente… digite / para respostas rápidas",
+        estArea: "width:100%;min-height:80px;resize:vertical;border:0;border-radius:18px;padding:11px 13px;font-family:inherit;font-size:12.5px;line-height:1.55;color:#0c1d2b;outline:none;box-shadow:inset 0 0 0 1px " +
+          (ehNota ? "#e6d3a8;background:#fdfaf2" : "#e4e9eb;background:#f7f9fa"),
+        estBotaoQr: "display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 11px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap;transition:background 150ms ease;color:#0F766E;background:" +
+          (s.qr ? "#E9F5F3" : "transparent"),
+        qrAberto: s.qr,
+        qrTitulo: this.qrBusca() ? 'respostas com "' + this.qrBusca() + '"' : "respostas rápidas",
+        qrLista: this.qrFiltradas().map((q) => ({
+          titulo: q[0], atalho: q[1], trecho: this.trecho(q[2], 80),
+          est: "display:flex;flex-direction:column;align-items:flex-start;width:100%;text-align:left;padding:8px 10px;border-radius:14px;background:transparent;transition:background 150ms ease",
+          inserir: () => this.inserirQr(q),
+        })),
+        estQrVazio: this.qrFiltradas().length ? "display:none" : "font-size:11.5px;color:#8b99a4;padding:8px 10px;text-wrap:pretty",
+        qrVazio: "nenhuma resposta com \"" + this.qrBusca() + "\" · crie em Suporte → Respostas rápidas",
+        depois: s.depois,
+        opcoesDepois: [{ v: "", label: "manter " + stt[1].toLowerCase() }].concat(
+          Component.STATUSES.filter((x) => x[0] !== sel.status && x[0] !== "new").map(([v, label]) => ({ v, label }))),
+        rotuloEnviar: podeEnviar ? (ehNota ? "Salvar nota" : "Enviar resposta") : (ehNota ? "Escreva a nota" : "Escreva a resposta"),
+        estEnviar: "margin-left:auto;height:34px;padding:0 17px;border-radius:999px;font-size:12.5px;font-weight:700;transition:background 150ms ease;" +
+          (podeEnviar ? "background:#0c1d2b;color:#fff" : "background:#eef1f3;color:#8b99a4;cursor:not-allowed"),
+      };
+      vals.modoResposta = () => this.setState({ modo: "reply" });
+      vals.modoNota = () => this.setState({ modo: "note" });
+      vals.abrirQr = () => this.setState((st) => ({ qr: !st.qr }));
+      // Digitar "/" no começo da linha abre a lista, como no composer da fonte.
+      vals.mudarTexto = (e) => {
+        const v = e.target.value;
+        const tok = /(^|\s)\/([a-z0-9_-]{0,40})$/i.test(v);
+        this.setState({ texto: v, qr: tok || (this.state.qr && /\//.test(v)) });
+      };
+      vals.mudarDepois = (e) => this.setState({ depois: e.target.value });
+      vals.enviar = () => {
+        if (!podeEnviar) return;
+        const nova = [ehNota ? "nota" : "reply", "Vitor Nunes", "agora", s.texto.trim()];
+        this.setState((st) => ({
+          conversas: Object.assign({}, st.conversas, { [sel.numero]: this.conversaDe(sel.numero).concat([nova]) }),
+          texto: "", qr: false, depois: "",
+        }));
+        const mud = { msgs: sel.msgs + 1 };
+        if (!ehNota) mud.min = Math.max(sel.min, 600);
+        if (s.depois) mud.status = s.depois;
+        this.mudar(sel.numero, mud);
+      };
+    } else {
+      vals.f = { origem: "", assunto: "", status: "", estStatus: "display:none", estStatusPonto: "", pri: "", estPri: "display:none",
+        donoTexto: "", estDono: "display:none", alerta: "", estAlerta: "display:none", abas: [],
+        ehConversa: false, ehAtividade: false, ehDados: false, descricao: "", mensagens: [], estSemMsg: "display:none",
+        atividade: [], campos: [], relogios: [], cliente: [], estComposer: "display:none",
+        estModoResposta: "", estModoNota: "", avisoModo: "", texto: "", dicaTexto: "", estArea: "",
+        estBotaoQr: "display:none", qrAberto: false, qrTitulo: "", qrLista: [], estQrVazio: "display:none", qrVazio: "",
+        depois: "", opcoesDepois: [], rotuloEnviar: "", estEnviar: "display:none" };
+      vals.modoResposta = () => {}; vals.modoNota = () => {}; vals.abrirQr = () => {};
+      vals.mudarTexto = () => {}; vals.mudarDepois = () => {}; vals.enviar = () => {};
+    }
+
+    // ── novo ticket ──────────────────────────────────────────────────────
+    const nv = s.novo;
+    vals.temNovo = !!nv;
+    vals.fecharNovo = () => this.setState({ novo: null });
+    vals.parar = (e) => { if (e && e.stopPropagation) e.stopPropagation(); };
+    if (nv) {
+      const setNv = (k) => (e) => { const v = e.target.value; this.setState((st) => ({ novo: Object.assign({}, st.novo, { [k]: v }) })); };
+      const txt = (rot, k, dica) => ({ rot, valor: nv[k], dica, mudar: setNv(k), opcoes: [], valorSel: "", mudarSel: () => {},
+        estInput: "height:38px;border:0;border-radius:999px;background:#f7f9fa;box-shadow:inset 0 0 0 1px #e4e9eb;padding:0 14px;font-family:inherit;font-size:13px;color:#0c1d2b;outline:none",
+        estSelect: "display:none" });
+      const sel2 = (rot, k, opcoes) => ({ rot, valor: "", dica: "", mudar: () => {}, valorSel: nv[k], mudarSel: setNv(k), opcoes,
+        estInput: "display:none",
+        estSelect: "height:38px;border:0;border-radius:999px;box-shadow:inset 0 0 0 1px #e4e9eb;background:#fff;padding:0 13px;font-family:inherit;font-size:12.5px;color:#0c1d2b;cursor:pointer" });
+      vals.novoCampos = [
+        txt("assunto", "assunto", "Ex.: não consigo acessar o painel"),
+        txt("cliente", "cliente", "empresa vinculada ao chamado"),
+        txt("solicitante", "solicitante", "nome de quem pediu"),
+        txt("e-mail", "email", "recebe o link do portal"),
+        sel2("prioridade", "pri", Object.keys(Component.PRI).map((v) => ({ v, label: Component.PRI[v][0] }))),
+        sel2("categoria", "cat", [{ v: "", label: "sem categoria" }].concat(Object.keys(Component.CAT_COR).map((v) => ({ v, label: v })))),
+        sel2("responsável", "dono", [{ v: "", label: "sem responsável (avisa os atendentes)" }].concat(Object.keys(Component.AGENTES).map((v) => ({ v, label: Component.AGENTES[v] })))),
+      ];
+      vals.novoDesc = nv.desc;
+      vals.mudarNovoDesc = (e) => { const v = e.target.value; this.setState((st) => ({ novo: Object.assign({}, st.novo, { desc: v }) })); };
+      const PRAZO = { urgent: ["1 h", "8 h"], high: ["4 h", "24 h"], normal: ["8 h", "48 h"], low: ["24 h", "120 h"] }[nv.pri];
+      vals.novoPrazo = "Com prioridade " + Component.PRI[nv.pri][0].toLowerCase() + ", o SLA pede a 1ª resposta em " + PRAZO[0] + " e a resolução em " + PRAZO[1] + " — em horas úteis.";
+      const pode = !!nv.assunto.trim();
+      vals.rotuloCriar = pode ? "Abrir ticket" : "Escreva o assunto";
+      vals.estCriar = "height:38px;padding:0 18px;border-radius:999px;font-size:13px;font-weight:700;transition:background 150ms ease;" +
+        (pode ? "background:#0c1d2b;color:#fff" : "background:#eef1f3;color:#8b99a4;cursor:not-allowed");
+      vals.criar = () => {
+        if (!pode) return;
+        const n = s.proximoNum;
+        const min = { urgent: 60, high: 240, normal: 480, low: 1440 }[nv.pri];
+        this.setState((st) => ({
+          novo: null, proximoNum: n + 1, sel: n, aba: "conversa", fechandoFicha: false,
+          criados: st.criados.concat([[n, nv.assunto.trim(), nv.cliente.trim() || "sem cliente", "new", nv.pri, nv.cat, nv.dono, min, 1, 0, "internal"]]),
+          conversas: Object.assign({}, st.conversas, nv.desc.trim() ? { [n]: [["cliente", nv.solicitante.trim() || "solicitante", "agora", nv.desc.trim()]] } : {}),
+        }));
+      };
+    } else {
+      vals.novoCampos = []; vals.novoDesc = ""; vals.mudarNovoDesc = () => {}; vals.novoPrazo = "";
+      vals.rotuloCriar = ""; vals.estCriar = "display:none"; vals.criar = () => {};
+    }
+    return vals;
+  }
+}
+</script>
+</body>
+</html>
