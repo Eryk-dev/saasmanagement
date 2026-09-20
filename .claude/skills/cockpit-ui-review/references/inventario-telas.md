@@ -656,5 +656,39 @@ Validação: 1.739 testes da API, testes web/smoke, build e revisão visual apro
   rota SPA para variáveis não salvas; Descartar/Salvar permanecem explícitos.
 
 Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
-As demais 17 páginas aguardam esta rodada; registros históricos não são aceite
+
+
+### 14. Configurações de SLA (`#support_settings`) — validada
+
+- **Importante, corrigido:** cabeçalho e cards em três colunas fluidas seguem
+  `TelaConfiguracoesSLA.dc.html`; prioridades mantêm números/unidades legíveis,
+  categorias usam pills, e os atendentes aparecem em linhas com acesso por
+  produto. Avisos de novos tickets continuam com controle próprio, separado
+  do acesso. Admin permanece com acesso aos produtos bloqueado para edição.
+- **Bloqueante, corrigido:** Salvar bloqueia repetição e edição durante a
+  gravação; falha mantém o rascunho e indica retry. Resolução anterior à primeira
+  resposta desabilita o envio; Descartar repõe os valores salvos. Retornos de
+  leitura de outro produto são ignorados. Estado limpo mostra Tudo salvo.
+- **Bloqueante, corrigido:** falhas de leitura de atendentes e catálogo Linear
+  têm erro/retry. Alterações de acesso bloqueiam concorrência na UI e mantêm
+  rollback em falhas. Horas continuam convertidas em minutos pelo helper real.
+- **Bloqueante, corrigido:** o Popover compartilhado abre em portal; a folha
+  mobile do seletor Linear deixava opções atrás do botão de feedback por causa
+  do empilhamento da página. Foco/Escape e os mesmos seletores foram preservados.
+- **Evidências:** `npm run test:review:sla -w packages/web`, capturas e
+  `geometry.json` em `packages/web/.review-artifacts/support_settings/`.
+  **28 medidas** em 1440/1920, diferença máxima **0px**, para cabeçalho e
+  início/largura das colunas. Horas fracionárias, validação/descarte, categorias,
+  expediente, cópia do portal, atendentes, falhas/retry, espera, 390/1024px,
+  tema escuro e seletores Linear com mock conferidos. Tickets e Respostas
+  rápidas revalidados após o ajuste do componente compartilhado.
+- **Fora do escopo:** regras de SLA, expediente, pausa, fechamento automático,
+  notificações e autorização continuam na API. Pausas, texto do portal e
+  integração Linear permanecem disponíveis, embora a prancha os resuma/omita;
+  por isso as alturas e distribuição dos cards dependem do conteúdo real.
+  A integração Linear fica após Atendentes. A navegação entre rotas continua
+  sem confirmação global de rascunho desta tela.
+
+Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
+As demais 16 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.

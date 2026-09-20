@@ -64,7 +64,8 @@ Para reproduzir Visão geral com dados fixos e testes no navegador, usar
 `npm run test:review:agenda -w packages/web`; para Inbox,
 `npm run test:review:whatsapp -w packages/web`; para Tickets,
 `npm run test:review:tickets -w packages/web`; para Respostas rápidas,
-`npm run test:review:quick-replies -w packages/web` (Chromium do Playwright instalado
+`npm run test:review:quick-replies -w packages/web`; para Configurações de SLA,
+`npm run test:review:sla -w packages/web` (Chromium do Playwright instalado
 com `npx playwright install chromium`, se necessário). O comando sobe só Vite
 com mocks, sem API/banco, e grava medidas/capturas em `.review-artifacts` do web.
 Na ficha de formulário, respostas enviadas continuam lendo `doc.sections`
@@ -83,6 +84,8 @@ Clientes usa a ficha lateral de 420px com contrato, marcos e dinheiro. Edição,
 upsell, churn e gestão de cobranças abrem os formulários existentes em modal;
 a apresentação compacta recebe os mesmos totais/status da tabela. Leituras
 financeiras têm estado local de carregamento/erro e nova tentativa.
+Seletores que usam `Popover` abrem em portal no `document.body`, mantendo
+menus e folhas mobile acima da página e do botão flutuante de feedback.
 
 ## Arquitetura confirmada
 
