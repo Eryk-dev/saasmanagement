@@ -1,6 +1,6 @@
 import React from "react";
-import { EmptyState, useEsc, toast } from "../atoms.jsx";
-import { Segmented } from "../components/viz.jsx";
+import { EmptyState, useEsc, toast, PrimaryButton } from "../atoms.jsx";
+import { Segmented, PageHead } from "../components/viz.jsx";
 import { api, assetUrl, getKey } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { useIsMobile } from "../lib/responsive.js";
@@ -94,8 +94,8 @@ export function MindmapsScreen() {
     if (activeId && !visible.some((m) => m.id === activeId)) setActiveId(visible[0]?.id || null);
     else if (!activeId && visible.length) setActiveId(visible[0].id);
   }, [activeProduct?.id, maps]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Gaveta fechada por padrão: a tela abre no mapa.
-  const [gaveta, setGaveta] = useState(false);
+  // CRM final: a lista acompanha o canvas no desktop; no celular ela recolhe.
+  const [gaveta, setGaveta] = useState(() => !isMobile);
   async function claimMap(id) {
     const saas = activeProduct?.id || "";
     setMaps((m) => (m || []).map((x) => (x.id === id ? { ...x, saas } : x)));
@@ -103,13 +103,15 @@ export function MindmapsScreen() {
   }
 
   return (
-    <div style={{ flex: 1, display: "flex", minHeight: 0, flexDirection: isMobile ? "column" : "row" }}>
+    <div style={{ flex: 1, display: "flex", minHeight: 0, flexDirection: "column", gap: 12 }}>
+      {!focus && <PageHead title="Mapas mentais" sub="Tab cria filho, Enter cria irmão, duplo clique edita"><PrimaryButton onClick={newMap}>Criar mapa</PrimaryButton></PageHead>}
+      <div style={{ flex: 1, display: "flex", minHeight: 0, gap: 12, flexDirection: isMobile ? "column" : "row" }}>
       {/* A LISTA VIROU GAVETA (13/09): a tela abre NO MAPA, que é o trabalho;
           a coluna de 230px com os outros mapas ficava ocupando espaço o tempo
           todo pra uma troca que acontece de vez em quando. Abre no nome do
           mapa (canto superior esquerdo) e fecha ao escolher. */}
       {!focus && gaveta && (
-        <div style={{ width: isMobile ? "100%" : 230, maxHeight: isMobile ? 150 : undefined, flexShrink: 0, borderRight: isMobile ? "none" : "1px solid var(--line-1)", borderBottom: isMobile ? "1px solid var(--line-1)" : "none", overflow: "auto", padding: isMobile ? "10px 12px" : "16px 12px", background: "var(--bg-1)", display: "flex", flexDirection: "column", gap: 2 }}>
+        <div style={{ width: isMobile ? "100%" : 230, maxHeight: isMobile ? 150 : undefined, flexShrink: 0, borderRadius: 24, boxShadow: "var(--shadow-card)", overflow: "auto", padding: isMobile ? "10px 12px" : "16px 12px", background: "var(--bg-1)", display: "flex", flexDirection: "column", gap: 2 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 8px 12px" }}>
             <span className="kicker" style={{ fontWeight: 600 }}>Mapas</span>
             <button onClick={newMap} style={{ height: 24, padding: "0 4px", color: "var(--accent)", fontSize: 12.5, fontWeight: 600 }}>+ novo</button>
@@ -118,16 +120,16 @@ export function MindmapsScreen() {
           {maps !== null && visible.length === 0 && <div className="dim" style={{ fontSize: 12, padding: 10, lineHeight: 1.5 }}>nenhum mapa {activeProduct?.name ? `da ${activeProduct.name}` : "ainda"} · crie o primeiro em “+ novo”</div>}
           {visible.map((m) => (
             <MapRow key={m.id} m={m} active={m.id === activeId} renaming={renaming === m.id}
-              onOpen={() => { setActiveId(m.id); setGaveta(false); }} onRename={() => setRenaming(m.id)} onRenamed={(name) => renameMap(m.id, name)} onCancelRename={() => setRenaming(null)}
+              onOpen={() => { setActiveId(m.id); if (isMobile) setGaveta(false); }} onRename={() => setRenaming(m.id)} onRenamed={(name) => renameMap(m.id, name)} onCancelRename={() => setRenaming(null)}
               onDelete={() => deleteMap(m)} onDuplicate={() => duplicateMap(m)} onClaim={!m.saas ? () => claimMap(m.id) : null} productName={activeProduct?.name} />
           ))}
         </div>
       )}
-      <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
+      <div style={{ flex: 1, minWidth: 0, position: "relative", background: "var(--bg-1)", borderRadius: 24, overflow: "hidden", boxShadow: "var(--shadow-card)" }}>
         {!focus && (
           <button onClick={() => setGaveta((v) => !v)}
             title={gaveta ? "esconder a lista de mapas" : "trocar de mapa"}
-            style={{ position: "absolute", top: 10, left: 12, zIndex: 5, height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6, maxWidth: 280 }}>
+            style={{ position: "absolute", top: 10, left: 12, zIndex: 5, height: 30, padding: "0 12px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6, maxWidth: 280 }}>
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{active?.name || "Mapas"}</span>
             <span className="mono dim" style={{ fontSize: 10 }}>{gaveta ? "◂" : "▾"}</span>
           </button>
@@ -135,6 +137,7 @@ export function MindmapsScreen() {
         {active
           ? <MapEditor key={active.id} map={active} onSaved={onMapSaved} focus={focus} setFocus={setFocus} isMobile={isMobile} />
           : <EmptyState title="Nenhum mapa aberto" hint={visible.length ? "Escolha um mapa na lista." : `Crie um mapa ${activeProduct?.name ? `da ${activeProduct.name} ` : ""}em “+ novo” pra começar.`} />}
+      </div>
       </div>
     </div>
   );
@@ -825,8 +828,8 @@ function MapEditor({ map, onSaved, focus, setFocus, isMobile }) {
       {save.state === "conflict" && (
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "8px 12px", background: "var(--warn-soft)", color: "var(--fg-1)", fontSize: 12.5, borderBottom: "1px solid var(--line-1)" }}>
           <span><b>{save.current?.updatedBy ? displayName(save.current.updatedBy) : "Outra pessoa"}</b> editou este mapa enquanto você mexia.</span>
-          <button onClick={() => adoptRemote(save.current)} style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 12 }}>Recarregar (perde o que mudei)</button>
-          <button onClick={() => persist(true)} style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 12 }}>Gravar por cima</button>
+          <button onClick={() => adoptRemote(save.current)} style={{ height: 26, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 12 }}>Recarregar (perde o que mudei)</button>
+          <button onClick={() => persist(true)} style={{ height: 26, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 12 }}>Gravar por cima</button>
         </div>
       )}
 
@@ -998,7 +1001,7 @@ function NodeEditor({ id, text, selectAll, onCommit, onEnter, onTab, root, bold 
 // ── Toolbar do nó, popovers e menus ──────────────────────────────────────────
 function TBtn({ title, onClick, disabled, active, children, style }) {
   return (
-    <button title={title} onClick={onClick} disabled={disabled} style={{ height: 28, minWidth: 28, padding: "0 7px", borderRadius: "var(--r-2)", border: `1px solid ${active ? "var(--accent-line)" : "var(--line-2)"}`, background: active ? "var(--accent-soft)" : "var(--bg-1)", color: active ? "var(--accent)" : "var(--fg-2)", fontSize: 13, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.4 : 1, display: "inline-flex", alignItems: "center", justifyContent: "center", ...style }}>{children}</button>
+    <button title={title} onClick={onClick} disabled={disabled} style={{ height: 28, minWidth: 28, padding: "0 7px", borderRadius: 999, border: `1px solid ${active ? "var(--accent-line)" : "var(--line-2)"}`, background: active ? "var(--accent-soft)" : "var(--bg-1)", color: active ? "var(--accent)" : "var(--fg-2)", fontSize: 13, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.4 : 1, display: "inline-flex", alignItems: "center", justifyContent: "center", ...style }}>{children}</button>
   );
 }
 function NodeToolbar({ node, color, count, pos, isMobile, onColor, onBold, onShape, onNote, onEmoji, onImage, onLink, onConnect, connecting, onMore, onDelete }) {
@@ -1040,7 +1043,7 @@ function NodePopover({ kind, node, pos, onClose, onSave, onImageFile }) {
       <Popover pos={pos} onClose={onClose} width={300}>
         <div className="kicker">emoji do nó</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 2 }}>
-          {EMOJIS.map((e) => <button key={e} onClick={() => { onSave({ emoji: e }); onClose(); }} style={{ height: 30, fontSize: 17, borderRadius: 6, background: node.emoji === e ? "var(--accent-soft)" : "transparent" }}>{e}</button>)}
+          {EMOJIS.map((e) => <button key={e} onClick={() => { onSave({ emoji: e }); onClose(); }} style={{ height: 30, fontSize: 17, borderRadius: 999, background: node.emoji === e ? "var(--accent-soft)" : "transparent" }}>{e}</button>)}
         </div>
         <div style={{ display: "flex", gap: 6 }}>
           <input className="inp" placeholder="ou digite/cole um emoji" onChange={(e) => { const v = e.target.value.trim(); if (v) { onSave({ emoji: [...v][0] }); onClose(); } }} style={{ flex: 1, height: 28, fontSize: 12.5 }} />
@@ -1068,7 +1071,7 @@ function NodePopover({ kind, node, pos, onClose, onSave, onImageFile }) {
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center" }}>
         {(kind === "note" ? node.note : node.link) && <button onClick={() => { onSave(kind === "note" ? { note: "" } : { link: "" }); onClose(); }} style={{ fontSize: 12, color: "var(--neg)", marginRight: "auto" }}>tirar</button>}
         <button onClick={onClose} style={{ fontSize: 12, color: "var(--fg-3)" }}>cancelar</button>
-        <button onClick={save} style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 12.5, fontWeight: 600 }}>{kind === "note" ? `salvar (${MOD}↵)` : "salvar"}</button>
+        <button onClick={save} style={{ height: 28, padding: "0 12px", borderRadius: 999, background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 12.5, fontWeight: 600 }}>{kind === "note" ? `salvar (${MOD}↵)` : "salvar"}</button>
       </div>
     </Popover>
   );
@@ -1104,7 +1107,7 @@ function Menu({ x, y, items, onClose }) {
       {items.map((it, i) => it.sep
         ? <div key={"s" + i} style={{ height: 1, background: "var(--line-1)", margin: "4px 6px" }} />
         : <button key={it.label} disabled={it.disabled} onClick={() => { onClose(); it.onClick && it.onClick(); }}
-            style={{ display: "flex", width: "100%", alignItems: "center", gap: 12, padding: "6px 10px", borderRadius: 6, fontSize: 12.5, textAlign: "left", color: it.danger ? "var(--neg)" : "var(--fg-1)", opacity: it.disabled ? 0.4 : 1, cursor: it.disabled ? "default" : "pointer" }}
+            style={{ display: "flex", width: "100%", alignItems: "center", gap: 12, padding: "6px 10px", borderRadius: 999, fontSize: 12.5, textAlign: "left", color: it.danger ? "var(--neg)" : "var(--fg-1)", opacity: it.disabled ? 0.4 : 1, cursor: it.disabled ? "default" : "pointer" }}
             onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = "var(--bg-2)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
             <span style={{ flex: 1 }}>{it.label}</span>
             {it.kbd && <span className="mono dim" style={{ fontSize: 10.5 }}>{it.kbd}</span>}
