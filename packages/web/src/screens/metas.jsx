@@ -151,7 +151,7 @@ function CadeiaDaMeta({ data, applyDerived }) {
         {!data.derived.blockedBy && (
           <button onClick={applyDerived}
             title="Preenche os campos de VOLUME das vagas (calls, contatos, ganhos do time) com o desdobramento abaixo. As taxas ficam como estão: são a ambição que alimenta a cadeia, não resultado dela. Nada é gravado até clicar em salvar metas."
-            style={{ height: 30, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 600 }}>
+            style={{ height: 30, padding: "0 12px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 600 }}>
             derivar metas do pace
           </button>
         )}
@@ -391,7 +391,7 @@ function MetasScreen() {
     setRoleVals(JSON.parse(orig.roleVals)); setOverrides(JSON.parse(orig.overrides)); setContratos(orig.contratos); setGrowth(orig.growth); setMeses(JSON.parse(orig.meses));
   }
 
-  const inp = { height: 38, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
+  const inp = { height: 38, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
   const infoDot = (t) => <Info texto={t} />;
   const nameOf = (id) => data?.users?.find((u) => u.id === id)?.name || id;
   // "12 por pessoa · 2 na vaga" — só faz sentido em métrica de time com mais de
@@ -407,9 +407,9 @@ function MetasScreen() {
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, width: "100%" }}>
       <PageHead title="Metas" sub="metas por vaga e por pessoa · valem em todo campo que mostra meta">
-        <button onClick={reset} disabled={saving || !dirty} style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, opacity: dirty ? 1 : .55 }}>descartar</button>
+        <button onClick={reset} disabled={saving || !dirty} style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-1)", borderRadius: 999, background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, opacity: dirty ? 1 : .55 }}>descartar</button>
         <button onClick={save} disabled={saving || !dirty}
-          style={{ height: 32, padding: "0 15px", borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 12.5, fontWeight: 600, opacity: saving || !dirty ? 0.55 : 1 }}>
+          style={{ height: 32, padding: "0 15px", borderRadius: 999, background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 12.5, fontWeight: 600, opacity: saving || !dirty ? 0.55 : 1 }}>
           {saving ? "salvando…" : "salvar metas"}
         </button>
       </PageHead>
@@ -677,7 +677,7 @@ function MetasScreen() {
                   );
                 })}
                 {data.users?.length > 0 && (
-                  <button onClick={addOverride} style={{ alignSelf: "flex-start", height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>
+                  <button onClick={addOverride} style={{ alignSelf: "flex-start", height: 32, padding: "0 13px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>
                     + outra meta por pessoa
                   </button>
                 )}
@@ -707,7 +707,7 @@ function MetasScreen() {
                   </label>
                   <button onClick={aplicarCrescimento} disabled={!(Number(growth) > 0)}
                     title="Preenche os campos dos próximos meses a partir da meta do mês atual. Confira e clique em salvar metas."
-                    style={{ height: 32, padding: "0 13px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, opacity: Number(growth) > 0 ? 1 : 0.55 }}>
+                    style={{ height: 32, padding: "0 13px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, opacity: Number(growth) > 0 ? 1 : 0.55 }}>
                     definir os {proximosMeses.length} meses
                   </button>
                 </span>
