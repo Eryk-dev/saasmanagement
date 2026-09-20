@@ -322,7 +322,7 @@ function DisparosScreen({ onOpenLead }) {
             <label className="canvas-field" style={{ marginTop: 14, fontSize: 12.5 }}>Nome da campanha<input className="inp" value={camp.name} onChange={(e) => setCamp((c) => ({ ...c, name: e.target.value }))} placeholder="Retomada · diagnóstico pendente" /></label>
             {channel === "email" && <label className="canvas-field" style={{ marginTop: 12, fontSize: 12.5 }}>Assunto do e-mail<input className="inp" value={camp.email.subject} onFocus={() => setActiveField("subject")} onChange={(e) => setCamp((c) => ({ ...c, email: { ...c.email, subject: e.target.value } }))} /></label>}
             <label className="canvas-field" style={{ marginTop: 12, fontSize: 12.5 }}>Mensagem<textarea className="inp" value={channel === "email" ? camp.email.body : camp.wa.text} onFocus={() => setActiveField(channel === "email" ? "body" : "wa")} onChange={(e) => changedBody(e.target.value)} placeholder="Oi {{nome}}! Seu diagnóstico da {{empresa}} ficou pronto." rows={5} style={{ minHeight: 112, padding: "9px 11px", resize: "vertical", lineHeight: 1.5 }} /></label>
-            <div className="marketing-toolbar" style={{ marginTop: 10 }}>{TOKENS.map(([key, label]) => <button key={key} title={`Inserir ${label}`} onClick={() => insertToken(key)} style={{ fontSize: 11.5, color: "var(--fg-3)", border: "1px solid var(--line-1)", borderRadius: "var(--r-1)", padding: "4px 7px" }}>{`{{${key}}}`}</button>)}</div>
+            <div className="marketing-toolbar" style={{ marginTop: 10 }}>{TOKENS.map(([key, label]) => <button key={key} title={`Inserir ${label}`} onClick={() => insertToken(key)} style={{ fontSize: 11.5, color: "var(--fg-3)", border: "1px solid var(--line-1)", borderRadius: 999, padding: "4px 7px" }}>{`{{${key}}}`}</button>)}</div>
             <div className="marketing-toolbar" style={{ marginTop: 14 }}><SecondaryButton onClick={save} disabled={saving || assistBusy || emailBusy}>{saving ? "salvando…" : "Salvar campanha"}</SecondaryButton>{window.SEED?.CONFIG?.ai?.configured && <SecondaryButton onClick={genCopy} disabled={aiBusy}>{aiBusy ? "gerando…" : "Gerar com IA"}</SecondaryButton>}</div>
           </section>
           <section className="marketing-card">
@@ -425,7 +425,7 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
 
   const box = { border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: 14 };
   const field = { width: "100%", padding: "7px 9px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5 };
-  const chip = (on) => ({ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", fontSize: 11.5, fontWeight: 600, cursor: "pointer", border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"), background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-2)" });
+  const chip = (on) => ({ height: 26, padding: "0 10px", borderRadius: 999, fontSize: 11.5, fontWeight: 600, cursor: "pointer", border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"), background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-2)" });
 
   if (!product) return null;
 
@@ -442,7 +442,7 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
             {s.name || "sem nome"}
           </button>
         ))}
-        <button onClick={() => setSeq(blankSeq(product?.id, me))} className="mono dim" style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-2)", fontSize: 12 }}>+ nova</button>
+        <button onClick={() => setSeq(blankSeq(product?.id, me))} className="mono dim" style={{ height: 26, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-2)", fontSize: 12 }}>+ nova</button>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 14 }}>
@@ -514,8 +514,8 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
           </div>
 
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={save} disabled={busy} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12.5, fontWeight: 600 }}>{busy ? "salvando…" : "salvar sequência"}</button>
-            {seq.id && <button onClick={removeSeq} className="mono dim" style={{ height: 30, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-2)", fontSize: 12, color: "var(--neg)" }}>apagar</button>}
+            <button onClick={save} disabled={busy} style={{ height: 30, padding: "0 14px", borderRadius: 999, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12.5, fontWeight: 600 }}>{busy ? "salvando…" : "salvar sequência"}</button>
+            {seq.id && <button onClick={removeSeq} className="mono dim" style={{ height: 30, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-2)", fontSize: 12, color: "var(--neg)" }}>apagar</button>}
             {seq.status !== "active" && seq.id && <span className="mono dim" style={{ fontSize: 10.5, alignSelf: "center" }}>ative a sequência pra ela começar a inscrever e disparar</span>}
           </div>
         </div>
@@ -557,8 +557,8 @@ function SequencesTab({ product, leads, stageOptions, defaultStages }) {
                         <span className="mono dim" style={{ fontSize: 10 }}>{s?.name || ""} · passo {en.stepIndex + 1}</span>
                       </span>
                       {waUrl
-                        ? <a href={waUrl} target="_blank" rel="noopener noreferrer" onClick={mark} style={{ display: "inline-flex", alignItems: "center", height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--wa-brand)", color: "var(--wa-brand-deep)", fontSize: 11.5, fontWeight: 600, textDecoration: "none" }}>abrir Whats ↗</a>
-                        : <button onClick={mark} className="mono" style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 11.5 }}>{wa ? "marcar enviado" : "sem telefone · marcar"}</button>}
+                        ? <a href={waUrl} target="_blank" rel="noopener noreferrer" onClick={mark} style={{ display: "inline-flex", alignItems: "center", height: 26, padding: "0 10px", borderRadius: 999, border: "1px solid var(--wa-brand)", color: "var(--wa-brand-deep)", fontSize: 11.5, fontWeight: 600, textDecoration: "none" }}>abrir Whats ↗</a>
+                        : <button onClick={mark} className="mono" style={{ height: 26, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 11.5 }}>{wa ? "marcar enviado" : "sem telefone · marcar"}</button>}
                     </div>
                   );
                 })}
@@ -620,7 +620,7 @@ function TemplatesTab({ product }) {
             <textarea value={t.text} onChange={(e) => setT((x) => ({ ...x, text: e.target.value }))} rows={4} placeholder="mensagem · {{nome}}" style={{ ...field, resize: "vertical", fontFamily: "inherit" }} />
           )}
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={save} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12.5, fontWeight: 600 }}>{t.id ? "salvar" : "criar template"}</button>
+            <button onClick={save} style={{ height: 30, padding: "0 14px", borderRadius: 999, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12.5, fontWeight: 600 }}>{t.id ? "salvar" : "criar template"}</button>
             {t.id && <button onClick={() => setT({ id: null, channel: "email", name: "", subject: "", body: "", text: "" })} className="mono dim" style={{ fontSize: 12 }}>cancelar</button>}
           </div>
         </div>
