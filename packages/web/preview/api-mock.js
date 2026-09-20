@@ -89,9 +89,17 @@ const RESPOSTAS = {
     contracts: { target: 35, sold: 3, progress: 0.0857, expectedProgress: 0.38, status: "behind" },
   }),
   pipelinePace: () => ({
+    month: "2026-09", today: "2026-09-14",
+    context: { averageEntry: 3650, averageEntrySource: "initial_payments", wonMonth: 3 },
+    conversions: {
+      contactRate: { value: 14 / 18, source: "history" },
+      bookingRate: { value: 9 / 14, source: "history" },
+      showRate: { value: 7 / 9, source: "history" },
+      closeRate: { value: 3 / 7, source: "history" },
+    },
     sale: { target: 128000, sold: 10950, soldToday: 0, gap: 117050, expectedToDate: 48640,
       progress: 0.0855, expectedProgress: 0.38, status: "behind", projected: 28744,
-      actualDailyPace: 1369, requiredDailyPace: 9004, remainingBusinessDays: 13, targetConfigured: true },
+      actualDailyPace: 1369, requiredDailyPace: 9004, remainingBusinessDays: 13, elapsedBusinessDays: 8, totalBusinessDays: 21, targetConfigured: true },
     contracts: { target: 35, sold: 3, soldToday: 0, gap: 32, progress: 0.0857, expectedToDate: 13, expectedProgress: 0.38, status: "behind" },
   }),
   scoreboard: () => ({

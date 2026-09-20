@@ -1,5 +1,27 @@
 # Design system do cockpit
 
+## Padrão aprovado em 20/09/2026 — CRM final
+
+O protótipo novo substitui os tokens visuais das rodadas abaixo. Fonte e mapa:
+[CRM final](../../../../design/crm-final/IMPLEMENTACAO.md).
+
+- Corpo Plus Jakarta Sans; títulos e números Outfit; código/IDs JetBrains Mono.
+- Canvas `#e7ecee`, cards sem borda cinza com raio 24 e sombra difusa; controles
+  e linhas compactas com raio 999; conteúdo usa a largura disponível.
+- Rail navy 244px, margem/gap externo 12px, topo de 52px em cápsula.
+- Painel de ação navy `#0a2434 → #051c2c`, seta de marca discreta, teal
+  `#23d8d3` no navy e `#0F766E` no papel. `capsule-navy` fornece tokens locais
+  de contraste para textos, estados e controles.
+- Glow restrito ao ICP e porcentagem da meta na Visão geral; sem animação
+  contínua nas ondas, reflexos ou ponto da meta.
+- `capsule.css` guarda a moldura e os papéis comuns; geometria de cada tela
+  fica no CSS da tela. Drawer tem margem 12px e cantos de 24px.
+- Atividades usa roteiro lateral em desktop e Modal até 1100px. Preservar
+  o mesmo componente e handlers nos dois formatos.
+
+As decisões de domínio/acessibilidade das rodadas anteriores continuam valendo;
+valores antigos de fonte, raio, canvas e bordas são histórico.
+
 > **Estado: preenchido a partir do código real em 2026-08-08** (tokens.css v7
 > "Lever Premium", atoms.jsx, viz.jsx, charts.jsx). Este arquivo é a fonte da
 > verdade: registre aqui qualquer padrão novo aprovado, e risque dívidas

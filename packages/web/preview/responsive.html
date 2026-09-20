@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cockpit · revisão responsiva isolada</title>
+<style>
+body{margin:0;padding:12px;background:#c5cfd4;font:13px system-ui;color:#051c2c}header{margin-bottom:12px;display:flex;gap:12px;align-items:center}iframe{display:block;border:0;background:#e7ecee;box-shadow:0 8px 24px #051c2c22}a{color:inherit}
+</style>
+<header><strong id="label"></strong><a id="direct">Abrir tela</a><span>Dados de demonstração · sem API de produção</span></header>
+<iframe title="Cockpit em tamanho de teste"></iframe>
+<script type="module">
+const query = new URLSearchParams(location.search);
+const width = [390,1440,1920].includes(Number(query.get('width'))) ? Number(query.get('width')) : 390;
+const screen = query.get('screen') || 'overview';
+const target = new URL('./', location.href);
+target.search = '?shell=1&marketing=1&inbox=1&team=1&ticketsView=list';
+target.hash = screen;
+const frame = document.querySelector('iframe');
+frame.style.width = `${width}px`;
+frame.style.height = width === 390 ? '844px' : '1000px';
+frame.src = target.href;
+document.querySelector('#label').textContent = `${screen} · ${width}px`;
+document.querySelector('#direct').href = target.href;
+</script>
+</html>

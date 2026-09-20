@@ -41,6 +41,16 @@ Os planos em `docs/superpowers/` detalham uma implementação de proposta editá
 de junho de 2026. Consultá-los quando a tarefa envolver esse comportamento,
 sem assumir que representam todo o renderer atual.
 
+## Referência visual vigente
+
+O layout aprovado em 20/09/2026 é o **CRM final**, versionado em
+[design/crm-final/IMPLEMENTACAO.md](../design/crm-final/IMPLEMENTACAO.md), com o
+mapa das 30 telas. `support.js` é apenas referência do editor; a aplicação não
+depende dele. `capsule.css` e os componentes existentes aplicam a moldura e os
+tokens. A prévia `responsive.html?width=390&screen=overview` (também 1440/1920)
+usa mocks locais, sem API/banco. Atividades abre o roteiro lateral no desktop
+e em modal até 1100px, preservando os mesmos handlers e estado.
+
 ## Arquitetura confirmada
 
 Monorepo npm workspaces, JavaScript ESM, Node >=20; a imagem de produção usa

@@ -12,6 +12,14 @@ Rota = hash (`#pipeline`). Arquivos em `packages/web/src/screens/`.
 > leitura linha a linha dos 12 blocos (nível Meu dia) fica como refinamento
 > contínuo quando cada tela for mexida.
 
+## Rodada CRM final — 20/09/2026
+
+As 30 rotas do novo protótipo receberam a direção Cápsula. O
+[mapa de implementação e validação](../../../../design/crm-final/IMPLEMENTACAO.md)
+registra fontes, adaptações funcionais e limites dos checks em 390/1440/1920px.
+Esta rodada é implementação visual e verificação de renderização; não substitui
+uma auditoria completa de todas as mutações e integrações externas.
+
 ## Rodada do protótipo de 33 telas (14/09/2026)
 
 O Leo entregou um protótipo funcional hi-fi das 33 telas (`design/handoff-cockpit/`,
