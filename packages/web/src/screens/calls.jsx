@@ -1,276 +1,57 @@
 import React from "react";
-import { PageHead, Card, Pill, Segmented } from "../components/viz.jsx";
+import { Segmented } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
+import { AnalysisCard, AnalysisBar, CallDistribution, RecentCalls } from "../components/call-analysis.jsx";
 import { api } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
-import { displayName } from "../lib/users.js";
+import { displayName, canSeeScreen } from "../lib/users.js";
 import { DEFAULT_SCRIPTS, applyScriptOverride } from "../lib/scripts.js";
+import "./calls.css";
 
-// Análise de pitch — agrega os resumos de call por IA (activity call_summary) do
-// produto: objeções recorrentes, dores mais citadas e temperatura, mais as calls
-// recentes. Quando tiver volume, é daqui que o time tira insight pra afinar o
-// pitch (e o diagnóstico da IA aponta o que ajustar no roteiro da call).
-const { useState: useS, useEffect: useE } = React;
-const TEMP_TONE = { quente: "neg", morno: "warn", frio: "mut" };
-
-// Seletor "separado por pessoa" (closer no pitch, integrador na integração):
-// pílulas Todos + uma por pessoa com a contagem de calls. value undefined = Todos;
-// "" = sem responsável. Só aparece quando há o que separar (2+ opções).
-export function PersonFilter({ people, value, onChange, allLabel = "Todos" }) {
-  const total = (people || []).reduce((s, p) => s + (p.count || 0), 0);
-  const opts = [{ id: undefined, count: total, label: allLabel }].concat(
-    (people || []).map((p) => ({ id: p.id, count: p.count, label: p.id ? displayName(p.id) : "sem responsável" })),
-  );
-  return (
-    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-      <span className="dim" style={{ fontSize: 12, marginRight: 2 }}>separado por:</span>
-      {opts.map((o) => {
-        const on = value === o.id;
-        return (
-          <button key={o.id ?? "__all__"} onClick={() => onChange(o.id)}
-            style={{ height: 34, padding: "0 13px", borderRadius: 999, fontSize: 12.5, cursor: "pointer",
-              border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"),
-              background: on ? "var(--accent-soft)" : "var(--bg-1)",
-              color: on ? "var(--accent)" : "var(--fg-3)", fontWeight: 600 }}>
-            {o.label} <span className="tnum" style={{ opacity: 0.65 }}>· {o.count}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
+export function PersonFilter({people,value,onChange,allLabel="Todos"}) {
+  const opts=[{id:undefined,count:people.reduce((n,p)=>n+(p.count||0),0),label:allLabel},...people.map(p=>({...p,label:p.id?displayName(p.id):"sem responsável"}))];
+  return <div className="calls-people"><span>por pessoa</span>{opts.map(o=><button key={o.id??"__all__"} aria-pressed={value===o.id} onClick={()=>onChange(o.id)}>{o.label} <strong>{o.count}</strong></button>)}</div>;
 }
-
-// Barra horizontal simples (frequência relativa) — evita puxar chart pesado.
-function Bar({ label, value, max, sub, tone }) {
-  const pct = max > 0 ? Math.max(4, Math.round((value / max) * 100)) : 0;
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 13 }}>
-        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
-        <span className="tnum" style={{ flexShrink: 0, color: "var(--fg-3)", fontSize: 12 }}>{sub}</span>
-      </div>
-      <div style={{ height: 7, borderRadius: 4, background: "var(--bg-inset)", overflow: "hidden" }}>
-        <div style={{ width: `${pct}%`, height: "100%", background: tone || "var(--accent)" }} />
-      </div>
-    </div>
-  );
+function CallsScreen({onOpenLead}) {
+  const [product]=useActiveSaas();
+  if(!product)return <EmptyState title="Sem produto ativo" hint="Escolha um produto na barra lateral."/>;
+  return <CallsWorkspace key={product.id} product={product} onOpenLead={onOpenLead}/>;
 }
-
-function CallsScreen({ onOpenLead }) {
-  const [product] = useActiveSaas();
-  const [data, setData] = useS(null);
-  const [err, setErr] = useS(null);
-  const [ai, setAi] = useS(null); // null | "loading" | { diagnostico, objecoes } | { error }
-  // Call de VENDA (lead com closer) ≠ call de QUALIFICAÇÃO do SDR (lead sem
-  // closer): teor diferente, análise separada. O grupo escolhido persiste.
-  const [group, setGroupState] = useS(() => { try { return localStorage.getItem("cockpit_calls_group") || "venda"; } catch { return "venda"; } });
-  const setGroup = (g) => { setGroupState(g); setCloser(undefined); try { localStorage.setItem("cockpit_calls_group", g); } catch { /* ignore */ } };
-  const [closer, setCloser] = useS(undefined); // undefined = todos do grupo
-  const [closers, setClosers] = useS([]); // lista persistente pro seletor (não some no loading)
-
-  // Troca de produto zera o filtro de pessoa.
-  useE(() => { setCloser(undefined); setClosers([]); }, [product?.id]);
-
-  useE(() => {
-    if (!product?.id) return;
-    let alive = true;
-    setData(null); setErr(null); setAi(null);
-    api.pitchCalls(product.id, closer, group).then((d) => {
-      if (!alive) return;
-      setData(d);
-      if (Array.isArray(d.closers)) setClosers(d.closers); // lista completa (não muda com o filtro)
-    }).catch((e) => alive && setErr(e.message));
-    return () => { alive = false; };
-  }, [product?.id, closer, group]);
-
-  // Pessoas do grupo ativo (a API manda contagem por grupo+pessoa).
-  const groupPeople = closers.filter((p) => (p.group || "venda") === group);
-
-  // Diagnóstico da IA: usa o roteiro ATUAL da call (default + override do produto)
-  // + o padrão das calls. Mostramos só o diagnóstico e como tratar as objeções;
-  // a nova versão do roteiro se aplica em Ajustes → Scripts.
-  async function diagnosticar() {
-    setAi("loading");
-    try {
-      // Grupo decide o roteiro de referência: venda = call de fechamento;
-      // qualificação = roteiro de 1º contato do SDR.
-      const key = group === "sdr" ? "novo" : "call";
-      const base = DEFAULT_SCRIPTS[key] || {};
-      const cur = applyScriptOverride(base, product.scripts?.[key]) || base;
-      const r = await api.improvePitch(product.id, {
-        scriptKey: key, scriptLabel: group === "sdr" ? "1º contato (SDR)" : "Call de fechamento",
-        currentScript: { resumo: cur.resumo, objetivo: cur.objetivo, passos: cur.passos },
-        closer, group, // undefined = todos do grupo; senão só as calls da pessoa
-      });
-      setAi({ diagnostico: r.diagnostico || "", objecoes: r.objecoesRecorrentes || [] });
-    } catch (e) {
-      setAi({ error: e?.status === 422 ? "Ainda não há calls resumidas pra analisar." : (e?.message || "falha ao gerar") });
-    }
+function CallsWorkspace({product,onOpenLead}) {
+  const [data,setData]=React.useState(null),[error,setError]=React.useState(null),[attempt,setAttempt]=React.useState(0);
+  const [ai,setAi]=React.useState(null),busy=ai==='loading',writing=React.useRef(false),generation=React.useRef(0);
+  const [group,setGroupState]=React.useState(()=>{try{return localStorage.getItem('cockpit_calls_group')==='sdr'?'sdr':'venda';}catch{return 'venda';}});
+  const [closer,setCloser]=React.useState(undefined),[closers,setClosers]=React.useState([]);
+  function setGroup(g){if(g===group)return;generation.current++;setData(null);setAi(null);setGroupState(g);setCloser(undefined);try{localStorage.setItem('cockpit_calls_group',g);}catch{}}
+  function chooseCloser(id){if(id===closer)return;generation.current++;setData(null);setAi(null);setCloser(id);}
+  React.useEffect(()=>{let alive=true;const token=++generation.current;setData(null);setError(null);setAi(null);writing.current=false;
+    api.pitchCalls(product.id,closer,group).then(d=>{if(alive){setData(d);if(Array.isArray(d.closers))setClosers(d.closers);}}).catch(e=>{if(alive)setError(e);});
+    return()=>{alive=false;if(generation.current===token)generation.current++;};
+  },[product.id,closer,group,attempt]);
+  async function diagnosticar(){
+    if(writing.current||!data?.count||data.aiConfigured===false)return;
+    writing.current=true;setAi('loading');const token=generation.current;
+    try{const key=group==='sdr'?'novo':'call',base=DEFAULT_SCRIPTS[key]||{},cur=applyScriptOverride(base,product.scripts?.[key])||base;
+      const r=await api.improvePitch(product.id,{scriptKey:key,scriptLabel:group==='sdr'?'1º contato (SDR)':'Call de fechamento',currentScript:{resumo:cur.resumo,objetivo:cur.objetivo,passos:cur.passos},closer,group});
+      if(generation.current===token)setAi({diagnostico:r.diagnostico||'',objecoes:r.objecoesRecorrentes||[]});
+    }catch(e){if(generation.current===token)setAi({error:e?.status===422?'Ainda não há calls resumidas para analisar.':e?.message||'Não foi possível gerar o diagnóstico.'});}
+    finally{if(generation.current===token)writing.current=false;}
   }
-
-  function openRecent(leadId) {
-    const full = (window.SEED?.LEADS || []).find((l) => l.id === leadId);
-    if (full && onOpenLead) onOpenLead(full);
-  }
-
-  const temp = data?.temperatura || { quente: 0, morno: 0, frio: 0 };
-  const maxObj = data?.objecoes?.[0]?.total || 1;
-  const maxDor = data?.dores?.[0]?.total || 1;
-
-  return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead title="Análise de Pitches"
-        sub={(data ? `${data.count} ${data.count === 1 ? "call resumida" : "calls resumidas"}` : "calls resumidas") + " por IA · objeções, dores e temperatura · " + (group === "sdr" ? "qualificação (SDR)" : "vendas (closer)") + (closer != null ? ` · ${closer ? displayName(closer) : "sem responsável"}` : "")} />
-
-      <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-        <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-          {/* Venda ≠ qualificação: a call do closer e a do SDR têm teor diferente,
-              então cada grupo tem sua análise e suas pessoas. */}
-          <Segmented value={group} onChange={setGroup} options={[
-            { value: "venda", label: "Vendas · closer" },
-            { value: "sdr", label: "Qualificação · SDR" },
-          ]} />
-          {groupPeople.length >= 2 && <PersonFilter people={groupPeople} value={closer} onChange={setCloser} />}
-          {groupPeople.length === 1 && data?.count > 0 && (
-            <span className="mono dim" style={{ fontSize: 11 }}>
-              {groupPeople[0].id ? `todas as calls do grupo são de ${displayName(groupPeople[0].id)}` : "nenhuma call do grupo tem responsável"}
-            </span>
-          )}
-        </div>
-        {err && <div className="mono" style={{ color: "var(--neg)" }}>{err}</div>}
-        {!data && !err && <div className="mono dim">carregando…</div>}
-
-        {data && data.count === 0 && (
-          <EmptyState title={group === "sdr" ? "Nenhuma call de qualificação resumida ainda" : "Nenhuma call de venda resumida ainda"}
-            hint="As calls agendadas pelo cockpit viram resumo automático quando o Meet gera a transcrição. Conforme as calls acontecem, os padrões (objeções, dores, temperatura) aparecem aqui." />
-        )}
-
-        {data && data.count > 0 && (
-          <>
-            {data.count < 5 && (
-              <div style={{ border: "1px solid var(--warn-line, var(--line-2))", background: "var(--warn-soft)", borderRadius: "var(--r-2)", padding: "10px 12px", fontSize: 12.5, color: "var(--fg-2)" }}>
-                Ainda juntando calls ({data.count}). Os padrões ficam confiáveis a partir de umas 10 calls. Já dá pra olhar, mas leve como amostra pequena.
-              </div>
-            )}
-
-            {/* TEMPERATURA como barra (13/09): quatro tiles não diziam a
-                PROPORÇÃO, que é a leitura da tela — call quente é o que vira
-                cliente, e a barra mostra quanto do período foi quente sem
-                ninguém dividir de cabeça. */}
-            <section className="capsule-navy" style={{ boxShadow: "var(--shadow-card)", padding: "20px var(--inset-x)" }}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-                <h3 className="card-title" style={{ margin: 0 }}>Temperatura das calls</h3>
-                <span className="card-sub">{`${data.count} ${data.count === 1 ? "call resumida" : "calls resumidas"} no período`}</span>
-              </div>
-              <div style={{ display: "flex", height: 12, borderRadius: 999, overflow: "hidden", background: "var(--bg-2)" }}>
-                {[["quente", temp.quente, "var(--pos)"], ["morno", temp.morno, "var(--warn)"], ["frio", temp.frio, "var(--fg-4)"]].map(([k, n, cor]) => (
-                  n > 0 ? <div key={k} title={`${n} ${k}${n > 1 ? "s" : ""}`} style={{ width: `${(n / Math.max(1, data.count)) * 100}%`, background: cor }} /> : null
-                ))}
-              </div>
-              <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 10 }}>
-                {[["quentes", temp.quente, "var(--pos)"], ["mornas", temp.morno, "var(--warn)"], ["frias", temp.frio, "var(--fg-4)"]].map(([rot, n, cor]) => (
-                  <span key={rot} style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: 999, background: cor, alignSelf: "center" }} />
-                    <span className="tnum" style={{ fontSize: 15, fontWeight: 700 }}>{n}</span>
-                    <span style={{ fontSize: 12, color: "var(--fg-4)" }}>{`${rot} · ${data.count ? Math.round((n / data.count) * 100) : 0}%`}</span>
-                  </span>
-                ))}
-              </div>
-            </section>
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 16 }}>
-              <Card title="Objeções recorrentes" hint="o que mais trava as calls (× vezes · em aberto)">
-                <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "16px 24px 22px" }}>
-                  {data.objecoes.length === 0 && <div className="mono dim" style={{ fontSize: 12 }}>nenhuma objeção registrada ainda</div>}
-                  {/* Objeção que se repete é conteúdo de treino esperando ser
-                      escrito: o atalho já abre o flashcard com a objeção como
-                      frente (13/09). */}
-                  {data.objecoes.slice(0, 12).map((o, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <Bar label={o.objecao} value={o.total} max={maxObj}
-                          tone={o.abertas > 0 ? "var(--neg)" : "var(--accent)"} sub={`${o.total}× · ${o.abertas} em aberto`} />
-                      </div>
-                      <a href={`#training?objecao=${encodeURIComponent(o.objecao)}`} title="criar um card de treino com esta objeção"
-                        className="mono" style={{ flexShrink: 0, fontSize: 11, fontWeight: 600, color: "var(--accent)", textDecoration: "none", whiteSpace: "nowrap" }}>
-                        virar treino →
-                      </a>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-              <Card title="Dores mais citadas" hint="o que os leads mais trazem">
-                <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "16px 24px 22px" }}>
-                  {data.dores.length === 0 && <div className="mono dim" style={{ fontSize: 12 }}>nenhuma dor registrada ainda</div>}
-                  {data.dores.slice(0, 12).map((d, i) => (
-                    <Bar key={i} label={d.dor} value={d.total} max={maxDor} sub={`${d.total}×`} />
-                  ))}
-                </div>
-              </Card>
-            </div>
-
-            <Card title={group === "sdr" ? "Diagnóstico da qualificação (IA)" : "Diagnóstico do pitch (IA)"}
-              hint={group === "sdr" ? "a IA lê as calls do SDR e diz o que ajustar no roteiro de 1º contato" : "a IA lê as calls e diz o que ajustar no roteiro da call"}>
-              <div style={{ padding: "16px 24px 22px", display: "flex", flexDirection: "column", gap: 12 }}>
-                <div>
-                  <button onClick={diagnosticar} disabled={ai === "loading" || data.aiConfigured === false}
-                    title={data.aiConfigured === false ? "IA não configurada no servidor" : "Analisa as calls e aponta o que ajustar no pitch"}
-                    style={{ height: 30, padding: "0 14px", borderRadius: 999, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12.5, fontWeight: 600, opacity: (ai === "loading" || data.aiConfigured === false) ? 0.6 : 1 }}>
-                    {ai === "loading" ? "analisando…" : "✨ gerar diagnóstico"}
-                  </button>
-                </div>
-                {ai && ai.error && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{ai.error}</div>}
-                {ai && typeof ai === "object" && ai.diagnostico != null && (
-                  <>
-                    <div style={{ fontSize: 13, lineHeight: 1.55 }}>{ai.diagnostico}</div>
-                    {ai.objecoes?.length > 0 && (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                        {ai.objecoes.map((o, i) => (
-                          <div key={i} style={{ fontSize: 12.5, lineHeight: 1.5, borderLeft: "3px solid var(--accent-line)", paddingLeft: 10 }}>
-                            <b>{o.objecao}</b>{o.frequencia ? ` (${o.frequencia})` : ""}: {o.comoTratarNoPitch}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <div className="mono dim" style={{ fontSize: 11 }}>pra aplicar a nova versão do roteiro, vá em Ajustes → Scripts → {group === "sdr" ? "1º contato" : "Call de fechamento"} → “✨ IA das calls”.</div>
-                  </>
-                )}
-              </div>
-            </Card>
-
-            <Card title="Calls recentes" hint="últimas calls resumidas · clique pra abrir o lead">
-              <div>
-                {data.recent.map((c, i) => (
-                  <div key={i} onClick={() => openRecent(c.leadId)}
-                    style={{ display: "flex", gap: 12, alignItems: "center", padding: "12px 24px", borderTop: "1px solid var(--line-faint)", cursor: "pointer" }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
-                    <span style={{ fontSize: 13.5, fontWeight: 600, flexShrink: 0, width: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.leadName || "lead"}</span>
-                    {c.recordingUrl && (
-                      <a
-                        href={c.recordingUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        title="Abrir gravação da call no Drive"
-                        aria-label={`Abrir gravação de ${c.leadName || "cliente"} no Drive`}
-                        className="mono"
-                        style={{ color: "var(--accent)", fontSize: 10.5, fontWeight: 700, flexShrink: 0, textDecoration: "none", whiteSpace: "nowrap" }}>
-                        ▶ vídeo no Drive ↗
-                      </a>
-                    )}
-                    <Pill tone={TEMP_TONE[c.temperatura] || "mut"}>{c.temperatura || "—"}</Pill>
-                    {closer == null && c.closer && <Pill tone="mut">{displayName(c.closer)}</Pill>}
-                    <span className="dim" style={{ fontSize: 12.5, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.resumo}</span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </>
-        )}
-      </div>
-    </div>
-  );
+  const people=closers.filter(p=>(p.group||'venda')===group),temp=data?.temperatura||{quente:0,morno:0,frio:0};
+  return <div className="call-analysis-page calls-page"><header className="call-analysis-head"><h1>Análise de Pitches</h1></header><div className="call-analysis-body">
+    <fieldset className="calls-filters" disabled={busy}><Segmented value={group} onChange={setGroup} options={[{value:'venda',label:'Vendas · closer'},{value:'sdr',label:'Qualificação · SDR'}]}/>{people.length>=2&&<PersonFilter people={people} value={closer} onChange={chooseCloser}/>} {people.length===1&&<span className="calls-single-person">{people[0].id?displayName(people[0].id):'sem responsável'} · {people[0].count} calls</span>}</fieldset>
+    {error?<div role="alert" className="call-analysis-state">Não foi possível carregar as calls. <button onClick={()=>setAttempt(n=>n+1)}>Tentar novamente</button></div>:!data?<div role="status" className="call-analysis-state">Carregando calls…</div>:!data.count?<EmptyState title={group==='sdr'?'Nenhuma call de qualificação resumida ainda':'Nenhuma call de venda resumida ainda'} hint="As calls agendadas pelo cockpit viram resumo automático quando o Meet gera a transcrição. Os padrões aparecem conforme as calls acontecem."/>:<>
+      {data.count<5&&<div className="call-analysis-warning">Ainda juntando calls ({data.count}). Os padrões ficam confiáveis a partir de umas 10 calls. Considere esta uma amostra pequena.</div>}
+      <CallDistribution title="Temperatura das calls" count={data.count} countLabel={`${data.count} calls resumidas · histórico do grupo`} items={[{label:'quentes',value:temp.quente,color:'var(--pos)'},{label:'mornas',value:temp.morno,color:'var(--warn)'},{label:'frias',value:temp.frio,color:'var(--fg-3)'}]} note="Temperatura é a leitura do interesse na call, não o resultado da venda."/>
+      <div className="call-analysis-grid"><AnalysisCard title="Objeções recorrentes" hint="o que mais trava as calls · × vezes e quantas ficaram em aberto" tone="var(--neg)"><div className="call-analysis-bars">{!data.objecoes.length&&<p className="call-analysis-note">Nenhuma objeção registrada ainda.</p>}{data.objecoes.slice(0,12).map((o,i)=><div className="calls-objection" key={i}><AnalysisBar label={o.objecao} value={o.total} max={data.objecoes[0]?.total||1} tone={o.abertas>0?'var(--neg)':'var(--accent)'} sub={`${o.total}× · ${o.abertas} em aberto`}/>{canSeeScreen('training')&&<a href={`#training?objecao=${encodeURIComponent(o.objecao)}`} title={`Criar um card de treino: ${o.objecao}`}>virar treino →</a>}</div>)}</div></AnalysisCard>
+        <AnalysisCard title="Dores mais citadas" hint="o que os leads mais trazem para a call" tone="var(--warn)"><div className="call-analysis-bars">{!data.dores.length&&<p className="call-analysis-note">Nenhuma dor registrada ainda.</p>}{data.dores.slice(0,12).map((d,i)=><AnalysisBar key={i} label={d.dor} value={d.total} max={data.dores[0]?.total||1} sub={`${d.total}×`}/>)}</div></AnalysisCard></div>
+      <AnalysisCard className="capsule-navy calls-diagnosis" title={group==='sdr'?'Diagnóstico da qualificação (IA)':'Diagnóstico do pitch (IA)'} hint={group==='sdr'?'a IA lê as calls do SDR e diz o que ajustar no roteiro de 1º contato':'a IA lê as calls e diz o que ajustar no roteiro da call'} action={<button onClick={diagnosticar} disabled={busy||data.aiConfigured===false}>{busy?'Analisando…':ai?.error?'Tentar diagnóstico novamente':'Gerar diagnóstico'}</button>}>
+        {data.aiConfigured===false&&<p className="call-analysis-note">IA não configurada para gerar o diagnóstico.</p>}
+        {ai?.error&&<p role="alert" className="calls-ai-error">{ai.error}</p>}
+        {ai?.diagnostico!=null&&<div className="calls-ai-result"><p>{ai.diagnostico||'Nenhum diagnóstico foi retornado.'}</p>{ai.objecoes?.map((o,i)=><div key={i}><strong>{o.objecao}{o.frequencia?` (${o.frequencia})`:''}</strong><p>{o.comoTratarNoPitch}</p></div>)}<footer>Para aplicar uma nova versão, abra Configurações → Scripts → {group==='sdr'?'1º contato':'Call de fechamento'} → IA das calls.{canSeeScreen('settings')&&<a href="#settings">Abrir Configurações →</a>}</footer></div>}
+      </AnalysisCard>
+      <AnalysisCard title="Calls recentes" hint="até 25 calls resumidas mais recentes · clique para abrir o lead" className="call-analysis-recent"><RecentCalls rows={data.recent} productId={product.id} onOpenLead={onOpenLead} statusKey="temperatura" statusColors={{quente:'var(--pos)',morno:'var(--warn)',frio:'var(--fg-3)'}} personLabel={c=>closer==null&&c.closer?displayName(c.closer):null}/></AnalysisCard>
+    </>}
+  </div></div>;
 }
-
-export { CallsScreen };
+export {CallsScreen};

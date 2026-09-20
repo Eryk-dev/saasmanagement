@@ -1,0 +1,23 @@
+.calls-filters{margin:0;min-width:0;border:0;padding:11px 14px;border-radius:24px;background:var(--bg-1);box-shadow:var(--shadow-card);display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.calls-filters>div:first-child{padding:3px!important;gap:3px!important;background:var(--bg-2)!important;}
+.calls-filters>div:first-child button{height:28px!important;padding:0 15px!important;font-size:12px!important;}
+.calls-people{display:flex;gap:5px;flex-wrap:wrap;align-items:center;}
+.calls-people>span{font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--fg-3);margin-right:5px;}
+.calls-people button{height:28px;padding:0 12px;border-radius:999px;font-size:11.5px;color:var(--fg-3);background:transparent;}
+.calls-people button[aria-pressed=true]{background:var(--btn-bg);color:var(--btn-fg);font-weight:650;}
+.calls-people strong{font-family:var(--display);margin-left:4px;}
+.calls-single-person{font-size:11px;color:var(--fg-3);}
+.calls-objection{display:flex;align-items:center;gap:10px;}
+.calls-objection>a{font-size:10.5px;flex-shrink:0;color:var(--accent);font-weight:600;padding:5px 10px;border-radius:999px;background:var(--accent-soft);text-decoration:none;white-space:nowrap;}
+.calls-diagnosis{padding:20px 24px;background:linear-gradient(168deg,#0a2434,#051c2c 70%);}
+.calls-diagnosis h2{color:var(--accent);}
+.calls-diagnosis header button{height:34px;padding:0 16px;border-radius:999px;background:var(--btn-bg);color:var(--btn-fg);font-size:12px;font-weight:650;}
+.calls-diagnosis button:disabled{opacity:.65;cursor:default;}
+.calls-ai-error{color:var(--neg);font-size:12.5px;}
+.calls-ai-result{margin-top:16px;font-size:13.5px;line-height:1.6;}
+.calls-ai-result>p{white-space:pre-wrap;}
+.calls-ai-result>div{border-left:3px solid var(--accent);padding-left:12px;margin-top:9px;font-size:12.5px;}
+.calls-ai-result>div p{font-size:12px;color:var(--fg-2);margin:3px 0 0;}
+.calls-ai-result footer{display:flex;gap:10px;flex-wrap:wrap;align-items:center;border-top:1px solid var(--line-1);padding-top:14px;margin-top:16px;font-size:11px;color:var(--fg-3);}
+.calls-ai-result footer a{margin-left:auto;white-space:nowrap;padding:8px 14px;border-radius:999px;background:var(--bg-2);color:var(--fg-1);}
+@media(max-width:768px){.calls-objection{align-items:flex-start;}.calls-objection>a{display:flex;align-items:center;white-space:normal;max-width:85px;}.calls-people button,.calls-filters>div:first-child button{height:44px!important;}.call-analysis-bar>div:first-child{flex-wrap:wrap;}.call-analysis-bar strong{flex-basis:100%;}.calls-ai-result footer a{display:flex;align-items:center;}}
