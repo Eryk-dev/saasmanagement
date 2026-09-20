@@ -17,7 +17,8 @@
 // "sdr_replay_<tag>"), com progresso parcial gravado a cada conversa.
 import { kindOf, firstStage } from "./stages.js";
 import { leadGrade } from "./routes.marketing.js";
-import { slotsForLead, slotLabel, wallNow, spreadPair, wholeHourSlots, OFFER_HOURS, OFFER_HORIZON_DAYS } from "./agenda-slots.js";
+import { slotLabel, wallNow, spreadPair, wholeHourSlots } from "./agenda-slots.js";
+import { sdrSlotsForLead } from "./sdr-agenda.js";
 import { leadDigest, leadPainFocus, SDR_AUTHOR } from "./sdr-flow.js";
 import { PRICE_RX } from "./sdr-brain.js";
 
@@ -112,14 +113,6 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
 
     for (let ti = 0; ti < picked.length; ti++) {
       const { lead, msgs } = picked[ti];
-      // Horários reais da agenda de HOJE: o replay avalia decisão e tom; a
-      // validade do horário em si é papel do motor (sempre valida na hora).
-      let slotList = [];
-      try {
-        const { slots } = await slotsForLead(repo, { lead, saas, now: wnow, limit: 16, ...OFFER_HOURS, horizonDays: OFFER_HORIZON_DAYS });
-        slotList = slots.map((s) => ({ ...s, label: slotLabel(s.at, wnow) }));
-      } catch { /* sem agenda: a IA é instruída a perguntar período */ }
-
       if (lead.callAt) report.realBookedThreads++;
       let bookedHere = false;
       let turns = 0;
@@ -139,6 +132,8 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
         }));
         const slotsOffered = msgs.slice(0, i).some((x) => x.direction === "out" && /(hoje|amanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo) às \d{1,2}h/i.test(x.text || ""));
         try {
+          const { slots, requested: requestedDate, startDate: offerDate } = await sdrSlotsForLead(repo, { lead, saas, now: wnow, limit: 0, messages: msgs.slice(0, i + 1) });
+          const slotList = slots.map((s) => ({ ...s, label: slotLabel(s.at, wnow) }));
           const d = await ai.sdrDecide({
             sdrName: "Manuela",
             lead: { name: lead.name, company: lead.company, email: lead.email, niche: lead.niche },
@@ -148,6 +143,8 @@ export function makeSdrReplay({ repo, anthropic, log = console, now = () => new 
             callAt: "", // replay: avalia a condução até a call, sem a call futura real
             nowLabel,
             slots: slotList,
+            requestedDate,
+            offerDate,
             conversation,
             pain: leadPainFocus(product, lead),
             canGreet: gapMin == null || gapMin >= 360,

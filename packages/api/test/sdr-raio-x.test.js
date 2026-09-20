@@ -50,7 +50,7 @@ async function world({ lead = {}, sdrBot = {}, messages = [], thread = {}, catal
   });
   if (catalog) await repo.create("proposal_templates", { id: "pt_leverads", saas: "leverads", calc: { catalog: CATALOG } });
   await repo.create("users", { id: "sdr", name: "Manuela", roles: ["sdr"] });
-  await repo.create("users", { id: "pl", name: "Plena", roles: ["closer"], compLevel: 2 });
+  await repo.create("users", { id: "pl", name: "Jonathan", roles: ["closer"], compLevel: 2 });
   await repo.create("leads", {
     id: "L1", saas: "leverads", owner: "sdr", name: "Rafael Silva", phone: "41999990000",
     stage: "Qualificando", createdAt: ISO("2026-08-19T12:00:00Z"), ...lead,

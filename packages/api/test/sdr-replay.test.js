@@ -15,7 +15,7 @@ const FUNNEL = [
 async function seed() {
   const repo = makeMemRepo();
   await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNNEL, leadQuestions: [] });
-  await repo.create("users", { id: "pl", name: "Plena", roles: ["closer"], compLevel: 2 });
+  await repo.create("users", { id: "pl", name: "Jonathan", roles: ["closer"], compLevel: 2 });
   // Conversa 1: lead que virou call na vida real (callAt preenchido).
   await repo.create("leads", { id: "L1", saas: "leverads", name: "Ana", phone: "41911111111", stage: "Call agendada", callAt: "2026-08-25T10:00" });
   await repo.create("wa_threads", { id: "5541911111111", phone: "5541911111111", leadId: "L1", saas: "leverads", lastAt: ISO("2026-08-19T10:00:00Z") });
