@@ -21,7 +21,8 @@
     "test:review:whatsapp": "node scripts/review/whatsapp.mjs",
     "test:review:agenda": "node scripts/review/agenda.mjs",
     "test:review:intform": "node scripts/review/intform.mjs",
-    "test:review:quick-replies": "node scripts/review/quick-replies.mjs"
+    "test:review:quick-replies": "node scripts/review/quick-replies.mjs",
+    "test:review:sla": "node scripts/review/sla.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
