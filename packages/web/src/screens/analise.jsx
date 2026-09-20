@@ -1,5 +1,5 @@
 import React from "react";
-import { PageHead } from "../components/viz.jsx";
+import "./analise.css";
 import { EmptyState } from "../atoms.jsx";
 import { AnaliseView } from "./pipeline.jsx";
 import { useData } from "../data.jsx";
@@ -18,9 +18,9 @@ function AnaliseScreen() {
   );
   if (!s) return <EmptyState title="Sem produto ativo" hint="Escolha um produto no seletor da barra lateral." />;
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead title="Análise de Pace" sub="pace da meta · forecast · funil do produto ativo" />
-      <AnaliseView s={s} leads={leads} />
+    <div className="pace-page">
+      <header className="pace-head"><h1>Análise de Pace</h1><span>Mês corrente</span></header>
+      <AnaliseView key={s.id} s={s} leads={leads} />
     </div>
   );
 }
