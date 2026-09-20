@@ -820,5 +820,36 @@ Validação: 1.739 testes da API, testes web/smoke, build e revisão visual apro
   persistência da arte e dependência de fontes externas não foram refeitas.
 
 Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
-As demais 12 páginas aguardam esta rodada; registros históricos não são aceite
+### 19. Disparos (`#disparos`) — validada
+
+- **Importante, corrigido:** cabeçalho e três abas seguem `TelaDisparos.dc.html`.
+  Público e composição usam duas colunas 2:1; campanhas salvas ficam junto da
+  mensagem. Sequências e Templates mantêm o mesmo padrão de cards, pills,
+  campos rotulados e biblioteca/fila em linhas. Tabelas largas rolam no celular.
+- **Bloqueante, corrigido:** campanha, geração de texto, envio, sequência,
+  marcação da fila e template bloqueiam ações concorrentes. Campos e troca
+  de aba ficam bloqueados durante a operação. Falhas preservam o rascunho;
+  excluir identifica o item e o envio nativo de e-mail confirma a quantidade.
+- **Bloqueante, corrigido:** leituras têm estados de carga, falha e retry;
+  uma falha não substitui silenciosamente os dados anteriores por lista vazia.
+  Retornos antigos são ignorados e trocar de produto reinicia o contexto local.
+  Atualizações globais deixam de apagar o template em edição.
+- **Importante, corrigido:** carregar outra campanha, trocar sequência e sair
+  da aba de edição confirmam descarte. A edição da campanha permanece ao
+  alternar abas; fechamento da janela avisa sobre alterações não salvas.
+- **Evidências:** `npm run test:review:disparos -w packages/web`, capturas e
+  `geometry.json` em `packages/web/.review-artifacts/disparos/`. **26 medidas**
+  estruturais em 1440/1920, diferença máxima **0px**, para título/cabeçalho e
+  posição/largura das colunas. Campanha, tokens/prévia, IA, envio assistido e
+  nativo com mock, sequência/fila, templates, exclusão, falha/retry, descarte,
+  espera, vazio, 390/1024px e escuro conferidos. Nenhuma mensagem real enviada.
+- **Fora do escopo:** qualificação, seleção inicial do público, interpolação,
+  cálculo de custo/limite, atribuição e automações mantêm as regras reais.
+  Abrir WhatsApp/Gmail continua registrando a abertura conforme o comportamento
+  anterior; a UI explica que o envio assistido termina no aplicativo. A prancha
+  simplifica estágios, dados, canais e catálogo. Navegação global SPA ainda não
+  tem confirmação de rascunho; a proteção cobre as ações e abas desta tela.
+
+Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
+As demais 11 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.
