@@ -164,7 +164,7 @@ function CorrenteDaPublicidade({ t, biz, rangeDays }) {
     },
   ];
   return (
-    <CorrenteDoDinheiro passos={passos}
+    <CorrenteDoDinheiro navy passos={passos}
       titulo="Do anúncio ao dinheiro"
       sub={`últimos ${rangeDays} dias · cada passo mostra a conversão do anterior`} />
   );
@@ -406,18 +406,18 @@ function MetricsScreen() {
         {metaOn && product.metaAdAccount && (
           <button onClick={() => { setCreative((v) => !v); setCloneAd(false); }}
             title="Criar um anúncio do zero (escolhe copy, CTA e link)"
-            style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)" }}>
+            style={{ height: 32, padding: "0 12px", borderRadius: 999, fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)" }}>
             + criativo do zero
           </button>
         )}
         <button onClick={() => setManual(manual ? null : { date: new Date().toISOString().slice(0, 10), name: "", spend: "" })}
-          style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)" }}>
+          style={{ height: 32, padding: "0 12px", borderRadius: 999, fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)" }}>
           + gasto manual
         </button>
         {metaOn && (
           <button onClick={sync} disabled={syncing}
             title="Sincroniza o período filtrado agora (além do automático do servidor)"
-            style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", opacity: syncing ? 0.6 : 1 }}>
+            style={{ height: 32, padding: "0 12px", borderRadius: 999, fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", opacity: syncing ? 0.6 : 1 }}>
             {syncing ? "Sincronizando…" : "↻ sincronizar"}
           </button>
         )}
@@ -469,19 +469,19 @@ function MetricsScreen() {
               <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <span className="kicker">Data</span>
                 <input type="date" value={manual.date} onChange={(e) => setManual({ ...manual, date: e.target.value })}
-                  style={{ height: 30, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)" }} />
+                  style={{ height: 30, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)" }} />
               </label>
               <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 180 }}>
                 <span className="kicker">Campanha (opcional)</span>
                 <input type="text" placeholder="Entrada manual" value={manual.name} onChange={(e) => setManual({ ...manual, name: e.target.value })}
-                  style={{ height: 30, padding: "0 10px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 }} />
+                  style={{ height: 30, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 }} />
               </label>
               <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <span className="kicker">Gasto (R$)</span>
                 <input type="number" min="0" step="0.01" placeholder="0,00" value={manual.spend} onChange={(e) => setManual({ ...manual, spend: e.target.value })}
-                  style={{ width: 120, height: 30, padding: "0 8px", borderRadius: "var(--r-1)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)", textAlign: "right" }} />
+                  style={{ width: 120, height: 30, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)", textAlign: "right" }} />
               </label>
-              <button onClick={saveManual} style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-1)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: 600 }}>Registrar</button>
+              <button onClick={saveManual} style={{ height: 30, padding: "0 14px", borderRadius: 999, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: 600 }}>Registrar</button>
               <button onClick={() => setManual(null)} style={{ height: 30, padding: "0 10px", fontSize: 12.5, color: "var(--fg-3)" }}>cancelar</button>
             </div>
           </Card>
@@ -499,7 +499,7 @@ function MetricsScreen() {
                 </div>
               </div>
               {metaOn && (
-                <button onClick={sync} disabled={syncing} style={{ padding: "8px 14px", borderRadius: "var(--r-1)", fontSize: 13, fontWeight: 600, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", opacity: syncing ? 0.6 : 1 }}>
+                <button onClick={sync} disabled={syncing} style={{ padding: "8px 14px", borderRadius: 999, fontSize: 13, fontWeight: 600, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", opacity: syncing ? 0.6 : 1 }}>
                   {syncing ? "Sincronizando…" : "Sincronizar agora"}
                 </button>
               )}
@@ -668,7 +668,7 @@ function ColumnPicker({ visible, onToggle, onReset }) {
     <span style={{ position: "relative", display: "inline-flex" }}>
       <button ref={btnRef} onClick={toggleOpen} title="escolher as colunas da tabela" style={{
         display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px",
-        borderRadius: "var(--r-2)", border: "1px solid var(--line-1)",
+        borderRadius: 999, border: "1px solid var(--line-1)",
         background: open ? "var(--bg-2)" : "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 500,
       }}>
         Colunas <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)" }}>{visible.size}</span>
@@ -688,7 +688,7 @@ function ColumnPicker({ visible, onToggle, onReset }) {
                 {c.label}
               </label>
             ))}
-            <button onClick={onReset} style={{ width: "100%", marginTop: 4, padding: "7px 8px", borderRadius: 6, fontSize: 12, color: "var(--fg-3)", background: "var(--bg-2)" }}>
+            <button onClick={onReset} style={{ width: "100%", marginTop: 4, padding: "7px 8px", borderRadius: 999, fontSize: 12, color: "var(--fg-3)", background: "var(--bg-2)" }}>
               restaurar padrão
             </button>
           </div>
@@ -1196,7 +1196,7 @@ function BudgetCell({ o, onCommit, sub = "diário" }) {
   function cancel() { setVal(String(o.dailyBudget)); setPhase("idle"); }
   const miniBtn = (label, title, onClick, tone) => (
     <button onClick={onClick} title={title} style={{
-      width: 22, height: 22, borderRadius: 5, fontSize: 12, fontWeight: 700, flexShrink: 0,
+      width: 22, height: 22, borderRadius: 999, fontSize: 12, fontWeight: 700, flexShrink: 0,
       border: "1px solid " + (tone === "ok" ? "var(--accent-line)" : "var(--line-2)"),
       background: tone === "ok" ? "var(--btn-bg, var(--accent))" : "var(--bg-2)",
       color: tone === "ok" ? "var(--btn-fg, var(--accent-fg))" : "var(--fg-3)",
@@ -1210,7 +1210,7 @@ function BudgetCell({ o, onCommit, sub = "diário" }) {
           onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") cancel(); }}
           title="Orçamento diário em R$ · Enter ou ✓ envia pra Meta"
           style={{
-            width: 86, height: 25, padding: "0 8px", borderRadius: "var(--r-1)",
+            width: 86, height: 25, padding: "0 8px", borderRadius: 999,
             border: "1px solid " + (phase === "error" ? "var(--neg)" : dirty ? "var(--accent-line)" : "var(--line-2)"),
             background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)", textAlign: "right",
             opacity: phase === "saving" ? 0.6 : 1,
@@ -1712,7 +1712,7 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
           ))}
           <div>
             <button onClick={addLinha} disabled={busy}
-              style={{ height: 28, padding: "0 12px", borderRadius: "var(--r-1)", border: "1px dashed var(--line-2)", background: "transparent", color: "var(--fg-2)", fontSize: 12.5 }}>
+              style={{ height: 28, padding: "0 12px", borderRadius: 999, border: "1px dashed var(--line-2)", background: "transparent", color: "var(--fg-2)", fontSize: 12.5 }}>
               + adicionar vídeo
             </button>
           </div>
@@ -1799,7 +1799,7 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
 
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <button onClick={submit} disabled={!valid}
-            style={{ height: 32, padding: "0 16px", borderRadius: "var(--r-1)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: 600, opacity: !valid ? 0.55 : 1 }}>
+            style={{ height: 32, padding: "0 16px", borderRadius: 999, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: 600, opacity: !valid ? 0.55 : 1 }}>
             {busy ? "Trabalhando… pode deixar rodando"
               : `Criar ${comArquivo.length > 1 ? `${comArquivo.length} anúncios` : "anúncio"} ${ativo ? "rodando" : "pausado"}`}
           </button>
@@ -1969,7 +1969,7 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
 
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button onClick={submit} disabled={!valid || busy}
-            style={{ height: 32, padding: "0 16px", borderRadius: "var(--r-1)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: 600, opacity: !valid || busy ? 0.55 : 1 }}>
+            style={{ height: 32, padding: "0 16px", borderRadius: 999, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: 600, opacity: !valid || busy ? 0.55 : 1 }}>
             {busy ? "Trabalhando… não feche a tela" : "Criar anúncio pausado"}
           </button>
           <button onClick={onClose} disabled={busy} style={{ height: 32, padding: "0 10px", fontSize: 12.5, color: "var(--fg-3)" }}>cancelar</button>
