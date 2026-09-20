@@ -1,14 +1,14 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { usersByRole, currentUser, displayName, userColor } from "../lib/users.js";
-import { PageHead, Segmented, Card } from "../components/viz.jsx";
+import { Segmented } from "../components/viz.jsx";
 import { PrimaryButton } from "../atoms.jsx";
 import { AgendaView } from "./agenda-grid.jsx";
 import { stageKind } from "../lib/funnel.js";
 import { isNoShowStage } from "../lib/scripts.js";
-import { AvisoTopo, Info } from "../components/story.jsx";
-import { Modal } from "../components/overlay.jsx";
+import { Drawer } from "../components/overlay.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import "./agenda.css";
 
@@ -182,21 +182,19 @@ export function AgendaScreen({ onOpenLead }) {
     return null;
   };
 
-  function addBlock(obj) {
-    const tmp = { ...obj, id: `tmp_${Date.now()}_${Math.round(Math.random() * 1e6)}` };
-    setBlocks((prev) => [...prev, tmp]);
-    api.create("agenda_blocks", obj).catch((err) => { console.warn("item não salvo:", err.message); setBlocks((prev) => prev.filter((b) => b.id !== tmp.id)); window.toast && window.toast("O item da agenda não foi salvo · tente de novo", "neg"); });
+  async function addBlock(obj) {
+    const saved = await api.create("agenda_blocks", obj);
+    setBlocks((prev) => [...prev.filter((b) => b.id !== saved.id), saved]);
   }
-  function updateBlock(id, patch) {
+  async function updateBlock(id, patch) {
+    await api.update("agenda_blocks", id, patch);
     setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
-    if (!String(id).startsWith("tmp_")) api.update("agenda_blocks", id, patch).catch((err) => { console.warn("item não atualizado:", err.message); window.toast && window.toast("A alteração da agenda não foi salva", "neg"); });
   }
-  function removeBlocks(list, { confirmWeekly = true } = {}) {
-    if (!list.length) return false;
-    if (confirmWeekly && list.some((b) => b.recur === "weekly") && !window.confirm("Item recorrente (toda semana). Remover de todas as semanas?")) return false;
-    const ids = new Set(list.map((b) => b.id));
-    setBlocks((prev) => prev.filter((b) => !ids.has(b.id)));
-    for (const b of list) if (!String(b.id).startsWith("tmp_")) api.remove("agenda_blocks", b.id).catch((err) => { console.warn("não removido:", err.message); window.toast && window.toast("O item da agenda não foi removido", "neg"); });
+  async function removeBlocks(list) {
+    for (const b of list) {
+      await api.remove("agenda_blocks", b.id);
+      setBlocks((prev) => prev.filter((item) => item.id !== b.id));
+    }
     return true;
   }
 
@@ -209,7 +207,7 @@ export function AgendaScreen({ onOpenLead }) {
   // Salvar do modal: valida, checa conflito de CADA participante e cria/atualiza.
   // Recorrência abrangente: `weekdaysSel` = dias da semana alvo (null = pontual);
   // cada dia vira um registro weekly. Devolve string de erro ou null quando ok.
-  function saveItem(form, existing) {
+  async function saveItem(form, existing) {
     const { kind, text, usersSel, date, weekdaysSel } = form;
     const allDay = !!form.allDay;
     // Dia inteiro: ocupa o dia todo (fromHour/toHour cobrem a grade); o render e o
@@ -232,27 +230,34 @@ export function AgendaScreen({ onOpenLead }) {
       title: kind === "event" ? text.trim() : "",
       reason: kind === "block" ? text.trim() : "",
     };
+    const writes = [];
     if (existing) {
-      updateBlock(existing.id, weekdaysSel
+      writes.push(updateBlock(existing.id, weekdaysSel
         ? { ...base, recur: "weekly", weekday: weekdaysSel[0], date: "" }
-        : { ...base, recur: "once", date, weekday: 0 });
+        : { ...base, recur: "once", date, weekday: 0 }));
       if (weekdaysSel && weekdaysSel.length > 1) {
-        for (const w of weekdaysSel.slice(1)) addBlock({ ...base, recur: "weekly", weekday: w });
+        for (const w of weekdaysSel.slice(1)) writes.push(addBlock({ ...base, recur: "weekly", weekday: w }));
       }
     } else if (weekdaysSel) {
-      for (const w of weekdaysSel) addBlock({ ...base, recur: "weekly", weekday: w });
-      if (weekdaysSel.length > 1) {
-        flash(`${kind === "event" ? "Compromisso" : "Bloqueio"} criado ${fmtH(from)} às ${fmtH(to)} em ${weekdaysSel.length} dias da semana.`);
-      }
+      for (const w of weekdaysSel) writes.push(addBlock({ ...base, recur: "weekly", weekday: w }));
     } else {
-      addBlock({ ...base, recur: "once", date });
+      writes.push(addBlock({ ...base, recur: "once", date }));
     }
+    const results = await Promise.allSettled(writes);
+    const failed = results.filter((r) => r.status === "rejected");
+    if (failed.length) {
+      const saved = results.length - failed.length;
+      return { partial: saved > 0, message: saved
+        ? `${saved} item(ns) salvo(s), ${failed.length} falharam. Feche e confira a agenda antes de criar os dias restantes.`
+        : "Não foi possível salvar. Seus dados continuam aqui; tente novamente." };
+    }
+    flash(existing ? "Compromisso atualizado." : "Item criado na agenda.");
     return null;
   }
 
   return (
     <div className="agenda-page">
-      <PageHead title="Agenda" sub={`${product?.name || "operação"} · calls, integrações e compromissos do time`}>
+      <header className="agenda-head"><h1>Agenda</h1>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
           {notice && (
             <span style={{ padding: "7px 12px", borderRadius: "var(--r-2)", background: "var(--warn-soft)", color: "var(--warn)", fontSize: 12.5, fontWeight: 500 }}>{notice}</span>
@@ -260,15 +265,15 @@ export function AgendaScreen({ onOpenLead }) {
           {/* A visão desceu pro topo da GRADE (prancha, 14/09): ela manda no
               mesmo eixo que a navegação de período, e as duas ficavam em
               barras diferentes. */}
-          <PrimaryButton onClick={() => setEditor({ block: null, date: ymd(new Date()), fromHour: 9 })}>+ compromisso</PrimaryButton>
+          <button className="agenda-primary" onClick={() => setEditor({ block: null, date: ymd(new Date()), fromHour: 9 })}>Criar compromisso</button>
         </span>
-      </PageHead>
+      </header>
       <div className="agenda-content">
         {/* Os avisos da semana, no máximo dois por vez: o mais urgente é o que
             já furou, depois quem passou do horário sem remarcar, e a
             confirmação de hoje fecha. Três faixas empilhadas empurram a grade
             pra baixo da dobra, que é a lacuna que o próprio protótipo anotou. */}
-        {(avisos.furaram.length + avisos.semRemarcar.length + avisos.semConfirmar.length > 0) && <Card style={{ padding: 0, overflow: "hidden" }}>
+        {(avisos.furaram.length + avisos.semRemarcar.length + avisos.semConfirmar.length > 0) && <section className="agenda-notices-card">
         <div className="agenda-notices">
         {[
           avisos.furaram.length > 0 && {
@@ -290,11 +295,15 @@ export function AgendaScreen({ onOpenLead }) {
             acao: { label: "cobrar confirmação", href: "#today" },
           },
         ].filter(Boolean).slice(0, 2).map((a) => (
-          <AvisoTopo key={a.key} tom={a.tom} titulo={<>{a.titulo}<Info texto={a.nota} /></>} acao={a.acao}
-            style={{ border: 0, borderRadius: 0, boxShadow: "none", padding: "12px 18px" }} />
+          <div key={a.key} className="agenda-notice" style={{ "--notice-tone": `var(--${a.tom})` }}>
+            <span className="agenda-notice-bar" />
+            <div><strong>{a.titulo}</strong><span>{a.nota}</span></div>
+            {a.acao.href ? <a className="agenda-primary" href={a.acao.href}>{a.acao.label}</a>
+              : <button className="agenda-primary" onClick={a.acao.onClick}>{a.acao.label}</button>}
+          </div>
         ))}
         </div>
-        </Card>}
+        </section>}
         <AgendaView leads={leads} consultations={consultas} onOpenLead={onOpenLead}
           person={person || null} people={people} onPerson={setPerson}
           view={view} onView={setView}
@@ -368,11 +377,23 @@ export function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, o
   const [recur, setRecur] = useS(b ? (b.recur === "weekly" ? "weekly" : "once") : "once");
   const [customWds, setCustomWds] = useS(() => (b?.recur === "weekly" ? [Number(b.weekday)] : [1, 3, 5]));
   const [err, setErr] = useS("");
-  useE(() => {
-    const h = (e) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", h);
-    return () => window.removeEventListener("keydown", h);
-  }, [onClose]);
+  const [busy, setBusy] = useS(false);
+  const pending = React.useRef(false);
+  const [partial, setPartial] = useS(false);
+  const formState = JSON.stringify({ kind, text, sel, date, from, dur, allDay, recur, customWds });
+  const initialState = React.useRef(formState);
+  const close = () => {
+    if (pending.current) return;
+    if (!partial && formState !== initialState.current && !window.confirm("Descartar as alterações deste compromisso?")) return;
+    onClose();
+  };
+  const remove = async () => {
+    if (pending.current || !window.confirm(b.recur === "weekly" ? "Excluir este item de todas as semanas?" : "Excluir este item da agenda?")) return;
+    pending.current = true; setBusy(true); setErr("");
+    try { if (await onDelete(b)) onClose(); }
+    catch { setErr("Não foi possível excluir. O item continua na agenda; tente novamente."); }
+    finally { pending.current = false; setBusy(false); }
+  };
 
   const to = from + dur / 60;
   // CONFLITO VIVO (12/09): o mesmo liveConflict que o saveItem chama, agora
@@ -385,35 +406,38 @@ export function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, o
   // Sem data não tem como derivar: cai no weekday gravado (0 = domingo é dia
   // válido, então nada de `|| 1`, que engolia domingo virando segunda).
   const weekdayLabel = WD_LABEL[date ? new Date(`${date}T12:00:00`).getDay() : (Number(b?.weekday) || 0)];
-  const field = { height: 34, padding: "0 9px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, minWidth: 0 };
+  const field = { height: 38, padding: "0 14px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13, minWidth: 0 };
   const label = { display: "block", marginBottom: 4 };
-  const submit = () => {
+  const submit = async () => {
+    if (pending.current || partial) return;
+    pending.current = true; setBusy(true); setErr("");
     const wd = date ? new Date(`${date}T12:00:00`).getDay() : (Number(b?.weekday) || 0);
     const weekdaysSel = recur === "once" ? null
       : recur === "weekly" ? [wd]
       : recur === "weekdays" ? [1, 2, 3, 4, 5]
       : recur === "daily" ? [0, 1, 2, 3, 4, 5, 6]
       : [...customWds].sort();
-    const e = onSave({ kind, text, usersSel: sel, date, from, to, weekdaysSel, allDay }, b || null);
-    if (e) setErr(e); else onClose();
+    try {
+      const e = await onSave({ kind, text, usersSel: sel, date, from, to, weekdaysSel, allDay }, b || null);
+      if (e) { setErr(typeof e === "string" ? e : e.message); setPartial(!!e.partial); } else onClose();
+    } catch { setErr("Não foi possível salvar. Seus dados continuam aqui; tente novamente."); }
+    finally { pending.current = false; setBusy(false); }
   };
 
-  return (
-    <Modal onClose={onClose} label="compromisso" largura={440} padding={20}
-      painelStyle={{ padding: 18 }}>
-      <div className="agenda-editor">
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontFamily: "var(--display)", fontSize: 16, fontWeight: 700, flex: 1 }}>
-            {b ? "Editar item da agenda" : "Novo item na agenda"}
-          </span>
-          <button onClick={onClose} aria-label="Fechar" className="mono dim" style={{ fontSize: 15 }}>✕</button>
-        </div>
+  const panel = (
+    <Drawer onClose={close} fechavel={!busy} label="compromisso" largura={400}
+      painelStyle={{ position: "fixed", right: 26, top: 90, bottom: 26, height: "auto", maxWidth: "calc(100% - 28px)", overflow: "hidden" }}>
+      <div className="agenda-editor-head">
+        <div><span>{b ? "Editar compromisso" : "Agenda do time"}</span><h2>{b ? "Editar item da agenda" : "Novo compromisso"}</h2></div>
+        <button onClick={close} disabled={busy} aria-label="Fechar">✕</button>
+      </div>
+      <fieldset className="agenda-editor" disabled={busy || partial}>
 
         <Segmented value={kind} onChange={setKind} options={[{ value: "event", label: "Compromisso" }, { value: "block", label: "Bloqueio" }]} />
 
         <div>
-          <span className="kicker" style={label}>{kind === "event" ? "Título" : "Motivo (opcional)"}</span>
-          <input autoFocus value={text} onChange={(e) => setText(e.target.value)}
+          <label htmlFor="agenda-title" className="kicker" style={label}>{kind === "event" ? "Título" : "Motivo (opcional)"}</label>
+          <input id="agenda-title" autoFocus value={text} onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
             placeholder={kind === "event" ? "reunião com fornecedor, dentista…" : "almoço, folga, compromisso externo…"}
             style={{ ...field, width: "100%" }} />
@@ -428,7 +452,7 @@ export function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, o
             {people.map((p) => {
               const on = sel.includes(p.id);
               return (
-                <button key={p.id} onClick={() => toggleSel(p.id)}
+                <button key={p.id} aria-pressed={on} onClick={() => toggleSel(p.id)}
                   style={{ height: 30, padding: "0 11px 0 8px", borderRadius: 999, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
                     display: "inline-flex", alignItems: "center", gap: 6,
                     background: on ? "color-mix(in srgb, " + userColor(p.id) + " 16%, var(--bg-1))" : "var(--bg-1)",
@@ -452,8 +476,8 @@ export function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, o
         </div>
 
         <div>
-          <span className="kicker" style={label}>Data</span>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ ...field, width: "100%" }} />
+          <label htmlFor="agenda-date" className="kicker" style={label}>Data</label>
+          <input id="agenda-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ ...field, width: "100%" }} />
         </div>
 
         {/* Dia inteiro: bloqueia/ocupa o dia todo — esconde início/duração. */}
@@ -465,8 +489,8 @@ export function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, o
         {!allDay && (<>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div>
-            <span className="kicker" style={label}>Começa às</span>
-            <select value={from} onChange={(e) => setFrom(Number(e.target.value))} style={{ ...field, width: "100%" }}>
+            <label htmlFor="agenda-hour" className="kicker" style={label}>Começa às</label>
+            <select id="agenda-hour" value={from} onChange={(e) => setFrom(Number(e.target.value))} style={{ ...field, width: "100%" }}>
               {quarterHours(7, 20.75).map((h) => <option key={h} value={h}>{fmtH(h)}</option>)}
             </select>
           </div>
@@ -497,7 +521,7 @@ export function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, o
         <div className="mono dim" style={{ fontSize: 11, marginTop: -6 }}>termina às {fmtH(to)}</div>
         </>)}
 
-        <div>
+        <div className="agenda-recurrence">
           <span className="kicker" style={label}>Repete</span>
           {/* Segmented no lugar do select: as quatro opções cabem à vista.
               "Todos os dias" saiu da lista porque é "dias escolhidos" com os
@@ -541,20 +565,21 @@ export function AgendaItemModal({ init, people, defaultUser, onSave, onDelete, o
             </div>
           </div>
         )}
-        {err && <div style={{ padding: "8px 10px", borderRadius: "var(--r-2)", background: "var(--warn-soft)", color: "var(--warn)", fontSize: 12.5 }}>{err}</div>}
+      </fieldset>
+        {err && <div role="alert" className="agenda-editor-error" style={{ padding: "8px 10px", borderRadius: "var(--r-2)", background: "var(--warn-soft)", color: "var(--warn)", fontSize: 12.5 }}>{err}</div>}
 
-        <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
+        <div className="agenda-editor-footer">
           {b && (
-            <button onClick={() => { if (onDelete(b)) onClose(); }}
+            <button disabled={busy || partial} onClick={remove}
               style={{ height: 36, padding: "0 14px", borderRadius: 999, border: "1px solid color-mix(in srgb, var(--neg) 40%, transparent)", background: "var(--neg-soft)", color: "var(--neg)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
               Excluir
             </button>
           )}
           <span style={{ flex: 1 }} />
-          <button onClick={onClose} style={{ height: 36, padding: "0 14px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, cursor: "pointer" }}>Cancelar</button>
-          <PrimaryButton onClick={submit}>{b ? "Salvar" : "Criar"}</PrimaryButton>
+          <button disabled={busy} onClick={close} style={{ height: 36, padding: "0 14px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, cursor: "pointer" }}>Cancelar</button>
+          <PrimaryButton disabled={busy || partial} onClick={submit}>{busy ? "Salvando…" : b ? "Salvar" : "Criar"}</PrimaryButton>
         </div>
-      </div>
-    </Modal>
+    </Drawer>
   );
+  return typeof document !== "undefined" && document.body?.nodeType === 1 ? createPortal(panel, document.body) : panel;
 }

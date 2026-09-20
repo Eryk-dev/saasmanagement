@@ -540,5 +540,32 @@ Validação: 1.729 testes da API, testes web/smoke, build e revisão visual apro
 
 Validação final após incorporar a main: 1.739 testes da API, testes web/smoke,
 build e revisão visual aprovados.
-As demais 21 páginas aguardam esta rodada; registros históricos não são aceite
+### 10. Agenda (`#agenda`) — validada
+
+- **Importante, corrigido:** cabeçalho, avisos com nota visível, seletor de tipo
+  direto na barra, navegação, legenda e calendário seguem `TelaAgenda.dc.html`.
+  Opções de toques e ajuda permanecem na legenda, preservando os controles reais.
+- **Bloqueante, corrigido:** criar/editar/excluir aguardam a resposta da API.
+  O editor bloqueia repetição e fechamento durante o envio; falhas mantêm os
+  campos e o item original. Em recorrência com resultado parcial, informa quantos
+  registros foram salvos e bloqueia reenvio para evitar duplicar os dias aceitos.
+- **Importante, corrigido:** gaveta lateral de 400px com campos roláveis e ações
+  fixas; confirmação de exclusão e descarte, foco contido e retorno ao controle
+  de origem. Dias do mês e compromissos são acessíveis pelo teclado; 390px mantém
+  a rolagem dentro da grade e controles de toque de 44px.
+- **Evidências:** `npm run test:review:agenda -w packages/web`, capturas e
+  `geometry.json` em `packages/web/.review-artifacts/agenda/`. **160 medidas**
+  das quatro visões em 1440/1920, diferença máxima **0,797px**, para cabeçalho,
+  avisos, barra e calendário. Fluxos de criação/edição/exclusão, cancelamento,
+  falhas/retry, escrita demorada, recorrência parcialmente salva, filtros,
+  teclado, vazio, mobile e tema escuro conferidos com mocks.
+- **Fora do escopo:** preservados participantes, conflitos por hora, produtos,
+  consultas, recorrência e durações reais (incluindo follow-up de 20 minutos).
+  O conteúdo da gaveta tem mais controles que a demonstração. O aviso de no-show
+  já chamava `isNoShowStage(saasCfg, stage)` embora o helper aceite apenas o
+  estágio; a classificação deve ser corrigida em revisão de domínio separada.
+  A leitura de consultas continua com o tratamento de falha anterior.
+
+Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
+As demais 20 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.
