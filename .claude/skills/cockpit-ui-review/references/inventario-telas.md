@@ -297,5 +297,38 @@ automática: 34 medidas por largura, diferença máxima 0px em 1440/1920.
   domínio foi preservado e requer revisão separada de recuperação/rollback.
 
 Validação: API, testes web/smoke, build e revisão visual aprovados.
-As demais 28 páginas aguardam esta rodada; registros históricos não são aceite
+### 03. Treinamentos (`#training`) — validada
+
+- **Importante, corrigido:** trilho de 320px, blocos sem alinhamento entre
+  linhas e subtítulo extra substituídos pelo cabeçalho e grade de 340px da
+  referência. Da vez/Consistência ocupam a primeira linha; Baralhos/Referências
+  e Domínio/Checkpoint ocupam a segunda. Memória fica visível no card correto.
+- **Importante, corrigido:** a sessão comum abre dentro do destaque navy,
+  com card branco, progresso e notas. Postura/microcopy extra saíram. A sessão
+  mantém FSRS, retorno de cards no mesmo dia, 4fun, provas, imagens, cloze e
+  oclusão. Foco mantém tela cheia/áudio, largura de 640px e redução de movimento.
+- **Importante, corrigido:** Equipe usa cinco colunas com fila própria e
+  métricas expandidas sob a pessoa. Avisos e relatório extenso antigos deixaram
+  essa apresentação. Ordenação por urgência e métricas reais permanecem.
+- **Importante, corrigido:** Editar usa seletor de baralho, criação na lista,
+  frente/verso editáveis e prévia local. Editor avançado, busca, configuração,
+  salvar/descartar e confirmação de exclusão preservam funções da base real.
+  O resumo do baralho usa configurações reais; não inventa estado FSRS de
+  cada pessoa em um endpoint que fornece apenas a base oficial.
+- **Bloqueante, corrigido:** erro de histórico não deixa spinner eterno nem
+  inutiliza o estudo; erros de equipe/base oferecem retry. Falha ao revisar
+  mantém o mesmo card; falha ao salvar mantém o rascunho. Escape fecha estudo;
+  a troca de aba avisa quando há alterações não salvas. No mobile, cabeçalho
+  e abas empilham, campos crescem e a equipe rola dentro da tabela.
+- **Evidências:** `npm run test:review:training -w packages/web`, capturas e
+  medidas em `packages/web/.review-artifacts/training/`. Em 1440 e 1920 são
+  40 comparações por largura, incluindo destaque, consistência, referências,
+  checkpoint e card/superfície/botão da sessão: diferença máxima **0px**.
+  Alturas que dependem da quantidade de baralhos variam com dados reais.
+  Conferidos também 390px, dark, referências, teclado, revisão/erro/retry,
+  modo foco, prova até o resultado, expansão da equipe, edição básica e
+  avançada, inclusão, salvamento e releitura dos cards no mock.
+
+Validação: 1.729 testes API, testes web/smoke, build e revisão visual aprovados.
+As demais 27 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.

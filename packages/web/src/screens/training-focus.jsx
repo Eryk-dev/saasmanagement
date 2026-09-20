@@ -52,14 +52,16 @@ export function FocusShell({ children, onExit }) {
   });
 
   return (
-    <div ref={rootRef} style={{
-      position: "fixed", inset: 0, zIndex: 400, background: "rgba(4, 4, 6, 0.97)",
+    <div ref={rootRef} className="training-focus" style={{
+      position: "fixed", inset: 0, zIndex: 400, background: "#061620",
       backdropFilter: "blur(8px)", display: "flex", flexDirection: "column", overflow: "auto",
     }}>
       <style>{`@keyframes focusBreath {
         from { transform: scale(0.85); opacity: 0.65; }
         to   { transform: scale(1.15); opacity: 1; }
-      }`}</style>
+      }
+      @media (prefers-reduced-motion: reduce) { .training-focus * { animation: none !important; transition: none !important; } }
+      @media (max-width: 700px) { .training-focus button { min-height: 44px; } }`}</style>
 
       {/* glow respirando atrás do card */}
       <div aria-hidden style={{ position: "fixed", inset: 0, display: "grid", placeItems: "center", pointerEvents: "none" }}>
@@ -83,7 +85,7 @@ export function FocusShell({ children, onExit }) {
       {/* conteúdo (sessão) centralizado; margin auto (e não justify center) pra
           card mais alto que a tela rolar até o topo em vez de cortar. */}
       <div style={{ position: "relative", zIndex: 1, flex: 1, display: "flex", flexDirection: "column", alignItems: "center", padding: "56px 20px 88px" }}>
-        <div style={{ margin: "auto 0", maxWidth: "100%" }}>{children}</div>
+        <div style={{ margin: "auto 0", width: "min(100%, 640px)" }}>{children}</div>
       </div>
 
       {/* barra de áudio — quase invisível até o hover (no touch, sem hover,
@@ -95,7 +97,7 @@ export function FocusShell({ children, onExit }) {
           position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 2,
           display: "flex", alignItems: "center", justifyContent: "center", gap: 10, flexWrap: "wrap",
           padding: "14px 20px calc(18px + env(safe-area-inset-bottom, 0px))",
-          opacity: window.matchMedia?.("(hover: none)")?.matches ? 0.85 : 0.4, transition: "opacity 0.35s",
+          opacity: window.matchMedia?.("(hover: none)")?.matches ? 0.85 : 0.4, transition: "opacity 150ms",
         }}>
         {FOCUS_AUDIO_MODES.map((m) => (
           <button key={m.id} onClick={() => toggleMode(m.id)} title={mode === m.id ? "clique pra silenciar" : ""}

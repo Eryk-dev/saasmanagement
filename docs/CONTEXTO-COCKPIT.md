@@ -53,11 +53,15 @@ usa mocks locais, sem API/banco; `&prototype=1` abre a prancha na mesma
 largura para comparação visual. A revisão de conteúdo por página está registrada no inventário da skill.
 Para reproduzir Visão geral com dados fixos e testes no navegador, usar
 `npm run test:review:overview -w packages/web`; para Atividades,
-`npm run test:review:today -w packages/web` (Chromium do Playwright instalado
+`npm run test:review:today -w packages/web`; para Treinamentos,
+`npm run test:review:training -w packages/web` (Chromium do Playwright instalado
 com `npx playwright install chromium`, se necessário). O comando sobe só Vite
 com mocks, sem API/banco, e grava medidas/capturas em `.review-artifacts` do web.
 Atividades abre o roteiro lateral no desktop
 e em modal até 1100px, preservando os mesmos handlers e estado.
+Treinamentos mantém a sessão comum dentro do card principal; o modo foco
+continua usando tela cheia e áudio. Edição básica é inline, com editor avançado
+para imagem/cloze/oclusão e salvamento explícito da base.
 
 ## Arquitetura confirmada
 

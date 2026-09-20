@@ -33,7 +33,7 @@ const stats = () => ({ today: date(), streak: 7, bestStreak: 14, doneToday: revi
 });
 const questions = () => cards.slice(0, 5).map((c, i) => ({ id: `q${i}`, kind: "mc", prompt: c.front, options: [c.back, "Esperar sem registrar a próxima ação."], answerIdx: 0 }));
 export const trainingMock = {
-  trainingQueue: queue,
+  trainingQueue: () => new URLSearchParams(location.search).get("state") === "empty" ? {decks:[],queue:{}} : queue(),
   trainingStats: stats,
   trainingReview: (_saas, id) => { reviewed.add(id); return { srs: { state: 2, due: `${date(1)}T12:00:00Z` }, preview }; },
   trainingFun: () => ({ cards: cards.map((c) => ({ ...c, entryId: c.id, preview })) }),
