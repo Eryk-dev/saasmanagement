@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { LeadGrade, LeadSection } from "../components/lead-card.jsx";
 import "./today.css";
 import { Modal } from "../components/overlay.jsx";
@@ -21,7 +22,7 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { myOpenTasks, taskHash } from "../lib/tasks.js";
 import { useAttribution } from "../lib/pains.js";
 import { clientSummary, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks, DealProductField, isOneOffProduct, SelectWithCustom, PaymentMethodSelect, ProductOptions, leadBox } from "../components/lead-blocks.jsx";
-import { resolveScript, scriptTokens, scriptChecklist, isNoShowStage, confirmationScript, integrationConfirmationScript, scriptKeyFor } from "../lib/scripts.js";
+import { resolveScript, scriptTokens, scriptChecklist, isNoShowStage, confirmationScript, integrationConfirmationScript, scriptKeyFor, scriptSegments } from "../lib/scripts.js";
 import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, withLegacyOption, closedPlanLabel, dealProductLabel, dealProductsOf } from "../lib/payments.js";
 import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
@@ -111,14 +112,14 @@ const TIME_TONE = {
   mut:  { bg: "var(--bg-2)", fg: "var(--fg-4)" },
 };
 function TimeCell({ pill, note, tone, soft, apagado }) {
-  const t = apagado || soft ? TIME_TONE.mut : tone === "warn" ? TIME_TONE.warn : TIME_TONE.appt;
+  const t = apagado || soft || tone === "mut" ? TIME_TONE.mut : tone === "neg" ? { bg: "var(--neg-soft)", fg: "var(--neg)" } : tone === "warn" ? TIME_TONE.warn : TIME_TONE.appt;
   const noteColor = apagado ? "var(--fg-4)" : tone === "neg" ? "var(--neg)" : tone === "warn" ? "var(--warn)" : tone === "pos" ? "var(--pos)" : "var(--fg-4)";
   return (
-    <span style={{ minWidth: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 3 }}>
+    <span style={{ minWidth: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
       {/* Instrument Sans com números tabulares (`.tnum`, sem `.mono`): a hora
           lê mais fácil que na JetBrains e as colunas continuam alinhadas. */}
       <span className="tnum" style={{
-        display: "inline-flex", alignItems: "center", height: 22, padding: "0 8px", borderRadius: "var(--r-1)",
+        display: "inline-flex", alignItems: "center", height: 24, padding: "0 11px", borderRadius: 999,
         background: t.bg, color: t.fg, fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap", maxWidth: "100%",
         overflow: "hidden", textOverflow: "ellipsis",
       }}>{pill}</span>
@@ -151,18 +152,8 @@ const TIER_ORDER = { S: 6, A: 5, B: 4, C: 3, D: 2, E: 1, sem: 0 };
 // quentes) na sequência; depois retomadas, follow-ups, nutrição e sem agenda.
 const GROUP_ORDER = ["confirm", "appt", "novo", "noshow", "qual", "closer", "nutri", "loose"];
 
-// A grade da linha da fila, medida no DOM da prancha (14/09): ordem · quando ·
-// o que fazer · lead · etapa e dono · ações. As três colunas de texto são
-// `minmax(0, …fr)`, então elas ABREVIAM em vez de empurrar os botões pra fora
-// da seção — foi a crítica 2 da rodada 2 do handoff, quando a linha somava
-// 786px numa coluna de 626px e "WhatsApp" e "roteiro" ficavam 139px fora,
-// sem scroller pra alcançar.
-//
-// A COLUNA DA ORDEM entrou em 14/09 (protótipo do Leo): a tela promete "a
-// ordem é a prioridade do processo, não a hora" e não numerava nada, então a
-// promessa só existia no subtítulo. Com o número, pular a 3ª pra fazer a 7ª
-// vira uma decisão consciente em vez de acidente.
-export const QUEUE_GRID = "24px 72px minmax(0,1.3fr) minmax(0,1.3fr) minmax(0,0.9fr) auto";
+// Orçamento da fila compacta: horário, identidade/ação e abrir roteiro.
+export const QUEUE_GRID = "72px minmax(0,1fr) 121px";
 export const QUEUE_GRID_GAP = 10;
 export const QUEUE_GRID_BUDGET = 716;
 
@@ -522,7 +513,7 @@ function PersonPicker({ users, person, counts, onChange, canPick }) {
     <span style={{ position: "relative", display: "inline-flex" }} onClick={(e) => e.stopPropagation()}>
       <button ref={anchor} onClick={() => setOpen((o) => !o)} title="ver a fila de outra pessoa" aria-label="Pessoa da fila" aria-expanded={open}
         style={{ height: 38, display: "inline-flex", alignItems: "center", gap: 7, padding: "0 13px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", boxShadow: "var(--shadow-1)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-        {rotulo} <span className="mono dim" style={{ fontSize: 10 }}>▾</span>
+        {atual?.name || atual?.id || "fila"} <span className="today-person-count">{counts[person] || 0}</span><span className="mono dim" style={{ fontSize: 9 }}>▾</span>
       </button>
       {open && (
         <Popover anchor={anchor} onClose={() => setOpen(false)} width={230} label="Pessoa da fila">
@@ -543,7 +534,7 @@ function PersonPicker({ users, person, counts, onChange, canPick }) {
 }
 
 function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
-  const { version, openForm } = useData();
+  const { version } = useData();
   const [activeProduct] = useActiveSaas();
   const saasCfg = (window.SEED?.SAAS || []).find((s) => s.id === activeProduct?.id) || activeProduct;
   const me = currentUser()?.id || "";
@@ -558,7 +549,6 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   // Falha de carga NÃO pode ser silenciosa: consulta/tarefa que some da fila
   // sem aviso é compromisso furado. O banner avisa e oferece recarregar.
   const [consultasErr, setConsultasErr] = useS(false);
-  const [tasksErr, setTasksErr] = useS(false);
   const [reload, setReload] = useS(0);
   useE(() => {
     let alive = true;
@@ -568,23 +558,6 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
     return () => { alive = false; };
   }, [version, saasCfg?.id, reload]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Tarefas do kanban (tela Tarefas) aqui na fila do dia: as ABERTAS do produto
-  // ativo, da pessoa da fila ou sem responsável. Concluir aqui move o card pro
-  // "Concluído" do board — mesmo registro, nenhuma fonte duplicada.
-  const [tasks, setTasks] = useS([]);
-  const [taskBoard, setTaskBoard] = useS(null);
-  const loadTasks = React.useCallback(() => Promise.all([api.list("tasks"), api.list("task_boards")])
-    .then(([ts, boards]) => { setTasks(ts || []); setTaskBoard((boards || [])[0] || null); setTasksErr(false); })
-    .catch(() => { setTasks([]); setTasksErr(true); }), []);
-  useE(() => { loadTasks(); }, [loadTasks, version, saasCfg?.id, reload]);
-  // `tasks` não recarrega o SEED (QUIET no servidor): a fila escuta o evento.
-  useE(() => {
-    let t = 0;
-    const on = (e) => { if (e.detail?.collection === "tasks" || e.detail?.collection === "task_boards") { clearTimeout(t); t = setTimeout(loadTasks, 600); } };
-    window.addEventListener("cockpit-change", on);
-    return () => { clearTimeout(t); window.removeEventListener("cockpit-change", on); };
-  }, [loadTasks]);
-
   // Fila de quem: padrão o usuário logado; admin pode inspecionar a de qualquer um.
   const [person, setPersonState] = useS(() => {
     try { const v = localStorage.getItem("cockpit_today_person"); if (v != null) return v; } catch { /* ignore */ }
@@ -592,13 +565,14 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   });
   const setPerson = (p) => {
     setPersonState(p);
+    setScriptItem(null);
     try { localStorage.setItem("cockpit_today_person", p); } catch { /* ignore */ }
   };
   const [scriptItem, setScriptItem] = useS(null); // item com o painel de roteiro aberto
-  const [igStats, setIgStats] = useS(null); // { configured, count, username } — aviso de social selling
+  useE(() => { setScriptItem(null); }, [saasCfg?.id]);
 
   const q = useM(() => buildQueue(leads, consultas, saasCfg, person), [leads, consultas, saasCfg, person]);
-  const total = q.hoje.length + q.amanha.length + q.proximos.length + q.semdata.length;
+  const total = q.hoje.length;
   // Tick do relógio do cabeçalho — de quebra mantém a previsão de cada linha
   // ("em 25 min", "agora") em dia sem esperar um refresh de dados.
   const now = useNow();
@@ -695,42 +669,11 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   }
   const openRow = (item) => (item.consulta ? openConsulta(item) : setScriptItem(item));
 
-  // Tarefas abertas da fila: a MESMA régua da tela de Tarefas (lib/tasks.js:
-  // `completed` da tarefa, coluna de concluído do board como fallback).
-  const myTasks = myOpenTasks(tasks, taskBoard, { person, saas: saasCfg?.id });
-
-  // Concluir tem DESFAZER (6s): no celular o dedo erra o ✓ e a tarefa sumia
-  // da fila sem volta fácil (só indo ao kanban). Concluir/reabrir passa pela
-  // rota do quadro (regras de coluna, atividade e avisos no servidor).
-  const undoTimerRef = React.useRef(null);
-  const [undoTask, setUndoTask] = useS(null); // { task }
-  function completeTask(t) {
-    setTasks((prev) => prev.map((x) => (x.id === t.id ? { ...x, completed: true } : x)));
-    setUndoTask({ task: t });
-    clearTimeout(undoTimerRef.current);
-    undoTimerRef.current = setTimeout(() => setUndoTask(null), 6000);
-    api.taskComplete(t.id, true).then((r) => { if (r?.task) setTasks((prev) => prev.map((x) => (x.id === r.task.id ? r.task : x))); })
-      .catch((err) => { console.warn("tarefa não concluída:", err.message); setTasks((prev) => prev.map((x) => (x.id === t.id ? { ...x, completed: false } : x))); toast("A tarefa não foi concluída no quadro · tente de novo", "neg"); });
-  }
-  function revertTask() {
-    const u = undoTask; if (!u) return;
-    clearTimeout(undoTimerRef.current); setUndoTask(null);
-    setTasks((prev) => prev.map((x) => (x.id === u.task.id ? { ...x, completed: false } : x)));
-    api.taskComplete(u.task.id, false).then((r) => { if (r?.task) setTasks((prev) => prev.map((x) => (x.id === r.task.id ? r.task : x))); })
-      .catch((err) => { console.warn("desfazer falhou:", err.message); toast("Não deu pra desfazer · veja no kanban", "neg"); });
-  }
-
   const users = useM(() => allUsers().filter((u) => !u.saas || u.saas === saasCfg?.id), [saasCfg?.id]);
   const firstPending = q.hoje.find((i) => !i.done);
   const pendingToday = q.hoje.filter((i) => !i.done);
   const doneTodayRows = q.hoje.filter((i) => i.done);
   const [busca, setBusca] = useS("");
-  // "Sem data" SAIU do trilho (14/09): estava misturado com "Próximos dias"
-  // dentro de um card que diz "nada aqui é para hoje", quando a verdade é o
-  // contrário — ninguém marcou o próximo toque desses leads e alguém precisa
-  // decidir. Virou bloco próprio embaixo da fila, com as mesmas ações e FORA
-  // da contagem do dia (não têm prazo pra hoje).
-  const futureRows = q.proximos;
   // Memo: buildQueue de TODOS os usuários a cada render travava a digitação no painel.
   // Só os leads que a fila pode mostrar (produto ativo + etapa trabalhável),
   // filtrados UMA vez: buildQueue descartaria os mesmos, mas varrendo os ~2 mil
@@ -740,46 +683,8 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
     const pool = leads.filter((l) => (!saasCfg || l.saas === saasCfg.id) && (!l.stage || workable.has(l.stage)));
     return Object.fromEntries(users.map((u) => [u.id, buildQueue(pool, consultas, saasCfg, u.id).hoje.filter((i) => !i.done).length]));
   }, [leads, consultas, saasCfg, users]);
-  // Meta de "Contatados" é de contato (leads): consultas não contam pro placar.
-  const contactedGoal = Math.max(q.doneToday + pendingToday.filter((i) => i.l).length, q.doneToday, 1);
-  const callsToday = q.hoje.filter((i) => i.kind === "call" && !i.confirm);
-  const callsDone = callsToday.filter((i) => i.done).length;
-
-  // ── Placar: a META da pessoa, na unidade do trabalho dela (Leo, 25/08) ─────
-  // O placar comparava o feito com o TAMANHO DA FILA do dia ("1/9" = nove itens
-  // na fila), o que sobe e desce conforme o dia enche — não é meta, é carga. A
-  // régua certa é a meta de Metas, a MESMA que a Visão geral cobra da pessoa.
-  //
-  // SDR é medido no DIA (contato e agendamento são volume: 54 e 10 por dia na
-  // régua atual, números que fazem sentido cobrar hoje). CLOSER é medido no MÊS
-  // (contrato e receita, Leo 25/08): a meta de contrato repartida por 21,75 dias
-  // arredonda pra cima e vira mentira — 10 contratos/mês virariam "1 por dia",
-  // o dobro do que a pessoa persegue. Cada papel na janela em que a meta dele
-  // existe de verdade.
-  const viewRoles = new Set(person ? (userById(person)?.roles || []) : []);
-  const scoreRole = viewRoles.has("sdr") ? "sdr" : viewRoles.has("closer") ? "closer" : "";
-  const [dayScore, setDayScore] = useS(null);
-  useE(() => {
-    if (!saasCfg?.id || !person || !scoreRole) { setDayScore(null); return; }
-    let alive = true;
-    const hoje = bizDay(new Date());
-    const since = scoreRole === "closer" ? `${hoje.slice(0, 8)}01` : hoje;
-    api.scoreboard(saasCfg.id, { since, until: hoje })
-      .then((s) => { if (alive) setDayScore(s); })
-      .catch(() => { if (alive) setDayScore(null); });
-    return () => { alive = false; };
-  }, [saasCfg?.id, person, scoreRole, version]);
-  const score = dayScoreOf({
-    role: scoreRole,
-    row: (dayScore?.[scoreRole] || []).find((p) => p.user === person) || null,
-    today: bizDay(new Date()),
-    local: { contacted: q.doneToday, contactedGoal, calls: callsDone, callsGoal: Math.max(callsToday.length, 1) },
-  });
-
-  // A lista mostra o dia inteiro, incluindo o item resumido em Agora e as
-  // atividades feitas. O resumo destaca o próximo passo; a lista permite
-  // conferir a ordem e o progresso sem descontar um item visualmente.
-  const queueRows = q.hoje;
+  // O primeiro pendente fica em Agora; os demais e as feitas têm áreas próprias.
+  const queueRows = q.hoje.filter(item => !item.done && (item.consulta || item !== firstPending));
   const lateCount = pendingToday.filter((i) => i.due && i.due.t <= Date.now()).length;
 
   // Busca DENTRO da fila (protótipo, 14/09). Com oito grupos e o dia cheio, a
@@ -796,37 +701,22 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
     });
   };
   const queueShown = filtraFila(queueRows);
-  const semDataShown = filtraFila(q.semdata);
-
-  // Aviso de social selling: quando o SDR zera a fila de HOJE (nada pendente),
-  // manda ir pro Instagram chamar os novos seguidores. Só na fila de um SDR.
-  const viewedIsSdr = !!person && (userById(person)?.roles || []).includes("sdr");
-  const daySocialDone = viewedIsSdr && !firstPending;
-  useE(() => {
-    if (!daySocialDone || !saasCfg?.id) return;
-    let alive = true;
-    api.newFollowers(saasCfg.id).then((r) => alive && setIgStats(r)).catch(() => alive && setIgStats(null));
-    return () => { alive = false; };
-  }, [daySocialDone, saasCfg?.id]);
+  const [queuePage, setQueuePage] = useS(0);
+  useE(() => setQueuePage(0), [busca, person, saasCfg?.id]);
+  const lastPage = Math.max(0, Math.ceil(queueShown.length / 10) - 1);
+  const page = Math.min(queuePage, lastPage);
+  const pageRows = queueShown.slice(page * 10, page * 10 + 10);
 
   return (
     <div className="today-screen">
       <div className="today-layout">
-      <div className="today-main">
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+        <header className="today-page-head">
           <div style={{ flex: 1, minWidth: 260 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
               <h1 className="page-title">Minhas atividades</h1>
               <NowClock now={now} />
             </div>
-            {/* O subtítulo diz QUANTOS (protótipo, 14/09): "hoje em ordem de
-                execução" sem número não responde a primeira pergunta de quem
-                abre a tela, que é o tamanho do dia. */}
-            <div className="page-sub" style={{ marginTop: 4 }}>
-              {pendingToday.length
-                ? `${pendingToday.length} ${pendingToday.length === 1 ? "pendente" : "pendentes"} · em ordem de execução · ${q.amanha.length} amanhã e ${q.proximos.length} nos próximos dias`
-                : "hoje em ordem de execução · amanhã e próximos dias à vista"}
-            </div>
+
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 6, flexWrap: "wrap" }}>
             <PersonPicker users={users} person={person} counts={queueCounts}
@@ -837,16 +727,16 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
             <button onClick={() => firstPending && openRow(firstPending)} disabled={!firstPending}
               title={firstPending ? "abre o roteiro do primeiro item da fila" : "fila de hoje zerada"}
               style={{ height: 38, padding: "0 16px", borderRadius: 999, border: "1px solid var(--btn-bg)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 13, fontWeight: 650, cursor: firstPending ? "pointer" : "not-allowed", opacity: firstPending ? 1 : 0.45 }}>
-              Começar a fila →
+              {firstPending ? (doneTodayRows.length ? "Continuar a fila →" : "Começar a fila →") : "Fila limpa ✓"}
             </button>
           </div>
-        </div>
-
-        {(consultasErr || tasksErr) && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", border: "1px solid var(--warn-line)", background: "var(--warn-soft)", borderRadius: "var(--r-2)", padding: "9px 12px", fontSize: 12.5 }}>
+        </header>
+      <div className="today-main">
+        {consultasErr && (
+          <div role="alert" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", border: "1px solid var(--warn-line)", background: "var(--warn-soft)", borderRadius: "var(--r-2)", padding: "9px 12px", fontSize: 12.5 }}>
             <span style={{ minWidth: 240, flex: 1 }}>
               <span style={{ display: "block", fontWeight: 600 }}>
-                {`Não deu pra carregar ${[consultasErr && "as consultas", tasksErr && "as tarefas"].filter(Boolean).join(" e ")} · a fila pode estar incompleta.`}
+                Não deu pra carregar as consultas · a fila pode estar incompleta.
               </span>
               <span className="dim" style={{ display: "block", fontSize: 11.5, marginTop: 2 }}>
                 compromisso que não aparece é compromisso furado
@@ -855,27 +745,12 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
             <button onClick={() => setReload((n) => n + 1)} style={{ marginLeft: "auto", height: 28, padding: "0 12px", borderRadius: 999, border: "1px solid var(--warn-line)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 600, flexShrink: 0, cursor: "pointer" }}>recarregar</button>
           </div>
         )}
-        {daySocialDone && total > 0 && (
-          <FilaLimpa ig={igStats} contatos={q.doneToday} calls={callsToday.length}
-            saasId={saasCfg?.id} person={person} openForm={openForm} />
-        )}
         {total === 0 ? (
-          // Fila de leads vazia: um bloco só (era EmptyState + barra + aviso);
-          // as tarefas do kanban entram como um bloco A MAIS, nunca no lugar dela.
-          <>
-            {viewedIsSdr
-              ? <FilaLimpa ig={igStats} contatos={q.doneToday} calls={callsToday.length}
-                  saasId={saasCfg?.id} person={person} openForm={openForm} />
-              : <EmptyState
-                  title="Fila limpa"
-                  hint={person ? "Nenhuma ação pendente nessa fila. Confira o pipeline ou puxe leads novos." : "Nenhuma ação pendente."}
-                />}
-            {myTasks.length > 0 && (
-              <div style={{ maxWidth: 640 }}>
-                <TasksCard tasks={myTasks} onDone={completeTask} undo={undoTask} onUndo={revertTask} />
-              </div>
-            )}
-          </>
+          <section className="today-clean capsule-navy">
+            <div className="today-section-label">Fila limpa</div>
+            <h2>Nenhuma atividade pendente hoje</h2>
+            <p>Os próximos compromissos continuam na Agenda.</p>
+          </section>
         ) : (
           <>
               {/* ── AGORA: o comando da tela (12/09) ────────────────────────
@@ -884,15 +759,15 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                   e não dizia qual é o próximo. Ele SAI da lista abaixo (a
                   contagem desconta), pra não existir em dois lugares. */}
               {firstPending && !firstPending.consulta && (
-                <AgoraBlock item={firstPending} onScript={() => setScriptItem(firstPending)}
+                <AgoraBlock item={firstPending} saasCfg={saasCfg} onScript={() => setScriptItem(firstPending)}
                   onClaim={() => claim(firstPending)} onWhatsapp={onOpenWhatsapp} />
               )}
 
-              <section style={{ background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-                <div style={{ padding: "18px 16px 12px", display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+              <section className="today-queue">
+                <div className="today-queue-head">
                   <div style={{ flex: 1, minWidth: 180 }}>
-                    <h3 className="card-title" style={{ margin: 0 }}>Hoje</h3>
-                    <div className="card-sub" style={{ marginTop: 3 }}>a ordem é a prioridade do processo, não a hora</div>
+                    <div className="today-section-label">Hoje</div>
+                    <h3>A ordem é a prioridade do processo</h3>
                   </div>
                   <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                     {/* "N de M feitos hoje" + a barra: é a proporção que diz se
@@ -903,22 +778,22 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                       const totalDia = feitos + pendingToday.length;
                       const pct = totalDia > 0 ? Math.round((feitos / totalDia) * 100) : 0;
                       return (
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
+                        <span className="today-progress"
                           title={`${feitos} de ${totalDia} da fila de hoje já saíram${lateCount ? ` · ${lateCount} ${lateCount === 1 ? "atrasada" : "atrasadas"}` : ""}`}>
-                          <span className="tnum" style={{ fontSize: 12, color: "var(--fg-3)" }}>{`${feitos} de ${totalDia} feitos hoje`}</span>
+                          <span className="tnum" style={{ fontSize: 12, color: "var(--fg-3)" }}>{`${feitos} de ${totalDia} feitos`}</span>
                           <span style={{ width: 80, height: 6, borderRadius: 999, background: "var(--bg-3)", overflow: "hidden", flexShrink: 0 }}>
                             <span style={{ display: "block", height: 6, width: `${pct}%`, background: "var(--pos)" }} />
                           </span>
                         </span>
                       );
                     })()}
-                    <input aria-label="Buscar na fila" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar na fila…"
-                      className="inp" style={{ width: 200, maxWidth: "100%", height: 34 }} />
+                    <label className="today-search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20.4 20.4-4.2-4.2"/></svg><input aria-label="Buscar na fila" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="buscar na fila…"
+                      className="inp" /></label>
                   </div>
                 </div>
                 {queueRows.length === 0 && (
                   <div style={{ padding: "16px var(--inset-x)", borderTop: "1px solid var(--line-faint)", fontSize: 13, color: "var(--fg-3)" }}>
-                    {firstPending ? "Só a atividade de agora, ali em cima." : "Fila zerada por hoje. O que vem está no trilho ao lado."}
+                    {firstPending ? "Só a atividade de agora, ali em cima." : "Fila zerada por hoje."}
                   </div>
                 )}
                 {queueRows.length > 0 && queueShown.length === 0 && (
@@ -927,62 +802,30 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                     <button onClick={() => setBusca("")} className="mono" style={{ background: "none", border: 0, padding: 0, fontSize: 12, color: "var(--accent)", fontWeight: 600, cursor: "pointer" }}>limpar busca</button>
                   </div>
                 )}
-                {/* O grupo vira faixa: a ordem do GROUP_ORDER passa a ser
-                    legível em vez de implícita. Grupo vazio não rende faixa. */}
-                {queueShown.map((item, index) => {
-                  const grupo = item.group || "loose";
-                  const anterior = index > 0 ? (queueShown[index - 1].group || "loose") : null;
-                  const [rotulo, frase] = GROUP_META[grupo] || [grupo, ""];
-                  const nGrupo = queueShown.filter((x) => (x.group || "loose") === grupo).length;
-                  // A numeração é a da fila INTEIRA, não a da lista filtrada
-                  // (buscar não pode mentir sobre a posição no dia) e conta só
-                  // os PENDENTES: a feita não ocupa número, como na prancha.
-                  const ordem = item.done ? null
-                    : queueRows.slice(0, queueRows.indexOf(item) + 1).filter((x) => !x.done).length;
+                {pageRows.map((item) => {
                   const key = item.consulta ? `c-${item.consulta.id}` : item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id;
                   return (
                     <React.Fragment key={key}>
-                      {grupo !== anterior && (
-                        <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "7px 16px", background: "var(--bg-2)", borderTop: "1px solid var(--line-1)" }}>
-                          <span className="kicker tnum" style={{ fontWeight: 600, color: "var(--fg-2)" }}>{`${rotulo} · ${nGrupo}`}</span>
-                          {frase && <span style={{ fontSize: 11, color: "var(--fg-4)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{frase}</span>}
-                        </div>
-                      )}
-                      <QueueRow item={item} block="hoje" featured={false} ordem={ordem}
+                      <QueueRow item={item} block="hoje" featured={false}
                         onScript={() => setScriptItem(item)} onClaim={() => claim(item)} onWhatsapp={onOpenWhatsapp} onOpen={() => item.consulta ? openConsulta(item) : onOpenLead?.(item.l)} />
                     </React.Fragment>
                   );
                 })}
-                {/* SEM DATA (protótipo, 14/09): ninguém marcou o próximo toque
-                    desses leads. Estavam no trilho "O que vem", debaixo de um
-                    card que diz "nada aqui é para hoje" — exatamente o oposto
-                    do problema, que é não ter data nenhuma. Vêm pra cá, com as
-                    mesmas ações da fila, e FORA da contagem do dia. */}
-                {semDataShown.length > 0 && (
-                  <>
-                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "7px 16px", background: "var(--bg-2)", borderTop: "1px solid var(--line-1)" }}>
-                      <span className="kicker tnum" style={{ fontWeight: 600, color: "var(--fg-2)" }}>{`Sem data · ${q.semdata.length}`}</span>
-                      <span style={{ fontSize: 11, color: "var(--fg-4)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>ninguém marcou o próximo toque · não entram na contagem do dia</span>
-                    </div>
-                    {semDataShown.map((item) => (
-                      <QueueRow key={`sd-${item.l?.id || item.consulta?.id}`} item={item} block="semdata" featured={false} ordem={null}
-                        onScript={() => setScriptItem(item)} onClaim={() => claim(item)} onWhatsapp={onOpenWhatsapp} onOpen={() => item.consulta ? openConsulta(item) : onOpenLead?.(item.l)} />
-                    ))}
-                  </>
-                )}
-                {/* SOCIAL SELLING fecha o card (prancha, 14/09): era uma
-                    barra solta acima da fila. */}
-                {viewedIsSdr && saasCfg?.id && (
-                  <SocialSellingBar saasId={saasCfg.id} person={person} version={version} openForm={openForm} />
-                )}
+                {queueShown.length > 10 && <nav className="today-pagination" aria-label="Páginas da fila">
+                  <span>{page * 10 + 1}–{Math.min((page + 1) * 10, queueShown.length)} de {queueShown.length}</span>
+                  <button disabled={page === 0} onClick={() => setQueuePage(page - 1)}>‹ Anteriores</button>
+                  <button disabled={page === lastPage} onClick={() => setQueuePage(page + 1)}>Próximas ›</button>
+                </nav>}
+
               </section>
+                {doneTodayRows.length > 0 && <details className="today-completed"><summary>{doneTodayRows.length} feitas hoje</summary>{doneTodayRows.map(item => <QueueRow key={item.l?.id || item.consulta?.id} item={item} block="hoje" onScript={() => openRow(item)} onOpen={() => openRow(item)} />)}</details>}
           </>
         )}
       </div>
       <aside className="today-aside today-workbench">
       {scriptItem && (
         <ErrorBoundary variant="modal" label="roteiro" resetKey={scriptItem.l?.id} onReset={() => setScriptItem(null)}>
-          <ScriptPanel inline
+          <ScriptPanel inline key={`${scriptItem.l?.id}-${scriptItem.confirmWindow || ""}`}
             item={scriptItem}
             saasCfg={saasCfg}
             leads={leads}
@@ -1000,13 +843,6 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
         </ErrorBoundary>
       )}
         {!scriptItem && <div className="today-script-empty"><span aria-hidden="true">◇</span><strong>Escolha uma atividade</strong><p>O roteiro, a mensagem pronta e as ações aparecem aqui — sem sair da fila.</p></div>}
-        <details className="today-extra"><summary>Agenda, tarefas e placar</summary>
-
-        <CompactSchedule title="O que vem" rows={q.amanha} laterRows={futureRows} onOpen={openRow} />
-        {total > 0 && myTasks.length > 0 && <TasksCard tasks={myTasks} onDone={completeTask} undo={undoTask} onUndo={revertTask} />}
-        <details className="today-score-details"><summary>Placar do dia</summary><DayScore {...score} /></details>
-
-        </details>
       </aside>
       </div>
 
@@ -1093,10 +929,6 @@ function QueueRow({ item, block, featured, ordem, onScript, onClaim, onWhatsapp,
     when = { pill: "novo", soft: true, note: ageH == null ? null : ageH < 24 ? `há ${ageH}h` : `há ${Math.floor(ageH / 24)}d`, tone: "warn" };
   } else when = { pill: "sem data", soft: true, tone: "mut" };
 
-  const unowned = !who; // assumir só quando o card não tem responsável
-  const whatsapp = waLink(l.phone);
-  // Cada tipo abre a PRÓPRIA sala: a integração tem o Meet dela, não o da venda.
-  const meet = kind === "call" ? l.callUrl : kind === "integracao" ? l.integrationCallUrl : "";
   const tier = leadTier(l);
   const verbo = actionVerb(item);
   const hint = actionHint(item);
@@ -1105,58 +937,14 @@ function QueueRow({ item, block, featured, ordem, onScript, onClaim, onWhatsapp,
   // número, em vez de escondê-la atrás de um "ver as feitas". É o que faz
   // "1 de 10 feitos hoje" ter onde ser conferido.
   const apagado = !!item.done;
-  const risco = apagado ? { textDecoration: "line-through" } : null;
-  const tomTexto = apagado ? "var(--fg-4)" : "var(--fg-1)";
   return (
-    <div className="today-queue-row" onClick={onScript} role="button" tabIndex={0}
-      onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onScript(); } }}
-      title={`Abrir o roteiro · ${stage}${hint ? ` · ${hint}` : ""}`} style={{
-      display: "grid", gridTemplateColumns: QUEUE_GRID, gap: QUEUE_GRID_GAP, alignItems: "center",
-      padding: "11px 16px",
-      borderTop: "1px solid var(--line-faint)", background: featured ? "var(--accent-soft)" : "transparent", cursor: "pointer",
-    }}>
-      <span className="mono tnum" style={{ fontSize: 11.5, color: "var(--fg-4)", textAlign: "right" }}>{apagado ? "" : (ordem ?? "—")}</span>
+    <div className={`today-queue-row${apagado ? " is-done" : ""}${due?.t <= now ? " is-late" : ""}`}>
       <TimeCell pill={when.pill} note={apagado ? "feito" : when.note} tone={when.tone} soft={when.soft} apagado={apagado} />
-      {/* O QUE FAZER: o verbo é a coluna mais larga junto com o lead. */}
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 650, color: tomTexto, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", ...risco }}>{verbo}</div>
-        {hint && <div style={{ fontSize: 11, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", ...risco }}>{hint}</div>}
-      </div>
-      {/* O LEAD com o nível DENTRO da célula (a prancha não dá coluna própria
-          pro nível: ele é um atributo do lead, não uma dimensão da fila). */}
-      <button onClick={(e) => { e.stopPropagation(); onOpen?.(); }} title="Abrir lead" className="today-queue-lead" style={{ minWidth: 0, textAlign: "left" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-          <LeadGrade tier={tier} muted={apagado} placeholder size={18} />
-          <span style={{ fontSize: 13.5, fontWeight: 600, color: tomTexto, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", ...risco }}>{l.name}</span>
-        </div>
-        {l.company && <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.company}</div>}
+      <button onClick={onScript} className="today-queue-lead">
+        <span><LeadGrade tier={tier} muted={apagado} placeholder size={20} /><strong>{l.name}</strong><small>{l.company}</small></span>
+        <span className="today-queue-action">{verbo}</span>
       </button>
-      {/* ETAPA e DONO em texto, como a prancha. Sem dono, o "+" que assume
-          entra no lugar do nome — é função que a prancha não tem e que o
-          cockpit precisa, no lugar onde o dono seria lido. */}
-      <div style={{ minWidth: 0 }} onClick={(e) => { if (unowned) e.stopPropagation(); }}>
-        <div style={{ fontSize: 12, color: "var(--fg-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{stage}</div>
-        {unowned
-          ? <button onClick={onClaim} title="assumir este card" style={{ marginTop: 1, height: 18, padding: "0 6px", borderRadius: 999, border: "1px dashed var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 10.5, cursor: "pointer" }}>+ assumir</button>
-          : <div style={{ fontSize: 11.5, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{displayName(who)}</div>}
-      </div>
-      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }} onClick={(e) => e.stopPropagation()}>
-        {meet ? (
-          <a href={meet} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 12px", borderRadius: 999, border: "1px solid var(--line-1)", color: "var(--fg-2)", fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}>abrir Meet</a>
-        ) : whatsapp ? (
-          // Atalho pro INBOX interno (conversa do lead, com ou sem thread ainda);
-          // sem o handler (contexto antigo), cai no deep-link do app.
-          onWhatsapp ? (
-            <button onClick={() => onWhatsapp(l)} title="Abrir a conversa no inbox do cockpit"
-              style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 12px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 500, whiteSpace: "nowrap" }}>WhatsApp</button>
-          ) : (
-            <a href={whatsapp} target="_blank" rel="noopener noreferrer" style={{ height: 32, display: "inline-flex", alignItems: "center", padding: "0 12px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12, fontWeight: 500, textDecoration: "none", whiteSpace: "nowrap" }}>WhatsApp</a>
-          )
-        ) : null}
-        {/* "roteiro" fica SEMPRE: sem ele, linha não-destaque com WhatsApp só
-            abria pelo clique no corpo (invisível pra quem navega por botão). */}
-        <button onClick={onScript} style={{ height: 32, padding: "0 12px", borderRadius: 999, border: "1px solid " + (apagado ? "var(--line-2)" : "var(--btn-bg, var(--accent))"), background: apagado ? "var(--bg-2)" : "var(--btn-bg, var(--accent))", color: apagado ? "var(--fg-3)" : "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", cursor: "pointer" }}>roteiro</button>
-      </div>
+      <button className="today-open-script" onClick={onScript}>Abrir roteiro →</button>
     </div>
   );
 }
@@ -1167,58 +955,18 @@ function QueueRow({ item, block, featured, ordem, onScript, onClaim, onWhatsapp,
 // hora), o verbo em negrito embaixo e o detalhe abaixo dele; as duas ações
 // ficam empilhadas à direita, a principal escura em cima. Ele sai da lista de
 // baixo (a contagem desconta), pra não existir em dois lugares.
-function AgoraBlock({ item, onScript, onClaim, onWhatsapp }) {
+function AgoraBlock({ item, saasCfg, onScript }) {
   const { l, due, stage, who } = item;
   const now = Date.now();
   const atrasado = !!due && due.t <= now;
   const tier = leadTier(l);
-  const wa = waLink(l.phone);
-  const meet = item.kind === "call" ? l.callUrl : item.kind === "integracao" ? l.integrationCallUrl : "";
   const quando = due ? `${hhmmOf(due.t)} · ${atrasado ? "agora" : untilNote(due.t, now)}` : "sem hora marcada";
-  const detalhe = l.nextActionNote || actionHint(item);
-  return (
-    <section className="today-now capsule-navy" style={{ border: 0, borderRadius: "var(--r-4)", padding: "18px 22px" }}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: "min(280px, 100%)" }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-            <span className="kicker" style={{ color: atrasado ? "var(--neg)" : "var(--fg-3)" }}>Agora</span>
-            <span style={{ fontSize: 12, color: "var(--fg-4)" }}>o primeiro da fila</span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-            <LeadGrade tier={tier} placeholder />
-            <span style={{ fontSize: 16, fontWeight: 650, letterSpacing: "-0.01em" }}>{l.name}</span>
-            {l.company && <span style={{ fontSize: 12.5, color: "var(--fg-3)" }}>{l.company}</span>}
-            <span className="mono tnum" style={{ fontSize: 11.5, color: atrasado ? "var(--neg)" : "var(--fg-3)", fontWeight: atrasado ? 600 : 400 }}>{quando}</span>
-
-          </div>
-          <div style={{ fontSize: 14, fontWeight: 700, marginTop: 8 }}>{actionVerb(item)}</div>
-          {detalhe && <div style={{ fontSize: 12.5, color: "var(--fg-3)", marginTop: 2 }}>{detalhe}</div>}
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "stretch", minWidth: 150 }}>
-          <button onClick={onScript}
-            style={{ height: 42, padding: "0 18px", borderRadius: 999, border: "1px solid var(--btn-bg)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 13.5, fontWeight: 650, cursor: "pointer" }}>
-            Abrir o roteiro →
-          </button>
-          {meet ? (
-            <a href={meet} target="_blank" rel="noopener noreferrer"
-              style={{ height: 38, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 16px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>abrir Meet ↗</a>
-          ) : wa ? (
-            onWhatsapp ? (
-              <button onClick={() => onWhatsapp(l)} title="Abrir a conversa no inbox do cockpit"
-                style={{ height: 38, borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>WhatsApp</button>
-            ) : (
-              <a href={wa} target="_blank" rel="noopener noreferrer"
-                style={{ height: 38, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>WhatsApp ↗</a>
-            )
-          ) : null}
-          {!who && (
-            <button onClick={onClaim} title="assumir este card"
-              style={{ height: 30, borderRadius: 999, border: "1px dashed var(--line-2)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 12, cursor: "pointer" }}>assumir</button>
-          )}
-        </div>
-      </div>
-    </section>
-  );
+  return <section className="today-now capsule-navy">
+    <div className="today-section-label">Próxima ação</div>
+    <div className="today-now-person"><LeadGrade tier={tier} size={22} placeholder /><strong>{l.name}</strong><span>{l.company}</span><small className={atrasado ? "is-late" : ""}>{quando}</small></div>
+    <div className="today-now-action">{(item.confirm ? (item.confirmKind === "integracao" ? integrationConfirmationScript(l, saasCfg) : confirmationScript(l, saasCfg, item.confirmWindow)) : resolveScript(saasCfg,l)).passos?.[0]?.t || actionVerb(item)}</div>
+    <button onClick={onScript}>Abrir o roteiro →</button>
+  </section>;
 }
 
 // Uma faixa (Amanhã ou Próximos dias) dentro do card "O que vem".
@@ -1808,9 +1556,48 @@ function ProposalBlock({ l, wa, item, onPatch }) {
 // conversa) e ROTEIRO à direita (postura, objetivo e o passo a passo com a
 // fala pronta). Em tela estreita as colunas empilham. "Toque e próximo"
 // mantém o operador em fluxo: registra e já abre o cliente seguinte.
+function ExecutionSteps({ script, tokens, item }) {
+  const [checked, setChecked] = useS([]);
+  const [copied, setCopied] = useS(false);
+  const steps = script.passos || [];
+  const expand = text => scriptSegments(text || "", tokens).map(s => s.text ?? s.value ?? s.gap ?? "").join("");
+  const next = steps.find((_, i) => !checked.includes(i));
+  const messageStep = steps.find(step => step.fala && /whats|mensagem|não atendeu/i.test(step.t)) || steps.find(step => step.fala);
+  const message = expand(messageStep?.fala);
+  async function copyMessage() {
+    try { await navigator.clipboard.writeText(message); setCopied(true); }
+    catch { toast("Não foi possível copiar a mensagem", "neg"); }
+  }
+  return <>
+    <section className="today-script-block">
+      <div className="today-script-label">Próximo passo</div>
+      <strong className="today-next-step">{next?.t || script.titulo}</strong>
+      <p className="today-step-context">{actionHint(item)}</p>
+    </section>
+    <section className="today-script-block">
+      <div className="today-script-block-head"><span className="today-script-label">Roteiro</span><span className="today-step-count">{checked.length} de {steps.length}</span></div>
+      <div className="today-steps">{steps.map((step, i) => <button key={i} className="today-step" aria-pressed={checked.includes(i)} onClick={() => setChecked(value => value.includes(i) ? value.filter(n => n !== i) : [...value, i])}>
+        <span className="today-step-check" aria-hidden="true">{checked.includes(i) ? "✓" : ""}</span>
+        <span><strong>{step.t}</strong>{step.fala && <span className="today-step-speech">{expand(step.fala)}</span>}{step.dica && <small>{expand(step.dica)}</small>}</span>
+      </button>)}</div>
+    </section>
+    {message && <section className="today-script-block"><div className="today-script-label">Mensagem</div><div className="today-script-message">{message}</div><button className="today-copy-message" onClick={copyMessage}>{copied ? "Mensagem copiada ✓" : "Copiar mensagem"}</button></section>}
+  </>;
+}
+
+function ActivityModal(props) {
+  return createPortal(<Modal {...props} />, document.body);
+}
+
 function InlineScriptShell({ children, onClose }) {
   useEsc(onClose);
-  return <section className="today-inline-script" aria-label="Roteiro da atividade">{children}</section>;
+  const ref = React.useRef(null);
+  useE(() => {
+    const trigger = document.activeElement;
+    ref.current?.focus();
+    return () => { if (trigger?.isConnected) trigger.focus(); };
+  }, []);
+  return <section ref={ref} tabIndex={-1} className="today-inline-script" aria-label="Roteiro da atividade">{children}</section>;
 }
 
 function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfter, onClose, onTouch, onOpenLead, onWhatsapp, preview = false, previewScript = null, nextItem = null, onSkip = null }) {
@@ -1819,7 +1606,7 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
   // Choose once per open editor. Changing its wrapper while typing would
   // remount nested forms and discard their unsaved local state on resize.
   const [compact] = useS(() => typeof window.matchMedia === "function" && window.matchMedia("(max-width: 1100px)").matches);
-  const PanelShell = inline && !compact ? InlineScriptShell : Modal;
+  const PanelShell = inline ? (compact ? ActivityModal : InlineScriptShell) : Modal;
   // Cópia local do lead: a edição inline dos campos reflete na hora aqui (fala
   // interpolada + checklist) e persiste via onPatch (fila + API).
   const [l, setL] = useS(item.l);
@@ -1839,8 +1626,6 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
   // Atalho pro link de pagamento do MP sem sair do roteiro: mesmo modal do
   // card do lead (o checkout nasce amarrado ao id do lead).
   const [payLink, setPayLink] = useS(false);
-  const [showAttr, setShowAttr] = useS(false);   // atribuição do anúncio: consulta
-  const [showCheck, setShowCheck] = useS(false); // checklist do 1º contato: consulta
   useE(() => { setResched(false); setRSlot(""); setPayLink(false); }, [item.l.id]);
   function doReschedule() {
     if (!rSlot) return;
@@ -1892,14 +1677,8 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
   const script = previewScript || (item.confirm
     ? (item.confirmKind === "integracao" ? integrationConfirmationScript(l, saasCfg) : confirmationScript(l, saasCfg, item.confirmWindow))
     : resolveScript(saasCfg, l));
-  const checklist = scriptChecklist(saasCfg, l);
   const wa = waLink(l.phone);
   const tier = leadTier(l);
-  // Atribuição + dor do criativo (mesmo catálogo do drawer): de onde o lead veio
-  // e qual dor o anúncio prometeu resolver — o gancho pra conduzir a conversa.
-  const cat = useAttribution(l.saas, !!l.utm);
-  const { pain, facts, attribution } = clientSummary(saasCfg, l, item.stage, cat);
-
   // Últimos contatos da timeline + o último resumo de call por IA (activity
   // system call_summary) — contexto de quem já falou com esse lead e o que
   // saiu da última call, pra o closer conduzir o follow-up.
@@ -1934,61 +1713,16 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
   // transcrita (combinado, objeção em aberto, dor, temperatura).
   const tokens = scriptTokens(l, saasCfg, salesSummary);
 
-  const fmtWhen = (iso) => {
-    const d = new Date(iso);
-    if (!Number.isFinite(d.getTime())) return "";
-    const days = Math.floor((Date.now() - d.getTime()) / DAY);
-    return days <= 0 ? `hoje ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : days === 1 ? "ontem" : `há ${days}d`;
-  };
-
   return (
     <PanelShell onClose={onClose} label="Roteiro da atividade" largura={1120} padding={20}
       painelStyle={{ maxHeight: "calc(100dvh - 40px)", display: "flex", flexDirection: "column", overflow: "hidden", borderRadius: "var(--r-4)" }}>
       <div className="today-script lead-panel" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
         <div className="today-script-header">
-          {/* O TÍTULO é a AÇÃO (12/09): "Follow-up · tentativa 2" diz o que
-              se vem fazer aqui. O nome do lead desce pra segunda linha, com o
-              nível, a etapa e o contato; o script.titulo virou sub-rótulo do
-              roteiro, na coluna. */}
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-              <span style={{ fontFamily: "var(--display)", fontSize: 20, fontWeight: 700 }}>
-                {actionVerb(item)}{Number(l.stageAttempts) > 0 && !item.confirm ? ` · tentativa ${l.stageAttempts}` : ""}
-                {item.confirm ? ` · ${item.confirmWindow === "10min" ? "10 min antes" : item.confirmWindow === "ligar" ? "1h antes" : "2h antes"}` : ""}
-              </span>
-              {/* O estado do toque: vencido é o que muda a conversa. */}
-              {!preview && item.due && (
-                <span style={{ fontSize: 12.5, fontWeight: item.due.t <= Date.now() ? 600 : 400, color: item.due.t <= Date.now() ? "var(--neg)" : "var(--fg-3)" }}>
-                  {item.due.t <= Date.now()
-                    ? `o toque venceu ${new Date(item.due.t).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).replace(".", "")}`
-                    : `para ${new Date(item.due.t).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).replace(".", "")}`}
-                </span>
-              )}
-              {preview && (
-                <span className="mono" style={{ fontSize: 9.5, color: "var(--accent)", background: "var(--accent-soft)", border: "1px solid var(--accent-line)", borderRadius: 999, padding: "1px 7px", letterSpacing: "0.04em" }}>
-                  pré-visualização · dados de exemplo
-                </span>
-              )}
-            </div>
-            <div style={{ fontSize: 13.5, marginTop: 4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <LeadGrade tier={tier} />
-              <span style={{ fontWeight: 600 }}>{l.name}</span>
-              <span className="chip">{item.stage}</span>
-              {(l.company || l.phone) && (
-                <span className="mono dim" style={{ fontSize: 11 }}>{[l.company, l.phone].filter(Boolean).join(" · ")}</span>
-              )}
-            </div>
+          <LeadGrade tier={tier} placeholder />
+          <div className="today-script-identity">
+            <button onClick={preview ? undefined : onOpenLead} disabled={preview}>{l.name}</button>
+            <span>{l.company}{l.company ? " · " : ""}{actionVerb(item)}</span>
           </div>
-          {!preview && (
-            <button onClick={onOpenLead} style={{ padding: "6px 12px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12, flexShrink: 0 }}>
-              abrir lead
-            </button>
-          )}
-          {!preview && (
-            <MoreMenu items={[
-              { label: l.mpChargeUrl ? (l.mpChargeKind === "recurring" ? "link da assinatura" : "link de pagamento") : "criar link de pagamento", onClick: () => setPayLink(true) },
-            ]} />
-          )}
           <button onClick={onClose} aria-label="Fechar roteiro" className="lead-panel-close">✕</button>
         </div>
 
@@ -2000,14 +1734,10 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
             esquerda. Roteiro à esquerda e cliente à direita, em colunas iguais. */}
         <div className="today-script-columns">
           <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
-            <div>
-              <div className="kicker" style={{ color: "var(--fg-3)" }}>Roteiro</div>
-              <div style={{ fontSize: 11.5, color: "var(--fg-4)", marginTop: 1 }}>{script.titulo}{script.custom ? " · personalizado" : ""}</div>
-            </div>
             {/* Call agendada: atalhos do closer no topo (link da call + mandar pro
                 cliente no Whats + proposta), antes do passo a passo. A integração
                 (tarefa e confirmação) ganha os mesmos atalhos com a sala DELA. */}
-            {(item.kind === "call" || item.kind === "integracao") && !preview && <CallShortcuts l={l} item={item} wa={wa} onPatch={patch} kind={item.kind} />}
+            {(item.kind === "call" || item.kind === "integracao") && !preview && (!item.confirm || (item.kind === "call" ? l.callUrl : l.integrationCallUrl)) && <CallShortcuts l={l} item={item} wa={wa} onPatch={patch} kind={item.kind} />}
             {/* Fora da call, quem cobra proposta/follow-up também precisa do
                 atalho de mandar a proposta no Whats (sem os atalhos da call). */}
             {item.kind !== "call" && !preview && PROPOSAL_KINDS.has(item.kind) && (
@@ -2017,49 +1747,12 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
             )}
             {/* Como se comportar + objetivo + passo a passo: bloco único
                 compartilhado com o card do lead (lead-blocks.jsx). */}
-            <ScriptBlocks script={script} tokens={tokens} />
-            {/* Resumo da última call abaixo do roteiro, como no handoff. */}
-            <CallSummaryCard summary={callSummary} phone={l.phone}
-              onSend={onWhatsapp ? (msg) => onWhatsapp(l, msg) : null} />
-
+            {preview ? <ScriptBlocks script={script} tokens={tokens} /> : <ExecutionSteps key={`${l.id}-${item.confirmWindow || ""}`} script={script} tokens={tokens} item={item} />}
           </div>
-
           <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
-            <div className="kicker" style={{ color: "var(--fg-3)" }}>O cliente</div>
-              {/* Resumo do cliente, atribuição e checklist: os MESMOS blocos do
-                  card do lead (components/lead-blocks.jsx) — quem trabalha a
-                  fila e depois abre o card vê a mesma coisa no mesmo lugar. */}
-              <ClientSummaryCard pain={pain} facts={facts} />
-
             {!preview && <LeadSection title="Anotar o que rolou">
               <ActivityComposer embedded lead={l} onLogged={() => setActsReload((n) => n + 1)} />
             </LeadSection>}
-            <LeadSection title="Histórico">
-              {acts === null && <div className="lead-script-copy">Carregando histórico…</div>}
-              {acts !== null && acts.length === 0 && <div className="lead-script-copy">Nenhum contato registrado ainda.</div>}
-              {(acts || []).map((a) => (
-                <div key={a.id} className="today-lead-history-row">
-                  <time>{fmtWhen(a.at)}</time>
-                  <div><strong>{ACT_LABELS[a.type] || a.type}</strong><span>{a.type === "stage" ? `${a.meta?.from || "?"} → ${a.meta?.to || "?"}` : (a.text || "")}</span></div>
-                </div>
-              ))}
-            </LeadSection>
-
-            {/* Atribuição e checklist viram links quietos: são consulta, e
-                ocupavam dois cards inteiros na coluna. O checklist mostra o
-                progresso no próprio rótulo. */}
-            <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-              <button onClick={() => setShowAttr((v) => !v)} className="mono"
-                style={{ background: "none", border: 0, padding: 0, fontSize: 12, color: "var(--accent)", fontWeight: 600, cursor: "pointer" }}>
-                {showAttr ? "atribuição ▴" : "atribuição ▾"}
-              </button>
-              <button onClick={() => setShowCheck((v) => !v)} className="mono"
-                style={{ background: "none", border: 0, padding: 0, fontSize: 12, color: "var(--accent)", fontWeight: 600, cursor: "pointer" }}>
-                {`checklist · ${checklist.filter((c) => c.done).length} de ${checklist.length} ${showCheck ? "▴" : "▾"}`}
-              </button>
-            </div>
-            {showAttr && <AttributionCard rows={attribution} />}
-            {showCheck && <LeadChecklist key={l.id} checklist={checklist} onPatch={patch} leadId={l.id} />}
 
           </div>
         </div>
@@ -2081,20 +1774,6 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
           {!item.confirm && preview && (
             <div className="mono dim" style={{ flexBasis: "100%", fontSize: 10.5, lineHeight: 1.5, border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)", padding: "8px 10px" }}>
               na fila real, aqui aparece o bloco <b>“Depois da ação”</b> (pra onde vai o card)
-            </div>
-          )}
-          {/* A próxima da fila, ANTES de agir: é o mesmo nextAfter que o "toque
-              e próximo" já usa, agora visível. */}
-          {nextItem && !preview && (
-            <div className="today-next-lead" style={{ flex: "1 1 240px", display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: "var(--fg-3)", paddingBottom: 2 }}>
-              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {`a próxima da fila é ${nextItem.l.name}${Number(nextItem.l.stageAttempts) ? ` · tentativa ${nextItem.l.stageAttempts}` : ""}`}
-              </span>
-              {onSkip && (
-                <button onClick={onSkip} className="mono" style={{ background: "none", border: 0, padding: 0, fontSize: 11.5, color: "var(--accent)", fontWeight: 600, cursor: "pointer", flexShrink: 0 }}>
-                  pular para ela →
-                </button>
-              )}
             </div>
           )}
           {/* WhatsApp em linha própria, esticado (igual ao do drawer/pop de contato). */}

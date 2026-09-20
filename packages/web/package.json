@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "node --test test/*.test.js && node scripts/smoke-ssr.mjs",
     "preview:tela": "vite --config vite.preview.config.js",
-    "test:review:overview": "node scripts/review/overview.mjs"
+    "test:review:overview": "node scripts/review/overview.mjs",
+    "test:review:today": "node scripts/review/today.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

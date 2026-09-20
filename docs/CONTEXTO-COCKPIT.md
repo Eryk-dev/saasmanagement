@@ -52,7 +52,8 @@ as preferências dos demais grupos continuam persistidas. A prévia `responsive.
 usa mocks locais, sem API/banco; `&prototype=1` abre a prancha na mesma
 largura para comparação visual. A revisão de conteúdo por página está registrada no inventário da skill.
 Para reproduzir Visão geral com dados fixos e testes no navegador, usar
-`npm run test:review:overview -w packages/web` (Chromium do Playwright instalado
+`npm run test:review:overview -w packages/web`; para Atividades,
+`npm run test:review:today -w packages/web` (Chromium do Playwright instalado
 com `npx playwright install chromium`, se necessário). O comando sobe só Vite
 com mocks, sem API/banco, e grava medidas/capturas em `.review-artifacts` do web.
 Atividades abre o roteiro lateral no desktop

@@ -264,5 +264,38 @@ remuneracao → expenses → settings.
 Validação: 1.729 testes API, testes web/smoke e build aprovados. Comparação
 automática: 34 medidas por largura, diferença máxima 0px em 1440/1920.
 
-As demais 29 páginas aguardam esta rodada de revisão; os registros históricos
-acima não significam aceite de fidelidade ao CRM final.
+### 02. Atividades (`#today`) — validada
+
+- **Importante, corrigido:** cabeçalho ocupava só a coluna da fila; painel
+  vazio tinha 520px e as colunas tinham proporções diferentes. Cabeçalho,
+  colunas iguais, destaque de 168px e painel vazio de 163px seguem a prancha.
+- **Importante, corrigido:** fila com seis colunas, duplicação de Agora,
+  cabeçalhos de grupos, Sem data, agenda futura, tarefas, placar e social
+  selling foram removidos da apresentação, inclusive do estado vazio.
+  Ordenação, responsáveis, consultas e cadências continuam nos helpers reais.
+- **Importante, corrigido:** busca compacta com ícone, dez itens por página,
+  feitas fora do card, indicadores arredondados e pessoa com contador.
+  Roteiro passa a mostrar próximo passo, etapas marcáveis e mensagem copiável;
+  postura, objetivo redundante, histórico e atribuição não são renderizados.
+- **Bloqueante, corrigido:** foco entra no roteiro e retorna ao gatilho com
+  Escape; trocar pessoa/produto fecha o roteiro anterior; editor recebe chave
+  por atividade para não reaproveitar anotações de outro lead. No mobile, o
+  modal fica no body para o botão flutuante não cobrir as ações do rodapé.
+- **Funções reais preservadas:** anotações e anexos, Meet/propostas quando
+  aplicáveis, destinos do funil e confirmações/remarcação usam os handlers
+  existentes. O botão demonstrativo “Registrar e concluir” não substitui
+  validações de etapa. A prévia dos scripts em Configurações mantém o roteiro
+  completo. Tarefas e agenda permanecem em suas próprias telas.
+- **Evidências:** `npm run test:review:today -w packages/web`, capturas e
+  `geometry.json` em `packages/web/.review-artifacts/today/`. Compara 28
+  medidas fixas por largura em 1440/1920 (tolerância 1px); altura da lista
+  varia com a quantidade real. Confere busca sem resultado/limpeza, paginação,
+  pessoa, checklist, cópia, feitas, Escape/foco, modal 390px, vazio, leitura
+  lenta, erro/retry, tema escuro e confirmação gravada apenas no mock.
+- **Fora do escopo:** handlers de movimento e confirmação já eram otimistas
+  e podem avançar antes de uma falha de persistência. Esse comportamento de
+  domínio foi preservado e requer revisão separada de recuperação/rollback.
+
+Validação: API, testes web/smoke, build e revisão visual aprovados.
+As demais 28 páginas aguardam esta rodada; registros históricos não são aceite
+ de fidelidade ao CRM final.
