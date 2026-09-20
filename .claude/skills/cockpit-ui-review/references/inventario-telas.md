@@ -538,6 +538,7 @@ Validação: 1.729 testes da API, testes web/smoke, build e revisão visual apro
   introduzir um segundo fluxo de agenda. Tipos, snapshots, termo, autor,
   permissões e geração dos links continuam nos endpoints existentes.
 
-Validação: 1.729 testes da API, testes web/smoke, build e revisão visual aprovados.
+Validação final após incorporar a main: 1.739 testes da API, testes web/smoke,
+build e revisão visual aprovados.
 As demais 21 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.
