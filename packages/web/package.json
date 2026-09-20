@@ -23,7 +23,8 @@
     "test:review:intform": "node scripts/review/intform.mjs",
     "test:review:quick-replies": "node scripts/review/quick-replies.mjs",
     "test:review:sla": "node scripts/review/sla.mjs",
-    "test:review:social": "node scripts/review/social.mjs"
+    "test:review:social": "node scripts/review/social.mjs",
+    "test:review:metrics": "node scripts/review/metrics.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

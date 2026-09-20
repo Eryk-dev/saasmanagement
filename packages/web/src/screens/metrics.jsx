@@ -1,8 +1,12 @@
 import React from "react";
+import { createPortal } from "react-dom";
+import { Popover } from "../components/popover.jsx";
+import { Switch } from "../components/form-controls.jsx";
+import "./metrics.css";
 import "./marketing.css";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { PageHead, Segmented, Card } from "../components/viz.jsx";
+import { Segmented, Card } from "../components/viz.jsx";
 import { CorrenteDoDinheiro } from "../components/story.jsx";
 import { Modal } from "../components/overlay.jsx";
 import { usePeriod } from "../components/period-picker.jsx";
@@ -164,9 +168,9 @@ function CorrenteDaPublicidade({ t, biz, rangeDays }) {
     },
   ];
   return (
-    <CorrenteDoDinheiro navy passos={passos}
+    <CorrenteDoDinheiro navy style={{padding:"20px 22px 18px"}} passos={passos}
       titulo="Do anúncio ao dinheiro"
-      sub={`últimos ${rangeDays} dias · cada passo mostra a conversão do anterior`} />
+       />
   );
 }
 
@@ -175,6 +179,7 @@ function MetricsScreen() {
   const { version } = useData();
   const [product, setActiveSaas] = useActiveSaas();
   const metaOn = !!CONFIG?.meta?.configured;
+  const currentProduct=useRef(product?.id);currentProduct.current=product?.id;
 
   // Janela GLOBAL do cockpit (filtro único no topo, pedido do Leo em 08/08):
   // a tela inteira — tiles, tabela de anúncios, por dor, sync — segue ela.
@@ -212,7 +217,7 @@ function MetricsScreen() {
     // marca "atualizando" até o novo chegar, em vez de piscar tudo em "…".
     const productChanged = loadedProduct.current !== product.id;
     loadedProduct.current = product.id;
-    if (reset && productChanged) { setData(null); setObjects(null); setPlacements(null); }
+    if (reset && productChanged) { setData(null); setBiz(null); setObjects(null); setPlacements(null); }
     if (reset) { setNote(null); setRefreshing(true); }
     api.marketingMetrics(product.id, { since, until }).then(fresh(setData)).catch(() => fresh(setData)({ error: true }))
       .finally(() => { if (ep === loadEpoch.current) setRefreshing(false); });
@@ -223,6 +228,7 @@ function MetricsScreen() {
       api.marketingPlacements(product.id, { since, until }).then(fresh(setPlacements)).catch(() => fresh(setPlacements)(null));
     }
   };
+  const latestLoad=useRef(load);latestLoad.current=load;
   useEffect(() => load(true), [product?.id, since, until]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // O card Anúncios segue a MESMA janela global da tela (o filtro próprio dele
@@ -257,7 +263,7 @@ function MetricsScreen() {
   );
   // Aplicou uma ação (pausa/orçamento) → recarrega o estado vivo da conta,
   // igual ao pós-toggle do card Anúncios.
-  const reloadObjects = () => { if (product?.metaAdAccount) api.adObjects(product.id).then(setObjects).catch(() => { /* mantém o atual */ }); };
+  const reloadObjects = () => { if (product?.metaAdAccount) api.adObjects(product.id).then(v=>{if(currentProduct.current===product.id)setObjects(v);}).catch(() => { /* mantém o atual */ }); };
 
   // Toggle Off/On e orçamento em QUALQUER nível — sem confirmação, como no
   // Gerenciador: otimista aqui, reverte se a Meta recusar.
@@ -309,11 +315,13 @@ function MetricsScreen() {
     markBusy(o.id, true);
     try {
       await api.metaObjectStatus(o.id, target);
+      if(currentProduct.current!==product.id)return;
       setNote({ ok: true, text: `${LEVEL_LABEL[level]} "${o.name}" ${target === "PAUSED" ? "pausado(a)" : "ativado(a)"} na Meta ✓` });
       // Verdade da Meta em seguida (efetivo herdado, revisão, etc.) — sem piscar.
       const ep = loadEpoch.current;
       api.adObjects(product.id).then((v) => { if (ep === loadEpoch.current) setObjects(v); }).catch(() => { /* otimista já aplicado */ });
     } catch (e) {
+      if(currentProduct.current!==product.id)return;
       patchObject(level, o.id, { status: o.status, effectiveStatus: o.effectiveStatus });
       if (level !== "ads") cascadeStatus(level, o, o.status === "PAUSED" ? "PAUSED" : "ACTIVE");
       setNote({ ok: false, text: `NÃO aplicado na Meta: ${e.message || "falha desconhecida"}` });
@@ -328,10 +336,10 @@ function MetricsScreen() {
     try {
       const r = await api.metaObjectBudget(o.id, v);
       const applied = r?.dailyBudget ?? v;
-      patchObject(level, o.id, { dailyBudget: applied });
+      if(currentProduct.current===product.id)patchObject(level, o.id, { dailyBudget: applied });
       return applied;
     } catch (e) {
-      setNote({ ok: false, text: `Orçamento de "${o.name}" NÃO aplicado na Meta: ${e.message || "falha desconhecida"}` });
+      if(currentProduct.current===product.id)setNote({ ok: false, text: `Orçamento de "${o.name}" NÃO aplicado na Meta: ${e.message || "falha desconhecida"}` });
       throw e;
     }
   }
@@ -345,34 +353,42 @@ function MetricsScreen() {
 
   // Entrada manual de gasto (alternativa/complemento ao sync da Meta): vira uma
   // linha em ad_insights, então soma nas mesmas métricas e séries.
-  const [manual, setManual] = useState(null); // { date, name, spend }
+  const [manual, setManual] = useState(null);
+  const [manualBusy,setManualBusy] = useState(false);
+  const manualWriting = useRef(false), syncWriting = useRef(false);
+  const closeManual = () => { if(manualWriting.current)return; if((manual?.name || manual?.spend) && !window.confirm("Descartar o gasto manual não registrado?"))return; setManual(null); }; // { date, name, spend }
   async function saveManual() {
+    if(manualWriting.current)return;
     const spend = Number(manual?.spend);
     if (!manual?.date || !Number.isFinite(spend) || spend <= 0) { setNote({ ok: false, text: "Preencha data e valor do gasto." }); return; }
     const name = (manual.name || "").trim() || "Entrada manual";
     const campaignId = "manual_" + name.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").slice(0, 40);
+    manualWriting.current=true;setManualBusy(true);
     try {
       await api.create("ad_insights", { saas: product.id, campaignId, campaignName: name, date: manual.date, spend, impressions: 0, clicks: 0, metaLeads: 0 });
-      setManual(null); setNote({ ok: true, text: "Gasto registrado." });
-      load();
-    } catch (e) { setNote({ ok: false, text: e.message || "Falha ao registrar gasto." }); }
+      if(currentProduct.current!==product.id)return;
+      setManual(null); latestLoad.current(false); setNote({ ok: true, text: "Gasto registrado." });
+    } catch (e) { if(currentProduct.current===product.id)setNote({ ok: false, text: e.message || "Falha ao registrar gasto." }); }
+    finally {manualWriting.current=false;setManualBusy(false);}
   }
 
   // Sincroniza o PERÍODO filtrado (mínimo 90 dias, teto de ~37 meses da Meta) —
   // filtrar um range antigo e sincronizar puxa aquele histórico sob demanda.
   async function sync() {
+    if(syncWriting.current)return;syncWriting.current=true;
     setSyncing(true); setNote(null);
     const floor = dayStr(Date.now() - META_LOOKBACK_DAYS * DAY);
     const def = dayStr(Date.now() - 89 * DAY);
     const syncSince = [since < def ? since : def, floor].sort()[1]; // max(min(since, 90d), teto)
     try {
       await api.marketingSync({ saas: product.id, since: syncSince, until });
+      if(currentProduct.current!==product.id){syncWriting.current=false;setSyncing(false);return;}
+      latestLoad.current();
       setNote({ ok: true, text: `Gasto sincronizado da Meta (${syncSince} a ${until}).` });
-      load();
     } catch (e) {
-      setNote({ ok: false, text: e.message || "Falha ao sincronizar." });
+      if(currentProduct.current===product.id)setNote({ ok: false, text: e.message || "Falha ao sincronizar." });
     }
-    setSyncing(false);
+    syncWriting.current=false;setSyncing(false);
   }
 
   if (!product) return <EmptyState title="Nenhum produto cadastrado" hint="Crie o produto em Ajustes pra acompanhar as métricas." />;
@@ -398,19 +414,19 @@ function MetricsScreen() {
   } : null;
 
   return (
-    <div className="marketing-page" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
-      <PageHead className="marketing-head" title="Publicidade" sub={<span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>aquisição, funil e campanhas · <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--fg-2)", fontSize: 12.5, fontWeight: 500 }}><span style={{ width: 6, height: 6, borderRadius: 99, background: metaOn && product.metaAdAccount ? "var(--pos)" : "var(--fg-4)" }} />{metaOn && product.metaAdAccount ? "Meta conectada" : "Meta não conectada"}</span>{refreshing && data && !data.error ? <span className="dim" style={{ fontSize: 12 }}>· atualizando…</span> : null}</span>}>
+    <div className="marketing-page ads-page">
+      <header className="ads-head"><div><h1>Publicidade</h1><div className="ads-connection"><i style={{background:metaOn && product.metaAdAccount ? "var(--pos)" : "var(--fg-4)"}}/>{metaOn && product.metaAdAccount ? `Meta conectada · ${product.metaAdAccount}` : "Meta não conectada"}{refreshing && <span role="status"> · atualizando…</span>}</div></div><div className="ads-head-actions">
         {metaOn && product.metaAdAccount && (
-          <PrimaryButton onClick={() => { setCloneAd((v) => !v); setCreative(false); }}>+ criar anúncio</PrimaryButton>
+          <PrimaryButton disabled={cloneAd || creative} onClick={() => setCloneAd(true)}>Criar anúncio</PrimaryButton>
         )}
         {metaOn && product.metaAdAccount && (
-          <button onClick={() => { setCreative((v) => !v); setCloneAd(false); }}
+          <button disabled={cloneAd || creative} onClick={() => setCreative(true)}
             title="Criar um anúncio do zero (escolhe copy, CTA e link)"
             style={{ height: 32, padding: "0 12px", borderRadius: 999, fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)" }}>
             + criativo do zero
           </button>
         )}
-        <button onClick={() => setManual(manual ? null : { date: new Date().toISOString().slice(0, 10), name: "", spend: "" })}
+        <button disabled={manualBusy} onClick={() => manual ? closeManual() : setManual({ date: dayStr(Date.now()), name: "", spend: "" })}
           style={{ height: 32, padding: "0 12px", borderRadius: 999, fontSize: 12.5, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)" }}>
           + gasto manual
         </button>
@@ -428,9 +444,10 @@ function MetricsScreen() {
             ao vivo · {liveAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
           </span>
         )}
-      </PageHead>
+      </div></header>
 
-      <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+      <div className="ads-body">
+        {data?.error && <div className="ads-error" role="alert">Não foi possível carregar as métricas. <button onClick={() => load()}>Tentar novamente</button></div>}
         {/* Produto ainda sem conta de anúncio vinculada (UniqueKids, Elo, os
             próximos): o Conectar lista as contas do token e grava a escolha.
             O resto da tela segue de pé — gasto manual funciona sem Meta. */}
@@ -438,7 +455,7 @@ function MetricsScreen() {
         {note && (
           // Banner, não uma linha solta: quem sobe uma leva de vídeo espera
           // minutos e volta pra tela querendo saber, de longe, se deu certo.
-          <div style={{
+          <div role={note.ok ? "status" : "alert"} style={{
             display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 13px", borderRadius: "var(--r-2)",
             background: note.ok ? "var(--pos-soft)" : "var(--neg-soft)",
             border: `1px solid color-mix(in srgb, ${note.ok ? "var(--pos)" : "var(--neg)"} 35%, transparent)`,
@@ -451,38 +468,38 @@ function MetricsScreen() {
 
         {cloneAd && (
           <CloneAdPanel key={"clone-" + product.id} product={product} campaigns={objects && !objects.error ? objects.campaigns : []}
-            onDone={(msg) => { setNote({ ok: true, text: msg }); setCloneAd(false); load(); }}
-            onError={(msg) => setNote({ ok: false, text: msg })}
+            onDone={(msg) => { if(currentProduct.current!==product.id)return; setCloneAd(false); latestLoad.current(); setNote({ ok: true, text: msg }); }}
+            onError={(msg) => {if(currentProduct.current===product.id)setNote({ ok: false, text: msg });}}
             onClose={() => setCloneAd(false)} />
         )}
 
         {creative && (
           <NewCreativePanel key={product.id} product={product} campaigns={objects && !objects.error ? objects.campaigns : []}
-            onDone={(msg) => { setNote({ ok: true, text: msg }); setCreative(false); load(); }}
-            onError={(msg) => setNote({ ok: false, text: msg })}
+            onDone={(msg) => { if(currentProduct.current!==product.id)return; setCreative(false); latestLoad.current(); setNote({ ok: true, text: msg }); }}
+            onError={(msg) => {if(currentProduct.current===product.id)setNote({ ok: false, text: msg });}}
             onClose={() => setCreative(false)} />
         )}
 
         {manual && (
-          <Card>
-            <div style={{ padding: "14px 16px", display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+          <Card title="Registrar gasto manual">
+            <div className="ads-manual" style={{ padding: "14px 16px", display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
               <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <span className="kicker">Data</span>
-                <input type="date" value={manual.date} onChange={(e) => setManual({ ...manual, date: e.target.value })}
+                <input disabled={manualBusy} type="date" value={manual.date} onChange={(e) => setManual({ ...manual, date: e.target.value })}
                   style={{ height: 30, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)" }} />
               </label>
               <label style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 180 }}>
                 <span className="kicker">Campanha (opcional)</span>
-                <input type="text" placeholder="Entrada manual" value={manual.name} onChange={(e) => setManual({ ...manual, name: e.target.value })}
+                <input disabled={manualBusy} type="text" placeholder="Entrada manual" value={manual.name} onChange={(e) => setManual({ ...manual, name: e.target.value })}
                   style={{ height: 30, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 }} />
               </label>
               <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <span className="kicker">Gasto (R$)</span>
-                <input type="number" min="0" step="0.01" placeholder="0,00" value={manual.spend} onChange={(e) => setManual({ ...manual, spend: e.target.value })}
+                <input disabled={manualBusy} type="number" min="0" step="0.01" placeholder="0,00" value={manual.spend} onChange={(e) => setManual({ ...manual, spend: e.target.value })}
                   style={{ width: 120, height: 30, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "var(--mono)", textAlign: "right" }} />
               </label>
-              <button onClick={saveManual} style={{ height: 30, padding: "0 14px", borderRadius: 999, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: 600 }}>Registrar</button>
-              <button onClick={() => setManual(null)} style={{ height: 30, padding: "0 10px", fontSize: 12.5, color: "var(--fg-3)" }}>cancelar</button>
+              <button disabled={manualBusy} onClick={saveManual} style={{ height: 30, padding: "0 14px", borderRadius: 999, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: 600 }}>{manualBusy ? "Registrando…" : "Registrar"}</button>
+              <button disabled={manualBusy} onClick={closeManual} style={{ height: 30, padding: "0 10px", fontSize: 12.5, color: "var(--fg-3)" }}>cancelar</button>
             </div>
           </Card>
         )}
@@ -512,20 +529,20 @@ function MetricsScreen() {
             cada passo mostra a conversão do anterior. As duas telas respondiam
             à mesma pergunta com números diferentes; agora é uma só (decisão do
             Leo, 13/09). O detalhe de cada passo continua no title. */}
-        <CorrenteDaPublicidade t={t} biz={biz} rangeDays={rangeDays} />
+        <div className="ads-money"><CorrenteDaPublicidade t={t} biz={biz} rangeDays={rangeDays} /></div>
 
         {/* Regras do gerenciador: recomendações por regra (nível do lead, custo
             por lead qualificado, ROAS por dor) comparadas com a média da conta,
             com portão de volume. Aplicar passa pela confirmação (pausar / +20%).
             Some inteiro quando não há recomendação ou tudo foi dispensado. */}
-        <InsightsCard title="Regras do gerenciador" hint="recomendações pra escalar/cortar anúncio pela qualidade do lead e retorno · aplicar pede confirmação"
+        <InsightsCard key={`insights-${product.id}`} title="Regras do gerenciador" hint="recomendações pra escalar/cortar anúncio pela qualidade do lead e retorno · aplicar pede confirmação"
           items={insights} scope={`ads:${product.id}`} onApplied={reloadObjects} />
 
         {/* Regras de VEICULAÇÃO (executam sozinhas no servidor, diferente das
             recomendações acima): agenda cheia pausa, janela de fim de semana,
             sexta curta e orçamento alvo — estratégia "encher a agenda de
             amanhã" (Leo, 30/08). Toggle e parâmetros por regra + histórico. */}
-        <DeliveryRulesCard saas={product.id} />
+        <DeliveryRulesCard key={`delivery-${product.id}`} saas={product.id} />
 
         <div className="marketing-two-col marketing-acquisition">
         <Card title="Custo por etapa do funil" hint="investimento ÷ leads que chegaram em cada marco · % = quantos chegaram até ali">
@@ -581,7 +598,7 @@ function MetricsScreen() {
           <PainTable pains={(data && !data.error ? data.pains : []) || []} money={money} />
         </Card>
 
-        <CompactAdsCard saas={product.id} objects={compactObjects} metrics={metricMaps} money={money} busyIds={busyIds}
+        <CompactAdsCard key={`manager-${product.id}`} onRetry={() => load()} saas={product.id} objects={compactObjects} metrics={metricMaps} money={money} busyIds={busyIds}
           onToggle={objects && !objects.error ? toggleObject : null}
           onBudget={objects && !objects.error ? commitBudget : null} error={objects?.error} />
       </div>
@@ -654,72 +671,19 @@ const ADS_MAX_ROWS = 10;
 // Gerenciador). Posição FIXA calculada do botão — escapa do overflow:hidden
 // do card; o overlay fecha no clique fora.
 function ColumnPicker({ visible, onToggle, onReset }) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState(null);
-  const btnRef = React.useRef(null);
-  const toggleOpen = () => {
-    if (!open && btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect();
-      setPos({ top: r.bottom + 6, right: Math.max(8, window.innerWidth - r.right) });
-    }
-    setOpen((v) => !v);
-  };
-  return (
-    <span style={{ position: "relative", display: "inline-flex" }}>
-      <button ref={btnRef} onClick={toggleOpen} title="escolher as colunas da tabela" style={{
-        display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px",
-        borderRadius: 999, border: "1px solid var(--line-1)",
-        background: open ? "var(--bg-2)" : "var(--bg-1)", color: "var(--fg-2)", fontSize: 13, fontWeight: 500,
-      }}>
-        Colunas <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)" }}>{visible.size}</span>
-      </button>
-      {open && pos && (
-        <>
-          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 60 }} />
-          <div style={{
-            position: "fixed", top: pos.top, right: pos.right, zIndex: 61, width: 232,
-            maxHeight: "min(420px, 70vh)", overflowY: "auto", background: "var(--bg-1)",
-            border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 6,
-          }}>
-            {ADS_COLS.map((c) => (
-              <label key={c.key} title={c.hint} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 6, fontSize: 12.5, color: "var(--fg-1)", cursor: "pointer" }}>
-                <input type="checkbox" checked={visible.has(c.key)} onChange={() => onToggle(c.key)}
-                  style={{ width: 14, height: 14, accentColor: "var(--accent)", cursor: "pointer", flexShrink: 0 }} />
-                {c.label}
-              </label>
-            ))}
-            <button onClick={onReset} style={{ width: "100%", marginTop: 4, padding: "7px 8px", borderRadius: 999, fontSize: 12, color: "var(--fg-3)", background: "var(--bg-2)" }}>
-              restaurar padrão
-            </button>
-          </div>
-        </>
-      )}
-    </span>
-  );
+  const [open,setOpen]=useState(false), btnRef=useRef(null);
+  return <span><button className="ads-columns-button" ref={btnRef} aria-expanded={open} onClick={()=>setOpen(v=>!v)}>Colunas <span>{visible.size}</span></button>
+    {open && <Popover anchor={btnRef} onClose={()=>setOpen(false)} width={250} align="end" title="Colunas do gerenciador"><div className="ads-columns">{ADS_COLS.map(c=><label key={c.key} title={c.hint}><input type="checkbox" checked={visible.has(c.key)} onChange={()=>onToggle(c.key)}/>{c.label}</label>)}<button onClick={onReset}>Restaurar padrão</button></div></Popover>}
+  </span>;
 }
 
 // Toggle Off/On no padrão do Gerenciador — controla o status PRÓPRIO da linha
 // (a coluna Veiculação mostra o efetivo, com pausa herdada).
 function Toggle({ on, label, busy, disabled = false, onChange }) {
-  const action = busy ? "enviando pra Meta" : on ? "pausar" : "ativar";
-  return (
-    <button onClick={onChange} disabled={busy || disabled} role="switch" aria-checked={on} aria-busy={busy || undefined}
-      title={`${action} ${busy ? "" : label}`.trim()} aria-label={`${action} ${label}`} style={{
-        width: 38, height: 22, borderRadius: 999, padding: 2, flexShrink: 0,
-        background: on ? "var(--accent)" : "var(--bg-3)",
-        border: "1px solid " + (on ? "var(--accent)" : "var(--line-2)"),
-        display: "inline-flex", alignItems: "center",
-        justifyContent: on ? "flex-end" : "flex-start",
-        transition: "background 120ms ease",
-        opacity: busy ? 0.55 : disabled ? 0.7 : 1,
-        cursor: busy ? "wait" : disabled ? "default" : "pointer",
-      }}>
-      <span style={{ width: 16, height: 16, borderRadius: 999, background: "#fff", boxShadow: "0 1px 2px oklch(0 0 0 / 0.3)" }} />
-    </button>
-  );
+  return <span className="ads-toggle" aria-busy={busy || undefined}><Switch checked={on} onChange={onChange} disabled={busy || disabled} label={`${busy ? "enviando pra Meta" : on ? "pausar" : "ativar"} ${label}`}/></span>;
 }
 
-function CompactAdsCard({ saas, objects, metrics, money, busyIds, onToggle, onBudget, error }) {
+function CompactAdsCard({ saas, objects, metrics, money, busyIds, onToggle, onBudget, error, onRetry }) {
   const [level, setLevel] = useState("campaigns");
   const [creativeAd, setCreativeAd] = useState(null); // anúncio com o criativo aberto no modal
   // Seleção estilo Gerenciador: checkbox nas linhas — campanhas marcadas
@@ -997,7 +961,7 @@ function CompactAdsCard({ saas, objects, metrics, money, busyIds, onToggle, onBu
   };
 
   return (
-    <Card title="Anúncios" hint="estilo Gerenciador · seleção filtra os níveis de baixo · colunas no botão"
+    <div className="ads-manager"><Card title="Gerenciador" hint="selecione campanhas ou conjuntos para filtrar o próximo nível"
       action={
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
           <Segmented value={statusFilter} onChange={setStatusFilter}
@@ -1039,6 +1003,7 @@ function CompactAdsCard({ saas, objects, metrics, money, busyIds, onToggle, onBu
               const arrow = sort.key === c.key ? (sort.dir === "asc" ? " ▲" : " ▼") : "";
               return (
                 <span key={c.key}
+                  role={sortable ? "button" : undefined} tabIndex={sortable ? 0 : undefined} onKeyDown={sortable ? e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();toggleSort(c.key);}} : undefined}
                   draggable={!fixed}
                   title={fixed ? c.hint : [c.hint, "clique pra ordenar · arraste pra reordenar"].filter(Boolean).join(" · ")}
                   onMouseDown={fixed ? undefined : (e) => e.stopPropagation()}
@@ -1057,7 +1022,7 @@ function CompactAdsCard({ saas, objects, metrics, money, busyIds, onToggle, onBu
               );
             })}
           </div>
-          {error && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--neg)", fontSize: 12.5 }}>{error}</div>}
+          {error && <div role="alert" className="ads-error">{error} <button onClick={onRetry}>Tentar novamente</button></div>}
           {!objects && !error && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--fg-4)", fontSize: 12.5 }}>carregando conta de anúncios…</div>}
           {objects && !rows.length && <div style={{ padding: "16px 24px", borderTop: "1px solid var(--line-faint)", color: "var(--fg-4)", fontSize: 12.5 }}>{all.length ? "nada neste nível com os filtros atuais (mude o filtro de status ou limpe a seleção ✕)" : "nenhum item neste nível"}</div>}
           {(expanded ? sortedRows : sortedRows.slice(0, ADS_MAX_ROWS)).map((object) => {
@@ -1071,7 +1036,7 @@ function CompactAdsCard({ saas, objects, metrics, money, busyIds, onToggle, onBu
                 <span style={{ display: "flex", alignItems: "center" }}>
                   {level !== "ads" && (
                     <input type="checkbox" checked={checked} onChange={() => toggleSel(object)}
-                      title="selecionar pra filtrar os níveis de baixo (como no Gerenciador)"
+                      aria-label={`Selecionar ${object.name || object.id}`} title="selecionar pra filtrar os níveis de baixo (como no Gerenciador)"
                       style={checkboxStyle} />
                   )}
                 </span>
@@ -1081,7 +1046,7 @@ function CompactAdsCard({ saas, objects, metrics, money, busyIds, onToggle, onBu
                     <button onClick={(e) => { e.stopPropagation(); setCreativeAd(object); }} title="ver o criativo (vídeo/imagem)"
                       style={{ flexShrink: 0, fontSize: 10, lineHeight: 1, color: "var(--accent)", padding: 2 }}>▶</button>
                   )}
-                  <span onClick={canDrill ? () => drill(object) : undefined}
+                  <span role={canDrill ? "button" : undefined} tabIndex={canDrill ? 0 : undefined} onKeyDown={canDrill ? e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();drill(object);}} : undefined} onClick={canDrill ? () => drill(object) : undefined}
                     title={canDrill ? `ver ${level === "campaigns" ? "os conjuntos" : "os anúncios"} de "${object.name || object.id}"` : undefined}
                     style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: canDrill ? "pointer" : "default", color: canDrill ? "var(--accent)" : "var(--fg-1)" }}>
                     {object.name || object.id}
@@ -1122,7 +1087,7 @@ function CompactAdsCard({ saas, objects, metrics, money, busyIds, onToggle, onBu
         </div>
       </DragScroll>
       {creativeAd && <CreativeModal saas={saas} ad={creativeAd} onClose={() => setCreativeAd(null)} />}
-    </Card>
+    </Card></div>
   );
 }
 
@@ -1130,19 +1095,20 @@ function CompactAdsCard({ saas, objects, metrics, money, busyIds, onToggle, onBu
 // do vídeo da Meta é temporária) e mostra o vídeo (ou a imagem) num modal.
 function CreativeModal({ saas, ad, onClose }) {
   const [st, setSt] = useState({ loading: true });
+  const [attempt,setAttempt]=useState(0);
   useEffect(() => {
     let alive = true;
     api.adCreative(saas, ad.id)
       .then((m) => { if (alive) setSt({ loading: false, media: m }); })
       .catch((e) => { if (alive) setSt({ loading: false, error: e.message }); });
     return () => { alive = false; };
-  }, [saas, ad.id]);
+  }, [saas, ad.id, attempt]);
   const media = st.media;
   // Fundo CLARO (não preto): se o vídeo não carregar, o modal não fica uma tela
   // preta — mostra a superfície do tema e o poster. Sem autoplay.
   const box = { width: "100%", maxHeight: "64dvh", borderRadius: "var(--r-2)", background: "var(--bg-2)" };
   const mediaUrl = media?.videoUrl || media?.imageUrl || "";
-  return (
+  const panel = (
     <Modal onClose={onClose} label="criativo do anúncio" largura={520} padding={24} painelStyle={{ padding: 18 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 12 }}>
           <span style={{ fontFamily: "var(--display)", fontSize: 14.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ad.name || ad.id}</span>
@@ -1150,7 +1116,7 @@ function CreativeModal({ saas, ad, onClose }) {
           <button onClick={onClose} className="dim" style={{ fontSize: 12.5 }}>fechar ✕</button>
         </div>
         {st.loading && <div className="mono dim" style={{ fontSize: 12, padding: "32px 0", textAlign: "center" }}>carregando criativo…</div>}
-        {st.error && <div className="mono" style={{ fontSize: 12, color: "var(--neg)", padding: "8px 0" }}>{st.error}</div>}
+        {st.error && <div role="alert" className="ads-error">{st.error} <button onClick={()=>{setSt({loading:true});setAttempt(n=>n+1);}}>Tentar novamente</button></div>}
         {media?.type === "video" && (
           <video src={media.videoUrl} poster={media.thumbnail || undefined} controls playsInline preload="metadata"
             onError={() => setSt((s) => ({ ...s, mediaError: true }))} style={box} />
@@ -1167,6 +1133,7 @@ function CreativeModal({ saas, ad, onClose }) {
         )}
     </Modal>
   );
+  return typeof document !== "undefined" && document.body?.nodeType===1 ? createPortal(panel,document.body) : panel;
 }
 
 // Campo de orçamento com CONFIRMAÇÃO explícita de que replicou pro Gerenciador:
@@ -1205,7 +1172,7 @@ function BudgetCell({ o, onCommit, sub = "diário" }) {
   return (
     <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
       <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-        <input type="number" min="1" step="1" value={val} disabled={phase === "saving"}
+        <input aria-label={`Orçamento diário de ${o.name || o.id}`} type="number" min="1" step="1" value={val} disabled={phase === "saving"}
           onChange={(e) => { setVal(e.target.value); if (phase !== "idle") setPhase("idle"); }}
           onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") cancel(); }}
           title="Orçamento diário em R$ · Enter ou ✓ envia pra Meta"
@@ -1569,6 +1536,8 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
   const [budget, setBudget] = useState("");     // orçamento diário do conjunto novo
   const [ativo, setAtivo] = useState(true);     // sobe rodando na Meta
   const [busy, setBusy] = useState(false);
+  const writing=useRef(false);
+  const [accepted,setAccepted]=useState(false);
   const [queue, setQueue] = useState([]);       // acompanhamento por vídeo
 
   const proxId = useRef(2);
@@ -1626,13 +1595,14 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
   const grandes = comArquivo.filter((l) => tooBig(l.file));
   const orcamento = Number(budget.replace(",", ".")) || 0;
   const orcamentoOk = orcamento > 0 && orcamento <= MAX_BUDGET;
-  const valid = painCodeSel && (pain !== "_new" || painLabelSel) && campaignId && sourceAdsetId
+  const valid = !accepted && painCodeSel && (pain !== "_new" || painLabelSel) && campaignId && sourceAdsetId
     && comArquivo.length > 0 && !semNumero.length && !grandes.length && orcamentoOk && !busy;
 
   // Um anúncio por vídeo. O ENVIO é sequencial (a banda de subida é uma só e
   // dois uploads juntos só se atrapalham), mas o trabalho na Meta segue no
   // servidor: enquanto o 2º vídeo sobe, o 1º já está sendo processado lá.
   async function submit() {
+    if(writing.current || !valid)return;writing.current=true;
     setBusy(true);
     const inicial = comArquivo.map((l) => ({ file: l.file, nome: l.file.name, numero: l.numero.trim(), estado: "fila", pct: 0, passo: "", erro: "", resultado: null }));
     setQueue(inicial);
@@ -1652,6 +1622,7 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
         fd.append("activate", ativo ? "1" : "0");
         fd.append("video", item.file, item.file.name);
         const { jobId } = await api.adFromVideo(product.id, fd, (p) => patch(i, { pct: p }));
+        setAccepted(true);
         patch(i, { estado: "servidor", pct: 1, passo: "na fila do servidor" });
         acompanhando.push(
           waitForVideoJob(jobId, (passo) => patch(i, { passo }))
@@ -1665,7 +1636,7 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
     }
 
     const r = await Promise.all(acompanhando);
-    setBusy(false);
+    writing.current=false;setBusy(false);
     const feitos = r.filter((x) => x.ok);
     const falhas = r.filter((x) => !x.ok);
     const avisos = feitos.filter((x) => x.job.warning).map((x) => x.job.warning);
@@ -1691,16 +1662,16 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
 
   return (
     <Card title="Criar anúncio" hint="clona o conjunto da dor e troca só o vídeo · um anúncio por vídeo, nome «número [dor]»">
-      <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
+      <fieldset disabled={busy} className="ads-creative-fields">
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <span className="kicker">1 · Vídeos da leva {comArquivo.length > 1 ? `(${comArquivo.length} anúncios)` : ""}</span>
           {linhas.map((l, i) => (
             <div key={l.id} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <span className="mono dim" style={{ fontSize: 11, width: 16, textAlign: "right" }}>{i + 1}</span>
-              <input type="file" accept="video/*" multiple disabled={busy}
+              <input aria-label={`Vídeo ${i+1}`} type="file" accept="video/*" multiple disabled={busy}
                 onChange={(e) => { const fs = [...(e.target.files || [])]; if (fs.length) escolheu(l.id, fs); setQueue([]); }}
                 style={{ ...inp, flex: 1, minWidth: 220, paddingTop: 4 }} />
-              <input type="text" placeholder="número" disabled={busy || !l.file}
+              <input aria-label={`Número do vídeo ${i+1}`} type="text" placeholder="número" disabled={busy || !l.file}
                 value={l.numero} onChange={(e) => setLinha(l.id, { numero: e.target.value.replace(/[^\w-]/g, "") })}
                 style={{ ...inp, width: 96, fontFamily: "var(--mono)" }} />
               <span className="mono dim" style={{ fontSize: 11, minWidth: 74 }}>
@@ -1803,18 +1774,19 @@ function CloneAdPanel({ product, campaigns, onDone, onError, onClose }) {
             {busy ? "Trabalhando… pode deixar rodando"
               : `Criar ${comArquivo.length > 1 ? `${comArquivo.length} anúncios` : "anúncio"} ${ativo ? "rodando" : "pausado"}`}
           </button>
-          <button onClick={onClose} disabled={busy} style={{ height: 32, padding: "0 10px", fontSize: 12.5, color: "var(--fg-3)" }}>{queue.length && !busy ? "fechar" : "cancelar"}</button>
+          <button onClick={()=>{if(!writing.current && window.confirm("Fechar a criação do anúncio? O preenchimento será descartado."))onClose();}} disabled={busy} style={{ height: 32, padding: "0 10px", fontSize: 12.5, color: "var(--fg-3)" }}>{queue.length && !busy ? "fechar" : "cancelar"}</button>
           {!busy && comArquivo.length === 1 && comArquivo[0].numero.trim() && painCodeSel
             && <span className="mono dim" style={{ fontSize: 11.5 }}>nome final do conjunto e do anúncio: <b style={{ color: "var(--fg-2)" }}>{comArquivo[0].numero.trim()} [{painCodeSel}]</b></span>}
           {busy && <span className="mono dim" style={{ fontSize: 11.5 }}>aviso na tela e no navegador quando terminar</span>}
         </div>
 
+        {accepted && !busy && <p role="status" className="ads-error">Confira os resultados da leva antes de iniciar outra criação. O envio já foi aceito.</p>}
         {queue.length > 0 && <FilaDeVideos itens={queue} pain={painCodeSel} />}
 
         <div className="mono dim" style={{ fontSize: 10.5, lineHeight: 1.5 }}>
           cada vídeo vira um anúncio: clona o conjunto escolhido (mantém público, posicionamento, copy e CTA), troca só o vídeo, nomeia conjunto e anúncio como «número [dor]» e aplica o orçamento diário acima. Os vídeos sobem um de cada vez, pra Meta não recusar por excesso de chamadas. O teto de R$ {MAX_BUDGET} por conjunto é travado também no servidor, e se a campanha usar orçamento de CAMPANHA (CBO) o anúncio sobe pausado, porque ali o teto não pode ser garantido.
         </div>
-      </div>
+      </fieldset>
     </Card>
   );
 }
@@ -1833,6 +1805,8 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
   const [cta, setCta] = useState("LEARN_MORE");
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
+  const writing=useRef(false);
+  const [accepted,setAccepted]=useState(false);
   const [pct, setPct] = useState(0);
   const [step, setStep] = useState("");
 
@@ -1853,12 +1827,13 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
   const painMap = defaults?.painMap || {};
   const painCodeSel = pain === "_new" ? newPain.code.trim().toUpperCase() : pain;
   const painLabelSel = pain === "_new" ? newPain.label.trim() : painMap[pain] || "";
-  const valid = adsetId && name.trim() && message.trim() && link.trim() && file && (pain !== "_new" || (painCodeSel && painLabelSel));
+  const valid = !accepted && adsetId && name.trim() && message.trim() && link.trim() && file && (pain !== "_new" || (painCodeSel && painLabelSel));
 
   async function submit() {
+    if(writing.current || !valid)return;
     const big = tooBig(file);
     if (big) return onError(big);
-    setBusy(true); setPct(0); setStep("");
+    writing.current=true;setBusy(true); setPct(0); setStep("");
     try {
       const fd = new FormData();
       fd.append("adsetId", adsetId);
@@ -1870,7 +1845,7 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
       if (painCodeSel) { fd.append("painCode", painCodeSel); fd.append("painLabel", painLabelSel); }
       fd.append("video", file, file.name);
       const { jobId } = await api.uploadCreative(product.id, fd, setPct);
-      setStep("a Meta está processando o vídeo");
+      setAccepted(true);setStep("a Meta está processando o vídeo");
       const job = await waitForVideoJob(jobId, setStep);
       avisarConclusao(1, 0);
       onDone(`Anúncio "${job.result.name}" criado PAUSADO — revise e ative no Gerenciador.`);
@@ -1878,7 +1853,7 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
       avisarConclusao(0, 1);
       onError(e.message || "Falha ao criar o criativo.");
     }
-    setBusy(false); setPct(0); setStep("");
+    writing.current=false;setBusy(false); setPct(0); setStep("");
   }
 
   const lbl = { display: "flex", flexDirection: "column", gap: 4 };
@@ -1887,25 +1862,25 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
 
   return (
     <Card title="Novo criativo" hint="o anúncio nasce pausado, com a dor no nome e as UTMs do mapeamento">
-      <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
+      <fieldset disabled={busy} className="ads-creative-fields">
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
           <label style={lbl}>
             <span className="kicker">Campanha</span>
-            <select value={campaignId} onChange={(e) => setCampaignId(e.target.value)} style={inp}>
+            <select aria-label="Campanha" value={campaignId} onChange={(e) => setCampaignId(e.target.value)} style={inp}>
               <option value="">Selecione…</option>
               {activeCamps.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </label>
           <label style={lbl}>
             <span className="kicker">Conjunto</span>
-            <select value={adsetId} onChange={(e) => setAdsetId(e.target.value)} disabled={!campaignId} style={inp}>
+            <select aria-label="Conjunto" value={adsetId} onChange={(e) => setAdsetId(e.target.value)} disabled={!campaignId} style={inp}>
               <option value="">{!campaignId ? "escolha a campanha" : adsets == null ? "carregando…" : "Selecione…"}</option>
               {(adsets || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </label>
           <label style={lbl}>
             <span className="kicker">Dor (roteiro)</span>
-            <select value={pain} onChange={(e) => setPain(e.target.value)} style={inp}>
+            <select aria-label="Dor (roteiro)" value={pain} onChange={(e) => setPain(e.target.value)} style={inp}>
               <option value="">Sem código</option>
               {Object.entries(painMap).map(([c, l]) => <option key={c} value={c}>[{c}] {l}</option>)}
               <option value="_new">+ nova dor…</option>
@@ -1940,7 +1915,7 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
           </label>
           <label style={lbl}>
             <span className="kicker">Botão (CTA)</span>
-            <select value={cta} onChange={(e) => setCta(e.target.value)} style={inp}>
+            <select aria-label="Botão (CTA)" value={cta} onChange={(e) => setCta(e.target.value)} style={inp}>
               <option value="LEARN_MORE">Saiba mais</option>
               <option value="SIGN_UP">Cadastre-se</option>
               <option value="GET_OFFER">Ver oferta</option>
@@ -1951,7 +1926,7 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
 
         <label style={lbl}>
           <span className="kicker">Texto principal</span>
-          <textarea rows={3} placeholder="Copy do anúncio (aparece acima do vídeo)" value={message} onChange={(e) => setMessage(e.target.value)}
+          <textarea aria-label="Texto principal" rows={3} placeholder="Copy do anúncio (aparece acima do vídeo)" value={message} onChange={(e) => setMessage(e.target.value)}
             style={{ ...inp, height: "auto", minHeight: 64, padding: "8px 10px", resize: "vertical", fontFamily: "var(--sans)" }} />
         </label>
 
@@ -1972,14 +1947,15 @@ function NewCreativePanel({ product, campaigns, onDone, onError, onClose }) {
             style={{ height: 32, padding: "0 16px", borderRadius: 999, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 13, fontWeight: 600, opacity: !valid || busy ? 0.55 : 1 }}>
             {busy ? "Trabalhando… não feche a tela" : "Criar anúncio pausado"}
           </button>
-          <button onClick={onClose} disabled={busy} style={{ height: 32, padding: "0 10px", fontSize: 12.5, color: "var(--fg-3)" }}>cancelar</button>
+          <button onClick={()=>{if(!writing.current && window.confirm("Fechar a criação do anúncio? O preenchimento será descartado."))onClose();}} disabled={busy} style={{ height: 32, padding: "0 10px", fontSize: 12.5, color: "var(--fg-3)" }}>cancelar</button>
           {busy
             ? <JobProgress pct={pct} step={step} />
             : painCodeSel && name.trim() && (
               <span className="mono dim" style={{ fontSize: 11.5 }}>nome final: [{painCodeSel}] {name.trim()}</span>
             )}
         </div>
-      </div>
+        {accepted && !busy && <p role="status" className="ads-error">O envio foi aceito. Confira o anúncio no Gerenciador antes de iniciar outra criação.</p>}
+      </fieldset>
     </Card>
   );
 }

@@ -1,3 +1,4 @@
+import {metricsReview,setupMetricsReview} from "./metrics-review-mock.js";
 import { socialReview, setupSocialReview } from "./social-review-mock.js";
 import { agendaReview, setupAgendaReview } from "./agenda-review-mock.js";
 import { intformReview, setupIntformReview } from "./intform-review-mock.js";
@@ -67,6 +68,7 @@ if (contractsReview) setupContractsReview(window.SEED);
 if (intformReview) setupIntformReview(window.SEED);
 if (agendaReview) setupAgendaReview(window.SEED);
 if (socialReview) setupSocialReview(window.SEED);
+if (metricsReview) setupMetricsReview(window.SEED);
 if (previewShell) {
   window.SEED.SAAS.push({ id: "elo", name: "Elo", accent: 55, funnel: [], leadQuestions: [] });
   // A moldura usa o App real, com API falsa e sem conexão SSE/banco.
