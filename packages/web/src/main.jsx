@@ -8,6 +8,7 @@
 // stored (localStorage) and every request carries it from then on.
 
 import "./tokens.css";
+import "./capsule.css";
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { fmt } from "./lib/format.js";

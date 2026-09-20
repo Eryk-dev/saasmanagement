@@ -18,7 +18,7 @@ import React from "react";
 
 const CARD = {
   background: "var(--bg-1)",
-  border: "1px solid var(--line-1)",
+  border: 0,
   borderRadius: "var(--r-4)",
   boxShadow: "var(--shadow-card)",
 };
@@ -45,14 +45,14 @@ const corDe = (tom) => TOM[tom] || TOM.neutro;
 // vertical de 4px e botão escuro, como a pilha de avisos da Visão geral) ·
 // "forte" (borda na cor do tom e botão escuro, como o aviso do Inbox, que é o
 // único da tela e precisa ganhar do resto da linha).
-export function AvisoTopo({ tom = "neg", titulo, nota, fim, acao, variante = "ponto", style }) {
+export function AvisoTopo({ tom = "neg", titulo, nota, fim, acao, variante = "ponto", navy = false, style }) {
   const cor = corDe(tom);
   const forte = variante === "forte";
-  const escuro = variante === "barra" || forte;
+  const escuro = variante === "barra" || forte || navy;
   const btn = {
     height: 30,
     padding: "0 14px",
-    borderRadius: "var(--r-2)",
+    borderRadius: 999,
     fontSize: 12.5,
     fontWeight: 600,
     cursor: "pointer",
@@ -65,7 +65,7 @@ export function AvisoTopo({ tom = "neg", titulo, nota, fim, acao, variante = "po
     color: escuro ? "var(--btn-fg)" : "var(--fg-2)",
   };
   return (
-    <section style={{ ...CARD, border: `1px solid ${forte ? `color-mix(in srgb, ${cor} 45%, var(--bg-1))` : "var(--line-1)"}`, padding: "13px 18px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", ...style }}>
+    <section className={navy ? "capsule-navy capsule-alert" : "capsule-alert"} style={{ ...CARD, border: `1px solid ${forte ? `color-mix(in srgb, ${cor} 45%, var(--bg-1))` : "var(--line-1)"}`, padding: "13px 18px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", ...style, ...(navy ? { border: 0, background: undefined, padding: "20px 24px" } : {}) }}>
       {forte ? null : escuro
         ? <span style={{ width: 4, alignSelf: "stretch", minHeight: 26, borderRadius: 999, background: cor, flexShrink: 0 }} />
         : <span style={{ width: 8, height: 8, borderRadius: 999, background: cor, flexShrink: 0 }} />}
@@ -89,12 +89,12 @@ export function AvisoTopo({ tom = "neg", titulo, nota, fim, acao, variante = "po
 //
 // passos: [{ rotulo, valor, nota, tom, title, taxa, taxaNota }]
 //   taxa/taxaNota descrevem a seta que ENTRA no passo (ignoradas no primeiro).
-export function CorrenteDoDinheiro({ passos = [], tamanho = "md", titulo, sub, fim, bare = false, style }) {
+export function CorrenteDoDinheiro({ passos = [], tamanho = "md", titulo, sub, fim, bare = false, navy = false, style }) {
   const grande = tamanho === "lg";
   const vis = passos.filter(Boolean);
   if (!vis.length) return null;
   return (
-    <section style={{ ...(bare ? null : CARD), padding: bare ? 0 : "20px var(--inset-x)", ...style }}>
+    <section className={navy ? "capsule-navy" : undefined} style={{ ...(bare ? null : CARD), padding: bare ? 0 : "22px var(--inset-x)", ...style, ...(navy ? { background: undefined, border: 0 } : {}) }}>
       {(titulo || sub) && (
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
           {titulo && <h3 className="card-title" style={{ margin: 0 }}>{titulo}</h3>}

@@ -277,7 +277,7 @@ function App({ onInitialReady, initialLoading = false } = {}) {
 
   return (
     <DataContext.Provider value={dataCtx}>
-    <div className="app-shell" style={{ display: "flex", overflow: "hidden", background: "var(--bg-0)" }}>
+    <div className="app-shell" data-screen={scr} style={{ display: "flex", overflow: "hidden", background: "var(--bg-0)" }}>
       {!isMobile && <NavRail current={scr} onNav={(id) => nav(id)} collapsed={false} onSearch={() => setSearchOpen(true)} />}
       {isMobile && menuOpen && (
         <Drawer onClose={() => setMenuOpen(false)} label="Menu principal" largura={248}
@@ -288,7 +288,7 @@ function App({ onInitialReady, initialLoading = false } = {}) {
         </Drawer>
       )}
 
-      <main style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+      <main className="cockpit-main" style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <TopBar
           key={`${scr}:${activeProduct?.id}`}
           breadcrumb={crumbsFor[scr]}

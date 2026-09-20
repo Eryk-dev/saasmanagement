@@ -233,7 +233,7 @@ export function PeriodPicker({ period, custom, onChange, presets }) {
     setOpen(false);
   };
 
-  const btn = { height: 32, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" };
+  const btn = { height: 32, padding: "0 12px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" };
   const toggle = () => setOpen((value) => !value);
   return (
     <div ref={ref} style={{ display: "inline-flex", maxWidth: "100%" }}>

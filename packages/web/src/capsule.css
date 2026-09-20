@@ -1,0 +1,87 @@
+/* CRM final — shell and reusable surfaces. Screen geometry lives beside each screen. */
+.app-shell { padding: 12px; gap: 12px; }
+.cockpit-main { min-height: 0; gap: 12px; }
+.cockpit-rail { border-radius: 22px; border: 0; background: linear-gradient(170deg,#0d2131,#071925 65%); box-shadow: 0 1px 2px rgba(5,28,44,.14),0 18px 40px -22px rgba(5,28,44,.55); }
+.rail-brand { padding: 18px 16px 14px; border: 0; }
+.rail-workspace { padding: 8px 10px; border-radius: 999px; background: rgba(255,255,255,.07); }
+.rail-workspace-text strong { font-family: var(--display); font-size: 14px; font-weight: 700; }
+.rail-workspace-text > span { font-size: 9.5px; color: var(--brand-mark); letter-spacing: .06em; text-transform: uppercase; }
+.rail-search-wrap { padding: 0 12px 12px; }
+.rail-search { height: 36px; border-radius: 999px; padding: 0 12px; }
+.rail-search kbd { border-radius: 999px; padding: 2px 7px; font-family: var(--sans); }
+.rail-groups { padding: 2px 12px 20px; display: flex; flex-direction: column; gap: 3px; }
+.rail-group-toggle { min-height: 44px; margin: 3px 0; padding: 0 12px; border-radius: 999px; font-size: 15px; font-weight: 700; letter-spacing: -.01em; text-transform: none; color: var(--rail-text); }
+.rail-group-spacer { flex: 1; }
+.rail-group-toggle:hover { background: var(--rail-hover); }
+.rail-item { min-height: 38px; padding: 0 12px; border-radius: 999px; font-size: 13px; font-weight: 500; }
+.rail-group:first-child .rail-item { font-size: 15px; font-weight: 650; min-height: 40px; }
+.rail-items { gap: 3px; }
+.rail-item[aria-current="page"] { box-shadow: inset 0 0 0 1px rgba(125,239,233,.2); background: rgba(255,255,255,.10); }
+.rail-item[aria-current="page"] .rail-icon { color: var(--brand-mark); }
+.rail-icon { transition: transform 160ms ease,color 160ms ease; }
+.rail-item:hover .rail-icon { transform: translateY(-1px) scale(1.08); color: var(--brand-mark); }
+.rail-badge { background: rgba(35,216,211,.16); color: #7defe9; }
+.rail-badge[data-tone="neg"] { background: rgba(226,105,90,.2); color: #ffb3a8; }
+.rail-footer { padding: 12px 16px; }
+.cockpit-topbar { border: 0; border-radius: 999px; min-height: 52px; height: 52px; padding: 0 20px; box-shadow: var(--shadow-card); }
+.chrome-control { border: 0; border-radius: 999px; background: var(--bg-2); }
+.chrome-crumb-current { font-size: 13px; font-weight: 700; }
+.chrome-crumb-parent { font-size: 11px; text-transform: uppercase; }
+.chrome-icp { background: #051c2c; color: #23d8d3; }
+.chrome-icp-summary { color: #d0e0e5; font-size: 11px; }
+.chrome-icp:hover,.chrome-icp[aria-expanded="true"] { background: #0a2434; color: #23d8d3; }
+.app-shell[data-screen="overview"] .chrome-icp { box-shadow: 0 0 0 1px rgba(35,216,211,.5),0 0 13px rgba(35,216,211,.16); }
+.page-title { font-family: var(--display); font-size: 30px; letter-spacing: -.035em; font-weight: 650; }
+.card-title { font-family: var(--sans); font-size: 12px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; }
+.capsule-card .card-title::before { content: ''; display: inline-block; width: 4px; height: 12px; border-radius: 999px; background: var(--accent); margin-right: 8px; }
+.capsule-page-head { --page-head-top: 8px; --pad-x: 10px; }
+.capsule-page-head + * { --page-head-top: 8px; }
+button.btn, .btn-primary, .btn-secondary, .filter-tab { border-radius: 999px; }
+@media (max-width: 800px) {
+  .app-shell { padding: 8px; gap: 8px; }
+  .cockpit-main { gap: 8px; }
+  .cockpit-topbar { border-radius: 24px; height: auto; min-height: 52px; padding: 8px 12px; }
+  .cockpit-rail { height: 100%; width: 244px; }
+  .page-title { font-size: 25px; }
+}
+@media (prefers-reduced-motion: reduce) { .rail-icon { transition: none; } }
+/* Navy action panel — semantic tokens keep nested controls readable. */
+.capsule-navy {
+  --fg-1: #fff; --fg-2: #d0e0e5; --fg-3: #afc1ca; --fg-4: #9cb1bd;
+  --bg-1: #102e3d; --bg-2: rgba(255,255,255,.08); --bg-inset: rgba(255,255,255,.05);
+  --line-1: rgba(255,255,255,.1); --line-2: rgba(255,255,255,.2);
+  --accent: #23d8d3; --accent-soft: rgba(35,216,211,.12); --btn-bg: #23d8d3; --btn-fg: #051c2c;
+  --neg: #ffb3a8; --warn: #f3cd81; --pos: #7adbb5;
+  position: relative; isolation: isolate; overflow: hidden; color: var(--fg-1);
+  background: linear-gradient(150deg,#0a2434,#051c2c); border-radius: 24px;
+}
+.capsule-navy::before { content: ''; position: absolute; z-index: -1; pointer-events: none; width: 260px; height: 260px; right: -25px; bottom: -85px; background: rgba(35,216,211,.055); clip-path: polygon(75% 0,75% 100%,54% 40%,0 57%); }
+
+/* Full-width content and capsule controls, including screens that keep extra product tools. */
+.app-shell { --pad-x: 0px; --inset-x: 20px; --page-head-top: 8px; }
+.capsule-page-head { padding: 8px 10px 2px !important; }
+.capsule-page-head > :first-child { min-width: min(260px,100%) !important; }
+.app-shell .inp:not(textarea):not([type="checkbox"]):not([type="radio"]), .app-shell select.inp { border-radius: 999px; padding-inline: 14px; }
+.capsule-alert > span:first-child + span { min-width: min(220px,100%) !important; }
+.customers-summary { display: grid; gap: 12px; margin-bottom: 12px; }
+.customers-analysis { margin-bottom: 12px; border-radius: 24px; background: var(--bg-1); padding: 12px 20px; }
+.customers-analysis > summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--fg-3); }
+.customers-analysis[open] > summary { margin-bottom: 16px; }
+.pipeline-won { --pos: var(--accent); }
+.pipeline-won > div:nth-child(2) > div { border: 0 !important; border-radius: 999px !important; background: var(--bg-2) !important; }
+@media (min-width: 801px) { .cockpit-topbar .chrome-search { display: none; } }
+@media (max-width: 600px) {
+  .app-shell { --inset-x: 14px; }
+  .capsule-page-head > div { max-width: 100%; }
+  .capsule-page-head button, .capsule-page-head select { min-height: 44px; }
+}
+
+.app-shell .mono.tnum { font-family: var(--display); }
+.app-shell .mono.code { font-family: var(--mono); }
+.capsule-page-head > div > button { min-height: 40px; padding-inline: 18px; }
+.app-shell[data-screen="tasks"] .tk-card { border-radius: 20px !important; border-color: transparent !important; }
+.app-shell[data-screen="tasks"] .tk-card.is-selected { outline: 2px solid var(--accent-line); }
+.app-shell[data-screen="tasks"] .tbl { border-collapse: separate !important; border-spacing: 0 6px; }
+.app-shell[data-screen="tasks"] .tk-row > td { background: var(--bg-1); border-top: 0 !important; }
+.app-shell[data-screen="tasks"] .tk-row > td:first-child { border-radius: 999px 0 0 999px; }
+.app-shell[data-screen="tasks"] .tk-row > td:last-child { border-radius: 0 999px 999px 0; }

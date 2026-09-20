@@ -69,7 +69,7 @@ const { useState: useS, useEffect: useE, useRef: useR } = React;
 // venda assistida inteira não se aplica lá.
 const NAV = [
   { id: "overview",   label: "Visão geral",       icon: "◈",  group: "main" },
-  { id: "today",      label: "Minhas atividades", icon: "◷",  group: "main" },
+  { id: "today",      label: "Atividades", icon: "◷",  group: "main" },
   { id: "training",   label: "Treinamentos",      icon: "✎",  group: "main", notSaas: "elo" },
 
   { id: "pipeline",   label: "Pipeline",       icon: "≡",  group: "comercial", notSaas: "elo" },
@@ -216,7 +216,7 @@ function NavRail({ current, onNav, collapsed, onSearch }) {
   // Grupos recolhíveis com escolha persistida; marketing e análises começam
   // fechados conforme o handoff, salvo quando contêm a rota inicial.
   const [fechados, setFechados] = useS(() => {
-    try { return new Set(JSON.parse(localStorage.getItem("cockpit_nav_fechados") || '["marketing","analises"]')); } catch { return new Set(); }
+    try { return new Set(JSON.parse(localStorage.getItem("cockpit_nav_fechados") || '["comercial","suporte","marketing","analises","geral"]')); } catch { return new Set(); }
   });
   // Entrar numa tela revela seu grupo; depois o usuário pode recolhê-lo.
   useE(() => {
@@ -251,7 +251,7 @@ function NavRail({ current, onNav, collapsed, onSearch }) {
       {onSearch && (
         <div className="rail-search-wrap">
           <button onClick={onSearch} className="rail-search" title="Buscar lead, cliente ou tela (⌘K / Ctrl+K)" aria-label="Buscar lead, cliente ou tela">
-            {!collapsed && <span>buscar lead, cliente, tela…</span>}
+            {!collapsed && <span>buscar…</span>}
             <kbd>⌘K</kbd>
           </button>
         </div>
@@ -267,8 +267,9 @@ function NavRail({ current, onNav, collapsed, onSearch }) {
                 <button onClick={() => alternar(g.key)} className="rail-group-toggle"
                   aria-expanded={aberto} aria-controls={`nav-group-${g.key}`}
                   title={aberto ? `recolher ${GROUP_LABELS[g.key]}` : `abrir ${GROUP_LABELS[g.key]}`}>
-                  <span>{GROUP_LABELS[g.key]}</span>
-                  <span className="rail-group-line" />
+                  <span className="rail-icon" aria-hidden="true">{ICONS[{ comercial: "pipeline", suporte: "tickets", marketing: "metrics", analises: "analise", geral: "tasks" }[g.key]]}</span>
+                  <span>{GROUP_LABELS[g.key].charAt(0).toUpperCase() + GROUP_LABELS[g.key].slice(1)}</span>
+                  <span className="rail-group-spacer" />
                   {!aberto && total > 0 && <span className="rail-badge" data-tone="neg">{total}</span>}
                   <span aria-hidden="true">{aberto ? "▾" : "▸"}</span>
                 </button>

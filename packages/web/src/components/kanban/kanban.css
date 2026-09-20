@@ -37,3 +37,12 @@
 .kb-board[data-layout="fill"] > .kb-col[data-highlight="1"] { box-shadow: 0 0 0 2px var(--accent-line); }
 .kb-board[data-layout="fill"] .kb-col-head { padding: 4px 4px 10px; }
 .kb-board[data-layout="fill"] .kb-col-list { min-height: 0; overflow: visible; padding: 0; gap: 9px; }
+
+/* CRM final: paper columns and separate soft cards. Drag targets retain their outline. */
+.kb-col { border-radius: 24px; }
+.kb-col-head { padding: 14px 14px 10px; }
+.kb-col-count { border-radius: 999px; background: var(--bg-2); padding: 2px 7px; font-family: var(--display); }
+.kb-col-btn, .kb-more, .kb-less { border-radius: 999px; }
+.kb-board[data-layout="fill"] { grid-auto-columns: minmax(262px,1fr); gap: 12px; }
+.kb-board[data-layout="fill"] > .kb-col { padding: 16px 14px; border-color: transparent; }
+.kb-board[data-layout="fill"] .kb-col-sub { font-family: var(--display); font-size: 22px; font-weight: 700; color: var(--fg-1); }
