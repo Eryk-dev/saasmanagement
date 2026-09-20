@@ -28,7 +28,7 @@ export function PersonFilter({ people, value, onChange, allLabel = "Todos" }) {
         const on = value === o.id;
         return (
           <button key={o.id ?? "__all__"} onClick={() => onChange(o.id)}
-            style={{ height: 34, padding: "0 13px", borderRadius: "var(--r-2)", fontSize: 12.5, cursor: "pointer",
+            style={{ height: 34, padding: "0 13px", borderRadius: 999, fontSize: 12.5, cursor: "pointer",
               border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"),
               background: on ? "var(--accent-soft)" : "var(--bg-1)",
               color: on ? "var(--accent)" : "var(--fg-3)", fontWeight: 600 }}>
@@ -157,7 +157,7 @@ function CallsScreen({ onOpenLead }) {
                 PROPORÇÃO, que é a leitura da tela — call quente é o que vira
                 cliente, e a barra mostra quanto do período foi quente sem
                 ninguém dividir de cabeça. */}
-            <section style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px var(--inset-x)" }}>
+            <section className="capsule-navy" style={{ boxShadow: "var(--shadow-card)", padding: "20px var(--inset-x)" }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
                 <h3 className="card-title" style={{ margin: 0 }}>Temperatura das calls</h3>
                 <span className="card-sub">{`${data.count} ${data.count === 1 ? "call resumida" : "calls resumidas"} no período`}</span>
@@ -215,7 +215,7 @@ function CallsScreen({ onOpenLead }) {
                 <div>
                   <button onClick={diagnosticar} disabled={ai === "loading" || data.aiConfigured === false}
                     title={data.aiConfigured === false ? "IA não configurada no servidor" : "Analisa as calls e aponta o que ajustar no pitch"}
-                    style={{ height: 30, padding: "0 14px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12.5, fontWeight: 600, opacity: (ai === "loading" || data.aiConfigured === false) ? 0.6 : 1 }}>
+                    style={{ height: 30, padding: "0 14px", borderRadius: 999, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12.5, fontWeight: 600, opacity: (ai === "loading" || data.aiConfigured === false) ? 0.6 : 1 }}>
                     {ai === "loading" ? "analisando…" : "✨ gerar diagnóstico"}
                   </button>
                 </div>
