@@ -421,3 +421,45 @@ test("GET/PUT delivery-rules: devolve prévia, sanitiza e mantém o bloqueio de 
   const missing = await app.inject({ method: "GET", url: "/api/marketing/nada/delivery-rules" });
   assert.equal(missing.statusCode, 404);
 });
+
+test("falha na Meta vira linha 'falhou' no log do card — uma por motivo por dia, sem metralhar o tick de 60s", async () => {
+  const repo = await seedRepo({
+    users: [closer("c1")],
+    config: {
+      rules: rules({ agendaFull: { enabled: true, callsPerCloser: 5 } }),
+      // Campanha que a regra pausou na sexta e precisa voltar na virada.
+      state: { day: "2026-08-30", pausedCampaigns: ["c_presa"], pauseReason: "fim de semana", pausedAt: "2026-08-28T03:00:00.000Z" },
+      log: [],
+    },
+  });
+  // Conta de anúncio que o token só LÊ (o caso real de 20/09/2026).
+  const meta = makeFakeMeta({ campaigns: [{ id: "c_presa", status: "PAUSED" }] });
+  meta.setObjectStatus = async () => { throw new Error("Meta API -> 400: (#200) Requires ads_management permission"); };
+
+  await adDeliveryTick(repo, { meta, now: SEG });
+  let cfg = await loadDeliveryCfg(repo, "leverads");
+  assert.deepEqual(cfg.state.pausedCampaigns, ["c_presa"], "campanha continua presa pra tentar de novo");
+  let falhas = cfg.log.filter((l) => l.action === "falhou");
+  assert.equal(falhas.length, 1);
+  assert.equal(falhas[0].rule, "weekendOff");
+  assert.match(falhas[0].detail, /não consegui religar 1 campanha/);
+  assert.match(falhas[0].detail, /ads_management/, "a mensagem da Meta chega na tela");
+
+  // Próxima passada (60s depois), mesmo motivo: NÃO repete a linha.
+  await adDeliveryTick(repo, { meta, now: wallFromNaive("2026-08-31T10:01") });
+  cfg = await loadDeliveryCfg(repo, "leverads");
+  assert.equal(cfg.log.filter((l) => l.action === "falhou").length, 1);
+
+  // Virada do dia com o problema de pé: registra de novo (é notícia do dia).
+  await adDeliveryTick(repo, { meta, now: wallFromNaive("2026-09-01T00:05") });
+  cfg = await loadDeliveryCfg(repo, "leverads");
+  assert.equal(cfg.log.filter((l) => l.action === "falhou").length, 2);
+
+  // Permissão resolvida: religa, some o erro e o state limpa.
+  delete meta.setObjectStatus;
+  Object.assign(meta, makeFakeMeta({ campaigns: meta.campaigns }));
+  await adDeliveryTick(repo, { meta, now: wallFromNaive("2026-09-01T00:06") });
+  cfg = await loadDeliveryCfg(repo, "leverads");
+  assert.deepEqual(cfg.state.pausedCampaigns, []);
+  assert.equal(cfg.log[0].action, "religou");
+});

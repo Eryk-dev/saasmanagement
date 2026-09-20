@@ -110,6 +110,9 @@ export function DeliveryRulesCard({ saas }) {
   const { rules: r, state, preview: p, log } = data;
   const paused = (state.pausedCampaigns || []).length;
   const shown = logOpen ? log : (log || []).slice(0, 5);
+  // Falha da Meta das últimas 24h vira bandeira no topo: sem isso a regra fica
+  // "ligada" na tela enquanto não consegue agir em conta nenhuma (20/09/2026).
+  const falha = (log || []).find((e) => e.action === "falhou" && Date.now() - new Date(e.at).getTime() < 86_400_000);
 
   return (
     <Card title="Regras de veiculação" hint={hint}>
@@ -135,6 +138,11 @@ export function DeliveryRulesCard({ saas }) {
             </span>
           )}
           {!data.metaConfigured && <span className="chip">Meta não conectada · as regras só observam</span>}
+          {falha && (
+            <span className="chip neg" title={`${logWhen(falha.at)} · ${falha.detail}`}>
+              a Meta recusou: {falha.detail}
+            </span>
+          )}
           <button onClick={checkNow} disabled={checking} className="mono dim" style={{ fontSize: 11, marginLeft: "auto", cursor: "pointer" }}>
             {checking ? "checando…" : "↻ checar agora"}
           </button>
@@ -196,7 +204,7 @@ export function DeliveryRulesCard({ saas }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <span className="kicker">O que as regras fizeram</span>
             {shown.map((e, i) => (
-              <div key={i} className="mono" style={{ fontSize: 11, color: "var(--fg-3)", lineHeight: 1.5 }}>
+              <div key={i} className="mono" style={{ fontSize: 11, color: e.action === "falhou" ? "var(--neg)" : "var(--fg-3)", lineHeight: 1.5 }}>
                 <span className="dim">{logWhen(e.at)}</span> · <b>{RULE_LABEL[e.rule] || e.rule} {e.action}</b> · {e.detail}
               </div>
             ))}
