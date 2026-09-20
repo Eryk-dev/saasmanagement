@@ -22,7 +22,8 @@
     "test:review:agenda": "node scripts/review/agenda.mjs",
     "test:review:intform": "node scripts/review/intform.mjs",
     "test:review:quick-replies": "node scripts/review/quick-replies.mjs",
-    "test:review:sla": "node scripts/review/sla.mjs"
+    "test:review:sla": "node scripts/review/sla.mjs",
+    "test:review:social": "node scripts/review/social.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

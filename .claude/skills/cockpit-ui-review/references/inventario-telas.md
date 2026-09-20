@@ -690,5 +690,37 @@ Validação: 1.739 testes da API, testes web/smoke, build e revisão visual apro
   sem confirmação global de rascunho desta tela.
 
 Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
-As demais 16 páginas aguardam esta rodada; registros históricos não são aceite
+
+
+### 15. Redes sociais (`#social`) — validada
+
+- **Importante, corrigido:** cabeçalho, faixa navy, indicadores em superfície
+  única e gráficos na proporção 2:1 seguem `TelaRedesSociais.dc.html`.
+  Publicações mantêm as 16 métricas reais com rolagem horizontal. Audiência,
+  interações, stories e radar continuam acessíveis após os blocos principais.
+- **Importante, corrigido:** comentários usam filtros próprios e linhas contínuas;
+  responder, resolver/reabrir e ocultar continuam disponíveis. Leituras antigas
+  não substituem a consulta atual. Falhas de métricas, publicações, stories,
+  audiência, comentários e radar têm feedback e nova tentativa.
+- **Bloqueante, corrigido:** publicação impede duplo envio e fechamento durante
+  a requisição; falhas mantêm a legenda. Resultado parcialmente aceito impede
+  repetir a publicação inteira e informa o resultado por rede. O criador de
+  post abre em portal, confirma descarte e preserva vídeo/editor/IA existentes.
+  Respostas e edição de concorrentes/hashtags bloqueiam gravações concorrentes.
+- **Evidências:** `npm run test:review:social -w packages/web`, capturas e
+  `geometry.json` em `packages/web/.review-artifacts/social/`. **30 medidas**
+  em 1440/1920, diferença máxima **0px**, para título, cabeçalho, faixa e KPIs.
+  Registro de criativos, ordenação, resposta, ocultação, resolução, publicação
+  de vídeo com mock, falha/retry, parcial, espera, descarte, 390/1024px, escuro,
+  vazio e desconectado conferidos. Nenhum post foi enviado a redes externas.
+- **Fora do escopo:** contagem, fórmulas e integrações permanecem na API.
+  O gráfico preserva o acumulado real, mesmo com barras na referência; o
+  formatter compacto e a meta fixa de 12 posts são anteriores. O contador de
+  criativos mantém sua regra de elegibilidade e tratamento anterior de leitura.
+  Pautas, classificação de comentário e conversão em lead da demonstração não
+  viraram funções fictícias. A comparação estrutural não equivale a pixels
+  idênticos nos gráficos, conteúdo e controles reais.
+
+Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
+As demais 15 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.
