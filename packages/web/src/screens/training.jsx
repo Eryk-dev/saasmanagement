@@ -37,7 +37,7 @@ const RATINGS = [
   { rating: 4, label: "Fácil", color: "var(--accent)", bg: "var(--accent-soft)" },
 ];
 
-const btn ={ height: 32, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, cursor: "pointer" };
+const btn ={ height: 32, padding: "0 14px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, cursor: "pointer" };
 const page = { flex: 1, overflow: "auto", padding: "26px 24px 48px", display: "flex", flexDirection: "column", gap: 14, minHeight: 0 };
 
 function TrainingScreen() {
@@ -231,7 +231,7 @@ function StartCard({ decks, exam, onExam, onStudy, onFun, funBusy, funErr }) {
   // Prova pendente vence a fila: é o compromisso da vez.
   if (exam) {
     return (
-      <div className="training-start" style={shell}>
+      <div className="training-start capsule-navy" style={{ ...shell, border: 0, background: undefined }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 220 }}>
             <div className="kicker">Da vez</div>
@@ -244,7 +244,7 @@ function StartCard({ decks, exam, onExam, onStudy, onFun, funBusy, funErr }) {
     );
   }
   return (
-    <div className="training-start" style={shell}>
+    <div className="training-start capsule-navy" style={{ ...shell, border: 0, background: undefined }}>
       <div style={{ display: "flex", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 220 }}>
           <div className="kicker">Da vez</div>
@@ -333,7 +333,7 @@ function RefRow({ title, hint, children, last }) {
 
 function RefList() {
   return (
-    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "18px 20px" }}>
+    <div style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "18px 20px" }}>
       <div className="kicker">Referências · abrem quando você precisa</div>
       <div style={{ marginTop: 8 }}>
         <RefRow title="ICP · quem a gente caça" hint="o perfil que fecha e a matriz da nota (contas × anúncios)">
@@ -366,7 +366,7 @@ function MemoryCard({ stats }) {
     ["Última prova", m.lastExam ? `${m.lastExam.score}%` : "—", m.examsDone ? `· ${m.examsDone} feita${m.examsDone === 1 ? "" : "s"}` : "", m.lastExam ? (m.lastExam.status === "failed" ? "var(--neg)" : "var(--pos)") : "var(--fg-4)"],
   ];
   return (
-    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "18px 20px" }}>
+    <div style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "18px 20px" }}>
       <div className="kicker accent">Sua memória</div>
       <div style={{ marginTop: 10 }}>
         {rows.map(([label, value, extra, color], i) => (
@@ -392,7 +392,7 @@ function NextExamCard({ stats, exam, onExam }) {
   if (exam) return <section className="training-card"><div className="kicker">Prova de checkpoint</div><p className="card-sub">{exam.count} cards aprendidos · sua prova está disponível</p><button className="training-exam-button" onClick={onExam}>fazer a prova</button></section>;
   const pct = e.every > 0 ? Math.min(100, Math.round((e.pool / e.every) * 100)) : 0;
   return (
-    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", padding: "16px 18px" }}>
+    <div style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", padding: "16px 18px" }}>
       <div className="kicker">Prova de checkpoint</div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 8 }}>
         <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 700 }}>{e.remaining}</span>
@@ -474,7 +474,7 @@ function Session({ saasId, label, cards, dayEnd, onExit, focus, onToggleFocus, r
     const good = tally[3] + tally[4];
     body = (
       <div style={{ display: "flex", flexDirection: "column", gap: 14, width: "100%", maxWidth: 640 }}>
-        <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "20px 22px" }}>
+        <div style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "20px 22px" }}>
           <div className="kicker accent" style={{ marginBottom: 8 }}>Sessão concluída · {label}</div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
             <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 42, fontWeight: 700, color: "var(--pos)" }}>{done}</span>
@@ -539,7 +539,7 @@ function Session({ saasId, label, cards, dayEnd, onExit, focus, onToggleFocus, r
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
             {RATINGS.map((r) => (
               <button key={r.rating} onClick={() => rate(r.rating)} disabled={busy}
-                style={{ height: 58, borderRadius: "var(--r-2)", border: `1px solid ${r.color}`, background: r.bg, color: r.color, fontWeight: 700, fontSize: focus ? 14.5 : 13.5, cursor: "pointer", opacity: busy ? 0.6 : 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3 }}>
+                style={{ height: 58, borderRadius: 999, border: `1px solid ${r.color}`, background: r.bg, color: r.color, fontWeight: 700, fontSize: focus ? 14.5 : 13.5, cursor: "pointer", opacity: busy ? 0.6 : 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3 }}>
                 <span>{r.label} <span style={{ opacity: 0.6, fontWeight: 400, fontSize: 11 }}>({r.rating})</span></span>
                 {/* o intervalo é o que o FSRS agendaria pra ESTE card agora
                     (card.preview vem do previewIntervals) — nunca tabela fixa */}
@@ -784,7 +784,7 @@ function ExamScreen({ saasId, exam, onDone, onBusyChange }) {
               const on = a.choice === j;
               return (
                 <button key={j} onClick={() => set({ choice: j })} disabled={busy}
-                  style={{ textAlign: "left", width: "100%", fontSize: 13, padding: "11px 13px", borderRadius: "var(--r-2)", cursor: "pointer", lineHeight: 1.45,
+                  style={{ textAlign: "left", width: "100%", fontSize: 13, padding: "11px 13px", borderRadius: 999, cursor: "pointer", lineHeight: 1.45,
                     border: `1px solid ${on ? "var(--accent)" : "var(--line-2)"}`,
                     background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-1)", fontWeight: on ? 600 : 400 }}>
                   {op}
@@ -839,7 +839,7 @@ function ConsistencyCardLive({ saasId }) {
 function ConsistencyCard({ stats: s }) {
   if (!s) return <div className="dim" style={{ fontSize: 12 }}>carregando seu histórico…</div>;
   return (
-    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: 20 }}>
+    <div style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: 20 }}>
       <div className="kicker">Consistência</div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 8 }}>
         <span className="tnum" style={{ fontFamily: "var(--display)", fontSize: 32, fontWeight: 700, lineHeight: 1, color: s.streak ? "var(--accent)" : "var(--fg-4)" }}>{s.streak}</span>
@@ -1050,7 +1050,7 @@ function Edit({ saasId, mode, setMode }) {
                 novos/dia
                 <input type="number" min={0} max={200} value={settings.newPerDay}
                   onChange={(e) => setSettings((s) => ({ ...s, newPerDay: Math.max(0, Math.min(200, Math.round(Number(e.target.value) || 0))) }))}
-                  style={{ width: 58, height: 26, padding: "0 8px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12 }} />
+                  style={{ width: 58, height: 26, padding: "0 8px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: 999, color: "var(--fg-1)", fontSize: 12 }} />
               </label>
               <ExamSettings settings={settings} setSettings={setSettings} />
             </fieldset>
@@ -1121,7 +1121,7 @@ function ExamSettings({ settings, setSettings }) {
   const num = (key, min, max, w = 50) => (
     <input type="number" min={min} max={max} value={settings[key]}
       onChange={(e) => setSettings((s) => ({ ...s, [key]: Math.max(min, Math.min(max, Math.round(Number(e.target.value) || 0))) }))}
-      style={{ width: w, height: 24, padding: "0 7px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12 }} />
+      style={{ width: w, height: 24, padding: "0 7px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: 999, color: "var(--fg-1)", fontSize: 12 }} />
   );
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", padding: "8px 12px" }}>
@@ -1206,13 +1206,13 @@ function CardEditor({ card, saasId, onPatch, onRemove }) {
   }
 
   return (
-    <div onPaste={onPaste} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "18px 20px", display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+    <div onPaste={onPaste} style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "18px 20px", display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <div className="card-title" style={{ flex: 1, minWidth: 120 }}>Editar card</div>
         <div style={{ display: "flex", gap: 4 }}>
           {CARD_TYPES.map((t) => (
             <button key={t.id} onClick={() => onPatch(card.id, "type", t.id)} className="mono"
-              style={{ height: 24, padding: "0 10px", borderRadius: "var(--r-2)", fontSize: 11, cursor: "pointer",
+              style={{ height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11, cursor: "pointer",
                 border: `1px solid ${type === t.id ? "var(--accent-line)" : "var(--line-2)"}`,
                 background: type === t.id ? "var(--accent-soft)" : "transparent",
                 color: type === t.id ? "var(--accent)" : "var(--fg-3)", fontWeight: type === t.id ? 600 : 400 }}>{t.label}</button>
@@ -1251,7 +1251,7 @@ function CardEditor({ card, saasId, onPatch, onRemove }) {
           </div>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
             {type === "cloze" && (
-              <button onClick={markCloze} className="mono" style={{ height: 24, padding: "0 10px", borderRadius: "var(--r-2)", border: "1px dashed var(--accent-line)", background: "transparent", color: "var(--accent)", fontSize: 10.5, cursor: "pointer" }}>
+              <button onClick={markCloze} className="mono" style={{ height: 24, padding: "0 10px", borderRadius: 999, border: "1px dashed var(--accent-line)", background: "transparent", color: "var(--accent)", fontSize: 10.5, cursor: "pointer" }}>
                 marcar seleção como cloze
               </button>
             )}
@@ -1281,7 +1281,7 @@ function ImageAttach({ saasId, value, onChange, hint, compact }) {
       <div style={{ position: "relative", alignSelf: "flex-start" }}>
         <img src={api.trainingAssetUrl(value)} alt="" style={{ maxHeight: compact ? 120 : 220, maxWidth: "100%", borderRadius: 6, border: "1px solid var(--line-1)", display: "block" }} />
         <button onClick={() => onChange("")} title="remover imagem" className="mono"
-          style={{ position: "absolute", top: 4, right: 4, width: 20, height: 20, borderRadius: 10, border: "none", background: "rgba(0,0,0,0.6)", color: "#fff", fontSize: 11, cursor: "pointer" }}>✕</button>
+          style={{ position: "absolute", top: 4, right: 4, width: 20, height: 20, borderRadius: 999, border: "none", background: "rgba(0,0,0,0.6)", color: "#fff", fontSize: 11, cursor: "pointer" }}>✕</button>
       </div>
     );
   }
@@ -1545,7 +1545,7 @@ function PersonDetail({ user: u, today, saasId }) {
   const lastTone = u.lastExam ? (u.lastExam.status === "passed" ? "var(--pos)" : "var(--neg)") : undefined;
 
   return (
-    <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 16 }}>
       <div className="kicker accent">Raio-x · {u.name}</div>
 
       <div className="resp-cols" style={{ "--cols": "repeat(3, minmax(0,1fr))", gap: 14 }}>
