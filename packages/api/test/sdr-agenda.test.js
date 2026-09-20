@@ -74,7 +74,7 @@ test("fim de semana usa segunda e nunca terça automaticamente", async () => {
 
 test("somente pedido do lead libera outra data, inclusive áudio e continuação com hora", async () => {
   const repo = await world();
-  for (const [text, date] of [["Pode ser quarta?", "2026-09-23"], ["Só consigo depois de amanhã", "2026-09-23"], ["Podemos dia 30/09?", "2026-09-30"], ["Quero marcar 15/10/2026", "2026-10-15"], ["Tem hoje às 14h?", "2026-09-21"], ["sexta", "2026-09-25"], ["Podemos dia 16 de novembro?", "2026-11-16"], ["Podemos 15 de outubro?", "2026-10-15"]]) {
+  for (const [text, date] of [["Pode ser quarta?", "2026-09-23"], ["Posso na quinta às 14h", "2026-09-24"], ["Só consigo depois de amanhã", "2026-09-23"], ["Podemos dia 30/09?", "2026-09-30"], ["Quero marcar 15/10/2026", "2026-10-15"], ["Tem hoje às 14h?", "2026-09-21"], ["sexta", "2026-09-25"], ["Podemos dia 16 de novembro?", "2026-11-16"], ["Podemos 15 de outubro?", "2026-10-15"]]) {
     const messages = [inbound(text), inbound("14h")];
     const r = await sdrSlotsForLead(repo, { ...options, grade: "C", messages });
     assert.equal(r.requested, true, text);

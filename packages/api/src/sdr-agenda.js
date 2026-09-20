@@ -27,7 +27,7 @@ function requestedWindow(text, at) {
   const match = t.match(dayPattern);
   if (!match) return null;
   const bare = t.replace(match[0], "").replace(/(?:\bas?\b|\bde\b|\bpela\b|\bna\b|\bno\b|\bpara\b|\bpra\b|\bmanha\b|\btarde\b|\bnoite\b|\d{1,2}(?:h\d{0,2}|:\d{2})?|[\s,.!?])/g, "");
-  const asked = /\b(?:pode|poderia|podemos|consigo|conseguimos|tem|teria|quero|prefiro|preferia|preciso|vamos|disponivel|disponibilidade|agendar|agendamento|marcar|remarcar|reuniao|call|horario|so|apenas)\b/.test(t);
+  const asked = /\b(?:pode|posso|poderei|poderia|podemos|consigo|conseguimos|tem|teria|quero|prefiro|preferia|preciso|vamos|disponivel|disponibilidade|agendar|agendamento|marcar|remarcar|reuniao|call|horario|so|apenas)\b/.test(t);
   if (bare && !asked) return null;
   // Uma recusa sem alternativa não libera os próximos dias.
   if (/\bnao\s+(?:posso|consigo|da|pode|quero|tenho disponibilidade)\b|\bnao[.!?\s]*$/.test(t) && !/\bso\b|outro dia|outros dias/.test(t)) return null;
