@@ -1,3 +1,4 @@
+import { contractsReview, contractsReviewMock } from "./contracts-review-mock.js";
 import { offersReview, offersReviewMock } from "./offers-review-mock.js";
 import { proposalsReview, proposalsReviewMock } from "./proposals-review-mock.js";
 import { customersReview, customersReviewMock } from "./customers-review-mock.js";
@@ -129,6 +130,7 @@ const vazio = () => Promise.resolve(null);
 
 const mockApi = new Proxy({}, {
   get(_, nome) {
+    if (contractsReview && Object.hasOwn(contractsReviewMock,nome)) return contractsReviewMock[nome];
     if (offersReview && Object.hasOwn(offersReviewMock,nome)) return offersReviewMock[nome];
     if (proposalsReview && Object.hasOwn(proposalsReviewMock, nome)) return (...args) => Promise.resolve().then(() => proposalsReviewMock[nome](...args));
     if (customersReview && Object.hasOwn(customersReviewMock,nome)) return customersReviewMock[nome];

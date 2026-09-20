@@ -471,5 +471,38 @@ Validação: 1.729 testes da API, testes web/smoke, build e revisão visual apro
   autorizados pelo backend; não houve mudança em API, schema ou banco.
 
 Validação: 1.729 testes da API, testes web/smoke, build e revisão visual aprovados.
-As demais 23 páginas aguardam esta rodada; registros históricos não são aceite
+### 08. Contratos (`#contracts`) — validada
+
+- **Importante, corrigido:** cabeçalho sem subtítulo, biblioteca de modelos e
+  histórico seguem as colunas, espaçamentos, fontes e ações do CRM final.
+  Busca mantém o recorte ao abrir e fechar um registro. Tabelas rolam dentro
+  do card em larguras menores, com nomes completos disponíveis em tooltip.
+- **Importante, corrigido:** gaveta de 520px com cliente, campos do modelo e
+  prévia do quadro; a contratada vem do documento real. Edição, duplicação,
+  documento completo, download e registro sem impressão ficam no menu.
+  O botão principal identifica a geração de PDF; não promete envio para uma
+  plataforma de assinatura que não existe no fluxo atual.
+- **Bloqueante, corrigido:** falha de histórico não aparece como zero gerados
+  ou modelo nunca usado. Leituras têm retry independente e proteção contra
+  respostas antigas. Erro de gravação mantém dados e permite nova tentativa;
+  cópia só confirma após concluir. Mutação em andamento bloqueia repetição.
+- **Bloqueante, corrigido:** Escape usa apenas o listener do Drawer; o listener
+  anterior da tela era bloqueado pela pilha de overlays. Fechamento e troca
+  para edição confirmam descarte. Foco volta ao controle de origem e uma
+  prévia sobre a gaveta fecha separadamente. No celular, editor e documento
+  empilham e as ações permanecem acessíveis acima do widget de feedback.
+- **Evidências:** `npm run test:review:contracts -w packages/web`; capturas e
+  `geometry.json` em `packages/web/.review-artifacts/contracts/`. **384 medidas
+  em 1440/1920**, diferença máxima **0px**, para cabeçalho, tabelas, células e
+  estrutura da gaveta. A prévia varia conforme o corpo e os campos reais.
+  Conferidos busca, paginação, criação/edição, duplicação, exclusão confirmada,
+  impressão/reimpressão, download, cópia, deduplicação do snapshot, descarte,
+  erro/retry, espera longa, popup bloqueado, vazio, mobile e tema escuro.
+- **Fora do escopo:** preservados preenchimento parcial para completar no
+  papel, vínculo manual e HTML de impressão. Duplicar continua reconstruindo
+  os campos a partir dos tokens do corpo; o payload existente não copia os
+  metadados de `fields`. Nenhuma regra de contrato, API ou banco foi alterada.
+
+Validação: 1.729 testes da API, testes web/smoke, build e revisão visual aprovados.
+As demais 22 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.
