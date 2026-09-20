@@ -295,8 +295,8 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
     } else setDayOff((w) => w + dir * (isWeek ? 7 : 1));
   };
   const navBtn = {
-    height: 26, padding: "0 10px", borderRadius: 5, fontSize: 12,
-    background: "var(--bg-2)", border: "1px solid var(--line-1)", color: "var(--fg-2)", cursor: "pointer",
+    height: 28, padding: "0 13px", borderRadius: 999, fontSize: 12,
+    background: "var(--bg-2)", border: 0, color: "var(--fg-2)", cursor: "pointer",
   };
 
   // O time com agenda: quem tem papel de closer/integrador (Ajustes → Equipe).
@@ -490,14 +490,14 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
           { value: "month", label: "Mês" },
           { value: "team", label: "Equipe" },
         ]} />
-        <span style={{ display: "inline-flex", gap: 4 }}>
+        <span className="agenda-period-nav" style={{ display: "inline-flex", gap: 3 }}>
           <button style={navBtn} onClick={() => passo(-1)} title={isMonth ? "mês anterior" : isWeek ? "semana anterior" : "dia anterior"}>‹</button>
-          <button style={navBtn} onClick={() => setDayOff(0)}>hoje</button>
+          <button style={navBtn} onClick={() => setDayOff(0)}>Hoje</button>
           <button style={navBtn} onClick={() => passo(1)} title={isMonth ? "próximo mês" : isWeek ? "próxima semana" : "próximo dia"}>›</button>
         </span>
-        <span style={{ fontSize: 14, fontWeight: 650, fontFamily: "var(--display)" }}>{label}</span>
+        <span style={{ fontSize: 14.5, fontWeight: 650, fontFamily: "var(--display)", whiteSpace: "nowrap" }}>{label}</span>
         {/* O resumo da janela, ao lado do período: o que a grade tem dentro. */}
-        <span style={{ fontSize: 12, color: "var(--fg-3)" }}>
+        <span style={{ fontSize: 11.5, color: "var(--fg-3)", whiteSpace: "nowrap" }}>
           {`${callCount} ${callCount === 1 ? "call" : "calls"} · ${events.length} ${events.length === 1 ? "item" : "itens"} na grade`}
         </span>
 
@@ -510,12 +510,12 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
               {[{ id: "", name: "todos" }, ...people].map((p) => {
                 const on = (person || "") === p.id;
                 return (
-                  <button key={p.id || "todos"} onClick={() => onPerson(p.id)}
+                  <button key={p.id || "todos"} aria-pressed={on} onClick={() => onPerson(p.id)}
                     style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 11px", borderRadius: 999, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
-                      border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-1)"),
-                      background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-3)" }}>
+                      border: 0, boxShadow: on ? "inset 0 0 0 1px var(--accent-line)" : "none",
+                      background: on ? "var(--accent-soft)" : "var(--bg-2)", color: on ? "var(--accent)" : "var(--fg-3)" }}>
                     {p.id && <span style={{ width: 7, height: 10, borderRadius: 2, background: toneOf(p.id) }} />}
-                    {p.name || displayName(p.id)}
+                    {(p.name || displayName(p.id)).split(" ")[0]}
                   </button>
                 );
               })}
@@ -532,20 +532,14 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
           )
         )}
 
-        <button ref={filtersAnchor} className="agenda-more" aria-expanded={filtersOpen} aria-haspopup="dialog"
-          onClick={() => setFiltersOpen((open) => !open)}
-          title="Filtrar calls, follow-ups e integrações; mostrar toques">
-          {evKind === "all" ? showTouches ? "mais · toques visíveis" : "mais" : `tipo · ${{ call: "calls", "follow-up": "follow-ups", "integração": "integrações" }[evKind] || evKind}`} ▾
-        </button>
+        <select className="agenda-type" aria-label="Tipo de evento" value={evKind} onChange={(e) => setEvKind(e.target.value)}>
+          <option value="all">todos os tipos · {events.length}</option>
+          <option value="call">calls · {callCount}</option>
+          <option value="follow-up">follow-ups · {fupCount}</option>
+          <option value="integração">integrações · {intCount}</option>
+        </select>
         {filtersOpen && <Popover anchor={filtersAnchor} onClose={() => setFiltersOpen(false)} width={300} align="end" title="Filtros da agenda">
           <div className="agenda-filter-panel">
-            <label htmlFor="agenda-event-type">Tipo de evento</label>
-            <select id="agenda-event-type" className="inp" value={evKind} onChange={(e) => setEvKind(e.target.value)}>
-              <option value="all">Todos os tipos · {events.length}</option>
-              <option value="call">Calls · {callCount}</option>
-              <option value="follow-up">Follow-ups · {fupCount}</option>
-              <option value="integração">Integrações · {intCount}</option>
-            </select>
             {evKind === "all" && <label className="agenda-touch-toggle">
               <input type="checkbox" checked={showTouches} onChange={(e) => setShowTouches(e.target.checked)} /> Mostrar toques
             </label>}
@@ -561,10 +555,10 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
         )}
       </div>
 
-      <div className="tbl-x" style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
+      <div className="tbl-x agenda-calendar" style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
         {/* A legenda que FICA: as quatro cores de tipo, no topo da grade e não
             embaixo dela, com o fato do período à direita. */}
-        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", padding: "8px 12px", borderBottom: "1px solid var(--line-1)" }}>
+        <div className="agenda-legend" style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", padding: "9px 14px", borderBottom: "1px solid var(--line-faint)" }}>
           {Object.entries(AGENDA_TYPE_COLORS).map(([k, c]) => (
             <span key={k} className="mono" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10.5, color: "var(--fg-3)" }}>
               <span style={{ width: 10, height: 10, borderRadius: 3, background: c.bg, border: `1px ${k === "follow-up" ? "dashed" : "solid"} ${c.line}` }} />
@@ -572,6 +566,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
             </span>
           ))}
           <span className="mono tnum" style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--fg-3)" }}>{fatoPeriodo}</span>
+          <button ref={filtersAnchor} className="agenda-legend-more" aria-expanded={filtersOpen} aria-haspopup="dialog" onClick={() => setFiltersOpen((open) => !open)}>Mais opções</button>
           <InfoLink texto={LEGENDA}>legenda</InfoLink>
         </div>
         {isMonth ? (
@@ -581,7 +576,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
           <div className="agenda-month">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
               {["seg", "ter", "qua", "qui", "sex", "sáb", "dom"].map((w) => (
-                <div key={w} className="kicker" style={{ padding: "6px 8px", textAlign: "center", color: "var(--fg-4)" }}>{w}</div>
+                <div key={w} className="kicker" style={{ padding: "7px 8px", textAlign: "center", color: "var(--fg-4)" }}>{w}</div>
               ))}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}>
@@ -609,7 +604,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
                   })),
                 ];
                 return (
-                  <div key={i}
+                  <button key={i} className="agenda-month-day" type="button"
                     onClick={() => { setDayOff(Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() - today.getTime()) / 86400000)); setView("day"); }}
                     title={`${fmtDay(d, { weekday: "long", day: "2-digit", month: "long" })} · ${itens.length === 0 ? "nada marcado" : `${itens.length} na agenda`} · clique pra abrir o dia`}
                     style={{
@@ -632,7 +627,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
                     {itens.length > 2 && (
                       <div className="mono" style={{ marginTop: 3, fontSize: 9.5, color: "var(--accent)" }}>{`+${itens.length - 2} mais`}</div>
                     )}
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -653,7 +648,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
                 <div className="kicker" style={{ color: isToday ? "var(--accent)" : "var(--fg-4)" }}>
                   {isToday ? "hoje · " : ""}{fmtDay(d, { weekday: "short" })}
                 </div>
-                <div style={{ marginTop: 2 }}>
+                <div style={{ marginTop: 3 }}>
                   <span className="tnum" style={{
                     display: "inline-flex", alignItems: "center", justifyContent: "center",
                     minWidth: 26, height: 26, padding: "0 6px", borderRadius: 999,
@@ -785,7 +780,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
                     const tone = b._tone || null; // com tom = compromisso; sem = bloqueio vermelho
                     const label = b._label || `bloqueado${b.recur === "weekly" ? " ↻" : ""}${b.reason ? ` · ${b.reason}` : ""}`;
                     return (
-                      <div key={`blk-${b.id}-${personLane ?? "all"}`}
+                      <button type="button" className="agenda-block" key={`blk-${b.id}-${personLane ?? "all"}`}
                         onClick={(e) => { e.stopPropagation(); blocking.onBlock && blocking.onBlock(b); }}
                         title={`${b._who ? b._who + " · " : ""}${label}${b.recur === "weekly" ? " · toda semana" : ""}${blocking.onBlock ? " · clique pra editar" : ""}`}
                         style={{
@@ -795,12 +790,12 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
                           background: tone ? `color-mix(in srgb, ${tone} 14%, var(--bg-1))` : "color-mix(in srgb, var(--neg) 8%, var(--bg-1))",
                           border: tone ? `1px solid color-mix(in srgb, ${tone} 45%, var(--line-1))` : "1px dashed color-mix(in srgb, var(--neg) 45%, var(--line-1))",
                           borderLeft: `3px solid ${tone || "var(--neg)"}`,
-                          borderRadius: 5, padding: "2px 6px", cursor: blocking.onBlock ? "pointer" : "default", overflow: "hidden",
+                          borderRadius: 10, padding: "2px 6px", cursor: blocking.onBlock ? "pointer" : "default", overflow: "hidden",
                         }}>
                         <div className="mono" style={{ fontSize: 9.5, fontWeight: 600, color: tone ? "var(--fg-2)" : "var(--neg)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                           {label}
                         </div>
-                      </div>
+                      </button>
                     );
                   });
                 })()}
@@ -840,13 +835,14 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
                   // mostra a posição no pacote (3/8).
                   const valor = l._pack || valorCurto(l.amount);
                   return (
-                    <div key={l.id + kind + t.getTime()}
+                    <div key={l.id + kind + t.getTime()} role="button" tabIndex={0}
+                      onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); e.currentTarget.click(); } }}
                       onClick={(e) => { e.stopPropagation(); const target = kind === "consulta" ? l._leadRef : l; if (target && onOpenLead) onOpenLead(target); }}
                       title={`${timeStr} · ${isFollowup ? "follow-up" : kind}${noShow ? " · NO-SHOW, o lead não compareceu" : done ? (isFollowup ? " · já passou" : " · realizada · histórico") : ""}${confirmed ? " · CONFIRMADA pelo lead" : ""} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"}`}
                       style={{
-                        position: "absolute", top: (hour - H0) * hourH + 1,
-                        left: `calc(${personLane * pw + sub * w}% + 2px)`, width: `calc(${w}% - 4px)`,
-                        height: isTouch ? 22 : isFollowup ? Math.max(19, Math.round(hourH * 20 / 60)) : hourH - 3, // follow-up = 20 min
+                        position: "absolute", top: (hour - H0) * hourH + 2,
+                        left: `calc(${personLane * pw + sub * w}% + 3px)`, width: `calc(${w}% - 6px)`,
+                        height: isTouch ? 22 : isFollowup ? Math.max(19, Math.round(hourH * 20 / 60)) : hourH - 5, // follow-up = 20 min
                         overflow: "hidden", cursor: "pointer",
                         background: isTouch ? "transparent" : tc.bg,
                         border: isTouch ? `1px dashed color-mix(in srgb, ${tone} 55%, var(--line-2))`
@@ -857,8 +853,8 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
                         // empresa na mesma linha. No dia e na Equipe o nome da
                         // pessoa já está no cabeçalho da faixa; na semana o
                         // primeiro nome continua na linha da hora.
-                        borderLeft: isTouch ? `2px dashed ${tone}` : `3px solid ${tone}`,
-                        borderRadius: 5, padding: isFollowup ? "0 6px" : isTouch ? "1px 6px" : "3px 6px",
+                        borderLeft: isTouch ? `2px dashed ${tone}` : `4px solid ${tone}`,
+                        borderRadius: 10, padding: isFollowup ? "0 6px" : isTouch ? "1px 6px" : "3px 6px",
                         // Feita (histórico): mesma cor do closer, só lavada — dá
                         // pra ler a semana inteira do que aconteceu sem confundir
                         // com o que ainda vai acontecer.

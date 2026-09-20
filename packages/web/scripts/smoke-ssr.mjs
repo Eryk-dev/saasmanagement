@@ -343,7 +343,7 @@ try {
         ...props,
         leads: [...leads, { id: "l2", name: "Integração oculta", integrator: "jonathan", integrationAt: iso(hoje), saas: "leverads" }],
       }))).replace(/<!--.*?-->/g, "");
-      if (!filtered.includes("tipo · calls") || !filtered.includes("evento escondido pelo filtro · ver tudo")) {
+      if (!filtered.includes('value="call" selected=""') || !filtered.includes("evento escondido pelo filtro · ver tudo")) {
         throw new Error("o filtro recolhido esconde a seleção ativa ou a ação de recuperar os eventos");
       }
       if (filtered.includes("Integração oculta")) throw new Error("o filtro calls deixou outro tipo na grade");

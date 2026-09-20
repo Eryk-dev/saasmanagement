@@ -17,6 +17,7 @@
     "test:review:proposals": "node scripts/review/proposals.mjs",
     "test:review:offers": "node scripts/review/offers.mjs",
     "test:review:contracts": "node scripts/review/contracts.mjs",
+    "test:review:agenda": "node scripts/review/agenda.mjs",
     "test:review:intform": "node scripts/review/intform.mjs"
   },
   "dependencies": {

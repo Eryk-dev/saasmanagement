@@ -1,3 +1,4 @@
+import { agendaReview, agendaReviewMock } from "./agenda-review-mock.js";
 import { intformReview, intformReviewMock } from "./intform-review-mock.js";
 import { contractsReview, contractsReviewMock } from "./contracts-review-mock.js";
 import { offersReview, offersReviewMock } from "./offers-review-mock.js";
@@ -131,6 +132,7 @@ const vazio = () => Promise.resolve(null);
 
 const mockApi = new Proxy({}, {
   get(_, nome) {
+    if (agendaReview && Object.hasOwn(agendaReviewMock,nome)) return agendaReviewMock[nome];
     if (intformReview && Object.hasOwn(intformReviewMock,nome)) return intformReviewMock[nome];
     if (nome === "integrationFormQuestions") return kind => Promise.resolve(integrationFormsMock.questions(kind));
     if (contractsReview && Object.hasOwn(contractsReviewMock,nome)) return contractsReviewMock[nome];
