@@ -900,13 +900,13 @@ try {
     const cols = T.QUEUE_GRID.trim().split(/\s+(?![^(]*\))/);
     // A grade da prancha: ordem · quando · o que fazer · lead · etapa e dono ·
     // ações (14/09).
-    if (cols.length !== 6) throw new Error(`esperava 6 colunas, achei ${cols.length}`);
-    if (cols[0] !== "24px") throw new Error(`a coluna da ordem sumiu da fila (1ª coluna = ${cols[0]})`);
+    if (cols.length !== 3) throw new Error(`esperava 3 colunas, achei ${cols.length}`);
+    if (cols[0] !== "72px") throw new Error(`horário sem espaço na fila (1ª coluna = ${cols[0]})`);
     // As colunas de TEXTO têm piso ZERO de propósito: abreviam em reticências
     // em vez de empurrar os botões pra fora da seção (crítica 2 da rodada 2 do
     // handoff). Piso em px numa delas devolve o defeito, então o teste recusa.
     const flex = cols.filter((c) => c.startsWith("minmax("));
-    if (flex.length !== 3) throw new Error(`esperava 3 colunas flexíveis, achei ${flex.length}`);
+    if (flex.length !== 1) throw new Error(`esperava 1 coluna flexível, achei ${flex.length}`);
     for (const c of flex) {
       if (!/^minmax\(0\s*,/.test(c)) throw new Error(`coluna de texto com piso em px devolve a rolagem: ${c}`);
     }
@@ -940,7 +940,7 @@ try {
       item, saasCfg: window.SEED.SAAS[0], leads: window.SEED.LEADS, preview: true,
       onPatch() {}, onMove() {}, onMoveMeet() {}, onAfter() {}, onClose() {}, onTouch() {}, onOpenLead() {},
     })));
-    if (!painel.includes("Roteiro")) throw new Error("o painel não montou em preview");
+    if (!painel.includes("Passo a passo")) throw new Error("o painel não montou em preview");
     if (!painel.includes("Depois da ação")) throw new Error("preview deveria mostrar a nota do Depois da ação");
     if (painel.includes("abrir lead")) throw new Error("preview não deveria oferecer abrir lead");
     console.log(`✓ minhas-atividades (${soma}px de ${T.QUEUE_GRID_BUDGET})`);
