@@ -367,5 +367,41 @@ Validação: 1.729 testes API, testes web/smoke, build e revisão visual aprovad
   massa são otimistas. Uma falha de persistência gera aviso, mas o rollback
   requer revisão própria. Não foram alteradas regras financeiras ou de etapa.
 
-As demais 26 páginas aguardam esta rodada; registros históricos não são aceite
+### 05. Clientes (`#customers`) — validada
+
+- **Importante, corrigido:** cabeçalho, aviso de vencidas, quatro indicadores,
+  tabela de cinco colunas e trilho de 340px seguem a referência. Análise
+  adicional, prova do MP no dinheiro e detalhes redundantes saíram da base.
+  Ativos/Todos/Churn/Sem dono, busca e ordem permanecem ao fechar a ficha ou
+  trocar de aba; tabelas estreitas rolam internamente.
+- **Importante, corrigido:** ficha lateral de 420px com Contrato, Régua de
+  marcos e Dinheiro. Recebe os mesmos totais/status da tabela, calculados pelos
+  helpers atuais. Edição, upsell, churn, indicação e gestão de cobranças usam
+  formulários/handlers reais; o resumo antigo não volta como expansível.
+  Cases e Indicações mantêm as funções existentes onde a prancha é demonstrativa.
+- **Importante, corrigido:** Cobranças mostra quatro indicadores e tabelas
+  de seis/sete colunas. Baixa, planos, recorrências do MP, mudança/pausa/cancelamento
+  de assinatura e billing mantêm os endpoints e as regras existentes.
+- **Bloqueante, corrigido:** falha de leitura não aparece como saldo zerado.
+  Base e cobranças têm carregamento, erro e retry locais; refresh preserva
+  dados já carregados. Ações de cobrança bloqueiam repetição enquanto executam
+  e exibem falha. A ficha usa o controle compartilhado de foco/Escape; seu portal
+  evita que o widget de feedback cubra o rodapé no mobile. O listener duplicado
+  de Escape do modal antigo foi removido. Alvos de toque e foco do seletor
+  manual de pagamento foram conferidos.
+- **Evidências:** `npm run test:review:customers -w packages/web`; capturas e
+  `geometry.json` em `packages/web/.review-artifacts/customers/`. Base, ficha,
+  Faturas e Assinaturas totalizam **206 medidas em 1440/1920**, diferença
+  máxima **0px**. Alturas dependentes da quantidade de registros ficam fora
+  da comparação fixa. Conferidos busca/filtros/ordem, marcos, baixa, edição,
+  cadastro, rascunho de case, pausa de assinatura, abertura de upsell/churn,
+  Cases/Indicações, foco/Escape, vazio, erro/retry de leitura e escrita,
+  leitura lenta, paginação, rolagem em 390px, rodapé desobstruído e tema escuro.
+- **Fora do escopo:** marcação de marcos e status manual usam os patches
+  otimistas existentes; falhas avisam e solicitam refresh, sem introduzir novo
+  rollback. A baixa pela fila atualiza a fatura local, mas o acumulado recebido
+  ainda depende do refresh/SSE existente. Regras financeiras e banco preservados.
+
+Validação: 1.729 testes da API, testes web/smoke, build e revisão visual aprovados.
+As demais 25 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.
