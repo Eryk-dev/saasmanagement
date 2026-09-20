@@ -1457,7 +1457,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
 
   const previewW = Math.round((tpl.group === "story" ? 300 : 340) * ZOOMS[zoom]);
   const fieldStyle = { width: "100%", padding: "6px 9px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 12.5, fontFamily: "inherit" };
-  const smallBtn = { height: 24, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11 };
+  const smallBtn = { height: 24, padding: "0 9px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 11 };
 
   // Campos agrupados por slide (carrossel) pra edição não virar uma lista cega.
   const fieldGroups = [];
@@ -1569,7 +1569,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
                   <button key={t.id} onClick={() => setTplId(t.id)}
                     style={{
                       display: "block", width: "100%", textAlign: "left", padding: "7px 9px", marginBottom: 2,
-                      borderRadius: "var(--r-1)", fontSize: 12.5, fontWeight: on ? 600 : 500,
+                      borderRadius: 999, fontSize: 12.5, fontWeight: on ? 600 : 500,
                       background: on ? "var(--accent-soft)" : "transparent",
                       color: on ? "var(--fg-1)" : "var(--fg-2)",
                     }}>
@@ -1598,7 +1598,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
                   if (primeiro && tpl.group !== gid) setTplId(primeiro.id);
                 }}
                   title={glabel}
-                  style={{ padding: "6px 12px", borderRadius: 7, border: 0, cursor: "pointer", fontSize: 12.5,
+                  style={{ padding: "6px 12px", borderRadius: 999, border: 0, cursor: "pointer", fontSize: 12.5,
                     fontWeight: formato === gid ? 600 : 500,
                     background: formato === gid ? "var(--bg-1)" : "transparent",
                     boxShadow: formato === gid ? "var(--shadow-segment)" : "none",
@@ -1621,7 +1621,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
             )}
             <button onClick={downloadAll}
               title={tpl.slides > 1 ? "Baixar os 4 slides em PNG (na ordem do carrossel)" : "Baixar o PNG na resolução de post"}
-              style={{ marginLeft: "auto", height: 26, padding: "0 12px", borderRadius: "var(--r-2)", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600 }}>
+              style={{ marginLeft: "auto", height: 26, padding: "0 12px", borderRadius: 999, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", fontSize: 12, fontWeight: 600 }}>
               ↓ baixar {tpl.slides > 1 ? `${tpl.slides} PNGs` : "PNG"}
             </button>
           </div>
@@ -1696,7 +1696,7 @@ function CreativeEditor({ groups = ["story", "storyseq", "post", "car"], zoomInd
               {tpl.slides > 1 && (
                 <select value={addSlide} onChange={(e) => setAddSlide(Number(e.target.value))}
                   title="Em qual slide o elemento novo entra"
-                  style={{ height: 24, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11 }}>
+                  style={{ height: 24, padding: "0 6px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11 }}>
                   {Array.from({ length: tpl.slides }, (_, i) => <option key={i} value={i + 1}>slide {i + 1}</option>)}
                 </select>
               )}
