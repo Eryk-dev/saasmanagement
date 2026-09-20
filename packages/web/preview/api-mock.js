@@ -1,3 +1,4 @@
+import { overviewReview, overviewMock } from "./overview-mock.js";
 import { beginPageRequest } from "../src/lib/navigation-loading.js";
 import { customersCashMock } from "./customers-cash-mock.js";
 // Dublê da API pro preview de telas (14/09). NÃO entra no build de produção:
@@ -123,6 +124,7 @@ const vazio = () => Promise.resolve(null);
 
 const mockApi = new Proxy({}, {
   get(_, nome) {
+    if (overviewReview && Object.hasOwn(overviewMock, nome)) return overviewMock[nome];
     if (financePreview && nome === "fin") return (...args) => Promise.resolve(financeMock(...args));
     if (financePreview && nome === "expensesSummary") return () => Promise.resolve({ ai: 0, wa: 0 });
     if (teamPreview && nome === "scoreboard") return () => Promise.resolve({ ...RESPOSTAS.scoreboard(), ...teamPreviewScore });
@@ -144,6 +146,7 @@ const mockApi = new Proxy({}, {
 
 // Simula consultas desencontradas sem subir API/banco. ?splash&delay=1500
 // &fail=scoreboard ou &hang=scoreboard exercitam erro e a saída de espera longa.
+const failedOnce = new Set();
 const loadingParams = new URLSearchParams(location.search);
 const delay = loadingParams.has("splash") ? Math.max(0, Number(loadingParams.get("delay")) || 0) : 0;
 export const api = new Proxy(mockApi, {
@@ -154,6 +157,8 @@ export const api = new Proxy(mockApi, {
       const method = /^(create|update|delete|save|send|set|remove|login|logout)/.test(String(name)) ? "POST" : "GET";
       const finish = beginPageRequest(method);
       try {
+        if (overviewReview && loadingParams.get("slow") === name) await new Promise(resolve => setTimeout(resolve, 2000));
+        if (overviewReview && loadingParams.get("failOnce") === name && !failedOnce.has(name)) { failedOnce.add(name); throw new Error("Falha simulada na prévia"); }
         if (loadingParams.has("splash") && loadingParams.get("hang") === name) await new Promise(() => {});
         if (delay) await new Promise((resolve) => setTimeout(resolve, name === "scoreboard" ? delay * 2 : delay));
         if (loadingParams.has("splash") && loadingParams.get("fail") === name) throw new Error("Falha simulada na prévia");

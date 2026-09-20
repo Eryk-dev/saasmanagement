@@ -50,7 +50,12 @@ depende dele. `chrome.css` concentra a moldura compartilhada e `capsule.css`
 aplica as superfícies comuns. O grupo da rota atual permanece expandido;
 as preferências dos demais grupos continuam persistidas. A prévia `responsive.html?width=390&screen=overview` (também 1440/1920)
 usa mocks locais, sem API/banco; `&prototype=1` abre a prancha na mesma
-largura para comparação visual. Atividades abre o roteiro lateral no desktop
+largura para comparação visual. A revisão de conteúdo por página está registrada no inventário da skill.
+Para reproduzir Visão geral com dados fixos e testes no navegador, usar
+`npm run test:review:overview -w packages/web` (Chromium do Playwright instalado
+com `npx playwright install chromium`, se necessário). O comando sobe só Vite
+com mocks, sem API/banco, e grava medidas/capturas em `.review-artifacts` do web.
+Atividades abre o roteiro lateral no desktop
 e em modal até 1100px, preservando os mesmos handlers e estado.
 
 ## Arquitetura confirmada

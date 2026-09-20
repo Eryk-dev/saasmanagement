@@ -212,3 +212,57 @@ Espaçamentos e tipografia ajustados ao palco 16:9, mantendo os textos e valores
 LeverAds na mesma janela por cliente, com participação calculada e data da
 consulta visível. Valores antigos fixos saíram; falha de consulta mantém a
 última leitura identificada. Atualização automática no servidor a cada seis horas.
+
+
+## Revisão de fidelidade das 30 páginas — 20/09/2026
+
+Referência exclusiva: `design/crm-final/Cockpit - protótipo.dc.html` e as 30
+pranchas importadas. A conferência anterior de renderização não equivale a
+esta revisão de geometria, conteúdo e fluxos. Uma página é encerrada e
+entregue antes de iniciar a seguinte. Moldura preservada; sem API/banco reais.
+
+Ordem: overview → today → training → pipeline → customers → proposals →
+offers → contracts → intform → agenda → whatsapp → tickets → quick_replies →
+support_settings → social → metrics → forms → creative → disparos → blog →
+analise → calls → integrations → desempenho → tasks → mindmaps → metas →
+remuneracao → expenses → settings.
+
+### 01. Visão geral (`#overview`) — validada
+
+- **Importante, corrigido:** trilho de 280px em 1440, termômetro de 180px,
+  hierarquia das duas linhas e aquisição separada divergiam da prancha. Agora
+  o trilho tem 340px, termômetro 236px, duas linhas alinhadas e Aquisição dentro
+  de Carteira. Cabeçalhos, régua, linhas de venda, avatar/ranking e submetas
+  seguem as medidas da referência.
+- **Importante, corrigido:** seletor de mês duplicado, "Detalhes da meta",
+  notas financeiras extras e legendas removidas da prancha deixaram de ser
+  renderizados. As submetas que existem no protótipo permanecem. Nenhum registro
+  ou regra financeira foi apagado.
+- **Bloqueante, corrigido:** erros de consultas podiam parecer carga eterna.
+  Leituras têm estado por bloco, retry e chave de produto/período para não
+  exibir dados da seleção anterior durante a troca. A mudança de período deixa
+  os blocos independentes utilizáveis.
+- **Componente compartilhado:** Modal/Drawer passam a mover o foco para o
+  painel, conter Tab/Shift+Tab e devolver o foco ao gatilho no fechamento.
+  As próximas telas reutilizarão essa correção; nesta etapa a venda/detalhe
+  e o período foram novamente exercitados.
+- **Fluxo:** venda abre o detalhe existente e fecha com Escape; pessoa abre
+  Atividades com o filtro correspondente; disclosure por Enter; seletor global
+  de período preservado. Mobile em 390px, controles de 44px, sem overflow do
+  documento; tema escuro e redução de movimento preservados.
+- **Evidência reproduzível:** `npm run test:review:overview -w packages/web`
+  inicia apenas Vite com mocks e Chromium; salva capturas e medidas em
+  `packages/web/.review-artifacts/overview/`. Compara título, card principal,
+  termômetro, barra, história, vendas, posição/largura de equipe/carteira e
+  primeiro card da pessoa em 1440 e 1920px (tolerância de 1px).
+- **Diferenças de dados permitidas:** altura da segunda linha depende dos
+  avisos reais; valores, nomes, papéis, submissões e cores de atingimento usam
+  as réguas existentes. O protótipo usa faixas ilustrativas fixas (80%/50%);
+  produção preserva pace e super metas. Os dados de comparação vivem apenas
+  em `preview/overview-mock.js` (`?shell&review=overview#overview`).
+
+Validação: 1.729 testes API, testes web/smoke e build aprovados. Comparação
+automática: 34 medidas por largura, diferença máxima 0px em 1440/1920.
+
+As demais 29 páginas aguardam esta rodada de revisão; os registros históricos
+acima não significam aceite de fidelidade ao CRM final.

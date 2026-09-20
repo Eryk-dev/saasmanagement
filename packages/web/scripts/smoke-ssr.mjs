@@ -104,9 +104,9 @@ try {
     ["inbox", "/src/screens/whatsapp.jsx", "WhatsappInboxScreen", {}, "Inbox"],
     ["inbox-mensagens", "/src/components/wa-thread.jsx", "WaBubbles", { variant: "inbox", messages: [{ id: "wa-test", direction: "out", author: "sdr-bot", text: "Mensagem do robô", at: nowIso, status: "read" }] }, "Mensagem do robô"],
     ["overview", "/src/screens/overview.jsx", "OverviewScreen", { onNav() {}, onOpenLead() {} }, "Visão geral"],
-    ["overview-meta", "/src/screens/overview.jsx", "MetaMesCard", { pace: fakePace, goal: fakeGoal, onNav() {} }, "Contratos"],
+    ["overview-meta", "/src/screens/overview.jsx", "MetaMesCard", { pace: fakePace, goal: fakeGoal, onNav() {} }, "contratos assinados"],
     // O termômetro (14/09): a coluna, a marca do pace e a distância em palavras.
-    ["overview-termometro", "/src/screens/overview.jsx", "MetaMesCard", { pace: fakePace, goal: fakeGoal, onNav() {} }, "contra o pace de hoje"],
+    ["overview-termometro", "/src/screens/overview.jsx", "MetaMesCard", { pace: fakePace, goal: fakeGoal, onNav() {} }, "do pace"],
     ["overview-funil", "/src/screens/overview.jsx", "FunilPeriodo", { team: fakeTeam, win: fakeWin, pLabel: "este mês" }, "Ganhos"],
     ["metrics", "/src/screens/metrics.jsx", "MetricsScreen", {}, "Publicidade"],
     ["expenses", "/src/screens/expenses.jsx", "ExpensesScreen", {}, "Pagamentos"],
@@ -188,14 +188,17 @@ try {
       goal: { ...fakeGoal, ended, sale: { ...fakeGoal.sale, ...sale } }, links: false,
     })));
     const visible = renderGoal({}).split('<details')[0];
-    for (const text of ["14.400", "Falta para a meta", "26.000"]) {
+    for (const text of ["Falta", "26.000"]) {
       if (!visible.includes(text)) throw new Error(`${text} precisa aparecer sem abrir os detalhes`);
     }
     if (!visible.includes('class="vg-meta-pace-marker"') || visible.includes('vg-goal-pace-label')) throw new Error("pace deve ter apenas uma marca, sem rótulo externo");
     const superMeta = renderGoal({ sold: 66000, progress: 1.1 }).split('<details')[0];
     if (!superMeta.includes("110%") || !superMeta.includes("Meta batida") || !superMeta.includes("6.000")) throw new Error("super meta deve mostrar 110% realizado e o excedente");
     const closed = renderGoal({}, true).split('<details')[0];
-    if (closed.includes('class="vg-meta-pace-marker"') || !closed.includes("Faltou para a meta")) throw new Error("período encerrado não deve cobrar pace de hoje");
+    if (closed.includes('class="vg-meta-pace-marker"') || !closed.includes("Faltou")) throw new Error("período encerrado não deve cobrar pace de hoje");
+    for (const removed of ["Detalhes da meta", "Contratado no período", "Fora do resultado", "Ver análise completa", "o pace pedia"]) {
+      if (visible.includes(removed)) throw new Error(`Informação removida voltou: ${removed}`);
+    }
     console.log("✓ overview-meta-legível");
   } catch (err) {
     console.error(`✗ overview-meta-legível: ${err.message}`);

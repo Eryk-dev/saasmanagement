@@ -1,4 +1,5 @@
 import React from "react";
+import { overviewReview, setupOverviewReview } from "./overview-mock.js";
 import { createRoot } from "react-dom/client";
 import { AppStartup } from "../src/components/screen-loading.jsx";
 import { fmt } from "../src/lib/format.js";
@@ -47,6 +48,7 @@ window.SEED = {
 };
 if (params.has("inbox")) setupInboxPreview(window.SEED, params);
 if (params.has("team")) setupTeamPreview(window.SEED);
+if (overviewReview) setupOverviewReview(window.SEED);
 if (previewShell) {
   window.SEED.SAAS.push({ id: "elo", name: "Elo", accent: 55, funnel: [], leadQuestions: [] });
   // A moldura usa o App real, com API falsa e sem conexão SSE/banco.
@@ -90,7 +92,7 @@ function App() {
 
 function PreviewTheme({ children }) {
   React.useEffect(() => {
-    if (marketingPreview || params.has("inbox") || params.has("team") || params.has("finance") || params.has("splash")) {
+    if (overviewReview || marketingPreview || params.has("inbox") || params.has("team") || params.has("finance") || params.has("splash")) {
       const dark = params.get("theme") === "dark" || params.has("dark");
       document.body.dataset.theme = dark ? "dark" : "light";
       if (dark) ["--accent", "--accent-hover", "--accent-soft", "--accent-line"].forEach((name) => document.body.style.removeProperty(name));
