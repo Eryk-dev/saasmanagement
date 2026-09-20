@@ -3,7 +3,7 @@ import "./marketing.css";
 import { PageHead, Pill, Card } from "../components/viz.jsx";
 import { BarraComposicao, InfoLink } from "../components/story.jsx";
 import { Modal } from "../components/overlay.jsx";
-import { EmptyState, useEsc, Skeleton } from "../atoms.jsx";
+import { EmptyState, useEsc, Skeleton, PrimaryButton } from "../atoms.jsx";
 import { useSwr } from "../lib/swr.js";
 import { MetaConnectCard } from "../components/meta-connect.jsx";
 import { ErrorBoundary } from "../components/error-boundary.jsx";
@@ -315,7 +315,7 @@ function DiscoveryPanel({ product, sum }) {
 // Criativos de hoje (decisão do Leo, 10/09): o social media anota quantos
 // criativos fez no dia; a Análise de Desempenho soma por janela. A pessoa com
 // o papel `social` registra o próprio; admin registra pelo social único.
-function CreativesToday({ saasId, version }) {
+function CreativesToday({ saasId, version, onCreate }) {
   const me = currentUser();
   const admin = !me || isAdminUser(me); // acesso por chave mestra conta como gestão
   const roles = (userById(me?.id) || me)?.roles || [];
@@ -342,14 +342,15 @@ function CreativesToday({ saasId, version }) {
     } catch (e) { toast(`Não deu pra registrar · ${e?.message || "tente de novo"}`, "neg"); }
     finally { setBusy(false); }
   };
-  const btn = { width: 28, height: 28, borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 14, fontWeight: 700, lineHeight: 1, opacity: busy ? 0.5 : 1 };
+  const btn = { width: 28, height: 28, borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 14, fontWeight: 700, lineHeight: 1, opacity: busy ? 0.5 : 1 };
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", border: "1px solid var(--line-1)", background: "var(--bg-1)", borderRadius: "var(--r-3)", padding: "8px 12px" }}>
+    <div className="capsule-navy" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "20px 22px" }}>
       <span style={{ fontSize: 13, fontWeight: 600 }}>Criativos de hoje{target !== me?.id ? ` · ${userById(target)?.name || target}` : ""}</span>
       <button aria-label="Diminuir criativos de hoje" onClick={() => bump(-1)} disabled={busy || !(count > 0)} style={btn}>−</button>
       <span className="tnum" style={{ fontSize: 15, fontWeight: 700, minWidth: 18, textAlign: "center" }}>{count == null ? "—" : count}</span>
       <button aria-label="Aumentar criativos de hoje" onClick={() => bump(1)} disabled={busy} style={btn}>+</button>
       <span className="dim" style={{ fontSize: 12 }}>anúncios, estáticos e vídeos feitos no dia · conta na Análise de Desempenho</span>
+      <PrimaryButton onClick={onCreate} style={{ marginLeft: "auto" }}>Criar post →</PrimaryButton>
     </div>
   );
 }
@@ -472,7 +473,7 @@ function SocialScreen() {
           {[["painel", "Painel", null], ["comentarios", "Comentários", pending]].map(([id, label, badge]) => (
             <button key={id} onClick={() => setTab(id)}
               style={{
-                height: 32, padding: "0 12px", borderRadius: "var(--r-2)", fontSize: 13,
+                height: 32, padding: "0 12px", borderRadius: 999, fontSize: 13,
                 fontWeight: tab === id ? 600 : 500,
                 display: "inline-flex", alignItems: "center", gap: 6,
                 border: "1px solid " + (tab === id ? "var(--accent-line)" : "var(--line-2)"),
@@ -486,7 +487,7 @@ function SocialScreen() {
             </button>
           ))}
           <button onClick={() => setWizard(true)}
-            style={{ height: 32, padding: "0 14px", marginLeft: 6, borderRadius: "var(--r-2)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 13, fontWeight: 600 }}>
+            style={{ height: 32, padding: "0 14px", marginLeft: 6, borderRadius: 999, background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 13, fontWeight: 600 }}>
             + criar post
           </button>
         </div>
@@ -498,7 +499,7 @@ function SocialScreen() {
         </ErrorBoundary>
       ) : (
       <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-        <CreativesToday saasId={product?.id} version={version} />
+        <CreativesToday saasId={product?.id} version={version} onCreate={() => setWizard(true)} />
         {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
         {!sum && !err && <SocialSkeleton />}
         {sum && sumQ.refreshing && <div className="mono dim" role="status" style={{ fontSize: 11 }}>atualizando…</div>}
@@ -807,7 +808,7 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
     background: on ? "var(--accent-soft)" : "var(--bg-1)",
     color: "var(--fg-1)",
   });
-  const btn = { height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5 };
+  const btn = { height: 30, padding: "0 14px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5 };
   const primary = { ...btn, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", border: "1px solid var(--btn-bg, var(--accent))", fontWeight: 600 };
 
   const stepLabel = ["", "formato", kind === "video" ? "vídeo" : "arte", "publicar"][step];
@@ -856,7 +857,7 @@ function PostWizard({ saas, pains = [], aiConfigured, onClose, onPublished }) {
                   <div>
                     <label className="kicker" style={{ display: "block", marginBottom: 6 }}>Sobre qual dor é esse post?</label>
                     <select value={dor} onChange={(e) => setDor(e.target.value)}
-                      style={{ width: "100%", height: 34, padding: "0 10px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 }}>
+                      style={{ width: "100%", height: 34, padding: "0 10px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: 999, color: "var(--fg-1)", fontSize: 13 }}>
                       <option value="">sem dor específica (valor central da LeverAds)</option>
                       {dorOptions.map((d, i) => <option key={i} value={d}>{d}</option>)}
                     </select>
@@ -1057,7 +1058,7 @@ function CommentsPanel({ saas, onCount }) {
 
   const list = data?.comments || [];
   const ins = data?.insights;
-  const btn = { height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5 };
+  const btn = { height: 28, padding: "0 12px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", fontSize: 12.5 };
   const primary = { ...btn, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", border: "1px solid var(--btn-bg, var(--accent))", fontWeight: 600 };
 
   return (
@@ -1094,7 +1095,7 @@ function CommentsPanel({ saas, onCount }) {
             ].filter(Boolean).join(" · ")}
           </span>
           {ins.pending > 0 && status !== "pending" && (
-            <button onClick={() => setStatus("pending")} style={{ marginLeft: "auto", height: 30, padding: "0 14px", borderRadius: "var(--r-2)", border: 0, background: "var(--warn)", color: "oklch(1 0 0)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+            <button onClick={() => setStatus("pending")} style={{ marginLeft: "auto", height: 30, padding: "0 14px", borderRadius: 999, border: 0, background: "var(--warn)", color: "oklch(1 0 0)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
               responder agora
             </button>
           )}
