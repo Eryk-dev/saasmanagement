@@ -403,5 +403,36 @@ Validação: 1.729 testes API, testes web/smoke, build e revisão visual aprovad
   ainda depende do refresh/SSE existente. Regras financeiras e banco preservados.
 
 Validação: 1.729 testes da API, testes web/smoke, build e revisão visual aprovados.
-As demais 25 páginas aguardam esta rodada; registros históricos não são aceite
+### 06. Propostas (`#proposals`) — validada
+
+- **Importante, corrigido:** removido o subtítulo adicional; cabeçalho,
+  funil compacto com conversão nas setas e aviso à esquerda seguem a prancha.
+  Templates e propostas geradas usam os mesmos pisos, espaçamentos, tipografia,
+  pílulas e filtros da referência; ambas têm rolagem interna no mobile.
+- **Importante, corrigido:** Duplicar/Excluir ficam visíveis. Nome abre o editor
+  existente e formato abre a prévia pública. Abrir proposta mantém
+  `from=cockpit` para não contar acesso interno; cópia/WhatsApp mantêm URL limpa.
+  Aceite, visualizações, ordenação e cálculos existentes foram preservados.
+- **Bloqueante, corrigido:** carregamento não é apresentado como funil zerado;
+  leitura/exclusão mostram falha e permitem nova tentativa. Cópia aguarda a
+  área de transferência antes do sucesso. Respostas antigas da prévia não
+  substituem a edição atual; falhas têm retry. Salvar mantém o rascunho em
+  caso de erro e cancelar edição alterada pede confirmação.
+- **Bloqueante, corrigido:** o editor em 390px cortava campos e o botão Salvar.
+  Formulário e prévia empilham, cabeçalho permanece acessível e grupos de
+  campos quebram em linhas. Escape, foco inicial e retorno ao controle que
+  abriu o editor foram exercitados; alvos de toque têm 44px.
+- **Evidências:** `npm run test:review:proposals -w packages/web`; capturas e
+  medidas em `packages/web/.review-artifacts/proposals/`. **168 medidas em
+  1440/1920**, incluindo células das duas tabelas, diferença máxima **0px**.
+  Conferidos filtros, URLs, cópia, edição, duplicação/salvamento, confirmação
+  de exclusão, criação, slide adicional, descarte cancelado, erros de leitura,
+  exclusão, gravação e prévia, espera longa, vazio, teclado, mobile e tema escuro.
+- **Fora do escopo:** o cálculo existente de conversão por template usa geradas
+  de 30 dias com abertas/aceites de toda a lista; não foi alterado. O payload
+  antigo do editor não inclui `layout` ao criar a cópia; o comportamento do
+  catálogo/renderer requer revisão de domínio separada.
+
+Validação: 1.729 testes da API, testes web/smoke, build e revisão visual aprovados.
+As demais 24 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.

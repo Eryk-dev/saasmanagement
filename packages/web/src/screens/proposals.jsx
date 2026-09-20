@@ -1,11 +1,10 @@
 import React from "react";
+import "./proposals.css";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
-import { EmptyState, PrimaryButton, MoreMenu } from "../atoms.jsx";
-import { CorrenteDoDinheiro } from "../components/story.jsx";
+import { EmptyState, PrimaryButton, useEsc } from "../atoms.jsx";
 import { inputStyle, sectionTitle, cardStyle, addBtnStyle, THEME_DEFAULTS, LabeledInput, LabeledTextarea, ThemeEditor } from "../components/theme-inputs.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
-import { PageHead, FilterTab } from "../components/viz.jsx";
 import { waLink, cockpitProposalUrl } from "../lib/ui.js";
 // Proposal builder — propostas comerciais por marca, no MESMO modelo do form
 // builder: template = lista de SLIDES estruturados + tema + calculadora; cada
@@ -117,301 +116,100 @@ const patchShowIf = (slide, field, v) => {
   return { ...slide, showIf };
 };
 
-// ── Orçamento de largura (mesma régua de Clientes/Pipeline/Meu dia) ───────
-// 1024px de janela menos 220 de nav, 56 de pad-x e 32 de padding do cartão
-// sobram 716px. A soma dos PISOS + gaps de cada tabela tem que caber aí, e o
-// smoke-ssr falha se alguém alargar uma coluna sem perceber.
-export const TPL_GRID = "minmax(150px,1.3fr) 92px minmax(120px,1fr) 76px 180px";
-export const PROP_GRID = "minmax(140px,1.3fr) minmax(110px,1fr) 76px minmax(130px,1fr) 190px";
+// Pisos da prancha; em telas estreitas as tabelas rolam internamente.
+export const TPL_GRID = "minmax(220px,1.5fr) minmax(100px,.6fr) minmax(170px,1.1fr) minmax(100px,.7fr) minmax(170px,.9fr)";
+export const PROP_GRID = "minmax(200px,1.4fr) minmax(190px,1fr) minmax(110px,.7fr) minmax(170px,1fr) minmax(210px,1fr)";
 export const GRID_GAP = 12;
-export const GRID_BUDGET = 716;
+export const GRID_BUDGET = 928;
 
 const publicBase = () => import.meta.env.VITE_API_BASE || window.location.origin;
 
-function ProposalsScreen({ saasId }) {
+function ProposalsScreen() {
   const { SAAS } = window.SEED;
   const { version } = useData();
-  // Produto do WORKSPACE (seletor no pé da sidebar) — sem abas próprias.
-  const [activeProduct] = useActiveSaas();
-  const active = activeProduct?.id;
-  // Filtro da tabela de geradas (era uma ABA que mostrava a mesma lista da
-  // seção "Geradas recentemente" logo abaixo). Persiste como a aba persistia.
-  const [filtro, setFiltroState] = useState(() => { try { return localStorage.getItem("cockpit_proposals_filtro") || "todas"; } catch { return "todas"; } }); // todas | fechadas | abertas | nunca
-  const setFiltro = (f) => { setFiltroState(f); try { localStorage.setItem("cockpit_proposals_filtro", f); } catch { /* ignore */ } };
-  const [templates, setTemplates] = useState([]);
-  const [proposals, setProposals] = useState([]);
-  const [editing, setEditing] = useState(null); // { template } | null
-  const [copied, setCopied] = useState(""); // id da proposta com link no clipboard
-
-  const load = useCallback(async () => {
-    if (!active) return;
-    const [ts, ps] = await Promise.all([
-      api.list("proposal_templates", { saas: active }),
-      api.list("proposals", { saas: active }),
-    ]);
-    ps.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
-    setTemplates(ts); setProposals(ps);
-  }, [active]);
-  useEffect(() => { load(); }, [load, version]);
-
-  // Troca de produto (workspace) fecha o editor e limpa as linhas antigas —
-  // um template da outra marca não pode ficar aberto (nem ser salvo) sob o
-  // workspace novo.
-  useEffect(() => { setEditing(null); setTemplates([]); setProposals([]); }, [active]);
-
-  if (!SAAS.length) return <EmptyState title="Nenhum SaaS ainda" hint="Crie um produto em Ajustes — templates de proposta pertencem a um SaaS." />;
-
-  if (editing) return (
-    <TemplateEditor
-      template={editing.template} saasId={active}
-      onDone={async () => { setEditing(null); await load(); }}
-      onCancel={() => setEditing(null)}
-    />
-  );
-
-  const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "") : "—");
-  const templateById = new Map(templates.map((t) => [t.id, t]));
-  const recentCutoff = Date.now() - 30 * 86400000;
-  const outlineButton = {
-    height: 30, padding: "0 12px", border: "1px solid var(--line-1)",
-    borderRadius: 999, background: "var(--bg-1)", color: "var(--fg-2)",
-    fontSize: 12.5, fontWeight: 600, boxShadow: "var(--shadow-1)",
-    display: "inline-flex", alignItems: "center", textDecoration: "none",
-  };
-  const removeTemplate = async (t) => {
-    if (!window.confirm(`Excluir o template "${t.name || t.id}"? As propostas já geradas continuam de pé (cada uma é um snapshot), mas ninguém gera nada novo a partir dele.`)) return;
-    await api.remove("proposal_templates", t.id);
-    await load();
-  };
-  const duplicate = (template) => {
-    const next = structuredClone(template);
-    delete next.id;
-    delete next.createdAt;
-    delete next.updatedAt;
-    next.name = `${next.name || "Template"} · cópia`;
-    next.status = "draft";
-    setEditing({ template: next });
-  };
-
-  // ── O funil da proposta (12/09) ──────────────────────────────────────────
-  // Os três números viviam soltos numa caixa cinza dentro de cada card de
-  // template — são os três PASSOS de um funil (gerada → aberta → fechou), e a
-  // conversão entre eles é o que diz se o template funciona.
-  const emJanela = (p) => !p.createdAt || new Date(p.createdAt).getTime() >= recentCutoff;
-  const doPeriodo = proposals.filter(emJanela);
-  const fun = {
-    geradas: doPeriodo.length,
-    abertas: doPeriodo.filter((p) => Number(p.views || 0) > 0).length,
-    fecharam: doPeriodo.filter((p) => p.accepted).length,
-  };
-  const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : null);
-  const diasDe = (iso) => {
-    const t = iso ? new Date(iso).getTime() : NaN;
-    return Number.isFinite(t) ? Math.max(0, Math.floor((Date.now() - t) / 86400000)) : null;
-  };
-  // Enviadas e nunca abertas: é a fila de quem precisa de um empurrão.
-  const nuncaAbertas = proposals.filter((p) => !p.accepted && !(Number(p.views || 0) > 0));
-
-  const FILTROS = [
-    ["todas", "Todas", proposals.length],
-    ["fechadas", "Fecharam", proposals.filter((p) => p.accepted).length],
-    ["abertas", "Abertas", proposals.filter((p) => !p.accepted && Number(p.views || 0) > 0).length],
-    ["nunca", "Não abertas", nuncaAbertas.length],
-  ];
-  const filtrada = filtro === "fechadas" ? proposals.filter((p) => p.accepted)
-    : filtro === "abertas" ? proposals.filter((p) => !p.accepted && Number(p.views || 0) > 0)
-    : filtro === "nunca" ? nuncaAbertas
-    : proposals;
-
-  // Template ordenado pelo que ele ENTREGA: quem fecha mais fica em cima. Sem
-  // proposta gerada ainda (conv null) vai pro fim, porque não há o que julgar.
-  const templatesPorConversao = templates
-    .map((t) => {
-      const linked = proposals.filter((p) => p.template === t.id);
-      const g = linked.filter(emJanela).length;
-      const o = linked.filter((p) => Number(p.views || 0) > 0).length;
-      const c = linked.filter((p) => p.accepted).length;
-      return { t, g, o, c, conv: pct(c, g) };
-    })
-    .sort((a, b) => (b.conv ?? -1) - (a.conv ?? -1) || b.g - a.g);
-
-  // Uma tabela só (a aba "Geradas" e a seção "Geradas recentemente" mostravam
-  // a MESMA lista, a segunda sob um título que dizia "recentemente" enquanto
-  // exibia tudo).
-  const tabelaGeradas = (
-    <section style={{ background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px var(--inset-x) 12px", flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: 200 }}>
-          <h3 className="card-title" style={{ margin: 0 }}>Propostas geradas</h3>
-          <div className="card-sub" style={{ marginTop: 3 }}>o link entra no card do lead como “proposta ↗”</div>
-        </div>
-        <div style={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
-          {FILTROS.map(([id, label, n]) => (
-            <FilterTab key={id} active={filtro === id} count={n} onClick={() => setFiltro(id)}>{label}</FilterTab>
-          ))}
-        </div>
-      </div>
-      {!filtrada.length ? (
-        <div style={{ padding: "26px var(--inset-x)", color: "var(--fg-4)", fontSize: 13, borderTop: "1px solid var(--line-1)" }}>
-          {proposals.length ? "Nada neste filtro." : "Nenhuma proposta gerada ainda."}
-        </div>
-      ) : (
-        <div className="tbl-x">
-          <div>
-            <div className="kicker" style={{ display: "grid", gridTemplateColumns: PROP_GRID, gap: 12, padding: "10px var(--inset-x)", fontWeight: 600, borderTop: "1px solid var(--line-1)", background: "var(--bg-inset)" }}>
-              <span>Lead</span><span>Template</span><span>Gerada</span><span>O que aconteceu</span><span style={{ textAlign: "right" }}>Ação</span>
-            </div>
-            {filtrada.map((p) => {
-              const template = templateById.get(p.template);
-              const views = Number(p.views || 0);
-              const dias = diasDe(p.createdAt);
-              const leadName = p.data?.lead?.name || p.lead || "Lead";
-              const company = p.data?.lead?.company;
-              const primeiroNome = String(p.data?.lead?.firstName || leadName).trim().split(/\s+/)[0] || "";
-              const wa = waLink(p.data?.lead?.phone);
-              const url = `${publicBase()}/p/${p.id}`;
-              return (
-                <div key={p.id} style={{ display: "grid", gridTemplateColumns: PROP_GRID, gap: 12, padding: "12px var(--inset-x)", alignItems: "center", borderTop: "1px solid var(--line-faint)" }}>
-                  <span style={{ minWidth: 0 }}>
-                    <span style={{ display: "block", fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{leadName}</span>
-                    {company && <span style={{ display: "block", fontSize: 11.5, color: "var(--fg-4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{company}</span>}
-                  </span>
-                  <span style={{ fontSize: 12.5, color: "var(--fg-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={template?.name || p.name}>{template?.name || p.name || "Proposta"}</span>
-                  <span className="tnum" style={{ fontSize: 12.5, color: "var(--fg-3)", whiteSpace: "nowrap" }}>
-                    {fmtDate(p.createdAt)}
-                    {dias != null && <span style={{ display: "block", fontSize: 10.5, color: "var(--fg-4)" }}>{dias === 0 ? "hoje" : `há ${dias}d`}</span>}
-                  </span>
-                  {/* O estado agora tem NOÇÃO DE TEMPO: enviada há 40 dias e
-                      nunca aberta não é a mesma coisa que a de ontem. */}
-                  <span style={{ minWidth: 0, fontSize: 12.5 }}>
-                    {p.accepted ? (
-                      <>
-                        <span className="chip pos">fechou</span>
-                        {views > 0 && <span className="mono dim" style={{ fontSize: 10.5, marginLeft: 6 }}>{`abriu ${views}x`}</span>}
-                      </>
-                    ) : views > 0 ? (
-                      <span style={{ color: "var(--fg-2)" }}>{`abriu ${views} ${views === 1 ? "vez" : "vezes"}`}</span>
-                    ) : (
-                      <span style={{ color: "var(--neg)", fontWeight: 600 }}>
-                        {dias == null ? "nunca abriu" : `nunca abriu · ${dias} ${dias === 1 ? "dia" : "dias"}`}
-                      </span>
-                    )}
-                  </span>
-                  {/* Ação de verdade em cada linha. "abrir" leva ?from=cockpit
-                      (o time conferindo não pode virar "o lead abriu", senão o
-                      funil aqui em cima mente); o WhatsApp e o copiar levam o
-                      link limpo. */}
-                  <span style={{ textAlign: "right", whiteSpace: "nowrap", display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
-                    <a href={cockpitProposalUrl(url)} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 600 }}>abrir ↗</a>
-                    {!p.accepted && wa && (
-                      <a href={`${wa}?text=${encodeURIComponent(`Oi${primeiroNome ? ` ${primeiroNome}` : ""}, te mandei a proposta aqui: ${url}`)}`}
-                        target="_blank" rel="noopener noreferrer" title={views > 0 ? "abriu e não respondeu: cobrar resposta" : "nunca abriu: reenviar o link"}
-                        style={{ height: 26, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: 999, border: "1px solid var(--wa-brand)", background: "var(--wa-brand)", color: "var(--wa-brand-fg)", fontSize: 11.5, fontWeight: 700, textDecoration: "none" }}>
-                        {views > 0 ? "cobrar" : "reenviar"}
-                      </a>
-                    )}
-                    <button onClick={() => { try { navigator.clipboard.writeText(url); setCopied(p.id); setTimeout(() => setCopied(""), 1600); } catch { /* ignore */ } }}
-                      style={{ height: 26, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, cursor: "pointer" }}>
-                      {copied === p.id ? "copiado ✓" : "copiar"}
-                    </button>
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </section>
-  );
-
-  return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead title="Propostas" sub="templates por marca · a proposta é gerada a partir do lead">
-        <PrimaryButton onClick={() => setEditing({ template: null })}>+ novo template</PrimaryButton>
-      </PageHead>
-
-      <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-        {/* A faixa do funil é a CorrenteDoDinheiro compartilhada (14/09): o
-            rótulo em cima, o valor embaixo e a conversão NA SETA, com a
-            legenda do que ela mede. Era value-em-cima e a taxa solta. */}
-        <CorrenteDoDinheiro navy
-          passos={[
-            { rotulo: "Geradas em 30 dias", valor: String(fun.geradas) },
-            { rotulo: "Abertas pelo lead", valor: String(fun.abertas), taxa: pct(fun.abertas, fun.geradas) == null ? "—" : `${pct(fun.abertas, fun.geradas)}%`, taxaNota: "abriram" },
-            { rotulo: "Fecharam", valor: String(fun.fecharam), tom: "pos", taxa: pct(fun.fecharam, fun.abertas) == null ? "—" : `${pct(fun.fecharam, fun.abertas)}%`, taxaNota: "fecharam" },
-          ]}
-          fim={nuncaAbertas.length > 0 ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-end", marginTop: 12, flexWrap: "wrap" }}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--neg)", fontWeight: 600 }}>
-                <span style={{ width: 6, height: 6, borderRadius: 999, background: "currentColor" }} />
-                {`${nuncaAbertas.length} ${nuncaAbertas.length === 1 ? "enviada e nunca aberta" : "enviadas e nunca abertas"}`}
-              </span>
-              <button onClick={() => setFiltro("nunca")}
-                style={{ height: 30, padding: "0 12px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>ver quais</button>
-            </div>
-          ) : null}
-        />
-
-        {/* Templates em LINHAS, ordenados por conversão: card com três botões
-            de peso igual não dizia qual template usar. */}
-        {!templates.length ? (
-          <div style={{ minHeight: 230, background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
-            <EmptyState title="Nenhum template neste SaaS" hint="Crie o template base usado para gerar propostas a partir dos leads." action={<PrimaryButton onClick={() => setEditing({ template: null })}>+ criar template</PrimaryButton>} />
-          </div>
-        ) : (
-          <section style={{ background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-            <div style={{ padding: "18px var(--inset-x) 12px" }}>
-              <h3 className="card-title" style={{ margin: 0 }}>Templates</h3>
-              <div className="card-sub" style={{ marginTop: 3 }}>ordenados por conversão de gerada a fechada</div>
-            </div>
-            <div className="tbl-x">
-              <div>
-                <div className="kicker" style={{ display: "grid", gridTemplateColumns: TPL_GRID, gap: 12, padding: "8px var(--inset-x)", fontWeight: 600, background: "var(--bg-inset)", borderTop: "1px solid var(--line-1)" }}>
-                  <span>Template</span><span>Estado</span><span>Gerada → aberta → fechou</span><span style={{ textAlign: "right" }}>Conversão</span><span style={{ textAlign: "right" }}>Ação</span>
-                </div>
-                {templatesPorConversao.map(({ t, g, o, c, conv }) => {
-                  const pub = t.status === "published";
-                  const largura = (n) => (g > 0 ? Math.max(2, Math.min(100, (n / g) * 100)) : 0);
-                  return (
-                    <div key={t.id} style={{ display: "grid", gridTemplateColumns: TPL_GRID, gap: 12, padding: "12px var(--inset-x)", alignItems: "center", borderTop: "1px solid var(--line-faint)" }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 13.5, fontWeight: 650, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name || t.id}</div>
-                        <div style={{ fontSize: 11.5, color: "var(--fg-4)" }}>{t.layout === "slides" ? "apresentação em slides · montada pela tela zero, não por slide" : `${(t.slides || []).length} slides`}</div>
-                      </div>
-                      {/* Rascunho NÃO é esmaecido: o badge carrega o estado (o
-                          opacity derrubava o contraste do texto de 12px). */}
-                      <span><span className={pub ? "chip accent" : "chip"}>{pub ? "base" : "rascunho"}</span></span>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ display: "flex", height: 7, borderRadius: 999, overflow: "hidden", background: "var(--bg-2)" }}>
-                          <div style={{ width: `${largura(c)}%`, background: "var(--pos)" }} />
-                          <div style={{ width: `${Math.max(0, largura(o) - largura(c))}%`, background: "var(--accent)" }} />
-                        </div>
-                        <div className="mono dim tnum" style={{ fontSize: 10.5, marginTop: 3 }}>{`${g} · ${o} · ${c}`}</div>
-                      </div>
-                      <span className="tnum" style={{ textAlign: "right", fontSize: 14, fontWeight: 700, color: conv == null ? "var(--fg-4)" : conv >= 20 ? "var(--pos)" : "var(--fg-1)" }}>
-                        {conv == null ? "—" : `${conv}%`}
-                      </span>
-                      {/* O handoff pedia "usar →" como ação primária. A proposta
-                          só nasce COM lead (POST /api/leads/:id/proposal, botão
-                          no card), então aqui "usar" seria um botão que não usa
-                          nada: a ação primária da linha é editar o template. */}
-                      <span style={{ textAlign: "right", display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
-                        <button onClick={() => setEditing({ template: t })} style={{ ...outlineButton, background: "var(--btn-bg)", color: "var(--btn-fg)", borderColor: "transparent" }}>editar</button>
-                        <a href={`${publicBase()}/p/t/${t.id}`} target="_blank" rel="noreferrer" style={outlineButton} title="abre o template como o lead vê">prévia ↗</a>
-                        <MoreMenu items={[{ label: "duplicar template", onClick: () => duplicate(t) }, { label: "excluir template", tone: "neg", onClick: () => removeTemplate(t) }]} />
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </section>
-        )}
-
-        {tabelaGeradas}
-      </div>
-    </div>
-  );
+  const [product] = useActiveSaas(), active=product?.id;
+  const [filtro,setFiltroState]=useState(()=>{try{return localStorage.getItem('cockpit_proposals_filtro')||'todas';}catch{return 'todas';}});
+  const setFiltro=value=>{setFiltroState(value);try{localStorage.setItem('cockpit_proposals_filtro',value);}catch{}};
+  const [templates,setTemplates]=useState([]),[proposals,setProposals]=useState([]),[editing,setEditing]=useState(null),[copied,setCopied]=useState('');
+  const [reads,setReads]=useState({key:null,loaded:false,error:null}),[busy,setBusy]=useState(''),[actionError,setActionError]=useState(null);
+  const loadSeq=useRef(0),returnFocus=useRef(null);
+  const load=useCallback(async()=>{
+    if(!active)return;
+    const seq=++loadSeq.current;
+    setReads(r=>r.key===active?{...r,error:null}:{key:active,loaded:false,error:null});
+    try {
+      const [ts,ps]=await Promise.all([api.list('proposal_templates',{saas:active}),api.list('proposals',{saas:active})]);
+      if(seq!==loadSeq.current)return;
+      setTemplates(ts);setProposals([...ps].sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))));setReads({key:active,loaded:true,error:null});
+    }catch(error){if(seq===loadSeq.current)setReads({key:active,loaded:false,error});}
+  },[active]);
+  useEffect(()=>{load();return()=>{loadSeq.current++;};},[load,version]);
+  useEffect(()=>{setEditing(null);setActionError(null);setCopied('');},[active]);
+  useEffect(()=>{if(!editing&&returnFocus.current)document.querySelector(`[data-proposal-action="${CSS.escape(returnFocus.current)}"]`)?.focus({preventScroll:true});},[editing]);
+  const edit=(template,event)=>{returnFocus.current=(event?.currentTarget||document.activeElement)?.getAttribute('data-proposal-action');setEditing({template});};
+  async function removeTemplate(t) {
+    if(busy||!window.confirm(`Excluir o template "${t.name||t.id}"? As propostas já geradas continuam de pé (cada uma é um snapshot), mas ninguém gera nada novo a partir dele.`))return;
+    setBusy(t.id);setActionError(null);
+    try{await api.remove('proposal_templates',t.id);await load();}catch(error){setActionError(error.message||'Não foi possível excluir o template.');}finally{setBusy('');}
+  }
+  function duplicate(t,event){const next=structuredClone(t);delete next.id;delete next.createdAt;delete next.updatedAt;next.name=`${next.name||'Template'} · cópia`;next.status='draft';edit(next,event);}
+  async function copy(p){try{await navigator.clipboard.writeText(`${publicBase()}/p/${p.id}`);setCopied(p.id);setTimeout(()=>setCopied(''),1600);}catch{setActionError('Não foi possível copiar o link. Tente novamente.');}}
+  if(!SAAS.length)return <EmptyState title="Nenhum SaaS ainda" hint="Crie um produto em Ajustes — templates de proposta pertencem a um SaaS."/>;
+  if(editing)return <TemplateEditor template={editing.template} saasId={active} onDone={async()=>{setEditing(null);await load();}} onCancel={()=>setEditing(null)}/>;
+  const recentCutoff=Date.now()-30*86400000,emJanela=p=>!p.createdAt||new Date(p.createdAt).getTime()>=recentCutoff;
+  const period=proposals.filter(emJanela),fun={geradas:period.length,abertas:period.filter(p=>Number(p.views||0)>0).length,fecharam:period.filter(p=>p.accepted).length};
+  const pct=(a,b)=>b>0?Math.round(a/b*100):null;
+  const never=proposals.filter(p=>!p.accepted&&!(Number(p.views||0)>0));
+  const filters=[['todas','Todas',proposals.length],['fechadas','Fecharam',proposals.filter(p=>p.accepted).length],['abertas','Abertas',proposals.filter(p=>!p.accepted&&Number(p.views||0)>0).length],['nunca','Não abertas',never.length]];
+  const filtered=filtro==='fechadas'?proposals.filter(p=>p.accepted):filtro==='abertas'?proposals.filter(p=>!p.accepted&&Number(p.views||0)>0):filtro==='nunca'?never:proposals;
+  const ordered=templates.map(t=>{const linked=proposals.filter(p=>p.template===t.id),g=linked.filter(emJanela).length,o=linked.filter(p=>Number(p.views||0)>0).length,c=linked.filter(p=>p.accepted).length;return {t,g,o,c,conv:pct(c,g)};}).sort((a,b)=>(b.conv??-1)-(a.conv??-1)||b.g-a.g);
+  const templateById=new Map(templates.map(t=>[t.id,t]));
+  return <div className="proposals-page">
+    <header className="proposals-header"><h1>Propostas</h1><button data-proposal-action="new" onClick={event=>edit(null,event)}>Criar template</button></header>
+    {reads.key!==active||(!reads.loaded&&!reads.error)?<div className="proposals-state" role="status">Carregando propostas…</div>:reads.error?<div className="proposals-state" role="alert">Não foi possível carregar as propostas. <button onClick={load}>Tentar novamente</button></div>:<>
+      <section className="proposals-funnel capsule-navy">
+        <svg className="proposals-mark" width="180" height="180" viewBox="355 525 455 590" aria-hidden="true"><polygon fill="currentColor" points="800.7 535.53 800.7 1103.92 763 983.8 749.25 939.91 691.16 754.61 501.54 817.84 457.65 832.42 362.47 864.14 443.6 803.33 481.22 775.08 800.7 535.53"/></svg>
+        <h2><i/>o caminho da proposta</h2>
+        <div className="proposals-path">{[
+          ['Geradas em 30 dias',fun.geradas,null,null],['Abertas pelo lead',fun.abertas,pct(fun.abertas,fun.geradas),'abriram'],['Fecharam',fun.fecharam,pct(fun.fecharam,fun.abertas),'fecharam'],
+        ].map(([label,value,rate,note],i)=><div key={label}>{i>0&&<div className="proposals-path-arrow"><b>{rate==null?'—':`${rate}%`}</b><span>→</span><small>{note}</small></div>}<div className="proposals-path-value"><span>{label}</span><strong style={i===2?{color:'var(--accent)'}:undefined}>{value}</strong></div></div>)}</div>
+        {never.length>0&&<div className="proposals-never"><span><i/>{never.length} {never.length===1?'enviada e nunca aberta':'enviadas e nunca abertas'}</span><button onClick={()=>setFiltro('nunca')}>Ver quais</button></div>}
+      </section>
+      {actionError&&<div role="alert" className="proposals-state">{actionError}</div>}
+      <section className="proposals-templates proposals-card">
+        <div className="proposals-section-head"><div><h2><i/>templates</h2><p>ordenados por conversão de gerada a fechada</p></div></div>
+        {!templates.length?<EmptyState title="Nenhum template neste SaaS" hint="Crie o template base usado para gerar propostas a partir dos leads." action={<PrimaryButton onClick={event=>edit(null,event)}>Criar template</PrimaryButton>}/>:<div className="tbl-x"><div style={{minWidth:820}}>
+          <div className="proposals-table-head" style={{gridTemplateColumns:TPL_GRID}}><span>Template</span><span>Estado</span><span>Gerada → aberta → fechou</span><span>Conversão</span><span>Ação</span></div>
+          {ordered.map(({t,g,o,c,conv})=>{const width=n=>g>0?Math.max(2,Math.min(100,n/g*100)):0;return <div className="proposals-template-row proposals-table-row" key={t.id} style={{gridTemplateColumns:TPL_GRID}}>
+            <div className="proposals-template-name"><button data-proposal-action={`edit:${t.id}`} onClick={event=>edit(t,event)} aria-label={`Editar template: ${t.name||t.id}`}>{t.name||t.id}</button><a href={`${publicBase()}/p/t/${t.id}`} target="_blank" rel="noreferrer" aria-label={`Prévia de ${t.name||t.id}`}>{t.layout==='slides'?'apresentação em slides · montada pela tela zero, não por slide':`${(t.slides||[]).length} slides`}</a></div>
+            <span><span className="proposals-pill" data-published={t.status==='published'}>{t.status==='published'?'base':'rascunho'}</span></span>
+            <div><div className="proposals-template-bar"><i style={{width:`${width(c)}%`}}/><i style={{width:`${Math.max(0,width(o)-width(c))}%`}}/></div><small className="proposals-template-numbers">{g} · {o} · {c}</small></div>
+            <b className="proposals-conversion" style={{color:conv==null?'var(--fg-4)':conv>=20?'var(--pos)':'var(--fg-1)'}}>{conv==null?'—':`${conv}%`}</b>
+            <div className="proposals-row-actions"><button data-proposal-action={`duplicate:${t.id}`} disabled={!!busy} onClick={event=>duplicate(t,event)}>Duplicar</button><button disabled={!!busy} className="proposals-delete" onClick={()=>removeTemplate(t)}>{busy===t.id?'Excluindo…':'Excluir'}</button></div>
+          </div>;})}
+        </div></div>}
+      </section>
+      <section className="proposals-generated proposals-card">
+        <div className="proposals-section-head"><div><h2><i/>propostas geradas</h2><p>o link entra no card do lead como “proposta ↗”</p></div><div className="proposals-filters">{filters.map(([id,label,n])=><button key={id} aria-pressed={filtro===id} onClick={()=>setFiltro(id)}>{label} <span>{n}</span></button>)}</div></div>
+        <div className="tbl-x"><div style={{minWidth:880}}>
+          <div className="proposals-table-head" style={{gridTemplateColumns:PROP_GRID}}><span>Lead</span><span>Template</span><span>Gerada</span><span>O que aconteceu</span><span>Ação</span></div>
+          {filtered.map(p=>{
+            const template=templateById.get(p.template),views=Number(p.views||0),at=p.createdAt?new Date(p.createdAt).getTime():NaN,days=Number.isFinite(at)?Math.max(0,Math.floor((Date.now()-at)/86400000)):null;
+            const name=p.data?.lead?.name||p.lead||'Lead',company=p.data?.lead?.company,first=String(p.data?.lead?.firstName||name).trim().split(/\s+/)[0]||'',wa=waLink(p.data?.lead?.phone),url=`${publicBase()}/p/${p.id}`;
+            const happened=p.accepted?`fechou${views>0?` · abriu ${views}x`:''}`:views>0?`abriu ${views} ${views===1?'vez':'vezes'}`:days==null?'nunca abriu':`nunca abriu · ${days} ${days===1?'dia':'dias'}`;
+            return <div className="proposals-generated-row proposals-table-row" style={{gridTemplateColumns:PROP_GRID}} key={p.id}>
+              <div className="proposals-lead"><strong>{name}</strong>{company&&<small>{company}</small>}</div>
+              <span className="proposals-template-label" title={template?.name||p.name}>{template?.name||p.name||'Proposta'}</span>
+              <div className="proposals-date"><span>{p.createdAt?new Date(p.createdAt).toLocaleDateString('pt-BR'):'—'}</span>{days!=null&&<small>{days===0?'hoje':`há ${days}d`}</small>}</div>
+              <span className="proposals-result" data-state={p.accepted?'accepted':views>0?'opened':'never'}>{happened}</span>
+              <div className="proposals-row-actions"><a className="proposals-open" href={cockpitProposalUrl(url)} target="_blank" rel="noreferrer">abrir ↗</a>{!p.accepted&&wa&&<a className="proposals-wa" href={`${wa}?text=${encodeURIComponent(`Oi${first?` ${first}`:''}, te mandei a proposta aqui: ${url}`)}`} target="_blank" rel="noopener noreferrer">{views>0?'Cobrar':'Reenviar'}</a>}<button onClick={()=>copy(p)}>{copied===p.id?'Copiado ✓':'Copiar'}</button></div>
+            </div>;
+          })}
+          {!filtered.length&&<div className="proposals-empty">{proposals.length?'Nada neste filtro.':'Nenhuma proposta gerada ainda.'}</div>}
+        </div></div>
+      </section>
+    </>}
+  </div>;
 }
 
 // ── Editor de template ───────────────────────────────────────────────────────
@@ -437,24 +235,31 @@ function TemplateEditor({ template, saasId, onDone, onCancel }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const set = (patch) => setDraft((d) => ({ ...d, ...patch }));
+  const original=useRef(JSON.stringify(draft));
+  const dirty=JSON.stringify(draft)!==original.current;
+  const cancel=()=>{if(!busy&&(!dirty||window.confirm("Descartar as alterações deste template?")))onCancel();};
+  useEsc(busy?null:cancel);
+  const editor=useRef(null);
+  useEffect(()=>{editor.current?.querySelector('input')?.focus();},[]);
 
   const product = (window.SEED.SAAS || []).find((s) => s.id === draft.saas);
   const stages = (product?.funnel || []).map((f) => f.stage);
 
-  const [previewHtml, setPreviewHtml] = useState("");
-  const timer = useRef(null);
-  useEffect(() => {
-    clearTimeout(timer.current);
-    timer.current = setTimeout(async () => {
-      try { setPreviewHtml((await api.proposalPreview({ template: draft })).html); }
-      catch { /* best-effort */ }
-    }, 600);
-    return () => clearTimeout(timer.current);
-  }, [draft]);
+  const [previewHtml,setPreviewHtml]=useState(''),[previewError,setPreviewError]=useState(null),[previewAttempt,setPreviewAttempt]=useState(0);
+  useEffect(()=>{
+    let alive=true;
+    const timer=setTimeout(async()=>{
+      setPreviewError(null);
+      try {const result=await api.proposalPreview({template:draft});if(alive)setPreviewHtml(result.html);}
+      catch(error){if(alive)setPreviewError(error.message||'Não foi possível carregar a prévia.');}
+    },600);
+    return()=>{alive=false;clearTimeout(timer);};
+  },[draft,previewAttempt]);
 
   async function save() {
     if (!String(draft.name).trim()) { setError("Dê um nome ao template"); return; }
     if (!(draft.slides || []).length) { setError("Adicione ao menos um slide"); return; }
+    if(busy)return;
     setBusy(true); setError(null);
     const payload = {
       name: draft.name.trim(), saas: draft.saas, status: draft.status,
@@ -469,16 +274,16 @@ function TemplateEditor({ template, saasId, onDone, onCancel }) {
   }
 
   return (
-    <div className="editor-split" style={{ flex: 1, "--cols": "minmax(min(100%, 460px), 1fr) minmax(min(100%, 380px), 44%)", minHeight: 0 }}>
+    <div ref={editor} className="editor-split proposal-editor" style={{ flex: 1, "--cols": "minmax(min(100%, 460px), 1fr) minmax(min(100%, 380px), 44%)", minHeight: 0 }}>
       <div style={{ display: "flex", flexDirection: "column", minHeight: 0, borderRight: "1px solid var(--line-1)" }}>
-        <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div className="proposal-editor-head" style={{ padding: "12px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <div className="kicker">{isEdit ? "Editar template" : "Novo template"}</div>
             <div style={{ fontSize: 16, fontWeight: 500, marginTop: 2 }}>{draft.name || "Sem nome"}</div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <span className={"chip " + (draft.status === "published" ? "pos" : "")} style={{ height: 20 }}>{draft.status === "published" ? "publicado" : "rascunho"}</span>
-            <button onClick={onCancel} style={{ padding: "7px 12px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: 999, fontSize: 12 }}>Cancelar</button>
+            <button onClick={cancel} disabled={busy} style={{ padding: "7px 12px", background: "var(--bg-2)", border: "1px solid var(--line-1)", borderRadius: 999, fontSize: 12 }}>Cancelar</button>
             <button onClick={save} disabled={busy} style={{ padding: "7px 14px", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderRadius: 999, fontSize: 12, fontWeight: 500, opacity: busy ? 0.6 : 1 }}>
               {busy ? "Salvando…" : "Salvar"}
             </button>
@@ -486,10 +291,10 @@ function TemplateEditor({ template, saasId, onDone, onCancel }) {
         </div>
 
         <div style={{ flex: 1, overflow: "auto", padding: "14px 20px 32px" }}>
-          {error && <div className="mono" style={{ fontSize: 11, color: "var(--neg)", marginBottom: 10 }}>{error}</div>}
+          {error && <div role="alert" className="mono" style={{ fontSize: 11, color: "var(--neg)", marginBottom: 10 }}>{error}</div>}
 
           <div className="kicker" style={sectionTitle}>Básico</div>
-          <div style={{ display: "flex", gap: 10 }}>
+          <div className="proposal-editor-basics" style={{ display: "flex", gap: 10 }}>
             <LabeledInput label="Nome do template" value={draft.name} onChange={(v) => set({ name: v })} placeholder="Proposta · LeverAds" />
             <label style={{ display: "flex", flexDirection: "column", gap: 4, width: 220 }}>
               <span className="kicker">Aceite move o lead para</span>
@@ -523,6 +328,8 @@ function TemplateEditor({ template, saasId, onDone, onCancel }) {
             </a>
           )}
         </div>
+        {previewError&&<div role="alert" className="proposal-editor-preview-state">{previewError} <button onClick={()=>setPreviewAttempt(n=>n+1)}>Tentar novamente</button></div>}
+        {!previewHtml&&!previewError&&<div role="status" className="proposal-editor-preview-state">Carregando prévia…</div>}
         <iframe title="Preview da proposta" srcDoc={previewHtml} sandbox="allow-scripts allow-same-origin" style={{ flex: 1, border: 0, width: "100%", background: draft.theme.bg }} />
       </div>
     </div>
@@ -590,11 +397,11 @@ function SlideCard({ slide, index, total, onChange, onRemove, onMove, arrowStyle
             if (kind === "objlist") return <ObjList key={path} label={label} cols={cols} items={val || []} onChange={(v) => onChange(setPath(slide, path, v))} />;
             return null;
           })}
-          <div style={{ display: "flex", gap: 10 }}>
+          <div className="proposal-editor-row" style={{ display: "flex", gap: 10 }}>
             <LabeledInput label="Mídia · URL (imagem, GIF ou vídeo .mp4)" value={slide.media?.url || ""} onChange={(v) => onChange(patchMedia(slide, "url", v))} />
             <LabeledInput label="Mídia · legenda (opcional)" value={slide.media?.caption || ""} onChange={(v) => onChange(patchMedia(slide, "caption", v))} />
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
+          <div className="proposal-editor-row" style={{ display: "flex", gap: 10 }}>
             <LabeledInput label="Mostrar só se · resposta do form (ex.: niche)" value={slide.showIf?.key || ""} onChange={(v) => onChange(patchShowIf(slide, "key", v))} />
             <LabeledInput label="…tiver um destes valores (vírgula)" value={(slide.showIf?.values || []).join(", ")} onChange={(v) => onChange(patchShowIf(slide, "values", v))} />
           </div>
@@ -609,7 +416,7 @@ function StrList({ label, items, onChange }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       <span className="kicker">{label}</span>
       {items.map((it, i) => (
-        <div key={i} style={{ display: "flex", gap: 6 }}>
+        <div className="proposal-list-row" key={i} style={{ display: "flex", gap: 6 }}>
           <input value={it} onChange={(e) => { const arr = [...items]; arr[i] = e.target.value; onChange(arr); }} style={inputStyle} />
           <button type="button" onClick={() => onChange(items.filter((_, j) => j !== i))} className="mono dim" style={{ fontSize: 13, padding: "0 6px" }}>✕</button>
         </div>
@@ -624,7 +431,7 @@ function ObjList({ label, cols, items, onChange }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       <span className="kicker">{label}</span>
       {items.map((it, i) => (
-        <div key={i} style={{ display: "flex", gap: 6 }}>
+        <div className="proposal-list-row" key={i} style={{ display: "flex", gap: 6 }}>
           {cols.map(([ck, cph]) => (
             <input key={ck} value={it[ck] ?? ""} placeholder={cph}
               onChange={(e) => { const arr = [...items]; arr[i] = { ...arr[i], [ck]: e.target.value }; onChange(arr); }}
@@ -652,13 +459,13 @@ function CalcEditor({ calc, onChange }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ ...cardStyle, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+      <div className="proposal-calculator-grid" style={{ ...cardStyle, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
         {CALC_FIELDS.map(([k, label]) => (
           <LabeledInput key={k} label={label} type="number" value={calc[k]} onChange={(v) => set(k, v === "" ? "" : Number(v))} />
         ))}
       </div>
       <div style={{ ...cardStyle }}>
-        <div style={{ display: "flex", gap: 10 }}>
+        <div className="proposal-editor-row" style={{ display: "flex", gap: 10 }}>
           <LabeledInput label="Chave da resposta de CONTAS (ex.: accounts)" value={calc.seatsKey} onChange={(v) => set("seatsKey", v)} />
           <LabeledInput label="Chave da resposta de VOLUME (ex.: volume)" value={calc.volumeKey} onChange={(v) => set("volumeKey", v)} />
           <label style={{ display: "flex", flexDirection: "column", gap: 4, width: 140 }}>
@@ -697,7 +504,7 @@ function MapEditor({ label, map, onChange }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
       <span className="kicker">{label}</span>
       {entries.map(([k, v], i) => (
-        <div key={i} style={{ display: "flex", gap: 6 }}>
+        <div className="proposal-list-row" key={i} style={{ display: "flex", gap: 6 }}>
           <input value={k} placeholder="resposta" onChange={(e) => setEntry(i, e.target.value, v)} className="mono" style={{ ...inputStyle, width: 140, fontSize: 12 }} />
           <input type="number" value={v} placeholder="número" onChange={(e) => setEntry(i, k, e.target.value === "" ? "" : Number(e.target.value))} style={{ ...inputStyle, width: 110 }} />
           <button type="button" onClick={() => onChange(Object.fromEntries(entries.filter((_, j) => j !== i)))} className="mono dim" style={{ fontSize: 13, padding: "0 6px" }}>✕</button>
