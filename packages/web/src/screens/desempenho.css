@@ -36,3 +36,5 @@
 @media(max-width:768px){.performance-page{overflow:auto;}.performance-body{flex:none;overflow:visible;padding-bottom:90px;}.performance-head button,.performance-copy button,.performance-state button{min-height:44px!important;}.performance-person button{min-height:44px;}.performance-table button{min-height:44px;min-width:44px;}.performance-table .chip{min-height:0;}.performance-table button.chip{min-height:44px;}.performance-sdr .performance-table>thead>tr>th:nth-child(8){width:130px;}.performance-sdr .performance-table{min-width:1150px;}.performance-social .performance-table>thead>tr>th:last-child{width:145px;}}
 
 @media(max-width:768px){.performance-detail>div{max-width:calc(100vw - 72px);}.performance-detail table{max-width:100%;}.performance-detail table td:first-child{overflow-wrap:anywhere;}}
+
+.performance-detail table{min-width:0;max-width:100%;}
