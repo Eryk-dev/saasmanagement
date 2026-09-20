@@ -1,7 +1,10 @@
 import React from "react";
 import "./marketing.css";
-import { PageHead, FilterTab, Segmented, Card } from "../components/viz.jsx";
-import { AvisoTopo, InfoLink } from "../components/story.jsx";
+import "./blog.css";
+import { createPortal } from "react-dom";
+import { Switch } from "../components/form-controls.jsx";
+import { FilterTab, Segmented } from "../components/viz.jsx";
+import { InfoLink } from "../components/story.jsx";
 import { Modal as Painel, Drawer } from "../components/overlay.jsx";
 import { EmptyState, PrimaryButton, SecondaryButton, toast } from "../atoms.jsx";
 import { api } from "../lib/api.js";
@@ -99,14 +102,12 @@ const Label = ({ children, right }) => (
 );
 
 const Toggle = ({ checked, onChange, disabled, children, hint }) => (
-  <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.6 : 1 }}>
-    <input type="checkbox" checked={!!checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} style={{ width: 16, height: 16, marginTop: 2, accentColor: "var(--accent)", flexShrink: 0 }} />
-    <span style={{ minWidth: 0 }}>
-      <div style={{ fontSize: 13, fontWeight: 500 }}>{children}</div>
-      {hint && <div className="dim" style={{ fontSize: 11.5, marginTop: 1, lineHeight: 1.45 }}>{hint}</div>}
-    </span>
-  </label>
+  <div className="blog-toggle" onClick={(e) => { if (!disabled && !e.target.closest("button")) onChange(!checked); }}>
+    <Switch checked={checked} onChange={onChange} disabled={disabled} label={children} />
+    <div><strong>{children}</strong><p>{hint}</p></div>
+  </div>
 );
+const inPortal = (content) => typeof document === "undefined" ? content : createPortal(content, document.body);
 
 // ── Automação: as regras do motor ───────────────────────────────────────────
 // Salva a cada mudança (PATCH parcial); a API devolve as regras saneadas, que
@@ -114,10 +115,22 @@ const Toggle = ({ checked, onChange, disabled, children, hint }) => (
 function AutomacaoCard({ saas, rules, state, aiConfigured, nextSlot, admin, onRules, onDigest }) {
   const [saving, setSaving] = useS(false);
   const [local, setLocal] = useS(rules || {});
-  useE(() => { setLocal(rules || {}); }, [rules]);
+  const writing = useR(false);
+  const [error, setError] = useS("");
+  const previousRules = useR(rules || {});
+  useE(() => {
+    const before = previousRules.current;
+    previousRules.current = rules || {};
+    setLocal(cur => {
+      const next = { ...rules };
+      for (const key of Object.keys(cur)) if (!same(cur[key], before[key])) next[key] = cur[key];
+      return next;
+    });
+  }, [rules]);
 
   async function patch(partial) {
-    if (!admin) return;
+    if (!admin || writing.current) return;
+    writing.current = true; setError("");
     const before = local;
     setLocal((cur) => ({ ...cur, ...partial }));
     setSaving(true);
@@ -126,9 +139,9 @@ function AutomacaoCard({ saas, rules, state, aiConfigured, nextSlot, admin, onRu
       if (r?.rules) { setLocal(r.rules); onRules(r.rules, r.state); }
       toast("automação salva", "pos");
     } catch (e) {
-      setLocal(before);
+      setLocal(before); setError(`Não deu para salvar: ${e.message}. Tente novamente.`);
       toast(`não deu pra salvar: ${e.message} · tente de novo`, "neg");
-    } finally { setSaving(false); }
+    } finally { writing.current = false; setSaving(false); }
   }
 
   const dias = Array.isArray(local.diasPublicacao) ? local.diasPublicacao : [];
@@ -138,37 +151,42 @@ function AutomacaoCard({ saas, rules, state, aiConfigured, nextSlot, admin, onRu
     patch({ diasPublicacao: next });
   };
   const num = (key, min, max) => (
-    <input type="number" className="inp" min={min} max={max} disabled={!admin} value={local[key] ?? ""}
+    <input aria-label={key === "minPautas" ? "Mínimo de pautas" : "Mínimo de rascunhos"} type="number" className="inp" min={min} max={max} disabled={!admin || saving} value={local[key] ?? ""}
       onChange={(e) => setLocal((c) => ({ ...c, [key]: e.target.value }))}
       onBlur={(e) => { const v = Number(e.target.value); if (Number.isFinite(v) && v !== rules?.[key]) patch({ [key]: v }); }}
       style={{ width: 72 }} />
   );
 
   return (
-    <Card title="Automação" hint="O que o motor faz sozinho a cada 15 minutos. Publicar sem revisão fica desligado até você confiar no pente fino."
-      action={saving ? <span className="mono dim" style={{ fontSize: 11 }}>salvando…</span> : null}>
-      <div className="resp-cols" style={{ "--cols": "minmax(0, 1.5fr) minmax(0, 1fr)", gap: "18px 28px", padding: "14px var(--inset-x) 20px" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
-          <Toggle checked={local.enabled} disabled={!admin} onChange={(v) => patch({ enabled: v })} hint="Desligado, nada roda: nem pauta, nem rascunho, nem publicação agendada.">Motor ligado</Toggle>
-          <Toggle checked={local.autoPauta} disabled={!admin || !local.enabled} onChange={(v) => patch({ autoPauta: v })} hint="Quando a fila de pautas fica curta, a IA propõe temas novos a partir do que o cockpit aprendeu.">Minerar pautas sozinho</Toggle>
-          <Toggle checked={local.autoRascunho} disabled={!admin || !local.enabled} onChange={(v) => patch({ autoRascunho: v })} hint="Um rascunho por ciclo, com limite diário. Você revisa antes de ir pro ar.">Escrever rascunhos sozinho</Toggle>
-          <Toggle checked={local.autoPublicar} disabled={!admin || !local.enabled}
+    <section className="blog-motor">
+      <header className="blog-motor-head"><div><h2>O motor</h2><p>Roda a cada 15 minutos · último ciclo {ago(state?.lastTickAt)}{!aiConfigured ? " · IA não configurada" : ""}</p></div><div><span>Próxima publicação</span><strong>{nextSlot ? fmtSlot(nextSlot) : "sem agendamento"}</strong></div></header>
+      {saving && <div role="status" className="blog-save-status">salvando…</div>}
+      {error && <div role="alert" className="blog-error">{error}</div>}
+      {!!state?.lastError && <div role="alert" className="blog-error">Último erro do motor: {state.lastError}</div>}
+      <div className="blog-motor-grid">
+        <div className="blog-toggles">
+          <Toggle checked={local.enabled} disabled={!admin || saving} onChange={(v) => patch({ enabled: v })} hint="Desligado, nada roda: nem pauta, nem rascunho, nem publicação agendada.">Motor ligado</Toggle>
+          <Toggle checked={local.autoPauta} disabled={!admin || saving || !local.enabled} onChange={(v) => patch({ autoPauta: v })} hint="Quando a fila de pautas fica curta, a IA propõe temas novos a partir do que o cockpit aprendeu.">Minerar pautas sozinho</Toggle>
+          <Toggle checked={local.autoRascunho} disabled={!admin || saving || !local.enabled} onChange={(v) => patch({ autoRascunho: v })} hint="Um rascunho por ciclo, com limite diário. Você revisa antes de ir pro ar.">Escrever rascunhos sozinho</Toggle>
+          <Toggle checked={local.autoPublicar} disabled={!admin || saving || !local.enabled}
             onChange={(v) => {
               if (v && !window.confirm("Publicar sem revisão humana? O lint bloqueia preço, travessão e nome de cliente, mas não lê o texto por você. Rascunhos aprovados pelo lint vão pro ar na cadência.")) return;
               patch({ autoPublicar: v });
             }}
             hint="Rascunho que passa no lint entra na agenda sem ninguém aprovar.">Publicar sem revisão</Toggle>
 
+        </div>
+        <div className="blog-cadence">
           <div className="resp-cols" style={{ "--cols": "repeat(3, minmax(0, 1fr))", gap: "10px 14px" }}>
             <div>
               <Label>por semana</Label>
-              <select className="inp" disabled={!admin} value={local.cadenciaSemanal || 2} onChange={(e) => patch({ cadenciaSemanal: Number(e.target.value) })} style={{ width: "100%", marginTop: 4 }}>
+              <select aria-label="Posts por semana" className="inp" disabled={!admin || saving} value={local.cadenciaSemanal || 2} onChange={(e) => patch({ cadenciaSemanal: Number(e.target.value) })} style={{ width: "100%", marginTop: 4 }}>
                 {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n} {n === 1 ? "post" : "posts"}</option>)}
               </select>
             </div>
             <div>
               <Label>hora (Brasília)</Label>
-              <input type="time" className="inp" disabled={!admin} value={local.horaPublicacao || "09:00"}
+              <input aria-label="Hora de publicação" type="time" className="inp" disabled={!admin || saving} value={local.horaPublicacao || "09:00"}
                 onChange={(e) => setLocal((c) => ({ ...c, horaPublicacao: e.target.value }))}
                 onBlur={(e) => { if (/^\d{2}:\d{2}$/.test(e.target.value) && e.target.value !== rules?.horaPublicacao) patch({ horaPublicacao: e.target.value }); }}
                 style={{ width: "100%", marginTop: 4 }} />
@@ -188,7 +206,7 @@ function AutomacaoCard({ saas, rules, state, aiConfigured, nextSlot, admin, onRu
               {DIAS.map(([id, label]) => {
                 const on = dias.includes(id);
                 return (
-                  <button key={id} disabled={!admin} onClick={() => toggleDia(id)} className="chip" aria-pressed={on} style={{
+                  <button key={id} disabled={!admin || saving} onClick={() => toggleDia(id)} className="chip" aria-pressed={on} style={{
                     cursor: admin ? "pointer" : "default", fontWeight: 600, minWidth: 44, justifyContent: "center",
                     background: on ? "var(--accent-soft)" : "var(--bg-2)",
                     color: on ? "var(--accent)" : "var(--fg-3)",
@@ -199,16 +217,19 @@ function AutomacaoCard({ saas, rules, state, aiConfigured, nextSlot, admin, onRu
             </div>
           </div>
 
+        </div>
+      </div>
+      <details className="blog-motor-details"><summary>Estado do motor e link dos posts</summary><div className="blog-motor-details-grid">
+        <div>
           <div>
             <Label>link do CTA nos posts</Label>
-            <input type="url" className="inp" disabled={!admin} value={local.ctaUrl || ""}
+            <input aria-label="Link do CTA nos posts" type="url" className="inp" disabled={!admin || saving} value={local.ctaUrl || ""}
               onChange={(e) => setLocal((c) => ({ ...c, ctaUrl: e.target.value }))}
               onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== rules?.ctaUrl) patch({ ctaUrl: v }); }}
               placeholder="https://levermoney.com.br/f/…" style={{ width: "100%", marginTop: 4 }} />
             <div className="dim" style={{ fontSize: 11, marginTop: 4 }}>As UTMs (utm_source=blog e o slug do post) entram sozinhas.</div>
           </div>
         </div>
-
         <div style={{ background: "var(--bg-inset)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "14px 16px", alignSelf: "start", display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
           <div className="kicker accent">estado do motor</div>
           <Line k="IA" v={aiConfigured ? "configurada" : "não configurada"} tone={aiConfigured ? "pos" : "neg"} />
@@ -227,8 +248,8 @@ function AutomacaoCard({ saas, rules, state, aiConfigured, nextSlot, admin, onRu
             <SecondaryButton size="sm" onClick={onDigest}>Ver o que a IA lê</SecondaryButton>
           </div>
         </div>
-      </div>
-    </Card>
+      </div></details>
+    </section>
   );
 }
 
@@ -242,11 +263,13 @@ const Line = ({ k, v, tone }) => (
 // ── Modal simples (nova pauta, digest) ──────────────────────────────────────
 // O Modal local do Blog virou casca do compartilhado (14/09): o véu, a camada,
 // o Esc e o ErrorBoundary vêm de components/overlay.jsx.
-function Modal({ onClose, busy, width = 560, children }) {
+function Modal({ onClose, busy, width = 560, label = "blog", children }) {
   return (
-    <Painel onClose={onClose} fechavel={!busy} label="blog" largura={width} painelStyle={{ padding: 22 }}>
+    inPortal(<Painel onClose={onClose} fechavel={!busy} label={label} largura={width} style={{zIndex:1400}} painelStyle={{ padding: 22 }}>
+      <div className="blog-modal">
       {children}
-    </Painel>
+      </div>
+    </Painel>)
   );
 }
 
@@ -257,9 +280,14 @@ function NewPautaModal({ saas, categorias, onClose, onCreated }) {
   const [busy, setBusy] = useS(false);
   const [err, setErr] = useS("");
 
+  const writing = useR(false);
+  const close = () => { if (writing.current) return; if ((title.trim() || keyword.trim() || category !== (categorias[0] || "")) && !window.confirm("Descartar esta nova pauta?")) return; onClose(); };
+
   async function criar(e) {
     e?.preventDefault?.();
+    if (writing.current) return;
     if (!title.trim()) { setErr("dê um título pra pauta"); return; }
+    writing.current = true;
     setBusy(true); setErr("");
     try {
       const doc = await api.blogNewPauta(saas, { title: title.trim(), keyword: keyword.trim(), category });
@@ -267,55 +295,57 @@ function NewPautaModal({ saas, categorias, onClose, onCreated }) {
       onCreated(doc);
     } catch (e2) {
       setErr(e2.message);
-    } finally { setBusy(false); }
+    } finally { writing.current = false; setBusy(false); }
   }
 
   return (
-    <Modal onClose={onClose} busy={busy}>
-      <form onSubmit={criar}>
+    <Modal onClose={close} busy={busy} label="Nova pauta">
+      <form onSubmit={criar}><fieldset className="blog-fields" disabled={busy}>
         <div className="card-title">Nova pauta</div>
         <div className="card-sub" style={{ marginTop: 2 }}>Um tema que a IA vai transformar em rascunho. Título curto, como o leitor buscaria no Google.</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
           <div>
             <Label right={`${title.length}/60`}>título</Label>
-            <input autoFocus className="inp" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} placeholder="Como operar várias contas de Mercado Livre sem duplicar trabalho" style={{ width: "100%", marginTop: 4 }} />
+            <input aria-label="Título da pauta" autoFocus className="inp" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} placeholder="Como operar várias contas de Mercado Livre sem duplicar trabalho" style={{ width: "100%", marginTop: 4 }} />
           </div>
           <div className="resp-cols" style={{ "--cols": "1fr 1fr", gap: 12 }}>
             <div>
               <Label>palavra-chave</Label>
-              <input className="inp" value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="várias contas mercado livre" style={{ width: "100%", marginTop: 4 }} />
+              <input aria-label="Palavra-chave da pauta" className="inp" value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="várias contas mercado livre" style={{ width: "100%", marginTop: 4 }} />
             </div>
             <div>
               <Label>categoria</Label>
-              <select className="inp" value={category} onChange={(e) => setCategory(e.target.value)} style={{ width: "100%", marginTop: 4 }}>
+              <select aria-label="Categoria da pauta" className="inp" value={category} onChange={(e) => setCategory(e.target.value)} style={{ width: "100%", marginTop: 4 }}>
                 {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
           </div>
-          {err && <div style={{ fontSize: 12.5, color: "var(--neg)" }}>{err}</div>}
+          {err && <div role="alert" style={{ fontSize: 12.5, color: "var(--neg)" }}>{err}</div>}
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
-          <SecondaryButton onClick={onClose} disabled={busy}>Cancelar</SecondaryButton>
-          <PrimaryButton onClick={criar} disabled={busy}>{busy ? "criando…" : "Criar pauta"}</PrimaryButton>
+          <SecondaryButton type="button" onClick={close} disabled={busy}>Cancelar</SecondaryButton>
+          <PrimaryButton type="submit" disabled={busy}>{busy ? "criando…" : "Criar pauta"}</PrimaryButton>
         </div>
-      </form>
+      </fieldset></form>
     </Modal>
   );
 }
 
 function DigestModal({ saas, onClose }) {
+  const [attempt, setAttempt] = useS(0);
   const [digest, setDigest] = useS(null);
   const [err, setErr] = useS("");
   useE(() => {
     let alive = true;
+    setErr("");
     api.blogDigest(saas).then((d) => { if (alive) setDigest(d); }).catch((e) => { if (alive) setErr(e.message); });
     return () => { alive = false; };
-  }, [saas]);
+  }, [saas, attempt]);
   return (
-    <Modal onClose={onClose} width={780}>
+    <Modal onClose={onClose} width={780} label="Contexto da IA">
       <div className="card-title">O que a IA lê antes de propor pautas</div>
       <div className="card-sub" style={{ marginTop: 2 }}>Agregados anonimizados de formulários, calls, WhatsApp e resultados. Nenhum nome ou telefone sai daqui.</div>
-      {err && <div style={{ fontSize: 12.5, color: "var(--neg)", marginTop: 12 }}>não deu pra carregar: {err}</div>}
+      {err && <div role="alert" className="blog-error">Não deu para carregar: {err} <button onClick={() => setAttempt(n => n + 1)}>Tentar novamente</button></div>}
       {!digest && !err && <div className="mono dim" style={{ fontSize: 12, marginTop: 14 }}>carregando…</div>}
       {digest && (
         <>
@@ -352,37 +382,46 @@ function PostDrawer({ saas, id, rules, nextSlot, admin, onClose, onChanged }) {
   const [tagsText, setTagsText] = useS("");
   const [lintErr, setLintErr] = useS([]); // lint que veio numa 422
   const dirty = !!(doc && form && !same(pick(doc), form));
+  const writing = useR(false);
+  const readVersion = useR(0);
+  const [actionError, setActionError] = useS("");
 
   const load = useC(async () => {
+    const revision = ++readVersion.current;
     try {
       const d = await api.blogPost(saas, id);
+      if (revision !== readVersion.current) return;
       setDoc(d); setForm(pick(d)); setTagsText((d.tags || []).join(", ")); setErr("");
-    } catch (e) { setErr(e.message); }
+    } catch (e) { if (revision === readVersion.current) setErr(e.message); }
   }, [saas, id]);
-  useE(() => { setDoc(null); setForm(null); setPreview(null); setView("editar"); load(); }, [load]);
+  useE(() => { setDoc(null); setForm(null); setPreview(null); setView("editar"); load(); return () => { readVersion.current++; }; }, [load]);
 
   function tryClose() {
-    if (busy) return;
+    if (writing.current) return;
     if (dirty && !window.confirm("Descartar as alterações não salvas deste post?")) return;
     onClose();
   }
 
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k, v) => { if (!writing.current) setForm((f) => ({ ...f, [k]: v })); };
 
-  async function run(label, fn, okMsg) {
-    setBusy(label); setLintErr([]);
+  async function run(label, fn, okMsg, { saveFirst = false, reload = true } = {}) {
+    if (writing.current) return null;
+    writing.current = true;
+    setBusy(label); setLintErr([]); setActionError("");
     try {
+      if (saveFirst && dirty) await api.blogUpdate(saas, id, patchBody());
       const r = await fn();
       if (okMsg) toast(okMsg, "pos");
-      await load();
+      if (reload) await load();
       onChanged();
       return r;
     } catch (e) {
       const lint = lintFromError(e);
       if (lint.length) setLintErr(lint);
+      setActionError(e.message);
       toast(`${e.message} · tente de novo`, "neg");
       return null;
-    } finally { setBusy(""); }
+    } finally { writing.current = false; setBusy(""); }
   }
 
   const patchBody = () => {
@@ -399,23 +438,19 @@ function PostDrawer({ saas, id, rules, nextSlot, admin, onClose, onChanged }) {
     return run("salvar", () => api.blogUpdate(saas, id, patch), "post salvo");
   };
   // Ações que mudam de estado salvam antes, senão o servidor age sobre o texto velho.
-  const saveThen = (label, fn, okMsg) => async () => {
-    if (dirty) {
-      const patch = patchBody();
-      setBusy(label);
-      try { await api.blogUpdate(saas, id, patch); }
-      catch (e) { setBusy(""); setLintErr(lintFromError(e)); toast(`não deu pra salvar antes: ${e.message}`, "neg"); return; }
-    }
-    await run(label, fn, okMsg);
-  };
+  const saveThen = (label, fn, okMsg) => () => run(label, fn, okMsg, { saveFirst: true });
 
   async function abrirPreview() {
-    setView("preview");
-    if (preview && new Date(preview.expiresAt).getTime() > Date.now() + 60_000 && !dirty) return;
-    if (dirty) await salvar();
-    try { setPreview(await api.blogPreviewUrl(saas, id)); }
-    catch (e) { toast(`não deu pra montar o preview: ${e.message}`, "neg"); setView("editar"); }
+    if (writing.current) return;
+    if (preview && new Date(preview.expiresAt).getTime() > Date.now() + 60_000 && !dirty) { setView("preview"); return; }
+    await run("preview", async () => { const result = await api.blogPreviewUrl(saas, id); setPreview(result); setView("preview"); return result; }, null, { saveFirst: true });
   }
+  useE(() => {
+    if (!dirty) return;
+    const warn = (event) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
 
   const st = doc?.status;
   const lint = Array.isArray(doc?.lint) ? doc.lint : [];
@@ -428,8 +463,9 @@ function PostDrawer({ saas, id, rules, nextSlot, admin, onClose, onChanged }) {
   const siteUrl = `leverads.com.br/blog/${form?.slug || ""}`;
 
   return (
-    <Drawer onClose={tryClose} fechavel={!busy} label="post do blog" largura={880}>
-        <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexShrink: 0 }}>
+    inPortal(<Drawer onClose={tryClose} fechavel={!busy} label="post do blog" largura={760} style={{zIndex:1400}} painelStyle={{overflow:"hidden"}}>
+      <div className="blog-editor">
+        <div className="blog-editor-head" style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-1)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexShrink: 0 }}>
           <div style={{ minWidth: 0 }}>
             <div className="kicker" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               {doc ? <StatusChip status={st} /> : "post"}
@@ -440,14 +476,15 @@ function PostDrawer({ saas, id, rules, nextSlot, admin, onClose, onChanged }) {
             </div>
             <div style={{ fontSize: 17, fontWeight: 600, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{form?.title || doc?.title || "carregando…"}</div>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+          <fieldset disabled={!!busy} className="blog-fields blog-editor-actions" style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
             {doc && st !== "pauta" && <Segmented value={view} onChange={(v) => (v === "preview" ? abrirPreview() : setView("editar"))} options={[{ value: "editar", label: "Editar" }, { value: "preview", label: "Preview" }]} />}
             <button onClick={tryClose} className="mono dim" style={{ fontSize: 16, padding: "0 4px" }} aria-label="fechar">✕</button>
-          </div>
+          </fieldset>
         </div>
 
+        {actionError && <div role="alert" className="blog-error">{actionError} · tente novamente.</div>}
         <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
-          {err && <div style={{ padding: 20, color: "var(--neg)", fontSize: 12.5 }}>não deu pra carregar: {err} <button className="mono" style={{ color: "var(--accent)", marginLeft: 6 }} onClick={load}>tentar de novo</button></div>}
+          {err && <div role="alert" style={{ padding: 20, color: "var(--neg)", fontSize: 12.5 }}>não deu pra carregar: {err} <button className="mono" style={{ color: "var(--accent)", marginLeft: 6 }} onClick={load}>tentar de novo</button></div>}
           {!doc && !err && <div className="mono dim" style={{ fontSize: 12, padding: 20 }}>carregando…</div>}
 
           {doc && view === "preview" && (
@@ -464,7 +501,7 @@ function PostDrawer({ saas, id, rules, nextSlot, admin, onClose, onChanged }) {
           )}
 
           {doc && form && view === "editar" && (
-            <div style={{ padding: "16px 20px 32px", display: "flex", flexDirection: "column", gap: 16 }}>
+            <fieldset className="blog-fields blog-editor-fields" disabled={!!busy || (st === "publicado" && !admin)} style={{ padding: "16px 20px 32px", display: "flex", flexDirection: "column", gap: 16 }}>
               {(lintErr.length > 0 || (st !== "pauta" && lint.length > 0)) && (
                 <div style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "12px 14px", background: "var(--bg-inset)" }}>
                   <div className="kicker" style={{ color: erros || lintErr.some((i) => i.level === "erro") ? "var(--neg)" : "var(--warn)" }}>
@@ -491,37 +528,37 @@ function PostDrawer({ saas, id, rules, nextSlot, admin, onClose, onChanged }) {
               <div className="resp-cols" style={{ "--cols": "minmax(0, 1fr) minmax(0, 1fr)", gap: "12px 16px" }}>
                 <div style={{ gridColumn: "1 / -1" }}>
                   <Label right={<span style={{ color: form.title.length > 60 ? "var(--neg)" : undefined }}>{form.title.length}/60</span>}>título</Label>
-                  <input className="inp" value={form.title} onChange={(e) => set("title", e.target.value)} style={{ width: "100%", marginTop: 4, fontSize: 14, fontWeight: 600 }} />
+                  <input aria-label="Título do post" className="inp" value={form.title} onChange={(e) => set("title", e.target.value)} style={{ width: "100%", marginTop: 4, fontSize: 14, fontWeight: 600 }} />
                 </div>
                 <div style={{ gridColumn: "1 / -1" }}>
                   <Label right={doc.slugLocked ? "URL travada depois de publicada" : "só letras, números e hífen"}>slug</Label>
-                  <input className="inp" value={form.slug} disabled={!!doc.slugLocked} onChange={(e) => set("slug", e.target.value.toLowerCase())} placeholder="gerado a partir do título" style={{ width: "100%", marginTop: 4 }} />
+                  <input aria-label="Slug do post" className="inp" value={form.slug} disabled={!!doc.slugLocked} onChange={(e) => set("slug", e.target.value.toLowerCase())} placeholder="gerado a partir do título" style={{ width: "100%", marginTop: 4 }} />
                   <div className="mono dim" style={{ fontSize: 11, marginTop: 3, wordBreak: "break-all" }}>{siteUrl}</div>
                 </div>
                 <div style={{ gridColumn: "1 / -1" }}>
                   <Label right={<span style={{ color: form.description.length > 155 ? "var(--neg)" : form.description.length < 70 && form.description.length > 0 ? "var(--warn)" : undefined }}>{form.description.length}/155</span>}>descrição (meta)</Label>
-                  <textarea className="inp" value={form.description} onChange={(e) => set("description", e.target.value)} rows={2} style={{ width: "100%", marginTop: 4, height: "auto", padding: "7px 10px", resize: "vertical", lineHeight: 1.45 }} />
+                  <textarea aria-label="Descrição do post" className="inp" value={form.description} onChange={(e) => set("description", e.target.value)} rows={2} style={{ width: "100%", marginTop: 4, height: "auto", padding: "7px 10px", resize: "vertical", lineHeight: 1.45 }} />
                 </div>
                 <div>
                   <Label>palavra-chave</Label>
-                  <input className="inp" value={form.keyword} onChange={(e) => set("keyword", e.target.value)} style={{ width: "100%", marginTop: 4 }} />
+                  <input aria-label="Palavra-chave do post" className="inp" value={form.keyword} onChange={(e) => set("keyword", e.target.value)} style={{ width: "100%", marginTop: 4 }} />
                 </div>
                 <div>
                   <Label>intenção</Label>
-                  <select className="inp" value={form.intent} onChange={(e) => set("intent", e.target.value)} style={{ width: "100%", marginTop: 4 }}>
+                  <select aria-label="Intenção do post" className="inp" value={form.intent} onChange={(e) => set("intent", e.target.value)} style={{ width: "100%", marginTop: 4 }}>
                     {INTENTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                   </select>
                 </div>
                 <div>
                   <Label>categoria</Label>
-                  <select className="inp" value={form.category} onChange={(e) => set("category", e.target.value)} style={{ width: "100%", marginTop: 4 }}>
+                  <select aria-label="Categoria do post" className="inp" value={form.category} onChange={(e) => set("category", e.target.value)} style={{ width: "100%", marginTop: 4 }}>
                     {!form.category && <option value="">escolha…</option>}
                     {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
                 <div>
                   <Label right="separe por vírgula">tags</Label>
-                  <input className="inp" value={tagsText} onChange={(e) => setTagsText(e.target.value)}
+                  <input aria-label="Tags do post" className="inp" value={tagsText} onChange={(e) => { setTagsText(e.target.value); set("tags", e.target.value.split(",").map(t => t.trim()).filter(Boolean)); }}
                     onBlur={() => set("tags", tagsText.split(",").map((t) => t.trim()).filter(Boolean))}
                     style={{ width: "100%", marginTop: 4 }} />
                 </div>
@@ -530,7 +567,7 @@ function PostDrawer({ saas, id, rules, nextSlot, admin, onClose, onChanged }) {
               {st !== "pauta" && (
                 <div>
                   <Label right={`${doc.wordCount || 0} palavras · ${doc.readingMin || 1} min de leitura · markdown`}>texto</Label>
-                  <textarea className="inp code" value={form.body} onChange={(e) => set("body", e.target.value)} spellCheck
+                  <textarea aria-label="Texto do post" className="inp code" value={form.body} onChange={(e) => set("body", e.target.value)} spellCheck
                     style={{ width: "100%", marginTop: 4, height: "auto", minHeight: "60vh", padding: "10px 12px", resize: "vertical", fontSize: 12.5, lineHeight: 1.55 }} />
                 </div>
               )}
@@ -542,10 +579,10 @@ function PostDrawer({ saas, id, rules, nextSlot, admin, onClose, onChanged }) {
                     {form.faq.map((f, i) => (
                       <div key={i} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", padding: "8px 10px", background: "var(--bg-inset)", display: "flex", flexDirection: "column", gap: 6 }}>
                         <div style={{ display: "flex", gap: 8 }}>
-                          <input className="inp" value={f.q} placeholder="pergunta" onChange={(e) => set("faq", form.faq.map((x, j) => (j === i ? { ...x, q: e.target.value } : x)))} style={{ flex: 1, fontWeight: 500 }} />
+                          <input aria-label={`Pergunta frequente ${i + 1}`} className="inp" value={f.q} placeholder="pergunta" onChange={(e) => set("faq", form.faq.map((x, j) => (j === i ? { ...x, q: e.target.value } : x)))} style={{ flex: 1, fontWeight: 500 }} />
                           <button className="mono dim" title="remover pergunta" onClick={() => set("faq", form.faq.filter((_, j) => j !== i))} style={{ fontSize: 14, padding: "0 6px" }}>✕</button>
                         </div>
-                        <textarea className="inp" value={f.a} placeholder="resposta" rows={2} onChange={(e) => set("faq", form.faq.map((x, j) => (j === i ? { ...x, a: e.target.value } : x)))} style={{ width: "100%", height: "auto", padding: "7px 10px", resize: "vertical", lineHeight: 1.45 }} />
+                        <textarea aria-label={`Resposta frequente ${i + 1}`} className="inp" value={f.a} placeholder="resposta" rows={2} onChange={(e) => set("faq", form.faq.map((x, j) => (j === i ? { ...x, a: e.target.value } : x)))} style={{ width: "100%", height: "auto", padding: "7px 10px", resize: "vertical", lineHeight: 1.45 }} />
                       </div>
                     ))}
                     <div><SecondaryButton size="sm" onClick={() => set("faq", [...form.faq, { q: "", a: "" }])}>+ pergunta</SecondaryButton></div>
@@ -605,7 +642,7 @@ function PostDrawer({ saas, id, rules, nextSlot, admin, onClose, onChanged }) {
                   </div>
                 ) : (
                   <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
-                    <input className="inp" value={instruction} onChange={(e) => setInstruction(e.target.value)} maxLength={600}
+                    <input aria-label="Instrução para reescrever" className="inp" value={instruction} onChange={(e) => setInstruction(e.target.value)} maxLength={600}
                       placeholder="ex.: encurte a introdução e troque o exemplo por autopeças" style={{ flex: 1, minWidth: 220 }} />
                     <SecondaryButton disabled={!!busy || !instruction.trim()}
                       onClick={saveThen("revise", () => api.blogRevise(saas, id, instruction.trim()).then((r) => { setInstruction(""); return r; }), "texto reescrito")}>
@@ -620,12 +657,12 @@ function PostDrawer({ saas, id, rules, nextSlot, admin, onClose, onChanged }) {
                   </div>
                 )}
               </div>
-            </div>
+            </fieldset>
           )}
         </div>
 
         {doc && form && (
-          <div style={{ padding: "12px 20px", borderTop: "1px solid var(--line-1)", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", flexShrink: 0, background: "var(--bg-1)" }}>
+          <div className="blog-editor-footer" style={{ padding: "12px 20px", borderTop: "1px solid var(--line-1)", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", flexShrink: 0, background: "var(--bg-1)" }}>
             {st === "pauta" && (
               <>
                 <SecondaryButton disabled={!!busy} onClick={salvar}>{busy === "salvar" ? "salvando…" : "Salvar"}</SecondaryButton>
@@ -640,7 +677,7 @@ function PostDrawer({ saas, id, rules, nextSlot, admin, onClose, onChanged }) {
                   <PrimaryButton disabled={!!busy || erros > 0} onClick={saveThen("approve", () => api.blogAction(saas, id, "approve", when ? { scheduledAt: brtLocalToIso(when) } : {}), "aprovado e agendado")}>
                     {busy === "approve" ? "agendando…" : "Aprovar e agendar"}
                   </PrimaryButton>
-                  <input type="datetime-local" className="inp" value={when} onChange={(e) => setWhen(e.target.value)} title="Opcional: outro dia e hora (Brasília). Vazio = próximo slot da cadência." style={{ width: 190 }} />
+                  <input aria-label="Data e hora da publicação" disabled={!!busy} type="datetime-local" className="inp" value={when} onChange={(e) => setWhen(e.target.value)} title="Opcional: outro dia e hora (Brasília). Vazio = próximo slot da cadência." style={{ width: 190 }} />
                   <span className="dim" style={{ fontSize: 11.5 }}>{when ? "no horário escolhido" : nextSlot ? `próximo slot ${fmtSlot(nextSlot)}` : "próximo slot da cadência"}</span>
                 </div>
                 <span style={{ flex: 1 }} />
@@ -670,17 +707,22 @@ function PostDrawer({ saas, id, rules, nextSlot, admin, onClose, onChanged }) {
               <>
                 <SecondaryButton disabled={!!busy} onClick={() => run("restore", () => api.blogAction(saas, id, "restore"), "restaurado")}>Restaurar</SecondaryButton>
                 <span style={{ flex: 1 }} />
-                <SecondaryButton disabled={!!busy} style={{ color: "var(--neg)" }} onClick={() => { if (window.confirm(`Excluir "${doc.title}" de vez? Não tem volta.`)) run("delete", () => api.blogDelete(saas, id).then(() => onClose()), "excluído"); }}>Excluir</SecondaryButton>
+                <SecondaryButton disabled={!!busy} style={{ color: "var(--neg)" }} onClick={() => { if (window.confirm(`Excluir "${doc.title}" de vez? Não tem volta.`)) run("delete", () => api.blogDelete(saas, id).then(() => onClose()), "excluído", { reload: false }); }}>Excluir</SecondaryButton>
               </>
             )}
           </div>
         )}
-    </Drawer>
+      </div>
+    </Drawer>)
   );
 }
 
 // ── A tela ──────────────────────────────────────────────────────────────────
 function BlogScreen() {
+  const [product] = useActiveSaas();
+  return <BlogWorkspace key={product?.id} />;
+}
+function BlogWorkspace() {
   const [product] = useActiveSaas();
   const saas = product?.id || "";
   const [data, setData] = useS(null);
@@ -693,18 +735,22 @@ function BlogScreen() {
   const [busy, setBusy] = useS("");
   const admin = isAdminUser();
   const tabPicked = useR(false);
+  const writing = useR(false);
+  const readVersion = useR(0);
 
   const load = useC(async () => {
     if (!saas) { setData({ posts: [], counts: {}, rules: {}, state: {} }); return; }
+    const revision = ++readVersion.current;
     try {
       const d = await api.blog(saas);
+      if (revision !== readVersion.current) return;
       setData(d); setErr(null);
       // Primeira carga: se tem rascunho esperando, a tela abre nele (é o que
       // pede ação). Depois disso a aba é escolha da pessoa.
       if (!tabPicked.current) { tabPicked.current = true; if ((d?.counts?.rascunho || 0) > 0) setTab("rascunho"); }
-    } catch (e) { setErr(e.message); setData((cur) => cur || { posts: [], counts: {}, rules: {}, state: {} }); }
+    } catch (e) { if (revision === readVersion.current) setErr(e.message); }
   }, [saas]);
-  useE(() => { setData(null); setSelId(null); tabPicked.current = false; load(); }, [load]);
+  useE(() => { setData(null); setSelId(null); tabPicked.current = false; load(); return () => { readVersion.current++; }; }, [load]);
 
   // O motor grava fora da tela: SSE avisa e a lista recarrega (com folga de 2s
   // pra não repintar a cada gravação em rajada).
@@ -722,6 +768,7 @@ function BlogScreen() {
   }, [load]);
 
   async function gerarPautas() {
+    if (writing.current) return; writing.current = true;
     setBusy("pautas");
     try {
       const r = await api.blogMine(saas, {});
@@ -730,9 +777,10 @@ function BlogScreen() {
       await load();
       if (n) setTab("pauta");
     } catch (e) { toast(`não deu pra gerar pautas: ${e.message}`, "neg"); }
-    finally { setBusy(""); }
+    finally { writing.current = false; setBusy(""); }
   }
   async function rodarAgora() {
+    if (writing.current) return; writing.current = true;
     setBusy("tick");
     try {
       const r = await api.blogTick(saas);
@@ -745,7 +793,7 @@ function BlogScreen() {
       toast(partes.length ? `ciclo rodou: ${partes.join(", ")}${errs ? ` · ${errs} erro` : ""}` : errs ? `ciclo rodou com ${errs} erro: veja o estado do motor` : "ciclo rodou: nada a fazer agora", errs ? "warn" : "pos");
       await load();
     } catch (e) { toast(`não deu pra rodar: ${e.message}`, "neg"); }
-    finally { setBusy(""); }
+    finally { writing.current = false; setBusy(""); }
   }
 
   const posts = data?.posts || [];
@@ -762,43 +810,36 @@ function BlogScreen() {
   const semSaas = data && !saas;
 
   return (
-    <div className="marketing-page" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <PageHead className="marketing-head"
-        title="Blog"
-        sub={`o motor roda a cada 15 minutos · pauta, rascunho e publicação na cadência de ${data?.rules?.cadenciaSemanal || 3} posts por semana`}
-      >
-        <SecondaryButton disabled={!!busy || !saas || !data?.aiConfigured} title={data && !data.aiConfigured ? "IA não configurada no servidor" : "A IA propõe temas novos agora"} onClick={gerarPautas}>{busy === "pautas" ? "gerando…" : "Gerar pautas"}</SecondaryButton>
+    <div className="marketing-page blog-page" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <header className="blog-head"><h1>Blog</h1><div>        <SecondaryButton disabled={!!busy || !saas || !data?.aiConfigured} title={data && !data.aiConfigured ? "IA não configurada no servidor" : "A IA propõe temas novos agora"} onClick={gerarPautas}>{busy === "pautas" ? "gerando…" : "Gerar pautas"}</SecondaryButton>
         <SecondaryButton disabled={!!busy || !saas} title="Roda um ciclo do motor agora: pauta, rascunho e publicação do que venceu" onClick={rodarAgora}>{busy === "tick" ? "rodando…" : "Rodar ciclo agora"}</SecondaryButton>
-        <PrimaryButton disabled={!saas} onClick={() => setNewOpen(true)}>+ nova pauta</PrimaryButton>
-      </PageHead>
+        <PrimaryButton disabled={!saas || !!busy} onClick={() => setNewOpen(true)}>Criar pauta</PrimaryButton>
+</div></header>
 
-      <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px" }}>
-        {data && countOf("rascunho") > 0 && <AvisoTopo tom="warn"
-          titulo={`${countOf("rascunho")} rascunho${countOf("rascunho") === 1 ? "" : "s"} esperando revisão`}
-          nota="A IA escreveu. Falta conferir o texto e aprovar a publicação."
-          acao={{ label: "revisar agora", onClick: () => { setTab("rascunho"); setQ(""); } }} />}
+      <div className="blog-body">
+        {data && countOf("rascunho") > 0 && <section className="blog-review-call"><span /><div><strong>{countOf("rascunho")} rascunho{countOf("rascunho") === 1 ? "" : "s"} esperando revisão</strong><p>A IA escreveu. Falta conferir o texto e aprovar a publicação.</p></div><PrimaryButton onClick={() => { setTab("rascunho"); setQ(""); }}>Revisar agora</PrimaryButton></section>}
 
         {data !== null && !semSaas && (
-          <div style={{ marginTop: 16 }}>
+          <div>
             <AutomacaoCard saas={saas} rules={data.rules} state={data.state} aiConfigured={!!data.aiConfigured} nextSlot={data.nextSlot} admin={admin}
-              onRules={(rules, state) => setData((d) => ({ ...d, rules, state: state || d.state }))}
+              onRules={(rules, state) => { readVersion.current++; setData((d) => ({ ...d, rules, state: state || d.state })); }}
               onDigest={() => setDigestOpen(true)} />
           </div>
         )}
 
-        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 20, flexWrap: "wrap" }}>
+        <div className="blog-filters">
           <FilterTab active={tab === "todos"} count={posts.filter((p) => p.status !== "arquivado").length} onClick={() => setTab("todos")}>Todos</FilterTab>
           {STATUS.map((s) => (
             <FilterTab key={s.id} active={tab === s.id} count={countOf(s.id)} onClick={() => setTab(s.id)}>{s.label}s</FilterTab>
           ))}
           <span style={{ flex: 1 }} />
-          <input type="search" value={q} onChange={(e) => setQ(e.target.value)} className="inp" placeholder="buscar título, palavra-chave…" style={{ width: "min(100%, 260px)" }} />
+          <input aria-label="Buscar posts" type="search" value={q} onChange={(e) => setQ(e.target.value)} className="inp" placeholder="buscar título, palavra-chave…" style={{ width: "min(100%, 260px)" }} />
         </div>
 
-        {err && <div style={{ marginTop: 14, color: "var(--neg)", fontSize: 12.5 }}>não deu pra carregar: {err} <button className="mono" style={{ color: "var(--accent)", marginLeft: 6 }} onClick={load}>tentar de novo</button></div>}
+        {err && <div role="alert" style={{ marginTop: 14, color: "var(--neg)", fontSize: 12.5 }}>não deu pra carregar: {err} <button className="mono" style={{ color: "var(--accent)", marginLeft: 6 }} onClick={load}>tentar de novo</button></div>}
 
-        <div style={{ marginTop: 14, background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
-          {data === null && <div className="mono dim" style={{ fontSize: 12, padding: 20 }}>carregando…</div>}
+        <section className="blog-list">
+          {data === null && !err && <div role="status" className="mono dim" style={{ fontSize: 12, padding: 20 }}>carregando…</div>}
           {data !== null && semSaas && <EmptyState title="Escolha um produto" hint="O blog é por produto: selecione o workspace na barra lateral." />}
           {data !== null && !semSaas && !visiveis.length && (
             <EmptyState
@@ -825,7 +866,7 @@ function BlogScreen() {
               </table>
             </div>
           )}
-        </div>
+        </section>
         {data !== null && !semSaas && visiveis.length > 0 && (
           <div className="mono dim" style={{ fontSize: 11, marginTop: 8 }}>{visiveis.length} de {posts.length} posts · <InfoLink texto={`${publicados30} publicados nos últimos 30 dias${ultimoPub ? ` · última publicação ${fmtDay(ultimoPub.publishedAt)}` : ""}`}>publicações no período</InfoLink></div>
         )}
@@ -837,7 +878,7 @@ function BlogScreen() {
       )}
       {digestOpen && <DigestModal saas={saas} onClose={() => setDigestOpen(false)} />}
       {selId && (
-        <PostDrawer saas={saas} id={selId} rules={data?.rules} nextSlot={data?.nextSlot} admin={admin}
+        <PostDrawer key={`${saas}:${selId}`} saas={saas} id={selId} rules={data?.rules} nextSlot={data?.nextSlot} admin={admin}
           onClose={() => setSelId(null)} onChanged={load} />
       )}
     </div>
