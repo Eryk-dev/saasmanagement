@@ -199,6 +199,15 @@ ocupação e reservas continuam valendo. A rota manual `/api/agenda/free-slots`
 mantém sua régua existente. Testes: `sdr-agenda.test.js`, `sdr-brain.test.js`,
 `sdr-flow.test.js` e `sdr-humanizacao.test.js`.
 
+**Cancelamento do SDR (21/09/2026):** quando o lead cancela ou avisa que não
+poderá comparecer, `sdr-brain.js` cancela a call pelo fluxo canônico, libera
+reservas e pergunta se ele gostaria de remarcar, sem oferecer horários nesse
+turno. O estado `sdrLog.reschedule` persiste a espera pelo consentimento. Um
+"sim" oferece horários atuais; somente a escolha posterior permite agendar.
+Recusa ou resposta ambígua não libera agenda. Datas e ofertas anteriores ao
+cancelamento não valem como pedido para a nova call. Áudio transcrito segue
+a mesma regra; os testes ficam em `sdr-brain.test.js`.
+
 1. **Receita de produto:** `rollupProduct` deriva clientes, ARR e MRR de
    `customers`, excluindo os churnados segundo `churn.js`. Não usar os números
    crus do produto. `syncCustomerArr` reconcilia assinaturas e preserva o
