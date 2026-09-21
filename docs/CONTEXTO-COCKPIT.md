@@ -557,3 +557,16 @@ alteração funcional nesta preparação.
   usa pagamento e proposta no WhatsApp em linha, com o mesmo modal de pagamento;
   geração explícita e menu ⋯ ficam apenas no pipeline.
   Revisão isolada: `cd packages/web && node scripts/review/today-shortcuts.mjs`.
+
+### Resumo rápido no follow-up — 21/09/2026
+
+Nas atividades, cartões de kind `followup` mostram a última activity
+`call_summary` de venda (`meta.kind = call`, ou ausente no legado), entre os
+blocos de apresentação/perguntas e o histórico. Resumos de integração não
+substituem esse contexto. Novos resumos gerados por `anthropic.js` incluem
+`summary.retomada` com `combinado`, `objecoes` e `beneficios`: uma frase curta
+por campo, apenas informações explícitas da transcrição. Resumos antigos usam
+`compromissos` e `objecoes`; benefícios ausentes são sinalizados como não
+registrados. Abrir o cartão só consulta a REST, sem gerar resumo nem enviar
+mensagem. Validação de navegador: `node scripts/review/followup-summary.mjs`
+em `packages/web`.

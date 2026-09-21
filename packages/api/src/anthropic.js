@@ -13,9 +13,19 @@ const DEFAULT_OPENROUTER_MODEL = "openai/gpt-5.6-luna";
 const SUMMARY_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["resumo", "temperatura", "temperaturaPorque", "dores", "objecoes", "compromissos", "followup"],
+  required: ["resumo", "temperatura", "temperaturaPorque", "dores", "objecoes", "compromissos", "followup", "retomada"],
   properties: {
     resumo: { type: "string", description: "O que foi conversado, em 3 a 5 frases diretas" },
+    retomada: {
+      type: "object", additionalProperties: false,
+      required: ["combinado", "objecoes", "beneficios"],
+      description: "Resumo de consulta rápida para o follow-up: uma frase objetiva por campo, até 25 palavras. Use vazio se não houver informação explícita na transcrição. Não invente nem transforme sugestão em combinado.",
+      properties: {
+        combinado: { type: "string", description: "O que foi combinado para o próximo contato, incluindo prazo e responsável quando mencionados" },
+        objecoes: { type: "string", description: "Principais objeções do cliente, priorizando as pendentes e distinguindo as que foram resolvidas" },
+        beneficios: { type: "string", description: "Benefícios concretos discutidos na call para este cliente. Não deduza benefícios de dores e não use promessas genéricas do produto" },
+      },
+    },
     temperatura: { type: "string", enum: ["quente", "morno", "frio"] },
     temperaturaPorque: { type: "string", description: "1 frase explicando a temperatura" },
     dores: { type: "array", items: { type: "string" }, description: "Dores do lead CONFIRMADAS na conversa" },

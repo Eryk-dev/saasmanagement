@@ -18,6 +18,7 @@ const SUMMARY = {
   resumo: "Ana quer operar 3 contas no ML sem risco de banimento e curtiu a demo.",
   temperatura: "quente",
   temperaturaPorque: "pediu proposta na própria call",
+  retomada: { combinado: "Enviar proposta até sexta.", objecoes: "Preço, tratado com economia operacional.", beneficios: "Economizar na operação das três contas." },
   dores: ["medo de banimento por vincular contas"],
   objecoes: [{ objecao: "preço acima do esperado", comoFoiTratada: "mostrou economia vs contratar operador", resolvida: true }],
   compromissos: ["enviar proposta até sexta"],
@@ -61,6 +62,7 @@ test("anthropic client: manda opus-4-8 + structured output e devolve o resumo pa
 
   const { summary } = await a.summarizeCall({ transcript: "Leo: oi\nAna: oi", lead: { name: "Ana" }, today: "12/07/2026 20:00" });
   assert.equal(summary.temperatura, "quente");
+  assert.deepEqual(summary.retomada, SUMMARY.retomada);
 
   const req = f.calls[0];
   assert.equal(req.init.headers["x-api-key"], "sk-test");
@@ -68,6 +70,8 @@ test("anthropic client: manda opus-4-8 + structured output e devolve o resumo pa
   assert.deepEqual(req.body.thinking, { type: "adaptive" });
   assert.equal(req.body.output_config.format.type, "json_schema");
   assert.equal(req.body.output_config.format.schema.properties.temperatura.enum.length, 3);
+  assert.ok(req.body.output_config.format.schema.required.includes("retomada"));
+  assert.deepEqual(req.body.output_config.format.schema.properties.retomada.required, ["combinado", "objecoes", "beneficios"]);
   assert.ok(sysOf(req.body).includes("travessão")); // regra de copy do Leo no prompt
   assert.ok(req.body.messages[0].content.includes("Transcrição da call"));
 
@@ -93,6 +97,7 @@ test("openrouter: chave sk-or-* muda endpoint/formato sozinha e parseia (até co
 
   const { summary } = await a.summarizeCall({ transcript: "Leo: oi", lead: { name: "Ana" } });
   assert.equal(summary.temperatura, "quente");
+  assert.deepEqual(summary.retomada, SUMMARY.retomada);
 
   const req = calls[0];
   assert.ok(req.url.includes("openrouter.ai/api/v1/chat/completions"));

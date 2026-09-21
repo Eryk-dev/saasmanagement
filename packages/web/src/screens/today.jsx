@@ -1159,6 +1159,25 @@ const ACT_LABELS = { whatsapp: "whatsapp", call: "ligação", email: "e-mail", m
 // importa `clientSummary` desta tela desde antes.
 export { clientSummary };
 
+// Consulta rápida do follow-up: só dados da última call de VENDA.
+export function FollowupCallSummary({ summary, loading = false, error = false, onRetry }) {
+  const compact = summary?.retomada;
+  const combined = compact ? compact.combinado : (summary?.compromissos || []).join(" · ");
+  const objections = compact ? compact.objecoes : [...(summary?.objecoes || [])]
+    .sort((a, b) => Number(!!a.resolvida) - Number(!!b.resolvida))
+    .map((o) => `${o.objecao} (${o.resolvida ? "tratada" : "em aberto"})`).join(" · ");
+  return <LeadSection title="Resumo da call de vendas" className="today-followup-summary">
+    {loading ? <p className="today-script-hint" role="status">Carregando resumo…</p>
+      : error ? <p className="today-script-hint" role="alert">Não foi possível carregar o resumo. <button onClick={onRetry}>Tentar novamente</button></p>
+      : !summary ? <p className="today-script-hint">Ainda não há resumo da gravação desta call.</p>
+      : <dl>
+        <div><dt>Próximo contato</dt><dd>{combined || "Nenhum combinado registrado."}</dd></div>
+        <div><dt>Objeções</dt><dd>{objections || "Nenhuma objeção registrada."}</dd></div>
+        <div><dt>Benefícios</dt><dd>{compact?.beneficios || "Não registrados neste resumo."}</dd></div>
+      </dl>}
+  </LeadSection>;
+}
+
 // Resumo da última call por IA (activity call_summary, gerado da transcrição do
 // Meet) mostrado no roteiro pra o closer trabalhar o follow-up com contexto: o
 // que rolou, objeções (tratadas/em aberto), combinados, próximo passo e a
@@ -1590,9 +1609,11 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
               <LeadChecklist readable key={l.id} checklist={scriptChecklist(saasCfg, l)} onPatch={patch} leadId={l.id} title="Respostas do lead" />
             </LeadSection>
           </div>
+          {stageKind(saasCfg, l.stage) === "followup" && <FollowupCallSummary summary={salesSummary}
+            loading={acts === null} error={actsError} onRetry={() => setActsReload((n) => n + 1)} />}
           {preview && <LeadSection title="Pré-visualização do roteiro"><ScriptBlocks script={script} tokens={tokens} /></LeadSection>}
           <LeadSection title="Histórico de ações e anotações" className="today-script-history">
-            <CallSummaryCard summary={callSummary} phone={l.phone} onSend={onWhatsapp ? (msg) => onWhatsapp(l, msg) : null} />
+            {stageKind(saasCfg, l.stage) !== "followup" && <CallSummaryCard summary={callSummary} phone={l.phone} onSend={onWhatsapp ? (msg) => onWhatsapp(l, msg) : null} />}
             {!preview && <ActivityComposer embedded lead={l} onLogged={() => setActsReload((n) => n + 1)} />}
             {acts === null && <p className="today-script-hint" role="status">Carregando histórico…</p>}
             {actsError && <p role="alert" className="today-script-hint">Não foi possível carregar o histórico. <button onClick={() => setActsReload((n) => n + 1)}>Tentar novamente</button></p>}

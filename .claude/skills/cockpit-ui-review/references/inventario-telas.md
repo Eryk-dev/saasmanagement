@@ -1214,3 +1214,8 @@ Validação desktop/mobile em `scripts/review/followup-return.mjs`.
 
 Cabeçalho da atividade revisado em 21/09/2026: telefone do cadastro ao lado do
 nome, com quebra de linha quando necessário. Conferido em 1440px e 390px.
+
+Follow-up revisado em 21/09/2026: resumo da última call de vendas entre
+apresentação/perguntas e histórico, com próximo contato, objeções e benefícios.
+Estados de carregamento, erro e ausência; legado preservado sem inventar
+benefícios. Validado em `scripts/review/followup-summary.mjs` (1440px/390px).
