@@ -1,4 +1,5 @@
 import React from "react";
+import "./settings.css";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
 import { CAREER_LEVELS } from "../lib/levels.js";
 import { EmptyState, PrimaryButton, Avatar } from "../atoms.jsx";
@@ -18,7 +19,7 @@ import { FilterTab, PageHead } from "../components/viz.jsx";
 
 const { useState: useStS } = React;
 
-// O App remonta a tela a cada refresh pós-save (key=dataVersion); guardar a
+// A última seção continua selecionada ao remontar a tela; guardar a
 // última visão em módulo preserva a aba escolhida entre os remounts. O SaaS
 // ativo vem do workspace global (seletor no pé da sidebar).
 const lastView = { tab: "funnel" };
@@ -31,7 +32,12 @@ const inputStyle = {
 const slug = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
   .toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
 
-function SettingsScreen({ saasId }) {
+const SettingsSaveContext = React.createContext(null);
+function SettingsScreen() {
+  const [product] = useActiveSaas();
+  return <SettingsWorkspace key={product?.id} />;
+}
+function SettingsWorkspace() {
   const { SAAS } = window.SEED;
   const { openForm } = useData();
   const [activeProduct] = useActiveSaas();
@@ -49,6 +55,32 @@ function SettingsScreen({ saasId }) {
     ["integrations","Integrações"],
   ];
 
+
+  const [saveState,setSaveState]=useStS("idle"), [pending,setPending]=useStS(0), [revision,setRevision]=useStS(0);
+  const registry=React.useRef(new Map()), bulk=React.useRef(false);
+  const saveContext=React.useMemo(()=>({
+    register(id,run,reset){registry.current.set(id,{run,reset});return()=>registry.current.delete(id);},
+    lock(){setPending(n=>n+1);},
+    unlock(){setPending(n=>Math.max(0,n-1));},
+    start(){setPending(n=>n+1);if(!bulk.current)setSaveState("busy");},
+    finish(ok){setPending(n=>Math.max(0,n-1));if(!bulk.current)setSaveState(ok?"done":"error");},
+  }),[]);
+  React.useEffect(()=>{setSaveState("idle");},[tab]);
+  async function saveAll(){
+    if(bulk.current || pending) return;
+    const targets=[...registry.current.values()].map(v=>v.run);
+    if(!targets.length){setSaveState("idle");return;}
+    bulk.current=true;setSaveState("busy");
+    let ok=true;
+    try { for(const run of targets) if(!await run())ok=false; }
+    finally {bulk.current=false;setSaveState(ok?"done":"error");}
+  }
+  const saveLook = saveState === "done"
+    ? { background: "var(--pos)", color: "#fff" }
+    : saveState === "error"
+      ? { background: "var(--neg)", color: "#fff" }
+      : { background: "var(--btn-bg)", color: "var(--btn-fg)" };
+
   if (!s) return (
     <EmptyState
       title="Nenhum SaaS para configurar"
@@ -57,41 +89,13 @@ function SettingsScreen({ saasId }) {
     />
   );
 
-  // Feedback do "salvar alterações": o clique dispara os botões [data-settings-save]
-  // das seções montadas; cada um emite settings-saved / settings-save-error no
-  // fim, e o botão do topo conta a história (salvando… → salvo ✓ / erro). O
-  // timeout cobre o caso de nenhuma seção responder (nada pra salvar).
-  const [saveState, setSaveState] = useStS("idle"); // idle | busy | done | error
-  React.useEffect(() => {
-    const ok = () => setSaveState((v) => (v === "busy" || v === "done" ? "done" : v));
-    const bad = () => setSaveState("error");
-    window.addEventListener("settings-saved", ok);
-    window.addEventListener("settings-save-error", bad);
-    return () => { window.removeEventListener("settings-saved", ok); window.removeEventListener("settings-save-error", bad); };
-  }, []);
-  React.useEffect(() => {
-    if (saveState === "idle") return;
-    const t = setTimeout(() => setSaveState("idle"), saveState === "busy" ? 5000 : saveState === "error" ? 4000 : 2500);
-    return () => clearTimeout(t);
-  }, [saveState]);
-  function saveAll() {
-    const targets = document.querySelectorAll("[data-settings-save]");
-    setSaveState(targets.length ? "busy" : "done"); // sem seção pra salvar = já está tudo salvo
-    targets.forEach((button) => button.click());
-  }
-  const saveLook = saveState === "done"
-    ? { background: "var(--pos)", color: "#fff" }
-    : saveState === "error"
-      ? { background: "var(--neg)", color: "#fff" }
-      : { background: "var(--btn-bg)", color: "var(--btn-fg)" };
-
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, width: "100%" }}>
+    <SettingsSaveContext.Provider value={saveContext}><div className="settings-page">
       <PageHead title="Configurações" sub={`funil, campos e integrações · ${s?.name}`}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button onClick={() => window.location.reload()} style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-1)", borderRadius: 999, background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>descartar</button>
-          <button onClick={saveAll} disabled={saveState === "busy"} style={{ height: 32, padding: "0 15px", borderRadius: 999, fontSize: 12.5, fontWeight: 600, transition: "background .15s ease", ...saveLook }}>
-            {saveState === "busy" ? "salvando…" : saveState === "done" ? "salvo ✓" : saveState === "error" ? "erro ao salvar" : "salvar alterações"}
+          <button disabled={pending>0 || saveState==="busy"} onClick={() => {setRevision(n=>n+1);setSaveState("idle");}} style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-1)", borderRadius: 999, background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600 }}>descartar</button>
+          <button onClick={saveAll} disabled={pending>0 || saveState === "busy" || tab === "team"} style={{ height: 32, padding: "0 15px", borderRadius: 999, fontSize: 12.5, fontWeight: 600, transition: "background .15s ease", ...saveLook }}>
+            {pending>0 || saveState === "busy" ? "salvando…" : saveState === "done" ? "salvo ✓" : saveState === "error" ? "erro ao salvar" : tab === "team" ? "equipe salva ao editar" : "salvar alterações"}
           </button>
         </div>
       </PageHead>
@@ -100,10 +104,10 @@ function SettingsScreen({ saasId }) {
           e quebravam em duas, empurrando o conteúdo. Como coluna, cada seção
           fica legível e a tela ganha o espaço de volta. No mobile o menu volta
           pra cima, em linha rolável, porque ali a coluna comeria a largura. */}
-      <div className="set-cols" style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "grid", gridTemplateColumns: "186px minmax(0, 1fr)", gap: 12, alignItems: "start" }}>
-        <nav className="set-nav" style={{ background: "var(--bg-1)", borderRadius: 24, padding: 8, boxShadow: "var(--shadow-card)", display: "flex", flexDirection: "column", gap: 2, position: "sticky", top: 0 }}>
+      <div className="set-cols">
+        <nav aria-label="Seções das configurações" className="set-nav" style={{ background: "var(--bg-1)", borderRadius: 24, padding: 8, boxShadow: "var(--shadow-card)", display: "flex", flexDirection: "column", gap: 2, position: "sticky", top: 0 }}>
           {TABS.map(([k, l]) => (
-            <button key={k} onClick={() => setTab(k)}
+            <button key={k} aria-current={tab===k?"page":undefined} disabled={pending>0 || saveState==="busy"} onClick={() => setTab(k)}
               style={{ textAlign: "left", padding: "9px 12px", borderRadius: 999, fontSize: 13, fontWeight: tab === k ? 650 : 500, cursor: "pointer",
                 background: tab === k ? "var(--accent-soft)" : "transparent",
                 color: tab === k ? "var(--accent)" : "var(--fg-2)",
@@ -112,7 +116,7 @@ function SettingsScreen({ saasId }) {
             </button>
           ))}
         </nav>
-        <div style={{ minWidth: 0 }}>
+        <fieldset onChangeCapture={()=>{if(!pending && !bulk.current){setSaveState("idle");for(const v of registry.current.values())v.reset?.();}}} key={`${s.id}:${tab}:${revision}`} disabled={pending>0 || saveState==="busy"} className={`settings-content settings-${tab}`}>
           {/* key={s.id}: troca de workspace REMONTA o editor — sem isso o rascunho
               seedado do produto anterior sobrevive e o Salvar gravaria a config
               de um produto por cima do outro. */}
@@ -122,74 +126,49 @@ function SettingsScreen({ saasId }) {
           {tab === "team"         && <TeamSettings />}
           {tab === "fields"       && <FieldsSettings key={s.id} s={s} />}
           {tab === "integrations" && <IntegrationsSettings key={s.id} s={s} />}
-        </div>
+        </fieldset>
       </div>
-    </div>
+    </div></SettingsSaveContext.Provider>
   );
 }
 
 // Barra de salvar compartilhada das abas (estado ocupado + erro + dica).
 // No sucesso: reseta o "Salvando…" e mostra "Salvo ✓" por alguns segundos (o
 // refresh não remonta a árvore, então SEM o reset o botão ficava preso).
-function SaveBar({ onSave, disabled, hint, busyLabel = "Salvando…", label = "Salvar" }) {
-  const [busy, setBusy] = useStS(false);
-  const [error, setError] = useStS(null);
-  const [done, setDone] = useStS(false);
-  const mounted = React.useRef(true);
-  React.useEffect(() => () => { mounted.current = false; }, []);
-  async function go() {
-    setBusy(true); setError(null); setDone(false);
-    try {
-      await onSave();
-      window.dispatchEvent(new Event("settings-saved")); // feedback do botão do topo
-      if (!mounted.current) return;
-      setBusy(false); setDone(true);
-      setTimeout(() => { if (mounted.current) setDone(false); }, 2500);
-    } catch (e) {
-      window.dispatchEvent(new Event("settings-save-error"));
-      if (mounted.current) { setBusy(false); setError(e.message || String(e)); }
-    }
-  }
-  return (
-    <>
-      <button data-settings-save onClick={go} disabled={busy || disabled} aria-label={label} style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clipPath: "inset(50%)" }}>{busy ? busyLabel : done ? "Salvo ✓" : label}</button>
-      {error && <span style={{ display: "block", marginTop: 10, fontSize: 12, color: "var(--neg)" }}>{error}</span>}
-    </>
-  );
+function useSettingsSave(onSave) {
+  const context=React.useContext(SettingsSaveContext), id=React.useId();
+  const latest=React.useRef(onSave), flight=React.useRef(null), mounted=React.useRef(true);
+  latest.current=onSave;
+  const [state,setState]=useStS("idle"),[error,setError]=useStS(null);
+  React.useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
+  const go=React.useCallback(()=>{
+    if(flight.current)return flight.current;
+    setState("busy");setError(null);context?.start();
+    flight.current=(async()=>{
+      let ok=false;
+      try {await latest.current();ok=true;if(mounted.current)setState("done");}
+      catch(e){if(mounted.current){setState("error");setError(e.message || "Não foi possível salvar.");}}
+      finally {flight.current=null;context?.finish(ok);}
+      return ok;
+    })();
+    return flight.current;
+  },[context]);
+  React.useEffect(()=>context?.register(id,go,()=>setState(s=>s==="done"?"idle":s)),[context,id,go]);
+  return {go,state,error};
 }
-
-// Botão de salvar VISÍVEL dos cards (Integrações): mesmo contrato do SaveBar
-// (data-settings-save responde ao "salvar alterações" do topo + eventos de
-// feedback), mas com o estado na cara — salvando… → salvo ✓, erro ao lado.
-function CardSaveButton({ onSave, label = "salvar" }) {
-  const [busy, setBusy] = useStS(false);
-  const [done, setDone] = useStS(false);
-  const [error, setError] = useStS("");
-  const mounted = React.useRef(true);
-  React.useEffect(() => () => { mounted.current = false; }, []);
-  async function go() {
-    if (busy) return;
-    setBusy(true); setError(""); setDone(false);
-    try {
-      await onSave();
-      window.dispatchEvent(new Event("settings-saved"));
-      if (!mounted.current) return;
-      setBusy(false); setDone(true);
-      setTimeout(() => { if (mounted.current) setDone(false); }, 2500);
-    } catch (e) {
-      window.dispatchEvent(new Event("settings-save-error"));
-      if (mounted.current) { setBusy(false); setError(e.message || "não deu pra salvar"); }
-    }
-  }
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-      {error && <span style={{ fontSize: 11.5, color: "var(--neg)" }}>{error}</span>}
-      <button data-settings-save onClick={go} disabled={busy}
-        style={{ ...chromeBtnStyleSmall, borderColor: done ? "var(--pos)" : "var(--accent-line)", color: done ? "var(--pos)" : "var(--accent)", opacity: busy ? 0.7 : 1 }}>
-        <span style={{ fontSize: 11 }}>{busy ? "salvando…" : done ? "salvo ✓" : label}</span>
-      </button>
-    </span>
-  );
+function SaveBar({onSave, disabled, hint, busyLabel="Salvando…",label="Salvar"}) {
+  const {go,state,error}=useSettingsSave(onSave);
+  return <div className="settings-save-note">
+    <button className="settings-save-hidden" onClick={go} disabled={disabled || state==="busy"} tabIndex={-1} aria-hidden="true">{state==="busy"?busyLabel:label}</button>
+    {error && <span role="alert">{error}</span>}
+    {state==="done" && <span role="status">{hint || "Alterações salvas."}</span>}
+  </div>;
+}
+function CardSaveButton({onSave,label="salvar"}) {
+  const {go,state,error}=useSettingsSave(onSave);
+  return <span className="settings-card-save">{error && <span role="alert">{error}</span>}
+    <button onClick={go} disabled={state==="busy"} style={chromeBtnStyleSmall}>{state==="busy"?"salvando…":state==="done"?"salvo ✓":label}</button>
+  </span>;
 }
 
 // ───────────────────────────────────────────────────────── Funil & estágios
@@ -243,12 +222,13 @@ function FunnelSettings({ s }) {
     clean.forEach((r, i) => { if (r._orig && r._orig !== funnel[i].stage) renames[r._orig] = funnel[i].stage; });
     const res = await api.saveFunnel(s.id, funnel, renames);
     setMigrated(res.migrated);
+    setRows(current=>current.map(r=>({...r,_orig:String(r.stage || "").trim()})));
     await refresh();
   }
 
   const wonCount = rows.filter(r => r.kind === "ganho").length;
   const cadInput = (i, f, k, ph, title, width = 36) => (
-    <input type="number" min="0" value={cad(f, k)} placeholder={ph} title={title}
+    <input aria-label={`${title} · ${f.stage || "Nova etapa"}`} type="number" min="0" value={cad(f, k)} placeholder={ph} title={title}
       onChange={(e) => setCad(i, k, e.target.value)}
       style={{ ...inputStyle, width, height: 32, padding: "0 5px", textAlign: "right" }} />
   );
@@ -256,7 +236,7 @@ function FunnelSettings({ s }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <section style={{ background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
-        <div style={{ padding: "24px var(--pad-x) 0" }}><SettingHeader number="01" title="Etapas do funil" sub="a ordem define a régua de progresso" /></div>
+        <div style={{ padding: "24px var(--pad-x) 0" }}><SettingHeader number="01" title="Funil e estágios" sub="a ordem aqui é a ordem do kanban · o tipo decide o roteiro e a régua de atraso · renomear leva os leads com ele" /></div>
         <div style={{ padding: "16px var(--pad-x) 20px" }}>
           <div className="tbl-x">
             <div style={{ minWidth: 690 }}>
@@ -266,11 +246,11 @@ function FunnelSettings({ s }) {
               {rows.map((f, i) => (
                 <div key={i} style={{ display: "grid", gridTemplateColumns: "32px 1.4fr 1fr 1.2fr 86px 40px", gap: 12, padding: "10px 0", alignItems: "center", borderBottom: i < rows.length - 1 ? "1px solid var(--line-faint)" : "none" }}>
                   <span style={{ display: "flex", flexDirection: "column", alignItems: "center", lineHeight: 1 }} title="mover etapa">
-                    <button type="button" onClick={() => move(i, -1)} disabled={i === 0} style={arrowStyle(i === 0)}>↑</button>
-                    <button type="button" onClick={() => move(i, 1)} disabled={i === rows.length - 1} style={arrowStyle(i === rows.length - 1)}>↓</button>
+                    <button aria-label={`Subir ${f.stage || "etapa"}`} type="button" onClick={() => move(i, -1)} disabled={i === 0} style={arrowStyle(i === 0)}>↑</button>
+                    <button aria-label={`Descer ${f.stage || "etapa"}`} type="button" onClick={() => move(i, 1)} disabled={i === rows.length - 1} style={arrowStyle(i === rows.length - 1)}>↓</button>
                   </span>
-                  <input value={f.stage || ""} placeholder="Nome da etapa" onChange={(e) => update(i, { stage: e.target.value })} style={{ ...inputStyle, height: 34, padding: "0 2px", borderColor: "transparent", background: "transparent", fontSize: 13.5, fontWeight: 600 }} />
-                  <select value={KIND_IDS.includes(f.kind) ? f.kind : guessKind(f.stage, i)} onChange={(e) => update(i, { kind: e.target.value })} style={{ ...inputStyle, height: 32, fontSize: 12, background: "var(--bg-2)", borderColor: "transparent" }}>
+                  <input aria-label={`Nome da etapa ${i+1}`} value={f.stage || ""} placeholder="Nome da etapa" onChange={(e) => update(i, { stage: e.target.value })} style={{ ...inputStyle, height: 34, padding: "0 2px", borderColor: "transparent", background: "transparent", fontSize: 13.5, fontWeight: 600 }} />
+                  <select aria-label={`Tipo de ${f.stage || "etapa"}`} value={KIND_IDS.includes(f.kind) ? f.kind : guessKind(f.stage, i)} onChange={(e) => update(i, { kind: e.target.value })} style={{ ...inputStyle, height: 32, fontSize: 12, background: "var(--bg-2)", borderColor: "transparent" }}>
                     {KIND_IDS.map((k) => <option key={k} value={k}>{KINDS[k].label}</option>)}
                   </select>
                   <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, color: "var(--fg-3)", whiteSpace: "nowrap" }}>
@@ -287,7 +267,7 @@ function FunnelSettings({ s }) {
                       return n || "—";
                     })()}
                   </span>
-                  <button type="button" onClick={() => remove(i)} style={{ color: "var(--fg-4)", fontSize: 13 }}>✕</button>
+                  <button aria-label={`Remover ${f.stage || "etapa"}`} type="button" onClick={() => remove(i)} style={{ color: "var(--fg-4)", fontSize: 13 }}>✕</button>
                 </div>
               ))}
             </div>
@@ -301,7 +281,7 @@ function FunnelSettings({ s }) {
       </section>
 
       <LossReasonsSettings s={s} />
-      <AutomaticConversionSettings />
+
     </div>
   );
 }
@@ -327,38 +307,12 @@ function LossReasonsSettings({ s }) {
       <div style={{ padding: "16px var(--pad-x) 24px", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         {rows.map((r, i) => (
           <span key={i} style={{ display: "inline-flex", alignItems: "center", height: 34, border: "1px solid var(--line-1)", borderRadius: 999, background: "var(--bg-1)", padding: "0 8px 0 12px" }}>
-            <input value={r.label || ""} placeholder="Novo motivo" onChange={(e) => setRows((current) => current.map((item, index) => index === i ? { ...item, label: e.target.value } : item))} style={{ width: Math.max(64, String(r.label || "Novo motivo").length * 7.5), border: 0, background: "transparent", fontSize: 12.5, fontWeight: 600, color: "var(--fg-2)" }} />
+            <input aria-label={`Motivo de perda ${i+1}`} value={r.label || ""} placeholder="Novo motivo" onChange={(e) => setRows((current) => current.map((item, index) => index === i ? { ...item, label: e.target.value } : item))} style={{ width: Math.max(64, String(r.label || "Novo motivo").length * 7.5), border: 0, background: "transparent", fontSize: 12.5, fontWeight: 600, color: "var(--fg-2)" }} />
             <button type="button" onClick={() => setRows((current) => current.filter((_, index) => index !== i))} style={{ color: "var(--fg-4)", fontSize: 11, padding: "0 2px" }}>✕</button>
           </span>
         ))}
         <button type="button" onClick={() => setRows((current) => [...current, { id: "", label: "" }])} style={{ height: 32, padding: "0 6px", color: "var(--accent)", fontSize: 12.5, fontWeight: 600 }}>+ motivo</button>
         <SaveBar onSave={save} />
-      </div>
-    </section>
-  );
-}
-
-function AutomaticConversionSettings() {
-  const Toggle = ({ on }) => (
-    <span style={{ width: 38, height: 22, borderRadius: 999, background: on ? "var(--accent)" : "var(--bg-3)", position: "relative", flexShrink: 0 }}>
-      <span style={{ position: "absolute", top: 3, left: on ? 19 : 3, width: 16, height: 16, borderRadius: 999, background: "white", boxShadow: "var(--shadow-1)" }} />
-    </span>
-  );
-  const items = [
-    [true, "Criar cliente ao marcar Ganho", "o lead vira cliente com “cliente desde” carimbado e a régua de marcos ativa"],
-    [true, "Criar assinatura junto", "usa o valor do lead como preço do ciclo · o MRR do produto deriva daqui"],
-    [false, "Exigir API key nas escritas", "leitura fica aberta pra UI · defina COCKPIT_API_KEY no servidor"],
-  ];
-  return (
-    <section style={{ background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)" }}>
-      <div style={{ padding: "24px var(--pad-x) 0" }}><SettingHeader number="03" title="Conversão automática" sub="quando o lead vira cliente" /></div>
-      <div style={{ padding: "16px var(--pad-x) 24px", display: "flex", flexDirection: "column", gap: 16 }}>
-        {items.map(([on, title, description]) => (
-          <div key={title} style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
-            <Toggle on={on} />
-            <div><div style={{ fontSize: 14, fontWeight: 600 }}>{title}</div><div style={{ fontSize: 13, color: "var(--fg-3)", marginTop: 2 }}>{description}</div></div>
-          </div>
-        ))}
       </div>
     </section>
   );
@@ -447,15 +401,15 @@ function NextStepsSettings({ s }) {
                     <div style={{ padding: "4px 14px" }}>
                       {arr.map((x, i) => (
                         <div key={x.kind} style={{ display: "flex", gap: 10, alignItems: "center", padding: "8px 0", borderBottom: i < arr.length - 1 ? "1px solid var(--line-1)" : "none", opacity: x.on ? 1 : 0.55 }}>
-                          <button type="button" onClick={() => toggle(it.key, i)}
+                          <button type="button" aria-label={`${NEXT_STEP_LABELS[x.kind] || x.kind} · ${it.label}`} aria-pressed={x.on} onClick={() => toggle(it.key, i)}
                             title={x.on ? "aparece — clique pra esconder" : "escondido — clique pra mostrar"}
                             style={{ width: 18, height: 18, flexShrink: 0, borderRadius: 999, border: "1px solid " + (x.on ? "var(--accent-line)" : "var(--line-strong)"), background: x.on ? "var(--accent)" : "transparent", color: "#fff", fontSize: 11, lineHeight: "16px", textAlign: "center" }}>
                             {x.on ? "✓" : ""}
                           </button>
                           <span style={{ fontSize: 12.5, color: "var(--fg-1)", flex: 1 }}>{NEXT_STEP_LABELS[x.kind] || x.kind}</span>
                           <span style={{ display: "flex" }}>
-                            <button type="button" onClick={() => move(it.key, i, -1)} disabled={i === 0} style={arrowStyle(i === 0)}>↑</button>
-                            <button type="button" onClick={() => move(it.key, i, 1)} disabled={i === arr.length - 1} style={arrowStyle(i === arr.length - 1)}>↓</button>
+                            <button aria-label={`Subir ${NEXT_STEP_LABELS[x.kind] || x.kind}`} type="button" onClick={() => move(it.key, i, -1)} disabled={i === 0} style={arrowStyle(i === 0)}>↑</button>
+                            <button aria-label={`Descer ${NEXT_STEP_LABELS[x.kind] || x.kind}`} type="button" onClick={() => move(it.key, i, 1)} disabled={i === arr.length - 1} style={arrowStyle(i === arr.length - 1)}>↓</button>
                           </span>
                         </div>
                       ))}
@@ -503,120 +457,86 @@ function genPassword() {
 function TeamSettings() {
   const { SAAS } = window.SEED;
   const [users, setUsers] = useStS(null);
-  const [saving, setSaving] = useStS("");
+  const [saving, setSavingState] = useStS("");
+  const context=React.useContext(SettingsSaveContext), locked=React.useRef(false);
+  function setSaving(value){if(value && !locked.current)context?.lock();if(!value && locked.current)context?.unlock();locked.current=!!value;setSavingState(value);}
+  React.useEffect(()=>()=>{if(locked.current){locked.current=false;context?.unlock();}},[context]);
   const [invite, setInvite] = useStS(null); // { name, password }
   const [created, setCreated] = useStS(null); // { name, password, reset? } do último criado/resetado, fica na tela pro Leo copiar
   const [reset, setReset] = useStS(null); // { user, password }: senha nova sendo definida pra alguém do time
 
-  const load = () => api.listUsers().then(setUsers).catch(() => setUsers([]));
-  React.useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const [error,setError]=useStS(null); const action=React.useRef(false),read=React.useRef(0);
+  const load = async () => {const seq=++read.current;setError(null);try{const u=await api.listUsers();if(seq===read.current)setUsers(u);}catch(e){if(seq===read.current)setError(e.message);}};
+  React.useEffect(() => { load(); return()=>{read.current++;}; }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function toggleRole(u, role) {
-    const roles = (u.roles || []).includes(role)
-      ? (u.roles || []).filter((r) => r !== role)
-      : [...(u.roles || []), role];
-    setUsers((us) => us.map((x) => (x.id === u.id ? { ...x, roles } : x)));
-    setSaving(u.id);
-    try { await api.updateUser(u.id, { roles }); } catch (e) { console.warn("roles não salvas:", e.message); window.toast && window.toast("As vagas do usuário não foram salvas", "neg"); load(); }
-    setSaving("");
+  async function patchUser(u, patch) {
+    if(action.current)return;
+    action.current=true;setSaving(u.id);setError(null);
+    setUsers(us=>us.map(x=>x.id===u.id?{...x,...patch}:x));
+    try {await api.updateUser(u.id,patch);}
+    catch(e){setUsers(us=>us.map(x=>x.id===u.id?u:x));setError(e.message);}
+    finally{action.current=false;setSaving("");}
   }
-
-  // Escopo de produto: vazio = aparece nos pickers de TODOS os workspaces;
-  // preenchido = só no workspace daquele produto (ex.: Ana só na UniqueKids).
-  async function setUserSaas(u, saas) {
-    setUsers((us) => us.map((x) => (x.id === u.id ? { ...x, saas } : x)));
-    setSaving(u.id);
-    try { await api.updateUser(u.id, { saas }); } catch (e) { console.warn("produto não salvo:", e.message); window.toast && window.toast("O produto do usuário não foi salvo", "neg"); load(); }
-    setSaving("");
-  }
-  // Nível do plano de remuneração (1 jr · 2 pl · 3 sn): define as metas de
-  // contratos/receita do card da pessoa na Visão geral (régua do comp-plan).
-  async function setUserLevel(u, compLevel) {
-    setUsers((us) => us.map((x) => (x.id === u.id ? { ...x, compLevel } : x)));
-    setSaving(u.id);
-    try { await api.updateUser(u.id, { compLevel }); } catch (e) { console.warn("nível não salvo:", e.message); window.toast && window.toast("O nível não foi salvo", "neg"); load(); }
-    setSaving("");
-  }
-
-  // Telas permitidas: lista vazia = todas. O servidor também bloqueia as rotas
-  // (screens.js) — aqui é a gestão; o menu do usuário muda no próximo refresh.
-  async function setUserScreens(u, screens) {
-    setUsers((us) => us.map((x) => (x.id === u.id ? { ...x, screens } : x)));
-    setSaving(u.id);
-    try { await api.updateUser(u.id, { screens }); } catch (e) { console.warn("telas não salvas:", e.message); window.toast && window.toast("As telas do usuário não foram salvas", "neg"); load(); }
-    setSaving("");
-  }
-
-  // Produtos que a pessoa atende no Suporte: é o acesso aos tickets (a API
-  // recusa produto fora da lista). A etiqueta Suporte sozinha não libera nada.
-  async function setUserSupportSaas(u, supportSaas) {
-    setUsers((us) => us.map((x) => (x.id === u.id ? { ...x, supportSaas } : x)));
-    setSaving(u.id);
-    try { await api.updateUser(u.id, { supportSaas }); } catch (e) { console.warn("produtos do suporte não salvos:", e.message); window.toast && window.toast("Os produtos do suporte não foram salvos", "neg"); load(); }
-    setSaving("");
-  }
-
-  // Renomear alguém do time (o próprio usuário também troca em Meu perfil, com
-  // a foto). Salva ao sair do campo; 409 = nome já usado por outra pessoa.
-  async function renameUser(u, name) {
-    const clean = String(name || "").trim();
-    if (!clean || clean === u.name) return;
-    setUsers((us) => us.map((x) => (x.id === u.id ? { ...x, name: clean } : x)));
-    setSaving(u.id);
-    try { await api.updateUser(u.id, { name: clean }); }
-    catch (e) { alert("não renomeou: " + e.message); load(); }
-    setSaving("");
-  }
+  const toggleRole=(u,role)=>patchUser(u,{roles:(u.roles || []).includes(role)?u.roles.filter(r=>r!==role):[...(u.roles || []),role]});
+  const setUserSaas=(u,saas)=>patchUser(u,{saas});
+  const setUserLevel=(u,compLevel)=>patchUser(u,{compLevel});
+  const setUserScreens=(u,screens)=>patchUser(u,{screens});
+  const setUserSupportSaas=(u,supportSaas)=>patchUser(u,{supportSaas});
+  const renameUser=(u,name)=>{const clean=String(name || "").trim();if(clean && clean!==u.name)return patchUser(u,{name:clean});};
 
   async function createUser() {
-    if (!invite?.name || !invite?.password) return;
+    if (!invite?.name || !invite?.password || action.current) return;
+    action.current=true;setSaving("invite");setError(null);
     try {
       const res = await api.createUser(invite);
       setUsers((us) => [...(us || []), res]);
       setCreated({ name: res.name || invite.name, password: invite.password });
       setInvite(null);
-    } catch (e) { alert("não criou: " + e.message); }
+    } catch (e) { setError("Não criou: " + e.message); } finally{action.current=false;setSaving("");}
   }
 
   // Resetar a senha de alguém (Leo, 18/09): o PATCH de gestão não pede a senha
   // atual — é o caminho pra destravar quem esqueceu. Nasce gerada, dá pra
   // editar antes de salvar; a senha só aparece UMA vez, igual à do convite.
   async function resetPassword() {
-    if (!reset?.user || String(reset.password || "").length < 4) return;
+    if (!reset?.user || String(reset.password || "").length < 4 || action.current) return;
+    action.current=true;setError(null);
     const u = reset.user;
     setSaving(u.id);
     try {
       await api.updateUser(u.id, { password: reset.password });
       setCreated({ name: u.name || u.id, password: reset.password, reset: true });
       setReset(null);
-    } catch (e) { alert("não resetou: " + e.message); }
-    setSaving("");
+    } catch (e) { setError("Não resetou: " + e.message); }
+    action.current=false;setSaving("");
   }
 
   // Remover usuário. O servidor bloqueia (409) quem ainda é responsável por
   // leads; aí perguntamos se quer forçar (o dono reatribui depois).
   async function removeUser(u) {
+    if(action.current)return;
     if (!window.confirm(`Remover ${u.name || u.id} do time? (some dos pickers e do placar)`)) return;
-    setSaving(u.id);
+    action.current=true;setError(null);setSaving(u.id);
     try {
       await api.removeUser(u.id);
       setUsers((us) => us.filter((x) => x.id !== u.id));
     } catch (e) {
       if (e.status === 409 && window.confirm(`${e.message}.\n\nRemover mesmo assim? Os leads ficam sem esse responsável até você reatribuir.`)) {
         try { await api.removeUser(u.id, true); setUsers((us) => us.filter((x) => x.id !== u.id)); }
-        catch (e2) { alert("não removeu: " + e2.message); }
-      } else if (e.status !== 409) { alert("não removeu: " + e.message); }
+        catch (e2) { setError("Não removeu: " + e2.message); }
+      } else if (e.status !== 409) { setError("Não removeu: " + e.message); }
     }
-    setSaving("");
+    action.current=false;setSaving("");
   }
 
   return (
-    <div>
-      <SettingHeader title="Equipe & papéis" sub="quem aparece nos pickers de SDR/closer/integração do pipeline · papel ≠ permissão (todos são admin na v1)" />
+    <fieldset className="settings-team-form" disabled={!!saving}>
+      {error && <div role="alert" className="settings-notice">{error}{users===null && <button onClick={load}>Tentar novamente</button>}</div>}
+      <SettingHeader title="Equipe & papéis" sub="vagas, nível, produtos e permissões · cada alteração salva ao editar" />
       {/* .tbl-x: no mobile a grade (colunas fixas ~900px) rola dentro do card
           em vez de estourar a página — mesmo padrão do Funil abaixo. */}
       <div className="tbl-x" style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
-       <div style={{ minWidth: 1140 }}>
+       <div style={{ minWidth: 1000 + ROLE_OPTS.length * 92 }}>
         <div className="kicker" style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 96px 140px 120px 130px 82px`, gap: 8, padding: "10px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
           <span>Usuário</span>
           {ROLE_OPTS.map(([k, l, hint]) => <span key={k} title={hint} style={{ textAlign: "center" }}>{l}</span>)}
@@ -626,12 +546,12 @@ function TeamSettings() {
           <span title="Produtos cujos tickets de suporte a pessoa atende. Nenhum = não vê tickets (admin vê todos)">Atende (suporte)</span>
           <span />
         </div>
-        {users === null && <div className="mono dim" style={{ padding: "12px 14px", fontSize: 12 }}>carregando…</div>}
+        {users === null && !error && <div className="mono dim" style={{ padding: "12px 14px", fontSize: 12 }}>carregando…</div>}
         {Array.isArray(users) && users.map((u) => (
           <div key={u.id} style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 96px 140px 120px 130px 82px`, gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
             <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 500, minWidth: 0 }}>
               <Avatar id={u.id} name={u.name} size={22} />
-              <input defaultValue={u.name || u.id} key={u.name}
+              <input aria-label={`Nome de ${u.name}`} defaultValue={u.name || u.id} key={u.name}
                 title="Nome exibido no cockpit (a foto cada um troca em Meu perfil)"
                 onBlur={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = "transparent"; renameUser(u, e.target.value); }}
                 onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") { e.currentTarget.value = u.name || u.id; e.currentTarget.blur(); } }}
@@ -643,15 +563,15 @@ function TeamSettings() {
             </span>
             {ROLE_OPTS.map(([k]) => (
               <span key={k} style={{ textAlign: "center" }}>
-                <input type="checkbox" checked={(u.roles || []).includes(k)} onChange={() => toggleRole(u, k)} style={{ accentColor: "var(--accent)", width: 15, height: 15, cursor: "pointer" }} />
+                <input aria-label={`${k} · ${u.name}`} type="checkbox" checked={(u.roles || []).includes(k)} onChange={() => toggleRole(u, k)} style={{ accentColor: "var(--accent)", width: 15, height: 15, cursor: "pointer" }} />
               </span>
             ))}
-            <select value={u.compLevel || 1} onChange={(e) => setUserLevel(u, Number(e.target.value))}
+            <select aria-label={`Nível de ${u.name}`} value={u.compLevel || 1} onChange={(e) => setUserLevel(u, Number(e.target.value))}
               title="Nível de carreira: define as metas de contratos e receita de SDR e closer pelo plano de Remuneração"
               style={{ ...inputStyle, height: 26, fontSize: 12 }}>
               {CAREER_LEVELS.map((l) => <option key={l.n} value={l.n}>{l.label}</option>)}
             </select>
-            <select value={u.saas || ""} onChange={(e) => setUserSaas(u, e.target.value)} style={{ ...inputStyle, height: 26, fontSize: 12 }}>
+            <select aria-label={`Produto de ${u.name}`} value={u.saas || ""} onChange={(e) => setUserSaas(u, e.target.value)} style={{ ...inputStyle, height: 26, fontSize: 12 }}>
               <option value="">todos os produtos</option>
               {SAAS.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
             </select>
@@ -661,7 +581,7 @@ function TeamSettings() {
               <button type="button" onClick={() => { setCreated(null); setInvite(null); setReset({ user: u, password: genPassword() }); }}
                 title={`Resetar a senha de ${u.name || u.id} (gera uma nova, sem pedir a atual)`}
                 style={{ height: 26, padding: "0 7px", borderRadius: 999, border: "1px solid " + (reset?.user?.id === u.id ? "var(--accent)" : "var(--line-1)"), background: "var(--bg-1)", color: reset?.user?.id === u.id ? "var(--accent)" : "var(--fg-4)", fontSize: 11, cursor: "pointer" }}>senha</button>
-              <button onClick={() => removeUser(u)} title={`Remover ${u.name || u.id} do time`}
+              <button aria-label={`Remover ${u.name || u.id} do time`} onClick={() => removeUser(u)} title={`Remover ${u.name || u.id} do time`}
                 style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-4)", fontSize: 13, cursor: "pointer" }}
                 onMouseEnter={(e) => { e.currentTarget.style.color = "var(--neg)"; e.currentTarget.style.borderColor = "var(--neg)"; }}
                 onMouseLeave={(e) => { e.currentTarget.style.color = "var(--fg-4)"; e.currentTarget.style.borderColor = "var(--line-2)"; }}>✕</button>
@@ -705,13 +625,13 @@ function TeamSettings() {
           <span style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-inset)", fontSize: 12 }}>
             <span>✓ <b>{created.name}</b> {created.reset ? "com senha nova" : "no time"} · senha: <b className="mono code">{created.password}</b> · anote e passe pro responsável (não aparece de novo)</span>
             <button type="button" className="mono" style={{ fontSize: 11, cursor: "pointer" }}
-              onClick={() => { try { navigator.clipboard.writeText(created.password); window.toast && window.toast("Senha copiada", "pos"); } catch { window.prompt("Senha:", created.password); } }}>copiar</button>
+              onClick={async () => { try { await navigator.clipboard.writeText(created.password); window.toast && window.toast("Senha copiada", "pos"); } catch { setError("Não foi possível copiar. Selecione a senha exibida para copiar."); } }}>copiar</button>
             <button type="button" className="mono dim" style={{ fontSize: 11, cursor: "pointer" }} title="Fechar (a senha some da tela)" onClick={() => setCreated(null)}>✕</button>
           </span>
         )}
         {!reset && <span className="mono dim" style={{ fontSize: 11 }}>papéis salvam ao clicar · cada um troca a própria senha em Meu perfil · "senha" na linha reseta sem pedir a atual</span>}
       </div>
-    </div>
+    </fieldset>
   );
 }
 
@@ -834,7 +754,7 @@ function FieldsSettings({ s }) {
   return (
     <div>
       <SettingHeader title="Campos custom" sub="aparecem no formulário de criar/editar a entidade quando o registro é deste SaaS · a chave é gravada no registro" />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 250px), 1fr))", gap: 14 }}>
         {FIELD_GROUPS.map(([g, label]) => (
           <div key={g} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", padding: "14px 16px" }}>
             <div style={{ fontSize: 12, fontWeight: 500, color: "var(--fg-2)", marginBottom: 10 }}>{label}</div>
@@ -842,17 +762,17 @@ function FieldsSettings({ s }) {
               {cf[g].map((f, i) => (
                 <div key={i} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-2)", padding: 8, display: "flex", flexDirection: "column", gap: 6 }}>
                   <div style={{ display: "flex", gap: 6 }}>
-                    <input value={f.label || ""} placeholder="Rótulo" onChange={(e) => update(g, i, { label: e.target.value, key: f.key || slug(e.target.value) })} style={{ ...inputStyle, flex: 1 }} />
-                    <button type="button" onClick={() => remove(g, i)} className="mono dim" style={{ fontSize: 13 }}>✕</button>
+                    <input aria-label={`Rótulo ${label} ${i+1}`} value={f.label || ""} placeholder="Rótulo" onChange={(e) => update(g, i, { label: e.target.value, key: f.key || slug(e.target.value) })} style={{ ...inputStyle, flex: 1 }} />
+                    <button aria-label={`Remover campo ${f.label || i+1} de ${label}`} type="button" onClick={() => remove(g, i)} className="mono dim" style={{ fontSize: 13 }}>✕</button>
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
-                    <input value={f.key || ""} placeholder="chave" onChange={(e) => update(g, i, { key: slug(e.target.value) })} className="mono" style={{ ...inputStyle, width: 110, fontFamily: "var(--mono)", fontSize: 11 }} />
-                    <select value={f.type || "text"} onChange={(e) => update(g, i, { type: e.target.value })} style={{ ...inputStyle, flex: 1 }}>
+                    <input aria-label={`Chave ${label} ${i+1}`} value={f.key || ""} placeholder="chave" onChange={(e) => update(g, i, { key: slug(e.target.value) })} className="mono" style={{ ...inputStyle, width: 110, fontFamily: "var(--mono)", fontSize: 11 }} />
+                    <select aria-label={`Tipo ${label} ${i+1}`} value={f.type || "text"} onChange={(e) => update(g, i, { type: e.target.value })} style={{ ...inputStyle, flex: 1 }}>
                       {FIELD_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                     </select>
                   </div>
                   {f.type === "select" && (
-                    <input value={f.options || ""} placeholder="opções separadas por vírgula" onChange={(e) => update(g, i, { options: e.target.value })} style={inputStyle} />
+                    <input aria-label={`Opções ${label} ${i+1}`} value={f.options || ""} placeholder="opções separadas por vírgula" onChange={(e) => update(g, i, { options: e.target.value })} style={inputStyle} />
                   )}
                 </div>
               ))}
@@ -874,29 +794,37 @@ function FieldsSettings({ s }) {
 // É o ÚNICO conector Google da tela: a conta do time virou infraestrutura
 // (e-mail dos disparos, consultas da UniqueKids) e só aparece se cair.
 function MyGoogleCalendarCard() {
-  const [st, setSt] = useStS(null); // { configured, connected, account, meetReady }
+  const [st, setSt] = useStS(null), [error,setError]=useStS(null);
+  const read=React.useRef(0), action=React.useRef(false), pollCleanup=React.useRef(()=>{}); // { configured, connected, account, meetReady }
   const [busy, setBusy] = useStS(false);
   const load = React.useCallback(async () => {
-    try { setSt(await api.googleUserStatus()); }
-    catch { setSt({ configured: false, connected: false, account: "" }); }
+    const seq=++read.current;setError(null);
+    try {const r=await api.googleUserStatus();if(seq===read.current)setSt(r);}
+    catch(e){if(seq===read.current)setError(e.message);}
   }, []);
-  React.useEffect(() => { load(); }, [load]);
+  React.useEffect(() => { load(); return()=>{read.current++;pollCleanup.current();}; }, [load]);
 
   async function connect() {
+    if(action.current)return;action.current=true;setBusy(true);setError(null);
     try {
       const r = await api.googleUserAuthUrl();
       window.open(r.url, "_blank", "noopener,width=520,height=680");
       // A conexão acontece na aba nova; ao voltar o foco pro cockpit, re-checa.
+      pollCleanup.current();
       const iv = setInterval(load, 2500);
-      const stop = () => { clearInterval(iv); load(); window.removeEventListener("focus", stop); };
+      let timer;
+      const cleanup = () => {clearInterval(iv);clearTimeout(timer);window.removeEventListener("focus",stop);};
+      const stop = () => {cleanup();load();};
+      pollCleanup.current=cleanup;
       window.addEventListener("focus", stop);
-      setTimeout(() => clearInterval(iv), 120_000);
-    } catch (e) { window.alert(e.message || "Google não configurado no servidor."); }
+      timer=setTimeout(cleanup,120_000);
+    } catch (e) { setError(e.message || "Google não configurado no servidor."); } finally{action.current=false;setBusy(false);}
   }
   async function disconnect() {
+    if(action.current)return;
     if (!window.confirm("Desconectar sua conta Google? Suas calls e integrações deixam de aparecer na sua agenda.")) return;
-    setBusy(true);
-    try { await api.googleUserDisconnect(); await load(); } finally { setBusy(false); }
+    action.current=true;setBusy(true);setError(null);
+    try { await api.googleUserDisconnect(); await load(); } catch(e){setError(e.message);} finally { action.current=false;setBusy(false); }
   }
 
   const connected = !!st?.connected;
@@ -923,10 +851,12 @@ function MyGoogleCalendarCard() {
         )}
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        {error && <span role="alert">{error} <button onClick={load}>Recarregar Google</button></span>}
+        {!st && !error && <span role="status">Consultando Google…</span>}
         {connected && <span className={"chip " + (precisaReconectar ? "" : "pos")} style={{ height: 22 }}>conectada · {st.account || "sua conta"}</span>}
         {!connected && !configured && st && <span className="chip" style={{ height: 22 }}>indisponível no servidor</span>}
         {configured && (
-          <button onClick={connect} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}>
+          <button disabled={busy} onClick={connect} style={{ ...chromeBtnStyleSmall, borderColor: "var(--accent-line)", color: "var(--accent)" }}>
             <span style={{ fontSize: 11 }}>{connected ? "reconectar" : "Conectar minha conta"}</span>
           </button>
         )}
@@ -1046,12 +976,12 @@ function IntegrationsSettings({ s }) {
           {metaOn && (
             <>
               <span className="kicker" style={{ whiteSpace: "nowrap" }}>ad account de {s.name}</span>
-              <input value={adAccount} placeholder="act_1234567890" onChange={(e) => setAdAccount(e.target.value)} className="mono" style={{ ...inputStyle, width: 220, fontFamily: "var(--mono)" }} />
+              <input aria-label="Conta de anúncios Meta" value={adAccount} placeholder="act_1234567890" onChange={(e) => setAdAccount(e.target.value)} className="mono" style={{ ...inputStyle, width: 220, fontFamily: "var(--mono)" }} />
             </>
           )}
           <span className="kicker" title="Pixel disparado na página pública do form deste SaaS (/f/:id) e no CAPI. Vazio = pixel padrão do env."
             style={{ whiteSpace: "nowrap" }}>pixel de {s.name}</span>
-          <input value={pixelId} placeholder="971201888623790" onChange={(e) => setPixelId(e.target.value)} className="mono" style={{ ...inputStyle, width: 170, fontFamily: "var(--mono)" }} />
+          <input aria-label="Pixel Meta" value={pixelId} placeholder="971201888623790" onChange={(e) => setPixelId(e.target.value)} className="mono" style={{ ...inputStyle, width: 170, fontFamily: "var(--mono)" }} />
           <CardSaveButton onSave={saveMeta} />
         </div>
       </div>
@@ -1070,7 +1000,7 @@ function IntegrationsSettings({ s }) {
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
               <span className="kicker" title="Phone number ID do número deste SaaS (WhatsApp Manager → API Setup, é o id do NÚMERO, não o da conta). O número precisa estar no mesmo WABA do token."
                 style={{ whiteSpace: "nowrap" }}>número de {s.name}</span>
-              <input value={waPhoneId} placeholder="712249848640591" onChange={(e) => setWaPhoneId(e.target.value)} className="mono" style={{ ...inputStyle, width: 200, fontFamily: "var(--mono)" }} />
+              <input aria-label="Número WhatsApp ID" value={waPhoneId} placeholder="712249848640591" onChange={(e) => setWaPhoneId(e.target.value)} className="mono" style={{ ...inputStyle, width: 200, fontFamily: "var(--mono)" }} />
             </div>
             {/* O fluxo de ligação do 1º contato mudou de casa: Inbox → Automações. */}
             <div className="mono dim" style={{ fontSize: 11, marginTop: 10 }}>
@@ -1328,8 +1258,8 @@ function ScriptsSettings({ s }) {
               const open = openKey === item.key;
               const v = view(item.key);
               return (
-                <div key={item.key} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", overflow: "hidden" }}>
-                  <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                <div className="settings-script-card" key={item.key} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-1)", overflow: "hidden" }}>
+                  <div className="settings-script-head" style={{ padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                     <div style={{ minWidth: 220, flex: 1 }}>
                       <div style={{ fontSize: 13, fontWeight: 600 }}>
                         {item.label}
@@ -1378,14 +1308,14 @@ function ScriptsSettings({ s }) {
                           <div className="mono dim" style={{ fontSize: 10, marginTop: 6 }}>revise os campos abaixo e clique em “Salvar e replicar” pra aplicar</div>
                         </div>
                       )}
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                      <div className="settings-script-fields" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
                         <div>
                           <label className="kicker" style={miniLabel}>Postura (como se comportar)</label>
-                          <textarea rows={3} value={v.resumo} onChange={(e) => setField(item.key, "resumo", e.target.value)} style={taStyle} />
+                          <textarea aria-label={`Postura · ${item.label}`} rows={3} value={v.resumo} onChange={(e) => setField(item.key, "resumo", e.target.value)} style={taStyle} />
                         </div>
                         <div>
                           <label className="kicker" style={miniLabel}>Objetivo</label>
-                          <textarea rows={3} value={v.objetivo} onChange={(e) => setField(item.key, "objetivo", e.target.value)} style={taStyle} />
+                          <textarea aria-label={`Objetivo · ${item.label}`} rows={3} value={v.objetivo} onChange={(e) => setField(item.key, "objetivo", e.target.value)} style={taStyle} />
                         </div>
                       </div>
                       <label className="kicker" style={miniLabel}>Passo a passo · edite as falas direto</label>
@@ -1394,7 +1324,7 @@ function ScriptsSettings({ s }) {
                           <div key={k} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-1)", padding: 8 }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
                               <span className="mono dim tnum" style={{ fontSize: 11, width: 16 }}>{k + 1}.</span>
-                              <input value={p.t} placeholder="Título do passo" onChange={(e) => setPasso(item.key, k, "t", e.target.value)} style={{ ...inputStyle, flex: 1, fontWeight: 600 }} />
+                              <input aria-label={`Título do passo ${k+1} · ${item.label}`} value={p.t} placeholder="Título do passo" onChange={(e) => setPasso(item.key, k, "t", e.target.value)} style={{ ...inputStyle, flex: 1, fontWeight: 600 }} />
                               <button type="button" onClick={() => movePasso(item.key, k, -1)} disabled={k === 0} className="mono" style={{ fontSize: 12, color: "var(--fg-4)", opacity: k === 0 ? 0.3 : 1 }}>↑</button>
                               <button type="button" onClick={() => movePasso(item.key, k, 1)} disabled={k === v.passos.length - 1} className="mono" style={{ fontSize: 12, color: "var(--fg-4)", opacity: k === v.passos.length - 1 ? 0.3 : 1 }}>↓</button>
                               <button type="button" onClick={() => removePasso(item.key, k)} className="mono dim" style={{ fontSize: 13 }}>✕</button>
@@ -1410,7 +1340,7 @@ function ScriptsSettings({ s }) {
                         <span className="mono dim" style={{ fontSize: 10.5 }}>{"tokens: {{nome}} {{eu}} {{produto}} {{nicho}} {{contas}} {{anuncios}} {{closer_responsavel}} {{hora_call}} {{link_call}}"}</span>
                       </div>
                       <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line-1)" }}>
-                        <SaveBar onSave={save} label="Salvar e replicar" busyLabel="Replicando…" hint="salva e aplica na hora pra quem estiver usando o cockpit (tempo real)" />
+
                       </div>
                     </div>
                   )}
@@ -1449,7 +1379,7 @@ function ScriptsSettings({ s }) {
 
 function SettingHeader({ number, title, sub }) {
   return (
-    <div style={{ marginBottom: number ? 0 : 14, display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+    <div className="settings-section-head">
       {number && <span className="mono" style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)" }}>{number}</span>}
       <h2 style={{ margin: 0, fontSize: number ? 15.5 : 16, fontWeight: 600, letterSpacing: "-.01em" }}>{title}</h2>
       {sub && <div className="dim" style={{ fontSize: number ? 12.5 : 12, color: "var(--fg-4)" }}>{sub}</div>}
@@ -1465,7 +1395,7 @@ function SettingHeader({ number, title, sub }) {
 // ROUTE_SCREENS), então aqui é só a superfície.
 function SettingsLite() {
   return (
-    <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+    <div className="settings-page settings-lite">
       <PageHead title="Configurações" sub="sua conta Google" />
       <div style={{ padding: "16px var(--pad-x) 56px", maxWidth: 680 }}>
         <MyGoogleCalendarCard />
