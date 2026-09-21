@@ -86,7 +86,7 @@ export function TimelineView({ groups, usersById, actions, mobile, today = today
 
   if (mobile) {
     return (
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px var(--pad-x) 24px" }}>
+      <div className="tasks-timeline" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px var(--pad-x) 24px" }}>
         <div className="dim" style={{ fontSize: 12, marginBottom: 8 }}>No celular o cronograma vira lista por data. Abra no computador pra arrastar as barras.</div>
         {[...dated].sort((a, b) => (a.startDate || a.dueDate).localeCompare(b.startDate || b.dueDate)).map((t) => (
           <button key={t.id} type="button" onClick={() => actions.open(t.id)} style={{ display: "flex", width: "100%", alignItems: "center", gap: 8, padding: "8px 0", borderTop: "1px solid var(--line-1)", textAlign: "left" }}>
@@ -100,7 +100,7 @@ export function TimelineView({ groups, usersById, actions, mobile, today = today
   }
   const totalH = HEAD + rows.length * ROW + 20;
   return (
-    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+    <div className="tasks-timeline" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px var(--pad-x) 6px", flexShrink: 0 }}>
         <div style={{ display: "inline-flex", gap: 2, padding: 3, borderRadius: 9, background: "var(--bg-2)" }}>
           {[["day", "Dia"], ["week", "Semana"], ["month", "Mês"]].map(([k, l]) => <button key={k} type="button" onClick={() => setZoom(k)} style={{ padding: "5px 12px", borderRadius: 7, fontSize: 12.5, fontWeight: zoom === k ? 600 : 500, background: zoom === k ? "var(--bg-1)" : "transparent", boxShadow: zoom === k ? "var(--shadow-segment)" : "none", color: zoom === k ? "var(--fg-1)" : "var(--fg-3)" }}>{l}</button>)}

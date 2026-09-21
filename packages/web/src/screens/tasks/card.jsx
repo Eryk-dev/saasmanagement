@@ -8,7 +8,7 @@ import { useLongPress } from "../../components/kanban/dnd.js";
 import { CompleteCircle } from "../../components/complete-circle.jsx";
 import { LabelChip } from "../../components/label-chip.jsx";
 
-const { memo, useRef, useEffect, useLayoutEffect } = React;
+const { memo, useRef, useState, useEffect, useLayoutEffect } = React;
 
 // O círculo de concluir e a etiqueta moram em components/ (os Tickets usam os mesmos).
 export { CompleteCircle, LabelChip };
@@ -50,7 +50,7 @@ function InlineTitle({ value, onSave, onCancel }) {
   useLayoutEffect(() => { const el = ref.current; if (!el) return; fit(el); el.focus(); el.setSelectionRange(el.value.length, el.value.length); }, []);
   const finish = (fn) => { if (done.current) return; done.current = true; fn(); };
   return (
-    <textarea ref={ref} defaultValue={value} rows={1} className="inp"
+    <textarea ref={ref} defaultValue={value} aria-label="Nome da tarefa" rows={1} className="inp"
       onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onKeyDown={(e) => {
         e.stopPropagation();
         if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); finish(() => onSave(e.target.value)); }
@@ -79,41 +79,33 @@ export const TaskCard = memo(function TaskCard({ t, colKey, usersById, labelColo
       onClick={(e) => actions.click(t.id, e)}
       onDoubleClick={(e) => { e.preventDefault(); actions.rename(t.id); }}
       onContextMenu={(e) => { e.preventDefault(); actions.menu(t.id, { x: e.clientX, y: e.clientY }); }}
-      onKeyDown={(e) => { if (e.key === "Enter" && !renaming) { e.preventDefault(); actions.open(t.id); } }}
+      onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ") && !renaming) { e.preventDefault(); actions.open(t.id); } }}
       onFocus={() => actions.focus(t.id)}
       style={{
         background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-card)",
         padding: compact ? "8px 10px" : "10px 12px", outline: "none", opacity: done && !renaming ? 0.78 : 1,
       }}>
       {cover && <img src={assetUrl(cover)} alt="" draggable={false} style={{ width: "100%", maxHeight: 120, objectFit: "cover", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", marginBottom: 8, display: "block" }} />}
-      {/* Os LABELS abrem o card (prancha, 14/09): eram a terceira coisa da
-          terceira linha, misturados com prioridade e prazo. No topo eles
-          funcionam como a etiqueta que são, e a linha de baixo fica só com o
-          que tem prazo. */}
-      {labels.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 7 }}>
-          {labels.slice(0, 3).map((l) => <LabelChip key={l} label={l} color={labelColors.get(l) || ""} small={compact} />)}
-          {labels.length > 3 && <span className="mono dim" style={{ fontSize: 11 }}>+{labels.length - 3}</span>}
-        </div>
-      )}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
         <span style={{ paddingTop: 1 }}><CompleteCircle done={done} size={compact ? 18 : 20} onToggle={(v) => actions.complete(t.id, v)} /></span>
         <div style={{ flex: 1, minWidth: 0 }}>
           {renaming
             ? <InlineTitle value={t.title} onSave={(v) => actions.renameSave(t.id, v)} onCancel={() => actions.renameSave(t.id, null)} />
-            : <div style={{ fontSize: compact ? 13 : 13.5, fontWeight: 600, lineHeight: 1.35, color: done ? "var(--fg-3)" : "var(--fg-1)", wordBreak: "break-word" }}>{t.title || <span className="dim">(sem título)</span>}</div>}
+            : <div className="tasks-card-title" style={{ fontSize: compact ? 13 : 13.5, fontWeight: 600, lineHeight: 1.35, color: done ? "var(--fg-3)" : "var(--fg-1)", wordBreak: "break-word" }}>{t.title || <span className="dim">(sem título)</span>}</div>}
         </div>
         {!renaming && (
-          <span className="tk-hover" style={{ display: "inline-flex", gap: 2, marginTop: -3, marginRight: -6, flexShrink: 0 }}>
+          <span className="tk-hover tasks-card-actions" style={{ display: "inline-flex", gap: 2, marginTop: -3, marginRight: -6, flexShrink: 0 }}>
             <button type="button" title="Renomear" aria-label="Renomear" onClick={(e) => { e.stopPropagation(); actions.rename(t.id); }} onPointerDown={(e) => e.stopPropagation()} style={{ width: 24, height: 24, borderRadius: 999, color: "var(--fg-4)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="pencil" size={13} /></button>
             <button type="button" title="Mais ações" aria-label="Mais ações" onClick={(e) => { e.stopPropagation(); actions.menu(t.id, e.currentTarget.getBoundingClientRect()); }} onPointerDown={(e) => e.stopPropagation()} style={{ width: 24, height: 24, borderRadius: 999, color: "var(--fg-4)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="more" size={14} /></button>
           </span>
         )}
       </div>
-      {((fields.priority && t.priority) || (fields.due && t.dueDate)) && (
+      {((fields.priority && t.priority) || (fields.due && t.dueDate) || labels.length > 0) && (
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 8, paddingLeft: compact ? 26 : 28 }}>
           {fields.priority && <PriorityChip p={t.priority} small={compact} />}
           {fields.due && <DueChip due={t.dueDate} completed={done} small={compact} />}
+          {labels.slice(0, 3).map(l => <LabelChip key={l} label={l} color={labelColors.get(l) || ""} small />)}
+          {labels.length > 3 && <span className="dim" style={{fontSize:11}}>+{labels.length - 3}</span>}
         </div>
       )}
       {(hasMeta || (fields.assignee && assigneesOf(t).length > 0)) && (
@@ -139,6 +131,7 @@ export function NewTaskCard({ onSave, onCancel, placeholder = "Nome da tarefa" }
   // `busy` em ref, NÃO em disabled: desabilitar o campo tira o foco, o blur
   // dispara com o campo já limpo e o composer fechava depois da 1ª tarefa.
   const busy = useRef(false);
+  const [saving, setSaving] = useState(false);
   const closing = useRef(false);
   useEffect(() => { ref.current?.focus(); }, []);
   const fit = (el) => { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; };
@@ -146,26 +139,25 @@ export function NewTaskCard({ onSave, onCancel, placeholder = "Nome da tarefa" }
     if (busy.current) return;
     const el = ref.current; const v = (el?.value || "").trim();
     if (!v) { if (!again) onCancel(); return; }
-    busy.current = true;
-    if (el) { el.value = ""; fit(el); }
+    busy.current = true; setSaving(true);
     const ok = await onSave(v);
-    busy.current = false;
-    if (!ok && el) { el.value = v; fit(el); }
+    busy.current = false; setSaving(false);
+    if (ok && el) { el.value = ""; fit(el); }
     if (ok && !again) onCancel();
     else if (el && again) el.focus();
   };
   return (
     <div data-composer="1" style={{ background: "var(--bg-1)", border: "1px solid var(--accent-line)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-2)", padding: "8px 10px" }}>
-      <textarea ref={ref} rows={1} placeholder={placeholder}
+      <textarea ref={ref} rows={1} placeholder={placeholder} aria-label={placeholder} readOnly={saving} aria-busy={saving}
         onInput={(e) => fit(e.target)}
         onKeyDown={(e) => {
           e.stopPropagation();
           if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(true); }
-          if (e.key === "Escape") { e.preventDefault(); closing.current = true; onCancel(); }
+          if (e.key === "Escape" && !busy.current) { e.preventDefault(); closing.current = true; onCancel(); }
         }}
         onBlur={() => { if (!closing.current && !busy.current) submit(false); }}
         style={{ width: "100%", border: "none", outline: "none", background: "transparent", resize: "none", fontSize: 13.5, fontWeight: 600, lineHeight: 1.35, fontFamily: "inherit", color: "var(--fg-1)", padding: 0, boxSizing: "border-box" }} />
-      <div className="dim" style={{ fontSize: 10.5, marginTop: 4 }}>Enter salva · Esc cancela</div>
+      <div className="dim" style={{ fontSize: 10.5, marginTop: 4 }} role="status">{saving ? "Salvando…" : "Enter salva · Esc cancela"}</div>
     </div>
   );
 }

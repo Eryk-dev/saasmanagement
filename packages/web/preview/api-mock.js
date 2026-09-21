@@ -1,3 +1,4 @@
+import {tasksReview,tasksReviewMock} from "./tasks-review-mock.js";
 import {desempenhoReview,desempenhoReviewMock} from "./desempenho-review-mock.js";
 import {integrationsReview,integrationsReviewMock} from "./integrations-review-mock.js";
 import {callsReview,callsReviewMock} from "./calls-review-mock.js";
@@ -141,6 +142,7 @@ const vazio = () => Promise.resolve(null);
 
 const mockApi = new Proxy({}, {
   get(_, nome) {
+    if (tasksReview && Object.hasOwn(tasksReviewMock,nome)) return tasksReviewMock[nome];
     if (desempenhoReview && Object.hasOwn(desempenhoReviewMock,nome)) return desempenhoReviewMock[nome];
     if (integrationsReview && Object.hasOwn(integrationsReviewMock,nome)) return integrationsReviewMock[nome];
     if (callsReview && Object.hasOwn(callsReviewMock,nome)) return callsReviewMock[nome];

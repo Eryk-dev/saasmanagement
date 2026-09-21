@@ -1,9 +1,9 @@
 import React from "react";
 import { SecondaryButton } from "../../atoms.jsx";
-import { Segmented } from "../../components/viz.jsx";
 import { Popover } from "../../components/popover.jsx";
 import { UserAvatarRing } from "../../components/user-picker.jsx";
 import { SearchInput } from "../../components/search-input.jsx";
+import { useIsMobile } from "../../lib/responsive.js";
 import { PRIORITIES } from "../../lib/tasks.js";
 import { DEFAULT_FILTERS, DEFAULT_FIELDS } from "./prefs.js";
 import { SORTS, GROUPS, activeFilterCount } from "./filters.js";
@@ -15,17 +15,17 @@ const { useRef, useState } = React;
 const chip = (on) => ({ height: 26, padding: "0 10px", borderRadius: 999, fontSize: 12, fontWeight: 600, border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"), background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-2)", display: "inline-flex", alignItems: "center", gap: 5 });
 const Section = ({ title, children }) => (<div style={{ marginBottom: 10 }}><div className="kicker" style={{ marginBottom: 6 }}>{title}</div><div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>{children}</div></div>);
 const Radio = ({ on, onClick, children }) => (
-  <button type="button" onClick={onClick} className={"tk-menu-item" + (on ? " is-active" : "")} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "6px 8px", borderRadius: 999, textAlign: "left", fontSize: 12.5, color: "var(--fg-1)" }}>
+  <button type="button" aria-pressed={!!on} onClick={onClick} className={"tk-menu-item" + (on ? " is-active" : "")} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "6px 8px", borderRadius: 999, textAlign: "left", fontSize: 12.5, color: "var(--fg-1)" }}>
     <span style={{ width: 14, height: 14, borderRadius: 999, border: `1.5px solid ${on ? "var(--accent)" : "var(--line-strong)"}`, background: on ? "var(--accent)" : "transparent", boxShadow: on ? "inset 0 0 0 3px var(--bg-1)" : "none", flexShrink: 0 }} />{children}
   </button>
 );
 const Check = ({ on, onClick, children }) => (
-  <button type="button" onClick={onClick} className="tk-menu-item" style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "6px 8px", borderRadius: 999, textAlign: "left", fontSize: 12.5, color: "var(--fg-1)" }}>
+  <button type="button" aria-pressed={!!on} onClick={onClick} className="tk-menu-item" style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "6px 8px", borderRadius: 999, textAlign: "left", fontSize: 12.5, color: "var(--fg-1)" }}>
     <span style={{ width: 14, height: 14, borderRadius: 4, border: `1.5px solid ${on ? "var(--accent)" : "var(--line-strong)"}`, background: on ? "var(--accent)" : "transparent", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{on && <Icon name="check" size={10} />}</span>{children}
   </button>
 );
-const TBtn = ({ btnRef, on, count, icon, label, onClick, hideLabelOnMobile = true }) => (
-  <button ref={btnRef} type="button" onClick={onClick} title={label} style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 10px", borderRadius: 999, border: `1px solid ${on ? "var(--accent-line)" : "var(--line-2)"}`, background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: 500 }}>
+const TBtn = ({ btnRef, on, count, icon, label, onClick, expanded, hideLabelOnMobile = true }) => (
+  <button ref={btnRef} type="button" onClick={onClick} title={label} aria-label={label} aria-expanded={!!expanded} style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 10px", borderRadius: 999, border: `1px solid ${on ? "var(--accent-line)" : "var(--line-2)"}`, background: on ? "var(--accent-soft)" : "var(--bg-1)", color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 12.5, fontWeight: 500 }}>
     <Icon name={icon} size={14} /><span className={hideLabelOnMobile ? "hide-mobile" : ""}>{label}</span>
     {count > 0 && <span className="tnum" style={{ minWidth: 16, height: 16, padding: "0 4px", borderRadius: 999, background: "var(--accent)", color: "#fff", fontSize: 10.5, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{count}</span>}
   </button>
@@ -33,7 +33,7 @@ const TBtn = ({ btnRef, on, count, icon, label, onClick, hideLabelOnMobile = tru
 const toggleIn = (list, v) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
 
 export const VIEWS = [{ value: "board", label: "Quadro" }, { value: "list", label: "Lista" }, { value: "calendar", label: "Calendário" }, { value: "timeline", label: "Cronograma" }];
-export function Toolbar({ prefs, setPrefs, users, labelOptions, labelColors, columns, q, setQ, onHelp, onNew }) {
+export function Toolbar({ prefs, setPrefs, users, labelOptions, labelColors, columns, q, setQ, onHelp, onUndo, canUndo }) {
   const [open, setOpen] = useState(null); // filter | sort | group | options
   const refs = { filter: useRef(null), sort: useRef(null), group: useRef(null), options: useRef(null) };
   const f = { ...DEFAULT_FILTERS, ...(prefs.filters || {}) };
@@ -45,14 +45,16 @@ export function Toolbar({ prefs, setPrefs, users, labelOptions, labelColors, col
   const optionsOn = prefs.done !== "all" || prefs.compact || prefs.hideEmpty || prefs.subtasksOnBoard || Object.values(fields).some((v) => !v);
   const close = () => setOpen(null);
   return (
-    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+    <div className="tasks-toolbar">
       <SearchInput value={q} onChange={setQ} placeholder="Buscar tarefas" />
-      <TBtn btnRef={refs.filter} on={nFilters > 0} count={nFilters} icon="filter" label="Filtrar" onClick={() => setOpen(open === "filter" ? null : "filter")} />
-      <TBtn btnRef={refs.sort} on={sortOn} icon="sort" label="Ordenar" onClick={() => setOpen(open === "sort" ? null : "sort")} />
-      <TBtn btnRef={refs.group} on={groupOn} icon="group" label="Agrupar" onClick={() => setOpen(open === "group" ? null : "group")} />
-      <TBtn btnRef={refs.options} on={optionsOn} icon="settings" label="Opções" onClick={() => setOpen(open === "options" ? null : "options")} />
-      <div style={{ maxWidth: "100%", overflowX: "auto" }}><Segmented value={prefs.view || "board"} options={VIEWS} onChange={(v) => setPrefs((p) => ({ ...p, view: v }))} /></div>
-      {onNew}
+      <div className="tasks-priorities"><span>Prioridade</span>{["P0", "P1", "P2"].map(p => <button key={p} type="button" aria-pressed={f.priorities.includes(p)} onClick={() => setF({ priorities: toggleIn(f.priorities, p) })}>{p}</button>)}</div>
+      <TBtn btnRef={refs.filter} expanded={open === "filter"} on={nFilters > 0} count={nFilters} icon="filter" label="Filtrar" onClick={() => setOpen(open === "filter" ? null : "filter")} />
+      <TBtn btnRef={refs.sort} hideLabelOnMobile={false} expanded={open === "sort"} on={sortOn} icon="sort" label={`Ordem: ${SORTS.find(([k]) => k === (prefs.sort?.key || "manual"))?.[1] || "Manual"}`} onClick={() => setOpen(open === "sort" ? null : "sort")} />
+      <TBtn btnRef={refs.group} hideLabelOnMobile={false} expanded={open === "group"} on={groupOn} icon="group" label={`Agrupar: ${GROUPS.find(([k]) => k === (prefs.group || "column"))?.[1] || "Coluna"}`} onClick={() => setOpen(open === "group" ? null : "group")} />
+      <TBtn btnRef={refs.options} expanded={open === "options"} on={optionsOn} icon="settings" label="Opções" onClick={() => setOpen(open === "options" ? null : "options")} />
+      <button type="button" className="tasks-toggle" aria-pressed={!!prefs.hideEmpty} onClick={() => setPrefs(p => ({...p, hideEmpty:!p.hideEmpty}))}>Ocultar vazias</button>
+      <button type="button" className="tasks-toggle" aria-pressed={!!prefs.compact} onClick={() => setPrefs(p => ({...p, compact:!p.compact}))}>Compacto</button>
+      <button type="button" className="tasks-undo" disabled={!canUndo} onClick={onUndo}>↶ Desfazer</button>
 
       {open === "filter" && (
         <Popover anchor={refs.filter} onClose={close} width={360} title="Filtros" align="end">
@@ -71,9 +73,9 @@ export function Toolbar({ prefs, setPrefs, users, labelOptions, labelColors, col
             {[["none", "Sem prazo"], ["overdue", "Atrasadas"], ["today", "Hoje"], ["week", "Esta semana"], ["nextweek", "Próxima semana"], ["range", "Período"]].map(([k, l]) => <button key={k} type="button" style={chip(f.due.preset === k)} onClick={() => setF({ due: { ...f.due, preset: f.due.preset === k ? "" : k } })}>{l}</button>)}
             {f.due.preset === "range" && (
               <span style={{ display: "inline-flex", gap: 6, alignItems: "center", width: "100%", marginTop: 4 }}>
-                <input type="date" className="inp" value={f.due.since || ""} onChange={(e) => setF({ due: { ...f.due, since: e.target.value } })} style={{ flex: 1 }} />
+                <input type="date" aria-label="Prazo inicial" className="inp" value={f.due.since || ""} onChange={(e) => setF({ due: { ...f.due, since: e.target.value } })} style={{ flex: 1 }} />
                 <span className="dim" style={{ fontSize: 12 }}>até</span>
-                <input type="date" className="inp" value={f.due.until || ""} onChange={(e) => setF({ due: { ...f.due, until: e.target.value } })} style={{ flex: 1 }} />
+                <input type="date" aria-label="Prazo final" className="inp" value={f.due.until || ""} onChange={(e) => setF({ due: { ...f.due, until: e.target.value } })} style={{ flex: 1 }} />
               </span>
             )}
           </Section>
@@ -170,4 +172,11 @@ export function ActiveFiltersStrip({ prefs, setPrefs, users, columns }) {
       <button type="button" onClick={() => setPrefs((p) => ({ ...p, filters: { ...DEFAULT_FILTERS }, sort: { key: "manual", dir: "asc" }, group: "column" }))} style={{ fontSize: 12, color: "var(--fg-3)", fontWeight: 500, marginLeft: 4 }}>Limpar tudo</button>
     </div>
   );
+}
+
+const CARD_FIELDS = [["assignee", "Responsável"], ["due", "Prazo"], ["priority", "Prioridade"], ["labels", "Labels"], ["subtasks", "Subtarefas"], ["comments", "Comentários"], ["attachments", "Anexos"], ["cover", "Capa"]];
+export function TaskCardFields({prefs, setPrefs}) {
+  const mobile = useIsMobile();
+  const fields = {...DEFAULT_FIELDS, ...prefs.fields};
+  return <details className="tasks-card-fields" open={!mobile}><summary>Campos dos cards</summary><div className="tasks-fields-inner" role="group" aria-label="Campos no card"><span>O que o card mostra</span>{CARD_FIELDS.map(([key, label]) => <button key={key} type="button" aria-pressed={fields[key] !== false} onClick={() => setPrefs(p => ({...p, fields:{...DEFAULT_FIELDS, ...p.fields, [key]: fields[key] === false}}))}><span aria-hidden="true">{fields[key] !== false ? "✓" : "−"}</span>{label}</button>)}</div></details>;
 }

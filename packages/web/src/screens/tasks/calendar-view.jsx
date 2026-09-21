@@ -26,10 +26,15 @@ export function CalendarView({ tasks, usersById, actions, mobile, today = todayY
   const days = useMemo(() => Array.from({ length: 42 }, (_, i) => addDays(gridStart, i)), [gridStart]);
   const byDay = useMemo(() => { const m = new Map(); for (const t of tasks) if (t.dueDate) { if (!m.has(t.dueDate)) m.set(t.dueDate, []); m.get(t.dueDate).push(t); } return m; }, [tasks]);
   const noDue = useMemo(() => tasks.filter((t) => !t.dueDate && !t.completed), [tasks]);
+  const creating = useRef(false);
+  const [saving, setSaving] = useState(false);
   const submitNew = async () => {
+    if (creating.current) return;
     const v = (inputRef.current?.value || "").trim();
     if (!v) { setAdding(null); return; }
+    creating.current = true; setSaving(true);
     const ok = await actions.create(null, v, "bottom", { dueDate: adding });
+    creating.current = false; setSaving(false);
     if (ok) setAdding(null);
   };
   const dropProps = (day) => ({
@@ -40,7 +45,7 @@ export function CalendarView({ tasks, usersById, actions, mobile, today = todayY
   const Chip = ({ t }) => {
     const done = !!t.completed;
     return (
-      <div draggable data-task={t.id} onDragStart={(e) => { e.dataTransfer.setData("text/plain", t.id); e.dataTransfer.effectAllowed = "move"; }}
+      <div role="button" tabIndex={0} aria-label={t.title} onKeyDown={e => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); actions.open(t.id); } }} draggable data-task={t.id} onDragStart={(e) => { e.dataTransfer.setData("text/plain", t.id); e.dataTransfer.effectAllowed = "move"; }}
         onClick={() => actions.open(t.id)} onContextMenu={(e) => { e.preventDefault(); actions.menu(t.id, { x: e.clientX, y: e.clientY }); }}
         style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 6px", borderRadius: 6, background: "var(--bg-1)", border: "1px solid var(--line-1)", borderLeft: `3px solid ${t.priority ? priTone(t.priority) : "var(--line-2)"}`, fontSize: 11.5, fontWeight: 600, color: done ? "var(--fg-4)" : "var(--fg-1)", cursor: "grab", opacity: done ? 0.7 : 1 }}>
         <CompleteCircle done={done} size={12} onToggle={(v) => actions.complete(t.id, v)} />
@@ -61,7 +66,7 @@ export function CalendarView({ tasks, usersById, actions, mobile, today = todayY
   if (mobile) {
     const listed = days.filter((d) => ym(d) === month && byDay.has(d));
     return (
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+      <div className="tasks-calendar" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
         {head}
         <div style={{ padding: "0 var(--pad-x) 24px", display: "flex", flexDirection: "column", gap: 10 }}>
           {listed.map((d) => (
@@ -76,7 +81,7 @@ export function CalendarView({ tasks, usersById, actions, mobile, today = todayY
     );
   }
   return (
-    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+    <div className="tasks-calendar" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       {head}
       <div style={{ flex: 1, minHeight: 0, display: "flex", gap: 12, padding: "0 var(--pad-x) 16px" }}>
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", border: "1px solid var(--line-1)", borderRadius: "var(--r-4)", overflow: "hidden", background: "var(--bg-1)" }}>
@@ -92,13 +97,13 @@ export function CalendarView({ tasks, usersById, actions, mobile, today = todayY
                 <div key={d} className="tk-row" {...dropProps(d)} style={{ borderRight: (i % 7) < 6 ? "1px solid var(--line-1)" : "none", borderBottom: "1px solid var(--line-1)", padding: 4, background: over === d ? "var(--accent-soft)" : inMonth ? "var(--bg-1)" : "var(--bg-0)", minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                     <span className="tnum" style={{ fontSize: 12, fontWeight: isToday ? 700 : 500, color: isToday ? "var(--bg-1)" : inMonth ? "var(--fg-2)" : "var(--fg-4)", background: isToday ? "var(--accent)" : "transparent", borderRadius: 999, minWidth: 22, height: 22, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{Number(d.slice(8, 10))}</span>
-                    <button type="button" className="tk-hover" title="Adicionar tarefa neste dia" onClick={() => setAdding(d)} style={{ marginLeft: "auto", width: 20, height: 20, borderRadius: 5, color: "var(--fg-4)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="plus" size={12} /></button>
+                    <button type="button" className="tk-hover" aria-label={`Adicionar tarefa em ${d}`} title="Adicionar tarefa neste dia" onClick={() => setAdding(d)} style={{ marginLeft: "auto", width: 20, height: 20, borderRadius: 5, color: "var(--fg-4)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="plus" size={12} /></button>
                   </div>
                   {list.slice(0, 3).map((t) => <Chip key={t.id} t={t} />)}
                   {list.length > 3 && <button type="button" onClick={(e) => setMore({ day: d, anchor: e.currentTarget.getBoundingClientRect() })} style={{ fontSize: 11, color: "var(--accent)", fontWeight: 600, textAlign: "left", padding: "0 4px" }}>+{list.length - 3}</button>}
                   {adding === d && (
-                    <input ref={inputRef} autoFocus className="inp" placeholder="Nova tarefa" style={{ height: 26, fontSize: 12, width: "100%", boxSizing: "border-box" }}
-                      onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") { e.preventDefault(); submitNew(); } if (e.key === "Escape") setAdding(null); }} onBlur={submitNew} />
+                    <input ref={inputRef} autoFocus readOnly={saving} aria-busy={saving} aria-label="Nova tarefa no calendário" className="inp" placeholder="Nova tarefa" style={{ height: 26, fontSize: 12, width: "100%", boxSizing: "border-box" }}
+                      onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") { e.preventDefault(); submitNew(); } if (e.key === "Escape" && !creating.current) setAdding(null); }} onBlur={submitNew} />
                   )}
                 </div>
               );

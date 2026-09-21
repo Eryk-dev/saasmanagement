@@ -22,21 +22,26 @@ export function ListView({ groups, usersById, users, labelColors, columns, prefs
   const toggle = (k) => setCollapsed((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
   const setSort = (key) => setPrefs((p) => ({ ...p, sort: p.sort?.key === key ? { key, dir: p.sort.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" } }));
   const th = (label, key, style) => (
-    <th key={label} className="kicker" style={{ padding: "8px 10px", textAlign: "left", cursor: key ? "pointer" : "default", whiteSpace: "nowrap", ...style }} onClick={key ? () => setSort(SORTABLE[key]) : undefined}>
-      {label}{key && sortKey === SORTABLE[key] ? (prefs.sort.dir === "desc" ? " ▼" : " ▲") : ""}
+    <th key={label} className="kicker" style={{ padding: "8px 10px", textAlign: "left", cursor: key ? "pointer" : "default", whiteSpace: "nowrap", ...style }} aria-sort={key && sortKey === SORTABLE[key] ? (prefs.sort.dir === "desc" ? "descending" : "ascending") : undefined}>
+      {key ? <button type="button" onClick={() => setSort(SORTABLE[key])} style={{font:"inherit",color:"inherit",textTransform:"inherit",letterSpacing:"inherit"}}>{label}{sortKey === SORTABLE[key] ? (prefs.sort.dir === "desc" ? " ▼" : " ▲") : ""}</button> : label}
     </th>
   );
   const cell = { padding: "6px 10px", fontSize: 12.5, borderTop: "1px solid var(--line-1)", verticalAlign: "middle" };
   const ghost = { display: "inline-flex", alignItems: "center", gap: 6, height: 26, padding: "0 6px", borderRadius: 999, fontSize: 12.5, color: "var(--fg-3)", background: "transparent", maxWidth: "100%" };
+  const creating = useRef(false);
+  const [saving, setSaving] = useState(false);
   const submitNew = async (again) => {
+    if (creating.current) return;
     const v = (inputRef.current?.value || "").trim();
     if (!v) { if (!again) setAdding(null); return; }
+    creating.current = true; setSaving(true);
     const ok = await actions.create(adding, v, "bottom");
+    creating.current = false; setSaving(false);
     if (ok && inputRef.current) { inputRef.current.value = ""; if (!again) setAdding(null); else inputRef.current.focus(); }
   };
   const picked = pick ? groups.flatMap((g) => g.tasks).find((t) => t.id === pick.id) : null;
   return (
-    <div className="tbl-x" style={{ flex: 1, minHeight: 0, overflow: "auto", padding: "8px var(--pad-x) 24px" }}>
+    <div className="tbl-x tasks-list" style={{ flex: 1, minHeight: 0, overflow: "auto", padding: "8px var(--pad-x) 24px" }}>
       <table className="tbl" style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
         <thead>
           <tr>
@@ -108,8 +113,8 @@ export function ListView({ groups, usersById, users, labelColors, columns, prefs
                 <tr>
                   <td colSpan={8} style={{ padding: "4px 10px 8px", borderTop: "1px solid var(--line-1)" }}>
                     {adding === g.key ? (
-                      <input ref={inputRef} autoFocus className="inp" placeholder="Nome da tarefa (Enter salva, Esc cancela)" style={{ width: "min(100%, 480px)" }}
-                        onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") { e.preventDefault(); submitNew(true); } if (e.key === "Escape") setAdding(null); }} onBlur={() => submitNew(false)} />
+                      <input ref={inputRef} autoFocus readOnly={saving} aria-busy={saving} aria-label="Nova tarefa na lista" className="inp" placeholder="Nome da tarefa (Enter salva, Esc cancela)" style={{ width: "min(100%, 480px)" }}
+                        onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") { e.preventDefault(); submitNew(true); } if (e.key === "Escape" && !creating.current) setAdding(null); }} onBlur={() => submitNew(false)} />
                     ) : (
                       <button type="button" onClick={() => setAdding(g.key)} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--fg-3)", padding: "4px 0" }}><Icon name="plus" size={13} /> Adicionar tarefa</button>
                     )}
