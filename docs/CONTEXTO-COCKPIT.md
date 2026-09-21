@@ -554,5 +554,6 @@ alteração funcional nesta preparação.
   botões e as operações de gerar apresentação/enviar oferta principal usados
   no pipeline e nas atividades. O envio continua preparando a oferta de cliente
   via `shareProposal`, sem compartilhar a chave de edição do closer. Atividades
-  usa botões em linha e os mesmos modais de pagamento/proposta personalizada.
+  usa pagamento e proposta no WhatsApp em linha, com o mesmo modal de pagamento;
+  geração explícita e menu ⋯ ficam apenas no pipeline.
   Revisão isolada: `cd packages/web && node scripts/review/today-shortcuts.mjs`.

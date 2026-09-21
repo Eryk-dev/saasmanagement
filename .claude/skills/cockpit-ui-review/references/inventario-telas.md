@@ -1199,5 +1199,7 @@ Acabamento da apresentação em 21/09/2026: fundo branco, rótulo LeverAds e bot
 Apresentar junto ao valor, validado no preview do card em desktop e mobile.
 
 Atalhos unificados com o pipeline em 21/09/2026: versão compacta nas atividades,
-com geração, pagamento, proposta no WhatsApp e menu de ações secundárias.
+com pagamento e proposta no WhatsApp. Geração e menu ⋯ removidos das atividades;
+rodapé Próximo passo e plano selecionado com fundo escuro, conferidos em desktop
+e mobile.
 Validação de ações e mobile em `scripts/review/today-shortcuts.mjs`.

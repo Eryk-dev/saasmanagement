@@ -1180,6 +1180,7 @@ html, body { height: auto; overflow: auto; background: var(--paper-card); }
 .cfg-seg button { padding: 7px 10px; font-size: 12px; }
 #canvas { box-shadow: none; background: var(--paper-card); }
 .cfg-seg { background: var(--paper-card); border: 1px solid var(--line); }
+.cfg-seg button[data-on] { background: var(--ink); color: var(--paper-card); box-shadow: none; }
 .cfg-prod span[style*="grid-template-columns"] { grid-template-columns: minmax(0,1fr) !important; }
 .cfg-select { text-overflow: ellipsis; }
 @media (pointer: coarse) { .cfg-input, .cfg-select, .cfg-seg button, .cfg-present { min-height: 44px; } }
