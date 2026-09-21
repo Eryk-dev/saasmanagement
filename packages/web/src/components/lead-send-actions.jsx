@@ -46,19 +46,19 @@ export function useLeadProposalActions({ lead, onSaved, onOpenWhatsapp }) {
   return { busy, altDecks, generate: (template) => run("generate", template), share: () => run("share") };
 }
 
-export function LeadSendActions({ lead, busy, altDecks, onGenerate, onPayment, onShare, onCustom, onOpenWhatsapp, compact = false }) {
+export function LeadSendActions({ lead, busy, altDecks, onGenerate, onPayment, onShare, onCustom, onOpenWhatsapp, compact = false, showGenerate = true, showMore = true }) {
   const wa = waLink(lead.phone);
   return <div className={compact ? "lead-send-actions-compact" : "pipeline-lead-send"}>
     {!compact && <h3>enviar pro cliente</h3>}
-    <button disabled={busy} onClick={() => onGenerate()}><span aria-hidden="true">▣</span><span>{busy ? "Gerando…" : "Gerar apresentação"}</span></button>
+    {showGenerate && <button disabled={busy} onClick={() => onGenerate()}><span aria-hidden="true">▣</span><span>{busy ? "Gerando…" : "Gerar apresentação"}</span></button>}
     <button onClick={onPayment}><span aria-hidden="true">▤</span><span>Link de pagamento</span></button>
     <button disabled={busy} onClick={onShare} title="Preparar a oferta principal para enviar no WhatsApp"><span aria-hidden="true">✆</span><span>{compact ? "Proposta no WhatsApp" : "Enviar proposta no WhatsApp"}</span></button>
-    <MoreMenu size={30} items={[
+    {showMore && <MoreMenu size={30} items={[
       ...altDecks.map(t => ({ label: `gerar ${t.pickLabel || t.name}`, onClick: () => onGenerate(t), disabled: busy })),
       lead.proposal_edit_url && { label: "apresentar ↗", onClick: () => window.open(lead.proposal_edit_url, "_blank", "noreferrer") },
       lead.customProposalUrl && { label: "abrir proposta personalizada ↗", onClick: () => window.open(cockpitProposalUrl(lead.customProposalUrl), "_blank", "noreferrer") },
       { label: lead.customProposalUrl ? "editar proposta personalizada" : "montar proposta personalizada", onClick: onCustom },
       wa && { label: "Abrir conversa no WhatsApp", onClick: () => onOpenWhatsapp ? onOpenWhatsapp(lead) : window.open(wa, "_blank", "noreferrer") },
-    ]} />
+    ]} />}
   </div>;
 }

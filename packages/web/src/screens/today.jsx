@@ -24,7 +24,6 @@ import { clientSummary, ClientSummaryCard, AttributionCard, LeadChecklist, Scrip
 import { resolveScript, scriptTokens, scriptChecklist, isNoShowStage, confirmationScript, integrationConfirmationScript, scriptKeyFor } from "../lib/scripts.js";
 import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, withLegacyOption, closedPlanLabel, dealProductLabel, dealProductsOf } from "../lib/payments.js";
 import { LeadSendActions, useLeadProposalActions } from "../components/lead-send-actions.jsx";
-import { CustomProposalModal } from "../components/custom-proposal.jsx";
 import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
 // "Hoje" (a fila de trabalho, numerada na ordem de prioridade do processo),
@@ -1465,7 +1464,6 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
   // Atalho pro link de pagamento do MP sem sair do roteiro: mesmo modal do
   // card do lead (o checkout nasce amarrado ao id do lead).
   const [payLink, setPayLink] = useS(false);
-  const [customProp, setCustomProp] = useS(false);
   const proposalActions = useLeadProposalActions({ lead: l, onOpenWhatsapp: onWhatsapp,
     onSaved: fresh => patch({ proposalUrl: fresh.proposalUrl, proposal_edit_url: fresh.proposal_edit_url, proposta_id: fresh.proposta_id, proposalPinned: fresh.proposalPinned }),
   });
@@ -1573,9 +1571,9 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
         {/* Atalhos.pdf: faixa de atalhos, apresentação/respostas e histórico. */}
         <div className="today-script-body">
           <LeadSection title="Atalhos" className="today-script-shortcuts">
-            {!preview && <LeadSendActions compact lead={l} busy={proposalActions.busy} altDecks={proposalActions.altDecks}
+            {!preview && <LeadSendActions compact showGenerate={false} showMore={false} lead={l} busy={proposalActions.busy} altDecks={proposalActions.altDecks}
               onGenerate={proposalActions.generate} onPayment={() => setPayLink(true)} onShare={proposalActions.share}
-              onCustom={() => setCustomProp(true)} onOpenWhatsapp={onWhatsapp} />}
+              onOpenWhatsapp={onWhatsapp} />}
             {(item.kind === "call" || item.kind === "integracao") && !preview && (!item.confirm || (item.kind === "call" ? l.callUrl : l.integrationCallUrl)) &&
               <CallShortcuts l={l} wa={wa} onPatch={patch} kind={item.kind} />}
           </LeadSection>
@@ -1583,7 +1581,7 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
             <LeadSection title="Informações da apresentação" className="today-presentation">
               {l.proposal_edit_url && !preview ? <>
                 <PresentationConfig key={l.proposal_edit_url} url={l.proposal_edit_url} />
-              </> : <p className="today-script-hint">{preview ? "A configuração da apresentação aparece aqui na atividade do lead." : "Gere a proposta nos atalhos para preencher pedidos, ticket médio, produtos e plano aqui. A configuração continua disponível na apresentação."}</p>}
+              </> : <p className="today-script-hint">{preview ? "A configuração da apresentação aparece aqui na atividade do lead." : "Prepare a proposta pelo botão Proposta no WhatsApp para preencher pedidos, ticket médio, produtos e plano aqui. A configuração continua disponível na apresentação."}</p>}
             </LeadSection>
             <LeadSection title="Perguntas e respostas do formulário">
               <LeadChecklist key={l.id} checklist={scriptChecklist(saasCfg, l)} onPatch={patch} leadId={l.id} title="Respostas do lead" />
@@ -1609,7 +1607,7 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
             fecha o item exigia a maior rolagem. Agora é a barra do rodapé.
             Item de confirmação não move etapa: no lugar dos destinos, ele
             mantém os botões próprios (confirmou / sem resposta / remarcar). */}
-        <div className="today-script-footer" style={{ marginTop: "auto", padding: "14px 20px", borderTop: "1px solid var(--line-2)", background: "var(--bg-1)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <div className="today-script-footer capsule-navy" style={{ marginTop: "auto", padding: "14px 20px", borderTop: "1px solid var(--line-2)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           {!item.confirm && !preview && (
             <div style={{ flexBasis: "100%", minWidth: 0 }}>
               <DestinoSection saasCfg={saasCfg} lead={l} leads={leads} callSummary={callSummary}
@@ -1700,8 +1698,6 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
 
         {/* O modal empilha por cima do painel (z-index maior) e o servidor já
             persiste o lead — aqui só refletimos o retorno na cópia local. */}
-        {customProp && <CustomProposalModal lead={l} onClose={() => setCustomProp(false)}
-          onSaved={(r) => setL(prev => ({ ...prev, customProposalId: r.id, customProposalUrl: r.url }))} />}
         {payLink && (
           <PaymentLinkModal
             lead={l}

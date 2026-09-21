@@ -309,6 +309,9 @@ na faixa do valor final e abre o deck completo em nova aba com a chave atual.
 
 Atalhos de envio compartilham `components/lead-send-actions.jsx`: gerar
 apresentação, link de pagamento e proposta no WhatsApp; decks alternativos,
-apresentar, proposta personalizada e conversa no menu ⋯. No card de atividades,
-ficam em uma linha flexível com quebra no mobile, junto aos atalhos de chamada.
-O pipeline mantém sua disposição vertical.
+apresentar, proposta personalizada e conversa no menu ⋯ no pipeline. No card de
+atividades, apenas pagamento e proposta no WhatsApp ficam em uma linha flexível
+com quebra no mobile, junto aos atalhos de chamada; gerar apresentação e ⋯ não
+aparecem. O pipeline mantém sua disposição vertical.
+O rodapé Próximo passo usa a cápsula escura `capsule-navy`; o plano selecionado
+na configuração incorporada usa fundo `--ink` e texto `--paper-card`.
