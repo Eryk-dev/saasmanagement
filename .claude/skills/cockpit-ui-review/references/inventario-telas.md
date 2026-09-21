@@ -1211,3 +1211,6 @@ e respostas longas em desktop e celular no review today-card.
 Follow-up nas atividades revisado em 21/09/2026: próximas ações sem etapas
 Dia 2–7; botão Follow-up abre data e hora de retorno, com confirmação e cancelar.
 Validação desktop/mobile em `scripts/review/followup-return.mjs`.
+
+Cabeçalho da atividade revisado em 21/09/2026: telefone do cadastro ao lado do
+nome, com quebra de linha quando necessário. Conferido em 1440px e 390px.

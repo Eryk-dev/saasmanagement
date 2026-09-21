@@ -1562,7 +1562,10 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
         <div className="today-script-header">
           <LeadGrade tier={tier} placeholder />
           <div className="today-script-identity">
-            <button onClick={preview ? undefined : onOpenLead} disabled={preview}>{l.name}</button>
+            <div className="today-script-name">
+              <button onClick={preview ? undefined : onOpenLead} disabled={preview}>{l.name}</button>
+              {l.phone && <span className="today-script-phone">{l.phone}</span>}
+            </div>
             <span>{l.company}{l.company ? " · " : ""}{actionVerb(item)}</span>
           </div>
           <button onClick={onClose} aria-label="Fechar atividade" className="lead-panel-close">✕</button>
