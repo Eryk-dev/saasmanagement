@@ -2,7 +2,7 @@ import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { StatTile, Card, Pill } from "../components/viz.jsx";
-import { AvisoTopo } from "../components/story.jsx";
+
 import { Avatar, EmptyState } from "../atoms.jsx";
 import { allUsers } from "../lib/users.js";
 import { mpMethodLabel } from "../lib/payments.js";
@@ -69,27 +69,26 @@ const btnPri = { height: 32, padding: "0 14px", borderRadius: 999, background: "
 // A leitura do mês (GET /api/fin) + recarga no SSE.
 function useFin(product, month) {
   const { version } = useData();
-  const [fin, setFin] = useState(null);
-  const [err, setErr] = useState(null);
+  const [fin, setFin] = useState(null), [err, setErr] = useState(null);
+  const request = React.useRef(0);
   const load = useCallback(() => {
     if (!product?.id) return;
-    api.fin(product.id, month).then((d) => { setFin(d); setErr(null); }).catch((e) => setErr(e.message));
+    const seq = ++request.current; setErr(null);
+    return api.fin(product.id, month).then(d=>{if(seq===request.current)setFin(d);}).catch(e=>{if(seq===request.current)setErr(e.message);});
   }, [product?.id, month]);
-  useEffect(() => { load(); }, [load, version]);
+  useEffect(() => { load(); return()=>{request.current++;}; }, [load, version]);
   return { fin, err, reload: load };
 }
-
-const Carregando = ({ err }) => (
-  <div style={{ padding: "16px var(--pad-x)" }}>
-    <span className="mono dim" style={{ fontSize: 12, color: err ? "var(--neg)" : undefined }}>{err || "carregando…"}</span>
-  </div>
-);
+const Carregando = ({ err, retry }) => <div className="finance-notice" role={err ? "alert" : "status"}>{err || "Carregando…"}{err && <button onClick={retry}>Tentar novamente</button>}</div>;
+function AvisoTopo({tom="neg",titulo,nota,acao}) {
+  return <section className={`finance-pending finance-pending-${tom}`}><span aria-hidden="true"/><div><strong>{titulo}</strong><span>{nota}</span></div>{acao?.href?<a href={acao.href}>{acao.label}</a>:<button onClick={acao?.onClick}>{acao?.label}</button>}</section>;
+}
 
 // ── Resumo ───────────────────────────────────────────────────────────────────
 function FluxoCard({ fluxo, previsto, month }) {
   const max = Math.max(1, ...fluxo.map((f) => Math.max(f.entrada, f.saida)));
   return (
-    <Card title="Fluxo de caixa" hint="realizado por mês · entrada = faturas recebidas · saída = contas pagas + custos do mês">
+    <Card style={{"--finance-card":"flow"}} title="Fluxo de caixa" hint="realizado por mês · entrada = faturas recebidas · saída = contas pagas + custos do mês">
       <div style={{ padding: "12px var(--inset-x) 18px", display: "flex", flexDirection: "column", gap: 10 }}>
         {fluxo.map((f) => {
           const saldo = r2(f.entrada - f.saida);
@@ -157,10 +156,10 @@ export function GastosCard({ setores, recebidosMes, month }) {
   });
 
   return (
-    <Card title="Para onde vai o dinheiro" hint={`${mesLongo(month)} · custos como % do recebido no mês`}>
+    <Card title="Gastos do mês" hint={`${mesLongo(month)} · custos como % do recebido no mês`}>
       {!fatias.length ? <EmptyState title="Sem recebimentos neste mês" hint="Ainda não há recebimentos nem despesas para comparar." /> : (
         <div style={{ padding: "18px var(--inset-x) 22px", display: "flex", flexWrap: "wrap", gap: 24, alignItems: "center" }}>
-          <figure style={{ margin: "0 auto", width: 200, maxWidth: "100%", flexShrink: 0 }}>
+          <figure className="finance-donut" style={{ margin: "0 auto", width: 132, maxWidth: "100%", flexShrink: 0 }}>
             {mostraPizza ? <svg viewBox="0 0 220 220" role="img" aria-label={`Custos e saldo sobre os recebimentos de ${mesLongo(month)}`} style={{ display: "block", width: "100%" }}>
               <title>{`Recebido no mês · ${money(recebidos)}`}</title>
               {fatias.map((f) => fatias.length === 1 ? (
@@ -172,6 +171,7 @@ export function GastosCard({ setores, recebidosMes, month }) {
                   <title>{`${f.label}: ${money(f.value)} · ${f.pct}`}</title>
                 </path>
               ))}
+              <circle cx="110" cy="110" r="60" fill="var(--bg-1)" />
             </svg> : (
               <div style={{ padding: "20px 0", textAlign: "center" }}>
                 <div style={{ fontSize: 13.5, fontWeight: 650, color: recebidos > 0 ? "var(--neg)" : "var(--fg-2)" }}>
@@ -232,16 +232,18 @@ function DreSetor({ sector, itens }) {
 }
 
 export function ResumoTab({ product, month, onTab }) {
-  const { fin, err } = useFin(product, month);
+  const { fin, err, reload } = useFin(product, month);
   const { version } = useData();
-  const [sum, setSum] = useState(null); // IA + WhatsApp (custos externos) vêm do summary existente
+  const [sum, setSum] = useState(null), [sumErr, setSumErr] = useState(null), [sumRetry,setSumRetry]=useState(0); // IA + WhatsApp (custos externos) vêm do summary existente
   useEffect(() => {
     let alive = true;
-    api.expensesSummary(product.id, month).then((s) => alive && setSum(s)).catch(() => alive && setSum(null));
+    setSumErr(null);
+    api.expensesSummary(product.id, month).then((s) => alive && setSum(s)).catch(e=>{if(alive)setSumErr(e.message);});
     return () => { alive = false; };
-  }, [product.id, month, version]);
-  if (!fin) return <Carregando err={err} />;
+  }, [product.id, month, version, sumRetry]);
+  if (!fin || err) return <Carregando err={err} retry={reload} />;
 
+  if (sumErr || !sum) return <Carregando err={sumErr} retry={()=>setSumRetry(v=>v+1)} />;
   const ai = Number(sum?.ai) || 0;
   const wa = Number(sum?.wa) || 0;
   const S = fin.dre.setores;
@@ -258,13 +260,13 @@ export function ResumoTab({ product, month, onTab }) {
   const abertasTotal = fin.tiles.vencidos.total + fin.tiles.vencemHoje.total + fin.tiles.aVencer.total;
 
   return (
-    <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="finance-content">
       {/* O RESUMO ABRE PELAS PENDÊNCIAS COM PRAZO (13/09), não por seis
           números de peso igual: dinheiro vencido a receber, conta que vence
           esta semana e entrada sem dono no Mercado Pago são o que exige alguém
           hoje. A foto do mês (recebido, despesas, margem, resultado) desce pra
           uma linha, e o detalhe continua no DRE logo abaixo. */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div className="finance-pendings">
         {fin.receber.vencidas.n > 0 && (
           <AvisoTopo navy
             titulo={`${money(fin.receber.vencidas.total)} vencidos a receber`}
@@ -280,8 +282,8 @@ export function ResumoTab({ product, month, onTab }) {
           />
         )}
         {fin.conciliacao.pendentes.n > 0 && (
-          <AvisoTopo navy={fin.receber.vencidas.n === 0 && fin.tiles.vencidos.n === 0} tom="neutro"
-            titulo={`${int(fin.conciliacao.pendentes.n)} entradas sem dono no Mercado Pago`}
+          <AvisoTopo navy={fin.receber.vencidas.n === 0 && fin.tiles.vencidos.n === 0} tom="info"
+            titulo={`${int(fin.conciliacao.pendentes.n)} ${fin.conciliacao.pendentes.n === 1 ? "entrada sem dono" : "entradas sem dono"} no Mercado Pago`}
             nota={`${money(fin.conciliacao.pendentes.total)} esperando cliente ou motivo`}
             acao={{ label: "conciliar", onClick: () => onTab?.("conciliacao") }}
           />
@@ -289,7 +291,7 @@ export function ResumoTab({ product, month, onTab }) {
       </div>
 
       {/* A foto do mês: uma linha, com o detalhe no title de sempre. */}
-      <div style={{ display: "flex", gap: 22, flexWrap: "wrap", padding: "12px var(--inset-x)", border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
+      <div className="finance-photo">
         {[
           { rot: "recebido no mês", v: money(fin.receber.recebidosMes), nota: `espelho MP ${money(fin.conciliacao.espelhoMes)}`, title: "Faturas baixadas no mês (a mesma régua de caixa do cockpit)." },
           { rot: "a receber", v: money(fin.receber.emAberto.total), nota: fin.receber.vencidas.n ? `${int(fin.receber.vencidas.n)} vencida${fin.receber.vencidas.n > 1 ? "s" : ""}` : "nada vencido", title: "Faturas em aberto agora (qualquer mês)." },
@@ -306,7 +308,7 @@ export function ResumoTab({ product, month, onTab }) {
         ))}
       </div>
 
-      <div className="resp-cols" style={{ "--cols": "1fr 1fr", gap: 16 }}>
+      <div className="finance-summary-grid">
         <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
           <FluxoCard fluxo={fin.fluxo} previsto={fin.previsto} month={month} />
           <GastosCard setores={{ ...S, cogs }} recebidosMes={fin.receber.recebidosMes} month={month} />
@@ -364,14 +366,18 @@ export function ConciliacaoTab({ product, month }) {
   const [note, setNote] = useState(null);
   const [showIgnoradas, setShowIgnoradas] = useState(false);
 
-  const loadAll = useCallback(() => {
-    api.mpPayments({ saas: product.id }).then((r) => setPayments(Array.isArray(r) ? r : r.payments || [])).catch(() => setPayments([]));
-    api.list("fin_rules").then((r) => setRules(r.filter((x) => !x.saas || x.saas === product.id))).catch(() => setRules([]));
-    api.list("mp_movements").then(setMovs).catch(() => setMovs([]));
+  const [loadErr,setLoadErr] = useState(null), [busy,setBusy] = useState(false);
+  const action=React.useRef(false), read=React.useRef(0);
+  async function run(fn){if(action.current)return;action.current=true;setBusy(true);try{await fn();}finally{action.current=false;setBusy(false);}}
+  const loadAll = useCallback(async () => {
+    const seq=++read.current;setLoadErr(null);
+    try { const [p,r,m]=await Promise.all([api.mpPayments({saas:product.id}),api.list("fin_rules"),api.list("mp_movements")]);
+      if(seq===read.current){setPayments(Array.isArray(p)?p:p.payments||[]);setRules(r.filter(x=>!x.saas||x.saas===product.id));setMovs(m);}
+    }catch(e){if(seq===read.current)setLoadErr(e.message);}
   }, [product.id]);
-  useEffect(() => { loadAll(); }, [loadAll, version]);
+  useEffect(() => { loadAll(); return()=>{read.current++;}; }, [loadAll, version]);
 
-  if (!fin || payments == null) return <Carregando err={err} />;
+  if (!fin || err || loadErr || payments == null) return <Carregando err={err || loadErr} retry={()=>{reload();loadAll();}} />;
 
   const aprovados = payments.filter((p) => p.status === "approved");
   const pendentes = aprovados.filter((p) => !p.customer && !p.finIgnored)
@@ -388,30 +394,31 @@ export function ConciliacaoTab({ product, month }) {
     await api.create("fin_rules", {
       saas: product.id, matchField: best[0], matchValue: best[1],
       action, ...extra, createdAt: new Date().toISOString(),
-    }).catch(() => {});
+    });
   };
   const vincular = async (p, customerId) => {
     const cust = customerId || pick[p.id];
     if (!cust) return;
     try {
       await api.mpLinkPayment(p.id, cust);
-      if (querLembrar(p)) await criarRegra(p, "vincular", { customer: cust });
+      if (querLembrar(p)) { try { await criarRegra(p, "vincular", { customer: cust }); } catch(e){ setNote({ok:false,text:`Pagamento vinculado; regra não criada: ${e.message}`}); await reload(); await loadAll(); return; } }
       setNote({ ok: true, text: querLembrar(p) ? "vinculado · regra criada: esse pagador não pergunta mais" : "vinculado" });
-      reload(); loadAll();
+      await reload(); await loadAll();
     } catch (e) { setNote({ ok: false, text: e.message }); }
   };
   const desconsiderar = async (p) => {
     try {
       await api.update("mp_payments", p.id, { finIgnored: true, finIgnoredReason: motivo[p.id] || "outro" });
-      if (querLembrar(p)) await criarRegra(p, "desconsiderar", { reason: motivo[p.id] || "outro" });
-      reload(); loadAll();
+      if (querLembrar(p)) { try { await criarRegra(p, "desconsiderar", { reason: motivo[p.id] || "outro" }); } catch(e){setNote({ok:false,text:`Pagamento desconsiderado; regra não criada: ${e.message}`});await reload();await loadAll();return;} }
+      await reload(); await loadAll();
     } catch (e) { setNote({ ok: false, text: e.message }); }
   };
   const reconsiderar = async (p) => {
-    try { await api.update("mp_payments", p.id, { finIgnored: false, finIgnoredReason: "" }); reload(); loadAll(); } catch (e) { setNote({ ok: false, text: e.message }); }
+    try { await api.update("mp_payments", p.id, { finIgnored: false, finIgnoredReason: "" }); await reload(); await loadAll(); } catch (e) { setNote({ ok: false, text: e.message }); }
   };
   const excluirRegra = async (r) => {
-    try { await api.remove("fin_rules", r.id); loadAll(); } catch (e) { setNote({ ok: false, text: e.message }); }
+    if (!window.confirm(`Excluir a regra de ${r.matchValue}? Os próximos pagamentos voltarão à conciliação.`)) return;
+    try { await api.remove("fin_rules", r.id); await loadAll(); } catch (e) { setNote({ ok: false, text: e.message }); }
   };
 
   // Sincronizar TUDO: entradas (espelho de pagamentos) e saídas (settlement
@@ -431,7 +438,7 @@ export function ConciliacaoTab({ product, month }) {
         const extra = r.requested ? " · relatório novo pedido ao MP, sincronize de novo em alguns minutos" : "";
         setNote({ ok: true, text: `${inTxt} · saídas: ${r.imported} importadas de ${r.filesRead} relatórios (${r.filesTotal ?? r.filesRead} na conta)${extra}` });
       }
-      reload(); loadAll();
+      await reload(); await loadAll();
     } catch (e) { setNote({ ok: false, text: e.message }); }
   };
   const movsPend = movs.filter((m) => !m.payableId && !m.finIgnored).sort((a, b) => String(b.date).localeCompare(String(a.date)));
@@ -442,11 +449,11 @@ export function ConciliacaoTab({ product, month }) {
       await api.update("mp_movements", m.id, { payableId: pid });
       if (pay && pay.status !== "paga") await api.update("payables", pid, { status: "paga", paidAt: `${m.date}T12:00:00.000Z`, paidVia: "mp" });
       setNote({ ok: true, text: pay && pay.status !== "paga" ? "saída casada e conta baixada" : "saída casada com a conta" });
-      reload(); loadAll();
+      await reload(); await loadAll();
     } catch (e) { setNote({ ok: false, text: e.message }); }
   };
   const ignorarMov = async (m) => {
-    try { await api.update("mp_movements", m.id, { finIgnored: true }); loadAll(); } catch (e) { setNote({ ok: false, text: e.message }); }
+    try { await api.update("mp_movements", m.id, { finIgnored: true }); await loadAll(); } catch (e) { setNote({ ok: false, text: e.message }); }
   };
 
   const movSugestao = (m) => fin.payables.find((p) => Math.abs((Number(p.amount) || 0) - (Number(m.amount) || 0)) <= 0.01);
@@ -459,8 +466,8 @@ export function ConciliacaoTab({ product, month }) {
   ].sort((a, b) => b.at.localeCompare(a.at));
 
   return (
-    <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-      {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
+    <fieldset disabled={busy} className="finance-content finance-conciliation">
+      {note && <div role={note.ok ? "status" : "alert"} className="finance-notice" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 190px), 1fr))", gap: 12 }}>
         <StatTile label="Pendentes" value={int(pendentes.length)} delta={money(fin.conciliacao.pendentes.total)}
           tone={pendentes.length ? "down" : "flat"} title="Pagamentos aprovados sem cliente vinculado e não desconsiderados." />
@@ -476,7 +483,7 @@ export function ConciliacaoTab({ product, month }) {
       </div>
 
       <Card title="Conciliação Mercado Pago" hint="entradas e saídas numa fila só, por data · vincule ao cliente, case com a conta a pagar ou desconsidere"
-        action={<button onClick={syncTudo} style={btn}>↻ sincronizar</button>}>
+        action={<button onClick={()=>run(syncTudo)} style={btn}>↻ sincronizar</button>}>
         <div style={{ padding: "10px var(--inset-x) 18px", display: "flex", flexDirection: "column", gap: 10 }}>
           {!fila.length && (
             <span className="dim" style={{ fontSize: 12.5 }}>
@@ -489,7 +496,7 @@ export function ConciliacaoTab({ product, month }) {
             const sug = fin.conciliacao.sugestoes?.[p.id];
             const best = bestIdOf(p);
             return (
-              <div key={p.id} style={{ padding: "10px 12px", background: "var(--bg-inset)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", display: "flex", flexDirection: "column", gap: 8 }}>
+              <div key={`entrada:${p.id}`} style={{ padding: "10px 12px", background: "var(--bg-inset)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
                   <Pill tone="pos">entrada</Pill>
                   <span className="tnum dim" style={{ fontSize: 12, width: 42 }}>{dmy((p.dateApproved || p.dateCreated || "").slice(0, 10))}</span>
@@ -505,22 +512,22 @@ export function ConciliacaoTab({ product, month }) {
                   </span>
                 </div>
                 {sug && (
-                  <button onClick={() => vincular(p, sug.customer)}
+                  <button onClick={() => run(()=>vincular(p, sug.customer))}
                     style={{ alignSelf: "flex-start", padding: "4px 10px", borderRadius: 999, border: "1px solid color-mix(in srgb, var(--accent) 35%, transparent)", background: "var(--accent-soft)", color: "var(--accent)", fontSize: 12, fontWeight: 600 }}>
                     usar sugestão: {sug.motivo} →
                   </button>
                 )}
                 <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                  <select value={pick[p.id] || ""} onChange={(e) => setPick((s) => ({ ...s, [p.id]: e.target.value }))} style={{ ...inp, minWidth: 150 }}>
+                  <select aria-label={`Cliente de ${p.payerName || p.id}`} value={pick[p.id] || ""} onChange={(e) => setPick((s) => ({ ...s, [p.id]: e.target.value }))} style={{ ...inp, minWidth: 150 }}>
                     <option value="">vincular cliente…</option>
                     {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
-                  <button onClick={() => vincular(p)} disabled={!pick[p.id]} style={{ ...btnPri, opacity: pick[p.id] ? 1 : .55 }}>ok</button>
-                  <select value={motivo[p.id] || ""} onChange={(e) => setMotivo((s) => ({ ...s, [p.id]: e.target.value }))} style={{ ...inp, width: 150 }}>
+                  <button onClick={() => run(()=>vincular(p))} disabled={!pick[p.id]} style={{ ...btnPri, opacity: pick[p.id] ? 1 : .55 }}>Vincular</button>
+                  <select aria-label={`Motivo de ${p.payerName || p.id}`} value={motivo[p.id] || ""} onChange={(e) => setMotivo((s) => ({ ...s, [p.id]: e.target.value }))} style={{ ...inp, width: 150 }}>
                     <option value="">desconsiderar…</option>
                     {IGNORE_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
                   </select>
-                  <button onClick={() => desconsiderar(p)} disabled={!motivo[p.id]} style={{ ...btn, opacity: motivo[p.id] ? 1 : .55 }}>ok</button>
+                  <button onClick={() => run(()=>desconsiderar(p))} disabled={!motivo[p.id]} style={{ ...btn, opacity: motivo[p.id] ? 1 : .55 }}>Desconsiderar</button>
                   {best && (
                     <label title={`A regra casa por ${best[2]}. Próximo pagamento desse pagador é resolvido sozinho.`}
                       style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--fg-2)", cursor: "pointer" }}>
@@ -535,7 +542,7 @@ export function ConciliacaoTab({ product, month }) {
             const m = row;
             const sug = movSugestao(m);
             return (
-              <div key={m.id} style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "9px 12px", background: "var(--bg-inset)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)" }}>
+              <div key={`saida:${m.id}`} style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "9px 12px", background: "var(--bg-inset)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)" }}>
                 <Pill tone="neg">saída</Pill>
                 <span className="tnum dim" style={{ fontSize: 12, width: 42 }}>{dmy(m.date)}</span>
                 <span style={{ flex: 1, minWidth: 140, fontSize: 12.5 }}>
@@ -543,15 +550,15 @@ export function ConciliacaoTab({ product, month }) {
                   {m.fee > 0 && <span className="dim" style={{ fontSize: 11 }}> · tarifa {money(m.fee)}</span>}
                 </span>
                 <span className="tnum" style={{ fontWeight: 650, whiteSpace: "nowrap" }}>{money(m.amount)}</span>
-                <select value={movPick[m.id] || (sug ? sug.id : "")} onChange={(e) => setMovPick((s) => ({ ...s, [m.id]: e.target.value }))} style={{ ...inp, minWidth: 180 }}>
+                <select aria-label={`Conta da saída ${m.id}`} value={movPick[m.id] || (sug ? sug.id : "")} onChange={(e) => setMovPick((s) => ({ ...s, [m.id]: e.target.value }))} style={{ ...inp, minWidth: 180 }}>
                   <option value="">casar com conta a pagar…</option>
                   {fin.payables.map((x) => <option key={x.id} value={x.id}>{x.description} · {money(x.amount)}{x.status === "paga" ? " (paga)" : ""}</option>)}
                 </select>
-                <button onClick={() => vincularMov(m, movPick[m.id] || sug?.id)}
+                <button onClick={() => run(()=>vincularMov(m, movPick[m.id] || sug?.id))}
                   disabled={!(movPick[m.id] || sug)} style={{ ...btnPri, opacity: movPick[m.id] || sug ? 1 : .55 }}>
                   {sug && !movPick[m.id] ? "casar (mesmo valor)" : "casar"}
                 </button>
-                <button onClick={() => ignorarMov(m)} className="dim" style={{ fontSize: 12, fontWeight: 600 }}>desconsiderar</button>
+                <button onClick={() => run(()=>ignorarMov(m))} className="dim" style={{ fontSize: 12, fontWeight: 600 }}>desconsiderar</button>
               </div>
             );
           })())}
@@ -568,7 +575,7 @@ export function ConciliacaoTab({ product, month }) {
                   <span className="dim"> ({r.matchField === "payerDoc" ? "documento" : r.matchField === "payerEmail" ? "e-mail" : "nome"}) → {r.action === "vincular" ? `cliente ${customers.find((c) => c.id === r.customer)?.name || r.customer}` : `desconsiderar (${r.reason || "outro"})`}</span>
                 </span>
                 <span className="dim tnum" style={{ fontSize: 11.5 }}>{int(r.autoCount || 0)} aplicações</span>
-                <button onClick={() => excluirRegra(r)} className="dim" style={{ fontSize: 12, fontWeight: 600 }}>excluir</button>
+                <button onClick={() => run(()=>excluirRegra(r))} className="dim" style={{ fontSize: 12, fontWeight: 600 }}>excluir</button>
               </div>
             ))}
           </div>
@@ -585,14 +592,14 @@ export function ConciliacaoTab({ product, month }) {
                   <span className="tnum dim" style={{ width: 42 }}>{dmy((p.dateApproved || p.dateCreated || "").slice(0, 10))}</span>
                   <span style={{ flex: 1, minWidth: 0 }}>{p.payerName || p.payerEmail || "sem nome"} <span className="dim">· {p.finIgnoredReason}</span></span>
                   <span className="tnum" style={{ fontWeight: 600 }}>{money(p.amount)}</span>
-                  <button onClick={() => reconsiderar(p)} style={{ color: "var(--accent)", fontSize: 12, fontWeight: 600 }}>reconsiderar</button>
+                  <button onClick={() => run(()=>reconsiderar(p))} style={{ color: "var(--accent)", fontSize: 12, fontWeight: 600 }}>reconsiderar</button>
                 </div>
               ))}
             </div>
           )}
         </Card>
       )}
-    </div>
+    </fieldset>
   );
 }
 
@@ -601,12 +608,13 @@ const FORM_ZERO = { description: "", amount: "", dueDate: "", category: "outros"
 
 function PayableForm({ product, month, preset, onDone }) {
   const [f, setF] = useState({ ...FORM_ZERO, dueDate: `${month}-05`, ...(preset || {}) });
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState(false), [saveErr,setSaveErr] = useState(null);
+  const saveBusy = React.useRef(false);
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
   const ok = f.description.trim() && Number(f.amount) > 0 && /^\d{4}-\d{2}-\d{2}$/.test(f.dueDate);
   const salvar = async () => {
-    if (!ok || saving) return;
-    setSaving(true);
+    if (!ok || saveBusy.current) return;
+    saveBusy.current=true;setSaving(true);setSaveErr(null);
     try {
       await api.create("payables", {
         saas: product.id,
@@ -622,13 +630,14 @@ function PayableForm({ product, month, preset, onDone }) {
       });
       setF({ ...FORM_ZERO, dueDate: `${month}-05`, ...(preset || {}) });
       onDone && onDone();
-    } catch (e) { alert(e.message); }
-    setSaving(false);
+    } catch (e) { setSaveErr(e.message); }
+    saveBusy.current=false;setSaving(false);
   };
   return (
-    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-      <input placeholder="descrição (ex.: Salário, Contabilidade)" value={f.description} onChange={(e) => set("description", e.target.value)} style={{ ...inp, flex: 2, minWidth: 180 }} />
-      <select value={f.category} onChange={(e) => set("category", e.target.value)} style={{ ...inp, minWidth: 190 }} title="A categoria decide o setor no DRE (COGS, Vendas & Marketing, Produto, Administrativo).">
+    <fieldset disabled={saving} className="finance-payable-form">
+      {saveErr && <div role="alert" className="finance-notice">{saveErr}</div>}
+      <input aria-label="Descrição da conta" placeholder="descrição (ex.: Salário, Contabilidade)" value={f.description} onChange={(e) => set("description", e.target.value)} style={{ ...inp, flex: 2, minWidth: 180 }} />
+      <select aria-label="Categoria da conta" value={f.category} onChange={(e) => set("category", e.target.value)} style={{ ...inp, minWidth: 190 }} title="A categoria decide o setor no DRE (COGS, Vendas & Marketing, Produto, Administrativo).">
         {SECTOR_CATS.map(([sk, sl, cats]) => (
           <optgroup key={sk} label={sl}>
             {cats.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
@@ -636,31 +645,31 @@ function PayableForm({ product, month, preset, onDone }) {
         ))}
       </select>
       {!preset?.counterpartyType && (
-        <select value={f.counterpartyType} onChange={(e) => set("counterpartyType", e.target.value)} style={{ ...inp, width: 120 }}>
+        <select aria-label="Tipo de favorecido" value={f.counterpartyType} onChange={(e) => set("counterpartyType", e.target.value)} style={{ ...inp, width: 120 }}>
           <option value="fornecedor">fornecedor</option>
           <option value="colaborador">colaborador</option>
         </select>
       )}
       {f.counterpartyType === "colaborador" && !preset?.userId && (
-        <select value={f.userId} onChange={(e) => set("userId", e.target.value)} style={{ ...inp, minWidth: 130 }}>
+        <select aria-label="Colaborador" value={f.userId} onChange={(e) => set("userId", e.target.value)} style={{ ...inp, minWidth: 130 }}>
           <option value="">quem…</option>
           {allUsers().map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
         </select>
       )}
       {f.counterpartyType === "fornecedor" && (
-        <input placeholder="fornecedor" value={f.supplierName} onChange={(e) => set("supplierName", e.target.value)} style={{ ...inp, width: 140 }} />
+        <input aria-label="Fornecedor" placeholder="fornecedor" value={f.supplierName} onChange={(e) => set("supplierName", e.target.value)} style={{ ...inp, width: 140 }} />
       )}
       <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
         <span className="mono dim" style={{ fontSize: 12 }}>R$</span>
-        <input type="number" min="0" step="0.01" inputMode="decimal" value={f.amount} onChange={(e) => set("amount", e.target.value)} placeholder="0,00" className="tnum" style={{ ...inp, width: 96, textAlign: "right" }} />
+        <input type="number" min="0" step="0.01" inputMode="decimal" aria-label="Valor da conta" value={f.amount} onChange={(e) => set("amount", e.target.value)} placeholder="0,00" className="tnum" style={{ ...inp, width: 96, textAlign: "right" }} />
       </div>
-      <input type="date" value={f.dueDate} onChange={(e) => set("dueDate", e.target.value)} title="vencimento" style={{ ...inp, width: 140 }} />
+      <input type="date" aria-label="Vencimento" value={f.dueDate} onChange={(e) => set("dueDate", e.target.value)} title="vencimento" style={{ ...inp, width: 140 }} />
       <label title="Todo mês, no mesmo dia, até você encerrar (ou até o mês limite)." style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5, color: "var(--fg-2)", cursor: "pointer" }}>
         <input type="checkbox" checked={f.recurring} onChange={(e) => set("recurring", e.target.checked)} /> repete todo mês
       </label>
-      {f.recurring && <input type="month" value={f.endMonth} onChange={(e) => set("endMonth", e.target.value)} title="até (opcional)" style={{ ...inp, width: 140 }} />}
+      {f.recurring && <input type="month" aria-label="Fim da recorrência" value={f.endMonth} onChange={(e) => set("endMonth", e.target.value)} title="até (opcional)" style={{ ...inp, width: 140 }} />}
       <button onClick={salvar} disabled={!ok || saving} style={{ ...btnPri, opacity: ok && !saving ? 1 : .55 }}>{saving ? "salvando…" : "lançar"}</button>
-    </div>
+    </fieldset>
   );
 }
 
@@ -672,16 +681,17 @@ function situacao(p, today) {
 }
 
 function PayableRow({ p, fin, product, reload, showPerson = true }) {
+  const [busy,setBusy]=useState(false),[err,setErr]=useState(null);
+  const action=React.useRef(false);
+  async function run(fn){if(action.current)return;action.current=true;setBusy(true);setErr(null);try{await fn();await reload();}catch(e){setErr(e.message);}finally{action.current=false;setBusy(false);}}
   const user = p.userId ? allUsers().find((u) => u.id === p.userId) : null;
-  const pagar = async () => { try { await api.update("payables", p.id, { status: "paga", paidAt: new Date().toISOString() }); reload(); } catch (e) { alert(e.message); } };
-  const reabrir = async () => { try { await api.update("payables", p.id, { status: "aberta", paidAt: "" }); reload(); } catch (e) { alert(e.message); } };
-  const excluir = async () => {
-    if (!confirm(`Excluir "${p.description}" (${money(p.amount)})?${p.recurring ? " É o modelo da recorrência: os meses futuros param de nascer; os já lançados ficam." : ""}`)) return;
-    try { await api.remove("payables", p.id); reload(); } catch (e) { alert(e.message); }
-  };
-  const encerrar = async () => { try { await api.update("payables", p.id, { endMonth: fin.month }); reload(); } catch (e) { alert(e.message); } };
+  const pagar = () => run(()=>api.update("payables",p.id,{status:"paga",paidAt:new Date().toISOString()}));
+  const reabrir = () => run(()=>api.update("payables",p.id,{status:"aberta",paidAt:""}));
+  const excluir = () => {if(window.confirm(`Excluir "${p.description}" (${money(p.amount)})?${p.recurring ? " Os meses futuros param de nascer; os já lançados ficam." : ""}`))return run(()=>api.remove("payables",p.id));};
+  const encerrar = () => {if(window.confirm(`Encerrar "${p.description}"? Este mês é o último da recorrência.`))return run(()=>api.update("payables",p.id,{endMonth:fin.month}));};
   return (
-    <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "9px 0", borderBottom: "1px solid var(--line-faint)", flexWrap: "wrap" }}>
+    <fieldset disabled={busy} className="finance-payable-row">
+      {err && <div role="alert" className="finance-notice">{err}</div>}
       <span className="tnum dim" style={{ fontSize: 12, width: 42 }} title={`vencimento ${p.dueDate}`}>{dmy(p.dueDate)}</span>
       <span style={{ flex: 1, minWidth: 160, fontSize: 13 }}>
         {p.description}
@@ -707,16 +717,16 @@ function PayableRow({ p, fin, product, reload, showPerson = true }) {
         {p.recurring && !p.endMonth && <button onClick={encerrar} title="Este mês é o último: a recorrência para de gerar meses novos." style={{ color: "var(--warn)", fontSize: 12, fontWeight: 600 }}>encerrar</button>}
         <button onClick={excluir} className="dim" style={{ fontSize: 12, fontWeight: 600 }}>excluir</button>
       </span>
-    </div>
+    </fieldset>
   );
 }
 
 export function PagarTab({ product, month }) {
   const { fin, err, reload } = useFin(product, month);
-  if (!fin) return <Carregando err={err} />;
+  if (!fin || err) return <Carregando err={err} retry={reload} />;
   const t = fin.tiles;
   return (
-    <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="finance-content">
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))", gap: 12 }}>
         <StatTile label="Vencidos" value={money(t.vencidos.total)} delta={`${int(t.vencidos.n)} conta${t.vencidos.n === 1 ? "" : "s"}`} tone={t.vencidos.n ? "down" : "flat"} />
         <StatTile label="Vencem hoje" value={money(t.vencemHoje.total)} delta={`${int(t.vencemHoje.n)} conta${t.vencemHoje.n === 1 ? "" : "s"}`} />
@@ -753,7 +763,7 @@ const roleCat = (u) => {
 export function FolhaTab({ product, month }) {
   const { fin, err, reload } = useFin(product, month);
   const [formFor, setFormFor] = useState(null); // userId com o form aberto
-  if (!fin) return <Carregando err={err} />;
+  if (!fin || err) return <Carregando err={err} retry={reload} />;
 
   const doMes = fin.payables.filter((p) => p.counterpartyType === "colaborador" && p.month === month);
   const porPessoa = new Map();
@@ -773,7 +783,7 @@ export function FolhaTab({ product, month }) {
   const totalAberto = soma(doMes, (p) => p.status !== "paga");
 
   return (
-    <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="finance-content">
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 200px), 1fr))", gap: 12 }}>
         <StatTile label={`Folha de ${mesCurto(month)}`} value={money(totalPago + totalAberto)} delta={`${int(doMes.length)} lançamento${doMes.length === 1 ? "" : "s"}`}
           title="Todas as contas a pagar do mês com favorecido colaborador (salário, pró-labore, comissão, bônus)." />

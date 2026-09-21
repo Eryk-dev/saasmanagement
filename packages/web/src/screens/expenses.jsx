@@ -1,4 +1,5 @@
 import React from "react";
+import "./expenses.css";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { PageHead, StatTile, Card, Pill, FilterTab, Segmented } from "../components/viz.jsx";
@@ -62,7 +63,7 @@ function ExpensesScreen() {
   const shortMonth = (mk) => new Date(`${mk}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
+    <div className="finance-page">
       <PageHead title="Financeiro"
         sub={{
           resumo: `${monthLabel(month)} · a foto do mês: fluxo de caixa, DRE e pendências`,
@@ -72,29 +73,29 @@ function ExpensesScreen() {
           pagamentos: "pagamentos da conta Mercado Pago, casados com clientes e faturas",
           custos: `${monthLabel(month)} · o total alimenta o “Resultado do mês” da Visão geral`,
         }[tab] || ""}>
-        <Segmented value={tab} onChange={setTab} options={[
+        <nav className="finance-tabs" aria-label="Abas do financeiro">{[
           { value: "resumo", label: "Resumo" },
           { value: "conciliacao", label: "Conciliação" },
           { value: "pagar", label: "A pagar" },
           { value: "folha", label: "Folha" },
           { value: "pagamentos", label: "Pagamentos" },
           { value: "custos", label: "Custos" },
-        ]} />
+        ].map(o => <button key={o.value} aria-current={tab === o.value ? "page" : undefined} onClick={()=>setTab(o.value)}>{o.label}</button>)}</nav>
         {tab !== "pagamentos" && (
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div className="finance-months" aria-label="Mês de competência">
             {[...lastMonths(4)].reverse().map((mk) => <FilterTab key={mk} active={month === mk} onClick={() => setMonth(mk)}>{shortMonth(mk)}</FilterTab>)}
           </div>
         )}
       </PageHead>
 
-      {/* key={product.id}: trocar de produto remonta a aba — rascunho de custo
+      {/* key={`${product.id}:${month}`}: trocar de produto remonta a aba — rascunho de custo
           e vínculo em andamento nunca vazam pro SaaS errado. */}
-      {tab === "resumo" && <ResumoTab key={product.id} product={product} month={month} onTab={setTab} />}
-      {tab === "conciliacao" && <ConciliacaoTab key={product.id} product={product} month={month} />}
-      {tab === "pagar" && <PagarTab key={product.id} product={product} month={month} />}
-      {tab === "folha" && <FolhaTab key={product.id} product={product} month={month} />}
-      {tab === "pagamentos" && <FinanceTab key={product.id} product={product} />}
-      {tab === "custos" && <CostsTab key={product.id} product={product} month={month} />}
+      {tab === "resumo" && <ResumoTab key={`${product.id}:${month}`} product={product} month={month} onTab={setTab} />}
+      {tab === "conciliacao" && <ConciliacaoTab key={`${product.id}:${month}`} product={product} month={month} />}
+      {tab === "pagar" && <PagarTab key={`${product.id}:${month}`} product={product} month={month} />}
+      {tab === "folha" && <FolhaTab key={`${product.id}:${month}`} product={product} month={month} />}
+      {tab === "pagamentos" && <FinanceTab key={`${product.id}:${month}`} product={product} />}
+      {tab === "custos" && <CostsTab key={`${product.id}:${month}`} product={product} month={month} />}
     </div>
   );
 }
@@ -106,21 +107,25 @@ function CostsTab({ product, month }) {
   // (ganhos, cartão 12x ou recebidos) — o servidor calcula o R$ mês a mês.
   const [form, setForm] = useState({ category: "fixo", name: "", amount: "", unit: "brl", base: "won", recurring: false });
   const [note, setNote] = useState(null);
+  const [busy,setBusy] = useState(false);
+  const action = React.useRef(false), request = React.useRef(0);
+  async function run(fn) { if(action.current) return; action.current=true;setBusy(true);try{await fn();}finally{action.current=false;setBusy(false);} }
 
   const load = () => {
-    setData(null);
-    api.expensesSummary(product.id, month).then(setData).catch(() => setData({ error: true }));
+    const seq=++request.current;
+    return api.expensesSummary(product.id, month).then(d=>{if(seq===request.current)setData(d);}).catch(e=>{if(seq===request.current)setData({error:e.message});});
   };
-  useEffect(load, [product.id, month, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(()=>{load();return()=>{request.current++;};}, [product.id, month, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function addExpense() {
+    if (action.current) return;
     const value = Number(String(form.amount).replace(",", "."));
     const isPct = form.unit === "pct";
     if (!form.name.trim() || !Number.isFinite(value) || value <= 0 || (isPct && value > 100)) {
       setNote({ ok: false, text: isPct ? "Preencha descrição e um percentual entre 0 e 100." : "Preencha descrição e valor." });
       return;
     }
-    try {
+    await run(async()=>{ try {
       await api.create("expenses", {
         saas: product.id, month, category: form.category, name: form.name.trim(),
         ...(isPct ? { pct: value, base: form.base } : { amount: value }),
@@ -128,8 +133,8 @@ function CostsTab({ product, month }) {
       });
       setForm({ category: form.category, name: "", amount: "", unit: form.unit, base: form.base, recurring: form.recurring });
       setNote({ ok: true, text: isPct ? `Custo percentual registrado, o valor em R$ é calculado ${pctBaseInfo(form.base).title} a cada mês.` : (form.recurring ? "Custo recorrente registrado (vale deste mês em diante)." : "Custo registrado.") });
-      load();
-    } catch (e) { setNote({ ok: false, text: e.message || "Falha ao registrar." }); }
+      await load();
+    } catch (e) { setNote({ ok: false, text: e.message || "Falha ao registrar." }); } });
   }
 
   async function removeExpense(e) {
@@ -137,36 +142,36 @@ function CostsTab({ product, month }) {
       ? `Remover "${e.name}" (${brl(e.amount)}) de TODOS os meses? Pra parar só daqui em diante, use "encerrar".`
       : `Remover "${e.name}" (${brl(e.amount)})?`;
     if (!window.confirm(msg)) return;
-    try { await api.remove("expenses", e.id); load(); }
-    catch (err) { setNote({ ok: false, text: err.message || "Falha ao remover." }); }
+    await run(async()=>{try { await api.remove("expenses", e.id); await load(); }
+    catch (err) { setNote({ ok: false, text: err.message || "Falha ao remover." }); }});
   }
 
   // Encerra a recorrência NO MÊS EXIBIDO (inclusive): continua no histórico,
   // some dos meses seguintes.
   async function endRecurring(e) {
     if (!window.confirm(`Encerrar "${e.name}" em ${monthLabel(month)}? Ele continua contando até este mês e some dos próximos.`)) return;
-    try { await api.update("expenses", e.id, { endMonth: month }); load(); }
-    catch (err) { setNote({ ok: false, text: err.message || "Falha ao encerrar." }); }
+    await run(async()=>{try { await api.update("expenses", e.id, { endMonth: month }); await load(); }
+    catch (err) { setNote({ ok: false, text: err.message || "Falha ao encerrar." }); }});
   }
 
   const inputStyle = { height: 38, padding: "0 12px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
 
   return (
-    <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-        {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
-        {data?.error && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>Falha ao carregar os custos.</div>}
+    <fieldset disabled={busy} className="finance-content finance-costs">
+        {note && <div role={note.ok ? "status" : "alert"} className="finance-notice" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
+        {data?.error && <div role="alert" className="finance-notice">Falha ao carregar os custos: {data.error} <button onClick={load}>Tentar novamente</button></div>}
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
-          <StatTile label="Total do mês" value={data ? brl(data.total) : "…"} delta="publicidade + IA + WhatsApp + manuais + contas a pagar"
+          <StatTile label="Total do mês" value={data && !data.error ? brl(data.total) : "…"} delta="publicidade + IA + WhatsApp + manuais + contas a pagar"
             title="Inclui as contas a pagar do mês (aba A pagar): folha, fornecedores e demais lançamentos por competência. É o mesmo total que o Resumo do Financeiro e o Resultado do mês usam." />
-          <StatTile label="Publicidade" value={data ? brl(data.ads) : "…"} delta="automático · Meta e entradas manuais de anúncio" />
-          <StatTile label="IA" value={data ? (data.ai != null ? brl(data.ai) : "sem dado no mês") : "…"}
+          <StatTile label="Publicidade" value={data && !data.error ? brl(data.ads) : "…"} delta="automático · Meta e entradas manuais de anúncio" />
+          <StatTile label="IA" value={data && !data.error ? (data.ai != null ? brl(data.ai) : "sem dado no mês") : "…"}
             delta={data?.aiUSD != null ? `US$ ${data.aiUSD.toFixed(2).replace(".", ",")} · automático` : "automático via APIs dos provedores"} />
           {/* Conversas cobradas pela Meta (conversation_analytics, BRL). */}
-          <StatTile label="WhatsApp" value={data ? (data.wa != null ? brl(data.wa) : "sem dado no mês") : "…"}
+          <StatTile label="WhatsApp" value={data && !data.error ? (data.wa != null ? brl(data.wa) : "sem dado no mês") : "…"}
             delta={data?.waConversations != null ? `${data.waConversations} conversas cobradas · automático` : "automático via Meta"} />
-          <StatTile label="Lançados à mão" value={data ? brl(data.manualTotal) : "…"} delta={`${data?.manual?.length ?? 0} ${(data?.manual?.length ?? 0) === 1 ? "lançamento" : "lançamentos"}`} />
-          <StatTile label="Contas a pagar do mês" value={data ? brl(data.payablesTotal || 0) : "…"}
+          <StatTile label="Lançados à mão" value={data && !data.error ? brl(data.manualTotal) : "…"} delta={`${data?.manual?.length ?? 0} ${(data?.manual?.length ?? 0) === 1 ? "lançamento" : "lançamentos"}`} />
+          <StatTile label="Contas a pagar do mês" value={data && !data.error ? brl(data.payablesTotal || 0) : "…"}
             delta={`${data?.payablesCount ?? 0} ${(data?.payablesCount ?? 0) === 1 ? "conta" : "contas"} · gerencie na aba A pagar`}
             title="Folha e fornecedores lançados em A pagar, por competência. Este cartão é só leitura: a gestão (baixa, recorrência) mora na aba A pagar." />
         </div>
@@ -193,7 +198,7 @@ function CostsTab({ product, month }) {
                   onChange={(e) => setForm({ ...form, amount: e.target.value })}
                   onKeyDown={(e) => { if (e.key === "Enter") addExpense(); }}
                   style={{ ...inputStyle, width: 110, fontFamily: "var(--mono)", textAlign: "right" }} />
-                <select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}
+                <select aria-label="Unidade do custo" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}
                   title="R$ = valor fixo · % = percentual sobre a base ao lado (ganhos, cartão 12x ou recebidos)"
                   style={{ ...inputStyle, width: 58, fontFamily: "var(--mono)", padding: "0 4px" }}>
                   <option value="brl">R$</option>
@@ -249,14 +254,14 @@ function CostsTab({ product, month }) {
                       encerrar
                     </button>
                   )}
-                  <button onClick={() => removeExpense(e)} className="mono dim" title="Remover lançamento" style={{ fontSize: 13, padding: "0 4px" }}>✕</button>
+                  <button aria-label={`Remover ${e.name}`} onClick={() => removeExpense(e)} className="mono dim" title="Remover lançamento" style={{ fontSize: 13, padding: "0 4px" }}>✕</button>
                 </div>
               ))}
             </div>
           )}
         </Card>
 
-    </div>
+    </fieldset>
   );
 }
 
