@@ -680,7 +680,7 @@ function LeadCard({ d, s, currentStage, dragProps, selected, onSelect, onOpen })
 
 // ─────────────────────────────────────────────── List view
 // Grade aprovada; em janelas menores a rolagem fica dentro da tabela.
-export const LIST_GRID = "26px minmax(180px,1fr) 132px minmax(150px,1fr) 86px 96px";
+export const LIST_GRID = "32px minmax(180px,1fr) 132px minmax(150px,1fr) 86px 96px";
 export const LIST_GRID_GAP = 10;
 export const LIST_GRID_BUDGET = 820;
 // Legacy grouping helper retained for consumers; the approved list is continuous.

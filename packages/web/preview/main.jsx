@@ -1,3 +1,4 @@
+import { setupRevenueGrades } from "./revenue-grade-mock.js";
 import {settingsReview,setupSettingsReview} from "./settings-review-mock.js";
 import {expensesReview,setupExpensesReview} from "./expenses-review-mock.js";
 import {remuneracaoReview,setupRemuneracaoReview} from "./remuneracao-review-mock.js";
@@ -95,6 +96,7 @@ if (metasReview) setupMetasReview(window.SEED);
 if (mindmapsReview) setupMindmapsReview();
 if (tasksReview) setupTasksReview();
 if (desempenhoReview) setupDesempenhoReview(window.SEED);
+if (params.has("revenueGrades")) setupRevenueGrades(window.SEED);
 if (previewShell) {
   window.SEED.SAAS.push({ id: "elo", name: "Elo", accent: 55, funnel: [], leadQuestions: [] });
   // A moldura usa o App real, com API falsa e sem conexão SSE/banco.

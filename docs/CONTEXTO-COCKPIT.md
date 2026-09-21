@@ -522,3 +522,21 @@ concorrente em outros arquivos durante a análise.
 O build emitiu avisos preexistentes de `className` duplicado em `settings.jsx`
 e de chunk acima de 500 kB. São achados para eventual tarefa própria, sem
 alteração funcional nesta preparação.
+
+## Classificação por faturamento (21/09/2026)
+
+- `api/src/lead-grade.js` é a régua pura compartilhada com a SPA. LeverAds com
+  faixas válidas de `orders` e `ticket` usa a estimativa mensal (100/350/750/1500/3000
+  pedidos × R$ 50/110/225/450/800): S ≥1 milhão; A ≥500 mil; B ≥200 mil;
+  C ≥100 mil; D ≥50 mil; E abaixo de 50 mil. ICP mantém S/A/B (≥200 mil).
+- Sem as duas respostas válidas, a nota anterior de contas × anúncios/volume
+  permanece e o badge mostra `L` (Legado). Sem nenhum dado, não inventa nota.
+  Intenção e MQL continuam separados do porte. Outros produtos não migram.
+- `ensureRevenueClassification` atualiza snapshots elegíveis e o texto do ICP
+  no boot, com versão por lead/produto, sem mover etapas, agenda ou responsáveis.
+  Formulários, CRUD e reenvios recalculam ao receber respostas novas.
+- Dockerfiles de build web copiam explicitamente `api/src/lead-grade.js`.
+  Validar limites, preservação do legado, migração idempotente e paridade API/SPA
+  em `revenue-grade.test.js`, além da suíte API, smoke web e build.
+- Preview isolado dos badges e ICP: `/?shell=1&review=pipeline&revenueGrades=1#pipeline`
+  no Vite preview; inclui S–E, dois legados e um lead sem qualificação.

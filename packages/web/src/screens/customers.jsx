@@ -1,3 +1,5 @@
+import { LeadGrade } from "../components/lead-card.jsx";
+import { GradeCol } from "../components/icp-card.jsx";
 import React from "react";
 import { createPortal } from "react-dom";
 import "./customers.css";
@@ -15,7 +17,7 @@ import { EntityForm } from "../components/EntityForm.jsx";
 import { WhatsappChat } from "../components/whatsapp-chat.jsx";
 import { CustomerTickets } from "../components/customer-tickets.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
-import { leadTier, waLink, GRADE_STYLE, GRADE_GRID, GRADE_ACCOUNTS, GRADE_LISTINGS } from "../lib/ui.js";
+import { leadTier, waLink, GRADE_STYLE } from "../lib/ui.js";
 import { scriptChecklist } from "../lib/scripts.js";
 import { displayName, usersByRole } from "../lib/users.js";
 import { npsBucket, lastNps, pendingNps, NPS_TONE } from "../lib/nps.js";
@@ -670,7 +672,7 @@ function CustomersScreen({ initialTab }) {
                               <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                                 {isKeyAccount(c) && <span title="conta grande · fora das médias" style={{ color: "var(--accent)", flexShrink: 0 }}>★</span>}
                                 {!isKidsWorkspace && (t.grade
-                                  ? <span title={t.label} style={{ width: 20, height: 20, borderRadius: 999, background: t.tone, color: t.badgeFg, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1, flexShrink: 0 }}>{t.grade}</span>
+                                  ? <LeadGrade tier={t} size={20} />
                                   : <span title="sem nível (lead não respondeu contas/anúncios)" style={{ width: 20, height: 20, borderRadius: 999, border: "1px solid var(--line-1)", color: "var(--fg-4)", fontSize: 11, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>—</span>)}
                                 <div style={{ minWidth: 0 }}>
                                   <div style={{ fontSize: 13.5, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
@@ -840,30 +842,7 @@ function useFormName(saas, formId) {
 // marketplace × anúncios na maior conta. Mais de cada = nível mais alto
 // (S topo, E base).
 function NivelLegend() {
-  return (
-    <div style={{ flex: "0 1 320px", minWidth: 260, border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-inset)", padding: "10px 12px" }}>
-      <div className="kicker" style={{ marginBottom: 6 }}>Como o nível é definido</div>
-      <div style={{ fontSize: 11.5, color: "var(--fg-3)", lineHeight: 1.45, marginBottom: 10 }}>
-        Cruzamento de <b style={{ color: "var(--fg-2)" }}>contas de marketplace</b> (linha) × <b style={{ color: "var(--fg-2)" }}>anúncios na maior conta</b> (coluna). Quanto mais de cada, mais alto o nível (S no topo, E na base).
-      </div>
-      <div className="mono" style={{ fontSize: 8.5, color: "var(--fg-4)", textAlign: "center", marginBottom: 3, paddingLeft: 30 }}>anúncios →</div>
-      <div style={{ display: "grid", gridTemplateColumns: "30px repeat(5, 1fr)", gap: 3, alignItems: "center" }}>
-        <span />
-        {GRADE_LISTINGS.map((l) => <span key={l} className="mono" style={{ fontSize: 8, color: "var(--fg-4)", textAlign: "center", lineHeight: 1.1 }}>{l}</span>)}
-        {GRADE_GRID.map((row, r) => (
-          <React.Fragment key={r}>
-            <span className="mono" style={{ fontSize: 9, color: "var(--fg-4)", textAlign: "right", paddingRight: 4, whiteSpace: "nowrap" }}>{GRADE_ACCOUNTS[r]}</span>
-            {row.map((g, c) => {
-              const s = GRADE_STYLE[g];
-              return <span key={c} title={`${GRADE_ACCOUNTS[r]} conta(s) · ${GRADE_LISTINGS[c]} anúncios = ${s.label}`}
-                style={{ height: 20, borderRadius: 4, background: s.tone, color: s.badgeFg, fontSize: 10.5, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{g}</span>;
-            })}
-          </React.Fragment>
-        ))}
-      </div>
-      <div className="mono" style={{ fontSize: 8.5, color: "var(--fg-4)", marginTop: 4 }}>↑ contas</div>
-    </div>
-  );
+  return <div style={{ flex: "0 1 320px", minWidth: 260, border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", background: "var(--bg-inset)", padding: "10px 12px" }}><GradeCol /></div>;
 }
 
 // Respostas do formulário de diagnóstico (campos do lead), editáveis do popup
@@ -1359,7 +1338,7 @@ function CustomerPeek(props) {
     <Drawer onClose={onClose} fechavel={!busy} label={`Cliente · ${customer.name}`} largura={420} style={{background:'transparent',padding:0}} painelStyle={{position:'fixed',right:26,top:90,bottom:26,height:'auto',maxWidth:'calc(100vw - 28px)',overflow:'hidden'}}>
       <div className="customer-peek">
         <header className="customer-peek-head">
-          <span className="customer-peek-grade" style={{background:tier.tone,color:tier.badgeFg}}>{tier.grade||'–'}</span>
+          <LeadGrade tier={tier} placeholder />
           <div><h2>{customer.name}</h2><p>{[customer.contact,customer.keyAccount?'conta grande':null,tenureLabel(customer)?`${tenureLabel(customer)} de casa`:null].filter(Boolean).join(' · ')}</p></div>
           <button aria-label="Fechar ficha" onClick={onClose} disabled={!!busy}>✕</button>
         </header>
@@ -1621,7 +1600,7 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
                 {!isKids && lead && (() => {
                   const t = leadTier(lead);
                   return t.grade
-                    ? <span title={t.label} style={{ width: 22, height: 22, borderRadius: 6, background: t.tone, color: t.badgeFg, fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1, flexShrink: 0 }}>{t.grade}</span>
+                    ? <LeadGrade tier={t} size={22} />
                     : null;
                 })()}
                 <div style={{ fontFamily: "var(--display)", fontSize: 20, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{customer.name}</div>

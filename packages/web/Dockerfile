@@ -8,6 +8,7 @@ COPY packages/mcp/package.json packages/mcp/package.json
 COPY packages/web/package.json packages/web/package.json
 RUN npm ci
 COPY packages/web packages/web
+COPY packages/api/src/lead-grade.js packages/api/src/lead-grade.js
 RUN npm run build -w packages/web
 
 FROM nginx:1.27-alpine

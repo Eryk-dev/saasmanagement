@@ -65,7 +65,7 @@ export function clientSummary(saasCfg, lead, stage, cat, { full = false } = {}) 
       ["Degrau de resgate", fit.rescue ? mentoriaOfferLine({ offer: fit.rescue }) : null],
       ["Upsell de importação", fit.upsell ? "candidato (+R$ 2.000 durante a mentoria)" : null],
     ] : []),
-    ["Potencial", tier.grade ? `${tier.grade} · ${tier.label}` : null],
+    ["Potencial", tier.grade ? `${tier.grade}${tier.legacy ? " L" : ""} · ${tier.label}` : null],
     ["Temperatura", hasScore ? `${leadScoreLabel(lead.score)} · ${lead.score}` : null],
     ["ICP (fit)", icpPct],
     ["Prioridade", lead.priority],

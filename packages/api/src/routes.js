@@ -1,3 +1,4 @@
+import { revenueClassificationPatch } from "./classificacao.js";
 // REST routes. One generic CRUD surface over every collection, plus two
 // computed/aggregated endpoints the cockpit needs: /bootstrap and /portfolio.
 
@@ -954,6 +955,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
         return reply.code(200).send({ ...merged, _dedup: true });
       }
     }
+    if (collection === "leads") Object.assign(stamp, revenueClassificationPatch({ ...req.body, ...stamp }));
     let created = await repo.create(collection, { ...(CREATE_DEFAULTS[collection] || {}), ...req.body, ...stamp });
     // Toque registrado → denormalizações do lead (últ. contato, tentativas) +
     // re-agendamento do próximo passo. Best-effort: nunca quebra o POST.
@@ -1144,6 +1146,10 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     // syncWonLeadDeal gravava — o botão da tela e o webhook deixavam vazio).
     if (collection === "subscriptions" && patch.status === "canceled" && before && before.status !== "canceled" && !before.canceledAt) {
       patch = { ...patch, canceledAt: new Date().toISOString() };
+    }
+    if (collection === "leads" && ["orders", "ticket", "accounts", "listings", "volume", "trigger", "tried", "triedOther", "formProduct", "saas"].some((k) => k in patch)) {
+      const current = await repo.get(collection, id);
+      if (current) patch = { ...patch, ...revenueClassificationPatch({ ...current, ...patch }) };
     }
     const updated = await repo.update(collection, id, patch);
     if (!updated) return reply.code(404).send({ error: "Not found" });

@@ -1,3 +1,4 @@
+import { leadGradeInfo, LEGACY_ACCOUNTS, LEGACY_LISTINGS, LEGACY_VOLUME } from "./lead-grade.js";
 // Régua ÚNICA das métricas do cockpit. Antes deste módulo cada endpoint
 // reimplementava as próprias contas e elas divergiam em 4 eixos:
 //
@@ -639,52 +640,10 @@ export function contactAttribution({ leads, actsOf, waMessages, saas, inWin, hum
   return { leadIds: new Set(first.keys()), firstAt, byAuthor, authorOf, automationReached: autoReached.size };
 }
 
-// ── Nota do lead (S/A/B/C/D/E) e ICP ─────────────────────────────────────────
-// Régua ÚNICA da nota do lead — a MESMA do leadTier() da web (packages/web/
-// src/lib/ui.js, mantê-las iguais): matriz CONTAS × ANÚNCIOS (listings;
-// `volume` é o legado semanal), TABELA DE CONSULTA redesenhada pelo Leo em
-// 21/07 (não fórmula, pra bater exato). Lead sem nenhuma resposta fica de fora
-// (null). Morava em routes.marketing.js; veio pra cá porque o placar por
-// pessoa também lê ("calls agendadas com ICP", 10/09) e regra de métrica nasce
-// aqui. routes.marketing.js re-exporta pros importadores antigos.
-// Leitura dupla das faixas: as NOVAS (recortadas em 09/2026 nas fronteiras
-// comerciais — 3 e 7 contas, 1k e 10k anúncios) convivem com as antigas, que a
-// base histórica carrega. Sem as novas aqui, todo lead dos formulários v2 caía
-// em `?? 0` (linha de baixo da matriz) e deixava de ser ICP — ou seja, não ia
-// pro pool de closer sênior (agenda-slots) e não contava no placar.
-// Terceiro espelho da mesma régua: os outros são classificacao.js (IDX_*) e
-// web/src/lib/ui.js (TIER_*). O teste metrics-icp.test.js trava os três juntos.
-const GRADE_ACCOUNTS = {
-  "1": 0, "2-3": 1, "4-6": 2, "7-10": 3, "10+": 4,
-  "2": 1, "3-5": 2, "6-10": 3, // legado
-};
-const GRADE_LISTINGS = {
-  "0-500": 0, "500-1000": 1, "1000-5000": 2, "5000-10000": 3, "10000+": 4,
-  "0-100": 0, "100-500": 1, "500-2000": 2, "2000-10000": 3, // legado
-};
-const GRADE_VOLUME = { "0-10": 0, "10-50": 1, "50-200": 2, "200+": 3 };
-//        ≤100 100-500 500-2k 2-10k 10k+
-const GRADE_GRID = [
-  ["E", "D", "C", "C", "C"], // 1 conta — 500-2k anúncios já é C (decisão do Leo, 24/07)
-  ["D", "C", "C", "B", "B"], // 2 contas
-  ["C", "B", "B", "A", "A"], // 3-5 contas
-  ["B", "B", "A", "S", "S"], // 6-10 contas
-  ["A", "A", "A", "S", "S"], // 10+ contas
-];
-export function leadGrade(l) {
-  const acc = GRADE_ACCOUNTS[l?.accounts];
-  const ads = l?.listings != null && l.listings !== "" ? GRADE_LISTINGS[l.listings] : GRADE_VOLUME[l?.volume];
-  if (acc == null && ads == null) return null;
-  return GRADE_GRID[acc ?? 0][ads ?? 0];
-}
-// Faixas que a régua ENTENDE, por campo do lead. Quem escreve resposta de volta
-// no lead (a tela zero da proposta) checa aqui antes: valor fora dessas faixas
-// não muda a nota, só sujaria o cadastro.
-export const GRADE_BANDS = { accounts: GRADE_ACCOUNTS, listings: GRADE_LISTINGS, volume: GRADE_VOLUME };
-export const gradeBandKnown = (field, value) => !!GRADE_BANDS[field] && GRADE_BANDS[field][value] != null;
-// ICP = nota S/A/B ("B+" da régua do Leo) — a mesma faixa que manda a call pro
-// pool de closer sênior (agenda-slots). "Call agendada com ICP" no placar lê
-// daqui.
+// Nota e ICP: receita estimada quando há pedidos + ticket; matriz preservada no legado.
+export function leadGrade(l) { return leadGradeInfo(l).grade; }
+export const GRADE_BANDS = { accounts: LEGACY_ACCOUNTS, listings: LEGACY_LISTINGS, volume: LEGACY_VOLUME };
+export const gradeBandKnown = (field, value) => !!GRADE_BANDS[field] && Object.hasOwn(GRADE_BANDS[field], value);
 export const ICP_GRADES = new Set(["S", "A", "B"]);
 export const isIcpLead = (l) => ICP_GRADES.has(leadGrade(l) || "");
 
