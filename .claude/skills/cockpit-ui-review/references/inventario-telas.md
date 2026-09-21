@@ -1186,3 +1186,7 @@ Layout aplicado conforme “novo card minhas atividade.pdf”: atalhos e configu
 roteiro ao lado das respostas, histórico abaixo e próximo passo no rodapé.
 Conferido em 1440px, 1920px e 390px, incluindo gravação de configuração,
 respostas e anotações. Evidências: `scripts/review/today-card.mjs`.
+
+Complemento validado em 21/09/2026: atividades futuras abaixo de Hoje e
+configuração da apresentação enxuta. Revisão `today-card.mjs` confere
+expansão/abertura de atividades futuras, pedidos, ticket e preço por plano.

@@ -749,7 +749,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
           <section className="today-clean capsule-navy">
             <div className="today-section-label">Fila limpa</div>
             <h2>Nenhuma atividade pendente hoje</h2>
-            <p>Os próximos compromissos continuam na Agenda.</p>
+            <p>Os próximos compromissos aparecem abaixo.</p>
           </section>
         ) : (
           <>
@@ -821,6 +821,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                 {doneTodayRows.length > 0 && <details className="today-completed"><summary>{doneTodayRows.length} feitas hoje</summary>{doneTodayRows.map(item => <QueueRow key={item.l?.id || item.consulta?.id} item={item} block="hoje" onScript={() => openRow(item)} onOpen={() => openRow(item)} />)}</details>}
           </>
         )}
+        <CompactSchedule title="Atividades futuras" rows={q.amanha} laterRows={q.proximos} onOpen={openRow} />
       </div>
       <aside className="today-aside today-workbench">
       {scriptItem && (
@@ -978,7 +979,7 @@ function ScheduleLane({ label, rows, amanha, onOpen }) {
     if (!item.due) return "sem data";
     return amanha
       ? new Date(item.due.t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-      : new Date(item.due.t).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+      : new Date(item.due.t).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   };
   const calls = rows.filter((i) => i.due?.type === "call" || i.kind === "call").length;
   return (
@@ -1014,11 +1015,11 @@ function ScheduleLane({ label, rows, amanha, onOpen }) {
 function CompactSchedule({ title = "O que vem", rows = [], laterRows = [], onOpen }) {
   const total = rows.length + laterRows.length;
   return (
-    <section style={{ background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
+    <section className="today-future" aria-label={title} style={{ background: "var(--bg-1)", border: 0, borderRadius: "var(--r-4)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}>
       <div style={{ padding: "18px var(--inset-x) 12px" }}>
         <h3 className="card-title" style={{ margin: 0 }}>{title}</h3>
         <div className="card-sub" style={{ marginTop: 3 }}>
-          {total ? "nada aqui é para hoje" : "nada marcado ainda"}
+          {total ? `${total} ${total === 1 ? "atividade agendada" : "atividades agendadas"}` : "Nenhuma atividade futura agendada."}
         </div>
       </div>
       <ScheduleLane label={`Amanhã · ${rows.length}`} rows={rows} amanha onOpen={onOpen} />
@@ -1600,6 +1601,22 @@ function InlineScriptShell({ children, onClose }) {
   return <section ref={ref} tabIndex={-1} className="today-inline-script" aria-label="Roteiro da atividade">{children}</section>;
 }
 
+function PresentationConfig({ url }) {
+  const ref = React.useRef(null);
+  const [height, setHeight] = useS(480);
+  useE(() => {
+    const origin = new URL(url, window.location.href).origin;
+    const resize = (event) => {
+      if (event.source !== ref.current?.contentWindow || event.origin !== origin || event.data?.type !== "cockpit:proposal-config-height") return;
+      const next = Number(event.data.height);
+      if (Number.isFinite(next) && next > 0) setHeight(Math.min(2400, Math.ceil(next)));
+    };
+    window.addEventListener("message", resize);
+    return () => window.removeEventListener("message", resize);
+  }, [url]);
+  return <iframe ref={ref} title="Configurar apresentação" style={{ height }} src={`${url}${url.includes("?") ? "&" : "?"}embed=config&from=cockpit`} />;
+}
+
 function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfter, onClose, onTouch, onOpenLead, onWhatsapp, preview = false, previewScript = null, nextItem = null, onSkip = null }) {
   // On narrow screens keep the accessible modal: the queue can be much taller
   // than the viewport, so an inline editor below it would open out of sight.
@@ -1740,9 +1757,9 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
             </div>
             <LeadSection title="Informações da apresentação" className="today-presentation">
               {l.proposal_edit_url && !preview ? <>
-                <iframe key={l.proposal_edit_url} title="Configurar apresentação" src={`${l.proposal_edit_url}${l.proposal_edit_url.includes("?") ? "&" : "?"}embed=config&from=cockpit`} />
+                <PresentationConfig key={l.proposal_edit_url} url={l.proposal_edit_url} />
                 <a href={l.proposal_edit_url} target="_blank" rel="noopener noreferrer">Abrir configuração na apresentação ↗</a>
-              </> : <p className="today-script-hint">{preview ? "A configuração da apresentação aparece aqui na atividade do lead." : "Gere a proposta nos atalhos para configurar cliente, contas e plano aqui. A configuração continua disponível na apresentação."}</p>}
+              </> : <p className="today-script-hint">{preview ? "A configuração da apresentação aparece aqui na atividade do lead." : "Gere a proposta nos atalhos para preencher pedidos, ticket médio, produtos e plano aqui. A configuração continua disponível na apresentação."}</p>}
             </LeadSection>
           </div>
           <div className="today-script-columns">

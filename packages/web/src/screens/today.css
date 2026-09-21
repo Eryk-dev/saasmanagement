@@ -212,3 +212,6 @@
 @media (max-width: 760px) {
   .today-script-preparation, .today-inline-script .today-script-columns { grid-template-columns: minmax(0, 1fr); }
 }
+.today-future { border-radius: 24px !important; }
+.today-future button { min-height: 44px; }
+.today-future button:hover { background: var(--hover); }
