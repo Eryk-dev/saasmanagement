@@ -1219,3 +1219,7 @@ Follow-up revisado em 21/09/2026: resumo da última call de vendas entre
 apresentação/perguntas e histórico, com próximo contato, objeções e benefícios.
 Estados de carregamento, erro e ausência; legado preservado sem inventar
 benefícios. Validado em `scripts/review/followup-summary.mjs` (1440px/390px).
+
+Visão Geral revisada em 21/09/2026: próximo alvo em passos de 20% após bater
+100%, com falta, pace, ritmo diário e termômetro consistentes. Meta original
+visível e períodos encerrados preservados. Review goal-milestones em desktop/mobile.

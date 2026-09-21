@@ -5,6 +5,10 @@ const empty = params.get('state') === 'empty';
 const goal = (target, level = 3) => ({ target, period: 'month', scope: 'remuneracao', level });
 const person = (user, name, revenue, won, revenueGoal, wonGoal, level = 3) => ({ user, name, revenue, won, goals: { revenue: goal(revenueGoal, level), won: goal(wonGoal, level) } });
 const sale = { target: 180000, sold: 112400, contracted: 112400, expectedProgress: 13 / 22, progress: 112400 / 180000 };
+if (params.has('milestone')) {
+  Object.assign(sale, {target:225000, sold:Number(params.get('milestone')) || 241678, expectedProgress:15/22});
+  sale.contracted = sale.sold; sale.progress = sale.sold / sale.target;
+}
 const score = {
   closer: [
     { ...person('rafael', 'Rafael Moura', 72400, 4, 90000, 6), callsShown: 31, conversaoCall: 16.1, ticket: 18100 },
@@ -24,7 +28,7 @@ export function setupOverviewReview(seed) {
 }
 export const overviewMock = {
   paceWindow: (_id, range) => ({ saas:_id, ...range, businessDays:22, businessDaysElapsed:13, current:true, ended:false, sale: empty ? {...sale,sold:0,contracted:0,progress:0} : sale, contracts:{sold:empty ? 0 : 8,target:12} }),
-  pipelinePace: () => ({sale:{...sale, actualDailyPace:112400 / 13, requiredDailyPace:67600 / 9, remainingBusinessDays:9, projected:112400 / 13 * 22}}),
+  pipelinePace: () => ({sale:{...sale, actualDailyPace:sale.sold / (params.has('milestone') ? 15 : 13), requiredDailyPace:67600 / 9, remainingBusinessDays:params.has('milestone') ? 8 : 9, projected:sale.sold / (params.has('milestone') ? 15 : 13) * 22}}),
   scoreboard: () => empty ? {sdr:[],closer:[],cs:[],team:{}} : score,
   metrics: () => ({window:{cac:2545},ltv:{value:86400,ltvCac:4.1}}),
   marketingMetrics: () => ({totals:{spend:10180,cpl:77.12,roas:6.1}}),

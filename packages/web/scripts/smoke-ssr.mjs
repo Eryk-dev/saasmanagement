@@ -194,7 +194,7 @@ try {
     }
     if (!visible.includes('class="vg-meta-pace-marker"') || visible.includes('vg-goal-pace-label')) throw new Error("pace deve ter apenas uma marca, sem rótulo externo");
     const superMeta = renderGoal({ sold: 66000, progress: 1.1 }).split('<details')[0];
-    if (!superMeta.includes("110%") || !superMeta.includes("Meta batida") || !superMeta.includes("6.000")) throw new Error("super meta deve mostrar 110% realizado e o excedente");
+    if (!superMeta.includes("110%") || !superMeta.includes("Próximo alvo · 120%") || !superMeta.includes("Falta para 120%") || !superMeta.includes("72.000") || !superMeta.includes("6.000")) throw new Error("super meta deve mostrar 110% realizado e quanto falta para 120%");
     const closed = renderGoal({}, true).split('<details')[0];
     if (closed.includes('class="vg-meta-pace-marker"') || !closed.includes("Faltou")) throw new Error("período encerrado não deve cobrar pace de hoje");
     for (const removed of ["Detalhes da meta", "Contratado no período", "Fora do resultado", "Ver análise completa", "o pace pedia"]) {

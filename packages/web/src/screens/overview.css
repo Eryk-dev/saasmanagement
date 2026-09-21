@@ -149,3 +149,5 @@ body[data-theme="dark"] .overview-screen { --vg-soft: var(--bg-inset); --vg-pill
 .vg-pace-pill { font-size: 12px; }
 .vg-meta-pace-marker { left: 8px; right: 8px; }
 .vg-meta-pace-marker > span { font-size: 11px; }
+
+.vg-meta-base { margin-top: 6px; color: var(--rail-text); font-size: 11px; line-height: 1.4; }
