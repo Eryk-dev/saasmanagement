@@ -1,5 +1,6 @@
 import React from "react";
-import { PageHead, Card } from "../components/viz.jsx";
+import "./metas.css";
+import { PageHead } from "../components/viz.jsx";
 import { Info } from "../components/story.jsx";
 import { Avatar } from "../atoms.jsx";
 import { api } from "../lib/api.js";
@@ -37,6 +38,8 @@ const mesLabel = (m) => {
   return d.toLocaleDateString("pt-BR", { month: "short", year: "numeric" }).replace(".", "");
 };
 
+const infoDot = (t) => <Info texto={t} />;
+
 const rk = (role, metric) => `${role}:${metric}`;
 
 const money = (n) => `R$ ${Math.round(n).toLocaleString("pt-BR")}`;
@@ -72,7 +75,7 @@ const blockedText = (k) => BLOCKED[k] || "faltam dados pra desdobrar a meta.";
 // viram contatos, contatos viram calls, calls viram ganhos, ganhos viram venda.
 function ChainBox({ nm, big, sub, title }) {
   return (
-    <div title={title} style={{ flex: "1 1 0", minWidth: 92, padding: "4px 6px", textAlign: "center", cursor: title ? "help" : "default" }}>
+    <div className="metas-chain-box" title={title} style={{ flex: "1 1 0", minWidth: 92, padding: "4px 6px", textAlign: "center", cursor: title ? "help" : "default" }}>
       <div className="kicker" style={{ marginBottom: 4, whiteSpace: "nowrap" }}>{nm}</div>
       <div className="tnum" style={{ fontFamily: "var(--display)", fontSize: 22, fontWeight: 650, letterSpacing: "-0.02em", whiteSpace: "nowrap" }}>{big}</div>
       <div className="tnum" style={{ fontSize: 10.5, color: "var(--fg-4)", minHeight: 15, whiteSpace: "nowrap" }}>{sub || ""}</div>
@@ -139,7 +142,7 @@ function chainParts(d, people = {}) {
 function CadeiaDaMeta({ data, applyDerived }) {
   if (!data.derived) return null;
   return (
-    <div style={{ borderTop: "1px solid var(--line-1)", marginTop: 4, paddingTop: 14 }}>
+    <div className="metas-chain">
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <h4 className="card-title" style={{ margin: 0, fontSize: 14 }}>A cadeia dessa meta</h4>
@@ -181,6 +184,14 @@ function CadeiaDaMeta({ data, applyDerived }) {
 
 function MetasScreen() {
   const [product] = useActiveSaas();
+  return <MetasWorkspace key={product?.id} product={product} />;
+}
+
+function Card({title, hint, action, children}) {
+  return <section className="metas-card"><header><div><h3>{title}</h3>{hint && <div className="metas-hint">{hint}</div>}</div>{action}</header>{children}</section>;
+}
+
+function MetasWorkspace({product}) {
   const [data, setData] = useS(null);
   const [pace, setPace] = useS(null);          // vendido/pace do mês — alimenta as réguas
   const [roleVals, setRoleVals] = useS({});     // "role:metric" -> string
@@ -192,6 +203,21 @@ function MetasScreen() {
   const [meses, setMeses] = useS({});   // agenda: "AAAA-MM" -> meta daquele mês
   const [saving, setSaving] = useS(false);
   const [note, setNote] = useS(null);
+  const [reload, setReload] = useS(0), [paceErr, setPaceErr] = useS(null), [refreshNeeded, setRefreshNeeded] = useS(false), [levelBusy, setLevelBusy] = useS(false);
+  const busy = React.useRef(false), alive = React.useRef(true);
+  useE(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  async function readPace() {
+    setPaceErr(null);
+    try { const p = await api.pipelinePace(product.id); if (alive.current) setPace(p); }
+    catch (e) { if (alive.current) { setPace(null); setPaceErr(e.message); } }
+  }
+  async function refreshSaved() {
+    if (busy.current) return;
+    busy.current = true; setSaving(true);
+    try { applyData(await api.metas(product.id)); setRefreshNeeded(false); setNote({ok:true,text:"metas salvas · valem em todo campo que mostra meta"}); await readPace(); }
+    catch (e) { setNote({ok:false,text:`Metas gravadas. Não foi possível atualizar a tela: ${e.message}`}); }
+    finally { busy.current = false; setSaving(false); }
+  }
 
   // Snapshot vindo da API → estados dos campos + baseline do dirty.
   const applyData = (d) => {
@@ -210,9 +236,9 @@ function MetasScreen() {
     let alive = true;
     setData(null); setErr(null); setNote(null); setPace(null);
     api.metas(product.id).then((d) => alive && applyData(d)).catch((e) => alive && setErr(e.message));
-    api.pipelinePace(product.id).then((p) => alive && setPace(p)).catch(() => alive && setPace(null));
+    readPace();
     return () => { alive = false; };
-  }, [product?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [product?.id, reload]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dirty = orig && (JSON.stringify(roleVals) !== orig.roleVals || JSON.stringify(overrides) !== orig.overrides || contratos !== orig.contratos || growth !== orig.growth || JSON.stringify(meses) !== orig.meses);
 
@@ -321,6 +347,8 @@ function MetasScreen() {
   // placeholder lê o plano do nível novo.
   const podeClassificar = isAdminUser();
   async function setNivel(u, n) {
+    if (busy.current) return;
+    busy.current = true; setLevelBusy(true);
     setData((d) => ({ ...d, users: (d.users || []).map((x) => (x.id === u.id ? { ...x, compLevel: n } : x)) }));
     try {
       await api.updateUser(u.id, { compLevel: n });
@@ -328,7 +356,7 @@ function MetasScreen() {
     } catch (e) {
       setNote({ ok: false, text: `nível não salvo: ${e.message}` });
       setData((d) => ({ ...d, users: (d.users || []).map((x) => (x.id === u.id ? { ...x, compLevel: u.compLevel } : x)) }));
-    }
+    } finally { busy.current = false; setLevelBusy(false); }
   }
 
   const ovOf = (userId, metric) => overrides.find((o) => o.key === userId && o.metric === metric);
@@ -354,6 +382,9 @@ function MetasScreen() {
   function rmOv(i) { setOverrides((p) => p.filter((_, j) => j !== i)); }
 
   async function save() {
+    if (busy.current || refreshNeeded) return;
+    busy.current = true;
+    let accepted = false;
     setSaving(true); setNote(null);
     try {
       const goals = [];
@@ -377,22 +408,23 @@ function MetasScreen() {
       // Sem cashTarget de propósito: a "Meta padrão" saiu da tela (Leo, 08/08) e
       // o campo do produto fica quieto como último fallback do servidor.
       await api.saveMetas(product.id, goals, { contractsTarget: contratos, growthPct: growth, months: meses });
+      accepted = true;
       applyData(await api.metas(product.id));
       // Meta nova = pace novo: as réguas e a cadeia recalculam por cima do salvo.
-      api.pipelinePace(product.id).then(setPace).catch(() => {});
+      await readPace();
       setNote({ ok: true, text: "metas salvas · valem em todo campo que mostra meta" });
     } catch (e) {
-      setNote({ ok: false, text: e.message });
+      setRefreshNeeded(accepted);
+      setNote({ ok: false, text: accepted ? `Metas gravadas. Não foi possível atualizar a tela: ${e.message}` : e.message });
     }
-    setSaving(false);
+    busy.current = false; setSaving(false);
   }
   function reset() {
     if (!orig) return;
     setRoleVals(JSON.parse(orig.roleVals)); setOverrides(JSON.parse(orig.overrides)); setContratos(orig.contratos); setGrowth(orig.growth); setMeses(JSON.parse(orig.meses));
   }
 
-  const inp = { height: 38, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 13 };
-  const infoDot = (t) => <Info texto={t} />;
+  const inp = { height: 34, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-inset)", color: "var(--fg-1)", fontSize: 13 };
   const nameOf = (id) => data?.users?.find((u) => u.id === id)?.name || id;
   // "12 por pessoa · 2 na vaga" — só faz sentido em métrica de time com mais de
   // uma pessoa na vaga (taxa e ticket não se repartem).
@@ -405,22 +437,23 @@ function MetasScreen() {
   };
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, width: "100%" }}>
+    <div className="metas-page">
       <PageHead title="Metas" sub="metas por vaga e por pessoa · valem em todo campo que mostra meta">
-        <button onClick={reset} disabled={saving || !dirty} style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-1)", borderRadius: 999, background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, opacity: dirty ? 1 : .55 }}>descartar</button>
-        <button onClick={save} disabled={saving || !dirty}
+        <button onClick={reset} disabled={saving || levelBusy || refreshNeeded || !dirty} style={{ height: 32, padding: "0 13px", border: "1px solid var(--line-1)", borderRadius: 999, background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, opacity: dirty ? 1 : .55 }}>descartar</button>
+        <button onClick={save} disabled={saving || levelBusy || refreshNeeded || !dirty}
           style={{ height: 32, padding: "0 15px", borderRadius: 999, background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 12.5, fontWeight: 600, opacity: saving || !dirty ? 0.55 : 1 }}>
           {saving ? "salvando…" : "salvar metas"}
         </button>
       </PageHead>
 
-      <div style={{ flex: 1, overflow: "auto", padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 16 }}>
-        {err && <div className="mono" style={{ fontSize: 12, color: "var(--neg)" }}>{err}</div>}
-        {note && <div className="mono" style={{ fontSize: 12, color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}</div>}
+      <div className="metas-body">
+        {err && <div role="alert" className="metas-notice">Não foi possível carregar as metas: {err} <button onClick={() => setReload(n => n + 1)}>Tentar novamente</button></div>}
+        {note && <div role={note.ok ? "status" : "alert"} className="metas-notice" style={{ color: note.ok ? "var(--pos)" : "var(--neg)" }}>{note.text}{refreshNeeded && <button disabled={saving} onClick={refreshSaved}>Atualizar metas gravadas</button>}</div>}
+        {paceErr && <div role="alert" className="metas-notice">Réguas indisponíveis: {paceErr} <button onClick={readPace}>Recarregar réguas</button></div>}
         {!data && !err && <div className="mono dim" style={{ fontSize: 12 }}>carregando metas…</div>}
 
         {data && (
-          <>
+          <fieldset className="metas-fields" disabled={saving || levelBusy || refreshNeeded}>
             {/* 1 · Meta do mês: as duas réguas da Visão geral com os campos que
                 as editam logo abaixo. A régua usa o vendido real do pace contra
                 o alvo digitado, então dá pra ver o efeito antes de salvar. */}
@@ -429,12 +462,12 @@ function MetasScreen() {
                 {mesAtualInfo ? mesLabel(mesAtualInfo.month) : "mês corrente"} · digitar move a régua na hora, salvar é o que grava
                 {infoDot("A faixa Meta do mês da Visão geral e a Análise de Pace perseguem esse número pelo VENDIDO RECONHECIDO (à vista e cartão em 12x contam inteiro, porque a adquirente antecipa; boleto faturado, PIX parcelado, assinatura recorrente e condição personalizada contam só o que ENTROU no mês) e desdobram o que falta em ganhos, calls, contatos e leads por dia. Na virada do mês, o valor do mês novo assume sozinho: o agendado, se houver, senão a regra de crescimento. O caixa e o dinheiro futuro ficam na aba Clientes.")}
               </>}>
-              <div className="resp-cols" style={{ "--cols": "1fr 1fr", gap: "18px 36px", padding: "16px var(--inset-x) 20px" }}>
+              <div className="metas-month-cols">
                 <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 14 }}>
                   {saleLive && (
                     <Regua label="Régua de receita" title={saleLive.title}
                       valueText={<><strong className="tnum" style={{ color: "var(--fg-1)", fontWeight: 650 }}>{money(saleLive.sold)}</strong> / {money(saleLive.alvo)} · {Math.round((saleLive.progress || 0) * 100)}%</>}
-                      pct={saleLive.progress} expectedPct={saleLive.expected} lvl={saleLive.lvl} />
+                      pct={saleLive.progress} expectedPct={saleLive.expected} lvl={saleLive.lvl} sub="traço = onde o dia útil pede" />
                   )}
                   {mesAtualInfo && (
                     <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -449,10 +482,10 @@ function MetasScreen() {
                       <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                         <span className="mono dim" style={{ fontSize: 12 }}>R$</span>
                         <input type="number" min="0" step="1" inputMode="decimal"
-                          value={meses[mesAtualInfo.month] ?? ""}
+                          aria-label="Meta de venda do mês" value={meses[mesAtualInfo.month] ?? ""}
                           onChange={(e) => setMeses((p) => ({ ...p, [mesAtualInfo.month]: e.target.value }))}
                           placeholder={String(mesAtualInfo.effective)}
-                          className="tnum" style={{ ...inp, width: 130, textAlign: "right" }} />
+                          className="tnum" style={{ ...inp, width: 128, textAlign: "right" }} />
                       </div>
                     </label>
                   )}
@@ -461,7 +494,7 @@ function MetasScreen() {
                   {contractsLive ? (
                     <Regua label="Régua de contratos" title={contractsLive.title}
                       valueText={<><strong className="tnum" style={{ color: "var(--fg-1)", fontWeight: 650 }}>{int(contractsLive.sold)}</strong> / {int(contractsLive.alvo)} · {Math.round((contractsLive.progress || 0) * 100)}%</>}
-                      pct={contractsLive.progress} expectedPct={contractsLive.expected} lvl={contractsLive.lvl} />
+                      pct={contractsLive.progress} expectedPct={contractsLive.expected} lvl={contractsLive.lvl} sub="traço = onde o dia útil pede" />
                   ) : pace != null ? (
                     <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>
                       Sem meta de contratos ainda: registre uma venda (pro ticket existir) ou digite abaixo.
@@ -485,16 +518,16 @@ function MetasScreen() {
                       )}
                     </span>
                     <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                      <input type="number" min="0" step="1" inputMode="numeric" value={contratos}
+                      <input type="number" min="0" step="1" inputMode="numeric" aria-label="Meta de contratos no mês" value={contratos}
                         onChange={(e) => setContratos(e.target.value)}
                         placeholder={data.derived?.wonFromTicket != null ? `${data.derived.wonFromTicket} pela venda` : "digite"}
-                        className="tnum" style={{ ...inp, width: 130, textAlign: "right" }} />
+                        className="tnum" style={{ ...inp, width: 94, textAlign: "right" }} />
                       <span className="mono dim" style={{ fontSize: 12 }}>contratos</span>
                     </div>
                   </label>
                 </div>
               </div>
-              <div style={{ padding: "0 var(--inset-x) 18px" }}>
+              <div className="metas-chain-wrap">
                 <CadeiaDaMeta data={data} applyDerived={applyDerived} />
               </div>
             </Card>
@@ -504,10 +537,10 @@ function MetasScreen() {
                 (o placar usa o mesmo fallback); digitado vence, e quando briga
                 com a cadeia a tela avisa em vez de deixar duas verdades
                 convivendo caladas. */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 14 }}>
+            <div className="metas-roles">
               {data.roles.map((r) => (
                 <Card key={r.role} title={r.label} hint={r.hint}>
-                  <div style={{ padding: "6px var(--inset-x) 18px", display: "flex", flexDirection: "column" }}>
+                  <div className="metas-role-fields">
                     {r.metrics.filter((m) => !m.compPlan).map((m) => (
                       <label key={m.metric} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: "1px solid var(--line-faint)" }}>
                         <span style={{ flex: 1, fontSize: 13.5, color: "var(--fg-2)", minWidth: 0 }}>
@@ -531,7 +564,7 @@ function MetasScreen() {
                         <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                           {m.unit === "R$" && <span className="mono dim" style={{ fontSize: 12 }}>R$</span>}
                           <input type="number" min="0" step={m.unit === "%" ? "1" : "0.01"} inputMode="decimal"
-                            value={roleVals[rk(r.role, m.metric)] ?? ""}
+                            aria-label={`${m.label} · ${r.label}`} value={roleVals[rk(r.role, m.metric)] ?? ""}
                             onChange={(e) => setRole(r.role, m.metric, e.target.value)}
                             placeholder={m.derived != null ? `${Math.round(m.derived)} pela meta` : m.default != null ? `padrão ${m.default}` : "—"}
                             title={m.derived != null ? `vazio = segue a meta do mês (${Math.round(m.derived)})` : undefined}
@@ -579,7 +612,7 @@ function MetasScreen() {
                 é o último a falar no goalFor do scoreboard. */}
             <Card title="Meta por pessoa"
               hint={<>classifique o nível e a meta segue · em branco segue o plano{infoDot("Cada pessoa persegue, nesta ordem: o ajuste digitado aqui, o nível dela no plano de Remuneração (júnior/pleno/sênior, com metas definidas na tela Remuneração), a meta da vaga repartida pelo time e, por último, a meta derivada do mês. O nível salva na hora; os números digitados só no botão salvar metas.")}</>}>
-              <div style={{ padding: "12px var(--inset-x) 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+              <div className="metas-people">
                 <div className="tbl-x">
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead>
@@ -607,7 +640,7 @@ function MetasScreen() {
                             {!LEVELED_ROLES.includes(roleOfUser(u))
                               ? <span className="dim" style={{ fontSize: 12 }} title="Níveis valem pra SDR e closer (as vagas com meta de contratos e receita por nível). Essa vaga segue a meta da vaga.">—</span>
                               : podeClassificar
-                                ? <select value={u.compLevel || 1} onChange={(e) => setNivel(u, Number(e.target.value))}
+                                ? <select aria-label={`Nível de ${u.name}`} value={u.compLevel || 1} onChange={(e) => setNivel(u, Number(e.target.value))}
                                     title="Classificar salva na hora e vale também no plano de Remuneração"
                                     style={{ ...inp, height: 32, fontSize: 12.5, padding: "0 6px" }}>
                                     {CAREER_LEVELS.map((l) => <option key={l.n} value={l.n}>{l.label}</option>)}
@@ -632,7 +665,7 @@ function MetasScreen() {
                               <td key={metric} style={{ padding: "6px 0 6px 8px", borderTop: "1px solid var(--line-1)", textAlign: "right" }}>
                                 <span style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
                                   {isMoney && <span className="mono dim" style={{ fontSize: 11 }}>R$</span>}
-                                  <input type="number" min="0" step={isMoney ? "100" : "1"} value={ov?.target ?? ""}
+                                  <input aria-label={`${isMoney ? "Receita" : "Contratos"} de ${u.name}`} type="number" min="0" step={isMoney ? "100" : "1"} value={ov?.target ?? ""}
                                     onChange={(e) => setPersonGoal(u.id, metric, e.target.value)}
                                     placeholder={vig ? String(Math.round(vig.value)) : "—"}
                                     title={vig
@@ -658,16 +691,16 @@ function MetasScreen() {
                   const info = metricInfo[o.metric] || {};
                   return (
                     <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                      <select value={o.key} onChange={(e) => setOv(i, "key", e.target.value)} style={{ ...inp, minWidth: 140 }}>
+                      <select aria-label={`Pessoa do ajuste ${i + 1}`} value={o.key} onChange={(e) => setOv(i, "key", e.target.value)} style={{ ...inp, minWidth: 140 }}>
                         {(data.users || []).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                         {!data.users?.some((u) => u.id === o.key) && o.key && <option value={o.key}>{nameOf(o.key)}</option>}
                       </select>
-                      <select value={o.metric} onChange={(e) => setOv(i, "metric", e.target.value)} style={{ ...inp, minWidth: 180, flex: 1 }}>
+                      <select aria-label={`Métrica do ajuste ${i + 1}`} value={o.metric} onChange={(e) => setOv(i, "metric", e.target.value)} style={{ ...inp, minWidth: 180, flex: 1 }}>
                         {allMetrics.filter(([mk]) => !PERSON_METRICS.includes(mk)).map(([mk, mi]) => <option key={mk} value={mk}>{mi.label}</option>)}
                       </select>
                       <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                         {info.unit === "R$" && <span className="mono dim" style={{ fontSize: 11 }}>R$</span>}
-                        <input type="number" min="0" step={info.unit === "%" ? "1" : "0.01"} value={o.target}
+                        <input aria-label={`Valor do ajuste ${i + 1}`} type="number" min="0" step={info.unit === "%" ? "1" : "0.01"} value={o.target}
                           onChange={(e) => setOv(i, "target", e.target.value)} placeholder="meta"
                           className="tnum" style={{ ...inp, width: 78, textAlign: "right" }} />
                         {info.unit === "%" && <span className="mono dim" style={{ fontSize: 11 }}>%</span>}
@@ -700,7 +733,7 @@ function MetasScreen() {
                   <label title="Porcentagem composta por cima da meta do mês atual (com 50%: 180 mil, 270 mil, 405 mil e assim por diante)."
                     style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, color: "var(--fg-2)", cursor: "help" }}>
                     crescimento
-                    <input type="number" min="0" step="1" inputMode="decimal" value={growth}
+                    <input type="number" min="0" step="1" inputMode="decimal" aria-label="Crescimento ao mês" value={growth}
                       onChange={(e) => setGrowth(e.target.value)} placeholder="ex.: 50"
                       className="tnum" style={{ ...inp, height: 32, width: 68, textAlign: "right" }} />
                     <span className="mono dim" style={{ fontSize: 12 }}>% ao mês</span>
@@ -712,7 +745,7 @@ function MetasScreen() {
                   </button>
                 </span>
               }>
-              <div style={{ padding: "14px var(--inset-x) 18px" }}>
+              <div className="metas-agenda">
                 {proximosMeses.length > 0 && (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 190px), 1fr))", gap: 10 }}>
                     {proximosMeses.map((m) => (
@@ -740,7 +773,7 @@ function MetasScreen() {
             <div className="dim" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
               campo vazio segue a meta do mês pela cadeia; sem cadeia, vale o benchmark padrão. As metas alimentam o placar de Desempenho do time e todo campo que compara com meta.
             </div>
-          </>
+          </fieldset>
         )}
       </div>
     </div>

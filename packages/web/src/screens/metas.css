@@ -1,0 +1,37 @@
+.metas-page{flex:1;min-height:0;display:flex;flex-direction:column;gap:12px;overflow-y:auto;margin:0 -4px;padding:0 4px 24px}
+.metas-page>.capsule-page-head{padding:8px 10px 2px!important;align-items:flex-end!important;gap:12px!important}
+.metas-page .page-title{font-size:30px;line-height:1.05;letter-spacing:-.03em}
+.metas-page .page-sub{font-size:11.5px;margin-top:6px!important}
+.metas-page>.capsule-page-head>div{min-width:0!important}.metas-page>.capsule-page-head>div+div{padding-top:0!important}
+.metas-body,.metas-fields{display:flex;flex-direction:column;gap:12px;min-width:0;margin:0;padding:0;border:0;flex:none}
+.metas-card{min-width:0;flex:none;background:var(--bg-1);border-radius:24px;box-shadow:var(--shadow-card);overflow:hidden}
+.metas-card>header{padding:18px 20px 0;display:flex;flex-direction:column;gap:12px}
+.metas-card h3{display:flex;align-items:center;gap:7px;margin:0;color:var(--fg-3);font-size:14px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;font-family:var(--sans)}
+.metas-card h3:before{content:"";width:5px;height:14px;border-radius:999px;background:var(--accent);flex-shrink:0}
+.metas-hint{font-size:12px;color:var(--fg-4);margin-top:5px;padding-left:12px;text-wrap:pretty}
+.metas-fields>.metas-card:first-child>header{padding:20px 22px 0}
+.metas-month-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:18px 34px;margin-top:18px;padding:0 22px}
+.metas-month-cols>div{gap:13px!important}.metas-month-cols>div>label>span{font-size:13px!important}
+.metas-month-cols>div>div>div:first-child>span:first-child{font-size:10px!important;text-transform:uppercase;letter-spacing:.1em;color:var(--fg-4)}
+.metas-month-cols>div>div>div:nth-child(2){height:9px!important}
+.metas-chain-wrap{padding:0 22px 22px}.metas-chain{border-top:1px solid var(--line-faint);margin-top:18px;padding-top:15px}
+.metas-chain-box{display:flex;flex-direction:column}.metas-chain-box>.kicker{order:1;margin-top:4px;margin-bottom:0!important}.metas-chain-box>div:last-child{order:2}
+.metas-chain .card-title{font-size:14px!important}.metas-chain .card-sub{font-size:11px;margin-top:3px!important}
+.metas-roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:12px}
+.metas-roles h3{font-size:13px;letter-spacing:.12em}.metas-roles .metas-hint{font-size:11.5px}
+.metas-role-fields{padding:0 20px 16px;margin-top:12px;display:flex;flex-direction:column}
+.metas-role-fields>label>span{font-size:12.5px!important}
+.metas-people{padding:12px 20px 18px;display:flex;flex-direction:column;gap:10px}
+.metas-people .tbl-x table{min-width:560px}.metas-people thead{background:var(--bg-inset)}
+.metas-people th{font-size:9.5px!important}.metas-people th,.metas-people td{padding:9px 8px!important}.metas-people td input{height:32px!important}
+.metas-agenda{padding:12px 20px 18px}.metas-agenda>div{display:flex!important;flex-direction:column;gap:0!important}.metas-agenda label{border-top:1px solid var(--line-faint);padding:8px 0}.metas-agenda input{width:118px!important;height:32px!important}
+.metas-notice{padding:12px 16px;border-radius:18px;background:var(--bg-1);font-size:12.5px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}.metas-notice button{font-weight:600;text-decoration:underline}
+.metas-page button:disabled{cursor:default;opacity:.55}.metas-fields:disabled{opacity:.75}
+@media(max-width:600px){.metas-page input,.metas-page select,.metas-page button{min-height:44px}.metas-month-cols{padding:0 16px}.metas-chain-wrap{padding:0 16px 18px}.metas-people{padding:12px 16px 18px}.metas-people td input,.metas-agenda input{height:44px!important}.metas-page>.capsule-page-head{padding:8px 6px 2px!important}.metas-role-fields{padding:0 16px 16px}.metas-month-cols>div>label{flex-wrap:wrap}.metas-month-cols>div>label>span{min-width:125px!important}}
+
+.metas-chain .card-title{text-transform:none;letter-spacing:-.01em;font-weight:700}
+.metas-chain-box>div:nth-child(2){font-size:20px!important}
+.metas-month-cols>div>div>div:nth-child(2)>span[title]>span{display:none}
+.metas-month-cols>div>div>div:nth-child(3){font-size:10.5px!important;margin-top:9px!important}
+@media(min-width:601px){.metas-page>.capsule-page-head button{min-height:32px;padding-inline:14px!important}}
+@media(max-width:600px){.metas-page>.capsule-page-head>div:first-child{flex-basis:100%!important}.metas-page>.capsule-page-head>div+div{margin-left:auto}}
