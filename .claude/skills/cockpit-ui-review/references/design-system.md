@@ -287,3 +287,11 @@ confirmação, `SecondaryButton` + `.inp` + `.tbl` criados.
   em 12px/fg-3 e 13.5px/fg-1, respectivamente. Divisores usam `--line-1`;
   respostas preservam quebras de linha e quebram e-mails longos. A dor do
   anúncio tem rótulo próprio e o combinado fica separado das respostas.
+
+### Card de Minhas atividades — desenho de 21/09/2026
+
+Cabeçalho do lead; faixa de preparo com atalhos à esquerda e configuração da
+apresentação à direita; roteiro e respostas do formulário em duas colunas;
+histórico/anotações em largura inteira; próximo passo no rodapé. Em cards
+estreitos e no celular, as colunas empilham na mesma ordem. A configuração
+reutiliza a tela inicial da apresentação, que continua existindo no deck.

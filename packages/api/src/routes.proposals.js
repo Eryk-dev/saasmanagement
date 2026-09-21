@@ -21,14 +21,14 @@ import { gradeBandKnown } from "./routes.marketing.js";
 // Deck do produto ativo + payload da tela zero: o transform roda ao SERVIR (o
 // snapshot no banco segue genérico); o card de decisão (catalogUI) só entra no
 // modo closer. Sem catálogo, tudo passa intacto.
-function renderProposal(p, { editable = false, previewBanner = false } = {}) {
+function renderProposal(p, { editable = false, previewBanner = false, configOnly = false } = {}) {
   // Opção C (12/09): apresentação em SLIDES. Outro renderer, mesma proposta —
   // as views, o aceite e o editKey continuam da rota. O catálogo vai como
   // argumento (publicProposal não expõe a tabela de preço ao navegador; aqui
   // ela só chega na página no modo closer, pra tela zero calcular ao vivo).
   if (p.layout === "slides") {
     return proposalSlidesPageHtml(publicProposal(p, { editable }), {
-      editable, previewBanner,
+      editable, previewBanner, configOnly,
       catalog: (p.calc && p.calc.catalog) || null,
       suggested: activeProduct(p),
       results: !p.saas || p.saas === "leverads" ? leveradsPresentationResults() : null,
@@ -181,7 +181,7 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     }
     // no-store: sem isso o navegador reusa HTML antigo por cache heurístico e o
     // closer apresenta uma versão velha do deck (re-snapshots são frequentes).
-    return reply.type("text/html").header("cache-control", "no-store").send(renderProposal(p, { editable }));
+    return reply.type("text/html").header("cache-control", "no-store").send(renderProposal(p, { editable, configOnly: editable && req.query.embed === "config" }));
   });
 
   // Painel do closer: só os campos de estado, só com o editKey certo.

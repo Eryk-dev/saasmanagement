@@ -2,6 +2,10 @@ const params = new URLSearchParams(location.search);
 export const todayReview = params.get('review') === 'today';
 let activities = [];
 export function setupTodayReview(seed) {
+  if (params.has('card')) {
+    Object.assign(seed.LEADS.find(l=>l.name==='Bruno Teixeira'), {proposalUrl:'/p/card-preview',proposal_edit_url:'/p/card-preview?k=review'});
+    seed.SAAS[0].leadQuestions=[{key:'accounts',label:'Quantas contas?',options:[{value:'2',label:'2 contas'},{value:'3-5',label:'3 a 5 contas'}]}];
+  }
   if (params.get('state') === 'empty') seed.LEADS = [];
   if (params.has('many')) seed.LEADS = [...seed.LEADS, ...Array.from({length:15},(_,i)=>({...seed.LEADS.find(l=>l.id==='l3'), id:`extra-${i}`, name:`Lead ${i + 1}`, company:`Empresa ${i + 1}`}))];
   window.__reviewMutations = [];

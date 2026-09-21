@@ -540,3 +540,11 @@ alteração funcional nesta preparação.
   em `revenue-grade.test.js`, além da suíte API, smoke web e build.
 - Preview isolado dos badges e ICP: `/?shell=1&review=pipeline&revenueGrades=1#pipeline`
   no Vite preview; inclui S–E, dois legados e um lead sem qualificação.
+
+- **Card de Minhas atividades (21/09/2026):** segue o desenho “novo card minhas
+  atividade.pdf”: preparo, roteiro/respostas, histórico e próximo passo.
+  `GET /p/:id?embed=config&k=…` mostra a configuração responsiva do deck de
+  slides dentro do card apenas com a chave de edição válida. Usa o mesmo
+  `deckConfig` e PATCH da apresentação, sem duplicar preços ou persistência.
+  O deck normal mantém sua tela inicial. Validação adicional:
+  `cd packages/web && node scripts/review/today-card.mjs` (API fictícia).

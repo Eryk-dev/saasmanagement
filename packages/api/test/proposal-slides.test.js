@@ -273,6 +273,15 @@ test("rota: o closer recebe a tela zero e a tabela; o cliente recebe só os núm
   assert.match(closer.body, /Monte a proposta antes de começar/);
   assert.match(closer.body, /price_enterprise/, "a tabela vai pro navegador do closer (cálculo ao vivo)");
 
+  const embedded = await app.inject({ url: `/p/${r.proposal.id}?k=${r.proposal.editKey}&embed=config` });
+  assert.match(embedded.body, /"configOnly":true/);
+  assert.match(embedded.body, /data-cfg="contas"/);
+  assert.match(embedded.body, /data-cfg="ticket"/);
+  assert.match(closer.body, /"configOnly":false/, "a tela continua no deck normal");
+  const unauthorizedEmbed = await app.inject({ url: `/p/${r.proposal.id}?k=wrong&embed=config&from=cockpit` });
+  assert.match(unauthorizedEmbed.body, /"configOnly":false/);
+  assert.doesNotMatch(unauthorizedEmbed.body, /data-cfg="contas"/);
+
   const cliente = await app.inject({ method: "GET", url: "/p/" + r.proposal.id });
   assert.equal(cliente.statusCode, 200);
   assert.doesNotMatch(cliente.body, /Configurar apresentação/, "cliente não vê a tela zero");
