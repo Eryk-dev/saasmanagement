@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { Avatar, SecondaryButton, useEsc } from "../../atoms.jsx";
 import { api, assetUrl } from "../../lib/api.js";
 import { displayName } from "../../lib/users.js";
@@ -15,32 +16,41 @@ import { RecurrencePicker, LabelColorPopover } from "./pickers.jsx";
 
 const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
-// Campo que salva sozinho: no blur/Enter (título) ou com atraso (descrição).
-// Rascunho local manda enquanto está sujo; a resposta do servidor só entra
-// quando não há edição pendente. Fechar o painel com rascunho sujo grava.
+// Campos registram seus commits para a navegação interna aguardar a gravação.
+const TaskSaves = React.createContext(null);
 function useAutosave(serverValue, save, { delay = 0 } = {}) {
+  const saves = React.useContext(TaskSaves);
   const [draft, setDraft] = useState(serverValue ?? "");
-  const dirty = useRef(false);
-  const draftRef = useRef(draft); draftRef.current = draft;
-  const saveRef = useRef(save); saveRef.current = save;
-  const timer = useRef(0);
+  const failed = useRef(false);
+  const dirty = useRef(false), pending = useRef(null), timer = useRef(0);
+  const draftRef = useRef(draft), saveRef = useRef(save); saveRef.current = save;
   const [status, setStatus] = useState("");
-  useEffect(() => { if (!dirty.current) setDraft(serverValue ?? ""); }, [serverValue]);
+  useEffect(() => { if (!dirty.current && !pending.current) { draftRef.current = serverValue ?? ""; setDraft(draftRef.current); } }, [serverValue]);
   const commit = useCallback(async () => {
     clearTimeout(timer.current);
+    if (pending.current) return pending.current;
     if (!dirty.current) return true;
-    const v = draftRef.current;
-    dirty.current = false;
+    if (failed.current) return false;
+    const value = draftRef.current;
     setStatus("saving");
-    const ok = await saveRef.current(v);
-    setStatus(ok ? "saved" : "error");
-    if (ok) setTimeout(() => setStatus((s) => (s === "saved" ? "" : s)), 1500);
-    else dirty.current = true;
-    return ok;
+    const request = (async () => {
+      let ok = false;
+      try { ok = await saveRef.current(value); } catch { /* feedback abaixo */ }
+      pending.current = null; failed.current = !ok;
+      if (ok && draftRef.current === value) dirty.current = false;
+      setStatus(ok ? "saved" : "error");
+      if (ok && dirty.current) return commit();
+      return ok;
+    })();
+    pending.current = request;
+    return request;
   }, []);
-  const onChange = (v) => { setDraft(v); dirty.current = true; if (delay) { clearTimeout(timer.current); timer.current = setTimeout(commit, delay); } };
-  useEffect(() => () => { clearTimeout(timer.current); if (dirty.current) saveRef.current(draftRef.current); }, []);
-  return { draft, onChange, commit, status, retry: commit };
+  const onChange = value => {
+    draftRef.current = value; setDraft(value); dirty.current = true; failed.current = false; setStatus("");
+    if (delay) { clearTimeout(timer.current); timer.current = setTimeout(commit, delay); }
+  };
+  useEffect(() => { saves?.add(commit); return () => { saves?.delete(commit); clearTimeout(timer.current); commit(); }; }, [saves, commit]);
+  return { draft, onChange, commit, status, retry: () => { failed.current = false; return commit(); } };
 }
 function SaveStatus({ status, onRetry }) {
   if (!status) return null;
@@ -55,7 +65,7 @@ function TitleField({ task, save }) {
   useEffect(() => { fit(ref.current, 200); }, [a.draft]);
   return (
     <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-      <textarea ref={ref} value={a.draft} rows={1} placeholder="Nome da tarefa" className="tk-panel-field"
+      <textarea ref={ref} value={a.draft} rows={1} placeholder="Nome da tarefa" aria-label="Nome da tarefa" className="tk-panel-field"
         onChange={(e) => a.onChange(e.target.value)} onBlur={a.commit}
         onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.target.blur(); } }}
         style={{ flex: 1, minWidth: 0, fontSize: 18, fontWeight: 700, lineHeight: 1.3, letterSpacing: "-0.01em", border: "1px solid transparent", borderRadius: "var(--r-2)", padding: "4px 6px", margin: "-4px -6px", background: "transparent", resize: "none", fontFamily: "inherit", color: "var(--fg-1)", outline: "none" }} />
@@ -73,7 +83,7 @@ function DescriptionField({ task, save }) {
         <span className="kicker">Descrição</span>
         <span style={{ marginLeft: "auto" }}><SaveStatus status={a.status} onRetry={a.retry} /></span>
       </div>
-      <textarea ref={ref} value={a.draft} rows={2} placeholder="Adicione detalhes, contexto, links…" className="tk-panel-field"
+      <textarea ref={ref} value={a.draft} rows={2} placeholder="Adicione detalhes, contexto, links…" aria-label="Descrição" className="tk-panel-field"
         onChange={(e) => a.onChange(e.target.value)} onBlur={a.commit} onKeyDown={(e) => e.stopPropagation()}
         style={{ width: "100%", boxSizing: "border-box", fontSize: 13, lineHeight: 1.5, border: "1px solid transparent", borderRadius: "var(--r-2)", padding: "6px 8px", margin: "0 -8px", background: "var(--bg-inset)", resize: "none", fontFamily: "inherit", color: "var(--fg-1)", outline: "none", minHeight: 64 }} />
     </div>
@@ -219,8 +229,25 @@ const IconBtn = ({ title, onClick, active, danger, children, btnRef }) => (
     style={{ width: 32, height: 32, borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center", color: danger ? "var(--neg)" : active ? "var(--accent)" : "var(--fg-3)", background: "transparent" }}>{children}</button>
 );
 
-export function TaskPanel({ task, tasks, columns, board, users, usersById, labelColors, labelOptions, me, mobile, expanded, onToggleExpand, onClose, onOpen, stack, onBack, saveField, actions, activityVersion, onTaskChange, focusHint }) {
+export function TaskPanel({ task, tasks, columns, board, users, usersById, labelColors, labelOptions, me, mobile, expanded, onToggleExpand, onClose, onOpen, stack, onBack, saveField, actions, activityVersion, onTaskChange, focusHint, flushRef }) {
+  const saves = useRef(new Set());
+  useEffect(() => {
+    const flush = async () => {
+      // Campos da mesma tarefa são enviados em sequência: cada resposta é um
+      // documento completo, portanto uma resposta antiga não pisa na próxima.
+      for (const save of saves.current) if (!await save()) return false;
+      return true;
+    };
+    flushRef.current = flush;
+    return () => { if (flushRef.current === flush) flushRef.current = null; };
+  }, [flushRef]);
   useEsc(onClose);
+  useEffect(() => {
+    if (!mobile) return;
+    const oldOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = oldOverflow; };
+  }, [mobile]);
   const done = !!task.completed;
   const [tab, setTab] = useState("comments");
   const [menu, setMenu] = useState(null);
@@ -239,7 +266,7 @@ export function TaskPanel({ task, tasks, columns, board, users, usersById, label
 
   useEffect(() => { setTab("comments"); }, [task.id]);
   useEffect(() => { document.body.dataset.tkPanel = "1"; return () => { delete document.body.dataset.tkPanel; }; }, []);
-  useEffect(() => { if (!mobile) rootRef.current?.focus({ preventScroll: true }); }, [task.id, mobile]);
+  useEffect(() => { const previous = document.activeElement; rootRef.current?.focus({ preventScroll: true }); return () => { if (previous?.isConnected) previous.focus({preventScroll:true}); }; }, [task.id, mobile]);
 
   const followToggle = async () => {
     try { const r = following ? await api.taskUnfollow(task.id, me) : await api.taskFollow(task.id, me); onTaskChange(r.task); }
@@ -274,16 +301,25 @@ export function TaskPanel({ task, tasks, columns, board, users, usersById, label
   };
 
   const shell = mobile
-    ? { position: "fixed", inset: 0, zIndex: 70, background: "var(--bg-1)", display: "flex", flexDirection: "column" }
+    ? { position: "fixed", inset: 0, zIndex: "var(--z-drawer)", background: "var(--bg-1)", display: "flex", flexDirection: "column" }
     : { width: expanded ? "min(920px, 62vw)" : "min(560px, 46vw)", minWidth: 380, flexShrink: 0, borderLeft: "1px solid var(--line-1)", background: "var(--bg-1)", display: "flex", flexDirection: "column", minHeight: 0, boxShadow: "var(--shadow-card)" };
 
-  return (
-    <div ref={rootRef} data-panel-root="1" data-tk-layer="1" role="dialog" aria-label={task.title || "Tarefa"} tabIndex={-1} style={{ ...shell, outline: "none", position: shell.position || "relative" }}
+  const content = (
+    <TaskSaves.Provider value={saves.current}><div ref={rootRef} className="tasks-panel" data-panel-root="1" data-tk-layer="1" role="dialog" aria-modal={mobile || undefined} aria-label={task.title || "Tarefa"} tabIndex={-1} style={{ ...shell, outline: "none", position: shell.position || "relative" }}
       onDragEnter={(e) => { if (e.dataTransfer?.types?.includes("Files")) { e.preventDefault(); setDropping(true); } }}
       onDragOver={(e) => { if (e.dataTransfer?.types?.includes("Files")) { e.preventDefault(); } }}
       onDragLeave={(e) => { if (!rootRef.current?.contains(e.relatedTarget)) setDropping(false); }}
       onDrop={onFiles} onPaste={onPaste}
-      onKeyDown={(e) => { if (e.key === "Escape") return; e.stopPropagation(); }}>
+      onKeyDown={(e) => {
+        if (e.key === "Escape") return;
+        if (mobile && e.key === "Tab" && rootRef.current.contains(e.target)) {
+          const nodes = [...rootRef.current.querySelectorAll('button:not(:disabled),input:not(:disabled),textarea:not(:disabled),select:not(:disabled),a[href],[tabindex="0"]')].filter(el => el.getClientRects().length);
+          const first = nodes[0], last = nodes.at(-1);
+          if (e.shiftKey && (document.activeElement === first || document.activeElement === rootRef.current)) { e.preventDefault(); last?.focus(); }
+          else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+        }
+        e.stopPropagation();
+      }}>
       {dropping && <div className="tk-drop-overlay">Solte para anexar</div>}
       {/* Cabeçalho */}
       <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "10px 12px 10px 16px", borderBottom: "1px solid var(--line-1)", flexShrink: 0 }}>
@@ -342,7 +378,7 @@ export function TaskPanel({ task, tasks, columns, board, users, usersById, label
             <RecurrencePicker value={task.recurrence} dueDate={task.dueDate} onChange={(recurrence) => saveField(task.id, { recurrence })} />
           </Row>
           <Row label="Produto">
-            <select className="inp" value={task.saas || ""} onChange={(e) => saveField(task.id, { saas: e.target.value })} style={{ height: 28, fontSize: 12.5 }}>
+            <select aria-label="Produto da tarefa" className="inp" value={task.saas || ""} onChange={(e) => saveField(task.id, { saas: e.target.value })} style={{ height: 28, fontSize: 12.5 }}>
               <option value="">Geral (todos)</option>
               {products.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
@@ -379,6 +415,7 @@ export function TaskPanel({ task, tasks, columns, board, users, usersById, label
         </div>
         <Composer task={task} users={users} me={me} onSent={onTaskChange} autoFocus={focusHint === "comment"} />
       </div>
-    </div>
+    </div></TaskSaves.Provider>
   );
+  return mobile ? createPortal(content, document.body) : content;
 }

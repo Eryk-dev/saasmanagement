@@ -1,0 +1,93 @@
+.tasks-page { margin:0 -4px; padding:0 4px; gap:10px; --fg-4:var(--fg-3); }
+.tasks-page > .tasks-head { padding:8px 10px 2px!important; margin:0; align-items:flex-end!important; gap:12px!important; }
+.tasks-page > .tasks-head h1 { font-size:30px; line-height:1.05; font-weight:700; letter-spacing:-.03em; }
+.tasks-page > .tasks-head .page-sub { font-size:11.5px; margin-top:6px!important; }
+.tasks-head-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.tasks-head-actions .tasks-views { padding:4px; background:var(--bg-1); }
+.tasks-head-actions .tasks-views button { min-height:28px; padding:0 12px; font-size:11.5px; }
+.tasks-head-actions > button { min-height:40px; }
+.tasks-toolbar,.tasks-fields-inner { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:10px 14px; background:var(--bg-1); border-radius:24px; }
+.tasks-toolbar { font-size:11px; }
+.tasks-toolbar .inp { height:32px; min-height:32px; font-size:11.5px; }
+.tasks-toolbar > div:first-child input { padding-left:28px!important; }
+.tasks-toolbar > button { font-size:12px!important; }
+.tasks-priorities { display:flex; align-items:center; gap:4px; color:var(--fg-3); }
+.tasks-priorities > span { margin-right:3px; }
+.tasks-priorities button,.tasks-toggle,.tasks-undo { height:32px; padding:0 10px; border:1px solid var(--line-2); border-radius:999px; color:var(--fg-2); font-size:11px; }
+.tasks-priorities button[aria-pressed=true],.tasks-toggle[aria-pressed=true] { background:var(--accent-soft); color:var(--accent); border-color:var(--accent-line); }
+.tasks-undo { margin-left:auto; }
+.tasks-card-fields { padding:11px 16px; gap:6px; }
+.tasks-fields-inner > span { color:var(--fg-3); font-size:10px; font-weight:600; margin-right:6px; }
+.tasks-card-fields button { display:flex; align-items:center; gap:5px; height:28px; padding:0 12px; border:0; border-radius:999px; font-size:11.5px; color:var(--fg-3); }
+.tasks-card-fields button[aria-pressed=true] { color:var(--accent); background:var(--accent-soft); }
+.tasks-card-fields button > span { color:var(--accent); }
+.tasks-page .kb-board { gap:10px; padding:0 0 12px; }
+.tasks-page .kb-col { width:272px; background:var(--bg-1); border:0; border-radius:24px; }
+.tasks-page .kb-col-head { padding:13px 14px 10px; }
+.tasks-page .kb-col-list { gap:7px; padding:0 10px 12px; }
+.tasks-page .kb-col-count { padding:0; background:transparent; }
+.tasks-page .kb-col-name { font-size:12px; }
+.tasks-page .kb-col-actions { opacity:1; }
+.tasks-page .tk-card { background:var(--bg-2)!important; border-color:transparent!important; border-radius:18px!important; box-shadow:none!important; }
+.tasks-page .tk-card:focus-visible { outline:2px solid var(--accent)!important; outline-offset:-2px; }
+.tasks-page .tk-card.is-selected { box-shadow:inset 0 0 0 2px var(--accent)!important; }
+.tasks-page .tasks-card-title { font-size:12.5px!important; line-height:1.4!important; }
+.tasks-panel { border:0!important; border-radius:24px; margin-left:10px; overflow:hidden; --fg-4:var(--fg-3); }
+.tasks-panel textarea:focus-visible { outline:2px solid var(--accent)!important; outline-offset:2px; }
+@media(max-width:1100px) { .tasks-page > .tasks-head { align-items:flex-start; flex-direction:column; } .tasks-head-actions { width:100%; } }
+@media(max-width:640px) {
+ .tasks-page { flex:none!important; }
+ .tasks-page > .tasks-head { padding:8px 6px 2px; }
+ .tasks-head-actions { gap:8px; }
+ .tasks-head-actions .tasks-views { max-width:100%; overflow-x:auto; }
+ .tasks-head-actions .tasks-views button { min-height:44px; padding:0 10px; }
+ .tasks-head-actions > button,.tasks-toolbar button,.tasks-card-fields button { min-height:44px; }
+ .tasks-toolbar .inp { min-height:44px; }
+ .tasks-toolbar { padding:10px; gap:6px; }
+ .tasks-priorities { width:100%; }
+ .tasks-card-fields { padding:12px; }
+ .tasks-fields-inner > span { width:100%; }
+ .tasks-page .kb-board { min-height:420px; max-height:75vh; }
+ .tasks-page .kb-col-btn { min-height:44px; min-width:28px; }
+ .tasks-page .tk-card .tk-hover { opacity:1; }
+ .tasks-page .tk-card .tk-hover button { height:44px!important; }
+ .tasks-panel { border-radius:0; margin:0; }
+ .tasks-panel > div:first-child { flex-wrap:wrap; }
+ .tasks-panel button { min-height:44px; }
+ .tasks-panel .inp { min-height:44px; }
+}
+
+.tasks-head > div:last-child { padding-top:0!important; }
+.tasks-views { display:inline-flex; gap:3px; border-radius:999px; }
+.tasks-views button { border-radius:999px; color:var(--fg-3); }
+.tasks-views button[aria-pressed=true] { background:var(--btn-bg); color:var(--btn-fg); font-weight:600; }
+.tasks-bulk { background:var(--bg-1)!important; color:var(--fg-1)!important; border-radius:24px!important; }
+.tasks-bulk button { color:inherit!important; border-radius:999px!important; }
+@media(max-width:640px) { .tasks-bulk { flex-wrap:wrap; width:94vw; } .tasks-bulk button { min-width:44px; min-height:44px; } }
+
+.tasks-list { background:var(--bg-1); border-radius:24px; padding:12px 14px!important; }
+.tasks-calendar,.tasks-timeline { border-radius:24px; background:var(--bg-1); padding:10px 14px; }
+.tasks-calendar > div:first-child,.tasks-timeline > div:first-child { flex-wrap:wrap; }
+.tasks-calendar [data-task] { border-radius:12px!important; }
+@media(max-width:640px) { .tasks-calendar,.tasks-timeline { flex:none!important; } .tasks-calendar [data-task],.tasks-timeline button { min-height:44px; } }
+
+.tasks-toolbar > button[aria-label^="Ordem:"],.tasks-toolbar > button[aria-label^="Agrupar:"] { min-width:176px; }
+.tasks-fields-inner > span { font-size:9.5px; text-transform:uppercase; letter-spacing:.1em; }
+.tasks-card-fields button > span { width:15px; height:15px; border-radius:50%; color:var(--bg-1); background:var(--accent); display:inline-flex; align-items:center; justify-content:center; font-size:9px; }
+.tasks-card-fields button[aria-pressed=false] > span { color:var(--fg-3); background:var(--bg-2); }
+.tasks-page .tk-card { position:relative; }
+.tasks-page .tasks-card-actions { position:absolute; right:7px; top:6px; background:var(--bg-2); border-radius:999px; }
+@media(max-width:640px) { .tasks-page .tasks-card-title { padding-right:32px; } .tasks-page .tasks-card-actions > button:first-child { display:none!important; } }
+
+.tasks-card-fields { display:block; background:var(--bg-1); border-radius:24px; padding:11px 16px; }
+.tasks-fields-inner { padding:0; gap:8px; }
+.tasks-card-fields > summary { display:none; }
+@media(max-width:768px) {
+ .tasks-page > .tasks-head { align-items:flex-start!important; }
+ .tasks-card-fields { padding:0 14px; }
+ .tasks-card-fields > summary { display:flex; align-items:center; justify-content:space-between; min-height:44px; cursor:pointer; font-size:12px; font-weight:600; }
+ .tasks-card-fields > summary::after { content:'+'; }
+ .tasks-card-fields[open] > summary::after { content:'−'; }
+ .tasks-fields-inner { padding:0 0 12px; }
+ .tasks-fields-inner > span { display:none; }
+}

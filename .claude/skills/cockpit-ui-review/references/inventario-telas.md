@@ -990,5 +990,42 @@ Validação: 1.739 testes da API, testes web/smoke, build e revisão visual apro
   Altura de linha depende das objeções retornadas; não há dados inventados.
 
 Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
-As demais 6 páginas aguardam esta rodada; registros históricos não são aceite
+
+
+### 25. Tarefas (`#tasks`) — validada
+
+- **Importante, corrigido:** cabeçalho, quatro visões, faixa de filtros,
+  seleção dos campos e colunas de 272px seguem `TelaTarefas.dc.html`.
+  Cards usam superfície suave, metadados agrupados e foco visível; menus,
+  filtros avançados, agrupamentos e ordenações reais foram preservados.
+  Lista, calendário e cronograma mantêm suas interações em superfícies de 24px.
+- **Bloqueante, corrigido:** painel tem identidade por tarefa, enfileira as
+  gravações de campos e aguarda título/descrição antes de fechar ou abrir outra
+  tarefa pelos controles internos. Uma resposta pendente não apaga o texto
+  mais recente; falha mantém o campo e oferece nova tentativa explícita.
+- **Bloqueante, corrigido:** criação por quadro/lista/calendário bloqueia
+  repetição durante a requisição e conserva o texto em caso de erro. Renomear
+  coluna não envia duas vezes por Enter+blur; concluir tem trava durante envio.
+- **Importante, corrigido:** leitura com falha não exibe vazio nem remove o
+  deep link como se o registro não existisse. Retry e respostas antigas foram
+  tratados; resumo do cabeçalho usa o mesmo workspace dos cards.
+- **Importante, corrigido:** campos dos cards recolhidos no celular, painel
+  em portal com foco/scroll, seletores acima dele, rótulos em campos/ações,
+  ordenação da lista e abertura dos cards do calendário por teclado.
+- **Evidências:** `npm run test:review:tasks -w packages/web`, capturas e
+  `geometry.json` em `packages/web/.review-artifacts/tasks/`. **30 medidas**
+  de título/cabeçalho/filtros/campos em 1440/1920 com diferença **0px**.
+  Busca/prioridade, campos, recolher coluna, quatro visões, criação única,
+  edição concorrente, falha/retry, concluir/desfazer, seleção em lote,
+  workspace, vazio, 390/1024px, menu/prazo mobile e escuro usam mocks locais.
+- **Fora do escopo:** regras de colunas, recorrência, permissões e REST
+  permanecem. A guarda de salvamento cobre navegação interna do painel;
+  não foi criada uma guarda global de rotas, reload ou troca de workspace.
+  Alturas e conteúdos dos cards dependem dos registros reais. Filtros e menus
+  adicionais do produto permanecem disponíveis além da simplificação visual
+  da prancha. Operações de anexos/comentários e integrações não foram executadas
+  contra serviços reais.
+
+Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
+As demais 5 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.

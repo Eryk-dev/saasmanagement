@@ -14,13 +14,13 @@ export function BulkBar({ count, users, columns, onAssign, onDue, onPriority, on
   const refs = { assign: useRef(null), due: useRef(null), priority: useRef(null), move: useRef(null) };
   if (!count) return null;
   const btn = (key, icon, label, onClick) => (
-    <button key={key} ref={refs[key]} type="button" title={label} onClick={onClick} style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 30, padding: mobile ? "0 8px" : "0 10px", borderRadius: "var(--r-2)", color: "var(--bg-1)", fontSize: 12.5, fontWeight: 600, background: "transparent" }}
+    <button key={key} ref={refs[key]} type="button" title={label} aria-label={label} onClick={onClick} style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 30, padding: mobile ? "0 8px" : "0 10px", borderRadius: "var(--r-2)", color: "var(--bg-1)", fontSize: 12.5, fontWeight: 600, background: "transparent" }}
       onMouseEnter={(e) => { e.currentTarget.style.background = "color-mix(in srgb, var(--bg-1) 14%, transparent)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
       <Icon name={icon} size={14} />{!mobile && label}
     </button>
   );
   return (
-    <div role="toolbar" aria-label="Ações da seleção" data-tk-layer="1" style={{ position: "fixed", left: "50%", bottom: mobile ? 22 : 72, transform: "translateX(-50%)", zIndex: 62, maxWidth: "min(94vw, 820px)", display: "flex", alignItems: "center", gap: 2, padding: "6px 8px 6px 14px", borderRadius: "var(--r-3)", background: "var(--fg-1)", color: "var(--bg-1)", boxShadow: "var(--shadow-pop)" }}>
+    <div className="tasks-bulk capsule-navy" role="toolbar" aria-label="Ações da seleção" data-tk-layer="1" style={{ position: "fixed", left: "50%", bottom: mobile ? 22 : 72, transform: "translateX(-50%)", zIndex: 62, maxWidth: "min(94vw, 820px)", display: "flex", alignItems: "center", gap: 2, padding: "6px 8px 6px 14px", borderRadius: "var(--r-3)", background: "var(--fg-1)", color: "var(--bg-1)", boxShadow: "var(--shadow-pop)" }}>
       <span className="tnum" style={{ fontSize: 12.5, fontWeight: 700, marginRight: 8, whiteSpace: "nowrap" }}>{count} {count === 1 ? "selecionada" : "selecionadas"}</span>
       {btn("assign", "user", "Responsável", () => setOpen("assign"))}
       {btn("due", "calendar", "Prazo", () => setOpen("due"))}

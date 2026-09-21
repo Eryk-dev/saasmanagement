@@ -10,12 +10,14 @@ const { useState, useRef, useEffect } = React;
 
 function ColumnName({ name, editing, onStart, onSave }) {
   const ref = useRef(null);
-  useEffect(() => { if (editing) { ref.current?.focus(); ref.current?.select(); } }, [editing]);
+  const finished = useRef(false);
+  const finish = value => { if (!finished.current) { finished.current = true; onSave(value); } };
+  useEffect(() => { if (editing) { finished.current = false; ref.current?.focus(); ref.current?.select(); } }, [editing]);
   if (editing) {
     return (
-      <input ref={ref} defaultValue={name} className="inp" onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") onSave(e.target.value); if (e.key === "Escape") onSave(null); }}
-        onBlur={(e) => onSave(e.target.value)} style={{ height: 26, fontSize: 13, fontWeight: 600, width: "100%", minWidth: 0 }} />
+      <input ref={ref} defaultValue={name} aria-label="Nome da coluna" className="inp" onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") finish(e.target.value); if (e.key === "Escape") finish(null); }}
+        onBlur={(e) => finish(e.target.value)} style={{ height: 26, fontSize: 13, fontWeight: 600, width: "100%", minWidth: 0 }} />
     );
   }
   return <button type="button" onDoubleClick={onStart} title="Duplo clique renomeia" className="kb-col-name" style={{ textAlign: "left" }}>{name}</button>;
@@ -64,7 +66,7 @@ export function TaskColumn({ col, idx, count, cards, hiddenCount, usersById, lab
   return (
     <>
       <KanbanColumn colKey={col.key} dnd={dnd} label={col.name} items={cards} canReorder={sortManual}
-        collapsed={collapsed} onExpand={() => colActions.collapse(col.key, false)}
+        collapsed={collapsed} onCollapse={() => colActions.collapse(col.key, true)} onExpand={() => colActions.collapse(col.key, false)}
         before={before}
         title={<ColumnName name={col.name} editing={editing && !col.virtual} onStart={() => { if (!col.virtual) setEditing(true); }} onSave={(v) => { setEditing(false); if (v != null && v.trim() && v.trim() !== col.name) colActions.rename(col.key, v.trim()); }} />}
         count={<span title={hiddenCount ? `${hiddenCount} escondida(s) pelo filtro ou pela busca` : undefined}>{cards.length}{hiddenCount ? <span style={{ opacity: 0.7 }}> +{hiddenCount}</span> : null}</span>}

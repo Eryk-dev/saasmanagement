@@ -20,7 +20,7 @@ import { applyFilters, sortTasks, groupTasks, strip } from "./filters.js";
 import { taskMenuItems } from "./context-menu.jsx";
 import { Board } from "./board.jsx";
 import { TaskPanel } from "./drawer.jsx";
-import { Toolbar, ActiveFiltersStrip } from "./toolbar.jsx";
+import { Toolbar, TaskCardFields, VIEWS, ActiveFiltersStrip } from "./toolbar.jsx";
 import { BulkBar } from "./bulk-bar.jsx";
 import { useShortcuts } from "./shortcuts.js";
 import { ShortcutsHelp } from "./help.jsx";
@@ -37,6 +37,8 @@ import { TimelineView } from "./timeline-view.jsx";
 // ordenar / agrupar sem mexer nos dados, seleção múltipla e atalhos.
 
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
+
+import "./tasks.css";
 
 const midpoint = (list, index) => {
   const prev = index > 0 ? Number(list[index - 1].order) || 0 : null;
@@ -57,7 +59,7 @@ export function TasksScreen() {
   const me = currentUser()?.id || "";
   const users = useMemo(() => allUsers().filter((u) => !u.saas || u.saas === saasId), [saasId, version]); // eslint-disable-line react-hooks/exhaustive-deps
   const usersById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
-  const { state, dispatch, mutate, inflight, undoLast } = useTasksStore();
+  const { state, dispatch, mutate, inflight, undoLast, canUndo } = useTasksStore();
   const { tasks, board } = state;
   const today = todayYmd();
 
@@ -102,14 +104,18 @@ export function TasksScreen() {
   // ── Carga + tempo real ───────────────────────────────────────────────────
   const dndRef = useRef(null);
   const queued = useRef(false);
+  const readGeneration = useRef(0);
+  useEffect(() => () => { readGeneration.current++; }, []);
   const refetch = useCallback(async () => {
     if (dndRef.current?.dragRef.current || inflight.current.size) { queued.current = true; return; }
+    const generation = ++readGeneration.current;
     try {
       const [ts, boards] = await Promise.all([api.list("tasks"), api.list("task_boards")]);
+      if (generation !== readGeneration.current) return;
       dispatch({ type: "RECONCILE", tasks: ts || [], board: (boards || [])[0] || null, keep: new Set(inflight.current) });
     } catch (err) {
-      if (!state.loaded) dispatch({ type: "ERROR", error: err.message || "erro" });
-      else toast("Não deu pra atualizar as tarefas · tente de novo", "neg");
+      if (generation !== readGeneration.current) return;
+      dispatch({ type: "ERROR", error: err.message || "erro" });
     }
   }, [dispatch, inflight]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { refetch(); }, [refetch, version]);
@@ -165,18 +171,28 @@ export function TasksScreen() {
   useTaskHash((id) => { setPanelId(id); if (!id) { setStack([]); setFocusHint(""); } });
   const panelTask = panelId ? byId.get(panelId) : null;
   useEffect(() => {
-    if (!panelId || !state.loaded) return;
+    if (!panelId || !state.loaded || state.error) return;
     const t = byId.get(panelId);
     if (!t) { toast("Tarefa não encontrada", "warn"); clearTaskHash(); setPanelId(null); return; }
     if (t.saas && t.saas !== saasId) setActiveSaas(t.saas);
   }, [panelId, state.loaded, byId, saasId]);
-  const openPanel = useCallback((id, { push = false, hint = "" } = {}) => {
+  const panelFlush = useRef(null);
+  const panelNavigation = useRef(false);
+  const flushPanel = useCallback(async () => {
+    if (panelNavigation.current) return false;
+    panelNavigation.current = true;
+    try { return !panelFlush.current || await panelFlush.current(); }
+    finally { panelNavigation.current = false; }
+  }, []);
+  const openPanel = useCallback(async (id, { push = false, hint = "" } = {}) => {
+    if (!await flushPanel()) return;
     setPanelId((cur) => { if (push && cur && cur !== id) setStack((s) => [...s, cur]); return id; });
     setFocusHint(hint);
     openTaskHash(id);
   }, []);
-  const closePanel = useCallback(() => { clearTaskHash(); setPanelId(null); setStack([]); setFocusHint(""); }, []);
-  const backPanel = useCallback(() => {
+  const closePanel = useCallback(async () => { if (!await flushPanel()) return false; clearTaskHash(); setPanelId(null); setStack([]); setFocusHint(""); return true; }, [flushPanel]);
+  const backPanel = useCallback(async () => {
+    if (!await flushPanel()) return;
     setStack((s) => { const prev = s[s.length - 1]; if (prev) { openTaskHash(prev); setPanelId(prev); } return s.slice(0, -1); });
   }, []);
 
@@ -259,6 +275,7 @@ export function TasksScreen() {
       return !!r;
     },
     complete: (id, value = true, { isUndo = false } = {}) => {
+      if (inflight.current.has(id)) return Promise.resolve(null);
       const t = byId.get(id); if (!t) return Promise.resolve(null);
       const before = { completed: !!t.completed, completedAt: t.completedAt || "", column: t.column, order: t.order, completedFrom: t.completedFrom || "" };
       if (value) { clearTimeout(recent.current.get(id)); recent.current.set(id, setTimeout(() => { recent.current.delete(id); setRecentTick((n) => n + 1); }, 1200)); setRecentTick((n) => n + 1); }
@@ -344,7 +361,7 @@ export function TasksScreen() {
       try { await navigator.clipboard.writeText(taskUrl(id)); toast("Link copiado", "pos"); }
       catch { toast(taskUrl(id), "neutral", 8000); }
     },
-    remove: (id) => { const t = byId.get(id); if (!t) return; if (panelId === id) closePanel(); openDelete("tasks", t); },
+    remove: async (id) => { const t = byId.get(id); if (!t) return; if (panelId === id && !await closePanel()) return; openDelete("tasks", t); },
     // Cor de uma label vale pro quadro inteiro (task_boards.labels).
     labelColor: (name, color) => {
       const cur = board?.labels || [];
@@ -459,12 +476,18 @@ export function TasksScreen() {
   A.current.bulkDelete = () => { const n = selection.size; if (n && window.confirm(`Excluir ${n} ${n === 1 ? "tarefa" : "tarefas"}? Esta ação não pode ser desfeita.`)) A.current.bulk("delete"); };
   useEsc(selection.size || selectMode ? clearSelection : (focusId || composer ? () => { setComposer(null); setFocusId(null); } : null));
 
-  const saveField = useCallback((id, patch) => A.current.patch(id, patch).then((r) => !!r), []);
+  const fieldWrites = useRef(new Map());
+  const saveField = useCallback((id, patch) => {
+    const request = (fieldWrites.current.get(id) || Promise.resolve()).then(() => A.current.patch(id, patch)).then(Boolean);
+    fieldWrites.current.set(id, request);
+    request.finally(() => { if (fieldWrites.current.get(id) === request) fieldWrites.current.delete(id); });
+    return request;
+  }, []);
   const onTaskChange = useCallback((t) => { if (t?.id) dispatch({ type: "UPSERT", task: t }); }, [dispatch]);
   const menuTask = menu ? byId.get(menu.id) : null;
   const panel = panelTask ? (
     <ErrorBoundary variant="modal" label="tarefa" resetKey={panelTask.id} onReset={closePanel}>
-      <TaskPanel task={panelTask} tasks={tasks} columns={columns} board={board} users={users} usersById={usersById} labelColors={labelColors} labelOptions={labelOptions}
+      <TaskPanel flushRef={panelFlush} key={panelTask.id} task={panelTask} tasks={tasks} columns={columns} board={board} users={users} usersById={usersById} labelColors={labelColors} labelOptions={labelOptions}
         me={me} mobile={isMobile} expanded={expanded} onToggleExpand={() => setExpanded((v) => !v)} onClose={closePanel} onOpen={openPanel} stack={stack} onBack={backPanel}
         saveField={saveField} actions={actions} activityVersion={activityVersion} onTaskChange={onTaskChange} focusHint={focusHint} />
     </ErrorBoundary>
@@ -484,14 +507,14 @@ export function TasksScreen() {
         );
 
   return (
-    <div ref={rootRef} style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+    <div ref={rootRef} className="tasks-page" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       {/* O cabeçalho diz o ESTADO do quadro (13/09): atrasadas e o que vence
           nesta semana são o que faz alguém abrir a tela; o resto (como arrasta,
           como cria) é dica de uso e mora no "? atalhos". */}
-      <PageHead title="Tarefas" sub={selectMode ? "modo seleção: clique marca os cards · Esc sai" : (() => {
+      <PageHead className="tasks-head" title="Tarefas" sub={selectMode ? "modo seleção: clique marca os cards · Esc sai" : (() => {
         const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
         const fimSemana = new Date(hoje); fimSemana.setDate(hoje.getDate() + (7 - hoje.getDay()));
-        const abertas = (tasks || []).filter((t) => !t.completed && !t.parentId);
+        const abertas = (tasks || []).filter((t) => !t.completed && !t.parentId && inWorkspace(t));
         const dia = (t) => (t.dueDate ? new Date(`${t.dueDate}T12:00:00`) : null);
         const atrasadas = abertas.filter((t) => { const d = dia(t); return d && d < hoje; }).length;
         const semana = abertas.filter((t) => { const d = dia(t); return d && d >= hoje && d <= fimSemana; }).length;
@@ -502,23 +525,27 @@ export function TasksScreen() {
           "? atalhos",
         ].filter(Boolean).join(" · ");
       })()}>
-        <Toolbar prefs={prefs} setPrefs={setPrefs} users={users} labelOptions={labelOptions} labelColors={labelColors} columns={columns} q={q} setQ={setQ} onHelp={() => setHelp(true)}
-          onNew={<PrimaryButton onClick={() => { const key = groups[0]?.key || columns[0].key; setPrefs((p) => ({ ...p, view: "board", collapsed: { ...p.collapsed, [key]: false } })); setComposer({ colKey: key, position: "top" }); boardRef.current?.scrollTo({ left: 0, behavior: "smooth" }); }}>+ Tarefa</PrimaryButton>} />
+        <div className="tasks-head-actions">
+          <div className="tasks-views" role="group" aria-label="Visualização">{VIEWS.map(v => <button key={v.value} type="button" aria-pressed={view === v.value} onClick={() => setPrefs(p => ({...p, view:v.value}))}>{v.label}</button>)}</div>
+          <PrimaryButton disabled={!state.loaded || !!state.error && !tasks.length} onClick={() => { const key = groups[0]?.key || columns[0].key; setPrefs((p) => ({ ...p, view: "board", collapsed: { ...p.collapsed, [key]: false } })); setComposer({ colKey: key, position: "top" }); boardRef.current?.scrollTo({ left: 0, behavior: "smooth" }); }}>+ Criar tarefa</PrimaryButton>
+        </div>
       </PageHead>
+      <Toolbar prefs={prefs} setPrefs={setPrefs} users={users} labelOptions={labelOptions} labelColors={labelColors} columns={columns} q={q} setQ={setQ} onHelp={() => setHelp(true)} onUndo={undoLast} canUndo={canUndo()} />
+      {view === "board" && <TaskCardFields prefs={prefs} setPrefs={setPrefs} />}
       <ActiveFiltersStrip prefs={prefs} setPrefs={setPrefs} users={users} columns={columns} />
 
       <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-          {!state.loaded && !state.error && <div className="mono dim" style={{ fontSize: 12, padding: "24px var(--pad-x)" }}>carregando…</div>}
-          {state.error && !tasks.length && (
-            <div style={{ margin: "16px var(--pad-x)", padding: "12px 14px", borderRadius: "var(--r-3)", background: "var(--warn-soft)", color: "var(--warn)", fontSize: 12.5, display: "flex", gap: 10, alignItems: "center" }}>
-              Não deu pra carregar as tarefas ({state.error}). <button type="button" onClick={refetch} style={{ fontWeight: 700, color: "inherit", textDecoration: "underline" }}>recarregar</button>
+          {!state.loaded && !state.error && <div className="mono dim" role="status" style={{ fontSize: 12, padding: "24px var(--pad-x)" }}>carregando…</div>}
+          {state.error && (
+            <div role="alert" style={{ margin: "16px var(--pad-x)", padding: "12px 14px", borderRadius: "var(--r-3)", background: "var(--warn-soft)", color: "var(--warn)", fontSize: 12.5, display: "flex", gap: 10, alignItems: "center" }}>
+              Não deu pra carregar as tarefas. <button type="button" onClick={refetch} style={{ fontWeight: 700, color: "inherit", textDecoration: "underline" }}>recarregar</button>
             </div>
           )}
-          {state.loaded && totalInWorkspace === 0 && !composer ? (
+          {state.loaded && !state.error && totalInWorkspace === 0 && !composer ? (
             <EmptyState title="Nenhuma tarefa ainda" hint="Crie a primeira tarefa do time: atribua a uma pessoa, defina o prazo, arraste entre colunas e comente no card."
-              action={<PrimaryButton onClick={() => setComposer({ colKey: columns[0].key, position: "top" })}>+ Criar tarefa</PrimaryButton>} />
-          ) : state.loaded ? (
+              action={<PrimaryButton onClick={() => { setPrefs(p => ({...p, view:"board", collapsed:{...p.collapsed,[columns[0].key]:false}})); setComposer({ colKey: columns[0].key, position: "top" }); }}>+ Criar tarefa</PrimaryButton>} />
+          ) : state.loaded && (!state.error || tasks.length > 0) ? (
             <>
               {filtered.length === 0 && totalInWorkspace > 0 && <div className="mono dim" style={{ fontSize: 12, padding: "10px var(--pad-x) 0" }}>Nenhuma tarefa {qn ? `com "${q.trim()}"` : "com esses filtros"} · <button type="button" onClick={() => { setQ(""); setPrefs((p) => ({ ...p, filters: { ...DEFAULT_FILTERS }, done: "all" })); }} style={{ color: "var(--accent)", fontWeight: 600 }}>limpar filtros</button></div>}
               {viewEl}
