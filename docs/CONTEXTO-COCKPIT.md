@@ -78,7 +78,8 @@ Para reproduzir Visão geral com dados fixos e testes no navegador, usar
 `npm run test:review:desempenho -w packages/web`; para Tarefas,
 `npm run test:review:tasks -w packages/web`; para Mapas mentais,
 `npm run test:review:mindmaps -w packages/web`; para Metas,
-`npm run test:review:metas -w packages/web` (Chromium do Playwright instalado
+`npm run test:review:metas -w packages/web`; para Remuneração,
+`npm run test:review:remuneracao -w packages/web` (Chromium do Playwright instalado
 com `npx playwright install chromium`, se necessário). O comando sobe só Vite
 com mocks, sem API/banco, e grava medidas/capturas em `.review-artifacts` do web.
 Na ficha de formulário, respostas enviadas continuam lendo `doc.sections`

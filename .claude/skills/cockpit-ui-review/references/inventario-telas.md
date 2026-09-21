@@ -1085,5 +1085,29 @@ Validação: 1.739 testes da API, testes web/smoke, build e revisão visual apro
   escuro conferidos com mocks. Navegação global não ganhou guarda de rascunho.
 
 Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
-As demais 3 páginas aguardam esta rodada; registros históricos não são aceite
+
+### 28. Remuneração (`#remuneracao`) — validada
+
+- Cabeçalho, regras expansíveis, tabelas, simuladores e bônus de time seguem
+  `TelaRemuneracao.dc.html`, com papel 24px, controles compactos e scroll mobile.
+  Preservados campos de observações, pessoas no nível e salvamento por trilha.
+- Falha de leitura não apresenta defaults como se fossem valores salvos. Nova
+  tentativa no plano, condições do bônus, extrato e indicações; acesso à leitura
+  do plano só começa após conferir a concessão explícita/admin.
+- Gravação por card bloqueia repetição e edição pendente. Salvar uma trilha
+  não apaga os rascunhos das outras; resposta REST atualiza só o plano salvo.
+  Erros inline, descarte por card e recálculo confirmado sem repetição.
+- Tabelas têm nomes acessíveis nos campos; pessoa com concessão só lê o plano
+  e pode usar o simulador local. Recálculo/edição continuam exclusivos de admin.
+  Texto da regra CS corrigido para os R$500 já vigentes no default (sem mudar
+  valores salvos ou cálculo). Regras financeiras, nível, bandas e API intactos.
+- Evidências: `npm run test:review:remuneracao -w packages/web`, artefatos em
+  `.review-artifacts/remuneracao`. 22 medidas em 1440/1920 de título/cabeçalho,
+  regras e primeiro card, diferença ≤0,5px. Alturas das trilhas variam com
+  pessoas/observações preservadas. Simulações, rascunhos em duas trilhas,
+  create/update, descartar, erros/retry, recálculo/cancelar, permissão, vazio,
+  390/1024 e escuro conferidos. Navegação global não ganhou guarda de rascunho.
+
+Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
+As demais 2 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.
