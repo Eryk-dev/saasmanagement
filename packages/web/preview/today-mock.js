@@ -2,6 +2,12 @@ const params = new URLSearchParams(location.search);
 export const todayReview = params.get('review') === 'today';
 let activities = [];
 export function setupTodayReview(seed) {
+  if (params.has('followup')) {
+    const product = seed.SAAS[0];
+    product.funnel.push({stage:'Follow-up',kind:'followup'}, {stage:'Dia 2',kind:'contato'}, {stage:'Dia 3',kind:'contato'}, {stage:'Nutrição',kind:'contato'});
+    product.nextSteps = Object.fromEntries(['followup1','followup2','followup3'].map(key => [key, ['ganho','nutricao','contato']]));
+    Object.assign(seed.LEADS.find(l => l.id === 'l5'), {stage:'Follow-up',closer:'leo',stageAttempts:5});
+  }
   if (params.has('card')) {
     const futureDate=(days)=>{const d=new Date();d.setDate(d.getDate()+days);d.setHours(16,0,0,0);return d.toISOString();};
     const base=seed.LEADS.find(l=>l.name==='Carla Nunes');

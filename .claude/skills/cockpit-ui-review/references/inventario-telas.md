@@ -1207,3 +1207,7 @@ Validação de ações e mobile em `scripts/review/today-shortcuts.mjs`.
 Respostas das atividades revisadas em 21/09/2026: leitura vertical sem cortes,
 como no Inbox; edição recolhível e pendências preservadas. Validado com perguntas
 e respostas longas em desktop e celular no review today-card.
+
+Follow-up nas atividades revisado em 21/09/2026: próximas ações sem etapas
+Dia 2–7; botão Follow-up abre data e hora de retorno, com confirmação e cancelar.
+Validação desktop/mobile em `scripts/review/followup-return.mjs`.

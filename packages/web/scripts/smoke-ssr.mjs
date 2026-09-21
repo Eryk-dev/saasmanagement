@@ -487,6 +487,13 @@ try {
     for (const stageAttempts of [0, 1, 2, 5]) {
       eq(`roteiro salvo com ${stageAttempts} tentativas oferece Nutrição`, names(migrated, { id: "l1", stage: "Follow-up", stageAttempts }), ["retry", "Ganho", "Integração", "Nutrição", "Desqualificado"]);
     }
+    // Configuração antiga de contato resolvia para Dia 2 no follow-up.
+    for (const stageAttempts of [0, 1, 2, 5]) {
+      const legacy = { funnel, nextSteps: Object.fromEntries(["followup1", "followup2", "followup3"].map((key) => [key, ["ganho", "integracao", "nutricao", "desqualificado", "contato"]])) };
+      eq(`follow-up ${stageAttempts}: retorno disponível e sem dias`, names(legacy, { stage: "Follow-up", stageAttempts }), ["retry", "Ganho", "Integração", "Nutrição", "Desqualificado"]);
+      const day3First = { ...legacy, funnel: funnel.filter((f) => f.stage !== "Dia 2") };
+      eq(`follow-up ${stageAttempts}: também exclui Dia 3`, names(day3First, { stage: "Follow-up", stageAttempts }), ["retry", "Ganho", "Integração", "Nutrição", "Desqualificado"]);
+    }
     console.log("✓ destino-nutricao");
   } catch (err) {
     console.error(`✗ destino-nutricao: ${err.message}`);

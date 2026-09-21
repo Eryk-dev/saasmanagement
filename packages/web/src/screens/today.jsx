@@ -15,7 +15,7 @@ import { bizDay } from "../lib/format.js";
 import { businessDaysBetween } from "../components/period-picker.jsx";
 import { scaledGoal } from "../components/team-cards.jsx";
 import { useData } from "../data.jsx";
-import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf, nextKindsFor, nurtureStage, hasDayStages } from "../lib/funnel.js";
+import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf, nextKindsFor, nurtureStage, hasDayStages, dayStageNumber } from "../lib/funnel.js";
 import { allUsers, currentUser, displayName, userById, usersByRole, isAdminUser } from "../lib/users.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { myOpenTasks, taskHash } from "../lib/tasks.js";
@@ -1751,9 +1751,14 @@ export function destinationsFor(saasCfg, lead) {
       continue;
     }
     const stage = stageByKind(saasCfg, k);
+    if (curKind === "followup" && dayStageNumber(stage)) continue;
     if (stage && !seen.has(stage)) { seen.add(stage); out.push({ stage, kind: stageKind(saasCfg, stage) }); }
   }
-  // A ordem já vem de nextKindsFor (default do kind ou override por roteiro).
+  // O retorno do follow-up sempre permite escolher uma data, inclusive no
+  // último roteiro, cuja configuração antiga omitia o retry.
+  if (curKind === "followup" && !out.some((d) => d.retry)) {
+    out.unshift({ retry: true, promote: false, stage: curStage, kind: curKind });
+  }
   return out;
 }
 
@@ -1977,19 +1982,7 @@ const RETRY_PRESETS = [
 function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet, onAfter, onTouch }) {
   const dests = destinationsFor(saasCfg, lead);
   const stageMeta = Object.fromEntries((saasCfg?.funnel || []).map((f) => [f.stage, f]));
-  // "Follow-up feito · +1 tentativa" (Leo, 18/09): no último contato os
-  // próximos passos configurados tiram o Retomar da barra, mas o closer às
-  // vezes faz MAIS um follow-up e precisa assinalar que fez. Mesmo registro do
-  // Retomar (tentativa +1, próximo toque pela cadência da etapa; sem cadência,
-  // amanhã 9h), sem mover o card. Só entra quando o Retomar não está na barra,
-  // senão seria a mesma ação duas vezes.
-  const curStageName = lead.stage || firstStage(saasCfg);
-  const touchAgain = stageKind(saasCfg, curStageName) === "followup" && !dests.some((d) => d.retry);
-  function registrarMaisUma() {
-    if (!onTouch) return;
-    const cad = cadenceOf(saasCfg, curStageName);
-    onTouch(cad.retryDays ? "" : retryPreset(1));
-  }
+  const isFollowup = stageKind(saasCfg, lead.stage || firstStage(saasCfg)) === "followup";
   const closers = usersByRole("closer");
   const integrators = usersByRole("integrator");
   const reasons = lossReasonsOf(saasCfg);
@@ -2194,17 +2187,6 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     <div className="today-destinations">
       <div className="kicker" style={{ marginBottom: 10 }}>Próximo passo</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {touchAgain && (
-          <button key="touch-again" onClick={registrarMaisUma}
-            title={`Fez mais um follow-up: registra a tentativa ${(Number(lead.stageAttempts) || 0) + 1}, o card fica em ${curStageName} e o próximo toque entra pela cadência da etapa`}
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 7, height: 30, padding: "0 12px", borderRadius: 999,
-              background: "var(--bg-1)", border: "1px dashed var(--line-strong)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 500,
-            }}>
-            <span style={{ width: 8, height: 8, borderRadius: 2, background: stageMeta[curStageName]?.color || "var(--fg-3)", flexShrink: 0 }} />
-            Follow-up feito · +1 tentativa
-          </button>
-        )}
         {dests.map((d, i) => {
           // Chip de retry: não atendeu / não fechou hoje → registra a tentativa
           // e abre a escolha de quando voltar (num lead novo, o toque promove
@@ -2214,7 +2196,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
             const on = isRetry;
             return (
               <button key="retry" onClick={() => chooseDest(d)}
-                title={d.promote
+                title={isFollowup ? "Escolher a data e a hora de retorno do follow-up" : d.promote
                   ? `Não atendeu ou ainda não fechou · registra a tentativa, vai pra ${d.stage} e você escolhe quando voltar`
                   : "Não atendeu · registra a tentativa e você escolhe o dia e a hora de voltar"}
                 style={{
@@ -2224,7 +2206,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                   color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 13, fontWeight: 600,
                 }}>
                 <span style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
-                {d.promote ? `${d.stage} · retomar` : "Retomar"}
+                {isFollowup ? "Follow-up" : d.promote ? `${d.stage} · retomar` : "Retomar"}
               </button>
             );
           }
@@ -2252,7 +2234,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
               duas semanas tinha que corrigir no card depois. */}
           {isRetry && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <div className="kicker">Quando retomar</div>
+              <label className="kicker" htmlFor={`return-at-${lead.id}`}>{isFollowup ? "Data de retorno" : "Quando retomar"}</label>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                 {RETRY_PRESETS.map(([txt, mk]) => {
                   const v = mk();
@@ -2266,12 +2248,12 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                     }}>{txt}</button>
                   );
                 })}
-                <input type="datetime-local" value={retryAt} onChange={(e) => setRetryAt(e.target.value)}
+                <input id={`return-at-${lead.id}`} type="datetime-local" value={retryAt} onChange={(e) => setRetryAt(e.target.value)}
                   title="Dia e hora exatos pra voltar nesse lead"
                   style={{ ...fieldStyle, width: "auto", height: 28, fontFamily: "var(--mono)", fontSize: 11.5 }} />
               </div>
               <div className="mono dim" style={{ fontSize: 10.5 }}>
-                registra a tentativa de contato{dest.promote ? ` e manda o card pra ${dest.stage}` : ""} · o lead volta na sua fila nesse horário
+                {isFollowup ? "O cliente continua em follow-up e volta à sua fila na data escolhida." : <>registra a tentativa de contato{dest.promote ? ` e manda o card pra ${dest.stage}` : ""} · o lead volta na sua fila nesse horário</>}
               </div>
             </div>
           )}
@@ -2432,7 +2414,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                 height: 32, padding: "0 16px", borderRadius: 999, fontSize: 12.5, fontWeight: 600,
                 background: ready ? "var(--btn-bg, var(--accent))" : "var(--bg-2)", color: ready ? "var(--btn-fg, var(--accent-fg))" : "var(--fg-4)",
                 border: "1px solid " + (ready ? "var(--btn-bg, var(--accent))" : "var(--line-2)"), cursor: ready ? "pointer" : "not-allowed",
-              }}>{isRetry ? "registrar tentativa e retomar →" : setup === "followup" && slot ? "agendar follow-up →" : `mover pra ${dest.stage} →`}</button>
+              }}>{isRetry ? (isFollowup ? "agendar retorno →" : "registrar tentativa e retomar →") : setup === "followup" && slot ? "agendar follow-up →" : `mover pra ${dest.stage} →`}</button>
               <button onClick={() => setDest(null)} className="mono dim" style={{ fontSize: 11.5 }}>cancelar</button>
             </div>
           )}
