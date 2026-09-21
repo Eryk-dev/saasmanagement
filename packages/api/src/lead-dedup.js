@@ -1,3 +1,4 @@
+import { revenueClassificationPatch } from "./classificacao.js";
 // Evita CADASTRO DUPLICADO de lead. A mesma pessoa re-submete o form (ou volta
 // por outro anúncio, ou o espelho do SaaS externo dispara 2×) e nasceria um card
 // novo em vez de cair no que já existe — hoje só o Shopify dedup (por orderId).
@@ -55,5 +56,6 @@ export function dedupMergePatch(existing, incoming) {
   // Nome de verdade troca vazio ou "só o número" (o que o webhook do WhatsApp
   // gravou antes de a pessoa preencher o form).
   if (incoming?.name && !onlyDigits(incoming.name) && (isEmpty(existing?.name) || onlyDigits(existing.name))) patch.name = incoming.name;
+  if (["orders", "ticket", "trigger", "tried", "formProduct"].some((k) => k in patch)) Object.assign(patch, revenueClassificationPatch({ ...existing, ...patch }));
   return patch;
 }

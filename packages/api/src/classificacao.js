@@ -1,22 +1,9 @@
-// Classificação de lead por PRODUTO (OEM · Ads · Price).
-//
-// Substitui a régua única (matriz contas × anúncios → grau S-E, que sugeria
-// full/parcial) por duas notas independentes, porque elas respondem perguntas
-// diferentes e misturá-las numa só produz o pior caso: lead grande e frio
-// ranqueando acima de lead médio e quente — o grande não aparece na call e o
-// slot do closer foi gasto.
-//
-//   PORTE  (letra S-E) — quanto o lead pode pagar. Eixo primário MUDA por
-//                        produto, porque o que gera valor muda: Ads cobra pela
-//                        replicação (contas × anúncios), OEM pela criação
-//                        (SKUs) e Price pelo volume disputado (anúncios).
-//   QUALIF (0-100)     — se ele aparece e compra. Sai só do que foi escrito no
-//                        formulário; não usa tamanho de resposta (ver abaixo).
-//
-// A AÇÃO do SDR sai do cruzamento das duas, nunca de uma isolada.
-//
-// Tudo aqui é função pura: nenhuma leitura de banco, nenhum efeito. Facilita
-// teste e deixa o mesmo cálculo rodar na API e no front sem divergir.
+import { estimatedRevenue, revenueGrade, REVENUE_GRADE_VERSION } from "./lead-grade.js";
+// Classificação de porte e intenção. Com pedidos + ticket válidos, OEM/Ads/Price
+// usam a mesma régua de faturamento mensal estimado. Sem essas respostas, as
+// funções históricas abaixo permanecem para compatibilidade do legado.
+// Intenção continua independente do porte; MQL e ação combinam as duas.
+// Módulo puro: nenhuma leitura de banco, nenhum efeito externo.
 
 // ── Faixas ────────────────────────────────────────────────────────────────
 // Os cortes caem onde o dinheiro muda: 3 contas é o teto do Essencial, 7 o do
@@ -85,11 +72,6 @@ const IDX_LISTINGS = {
 };
 const IDX_SKUS = { "0-1000": 0, "1000-5000": 1, "5000-20000": 2, "20000-50000": 3, "50000+": 4 };
 
-// Pontos médios pra estimar GMV. Faixa aberta usa o dobro do piso — subestimar
-// o topo é preferível a inflar lead grande com número inventado.
-const MID_ORDERS = { "0-200": 100, "200-500": 350, "500-1000": 750, "1000-2000": 1500, "2000+": 3000 };
-const MID_TICKET = { "0-70": 50, "70-150": 110, "150-300": 225, "300-600": 450, "600+": 800 };
-
 // Frequência de ajuste de preço: é a dor do Price medida direto. "Não ajusto"
 // com muito anúncio é dor MÁXIMA não percebida, não ausência de dor — por isso
 // não entra como 0 no eixo, e sim como sinal tratado em portePrice().
@@ -118,9 +100,7 @@ const subir = (letra, passos) => {
 // "10 mil anúncios mortos" — coisa que contas × anúncios não enxerga. Não é
 // eixo (viraria matriz 3D); é ajuste de ±1 letra sobre o eixo do produto.
 export function gmvDe(lead) {
-  const p = MID_ORDERS[lead?.orders];
-  const t = MID_TICKET[lead?.ticket];
-  return p != null && t != null ? p * t : null;
+  return estimatedRevenue(lead);
 }
 
 // Piso de faturamento do ICP. Autopeças é operação de ticket mais alto, então
@@ -146,6 +126,8 @@ function ajustePorGmv(lead) {
 
 // Ads: o produto é a replicação, então o custo evitado é contas × anúncios.
 export function porteAds(lead) {
+  const revenue = revenueGrade(lead);
+  if (revenue) return revenue;
   const c = IDX_ACCOUNTS[lead?.accounts];
   const a = IDX_LISTINGS[lead?.listings];
   if (c == null && a == null) return null;
@@ -159,6 +141,8 @@ export function porteAds(lead) {
 // anúncio jogaria o lead de maior potencial no balde do robô.
 export function porteOem(lead) {
   if (lead?.partsType === "usada") return null; // peça usada não tem OEM
+  const revenue = revenueGrade(lead);
+  if (revenue) return revenue;
   const s = IDX_SKUS[lead?.skus];
   const c = IDX_ACCOUNTS[lead?.accounts];
   if (s == null && c == null) return null;
@@ -179,6 +163,8 @@ export function porteOem(lead) {
 // consciente. Esse caso é alvo de EDUCAÇÃO (a trilha educacional da nutrição),
 // não de prioridade de SDR.
 export function portePrice(lead) {
+  const revenue = revenueGrade(lead);
+  if (revenue) return revenue;
   const a = IDX_LISTINGS[lead?.listings];
   if (a == null) return null;
   const r = IDX_REPRICE[lead?.repriceFreq];
@@ -352,7 +338,8 @@ export function classificar(lead, { asked } = {}) {
   // Porte da linha escolhida; se ela não tem eixo próprio preenchido (form
   // enxuto), cai no eixo genérico de contas × anúncios, que todo formulário
   // pergunta. Sem isso o lead de OEM ficaria sem porte e sumiria da fila.
-  const letra = primario ? (portes[primario] || portes.ads || null) : null;
+  const receita = revenueGrade(lead);
+  const letra = receita || (primario ? (portes[primario] || portes.ads || null) : null);
   // Sem intenção medida a tabela de cruzamento não se aplica: cai na coluna
   // neutra (a do meio), que é o tratamento honesto pra quem não foi perguntado.
   const acao = letra ? ACOES[grupoDe(letra)][medida ? intencao : "media"] : "nutrir";
@@ -371,6 +358,7 @@ export function classificar(lead, { asked } = {}) {
     primario,
     crossSell,
     porte: letra,
+    ...(receita ? { version: REVENUE_GRADE_VERSION, basis: "revenue", legacy: false } : {}),
     qualificacao: medida ? q.total : null,
     detalheQualificacao: q,
     intencaoMedida: medida,
@@ -401,4 +389,13 @@ export function traduzirParaLevercopy(key, valor) {
   const tabela = PARA_LEVERCOPY[key];
   if (!tabela || typeof valor !== "string") return valor;
   return tabela[valor] ?? valor; // já legado, ou valor fora da tabela: passa direto
+}
+
+// Persiste a régua nova sem tocar estágio, responsáveis ou agenda.
+// Ao remover uma resposta, limpa o snapshot de receita e volta ao legado.
+export function revenueClassificationPatch(lead) {
+  if (lead?.saas !== "leverads") return {};
+  if (!revenueGrade(lead) && lead?.classificacao?.version !== REVENUE_GRADE_VERSION) return {};
+  const { version, basis, legacy, ...previous } = lead.classificacao || {};
+  return { classificacao: { ...previous, ...classificar(lead) } };
 }

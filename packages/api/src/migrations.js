@@ -1,3 +1,5 @@
+import { revenueClassificationPatch } from "./classificacao.js";
+import { revenueGrade, REVENUE_GRADE_VERSION, REVENUE_ICP } from "./lead-grade.js";
 // Migrações idempotentes de boot — rodam uma vez por inicialização, depois de
 // initDb()/ensureDefaultAdmins(). Cada uma DEVE ser segura pra rodar repetidas
 // vezes (todo deploy reinicia o container) e nunca deve corromper dados que já
@@ -2115,7 +2117,29 @@ export async function ensurePanelCases(repo) {
   return n;
 }
 
+// Reclassifica apenas quem informou pedidos e ticket; legado fica intocado.
+// Carimbo por lead permite retomar após falha e incluir registros ainda não migrados.
+export async function ensureRevenueClassification(repo) {
+  let changed = 0;
+  for (const lead of await repo.listWhere("leads", { saas: "leverads" })) {
+    if (!revenueGrade(lead) || lead.classificacao?.version === REVENUE_GRADE_VERSION) continue;
+    await repo.update("leads", lead.id, revenueClassificationPatch(lead));
+    changed++;
+  }
+  const product = await repo.get("products", "leverads");
+  if (product && product.icp?.classificationVersion !== REVENUE_GRADE_VERSION) {
+    await repo.update("products", product.id, { icp: { ...product.icp, ...REVENUE_ICP } });
+  }
+  return changed;
+}
+
 export async function runStartupMigrations(repo) {
+  try {
+    const n = await ensureRevenueClassification(repo);
+    if (n) console.log(`[migration] ${n} lead(s) classificados por pedidos × ticket`);
+  } catch (err) {
+    console.error("[migration] ensureRevenueClassification falhou:", err?.message || err);
+  }
   try {
     const n = await ensureKnownCases(repo);
     if (n) console.log(`[migration] ${n} case(s) conhecidos criados em RASCUNHO (confira os números no painel e autorize antes de publicar)`);

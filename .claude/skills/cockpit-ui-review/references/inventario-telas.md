@@ -1174,3 +1174,8 @@ Validação: 1.739 testes da API, testes web/smoke, build e revisão visual apro
 **Rodada CRM final concluída nas 30 páginas do mapa.** Cada página tem o escopo,
 limites e evidências acima. Publicação em produção depende do redeploy manual
 no EasyPanel após os merges.
+
+- 21/09/2026 — Classificação/ICP: badge compartilhado `LeadGrade` mostra `L`
+  nos legados, mantendo a letra e cor anteriores. ICP exibe faixas de receita
+  e S/A/B a partir de R$ 200 mil/mês; legenda reutilizada em Clientes.
+  Conferência no preview isolado com S–E, legado e ausência de respostas.

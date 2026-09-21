@@ -1,3 +1,4 @@
+import { leadGradeInfo } from "../../../api/src/lead-grade.js";
 // Shared chrome button style — lifted out of portfolio.jsx so every screen can
 // import it without depending on a screen module. Identical to the original.
 
@@ -13,29 +14,6 @@ export const chromeBtnStyleSmall = {
   boxShadow: "var(--shadow-1)",
 };
 
-// Potencial do lead em 3 níveis: soma de pontos de CONTAS (quanto mais contas,
-// mais dor de replicação) + ANÚNCIOS na maior conta (quanto mais anúncios, mais
-// volume a clonar). Leads antigos sem `listings` usam o campo `volume` legado.
-// alto = verde · médio = âmbar · baixo = cinza · sem respostas = neutro.
-// A API espelha essa régua em leadGrade() (routes.marketing.js) pras colunas
-// A/B/C de Publicidade — mudou aqui, muda lá.
-// Leitura dupla das faixas. As novas (recortadas em 09/2026 nas fronteiras
-// comerciais: 3 e 7 contas, 1k e 10k anúncios) convivem com as antigas, que
-// ~2 mil leads da base carregam. Valor desconhecido cairia em `?? 0` lá
-// embaixo e jogaria todo lead histórico pra primeira linha da matriz —
-// inclusive nas propostas abertas, que usam este mesmo grid pra sugerir
-// produto. Como as duas escalas têm 5 faixas na mesma ordem, o legado mapeia
-// pros MESMOS índices e nenhum lead muda de grau.
-// Espelho de IDX_ACCOUNTS/IDX_LISTINGS em api/src/classificacao.js.
-const TIER_ACCOUNTS = {
-  "1": 0, "2-3": 1, "4-6": 2, "7-10": 3, "10+": 4,
-  "2": 1, "3-5": 2, "6-10": 3, // legado
-};
-const TIER_LISTINGS = {
-  "0-500": 0, "500-1000": 1, "1000-5000": 2, "5000-10000": 3, "10000+": 4,
-  "0-100": 0, "100-500": 1, "500-2000": 2, "2000-10000": 3, // legado
-};
-const TIER_VOLUME = { "0-10": 0, "10-50": 1, "50-200": 2, "200+": 3 }; // legado (anúncios novos/semana)
 // Cores próprias (não os tokens semânticos) pra separação clara à distância:
 // tone = preenchimentos (badge/tinta do card); ink = variante escura pra texto.
 // 5 níveis (A maior … E menor), gradiente verde→cinza. `key` = a própria letra
@@ -48,27 +26,15 @@ export const GRADE_STYLE = {
   D: { key: "D", grade: "D", label: "cliente D", tone: "#ea580c", ink: "#c2410c", badgeFg: "#fff" },
   E: { key: "E", grade: "E", label: "cliente E", tone: "#9aa2ad", ink: "#5b6472", badgeFg: "#fff" },
 };
-// Matriz de qualidade (linha = contas, coluna = anúncios), redesenhada pelo Leo
-// em 21/07. É TABELA DE CONSULTA, não fórmula, pra bater exato com o desenho.
-// Índices: contas 1/2/3-5/6-10/10+ (0-4) × anúncios ≤100/100-500/500-2k/2k-10k/
-// 10k+ (0-4). Sem resposta cai no índice 0 (menor). A API espelha em
-// leadGrade() (routes.marketing.js) — mudou aqui, muda lá.
-//        ≤100 100-500 500-2k 2-10k 10k+
-export const GRADE_GRID = [
-  ["E", "D", "C", "C", "C"], // 1 conta — 500-2k anúncios já é C (decisão do Leo, 24/07)
-  ["D", "C", "C", "B", "B"], // 2 contas
-  ["C", "B", "B", "A", "A"], // 3-5 contas
-  ["B", "B", "A", "S", "S"], // 6-10 contas
-  ["A", "A", "A", "S", "S"], // 10+ contas
-];
-// Rótulos dos eixos da matriz (linha = contas, coluna = anúncios) pra legenda.
+// Matriz histórica, mantida para a legenda dos leads legados.
+export { LEGACY_GRID as GRADE_GRID } from "../../../api/src/lead-grade.js";
 export const GRADE_ACCOUNTS = ["1", "2", "3-5", "6-10", "10+"];
 export const GRADE_LISTINGS = ["≤100", "100-500", "500-2k", "2-10k", "10k+"];
 export function leadTier(l) {
-  const acc = TIER_ACCOUNTS[l?.accounts];
-  const ads = l?.listings != null && l.listings !== "" ? TIER_LISTINGS[l.listings] : TIER_VOLUME[l?.volume];
-  if (acc == null && ads == null) return { key: "sem", grade: null, label: "sem qualificação", tone: "var(--line-strong)", ink: "var(--fg-3)", badgeFg: "#fff" };
-  return GRADE_STYLE[GRADE_GRID[acc ?? 0][ads ?? 0]];
+  const info = leadGradeInfo(l);
+  if (!info.grade) return { key: "sem", grade: null, label: "sem qualificação", tone: "var(--line-strong)", ink: "var(--fg-3)", badgeFg: "#fff" };
+  const style = GRADE_STYLE[info.grade];
+  return { ...style, ...info, label: `${style.label} · ${info.legacy ? "Legado (contas × anúncios)" : info.revenue != null ? "pedidos × ticket médio" : "contas × anúncios"}` };
 }
 
 // Lead score helpers — score é numérico 0–100; cor e rótulo vêm por banda.
