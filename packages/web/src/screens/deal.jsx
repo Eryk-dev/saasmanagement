@@ -8,7 +8,7 @@ import { RoutineSuggestion } from "../components/routine-suggestion.jsx";
 import { moveGate, MoveLeadModal, applyGatedMove } from "../components/stage-move.jsx";
 import { clientSummary, leadBox, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks } from "../components/lead-blocks.jsx";
 import { waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
-import { waCallLinkText, waProposalPlainText } from "../lib/wa-copy.js";
+import { waCallLinkText } from "../lib/wa-copy.js";
 import { stageKind, lossReasonLabel, nextTouchPill, workableStages, stageByKind, isLossKind } from "../lib/funnel.js";
 import { displayName, usersByRole, currentUser } from "../lib/users.js";
 import { CallCopilot } from "../components/call-copilot.jsx";
@@ -19,7 +19,7 @@ import { resolveScript, scriptTokens, scriptChecklist } from "../lib/scripts.js"
 import { CallSummaryCard, IntegrationBriefCard, callBusyKeys, callSlotKeys, integBusyKeys } from "./today.jsx";
 import { CustomProposalModal } from "../components/custom-proposal.jsx";
 import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
-import { useProposalTemplates } from "../components/ProposalActions.jsx";
+import { LeadSendActions, useLeadProposalActions } from "../components/lead-send-actions.jsx";
 import { useData } from "../data.jsx";
 // Lead detail drawer — slides over the pipeline when a card is opened.
 // (Funil unificado: o card do pipeline é um lead, então o detalhe é do lead.)
@@ -143,7 +143,6 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
   // só oferecia o padrão, e a escolha de apresentação vivia só no roteiro do
   // Meu dia — que não serve pra quem trabalha pelo pipeline. Hook aqui em cima,
   // antes do `if (!lead) return null` lá embaixo.
-  const altDecks = useProposalTemplates(initial?.saas).filter((t) => t.selectable);
   const [showEntrega, setShowEntrega] = React.useState(false); // "Entrega" (briefing/vídeo integração) recolhido
   const [showFrom, setShowFrom] = React.useState(false); // atribuição do anúncio recolhida
   const [pendingMove, setPendingMove] = React.useState(null); // { toStage, gate }
@@ -263,57 +262,10 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
   // sobre o state.product salvo pela tela zero de "apresentar", então o cliente
   // recebe exatamente o produto decidido pelo closer, sem setup, sem edição e
   // com benefícios/preço já visíveis (nada depende de Espaço/Shift+Espaço).
-  const [propBusy, setPropBusy] = React.useState(false);
-  async function gerarCom(t = {}) {
-    const rotulo = t.pickLabel || t.name || "esta apresentação";
-    if (lead.proposta_id && !window.confirm(`Este lead já tem apresentação gerada. Gerar "${rotulo}" substitui o link atual (o que já foi mandado pro cliente continua de pé). Continuar?`)) return;
-    // A aba abre DENTRO do clique: depois do await o navegador trata como popup.
-    const win = window.open("", "_blank");
-    setPropBusy(true);
-    try {
-      await api.generateProposal(lead.id, { force: true, template: t.id, unpin: !!lead.proposalPinned });
-      const fresh = await api.get("leads", lead.id);
-      setLead((prev) => ({ ...prev, ...fresh }));
-      dirty.current = true;
-      if (win) win.location.replace(fresh.proposal_edit_url || fresh.proposalUrl || "about:blank");
-    } catch (e) {
-      if (win) win.close();
-      window.alert(e?.message || "não deu pra gerar essa apresentação");
-    }
-    setPropBusy(false);
-  }
-  async function propostaNoWhats() {
-    setPropBusy(true);
-    // Abre ainda dentro do clique: depois dos awaits o navegador pode tratar a
-    // nova aba como popup e bloquear. A navegação acontece quando o link do
-    // cliente estiver pronto.
-    const win = wa ? window.open("", "_blank") : null;
-    try {
-      if (!lead.proposta_id || !lead.proposalUrl) {
-        await api.generateProposal(lead.id);
-        const fresh = await api.get("leads", lead.id);
-        setLead((prev) => ({ ...prev, ...fresh }));
-        dirty.current = true;
-      }
-      const shared = await api.shareProposal(lead.id, 1);
-      const url = shared?.url || "";
-      if (!url) { if (win) win.close(); window.alert("Não consegui preparar a proposta deste produto."); return; }
-      const msg = waProposalPlainText(lead, url);
-      // SEMPRE WhatsApp Web (decisão do Leo, 03/08): wa.me com o texto pronto,
-      // independente de o produto ter número oficial conectado — quem envia a
-      // proposta é o closer, do WhatsApp dele. O inbox segue existindo pros
-      // outros fluxos; aqui só cai nele se o lead não tiver telefone.
-      if (wa) {
-        const whatsappUrl = `${wa}?text=${encodeURIComponent(msg)}`;
-        if (win) win.location.replace(whatsappUrl);
-        else window.open(whatsappUrl, "_blank", "noopener");
-      }
-      else if (onOpenWhatsapp) onOpenWhatsapp(lead, msg);
-    } catch (e) {
-      if (win) win.close();
-      window.alert(e?.message || "não deu pra gerar/enviar a proposta");
-    } finally { setPropBusy(false); }
-  }
+  const { busy: propBusy, altDecks, generate: gerarCom, share: propostaNoWhats } = useLeadProposalActions({
+    lead, onOpenWhatsapp,
+    onSaved: fresh => { dirty.current = true; setLead(prev => ({ ...prev, ...fresh })); },
+  });
   function moveStage(stage) {
     if (!stage || stage === lead.stage) return;
     // Espelho do applyStageMove: sair da região de venda (Ganho/Integração/CS)
@@ -995,18 +947,9 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
               <textarea aria-label="Anotações" defaultValue={lead.recapNote||""} onBlur={e=>{if(e.target.value!==(lead.recapNote||""))patch({recapNote:e.target.value});}} placeholder="o que ficou combinado, quem decide, objeção que apareceu…"/>
             </LeadDisclosure>
             {qualificationCard}
-            <div className="pipeline-lead-send"><h3>enviar pro cliente</h3>
-              <button disabled={propBusy} onClick={()=>gerarCom()}><span aria-hidden="true">▣</span><span>{propBusy?"Gerando…":"Gerar apresentação"}</span></button>
-              <button onClick={()=>setPayLink(true)}><span aria-hidden="true">▤</span><span>Link de pagamento</span></button>
-              <button disabled={propBusy} onClick={propostaNoWhats}><span aria-hidden="true">✆</span><span>Enviar proposta no WhatsApp</span></button>
-              <MoreMenu size={30} items={[
-                ...altDecks.map(t=>({label:`gerar ${t.pickLabel||t.name}`,onClick:()=>gerarCom(t)})),
-                lead.proposal_edit_url&&{label:"apresentar ↗",onClick:()=>window.open(lead.proposal_edit_url,"_blank","noreferrer")},
-                lead.customProposalUrl&&{label:"abrir proposta personalizada ↗",onClick:()=>window.open(cockpitProposalUrl(lead.customProposalUrl),"_blank","noreferrer")},
-                {label:lead.customProposalUrl?"editar proposta personalizada":"montar proposta personalizada",onClick:()=>setCustomProp(true)},
-                wa&&{label:"Abrir conversa no WhatsApp",onClick:()=>onOpenWhatsapp?onOpenWhatsapp(lead):window.open(wa,"_blank","noreferrer")},
-              ]}/>
-            </div>
+            <LeadSendActions lead={lead} busy={propBusy} altDecks={altDecks}
+              onGenerate={gerarCom} onPayment={() => setPayLink(true)} onShare={propostaNoWhats}
+              onCustom={() => setCustomProp(true)} onOpenWhatsapp={onOpenWhatsapp} />
           </div>
           <footer className="pipeline-lead-footer">
             <div><span>próximo passo</span><small style={{color:next?.tone}}>{next?.text?.replace(/^[◆●]\s*/,"")||"sem data"}</small></div>

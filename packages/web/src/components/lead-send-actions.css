@@ -1,0 +1,4 @@
+.lead-send-actions-compact { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.lead-send-actions-compact > button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 30px; padding: 0 10px; border: 1px solid var(--line-1); border-radius: 999px; background: var(--bg-1); color: var(--fg-2); font-size: 11.5px; font-weight: 600; }
+.lead-send-actions-compact > button:disabled { opacity: .6; cursor: wait; }
+@media (max-width: 600px) { .lead-send-actions-compact > button { min-height: 44px; } }

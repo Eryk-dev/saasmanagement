@@ -1197,3 +1197,7 @@ a “Abrir atividade”; histórico, próximo passo e atividades futuras permane
 
 Acabamento da apresentação em 21/09/2026: fundo branco, rótulo LeverAds e botão
 Apresentar junto ao valor, validado no preview do card em desktop e mobile.
+
+Atalhos unificados com o pipeline em 21/09/2026: versão compacta nas atividades,
+com geração, pagamento, proposta no WhatsApp e menu de ações secundárias.
+Validação de ações e mobile em `scripts/review/today-shortcuts.mjs`.

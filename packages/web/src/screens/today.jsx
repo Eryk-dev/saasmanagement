@@ -9,7 +9,7 @@ import { ErrorBoundary } from "../components/error-boundary.jsx";
 import { Pill } from "../components/viz.jsx";
 import { ActivityComposer } from "../components/timeline.jsx";
 import { waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
-import { waCallLinkText, waProposalText } from "../lib/wa-copy.js";
+import { waCallLinkText } from "../lib/wa-copy.js";
 import { api } from "../lib/api.js";
 import { bizDay } from "../lib/format.js";
 import { businessDaysBetween } from "../components/period-picker.jsx";
@@ -17,13 +17,14 @@ import { scaledGoal } from "../components/team-cards.jsx";
 import { useData } from "../data.jsx";
 import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf, nextKindsFor, nurtureStage, hasDayStages } from "../lib/funnel.js";
 import { allUsers, currentUser, displayName, userById, usersByRole, isAdminUser } from "../lib/users.js";
-import { useProposalTemplates } from "../components/ProposalActions.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { myOpenTasks, taskHash } from "../lib/tasks.js";
 import { useAttribution } from "../lib/pains.js";
 import { clientSummary, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks, DealProductField, isOneOffProduct, SelectWithCustom, PaymentMethodSelect, ProductOptions, leadBox } from "../components/lead-blocks.jsx";
 import { resolveScript, scriptTokens, scriptChecklist, isNoShowStage, confirmationScript, integrationConfirmationScript, scriptKeyFor } from "../lib/scripts.js";
 import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, withLegacyOption, closedPlanLabel, dealProductLabel, dealProductsOf } from "../lib/payments.js";
+import { LeadSendActions, useLeadProposalActions } from "../components/lead-send-actions.jsx";
+import { CustomProposalModal } from "../components/custom-proposal.jsx";
 import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
 // "Hoje" (a fila de trabalho, numerada na ordem de prioridade do processo),
@@ -143,7 +144,6 @@ const ACTION_LABELS = {
 
 // Etapas em que mandar a proposta faz sentido no roteiro (a call tem bloco
 // próprio, com os atalhos da chamada junto).
-const PROPOSAL_KINDS = new Set(["proposta", "followup"]);
 
 const TIER_ORDER = { S: 6, A: 5, B: 4, C: 3, D: 2, E: 1, sem: 0 };
 
@@ -1375,7 +1375,7 @@ export function IntegrationBriefCard({ brief, phone, deal, onSend = null }) {
 // `kind` = "call" (venda) ou "integracao": a integração também roda no Meet com o
 // cliente (Leo, 11/09) e tem a PRÓPRIA sala (integrationCallUrl); a proposta
 // só faz sentido na call de venda.
-function CallShortcuts({ l, item, wa, onPatch, kind = "call" }) {
+function CallShortcuts({ l, wa, onPatch, kind = "call" }) {
   const [busy, setBusy] = useS("");   // "meet" | ""
   const [err, setErr] = useS("");
   const isInteg = kind === "integracao";
@@ -1397,159 +1397,15 @@ function CallShortcuts({ l, item, wa, onPatch, kind = "call" }) {
     setBusy("");
   }
 
-  const chip = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600, textDecoration: "none", cursor: "pointer" };
-
-  return (
-    <div style={{ border: "1px solid var(--line-1)", background: "var(--bg-inset)", borderRadius: "var(--r-2)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 9 }}>
-      <div className="kicker accent">Atalhos da {nome}</div>
-
-      {/* Link da chamada: entrar · copiar · mandar pro cliente no Whats. */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-        <span className="kicker">Link da chamada</span>
-        {url ? (
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-            <a href={url} target="_blank" rel="noopener noreferrer" style={chip} title={url}>entrar na {nome} ↗</a>
-            <button style={chip} title={`Copiar o link da ${nome}`}
-              onClick={() => { try { navigator.clipboard.writeText(url); } catch { window.prompt(`Link da ${nome}:`, url); } }}>copiar</button>
-            {waForward && (
-              <a href={waForward} target="_blank" rel="noopener noreferrer" style={{ ...chip, borderColor: "var(--wa-brand)", color: "var(--wa-brand-deep)" }}
-                title={`Mandar o link da ${nome} pro ${l.name || "cliente"} no WhatsApp`}>mandar link no Whats ↗</a>
-            )}
-            {!wa && <span className="mono dim" style={{ fontSize: 10 }}>sem telefone pra mandar no Whats</span>}
-          </div>
-        ) : googleOn ? (
-          <button onClick={makeLink} disabled={busy === "meet"} style={{ ...chip, alignSelf: "flex-start" }}
-            title={`Cria o evento com Meet na agenda e o link da ${nome}`}>
-            {busy === "meet" ? "criando…" : "🎥 criar link (Meet)"}
-          </button>
-        ) : (
-          <span className="mono dim" style={{ fontSize: 10.5 }}>conecte o Google em Ajustes pra criar o Meet da {nome}</span>
-        )}
-      </div>
-
-      {!isInteg && <ProposalBlock l={l} wa={wa} item={item} onPatch={onPatch} />}
-
-      {err && <div className="mono" style={{ fontSize: 10.5, color: "var(--neg)" }}>{err}</div>}
-    </div>
-  );
-}
-
-// Proposta dentro do roteiro: APRESENTAR ao vivo (link com edição inline) e
-// MANDAR pro cliente no WhatsApp. O deck é de apresentação — o preço só entra
-// no comando do closer e as ofertas 2/3 são secretas —, então cada oferta tem
-// um link PRÓPRIO pro cliente (proposta separada, já visível e sem edição): o
-// botão gera/atualiza esse link e abre o Whats com a mensagem pronta.
-function ProposalBlock({ l, wa, item, onPatch }) {
-  const [offers, setOffers] = useS([]);
-  const [busy, setBusy] = useS("");
-  const [err, setErr] = useS("");
-  const [sent, setSent] = useS(null); // { offer, url } da última enviada
-  const templates = useProposalTemplates(l.saas);
-  const altDecks = templates.filter((t) => t.selectable); // ex.: Starter (D/E)
-  const [tpl, setTpl] = useS(""); // "" = deck padrão (publicado)
-
-  const cfg = window.SEED?.CONFIG?.levercopy;
-  const eligible = !item?.confirm && (
-    (window.SEED?.CONFIG?.proposals?.nativeSaas || []).includes(l.saas)
-    || (!!cfg?.enabled && l.saas === cfg.saas)
-  );
-
-  // Ofertas do deck (a principal + a escada secreta) — só existem depois que a
-  // proposta foi gerada; deck sem escada devolve uma opção só.
-  useE(() => {
-    setOffers([]); setSent(null); setErr("");
-    if (!l.proposta_id) return;
-    let alive = true;
-    api.proposalOffers(l.id)
-      .then((r) => { if (alive) setOffers(r?.offers || []); })
-      .catch(() => { /* sem ofertas: cai no link único de sempre */ });
-    return () => { alive = false; };
-  }, [l.id, l.proposta_id]);
-
-  async function genProposal() {
-    setBusy("gen"); setErr("");
-    try {
-      const r = await api.generateProposal(l.id, { template: tpl });
-      if (!r || r.ok === false) setErr("não deu pra gerar a proposta");
-      else if (r.lead) onPatch({ proposalUrl: r.lead.proposalUrl, proposal_edit_url: r.lead.proposal_edit_url, proposta_id: r.lead.proposta_id });
-    } catch { setErr("não deu pra gerar a proposta"); }
-    setBusy("");
-  }
-
-  async function share(o) {
-    setBusy(`o${o.offer}`); setErr("");
-    // A aba do Whats abre ANTES do await: aberta depois da resposta, o
-    // navegador trata como popup e bloqueia. Sem telefone (ou se o bloqueio
-    // vier assim mesmo), o link fica no bloco pra copiar/abrir na mão.
-    const win = wa ? window.open("", "_blank") : null;
-    try {
-      const r = await api.shareProposal(l.id, o.offer);
-      setSent({ offer: o.offer, url: r.url });
-      const text = waProposalText(l, r.url);
-      if (win) win.location.replace(`${wa}?text=${encodeURIComponent(text)}`);
-    } catch {
-      if (win) win.close();
-      setErr("não deu pra preparar o link da proposta");
-    }
-    setBusy("");
-  }
-
-  if (!l.proposalUrl && !eligible) return null;
-
-  const chip = { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 600, textDecoration: "none", cursor: "pointer" };
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-      <span className="kicker">Proposta</span>
-      {!l.proposalUrl ? (
-        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          {altDecks.length > 0 && (
-            <select value={tpl} onChange={(e) => setTpl(e.target.value)} disabled={busy === "gen"} title="Qual apresentação gerar"
-              style={{ height: 28, padding: "0 7px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5 }}>
-              <option value="">Padrão</option>
-              {altDecks.map((t) => <option key={t.id} value={t.id}>{t.pickLabel || t.name || t.id}</option>)}
-            </select>
-          )}
-          <button onClick={genProposal} disabled={busy === "gen"} style={{ ...chip, alignSelf: "flex-start", borderColor: "var(--accent-line)", color: "var(--accent)" }}>
-            {busy === "gen" ? "gerando…" : "gerar proposta"}
-          </button>
-        </div>
-      ) : (
-        <>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-            {/* Só o link ?k (setup + edição inline) fica aqui: o deck de
-                apresentação sem chave esconde o preço atrás do comando, então
-                não serve de prévia do cliente. O que o cliente recebe é o link
-                da oferta, conferível no "conferir" depois de mandar. */}
-            <a href={l.proposal_edit_url || cockpitProposalUrl(l.proposalUrl)} target="_blank" rel="noopener noreferrer" style={{ ...chip, borderColor: "var(--accent-line)", color: "var(--accent)" }}>apresentar ao vivo ↗</a>
-          </div>
-          {offers.length > 0 && (
-            <>
-              <span className="kicker" style={{ marginTop: 3 }}>Mandar no Whats · escolha a oferta</span>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                {offers.map((o) => (
-                  <button key={o.offer} onClick={() => share(o)} disabled={!!busy}
-                    title={`Gera o link do cliente (preço visível, sem edição) da oferta ${o.label} e abre o WhatsApp`}
-                    style={{ ...chip, borderColor: sent?.offer === o.offer ? "var(--wa-brand)" : "var(--line-2)", color: sent?.offer === o.offer ? "var(--wa-brand-deep)" : "var(--fg-2)" }}>
-                    {busy === `o${o.offer}` ? "preparando…" : `${o.label}${o.price ? ` · ${o.price}` : ""}`}
-                  </button>
-                ))}
-                {!wa && <span className="mono dim" style={{ fontSize: 10 }}>sem telefone: o link fica aqui pra copiar</span>}
-              </div>
-            </>
-          )}
-          {sent && (
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-              <span className="mono" style={{ fontSize: 10, color: "var(--pos)" }}>✓ link do cliente pronto</span>
-              <button style={{ ...chip, height: 24 }} title="Copiar o link da proposta do cliente"
-                onClick={() => { try { navigator.clipboard.writeText(sent.url); } catch { window.prompt("Link da proposta:", sent.url); } }}>copiar</button>
-              <a href={cockpitProposalUrl(sent.url)} target="_blank" rel="noopener noreferrer" style={{ ...chip, height: 24 }}>conferir ↗</a>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
+  if (!url && !googleOn) return null;
+  return <div className="today-call-shortcuts">
+    {url ? <>
+      <a href={url} target="_blank" rel="noopener noreferrer">Entrar na {nome} ↗</a>
+      <button onClick={async () => { try { await navigator.clipboard.writeText(url); toast("Link copiado", "pos"); } catch { toast("Não foi possível copiar o link", "neg"); } }}>Copiar link da {nome}</button>
+      {waForward && <a href={waForward} target="_blank" rel="noopener noreferrer">Enviar link da {nome} ↗</a>}
+    </> : <button onClick={makeLink} disabled={busy === "meet"}>{busy === "meet" ? "Criando Meet…" : "Criar link do Meet"}</button>}
+    {err && <span role="alert" className="today-shortcut-error">{err}</span>}
+  </div>;
 }
 
 function ActivityModal(props) {
@@ -1609,6 +1465,10 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
   // Atalho pro link de pagamento do MP sem sair do roteiro: mesmo modal do
   // card do lead (o checkout nasce amarrado ao id do lead).
   const [payLink, setPayLink] = useS(false);
+  const [customProp, setCustomProp] = useS(false);
+  const proposalActions = useLeadProposalActions({ lead: l, onOpenWhatsapp: onWhatsapp,
+    onSaved: fresh => patch({ proposalUrl: fresh.proposalUrl, proposal_edit_url: fresh.proposal_edit_url, proposta_id: fresh.proposta_id, proposalPinned: fresh.proposalPinned }),
+  });
   useE(() => { setResched(false); setRSlot(""); setPayLink(false); }, [item.l.id]);
   function doReschedule() {
     if (!rSlot) return;
@@ -1712,14 +1572,13 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
 
         {/* Atalhos.pdf: faixa de atalhos, apresentação/respostas e histórico. */}
         <div className="today-script-body">
-            <div className="today-script-shortcuts">
-              {(item.kind === "call" || item.kind === "integracao") && !preview && (!item.confirm || (item.kind === "call" ? l.callUrl : l.integrationCallUrl))
-                ? <CallShortcuts l={l} item={item} wa={wa} onPatch={patch} kind={item.kind} />
-                : <LeadSection title="Atalhos">
-                    {!preview && PROPOSAL_KINDS.has(item.kind) && <ProposalBlock l={l} wa={wa} item={item} onPatch={patch} />}
-                    <span className="today-script-hint">{item.stage} · {actionVerb(item)}</span>
-                  </LeadSection>}
-            </div>
+          <LeadSection title="Atalhos" className="today-script-shortcuts">
+            {!preview && <LeadSendActions compact lead={l} busy={proposalActions.busy} altDecks={proposalActions.altDecks}
+              onGenerate={proposalActions.generate} onPayment={() => setPayLink(true)} onShare={proposalActions.share}
+              onCustom={() => setCustomProp(true)} onOpenWhatsapp={onWhatsapp} />}
+            {(item.kind === "call" || item.kind === "integracao") && !preview && (!item.confirm || (item.kind === "call" ? l.callUrl : l.integrationCallUrl)) &&
+              <CallShortcuts l={l} wa={wa} onPatch={patch} kind={item.kind} />}
+          </LeadSection>
           <div className="today-script-columns">
             <LeadSection title="Informações da apresentação" className="today-presentation">
               {l.proposal_edit_url && !preview ? <>
@@ -1841,6 +1700,8 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
 
         {/* O modal empilha por cima do painel (z-index maior) e o servidor já
             persiste o lead — aqui só refletimos o retorno na cópia local. */}
+        {customProp && <CustomProposalModal lead={l} onClose={() => setCustomProp(false)}
+          onSaved={(r) => setL(prev => ({ ...prev, customProposalId: r.id, customProposalUrl: r.url }))} />}
         {payLink && (
           <PaymentLinkModal
             lead={l}
