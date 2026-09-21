@@ -19,6 +19,18 @@ try {
     await page.locator('.today-open-script').first().click();
     const frame=page.frameLocator('iframe[title="Configurar apresentação"]');
     await frame.getByLabel('Pedidos/mês',{exact:true}).waitFor();
+    await frame.locator('[data-prod="plataforma"]').getByText('LeverAds',{exact:true}).waitFor();
+    assert.equal(await frame.getByText('Plataforma',{exact:true}).count(),0);
+    const present=frame.getByRole('link',{name:'Apresentar ↗',exact:true});
+    const presentUrl=new URL(await present.getAttribute('href'));
+    assert.equal(presentUrl.searchParams.has('embed'),false);
+    assert.equal(presentUrl.searchParams.get('k'),'review');
+    assert.equal(await present.getAttribute('target'),'_blank');
+    const valueBox=await frame.locator('.cfg-value > div').first().boundingBox();
+    const presentBox=await present.boundingBox();
+    assert.ok(presentBox.x>=valueBox.x+valueBox.width);
+    assert.equal(await frame.locator('[data-cfg-screen]').evaluate(e=>getComputedStyle(e).backgroundColor),await frame.locator('body').evaluate(e=>getComputedStyle(e).backgroundColor));
+    assert.equal(await page.getByRole('link',{name:'Abrir configuração na apresentação ↗'}).count(),0);
     assert.equal(await frame.getByLabel('Nome',{exact:true}).isVisible(),false);
     assert.equal(await frame.getByLabel('Empresa',{exact:true}).isVisible(),false);
     assert.equal(await frame.getByLabel('Contas',{exact:true}).isVisible(),false);

@@ -302,3 +302,7 @@ Próximos dias, com contagem e expansão após cinco itens. A configuração
 incorporada da apresentação mostra só pedidos/mês, ticket médio, produtos,
 plano e valor calculado; a tela inicial do deck mantém os demais campos.
 O iframe ajusta a altura ao conteúdo, sem esconder o valor em rolagem interna.
+
+Acabamento do bloco da apresentação: fundo contínuo `--paper-card`, sem faixas
+cinzas entre grupos. O produto é rotulado “LeverAds”. A ação “Apresentar” fica
+na faixa do valor final e abre o deck completo em nova aba com a chave atual.
