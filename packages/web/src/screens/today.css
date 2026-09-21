@@ -203,3 +203,13 @@
 @media (max-width: 600px) { .today-call-shortcuts > button, .today-call-shortcuts > a { min-height: 44px; } }
 .today-script-footer.capsule-navy { border-radius: 0; overflow-y: auto; --bg-0: var(--bg-rail); --bg-3: var(--bg-1); --line-strong: var(--line-2); }
 .today-script-footer.capsule-navy::before { display: none; }
+
+/* Pergunta acima da resposta, como na qualificação do Inbox. */
+.lead-answers-list { margin: 0; display: grid; gap: 10px; min-width: 0; }
+.lead-answers-list > div { min-width: 0; }
+.lead-answers-list > div + div { padding-top: 10px; border-top: 1px solid var(--line-1); }
+.lead-answers-list dt { font-size: 12px; line-height: 1.4; color: var(--fg-3); overflow-wrap: anywhere; }
+.lead-answers-list dd { margin: 3px 0 0; font-size: 13.5px; font-weight: 500; line-height: 1.5; color: var(--fg-1); white-space: pre-wrap; overflow-wrap: anywhere; }
+.lead-answers-editor { margin-top: 14px; }
+.lead-answers-editor > summary { padding: 8px 0; font-size: 12px; color: var(--accent); cursor: pointer; }
+.lead-answers-editor[open] > summary { margin-bottom: 8px; }
