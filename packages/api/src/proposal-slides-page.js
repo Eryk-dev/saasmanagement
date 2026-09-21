@@ -1027,7 +1027,7 @@ function cfgScreen() {
       </div>
     </div>
     <div style="display:grid;grid-template-columns:300px minmax(0,1fr) 300px;gap:20px;align-items:start">
-      <div class="cfg-card">
+      <div class="cfg-card cfg-client">
         <div class="cfg-kicker">Cliente</div>
         <div style="font-size:12px;color:var(--ink-faint);line-height:1.4;margin-top:-6px">Nome, empresa e contas vêm do formulário. O que está em branco você preenche na call.</div>
         <label style="display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--ink-muted)"><span>Nome</span>
@@ -1088,7 +1088,7 @@ function cfgScreen() {
           </div>
           <div style="font-size:12.5px;color:var(--ink-muted);line-height:1.5" data-nota-plano></div>
         </div>
-        <div style="background:var(--ink);color:var(--btn-primary-text);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:6px">
+        <div class="cfg-value" style="background:var(--ink);color:var(--btn-primary-text);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:6px">
           <div style="font-size:12.5px;opacity:0.7"><span data-f="planoNome"></span></div>
           <div style="font-size:30px;font-weight:700;letter-spacing:-0.02em;line-height:1;font-variant-numeric:tabular-nums"><span data-f="parcelas"></span>× R$ <span data-f="mensalFmt"></span></div>
           <div style="font-size:12.5px;opacity:0.7">ou R$ <span data-f="vistaFmt"></span> à vista</div>
@@ -1159,8 +1159,22 @@ html, body { height: auto; overflow: auto; background: var(--paper-card); }
 [data-cfg-screen] > div > div:first-child { padding: 0 0 8px !important; }
 [data-cfg-screen] > div > div:first-child > div:first-child, [data-act="capa"], .hud, .notas { display: none !important; }
 [data-cfg-screen] > div > div:nth-child(2) { grid-template-columns: minmax(0,1fr) !important; gap: 12px !important; }
-.cfg-card { padding: 12px; gap: 10px; min-width: 0; }
-.cfg-prod { padding: 8px; gap: 8px; }
+.cfg-card { padding: 0; gap: 8px; min-width: 0; border: 0; box-shadow: none; }
+.cfg-kicker { font-size: 11px; }
+.cfg-client { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.cfg-client > div { display: contents !important; }
+.cfg-client > .cfg-kicker, .cfg-client > div:nth-child(2),
+.cfg-client label:has([data-cfg="nome"]), .cfg-client label:has([data-cfg="empresa"]),
+.cfg-client label:has([data-cfg="contas"]), .cfg-client label:has([data-cfg="vistaPct"]) { display: none !important; }
+.cfg-prod { padding: 6px 8px; gap: 8px; }
+.cfg-prod strong { font-size: 12px; }
+.cfg-prod .sub, [data-nota-plano] { display: none; }
+.cfg-prod:not([data-on]) .cfg-select, .cfg-prod:not([data-on]) span[style*="grid-template-columns"] { display: none !important; }
+.cfg-input, .cfg-select { height: 30px; font-size: 12px; }
+.cfg-value { padding: 10px 12px !important; gap: 4px !important; }
+.cfg-value > div:nth-child(2) { font-size: 22px !important; }
+.cfg-seg button { padding: 7px 10px; font-size: 12px; }
+#canvas { box-shadow: none; }
 .cfg-prod span[style*="grid-template-columns"] { grid-template-columns: minmax(0,1fr) !important; }
 .cfg-select { text-overflow: ellipsis; }
 @media (pointer: coarse) { .cfg-input, .cfg-select, .cfg-seg button { min-height: 44px; } }
@@ -1185,6 +1199,15 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
   var cfg = D.cfg;
   var canvas = document.getElementById("canvas");
   var todos = [].slice.call(canvas.children);
+  if (D.configOnly && window.parent !== window) {
+    var configScreen = document.querySelector("[data-cfg-screen]");
+    var parentOrigin = "";
+    try { parentOrigin = new URL(document.referrer).origin; } catch (_) {}
+    if (parentOrigin) new ResizeObserver(function () {
+      window.parent.postMessage({ type: "cockpit:proposal-config-height", height: configScreen.scrollHeight + 2 }, parentOrigin);
+    }).observe(configScreen);
+  }
+
 
   // ── Os números do deck ────────────────────────────────────────────────
   // Nenhum número é escrito no slide: tudo vem da oferta montada na tela

@@ -295,3 +295,9 @@ apresentação à direita; roteiro e respostas do formulário em duas colunas;
 histórico/anotações em largura inteira; próximo passo no rodapé. Em cards
 estreitos e no celular, as colunas empilham na mesma ordem. A configuração
 reutiliza a tela inicial da apresentação, que continua existindo no deck.
+
+Ajuste de 21/09/2026: abaixo de Hoje, “Atividades futuras” separa Amanhã e
+Próximos dias, com contagem e expansão após cinco itens. A configuração
+incorporada da apresentação mostra só pedidos/mês, ticket médio, produtos,
+plano e valor calculado; a tela inicial do deck mantém os demais campos.
+O iframe ajusta a altura ao conteúdo, sem esconder o valor em rolagem interna.

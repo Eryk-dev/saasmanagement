@@ -3,6 +3,10 @@ export const todayReview = params.get('review') === 'today';
 let activities = [];
 export function setupTodayReview(seed) {
   if (params.has('card')) {
+    const futureDate=(days)=>{const d=new Date();d.setDate(d.getDate()+days);d.setHours(16,0,0,0);return d.toISOString();};
+    const base=seed.LEADS.find(l=>l.name==='Carla Nunes');
+    seed.LEADS.push(...Array.from({length:7},(_,i)=>({...base,id:`future-${i}`,name:`Futuro ${i+1}`,nextActionAt:futureDate(1)})));
+    seed.LEADS.push({...base,id:'future-later',name:'Mais adiante',nextActionAt:futureDate(4)});
     Object.assign(seed.LEADS.find(l=>l.name==='Bruno Teixeira'), {proposalUrl:'/p/card-preview',proposal_edit_url:'/p/card-preview?k=review'});
     seed.SAAS[0].leadQuestions=[{key:'accounts',label:'Quantas contas?',options:[{value:'2',label:'2 contas'},{value:'3-5',label:'3 a 5 contas'}]}];
   }
