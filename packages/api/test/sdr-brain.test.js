@@ -551,7 +551,7 @@ test("remarcar: callAt antigo já passado vai pro histórico e o GPS segue o hor
   assert.equal(lead.nextActionAt, new Date("2026-08-20T09:00:00-03:00").toISOString());
 });
 
-test("desmarcar: call sai da agenda de verdade, Meet cancelado, time avisado e remarcação oferecida", async () => {
+test("desmarcar: call sai da agenda de verdade, Meet cancelado, time avisado e pergunta antes de oferecer horários", async () => {
   // Caso 24/08: lead avisou que não ia conseguir, o robô aceitou de boca,
   // deixou o callAt de pé e o lembrete de 1h ainda disparou depois.
   const repo = await world({
@@ -569,11 +569,12 @@ test("desmarcar: call sai da agenda de verdade, Meet cancelado, time avisado e r
   const stageActs = (await repo.list("activities")).filter((a) => a.type === "stage");
   assert.equal(stageActs.length, 1);
   assert.equal(stageActs[0].meta.to, "Qualificando");
-  // Resposta: confirma a desmarcação e JÁ oferece horários reais de remarcação.
+  // Resposta: confirma a desmarcação e pede consentimento, sem horários.
   assert.equal(fakes.sent.length, 2);
   assert.match(fakes.sent[0].text, /já desmarquei aqui/);
-  assert.match(fakes.sent[1].text, /qual fica melhor pra você\?/);
-  assert.match(fakes.sent[1].text, /às \d/);
+  assert.equal(fakes.sent[1].text, "Você gostaria de remarcar?");
+  assert.doesNotMatch(fakes.sent.map((s) => s.text).join(" "), /às \d/);
+  assert.equal(lead.sdrLog.reschedule.status, "pending");
   // Convite do Meet cancelado e alerta pro time.
   assert.deepEqual(fakes.meetCancels, ["L1"]);
   const alerts = await repo.list("wa_alerts");
@@ -1137,4 +1138,134 @@ test("agenda SDR: pedido de sexta não autoriza agendar segunda por conta própr
   assert.equal(await brainOf(repo, fakes).handleInbound(INBOUND), "reoferta");
   assert.ok(!(await repo.get("leads", "L1")).callAt);
   assert.doesNotMatch(fakes.sent[0].text, /segunda/);
+});
+
+const RESCHEDULE_PENDING = { status: "pending", afterMessageId: "m2", at: "2026-08-19T12:57:00Z" };
+const rescheduleMessages = (reply) => [
+  { direction: "in", text: "Pode ser sexta às 14h", at: ISO("2026-08-19T12:50:00Z") },
+  { direction: "in", text: "não vou poder comparecer", at: ISO("2026-08-19T12:57:00Z") },
+  { direction: "out", author: "sdr-bot", text: "Já desmarquei aqui. Você gostaria de remarcar?", at: ISO("2026-08-19T12:58:00Z") },
+  { direction: "in", text: reply, at: ISO("2026-08-19T12:59:00Z") },
+];
+
+test("cancelamento explícito prevalece sobre oferta ou silêncio da IA e não reserva outro horário", async () => {
+  for (const text of ["Pode cancelar o agendamento", "não vou poder comparecer", "Hoje não consigo participar", "Não poderei estar presente", "quero desmarcar a call"]) {
+    const repo = await world({ lead: { stage: "Call agendada", callAt: SLOT1, closer: "pl" }, messages: [
+      { direction: "in", text, at: ISO("2026-08-19T12:59:00Z") },
+    ] });
+    await repo.create("app_config", { id: "sdr_slot_holds_leverads", holds: [{ at: SLOT1, leadId: "L1", until: ISO("2026-08-19T14:00:00Z") }] });
+    const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor?" }] });
+    assert.equal(await brainOf(repo, fakes).handleInbound(INBOUND), "desmarcar", text);
+    assert.equal((await repo.get("leads", "L1")).callAt, "");
+    assert.equal(fakes.sent.at(-1).text, "Você gostaria de remarcar?");
+    assert.doesNotMatch(fakes.sent.map((s) => s.text).join(" "), /às \d/);
+    assert.deepEqual((await repo.get("app_config", "sdr_slot_holds_leverads")).holds, []);
+    assert.deepEqual(fakes.meetCancels, ["L1"]);
+    assert.deepEqual(fakes.meets, []);
+  }
+});
+
+test("sim à remarcação oferece horários atuais e não confirma uma nova call sozinho", async () => {
+  const repo = await world({ lead: { sdrLog: { reschedule: RESCHEDULE_PENDING } }, messages: rescheduleMessages("Sim, gostaria") });
+  const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: SLOT1 }] });
+  assert.equal(await brainOf(repo, fakes).handleInbound(INBOUND), "remarcacao-oferta");
+  const lead = await repo.get("leads", "L1");
+  assert.ok(!lead.callAt);
+  assert.equal(lead.sdrLog.reschedule.status, "offered");
+  assert.match(fakes.sent.at(-1).text, /Consigo amanhã às 9h ou amanhã às 11h/);
+  assert.doesNotMatch(fakes.sent.at(-1).text, /agendado|sexta/);
+  assert.deepEqual(fakes.meets, []);
+  const holds = (await repo.get("app_config", "sdr_slot_holds_leverads")).holds;
+  assert.equal(holds.length, 2);
+  assert.ok(holds.every((h) => h.at.startsWith("2026-08-20T")));
+});
+
+test("não ou resposta ambígua não libera horários, mesmo com interesse antigo e IA tentando agendar", async () => {
+  for (const text of ["Não quero remarcar", "Agora não, obrigado", "Não sei ainda", "Obrigado", "Ok", "Quero saber o preço", "Gostaria de saber como funciona"]) {
+    const repo = await world({ lead: { sdrLog: { reschedule: RESCHEDULE_PENDING } }, messages: rescheduleMessages(text) });
+    const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: SLOT1 }] });
+    await brainOf(repo, fakes).handleInbound(INBOUND);
+    assert.ok(!(await repo.get("leads", "L1")).callAt, text);
+    assert.doesNotMatch(fakes.sent.map((s) => s.text).join(" "), /às \d|agendado|Consigo amanhã/);
+    assert.deepEqual(fakes.meets, []);
+  }
+});
+
+test("consentimento por áudio oferece horários e guarda estado mesmo em outra instância do robô", async () => {
+  const messages = rescheduleMessages("");
+  messages.at(-1).media = { kind: "audio", id: "MID1" };
+  const repo = await world({ lead: { sdrLog: { reschedule: RESCHEDULE_PENDING } }, messages });
+  await repo.create("wa_media", { id: "m4", data: Buffer.from("a".repeat(2048)).toString("base64"), mime: "audio/ogg" });
+  const fakes = makeFakes({ decisions: [{ acao: "silencio" }] });
+  const brain = makeSdrBrain({ repo, whatsapp: fakes.wa, anthropic: fakes.anthropic,
+    transcriber: { configured: () => true, transcribe: async () => "Sim, quero remarcar" },
+    now: () => NOW, sleep: async () => {}, replyDelayMs: 0, log: { warn() {} },
+  });
+  assert.equal(await brain.handleInbound(INBOUND), "remarcacao-oferta");
+  assert.match(fakes.sent.at(-1).text, /amanhã às 9h/);
+  assert.ok(!(await repo.get("leads", "L1")).callAt);
+});
+
+test("sem vaga após o sim, pergunta outra data sem abrir dias posteriores sozinho", async () => {
+  const repo = await world({ lead: { sdrLog: { reschedule: RESCHEDULE_PENDING } }, messages: rescheduleMessages("Quero sim") });
+  await repo.create("agenda_blocks", { id: "full", user: "pl", recur: "once", date: "2026-08-20", allDay: true });
+  const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: "2026-08-21T14:00" }] });
+  await brainOf(repo, fakes).handleInbound(INBOUND);
+  assert.match(fakes.sent.at(-1).text, /Qual outra data/);
+  assert.doesNotMatch(fakes.sent.at(-1).text, /sexta|às \d/);
+  assert.ok(!(await repo.get("leads", "L1")).callAt);
+});
+
+test("escolha de horário depois do consentimento agenda e encerra o estado de remarcação", async () => {
+  const messages = rescheduleMessages("Pode ser amanhã às 9h");
+  messages[2].text = "Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor?";
+  const repo = await world({ lead: { sdrLog: { reschedule: { ...RESCHEDULE_PENDING, status: "offered" } } }, messages });
+  const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: SLOT1 }] });
+  assert.equal(await brainOf(repo, fakes).handleInbound(INBOUND), "agendar");
+  const lead = await repo.get("leads", "L1");
+  assert.equal(lead.callAt, SLOT1);
+  assert.equal(lead.sdrLog.reschedule, null);
+  assert.deepEqual(fakes.meets, ["L1"]);
+});
+
+test("não querer cancelar e dificuldade com link não cancelam o compromisso", async () => {
+  for (const text of ["Não quero cancelar a reunião", "Não vou cancelar", "Não consigo acessar o link"] ) {
+    const repo = await world({ lead: { stage: "Call agendada", callAt: SLOT1 }, messages: [{ direction: "in", text, at: ISO("2026-08-19T12:59:00Z") }] });
+    const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Vou te ajudar por aqui" }] });
+    await brainOf(repo, fakes).handleInbound(INBOUND);
+    assert.equal((await repo.get("leads", "L1")).callAt, SLOT1);
+    assert.deepEqual(fakes.meetCancels, []);
+  }
+});
+
+test("recusa persistida continua sem oferta até o cliente pedir para remarcar", async () => {
+  const declined = { ...RESCHEDULE_PENDING, status: "declined" };
+  const repo = await world({ lead: { sdrLog: { reschedule: declined } }, messages: rescheduleMessages("Obrigado") });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Consigo amanhã às 9h, pode ser?" }] });
+  assert.equal(await brainOf(repo, fakes).handleInbound(INBOUND), "remarcacao-aguarda");
+  assert.doesNotMatch(fakes.sent.at(-1).text, /às \d/);
+  assert.equal((await repo.get("leads", "L1")).sdrLog.reschedule.status, "declined");
+
+  const repo2 = await world({ lead: { sdrLog: { reschedule: declined } }, messages: rescheduleMessages("Quero remarcar, tem sexta?") });
+  const fakes2 = makeFakes({ decisions: [{ acao: "responder", mensagem: "Certo" }] });
+  assert.equal(await brainOf(repo2, fakes2).handleInbound(INBOUND), "remarcacao-oferta");
+  assert.match(fakes2.sent.at(-1).text, /sexta às 9h/);
+  assert.ok(!(await repo2.get("leads", "L1")).callAt);
+});
+
+test("aviso de ausência por áudio cancela e pergunta se quer remarcar, sem horários", async () => {
+  const repo = await world({ lead: { stage: "Call agendada", callAt: SLOT1 }, messages: [
+    { direction: "in", media: { kind: "audio", id: "MID1" }, at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  await repo.create("wa_media", { id: "m1", data: Buffer.from("a".repeat(2048)).toString("base64"), mime: "audio/ogg" });
+  const fakes = makeFakes({ decisions: [{ acao: "silencio" }] });
+  const brain = makeSdrBrain({ repo, whatsapp: fakes.wa, anthropic: fakes.anthropic, cancelCallMeet: fakes.cancelCallMeet,
+    transcriber: { configured: () => true, transcribe: async () => "Não vou poder comparecer" },
+    now: () => NOW, sleep: async () => {}, replyDelayMs: 0, log: { warn() {} },
+  });
+  assert.equal(await brain.handleInbound(INBOUND), "desmarcar");
+  assert.ok(!(await repo.get("leads", "L1")).callAt);
+  assert.equal(fakes.sent.at(-1).text, "Você gostaria de remarcar?");
+  assert.doesNotMatch(fakes.sent.map((s) => s.text).join(" "), /às \d/);
+  assert.deepEqual(fakes.meetCancels, ["L1"]);
 });
