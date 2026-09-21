@@ -1724,7 +1724,6 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
             <LeadSection title="Informações da apresentação" className="today-presentation">
               {l.proposal_edit_url && !preview ? <>
                 <PresentationConfig key={l.proposal_edit_url} url={l.proposal_edit_url} />
-                <a href={l.proposal_edit_url} target="_blank" rel="noopener noreferrer">Abrir configuração na apresentação ↗</a>
               </> : <p className="today-script-hint">{preview ? "A configuração da apresentação aparece aqui na atividade do lead." : "Gere a proposta nos atalhos para preencher pedidos, ticket médio, produtos e plano aqui. A configuração continua disponível na apresentação."}</p>}
             </LeadSection>
             <LeadSection title="Perguntas e respostas do formulário">

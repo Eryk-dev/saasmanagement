@@ -1013,7 +1013,7 @@ const escHtml = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "
 // Tela zero: o jeito NOVO de editar a apresentação. Três cartões (cliente,
 // produtos, plano) e o resumo do que o cliente vai ver. Só existe no modo
 // closer (?k=…): o link do cliente abre direto na capa.
-function cfgScreen() {
+function cfgScreen(configOnly = false) {
   return `<section data-cfg-screen data-label="Configurar" data-speaker-notes="Tela de preparo, antes da reunião: preencha cliente, contas, ticket e os produtos do plano. Todos os números do restante do deck vêm daqui." style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);display:flex;align-items:center;justify-content:center">
   <div style="zoom:1.7;width:1129px;padding:0 40px;display:flex;flex-direction:column;gap:22px">
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px;padding-bottom:16px;border-bottom:1px solid var(--line)">
@@ -1053,7 +1053,7 @@ function cfgScreen() {
         <label class="cfg-prod" data-prod="plataforma">
           <input type="checkbox" data-cfg="plataforma">
           <span style="flex:1;min-width:0">
-            <strong>Plataforma</strong>
+            <strong>LeverAds</strong>
             <span class="sub" data-preco="plataforma"></span>
             <span style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px">
               <select class="cfg-select" data-cfg="linha"></select>
@@ -1093,6 +1093,7 @@ function cfgScreen() {
           <div style="font-size:30px;font-weight:700;letter-spacing:-0.02em;line-height:1;font-variant-numeric:tabular-nums"><span data-f="parcelas"></span>× R$ <span data-f="mensalFmt"></span></div>
           <div style="font-size:12.5px;opacity:0.7">ou R$ <span data-f="vistaFmt"></span> à vista</div>
           <div style="font-size:12.5px;opacity:0.7" data-setup hidden>+ R$ <span data-f="setupFmt"></span> de pacote OEM na contratação</div>
+          ${configOnly ? '<a class="cfg-present" target="_blank" rel="noopener noreferrer">Apresentar ↗</a>' : ""}
         </div>
       </div>
     </div>
@@ -1154,7 +1155,7 @@ ${configOnly ? `
 html, body { height: auto; overflow: auto; background: var(--paper-card); }
 .stage, #canvas { position: static; width: 100%; height: auto; overflow: visible; transform: none !important; }
 #canvas > section { display: none !important; }
-#canvas > [data-cfg-screen] { display: block !important; position: static; width: 100%; height: auto; padding: 0; }
+#canvas > [data-cfg-screen] { display: block !important; position: static; width: 100%; height: auto; padding: 0; background: var(--paper-card) !important; }
 [data-cfg-screen] > div { zoom: 1 !important; width: 100% !important; padding: 0 !important; gap: 12px !important; }
 [data-cfg-screen] > div > div:first-child { padding: 0 0 8px !important; }
 [data-cfg-screen] > div > div:first-child > div:first-child, [data-act="capa"], .hud, .notas { display: none !important; }
@@ -1171,19 +1172,23 @@ html, body { height: auto; overflow: auto; background: var(--paper-card); }
 .cfg-prod .sub, [data-nota-plano] { display: none; }
 .cfg-prod:not([data-on]) .cfg-select, .cfg-prod:not([data-on]) span[style*="grid-template-columns"] { display: none !important; }
 .cfg-input, .cfg-select { height: 30px; font-size: 12px; }
-.cfg-value { padding: 10px 12px !important; gap: 4px !important; }
-.cfg-value > div:nth-child(2) { font-size: 22px !important; }
+.cfg-value { display: grid !important; grid-template-columns: minmax(0,1fr) auto; align-items: center; padding: 10px 12px !important; gap: 4px 8px !important; }
+.cfg-value > div { grid-column: 1; min-width: 0; overflow-wrap: anywhere; }
+.cfg-present { grid-column: 2; grid-row: 1 / span 4; align-self: center; display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: 0 9px; border-radius: 999px; background: var(--paper-card); color: var(--ink); font-size: 11.5px; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.cfg-present:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
+.cfg-value > div:nth-child(2) { font-size: 18px !important; }
 .cfg-seg button { padding: 7px 10px; font-size: 12px; }
-#canvas { box-shadow: none; }
+#canvas { box-shadow: none; background: var(--paper-card); }
+.cfg-seg { background: var(--paper-card); border: 1px solid var(--line); }
 .cfg-prod span[style*="grid-template-columns"] { grid-template-columns: minmax(0,1fr) !important; }
 .cfg-select { text-overflow: ellipsis; }
-@media (pointer: coarse) { .cfg-input, .cfg-select, .cfg-seg button { min-height: 44px; } }
+@media (pointer: coarse) { .cfg-input, .cfg-select, .cfg-seg button, .cfg-present { min-height: 44px; } }
 ` : ""}</style>
 </head>
 <body>
 ${previewBanner ? '<div class="fita">Pré-visualização do template · nada aqui é salvo</div>' : ""}
 <div class="stage">
-  <div class="canvas" id="canvas">${editable ? cfgScreen() : ""}${SLIDES.replace("<!--RESULTADOS_VIVOS-->", presentationResultsHtml(results))}</div>
+  <div class="canvas" id="canvas">${editable ? cfgScreen(configOnly) : ""}${SLIDES.replace("<!--RESULTADOS_VIVOS-->", presentationResultsHtml(results))}</div>
 </div>
 <div class="hud" id="hud">
   <button type="button" data-act="prev" aria-label="Slide anterior">‹</button>
@@ -1199,6 +1204,13 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
   var cfg = D.cfg;
   var canvas = document.getElementById("canvas");
   var todos = [].slice.call(canvas.children);
+  var presentLink = document.querySelector(".cfg-present");
+  if (presentLink) {
+    var presentationUrl = new URL(window.location.href);
+    presentationUrl.searchParams.delete("embed");
+    presentLink.href = presentationUrl.href;
+  }
+
   if (D.configOnly && window.parent !== window) {
     var configScreen = document.querySelector("[data-cfg-screen]");
     var parentOrigin = "";

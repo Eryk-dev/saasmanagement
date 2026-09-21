@@ -1194,3 +1194,6 @@ expansão/abertura de atividades futuras, pedidos, ticket e preço por plano.
 Revisão final de 21/09/2026 — Atalhos.pdf: retirado o roteiro do card; atalhos
 no topo em largura inteira e apresentação/respostas lado a lado. Botões passam
 a “Abrir atividade”; histórico, próximo passo e atividades futuras permanecem.
+
+Acabamento da apresentação em 21/09/2026: fundo branco, rótulo LeverAds e botão
+Apresentar junto ao valor, validado no preview do card em desktop e mobile.
