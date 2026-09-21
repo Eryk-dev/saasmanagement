@@ -290,9 +290,10 @@ confirmação, `SecondaryButton` + `.inp` + `.tbl` criados.
 
 ### Card de Minhas atividades — desenho de 21/09/2026
 
-Cabeçalho do lead; faixa de preparo com atalhos à esquerda e configuração da
-apresentação à direita; roteiro e respostas do formulário em duas colunas;
-histórico/anotações em largura inteira; próximo passo no rodapé. Em cards
+Referência vigente: Atalhos.pdf. Cabeçalho do lead; atalhos em largura inteira;
+configuração da apresentação à esquerda e respostas do formulário à direita;
+histórico/anotações em largura inteira; próximo passo no rodapé. O card não
+exibe mais o roteiro. Em cards
 estreitos e no celular, as colunas empilham na mesma ordem. A configuração
 reutiliza a tela inicial da apresentação, que continua existindo no deck.
 

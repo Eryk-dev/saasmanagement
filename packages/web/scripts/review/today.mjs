@@ -34,11 +34,10 @@ try {
     const search=page.getByRole('textbox',{name:'Buscar na fila'});
     await search.fill('Carla');assert.equal(await page.locator('.today-queue > .today-queue-row').count(),1);
     await page.locator('.today-open-script').first().click();
-    const panel=page.getByRole('region',{name:'Roteiro da atividade'});await panel.waitFor();
+    const panel=page.getByRole('region',{name:'Atividade do lead'});await panel.waitFor();
     assert.ok(await panel.evaluate(e=>e.contains(document.activeElement)));
-    await page.locator('.today-step').first().click();assert.equal(await page.locator('.today-step').first().getAttribute('aria-pressed'),'true');
-    await page.getByRole('button',{name:'Copiar mensagem',exact:true}).click();await page.getByRole('button',{name:'Mensagem copiada ✓'}).waitFor();
-    assert.ok((await page.evaluate(()=>navigator.clipboard.readText())).length>20);
+    assert.equal(await page.locator('.today-step').count(),0);
+    await panel.getByRole('heading',{name:'Perguntas e respostas do formulário',exact:true}).waitFor();
     await h.capture(page,`selected-${width}`);
     assert.equal(await panel.getByText('Como se comportar',{exact:true}).count(),0);
     await page.keyboard.press('Escape');await panel.waitFor({state:'hidden'});
@@ -50,7 +49,7 @@ try {
   }
   const mobile=await h.open(390);await mobile.locator('.today-queue-row').first().waitFor();
   assert.ok(await mobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await h.capture(mobile,'app-390');
-  const trigger=mobile.getByRole('button',{name:'Abrir o roteiro →',exact:true});await trigger.click();
+  const trigger=mobile.getByRole('button',{name:'Abrir a atividade →',exact:true});await trigger.click();
   const dialog=mobile.getByRole('dialog');await dialog.waitFor();const bounds=await dialog.boundingBox();assert.ok(bounds.x>=0&&bounds.x+bounds.width<=391);
   assert.ok(await dialog.evaluate(e=>e.contains(document.activeElement)));await mobile.keyboard.press('Shift+Tab');assert.ok(await dialog.evaluate(e=>e.contains(document.activeElement)));
   await h.capture(mobile,'selected-390');await mobile.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});assert.ok(await trigger.evaluate(e=>e===document.activeElement));await mobile.close();
@@ -58,7 +57,7 @@ try {
   await many.getByRole('button',{name:'Próximas ›'}).click();await many.getByRole('button',{name:'‹ Anteriores'}).click();await many.close();
   const empty=await h.open(1440,'&state=empty');await empty.getByRole('heading',{name:'Nenhuma atividade pendente hoje'}).waitFor();assert.equal(await empty.getByRole('button',{name:'Fila limpa ✓'}).isDisabled(),true);await h.capture(empty,'empty');await empty.close();
   const failed=await h.open(1440,'&failOnce=list');await failed.getByRole('alert').waitFor();await h.capture(failed,'error');await failed.getByRole('button',{name:'recarregar',exact:true}).click();await failed.getByRole('alert').waitFor({state:'hidden'});await failed.close();
-  const write=await h.open(1440);await write.getByRole('button',{name:'Abrir o roteiro →',exact:true}).click();
+  const write=await h.open(1440);await write.getByRole('button',{name:'Abrir a atividade →',exact:true}).click();
   await write.getByRole('button',{name:'cliente confirmou',exact:true}).click();
   await write.waitForFunction(()=>window.__reviewMutations.some(m=>m.method==='logActivity'));
   const mutations=await write.evaluate(()=>window.__reviewMutations);

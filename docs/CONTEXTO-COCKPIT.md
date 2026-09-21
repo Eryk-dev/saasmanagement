@@ -541,8 +541,9 @@ alteração funcional nesta preparação.
 - Preview isolado dos badges e ICP: `/?shell=1&review=pipeline&revenueGrades=1#pipeline`
   no Vite preview; inclui S–E, dois legados e um lead sem qualificação.
 
-- **Card de Minhas atividades (21/09/2026):** segue o desenho “novo card minhas
-  atividade.pdf”: preparo, roteiro/respostas, histórico e próximo passo.
+- **Card de Minhas atividades (21/09/2026):** segue o desenho “Atalhos.pdf”: atalhos
+  em largura inteira, apresentação/respostas lado a lado, histórico e próximo
+  passo. O roteiro saiu do card; sua prévia em Ajustes → Scripts permanece.
   `GET /p/:id?embed=config&k=…` mostra a configuração responsiva do deck de
   slides dentro do card apenas com a chave de edição válida. Usa o mesmo
   `deckConfig` e PATCH da apresentação, sem duplicar preços ou persistência.

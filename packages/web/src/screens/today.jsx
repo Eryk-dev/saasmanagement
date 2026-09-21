@@ -22,7 +22,7 @@ import { useActiveSaas } from "../lib/workspace.js";
 import { myOpenTasks, taskHash } from "../lib/tasks.js";
 import { useAttribution } from "../lib/pains.js";
 import { clientSummary, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks, DealProductField, isOneOffProduct, SelectWithCustom, PaymentMethodSelect, ProductOptions, leadBox } from "../components/lead-blocks.jsx";
-import { resolveScript, scriptTokens, scriptChecklist, isNoShowStage, confirmationScript, integrationConfirmationScript, scriptKeyFor, scriptSegments } from "../lib/scripts.js";
+import { resolveScript, scriptTokens, scriptChecklist, isNoShowStage, confirmationScript, integrationConfirmationScript, scriptKeyFor } from "../lib/scripts.js";
 import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, withLegacyOption, closedPlanLabel, dealProductLabel, dealProductsOf } from "../lib/payments.js";
 import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
@@ -725,7 +725,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                 pendente. É o mesmo destino do botão do bloco Agora, e existe
                 porque quem chega na tela quer começar sem escolher. */}
             <button onClick={() => firstPending && openRow(firstPending)} disabled={!firstPending}
-              title={firstPending ? "abre o roteiro do primeiro item da fila" : "fila de hoje zerada"}
+              title={firstPending ? "abre a primeira atividade da fila" : "fila de hoje zerada"}
               style={{ height: 38, padding: "0 16px", borderRadius: 999, border: "1px solid var(--btn-bg)", background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 13, fontWeight: 650, cursor: firstPending ? "pointer" : "not-allowed", opacity: firstPending ? 1 : 0.45 }}>
               {firstPending ? (doneTodayRows.length ? "Continuar a fila →" : "Começar a fila →") : "Fila limpa ✓"}
             </button>
@@ -825,7 +825,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
       </div>
       <aside className="today-aside today-workbench">
       {scriptItem && (
-        <ErrorBoundary variant="modal" label="roteiro" resetKey={scriptItem.l?.id} onReset={() => setScriptItem(null)}>
+        <ErrorBoundary variant="modal" label="atividade" resetKey={scriptItem.l?.id} onReset={() => setScriptItem(null)}>
           <ScriptPanel inline key={`${scriptItem.l?.id}-${scriptItem.confirmWindow || ""}`}
             item={scriptItem}
             saasCfg={saasCfg}
@@ -843,7 +843,7 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
           />
         </ErrorBoundary>
       )}
-        {!scriptItem && <div className="today-script-empty"><span aria-hidden="true">◇</span><strong>Escolha uma atividade</strong><p>O roteiro, a mensagem pronta e as ações aparecem aqui — sem sair da fila.</p></div>}
+        {!scriptItem && <div className="today-script-empty"><span aria-hidden="true">◇</span><strong>Escolha uma atividade</strong><p>Os atalhos, os dados do lead e as ações aparecem aqui — sem sair da fila.</p></div>}
       </aside>
       </div>
 
@@ -945,7 +945,7 @@ function QueueRow({ item, block, featured, ordem, onScript, onClaim, onWhatsapp,
         <span><LeadGrade tier={tier} muted={apagado} placeholder size={20} /><strong>{l.name}</strong><small>{l.company}</small></span>
         <span className="today-queue-action">{verbo}</span>
       </button>
-      <button className="today-open-script" onClick={onScript}>Abrir roteiro →</button>
+      <button className="today-open-script" onClick={onScript}>Abrir atividade →</button>
     </div>
   );
 }
@@ -965,8 +965,8 @@ function AgoraBlock({ item, saasCfg, onScript }) {
   return <section className="today-now capsule-navy">
     <div className="today-section-label">Próxima ação</div>
     <div className="today-now-person"><LeadGrade tier={tier} size={22} placeholder /><strong>{l.name}</strong><span>{l.company}</span><small className={atrasado ? "is-late" : ""}>{quando}</small></div>
-    <div className="today-now-action">{(item.confirm ? (item.confirmKind === "integracao" ? integrationConfirmationScript(l, saasCfg) : confirmationScript(l, saasCfg, item.confirmWindow)) : resolveScript(saasCfg,l)).passos?.[0]?.t || actionVerb(item)}</div>
-    <button onClick={onScript}>Abrir o roteiro →</button>
+    <div className="today-now-action">{actionVerb(item)}</div>
+    <button onClick={onScript}>Abrir a atividade →</button>
   </section>;
 }
 
@@ -1552,40 +1552,6 @@ function ProposalBlock({ l, wa, item, onPatch }) {
   );
 }
 
-// Painel do roteiro em DUAS COLUNAS lado a lado (sem abas): CLIENTE à esquerda
-// (resumo da situação + últimos contatos + dados EDITÁVEIS na ordem da
-// conversa) e ROTEIRO à direita (postura, objetivo e o passo a passo com a
-// fala pronta). Em tela estreita as colunas empilham. "Toque e próximo"
-// mantém o operador em fluxo: registra e já abre o cliente seguinte.
-function ExecutionSteps({ script, tokens, item }) {
-  const [checked, setChecked] = useS([]);
-  const [copied, setCopied] = useS(false);
-  const steps = script.passos || [];
-  const expand = text => scriptSegments(text || "", tokens).map(s => s.text ?? s.value ?? s.gap ?? "").join("");
-  const next = steps.find((_, i) => !checked.includes(i));
-  const messageStep = steps.find(step => step.fala && /whats|mensagem|não atendeu/i.test(step.t)) || steps.find(step => step.fala);
-  const message = expand(messageStep?.fala);
-  async function copyMessage() {
-    try { await navigator.clipboard.writeText(message); setCopied(true); }
-    catch { toast("Não foi possível copiar a mensagem", "neg"); }
-  }
-  return <>
-    <section className="today-script-block">
-      <div className="today-script-label">Próximo passo</div>
-      <strong className="today-next-step">{next?.t || script.titulo}</strong>
-      <p className="today-step-context">{actionHint(item)}</p>
-    </section>
-    <section className="today-script-block">
-      <div className="today-script-block-head"><span className="today-script-label">Roteiro</span><span className="today-step-count">{checked.length} de {steps.length}</span></div>
-      <div className="today-steps">{steps.map((step, i) => <button key={i} className="today-step" aria-pressed={checked.includes(i)} onClick={() => setChecked(value => value.includes(i) ? value.filter(n => n !== i) : [...value, i])}>
-        <span className="today-step-check" aria-hidden="true">{checked.includes(i) ? "✓" : ""}</span>
-        <span><strong>{step.t}</strong>{step.fala && <span className="today-step-speech">{expand(step.fala)}</span>}{step.dica && <small>{expand(step.dica)}</small>}</span>
-      </button>)}</div>
-    </section>
-    {message && <section className="today-script-block"><div className="today-script-label">Mensagem</div><div className="today-script-message">{message}</div><button className="today-copy-message" onClick={copyMessage}>{copied ? "Mensagem copiada ✓" : "Copiar mensagem"}</button></section>}
-  </>;
-}
-
 function ActivityModal(props) {
   return createPortal(<Modal {...props} />, document.body);
 }
@@ -1598,7 +1564,7 @@ function InlineScriptShell({ children, onClose }) {
     ref.current?.focus();
     return () => { if (trigger?.isConnected) trigger.focus(); };
   }, []);
-  return <section ref={ref} tabIndex={-1} className="today-inline-script" aria-label="Roteiro da atividade">{children}</section>;
+  return <section ref={ref} tabIndex={-1} className="today-inline-script" aria-label="Atividade do lead">{children}</section>;
 }
 
 function PresentationConfig({ url }) {
@@ -1732,7 +1698,7 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
   const tokens = scriptTokens(l, saasCfg, salesSummary);
 
   return (
-    <PanelShell onClose={onClose} label="Roteiro da atividade" largura={1120} padding={20}
+    <PanelShell onClose={onClose} label={preview ? "Pré-visualização do roteiro" : "Atividade do lead"} largura={1120} padding={20}
       painelStyle={{ maxHeight: "calc(100dvh - 40px)", display: "flex", flexDirection: "column", overflow: "hidden", borderRadius: "var(--r-4)" }}>
       <div className="today-script lead-panel" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
         <div className="today-script-header">
@@ -1741,12 +1707,11 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
             <button onClick={preview ? undefined : onOpenLead} disabled={preview}>{l.name}</button>
             <span>{l.company}{l.company ? " · " : ""}{actionVerb(item)}</span>
           </div>
-          <button onClick={onClose} aria-label="Fechar roteiro" className="lead-panel-close">✕</button>
+          <button onClick={onClose} aria-label="Fechar atividade" className="lead-panel-close">✕</button>
         </div>
 
-        {/* Organização aprovada no desenho: preparo, conversa, histórico. */}
+        {/* Atalhos.pdf: faixa de atalhos, apresentação/respostas e histórico. */}
         <div className="today-script-body">
-          <div className="today-script-preparation">
             <div className="today-script-shortcuts">
               {(item.kind === "call" || item.kind === "integracao") && !preview && (!item.confirm || (item.kind === "call" ? l.callUrl : l.integrationCallUrl))
                 ? <CallShortcuts l={l} item={item} wa={wa} onPatch={patch} kind={item.kind} />
@@ -1755,21 +1720,18 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
                     <span className="today-script-hint">{item.stage} · {actionVerb(item)}</span>
                   </LeadSection>}
             </div>
+          <div className="today-script-columns">
             <LeadSection title="Informações da apresentação" className="today-presentation">
               {l.proposal_edit_url && !preview ? <>
                 <PresentationConfig key={l.proposal_edit_url} url={l.proposal_edit_url} />
                 <a href={l.proposal_edit_url} target="_blank" rel="noopener noreferrer">Abrir configuração na apresentação ↗</a>
               </> : <p className="today-script-hint">{preview ? "A configuração da apresentação aparece aqui na atividade do lead." : "Gere a proposta nos atalhos para preencher pedidos, ticket médio, produtos e plano aqui. A configuração continua disponível na apresentação."}</p>}
             </LeadSection>
-          </div>
-          <div className="today-script-columns">
-            <LeadSection title="Roteiro">
-              {preview ? <ScriptBlocks script={script} tokens={tokens} /> : <ExecutionSteps key={`${l.id}-${item.confirmWindow || ""}`} script={script} tokens={tokens} item={item} />}
-            </LeadSection>
             <LeadSection title="Perguntas e respostas do formulário">
               <LeadChecklist key={l.id} checklist={scriptChecklist(saasCfg, l)} onPatch={patch} leadId={l.id} title="Respostas do lead" />
             </LeadSection>
           </div>
+          {preview && <LeadSection title="Pré-visualização do roteiro"><ScriptBlocks script={script} tokens={tokens} /></LeadSection>}
           <LeadSection title="Histórico de ações e anotações" className="today-script-history">
             <CallSummaryCard summary={callSummary} phone={l.phone} onSend={onWhatsapp ? (msg) => onWhatsapp(l, msg) : null} />
             {!preview && <ActivityComposer embedded lead={l} onLogged={() => setActsReload((n) => n + 1)} />}

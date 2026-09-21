@@ -1190,3 +1190,7 @@ respostas e anotações. Evidências: `scripts/review/today-card.mjs`.
 Complemento validado em 21/09/2026: atividades futuras abaixo de Hoje e
 configuração da apresentação enxuta. Revisão `today-card.mjs` confere
 expansão/abertura de atividades futuras, pedidos, ticket e preço por plano.
+
+Revisão final de 21/09/2026 — Atalhos.pdf: retirado o roteiro do card; atalhos
+no topo em largura inteira e apresentação/respostas lado a lado. Botões passam
+a “Abrir atividade”; histórico, próximo passo e atividades futuras permanecem.
