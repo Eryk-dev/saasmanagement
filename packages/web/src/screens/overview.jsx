@@ -1,3 +1,4 @@
+import { goalMilestone } from "../lib/goal-milestone.js";
 import React from "react";
 import "./overview.css";
 import { api } from "../lib/api.js";
@@ -160,8 +161,8 @@ function goalLabelOf(goal) {
 // Coluna de 96×300: fechado no teal com superfície líquida em movimento,
 // em follow-up empilhado por cima num tom mais claro, a marca tracejada
 // do pace atravessando e o rodapé com a porcentagem na cor do estado. A altura
-// é sobre a meta, então passar de 100% satura em 100% e o chip de super meta é
-// quem conta o resto. O pace fica acima dos efeitos, apenas como marca.
+// acompanha o alvo atual (100%, 120%, 140%...), preservando a meta original
+// no percentual realizado. O pace fica acima dos efeitos, apenas como marca.
 function LiquidoMeta({ height, followup = false }) {
   if (!(height > 0)) return null;
   // Dois períodos idênticos: deslocar metade da largura fecha o loop sem salto.
@@ -176,22 +177,25 @@ function LiquidoMeta({ height, followup = false }) {
   );
 }
 
-function Termometro({ s, goal, lad, label }) {
-  const alvo = Number(s.target) || 0;
+function Termometro({ s, goal, lad, label, milestone }) {
+  const alvo = milestone?.target ?? (Number(s.target) || 0);
+  const base = Number(s.target) || 0;
+  const extended = milestone?.percent > 100;
   const pctDe = (v) => (alvo > 0 ? Math.max(0, Math.min(100, (v / alvo) * 100)) : 0);
   const fechado = pctDe(Number(s.sold) || 0);
   // A camada clara indica a distância até o pace; follow-up continua na pílula.
   const mesa = goal.ended ? 0 : Math.max(0, Math.min(100 - fechado, (s.expectedProgress || 0) * 100 - fechado));
   const pacePct = !goal.ended && s.expectedProgress != null ? Math.max(0, Math.min(100, s.expectedProgress * 100)) : null;
-  const pctTxt = `${Math.round(alvo > 0 ? Math.max(0, (Number(s.sold) || 0) / alvo) * 100 : 0)}%`;
+  const pctTxt = `${Math.round(alvo > 0 ? Math.max(0, (Number(s.sold) || 0) / base) * 100 : 0)}%`;
   return (
     <div className="vg-meta-thermometer" >
       <div className="vg-meta-label">
-        <div className="kicker">{label}</div>
+        <div className="kicker">{extended ? `Próximo alvo · ${milestone.percent}%` : label}</div>
         <div className="vg-meta-target">{moneyFull(alvo)}</div>
+        {extended && <div className="vg-meta-base">{label}: {moneyFull(base)}</div>}
       </div>
       <div className="vg-meta-thermometer-bar" >
-        <div className="vg-meta-liquid-track" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={fechado} aria-valuetext={`${pctTxt} realizado: ${moneyFull(s.sold)} de ${moneyFull(alvo)}`} style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+        <div className="vg-meta-liquid-track" role="progressbar" aria-label={extended ? `Próximo alvo: ${milestone.percent}% da meta` : label} aria-valuemin={0} aria-valuemax={milestone?.percent || 100} aria-valuenow={Math.min(milestone?.percent || 100, base > 0 ? Math.max(0, s.sold / base * 100) : 0)} aria-valuetext={`${pctTxt} da meta original; ${moneyFull(s.sold)} de ${moneyFull(alvo)} do alvo atual`} style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
           <LiquidoMeta height={mesa} followup />
           <LiquidoMeta height={fechado} />
           {pacePct != null && <span className="vg-meta-pace-marker" aria-hidden="true"
@@ -200,7 +204,7 @@ function Termometro({ s, goal, lad, label }) {
       </div>
       <span className="vg-meta-percent">
         <span aria-hidden="true" />
-        <strong>{pctTxt}</strong><small>{goal.ended ? (s.sold >= alvo ? "meta batida" : "fechou abaixo") : LVL_LABEL[lad?.lvl] || "da meta"}</small>
+        <strong>{pctTxt}</strong><small>{goal.ended ? (s.sold >= alvo ? "meta batida" : "fechou abaixo") : extended ? "da meta original" : LVL_LABEL[lad?.lvl] || "da meta"}</small>
       </span>
     </div>
   );
@@ -214,11 +218,14 @@ function MetaMesCard({ pace, goal, children }) {
   const title = kind === "mês" ? "Meta do mês" : kind === "semana" ? "Meta da semana" : kind === "dia" ? "Meta do dia" : "Meta do período";
   const sLad = ladderOf(s.sold, s.target, s.expectedProgress);
   const curMes = kind === "mês" && goal.current && pace?.sale;
-  const falta = s.target != null ? Math.max(0, r2((s.target || 0) - (s.sold || 0))) : null;
+  const milestone = goalMilestone({ ...s, ended: goal.ended, remainingBusinessDays: pace?.sale?.remainingBusinessDays });
+  const activeTarget = milestone?.target ?? s.target;
+  const falta = milestone?.missing ?? (s.target != null ? Math.max(0, r2((s.target || 0) - (s.sold || 0))) : null);
+  const requiredDaily = milestone?.requiredDailyPace ?? null;
   const excedente = s.target != null ? Math.max(0, r2((s.sold || 0) - (s.target || 0))) : 0;
   // A distância pro pace EM DINHEIRO (o risquinho só dizia onde a marca está).
-  const esperadoAteAqui = s.target != null && s.expectedProgress != null ? r2((s.target || 0) * s.expectedProgress) : 0;
-  const paceDelta = r2((s.sold || 0) - esperadoAteAqui);
+  const esperadoAteAqui = s.target != null && s.expectedProgress != null ? r2((activeTarget || 0) * s.expectedProgress) : 0;
+  const paceDelta = milestone?.paceDelta ?? r2((s.sold || 0) - esperadoAteAqui);
   // "Em follow-up": o que está aberto no funil. MESMA régua do "em jogo" do
   // Pipeline (leads em etapa aberta do produto), pra as duas telas nunca
   // discordarem sobre o tamanho da mesa.
@@ -242,7 +249,7 @@ function MetaMesCard({ pace, goal, children }) {
         </div>
       ) : (
         <div className="vg-meta-columns">
-          {s.target != null && <Termometro s={s} goal={goal} lad={sLad} label={title} />}
+          {s.target != null && <Termometro s={s} goal={goal} lad={sLad} label={title} milestone={milestone} />}
           <div className="vg-meta-story">
             <div>
               <h2 className="vg-section-label">Funil de vendas</h2>
@@ -256,12 +263,12 @@ function MetaMesCard({ pace, goal, children }) {
               </div>
               <div className="vg-meta-facts">
                 {falta != null && <div className="vg-meta-fact">
-                  <span>{falta > 0 ? (goal.ended ? "Faltou" : "Falta") : "Meta batida"}</span>
+                  <span>{falta > 0 ? (goal.ended ? "Faltou" : milestone?.percent > 100 ? `Falta para ${milestone.percent}%` : "Falta") : "Meta batida"}</span>
                   <strong>{moneyFull(falta || excedente)}</strong>
                 </div>}
-                {curMes && pace.sale.requiredDailyPace != null && <div className="vg-meta-fact"><span>por dia útil</span><strong>{moneyFull(pace.sale.requiredDailyPace)}</strong><small>{int(pace.sale.remainingBusinessDays)} restam</small></div>}
+                {curMes && requiredDaily != null && <div className="vg-meta-fact"><span>por dia útil</span><strong>{moneyFull(requiredDaily)}</strong><small>{int(pace.sale.remainingBusinessDays)} restam</small></div>}
                 <div className="vg-meta-fact is-followup"><span>follow-up · {int(naMesa.n)}</span><strong>{moneyFull(naMesa.valor)}</strong></div>
-                {curMes && pace.sale.projected != null && <div className="vg-meta-fact"><span>projeção</span><strong style={{ color: pace.sale.projected >= s.target ? "var(--pos)" : "var(--neg)" }}>{moneyFull(pace.sale.projected)}</strong></div>}
+                {curMes && pace.sale.projected != null && <div className="vg-meta-fact"><span>projeção</span><strong style={{ color: pace.sale.projected >= activeTarget ? "var(--pos)" : "var(--neg)" }}>{moneyFull(pace.sale.projected)}</strong></div>}
               </div>
               <div className="vg-meta-caption">{int(c.sold)} contratos assinados{c.sold > 0 && s.sold > 0 ? ` · ticket médio ${moneyFull(s.sold / c.sold)}` : ""}{curMes ? ` · ritmo atual ${moneyFull(pace.sale.actualDailyPace)}/dia útil` : ""}</div>
               {s.target == null && <div className="vg-meta-caption">Sem meta de venda para este período.</div>}

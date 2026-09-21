@@ -570,3 +570,14 @@ por campo, apenas informações explícitas da transcrição. Resumos antigos us
 registrados. Abrir o cartão só consulta a REST, sem gerar resumo nem enviar
 mensagem. Validação de navegador: `node scripts/review/followup-summary.mjs`
 em `packages/web`.
+
+### Alvos progressivos da Visão Geral — 21/09/2026
+
+O card da meta avança o alvo visual para 120%, 140%, 160% etc. assim que o
+resultado atinge o alvo anterior, apenas em períodos não encerrados. A meta
+cadastrada e o percentual realizado sobre ela são preservados. `goal-milestone.js`
+centraliza o alvo, o valor faltante, a diferença para o pace e o ritmo diário
+necessário. Termômetro e comparação da projeção usam o mesmo alvo. Períodos
+encerrados conservam a meta original; sem dias restantes não há divisão.
+Testes: `test/goal-milestone.test.js` e `scripts/review/goal-milestones.mjs`
+em `packages/web`.
