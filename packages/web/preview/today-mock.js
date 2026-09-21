@@ -18,6 +18,16 @@ export function setupTodayReview(seed) {
   }
   if (params.get('state') === 'empty') seed.LEADS = [];
   if (params.has('many')) seed.LEADS = [...seed.LEADS, ...Array.from({length:15},(_,i)=>({...seed.LEADS.find(l=>l.id==='l3'), id:`extra-${i}`, name:`Lead ${i + 1}`, company:`Empresa ${i + 1}`}))];
+  if (params.has('callSummary')) {
+    const summary = { compromissos:['Enviar proposta até sexta.'], objecoes:[{objecao:'Preço acima do orçamento',resolvida:false}],
+      retomada:{combinado:'Retornar sexta para decidir com o sócio.',objecoes:'Preço acima do orçamento, ainda em aberto.',beneficios:'Reduzir o trabalho manual nas três contas.'} };
+    if (params.has('legacySummary')) delete summary.retomada;
+    activities = [
+      {id:'sale-old',lead:'l5',type:'system',at:'2026-09-15T15:00:00Z',meta:{event:'call_summary',kind:'call',summary:{compromissos:['Combinado antigo']}}},
+      {id:'sale',lead:'l5',type:'system',at:'2026-09-16T15:00:00Z',meta:{event:'call_summary',kind:'call',summary}},
+      {id:'integration',lead:'l5',type:'system',at:'2026-09-17T15:00:00Z',meta:{event:'call_summary',kind:'integracao',summary:{resumo:'Integração posterior',sentimento:'satisfeito'}}},
+    ];
+  }
   window.__reviewMutations = [];
 }
 export const todayMock = {

@@ -216,3 +216,11 @@
 .lead-answers-editor { margin-top: 14px; }
 .lead-answers-editor > summary { padding: 8px 0; font-size: 12px; color: var(--accent); cursor: pointer; }
 .lead-answers-editor[open] > summary { margin-bottom: 8px; }
+
+.today-followup-summary dl { margin: 0; display: grid; gap: 10px; }
+.today-followup-summary dl > div { display: grid; grid-template-columns: 125px minmax(0, 1fr); gap: 12px; }
+.today-followup-summary dt { color: var(--fg-3); font-size: 12px; }
+.today-followup-summary dd { margin: 0; color: var(--fg-1); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .today-followup-summary dl > div { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+}
