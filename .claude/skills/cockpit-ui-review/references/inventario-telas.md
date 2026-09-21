@@ -1109,5 +1109,32 @@ Validação: 1.739 testes da API, testes web/smoke, build e revisão visual apro
   390/1024 e escuro conferidos. Navegação global não ganhou guarda de rascunho.
 
 Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
-As demais 2 páginas aguardam esta rodada; registros históricos não são aceite
+
+### 29. Financeiro (`#expenses`) — validada
+
+- Cabeçalho compacto, abas navy, meses, pendências suaves, resumo em papel,
+  colunas 2:1 de fluxo/DRE e gastos em anel seguem `TelaFinanceiro.dc.html`.
+  Mantidas as seis abas: Resumo, Conciliação, A pagar, Folha, Pagamentos e Custos.
+- Leituras financeiras têm erro/nova tentativa; falha não vira total zero,
+  plano vazio ou fila conciliada. Resumo aguarda também custos externos antes
+  de mostrar DRE completa. Respostas antigas são ignoradas e mês/produto
+  remontam a aba, sem reaproveitar o formulário de outra competência.
+- Custos, contas, baixas/reaberturas, vínculo e sync bloqueiam cliques repetidos;
+  formulários preservam valores na falha. Recorrência e exclusão confirmam o
+  item. Excluir regra confirma o efeito. Vínculo bem-sucedido com falha da regra
+  mostra resultado parcial, sem prometer que a regra foi criada.
+- Campos da conciliação/conta têm nomes acessíveis, ações de vínculo substituem
+  “ok”, menus e controles cabem no celular. Tabela de pagamentos mantém scroll.
+  API, bases financeiras, datas de reconhecimento, total da pizza e regra de
+  déficit permanecem. O anel continua usando recebido como 100%, sem normalizar
+  despesas, e não aparece para déficit/receita ausente.
+- Evidências: `npm run test:review:expenses -w packages/web`, capturas e
+  `geometry.json` em `.review-artifacts/expenses`; 14 medidas do título/cabeçalho
+  em 1440/1920, diferença <1px. Seis abas em desktop/390, 1024, escuro, vazio,
+  déficit/sem receita, CRUD custos/contas, baixa/reabrir, cancelamento/exclusão,
+  conciliação, falhas/retry e gravação única com mocks. Conteúdo varia conforme
+  dados reais e campos existentes; navegação global não ganhou guarda de rascunho.
+
+Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
+A página Configurações aguarda esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.

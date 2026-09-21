@@ -29,7 +29,8 @@ function FinanceTab({ product }) {
   const mpOn = !!window.SEED?.CONFIG?.mp?.configured;
   const money = window.fmt.money;
 
-  const [data, setData] = useState(null); // { payments, sync }
+  const [data, setData] = useState(null), [err,setErr]=useState(null), [busy,setBusy]=useState(false);
+  const action=React.useRef(false),request=React.useRef(0); // { payments, sync }
   // Janela GLOBAL do cockpit (filtro único no topo, 08/08): o corte dos
   // pagamentos é client-side, por dia local do dateCreated.
   const { win } = usePeriod();
@@ -39,32 +40,34 @@ function FinanceTab({ product }) {
 
   const load = useCallback(() => {
     if (!product?.id || !mpOn) return;
-    api.mpPayments({ saas: product.id }).then(setData).catch(() => {});
+    const seq=++request.current;setErr(null);
+    return api.mpPayments({ saas: product.id }).then(d=>{if(seq===request.current)setData(d);}).catch(e=>{if(seq===request.current)setErr(e.message);});
   }, [product?.id, mpOn]);
-  useEffect(() => { load(); }, [load, version]);
+  useEffect(() => { load(); return()=>{request.current++;}; }, [load, version]);
 
   function flash(msg) { setToast(msg); setTimeout(() => setToast(null), 3200); }
 
   async function syncNow() {
-    if (syncing) return;
-    setSyncing(true);
+    if (action.current) return;
+    action.current=true;setSyncing(true);setBusy(true);
     try {
       const r = await api.mpSyncNow();
       flash(`sincronizado: ${r.seen} pagamento(s) vistos · ${r.settled} fatura(s) baixada(s)`);
-      load();
+      await load();
     } catch (err) { flash(err.message || "MP não respondeu"); }
-    finally { setSyncing(false); }
+    finally { action.current=false;setSyncing(false);setBusy(false); }
   }
 
   async function linkPayment(p) {
     const customer = linking[p.id];
-    if (!customer) return;
+    if (!customer || action.current) return;
+    action.current=true;setBusy(true);
     try {
       const r = await api.mpLinkPayment(p.id, customer);
       flash(r.invoice ? "vinculado — fatura de mesmo valor baixada junto" : "vinculado ao cliente");
       setLinking((m) => ({ ...m, [p.id]: "" }));
-      load();
-    } catch (err) { flash(err.message || "não deu pra vincular"); }
+      await load();
+    } catch (err) { flash(err.message || "não deu pra vincular"); } finally{action.current=false;setBusy(false);}
   }
 
   const customers = useMemo(() => (CUSTOMERS || []).filter((c) => c.saas === product?.id), [CUSTOMERS, product?.id]);
@@ -107,11 +110,13 @@ function FinanceTab({ product }) {
     );
   }
 
+  if(err || !data) return <div className="finance-notice" role={err?"alert":"status"}>{err || "Carregando pagamentos…"}{err && <button onClick={load}>Tentar novamente</button>}</div>;
+
   const TILE = { border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: "var(--bg-1)", padding: "12px 16px", flex: "1 1 150px", minWidth: 140 };
   const btn = { height: 28, padding: "0 12px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 };
 
   return (
-    <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 14 }}>
+    <fieldset className="finance-content finance-payments" disabled={busy}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <span className="dim" style={{ fontSize: 12 }}>pagamentos de {win.label} · o filtro do topo manda na janela</span>
         <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 8 }}>
@@ -198,12 +203,12 @@ function FinanceTab({ product }) {
                         </span>
                       ) : (
                         <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                          <select value={linking[p.id] || ""} onChange={(e) => setLinking((m) => ({ ...m, [p.id]: e.target.value }))}
+                          <select aria-label={`Cliente do pagamento ${p.id}`} value={linking[p.id] || ""} onChange={(e) => setLinking((m) => ({ ...m, [p.id]: e.target.value }))}
                             style={{ height: 26, maxWidth: 160, padding: "0 6px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 12 }}>
                             <option value="">vincular a…</option>
                             {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                           </select>
-                          {linking[p.id] && <button onClick={() => linkPayment(p)} style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "none", background: "var(--accent)", color: "var(--accent-fg, #fff)", fontSize: 11.5, fontWeight: 600 }}>ok</button>}
+                          {linking[p.id] && <button onClick={() => linkPayment(p)} style={{ height: 26, padding: "0 10px", borderRadius: "var(--r-2)", border: "none", background: "var(--accent)", color: "var(--accent-fg, #fff)", fontSize: 11.5, fontWeight: 600 }}>Vincular</button>}
                         </span>
                       )}
                     </td>
@@ -231,7 +236,7 @@ function FinanceTab({ product }) {
       <div className="mono dim" style={{ fontSize: 10.5, lineHeight: 1.5 }}>
         pagamentos sem produto identificado aparecem em todos os workspaces até serem vinculados · o casamento acontece pelo link do cockpit (fatura, lead ou assinatura) ou pelo e-mail do pagador · a baixa automática de fatura exige valor exato quando o casamento é por e-mail
       </div>
-    </div>
+    </fieldset>
   );
 }
 
