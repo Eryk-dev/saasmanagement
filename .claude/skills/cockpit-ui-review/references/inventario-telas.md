@@ -1062,5 +1062,28 @@ Validação: 1.739 testes da API, testes web/smoke, build e revisão visual apro
   por imagem e upload permanecem, sem envio a serviços reais nesta validação.
 
 Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
-As demais 4 páginas aguardam esta rodada; registros históricos não são aceite
+
+### 27. Metas (`#metas`) — validada
+
+- Cabeçalho, papel, campos compactos, cards por vaga e agenda em linhas seguem
+  `TelaMetas.dc.html`; cadeia com valor antes do rótulo, seções com hierarquia
+  e réguas com indicação do pace sem sobrepor o valor no celular.
+- Corrigido erro de renderização da cadeia: `infoDot` estava fora do escopo.
+  Leitura inicial e réguas têm erro/nova tentativa, sem fabricar dados.
+- Gravação e classificação bloqueiam repetição/edição concorrente. Rascunhos
+  permanecem em falhas. Se gravar e falhar na releitura, a ação atualiza a tela
+  sem reenviar a escrita. A tela é remontada por produto; permissões preservadas.
+- Campos por pessoa/ajuste têm rótulos acessíveis, tabela com scroll e controles
+  de 44px no celular. Nenhuma fórmula, precedência de metas, payload, regra de
+  promoção ou autorização no servidor mudou.
+- Evidências: `npm run test:review:metas -w packages/web`, capturas/medidas em
+  `.review-artifacts/metas`. 16 medidas de posição/largura do título, cabeçalho
+  e primeiro card em 1440/1920 conferidas (diferença <1px). Alturas dependem
+  dos dados/regras vigentes (metas individuais de remuneração preservadas).
+  Derivar, crescimento, limpar ajuste, descartar, classificação/rollback,
+  erro/retry, leitura após escrita sem duplicar, 390/1024, vazio, não admin e
+  escuro conferidos com mocks. Navegação global não ganhou guarda de rascunho.
+
+Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
+As demais 3 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.
