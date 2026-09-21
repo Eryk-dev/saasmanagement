@@ -158,25 +158,6 @@
   .today-queue-row button,.today-pagination button,.today-completed summary { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) { .today-screen *, .today-script * { animation: none !important; transition: none !important; } }
-.today-script-block { padding: 13px 15px; border-radius: 18px; background: var(--bg-inset); }
-.today-script-label { font-size: 9.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-3); }
-.today-next-step { display: block; margin-top: 7px; font-size: 13.5px; font-weight: 650; text-wrap: pretty; }
-.today-step-context { font-size: 11.5px; color: var(--fg-3); margin: 4px 0 0; text-wrap: pretty; }
-.today-script-block-head { display: flex; align-items: center; gap: 8px; }
-.today-step-count { margin-left: auto; padding: 3px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 600; color: var(--pos); background: var(--pos-soft); }
-.today-steps { display: flex; flex-direction: column; gap: 2px; margin-top: 9px; }
-.today-step { display: flex; align-items: flex-start; gap: 9px; width: 100%; text-align: left; padding: 7px 9px; border-radius: 14px; transition: background 150ms ease; }
-.today-step:hover { background: var(--bg-1); }
-.today-step-check { flex-shrink: 0; display: inline-flex; justify-content: center; align-items: center; width: 17px; height: 17px; margin-top: 1px; border-radius: 5px; box-shadow: inset 0 0 0 1.5px var(--line-2); background: var(--bg-1); font-size: 11px; }
-.today-step > span:last-child { flex: 1; min-width: 0; }
-.today-step strong { display: block; font-size: 12px; font-weight: 650; line-height: 1.4; }
-.today-step-speech { display: block; font-size: 12px; line-height: 1.5; color: var(--fg-2); margin-top: 5px; padding-left: 9px; border-left: 2px solid var(--line-2); white-space: pre-line; text-wrap: pretty; }
-.today-step small { display: block; font-size: 10.5px; line-height: 1.45; color: var(--fg-3); margin-top: 5px; }
-.today-step[aria-pressed="true"] .today-step-check { background: var(--pos); color: var(--bg-1); }
-.today-step[aria-pressed="true"] strong { text-decoration: line-through; color: var(--fg-4); }
-.today-step[aria-pressed="true"] .today-step-speech { opacity: .5; }
-.today-script-message { margin-top: 8px; padding: 10px 12px; border-radius: 14px; background: var(--bg-1); box-shadow: inset 0 0 0 1px var(--line-1); font-size: 12px; line-height: 1.55; white-space: pre-line; text-wrap: pretty; }
-.today-copy-message { width: 100%; min-height: 32px; margin-top: 8px; border-radius: 999px; background: var(--bg-1); color: var(--accent); font-size: 11.5px; font-weight: 600; }
 .today-clean { padding: 26px; }
 .today-clean h2 { font: 700 26px var(--display); margin: 10px 0 5px; }
 .today-clean p { font-size: 12.5px; margin: 0; color: var(--fg-3); }
@@ -198,8 +179,8 @@
 
 /* Card de execução — desenho do Leonardo, 21/09/2026. */
 .today-script-body { display: flex; flex-direction: column; gap: 16px; padding: 18px 20px; overflow-y: auto; min-height: 0; background: var(--bg-0); }
-.today-script-preparation, .today-inline-script .today-script-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
-.today-script-preparation > *, .today-script-shortcuts { min-width: 0; }
+.today-inline-script .today-script-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.today-script-shortcuts { min-width: 0; }
 .today-script-hint { font-size: 12px; line-height: 1.5; color: var(--fg-3); overflow-wrap: anywhere; }
 .today-script-columns > .lead-section { height: 100%; }
 .today-presentation iframe { display: block; width: 100%; height: 340px; border: 0; border-radius: var(--r-2); background: var(--bg-1); }
@@ -207,10 +188,10 @@
 .today-script-history > .activity-composer { margin-bottom: 12px; }
 .today-inline-script { container-type: inline-size; }
 @container (max-width: 540px) {
-  .today-script-preparation, .today-inline-script .today-script-columns { grid-template-columns: minmax(0, 1fr); }
+  .today-inline-script .today-script-columns { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 760px) {
-  .today-script-preparation, .today-inline-script .today-script-columns { grid-template-columns: minmax(0, 1fr); }
+  .today-inline-script .today-script-columns { grid-template-columns: minmax(0, 1fr); }
 }
 .today-future { border-radius: 24px !important; }
 .today-future button { min-height: 44px; }
