@@ -1,6 +1,11 @@
 import React from "react";
+import { createPortal } from "react-dom";
+import { fmtDateTime } from "../lib/format.js";
+import { Popover as SharedPopover } from "../components/popover.jsx";
+import { Menu as SharedMenu } from "../components/menu.jsx";
+import "./mindmaps.css";
 import { EmptyState, useEsc, toast, PrimaryButton } from "../atoms.jsx";
-import { Segmented, PageHead } from "../components/viz.jsx";
+import { PageHead } from "../components/viz.jsx";
 import { api, assetUrl, getKey } from "../lib/api.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { useIsMobile } from "../lib/responsive.js";
@@ -26,154 +31,102 @@ const MIME_IMG = /^image\//;
 
 // ── Tela ─────────────────────────────────────────────────────────────────────
 export function MindmapsScreen() {
+  const [product] = useActiveSaas();
+  return <MindmapsWorkspace key={product?.id || "all"} product={product} />;
+}
+function MindmapsWorkspace({product: activeProduct}) {
   const isMobile = useIsMobile();
-  const [activeProduct] = useActiveSaas();
-  const [maps, setMaps] = useState(null);
-  const [activeId, setActiveId] = useState(null);
-  const [renaming, setRenaming] = useState(null);
-  const [focus, setFocus] = useState(false); // modo foco: só o canvas
-
+  const [maps, setMaps] = useState(null), [error, setError] = useState("");
+  const [activeId, setActiveId] = useState(null), [renaming, setRenaming] = useState(null);
+  const [focus, setFocus] = useState(false), [gaveta, setGaveta] = useState(() => !isMobile);
+  const [busy, setBusy] = useState(false);
+  const working = useRef(false), generation = useRef(0), editorFlush = useRef(null);
+  const activeRef = useRef(activeId); activeRef.current = activeId;
   const load = useCallback(async () => {
-    const rows = await api.list("mindmaps");
-    return (rows || []).sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")));
+    const request = ++generation.current;
+    try {
+      const rows = await api.list("mindmaps");
+      if (request !== generation.current) return;
+      const list = (rows || []).sort((a,b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")));
+      setMaps(cur => list.map(m => m.id === activeRef.current && cur?.some(c => c.id === m.id) ? {...m, ...cur.find(c => c.id === m.id), name:m.name} : m));
+      setError("");
+    } catch { if (request === generation.current) setError("Não deu para carregar os mapas. Tente novamente."); }
   }, []);
+  useEffect(() => { load(); return () => { generation.current++; }; }, [load]);
   useEffect(() => {
-    let alive = true;
-    load().then((list) => { if (!alive) return; setMaps(list); setActiveId((cur) => cur || list[0]?.id || null); }).catch(() => alive && setMaps([]));
-    return () => { alive = false; };
-  }, [load]);
-  // Lista reage ao tempo real só da coleção dela (mapa novo/renomeado por outra
-  // pessoa); o conteúdo do mapa aberto é o editor que sincroniza.
-  useEffect(() => {
-    const on = (e) => {
-      if (e.detail?.collection !== "mindmaps") return;
-      load().then((list) => setMaps((cur) => {
-        if (!cur) return list;
-        // não sobrescreve nodes/links do mapa aberto (o editor é a verdade dele)
-        return list.map((m) => (m.id === activeId ? { ...m, ...(cur.find((c) => c.id === m.id) || {}), name: m.name } : m));
-      })).catch(() => {});
-    };
+    const on = e => { if (e.detail?.collection === "mindmaps") load(); };
     window.addEventListener("cockpit-change", on);
     return () => window.removeEventListener("cockpit-change", on);
-  }, [load, activeId]);
-
-  async function newMap() {
-    const doc = { name: "Novo mapa", saas: activeProduct?.id || "", layout: "tree", nodes: [], links: [], createdAt: new Date().toISOString() };
+  }, [load]);
+  const visible = (maps || []).filter(m => !m.saas || m.saas === activeProduct?.id);
+  const active = visible.find(m => m.id === activeId) || null;
+  useEffect(() => { if (!visible.some(m => m.id === activeId)) setActiveId(visible[0]?.id || null); }, [maps, activeId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const onMapSaved = saved => setMaps(cur => (cur || []).map(m => m.id === saved.id ? {...m, ...saved} : m));
+  async function run(action) {
+    if (working.current) return false;
+    working.current = true; setBusy(true);
     try {
-      const created = await api.create("mindmaps", doc);
-      setMaps((m) => [created, ...(m || [])]);
-      setActiveId(created.id);
-      setRenaming(created.id);
-    } catch (e) { toast(`mapa não criado · ${e.message}`, "neg"); }
+      if (editorFlush.current && !await editorFlush.current()) return false;
+      await action(); return true;
+    } catch(e) { toast(e.message || "Não foi possível salvar. Tente novamente.", "neg"); return false; }
+    finally { working.current = false; setBusy(false); }
   }
-  async function renameMap(id, name) {
-    setMaps((m) => (m || []).map((x) => x.id === id ? { ...x, name } : x));
-    setRenaming(null);
-    try { await api.update("mindmaps", id, { name }); } catch (e) { toast(`nome não salvo · ${e.message}`, "neg"); }
-  }
-  async function deleteMap(m) {
-    if (!window.confirm(`Apagar o mapa "${m.name || "Sem título"}" com ${(m.nodes || []).length} nós? Não dá pra desfazer.`)) return;
-    try {
-      await api.remove("mindmaps", m.id);
-      setMaps((cur) => (cur || []).filter((x) => x.id !== m.id));
-      if (activeId === m.id) setActiveId(null);
-    } catch (e) { toast(`não apagou · ${e.message}`, "neg"); }
-  }
-  async function duplicateMap(m) {
-    try {
-      const created = await api.create("mindmaps", { name: `${m.name || "Mapa"} (cópia)`, saas: m.saas || activeProduct?.id || "", layout: m.layout || "tree", nodes: m.nodes || [], links: m.links || [], createdAt: new Date().toISOString() });
-      setMaps((cur) => [created, ...(cur || [])]);
-      setActiveId(created.id);
-    } catch (e) { toast(`não duplicou · ${e.message}`, "neg"); }
-  }
-  const onMapSaved = (saved) => setMaps((m) => (m || []).map((x) => x.id === saved.id ? { ...x, ...saved } : x));
-
-  const visible = (maps || []).filter((m) => !m.saas || m.saas === activeProduct?.id);
-  const active = visible.find((m) => m.id === activeId) || null;
-  useEffect(() => {
-    if (activeId && !visible.some((m) => m.id === activeId)) setActiveId(visible[0]?.id || null);
-    else if (!activeId && visible.length) setActiveId(visible[0].id);
-  }, [activeProduct?.id, maps]); // eslint-disable-line react-hooks/exhaustive-deps
-  // CRM final: a lista acompanha o canvas no desktop; no celular ela recolhe.
-  const [gaveta, setGaveta] = useState(() => !isMobile);
-  async function claimMap(id) {
-    const saas = activeProduct?.id || "";
-    setMaps((m) => (m || []).map((x) => (x.id === id ? { ...x, saas } : x)));
-    try { await api.update("mindmaps", id, { saas }); } catch (e) { toast(`não trouxe · ${e.message}`, "neg"); }
-  }
-
-  return (
-    <div style={{ flex: 1, display: "flex", minHeight: 0, flexDirection: "column", gap: 12 }}>
-      {!focus && <PageHead title="Mapas mentais" sub="Tab cria filho, Enter cria irmão, duplo clique edita"><PrimaryButton onClick={newMap}>Criar mapa</PrimaryButton></PageHead>}
-      <div style={{ flex: 1, display: "flex", minHeight: 0, gap: 12, flexDirection: isMobile ? "column" : "row" }}>
-      {/* A LISTA VIROU GAVETA (13/09): a tela abre NO MAPA, que é o trabalho;
-          a coluna de 230px com os outros mapas ficava ocupando espaço o tempo
-          todo pra uma troca que acontece de vez em quando. Abre no nome do
-          mapa (canto superior esquerdo) e fecha ao escolher. */}
-      {!focus && gaveta && (
-        <div style={{ width: isMobile ? "100%" : 230, maxHeight: isMobile ? 150 : undefined, flexShrink: 0, borderRadius: 24, boxShadow: "var(--shadow-card)", overflow: "auto", padding: isMobile ? "10px 12px" : "16px 12px", background: "var(--bg-1)", display: "flex", flexDirection: "column", gap: 2 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 8px 12px" }}>
-            <span className="kicker" style={{ fontWeight: 600 }}>Mapas</span>
-            <button onClick={newMap} style={{ height: 24, padding: "0 4px", color: "var(--accent)", fontSize: 12.5, fontWeight: 600 }}>+ novo</button>
-          </div>
-          {maps === null && <div className="mono dim" style={{ fontSize: 11, padding: 10 }}>carregando…</div>}
-          {maps !== null && visible.length === 0 && <div className="dim" style={{ fontSize: 12, padding: 10, lineHeight: 1.5 }}>nenhum mapa {activeProduct?.name ? `da ${activeProduct.name}` : "ainda"} · crie o primeiro em “+ novo”</div>}
-          {visible.map((m) => (
-            <MapRow key={m.id} m={m} active={m.id === activeId} renaming={renaming === m.id}
-              onOpen={() => { setActiveId(m.id); if (isMobile) setGaveta(false); }} onRename={() => setRenaming(m.id)} onRenamed={(name) => renameMap(m.id, name)} onCancelRename={() => setRenaming(null)}
-              onDelete={() => deleteMap(m)} onDuplicate={() => duplicateMap(m)} onClaim={!m.saas ? () => claimMap(m.id) : null} productName={activeProduct?.name} />
-          ))}
+  const openMap = id => run(async () => { setActiveId(id); if (isMobile) setGaveta(false); });
+  const newMap = () => run(async () => {
+    const created = await api.create("mindmaps", {name:"Novo mapa", saas:activeProduct?.id || "", layout:"tree", nodes:[], links:[], createdAt:new Date().toISOString()});
+    setMaps(cur => [created, ...(cur || [])]); setActiveId(created.id); setRenaming(created.id);
+    if (isMobile) setGaveta(false);
+  });
+  const renameMap = (id,name) => run(async () => {
+    const saved = await api.update("mindmaps",id,{name}); onMapSaved(saved); setRenaming(null);
+  });
+  const deleteMap = m => {
+    if (!window.confirm(`Apagar o mapa "${m.name || "Sem título"}" com ${(m.nodes || []).length} nós? Não dá para desfazer.`)) return;
+    run(async () => { await api.remove("mindmaps",m.id); setMaps(cur => cur.filter(x => x.id !== m.id)); });
+  };
+  const duplicateMap = m => run(async () => {
+    // O flush atualiza o documento aberto antes de duplicá-lo.
+    const source = m.id === activeId ? await api.get("mindmaps",m.id) : m;
+    const created = await api.create("mindmaps", {name:`${source.name || "Mapa"} (cópia)`, saas:source.saas || activeProduct?.id || "", layout:source.layout || "tree", nodes:source.nodes || [], links:source.links || [], createdAt:new Date().toISOString()});
+    setMaps(cur => [created,...(cur || [])]); setActiveId(created.id);
+  });
+  const claimMap = id => run(async () => onMapSaved(await api.update("mindmaps",id,{saas:activeProduct?.id || ""})));
+  return <div className="mindmaps-page">
+    {!focus && <PageHead className="mindmaps-head" title="Mapas mentais" sub="pensar em árvore · Tab cria filho, Enter cria irmão, duplo clique edita"><PrimaryButton disabled={busy || maps === null} onClick={newMap}>Criar mapa</PrimaryButton></PageHead>}
+    {error && <div className="mindmaps-error" role="alert">{error}<button type="button" onClick={load}>Tentar novamente</button></div>}
+    {maps === null && !error ? <div role="status" className="mindmaps-loading">Carregando mapas…</div> : maps !== null && <div className="mindmaps-body" data-list={!focus && gaveta ? "open" : "closed"}>
+      {!focus && gaveta && <aside className="mindmaps-list">
+        <div className="mindmaps-list-head"><span className="kicker">Mapas</span><span>{visible.length} {visible.length === 1 ? "mapa" : "mapas"} neste workspace</span></div>
+        <div className="mindmaps-list-rows">{visible.map(m => <MapRow key={m.id} m={m} active={m.id === activeId} disabled={busy}
+          onOpen={() => openMap(m.id)} onRename={() => { openMap(m.id); setRenaming(m.id); }}
+          onDelete={() => deleteMap(m)} onDuplicate={() => duplicateMap(m)} onClaim={!m.saas ? () => claimMap(m.id) : null} productName={activeProduct?.name} />)}
+          {!visible.length && <p className="mindmaps-list-empty">Nenhum mapa neste workspace.</p>}
         </div>
-      )}
-      <div style={{ flex: 1, minWidth: 0, position: "relative", background: "var(--bg-1)", borderRadius: 24, overflow: "hidden", boxShadow: "var(--shadow-card)" }}>
-        {!focus && (
-          <button onClick={() => setGaveta((v) => !v)}
-            title={gaveta ? "esconder a lista de mapas" : "trocar de mapa"}
-            style={{ position: "absolute", top: 10, left: 12, zIndex: 5, height: 30, padding: "0 12px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", boxShadow: "var(--shadow-1)", color: "var(--fg-2)", fontSize: 12.5, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6, maxWidth: 280 }}>
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{active?.name || "Mapas"}</span>
-            <span className="mono dim" style={{ fontSize: 10 }}>{gaveta ? "◂" : "▾"}</span>
-          </button>
-        )}
-        {active
-          ? <MapEditor key={active.id} map={active} onSaved={onMapSaved} focus={focus} setFocus={setFocus} isMobile={isMobile} />
-          : <EmptyState title="Nenhum mapa aberto" hint={visible.length ? "Escolha um mapa na lista." : `Crie um mapa ${activeProduct?.name ? `da ${activeProduct.name} ` : ""}em “+ novo” pra começar.`} />}
-      </div>
-      </div>
-    </div>
-  );
+      </aside>}
+      <section className="mindmaps-workspace">
+        {active ? <MapEditor key={active.id} map={active} onSaved={onMapSaved} focus={focus} setFocus={setFocus} isMobile={isMobile} flushRef={editorFlush}
+          onRename={name => renameMap(active.id,name)} renameRequested={renaming === active.id} busy={busy} showMaps={gaveta} onToggleMaps={() => setGaveta(v => !v)} /> : <EmptyState title="Nenhum mapa aberto" hint={visible.length ? "Escolha um mapa na lista." : "Crie um mapa para organizar ideias e decisões."} action={<PrimaryButton disabled={busy} onClick={newMap}>Criar primeiro mapa</PrimaryButton>} />}
+      </section>
+    </div>}
+  </div>;
 }
-
-function MapRow({ m, active, renaming, onOpen, onRename, onRenamed, onCancelRename, onDelete, onDuplicate, onClaim, productName }) {
-  const [menu, setMenu] = useState(null);
-  return (
-    <div onClick={onOpen} onDoubleClick={onRename} onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); }}
-      style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: "var(--r-2)", cursor: "pointer", background: active ? "var(--accent-soft)" : "transparent" }}>
-      <span style={{ fontSize: 12, flexShrink: 0, color: active ? "var(--accent)" : "var(--fg-4)" }}>⌬</span>
-      {renaming ? (
-        <input autoFocus defaultValue={m.name} className="inp" onClick={(e) => e.stopPropagation()}
-          onBlur={(e) => onRenamed(e.target.value.trim() || "Sem título")}
-          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") onCancelRename(); }}
-          style={{ flex: 1, minWidth: 0, height: 24, fontSize: 12.5, padding: "0 6px" }} />
-      ) : (
-        <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: active ? 600 : 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: active ? "var(--fg-1)" : "var(--fg-2)" }}>{m.name || "Sem título"}</span>
-      )}
-      {onClaim && (
-        <button onClick={(e) => { e.stopPropagation(); onClaim(); }}
-          title={`Mapa antigo, sem produto definido (aparece em todos os workspaces). Clique pra trazer pra ${productName || "este produto"}.`}
-          style={{ flexShrink: 0, height: 18, padding: "0 6px", borderRadius: 999, border: "1px dashed var(--line-2)", background: "transparent", color: "var(--fg-4)", fontSize: 9.5, cursor: "pointer" }}>
-          sem produto · trazer
-        </button>
-      )}
-      <span className="mono tnum dim" style={{ fontSize: 10.5, flexShrink: 0 }}>{(m.nodes || []).length}</span>
-      {menu && (
-        <Menu x={menu.x} y={menu.y} onClose={() => setMenu(null)} items={[
-          { label: "Renomear", onClick: onRename },
-          { label: "Duplicar", onClick: onDuplicate },
-          { label: "Apagar mapa", danger: true, onClick: onDelete },
-        ]} />
-      )}
-    </div>
-  );
+function MapRow({m, active, disabled, onOpen, onRename, onDelete, onDuplicate, onClaim, productName}) {
+  const [menu,setMenu] = useState(null);
+  return <div className={"mindmaps-row"+(active?" is-active":"")} onContextMenu={e=>{e.preventDefault();if(!disabled)setMenu({x:e.clientX,y:e.clientY});}}>
+    <button type="button" disabled={disabled} className="mindmaps-row-open" aria-current={active ? "true" : undefined} onClick={onOpen} onDoubleClick={onRename}><strong>{m.name || "Sem título"}</strong><span>{(m.nodes || []).length} nós{m.updatedAt ? ` · ${fmtDateTime(m.updatedAt)}` : ""}</span></button>
+    <button type="button" disabled={disabled} aria-label={`Duplicar ${m.name}`} title="Duplicar mapa" onClick={onDuplicate}>⧉</button>
+    <button type="button" disabled={disabled} aria-label={`Ações de ${m.name}`} title="Mais ações" onClick={e=>{const r=e.currentTarget.getBoundingClientRect();setMenu({x:r.left,y:r.bottom});}}>···</button>
+    {onClaim && <button type="button" disabled={disabled} className="mindmaps-claim" onClick={onClaim} title={`Trazer mapa sem produto para ${productName || "este produto"}`}>sem produto · trazer</button>}
+    {menu && <Menu x={menu.x} y={menu.y} onClose={()=>setMenu(null)} items={[{label:"Renomear",onClick:onRename},{label:"Duplicar",onClick:onDuplicate},{label:"Apagar mapa",danger:true,onClick:onDelete}]} />}
+  </div>;
+}
+function MapNameField({name, onSave, autoFocus, disabled}) {
+  const [value,setValue]=useState(name || ""),[error,setError]=useState(false);
+  const dirty=useRef(false),saving=useRef(false),ref=useRef(null);
+  useEffect(()=>{if(!dirty.current)setValue(name || "");},[name]);
+  useEffect(()=>{if(autoFocus){ref.current?.focus();ref.current?.select();}},[autoFocus]);
+  const save=async()=>{if(saving.current||!dirty.current)return;saving.current=true;const text=value.trim()||"Sem título";const ok=await onSave(text);saving.current=false;if(ok){dirty.current=false;setValue(text);}setError(!ok);};
+  return <div className="mindmaps-name"><input ref={ref} aria-label="Nome do mapa" className="inp" value={value} readOnly={disabled} onChange={e=>{dirty.current=true;setValue(e.target.value);setError(false);}} onBlur={save} onKeyDown={e=>{e.stopPropagation();if(e.key==="Enter")e.currentTarget.blur();if(e.key==="Escape"){dirty.current=false;setValue(name||"");setError(false);e.currentTarget.blur();}}}/>{error && <button type="button" onClick={save}>Nome não salvo · tentar novamente</button>}</div>;
 }
 
 // ── Histórico (desfazer/refazer) ─────────────────────────────────────────────
@@ -207,7 +160,7 @@ function useHistory(initial) {
 }
 
 // ── Editor ───────────────────────────────────────────────────────────────────
-function MapEditor({ map, onSaved, focus, setFocus, isMobile }) {
+function MapEditor({ map, onSaved, focus, setFocus, isMobile, flushRef, onRename, renameRequested, busy, showMaps, onToggleMaps }) {
   const { doc, docRef, commit, undo, redo, reset, canUndo, canRedo } = useHistory(() => normalizeMap(map));
   const { nodes, links, layout } = doc;
   const [sel, setSel] = useState([]);           // ids selecionados (o último é o principal)
@@ -216,12 +169,14 @@ function MapEditor({ map, onSaved, focus, setFocus, isMobile }) {
   const [linkFrom, setLinkFrom] = useState(null);
   const [view, setView] = useState({ x: 80, y: 80, z: 1 });
   const [animView, setAnimView] = useState(false);
+  const [viewReady, setViewReady] = useState(false);
   const [dragging, setDragging] = useState(null); // { ids, target:{id,zone} }
   const [marquee, setMarquee] = useState(null);
   const [menu, setMenu] = useState(null);       // { x, y, id }
   const [pop, setPop] = useState(null);         // { kind: note|emoji|link|image, id }
   const [q, setQ] = useState(null);             // busca (null = fechada)
   const [outline, setOutline] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const [save, setSave] = useState({ state: "saved" }); // saved | dirty | saving | conflict
   const [sizeTick, setSizeTick] = useState(0);
   const wrapRef = useRef(null);
@@ -263,35 +218,61 @@ function MapEditor({ map, onSaved, focus, setFocus, isMobile }) {
     return r;
   }, [pos, sizeOf]);
 
-  // ── Autosave + trava de versão ───────────────────────────────────────────
+  // Uma gravação por vez, sempre com a versão retornada pela API.
+  const savedDoc = useRef(docRef.current), saving = useRef(null), saveTimer = useRef(0), conflict = useRef(false);
+  useEffect(() => { versionRef.current = Math.max(versionRef.current, Number(map.version) || 0); }, [map.version]);
   useEffect(() => {
     if (!mounted.current) { mounted.current = true; return; }
     if (skipSave.current) { skipSave.current = false; return; }
-    setSave((s) => (s.state === "conflict" ? s : { ...s, state: "dirty" }));
-    const t = setTimeout(() => persist(false), 600);
-    return () => clearTimeout(t);
+    setSave(s => conflict.current ? s : {...s,state:"dirty"});
+    saveTimer.current = setTimeout(() => persist(false),600);
+    return () => clearTimeout(saveTimer.current);
   }, [doc]); // eslint-disable-line react-hooks/exhaustive-deps
-  async function persist(force) {
+  async function persist(force = false) {
+    clearTimeout(saveTimer.current);
+    if (saving.current) return saving.current;
+    if (conflict.current && !force) return false;
     const d = docRef.current;
-    setSave((s) => ({ ...s, state: "saving" }));
-    try {
-      const saved = await api.update("mindmaps", map.id, { nodes: d.nodes, links: d.links, layout: d.layout, baseVersion: force ? undefined : versionRef.current });
-      versionRef.current = Number(saved.version) || versionRef.current + 1;
-      setSave({ state: "saved" });
-      onSaved && onSaved({ ...saved, nodes: d.nodes, links: d.links });
-    } catch (e) {
-      if (e.status === 409) {
-        let current = null;
-        try { current = await api.get("mindmaps", map.id); } catch { /* fica sem */ }
-        setSave({ state: "conflict", current });
-      } else { setSave({ state: "dirty", error: e.message }); toast(`mapa não salvo · ${e.message} · tente de novo`, "neg"); }
-    }
+    if (d === savedDoc.current && !force) return true;
+    setSave(s => ({...s,state:"saving"}));
+    const request = (async () => {
+      try {
+        const saved = await api.update("mindmaps",map.id,{nodes:d.nodes,links:d.links,layout:d.layout,baseVersion:force?undefined:versionRef.current});
+        versionRef.current = Number(saved.version) || versionRef.current + 1;
+        savedDoc.current = d; conflict.current = false;
+        onSaved?.({...saved,nodes:d.nodes,links:d.links,layout:d.layout});
+        saving.current = null;
+        if (docRef.current !== d) return persist(false);
+        setSave({state:"saved"}); return true;
+      } catch(e) {
+        if (e.status === 409) {
+          conflict.current = true;
+          let current = null;
+          try { current = await api.get("mindmaps",map.id); } catch { /* recarregar fica indisponível */ }
+          setSave({state:"conflict",current});
+        } else { setSave({state:"dirty",error:e.message}); toast(`Mapa não salvo · ${e.message} · tente novamente`,"neg"); }
+        saving.current = null; return false;
+      }
+    })();
+    saving.current = request;
+    return request;
   }
+  useEffect(() => {
+    const flush = async () => {
+      // O editor de nó confirma no blur, atualizando docRef de forma síncrona.
+      if (wrapRef.current?.contains(document.activeElement)) document.activeElement.blur();
+      return persist(false);
+    };
+    flushRef.current = flush;
+    return () => { if (flushRef.current === flush) flushRef.current = null; };
+  });
   function adoptRemote(current) {
     if (!current) return;
     versionRef.current = Number(current.version) || 0;
     skipSave.current = true;
-    reset(normalizeMap(current));
+    const normalized = normalizeMap(current);
+    savedDoc.current = normalized; conflict.current = false;
+    reset(normalized);
     setSel([]); setEditing(null); setSave({ state: "saved" });
     onSaved && onSaved(current);
   }
@@ -303,7 +284,7 @@ function MapEditor({ map, onSaved, focus, setFocus, isMobile }) {
       if (save.state !== "saved" || editing) return;
       try {
         const fresh = await api.get("mindmaps", map.id);
-        if ((Number(fresh.version) || 0) > versionRef.current) {
+        if (docRef.current === savedDoc.current && !saving.current && (Number(fresh.version) || 0) > versionRef.current) {
           adoptRemote(fresh);
           if (fresh.updatedBy && fresh.updatedBy !== me) toast(`mapa atualizado por ${displayName(fresh.updatedBy)}`, "neutral", 2500);
         }
@@ -348,7 +329,14 @@ function MapEditor({ map, onSaved, focus, setFocus, isMobile }) {
     });
   }, [rects]);
   useLayoutEffect(() => { if (reveal.current && rects[reveal.current]) { const id = reveal.current; reveal.current = null; withAnim(() => revealNow(id)); } }, [rects, revealNow]);
-  useEffect(() => { const t = setTimeout(fitView, 80); return () => clearTimeout(t); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const fitRef = useRef(fitView); fitRef.current = fitView;
+  useEffect(() => {
+    let alive = true, timer;
+    (document.fonts?.ready || Promise.resolve()).then(() => {
+      if (alive) timer = setTimeout(() => { fitRef.current(); setViewReady(true); },80);
+    });
+    return () => { alive = false; clearTimeout(timer); };
+  }, []);
 
   useEffect(() => {
     const el = wrapRef.current; if (!el) return;
@@ -477,12 +465,15 @@ function MapEditor({ map, onSaved, focus, setFocus, isMobile }) {
   };
 
   // ── Teclado ───────────────────────────────────────────────────────────────
-  const K = useRef({}); K.current = { sel, primary, editing, linkFrom, nodes, kids, nodeMap, layout, q, menu, pop, selLink, outline };
+  const K = useRef({}); K.current = { sel, primary, editing, linkFrom, nodes, kids, nodeMap, layout, q, menu, pop, selLink, outline, busy };
   useEffect(() => {
     const onKey = (e) => {
+      if (e.defaultPrevented) return;
       const s = K.current;
+      if (s.busy) return;
       const tag = (e.target.tagName || "").toLowerCase();
       const typing = tag === "input" || tag === "textarea" || e.target.isContentEditable;
+      if ((tag === "button" || tag === "select" || e.target.closest?.("[role=menu],[role=dialog]")) && e.key !== "Escape") return;
       const mod = e.metaKey || e.ctrlKey;
       // busca aberta com foco no input: só Esc/Enter interessam aqui
       if (typing && e.target !== searchRef.current) return;
@@ -491,7 +482,7 @@ function MapEditor({ map, onSaved, focus, setFocus, isMobile }) {
         return;
       }
       if (s.editing || s.outline) return;
-      if (mod && e.key.toLowerCase() === "f") { e.preventDefault(); setQ((v) => (v == null ? "" : v)); setTimeout(() => searchRef.current?.focus(), 30); return; }
+      if (mod && e.key.toLowerCase() === "f") { e.preventDefault(); setToolsOpen(true); setQ((v) => (v == null ? "" : v)); setTimeout(() => searchRef.current?.focus(), 30); return; }
       if (mod && e.key.toLowerCase() === "z") { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
       if (mod && e.key.toLowerCase() === "y") { e.preventDefault(); redo(); return; }
       if (mod && e.key.toLowerCase() === "a") { e.preventDefault(); setSel(s.nodes.filter((n) => visible.has(n.id)).map((n) => n.id)); return; }
@@ -780,6 +771,7 @@ function MapEditor({ map, onSaved, focus, setFocus, isMobile }) {
   const H = useRef({});
   H.current = {
     onPointerDown: onNodePointerDown,
+    onFocus: id => setSel([id]),
     onDoubleClick: (id) => startEdit(id),
     onContextMenu: (e, id) => { e.preventDefault(); e.stopPropagation(); if (!selSet.has(id)) setSel([id]); setMenu({ x: e.clientX, y: e.clientY, id }); },
     onCommitText: (id, t) => { setEditing(null); commitText(id, t); },
@@ -792,43 +784,33 @@ function MapEditor({ map, onSaved, focus, setFocus, isMobile }) {
   const stateLabel = save.state === "saved" ? "salvo" : save.state === "saving" ? "salvando…" : save.state === "dirty" ? (save.error ? "não salvo" : "alterado") : "conflito";
 
   return (
-    <div style={{ position: "absolute", inset: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-      {/* Barra do mapa */}
-      {!focus && (
-        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", padding: "8px 10px", borderBottom: "1px solid var(--line-1)", background: "var(--bg-1)", flexShrink: 0 }}>
-          <Segmented value={outline ? "outline" : "map"} options={[{ value: "map", label: "Mapa" }, { value: "outline", label: "Esboço" }]} onChange={(v) => setOutline(v === "outline")} />
-          <span style={{ width: 1, height: 20, background: "var(--line-1)", margin: "0 2px" }} />
-          <select className="inp" value={layout} onChange={(e) => setLayout(e.target.value)} title="Layout automático do mapa" style={{ height: 28, fontSize: 12.5, paddingRight: 22 }}>
-            {LAYOUTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-          <TBtn title={`Desfazer (${MOD}Z)`} onClick={undo} disabled={!canUndo}>↶</TBtn>
-          <TBtn title={`Refazer (${MOD}⇧Z)`} onClick={redo} disabled={!canRedo}>↷</TBtn>
-          <span style={{ width: 1, height: 20, background: "var(--line-1)", margin: "0 2px" }} />
-          <TBtn title="Afastar (−)" onClick={() => zoomBy(1 / 1.2)}>−</TBtn>
-          <button onClick={() => withAnim(() => setView((v) => ({ ...v, z: 1 })))} title="Zoom 100% (0)" className="mono tnum" style={{ height: 28, minWidth: 44, fontSize: 11.5, color: "var(--fg-3)" }}>{Math.round(view.z * 100)}%</button>
-          <TBtn title="Aproximar (+)" onClick={() => zoomBy(1.2)}>+</TBtn>
-          <TBtn title={`Enquadrar tudo (${MOD}⇧H)`} onClick={fitView}>⤢</TBtn>
-          <LevelsMenu onPick={(n) => commit((d) => ({ ...d, nodes: applyLevels(d.nodes, n) }))} />
-          {q == null
-            ? <TBtn title={`Buscar no mapa (${MOD}F)`} onClick={() => { setQ(""); setTimeout(() => searchRef.current?.focus(), 30); }}>⌕</TBtn>
-            : <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                <input ref={searchRef} className="inp" value={q} placeholder="buscar…" onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); nextMatch(); } }} style={{ height: 28, width: 160, fontSize: 12.5 }} />
-                <span className="mono tnum dim" style={{ fontSize: 11 }}>{matches ? matches.size : 0}</span>
-                <TBtn title="Fechar busca (Esc)" onClick={() => setQ(null)}>✕</TBtn>
-              </span>}
-          <ExportMenu onMd={exportMd} onPng={() => exportImage("png")} onSvg={() => exportImage("svg")} />
-          <TBtn title={`Modo foco: só o mapa (${MOD}.)`} onClick={() => setFocus(true)}>◱</TBtn>
-          <span style={{ flex: 1 }} />
-          <span className="mono dim" style={{ fontSize: 10.5 }} title={map.updatedBy ? `última gravação por ${displayName(map.updatedBy)}` : ""}>{stateLabel}</span>
-        </div>
-      )}
+    <div className="mindmaps-editor" inert={busy ? "" : undefined} aria-busy={busy || save.state === "saving"} style={{ position: "absolute", inset: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      {!focus && <div className="mindmaps-toolbar">
+        <TBtn title={showMaps ? "Esconder lista de mapas" : "Mostrar lista de mapas"} onClick={onToggleMaps}>☰</TBtn>
+        <MapNameField key={map.id} name={map.name} onSave={onRename} autoFocus={renameRequested} disabled={busy} />
+        <div className="mindmaps-views" role="group" aria-label="Visualização do mapa">{[[false,"Mapa"],[true,"Esboço"]].map(([value,label])=><button key={label} type="button" aria-pressed={outline===value} onClick={()=>setOutline(value)}>{label}</button>)}</div>
+        <TBtn title={`Desfazer (${MOD}Z)`} onClick={undo} disabled={!canUndo}>↶</TBtn>
+        <TBtn title={`Refazer (${MOD}⇧Z)`} onClick={redo} disabled={!canRedo}>↷</TBtn>
+        <TBtn title={`Enquadrar tudo (${MOD}⇧H)`} onClick={fitView}>Ver tudo</TBtn>
+        <ExportMenu onMd={exportMd} onPng={()=>exportImage("png")} onSvg={()=>exportImage("svg")} />
+        <TBtn title={`Modo foco: só o mapa (${MOD}.)`} onClick={()=>setFocus(true)}>Foco</TBtn>
+        <TBtn title="Mais ferramentas" active={toolsOpen} onClick={()=>setToolsOpen(v=>!v)}>···</TBtn>
+        <span className="mindmaps-save" data-state={save.state} role="status" title={map.updatedBy?`Última gravação por ${displayName(map.updatedBy)}`:""}>{stateLabel}</span>
+      </div>}
+      {!focus && toolsOpen && <div className="mindmaps-tools">
+        <label>Layout <select className="inp" value={layout} onChange={e=>setLayout(e.target.value)} aria-label="Layout automático do mapa">{LAYOUTS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></label>
+        <LevelsMenu onPick={n=>commit(d=>({...d,nodes:applyLevels(d.nodes,n)}))} />
+        <label>Buscar <input ref={searchRef} className="inp" value={q||""} aria-label="Buscar no mapa" onChange={e=>setQ(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();nextMatch();}}}/></label>
+        {q && <><span className="dim">{matches?.size || 0} resultados</span><TBtn title="Limpar busca" onClick={()=>setQ(null)}>✕</TBtn></>}
+      </div>}
+      {save.error && save.state !== "saving" && <div className="mindmaps-error" role="alert">O mapa não foi salvo. Suas alterações continuam abertas.<button type="button" onClick={()=>persist(false)}>Tentar novamente</button></div>}
       {focus && (
         <button onClick={() => setFocus(false)} title={`Sair do foco (Esc ou ${MOD}.)`} style={{ position: "absolute", top: 10, right: 12, zIndex: 6, height: 26, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-3)", fontSize: 11.5 }}>sair do foco</button>
       )}
       {save.state === "conflict" && (
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "8px 12px", background: "var(--warn-soft)", color: "var(--fg-1)", fontSize: 12.5, borderBottom: "1px solid var(--line-1)" }}>
+        <div role="alert" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", padding: "8px 12px", background: "var(--warn-soft)", color: "var(--fg-1)", fontSize: 12.5, borderBottom: "1px solid var(--line-1)" }}>
           <span><b>{save.current?.updatedBy ? displayName(save.current.updatedBy) : "Outra pessoa"}</b> editou este mapa enquanto você mexia.</span>
-          <button onClick={() => adoptRemote(save.current)} style={{ height: 26, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 12 }}>Recarregar (perde o que mudei)</button>
+          <button disabled={!save.current} onClick={() => adoptRemote(save.current)} style={{ height: 26, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 12 }}>Recarregar (perde o que mudei)</button>
           <button onClick={() => persist(true)} style={{ height: 26, padding: "0 10px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 12 }}>Gravar por cima</button>
         </div>
       )}
@@ -836,7 +818,7 @@ function MapEditor({ map, onSaved, focus, setFocus, isMobile }) {
       {outline ? (
         <OutlineView nodes={nodes} kids={kids} nodeMap={nodeMap} commit={commit} colorOf={colorOf} />
       ) : (
-      <div ref={wrapRef} tabIndex={-1} onPointerDown={onBgPointerDown} onContextMenu={(e) => { if (e.target === wrapRef.current || e.target === worldRef.current) e.preventDefault(); }}
+      <div ref={wrapRef} className="mindmaps-canvas" data-fitted={viewReady ? "true" : "false"} aria-label="Área do mapa" tabIndex={0} onPointerDown={onBgPointerDown} onContextMenu={(e) => { if (e.target === wrapRef.current || e.target === worldRef.current) e.preventDefault(); }}
         onDoubleClick={(e) => { if (e.target === wrapRef.current || e.target === worldRef.current) createRootAt(e.clientX, e.clientY); }}
         style={{ flex: 1, position: "relative", overflow: "hidden", outline: "none", cursor: linkFrom ? "crosshair" : "grab", background: "var(--bg-0)", backgroundImage: "radial-gradient(var(--line-1) 0.7px, transparent 0.7px)", backgroundSize: `${22 * view.z}px ${22 * view.z}px`, backgroundPosition: `${view.x}px ${view.y}px`, touchAction: "none" }}>
         <div ref={worldRef} data-bg="1" style={{ position: "absolute", left: 0, top: 0, width: 1, height: 1, transform: `translate(${view.x}px, ${view.y}px) scale(${view.z})`, transformOrigin: "0 0", transition: animView ? "transform 240ms ease" : "none" }}>
@@ -877,6 +859,11 @@ function MapEditor({ map, onSaved, focus, setFocus, isMobile }) {
           })}
         </div>
 
+        <div className="mindmaps-zoom" onPointerDown={e=>e.stopPropagation()}>
+          <TBtn title="Afastar (−)" onClick={()=>zoomBy(1/1.2)}>−</TBtn>
+          <button type="button" title="Zoom 100% (0)" aria-label="Restaurar zoom 100%" onClick={()=>withAnim(()=>setView(v=>({...v,z:1})))}>{Math.round(view.z*100)}%</button>
+          <TBtn title="Aproximar (+)" onClick={()=>zoomBy(1.2)}>+</TBtn>
+        </div>
         {/* Toolbar flutuante do nó selecionado */}
         {selNode && toolbarPos && !editing && !dragging && (
           <NodeToolbar node={selNode} color={colorOf(selNode.id)} count={sel.length} pos={toolbarPos} isMobile={isMobile}
@@ -902,12 +889,12 @@ function MapEditor({ map, onSaved, focus, setFocus, isMobile }) {
         {linkFrom && <div style={{ position: "absolute", top: 10, left: "50%", transform: "translateX(-50%)", padding: "5px 12px", borderRadius: 999, background: "var(--accent-soft)", border: "1px solid var(--accent-line)", color: "var(--accent)", fontSize: 12, pointerEvents: "none" }}>clique no nó de destino da conexão · Esc cancela</div>}
 
         {nodes.length === 0 && (
-          <div className="dim" style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12.5, pointerEvents: "none", textAlign: "center", lineHeight: 1.8 }}>
-            aperte <kbd>Enter</kbd> ou dê 2 cliques no fundo pra criar o 1º nó<br /><kbd>Tab</kbd> cria filho · <kbd>Enter</kbd> cria irmão · setas navegam · <kbd>{MOD}Z</kbd> desfaz
+          <div className="dim" style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12.5, pointerEvents: "none", textAlign: "center", lineHeight: 1.8, flexDirection:"column", padding:20 }}>
+            <button type="button" className="mindmaps-first-node" style={{pointerEvents:"auto"}} onClick={()=>{const r=wrapRef.current.getBoundingClientRect();createRootAt(r.left+r.width/2,r.top+r.height/2);}}>Criar primeiro nó</button><br />aperte <kbd>Enter</kbd> ou dê 2 cliques no fundo<br /><kbd>Tab</kbd> cria filho · <kbd>Enter</kbd> cria irmão · setas navegam · <kbd>{MOD}Z</kbd> desfaz
           </div>
         )}
         {!isMobile && !focus && nodes.length > 0 && (
-          <div className="dim" style={{ position: "absolute", left: 12, bottom: 10, fontSize: 11.5, pointerEvents: "none" }}>Tab filho · Enter irmão · espaço recolhe · arraste um nó sobre outro pra mover · {MOD}+roda dá zoom</div>
+          <div className="dim" style={{ position: "absolute", right: 12, bottom: 16, fontSize: 10.5, pointerEvents: "none" }}>Tab filho · Enter irmão · espaço recolhe · arraste um nó sobre outro pra mover · {MOD}+roda dá zoom</div>
         )}
       </div>
       )}
@@ -933,7 +920,7 @@ const NodeView = React.memo(function NodeView({ node: n, x, y, color, depth, sid
   const ring = selected ? `0 0 0 2px ${color}66` : linkSource ? "0 0 0 2px var(--accent)" : "";
   const dropRing = dropZone === "child" ? `0 0 0 3px var(--accent)` : "";
   return (
-    <div ref={measure} data-id={n.id} onPointerDown={(e) => onPointerDown(e, n.id)} onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick(n.id); }} onContextMenu={(e) => onContextMenu(e, n.id)}
+    <div ref={measure} className={"mindmaps-node"+(root?" is-root":"")} data-shape={shape} data-id={n.id} role="button" tabIndex={0} aria-label={n.text || "Nó sem texto"} aria-pressed={selected} onFocus={e=>{if(e.target===e.currentTarget && e.currentTarget.matches(":focus-visible"))h.current.onFocus(n.id);}} onPointerDown={(e) => onPointerDown(e, n.id)} onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick(n.id); }} onContextMenu={(e) => onContextMenu(e, n.id)}
       style={{ position: "absolute", left: 0, top: 0, transform: `translate(${x}px, ${y}px)`, transition: dragging ? "none" : "transform 180ms ease, opacity 180ms",
         width: "max-content", maxWidth: NODE_MAX_W, minWidth: 40, boxSizing: "border-box",
         background: line ? "transparent" : "var(--bg-1)", borderRadius: radius,
@@ -983,7 +970,7 @@ function NodeEditor({ id, text, selectAll, onCommit, onEnter, onTab, root, bold 
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const finish = (fn) => { if (done.current) return; done.current = true; fn(); };
   return (
-    <textarea ref={ref} defaultValue={text} rows={1} onPointerDown={(e) => e.stopPropagation()} onInput={(e) => fit(e.target)}
+    <textarea ref={ref} aria-label="Texto do nó" defaultValue={text} rows={1} onPointerDown={(e) => e.stopPropagation()} onInput={(e) => fit(e.target)}
       onBlur={(e) => finish(() => onCommit(id, e.target.value))}
       onKeyDown={(e) => {
         if (e.key === "Enter" && !e.altKey && !e.metaKey && !e.ctrlKey) {
@@ -1001,7 +988,7 @@ function NodeEditor({ id, text, selectAll, onCommit, onEnter, onTab, root, bold 
 // ── Toolbar do nó, popovers e menus ──────────────────────────────────────────
 function TBtn({ title, onClick, disabled, active, children, style }) {
   return (
-    <button title={title} onClick={onClick} disabled={disabled} style={{ height: 28, minWidth: 28, padding: "0 7px", borderRadius: 999, border: `1px solid ${active ? "var(--accent-line)" : "var(--line-2)"}`, background: active ? "var(--accent-soft)" : "var(--bg-1)", color: active ? "var(--accent)" : "var(--fg-2)", fontSize: 13, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.4 : 1, display: "inline-flex", alignItems: "center", justifyContent: "center", ...style }}>{children}</button>
+    <button type="button" aria-label={title} aria-pressed={active === undefined ? undefined : !!active} className="mindmaps-tool" title={title} onClick={onClick} disabled={disabled} style={{ height: 28, minWidth: 28, padding: "0 7px", borderRadius: 999, border: `1px solid ${active ? "var(--accent-line)" : "var(--line-2)"}`, background: active ? "var(--accent-soft)" : "var(--bg-1)", color: active ? "var(--accent)" : "var(--fg-2)", fontSize: 13, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.4 : 1, display: "inline-flex", alignItems: "center", justifyContent: "center", ...style }}>{children}</button>
   );
 }
 function NodeToolbar({ node, color, count, pos, isMobile, onColor, onBold, onShape, onNote, onEmoji, onImage, onLink, onConnect, connecting, onMore, onDelete }) {
@@ -1027,13 +1014,10 @@ function NodeToolbar({ node, color, count, pos, isMobile, onColor, onBold, onSha
     </div>
   );
 }
-function Popover({ pos, onClose, children, width = 280 }) {
-  useEsc(onClose);
-  return (
-    <div onPointerDown={(e) => e.stopPropagation()} style={{ position: "absolute", left: Math.max(8, Math.min(pos.left, (window.innerWidth || 1200) - width - 260)), top: pos.top, zIndex: 7, width, background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: 10, boxShadow: "var(--shadow-pop)", display: "flex", flexDirection: "column", gap: 8 }}>
-      {children}
-    </div>
-  );
+function Popover({pos,onClose,children,width=280}) {
+  const canvas = typeof document !== "undefined" ? document.querySelector(".mindmaps-canvas")?.getBoundingClientRect() : null;
+  const left=(canvas?.left||0)+pos.left,top=(canvas?.top||0)+pos.top;
+  return <SharedPopover anchor={{left,right:left,top,bottom:top}} onClose={onClose} width={width} label="Editar nó" title="Editar nó"><div onPointerDown={e=>e.stopPropagation()} style={{display:"flex",flexDirection:"column",gap:8}}>{children}</div></SharedPopover>;
 }
 function NodePopover({ kind, node, pos, onClose, onSave, onImageFile }) {
   const [val, setVal] = useState(kind === "note" ? node.note || "" : kind === "link" ? node.link || "" : "");
@@ -1066,8 +1050,8 @@ function NodePopover({ kind, node, pos, onClose, onSave, onImageFile }) {
     <Popover pos={pos} onClose={onClose} width={kind === "note" ? 320 : 300}>
       <div className="kicker">{kind === "note" ? "nota do nó" : "link do nó"}</div>
       {kind === "note"
-        ? <textarea autoFocus className="inp" value={val} onChange={(e) => setVal(e.target.value)} rows={5} placeholder="detalhe que não cabe no nó…" onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) save(); e.stopPropagation(); }} style={{ height: "auto", padding: 8, fontSize: 12.5, lineHeight: 1.45, resize: "vertical" }} />
-        : <input autoFocus className="inp" value={val} onChange={(e) => setVal(e.target.value)} placeholder="https://…" onKeyDown={(e) => { if (e.key === "Enter") save(); e.stopPropagation(); }} style={{ height: 30, fontSize: 12.5 }} />}
+        ? <textarea autoFocus aria-label={kind === "note" ? "Nota do nó" : "Link do nó"} className="inp" value={val} onChange={(e) => setVal(e.target.value)} rows={5} placeholder="detalhe que não cabe no nó…" onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) save(); e.stopPropagation(); }} style={{ height: "auto", padding: 8, fontSize: 12.5, lineHeight: 1.45, resize: "vertical" }} />
+        : <input autoFocus aria-label={kind === "note" ? "Nota do nó" : "Link do nó"} className="inp" value={val} onChange={(e) => setVal(e.target.value)} placeholder="https://…" onKeyDown={(e) => { if (e.key === "Enter") save(); e.stopPropagation(); }} style={{ height: 30, fontSize: 12.5 }} />}
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center" }}>
         {(kind === "note" ? node.note : node.link) && <button onClick={() => { onSave(kind === "note" ? { note: "" } : { link: "" }); onClose(); }} style={{ fontSize: 12, color: "var(--neg)", marginRight: "auto" }}>tirar</button>}
         <button onClick={onClose} style={{ fontSize: 12, color: "var(--fg-3)" }}>cancelar</button>
@@ -1080,7 +1064,7 @@ function LinkPopover({ link, pos, onClose, onChange, onDelete }) {
   return (
     <Popover pos={pos} onClose={onClose} width={300}>
       <div className="kicker">conexão</div>
-      <input className="inp" defaultValue={link.label} placeholder="rótulo (ex.: depende de)" onBlur={(e) => onChange({ label: e.target.value.trim() })} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); e.stopPropagation(); }} style={{ height: 28, fontSize: 12.5 }} />
+      <input aria-label="Rótulo da conexão" className="inp" defaultValue={link.label} placeholder="rótulo (ex.: depende de)" onBlur={(e) => onChange({ label: e.target.value.trim() })} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); e.stopPropagation(); }} style={{ height: 28, fontSize: 12.5 }} />
       <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
         {[["none", "sem seta"], ["end", "→"], ["both", "↔"]].map(([v, l]) => <TBtn key={v} active={(link.arrow || "none") === v} onClick={() => onChange({ arrow: v })} title="ponta da linha">{l}</TBtn>)}
         <span style={{ width: 1, height: 18, background: "var(--line-1)", margin: "0 2px" }} />
@@ -1090,36 +1074,14 @@ function LinkPopover({ link, pos, onClose, onChange, onDelete }) {
     </Popover>
   );
 }
-function Menu({ x, y, items, onClose }) {
-  useEsc(onClose);
-  const ref = useRef(null);
-  useEffect(() => {
-    const el = ref.current; if (!el) return;
-    const r = el.getBoundingClientRect();
-    if (r.right > window.innerWidth - 8) el.style.left = Math.max(8, x - r.width) + "px";
-    if (r.bottom > window.innerHeight - 8) el.style.top = Math.max(8, y - r.height) + "px";
-    const onDown = (e) => { if (!el.contains(e.target)) onClose(); };
-    setTimeout(() => window.addEventListener("pointerdown", onDown), 0);
-    return () => window.removeEventListener("pointerdown", onDown);
-  }, [x, y, onClose]);
-  return (
-    <div ref={ref} onPointerDown={(e) => e.stopPropagation()} onContextMenu={(e) => e.preventDefault()} style={{ position: "fixed", left: x, top: y, zIndex: 90, minWidth: 230, background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 4 }}>
-      {items.map((it, i) => it.sep
-        ? <div key={"s" + i} style={{ height: 1, background: "var(--line-1)", margin: "4px 6px" }} />
-        : <button key={it.label} disabled={it.disabled} onClick={() => { onClose(); it.onClick && it.onClick(); }}
-            style={{ display: "flex", width: "100%", alignItems: "center", gap: 12, padding: "6px 10px", borderRadius: 999, fontSize: 12.5, textAlign: "left", color: it.danger ? "var(--neg)" : "var(--fg-1)", opacity: it.disabled ? 0.4 : 1, cursor: it.disabled ? "default" : "pointer" }}
-            onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = "var(--bg-2)"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
-            <span style={{ flex: 1 }}>{it.label}</span>
-            {it.kbd && <span className="mono dim" style={{ fontSize: 10.5 }}>{it.kbd}</span>}
-          </button>)}
-    </div>
-  );
+function Menu(props) {
+  return typeof document !== "undefined" && document.body?.nodeType === 1 ? createPortal(<SharedMenu {...props} />,document.body) : <SharedMenu {...props} />;
 }
 function LevelsMenu({ onPick }) {
   const [open, setOpen] = useState(null);
   return (
     <>
-      <TBtn title="Mostrar só N níveis (⌥1…⌥9, ⌥0 = todos)" onClick={(e) => setOpen({ x: e.clientX, y: e.clientY + 10 })}>≡</TBtn>
+      <TBtn title="Mostrar só N níveis (⌥1…⌥9, ⌥0 = todos)" onClick={(e) => {const r=e.currentTarget.getBoundingClientRect();setOpen({x:r.left,y:r.bottom+6});}}>≡</TBtn>
       {open && <Menu x={open.x} y={open.y} onClose={() => setOpen(null)} items={[1, 2, 3, 4, 5].map((n) => ({ label: `mostrar ${n} ${n === 1 ? "nível" : "níveis"}`, kbd: `⌥${n}`, onClick: () => onPick(n) })).concat([{ sep: true }, { label: "expandir tudo", kbd: "⌥0", onClick: () => onPick(null) }])} />}
     </>
   );
@@ -1128,7 +1090,7 @@ function ExportMenu({ onMd, onPng, onSvg }) {
   const [open, setOpen] = useState(null);
   return (
     <>
-      <TBtn title="Exportar" onClick={(e) => setOpen({ x: e.clientX, y: e.clientY + 10 })}>⇩</TBtn>
+      <TBtn title="Exportar mapa" onClick={(e) => {const r=e.currentTarget.getBoundingClientRect();setOpen({x:r.left,y:r.bottom+6});}}>.Md ↗</TBtn>
       {open && <Menu x={open.x} y={open.y} onClose={() => setOpen(null)} items={[
         { label: "Copiar esboço (Markdown)", onClick: onMd },
         { label: "Baixar PNG", onClick: onPng },

@@ -1,3 +1,4 @@
+import {mindmapsReview,setupMindmapsReview} from "./mindmaps-review-mock.js";
 import {tasksReview,setupTasksReview} from "./tasks-review-mock.js";
 import {desempenhoReview,setupDesempenhoReview} from "./desempenho-review-mock.js";
 import {integrationsReview,setupIntegrationsReview} from "./integrations-review-mock.js";
@@ -83,6 +84,7 @@ if (blogReview) setupBlogReview(window.SEED);
 if (analiseReview) setupAnaliseReview(window.SEED);
 if (callsReview) setupCallsReview(window.SEED);
 if (integrationsReview) setupIntegrationsReview(window.SEED);
+if (mindmapsReview) setupMindmapsReview();
 if (tasksReview) setupTasksReview();
 if (desempenhoReview) setupDesempenhoReview(window.SEED);
 if (previewShell) {

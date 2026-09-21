@@ -1027,5 +1027,40 @@ Validação: 1.739 testes da API, testes web/smoke, build e revisão visual apro
   contra serviços reais.
 
 Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
-As demais 5 páginas aguardam esta rodada; registros históricos não são aceite
+
+
+### 26. Mapas mentais (`#mindmaps`) — validada
+
+- **Importante, corrigido:** lista e canvas na proporção 0,55:2 da prancha
+  `TelaMapasMentais.dc.html`, cabeçalho compacto, nome editável na barra,
+  alternância Mapa/Esboço, estado de gravação e zoom junto ao canvas.
+  Ferramentas adicionais de layout/níveis/busca continuam disponíveis;
+  exportação mantém Markdown, PNG e SVG. O seletor não cobre mais a barra.
+- **Bloqueante, corrigido:** autosave envia um documento por vez, atualiza
+  `baseVersion` com a resposta e depois envia a edição mais recente. Troca,
+  criação, duplicação, renomeação e exclusão pelos controles da página aguardam
+  a gravação. Ações de documento bloqueiam repetição e edição concorrente.
+- **Bloqueante, corrigido:** falhas de lista e gravação têm mensagem e nova
+  tentativa; conflito 409 preserva a escolha entre versão remota e gravação
+  explícita. Renomear preserva o texto em caso de erro e atualiza a versão
+  do editor; copiar o mapa aberto usa o documento salvo mais recente.
+- **Importante, corrigido:** lista com botões acessíveis e menu explícito,
+  nós focáveis, atalhos não capturam o Enter dos botões, menus/popovers
+  compartilhados em portal. O primeiro nó também pode ser criado por botão.
+  O enquadramento inicial espera fontes e medidas atuais, inclusive no celular.
+- **Evidências:** `npm run test:review:mindmaps -w packages/web`, capturas e
+  `geometry.json` em `packages/web/.review-artifacts/mindmaps/`. **36 medidas**
+  em 1440/1920, diferença **0px**, para título/cabeçalho/corpo e posição/largura
+  da lista e editor. Esboço, layout, busca, clipboard, foco, nota, criação,
+  renomear/falhar/repetir, versões consecutivas, troca durante salvamento,
+  conflito/versão remota, duplicação, cancelar/confirmar exclusão, vazio,
+  390/1024px, enquadramento e popover mobile, tema escuro testados com mocks.
+- **Fora do escopo:** algoritmos de árvore/layout, paleta de dados, migração
+  de mapas antigos e regras da API foram preservados. Nós e altura da lista
+  dependem dos documentos. A guarda cobre ações internas desta página; rotas,
+  reload e troca global de workspace não ganharam uma nova guarda. Exportação
+  por imagem e upload permanecem, sem envio a serviços reais nesta validação.
+
+Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
+As demais 4 páginas aguardam esta rodada; registros históricos não são aceite
  de fidelidade ao CRM final.
