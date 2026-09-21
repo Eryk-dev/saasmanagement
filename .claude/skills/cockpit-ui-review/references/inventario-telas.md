@@ -1136,5 +1136,41 @@ Validação: 1.739 testes da API, testes web/smoke, build e revisão visual apro
   dados reais e campos existentes; navegação global não ganhou guarda de rascunho.
 
 Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
-A página Configurações aguarda esta rodada; registros históricos não são aceite
- de fidelidade ao CRM final.
+
+### 30. Configurações (`#settings`) — validada
+
+- Cabeçalho, navegação lateral de 186px, intervalo de 16px, papel 24px, campos
+  e conteúdo com rolagem própria seguem `TelaConfiguracoes.dc.html`. No celular,
+  navegação horizontal e controles de 44px; scripts com título acima das ações.
+  Preservadas as seis seções, cadências e contagem de leads existentes.
+- Salvar alterações aguarda todas as seções registradas, sequencialmente, sem
+  timeout que esconda gravação pendente. Só confirma sucesso quando todas
+  terminam; falha parcial permanece visível. Campos/navegação bloqueiam enquanto
+  gravam, edição posterior limpa o estado de salvo e descarte remonta só a seção.
+- Scripts registram um único salvamento (abrir o editor não duplica a escrita).
+  Após renomear estágio, a referência do nome original acompanha a resposta,
+  evitando repetir a mesma migração no próximo salvamento. Payloads preservados.
+- Equipe tem retry de leitura, guardas contra repetição em cadastro/alteração/
+  senha/exclusão e rollback de alteração rejeitada. As permissões e confirmação
+  de exclusão (inclusive o conflito 409) permanecem. Largura da grade garante
+  espaço aos nomes e os pickers continuam em portal; erro de copiar é explícito.
+- Campos e controles de funil/equipe/scripts têm nomes acessíveis. Google
+  diferencia falha de leitura de conta desconectada, permite retry e encerra
+  consultas periódicas ao sair. A versão limitada continua expondo só a conta
+  própria. Removidos interruptores decorativos de conversão sem handlers que
+  apresentavam regras antigas como configurações ativas; nenhuma regra mudou.
+- Evidências: `npm run test:review:settings -w packages/web`, artefatos em
+  `.review-artifacts/settings`. 28 medidas de título/cabeçalho, corpo, navegação
+  e primeiro card em 1440/1920 com diferença 0px. Altura/conteúdo dos cards segue
+  o editor real, incluindo motivos de perda e os campos atuais. Seis seções,
+  renomear/descartar, erro parcial/retry, espera acima de 5s, gravação única de
+  scripts, equipe/rollback/criar/excluir, campos, integrações, Google, acesso
+  limitado, 390/1024 e escuro conferidos com mocks, sem integrações reais.
+- Fora do escopo: sem alterar semântica dos estágios, cadências, papéis, escopo
+  de suporte, payloads, autenticação ou regras da API. Rotas/reload/workspace
+  não receberam guarda global de rascunho; a guarda de gravação cobre esta tela.
+
+Validação: 1.739 testes da API, testes web/smoke, build e revisão visual aprovados.
+**Rodada CRM final concluída nas 30 páginas do mapa.** Cada página tem o escopo,
+limites e evidências acima. Publicação em produção depende do redeploy manual
+no EasyPanel após os merges.
