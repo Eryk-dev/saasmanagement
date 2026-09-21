@@ -1,4 +1,5 @@
 import React from "react";
+import "./remuneracao.css";
 import { PageHead } from "../components/viz.jsx";
 import { EmptyState } from "../atoms.jsx";
 import { api } from "../lib/api.js";
@@ -34,7 +35,7 @@ const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 const box = { border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)", padding: "16px 22px" };
 const inputS = { height: 28, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", fontSize: 12.5, width: 92 };
 const cellIn = { ...inputS, width: 78, height: 26, fontSize: 12 };
-const btnPrimary = { height: 30, padding: "0 14px", borderRadius: 999, border: "1px solid var(--accent)", background: "var(--accent)", color: "var(--accent-fg, #fff)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" };
+const btnPrimary = { height: 32, padding: "0 14px", borderRadius: 999, border: 0, background: "var(--btn-bg)", color: "var(--btn-fg)", fontSize: 12.5, fontWeight: 600, cursor: "pointer" };
 const thS = { padding: "6px 8px", textAlign: "left", whiteSpace: "nowrap", borderBottom: "1px solid var(--line-1)" };
 const tdS = { padding: "5px 8px", borderBottom: "1px solid var(--line-faint)", whiteSpace: "nowrap" };
 
@@ -47,7 +48,7 @@ const RULES = [
   ["A receita do SDR é a das oportunidades DELE", "a perna de R$ do SDR conta a receita FECHADA das oportunidades que ele gerou (desenho do Receita Previsível)."],
   ["SDR e closer perseguem o mesmo número", "metas iguais por nível de propósito: a dupla fecha junto (2 pessoas nível 1 a 90k = a meta de agosto)."],
   ["CLT ou PJ só muda o fixo", "a variável do closer é a mesma nos dois regimes."],
-  ["CS por evento, sem banda", "R$100 quando a indicação vira reunião FEITA; se converter, R$250 no lugar (não soma). Bônus de NPS pago com NPS ≥ 80 e bônus de churn pago com churn do mês abaixo de 15%."],
+  ["CS por evento, sem banda", "R$100 quando a indicação vira reunião FEITA; se converter, R$500 no lugar (não soma). Bônus de NPS pago com NPS ≥ 80 e bônus de churn pago com churn do mês abaixo de 15%."],
   ["Subir de nível é o plano de carreira", "promoção sobe fixo, meta e bônus juntos (1 júnior · 2 pleno · 3 sênior). O critério é um só: 3 meses seguidos FECHADOS com 100% da meta nas duas pernas (contratos e receita, cada uma pela meta do nível da época) deixam a pessoa elegível a subir um nível. O cockpit marca quem está elegível e avisa a gestão; a promoção em si é decisão do Leo, em Metas → Meta por pessoa. Mês abaixo de 100% em qualquer perna zera a contagem. Vale pra SDR e closer, que são as vagas com nível."],
   ["Bônus de time", "todo mundo do plano (SDR, closer, CS e mídia social) leva um valor fixo, pelo cargo e nível, quando o mês fecha com as DUAS condições juntas: a meta de venda do mês da empresa batida (a mesma faixa Meta do mês da Visão geral) e o churn do mês abaixo de 15%. Faltou uma, ninguém leva. Durante o mês a Visão geral mostra se o time está no ritmo."],
 ];
@@ -152,7 +153,7 @@ function SimVendas({ plan, isCloser, team }) {
   const bonusTime = s.time ? teamBonusFor(team, isCloser ? "closer" : "sdr", Number(s.n)) : 0;
   const set = (k) => (e) => setS((p) => ({ ...p, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
   return (
-    <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-1)", display: "flex", flexDirection: "column", gap: 6, fontSize: 12 }}>
+    <div className="remu-sim" style={{ marginTop: 10, padding: "10px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-1)", display: "flex", flexDirection: "column", gap: 6, fontSize: 12 }}>
       <div className="kicker" style={{ color: "var(--fg-3)" }}>Simulador · quanto leva no mês</div>
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <label>nível <select value={s.n} onChange={set("n")} style={{ ...inputS, width: 56, height: 26 }}>{(plan.levels || []).map((l) => <option key={l.n} value={l.n}>{l.n}</option>)}</select></label>
@@ -182,7 +183,7 @@ function SimCs({ plan, team }) {
   const varTotal = num(s.reunioes) * num(plan.referralMeeting) + num(s.fechadas) * num(plan.referralClosed) + (s.nps ? num(lv.npsBonus) : 0) + (s.churn ? num(lv.churnBonus) : 0) + (s.time ? teamBonusFor(team, "cs", Number(s.n)) : 0);
   const set = (k) => (e) => setS((p) => ({ ...p, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
   return (
-    <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-1)", display: "flex", flexDirection: "column", gap: 6, fontSize: 12 }}>
+    <div className="remu-sim" style={{ marginTop: 10, padding: "10px 12px", borderRadius: "var(--r-2)", background: "var(--bg-inset)", border: "1px solid var(--line-1)", display: "flex", flexDirection: "column", gap: 6, fontSize: 12 }}>
       <div className="kicker" style={{ color: "var(--fg-3)" }}>Simulador · quanto leva no mês</div>
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <label>nível <select value={s.n} onChange={set("n")} style={{ ...inputS, width: 56, height: 26 }}>{(plan.levels || []).map((l) => <option key={l.n} value={l.n}>{l.n}</option>)}</select></label>
@@ -207,9 +208,11 @@ const ROLE_META = {
   cs: { title: "Integrador · CS", sub: "fixo + indicação (reunião feita / fechada) + bônus NPS" },
 };
 
-export function RoleCard({ role, saved, onSave, team }) {
+export function RoleCard({ role, saved, onSave, team, editable = true }) {
   const [draft, setDraft] = useS(saved);
   const [saving, setSaving] = useS(false);
+  const [notice, setNotice] = useS(null);
+  const busy = React.useRef(false);
   useE(() => setDraft(saved), [saved]); // eslint-disable-line react-hooks/exhaustive-deps
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
   const isCs = role === "cs";
@@ -218,12 +221,13 @@ export function RoleCard({ role, saved, onSave, team }) {
   const setTop = (k) => (e) => setDraft((p) => ({ ...p, [k]: k === "notes" ? e.target.value : num(e.target.value) }));
 
   return (
-    <div style={box}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-        <div style={{ fontSize: 15.5, fontWeight: 700, letterSpacing: "-0.01em" }}>{ROLE_META[role].title}</div>
+    <section className="remu-role remu-card" data-role={role}>
+      <fieldset disabled={saving || !editable} className="remu-fields">
+      <header className="remu-card-head">
+        <h2>{ROLE_META[role].title}</h2>
         <span style={{ fontSize: 11.5, color: "var(--fg-3)" }}>{ROLE_META[role].sub}</span>
         {saved.updatedAt && <span className="mono" style={{ fontSize: 9.5, color: "var(--fg-4)", marginLeft: "auto" }}>salvo em {new Date(saved.updatedAt).toLocaleDateString("pt-BR")}</span>}
-      </div>
+      </header>
 
       <div className="tbl-x" style={{ marginTop: 10, overflowX: "auto" }}>
         <table style={{ borderCollapse: "collapse", minWidth: isCs ? 500 : 720 }}>
@@ -264,16 +268,16 @@ export function RoleCard({ role, saved, onSave, team }) {
                     );
                   })()}
                 </td>
-                <td style={tdS}><input type="number" value={l.fixed} onChange={setLevel(l.n, "fixed")} style={cellIn} /></td>
-                {isCloser && <td style={tdS}><input type="number" value={l.fixedPj ?? 0} onChange={setLevel(l.n, "fixedPj")} style={cellIn} /></td>}
-                {!isCs && <td style={tdS}><input type="number" value={l.metaContracts ?? 0} onChange={setLevel(l.n, "metaContracts")} style={{ ...cellIn, width: 60 }} /></td>}
-                {!isCs && <td style={tdS}><input type="number" value={l.metaRevenue ?? 0} onChange={setLevel(l.n, "metaRevenue")} style={{ ...cellIn, width: 96 }} /></td>}
-                {!isCs && <td style={tdS}><input type="number" value={l.b80 ?? 0} onChange={setLevel(l.n, "b80")} style={cellIn} /></td>}
-                {!isCs && <td style={tdS}><input type="number" value={l.b100 ?? 0} onChange={setLevel(l.n, "b100")} style={cellIn} /></td>}
-                {!isCs && <td style={tdS}><input type="number" value={l.b120 ?? 0} onChange={setLevel(l.n, "b120")} style={cellIn} /></td>}
-                {!isCs && <td style={tdS}><input type="number" value={l.b140 ?? 0} onChange={setLevel(l.n, "b140")} style={cellIn} /></td>}
-                {isCs && <td style={tdS}><input type="number" value={l.npsBonus ?? 0} onChange={setLevel(l.n, "npsBonus")} style={cellIn} /></td>}
-                {isCs && <td style={tdS}><input type="number" value={l.churnBonus ?? 0} onChange={setLevel(l.n, "churnBonus")} style={cellIn} /></td>}
+                <td style={tdS}><input type="number" aria-label={`Fixo · ${levelLabel(l.n)}`} value={l.fixed} onChange={setLevel(l.n, "fixed")} style={cellIn} /></td>
+                {isCloser && <td style={tdS}><input type="number" aria-label={`Fixo PJ · ${levelLabel(l.n)}`} value={l.fixedPj ?? 0} onChange={setLevel(l.n, "fixedPj")} style={cellIn} /></td>}
+                {!isCs && <td style={tdS}><input type="number" aria-label={`Meta contratos · ${levelLabel(l.n)}`} value={l.metaContracts ?? 0} onChange={setLevel(l.n, "metaContracts")} style={{ ...cellIn, width: 60 }} /></td>}
+                {!isCs && <td style={tdS}><input type="number" aria-label={`Meta receita · ${levelLabel(l.n)}`} value={l.metaRevenue ?? 0} onChange={setLevel(l.n, "metaRevenue")} style={{ ...cellIn, width: 96 }} /></td>}
+                {!isCs && <td style={tdS}><input type="number" aria-label={`Bônus 80% · ${levelLabel(l.n)}`} value={l.b80 ?? 0} onChange={setLevel(l.n, "b80")} style={cellIn} /></td>}
+                {!isCs && <td style={tdS}><input type="number" aria-label={`Bônus 100% · ${levelLabel(l.n)}`} value={l.b100 ?? 0} onChange={setLevel(l.n, "b100")} style={cellIn} /></td>}
+                {!isCs && <td style={tdS}><input type="number" aria-label={`Bônus 120% · ${levelLabel(l.n)}`} value={l.b120 ?? 0} onChange={setLevel(l.n, "b120")} style={cellIn} /></td>}
+                {!isCs && <td style={tdS}><input type="number" aria-label={`Bônus 140% · ${levelLabel(l.n)}`} value={l.b140 ?? 0} onChange={setLevel(l.n, "b140")} style={cellIn} /></td>}
+                {isCs && <td style={tdS}><input type="number" aria-label={`Bônus NPS · ${levelLabel(l.n)}`} value={l.npsBonus ?? 0} onChange={setLevel(l.n, "npsBonus")} style={cellIn} /></td>}
+                {isCs && <td style={tdS}><input type="number" aria-label={`Bônus churn · ${levelLabel(l.n)}`} value={l.churnBonus ?? 0} onChange={setLevel(l.n, "churnBonus")} style={cellIn} /></td>}
               </tr>
             ))}
           </tbody>
@@ -288,7 +292,7 @@ export function RoleCard({ role, saved, onSave, team }) {
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 10, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
+      <div className="remu-notes">
         <label style={{ flex: "1 1 240px", fontSize: 11, color: "var(--fg-3)", display: "flex", flexDirection: "column", gap: 3 }}>
           Observações
           <input value={draft.notes || ""} onChange={setTop("notes")} placeholder="acordos, exceções…" style={{ ...inputS, width: "100%" }} />
@@ -296,17 +300,22 @@ export function RoleCard({ role, saved, onSave, team }) {
         {dirty && (
           <button style={btnPrimary} disabled={saving}
             onClick={async () => {
-              setSaving(true);
-              try { await onSave(role, draft); } catch (e) { window.alert(e?.message || "não salvou"); }
-              setSaving(false);
+              if (busy.current) return;
+              busy.current = true; setSaving(true); setNotice(null);
+              try { await onSave(role, draft); setNotice({ok:true,text:"Plano salvo."}); }
+              catch (e) { setNotice({ok:false,text:`Plano não salvo: ${e.message}`}); }
+              finally { busy.current = false; setSaving(false); }
             }}>
             {saving ? "salvando…" : "salvar plano"}
           </button>
         )}
       </div>
 
+      {dirty && <button className="remu-discard" onClick={() => { setDraft(saved); setNotice(null); }}>Descartar alterações</button>}
+      </fieldset>
+      {notice && <div className="remu-notice" role={notice.ok ? "status" : "alert"}>{notice.text}</div>}
       {isCs ? <SimCs plan={draft} team={team} /> : <SimVendas plan={draft} isCloser={isCloser} team={team} />}
-    </div>
+    </section>
   );
 }
 
@@ -320,9 +329,11 @@ export function RoleCard({ role, saved, onSave, team }) {
 // social. Por isso o bloco fica fora dos cards de trilha.
 // Bônus de time: a tabela editável, o estado do mês corrente (as duas condições
 // com os números que o placar já calcula) e quem leva quanto se o mês fechar.
-export function TeamBonusCard({ saved, onSave }) {
+export function TeamBonusCard({ saved, onSave, editable = true }) {
   const [draft, setDraft] = useS(saved);
   const [saving, setSaving] = useS(false);
+  const [notice, setNotice] = useS(null);
+  const busy = React.useRef(false);
   const [status, setStatus] = useS(null);
   const [product] = useActiveSaas();
   useE(() => setDraft(saved), [saved]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -332,16 +343,20 @@ export function TeamBonusCard({ saved, onSave }) {
     const iso = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
     return { since: iso(new Date(d.getFullYear(), d.getMonth(), 1)), until: iso(d) };
   }, []);
-  const [meses, setMeses] = useS([]);
+  const [meses, setMeses] = useS(null), [statusErr, setStatusErr] = useS(null), [monthsErr, setMonthsErr] = useS(null), [retry, setRetry] = useS(0), [recalc, setRecalc] = useS(null);
+  const recalcBusy = React.useRef(false), monthsRequest = React.useRef(0);
   useE(() => {
     if (!product?.id) return;
-    api.scoreboard(product.id, mes).then((r) => setStatus(r?.team?.teamBonus || null)).catch(() => setStatus(null));
-  }, [product?.id, mes]); // eslint-disable-line react-hooks/exhaustive-deps
+    let live = true; setStatusErr(null); setStatus(null);
+    api.scoreboard(product.id, mes).then((r) => { if(live) setStatus(r?.team?.teamBonus || null); }).catch(e => { if(live) setStatusErr(e.message); });
+    return () => { live = false; };
+  }, [product?.id, mes, retry]); // eslint-disable-line react-hooks/exhaustive-deps
   const carregarMeses = React.useCallback(() => {
     if (!product?.id) return;
-    api.compMonths(product.id, 6).then((r) => setMeses(r?.months || [])).catch(() => setMeses([]));
+    const request = ++monthsRequest.current; setMonthsErr(null);
+    return api.compMonths(product.id, 6).then((r) => { if(request === monthsRequest.current) setMeses(r?.months || []); }).catch(e => { if(request === monthsRequest.current) setMonthsErr(e.message); });
   }, [product?.id]);
-  useE(() => { carregarMeses(); }, [carregarMeses]);
+  useE(() => { carregarMeses(); return () => { monthsRequest.current++; }; }, [carregarMeses]);
 
   const users = (window.SEED?.USERS || []).filter((u) => (u.roles || []).some((r) => ["sdr", "closer", "integrator", "social"].includes(r)));
   const setCell = (role, i) => (e) => setDraft((p) => ({
@@ -353,19 +368,20 @@ export function TeamBonusCard({ saved, onSave }) {
   }, 0);
 
   return (
-    <div style={box}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
-        <div style={{ fontSize: 15.5, fontWeight: 700, letterSpacing: "-0.01em" }}>Bônus de time</div>
+    <section className="remu-card remu-team">
+      <header className="remu-card-head">
+        <h2>Bônus de time</h2>
         <span style={{ fontSize: 11.5, color: "var(--fg-3)" }}>
           a parcela coletiva: meta de venda do mês batida E churn abaixo do limiar · vale para: {(draft.products || []).join(", ") || "nenhum produto"}
         </span>
-      </div>
+      </header>
+      {statusErr && <div role="alert" className="remu-notice">Condições indisponíveis: {statusErr} <button onClick={() => setRetry(v=>v+1)}>Recarregar condições</button></div>}
 
       {status?.applies === false && (
         <div style={{ fontSize: 12, color: "var(--fg-4)", marginBottom: 8 }}>O bônus de time não vale neste produto.</div>
       )}
       {status?.applies && (
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10, fontSize: 12.5 }}>
+        <div className="remu-conditions">
           <span style={{ color: status.cash.ok ? "var(--pos)" : "var(--fg-3)" }}>
             {status.cash.ok ? "✓" : "○"} meta de venda do mês {status.cash.target ? `(${money(status.cash.sold)} de ${money(status.cash.target)})` : "(sem meta digitada)"}
           </span>
@@ -378,7 +394,7 @@ export function TeamBonusCard({ saved, onSave }) {
         </div>
       )}
 
-      <div className="tbl-x"><table style={{ borderCollapse: "collapse", fontSize: 12.5, minWidth: 360 }}>
+      <fieldset className="remu-fields" disabled={!editable || saving}><div className="tbl-x"><table style={{ borderCollapse: "collapse", fontSize: 12.5, minWidth: 360 }}>
         <thead><tr>
           <th style={thS}>cargo</th><th style={thS}>júnior</th><th style={thS}>pleno</th><th style={thS}>sênior</th>
         </tr></thead>
@@ -387,19 +403,19 @@ export function TeamBonusCard({ saved, onSave }) {
             <tr key={k}>
               <td style={tdS}>{rot}</td>
               {[0, 1, 2].map((i) => (
-                <td key={i} style={tdS}><input type="number" value={(draft[k] || [])[i] ?? 0} onChange={setCell(k, i)} style={{ ...inputS, width: 76 }} /></td>
+                <td key={i} style={tdS}><input type="number" aria-label={`${rot} · ${levelLabel(i+1)}`} value={(draft[k] || [])[i] ?? 0} onChange={setCell(k, i)} style={{ ...inputS, width: 76 }} /></td>
               ))}
             </tr>
           ))}
           <tr>
             <td style={tdS}>Mídia social</td>
             <td style={tdS} colSpan={3}>
-              <input type="number" value={draft.social ?? 0} onChange={(e) => setDraft((p) => ({ ...p, social: num(e.target.value) }))} style={{ ...inputS, width: 76 }} />
+              <input type="number" aria-label="Bônus Mídia social" value={draft.social ?? 0} onChange={(e) => setDraft((p) => ({ ...p, social: num(e.target.value) }))} style={{ ...inputS, width: 76 }} />
               <span style={{ marginLeft: 8, color: "var(--fg-4)" }}>valor único (a vaga não tem nível)</span>
             </td>
           </tr>
         </tbody>
-      </table></div>
+      </table></div></fieldset>
 
       <div style={{ marginTop: 10, fontSize: 12, color: "var(--fg-3)" }}>
         se o mês fechar com as duas condições, o time leva <b style={{ color: "var(--fg-1)" }}>{money(totalSeTodos)}</b> ({users.length} {users.length === 1 ? "pessoa" : "pessoas"} no plano)
@@ -408,6 +424,9 @@ export function TeamBonusCard({ saved, onSave }) {
       {/* Extrato: o que cada mês FECHADO registrou. O carimbo é do dia seguinte
           ao fim do mês; recalcular depois da folha muda um número já pago, por
           isso o aviso fica junto do botão. */}
+      {monthsErr && <div role="alert" className="remu-notice">Meses indisponíveis: {monthsErr} <button onClick={carregarMeses}>Recarregar meses</button></div>}
+      {meses == null && !monthsErr && <div className="remu-notice" role="status">Carregando meses fechados…</div>}
+      {meses?.length === 0 && <div className="remu-notice">Nenhum mês fechado neste produto.</div>}
       {(meses || []).length > 0 && (
         <div style={{ marginTop: 12, borderTop: "1px solid var(--line-1)", paddingTop: 10 }}>
           <div className="kicker" style={{ marginBottom: 6 }}>Meses fechados</div>
@@ -423,13 +442,16 @@ export function TeamBonusCard({ saved, onSave }) {
                 </span>
               )}
               <b style={{ marginLeft: "auto" }}>{money(m.total)}</b>
-              <button onClick={async () => {
+              <button disabled={!editable || recalc != null} onClick={async () => {
+                if (recalcBusy.current) return;
                 if (!window.confirm(`Recalcular ${m.month}? Se a folha desse mês já foi paga, o número aqui pode mudar.`)) return;
-                try { await api.compMonthClose(product.id, m.month); carregarMeses(); }
-                catch (e) { window.alert(e?.message || "não consegui recalcular"); }
+                recalcBusy.current = true; setRecalc(m.month); setNotice(null);
+                try { await api.compMonthClose(product.id, m.month); await carregarMeses(); setNotice({ok:true,text:`${m.month} recalculado.`}); }
+                catch (e) { setNotice({ok:false,text:`Não foi possível recalcular: ${e.message}`}); }
+                finally { recalcBusy.current = false; setRecalc(null); }
               }}
                 style={{ height: 24, padding: "0 9px", borderRadius: 999, fontSize: 11, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-3)", cursor: "pointer" }}>
-                recalcular
+                {recalc === m.month ? "recalculando…" : "recalcular"}
               </button>
             </div>
           ))}
@@ -437,17 +459,19 @@ export function TeamBonusCard({ saved, onSave }) {
       )}
 
       {dirty && (
-        <button onClick={async () => { setSaving(true); try { await onSave("team", draft); } finally { setSaving(false); } }} disabled={saving}
-          style={{ marginTop: 10, height: 30, padding: "0 14px", borderRadius: 999, border: 0, background: "var(--accent)", color: "oklch(1 0 0)", fontSize: 12.5, fontWeight: 600, cursor: saving ? "default" : "pointer" }}>
+        <button onClick={async () => { if(busy.current) return; busy.current=true; setSaving(true); setNotice(null); try { await onSave("team", draft); setNotice({ok:true,text:"Bônus salvo."}); } catch(e) { setNotice({ok:false,text:`Bônus não salvo: ${e.message}`}); } finally { busy.current=false; setSaving(false); } }} disabled={saving || !editable}
+          style={{...btnPrimary, margin:"10px 20px"}}>
           {saving ? "salvando…" : "salvar bônus de time"}
         </button>
       )}
-    </div>
+      {dirty && <button className="remu-discard" disabled={saving || !editable} onClick={() => {setDraft(saved);setNotice(null);}}>Descartar alterações</button>}
+      {notice && <div className="remu-notice" role={notice.ok ? "status" : "alert"}>{notice.text}</div>}
+    </section>
   );
 }
 
 function ReferralPayout({ rates }) {
-  const [data, setData] = useS(null);
+  const [data, setData] = useS(null), [err, setErr] = useS(null), [retry, setRetry] = useS(0);
   const [product] = useActiveSaas();
   const mes = React.useMemo(() => {
     const d = new Date();
@@ -457,17 +481,19 @@ function ReferralPayout({ rates }) {
   }, []);
   useE(() => {
     if (!product?.id) return;
-    api.scoreboard(product.id, mes).then((r) => setData(r?.referrals || { people: [] })).catch(() => setData({ people: [] }));
-  }, [product?.id, mes]); // eslint-disable-line react-hooks/exhaustive-deps
+    let live=true;setData(null);setErr(null);
+    api.scoreboard(product.id, mes).then((r) => {if(live)setData(r?.referrals || { people: [] });}).catch(e=>{if(live)setErr(e.message);});
+    return()=>{live=false;};
+  }, [product?.id, mes, retry]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const people = data?.people || [];
   const total = people.reduce((a, p) => a + num(p.value), 0);
   const meeting = num(data?.rates?.meeting ?? rates?.meeting ?? 100);
   const closed = num(data?.rates?.closed ?? rates?.closed ?? 500);
   return (
-    <div style={box}>
-      <div className="kicker" style={{ color: "var(--accent)", marginBottom: 8 }}>Indicação · o que o mês deve pagar</div>
-      {data == null ? <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div> : !people.length ? (
+    <div className="remu-card remu-referrals" style={box}>
+      <h2>Indicações a pagar</h2>
+      {err ? <div role="alert" className="remu-notice">Indicações indisponíveis: {err} <button onClick={()=>setRetry(v=>v+1)}>Recarregar indicações</button></div> : data == null ? <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div> : !people.length ? (
         <div style={{ fontSize: 12.5, color: "var(--fg-3)" }}>
           Nenhuma indicação colhida neste mês ainda. A fila de quem pedir está na aba Indicações da tela Clientes.
         </div>
@@ -498,43 +524,50 @@ function ReferralPayout({ rates }) {
 }
 
 function RemuneracaoScreen() {
+  const [product] = useActiveSaas();
+  const editor = isAdminUser();
+  if (!editor && !hasExplicitScreen("remuneracao")) return <EmptyState title="Área da gestão" hint="Peça pra gestão liberar a tela Remuneração em Ajustes → Equipe." />;
+  return <RemuneracaoWorkspace key={product?.id} editor={editor} />;
+}
+function RemuneracaoWorkspace({editor}) {
   const [docs, setDocs] = useS(null); // comp_plans salvos, por role
-  const load = () => api.list("comp_plans").then((all) => {
+  const [err,setErr] = useS(null), [retry,setRetry] = useS(0);
+  const request = React.useRef(0);
+  const load = () => { const version = ++request.current; setErr(null); return api.list("comp_plans").then((all) => {
     const by = {};
     for (const d of all || []) if (d.role) by[d.role] = d;
-    setDocs(by);
-  }).catch(() => setDocs({}));
-  useE(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if(version===request.current)setDocs(by);
+  }).catch(e => {if(version===request.current)setErr(e.message);}); };
+  useE(() => { load(); return()=>{request.current++;}; }, [retry]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const editor = isAdminUser();
-  if (!editor && !hasExplicitScreen("remuneracao"))
-    return <EmptyState title="Área da gestão" hint="Peça pra gestão liberar a tela Remuneração em Ajustes → Equipe." />;
 
   // Plano vigente por trilha: doc salvo (campo plan) por cima do padrão aprovado.
+  const plans = React.useRef({});
   const planOf = (role) => {
+    if(plans.current[role]?.doc === docs?.[role] && plans.current[role]?.plan) return plans.current[role].plan;
     const doc = docs?.[role];
     const plan = doc?.plan ? { ...DEFAULT_PLAN[role], ...doc.plan, updatedAt: doc.updatedAt } : { ...DEFAULT_PLAN[role] };
     // Doc salvo antes da coluna 140% não tem b140: mostra a extrapolação antiga.
     if (role !== "cs") plan.levels = (plan.levels || []).map((l) => (l.b140 == null ? { ...l, b140: num(l.b120) + (num(l.b120) - num(l.b100)) } : l));
     // Doc do CS salvo antes do bônus de churn: herda o valor padrão do nível.
     if (role === "cs") plan.levels = (plan.levels || []).map((l) => (l.churnBonus == null ? { ...l, churnBonus: num(DEFAULT_PLAN.cs.levels.find((d) => d.n === l.n)?.churnBonus) } : l));
+    plans.current[role] = {doc:docs?.[role],plan};
     return plan;
   };
   async function save(role, plan) {
     const doc = docs?.[role];
     const { updatedAt, ...clean } = plan;
     const payload = { role, plan: clean, updatedAt: new Date().toISOString() };
-    if (doc?.id) await api.update("comp_plans", doc.id, payload);
-    else await api.create("comp_plans", payload);
-    load();
+    if (!editor) return;
+    const result = doc?.id ? await api.update("comp_plans", doc.id, payload) : await api.create("comp_plans", payload);
+    setDocs(p => ({...p,[role]:result}));
   }
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
-      <PageHead title="Remuneração" sub="plano oficial por cargo e nível (aprovado 04/08) · edição só pra admins" />
-      <div style={{ padding: "16px var(--pad-x) 56px", display: "flex", flexDirection: "column", gap: 14 }}>
-        <div style={box}>
-          <div className="kicker" style={{ color: "var(--accent)", marginBottom: 8 }}>Regras da casa</div>
+    <div className="remu-page">
+      <PageHead title="Remuneração">{!editor && <span className="remu-access">Somente leitura</span>}</PageHead>
+      <div className="remu-body">
+        <details className="remu-rules remu-card"><summary><span>As regras da casa</span><span className="remu-rules-label" /><span className="remu-rules-hint">o que manda quando a conta briga com a intuição · a banda é degrau, não rampa</span></summary>
           <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
             {RULES.map(([t, d], i) => (
               <div key={i} style={{ fontSize: 12.5, lineHeight: 1.5 }}>
@@ -542,18 +575,19 @@ function RemuneracaoScreen() {
               </div>
             ))}
           </div>
-        </div>
-        {docs == null && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
+        </details>
+        {err && <div role="alert" className="remu-notice">Não foi possível carregar o plano: {err} <button onClick={()=>setRetry(v=>v+1)}>Tentar novamente</button></div>}
+        {docs == null && !err && <div className="mono dim" style={{ fontSize: 12 }}>carregando…</div>}
         {/* Não-admin (tela concedida) só LÊ: o fieldset desabilitado trava todos
             os campos de uma vez — sem edição, o botão salvar nem chega a nascer. */}
         {docs != null && ["sdr", "closer", "cs"].map((role) => (
-          <fieldset key={role} disabled={!editor} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-            <RoleCard role={role} saved={planOf(role)} onSave={save} team={planOf("team")} />
+          <fieldset key={role} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+            <RoleCard role={role} saved={planOf(role)} onSave={save} team={planOf("team")} editable={editor} />
           </fieldset>
         ))}
         {docs != null && (
-          <fieldset disabled={!editor} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-            <TeamBonusCard saved={planOf("team")} onSave={save} />
+          <fieldset style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+            <TeamBonusCard saved={planOf("team")} onSave={save} editable={editor} />
           </fieldset>
         )}
         {docs != null && <ReferralPayout rates={planOf("cs")} />}

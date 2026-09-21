@@ -35,7 +35,8 @@
     "test:review:desempenho": "node scripts/review/desempenho.mjs",
     "test:review:tasks": "node scripts/review/tasks.mjs",
     "test:review:mindmaps": "node scripts/review/mindmaps.mjs",
-    "test:review:metas": "node scripts/review/metas.mjs"
+    "test:review:metas": "node scripts/review/metas.mjs",
+    "test:review:remuneracao": "node scripts/review/remuneracao.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
