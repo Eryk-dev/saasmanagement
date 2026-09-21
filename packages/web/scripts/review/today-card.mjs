@@ -48,8 +48,13 @@ try {
     assert.equal(saves.at(-1).deckC.nome,'Bruno Teixeira');
     await page.waitForFunction(()=>{const f=document.querySelector('iframe[title="Configurar apresentação"]');return f&&f.clientHeight>=f.contentDocument.querySelector('[data-cfg-screen]').scrollHeight;});
     assert.ok(await frame.locator('body').evaluate(e=>e.scrollWidth<=innerWidth));
+    await page.locator('.lead-answers-editor > summary').click();
     await page.getByRole('combobox',{name:'Quantas contas?'}).selectOption('3-5');
+    await page.locator('.lead-answers-editor > summary').click();
+    assert.ok(await page.locator('.lead-answers-list').getByText('3 a 5 contas',{exact:true}).isVisible());
     assert.ok(await page.evaluate(()=>window.__reviewMutations.some(m=>m.patch?.accounts==='3-5')));
+    assert.ok(await page.locator('.lead-answers-list').evaluate(e=>[...e.querySelectorAll('dt,dd')].every(n=>n.scrollWidth<=n.clientWidth && n.scrollHeight<=n.clientHeight)));
+    assert.ok((await page.locator('.lead-answers-list').innerText()).includes('Também quero criar anúncios mais rápido.'));
     await page.locator('.today-script-body').evaluate(e=>e.scrollTop=0);
     await h.capture(page,`card-top-${width}`);
     const rects=await page.locator('.today-script-columns > section').evaluateAll(es=>es.map(e=>{const r=e.getBoundingClientRect();return{x:r.x,y:r.y}}));

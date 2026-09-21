@@ -1203,3 +1203,7 @@ com pagamento e proposta no WhatsApp. Geração e menu ⋯ removidos das ativida
 rodapé Próximo passo e plano selecionado com fundo escuro, conferidos em desktop
 e mobile.
 Validação de ações e mobile em `scripts/review/today-shortcuts.mjs`.
+
+Respostas das atividades revisadas em 21/09/2026: leitura vertical sem cortes,
+como no Inbox; edição recolhível e pendências preservadas. Validado com perguntas
+e respostas longas em desktop e celular no review today-card.

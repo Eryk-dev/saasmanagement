@@ -315,3 +315,7 @@ com quebra no mobile, junto aos atalhos de chamada; gerar apresentação e ⋯ n
 aparecem. O pipeline mantém sua disposição vertical.
 O rodapé Próximo passo usa a cápsula escura `capsule-navy`; o plano selecionado
 na configuração incorporada usa fundo `--ink` e texto `--paper-card`.
+
+Respostas do formulário nas atividades seguem a qualificação do Inbox: pergunta
+acima da resposta, separadores discretos e quebra de textos longos, preservando
+linhas. A edição fica em “Editar respostas”, com contagem das pendências.

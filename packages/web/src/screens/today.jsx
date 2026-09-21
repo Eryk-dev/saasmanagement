@@ -1584,7 +1584,7 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
               </> : <p className="today-script-hint">{preview ? "A configuração da apresentação aparece aqui na atividade do lead." : "Prepare a proposta pelo botão Proposta no WhatsApp para preencher pedidos, ticket médio, produtos e plano aqui. A configuração continua disponível na apresentação."}</p>}
             </LeadSection>
             <LeadSection title="Perguntas e respostas do formulário">
-              <LeadChecklist key={l.id} checklist={scriptChecklist(saasCfg, l)} onPatch={patch} leadId={l.id} title="Respostas do lead" />
+              <LeadChecklist readable key={l.id} checklist={scriptChecklist(saasCfg, l)} onPatch={patch} leadId={l.id} title="Respostas do lead" />
             </LeadSection>
           </div>
           {preview && <LeadSection title="Pré-visualização do roteiro"><ScriptBlocks script={script} tokens={tokens} /></LeadSection>}

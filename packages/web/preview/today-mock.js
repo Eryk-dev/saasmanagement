@@ -7,8 +7,8 @@ export function setupTodayReview(seed) {
     const base=seed.LEADS.find(l=>l.name==='Carla Nunes');
     seed.LEADS.push(...Array.from({length:7},(_,i)=>({...base,id:`future-${i}`,name:`Futuro ${i+1}`,nextActionAt:futureDate(1)})));
     seed.LEADS.push({...base,id:'future-later',name:'Mais adiante',nextActionAt:futureDate(4)});
-    Object.assign(seed.LEADS.find(l=>l.name==='Bruno Teixeira'), {proposta_id:'card-preview',proposalUrl:'/p/card-preview',proposal_edit_url:'/p/card-preview?k=review'});
-    seed.SAAS[0].leadQuestions=[{key:'accounts',label:'Quantas contas?',options:[{value:'2',label:'2 contas'},{value:'3-5',label:'3 a 5 contas'}]}];
+    Object.assign(seed.LEADS.find(l=>l.name==='Bruno Teixeira'), {niche:'auto',need:'Preciso organizar a gestão de estoque entre todas as contas e acompanhar os produtos com maior giro.\nTambém quero criar anúncios mais rápido.',proposta_id:'card-preview',proposalUrl:'/p/card-preview',proposal_edit_url:'/p/card-preview?k=review'});
+    seed.SAAS[0].leadQuestions=[{key:'niche',label:'Qual é o principal nicho de produtos que você vende nos marketplaces?',options:[{value:'auto',label:'Autopeças e acessórios para veículos de diferentes marcas e modelos'}]},{key:'need',label:'O que fez você procurar uma solução agora?',options:[]},{key:'accounts',label:'Quantas contas?',options:[{value:'2',label:'2 contas'},{value:'3-5',label:'3 a 5 contas'}]}];
   }
   if (params.get('state') === 'empty') seed.LEADS = [];
   if (params.has('many')) seed.LEADS = [...seed.LEADS, ...Array.from({length:15},(_,i)=>({...seed.LEADS.find(l=>l.id==='l3'), id:`extra-${i}`, name:`Lead ${i + 1}`, company:`Empresa ${i + 1}`}))];

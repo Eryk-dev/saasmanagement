@@ -164,11 +164,21 @@ export function AttributionCard({ rows, open = true, onToggle = null }) {
 // sobe pro grupo de cima. Começa aberto só quando não há nada respondido (lead
 // criado à mão), senão o bloco viraria um botão solto. Quem monta passa
 // key={lead.id} pra o estado zerar ao trocar de lead.
-export function LeadChecklist({ checklist, onPatch, leadId, title = "Dados do lead · na ordem da conversa" }) {
+export function LeadChecklist({ checklist, onPatch, leadId, title = "Dados do lead · na ordem da conversa", readable = false }) {
   const done = checklist.filter((c) => c.value);
   const todo = checklist.filter((c) => !c.value);
   const [showTodo, setShowTodo] = React.useState(done.length === 0);
   if (!checklist.length) return null;
+  if (readable) return <div className="lead-answers-readable">
+    <dl className="lead-answers-list">
+      {done.map(c => <div key={c.key}><dt>{c.label}</dt><dd>{c.value}</dd></div>)}
+    </dl>
+    {!done.length && <p className="dim">Nenhuma resposta registrada.</p>}
+    <details className="lead-answers-editor" open={done.length === 0 ? true : undefined}>
+      <summary>Editar respostas{todo.length > 0 ? ` · ${todo.length} pendente${todo.length === 1 ? "" : "s"}` : ""}</summary>
+      <LeadChecklist checklist={checklist} onPatch={onPatch} leadId={leadId} title={title} />
+    </details>
+  </div>;
   const row = (c) => (
     <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, padding: "5px 9px", border: "1px solid var(--line-1)", borderRadius: "var(--r-2)", background: c.value ? "var(--bg-1)" : "var(--warn-soft)" }}>
       <span style={{ color: c.value ? "var(--pos)" : "var(--warn)", flexShrink: 0, fontSize: 12 }}>{c.value ? "✓" : "○"}</span>
