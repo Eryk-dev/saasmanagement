@@ -306,3 +306,9 @@ O iframe ajusta a altura ao conteúdo, sem esconder o valor em rolagem interna.
 Acabamento do bloco da apresentação: fundo contínuo `--paper-card`, sem faixas
 cinzas entre grupos. O produto é rotulado “LeverAds”. A ação “Apresentar” fica
 na faixa do valor final e abre o deck completo em nova aba com a chave atual.
+
+Atalhos de envio compartilham `components/lead-send-actions.jsx`: gerar
+apresentação, link de pagamento e proposta no WhatsApp; decks alternativos,
+apresentar, proposta personalizada e conversa no menu ⋯. No card de atividades,
+ficam em uma linha flexível com quebra no mobile, junto aos atalhos de chamada.
+O pipeline mantém sua disposição vertical.

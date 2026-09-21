@@ -7,7 +7,7 @@ export function setupTodayReview(seed) {
     const base=seed.LEADS.find(l=>l.name==='Carla Nunes');
     seed.LEADS.push(...Array.from({length:7},(_,i)=>({...base,id:`future-${i}`,name:`Futuro ${i+1}`,nextActionAt:futureDate(1)})));
     seed.LEADS.push({...base,id:'future-later',name:'Mais adiante',nextActionAt:futureDate(4)});
-    Object.assign(seed.LEADS.find(l=>l.name==='Bruno Teixeira'), {proposalUrl:'/p/card-preview',proposal_edit_url:'/p/card-preview?k=review'});
+    Object.assign(seed.LEADS.find(l=>l.name==='Bruno Teixeira'), {proposta_id:'card-preview',proposalUrl:'/p/card-preview',proposal_edit_url:'/p/card-preview?k=review'});
     seed.SAAS[0].leadQuestions=[{key:'accounts',label:'Quantas contas?',options:[{value:'2',label:'2 contas'},{value:'3-5',label:'3 a 5 contas'}]}];
   }
   if (params.get('state') === 'empty') seed.LEADS = [];
@@ -15,6 +15,18 @@ export function setupTodayReview(seed) {
   window.__reviewMutations = [];
 }
 export const todayMock = {
+  get: async (col,id) => window.SEED[col.toUpperCase()]?.find(row=>row.id===id),
+  generateProposal: async (id,options) => {
+    window.__reviewMutations.push({method:'generateProposal',id,options});
+    if (params.has('proposalFail')) return {ok:false};
+    const lead=window.SEED.LEADS.find(l=>l.id===id);
+    Object.assign(lead,{proposta_id:'card-preview',proposalUrl:'/p/card-preview',proposal_edit_url:'/p/card-preview?k=review'});
+    return {ok:true,lead};
+  },
+  shareProposal: async (id,offer) => {
+    window.__reviewMutations.push({method:'shareProposal',id,offer});
+    return {url:'https://client.example/proposal'};
+  },
   list: async col => col === 'leads' ? window.SEED.LEADS : [],
   listActivities: async id => activities.filter(activity => activity.lead === id),
   update: async (col, id, patch) => {

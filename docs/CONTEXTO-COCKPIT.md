@@ -549,3 +549,10 @@ alteração funcional nesta preparação.
   `deckConfig` e PATCH da apresentação, sem duplicar preços ou persistência.
   O deck normal mantém sua tela inicial. Validação adicional:
   `cd packages/web && node scripts/review/today-card.mjs` (API fictícia).
+
+- **Atalhos do lead (21/09/2026):** `components/lead-send-actions.jsx` reúne os
+  botões e as operações de gerar apresentação/enviar oferta principal usados
+  no pipeline e nas atividades. O envio continua preparando a oferta de cliente
+  via `shareProposal`, sem compartilhar a chave de edição do closer. Atividades
+  usa botões em linha e os mesmos modais de pagamento/proposta personalizada.
+  Revisão isolada: `cd packages/web && node scripts/review/today-shortcuts.mjs`.
