@@ -940,7 +940,7 @@ try {
       onPatch() {}, onMove() {}, onMoveMeet() {}, onAfter() {}, onClose() {}, onTouch() {}, onOpenLead() {},
     })));
     if (!painel.includes("Passo a passo")) throw new Error("o painel não montou em preview");
-    if (!painel.includes("Depois da ação")) throw new Error("preview deveria mostrar a nota do Depois da ação");
+    if (!painel.includes("Próximo passo")) throw new Error("preview deveria mostrar a nota do Próximo passo");
     if (painel.includes("abrir lead")) throw new Error("preview não deveria oferecer abrir lead");
     console.log(`✓ minhas-atividades (${soma}px de ${T.QUEUE_GRID_BUDGET})`);
   } catch (err) {

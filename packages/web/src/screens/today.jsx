@@ -1683,6 +1683,7 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
   // system call_summary) — contexto de quem já falou com esse lead e o que
   // saiu da última call, pra o closer conduzir o follow-up.
   const [acts, setActs] = useS(null);
+  const [actsError, setActsError] = useS(false);
   const [callSummary, setCallSummary] = useS(null);
   const [salesSummary, setSalesSummary] = useS(null); // última call de VENDA resumida (alimenta os tokens do roteiro)
   const [actsReload, setActsReload] = useS(0); // bump refaz o fetch após anotar
@@ -1690,7 +1691,7 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
     // Pré-visualização usa um lead fictício: não busca timeline (nem bate na API).
     if (preview) { setActs([]); return; }
     let alive = true;
-    setActs(null); setCallSummary(null); setSalesSummary(null);
+    setActs(null); setActsError(false); setCallSummary(null); setSalesSummary(null);
     api.listActivities(l.id)
       .then((a) => {
         if (!alive) return;
@@ -1706,7 +1707,7 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
         // outra estrutura: sentimento/pendências, nada de objeção/combinado).
         setSalesSummary(sums.find((x) => (x.meta.kind || "call") === "call")?.meta.summary || null);
       })
-      .catch(() => { if (alive) { setActs([]); setCallSummary(null); setSalesSummary(null); } });
+      .catch(() => { if (alive) { setActs([]); setActsError(true); setCallSummary(null); setSalesSummary(null); } });
     return () => { alive = false; };
   }, [l.id, actsReload]);
   // Tokens depois do fetch: o roteiro do follow-up usa o que saiu da call
@@ -1726,36 +1727,43 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
           <button onClick={onClose} aria-label="Fechar roteiro" className="lead-panel-close">✕</button>
         </div>
 
-        {/* Corpo rolável: duas colunas (CLIENTE | ROTEIRO) + o destino do card. */}
-        <div className="today-script-body" style={{ padding: "18px 20px", display: "flex", flexDirection: "column", gap: 14, overflowY: "auto", minHeight: 0, background: "var(--bg-0)" }}>
-        {/* ── As colunas TROCARAM DE LADO (12/09) ────────────────────────
-            O roteiro é o que a pessoa LÊ enquanto fala: estava na coluna da
-            direita, enquanto os dados do cliente (consulta) ocupavam a
-            esquerda. Roteiro à esquerda e cliente à direita, em colunas iguais. */}
-        <div className="today-script-columns">
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
-            {/* Call agendada: atalhos do closer no topo (link da call + mandar pro
-                cliente no Whats + proposta), antes do passo a passo. A integração
-                (tarefa e confirmação) ganha os mesmos atalhos com a sala DELA. */}
-            {(item.kind === "call" || item.kind === "integracao") && !preview && (!item.confirm || (item.kind === "call" ? l.callUrl : l.integrationCallUrl)) && <CallShortcuts l={l} item={item} wa={wa} onPatch={patch} kind={item.kind} />}
-            {/* Fora da call, quem cobra proposta/follow-up também precisa do
-                atalho de mandar a proposta no Whats (sem os atalhos da call). */}
-            {item.kind !== "call" && !preview && PROPOSAL_KINDS.has(item.kind) && (
-              <div style={{ border: "1px solid var(--line-1)", background: "var(--bg-inset)", borderRadius: "var(--r-2)", padding: "10px 12px" }}>
-                <ProposalBlock l={l} wa={wa} item={item} onPatch={patch} />
-              </div>
-            )}
-            {/* Como se comportar + objetivo + passo a passo: bloco único
-                compartilhado com o card do lead (lead-blocks.jsx). */}
-            {preview ? <ScriptBlocks script={script} tokens={tokens} /> : <ExecutionSteps key={`${l.id}-${item.confirmWindow || ""}`} script={script} tokens={tokens} item={item} />}
+        {/* Organização aprovada no desenho: preparo, conversa, histórico. */}
+        <div className="today-script-body">
+          <div className="today-script-preparation">
+            <div className="today-script-shortcuts">
+              {(item.kind === "call" || item.kind === "integracao") && !preview && (!item.confirm || (item.kind === "call" ? l.callUrl : l.integrationCallUrl))
+                ? <CallShortcuts l={l} item={item} wa={wa} onPatch={patch} kind={item.kind} />
+                : <LeadSection title="Atalhos">
+                    {!preview && PROPOSAL_KINDS.has(item.kind) && <ProposalBlock l={l} wa={wa} item={item} onPatch={patch} />}
+                    <span className="today-script-hint">{item.stage} · {actionVerb(item)}</span>
+                  </LeadSection>}
+            </div>
+            <LeadSection title="Informações da apresentação" className="today-presentation">
+              {l.proposal_edit_url && !preview ? <>
+                <iframe key={l.proposal_edit_url} title="Configurar apresentação" src={`${l.proposal_edit_url}${l.proposal_edit_url.includes("?") ? "&" : "?"}embed=config&from=cockpit`} />
+                <a href={l.proposal_edit_url} target="_blank" rel="noopener noreferrer">Abrir configuração na apresentação ↗</a>
+              </> : <p className="today-script-hint">{preview ? "A configuração da apresentação aparece aqui na atividade do lead." : "Gere a proposta nos atalhos para configurar cliente, contas e plano aqui. A configuração continua disponível na apresentação."}</p>}
+            </LeadSection>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
-            {!preview && <LeadSection title="Anotar o que rolou">
-              <ActivityComposer embedded lead={l} onLogged={() => setActsReload((n) => n + 1)} />
-            </LeadSection>}
-
+          <div className="today-script-columns">
+            <LeadSection title="Roteiro">
+              {preview ? <ScriptBlocks script={script} tokens={tokens} /> : <ExecutionSteps key={`${l.id}-${item.confirmWindow || ""}`} script={script} tokens={tokens} item={item} />}
+            </LeadSection>
+            <LeadSection title="Perguntas e respostas do formulário">
+              <LeadChecklist key={l.id} checklist={scriptChecklist(saasCfg, l)} onPatch={patch} leadId={l.id} title="Respostas do lead" />
+            </LeadSection>
           </div>
-        </div>
+          <LeadSection title="Histórico de ações e anotações" className="today-script-history">
+            <CallSummaryCard summary={callSummary} phone={l.phone} onSend={onWhatsapp ? (msg) => onWhatsapp(l, msg) : null} />
+            {!preview && <ActivityComposer embedded lead={l} onLogged={() => setActsReload((n) => n + 1)} />}
+            {acts === null && <p className="today-script-hint" role="status">Carregando histórico…</p>}
+            {actsError && <p role="alert" className="today-script-hint">Não foi possível carregar o histórico. <button onClick={() => setActsReload((n) => n + 1)}>Tentar novamente</button></p>}
+            {!actsError && acts?.length === 0 && <p className="today-script-hint">Nenhum contato registrado ainda.</p>}
+            {(acts || []).map((a) => <div className="today-lead-history-row" key={a.id}>
+              <time dateTime={a.at}>{a.at ? new Date(a.at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—"}</time>
+              <div><strong>{ACT_LABELS[a.type] || a.type}</strong><span>{a.type === "stage" ? `${a.meta?.from || "?"} → ${a.meta?.to || "?"}` : a.text}</span></div>
+            </div>)}
+          </LeadSection>
         </div>
         {/* ── Rodapé: "Depois da ação" SEMPRE VISÍVEL (12/09) ───────────────
             Continua sem "registrar toque": a atividade só se completa movendo o
@@ -1773,7 +1781,7 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
           )}
           {!item.confirm && preview && (
             <div className="mono dim" style={{ flexBasis: "100%", fontSize: 10.5, lineHeight: 1.5, border: "1px dashed var(--line-2)", borderRadius: "var(--r-2)", padding: "8px 10px" }}>
-              na fila real, aqui aparece o bloco <b>“Depois da ação”</b> (pra onde vai o card)
+              na fila real, aqui aparece o bloco <b>“Próximo passo”</b> (pra onde vai o card)
             </div>
           )}
           {/* WhatsApp em linha própria, esticado (igual ao do drawer/pop de contato). */}
@@ -2349,7 +2357,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
 
   return (
     <div className="today-destinations">
-      <div className="kicker" style={{ marginBottom: 10 }}>Depois da ação</div>
+      <div className="kicker" style={{ marginBottom: 10 }}>Próximo passo</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {touchAgain && (
           <button key="touch-again" onClick={registrarMaisUma}

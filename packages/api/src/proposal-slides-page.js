@@ -1115,7 +1115,8 @@ function presentationResultsHtml(results) {
   </div>`;
 }
 
-export function proposalSlidesPageHtml(p, { editable = false, previewBanner = false, catalog = null, suggested = "", results = null } = {}) {
+export function proposalSlidesPageHtml(p, { editable = false, previewBanner = false, catalog = null, suggested = "", results = null, configOnly = false } = {}) {
+  configOnly = !!editable && !!configOnly;
   const cfg = deckConfig(p, { suggested });
   const slim = slimCatalog(catalog || {});
   // Link do CLIENTE: a oferta vai congelada no snapshot (shareProposalOffer) —
@@ -1126,6 +1127,7 @@ export function proposalSlidesPageHtml(p, { editable = false, previewBanner = fa
   const dados = {
     id: p.id,
     editable: !!editable,
+    configOnly,
     salvavel: !!editable && p.id !== "preview",
     aceito: !!p.accepted,
     cfg,
@@ -1147,7 +1149,22 @@ export function proposalSlidesPageHtml(p, { editable = false, previewBanner = fa
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<style>${DECK_CSS}</style>
+<style>${DECK_CSS}
+${configOnly ? `
+html, body { height: auto; overflow: auto; background: var(--paper-card); }
+.stage, #canvas { position: static; width: 100%; height: auto; overflow: visible; transform: none !important; }
+#canvas > section { display: none !important; }
+#canvas > [data-cfg-screen] { display: block !important; position: static; width: 100%; height: auto; padding: 0; }
+[data-cfg-screen] > div { zoom: 1 !important; width: 100% !important; padding: 0 !important; gap: 12px !important; }
+[data-cfg-screen] > div > div:first-child { padding: 0 0 8px !important; }
+[data-cfg-screen] > div > div:first-child > div:first-child, [data-act="capa"], .hud, .notas { display: none !important; }
+[data-cfg-screen] > div > div:nth-child(2) { grid-template-columns: minmax(0,1fr) !important; gap: 12px !important; }
+.cfg-card { padding: 12px; gap: 10px; min-width: 0; }
+.cfg-prod { padding: 8px; gap: 8px; }
+.cfg-prod span[style*="grid-template-columns"] { grid-template-columns: minmax(0,1fr) !important; }
+.cfg-select { text-overflow: ellipsis; }
+@media (pointer: coarse) { .cfg-input, .cfg-select, .cfg-seg button { min-height: 44px; } }
+` : ""}</style>
 </head>
 <body>
 ${previewBanner ? '<div class="fita">Pré-visualização do template · nada aqui é salvo</div>' : ""}
@@ -1315,6 +1332,7 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
     mostrar(atual, "recount");
   }
   function fit() {
+    if (D.configOnly) return;
     var w = window.innerWidth, h = window.innerHeight;
     var k = Math.min(w / 1920, h / 1080);
     canvas.style.transform = "scale(" + k + ")";
@@ -1322,6 +1340,7 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
     canvas.style.top = Math.round((h - 1080 * k) / 2) + "px";
   }
   function mostrar(i, motivo) {
+    if (D.configOnly) i = 0;
     if (!vis.length) return;
     atual = Math.max(0, Math.min(vis.length - 1, i));
     todos.forEach(function (s) { s.removeAttribute("data-deck-active"); });
@@ -1347,6 +1366,7 @@ ${editable ? '<div class="notas" id="notas"><b>Notas do apresentador</b><span id
   hud.addEventListener("mouseleave", hudAcordar);
 
   document.addEventListener("keydown", function (e) {
+    if (D.configOnly) return;
     if (/^(INPUT|SELECT|TEXTAREA)$/.test((e.target && e.target.tagName) || "")) return;
     var k = e.key;
     if (k === "ArrowRight" || k === "ArrowDown" || k === "PageDown" || k === " ") { e.preventDefault(); ir(1); }

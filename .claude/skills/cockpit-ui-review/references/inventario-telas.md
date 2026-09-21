@@ -1179,3 +1179,10 @@ no EasyPanel após os merges.
   nos legados, mantendo a letra e cor anteriores. ICP exibe faixas de receita
   e S/A/B a partir de R$ 200 mil/mês; legenda reutilizada em Clientes.
   Conferência no preview isolado com S–E, legado e ausência de respostas.
+
+### Card de atividades — 21/09/2026
+
+Layout aplicado conforme “novo card minhas atividade.pdf”: atalhos e configuração,
+roteiro ao lado das respostas, histórico abaixo e próximo passo no rodapé.
+Conferido em 1440px, 1920px e 390px, incluindo gravação de configuração,
+respostas e anotações. Evidências: `scripts/review/today-card.mjs`.
