@@ -129,6 +129,14 @@ try {
     ["contracts", "/src/screens/contracts.jsx", "ContractsScreen", {}, "Contratos gerados"],
     ["intform", "/src/screens/integration-forms.jsx", "IntegrationFormsScreen", {}, "Formulário de Integração"],
     ["blog", "/src/screens/blog.jsx", "BlogScreen", {}, "Blog"],
+    // Portão de fechamento indo pra Integração: além de produto/valor/plano/
+    // pagamento, pergunta QUEM integra e QUANDO (sem isso a integração não
+    // aparece na Agenda e o time não sabe que entrou trabalho).
+    ["gate-integracao", "/src/components/stage-move.jsx", "MoveLeadModal", {
+      lead: { ...window.SEED.LEADS[1], stage: "Call closer" },
+      toStage: "Integração", gate: { type: "won", toKind: "integracao" },
+      saasCfg: window.SEED.SAAS[0], onConfirm() {}, onCancel() {},
+    }, "Responsável pela integração"],
     ["deal", "/src/screens/deal.jsx", "LeadDetail", { lead: window.SEED.LEADS[1], onClose() {} }, "Próximo passo"],
     ["funcionarios", "/src/screens/funcionarios.jsx", "FuncionariosScreen", {}, "Análise de Equipe"],
     ["desempenho", "/src/screens/desempenho.jsx", "DesempenhoScreen", {}, "Análise de Desempenho"],

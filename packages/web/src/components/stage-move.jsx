@@ -2,11 +2,11 @@ import React from "react";
 import { PrimaryButton } from "../atoms.jsx";
 import { Modal } from "./overlay.jsx";
 import { stageKind, phaseOf, isLossKind, isWonKind, lossReasonsOf } from "../lib/funnel.js";
-import { usersByRole, currentUser } from "../lib/users.js";
+import { usersByRole, currentUser, displayName } from "../lib/users.js";
 import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, withLegacyOption, CONSULT_PACKAGES, CLOSED_PLAN_MONTHS, dealProductsOf, paymentUpfront, paymentRecurring, paymentCustom } from "../lib/payments.js";
 import { DealProductField, isOneOffProduct, SelectWithCustom, PaymentMethodSelect, ProductOptions } from "./lead-blocks.jsx";
 import { api } from "../lib/api.js";
-import { SlotGrid, nextBusinessDays, callBusyKeys } from "../screens/today.jsx";
+import { SlotGrid, nextBusinessDays, callBusyKeys, integBusyKeys } from "../screens/today.jsx";
 
 // Gate de movimento de estágio — os três momentos do processo que exigem input:
 //   handoff  = card saindo da fase SDR pra fase Closer sem closer marcado
@@ -78,6 +78,32 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   // 🎉" pra uma venda que já existe.
   const isAdjust = isWonGate && Number(lead.amount) > 0
     && (gate.toKind === "integracao" || !!lead.customerId);
+  // ENTREGA (só indo pra Integração): quem integra e quando. A integração só
+  // aparece na Agenda (e replica na agenda pessoal de quem conectou o Google)
+  // com `integrationAt` gravado, então o gate pergunta aqui em vez de deixar o
+  // card cair na Integração sem dono nem horário — o time não tinha como saber
+  // que entrou trabalho. Mesma régua do "próximo passo" do Meu dia: integrador
+  // obrigatório, horário opcional (sem ele, só move e alguém marca depois).
+  // Time sem ninguém marcado como integrador não é travado (askInteg = false).
+  const integrators = usersByRole("integrator");
+  const askInteg = isWonGate && gate.toKind === "integracao" && integrators.length > 0;
+  const [integrator, setIntegrator] = React.useState(
+    lead.integrator || (integrators.length === 1 ? integrators[0].id : ""));
+  const [integAt, setIntegAt] = React.useState(lead.integrationAt || "");
+  const [integDay, setIntegDay] = React.useState(() => {
+    const d = lead.integrationAt ? new Date(lead.integrationAt) : null;
+    return d && Number.isFinite(d.getTime()) ? d : nextBusinessDays(1)[0];
+  });
+  // Hora ocupada do INTEGRADOR (integrationAt dos leads dele + bloqueios) vem
+  // desabilitada na grade, igual à call com o closer.
+  const integBusy = React.useMemo(
+    () => integBusyKeys(window.SEED?.LEADS || [], integrator, lead.id),
+    [integrator, lead.id],
+  );
+  // displayName cai no id quando o SEED.USERS ainda não chegou (o picker vem do
+  // fallback legado, que tem o nome); usa o nome da lista antes de mostrar id.
+  const integName = displayName(integrator)
+    || integrators.find((u) => u.id === integrator)?.name || "quem integra";
   // UniqueKids: o ganho É a compra de um pacote de consultas (mentoria 1:1) —
   // o gate captura o tamanho e o servidor cria a jornada inteira na conversão.
   const isKidsWon = isWonGate && lead.saas === "uniquekids";
@@ -122,7 +148,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   // A call é OBRIGATÓRIA pra entrar na etapa (regra do servidor), tanto no gate
   // de call quanto no handoff que já cai numa etapa de call.
   const ready = isLost ? !!reason
-    : isWonGate ? (Number(amount) > 0 && !!payment && (!askProduct || !!dealProduct))
+    : isWonGate ? (Number(amount) > 0 && !!payment && (!askProduct || !!dealProduct) && (!askInteg || !!integrator))
       : isOffer ? (!askOffer || (!!offer && (offer === "nenhuma" || !offerProducts.length || !!offerProduct)))
         : askCall ? (!!closer && !!callAt)
           : !!closer;
@@ -142,6 +168,8 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
       patch.planClosed = isKidsWon ? "unico" : oneOff ? "unico" : planClosed;
       if (isKidsWon) patch.consultPackage = Number(consultPackage) || 8;
       if (askProduct) patch.dealProduct = dealProduct;
+      // Entrega: dono da integração e, se um horário foi escolhido, a hora dela.
+      if (askInteg) { patch.integrator = integrator; if (integAt) patch.integrationAt = integAt; }
     } else if (isOffer) {
       if (askOffer && offer) { patch.proposalOffer = offer; patch.proposalProduct = offer === "nenhuma" ? "" : offerProduct; }
       // Espelho do Meu dia: followupAt (aparece na Agenda com cara de follow-up,
@@ -272,6 +300,32 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
                 <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>
                   vira o cronograma de parcelas (vencimento mensal a partir de hoje); marque cada uma como paga na tela Clientes
                 </div>
+              </>
+            )}
+            {/* Entrega: sem dono e horário a integração não aparece na Agenda
+                nem na agenda pessoal do integrador, e o time não fica sabendo
+                que entrou trabalho. Perguntar aqui é a última porta antes da
+                entrega começar. */}
+            {askInteg && (
+              <>
+                <div style={{ height: 16 }} />
+                <div style={{ height: 1, background: "var(--line-1)", marginBottom: 14 }} />
+                <label className="kicker" style={label}>Responsável pela integração *</label>
+                <select value={integrator} onChange={(e) => { setIntegrator(e.target.value); setIntegAt(""); }} style={field}>
+                  <option value="">— quem vai integrar —</option>
+                  {integrators.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
+                </select>
+                {integrator && (
+                  <>
+                    <div style={{ height: 12 }} />
+                    <label className="kicker" style={label}>Integração agendada pra (opcional)</label>
+                    <SlotGrid days={nextBusinessDays(6)} day={integDay} setDay={setIntegDay}
+                      slot={integAt} setSlot={setIntegAt} busy={integBusy} />
+                    <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>
+                      horário ocupado de {integName} vem travado · entra na Agenda e replica na agenda pessoal dele (se conectou o Google) · sem horário, o card vai pra Integração e alguém marca depois
+                    </div>
+                  </>
+                )}
               </>
             )}
           </>
