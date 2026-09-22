@@ -14,7 +14,7 @@ import { makeScreenGuardHook } from "../src/screens.js";
 import { normalizeSettings } from "../src/tickets-core.js";
 import {
   planTicketSync, normalizeLinearSettings, issueKeyFromInput, clearStateCache,
-  applyLinearIssue, applyLinearComment, LINEAR_PRIORITY,
+  applyLinearIssue, applyLinearComment, LINEAR_PRIORITY, issueDescriptionFor, isCockpitIssue,
 } from "../src/ticket-linear.js";
 import { startLinearSync } from "../src/ticket-linear-runner.js";
 import { publicTicket } from "../src/support-page.js";
@@ -543,6 +543,108 @@ test("reconciliação repõe o que o webhook não entregou", async (t) => {
   await sync.reconcile();
   const depois = (await repo.listWhere("ticket_events", { ticket: ticket.id })).filter((e) => e.type === "linear_comment");
   assert.equal(depois.length, 1, "reconciliar de novo não duplica o aviso");
+});
+
+test("card aberto direto no Linear vira ticket vinculado (webhook), sem duplicar e sem voltar pro Linear", async (t) => {
+  const { app, repo, call, linear, sync } = await buildApp();
+  t.after(() => { sync.stop(); return app.close(); });
+
+  await ligarEspelho(call);
+  const card = {
+    id: "iss_cs_1", identifier: "LEV-900", url: "https://linear.app/acme/issue/LEV-900",
+    title: "[Loja Alpha] relatório não abre", description: "cliente mandou print no WhatsApp", priority: 2,
+    projectId: "proj_1", state: { id: "st_todo", name: "Todo", type: "unstarted" },
+    assignee: { id: "lin_u1", name: "Lia Atendente" },
+  };
+  const r = await postWebhook(app, { type: "Issue", action: "create", webhookTimestamp: Date.now(), data: card });
+  assert.equal(r.statusCode, 200);
+  assert.equal(r.json().imported, true);
+
+  const [ticket] = await repo.list("tickets");
+  assert.equal(ticket.id, r.json().ticket);
+  assert.equal(ticket.saas, "alpha");
+  assert.equal(ticket.subject, "[Loja Alpha] relatório não abre");
+  assert.equal(ticket.priority, "high");
+  assert.equal(ticket.customerId, "c1", "o [Cliente] do título casa com o cadastro do produto");
+  assert.equal(ticket.assignee, "lia", "responsável da issue casa por nome");
+  assert.equal(ticket.linearIssueId, "iss_cs_1");
+  assert.equal(ticket.linear.identifier, "LEV-900");
+  assert.equal(ticket.linear.adopted, true);
+  assert.match(ticket.description, /print no WhatsApp/);
+
+  // Reentrega e o update seguinte não criam outro ticket.
+  await postWebhook(app, { type: "Issue", action: "create", webhookTimestamp: Date.now(), data: card });
+  await postWebhook(app, { type: "Issue", action: "update", webhookTimestamp: Date.now(), data: { ...card, state: { id: "st_done", name: "Done", type: "completed" } } });
+  const tickets = await repo.list("tickets");
+  assert.equal(tickets.length, 1);
+  assert.equal(tickets[0].status, "resolved", "depois de vinculado segue o espelho normal");
+
+  // Nada volta pro Linear: nem issue nova, nem reescrita da issue adotada.
+  await sync.drain();
+  assert.deepEqual(linear.calls, { create: 0, update: 0, comment: 0 });
+});
+
+test("entrada automática: só o projeto do suporte, e nunca a issue que o próprio cockpit criou", async (t) => {
+  const { app, repo, call, sync } = await buildApp();
+  t.after(() => { sync.stop(); return app.close(); });
+
+  await ligarEspelho(call);
+  // Card de outro projeto do time: segue ignorado.
+  const fora = await postWebhook(app, {
+    type: "Issue", action: "create", webhookTimestamp: Date.now(),
+    data: { id: "iss_outro", identifier: "ENG-50", title: "refatorar build", projectId: "proj_outro", state: { type: "backlog" } },
+  });
+  assert.equal(fora.json().ticket, null);
+
+  // Webhook de criação da issue do espelho chegando ANTES do carimbo do vínculo.
+  const eco = await postWebhook(app, {
+    type: "Issue", action: "create", webhookTimestamp: Date.now(),
+    data: {
+      id: "iss_eco", identifier: "ENG-51", title: "Erro no checkout", projectId: "proj_1", state: { type: "backlog" },
+      description: issueDescriptionFor({ number: 3, saas: "alpha", subject: "Erro no checkout", description: "não fecha" }, { customerName: "Loja Alpha" }),
+    },
+  });
+  assert.equal(eco.json().ticket, null);
+  assert.equal((await repo.list("tickets")).length, 0);
+  assert.equal(isCockpitIssue({ description: "[Loja Alpha] **Ticket** relatado · suporte" }), false, "texto do CS não é confundido com o cabeçalho");
+
+  // Espelho desligado: card do projeto também não entra.
+  await call("lia", "PUT", "/api/support/settings/alpha", { linear: { enabled: false } });
+  await postWebhook(app, {
+    type: "Issue", action: "create", webhookTimestamp: Date.now(),
+    data: { id: "iss_off", identifier: "LEV-901", title: "[Loja Alpha] x", projectId: "proj_1", state: { type: "unstarted" } },
+  });
+  assert.equal((await repo.list("tickets")).length, 0);
+});
+
+test("reconciliação traz o card que o webhook não entregou, sem anunciar o histórico de comentários", async (t) => {
+  const { app, repo, call, linear, sync } = await buildApp();
+  t.after(() => { sync.stop(); return app.close(); });
+
+  await ligarEspelho(call);
+  linear.issuesUpdatedSince = async () => [{
+    id: "iss_cs_2", identifier: "LEV-902", url: "https://linear.app/acme/issue/LEV-902",
+    title: "[Cliente Sem Cadastro] login falha", description: "", priority: 0,
+    updatedAt: new Date().toISOString(), state: STATES.find((s) => s.id === "st_doing"), project: { id: "proj_1" },
+    assignee: { name: "Fulano Externo" },
+    comments: { nodes: [{ id: "cmt_antigo", body: "já vi", user: { name: "Dev" } }] },
+  }];
+
+  const r = await sync.reconcile();
+  assert.equal(r.imported, 1);
+  const [ticket] = await repo.list("tickets");
+  assert.equal(ticket.linearIssueId, "iss_cs_2");
+  assert.equal(ticket.customerId, "", "nome sem cadastro não chuta cliente");
+  assert.equal(ticket.requester.name, "Cliente Sem Cadastro");
+  assert.equal(ticket.assignee, "", "responsável sem usuário correspondente fica vazio");
+  assert.equal(ticket.priority, "normal");
+  assert.deepEqual(ticket.linear.seenComments, ["cmt_antigo"]);
+  const avisos = (await repo.listWhere("ticket_events", { ticket: ticket.id })).filter((e) => e.type === "linear_comment");
+  assert.equal(avisos.length, 0, "comentário que já estava na issue não vira aviso");
+
+  const de_novo = await sync.reconcile();
+  assert.equal(de_novo.imported, 0);
+  assert.equal((await repo.list("tickets")).length, 1);
 });
 
 test("aplicar direto (sem HTTP): issue de ticket inexistente é ignorada com segurança", async () => {
