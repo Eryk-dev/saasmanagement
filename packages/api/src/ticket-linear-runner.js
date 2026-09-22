@@ -13,7 +13,7 @@
 // cadastrado). Sem LINEAR_API_KEY, tudo isto fica dormente.
 
 import { ACTOR_LINEAR, loadSettings, setTicketSink } from "./tickets-core.js";
-import { OUTBOX, syncTicketToLinear, applyLinearIssue, applyLinearComment } from "./ticket-linear.js";
+import { OUTBOX, syncTicketToLinear, applyLinearIssue, applyLinearComment, importLinearIssue } from "./ticket-linear.js";
 import { defaultLinear } from "./linear.js";
 
 const MAX_ATTEMPTS = 10;
@@ -97,7 +97,7 @@ export function startLinearSync(repo, {
   // anda pelo maior updatedAt visto (não pelo relógio local), pra não pular
   // nada por diferença de horário entre o Linear e a máquina.
   async function reconcile({ now = new Date() } = {}) {
-    const out = { issues: 0, comments: 0 };
+    const out = { issues: 0, comments: 0, imported: 0 };
     const products = await repo.list("products").catch(() => []);
     for (const p of products) {
       const settings = await loadSettings(repo, p.id).catch(() => null);
@@ -113,7 +113,15 @@ export function startLinearSync(repo, {
       for (const issue of issues) {
         try {
           const applied = await applyLinearIssue(repo, issue, { log });
-          if (applied) {
+          if (!applied) {
+            // Card aberto direto no projeto do suporte: vira ticket aqui (se o
+            // webhook já não tiver criado).
+            const projectId = issue.project?.id || "";
+            if (cfg.projectId && projectId === cfg.projectId) {
+              const r = await importLinearIssue(repo, issue, { saas: p.id, log });
+              if (r?.created) out.imported++;
+            }
+          } else {
             out.issues++;
             for (const c of issue.comments?.nodes || []) {
               const r = await applyLinearComment(repo, { issueId: issue.id, comment: c, log });

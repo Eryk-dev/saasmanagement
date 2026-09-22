@@ -476,7 +476,16 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   que está gravado quando o Linear não responde) — o filtro é a origem
   `message.source.type === "linear"`;
   (6) ligar o espelho enfileira só os tickets **abertos** do produto, e
-  desvincular nunca apaga issue no Linear. `LINEAR_API_KEY` vazia deixa tudo
+  desvincular nunca apaga issue no Linear;
+  (7) **card aberto direto no Linear vira ticket (22/09/2026):** issue sem
+  ticket no projeto configurado de um produto com o espelho ligado entra pelo
+  webhook e pela reconciliação (`importLinearIssue`): ticket já vinculado e
+  `adopted`, ator `linear`, cliente pelo `[Cliente]` do título (nome único) e
+  comentários existentes em `seenComments`. A issue que o próprio espelho criou
+  é reconhecida pelo cabeçalho da descrição (`isCockpitIssue`) e nunca vira
+  segundo ticket. O que é anterior ao cursor da reconciliação entra pelo script
+  `packages/api/scripts/2026-09-21-importar-cs-suporte-linear.mjs` (dry-run
+  por padrão, mesma função). `LINEAR_API_KEY` vazia deixa tudo
   dormente. `ticket.linearIssueId` fica no topo do doc (índice
   `tickets_linear_issue_idx`) porque é por ele que o webhook acha o ticket.
   Fora desta entrega: anexo do ticket virar anexo da issue, de-para de pessoas

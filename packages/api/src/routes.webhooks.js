@@ -12,7 +12,7 @@ import { CREATE_DEFAULTS } from "./routes.js";
 import { firstStage } from "./stages.js";
 import { initialNextActionAt, logActivity, autoLeadOwner } from "./lead-flow.js";
 import { NOT_CONFIGURED } from "./http-status.js";
-import { applyLinearIssue, applyLinearComment } from "./ticket-linear.js";
+import { applyLinearIssue, applyLinearComment, importLinearIssue, productForIssue } from "./ticket-linear.js";
 
 // "tarefas diárias" com tolerância a acento/plural (título do item ou do produto).
 const RE_TAREFAS = /tarefas?\s*di[aá]ri/i;
@@ -194,7 +194,8 @@ export function registerWebhookRoutes(app, repo = defaultRepo, opts = {}) {
     // Linear → ticket de suporte. Cadastre a URL em Settings → API → Webhooks
     // com os eventos "Issues" e "Comments" (LINEAR_WEBHOOK_SECRET = o segredo
     // mostrado lá). Estado da issue vira status do ticket e comentário vira
-    // aviso na atividade e no sino (ticket-linear.js). Issue sem ticket: 200 e ignora
+    // aviso na atividade e no sino (ticket-linear.js). Issue sem ticket do projeto
+    // de suporte de um produto vira ticket; qualquer outra: 200 e ignora
     // — o webhook é do workspace inteiro, não só dos tickets.
     wh.post("/api/webhooks/linear", async (req, reply) => {
       const secret = opts.linearSecret || process.env.LINEAR_WEBHOOK_SECRET || "";
@@ -211,7 +212,12 @@ export function registerWebhookRoutes(app, repo = defaultRepo, opts = {}) {
       try {
         if (body.type === "Issue" && (body.action === "create" || body.action === "update")) {
           const r = await applyLinearIssue(repo, data, { log: req.log });
-          return reply.code(200).send({ ok: true, ticket: r?.ticket || null });
+          if (r) return reply.code(200).send({ ok: true, ticket: r.ticket });
+          // Sem ticket: se a issue é do projeto de suporte de algum produto,
+          // foi aberta direto no Linear e vira ticket agora.
+          const saas = await productForIssue(repo, data);
+          const imp = saas ? await importLinearIssue(repo, data, { saas, log: req.log }) : null;
+          return reply.code(200).send({ ok: true, ticket: imp?.ticket || null, imported: !!imp?.created });
         }
         if (body.type === "Comment" && (body.action === "create" || body.action === "update")) {
           const issueId = data.issueId || data.issue?.id || "";

@@ -23,7 +23,7 @@ import { createHash } from "node:crypto";
 import { withTaskLock, upsertNotification } from "./tasks-core.js";
 import { canHandleSaas } from "./support-scope.js";
 import {
-  ACTOR_LINEAR, STATUS_KIND, TICKET_PRIORITIES, loadSettings, patchTicket,
+  ACTOR_LINEAR, STATUS_KIND, TICKET_PRIORITIES, createTicket, loadSettings, patchTicket,
   recordTicketEvents, ticketTitle,
 } from "./tickets-core.js";
 
@@ -426,6 +426,90 @@ export async function linkTicketToIssue(repo, ticketId, issue, { by = ACTOR_LINE
   });
   if (saved) await recordTicketEvents(repo, saved, [{ type: "linear_linked", data: { identifier: issue.identifier || "", url: issue.url || "", issueId: issue.id, manual: true } }], { by, now });
   return saved;
+}
+
+// ── Issue aberta direto no Linear → ticket ──────────────────────────────────
+// O CS abre card direto no projeto do suporte. Sem isto, a volta só atualizava
+// ticket JÁ vinculado e esses cards nunca chegavam ao cockpit. Entra pelo
+// webhook e pela reconciliação; o que já existia antes vem pelo script
+// scripts/2026-09-21-importar-cs-suporte-linear.mjs (mesma função).
+
+// Nome comparável: sem acento, sem pontuação e sem sufixo de razão social —
+// mesma régua do vínculo de org (2026-09-12-vincular-org-leverads.mjs).
+export const nomeChave = (s) => String(s || "")
+  .normalize("NFD").replace(/[̀-ͯ]/g, "")
+  .toLowerCase().replace(/[^a-z0-9 ]/g, " ")
+  .replace(/\b(ltda|me|mei|eireli|sa|s a|comercio|com|de|da|do|e)\b/g, " ")
+  .replace(/\s+/g, " ").trim();
+export const clienteDoTitulo = (title) => (String(title || "").match(/^\s*\[([^\]]+)\]/) || [])[1]?.trim() || "";
+
+// Issue que o próprio espelho criou (cabeçalho de issueDescriptionFor). O
+// webhook de criação pode chegar antes do carimbo do vínculo no ticket; sem
+// esta trava, a issue do cockpit viraria um segundo ticket.
+export const isCockpitIssue = (issue) => /^\*\*Ticket [^\n]*\*\* · suporte /.test(String(issue?.description || ""));
+
+// Produto cujo espelho está ligado NESTE projeto. Sem projeto configurado não
+// importa nada: o time inteiro do Linear não é fila de suporte.
+export async function productForIssue(repo, issue) {
+  const projectId = str(issue?.project?.id || issue?.projectId, 120);
+  if (!projectId) return "";
+  for (const p of await repo.list("products").catch(() => [])) {
+    const cfg = (await loadSettings(repo, p.id).catch(() => null))?.linear;
+    if (cfg?.enabled && cfg.teamId && cfg.projectId === projectId) return p.id;
+  }
+  return "";
+}
+
+// Ticket que a issue geraria. Cliente: o "[Cliente]" do título casado com o
+// cadastro do produto por nome normalizado idêntico e ÚNICO — sem casamento
+// não chuta, o nome vai no solicitante. Responsável: o da issue, se houver um
+// único usuário com o mesmo nome.
+export function ticketFromIssue(issue, { saas, customers = [], users = [] } = {}) {
+  const nome = clienteDoTitulo(issue.title);
+  const k = nomeChave(nome);
+  const casados = k ? customers.filter((c) => (c.saas || "") === saas && nomeChave(c.name) === k) : [];
+  const customer = casados.length === 1 ? casados[0] : null;
+  const kr = nomeChave(issue.assignee?.name);
+  const resp = kr ? users.filter((u) => nomeChave(u.name) === kr || nomeChave(String(u.name || "").split(" ")[0]) === kr) : [];
+  const assignee = resp.length === 1 ? resp[0] : null;
+  const desc = [String(issue.description || "").trim(), `—\nImportado do Linear: ${issue.identifier} · ${issue.url}`].filter(Boolean).join("\n\n");
+  return {
+    nome, customer, ambiguo: casados.length > 1, assignee,
+    input: {
+      saas, subject: str(issue.title, 250) || String(issue.identifier || "Issue do Linear"), description: desc,
+      priority: PRIORITY_FROM_LINEAR[Number(issue.priority)] || "normal",
+      channel: "internal", tags: ["linear"],
+      customerId: customer?.id || "",
+      requester: customer ? {} : { name: nome },
+      assignee: assignee?.id || "",
+    },
+  };
+}
+
+// Cria o ticket já VINCULADO (adopted: a descrição é de lá), com o status pelo
+// de-para da volta e os comentários existentes marcados como vistos — senão a
+// reconciliação avisaria no sino o histórico inteiro. Ator `linear` em tudo
+// (anti-ping-pong). Idempotente: issue que já tem ticket devolve null.
+export async function importLinearIssue(repo, issue, { saas, now = nowIso(), log } = {}) {
+  if (!issue?.id || !saas || isCockpitIssue(issue) || issue.trashed || issue.archivedAt) return null;
+  return withTaskLock(`linear-issue:${issue.id}`, async () => {
+    if (await findTicketByIssue(repo, issue.id)) return null;
+    const [customers, users] = await Promise.all([repo.list("customers").catch(() => []), repo.list("users").catch(() => [])]);
+    const plan = ticketFromIssue(issue, { saas, customers, users });
+    // Responsável fora do escopo do produto não derruba a entrada: o ticket
+    // nasce sem responsável e o CS atribui.
+    const ticket = await createTicket(repo, plan.input, { by: ACTOR_LINEAR, now }).catch((err) => {
+      if (!/^assignee_/.test(err?.code || "")) throw err;
+      return createTicket(repo, { ...plan.input, assignee: "" }, { by: ACTOR_LINEAR, now });
+    });
+    await linkTicketToIssue(repo, ticket.id, issue, { by: ACTOR_LINEAR, now });
+    await applyLinearIssue(repo, issue, { now });
+    const seen = (issue.comments?.nodes || []).map((c) => c.id);
+    if (seen.length) await stampLinear(repo, ticket.id, { seenComments: capIds(seen) });
+    const saved = await repo.get("tickets", ticket.id);
+    log?.info?.(`linear: ${issue.identifier || issue.id} aberta no Linear → ticket #${saved?.number}`);
+    return { ticket: ticket.id, created: true, plan };
+  });
 }
 
 export async function unlinkTicket(repo, ticketId, { by = ACTOR_LINEAR, now = nowIso() } = {}) {
