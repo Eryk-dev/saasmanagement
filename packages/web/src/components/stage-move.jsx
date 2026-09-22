@@ -34,14 +34,16 @@ export function moveGate(saasCfg, lead, toStage) {
   // não aparece na Agenda nem ocupa slot), então o gate pede a hora ANTES de
   // mover, em vez de deixar o PATCH tomar 422 e o card não sair do lugar.
   if (toKind === "call" && !lead.callAt) return { type: "call", toKind };
-  // Fechamento = passar pra Ganho (pede o valor e o produto quando ainda não
-  // tem) OU pra Integração — na Integração o gate abre SEMPRE, pré-preenchido:
-  // é a última porta antes da entrega, então é aqui que o closer confere (ou
-  // corrige) produto, plano, valor e pagamento. Um clique confirma; ajuste
-  // re-espelha no cliente e na assinatura criados no fechamento
-  // (syncWonLeadDeal na API).
-  const missingProduct = !lead.dealProduct && dealProductsOf(lead.saas).length > 0;
-  if (toKind === "integracao" || (isWonKind(toKind) && (!(Number(lead.amount) > 0) || missingProduct))) return { type: "won", toKind };
+  // Fechamento = passar pra Ganho OU pra Integração. Nos DOIS o gate abre
+  // SEMPRE, pré-preenchido: é a última porta antes da entrega, então é aqui que
+  // o closer confere (ou corrige) produto, plano, valor e pagamento. Um clique
+  // confirma; ajuste re-espelha no cliente e na assinatura criados no
+  // fechamento (syncWonLeadDeal na API).
+  // Antes (até 22/09) o Ganho só abria quando FALTAVA valor ou produto: card que
+  // já trazia os dois (link de pagamento, proposta, edição anterior) fechava
+  // direto, sem ninguém conferir — e valor herdado errado virava receita e
+  // conversão enviada pra Meta. Leo, 22/09: abrir sempre, pra conferir.
+  if (toKind === "integracao" || isWonKind(toKind)) return { type: "won", toKind };
   return null;
 }
 
@@ -69,9 +71,13 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   // i/N" no servidor; o pago × em aberto é marcado na tela Clientes.
   const [installments, setInstallments] = React.useState(
     Number(lead.paymentInstallments) > 0 ? String(lead.paymentInstallments) : "");
-  // Indo pra INTEGRAÇÃO com o negócio já valorado: o gate vira conferência de
-  // plano e valor (pré-preenchido, um clique) em vez de fechamento novo.
-  const isAdjust = isWonGate && gate.toKind === "integracao" && Number(lead.amount) > 0;
+  // Negócio já valorado indo pra INTEGRAÇÃO, ou card que JÁ virou cliente
+  // voltando pro Ganho (Integração → Ganho, #853): o gate vira conferência de
+  // plano e valor (pré-preenchido, um clique) em vez de fechamento novo. Sem o
+  // customerId no teste, mover um lead já fechado mostrava "Fechar como ganho
+  // 🎉" pra uma venda que já existe.
+  const isAdjust = isWonGate && Number(lead.amount) > 0
+    && (gate.toKind === "integracao" || !!lead.customerId);
   // UniqueKids: o ganho É a compra de um pacote de consultas (mentoria 1:1) —
   // o gate captura o tamanho e o servidor cria a jornada inteira na conversão.
   const isKidsWon = isWonGate && lead.saas === "uniquekids";
