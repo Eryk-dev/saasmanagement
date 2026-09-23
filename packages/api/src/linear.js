@@ -21,7 +21,8 @@ const ISSUE_FIELDS = `
   state { id name type }
   project { id name }
   team { id key name }
-  assignee { id name }`;
+  assignee { id name }
+  labels { nodes { name } }`;
 
 // `apiKey` aceita string OU função. A função é o que salva o cliente padrão: o
 // index.js só chama `dotenv.config()` DEPOIS de avaliar os imports (ESM avalia

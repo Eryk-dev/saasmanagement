@@ -3,7 +3,7 @@ import { UserAvatarRing } from "../../components/user-picker.jsx";
 import { KanbanBoard, KanbanColumn } from "../../components/kanban/board.jsx";
 import { CompleteCircle } from "../../components/complete-circle.jsx";
 import { LabelChip } from "../../components/label-chip.jsx";
-import { PRIORITY_BY_KEY, slaLabel, waitingSince, isDone, categoryColor } from "../../lib/tickets.js";
+import { PRIORITY_BY_KEY, slaLabel, waitingSince, isDone, categoryColor, linearInReview } from "../../lib/tickets.js";
 
 const { useState, useEffect, memo } = React;
 
@@ -30,6 +30,7 @@ export const TicketCard = memo(function TicketCard({ t, agentName, selected, onO
       <div className="support-card-meta">
         <span className="mono tnum" style={{ color: "var(--fg-4)" }}>#{t.number}</span>
         <span className="support-status" style={{ "--dot": pri.tone, color: t.priority === "urgent" ? pri.tone : "var(--fg-3)", fontSize: 11.5 }}>{pri.label}</span>
+        {!done && linearInReview(t) && <span className="chip info" style={{ fontSize: 11, minHeight: 0, whiteSpace: "nowrap" }} title={`${t.linear.identifier} está em ${t.linear.stateName} no Linear`}>{t.linear.stateName}</span>}
         {t.category && <span style={{ marginLeft: "auto", minWidth: 0, display: "inline-flex" }}><LabelChip label={t.category} color={categoryColor(t.category)} small /></span>}
       </div>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
