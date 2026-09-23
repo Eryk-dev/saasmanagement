@@ -177,3 +177,7 @@ export const portalUrl = (ticket) => (ticket?.portalToken
 export const ticketHash =(id) => `#tickets/${encodeURIComponent(id)}`;
 export const ticketTitle = (t) => `#${t?.number || "?"} ${t?.subject || "(sem assunto)"}`;
 export const fold = (s) => String(s || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+// Card do espelho na coluna de revisão do Linear (In Review): a correção está
+// pronta e esperando conferência. Pelo nome da coluna, dentro do tipo
+// `started`, porque o Linear não tem um tipo próprio pra revisão.
+export const linearInReview = (t) => !isDone(t) && t?.linear?.stateType === "started" && /review|revis/i.test(t?.linear?.stateName || "");

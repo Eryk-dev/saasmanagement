@@ -23,7 +23,7 @@ import { createHash } from "node:crypto";
 import { withTaskLock, upsertNotification } from "./tasks-core.js";
 import { canHandleSaas } from "./support-scope.js";
 import {
-  ACTOR_LINEAR, STATUS_KIND, TICKET_PRIORITIES, createTicket, loadSettings, patchTicket,
+  ACTOR_LINEAR, STATUS_KIND, TICKET_PRIORITIES, createTicket, loadSettings, saveSettings, patchTicket,
   recordTicketEvents, ticketTitle,
 } from "./tickets-core.js";
 
@@ -311,6 +311,20 @@ export async function applyLinearIssue(repo, issue, { now = nowIso(), log } = {}
   // manda é o atendente.
   const back = cfg.stateBack?.[stateType] || "";
   if (back && STATUS_KIND[back] && STATUS_KIND[back] !== STATUS_KIND[ticket.status]) patch.status = back;
+  // Dev pegou o card (In Progress/In Review = tipo `started`): ticket ainda Novo
+  // passa a Em atendimento. Novo e Em atendimento são o mesmo kind, então o
+  // de-para acima não cobre; só sai do Novo, nunca mexe em outro status.
+  else if (stateType === "started" && ticket.status === "new") patch.status = "open";
+  // Etiquetas colocadas DEPOIS de criar o card: ticket sem categoria ganha a
+  // combinação agora. Categoria já escolhida no cockpit não é trocada.
+  if (!ticket.category) {
+    const { category, tags } = categoryFromLabels(issueLabelNames(issue));
+    if (category) {
+      await ensureCategory(repo, ticket.saas, category, { now });
+      patch.category = category;
+      patch.tags = uniq([...(ticket.tags || []), ...tags]);
+    }
+  }
   if (cfg.titleBack) {
     const title = str(issue.title, 200);
     if (title && title !== ticket.subject && title !== (ticket.linear?.mirror?.title || "")) patch.subject = title;
@@ -460,6 +474,39 @@ export async function productForIssue(repo, issue) {
   return "";
 }
 
+// Etiquetas da issue: a GraphQL devolve `labels.nodes`, o webhook um array.
+export const issueLabelNames = (issue) => {
+  const l = issue?.labels;
+  return uniq((Array.isArray(l) ? l : l?.nodes || []).map((x) => str(x?.name, 40)).filter(Boolean));
+};
+
+// Categoria = a combinação que o CS usa no projeto de suporte (skill
+// cs-suporte-card): Código + tipo, Operação + Produção, ou só Operação. O que
+// não entra na categoria (área extra, Integração, Segurança, data DD.MM) vira
+// tag. Sem combinação reconhecida, fica sem categoria e tudo vai pras tags.
+export const LINEAR_CATEGORIES = ["Código · Bug", "Código · Feature", "Código · Improvement", "Operação · Produção", "Operação"];
+const TIPOS = ["Bug", "Feature", "Improvement"];
+export function categoryFromLabels(names = []) {
+  const k = (s) => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const tem = (n) => names.find((x) => k(x) === k(n));
+  const tipo = TIPOS.find(tem);
+  let usadas = [];
+  if (tipo) usadas = [tem(tipo), tem("Código")].filter(Boolean);
+  else if (tem("Operação") && tem("Produção")) usadas = [tem("Operação"), tem("Produção")];
+  else if (tem("Operação")) usadas = [tem("Operação")];
+  const category = tipo ? `Código · ${tipo}` : usadas.length === 2 ? "Operação · Produção" : usadas.length ? "Operação" : "";
+  return { category, tags: names.filter((n) => !usadas.includes(n)) };
+}
+
+// Categoria fora da lista do produto é descartada no createTicket; a
+// combinação do Linear entra na lista (sem tirar as que já existem).
+export async function ensureCategory(repo, saas, category, { now = nowIso() } = {}) {
+  if (!category) return;
+  const { categories = [] } = await loadSettings(repo, saas);
+  if (categories.includes(category)) return;
+  await saveSettings(repo, saas, { categories: [...categories, category] }, { by: ACTOR_LINEAR, now });
+}
+
 // Ticket que a issue geraria. Cliente: o "[Cliente]" do título casado com o
 // cadastro do produto por nome normalizado idêntico e ÚNICO — sem casamento
 // não chuta, o nome vai no solicitante. Responsável: o da issue, se houver um
@@ -472,13 +519,16 @@ export function ticketFromIssue(issue, { saas, customers = [], users = [] } = {}
   const kr = nomeChave(issue.assignee?.name);
   const resp = kr ? users.filter((u) => nomeChave(u.name) === kr || nomeChave(String(u.name || "").split(" ")[0]) === kr) : [];
   const assignee = resp.length === 1 ? resp[0] : null;
-  const desc = [String(issue.description || "").trim(), `—\nImportado do Linear: ${issue.identifier} · ${issue.url}`].filter(Boolean).join("\n\n");
+  const { category, tags } = categoryFromLabels(issueLabelNames(issue));
+  // Sem descrição: a do ticket aparece na Conversa como "pedido" do cliente, e
+  // a Conversa é só o atendimento. O relato da issue mora na aba Linear, lido
+  // de lá (e o vínculo adotado nunca sobe descrição, então nada se perde).
   return {
     nome, customer, ambiguo: casados.length > 1, assignee,
     input: {
-      saas, subject: str(issue.title, 250) || String(issue.identifier || "Issue do Linear"), description: desc,
+      saas, subject: str(issue.title, 250) || String(issue.identifier || "Issue do Linear"), description: "",
       priority: PRIORITY_FROM_LINEAR[Number(issue.priority)] || "normal",
-      channel: "internal", tags: ["linear"],
+      channel: "internal", tags: ["linear", ...tags], category,
       customerId: customer?.id || "",
       requester: customer ? {} : { name: nome },
       assignee: assignee?.id || "",
@@ -496,6 +546,7 @@ export async function importLinearIssue(repo, issue, { saas, now = nowIso(), log
     if (await findTicketByIssue(repo, issue.id)) return null;
     const [customers, users] = await Promise.all([repo.list("customers").catch(() => []), repo.list("users").catch(() => [])]);
     const plan = ticketFromIssue(issue, { saas, customers, users });
+    await ensureCategory(repo, saas, plan.input.category, { now });
     // Responsável fora do escopo do produto não derruba a entrada: o ticket
     // nasce sem responsável e o CS atribui.
     const ticket = await createTicket(repo, plan.input, { by: ACTOR_LINEAR, now }).catch((err) => {

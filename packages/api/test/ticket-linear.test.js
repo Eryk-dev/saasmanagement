@@ -15,6 +15,7 @@ import { normalizeSettings } from "../src/tickets-core.js";
 import {
   planTicketSync, normalizeLinearSettings, issueKeyFromInput, clearStateCache,
   applyLinearIssue, applyLinearComment, LINEAR_PRIORITY, issueDescriptionFor, isCockpitIssue,
+  categoryFromLabels, issueLabelNames,
 } from "../src/ticket-linear.js";
 import { startLinearSync } from "../src/ticket-linear-runner.js";
 import { publicTicket } from "../src/support-page.js";
@@ -553,6 +554,7 @@ test("card aberto direto no Linear vira ticket vinculado (webhook), sem duplicar
   const card = {
     id: "iss_cs_1", identifier: "LEV-900", url: "https://linear.app/acme/issue/LEV-900",
     title: "[Loja Alpha] relatório não abre", description: "cliente mandou print no WhatsApp", priority: 2,
+    labels: [{ id: "l1", name: "Código" }, { id: "l2", name: "Bug" }, { id: "l3", name: "18.09" }],
     projectId: "proj_1", state: { id: "st_todo", name: "Todo", type: "unstarted" },
     assignee: { id: "lin_u1", name: "Lia Atendente" },
   };
@@ -570,7 +572,12 @@ test("card aberto direto no Linear vira ticket vinculado (webhook), sem duplicar
   assert.equal(ticket.linearIssueId, "iss_cs_1");
   assert.equal(ticket.linear.identifier, "LEV-900");
   assert.equal(ticket.linear.adopted, true);
-  assert.match(ticket.description, /print no WhatsApp/);
+  assert.equal(ticket.description, "", "o relato da issue fica na aba Linear, não vira pedido na Conversa");
+  assert.equal(ticket.category, "Código · Bug", "a combinação de etiquetas do Linear vira a categoria");
+  assert.deepEqual(ticket.tags, ["linear", "18.09"]);
+  const cfg = normalizeSettings(await repo.get("ticket_settings", "alpha"), "alpha");
+  assert.ok(cfg.categories.includes("Código · Bug"), "a categoria entra na lista do produto");
+  assert.ok(cfg.categories.includes("Dúvida"), "sem tirar as que já existiam");
 
   // Reentrega e o update seguinte não criam outro ticket.
   await postWebhook(app, { type: "Issue", action: "create", webhookTimestamp: Date.now(), data: card });
@@ -651,4 +658,52 @@ test("aplicar direto (sem HTTP): issue de ticket inexistente é ignorada com seg
   const repo = makeMemRepo();
   assert.equal(await applyLinearIssue(repo, { id: "iss_fantasma", state: { type: "completed" } }), null);
   assert.equal(await applyLinearComment(repo, { issueId: "iss_fantasma", comment: { id: "c1", body: "oi" } }), null);
+});
+
+test("etiquetas do Linear viram a categoria do CS e o resto vira tag", () => {
+  const c = (...n) => categoryFromLabels(n);
+  assert.deepEqual(c("Código", "Bug", "18.09"), { category: "Código · Bug", tags: ["18.09"] });
+  assert.deepEqual(c("Código", "Feature"), { category: "Código · Feature", tags: [] });
+  assert.deepEqual(c("Improvement"), { category: "Código · Improvement", tags: [] });
+  assert.deepEqual(c("Operação", "Produção", "Código", "Bug"), { category: "Código · Bug", tags: ["Operação", "Produção"] });
+  assert.deepEqual(c("Produção", "Código", "Bug"), { category: "Código · Bug", tags: ["Produção"] });
+  assert.deepEqual(c("Operação", "Produção"), { category: "Operação · Produção", tags: [] });
+  assert.deepEqual(c("Operação", "Segurança"), { category: "Operação", tags: ["Segurança"] });
+  assert.deepEqual(c("Integração"), { category: "", tags: ["Integração"] });
+  assert.deepEqual(issueLabelNames({ labels: { nodes: [{ name: "Bug" }, { name: "Bug" }] } }), ["Bug"], "formato GraphQL");
+  assert.deepEqual(issueLabelNames({ labels: [{ name: "Código" }] }), ["Código"], "formato do webhook");
+});
+
+test("card do Linear: etiqueta posta depois vira categoria e In Progress tira o ticket do Novo", async (t) => {
+  const { app, repo, call, sync } = await buildApp();
+  t.after(() => { sync.stop(); return app.close(); });
+
+  await ligarEspelho(call);
+  const card = {
+    id: "iss_cs_2", identifier: "LEV-901", url: "https://linear.app/acme/issue/LEV-901",
+    title: "[Sem Cadastro] preço dobrado", description: "", priority: 0, labels: [],
+    projectId: "proj_1", state: { id: "st_backlog", name: "Backlog", type: "backlog" },
+  };
+  await postWebhook(app, { type: "Issue", action: "create", webhookTimestamp: Date.now(), data: card });
+  let [ticket] = await repo.list("tickets");
+  assert.equal(ticket.category, "", "nasce sem etiqueta = sem categoria");
+  assert.equal(ticket.status, "new");
+
+  // O CS etiqueta o card e o dev puxa pra In Progress.
+  await postWebhook(app, {
+    type: "Issue", action: "update", webhookTimestamp: Date.now(),
+    data: { ...card, labels: [{ name: "Operação" }, { name: "Produção" }, { name: "23.09" }], state: { id: "st_doing", name: "In Progress", type: "started" } },
+  });
+  ticket = await repo.get("tickets", ticket.id);
+  assert.equal(ticket.category, "Operação · Produção");
+  assert.deepEqual(ticket.tags, ["linear", "23.09"]);
+  assert.equal(ticket.status, "open", "In Progress tira o ticket do Novo mesmo sem responsável");
+
+  // Categoria trocada no cockpit manda: etiqueta nova no Linear não sobrescreve.
+  await call("lia", "PATCH", `/api/tickets/${ticket.id}`, { category: "Dúvida" });
+  await postWebhook(app, {
+    type: "Issue", action: "update", webhookTimestamp: Date.now(),
+    data: { ...card, labels: [{ name: "Código" }, { name: "Bug" }], state: { id: "st_doing", name: "In Progress", type: "started" } },
+  });
+  assert.equal((await repo.get("tickets", ticket.id)).category, "Dúvida");
 });

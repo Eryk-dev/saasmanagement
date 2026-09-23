@@ -1,6 +1,6 @@
 import React from "react";
 import { UserAvatarRing } from "../../components/user-picker.jsx";
-import { STATUS_BY_KEY, PRIORITY_BY_KEY, slaLabel, waitingSince } from "../../lib/tickets.js";
+import { STATUS_BY_KEY, PRIORITY_BY_KEY, slaLabel, waitingSince, linearInReview } from "../../lib/tickets.js";
 
 const { useState } = React;
 
@@ -73,7 +73,10 @@ export function TicketsList({ tickets, agentName, selectedId, onOpen, now }) {
                           {[t.requester?.name, t.category, t.messageCount ? `${t.messageCount} msg` : ""].filter(Boolean).join(" · ") || "—"}
                         </div>
                       </div>
-                      <span className="support-status support-ellipsis" style={{ "--dot": st.tone }}>{st.label}</span>
+                      <div style={{ minWidth: 0 }}>
+                        <span className="support-status support-ellipsis" style={{ "--dot": st.tone }}>{st.label}</span>
+                        {linearInReview(t) && <div className="chip info" style={{ fontSize: 10.5, minHeight: 0 }} title={`${t.linear.identifier} está em ${t.linear.stateName} no Linear`}>{t.linear.stateName}</div>}
+                      </div>
                       <span className="support-ellipsis" style={{ fontSize: 12, color: t.priority === "urgent" ? pri.tone : "var(--fg-2)", fontWeight: t.priority === "urgent" ? 600 : 400 }}>{pri.label}</span>
                       <div style={{ minWidth: 0 }}>
                         <div className="support-ellipsis" style={{ fontSize: 12.5, color: sla.tone, fontWeight: sla.state === "breached" ? 600 : 400 }}>{sla.text}</div>

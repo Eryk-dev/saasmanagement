@@ -289,7 +289,9 @@ produto e `seed:leverads-questions`); o único aviso esperado é
 Após a validação, seguir a autorização do Leonardo: verificar `origin/main`,
 commitar os arquivos da tarefa na branch de trabalho, fazer push, abrir e
 mesclar o PR para `main`, sem force-push nem mudanças alheias. O redeploy no
-EasyPanel é manual pelo Leonardo; lembrar após o merge e verificar a produção
+EasyPanel é manual pelo Leonardo (o serviço `extrator_mp_saasmngmnt` está com
+`autoDeploy` desligado, conferido em 23/09/2026: merge na `main` não sobe
+sozinho); lembrar após o merge e verificar a produção
 quando a nova versão estiver disponível.
 
 Endereço registrado e acessível na análise:
@@ -485,7 +487,18 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   é reconhecida pelo cabeçalho da descrição (`isCockpitIssue`) e nunca vira
   segundo ticket. O que é anterior ao cursor da reconciliação entra pelo script
   `packages/api/scripts/2026-09-21-importar-cs-suporte-linear.mjs` (dry-run
-  por padrão, mesma função). `LINEAR_API_KEY` vazia deixa tudo
+  por padrão, mesma função; rodado em produção em 23/09/2026, 38 tickets).
+  Desde 23/09 o ticket importado nasce **sem descrição** (o relato fica na aba
+  Linear; descrição do ticket aparece na Conversa como pedido do cliente) e com
+  **categoria pela combinação de etiquetas** do CS (`categoryFromLabels`:
+  `Código · Bug/Feature/Improvement`, `Operação · Produção`, `Operação`; o
+  resto, como a data `DD.MM`, vira tag; a combinação entra na lista de
+  categorias do produto). Na volta (`applyLinearIssue`), ticket **sem**
+  categoria ganha a das etiquetas postas depois, e issue `started` (In
+  Progress/In Review) tira o ticket do **Novo** para Em atendimento — o
+  `stateBack` não cobre isso porque os dois são o mesmo kind. Os scripts
+  `2026-09-23-*-importados-linear.mjs` acertaram os tickets de antes disso.
+  `LINEAR_API_KEY` vazia deixa tudo
   dormente. `ticket.linearIssueId` fica no topo do doc (índice
   `tickets_linear_issue_idx`) porque é por ele que o webhook acha o ticket.
   Fora desta entrega: anexo do ticket virar anexo da issue, de-para de pessoas

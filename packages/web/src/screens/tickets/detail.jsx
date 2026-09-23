@@ -10,7 +10,7 @@ import { UserPicker, UserAvatarRing } from "../../components/user-picker.jsx";
 import { isAdminUser } from "../../lib/users.js";
 import {
   TICKET_STATUSES, STATUS_BY_KEY, TICKET_PRIORITIES, PRIORITY_BY_KEY, CHANNEL_LABEL,
-  slaState, SLA_TONE, distance, agentHandles, portalUrl,
+  slaState, SLA_TONE, distance, agentHandles, portalUrl, linearInReview,
 } from "../../lib/tickets.js";
 
 const { useState, useEffect, useRef, useCallback } = React;
@@ -591,6 +591,7 @@ export function TicketDetail({ ticketId, summary, saasId, agents, settings, mobi
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="mono dim support-ellipsis" style={{ fontSize: 11.5 }}>
             #{t?.number || "…"}{t ? ` · ${CHANNEL_LABEL[t.channel] || "equipe"} · aberto ${fmtWhen(t.createdAt)}` : ""}
+            {linearInReview(t) && <span className="chip info" style={{ fontSize: 11, minHeight: 0, marginLeft: 8, verticalAlign: "middle" }} title={`${t.linear.identifier} está em ${t.linear.stateName} no Linear`}>{t.linear.stateName} no Linear</span>}
           </div>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 2 }}>
             <textarea value={subject.draft} rows={1} placeholder="Assunto" aria-label="Assunto" className="tk-panel-field support-detail-subject" disabled={!ticket}

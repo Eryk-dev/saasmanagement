@@ -1012,6 +1012,11 @@ try {
     if (L.sectionOf({ ...respondido, status: "pending_customer", sla: { ...respondido.sla, pausedAt: "2026-09-14T14:00:00Z" } }, agora) !== "paused") throw new Error("aguardando o cliente vai pra seção de pausados");
     const lista = renderToString(wrap(React.createElement(L.TicketsList, { tickets: [base, { ...respondido, id: "b", number: 2, subject: "Outro" }].map((t, i) => ({ id: t.id || "a", number: t.number || 1, subject: t.subject || "Fora do ar", ...t })), agentName: (x) => x, onOpen() {}, now: agora })));
     if (!lista.includes("SLA estourado") || !lista.includes("Fora do ar")) throw new Error("a lista não montou as seções");
+    // Card do espelho em In Review no Linear ganha o indicador na fila (23/09).
+    const emReview = { ...respondido, id: "r", number: 3, subject: "Preço dobrado", linear: { identifier: "LEV-510", stateName: "In Review", stateType: "started" } };
+    const listaReview = renderToString(wrap(React.createElement(L.TicketsList, { tickets: [emReview], agentName: (x) => x, onOpen() {}, now: agora })));
+    if (!listaReview.includes("LEV-510 está em In Review no Linear")) throw new Error("ticket com o card em In Review deveria ter o indicador na fila");
+    if (!T.linearInReview(emReview) || T.linearInReview({ ...emReview, linear: { ...emReview.linear, stateName: "In Progress" } }) || T.linearInReview({ ...emReview, status: "resolved" })) throw new Error("linearInReview: só a coluna de revisão, em ticket aberto");
     // Meu atendimento (15/09): fila e risco pelo responsável atual; SLA cumprido
     // só conta resolvido dentro da janela; 1ª resposta é mediana do tempo corrido.
     {
