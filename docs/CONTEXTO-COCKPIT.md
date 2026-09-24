@@ -498,11 +498,25 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   Progress/In Review) tira o ticket do **Novo** para Em atendimento — o
   `stateBack` não cobre isso porque os dois são o mesmo kind. Os scripts
   `2026-09-23-*-importados-linear.mjs` acertaram os tickets de antes disso.
+  (8) **responsável espelhado nos dois sentidos (24/09/2026, `syncAssignee`,
+  ligado por padrão):** de-para de pessoas em `linearIdForUser` /
+  `userIdForLinear` — ajuste manual em `linear.people` (`{ usuário: idLinear |
+  "none" }`, tela "Quem é quem no Linear"), depois e-mail (`u.email` ou a conta
+  Google conectada `u.google.account` × `users` do Linear), depois nome único.
+  Sem par, o espelho **não mexe** no outro lado (e a atividade registra quem
+  pegou a issue). O retrato guarda `mirror.assignee` (responsável do ticket no
+  último sync: só troca **daqui** sobe) e `mirror.assigneeId` (assignee da issue
+  visto por último: só troca **de lá** desce); retrato antigo sem os campos só
+  vira linha de base. O webhook de issue traz `assigneeId`; o e-mail vem da
+  lista de pessoas do Linear (cache de 10 min). O número da issue (`LEV-873`)
+  aparece ao lado do `#número` na lista, no quadro e no detalhe, e a busca da
+  fila acha por ele — o Linear numera por time e não deixa escolher o número,
+  então os dois convivem.
   `LINEAR_API_KEY` vazia deixa tudo
   dormente. `ticket.linearIssueId` fica no topo do doc (índice
   `tickets_linear_issue_idx`) porque é por ele que o webhook acha o ticket.
-  Fora desta entrega: anexo do ticket virar anexo da issue, de-para de pessoas
-  (responsável) e ferramenta de MCP própria.
+  Fora desta entrega: anexo do ticket virar anexo da issue e ferramenta de MCP
+  própria.
 - **Inbox (14/09/2026):** `whatsapp.jsx` + `whatsapp.css` seguem a prancha do
   handoff, com lista/chat/card responsivos. O filtro “Sem resposta” usa
   `lastDir === "in"`, como `awaiting` da API; “Aguardando cliente” guarda a

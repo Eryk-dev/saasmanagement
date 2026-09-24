@@ -3,7 +3,7 @@ import { UserAvatarRing } from "../../components/user-picker.jsx";
 import { KanbanBoard, KanbanColumn } from "../../components/kanban/board.jsx";
 import { CompleteCircle } from "../../components/complete-circle.jsx";
 import { LabelChip } from "../../components/label-chip.jsx";
-import { PRIORITY_BY_KEY, slaLabel, waitingSince, isDone, categoryColor, linearInReview } from "../../lib/tickets.js";
+import { PRIORITY_BY_KEY, slaLabel, waitingSince, isDone, categoryColor, linearInReview, linearKey } from "../../lib/tickets.js";
 
 const { useState, useEffect, memo } = React;
 
@@ -28,7 +28,13 @@ export const TicketCard = memo(function TicketCard({ t, agentName, selected, onO
     <div role="button" tabIndex={0} className="support-card" aria-current={selected ? "true" : undefined} style={{ opacity: done ? 0.78 : 1 }}
       onClick={() => onOpen(t.id)} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(t.id); } }} {...(dragProps || {})}>
       <div className="support-card-meta">
-        <span className="mono tnum" style={{ color: "var(--fg-4)" }}>#{t.number}</span>
+        <span className="mono tnum" style={{ color: "var(--fg-4)", whiteSpace: "nowrap" }}>#{t.number}
+          {/* Atalho pra issue: o clique no número não abre o ticket, abre o Linear. */}
+          {linearKey(t) && <>{" · "}{t.linear.url
+            ? <a href={t.linear.url} target="_blank" rel="noopener noreferrer" draggable={false} className="support-linear-link" title={`Abrir ${linearKey(t)} no Linear`}
+                onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>#{linearKey(t)}</a>
+            : `#${linearKey(t)}`}</>}
+        </span>
         <span className="support-status" style={{ "--dot": pri.tone, color: t.priority === "urgent" ? pri.tone : "var(--fg-3)", fontSize: 11.5 }}>{pri.label}</span>
         {!done && linearInReview(t) && <span className="chip info" style={{ fontSize: 11, minHeight: 0, whiteSpace: "nowrap" }} title={`${t.linear.identifier} está em ${t.linear.stateName} no Linear`}>{t.linear.stateName}</span>}
         {t.category && <span style={{ marginLeft: "auto", minWidth: 0, display: "inline-flex" }}><LabelChip label={t.category} color={categoryColor(t.category)} small /></span>}

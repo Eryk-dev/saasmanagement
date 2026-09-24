@@ -2,9 +2,10 @@
 //
 //   cockpit → Linear   ticket de produto com o espelho ligado vira issue no
 //                      time/projeto configurado (assunto, descrição, prioridade,
-//                      estado) e cada mensagem nova vira comentário.
+//                      estado, responsável) e cada mensagem nova vira comentário.
 //   Linear → cockpit   estado da issue move o status do ticket (de-para por
-//                      TIPO de estado) e comentário do dev vira AVISO (evento na
+//                      TIPO de estado), o assignee vira o responsável (mesma
+//                      pessoa dos dois lados) e comentário do dev vira AVISO (evento na
 //                      atividade + sino), sem copiar o texto: quem mostra a
 //                      conversa da issue é a aba Linear, que lê ao vivo. Nada
 //                      disso chega ao cliente pelo portal.
@@ -81,9 +82,99 @@ export function normalizeLinearSettings(src) {
     syncPriority: s.syncPriority !== false,
     syncStatus: s.syncStatus !== false,
     titleBack: s.titleBack !== false,
+    syncAssignee: s.syncAssignee !== false,
+    people: normalizePeople(s.people),
     statusMap, stateBack,
   };
 }
+
+// Ajuste manual do de-para de pessoas: { usuárioDoCockpit: idDoLinear }, com
+// PEOPLE_NONE = "não tem conta no Linear". O resto casa sozinho (linearIdForUser).
+export const PEOPLE_NONE = "none";
+function normalizePeople(src) {
+  const out = {};
+  if (!isObj(src)) return out;
+  for (const [k, v] of Object.entries(src).slice(0, 200)) {
+    const user = str(k, 120), id = str(v, 120);
+    if (user && id) out[user] = id;
+  }
+  return out;
+}
+
+// ── Pessoas: responsável do ticket ↔ assignee da issue ──────────────────────
+// O Linear não conhece os usuários do cockpit. Casa na ordem: ajuste manual da
+// configuração, e-mail (a conta Google conectada no cockpit), nome completo
+// único. Sem casamento = `undefined`, e aí o espelho NÃO MEXE no outro lado:
+// atendente sem conta no Linear não tira o dev da issue, e dev que não usa o
+// cockpit não tira o responsável do ticket.
+const emailsOf = (u) => uniq([u?.email, u?.google?.account].map((e) => String(e || "").trim().toLowerCase()).filter(Boolean));
+
+// Usuário do cockpit → id no Linear. "" (sem responsável) vira null = tirar o
+// assignee da issue.
+export function linearIdForUser(userId, { users = [], people = [], overrides = {} } = {}) {
+  if (!userId) return null;
+  const o = overrides[userId];
+  if (o === PEOPLE_NONE) return undefined;
+  if (o) return o;
+  const u = users.find((x) => x.id === userId);
+  if (!u) return undefined;
+  const livres = people.filter((p) => p.active !== false && !Object.values(overrides).includes(p.id));
+  const emails = emailsOf(u);
+  const porEmail = livres.find((p) => p.email && emails.includes(String(p.email).toLowerCase()));
+  if (porEmail) return porEmail.id;
+  const k = nomeChave(u.name);
+  const porNome = k ? livres.filter((p) => nomeChave(p.name) === k) : [];
+  return porNome.length === 1 ? porNome[0].id : undefined;
+}
+
+// Assignee da issue → usuário do cockpit. null (issue sem assignee) vira "".
+// Aceita o objeto da issue ({ id, name, email }) ou só o id do webhook.
+export function userIdForLinear(assignee, { users = [], people = [], overrides = {} } = {}) {
+  if (!assignee) return "";
+  const id = str(assignee.id, 120);
+  if (id) {
+    const manual = Object.keys(overrides).find((u) => overrides[u] === id);
+    if (manual) return users.some((u) => u.id === manual) ? manual : undefined;
+  }
+  const p = (id && people.find((x) => x.id === id)) || {};
+  const email = String(assignee.email || p.email || "").toLowerCase();
+  const nome = assignee.name || p.name || "";
+  const livres = users.filter((u) => !overrides[u.id]); // quem tem ajuste manual só casa por ele
+  if (email) {
+    const porEmail = livres.filter((u) => emailsOf(u).includes(email));
+    if (porEmail.length === 1) return porEmail[0].id;
+  }
+  const kr = nomeChave(nome);
+  if (!kr) return undefined;
+  const porNome = livres.filter((u) => nomeChave(u.name) === kr);
+  if (porNome.length === 1) return porNome[0].id;
+  // "Lia" no Linear casa com "Lia Atendente" aqui, se for a única com esse nome.
+  const porPrimeiro = livres.filter((u) => nomeChave(String(u.name || "").split(" ")[0]) === kr);
+  return porPrimeiro.length === 1 ? porPrimeiro[0].id : undefined;
+}
+
+// O que a issue diz do assignee: objeto, null (sem ninguém) ou undefined (o
+// payload não trouxe o campo — aí não dá pra concluir nada). A GraphQL manda
+// `assignee`; o webhook manda `assignee` e/ou `assigneeId`.
+export function issueAssignee(issue) {
+  if (!isObj(issue)) return undefined;
+  if ("assignee" in issue) return isObj(issue.assignee) ? issue.assignee : null;
+  if ("assigneeId" in issue) return issue.assigneeId ? { id: String(issue.assigneeId) } : null;
+  return undefined;
+}
+// Chave do assignee no retrato do espelho ("" = ninguém).
+const assigneeKey = (a) => (a ? str(a.id, 120) || (a.name ? `name:${str(a.name, 120)}` : "") : "");
+
+// Pessoas do workspace do Linear, com cache curto (mesma régua dos estados).
+let peopleCache = null;
+export async function linearPeople(linear, { ttlMs = 10 * 60_000, now = Date.now() } = {}) {
+  if (!linear?.configured?.() || typeof linear.users !== "function") return [];
+  if (peopleCache && peopleCache.linear === linear && now - peopleCache.at < ttlMs) return peopleCache.people;
+  const people = await linear.users();
+  peopleCache = { linear, people, at: now };
+  return people;
+}
+export const clearPeopleCache = () => { peopleCache = null; };
 
 // ── Ticket → Linear ─────────────────────────────────────────────────────────
 export const issueTitleFor = (ticket) => str(ticket.subject, 250) || `Ticket #${ticket.number}`;
@@ -141,19 +232,45 @@ export function wantedStateId(ticket, cfg, states = []) {
 // como carimbo depois de sincronizar e como "já está em dia" ao vincular uma
 // issue que já existe — é o que impede o primeiro sync de sobrescrever o
 // título, a descrição e a prioridade escritos por quem abriu a issue lá.
-export function mirrorSnapshot(ticket, cfg, { baseUrl = publicBaseUrl(), customerName = "", stateId = "" } = {}) {
-  return {
+//
+// Responsável são DOIS campos: `assignee` é o responsável do ticket na última
+// sincronização (só uma troca AQUI sobe) e `assigneeId` o assignee da issue
+// visto por último (só uma troca LÁ desce). Retrato antigo, sem os campos, não
+// move nada — só passa a valer do próximo ciclo em diante.
+export function mirrorSnapshot(ticket, cfg, { baseUrl = publicBaseUrl(), customerName = "", stateId = "", assignee, assigneeId } = {}) {
+  const out = {
     title: issueTitleFor(ticket),
     descriptionHash: hash(issueDescriptionFor(ticket, { baseUrl, customerName })),
     priority: cfg?.syncPriority === false ? undefined : LINEAR_PRIORITY[ticket.priority],
     stateId,
     status: ticket.status,
   };
+  if (assignee !== undefined) out.assignee = assignee;
+  if (assigneeId !== undefined) out.assigneeId = assigneeId;
+  return out;
+}
+
+// Responsável que sobe pro Linear: `input` undefined = não mexer no assignee
+// da issue; null = tirar o assignee; string = o id da pessoa lá. `mirror` é o
+// que o retrato passa a guardar.
+export function wantedAssignee(ticket, cfg, people = {}) {
+  const atual = ticket.assignee || "";
+  const prev = ticket.linear?.mirror || {};
+  const criando = !ticket.linear?.issueId;
+  const parado = { input: undefined, mirror: { assignee: atual, assigneeId: prev.assigneeId } };
+  if (!cfg?.syncAssignee) return parado;
+  if (!criando && (!("assignee" in prev) || prev.assignee === atual)) return parado;
+  const id = linearIdForUser(atual, people);
+  if (id === undefined) return { input: undefined, mirror: { assignee: atual, assigneeId: criando ? "" : prev.assigneeId } };
+  const lid = id || "";
+  if (criando) return { input: lid || undefined, mirror: { assignee: atual, assigneeId: lid } };
+  if (lid === (prev.assigneeId || "")) return { input: undefined, mirror: { assignee: atual, assigneeId: lid } };
+  return { input: id, mirror: { assignee: atual, assigneeId: lid } };
 }
 
 // Plano puro (sem rede): o que criar/atualizar e quais mensagens ainda devem
 // virar comentário. `null` = espelho desligado para este produto.
-export function planTicketSync(ticket, settings, { states = [], baseUrl = publicBaseUrl(), customerName = "" } = {}) {
+export function planTicketSync(ticket, settings, { states = [], baseUrl = publicBaseUrl(), customerName = "", users = [], people = [] } = {}) {
   const cfg = settings.linear;
   if (!cfg?.enabled || !cfg.teamId) return null;
   const title = issueTitleFor(ticket);
@@ -161,7 +278,8 @@ export function planTicketSync(ticket, settings, { states = [], baseUrl = public
   const priority = cfg.syncPriority ? LINEAR_PRIORITY[ticket.priority] : undefined;
   const stateId = wantedStateId(ticket, cfg, states);
   const comments = pendingComments(ticket, cfg);
-  const mirror = { ...mirrorSnapshot(ticket, cfg, { baseUrl, customerName, stateId }), descriptionHash: hash(description) };
+  const resp = wantedAssignee(ticket, cfg, { users, people, overrides: cfg.people || {} });
+  const mirror = { ...mirrorSnapshot(ticket, cfg, { baseUrl, customerName, stateId, ...resp.mirror }), descriptionHash: hash(description) };
 
   if (!ticket.linear?.issueId) {
     const input = { teamId: cfg.teamId, title, description };
@@ -169,6 +287,7 @@ export function planTicketSync(ticket, settings, { states = [], baseUrl = public
     if (cfg.labelIds.length) input.labelIds = cfg.labelIds;
     if (priority != null) input.priority = priority;
     if (stateId) input.stateId = stateId;
+    if (resp.input) input.assigneeId = resp.input;
     return { action: "create", input, comments, mirror };
   }
 
@@ -182,6 +301,7 @@ export function planTicketSync(ticket, settings, { states = [], baseUrl = public
   if (!ticket.linear.adopted && mirror.descriptionHash !== prev.descriptionHash) input.description = description;
   if (priority != null && priority !== prev.priority) input.priority = priority;
   if (stateId && stateId !== prev.stateId) input.stateId = stateId;
+  if (resp.input !== undefined) input.assigneeId = resp.input;
   // Projeto só entra quando a issue ainda não tem um: vincular a mão uma issue
   // que já vive no projeto de outro time não pode arrastá-la pro do suporte.
   if (cfg.projectId && !ticket.linear.projectId) input.projectId = cfg.projectId;
@@ -226,12 +346,13 @@ export async function syncTicketToLinear(repo, ticketId, { linear, baseUrl = pub
   const cfg = settings.linear;
   if (!cfg?.enabled || !cfg.teamId) return { skipped: "disabled" };
 
-  const [states, users, customer] = await Promise.all([
+  const [states, users, customer, people] = await Promise.all([
     teamStates(linear, cfg.teamId).catch(() => []),
     repo.list("users").catch(() => []),
     ticket.customerId ? repo.get("customers", ticket.customerId).catch(() => null) : null,
+    cfg.syncAssignee ? linearPeople(linear).catch(() => []) : [],
   ]);
-  const plan = planTicketSync(ticket, settings, { states, baseUrl, customerName: customer?.name || "" });
+  const plan = planTicketSync(ticket, settings, { states, baseUrl, customerName: customer?.name || "", users, people });
   if (!plan || plan.action === "noop") return { skipped: "clean" };
 
   const out = { created: false, updated: false, comments: 0 };
@@ -247,7 +368,7 @@ export async function syncTicketToLinear(repo, ticketId, { linear, baseUrl = pub
       stateId: issue.state?.id || "", stateName: issue.state?.name || "", stateType: issue.state?.type || "",
       linkedAt: now, linkedBy: ACTOR_LINEAR,
     });
-    stamp.mirror = { ...plan.mirror, stateId: issue.state?.id || plan.mirror.stateId || "" };
+    stamp.mirror = { ...plan.mirror, stateId: issue.state?.id || plan.mirror.stateId || "", ...issueAssigneeStamp(issue, plan.mirror) };
     out.created = true;
   } else if (Object.keys(plan.input).length) {
     const issue = await linear.updateIssue(issueId, plan.input);
@@ -257,7 +378,7 @@ export async function syncTicketToLinear(repo, ticketId, { linear, baseUrl = pub
         stateId: issue.state?.id || "", stateName: issue.state?.name || "", stateType: issue.state?.type || "",
         projectId: issue.project?.id || cfg.projectId,
       });
-      stamp.mirror = { ...plan.mirror, stateId: issue.state?.id || plan.mirror.stateId || "" };
+      stamp.mirror = { ...plan.mirror, stateId: issue.state?.id || plan.mirror.stateId || "", ...issueAssigneeStamp(issue, plan.mirror) };
     }
     out.updated = true;
   }
@@ -287,6 +408,13 @@ export async function syncTicketToLinear(repo, ticketId, { linear, baseUrl = pub
   return out;
 }
 
+// O assignee que a issue devolveu é o que vale no retrato: uma pessoa que o
+// Linear recusou não pode ficar parecendo sincronizada.
+function issueAssigneeStamp(issue, mirror) {
+  const a = issueAssignee(issue);
+  return a === undefined || !("assigneeId" in mirror) ? {} : { assigneeId: assigneeKey(a) };
+}
+
 // ── Linear → ticket ─────────────────────────────────────────────────────────
 export async function findTicketByIssue(repo, issueId) {
   const id = str(issueId, 120);
@@ -297,7 +425,7 @@ export async function findTicketByIssue(repo, issueId) {
 
 // Issue mudou no Linear: estado vira status (de-para por tipo), título e
 // prioridade voltam quando ligados. Sempre com o ator `linear`, pra não voltar.
-export async function applyLinearIssue(repo, issue, { now = nowIso(), log } = {}) {
+export async function applyLinearIssue(repo, issue, { now = nowIso(), log, linear = null, people = null } = {}) {
   const ticket = await findTicketByIssue(repo, issue?.id);
   if (!ticket) return null;
   const settings = await loadSettings(repo, ticket.saas);
@@ -333,6 +461,22 @@ export async function applyLinearIssue(repo, issue, { now = nowIso(), log } = {}
     const p = PRIORITY_FROM_LINEAR[Number(issue.priority)];
     if (p && TICKET_PRIORITIES.includes(p) && p !== ticket.priority && Number(issue.priority) !== ticket.linear?.mirror?.priority) patch.priority = p;
   }
+  // Responsável: só uma TROCA na issue desce (compara com o último assignee
+  // visto). Pessoa sem par no cockpit, ou que não atende o produto, não mexe no
+  // ticket — o evento na atividade registra quem pegou lá.
+  const prevMirror = ticket.linear?.mirror || {};
+  const assignee = issueAssignee(issue);
+  const linearNow = assignee === undefined ? undefined : assigneeKey(assignee);
+  let assigneeNote = "";
+  if (cfg.syncAssignee && linearNow !== undefined && "assigneeId" in prevMirror && linearNow !== (prevMirror.assigneeId || "")) {
+    const users = await repo.list("users").catch(() => []);
+    const pessoas = people || (assignee ? await linearPeople(linear).catch(() => []) : []);
+    const uid = userIdForLinear(assignee, { users, people: pessoas, overrides: cfg.people || {} });
+    const u = uid ? users.find((x) => x.id === uid) : null;
+    if (uid === "") { if (ticket.assignee) patch.assignee = ""; }
+    else if (u && canHandleSaas(u, ticket.saas)) { if (uid !== ticket.assignee) patch.assignee = uid; }
+    else assigneeNote = str(assignee.name, 120) || pessoas.find((x) => x.id === assignee.id)?.name || "alguém sem conta no cockpit";
+  }
 
   const stamp = {
     identifier: str(issue.identifier, 40) || ticket.linear?.identifier || "",
@@ -355,8 +499,18 @@ export async function applyLinearIssue(repo, issue, { now = nowIso(), log } = {}
     await recordTicketEvents(repo, atual, [{ type: "linear_issue_updated", data: { ...patch, state: stamp.stateName, identifier: stamp.identifier } }], { by: ACTOR_LINEAR, now });
     log?.info?.(`linear: ${stamp.identifier || issue.id} → ticket #${ticket.number} (${Object.keys(patch).join(", ")})`);
   }
+  if (assigneeNote) {
+    await recordTicketEvents(repo, atual, [{ type: "linear_issue_updated", data: { linearAssignee: assigneeNote, identifier: stamp.identifier } }], { by: ACTOR_LINEAR, now });
+  }
   const customer = atual.customerId ? await repo.get("customers", atual.customerId).catch(() => null) : null;
-  stamp.mirror = mirrorSnapshot(atual, cfg, { customerName: customer?.name || "", stateId: stamp.stateId });
+  // O responsável do retrato só anda quando a troca veio da issue pro ticket:
+  // uma troca feita no cockpit e ainda na fila de saída não pode ser dada como
+  // sincronizada por um webhook que chegou antes (ela nunca subiria).
+  stamp.mirror = mirrorSnapshot(atual, cfg, {
+    customerName: customer?.name || "", stateId: stamp.stateId,
+    assignee: "assignee" in patch ? (atual.assignee || "") : prevMirror.assignee,
+    assigneeId: linearNow !== undefined ? linearNow : prevMirror.assigneeId,
+  });
   await stampLinear(repo, ticket.id, stamp);
   return { ticket: ticket.id, patch };
 }
@@ -434,7 +588,10 @@ export async function linkTicketToIssue(repo, ticketId, issue, { by = ACTOR_LINE
     issueId: issue.id, identifier: issue.identifier || "", url: issue.url || "",
     teamId: issue.team?.id || "", projectId: issue.project?.id || "",
     stateId: issue.state?.id || "", stateName: issue.state?.name || "", stateType: issue.state?.type || "",
-    mirror: mirrorSnapshot(ticket, settings.linear, { baseUrl, customerName: customer?.name || "", stateId: issue.state?.id || "" }),
+    mirror: mirrorSnapshot(ticket, settings.linear, {
+      baseUrl, customerName: customer?.name || "", stateId: issue.state?.id || "",
+      assignee: ticket.assignee || "", assigneeId: assigneeKey(issueAssignee(issue)),
+    }),
     adopted: true, // a issue é de lá; a descrição dela não é nossa para reescrever
     linkedAt: now, linkedBy: by, error: "",
   });
@@ -509,16 +666,15 @@ export async function ensureCategory(repo, saas, category, { now = nowIso() } = 
 
 // Ticket que a issue geraria. Cliente: o "[Cliente]" do título casado com o
 // cadastro do produto por nome normalizado idêntico e ÚNICO — sem casamento
-// não chuta, o nome vai no solicitante. Responsável: o da issue, se houver um
-// único usuário com o mesmo nome.
-export function ticketFromIssue(issue, { saas, customers = [], users = [] } = {}) {
+// não chuta, o nome vai no solicitante. Responsável: o da issue, pelo mesmo
+// de-para de pessoas do espelho (userIdForLinear).
+export function ticketFromIssue(issue, { saas, customers = [], users = [], people = [], overrides = {} } = {}) {
   const nome = clienteDoTitulo(issue.title);
   const k = nomeChave(nome);
   const casados = k ? customers.filter((c) => (c.saas || "") === saas && nomeChave(c.name) === k) : [];
   const customer = casados.length === 1 ? casados[0] : null;
-  const kr = nomeChave(issue.assignee?.name);
-  const resp = kr ? users.filter((u) => nomeChave(u.name) === kr || nomeChave(String(u.name || "").split(" ")[0]) === kr) : [];
-  const assignee = resp.length === 1 ? resp[0] : null;
+  const uid = userIdForLinear(issueAssignee(issue), { users, people, overrides });
+  const assignee = uid ? users.find((u) => u.id === uid) || null : null;
   const { category, tags } = categoryFromLabels(issueLabelNames(issue));
   // Sem descrição: a do ticket aparece na Conversa como "pedido" do cliente, e
   // a Conversa é só o atendimento. O relato da issue mora na aba Linear, lido
@@ -540,12 +696,15 @@ export function ticketFromIssue(issue, { saas, customers = [], users = [] } = {}
 // de-para da volta e os comentários existentes marcados como vistos — senão a
 // reconciliação avisaria no sino o histórico inteiro. Ator `linear` em tudo
 // (anti-ping-pong). Idempotente: issue que já tem ticket devolve null.
-export async function importLinearIssue(repo, issue, { saas, now = nowIso(), log } = {}) {
+export async function importLinearIssue(repo, issue, { saas, now = nowIso(), log, linear = null } = {}) {
   if (!issue?.id || !saas || isCockpitIssue(issue) || issue.trashed || issue.archivedAt) return null;
   return withTaskLock(`linear-issue:${issue.id}`, async () => {
     if (await findTicketByIssue(repo, issue.id)) return null;
-    const [customers, users] = await Promise.all([repo.list("customers").catch(() => []), repo.list("users").catch(() => [])]);
-    const plan = ticketFromIssue(issue, { saas, customers, users });
+    const [customers, users, settings] = await Promise.all([
+      repo.list("customers").catch(() => []), repo.list("users").catch(() => []), loadSettings(repo, saas),
+    ]);
+    const people = issueAssignee(issue) ? await linearPeople(linear).catch(() => []) : [];
+    const plan = ticketFromIssue(issue, { saas, customers, users, people, overrides: settings.linear?.people || {} });
     await ensureCategory(repo, saas, plan.input.category, { now });
     // Responsável fora do escopo do produto não derruba a entrada: o ticket
     // nasce sem responsável e o CS atribui.
@@ -554,7 +713,7 @@ export async function importLinearIssue(repo, issue, { saas, now = nowIso(), log
       return createTicket(repo, { ...plan.input, assignee: "" }, { by: ACTOR_LINEAR, now });
     });
     await linkTicketToIssue(repo, ticket.id, issue, { by: ACTOR_LINEAR, now });
-    await applyLinearIssue(repo, issue, { now });
+    await applyLinearIssue(repo, issue, { now, people });
     const seen = (issue.comments?.nodes || []).map((c) => c.id);
     if (seen.length) await stampLinear(repo, ticket.id, { seenComments: capIds(seen) });
     const saved = await repo.get("tickets", ticket.id);

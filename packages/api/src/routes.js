@@ -382,7 +382,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   registerFormRoutes(app, repo, { ...(opts.forms || {}), discord: discordClient, metaCapi: metaCapiClient, meta: metaClient, anthropic: anthropicClient, salesWhatsapp });
   // Webhooks de entrada (Shopify da UniqueKids → lead pra Ana). Rota aberta,
   // autenticada por assinatura HMAC da Shopify (ver routes.webhooks.js).
-  registerWebhookRoutes(app, repo, { ...(opts.webhooks || {}) });
+  registerWebhookRoutes(app, repo, { ...(opts.linear ? { linear: opts.linear } : {}), ...(opts.webhooks || {}) });
   // Superfície pública do proposal builder (/p/:id, aceite, painel do closer).
   registerProposalRoutes(app, repo, { ...(opts.proposals || {}), discord: discordClient, metaCapi: metaCapiClient });
   // Billing (fase 5): mudança de plano c/ pró-rata, baixa de fatura, tick do motor.

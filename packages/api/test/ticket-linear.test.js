@@ -13,7 +13,8 @@ import { makeAuthHook, hashPassword } from "../src/auth.js";
 import { makeScreenGuardHook } from "../src/screens.js";
 import { normalizeSettings } from "../src/tickets-core.js";
 import {
-  planTicketSync, normalizeLinearSettings, issueKeyFromInput, clearStateCache,
+  planTicketSync, normalizeLinearSettings, issueKeyFromInput, clearStateCache, clearPeopleCache,
+  linearIdForUser, userIdForLinear, issueAssignee,
   applyLinearIssue, applyLinearComment, LINEAR_PRIORITY, issueDescriptionFor, isCockpitIssue,
   categoryFromLabels, issueLabelNames,
 } from "../src/ticket-linear.js";
@@ -44,6 +45,7 @@ function makeFakeLinear({ configured = true } = {}) {
     state: STATES.find((s) => s.id === i.stateId) || STATES[0],
     project: i.projectId ? { id: i.projectId, name: "Suporte" } : null,
     team: { id: "team_1", key: "ENG", name: "Engenharia" },
+    assignee: i.assigneeId ? { id: i.assigneeId, name: PEOPLE.find((p) => p.id === i.assigneeId)?.name || "?" } : null,
   });
   return {
     issues, comments, calls,
@@ -59,6 +61,7 @@ function makeFakeLinear({ configured = true } = {}) {
         id: `iss_${seq}`, identifier: `ENG-${seq}`, url: `https://linear.app/acme/issue/ENG-${seq}`,
         title: input.title, description: input.description, priority: input.priority ?? 0,
         projectId: input.projectId || "", stateId: input.stateId || "st_backlog", updatedAt: new Date().toISOString(),
+        assigneeId: input.assigneeId || null,
       };
       issues.set(i.id, i);
       return shape(i);
@@ -91,8 +94,17 @@ function makeFakeLinear({ configured = true } = {}) {
     },
     issuesUpdatedSince: async () => [...issues.values()].map((i) => ({ ...shape(i), comments: { nodes: [] } })),
     viewer: async () => ({ user: { id: "u1", name: "Bot do Cockpit" }, organization: { id: "o1", name: "Acme" } }),
+    users: async () => PEOPLE,
   };
 }
+
+// Pessoas do workspace do Linear de mentira. A Lia casa por e-mail (conta
+// Google dela no cockpit); o Rui casa pelo nome; o dev externo não existe aqui.
+const PEOPLE = [
+  { id: "lin_lia", name: "Lia A.", email: "lia@acme.com", active: true },
+  { id: "lin_rui", name: "Rui Suporte", email: "rui@outro.com", active: true },
+  { id: "lin_ext", name: "Dev Externo", email: "dev@acme.com", active: true },
+];
 
 const USERS = [
   { id: "lia", name: "Lia Atendente", roles: ["support"], supportSaas: ["alpha"], screens: ["tickets", "support_settings"] },
@@ -101,6 +113,7 @@ const USERS = [
 
 async function buildApp({ linear = makeFakeLinear() } = {}) {
   clearStateCache();
+  clearPeopleCache();
   const repo = makeMemRepo();
   for (const u of USERS) await repo.create("users", { ...u, role: "admin", passwordHash: hashPassword("1234") });
   await repo.create("products", { id: "alpha", name: "Alpha" });
@@ -706,4 +719,113 @@ test("card do Linear: etiqueta posta depois vira categoria e In Progress tira o 
     data: { ...card, labels: [{ name: "Código" }, { name: "Bug" }], state: { id: "st_doing", name: "In Progress", type: "started" } },
   });
   assert.equal((await repo.get("tickets", ticket.id)).category, "Dúvida");
+});
+
+test("de-para de pessoas: ajuste manual, e-mail, nome; sem par não chuta", () => {
+  const users = [
+    { id: "lia", name: "Lia Atendente", google: { account: "LIA@acme.com" } },
+    { id: "rui", name: "Rui Suporte" },
+    { id: "ana", name: "Ana" },
+  ];
+  const ctx = { users, people: PEOPLE, overrides: {} };
+  assert.equal(linearIdForUser("lia", ctx), "lin_lia", "e-mail da conta Google, sem diferenciar caixa");
+  assert.equal(linearIdForUser("rui", ctx), "lin_rui", "nome completo");
+  assert.equal(linearIdForUser("ana", ctx), undefined, "sem par = não mexe");
+  assert.equal(linearIdForUser("", ctx), null, "sem responsável = tirar o assignee");
+  assert.equal(linearIdForUser("ana", { ...ctx, overrides: { ana: "lin_ext" } }), "lin_ext");
+  assert.equal(linearIdForUser("lia", { ...ctx, overrides: { lia: "none" } }), undefined, "marcada sem conta no Linear");
+
+  assert.equal(userIdForLinear({ id: "lin_lia" }, ctx), "lia", "só o id do webhook: o e-mail vem da lista de pessoas");
+  assert.equal(userIdForLinear({ id: "lin_rui", name: "Rui Suporte" }, ctx), "rui");
+  assert.equal(userIdForLinear({ id: "lin_ext" }, ctx), undefined);
+  assert.equal(userIdForLinear(null, ctx), "");
+  assert.equal(userIdForLinear({ id: "lin_ext" }, { ...ctx, overrides: { ana: "lin_ext" } }), "ana");
+
+  assert.deepEqual(issueAssignee({ assigneeId: "lin_lia" }), { id: "lin_lia" });
+  assert.equal(issueAssignee({ assigneeId: null }), null);
+  assert.equal(issueAssignee({ assignee: null, assigneeId: "x" }), null);
+  assert.equal(issueAssignee({ title: "sem o campo" }), undefined, "payload sem o campo não conclui nada");
+  assert.equal(normalizeLinearSettings({}).syncAssignee, true);
+});
+
+test("responsável espelhado nos dois sentidos, sem ping-pong", async (t) => {
+  const { app, repo, call, linear, sync } = await buildApp();
+  t.after(() => { sync.stop(); return app.close(); });
+  await repo.update("users", "lia", { google: { account: "lia@acme.com" } });
+  await repo.create("users", { id: "rui", name: "Rui Suporte", roles: ["support"], supportSaas: ["alpha"], screens: ["tickets"] });
+  await repo.create("users", { id: "ana", name: "Ana Sem Linear", roles: ["support"], supportSaas: ["alpha"], screens: ["tickets"] });
+
+  await ligarEspelho(call);
+  const ticket = (await call("lia", "POST", "/api/tickets", { saas: "alpha", subject: "Pix não confirma", assignee: "lia" })).json();
+  await sync.drain();
+  const [issue] = [...linear.issues.values()];
+  assert.equal(issue.assigneeId, "lin_lia", "a issue nasce com o mesmo responsável");
+
+  // Cockpit → Linear.
+  await call("lia", "PATCH", `/api/tickets/${ticket.id}`, { assignee: "rui" });
+  await sync.drain();
+  assert.equal(issue.assigneeId, "lin_rui");
+  await call("lia", "PATCH", `/api/tickets/${ticket.id}`, { assignee: "" });
+  await sync.drain();
+  assert.equal(issue.assigneeId, null, "tirar o responsável tira o assignee");
+  await call("lia", "PATCH", `/api/tickets/${ticket.id}`, { assignee: "ana" });
+  await sync.drain();
+  assert.equal(issue.assigneeId, null, "atendente sem conta no Linear não mexe na issue");
+  await call("lia", "PATCH", `/api/tickets/${ticket.id}`, { assignee: "lia" });
+  await sync.drain();
+  assert.equal(issue.assigneeId, "lin_lia");
+
+  // Linear → cockpit (webhook só com o id, como o Linear manda).
+  const updates = linear.calls.update;
+  const hook = (data) => postWebhook(app, { type: "Issue", action: "update", webhookTimestamp: Date.now(), data: { id: issue.id, title: "Pix não confirma", ...data } });
+  await hook({ assigneeId: "lin_rui" });
+  assert.equal((await repo.get("tickets", ticket.id)).assignee, "rui");
+  await sync.drain();
+  assert.equal(linear.calls.update, updates, "a troca que veio do Linear não volta pra lá");
+
+  await hook({ assigneeId: "lin_ext" });
+  assert.equal((await repo.get("tickets", ticket.id)).assignee, "rui", "dev sem conta no cockpit não tira o responsável");
+  const evs = (await repo.listWhere("ticket_events", { ticket: ticket.id })).filter((e) => e.data?.linearAssignee);
+  assert.equal(evs.at(-1).data.linearAssignee, "Dev Externo", "a atividade registra quem pegou lá");
+  await sync.drain();
+  assert.equal(linear.calls.update, updates, "e o cockpit não briga com o Linear");
+
+  await hook({ assigneeId: null });
+  assert.equal((await repo.get("tickets", ticket.id)).assignee, "", "issue sem assignee = ticket sem responsável");
+
+  // Troca no cockpit ainda na fila + webhook de outra coisa chegando antes:
+  // a troca continua subindo.
+  await call("lia", "PATCH", `/api/tickets/${ticket.id}`, { assignee: "lia" });
+  await hook({ assigneeId: null, state: { id: "st_doing", name: "In Progress", type: "started" } });
+  assert.equal((await repo.get("tickets", ticket.id)).assignee, "lia", "o eco com o valor antigo não desfaz a troca");
+  await sync.drain();
+  assert.equal(issue.assigneeId, "lin_lia");
+});
+
+test("responsável: ajuste manual e opção desligada", async (t) => {
+  const { app, repo, call, linear, sync } = await buildApp();
+  t.after(() => { sync.stop(); return app.close(); });
+  await repo.create("users", { id: "ana", name: "Ana Sem Linear", roles: ["support"], supportSaas: ["alpha"], screens: ["tickets"] });
+  await repo.update("users", "lia", { google: { account: "lia@acme.com" } });
+
+  await ligarEspelho(call, { people: { ana: "lin_ext", lia: "none" } });
+  const cat = (await call("lia", "GET", "/api/support/linear/catalog")).json();
+  assert.ok(cat.people.some((p) => p.id === "lin_ext"), "a tela recebe as pessoas do Linear");
+  assert.equal(cat.autoMatch.lia, "lin_lia", "e o casamento automático, sem o ajuste manual");
+
+  const ticket = (await call("lia", "POST", "/api/tickets", { saas: "alpha", subject: "Nota fiscal", assignee: "ana" })).json();
+  await sync.drain();
+  const [issue] = [...linear.issues.values()];
+  assert.equal(issue.assigneeId, "lin_ext", "ajuste manual manda");
+  await call("lia", "PATCH", `/api/tickets/${ticket.id}`, { assignee: "lia" });
+  await sync.drain();
+  assert.equal(issue.assigneeId, "lin_ext", "marcada sem conta no Linear: não mexe");
+
+  await call("lia", "PUT", "/api/support/settings/alpha", { linear: { syncAssignee: false } });
+  await call("lia", "PATCH", `/api/tickets/${ticket.id}`, { assignee: "ana" });
+  await call("lia", "PATCH", `/api/tickets/${ticket.id}`, { assignee: "" });
+  await sync.drain();
+  assert.equal(issue.assigneeId, "lin_ext", "desligado, nada sobe");
+  await postWebhook(app, { type: "Issue", action: "update", webhookTimestamp: Date.now(), data: { id: issue.id, assigneeId: "lin_lia" } });
+  assert.equal((await repo.get("tickets", ticket.id)).assignee, "", "e nada desce");
 });

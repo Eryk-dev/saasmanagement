@@ -8,7 +8,7 @@ import { SearchInput } from "../../components/search-input.jsx";
 import { useActiveSaas } from "../../lib/workspace.js";
 import { currentUser } from "../../lib/users.js";
 import { useIsMobile } from "../../lib/responsive.js";
-import { TICKET_STATUSES, STATUS_BY_KEY, PRIORITY_RANK, kindOf, isDone, slaState, agentStats, supportScope, fold, noScopeHint } from "../../lib/tickets.js";
+import { TICKET_STATUSES, STATUS_BY_KEY, PRIORITY_RANK, kindOf, isDone, slaState, agentStats, supportScope, fold, noScopeHint, linearKey } from "../../lib/tickets.js";
 import { useBoardDnd } from "../../components/kanban/dnd.js";
 import { useTicketsStore } from "./store.js";
 import { parseTicketHash, openTicketHash, clearTicketHash, useTicketHash } from "./hash.js";
@@ -138,7 +138,7 @@ export function TicketsScreen() {
   const searched = useMemo(() => {
     const k = fold(q.trim()).replace(/^#/, "");
     if (!k) return mine;
-    return mine.filter((t) => [String(t.number), t.subject, t.requester?.name, t.requester?.email, t.category, ...(t.tags || [])].some((v) => fold(v).includes(k)));
+    return mine.filter((t) => [String(t.number), linearKey(t), t.subject, t.requester?.name, t.requester?.email, t.category, ...(t.tags || [])].some((v) => fold(v).includes(k)));
   }, [mine, q]);
   const counts = useMemo(() => Object.fromEntries(FILTERS.map((f) => [f, searched.filter((t) => matchesFilter(t, f, { me, now })).length])), [searched, me, now]);
   const visible = useMemo(() => searched.filter((t) => matchesFilter(t, filter, { me, now })).sort(queueOrder(now)), [searched, filter, me, now]);

@@ -13,6 +13,7 @@ import { firstStage } from "./stages.js";
 import { initialNextActionAt, logActivity, autoLeadOwner } from "./lead-flow.js";
 import { NOT_CONFIGURED } from "./http-status.js";
 import { applyLinearIssue, applyLinearComment, importLinearIssue, productForIssue } from "./ticket-linear.js";
+import { defaultLinear } from "./linear.js";
 
 // "tarefas diárias" com tolerância a acento/plural (título do item ou do produto).
 const RE_TAREFAS = /tarefas?\s*di[aá]ri/i;
@@ -211,12 +212,12 @@ export function registerWebhookRoutes(app, repo = defaultRepo, opts = {}) {
       const data = body.data || {};
       try {
         if (body.type === "Issue" && (body.action === "create" || body.action === "update")) {
-          const r = await applyLinearIssue(repo, data, { log: req.log });
+          const r = await applyLinearIssue(repo, data, { log: req.log, linear: opts.linear || defaultLinear });
           if (r) return reply.code(200).send({ ok: true, ticket: r.ticket });
           // Sem ticket: se a issue é do projeto de suporte de algum produto,
           // foi aberta direto no Linear e vira ticket agora.
           const saas = await productForIssue(repo, data);
-          const imp = saas ? await importLinearIssue(repo, data, { saas, log: req.log }) : null;
+          const imp = saas ? await importLinearIssue(repo, data, { saas, log: req.log, linear: opts.linear || defaultLinear }) : null;
           return reply.code(200).send({ ok: true, ticket: imp?.ticket || null, imported: !!imp?.created });
         }
         if (body.type === "Comment" && (body.action === "create" || body.action === "update")) {

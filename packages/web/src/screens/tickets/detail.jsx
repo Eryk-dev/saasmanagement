@@ -2,7 +2,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { api } from "../../lib/api.js";
 import { PrimaryButton, SecondaryButton, toast } from "../../atoms.jsx";
-import { Drawer } from "../../components/overlay.jsx";
+import { Drawer, Modal } from "../../components/overlay.jsx";
 import { SelectPopover } from "../../components/select-popover.jsx";
 import { QuickReplyList, useQuickReplies, filterQuickReplies, orderForPicker, slashTokenAt } from "./quick-reply-picker.jsx";
 import { LinearMarkdown } from "./linear-markdown.jsx";
@@ -10,13 +10,16 @@ import { UserPicker, UserAvatarRing } from "../../components/user-picker.jsx";
 import { isAdminUser } from "../../lib/users.js";
 import {
   TICKET_STATUSES, STATUS_BY_KEY, TICKET_PRIORITIES, PRIORITY_BY_KEY, CHANNEL_LABEL,
-  slaState, SLA_TONE, distance, agentHandles, portalUrl, linearInReview,
+  slaState, SLA_TONE, distance, agentHandles, portalUrl, linearInReview, linearKey,
 } from "../../lib/tickets.js";
 
 const { useState, useEffect, useRef, useCallback } = React;
 
-// Gaveta do ticket: conversa e resposta ficam juntas; a aba Dados reúne
-// status, prazos, cliente e anexos sem comprimir a leitura.
+// Detalhe do ticket no desktop: modal largo, com a conversa (e a resposta
+// sempre à mão) na coluna principal e os dados do atendimento (status, prazos,
+// cliente, anexos, Linear) numa coluna lateral fixa — a gaveta estreita
+// escondia os dados atrás de uma aba e apertava a conversa (volta de 24/09).
+// No celular é gaveta, e os dados ficam na aba Dados.
 
 const fmtWhen = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "");
 const fmtSize = (n) => (n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
@@ -220,7 +223,11 @@ const EVENT_TEXT = {
   attachment_removed: (d) => `removeu ${d.name || "um anexo"}`,
   sla_breached: (d) => `SLA de ${d.clock === "firstResponse" ? "1ª resposta" : "resolução"} estourou`,
   linear_linked: (d) => `${d.manual ? "vinculou" : "espelhou"} no Linear${d.identifier ? ` (${d.identifier})` : ""}`,
-  linear_issue_updated: (d) => `mudou pelo Linear${d.state ? ` · coluna ${d.state}` : ""}${d.status ? ` → ${STATUS_BY_KEY[d.status]?.label || d.status}` : ""}`,
+  // `linearAssignee`: a issue foi para alguém sem usuário correspondente aqui,
+  // então o responsável do ticket ficou como estava.
+  linear_issue_updated: (d, name) => (d.linearAssignee
+    ? `atribuiu ${d.identifier || "a issue"} a ${d.linearAssignee} no Linear · sem usuário correspondente aqui, o responsável não mudou`
+    : `mudou pelo Linear${d.state ? ` · coluna ${d.state}` : ""}${d.status ? ` → ${STATUS_BY_KEY[d.status]?.label || d.status}` : ""}${"assignee" in d ? ` · responsável: ${d.assignee ? name(d.assignee) : "ninguém"}` : ""}`),
   linear_unlinked: (d) => `desvinculou do Linear${d.identifier ? ` (${d.identifier})` : ""}`,
   // O texto do comentário não é copiado pro ticket (vive na aba Linear): a
   // atividade guarda quem comentou e o começo do que disse.
@@ -578,19 +585,35 @@ export function TicketDetail({ ticketId, summary, saasId, agents, settings, mobi
     ["conversation", `Conversa${conversa.length ? ` · ${conversa.length}` : ""}`],
     ...(ticket?.linear?.issueId ? [["linear", "Linear"]] : []),
     ["activity", "Atividade"],
-    ["data", "Dados"],
+    ...(mobile ? [["data", "Dados"]] : []),
   ];
   useEffect(() => {
-    if (tab === "linear" && ticket && !ticket.linear?.issueId) setTab("conversation");
-  }, [tab, ticket]);
+    if ((tab === "linear" && ticket && !ticket.linear?.issueId) || (tab === "data" && !mobile)) setTab("conversation");
+  }, [tab, ticket, mobile]);
+
+  const Painel = mobile ? Drawer : Modal;
+  const painelProps = mobile
+    ? { largura: 560, painelStyle: { position: "fixed", right: 14, top: 14, bottom: 14, height: "auto", maxWidth: "calc(100% - 28px)", overflow: "hidden" } }
+    : { largura: 1080, painelStyle: { height: "min(860px, calc(100dvh - 32px))", overflow: "hidden", display: "flex", flexDirection: "column" } };
+  const tabs = (
+    <div className="support-detail-tabs">
+      {abas.map(([k, l]) => (
+        <button key={k} type="button" onClick={() => setTab(k)} aria-pressed={tab === k} style={{ padding: "5px 10px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: tab === k ? 600 : 500, background: tab === k ? "var(--bg-2)" : "transparent", color: tab === k ? "var(--fg-1)" : "var(--fg-3)" }}>{l}</button>
+      ))}
+    </div>
+  );
 
   const panel = (
-    <Drawer onClose={close} fechavel={!removing && !sending} label={t ? `Ticket #${t.number}` : "Ticket"} largura={560}
-      painelStyle={{ position: "fixed", right: mobile ? 14 : 26, top: mobile ? 14 : 90, bottom: mobile ? 14 : 26, height: "auto", maxWidth: "calc(100% - 28px)", overflow: "hidden" }}>
+    <Painel onClose={close} fechavel={!removing && !sending} label={t ? `Ticket #${t.number}` : "Ticket"} {...painelProps}>
       <header className="support-detail-head">
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="mono dim support-ellipsis" style={{ fontSize: 11.5 }}>
-            #{t?.number || "…"}{t ? ` · ${CHANNEL_LABEL[t.channel] || "equipe"} · aberto ${fmtWhen(t.createdAt)}` : ""}
+            #{t?.number || "…"}
+            {/* Atalho pra issue: o número dela abre o card no Linear. */}
+            {linearKey(t) && <>{" · "}{t.linear.url
+              ? <a href={t.linear.url} target="_blank" rel="noopener noreferrer" className="support-linear-link" title={`Abrir ${linearKey(t)} no Linear`}>#{linearKey(t)}</a>
+              : `#${linearKey(t)}`}</>}
+            {t ? ` · ${CHANNEL_LABEL[t.channel] || "equipe"} · aberto ${fmtWhen(t.createdAt)}` : ""}
             {linearInReview(t) && <span className="chip info" style={{ fontSize: 11, minHeight: 0, marginLeft: 8, verticalAlign: "middle" }} title={`${t.linear.identifier} está em ${t.linear.stateName} no Linear`}>{t.linear.stateName} no Linear</span>}
           </div>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 2 }}>
@@ -624,13 +647,10 @@ export function TicketDetail({ ticketId, summary, saasId, agents, settings, mobi
       {error && <div role="alert" style={{ margin: 18, padding: "12px 14px", borderRadius: "var(--r-3)", background: "var(--warn-soft)", color: "var(--warn)", fontSize: 12.5 }}>{error} <button onClick={() => { setError(""); setAttempt((n) => n + 1); }}>Tentar novamente</button></div>}
       {!error && !ticket && <div className="mono dim" style={{ fontSize: 12, padding: 18 }}>carregando…</div>}
       {!error && ticket && (<>
-            <div className="support-detail-tabs">
-              {abas.map(([k, l]) => (
-                <button key={k} type="button" onClick={() => setTab(k)} aria-pressed={tab === k} style={{ padding: "5px 10px", borderRadius: "var(--r-2)", fontSize: 12.5, fontWeight: tab === k ? 600 : 500, background: tab === k ? "var(--bg-2)" : "transparent", color: tab === k ? "var(--fg-1)" : "var(--fg-3)" }}>{l}</button>
-              ))}
-            </div>
-        <div className="support-detail-body">
+        {mobile && tabs}
+        <div className={`support-detail-body${mobile ? "" : " is-wide"}`}>
           <div className="support-detail-main" hidden={tab === "data"}>
+            {!mobile && tabs}
             <div className="support-detail-thread">
               {tab === "conversation" ? <Conversation ticket={ticket} agentName={agentName} description={description} />
                 : tab === "linear" ? <LinearPane ticket={ticket} />
@@ -639,7 +659,7 @@ export function TicketDetail({ ticketId, summary, saasId, agents, settings, mobi
             <Composer ticket={ticket} onSent={apply} onDraft={setDraft} onBusy={setSending} />
           </div>
 
-          <aside className="support-detail-side" aria-label="Dados do atendimento" hidden={tab !== "data"}>
+          <aside className="support-detail-side" aria-label="Dados do atendimento" hidden={mobile && tab !== "data"}>
             <Section title="Atendimento">
               <Field label="Status">
                 <SelectPopover label="Status" value={ticket.status} options={STATUS_OPTIONS} onChange={(v) => save({ status: v })} />
@@ -689,7 +709,7 @@ export function TicketDetail({ ticketId, summary, saasId, agents, settings, mobi
           </aside>
         </div></>
       )}
-    </Drawer>
+    </Painel>
   );
   return typeof document !== "undefined" && document.body?.nodeType === 1 ? createPortal(panel, document.body) : panel;
 }

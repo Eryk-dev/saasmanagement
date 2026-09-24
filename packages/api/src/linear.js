@@ -21,7 +21,7 @@ const ISSUE_FIELDS = `
   state { id name type }
   project { id name }
   team { id key name }
-  assignee { id name }
+  assignee { id name email }
   labels { nodes { name } }`;
 
 // `apiKey` aceita string OU função. A função é o que salva o cliente padrão: o
@@ -152,13 +152,20 @@ export function makeLinear({ fetch: f = globalThis.fetch, apiKey = "", endpoint 
     return data.issues?.nodes || [];
   }
 
+  // Pessoas do workspace: é o que casa o responsável do ticket com o assignee
+  // da issue (por e-mail, depois por nome, com ajuste manual na configuração).
+  async function users({ first = 250 } = {}) {
+    const data = await gql(`query Users($first: Int!) { users(first: $first) { nodes { id name displayName email active } } }`, { first });
+    return (data.users?.nodes || []).map((u) => ({ id: u.id, name: u.name || u.displayName || "", email: u.email || "", active: u.active !== false }));
+  }
+
   // Quem é a chave (a tela mostra pra confirmar que conectou na conta certa).
   async function viewer() {
     const data = await gql("query { viewer { id name email } organization { id name urlKey } }");
     return { user: data.viewer || null, organization: data.organization || null };
   }
 
-  return { configured, gql, catalog, createIssue, updateIssue, createComment, issue, issueWithComments, issuesUpdatedSince, viewer };
+  return { configured, gql, catalog, createIssue, updateIssue, createComment, issue, issueWithComments, issuesUpdatedSince, users, viewer };
 }
 
 export const defaultLinear = makeLinear({ apiKey: () => process.env.LINEAR_API_KEY || "" });

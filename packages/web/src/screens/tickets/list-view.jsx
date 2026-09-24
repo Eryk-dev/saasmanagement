@@ -1,6 +1,6 @@
 import React from "react";
 import { UserAvatarRing } from "../../components/user-picker.jsx";
-import { STATUS_BY_KEY, PRIORITY_BY_KEY, slaLabel, waitingSince, linearInReview } from "../../lib/tickets.js";
+import { STATUS_BY_KEY, PRIORITY_BY_KEY, slaLabel, waitingSince, linearInReview, linearKey } from "../../lib/tickets.js";
 
 const { useState } = React;
 
@@ -67,7 +67,7 @@ export function TicketsList({ tickets, agentName, selectedId, onOpen, now }) {
                       onClick={() => onOpen(t.id)} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(t.id); } }}>
                       <div style={{ minWidth: 0 }}>
                         <div className="support-ellipsis" style={{ fontWeight: 600 }}>
-                          <span className="mono tnum" style={{ color: "var(--fg-4)", fontWeight: 400, marginRight: 6 }}>#{t.number}</span>{t.subject}
+                          <span className="mono tnum" style={{ color: "var(--fg-4)", fontWeight: 400, marginRight: 6 }}>#{t.number}{linearKey(t) ? ` · ${linearKey(t)}` : ""}</span>{t.subject}
                         </div>
                         <div className="support-ellipsis" style={{ fontSize: 11.5, color: "var(--fg-4)" }}>
                           {[t.requester?.name, t.category, t.messageCount ? `${t.messageCount} msg` : ""].filter(Boolean).join(" · ") || "—"}

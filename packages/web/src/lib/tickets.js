@@ -180,4 +180,7 @@ export const fold = (s) => String(s || "").normalize("NFD").replace(/\p{M}/gu, "
 // Card do espelho na coluna de revisão do Linear (In Review): a correção está
 // pronta e esperando conferência. Pelo nome da coluna, dentro do tipo
 // `started`, porque o Linear não tem um tipo próprio pra revisão.
+// Número da issue vinculada (LEV-873), mostrado ao lado do #número do ticket:
+// o Linear numera por time e não deixa escolher, então os dois convivem.
+export const linearKey = (t) => t?.linear?.identifier || "";
 export const linearInReview = (t) => !isDone(t) && t?.linear?.stateType === "started" && /review|revis/i.test(t?.linear?.stateName || "");
