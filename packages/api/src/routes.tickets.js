@@ -22,7 +22,7 @@ import {
 } from "./tickets-core.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
 import { defaultLinear } from "./linear.js";
-import { issueKeyFromInput, linkTicketToIssue, unlinkTicket, syncTicketToLinear } from "./ticket-linear.js";
+import { issueKeyFromInput, linkTicketToIssue, unlinkTicket, syncTicketToLinear, linearPeople, linearIdForUser } from "./ticket-linear.js";
 import { enqueueTicketSync } from "./ticket-linear-runner.js";
 
 const MAX_ASSET = 5 * 1024 * 1024;
@@ -288,8 +288,17 @@ export function registerTicketRoutes(app, repo, { mailer = null, linear = defaul
   app.get("/api/support/linear/catalog", guarded(async () => {
     const webhook = !!process.env.LINEAR_WEBHOOK_SECRET;
     if (!linear?.configured?.()) return { configured: false, webhook, teams: [] };
-    const [teams, me] = await Promise.all([linear.catalog(), linear.viewer().catch(() => null)]);
-    return { configured: true, webhook, teams, viewer: me?.user?.name || "", organization: me?.organization?.name || "" };
+    const [teams, me, people, users] = await Promise.all([
+      linear.catalog(), linear.viewer().catch(() => null), linearPeople(linear).catch(() => []), repo.list("users").catch(() => []),
+    ]);
+    // De-para de pessoas pra tela: quem casa sozinho (sem o ajuste manual), pra
+    // ela mostrar o automático e deixar trocar só o que casou errado.
+    const autoMatch = {};
+    for (const u of users) { const id = linearIdForUser(u.id, { users, people }); if (id) autoMatch[u.id] = id; }
+    return {
+      configured: true, webhook, teams, viewer: me?.user?.name || "", organization: me?.organization?.name || "",
+      people: people.filter((x) => x.active !== false).map((x) => ({ id: x.id, name: x.name })), autoMatch,
+    };
   }));
 
   // Conteúdo da issue pra aba Linear do ticket: descrição e comentários como

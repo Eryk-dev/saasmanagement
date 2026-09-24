@@ -112,13 +112,13 @@ export function startLinearSync(repo, {
       let cursor = since;
       for (const issue of issues) {
         try {
-          const applied = await applyLinearIssue(repo, issue, { log });
+          const applied = await applyLinearIssue(repo, issue, { log, linear });
           if (!applied) {
             // Card aberto direto no projeto do suporte: vira ticket aqui (se o
             // webhook já não tiver criado).
             const projectId = issue.project?.id || "";
             if (cfg.projectId && projectId === cfg.projectId) {
-              const r = await importLinearIssue(repo, issue, { saas: p.id, log });
+              const r = await importLinearIssue(repo, issue, { saas: p.id, log, linear });
               if (r?.created) out.imported++;
             }
           } else {

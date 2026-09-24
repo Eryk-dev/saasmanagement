@@ -205,7 +205,7 @@ export function SupportSettingsScreen() {
 
           </fieldset>
           <AgentsCard saasId={saasId} version={version} />
-          <fieldset className="sla-integration" disabled={busy}><LinearCard draft={draft} set={set} disabled={busy} /></fieldset>
+          <fieldset className="sla-integration" disabled={busy}><LinearCard draft={draft} set={set} disabled={busy} saasId={saasId} version={version} /></fieldset>
         </div>
       )}
     </div>
@@ -233,7 +233,7 @@ const STATE_BACK_ROWS = [
 const STATUS_OPTIONS = [{ value: "", label: "não mexer no ticket", color: "var(--fg-3)" },
   ...TICKET_STATUSES.map((s) => ({ value: s.key, label: s.label, tone: s.tone }))];
 
-function LinearCard({ draft, set, disabled }) {
+function LinearCard({ draft, set, disabled, saasId, version }) {
   const [catalog, setCatalog] = useState(null);
   const [erro, setErro] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -303,7 +303,12 @@ function LinearCard({ draft, set, disabled }) {
               <Checkbox checked={l.titleBack !== false} disabled={!l.enabled} onChange={(v) => setL({ titleBack: v })}>
                 título editado no Linear renomeia o ticket
               </Checkbox>
+              <Checkbox checked={l.syncAssignee !== false} disabled={!l.enabled} onChange={(v) => setL({ syncAssignee: v })}>
+                espelhar o responsável nos dois sentidos
+              </Checkbox>
             </div>
+            {l.syncAssignee !== false && <LinearPeople catalog={catalog} people={l.people || {}} disabled={!l.enabled}
+              saasId={saasId} version={version} onChange={(people) => setL({ people })} />}
             <InfoNota>
               Para o Linear avisar o cockpit na hora, cadastre <code className="mono">{webhookUrl}</code> em Settings → API → Webhooks, com os eventos <b>Issues</b> e <b>Comments</b>.
               {catalog.webhook ? " O segredo do webhook já está configurado no servidor." : " Falta o segredo no servidor (LINEAR_WEBHOOK_SECRET) — sem ele a rota recusa, e a volta só chega na reconciliação."}
@@ -313,6 +318,52 @@ function LinearCard({ draft, set, disabled }) {
         )}
       </div>
     </Card>
+  );
+}
+
+// De-para de pessoas do espelho: cada atendente do produto com a pessoa dele no
+// Linear. O automático (e-mail da conta Google, depois nome) vem da API; aqui só
+// se corrige o que casou errado ou se marca quem não tem conta lá — sem par, o
+// espelho não mexe no responsável do outro lado.
+function LinearPeople({ catalog, people, disabled, saasId, version, onChange }) {
+  const [agents, setAgents] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    api.supportAgents().then((a) => { if (vivo) setAgents(a || []); }).catch(() => { if (vivo) setAgents([]); });
+    return () => { vivo = false; };
+  }, [version]);
+  const lista = (agents || []).filter((a) => a.support && (a.admin || (a.supportSaas || []).includes(saasId)))
+    .sort((x, y) => String(x.name).localeCompare(String(y.name), "pt-BR"));
+  const pessoas = catalog?.people || [];
+  const nomeDe = (id) => pessoas.find((p) => p.id === id)?.name || "";
+  const setPessoa = (userId, v) => {
+    const next = { ...people };
+    if (v) next[userId] = v; else delete next[userId];
+    onChange(next);
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, opacity: disabled ? 0.55 : 1 }}>
+      <span className="kicker">Quem é quem no Linear<Info texto="casa sozinho pelo e-mail da conta Google conectada e, sem ela, pelo nome. Quem ficar sem par não tem o responsável espelhado: o espelho não mexe no outro lado" /></span>
+      {agents === null && <div className="mono dim" style={{ fontSize: 12 }}>carregando atendentes…</div>}
+      {agents && lista.length === 0 && <div className="mono dim" style={{ fontSize: 12 }}>nenhum atendente neste produto</div>}
+      {lista.map((a) => {
+        const auto = nomeDe(catalog?.autoMatch?.[a.id]);
+        return (
+          <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--fg-3)" }}>
+            <span className="support-ellipsis" style={{ width: 150, flexShrink: 0 }}>{a.name}</span>
+            <span style={{ flex: 1, maxWidth: 260, minWidth: 0 }}>
+              <SelectPopover size="sm" label={`${a.name} no Linear`} disabled={disabled}
+                value={people[a.id] || ""} onChange={(v) => setPessoa(a.id, v)}
+                options={[
+                  { value: "", label: auto ? `automático · ${auto}` : "automático · sem par", color: auto ? undefined : "var(--warn)" },
+                  ...pessoas.map((p) => ({ value: p.id, label: p.name })),
+                  { value: "none", label: "não tem conta no Linear", color: "var(--fg-3)" },
+                ]} />
+            </span>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
