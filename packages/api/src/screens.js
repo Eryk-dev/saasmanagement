@@ -231,6 +231,11 @@ export function screenForRequest(method, path) {
 // `remuneracao` EXPLICITAMENTE em Ajustes → Equipe, e aí só LEITURA: editar
 // plano de comp segue coisa de admin.
 const ADMIN_PREFIXES = ["/api/comp_plans", "/api/comp/"];
+// Gestão do time (criar, editar papel/telas/nível, resetar senha, remover): só
+// a etiqueta `admin`. Sem isso, quem tem a tela Ajustes daria a si mesmo a
+// etiqueta admin ou resetaria a senha de um admin. Ler a lista segue aberto
+// (pickers); o próprio perfil vive em /api/auth/me, fora daqui.
+const ADMIN_WRITE_PREFIXES = ["/api/auth/users"];
 
 // Hook Fastify (registrar DEPOIS do makeAuthHook, que popula req.authUser).
 export function makeScreenGuardHook() {
@@ -244,6 +249,9 @@ export function makeScreenGuardHook() {
       if (!admin && !(req.method === "GET" && granted)) {
         return reply.code(403).send({ error: "Sem acesso a esta área" });
       }
+    }
+    if (req.method !== "GET" && ADMIN_WRITE_PREFIXES.some((p) => path.startsWith(p)) && !(user.roles || []).includes("admin")) {
+      return reply.code(403).send({ error: "Só quem tem a etiqueta admin gerencia a equipe" });
     }
     const screens = screenForRequest(req.method, path);
     if (screens && !screens.some((s) => canScreen(user, s))) {

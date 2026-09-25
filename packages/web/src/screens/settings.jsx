@@ -9,7 +9,7 @@ import { api } from "../lib/api.js";
 import { KINDS, KIND_IDS, guessKind, lossReasonsOf, stageKind, stageByKind, phaseOf, NEXT_KINDS, NEXT_STEP_KINDS, NEXT_STEP_LABELS, nurtureStage, nextKindsFor } from "../lib/funnel.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { DEFAULT_SCRIPTS, SCRIPT_CATALOG, catalogStageRow, isNoShowStage } from "../lib/scripts.js";
-import { usersByRole, roleScreens, isUniversalScreen } from "../lib/users.js";
+import { usersByRole, roleScreens, isUniversalScreen, isAdminUser } from "../lib/users.js";
 import { ScriptPanel } from "./today.jsx";
 import { ErrorBoundary } from "../components/error-boundary.jsx";
 import { NAV } from "../chrome.jsx";
@@ -464,6 +464,9 @@ function TeamSettings() {
   const [invite, setInvite] = useStS(null); // { name, password }
   const [created, setCreated] = useStS(null); // { name, password, reset? } do último criado/resetado, fica na tela pro Leo copiar
   const [reset, setReset] = useStS(null); // { user, password }: senha nova sendo definida pra alguém do time
+  // Criar, editar, resetar senha e remover exigem a etiqueta `admin` também na
+  // API (screens.js); sem ela a equipe aparece só para leitura.
+  const canManage = isAdminUser();
 
   const [error,setError]=useStS(null); const action=React.useRef(false),read=React.useRef(0);
   const load = async () => {const seq=++read.current;setError(null);try{const u=await api.listUsers();if(seq===read.current)setUsers(u);}catch(e){if(seq===read.current)setError(e.message);}};
@@ -499,7 +502,7 @@ function TeamSettings() {
   // atual — é o caminho pra destravar quem esqueceu. Nasce gerada, dá pra
   // editar antes de salvar; a senha só aparece UMA vez, igual à do convite.
   async function resetPassword() {
-    if (!reset?.user || String(reset.password || "").length < 4 || action.current) return;
+    if (!reset?.user || String(reset.password || "").length < 8 || action.current) return;
     action.current=true;setError(null);
     const u = reset.user;
     setSaving(u.id);
@@ -530,9 +533,9 @@ function TeamSettings() {
   }
 
   return (
-    <fieldset className="settings-team-form" disabled={!!saving}>
+    <fieldset className="settings-team-form" disabled={!!saving || !canManage}>
       {error && <div role="alert" className="settings-notice">{error}{users===null && <button onClick={load}>Tentar novamente</button>}</div>}
-      <SettingHeader title="Equipe & papéis" sub="vagas, nível, produtos e permissões · cada alteração salva ao editar" />
+      <SettingHeader title="Equipe & papéis" sub={canManage ? "vagas, nível, produtos e permissões · cada alteração salva ao editar" : "só leitura · quem tem a etiqueta admin gerencia a equipe"} />
       {/* .tbl-x: no mobile a grade (colunas fixas ~900px) rola dentro do card
           em vez de estourar a página — mesmo padrão do Funil abaixo. */}
       <div className="tbl-x" style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
@@ -594,29 +597,29 @@ function TeamSettings() {
         {reset ? (
           <>
             <span style={{ fontSize: 12 }}>senha nova pra <b>{reset.user.name || reset.user.id}</b>:</span>
-            <input value={reset.password} type="text" className="mono" placeholder="Senha (4+)" autoFocus
+            <input value={reset.password} type="text" className="mono" placeholder="Senha (8+)" autoFocus
               title="Senha gerada automaticamente · pode editar antes de salvar"
               onChange={(e) => setReset({ ...reset, password: e.target.value })}
               onKeyDown={(e) => { if (e.key === "Enter") resetPassword(); if (e.key === "Escape") setReset(null); }}
               style={{ ...inputStyle, width: 130 }} />
             <button type="button" onClick={() => setReset({ ...reset, password: genPassword() })} title="Gerar outra senha"
               style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-4)", fontSize: 13, cursor: "pointer" }}>↻</button>
-            <PrimaryButton onClick={resetPassword} disabled={String(reset.password).length < 4 || saving === reset.user.id}>salvar senha nova</PrimaryButton>
+            <PrimaryButton onClick={resetPassword} disabled={String(reset.password).length < 8 || saving === reset.user.id}>salvar senha nova</PrimaryButton>
             <button onClick={() => setReset(null)} className="mono dim" style={{ fontSize: 11 }}>cancelar</button>
             <span className="mono dim" style={{ fontSize: 11 }}>a senha atual deixa de valer na hora</span>
           </>
         ) : invite ? (
           <>
             <input value={invite.name} placeholder="Nome" onChange={(e) => setInvite({ ...invite, name: e.target.value })} style={{ ...inputStyle, width: 160 }} />
-            <input value={invite.password} type="text" className="mono" placeholder="Senha (4+)"
+            <input value={invite.password} type="text" className="mono" placeholder="Senha (8+)"
               title="Senha inicial gerada automaticamente · pode editar antes de criar"
               onChange={(e) => setInvite({ ...invite, password: e.target.value })} style={{ ...inputStyle, width: 130 }} />
             <button type="button" onClick={() => setInvite({ ...invite, password: genPassword() })} title="Gerar outra senha"
               style={{ width: 26, height: 26, borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-4)", fontSize: 13, cursor: "pointer" }}>↻</button>
-            <PrimaryButton onClick={createUser} disabled={!invite.name || String(invite.password).length < 4}>criar usuário</PrimaryButton>
+            <PrimaryButton onClick={createUser} disabled={!invite.name || String(invite.password).length < 8}>criar usuário</PrimaryButton>
             <button onClick={() => setInvite(null)} className="mono dim" style={{ fontSize: 11 }}>cancelar</button>
           </>
-        ) : (
+        ) : canManage && (
           <button type="button" onClick={() => { setCreated(null); setReset(null); setInvite({ name: "", password: genPassword() }); }} style={{ ...chromeBtnStyleSmall }}>
             <span style={{ fontSize: 11 }}>+ usuário do time</span>
           </button>
@@ -629,7 +632,7 @@ function TeamSettings() {
             <button type="button" className="mono dim" style={{ fontSize: 11, cursor: "pointer" }} title="Fechar (a senha some da tela)" onClick={() => setCreated(null)}>✕</button>
           </span>
         )}
-        {!reset && <span className="mono dim" style={{ fontSize: 11 }}>papéis salvam ao clicar · cada um troca a própria senha em Meu perfil · "senha" na linha reseta sem pedir a atual</span>}
+        {!reset && canManage && <span className="mono dim" style={{ fontSize: 11 }}>papéis salvam ao clicar · cada um troca a própria senha em Meu perfil · "senha" na linha reseta sem pedir a atual</span>}
       </div>
     </fieldset>
   );

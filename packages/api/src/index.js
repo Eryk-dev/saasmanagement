@@ -41,7 +41,10 @@ import { mp as defaultMp } from "./mp.js";
 import { startBilling } from "./billing-runner.js";
 import { startLeveradsAccessSync } from "./leverads-access.js";
 import { refreshResults, RESULTS_TTL_MS } from "./leverads-results.js";
-import { ensureDefaultAdmins, makeAuthHook } from "./auth.js";
+import { ensureBootstrapAdmin, makeAuthHook, userByAuthId } from "./auth.js";
+import { resolveAuthMode, makeJwksCache, makeJwtResolver } from "./auth-jwt.js";
+import { assertSafeBoot, makeJobGate } from "./app-env.js";
+import { makeCorsDelegator } from "./cors-policy.js";
 import { makeScreenGuardHook } from "./screens.js";
 import { runStartupMigrations, regenerateOpenLeadsToSlides } from "./migrations.js";
 
@@ -86,9 +89,16 @@ function providedKey(req) {
   return "";
 }
 
+// Fora de produção, recusa subir com banco ou API de produção no env (app-env.js).
+const APP_ENV = assertSafeBoot();
+const jobOn = makeJobGate();
+// Login pela identidade central (auth-jwt.js): legacy | dual | gotrue.
+const AUTH_MODE = resolveAuthMode();
+
 await initDb();
-// Admins padrão do time (só quando `users` está vazia — nunca reseta senha).
-await ensureDefaultAdmins(repo);
+// Primeiro admin de um banco vazio, vindo de BOOTSTRAP_ADMIN_USER/PASSWORD
+// (só quando `users` está vazia — nunca reseta senha).
+await ensureBootstrapAdmin(repo);
 // Migrações idempotentes de dados (ex.: garante o estágio "Integração" no funil).
 await runStartupMigrations(repo);
 
@@ -96,7 +106,9 @@ const app = Fastify({ logger: true });
 let resultsTimer;
 app.addHook("onClose", async () => clearInterval(resultsTimer));
 
-await app.register(cors, { origin: true });
+const isOpenPath = (path) => OPEN_PATHS.has(path) || OPEN_PREFIXES.some((p) => path.startsWith(p));
+// CORS restrito às origens do cockpit, exceto nas rotas abertas (cors-policy.js).
+await app.register(cors, { delegator: makeCorsDelegator({ isOpenPath }) });
 // Upload de criativo (vídeo) pra Meta — limite folgado pra vídeo de anúncio.
 await app.register(multipart, { limits: { fileSize: 500 * 1024 * 1024, files: 1 } });
 
@@ -106,6 +118,13 @@ app.addHook("onRequest", makeAuthHook({
   apiKey: API_KEY, repo,
   openPaths: OPEN_PATHS, openPrefixes: OPEN_PREFIXES,
   providedKey,
+  authMode: AUTH_MODE,
+  jwtUser: AUTH_MODE === "legacy" ? null : makeJwtResolver({
+    jwks: makeJwksCache({ url: process.env.AUTH_JWKS_URL }),
+    findUser: (sub) => userByAuthId(repo, sub),
+    issuer: process.env.AUTH_JWT_ISSUER || "",
+    log: app.log,
+  }),
 }));
 // Restrição de telas por usuário (user.screens): sessão restrita só alcança as
 // rotas das telas permitidas; key mestre (MCP/integrações) passa direto.
@@ -115,85 +134,85 @@ registerRoutes(app);
 
 try {
   await app.listen({ port: PORT, host: "0.0.0.0" });
-  app.log.info(`Cockpit API ready on http://localhost:${PORT}  (auth: ${API_KEY ? "ON (all routes)" : "off"})`);
+  app.log.info(`Cockpit API ready on http://localhost:${PORT}  (APP_ENV=${APP_ENV}; AUTH_MODE=${AUTH_MODE}; master key: ${API_KEY ? "on" : "off — só sessão"})`);
   // Sync automático da Meta no servidor (uma execução pro time inteiro; no-op
   // sem META_ACCESS_TOKEN). O SPA só lê — não faz mais polling por aba.
-  startMarketingAutoSync(repo, { log: app.log });
+  if (jobOn("marketingAutoSync")) startMarketingAutoSync(repo, { log: app.log });
   // Leads abertos que ainda apontam pro deck antigo (A/B) ganham a apresentação
   // em slides. É uma proposta nova por lead, então roda depois de ouvir.
-  regenerateOpenLeadsToSlides(repo, { baseUrl: process.env.COCKPIT_PUBLIC_URL || "", log: app.log })
+  if (jobOn("regenerateOpenLeadsToSlides")) regenerateOpenLeadsToSlides(repo, { baseUrl: process.env.COCKPIT_PUBLIC_URL || "", log: app.log })
     .then((n) => { if (n) app.log.info(`[migration] apresentação em slides regerada pra ${n} lead(s) aberto(s)`); })
     .catch((err) => app.log.error(`[migration] regenerateOpenLeadsToSlides falhou: ${err?.message || err}`));
   // Regras de veiculação dos anúncios (agenda cheia pausa, janela de fim de
   // semana, orçamento alvo): tick invariante de 60s; regra nasce desligada, o
   // toggle vive na tela Publicidade. No-op sem META_ACCESS_TOKEN.
-  startAdDelivery(repo, { log: app.log });
+  if (jobOn("adDelivery")) startAdDelivery(repo, { log: app.log });
   // Resumo automático de calls: só faz algo com ANTHROPIC_API_KEY + Google conectado.
-  startCallSummaries(repo, { ...app.integrationClients, log: app.log });
+  if (jobOn("callSummaries")) startCallSummaries(repo, { ...app.integrationClients, log: app.log });
   // Briefing de passagem pro integrador (card que entrou em Integração): tenta
   // de novo enquanto a transcrição da call de venda não fica pronta no Google.
-  startIntegrationBriefs(repo, { ...app.integrationClients, log: app.log });
+  if (jobOn("integrationBriefs")) startIntegrationBriefs(repo, { ...app.integrationClients, log: app.log });
   // Resumo automático das consultas 1:1 (UniqueKids): mesmo circuito, poller próprio.
-  startConsultationSummaries(repo, { ...app.integrationClients, log: app.log });
+  if (jobOn("consultationSummaries")) startConsultationSummaries(repo, { ...app.integrationClients, log: app.log });
   // Sequências de nutrição (drip): auto-inscreve e avança os passos (e-mail pela
   // conta Google; WhatsApp fica na fila assistida). No-op sem sequência ativa.
-  startDripSequences(repo, { ...app.integrationClients, log: app.log });
-  startCadencia(repo, { log: app.log });
+  if (jobOn("dripSequences")) startDripSequences(repo, { ...app.integrationClients, log: app.log });
+  if (jobOn("cadencia")) startCadencia(repo, { log: app.log });
   // SDR automatizado (primeiro toque + lembretes de call + resgate de no-show):
   // poller de 60s, no-op sem product.sdrBot.enabled. Age em nome do SDR dono,
   // com autoria interna "sdr-bot" (fora da régua de contato humano).
-  startSdrFlow(repo, { ...app.integrationClients, log: app.log });
+  if (jobOn("sdrFlow")) startSdrFlow(repo, { ...app.integrationClients, log: app.log });
   // Retomada do SDR conversacional: mensagem recebida que ficou SEM decisão
   // (a API reiniciou no meio do debounce/IA/atraso de resposta) é tratada de
   // novo no ciclo seguinte, em vez de morrer no silêncio (16/09: Vinicius).
-  startSdrBrainSweep(app.integrationClients.sdrBrain, { log: app.log });
+  if (jobOn("sdrBrainSweep")) startSdrBrainSweep(app.integrationClients.sdrBrain, { log: app.log });
   // Lembrete diário de treinamento (flashcards vencendo) — no-op sem Discord.
-  startTrainingReminder(repo, { log: app.log });
+  if (jobOn("trainingReminder")) startTrainingReminder(repo, { log: app.log });
   // Lembrete diário das tarefas (vence hoje / atrasada) na caixa de entrada de
   // cada pessoa + resumo no Discord quando configurado.
-  startTaskReminder(repo, { log: app.log });
+  if (jobOn("taskReminder")) startTaskReminder(repo, { log: app.log });
   // Silêncio nosso no WhatsApp: cliente falou e ninguém voltou em N horas (3 por
   // padrão) vira aviso na caixa de entrada de quem cuida do lead.
-  startWaWaitingReminder(repo, { log: app.log });
+  if (jobOn("waWaitingReminder")) startWaWaitingReminder(repo, { log: app.log });
   // Handoff do robô SDR sem ninguém assumir em 30 min vira aviso pro closer/dono
   // (e repete de 2h em 2h enquanto ninguém falar).
-  startSdrHandoffReminder(repo, { log: app.log });
+  if (jobOn("sdrHandoffReminder")) startSdrHandoffReminder(repo, { log: app.log });
   // SLA dos tickets de suporte: aviso a 80% e estouro (1ª resposta/resolução)
   // na caixa de entrada de quem atende + fechamento automático dos resolvidos.
-  startTicketSla(repo, { log: app.log });
+  if (jobOn("ticketSla")) startTicketSla(repo, { log: app.log });
   // Espelho dos tickets com o Linear: drena a fila de saída (issue criada e
   // atualizada, mensagem vira comentário) e reconcilia as issues mudadas lá —
   // a rede de segurança do webhook /api/webhooks/linear. No-op sem LINEAR_API_KEY.
-  startLinearSync(repo, { log: app.log });
+  if (jobOn("linearSync")) startLinearSync(repo, { log: app.log });
   // Régua de marcos do cliente (onboarding, check-in de mês 1, revisão de mês 3,
   // upsell de mês 6, renovação): cada marco que chega a hora vira tarefa do dono
   // da conta. Marco vencido há mais de 30 dias fica pra trás de propósito.
-  startCustomerMilestones(repo, { log: app.log });
+  if (jobOn("customerMilestones")) startCustomerMilestones(repo, { log: app.log });
   // NPS: pergunta de 0 a 10 no mês 1, no mês 3 e de 90 em 90 dias depois.
   // E-mail sai sozinho; WhatsApp só dentro da janela de 24h, senão vira tarefa
   // com o texto pronto pro dono da conta.
-  startNpsAsks(repo, { ...app.integrationClients, log: app.log });
+  if (jobOn("npsAsks")) startNpsAsks(repo, { ...app.integrationClients, log: app.log });
   // Relatório mensal de resultado pro cliente (a evidência de serviço): 1 por
   // cliente a cada 30 dias, em horário comercial. Mês sem venda não manda.
-  startCustomerReports(repo, { ...app.integrationClients, log: app.log });
+  if (jobOn("customerReports")) startCustomerReports(repo, { ...app.integrationClients, log: app.log });
   // Combinado da integração que o cliente não entregou: avisa quem cuida do
   // lead e deixa a cobrança pronta na tarefa. Nunca envia sozinho.
-  startClientPendingReminder(repo, { log: app.log });
+  if (jobOn("clientPendingReminder")) startClientPendingReminder(repo, { log: app.log });
   // Fecha o mês da remuneração no dia seguinte: congela contratos, receita e o
   // bônus de time de cada pessoa. É o extrato da folha e a base do critério de
   // promoção, que não pode depender de recalcular o passado.
-  startCompMonthClose(repo, { log: app.log });
+  if (jobOn("compMonthClose")) startCompMonthClose(repo, { log: app.log });
   // Blog SEO: minera pautas, rascunha 1 post por ciclo e publica os agendados
   // (15 min). No-op sem doc app_config/blog_<saas> ou com rules.enabled=false;
   // sem IA configurada só publica o que já está agendado.
-  startBlogEngine(repo, { engine: app.integrationClients.blogEngine, log: app.log });
+  if (jobOn("blogEngine")) startBlogEngine(repo, { engine: app.integrationClients.blogEngine, log: app.log });
   // Captura de stories do Instagram de hora em hora (a Graph só entrega story
   // vivo): alimenta o "Stories" da Análise de Desempenho. No-op sem token.
-  startStoriesCapture(repo, { log: app.log });
+  if (jobOn("storiesCapture")) startStoriesCapture(repo, { log: app.log });
   // Reconciliação da Shopify (UniqueKids): puxa os pedidos pagos e preenche os
   // leads que faltam — rede de segurança pro webhook orders/paid (que ficou 8
   // dias sem entregar). No-op sem SHOPIFY_ADMIN_TOKEN + SHOPIFY_STORE.
-  startShopifySync(repo, {
+  if (jobOn("shopifySync")) startShopifySync(repo, {
     shopify: makeShopify({
       store: process.env.SHOPIFY_STORE || "4b778b.myshopify.com",
       token: process.env.SHOPIFY_ADMIN_TOKEN || "",
@@ -203,27 +222,29 @@ try {
   // Reconciliação do Mercado Pago (financeiro): espelha os pagamentos da conta
   // e dá baixa nas faturas — funciona mesmo SEM o webhook configurado no painel
   // (1º tick faz o backfill de 400 dias). No-op sem MERCADOPAGO_ACCESS_TOKEN.
-  startMpSync(repo, { log: app.log });
+  if (jobOn("mpSync")) startMpSync(repo, { log: app.log });
   // Espelho das assinaturas RECORRENTES da conta MP (inclusive as criadas fora
   // do cockpit): a tela Assinaturas → MP liga cada uma ao cliente. No-op sem
   // MERCADOPAGO_ACCESS_TOKEN.
-  startPreapprovalSync(repo, { log: app.log });
+  if (jobOn("preapprovalSync")) startPreapprovalSync(repo, { log: app.log });
   // SAÍDAS da conta MP (settlement report): pede o relatório e importa sozinho
   // — o fluxo do MP é assíncrono e antes exigia dois cliques com espera no
   // meio. No-op sem MERCADOPAGO_ACCESS_TOKEN.
-  startMpOutflowSync(repo, { mp: defaultMp, log: app.log });
+  if (jobOn("mpOutflowSync")) startMpOutflowSync(repo, { mp: defaultMp, log: app.log });
   // Motor de billing (renovações + dunning + pendingChange) — antes só rodava
   // quando alguém chamava POST /api/billing/run; agora anda sozinho (1h).
-  startBilling(repo, { log: app.log });
+  if (jobOn("billing")) startBilling(repo, { log: app.log });
   // LeverAds: sincroniza o paywall das orgs do produto (payment_active) com o
   // billing daqui. No-op sem LEVERADS_ADMIN_EMAIL/PASSWORD; dry-run por padrão
   // (LEVERADS_ACCESS_APPLY=1 pra valer). Só toca orgs com de-para explícito.
-  startLeveradsAccessSync(repo, { log: app.log });
+  if (jobOn("leveradsAccessSync")) startLeveradsAccessSync(repo, { log: app.log });
   // Aquece os resultados das propostas (incluindo o resumo do deck C) e
   // renova a cada seis horas, mesmo sem uma nova abertura para disparar o cache.
-  refreshResults().catch(() => {});
-  resultsTimer = setInterval(() => refreshResults().catch(() => {}), RESULTS_TTL_MS);
-  resultsTimer.unref();
+  if (jobOn("refreshResults")) {
+    refreshResults().catch(() => {});
+    resultsTimer = setInterval(() => refreshResults().catch(() => {}), RESULTS_TTL_MS);
+    resultsTimer.unref();
+  }
 } catch (err) {
   app.log.error(err);
   process.exit(1);

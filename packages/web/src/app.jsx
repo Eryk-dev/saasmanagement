@@ -166,8 +166,7 @@ function App({ onInitialReady, initialLoading = false } = {}) {
     const onIdle = () => { if (dirty) { clearTimeout(t); t = setTimeout(tryRun, 600); } };
     document.addEventListener("visibilitychange", onIdle);
     document.addEventListener("focusout", onIdle, true);
-    const es = new EventSource(eventsUrl());
-    es.onmessage = (m) => {
+    const onMessage = (m) => {
       let rev, collection, quiet;
       try { ({ rev, collection, quiet } = JSON.parse(m.data)); } catch { return; }
       // Tela com fetch PRÓPRIO (ex.: Mapas mentais, que fica fora do SEED)
@@ -182,8 +181,18 @@ function App({ onInitialReady, initialLoading = false } = {}) {
       if (last != null && rev !== last && !quiet && collection !== "activities") schedule();
       last = rev;
     };
+    // A reconexão automática do EventSource reusaria a URL com o token do
+    // momento em que abriu — e o da conta Lever vence em 600 s. Em erro, fecha
+    // e reabre com o token atual.
+    let es, retry;
+    const connect = () => {
+      es = new EventSource(eventsUrl());
+      es.onmessage = onMessage;
+      es.onerror = () => { es.close(); clearTimeout(retry); retry = setTimeout(connect, 3000); };
+    };
+    connect();
     return () => {
-      clearTimeout(t); es.close();
+      clearTimeout(t); clearTimeout(retry); es.close();
       document.removeEventListener("visibilitychange", onIdle);
       document.removeEventListener("focusout", onIdle, true);
     };

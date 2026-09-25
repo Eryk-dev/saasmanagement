@@ -8,6 +8,7 @@
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { sanitizeScreens } from "./screens.js";
 import { sanitizeSupportSaas } from "./support-scope.js";
+import { looksLikeJwt } from "./auth-jwt.js";
 
 const SESSION_TTL_MS = 7 * 24 * 3600 * 1000;
 
@@ -25,24 +26,25 @@ export function verifyPassword(password, stored) {
   return candidate.length === expected.length && timingSafeEqual(candidate, expected);
 }
 
-// Admins padrão (Eryk e Leonardo) — criados só quando a collection está vazia,
-// então um deploy/restart nunca recria usuário apagado nem reseta senha.
-export const DEFAULT_ADMINS = [
-  { id: "eryk", name: "Eryk", password: "1234" },
-  { id: "leonardo", name: "Leonardo", password: "1234" },
-];
+// Senha nova (criação, reset e troca) precisa de pelo menos 8 caracteres.
+export const MIN_PASSWORD_LENGTH = 8;
+const weakPassword = (p) => !p || String(p).length < MIN_PASSWORD_LENGTH;
+const WEAK_PASSWORD_ERROR = `senha precisa de ${MIN_PASSWORD_LENGTH}+ caracteres`;
 
-export async function ensureDefaultAdmins(repo) {
-  const users = await repo.list("users");
-  if (users.length) return 0;
-  for (const u of DEFAULT_ADMINS) {
-    await repo.create("users", {
-      id: u.id, name: u.name, role: "admin",
-      passwordHash: hashPassword(u.password),
-      createdAt: new Date().toISOString(),
-    });
-  }
-  return DEFAULT_ADMINS.length;
+// Primeiro admin de um banco vazio (dev/local): vem do env, nunca de senha fixa
+// no código. Só age com `users` vazia, então restart nunca recria usuário
+// apagado nem reseta senha; sem as duas variáveis, não cria ninguém.
+export async function ensureBootstrapAdmin(repo, env = process.env) {
+  const id = String(env.BOOTSTRAP_ADMIN_USER || "").trim().toLowerCase();
+  const password = String(env.BOOTSTRAP_ADMIN_PASSWORD || "");
+  if (!id || weakPassword(password)) return 0;
+  if ((await repo.list("users")).length) return 0;
+  await repo.create("users", {
+    id, name: id, role: "admin", roles: ["admin"],
+    passwordHash: hashPassword(password),
+    createdAt: new Date().toISOString(),
+  });
+  return 1;
 }
 
 // `role` = auth (todos "admin" na v1). `roles` = etiquetas de capacidade do
@@ -81,7 +83,30 @@ const publicUser = (u) => ({
   // Status da conta Google PESSOAL (só flags — o refresh token NUNCA sai daqui).
   googleConnected: !!u.google?.refreshToken,
   googleAccount: u.google?.account || "",
+  // Conta na identidade central (auth.users.id do lever-identity). "" = ainda
+  // não ligada: o login pelo GoTrue não entra até um admin ligar.
+  authUserId: u.authUserId || "",
 });
+
+// Usuário do cockpit ligado a uma conta da identidade (claim `sub` do JWT).
+// Mesmo cache por writeRev do sessionUser: a lista só é relida depois de uma
+// escrita neste processo.
+const authIdCache = new WeakMap(); // repo -> { rev, map }
+export async function userByAuthId(repo, sub) {
+  if (!sub) return null;
+  const rev = typeof repo?.writeRev === "function" ? repo.writeRev() : null;
+  let hit = rev != null ? authIdCache.get(repo) : null;
+  if (!hit || hit.rev !== rev) {
+    const map = new Map();
+    for (const u of await repo.list("users")) if (u.authUserId) map.set(u.authUserId, u);
+    hit = { rev, map };
+    if (rev != null) authIdCache.set(repo, hit);
+  }
+  const user = hit.map.get(sub);
+  return user ? publicUser(user) : null;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 // Token de sessão → usuário (null se inexistente/expirado).
 //
@@ -120,18 +145,26 @@ async function lookupSessionUser(repo, token) {
 }
 
 // Hook de autenticação (substitui a comparação crua da key no index.js):
-// aceita a COCKPIT_API_KEY OU um token de sessão válido. Exportado pra ser
-// testável sem subir o index.
-export function makeAuthHook({ apiKey, repo, openPaths, openPrefixes, providedKey }) {
+// aceita a COCKPIT_API_KEY OU um token de sessão válido OU (AUTH_MODE dual ou
+// gotrue, auth-jwt.js) o JWT da identidade central. Sem COCKPIT_API_KEY a API
+// NÃO fica aberta: só a key mestre deixa de existir e vale o login.
+// Exportado pra ser testável sem subir o index.
+export function makeAuthHook({ apiKey, repo, openPaths, openPrefixes, providedKey, authMode = "legacy", jwtUser = null }) {
   return async (req, reply) => {
-    if (!apiKey) return;
     if (req.method === "OPTIONS") return;
     const path = req.url.split("?")[0];
     if (openPaths.has(path)) return;
     if (openPrefixes.some((p) => path.startsWith(p))) return;
     const key = providedKey(req);
-    if (key === apiKey) return;
-    const user = await sessionUser(repo, key);
+    if (apiKey && key === apiKey) return;
+    let user = null;
+    if (authMode !== "legacy" && jwtUser && looksLikeJwt(key)) {
+      user = await jwtUser(key);
+      if (user) req.authVia = "jwt";
+    } else if (authMode !== "gotrue") {
+      user = await sessionUser(repo, key);
+      if (user) req.authVia = "session";
+    }
     if (user) {
       // Autoria real das escritas (quem moveu o card / logou o toque). Key de
       // integração não tem usuário — rotas caem no author "api".
@@ -143,6 +176,10 @@ export function makeAuthHook({ apiKey, repo, openPaths, openPrefixes, providedKe
 }
 
 export function registerAuthRoutes(app, repo) {
+  // Quem está logado: o hook já resolveu (sessão ou JWT); sem hook (testes),
+  // cai no token de sessão do header.
+  const currentUser = async (req) => req.authUser || sessionUser(repo, headerKey(req));
+
   // Login (rota ABERTA — está em OPEN_PATHS no index). Nome é case-insensitive.
   app.post("/api/auth/login", async (req, reply) => {
     const { username, password } = req.body || {};
@@ -164,7 +201,7 @@ export function registerAuthRoutes(app, repo) {
 
   // Quem sou eu (token no header) — o SPA usa pra mostrar o usuário logado.
   app.get("/api/auth/me", async (req, reply) => {
-    const user = await sessionUser(repo, headerKey(req));
+    const user = await currentUser(req);
     if (!user) return reply.code(401).send({ error: "sessão inválida" });
     return user;
   });
@@ -177,10 +214,12 @@ export function registerAuthRoutes(app, repo) {
 
   // Trocar a própria senha (exige sessão — key não tem usuário — e a senha atual).
   app.post("/api/auth/password", async (req, reply) => {
-    const me = await sessionUser(repo, headerKey(req));
+    const me = await currentUser(req);
     if (!me) return reply.code(401).send({ error: "sessão inválida" });
+    // Conta da identidade central troca a senha lá (GoTrue), não aqui.
+    if (req.authVia === "jwt") return reply.code(409).send({ error: "sua senha é trocada no login da Lever, não no cockpit" });
     const { current, password } = req.body || {};
-    if (!password || String(password).length < 4) return reply.code(400).send({ error: "senha nova precisa de 4+ caracteres" });
+    if (weakPassword(password)) return reply.code(400).send({ error: WEAK_PASSWORD_ERROR });
     const user = await repo.get("users", me.id);
     if (!verifyPassword(current || "", user.passwordHash)) {
       return reply.code(401).send({ error: "senha atual incorreta" });
@@ -195,7 +234,7 @@ export function registerAuthRoutes(app, repo) {
   // telas restritas (SDR, Ana) também consegue se editar. Cargo NÃO entra aqui
   // — etiquetas de papel continuam sendo gestão, em Ajustes → Equipe.
   app.patch("/api/auth/me", async (req, reply) => {
-    const me = await sessionUser(repo, headerKey(req));
+    const me = await currentUser(req);
     if (!me) return reply.code(401).send({ error: "sessão inválida" });
     const name = String(req.body?.name || "").trim();
     if (name.length < 2) return reply.code(400).send({ error: "nome precisa de 2+ caracteres" });
@@ -212,7 +251,7 @@ export function registerAuthRoutes(app, repo) {
   // usuário) e URL com ?v= no registro — mesmo desenho de /public/training e
   // /public/social, que já rodam em produção.
   app.post("/api/auth/me/photo", async (req, reply) => {
-    const me = await sessionUser(repo, headerKey(req));
+    const me = await currentUser(req);
     if (!me) return reply.code(401).send({ error: "sessão inválida" });
     const file = await req.file();
     if (!file) return reply.code(400).send({ error: "envie uma imagem (multipart, campo file)" });
@@ -231,7 +270,7 @@ export function registerAuthRoutes(app, repo) {
   });
 
   app.delete("/api/auth/me/photo", async (req, reply) => {
-    const me = await sessionUser(repo, headerKey(req));
+    const me = await currentUser(req);
     if (!me) return reply.code(401).send({ error: "sessão inválida" });
     await repo.remove("user_assets", me.id);
     const updated = await repo.update("users", me.id, { photo: "" });
@@ -253,6 +292,7 @@ export function registerAuthRoutes(app, repo) {
   app.post("/api/auth/users", async (req, reply) => {
     const { name, password, id, roles, saas, screens } = req.body || {};
     if (!name || !password) return reply.code(400).send({ error: "name e password obrigatórios" });
+    if (weakPassword(password)) return reply.code(400).send({ error: WEAK_PASSWORD_ERROR });
     const created = await repo.create("users", {
       ...(id ? { id: String(id).toLowerCase() } : {}),
       name, role: "admin",
@@ -272,8 +312,18 @@ export function registerAuthRoutes(app, repo) {
   app.patch("/api/auth/users/:id", async (req, reply) => {
     const user = await repo.get("users", req.params.id);
     if (!user) return reply.code(404).send({ error: "Not found" });
-    const { name, roles, password, saas, screens, compLevel, supportSaas } = req.body || {};
+    const { name, roles, password, saas, screens, compLevel, supportSaas, authUserId } = req.body || {};
     const patch = {};
+    // Liga (ou desliga, com "") a conta da identidade central. Uma conta só
+    // pode estar ligada a um usuário do cockpit.
+    if (authUserId !== undefined) {
+      const id = String(authUserId || "").trim().toLowerCase();
+      if (id && !UUID_RE.test(id)) return reply.code(400).send({ error: "authUserId precisa ser um UUID" });
+      if (id && (await repo.list("users")).some((u) => u.id !== user.id && u.authUserId === id)) {
+        return reply.code(409).send({ error: "essa conta já está ligada a outro usuário" });
+      }
+      patch.authUserId = id;
+    }
     // Nível do plano de remuneração (1 jr · 2 pl · 3 sn): régua das metas de
     // contratos/receita do card da pessoa na Visão geral (comp-plan.js).
     if (compLevel !== undefined) {
@@ -308,7 +358,7 @@ export function registerAuthRoutes(app, repo) {
     }
 
     if (password !== undefined) {
-      if (!password || String(password).length < 4) return reply.code(400).send({ error: "senha nova precisa de 4+ caracteres" });
+      if (weakPassword(password)) return reply.code(400).send({ error: WEAK_PASSWORD_ERROR });
       patch.passwordHash = hashPassword(password);
     }
     const updated = await repo.update("users", user.id, patch);

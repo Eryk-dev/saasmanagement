@@ -6,7 +6,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeAuthHook, ensureDefaultAdmins, hashPassword } from "../src/auth.js";
+import { makeAuthHook, hashPassword } from "../src/auth.js";
+import { seedTestAdmins } from "./helpers/seed-admins.js";
 import { makeScreenGuardHook, screenForRequest, sanitizeScreens } from "../src/screens.js";
 
 const { registerRoutes } = await import("../src/routes.js");
@@ -77,7 +78,7 @@ test("screenForRequest: mapa por prefixo + escritas administrativas", () => {
 
 test("usuário restrito (pipeline+tasks): funil libera, financeiro/clientes/ajustes 403", async (t) => {
   const repo = makeMemRepo();
-  await ensureDefaultAdmins(repo);
+  await seedTestAdmins(repo);
   await repo.create("users", {
     id: "sdr", name: "SDR", role: "admin", roles: ["sdr"],
     screens: ["pipeline", "tasks"], passwordHash: hashPassword("1234"),
@@ -102,13 +103,13 @@ test("usuário restrito (pipeline+tasks): funil libera, financeiro/clientes/ajus
   }
   // Escritas administrativas também.
   assert.equal((await app.inject({ method: "PATCH", url: "/api/products/leverads", headers: H, payload: { name: "X" } })).statusCode, 403);
-  assert.equal((await app.inject({ method: "POST", url: "/api/auth/users", headers: H, payload: { name: "Z", password: "abcd" } })).statusCode, 403);
+  assert.equal((await app.inject({ method: "POST", url: "/api/auth/users", headers: H, payload: { name: "Z", password: "abcd1234" } })).statusCode, 403);
   assert.equal((await app.inject({ method: "PATCH", url: "/api/auth/users/sdr", headers: H, payload: { screens: [] } })).statusCode, 403); // não se auto-libera
 });
 
 test("usuário só com Meu dia (today): leads e toques liberados, resto 403", async (t) => {
   const repo = makeMemRepo();
-  await ensureDefaultAdmins(repo);
+  await seedTestAdmins(repo);
   await repo.create("users", {
     id: "op", name: "Operação", role: "admin", roles: ["sdr"],
     screens: ["today"], passwordHash: hashPassword("1234"),
@@ -137,7 +138,7 @@ test("usuário só com Meu dia (today): leads e toques liberados, resto 403", as
 
 test("usuário só com Visão geral (overview): LÊ os painéis da tela de gestão, mas não age", async (t) => {
   const repo = makeMemRepo();
-  await ensureDefaultAdmins(repo);
+  await seedTestAdmins(repo);
   await repo.create("users", {
     id: "vitor", name: "Vitor", role: "admin", roles: ["closer"],
     screens: ["overview"], passwordHash: hashPassword("1234"),
@@ -161,7 +162,7 @@ test("usuário só com Visão geral (overview): LÊ os painéis da tela de gest�
 
 test("bootstrap filtrado: restrito recebe leads mas NÃO clientes/portfólio/financeiro do produto", async (t) => {
   const repo = makeMemRepo();
-  await ensureDefaultAdmins(repo);
+  await seedTestAdmins(repo);
   await repo.create("users", {
     id: "sdr", name: "SDR", role: "admin", screens: ["pipeline", "tasks"], passwordHash: hashPassword("1234"),
   });
@@ -213,7 +214,7 @@ test("screens: create/PATCH sanitizam e expõem; [] volta a ver tudo", async (t)
 
   const created = (await app.inject({
     method: "POST", url: "/api/auth/users",
-    payload: { id: "x", name: "X", password: "abcd", screens: ["pipeline", "nada", "tasks"] },
+    payload: { id: "x", name: "X", password: "abcd1234", screens: ["pipeline", "nada", "tasks"] },
   })).json();
   assert.deepEqual(created.screens, ["pipeline", "tasks"]);
 
@@ -228,7 +229,7 @@ test("screens: create/PATCH sanitizam e expõem; [] volta a ver tudo", async (t)
 
 test("closer com lista restrita alcança Links de pagamento e o pipeline pelo PAPEL", async (t) => {
   const repo = makeMemRepo();
-  await ensureDefaultAdmins(repo);
+  await seedTestAdmins(repo);
   // Lista restrita que NÃO tem offers nem pipeline: é o caso do Vitor.
   await repo.create("users", {
     id: "vitor", name: "Vitor", roles: ["closer"],
@@ -252,7 +253,7 @@ test("closer com lista restrita alcança Links de pagamento e o pipeline pelo PA
 
 test("piso do papel não vaza dado sensível: remuneração segue exigindo admin ou tela na mão", async (t) => {
   const repo = makeMemRepo();
-  await ensureDefaultAdmins(repo);
+  await seedTestAdmins(repo);
   await repo.create("users", {
     id: "vitor", name: "Vitor", roles: ["closer"],
     screens: ["today"], passwordHash: hashPassword("1234"),
@@ -268,7 +269,7 @@ test("piso do papel não vaza dado sensível: remuneração segue exigindo admin
 // continua sendo que o PISO de um papel não vaza pros outros.)
 test("papel sem piso definido (sdr) não ganha nada de graça", async (t) => {
   const repo = makeMemRepo();
-  await ensureDefaultAdmins(repo);
+  await seedTestAdmins(repo);
   await repo.create("users", {
     id: "manu", name: "Manuela", roles: ["sdr"],
     screens: ["today"], passwordHash: hashPassword("1234"),
@@ -279,4 +280,32 @@ test("papel sem piso definido (sdr) não ganha nada de graça", async (t) => {
   const H = { "x-api-key": await loginToken(app, "manu", "1234") };
   assert.equal((await app.inject({ url: "/api/proposals", headers: H })).statusCode, 403);
   assert.equal((await app.inject({ url: "/api/contracts", headers: H })).statusCode, 403);
+});
+
+// Gestão do time exige a etiqueta `admin`: com a tela Ajustes (ou sem restrição
+// de telas) dava para se promover a admin ou resetar a senha de um admin.
+test("gestão do time: só a etiqueta admin cria, edita, reseta senha e remove", async () => {
+  const repo = makeMemRepo();
+  await seedTestAdmins(repo);
+  await repo.create("users", { id: "dono", name: "Dono", role: "admin", roles: ["admin"], passwordHash: hashPassword("1234") });
+  await repo.create("users", { id: "ops", name: "Ops", role: "admin", roles: ["closer"], passwordHash: hashPassword("1234") });
+  const app = buildApp(repo);
+  const ops = { "x-api-key": await loginToken(app, "ops", "1234") };
+  const dono = { "x-api-key": await loginToken(app, "dono", "1234") };
+
+  // sem a etiqueta: lê a lista (pickers), mas não escreve
+  assert.equal((await app.inject({ method: "GET", url: "/api/auth/users", headers: ops })).statusCode, 200);
+  assert.equal((await app.inject({ method: "PATCH", url: "/api/auth/users/ops", headers: ops, payload: { roles: ["closer", "admin"] } })).statusCode, 403);
+  assert.equal((await app.inject({ method: "PATCH", url: "/api/auth/users/dono", headers: ops, payload: { password: "tomada-de-conta" } })).statusCode, 403);
+  assert.equal((await app.inject({ method: "POST", url: "/api/auth/users", headers: ops, payload: { name: "Novo", password: "abcd1234" } })).statusCode, 403);
+  assert.equal((await app.inject({ method: "DELETE", url: "/api/auth/users/leonardo", headers: ops })).statusCode, 403);
+  assert.deepEqual((await repo.get("users", "ops")).roles, ["closer"]);
+  // o próprio perfil segue editável
+  assert.equal((await app.inject({ method: "PATCH", url: "/api/auth/me", headers: ops, payload: { name: "Ops Silva" } })).statusCode, 200);
+
+  // com a etiqueta: gerencia
+  assert.equal((await app.inject({ method: "POST", url: "/api/auth/users", headers: dono, payload: { name: "Novo", password: "abcd1234" } })).statusCode, 201);
+  assert.equal((await app.inject({ method: "PATCH", url: "/api/auth/users/ops", headers: dono, payload: { password: "nova-senha-ops" } })).statusCode, 200);
+  // key mestre (MCP/integrações) continua passando
+  assert.equal((await app.inject({ method: "PATCH", url: "/api/auth/users/ops", headers: { "x-api-key": "test-key" }, payload: { compLevel: 2 } })).statusCode, 200);
 });

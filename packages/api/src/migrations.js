@@ -1,7 +1,7 @@
 import { revenueClassificationPatch } from "./classificacao.js";
 import { revenueGrade, REVENUE_GRADE_VERSION, REVENUE_ICP } from "./lead-grade.js";
 // Migrações idempotentes de boot — rodam uma vez por inicialização, depois de
-// initDb()/ensureDefaultAdmins(). Cada uma DEVE ser segura pra rodar repetidas
+// initDb()/ensureBootstrapAdmin(). Cada uma DEVE ser segura pra rodar repetidas
 // vezes (todo deploy reinicia o container) e nunca deve corromper dados que já
 // existem: na dúvida sobre o estado, não mexe.
 

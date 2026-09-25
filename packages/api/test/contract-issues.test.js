@@ -10,7 +10,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeAuthHook, ensureDefaultAdmins, hashPassword } from "../src/auth.js";
+import { makeAuthHook, hashPassword } from "../src/auth.js";
+import { seedTestAdmins } from "./helpers/seed-admins.js";
 import { makeScreenGuardHook, screenForRequest } from "../src/screens.js";
 
 const { registerRoutes } = await import("../src/routes.js");
@@ -67,7 +68,7 @@ test("contratos gerados: ?customer= devolve só os do cliente da ficha", async (
 
 test("contratos gerados: servidor carimba quem gerou e quando", async (t) => {
   const repo = makeMemRepo();
-  await ensureDefaultAdmins(repo);
+  await seedTestAdmins(repo);
   await repo.create("users", {
     id: "closer", name: "Closer", role: "admin", roles: ["closer"],
     screens: ["contracts"], passwordHash: hashPassword("1234"),
@@ -104,7 +105,7 @@ test("contratos gerados: a ficha do cliente LÊ o histórico, mas só a tela Con
   assert.deepEqual(screenForRequest("GET", "/api/contracts"), ["contracts"]); // modelo continua fechado
 
   const repo = makeMemRepo();
-  await ensureDefaultAdmins(repo);
+  await seedTestAdmins(repo);
   await repo.create("users", {
     id: "cs", name: "CS", role: "admin", roles: ["cs"],
     screens: ["customers"], passwordHash: hashPassword("1234"),

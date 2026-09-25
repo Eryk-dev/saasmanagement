@@ -6,7 +6,8 @@ import { Menu as SharedMenu } from "../components/menu.jsx";
 import "./mindmaps.css";
 import { EmptyState, useEsc, toast, PrimaryButton } from "../atoms.jsx";
 import { PageHead } from "../components/viz.jsx";
-import { api, assetUrl, getKey } from "../lib/api.js";
+import { api, assetUrl } from "../lib/api.js";
+import { authHeaders, freshToken } from "../lib/identity.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { useIsMobile } from "../lib/responsive.js";
 import { displayName, currentUser } from "../lib/users.js";
@@ -657,8 +658,7 @@ function MapEditor({ map, onSaved, focus, setFocus, isMobile, flushRef, onRename
     if (!file || !MIME_IMG.test(file.type)) { toast("só aceito imagem", "neg"); return; }
     try {
       const fd = new FormData(); fd.append("file", file, file.name || "imagem.png");
-      const key = getKey();
-      const res = await fetch(`${import.meta.env.VITE_API_BASE || ""}/api/mindmaps/asset`, { method: "POST", headers: key ? { "x-api-key": key } : {}, body: fd });
+      const res = await fetch(`${import.meta.env.VITE_API_BASE || ""}/api/mindmaps/asset`, { method: "POST", headers: authHeaders(await freshToken()), body: fd });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
       patchNodes([id], { image: body.url });

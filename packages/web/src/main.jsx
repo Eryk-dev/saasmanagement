@@ -4,8 +4,9 @@
 // The App only renders after both settle, so components still find SEED — but
 // NO module may read window.SEED at import time (only inside functions).
 //
-// Auth: if the API answers 401, we show a small unlock screen. The entered key is
-// stored (localStorage) and every request carries it from then on.
+// Auth: if the API answers 401, we show the login screen. With VITE_AUTH_URL the
+// login goes through the central identity (GoTrue, lib/identity.js); the old
+// cockpit login stays available during the transition.
 
 import "./tokens.css";
 import "./capsule.css";
@@ -14,6 +15,7 @@ import { createRoot } from "react-dom/client";
 import { fmt } from "./lib/format.js";
 import { loadSeed } from "./data.jsx";
 import { api, setKey } from "./lib/api.js";
+import { clearCredentials, hasIdentitySession, identity, identityEnabled } from "./lib/identity.js";
 import { AppStartup } from "./components/screen-loading.jsx";
 
 // O cockpit NÃO usa service worker. Um SW zumbi (registrado por site que morou
@@ -29,6 +31,10 @@ try {
     window.caches?.keys?.().then((ks) => ks.forEach((k) => caches.delete(k)));
   }).catch(() => {});
 } catch { /* navegador sem suporte: nada a limpar */ }
+
+// Sessão da identidade guardada: sobe o cliente já no boot, para o auth-js
+// renovar o access token (600 s) enquanto a aba estiver aberta.
+if (hasIdentitySession()) identity();
 
 const root = createRoot(document.getElementById("root"));
 
@@ -54,48 +60,78 @@ function StartupError({ error }) {
   </Shell>;
 }
 
-// Login do time (substitui a tela de chave). O token de sessão vai pro mesmo
-// localStorage/header da key, então o resto do app não muda.
+// Login do time. Com a identidade central ligada (VITE_AUTH_URL), entra por
+// e-mail e senha da conta Lever; o login antigo do cockpit (usuário + senha)
+// fica disponível durante a transição. Depois do login, recarrega a página:
+// re-render a partir de um handler deixava a árvore nova sem responder a
+// cliques reais — recarregar relê a credencial e sobe o app limpo.
 function Login() {
+  const [lever, setLever] = React.useState(identityEnabled);
   const [username, setUsername] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState(null);
   const inputStyle = { height: 34, padding: "0 10px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 };
 
+  const remember = (user) => { try { localStorage.setItem("cockpit_user", JSON.stringify(user)); } catch { /* ignore */ } };
+
+  async function submitLever() {
+    await clearCredentials();
+    const { error: err } = await identity().signInWithPassword({ email: username.trim(), password });
+    if (err) throw Object.assign(new Error(err.code === "invalid_credentials" ? "e-mail ou senha inválidos" : err.message), { shown: true });
+    try {
+      remember(await api.me());
+    } catch (e) {
+      await clearCredentials();
+      if (e.status === 401) throw Object.assign(new Error("sua conta Lever ainda não tem acesso ao cockpit — peça a um admin para liberar"), { shown: true });
+      throw e;
+    }
+  }
+
+  async function submitLegacy() {
+    await clearCredentials();
+    const { token, user } = await api.login(username.trim(), password);
+    setKey(token);
+    remember(user);
+  }
+
   async function submit(e) {
     e.preventDefault();
     if (!username.trim() || !password) return;
     setBusy(true); setError(null);
     try {
-      const { token, user } = await api.login(username.trim(), password);
-      setKey(token);
-      try { localStorage.setItem("cockpit_user", JSON.stringify(user)); } catch { /* ignore */ }
-      // Reload completo (não boot() in-place): re-render a partir de um handler
-      // deixava a árvore nova sem responder a cliques reais — recarregar relê o
-      // token do localStorage e sobe o app limpo.
+      await (lever ? submitLever() : submitLegacy());
       location.reload();
     } catch (err) {
       setBusy(false);
-      setError(err.status === 401 ? "usuário ou senha inválidos" : (err.message || String(err)));
+      setError(err.shown ? err.message : err.status === 401 ? "usuário ou senha inválidos" : (err.message || String(err)));
     }
   }
+  const switchMode = () => { setLever((v) => !v); setError(null); setUsername(""); setPassword(""); };
   return (
     <Shell>
       <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10, width: 280, alignItems: "stretch" }}>
-        <div className="mono dim" style={{ fontSize: 12, textAlign: "center" }}>Acesso restrito · entre com seu usuário</div>
+        <div className="mono dim" style={{ fontSize: 12, textAlign: "center" }}>
+          {lever ? "Acesso restrito · entre com sua conta Lever" : "Acesso restrito · entre com seu usuário"}
+        </div>
         <input
-          value={username} autoFocus placeholder="usuário" autoComplete="username"
+          value={username} autoFocus type={lever ? "email" : "text"} placeholder={lever ? "e-mail" : "usuário"} autoComplete={lever ? "email" : "username"}
+          aria-label={lever ? "e-mail" : "usuário"}
           onChange={(e) => setUsername(e.target.value)} style={inputStyle}
         />
         <input
-          type="password" value={password} placeholder="senha" autoComplete="current-password"
+          type="password" value={password} placeholder="senha" autoComplete="current-password" aria-label="senha"
           onChange={(e) => setPassword(e.target.value)} style={inputStyle}
         />
-        {error && <div className="mono" style={{ fontSize: 11, color: "var(--neg)", textAlign: "center" }}>{error}</div>}
+        {error && <div role="alert" className="mono" style={{ fontSize: 11, color: "var(--neg)", textAlign: "center" }}>{error}</div>}
         <button type="submit" disabled={busy} style={{ height: 34, background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500, opacity: busy ? 0.6 : 1 }}>
           {busy ? "Entrando…" : "Entrar"}
         </button>
+        {identityEnabled && (
+          <button type="button" onClick={switchMode} className="mono dim" style={{ fontSize: 11, textDecoration: "underline" }}>
+            {lever ? "usar o login antigo do cockpit" : "entrar com a conta Lever"}
+          </button>
+        )}
       </form>
     </Shell>
   );
@@ -103,6 +139,8 @@ function Login() {
 
 async function loadApp() {
   const [, { App }] = await Promise.all([loadSeed(), import("./app.jsx")]);
+  // Sessão que caiu no meio do uso (lib/api.js apagou a credencial): volta ao login.
+  window.addEventListener("cockpit:session-lost", () => location.reload(), { once: true });
   return App;
 }
 

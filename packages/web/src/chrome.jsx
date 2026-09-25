@@ -1,6 +1,7 @@
 import React from "react";
 import "./chrome.css";
-import { api, clearKey } from "./lib/api.js";
+import { api } from "./lib/api.js";
+import { clearCredentials, hasIdentitySession, identity, identityEmail } from "./lib/identity.js";
 import { useActiveSaas } from "./lib/workspace.js";
 import { canSeeScreen, currentUser, hasExplicitScreen, isAdminUser, userById, userPhoto } from "./lib/users.js";
 import { nextTouch, stageKind, workableStages } from "./lib/funnel.js";
@@ -461,9 +462,10 @@ function UserMenu({ collapsed = false }) {
   const user = stored ? { ...stored, ...(userById(stored.id) || {}) } : null;
 
   async function logout() {
-    try { await api.logout(); } catch { /* sessão já pode estar morta */ }
-    clearKey();
-    try { localStorage.removeItem("cockpit_user"); } catch { /* ignore */ }
+    // Sessão antiga: apaga no servidor. Conta Lever: clearCredentials encerra
+    // a sessão no GoTrue.
+    if (!hasIdentitySession()) { try { await api.logout(); } catch { /* sessão já pode estar morta */ } }
+    await clearCredentials();
     location.reload();
   }
 
@@ -614,7 +616,16 @@ function PasswordModal({ onClose }) {
     e.preventDefault();
     setBusy(true); setMsg(null);
     try {
-      await api.changePassword(current, next);
+      if (hasIdentitySession()) {
+        // Conta Lever: a senha mora na identidade central. Confirma a atual
+        // entrando de novo e troca pelo GoTrue.
+        const { error: wrong } = await identity().signInWithPassword({ email: identityEmail(), password: current });
+        if (wrong) throw Object.assign(new Error("senha atual incorreta"), { status: 401 });
+        const { error } = await identity().updateUser({ password: next });
+        if (error) throw new Error(error.code === "same_password" ? "a senha nova é igual à atual" : error.message);
+      } else {
+        await api.changePassword(current, next);
+      }
       setMsg({ ok: true, text: "senha alterada" });
       setTimeout(onClose, 900);
     } catch (err) {
@@ -631,12 +642,12 @@ function PasswordModal({ onClose }) {
           <input type="password" value={current} autoFocus autoComplete="current-password" onChange={(e) => setCurrent(e.target.value)} style={inputStyle} />
         </label>
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span className="kicker">Nova senha (4+ caracteres)</span>
+          <span className="kicker">Nova senha (8+ caracteres)</span>
           <input type="password" value={next} autoComplete="new-password" onChange={(e) => setNext(e.target.value)} style={inputStyle} />
         </label>
         {msg && <div className="mono" style={{ fontSize: 11, color: msg.ok ? "var(--pos)" : "var(--neg)" }}>{msg.text}</div>}
         <div style={{ display: "flex", gap: 8 }}>
-          <button type="submit" disabled={busy || next.length < 4} style={{ flex: 1, padding: "8px 12px", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500, opacity: busy || next.length < 4 ? 0.6 : 1 }}>
+          <button type="submit" disabled={busy || next.length < 8} style={{ flex: 1, padding: "8px 12px", background: "var(--btn-bg, var(--accent))", color: "var(--btn-fg, var(--accent-fg))", borderRadius: "var(--r-2)", fontSize: 13, fontWeight: 500, opacity: busy || next.length < 8 ? 0.6 : 1 }}>
             {busy ? "Salvando…" : "Salvar"}
           </button>
           <button type="button" onClick={onClose} style={{ padding: "8px 14px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", fontSize: 13 }}>Cancelar</button>

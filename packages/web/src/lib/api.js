@@ -1,21 +1,25 @@
 // Thin API client for the cockpit web app. In dev, VITE_API_BASE is empty and
 // Vite proxies /api -> the Fastify server. For a remote build, set VITE_API_BASE.
 //
-// Auth: when the API requires a key, it's entered once in the unlock screen and
-// kept in localStorage; every request carries it as `x-api-key`. VITE_API_KEY is
-// a build-time fallback (mostly for local dev convenience).
+// Auth (lib/identity.js): o JWT da identidade central vai em
+// `Authorization: Bearer`; o token de sessão antigo e a key, em `x-api-key`.
+// VITE_API_KEY é o fallback de build (conveniência de dev local).
 
 import { beginPageRequest } from "./navigation-loading.js";
+import { authHeaders, clearCredentials, currentToken, freshToken, hasIdentitySession, refreshIdentity, setLegacyToken } from "./identity.js";
 
 const BASE = import.meta.env.VITE_API_BASE || "";
-const STORAGE_KEY = "cockpit_key";
 
-export function getKey() {
-  try { return localStorage.getItem(STORAGE_KEY) || import.meta.env.VITE_API_KEY || ""; }
-  catch { return import.meta.env.VITE_API_KEY || ""; }
+export const getKey = currentToken;
+export const setKey = setLegacyToken;
+
+// Sessão perdida no meio do uso (o hook da API responde 401 "Unauthorized"):
+// apaga as credenciais e avisa o app, que volta ao login. No boot não há
+// ouvinte e o 401 cai na tela de login do main.jsx.
+async function sessionLost() {
+  await clearCredentials();
+  try { window.dispatchEvent(new Event("cockpit:session-lost")); } catch { /* fora do browser */ }
 }
-export function setKey(k) { try { localStorage.setItem(STORAGE_KEY, k); } catch { /* ignore */ } }
-export function clearKey() { try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ } }
 
 // Nossa API não responde 5xx de propósito (o proxy engoliria o corpo, ver
 // http-status.js), então 5xx aqui é sempre infraestrutura: proxy, container
@@ -26,16 +30,12 @@ function proxyMessage(status) {
   return `HTTP ${status} (resposta do proxy, não da API)`;
 }
 
-async function req(method, path, body) {
+async function req(method, path, body, retried = false) {
   const finish = beginPageRequest(method);
   try {
-    const headers = {};
-    if (body !== undefined) headers["content-type"] = "application/json";
-    const key = getKey();
-    if (key) headers["x-api-key"] = key;
     const res = await fetch(`${BASE}${path}`, {
       method,
-      headers,
+      headers: { ...(body !== undefined ? { "content-type": "application/json" } : {}), ...authHeaders(await freshToken()) },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
     if (!res.ok) {
@@ -52,6 +52,13 @@ async function req(method, path, body) {
         // ninguém sabia o que consertar.
         if (msg && body.detail) msg += ` · ${String(body.detail).slice(0, 220)}`;
       } catch { /* HTML do proxy */ }
+      // 401 do hook de auth ("Unauthorized"), não de uma regra da rota (ex.:
+      // senha atual errada): com sessão da identidade, renova e tenta uma vez;
+      // sem ela, ou se ainda falhar, a sessão acabou.
+      if (res.status === 401 && msg === "Unauthorized" && path !== "/api/auth/login") {
+        if (!retried && hasIdentitySession() && await refreshIdentity()) return req(method, path, body, true);
+        await sessionLost();
+      }
       const err = new Error(msg || proxyMessage(res.status));
       err.status = res.status;
       err.path = path;
@@ -69,12 +76,12 @@ async function req(method, path, body) {
 // POST multipart (vídeo/áudio/imagem) via XHR — não é preciosismo: fetch não
 // expõe progresso de upload, e mandar 150 MB com o botão travado e nenhum sinal
 // na tela é indistinguível de travado. `onProgress` recebe 0..1.
-function upload(path, formData, onProgress) {
+async function upload(path, formData, onProgress) {
+  const headers = authHeaders(await freshToken());
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${BASE}${path}`);
-    const key = getKey();
-    if (key) xhr.setRequestHeader("x-api-key", key);
+    for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, v);
     if (onProgress) {
       xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
     }
@@ -105,7 +112,7 @@ export function assetUrl(path) {
 // URL do stream de mudanças (SSE). EventSource não manda headers — a key/token
 // vai em ?key= (o servidor só aceita query key nessa rota).
 export function eventsUrl() {
-  return `${BASE}/api/events?key=${encodeURIComponent(getKey())}`;
+  return `${BASE}/api/events?key=${encodeURIComponent(currentToken())}`;
 }
 
 export const api = {
@@ -117,6 +124,7 @@ export const api = {
   // Auth do time: o token de sessão entra no MESMO slot da key (localStorage +
   // header x-api-key) — o resto do client não muda.
   login: (username, password) => req("POST", "/api/auth/login", { username, password }),
+  me: () => req("GET", "/api/auth/me"),
   logout: () => req("POST", "/api/auth/logout", {}),
   changePassword: (current, password) => req("POST", "/api/auth/password", { current, password }),
   // Meu perfil: nome e foto do PRÓPRIO usuário (o cargo continua sendo gestão,
@@ -125,10 +133,10 @@ export const api = {
   uploadMyPhoto: async (blob, name = "foto.jpg") => {
     const fd = new FormData();
     fd.append("file", blob, name);
-    const key = getKey();
+    const auth = authHeaders(await freshToken());
     const res = await fetch(`${BASE}/api/auth/me/photo`, {
       method: "POST",
-      headers: key ? { "x-api-key": key } : {},
+      headers: auth,
       body: fd,
     });
     if (!res.ok) {
@@ -236,9 +244,9 @@ export const api = {
     const fd = new FormData();
     fd.append("file", blob, filename);
     if (caption) fd.append("caption", caption);
-    const key = getKey();
+    const auth = authHeaders(await freshToken());
     const res = await fetch(`${BASE}/api/whatsapp/threads/${encodeURIComponent(threadId)}/media`, {
-      method: "POST", headers: key ? { "x-api-key": key } : {}, body: fd,
+      method: "POST", headers: auth, body: fd,
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
@@ -252,8 +260,8 @@ export const api = {
   // Mídia recebida (áudio/imagem/…): baixa o binário autenticado (a Graph só
   // entrega com token) e devolve um Blob pra tocar/exibir via object URL.
   waMedia: async (msgId) => {
-    const key = getKey();
-    const res = await fetch(`${BASE}/api/whatsapp/media/${encodeURIComponent(msgId)}`, { headers: key ? { "x-api-key": key } : {} });
+    const auth = authHeaders(await freshToken());
+    const res = await fetch(`${BASE}/api/whatsapp/media/${encodeURIComponent(msgId)}`, { headers: auth });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       const err = new Error(text.slice(0, 200) || `mídia -> ${res.status}`);
@@ -272,17 +280,17 @@ export const api = {
   // Foto PADRÃO do template (header de imagem): o composer preenche sozinho e
   // o servidor sobe ela a cada envio. Sem foto salva devolve null (não é erro).
   waTemplateDefaultMedia: async (name) => {
-    const key = getKey();
-    const res = await fetch(`${BASE}/api/whatsapp/template-media/${encodeURIComponent(name)}`, { headers: key ? { "x-api-key": key } : {} });
+    const auth = authHeaders(await freshToken());
+    const res = await fetch(`${BASE}/api/whatsapp/template-media/${encodeURIComponent(name)}`, { headers: auth });
     if (!res.ok) return null;
     return res.blob();
   },
   waTemplateDefaultMediaSave: async (name, file) => {
     const fd = new FormData();
     fd.append("file", file, file.name || "foto.jpg");
-    const key = getKey();
+    const auth = authHeaders(await freshToken());
     const res = await fetch(`${BASE}/api/whatsapp/template-media/${encodeURIComponent(name)}`, {
-      method: "PUT", headers: key ? { "x-api-key": key } : {}, body: fd,
+      method: "PUT", headers: auth, body: fd,
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
@@ -302,9 +310,9 @@ export const api = {
   waCallRecording: async (callId, blob, secs = 0) => {
     const fd = new FormData();
     fd.append("file", blob, `call-${callId}.webm`);
-    const key = getKey();
+    const auth = authHeaders(await freshToken());
     const res = await fetch(`${BASE}/api/whatsapp/calls/${encodeURIComponent(callId)}/recording?secs=${Math.round(secs)}`, {
-      method: "POST", headers: key ? { "x-api-key": key } : {}, body: fd,
+      method: "POST", headers: auth, body: fd,
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
@@ -425,10 +433,10 @@ export const api = {
   trainingAsset: async (saas, blob, name = "card.png") => {
     const fd = new FormData();
     fd.append("file", blob, name);
-    const key = getKey();
+    const auth = authHeaders(await freshToken());
     const res = await fetch(`${BASE}/api/flashcards/${encodeURIComponent(saas)}/asset`, {
       method: "POST",
-      headers: key ? { "x-api-key": key } : {},
+      headers: auth,
       body: fd,
     });
     if (!res.ok) {
@@ -446,8 +454,8 @@ export const api = {
   copilotFrame: async (leadId, blob) => {
     const fd = new FormData();
     fd.append("file", blob, "frame.jpg");
-    const key = getKey();
-    const res = await fetch(`${BASE}/api/leads/${encodeURIComponent(leadId)}/copilot/frame`, { method: "POST", body: fd, headers: key ? { "x-api-key": key } : {} });
+    const auth = authHeaders(await freshToken());
+    const res = await fetch(`${BASE}/api/leads/${encodeURIComponent(leadId)}/copilot/frame`, { method: "POST", body: fd, headers: auth });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.error || `frame falhou (${res.status})`);
     return body;
@@ -455,8 +463,8 @@ export const api = {
   copilotChunk: async (leadId, blob) => {
     const fd = new FormData();
     fd.append("file", blob, "chunk.webm");
-    const key = getKey();
-    const res = await fetch(`${BASE}/api/leads/${encodeURIComponent(leadId)}/copilot/chunk`, { method: "POST", body: fd, headers: key ? { "x-api-key": key } : {} });
+    const auth = authHeaders(await freshToken());
+    const res = await fetch(`${BASE}/api/leads/${encodeURIComponent(leadId)}/copilot/chunk`, { method: "POST", body: fd, headers: auth });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.error || `chunk falhou (${res.status})`);
     return body;
@@ -478,10 +486,10 @@ export const api = {
     const fd = new FormData();
     fd.append("saas", saas || "");
     fd.append("file", blob, name);
-    const key = getKey();
+    const auth = authHeaders(await freshToken());
     const res = await fetch(`${BASE}/api/social/assets`, {
       method: "POST",
-      headers: key ? { "x-api-key": key } : {},
+      headers: auth,
       body: fd,
     });
     if (!res.ok) {
@@ -617,8 +625,8 @@ export const api = {
   // O anexo do ticket não é público (escopo de produto): <a>/<img> não mandam
   // o header, então baixa com a chave e devolve uma URL de blob local.
   ticketAttachmentUrl: async (id, aid) => {
-    const key = getKey();
-    const res = await fetch(`${BASE}/api/tickets/${encodeURIComponent(id)}/attachments/${encodeURIComponent(aid)}`, { headers: key ? { "x-api-key": key } : {} });
+    const auth = authHeaders(await freshToken());
+    const res = await fetch(`${BASE}/api/tickets/${encodeURIComponent(id)}/attachments/${encodeURIComponent(aid)}`, { headers: auth });
     if (!res.ok) throw new Error(res.status === 404 ? "arquivo não encontrado" : proxyMessage(res.status));
     return URL.createObjectURL(await res.blob());
   },
@@ -648,9 +656,9 @@ export const api = {
   taskAsset: async (blob, name = "anexo.png") => {
     const fd = new FormData();
     fd.append("file", blob, name);
-    const key = getKey();
+    const auth = authHeaders(await freshToken());
     const res = await fetch(`${BASE}/api/tasks/asset`, {
-      method: "POST", headers: key ? { "x-api-key": key } : {}, body: fd,
+      method: "POST", headers: auth, body: fd,
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
@@ -665,9 +673,9 @@ export const api = {
   activityAsset: async (blob, name = "anexo.png") => {
     const fd = new FormData();
     fd.append("file", blob, name);
-    const key = getKey();
+    const auth = authHeaders(await freshToken());
     const res = await fetch(`${BASE}/api/activities/asset`, {
-      method: "POST", headers: key ? { "x-api-key": key } : {}, body: fd,
+      method: "POST", headers: auth, body: fd,
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");

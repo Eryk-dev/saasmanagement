@@ -6,13 +6,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeAuthHook, ensureDefaultAdmins, hashPassword } from "../src/auth.js";
+import { makeAuthHook, hashPassword } from "../src/auth.js";
+import { seedTestAdmins } from "./helpers/seed-admins.js";
 import { makeScreenGuardHook, screenForRequest } from "../src/screens.js";
 
 const { registerRoutes } = await import("../src/routes.js");
 
 async function buildApp(repo) {
-  await ensureDefaultAdmins(repo);
+  await seedTestAdmins(repo);
   await repo.create("users", { id: "ana", name: "Ana Lima", role: "admin", roles: ["cs"], screens: ["today"], passwordHash: hashPassword("1234") });
   await repo.create("users", { id: "vitor", name: "Vitor Souza", role: "admin", roles: ["closer"], screens: [], passwordHash: hashPassword("1234") });
   const app = Fastify();

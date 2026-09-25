@@ -230,7 +230,20 @@ a mesma regra; os testes ficam em `sdr-brain.test.js`.
    `applyStageMove` para preservar histórico, `stageSince`, cadência e efeitos
    do fechamento. Conferir o comportamento de `lead-flow.js` e seus testes.
 4. **Autorização vive também no servidor:** autenticação própria com scrypt e
-   sessões, além da chave de integração. `screens.js` controla permissões por
+   sessões, além da chave de integração. Sem `COCKPIT_API_KEY` a API **não**
+   abre: só vale a sessão. Não há admin com senha fixa; banco vazio ganha o
+   admin de `BOOTSTRAP_ADMIN_USER`/`PASSWORD`, e senha nova exige 8+
+   caracteres. Criar, editar, resetar senha e remover usuário
+   (`/api/auth/users`, fora o GET) exige a etiqueta `admin` ou a key mestre
+   (`screens.js`); sem ela, Ajustes → Equipe fica só leitura. CORS das rotas privadas só para as origens do cockpit
+   (`cors-policy.js`); rotas abertas aceitam qualquer origem. A migração para a
+   identidade central está em `docs/PLANO-AUTH.md`; `AUTH_MODE=dual|gotrue`
+   (`auth-jwt.js`) aceita o JWT ES256 do GoTrue, validado pelo JWKS, só de
+   staff da org Lever ligado a um usuário por `users.authUserId`. Telas, papel
+   e `supportSaas` continuam vindo de `cockpit.users`. No SPA, `VITE_AUTH_URL` liga o
+   login pela conta Lever (`lib/identity.js`, `@supabase/auth-js`): o JWT vai em
+   `Authorization: Bearer`, é renovado sozinho, e um 401 "Unauthorized" no meio
+   do uso renova uma vez e, se persistir, apaga a credencial e volta ao login. `screens.js` controla permissões por
    tela, exceções e acessos administrativos; `lib/users.js` espelha a UI.
    `roles` já participa de regras de acesso — não assumir que é só etiqueta.
    Credenciais e tokens não entram no CRUD/JSON público nem no guia.
@@ -274,7 +287,16 @@ a tela. Documentação isolada pede revisão dos links, comandos e diff.
 `npm run dev` inicia API, web e MCP. **Antes de usá-lo, confirmar banco de
 desenvolvimento isolado**: o plano registra uso do mesmo Supabase de produção,
 e `index.js` executa migrações e inicia automações. A presença de um `.env` não
-comprova isolamento. Não copiar seus valores para logs, documentação ou commits.
+comprova isolamento. Desde 25/09/2026 a API lê `APP_ENV` (`local`, `dev`,
+`production`; vazio = `production` na imagem Docker e `local` fora dela) e,
+fora de produção, **recusa subir** com banco (`COCKPIT_DB_URL`,
+`LEVERCOPY_DB_URL`, `ELO_DB_URL`) ou API do LeverAds de produção
+(`app-env.js`). Fora de produção os jobs de fundo nascem desligados:
+`JOBS_ENABLED=1` liga todos e `JOBS=nome,nome` só os da lista (nomes nos
+`jobOn("…")` do `index.js`); `JOBS_ENABLED=0` desliga todos até em produção.
+O `.env` local aponta para o `levercopy-dev` (host `levercopy-dev.invalid`,
+ainda não provisionado); a API só sobe localmente quando esse banco existir ou
+com o Postgres do `infra/local`. Não copiar seus valores para logs, documentação ou commits.
 `seed:clear` apaga dados e não é passo de preparação de ambiente.
 
 Banco isolado disponível: `docker compose -f infra/local/docker-compose.yml up -d`

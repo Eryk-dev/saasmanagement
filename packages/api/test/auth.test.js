@@ -1,4 +1,4 @@
-// Sistema de usuários: admins padrão (hash, nunca plaintext), login (case-
+// Sistema de usuários: admin inicial pelo env (hash, nunca plaintext), login (case-
 // insensitive, senha errada → 401), token de sessão aceito pelo hook de auth no
 // lugar da key, logout invalida, e users/sessions FORA do CRUD genérico.
 
@@ -9,7 +9,8 @@ import multipart from "@fastify/multipart";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerRoutes } = await import("../src/routes.js");
-const { ensureDefaultAdmins, makeAuthHook, hashPassword, verifyPassword } = await import("../src/auth.js");
+const { ensureBootstrapAdmin, makeAuthHook, hashPassword, verifyPassword } = await import("../src/auth.js");
+const { seedTestAdmins } = await import("./helpers/seed-admins.js");
 const { makeScreenGuardHook } = await import("../src/screens.js");
 
 function providedKey(req) {
@@ -40,22 +41,53 @@ test("hash de senha: scrypt, nunca plaintext, verify funciona", () => {
   assert.equal(verifyPassword("errada", stored), false);
 });
 
-test("admins padrão: Eryk e Leonardo criados uma vez; senha guardada com hash", async () => {
+test("admin inicial: só do env, só com banco vazio, nunca senha curta", async () => {
   const repo = makeMemRepo();
-  assert.equal(await ensureDefaultAdmins(repo), 2);
-  assert.equal(await ensureDefaultAdmins(repo), 0); // idempotente: não recria
+  // Sem env não cria ninguém (acabou a senha fixa no código).
+  assert.equal(await ensureBootstrapAdmin(repo, {}), 0);
+  // Senha curta também não.
+  assert.equal(await ensureBootstrapAdmin(repo, { BOOTSTRAP_ADMIN_USER: "dev", BOOTSTRAP_ADMIN_PASSWORD: "1234" }), 0);
+  assert.equal((await repo.list("users")).length, 0);
 
-  const users = await repo.list("users");
-  assert.deepEqual(users.map((u) => u.id).sort(), ["eryk", "leonardo"]);
-  for (const u of users) {
-    assert.equal(u.role, "admin");
-    assert.match(u.passwordHash, /^scrypt:/);
-  }
+  const env = { BOOTSTRAP_ADMIN_USER: " Dev ", BOOTSTRAP_ADMIN_PASSWORD: "senha-longa-dev" };
+  assert.equal(await ensureBootstrapAdmin(repo, env), 1);
+  assert.equal(await ensureBootstrapAdmin(repo, env), 0); // idempotente: não recria
+  const [u] = await repo.list("users");
+  assert.equal(u.id, "dev");
+  assert.deepEqual(u.roles, ["admin"]);
+  assert.match(u.passwordHash, /^scrypt:/);
+  assert.equal(verifyPassword("senha-longa-dev", u.passwordHash), true);
+});
+
+test("sem COCKPIT_API_KEY a API não abre: só sessão válida passa", async (t) => {
+  const repo = makeMemRepo();
+  await seedTestAdmins(repo);
+  const app = buildApp(repo, "");
+  t.after(() => app.close());
+  assert.equal((await app.inject({ method: "GET", url: "/api/leads" })).statusCode, 401);
+  // key vazia não vira senha mestra
+  assert.equal((await app.inject({ method: "GET", url: "/api/leads", headers: { "x-api-key": "" } })).statusCode, 401);
+  const { token } = (await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "eryk", password: "1234" } })).json();
+  assert.equal((await app.inject({ method: "GET", url: "/api/leads", headers: { "x-api-key": token } })).statusCode, 200);
+});
+
+test("senha nova precisa de 8+ caracteres (criar, resetar e trocar)", async (t) => {
+  const repo = makeMemRepo();
+  await seedTestAdmins(repo);
+  const app = buildApp(repo);
+  t.after(() => app.close());
+  const H = { "x-api-key": "test-key" };
+  assert.equal((await app.inject({ method: "POST", url: "/api/auth/users", headers: H, payload: { name: "Curta", password: "1234567" } })).statusCode, 400);
+  assert.equal((await app.inject({ method: "PATCH", url: "/api/auth/users/leonardo", headers: H, payload: { password: "1234567" } })).statusCode, 400);
+  const { token } = (await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "eryk", password: "1234" } })).json();
+  const change = await app.inject({ method: "POST", url: "/api/auth/password", headers: { "x-api-key": token }, payload: { current: "1234", password: "1234567" } });
+  assert.equal(change.statusCode, 400);
+  assert.match(change.json().error, /8\+/);
 });
 
 test("login → token; token passa no hook; senha errada → 401; logout invalida", async () => {
   const repo = makeMemRepo();
-  await ensureDefaultAdmins(repo);
+  await seedTestAdmins(repo);
   const app = buildApp(repo);
 
   // Sem credencial → 401. Login é aberto.
@@ -88,7 +120,7 @@ test("login → token; token passa no hook; senha errada → 401; logout invalid
 
 test("users/sessions ficam fora do CRUD genérico (hash/token não vazam)", async () => {
   const repo = makeMemRepo();
-  await ensureDefaultAdmins(repo);
+  await seedTestAdmins(repo);
   const app = buildApp(repo);
   const H = { "x-api-key": "test-key" };
 
@@ -104,9 +136,9 @@ test("users/sessions ficam fora do CRUD genérico (hash/token não vazam)", asyn
   for (const u of users) assert.ok(!("passwordHash" in u));
 
   // Criar usuário novo já entra com hash e consegue logar.
-  const created = await app.inject({ method: "POST", url: "/api/auth/users", headers: H, payload: { name: "Mika", password: "abcd" } });
+  const created = await app.inject({ method: "POST", url: "/api/auth/users", headers: H, payload: { name: "Mika", password: "abcd1234" } });
   assert.equal(created.statusCode, 201);
-  const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "Mika", password: "abcd" } });
+  const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "Mika", password: "abcd1234" } });
   assert.equal(login.statusCode, 200);
 
   await app.close();
@@ -114,19 +146,19 @@ test("users/sessions ficam fora do CRUD genérico (hash/token não vazam)", asyn
 
 test("trocar senha: exige sessão + senha atual; nova senha passa a valer", async () => {
   const repo = makeMemRepo();
-  await ensureDefaultAdmins(repo);
+  await seedTestAdmins(repo);
   const app = buildApp(repo);
 
   const { token } = (await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "eryk", password: "1234" } })).json();
 
   // Key não troca senha (sem usuário); senha atual errada → 401.
-  assert.equal((await app.inject({ method: "POST", url: "/api/auth/password", headers: { "x-api-key": "test-key" }, payload: { current: "1234", password: "nova1" } })).statusCode, 401);
-  assert.equal((await app.inject({ method: "POST", url: "/api/auth/password", headers: { "x-api-key": token }, payload: { current: "errada", password: "nova1" } })).statusCode, 401);
+  assert.equal((await app.inject({ method: "POST", url: "/api/auth/password", headers: { "x-api-key": "test-key" }, payload: { current: "1234", password: "nova12345" } })).statusCode, 401);
+  assert.equal((await app.inject({ method: "POST", url: "/api/auth/password", headers: { "x-api-key": token }, payload: { current: "errada", password: "nova12345" } })).statusCode, 401);
 
-  const ok = await app.inject({ method: "POST", url: "/api/auth/password", headers: { "x-api-key": token }, payload: { current: "1234", password: "nova1" } });
+  const ok = await app.inject({ method: "POST", url: "/api/auth/password", headers: { "x-api-key": token }, payload: { current: "1234", password: "nova12345" } });
   assert.equal(ok.statusCode, 200);
   assert.equal((await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "eryk", password: "1234" } })).statusCode, 401);
-  assert.equal((await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "eryk", password: "nova1" } })).statusCode, 200);
+  assert.equal((await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "eryk", password: "nova12345" } })).statusCode, 200);
 
   await app.close();
 });
@@ -141,7 +173,7 @@ test("roles: create sanitiza, list expõe, PATCH edita e reseta senha", async (t
 
   const created = (await app.inject({
     method: "POST", url: "/api/auth/users",
-    payload: { name: "Jonathan", password: "abcd", roles: ["closer", "hacker", 42] },
+    payload: { name: "Jonathan", password: "abcd1234", roles: ["closer", "hacker", 42] },
   })).json();
   assert.deepEqual(created.roles, ["closer"]); // desconhecidas caem
 
@@ -158,11 +190,11 @@ test("roles: create sanitiza, list expõe, PATCH edita e reseta senha", async (t
   assert.equal(patched.passwordHash, undefined, "hash nunca vaza");
 
   // reset de senha: a nova loga, a antiga não
-  const reset = await app.inject({ method: "PATCH", url: `/api/auth/users/${created.id}`, payload: { password: "nova1" } });
+  const reset = await app.inject({ method: "PATCH", url: `/api/auth/users/${created.id}`, payload: { password: "nova12345" } });
   assert.equal(reset.statusCode, 200);
-  const ok = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "Jon", password: "nova1" } });
+  const ok = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "Jon", password: "nova12345" } });
   assert.equal(ok.statusCode, 200);
-  const bad = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "Jon", password: "abcd" } });
+  const bad = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "Jon", password: "abcd1234" } });
   assert.equal(bad.statusCode, 401);
 
   // senha curta é rejeitada; usuário inexistente 404
@@ -179,7 +211,7 @@ test("saas do usuário: escopo por produto (ex.: Ana só na UniqueKids), vazio =
   // create com saas (sanitizado pra minúsculas/trim) e exposto na listagem
   const ana = (await app.inject({
     method: "POST", url: "/api/auth/users",
-    payload: { id: "ana", name: "Ana", password: "abcd", roles: ["closer"], saas: " UniqueKids " },
+    payload: { id: "ana", name: "Ana", password: "abcd1234", roles: ["closer"], saas: " UniqueKids " },
   })).json();
   assert.equal(ana.saas, "uniquekids");
 
@@ -189,7 +221,7 @@ test("saas do usuário: escopo por produto (ex.: Ana só na UniqueKids), vazio =
   // usuário sem saas volta "" (todos os produtos)
   const leo = (await app.inject({
     method: "POST", url: "/api/auth/users",
-    payload: { id: "leo", name: "Leo", password: "abcd", roles: ["closer"] },
+    payload: { id: "leo", name: "Leo", password: "abcd1234", roles: ["closer"] },
   })).json();
   assert.equal(leo.saas, "");
 
@@ -210,13 +242,13 @@ test("DELETE usuário: remove; bloqueia (409) quem é responsável por lead e fo
   const H = { "x-api-key": "test-key" };
 
   // vestígio sem dado → remove direto
-  const v = (await app.inject({ method: "POST", url: "/api/auth/users", headers: H, payload: { name: "Vestigio", password: "1234" } })).json();
+  const v = (await app.inject({ method: "POST", url: "/api/auth/users", headers: H, payload: { name: "Vestigio", password: "12345678" } })).json();
   assert.equal((await app.inject({ method: "DELETE", url: `/api/auth/users/${v.id}`, headers: H })).statusCode, 200);
   const after = (await app.inject({ method: "GET", url: "/api/auth/users", headers: H })).json();
   assert.equal(after.some((u) => u.id === v.id), false);
 
   // dono de lead → 409; com ?force=1 remove mesmo assim
-  const d = (await app.inject({ method: "POST", url: "/api/auth/users", headers: H, payload: { name: "Dono", password: "1234" } })).json();
+  const d = (await app.inject({ method: "POST", url: "/api/auth/users", headers: H, payload: { name: "Dono", password: "12345678" } })).json();
   await repo.create("leads", { id: "L1", saas: "x", owner: d.id, stage: "Novo" });
   const blocked = await app.inject({ method: "DELETE", url: `/api/auth/users/${d.id}`, headers: H });
   assert.equal(blocked.statusCode, 409);
@@ -242,9 +274,9 @@ test("meu perfil: nome + foto do próprio usuário, mesmo com telas restritas", 
   t.after(() => app.close());
 
   const KEY = { "x-api-key": "test-key" };
-  await app.inject({ method: "POST", url: "/api/auth/users", headers: KEY, payload: { id: "ana", name: "Ana", password: "abcd", screens: ["today"] } });
-  await app.inject({ method: "POST", url: "/api/auth/users", headers: KEY, payload: { id: "bob", name: "Bob", password: "abcd" } });
-  const token = (await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "ana", password: "abcd" } })).json().token;
+  await app.inject({ method: "POST", url: "/api/auth/users", headers: KEY, payload: { id: "ana", name: "Ana", password: "abcd1234", screens: ["today"] } });
+  await app.inject({ method: "POST", url: "/api/auth/users", headers: KEY, payload: { id: "bob", name: "Bob", password: "abcd1234" } });
+  const token = (await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "ana", password: "abcd1234" } })).json().token;
   const H = { "x-api-key": token };
 
   // A rota de gestão é barrada pro usuário restrito; a do próprio perfil, não.
@@ -254,7 +286,7 @@ test("meu perfil: nome + foto do próprio usuário, mesmo com telas restritas", 
   assert.equal(renamed.json().name, "Ana Paula");
   assert.equal(renamed.json().passwordHash, undefined, "hash nunca vaza");
   // e o login segue funcionando pelo nome novo
-  assert.equal((await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "Ana Paula", password: "abcd" } })).statusCode, 200);
+  assert.equal((await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "Ana Paula", password: "abcd1234" } })).statusCode, 200);
 
   // nome de outra pessoa → 409 (o login casa por id OU nome: não pode ambiguar)
   assert.equal((await app.inject({ method: "PATCH", url: "/api/auth/me", headers: H, payload: { name: "Bob" } })).statusCode, 409);
@@ -301,7 +333,7 @@ test("meu perfil: nome + foto do próprio usuário, mesmo com telas restritas", 
 
 test("nível: mudar compLevel apenda o histórico; o mesmo nível não duplica", async () => {
   const repo = makeMemRepo();
-  await ensureDefaultAdmins(repo);
+  await seedTestAdmins(repo);
   const app = buildApp(repo);
   const { token } = (await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "eryk", password: "1234" } })).json();
   await repo.create("users", { id: "bia", name: "Bia", roles: ["closer"], compLevel: 1 });
@@ -328,7 +360,7 @@ test("nível: mudar compLevel apenda o histórico; o mesmo nível não duplica",
 test("sessão em cache: 2ª requisição não vai ao banco; escrita no repo e expiração invalidam", async () => {
   const { sessionUser } = await import("../src/auth.js");
   const repo = makeMemRepo();
-  await ensureDefaultAdmins(repo);
+  await seedTestAdmins(repo);
   const app = buildApp(repo);
   const res = await app.inject({ method: "POST", url: "/api/auth/login", payload: { username: "eryk", password: "1234" } });
   const { token } = res.json();

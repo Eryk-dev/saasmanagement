@@ -11,7 +11,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeAuthHook, ensureDefaultAdmins, hashPassword } from "../src/auth.js";
+import { makeAuthHook, hashPassword } from "../src/auth.js";
+import { seedTestAdmins } from "./helpers/seed-admins.js";
 import { makeScreenGuardHook } from "../src/screens.js";
 
 const { registerRoutes } = await import("../src/routes.js");
@@ -378,7 +379,7 @@ const loginToken = async (app, username) => (await app.inject({ method: "POST", 
 
 test("closer vê só os links que ele gerou (o servidor filtra) e só dá baixa neles; admin vê todos e filtra por closer", async (t) => {
   const repo = makeMemRepo();
-  await ensureDefaultAdmins(repo);
+  await seedTestAdmins(repo);
   await repo.create("users", { id: "jonan", name: "Jonan", roles: ["closer"], screens: [], passwordHash: hashPassword("1234") });
   await repo.create("users", { id: "jessica", name: "Jéssica", roles: ["closer"], screens: [], passwordHash: hashPassword("1234") });
   await repo.create("users", { id: "leo", name: "Leo", roles: ["admin"], screens: [], passwordHash: hashPassword("1234") });

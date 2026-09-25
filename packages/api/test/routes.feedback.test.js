@@ -8,7 +8,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeAuthHook, ensureDefaultAdmins, hashPassword } from "../src/auth.js";
+import { makeAuthHook, hashPassword } from "../src/auth.js";
+import { seedTestAdmins } from "./helpers/seed-admins.js";
 import { makeScreenGuardHook } from "../src/screens.js";
 
 const { registerRoutes } = await import("../src/routes.js");
@@ -78,7 +79,7 @@ test("GET /api/feedback: só reportes (bug/melhoria), mais novo primeiro, com co
 
 test("usuário SEM a tela tasks reporta pelo /api/feedback (o /api/tasks segue 403)", async (t) => {
   const repo = makeMemRepo();
-  await ensureDefaultAdmins(repo);
+  await seedTestAdmins(repo);
   await repo.create("users", {
     id: "ana", name: "Ana", role: "admin", roles: ["cs"],
     screens: ["today"], passwordHash: hashPassword("1234"),
