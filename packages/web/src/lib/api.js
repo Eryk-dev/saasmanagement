@@ -747,11 +747,11 @@ export const api = {
   },
   // Equipe: etiquetas de papel (sdr/closer/integrator), criação e reset de senha.
   updateUser: (id, patch) => req("PATCH", `/api/auth/users/${id}`, patch),
-  // Conta Lever (identidade central): liga pelo e-mail de trabalho (usa a conta
+  // LeverId (identidade central): liga pelo e-mail de trabalho (usa a conta
   // que já existe ou cria uma) e desliga (tira o staff; a conta continua).
   linkIdentity: (id, email) => req("POST", `/api/auth/users/${id}/identity`, { email }),
   unlinkIdentity: (id) => req("DELETE", `/api/auth/users/${id}/identity`),
-  // E-mail "defina sua senha" da conta Lever; o link volta a este cockpit.
+  // E-mail "defina sua senha" do LeverId; o link volta a este cockpit.
   sendIdentityPasswordEmail: (id) => req("POST", `/api/auth/users/${id}/identity/password-email`, { redirectTo: `${location.origin}/` }),
   // Desfaz um fechamento errado: remove cliente/assinatura/faturas automáticas
   // e devolve o card pro funil (409 se houver dinheiro real do Mercado Pago).

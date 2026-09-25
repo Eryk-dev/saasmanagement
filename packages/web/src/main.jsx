@@ -61,7 +61,7 @@ function StartupError({ error }) {
 }
 
 // Login do time. Com a identidade central ligada (VITE_AUTH_URL), entra por
-// e-mail e senha da conta Lever; o login antigo do cockpit (usuário + senha)
+// e-mail e senha do LeverId; o login antigo do cockpit (usuário + senha)
 // fica disponível durante a transição. Depois do login, recarrega a página:
 // re-render a partir de um handler deixava a árvore nova sem responder a
 // cliques reais — recarregar relê a credencial e sobe o app limpo.
@@ -74,14 +74,14 @@ function Login() {
   const [notice, setNotice] = React.useState(null);
   const inputStyle = { height: 34, padding: "0 10px", background: "var(--bg-2)", border: "1px solid var(--line-2)", borderRadius: "var(--r-2)", color: "var(--fg-1)", fontSize: 13 };
 
-  // Esqueci a senha da conta Lever: o GoTrue manda o link de definir senha.
+  // Esqueci a senha do LeverId: o GoTrue manda o link de definir senha.
   async function forgot() {
     const email = username.trim();
     if (!email.includes("@")) { setError("digite seu e-mail acima e clique de novo"); return; }
     setBusy(true); setError(null); setNotice(null);
     try {
       await requestPasswordEmail(email);
-      setNotice(`se ${email} tiver conta Lever, chega um link para definir a senha`);
+      setNotice(`se ${email} tiver LeverId, chega um link para definir a senha`);
     } catch (err) { setError(err.message || String(err)); }
     setBusy(false);
   }
@@ -96,7 +96,7 @@ function Login() {
       remember(await api.me());
     } catch (e) {
       await clearCredentials();
-      if (e.status === 401) throw Object.assign(new Error("sua conta Lever ainda não tem acesso ao cockpit — peça a um admin para liberar"), { shown: true });
+      if (e.status === 401) throw Object.assign(new Error("seu LeverId ainda não tem acesso ao cockpit — peça a um admin para liberar"), { shown: true });
       throw e;
     }
   }
@@ -125,7 +125,7 @@ function Login() {
     <Shell>
       <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10, width: 280, alignItems: "stretch" }}>
         <div className="mono dim" style={{ fontSize: 12, textAlign: "center" }}>
-          {lever ? "Acesso restrito · entre com sua conta Lever" : "Acesso restrito · entre com seu usuário"}
+          {lever ? "Acesso restrito · entre com seu LeverId" : "Acesso restrito · entre com seu usuário"}
         </div>
         <input
           value={username} autoFocus type={lever ? "email" : "text"} placeholder={lever ? "e-mail" : "usuário"} autoComplete={lever ? "email" : "username"}
@@ -148,7 +148,7 @@ function Login() {
         )}
         {identityEnabled && (
           <button type="button" onClick={switchMode} className="mono dim" style={{ fontSize: 11, textDecoration: "underline" }}>
-            {lever ? "usar o login antigo do cockpit" : "entrar com a conta Lever"}
+            {lever ? "usar o login antigo do cockpit" : "entrar com o LeverId"}
           </button>
         )}
       </form>
@@ -156,7 +156,7 @@ function Login() {
   );
 }
 
-// Volta do link "defina sua senha" (e-mail da conta Lever). O hash traz a
+// Volta do link "defina sua senha" (e-mail do LeverId). O hash traz a
 // sessão do link: sai da barra de endereço na hora (não fica no histórico) e
 // só vive na memória até a senha nova ser gravada.
 function SetPassword({ recovery }) {
@@ -172,7 +172,7 @@ function SetPassword({ recovery }) {
   if (recovery.error || noAccess) {
     return <Shell>
       <div role="alert" className="mono" style={{ maxWidth: 300, fontSize: 12, textAlign: "center", color: noAccess ? "var(--fg-2)" : "var(--neg)" }}>
-        {noAccess ? "senha definida · sua conta Lever ainda não tem acesso ao cockpit — peça a um admin para liberar"
+        {noAccess ? "senha definida · seu LeverId ainda não tem acesso ao cockpit — peça a um admin para liberar"
           : "o link expirou ou já foi usado — peça outro em “esqueci minha senha”"}
       </div>
       <button type="button" onClick={toLogin} className="mono dim" style={{ fontSize: 11, textDecoration: "underline" }}>ir para o login</button>
@@ -200,7 +200,7 @@ function SetPassword({ recovery }) {
   return (
     <Shell>
       <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 10, width: 280, alignItems: "stretch" }}>
-        <div className="mono dim" style={{ fontSize: 12, textAlign: "center" }}>Defina a senha da sua conta Lever</div>
+        <div className="mono dim" style={{ fontSize: 12, textAlign: "center" }}>Defina a senha do seu LeverId</div>
         <input type="password" value={password} autoFocus placeholder="senha nova (8+)" autoComplete="new-password" aria-label="senha nova"
           onChange={(e) => setPassword(e.target.value)} style={inputStyle} />
         <input type="password" value={confirm} placeholder="repita a senha" autoComplete="new-password" aria-label="repita a senha"

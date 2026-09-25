@@ -19,11 +19,11 @@ Decisões do usuário:
 | `lp-redis` | 0,5 / 1–2 GB | |
 | `lp-tunnel` | — | ssh `-L` para o Postgres e o Kong de **prod** da VPS1 |
 | Evolution API | sem limite | |
-| `lever-identity` (projeto "Supabase Lever") | planejado: db 2/2 GB, auth/rest/kong 0,5 cada | se já está no ar precisa ser conferido |
+| `lever-identity` (projeto "Supabase Lever"; vira LeverId) | planejado: db 2/2 GB, auth/rest/kong 0,5 cada | se já está no ar precisa ser conferido |
 
 - Todos os `lp-*` foram criados com `docker run` à mão, não pelo Coolify.
 - **Folga estimada:** ~10–12 GB de RAM. CPU já passa de 8 somando os tetos.
-- Não existe repo `lever-identity` nem compose da identidade em `C:\dev`.
+- Não existe repo LeverId nem compose da identidade em `C:\dev`.
 - O token `VPS2_COOLIFY_*` do `~/Documents/Leverprice/.env` está documentado como órfão.
 
 **Código, nada da S0 foi feito:**
@@ -56,7 +56,7 @@ Decisões do usuário:
 
 ### Etapa 0 — Verificar pela API do Coolify (só leitura)
 - `GET /api/v1/servers`, `/projects` e `/resources`:
-  - confirmar o servidor VPS2 e o estado do projeto "Supabase Lever" / `lever-identity`;
+  - confirmar o servidor VPS2 e o estado do projeto "Supabase Lever" / `lever-identity` (vira LeverId);
   - ver quais redes o Coolify usa.
 - Ver o uso de CPU e RAM da VPS2 nas métricas da UI do Coolify para fechar o orçamento.
 
@@ -104,7 +104,7 @@ Decisões do usuário:
 - Antes de subir, medir a folga da VPS2 com o lp-worker-go de prod em pico.
 
 ### Etapa 5 — `identity-dev`
-- Sobe quando a Fase 3 da plataforma começar (o repo `lever-identity` ainda não existe): GoTrue + Postgres + Kong, com chaves próprias, em `dev.auth.leverads.com.br`.
+- Sobe quando a Fase 3 da plataforma começar (o repo LeverId ainda não existe): GoTrue + Postgres + Kong, com chaves próprias, em `dev.auth.leverads.com.br`.
 
 ## Documentação
 - `docs/PLANO-AMBIENTE-DEV.md`: nova seção "Fase interina: dev na VPS2" com o que mudou:

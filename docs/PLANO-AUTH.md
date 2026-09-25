@@ -1,8 +1,8 @@
-# Plano: identidade unificada no `lever-identity` (Cockpit + LeverAds)
+# Plano: identidade unificada no LeverId (Cockpit + LeverAds)
 
 > **Status (25/09/2026): diagnóstico feito e levantamento para concluir registrado (revisão 2, seção 7); execução não iniciada.** Branch `feat/auth`.
 >
-> **Escopo:** levar para o `lever-identity` (GoTrue + Postgres no Coolify da VPS2):
+> **Escopo:** levar para o LeverId (GoTrue + Postgres no Coolify da VPS2):
 > - o **login** do Cockpit e do LeverAds;
 > - o **vínculo de cada usuário a uma org (tenant)**, com o papel dele nela.
 >
@@ -11,6 +11,8 @@
 > **Metas:** **downtime zero planejado** e **nenhum usuário perdido**. O LeverPrice entra depois, no mesmo molde (Fase 7).
 >
 > **Revisão 1 (21/09):** o tenant entrou no escopo. Antes, o GoTrue só autenticava e a org ficava em cada produto.
+>
+> **Nome (26/09):** a identidade central se chama **LeverId**: é o nome na interface ("entre com seu LeverId"), no repositório (`C:\dev\LeverId`) e no serviço que vai substituir o `lever-identity` montado à mão no Coolify (slug `leverid`). Schemas, RPCs e variáveis (`core`, `identity_api`, `IDENTITY_*`, `AUTH_*`) mantêm os nomes, que descrevem a função.
 >
 > **Revisão 2 (25/09):** levantamento do que falta para concluir a mudança **com RLS** (seção 7):
 > - onde este plano e o `PLANO-PLATAFORMA-SUPABASE.md` divergiam, **vale este plano** (seção 7.1), e as decisões em aberto 1 e 2 ficam fechadas;
@@ -31,7 +33,7 @@
 | Item | Estado |
 |---|---|
 | Coolify | 4.3.23, projeto **"Lever Id"** (não "Supabase Lever", como diziam os outros planos), ambiente `production` |
-| Serviço | `lever-identity`, **running:healthy**, criado em 18/09 |
+| Serviço | `lever-identity` (nome atual; vira `leverid` na substituição), **running:healthy**, criado em 18/09 |
 | Containers | `supabase/gotrue:v2.186.0` (0,5 CPU/256 MB) · `kong:3.9.1` (0,5/512 MB) · `postgrest:v14.6` (0,5/256 MB) · `supabase/postgres:15.8.1.085` (2 CPU/2 GB, sem porta pública, `wal_level=logical`) |
 | Domínio | `auth.leverads.com.br` configurado no Kong, mas **não existe no DNS** (NXDOMAIN) → sem certificado válido |
 | JWT | **HS256 com segredo compartilhado** (mesmo segredo em GoTrue, PostgREST e Kong). JWKS publicado vazio (`{"keys":[]}`). Access token de 600 s, refresh com rotação |
@@ -42,7 +44,7 @@
 | Hook / `core` | nenhum: sem custom access token hook, sem schema `core`; PostgREST só expõe `public` |
 | Backup | nenhum configurado (LEV-499 pendente) |
 | Usuários | não consultado; com cadastro fechado e sem SMTP, deve estar vazio |
-| Código | não existe repo `lever-identity`; o compose só vive no Coolify |
+| Código | não existe repo LeverId; o compose só vive no Coolify |
 
 **Leitura:** o GoTrue está de pé, mas é o template cru. Falta tudo o que faz dele um serviço de produção: domínio, TLS, SMTP, chaves assimétricas e backup. A vantagem é que **ainda está vazio**, então mudar a chave JWT ou o Postgres agora não custa nada.
 
@@ -173,7 +175,7 @@
 
 ### 2.1 Modelo de tenancy na identidade
 
-**Schema `core` no Postgres do `lever-identity`:**
+**Schema `core` no Postgres do LeverId:**
 
 | Tabela | Conteúdo | Origem na carga |
 |---|---|---|
@@ -217,7 +219,7 @@ Hoje ninguém tem duas orgs, mas o modelo já aceita.
 ## 3. Fases
 
 ### Fase 0: identidade pronta para produção (sem nenhum consumidor)
-- **Repo `lever-identity`:**
+- **Repo LeverId:**
   - compose exportado do Coolify (sem segredos);
   - scripts de carga e sincronização;
   - `docker-compose.local.yml` com o **mesmo** `gotrue:v2.186.0` + Postgres, para testar tudo localmente (não há `identity-dev` ainda).
@@ -236,7 +238,7 @@ Hoje ninguém tem duas orgs, mas o modelo já aceita.
   - restore testado;
   - segredos (chave JWT, senha do Postgres, service key) no cofre.
 - **Postgres:** decidir agora se sobe de 15.8 para a 17 usada nos outros bancos. Com o banco vazio, isso é recriar o volume.
-- **Tenancy** (migrations versionadas no repo `lever-identity`, com ledger próprio):
+- **Tenancy** (migrations versionadas no repo LeverId, com ledger próprio):
   - os schemas `core`, `private` e `identity_api` da seção 2.1;
   - o hook `private.custom_access_token_hook`, com grant só para `supabase_auth_admin`;
   - `PGRST_DB_SCHEMAS=identity_api`;
@@ -282,7 +284,7 @@ Hoje ninguém tem duas orgs, mas o modelo já aceita.
 - **Staff:**
   - `is_super_admin` → `core.staff` com `leverads_super_admin`, mais membership na org "Lever";
   - a membership original na org do cliente é **mantida**, para preservar o comportamento de hoje.
-- **Script idempotente de usuários** (`lever-identity/scripts/sync-leverads-users`):
+- **Script idempotente de usuários** (`LeverId/scripts/sync-leverads-users`):
   - lê `public.users` e faz upsert em `auth.users` pela admin API com `id`, `email` em minúsculas, `password_hash` (`$2b$…`) e `email_confirm: true`, porque o LeverAds nunca exigiu confirmação;
   - guarda `app_metadata.source = 'leverads'`;
   - se a admin API não aceitar `id` ou `password_hash` na atualização, escreve direto em `auth.users` pela rede interna do Coolify (validar no compose local).
@@ -341,10 +343,10 @@ Hoje ninguém tem duas orgs, mas o modelo já aceita.
 
 ### Fase 3: piloto no Cockpit (interno, poucos usuários)
 - **Vínculo:** cada staff recebe um e-mail.
-  - Se o e-mail já existe no GoTrue (conta LeverAds), o `authUserId` aponta para ela: **uma pessoa, uma conta**, com a senha do LeverAds.
+  - Se o e-mail já existe no GoTrue (LeverIdAds), o `authUserId` aponta para ela: **uma pessoa, uma conta**, com a senha do LeverAds.
   - Se não existe, o staff é criado no GoTrue.
 - **Senha sem reset, por migração no login** (o scrypt não é importável):
-  - durante o modo dual, o login antigo do Cockpit, ao validar o scrypt, define essa mesma senha no GoTrue pela admin API. Isso vale **só** para contas criadas pelo Cockpit, nunca sobrescrevendo senha de conta LeverAds;
+  - durante o modo dual, o login antigo do Cockpit, ao validar o scrypt, define essa mesma senha no GoTrue pela admin API. Isso vale **só** para contas criadas pelo Cockpit, nunca sobrescrevendo senha de LeverIdAds;
   - quem não logar na janela recebe o e-mail de definir senha.
 - **SPA:**
   - login e refresh via `auth-js`;
@@ -441,7 +443,7 @@ Hoje ninguém tem duas orgs, mas o modelo já aceita.
 - `PLANO-PLATAFORMA-SUPABASE.md` e `PLANO-DEV-INTERINO-VPS2.md`:
   - o projeto no Coolify se chama **"Lever Id"**;
   - o Coolify está na 4.3.23;
-  - o `lever-identity` está no ar, mas com HS256, sem DNS, sem SMTP e sem backup.
+  - o serviço `lever-identity` (vira LeverId) está no ar, mas com HS256, sem DNS, sem SMTP e sem backup.
 - `PLANO-PLATAFORMA-SUPABASE.md` (revisão 7): nos pontos da seção 7.1, vale este plano.
 
 ---
@@ -486,16 +488,16 @@ A cópia local do LeverAds conferida estava em v2.31.0, atrás da `origin/develo
 ### 7.3 Pré-requisitos fora do código (bloqueiam a Fase 0)
 - **DNS** de `auth.leverads.com.br` (e `dev.auth.leverads.com.br` se a decisão 8 for pelo dev).
 - **SMTP** da identidade: credenciais do provedor que o LeverAds já usa.
-- **Backup externo** do `lever-identity` com restore testado (LEV-499). Sem ele, nenhum usuário real é carregado.
+- **Backup externo** do LeverId com restore testado (LEV-499). Sem ele, nenhum usuário real é carregado.
 - **Cofre** para a chave ES256, a senha do Postgres, as chaves de serviço por produto e a `TOKEN_ENCRYPTION_KEY`.
 - **Token de escrita da API do Coolify** da VPS2; SSH uma vez, se o dev interino for usado.
 - **Consultas do levantamento** da Fase 0 rodadas em produção por quem tem acesso.
-- **Repo `lever-identity`** criado.
+- **Repo LeverId** criado.
 
 ### 7.4 Checklist por frente
 
-**A. Identidade (`lever-identity`)**
-- [x] Repo local `C:\dev\lever-identity` (25/09, sem remoto ainda): compose local com `gotrue:v2.186.0`, Postgres 17 (`supabase/postgres:17.6.1.136`), PostgREST v14.6 só com `identity_api`, Mailpit e dbmate.
+**A. Identidade (LeverId)**
+- [x] Repo local `C:\dev\LeverId` (25/09, sem remoto ainda): compose local com `gotrue:v2.186.0`, Postgres 17 (`supabase/postgres:17.6.1.136`), PostgREST v14.6 só com `identity_api`, Mailpit e dbmate.
 - [x] Par ES256 em `GOTRUE_JWT_KEYS`; o JWKS publica só a chave pública, e as chaves HS256 de papel seguem aceitas no GoTrue e no PostgREST.
 - [x] Migration `core`, `private`, `identity_api`, hook, org "Lever" (id fixo `00000000-0000-4000-8000-00000000000a`), papéis `svc_leverads`/`svc_cockpit` com grants por RPC.
 - [x] pgTAP (29 testes) e smoke de ponta a ponta verdes.
@@ -508,12 +510,12 @@ A cópia local do LeverAds conferida estava em v2.31.0, atrás da `origin/develo
 **B. Cockpit (este repo)**
 - [x] Contenção (25/09, branch `feat/auth`): `DEFAULT_ADMINS`/`1234` substituído por `BOOTSTRAP_ADMIN_USER`/`PASSWORD`; API fechada sem `COCKPIT_API_KEY`; CORS restrito fora das rotas abertas (`cors-policy.js`); `APP_ENV` com trava de destino de prod (`app-env.js`); `JOBS_ENABLED`/`JOBS=`; senha nova com 8+ caracteres em criar, resetar e trocar.
 - [x] Gestão do time só com a etiqueta `admin` (25/09): escrita em `/api/auth/users` (criar, editar papel/telas/nível, resetar senha, remover) barrada no `screens.js`; a key mestre continua passando; Ajustes → Equipe fica só leitura para os demais.
-- [x] `AUTH_MODE=legacy|dual|gotrue` no `makeAuthHook` (25/09, `auth-jwt.js`): JWT ES256 pelo JWKS em cache (rotação de `kid` com anti-enxurrada), só staff da org Lever com `authUserId` ligado em `cockpit.users`; SSE aceita o JWT; troca de senha de conta da identidade recusada no cockpit. Validado de ponta a ponta com o `lever-identity` local e o banco local do Docker (login novo e antigo lado a lado; cliente barrado).
+- [x] `AUTH_MODE=legacy|dual|gotrue` no `makeAuthHook` (25/09, `auth-jwt.js`): JWT ES256 pelo JWKS em cache (rotação de `kid` com anti-enxurrada), só staff da org Lever com `authUserId` ligado em `cockpit.users`; SSE aceita o JWT; troca de senha de conta da identidade recusada no cockpit. Validado de ponta a ponta com o LeverId local e o banco local do Docker (login novo e antigo lado a lado; cliente barrado).
 - [x] Testes com JWKS de teste (`test/auth-jwt.test.js`, 9 casos).
 - [ ] Chave de serviço Cockpit → LeverAds no `leverads-access.js` (**antes da Fase 4**).
-- [x] SPA (25/09): `@supabase/auth-js` com `VITE_AUTH_URL` (`lib/identity.js`); login por e-mail da conta Lever com opção do login antigo; `Authorization: Bearer`; renovação automática e antes da requisição se o token venceu; 401 global (renova uma vez, senão volta ao login); SSE reabre com o token atual; troca de senha e sair pelo GoTrue. Validado no navegador (Playwright) contra o `lever-identity` e o banco local.
-- [x] Vínculo e migração de senha (26/09): Ajustes → Equipe → "Lever" liga pelo e-mail (`POST /api/auth/users/:id/identity`; reusa a conta existente, senão cria com `app_metadata.password_pending`); o login antigo leva a mesma senha à conta Lever só se ela ainda não tem senha própria (gatilho no `lever-identity` apaga a marca na primeira troca); etiquetas → staff `team`/`admin`/`support`; remover ou desligar tira o staff. Validado de ponta a ponta com o GoTrue local.
-- [x] E-mail de definir senha (26/09): admin dispara em Ajustes → Equipe → Lever (`POST /api/auth/users/:id/identity/password-email`, recovery do GoTrue com volta ao cockpit); "esqueci minha senha" no login da conta Lever; tela de definir senha a partir do link (token sai da barra na hora; link usado/expirado avisa). A senha escolhida pela pessoa não é sobrescrita pela migração. Validado no navegador com o e-mail real pelo Mailpit.
+- [x] SPA (25/09): `@supabase/auth-js` com `VITE_AUTH_URL` (`lib/identity.js`); login por e-mail do LeverId com opção do login antigo; `Authorization: Bearer`; renovação automática e antes da requisição se o token venceu; 401 global (renova uma vez, senão volta ao login); SSE reabre com o token atual; troca de senha e sair pelo GoTrue. Validado no navegador (Playwright) contra o LeverId e o banco local.
+- [x] Vínculo e migração de senha (26/09): Ajustes → Equipe → "LeverId" liga pelo e-mail (`POST /api/auth/users/:id/identity`; reusa a conta existente, senão cria com `app_metadata.password_pending`); o login antigo leva a mesma senha à LeverId só se ela ainda não tem senha própria (gatilho no LeverId apaga a marca na primeira troca); etiquetas → staff `team`/`admin`/`support`; remover ou desligar tira o staff. Validado de ponta a ponta com o GoTrue local.
+- [x] E-mail de definir senha (26/09): admin dispara em Ajustes → Equipe → Lever (`POST /api/auth/users/:id/identity/password-email`, recovery do GoTrue com volta ao cockpit); "esqueci minha senha" no login do LeverId; tela de definir senha a partir do link (token sai da barra na hora; link usado/expirado avisa). A senha escolhida pela pessoa não é sobrescrita pela migração. Validado no navegador com o e-mail real pelo Mailpit.
 - [ ] `leveradsOrgId` → `orgId` (órfãos corrigidos antes).
 - [ ] Atualizar `docs/CONTEXTO-COCKPIT.md` a cada mudança de auth.
 
@@ -543,7 +545,7 @@ O plano da plataforma valida o JWT no banco pelo PostgREST com o JWKS da identid
 **Alternativa que destrava antes da mudança:** o backend valida o JWT (já faz, Fase 2 deste plano) e, em cada transação, aplica `SET LOCAL role <papel_da_app>` + `set_config('request.jwt.claims', <claims>, true)`. As policies leem `auth.jwt()`/`current_setting`, então funcionam igual no Cloud e na VPS, e migram para o PostgREST depois sem reescrever policy. Para o Cockpit, que usa `pg` direto, isso evita reescrever o `repo.*` para postgrest-js. Sem `core_replica`, os helpers usam o caminho rápido pelos claims mais a cópia local (`public.users`), como na decisão 7.
 
 ### 7.6 Ordem proposta
-1. **Já, sem dependência externa:** contenção do Cockpit (B, primeiro item); `lower(email)` e `TOKEN_ENCRYPTION_KEY` v1 no LeverAds; repo `lever-identity` com compose local, `core`, hook e pgTAP.
+1. **Já, sem dependência externa:** contenção do Cockpit (B, primeiro item); `lower(email)` e `TOKEN_ENCRYPTION_KEY` v1 no LeverAds; repo LeverId com compose local, `core`, hook e pgTAP.
 2. **Em paralelo, infra:** pré-requisitos da seção 7.3.
 3. Fases 1 a 3 deste plano: carga, backends em modo dual (dormente), piloto no Cockpit.
 4. Fase 4 (virada do LeverAds) e Fase 5 (desligamento do legado).

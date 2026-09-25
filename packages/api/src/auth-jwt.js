@@ -1,4 +1,4 @@
-// Token da identidade central (lever-identity / GoTrue) — docs/PLANO-AUTH.md.
+// Token da identidade central (LeverId / GoTrue) — docs/PLANO-AUTH.md.
 //
 // AUTH_MODE decide o que o hook de auth aceita:
 //   legacy  (padrão) só a sessão própria (scrypt + `sessions`) e a key mestre;
@@ -15,7 +15,7 @@
 import { createPublicKey, verify as verifySignature } from "node:crypto";
 
 export const AUTH_MODES = ["legacy", "dual", "gotrue"];
-// Org interna "Lever" do lever-identity (private.lever_org_id()).
+// Org interna "Lever" do LeverId (private.lever_org_id()).
 export const LEVER_ORG_ID = "00000000-0000-4000-8000-00000000000a";
 const JWKS_TTL_MS = 10 * 60 * 1000;
 // Com `kid` desconhecido (chave rotacionada), busca o JWKS de novo no máximo

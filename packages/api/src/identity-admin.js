@@ -1,5 +1,5 @@
-// Cliente de administração da identidade central (lever-identity), usado para
-// ligar o staff do cockpit a uma conta Lever e migrar a senha no login
+// Cliente de administração da identidade central (LeverId), usado para
+// ligar o staff do cockpit a um LeverId e migrar a senha no login
 // (docs/PLANO-AUTH.md, Fase 3).
 //
 //   IDENTITY_AUTH_URL      GoTrue (admin API: criar conta, definir senha)

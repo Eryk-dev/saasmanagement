@@ -1,4 +1,4 @@
-// Fase 3 do PLANO-AUTH: ligar o staff a uma conta Lever pelo e-mail e migrar a
+// Fase 3 do PLANO-AUTH: ligar o staff a um LeverId pelo e-mail e migrar a
 // senha no login antigo, sem nunca sobrescrever a senha de conta do LeverAds.
 
 import test from "node:test";
@@ -63,7 +63,7 @@ const K = { "x-api-key": "test-key" };
 const link = (app, id, email, headers = K) => app.inject({ method: "POST", url: `/api/auth/users/${id}/identity`, headers, payload: { email } });
 const login = (app, username, password) => app.inject({ method: "POST", url: "/api/auth/login", payload: { username, password } });
 
-test("e-mail sem conta: cria a conta Lever, marca como staff e migra a senha no próximo login antigo", async (t) => {
+test("e-mail sem conta: cria o LeverId, marca como staff e migra a senha no próximo login antigo", async (t) => {
   const { app, repo, identity } = await buildApp();
   t.after(() => app.close());
   const res = await link(app, "ana", " Ana@Lever.test ");

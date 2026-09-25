@@ -464,7 +464,7 @@ function TeamSettings() {
   const [invite, setInvite] = useStS(null); // { name, password }
   const [created, setCreated] = useStS(null); // { name, password, reset? } do último criado/resetado, fica na tela pro Leo copiar
   const [reset, setReset] = useStS(null); // { user, password }: senha nova sendo definida pra alguém do time
-  const [lever, setLever] = useStS(null); // { user, email }: conta Lever (identidade central) sendo ligada/vista
+  const [lever, setLever] = useStS(null); // { user, email }: LeverId (identidade central) sendo ligada/vista
   // Criar, editar, resetar senha e remover exigem a etiqueta `admin` também na
   // API (screens.js); sem ela a equipe aparece só para leitura.
   const canManage = isAdminUser();
@@ -515,7 +515,7 @@ function TeamSettings() {
     action.current=false;setSaving("");
   }
 
-  // Conta Lever (docs/PLANO-AUTH.md, Fase 3): liga pelo e-mail de trabalho. Se
+  // LeverId (docs/PLANO-AUTH.md, Fase 3): liga pelo e-mail de trabalho. Se
   // o e-mail já tem conta (ex.: a do LeverAds) o servidor usa ela, com a senha
   // de lá; senão cria, e a senha do cockpit migra no próximo login antigo.
   async function linkLever() {
@@ -526,10 +526,10 @@ function TeamSettings() {
       const u = await api.linkIdentity(lever.user.id, email);
       setUsers((us) => us.map((x) => (x.id === u.id ? { ...x, ...u } : x)));
       setLever({ user: { ...lever.user, ...u }, email: u.email });
-    } catch (e) { setError("Não ligou a conta Lever: " + e.message); }
+    } catch (e) { setError("Não ligou o LeverId: " + e.message); }
     action.current=false;setSaving("");
   }
-  // E-mail "defina sua senha" da conta Lever: para quem não vai passar pelo
+  // E-mail "defina sua senha" do LeverId: para quem não vai passar pelo
   // login antigo (a senha só migra por ele) ou esqueceu a senha.
   async function sendLeverPasswordEmail() {
     const u0 = lever?.user;
@@ -544,7 +544,7 @@ function TeamSettings() {
   async function unlinkLever() {
     const u0 = lever?.user;
     if (!u0 || action.current) return;
-    if (!window.confirm(`Desligar a conta Lever de ${u0.name || u0.id}? O login por ela deixa de entrar no cockpit.`)) return;
+    if (!window.confirm(`Desligar o LeverId de ${u0.name || u0.id}? O login por ele deixa de entrar no cockpit.`)) return;
     action.current=true;setError(null);setSaving(u0.id);
     try {
       const u = await api.unlinkIdentity(u0.id);
@@ -579,8 +579,8 @@ function TeamSettings() {
       {/* .tbl-x: no mobile a grade (colunas fixas ~900px) rola dentro do card
           em vez de estourar a página — mesmo padrão do Funil abaixo. */}
       <div className="tbl-x" style={{ border: 0, borderRadius: "var(--r-4)", background: "var(--bg-1)", boxShadow: "var(--shadow-card)" }}>
-       <div style={{ minWidth: 1054 + ROLE_OPTS.length * 92 }}>
-        <div className="kicker" style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 96px 140px 120px 130px 136px`, gap: 8, padding: "10px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
+       <div style={{ minWidth: 1076 + ROLE_OPTS.length * 92 }}>
+        <div className="kicker" style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 96px 140px 120px 130px 158px`, gap: 8, padding: "10px 14px", background: "var(--bg-inset)", borderBottom: "1px solid var(--line-1)" }}>
           <span>Usuário</span>
           {ROLE_OPTS.map(([k, l, hint]) => <span key={k} title={hint} style={{ textAlign: "center" }}>{l}</span>)}
           <span title="Nível de carreira (júnior · pleno · sênior): define as metas de contratos e receita de SDR e closer, pelo plano de Remuneração">Nível</span>
@@ -591,7 +591,7 @@ function TeamSettings() {
         </div>
         {users === null && !error && <div className="mono dim" style={{ padding: "12px 14px", fontSize: 12 }}>carregando…</div>}
         {Array.isArray(users) && users.map((u) => (
-          <div key={u.id} style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 96px 140px 120px 130px 136px`, gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
+          <div key={u.id} style={{ display: "grid", gridTemplateColumns: `1fr repeat(${ROLE_OPTS.length}, 92px) 96px 140px 120px 130px 158px`, gap: 8, padding: "9px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", opacity: saving === u.id ? 0.6 : 1 }}>
             <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 500, minWidth: 0 }}>
               <Avatar id={u.id} name={u.name} size={22} />
               <input aria-label={`Nome de ${u.name}`} defaultValue={u.name || u.id} key={u.name}
@@ -622,9 +622,9 @@ function TeamSettings() {
             <SupportProductsPicker value={u.supportSaas || []} roles={u.roles || []} products={SAAS} onChange={(list) => setUserSupportSaas(u, list)} />
             <span style={{ display: "flex", gap: 6, justifyContent: "center" }}>
               <button type="button" onClick={() => { setCreated(null); setInvite(null); setReset(null); setLever({ user: u, email: u.email || "" }); }}
-                aria-label={`Conta Lever de ${u.name || u.id}`}
-                title={u.authUserId ? `Conta Lever: ${u.email || "ligada"} · ${u.identityPasswordSet ? "senha já na conta Lever" : "a senha migra no próximo login antigo"}` : `Ligar ${u.name || u.id} a uma conta Lever pelo e-mail`}
-                style={{ height: 26, padding: "0 7px", borderRadius: 999, border: "1px solid " + (u.authUserId ? "var(--accent)" : "var(--line-1)"), background: "var(--bg-1)", color: u.authUserId ? "var(--accent)" : "var(--fg-4)", fontSize: 11, cursor: "pointer", whiteSpace: "nowrap" }}>{u.authUserId ? "Lever ✓" : "Lever"}</button>
+                aria-label={`LeverId de ${u.name || u.id}`}
+                title={u.authUserId ? `LeverId: ${u.email || "ligado"} · ${u.identityPasswordSet ? "senha já no LeverId" : "a senha migra no próximo login antigo"}` : `Ligar ${u.name || u.id} a um LeverId pelo e-mail`}
+                style={{ height: 26, padding: "0 7px", borderRadius: 999, border: "1px solid " + (u.authUserId ? "var(--accent)" : "var(--line-1)"), background: "var(--bg-1)", color: u.authUserId ? "var(--accent)" : "var(--fg-4)", fontSize: 11, cursor: "pointer", whiteSpace: "nowrap" }}>{u.authUserId ? "LeverId ✓" : "LeverId"}</button>
               <button type="button" onClick={() => { setCreated(null); setInvite(null); setLever(null); setReset({ user: u, password: genPassword() }); }}
                 title={`Resetar a senha de ${u.name || u.id} (gera uma nova, sem pedir a atual)`}
                 style={{ height: 26, padding: "0 7px", borderRadius: 999, border: "1px solid " + (reset?.user?.id === u.id ? "var(--accent)" : "var(--line-1)"), background: "var(--bg-1)", color: reset?.user?.id === u.id ? "var(--accent)" : "var(--fg-4)", fontSize: 11, cursor: "pointer" }}>senha</button>
@@ -655,8 +655,8 @@ function TeamSettings() {
         ) : lever ? (
           lever.user.authUserId ? (
             <>
-              <span style={{ fontSize: 12 }}>conta Lever de <b>{lever.user.name || lever.user.id}</b>: <span className="mono">{lever.user.email || "ligada"}</span></span>
-              <span className="mono dim" style={{ fontSize: 11 }}>{lever.user.identityPasswordSet ? "senha já na conta Lever" : "a senha migra no próximo login antigo"}</span>
+              <span style={{ fontSize: 12 }}>LeverId de <b>{lever.user.name || lever.user.id}</b>: <span className="mono">{lever.user.email || "ligado"}</span></span>
+              <span className="mono dim" style={{ fontSize: 11 }}>{lever.user.identityPasswordSet ? "senha já no LeverId" : "a senha migra no próximo login antigo"}</span>
               {lever.sent
                 ? <span role="status" className="mono" style={{ fontSize: 11, color: "var(--pos)" }}>e-mail enviado para {lever.sent}</span>
                 : <button type="button" onClick={sendLeverPasswordEmail} className="mono" style={{ fontSize: 11, textDecoration: "underline" }}>
@@ -667,14 +667,14 @@ function TeamSettings() {
             </>
           ) : (
             <>
-              <span style={{ fontSize: 12 }}>conta Lever pra <b>{lever.user.name || lever.user.id}</b>:</span>
-              <input value={lever.email} type="email" placeholder="e-mail de trabalho" autoFocus aria-label="E-mail da conta Lever"
+              <span style={{ fontSize: 12 }}>LeverId pra <b>{lever.user.name || lever.user.id}</b>:</span>
+              <input value={lever.email} type="email" placeholder="e-mail de trabalho" autoFocus aria-label="E-mail do LeverId"
                 onChange={(e) => setLever({ ...lever, email: e.target.value })}
                 onKeyDown={(e) => { if (e.key === "Enter") linkLever(); if (e.key === "Escape") setLever(null); }}
                 style={{ ...inputStyle, width: 220 }} />
-              <PrimaryButton onClick={linkLever} disabled={!String(lever.email).includes("@") || saving === lever.user.id}>ligar conta Lever</PrimaryButton>
+              <PrimaryButton onClick={linkLever} disabled={!String(lever.email).includes("@") || saving === lever.user.id}>ligar LeverId</PrimaryButton>
               <button onClick={() => setLever(null)} className="mono dim" style={{ fontSize: 11 }}>cancelar</button>
-              <span className="mono dim" style={{ fontSize: 11 }}>e-mail com conta (ex.: LeverAds) usa ela; senão cria, e a senha migra no próximo login</span>
+              <span className="mono dim" style={{ fontSize: 11 }}>e-mail que já tem LeverId (ex.: do LeverAds) usa ele; senão cria, e a senha migra no próximo login</span>
             </>
           )
         ) : invite ? (

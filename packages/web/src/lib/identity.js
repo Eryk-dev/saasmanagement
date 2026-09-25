@@ -122,7 +122,7 @@ export async function setPasswordFromRecovery({ accessToken, refreshToken }, pas
   if (error) throw Object.assign(new Error(error.code === "weak_password" ? "senha fraca demais — use 8+ caracteres" : error.message), { shown: true });
 }
 
-// "Esqueci minha senha" da conta Lever: o GoTrue manda o e-mail (sem dizer se
+// "Esqueci minha senha" do LeverId: o GoTrue manda o e-mail (sem dizer se
 // o e-mail existe, para não revelar contas).
 export async function requestPasswordEmail(email) {
   const { error } = await identity().resetPasswordForEmail(email, { redirectTo: `${location.origin}/` });

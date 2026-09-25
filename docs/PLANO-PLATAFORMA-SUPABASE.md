@@ -185,7 +185,7 @@ O isolamento entre tenants existe só no código (`.eq("org_id")`). Um bug ou um
 - **Blobs:** o base64 do Cockpit (`*_assets`, `wa_media`) e o bucket `proposal-assets` vão para o Storage do `levercopy`, com policies em `storage.objects`.
 
 ### Migrations: cada repo é dono do seu banco
-- **Identidade (`core`, `private`, hook, publication):** fica num repositório próprio (`lever-identity`), com ledger próprio, aplicado no banco da VPS de identidade.
+- **Identidade (`core`, `private`, hook, publication):** fica num repositório próprio (LeverId), com ledger próprio, aplicado no banco da VPS de identidade.
   - Os helpers de RLS e o schema `core_replica` são publicados como pacote SQL versionado, que os três produtos instalam.
 - **Cada produto:**
   - migra só os próprios schemas, junto com o código;
@@ -207,7 +207,7 @@ O isolamento entre tenants existe só no código (`.eq("org_id")`). Um bug ou um
 - **Rede privada** (WireGuard/Tailscale) entre as VPS, para replicação e administração.
 - **Ambientes:** `prod` e `dev` para a identidade e para os três produtos. O dev fica numa VPS isolada, com dados sintéticos e domínios `dev.` + host de prod (ver `PLANO-AMBIENTE-DEV.md`). Hoje nenhum dos três tem ambiente não-prod.
 - **Localização:**
-  - identidade: **exceção decidida em 18/09**, roda na **VPS2 (`82.112.245.65`)** e não numa VPS dedicada. É o serviço `lever-identity` do Coolify (projeto "Supabase Lever"), ao lado do `lp-worker-go`, da `lp-api` de reserva e do Evolution API.
+  - identidade: **exceção decidida em 18/09**, roda na **VPS2 (`82.112.245.65`)** e não numa VPS dedicada. É o serviço `lever-identity` do Coolify (vira LeverId) (projeto "Supabase Lever"), ao lado do `lp-worker-go`, da `lp-api` de reserva e do Evolution API.
     - Mitigação: teto de CPU e memória por container (db 2 vCPU/2 GB; auth, rest e kong 0,5 vCPU cada).
     - Standby e backup ainda pendentes (LEV-499).
     - Migrar para VPS dedicada se a latência do login ou o uso da máquina justificarem;
@@ -261,7 +261,7 @@ O isolamento entre tenants existe só no código (`.eq("org_id")`). Um bug ou um
 
 ### Fase 3 — Identidade na VPS dedicada
 - **VPS de identidade:** GoTrue + Postgres + Kong (prod na VPS2; dev como `identity-dev` na VPS de dev), com rede privada, PITR, standby e monitoramento. Pode ser provisionada em paralelo às Fases 1 e 2.
-- **Repositório `lever-identity`:** `core`, hook, helpers, pacote `core_replica`, chaves (GoTrue, serviço, impersonação), endpoint de impersonação e publication de `core`.
+- **Repositório LeverId:** `core`, hook, helpers, pacote `core_replica`, chaves (GoTrue, serviço, impersonação), endpoint de impersonação e publication de `core`.
 - **Carga inicial do Auth:** script idempotente, pelo mapa da Fase 1:
   - usuários do LeverAds, preservando ids e hash bcrypt;
   - usuários do LeverPrice e staff do Cockpit.

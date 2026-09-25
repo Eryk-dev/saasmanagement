@@ -85,10 +85,10 @@ const publicUser = (u) => ({
   // Status da conta Google PESSOAL (só flags — o refresh token NUNCA sai daqui).
   googleConnected: !!u.google?.refreshToken,
   googleAccount: u.google?.account || "",
-  // Conta na identidade central (auth.users.id do lever-identity). "" = ainda
+  // Conta na identidade central (auth.users.id do LeverId). "" = ainda
   // não ligada: o login pelo GoTrue não entra até um admin ligar.
   authUserId: u.authUserId || "",
-  // E-mail da conta Lever ligada e se a senha já foi levada para lá (Fase 3 do
+  // E-mail do LeverId ligado e se a senha já foi levada para lá (Fase 3 do
   // PLANO-AUTH: migra no primeiro login antigo depois do vínculo).
   email: u.email || "",
   identityPasswordSet: !!u.identityPasswordAt,
@@ -189,7 +189,7 @@ export function registerAuthRoutes(app, repo, { identity = makeIdentityAdmin() }
   const currentUser = async (req) => req.authUser || sessionUser(repo, headerKey(req));
 
   // Migração de senha no login antigo (o scrypt não é importável no GoTrue):
-  // com a senha já validada aqui, grava a mesma na conta Lever ligada. Só em
+  // com a senha já validada aqui, grava a mesma no LeverId ligado. Só em
   // conta criada pelo cockpit e ainda sem senha lá — nunca sobrescreve a senha
   // de uma conta do LeverAds nem a que a pessoa já definiu pelo e-mail. Falha
   // (identidade fora, senha fraca demais para o GoTrue) não impede o login.
@@ -213,7 +213,7 @@ export function registerAuthRoutes(app, repo, { identity = makeIdentityAdmin() }
     catch (err) { app.log?.warn?.(`identidade: papéis de ${user.id} não sincronizaram (${err.message})`); }
   }
 
-  // Ligar o usuário a uma conta Lever pelo e-mail de trabalho. Se o e-mail já
+  // Ligar o usuário a um LeverId pelo e-mail de trabalho. Se o e-mail já
   // tem conta (ex.: a do LeverAds), usa ela — uma pessoa, uma conta, a senha
   // de lá; senão cria a conta, sem senha (migra no próximo login antigo).
   app.post("/api/auth/users/:id/identity", async (req, reply) => {
@@ -230,11 +230,11 @@ export function registerAuthRoutes(app, repo, { identity = makeIdentityAdmin() }
     try { found = await identity.findUserByEmail(email); }
     catch (err) { return reply.code(UPSTREAM_FAILED).send({ error: "identidade indisponível", detail: err.message }); }
     if (found && others.some((u) => u.authUserId === found.userId)) {
-      return reply.code(409).send({ error: "essa conta Lever já está ligada a outra pessoa do time" });
+      return reply.code(409).send({ error: "esse LeverId já está ligado a outra pessoa do time" });
     }
     let authUserId = found?.userId;
     try { if (!authUserId) authUserId = await identity.createUser(email); }
-    catch (err) { return reply.code(UPSTREAM_FAILED).send({ error: "não criou a conta Lever", detail: err.message }); }
+    catch (err) { return reply.code(UPSTREAM_FAILED).send({ error: "não criou o LeverId", detail: err.message }); }
     const source = found ? found.source || "" : "cockpit";
     const updated = await repo.update("users", user.id, {
       email, authUserId, identitySource: source,
@@ -246,13 +246,13 @@ export function registerAuthRoutes(app, repo, { identity = makeIdentityAdmin() }
   });
 
   // E-mail "defina sua senha" para quem não vai passar pelo login antigo (ou
-  // esqueceu a senha da conta Lever). O link volta ao cockpit (`redirectTo`,
+  // esqueceu a senha do LeverId). O link volta ao cockpit (`redirectTo`,
   // a origem de quem pediu), que mostra a tela de definir senha.
   app.post("/api/auth/users/:id/identity/password-email", async (req, reply) => {
     if (!identity) return reply.code(NOT_CONFIGURED).send({ error: "identidade central não configurada (IDENTITY_*)" });
     const user = await repo.get("users", req.params.id);
     if (!user) return reply.code(404).send({ error: "Not found" });
-    if (!user.authUserId || !user.email) return reply.code(409).send({ error: "ligue uma conta Lever antes" });
+    if (!user.authUserId || !user.email) return reply.code(409).send({ error: "ligue um LeverId antes" });
     let redirectTo;
     try {
       const url = new URL(String(req.body?.redirectTo || process.env.COCKPIT_PUBLIC_URL || ""));
@@ -312,7 +312,7 @@ export function registerAuthRoutes(app, repo, { identity = makeIdentityAdmin() }
     const me = await currentUser(req);
     if (!me) return reply.code(401).send({ error: "sessão inválida" });
     // Conta da identidade central troca a senha lá (GoTrue), não aqui.
-    if (req.authVia === "jwt") return reply.code(409).send({ error: "sua senha é trocada no login da Lever, não no cockpit" });
+    if (req.authVia === "jwt") return reply.code(409).send({ error: "sua senha é trocada no LeverId, não no cockpit" });
     const { current, password } = req.body || {};
     if (weakPassword(password)) return reply.code(400).send({ error: WEAK_PASSWORD_ERROR });
     const user = await repo.get("users", me.id);
@@ -456,7 +456,7 @@ export function registerAuthRoutes(app, repo, { identity = makeIdentityAdmin() }
       if (weakPassword(password)) return reply.code(400).send({ error: WEAK_PASSWORD_ERROR });
       patch.passwordHash = hashPassword(password);
     }
-    // Trocou/desligou a conta Lever à mão: a antiga deixa de ser staff.
+    // Trocou/desligou o LeverId à mão: a antiga deixa de ser staff.
     if (patch.authUserId !== undefined && user.authUserId && user.authUserId !== patch.authUserId) await syncStaff(user, []);
     const updated = await repo.update("users", user.id, patch);
     if (patch.roles || patch.authUserId !== undefined) await syncStaff(updated);

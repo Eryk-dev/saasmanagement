@@ -182,7 +182,7 @@ function App({ onInitialReady, initialLoading = false } = {}) {
       last = rev;
     };
     // A reconexão automática do EventSource reusaria a URL com o token do
-    // momento em que abriu — e o da conta Lever vence em 600 s. Em erro, fecha
+    // momento em que abriu — e o do LeverId vence em 600 s. Em erro, fecha
     // e reabre com o token atual.
     let es, retry;
     const connect = () => {

@@ -462,7 +462,7 @@ function UserMenu({ collapsed = false }) {
   const user = stored ? { ...stored, ...(userById(stored.id) || {}) } : null;
 
   async function logout() {
-    // Sessão antiga: apaga no servidor. Conta Lever: clearCredentials encerra
+    // Sessão antiga: apaga no servidor. LeverId: clearCredentials encerra
     // a sessão no GoTrue.
     if (!hasIdentitySession()) { try { await api.logout(); } catch { /* sessão já pode estar morta */ } }
     await clearCredentials();
@@ -617,7 +617,7 @@ function PasswordModal({ onClose }) {
     setBusy(true); setMsg(null);
     try {
       if (hasIdentitySession()) {
-        // Conta Lever: a senha mora na identidade central. Confirma a atual
+        // LeverId: a senha mora na identidade central. Confirma a atual
         // entrando de novo e troca pelo GoTrue.
         const { error: wrong } = await identity().signInWithPassword({ email: identityEmail(), password: current });
         if (wrong) throw Object.assign(new Error("senha atual incorreta"), { status: 401 });

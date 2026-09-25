@@ -241,10 +241,10 @@ a mesma regra; os testes ficam em `sdr-brain.test.js`.
    (`auth-jwt.js`) aceita o JWT ES256 do GoTrue, validado pelo JWKS, só de
    staff da org Lever ligado a um usuário por `users.authUserId`. Telas, papel
    e `supportSaas` continuam vindo de `cockpit.users`. No SPA, `VITE_AUTH_URL` liga o
-   login pela conta Lever (`lib/identity.js`, `@supabase/auth-js`): o JWT vai em
+   login pelo LeverId (`lib/identity.js`, `@supabase/auth-js`): o JWT vai em
    `Authorization: Bearer`, é renovado sozinho, e um 401 "Unauthorized" no meio
    do uso renova uma vez e, se persistir, apaga a credencial e volta ao login.
-   Vínculo da conta Lever (`identity-admin.js`, `IDENTITY_*`): Ajustes → Equipe
+   Vínculo do LeverId (`identity-admin.js`, `IDENTITY_*`): Ajustes → Equipe
    liga pelo e-mail (reusa conta existente, senão cria com `password_pending`),
    a senha do login antigo migra no primeiro login depois do vínculo (nunca
    sobrescreve senha já definida) e as etiquetas viram papéis de staff

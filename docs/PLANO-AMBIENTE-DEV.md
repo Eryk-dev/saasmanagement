@@ -127,7 +127,7 @@ Um **seed compartilhado** entre os três produtos, com ids fixos, para que as in
 - **Cockpit:** no schema `cockpit` do `levercopy-dev`: clientes ligados às orgs A–D do `public`, tickets, conversas de WhatsApp, propostas e faturas fictícias, e nenhum `app_config/google_oauth`.
 - **Volume:** um modo `--volume` que gera ordem de grandeza parecida com prod (anúncios, jobs, notificações) para teste de carga e benchmark do worker Go, sem dado real.
 
-**Onde fica:** o seed de cada produto no próprio repo (o LeverPrice já tem `scripts/_contas_unificadas_seed.py`), mais um arquivo de ids fixos compartilhado. Na Fase 3 as orgs e os usuários passam a vir do seed do `lever-identity`, e cada produto semeia só os próprios dados.
+**Onde fica:** o seed de cada produto no próprio repo (o LeverPrice já tem `scripts/_contas_unificadas_seed.py`), mais um arquivo de ids fixos compartilhado. Na Fase 3 as orgs e os usuários passam a vir do seed do LeverId, e cada produto semeia só os próprios dados.
 
 **Reset:** `reset-dev <produto>` derruba o banco, aplica as migrations do zero e roda o seed. Rodar as migrations do zero toda semana também prova que o histórico aplica limpo.
 
