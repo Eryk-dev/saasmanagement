@@ -243,7 +243,12 @@ a mesma regra; os testes ficam em `sdr-brain.test.js`.
    e `supportSaas` continuam vindo de `cockpit.users`. No SPA, `VITE_AUTH_URL` liga o
    login pela conta Lever (`lib/identity.js`, `@supabase/auth-js`): o JWT vai em
    `Authorization: Bearer`, é renovado sozinho, e um 401 "Unauthorized" no meio
-   do uso renova uma vez e, se persistir, apaga a credencial e volta ao login. `screens.js` controla permissões por
+   do uso renova uma vez e, se persistir, apaga a credencial e volta ao login.
+   Vínculo da conta Lever (`identity-admin.js`, `IDENTITY_*`): Ajustes → Equipe
+   liga pelo e-mail (reusa conta existente, senão cria com `password_pending`),
+   a senha do login antigo migra no primeiro login depois do vínculo (nunca
+   sobrescreve senha já definida) e as etiquetas viram papéis de staff
+   (`team`, `admin`, `support`) na identidade. `screens.js` controla permissões por
    tela, exceções e acessos administrativos; `lib/users.js` espelha a UI.
    `roles` já participa de regras de acesso — não assumir que é só etiqueta.
    Credenciais e tokens não entram no CRUD/JSON público nem no guia.

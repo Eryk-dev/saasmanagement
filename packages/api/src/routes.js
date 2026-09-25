@@ -444,7 +444,7 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // público das landing pages (/public/lp/events) e resumo de conversão.
   registerEloRoutes(app, repo, opts.elo);
   // Usuários do time: login/logout/me + gestão mínima (rotas dedicadas).
-  registerAuthRoutes(app, repo);
+  registerAuthRoutes(app, repo, opts.identity !== undefined ? { identity: opts.identity } : {});
   // Google Meet: conectar conta (OAuth) + criar call na agenda do closer.
   // Claude resume as calls (transcrição → timeline) quando há ANTHROPIC_API_KEY.
   const { client: googleClient, googleUser, briefer, autoIntegrationMeet, cancelIntegrationMeet, autoCallMeet, moveCallMeet, cancelCallMeet } = registerGoogleRoutes(app, repo, { google: opts.google, googleUser: opts.googleUser, anthropic: anthropicClient });

@@ -512,7 +512,9 @@ A cópia local do LeverAds conferida estava em v2.31.0, atrás da `origin/develo
 - [x] Testes com JWKS de teste (`test/auth-jwt.test.js`, 9 casos).
 - [ ] Chave de serviço Cockpit → LeverAds no `leverads-access.js` (**antes da Fase 4**).
 - [x] SPA (25/09): `@supabase/auth-js` com `VITE_AUTH_URL` (`lib/identity.js`); login por e-mail da conta Lever com opção do login antigo; `Authorization: Bearer`; renovação automática e antes da requisição se o token venceu; 401 global (renova uma vez, senão volta ao login); SSE reabre com o token atual; troca de senha e sair pelo GoTrue. Validado no navegador (Playwright) contra o `lever-identity` e o banco local.
-- [ ] Migração de senha no login, `authUserId`, `leveradsOrgId` → `orgId` (órfãos corrigidos antes).
+- [x] Vínculo e migração de senha (26/09): Ajustes → Equipe → "Lever" liga pelo e-mail (`POST /api/auth/users/:id/identity`; reusa a conta existente, senão cria com `app_metadata.password_pending`); o login antigo leva a mesma senha à conta Lever só se ela ainda não tem senha própria (gatilho no `lever-identity` apaga a marca na primeira troca); etiquetas → staff `team`/`admin`/`support`; remover ou desligar tira o staff. Validado de ponta a ponta com o GoTrue local.
+- [ ] E-mail de definir senha para quem não logar na janela (recovery do GoTrue).
+- [ ] `leveradsOrgId` → `orgId` (órfãos corrigidos antes).
 - [ ] Atualizar `docs/CONTEXTO-COCKPIT.md` a cada mudança de auth.
 
 **C. LeverAds**

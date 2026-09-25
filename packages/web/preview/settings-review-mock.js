@@ -6,6 +6,8 @@ export const settingsReviewMock={
  listUsers:async()=>clone(users),
  updateUser:async(id,body)=>{window.__settingsWrites.push({method:'updateUser',id,body:clone(body)});const u=users.find(u=>u.id===id);Object.assign(u,clone(body));return clone(u);},
  createUser:async(body)=>{window.__settingsWrites.push({method:'createUser',body:clone(body)});const u={id:'new-user',roles:[],...clone(body)};users.push(u);return clone(u);},
+ linkIdentity:async(id,email)=>{window.__settingsWrites.push({method:'linkIdentity',id,email});const u=users.find(u=>u.id===id);Object.assign(u,{email,authUserId:'00000000-0000-4000-8000-000000000123',identityPasswordSet:false});return clone(u);},
+ unlinkIdentity:async(id)=>{window.__settingsWrites.push({method:'unlinkIdentity',id});const u=users.find(u=>u.id===id);Object.assign(u,{authUserId:'',identityPasswordSet:false});return clone(u);},
  removeUser:async(id,force)=>{window.__settingsWrites.push({method:'removeUser',id,force});users=users.filter(u=>u.id!==id);return {ok:true};},
  googleUserStatus:async()=>clone(google),googleUserDisconnect:async()=>{window.__settingsWrites.push({method:'googleUserDisconnect'});google.connected=false;return {ok:true};},
  mpSyncNow:async()=>({seen:2,matched:1,settled:1}),

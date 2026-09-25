@@ -9,6 +9,8 @@ import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { sanitizeScreens } from "./screens.js";
 import { sanitizeSupportSaas } from "./support-scope.js";
 import { looksLikeJwt } from "./auth-jwt.js";
+import { makeIdentityAdmin, staffRolesFor } from "./identity-admin.js";
+import { NOT_CONFIGURED, UPSTREAM_FAILED } from "./http-status.js";
 
 const SESSION_TTL_MS = 7 * 24 * 3600 * 1000;
 
@@ -86,6 +88,10 @@ const publicUser = (u) => ({
   // Conta na identidade central (auth.users.id do lever-identity). "" = ainda
   // não ligada: o login pelo GoTrue não entra até um admin ligar.
   authUserId: u.authUserId || "",
+  // E-mail da conta Lever ligada e se a senha já foi levada para lá (Fase 3 do
+  // PLANO-AUTH: migra no primeiro login antigo depois do vínculo).
+  email: u.email || "",
+  identityPasswordSet: !!u.identityPasswordAt,
 });
 
 // Usuário do cockpit ligado a uma conta da identidade (claim `sub` do JWT).
@@ -175,10 +181,79 @@ export function makeAuthHook({ apiKey, repo, openPaths, openPrefixes, providedKe
   };
 }
 
-export function registerAuthRoutes(app, repo) {
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function registerAuthRoutes(app, repo, { identity = makeIdentityAdmin() } = {}) {
   // Quem está logado: o hook já resolveu (sessão ou JWT); sem hook (testes),
   // cai no token de sessão do header.
   const currentUser = async (req) => req.authUser || sessionUser(repo, headerKey(req));
+
+  // Migração de senha no login antigo (o scrypt não é importável no GoTrue):
+  // com a senha já validada aqui, grava a mesma na conta Lever ligada. Só em
+  // conta criada pelo cockpit e ainda sem senha lá — nunca sobrescreve a senha
+  // de uma conta do LeverAds nem a que a pessoa já definiu pelo e-mail. Falha
+  // (identidade fora, senha fraca demais para o GoTrue) não impede o login.
+  async function migratePasswordToIdentity(user, password) {
+    if (!identity || !user.authUserId || user.identitySource !== "cockpit" || user.identityPasswordAt || !user.email) return;
+    try {
+      const found = await identity.findUserByEmail(user.email);
+      if (!found || found.userId !== user.authUserId) return;
+      if (!found.hasPassword) await identity.setPassword(user.authUserId, password);
+      await repo.update("users", user.id, { identityPasswordAt: new Date().toISOString() });
+    } catch (err) {
+      app.log?.warn?.(`identidade: senha de ${user.id} não migrou (${err.message})`);
+    }
+  }
+
+  // Papéis de staff na identidade seguem as etiquetas daqui. Best-effort: a
+  // conferência do login (authUserId + is_staff) já barra quem saiu do time.
+  async function syncStaff(user, roles = staffRolesFor(user)) {
+    if (!identity || !user?.authUserId) return;
+    try { await identity.setStaff(user.authUserId, roles); }
+    catch (err) { app.log?.warn?.(`identidade: papéis de ${user.id} não sincronizaram (${err.message})`); }
+  }
+
+  // Ligar o usuário a uma conta Lever pelo e-mail de trabalho. Se o e-mail já
+  // tem conta (ex.: a do LeverAds), usa ela — uma pessoa, uma conta, a senha
+  // de lá; senão cria a conta, sem senha (migra no próximo login antigo).
+  app.post("/api/auth/users/:id/identity", async (req, reply) => {
+    if (!identity) return reply.code(NOT_CONFIGURED).send({ error: "identidade central não configurada (IDENTITY_*)" });
+    const user = await repo.get("users", req.params.id);
+    if (!user) return reply.code(404).send({ error: "Not found" });
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    if (!EMAIL_RE.test(email)) return reply.code(400).send({ error: "e-mail inválido" });
+    const others = (await repo.list("users")).filter((u) => u.id !== user.id);
+    if (others.some((u) => String(u.email || "").toLowerCase() === email)) {
+      return reply.code(409).send({ error: "esse e-mail já está ligado a outra pessoa do time" });
+    }
+    let found;
+    try { found = await identity.findUserByEmail(email); }
+    catch (err) { return reply.code(UPSTREAM_FAILED).send({ error: "identidade indisponível", detail: err.message }); }
+    if (found && others.some((u) => u.authUserId === found.userId)) {
+      return reply.code(409).send({ error: "essa conta Lever já está ligada a outra pessoa do time" });
+    }
+    let authUserId = found?.userId;
+    try { if (!authUserId) authUserId = await identity.createUser(email); }
+    catch (err) { return reply.code(UPSTREAM_FAILED).send({ error: "não criou a conta Lever", detail: err.message }); }
+    const source = found ? found.source || "" : "cockpit";
+    const updated = await repo.update("users", user.id, {
+      email, authUserId, identitySource: source,
+      // Conta que já existia com senha: nada a migrar.
+      identityPasswordAt: found?.hasPassword ? new Date().toISOString() : "",
+    });
+    await syncStaff(updated);
+    return { ...publicUser(updated), identityCreated: !found };
+  });
+
+  // Desligar: tira o staff na identidade (a conta continua existindo — pode ser
+  // a do LeverAds) e apaga o vínculo daqui.
+  app.delete("/api/auth/users/:id/identity", async (req, reply) => {
+    const user = await repo.get("users", req.params.id);
+    if (!user) return reply.code(404).send({ error: "Not found" });
+    await syncStaff(user, []);
+    const updated = await repo.update("users", user.id, { authUserId: "", identitySource: "", identityPasswordAt: "" });
+    return publicUser(updated);
+  });
 
   // Login (rota ABERTA — está em OPEN_PATHS no index). Nome é case-insensitive.
   app.post("/api/auth/login", async (req, reply) => {
@@ -196,6 +271,7 @@ export function registerAuthRoutes(app, repo) {
       createdAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + SESSION_TTL_MS).toISOString(),
     });
+    await migratePasswordToIdentity(user, password);
     return { token, user: publicUser(user) };
   });
 
@@ -361,7 +437,10 @@ export function registerAuthRoutes(app, repo) {
       if (weakPassword(password)) return reply.code(400).send({ error: WEAK_PASSWORD_ERROR });
       patch.passwordHash = hashPassword(password);
     }
+    // Trocou/desligou a conta Lever à mão: a antiga deixa de ser staff.
+    if (patch.authUserId !== undefined && user.authUserId && user.authUserId !== patch.authUserId) await syncStaff(user, []);
     const updated = await repo.update("users", user.id, patch);
+    if (patch.roles || patch.authUserId !== undefined) await syncStaff(updated);
     return publicUser(updated);
   });
 
@@ -378,6 +457,7 @@ export function registerAuthRoutes(app, repo) {
     if (owned > 0 && !force) {
       return reply.code(409).send({ error: `este usuário ainda é responsável por ${owned} lead(s) — reatribua antes de remover`, owned });
     }
+    await syncStaff(user, []);
     await repo.remove("users", id);
     try { await repo.remove("user_assets", id); } catch { /* pode nem ter foto */ }
     // Sessões órfãs do usuário removido (best-effort; a auth trata como deslogado).
