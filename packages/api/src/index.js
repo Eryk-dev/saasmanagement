@@ -235,7 +235,7 @@ try {
   // quando alguém chamava POST /api/billing/run; agora anda sozinho (1h).
   if (jobOn("billing")) startBilling(repo, { log: app.log });
   // LeverAds: sincroniza o paywall das orgs do produto (payment_active) com o
-  // billing daqui. No-op sem LEVERADS_ADMIN_EMAIL/PASSWORD; dry-run por padrão
+  // billing daqui. No-op sem LEVERADS_SERVICE_KEY (ou ADMIN_EMAIL/PASSWORD); dry-run por padrão
   // (LEVERADS_ACCESS_APPLY=1 pra valer). Só toca orgs com de-para explícito.
   if (jobOn("leveradsAccessSync")) startLeveradsAccessSync(repo, { log: app.log });
   // Aquece os resultados das propostas (incluindo o resumo do deck C) e

@@ -148,7 +148,29 @@ test("GET /api/leverads-access/orgs: sem credencial responde 4xx (não 5xx, o pr
   registerLeveradsAccessRoutes(app, makeMemRepo(), { client: { configured: () => false } });
   const res = await app.inject({ method: "GET", url: "/api/leverads-access/orgs" });
   assert.ok(res.statusCode >= 400 && res.statusCode < 500);
-  assert.match(res.json().error, /LEVERADS_ADMIN/);
+  assert.match(res.json().error, /LEVERADS_SERVICE_KEY/);
+});
+
+test("makeLeveradsClient com chave de serviço: rota do cockpit, sem login e só payment_active", async () => {
+  const calls = [];
+  const key = `svc-${Math.random().toString(36).slice(2)}`;
+  const fetchImpl = async (url, opts = {}) => {
+    calls.push({ url, method: opts.method || "GET", key: opts.headers["X-Cockpit-Service-Key"], auth: opts.headers["X-Auth-Token"], body: opts.body });
+    return { ok: true, status: 200, json: async () => (url.endsWith("/orgs") ? [{ id: "org-1", payment_active: false }] : { changed: true }) };
+  };
+  const client = makeLeveradsClient({ baseUrl: "https://x/", serviceKey: key, email: "a", password: "b", fetchImpl });
+  assert.equal(client.mode, "service");
+  assert.equal(client.configured(), true);
+  await client.listOrgs();
+  await client.updateOrg("org-1", { payment_active: true });
+  assert.deepEqual(calls.map((c) => [c.method, c.url, c.key, c.auth]), [
+    ["GET", "https://x/api/service/cockpit/orgs", key, undefined],
+    ["PUT", "https://x/api/service/cockpit/orgs/org-1/payment", key, undefined],
+  ]);
+  assert.deepEqual(JSON.parse(calls[1].body), { payment_active: true });
+  // Outro campo não passa pela rota de serviço (e nem sai do cockpit).
+  await assert.rejects(client.updateOrg("org-1", { active: false }), /só muda payment_active/);
+  assert.equal(calls.length, 2);
 });
 
 test("makeLeveradsClient: religa a sessão uma vez no 401 e repete a chamada", async () => {

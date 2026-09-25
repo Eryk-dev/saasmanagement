@@ -1,7 +1,9 @@
 // Sync de acesso do produto LeverAds (copylever) — o cockpit é o system-of-record
-// do que foi pago; o corte/liberação vai pela API super-admin do PRÓPRIO produto
-// (PUT /api/super/orgs/:id, auditada lá como org_settings_changed). NUNCA SQL
-// direto no banco do app — combinado com o Leonardo em 15/08/2026.
+// do que foi pago; o corte/liberação vai pela API do PRÓPRIO produto: a rota de
+// serviço do cockpit (PUT /api/service/cockpit/orgs/:id/payment, com
+// LEVERADS_SERVICE_KEY) ou, sem ela, a API super-admin (PUT /api/super/orgs/:id).
+// As duas são auditadas lá como org_settings_changed. NUNCA SQL direto no banco
+// do app — combinado com o Leonardo em 15/08/2026.
 //
 // Semântica do produto (copylever/app/routers/auth.py, require_active_org):
 //   orgs.active=false        → kill switch absoluto (só humano mexe — nunca aqui);
@@ -25,18 +27,26 @@ import { NOT_CONFIGURED } from "./http-status.js";
 const DEFAULT_BASE_URL = "https://copy.levermoney.com.br";
 const DEFAULT_INTERVAL_MS = 10 * 60 * 1000; // mesmo ritmo do espelho MP
 
+const NOT_CONFIGURED_MSG = "sync desligado — defina LEVERADS_SERVICE_KEY (ou LEVERADS_ADMIN_EMAIL/LEVERADS_ADMIN_PASSWORD)";
+
 function envClient() {
   return makeLeveradsClient({
     baseUrl: process.env.LEVERADS_API_URL || DEFAULT_BASE_URL,
+    serviceKey: process.env.LEVERADS_SERVICE_KEY || "",
     email: process.env.LEVERADS_ADMIN_EMAIL || "",
     password: process.env.LEVERADS_ADMIN_PASSWORD || "",
   });
 }
 
-// Cliente HTTP da API do produto. Sessão (X-Auth-Token) expira em dias — o 401
-// religa uma vez e repete a chamada.
-export function makeLeveradsClient({ baseUrl = "", email = "", password = "", fetchImpl = fetch } = {}) {
+// Cliente HTTP da API do produto. Com `serviceKey` usa a rota de serviço do
+// cockpit (/api/service/cockpit/*, header X-Cockpit-Service-Key): só lista
+// orgs e muda payment_active, sem senha de super admin — é o caminho que
+// sobrevive à virada do login do LeverAds para o LeverId (docs/PLANO-AUTH.md).
+// Sem ela, cai no login de super admin por senha (legado, até a chave estar
+// configurada nos dois lados).
+export function makeLeveradsClient({ baseUrl = "", serviceKey = "", email = "", password = "", fetchImpl = fetch } = {}) {
   const base = baseUrl.replace(/\/+$/, "");
+  if (serviceKey) return makeServiceClient({ base, serviceKey, fetchImpl });
   let token = "";
 
   async function login() {
@@ -62,9 +72,36 @@ export function makeLeveradsClient({ baseUrl = "", email = "", password = "", fe
   }
 
   return {
+    mode: "password",
     configured: () => Boolean(base && email && password),
     listOrgs: () => request("/api/super/orgs"),
     updateOrg: (id, patch) => request(`/api/super/orgs/${id}`, { method: "PUT", body: JSON.stringify(patch) }),
+  };
+}
+
+function makeServiceClient({ base, serviceKey, fetchImpl }) {
+  async function request(path, opts = {}) {
+    const res = await fetchImpl(`${base}${path}`, {
+      ...opts,
+      headers: { "Content-Type": "application/json", "X-Cockpit-Service-Key": serviceKey, ...(opts.headers || {}) },
+    });
+    if (!res.ok) throw new Error(`${opts.method || "GET"} ${path} → HTTP ${res.status}`);
+    return res.json();
+  }
+  return {
+    mode: "service",
+    configured: () => Boolean(base && serviceKey),
+    listOrgs: () => request("/api/service/cockpit/orgs"),
+    // A rota de serviço só muda payment_active — é tudo o que o sync escreve.
+    updateOrg: (id, patch) => {
+      const keys = Object.keys(patch || {});
+      if (keys.length !== 1 || keys[0] !== "payment_active") {
+        return Promise.reject(new Error(`rota de serviço só muda payment_active (recebeu ${keys.join(", ") || "nada"})`));
+      }
+      return request(`/api/service/cockpit/orgs/${encodeURIComponent(id)}/payment`, {
+        method: "PUT", body: JSON.stringify({ payment_active: Boolean(patch.payment_active) }),
+      });
+    },
   };
 }
 
@@ -129,7 +166,7 @@ let lastReport = null;
 export function startLeveradsAccessSync(repo, { log, intervalMs, client } = {}) {
   const cli = client || envClient();
   if (!cli.configured()) {
-    log?.info("leverads-access: desligado (defina LEVERADS_ADMIN_EMAIL/LEVERADS_ADMIN_PASSWORD)");
+    log?.info(`leverads-access: desligado (${NOT_CONFIGURED_MSG.replace("sync desligado — ", "")})`);
     return () => {};
   }
   const apply = process.env.LEVERADS_ACCESS_APPLY === "1";
@@ -153,7 +190,7 @@ export function registerLeveradsAccessRoutes(app, repo, { client } = {}) {
   app.post("/api/leverads-access/run", async (req, reply) => {
     const cli = client || envClient();
     if (!cli.configured()) {
-      return reply.code(NOT_CONFIGURED).send({ error: "sync desligado — defina LEVERADS_ADMIN_EMAIL/LEVERADS_ADMIN_PASSWORD" });
+      return reply.code(NOT_CONFIGURED).send({ error: NOT_CONFIGURED_MSG });
     }
     const apply = req.body?.apply === true || process.env.LEVERADS_ACCESS_APPLY === "1";
     lastReport = await runLeveradsAccessSync(repo, { client: cli, apply, log: req.log });
@@ -167,7 +204,7 @@ export function registerLeveradsAccessRoutes(app, repo, { client } = {}) {
   app.get("/api/leverads-access/orgs", async (req, reply) => {
     const cli = client || envClient();
     if (!cli.configured()) {
-      return reply.code(NOT_CONFIGURED).send({ error: "sync desligado — defina LEVERADS_ADMIN_EMAIL/LEVERADS_ADMIN_PASSWORD" });
+      return reply.code(NOT_CONFIGURED).send({ error: NOT_CONFIGURED_MSG });
     }
     const orgs = await cli.listOrgs();
     return orgs
