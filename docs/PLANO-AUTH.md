@@ -430,7 +430,7 @@ Hoje ninguém tem duas orgs, mas o modelo já aceita.
 
 ## 5. Decisões em aberto
 1. ~~**Staff do Cockpit:** migração no login ou convite de redefinição.~~ **Fechada (revisão 2):** migração no login, com convite só para quem não logar na janela.
-2. ~~**TOTP:** importar os fatores ou pedir recadastro.~~ **Fechada (revisão 2):** importar os fatores; recadastro com prazo só se o teste local com o GoTrue v2.186 falhar.
+2. ~~**TOTP:** importar os fatores ou pedir recadastro.~~ **Fechada e validada (27/09):** o GoTrue v2.186 aceita o fator importado (SHA1, 6 dígitos, 30 s); o mesmo autenticador chega a `aal2` no teste da carga, com segredo cifrado em Fernet ou em texto puro legado.
 3. **Postgres da identidade:** ~~subir para a 17 ou manter a 15.8.~~ **Adotada a 17 no repo local** (25/09), a mesma imagem da VPS1 e do dev; o serviço do Coolify (15.8, vazio) é recriado na substituição.
 4. **Onde roda a reconciliação:** job no Coolify da VPS2 (perto do banco da identidade) ou no worker do LeverAds.
 5. **`core.org_products` agora ou só com o LeverPrice:** tabela criada na primeira migration (25/09), sem claim no JWT; `create_org_with_owner` aceita o produto.
@@ -501,10 +501,11 @@ A cópia local do LeverAds conferida estava em v2.31.0, atrás da `origin/develo
 - [x] Par ES256 em `GOTRUE_JWT_KEYS`; o JWKS publica só a chave pública, e as chaves HS256 de papel seguem aceitas no GoTrue e no PostgREST.
 - [x] Migration `core`, `private`, `identity_api`, hook, org "Lever" (id fixo `00000000-0000-4000-8000-00000000000a`), papéis `svc_leverads`/`svc_cockpit` com grants por RPC.
 - [x] pgTAP (29 testes) e smoke de ponta a ponta verdes.
-- [ ] Teste local do fator TOTP importado (fecha a decisão 2).
-- [x] Admin API aceita `id` escolhido e importa hash bcrypt `$2b$`; o usuário loga com a senha antiga (smoke). Falta testar a **atualização** (upsert) de hash e e-mail, que a reconciliação usa.
+- [x] Fator TOTP importado validado (27/09): entra por `private.sync_upsert_totp` (não há endpoint de importação) e chega a `aal2` com o mesmo autenticador.
+- [x] Admin API aceita `id` escolhido e importa hash bcrypt `$2b$` na **criação**; na **atualização ignora** `password_hash` (responde 200 e não muda a senha) — a troca de senha do LeverAds entra por `private.sync_set_password_hash`. Troca de e-mail pela admin API funciona.
 - [ ] Compose de produção com Kong e substituição do serviço manual do Coolify.
-- [ ] Scripts de carga e reconciliação (decisão 4).
+- [x] Carga e reconciliação (27/09, `LeverId/scripts/sync-leverads.mjs`): idempotente, dry-run por padrão, `--watch` para a reconciliação; papel `leverid_sync` sem acesso direto a `auth` (funções estreitas) e com policy própria no `core`; pendências no relatório, sem hash nem segredo. Teste de ponta a ponta (`sync-test.mjs`, 28 verificações) contra uma origem sintética com o schema real do LeverAds: carga, idempotência, login com a senha de sempre, owner pelo e-mail da org, org suspensa, super admin, TOTP em `aal2`, e reconciliação de senha, e-mail, papel, lápide, super admin, TOTP e troca de org.
+- [ ] Onde a reconciliação roda em produção (decisão 4) e o levantamento real das pendências (Fase 0) antes da carga.
 - [ ] Produção: DNS, TLS, SMTP, templates PT-BR, captcha, rate limit por IP real, backup.
 
 **B. Cockpit (este repo)**
