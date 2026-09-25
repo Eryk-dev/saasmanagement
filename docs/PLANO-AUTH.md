@@ -520,11 +520,11 @@ A cópia local do LeverAds conferida estava em v2.31.0, atrás da `origin/develo
 - [ ] `leveradsOrgId` → `orgId` (órfãos corrigidos antes).
 - [ ] Atualizar `docs/CONTEXTO-COCKPIT.md` a cada mudança de auth.
 
-**C. LeverAds**
-- [ ] Login com `lower(email)` (independe do resto).
+**C. LeverAds** (branch `feat/auth` numa worktree própria, `C:\dev\LeverAds-auth`, a partir da `origin/develop`; nada em `develop`/`main`)
+- [x] Login acha a conta com o e-mail em outra caixa (25/09): tenta como veio e em minúsculas, sem `ilike` (curinga do PostgREST abriria chaves novas no throttle). Resta o e-mail antigo gravado com maiúsculas e digitado diferente: sai do levantamento da Fase 0.
 - [ ] `TOKEN_ENCRYPTION_KEY` também no envelope v1, com recifragem em lotes.
 - [ ] Dual-write nos 8 pontos da Fase 1.
-- [ ] `require_user` com Bearer JWT e os ajustes de formato (`_TOKEN_PLAUSIVEL`, `Vary`, redação de logs, cache por `session_id`).
+- [x] `require_user` com Bearer JWT (25/09, `app/services/leverid_jwt.py`): `AUTH_MODE=legacy|dual|leverid`; org e papel conferidos contra `public.users`; `owner` = dono em `require_org_owner`; super admin só com banco e token; TOTP exige `aal2`; rate limit pela sessão do LeverId; `Vary` com `Authorization`; `legacy` mantém até o 422 sem header. Suíte igual à referência (+32 testes), isolamento 67/67 na bancada em `legacy` e em `dual`, e prova em sistema rodando em `docs/provas/feat-auth.md` (API de pé contra a bancada, token real do LeverId local). A prova achou e corrigiu na carga o dono pelo e-mail que é `operator`.
 - [ ] Endpoint de serviço para o Cockpit (`GET/PUT /api/super/orgs`).
 - [ ] Frontend atrás de `VITE_AUTH_PROVIDER`, leitura do token centralizada.
 - [ ] Espelho reverso após a virada.
