@@ -248,7 +248,9 @@ a mesma regra; os testes ficam em `sdr-brain.test.js`.
    liga pelo e-mail (reusa conta existente, senão cria com `password_pending`),
    a senha do login antigo migra no primeiro login depois do vínculo (nunca
    sobrescreve senha já definida) e as etiquetas viram papéis de staff
-   (`team`, `admin`, `support`) na identidade. `screens.js` controla permissões por
+   (`team`, `admin`, `support`) na identidade. O e-mail de definir/redefinir senha
+   (admin na Equipe ou "esqueci minha senha" no login) volta ao cockpit com
+   `#…type=recovery`, tratado no `main.jsx` antes do boot. `screens.js` controla permissões por
    tela, exceções e acessos administrativos; `lib/users.js` espelha a UI.
    `roles` já participa de regras de acesso — não assumir que é só etiqueta.
    Credenciais e tokens não entram no CRUD/JSON público nem no guia.

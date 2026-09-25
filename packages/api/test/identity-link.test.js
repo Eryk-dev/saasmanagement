@@ -38,6 +38,10 @@ function fakeIdentity() {
       for (const a of accounts.values()) if (a.userId === userId) a.password = password;
     },
     async setStaff(userId, roles) { calls.push(["staff", userId, roles]); },
+    async sendPasswordEmail(email, redirectTo) {
+      calls.push(["email", email, redirectTo]);
+      if (this.fail) throw new Error("fora do ar");
+    },
   };
 }
 
@@ -155,6 +159,24 @@ test("papéis, desligar e remover sincronizam o staff na identidade", async (t) 
   assert.deepEqual(identity.calls, [["staff", again.authUserId, []]]);
 });
 
+test("e-mail de definir senha: só com conta ligada, volta para a origem do cockpit", async (t) => {
+  const { app, identity } = await buildApp();
+  t.after(() => app.close());
+  const send = (id, redirectTo, headers = K) => app.inject({ method: "POST", url: `/api/auth/users/${id}/identity/password-email`, headers, payload: { redirectTo } });
+  assert.equal((await send("ana", "http://localhost:5173/")).statusCode, 409, "sem conta ligada");
+  await link(app, "ana", "ana@lever.test");
+  assert.equal((await send("ana", "javascript:alert(1)")).statusCode, 400);
+  assert.equal((await send("ana", "nada")).statusCode, 400);
+  const ok = await send("ana", "http://localhost:5173/app#ajustes?x=1");
+  assert.equal(ok.statusCode, 200, ok.body);
+  assert.deepEqual(identity.calls.at(-1), ["email", "ana@lever.test", "http://localhost:5173/"], "só a origem");
+  identity.fail = true;
+  assert.equal((await send("ana", "http://localhost:5173/")).statusCode, 424);
+  identity.fail = false;
+  const ana = { "x-api-key": (await login(app, "ana", "senha-da-ana")).json().token };
+  assert.equal((await send("ana", "http://localhost:5173/", ana)).statusCode, 403, "só admin dispara");
+});
+
 test("cliente da identidade: desligado sem env; chama as rotas certas com as chaves certas", async () => {
   assert.equal(makeIdentityAdmin({ env: {} }), null);
   const seen = [];
@@ -168,11 +190,13 @@ test("cliente da identidade: desligado sem env; chama as rotas certas com as cha
   assert.equal(await idn.createUser("n@b.c"), "u2");
   await idn.setPassword("u2", "x");
   await idn.setStaff("u2", ["team"]);
+  await idn.sendPasswordEmail("n@b.c", "http://x/");
   assert.deepEqual(seen, [
     ["POST", "http://rest/rpc/find_user_by_email", "Bearer ck"],
     ["POST", "http://auth/admin/users", "Bearer svc"],
     ["PUT", "http://auth/admin/users/u2", "Bearer svc"],
     ["POST", "http://rest/rpc/set_staff", "Bearer ck"],
+    ["POST", "http://auth/recover?redirect_to=http%3A%2F%2Fx%2F", "Bearer svc"],
   ]);
   assert.deepEqual(staffRolesFor({ roles: ["closer"] }), ["team"]);
   assert.deepEqual(staffRolesFor({ roles: ["admin", "support", "sdr"] }), ["team", "admin", "support"]);

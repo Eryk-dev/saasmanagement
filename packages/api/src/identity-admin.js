@@ -56,6 +56,11 @@ export function makeIdentityAdmin({ env = process.env, fetchImpl = fetch } = {})
     async setPassword(userId, password) {
       await call(`${authUrl}/admin/users/${encodeURIComponent(userId)}`, { method: "PUT", key: serviceKey, body: { password } });
     },
+    // E-mail "defina sua senha" (recuperação do GoTrue). O link volta para
+    // `redirectTo` (precisa estar na allow list do GoTrue) com a sessão no hash.
+    async sendPasswordEmail(email, redirectTo) {
+      await call(`${authUrl}/recover?redirect_to=${encodeURIComponent(redirectTo)}`, { method: "POST", key: serviceKey, body: { email } });
+    },
     // Papéis de staff; lista vazia tira o staff (e a membership na org Lever).
     async setStaff(userId, roles) {
       await rpc("set_staff", { p_user_id: userId, p_roles: roles });

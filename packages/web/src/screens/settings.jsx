@@ -529,6 +529,18 @@ function TeamSettings() {
     } catch (e) { setError("Não ligou a conta Lever: " + e.message); }
     action.current=false;setSaving("");
   }
+  // E-mail "defina sua senha" da conta Lever: para quem não vai passar pelo
+  // login antigo (a senha só migra por ele) ou esqueceu a senha.
+  async function sendLeverPasswordEmail() {
+    const u0 = lever?.user;
+    if (!u0 || action.current) return;
+    action.current=true;setError(null);setSaving(u0.id);
+    try {
+      const r = await api.sendIdentityPasswordEmail(u0.id);
+      setLever({ ...lever, sent: r.email || u0.email });
+    } catch (e) { setError("Não enviou o e-mail: " + e.message); }
+    action.current=false;setSaving("");
+  }
   async function unlinkLever() {
     const u0 = lever?.user;
     if (!u0 || action.current) return;
@@ -645,6 +657,11 @@ function TeamSettings() {
             <>
               <span style={{ fontSize: 12 }}>conta Lever de <b>{lever.user.name || lever.user.id}</b>: <span className="mono">{lever.user.email || "ligada"}</span></span>
               <span className="mono dim" style={{ fontSize: 11 }}>{lever.user.identityPasswordSet ? "senha já na conta Lever" : "a senha migra no próximo login antigo"}</span>
+              {lever.sent
+                ? <span role="status" className="mono" style={{ fontSize: 11, color: "var(--pos)" }}>e-mail enviado para {lever.sent}</span>
+                : <button type="button" onClick={sendLeverPasswordEmail} className="mono" style={{ fontSize: 11, textDecoration: "underline" }}>
+                    {lever.user.identityPasswordSet ? "enviar e-mail de redefinir senha" : "enviar e-mail de definir senha"}
+                  </button>}
               <button type="button" onClick={unlinkLever} className="mono" style={{ fontSize: 11, color: "var(--neg)" }}>desligar</button>
               <button type="button" onClick={() => setLever(null)} className="mono dim" style={{ fontSize: 11 }}>fechar</button>
             </>

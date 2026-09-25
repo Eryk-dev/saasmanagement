@@ -245,6 +245,25 @@ export function registerAuthRoutes(app, repo, { identity = makeIdentityAdmin() }
     return { ...publicUser(updated), identityCreated: !found };
   });
 
+  // E-mail "defina sua senha" para quem não vai passar pelo login antigo (ou
+  // esqueceu a senha da conta Lever). O link volta ao cockpit (`redirectTo`,
+  // a origem de quem pediu), que mostra a tela de definir senha.
+  app.post("/api/auth/users/:id/identity/password-email", async (req, reply) => {
+    if (!identity) return reply.code(NOT_CONFIGURED).send({ error: "identidade central não configurada (IDENTITY_*)" });
+    const user = await repo.get("users", req.params.id);
+    if (!user) return reply.code(404).send({ error: "Not found" });
+    if (!user.authUserId || !user.email) return reply.code(409).send({ error: "ligue uma conta Lever antes" });
+    let redirectTo;
+    try {
+      const url = new URL(String(req.body?.redirectTo || process.env.COCKPIT_PUBLIC_URL || ""));
+      if (!/^https?:$/.test(url.protocol)) throw new Error("protocolo");
+      redirectTo = `${url.origin}/`;
+    } catch { return reply.code(400).send({ error: "redirectTo inválido" }); }
+    try { await identity.sendPasswordEmail(user.email, redirectTo); }
+    catch (err) { return reply.code(UPSTREAM_FAILED).send({ error: "não enviou o e-mail", detail: err.message }); }
+    return { ok: true, email: user.email };
+  });
+
   // Desligar: tira o staff na identidade (a conta continua existindo — pode ser
   // a do LeverAds) e apaga o vínculo daqui.
   app.delete("/api/auth/users/:id/identity", async (req, reply) => {
