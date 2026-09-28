@@ -34,6 +34,7 @@ import { hasCatalog, applyCatalog, catalogAmount } from "./proposal-catalog.js";
 import { mentoriaAmount, mentoriaTemplateOf } from "./mentoria.js";
 import { attributionPain, painCode } from "./attribution.js";
 import { calcOferta, deckConfig, slimCatalog } from "./proposal-slides-page.js";
+import { calcOem, deckOemConfig } from "./proposal-oem-page.js";
 
 export const SLIDE_TYPES = ["hero", "cards", "receipt", "steps", "compare", "bignum", "pricing", "closer", "custom"];
 
@@ -201,6 +202,19 @@ export function proposalOffers(slides) {
 // (opção C) não tem slide de preço: o plano montado na tela zero é a única
 // oferta que existe, e é ela que o cliente recebe.
 export function proposalOffersOf(p) {
+  // Criação de anúncios (OEM): a oferta é o lote montado na tela zero —
+  // quantidade × valor por anúncio, pagamento único.
+  if (p?.layout === "oem") {
+    const o = calcOem(deckOemConfig(p));
+    if (!o.configurado) return []; // sem quantidade e preço não há o que mandar
+    return [{
+      offer: 1,
+      label: "Pagamento único",
+      price: o.totalFmt,
+      per: "à vista",
+      cycles: o.qtdFmt + " anúncios × R$ " + o.valorFmt,
+    }];
+  }
   if (p?.layout !== "slides") return proposalOffers(p?.slides);
   const o = calcOferta(slimCatalog(p?.calc?.catalog || {}), deckConfig(p));
   if (!o.mensal) return []; // sem produto escolhido não há o que mandar
@@ -315,6 +329,35 @@ export async function shareProposalOffer(repo, parent, offer, { baseUrl = "" } =
   // configuração da tela zero. O link do cliente é o MESMO deck com a oferta
   // CONGELADA (state.deckOferta) e sem a tabela de preço: mudança de catálogo
   // depois do envio não pode mexer no número que o cliente já viu.
+  // Criação de anúncios (OEM): mesmo princípio do deck de slides — o link do
+  // cliente leva a oferta CONGELADA (state.deckOemOferta), então reconfigurar
+  // depois do envio não mexe no número que ele já viu.
+  if (parent?.layout === "oem") {
+    const cfg = deckOemConfig(parent);
+    const oferta = calcOem(cfg);
+    if (!oferta.configurado) return { ok: false, error: "preencha a quantidade de anúncios e o valor de cada um na tela zero antes de mandar a apresentação" };
+    const snapshot = {
+      saas: parent.saas,
+      template: parent.template || "",
+      layout: "oem",
+      lead: parent.lead || "",
+      name: parent.name || "Proposta",
+      theme: parent.theme || {},
+      calc: parent.calc || {},
+      acceptStage: parent.acceptStage || "",
+      data: parent.data || { lead: {}, answers: {} },
+      state: { ...(parent.state || {}), deckOem: cfg, deckOemOferta: oferta },
+      slides: [],
+      showAll: true,
+      sharedFrom: parent.id,
+      sharedOffer: 1,
+    };
+    const [jaExiste] = await repo.listWhere("proposals", { sharedFrom: parent.id, sharedOffer: 1 }, { fields: [] });
+    const salvo = jaExiste
+      ? await repo.update("proposals", jaExiste.id, snapshot)
+      : await repo.create("proposals", { ...snapshot, editKey: "", views: 0, accepted: false, createdAt: new Date().toISOString() });
+    return { ok: true, proposal: salvo, url: `${baseUrl}/p/${salvo.id}`, offer: 1, label: "Pagamento único" };
+  }
   if (parent?.layout === "slides") {
     const cfg = deckConfig(parent);
     const oferta = calcOferta(slimCatalog(parent?.calc?.catalog || {}), cfg);

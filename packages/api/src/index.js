@@ -68,7 +68,10 @@ const OPEN_PREFIXES = ["/f/", "/public/forms/", "/fi/", "/public/integration-for
   "/s/", "/public/support/",
   // Cases públicos (routes.cases.js): o site da LeverAds faz proxy com cache
   // deste JSON. Só case autorizado e marcado como público sai daqui.
-  "/public/cases"];
+  "/public/cases",
+  // Prints do deck de criação de anúncios (routes.proposals.js): imagens da
+  // própria apresentação, carregadas pela página /p/:id sem login.
+  "/public/deck/"];
 
 // Read the key from either header style: `x-api-key: <key>` or `Authorization: Bearer <key>`.
 // Exceção: /api/events (SSE) — EventSource não manda headers, então a key/token

@@ -24,7 +24,9 @@
 // REGRA DO ARQUIVO (igual ao proposal-page.js): o HTML é UM template literal —
 // nada de crase dentro dele nem do script do cliente, que usa concatenação.
 
-const DECK_CSS = `
+// Exportado porque a apresentação de CRIAÇÃO DE ANÚNCIOS (proposal-oem-page.js)
+// roda no MESMO palco: dois decks, um design system só.
+export const DECK_CSS = `
 /* Lever Premium Design — cores
    Regra de ouro: no máximo UMA cor forte por linha de UI.
    Status = ponto 6px + palavra. Marketplace = dot 8px + nome (nunca pílula de fundo). */

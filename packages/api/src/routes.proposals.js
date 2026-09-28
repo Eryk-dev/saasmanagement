@@ -5,11 +5,15 @@
 // Tracking de visualização: cada GET /p/:id SEM o editKey conta uma view
 // (closer abrindo o próprio link de edição não infla o número).
 
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+
 import { publicProposal, syncProposalLeadSnapshot } from "./proposal.js";
 import { pickCases, publicCase } from "./cases.js";
 import { applyCatalog, catalogAmount, catalogUI, activeProduct } from "./proposal-catalog.js";
 import { proposalPageHtml } from "./proposal-page.js";
 import { proposalSlidesPageHtml, deckConfig } from "./proposal-slides-page.js";
+import { proposalOemPageHtml, deckOemConfig, calcOem, OEM_PRINTS_BASE } from "./proposal-oem-page.js";
 import { leveradsResults, leveradsPresentationResults } from "./leverads-results.js";
 import { liveDeckCases } from "./cases-live.js";
 import { makeRateLimiter } from "./forms.js";
@@ -27,6 +31,12 @@ function renderProposal(p, { editable = false, previewBanner = false, configOnly
   // as views, o aceite e o editKey continuam da rota. O catálogo vai como
   // argumento (publicProposal não expõe a tabela de preço ao navegador; aqui
   // ela só chega na página no modo closer, pra tela zero calcular ao vivo).
+  // Criação de anúncios por OEM (28/09): serviço avulso, deck próprio, e a
+  // única coisa configurável é quantidade × valor por anúncio. Sem catálogo:
+  // nada aqui lê tabela de preço.
+  if (p.layout === "oem") {
+    return proposalOemPageHtml(publicProposal(p, { editable }), { editable, previewBanner, configOnly });
+  }
   if (p.layout === "slides") {
     return proposalSlidesPageHtml(publicProposal(p, { editable }), {
       editable, previewBanner, configOnly,
@@ -111,6 +121,29 @@ export function registerProposalRoutes(app, repo, opts = {}) {
       : /Firefox\//i.test(ua) ? "Firefox" : /Safari\//i.test(ua) ? "Safari" : "";
     return [mobile ? "celular" : "computador", os, browser].filter(Boolean).join(" · ");
   };
+
+  // ── Prints do deck de criação de anúncios ────────────────────────────────
+  // Os prints do anúncio padrão (packages/api/src/assets/deck-oem) saem pela
+  // PRÓPRIA API: em produção é a mesma origem da página /p/:id (o nginx manda
+  // /public/ pra cá), então o deck não depende de bucket externo nem de deploy
+  // do front. Nome na lista branca e leitura direta da pasta — nunca caminho
+  // montado com o que veio na URL.
+  const DECK_OEM_DIR = fileURLToPath(new URL("./assets/deck-oem/", import.meta.url));
+  const MIME_PRINT = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
+  app.get(OEM_PRINTS_BASE + ":file", async (req, reply) => {
+    const nome = String(req.params.file || "");
+    const m = /^[a-z0-9][a-z0-9-]{0,39}\.(jpg|jpeg|png|webp)$/.exec(nome);
+    if (!m) return reply.code(404).send({ error: "Not found" });
+    let buf;
+    try {
+      buf = await readFile(DECK_OEM_DIR + nome);
+    } catch {
+      // Print que ainda não subiu vira espaço reservado na página (a própria
+      // apresentação trata o erro), então 404 aqui é estado esperado.
+      return reply.code(404).send({ error: "Not found" });
+    }
+    return reply.type(MIME_PRINT[m[1]]).header("cache-control", "public, max-age=604800").send(buf);
+  });
 
   // Preview do TEMPLATE em aba própria (dados de exemplo, nada persiste).
   // Funciona pra rascunho também — é ferramenta do dono, id é opaco.
@@ -242,6 +275,12 @@ export function registerProposalRoutes(app, repo, opts = {}) {
       // zera os assentos que a fórmula por assentos usa.
       if (c.contas > 0) state.seats = c.contas;
     }
+    // Tela zero do deck de CRIAÇÃO DE ANÚNCIOS (OEM): dois números, saneados
+    // pelo mesmo deckOemConfig que monta a tela. Não mexe em state.product nem
+    // em state.cycle — este deck não vende plano, vende lote de anúncio.
+    if (body.deckOem && typeof body.deckOem === "object") {
+      state.deckOem = deckOemConfig({ state: { deckOem: body.deckOem }, data: p.data });
+    }
     // Camada de produto (catálogo): o select "Apresentar" da tela zero. Vazio =
     // seguir a sugestão da régua; produto fora do catálogo não entra.
     if (typeof body.product === "string" && (body.product === "" || catalogProducts[body.product])) state.product = body.product;
@@ -299,7 +338,9 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     // O card do pipeline acompanha a APRESENTAÇÃO: mexeu na tela zero (produto,
     // dor, régua), o valor do lead recalcula pelo preço do produto
     // ativo. Negócio já fechado (planClosed/wonAt) tem valor de venda — não mexe.
-    const amount = catalogAmount(updated);
+    // Valor do card: no deck de criação de anúncios é o lote (quantidade ×
+    // valor por anúncio); nos outros, o preço do produto ativo do catálogo.
+    const amount = p.layout === "oem" ? calcOem(state.deckOem || {}).total : catalogAmount(updated);
     if (amount > 0 && p.lead) {
       try {
         const lead = await repo.get("leads", p.lead);

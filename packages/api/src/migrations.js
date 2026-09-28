@@ -2477,6 +2477,14 @@ export async function runStartupMigrations(repo) {
   } catch (err) {
     console.error("[migration] ensureSlidesDeck falhou:", err?.message || err);
   }
+  // Apresentação do serviço avulso de criação de anúncios (OEM). Independente do
+  // catálogo: o preço dela é combinado na call, anúncio a anúncio.
+  try {
+    const changed = await ensureOemDeck(repo);
+    if (changed) console.log("[migration] proposta: deck de criação de anúncios (OEM) pronto no select do card");
+  } catch (err) {
+    console.error("[migration] ensureOemDeck falhou:", err?.message || err);
+  }
   // Depois do catálogo/leque nas propostas: o valor do card dos leads abertos
   // passa a ser o preço do produto que a apresentação sugere.
   try {
@@ -2700,6 +2708,51 @@ export async function regenerateOpenLeadsToSlides(repo, { baseUrl = "", log = nu
     }
   }
   return n;
+}
+
+// ── Criação de anúncios por OEM: a apresentação do serviço avulso (28/09/2026) ──
+// Produto NOVO e separado da plataforma: a gente cria anúncios do zero pelo
+// código OEM (título de 200 caracteres, compatibilidade completa, 3 a 5 fotos
+// tratadas e descrição pra SEO) e cobra por anúncio criado, pagamento único.
+//
+// Como no deck de slides, o documento é só a CASCA: os slides e a tela zero
+// moram no código (proposal-oem-page.js), e o `layout` é o que manda a rota
+// /p/:id escolher o renderer.
+//
+// DE PROPÓSITO sem `calc.catalog`: este deck não vende plano, e catálogo aqui
+// faria o valor do card do lead virar o preço da plataforma no primeiro save da
+// tela zero. O valor deste deck é quantidade × preço por anúncio, calculado no
+// PATCH (routes.proposals.js).
+//
+// Nasce RASCUNHO + `selectable`: o publicado do leverads continua sendo a
+// apresentação oficial, e este entra como escolha no select do card do lead.
+export async function ensureOemDeck(repo) {
+  const base = await repo.get("proposal_templates", "pt_leverads");
+  const cur = await repo.get("proposal_templates", "pt_leverads_oem");
+  if (!cur) {
+    await repo.create("proposal_templates", {
+      id: "pt_leverads_oem",
+      saas: "leverads",
+      name: "Criação de anúncios · OEM",
+      pickLabel: "Criação de anúncios (OEM)",
+      status: "draft",
+      selectable: true,
+      layout: "oem",
+      theme: base?.theme || {},
+      slides: [],
+      acceptStage: base?.acceptStage || "",
+      calc: {},
+      createdAt: new Date().toISOString(),
+    });
+    return true;
+  }
+  const patch = {};
+  if (cur.layout !== "oem") patch.layout = "oem";
+  if (!cur.selectable) patch.selectable = true;
+  if (!cur.pickLabel) patch.pickLabel = "Criação de anúncios (OEM)";
+  if (!Object.keys(patch).length) return false;
+  await repo.update("proposal_templates", "pt_leverads_oem", patch);
+  return true;
 }
 
 export async function ensureMentoriaTemplate(repo) {
