@@ -313,8 +313,9 @@ test("case ao vivo: painel manda no número, o texto salvo manda na frase", () =
   assert.match(vivo.headline, /^574\.780 anúncios/);
   // Sem retrato do painel (banco do produto fora), o case passa intacto.
   assert.deepEqual(caseWithLiveNumbers(doc, null), doc);
-  // Manchete escrita à mão não é reescrita.
-  assert.equal(caseWithLiveNumbers({ ...doc, headlineAuto: false }, SNAP).headline, doc.headline);
+  // Manchete escrita à mão (que não é a frase da régua) não é reescrita.
+  const aMao = { ...doc, headlineAuto: false, headline: "Espelhou as contas e a conta 1 não perdeu venda" };
+  assert.equal(caseWithLiveNumbers(aMao, SNAP).headline, aMao.headline);
 });
 
 test("applyLiveCases: o snapshot decide quem aparece, o painel decide quanto", () => {
@@ -379,4 +380,27 @@ test("liveCases: painel fora do ar não derruba nem apaga o que já foi calculad
   const vazio = await liveCases(repo, { timeoutMs: 50, snapshot: async () => { throw new Error("db down"); } });
   assert.equal(vazio.size, 0);
   _resetLiveCases();
+});
+
+test("case ao vivo: card do painel sem chave é reconhecido pelo rótulo da régua", () => {
+  // É o caso do USACAR e do Vikn, cadastrados fora da migração: rótulos da
+  // régua, fonte painel e nenhuma chave gravada. Sem isso, seriam justamente
+  // os dois cards públicos que continuariam congelados.
+  const doc = {
+    name: "USACAR Autopeças",
+    headline: "23.400 anúncios criados pela plataforma ao longo da parceria.",
+    metrics: [
+      { label: "gerado por anúncios da Lever", value: "R$ 94,9 mil", period: "todo o período", source: "painel" },
+      { label: "pedidos gerados no período", value: "262", period: "", source: "painel" },
+      { label: "de cadastro manual poupadas", value: "3,9 mil h", period: "", source: "painel" },
+      { label: "de custo fixo evitado", value: "R$ 53 mil", period: "", source: "painel" },
+      { label: "tirado do zero", value: "3 contas", period: "", source: "cliente" },
+    ],
+  };
+  const vivo = caseWithLiveNumbers(doc, SNAP);
+  assert.deepEqual(vivo.metrics.map((m) => m.value), ["R$ 442 mil", "3.006", "95,8 mil h", "R$ 1,3 mi", "3 contas"]);
+  assert.match(vivo.headline, /^574\.780 anúncios/, "a manchete da régua acompanha mesmo sem o marcador");
+  // Rótulo que não é da régua continua sendo texto: o painel não adivinha.
+  const outro = caseWithLiveNumbers({ metrics: [{ label: "faturamento da loja", value: "R$ 10", source: "painel" }] }, SNAP);
+  assert.equal(outro.metrics[0].value, "R$ 10");
 });
