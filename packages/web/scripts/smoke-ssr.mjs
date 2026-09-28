@@ -1143,6 +1143,24 @@ try {
       const soma = cols.reduce((a, c) => a + floorOf(c), 0) + P.GRID_GAP * (cols.length - 1);
       if (soma > P.GRID_BUDGET) throw new Error(`${nome} volta a rolar: ${soma}px de ${P.GRID_BUDGET}`);
     }
+    // ── O cartão da apresentação de hoje (18/09 → oficial única) ──────────
+    // A tela deixou de tratar os decks aposentados como iguais: o PUBLICADO
+    // vira cartão com as telas que o cliente vê. As telas do deck de slides
+    // vêm da API (CONFIG.proposals.slidesDeck); aqui vão na mão, porque o que
+    // se exercita é a moldura do cartão e a leitura do outline.
+    const outline = [{ label: "Capa" }, { label: "02a OEM", cond: "oem" }, { label: "08 Investimento" }];
+    const deck = {
+      t: { id: "pt_leverads_slides", name: "Apresentação · LeverAds", status: "published", layout: "slides", officialSince: "2026-09-18" },
+      g: 12, o: 7, c: 2, conv: 17,
+    };
+    const cartao = renderToString(wrap(React.createElement(P.CurrentDeck, { row: deck, outline, onEdit() {} })));
+    for (const must of ["a apresentação de hoje", "Apresentação · LeverAds", "Oficial desde 18/09/2026", "Abrir prévia", "Editar", "08 Investimento", "com OEM no plano"]) {
+      if (!cartao.includes(must)) throw new Error(`o cartão da apresentação não contém "${must}"`);
+    }
+    // Deck campo a campo: as telas saem dos slides do template, sem token cru.
+    const telasDeTemplate = P.deckScreens({ slides: [{ title: "Quanto a *{{lead.company}}* perde" }, { type: "pricing", showIf: { key: "niche" } }] }, []);
+    if (telasDeTemplate[0].label.includes("{{")) throw new Error("token de interpolação vazou pro rótulo da tela");
+    if (telasDeTemplate[1].nota !== "só com niche") throw new Error("a condição do slide sumiu do rótulo");
     console.log("✓ propostas");
   } catch (err) {
     console.error(`✗ propostas: ${err.message}`);

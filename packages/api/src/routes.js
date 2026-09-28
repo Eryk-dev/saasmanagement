@@ -16,6 +16,7 @@ import { runNativeProposal, proposalOffersOf, shareProposalOffer, buildCustomPro
 import { DEAL_PRODUCT_LABEL, dealCatalog } from "./proposal-catalog.js";
 import { mentoriaDealCatalog, MENTORIA_LABEL } from "./mentoria.js";
 import { proposalPageHtml } from "./proposal-page.js";
+import { deckOutline } from "./proposal-slides-page.js";
 import { registerBillingRoutes } from "./routes.billing.js";
 import { initSubscription, syncCustomerArr, createClosedSubscription, closedSubscriptionSpec, closedInstallments, createInstallmentSchedule, syncClosedInstallments } from "./billing.js";
 import { registerAuthRoutes } from "./auth.js";
@@ -689,7 +690,12 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
           // existir no gate de fechamento do mesmo jeito. `group` nas linhas faz
           // o select separar as duas linhas de produto.
           for (const t of templates) if (t.selectable) add(t.saas, mentoriaDealCatalog(t.calc));
-          return { nativeSaas: published.map((t) => t.saas), catalog };
+          // `slidesDeck` = as telas da apresentação em slides, na ordem, com a
+          // condição que esconde cada uma (data-if do deck). A tela de
+          // Propostas mostra isso no cartão da apresentação oficial; vem do
+          // renderer (deckOutline) pra não existir uma segunda lista pra
+          // alguém esquecer de atualizar.
+          return { nativeSaas: published.map((t) => t.saas), catalog, slidesDeck: deckOutline() };
         })(),
         mp: { configured: mpClient.configured(), webhook: mpClient.hasWebhookSecret() },
         meta: { configured: metaClient.configured() },
@@ -1153,6 +1159,24 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     }
     const updated = await repo.update(collection, id, patch);
     if (!updated) return reply.code(404).send({ error: "Not found" });
+    // Tabela de preço editada na tela de Propostas: o deck oficial
+    // (pt_leverads_slides) e o pt_leverads têm que ficar com o MESMO catálogo.
+    // O catálogo MORA no pt_leverads — é lá que as migrações escrevem e de lá
+    // que o ensureSlidesDeck copia a cada boot —, então gravar só num dos dois
+    // faria o próximo deploy devolver o preço velho, sem aviso.
+    if (collection === "proposal_templates" && patch.calc?.catalog) {
+      const gemeo = { pt_leverads_slides: "pt_leverads", pt_leverads: "pt_leverads_slides" }[id];
+      if (gemeo) {
+        try {
+          const outro = await repo.get("proposal_templates", gemeo);
+          if (outro && JSON.stringify(outro.calc?.catalog || null) !== JSON.stringify(patch.calc.catalog)) {
+            await repo.update("proposal_templates", gemeo, {
+              calc: { ...(outro.calc || {}), catalog: JSON.parse(JSON.stringify(patch.calc.catalog)) },
+            });
+          }
+        } catch { /* fail-open: a edição do template não pode falhar por causa do espelho */ }
+      }
+    }
     if (refPatchInfo) {
       await logReferralCollected(repo, {
         lead: updated.id, saas: updated.saas || "", customer: refPatchInfo.customer,

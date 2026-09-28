@@ -2,13 +2,31 @@ import assert from 'node:assert/strict';
 import {reviewHarness} from './harness.mjs';
 const h=await reviewHarness('proposals','Propostas',async p=>{await p.getByRole('button',{name:/^Comercial/}).click();await p.getByRole('button',{name:'Propostas',exact:true}).click();});
 const measurements=[];
+// ── O que ainda se compara com a prancha ─────────────────────────────────────
+// Em 28/09/2026 a tela ganhou, entre o funil e as tabelas, o cartão da
+// apresentação OFICIAL (pedido do Leo: a página fala da apresentação que
+// usamos hoje, e os decks aposentados saem da frente, recolhidos). É uma
+// divergência DELIBERADA do protótipo de 33 telas: daqui pra baixo a página
+// inteira desce, e comparar o y/altura dos blocos com a prancha só produziria
+// ruído. Seguem valendo a moldura de cima (título, cabeçalho, funil), a
+// largura e a posição horizontal das duas tabelas e a geometria INTERNA delas
+// — as colunas, medidas dentro do próprio bloco, continuam as da prancha.
 async function measure(page,reference) {return page.evaluate(reference=>{
  const h1=[...document.querySelectorAll('h1')].find(e=>e.textContent==='Propostas'&&e.getClientRects().length),root=reference?h1.parentElement.parentElement.parentElement:document.querySelector('.proposals-page');
- const header=root.children[0],funnel=root.children[1],templates=root.children[2],generated=root.children[3];
+ const header=root.children[0],funnel=root.children[1];
+ const templates=reference?root.children[2]:root.querySelector('.proposals-templates'),generated=reference?root.children[3]:root.querySelector('.proposals-generated');
  const templateHead=reference?templates.children[1].children[0].children[0]:templates.querySelector('.proposals-table-head'),templateRow=reference?templateHead.nextElementSibling:templates.querySelector('.proposals-template-row');
  const generatedHead=reference?generated.children[1].children[0].children[0]:generated.querySelector('.proposals-table-head'),generatedRow=reference?generatedHead.nextElementSibling:generated.querySelector('.proposals-generated-row');
- const templateCells=Object.fromEntries([...templateRow.children].map((e,i)=>[`templateCell${i}`,e])),generatedCells=Object.fromEntries([...generatedRow.children].map((e,i)=>[`generatedCell${i}`,e]));
- return Object.fromEntries(Object.entries({title:h1,header,funnel,templates,templateIntro:templates.children[0],templateHead,templateRow,generated,generatedIntro:generated.children[0],generatedHead,generatedRow,...templateCells,...generatedCells}).map(([k,e])=>{const r=e.getBoundingClientRect();return[k,{x:r.x,y:r.y,width:r.width,height:r.height}];}));
+ const box=(e,base)=>{const r=e.getBoundingClientRect(),b=base&&base.getBoundingClientRect();return {x:b?r.x-b.x:r.x,y:b?r.y-b.y:r.y,width:r.width,height:r.height};};
+ const faixa=e=>{const r=e.getBoundingClientRect();return {x:r.x,width:r.width};};
+ const cells=(row,prefix)=>Object.fromEntries([...row.children].map((e,i)=>[`${prefix}${i}`,box(e,row)]));
+ return {
+  title:box(h1),header:box(header),funnel:box(funnel),
+  templatesFaixa:faixa(templates),generatedFaixa:faixa(generated),
+  templateHead:box(templateHead,templates),templateRow:box(templateRow,templates),
+  generatedHead:box(generatedHead,generated),generatedRow:box(generatedRow,generated),
+  ...cells(templateRow,'templateCell'),...cells(generatedRow,'generatedCell'),
+ };
 },reference);}
 try{
  for(const width of process.env.REVIEW_FLOWS?[]:[1440,1920]) {
@@ -19,6 +37,15 @@ try{
   await app.close();await ref.close();
  }
  const p=await h.open(1440);await p.locator('.proposals-generated-row').first().waitFor();
+ // O cartão da apresentação de hoje: o deck publicado saiu da tabela e virou
+ // o topo da tela, com as telas que o cliente vê e as duas ações que existem.
+ const atual=p.locator('.proposals-current');await atual.waitFor();
+ assert.ok((await atual.getByRole('link',{name:'Abrir prévia ↗',exact:true}).getAttribute('href')).includes('/p/t/'));
+ assert.ok(await atual.locator('.proposals-screens li').count()>0);
+ const arquivo=p.locator('.proposals-archive');await arquivo.waitFor();
+ assert.equal(await arquivo.locator('.proposals-template-row').first().isVisible(),false,'arquivado nasce recolhido');
+ await arquivo.locator('summary').click();await arquivo.locator('.proposals-template-row').first().waitFor();
+ await h.capture(p,'apresentacao-atual');await arquivo.locator('summary').click();
  const filters=p.locator('.proposals-filters');
  await p.getByRole('button',{name:'Ver quais',exact:true}).click();assert.equal(await p.locator('.proposals-generated-row').count(),9);
  await filters.getByRole('button',{name:/^Fecharam/}).click();assert.equal(await p.locator('.proposals-generated-row').count(),4);
