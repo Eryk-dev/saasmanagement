@@ -194,6 +194,7 @@ function ProposalsScreen() {
       </section>
       {actionError&&<div role="alert" className="proposals-state">{actionError}</div>}
       {oficial&&<CurrentDeck row={oficial} onEdit={event=>edit(oficial.t,event)}/>}
+      <QuickPreview templates={templates}/>
       {!templates.length&&<section className="proposals-templates proposals-card">
         <EmptyState title="Nenhum template neste SaaS" hint="Crie o template base usado para gerar propostas a partir dos leads." action={<PrimaryButton onClick={event=>edit(null,event)}>Criar template</PrimaryButton>}/>
       </section>}
@@ -265,6 +266,84 @@ export function CurrentDeck({row,outline,onEdit}){
       <span><b>{g}</b> geradas em 30 dias</span>
       <span><b>{o}</b> abertas</span>
       <span><b>{c}</b> fecharam</span>
+    </div>
+  </section>;
+}
+
+// ── Prévia rápida ───────────────────────────────────────────────────────────
+// Responde "como fica a apresentação com os dados DESTE cliente?" sem gerar
+// proposta pra ninguém: os campos viram query da /p/t/:id, que abre o deck no
+// modo closer com a fita de "nada aqui é salvo".
+//
+// Os campos mudam com o deck porque cada tela zero pergunta outra coisa: a
+// apresentação padrão monta um plano (contas, ticket, produtos, período) e a de
+// criação de anúncios tem dois números (quantidade e valor por anúncio). Deck
+// sem tela zero (os campo a campo) não aparece aqui: a prévia deles é o link de
+// sempre na tabela.
+//
+// Campo vazio não vai na URL — o deck cai no padrão dele, que é o mesmo estado
+// do "Abrir prévia" sem preencher nada.
+const PREVIEW_NUM = {
+  oem: [["qtd", "Quantidade de anúncios", "na call"], ["valor", "Valor por anúncio (R$)", "na call"]],
+  slides: [["contas", "Contas", "2"], ["pedidos", "Pedidos/mês", "na call"], ["ticket", "Ticket médio (R$)", "na call"], ["vistaPct", "Desc. à vista (%)", "20"]],
+};
+const TIER_NOME = { essencial: "Essencial", escala: "Escala", enterprise: "Enterprise" };
+const LINHA_NOME = { ads: "Lever Ads", oem: "Lever OEM (autopeças)" };
+
+export function QuickPreview({ templates }) {
+  const ordem = t => (t.officialSince ? 0 : t.status === "published" ? 1 : 2);
+  const decks = templates.filter(t => t.layout === "slides" || t.layout === "oem").sort((a, b) => ordem(a) - ordem(b));
+  const [deckId, setDeckId] = useState("");
+  const [f, setF] = useState({ nome: "", empresa: "", contas: "", pedidos: "", ticket: "", vistaPct: "", qtd: "", valor: "", linha: "", tier: "", price: false, priceTier: "", oem: false, oemPack: "", periodo: "anual" });
+  const deck = decks.find(t => t.id === deckId) || decks[0];
+  if (!deck) return null;
+  const set = (k, v) => setF(prev => ({ ...prev, [k]: v }));
+  const products = deck.calc?.catalog?.products || {};
+  const linhas = ["ads", "oem"].filter(l => products[`${l}_essencial`] || products[`${l}_escala`]);
+  const linha = f.linha || linhas[0] || "ads";
+  const tiers = ["essencial", "escala"].filter(t => products[`${linha}_${t}`]);
+  const priceTiers = ["essencial", "escala", "enterprise"].filter(t => products[`price_${t}`]);
+  // Toggle sem opção no catálogo não entra: caixa com select vazio é botão que
+  // não faz nada na frente de quem está montando a prévia.
+  const packs = deck.calc?.catalog?.oemPacks || [];
+  const q = new URLSearchParams();
+  const põe = (k, v) => { if (v !== "" && v != null && v !== false) q.set(k, String(v)); };
+  põe("nome", f.nome.trim()); põe("empresa", f.empresa.trim());
+  for (const [k] of PREVIEW_NUM[deck.layout] || []) põe(k, f[k]);
+  if (deck.layout === "slides") {
+    põe("linha", linha);
+    põe("tier", f.tier || tiers[0] || "");
+    põe("periodo", f.periodo);
+    if (f.price) { põe("price", true); põe("priceTier", f.priceTier || priceTiers[0] || ""); }
+    if (f.oem) { põe("oem", true); põe("oemPack", f.oemPack || packs[0]?.qty || ""); }
+  }
+  const qs = q.toString();
+  const href = `${publicBase()}/p/t/${deck.id}${qs ? `?${qs}` : ""}`;
+  const num = ([k, label, ph]) => <label key={k}><span>{label}</span><input type="number" min="0" inputMode="decimal" placeholder={ph} value={f[k]} onChange={e => set(k, e.target.value)}/></label>;
+  return <section className="proposals-preview proposals-card">
+    <div className="proposals-section-head">
+      <div><h2><i/>prévia rápida</h2><p>preencha e abra a apresentação como o cliente vai ver. Nada é salvo e nenhuma proposta é gerada.</p></div>
+      {decks.length > 1 && <select className="proposals-preview-deck" value={deck.id} onChange={e => setDeckId(e.target.value)} aria-label="Apresentação">
+        {decks.map(t => <option key={t.id} value={t.id}>{t.pickLabel || t.name || t.id}</option>)}
+      </select>}
+    </div>
+    <div className="proposals-preview-grid">
+      <label><span>Cliente</span><input value={f.nome} placeholder="nome do lead" onChange={e => set("nome", e.target.value)}/></label>
+      <label><span>Empresa</span><input value={f.empresa} placeholder="empresa" onChange={e => set("empresa", e.target.value)}/></label>
+      {(PREVIEW_NUM[deck.layout] || []).map(num)}
+      {deck.layout === "slides" && <>
+        <label><span>Linha</span><select value={linha} onChange={e => { set("linha", e.target.value); set("tier", ""); }}>{linhas.map(l => <option key={l} value={l}>{LINHA_NOME[l] || l}</option>)}</select></label>
+        <label><span>Pacote</span><select value={f.tier || tiers[0] || ""} onChange={e => set("tier", e.target.value)}>{tiers.map(t => <option key={t} value={t}>{TIER_NOME[t]} · {products[`${linha}_${t}`]?.contas || 0} contas</option>)}</select></label>
+        <label><span>Período</span><select value={f.periodo} onChange={e => set("periodo", e.target.value)}><option value="anual">Anual · 12×</option><option value="semestral">Semestral · 6×</option></select></label>
+        {!!priceTiers.length && <label className="proposals-preview-check"><span><input type="checkbox" checked={f.price} onChange={e => set("price", e.target.checked)}/>Lever Price</span>
+          <select disabled={!f.price} value={f.priceTier || priceTiers[0] || ""} onChange={e => set("priceTier", e.target.value)}>{priceTiers.map(t => <option key={t} value={t}>{TIER_NOME[t]}</option>)}</select></label>}
+        {!!packs.length && <label className="proposals-preview-check"><span><input type="checkbox" checked={f.oem} onChange={e => set("oem", e.target.checked)}/>Pacote de OEM</span>
+          <select disabled={!f.oem} value={f.oemPack || packs[0]?.qty || ""} onChange={e => set("oemPack", e.target.value)}>{packs.map(pk => <option key={pk.qty} value={pk.qty}>{Number(pk.qty).toLocaleString("pt-BR")} anúncios</option>)}</select></label>}
+      </>}
+    </div>
+    <div className="proposals-preview-foot">
+      <a href={href} target="_blank" rel="noreferrer">Abrir prévia ↗</a>
+      <small>abre em aba nova, no modo closer, com a tela zero já preenchida</small>
     </div>
   </section>;
 }

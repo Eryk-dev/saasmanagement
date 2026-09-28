@@ -102,6 +102,26 @@ function previewFromTemplate(t, { data, state, answers, cases } = {}) {
   };
 }
 
+// Prévia PREENCHIDA (tela de Propostas → "prévia rápida"): os campos da tela
+// zero chegam pela query e viram o estado do deck. Nada aqui valida: quem
+// sanea é o MESMO deckConfig/deckOemConfig que monta a tela no runtime, então
+// lixo na URL vira o padrão em vez de quebrar a página. Só a conversão de
+// booleano precisa ser feita aqui: "false" na query é string, e string é
+// verdadeira.
+const DECK_SLIDES_KEYS = ["nome", "empresa", "contas", "pedidos", "ticket", "vistaPct", "plataforma", "linha", "tier", "price", "priceTier", "oem", "oemPack", "periodo"];
+const DECK_OEM_KEYS = ["nome", "empresa", "qtd", "valor"];
+function deckFromQuery(q, keys) {
+  const out = {};
+  let algum = false;
+  for (const k of keys) {
+    if (q[k] === undefined) continue;
+    const v = String(q[k]);
+    out[k] = v === "true" ? true : v === "false" ? false : v;
+    algum = true;
+  }
+  return algum ? out : null;
+}
+
 export function registerProposalRoutes(app, repo, opts = {}) {
   const discord = opts.discord; // injetado por routes.js (fail-open, pode faltar em teste direto)
   const allow = makeRateLimiter({
@@ -178,6 +198,20 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     if (typeof q.desc === "string") fake.state.discountPct = Math.min(15, Math.max(0, Math.round(Number(q.desc) || 0)));
     if (typeof q.order === "string") fake.state.deckOrder = q.order.toUpperCase() === "B" ? "B" : "";
     if (typeof q.dores === "string") fake.state.dores = q.dores.split("|").map((d) => d.slice(0, 120)).filter(Boolean).slice(0, 12);
+    // Tela zero preenchida pela query (prévia rápida da tela de Propostas).
+    const cfgQuery = t.layout === "oem" ? deckFromQuery(q, DECK_OEM_KEYS)
+      : t.layout === "slides" ? deckFromQuery(q, DECK_SLIDES_KEYS) : null;
+    if (cfgQuery) {
+      if (t.layout === "oem") fake.state.deckOem = cfgQuery;
+      else fake.state.deckC = cfgQuery;
+      // O nome e a empresa também vão pro "lead" da prévia: é deles que saem os
+      // padrões quando o campo da tela zero fica em branco.
+      if (typeof q.nome === "string" && q.nome.trim()) {
+        fake.data.lead.name = q.nome.slice(0, 60);
+        fake.data.lead.firstName = fake.data.lead.name.trim().split(/\s+/)[0] || "";
+      }
+      if (typeof q.empresa === "string" && q.empresa.trim()) fake.data.lead.company = q.empresa.slice(0, 80);
+    }
     return reply.type("text/html").header("cache-control", "no-store").send(renderProposal(fake, { editable: true, previewBanner: true }));
   });
 

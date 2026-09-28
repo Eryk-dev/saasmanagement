@@ -125,6 +125,17 @@ test("rota: o closer recebe a tela zero; o cliente recebe a apresentação e o a
   assert.match(embed.body, /"configOnly":true/, "a página sabe que está embutida");
   assert.doesNotMatch(closer.body, /<a class="cfg-present"/, "fora do embed o atalho não aparece");
 
+  // Prévia rápida da tela de Propostas: os campos do formulário chegam pela
+  // query e a prévia abre com a tela zero já preenchida.
+  const cheia = await app.inject({ method: "GET", url: "/p/t/pt_leverads_oem?nome=Cleber&empresa=O2%20Autope%C3%A7as&qtd=200&valor=25" });
+  assert.equal(cheia.statusCode, 200);
+  assert.match(cheia.body, /"totalFmt":"5\.000"/, "200 × 25 já sai somado na prévia");
+  assert.match(cheia.body, /"empresa":"O2 Autope/, "a empresa do formulário entra na capa");
+  // Lixo na query cai no padrão em vez de quebrar a página.
+  const suja = await app.inject({ method: "GET", url: "/p/t/pt_leverads_oem?qtd=abc&valor=-9" });
+  assert.equal(suja.statusCode, 200);
+  assert.match(suja.body, /\[total\]/, "sem número válido, o deck volta pro colchete");
+
   // Pré-visualização do template (tela de Propostas) abre o mesmo deck.
   const preview = await app.inject({ method: "GET", url: "/p/t/pt_leverads_oem" });
   assert.equal(preview.statusCode, 200);

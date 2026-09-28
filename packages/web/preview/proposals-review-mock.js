@@ -18,6 +18,9 @@ export function setupProposalsReview(seed) {
    ads_essencial:{line:'ads',tier:'essencial',name:'Lever Ads · Essencial',contas:3,anu:{per:497,total:5964},sem:{per:597,total:3582},inclui:{motor:['Sincronização das suas contas'],plataforma:['3 contas incluídas']}},
    ads_escala:{line:'ads',tier:'escala',name:'Lever Ads · Escala',contas:7,anu:{per:999,total:11988},sem:{per:1197,total:7182},inclui:{motor:['Equalização das suas contas'],plataforma:['7 contas incluídas · conta extra R$ 100/mês']}},
   },addons:{contaExtra:{label:'Conta extra no Escala',per:100}},oemPacks:[{qty:1000,price:2000},{qty:2000,price:3500}]}}},
+  // O deck de criação de anúncios: também tem tela zero (dois números), então
+  // entra no seletor da prévia rápida ao lado da apresentação oficial.
+  {id:'t6',name:'Criação de anúncios · OEM',pickLabel:'Criação de anúncios (OEM)',layout:'oem',status:'draft',selectable:true,slides:[]},
   {id:'t2',name:'Lever OEM · Essencial',status:'published',slides:Array.from({length:7},(_,i)=>({type:'cards',title:`Slide ${i+1}`}))},
   {id:'t3',name:'Lever Price · Enterprise',status:'published',slides:Array.from({length:9},(_,i)=>({type:'cards',title:`Slide ${i+1}`}))},
   {id:'t4',name:'Mentoria · Assistido',status:'draft',slides:Array.from({length:5},(_,i)=>({type:'cards',title:`Slide ${i+1}`}))},
