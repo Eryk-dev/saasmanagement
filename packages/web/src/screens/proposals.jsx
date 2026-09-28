@@ -270,56 +270,85 @@ export function CurrentDeck({row,outline,onEdit}){
   </section>;
 }
 
-// ── Prévia rápida ───────────────────────────────────────────────────────────
-// Responde "como fica a apresentação com os dados DESTE cliente?" sem gerar
-// proposta pra ninguém: os campos viram query da /p/t/:id, que abre o deck no
-// modo closer com a fita de "nada aqui é salvo".
-//
-// Os campos mudam com o deck porque cada tela zero pergunta outra coisa: a
-// apresentação padrão monta um plano (contas, ticket, produtos, período) e a de
-// criação de anúncios tem dois números (quantidade e valor por anúncio). Deck
-// sem tela zero (os campo a campo) não aparece aqui: a prévia deles é o link de
-// sempre na tabela.
-//
-// Campo vazio não vai na URL — o deck cai no padrão dele, que é o mesmo estado
-// do "Abrir prévia" sem preencher nada.
+// ── Formulário do deck (prévia rápida e editor) ─────────────────────────────
+// Os decks com TELA ZERO (a apresentação em slides e a de criação de anúncios)
+// não se editam campo a campo: o que muda de cliente pra cliente são os poucos
+// campos da tela zero. Este formulário é o mesmo nos dois lugares onde ele
+// aparece — o cartão "prévia rápida" da tela e o editor do template —, e é
+// dele que saem tanto a prévia quanto o link que vai pro cliente.
 const PREVIEW_NUM = {
   oem: [["qtd", "Quantidade de anúncios", "na call"], ["valor", "Valor por anúncio (R$)", "na call"]],
   slides: [["contas", "Contas", "2"], ["pedidos", "Pedidos/mês", "na call"], ["ticket", "Ticket médio (R$)", "na call"], ["vistaPct", "Desc. à vista (%)", "20"]],
 };
 const TIER_NOME = { essencial: "Essencial", escala: "Escala", enterprise: "Enterprise" };
 const LINHA_NOME = { ads: "Lever Ads", oem: "Lever OEM (autopeças)" };
+export const DECK_FORM_VAZIO = { nome: "", empresa: "", contas: "", pedidos: "", ticket: "", vistaPct: "", qtd: "", valor: "", linha: "", tier: "", price: false, priceTier: "", oem: false, oemPack: "", periodo: "anual" };
+export const temTelaZero = t => t?.layout === "slides" || t?.layout === "oem";
 
-export function QuickPreview({ templates }) {
-  const ordem = t => (t.officialSince ? 0 : t.status === "published" ? 1 : 2);
-  const decks = templates.filter(t => t.layout === "slides" || t.layout === "oem").sort((a, b) => ordem(a) - ordem(b));
-  const [deckId, setDeckId] = useState("");
-  const [f, setF] = useState({ nome: "", empresa: "", contas: "", pedidos: "", ticket: "", vistaPct: "", qtd: "", valor: "", linha: "", tier: "", price: false, priceTier: "", oem: false, oemPack: "", periodo: "anual" });
-  const deck = decks.find(t => t.id === deckId) || decks[0];
-  if (!deck) return null;
-  const set = (k, v) => setF(prev => ({ ...prev, [k]: v }));
+// As opções vêm do catálogo DO DECK, como na tela zero. Toggle sem opção no
+// catálogo não entra: caixa com select vazio é botão que não faz nada.
+function deckOpcoes(deck, f) {
   const products = deck.calc?.catalog?.products || {};
   const linhas = ["ads", "oem"].filter(l => products[`${l}_essencial`] || products[`${l}_escala`]);
   const linha = f.linha || linhas[0] || "ads";
-  const tiers = ["essencial", "escala"].filter(t => products[`${linha}_${t}`]);
-  const priceTiers = ["essencial", "escala", "enterprise"].filter(t => products[`price_${t}`]);
-  // Toggle sem opção no catálogo não entra: caixa com select vazio é botão que
-  // não faz nada na frente de quem está montando a prévia.
-  const packs = deck.calc?.catalog?.oemPacks || [];
+  return {
+    products, linhas, linha,
+    tiers: ["essencial", "escala"].filter(t => products[`${linha}_${t}`]),
+    priceTiers: ["essencial", "escala", "enterprise"].filter(t => products[`price_${t}`]),
+    packs: deck.calc?.catalog?.oemPacks || [],
+  };
+}
+
+// O que a tela zero do deck guarda, a partir do formulário. Campo vazio fica
+// vazio: quem decide o padrão é o deck, não esta tela.
+export function deckPayload(deck, f) {
+  const base = { nome: f.nome.trim(), empresa: f.empresa.trim() };
+  if (deck.layout === "oem") return { ...base, qtd: f.qtd, valor: f.valor };
+  const { linha, tiers, priceTiers, packs } = deckOpcoes(deck, f);
+  const out = { ...base, contas: f.contas, pedidos: f.pedidos, ticket: f.ticket, vistaPct: f.vistaPct, linha, tier: f.tier || tiers[0] || "", periodo: f.periodo };
+  if (f.price) { out.price = true; out.priceTier = f.priceTier || priceTiers[0] || ""; }
+  if (f.oem) { out.oem = true; out.oemPack = f.oemPack || packs[0]?.qty || ""; }
+  return out;
+}
+export function deckPreviewHref(deck, f) {
   const q = new URLSearchParams();
-  const põe = (k, v) => { if (v !== "" && v != null && v !== false) q.set(k, String(v)); };
-  põe("nome", f.nome.trim()); põe("empresa", f.empresa.trim());
-  for (const [k] of PREVIEW_NUM[deck.layout] || []) põe(k, f[k]);
-  if (deck.layout === "slides") {
-    põe("linha", linha);
-    põe("tier", f.tier || tiers[0] || "");
-    põe("periodo", f.periodo);
-    if (f.price) { põe("price", true); põe("priceTier", f.priceTier || priceTiers[0] || ""); }
-    if (f.oem) { põe("oem", true); põe("oemPack", f.oemPack || packs[0]?.qty || ""); }
-  }
+  for (const [k, v] of Object.entries(deckPayload(deck, f))) if (v !== "" && v != null && v !== false) q.set(k, String(v));
   const qs = q.toString();
-  const href = `${publicBase()}/p/t/${deck.id}${qs ? `?${qs}` : ""}`;
+  return `${publicBase()}/p/t/${deck.id}${qs ? `?${qs}` : ""}`;
+}
+
+export function DeckForm({ deck, value: f, onChange }) {
+  const set = (k, v) => onChange({ ...f, [k]: v });
+  const { products, linhas, linha, tiers, priceTiers, packs } = deckOpcoes(deck, f);
   const num = ([k, label, ph]) => <label key={k}><span>{label}</span><input type="number" min="0" inputMode="decimal" placeholder={ph} value={f[k]} onChange={e => set(k, e.target.value)}/></label>;
+  return <div className="proposals-deck-form">
+    <label><span>Cliente</span><input value={f.nome} placeholder="nome do lead" onChange={e => set("nome", e.target.value)}/></label>
+    <label><span>Empresa</span><input value={f.empresa} placeholder="empresa" onChange={e => set("empresa", e.target.value)}/></label>
+    {(PREVIEW_NUM[deck.layout] || []).map(num)}
+    {deck.layout === "slides" && <>
+      <label><span>Linha</span><select value={linha} onChange={e => { onChange({ ...f, linha: e.target.value, tier: "" }); }}>{linhas.map(l => <option key={l} value={l}>{LINHA_NOME[l] || l}</option>)}</select></label>
+      <label><span>Pacote</span><select value={f.tier || tiers[0] || ""} onChange={e => set("tier", e.target.value)}>{tiers.map(t => <option key={t} value={t}>{TIER_NOME[t]} · {products[`${linha}_${t}`]?.contas || 0} contas</option>)}</select></label>
+      <label><span>Período</span><select value={f.periodo} onChange={e => set("periodo", e.target.value)}><option value="anual">Anual · 12×</option><option value="semestral">Semestral · 6×</option></select></label>
+      {!!priceTiers.length && <label className="proposals-deck-check"><span><input type="checkbox" checked={f.price} onChange={e => set("price", e.target.checked)}/>Lever Price</span>
+        <select disabled={!f.price} value={f.priceTier || priceTiers[0] || ""} onChange={e => set("priceTier", e.target.value)}>{priceTiers.map(t => <option key={t} value={t}>{TIER_NOME[t]}</option>)}</select></label>}
+      {!!packs.length && <label className="proposals-deck-check"><span><input type="checkbox" checked={f.oem} onChange={e => set("oem", e.target.checked)}/>Pacote de OEM</span>
+        <select disabled={!f.oem} value={f.oemPack || packs[0]?.qty || ""} onChange={e => set("oemPack", e.target.value)}>{packs.map(pk => <option key={pk.qty} value={pk.qty}>{Number(pk.qty).toLocaleString("pt-BR")} anúncios</option>)}</select></label>}
+    </>}
+  </div>;
+}
+
+// ── Prévia rápida ───────────────────────────────────────────────────────────
+// Responde "como fica a apresentação com os dados DESTE cliente?" sem gerar
+// proposta pra ninguém: os campos viram query da /p/t/:id, que abre o deck no
+// modo closer com a fita de "nada aqui é salvo". Deck sem tela zero (os campo a
+// campo) não aparece aqui: a prévia deles é o link de sempre na tabela.
+export function QuickPreview({ templates }) {
+  const ordem = t => (t.officialSince ? 0 : t.status === "published" ? 1 : 2);
+  const decks = templates.filter(temTelaZero).sort((a, b) => ordem(a) - ordem(b));
+  const [deckId, setDeckId] = useState("");
+  const [f, setF] = useState(DECK_FORM_VAZIO);
+  const deck = decks.find(t => t.id === deckId) || decks[0];
+  if (!deck) return null;
   return <section className="proposals-preview proposals-card">
     <div className="proposals-section-head">
       <div><h2><i/>prévia rápida</h2><p>preencha e abra a apresentação como o cliente vai ver. Nada é salvo e nenhuma proposta é gerada.</p></div>
@@ -327,22 +356,9 @@ export function QuickPreview({ templates }) {
         {decks.map(t => <option key={t.id} value={t.id}>{t.pickLabel || t.name || t.id}</option>)}
       </select>}
     </div>
-    <div className="proposals-preview-grid">
-      <label><span>Cliente</span><input value={f.nome} placeholder="nome do lead" onChange={e => set("nome", e.target.value)}/></label>
-      <label><span>Empresa</span><input value={f.empresa} placeholder="empresa" onChange={e => set("empresa", e.target.value)}/></label>
-      {(PREVIEW_NUM[deck.layout] || []).map(num)}
-      {deck.layout === "slides" && <>
-        <label><span>Linha</span><select value={linha} onChange={e => { set("linha", e.target.value); set("tier", ""); }}>{linhas.map(l => <option key={l} value={l}>{LINHA_NOME[l] || l}</option>)}</select></label>
-        <label><span>Pacote</span><select value={f.tier || tiers[0] || ""} onChange={e => set("tier", e.target.value)}>{tiers.map(t => <option key={t} value={t}>{TIER_NOME[t]} · {products[`${linha}_${t}`]?.contas || 0} contas</option>)}</select></label>
-        <label><span>Período</span><select value={f.periodo} onChange={e => set("periodo", e.target.value)}><option value="anual">Anual · 12×</option><option value="semestral">Semestral · 6×</option></select></label>
-        {!!priceTiers.length && <label className="proposals-preview-check"><span><input type="checkbox" checked={f.price} onChange={e => set("price", e.target.checked)}/>Lever Price</span>
-          <select disabled={!f.price} value={f.priceTier || priceTiers[0] || ""} onChange={e => set("priceTier", e.target.value)}>{priceTiers.map(t => <option key={t} value={t}>{TIER_NOME[t]}</option>)}</select></label>}
-        {!!packs.length && <label className="proposals-preview-check"><span><input type="checkbox" checked={f.oem} onChange={e => set("oem", e.target.checked)}/>Pacote de OEM</span>
-          <select disabled={!f.oem} value={f.oemPack || packs[0]?.qty || ""} onChange={e => set("oemPack", e.target.value)}>{packs.map(pk => <option key={pk.qty} value={pk.qty}>{Number(pk.qty).toLocaleString("pt-BR")} anúncios</option>)}</select></label>}
-      </>}
-    </div>
+    <DeckForm deck={deck} value={f} onChange={setF}/>
     <div className="proposals-preview-foot">
-      <a href={href} target="_blank" rel="noreferrer">Abrir prévia ↗</a>
+      <a href={deckPreviewHref(deck, f)} target="_blank" rel="noreferrer">Abrir prévia ↗</a>
       <small>abre em aba nova, no modo closer, com a tela zero já preenchida</small>
     </div>
   </section>;
@@ -377,13 +393,17 @@ function newTemplate(saasId) {
   };
 }
 
+const draftCatalogo = t => t?.calc?.catalog || null;
+
 function TemplateEditor({ template, saasId, onDone, onCancel }) {
   const isEdit = !!template?.id;
-  // A apresentação em slides não se edita campo a campo: as telas e os textos
-  // moram no renderer, e o que muda sem deploy é a TABELA (preço, contas
-  // inclusas, entregáveis) e o tema. O editor de slides + calculadora do deck
-  // antigo, aberto nela, mostrava uma lista vazia e travava o salvar.
-  const isSlides = template?.layout === "slides";
+  // Deck com TELA ZERO (apresentação em slides e criação de anúncios) não se
+  // edita campo a campo: as telas e os textos moram no renderer. O que muda sem
+  // deploy é a TABELA de preço (quando o deck tem uma), o tema e os dados do
+  // cliente. O editor de slides + calculadora do deck antigo, aberto num deles,
+  // mostrava uma lista vazia e travava o salvar.
+  const telaZero = temTelaZero(template);
+  const temCatalogo = !!draftCatalogo(template);
   const [draft, setDraft] = useState(() => template
     ? { ...newTemplate(saasId), ...structuredClone(template), theme: { ...THEME_DEFAULTS, ...(template.theme || {}) } }
     : newTemplate(saasId));
@@ -400,20 +420,43 @@ function TemplateEditor({ template, saasId, onDone, onCancel }) {
   const product = (window.SEED.SAAS || []).find((s) => s.id === draft.saas);
   const stages = (product?.funnel || []).map((f) => f.stage);
 
+  // Dados do cliente pra este deck: alimentam a prévia e o link avulso. Ficam
+  // FORA do draft de propósito — não são do template, são desta apresentação.
+  const [deckForm,setDeckForm]=useState(DECK_FORM_VAZIO);
+  const [link,setLink]=useState(''),[linkBusy,setLinkBusy]=useState(false),[linkErro,setLinkErro]=useState(null),[linkCopiado,setLinkCopiado]=useState(false);
+  async function gerarLink() {
+    if(linkBusy)return;
+    setLinkBusy(true);setLinkErro(null);
+    try {
+      const r=await api.proposalLink(template.id,{config:deckPayload(draft,deckForm)});
+      setLink(`${publicBase()}/p/${r.id}`);setLinkCopiado(false);
+    } catch(e){setLinkErro(e.message||String(e));}
+    setLinkBusy(false);
+  }
+  async function copiarLink() {
+    try{await navigator.clipboard.writeText(link);setLinkCopiado(true);setTimeout(()=>setLinkCopiado(false),1600);}
+    catch{setLinkErro('Não foi possível copiar. Selecione o link e copie na mão.');}
+  }
+
   const [previewHtml,setPreviewHtml]=useState(''),[previewError,setPreviewError]=useState(null),[previewAttempt,setPreviewAttempt]=useState(0);
   useEffect(()=>{
     let alive=true;
     const timer=setTimeout(async()=>{
       setPreviewError(null);
-      try {const result=await api.proposalPreview({template:draft});if(alive)setPreviewHtml(result.html);}
+      try {
+        // A prévia do iframe acompanha o formulário: o closer vê o deck com os
+        // dados que acabou de digitar, não com o cliente de exemplo.
+        const payload=telaZero?{template:draft,state:draft.layout==='oem'?{deckOem:deckPayload(draft,deckForm)}:{deckC:deckPayload(draft,deckForm)}}:{template:draft};
+        const result=await api.proposalPreview(payload);if(alive)setPreviewHtml(result.html);
+      }
       catch(error){if(alive)setPreviewError(error.message||'Não foi possível carregar a prévia.');}
     },600);
     return()=>{alive=false;clearTimeout(timer);};
-  },[draft,previewAttempt]);
+  },[draft,deckForm,telaZero,previewAttempt]);
 
   async function save() {
     if (!String(draft.name).trim()) { setError("Dê um nome ao template"); return; }
-    if (!isSlides && !(draft.slides || []).length) { setError("Adicione ao menos um slide"); return; }
+    if (!telaZero && !(draft.slides || []).length) { setError("Adicione ao menos um slide"); return; }
     if(busy)return;
     setBusy(true); setError(null);
     const payload = {
@@ -460,16 +503,35 @@ function TemplateEditor({ template, saasId, onDone, onCancel }) {
               </select>
             </label>
           </div>
-          {isSlides ? (
+          {telaZero ? (
             <>
               <p className="proposal-editor-note">
-                As telas e os textos desta apresentação moram no código — o deck é montado pela tela zero, no palco de slides.
-                Aqui se edita o que muda sem deploy: a tabela de preço, os entregáveis e o tema da marca.
-                O preço novo vale para as apresentações geradas daqui pra frente; as que já estão com o cliente são cópias fechadas (re-gere pelo card do lead para atualizar).
+                As telas e os textos desta apresentação moram no código, no palco de slides: o deck é montado pela tela zero, não slide a slide.
+                {temCatalogo
+                  ? " Aqui se edita o que muda sem deploy: os dados do cliente desta apresentação, a tabela de preço, os entregáveis e o tema da marca. O preço novo vale para as apresentações geradas daqui pra frente; as que já estão com o cliente são cópias fechadas (re-gere pelo card do lead para atualizar)."
+                  : " Aqui se preenchem os dados desta apresentação e o tema da marca. O link gerado é uma cópia fechada: mexer no template depois não muda o que o cliente já viu."}
               </p>
 
-              <div className="kicker" style={sectionTitle}>Tabela de preço e entregáveis</div>
-              <CatalogEditor catalog={draft.calc?.catalog || null} onChange={(catalog) => set({ calc: { ...(draft.calc || {}), catalog } })} />
+              {isEdit && <>
+                <div className="kicker" style={sectionTitle}>Dados desta apresentação</div>
+                <DeckForm deck={draft} value={deckForm} onChange={setDeckForm}/>
+                <div className="proposal-deck-actions">
+                  <a href={deckPreviewHref(draft, deckForm)} target="_blank" rel="noreferrer">Abrir prévia ↗</a>
+                  <button type="button" onClick={gerarLink} disabled={linkBusy||dirty} title={dirty?'Salve o template antes de gerar o link':undefined}>{linkBusy?'Gerando…':'Gerar link do cliente'}</button>
+                  <small>{dirty?'salve as alterações do template antes de gerar o link':'o link abre a apresentação pronta: sem tela de edição e sem fita de prévia'}</small>
+                </div>
+                {linkErro && <div role="alert" className="mono" style={{ fontSize: 11, color: "var(--neg)", marginTop: 8 }}>{linkErro}</div>}
+                {link && <div className="proposal-deck-link">
+                  <input readOnly value={link} onFocus={e => e.target.select()} aria-label="Link da apresentação"/>
+                  <button type="button" onClick={copiarLink}>{linkCopiado?'Copiado ✓':'Copiar'}</button>
+                  <a href={link} target="_blank" rel="noreferrer">abrir ↗</a>
+                </div>}
+              </>}
+
+              {temCatalogo && <>
+                <div className="kicker" style={sectionTitle}>Tabela de preço e entregáveis</div>
+                <CatalogEditor catalog={draft.calc?.catalog || null} onChange={(catalog) => set({ calc: { ...(draft.calc || {}), catalog } })} />
+              </>}
             </>
           ) : (
             <>

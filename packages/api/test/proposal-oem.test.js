@@ -236,6 +236,60 @@ test("prints: nome na lista branca, arquivo servido da pasta de assets", async (
   }
 });
 
+test("preview do editor mostra os dados do formulário, não o cliente de exemplo", async () => {
+  const repo = await seedRepo();
+  const app = Fastify();
+  registerProposalRoutes(app, repo);
+  const t = await repo.get("proposal_templates", "pt_leverads_oem");
+  const r = await app.inject({
+    method: "POST", url: "/api/proposals/preview",
+    payload: { template: t, state: { deckOem: { nome: "Cleber", qtd: 50, valor: 30 } } },
+  });
+  assert.equal(r.statusCode, 200);
+  assert.match(r.json().html, /"totalFmt":"1\.500"/, "o state do formulário mescla com os padrões da prévia");
+  assert.match(r.json().html, /Configurar apresentação/, "o deck de OEM abre no modo closer, com a tela zero");
+});
+
+test("link avulso: apresentação pro cliente sem lead, com a oferta congelada", async () => {
+  // O closer preenche os dados na tela de Propostas e manda o link. Não existe
+  // card no pipeline: é uma proposta sem lead.
+  const repo = await seedRepo();
+  const app = Fastify();
+  registerProposalRoutes(app, repo);
+
+  const semLote = await app.inject({ method: "POST", url: "/api/proposal_templates/pt_leverads_oem/link", payload: { config: { nome: "Cleber" } } });
+  assert.equal(semLote.statusCode, 422, "sem quantidade e valor não sai link");
+
+  const r = await app.inject({
+    method: "POST", url: "/api/proposal_templates/pt_leverads_oem/link",
+    payload: { config: { nome: "Cleber Souza", empresa: "O2 Autopeças", qtd: 200, valor: 25 } },
+  });
+  assert.equal(r.statusCode, 200);
+  const p = await repo.get("proposals", r.json().id);
+  assert.equal(p.lead, "", "não nasce amarrada a nenhum lead");
+  assert.equal(p.editKey, "", "o link nunca abre a tela de edição");
+  assert.equal(p.showAll, true);
+  assert.equal(p.acceptStage, "", "sem lead não existe etapa pra mover no aceite");
+  assert.equal(p.state.deckOemOferta.total, 5000, "a oferta vai congelada no snapshot");
+  assert.equal(p.data.lead.company, "O2 Autopeças");
+
+  const pagina = await app.inject({ method: "GET", url: "/p/" + p.id });
+  assert.equal(pagina.statusCode, 200);
+  assert.doesNotMatch(pagina.body, /Configurar apresentação/, "o cliente não vê a tela zero");
+  assert.doesNotMatch(pagina.body, /Pré-visualização do template/, "não é prévia");
+  assert.match(pagina.body, /"totalFmt":"5\.000"/);
+  assert.match(pagina.body, /Quero começar/, "o aceite existe no link do cliente");
+
+  // Aceitar sem lead não pode quebrar (não há etapa nem card pra mover).
+  const aceite = await app.inject({ method: "POST", url: "/public/proposals/" + p.id + "/accept" });
+  assert.equal(aceite.statusCode, 200);
+  assert.equal((await repo.get("proposals", p.id)).accepted, true);
+
+  // Deck campo a campo não tem tela zero: o link dele sai pelo card do lead.
+  const campoACampo = await app.inject({ method: "POST", url: "/api/proposal_templates/pt_leverads/link", payload: { config: {} } });
+  assert.equal(campoACampo.statusCode, 422);
+});
+
 test("a página é um template literal só: sem crase solta no script do cliente", async () => {
   const html = proposalOemPageHtml(
     { id: "pr_x", name: "Proposta", state: {}, data: { lead: { name: "Ana" } }, accepted: false },
