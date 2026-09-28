@@ -100,18 +100,40 @@ export function panelCaseFacts(snap = {}) {
   };
 }
 
+// Rótulo da régua → chave da medida. Os cases anteriores a 28/09 (e os que o
+// time cria fora da migração, como USACAR e Vikn) foram escritos com os
+// rótulos exatos de `panelCaseFacts` e sem chave nenhuma; sem este mapa, eles
+// seriam justamente os cards que continuariam congelados. O rótulo é comparado
+// sem acento nem caixa, e só decide quando a fonte já é o painel.
+const rotuloChave = new Map([
+  ["gerado por anuncios da lever", "gmvTotal"],
+  ["pedidos gerados no periodo", "ordersTotal"],
+  ["de cadastro manual poupadas", "hoursSaved"],
+  ["de custo fixo evitado", "costAvoided"],
+  ["vendidos pelos anuncios da lever", "influenced30"],
+]);
+const semAcento = (v) => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+const chaveDaMedida = (m) => m?.metric || rotuloChave.get(semAcento(m?.label)) || "";
+
+// Manchete escrita pela régua ("574.780 anúncios criados pela plataforma ao
+// longo da parceria"), com ou sem o marcador `headlineAuto` — os cases criados
+// fora da migração não têm o marcador, mas têm a frase.
+const MANCHETE_DA_REGUA = /^[\d.,]+\s+anúncios criados pela plataforma/i;
+
 // O case com os números de HOJE. Sem retrato do painel (banco do produto fora,
 // case sem org vinculada), devolve o registro intacto.
 export function caseWithLiveNumbers(doc = {}, snap = null) {
   if (!snap) return doc;
   const metrics = (doc.metrics || []).map((m) => {
-    if (!m?.metric || m.source !== "painel") return m;
-    const value = panelMetricValue(m.metric, snap);
+    if (m?.source !== "painel") return m;
+    const chave = chaveDaMedida(m);
+    const value = chave ? panelMetricValue(chave, snap) : "";
     return value ? { ...m, value } : m;
   });
-  // A manchete do card do painel também é um número ("574.780 anúncios criados
-  // pela plataforma"): quem nasceu da régua (`headlineAuto`) acompanha.
-  const headline = doc.headlineAuto && Number(snap.listings) > 0 ? panelCaseFacts(snap).headline : doc.headline;
+  // A manchete do card do painel também é um número: quem nasceu da régua
+  // acompanha.
+  const daRegua = doc.headlineAuto || MANCHETE_DA_REGUA.test(doc.headline || "");
+  const headline = daRegua && Number(snap.listings) > 0 ? panelCaseFacts(snap).headline : doc.headline;
   return { ...doc, metrics, headline, liveAt: new Date().toISOString() };
 }
 
