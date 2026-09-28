@@ -321,6 +321,23 @@ test("PATCH da tela zero vira produto e ciclo do resto do cockpit", async () => 
   assert.equal(p3.state.product, "oem_escala", "estado intacto");
 });
 
+test("prévia rápida: os campos da tela de Propostas chegam pela query", async () => {
+  // A tela de Propostas monta o link /p/t/:id com os campos da tela zero, pra o
+  // closer ver a apresentação com os dados do cliente sem gerar proposta.
+  const repo = await seedRepo();
+  const app = Fastify();
+  registerProposalRoutes(app, repo);
+
+  const r = await app.inject({ method: "GET", url: "/p/t/pt_leverads_slides?nome=Viviane&empresa=Zpack&contas=9&linha=oem&tier=escala&periodo=semestral&price=false" });
+  assert.equal(r.statusCode, 200);
+  assert.match(r.body, /"linha":"oem"/);
+  assert.match(r.body, /"tier":"escala"/);
+  assert.match(r.body, /"contas":9/);
+  assert.match(r.body, /"periodo":"semestral"/);
+  assert.match(r.body, /"price":false/, '"false" na query é string: tem que virar booleano, senão o produto entra no plano sem ninguém pedir');
+  assert.match(r.body, /"empresa":"Zpack"/);
+});
+
 test("a página é um template literal só: sem crase solta no script do cliente", async () => {
   const repo = await seedRepo();
   const cat = await catalogoDoTemplate(repo);
