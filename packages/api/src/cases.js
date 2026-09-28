@@ -26,8 +26,113 @@ export const normalizeNiche = (v) => String(v || "")
   .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
   .trim().toLowerCase();
 
+// ── Números do painel que se refazem sozinhos ───────────────────────────────
+// Decisão do Leo (28/09/2026): a prova do slide 06 tem que estar atualizada em
+// TODA apresentação, do mesmo jeito que o faturado do portfólio (os tokens
+// `res*` do leverads-results.js). Os quatro cases do painel foram apurados à
+// mão em 14/09 e em duas semanas já estavam velhos: a Motvia tinha saído de
+// R$ 287 mil para R$ 442 mil, ou seja, o deck mostrava MENOS do que o cliente
+// tinha feito. Prova encolhendo com o tempo é o contrário do que o slide serve
+// pra fazer.
+//
+// Como funciona: cada medida do painel carrega uma CHAVE (`metric`). Quem tem
+// chave é refeito na abertura do deck a partir do painel do produto
+// (org_revenue_generated / platform_orders, via orgSnapshot); quem não tem
+// (número de print ou dito pelo cliente, como o "+105%" da Unique) fica
+// exatamente como está. O rótulo e o período continuam sendo do texto salvo:
+// o painel manda no NÚMERO, nunca na frase.
+//
+// A régua de tempo/custo é a do slide e não muda aqui sem mudar o slide:
+// 10 minutos por anúncio, ao custo de um funcionário de R$ 3.000 em 220 horas
+// (44 horas semanais).
+export const PANEL_METRICS = ["gmvTotal", "ordersTotal", "hoursSaved", "costAvoided", "influenced30"];
+export const PANEL_MINUTES_PER_LISTING = 10;
+export const PANEL_SALARY = 3000;
+export const PANEL_MONTH_HOURS = 220;
+
+const nfBR = (n, max = 0) => new Intl.NumberFormat("pt-BR", { maximumFractionDigits: max }).format(Number(n) || 0);
+
+// Número curto no tom do slide: "442 mil", "1,2 mi". Uma casa decimal só onde
+// ela informa (10,4 mil diz algo; 286,9 mil só polui).
+export const shortBR = (n) => {
+  const v = Number(n) || 0;
+  return v >= 1e6 ? `${nfBR(v / 1e6, 1)} mi`
+    : v >= 1e3 ? `${nfBR(v / 1e3, v < 1e5 ? 1 : 0)} mil`
+      : nfBR(v);
+};
+
+// Nome do case sem acento, caixa nem pontuação: é a chave que casa o card
+// congelado no snapshot da proposta com o registro vivo do banco.
+export const caseKey = (s) => String(s || "")
+  .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+// Retrato do painel (orgSnapshot) → o valor de cada medida, já formatado.
+// Medida sem base (zero) devolve "", e aí o valor salvo continua valendo: deck
+// com número de ontem é melhor que deck com "R$ 0".
+export function panelMetricValue(key, snap = {}) {
+  const horas = (Number(snap.listings) || 0) * PANEL_MINUTES_PER_LISTING / 60;
+  const num = {
+    gmvTotal: Number(snap.gmvTotal) || 0,
+    ordersTotal: Number(snap.ordersTotal) || 0,
+    hoursSaved: horas,
+    costAvoided: horas * PANEL_SALARY / PANEL_MONTH_HOURS,
+    influenced30: Number(snap.gmv30d) || 0,
+  }[key];
+  if (!(num > 0)) return "";
+  if (key === "ordersTotal") return nfBR(num);
+  if (key === "hoursSaved") return `${shortBR(num)} h`;
+  return `R$ ${shortBR(num)}`;
+}
+
+// As quatro medidas do slide 06, na ordem em que o card as mostra. Uma função
+// só pra migração (que semeia) e pro recálculo (que atualiza), senão as duas
+// contas divergem no dia em que a régua mudar.
+export function panelCaseFacts(snap = {}) {
+  const met = (metric, label, period = "") => ({ metric, label, value: panelMetricValue(metric, snap), period, source: "painel", proofUrl: "" });
+  return {
+    headline: `${nfBR(snap.listings)} anúncios criados pela plataforma ao longo da parceria.`,
+    metrics: [
+      met("gmvTotal", "gerado por anúncios da Lever", "todo o período"),
+      met("ordersTotal", "pedidos gerados no período"),
+      met("hoursSaved", "de cadastro manual poupadas"),
+      met("costAvoided", "de custo fixo evitado"),
+    ],
+  };
+}
+
+// O case com os números de HOJE. Sem retrato do painel (banco do produto fora,
+// case sem org vinculada), devolve o registro intacto.
+export function caseWithLiveNumbers(doc = {}, snap = null) {
+  if (!snap) return doc;
+  const metrics = (doc.metrics || []).map((m) => {
+    if (!m?.metric || m.source !== "painel") return m;
+    const value = panelMetricValue(m.metric, snap);
+    return value ? { ...m, value } : m;
+  });
+  // A manchete do card do painel também é um número ("574.780 anúncios criados
+  // pela plataforma"): quem nasceu da régua (`headlineAuto`) acompanha.
+  const headline = doc.headlineAuto && Number(snap.listings) > 0 ? panelCaseFacts(snap).headline : doc.headline;
+  return { ...doc, metrics, headline, liveAt: new Date().toISOString() };
+}
+
+// Troca os cards congelados no snapshot da proposta pelos mesmos cases com os
+// números de hoje. QUEM aparece (e em que ordem) continua sendo decisão do
+// snapshot: o link já enviado não muda de personagem, só de número.
+export function applyLiveCases(cases = [], live) {
+  if (!live || !live.size) return cases || [];
+  return (cases || []).map((c) => {
+    const novo = live.get(caseKey(c?.name));
+    return novo ? { ...c, ...novo, order: c.order ?? novo.order } : c;
+  });
+}
+
 export function validateCase(doc = {}) {
   const metrics = (Array.isArray(doc.metrics) ? doc.metrics : []).map((m) => ({
+    // `metric` é a CHAVE da medida (ver PANEL_METRICS): é ela que deixa o
+    // número ser refeito no painel a cada abertura do deck. Chave desconhecida
+    // vira "" e a medida passa a valer só pelo texto, como qualquer número
+    // escrito à mão.
+    metric: PANEL_METRICS.includes(m?.metric) ? m.metric : "",
     label: str(m?.label, 80),
     value: str(m?.value, 40),
     period: str(m?.period, 40),
