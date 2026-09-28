@@ -1116,6 +1116,32 @@ function presentationResultsHtml(results) {
   </div>`;
 }
 
+// ── O esqueleto da apresentação, lido do próprio deck ──────────────────────
+// A tela de Propostas mostra, no cartão da apresentação oficial, as telas que o
+// cliente vê e a condição de cada uma. A lista sai DAQUI (regex sobre o SLIDES
+// acima) em vez de uma cópia no cockpit: slide novo aparece na tela sem
+// ninguém lembrar de atualizar uma segunda lista.
+//
+// `cond` é o data-if do slide (a chave de `mostra` em calcOferta): a tela só
+// entra quando o plano montado na tela zero acende aquela chave.
+const OUTLINE_SECTION = /<section\b([^>]*)>/g;
+const attr = (attrs, name) => (new RegExp(name + '="([^"]*)"').exec(attrs) || [])[1] || "";
+let outlineCache = null; // o deck é constante: a varredura roda uma vez por processo
+export function deckOutline() {
+  if (outlineCache) return outlineCache;
+  const telas = [];
+  let m;
+  OUTLINE_SECTION.lastIndex = 0;
+  while ((m = OUTLINE_SECTION.exec(SLIDES))) {
+    const label = attr(m[1], "data-screen-label") || attr(m[1], "data-label");
+    if (!label) continue;
+    const cond = attr(m[1], "data-if");
+    telas.push(cond ? { label, cond } : { label });
+  }
+  outlineCache = telas;
+  return telas;
+}
+
 export function proposalSlidesPageHtml(p, { editable = false, previewBanner = false, catalog = null, suggested = "", results = null, configOnly = false } = {}) {
   configOnly = !!editable && !!configOnly;
   const cfg = deckConfig(p, { suggested });

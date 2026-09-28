@@ -363,6 +363,11 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     const body = req.body && typeof req.body === "object" ? req.body : null;
     if (!body || typeof body.template !== "object") return reply.code(400).send({ error: "JSON body { template, data? } required" });
     const fake = previewFromTemplate(body.template, { data: body.data, state: body.state, answers: body.answers });
-    return { html: proposalPageHtml(publicProposal(fake, { editable: false })) };
+    // Mesmo caminho da página servida (renderProposal), e não o renderer antigo
+    // na marra: a apresentação em slides é outro layout, e o preview do editor
+    // mostrava uma página vazia pra ela. Deck de slides vai no modo closer —
+    // é assim que ele é usado (tela zero + palco), e o id "preview" já desliga
+    // o auto-save na página.
+    return { html: renderProposal(fake, { editable: fake.layout === "slides" }) };
   });
 }

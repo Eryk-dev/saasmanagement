@@ -164,6 +164,23 @@ function ProposalsScreen() {
   const filtered=filtro==='fechadas'?proposals.filter(p=>p.accepted):filtro==='abertas'?proposals.filter(p=>!p.accepted&&Number(p.views||0)>0):filtro==='nunca'?never:proposals;
   const ordered=templates.map(t=>{const linked=proposals.filter(p=>p.template===t.id),g=linked.filter(emJanela).length,o=linked.filter(p=>Number(p.views||0)>0).length,c=linked.filter(p=>p.accepted).length;return {t,g,o,c,conv:pct(c,g)};}).sort((a,b)=>(b.conv??-1)-(a.conv??-1)||b.g-a.g);
   const templateById=new Map(templates.map(t=>[t.id,t]));
+  // ── A apresentação de hoje × o que sobrou ────────────────────────────────
+  // O template PUBLICADO do produto é a apresentação oficial: é ela que nasce
+  // sozinha quando o lead entra pelo formulário e a que o botão "gerar
+  // apresentação" usa. Ela era uma linha igual às outras numa tabela que
+  // também listava os decks APOSENTADOS em 18/09 — que não geram mais nada,
+  // mas não dá pra apagar (o catálogo de preço mora no pt_leverads e cada
+  // proposta enviada é uma cópia fechada). Agora a oficial é o cartão do topo
+  // e os aposentados ficam recolhidos, continuando editáveis.
+  const oficial=ordered.find(({t})=>t.officialSince)||ordered.find(({t})=>t.status==='published'&&t.layout==='slides')||ordered.find(({t})=>t.status==='published')||null;
+  // Arquivado = o que a migração carimbou no NOME ([ARQUIVO]/[BACKUP]) e não
+  // está publicado. Pelo estado não dava: rascunho é também o deck que alguém
+  // acabou de duplicar e ainda está escrevendo, e esse não pode sumir.
+  const arquivado=t=>/^\[(arquivo|backup)/i.test(String(t.name||''))&&t.status!=='published';
+  const resto=ordered.filter(({t})=>t.id!==oficial?.t.id);
+  const outras=resto.filter(({t})=>!arquivado(t));
+  const arquivados=resto.filter(({t})=>arquivado(t));
+  const acoes={busy,onEdit:edit,onDuplicate:duplicate,onRemove:removeTemplate};
   return <div className="proposals-page">
     <header className="proposals-header"><h1>Propostas</h1><button data-proposal-action="new" onClick={event=>edit(null,event)}>Criar template</button></header>
     {reads.key!==active||(!reads.loaded&&!reads.error)?<div className="proposals-state" role="status">Carregando propostas…</div>:reads.error?<div className="proposals-state" role="alert">Não foi possível carregar as propostas. <button onClick={load}>Tentar novamente</button></div>:<>
@@ -176,19 +193,18 @@ function ProposalsScreen() {
         {never.length>0&&<div className="proposals-never"><span><i/>{never.length} {never.length===1?'enviada e nunca aberta':'enviadas e nunca abertas'}</span><button onClick={()=>setFiltro('nunca')}>Ver quais</button></div>}
       </section>
       {actionError&&<div role="alert" className="proposals-state">{actionError}</div>}
-      <section className="proposals-templates proposals-card">
-        <div className="proposals-section-head"><div><h2><i/>templates</h2><p>ordenados por conversão de gerada a fechada</p></div></div>
-        {!templates.length?<EmptyState title="Nenhum template neste SaaS" hint="Crie o template base usado para gerar propostas a partir dos leads." action={<PrimaryButton onClick={event=>edit(null,event)}>Criar template</PrimaryButton>}/>:<div className="tbl-x"><div style={{minWidth:820}}>
-          <div className="proposals-table-head" style={{gridTemplateColumns:TPL_GRID}}><span>Template</span><span>Estado</span><span>Gerada → aberta → fechou</span><span>Conversão</span><span>Ação</span></div>
-          {ordered.map(({t,g,o,c,conv})=>{const width=n=>g>0?Math.max(2,Math.min(100,n/g*100)):0;return <div className="proposals-template-row proposals-table-row" key={t.id} style={{gridTemplateColumns:TPL_GRID}}>
-            <div className="proposals-template-name"><button data-proposal-action={`edit:${t.id}`} onClick={event=>edit(t,event)} aria-label={`Editar template: ${t.name||t.id}`}>{t.name||t.id}</button><a href={`${publicBase()}/p/t/${t.id}`} target="_blank" rel="noreferrer" aria-label={`Prévia de ${t.name||t.id}`}>{t.layout==='slides'?'apresentação em slides · montada pela tela zero, não por slide':`${(t.slides||[]).length} slides`}</a></div>
-            <span><span className="proposals-pill" data-published={t.status==='published'}>{t.status==='published'?'base':'rascunho'}</span></span>
-            <div><div className="proposals-template-bar"><i style={{width:`${width(c)}%`}}/><i style={{width:`${Math.max(0,width(o)-width(c))}%`}}/></div><small className="proposals-template-numbers">{g} · {o} · {c}</small></div>
-            <b className="proposals-conversion" style={{color:conv==null?'var(--fg-4)':conv>=20?'var(--pos)':'var(--fg-1)'}}>{conv==null?'—':`${conv}%`}</b>
-            <div className="proposals-row-actions"><button data-proposal-action={`duplicate:${t.id}`} disabled={!!busy} onClick={event=>duplicate(t,event)}>Duplicar</button><button disabled={!!busy} className="proposals-delete" onClick={()=>removeTemplate(t)}>{busy===t.id?'Excluindo…':'Excluir'}</button></div>
-          </div>;})}
-        </div></div>}
-      </section>
+      {oficial&&<CurrentDeck row={oficial} onEdit={event=>edit(oficial.t,event)}/>}
+      {!templates.length&&<section className="proposals-templates proposals-card">
+        <EmptyState title="Nenhum template neste SaaS" hint="Crie o template base usado para gerar propostas a partir dos leads." action={<PrimaryButton onClick={event=>edit(null,event)}>Criar template</PrimaryButton>}/>
+      </section>}
+      {!!outras.length&&<section className="proposals-templates proposals-card">
+        <div className="proposals-section-head"><div><h2><i/>outras apresentações</h2><p>decks alternativos e rascunhos em edição</p></div></div>
+        <TemplateTable rows={outras} {...acoes}/>
+      </section>}
+      {!!arquivados.length&&<details className="proposals-archive proposals-card">
+        <summary><h2><i/>arquivados · {arquivados.length}</h2><span>fora de uso: não geram apresentação nova. Seguem aqui porque o que já foi enviado é cópia fechada e o catálogo de preço mora no template antigo.</span></summary>
+        <TemplateTable rows={arquivados} {...acoes}/>
+      </details>}
       <section className="proposals-generated proposals-card">
         <div className="proposals-section-head"><div><h2><i/>propostas geradas</h2><p>o link entra no card do lead como “proposta ↗”</p></div><div className="proposals-filters">{filters.map(([id,label,n])=><button key={id} aria-pressed={filtro===id} onClick={()=>setFiltro(id)}>{label} <span>{n}</span></button>)}</div></div>
         <div className="tbl-x"><div style={{minWidth:880}}>
@@ -212,6 +228,61 @@ function ProposalsScreen() {
   </div>;
 }
 
+// ── A apresentação de hoje ──────────────────────────────────────────────────
+// O cartão responde "qual é a nossa apresentação?" sem abrir o editor: o nome,
+// desde quando é a oficial, as telas que o cliente vê e o que ela já fez. As
+// telas do deck de slides vêm do PRÓPRIO renderer (CONFIG.proposals.slidesDeck,
+// lido do HTML do deck) — slide novo aparece aqui sem uma segunda lista pra
+// alguém esquecer de atualizar. Nos decks campo a campo, saem dos slides do
+// template.
+const COND_LABEL={oem:'com OEM no plano',ads:'com Lever Ads no plano',price:'com Lever Price no plano',pratica:'com ticket e pedidos preenchidos',resultados:'com cases publicados'};
+const semToken=s=>String(s||'').replace(/\{\{[^}]*\}\}/g,'…').replace(/\*/g,'').trim();
+export function deckScreens(t,outline){
+  const telas=outline||window.SEED?.CONFIG?.proposals?.slidesDeck||[];
+  if(t.layout==='slides')return telas.map(s=>({label:s.label,nota:COND_LABEL[s.cond]||''}));
+  return (t.slides||[]).map((s,i)=>({label:semToken(s.title||s.tag||s.name).slice(0,42)||`slide ${i+1}`,nota:s.showIf?.key?`só com ${s.showIf.key}`:''}));
+}
+
+export function CurrentDeck({row,outline,onEdit}){
+  const {t,g,o,c}=row;
+  const telas=deckScreens(t,outline);
+  const desde=/^\d{4}-\d{2}-\d{2}$/.test(t.officialSince||'')?t.officialSince.split('-').reverse().join('/'):'';
+  return <section className="proposals-current proposals-card">
+    <div className="proposals-current-head">
+      <div>
+        <h2><i/>a apresentação de hoje</h2>
+        <strong>{t.name||t.id}</strong>
+        <p>Nasce sozinha quando o lead entra pelo formulário e é a que o botão “gerar apresentação” usa.{desde?` Oficial desde ${desde}.`:''}</p>
+      </div>
+      <div className="proposals-current-actions">
+        <a href={`${publicBase()}/p/t/${t.id}`} target="_blank" rel="noreferrer" title="abre o deck como o closer apresenta, com a tela zero">Abrir prévia ↗</a>
+        <button data-proposal-action={`edit:${t.id}`} onClick={onEdit}>Editar</button>
+      </div>
+    </div>
+    {!!telas.length&&<ol className="proposals-screens">{telas.map((s,i)=><li key={i} className={s.nota?'is-cond':undefined} title={s.nota?`só entra ${s.nota}`:undefined}>{s.label}{s.nota&&<em>{s.nota}</em>}</li>)}</ol>}
+    <div className="proposals-current-facts">
+      {!!telas.length&&<span><b>{telas.length}</b> telas{t.layout==='slides'?' · o texto mora no código; preço e entregáveis, na tabela':''}</span>}
+      <span><b>{g}</b> geradas em 30 dias</span>
+      <span><b>{o}</b> abertas</span>
+      <span><b>{c}</b> fecharam</span>
+    </div>
+  </section>;
+}
+
+// Tabela de templates (a mesma linha serve as duas listas: em uso e arquivados).
+function TemplateTable({rows,busy,onEdit,onDuplicate,onRemove}){
+  return <div className="tbl-x"><div style={{minWidth:820}}>
+    <div className="proposals-table-head" style={{gridTemplateColumns:TPL_GRID}}><span>Template</span><span>Estado</span><span>Gerada → aberta → fechou</span><span>Conversão</span><span>Ação</span></div>
+    {rows.map(({t,g,o,c,conv})=>{const width=n=>g>0?Math.max(2,Math.min(100,n/g*100)):0;return <div className="proposals-template-row proposals-table-row" key={t.id} style={{gridTemplateColumns:TPL_GRID}}>
+      <div className="proposals-template-name"><button data-proposal-action={`edit:${t.id}`} onClick={event=>onEdit(t,event)} aria-label={`Editar template: ${t.name||t.id}`}>{t.name||t.id}</button><a href={`${publicBase()}/p/t/${t.id}`} target="_blank" rel="noreferrer" aria-label={`Prévia de ${t.name||t.id}`}>{t.layout==='slides'?'apresentação em slides · montada pela tela zero, não por slide':`${(t.slides||[]).length} slides`}</a></div>
+      <span><span className="proposals-pill" data-published={t.status==='published'}>{t.status==='published'?'base':'rascunho'}</span></span>
+      <div><div className="proposals-template-bar"><i style={{width:`${width(c)}%`}}/><i style={{width:`${Math.max(0,width(o)-width(c))}%`}}/></div><small className="proposals-template-numbers">{g} · {o} · {c}</small></div>
+      <b className="proposals-conversion" style={{color:conv==null?'var(--fg-4)':conv>=20?'var(--pos)':'var(--fg-1)'}}>{conv==null?'—':`${conv}%`}</b>
+      <div className="proposals-row-actions"><button data-proposal-action={`duplicate:${t.id}`} disabled={!!busy} onClick={event=>onDuplicate(t,event)}>Duplicar</button><button disabled={!!busy} className="proposals-delete" onClick={()=>onRemove(t)}>{busy===t.id?'Excluindo…':'Excluir'}</button></div>
+    </div>;})}
+  </div></div>;
+}
+
 // ── Editor de template ───────────────────────────────────────────────────────
 
 function newTemplate(saasId) {
@@ -229,6 +300,11 @@ function newTemplate(saasId) {
 
 function TemplateEditor({ template, saasId, onDone, onCancel }) {
   const isEdit = !!template?.id;
+  // A apresentação em slides não se edita campo a campo: as telas e os textos
+  // moram no renderer, e o que muda sem deploy é a TABELA (preço, contas
+  // inclusas, entregáveis) e o tema. O editor de slides + calculadora do deck
+  // antigo, aberto nela, mostrava uma lista vazia e travava o salvar.
+  const isSlides = template?.layout === "slides";
   const [draft, setDraft] = useState(() => template
     ? { ...newTemplate(saasId), ...structuredClone(template), theme: { ...THEME_DEFAULTS, ...(template.theme || {}) } }
     : newTemplate(saasId));
@@ -258,7 +334,7 @@ function TemplateEditor({ template, saasId, onDone, onCancel }) {
 
   async function save() {
     if (!String(draft.name).trim()) { setError("Dê um nome ao template"); return; }
-    if (!(draft.slides || []).length) { setError("Adicione ao menos um slide"); return; }
+    if (!isSlides && !(draft.slides || []).length) { setError("Adicione ao menos um slide"); return; }
     if(busy)return;
     setBusy(true); setError(null);
     const payload = {
@@ -266,6 +342,7 @@ function TemplateEditor({ template, saasId, onDone, onCancel }) {
       theme: draft.theme, acceptStage: draft.acceptStage || "",
       calc: draft.calc, slides: draft.slides,
     };
+    if (draft.layout) payload.layout = draft.layout; // o PATCH é merge, mas duplicar um deck de slides precisa levar o layout junto
     try {
       if (isEdit) await api.update("proposal_templates", template.id, payload);
       else await api.create("proposal_templates", payload);
@@ -304,15 +381,30 @@ function TemplateEditor({ template, saasId, onDone, onCancel }) {
               </select>
             </label>
           </div>
-          <div className="mono dim" style={{ fontSize: 11, margin: "8px 0 0", lineHeight: 1.5 }}>
-            Interpolações: {"{{lead.name}} {{lead.firstName}} {{lead.company}} {{answers.<chave>}} {{calc.preco}} {{calc.custoMes}} {{calc.custoAno}} {{calc.vendasEquiv}} {{calc.roi}} {{calc.plano}} {{calc.precoCiclos}} {{calc.fatTotal}} {{calc.horasMes}} {{state.validUntil}}"} · *palavra* = itálico na cor da marca.
-          </div>
+          {isSlides ? (
+            <>
+              <p className="proposal-editor-note">
+                As telas e os textos desta apresentação moram no código — o deck é montado pela tela zero, no palco de slides.
+                Aqui se edita o que muda sem deploy: a tabela de preço, os entregáveis e o tema da marca.
+                O preço novo vale para as apresentações geradas daqui pra frente; as que já estão com o cliente são cópias fechadas (re-gere pelo card do lead para atualizar).
+              </p>
 
-          <div className="kicker" style={sectionTitle}>Slides</div>
-          <SlidesBuilder slides={draft.slides || []} onChange={(slides) => set({ slides })} />
+              <div className="kicker" style={sectionTitle}>Tabela de preço e entregáveis</div>
+              <CatalogEditor catalog={draft.calc?.catalog || null} onChange={(catalog) => set({ calc: { ...(draft.calc || {}), catalog } })} />
+            </>
+          ) : (
+            <>
+              <div className="mono dim" style={{ fontSize: 11, margin: "8px 0 0", lineHeight: 1.5 }}>
+                Interpolações: {"{{lead.name}} {{lead.firstName}} {{lead.company}} {{answers.<chave>}} {{calc.preco}} {{calc.custoMes}} {{calc.custoAno}} {{calc.vendasEquiv}} {{calc.roi}} {{calc.plano}} {{calc.precoCiclos}} {{calc.fatTotal}} {{calc.horasMes}} {{state.validUntil}}"} · *palavra* = itálico na cor da marca.
+              </div>
 
-          <div className="kicker" style={sectionTitle}>Calculadora (custo oculto / preço)</div>
-          <CalcEditor calc={draft.calc || {}} onChange={(calc) => set({ calc })} />
+              <div className="kicker" style={sectionTitle}>Slides</div>
+              <SlidesBuilder slides={draft.slides || []} onChange={(slides) => set({ slides })} />
+
+              <div className="kicker" style={sectionTitle}>Calculadora (custo oculto / preço)</div>
+              <CalcEditor calc={draft.calc || {}} onChange={(calc) => set({ calc })} />
+            </>
+          )}
 
           <div className="kicker" style={sectionTitle}>Tema da marca</div>
           <ThemeEditor theme={draft.theme} onChange={(theme) => set({ theme })} />
@@ -441,6 +533,97 @@ function ObjList({ label, cols, items, onChange }) {
         </div>
       ))}
       <button type="button" onClick={() => onChange([...items, {}])} style={addBtnStyle}>+ item</button>
+    </div>
+  );
+}
+
+// ── Tabela de preço (catálogo v2) ───────────────────────────────────────────
+// É o que a apresentação em slides tem de editável: o slide de investimento e o
+// de entregáveis leem TUDO daqui (calc.catalog), nada é escrito no texto do
+// deck. O total do período sai do mensal (12× no anual, 6× no semestral),
+// porque é assim que o catálogo nasce e é o TOTAL que vira o valor do negócio
+// no gate de Ganho e no link de pagamento — digitar os dois convidaria a
+// divergência.
+//
+// Ordem canônica das linhas (espelho do PRODUCT_KEYS da API); produto que
+// exista só no banco entra depois, sem sumir da tela.
+const CATALOG_ORDER = ["oem_essencial", "oem_escala", "ads_essencial", "ads_escala", "price_essencial", "price_escala", "price_enterprise"];
+const brl = (n) => "R$ " + Math.round(Number(n) || 0).toLocaleString("pt-BR");
+const parcelas = (cycle) => (cycle === "anu" ? 12 : 6);
+
+function CatalogEditor({ catalog, onChange }) {
+  if (!catalog || !catalog.products) {
+    return <p className="proposal-editor-note">Este template não tem tabela de preço (catálogo v2) — a apresentação em slides depende dela para montar o investimento e os entregáveis.</p>;
+  }
+  const products = catalog.products;
+  const keys = [...CATALOG_ORDER.filter((k) => products[k]), ...Object.keys(products).filter((k) => !CATALOG_ORDER.includes(k))];
+  const setProduct = (k, patch) => onChange({ ...catalog, products: { ...products, [k]: { ...products[k], ...patch } } });
+  const addons = catalog.addons || {};
+  const setExtra = (v) => onChange({ ...catalog, addons: { ...addons, contaExtra: { ...(addons.contaExtra || {}), per: v } } });
+  const packs = catalog.oemPacks || [];
+  const setPack = (i, patch) => onChange({ ...catalog, oemPacks: packs.map((pk, j) => (j === i ? { ...pk, ...patch } : pk)) });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {keys.map((k) => <ProductCard key={k} id={k} product={products[k]} onChange={(patch) => setProduct(k, patch)} />)}
+      <div style={cardStyle}>
+        <span className="kicker">Adicionais</span>
+        <div className="proposal-editor-row" style={{ display: "flex", gap: 10 }}>
+          <LabeledInput label="Conta extra no Escala (R$ por conta, em cada parcela)" type="number"
+            value={addons.contaExtra?.per ?? ""} onChange={(v) => setExtra(v === "" ? "" : Number(v))} />
+        </div>
+        <span className="kicker" style={{ marginTop: 10 }}>Pacote de OEM avulso (pagamento único)</span>
+        {packs.map((pk, i) => (
+          <div key={i} className="proposal-list-row" style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <input type="number" aria-label="anúncios do pacote" value={pk.qty ?? ""} style={{ ...inputStyle, width: 120 }}
+              onChange={(e) => setPack(i, { qty: e.target.value === "" ? "" : Number(e.target.value) })} />
+            <span className="mono dim" style={{ fontSize: 11 }}>anúncios por R$</span>
+            <input type="number" aria-label="preço do pacote" value={pk.price ?? ""} style={{ ...inputStyle, width: 130 }}
+              onChange={(e) => setPack(i, { price: e.target.value === "" ? "" : Number(e.target.value) })} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProductCard({ id, product, onChange }) {
+  const [open, setOpen] = useState(false);
+  const setPer = (cycle, v) => {
+    const per = v === "" ? "" : Number(v);
+    onChange({ [cycle]: { ...(product[cycle] || {}), per, total: per === "" ? "" : Math.round(per * parcelas(cycle)) } });
+  };
+  const setInclui = (bloco, itens) => onChange({ inclui: { ...(product.inclui || {}), [bloco]: itens } });
+  const resumo = `${brl(product.anu?.per)}/mês no anual · ${brl(product.anu?.total)} no total`;
+
+  return (
+    <div style={cardStyle}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <button type="button" onClick={() => setOpen(!open)} style={{ flex: 1, textAlign: "left", display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+          <span className="chip" style={{ height: 20, flexShrink: 0 }}>{id}</span>
+          <span style={{ fontSize: 12.5, color: "var(--fg-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{product.name || id} · {resumo}</span>
+          <span className="mono dim" style={{ marginLeft: "auto" }}>{open ? "▾" : "▸"}</span>
+        </button>
+      </div>
+      {open && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingLeft: 12 }}>
+          <div className="proposal-editor-row" style={{ display: "flex", gap: 10 }}>
+            <LabeledInput label="Nome do plano (aparece no deck)" value={product.name || ""} onChange={(v) => onChange({ name: v })} />
+            {product.line !== "price" && (
+              <LabeledInput label="Contas incluídas" type="number" value={product.contas ?? ""} onChange={(v) => onChange({ contas: v === "" ? "" : Number(v) })} />
+            )}
+          </div>
+          <div className="proposal-editor-row" style={{ display: "flex", gap: 10 }}>
+            <LabeledInput label="Anual · R$ por mês (12×)" type="number" value={product.anu?.per ?? ""} onChange={(v) => setPer("anu", v)} />
+            <LabeledInput label="Semestral · R$ por mês (6×)" type="number" value={product.sem?.per ?? ""} onChange={(v) => setPer("sem", v)} />
+          </div>
+          <div className="mono dim" style={{ fontSize: 11 }}>
+            Total do período (o valor do negócio): anual {brl(product.anu?.total)} · semestral {brl(product.sem?.total)}
+          </div>
+          <StrList label="Entregáveis · motor" items={product.inclui?.motor || []} onChange={(v) => setInclui("motor", v)} />
+          <StrList label="Entregáveis · plataforma" items={product.inclui?.plataforma || []} onChange={(v) => setInclui("plataforma", v)} />
+        </div>
+      )}
     </div>
   );
 }
