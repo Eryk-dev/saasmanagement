@@ -41,7 +41,8 @@ export const OEM_PRINTS = [
   { file: "foto-4.jpg", label: "foto do conector" },
   { file: "foto-5.jpg", label: "foto com as medidas" },
   { file: "ficha.jpg", label: "print da ficha técnica" },
-  { file: "descricao.jpg", label: "print da descrição" },
+  { file: "descricao-1.jpg", label: "print da descrição, primeira parte" },
+  { file: "descricao-2.jpg", label: "print da descrição, segunda parte" },
 ];
 
 const OEM_CSS = `
@@ -173,13 +174,13 @@ const SLIDES = `
 
 <section data-label="O anúncio padrão" data-screen-label="02 O anúncio padrão" data-speaker-notes="Este é um anúncio nosso, no ar. Mostre o título completo, o box verde de compatibilidade e a galeria de fotos à esquerda." data-theme="dark" style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
   ${topo("O anúncio padrão", "02", 40)}
-  <div style="flex:1;display:grid;grid-template-columns:minmax(0,0.72fr) minmax(0,1.28fr);gap:56px;align-items:center;min-height:0">
+  <div style="flex:1;display:grid;grid-template-columns:minmax(0,0.62fr) minmax(0,1.38fr);gap:52px;align-items:center;min-height:0">
     <div style="min-width:0">
       <h2 style="margin:0 0 24px;font-size:58px;line-height:1.05;letter-spacing:-0.03em;font-weight:700;text-wrap:balance">É assim que ele fica <span style="color:var(--brand)">no ar.</span></h2>
       <p style="margin:0 0 36px;font-size:27px;line-height:1.5;color:var(--ink-muted);text-wrap:pretty">Um anúncio nosso, publicado hoje. Cada detalhe da tela veio do padrão que você acabou de ver.</p>
       <div style="display:flex;flex-direction:column;gap:18px">
         <div style="display:flex;gap:16px;font-size:25px;line-height:1.35;color:var(--ink)"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:4px"><path d="m5 12.5 4.5 4.5L19 7"></path></svg><span>Título com marca, sete modelos, dez anos e o código da peça</span></div>
-        <div style="display:flex;gap:16px;font-size:25px;line-height:1.35;color:var(--ink)"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:4px"><path d="m5 12.5 4.5 4.5L19 7"></path></svg><span>Busca por veículo no anúncio: marca, modelo, ano e versão</span></div>
+        <div style="display:flex;gap:16px;font-size:25px;line-height:1.35;color:var(--ink)"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:4px"><path d="m5 12.5 4.5 4.5L19 7"></path></svg><span>Selo verde de compatível com o veículo do comprador</span></div>
         <div style="display:flex;gap:16px;font-size:25px;line-height:1.35;color:var(--ink)"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:4px"><path d="m5 12.5 4.5 4.5L19 7"></path></svg><span>Galeria com as fotos tratadas, na ordem que vende</span></div>
       </div>
     </div>
@@ -200,31 +201,43 @@ const SLIDES = `
   </div>
 </section>
 
-<section data-label="Ficha e descrição" data-screen-label="04 Ficha e descrição" data-speaker-notes="A parte que ninguém tem paciência de preencher. Ficha técnica completa e descrição com a aplicação ano a ano: é o que faz o anúncio ser encontrado." data-theme="dark" style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
-  ${topo("Ficha técnica e descrição", "04", 36)}
-  <h2 style="margin:0 0 16px;font-size:58px;line-height:1.05;letter-spacing:-0.025em;font-weight:700;max-width:1400px;text-wrap:balance">A parte chata, feita <span style="color:var(--brand)">por inteiro.</span></h2>
-  <p style="margin:0 0 40px;font-size:27px;line-height:1.45;color:var(--ink-muted);max-width:1250px;text-wrap:pretty">Ficha preenchida campo a campo (marca, número de peça, código OEM, tipo de veículo) e descrição com todas as aplicações, ano a ano, códigos equivalentes e o que vai na caixa.</p>
-  <div style="flex:1;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px;min-height:0">
-    ${print("ficha.jpg", "print da ficha técnica", { barra: "ficha técnica" })}
-    ${print("descricao.jpg", "print da descrição", { topo: true, barra: "descrição" })}
+<section data-label="Ficha técnica" data-screen-label="04 Ficha técnica" data-speaker-notes="A parte que ninguém tem paciência de preencher. Ficha campo a campo é o que faz a peça ser indexada pelo código, e não só pelo texto do título." data-theme="dark" style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
+  ${topo("Ficha técnica", "04", 40)}
+  <div style="flex:1;display:grid;grid-template-columns:minmax(0,0.78fr) minmax(0,1.22fr);gap:64px;align-items:center;min-height:0">
+    <div style="min-width:0">
+      <h2 style="margin:0 0 24px;font-size:58px;line-height:1.05;letter-spacing:-0.03em;font-weight:700;text-wrap:balance">A parte chata, feita <span style="color:var(--brand)">por inteiro.</span></h2>
+      <p style="margin:0 0 26px;font-size:27px;line-height:1.5;color:var(--ink-muted);text-wrap:pretty">Marca, número de peça, código OEM, tipo de veículo, se é kit. Campo a campo, do jeito que o marketplace pede pra indexar a peça.</p>
+      <p style="margin:0;font-size:25px;line-height:1.5;color:var(--ink-faint);text-wrap:pretty">É o que faz a sua peça aparecer pra quem busca pelo código, e não só pra quem digita o nome dela.</p>
+    </div>
+    <div style="min-width:0;display:flex;align-items:center;min-height:0">${print("ficha.jpg", "print da ficha técnica", { auto: true, barra: "ficha técnica" })}</div>
   </div>
 </section>
 
-<section data-label="Como funciona" data-screen-label="05 Como funciona" data-speaker-notes="Três passos e o combinado do prazo. Deixe claro que ele não precisa da plataforma pra contratar isto: é serviço avulso, pagamento único." style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
-  ${topo("Como funciona", "05", 44)}
+<section data-label="Descrição" data-screen-label="05 Descrição" data-speaker-notes="Mostre o tamanho da descrição: aplicação ano a ano, especificações, códigos equivalentes, embalagem e garantia. Ninguém escreve isso à mão em mil anúncios." style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 72px;display:flex;flex-direction:column">
+  ${topo("Descrição", "05", 28)}
+  <h2 style="margin:0 0 14px;font-size:54px;line-height:1.05;letter-spacing:-0.025em;font-weight:700;max-width:1400px;text-wrap:balance">A descrição inteira, <span style="color:var(--brand)">do começo ao fim.</span></h2>
+  <p style="margin:0 0 32px;font-size:26px;line-height:1.4;color:var(--ink-muted);max-width:1400px;text-wrap:pretty">Aplicação ano a ano, especificações técnicas, códigos OEM equivalentes, conteúdo da embalagem e garantia. É esse texto que faz o anúncio ser encontrado na busca.</p>
+  <div style="flex:1;display:grid;grid-template-columns:minmax(0,0.78fr) minmax(0,1fr);gap:32px;min-height:0">
+    ${print("descricao-1.jpg", "descrição, primeira parte", { barra: "descrição · 1 de 2" })}
+    ${print("descricao-2.jpg", "descrição, segunda parte", { barra: "descrição · 2 de 2" })}
+  </div>
+</section>
+
+<section data-label="Como funciona" data-screen-label="06 Como funciona" data-speaker-notes="Três passos e o combinado do prazo. Deixe claro que ele não precisa da plataforma pra contratar isto: é serviço avulso, pagamento único." data-theme="dark" style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
+  ${topo("Como funciona", "06", 44)}
   <div style="flex:1;display:flex;flex-direction:column;justify-content:center">
   <h2 style="margin:0 0 20px;font-size:58px;line-height:1.05;letter-spacing:-0.025em;font-weight:700;max-width:1400px;text-wrap:balance">Você manda os códigos. <span style="color:var(--brand)">A gente devolve os anúncios no ar.</span></h2>
   <p style="margin:0 0 64px;font-size:27px;line-height:1.45;color:var(--ink-muted);max-width:1250px;text-wrap:pretty">Serviço avulso: não precisa contratar a plataforma, não tem mensalidade. Você paga uma vez pelos anúncios criados.</p>
   <div style="position:relative;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:40px">
     <div style="position:absolute;left:36px;right:36px;top:35px;height:1px;background:var(--line)"></div>
     <div style="position:relative;display:flex;flex-direction:column;gap:16px">
-      <div style="width:72px;height:72px;border-radius:999px;background:var(--ink);color:#FFFFFF;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-weight:600;font-size:28px;border:8px solid var(--paper)">1</div>
+      <div style="width:72px;height:72px;border-radius:999px;background:var(--ink);color:var(--paper);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-weight:600;font-size:28px;border:8px solid var(--paper)">1</div>
       <div style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">Você</div>
       <div style="font-size:34px;font-weight:600;letter-spacing:-0.015em;line-height:1.2">Manda a lista de códigos</div>
       <div style="font-size:25px;color:var(--ink-muted);line-height:1.45">Uma planilha com os códigos OEM das peças que você quer anunciar. Só isso.</div>
     </div>
     <div style="position:relative;display:flex;flex-direction:column;gap:16px">
-      <div style="width:72px;height:72px;border-radius:999px;background:var(--ink);color:#FFFFFF;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-weight:600;font-size:28px;border:8px solid var(--paper)">2</div>
+      <div style="width:72px;height:72px;border-radius:999px;background:var(--ink);color:var(--paper);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-weight:600;font-size:28px;border:8px solid var(--paper)">2</div>
       <div style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">Nosso time</div>
       <div style="font-size:34px;font-weight:600;letter-spacing:-0.015em;line-height:1.2">Cria anúncio por anúncio</div>
       <div style="font-size:25px;color:var(--ink-muted);line-height:1.45">Título, compatibilidade, fotos tratadas e descrição. O padrão que você viu, em cada um.</div>
@@ -239,8 +252,8 @@ const SLIDES = `
   </div>
 </section>
 
-<section data-label="Investimento" data-screen-label="06 Investimento" data-speaker-notes="Diga o preço por anúncio, deixe o total na tela e fique quieto. Pagamento único, sem mensalidade." data-theme="dark" style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
-  ${topo("Investimento", "06", 44)}
+<section data-label="Investimento" data-screen-label="07 Investimento" data-speaker-notes="Diga o preço por anúncio, deixe o total na tela e fique quieto. Pagamento único, sem mensalidade." style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
+  ${topo("Investimento", "07", 44)}
   <div style="flex:1;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,0.9fr);gap:72px;align-items:center">
     <div style="min-width:0">
       <h2 style="margin:0 0 28px;font-size:60px;line-height:1.04;letter-spacing:-0.03em;font-weight:700;text-wrap:balance">Você paga por anúncio criado. <span style="color:var(--brand)">Uma vez só.</span></h2>
@@ -262,7 +275,7 @@ const SLIDES = `
   </div>
 </section>
 
-<section data-label="Encerramento" data-screen-label="07 Encerramento" data-speaker-notes="Repita a quantidade, o valor e combine o próximo passo ainda na call: a lista de códigos e a data de entrega." style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:96px 112px 88px;display:flex;flex-direction:column;justify-content:space-between">
+<section data-label="Encerramento" data-screen-label="08 Encerramento" data-theme="dark" data-speaker-notes="Repita a quantidade, o valor e combine o próximo passo ainda na call: a lista de códigos e a data de entrega." style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:96px 112px 88px;display:flex;flex-direction:column;justify-content:space-between">
   <div style="display:flex;align-items:center;gap:18px">${LOGO}<span style="font-size:32px;font-weight:700;letter-spacing:-0.02em">LeverAds</span></div>
   <div style="display:flex;flex-direction:column;gap:28px">
     <div style="font-size:24px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-faint)">Criação de anúncios · <span data-f="f.empresa"></span></div>

@@ -9,7 +9,8 @@
 //
 // A ORDEM DOS ARQUIVOS na pasta é o que define o destino (ordem alfabética, que
 // é a ordem em que os prints foram tirados):
-//   1 página do anúncio · 2-6 as cinco fotos · 7 ficha técnica · 8 descrição
+//   1 página do anúncio · 2-6 as cinco fotos · 7 ficha técnica · 8 e 9 a descrição
+//   em duas partes (ela não cabe legível numa tela só)
 // Arquivo a mais é ignorado; a menos, o deck mostra o espaço reservado daquele
 // print e o resto continua de pé.
 //
@@ -34,7 +35,8 @@ const ALVOS = [
   { nome: "foto-4.jpg", lado: 900, o: "foto do conector" },
   { nome: "foto-5.jpg", lado: 900, o: "foto com as medidas" },
   { nome: "ficha.jpg", lado: 1400, o: "print da ficha técnica" },
-  { nome: "descricao.jpg", lado: 1400, o: "print da descrição" },
+  { nome: "descricao-1.jpg", lado: 1300, o: "print da descrição, primeira parte" },
+  { nome: "descricao-2.jpg", lado: 1300, o: "print da descrição, segunda parte" },
 ];
 
 const origem = process.argv[2];
