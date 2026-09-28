@@ -338,6 +338,31 @@ test("prévia rápida: os campos da tela de Propostas chegam pela query", async 
   assert.match(r.body, /"empresa":"Zpack"/);
 });
 
+test("link avulso da apresentação padrão sai com o plano montado", async () => {
+  const repo = await seedRepo();
+  const app = Fastify();
+  registerProposalRoutes(app, repo);
+
+  const semPlano = await app.inject({ method: "POST", url: "/api/proposal_templates/pt_leverads_slides/link", payload: { config: { nome: "Ana", plataforma: false } } });
+  assert.equal(semPlano.statusCode, 422, "sem produto escolhido não sai link");
+
+  const r = await app.inject({
+    method: "POST", url: "/api/proposal_templates/pt_leverads_slides/link",
+    payload: { config: { nome: "Ana Souza", empresa: "Ana Peças", contas: 7, linha: "oem", tier: "escala", periodo: "anual" } },
+  });
+  assert.equal(r.statusCode, 200);
+  const p = await repo.get("proposals", r.json().id);
+  assert.equal(p.lead, "");
+  assert.equal(p.editKey, "");
+  assert.equal(p.state.deckC.linha, "oem");
+  assert.equal(p.state.deckOferta.mensal, 999);
+  assert.equal(p.calc.catalog, undefined, "a tabela de preço não viaja no snapshot do cliente");
+
+  const pagina = await app.inject({ method: "GET", url: "/p/" + p.id });
+  assert.doesNotMatch(pagina.body, /Configurar apresentação/);
+  assert.doesNotMatch(pagina.body, /Pré-visualização do template/);
+});
+
 test("a página é um template literal só: sem crase solta no script do cliente", async () => {
   const repo = await seedRepo();
   const cat = await catalogoDoTemplate(repo);

@@ -38,4 +38,6 @@ export const proposalsReviewMock={
  update:async(col,id,data)=>{const t=templates.find(t=>t.id===id);Object.assign(t,data);window.__reviewMutations.push({method:'update',col,id,data});return t;},
  remove:async(col,id)=>{templates=templates.filter(t=>t.id!==id);window.__reviewMutations.push({method:'remove',col,id});return {ok:true};},
  proposalPreview:async()=>({html:'<!doctype html><html lang="pt-BR"><body><h1>Prévia de revisão</h1></body></html>'}),
+ // Link avulso do deck com tela zero: devolve um id como a API devolveria.
+ proposalLink:async(templateId,payload)=>{window.__reviewMutations.push({method:'link',templateId,payload});return {ok:true,id:'pr_avulsa'};},
 };

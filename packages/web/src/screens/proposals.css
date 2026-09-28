@@ -134,18 +134,31 @@
 .proposal-editor-note { font-size:12px; line-height:1.55; color:var(--fg-3); background:var(--bg-inset); border-radius:14px; padding:12px 14px; margin:10px 0 0; }
 @media(max-width:700px) { .proposals-current-actions > :is(a,button) { min-height:44px; } }
 
-/* ── Prévia rápida ─────────────────────────────────────────────────────────
-   Formulário curto que abre a apresentação preenchida em aba nova. Mesma
-   moldura dos outros cartões da tela; os campos acompanham o deck escolhido. */
+/* ── Formulário do deck, prévia rápida e link do cliente ───────────────────
+   O mesmo formulário aparece no cartão da tela e dentro do editor do template,
+   por isso a grade é uma classe própria: o cartão é quem põe o respiro lateral. */
+.proposals-deck-form { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px 12px; }
+.proposals-deck-form label { display:flex; flex-direction:column; gap:5px; min-width:0; font-size:11.5px; color:var(--fg-4); }
+.proposals-deck-form :is(input,select) { height:34px; min-width:0; padding:0 10px; border:1px solid var(--line-1); border-radius:10px; background:var(--bg-1); color:var(--fg-1); font-size:12.5px; }
+.proposals-deck-form select:disabled { opacity:.5; }
+.proposals-deck-check > span { display:flex; align-items:center; gap:6px; color:var(--fg-2); font-weight:600; }
+.proposals-deck-check input[type=checkbox] { width:14px; height:14px; accent-color:var(--accent); }
+
 .proposals-preview { padding:0 0 18px; }
+.proposals-preview .proposals-deck-form { padding:4px 20px 0; }
 .proposals-preview-deck { height:34px; padding:0 12px; border:1px solid var(--line-1); border-radius:999px; background:var(--bg-2); color:var(--fg-2); font-size:12.5px; font-weight:600; max-width:100%; }
-.proposals-preview-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px 12px; padding:4px 20px 0; }
-.proposals-preview-grid label { display:flex; flex-direction:column; gap:5px; min-width:0; font-size:11.5px; color:var(--fg-4); }
-.proposals-preview-grid :is(input,select) { height:34px; min-width:0; padding:0 10px; border:1px solid var(--line-1); border-radius:10px; background:var(--bg-1); color:var(--fg-1); font-size:12.5px; }
-.proposals-preview-grid select:disabled { opacity:.5; }
-.proposals-preview-check > span { display:flex; align-items:center; gap:6px; color:var(--fg-2); font-weight:600; }
-.proposals-preview-check input[type=checkbox] { width:14px; height:14px; accent-color:var(--accent); }
 .proposals-preview-foot { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:14px; padding:14px 20px 0; border-top:1px solid var(--line-1); }
 .proposals-preview-foot a { display:inline-flex; align-items:center; height:34px; padding:0 15px; border-radius:999px; background:var(--btn-bg); color:var(--btn-fg); font-size:12.5px; font-weight:600; }
 .proposals-preview-foot small { font-size:11.5px; color:var(--fg-4); }
-@media(max-width:700px) { .proposals-preview-foot a,.proposals-preview-grid :is(input,select) { min-height:44px; } }
+
+/* Ações e link dentro do editor do template. */
+.proposal-deck-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:12px; }
+.proposal-deck-actions > :is(a,button) { display:inline-flex; align-items:center; height:32px; padding:0 14px; border:0; border-radius:999px; font-size:12px; font-weight:600; cursor:pointer; }
+.proposal-deck-actions > a { background:var(--bg-2); color:var(--fg-2); }
+.proposal-deck-actions > button { background:var(--btn-bg); color:var(--btn-fg); }
+.proposal-deck-actions > button:disabled { opacity:.45; cursor:default; }
+.proposal-deck-actions small { flex:1 1 180px; min-width:0; font-size:11px; color:var(--fg-4); line-height:1.4; }
+.proposal-deck-link { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:10px; padding:10px; border:1px solid var(--line-1); border-radius:12px; background:var(--bg-2); }
+.proposal-deck-link input { flex:1 1 200px; min-width:0; height:30px; padding:0 10px; border:1px solid var(--line-1); border-radius:8px; background:var(--bg-1); color:var(--fg-1); font-size:11.5px; font-family:var(--mono,monospace); }
+.proposal-deck-link :is(button,a) { height:30px; display:inline-flex; align-items:center; padding:0 12px; border:0; border-radius:999px; background:var(--bg-1); color:var(--fg-2); font-size:11.5px; font-weight:600; cursor:pointer; }
+@media(max-width:700px) { .proposals-preview-foot a,.proposals-deck-form :is(input,select),.proposal-deck-actions > :is(a,button) { min-height:44px; } }

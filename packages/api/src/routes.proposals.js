@@ -12,7 +12,7 @@ import { publicProposal, syncProposalLeadSnapshot } from "./proposal.js";
 import { pickCases, publicCase } from "./cases.js";
 import { applyCatalog, catalogAmount, catalogUI, activeProduct } from "./proposal-catalog.js";
 import { proposalPageHtml } from "./proposal-page.js";
-import { proposalSlidesPageHtml, deckConfig } from "./proposal-slides-page.js";
+import { proposalSlidesPageHtml, deckConfig, calcOferta, slimCatalog } from "./proposal-slides-page.js";
 import { proposalOemPageHtml, deckOemConfig, calcOem, OEM_PRINTS_BASE } from "./proposal-oem-page.js";
 import { leveradsResults, leveradsPresentationResults } from "./leverads-results.js";
 import { liveDeckCases } from "./cases-live.js";
@@ -89,7 +89,9 @@ function previewFromTemplate(t, { data, state, answers, cases } = {}) {
       answers: answers || {},
       cases: cases || [],
     },
-    state: state || {
+    // O state recebido MESCLA com os padrões (a tela zero manda só o bloco dela;
+    // o resto do estado continua valendo pros decks campo a campo).
+    state: { ...(state || {}), ...({
       accounts: Object.keys(t.calc?.seatsMap || {})[0] || "",
       seats: Number((t.calc?.seatsMap || {})[Object.keys(t.calc?.seatsMap || {})[0]]) || t.calc?.plans?.[t.calc?.defaultCycle]?.included || 2,
       volume: Object.keys(t.calc?.volumeMid || {})[0] || "",
@@ -97,7 +99,7 @@ function previewFromTemplate(t, { data, state, answers, cases } = {}) {
       customPriceCents: 0,
       validUntil: new Date(Date.now() + 7 * 86400_000).toLocaleDateString("pt-BR"),
       frozen: false,
-    },
+    }), ...(state || {}) },
     accepted: false,
   };
 }
@@ -432,6 +434,66 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     return { ok: true };
   });
 
+  // ── Link avulso pro cliente ──────────────────────────────────────────────
+  // A apresentação sem lead: o closer preenche os dados na tela de Propostas e
+  // manda o link. É uma proposta DE VERDADE (conta view, aceita, aparece na
+  // lista de geradas), só que sem card no pipeline — por isso `lead` vazio e
+  // `acceptStage` vazio: sem lead não existe etapa pra mover.
+  //
+  // O link nasce como o do cliente: `editKey` vazio (nunca abre a tela zero),
+  // `showAll` ligado e a oferta CONGELADA no snapshot, igual ao
+  // shareProposalOffer. Mexer no template depois não muda o que o cliente já viu.
+  app.post("/api/proposal_templates/:id/link", async (req, reply) => {
+    const t = await repo.get("proposal_templates", req.params.id);
+    if (!t) return reply.code(404).send({ error: "Template não encontrado" });
+    if (t.layout !== "oem" && t.layout !== "slides") {
+      return reply.code(422).send({ error: "Este deck não tem tela zero: gere a apresentação pelo card do lead." });
+    }
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const entrada = body.config && typeof body.config === "object" ? body.config : {};
+    const nome = String(entrada.nome || "").slice(0, 60);
+    const empresa = String(entrada.empresa || "").slice(0, 80);
+    const data = {
+      lead: { name: nome, firstName: nome.trim().split(/\s+/)[0] || "", company: empresa },
+      answers: {},
+    };
+    let state;
+    if (t.layout === "oem") {
+      const cfg = deckOemConfig({ state: { deckOem: entrada }, data });
+      const oferta = calcOem(cfg);
+      if (!oferta.configurado) return reply.code(422).send({ error: "Preencha a quantidade de anúncios e o valor de cada um antes de gerar o link." });
+      state = { deckOem: cfg, deckOemOferta: oferta };
+    } else {
+      const cfg = deckConfig({ state: { deckC: entrada }, data });
+      const oferta = calcOferta(slimCatalog(t.calc?.catalog || {}), cfg);
+      if (!oferta.mensal) return reply.code(422).send({ error: "Monte o plano antes de gerar o link." });
+      state = { deckC: cfg, deckOferta: oferta };
+    }
+    // A tabela de preço não viaja no snapshot (é dado do servidor), igual ao
+    // link compartilhado de um lead.
+    const { catalog: _catalog, ...calcSemCatalogo } = t.calc || {};
+    const saved = await repo.create("proposals", {
+      saas: t.saas || "",
+      template: t.id,
+      lead: "",
+      name: t.name || "Proposta",
+      theme: t.theme || {},
+      layout: t.layout,
+      calc: calcSemCatalogo,
+      acceptStage: "",
+      data,
+      state,
+      slides: [],
+      showAll: true,
+      standalone: true,
+      editKey: "",
+      views: 0,
+      accepted: false,
+      createdAt: new Date().toISOString(),
+    });
+    return { ok: true, id: saved.id };
+  });
+
   // Preview autenticado pro builder (rota /api → exige key): recebe o template
   // (rascunho) + dados de exemplo e devolve o MESMO HTML da página pública.
   app.post("/api/proposals/preview", async (req, reply) => {
@@ -443,6 +505,6 @@ export function registerProposalRoutes(app, repo, opts = {}) {
     // mostrava uma página vazia pra ela. Deck de slides vai no modo closer —
     // é assim que ele é usado (tela zero + palco), e o id "preview" já desliga
     // o auto-save na página.
-    return { html: renderProposal(fake, { editable: fake.layout === "slides" }) };
+    return { html: renderProposal(fake, { editable: fake.layout === "slides" || fake.layout === "oem" }) };
   });
 }

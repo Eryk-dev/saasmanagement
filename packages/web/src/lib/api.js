@@ -500,6 +500,8 @@ export const api = {
     return req("GET", `/api/metrics/${saas}${q.toString() ? `?${q}` : ""}`);
   },
   proposalPreview: (payload) => req("POST", "/api/proposals/preview", payload),
+  // Link avulso pro cliente a partir de um deck com tela zero (sem lead).
+  proposalLink: (templateId, payload) => req("POST", `/api/proposal_templates/${templateId}/link`, payload),
   // Ajustes (fase 3): grava o funil migrando estágios renomeados (lead/deal.stage
   // não têm FK — o servidor reaponta os cards junto).
   saveFunnel: (productId, funnel, renames) => req("PUT", `/api/products/${productId}/funnel`, { funnel, renames }),
