@@ -61,6 +61,13 @@ const OEM_CSS = `
 /* Print de topo (página comprida): mostra o começo e deixa o resto sangrar pra
    fora do card, que é como um print de página real se lê num slide. */
 .print-topo .print { object-fit: cover; object-position: top center; }
+/* Moldura que se ajusta à imagem: o card fica do tamanho do print, como uma
+   janela de navegador aberta no tamanho da página. Sem isto, um print deitado
+   dentro de uma caixa em pé vira tarja branca em cima e embaixo. */
+.print-auto { align-self: center; height: auto !important; }
+.print-auto .print-body, .print-auto .print { height: auto; }
+/* Foto de produto: o assunto fica no meio da caixa, não grudado no topo. */
+.print-centro .print { object-position: center; }
 /* Espaço reservado: entra no lugar do print que ainda não subiu. */
 .print-vazio { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center;
   border: 2px dashed var(--line-strong); border-radius: 10px; color: var(--ink-faint);
@@ -102,8 +109,9 @@ const escHtml = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "
 // Print dentro da moldura. `topo` corta o excesso por baixo (página comprida);
 // sem ele a imagem cabe inteira. O texto da barra é o endereço de onde o print
 // saiu — ele é que diz "isto é um anúncio de verdade, não uma arte".
-function print(file, label, { topo = false, barra = "mercadolivre.com.br" } = {}) {
-  return `<div class="print-frame${topo ? " print-topo" : ""}" style="height:100%">
+function print(file, label, { topo = false, auto = false, centro = false, barra = "mercadolivre.com.br" } = {}) {
+  const classes = ["print-frame", topo ? "print-topo" : "", auto ? "print-auto" : "", centro ? "print-centro" : ""].filter(Boolean).join(" ");
+  return `<div class="${classes}" style="height:100%">
     <div class="print-bar"><i></i><i></i><i></i><span>${escHtml(barra)}</span></div>
     <div class="print-body"><img class="print" data-print="${escHtml(label)}" src="${OEM_PRINTS_BASE}${file}" alt="${escHtml(label)}"></div>
   </div>`;
@@ -165,17 +173,17 @@ const SLIDES = `
 
 <section data-label="O anúncio padrão" data-screen-label="02 O anúncio padrão" data-speaker-notes="Este é um anúncio nosso, no ar. Mostre o título completo, o box verde de compatibilidade e a galeria de fotos à esquerda." data-theme="dark" style="background:var(--paper);color:var(--ink);font-family:var(--font-sans);padding:88px 112px 80px;display:flex;flex-direction:column">
   ${topo("O anúncio padrão", "02", 40)}
-  <div style="flex:1;display:grid;grid-template-columns:minmax(0,0.85fr) minmax(0,1.15fr);gap:64px;align-items:center;min-height:0">
+  <div style="flex:1;display:grid;grid-template-columns:minmax(0,0.72fr) minmax(0,1.28fr);gap:56px;align-items:center;min-height:0">
     <div style="min-width:0">
       <h2 style="margin:0 0 24px;font-size:58px;line-height:1.05;letter-spacing:-0.03em;font-weight:700;text-wrap:balance">É assim que ele fica <span style="color:var(--brand)">no ar.</span></h2>
       <p style="margin:0 0 36px;font-size:27px;line-height:1.5;color:var(--ink-muted);text-wrap:pretty">Um anúncio nosso, publicado hoje. Cada detalhe da tela veio do padrão que você acabou de ver.</p>
       <div style="display:flex;flex-direction:column;gap:18px">
         <div style="display:flex;gap:16px;font-size:25px;line-height:1.35;color:var(--ink)"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:4px"><path d="m5 12.5 4.5 4.5L19 7"></path></svg><span>Título com marca, sete modelos, dez anos e o código da peça</span></div>
-        <div style="display:flex;gap:16px;font-size:25px;line-height:1.35;color:var(--ink)"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:4px"><path d="m5 12.5 4.5 4.5L19 7"></path></svg><span>Selo verde de compatível com o veículo do comprador</span></div>
+        <div style="display:flex;gap:16px;font-size:25px;line-height:1.35;color:var(--ink)"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:4px"><path d="m5 12.5 4.5 4.5L19 7"></path></svg><span>Busca por veículo no anúncio: marca, modelo, ano e versão</span></div>
         <div style="display:flex;gap:16px;font-size:25px;line-height:1.35;color:var(--ink)"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:4px"><path d="m5 12.5 4.5 4.5L19 7"></path></svg><span>Galeria com as fotos tratadas, na ordem que vende</span></div>
       </div>
     </div>
-    <div style="min-width:0;height:100%;min-height:0">${print("anuncio.jpg", "print da página do anúncio", { topo: true })}</div>
+    <div style="min-width:0;display:flex;align-items:center;min-height:0">${print("anuncio.jpg", "print da página do anúncio", { auto: true })}</div>
   </div>
 </section>
 
@@ -184,11 +192,11 @@ const SLIDES = `
   <h2 style="margin:0 0 16px;font-size:58px;line-height:1.05;letter-spacing:-0.025em;font-weight:700;max-width:1400px;text-wrap:balance">De 3 a 5 fotos por anúncio, <span style="color:var(--brand)">tratadas uma a uma.</span></h2>
   <p style="margin:0 0 40px;font-size:27px;line-height:1.45;color:var(--ink-muted);max-width:1250px;text-wrap:pretty">Principal com a aplicação no veículo, ângulos reais da peça, o conector e uma foto com as medidas. Fundo limpo em todas, do jeito que o marketplace premia.</p>
   <div style="flex:1;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:20px;min-height:0">
-    ${print("foto-1.jpg", "foto principal (peça + aplicação)", { barra: "foto 1" })}
-    ${print("foto-2.jpg", "foto em perspectiva", { barra: "foto 2" })}
-    ${print("foto-3.jpg", "foto de frente", { barra: "foto 3" })}
-    ${print("foto-4.jpg", "foto do conector", { barra: "foto 4" })}
-    ${print("foto-5.jpg", "foto com as medidas", { barra: "foto 5" })}
+    ${print("foto-1.jpg", "foto principal (peça + aplicação)", { centro: true, barra: "foto 1" })}
+    ${print("foto-2.jpg", "foto em perspectiva", { centro: true, barra: "foto 2" })}
+    ${print("foto-3.jpg", "foto de frente", { centro: true, barra: "foto 3" })}
+    ${print("foto-4.jpg", "foto do conector", { centro: true, barra: "foto 4" })}
+    ${print("foto-5.jpg", "foto com as medidas", { centro: true, barra: "foto 5" })}
   </div>
 </section>
 
