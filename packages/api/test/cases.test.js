@@ -264,3 +264,110 @@ test("deck: o card de case leva logo, as três medidas de apoio e a régua no sl
   assert.match(html, /10 minutos por anúncio, ao custo de um funcionário de R\$ 3\.000/);
   assert.equal(html.split("[CLIENTE] · [NICHO]").length - 1, 4, "quatro cards de exemplo enquanto nada está publicado");
 });
+
+// ── Números que se refazem sozinhos (28/09) ───────────────────────────────
+import { panelCaseFacts, panelMetricValue, caseWithLiveNumbers, applyLiveCases, caseKey } from "../src/cases.js";
+import { liveCases, _resetLiveCases } from "../src/cases-live.js";
+
+const SNAP = { gmvTotal: 442140.98, ordersTotal: 3006, listings: 574780, gmv30d: 82000 };
+
+test("régua do painel: as quatro medidas do slide saem da mesma conta", () => {
+  const f = panelCaseFacts(SNAP);
+  assert.equal(f.headline, "574.780 anúncios criados pela plataforma ao longo da parceria.");
+  assert.deepEqual(f.metrics.map((m) => m.metric), ["gmvTotal", "ordersTotal", "hoursSaved", "costAvoided"]);
+  assert.equal(f.metrics[0].value, "R$ 442 mil");
+  assert.equal(f.metrics[0].period, "todo o período");
+  assert.equal(f.metrics[1].value, "3.006");
+  // 10 min por anúncio = 574.780 / 6 = 95.796 h; ao custo de R$ 3.000 / 220 h.
+  assert.equal(f.metrics[2].value, "95,8 mil h");
+  assert.equal(f.metrics[3].value, "R$ 1,3 mi");
+  assert.ok(f.metrics.every((m) => m.source === "painel"));
+  // Sem base, a medida sai vazia (e o valor salvo é que continua valendo).
+  assert.equal(panelMetricValue("gmvTotal", { gmvTotal: 0 }), "");
+  assert.equal(panelMetricValue("inventada", SNAP), "");
+});
+
+test("case ao vivo: painel manda no número, o texto salvo manda na frase", () => {
+  const doc = {
+    name: "Motvia", headline: "282.418 anúncios criados pela plataforma ao longo da parceria.", headlineAuto: true,
+    metrics: [
+      { metric: "gmvTotal", label: "gerado na conta dele", value: "R$ 287 mil", period: "todo o período", source: "painel" },
+      { metric: "", label: "vendas", value: "+105%", period: "", source: "cliente" },
+      { metric: "ordersTotal", label: "pedidos", value: "2.229", period: "", source: "print" },
+    ],
+  };
+  const vivo = caseWithLiveNumbers(doc, SNAP);
+  assert.equal(vivo.metrics[0].value, "R$ 442 mil");
+  assert.equal(vivo.metrics[0].label, "gerado na conta dele", "o rótulo escrito à mão fica");
+  assert.equal(vivo.metrics[1].value, "+105%", "número sem chave não é tocado");
+  assert.equal(vivo.metrics[2].value, "2.229", "número de print não vem do painel, mesmo com chave");
+  assert.match(vivo.headline, /^574\.780 anúncios/);
+  // Sem retrato do painel (banco do produto fora), o case passa intacto.
+  assert.deepEqual(caseWithLiveNumbers(doc, null), doc);
+  // Manchete escrita à mão não é reescrita.
+  assert.equal(caseWithLiveNumbers({ ...doc, headlineAuto: false }, SNAP).headline, doc.headline);
+});
+
+test("applyLiveCases: o snapshot decide quem aparece, o painel decide quanto", () => {
+  const congelados = [
+    { name: "Motvia", niche: "Autopeças", order: 1, metrics: [{ label: "gerado", value: "R$ 287 mil" }] },
+    { name: "Unique", niche: "", order: 2, metrics: [{ label: "vendas", value: "+105%" }] },
+  ];
+  const live = new Map([[caseKey("Motvia"), { name: "Motvia", niche: "Autopeças", order: 9, metrics: [{ label: "gerado", value: "R$ 442 mil" }] }]]);
+  const r = applyLiveCases(congelados, live);
+  assert.equal(r[0].metrics[0].value, "R$ 442 mil");
+  assert.equal(r[0].order, 1, "a ordem é a do snapshot");
+  assert.equal(r[1].metrics[0].value, "+105%", "case sem correspondência no painel fica como estava");
+  assert.deepEqual(applyLiveCases(congelados, new Map()), congelados);
+});
+
+test("liveCases: org do case vem da evidência ou da ficha do cliente, e rascunho fica fora", async () => {
+  _resetLiveCases();
+  const repo = makeMemRepo();
+  await repo.create("customers", { id: "cu_1", name: "Lupa", leveradsOrgId: "d70453cc-274c-4494-a77f-0520045aa348" });
+  await repo.create("cases", completo({
+    id: "ca_1", name: "Motvia", customerId: "", evidence: { orgId: "102f9143-c7d0-414c-9393-85fdd5fa3da8" },
+    metrics: [{ metric: "gmvTotal", label: "gerado", value: "R$ 287 mil", period: "todo o período", source: "painel" }],
+  }));
+  await repo.create("cases", completo({
+    id: "ca_2", name: "Lupa", customerId: "cu_1",
+    metrics: [{ metric: "influenced30", label: "vendidos", value: "R$ 1", period: "últimos 30 dias", source: "painel" }],
+  }));
+  await repo.create("cases", completo({ id: "ca_3", name: "Rascunho", public: false }));
+
+  const pedidas = [];
+  const snapshot = async (orgs) => {
+    pedidas.push(...orgs);
+    return new Map([
+      ["102f9143-c7d0-414c-9393-85fdd5fa3da8", SNAP],
+      ["d70453cc-274c-4494-a77f-0520045aa348", { gmvTotal: 280728, ordersTotal: 1336, listings: 282418, gmv30d: 54321 }],
+    ]);
+  };
+  const map = await liveCases(repo, { snapshot });
+  assert.deepEqual(pedidas.sort(), ["102f9143-c7d0-414c-9393-85fdd5fa3da8", "d70453cc-274c-4494-a77f-0520045aa348"]);
+  assert.equal(map.get(caseKey("Motvia")).metrics[0].value, "R$ 442 mil");
+  assert.equal(map.get(caseKey("Lupa")).metrics[0].value, "R$ 54,3 mil");
+  assert.equal(map.get(caseKey("Rascunho")), undefined, "rascunho não vira prova");
+  assert.equal(map.get(caseKey("Motvia")).customerId, undefined, "sai pela versão pública");
+  _resetLiveCases();
+});
+
+test("liveCases: painel fora do ar não derruba nem apaga o que já foi calculado", async () => {
+  _resetLiveCases();
+  const repo = makeMemRepo();
+  await repo.create("cases", completo({
+    id: "ca_1", name: "Motvia", evidence: { orgId: "102f9143-c7d0-414c-9393-85fdd5fa3da8" },
+    metrics: [{ metric: "gmvTotal", label: "gerado", value: "R$ 287 mil", period: "", source: "painel" }],
+  }));
+  const quente = await liveCases(repo, { snapshot: async () => new Map([["102f9143-c7d0-414c-9393-85fdd5fa3da8", SNAP]]) });
+  assert.equal(quente.get(caseKey("Motvia")).metrics[0].value, "R$ 442 mil");
+  // Cache vencido + banco fora: devolve o último bom, nunca vazio.
+  const depois = await liveCases(repo, { ttlMs: -1, snapshot: async () => { throw new Error("db down"); } });
+  assert.equal(depois.get(caseKey("Motvia")).metrics[0].value, "R$ 442 mil");
+  _resetLiveCases();
+
+  // Cache frio + banco fora: mapa vazio, e quem chama segue com o congelado.
+  const vazio = await liveCases(repo, { timeoutMs: 50, snapshot: async () => { throw new Error("db down"); } });
+  assert.equal(vazio.size, 0);
+  _resetLiveCases();
+});

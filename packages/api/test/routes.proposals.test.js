@@ -549,3 +549,70 @@ test("escada de 4: oferta inexistente é recusada em vez de cair na principal", 
   const res = await app.inject({ method: "POST", url: `/api/leads/${lead.id}/proposal-share`, payload: { offer: 5 } });
   assert.notEqual(res.statusCode, 200); // mandar preço errado é pior que falhar
 });
+
+// ── Cases com o número de hoje na hora de apresentar (28/09) ──────────────
+// O snapshot congela QUEM aparece no slide 06; o painel refaz QUANTO. Sem isso
+// o deck apresentava a apuração do dia em que o case foi cadastrado.
+import { liveCases, _resetLiveCases } from "../src/cases-live.js";
+import { caseKey } from "../src/cases.js";
+
+const ORG_MOTVIA = "102f9143-c7d0-414c-9393-85fdd5fa3da8";
+
+async function buildDeckComCase(cases) {
+  const { app, repo } = await buildApp();
+  await repo.create("cases", {
+    id: "ca_1", saas: "leverads", name: "Motvia", niche: "autopecas", public: true,
+    authorizedAt: "2026-09-20", authorizedBy: "leo", authorizedVia: "whatsapp",
+    evidence: { orgId: ORG_MOTVIA },
+    headline: "282.418 anúncios criados pela plataforma ao longo da parceria.", headlineAuto: true,
+    metrics: [{ metric: "gmvTotal", label: "gerado por anúncios da Lever", value: "R$ 287 mil", period: "todo o período", source: "painel" }],
+  });
+  await repo.create("proposals", {
+    id: "pr_live", saas: "leverads", layout: "slides", name: "Proposta", theme: {}, slides: [], calc: {},
+    lead: "le_p1", editKey: "k1", state: {}, accepted: false,
+    data: { lead: { name: "Ana", company: "Loja X" }, answers: { niche: "autopecas" }, cases },
+  });
+  return { app, repo };
+}
+
+const CONGELADO = [{ name: "Motvia", niche: "autopecas", order: 1, headline: "282.418 anúncios criados pela plataforma ao longo da parceria.", metrics: [{ label: "gerado por anúncios da Lever", value: "R$ 287 mil", period: "todo o período", source: "painel" }], quote: "", quoteAuthor: "", logoUrl: "" }];
+
+test("deck aberto: o case sai com o número de hoje, não com o do dia do cadastro", async () => {
+  _resetLiveCases();
+  const { app, repo } = await buildDeckComCase(CONGELADO);
+  // Cache do painel quente (o módulo é o mesmo que a rota usa).
+  await liveCases(repo, { snapshot: async () => new Map([[ORG_MOTVIA, { gmvTotal: 442140.98, ordersTotal: 3006, listings: 574780 }]]) });
+
+  const res = await app.inject({ url: "/p/pr_live" });
+  assert.equal(res.statusCode, 200);
+  assert.match(res.body, /R\$ 442 mil/);
+  assert.doesNotMatch(res.body, /R\$ 287 mil/, "o valor congelado no snapshot não vai mais pra tela");
+  assert.match(res.body, /574\.780 anúncios/);
+  // Quem aparece continua vindo do snapshot.
+  assert.match(res.body, /"name":"Motvia"/);
+  // E o snapshot no banco não é reescrito: o histórico do que foi enviado fica.
+  assert.equal((await repo.get("proposals", "pr_live")).data.cases[0].metrics[0].value, "R$ 287 mil");
+  _resetLiveCases();
+});
+
+test("deck aberto: painel fora do ar mantém o deck de pé com o número congelado", async () => {
+  _resetLiveCases();
+  const { app } = await buildDeckComCase(CONGELADO);
+  const res = await app.inject({ url: "/p/pr_live?k=k1" });
+  assert.equal(res.statusCode, 200);
+  assert.match(res.body, /R\$ 287 mil/);
+  _resetLiveCases();
+});
+
+test("deck aberto: case sem case publicado no banco não perde o card do snapshot", async () => {
+  _resetLiveCases();
+  const { app, repo } = await buildApp();
+  await repo.create("proposals", {
+    id: "pr_só_snapshot", saas: "leverads", layout: "slides", name: "Proposta", theme: {}, slides: [], calc: {},
+    lead: "le_p1", editKey: "k1", state: {}, accepted: false,
+    data: { lead: { name: "Ana", company: "Loja X" }, answers: {}, cases: CONGELADO },
+  });
+  const res = await app.inject({ url: "/p/pr_só_snapshot" });
+  assert.match(res.body, /R\$ 287 mil/);
+  _resetLiveCases();
+});

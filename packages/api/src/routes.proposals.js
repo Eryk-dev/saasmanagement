@@ -6,11 +6,12 @@
 // (closer abrindo o próprio link de edição não infla o número).
 
 import { publicProposal, syncProposalLeadSnapshot } from "./proposal.js";
-import { pickCases, publicCase } from "./cases.js";
+import { pickCases, publicCase, applyLiveCases } from "./cases.js";
 import { applyCatalog, catalogAmount, catalogUI, activeProduct } from "./proposal-catalog.js";
 import { proposalPageHtml } from "./proposal-page.js";
 import { proposalSlidesPageHtml, deckConfig } from "./proposal-slides-page.js";
 import { leveradsResults } from "./leverads-results.js";
+import { liveCases } from "./cases-live.js";
 import { makeRateLimiter } from "./forms.js";
 import { convertWonLead } from "./routes.js";
 import { logActivity, applyStageMove } from "./lead-flow.js";
@@ -47,6 +48,18 @@ function renderProposal(p, { editable = false, previewBanner = false } = {}) {
     if (ui) pv.catalogUI = ui;
   }
   return proposalPageHtml(pv, { previewBanner });
+}
+
+// Proposta servida com os cases atualizados no painel. Nunca lança: qualquer
+// tropeço devolve a proposta como está no banco.
+async function withLiveCases(repo, p) {
+  const cases = p?.data?.cases;
+  if (!Array.isArray(cases) || !cases.length) return p;
+  try {
+    const live = await liveCases(repo);
+    if (!live?.size) return p;
+    return { ...p, data: { ...p.data, cases: applyLiveCases(cases, live) } };
+  } catch { return p; }
 }
 
 function previewFromTemplate(t, { data, state, answers, cases } = {}) {
@@ -176,6 +189,10 @@ export function registerProposalRoutes(app, repo, opts = {}) {
         }
       }
     }
+    // Cases com o número de hoje (cases-live.js): o snapshot decide QUEM aparece
+    // no slide 06, o painel decide QUANTO. Mesma régua do faturado do portfólio,
+    // e o mesmo fail-open — sem o banco do produto, ficam os valores congelados.
+    p = await withLiveCases(repo, p);
     // no-store: sem isso o navegador reusa HTML antigo por cache heurístico e o
     // closer apresenta uma versão velha do deck (re-snapshots são frequentes).
     return reply.type("text/html").header("cache-control", "no-store").send(renderProposal(p, { editable }));

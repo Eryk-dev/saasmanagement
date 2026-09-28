@@ -13,6 +13,7 @@ import { FLASHCARD_DEFAULTS } from "./routes.flashcards.js";
 import { LEVERADS_EXPANSION } from "./flashcard-decks.leverads.js";
 import { mergeLeadQuestions } from "./forms.js";
 import { waMatchKey } from "./wa-store.js";
+import { caseKey, panelCaseFacts } from "./cases.js";
 import { backfillPaymentLinks } from "./payment-links.js";
 import { slideVisible } from "./proposal.js";
 import { mentoriaTemplateDoc, mentoriaCalcBlock } from "./mentoria.js";
@@ -1920,18 +1921,20 @@ export async function ensureKnownCases(repo) {
 // 10 min por anúncio, R$ 3.000 / 220h (jornada de 44h semanais).
 // Snapshot com data e valores brutos para auditoria. O novo marcador atualiza
 // os cases de 30 dias uma vez, preservando autorização e publicação existentes.
-const PANEL_SEED = "painel-acumulado-2026-09-14";
-const nomeChaveCase = (s) => String(s || "")
-  .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+//
+// 28/09/2026: o que está escrito aqui virou PISO, não retrato. A régua saiu
+// daqui pro cases.js (`panelCaseFacts`) e o deck refaz cada número no painel a
+// cada abertura (cases-live.js); estes valores são o que aparece quando o banco
+// do produto não responde. Por isso o marcador mudou: os cases semeados em
+// 14/09 precisam ganhar a CHAVE de cada medida (`metric`), que é o que autoriza
+// o recálculo.
+const PANEL_SEED = "painel-vivo-2026-09-28";
+const nomeChaveCase = caseKey;
 
 export async function ensurePanelCases(repo) {
   const atuais = (await repo.list("cases")).filter((c) => c.saas === "leverads");
   const clientes = (await repo.list("customers")).filter((c) => c.saas === "leverads");
   const clientePorNome = new Map(clientes.map((c) => [nomeChaveCase(c.name), c.id]));
-  const nf = (n, max = 0) => new Intl.NumberFormat("pt-BR", { maximumFractionDigits: max }).format(n);
-  const curto = (n) => n >= 1e6 ? nf(n / 1e6, 1) + " mi"
-    : n >= 1e3 ? nf(n / 1e3, n < 1e5 ? 1 : 0) + " mil" : nf(n);
-  const met = (label, value) => ({ label, value, period: "", source: "painel", proofUrl: "" });
   const seeds = [
     { name: "Motvia", niche: "Autopeças", order: 1,
       orgId: "102f9143-c7d0-414c-9393-85fdd5fa3da8", gmv: 286964.72, orders: 2229, listings: 574780,
@@ -1947,13 +1950,10 @@ export async function ensurePanelCases(repo) {
       computedAt: "2026-09-14T03:24:46.163382Z" },
   ].map(({ orgId, gmv, orders, listings, computedAt, ...identity }) => ({
     ...identity,
-    headline: nf(listings) + " anúncios criados pela plataforma ao longo da parceria.",
-    metrics: [
-      { ...met("gerado por anúncios da Lever", "R$ " + curto(gmv)), period: "todo o período" },
-      met("pedidos gerados no período", nf(orders)),
-      met("de cadastro manual poupadas", curto(listings / 6) + " h"),
-      met("de custo fixo evitado", "R$ " + curto(listings / 6 * 3000 / 220)),
-    ],
+    // Mesma régua do recálculo ao vivo: uma função só pros dois, senão o número
+    // semeado e o número refeito contam histórias diferentes.
+    ...panelCaseFacts({ gmvTotal: gmv, ordersTotal: orders, listings }),
+    headlineAuto: true,
     evidence: { source: "org_revenue_generated", orgId, gmvTotal: gmv, ordersTotal: orders, listings, computedAt },
   }));
   let n = 0;

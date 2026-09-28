@@ -1308,6 +1308,10 @@ function CasesTab({ product, customers }) {
             <span style={{ fontSize: 12, color: "var(--fg-3)" }}>
               {(c.metrics || []).length} {(c.metrics || []).length === 1 ? "número" : "números"}
               {c.authorizedAt ? " · autorizado" : " · sem autorização"}
+              {/* Número com chave é refeito no painel a cada abertura do deck
+                  (cases-live.js): quem olha a lista precisa saber que o card da
+                  apresentação não está preso ao dia do cadastro. */}
+              {(c.metrics || []).some((m) => m?.metric) ? " · o painel atualiza sozinho" : ""}
             </span>
             <button onClick={() => publicar(c)} disabled={!!ocupado}
               style={{ marginLeft: "auto", height: 26, padding: "0 11px", borderRadius: 999, fontSize: 11.5, fontWeight: 500, border: "1px solid var(--line-1)", background: "var(--bg-2)", color: "var(--fg-2)", cursor: ocupado ? "default" : "pointer" }}>
