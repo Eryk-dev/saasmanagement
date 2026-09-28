@@ -279,6 +279,7 @@ with d30 as (
 tot as (
   select v.org_id::text as org,
          coalesce(sum(v.gmv_total), 0)::float8   as gmv,
+         coalesce(sum(v.orders_total), 0)::int   as pedidos,
          coalesce(sum(v.items_counted), 0)::int  as anuncios
     from public.org_revenue_generated v
    where v.org_id = any($1::uuid[])
@@ -287,12 +288,15 @@ select coalesce(d30.org, tot.org)      as org,
        coalesce(d30.gmv30, 0)          as gmv30,
        coalesce(d30.pedidos30, 0)      as pedidos30,
        coalesce(tot.gmv, 0)            as gmv,
+       coalesce(tot.pedidos, 0)        as pedidos,
        coalesce(tot.anuncios, 0)       as anuncios
   from d30 full outer join tot on tot.org = d30.org`;
 
 let snapCache = { map: new Map(), at: 0, keys: "" };
 
-// Devolve Map(orgId → { gmv30d, orders30d, gmvTotal, listings }). Mesmo cache de
+// Devolve Map(orgId → { gmv30d, orders30d, gmvTotal, ordersTotal, listings }).
+// `ordersTotal` é o acumulado da parceria: o card do case conta o período
+// inteiro, não a janela de 30 dias. Mesmo cache de
 // 3h do influencedByOrg (o egress do banco do produto é compartilhado) e o
 // mesmo fail-open: sem banco, devolve o que tem em vez de estourar.
 export async function orgSnapshot(orgIds = [], { query = levercopyQuery, now = Date.now, ttlMs = ORG_TTL_MS } = {}) {
@@ -306,6 +310,7 @@ export async function orgSnapshot(orgIds = [], { query = levercopyQuery, now = D
       gmv30d: Number(r.gmv30) || 0,
       orders30d: Number(r.pedidos30) || 0,
       gmvTotal: Number(r.gmv) || 0,
+      ordersTotal: Number(r.pedidos) || 0,
       listings: Number(r.anuncios) || 0,
     }]));
     snapCache = { map, at: now(), keys };

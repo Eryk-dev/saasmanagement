@@ -18,7 +18,10 @@ export function registerCaseRoutes(app, repo, { influenced = influencedByOrg } =
       const map = await influenced([customer.leveradsOrgId]).catch(() => new Map());
       const gmv = map.get(String(customer.leveradsOrgId));
       if (gmv > 0) {
-        metrics.push({ label: "vendidos pelos anúncios da Lever", value: money(gmv), period: "últimos 30 dias", source: "painel", proofUrl: "" });
+        // `metric` é o que deixa o número se refazer sozinho a cada abertura do
+        // deck (cases-live.js): sem a chave, este card ficaria para sempre com
+        // os 30 dias do dia em que o rascunho nasceu.
+        metrics.push({ metric: "influenced30", label: "vendidos pelos anúncios da Lever", value: money(gmv), period: "últimos 30 dias", source: "painel", proofUrl: "" });
       }
     }
     const doc = await repo.create("cases", validateCase({
