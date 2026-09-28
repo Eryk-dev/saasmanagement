@@ -8,7 +8,8 @@ Imagens servidas pela API em `/public/deck/oem/<arquivo>` (rota em
 | `anuncio.jpg` | slide 02, a página do anúncio no Mercado Livre |
 | `foto-1.jpg` … `foto-5.jpg` | slide 03, as fotos do anúncio |
 | `ficha.jpg` | slide 04, características do produto |
-| `descricao.jpg` | slide 04, a descrição |
+| `descricao-1.jpg` | slide 05, a descrição (primeira parte) |
+| `descricao-2.jpg` | slide 05, a descrição (segunda parte) |
 
 Print que faltar vira espaço reservado escrito no slide (`[print da …]`), nunca
 imagem quebrada. Pra trocar os prints:
