@@ -2052,7 +2052,7 @@ export async function ensureKnownCases(repo) {
 }
 
 // Os quatro cases do painel: acumulado desde o início de cada cliente.
-// Apuração em 14/09/2026 no org_revenue_generated do PRODUTO, a mesma fonte
+// Apuração de 28/09/2026 no org_revenue_generated do PRODUTO, a mesma fonte
 // all-time do orgSnapshot. Não multiplicar uma janela de 30 dias pelo tempo
 // de contrato. Os pedidos também são acumulados; crescimento mensal não é
 // uma medida do período completo. Tempo/custo mantêm a régua do slide:
@@ -2066,6 +2066,11 @@ export async function ensureKnownCases(repo) {
 // do produto não responde. Por isso o marcador mudou: os cases semeados em
 // 14/09 precisam ganhar a CHAVE de cada medida (`metric`), que é o que autoriza
 // o recálculo.
+//
+// E a LISTA mudou no mesmo dia, por decisão do Leo: os cases da casa agora são
+// Motvia, Lupa, USACAR e Vikn. Dyno Nutri e 123tudo saíram de circulação (foram
+// despublicados no banco e não são mais semeados aqui); os registros deles
+// continuam existindo como rascunho, prontos pra voltar se um dia voltarem.
 const PANEL_SEED = "painel-vivo-2026-09-28";
 const nomeChaveCase = caseKey;
 
@@ -2075,17 +2080,17 @@ export async function ensurePanelCases(repo) {
   const clientePorNome = new Map(clientes.map((c) => [nomeChaveCase(c.name), c.id]));
   const seeds = [
     { name: "Motvia", niche: "Autopeças", order: 1,
-      orgId: "102f9143-c7d0-414c-9393-85fdd5fa3da8", gmv: 286964.72, orders: 2229, listings: 574780,
-      computedAt: "2026-09-14T14:04:52.449623Z" },
+      orgId: "102f9143-c7d0-414c-9393-85fdd5fa3da8", gmv: 442453.32, orders: 3008, listings: 574780,
+      computedAt: "2026-09-28T14:03:11.129787Z" },
     { name: "Lupa Autopeças", niche: "Autopeças", order: 2,
-      orgId: "d70453cc-274c-4494-a77f-0520045aa348", gmv: 167703.48, orders: 926, listings: 282418,
-      computedAt: "2026-09-14T13:55:40.558515Z" },
-    { name: "Dyno Nutri", niche: "Suplementos", order: 3,
-      orgId: "17c39382-db33-4ace-b503-1def9fef62ec", gmv: 284652.41, orders: 1853, listings: 1437,
-      computedAt: "2026-09-14T14:04:52.765219Z" },
-    { name: "123tudo", niche: "Variedades", order: 4,
-      orgId: "766700f7-496b-4572-9dfb-238d08e191c7", gmv: 64252.16, orders: 308, listings: 8128,
-      computedAt: "2026-09-14T03:24:46.163382Z" },
+      orgId: "d70453cc-274c-4494-a77f-0520045aa348", gmv: 281277.87, orders: 1341, listings: 282418,
+      computedAt: "2026-09-28T13:49:06.068024Z" },
+    { name: "USACAR Autopeças", niche: "Autopeças", order: 3,
+      orgId: "d70a03f3-c6d7-4672-957c-b341f462eb12", gmv: 126851.29, orders: 365, listings: 23376,
+      computedAt: "2026-09-28T13:29:42.323973Z" },
+    { name: "Vikn Comércio de Auto Peças", niche: "Autopeças", order: 4,
+      orgId: "11895872-c51b-41d2-8a07-31c7b6b636ea", gmv: 49691.16, orders: 786, listings: 776,
+      computedAt: "2026-09-28T13:50:16.775499Z" },
   ].map(({ orgId, gmv, orders, listings, computedAt, ...identity }) => ({
     ...identity,
     // Mesma régua do recálculo ao vivo: uma função só pros dois, senão o número
@@ -2107,9 +2112,9 @@ export async function ensurePanelCases(repo) {
       logoUrl: antigo?.logoUrl || "",
       updatedAt: new Date().toISOString(),
     };
-    // O case do mesmo cliente já existente (Dyno Nutri nasceu no seed antigo,
-    // com o número do roteiro do closer) é ATUALIZADO, nunca duplicado: dois
-    // cards do mesmo nome no slide seria o pior dos mundos.
+    // O case de mesmo nome já existente é ATUALIZADO, nunca duplicado: dois
+    // cards do mesmo cliente no slide seria o pior dos mundos. É o que acontece
+    // com USACAR e Vikn, cadastrados à mão em 15/09 antes de entrarem aqui.
     if (antigo) await repo.update("cases", antigo.id, doc);
     else await repo.create("cases", { ...doc, public: false, authorizedAt: "", authorizedBy: "", authorizedVia: "", createdAt: new Date().toISOString() });
     n++;

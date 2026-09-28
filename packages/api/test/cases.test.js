@@ -193,32 +193,38 @@ test("deck: com cases, eles vão no snapshot e o fallback some na pintura", () =
 // ── Os quatro cases do painel (página 10 do deck C) ───────────────────────
 test("migração do painel: quatro cases em rascunho, com as quatro medidas do slide", async () => {
   const repo = makeMemRepo();
-  await repo.create("customers", { saas: "leverads", name: "Dyno Nutri" });
+  await repo.create("customers", { saas: "leverads", name: "USACAR Autopeças" });
   assert.equal(await ensurePanelCases(repo), 4);
   const todos = await repo.list("cases");
-  assert.deepEqual(todos.map((c) => c.name), ["Motvia", "Lupa Autopeças", "Dyno Nutri", "123tudo"]);
+  // Os cases da casa desde 28/09: Dyno Nutri e 123tudo saíram de circulação.
+  assert.deepEqual(todos.map((c) => c.name), ["Motvia", "Lupa Autopeças", "USACAR Autopeças", "Vikn Comércio de Auto Peças"]);
   assert.ok(todos.every((c) => c.metrics.length === 4), "cada case leva as quatro medidas do slide");
   assert.ok(todos.every((c) => c.metrics.every((m) => m.source === "painel")), "todo número vem do painel");
   assert.ok(todos.every((c) => c.public === false), "nada nasce público: nome e logo de cliente pedem autorização");
   assert.ok(todos.every((c) => publishBlockers(c).includes("a autorização do cliente (data)")));
   // O vínculo com o cadastro entra quando o cliente existe, e some quando não.
-  assert.ok(todos.find((c) => c.name === "Dyno Nutri").customerId);
+  assert.ok(todos.find((c) => c.name === "USACAR Autopeças").customerId);
   assert.equal(todos.find((c) => c.name === "Motvia").customerId, "");
 });
 
 test("migração do painel: atualiza o case que já existia em vez de duplicar, e roda uma vez só", async () => {
   const repo = makeMemRepo();
-  assert.equal(await ensureKnownCases(repo), 3);
-  const antes = (await repo.list("cases")).find((c) => c.name === "Dyno Nutri");
-  assert.equal(antes.metrics[0].value, "R$ 60 mil"); // número do roteiro do closer
+  // USACAR e Vikn foram cadastrados à mão em 15/09, antes de entrarem no seed:
+  // a migração tem que ATUALIZAR esses registros, não criar um segundo card.
+  const antes = await repo.create("cases", completo({
+    id: "ca_usacar", name: "USACAR Autopeças", public: true, authorizedAt: "2026-09-15",
+    metrics: [{ label: "gerado por anúncios da Lever", value: "R$ 94,9 mil", period: "todo o período", source: "painel" }],
+  }));
   assert.equal(await ensurePanelCases(repo), 4);
   const todos = await repo.list("cases");
-  assert.equal(todos.filter((c) => c.name === "Dyno Nutri").length, 1, "um card por cliente");
-  const depois = todos.find((c) => c.name === "Dyno Nutri");
+  assert.equal(todos.filter((c) => c.name === "USACAR Autopeças").length, 1, "um card por cliente");
+  const depois = todos.find((c) => c.name === "USACAR Autopeças");
   assert.equal(depois.id, antes.id, "mesmo registro, número novo");
-  assert.equal(depois.metrics[0].value, "R$ 285 mil");
+  assert.equal(depois.metrics[0].value, "R$ 127 mil");
   assert.equal(depois.metrics[0].source, "painel");
-  assert.equal(todos.length, 6); // Unique e Unicoox seguem lá
+  assert.equal(depois.public, true, "publicação e autorização do time ficam de pé");
+  assert.equal(depois.authorizedAt, "2026-09-15");
+  assert.equal(todos.length, 4);
   assert.equal(await ensurePanelCases(repo), 0, "idempotente: não mexe no que o time editar depois");
 });
 
@@ -230,12 +236,12 @@ test("cases acumulados: usa totais auditados, preserva autorização e retoma um
   const outroProduto = await repo.create("cases", completo({ id: "ca_outro", saas: "outro", name: "Motvia" }));
   assert.equal(await ensurePanelCases(repo), 4);
   const motvia = await repo.get("cases", antigo.id);
-  assert.equal(motvia.metrics[0].value, "R$ 287 mil");
+  assert.equal(motvia.metrics[0].value, "R$ 442 mil");
   assert.equal(motvia.metrics[0].period, "todo o período");
-  assert.equal(motvia.metrics[1].value, "2.229");
+  assert.equal(motvia.metrics[1].value, "3.008");
   assert.equal(motvia.metrics[2].value, "95,8 mil h");
   assert.equal(motvia.metrics[3].value, "R$ 1,3 mi");
-  assert.equal(motvia.evidence.gmvTotal, 286964.72);
+  assert.equal(motvia.evidence.gmvTotal, 442453.32);
   assert.equal(motvia.evidence.listings, 574780);
   assert.equal(motvia.public, antigo.public);
   assert.equal(motvia.authorizedAt, antigo.authorizedAt);
@@ -246,7 +252,7 @@ test("cases acumulados: usa totais auditados, preserva autorização e retoma um
   assert.deepEqual(await repo.get("cases", outroProduto.id), outroProduto);
 
   const todos = (await repo.list("cases")).filter((c) => c.saas === "leverads");
-  assert.deepEqual(todos.map((c) => c.metrics[0].value), ["R$ 287 mil", "R$ 168 mil", "R$ 285 mil", "R$ 64,3 mil"]);
+  assert.deepEqual(todos.map((c) => c.metrics[0].value), ["R$ 442 mil", "R$ 281 mil", "R$ 127 mil", "R$ 49,7 mil"]);
   assert.ok(todos.every((c) => !JSON.stringify(c.metrics).includes("do mês")));
   const lupa = todos.find((c) => c.name === "Lupa Autopeças");
   await repo.update("cases", lupa.id, { seed: "painel-30d-2026-09", metrics: [] });
@@ -275,8 +281,8 @@ test("deck: o card de case leva logo, as três medidas de apoio e a régua no sl
 });
 
 // ── Números que se refazem sozinhos (28/09) ───────────────────────────────
-import { panelCaseFacts, panelMetricValue, caseWithLiveNumbers, applyLiveCases, caseKey } from "../src/cases.js";
-import { liveCases, _resetLiveCases } from "../src/cases-live.js";
+import { panelCaseFacts, panelMetricValue, caseWithLiveNumbers } from "../src/cases.js";
+import { liveCases, liveDeckCases, _resetLiveCases } from "../src/cases-live.js";
 
 const SNAP = { gmvTotal: 442140.98, ordersTotal: 3006, listings: 574780, gmv30d: 82000 };
 
@@ -318,17 +324,23 @@ test("case ao vivo: painel manda no número, o texto salvo manda na frase", () =
   assert.equal(caseWithLiveNumbers(aMao, SNAP).headline, aMao.headline);
 });
 
-test("applyLiveCases: o snapshot decide quem aparece, o painel decide quanto", () => {
-  const congelados = [
-    { name: "Motvia", niche: "Autopeças", order: 1, metrics: [{ label: "gerado", value: "R$ 287 mil" }] },
-    { name: "Unique", niche: "", order: 2, metrics: [{ label: "vendas", value: "+105%" }] },
-  ];
-  const live = new Map([[caseKey("Motvia"), { name: "Motvia", niche: "Autopeças", order: 9, metrics: [{ label: "gerado", value: "R$ 442 mil" }] }]]);
-  const r = applyLiveCases(congelados, live);
-  assert.equal(r[0].metrics[0].value, "R$ 442 mil");
-  assert.equal(r[0].order, 1, "a ordem é a do snapshot");
-  assert.equal(r[1].metrics[0].value, "+105%", "case sem correspondência no painel fica como estava");
-  assert.deepEqual(applyLiveCases(congelados, new Map()), congelados);
+test("liveDeckCases: a lista é a de hoje, pela régua de nicho e ordem", async () => {
+  _resetLiveCases();
+  const repo = makeMemRepo();
+  await repo.create("cases", completo({ id: "ca_1", name: "Motvia", niche: "autopecas", order: 1 }));
+  await repo.create("cases", completo({ id: "ca_2", name: "Vikn", niche: "autopecas", order: 4 }));
+  await repo.create("cases", completo({ id: "ca_3", name: "Dyno Nutri", niche: "suplementos", order: 3, public: false }));
+  const snapshot = async () => new Map();
+
+  const cards = await liveDeckCases(repo, { niche: "autopecas", limit: 4, snapshot });
+  assert.deepEqual(cards.map((c) => c.name), ["Motvia", "Vikn"], "case despublicado sai da apresentação");
+  assert.equal(cards[0].customerId, undefined, "sai pela versão pública");
+  _resetLiveCases();
+
+  // Sem case publicado nenhum, devolve null e quem chama fica com o snapshot.
+  const vazio = makeMemRepo();
+  assert.equal(await liveDeckCases(vazio, { snapshot }), null);
+  _resetLiveCases();
 });
 
 test("liveCases: org do case vem da evidência ou da ficha do cliente, e rascunho fica fora", async () => {
@@ -353,12 +365,12 @@ test("liveCases: org do case vem da evidência ou da ficha do cliente, e rascunh
       ["d70453cc-274c-4494-a77f-0520045aa348", { gmvTotal: 280728, ordersTotal: 1336, listings: 282418, gmv30d: 54321 }],
     ]);
   };
-  const map = await liveCases(repo, { snapshot });
+  const docs = await liveCases(repo, { snapshot });
   assert.deepEqual(pedidas.sort(), ["102f9143-c7d0-414c-9393-85fdd5fa3da8", "d70453cc-274c-4494-a77f-0520045aa348"]);
-  assert.equal(map.get(caseKey("Motvia")).metrics[0].value, "R$ 442 mil");
-  assert.equal(map.get(caseKey("Lupa")).metrics[0].value, "R$ 54,3 mil");
-  assert.equal(map.get(caseKey("Rascunho")), undefined, "rascunho não vira prova");
-  assert.equal(map.get(caseKey("Motvia")).customerId, undefined, "sai pela versão pública");
+  const porNome = new Map(docs.map((d) => [d.name, d]));
+  assert.equal(porNome.get("Motvia").metrics[0].value, "R$ 442 mil");
+  assert.equal(porNome.get("Lupa").metrics[0].value, "R$ 54,3 mil");
+  assert.equal(porNome.get("Rascunho"), undefined, "rascunho não vira prova");
   _resetLiveCases();
 });
 
@@ -370,15 +382,15 @@ test("liveCases: painel fora do ar não derruba nem apaga o que já foi calculad
     metrics: [{ metric: "gmvTotal", label: "gerado", value: "R$ 287 mil", period: "", source: "painel" }],
   }));
   const quente = await liveCases(repo, { snapshot: async () => new Map([["102f9143-c7d0-414c-9393-85fdd5fa3da8", SNAP]]) });
-  assert.equal(quente.get(caseKey("Motvia")).metrics[0].value, "R$ 442 mil");
+  assert.equal(quente[0].metrics[0].value, "R$ 442 mil");
   // Cache vencido + banco fora: devolve o último bom, nunca vazio.
   const depois = await liveCases(repo, { ttlMs: -1, snapshot: async () => { throw new Error("db down"); } });
-  assert.equal(depois.get(caseKey("Motvia")).metrics[0].value, "R$ 442 mil");
+  assert.equal(depois[0].metrics[0].value, "R$ 442 mil");
   _resetLiveCases();
 
-  // Cache frio + banco fora: mapa vazio, e quem chama segue com o congelado.
+  // Cache frio + banco fora: lista vazia, e quem chama segue com o congelado.
   const vazio = await liveCases(repo, { timeoutMs: 50, snapshot: async () => { throw new Error("db down"); } });
-  assert.equal(vazio.size, 0);
+  assert.equal(vazio.length, 0);
   _resetLiveCases();
 });
 

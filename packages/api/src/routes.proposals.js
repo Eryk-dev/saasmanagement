@@ -6,12 +6,12 @@
 // (closer abrindo o próprio link de edição não infla o número).
 
 import { publicProposal, syncProposalLeadSnapshot } from "./proposal.js";
-import { pickCases, publicCase, applyLiveCases } from "./cases.js";
+import { pickCases, publicCase } from "./cases.js";
 import { applyCatalog, catalogAmount, catalogUI, activeProduct } from "./proposal-catalog.js";
 import { proposalPageHtml } from "./proposal-page.js";
 import { proposalSlidesPageHtml, deckConfig } from "./proposal-slides-page.js";
 import { leveradsResults, leveradsPresentationResults } from "./leverads-results.js";
-import { liveCases } from "./cases-live.js";
+import { liveDeckCases } from "./cases-live.js";
 import { makeRateLimiter } from "./forms.js";
 import { convertWonLead } from "./routes.js";
 import { logActivity, applyStageMove } from "./lead-flow.js";
@@ -51,15 +51,17 @@ function renderProposal(p, { editable = false, previewBanner = false, configOnly
   return proposalPageHtml(pv, { previewBanner });
 }
 
-// Proposta servida com os cases atualizados no painel. Nunca lança: qualquer
-// tropeço devolve a proposta como está no banco.
+// Proposta servida com os cases de HOJE: quem está publicado agora, pela régua
+// de nicho/ordem de sempre, com os números refeitos no painel. Nunca lança:
+// qualquer tropeço devolve a proposta como está no banco, e sem case publicado
+// nenhum fica o que foi congelado no snapshot.
 async function withLiveCases(repo, p) {
   const cases = p?.data?.cases;
-  if (!Array.isArray(cases) || !cases.length) return p;
+  if (!Array.isArray(cases)) return p;
   try {
-    const live = await liveCases(repo);
-    if (!live?.size) return p;
-    return { ...p, data: { ...p.data, cases: applyLiveCases(cases, live) } };
+    const vivos = await liveDeckCases(repo, { niche: p?.data?.answers?.niche || "", limit: 4 });
+    if (!vivos?.length) return p;
+    return { ...p, data: { ...p.data, cases: vivos } };
   } catch { return p; }
 }
 
@@ -192,9 +194,9 @@ export function registerProposalRoutes(app, repo, opts = {}) {
         }
       }
     }
-    // Cases com o número de hoje (cases-live.js): o snapshot decide QUEM aparece
-    // no slide 06, o painel decide QUANTO. Mesma régua do faturado do portfólio,
-    // e o mesmo fail-open — sem o banco do produto, ficam os valores congelados.
+    // Cases de hoje no slide 06 (cases-live.js): a lista vem do que está
+    // publicado agora e os números do painel. Mesmo fail-open do resto — sem
+    // case publicado ou sem banco, vale o que foi congelado no snapshot.
     p = await withLiveCases(repo, p);
     // no-store: sem isso o navegador reusa HTML antigo por cache heurístico e o
     // closer apresenta uma versão velha do deck (re-snapshots são frequentes).
