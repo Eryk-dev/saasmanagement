@@ -137,17 +137,6 @@ export function caseWithLiveNumbers(doc = {}, snap = null) {
   return { ...doc, metrics, headline, liveAt: new Date().toISOString() };
 }
 
-// Troca os cards congelados no snapshot da proposta pelos mesmos cases com os
-// números de hoje. QUEM aparece (e em que ordem) continua sendo decisão do
-// snapshot: o link já enviado não muda de personagem, só de número.
-export function applyLiveCases(cases = [], live) {
-  if (!live || !live.size) return cases || [];
-  return (cases || []).map((c) => {
-    const novo = live.get(caseKey(c?.name));
-    return novo ? { ...c, ...novo, order: c.order ?? novo.order } : c;
-  });
-}
-
 export function validateCase(doc = {}) {
   const metrics = (Array.isArray(doc.metrics) ? doc.metrics : []).map((m) => ({
     // `metric` é a CHAVE da medida (ver PANEL_METRICS): é ela que deixa o

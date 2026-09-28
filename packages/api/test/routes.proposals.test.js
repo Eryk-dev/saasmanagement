@@ -587,7 +587,6 @@ test("escada de 4: oferta inexistente é recusada em vez de cair na principal", 
 // O snapshot congela QUEM aparece no slide 06; o painel refaz QUANTO. Sem isso
 // o deck apresentava a apuração do dia em que o case foi cadastrado.
 import { liveCases, _resetLiveCases } from "../src/cases-live.js";
-import { caseKey } from "../src/cases.js";
 
 const ORG_MOTVIA = "102f9143-c7d0-414c-9393-85fdd5fa3da8";
 
@@ -634,6 +633,23 @@ test("deck aberto: painel fora do ar mantém o deck de pé com o número congela
   const res = await app.inject({ url: "/p/pr_live?k=k1" });
   assert.equal(res.statusCode, 200);
   assert.match(res.body, /R\$ 287 mil/);
+  _resetLiveCases();
+});
+
+test("deck aberto: case que saiu de circulação some do deck já enviado", async () => {
+  // 28/09: Dyno Nutri e 123tudo saíram, USACAR e Vikn entraram. As ~900
+  // propostas já geradas têm os antigos congelados no snapshot; o que vale na
+  // hora de apresentar é quem está publicado hoje.
+  _resetLiveCases();
+  const { app, repo } = await buildDeckComCase([
+    { name: "Dyno Nutri", niche: "suplementos", order: 3, headline: "", metrics: [{ label: "gerado por anúncios da Lever", value: "R$ 285 mil", period: "todo o período", source: "painel" }], quote: "", quoteAuthor: "", logoUrl: "" },
+  ]);
+  await liveCases(repo, { snapshot: async () => new Map([[ORG_MOTVIA, { gmvTotal: 442140.98, ordersTotal: 3006, listings: 574780 }]]) });
+
+  const res = await app.inject({ url: "/p/pr_live" });
+  assert.match(res.body, /"name":"Motvia"/, "entra o case publicado hoje");
+  assert.doesNotMatch(res.body, /Dyno Nutri/, "o case fora de circulação não vai mais pra tela");
+  assert.match(res.body, /R\$ 442 mil/);
   _resetLiveCases();
 });
 
