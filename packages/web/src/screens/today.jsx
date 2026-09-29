@@ -15,7 +15,7 @@ import { bizDay } from "../lib/format.js";
 import { businessDaysBetween } from "../components/period-picker.jsx";
 import { scaledGoal } from "../components/team-cards.jsx";
 import { useData } from "../data.jsx";
-import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf, nextKindsFor, nurtureStage, hasDayStages, dayStageNumber } from "../lib/funnel.js";
+import { stageKind, phaseOf, workableStages, openStages, cadenceOf, rollToBusinessDay, stageByKind, firstStage, lossReasonsOf, nextKindsFor, nurtureStage, hasDayStages, dayStageNumber, nextActionAfterMove } from "../lib/funnel.js";
 import { allUsers, currentUser, displayName, userById, usersByRole, isAdminUser } from "../lib/users.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { myOpenTasks, taskHash } from "../lib/tasks.js";
@@ -626,6 +626,24 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
     api.update("leads", leadId, patch).catch((err) => { console.warn("lead não salvo:", err.message); toast("Alteração no lead não foi salva · tente de novo", "neg"); });
   }
 
+  // Espelho local do que o servidor faz no movimento (applyStageMove): recarimba
+  // stageSince, zera as tentativas do estágio e RE-AGENDA o GPS pra etapa nova.
+  // O nextActionAt é o que decide se o card ainda é da fila de HOJE — sem
+  // recalculá-lo aqui, o card movido continuava na lista com o toque vencido da
+  // etapa antiga até o próximo reload do SEED (Leo, 29/09).
+  const movePatch = (lead, patch) => ({
+    ...patch,
+    stageSince: new Date().toISOString(),
+    stageAttempts: 0,
+    nextActionAt: nextActionAfterMove(saasCfg, lead, patch),
+  });
+  // Resposta do PATCH = a verdade (o servidor ainda limpa compromisso rival,
+  // atribui integrador, converte o ganho): assim que ela chega, o lead local
+  // vira o lead salvo.
+  const syncSaved = (saved) => {
+    if (saved && saved.id) setLeads((prev) => prev.map((x) => (x.id === saved.id ? { ...x, ...saved } : x)));
+  };
+
   // Mover o card pra próxima coluna a partir do roteiro (com o setup do destino
   // já resolvido: closer+call, integrador, valor, motivo). Otimista igual ao
   // board — o servidor recarimba stageSince, agenda o GPS e faz o resto
@@ -634,9 +652,10 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
     const cur = scriptItem;
     if (!cur) return;
     const nx = nextAfter(cur);
-    setLeads((prev) => prev.map((x) => x.id === cur.l.id
-      ? { ...x, ...patch, stageSince: new Date().toISOString(), stageAttempts: 0 } : x));
-    api.update("leads", cur.l.id, patch).catch((err) => { console.warn("movimento não persistido:", err.message); toast("O movimento do card não foi salvo · tente de novo", "neg"); });
+    setLeads((prev) => prev.map((x) => x.id === cur.l.id ? { ...x, ...movePatch(x, patch) } : x));
+    api.update("leads", cur.l.id, patch)
+      .then(syncSaved)
+      .catch((err) => { console.warn("movimento não persistido:", err.message); toast("O movimento do card não foi salvo · tente de novo", "neg"); });
     setScriptItem(nx);
   }
 
@@ -648,9 +667,8 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
     const cur = scriptItem;
     if (!cur) throw new Error("sem item na fila");
     const full = email ? { ...patch, email } : patch;
-    setLeads((prev) => prev.map((x) => x.id === cur.l.id
-      ? { ...x, ...full, stageSince: new Date().toISOString(), stageAttempts: 0 } : x));
-    await api.update("leads", cur.l.id, full);
+    setLeads((prev) => prev.map((x) => x.id === cur.l.id ? { ...x, ...movePatch(x, full) } : x));
+    syncSaved(await api.update("leads", cur.l.id, full));
     const res = await api.createMeet(cur.l.id, email ? { email } : undefined);
     setLeads((prev) => prev.map((x) => x.id === cur.l.id ? { ...x, callUrl: res.callUrl } : x));
     return res;

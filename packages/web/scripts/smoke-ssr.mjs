@@ -508,6 +508,50 @@ try {
     failed++;
   }
 
+  // Card movido SAI da fila de hoje (Leo, 29/09): o movimento otimista mantinha
+  // o `nextActionAt` da etapa ANTIGA (vencido) e o card continuava na lista de
+  // Minhas atividades até o reload do SEED. `nextActionAfterMove` é o espelho do
+  // applyStageMove do servidor — compromisso da etapa nova manda, senão a
+  // cadência dela, e etapa terminal sai do GPS.
+  try {
+    const { nextActionAfterMove } = await server.ssrLoadModule("/src/lib/funnel.js");
+    const { buildQueue } = await server.ssrLoadModule("/src/screens/today.jsx");
+    const eq = (name, got, want) => {
+      if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error(`${name}: ${JSON.stringify(got)} ≠ ${JSON.stringify(want)}`);
+    };
+    const cfg = { id: "leverads", funnel: [
+      { stage: "Novo lead", kind: "novo", cadence: { firstTouchHours: 2, retryDays: 1 } },
+      { stage: "Qualificando", kind: "qualificacao", cadence: { retryDays: 1, maxAttempts: 2 } },
+      { stage: "Call agendada", kind: "call", cadence: { retryDays: 1 } },
+      { stage: "Follow-up", kind: "followup", cadence: { retryDays: 3, maxAttempts: 3 } },
+      { stage: "Integração", kind: "integracao" },
+      { stage: "Ganho", kind: "ganho" }, { stage: "Desqualificado", kind: "desqualificado" },
+    ] };
+    const vencido = new Date(); vencido.setHours(8, 0, 0, 0);
+    const lead = { id: "l1", saas: "leverads", name: "Zé", stage: "Qualificando", nextActionAt: vencido.toISOString() };
+    const bloco = (l) => {
+      const q = buildQueue([l], [], cfg, "");
+      return ["hoje", "amanha", "proximos", "semdata"].find((k) => q[k].some((i) => i.l?.id === l.id)) || "fora";
+    };
+    eq("antes do movimento o card é de hoje", bloco(lead), "hoje");
+    const mover = (patch) => ({ ...lead, ...patch, nextActionAt: nextActionAfterMove(cfg, lead, patch) });
+    eq("movido pro Follow-up, sai da fila de hoje", bloco(mover({ stage: "Follow-up", closer: "jonathan" })), "proximos");
+    // Cadência curta (Novo lead volta em 2h) mantém o card no dia — de propósito.
+    eq("etapa que volta hoje continua na fila do dia", bloco(mover({ stage: "Novo lead" })), "hoje");
+    // Compromisso marcado manda: a call de amanhã vira o próximo passo.
+    const amanha = new Date(Date.now() + 86400000); amanha.setHours(14, 0, 0, 0);
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    eq("call agendada vira o GPS", nextActionAfterMove(cfg, lead, { stage: "Call agendada", callAt: iso(amanha) }), amanha.toISOString());
+    eq("horário escolhido na tela manda", nextActionAfterMove(cfg, lead, { stage: "Follow-up", nextActionAt: amanha.toISOString() }), amanha.toISOString());
+    eq("etapa terminal sai do GPS", nextActionAfterMove(cfg, lead, { stage: "Desqualificado" }), "");
+    eq("integração sem horário fica sem data", nextActionAfterMove(cfg, lead, { stage: "Integração" }), "");
+    eq("sem trocar de etapa, o GPS não muda", nextActionAfterMove(cfg, lead, { closer: "x" }), lead.nextActionAt);
+    console.log("✓ card-movido-sai-da-fila");
+  } catch (err) {
+    console.error(`✗ card-movido-sai-da-fila: ${err.message}`);
+    failed++;
+  }
+
   // Cadência de 7 dias por coluna (Dia 2…Dia 7, #881): cada dia tem roteiro
   // próprio, linha em Scripts/Próximos passos, e o Depois da ação oferece
   // "Qualificando" (ele respondeu). Com as colunas, o Retomar do Novo lead não
