@@ -423,8 +423,11 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   corrigir o cleanup do efeito de `DeliveryRulesCard`.
 
 - **Suporte — tickets (14/09/2026):** grupo novo "Suporte" no menu com Tickets
-  (Kanban por status, com Resolvido e Fechado juntos na coluna Concluídos e o
-  círculo de concluir no card, e Lista agrupada pelo SLA; detalhe em modal `#tickets/<id>`) e
+  (Kanban por status, com Resolvido e Fechado juntos na coluna Concluídos,
+  Aguardando cliente e Em espera juntos em Aguardando, o círculo de concluir e
+  menu do clique direito no card, e o nome do cliente cadastrado — vinculado ou
+  reconhecido por e-mail/telefone/nome — abrindo o cartão do cliente; e Lista
+  agrupada pelo SLA; detalhe em modal `#tickets/<id>`) e
   Configurações de SLA. Invariantes: (1) o **escopo de produto é ACL no
   servidor** — sessão sem etiqueta `admin` só alcança os produtos de
   `user.supportSaas` (lista vazia = nenhum ticket; ticket fora do escopo
@@ -437,7 +440,10 @@ falha de deploy com a evidência, conforme o acordo de trabalho.
   por prioridade em minutos úteis (expediente do produto, relógio de
   Brasília): prazos e instantes de aviso ficam gravados no ticket, então fila,
   contador do menu e `ticket-sla-runner.js` concordam; mudar a configuração vale
-  para tickets abertos ou alterados depois. (4) **Nota interna nunca sai pelo
+  para tickets abertos ou alterados depois. Ticket que segue concluído não é
+  reavaliado: editar assunto, prioridade ou passar de Resolvido a Fechado mantém
+  prazos e estouros da conclusão (`nextSla`; reparo único dos já afetados em
+  `repairDoneTicketSla`, 29/09/2026). (4) **Nota interna nunca sai pelo
   portal** — `/s/:token` e `/public/support/*` só usam `publicTicket`. Portal de
   abertura `/s/new/:saas` nasce desligado; aviso ao cliente por e-mail só com o
   toggle do produto e o Gmail conectado. Prévia: `/?shell=1#tickets`,

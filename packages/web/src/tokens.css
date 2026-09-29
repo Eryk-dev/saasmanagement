@@ -512,6 +512,8 @@ body[data-density="regular"] { font-size: 14px; }
 .tk-leaving { animation: tk-fade .35s ease .85s forwards; }
 .tk-strip { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
 .tk-panel-field:focus { background: var(--bg-1); border-color: var(--line-2) !important; }
+/* Fundo no CSS, não inline: o inline anulava o destaque do hover/teclado. */
+.tk-menu-item { background: transparent; }
 .tk-menu-item:hover:not(:disabled), .tk-menu-item.is-active { background: var(--bg-2); }
 .tk-drop-overlay { position: absolute; inset: 0; border: 2px dashed var(--accent-line); border-radius: var(--r-3); background: color-mix(in srgb, var(--accent-soft) 70%, transparent); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: var(--accent); z-index: 2; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .tk-pop, .tk-leaving { animation: none; } }

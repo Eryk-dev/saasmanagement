@@ -6,7 +6,7 @@ import { EmptyState, PrimaryButton, toast } from "../../atoms.jsx";
 import { Segmented } from "../../components/viz.jsx";
 import { SearchInput } from "../../components/search-input.jsx";
 import { useActiveSaas } from "../../lib/workspace.js";
-import { currentUser } from "../../lib/users.js";
+import { currentUser, isAdminUser } from "../../lib/users.js";
 import { useIsMobile } from "../../lib/responsive.js";
 import { TICKET_STATUSES, STATUS_BY_KEY, PRIORITY_RANK, kindOf, isDone, slaState, agentStats, supportScope, fold, noScopeHint, linearKey } from "../../lib/tickets.js";
 import { useBoardDnd } from "../../components/kanban/dnd.js";
@@ -17,6 +17,9 @@ import { TicketsList } from "./list-view.jsx";
 import { TicketDetail } from "./detail.jsx";
 import { NewTicketModal } from "./new-ticket.jsx";
 import { AgentKpis } from "./agent-kpis.jsx";
+import { Menu } from "../../components/menu.jsx";
+import { ticketMenuItems } from "./context-menu.jsx";
+import { CustomerCard } from "./customer-card.jsx";
 
 // Suporte · fila de tickets do produto ativo. Mesmo desenho das Tarefas: a
 // tela busca a própria lista (fora do SEED), escuta o cockpit-change, muda com
@@ -60,6 +63,10 @@ export function inDoneColumn(t, filter, { me }) {
     default: return true;
   }
 }
+// Aguardando cliente e Em espera dividem a coluna Aguardando: o status segue
+// separado (a pausa do SLA e o portal leem a diferença), o card mostra qual é.
+// Soltar na coluna um ticket que ainda não espera = Aguardando cliente.
+export const WAITING_COLUMN = { key: "waiting", label: "Aguardando", tone: "var(--warn)" };
 const doneAt = (t) => new Date(t.sla?.resolvedAt || t.closedAt || t.updatedAt || 0).getTime() || 0;
 
 // Fila: o SLA mais apertado primeiro, depois a prioridade, depois o mais antigo.
@@ -92,6 +99,8 @@ export function TicketsScreen() {
   const [panelRefresh, setPanelRefresh] = useState(0);
   const [activityVersion, setActivityVersion] = useState(0);
   const [creating, setCreating] = useState(false);
+  const [menu, setMenu] = useState(null); // { id, at: { x, y } }
+  const [customerCard, setCustomerCard] = useState(null); // { ticketId, customer, via, anchor }
   const [now, setNow] = useState(() => Date.now());
   const boardRef = useRef(null);
   const dndRef = useRef(null);
@@ -149,9 +158,10 @@ export function TicketsScreen() {
   const columns = useMemo(() => {
     const done = { ...DONE_COLUMN, tickets: searched.filter((t) => inDoneColumn(t, filter, { me })).sort((a, b) => doneAt(b) - doneAt(a)) };
     if (filter === "done") return [done];
-    const open = TICKET_STATUSES.filter((s) => s.kind !== "done")
+    const open = TICKET_STATUSES.filter((s) => s.kind === "open")
       .map((s) => ({ key: s.key, label: s.label, tone: s.tone, tickets: visible.filter((t) => t.status === s.key) }));
-    return [...open, done];
+    const waiting = { ...WAITING_COLUMN, tickets: visible.filter((t) => kindOf(t.status) === "waiting") };
+    return [...open, waiting, done];
   }, [searched, visible, filter, me]);
   const agentName = useCallback((id) => (agents || []).find((a) => a.id === id)?.name || id || "—", [agents]);
   const byId = useMemo(() => new Map(mine.map((t) => [t.id, t])), [mine]);
@@ -165,22 +175,29 @@ export function TicketsScreen() {
   const onDeleted = useCallback((id) => { dispatch({ type: "REMOVE", ids: [id] }); closePanel(); }, [dispatch, closePanel]);
 
   // ── Kanban: arrastar muda o status; soltar em Concluídos resolve ─────────
-  const setStatus = useCallback((id, status, label) => {
+  // Toda alteração da fila (arrasto, círculo, menu) passa por aqui: otimista,
+  // volta ao que era se a API recusar.
+  const patchTicket = useCallback((id, patch, label) => {
     const before = byId.get(id);
-    if (!before || before.status === status) return;
+    if (!before || Object.keys(patch).every((k) => (before[k] || "") === (patch[k] || ""))) return;
+    const undo = Object.fromEntries(Object.keys(patch).map((k) => [k, before[k] ?? ""]));
     mutate({
-      ids: [id], silent: false, label: label || `#${before.number} em ${STATUS_BY_KEY[status]?.label || status}`,
-      optimistic: () => dispatch({ type: "PATCH_LOCAL", id, patch: { status } }),
-      request: () => api.ticketUpdate(id, { status }),
+      ids: [id], silent: false, label,
+      optimistic: () => dispatch({ type: "PATCH_LOCAL", id, patch }),
+      request: () => api.ticketUpdate(id, patch),
       apply: (saved) => { dispatch({ type: "UPSERT", ticket: saved }); if (panelId === id) setPanelRefresh((v) => v + 1); },
-      rollback: () => dispatch({ type: "PATCH_LOCAL", id, patch: { status: before.status } }),
+      rollback: () => dispatch({ type: "PATCH_LOCAL", id, patch: undo }),
     });
   }, [byId, mutate, dispatch, panelId]);
+  const setStatus = useCallback((id, status, label) => {
+    patchTicket(id, { status }, label || `#${byId.get(id)?.number} em ${STATUS_BY_KEY[status]?.label || status}`);
+  }, [byId, patchTicket]);
   const move = useCallback(({ ids, toKey }) => {
     for (const id of ids) {
       const before = byId.get(id);
       if (!before) continue;
       if (toKey === DONE_COLUMN.key) { if (!isDone(before)) setStatus(id, "resolved", `#${before.number} concluído`); }
+      else if (toKey === WAITING_COLUMN.key) { if (kindOf(before.status) !== "waiting") setStatus(id, "pending_customer"); }
       else setStatus(id, toKey);
     }
   }, [byId, setStatus]);
@@ -190,6 +207,20 @@ export function TicketsScreen() {
     if (!before || isDone(before) === value) return;
     setStatus(id, value ? "resolved" : "open", `#${before.number} ${value ? "concluído" : "reaberto"}`);
   }, [byId, setStatus]);
+  // ── Menu do clique direito ───────────────────────────────────────────────
+  const openMenu = useCallback((id, at) => setMenu({ id, at }), []);
+  const openCustomer = useCallback((t, match, anchor) => setCustomerCard({ ticketId: t.id, ...match, anchor }), []);
+  const linkCustomer = useCallback((id, customer) => patchTicket(id, { customerId: customer.id }, `#${byId.get(id)?.number} vinculado a ${customer.name}`), [patchTicket, byId]);
+  const copy = useCallback((text, ok) => {
+    Promise.resolve(navigator.clipboard?.writeText(text)).then(() => toast(ok, "pos"), () => toast("Não deu pra copiar", "neg"));
+  }, []);
+  const removeTicket = useCallback(async (t) => {
+    if (!window.confirm(`Apagar o ticket #${t.number}? A conversa, os anexos e o histórico somem. Para encerrar o atendimento, prefira Fechado.`)) return;
+    try { await api.ticketDelete(t.id); toast("Ticket apagado", "pos"); dispatch({ type: "REMOVE", ids: [t.id] }); if (panelId === t.id) closePanel(); }
+    catch (err) { toast(`Não deu pra apagar · ${err.message}`, "neg"); }
+  }, [dispatch, panelId, closePanel]);
+  const menuTicket = menu ? byId.get(menu.id) : null;
+
   const dnd = useBoardDnd({ boardRef, onDrop: move, getSelection: () => null, ghostLabel: (n) => `${n} tickets` });
   dndRef.current = dnd;
 
@@ -252,11 +283,19 @@ export function TicketsScreen() {
                 </div>
               )}
               {state.loaded && mine.length > 0 && (view === "list"
-                ? <TicketsList tickets={visible} agentName={agentName} selectedId={panelId} onOpen={openPanel} now={now} />
-                : <TicketsBoard boardRef={boardRef} columns={columns} dnd={dnd} agentName={agentName} selectedId={panelId} onOpen={openPanel} onComplete={complete} now={now} />)}
+                ? <TicketsList tickets={visible} agentName={agentName} selectedId={panelId} onOpen={openPanel} onMenu={openMenu} now={now} />
+                : <TicketsBoard boardRef={boardRef} columns={columns} dnd={dnd} agentName={agentName} selectedId={panelId} onOpen={openPanel} onMenu={openMenu} onCustomer={openCustomer} onComplete={complete} now={now} />)}
             </div>
           </div>
           {panel}
+          {customerCard && (
+            <CustomerCard customer={customerCard.customer} via={customerCard.via} ticket={byId.get(customerCard.ticketId) || { id: customerCard.ticketId }} anchor={customerCard.anchor}
+              tickets={mine} onLink={linkCustomer} onClose={() => setCustomerCard(null)} />
+          )}
+          {menuTicket && (
+            <Menu x={menu.at.x} y={menu.at.y} title={`#${menuTicket.number} ${menuTicket.subject || ""}`} onClose={() => setMenu(null)}
+              items={ticketMenuItems(menuTicket, { me, agents, saasId, categories: settings?.categories, canDelete: isAdminUser(), patch: patchTicket, copy, remove: removeTicket })} />
+          )}
         </>
       )}
 

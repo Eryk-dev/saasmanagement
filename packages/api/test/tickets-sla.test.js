@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { addBusinessMinutes, businessMsBetween, nextSla, slaState, normalizeHours } from "../src/tickets-sla.js";
 import { STATUS_KIND, normalizeSettings } from "../src/tickets-core.js";
+import { repairDoneTicketSla } from "../src/migrations.js";
+import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const HOURS = { enabled: true, hourStart: 8, hourEnd: 18 };
 const settings = (over = {}) => ({ ...normalizeSettings({ businessHours: HOURS, ...over }, "leverads"), statusKinds: STATUS_KIND });
@@ -64,6 +66,75 @@ test("estado do SLA: ok, aviso a 80%, estouro, cumprido e estouro histórico", (
   assert.equal(sla.breached.firstResponse, true);
   const relaxed = nextSla({ ...t, sla }, { ...t, sla, priority: "low" }, s, "2026-09-14T14:00:00.000Z");
   assert.equal(relaxed.breached.firstResponse, true);
+});
+
+test("editar um ticket concluído não move o SLA para a hora da edição", () => {
+  const s = settings();
+  const created = "2026-09-14T12:00:00.000Z"; // seg 09:00 BRT; urgente: 1ª resposta 13:00Z, resolução 20:00Z
+  const t0 = { status: "open", priority: "urgent", createdAt: created };
+  const sla0 = nextSla(null, t0, s, created);
+  // resolvido dentro do prazo, sem resposta pública (ex.: fechado por nota)
+  const t1 = { ...t0, sla: sla0, status: "resolved" };
+  const sla1 = nextSla(t0, t1, s, "2026-09-14T12:30:00.000Z");
+  assert.deepEqual(sla1.breached, { firstResponse: false, resolution: false });
+
+  // dias depois: edita assunto, troca prioridade e fecha
+  const later = "2026-09-20T12:00:00.000Z";
+  const t2 = { ...t1, sla: sla1, subject: "novo assunto", priority: "normal" };
+  const sla2 = nextSla(t1, t2, s, later);
+  assert.deepEqual(sla2, sla1);
+  const t3 = { ...t2, sla: sla2, status: "closed" };
+  const sla3 = nextSla(t2, t3, s, later);
+  assert.equal(sla3.resolvedAt, "2026-09-14T12:30:00.000Z");
+  assert.equal(slaState({ ...t3, sla: sla3 }, later).overall, "met");
+
+  // ticket concluído antes de gravar resolvedAt: usa quando foi fechado
+  const legacy = { status: "closed", priority: "urgent", createdAt: created, closedAt: "2026-09-14T12:40:00.000Z", sla: { ...sla0, resolvedAt: "" } };
+  const sla4 = nextSla(legacy, { ...legacy, subject: "x" }, s, later);
+  assert.equal(sla4.resolvedAt, "2026-09-14T12:40:00.000Z");
+  assert.deepEqual(sla4.breached, { firstResponse: false, resolution: false });
+});
+
+test("reparo: concluídos que viraram Fora do prazo na edição voltam ao estado da conclusão", async () => {
+  const repo = makeMemRepo();
+  await repo.create("ticket_settings", { id: "leverads", businessHours: HOURS }, "leverads");
+  const s = settings();
+  const created = "2026-09-14T12:00:00.000Z";
+  const ev = (ticket, type, at, data) => repo.create("ticket_events", { id: `${ticket}_${type}_${at}`, ticket, saas: "leverads", type, at, data });
+  const mk = async (id, number, fields, sla) => {
+    const t = { id, number, saas: "leverads", status: "closed", createdAt: created, ...fields };
+    await repo.create("tickets", { ...t, sla: { ...nextSla(null, { ...t, status: "open" }, s, created), ...sla } }, id);
+  };
+
+  // #1 fechado sem resposta pública em 30 min; edição dias depois marcou estouro
+  await mk("t1", 1, { priority: "urgent" }, { resolvedAt: "2026-09-14T12:30:00.000Z", breached: { firstResponse: true, resolution: false } });
+  await ev("t1", "status_changed", "2026-09-14T12:30:00.000Z", { from: "open", to: "resolved" });
+  // #2 estouro de verdade (resolvido depois do prazo de 20:00Z): fica
+  await mk("t2", 2, { priority: "urgent" }, { resolvedAt: "2026-09-14T21:00:00.000Z", firstResponseAt: "2026-09-14T12:10:00.000Z", breached: { firstResponse: false, resolution: true } });
+  // #3 resolvido como normal; virou urgente depois e os prazos foram refeitos
+  const urgent = nextSla(null, { createdAt: created, priority: "urgent", status: "open" }, s, created);
+  await mk("t3", 3, { priority: "urgent" }, { ...urgent, resolvedAt: "2026-09-15T12:00:00.000Z", firstResponseAt: "2026-09-14T12:10:00.000Z", breached: { firstResponse: false, resolution: true } });
+  await ev("t3", "status_changed", "2026-09-15T12:00:00.000Z", { from: "open", to: "resolved" });
+  await ev("t3", "priority_changed", "2026-09-20T12:00:00.000Z", { from: "normal", to: "urgent" });
+  // #4 sem resolvedAt gravado: a conclusão vem do evento
+  await mk("t4", 4, { priority: "urgent" }, { resolvedAt: "", breached: { firstResponse: true, resolution: true } });
+  await ev("t4", "status_changed", "2026-09-14T12:20:00.000Z", { from: "open", to: "closed" });
+  // #5 estouro registrado pelo vigia (prazo relaxado depois): fica
+  await mk("t5", 5, { priority: "low" }, { resolvedAt: "2026-09-14T12:30:00.000Z", breached: { firstResponse: true, resolution: false } });
+  await ev("t5", "sla_breached", "2026-09-14T12:15:00.000Z", { clock: "firstResponse" });
+
+  assert.deepEqual(await repairDoneTicketSla(repo), [1, 3, 4]);
+  const get = (id) => repo.get("tickets", id);
+  assert.equal(slaState(await get("t1")).overall, "met");
+  assert.equal((await get("t2")).sla.breached.resolution, true);
+  const t3 = await get("t3");
+  assert.equal(t3.sla.resolutionDue, nextSla(null, { createdAt: created, priority: "normal", status: "open" }, s, created).resolutionDue);
+  assert.equal(slaState(t3).resolution, "met");
+  const t4 = await get("t4");
+  assert.equal(t4.sla.resolvedAt, "2026-09-14T12:20:00.000Z");
+  assert.deepEqual(t4.sla.breached, { firstResponse: false, resolution: false });
+  assert.equal((await get("t5")).sla.breached.firstResponse, true);
+  assert.deepEqual(await repairDoneTicketSla(repo), [], "marcador: roda uma vez");
 });
 
 test("configurações saneadas com padrões e expediente do produto", () => {

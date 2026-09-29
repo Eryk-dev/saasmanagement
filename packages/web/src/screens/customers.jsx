@@ -154,6 +154,13 @@ function CustomersScreen({ initialTab }) {
   const [reads, setReads] = useState({key:null,loaded:false,error:null});
   const [readAttempt, setReadAttempt] = useState(0);
   useEffect(() => { setSel(null); }, [product?.id]);
+  // Atalho de fora (cartão do cliente nos Tickets): abre a ficha pedida. Roda
+  // depois do reset acima no mesmo commit, então prevalece.
+  useEffect(() => {
+    let id = null;
+    try { id = sessionStorage.getItem("cockpit_customers_open"); sessionStorage.removeItem("cockpit_customers_open"); } catch { /* ignore */ }
+    if (id) { setTab("base"); setSel(id); }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!product?.id) return;
     let alive = true;

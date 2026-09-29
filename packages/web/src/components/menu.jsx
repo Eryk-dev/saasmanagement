@@ -3,7 +3,9 @@ import { useEsc } from "../atoms.jsx";
 import { useIsMobile } from "../lib/responsive.js";
 // Menu de contexto/ações com teclado (↑↓ Enter Esc, → abre submenu, ← volta),
 // preso na viewport e com submenus. Generaliza o Menu dos mapas mentais.
-// items: [{ label, kbd, icon, onClick, danger, disabled, checked, sep, children }]
+// items: [{ label, content, kbd, icon, onClick, danger, disabled, checked, sep, children }]
+// `content` troca o texto por um nó (ex.: badge); `label` segue como texto
+// para a busca por letra e o leitor de tela.
 // Posição: { x, y } (clique direito) ou `anchor` (ref/rect, abre embaixo).
 // No celular vira folha no rodapé (submenu = segundo nível com "voltar").
 
@@ -14,11 +16,22 @@ const rectOf = (anchor) => {
   if (anchor.current && anchor.current.getBoundingClientRect) return anchor.current.getBoundingClientRect();
   return anchor.left != null ? anchor : null;
 };
+// Coluna de ícone só quando algum item da lista tem ícone (senão sobra um vão
+// à esquerda do texto); o ✓ do item marcado fica sempre à direita.
+const hasIcons = (items) => items.some((it) => !it.sep && it.icon);
+const Check = ({ style }) => <span aria-hidden="true" style={{ color: "var(--accent)", fontWeight: 700, ...style }}>✓</span>;
 const enabled = (items) => items.map((it, i) => (it.sep || it.disabled ? -1 : i)).filter((i) => i >= 0);
 
-function MenuList({ items, x, y, onClose, onCloseAll, minWidth, level = 0, autoFocus = true }) {
+const SUB_GAP = 6; // respiro entre o menu e o submenu: um não encosta no outro
+// Cantos concêntricos: o destaque do item tem o raio do menu menos o respiro
+// interno, senão o fundo do hover fica quadrado dentro de um menu arredondado.
+const PAD = 6;
+const ITEM_RADIUS = `calc(var(--r-3) - ${PAD}px)`;
+
+function MenuList({ items, x, y, flipX, onClose, onCloseAll, minWidth, level = 0, autoFocus = true }) {
   const ref = useRef(null);
   const [active, setActive] = useState(-1);
+  const icons = hasIcons(items);
   const [sub, setSub] = useState(null); // { index, x, y }
   const [pos, setPos] = useState({ left: x, top: y });
 
@@ -26,10 +39,11 @@ function MenuList({ items, x, y, onClose, onCloseAll, minWidth, level = 0, autoF
     const el = ref.current; if (!el) return;
     const r = el.getBoundingClientRect();
     let left = x, top = y;
-    if (left + r.width > window.innerWidth - 8) left = Math.max(8, (level ? x - r.width - (minWidth || 0) : x - r.width));
+    // Submenu sem espaço à direita abre à esquerda do menu pai, com o mesmo respiro.
+    if (left + r.width > window.innerWidth - 8) left = Math.max(8, level && flipX != null ? flipX - r.width : x - r.width);
     if (top + r.height > window.innerHeight - 8) top = Math.max(8, window.innerHeight - r.height - 8);
     setPos({ left, top });
-  }, [x, y, items.length, level, minWidth]);
+  }, [x, y, flipX, items.length, level, minWidth]);
 
   useEffect(() => { if (autoFocus) ref.current?.focus(); }, [autoFocus]);
 
@@ -37,7 +51,10 @@ function MenuList({ items, x, y, onClose, onCloseAll, minWidth, level = 0, autoF
     const it = items[i]; if (!it?.children?.length) return;
     const btn = ref.current?.querySelector(`[data-idx="${i}"]`);
     const r = btn?.getBoundingClientRect();
-    setSub({ index: i, x: (r?.right ?? x) + 2, y: r?.top ?? y });
+    const box = ref.current?.getBoundingClientRect();
+    // Parte da borda do MENU (não do item, que fica PAD+1px para dentro) e sobe o
+    // padding para o 1º item do submenu alinhar com o item que o abriu.
+    setSub({ index: i, x: (box?.right ?? x) + SUB_GAP, flipX: (box?.left ?? x) - SUB_GAP, y: (r?.top ?? y) - PAD - 1 });
   };
   const run = (it) => {
     if (it.disabled) return;
@@ -70,23 +87,24 @@ function MenuList({ items, x, y, onClose, onCloseAll, minWidth, level = 0, autoF
     <>
       <div ref={ref} tabIndex={-1} role="menu" data-tk-layer="1" onKeyDown={onKey}
         onPointerDown={(e) => e.stopPropagation()} onContextMenu={(e) => e.preventDefault()}
-        style={{ position: "fixed", left: pos.left, top: pos.top, zIndex: 90 + level, minWidth: minWidth || 220, maxWidth: 320, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: 4, outline: "none" }}>
+        style={{ position: "fixed", left: pos.left, top: pos.top, zIndex: 90 + level, minWidth: minWidth || 220, maxWidth: 320, background: "var(--bg-1)", border: "1px solid var(--line-2)", borderRadius: "var(--r-3)", boxShadow: "var(--shadow-pop)", padding: PAD, outline: "none" }}>
         {items.map((it, i) => it.sep
-          ? <div key={"s" + i} role="separator" style={{ height: 1, background: "var(--line-1)", margin: "4px 6px" }} />
+          ? <div key={"s" + i} role="separator" style={{ height: 1, background: "var(--line-1)", margin: "4px 12px" }} />
           : (
-            <button key={i} data-idx={i} role="menuitem" disabled={it.disabled} className={"tk-menu-item" + (active === i ? " is-active" : "")}
+            <button key={i} data-idx={i} role="menuitem" aria-label={it.content ? it.label : undefined} disabled={it.disabled} className={"tk-menu-item" + (active === i ? " is-active" : "")}
               onMouseEnter={() => { setActive(i); if (it.children?.length) openSub(i); else if (sub) setSub(null); }}
               onClick={(e) => { e.stopPropagation(); run(it); }}
-              style={{ display: "flex", width: "100%", alignItems: "center", gap: 10, padding: "7px 10px", borderRadius: 6, fontSize: 12.5, textAlign: "left", color: it.danger ? "var(--neg)" : "var(--fg-1)", opacity: it.disabled ? 0.4 : 1, cursor: it.disabled ? "default" : "pointer", background: "transparent" }}>
-              <span style={{ width: 16, display: "inline-flex", justifyContent: "center", color: it.danger ? "var(--neg)" : "var(--fg-3)", flexShrink: 0 }}>{it.checked ? "✓" : it.icon || ""}</span>
-              <span style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.label}</span>
+              style={{ display: "flex", width: "100%", alignItems: "center", gap: 10, padding: "7px 12px", borderRadius: ITEM_RADIUS, fontSize: 12.5, textAlign: "left", color: it.danger ? "var(--neg)" : "var(--fg-1)", opacity: it.disabled ? 0.4 : 1, cursor: it.disabled ? "default" : "pointer" }}>
+              {icons && <span style={{ width: 16, display: "inline-flex", justifyContent: "center", color: it.danger ? "var(--neg)" : "var(--fg-3)", flexShrink: 0 }}>{it.icon || ""}</span>}
+              <span style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.content || it.label}</span>
+              {it.checked && <Check style={{ marginLeft: 8 }} />}
               {it.kbd && <span className="kbd" style={{ marginLeft: 8 }}>{it.kbd}</span>}
               {it.children?.length ? <span className="dim" style={{ fontSize: 11 }}>›</span> : null}
             </button>
           ))}
       </div>
       {sub && items[sub.index]?.children?.length ? (
-        <MenuList items={items[sub.index].children} x={sub.x} y={sub.y} level={level + 1} minWidth={minWidth}
+        <MenuList items={items[sub.index].children} x={sub.x} y={sub.y} flipX={sub.flipX} level={level + 1} minWidth={minWidth}
           onClose={() => { setSub(null); ref.current?.focus(); }} onCloseAll={onCloseAll} />
       ) : null}
     </>
@@ -96,6 +114,7 @@ function MenuList({ items, x, y, onClose, onCloseAll, minWidth, level = 0, autoF
 function Sheet({ items, onCloseAll, title }) {
   const [stack, setStack] = useState([]); // submenus abertos
   const cur = stack.length ? stack[stack.length - 1] : { label: title, items };
+  const icons = hasIcons(cur.items);
   return (
     <>
       <div onClick={onCloseAll} style={{ position: "fixed", inset: 0, zIndex: "calc(var(--z-drawer) - 1)", background: "var(--scrim-soft)" }} />
@@ -108,11 +127,12 @@ function Sheet({ items, onCloseAll, title }) {
         {cur.items.map((it, i) => it.sep
           ? <div key={"s" + i} style={{ height: 1, background: "var(--line-1)", margin: "4px 8px" }} />
           : (
-            <button key={i} role="menuitem" disabled={it.disabled}
+            <button key={i} role="menuitem" disabled={it.disabled} aria-label={it.content ? it.label : undefined}
               onClick={() => { if (it.children?.length) { setStack((s) => [...s, { label: it.label, items: it.children }]); return; } onCloseAll(); it.onClick && it.onClick(); }}
-              style={{ display: "flex", width: "100%", alignItems: "center", gap: 12, minHeight: 44, padding: "8px 12px", borderRadius: "var(--r-2)", fontSize: 14, textAlign: "left", color: it.danger ? "var(--neg)" : "var(--fg-1)", opacity: it.disabled ? 0.4 : 1 }}>
-              <span style={{ width: 18, display: "inline-flex", justifyContent: "center", color: "var(--fg-3)" }}>{it.checked ? "✓" : it.icon || ""}</span>
-              <span style={{ flex: 1 }}>{it.label}</span>
+              style={{ display: "flex", width: "100%", alignItems: "center", gap: 12, minHeight: 44, padding: "8px 12px", borderRadius: "calc(var(--r-4) - 8px)", fontSize: 14, textAlign: "left", color: it.danger ? "var(--neg)" : "var(--fg-1)", opacity: it.disabled ? 0.4 : 1 }}>
+              {icons && <span style={{ width: 18, display: "inline-flex", justifyContent: "center", color: "var(--fg-3)" }}>{it.icon || ""}</span>}
+              <span style={{ flex: 1 }}>{it.content || it.label}</span>
+              {it.checked && <Check />}
               {it.children?.length ? <span className="dim">›</span> : null}
             </button>
           ))}
