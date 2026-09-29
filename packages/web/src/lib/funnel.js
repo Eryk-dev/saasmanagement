@@ -269,6 +269,35 @@ export function rollToBusinessDay(input) {
   return d;
 }
 
+// GPS DEPOIS DE MOVER O CARD — espelho do applyStageMove (api/lead-flow.js).
+// Toda mudança de etapa RE-AGENDA o próximo toque no servidor: compromisso
+// marcado na etapa nova manda (call/follow-up/integração), senão vale a
+// cadência dela (firstTouchHours, ou retryDays), e etapa terminal sai da fila.
+// O movimento otimista da tela precisa do mesmo cálculo: sem ele o card ficava
+// com o `nextActionAt` da etapa ANTIGA (quase sempre vencido) e continuava na
+// fila de hoje do Meu dia até o próximo reload do SEED — que é coalescido em
+// até 8s e fica represado enquanto alguém digita. A resposta do PATCH é a
+// verdade final; isto só antecipa o que ela vai dizer.
+export function nextActionAfterMove(saasCfg, lead, patch = {}, now = Date.now()) {
+  const toStage = patch.stage || "";
+  if (!toStage || toStage === (lead?.stage || "")) return lead?.nextActionAt || "";
+  const kind = stageKind(saasCfg, toStage);
+  if (isTerminalKind(kind)) return ""; // ganho/perdido/desqualificado saem do GPS
+  if (patch.nextActionAt != null) return patch.nextActionAt; // horário escolhido na tela manda
+  // Compromisso DA ETAPA nova e ainda no futuro conduz o card.
+  const merged = { ...(lead || {}), ...patch };
+  const appt = kind === "call" ? merged.callAt
+    : kind === "followup" ? merged.followupAt
+      : (kind === "integracao" || kind === "posvenda") ? merged.integrationAt
+        : "";
+  const at = appt ? new Date(appt).getTime() : NaN;
+  if (Number.isFinite(at) && at > now) return new Date(at).toISOString();
+  const cad = cadenceOf(saasCfg, toStage) || {};
+  const ms = cad.firstTouchHours ? cad.firstTouchHours * 3600000
+    : cad.retryDays ? cad.retryDays * 86400000 : 0;
+  return ms ? rollToBusinessDay(new Date(now + ms)).toISOString() : "";
+}
+
 // ── Próximo toque (GPS) ─────────────────────────────────────────────────────
 // Unifica nextActionAt (toque avulso, ISO UTC) e callAt (reunião, datetime-local
 // naive) num só conceito: o compromisso mais próximo do lead.
