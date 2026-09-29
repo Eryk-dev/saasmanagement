@@ -326,7 +326,13 @@ export function nextTouch(lead, { kind, now = Date.now() } = {}) {
     : null;
   const note = delivery ? "integração" : "call";
   const startOfDay = new Date(now); startOfDay.setHours(0, 0, 0, 0);
-  const meetingLive = meeting != null && meeting >= startOfDay.getTime();
+  // Compromisso CUMPRIDO para de reger (espelho do Meu dia, today.jsx): passou
+  // da hora, houve toque DEPOIS dele e o GPS já aponta pra frente — a call
+  // aconteceu e alguém decidiu o próximo passo. Toque ANTERIOR à hora (a
+  // confirmação que o SDR manda de manhã) não conta: a call segue regendo.
+  const acted = parseWhen(lead?.lastActivityAt);
+  const settled = meeting != null && meeting <= now && touch != null && touch > meeting && acted != null && acted > meeting;
+  const meetingLive = meeting != null && meeting >= startOfDay.getTime() && !settled;
   if (meetingLive) return { at: meeting, type: "meeting", note };       // compromisso vivo rege
   if (touch != null) return { at: touch, type: "touch", note: lead?.nextActionNote || "" };
   if (meeting != null) return { at: meeting, type: "meeting", note };   // vencido, mas ainda sinaliza
