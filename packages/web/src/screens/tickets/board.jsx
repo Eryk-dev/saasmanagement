@@ -1,9 +1,11 @@
 import React from "react";
 import { UserAvatarRing } from "../../components/user-picker.jsx";
 import { KanbanBoard, KanbanColumn } from "../../components/kanban/board.jsx";
+import { useLongPress } from "../../components/kanban/dnd.js";
+import { customerOf } from "./customer-card.jsx";
 import { CompleteCircle } from "../../components/complete-circle.jsx";
 import { LabelChip } from "../../components/label-chip.jsx";
-import { PRIORITY_BY_KEY, slaLabel, waitingSince, isDone, categoryColor, linearInReview, linearKey } from "../../lib/tickets.js";
+import { PRIORITY_BY_KEY, STATUS_BY_KEY, slaLabel, waitingSince, isDone, categoryColor, linearInReview, linearKey } from "../../lib/tickets.js";
 
 const { useState, useEffect, memo } = React;
 
@@ -11,9 +13,11 @@ const { useState, useEffect, memo } = React;
 // por STATUS (semântica fixa do servidor). Arrastar muda o status; a ordem
 // dentro da coluna é a da fila (SLA mais apertado primeiro), não manual:
 // ticket não se prioriza arrastando. Resolvido e Fechado dividem a coluna
-// Concluídos, e o círculo do card conclui (resolve) ou reabre como nas Tarefas.
+// Concluídos, Aguardando cliente e Em espera dividem a Aguardando (o card em
+// espera leva a etiqueta), e o círculo do card conclui (resolve) ou reabre
+// como nas Tarefas.
 // Coluna recolhida fica salva no navegador.
-export const TicketCard = memo(function TicketCard({ t, agentName, selected, onOpen, onComplete, dragProps, now }) {
+export const TicketCard = memo(function TicketCard({ t, agentName, selected, onOpen, onMenu, onCustomer, onComplete, dragProps, now }) {
   // O ✓ marca na hora e o card só troca de coluna depois do "pop" (mesma ideia
   // das Tarefas); a marca local some quando o status novo chega.
   const [marked, setMarked] = useState(null);
@@ -22,11 +26,19 @@ export const TicketCard = memo(function TicketCard({ t, agentName, selected, onO
   const pri = PRIORITY_BY_KEY[t.priority] || PRIORITY_BY_KEY.normal;
   const sla = slaLabel(t, now);
   const who = t.requester?.name || t.customerName || "";
+  // Cliente cadastrado: o nome vira link pro cartão com os dados dele (o
+  // contato que abriu vem primeiro; a empresa entra quando é outro nome).
+  const match = onCustomer ? customerOf(t) : null;
+  const customer = match?.customer || null;
+  const whoText = customer && customer.name !== who ? [who, customer.name].filter(Boolean).join(" · ") : (who || customer?.name || "");
+  const stop = (e) => e.stopPropagation();
   const wait = !done && t.lastMessage?.authorType === "customer" ? waitingSince(t.lastMessage.at, now) : null;
+  const long = useLongPress((pt) => onMenu?.(t.id, pt));
   const toggle = (v) => { setMarked(v); setTimeout(() => onComplete(t.id, v), v ? 450 : 0); };
   return (
     <div role="button" tabIndex={0} className="support-card" aria-current={selected ? "true" : undefined} style={{ opacity: done ? 0.78 : 1 }}
-      onClick={() => onOpen(t.id)} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(t.id); } }} {...(dragProps || {})}>
+      onClick={() => onOpen(t.id)} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(t.id); } }} {...(dragProps || {})} {...(onMenu ? long : {})}
+      onContextMenu={onMenu ? (e) => { e.preventDefault(); onMenu(t.id, { x: e.clientX, y: e.clientY }); } : undefined}>
       <div className="support-card-meta">
         <span className="mono tnum" style={{ color: "var(--fg-4)", whiteSpace: "nowrap" }}>#{t.number}
           {/* Atalho pra issue: o clique no número não abre o ticket, abre o Linear. */}
@@ -36,6 +48,7 @@ export const TicketCard = memo(function TicketCard({ t, agentName, selected, onO
             : `#${linearKey(t)}`}</>}
         </span>
         <span className="support-status" style={{ "--dot": pri.tone, color: t.priority === "urgent" ? pri.tone : "var(--fg-3)", fontSize: 11.5 }}>{pri.label}</span>
+        {t.status === "on_hold" && <span className="chip" style={{ fontSize: 11, minHeight: 0, whiteSpace: "nowrap" }} title="status do ticket">{STATUS_BY_KEY.on_hold.label}</span>}
         {!done && linearInReview(t) && <span className="chip info" style={{ fontSize: 11, minHeight: 0, whiteSpace: "nowrap" }} title={`${t.linear.identifier} está em ${t.linear.stateName} no Linear`}>{t.linear.stateName}</span>}
         {t.category && <span style={{ marginLeft: "auto", minWidth: 0, display: "inline-flex" }}><LabelChip label={t.category} color={categoryColor(t.category)} small /></span>}
       </div>
@@ -43,7 +56,12 @@ export const TicketCard = memo(function TicketCard({ t, agentName, selected, onO
         <span style={{ paddingTop: 1 }}><CompleteCircle done={done} size={18} onToggle={toggle} doneTitle="Reabrir ticket" undoneTitle="Marcar como concluído" /></span>
         <div className="support-card-subject" style={{ flex: 1, color: done ? "var(--fg-3)" : undefined }}>{t.subject}</div>
       </div>
-      {who && <div className="support-ellipsis" style={{ fontSize: 12, color: "var(--fg-3)" }}>{who}</div>}
+      {customer
+        ? <div style={{ minWidth: 0, display: "flex" }}>
+            <button type="button" className="support-customer-link support-ellipsis" draggable={false} title={`Ver dados de ${customer.name}`}
+              onClick={(e) => { e.stopPropagation(); onCustomer(t, match, e.currentTarget); }} onPointerDown={stop} onMouseDown={stop} onContextMenu={stop}>{whoText}</button>
+          </div>
+        : whoText && <div className="support-ellipsis" style={{ fontSize: 12, color: "var(--fg-3)" }}>{whoText}</div>}
       <div className="support-card-meta">
         <span className="support-ellipsis" style={{ color: sla.tone, fontWeight: sla.state === "breached" || sla.state === "warning" ? 600 : 500 }} title="SLA">{sla.text}</span>
         {wait && <span title="o cliente escreveu por último" style={{ color: wait.tone, whiteSpace: "nowrap" }}>· {wait.text}</span>}
@@ -61,7 +79,7 @@ export const TicketCard = memo(function TicketCard({ t, agentName, selected, onO
 const COLLAPSED_KEY = "cockpit_tickets_collapsed";
 const readCollapsed = () => { try { return JSON.parse(localStorage.getItem(COLLAPSED_KEY) || "{}") || {}; } catch { return {}; } };
 
-export function TicketsBoard({ boardRef, columns, dnd, agentName, selectedId, onOpen, onComplete, now }) {
+export function TicketsBoard({ boardRef, columns, dnd, agentName, selectedId, onOpen, onMenu, onCustomer, onComplete, now }) {
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const collapse = (key, on) => setCollapsed((c) => {
     const next = { ...c, [key]: on };
@@ -77,7 +95,7 @@ export function TicketsBoard({ boardRef, columns, dnd, agentName, selectedId, on
           collapsed={!!collapsed[col.key]} onExpand={() => collapse(col.key, false)} onCollapse={() => collapse(col.key, true)}
           moreLabel={(n) => `+${n} tickets`} emptyText={col.key === "done" ? "nenhum concluído" : "nenhum ticket"}
           renderItem={(t) => (
-            <TicketCard key={t.id} t={t} agentName={agentName} selected={selectedId === t.id} onOpen={onOpen} onComplete={onComplete} now={now}
+            <TicketCard key={t.id} t={t} agentName={agentName} selected={selectedId === t.id} onOpen={onOpen} onMenu={onMenu} onCustomer={onCustomer} onComplete={onComplete} now={now}
               dragProps={dnd.cardDragProps(t, col.key)} />
           )} />
       ))}

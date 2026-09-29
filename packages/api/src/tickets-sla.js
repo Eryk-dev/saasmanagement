@@ -128,14 +128,48 @@ export function nextSla(before, after, settings, now = new Date().toISOString())
 
   if (done && !wasDone) sla.resolvedAt = now;
   if (!done && wasDone) sla.resolvedAt = "";
+  // Segue concluído (editar assunto, prioridade, resolvido → fechado…): o SLA
+  // já é fato histórico, prazos e estouros ficam como estavam na conclusão.
+  if (done && wasDone && sla.resolvedAt && sla.resolutionDue) return sla;
+  // Concluído antes de o SLA gravar `resolvedAt`: o relógio parou quando fechou,
+  // não na edição de agora.
+  if (done && !sla.resolvedAt) sla.resolvedAt = before?.closedAt || before?.updatedAt || now;
 
   Object.assign(sla, dueDates({ ...after, sla }, settings));
   // Estouro é fato histórico: uma vez estourado, reabrir não "desestoura".
-  const frAt = sla.firstResponseAt ? ms(sla.firstResponseAt) : ms(now);
+  // Editar um ticket concluído não move os relógios: sem 1ª resposta, ela parou
+  // junto com a resolução.
+  const frAt = sla.firstResponseAt ? ms(sla.firstResponseAt) : ms(done ? sla.resolvedAt : now);
   if (frAt > ms(sla.firstResponseDue)) sla.breached.firstResponse = true;
   const resAt = sla.resolvedAt ? ms(sla.resolvedAt) : (sla.pausedAt ? ms(sla.pausedAt) : ms(now));
   if (resAt > ms(sla.resolutionDue)) sla.breached.resolution = true;
   return sla;
+}
+
+// Reparo de ticket concluído cujo SLA foi reavaliado na hora de uma edição
+// posterior (bug corrigido em nextSla). Reconstrói pelo histórico:
+//   · conclusão = última passagem de status aberto → concluído;
+//   · prioridade = a vigente na conclusão (troca depois dela não conta);
+//   · estouro só fica se o vigia registrou (evento sla_breached) ou se o
+//     relógio de fato parou depois do prazo.
+// Só desmarca estouro, nunca marca. Devolve o `sla` novo, ou null se nada muda.
+export function repairDoneSla(ticket, events, settings) {
+  const kinds = settings?.statusKinds || {};
+  if (kinds[ticket?.status] !== "done") return null;
+  const sla = ticket.sla || {};
+  const evs = [...(events || [])].sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
+  const doneEv = evs.filter((e) => e.type === "status_changed" && kinds[e.data?.to] === "done" && kinds[e.data?.from] !== "done").pop();
+  const resolvedAt = sla.resolvedAt || doneEv?.at || ticket.closedAt || "";
+  if (!resolvedAt) return null;
+  const laterPriority = evs.find((e) => e.type === "priority_changed" && ms(e.at) > ms(resolvedAt));
+  const priority = laterPriority?.data?.from || ticket.priority;
+  const due = laterPriority ? dueDates({ ...ticket, priority, sla }, settings) : {};
+  const next = { ...sla, ...due, resolvedAt, breached: { ...(sla.breached || {}) } };
+  const logged = (clock) => evs.some((e) => e.type === "sla_breached" && e.data?.clock === clock);
+  const frStop = ms(next.firstResponseAt || resolvedAt);
+  if (next.breached.firstResponse && !logged("firstResponse") && next.firstResponseDue && frStop <= ms(next.firstResponseDue)) next.breached.firstResponse = false;
+  if (next.breached.resolution && !logged("resolution") && next.resolutionDue && ms(resolvedAt) <= ms(next.resolutionDue)) next.breached.resolution = false;
+  return JSON.stringify(next) === JSON.stringify(sla) ? null : next;
 }
 
 // Estado de um relógio: none | ok | warning | breached | met | paused.

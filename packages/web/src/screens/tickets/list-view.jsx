@@ -28,7 +28,7 @@ export function sectionOf(t, now) {
   return "ok";
 }
 
-export function TicketsList({ tickets, agentName, selectedId, onOpen, now }) {
+export function TicketsList({ tickets, agentName, selectedId, onOpen, onMenu, now }) {
   const [showDone, setShowDone] = useState(false);
   const groups = Object.fromEntries(TICKET_SECTIONS.map(([k]) => [k, []]));
   for (const t of tickets) groups[sectionOf(t, now)].push(t);
@@ -64,7 +64,7 @@ export function TicketsList({ tickets, agentName, selectedId, onOpen, now }) {
                   return (
                     <div key={t.id} role="button" tabIndex={0} className="support-row" aria-current={selectedId === t.id ? "true" : undefined}
                       style={{ gridTemplateColumns: TICKETS_GRID, gap: TICKETS_GRID_GAP, opacity: key === "done" ? 0.7 : 1 }}
-                      onClick={() => onOpen(t.id)} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(t.id); } }}>
+                      onClick={() => onOpen(t.id)} {...(onMenu ? { onContextMenu: (e) => { e.preventDefault(); onMenu(t.id, { x: e.clientX, y: e.clientY }); } } : {})} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(t.id); } }}>
                       <div style={{ minWidth: 0 }}>
                         <div className="support-ellipsis" style={{ fontWeight: 600 }}>
                           <span className="mono tnum" style={{ color: "var(--fg-4)", fontWeight: 400, marginRight: 6 }}>#{t.number}{linearKey(t) ? ` · ${linearKey(t)}` : ""}</span>{t.subject}

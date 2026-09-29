@@ -21,6 +21,8 @@ import { backfillPaymentLinks } from "./payment-links.js";
 import { slideVisible, runNativeProposal } from "./proposal.js";
 import { mentoriaTemplateDoc, mentoriaCalcBlock } from "./mentoria.js";
 import { BLOG_DEFAULT_RULES, BLOG_DEFAULT_STATE, blogCfgId } from "./blog-config.js";
+import { STATUS_KIND, loadSettings } from "./tickets-core.js";
+import { repairDoneSla } from "./tickets-sla.js";
 
 // Garante o estágio "Integração" no funil do produto `leverads`, posicionado
 // entre "Negociação" e "Ganho". Integração é pós-venda: negócio já fechado,
@@ -2533,6 +2535,37 @@ export async function runStartupMigrations(repo) {
   } catch (err) {
     console.error("[migration] migrateTasksV2 falhou:", err?.message || err);
   }
+  try {
+    const fixed = await repairDoneTicketSla(repo);
+    if (fixed.length) console.log(`[migration] SLA de ${fixed.length} ticket(s) concluído(s) voltou ao prazo da conclusão: #${fixed.join(", #")}`);
+  } catch (err) {
+    console.error("[migration] repairDoneTicketSla falhou:", err?.message || err);
+  }
+}
+
+// ── SLA de ticket concluído reavaliado na edição (29/09/2026) ───────────────
+// Editar um ticket já concluído recalculava o SLA com a hora da edição: sem 1ª
+// resposta pública (ou sem resolvedAt gravado) ele virava "Fora do prazo", e
+// trocar a prioridade depois refazia os prazos. nextSla não faz mais isso; aqui
+// os concluídos voltam ao estado da conclusão (repairDoneSla: só desmarca
+// estouro que não aconteceu, nunca marca). Uma vez, com marcador em app_config;
+// não mexe em updatedAt nem gera evento — é correção, não alteração do ticket.
+export async function repairDoneTicketSla(repo) {
+  const FLAG = "ticket_sla_done_repair_v1";
+  if (await repo.get("app_config", FLAG).catch(() => null)) return [];
+  const done = (await repo.list("tickets")).filter((t) => STATUS_KIND[t.status] === "done");
+  const fixed = [];
+  const settingsOf = new Map();
+  for (const t of done) {
+    if (!settingsOf.has(t.saas)) settingsOf.set(t.saas, { ...(await loadSettings(repo, t.saas)), statusKinds: STATUS_KIND });
+    const events = await repo.listWhere("ticket_events", { ticket: t.id });
+    const sla = repairDoneSla(t, events, settingsOf.get(t.saas));
+    if (!sla) continue;
+    await repo.update("tickets", t.id, { sla });
+    fixed.push(t.number || t.id);
+  }
+  await repo.create("app_config", { id: FLAG, at: new Date().toISOString(), fixed }, FLAG);
+  return fixed;
 }
 
 // ── A fila da Mentoria ganhou dono (Leo, 16/08/2026) ────────────────────────
