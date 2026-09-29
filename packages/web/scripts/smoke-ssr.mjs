@@ -552,6 +552,47 @@ try {
     failed++;
   }
 
+  // Call CUMPRIDA devolve o card pro GPS (Leo, 29/09): a call da manhã prendia o
+  // card na fila de hoje o dia inteiro — e item de call nunca vira "feito", então
+  // ele ficava PENDENTE mesmo com toque registrado e próxima ação pra semana que
+  // vem (casos Daniel/Pedro/Vinícius em prod). A confirmação que o SDR manda
+  // ANTES da hora não pode ter esse efeito: a call segue regendo.
+  try {
+    const { buildQueue } = await server.ssrLoadModule("/src/screens/today.jsx");
+    const { nextTouch } = await server.ssrLoadModule("/src/lib/funnel.js");
+    const eq = (name, got, want) => {
+      if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error(`${name}: ${JSON.stringify(got)} ≠ ${JSON.stringify(want)}`);
+    };
+    const cfg = { id: "leverads", funnel: [
+      { stage: "Novo lead", kind: "novo" }, { stage: "Qualificando", kind: "qualificacao", cadence: { retryDays: 1 } },
+      { stage: "Call agendada", kind: "call", cadence: { retryDays: 1 } }, { stage: "Follow-up", kind: "followup", cadence: { retryDays: 3 } },
+      { stage: "Ganho", kind: "ganho" }, { stage: "Desqualificado", kind: "desqualificado" },
+    ] };
+    const hoje = (h, m = 0) => { const d = new Date(); d.setHours(h, m, 0, 0); return d; };
+    const daquiDias = (n) => new Date(Date.now() + n * 86400000).toISOString();
+    const bloco = (l) => {
+      const q = buildQueue([l], [], cfg, "");
+      const k = ["hoje", "amanha", "proximos", "semdata"].find((b) => q[b].some((i) => i.l?.id === l.id)) || "fora";
+      return { bloco: k, tipo: (q[k] || []).find((i) => i.l?.id === l.id)?.due?.type || "-" };
+    };
+    const base = { id: "l1", saas: "leverads", stage: "Call agendada", closer: "leonardo", lastActivityType: "call" };
+    // A call das 9h já passou; o closer tocou às 15h e marcou o retorno pra daqui 10 dias.
+    const cumprida = { ...base, callAt: hoje(9).toISOString(), lastActivityAt: hoje(15).toISOString(), nextActionAt: daquiDias(10) };
+    eq("call cumprida sai da fila de hoje", bloco(cumprida), { bloco: "proximos", tipo: "toque" });
+    eq("o pill segue o GPS, não a call cumprida", nextTouch(cumprida, { kind: "call" }).type, "touch");
+    // Mesma call, mas o toque é a confirmação do SDR ANTES da hora: a call manda.
+    const confirmada = { ...cumprida, lastActivityAt: hoje(8).toISOString() };
+    eq("confirmação antes da call não tira a call da fila", bloco(confirmada), { bloco: "hoje", tipo: "call" });
+    eq("o pill continua na call", nextTouch(confirmada, { kind: "call" }).type, "meeting");
+    // Call atrasada sem ninguém ter tocado continua cobrando hoje.
+    const largada = { ...base, callAt: hoje(9).toISOString(), lastActivityAt: "", lastActivityType: "", nextActionAt: hoje(9).toISOString() };
+    eq("call atrasada e intocada continua na fila", bloco(largada), { bloco: "hoje", tipo: "call" });
+    console.log("✓ call-cumprida-sai-da-fila");
+  } catch (err) {
+    console.error(`✗ call-cumprida-sai-da-fila: ${err.message}`);
+    failed++;
+  }
+
   // Cadência de 7 dias por coluna (Dia 2…Dia 7, #881): cada dia tem roteiro
   // próprio, linha em Scripts/Próximos passos, e o Depois da ação oferece
   // "Qualificando" (ele respondeu). Com as colunas, o Retomar do Novo lead não

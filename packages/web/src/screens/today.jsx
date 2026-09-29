@@ -233,6 +233,7 @@ export function confirmStepDone(lead, window, at) {
 function buildQueue(leads, consultas, saasCfg, person) {
   const workable = new Set(workableStages(saasCfg));
   const open = new Set(openStages(saasCfg));
+  const nowMs = Date.now();
   const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
   const endToday = new Date(); endToday.setHours(23, 59, 59, 999);
   const endTomorrow = new Date(endToday); endTomorrow.setDate(endTomorrow.getDate() + 1);
@@ -332,13 +333,28 @@ function buildQueue(leads, consultas, saasCfg, person) {
     //      compete: senão um card com call daqui a 2 dias aparece "atrasado" hoje
     //      por um toque vencido. O nextActionAt só entra quando não há call/
     //      integração agendada nesta etapa.
+    //  (3) Compromisso CUMPRIDO devolve o card pro GPS (Leo, 29/09): a call das
+    //      9h prendia o card na fila de HOJE o dia inteiro — e como item de call
+    //      nunca vira "feito", ele ficava PENDENTE mesmo depois de tocado e com a
+    //      próxima ação marcada pra semana que vem. Passou da hora da call, houve
+    //      toque DEPOIS dela e o próximo passo está marcado pra depois dela? Então
+    //      a call já é história e quem manda no card é o toque. As três condições
+    //      juntas são o que separa "a call aconteceu e alguém decidiu o próximo
+    //      passo" de "o SDR confirmou a call de manhã" (toque ANTES da hora, que
+    //      não pode tirar a call da fila do closer).
     const cands = [];
     const push = (v, type, min = 0) => {
       const t = v ? new Date(v).getTime() : NaN;
       if (Number.isFinite(t) && t >= min) cands.push({ t, type });
     };
-    if (kind === "call") push(l.callAt, "call", startToday.getTime());
-    else if (kind === "integracao") push(l.integrationAt, "integração", startToday.getTime());
+    const apptRaw = kind === "call" ? l.callAt : kind === "integracao" ? l.integrationAt : "";
+    const when = (v) => { const t = v ? new Date(v).getTime() : NaN; return Number.isFinite(t) ? t : null; };
+    const apptT = when(apptRaw), touchT = when(l.nextActionAt), actedT = when(l.lastActivityAt);
+    const cumprido = apptT != null && apptT <= nowMs && touchT != null && touchT > apptT && actedT != null && actedT > apptT;
+    if (!cumprido) {
+      if (kind === "call") push(l.callAt, "call", startToday.getTime());
+      else if (kind === "integracao") push(l.integrationAt, "integração", startToday.getTime());
+    }
     if (!cands.length) push(l.nextActionAt, "toque");
     cands.sort((a, b) => a.t - b.t);
     const due = cands[0] || null;
