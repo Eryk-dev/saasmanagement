@@ -22,6 +22,7 @@ import { startSdrBrainSweep } from "./sdr-brain.js";
 import { startTrainingReminder } from "./training-reminder.js";
 import { startTaskReminder } from "./task-reminder.js";
 import { startWaWaitingReminder } from "./wa-waiting-reminder.js";
+import { startSdrHandoffReminder } from "./sdr-handoff-reminder.js";
 import { startTicketSla } from "./ticket-sla-runner.js";
 import { startLinearSync } from "./ticket-linear-runner.js";
 import { startCustomerMilestones } from "./customer-milestones.js";
@@ -154,6 +155,9 @@ try {
   // Silêncio nosso no WhatsApp: cliente falou e ninguém voltou em N horas (3 por
   // padrão) vira aviso na caixa de entrada de quem cuida do lead.
   startWaWaitingReminder(repo, { log: app.log });
+  // Handoff do robô SDR sem ninguém assumir em 30 min vira aviso pro closer/dono
+  // (e repete de 2h em 2h enquanto ninguém falar).
+  startSdrHandoffReminder(repo, { log: app.log });
   // SLA dos tickets de suporte: aviso a 80% e estouro (1ª resposta/resolução)
   // na caixa de entrada de quem atende + fechamento automático dos resolvidos.
   startTicketSla(repo, { log: app.log });
