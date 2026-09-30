@@ -301,3 +301,50 @@ test("carimbo mais recente manda: campanha depois do 1º toque reinicia a conta"
   await tickOf(repo, wa, new Date("2026-08-24T13:00:00Z")); // segunda, 5 dias depois
   assert.deepEqual(tplsOf(wa), ["sdr_encerramento_atendimento"]);
 });
+
+// ── Starvation e régua de resposta (raio-x 30/09) ─────────────────────────
+test("escada alcança o lead vencido mesmo com 30 leads novos na frente da fila", async () => {
+  const repo = await world({ messages: [{ id: "m1", direction: "out", author: "sdr-bot", text: "Oiii...", at: ISO("2026-08-13T12:00:00Z") }] });
+  // 30 leads tocados ONTEM (nunca vencidos) na frente: antes o passe de 25 parava neles.
+  for (let i = 0; i < 30; i++) {
+    const id = `N${i}`, phone = `419999${String(i).padStart(5, "0")}`;
+    await repo.create("leads", { id, saas: "leverads", owner: "sdr", name: "Novo " + i, phone, stage: "Qualificando", createdAt: ISO("2026-08-19T12:00:00Z"), sdrLog: { firstTouchAt: ISO("2026-08-19T12:00:00Z"), firstTouchVia: "template" } });
+    await repo.create("wa_threads", { id: "55" + phone, phone: "55" + phone, leadId: id, saas: "leverads", lastAt: ISO("2026-08-19T12:00:00Z"), lastDir: "out", lastOutAuthor: "sdr-bot" });
+  }
+  const wa = makeWa();
+  await tickOf(repo, wa);
+  assert.deepEqual(tplsOf(wa), ["sdr_encerramento_atendimento"]);
+  assert.equal(wa.sent[0].to, THREAD.phone);
+  assert.equal((await repo.get("leads", "L1")).sdrLog.ladder.done, true);
+});
+
+test("lead que só mandou a mensagem pronta do form é FRIO: encerramento no 5º dia, sem a retomada morna", async () => {
+  const repo = await world({ messages: [
+    { id: "m0", direction: "in", text: "Oi, me chamo Rafael e quero saber mais sobre o Lever OEM. Minha operação: autopeças, 1 conta, Até 500 anúncios ativos.", at: ISO("2026-08-13T11:59:00Z") },
+    { id: "m1", direction: "out", author: "sdr-bot", text: "Oiii Rafael, Manuela falando. Isso ajudaria na sua operação?", at: ISO("2026-08-13T12:00:00Z") },
+  ] });
+  const wa = makeWa();
+  await tickOf(repo, wa);
+  assert.deepEqual(tplsOf(wa), ["sdr_encerramento_atendimento"]);
+  const st = (await repo.get("leads", "L1")).sdrLog.ladder;
+  assert.equal(st.warm, false);
+  assert.equal(st.done, true);
+});
+
+test("morno que já levou o 2º toque não ouve a mesma retomada: degrau 0 é novidades e o encerramento vem em seguida", async () => {
+  const repo = await world({
+    lead: { sdrLog: { firstTouchAt: ISO("2026-08-10T12:00:00Z"), firstTouchVia: "template", secondTouchAt: ISO("2026-08-11T12:00:00Z") } },
+    messages: [
+      { id: "m1", direction: "out", author: "sdr-bot", text: "Oiii...", at: ISO("2026-08-10T12:00:00Z") },
+      { id: "m2", direction: "out", author: "sdr-bot", text: "Oiii Rafael, tudo bem? Vamos retomar nossa conversa sobre a LeverAds?", at: ISO("2026-08-11T12:00:00Z") },
+      { id: "m3", direction: "in", text: "depois eu vejo", at: ISO("2026-08-16T12:00:00Z") },
+    ],
+  });
+  const wa = makeWa();
+  await tickOf(repo, wa); // 4 dias depois da última fala dele: degrau 0 (3d)
+  assert.deepEqual(tplsOf(wa), ["sdr_retomada_novidades"]);
+  assert.equal((await repo.get("leads", "L1")).sdrLog.ladder.done, false);
+  await tickOf(repo, wa, new Date("2026-08-25T13:00:00Z")); // 9 dias: degrau 1 = encerramento (escada de 2 degraus)
+  assert.deepEqual(tplsOf(wa), ["sdr_retomada_novidades", "sdr_encerramento_atendimento"]);
+  assert.equal((await repo.get("leads", "L1")).sdrLog.ladder.done, true);
+});

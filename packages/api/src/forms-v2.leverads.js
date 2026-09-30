@@ -140,9 +140,14 @@ const WELCOME = {
   },
 };
 
-const PREFILL = {
-  oem: "Oi, me chamo {{nome}} e quero saber mais sobre o Lever OEM. Minha operação: {{niche}}, {{accounts}} contas, {{listings}} anúncios ativos.",
-  ads: "Oi, me chamo {{nome}} e quero saber mais sobre o Lever Ads. Minha operação: {{niche}}, {{accounts}} contas, {{listings}} anúncios ativos.",
+// A variável vira o RÓTULO da resposta ("1 conta", "2 a 3 contas", "Só
+// online"), então o texto não repete a unidade. O OEM publicado não tem mais
+// a pergunta `niche` (é autopeças por definição): 233 leads em set/2026
+// chegaram com "Minha operação: {{niche}}, 1 conta contas" — a migração
+// ensureFormPrefillV2 troca o texto dos forms já publicados.
+export const PREFILL = {
+  oem: "Oi, me chamo {{nome}} e quero saber mais sobre o Lever OEM. Minha operação: autopeças, {{channel}}, {{accounts}}, {{listings}} anúncios ativos.",
+  ads: "Oi, me chamo {{nome}} e quero saber mais sobre o Lever Ads. Minha operação: {{niche}}, {{accounts}}, {{listings}} anúncios ativos.",
   price: "Oi, me chamo {{nome}} e quero saber mais sobre o Lever Price. Minha operação: {{niche}}, {{listings}} anúncios ativos, {{orders}} pedidos por mês.",
 };
 

@@ -271,6 +271,17 @@ export const repo = {
     if (rowCount > 0) { invalidate(name); bump(name); }
     return rowCount > 0;
   },
+  // SQL cru sobre as PRÓPRIAS coleções, pra migração de massa (backfill de
+  // 22k mensagens em um UPDATE em vez de 22k round-trips). `{tbl}` no SQL vira
+  // a tabela da coleção; `{tbl:outra}` referencia uma segunda coleção. Invalida
+  // o cache da coleção tocada. O mem-repo dos testes não tem isso: quem chama
+  // trata a ausência como "faz em JS".
+  async rawUpdate(name, sql, params = []) {
+    const text = sql.replaceAll("{tbl}", tbl(name)).replace(/\{tbl:([a-z_]+)\}/g, (_, n) => tbl(n));
+    const { rowCount } = await getPool().query(text, params);
+    invalidate(name);
+    return rowCount || 0;
+  },
 };
 
 // Consulta crua no MESMO Postgres, para ler o que NÃO é coleção do cockpit: o

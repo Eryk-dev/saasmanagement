@@ -24,7 +24,8 @@
 //
 // O motor é um poller de 60s no molde do drip-runner (single-flight, no-op sem
 // produto ligado), iniciado no index.js.
-import { findThreadByPhone, listMessages, recordMessage } from "./wa-store.js";
+import { findThreadByPhone, listMessages, recordMessage, waMatchKey } from "./wa-store.js";
+import { lastRealReply } from "./sdr-signals.js";
 import { digits } from "./whatsapp.js";
 import { kindOf, firstStage, isNoShowStage, isWonLead, stageByKind } from "./stages.js";
 import { brtToIso, onOutboundMessage, applyStageMove } from "./lead-flow.js";
@@ -92,8 +93,13 @@ const outsideWindow = (err) => err?.code === 131047 || err?.code === 470;
 // cai no fallback que já existe ("Oiii, tudo bem?").
 const BIZ_WORDS = /^(pecas|peca|auto|autopecas|autopeca|loja|lojas|comercio|distribuidora|imports|import|store|shop|parts|motos|moto|car|cars|ltda|me|mei|eireli|empresa|vendas|atacado|varejo|teste|test|sim|nao|ok|oi|ola|gostaria|quero|preciso|info|contato|whats|whatsapp|cliente|admin|user|usuario)$/;
 export function greetName(raw) {
-  const first = firstName(raw).replace(/[^\p{L}'-]/gu, ""); // pontuação/emoji fora
-  if (!first || /\d/.test(firstName(raw))) return "";
+  // Nome GRUDADO do form ("BrenoHenrique", "CarlosEduardo", "JoãoGabriel"):
+  // separa na troca de caixa e fica com o primeiro pedaço. Em prod 21-30/09
+  // saíram "Entendi BrenoHenrique" e "Oiii, Joãogabriel" — nome errado é o que
+  // mais rápido denuncia robô.
+  const spaced = String(raw || "").replace(/(\p{Ll})(\p{Lu})/gu, "$1 $2");
+  const first = firstName(spaced).replace(/[^\p{L}'-]/gu, ""); // pontuação/emoji fora
+  if (!first || /\d/.test(firstName(spaced))) return "";
   const flat = norm(first);
   if (flat.length < 3) return "";              // "Jr", "M" — não dá pra saudar
   if (BIZ_WORDS.test(flat)) return "";         // "PECAS", "Loja", "Gostaria"
@@ -371,9 +377,12 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
   const stampLog = async (lead, patch) =>
     repo.update("leads", lead.id, { sdrLog: { ...(lead.sdrLog || {}), ...patch } });
 
+  // A mensagem é gravada com o RELÓGIO DO RUNNER (`now`), não com o do
+  // processo: é ele que o passe barato da escada compara com o lastAt da
+  // conversa, e nos testes o relógio é injetado.
   async function sendText({ phone, text, phoneId, saas, leadId }) {
     const { messageId } = await wa.sendText(phone, text, { phoneId });
-    await recordMessage(repo, { id: messageId, phone, direction: "out", text, status: "sent", author: SDR_AUTHOR, waPhoneId: phoneId || "", saas, leadId });
+    await recordMessage(repo, { id: messageId, phone, direction: "out", text, status: "sent", author: SDR_AUTHOR, waPhoneId: phoneId || "", saas, leadId, at: now().toISOString() });
     // Mensagem do robô = lead sendo qualificado: novo ganha o toque, contato
     // vai pra qualificação; lembrete de call e resgate de no-show são no-op.
     await onOutboundMessage(repo, leadId, { author: SDR_AUTHOR, text: "1º toque do SDR" });
@@ -383,7 +392,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
     const components = params.length ? [{ type: "body", parameters: params.map((t) => ({ type: "text", text: String(t || "") })) }] : [];
     const { messageId } = await wa.sendTemplate(phone, name, "pt_BR", components, { phoneId });
     const rendered = (TEMPLATE_BODY[name] || name).replace(/\{\{\s*(\d+)\s*\}\}/g, (_, n) => params[Number(n) - 1] || "");
-    await recordMessage(repo, { id: messageId, phone, direction: "out", text: rendered, status: "sent", author: SDR_AUTHOR, waPhoneId: phoneId || "", saas, leadId });
+    await recordMessage(repo, { id: messageId, phone, direction: "out", text: rendered, status: "sent", author: SDR_AUTHOR, waPhoneId: phoneId || "", saas, leadId, at: now().toISOString() });
     // moveCard=false: campanha de resgate não mexe no card no ENVIO — o card
     // anda quando o lead RESPONDER (fluxo do inbound), senão a Nutrição
     // esvaziaria na rajada sem nenhum lead ter falado nada.
@@ -571,9 +580,39 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
         const names = await approvedNames();
         // Degrau → template. O último é sempre o encerramento; antes dele vêm
         // a retomada da Manuela e a de novidades, ambas já aprovadas.
-        const stepTemplate = (step, steps) => step >= steps.length - 1
+        // Quem JÁ levou o 2º toque (seção 1b, o mesmo "Vamos retomar nossa
+        // conversa") não ouve a mesma frase de novo no degrau 0: em 8
+        // conversas lidas no raio-x de 30/09 a retomada saiu idêntica duas
+        // vezes, com 3 dias de intervalo. Pra esse lead o degrau 0 já é o de
+        // novidades, e a escada encurta um degrau (ver `steps`).
+        const stepTemplate = (step, steps, lead) => step >= steps.length - 1
           ? cfg.templates.ladderBreakup
-          : (step === 0 ? cfg.templates.secondTouch : cfg.templates.backlogRescueNutri);
+          : (step === 0 && !lead?.sdrLog?.secondTouchAt ? cfg.templates.secondTouch : cfg.templates.backlogRescueNutri);
+
+        // ÍNDICE DE CONVERSAS pro passe barato (uma leitura por ciclo, ~2k
+        // linhas): lastAt/lastDir/lastOutAuthor bastam pra descartar quem não
+        // pode estar vencido sem abrir a conversa.
+        const threads = await repo.listWhere("wa_threads", { saas: product.id }).catch(() => []);
+        const threadByLead = new Map(), threadByKey = new Map();
+        for (const t of threads) {
+          if (t.leadId) threadByLead.set(t.leadId, t);
+          const k = waMatchKey(t.phone || t.id);
+          if (k) threadByKey.set(k, t);
+        }
+        const threadOf = (l) => threadByLead.get(l.id) || threadByKey.get(waMatchKey(l.waPhone || l.phone)) || null;
+        const minStepMs = Math.min(cfg.ladderColdDays, ...cfg.ladderWarmDays) * DAY;
+        const cooldownMs = cfg.ladderCooldownDays * DAY;
+        // NÃO PODE ESTAR VENCIDO: carimbo nosso ou mensagem do robô dentro do
+        // piso de 3 dias, ou conversa cuja última mensagem (de qualquer lado)
+        // é mais nova que o menor degrau — a âncora nunca é mais nova que a
+        // última mensagem, então esse lead não tem como estar na vez.
+        const cannotBeDue = (l, t) => {
+          if (nowMs - touchedAt(l) < cooldownMs) return true;
+          if (!t) return false;
+          const lastMs = Date.parse(t.lastAt || "") || 0;
+          if (t.lastDir === "out" && t.lastOutAuthor === SDR_AUTHOR && nowMs - lastMs < cooldownMs) return true;
+          return nowMs - lastMs < minStepMs;
+        };
 
         // Passe BARATO primeiro (só campos do lead): ler a conversa é o custo
         // do ciclo, e não dá pra abrir 400 threads por minuto. Mais novos
@@ -594,15 +633,26 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           .filter((l) => !l.sdrLog?.ladder?.done)               // escada terminada: quem age é o corte
           .sort((a, b) => touchedAt(b) - touchedAt(a));
 
+        // STARVATION (raio-x 30/09): o passe abria os 25 candidatos mais NOVOS
+        // e parava. Como os mais novos foram tocados há menos de 3 dias, nunca
+        // estavam vencidos: o ciclo lia os mesmos 25, não mandava nada e
+        // parava — 609 cards em Qualificando parados 3+ dias sem degrau, com
+        // ~10 envios/dia num teto de 60. Agora só quem passa no descarte
+        // barato conta pro teto de leitura; a ordem "mais novos primeiro" vale
+        // entre os que podem estar na vez.
         let scanned = 0, ladderNow = 0;
         for (const lead of cands) {
           if (sends >= CAP || ladderNow >= LADDER_PER_TICK || dayQuota <= 0) break;
           if (scanned >= LADDER_SCAN_PER_TICK) break;
+          const indexed = threadOf(lead);
+          if (cannotBeDue(lead, indexed)) continue;
           scanned++;
           const phone = lead.waPhone || lead.phone;
-          const thread = await findThreadByPhone(repo, phone);
+          const thread = indexed || await findThreadByPhone(repo, phone);
           const msgs = thread ? await listMessages(repo, thread.id) : [];
-          const lastIn = [...msgs].reverse().find((m) => m.direction === "in");
+          // Só resposta DE VERDADE conta (sdr-signals.js): a mensagem pronta do
+          // form não faz o lead "morno" — ele nunca falou, é FRIO.
+          const lastIn = lastRealReply(msgs);
           const inMs = lastIn ? Date.parse(lastIn.at || 0) : NaN;
           // ÂNCORA DO SILÊNCIO: a última vez que o LEAD falou. Sem isso, a
           // última vez que a GENTE falou (1º toque quando existe; senão a
@@ -619,7 +669,10 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           const lastHumanOut = [...msgs].reverse().find((m) => m.direction === "out" && humanIds.has(m.author));
           const humanMs = lastHumanOut ? Date.parse(lastHumanOut.at || 0) : NaN;
           if (Number.isFinite(humanMs) && humanMs >= anchor) anchor = humanMs;
-          const steps = warm ? cfg.ladderWarmDays : [cfg.ladderColdDays];
+          // Morno que já levou o 2º toque: degrau 0 vira novidades e o
+          // encerramento vem no degrau seguinte (3 mensagens nossas depois do
+          // silêncio dele já é o bastante, ver stepTemplate).
+          const steps = warm ? (lead.sdrLog?.secondTouchAt ? cfg.ladderWarmDays.slice(0, 2) : cfg.ladderWarmDays) : [cfg.ladderColdDays];
           const st = lead.sdrLog?.ladder || {};
           const anchorIso = new Date(anchor).toISOString();
           const step = st.at === anchorIso ? (Number(st.step) || 0) : 0; // falou de novo = escada do zero
@@ -633,7 +686,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           const lastBotOut = [...msgs].reverse().find((m) => m.direction === "out" && m.author === SDR_AUTHOR);
           if (lastBotOut && nowMs - Date.parse(lastBotOut.at || 0) < cfg.ladderCooldownDays * DAY) continue;
 
-          const wanted = stepTemplate(step, steps);
+          const wanted = stepTemplate(step, steps, lead);
           if (!names.has(wanted)) { stats.skipped++; continue; } // sem aprovação da Meta, o degrau espera
           const nome = greetName(lead.name);
           const params = wanted === cfg.templates.backlogRescueNutri
@@ -917,14 +970,38 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
 
           const phone = lead.waPhone || lead.phone;
           const thread = await findThreadByPhone(repo, phone);
-          let humanAfter = false, windowOpen = false;
+          let humanAfter = false, windowOpen = false, msgs = [];
           if (thread) {
-            const msgs = await listMessages(repo, thread.id);
+            msgs = await listMessages(repo, thread.id);
             humanAfter = msgs.some((m) => m.direction === "out" && humanIds.has(m.author) && Date.parse(m.at || 0) > sinceMs);
             const lastIn = [...msgs].reverse().find((m) => m.direction === "in");
             windowOpen = !!lastIn && nowMs - Date.parse(lastIn.at || 0) < 24 * HOUR;
           }
           if (humanAfter) { await stampLog(lead, { noshowFor: lead.stageSince, noshowVia: "human" }); continue; }
+          // CALL QUE ACONTECEU NÃO LEVA "PASSEI NO HORÁRIO E NÃO TE ENCONTREI"
+          // (raio-x 30/09: Douglas, Bernardo, Paulo e Shalom receberam o
+          // resgate DIAS depois de terem comparecido; dois viraram handoff "a
+          // reunião já foi feita"). Resumo de call gerado pra este horário, ou
+          // o lead avisando que entrou, é prova de que a call rolou: card em
+          // No show com isso é erro de pipeline, não furo. E card movido pra
+          // No show mais de 24h DEPOIS do horário é limpeza de pipeline (lote
+          // de 23/09: Eduardo 6 dias, Valdir 5, Shalom 5…), não o furo de
+          // agora — "passei no horário" seria mentira.
+          const summaryMs = Date.parse(lead.callSummaryAt || "");
+          const callHappened = (!!lead.callSummaryFor && lead.callSummaryFor === lead.callAt)
+            || (Number.isFinite(summaryMs) && Number.isFinite(callMs) && summaryMs > callMs);
+          const inCallAfter = Number.isFinite(callMs) && msgs.some((m) => m.direction === "in" && Date.parse(m.at || 0) > callMs - 15 * MIN
+            && IN_CALL_RX.test(norm(m.transcript || m.text || "")) && !/\bnao\b/.test(norm(m.transcript || m.text || "")));
+          const lateMove = Number.isFinite(callMs) && sinceMs - callMs > 24 * HOUR;
+          if (callHappened || inCallAfter || lateMove) {
+            const via = callHappened ? "skip:resumo" : inCallAfter ? "skip:na-conversa" : "skip:tarde";
+            if (thread && via !== "skip:tarde") {
+              const why = callHappened ? "a call tem resumo" : "o lead disse que entrou na conversa";
+              await raiseAlert(repo, thread, { text: `Card em No show, mas ${why} · confere a etapa (o robô não mandou resgate)` }).catch(() => {});
+            }
+            await stampLog(lead, { noshowFor: lead.stageSince, noshowVia: via });
+            continue;
+          }
           const nome = greetName(lead.name);
           const to = thread?.phone || phone;
           try {

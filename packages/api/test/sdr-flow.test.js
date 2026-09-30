@@ -557,3 +557,47 @@ test("no-show que RESPONDEU ao 1º resgate (ou já remarcou) não leva a 2ª ten
   await runner(repo2, wa2, nowRef).tick();
   assert.equal(wa2.sent.length, 0);
 });
+
+// ── Resgate de no-show: call que aconteceu / card movido tarde (raio-x 30/09) ─
+
+test("card em No show com resumo da call NÃO leva o resgate: vira alerta pra conferir a etapa", async () => {
+  const nowRef = { t: new Date("2026-08-19T13:00:00Z") };
+  const since = ISO("2026-08-19T12:30:00Z");
+  const repo = await world({
+    leads: [{ id: "L1", name: "Douglas", phone: "41999990000", stage: "No show", stageSince: since, callAt: "2026-08-19T09:00", callSummaryFor: "2026-08-19T09:00", callSummaryAt: ISO("2026-08-19T12:20:00Z"), createdAt: ISO("2026-08-10T10:00:00Z") }],
+    threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads" }],
+  });
+  const wa = makeWa({ approved: ["sdr_resgate_noshow"] });
+  await runner(repo, wa, nowRef).tick();
+  assert.equal(wa.sent.length, 0);
+  assert.equal((await repo.get("leads", "L1")).sdrLog.noshowVia, "skip:resumo");
+  assert.match((await repo.list("wa_alerts"))[0].text, /a call tem resumo/);
+});
+
+test("lead que avisou que entrou na conversa não leva 'não te encontrei'", async () => {
+  const nowRef = { t: new Date("2026-08-19T13:00:00Z") };
+  const since = ISO("2026-08-19T12:40:00Z");
+  const repo = await world({
+    leads: [{ id: "L1", name: "Steffany", phone: "41999990000", stage: "No show", stageSince: since, callAt: "2026-08-19T09:00", createdAt: ISO("2026-08-10T10:00:00Z") }],
+    threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads" }],
+    messages: [{ id: "i1", thread: "5541999990000", leadId: "L1", direction: "in", text: "Entrei mais n tinha ninguém na sala", at: ISO("2026-08-19T12:10:00Z") }],
+  });
+  const wa = makeWa({ approved: ["sdr_resgate_noshow"] });
+  await runner(repo, wa, nowRef).tick();
+  assert.equal(wa.sent.length, 0);
+  assert.equal((await repo.get("leads", "L1")).sdrLog.noshowVia, "skip:na-conversa");
+});
+
+test("card movido pra No show mais de 24h depois do horário é limpeza de pipeline: sem resgate, sem alerta", async () => {
+  const nowRef = { t: new Date("2026-08-19T13:00:00Z") };
+  const since = ISO("2026-08-19T12:30:00Z");
+  const repo = await world({
+    leads: [{ id: "L1", name: "Eduardo", phone: "41999990000", stage: "No show", stageSince: since, callAt: "2026-08-13T10:00", createdAt: ISO("2026-08-10T10:00:00Z") }],
+    threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads" }],
+  });
+  const wa = makeWa({ approved: ["sdr_resgate_noshow"] });
+  await runner(repo, wa, nowRef).tick();
+  assert.equal(wa.sent.length, 0);
+  assert.equal((await repo.get("leads", "L1")).sdrLog.noshowVia, "skip:tarde");
+  assert.equal((await repo.list("wa_alerts")).length, 0);
+});

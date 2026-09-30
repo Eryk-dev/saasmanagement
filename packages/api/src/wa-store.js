@@ -108,6 +108,12 @@ export async function recordMessage(repo, { id, phone, direction, text = "", at,
     const lead = await findLeadByPhone(repo, tid);
     if (lead) { lid = lead.id; sa = sa || lead.saas || ""; }
   }
+  // Conversa JÁ vinculada a um lead (mensagem do form vinda de outro aparelho,
+  // vínculo manual, waPhone) cujo telefone não é o do cadastro: a mensagem
+  // herda o lead da thread. Sem isso, lead que escreve de um segundo número
+  // ficava com TODAS as mensagens (e as respostas do time) sem leadId — 8
+  // conversas inteiras invisíveis pras métricas no raio-x de 30/09.
+  if (lid == null && existingThread?.leadId) { lid = existingThread.leadId; sa = sa || existingThread.saas || ""; }
   // Conversa NOVA, entrando, e nenhum lead com esse número: pode ser o lead do
   // form escrevendo de outro aparelho. Só na primeira mensagem da thread — é
   // exatamente o momento do redirect do form.
