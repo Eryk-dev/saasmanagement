@@ -29,9 +29,11 @@ import { slotLabel, slotLabelFull, wallNow, spreadPair, wholeHourSlots, activeHo
 import { sdrSlotsForLead, sdrAgendaWindow } from "./sdr-agenda.js";
 import { sdrBotConfig, leadDigest, conversationActive, leadPainFocus, greetName, SDR_AUTHOR, DEVICE_TIP } from "./sdr-flow.js";
 import { transcriber as defaultTranscriber } from "./transcribe.js";
-import { FORM_MSG_RX } from "./sdr-signals.js";
+import { FORM_MSG_RX, SLOTS_RX, OFFER_CUE_RX, isOfferMsg, ACCEPT_RX, offeredSlotsIn, acceptedSlot } from "./sdr-signals.js";
+import { upsertNotification } from "./tasks-core.js";
 
 const HOUR = 3_600_000;
+const MIN = 60_000;
 const BRAIN_KINDS = new Set(["novo", "contato", "qualificacao", "call"]);
 const HUMAN_MUTE_MS = 4 * HOUR;   // gente falou há pouco: a conversa é dela
 const GREETING_GAP_MS = 6 * HOUR; // conversa parada há menos disso = SEM saudação nova (Leo, 22/08)
@@ -44,7 +46,8 @@ const PITCH_RX = /t[íi]tulo de 200|part number|compatibilidade inteira|clonagem
 // Horário já oferecido não se repete enquanto o lead não escolher (Leo,
 // 23/08): a re-oferta a cada resposta soa insistente (e o modelo ainda
 // rotulava o dia errado ao re-citar de cabeça).
-const SLOTS_RX = /(hoje|amanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo) às \d{1,2}h/i;
+// (SLOTS_RX, OFFER_CUE_RX e isOfferMsg vivem em sdr-signals.js: a cobrança
+// da oferta no sdr-flow usa a mesma régua.)
 const DAILY_CAP = 15;             // mensagens do robô por conversa por dia
 // VALOR dito por nós. PREÇO É CONVERSA DA CALL (Leo, 18/09): a LeverAds tem
 // planos diferentes e o plano certo sai da escuta das dores na call de vendas,
@@ -102,9 +105,6 @@ const INTEREST_RX = /\b(sim|ajudaria|com certeza|claro|tenho interesse|quero|pod
 // (17/09) às 13h", "nossa conversa é hoje às 13h" (lembrete) e "confirmando
 // nossa conversa amanhã às 13h" NÃO são. O robô do Renan (16/09) leu o próprio
 // lembrete como "horários que te passei" e insistiu numa oferta que nunca fez.
-const OFFER_CUE_RX = /consigo|tenho .*(?:livre|dispon)|qual fica melhor|fica bom pra voc|pode ser\?|encaix|op[çc][õo]es/i;
-const NOT_OFFER_RX = /nossa conversa|agendad|remarcad|confirmando|est[áa] tudo certo|te espero|come[çc]a em|separou|marcad[oa] (?:ent[ãa]o )?pra/i;
-const isOfferMsg = (t) => SLOTS_RX.test(t || "") && OFFER_CUE_RX.test(t || "") && !NOT_OFFER_RX.test(t || "");
 // DURAÇÃO INVENTADA: "é uma conversa de 20 minutos" saiu em 9 conversas no
 // dia 17/09; a duração é de acordo com a necessidade do lead, então o motor
 // tira o número da frase. "Em menos de 5 minutos" (pitch OEM) não é duração
@@ -198,6 +198,16 @@ function rescheduleReply(text, wnow) {
 function priceBridgeText(nome) {
   return `Entendo${nome ? ` ${nome}` : ""}, vou pedir pra alguém do time falar contigo por aqui`;
 }
+// Desvio de preço colado na CONFIRMAÇÃO do horário (aceite + "qual o valor?"
+// na mesma mensagem): sem número, sem plano, e sem repetir a pergunta de
+// agenda que acabou de ser respondida.
+function priceAfterBookingText(nome) {
+  return `Sobre o valor${nome ? ` ${nome}` : ""}: são planos diferentes e o certo pra sua operação o especialista te mostra nessa conversa, prefiro não te passar um número solto por aqui`;
+}
+// Lead na sala do Meet esperando (texto já normalizado, sem acento).
+const WAITING_ROOM_RX = /sozinh|ninguem (?:entrou|apareceu|chegou|na sala)|nao (?:entrou|apareceu|chegou|tem) ninguem|sala (?:esta |ta )?vazia|\bcade\b|\bkd\b|\b(?:estou|to) (?:esperando|aguardando)|aguardando (?:aqui|na sala|voces|o especialista)|esperando (?:aqui|na sala|voces)|me conecte|vai entrar\?|quem (?:vai|ta) (?:entrar|na sala)/;
+// Objeção/desistência (texto normalizado) depois da call marcada.
+const OBJECTION_RX = /nao vou (?:usar|utilizar|precisar|conseguir usar)|acho que nao|ja uso|ja tenho|ja utilizo|nao (?:faz|vai fazer) sentido|desist|nao (?:quero|preciso) mais|deixa pra la|nao vale|nao vai servir|nao serve pra mim/;
 
 // SEGUNDA vez que o lead pede preço (Leo, 18/09). Nem repetir a parede (foi o
 // que fez a lead da RT Eleven encerrar em 24/08), nem gente mandar o valor
@@ -390,6 +400,22 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     lead.sdrLog = sdrLog;
     return repo.update("leads", lead.id, { sdrLog });
   };
+  // Aviso na caixa de entrada de QUEM cuida do lead (closer, senão dono), com
+  // chave: o mesmo fato avisa uma vez. Best-effort, nunca derruba a resposta.
+  async function notifyPerson(lead, { type, key, text, thread }) {
+    try {
+      const users = await repo.list("users");
+      const known = new Set(users.map((u) => u.id));
+      const user = [lead.closer, lead.owner].find((u) => u && known.has(u));
+      if (!user) return null;
+      const dup = await repo.listWhere("notifications", { key }, { fields: [] });
+      if (dup.length) return null;
+      return await upsertNotification(repo, {
+        user, task: "", taskTitle: "", saas: lead.saas || "", by: "api", key, type, text,
+        link: { screen: "whatsapp", thread: thread?.id || "", lead: lead.id },
+      }, { now: now().toISOString() });
+    } catch { return null; }
+  }
 
   // ── Walk-in: conversa SEM lead ──────────────────────────────────────────
   // Contato que chegou direto no número (sem passar pelo form) não tinha card,
@@ -619,15 +645,22 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     if (lastHumanOut && nowMs - Date.parse(lastHumanOut.at || 0) < HUMAN_MUTE_MS) return "human-active";
     const handoffAt = lead.sdrLog?.handoffAt ? Date.parse(lead.sdrLog.handoffAt) : 0;
     if (handoffAt && !(lastHumanOut && Date.parse(lastHumanOut.at || 0) > handoffAt)) return "waiting-human";
+    // JANELA DA CALL (raio-x 30/09): de 30 min antes a 60 min depois do
+    // horário marcado o lead está entrando (ou esperando) na sala. Aqui o robô
+    // não sobe escada de preço, não estoura teto e não entrega por repetição:
+    // o Carlos ouviu o roteiro de preço já entrando na call, Gian e Roger
+    // viraram "teto do dia" a minutos da call ("ok ja vou acessar" → handoff).
+    const callMsNow = lead.callAt ? Date.parse(brtToIso(lead.callAt)) : NaN;
+    const inCallWindow = Number.isFinite(callMsNow) && nowMs >= callMsNow - 30 * MIN && nowMs <= callMsNow + 60 * MIN;
     // Teto diário por conversa: rajada nunca vira metralhadora.
     const botToday = msgs.filter((m) => m.direction === "out" && m.author === SDR_AUTHOR && nowMs - Date.parse(m.at || 0) < 24 * HOUR).length;
-    if (botToday >= DAILY_CAP) {
+    if (botToday >= DAILY_CAP && !inCallWindow) {
       // Um alerta por 24h (a comparação antiga era com o horário da CALL, que
       // nunca bate com um timestamp: o alerta repetia a cada mensagem).
       const capMs = Date.parse(lead.sdrLog?.capAlertAt || "");
       if (!Number.isFinite(capMs) || nowMs - capMs > 24 * HOUR) {
         await raiseAlert(repo, thread, { text: "Conversa longa com o robô (teto do dia) · assume aí" });
-        await stamp(lead, { capAlertAt: new Date(nowMs).toISOString(), handoffAt: new Date(nowMs).toISOString() });
+        await stamp(lead, { capAlertAt: new Date(nowMs).toISOString(), handoffAt: new Date(nowMs).toISOString(), handoffKind: "teto" });
       }
       return "cap";
     }
@@ -659,7 +692,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     // o robô oferecer "amanhã às 10h" e, na resposta do lead 27 minutos depois,
     // negar o próprio horário (prod 24/08, Guilherme). Ver agenda-slots.js.
     const holds = await activeHolds(repo, product.id, { now: at }).catch(() => []);
-    const { slots, requested: requestedDate, startDate: offerDate } = await sdrSlotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 0, messages: agendaMessages, holds });
+    const { slots, requested: requestedDate, startDate: offerDate, requestedEmpty = false } = await sdrSlotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 0, messages: agendaMessages, holds });
     const slotList = slots.map((s) => ({ ...s, label: slotLabel(s.at, wnow) }));
     // A OFERTA sai só de hora cheia; slotList inteiro (com as quebradas) segue
     // valendo pra AGENDAR quando o lead pede um horário específico.
@@ -701,6 +734,19 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     // "Perfeito PEDRO" saíram em prod 24/08. Sem nome utilizável, "" — e os
     // textos caem no fallback sem nome, que soa natural.
     const nome = greetName(lead.name);
+    // LEAD NA SALA SEM ESPECIALISTA (raio-x 30/09): 4 casos em 2 semanas, 3
+    // com o closer preso na call anterior. O robô respondia "deixa eu
+    // confirmar aqui com o especialista" e silêncio; o Ricardo esperou 5 min
+    // e foi embora ("não quero remarcar, ja começaram errado"). Agora: uma
+    // resposta na hora, uma vez por horário, e o closer é avisado direto.
+    if (inCallWindow && WAITING_ROOM_RX.test(plainReply(lastInText)) && lead.sdrLog?.waitingRoomFor !== lead.callAt) {
+      const quando = slotLabelFull(lead.callAt, wnow);
+      await stamp(lead, { waitingRoomFor: lead.callAt });
+      await raiseAlert(repo, thread, { text: `LEAD NA SALA sem especialista (${quando}) · entra AGORA: "${String(message?.text || "").slice(0, 120)}"` });
+      await notifyPerson(lead, { type: "call_lead_waiting", key: `call-waiting:${lead.id}:${lead.callAt}`, thread, text: `${nome || lead.name || "O lead"} está na sala do Meet (${quando}) esperando você` });
+      await sendBot({ phone: to, text: `${nome ? `${nome}, j` : "J"}á avisei nosso especialista aqui, ele está finalizando outra conversa e entra em instantes. Fica na sala que ele já chega`, phoneId, saas: product.id, leadId: lead.id });
+      return "lead-na-sala";
+    }
     const decision = await anthropic.sdrDecide({
       sdrName: firstName((await repo.get("users", lead.owner).catch(() => null))?.name),
       lead: { name: nome, company: lead.company, email: lead.email, niche: lead.niche },
@@ -721,6 +767,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       suggestedPair: awaitingReschedule ? [] : suggestedPair,
       requestedDate,
       offerDate,
+      requestedEmpty,
       rescheduleStatus: reschedule?.status || "",
     });
     // Quem respondeu e quanto custou: vai pro carimbo da thread e pro uso do dia.
@@ -784,13 +831,44 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     // o robô só avisa que vai confirmar. Vale seja qual for a ação da IA.
     if (lead.callAt && DENY_CALL_RX.test(lastInText)) {
       await raiseAlert(repo, thread, { text: `Lead nega a conversa marcada (${slotLabelFull(lead.callAt, wnow)}) · confere o card e responde: "${String(message?.text || "").slice(0, 140)}"` });
-      await stamp(lead, { handoffAt: new Date(nowMs).toISOString(), denyCallGuardAt: new Date(nowMs).toISOString() });
+      await stamp(lead, { handoffAt: new Date(nowMs).toISOString(), denyCallGuardAt: new Date(nowMs).toISOString(), handoffKind: "nega-call" });
       await send(`${nome ? `${nome}, d` : "D"}eixa eu confirmar aqui com o especialista e já te retorno`);
       return "nega-call-humano";
     }
 
     if (lead.callAt && requestsCancellation(lastInText)) decision.acao = "desmarcar";
+    // OBJEÇÃO DEPOIS DE MARCAR (raio-x 30/09, Guilherme: 4 min após marcar,
+    // "acho que nao vou utilizar muito / ja uso upseller"; a IA calou, os
+    // lembretes saíram, furou). Silêncio aqui não é silêncio: gente é avisada
+    // (decisão do Leo: handoff espera gente, o robô não improvisa).
+    if (decision.acao === "silencio" && lead.callAt && OBJECTION_RX.test(plainReply(lastInText)) && !lead.sdrLog?.preCallObjectionAt) {
+      await raiseAlert(repo, thread, { text: `Lead com conversa marcada (${slotLabelFull(lead.callAt, wnow)}) trouxe objeção/desistência e o robô ia calar · responde: "${String(message?.text || "").slice(0, 140)}"` });
+      await stamp(lead, { preCallObjectionAt: new Date(nowMs).toISOString() });
+    }
     if (decision.acao === "silencio" && !awaitingReschedule) return "silencio";
+
+    const askingNow = PRICE_ASK_RX.test(lastInboundText(msgs));
+    const priceAsks = msgs.filter((m) => m.direction === "in" && PRICE_ASK_RX.test(m.transcript || m.text || "")).length;
+    // ACEITE + PREÇO NA MESMA MENSAGEM (raio-x 30/09): "Pode" + "Qual valor do
+    // serviço" (Matheusv) e "Certo" + "E qual valor" (Luís) perdiam o aceite,
+    // porque a IA respondia só o roteiro de preço. O horário é travado
+    // PRIMEIRO; o desvio de preço vai junto na confirmação.
+    let priceWithBooking = false;
+    if (askingNow && slotsOffered && !lead.callAt && !awaitingReschedule && !["agendar", "remarcar", "desmarcar"].includes(decision.acao)) {
+      const free = new Set(slotList.map((s) => s.at));
+      const offered = offeredSlotsIn(agendaMessages, SDR_AUTHOR).filter((s) => free.has(s.at));
+      const accepted = acceptedSlot(lastInText, offered);
+      if (accepted) {
+        decision.acao = "agendar";
+        decision.horario = accepted.at;
+        priceWithBooking = true;
+      } else if (offered.length >= 2 && ACCEPT_RX.test(plainReply(lastInText))) {
+        const iso = new Date(nowMs).toISOString();
+        await send([priceDeferral(nome), `Qual dos dois fica melhor pra você, ${slotLabel(offered[0].at, wnow)} ou ${slotLabel(offered[1].at, wnow)}?`]);
+        await stamp(lead, { priceGuardAt: lead.sdrLog?.priceGuardAt || iso });
+        return aborted ? "abortado" : "preco-aceite-qual";
+      }
+    }
 
     // ESCADA DE PREÇO (Leo, 18/09), determinística e na frente da ação da IA:
     //   1ª vez  → a IA desvia com a resposta oficial (a trava PRICE_RX embaixo
@@ -799,10 +877,9 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     //             call) e puxa pra call;
     //   3ª vez+ → gente assume, com o alerta dizendo que PREÇO SÓ NA CALL.
     // Lead escolhendo horário tem prioridade: agendar/remarcar/desmarcar seguem.
-    const askingNow = PRICE_ASK_RX.test(lastInboundText(msgs));
-    const priceAsks = msgs.filter((m) => m.direction === "in" && PRICE_ASK_RX.test(m.transcript || m.text || "")).length;
+    // Na janela da call a escada não sobe (o lead está entrando na sala).
     const insisting = priceAsks >= 2 || (lead.sdrLog?.priceGuardAt && askingNow);
-    if (insisting && !awaitingReschedule && !["agendar", "remarcar", "desmarcar"].includes(decision.acao)) {
+    if (insisting && !inCallWindow && !awaitingReschedule && !["agendar", "remarcar", "desmarcar"].includes(decision.acao)) {
       const iso = new Date(nowMs).toISOString();
       if (!lead.sdrLog?.priceExplainedAt) {
         await send(priceExplainText(nome, { callAt: lead.callAt, slots: suggestedPair.length ? suggestedPair : offerPool.slice(0, 1), slotsOffered, wnow }));
@@ -810,14 +887,14 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
         return "preco-explicado";
       }
       await raiseAlert(repo, thread, { text: `Insistiu no preço ${priceAsks}x · assume a conversa, mas PREÇO SÓ NA CALL (planos diferentes, o certo sai da escuta das dores): não fala valor por aqui, leva pra call: "${String(message?.text || "").slice(0, 140)}"` });
-      await stamp(lead, { handoffAt: iso, priceHandoffAt: iso });
+      await stamp(lead, { handoffAt: iso, priceHandoffAt: iso, handoffKind: "preco" });
       await send(priceBridgeText(nome));
       return "preco-humano";
     }
 
     if (decision.acao === "humano") {
       await raiseAlert(repo, thread, { text: `SDR IA pediu humano: ${decision.motivoHumano || "precisa de gente"} · "${String(message?.text || "").slice(0, 140)}"` });
-      await stamp(lead, { handoffAt: new Date(nowMs).toISOString() });
+      await stamp(lead, { handoffAt: new Date(nowMs).toISOString(), handoffKind: "ia", handoffWhy: String(decision.motivoHumano || "").slice(0, 160) });
       const transition = ((Array.isArray(decision.mensagens) && decision.mensagens[0]) || String(decision.mensagem || "")).trim();
       if (transition && !PRICE_RX.test(transition) && transition.length <= 240) await send(transition);
       return "humano";
@@ -837,7 +914,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       await raiseAlert(repo, thread, {
         text: `Lead é AFILIADO da Shopee/ML (não é cliente)${tinhaCall ? " · call desmarcada e horário liberado" : ""} · confirma e desqualifica`,
       });
-      await stamp(lead, { affiliateGuardAt: new Date(nowMs).toISOString(), handoffAt: new Date(nowMs).toISOString() });
+      await stamp(lead, { affiliateGuardAt: new Date(nowMs).toISOString(), handoffAt: new Date(nowMs).toISOString(), handoffKind: "afiliado" });
       await send(`${nome ? `${nome}, ` : ""}obrigada por explicar! A LeverAds atende quem vende com conta PRÓPRIA de Mercado Livre e Shopee, porque o que a gente faz é espelhar e criar os anúncios da sua conta. Pra quem trabalha com afiliação ela não se aplica${tinhaCall ? ", então já liberei o horário aqui" : ""}. Qualquer coisa é só me chamar!`);
       return "afiliado";
     }
@@ -907,6 +984,10 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       await send(rebook
         ? rebookConfirmText(nome, slotLabelFull(pick.at, wnow), !!(lead.email && (fresh || lead).callUrl))
         : bookingConfirmText(nome, slotLabelFull(pick.at, wnow), !!lead.email));
+      if (priceWithBooking && !aborted) {
+        await send(priceAfterBookingText(nome));
+        await stamp(lead, { priceGuardAt: lead.sdrLog?.priceGuardAt || new Date(nowMs).toISOString() });
+      }
       if (autoCallMeet) autoCallMeet(lead.id).catch(() => { /* o lembrete de 10min entrega o link quando existir */ });
       return decision.acao;
     }
@@ -930,7 +1011,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     // mesma confusão) e gente assume.
     if (REDIRECT_RX.test(parts.join(" "))) {
       await raiseAlert(repo, thread, { text: `Robô tentou mandar o lead pra outro número/link · confundiu o canal, assume: "${String(message?.text || "").slice(0, 120)}"` });
-      await stamp(lead, { handoffAt: new Date(nowMs).toISOString(), redirectGuardAt: new Date(nowMs).toISOString() });
+      await stamp(lead, { handoffAt: new Date(nowMs).toISOString(), redirectGuardAt: new Date(nowMs).toISOString(), handoffKind: "redirect" });
       log.warn?.({ lead: lead.id, texto: parts.join(" ").slice(0, 200) }, "sdr-brain: trava de redirecionamento");
       return "redirect-travado";
     }
@@ -939,10 +1020,13 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     // prompt já proíbe, mas prompt não é garantia — aqui o motor corta a parte
     // que repete algo que o robô já disse. Sobrou nada pra falar: é sinal de que
     // a conversa travou, e quem destrava é gente.
-    const fresh = parts.filter((t) => !alreadySaid(t, msgs));
+    // Lead pediu outro dia/período e a resposta re-oferta o mesmo par (porque o
+    // pedido lotou): é informação nova pra ele, não requentada.
+    const fresh = parts.filter((t) => !alreadySaid(t, msgs) || (requestedDate && isOfferMsg(t)));
     if (!fresh.length) {
+      if (inCallWindow) return "silencio"; // na hora da call, repetição não vira handoff
       await raiseAlert(repo, thread, { text: `Robô sem resposta nova (ia repetir o que já disse) · assume: "${String(message?.text || "").slice(0, 140)}"` });
-      await stamp(lead, { handoffAt: new Date(nowMs).toISOString(), repeatGuardAt: new Date(nowMs).toISOString() });
+      await stamp(lead, { handoffAt: new Date(nowMs).toISOString(), repeatGuardAt: new Date(nowMs).toISOString(), handoffKind: "repeticao" });
       return "repeticao-humano";
     }
     parts.length = 0;

@@ -17,7 +17,10 @@ const FUNNEL = [
   { stage: "Ganho", kind: "ganho" },
 ];
 
-async function world({ lead = {}, messages = [], sdrBot = {}, users } = {}) {
+// A oferta espontânea cobre HOJE + o próximo dia útil (Leo, 30/09). A maior
+// parte dos casos aqui foi escrita com a oferta começando amanhã às 9h, então
+// o mundo padrão BLOQUEIA a agenda de hoje (19/08); `todayFree: true` abre.
+async function world({ lead = {}, messages = [], sdrBot = {}, users, todayFree = false } = {}) {
   const repo = makeMemRepo();
   await repo.create("products", {
     id: "leverads", name: "LeverAds", funnel: FUNNEL,
@@ -30,6 +33,7 @@ async function world({ lead = {}, messages = [], sdrBot = {}, users } = {}) {
     { id: "leonardo", name: "Leonardo", roles: ["admin"] },
     { id: "pl", name: "Jonathan", roles: ["closer"], compLevel: 2 },
   ]) await repo.create("users", u);
+  if (!todayFree) await repo.create("agenda_blocks", { id: "hoje-cheio", users: ["pl", "leonardo", "jonan", "jonathan", "vit"], recur: "once", date: "2026-08-19", allDay: true });
   await repo.create("leads", {
     id: "L1", saas: "leverads", owner: "sdr", name: "Rafael Silva", phone: "41999990000",
     stage: "Qualificando", accounts: "3-5", createdAt: ISO("2026-08-19T12:00:00Z"), ...lead,
@@ -263,7 +267,7 @@ test("dia solto sem hora vira oferta concreta (o mais cedo primeiro)", async () 
   await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "sim, ajudaria" } });
   const ultima = fakes.sent.at(-1).text;
   assert.match(ultima, /às \d/, "sai com hora escrita");
-  // O relógio do teste é 10h BRT e há vaga hoje, mas a oferta começa amanhã às 9h.
+  // Hoje está bloqueado no mundo padrão do teste: a oferta começa amanhã às 9h.
   assert.match(fakes.sent.map((x) => x.text).join(" "), /amanhã às 9h/);
 });
 
@@ -1321,4 +1325,118 @@ test("teto diário: com alerta há menos de 24h não repete o alerta; com alerta
   const old = await mk(ISO("2026-08-17T08:00:00Z"));
   assert.equal(await brainOf(old, makeFakes()).handleInbound(INBOUND), "cap");
   assert.equal((await old.list("wa_alerts")).length, 1);
+});
+
+// ── Raio-x 30/09: hoje na oferta, janela da call, aceite + preço, objeção, motivo do handoff ─
+
+test("hoje entra na oferta espontânea com 2h de folga (10h BRT → primeiro horário hoje às 13h)", async () => {
+  const repo = await world({ todayFree: true, messages: [
+    { direction: "out", author: "sdr-bot", text: "Oiii Rafael. Isso ajudaria na sua operação?", at: ISO("2026-08-19T12:50:00Z") },
+    { direction: "in", text: "ajudaria sim", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Consigo hoje às 13h ou hoje às 15h, qual fica melhor pra você?" }] });
+  await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "ajudaria sim" } });
+  const ctx = fakes.calls[0];
+  assert.equal(ctx.slots[0].at, "2026-08-19T13:00");
+  assert.equal(ctx.requestedDate, false);
+  assert.equal(ctx.requestedEmpty, false);
+  assert.deepEqual(ctx.suggestedPair.map((s) => s.label), ["hoje às 13h", "hoje às 15h"]);
+  assert.match(fakes.sent[0].text, /hoje às 13h ou hoje às 15h/);
+});
+
+test("pedido do lead sem vaga: a IA recebe requestedEmpty e as alternativas da janela normal", async () => {
+  const repo = await world({ messages: [
+    { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor pra você?", at: ISO("2026-08-19T12:50:00Z") },
+    { direction: "in", text: "Amanhã não consigo. Teria que ser sexta", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  await repo.create("agenda_blocks", { id: "sexta-cheia", users: ["pl"], recur: "once", date: "2026-08-21", allDay: true });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Sexta já lotou, consigo amanhã às 9h ou amanhã às 11h, qual fica melhor pra você?" }] });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "Amanhã não consigo. Teria que ser sexta" } });
+  assert.equal(r, "responder");
+  const ctx = fakes.calls[0];
+  assert.equal(ctx.requestedDate, true);
+  assert.equal(ctx.requestedEmpty, true);
+  assert.equal(ctx.offerDate, "2026-08-21");
+  assert.ok(ctx.slots.length && ctx.slots.every((s) => s.at.startsWith("2026-08-20T")), "alternativas de amanhã");
+});
+
+test("janela da call: teto e escada de preço não disparam a minutos da call; lead sozinho na sala recebe resposta na hora, alerta e aviso pro closer", async () => {
+  const many = Array.from({ length: 15 }, (_, i) => ({ direction: "out", author: "sdr-bot", text: "msg " + i, at: ISO(`2026-08-19T0${Math.min(9, i % 10)}:0${i % 6}:00Z`) }));
+  // Call hoje às 10h BRT (13:00Z); NOW = 13:00Z.
+  const repo = await world({
+    lead: { stage: "Call agendada", callAt: "2026-08-19T10:00", closer: "pl", callUrl: "https://meet.google.com/abc" },
+    messages: [...many,
+      { direction: "in", text: "quanto custa?", at: ISO("2026-08-19T12:00:00Z") },
+      { direction: "out", author: "sdr-bot", text: "O investimento é de acordo com a operação", at: ISO("2026-08-19T12:01:00Z") },
+      { direction: "in", text: "Estou na sala sozinho, ninguém entrou", at: ISO("2026-08-19T12:59:30Z") }],
+  });
+  const fakes = makeFakes();
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "Estou na sala sozinho, ninguém entrou", id: "m18" } });
+  assert.equal(r, "lead-na-sala");
+  assert.equal(fakes.calls.length, 0, "não gasta IA");
+  assert.match(fakes.sent[0].text, /avisei nosso especialista aqui/);
+  const alerts = await repo.list("wa_alerts");
+  assert.match(alerts[0].text, /LEAD NA SALA sem especialista/);
+  const notes = await repo.list("notifications");
+  assert.equal(notes.length, 1);
+  assert.equal(notes[0].user, "pl");
+  assert.equal(notes[0].type, "call_lead_waiting");
+  assert.equal((await repo.get("leads", "L1")).sdrLog.waitingRoomFor, "2026-08-19T10:00");
+  // Segunda mensagem na mesma janela: nem teto (15 msgs do robô) nem escada de preço (2ª pergunta) viram handoff.
+  await repo.create("wa_messages", { id: "m19", thread: "5541999990000", leadId: "L1", saas: "leverads", direction: "in", text: "e o valor?", at: ISO("2026-08-19T12:59:50Z") });
+  const fakes2 = makeFakes({ decisions: [{ acao: "responder", mensagem: "O especialista te mostra o plano na conversa, já entra" }] });
+  assert.equal(await brainOf(repo, fakes2).handleInbound({ message: { from: "5541999990000", text: "e o valor?", id: "m19" } }), "responder");
+  assert.equal((await repo.get("leads", "L1")).sdrLog.handoffAt, undefined);
+});
+
+test("aceite + pergunta de preço na mesma mensagem: trava o horário primeiro e cola o desvio de preço na confirmação", async () => {
+  const repo = await world({ messages: [
+    { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor pra você?", at: ISO("2026-08-19T12:50:00Z") },
+    { direction: "in", text: "Pode ser as 9h. E qual o valor do serviço?", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "O investimento depende da sua operação, primeiro a gente entende o cenário" }] });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "Pode ser as 9h. E qual o valor do serviço?" } });
+  assert.equal(r, "agendar");
+  const lead = await repo.get("leads", "L1");
+  assert.equal(lead.callAt, SLOT1);
+  assert.equal(lead.stage, "Call agendada");
+  assert.ok(fakes.sent.length >= 2);
+  assert.match(fakes.sent.at(-1).text, /Sobre o valor/);
+  assert.doesNotMatch(fakes.sent.map((s) => s.text).join(" "), /R\$|\d+ reais/);
+  assert.ok(lead.sdrLog.priceGuardAt);
+});
+
+test("aceite sem dizer qual + preço: desvio e pergunta 'qual dos dois', sem perder a oferta", async () => {
+  const repo = await world({ messages: [
+    { direction: "out", author: "sdr-bot", text: "Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor pra você?", at: ISO("2026-08-19T12:50:00Z") },
+    { direction: "in", text: "Certo. E qual valor dos serviços", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "O investimento depende da sua operação" }] });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "Certo. E qual valor dos serviços" } });
+  assert.equal(r, "preco-aceite-qual");
+  assert.equal(fakes.sent.length, 2);
+  assert.match(fakes.sent[1].text, /Qual dos dois fica melhor pra você, amanhã às 9h ou amanhã às 11h\?/);
+  assert.equal((await repo.get("leads", "L1")).callAt, undefined);
+});
+
+test("objeção depois de marcar não é silêncio: alerta pra gente responder, uma vez por horário", async () => {
+  const repo = await world({
+    lead: { stage: "Call agendada", callAt: SLOT1, closer: "pl" },
+    messages: [{ direction: "in", text: "entendi, entao, na verdade acho que nao vou utilizar muito, ja uso upseller que faz tudo isso", at: ISO("2026-08-19T12:59:00Z") }],
+  });
+  const fakes = makeFakes({ decisions: [{ acao: "silencio" }] });
+  assert.equal(await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "entendi, entao, na verdade acho que nao vou utilizar muito, ja uso upseller que faz tudo isso" } }), "silencio");
+  const alerts = await repo.list("wa_alerts");
+  assert.equal(alerts.length, 1);
+  assert.match(alerts[0].text, /objeção\/desistência/);
+  assert.ok((await repo.get("leads", "L1")).sdrLog.preCallObjectionAt);
+});
+
+test("handoff carimba o motivo (handoffKind) e a frase da IA (handoffWhy)", async () => {
+  const repo = await world({ messages: [{ direction: "in", text: "quero falar com uma pessoa", at: ISO("2026-08-19T12:59:00Z") }] });
+  const fakes = makeFakes({ decisions: [{ acao: "humano", mensagem: "Claro, já chamo alguém do time aqui", motivoHumano: "Lead pediu atendimento humano" }] });
+  assert.equal(await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "quero falar com uma pessoa" } }), "humano");
+  const log = (await repo.get("leads", "L1")).sdrLog;
+  assert.equal(log.handoffKind, "ia");
+  assert.equal(log.handoffWhy, "Lead pediu atendimento humano");
 });

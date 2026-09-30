@@ -25,7 +25,7 @@
 // O motor é um poller de 60s no molde do drip-runner (single-flight, no-op sem
 // produto ligado), iniciado no index.js.
 import { findThreadByPhone, listMessages, recordMessage, waMatchKey } from "./wa-store.js";
-import { lastRealReply } from "./sdr-signals.js";
+import { lastRealReply, isOfferMsg, offeredSlotsIn } from "./sdr-signals.js";
 import { digits } from "./whatsapp.js";
 import { kindOf, firstStage, isNoShowStage, isWonLead, stageByKind } from "./stages.js";
 import { brtToIso, onOutboundMessage, applyStageMove } from "./lead-flow.js";
@@ -57,6 +57,8 @@ const LADDER_SCAN_PER_TICK = 25;
 // Corte pra Nutrição: quantos cards por ciclo (o movimento é barato, mas o
 // kanban não pode dar um salto de 300 cards de uma vez na cara do time).
 const LADDER_DROP_PER_TICK = 5;
+// Cobrança da oferta (1e): pingando, como a escada.
+const OFFER_NUDGE_PER_TICK = 3;
 // Hash estável de string (FNV-1a) — o mesmo lead cai sempre no mesmo atraso e
 // no mesmo template, sem guardar sorteio nenhum.
 const hashInt = (s) => {
@@ -137,6 +139,11 @@ export function sdrBotConfig(product) {
     // retomada CEDO, e silêncio se declara RÁPIDO. Nasce desligada porque
     // MOVE CARD (é mudança de funil, não só de mensagem).
     ladder: cfg.ladder === true,
+    // COBRANÇA DA OFERTA SEM RESPOSTA (Leo, 30/09): o robô ofertou 2 horários
+    // e o lead sumiu (33 das 147 conversas mortas de 17 a 30/09 pararam aí).
+    // Na manhã do dia útil seguinte, uma cobrança só, conferindo se o horário
+    // ainda está livre. Acompanha a conversa com IA (só ela oferta).
+    offerNudge: cfg.offerNudge == null ? cfg.conversation === true : cfg.offerNudge === true,
     // FRIO (nunca respondeu nada): o degrau de +24h é a seção 1b; este é o
     // encerramento, no 5º dia depois do 1º toque.
     ladderColdDays: num(cfg.ladderColdDays, 5),
@@ -335,6 +342,20 @@ function rescue2Text({ nome, slots = [], now }) {
   return `${oi} ainda dá tempo de remarcar nossa conversa. Me diz o melhor dia e período que eu vejo aqui na agenda.`;
 }
 
+// Cobrança da oferta sem resposta, na manhã seguinte (Leo, 30/09). Com os
+// horários de ontem ainda livres, cobra por eles com o rótulo recalculado
+// ("amanhã" virou "hoje"); se outro lead pegou, diz isso e oferece o par novo.
+export function offerNudgeText({ nome, pair = [], kept = false, now }) {
+  const oi = `${now.getUTCHours() < 12 ? "Bom dia" : "Boa tarde"}${nome ? ` ${nome}` : ""}!`;
+  const l = pair.map((s) => slotLabel(s.at, now));
+  if (kept) return l.length >= 2
+    ? `${oi} Ficou ${l[0]} ou ${l[1]} pra nossa conversa com o especialista?`
+    : `${oi} Ficou ${l[0]} pra nossa conversa com o especialista?`;
+  return l.length >= 2
+    ? `${oi} Os horários de ontem já não estão mais livres, mas consigo ${l[0]} ou ${l[1]}, qual fica melhor pra você?`
+    : `${oi} O horário de ontem já não está mais livre, mas consigo ${l[0]}, fica bom pra você?`;
+}
+
 function rescueText({ nome, slots = [], now }) {
   const oi = nome ? `Oi ${nome},` : "Oi,";
   const base = `${oi} passei no nosso horário marcado e não te encontrei, acontece! Quer que eu remarque?`;
@@ -415,7 +436,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
     const anyPhone = products.some((p) => p.waPhoneId);
     const [users, allLeads] = await Promise.all([repo.list("users"), repo.list("leads")]);
     const humanIds = new Set(users.map((u) => u.id));
-    const stats = { firstTouch: 0, secondTouch: 0, ladder: 0, nurtured: 0, reminders: 0, ringAlerts: 0, rescue: 0, rescue2: 0, backlogRescue: 0, skipped: 0 };
+    const stats = { firstTouch: 0, secondTouch: 0, ladder: 0, nurtured: 0, offerNudge: 0, reminders: 0, ringAlerts: 0, rescue: 0, rescue2: 0, backlogRescue: 0, skipped: 0 };
     let sends = 0;
     const CAP = 25; // teto por ciclo: rajada nunca vira metralhadora
 
@@ -433,6 +454,18 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
       // OU quando é lead interno com o modo teste ligado — assim o test-drive
       // cobre a jornada inteira mesmo com a produção toda desligada.
       const passOn = (flag, l) => flag || (cfg.conversationTest && l.internal);
+      // ÍNDICE DE CONVERSAS pro passe barato (uma leitura por ciclo, ~2k
+      // linhas): lastAt/lastDir/lastOutAuthor/lastText bastam pra escada (1c)
+      // e pra cobrança da oferta (1e) descartarem quem não está na vez sem
+      // abrir a conversa.
+      const threads = await repo.listWhere("wa_threads", { saas: product.id }).catch(() => []);
+      const threadByLead = new Map(), threadByKey = new Map();
+      for (const t of threads) {
+        if (t.leadId) threadByLead.set(t.leadId, t);
+        const k = waMatchKey(t.phone || t.id);
+        if (k) threadByKey.set(k, t);
+      }
+      const threadOf = (l) => threadByLead.get(l.id) || threadByKey.get(waMatchKey(l.waPhone || l.phone)) || null;
 
       // ── 1. Primeiro toque ────────────────────────────────────────────────
       if (cfg.firstTouch || cfg.conversationTest) {
@@ -589,17 +622,6 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           ? cfg.templates.ladderBreakup
           : (step === 0 && !lead?.sdrLog?.secondTouchAt ? cfg.templates.secondTouch : cfg.templates.backlogRescueNutri);
 
-        // ÍNDICE DE CONVERSAS pro passe barato (uma leitura por ciclo, ~2k
-        // linhas): lastAt/lastDir/lastOutAuthor bastam pra descartar quem não
-        // pode estar vencido sem abrir a conversa.
-        const threads = await repo.listWhere("wa_threads", { saas: product.id }).catch(() => []);
-        const threadByLead = new Map(), threadByKey = new Map();
-        for (const t of threads) {
-          if (t.leadId) threadByLead.set(t.leadId, t);
-          const k = waMatchKey(t.phone || t.id);
-          if (k) threadByKey.set(k, t);
-        }
-        const threadOf = (l) => threadByLead.get(l.id) || threadByKey.get(waMatchKey(l.waPhone || l.phone)) || null;
         const minStepMs = Math.min(cfg.ladderColdDays, ...cfg.ladderWarmDays) * DAY;
         const cooldownMs = cfg.ladderCooldownDays * DAY;
         // NÃO PODE ESTAR VENCIDO: carimbo nosso ou mensagem do robô dentro do
@@ -744,6 +766,74 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           } catch (err) {
             log.warn?.({ lead: lead.id, err: err.message }, "sdr: corte pra Nutrição falhou");
             await stampLog(lead, { nurtureError: String(err.message || err).slice(0, 200) });
+          }
+        }
+      }
+
+      // ── 1e. Cobrança da oferta sem resposta, na manhã do dia útil seguinte (Leo, 30/09) ──
+      // 33 das 147 conversas mortas de 17 a 30/09 pararam exatamente depois dos
+      // 2 horários ofertados, e ninguém voltava ("Pode ser amanhã sim" →
+      // "prefere o primeiro ou o segundo?" → silêncio pra sempre). Uma cobrança
+      // só, entre 9h e 12h do dia útil seguinte, espalhada por lead, e SEMPRE
+      // conferindo se o horário ainda está livre: se outro lead pegou, oferece
+      // um par novo (decisão do Leo). Exceção explícita ao piso de 3 dias da
+      // escada: é a mesma conversa continuando, não uma retomada.
+      if (cfg.offerNudge && isBusinessHours(product, at) && wnow.getUTCHours() >= 9 && wnow.getUTCHours() < 12) {
+        let nudgeNow = 0;
+        const todayYmd = wnow.toISOString().slice(0, 10);
+        const minuteOfDay = wnow.getUTCHours() * 60 + wnow.getUTCMinutes();
+        for (const lead of leads) {
+          if (sends >= CAP || nudgeNow >= OFFER_NUDGE_PER_TICK) break;
+          if (!eligible(lead) || !passOn(cfg.offerNudge, lead)) continue;
+          if (!["novo", "qualificacao"].includes(kindOf(product, lead.stage || firstStage(product)))) continue;
+          if (isWonLead(product, lead) || lead.callAt || isNoShowStage(lead.stage)) continue;
+          const t = threadOf(lead);
+          if (!t || t.lastDir !== "out" || t.lastOutAuthor !== SDR_AUTHOR || !isOfferMsg(t.lastText || "")) continue;
+          if (lead.sdrLog?.offerNudgeFor === t.lastAt) continue;
+          const lastMs = Date.parse(t.lastAt || "") || 0;
+          const lastYmd = wallNow(new Date(lastMs)).toISOString().slice(0, 10);
+          if (lastYmd >= todayYmd || nowMs - lastMs > 3 * DAY) continue; // oferta de hoje espera amanhã; mais velha é escada
+          if (minuteOfDay < 9 * 60 + (hashInt(lead.id) % 40)) continue;   // espalha entre 9h e 9h40
+          const msgs = await listMessages(repo, t.id);
+          const lastOut = [...msgs].reverse().find((m) => m.direction === "out");
+          const lastOutMs = Date.parse(lastOut?.at || "") || 0;
+          const answered = msgs.some((m) => m.direction === "in" && Date.parse(m.at || 0) > lastOutMs);
+          if (!lastOut || lastOut.author !== SDR_AUTHOR || !isOfferMsg(lastOut.text || "") || answered) {
+            await stampLog(lead, { offerNudgeFor: t.lastAt, offerNudgeVia: "skip" });
+            continue;
+          }
+          const lastIn = [...msgs].reverse().find((m) => m.direction === "in");
+          const windowOpen = !!lastIn && nowMs - Date.parse(lastIn.at || 0) < 24 * HOUR;
+          const nome = greetName(lead.name);
+          const to = t.phone || digits(lead.waPhone || lead.phone);
+          try {
+            let via = "text";
+            if (windowOpen) {
+              // Os horários de ontem ainda estão livres? Agenda REAL de agora,
+              // sem o que outro lead está decidindo (reservas).
+              const holds = await activeHolds(repo, product.id, { now: at }).catch(() => []);
+              const { slots } = await sdrSlotsForLead(repo, { lead, saas: product.id, now: wnow, limit: 0, messages: msgs, holds });
+              const free = new Set(slots.map((s) => s.at));
+              const kept = offeredSlotsIn(msgs).filter((s) => free.has(s.at));
+              const rest = spreadPair(wholeHourSlots(slots.filter((s) => !kept.some((k) => k.at === s.at))));
+              const pair = (kept.length >= 2 ? kept.slice(0, 2) : kept.length === 1 ? [kept[0], ...rest.slice(0, 1)] : rest).sort((a, b) => a.at.localeCompare(b.at));
+              if (!pair.length) { await stampLog(lead, { offerNudgeFor: t.lastAt, offerNudgeVia: "skip:sem-agenda" }); continue; }
+              await sendText({ phone: to, text: offerNudgeText({ nome, pair, kept: kept.length > 0, now: wnow }), phoneId, saas: product.id, leadId: lead.id });
+              await holdSlots(repo, { saas: product.id, leadId: lead.id, slots: pair, now: at }).catch(() => {});
+            } else {
+              // Janela fechada (a última fala dele foi antes da oferta, há mais de
+              // 24h): só template. A retomada da Manuela; os horários vão quando
+              // ele responder, pela conversa.
+              const names = await approvedNames();
+              if (!names.has(cfg.templates.secondTouch)) { stats.skipped++; continue; }
+              await sendTemplate({ phone: to, name: cfg.templates.secondTouch, params: [nome || "de novo"], phoneId, saas: product.id, leadId: lead.id, moveCard: false });
+              via = "template";
+            }
+            sends++; nudgeNow++; stats.offerNudge++;
+            await stampLog(lead, { offerNudgeFor: t.lastAt, offerNudgeAt: nowIso, offerNudgeVia: via });
+          } catch (err) {
+            log.warn?.({ lead: lead.id, err: err.message }, "sdr: cobrança da oferta falhou");
+            await stampLog(lead, { offerNudgeFor: t.lastAt, offerNudgeVia: "erro:" + String(err.message || err).slice(0, 120) });
           }
         }
       }

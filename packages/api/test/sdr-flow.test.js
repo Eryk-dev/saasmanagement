@@ -518,8 +518,8 @@ test("no-show sem resposta ganha 2ª tentativa 24h depois, com horários concret
   const out = wa.sent.filter((s) => s.name === "sdr_remarcar_noshow");
   assert.equal(out.length, 1);
   assert.equal(out[0].params[0], "Rafael");
-  assert.match(out[0].params[1], /^amanhã às \d/, "1º horário concreto, apenas amanhã");
-  assert.match(out[0].params[2], /^amanhã às \d/, "2º horário concreto, apenas amanhã");
+  assert.match(out[0].params[1], /^(hoje|amanhã) às \d/, "1º horário concreto, hoje ou amanhã");
+  assert.match(out[0].params[2], /^(hoje|amanhã) às \d/, "2º horário concreto, hoje ou amanhã");
   const lead = await repo.get("leads", "L1");
   assert.equal(lead.sdrLog.noshow2Via, "template");
   // Não repete no tick seguinte.
@@ -600,4 +600,76 @@ test("card movido pra No show mais de 24h depois do horário é limpeza de pipel
   assert.equal(wa.sent.length, 0);
   assert.equal((await repo.get("leads", "L1")).sdrLog.noshowVia, "skip:tarde");
   assert.equal((await repo.list("wa_alerts")).length, 0);
+});
+
+// ── 1e. Cobrança da oferta sem resposta na manhã seguinte (Leo, 30/09) ──────
+
+const OFFER = "Consigo amanhã às 14h ou amanhã às 16h, qual fica melhor pra você?";
+async function nudgeWorld({ lastAt = ISO("2026-08-19T20:00:00Z"), inAt = ISO("2026-08-19T19:50:00Z"), extraLeads = [], extraMessages = [], offerText = OFFER } = {}) {
+  return world({
+    product: { sdrBot: { enabled: true, enabledAt: ISO("2026-08-01T00:00:00Z"), offerNudge: true } },
+    leads: [{ id: "L1", name: "Rafael Silva", phone: "41999990000", stage: "Qualificando", createdAt: ISO("2026-08-19T18:00:00Z"), sdrLog: { firstTouchAt: ISO("2026-08-19T18:05:00Z"), firstTouchVia: "brain" } }, ...extraLeads],
+    threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads", lastDir: "out", lastOutAuthor: "sdr-bot", lastText: offerText, lastAt }],
+    messages: [
+      { id: "i1", thread: "5541999990000", leadId: "L1", direction: "in", text: "ajudaria sim", at: inAt },
+      { id: "o1", thread: "5541999990000", leadId: "L1", direction: "out", author: "sdr-bot", text: offerText, at: lastAt },
+      ...extraMessages,
+    ],
+  });
+}
+// Quinta 20/08, 09:45 BRT: passou o jitter (0 a 39 min depois das 9h).
+const NUDGE_NOW = { t: new Date("2026-08-20T12:45:00Z") };
+
+test("oferta de ontem sem resposta: cobrança de manhã com os MESMOS horários, que ainda estão livres, uma vez só", async () => {
+  const repo = await nudgeWorld();
+  const wa = makeWa();
+  const stats = await runner(repo, wa, NUDGE_NOW).tick();
+  assert.equal(stats.offerNudge, 1);
+  assert.equal(wa.sent.length, 1);
+  assert.equal(wa.sent[0].kind, "text");
+  assert.equal(wa.sent[0].text, "Bom dia Rafael! Ficou hoje às 14h ou hoje às 16h pra nossa conversa com o especialista?");
+  const lead = await repo.get("leads", "L1");
+  assert.equal(lead.sdrLog.offerNudgeFor, ISO("2026-08-19T20:00:00Z"));
+  assert.equal(lead.sdrLog.offerNudgeVia, "text");
+  const holds = (await repo.get("app_config", "sdr_slot_holds_leverads")).holds.map((h) => h.at).sort();
+  assert.deepEqual(holds, ["2026-08-20T14:00", "2026-08-20T16:00"]);
+  await runner(repo, wa, NUDGE_NOW).tick();
+  assert.equal(wa.sent.length, 1, "não cobra a mesma oferta duas vezes");
+});
+
+test("horário de ontem tomado por outro lead: a cobrança avisa e oferece par novo", async () => {
+  const repo = await nudgeWorld({ extraLeads: [{ id: "busy", name: "Outro", phone: "41988880000", stage: "Call agendada", closer: "pl", callAt: "2026-08-20T14:00", createdAt: ISO("2026-08-19T10:00:00Z") }] });
+  const wa = makeWa();
+  await runner(repo, wa, NUDGE_NOW).tick();
+  assert.equal(wa.sent.length, 1);
+  assert.match(wa.sent[0].text, /^Bom dia Rafael! Ficou hoje às 13h ou hoje às 16h pra nossa conversa/);
+});
+
+test("cobrança não sai: lead respondeu depois da oferta, oferta é de hoje, ou ainda não deu a hora", async () => {
+  // Respondeu: fica pro cérebro.
+  const answered = await nudgeWorld({ extraMessages: [{ id: "i2", thread: "5541999990000", leadId: "L1", direction: "in", text: "vou ver", at: ISO("2026-08-19T20:10:00Z") }] });
+  await answered.update("wa_threads", "5541999990000", { lastDir: "in", lastText: "vou ver", lastAt: ISO("2026-08-19T20:10:00Z") });
+  const wa1 = makeWa();
+  await runner(answered, wa1, NUDGE_NOW).tick();
+  assert.equal(wa1.sent.length, 0);
+  // Oferta feita hoje de manhã: espera amanhã.
+  const today = await nudgeWorld({ lastAt: ISO("2026-08-20T11:30:00Z"), inAt: ISO("2026-08-20T11:20:00Z") });
+  const wa2 = makeWa();
+  await runner(today, wa2, NUDGE_NOW).tick();
+  assert.equal(wa2.sent.length, 0);
+  // 8h BRT: antes da janela das 9h.
+  const early = await nudgeWorld();
+  const wa3 = makeWa();
+  await runner(early, wa3, { t: new Date("2026-08-20T11:00:00Z") }).tick();
+  assert.equal(wa3.sent.length, 0);
+});
+
+test("janela de 24h fechada na hora da cobrança: sai o template de retomada, sem horário", async () => {
+  const repo = await nudgeWorld({ inAt: ISO("2026-08-19T11:00:00Z"), lastAt: ISO("2026-08-19T11:05:00Z") });
+  const wa = makeWa({ approved: ["sdr_retomada_conversa"] });
+  await runner(repo, wa, NUDGE_NOW).tick();
+  assert.equal(wa.sent.length, 1);
+  assert.equal(wa.sent[0].kind, "template");
+  assert.equal(wa.sent[0].name, "sdr_retomada_conversa");
+  assert.equal((await repo.get("leads", "L1")).sdrLog.offerNudgeVia, "template");
 });
