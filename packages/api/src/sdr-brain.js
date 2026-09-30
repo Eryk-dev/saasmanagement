@@ -29,6 +29,7 @@ import { slotLabel, slotLabelFull, wallNow, spreadPair, wholeHourSlots, activeHo
 import { sdrSlotsForLead, sdrAgendaWindow } from "./sdr-agenda.js";
 import { sdrBotConfig, leadDigest, conversationActive, leadPainFocus, greetName, SDR_AUTHOR, DEVICE_TIP } from "./sdr-flow.js";
 import { transcriber as defaultTranscriber } from "./transcribe.js";
+import { FORM_MSG_RX } from "./sdr-signals.js";
 
 const HOUR = 3_600_000;
 const BRAIN_KINDS = new Set(["novo", "contato", "qualificacao", "call"]);
@@ -133,7 +134,6 @@ const DENY_CALL_RX = /n[ãa]o (?:tenho|marquei|agendei|combinei|sei de|lembro de
 // a ferramenta ajudaria ou pediu pra agendar. A mensagem automática do form
 // ("quero saber mais sobre a LeverAds. Minha operação: ...") não conta: tem
 // "quero" mas é o clique do botão, não a pessoa respondendo (Eduardo, 15/09).
-const FORM_MSG_RX = /quero saber mais sobre|resumo da minha opera|minha opera[çc][ãa]o:/i;
 const SCHEDULE_ASK_RX = /hor[áa]rio|agendar|marcar|agenda\b|dispon[íi]vel|quando|que horas|\bhoje\b|\bamanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta|manh[ãa]|tarde|noite|\bvamos\b/i;
 const leadEngaged = (msgs) => msgs.some((m) => {
   if (m.direction !== "in") return false;
@@ -491,12 +491,17 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       action = await decide({ message, resumed, meta });
     } catch (err) {
       log.warn?.({ err: err.message }, "sdr-brain falhou");
+      // O ERRO VAI NO CARIMBO (raio-x 30/09): cinco decisões terminaram em
+      // "error" sem texto nenhum, e quatro eram leads quentes que ficaram 10 a
+      // 22h sem resposta. Sem o motivo gravado não dá pra saber se foi a IA, a
+      // Meta ou o Meet.
+      meta.error = String(err?.message || err).slice(0, 200);
       try {
         const thread = await findThreadByPhone(repo, message?.from || "");
         const lead = thread?.leadId ? await repo.get("leads", thread.leadId) : null;
         if (thread && lead && !(lead.sdrLog?.brainErrorAlertAt && Date.now() - Date.parse(lead.sdrLog.brainErrorAlertAt) < 6 * HOUR)) {
-          await raiseAlert(repo, thread, { text: "IA do SDR falhou nesta conversa · responde na mão" });
-          await stamp(lead, { brainErrorAlertAt: new Date().toISOString() });
+          await raiseAlert(repo, thread, { text: `IA do SDR falhou nesta conversa · responde na mão (${meta.error.slice(0, 90)})` });
+          await stamp(lead, { brainErrorAlertAt: new Date().toISOString(), brainError: meta.error });
         }
       } catch { /* alerta é best-effort */ }
       action = "error";
@@ -506,7 +511,11 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     if (message?.id && action !== "superseded") {
       try {
         const thread = await findThreadByPhone(repo, message.from || "");
-        if (thread) await repo.update("wa_threads", thread.id, { brain: { msgId: message.id, action: action || "gate", at: now().toISOString(), ...(meta.model ? { model: meta.model, usage: meta.usage || null, ms: meta.ms || 0 } : {}), ...(meta.slots ? { slots: meta.slots, pair: meta.pair } : {}) } });
+        // `retried`: esta mensagem já teve uma decisão que morreu em erro e a
+        // varredura tentou de novo — uma vez só, nunca em loop.
+        const prev = thread?.brain;
+        const retried = !!(prev && prev.msgId === message.id && (prev.retried || prev.action === "error"));
+        if (thread) await repo.update("wa_threads", thread.id, { brain: { msgId: message.id, action: action || "gate", at: now().toISOString(), ...(meta.model ? { model: meta.model, usage: meta.usage || null, ms: meta.ms || 0 } : {}), ...(meta.slots ? { slots: meta.slots, pair: meta.pair } : {}), ...(meta.error ? { error: meta.error } : {}), ...(retried ? { retried: true } : {}) } });
         if (meta.model) await bumpAiUsage(thread?.saas || meta.saas || "", meta);
       } catch { /* carimbo é best-effort: sem ele a varredura só tenta de novo */ }
     }
@@ -528,7 +537,12 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       const age = nowMs - (Date.parse(t.lastAt || "") || 0);
       if (!(age >= minAgeMs && age <= maxAgeMs)) return false;
       if (!t.lastInId) return false; // thread antiga sem o id: fica pro webhook
-      return t.brain?.msgId !== t.lastInId;
+      if (t.brain?.msgId !== t.lastInId) return true;
+      // Decisão que MORREU NA EXECUÇÃO (action=error) ganha UMA retentativa:
+      // em 28-29/09 quatro leads quentes ("muito", "sim", pergunta de preço)
+      // ficaram 10 a 22h sem resposta porque o carimbo de erro contava como
+      // "tratada" pra esta varredura. `retried` fecha a porta na segunda.
+      return t.brain.action === "error" && !t.brain.retried;
     }).sort((a, b) => String(a.lastAt || "").localeCompare(String(b.lastAt || ""))).slice(0, limit);
     const done = [];
     for (const t of stalled) {
@@ -608,7 +622,10 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     // Teto diário por conversa: rajada nunca vira metralhadora.
     const botToday = msgs.filter((m) => m.direction === "out" && m.author === SDR_AUTHOR && nowMs - Date.parse(m.at || 0) < 24 * HOUR).length;
     if (botToday >= DAILY_CAP) {
-      if (lead.sdrLog?.capAlertAt !== lead.callAt || !lead.sdrLog?.capAlertAt) {
+      // Um alerta por 24h (a comparação antiga era com o horário da CALL, que
+      // nunca bate com um timestamp: o alerta repetia a cada mensagem).
+      const capMs = Date.parse(lead.sdrLog?.capAlertAt || "");
+      if (!Number.isFinite(capMs) || nowMs - capMs > 24 * HOUR) {
         await raiseAlert(repo, thread, { text: "Conversa longa com o robô (teto do dia) · assume aí" });
         await stamp(lead, { capAlertAt: new Date(nowMs).toISOString(), handoffAt: new Date(nowMs).toISOString() });
       }

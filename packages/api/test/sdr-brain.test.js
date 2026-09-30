@@ -1269,3 +1269,56 @@ test("aviso de ausência por áudio cancela e pergunta se quer remarcar, sem hor
   assert.doesNotMatch(fakes.sent.map((s) => s.text).join(" "), /às \d/);
   assert.deepEqual(fakes.meetCancels, ["L1"]);
 });
+
+// ── Erro na execução: carimbo com o motivo e UMA retentativa pela varredura (raio-x 30/09) ─
+
+const TID_ERR = "5541999990000";
+test("decisão que morre na execução grava o erro no carimbo e a varredura tenta de novo uma vez", async () => {
+  const repo = await world({ messages: [{ direction: "in", text: "muito", at: ISO("2026-08-19T12:57:00Z") }] });
+  await repo.update("wa_threads", TID_ERR, { lastDir: "in", lastAt: ISO("2026-08-19T12:57:00Z"), lastText: "muito", lastInId: "m1" });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Perfeito, qual período fica melhor?" }, { acao: "responder", mensagem: "Perfeito, qual período fica melhor?" }] });
+  let fail = true;
+  const wa = { configured: () => true, sendText: async (to, text) => { if (fail) throw new Error("Meta 500"); fakes.sent.push({ to, text }); return { messageId: "wm_1" }; } };
+  const brain = makeSdrBrain({ repo, whatsapp: wa, anthropic: fakes.anthropic, log: { warn: () => {}, info: () => {} }, now: () => NOW, replyDelayMs: 0, sleep: async () => {} });
+  assert.equal(await brain.handleInbound({ message: { from: TID_ERR, text: "muito", id: "m1" } }), "error");
+  const b1 = (await repo.get("wa_threads", TID_ERR)).brain;
+  assert.equal(b1.action, "error");
+  assert.match(b1.error, /Meta 500/);
+  assert.match((await repo.list("wa_alerts"))[0].text, /Meta 500/);
+  assert.match((await repo.get("leads", "L1")).sdrLog.brainError, /Meta 500/);
+  // Varredura: retenta UMA vez; agora o envio funciona.
+  fail = false;
+  assert.deepEqual(await brain.resumeStalled(), [{ thread: TID_ERR, action: "responder" }]);
+  assert.equal(fakes.sent.length, 1);
+  const b2 = (await repo.get("wa_threads", TID_ERR)).brain;
+  assert.equal(b2.action, "responder");
+  assert.equal(b2.retried, true);
+  assert.deepEqual(await brain.resumeStalled(), []);
+});
+
+test("erro na retentativa não vira loop: segunda falha fica carimbada e a varredura não insiste", async () => {
+  const repo = await world({ messages: [{ direction: "in", text: "sim", at: ISO("2026-08-19T12:57:00Z") }] });
+  await repo.update("wa_threads", TID_ERR, { lastDir: "in", lastAt: ISO("2026-08-19T12:57:00Z"), lastText: "sim", lastInId: "m1" });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "Perfeito?" }, { acao: "responder", mensagem: "Perfeito?" }, { acao: "responder", mensagem: "Perfeito?" }] });
+  const wa = { configured: () => true, sendText: async () => { throw new Error("Meta 500"); } };
+  const brain = makeSdrBrain({ repo, whatsapp: wa, anthropic: fakes.anthropic, log: { warn: () => {}, info: () => {} }, now: () => NOW, replyDelayMs: 0, sleep: async () => {} });
+  await brain.handleInbound({ message: { from: TID_ERR, text: "sim", id: "m1" } });
+  assert.deepEqual(await brain.resumeStalled(), [{ thread: TID_ERR, action: "error" }]);
+  assert.equal((await repo.get("wa_threads", TID_ERR)).brain.retried, true);
+  assert.deepEqual(await brain.resumeStalled(), []);
+  assert.equal(fakes.calls.length, 2);
+});
+
+test("teto diário: com alerta há menos de 24h não repete o alerta; com alerta velho, avisa de novo", async () => {
+  const many = Array.from({ length: 15 }, (_, i) => ({ direction: "out", author: "sdr-bot", text: "msg " + i, at: ISO(`2026-08-19T0${Math.min(9, i % 10)}:0${i % 6}:00Z`) }));
+  const mk = async (capAlertAt) => world({
+    lead: { sdrLog: { capAlertAt, handoffAt: capAlertAt } },
+    messages: [...many, { direction: "out", author: "sdr", text: "oi, Manuela aqui", at: ISO("2026-08-19T08:30:00Z") }, { direction: "in", text: "hmm", at: ISO("2026-08-19T12:59:00Z") }],
+  });
+  const recent = await mk(ISO("2026-08-19T08:00:00Z"));
+  assert.equal(await brainOf(recent, makeFakes()).handleInbound(INBOUND), "cap");
+  assert.equal((await recent.list("wa_alerts")).length, 0);
+  const old = await mk(ISO("2026-08-17T08:00:00Z"));
+  assert.equal(await brainOf(old, makeFakes()).handleInbound(INBOUND), "cap");
+  assert.equal((await old.list("wa_alerts")).length, 1);
+});

@@ -2329,6 +2329,18 @@ export async function runStartupMigrations(repo) {
     console.error("[migration] ensureSdrBrainFirstTouch falhou:", err?.message || err);
   }
   try {
+    const n = await ensureWaMessagesLeadId(repo);
+    if (n) console.log(`[migration] ${n} mensagem(ns) de WhatsApp herdaram o lead da conversa`);
+  } catch (err) {
+    console.error("[migration] ensureWaMessagesLeadId falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureFormPrefillV2(repo);
+    if (n) console.log(`[migration] mensagem pronta do form corrigida em ${n} formulário(s)`);
+  } catch (err) {
+    console.error("[migration] ensureFormPrefillV2 falhou:", err?.message || err);
+  }
+  try {
     const n = await ensureSdrGoals(repo);
     if (n) console.log(`[migration] ${n} meta(s) de SDR (taxa) semeada(s)`);
   } catch (err) {
@@ -2924,4 +2936,57 @@ export async function migrateTasksV2(repo) {
     if (Object.keys(patch).length) { await repo.update("tasks", t.id, patch, { silent: true }); n++; }
   }
   return n;
+}
+
+// ── Mensagens sem leadId em conversa já vinculada (raio-x 30/09) ──────────
+// Lead que escreveu de um segundo número (ou foi vinculado na mão) ficava com
+// as mensagens dele E as respostas do time sem leadId: a wa_threads sabia o
+// lead, a wa_messages não — 8 conversas inteiras invisíveis pras métricas.
+// Herda o lead (e o produto) da thread. Um UPDATE em SQL quando há banco (22k
+// linhas); em JS no mem-repo dos testes. Roda uma vez (marcador).
+export async function ensureWaMessagesLeadId(repo) {
+  const FLAG = "wa_messages_leadid_v1";
+  if (await repo.get("app_config", FLAG).catch(() => null)) return 0;
+  let changed = 0;
+  if (typeof repo.rawUpdate === "function") {
+    changed = await repo.rawUpdate("wa_messages", `UPDATE {tbl} m
+      SET json = m.json || jsonb_build_object('leadId', t.json->>'leadId', 'saas', coalesce(nullif(m.json->>'saas', ''), t.json->>'saas', ''))
+      FROM {tbl:wa_threads} t
+      WHERE t.id = m.json->>'thread' AND coalesce(m.json->>'leadId', '') = '' AND coalesce(t.json->>'leadId', '') <> ''`);
+  } else {
+    const threads = await repo.list("wa_threads");
+    const byId = new Map(threads.filter((t) => t.leadId).map((t) => [t.id, t]));
+    for (const m of await repo.list("wa_messages")) {
+      if (m.leadId) continue;
+      const t = byId.get(m.thread);
+      if (!t) continue;
+      await repo.update("wa_messages", m.id, { leadId: t.leadId, saas: m.saas || t.saas || "" });
+      changed++;
+    }
+  }
+  await repo.create("app_config", { id: FLAG, at: new Date().toISOString(), changed });
+  return changed;
+}
+
+// ── Mensagem pronta do form com variável órfã (raio-x 30/09) ──────────────
+// O form OEM v2 publicado perdeu a pergunta `niche` e o texto pré-preenchido
+// seguia citando {{niche}}: 233 leads em set/2026 chegaram com "Minha
+// operação: {{niche}}, 1 conta contas" (o rótulo da resposta já traz
+// "conta"). Troca o texto dos forms publicados pelo PREFILL atual quando o
+// deles ainda tem o defeito; texto editado na mão sem o defeito fica como
+// está. Idempotente por conteúdo.
+export async function ensureFormPrefillV2(repo) {
+  const { PREFILL, FORM_IDS } = await import("./forms-v2.leverads.js");
+  let changed = 0;
+  for (const [linha, id] of Object.entries(FORM_IDS)) {
+    const form = await repo.get("forms", id).catch(() => null);
+    const cur = String(form?.thanks?.whatsappPrefill || "");
+    if (!form || !cur || cur === PREFILL[linha]) continue;
+    const hasNiche = (form.questions || []).some((q) => q?.key === "niche");
+    const broken = /\{\{accounts\}\} contas/.test(cur) || (!hasNiche && /\{\{niche\}\}/.test(cur));
+    if (!broken) continue;
+    await repo.update("forms", id, { thanks: { ...(form.thanks || {}), whatsappPrefill: PREFILL[linha] } });
+    changed++;
+  }
+  return changed;
 }
