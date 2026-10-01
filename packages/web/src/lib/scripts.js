@@ -591,7 +591,7 @@ export function confirmationScript(lead, saasCfg, window) {
   const confirmed = !!lead?.callConfirmed;
   const all = base.passos || [];
   let passos;
-  if (window === "2h" || window === "1h") passos = all.filter((_, i) => i === 0);
+  if (window === "2h" || window === "1h" || window === "manha") passos = all.filter((_, i) => i === 0);
   // Janela "ligar" (1h antes, sem positiva): o passo da ligação, o mesmo do
   // 10 min sem resposta (raio-x 17/09: o alerta de ligar precisa de roteiro).
   else if (window === "ligar") passos = all.filter((_, i) => i === 2);

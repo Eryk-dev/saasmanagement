@@ -80,3 +80,24 @@ export function acceptedSlot(text, offered = []) {
   if (offered.length >= 2 && /\b(?:o )?segund[oa]\b/.test(t)) return offered[1];
   return null;
 }
+
+// ── Janela de 24h da Meta e o que abre ela ──────────────────────────────────
+// REAÇÃO (👍 numa mensagem) chega como mensagem recebida, mas NÃO abre a
+// janela de atendimento da Meta: texto livre depois de uma reação é aceito e
+// reprovado no webhook (131047). Só mensagem de verdade do lead conta.
+export const isReaction = (m) => String(m?.text || "").startsWith("[reaction]");
+export const lastWindowInbound = (msgs = []) => [...msgs].reverse().find((m) => m.direction === "in" && !isReaction(m));
+export const windowOpenAt = (msgs = [], nowMs = Date.now()) => {
+  const last = lastWindowInbound(msgs);
+  return !!last && nowMs - Date.parse(last.at || 0) < 24 * 3_600_000;
+};
+
+// Resposta AUTOMÁTICA do estabelecimento do lead ("agradece seu contato",
+// "digite 1", "deixe sua mensagem"): não é a pessoa falando. Só frases que SÓ
+// robô de atendimento escreve — o preço do falso positivo é emudecer com
+// gente de verdade.
+export const AUTO_REPLY_RX = /agradece (o |pelo )?(seu )?contato|como podemos (te )?ajudar|atendimento autom|escolha uma (das )?op[çc][õo]es|digite (o n[úu]mero|uma? op[çc][ãa]o)|menu de atendimento|hor[áa]rio de atendimento|consulte (o )?nosso (site|estoque|cat[áa]logo)|informe os? \d+ [úu]ltimos|voc[êe] (contatou|entrou em contato com (a|o|nossa|nosso))|deixe (a )?sua mensagem|responderemos assim que|retornaremos (o |seu |em )|n[ãa]o estamos dispon[íi]veis no momento/i;
+
+// Saudação PURA ("bom dia", "oi", "boa tarde!"), sem mais nada: em resposta a
+// um lembrete não confirma nem precisa de gente, é a conversa começando.
+export const GREETING_ONLY_RX = /^(?:(?:oi+|ol[aá]|opa|bom dia|boa tarde|boa noite|e a[ií]|tudo bem|tudo bom|td bem|bem)[!.,?\s]*){1,3}$/i;

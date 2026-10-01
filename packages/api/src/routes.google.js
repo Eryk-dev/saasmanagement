@@ -160,7 +160,7 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
   // Cria o Meet de UM lead (venda ou integração) — corpo compartilhado entre a
   // rota manual e o gatilho automático (card entrando em Integração com horário
   // marcado). Lança em falha; quem chama decide se vira 502 ou silêncio.
-  async function createMeetForLead(lead, { kind = "call", guests = [], email = "", log = app.log } = {}) {
+  async function createMeetForLead(lead, { kind = "call", guests = [], email = "", log = app.log, organizerOverride = "" } = {}) {
     const product = lead.saas ? await repo.get("products", lead.saas) : null;
 
     // Tipo de call: "call" (venda, usa lead.callAt) ou "integracao" (onboarding,
@@ -200,7 +200,9 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     // ainda sem integrador definido (fechou e marcou a data na hora) fica com
     // o closer que vendeu — a sala não pode esperar a atribuição (Leo, 11/09).
     const responsible = meetResponsible(lead, kind);
-    const organizerId = responsible && (await gu.meetReadyFor(responsible).catch(() => false)) ? responsible : "";
+    // `organizerOverride`: outro closer pronto organiza quando a conta do
+    // responsável falhou (só o gatilho automático usa; ver autoCallMeet).
+    const organizerId = organizerOverride || (responsible && (await gu.meetReadyFor(responsible).catch(() => false)) ? responsible : "");
     if (!organizerId && !teamMayOrganize(lead.saas)) {
       const who = responsible ? (await repo.get("users", responsible).catch(() => null))?.name || "o responsável" : "";
       const err = new Error(responsible
@@ -411,15 +413,50 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
         // best-effort: sem isso o lead ficaria com dois convites válidos.
         try { await client.deleteCalendarEvent(fresh.meetEventId); } catch { /* o convite novo prevalece */ }
       }
-      return createMeetForLead(fresh, { kind: "call" });
+      return createCallMeetWithFallback(fresh);
     }
     const ok = (fresh.closer && (await gu.meetReadyFor(fresh.closer).catch(() => false)))
       || (teamMayOrganize(fresh.saas) && (await client.connected().catch(() => false)));
     if (!ok) {
       if (!teamMayOrganize(fresh.saas)) await noteMeetSkip(fresh, "call");
-      return null;
+      // Conta do closer não está pronta: outro closer pronto organiza (a call
+      // com link vale mais que a gravação na conta certa).
+      return createCallMeetWithFallback(fresh, "conta Google do closer sem conexão/escopos do Meet");
     }
-    return createMeetForLead(fresh, { kind: "call" });
+    return createCallMeetWithFallback(fresh);
+  }
+
+  // SALA COM SEGUNDA CHANCE (raio-x 30/09): em 2 semanas 65 lembretes do dia
+  // da call saíram SEM link e 13 dos 19 furos silenciosos nunca receberam o
+  // link — a criação na conta do closer falhava (token, API) e o erro era
+  // engolido. Agora: falhou na conta do responsável → tenta outro closer
+  // pronto como organizador; falhou tudo → o motivo fica em sdrLog.meetError
+  // (o lembrete de 2h mostra no alerta) em vez de sumir no log.
+  async function createCallMeetWithFallback(fresh, skipReason = "") {
+    let first = skipReason;
+    if (!skipReason) {
+      try { return await createMeetForLead(fresh, { kind: "call" }); }
+      catch (err) { first = String(err?.message || err).slice(0, 200); }
+    }
+    const stampMeet = async (patch) => {
+      const cur = (await repo.get("leads", fresh.id).catch(() => null))?.sdrLog || fresh.sdrLog || {};
+      await repo.update("leads", fresh.id, { sdrLog: { ...cur, ...patch } }).catch(() => {});
+    };
+    const users = await repo.list("users").catch(() => []);
+    const others = users
+      .filter((u) => u.id !== fresh.closer && (u.roles || []).some((r) => r === "closer" || r === "admin") && (!u.saas || u.saas === fresh.saas))
+      .sort((a, b) => (a.id === "leonardo" ? -1 : b.id === "leonardo" ? 1 : 0));
+    for (const u of others) {
+      if (!(await gu.meetReadyFor(u.id).catch(() => false))) continue;
+      try {
+        const r = await createMeetForLead(fresh, { kind: "call", organizerOverride: u.id });
+        await stampMeet({ meetFallback: u.id, meetError: first, meetErrorAt: new Date().toISOString() });
+        app.log.warn({ lead: fresh.id, closer: fresh.closer, organizer: u.id, err: first }, "Google: sala da call criada na conta de OUTRO closer (fallback)");
+        return r;
+      } catch (err) { first = `${first} · ${u.id}: ${String(err?.message || err).slice(0, 80)}`; }
+    }
+    await stampMeet({ meetError: first.slice(0, 300), meetErrorAt: new Date().toISOString() });
+    return null;
   }
 
   // Call DESMARCADA sem horário novo (lead cancelou; sdr-brain): o evento do

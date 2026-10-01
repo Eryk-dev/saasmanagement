@@ -29,7 +29,8 @@ import { slotLabel, slotLabelFull, wallNow, spreadPair, wholeHourSlots, activeHo
 import { sdrSlotsForLead, sdrAgendaWindow } from "./sdr-agenda.js";
 import { sdrBotConfig, leadDigest, conversationActive, leadPainFocus, greetName, SDR_AUTHOR, DEVICE_TIP } from "./sdr-flow.js";
 import { transcriber as defaultTranscriber } from "./transcribe.js";
-import { FORM_MSG_RX, SLOTS_RX, OFFER_CUE_RX, isOfferMsg, ACCEPT_RX, offeredSlotsIn, acceptedSlot } from "./sdr-signals.js";
+import { FORM_MSG_RX, SLOTS_RX, OFFER_CUE_RX, isOfferMsg, ACCEPT_RX, offeredSlotsIn, acceptedSlot, AUTO_REPLY_RX } from "./sdr-signals.js";
+import { transcribeInbound } from "./wa-transcribe.js";
 import { upsertNotification } from "./tasks-core.js";
 
 const HOUR = 3_600_000;
@@ -146,7 +147,8 @@ const PERIOD_ASK_RX = /manh[ãa]|tarde|noite|depois d[ao]s|antes d[ao]s|a partir
 // "clique no link", que gente de verdade também manda ("esse número é do meu
 // sócio") — o preço do falso positivo aqui é o robô emudecer com uma pessoa
 // falando, e a saída errada já tem a trava de redirecionamento embaixo.
-const AUTO_REPLY_RX = /agradece (o |pelo )?(seu )?contato|como podemos (te )?ajudar|atendimento autom|escolha uma (das )?op[çc][õo]es|digite (o n[úu]mero|uma? op[çc][ãa]o)|menu de atendimento|hor[áa]rio de atendimento|consulte (o )?nosso (site|estoque|cat[áa]logo)|informe os? \d+ [úu]ltimos|voc[êe] (contatou|entrou em contato com (a|o|nossa|nosso))|deixe (a )?sua mensagem|responderemos assim que|retornaremos (o |seu |em )|n[ãa]o estamos dispon[íi]veis no momento/i;
+// (AUTO_REPLY_RX vive em sdr-signals.js: o webhook usa a mesma régua pra não
+// tratar resposta automática de loja como resposta ao lembrete.)
 
 // REDIRECIONAMENTO PRA OUTRO CANAL. O robô É o canal: mandar o lead pra outro
 // número/link de WhatsApp nunca é resposta certa. Em prod 24/08 (Alexandre) a
@@ -355,31 +357,10 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
   // Graph depois) e grava o texto NA mensagem (campo transcript), então a
   // conversa inteira fica legível pra IA nas próximas decisões também.
   // Falhou/não configurado: segue como "🎤 áudio" e o prompt manda pra humano.
+  // Transcrição num lugar só (wa-transcribe.js): o webhook transcreve a
+  // resposta ao lembrete antes de classificar, e o texto fica na mensagem.
   async function transcriptOf(m, lead) {
-    if (m.transcript) return m.transcript;
-    if (m.media?.kind !== "audio" || !transcriber?.configured?.()) return "";
-    try {
-      let buf = null, mime = m.media.mime || "audio/ogg";
-      const cached = await repo.get("wa_media", m.id).catch(() => null);
-      if (cached?.data) { buf = Buffer.from(cached.data, "base64"); mime = cached.mime || mime; }
-      else if (wa?.fetchMedia && m.media.id) {
-        ({ buf, mime } = await wa.fetchMedia(m.media.id));
-        if (buf && buf.length <= 16 * 1024 * 1024) {
-          try { await repo.create("wa_media", { id: m.id, mime, size: buf.length, data: buf.toString("base64"), at: new Date().toISOString() }); }
-          catch { /* cache é bônus */ }
-        }
-      }
-      if (!buf || buf.length < 1024 || buf.length > 25 * 1024 * 1024) return "";
-      const text = await transcriber.transcribe(buf, {
-        filename: `wa-${m.id}.ogg`, mime,
-        prompt: ["LeverAds", lead?.name, lead?.company].filter(Boolean).join(", "),
-      });
-      if (text) await repo.update("wa_messages", m.id, { transcript: text }).catch(() => {});
-      return text || "";
-    } catch (err) {
-      log.warn?.({ msg: m.id, err: err.message }, "sdr-brain: transcrição do áudio falhou");
-      return "";
-    }
+    return transcribeInbound(repo, { wa, transcriber, message: m, lead, log });
   }
 
   async function sendBot({ phone, text, phoneId, saas, leadId }) {
