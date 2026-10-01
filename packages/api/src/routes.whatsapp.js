@@ -9,6 +9,7 @@ import { runWaAutomations } from "./wa-automations.js";
 import { runWaFlows } from "./wa-flows.js";
 import { handleSdrInbound } from "./sdr-flow.js";
 import { transcriber as defaultTranscriber } from "./transcribe.js";
+import { transcribeInbound } from "./wa-transcribe.js";
 import { formatSummaryText } from "./call-summaries.js";
 import { logActivity, onOutboundMessage } from "./lead-flow.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
@@ -50,6 +51,10 @@ function bodyOf(m) {
   if (m.type === "location") return "📍 localização";
   if (m.type === "button") return m.button?.text || "botão";
   if (m.type === "interactive") return m.interactive?.button_reply?.title || m.interactive?.list_reply?.title || "resposta";
+  // Reação (👍 numa mensagem nossa): o emoji vai junto, porque 👍 no lembrete
+  // da call é confirmação (raio-x 30/09: 7 reações viraram alerta "não
+  // entendi"). Reação NÃO abre a janela de 24h da Meta (ver sdr-signals.js).
+  if (m.type === "reaction") return m.reaction?.emoji ? `[reaction] ${m.reaction.emoji}` : "[reaction]";
   return `[${m.type || "mensagem"}]`;
 }
 
@@ -185,8 +190,21 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
                 } catch (err) { req.log?.warn?.({ err: err.message }, "automação do inbox falhou"); }
                 // SDR automatizado: resposta a um lembrete de call vira
                 // confirmação (callConfirmed) ou alerta quente pro humano.
-                try { await handleSdrInbound(repo, { message: { from: m.from, text: bodyOf(m) } }); }
-                catch (err) { req.log?.warn?.({ err: err.message }, "sdr inbound falhou"); }
+                // Nota de voz é TRANSCRITA antes (raio-x 30/09: 11 alertas
+                // "respondeu o lembrete: 🎤 áudio" em 2 semanas), destacado pra
+                // não segurar a resposta do webhook; o cérebro reaproveita o
+                // texto gravado na mensagem.
+                if (mediaOf(m)?.kind === "audio") {
+                  (async () => {
+                    const storedMsg = await repo.get("wa_messages", m.id).catch(() => null);
+                    const lead = storedMsg?.leadId ? await repo.get("leads", storedMsg.leadId).catch(() => null) : null;
+                    const text = storedMsg ? await transcribeInbound(repo, { wa, transcriber: defaultTranscriber, message: storedMsg, lead, log: req.log }) : "";
+                    await handleSdrInbound(repo, { message: { from: m.from, text: text || bodyOf(m) } });
+                  })().catch((err) => req.log?.warn?.({ err: err.message }, "sdr inbound (áudio) falhou"));
+                } else {
+                  try { await handleSdrInbound(repo, { message: { from: m.from, text: bodyOf(m) } }); }
+                  catch (err) { req.log?.warn?.({ err: err.message }, "sdr inbound falhou"); }
+                }
                 // Fase 2 (conversa com IA): o cérebro roda DESTACADO — a
                 // resposta da Meta não espera a IA pensar. O próprio brain tem
                 // todos os gates (chave conversation, humano na conversa,

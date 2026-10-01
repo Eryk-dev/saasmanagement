@@ -97,7 +97,9 @@ test("lembrete cala quando gente confirmou na mão minutos antes (e o passo fica
   const wa = makeWa();
   await runnerOf(repo, wa).tick();
   assert.equal(wa.sent.length, 0, "robô não repete a confirmação que a pessoa acabou de mandar");
-  assert.equal((await repo.get("leads", "L1")).confirmLog["2h"], "humano");
+  const log = (await repo.get("leads", "L1")).confirmLog;
+  assert.equal(log.manha, "skip", "a manhã pula: o de 2h já está na porta");
+  assert.equal(log["2h"], "humano");
 });
 
 test("lembrete sai normalmente quando a última fala humana é antiga", async () => {
@@ -116,45 +118,47 @@ test("lembrete sai normalmente quando a última fala humana é antiga", async ()
 });
 
 // ── A4 · véspera não confirma o que acabou de ser combinado ─────────────────
-test("véspera pula quando a call foi marcada dentro da janela de 24h (caso Amilton)", async () => {
-  // Call amanhã 10h BRT; a véspera cairia AGORA. Marcada há 5 minutos.
+// Régua do Leo (30/09): a véspera saiu; a manhã do dia (08:30) assumiu o papel
+// dela, com as mesmas cercas de marcação fresca.
+test("manhã pula quando a call foi marcada hoje mesmo depois das 8h (caso Amilton, na régua nova)", async () => {
+  // Call hoje 16h BRT, marcada às 9h55; o poller passa às 10h (janela da manhã).
   const repo = await world({
     leads: [{
       id: "L1", name: "Amilton", phone: "5519991948264", stage: "Call agendada",
-      callAt: "2026-08-20T10:00", callSetAt: ISO("2026-08-19T12:55:00Z"),
+      callAt: "2026-08-19T16:00", callSetAt: ISO("2026-08-19T12:55:00Z"),
     }],
     threads: [{ id: "5519991948264", phone: "5519991948264", leadId: "L1", saas: "leverads" }],
-    messages: [{ id: "m1", thread: "5519991948264", leadId: "L1", direction: "in", text: "pode ser 10h", at: ISO("2026-08-19T12:54:00Z") }],
+    messages: [{ id: "m1", thread: "5519991948264", leadId: "L1", direction: "in", text: "pode ser 16h", at: ISO("2026-08-19T12:54:00Z") }],
   });
   const wa = makeWa();
   await runnerOf(repo, wa).tick();
   assert.equal(wa.sent.length, 0, "ninguém confirma um combinado de 5 minutos atrás");
-  assert.ok((await repo.get("leads", "L1")).confirmLog["24h"], "passo carimbado: não sai atrasado depois");
+  assert.equal((await repo.get("leads", "L1")).confirmLog.manha, "skip", "passo carimbado: não sai atrasado depois");
 });
 
-test("véspera sai quando a marcação é de dias atrás", async () => {
+test("manhã sai quando a marcação é de dias atrás (às 8h35, com Bom dia)", async () => {
   const repo = await world({
     leads: [{
       id: "L1", name: "Amilton", phone: "5519991948264", stage: "Call agendada",
-      callAt: "2026-08-20T10:00", callSetAt: ISO("2026-08-17T12:00:00Z"),
+      callAt: "2026-08-19T16:00", callSetAt: ISO("2026-08-17T12:00:00Z"),
     }],
     threads: [{ id: "5519991948264", phone: "5519991948264", leadId: "L1", saas: "leverads" }],
-    messages: [{ id: "m1", thread: "5519991948264", leadId: "L1", direction: "in", text: "beleza", at: ISO("2026-08-19T12:00:00Z") }],
+    messages: [{ id: "m1", thread: "5519991948264", leadId: "L1", direction: "in", text: "beleza", at: ISO("2026-08-19T11:00:00Z") }],
   });
   const wa = makeWa();
-  await runnerOf(repo, wa).tick();
+  await runnerOf(repo, wa, { now: () => new Date("2026-08-19T11:35:00Z") }).tick();
   assert.equal(wa.sent.length, 1);
-  assert.match(wa.sent[0].text, /Confirmando nossa conversa/);
+  assert.match(wa.sent[0].text, /^Bom dia Amilton! Nossa conversa é hoje às 16h/);
 });
 
-test("lead antigo sem callSetAt mantém a véspera (compatibilidade)", async () => {
+test("lead antigo sem callSetAt recebe a manhã normalmente (compatibilidade)", async () => {
   const repo = await world({
-    leads: [{ id: "L1", name: "Amilton", phone: "5519991948264", stage: "Call agendada", callAt: "2026-08-20T10:00" }],
+    leads: [{ id: "L1", name: "Amilton", phone: "5519991948264", stage: "Call agendada", callAt: "2026-08-19T16:00" }],
     threads: [{ id: "5519991948264", phone: "5519991948264", leadId: "L1", saas: "leverads" }],
-    messages: [{ id: "m1", thread: "5519991948264", leadId: "L1", direction: "in", text: "beleza", at: ISO("2026-08-19T12:00:00Z") }],
+    messages: [{ id: "m1", thread: "5519991948264", leadId: "L1", direction: "in", text: "beleza", at: ISO("2026-08-19T11:00:00Z") }],
   });
   const wa = makeWa();
-  await runnerOf(repo, wa).tick();
+  await runnerOf(repo, wa, { now: () => new Date("2026-08-19T11:35:00Z") }).tick();
   assert.equal(wa.sent.length, 1);
 });
 

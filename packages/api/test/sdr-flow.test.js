@@ -167,9 +167,11 @@ test("opt-out, número inválido, saída lateral, interno e desqualificado ficam
 
 // ── Lembretes da call ────────────────────────────────────────────────────────
 
-test("véspera, 2h e 10min saem uma vez cada, gravam no confirmLog e o 10min leva o link", async () => {
-  const nowRef = { t: new Date("2026-08-19T13:00:00Z") }; // exatamente T-24h da call
-  // Lead que ESCREVEU há pouco (janela de 24h aberta nos 3 lembretes): é o
+// Régua do Leo (30/09): SEM véspera. Manhã do dia (08:30) só pra call a partir
+// das 10h30; 2h antes; 10min antes com o link.
+test("sem véspera: call das 10h leva só 2h e 10min, uma vez cada, gravando no confirmLog", async () => {
+  const nowRef = { t: new Date("2026-08-19T13:00:00Z") }; // exatamente T-24h da call: nada sai
+  // Lead que ESCREVEU há pouco (janela de 24h aberta nos lembretes): é o
   // único cenário em que o lembrete sai como texto livre.
   const repo = await world({
     leads: [{ id: "L1", name: "Rafael", phone: "41999990000", stage: "Call agendada", callAt: "2026-08-20T10:00", closer: "pl", callUrl: "https://meet.google.com/abc-defg", createdAt: ISO("2026-08-10T10:00:00Z") }],
@@ -179,27 +181,59 @@ test("véspera, 2h e 10min saem uma vez cada, gravam no confirmLog e o 10min lev
   const wa = makeWa();
   const r = runner(repo, wa, nowRef);
   await r.tick();
-  assert.equal(wa.sent.length, 1);
-  assert.match(wa.sent[0].text, /Confirmando nossa conversa amanhã às 10h, tudo certo\?/);
-  assert.ok((await repo.get("leads", "L1")).confirmLog["24h"]);
-  await r.tick(); // mesmo instante: não repete
-  assert.equal(wa.sent.length, 1);
+  assert.equal(wa.sent.length, 0, "véspera não existe mais");
+  assert.equal((await repo.get("leads", "L1")).confirmLog, undefined);
+
+  nowRef.t = new Date("2026-08-20T11:35:00Z"); // 8h35 BRT: a manhã cairia aqui, mas a call é antes das 10h30
+  await r.tick();
+  assert.equal(wa.sent.length, 0);
+  assert.equal((await repo.get("leads", "L1")).confirmLog.manha, "skip");
 
   nowRef.t = new Date("2026-08-20T11:05:00Z"); // 8h05 BRT, janela do 2h
   await r.tick();
-  assert.equal(wa.sent.length, 2);
-  assert.match(wa.sent[1].text, /Nossa conversa é hoje às 10h/);
-  assert.match(wa.sent[1].text, /computador por perto/);
-  assert.doesNotMatch(wa.sent[1].text, /celular ou pelo computador/);
-  assert.match(wa.sent[1].text, /Me confirma por aqui/);
+  assert.equal(wa.sent.length, 1);
+  assert.match(wa.sent[0].text, /Nossa conversa é hoje às 10h/);
+  assert.match(wa.sent[0].text, /computador por perto/);
+  assert.doesNotMatch(wa.sent[0].text, /celular ou pelo computador/);
+  assert.match(wa.sent[0].text, /Me confirma por aqui/);
+  await r.tick(); // mesmo instante: não repete
+  assert.equal(wa.sent.length, 1);
 
   nowRef.t = new Date("2026-08-20T12:52:00Z"); // 9h52, janela do 10min
   await r.tick();
-  assert.equal(wa.sent.length, 3);
-  assert.match(wa.sent[2].text, /conversa começa em 10 minutos! Link pra entrar: https:\/\/meet\.google\.com\/abc-defg/);
+  assert.equal(wa.sent.length, 2);
+  assert.match(wa.sent[1].text, /conversa começa em 10 minutos! Link pra entrar: https:\/\/meet\.google\.com\/abc-defg/);
   const log = (await repo.get("leads", "L1")).confirmLog;
   assert.equal(log.at, "2026-08-20T10:00");
   assert.ok(log["2h"] && log["10min"]);
+});
+
+test("manhã do dia: call das 14h recebe 'Bom dia' às 8h30 com o link e a positiva; o 2h vem depois", async () => {
+  const nowRef = { t: new Date("2026-08-20T11:35:00Z") }; // quinta 8h35 BRT
+  const repo = await world({
+    leads: [{ id: "L1", name: "Rafael", phone: "41999990000", stage: "Call agendada", callAt: "2026-08-20T14:00", closer: "pl", callSetAt: ISO("2026-08-19T18:00:00Z"), callUrl: "https://meet.google.com/abc-defg", createdAt: ISO("2026-08-10T10:00:00Z") }],
+    threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads", name: "Rafael" }],
+    messages: [{ id: "in1", thread: "5541999990000", leadId: "L1", saas: "leverads", direction: "in", text: "Fechado, amanhã às 14h", at: ISO("2026-08-19T18:00:00Z") }],
+  });
+  const wa = makeWa();
+  const r = runner(repo, wa, nowRef);
+  await r.tick();
+  assert.equal(wa.sent.length, 1);
+  assert.match(wa.sent[0].text, /^Bom dia Rafael! Nossa conversa é hoje às 14h, nosso especialista já separou o horário\. O link pra entrar é este: https:\/\/meet\.google\.com\/abc-defg/);
+  assert.match(wa.sent[0].text, /Me confirma por aqui que está tudo certo\?$/);
+  assert.ok((await repo.get("leads", "L1")).confirmLog.manha);
+  nowRef.t = new Date("2026-08-20T15:05:00Z"); // 12h05 BRT: 2h antes
+  await r.tick();
+  assert.equal(wa.sent.length, 2);
+  assert.match(wa.sent[1].text, /^Oi Rafael! Nossa conversa é hoje às 14h/);
+  // Marcação feita HOJE depois das 8h: a manhã pula (o 2h cobre).
+  const repo2 = await world({
+    leads: [{ id: "L2", name: "Novo", phone: "41988880000", stage: "Call agendada", callAt: "2026-08-20T16:00", closer: "pl", callSetAt: ISO("2026-08-20T11:20:00Z"), createdAt: ISO("2026-08-10T10:00:00Z") }],
+  });
+  const wa2 = makeWa();
+  await runner(repo2, wa2, { t: new Date("2026-08-20T11:40:00Z") }).tick();
+  assert.equal(wa2.sent.length, 0);
+  assert.equal((await repo2.get("leads", "L2")).confirmLog.manha, "skip");
 });
 
 test("lembrete atrasado além da tolerância não sai (robô quebrado não manda véspera 3h depois)", async () => {
@@ -212,15 +246,15 @@ test("lembrete atrasado além da tolerância não sai (robô quebrado não manda
   assert.equal(wa.sent.length, 0);
 });
 
-test("call já confirmada cala a véspera (mas os lembretes do dia seguem)", async () => {
-  const nowRef = { t: new Date("2026-08-19T13:00:00Z") };
+test("call já confirmada cala a manhã (mas os lembretes do dia seguem)", async () => {
+  const nowRef = { t: new Date("2026-08-20T11:35:00Z") }; // 8h35 BRT do dia da call
   const repo = await world({
-    leads: [{ id: "L1", name: "R", phone: "41999990000", stage: "Call agendada", callAt: "2026-08-20T10:00", callConfirmed: true, createdAt: ISO("2026-08-10T10:00:00Z") }],
+    leads: [{ id: "L1", name: "R", phone: "41999990000", stage: "Call agendada", callAt: "2026-08-20T14:00", callConfirmed: true, createdAt: ISO("2026-08-10T10:00:00Z") }],
   });
   const wa = makeWa();
   await runner(repo, wa, nowRef).tick();
   assert.equal(wa.sent.length, 0);
-  assert.ok((await repo.get("leads", "L1")).confirmLog["24h"], "carimba como resolvido sem mandar");
+  assert.equal((await repo.get("leads", "L1")).confirmLog.manha, "skip", "carimba como resolvido sem mandar");
 });
 
 test("passo já feito pelo humano no Meu dia (confirmLog) cala o robô naquele passo", async () => {
@@ -311,7 +345,9 @@ test("antes da última hora (ou sem pedido de confirmação na rua) o alerta de 
       { id: "semPedido", name: "S", phone: "41922222222", stage: "Call agendada", callAt: "2026-08-20T13:00", createdAt: ISO("2026-08-10T10:00:00Z") },
     ],
   });
-  const wa = makeWa();
+  // A manhã do "semPedido" sai por template (8h40 é a janela dela); o que
+  // importa aqui é que o alerta de LIGAÇÃO não dispara pra nenhum dos dois.
+  const wa = makeWa({ approved: ["sdr_lembrete_conversa"] });
   const stats = await runner(repo, wa, nowRef).tick();
   assert.equal(stats.ringAlerts, 0);
   assert.equal((await repo.list("wa_alerts")).length, 0);
@@ -672,4 +708,105 @@ test("janela de 24h fechada na hora da cobrança: sai o template de retomada, se
   assert.equal(wa.sent[0].kind, "template");
   assert.equal(wa.sent[0].name, "sdr_retomada_conversa");
   assert.equal((await repo.get("leads", "L1")).sdrLog.offerNudgeVia, "template");
+});
+
+// ── Raio-x 30/09: respostas ao lembrete, remarcação suspende, resgate, call vencida ─
+
+test("classifyReminderReply: 'pode', 'vou', reação 👍 e 'estarei' confirmam; saudação, reação sem emoji e resposta automática não viram alerta", () => {
+  for (const t of ["Pode", "pode sim", "vou", "vou entrar", "tá bom", "Tudo certo!", "estarei lá", "no aguardo", "a caminho", "[reaction] 👍", "[reaction] ❤️"]) {
+    assert.equal(classifyReminderReply(t), "confirm", t);
+  }
+  assert.equal(classifyReminderReply("[reaction]"), "ack");
+  assert.equal(classifyReminderReply("Bom dia"), "greeting");
+  assert.equal(classifyReminderReply("Olá bom dia!"), "greeting");
+  assert.equal(classifyReminderReply("BSB Ronda Oficina Especializada agradece seu contato. Como podemos ajudar?"), "auto");
+  assert.equal(classifyReminderReply("não vou conseguir hoje"), "reschedule");
+  assert.equal(classifyReminderReply("Bom dia, não vou conseguir"), "reschedule");
+  assert.equal(classifyReminderReply("Computador"), "other");
+});
+
+test("resposta ao lembrete: saudação/ack/auto não abrem alerta nem calam o aviso de ligação; remarcação suspende os lembretes do horário", async () => {
+  const mk = async () => world({
+    leads: [{ id: "L1", name: "R", phone: "41999990000", stage: "Call agendada", callAt: "2026-08-20T14:00", confirmLog: { at: "2026-08-20T14:00", manha: ISO("2026-08-20T11:30:00Z") }, createdAt: ISO("2026-08-10T10:00:00Z") }],
+    threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads" }],
+  });
+  const now = new Date("2026-08-20T12:00:00Z");
+  const a = await mk();
+  assert.equal(await handleSdrInbound(a, { message: { from: "5541999990000", text: "Bom dia" }, now }), "greeting");
+  assert.equal(await handleSdrInbound(a, { message: { from: "5541999990000", text: "[reaction]" }, now }), "ack");
+  assert.equal(await handleSdrInbound(a, { message: { from: "5541999990000", text: "Pontes Car Auto Peças agradece seu contato. Como podemos ajudar?" }, now }), "auto");
+  assert.equal((await a.list("wa_alerts")).length, 0);
+  assert.equal((await a.get("leads", "L1")).sdrLog?.confirmAlertFor, undefined, "aviso de ligação continua armado");
+  assert.equal(await handleSdrInbound(a, { message: { from: "5541999990000", text: "[reaction] 👍" }, now }), "confirmed");
+  assert.equal((await a.get("leads", "L1")).callConfirmed, true);
+
+  const b = await mk();
+  assert.equal(await handleSdrInbound(b, { message: { from: "5541999990000", text: "Oi pode mudar o horário? Amanhã à tarde consegue" }, now }), "alert");
+  const lead = await b.get("leads", "L1");
+  assert.ok(lead.confirmLog.rescheduleAskedAt);
+  assert.match((await b.list("wa_alerts"))[0].text, /Quer remarcar a call/);
+  // Com a remarcação pedida, o lembrete de 2h NÃO sai mais pra este horário.
+  const wa = makeWa({ approved: ["sdr_lembrete_link2", "sdr_lembrete_conversa"] });
+  await runner(b, wa, { t: new Date("2026-08-20T15:05:00Z") }).tick();
+  assert.equal(wa.sent.length, 0);
+});
+
+test("resgate de no-show: lead atrasado 15 min não é furo; lead que avisou que não vinha nas 3h antes não leva 'não te encontrei'", async () => {
+  const nowRef = { t: new Date("2026-08-19T13:15:00Z") }; // call às 10h BRT (13:00Z), 15 min depois
+  const late = await world({
+    leads: [{ id: "L1", name: "Patrick", phone: "41999990000", stage: "No show", stageSince: ISO("2026-08-19T13:05:00Z"), callAt: "2026-08-19T10:00", createdAt: ISO("2026-08-10T10:00:00Z") }],
+    threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads" }],
+  });
+  const wa1 = makeWa({ approved: ["sdr_resgate_noshow"] });
+  await runner(late, wa1, nowRef).tick();
+  assert.equal(wa1.sent.length, 0, "20 min de graça");
+
+  const warned = await world({
+    leads: [{ id: "L1", name: "Valdir", phone: "41999990000", stage: "No show", stageSince: ISO("2026-08-19T13:30:00Z"), callAt: "2026-08-19T10:00", createdAt: ISO("2026-08-10T10:00:00Z") }],
+    threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads" }],
+    messages: [{ id: "i1", thread: "5541999990000", leadId: "L1", direction: "in", text: "Bom dia, podemos marcar outro dia?", at: ISO("2026-08-19T11:42:00Z") }],
+  });
+  const wa2 = makeWa({ approved: ["sdr_resgate_noshow"] });
+  await runner(warned, wa2, { t: new Date("2026-08-19T13:40:00Z") }).tick();
+  assert.equal(wa2.sent.length, 0);
+  assert.equal((await warned.get("leads", "L1")).sdrLog.noshowVia, "skip:remarcacao");
+});
+
+test("call vencida presa em 'Call agendada' vira aviso pro closer, uma vez por dia; com gente na conversa depois, ou com resumo, cala", async () => {
+  const nowRef = { t: new Date("2026-08-19T15:00:00Z") }; // 12h BRT; calls às 10h (2h atrás)
+  const repo = await world({
+    leads: [
+      { id: "L1", name: "Domingos", phone: "41999990000", stage: "Call agendada", callAt: "2026-08-19T10:00", closer: "pl", createdAt: ISO("2026-08-10T10:00:00Z") },
+      { id: "L2", name: "Diego", phone: "41988880000", stage: "Call agendada", callAt: "2026-08-19T10:00", closer: "pl", callSummaryFor: "2026-08-19T10:00", createdAt: ISO("2026-08-10T10:00:00Z") },
+      { id: "L3", name: "Beto", phone: "41977770000", stage: "Call agendada", callAt: "2026-08-19T10:00", closer: "pl", createdAt: ISO("2026-08-10T10:00:00Z") },
+    ],
+    threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads" }, { id: "5541977770000", phone: "5541977770000", leadId: "L3", saas: "leverads" }],
+    messages: [{ id: "o1", thread: "5541977770000", leadId: "L3", direction: "out", author: "pl", text: "Beto, estamos te aguardando", at: ISO("2026-08-19T13:05:00Z") }],
+  });
+  const wa = makeWa();
+  const r = runner(repo, wa, nowRef);
+  const stats = await r.tick();
+  assert.equal(stats.overdue, 1);
+  const notes = await repo.list("notifications");
+  assert.equal(notes.length, 1);
+  assert.equal(notes[0].user, "pl");
+  assert.equal(notes[0].type, "call_overdue");
+  assert.match(notes[0].text, /Call de Domingos \(hoje \(19\/08\) às 10h\) segue em "Call agendada" sem desfecho/);
+  assert.deepEqual(notes[0].link, { screen: "whatsapp", thread: "5541999990000", lead: "L1" });
+  assert.equal((await r.tick()).overdue, 0, "uma vez por dia");
+  assert.equal((await repo.get("leads", "L1")).stage, "Call agendada", "o robô nunca move o card");
+});
+
+test("10min sem link com janela fechada não repete o template sem link que já saiu no 2h: fica o alerta", async () => {
+  const nowRef = { t: new Date("2026-08-19T12:52:00Z") }; // 9h52 BRT, call 10h
+  const repo = await world({
+    leads: [{ id: "L1", name: "Karina", phone: "41999990000", stage: "Call agendada", callAt: "2026-08-19T10:00", callConfirmed: true, callSetAt: ISO("2026-08-17T12:00:00Z"), confirmLog: { at: "2026-08-19T10:00", manha: "skip", "2h": ISO("2026-08-19T11:00:00Z") }, createdAt: ISO("2026-08-10T10:00:00Z") }],
+    threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads" }],
+    messages: [{ id: "i1", thread: "5541999990000", leadId: "L1", direction: "in", text: "ok", at: ISO("2026-08-17T12:00:00Z") }],
+  });
+  const wa = makeWa({ approved: ["sdr_lembrete_conversa"] });
+  await runner(repo, wa, nowRef).tick();
+  assert.equal(wa.sent.length, 0);
+  assert.equal((await repo.get("leads", "L1")).confirmLog["10min"], "sem-link");
+  assert.match((await repo.list("wa_alerts"))[0].text, /sem link do Meet/);
 });
