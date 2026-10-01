@@ -9,6 +9,7 @@ import { PageHead, Card, Pill, Segmented, FilterTab } from "../components/viz.js
 import { AvisoTopo, BarraFiltros } from "../components/story.jsx";
 import { Modal, Drawer } from "../components/overlay.jsx";
 import { EmptyState, PrimaryButton, MoreMenu } from "../atoms.jsx";
+import { Icon } from "./tasks/icons.jsx";
 import { milestonesFor, nextMilestone, tenureLabel, dueLabel } from "../lib/milestones.js";
 import { ActivityList } from "../components/timeline.jsx";
 import { CallSummaryCard, IntegrationBriefCard } from "./today.jsx";
@@ -665,6 +666,8 @@ function CustomersScreen({ initialTab }) {
                           const t = gradeOf(c);
                           const contato = String(c.contact || leadById.get(c.leadId)?.name || "").trim();
                           const mesmoNome = contato && contato.toLowerCase() === String(c.name || "").trim().toLowerCase();
+                          const email = String(c.email || leadById.get(c.leadId)?.email || "").trim();
+                          const casa = tenureLabel(c) || (entradaLabel(c) ? "" : "sem início");
                           const ps = payStatus(c);
                           const prox = proxCobrancaDe(c);
                           const trazido = trazidoOf(c);
@@ -675,17 +678,21 @@ function CustomersScreen({ initialTab }) {
                               style={{ display: "grid", gridTemplateColumns: GRID, gap: TABLE_GRID_GAP, padding: "12px 16px", alignItems: "center", borderBottom: "1px solid var(--line-1)", cursor: "pointer", opacity: isChurned(c) ? 0.55 : 1 }}
                               onMouseEnter={(e) => { e.currentTarget.style.background = "var(--hover)"; }}
                               onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
-                              {/* Cliente: conta grande, nível, nome e a sub-linha com contato e casa */}
+                              {/* Cliente: conta grande, nível, nome com o tempo de casa em etiqueta
+                                  e a sub-linha com contato e e-mail */}
                               <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                                 {isKeyAccount(c) && <span title="conta grande · fora das médias" style={{ color: "var(--accent)", flexShrink: 0 }}>★</span>}
                                 {!isKidsWorkspace && (t.grade
                                   ? <LeadGrade tier={t} size={20} />
                                   : <span title="sem nível (lead não respondeu contas/anúncios)" style={{ width: 20, height: 20, borderRadius: 999, border: "1px solid var(--line-1)", color: "var(--fg-4)", fontSize: 11, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>—</span>)}
                                 <div style={{ minWidth: 0 }}>
-                                  <div style={{ fontSize: 13.5, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                                    <div style={{ minWidth: 0, fontSize: 13.5, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
+                                    {casa && <Pill title={entradaLabel(c) ? `cliente desde ${entradaLabel(c)}` : undefined}>{casa}</Pill>}
+                                  </div>
                                   <div style={{ fontSize: 11.5, color: "var(--fg-4)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
-                                    title={[contato, entradaLabel(c) ? `cliente desde ${entradaLabel(c)}` : "", lastContact(c) ? `último contato ${lastContact(c)}` : ""].filter(Boolean).join(" · ")}>
-                                    {[mesmoNome ? "" : contato, tenureLabel(c) || (entradaLabel(c) ? "" : "sem início")].filter(Boolean).join(" · ") || "—"}
+                                    title={[contato, email, entradaLabel(c) ? `cliente desde ${entradaLabel(c)}` : "", lastContact(c) ? `último contato ${lastContact(c)}` : ""].filter(Boolean).join(" · ")}>
+                                    {[mesmoNome ? "" : contato, email].filter(Boolean).join(" · ") || "—"}
                                   </div>
                                 </div>
                               </div>
@@ -1350,7 +1357,7 @@ function CustomerPeek(props) {
       <div className="customer-peek">
         <header className="customer-peek-head">
           <LeadGrade tier={tier} placeholder />
-          <div><h2>{customer.name}</h2><p>{[customer.contact,customer.keyAccount?'conta grande':null,tenureLabel(customer)?`${tenureLabel(customer)} de casa`:null].filter(Boolean).join(' · ')}</p></div>
+          <div><div className="customer-peek-title"><h2>{customer.name}</h2><button className="customer-peek-edit" aria-label="Editar cliente" title="Editar cliente" onClick={()=>setOperation('edit')} disabled={!!busy}><Icon name="pencil" size={13}/></button></div><p>{[customer.contact,customer.keyAccount?'conta grande':null,tenureLabel(customer)?`${tenureLabel(customer)} de casa`:null].filter(Boolean).join(' · ')}</p></div>
           <button aria-label="Fechar ficha" onClick={onClose} disabled={!!busy}>✕</button>
         </header>
         <div className="customer-peek-body">
@@ -1358,7 +1365,6 @@ function CustomerPeek(props) {
             <div className="customer-peek-kicker"><span>contrato</span><span className="customer-peek-state" data-tone={churned?'neg':financial.status.key==='paid'?'pos':'mut'}>{churned?`churn ${fmtDay(parseDay(customer.endedAt))}`:financial.status.key==='paid'?'em dia':'ativa'}</span></div>
             {facts.map(([label,value])=><div className="customer-peek-fact" key={label}><span>{label}</span><strong>{value||'—'}</strong></div>)}
             <div className="customer-peek-menu"><MoreMenu size={22} items={[
-              {label:'Editar cliente',onClick:()=>setOperation('edit')},
               {label:'Gerenciar cobranças',onClick:()=>setOperation('money')},
               !churned&&{label:'Registrar upsell',onClick:()=>setOperation('upsell')},
               {label:churned?'Desfazer churn':'Registrar churn',tone:'neg',onClick:()=>setOperation('churn')},
