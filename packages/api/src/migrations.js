@@ -2341,6 +2341,12 @@ export async function runStartupMigrations(repo) {
     console.error("[migration] ensureFormPrefillV2 falhou:", err?.message || err);
   }
   try {
+    const n = await ensureContractsNoAdDeletionClause(repo);
+    if (n) console.log(`[migration] cláusula de exclusão de anúncios por inadimplência removida de ${n} modelo(s) de contrato`);
+  } catch (err) {
+    console.error("[migration] ensureContractsNoAdDeletionClause falhou:", err?.message || err);
+  }
+  try {
     const n = await ensureSdrGoals(repo);
     if (n) console.log(`[migration] ${n} meta(s) de SDR (taxa) semeada(s)`);
   } catch (err) {
@@ -2989,4 +2995,42 @@ export async function ensureFormPrefillV2(repo) {
     changed++;
   }
   return changed;
+}
+
+// ── Contratos: sem a cláusula de exclusão de anúncios por inadimplência (Leo, 01/10/2026) ──
+// Os modelos de assinatura (LeverAds, LeverAds+OEM), o OEM avulso e o de
+// remuneração variável traziam um parágrafo "Exclusão dos anúncios ... em
+// caso de encerramento sem quitação" (9.5 ou 10.5): o lead autorizava a
+// LEVERADS a excluir das contas dele os anúncios criados pela ferramenta se o
+// contrato terminasse sem quitação. O Leo mandou tirar. Sai o parágrafo (sem
+// nenhuma tag interna, por isso o `[^<]*`) e as remissões "observado o
+// disposto na Cláusula X.5" / "observada a Cláusula 10.5" que o citavam.
+// Idempotente: corpo sem o parágrafo não muda. Aplicado em prod em 01/10 via
+// SQL (backup em _bak_contracts_20261001_exclusao_anuncios); a migração
+// garante o mesmo estado em qualquer banco semeado.
+export function stripAdDeletionClause(body) {
+  const s = String(body || "");
+  const para = /\n?<p><strong>(\d+)\.5\.[^<]*<\/strong>[^<]*autoriza a LEVERADS a excluir[^<]*<\/p>/g;
+  const nums = new Set();
+  const out = s.replace(para, (_m, n) => { nums.add(n); return ""; });
+  if (!nums.size) return s;
+  let fixed = out;
+  for (const n of nums) {
+    fixed = fixed
+      .replace(new RegExp(`, observado o disposto na Cl[áa]usula ${n}\\.5`, "g"), "")
+      .replace(new RegExp(`, observada a Cl[áa]usula ${n}\\.5`, "g"), "");
+  }
+  return fixed;
+}
+
+export async function ensureContractsNoAdDeletionClause(repo) {
+  let n = 0;
+  for (const c of await repo.list("contracts")) {
+    if (!c?.body) continue;
+    const body = stripAdDeletionClause(c.body);
+    if (body === c.body) continue;
+    await repo.update("contracts", c.id, { body, updatedAt: new Date().toISOString() });
+    n++;
+  }
+  return n;
 }
