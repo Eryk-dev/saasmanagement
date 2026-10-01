@@ -49,6 +49,7 @@ try {
  }
  const p=await h.open(1440);await p.locator('.customers-table-row').first().waitFor();
  const search=p.getByRole('textbox',{name:'Buscar cliente'}), filters=p.locator('.customers-filters');
+ assert.match(await p.locator('.customers-table-row').first().innerText(),/cliente\d@example\.invalid/);
  await search.fill('Braga');assert.equal(await p.locator('.customers-table-row').count(),1);
  const row=p.locator('.customers-table-row').first();await row.focus();await p.keyboard.press('Enter');
  const drawer=p.getByRole('dialog',{name:/^Cliente ·/});await drawer.waitFor();
@@ -61,9 +62,11 @@ try {
  await drawer.getByRole('button',{name:'Cobrar próxima',exact:true}).click();const action=p.getByRole('dialog',{name:'Ação do cliente',exact:true});await action.waitFor();
  await action.getByRole('button',{name:'marcar paga',exact:true}).first().click();await p.waitForFunction(()=>window.__reviewMutations.some(m=>m.method==='payInvoice'));
  await p.keyboard.press('Escape');await action.waitFor({state:'hidden'});assert.equal(await drawer.isVisible(),true);
- await drawer.getByRole('button',{name:'⋯',exact:true}).click();await p.getByRole('button',{name:'Editar cliente',exact:true}).click();await action.waitFor();
- const name=action.getByRole('textbox',{name:/^Conta/});await name.fill('Braga Revisão');await action.getByRole('button',{name:'Salvar',exact:true}).click();await action.waitFor({state:'hidden'});
- await p.waitForFunction(()=>window.__reviewMutations.some(m=>m.patch?.name==='Braga Revisão'));
+ await drawer.getByRole('button',{name:'Editar cliente',exact:true}).click();await action.waitFor();
+ const name=action.getByRole('textbox',{name:/^Conta/});await name.fill('Braga Revisão');
+ await action.getByRole('textbox',{name:/^Nome do contato/}).fill('Contato Revisão');await action.getByRole('textbox',{name:/^WhatsApp/}).fill('11999990000');
+ await action.getByRole('button',{name:'Salvar',exact:true}).click();await action.waitFor({state:'hidden'});
+ await p.waitForFunction(()=>window.__reviewMutations.some(m=>m.patch?.name==='Braga Revisão'&&m.patch?.contact==='Contato Revisão'&&m.patch?.phone==='11999990000'));
  for(const label of ['Registrar upsell','Registrar churn']) {
   await drawer.getByRole('button',{name:'⋯',exact:true}).click();await p.getByRole('button',{name:label,exact:true}).click();await action.waitFor();assert.equal(await action.getByRole('heading',{name:new RegExp(label)}).isVisible(),true);await action.getByRole('button',{name:'Fechar ação',exact:true}).click();await action.waitFor({state:'hidden'});
  }

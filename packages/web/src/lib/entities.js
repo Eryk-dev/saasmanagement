@@ -152,9 +152,14 @@ export const ENTITIES = {
     singular: "Cliente",
     titleField: "name",
     fields: [
-      { key: "name", label: "Conta", type: "text", required: true },
+      { key: "name", label: "Conta", type: "text", required: true, help: "nome da empresa/organização: é o título do cliente na lista" },
       { key: "saas", label: "Produto", type: "select", options: saasOptions, required: true },
+      // Contato e WhatsApp nascem do lead no fechamento e não são sincronizados
+      // depois: é aqui que se corrige. Vazio precisa chegar na API (sendBlank),
+      // senão apagar o campo manteria o valor antigo pelo merge.
+      { key: "contact", label: "Nome do contato", type: "text", sendBlank: true, help: "a pessoa com quem se fala: aparece abaixo da conta na lista e como representante no contrato" },
       { key: "email", label: "E-mail", type: "text", help: "payer do Mercado Pago nas assinaturas" },
+      { key: "phone", label: "WhatsApp", type: "text", sendBlank: true, help: "telefone do contato, com DDD" },
       // Plano guarda o RÓTULO (mesmo valor que o convertWonLead grava do gate);
       // "Mensal" (legado) só aparece quando já é o plano do cliente.
       // O que o cliente comprou. Produto de mentoria (UniqueKids) vende PACOTE
