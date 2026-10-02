@@ -81,6 +81,7 @@ const NAV = [
   // no workspace do UniqueKids (`saas`); nos outros produtos ela não existe.
   { id: "consultas",  label: "Consultas",      icon: "❋",  group: "comercial", saas: "uniquekids" },
   { id: "proposals",  label: "Propostas",      icon: "▥",  group: "comercial", notSaas: "elo" },
+  { id: "plans",      label: "Planos",         icon: "▤",  group: "comercial", notSaas: "elo", adminOnly: true }, // catálogo de planos: preço, limites, recursos e quanto cada plano rende (só admin)
   { id: "offers",     label: "Links de pagamento", icon: "◇", group: "comercial", notSaas: "elo" }, // gerar cobrança no nome do lead/cliente + histórico de quem pagou
   { id: "contracts",  label: "Contratos",      icon: "▧",  group: "comercial", notSaas: "elo" }, // biblioteca de modelos de contrato (resgatar → preencher → assinar)
   { id: "intform",    label: "Formulário de Integração", icon: "☑", group: "comercial", notSaas: "elo" }, // questionário que o cliente fechado responde antes da call de integração
@@ -132,6 +133,7 @@ const ICONS = {
   proposals: <NavSvg><path d="M13.5 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5z" /><path d="M13.5 3v5.5H19" /><path d="M9 13.5h6M9 17h6" /></NavSvg>,
   offers: <NavSvg><rect x="2.6" y="5" width="18.8" height="14" rx="2" /><path d="M2.6 10h18.8" /><path d="M6.2 15h4" /></NavSvg>,
   intform: <NavSvg><rect x="4.4" y="3.4" width="15.2" height="17.2" rx="2" /><path d="M9 2.4h6v2.6H9z" /><path d="M8.4 11.2l2 2 4.4-4.6" /><path d="M9 17h6" /></NavSvg>,
+  plans: <NavSvg><rect x="3.5" y="4" width="17" height="5" rx="1.6" /><rect x="3.5" y="11" width="17" height="5" rx="1.6" /><path d="M3.5 19.5h11" /></NavSvg>,
   contracts: <NavSvg><path d="M13.5 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5z" /><path d="M13.5 3v5.5H19" /><path d="M8.6 17.4c.9-1.6 1.8-1.6 2.6 0 .8 1.4 1.6 1.4 2.4 0 .5-.9 1-.9 1.8 0" /></NavSvg>,
   agenda: <NavSvg><rect x="3.4" y="4.6" width="17.2" height="16.4" rx="2" /><path d="M3.4 9.6h17.2" /><path d="M8.2 2.6v4M15.8 2.6v4" /></NavSvg>,
   tickets: <NavSvg><path d="M3.5 7.5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v2.2a2.3 2.3 0 0 0 0 4.6v2.2a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-2.2a2.3 2.3 0 0 0 0-4.6z" /><path d="M9 9.5h6M9 14.5h4" /></NavSvg>,

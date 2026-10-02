@@ -73,6 +73,55 @@ test("screenForRequest: mapa por prefixo + escritas administrativas", () => {
   assert.deepEqual(screenForRequest("POST", "/api/auth/users"), ["settings"]);
   assert.equal(screenForRequest("GET", "/api/auth/users"), null);         // lista de nomes: pickers
   assert.equal(screenForRequest("GET", "/api/bootstrap"), null);          // filtra o payload por conta própria
+  // Sync de acesso do produto: anda com a base de clientes.
+  assert.deepEqual(screenForRequest("POST", "/api/leverads-access/run"), ["customers"]);
+  assert.deepEqual(screenForRequest("GET", "/api/leverads-access/status"), ["customers"]);
+  assert.deepEqual(screenForRequest("GET", "/api/entitlements/status"), ["customers"]);
+});
+
+test("sync de acesso do produto: sem a tela Clientes é 403; aplicar pede etiqueta admin", async (t) => {
+  const repo = makeMemRepo();
+  await ensureDefaultAdmins(repo);
+  await repo.create("users", {
+    id: "sdr", name: "SDR", roles: ["sdr"], screens: ["pipeline"], passwordHash: hashPassword("1234"),
+  });
+  await repo.create("users", {
+    id: "cs", name: "CS", roles: ["cs"], screens: ["customers"], passwordHash: hashPassword("1234"),
+  });
+  await repo.create("users", {
+    id: "chefe", name: "Chefe", roles: ["admin"], screens: ["customers"], passwordHash: hashPassword("1234"),
+  });
+  const app = Fastify();
+  app.addHook("onRequest", makeAuthHook({
+    apiKey: "test-key", repo,
+    openPaths: new Set(["/api/health", "/api/auth/login"]), openPrefixes: [], providedKey,
+  }));
+  app.addHook("onRequest", makeScreenGuardHook());
+  const updates = [];
+  registerRoutes(app, repo, {
+    leveradsAccess: {
+      client: {
+        configured: () => true,
+        listOrgs: async () => [],
+        updateOrg: async (id, patch) => { updates.push({ id, ...patch }); },
+      },
+    },
+  });
+  t.after(() => app.close());
+
+  const sdr = { "x-api-key": await loginToken(app, "sdr", "1234") };
+  for (const [method, url] of [["POST", "/api/leverads-access/run"], ["GET", "/api/leverads-access/status"], ["GET", "/api/leverads-access/orgs"]]) {
+    assert.equal((await app.inject({ method, url, headers: sdr, payload: method === "POST" ? {} : undefined })).statusCode, 403, `esperava 403 em ${url}`);
+  }
+
+  const cs = { "x-api-key": await loginToken(app, "cs", "1234") };
+  assert.equal((await app.inject({ method: "POST", url: "/api/leverads-access/run", headers: cs, payload: {} })).statusCode, 200, "dry-run segue com a tela Clientes");
+  assert.equal((await app.inject({ method: "POST", url: "/api/leverads-access/run", headers: cs, payload: { apply: true } })).statusCode, 403);
+
+  const chefe = { "x-api-key": await loginToken(app, "chefe", "1234") };
+  assert.equal((await app.inject({ method: "POST", url: "/api/leverads-access/run", headers: chefe, payload: { apply: true } })).json().mode, "apply");
+  const key = { "x-api-key": "test-key" };
+  assert.equal((await app.inject({ method: "POST", url: "/api/leverads-access/run", headers: key, payload: { apply: true } })).json().mode, "apply");
 });
 
 test("usuário restrito (pipeline+tasks): funil libera, financeiro/clientes/ajustes 403", async (t) => {

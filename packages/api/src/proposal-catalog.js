@@ -35,6 +35,8 @@
 // Espelho do GRADE_GRID de packages/web/src/lib/ui.js (calibração 24/07) — os
 // dois precisam andar juntos.
 
+import { CLOSED_PLANS } from "./plan-cycles.js";
+
 const DEFAULT_GRID = [
   ["E", "D", "C", "C", "C"],
   ["D", "C", "C", "B", "B"],
@@ -50,13 +52,15 @@ export const TIER_KEYS = ["essencial", "escala", "enterprise"];
 const TIER_LABEL = { essencial: "Essencial", escala: "Escala", enterprise: "Enterprise" };
 // Ordem canônica dos produtos com preço (o que pode virar deck). Produto extra
 // gravado no banco (fora desta lista) também entra, depois destes.
-const PRODUCT_KEYS = [
+export const PRODUCT_KEYS = [
   "oem_essencial", "oem_escala",
   "ads_essencial", "ads_escala",
   "price_essencial", "price_escala", "price_enterprise",
 ];
 // Faixa de contas do form → pacote sugerido. `calc.catalog.tierByAccounts`
-// (banco) sobrescreve sem deploy.
+// (banco) sobrescreve sem deploy, FAIXA A FAIXA: o mapa do banco entra por cima
+// deste, então faixa que ele não conhece (as novas do form) cai no padrão daqui
+// em vez de virar "essencial" calada.
 // Leitura dupla das faixas de conta, igual ao resto da régua (classificacao.js).
 // Sem as chaves novas o lookup dá undefined e cai no `|| "essencial"` do pkgOf
 // — um lead de 7-10 contas receberia proposta do plano mais barato, silenciosamente.
@@ -82,14 +86,17 @@ const DEFAULT_LINES = {
 // link de pagamento do lead, coluna Plano do cliente e card da Integração
 // (web espelha em lib/payments.js DEAL_PRODUCTS).
 export const PRODUCT_LABEL = {
-  oem_essencial: "Lever OEM · Essencial",
-  oem_escala: "Lever OEM · Escala",
-  ads_essencial: "Lever Ads · Essencial",
-  ads_escala: "Lever Ads · Escala",
+  oem_essencial: "Ads Essencial + OEM",
+  oem_escala: "Ads Escala + OEM",
+  ads_essencial: "Ads Essencial",
+  ads_escala: "Ads Escala",
   price_essencial: "Lever Price · Essencial",
   price_escala: "Lever Price · Escala",
   price_enterprise: "Lever Price · Enterprise",
 };
+// Enterprise de OEM/Ads é sob consulta (não tem produto no catálogo): o nome
+// do plano, como a planilha de planos o chama.
+const ENTERPRISE_LABEL = { oem: "Ads Enterprise + OEM", ads: "Ads Enterprise" };
 // Catálogo ANTERIOR (FULL / +OEM / OEM avulso / Parcial / combo / clonagem
 // avulsa): não vende mais, mas venda fechada com essas chaves continua
 // nomeada na coluna Plano do cliente, no checkout e no card da Integração.
@@ -116,9 +123,9 @@ export const hasCatalog = (calc) =>
   !!(calc && calc.catalog && calc.catalog.products) && Number(calc.catalog.catalogV) >= CATALOG_VERSION;
 
 // Milhar pt-BR sem depender do ICU do runtime (imagem slim pode vir sem pt-BR).
-const fmtBR = (n) => String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+export const fmtBR = (n) => String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 const clone = (o) => JSON.parse(JSON.stringify(o || {}));
-const moneyOf = (v) => {
+export const moneyOf = (v) => {
   if (typeof v === "number") return Math.round(v) || 0;
   const digits = String(v ?? "").replace(/[^\d,]/g, "").split(",")[0].replace(/\D/g, "");
   return digits ? Number(digits) : 0;
@@ -154,7 +161,7 @@ const lineName = (cat, line) => linesOf(cat)[line]?.name || line;
 
 export const lineOf = (answers) => (isAuto(answers) ? "oem" : "ads");
 export function pkgOf(cat, state) {
-  const map = cat?.tierByAccounts || DEFAULT_TIER_BY_ACCOUNTS;
+  const map = { ...DEFAULT_TIER_BY_ACCOUNTS, ...(cat?.tierByAccounts || {}) };
   return map[String(state?.accounts ?? "")] || "essencial";
 }
 // 10+ contas cai no Enterprise, que em OEM/Ads é sob consulta: a apresentação
@@ -249,7 +256,8 @@ export function scopeOf(P) {
   const parts = [];
   if (Number(P?.contas) > 0) parts.push(P.contas + " contas");
   if (P?.line === "oem") {
-    parts.push(Number(P.cota) > 0 ? P.cota + " OEM/mês" : (P.cotaLabel || "OEM ilimitado"));
+    parts.push(Number(P.cotaAno) > 0 ? fmtBR(P.cotaAno) + " OEM/ano"
+      : Number(P.cota) > 0 ? P.cota + " OEM/mês" : (P.cotaLabel || "OEM ilimitado"));
   }
   if (Number(P?.limite) > 0) parts.push("até " + fmtBR(P.limite) + " anúncios");
   else if (P?.limiteLabel) parts.push(P.limiteLabel);
@@ -279,7 +287,7 @@ function oemProcessSlide(P) {
     bg: "dark",
     eyebrow: "OEM · como nasce o anúncio",
     title: "Do código OEM ao *anúncio publicado*, sem trabalho seu.",
-    pills: [cota ? cota + " anúncios OEM por mês" : "anúncios OEM sem limite mensal", "ficha técnica completa", "compatibilidade veicular", "preview antes de publicar", "Mercado Livre + Shopee"],
+    pills: [Number(P?.cotaAno) > 0 ? fmtBR(P.cotaAno) + " anúncios OEM por ano" : cota ? cota + " anúncios OEM por mês" : "anúncios OEM sem limite mensal", "ficha técnica completa", "compatibilidade veicular", "preview antes de publicar", "Mercado Livre + Shopee"],
     steps: [
       { tag: "ETAPA 01 · LISTA DE CÓDIGOS", title: "Você só manda a lista de códigos OEM",
         text: "Uma planilha simples com os códigos das peças que você quer anunciar. É tudo o que a gente precisa de você nesse processo." },
@@ -415,7 +423,7 @@ export function quickRefOf(cat) {
   const lines = linesOf(cat);
   for (const line of Object.keys(lines)) {
     if (lines[line]?.enterprise && !cat?.products?.[line + "_enterprise"]) {
-      rows.push({ label: lineName(cat, line) + " · Enterprise", price: lines[line].enterprise });
+      rows.push({ label: ENTERPRISE_LABEL[line] || lineName(cat, line) + " · Enterprise", price: lines[line].enterprise });
     }
   }
   return {
@@ -471,7 +479,7 @@ export function catalogUI(p) {
   const why = String(state.accounts ?? "") + " conta(s) · " + nicheTxt + " → " +
     (hint
       ? lineName(cat, line) + " Enterprise é sob consulta: apresenta o Escala e fecha como Personalizado."
-      : lineName(cat, line) + " · " + (TIER_LABEL[pkg] || pkg) + ".");
+      : (products[line + "_" + pkg]?.name || lineName(cat, line) + " · " + (TIER_LABEL[pkg] || pkg)) + ".");
   // Ordem do select de dor: códigos de 1 letra (A-E) antes dos maiores (OEM),
   // "sem código" sempre por último. Sai pronto daqui porque a tela zero não
   // conhece o catálogo — dor nova no template aparece sem tocar no renderer.
@@ -515,9 +523,7 @@ export function catalogUI(p) {
 // O pacote de OEM avulso entra como produto vendível (serviço único, por
 // quantidade) mesmo não sendo produto do deck. Enterprise de OEM/Ads (sob
 // consulta) não entra: fecha como Personalizado com valor livre.
-const CYCLES = ["anu", "sem"];
-const cycleLabel = { anu: "Anual", sem: "Semestral" };
-const cyclePlan = { anu: "anual", sem: "semestral" };
+const CATALOG_CYCLES = CLOSED_PLANS.filter((p) => p.catalogKey);
 
 export function dealCatalog(calc) {
   if (!hasCatalog(calc)) return [];
@@ -527,8 +533,9 @@ export function dealCatalog(calc) {
   for (const key of productKeysOf(products)) {
     const P = products[key];
     const prices = [];
-    for (const k of CYCLES) {
-      if (P?.[k]?.total) prices.push({ plan: cyclePlan[k], label: cycleLabel[k], value: moneyOf(P[k].total) });
+    for (const c of CATALOG_CYCLES) {
+      const k = c.catalogKey;
+      if (P?.[k]?.total) prices.push({ plan: c.id, label: c.label, value: moneyOf(P[k].total) });
     }
     out.push({ id: key, label: P.name || PRODUCT_LABEL[key] || key, group: lineName(cat, lineOfKey(products, key)), prices });
   }

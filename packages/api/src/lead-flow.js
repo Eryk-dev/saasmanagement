@@ -8,6 +8,7 @@
 import { randomUUID } from "node:crypto";
 import { kindOf, cadenceOf, firstStage, stageByKind, isNoShowStage, isWonLead, LOSS_KINDS, TOUCH_TYPES } from "./stages.js";
 import { NOMES_DIAS as CADENCIA_DIAS } from "./cadencia-stages.js";
+import { removePlanHistory } from "./plan-history.js";
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
@@ -150,6 +151,7 @@ export async function revertWonLead(repo, lead, { author = "system" } = {}) {
         if (m.customerId === customer.id && untouched) await repo.remove("deliverables", m.id);
       }
       await repo.remove("customers", customer.id);
+      await removePlanHistory(repo, customer.id);
       removed = true;
     }
   }

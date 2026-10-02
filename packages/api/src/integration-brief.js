@@ -13,6 +13,7 @@
 // (force), então o poller nunca reescreve o que o integrador já leu.
 import { logActivity } from "./lead-flow.js";
 import { kindOf } from "./stages.js";
+import { CLOSED_PLAN_LABEL as PLAN_LABEL } from "./plan-cycles.js";
 
 // Faixa do formulário ("3-5", "10000+", "200k-1m") em texto legível — a IA lê
 // melhor "3 a 5 contas" do que o código cru, e o briefing não inventa número.
@@ -21,7 +22,6 @@ const range = (v) => String(v || "")
   .replace(/^(\d+[a-z]*)\+$/i, "mais de $1");
 
 const MONEY = (n) => `R$ ${(Number(n) || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const PLAN_LABEL = { anual: "Anual", semestral: "Semestral", mensal: "Mensal", unico: "Serviço único" };
 const PAY_LABEL = { pix: "PIX", boleto: "Boleto faturado", cartao12x: "Cartão de crédito 12x" };
 
 // Dados do cadastro que MUDAM o setup da integração (o resto do lead é ruído

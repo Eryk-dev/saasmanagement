@@ -9,6 +9,8 @@ COPY packages/web/package.json packages/web/package.json
 RUN npm ci
 COPY packages/web packages/web
 COPY packages/api/src/lead-grade.js packages/api/src/lead-grade.js
+COPY packages/api/src/plan-cycles.js packages/api/src/plan-cycles.js
+COPY packages/api/src/plan-resources.js packages/api/src/plan-resources.js
 RUN npm run build -w packages/web
 
 FROM nginx:1.27-alpine
