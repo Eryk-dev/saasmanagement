@@ -172,6 +172,7 @@ Os caminhos abaixo são relativos a `packages/`.
 | Formulários e propostas | `api/src/routes.forms.js`, `forms.js`, `form-page.js`, `routes.proposals.js`, `proposal.js`, `proposal-page.js`, `proposal-slides-page.js`; telas `forms.jsx` e `proposals.jsx`. |
 | Integração e entrega ao cliente | `api/src/routes.integration-forms.js`, `routes.integrations.js`, `integration-brief.js`, `client-pending.js`; telas `integration-forms.jsx` e `integrations.jsx`. |
 | Clientes, receita e pagamentos | `api/src/billing.js`, `churn.js`, `metrics-core.js`, `routes.billing.js`, `routes.mp.js`, `routes.fin.js`; telas `customers.jsx`, `subscriptions.jsx`, `offers.jsx`, `expenses.jsx`. |
+| Planos, plano do cliente e acesso | `api/src/plan-cycles.js`, `plan-catalog.js`, `plan-resources.js`, `plan-history.js`, `entitlements.js`, `leverads-access.js`; `web/src/screens/plans.jsx`, `components/plan-editor.jsx`, `customer-plan.jsx`; testes `plan-cycles`, `plan-catalog`, `plan-history`, `entitlements`, `leverads-access`. |
 | WhatsApp e SDR | `api/src/routes.whatsapp.js`, módulos `wa-*`, `sdr-flow.js`, `sdr-templates.leverads.js`; telas `whatsapp.jsx`, `calls.jsx`. |
 | Métricas e marketing | `api/src/routes.metrics.js`, `routes.marketing.js`, `routes.funnel-metrics.js`, `routes.scoreboard.js`, `routes.pipeline-pace.js`; telas `metrics.jsx`, `analise.jsx`, `desempenho.jsx`. |
 | Agenda, Google e consultas | `api/src/routes.google.js`, `routes.consultations.js`; telas `agenda.jsx`, `agenda-grid.jsx`, `consultas.jsx`. |
@@ -623,3 +624,106 @@ necessário. Termômetro e comparação da projeção usam o mesmo alvo. Períod
 encerrados conservam a meta original; sem dias restantes não há divisão.
 Testes: `test/goal-milestone.test.js` e `scripts/review/goal-milestones.mjs`
 em `packages/web`.
+
+## Planos, plano do cliente e acesso (02/10/2026)
+
+**Catálogo único.** A coleção `plans` (docs com `v: 2` e `code`) é a fonte do
+que se vende: linha, pacote, preço por ciclo, limites, entregáveis e o produto
+em que o plano libera acesso (`access.product`: `leverads` | `leverprice` |
+vazio). O id é determinístico (`plan_<saas>_<code>`) e o código é o mesmo de
+`lead.dealProduct`. O `calc.catalog` de `pt_leverads` / `pt_leverads_slides` e o
+`calc.mentoria.products` de `pt_mentoria` são PROJEÇÃO dos planos
+(`syncPlanCatalogProjection`, a cada escrita de plano e a cada boot); o renderer
+das propostas não mudou e proposta já gerada não é tocada. Linhas, régua
+contas → pacote e adicionais moram em `app_config/plan_catalog_<saas>`. A
+semente (`ensurePlansCatalog`, marcador `app_config/plans_catalog_v1`) nasce do
+catálogo que está no BANCO. `migrateCatalogPricing` / `pricingV` ficaram
+congelados: reprecificar é editar o plano, que sobe `priceVersion` e guarda o
+`priceLog`. Doc de `plans` sem `code` é o cadastro antigo e segue o CRUD
+genérico sem regra. Sem planos semeados, o bootstrap e a edição de template
+seguem pelo caminho antigo.
+
+Invariantes: (1) **só admin escreve plano v2, a configuração do catálogo e a
+tabela de preço pelo template** (403 no servidor; a key mestre passa);
+(2) plano em uso não se apaga (409), arquiva; (3) ciclos e planos de fechamento
+têm uma fonte só, `plan-cycles.js`, importada também pela SPA (os dois
+Dockerfiles de build web copiam o arquivo, como o `lead-grade.js`); (4) a régua
+contas → pacote (`pkgOf`) aplica o mapa do banco POR CIMA do padrão do código,
+então faixa nova do form não cai em Essencial calada.
+
+**Plano do cliente.** `customers` e `subscriptions` guardam `planCode`,
+`planCustom` (venda fora do catálogo), `planCycle` (cliente) e `planSnapshot`
+(retrato do plano na venda: preço de tabela, versão, limites, produto de
+acesso). `customer.plan` continua sendo o mesmo rótulo de texto, derivado.
+Nenhuma régua de receita lê esses campos. `plan_changes` (PRIVATE, append-only)
+registra início, reedição do fechamento, upgrade, troca agendada/aplicada,
+upsell, churn e edição manual; leitura por `GET /api/customers/:id/plan-history`
+e `GET /api/plan-changes`. O backfill (`backfillCustomerPlans`, marcador
+`app_config/customer_plans_v1`) não inventa preço de tabela histórico e não toca
+arr, preço, ciclo nem rótulo.
+
+**Mais de um produto por cliente (02/10/2026).** O plano vive na ASSINATURA:
+um cliente pode ter o LeverAds num plano e o LeverPrice em outro, cada um com a
+sua assinatura (no máximo uma viva por produto; do mesmo produto é troca de
+plano). `POST /api/customers/:id/subscriptions` abre a assinatura de um produto
+novo (1ª fatura em aberto, ARR somado por `syncCustomerArr`). O cadastro do
+cliente espelha a assinatura PRINCIPAL (a mais antiga viva com plano) em
+`planCode`/`planSnapshot`/rótulo e lista todos em `customer.products`
+(`syncCustomerPlanFromSub`). Os direitos saem por produto (um por grupo de
+assinaturas), e os números da tela Planos contam o cliente em cada plano com o
+valor da assinatura dele; o caixa, que é por cliente, é repartido na proporção
+do contratado. Na ficha, tudo fica em Gerenciar cobranças: "Produtos
+contratados" (Mudar plano, Adicionar produto) e "Contrato" (status do
+pagamento, valor anual, cliente desde, churn). Teste: `multi-product.test.js`.
+
+**Acesso e limites.** `entitlements.js` calcula, por cliente × produto, o acesso
+(status da assinatura) e os limites (do `planSnapshot`, não do plano vivo). O
+adaptador do LeverAds (`leverads-access.js`) continua escrevendo SÓ
+`payment_active`; a diferença de limites (contas → `paid_seats`, cota de OEM →
+`creator_quota_*`, Price → `leverprice_enabled`) sai em `report.limits` como
+relatório, com `apply` ou sem. `/api/entitlements/{status,run,customers/:id}`
+são as rotas; `/api/leverads-access/*` segue como alias. As duas famílias pedem
+a tela Clientes, e forçar `apply` pede etiqueta admin.
+
+**Recursos do plano = recursos da org no LeverAds.** `plan-resources.js` é o
+registro único (compartilhado com a SPA, copiado nos Dockerfiles): limites
+(`accounts` → `paid_seats`, `copiesPerDay` → `per_seller_daily_limit`,
+`oemPerMonth` / `oemPerYear` → `creator_quota_limit` com período mensal ou
+anual, `listings` do Price) e módulos
+(`bulkEdit`, `copyRules`, `stockMirror`, `sac`, `aiQuestions`, `compat`,
+`oemCreator` → as flags `*_enabled` da org). Recurso novo entra nessa lista e
+aparece sozinho no editor de plano, no retrato da venda e no relatório.
+Limite ausente = não se aplica; `null` = ilimitado; módulo ausente = o plano
+não diz nada (não é comparado). `ensurePlanResources` (marcador
+`app_config/plan_resources_v1`) preencheu os planos de assinatura do LeverAds
+com todos os módulos, cópias por dia por conta de destino (teto de 8.000: Escala
+8.000, Essencial 500) e o Criador OEM só na linha "+ OEM" (200 por mês no
+Essencial, ilimitado no Escala), conforme a planilha "planos lever" de
+02/10/2026. Estoque Espelho é recurso próprio, não é a equalização da
+apresentação. A mesma migração renomeou os planos como a planilha os chama
+("Ads Essencial", "Ads Escala", "Ads Enterprise" e as versões "+ OEM"; os
+códigos `ads_*` / `oem_*` não mudaram), só onde o nome ainda era o da semente. A
+edição da tabela de preço pelo template preserva esses campos.
+
+**Tela Planos (Comercial → Planos, só admin).** `web/src/screens/plans.jsx` é a
+gestão do catálogo: agrupa por PRODUTO (`plan.product`: `leverads`, `leverprice`
+ou `mentoria`, lista em `PLAN_PRODUCTS`), com filtro por produto na listagem. Mostra preço,
+limites e recursos, e quanto cada plano rende: `GET /api/plans/stats/:saas`
+(só admin) devolve assinantes ativos e churnados, contratado (`customer.arr`
+dos ativos), MRR e recebido (`cashReceivedByCustomer`) por plano, mais os
+baldes `custom` e `none` de quem está fora do catálogo. A linha abre a ficha
+do plano (assinantes, histórico de preço) e o formulário de criar/editar é
+`components/plan-editor.jsx`. O produto do plano define em que sistema a
+assinatura libera acesso (`planAccessOf`). A aba Cobranças de Clientes não tem
+mais catálogo; o cadastro antigo de `plans` aparece em "Avulsos".
+
+**LeverId (auth novo).** O desenho segue o spike de assinaturas (branch
+`feat/auth`): o LeverId guardará só o direito de acesso org × produto, com o
+código do plano e sem preço; preço e cobrança ficam aqui e os limites são
+aplicados em cada produto. `orgRefOf` já resolve `leveradsOrgId` hoje e `orgId`
+depois. Ainda NÃO existe: adaptador do LeverId (depende da migration
+`product_grants` + RPC no repo LeverId), escrita de limites no LeverAds e
+integração com o LeverPrice.
+
+Validação: `node --test packages/api/test/plan-*.test.js packages/api/test/entitlements.test.js`
+e, no navegador com mocks, `npm run test:review:plans -w packages/web`.

@@ -2,14 +2,21 @@
 // tick do motor. CRUD cru de plans/subscriptions/invoices fica no CRUD genérico
 // (routes.js), que já sincroniza o ARR nas mutações de assinatura.
 
-import { computeChange, runBilling, syncCustomerArr } from "./billing.js";
+import { computeChange, runBilling, syncCustomerArr, initSubscription, annualized } from "./billing.js";
+import { closedPlanToCycle, CYCLE_MONTHS } from "./plan-cycles.js";
+import { PLAN_PRODUCTS } from "./plan-resources.js";
 import { kindOf, stageByKind, firstStage } from "./stages.js";
 import { applyStageMove, revertWonLead } from "./lead-flow.js";
 import { mirrorSubscriptionToMp, createCustomerCharge } from "./routes.mp.js";
 import { markCustomerChurn, clearCustomerChurn } from "./churn.js";
 import { parseUpsellBody, recordUpsell } from "./upsell.js";
 import { NOT_CONFIGURED } from "./http-status.js";
-import { customerCashIn, rangeFromQuery } from "./metrics-core.js";
+import { customerCashIn, rangeFromQuery, cashReceivedByCustomer } from "./metrics-core.js";
+import { isChurnedCustomer } from "./churn.js";
+import { plansOf } from "./plan-catalog.js";
+import {
+  findPlan, planSnapshotOf, recordPlanChange, subscriptionPlanState, syncCustomerPlanFromSub, planHistoryOf, removePlanHistory, plannedSubs,
+} from "./plan-history.js";
 
 export function registerBillingRoutes(app, repo, { mp, discord } = {}) {
   // ── Churn manual (botão da ficha do cliente) ──────────────────────────────
@@ -133,15 +140,67 @@ export function registerBillingRoutes(app, repo, { mp, discord } = {}) {
     for (const i of invoices) await repo.remove("invoices", i.id);
     for (const s of subs) await repo.remove("subscriptions", s.id);
     await repo.remove("customers", customer.id);
+    await removePlanHistory(repo, customer.id);
     return { ok: true, leadId: "" };
   });
+  // ── Adicionar um produto a um cliente que já existe ───────────────────────
+  // Um cliente pode ter mais de um produto ao mesmo tempo, cada um com a sua
+  // assinatura (LeverAds num plano, LeverPrice em outro). Aqui nasce a
+  // assinatura do produto NOVO, com o plano do catálogo carimbado: o 1º ciclo
+  // ganha a fatura em aberto (cobrar é em seguida, pelas faturas) e o ARR do
+  // cliente soma. Do MESMO produto não se abre outra: é troca de plano
+  // (POST /api/subscriptions/:id/change).
+  app.post("/api/customers/:id/subscriptions", async (req, reply) => {
+    const customer = await repo.get("customers", req.params.id);
+    if (!customer) return reply.code(404).send({ error: "cliente não encontrado" });
+    if (isChurnedCustomer(customer)) return reply.code(409).send({ error: "cliente em churn: desfaça o churn antes de adicionar um produto" });
+    const body = req.body || {};
+    const plan = await findPlan(repo, customer.saas, body.plan);
+    if (!plan || plan.status === "archived") return reply.code(422).send({ error: "plano não existe no catálogo deste produto" });
+    if (plan.kind !== "subscription") return reply.code(422).send({ error: "este plano é compra única: registre como upsell ou cobrança avulsa" });
+    const cycle = CYCLE_MONTHS[body.cycle] ? body.cycle : closedPlanToCycle(body.cycle);
+    if (!cycle) return reply.code(400).send({ error: "ciclo inválido (anual ou semestral)" });
+    const now = new Date();
+    const snapshot = planSnapshotOf(plan, { cycle, at: now.toISOString() });
+    const price = body.price != null && body.price !== "" ? Number(body.price) : snapshot.listPrice;
+    if (!(price > 0)) return reply.code(400).send({ error: "informe o valor do ciclo (o plano não tem preço de tabela neste ciclo)" });
+    const subsAll = await repo.list("subscriptions");
+    const same = plannedSubs(subsAll, customer.id).find((s) => (s.planSnapshot.product || "") === snapshot.product);
+    if (same) {
+      const label = PLAN_PRODUCTS.find((x) => x.id === snapshot.product)?.label || snapshot.product;
+      return reply.code(409).send({ error: `o cliente já tem assinatura de ${label} (${same.planSnapshot.name}): use "Mudar plano" nela`, code: "product_already_subscribed", subscription: same.id });
+    }
+    const startAt = body.startAt && !Number.isNaN(new Date(body.startAt).getTime()) ? new Date(body.startAt).toISOString() : now.toISOString();
+    const created = await repo.create("subscriptions", {
+      status: "active", cycle, price, pendingChange: null, customer: customer.id, saas: customer.saas || "",
+      plan: plan.id, planCode: plan.code, planSnapshot: snapshot, periodStart: startAt,
+    });
+    const sub = await initSubscription(repo, created, now);
+    const saved = await syncCustomerPlanFromSub(repo, sub).catch(() => null);
+    await recordPlanChange(repo, {
+      type: "start", saas: customer.saas, customer: customer.id, subscription: sub.id, lead: customer.leadId || "", at: now.toISOString(), effectiveAt: startAt,
+      from: null, to: subscriptionPlanState(sub), listPrice: snapshot.listPrice, priceVersion: snapshot.priceVersion,
+      amount: price, source: "add_product", author: req.authUser?.id || "api", note: "produto adicionado",
+    });
+    return reply.code(201).send({ ok: true, subscription: sub, customer: saved || (await repo.get("customers", customer.id)) });
+  });
+
   // Mudança de plano/preço/ciclo. Upgrade aplica já (+ fatura pró-rata do diff
   // restante do ciclo); downgrade e troca de ciclo agendam pro fim do ciclo.
   app.post("/api/subscriptions/:id/change", async (req, reply) => {
     const sub = await repo.get("subscriptions", req.params.id);
     if (!sub) return reply.code(404).send({ error: "Not found" });
-    const body = req.body || {};
+    const raw = req.body || {};
     const now = new Date();
+    // `plan` aceita o id ou o código de um plano do catálogo: a assinatura
+    // passa a carregar o código e o retrato do plano (preço de tabela do ciclo,
+    // versão e limites). Plano do cadastro antigo segue só como referência.
+    const catalogPlan = raw.plan ? await findPlan(repo, sub.saas, raw.plan) : null;
+    const body = catalogPlan ? { ...raw, plan: catalogPlan.id } : raw;
+    const planPatch = catalogPlan
+      ? { planCode: catalogPlan.code, planSnapshot: planSnapshotOf(catalogPlan, { cycle: body.cycle || sub.cycle, at: now.toISOString() }) }
+      : {};
+    const author = req.authUser?.id || "api";
     const result = computeChange(sub, body, now);
 
     if (result.changeType === "no_op") return { ok: false, ...result };
@@ -150,16 +209,26 @@ export function registerBillingRoutes(app, repo, { mp, discord } = {}) {
       const updated = await repo.update("subscriptions", sub.id, {
         price: body.price != null && body.price !== "" ? Number(body.price) : sub.price,
         plan: body.plan ?? sub.plan,
+        ...planPatch,
         pendingChange: null,
       });
+      let prorataInvoice = null;
       if (result.prorata > 0) {
-        await repo.create("invoices", {
+        prorataInvoice = await repo.create("invoices", {
           subscription: sub.id, customer: sub.customer, saas: sub.saas,
           amount: result.prorata, kind: "prorata", status: "open",
           dueDate: now.toISOString(), createdAt: now.toISOString(),
         });
       }
       await syncCustomerArr(repo, sub.customer);
+      await syncCustomerPlanFromSub(repo, updated).catch(() => null);
+      await recordPlanChange(repo, {
+        type: "upgrade", saas: sub.saas, customer: sub.customer, subscription: sub.id, at: now.toISOString(),
+        from: subscriptionPlanState(sub), to: subscriptionPlanState(updated),
+        listPrice: planPatch.planSnapshot?.listPrice, priceVersion: planPatch.planSnapshot?.priceVersion,
+        amount: result.prorata || 0, source: "change", author,
+        ref: prorataInvoice ? { invoice: prorataInvoice.id } : {},
+      });
       // Assinatura cobrada via MP: PUT só do valor — próxima recorrência sai no
       // preço novo na data original (best-effort; pró-rata já foi faturado aqui).
       let mpSync;
@@ -179,10 +248,93 @@ export function registerBillingRoutes(app, repo, { mp, discord } = {}) {
         price: body.price != null && body.price !== "" ? Number(body.price) : sub.price,
         cycle: body.cycle || sub.cycle,
         plan: body.plan ?? sub.plan,
+        ...planPatch,
         applyAt: result.applyAt,
       },
     });
+    await recordPlanChange(repo, {
+      type: "scheduled", saas: sub.saas, customer: sub.customer, subscription: sub.id, at: now.toISOString(),
+      effectiveAt: result.applyAt,
+      from: subscriptionPlanState(sub),
+      to: subscriptionPlanState({ ...sub, ...updated.pendingChange }),
+      listPrice: planPatch.planSnapshot?.listPrice, priceVersion: planPatch.planSnapshot?.priceVersion,
+      source: "change", author, note: result.changeType === "cycle_change" ? "troca de ciclo" : "downgrade",
+    });
     return { ok: true, ...result, subscription: updated };
+  });
+
+  // Números por plano do catálogo (tela Planos): quem está em cada plano e
+  // quanto ele vale. Tudo sai das réguas que já existem: cliente ativo é quem
+  // não churnou (churn.js), o contratado é o `arr` do cliente (o mesmo do
+  // rollup) e o recebido é o caixa confirmado (cashReceivedByCustomer). Cliente
+  // fora do catálogo aparece nos baldes `custom` (venda personalizada) e
+  // `none` (sem plano), pra dar pra ver o que falta classificar.
+  // Tem receita por cliente: só admin (a key mestre passa).
+  app.get("/api/plans/stats/:saas", async (req, reply) => {
+    if (req.authUser && !(req.authUser.roles || []).includes("admin")) {
+      return reply.code(403).send({ error: "Os números por plano são restritos a administradores" });
+    }
+    const saas = req.params.saas;
+    const [customers, invoices, mpPayments, plans] = await Promise.all([
+      repo.listWhere("customers", { saas }), repo.listWhere("invoices", { saas }), repo.list("mp_payments"), plansOf(repo, saas),
+    ]);
+    const received = cashReceivedByCustomer({ customers, invoices, mpPayments });
+    const known = new Set(plans.map((p) => p.code));
+    const blank = () => ({ active: 0, churned: 0, arr: 0, mrr: 0, received: 0, customers: [] });
+    const out = { plans: Object.fromEntries(plans.map((p) => [p.code, blank()])), custom: blank(), none: blank() };
+    const subsAll = await repo.listWhere("subscriptions", { saas });
+    const add = (bucket, c, { arr, cash, cycle, snapshot, churned }) => {
+      if (churned) bucket.churned++; else { bucket.active++; bucket.arr += arr; }
+      bucket.received += cash;
+      bucket.customers.push({
+        id: c.id, name: c.name || "", plan: c.plan || "", cycle, arr, received: cash,
+        startedAt: c.startedAt || "", endedAt: churned ? c.endedAt || "" : "",
+        listPrice: snapshot?.listPrice ?? null, priceVersion: snapshot?.priceVersion ?? null,
+      });
+    };
+    for (const c of customers) {
+      const churned = isChurnedCustomer(c);
+      const cash = received.get(c.id) || 0;
+      // Cliente com MAIS DE UM produto conta em cada plano, com o valor da
+      // assinatura daquele plano. O caixa é por cliente (pagamento não diz de
+      // qual assinatura veio), então é repartido na proporção do contratado.
+      const planned = plannedSubs(subsAll, c.id).filter((s) => known.has(s.planCode));
+      if (planned.length > 1) {
+        const values = planned.map((s) => (s.status === "active" || s.status === "past_due" ? annualized(s.price, s.cycle) : 0));
+        const sum = values.reduce((a, v) => a + v, 0);
+        planned.forEach((s, i) => add(out.plans[s.planCode], c, {
+          arr: values[i], cash: sum > 0 ? cash * (values[i] / sum) : cash / planned.length,
+          cycle: s.planSnapshot?.closedPlan || s.cycle, snapshot: s.planSnapshot, churned,
+        }));
+        continue;
+      }
+      const bucket = c.planCode && known.has(c.planCode) ? out.plans[c.planCode] : (c.planCustom || c.planCode ? out.custom : out.none);
+      add(bucket, c, { arr: Number(c.arr) || 0, cash, cycle: c.planCycle || "", snapshot: c.planSnapshot, churned });
+    }
+    const total = blank();
+    for (const b of [...Object.values(out.plans), out.custom, out.none]) {
+      b.arr = Math.round(b.arr); b.mrr = Math.round(b.arr / 12); b.received = Math.round(b.received * 100) / 100;
+      b.customers.forEach((x) => { x.arr = Math.round(x.arr); x.received = Math.round(x.received * 100) / 100; });
+      b.customers.sort((x, y) => (x.endedAt ? 1 : 0) - (y.endedAt ? 1 : 0) || y.arr - x.arr);
+      total.arr += b.arr; total.received += b.received;
+    }
+    // Total de CLIENTES (quem tem dois produtos conta uma vez só).
+    for (const c of customers) { if (isChurnedCustomer(c)) total.churned++; else total.active++; }
+    total.mrr = Math.round(total.arr / 12); total.received = Math.round(total.received * 100) / 100; delete total.customers;
+    return { ...out, total };
+  });
+
+  // Histórico de plano do cliente (mais recente primeiro) e o feed do produto.
+  // A coleção plan_changes é PRIVATE no CRUD genérico: só se lê por aqui.
+  app.get("/api/customers/:id/plan-history", async (req, reply) => {
+    const customer = await repo.get("customers", req.params.id);
+    if (!customer) return reply.code(404).send({ error: "cliente não encontrado" });
+    return planHistoryOf(repo, customer.id);
+  });
+  app.get("/api/plan-changes", async (req) => {
+    const { saas, since } = req.query || {};
+    const rows = await repo.listWhere("plan_changes", { saas, ...(since ? { at: { gte: String(since) } } : {}) });
+    return rows.sort((a, b) => String(b.at).localeCompare(String(a.at)));
   });
 
   // Baixa de fatura (o pagamento em si acontece no MP/app — fase 4). Se a

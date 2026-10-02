@@ -193,8 +193,8 @@ test("Ads Essencial: anual abre, semestral no Shift+1, sem recorrente, sem tela 
   assert.equal(pricing.offer3, undefined, "recorrente saiu dos planos novos");
   assert.equal(pricing.offer4, undefined, "escada antiga morta");
   assert.equal(pricing.showIf, undefined);
-  assert.equal(pricing.sub, "Lever Ads · Essencial");
-  assert.equal(pricing.offer2.sub, "Lever Ads · Essencial", "o subtítulo é do produto, vale nas duas");
+  assert.equal(pricing.sub, "Ads Essencial");
+  assert.equal(pricing.offer2.sub, "Ads Essencial", "o subtítulo é do produto, vale nas duas");
   assert.ok(pricing.benefitGroups[0].items.includes("Sincronização das suas contas (Meli + Shopee)"), "entregáveis vêm do catálogo");
   assert.ok(!t.slides.some((s) => s.key === "oem_processo"), "sem tela OEM");
   assert.equal(t.slides.filter((s) => s.type === "pricing").length, 1, "um investimento só");
@@ -220,7 +220,7 @@ test("linha OEM: tela OEM escura depois do 3 etapas (que fica), ritmo re-alterna
   assert.equal(pricing.key, "investimento_oem_essencial");
   assert.equal(pricing.price, "5.964");
   assert.equal(pricing.planPill, "3 contas · 200 OEM/mês");
-  assert.equal(pricing.sub, "Lever OEM · Essencial");
+  assert.equal(pricing.sub, "Ads Essencial + OEM");
   assert.equal(pricing.offer3, undefined);
   assert.ok(!JSON.stringify(pricing).includes("100 anúncios gerados por OEM"), "texto velho do slide de autopeças não sobrevive");
 
@@ -289,7 +289,7 @@ test("payload público nunca leva o catálogo cru; catalogUI tem linhas, nomes e
   assert.deepEqual(Object.keys(ui.names), [
     "oem_essencial", "oem_escala", "ads_essencial", "ads_escala", "price_essencial", "price_escala", "price_enterprise",
   ]);
-  assert.equal(ui.names.ads_escala, "Lever Ads · Escala");
+  assert.equal(ui.names.ads_escala, "Ads Escala");
   // As duas formas de pagar, na ordem em que o closer apresenta.
   assert.equal(ui.priceLines.ads_essencial, "Anual R$ 5.964 (12x 497) · Shift+1 semestral R$ 3.582 (6x 597)");
   assert.equal(ui.priceLines.price_escala, "Anual R$ 17.964 (12x 1.497) · Shift+1 semestral R$ 11.382 (6x 1.897)");
@@ -307,7 +307,7 @@ test("payload público nunca leva o catálogo cru; catalogUI tem linhas, nomes e
   assert.equal(ui.suggested, "ads_essencial");
   assert.equal(ui.line, "ads");
   assert.equal(ui.pkg, "essencial");
-  assert.equal(ui.why, "1 conta(s) · fora de autopeças → Lever Ads · Essencial.");
+  assert.equal(ui.why, "1 conta(s) · fora de autopeças → Ads Essencial.");
   assert.equal(ui.tier, "D", "a nota da matriz continua");
   assert.equal(ui.pain, "none", "sem dor marcada → trilha genérica");
   assert.ok(ui.pains.A.spin.S.length > 10, "perguntas SPIN embarcadas");
@@ -346,8 +346,8 @@ test("consulta rápida: adicionais, pacotes de OEM e sob consulta; fora do deck"
     ["Pacote de 3.000 anúncios OEM (uma vez)", "R$ 4.500"],
     ["Setup de Equalização", "sob consulta"],
     ["Setup de Otimização", "sob consulta"],
-    ["Lever OEM · Enterprise", "sob consulta"],
-    ["Lever Ads · Enterprise", "sob consulta"],
+    ["Ads Enterprise + OEM", "sob consulta"],
+    ["Ads Enterprise", "sob consulta"],
   ]);
   // É consulta do closer: nada disso entra no deck que o cliente recebe.
   const deck = JSON.stringify(applyCatalog(p).slides);
@@ -743,7 +743,7 @@ test("catálogo do fechamento: linhas × pacotes com anual/semestral + pacote de
   assert.equal(DEAL_PRODUCT_LABEL.full, "LeverAds FULL");
   assert.equal(DEAL_PRODUCT_LABEL.parcialoem, "Parcial + OEM 250");
   assert.equal(DEAL_PRODUCT_LABEL.avulso, "Clonagem avulsa");
-  assert.equal(DEAL_PRODUCT_LABEL.ads_escala, "Lever Ads · Escala");
+  assert.equal(DEAL_PRODUCT_LABEL.ads_escala, "Ads Escala");
 
   // Preço editado no banco vale na hora (sem deploy).
   const calc = JSON.parse(JSON.stringify(t.calc));
@@ -755,4 +755,24 @@ test("catálogo do fechamento: linhas × pacotes com anual/semestral + pacote de
 
   // SaaS sem catálogo (mentoria do Kids): nada a oferecer, o campo some.
   assert.deepEqual(dealCatalog({ plans: {} }), []);
+});
+
+// O mapa `tierByAccounts` semeado no banco só conhece as faixas ANTIGAS do form
+// (2, 3-5, 6-10). As faixas novas (2-3, 4-6, 7-10) não podem cair em
+// "essencial" caladas: valem pelo padrão do código, e o que o banco define
+// continua mandando faixa a faixa.
+test("pkgOf com o mapa do banco: faixa nova cai no padrão, faixa definida no banco manda", async () => {
+  const { pkgOf } = await import("../src/proposal-catalog.js");
+  const repo = makeMemRepo();
+  await repo.create("proposal_templates", JSON.parse(JSON.stringify(TEMPLATE)));
+  await ensureProposalCatalog(repo);
+  const cat = (await repo.get("proposal_templates", "pt_leverads")).calc.catalog;
+  assert.equal(cat.tierByAccounts["4-6"], undefined, "o mapa semeado não conhece a faixa nova");
+  assert.equal(pkgOf(cat, { accounts: "2-3" }), "essencial");
+  assert.equal(pkgOf(cat, { accounts: "4-6" }), "escala");
+  assert.equal(pkgOf(cat, { accounts: "7-10" }), "escala");
+  assert.equal(pkgOf(cat, { accounts: "10+" }), "enterprise");
+  assert.equal(pkgOf(cat, { accounts: "3-5" }), "essencial", "faixa antiga segue como o banco diz");
+  assert.equal(pkgOf({ ...cat, tierByAccounts: { ...cat.tierByAccounts, "4-6": "essencial" } }, { accounts: "4-6" }), "essencial", "decisão comercial no banco vence o padrão");
+  assert.equal(pkgOf(cat, { accounts: "" }), "essencial");
 });

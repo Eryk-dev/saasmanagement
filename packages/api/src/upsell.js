@@ -23,6 +23,7 @@
 
 import { logActivity } from "./lead-flow.js";
 import { isChurnedCustomer } from "./churn.js";
+import { recordPlanChange, customerPlanState } from "./plan-history.js";
 
 // Só venda AVULSA desde 10/09/2026: o "acréscimo na mensalidade" (modo
 // recurring, que subia a assinatura) saiu junto com a recorrência.
@@ -109,6 +110,12 @@ export async function recordUpsell(repo, customer, input, { author = "system", c
   const saved = await repo.update("customers", customer.id, {
     lastUpsellAt: input.at, lastUpsellItem: input.item,
     upsellCount: (Number(customer.upsellCount) || 0) + 1,
+  });
+  await recordPlanChange(repo, {
+    type: "upsell", saas: customer.saas, customer: customer.id, lead: customer.leadId || "",
+    effectiveAt: input.at, from: customerPlanState(customer), to: customerPlanState(saved),
+    amount: Number(input.amount) || 0, source: "upsell", author: soldBy, note: input.item,
+    ref: { invoice: invoice?.id || "" },
   });
   const summary = upsellSummary(input);
   if (customer.leadId) {

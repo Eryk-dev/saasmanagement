@@ -509,6 +509,12 @@ export const api = {
   changeSubscription: (id, body) => req("POST", `/api/subscriptions/${id}/change`, body),
   payInvoice: (id) => req("POST", `/api/invoices/${id}/pay`),
   // Dinheiro real recebido por cliente ({ customerId: total }) — Status pgto.
+  // Plano do cliente: histórico de mudanças e o direito de acesso/limites por produto.
+  // Produto novo pra um cliente que já existe: nasce a assinatura do plano escolhido.
+  addCustomerSubscription: (customerId, body) => req("POST", `/api/customers/${encodeURIComponent(customerId)}/subscriptions`, body),
+  planStats: (saas) => req("GET", `/api/plans/stats/${encodeURIComponent(saas)}`),
+  planHistory: (customerId) => req("GET", `/api/customers/${encodeURIComponent(customerId)}/plan-history`),
+  customerEntitlements: (customerId) => req("GET", `/api/entitlements/customers/${encodeURIComponent(customerId)}`),
   billingReceived: (saas) => req("GET", `/api/billing/received/${encodeURIComponent(saas)}`),
   billingCash: (saas, { since, until }) => req("GET", `/api/billing/cash/${encodeURIComponent(saas)}?${new URLSearchParams({ since, until })}`),
   unpayInvoice: (id) => req("POST", `/api/invoices/${id}/unpay`),

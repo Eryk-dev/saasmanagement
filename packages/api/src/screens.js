@@ -19,6 +19,7 @@ export const SCREEN_IDS = [
   "outbound", "remuneracao",
   "blog", // redação do blog SEO (grupo Marketing)
   "eloapp", "landingpages",
+  "plans", // gestão do catálogo de planos (grupo Comercial; a tela é de admin)
   "tickets", "quick_replies", "support_settings", // grupo Suporte: fila, respostas rápidas e configurações de SLA/atendentes
 ];
 
@@ -106,7 +107,13 @@ const ROUTE_SCREENS = [
   ["/api/payables", ["expenses"]],       // CRUD genérico das contas a pagar
   ["/api/fin_rules", ["expenses"]],      // regras de conciliação aprendidas
   ["/api/mp_movements", ["expenses"]],   // saídas da conta MP (settlement report)
-  ["/api/plans", ["customers"]],
+  ["/api/plans", ["customers", "plans"]],
+  ["/api/plan-changes", ["customers"]], // histórico de mudanças de plano (a coleção é PRIVATE no CRUD genérico)
+  // Sync de acesso do produto (payment_active da org): lê e escreve em cima do
+  // billing da base, então segue o guard de Clientes. Aplicar de verdade ainda
+  // pede etiqueta admin dentro da rota (leverads-access.js).
+  ["/api/leverads-access", ["customers"]],
+  ["/api/entitlements", ["customers"]],
   ["/api/nps", ["customers"]],
   // Cases nascem da ficha do cliente e mostram faturamento por conta: mesmo
   // guard da base de clientes.

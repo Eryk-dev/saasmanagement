@@ -1,11 +1,12 @@
 import React from "react";
 import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
+import { isAdminUser } from "../lib/users.js";
 import { chromeBtnStyleSmall } from "../lib/ui.js";
 import { EmptyState, PrimaryButton, MoreMenu } from "../atoms.jsx";
 import { Modal } from "../components/overlay.jsx";
 import { Segmented } from "../components/viz.jsx";
-import { mpMethodLabel, MP_SUB_STATUS } from "../lib/payments.js";
+import { mpMethodLabel, MP_SUB_STATUS, CYCLE_LABEL, annualized as annualizedPrice } from "../lib/payments.js";
 // Assinaturas (fase 5) — Cockpit como system-of-record de billing: assinaturas,
 // faturas (renovação/pró-rata/dunning) e planos por SaaS. O pagamento em si fica
 // no MP/app (fase 4) — aqui a fatura recebe baixa manual ("marcar paga").
@@ -13,9 +14,7 @@ import { mpMethodLabel, MP_SUB_STATUS } from "../lib/payments.js";
 
 const { useState, useEffect, useCallback } = React;
 
-const CYCLE_LABEL = { monthly: "mensal", quarterly: "trimestral", semiannual: "semestral", annual: "anual" };
-const CYCLE_MONTHS = { monthly: 1, quarterly: 3, semiannual: 6, annual: 12 };
-const annualized = (s) => (Number(s.price) || 0) * (12 / (CYCLE_MONTHS[s.cycle] || 1));
+const annualized = (s) => annualizedPrice(s.price, s.cycle);
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString("pt-BR") : "—");
 
 const SUB_STATUS = {
@@ -214,7 +213,7 @@ function SubscriptionsScreen({ saasId, compact = false }) {
         <div className="customers-billing-filters"><div className="customers-segment">{[["invoices","Faturas",invoices.length],["subs","Assinaturas",subs.length]].map(([id,label,n])=><button key={id} aria-pressed={tab===id} onClick={()=>setTab(id)}>{label} <span>{n}</span></button>)}</div><span>vencida → aberta → paga</span>
           <MoreMenu items={[
             {label:"Nova assinatura",onClick:()=>openForm("subscriptions",{saas:active})},
-            {label:"Planos",onClick:()=>setTab("plans")},
+            isAdminUser()&&{label:"Gerenciar planos",onClick:()=>{window.location.hash="plans";}},
             mpConfigured&&{label:"Recorrências do Mercado Pago",onClick:()=>setTab("mp")},
             {label:busy==="billing"?"Executando billing…":"Rodar billing",disabled:!!busy,onClick:()=>perform("billing",runBilling)},
           ]}/>
@@ -268,7 +267,6 @@ function SubscriptionsScreen({ saasId, compact = false }) {
           <Segmented value={tab} onChange={setTab} options={[
             { value: "subs", label: `Assinaturas (${subs.length})` },
             { value: "invoices", label: `Faturas (${invoices.length})` },
-            { value: "plans", label: `Planos (${plans.length})` },
             ...(mpConfigured ? [{ value: "mp", label: `MP recorrentes (${preapprovals.length})${mpUnlinked ? ` · ${mpUnlinked} sem cliente` : ""}` }] : []),
           ]} />
         </div>
@@ -282,16 +280,14 @@ function SubscriptionsScreen({ saasId, compact = false }) {
               <span className="mono" style={{ fontSize: 11 }}>▸ rodar billing</span>
             </button>
           )}
-          {tab === "plans"
-            ? <PrimaryButton onClick={() => openForm("plans", { saas: active })}>+ novo plano</PrimaryButton>
-            : tab !== "mp" && <PrimaryButton onClick={() => openForm("subscriptions", { saas: active })}>+ nova assinatura</PrimaryButton>}
+          {tab !== "mp" && <PrimaryButton onClick={() => openForm("subscriptions", { saas: active })}>+ nova assinatura</PrimaryButton>}
         </div>
       </div>
 
       {toast && <div className="mono" style={{ padding: "8px var(--pad-x)", fontSize: 11, color: "var(--accent)", borderBottom: "1px solid var(--line-1)" }}>{toast}</div>}
 
       <div style={{ flex: 1, overflow: "auto", padding: "20px var(--pad-x)" }}>
-        {tab !== "plans" && (subs.length > 0 || invoices.length > 0) && (
+        {(subs.length > 0 || invoices.length > 0) && (
           <BillingState subs={subs} invoices={invoices} preapprovals={preapprovals}
             mpUnlinked={mpUnlinked} sync={mpData?.sync} mpConfigured={mpConfigured} />
         )}
@@ -388,26 +384,6 @@ function SubscriptionsScreen({ saasId, compact = false }) {
           )
         )}
 
-        {tab === "plans" && (
-          !plans.length ? (
-            <EmptyState title="Nenhum plano" hint="Planos são o catálogo do SaaS (nome + preço por ciclo). A assinatura pode referenciar um plano ou usar preço avulso." action={<PrimaryButton onClick={() => openForm("plans", { saas: active })}>+ Criar plano</PrimaryButton>} />
-          ) : (
-            <Table cols="1.4fr 0.8fr 0.8fr 0.8fr 120px" head={["Plano", "Ciclo", "Preço/ciclo", "Assinaturas", ""]}>
-              {plans.map((p) => (
-                <div key={p.id} style={rowStyle("1.4fr 0.8fr 0.8fr 0.8fr 120px")}>
-                  <span style={{ fontWeight: 500 }}>{p.name || p.id}</span>
-                  <span className="mono dim" style={{ fontSize: 12 }}>{CYCLE_LABEL[p.cycle] || p.cycle}</span>
-                  <span className="mono tnum" style={{ fontSize: 12 }}>{window.fmt.money(p.price || 0)}</span>
-                  <span className="mono dim tnum" style={{ fontSize: 12 }}>{subs.filter((s) => s.plan === p.id && s.status !== "canceled").length}</span>
-                  <span style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end" }}>
-                    <button onClick={() => openForm("plans", p)} style={chromeBtnStyleSmall}><span style={{ fontSize: 11 }}>editar</span></button>
-                    <button onClick={() => openDelete("plans", p)} className="mono dim" style={{ fontSize: 12 }}>✕</button>
-                  </span>
-                </div>
-              ))}
-            </Table>
-          )
-        )}
         {tab === "mp" && (
           <MpRecurringTab
             preapprovals={preapprovals}
@@ -554,11 +530,27 @@ function ChangeModal({ sub, plans, customerName, onClose, onDone }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
+  // Plano do catálogo tem preço POR CICLO: escolher o plano (ou trocar o ciclo
+  // com ele escolhido) sugere o preço de tabela, que continua editável.
+  const tablePrice = (p, c) => p?.prices?.[c]?.total;
   function pickPlan(id) {
     setPlan(id);
     const p = plans.find((x) => x.id === id);
-    if (p) { setPrice(String(p.price ?? "")); setCycle(p.cycle || "monthly"); }
+    if (!p) return;
+    if (p.code) {
+      const c = tablePrice(p, cycle) != null ? cycle : (p.cycle || cycle);
+      setCycle(c);
+      if (tablePrice(p, c) != null) setPrice(String(tablePrice(p, c)));
+    } else { setPrice(String(p.price ?? "")); setCycle(p.cycle || "monthly"); }
   }
+  function pickCycle(c) {
+    setCycle(c);
+    const p = plans.find((x) => x.id === plan);
+    if (p?.code && tablePrice(p, c) != null) setPrice(String(tablePrice(p, c)));
+  }
+  // Só o que dá pra assinar: plano do catálogo de assinatura com preço de
+  // tabela, mais o cadastro antigo e o plano atual (mesmo arquivado).
+  const choices = plans.filter((p) => p.id === sub.plan || !p.code || (p.kind === "subscription" && p.pricing !== "custom" && p.status !== "archived"));
 
   async function submit(e) {
     e.preventDefault();
@@ -588,12 +580,12 @@ function ChangeModal({ sub, plans, customerName, onClose, onDone }) {
           <div style={{ fontSize: 16, fontWeight: 500, marginTop: 2 }}>{customerName}</div>
           <div className="mono dim" style={{ fontSize: 11, marginTop: 2 }}>hoje: {window.fmt.money(sub.price || 0)}/{CYCLE_LABEL[sub.cycle] || sub.cycle} · upgrade fatura o pró-rata do resto do ciclo; downgrade/troca de ciclo valem no fim do ciclo</div>
         </div>
-        {!!plans.length && (
+        {!!choices.length && (
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <span className="kicker">Plano</span>
             <select value={plan} onChange={(e) => pickPlan(e.target.value)} style={input}>
               <option value="">(avulso — só preço/ciclo)</option>
-              {plans.map((p) => <option key={p.id} value={p.id}>{p.name} · {window.fmt.money(p.price || 0)}/{CYCLE_LABEL[p.cycle] || p.cycle}</option>)}
+              {choices.map((p) => <option key={p.id} value={p.id}>{p.name} · {window.fmt.money(p.price || 0)}/{CYCLE_LABEL[p.cycle] || p.cycle}</option>)}
             </select>
           </label>
         )}
@@ -604,7 +596,7 @@ function ChangeModal({ sub, plans, customerName, onClose, onDone }) {
           </label>
           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <span className="kicker">Ciclo</span>
-            <select value={cycle} onChange={(e) => setCycle(e.target.value)} style={input}>
+            <select value={cycle} onChange={(e) => pickCycle(e.target.value)} style={input}>
               <option value="monthly">Mensal</option>
               <option value="quarterly">Trimestral</option>
               <option value="semiannual">Semestral</option>
@@ -636,4 +628,4 @@ function Table({ cols, head, children }) {
 }
 const rowStyle = (cols) => ({ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "10px 14px", borderBottom: "1px solid var(--line-1)", alignItems: "center", fontSize: 13 });
 
-export { SubscriptionsScreen, BillingState };
+export { SubscriptionsScreen, BillingState, ChangeModal };
