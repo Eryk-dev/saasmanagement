@@ -33,8 +33,16 @@ export const LEAD_QUESTIONS_POR_PRODUTO = Object.fromEntries(
   PRODUTOS.map((p) => [p, questionsFor(p)])
 );
 
-// União das três, na ordem em que aparecem — é o que a migração leva pro
-// `products.leverads.leadQuestions`, já que o pipeline é um só.
+// No CARD do lead (cadastro/edição no cockpit) só travam as perguntas que os
+// TRÊS formulários fazem e que o SDR sempre consegue responder. O resto fica
+// opcional: nicho não existe no form de OEM, loja física não existe no de Ads,
+// e "o que fez você procurar agora" é texto que o lead manual raramente tem.
+// Obrigatória no card = trava o cadastro inteiro (Leo, 09/07/2026).
+const OBRIGATORIAS_NO_CARD = new Set(["accounts", "listings"]);
+
+// União das três, na ordem em que aparecem — é o que vai pro
+// `products.leverads.leadQuestions`, já que o pipeline é um só. É a lista
+// INTEIRA do card: nada de pergunta de formulário aposentado sobrevive aqui.
 export const LEAD_QUESTIONS_UNIAO = (() => {
   const vistas = new Set();
   const out = [];
@@ -42,7 +50,7 @@ export const LEAD_QUESTIONS_UNIAO = (() => {
     for (const q of f.questions) {
       if (CONTATO_KEYS.has(q.key) || vistas.has(q.key)) continue;
       vistas.add(q.key);
-      out.push(daPergunta(q));
+      out.push({ ...daPergunta(q), required: OBRIGATORIAS_NO_CARD.has(q.key) });
     }
   }
   return out;
