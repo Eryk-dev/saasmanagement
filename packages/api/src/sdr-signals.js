@@ -25,7 +25,9 @@ export const lastRealReply = (msgs = []) => [...msgs].reverse().find(isRealReply
 // nossa conversa amanhã às 13h" NÃO são. O robô do Renan (16/09) leu o próprio
 // lembrete como "horários que te passei" e insistiu numa oferta que nunca fez.
 export const SLOTS_RX = /(hoje|amanh[ãa]|segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo) às \d{1,2}h/i;
-export const OFFER_CUE_RX = /consigo|tenho .*(?:livre|dispon)|qual fica melhor|fica bom pra voc|pode ser\?|encaix|op[çc][õo]es|ficou /i;
+// "Tenho agenda para … Qual funciona melhor para você?" é a oferta do roteiro
+// Lever OEM (Leo, 05/10): entra na régua pra slotsOffered/cobrança/aceite.
+export const OFFER_CUE_RX = /consigo|tenho .*(?:livre|dispon)|tenho agenda|qual fica melhor|qual funciona melhor|fica bom pra voc|funciona para voc|pode ser\?|encaix|op[çc][õo]es|ficou /i;
 export const NOT_OFFER_RX = /nossa conversa|agendad|remarcad|confirmando|est[áa] tudo certo|te espero|come[çc]a em|separou|marcad[oa] (?:ent[ãa]o )?pra/i;
 export const isOfferMsg = (t) => SLOTS_RX.test(t || "") && OFFER_CUE_RX.test(t || "") && !NOT_OFFER_RX.test(t || "");
 

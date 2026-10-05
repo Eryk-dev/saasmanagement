@@ -126,4 +126,39 @@ export const SDR_TEMPLATES = [
     body: "Oi {{1}}, passei no nosso horário marcado e não te encontrei, acontece! Quer que eu remarque? Me diz um horário que fica bom pra você que eu já reservo.",
     example: ["Rafael"],
   },
+  // ── ROTEIRO LEVER OEM (doc do Leo, 05/10/2026) ─────────────────────────────
+  // Lead que veio pelo OEM segue um roteiro fixo (sdr-brain.js, oem*Parts).
+  // Estes são os pontos do roteiro que podem sair com a janela de 24h FECHADA
+  // e por isso precisam de template: a abordagem (M1), a confirmação da
+  // manhã (8h), o lembrete de 2h com o link e o de 10 min. Submeter pelo
+  // sdr-setup; até a aprovação o motor cai nos templates genéricos de cima.
+  // Começam e terminam com texto fixo (regra da Meta pra variável nas pontas).
+  {
+    name: "sdr_primeiro_toque_oem_v2",
+    category: "MARKETING",
+    language: "pt_BR",
+    body: "Oiii {{1}}, tudo bem? Recebemos aqui seu interesse, com o Lever OEM você digita o código e recebe o anúncio completo, com fotos, título de 200 caracteres, descrição e compatibilidade, pronto para revisar e publicar no Mercado Livre e Shopee. Isso ajudaria na sua operação?",
+    example: ["Roberto"],
+  },
+  {
+    name: "sdr_lembrete_manha_oem",
+    category: "UTILITY",
+    language: "pt_BR",
+    body: "Bom dia {{1}}, tudo bom? Temos um horário reservado para {{2}}, tudo certo? Na reunião vamos te mostrar na prática o passo a passo para criar anúncios completos em escala, explicar as funcionalidades da plataforma e tirar todas suas dúvidas. Posso contar com sua presença? Caso não consiga comparecer, me sinalize para liberar seu horário, por favor.",
+    example: ["Roberto", "hoje às 11h"],
+  },
+  {
+    name: "sdr_lembrete_link_oem",
+    category: "UTILITY",
+    language: "pt_BR",
+    body: "Oi {{1}}, nossa conversa é {{2}}. O link pra entrar é este: {{3}}. Qualquer imprevisto por favor me avise.",
+    example: ["Roberto", "hoje às 16h", "https://meet.google.com/abc-defg-hij"],
+  },
+  {
+    name: "sdr_lembrete_10min_oem",
+    category: "UTILITY",
+    language: "pt_BR",
+    body: "Oi {{1}}, nossa conversa começa em 10 minutos! O link pra entrar é este: {{2}}. Te esperamos lá!",
+    example: ["Roberto", "https://meet.google.com/abc-defg-hij"],
+  },
 ];

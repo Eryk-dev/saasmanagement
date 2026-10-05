@@ -167,9 +167,10 @@ test("opt-out, número inválido, saída lateral, interno e desqualificado ficam
 
 // ── Lembretes da call ────────────────────────────────────────────────────────
 
-// Régua do Leo (30/09): SEM véspera. Manhã do dia (08:30) só pra call a partir
-// das 10h30; 2h antes; 10min antes com o link.
-test("sem véspera: call das 10h leva só 2h e 10min, uma vez cada, gravando no confirmLog", async () => {
+// Régua do Leo (30/09, ajustada no roteiro de 05/10): SEM véspera. Manhã do dia
+// (08:00) pra TODO MUNDO com call no dia; 2h antes (pulado quando colaria na
+// manhã, call até 10h30); 10min antes com o link.
+test("call das 10h: manhã às 8h, o de 2h é pulado (colaria na manhã) e o 10min leva o link, gravando no confirmLog", async () => {
   const nowRef = { t: new Date("2026-08-19T13:00:00Z") }; // exatamente T-24h da call: nada sai
   // Lead que ESCREVEU há pouco (janela de 24h aberta nos lembretes): é o
   // único cenário em que o lembrete sai como texto livre.
@@ -184,20 +185,16 @@ test("sem véspera: call das 10h leva só 2h e 10min, uma vez cada, gravando no 
   assert.equal(wa.sent.length, 0, "véspera não existe mais");
   assert.equal((await repo.get("leads", "L1")).confirmLog, undefined);
 
-  nowRef.t = new Date("2026-08-20T11:35:00Z"); // 8h35 BRT: a manhã cairia aqui, mas a call é antes das 10h30
-  await r.tick();
-  assert.equal(wa.sent.length, 0);
-  assert.equal((await repo.get("leads", "L1")).confirmLog.manha, "skip");
-
-  nowRef.t = new Date("2026-08-20T11:05:00Z"); // 8h05 BRT, janela do 2h
+  nowRef.t = new Date("2026-08-20T11:05:00Z"); // 8h05 BRT: manhã do dia (o de 2h também cairia aqui)
   await r.tick();
   assert.equal(wa.sent.length, 1);
-  assert.match(wa.sent[0].text, /Nossa conversa é hoje às 10h/);
+  assert.match(wa.sent[0].text, /^Bom dia Rafael! Nossa conversa é hoje às 10h/);
   assert.match(wa.sent[0].text, /computador por perto/);
   assert.doesNotMatch(wa.sent[0].text, /celular ou pelo computador/);
   assert.match(wa.sent[0].text, /Me confirma por aqui/);
-  await r.tick(); // mesmo instante: não repete
+  await r.tick(); // mesmo instante: não repete, e o de 2h fica carimbado como coberto pela manhã
   assert.equal(wa.sent.length, 1);
+  assert.equal((await repo.get("leads", "L1")).confirmLog["2h"], "manha");
 
   nowRef.t = new Date("2026-08-20T12:52:00Z"); // 9h52, janela do 10min
   await r.tick();
@@ -205,10 +202,10 @@ test("sem véspera: call das 10h leva só 2h e 10min, uma vez cada, gravando no 
   assert.match(wa.sent[1].text, /conversa começa em 10 minutos! Link pra entrar: https:\/\/meet\.google\.com\/abc-defg/);
   const log = (await repo.get("leads", "L1")).confirmLog;
   assert.equal(log.at, "2026-08-20T10:00");
-  assert.ok(log["2h"] && log["10min"]);
+  assert.ok(log.manha && log["10min"]);
 });
 
-test("manhã do dia: call das 14h recebe 'Bom dia' às 8h30 com o link e a positiva; o 2h vem depois", async () => {
+test("manhã do dia: call das 14h recebe 'Bom dia' às 8h com o link e a positiva; o 2h vem depois", async () => {
   const nowRef = { t: new Date("2026-08-20T11:35:00Z") }; // quinta 8h35 BRT
   const repo = await world({
     leads: [{ id: "L1", name: "Rafael", phone: "41999990000", stage: "Call agendada", callAt: "2026-08-20T14:00", closer: "pl", callSetAt: ISO("2026-08-19T18:00:00Z"), callUrl: "https://meet.google.com/abc-defg", createdAt: ISO("2026-08-10T10:00:00Z") }],
@@ -500,9 +497,79 @@ test("lead que veio do anúncio de OEM ouve OEM no 1º toque (janela aberta)", a
   });
   const wa = makeWa();
   await runner(repo, wa, nowRef).tick();
-  assert.match(wa.sent[0].text, /OEM \(part number\)/);
-  assert.match(wa.sent[0].text, /Isso ajudaria na sua operação\?/);
+  // Roteiro Lever OEM (Leo, 05/10): abordagem fixa, sem nome do SDR e sem resumo.
+  assert.equal(wa.sent[0].text, "Oiii Rafael, tudo bem? Recebemos aqui seu interesse, com o Lever OEM você digita o código e recebe o anúncio completo, com fotos, título de 200 caracteres, descrição e compatibilidade, pronto para revisar e publicar no Mercado Livre e Shopee. Isso ajudaria na sua operação?");
   assert.ok(!/gerenciar múltiplas contas/.test(wa.sent[0].text));
+});
+
+// ── Roteiro Lever OEM (doc do Leo, 05/10) ────────────────────────────────────
+
+test("1º toque OEM por template: o v2 do roteiro leva só o nome; sem nome utilizável cai no v1 (3 parâmetros)", async () => {
+  const nowRef = { t: new Date("2026-08-19T13:00:00Z") };
+  const repo = await world({
+    product: { sdrBot: { enabled: true, enabledAt: ISO("2026-08-01T00:00:00Z") }, painMap: { OEM: "OEM" } },
+    leads: [
+      { id: "L1", name: "Alfa", phone: "41911111111", stage: "Novo lead", sourcePain: "OEM", accounts: "3-5", createdAt: ISO("2026-08-19T12:50:00Z") },
+      { id: "L2", name: "PECAS", phone: "41922222222", stage: "Novo lead", sourcePain: "OEM", accounts: "3-5", createdAt: ISO("2026-08-19T12:50:00Z") },
+    ],
+  });
+  const wa = makeWa({ approved: ["sdr_primeiro_toque_oem_v2", "sdr_primeiro_toque_oem", "sdr_primeiro_toque_v2"] });
+  await runner(repo, wa, nowRef).tick();
+  const byPhone = Object.fromEntries(wa.sent.map((s) => [s.to, s]));
+  assert.equal(byPhone["41911111111"].name, "sdr_primeiro_toque_oem_v2");
+  assert.deepEqual(byPhone["41911111111"].params, ["Alfa"]);
+  assert.equal(byPhone["41922222222"].name, "sdr_primeiro_toque_oem");
+  assert.equal(byPhone["41922222222"].params.length, 3);
+});
+
+test("lembretes do lead de OEM (janela aberta): manhã sem link pedindo presença, 2h com o link, 10min com o link", async () => {
+  const nowRef = { t: new Date("2026-08-20T11:05:00Z") }; // quinta 8h05 BRT
+  const repo = await world({
+    product: { sdrBot: { enabled: true, enabledAt: ISO("2026-08-01T00:00:00Z") }, painMap: { OEM: "OEM" } },
+    leads: [{ id: "L1", name: "Roberto", phone: "41999990000", stage: "Call agendada", sourcePain: "OEM", callAt: "2026-08-20T14:00", closer: "pl", callSetAt: ISO("2026-08-19T18:00:00Z"), callUrl: "https://meet.google.com/abc-defg", createdAt: ISO("2026-08-10T10:00:00Z") }],
+    threads: [{ id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads", name: "Roberto" }],
+    messages: [{ id: "in1", thread: "5541999990000", leadId: "L1", saas: "leverads", direction: "in", text: "Sim", at: ISO("2026-08-19T18:00:00Z") }],
+  });
+  const wa = makeWa();
+  const r = runner(repo, wa, nowRef);
+  await r.tick();
+  assert.equal(wa.sent.length, 1);
+  assert.equal(wa.sent[0].text, "Bom dia Roberto, tudo bom? Temos um horário reservado para hoje às 14h, tudo certo? Na reunião vamos te mostrar na prática o passo a passo para criar anúncios completos em escala, explicar as funcionalidades da plataforma e tirar todas suas dúvidas. Posso contar com sua presença? Caso não consiga comparecer, me sinalize para liberar seu horário, por favor.");
+  nowRef.t = new Date("2026-08-20T15:05:00Z"); // 12h05: 2h antes
+  await r.tick();
+  assert.equal(wa.sent.length, 2);
+  assert.equal(wa.sent[1].text, "Roberto, nossa conversa é hoje às 14h. O link pra entrar é este: https://meet.google.com/abc-defg. Qualquer imprevisto por favor me avise.");
+  nowRef.t = new Date("2026-08-20T16:52:00Z"); // 13h52: 10 min antes
+  await r.tick();
+  assert.equal(wa.sent.length, 3);
+  assert.equal(wa.sent[2].text, "Roberto, nossa conversa começa em 10 minutos! O link pra entrar é este: https://meet.google.com/abc-defg. Te esperamos lá!");
+});
+
+test("lembretes do lead de OEM (janela fechada): templates do roteiro na frente, com os parâmetros certos; sem aprovação, cai no genérico", async () => {
+  const mk = async () => world({
+    product: { sdrBot: { enabled: true, enabledAt: ISO("2026-08-01T00:00:00Z") }, painMap: { OEM: "OEM" } },
+    leads: [{ id: "L1", name: "Roberto", phone: "41999990000", stage: "Call agendada", sourcePain: "OEM", callAt: "2026-08-20T14:00", closer: "pl", callSetAt: ISO("2026-08-18T18:00:00Z"), callUrl: "https://meet.google.com/abc-defg", createdAt: ISO("2026-08-10T10:00:00Z") }],
+  });
+  const repo = await mk();
+  const wa = makeWa({ approved: ["sdr_lembrete_manha_oem", "sdr_lembrete_link_oem", "sdr_lembrete_10min_oem", "sdr_lembrete_link2"] });
+  const nowRef = { t: new Date("2026-08-20T11:05:00Z") };
+  const r = runner(repo, wa, nowRef);
+  await r.tick();
+  assert.equal(wa.sent[0].name, "sdr_lembrete_manha_oem");
+  assert.deepEqual(wa.sent[0].params, ["Roberto", "hoje às 14h"]);
+  nowRef.t = new Date("2026-08-20T15:05:00Z");
+  await r.tick();
+  assert.equal(wa.sent[1].name, "sdr_lembrete_link_oem");
+  assert.deepEqual(wa.sent[1].params, ["Roberto", "hoje às 14h", "https://meet.google.com/abc-defg"]);
+  nowRef.t = new Date("2026-08-20T16:52:00Z");
+  await r.tick();
+  assert.equal(wa.sent[2].name, "sdr_lembrete_10min_oem");
+  assert.deepEqual(wa.sent[2].params, ["Roberto", "https://meet.google.com/abc-defg"]);
+  // Sem os do roteiro aprovados: o genérico com link cobre.
+  const repo2 = await mk();
+  const wa2 = makeWa({ approved: ["sdr_lembrete_link2"] });
+  await runner(repo2, wa2, { t: new Date("2026-08-20T11:05:00Z") }).tick();
+  assert.equal(wa2.sent[0].name, "sdr_lembrete_link2");
 });
 
 test("template do 1º toque escolhido pela dor: OEM aprovado vai pro lead de OEM, multi pros demais; sem específico, cai no v2", async () => {

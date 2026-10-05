@@ -106,3 +106,26 @@ que eu remarque? Me diz um horário que fica bom que eu já reservo."
 567 áudios enviados não têm transcrição no banco (parte da argumentação está
 fora do texto); o login `sdr` é compartilhado (não separa indivíduos por
 trás da Manuela).
+
+## Roteiro Lever OEM (doc do Leo, 05/10/2026)
+
+Lead que veio pelo OEM (`lead.sourcePain = OEM`, `leadPainFocus().mode === "oem"`)
+anda num roteiro FIXO; a IA só entra no que o roteiro não cobre (dúvida técnica,
+objeção, remarcação, pedido de outro dia). Copy do documento "FLUXO ROBÔ
+AGENDAMENTO E CONFIRMAÇÃO LEVER OEM", só com nome e horário vivos.
+
+| Passo | Gatilho | Onde | Texto |
+|---|---|---|---|
+| M1 abordagem | lead novo | `sdr-flow.js` firstTouchOemText / template `sdr_primeiro_toque_oem_v2` | "Oiii Nome, tudo bem? Recebemos aqui seu interesse, com o Lever OEM você digita o código e recebe o anúncio completo, com fotos, título de 200 caracteres, descrição e compatibilidade, pronto para revisar e publicar no Mercado Livre e Shopee. Isso ajudaria na sua operação?" |
+| M2 agendamento | "sim" curto à abordagem | `sdr-brain.js` oemScheduleParts (sem IA) | "Maravilha Nome. Pelo que você me passou no formulário, faz sentido te mostrar a plataforma. A demonstração é focada na operação de autopeças e principalmente em ganhar escala na criação dos anúncios com compatibilidade através do OEM." + "Tenho agenda para X ou Y. Qual funciona melhor para você?" |
+| M3 confirmação 1 | horário escolhido (acao agendar) | oemBookingParts | "Perfeito, Nome. Ficou então para amanhã (dd/mm) às Hh." + "É uma conversa rápida, em torno de 30/40 minutos e o especialista vai te mostrar na prática como a Lever pode ajudar a escalar suas vendas através de anúncios feitos com agilidade e estratégia." + "Vou deixar esse horário reservado para você. Posso contar com sua presença?" (carimbo `sdrLog.presenceAskedFor`) |
+| M4 confirmação 2 + compromisso | "sim" à presença | oemCommitParts (sem IA) | "Combinado então Nome. Se possível, acesse pelo computador ou notebook para conseguir visualizar melhor todos os detalhes, ok?" + "E, se tiver mais alguém envolvido na decisão, pode convidar para participar também. Assim conseguimos tirar todas as dúvidas de uma vez." + "Te envio o acesso e um lembrete antes da reunião. Até lá!" (carimbo `presenceConfirmedFor`; o "ok" seguinte é silêncio) |
+| Preço após a abordagem | 1ª pergunta de valor sem call | OEM_PRICE_TEXT (sem IA) | "O investimento depende da sua operação e das suas necessidades. Na demonstração, nosso especialista entende melhor o seu cenário e apresenta os planos e valores mais adequados para o momento da sua empresa." + "Tenho agenda para X ou Y. Qual funciona melhor para você?" (2ª e 3ª insistência seguem a escada de 18/09) |
+
+Confirmação do dia (régua de 30/09 ajustada): **8h** da manhã pra TODO MUNDO com
+call no dia (pede a positiva; call até 8h40 pula), **2h antes** com o link
+(pulado quando colaria na manhã, call até 10h30), **10 min antes** com o link,
+alerta de ligação 1h antes sem positiva. Lead de OEM recebe os textos do
+roteiro (`reminderTextOem`; templates `sdr_lembrete_manha_oem`,
+`sdr_lembrete_link_oem`, `sdr_lembrete_10min_oem` com a janela fechada);
+lead multi-contas segue com os textos genéricos no mesmo horário.
