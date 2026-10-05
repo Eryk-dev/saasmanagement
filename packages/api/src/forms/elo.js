@@ -18,7 +18,8 @@
 import pg from "pg";
 import { randomUUID } from "node:crypto";
 import { makeRateLimiter } from "./forms.js";
-import { clientIp, sanitizeUtm, normalizeMetaSource, referrerSource } from "./routes.forms.js";
+import { sanitizeUtm, normalizeMetaSource, referrerSource } from "../marketing/attribution.js";
+import { clientIp } from "../platform/request.js";
 import { UPSTREAM_FAILED } from "../platform/http-status.js";
 
 // Lazy pool — mesma postura do db.js: importar nunca conecta; a primeira rota

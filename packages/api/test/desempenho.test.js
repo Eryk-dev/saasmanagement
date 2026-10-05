@@ -12,7 +12,8 @@ import {
   callOutcome, callResultOf, dayKey,
 } from "../src/metrics/metrics-core.js";
 import { registerRoutes } from "../src/routes.js";
-import { startStoriesCapture, invalidateMediaCache } from "../src/metrics/routes.desempenho.js";
+import { invalidateMediaCache } from "../src/metrics/routes.desempenho.js";
+import { startStoriesCapture } from "../src/marketing/stories-capture.js";
 import { invalidateStoriesSync } from "../src/marketing/social-stories.js";
 
 const NOW = new Date("2026-09-10T18:00:00.000Z"); // 15h em Brasília, 10/09

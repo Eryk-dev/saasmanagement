@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import { teamBonusOf, teamBonusProducts, teamBonusPlan, DEFAULT_TEAM_BONUS } from "../src/comp/comp-plan.js";
-import { teamBonusStatus } from "../src/metrics/routes.scoreboard.js";
+import { teamBonusStatus } from "../src/metrics/scoreboard.js";
 
 // ── Valor ─────────────────────────────────────────────────────────────────
 test("teamBonusOf: valor por cargo e nível, com integrator caindo na trilha CS", () => {

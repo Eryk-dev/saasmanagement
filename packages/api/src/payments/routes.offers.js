@@ -14,7 +14,7 @@
 
 import { enrichPaymentLinks, filterPaymentLinks, groupPaymentLinks, validateManualPaid, GROUP_TABS } from "./payment-links.js";
 import { logActivity } from "../crm/lead-flow.js";
-import { isAdmin } from "../training/routes.flashcards.js";
+import { isAdmin } from "../auth/roles.js";
 
 // Quem vê o quê (Leo, 10/09/2026): closer vê SÓ os links que ele mesmo gerou;
 // admin vê todos e filtra por closer. Sessão sem usuário (key mestre: MCP,

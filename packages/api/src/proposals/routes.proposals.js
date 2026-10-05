@@ -19,7 +19,7 @@ import { liveDeckCases } from "./cases-live.js";
 import { makeRateLimiter } from "../forms/forms.js";
 import { convertWonLead } from "../routes.js";
 import { logActivity, applyStageMove } from "../crm/lead-flow.js";
-import { gradeBandKnown } from "../marketing/routes.marketing.js";
+import { gradeBandKnown } from "../metrics/metrics-core.js";
 
 // Proposta "fake" a partir de um template + dados de exemplo — usada pelo
 // preview do builder (iframe) e pela página /p/t/:id (preview em aba).

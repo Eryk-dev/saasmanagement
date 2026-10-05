@@ -9,7 +9,7 @@
 import { askNps, answerNps } from "./nps.js";
 import { npsPageHtml, npsDoneHtml, npsNotFoundHtml } from "./nps-page.js";
 import { makeRateLimiter } from "../forms/forms.js";
-import { clientIp } from "../forms/routes.forms.js";
+import { clientIp } from "../platform/request.js";
 
 const baseUrlOf = (req) => {
   const env = process.env.PUBLIC_BASE_URL;

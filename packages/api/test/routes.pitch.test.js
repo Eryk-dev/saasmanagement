@@ -6,7 +6,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { registerPitchRoutes, buildCallsDigest, aggregateCalls } from "../src/calls/routes.pitch.js";
+import { registerPitchRoutes, buildCallsDigest } from "../src/calls/routes.pitch.js";
+import { aggregateCalls } from "../src/calls/pitch.js";
 import { makeAnthropic } from "../src/integrations/anthropic.js";
 // system pode vir como string ou como blocos (cache de prompt, 17/09)
 const sysOf = (b) => (typeof b?.system === "string" ? b.system : (Array.isArray(b?.system) ? b.system.map((x) => x?.text || "").join("\n") : ""));

@@ -214,7 +214,9 @@ test("métricas: adsets/ads agregados com CPL real por utm.term/utm.content (id 
 
 // ── Criativos (upload de vídeo → anúncio pausado) e quebra por dor ──────────
 
-const { painCode, CREATIVE_URL_TAGS, leadGrade } = await import("../src/marketing/routes.marketing.js");
+const { CREATIVE_URL_TAGS } = await import("../src/marketing/routes.marketing.js");
+const { painCode } = await import("../src/marketing/attribution.js");
+const { leadGrade } = await import("../src/metrics/metrics-core.js");
 const multipart = (await import("@fastify/multipart")).default;
 
 test("painCode: extrai o código [X] de qualquer posição do nome do anúncio", () => {
@@ -506,7 +508,7 @@ test("gerenciamento: adsets com orçamento em reais, ads do conjunto e status/or
 
 // ── Auto-sync no servidor + catálogo com anúncios vivos ─────────────────────
 
-const { startMarketingAutoSync } = await import("../src/marketing/routes.marketing.js");
+const { startMarketingAutoSync } = await import("../src/marketing/meta-sync.js");
 
 test("auto-sync do servidor: tick sincroniza, expõe syncedAt e não regrava linha idêntica", async () => {
   const repo = makeMemRepo();

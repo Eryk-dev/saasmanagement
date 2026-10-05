@@ -4,7 +4,7 @@
 //   CPL real        = spend / leads criados no período (collection leads)
 //   custo por etapa = spend / leads que PASSARAM por cada estágio (histórico da
 //     timeline quando existe; aproximação pelo estágio atual pra leads antigos —
-//     helper compartilhado stagePassCounts em routes.funnel-metrics.js)
+//     helper compartilhado stagePassCounts em metrics/funnel-metrics.js)
 //   por campanha/conjunto/anúncio = spend Meta + leads atribuídos por UTM.
 // Convenção de UTM nos anúncios (parâmetros dinâmicos da Meta):
 //   utm_source=meta&utm_medium=paid&utm_campaign={{campaign.id}}
@@ -17,20 +17,15 @@ import { pipeline } from "node:stream/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { meta as defaultMeta, onMetaThrottle } from "./meta.js";
-import { stagePassCounts } from "../metrics/routes.funnel-metrics.js";
+import { stagePassCounts } from "../metrics/funnel-metrics.js";
 import { kindOf } from "../crm/stages.js";
-import { dayKey, isRealLead, isSaleLead, winsIn, customerStartMap, leadOrigin, LEAD_ORIGINS, callOutcome, upsellSalesIn, upsellContractedOf, leadGrade } from "../metrics/metrics-core.js";
+import { isRealLead, isSaleLead, winsIn, customerStartMap, leadOrigin, LEAD_ORIGINS, callOutcome, upsellSalesIn, upsellContractedOf, leadGrade } from "../metrics/metrics-core.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "../platform/http-status.js";
 import { painCode } from "./attribution.js";
 import { metaAdAccounts } from "./meta-accounts.js";
 import { makeTtlCache } from "../platform/ttl-cache.js";
-export { painCode };
+import { DAY_MS, dayStr, lastSyncAt, syncProductInsights, videoJobs } from "./meta-sync.js";
 
-const DAY_MS = 86400000;
-// Dia no FUSO DO NEGÓCIO — régua única do metrics-core (America/Sao_Paulo).
-// Sem isso, lead criado às 22h de Brasília caía no dia UTC seguinte e sumia do
-// filtro "hoje"; os insights da Meta já vêm datados no fuso da conta (BRT).
-const dayStr = dayKey;
 // "YYYY-MM-DD" ± n dias — só pra montar a janela folgada que vai pro Postgres
 // (o corte exato, no fuso do negócio, continua sendo o dayStr acima).
 const shiftDay = (day, n) => new Date(new Date(`${day}T00:00:00Z`).getTime() + n * DAY_MS).toISOString().slice(0, 10);
@@ -43,14 +38,6 @@ const shiftDay = (day, n) => new Date(new Date(`${day}T00:00:00Z`).getTime() + n
 export const CREATIVE_URL_TAGS =
   "utm_source=meta&utm_medium=paid&utm_placement={{site_source_name}}&utm_campaign={{campaign.id}}&utm_term={{adset.id}}&utm_content={{ad.id}}";
 
-// ── Trabalhos de vídeo (upload → Meta) ──────────────────────────────────────
-// Subir criativo é LENTO: um vídeo de 150 MB leva minutos pra chegar, a Meta
-// ainda processa (thumbnail só existe depois) e o clone do conjunto vem por
-// cima. Segurar a requisição aberta esse tempo todo esbarrava no timeout do
-// proxy e devolvia 502 na cara do usuário mesmo quando a Meta tinha aceitado.
-// Agora a rota grava o vídeo em DISCO, responde 202 com um jobId e o trabalho
-// segue no servidor; o front acompanha por polling em /api/marketing/job/:id.
-const videoJobs = new Map();
 const JOB_TTL_MS = 60 * 60 * 1000;
 let jobSeq = 0;
 
@@ -126,10 +113,6 @@ function parseBudget(raw) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-// Cliente S/A/B/C/D/E: a régua MORA no metrics-core (leadGrade, GRADE_BANDS,
-// gradeBandKnown, isIcpLead) desde 10/09, porque o placar por pessoa também
-// lê. Re-exportada daqui pros importadores antigos (forms, sdr-brain, agenda).
-export { leadGrade, GRADE_BANDS, gradeBandKnown } from "../metrics/metrics-core.js";
 const GRADES = ["S", "A", "B", "C", "D", "E"];
 const gradeCounts = (leads) => {
   const abc = { S: 0, A: 0, B: 0, C: 0, D: 0, E: 0 };
@@ -152,86 +135,6 @@ function rangeFromQuery(q, now = new Date()) {
   const until = q.until || dayStr(now);
   const since = q.since || dayStr(new Date(now.getTime() - 29 * DAY_MS));
   return { since, until };
-}
-
-// Upsert por id determinístico (1 linha por saas+anúncio+dia; fallback por
-// campanha quando a linha não tem ad — compat com dados/mocks antigos).
-// Linha idêntica NÃO regrava: cada escrita no repo acorda o SSE de todos os
-// clientes, e o auto-sync roda o dia inteiro — só o que mudou vira evento.
-async function upsertInsight(repo, row) {
-  const id = `ai_${row.saas}_${row.adId || row.campaignId}_${row.date}`;
-  const existing = await repo.get("ad_insights", id);
-  if (existing) {
-    const changed = Object.keys(row).some((k) => JSON.stringify(existing[k]) !== JSON.stringify(row[k]));
-    if (!changed) return existing;
-    return repo.update("ad_insights", id, row);
-  }
-  return repo.create("ad_insights", { id, ...row });
-}
-
-// Sync de UM produto (rota manual e auto-sync do servidor passam por aqui):
-// puxa insights nível anúncio, limpa legado nível-campanha da janela e faz o
-// upsert idempotente. Carimba o horário pro "ao vivo" da tela.
-const lastSyncAt = new Map(); // saas -> ISO do último sync (memória do processo)
-async function syncProductInsights(repo, meta, product, { since, until }) {
-  const accounts = metaAdAccounts(product);
-  const results = await Promise.allSettled(accounts.map((id) => meta.adInsights(id, { since, until })));
-  const complete = results.every((r) => r.status === "fulfilled");
-  const replacedCampaigns = new Set(results.filter((r) => r.status === "fulfilled").flatMap((r) => r.value.map((row) => row.campaignId)));
-  // Em falha parcial, só substitui agregados das campanhas que responderam;
-  // uma conta sem permissão não pode apagar seu histórico disponível.
-  const legacy = (await repo.list("ad_insights")).filter(
-    (r) => r.saas === product.id && !r.adId && !String(r.campaignId || "").startsWith("manual_") && r.date >= since && r.date <= until
-      && (complete || replacedCampaigns.has(r.campaignId)),
-  );
-  for (const r of legacy) await repo.remove("ad_insights", r.id);
-  const report = { ok: complete, rows: 0, accounts: {} };
-  for (const [i, result] of results.entries()) {
-    const accountId = accounts[i];
-    if (result.status === "rejected") {
-      report.accounts[accountId] = { ok: false, error: String(result.reason?.message || result.reason).slice(0, 200) };
-      continue;
-    }
-    for (const r of result.value) await upsertInsight(repo, { ...r, saas: product.id, accountId });
-    report.accounts[accountId] = { ok: true, rows: result.value.length };
-    report.rows += result.value.length;
-  }
-  if (complete) lastSyncAt.set(product.id, new Date().toISOString());
-  else report.error = Object.entries(report.accounts).filter(([, r]) => !r.ok).map(([id, r]) => `${id}: ${r.error}`).join("; ");
-  return report;
-}
-
-// Sync automático NO SERVIDOR — chamado só pelo index.js (testes montam o app
-// sem ele). Uma execução por vez pro time inteiro: substitui o polling por aba
-// do SPA, que multiplicava chamadas à Meta por usuário logado. Janela curta
-// (ontem+hoje); histórico maior continua vindo do botão/rota manual.
-export function startMarketingAutoSync(repo, { meta = defaultMeta, intervalMs = 180_000, log = console, immediate = true } = {}) {
-  let running = false;
-  async function tick() {
-    if (running || !meta.configured()) return;
-    running = true;
-    try {
-      const products = (await repo.list("products")).filter((p) => metaAdAccounts(p).length);
-      const range = { since: dayStr(Date.now() - DAY_MS), until: dayStr(Date.now()) };
-      for (const p of products) {
-        // Enquanto uma leva de vídeos sobe, o sync fica fora do caminho: as duas
-        // coisas dividem a MESMA cota da conta na Meta, e o sync pode esperar.
-        if ([...videoJobs.values()].some((j) => j.saas === p.id && j.status === "running")) continue;
-        try {
-          const result = await syncProductInsights(repo, meta, p, range);
-          if (!result.ok) log.warn?.(`Meta auto-sync parcial (${p.id}): ${result.error}`);
-        } catch (err) {
-          log.warn?.(`Meta auto-sync falhou (${p.id}): ${String(err.message || err).slice(0, 200)}`);
-        }
-      }
-    } finally {
-      running = false;
-    }
-  }
-  const id = setInterval(tick, intervalMs);
-  id.unref?.(); // não segura o processo vivo no shutdown
-  if (immediate) tick(); // primeira leva já na subida (testes desligam pra controlar o tick)
-  return { tick, stop: () => clearInterval(id) };
 }
 
 export function registerMarketingRoutes(app, repo, { meta = defaultMeta } = {}) {

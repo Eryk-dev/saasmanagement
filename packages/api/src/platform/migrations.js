@@ -14,7 +14,7 @@ import { createClosedSubscription } from "../billing/billing.js";
 import { CLOSED_PLAN_ANNUAL_FACTOR } from "../shared/plan-cycles.js";
 import { ensurePlansCatalog, ensurePlanResources, syncPlanCatalogProjection } from "../billing/plan-catalog.js";
 import { backfillCustomerPlans } from "../billing/plan-history.js";
-import { FLASHCARD_DEFAULTS } from "../training/routes.flashcards.js";
+import { FLASHCARD_DEFAULTS } from "../training/flashcards.js";
 import { LEVERADS_DECKS, LEVERADS_V2 } from "../training/flashcard-decks.leverads.js";
 import { LEVERADS_EXPANSION } from "../training/flashcard-decks.leverads.js";
 import { mergeLeadQuestions } from "../forms/forms.js";

@@ -7,7 +7,7 @@ import { closedPlanToCycle, CYCLE_MONTHS } from "../shared/plan-cycles.js";
 import { PLAN_PRODUCTS } from "../shared/plan-resources.js";
 import { kindOf, stageByKind, firstStage } from "../crm/stages.js";
 import { applyStageMove, revertWonLead } from "../crm/lead-flow.js";
-import { mirrorSubscriptionToMp, createCustomerCharge } from "../payments/routes.mp.js";
+import { mirrorSubscriptionToMp, createCustomerCharge } from "../payments/mp-charges.js";
 import { markCustomerChurn, clearCustomerChurn } from "./churn.js";
 import { parseUpsellBody, recordUpsell } from "./upsell.js";
 import { NOT_CONFIGURED } from "../platform/http-status.js";

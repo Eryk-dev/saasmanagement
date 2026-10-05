@@ -171,7 +171,7 @@ test("DRE setoriza percentuais pela base: imposto vira dedução, checkout vira 
 });
 
 test("parseSettlementCsv: só WITHDRAWAL/PAYOUT viram movimento, com valor pt-BR e tarifa", async () => {
-  const { parseSettlementCsv } = await import("../src/payments/routes.fin.js");
+  const { parseSettlementCsv } = await import("../src/payments/mp-outflow.js");
   const csv = [
     "TRANSACTION_TYPE;TRANSACTION_DATE;SOURCE_ID;SETTLEMENT_NET_AMOUNT;FEE_AMOUNT",
     "SETTLEMENT;2026-08-01T10:00:00Z;111;1.500,00;-45,00",
@@ -188,7 +188,7 @@ test("parseSettlementCsv: só WITHDRAWAL/PAYOUT viram movimento, com valor pt-BR
 
 test("poller de saídas: importa sozinho quando o relatório fica pronto (sem segundo clique do Leo)", async () => {
   const repo = makeMemRepo();
-  const { syncMpOutflows } = await import("../src/payments/routes.fin.js");
+  const { syncMpOutflows } = await import("../src/payments/mp-outflow.js");
   const csv = "TRANSACTION_TYPE;TRANSACTION_DATE;SOURCE_ID;SETTLEMENT_NET_AMOUNT;FEE_AMOUNT\nWITHDRAWAL;2026-08-28T10:00:00Z;901;5.000,00;0,00";
   // Passada 1: sem relatório — pede um (o MP gera nos minutos seguintes).
   let ready = false;

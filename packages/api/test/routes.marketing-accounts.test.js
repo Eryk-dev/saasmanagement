@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { registerMarketingRoutes, startMarketingAutoSync } from "../src/marketing/routes.marketing.js";
+import { registerMarketingRoutes } from "../src/marketing/routes.marketing.js";
+import { startMarketingAutoSync } from "../src/marketing/meta-sync.js";
 import { metaAdAccounts } from "../src/marketing/meta-accounts.js";
 import { UPSTREAM_FAILED } from "../src/platform/http-status.js";
 

@@ -124,7 +124,12 @@ sem API do Node), `auth/`, `crm/`, `sdr/`, `whatsapp/`, `calls/`, `google/`,
 `training/`, `marketing/`, `blog/`, `metrics/`, `comp/` e `integrations/`
 (clientes externos transversais). Ficam na raiz `index.js`, `routes.js` (orquestra
 o registro) e `build-info.js`; `assets/` guarda as imagens servidas. Arquivo novo
-entra na pasta do domínio dele.
+entra na pasta do domínio dele. Um `routes.<x>.js` só registra endpoints: lógica,
+helper usado por outro módulo e rotina em segundo plano moram num módulo do
+domínio (ex.: `metrics/pipeline-pace.js` ao lado de `metrics/routes.pipeline-pace.js`).
+Nenhum módulo importa um `routes.<x>.js` além do orquestrador `routes.js`, e
+`shared/` só importa da própria pasta; `api/test/fronteiras-dominio.test.js`
+garante as duas regras.
 
 `COLLECTIONS` define as coleções conhecidas e a criação de tabelas. O CRUD tem
 exceções para coleções privadas (`PRIVATE` em `routes.js`), defaults, hooks e

@@ -7,7 +7,7 @@
 // engole 5xx e mostra "Service is not reachable" no lugar do motivo).
 
 import { randomUUID } from "node:crypto";
-import { isAdmin } from "../training/routes.flashcards.js";
+import { isAdmin } from "../auth/roles.js";
 import {
   ACTOR_API, ASSET_PREFIX, moveTask, completeTask, addComment, editComment, deleteComment, toggleCommentLike, toggleLike,
   setFollower, setBlocker, addAttachment, removeAttachment, setCover, convertTask, duplicateTask, followUpTask,

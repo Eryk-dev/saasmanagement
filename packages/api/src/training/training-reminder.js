@@ -5,7 +5,7 @@
 // collection training_states) pra restart/redeploy não duplicar a mensagem.
 
 import { discord as defaultDiscord } from "../integrations/discord.js";
-import { teamSnapshot, flashcardsBase } from "./routes.flashcards.js";
+import { teamSnapshot, flashcardsBase } from "./flashcards.js";
 import { dayKey } from "./fsrs.js";
 
 // Id reservado — estados de usuário usam `${saas}__${user}`, nunca colidem.

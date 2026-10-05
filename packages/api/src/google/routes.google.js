@@ -5,7 +5,7 @@
 import { randomUUID } from "node:crypto";
 import { makeGoogle } from "./google.js";
 import { makeGoogleUser, syncPersonalCalendar } from "./google-user.js";
-import { publicBase } from "../routes.js";
+import { publicBase } from "../platform/request.js";
 import { logActivity, appointmentAt } from "../crm/lead-flow.js";
 import { toNaiveBrt } from "../crm/agenda-slots.js";
 import { makeCallSummarizer } from "../calls/call-summaries.js";

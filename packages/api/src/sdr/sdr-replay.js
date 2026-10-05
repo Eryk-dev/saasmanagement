@@ -16,7 +16,7 @@
 // GET lê o estado — o resultado fica em app_config "sdr_replay" (ou
 // "sdr_replay_<tag>"), com progresso parcial gravado a cada conversa.
 import { kindOf, firstStage } from "../crm/stages.js";
-import { leadGrade } from "../marketing/routes.marketing.js";
+import { leadGrade } from "../metrics/metrics-core.js";
 import { slotLabel, wallNow, spreadPair, wholeHourSlots } from "../crm/agenda-slots.js";
 import { sdrSlotsForLead } from "./sdr-agenda.js";
 import { leadDigest, leadPainFocus, SDR_AUTHOR } from "./sdr-flow.js";

@@ -17,7 +17,7 @@
 
 import { social as defaultSocial } from "./social.js";
 import { meta as defaultMeta } from "./meta.js";
-import { publicBase } from "../routes.js";
+import { publicBase } from "../platform/request.js";
 import { upsertComment, syncComments, listComments, commentInsights, invalidateSync, postTitleOf } from "./social-comments.js";
 import { syncStories, listStories } from "./social-stories.js";
 import { UPSTREAM_FAILED } from "../platform/http-status.js";

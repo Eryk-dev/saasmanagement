@@ -12,7 +12,7 @@
 // business-hours.js), e só o "agora" real é convertido (UTC-3 fixo).
 //
 // ROTEAMENTO POR NÍVEL (Leo, 22/08): a régua de cliente é a matriz S-E que já
-// vive nos cards (leadGrade, routes.marketing.js). Cliente B ou melhor (S/A/B)
+// vive nos cards (leadGrade, metrics-core.js). Cliente B ou melhor (S/A/B)
 // é atendido por closer pleno/sênior (user.compLevel 2-3, o nível do plano de
 // remuneração); C pra baixo (C/D/E e sem qualificação) vai pro júnior
 // (compLevel 1). O foco é SEMPRE o próximo horário livre do pool: quem tiver o

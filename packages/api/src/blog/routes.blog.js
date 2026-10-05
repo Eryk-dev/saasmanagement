@@ -7,7 +7,7 @@
 //
 // As páginas PÚBLICAS (/public/blog/*) ficam em routes.blog-public.js.
 
-import { isAdmin } from "../training/routes.flashcards.js";
+import { isAdmin } from "../auth/roles.js";
 import { NOT_CONFIGURED, UPSTREAM_FAILED } from "../platform/http-status.js";
 import { loadBlogCfg, saveBlogCfg, mergeBlogRules } from "./blog-config.js";
 import { lintPost, lintOk } from "./blog-lint.js";
@@ -284,7 +284,7 @@ export function registerBlogRoutes(app, repo, { anthropic, engine, publicBase = 
     const doc = await post(req, reply);
     if (!doc) return;
     let mod;
-    try { mod = await import("./routes.blog-public.js"); } catch (err) {
+    try { mod = await import("./blog-preview.js"); } catch (err) {
       req.log?.warn?.({ err: err?.message }, "blog: renderizador público indisponível");
       return reply.code(NOT_CONFIGURED).send({ error: "Prévia indisponível: renderizador público não carregou" });
     }

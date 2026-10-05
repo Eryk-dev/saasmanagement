@@ -9,9 +9,9 @@
 // interna, anexo interno, responsável e SLA ficam no cockpit.
 
 import { makeRateLimiter } from "../forms/forms.js";
-import { clientIp } from "../forms/routes.forms.js";
+import { clientIp } from "../platform/request.js";
 import { ACTOR_PORTAL, addMessage, addTicketAttachment, createTicket, loadSettings } from "./tickets-core.js";
-import { readTicketUpload, sendTicketAsset } from "./routes.tickets.js";
+import { readTicketUpload, sendTicketAsset } from "./ticket-assets.js";
 import { publicTicket, supportTicketHtml, supportNewTicketHtml, supportNotFoundHtml } from "./support-page.js";
 
 const TOKEN_RE = /^[0-9a-f]{32}$/;

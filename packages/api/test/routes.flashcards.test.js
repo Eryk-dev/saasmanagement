@@ -9,7 +9,8 @@ import Fastify from "fastify";
 import multipart from "@fastify/multipart";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { registerFlashcardRoutes, FLASHCARD_DEFAULTS } = await import("../src/training/routes.flashcards.js");
+const { registerFlashcardRoutes } = await import("../src/training/routes.flashcards.js");
+const { FLASHCARD_DEFAULTS } = await import("../src/training/flashcards.js");
 
 const USERS = {
   ana: { id: "ana", name: "Ana", roles: ["sdr"] },

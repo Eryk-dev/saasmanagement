@@ -21,7 +21,7 @@ import { integrationFormPageHtml } from "./integration-form-page.js";
 import { logActivity } from "../crm/lead-flow.js";
 import { syncClientPending } from "../customers/client-pending.js";
 import { createTask } from "../tasks/tasks-core.js";
-import { clientIp } from "./routes.forms.js";
+import { clientIp } from "../platform/request.js";
 
 const notFoundHtml = "<!doctype html><meta charset='utf-8'><body style='font-family:system-ui;display:grid;place-items:center;height:100vh;color:#0c1d2b;background:#f7f8fa'><p>Formulário não encontrado. Peça um link novo pro time da LeverAds.</p></body>";
 

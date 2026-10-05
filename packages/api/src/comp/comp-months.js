@@ -12,7 +12,7 @@
 // critério de promoção (3 meses seguidos a 100%), que não pode depender de
 // recalcular o passado a cada abertura de tela.
 
-import { computeScoreboard, teamBonusStatus } from "../metrics/routes.scoreboard.js";
+import { computeScoreboard, teamBonusStatus } from "../metrics/scoreboard.js";
 import { teamBonusOf, compLevelOf, careerRuleOf, promotionEligibility, leveledRoleOf } from "./comp-plan.js";
 import { brtToday } from "../tasks/tasks-core.js";
 

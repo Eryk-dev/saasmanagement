@@ -20,7 +20,8 @@ import { deckOutline } from "./proposals/proposal-slides-page.js";
 import { registerBillingRoutes } from "./billing/routes.billing.js";
 import { initSubscription, syncCustomerArr, createClosedSubscription, closedSubscriptionSpec, closedInstallments, createInstallmentSchedule, syncClosedInstallments } from "./billing/billing.js";
 import { registerAuthRoutes } from "./auth/auth.js";
-import { registerMpRoutes, mirrorSubscriptionToMp } from "./payments/routes.mp.js";
+import { registerMpRoutes } from "./payments/routes.mp.js";
+import { mirrorSubscriptionToMp } from "./payments/mp-charges.js";
 import { isChurnedCustomer } from "./billing/churn.js";
 import { CLOSED_PLAN_LABEL, CLOSED_PLAN_ANNUAL_FACTOR } from "./shared/plan-cycles.js";
 import {
@@ -107,6 +108,7 @@ import { registerSupportPortalRoutes } from "./support/routes.support-portal.js"
 import { STATUS_KIND } from "./support/tickets-core.js";
 import { slaState } from "./support/tickets-sla.js";
 import { ticketScope, inScope } from "./auth/support-scope.js";
+import { publicBase } from "./platform/request.js";
 
 // Auth interna fica FORA do CRUD genérico: passwordHash/token de sessão nunca
 // saem pela API. Gestão via rotas dedicadas (/api/auth/*).
@@ -1995,18 +1997,3 @@ export async function dispatchProposal(repo, lead, { auto = false, force = false
   return { provider, ...result };
 }
 
-// Base das URLs públicas gravadas no lead (proposalUrl). Prioridade:
-// COCKPIT_PUBLIC_URL > host da request (x-forwarded-* do proxy) > localhost.
-// Proto: host público = sempre https (a cadeia de proxies reescreve
-// x-forwarded-proto pra http e não dá pra confiar nele); localhost = http.
-// Deployment público em http puro não existe — e se existir, é a env que manda.
-export function publicBase(req) {
-  if (process.env.COCKPIT_PUBLIC_URL) return process.env.COCKPIT_PUBLIC_URL.replace(/\/+$/, "");
-  const raw = req?.headers?.["x-forwarded-host"] || req?.headers?.host;
-  if (raw) {
-    const host = String(raw).split(",")[0].trim();
-    const local = /^(localhost|127\.|0\.0\.0\.0|\[::1\])/.test(host);
-    return `${local ? "http" : "https"}://${host}`;
-  }
-  return `http://localhost:${process.env.API_PORT || 8787}`;
-}

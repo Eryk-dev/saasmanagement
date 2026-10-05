@@ -10,17 +10,15 @@
 
 import { dayKey, rangeFromQuery } from "./metrics-core.js";
 import { TOUCH_TYPES } from "../crm/stages.js";
-import { aggregateCalls, dedupCallSummaries, isSalesCallSummary } from "../calls/routes.pitch.js";
+import { aggregateCalls, dedupCallSummaries, isSalesCallSummary } from "../calls/pitch.js";
 import { syncStories } from "../marketing/social-stories.js";
 import { social as defaultSocial } from "../marketing/social.js";
+import { igIdOf } from "../marketing/stories-capture.js";
 
 export const LOG_FIELDS = ["socialSelling", "creatives"];
 export const logId = (saas, user, day) => `dl_${saas}_${user}_${day}`;
 const isDay = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ""));
 const isAdmin = (u) => !u || (u.roles || []).includes("admin"); // sem sessão = key mestre
-// Id do Instagram do produto: `metaIgUser` é o campo que a descoberta do
-// marketing grava; `metaIgUserId` foi o nome antigo desta tela.
-const igIdOf = (p) => String(p?.metaIgUser || p?.metaIgUserId || "");
 
 // Formatos do Instagram que contam como "conteúdo no feed": foto, carrossel e
 // reel (VIDEO). Story vem por outro caminho (social_stories).
@@ -192,31 +190,3 @@ export function registerDesempenhoRoutes(app, repo, { social = defaultSocial, no
   });
 }
 
-// Captura de stories de hora em hora: a Graph só entrega o story ENQUANTO
-// vive (24h). A captura já roda quando alguém abre Redes sociais/Desempenho;
-// este tick cobre a noite e o fim de semana pra o "Stories" da Análise não
-// perder o que ninguém abriu. No-op sem META_ACCESS_TOKEN. Throttle de 10 min
-// dentro do syncStories, então abrir a tela no meio não duplica.
-export function startStoriesCapture(repo, { social = defaultSocial, log, intervalMs = 60 * 60 * 1000 } = {}) {
-  if (!social?.configured?.()) {
-    log?.info?.("stories capture: sem META_ACCESS_TOKEN — desligado");
-    return null;
-  }
-  async function tick() {
-    let captured = 0;
-    for (const p of await repo.list("products")) {
-      const igUserId = igIdOf(p);
-      if (!igUserId) continue;
-      try {
-        const r = await syncStories(repo, social, { saas: p.id, igUserId });
-        captured += r?.captured || 0;
-      } catch (e) { log?.warn?.(`stories capture (${p.id}): ${e.message}`); }
-    }
-    return captured;
-  }
-  const timer = setInterval(() => tick().catch((e) => log?.warn?.(`stories capture: ${e.message}`)), intervalMs);
-  timer.unref?.();
-  const first = setTimeout(() => tick().catch((e) => log?.warn?.(`stories capture: ${e.message}`)), 30_000);
-  first.unref?.();
-  return { tick, stop: () => { clearInterval(timer); clearTimeout(first); } };
-}

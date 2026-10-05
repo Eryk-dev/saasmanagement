@@ -66,7 +66,7 @@ test("churn do CS no placar = churnRateIn da carteira dele (mesma base, mesma ta
 });
 
 test("computeScoreboard é chamável fora da rota e devolve o mesmo payload", async () => {
-  const { computeScoreboard } = await import("../src/metrics/routes.scoreboard.js");
+  const { computeScoreboard } = await import("../src/metrics/scoreboard.js");
   const repo = makeMemRepo();
   await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNNEL });
   await repo.create("users", { id: "u_cs", name: "Cris CS", roles: ["integrator"] });
