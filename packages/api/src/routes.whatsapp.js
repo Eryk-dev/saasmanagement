@@ -92,6 +92,7 @@ export function registerWhatsappRoutes(app, repo, { whatsapp, anthropic = null, 
     token: process.env.WHATSAPP_TOKEN || "",
     phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || "",
     verifyToken: process.env.WHATSAPP_VERIFY_TOKEN || "",
+    appId: process.env.WHATSAPP_APP_ID || "",
   });
 
   // ── Número POR PRODUTO ──────────────────────────────────────────────────────

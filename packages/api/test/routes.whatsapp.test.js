@@ -677,3 +677,33 @@ test("GET /number: o número fica em cache (2ª leitura não vai à Meta); erro 
   assert.equal(fails, 2); // cada abertura tenta de novo enquanto está errado
   await bad.close();
 });
+
+test("client: createTemplate com cabeçalho de IMAGEM sobe a foto pelo upload resumable do app e manda HEADER + BODY", async () => {
+  const calls = [];
+  const f = async (url, init = {}) => {
+    const u = String(url);
+    calls.push({ url: u, init });
+    const body = u.includes("/debug_token") ? { data: { app_id: "APP9" } }
+      : u.includes("/APP9/uploads?") ? { id: "upload:S1" }
+        : u.endsWith("/upload:S1") ? { h: "HANDLE1" }
+          : { id: "tpl_img", status: "PENDING", category: "UTILITY" };
+    return { status: 200, text: async () => JSON.stringify(body) };
+  };
+  const wa = makeWhatsapp({ fetch: f, token: "tok", phoneNumberId: "PN1" });
+  const r = await wa.createTemplate("WABA1", { name: "manha_img", category: "UTILITY", body: "Bom dia {{1}}", example: ["Roberto"], headerImage: { buffer: new Uint8Array([1, 2, 3]), mime: "image/jpeg", filename: "foto.jpg" } });
+  assert.equal(r.id, "tpl_img");
+  // Sessão de upload no app (id via debug_token), bytes com file_offset 0, e o handle vira o exemplo do header.
+  assert.ok(calls[1].url.includes("/APP9/uploads?file_name=foto.jpg&file_length=3&file_type=image%2Fjpeg"));
+  assert.equal(calls[2].init.headers.file_offset, "0");
+  assert.equal(calls[2].init.headers.authorization, "OAuth tok");
+  const payload = JSON.parse(calls[3].init.body);
+  assert.deepEqual(payload.components[0], { type: "HEADER", format: "IMAGE", example: { header_handle: ["HANDLE1"] } });
+  assert.equal(payload.components[1].type, "BODY");
+  // App id vem do env quando existe: sem debug_token.
+  const calls2 = [];
+  const f2 = async (url, init = {}) => { calls2.push(String(url)); const u = String(url); const body = u.includes("/uploads?") ? { id: "upload:S2" } : u.endsWith("/upload:S2") ? { h: "H2" } : { id: "t2", status: "PENDING" }; return { status: 200, text: async () => JSON.stringify(body) }; };
+  const wa2 = makeWhatsapp({ fetch: f2, token: "tok", phoneNumberId: "PN1", appId: "APP1" });
+  await wa2.createTemplate("WABA1", { name: "x", body: "Oi", headerImage: { buffer: new Uint8Array([1]), mime: "image/jpeg", filename: "a.jpg" } });
+  assert.ok(!calls2.some((u) => u.includes("debug_token")));
+  assert.ok(calls2[0].includes("/APP1/uploads?"));
+});

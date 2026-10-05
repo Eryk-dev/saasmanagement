@@ -12,8 +12,45 @@ const GRAPH = "https://graph.facebook.com/v23.0";
 // MULTI-NÚMERO: `phoneNumberId` do env é o DEFAULT (single-tenant legado); toda
 // operação aceita `{ phoneId }` pra usar o número do PRODUTO (product.waPhoneId,
 // Ajustes → Integrações) — cada SaaS conversa pelo seu WhatsApp.
-export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNumberId = "", verifyToken = "" } = {}) {
+export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNumberId = "", verifyToken = "", appId = "" } = {}) {
   const configured = (phoneId) => !!(token && (phoneId || phoneNumberId));
+
+  // ID DO APP da Meta (pro upload resumable do cabeçalho de template). Vem do
+  // env (WHATSAPP_APP_ID); sem ele, o debug_token do próprio token diz de qual
+  // app ele é. Cache em memória: não muda.
+  let appIdCache = appId || "";
+  async function resolveAppId() {
+    if (appIdCache) return appIdCache;
+    const res = await f(`${GRAPH}/debug_token?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(token)}`);
+    const text = await res.text();
+    let b; try { b = JSON.parse(text); } catch { b = {}; }
+    const id = String(b.data?.app_id || "");
+    if (!id) throw new Error(`não achei o id do app da Meta (defina WHATSAPP_APP_ID): ${b.error?.message || text.slice(0, 160)}`);
+    appIdCache = id;
+    return id;
+  }
+
+  // UPLOAD RESUMABLE (Graph "uploads" do app): é o único jeito de anexar uma
+  // imagem de exemplo ao CABEÇALHO de um template (a Meta pede o `h` do upload
+  // em example.header_handle; media id de número não serve aqui).
+  async function uploadHeaderHandle(buffer, { mime = "image/jpeg", filename = "header.jpg" } = {}) {
+    if (!token) throw new Error("WhatsApp não configurado (WHATSAPP_TOKEN)");
+    const app = await resolveAppId();
+    const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+    const open = await f(`${GRAPH}/${app}/uploads?file_name=${encodeURIComponent(filename)}&file_length=${bytes.byteLength}&file_type=${encodeURIComponent(mime)}`, {
+      method: "POST", headers: { authorization: `Bearer ${token}` },
+    });
+    const openText = await open.text();
+    let ob; try { ob = JSON.parse(openText); } catch { ob = {}; }
+    if (open.status >= 400 || ob.error || !ob.id) throw new Error(`upload (sessão) -> ${open.status}: ${ob.error?.message || openText.slice(0, 200)}`);
+    const up = await f(`${GRAPH}/${ob.id}`, {
+      method: "POST", headers: { authorization: `OAuth ${token}`, file_offset: "0", "content-type": "application/octet-stream" }, body: bytes,
+    });
+    const upText = await up.text();
+    let ub; try { ub = JSON.parse(upText); } catch { ub = {}; }
+    if (up.status >= 400 || ub.error || !ub.h) throw new Error(`upload (bytes) -> ${up.status}: ${ub.error?.message || upText.slice(0, 200)}`);
+    return ub.h;
+  }
 
   async function post(payload, phoneId) {
     const pid = phoneId || phoneNumberId;
@@ -256,10 +293,18 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
   // template nasce PENDING; vira APPROVED em minutos/horas e aí entra no
   // composer sozinho (listTemplates só traz APPROVED). Corpo com variáveis
   // numeradas {{1}}…{{N}}: a Meta EXIGE um exemplo por variável (senão rejeita).
-  //   spec: { name, category: "UTILITY"|"MARKETING", language, body, example: [..] }
-  async function createTemplate(wabaId, { name, category = "UTILITY", language = "pt_BR", body = "", example = [] } = {}) {
+  //   spec: { name, category: "UTILITY"|"MARKETING", language, body, example: [..],
+  //           headerImage?: { buffer, mime, filename } }  ← cabeçalho de IMAGEM
+  //   (a foto de exemplo sobe pelo upload resumable e vira header_handle; no
+  //   ENVIO o header leva o media id do número, ver sendTemplate).
+  async function createTemplate(wabaId, { name, category = "UTILITY", language = "pt_BR", body = "", example = [], headerImage = null } = {}) {
     if (!token) throw new Error("WhatsApp não configurado (WHATSAPP_TOKEN)");
     if (!wabaId) throw new Error("sem id da conta do WhatsApp (WABA)");
+    const components = [];
+    if (headerImage?.buffer) {
+      const h = await uploadHeaderHandle(headerImage.buffer, { mime: headerImage.mime, filename: headerImage.filename });
+      components.push({ type: "HEADER", format: "IMAGE", example: { header_handle: [h] } });
+    }
     const nums = (body.match(/\{\{\s*(\d+)\s*\}\}/g) || []).map((s) => Number(s.replace(/\D/g, "")));
     const nVars = nums.length ? Math.max(...nums) : 0;
     const bodyComp = { type: "BODY", text: body };
@@ -268,10 +313,11 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
       const ex = Array.from({ length: nVars }, (_, i) => String(example[i] || "").trim() || "exemplo");
       bodyComp.example = { body_text: [ex] };
     }
+    components.push(bodyComp);
     const res = await f(`${GRAPH}/${wabaId}/message_templates`, {
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-      body: JSON.stringify({ name, language, category, components: [bodyComp] }),
+      body: JSON.stringify({ name, language, category, components }),
     });
     const text = await res.text();
     let b; try { b = JSON.parse(text); } catch { b = {}; }
@@ -337,7 +383,7 @@ export function makeWhatsapp({ fetch: f = globalThis.fetch, token = "", phoneNum
     return null;
   }
 
-  return { configured, sendText, sendTemplate, sendCallPermission, markRead, sendTyping, verifyWebhook, numberInfo, listTemplates, createTemplate, tokenWabaIds, initiateCall, terminateCall, conversationCosts, fetchMedia, uploadMedia, sendMedia };
+  return { configured, sendText, sendTemplate, sendCallPermission, markRead, sendTyping, verifyWebhook, numberInfo, listTemplates, createTemplate, uploadHeaderHandle, tokenWabaIds, initiateCall, terminateCall, conversationCosts, fetchMedia, uploadMedia, sendMedia };
 }
 
 // Número em dígitos (E.164 sem +) pra enviar e pra casar o recebido com o lead.
