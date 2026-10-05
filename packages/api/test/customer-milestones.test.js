@@ -6,9 +6,9 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   milestonesFor, dueMilestones, inMilestoneRuler, taskCopyFor, startCustomerMilestones,
   completeMilestoneTasks, DEFAULT_MILESTONES, RENEWAL_LEAD_DAYS,
-} from "../src/customer-milestones.js";
+} from "../src/customers/customer-milestones.js";
 import * as web from "../../web/src/lib/milestones.js";
-import { completeTask, patchTask } from "../src/tasks-core.js";
+import { completeTask, patchTask } from "../src/tasks/tasks-core.js";
 
 const DAY = 86_400_000;
 const HOJE = Date.UTC(2026, 8, 13); // 13/09/2026

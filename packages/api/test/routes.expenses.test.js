@@ -6,8 +6,8 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { registerMetricsRoutes } = await import("../src/routes.metrics.js");
-const { registerMarketingRoutes } = await import("../src/routes.marketing.js");
+const { registerMetricsRoutes } = await import("../src/metrics/routes.metrics.js");
+const { registerMarketingRoutes } = await import("../src/marketing/routes.marketing.js");
 
 const FUNNEL = ["Inbox", "Qualificação", "Call closer", "Negociação", "Integração", "Ganho", "Sem resposta / Nutrição", "Desqualificado", "Perdido", "Mentoria"]
   .map((stage) => ({ stage, conv: 1 }));

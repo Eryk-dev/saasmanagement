@@ -7,8 +7,8 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { makeDripRunner } = await import("../src/drip-runner.js");
-const { registerSequenceRoutes } = await import("../src/routes.sequences.js");
+const { makeDripRunner } = await import("../src/marketing/drip-runner.js");
+const { registerSequenceRoutes } = await import("../src/marketing/routes.sequences.js");
 
 const PAST = "2020-01-01T00:00:00.000Z";
 

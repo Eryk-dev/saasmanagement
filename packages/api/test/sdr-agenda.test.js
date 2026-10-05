@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { slotsForLead, wallFromNaive, sdrCloserPools } from "../src/agenda-slots.js";
-import { sdrAgendaWindow, sdrSlotsForLead } from "../src/sdr-agenda.js";
+import { slotsForLead, wallFromNaive, sdrCloserPools } from "../src/crm/agenda-slots.js";
+import { sdrAgendaWindow, sdrSlotsForLead } from "../src/sdr/sdr-agenda.js";
 
 const NOW = wallFromNaive("2026-09-21T08:00"); // segunda-feira
 const TEAM = [

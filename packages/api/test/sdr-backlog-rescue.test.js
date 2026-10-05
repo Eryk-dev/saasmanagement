@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeSdrRunner } from "../src/sdr-flow.js";
+import { makeSdrRunner } from "../src/sdr/sdr-flow.js";
 
 // Campanha de resgate do backlog (Leo, 24/08): lotes por meia hora, dias
 // úteis, mais novos primeiro, Qualificando antes da Nutrição, card parado.

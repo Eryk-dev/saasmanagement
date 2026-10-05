@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeSdrBrain, bookCall, stripDuration, stripDeviceAsk, PRICE_RX } from "../src/sdr-brain.js";
+import { makeSdrBrain, bookCall, stripDuration, stripDeviceAsk, PRICE_RX } from "../src/sdr/sdr-brain.js";
 
 // Relógio dos testes: quarta 19/08/2026, 10h BRT (13h UTC). Com o closer livre
 // o primeiro horário OFERTÁVEL é 09:00 do próximo dia útil.

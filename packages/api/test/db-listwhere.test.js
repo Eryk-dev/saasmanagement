@@ -57,7 +57,7 @@ test("listWhere: projeção sempre inclui id e devolve null pra chave ausente", 
 // Postgres recusava a consulta — a timeline do lead (`?lead=` sem `since`)
 // voltava 500 em todas as telas.
 test("listWhereSql: faixa sem limite não deixa parâmetro sobrando", async () => {
-  const { listWhereSql } = await import("../src/db.js");
+  const { listWhereSql } = await import("../src/platform/db.js");
   const used = (sql) => new Set([...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
   const check = (where, opts) => {
     const { sql, params } = listWhereSql("cockpit.activities", where, opts);

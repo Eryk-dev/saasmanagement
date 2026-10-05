@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { BLOG_DEFAULT_RULES, mergeBlogRules, blogCfgId, loadBlogCfg, saveBlogCfg, logLine } from "../src/blog-config.js";
+import { BLOG_DEFAULT_RULES, mergeBlogRules, blogCfgId, loadBlogCfg, saveBlogCfg, logLine } from "../src/blog/blog-config.js";
 
 test("defaults do plano: aprovação humana, 2 por semana ter/qui 09:00", () => {
   const r = mergeBlogRules(undefined);

@@ -6,8 +6,8 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { makeMeta } = await import("../src/meta.js");
-const { registerMarketingRoutes } = await import("../src/routes.marketing.js");
+const { makeMeta } = await import("../src/marketing/meta.js");
+const { registerMarketingRoutes } = await import("../src/marketing/routes.marketing.js");
 
 test("meta client: listCampaigns converte centavos e pagina; escrita valida entradas", async () => {
   const calls = [];

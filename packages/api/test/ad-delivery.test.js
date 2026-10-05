@@ -2,11 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { wallFromNaive } from "../src/agenda-slots.js";
+import { wallFromNaive } from "../src/crm/agenda-slots.js";
 import {
   DEFAULT_RULES, sanitizeRules, dayTarget, bookedCallsFor, costPerCall, fillWindow,
   syncShortFridayBlock, adDeliveryTick, loadDeliveryCfg, registerAdDeliveryRoutes,
-} from "../src/ad-delivery.js";
+} from "../src/marketing/ad-delivery.js";
 
 // Calendário de referência (relógio de parede BRT): 31/08/2026 é SEGUNDA —
 // logo 03/09 quinta, 04/09 sexta, 05/09 sábado, 06/09 domingo.

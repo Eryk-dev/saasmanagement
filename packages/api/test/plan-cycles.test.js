@@ -8,8 +8,8 @@ import {
   CYCLES, CYCLE_MONTHS, CYCLE_LABEL, CYCLE_TITLE, CYCLE_SHORT, annualized,
   CLOSED_PLANS, CLOSED_PLAN_LABEL, CLOSED_PLAN_TITLE, CLOSED_PLAN_CYCLE, CLOSED_PLAN_MONTHS,
   CLOSED_PLAN_ANNUAL_FACTOR, closedPlanToCycle, cycleToClosedPlan, closedPlanFromLabel,
-} from "../src/plan-cycles.js";
-import { CYCLE_MONTHS as BILLING_CYCLE_MONTHS, annualized as billingAnnualized, closedSubscriptionSpec } from "../src/billing.js";
+} from "../src/shared/plan-cycles.js";
+import { CYCLE_MONTHS as BILLING_CYCLE_MONTHS, annualized as billingAnnualized, closedSubscriptionSpec } from "../src/billing/billing.js";
 
 test("ciclos da assinatura: meses e rótulos de sempre", () => {
   assert.deepEqual(CYCLES, ["monthly", "quarterly", "semiannual", "annual"]);

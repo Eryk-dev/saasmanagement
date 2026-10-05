@@ -13,7 +13,7 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   saleValuer, cashReceivedByCustomer, revenueOf, isPayOnReceipt,
   isRealReceipt, paymentMethodOf, cashCollectedIn, cashBucketsIn,
-} from "../src/metrics-core.js";
+} from "../src/metrics/metrics-core.js";
 
 const { registerRoutes } = await import("../src/routes.js");
 

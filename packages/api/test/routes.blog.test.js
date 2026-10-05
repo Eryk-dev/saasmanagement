@@ -5,8 +5,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { registerBlogRoutes } from "../src/routes.blog.js";
-import { ensureBlogSettings } from "../src/migrations.js";
+import { registerBlogRoutes } from "../src/blog/routes.blog.js";
+import { ensureBlogSettings } from "../src/platform/migrations.js";
 
 class FakeEngineError extends Error {
   constructor(message, { status = 409, lint = null } = {}) { super(message); this.status = status; this.lint = lint; }

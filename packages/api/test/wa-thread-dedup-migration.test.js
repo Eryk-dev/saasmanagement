@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { ensureWaThreadDedup } = await import("../src/migrations.js");
+const { ensureWaThreadDedup } = await import("../src/platform/migrations.js");
 
 // Semeia direto nas collections (bypassa o recordMessage já corrigido) pra
 // reproduzir o estado duplicado que ficou em produção.

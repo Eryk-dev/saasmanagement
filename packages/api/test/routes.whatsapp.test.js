@@ -8,8 +8,8 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { makeWhatsapp, digits } = await import("../src/whatsapp.js");
-const { registerWhatsappRoutes } = await import("../src/routes.whatsapp.js");
+const { makeWhatsapp, digits } = await import("../src/whatsapp/whatsapp.js");
+const { registerWhatsappRoutes } = await import("../src/whatsapp/routes.whatsapp.js");
 
 function okFetch(body = { messages: [{ id: "wamid.OUT1" }] }) {
   const calls = [];
@@ -365,7 +365,7 @@ test("webhook: número FLAGGED + template RED viram saúde 'danger'", async () =
   const app = await appWith(repo, fakeWa());
   await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: { entry: [{ changes: [{ field: "phone_number_quality_update", value: { display_phone_number: "+55 41 99251-6545", event: "FLAGGED", current_limit: "TIER_1K" } }] }] } });
   await app.inject({ method: "POST", url: "/api/webhooks/whatsapp", payload: { entry: [{ changes: [{ field: "message_template_quality_update", value: { message_template_name: "nutricao1", new_quality_score: "RED" } }] }] } });
-  const { getWaHealth, waHealthSummary } = await import("../src/wa-health.js");
+  const { getWaHealth, waHealthSummary } = await import("../src/whatsapp/wa-health.js");
   const s = waHealthSummary(await getWaHealth(repo));
   assert.equal(s.level, "danger");
   assert.equal(s.number.event, "FLAGGED");
@@ -375,7 +375,7 @@ test("webhook: número FLAGGED + template RED viram saúde 'danger'", async () =
 });
 
 test("webhook: entrega da Meta fica registrada com o id do número que recebeu", async () => {
-  const { getWaHealth } = await import("../src/wa-health.js");
+  const { getWaHealth } = await import("../src/whatsapp/wa-health.js");
   const repo = makeMemRepo();
   const app = await appWith(repo, fakeWa());
   const deliver = (phoneNumberId, msgId) => app.inject({

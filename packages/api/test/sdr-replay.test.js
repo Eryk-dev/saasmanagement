@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeSdrReplay } from "../src/sdr-replay.js";
+import { makeSdrReplay } from "../src/sdr/sdr-replay.js";
 
 const NOW = new Date("2026-08-19T13:00:00Z"); // qua 10h BRT
 const ISO = (s) => new Date(s).toISOString();

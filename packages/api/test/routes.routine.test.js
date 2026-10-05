@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { registerRoutineRoutes } = await import("../src/routes.routine.js");
+const { registerRoutineRoutes } = await import("../src/tasks/routes.routine.js");
 
 function fakeAI(opts = {}) {
   const seen = [];

@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { waFormEngagement } = await import("../src/wa-store.js");
+const { waFormEngagement } = await import("../src/whatsapp/wa-store.js");
 
 const NOW = new Date("2026-07-20T12:00:00.000Z").getTime();
 const day = (d) => new Date(`2026-07-${String(d).padStart(2, "0")}T12:00:00.000Z`).toISOString();

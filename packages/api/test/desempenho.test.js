@@ -10,10 +10,10 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   isIcpLead, isSocialSellingLead, unansweredContacts, followupTouches, contactAttribution,
   callOutcome, callResultOf, dayKey,
-} from "../src/metrics-core.js";
+} from "../src/metrics/metrics-core.js";
 import { registerRoutes } from "../src/routes.js";
-import { startStoriesCapture, invalidateMediaCache } from "../src/routes.desempenho.js";
-import { invalidateStoriesSync } from "../src/social-stories.js";
+import { startStoriesCapture, invalidateMediaCache } from "../src/metrics/routes.desempenho.js";
+import { invalidateStoriesSync } from "../src/marketing/social-stories.js";
 
 const NOW = new Date("2026-09-10T18:00:00.000Z"); // 15h em Brasília, 10/09
 const FUNNEL = [

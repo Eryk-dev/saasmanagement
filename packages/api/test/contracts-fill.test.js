@@ -4,7 +4,7 @@
 // e pode ter sido reformatado.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { migrateContractFillTokens } from "../src/migrations.js";
+import { migrateContractFillTokens } from "../src/platform/migrations.js";
 
 // Trechos REAIS do corpo do co_consultoria_logistica (como inserido em prod),
 // com contagens de underscore variadas de propósito.

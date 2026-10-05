@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { stripAdDeletionClause, ensureContractsNoAdDeletionClause } from "../src/migrations.js";
+import { stripAdDeletionClause, ensureContractsNoAdDeletionClause } from "../src/platform/migrations.js";
 
 // Leo, 01/10/2026: fora a cláusula que autorizava excluir os anúncios do lead
 // em caso de encerramento sem quitação (9.5 / 10.5), e as remissões a ela.

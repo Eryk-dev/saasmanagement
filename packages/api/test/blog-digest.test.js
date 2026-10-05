@@ -8,7 +8,7 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   anonymize, buildBlogDigest, buildAudienceDigest, buildPainDigest, buildCallDigest,
   buildQuestionDigest, buildResultsDigest, existingPostsDigest,
-} from "../src/blog-digest.js";
+} from "../src/blog/blog-digest.js";
 
 const NOW = new Date("2026-09-10T12:00:00Z");
 const daysAgo = (n) => new Date(NOW.getTime() - n * 24 * 3600 * 1000).toISOString();

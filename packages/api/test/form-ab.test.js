@@ -6,11 +6,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { pickForm, bucketFor, seedFrom, readAbCookie, abCookieHeader, FORM_AB_FLAG } = await import("../src/form-ab.js");
-const { FORMS_V2, FORM_IDS, formV2 } = await import("../src/forms-v2.leverads.js");
-const { ensureFormsV2, ensureFormsV2FullRouting } = await import("../src/migrations.js");
-const { validateAnswers, publicForm } = await import("../src/forms.js");
-const { QUESTION_TYPES } = await import("../src/forms.js");
+const { pickForm, bucketFor, seedFrom, readAbCookie, abCookieHeader, FORM_AB_FLAG } = await import("../src/forms/form-ab.js");
+const { FORMS_V2, FORM_IDS, formV2 } = await import("../src/forms/forms-v2.leverads.js");
+const { ensureFormsV2, ensureFormsV2FullRouting } = await import("../src/platform/migrations.js");
+const { validateAnswers, publicForm } = await import("../src/forms/forms.js");
+const { QUESTION_TYPES } = await import("../src/forms/forms.js");
 
 const CFG = {
   enabled: true, pct: 20, onlyForms: ["fo_diagnostico_leverads"],
@@ -186,7 +186,7 @@ test("rollout integral só ativa com os três formulários publicados e preserva
 });
 
 test("as opções de faixa batem com o que a classificação sabe ler", async () => {
-  const { classificar } = await import("../src/classificacao.js");
+  const { classificar } = await import("../src/crm/classificacao.js");
   const oem = formV2("oem");
   // Preenche cada pergunta com a MAIOR faixa: se algum rótulo do formulário
   // divergir do que classificacao.js indexa, o porte sai nulo e o teste pega.

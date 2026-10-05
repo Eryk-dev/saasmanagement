@@ -14,8 +14,8 @@
 //   node packages/api/scripts/2026-09-23-em-andamento-importados-linear.mjs
 //   node packages/api/scripts/2026-09-23-em-andamento-importados-linear.mjs --apply
 import "dotenv/config";
-import { repo } from "../src/db.js";
-import { patchTicket } from "../src/tickets-core.js";
+import { repo } from "../src/platform/db.js";
+import { patchTicket } from "../src/support/tickets-core.js";
 
 const APPLY = process.argv.includes("--apply");
 const alvo = (await repo.list("tickets")).filter((t) => t.linear?.issueId && t.linear?.adopted

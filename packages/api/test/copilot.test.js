@@ -7,7 +7,7 @@ import Fastify from "fastify";
 import multipart from "@fastify/multipart";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { registerCopilotRoutes } = await import("../src/copilot.js");
+const { registerCopilotRoutes } = await import("../src/calls/copilot.js");
 
 const CHECKLIST = [{ id: "p1", label: "Raio-X da operação" }, { id: "p2", label: "Demo AO VIVO" }];
 

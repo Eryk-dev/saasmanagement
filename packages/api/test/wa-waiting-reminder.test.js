@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { startWaWaitingReminder } = await import("../src/wa-waiting-reminder.js");
+const { startWaWaitingReminder } = await import("../src/whatsapp/wa-waiting-reminder.js");
 
 const AGORA = new Date("2026-09-14T17:00:00.000Z"); // 14h em Brasília, dia útil
 const horasAtras = (h) => new Date(AGORA.getTime() - h * 3600 * 1000).toISOString();

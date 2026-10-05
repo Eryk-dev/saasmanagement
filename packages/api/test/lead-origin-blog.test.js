@@ -3,7 +3,7 @@
 // o referrer) e perde pra pago (medium=paid manda no balde de ads).
 import test from "node:test";
 import assert from "node:assert/strict";
-import { leadOrigin, LEAD_ORIGINS } from "../src/metrics-core.js";
+import { leadOrigin, LEAD_ORIGINS } from "../src/metrics/metrics-core.js";
 
 test("utm_source=blog cai em blog", () => {
   assert.equal(leadOrigin({ utm: { source: "blog", medium: "organic", campaign: "blog" } }), "blog");

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import {
   placement, applyColumnRules, setCompleted, nextDueDate, parseMentions, diffTask, composeTask,
   normalizeBoard, sanitizeBoardPatch, cleanRecurrence, siblingsOf, addDays, withTaskLock,
-} from "../src/tasks-core.js";
+} from "../src/tasks/tasks-core.js";
 
 const BOARD = normalizeBoard({ id: "b1", columns: [{ key: "todo", name: "A fazer" }, { key: "doing", name: "Fazendo" }, { key: "done", name: "Concluído" }], doneKey: "done" });
 const sib = (id, order) => ({ id, order, createdAt: "2026-01-01" });

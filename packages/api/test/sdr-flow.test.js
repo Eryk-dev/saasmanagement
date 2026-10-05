@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeSdrRunner, handleSdrInbound, classifyReminderReply, leadDigest, SDR_AUTHOR } from "../src/sdr-flow.js";
+import { makeSdrRunner, handleSdrInbound, classifyReminderReply, leadDigest, SDR_AUTHOR } from "../src/sdr/sdr-flow.js";
 
 // Relógio dos testes: quarta 19/08/2026 (ago/2026: 10=seg … 14=sex; 19=qua).
 // O motor recebe `now` injetável; o wall clock BRT deriva dele (UTC-3).

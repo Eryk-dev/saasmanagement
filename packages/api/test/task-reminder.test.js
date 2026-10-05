@@ -6,8 +6,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { startTaskReminder } from "../src/task-reminder.js";
-import { makeDiscord } from "../src/discord.js";
+import { startTaskReminder } from "../src/tasks/task-reminder.js";
+import { makeDiscord } from "../src/integrations/discord.js";
 
 const at = (iso) => new Date(iso);
 const setup = async () => {

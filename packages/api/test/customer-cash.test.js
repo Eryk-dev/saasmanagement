@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
-import { customerCashIn } from "../src/metrics-core.js";
-import { registerBillingRoutes } from "../src/routes.billing.js";
+import { customerCashIn } from "../src/metrics/metrics-core.js";
+import { registerBillingRoutes } from "../src/billing/routes.billing.js";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const period = { saas: "leverads", since: "2026-09-01", until: "2026-09-30" };

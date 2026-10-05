@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { firstTouchText, isAutoPecas, leadPainFocus } from "../src/sdr-flow.js";
+import { firstTouchText, isAutoPecas, leadPainFocus } from "../src/sdr/sdr-flow.js";
 
 // Autopeças com dor de gestão (A-E) ouve clonagem + OEM juntos (Leo, 23/08);
 // outros nichos seguem só na clonagem, e dor OEM não duplica o assunto.

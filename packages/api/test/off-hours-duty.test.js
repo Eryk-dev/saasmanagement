@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { dutyConfig, isDutyTime, dutyPhone, isAutoSilenced } from "../src/off-hours-duty.js";
+import { dutyConfig, isDutyTime, dutyPhone, isAutoSilenced } from "../src/whatsapp/off-hours-duty.js";
 
 // Horários escritos no relógio de Brasília (UTC-3), que é o fuso do negócio.
 // Em ago/2026: 03=seg … 07=sex, 08=sáb, 09=dom, 10=seg.

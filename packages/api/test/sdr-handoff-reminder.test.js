@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { startSdrHandoffReminder } from "../src/sdr-handoff-reminder.js";
+import { startSdrHandoffReminder } from "../src/sdr/sdr-handoff-reminder.js";
 
 // Handoff do robô sem ninguém assumir vira aviso pra quem cuida do lead
 // (raio-x 30/09: mediana de 90 min até o humano, 4 nunca atendidos).

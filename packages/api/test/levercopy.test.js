@@ -6,8 +6,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { buildBody, runProposal } = await import("../src/levercopy.js");
-const { LEVERADS_LEAD_QUESTIONS } = await import("../src/lead-questions.leverads.js");
+const { buildBody, runProposal } = await import("../src/crm/levercopy.js");
+const { LEVERADS_LEAD_QUESTIONS } = await import("../src/forms/lead-questions.leverads.js");
 
 const repo = makeMemRepo();
 

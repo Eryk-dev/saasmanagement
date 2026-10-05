@@ -10,9 +10,9 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   desiredAccess, runLeveradsAccessSync, registerLeveradsAccessRoutes, makeLeveradsClient,
-} from "../src/leverads-access.js";
-import { billingTick } from "../src/billing-runner.js";
-import { addMonths } from "../src/billing.js";
+} from "../src/billing/leverads-access.js";
+import { billingTick } from "../src/billing/billing-runner.js";
+import { addMonths } from "../src/billing/billing.js";
 
 // Client falso da API do produto: orgs em memória + trilha de writes.
 function fakeClient(orgs) {

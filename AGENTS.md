@@ -14,7 +14,7 @@
 
 # Implementation and validation
 
-- REST is the source of truth. The SPA and the project's MCP server use that API; Postgres access belongs in `packages/api/src/db.js`.
+- REST is the source of truth. The SPA and the project's MCP server use that API; Postgres access belongs in `packages/api/src/platform/db.js`.
 - Preserve product scoping through `saas` and the global workspace in `packages/web/src/lib/workspace.js`.
 - Preserve financial definitions, stage semantics, and backend authorization described in the context guide. Reuse the domain helpers and their existing tests.
 - Before starting the API, verify that `COCKPIT_DB_URL` targets an isolated development database. Startup runs data migrations and background integrations; historical local configurations used production's database. Never print credentials while checking configuration.

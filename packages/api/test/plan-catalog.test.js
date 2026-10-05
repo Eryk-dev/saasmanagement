@@ -6,16 +6,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeAuthHook, ensureDefaultAdmins, hashPassword } from "../src/auth.js";
-import { makeScreenGuardHook } from "../src/screens.js";
-import { dealCatalog } from "../src/proposal-catalog.js";
-import { mentoriaDealCatalog } from "../src/mentoria.js";
+import { makeAuthHook, ensureDefaultAdmins, hashPassword } from "../src/auth/auth.js";
+import { makeScreenGuardHook } from "../src/auth/screens.js";
+import { dealCatalog } from "../src/proposals/proposal-catalog.js";
+import { mentoriaDealCatalog } from "../src/customers/mentoria.js";
 import {
   catalogToPlans, catalogToConfig, mentoriaToPlans, plansToCatalog, plansToMentoriaBlock,
   dealCatalogFromPlans, ensurePlansCatalog, syncPlanCatalogProjection, nextPlan, sameJson, planIdOf,
-} from "../src/plan-catalog.js";
+} from "../src/billing/plan-catalog.js";
 
-const { ensureProposalCatalog, migrateCatalogPricing, ensureMentoriaTemplate } = await import("../src/migrations.js");
+const { ensureProposalCatalog, migrateCatalogPricing, ensureMentoriaTemplate } = await import("../src/platform/migrations.js");
 const { registerRoutes } = await import("../src/routes.js");
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -277,7 +277,7 @@ test("banco sem planos semeados: bootstrap e edição de template seguem pelo ca
 });
 
 test("recursos do LeverAds: migração preenche cópias/dia e módulos uma vez; edição pelo template não os apaga", async (t) => {
-  const { ensurePlanResources } = await import("../src/plan-catalog.js");
+  const { ensurePlanResources } = await import("../src/billing/plan-catalog.js");
   const repo = await seededRepo();
   assert.equal(await ensurePlanResources(repo), 4, "os quatro planos de assinatura do LeverAds (OEM e Ads × Essencial e Escala)");
   const ads = await repo.get("plans", "plan_leverads_ads_essencial");
@@ -314,7 +314,7 @@ test("recursos do LeverAds: migração preenche cópias/dia e módulos uma vez; 
 });
 
 test("produto do plano: LeverAds, LeverPrice e Mentoria; o produto define o acesso da assinatura", async (t) => {
-  const { planProductOf, planAccessOf } = await import("../src/plan-resources.js");
+  const { planProductOf, planAccessOf } = await import("../src/shared/plan-resources.js");
   const repo = await seededRepo();
   const by = Object.fromEntries((await repo.list("plans")).map((p) => [p.code, p]));
   assert.equal(by.oem_escala.product, "leverads");
@@ -337,7 +337,7 @@ test("produto do plano: LeverAds, LeverPrice e Mentoria; o produto define o aces
 });
 
 test("nomes da planilha: plano semeado com o nome antigo é renomeado uma vez; nome editado pelo admin fica", async () => {
-  const { ensurePlanResources } = await import("../src/plan-catalog.js");
+  const { ensurePlanResources } = await import("../src/billing/plan-catalog.js");
   const repo = await seededRepo();
   // Estado de produção: os planos nasceram do catálogo com os nomes antigos.
   await repo.update("plans", "plan_leverads_oem_escala", { name: "Lever OEM \u00b7 Escala" });
@@ -360,8 +360,8 @@ test("nomes da planilha: plano semeado com o nome antigo é renomeado uma vez; n
 });
 
 test("banco sem template de proposta (ambiente novo): os planos do LeverAds nascem do catálogo padrão, mesmo depois da Mentoria", async () => {
-  const { runStartupMigrations } = await import("../src/migrations.js");
-  const { ensurePlanResources } = await import("../src/plan-catalog.js");
+  const { runStartupMigrations } = await import("../src/platform/migrations.js");
+  const { ensurePlanResources } = await import("../src/billing/plan-catalog.js");
   const repo = makeMemRepo();
   await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [{ stage: "Ganho", kind: "ganho" }] });
   // Estado em que o banco local ficou: só a Mentoria semeada e o marcador antigo dos recursos gravado.

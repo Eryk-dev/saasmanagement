@@ -11,12 +11,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeAuthHook, ensureDefaultAdmins, hashPassword } from "../src/auth.js";
-import { makeScreenGuardHook } from "../src/screens.js";
+import { makeAuthHook, ensureDefaultAdmins, hashPassword } from "../src/auth/auth.js";
+import { makeScreenGuardHook } from "../src/auth/screens.js";
 
 const { registerRoutes } = await import("../src/routes.js");
-const { makeMp } = await import("../src/mp.js");
-const { enrichPaymentLinks, backfillPaymentLinks, groupPaymentLinks, filterPaymentLinks, validateManualPaid } = await import("../src/payment-links.js");
+const { makeMp } = await import("../src/payments/mp.js");
+const { enrichPaymentLinks, backfillPaymentLinks, groupPaymentLinks, filterPaymentLinks, validateManualPaid } = await import("../src/payments/payment-links.js");
 
 // fetch fake do MP: qualquer preference criada devolve o mesmo init_point.
 function buildApp(repo) {

@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const { makeSocial } = await import("../src/social.js");
+const { makeSocial } = await import("../src/marketing/social.js");
 
 function fakeFetch(routes) {
   const calls = [];

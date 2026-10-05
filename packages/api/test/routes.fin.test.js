@@ -171,7 +171,7 @@ test("DRE setoriza percentuais pela base: imposto vira dedução, checkout vira 
 });
 
 test("parseSettlementCsv: só WITHDRAWAL/PAYOUT viram movimento, com valor pt-BR e tarifa", async () => {
-  const { parseSettlementCsv } = await import("../src/routes.fin.js");
+  const { parseSettlementCsv } = await import("../src/payments/routes.fin.js");
   const csv = [
     "TRANSACTION_TYPE;TRANSACTION_DATE;SOURCE_ID;SETTLEMENT_NET_AMOUNT;FEE_AMOUNT",
     "SETTLEMENT;2026-08-01T10:00:00Z;111;1.500,00;-45,00",
@@ -188,7 +188,7 @@ test("parseSettlementCsv: só WITHDRAWAL/PAYOUT viram movimento, com valor pt-BR
 
 test("poller de saídas: importa sozinho quando o relatório fica pronto (sem segundo clique do Leo)", async () => {
   const repo = makeMemRepo();
-  const { syncMpOutflows } = await import("../src/routes.fin.js");
+  const { syncMpOutflows } = await import("../src/payments/routes.fin.js");
   const csv = "TRANSACTION_TYPE;TRANSACTION_DATE;SOURCE_ID;SETTLEMENT_NET_AMOUNT;FEE_AMOUNT\nWITHDRAWAL;2026-08-28T10:00:00Z;901;5.000,00;0,00";
   // Passada 1: sem relatório — pede um (o MP gera nos minutos seguintes).
   let ready = false;
@@ -211,7 +211,7 @@ test("poller de saídas: importa sozinho quando o relatório fica pronto (sem se
 test("mp-out/sync: create recusado tenta criar a CONFIG e pede de novo; erro persistente sai na resposta", async () => {
   const repo = makeMemRepo();
   await repo.create("products", { id: "leverads", name: "LeverAds", funnel: [] });
-  const { registerFinRoutes } = await import("../src/routes.fin.js");
+  const { registerFinRoutes } = await import("../src/payments/routes.fin.js");
 
   // Caso 1: conta sem config — o 1º create falha, a config é criada e o retry
   // passa. A UI recebe requested:true, sem erro.
@@ -271,7 +271,7 @@ test("mp-out/sync importa saídas do relatório pronto e não duplica", async ()
     settlementReportCreate: async () => { throw new Error("não devia pedir novo: tem relatório fresco"); },
   };
   const app = Fastify();
-  const { registerFinRoutes } = await import("../src/routes.fin.js");
+  const { registerFinRoutes } = await import("../src/payments/routes.fin.js");
   registerFinRoutes(app, repo, { mp });
   const r1 = (await app.inject({ method: "POST", url: "/api/fin/leverads/mp-out/sync" })).json();
   assert.equal(r1.imported, 1);

@@ -6,11 +6,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { ensurePlansCatalog } from "../src/plan-catalog.js";
-import { backfillCustomerPlans, planHistoryOf } from "../src/plan-history.js";
-import { runBilling } from "../src/billing.js";
+import { ensurePlansCatalog } from "../src/billing/plan-catalog.js";
+import { backfillCustomerPlans, planHistoryOf } from "../src/billing/plan-history.js";
+import { runBilling } from "../src/billing/billing.js";
 
-const { ensureProposalCatalog, migrateCatalogPricing } = await import("../src/migrations.js");
+const { ensureProposalCatalog, migrateCatalogPricing } = await import("../src/platform/migrations.js");
 const { registerRoutes } = await import("../src/routes.js");
 
 const FUNNEL = [

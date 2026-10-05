@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeSdrRunner, handleSdrInbound, greetName } from "../src/sdr-flow.js";
-import { makeSdrBrain, sameSentence } from "../src/sdr-brain.js";
-import { flagFailedBotSend } from "../src/wa-call-flow.js";
-import { holdSlots, activeHolds, withoutHeld, releaseHolds } from "../src/agenda-slots.js";
+import { makeSdrRunner, handleSdrInbound, greetName } from "../src/sdr/sdr-flow.js";
+import { makeSdrBrain, sameSentence } from "../src/sdr/sdr-brain.js";
+import { flagFailedBotSend } from "../src/whatsapp/wa-call-flow.js";
+import { holdSlots, activeHolds, withoutHeld, releaseHolds } from "../src/crm/agenda-slots.js";
 
 // Consertos do pente fino das conversas de 24/08/2026 (o primeiro dia útil
 // inteiro com o robô ligado pra todos): cada teste aqui reproduz uma cena real

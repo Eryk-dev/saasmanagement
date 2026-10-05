@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import Fastify from 'fastify';
 import { makeMemRepo } from './helpers/mem-repo.js';
-import { gradeForRevenue, estimatedRevenue, REVENUE_GRADE_VERSION } from '../src/lead-grade.js';
-import { leadGrade, isIcpLead } from '../src/metrics-core.js';
+import { gradeForRevenue, estimatedRevenue, REVENUE_GRADE_VERSION } from '../src/shared/lead-grade.js';
+import { leadGrade, isIcpLead } from '../src/metrics/metrics-core.js';
 import { leadTier } from '../../web/src/lib/ui.js';
-import { classificar } from '../src/classificacao.js';
-import { ensureRevenueClassification } from '../src/migrations.js';
-import { dedupMergePatch } from '../src/lead-dedup.js';
+import { classificar } from '../src/crm/classificacao.js';
+import { ensureRevenueClassification } from '../src/platform/migrations.js';
+import { dedupMergePatch } from '../src/crm/lead-dedup.js';
 import { registerRoutes } from '../src/routes.js';
 
 test('faixas de receita incluem o limite inferior, sem lacunas', () => {

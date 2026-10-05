@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { makeSalesWhatsapp } from "../src/sales-whatsapp.js";
+import { makeSalesWhatsapp } from "../src/sdr/sales-whatsapp.js";
 
 const waFake = (display, { fail = false } = {}) => {
   let calls = 0;

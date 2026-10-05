@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 
 const {
   classificar, porteAds, porteOem, portePrice, qualificacao, gmvDe,
-} = await import("../src/classificacao.js");
+} = await import("../src/crm/classificacao.js");
 
 // Réplica exata da régua ANTIGA (web/src/lib/ui.js antes do recorte), pra
 // comparar grau a grau em vez de confiar em inspeção visual.
@@ -132,8 +132,8 @@ test("porta errada: autopeças que entrou por um formulário que não é o de OE
 // Chave desconhecida não erra: cai no plano mais barato. Com as faixas
 // recortadas isso reproporia Essencial pra lead de 7-10 contas.
 test("catálogo: toda faixa de conta (nova e legada) resolve um pacote explícito", async () => {
-  const { pkgOf } = await import("../src/proposal-catalog.js");
-  const { ACCOUNTS_OPTIONS } = await import("../src/classificacao.js");
+  const { pkgOf } = await import("../src/proposals/proposal-catalog.js");
+  const { ACCOUNTS_OPTIONS } = await import("../src/crm/classificacao.js");
 
   const legadas = ["1", "2", "3-5", "6-10", "10+"];
   const novas = ACCOUNTS_OPTIONS.map((o) => o.value);
@@ -234,8 +234,8 @@ test("lead de OEM sem as perguntas específicas não fica sem porte", () => {
 // Chave desconhecida não erra: cai no plano mais barato. Com as faixas
 // recortadas isso reproporia Essencial pra lead de 7-10 contas.
 test("catálogo: toda faixa de conta (nova e legada) resolve um pacote explícito", async () => {
-  const { pkgOf } = await import("../src/proposal-catalog.js");
-  const { ACCOUNTS_OPTIONS } = await import("../src/classificacao.js");
+  const { pkgOf } = await import("../src/proposals/proposal-catalog.js");
+  const { ACCOUNTS_OPTIONS } = await import("../src/crm/classificacao.js");
 
   const legadas = ["1", "2", "3-5", "6-10", "10+"];
   const novas = ACCOUNTS_OPTIONS.map((o) => o.value);

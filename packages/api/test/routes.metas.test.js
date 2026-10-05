@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { registerMetasRoutes } = await import("../src/routes.metas.js");
+const { registerMetasRoutes } = await import("../src/metrics/routes.metas.js");
 
 async function buildApp() {
   const repo = makeMemRepo();
@@ -163,7 +163,7 @@ test("catálogo marca quais metas são do TIME (repartem) e quais são de cada u
 // ── Meta por MÊS (agenda) + campo vazio seguindo a meta ─────────────────────
 // O Leo configura agosto hoje; quando vira o mês, a plataforma inteira passa a
 // perseguir o número novo sem ninguém mexer em nada.
-const { cashTargetFor } = await import("../src/routes.pipeline-pace.js");
+const { cashTargetFor } = await import("../src/metrics/routes.pipeline-pace.js");
 
 test("meta por mês: o mês configurado vence o padrão, e o padrão vence o do sistema", () => {
   const p = { monthlyCashTarget: 120000, monthlyCashTargets: { "2026-08": 150000, "2026-09": 0 } };
@@ -235,7 +235,7 @@ test("agenda de meses: GET lista os próximos e o PUT grava, apaga e ignora lixo
 });
 
 // ── Card Pace da tela Metas persegue a META ATUAL (super meta) ──────────────
-const { deriveGoalsFromPace } = await import("../src/routes.metas.js");
+const { deriveGoalsFromPace } = await import("../src/metrics/routes.metas.js");
 
 const paceStub = (over = {}) => ({
   sale: { target: 120000, chaseTarget: 120000, chasePct: 100, ...over.sale },

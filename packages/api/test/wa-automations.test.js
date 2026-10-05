@@ -8,8 +8,8 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { registerWhatsappRoutes } = await import("../src/routes.whatsapp.js");
-const { renderAutoReply, runWaAutomations } = await import("../src/wa-automations.js");
+const { registerWhatsappRoutes } = await import("../src/whatsapp/routes.whatsapp.js");
+const { renderAutoReply, runWaAutomations } = await import("../src/whatsapp/wa-automations.js");
 
 function fakeWa() {
   const sent = [];

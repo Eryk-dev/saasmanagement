@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { registerCampaignRoutes } = await import("../src/routes.disparos.js");
+const { registerCampaignRoutes } = await import("../src/marketing/routes.disparos.js");
 
 // Mesma fórmula do módulo (salt = COCKPIT_API_KEY || default).
 const salt = process.env.COCKPIT_API_KEY || "cockpit-unsub-salt";

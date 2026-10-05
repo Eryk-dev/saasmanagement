@@ -4,7 +4,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { migrateTasksV2 } from "../src/migrations.js";
+import { migrateTasksV2 } from "../src/platform/migrations.js";
 
 test("migrateTasksV2 preenche e é idempotente", async () => {
   const repo = makeMemRepo();

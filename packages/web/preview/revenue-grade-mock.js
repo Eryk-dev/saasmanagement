@@ -1,4 +1,4 @@
-import { REVENUE_ICP } from '../../api/src/lead-grade.js';
+import { REVENUE_ICP } from '../../api/src/shared/lead-grade.js';
 
 // ?shell=1&review=pipeline&revenueGrades=1#pipeline — dados fictícios, sem API.
 export function setupRevenueGrades(seed) {

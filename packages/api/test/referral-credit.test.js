@@ -8,7 +8,7 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   isReferralLead, isPaidReferral, leadClassOf,
   referralCredit, referralsByCollector, REFERRAL_RATES,
-} from "../src/metrics-core.js";
+} from "../src/metrics/metrics-core.js";
 
 const { registerRoutes } = await import("../src/routes.js");
 
@@ -156,7 +156,7 @@ test("PATCH /api/leads: registra indicação depois, sem recarimbar a janela; li
 });
 
 test("migração sobe o prêmio de fechamento pra R$ 500, sem pisar em ajuste da tela", async () => {
-  const { migrateReferralClosedValue } = await import("../src/migrations.js");
+  const { migrateReferralClosedValue } = await import("../src/platform/migrations.js");
   const { makeMemRepo: mem } = await import("./helpers/mem-repo.js");
   const repo = mem();
   await repo.create("comp_plans", { id: "cp_cs", role: "cs", plan: { referralMeeting: 100, referralClosed: 250, npsFloor: 80 } });

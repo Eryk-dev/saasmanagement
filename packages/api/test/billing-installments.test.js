@@ -14,7 +14,7 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 const {
   closedSubscriptionSpec, closedInstallments, createClosedSubscription,
   createInstallmentSchedule, runBilling,
-} = await import("../src/billing.js");
+} = await import("../src/billing/billing.js");
 const { registerRoutes, convertWonLead, syncWonLeadDeal } = await import("../src/routes.js");
 
 const DAY = 86400000;

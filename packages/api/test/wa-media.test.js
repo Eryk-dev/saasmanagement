@@ -9,7 +9,7 @@ import Fastify from "fastify";
 import multipart from "@fastify/multipart";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { registerWhatsappRoutes } = await import("../src/routes.whatsapp.js");
+const { registerWhatsappRoutes } = await import("../src/whatsapp/routes.whatsapp.js");
 
 function fakeWa({ fetchMediaCalls = [], sent = [], bytes = Buffer.from("OPUSAUDIO") } = {}) {
   return {

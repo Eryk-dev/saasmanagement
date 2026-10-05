@@ -1,0 +1,710 @@
+// Rotas públicas do form builder — a superfície anônima do Cockpit. Tudo aqui
+// fica FORA da exigência de API key (ver OPEN em index.js): definição publicada,
+// envio de respostas, página hospedada /f/:id e o script de embed.
+//
+// Endurecimento da escrita anônima: rate-limit por IP + honeypot (campo `_hp`
+// preenchido = bot → responde ok e descarta) + validação estrita contra a
+// definição do form. IDs são opacos; forms em rascunho não existem publicamente.
+
+import { randomUUID } from "node:crypto";
+import { publicForm, validateAnswers, leadFromSubmission, submissionTerminal, submissionExit, makeRateLimiter, buildSteps, variantHeadline, submissionSummary } from "./forms.js";
+import { pickForm, seedFrom, readAbCookie, abCookieHeader, FORM_AB_FLAG } from "./form-ab.js";
+import { classificar } from "../crm/classificacao.js";
+import { leadGrade } from "../marketing/routes.marketing.js";
+import { attributionPain } from "../marketing/attribution.js";
+import { isWonLead, kindOf } from "../crm/stages.js";
+import { callOutcome, callWitness, dayKey, FORWARD_KINDS } from "../metrics/metrics-core.js";
+import { formPageHtml, EMBED_JS } from "./form-page.js";
+import { CREATE_DEFAULTS, dispatchProposal, publicBase } from "../routes.js";
+import { stageByKind, firstStage } from "../crm/stages.js";
+import { logActivity, initialNextActionAt, autoLeadOwner } from "../crm/lead-flow.js";
+import { findDuplicateLead, dedupMergePatch } from "../crm/lead-dedup.js";
+import { referralFromRef, logReferralCollected } from "../customers/referrals.js";
+import { raiseNewLeadAlert } from "../whatsapp/wa-call-flow.js";
+import { dutyPhone } from "../whatsapp/off-hours-duty.js";
+import { UPSTREAM_FAILED, NOT_CONFIGURED } from "../platform/http-status.js";
+
+// Snapshot da classificação pro payload do lead. Devolve null (e não um objeto
+// vazio) quando o formulário não permite classificar, pro spread sumir.
+function classificacaoDoLead(form, answers) {
+  try {
+    const asked = (form?.questions || []).map((q) => q.key);
+    const clf = classificar(answers, { asked });
+    if (!clf.porte) return null; // sem porte não há classificação — não inventa
+    return { classificacao: clf };
+  } catch {
+    return null; // classificação nunca pode derrubar a criação do lead
+  }
+}
+
+export const clientIp = (req) =>
+  String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.ip || "?";
+
+// UTM vinda da página pública: só chaves conhecidas, strings curtas. Vai no lead
+// (atribuição por campanha em /api/marketing) e na submission (auditoria).
+// Click-ids de cada plataforma (fbclid/gclid/ttclid) + referrer externo entram
+// no mesmo objeto — atribuição não fica restrita à Meta.
+// `ref`/`refby` = indicação: o id do CLIENTE que indicou (link que ele
+// encaminha) e o do colaborador que colheu. Ficam no utm pra auditoria da
+// submissão; quem vira vínculo de verdade no lead é o referrals.js, que valida
+// os dois contra o banco.
+const UTM_KEYS = ["source", "medium", "campaign", "content", "term", "placement", "fbclid", "gclid", "ttclid", "referrer", "ref", "refby"];
+export function sanitizeUtm(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const out = {};
+  for (const k of UTM_KEYS) {
+    const v = raw[k];
+    if (typeof v === "string" && v.trim()) out[k] = v.trim().slice(0, k === "referrer" ? 300 : 200);
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+// Anúncio criado direto no Gerenciador costuma vir com utm_source =
+// {{site_source_name}} (fb/ig/an/msg = plataforma), enquanto a convenção do
+// cockpit usa utm_source=meta fixo — duas grafias pra MESMA coisa (tráfego pago
+// da Meta) sujavam a leitura por origem. Normaliza: source vira "meta" e a
+// plataforma sobrevive em utm.placement (a convenção nova do cockpit também
+// manda utm_placement={{site_source_name}}).
+const META_PLATFORM_CODES = new Set(["fb", "ig", "an", "msg"]);
+export function normalizeMetaSource(utm) {
+  if (!utm || !META_PLATFORM_CODES.has(utm.source)) return utm;
+  return { ...utm, source: "meta", placement: utm.placement || utm.source };
+}
+
+// Origem derivada do REFERRER quando a visita chega sem UTM: é o que enxerga
+// bio do Instagram (l.instagram.com), busca do Google e a própria home do site
+// (que manda o visitante pro form). Rótulos estáveis pros conhecidos; o resto
+// fica com o hostname limpo.
+export function referrerSource(referrer) {
+  let host = "";
+  try { host = new URL(String(referrer)).hostname.toLowerCase(); } catch { return ""; }
+  host = host.replace(/^(www|m|l|lm|out)\./, "");
+  if (host.includes("google.")) return "google";
+  if (host.includes("instagram.com")) return "instagram";
+  if (host.includes("facebook.com") || host === "fb.com") return "facebook";
+  if (host.includes("bing.")) return "bing";
+  if (host.includes("leverads.com.br")) return "site leverads";
+  return host.slice(0, 60);
+}
+
+export function registerFormRoutes(app, repo, opts = {}) {
+  const discord = opts.discord; // injetado por routes.js (fail-open, pode faltar em teste direto)
+  const metaCapi = opts.metaCapi; // CAPI "Lead" server-side (fail-open, pode faltar em teste direto)
+  const anthropic = opts.anthropic; // IA da variante de welcome (503 quando falta chave)
+  // Número comercial do WhatsApp: o form manda o lead falar com o número
+  // CONECTADO no cockpit, a não ser que aquele form tenha um número próprio
+  // escrito. Injetado por routes.js (o cliente do WhatsApp nasce depois daqui).
+  const salesWhatsapp = opts.salesWhatsapp || (async () => "");
+  // Relógio injetável só pra teste: o plantão depende da hora, e teste que
+  // depende do relógio real passa ou falha conforme a hora em que roda.
+  const now = opts.now || (() => new Date());
+
+  // Preenche o WhatsApp do "obrigado" com o número conectado quando o form não
+  // define um: um número só pra manter, sem cópia velha em cada formulário.
+  //
+  // No plantão (fora do expediente: noite de dia útil e fim de semana) o número
+  // do plantonista GANHA até do número escrito no próprio form: a janela existe
+  // justamente porque ninguém está no número comercial, então mandar o lead pra
+  // lá seria mandar pro vazio. Dentro do expediente nada muda, e produto sem
+  // plantão configurado nunca entra aqui.
+  async function withSalesWhatsapp(pf, form) {
+    const product = form?.saas ? await repo.get("products", form.saas) : null;
+    const duty = dutyPhone(product, now());
+    if (duty) return { ...pf, thanks: { ...(pf.thanks || {}), whatsapp: duty } };
+    if (pf?.thanks?.whatsapp) return pf;
+    const digits = await salesWhatsapp();
+    return digits ? { ...pf, thanks: { ...(pf.thanks || {}), whatsapp: digits } } : pf;
+  }
+  const allow = makeRateLimiter({
+    limit: opts.rateLimit ?? Number(process.env.FORM_RATE_LIMIT || 10),
+    windowMs: opts.rateWindowMs ?? 60_000,
+  });
+  // Limiter próprio dos eventos de funil: uma sessão legítima emite ~1 evento por
+  // tela, então o teto por IP precisa ser bem maior que o de submissions.
+  const allowEvent = makeRateLimiter({
+    limit: opts.eventRateLimit ?? Number(process.env.FORM_EVENT_RATE_LIMIT || 60),
+    windowMs: opts.rateWindowMs ?? 60_000,
+  });
+
+  // Form publicado, só os campos que a página precisa (sem mapping/saas).
+  async function publishedForm(id) {
+    const form = await repo.get("forms", id);
+    return form && form.status === "published" ? form : null;
+  }
+
+  app.get("/public/forms/:id", async (req, reply) => {
+    const form = await publishedForm(req.params.id);
+    if (!form) return reply.code(404).send({ error: "Not found" });
+    return withSalesWhatsapp(publicForm(form), form);
+  });
+
+  app.post("/public/forms/:id/submissions", async (req, reply) => {
+    if (!allow(clientIp(req))) {
+      return reply.code(429).send({ error: "Muitos envios. Tente de novo em instantes." });
+    }
+    const form = await publishedForm(req.params.id);
+    if (!form) return reply.code(404).send({ error: "Not found" });
+
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    // Honeypot: bot preencheu o campo invisível → finge sucesso, não grava nada.
+    if (String(body._hp || "").trim() !== "") return { ok: true };
+
+    const answers = body.answers;
+    const errors = validateAnswers(form, answers);
+    if (errors.length) return reply.code(400).send({ error: "Respostas inválidas", details: errors });
+
+    // Terminal "_reject" = a pessoa caiu numa saída de NÃO-qualificado (decisão
+    // server-authoritative). Captura o contato marcado, mas sem proposta e sem
+    // contar como conversão (Lead Pixel/CAPI) — pra não otimizar anúncio nesse público.
+    const disqualified = submissionTerminal(form.questions || [], answers) === "_reject";
+    // SAÍDA LATERAL: a pessoa não é descarte nem venda deste produto, é outra
+    // conversa (ex.: ainda não vende em marketplace e quer aprender). Ela é
+    // guardada no estágio que a saída indicar, SEM contar como conversão pra
+    // Meta: contar ensinaria o anúncio a caçar mais gente fora do perfil, que é
+    // exatamente o problema que a pergunta veio resolver.
+    const exitKey = submissionExit(form.questions || [], answers);
+    const exit = (exitKey && (form.exits || {})[exitKey]) || null;
+
+    let utm = normalizeMetaSource(sanitizeUtm(body.utm));
+    // Orgânico ganha origem legível pelo referrer (google, instagram, site) —
+    // sem isso o lead sem UTM aparece "sem origem" no drawer e nos relatórios.
+    if (utm && !utm.source && !utm.campaign && utm.referrer) {
+      const src = referrerSource(utm.referrer);
+      if (src) utm = { ...utm, source: src };
+    }
+    const variant = String(body.variant || "").slice(0, 40); // versão da welcome que converteu
+    const pain = String(body.pain || "").slice(0, 8);         // dor da welcome mostrada
+    // Headline exato que o lead viu (variante A/B da welcome) — denormalizado no
+    // lead pra tela do SDR, sobrevive a edição posterior do form.
+    const headline = variant ? variantHeadline(form, variant, pain) : "";
+    const internal = body.internal === true;                  // teste da equipe (não suja métrica nem CAPI)
+    // fbp/fbc dos cookies do Pixel + página de entrada persistem NO LEAD (antes
+    // iam só pro CAPI do Lead e eram descartados): o Purchase do ganho reusa o
+    // match, e o drawer mostra por onde a pessoa entrou. Sem cookie _fbc (Pixel
+    // bloqueado/atrasado), deriva do fbclid da URL no formato oficial da Meta —
+    // recupera a atribuição de clique que se perdia.
+    const fbp = String(body.fbp || "").slice(0, 120);
+    const fbc = String(body.fbc || "").slice(0, 400)
+      || (utm?.fbclid ? `fb.1.${Date.now()}.${utm.fbclid}` : "");
+    const sourceUrl = String(body.sourceUrl || "").slice(0, 500);
+    // Desqualificado vai pro estágio de kind `desqualificado` do funil (perda
+    // estruturada, com motivo); fallback legado "disqualified" quando o produto/
+    // funil não existe. Lead qualificado nasce com o próximo toque do GPS marcado
+    // pela cadência do estágio de entrada (SLA de 1º contato).
+    const product = form.saas ? await repo.get("products", form.saas) : null;
+    const dqStage = stageByKind(product, "desqualificado")?.stage || "disqualified";
+    // Saída lateral não marca próximo toque: a fila é backlog, e um GPS
+    // apontando pra ela encheria a agenda do dia de quem vende. O DONO, porém,
+    // mudou: desde 16/08 a fila da Mentoria é responsabilidade do SDR (o
+    // produto existe e é vendido), então o card nasce com dono igual a um lead
+    // de venda. As outras saídas seguem sem ninguém.
+    const ownedExit = exitKey === "mentoria";
+    const nextAt = disqualified || exit ? "" : initialNextActionAt(product, "");
+    const owner = disqualified || (exit && !ownedExit) ? null : await autoLeadOwner(repo, form.saas);
+    // Saída que acontece ANTES das perguntas de contato (ex.: "não tenho
+    // interesse") não gera lead nenhum: seria um card sem nome e sem telefone,
+    // que ninguém consegue trabalhar. O envio fica registrado do mesmo jeito
+    // (submission + funil de desistência do form), que é o que interessa medir.
+    const contact = leadFromSubmission(form, answers);
+    const semContato = !contact.phone && !contact.email;
+    // INDICAÇÃO pelo link do cliente (/f/:id?ref=cu_x): vira vínculo de verdade
+    // no lead, com coletor e carimbo. Fail-open no referrals.js — link velho
+    // nunca derruba o envio de quem está do outro lado preenchendo.
+    const refData = await referralFromRef(repo, { ref: utm?.ref, by: utm?.refby });
+    const { _customerName: refCustomerName = "", ...referral } = refData || {};
+    const leadPayload = {
+      ...(CREATE_DEFAULTS.leads || {}),
+      ...contact,
+      // Lead QUALIFICADO nasce no 1º estágio do funil — não no "" do default,
+      // que deixava o card como fantasma na fila ("1º contato · atrasado" com
+      // stage vazio). Desqualificado vai pro cemitério (dqStage).
+      stage: exit ? (exit.stage || dqStage) : disqualified ? dqStage : (firstStage(product) || ""),
+      ...(disqualified ? { disqualified: true, lostReason: "sem_fit", lostNote: "Reprovado no funil do form" } : {}),
+      // `formExit` deixa a fila pesquisável depois ("quem saiu por 'ainda não
+      // vende'"), sem depender de ler as respostas de cada envio.
+      ...(exit ? { formExit: exitKey } : {}),
+      ...(owner ? { owner } : {}),
+      ...(utm ? { utm } : {}),
+      ...(fbp ? { fbp } : {}),
+      ...(fbc ? { fbc } : {}),
+      ...(sourceUrl ? { sourceUrl } : {}),
+      ...(variant ? { formVariant: variant } : {}),
+      ...(headline ? { formHeadline: headline } : {}),
+      // Persiste a dor de origem no lead. Antes ela vivia só na submissão e a
+      // proposta, criada logo abaixo, inevitavelmente nascia em "Sem código".
+      ...(pain ? { sourcePain: pain } : {}),
+      ...(nextAt ? { nextActionAt: nextAt } : {}),
+      ...(refData ? referral : {}),
+      ...(internal ? { internal: true, source: `Form · ${form.name || form.id} · teste da equipe` } : {}),
+      // Classificação por produto, calculada no NASCIMENTO e guardada como
+      // snapshot. Snapshot e não cálculo ao vivo porque a régua vai mudar: sem
+      // congelar a nota do momento, no dia em que os pesos mudarem some a
+      // capacidade de responder "o score previu quem apareceu e quem fechou?".
+      //
+      // `asked` = o que ESTE formulário perguntou. É o que separa intenção
+      // baixa de intenção não perguntada — o formulário antigo não tem as
+      // abertas, e sem isso todo lead dele nasceria com nota 0.
+      //
+      // Só entra quando dá pra classificar (porte resolvido). Formulário sem as
+      // perguntas de porte não ganha campo nenhum, em vez de ganhar um vazio.
+      ...(classificacaoDoLead(form, contact) || {}),
+      createdAt: new Date().toISOString(), // métricas de marketing filtram por período
+    };
+    // Evita CADASTRO DUPLICADO: mesma pessoa (telefone/e-mail) já no produto →
+    // MESCLA no card que existe (refresca atribuição + preenche buracos), sem
+    // criar outro e sem tocar o estado do funil (etapa/dono/GPS/proposta) — lead
+    // terminal segue fechado (decisão do Leo). Teste da equipe não dedup.
+    let lead = null, resubmit = false;
+    if (!(exit && semContato)) {
+      const dup = internal ? null : await findDuplicateLead(repo, { saas: form.saas, phone: contact.phone, email: contact.email });
+      if (dup) {
+        resubmit = true;
+        const patch = dedupMergePatch(dup, leadPayload);
+        lead = Object.keys(patch).length ? await repo.update("leads", dup.id, patch) : dup;
+      } else {
+        lead = await repo.create("leads", leadPayload);
+      }
+    }
+    // Timeline: nascimento do lead via form (o POST genérico tem log próprio);
+    // re-entrada de quem já existia entra como `lead_resubmit`, sem virar toque.
+    if (lead) try {
+      await logActivity(repo, {
+        saas: form.saas || "", lead: lead.id, type: "system",
+        meta: {
+          event: resubmit ? "lead_resubmit" : "lead_created", via: "form", form: form.id,
+          stage: lead.stage || firstStage(product),
+          ...(utm ? { utm } : {}),
+        },
+        author: "lead",
+      });
+    } catch { /* fail-open */ }
+    // Coleta registrada: o evento datado que a auditoria da comissão lê. Só
+    // quando o vínculo entrou NESTE lead (re-submissão de quem já tinha dono
+    // não gera evento novo — o dedup preserva a primeira atribuição).
+    if (lead && refData && lead.referredByCustomer === referral.referredByCustomer
+        && !internal && lead.referralAt === referral.referralAt) {
+      await logReferralCollected(repo, {
+        lead: lead.id, saas: form.saas || "", customer: referral.referredByCustomer,
+        by: lead.referralCollectedBy || "", customerName: refCustomerName,
+      });
+    }
+    const submission = await repo.create("form_submissions", {
+      form: form.id,
+      saas: form.saas,
+      lead: lead?.id || "",
+      answers,
+      ...(utm ? { utm } : {}),
+      ...(variant ? { variant } : {}),
+      ...(pain ? { pain } : {}),
+      ...(internal ? { internal: true } : {}),
+      createdAt: new Date().toISOString(),
+      ua: String(req.headers["user-agent"] || "").slice(0, 300),
+    });
+    // Meta CAPI "Lead" server-side: deduplicado com o Pixel client-side via
+    // event_id que a página manda no body (eventId), junto de fbp/fbc dos cookies
+    // do Pixel. IP/UA vêm da request. PII (email/phone) é hasheada no módulo.
+    // Best-effort: nenhuma falha de CAPI pode quebrar o envio do form.
+    // Desqualificado NÃO conta como conversão (espelha o Pixel client-side).
+    if (!disqualified && !exit && !internal && !resubmit && metaCapi?.configured(product?.metaPixelId)) {
+      try {
+        await metaCapi.sendLead({
+          eventId: body.eventId || submission.id,
+          eventSourceUrl: sourceUrl || `${publicBase(req)}/f/${form.id}`,
+          leadId: lead.id,
+          email: lead.email,
+          phone: lead.phone,
+          fbp: fbp || undefined,
+          fbc: fbc || undefined,
+          clientIp: clientIp(req),
+          userAgent: String(req.headers["user-agent"] || "") || undefined,
+          customData: { content_name: form.name },
+          pixelId: product?.metaPixelId || undefined, // pixel do SaaS do form (fallback env)
+        });
+      } catch (err) {
+        req.log?.warn?.({ err }, "meta_capi.sendLead falhou (envio do form segue)");
+      }
+    }
+
+    // Mesmo gatilho best-effort do EntityForm: lead novo tenta gerar proposta
+    // pelo MESMO dispatcher da rota manual (native quando há template publicado);
+    // elegibilidade/config é decisão do provider e nunca quebra o envio.
+    // Desqualificado não recebe proposta. Re-entrada (duplicata) reusa o estado
+    // do lead que já existe — não regera proposta.
+    if (!disqualified && !exit && !resubmit) {
+      try { await dispatchProposal(repo, lead, { auto: true, baseUrl: publicBase(req) }); } catch { /* fail-open */ }
+    }
+
+    // Aviso no Discord: lead re-buscado pra incluir o link da proposta que o
+    // dispatcher acabou de gravar (se gerou). Re-entrada (duplicata) não vira
+    // aviso de lead novo. Nunca quebra o envio.
+    if (lead && !resubmit && discord?.configured()) {
+      const fresh = (await repo.get("leads", lead.id)) || lead;
+      const product = await repo.get("products", form.saas);
+      await discord.leadNew({ lead: fresh, productName: product?.name });
+    }
+
+    // Pop-up de lead novo pro SDR: o melhor momento de falar com essa pessoa é
+    // agora, com ela ainda na página. Vale também na RE-ENTRADA (preencher de
+    // novo é levantar a mão de novo) — o alerta é um por lead, então reenvio
+    // atualiza o mesmo aviso em vez de empilhar. Fica de fora quem não é fila de
+    // venda: desqualificado, saída lateral, teste da equipe e cliente fechado.
+    if (lead && !disqualified && !exit && !internal && !isWonLead(product, lead)) {
+      try {
+        await raiseNewLeadAlert(repo, lead, { text: submissionSummary(form, answers) });
+      } catch { /* aviso não pode quebrar o envio do form */ }
+    }
+
+    return reply.code(201).send({ ok: true, id: submission.id });
+  });
+
+  // Telemetria de funil (drop-off por etapa). A página pública manda eventos
+  // anônimos por sessão de visita: "view" (carregou), "start" (clicou começar),
+  // "step" (chegou na tela da pergunta `key`) e "submit" (envio aceito). Nada de
+  // PII aqui — o contato só existe no submission. Session id é gerado no client
+  // e vive só naquele page load (cada visita é uma entrada nova no funil).
+  const EVENT_TYPES = new Set(["view", "start", "step", "submit"]);
+  app.post("/public/forms/:id/events", async (req, reply) => {
+    if (!allowEvent(clientIp(req))) return reply.code(429).send({ error: "Muitos eventos." });
+    const form = await publishedForm(req.params.id);
+    if (!form) return reply.code(404).send({ error: "Not found" });
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const event = String(body.event || "");
+    const session = String(body.session || "").slice(0, 64);
+    const key = String(body.key || "").slice(0, 80);
+    const variant = String(body.variant || "").slice(0, 40); // teste A/B da welcome
+    const pain = String(body.pain || "").slice(0, 8);         // dor do anúncio de origem
+    // Origem no evento (slim: só chaves de atribuição, sem referrer/click-ids) —
+    // é o que permite medir o drop-off POR ORIGEM/ANÚNCIO, não só variante/dor.
+    // Visita sem UTM mas com referrer vira origem derivada (google/instagram/
+    // site), senão bio do IG, busca e home ficam invisíveis na quebra.
+    const rawUtm = normalizeMetaSource(sanitizeUtm(body.utm));
+    let utm = rawUtm
+      ? Object.fromEntries(["source", "medium", "campaign", "content", "term", "placement"].filter((k) => rawUtm[k]).map((k) => [k, rawUtm[k]]))
+      : null;
+    if ((!utm || (!utm.source && !utm.campaign)) && rawUtm?.referrer) {
+      const src = referrerSource(rawUtm.referrer);
+      if (src) utm = { ...(utm || {}), source: src };
+    }
+    if (!EVENT_TYPES.has(event) || !session) return reply.code(400).send({ error: "Evento inválido" });
+    if (event === "step" && !(form.questions || []).some((q) => q.key === key)) {
+      return reply.code(400).send({ error: "Etapa desconhecida" });
+    }
+    // Id explícito: o gerador do repo é por timestamp e eventos chegam em rajada —
+    // dois no mesmo milissegundo colidiriam na PK.
+    await repo.create("form_events", {
+      id: `fe_${randomUUID()}`,
+      form: form.id,
+      saas: form.saas,
+      session,
+      event,
+      key: event === "step" ? key : "",
+      ...(variant ? { variant } : {}),
+      ...(pain ? { pain } : {}),
+      ...(utm && Object.keys(utm).length ? { utm } : {}),
+      createdAt: new Date().toISOString(),
+      ua: String(req.headers["user-agent"] || "").slice(0, 300),
+    });
+    return reply.code(201).send({ ok: true });
+  });
+
+  // Funil agregado do form (autenticado): sessões únicas por tela, na ordem do
+  // renderer (buildSteps), + totais de view/start/submit. `?since=` (ISO) filtra
+  // o período — comparação lexicográfica funciona em ISO 8601.
+  app.get("/api/forms/:id/funnel", async (req, reply) => {
+    const form = await repo.get("forms", req.params.id);
+    if (!form) return reply.code(404).send({ error: "Not found" });
+    const since = String(req.query.since || "");
+    const until = String(req.query.until || ""); // range fechado (hoje/ontem/data custom)
+    return funnelOf(form, { since, until });
+  });
+
+  // Resumo da lista de formulários do produto numa ida só: a tela baixava
+  // TODAS as respostas (364 KB medidos) só pra contar por form e mostrar as 6
+  // mais recentes. Aqui a contagem sai de 3 campos projetados no Postgres e só
+  // as 6 recentes vêm inteiras.
+  app.get("/api/forms/overview", async (req) => {
+    const saas = String(req.query.saas || "");
+    const [forms, subs] = await Promise.all([
+      repo.listWhere("forms", { saas }),
+      repo.listWhere("form_submissions", { saas }, { fields: ["form", "internal", "createdAt"] }),
+    ]);
+    forms.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+    const counts = {};
+    for (const s of subs) counts[s.form] = (counts[s.form] || 0) + 1; // mesma régua de antes (inclui internas)
+    const recentIds = subs
+      .filter((s) => !s.internal)
+      .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
+      .slice(0, 6)
+      .map((s) => s.id);
+    const recent = (await Promise.all(recentIds.map((id) => repo.get("form_submissions", id)))).filter(Boolean);
+    return { forms, counts, recent };
+  });
+
+  // Funil de TODOS os forms publicados do produto numa chamada: a tela fazia
+  // uma requisição por form, cada uma relendo a tabela de leads inteira, e só
+  // depois da lista de forms chegar (cascata). Leads, produto e activities são
+  // lidos uma vez e os forms rodam em paralelo; um form que falhar fica de fora
+  // sem derrubar os outros.
+  app.get("/api/forms/funnels", async (req) => {
+    const saas = String(req.query.saas || "");
+    const since = String(req.query.since || "");
+    const until = String(req.query.until || "");
+    const [forms, product, leadsAll, activities] = await Promise.all([
+      repo.listWhere("forms", { saas, status: "published" }),
+      saas ? repo.get("products", saas) : null,
+      repo.list("leads"),
+      Promise.all(["stage", "system"].map((type) =>
+        repo.listWhere("activities", { saas, type }, { fields: ["lead", "type", "meta", "at"] }))).then((r) => r.flat()),
+    ]);
+    const leadsById = new Map(leadsAll.map((l) => [l.id, l]));
+    const out = {};
+    await Promise.all(forms.map(async (form) => {
+      try { out[form.id] = await funnelOf(form, { since, until, product, leadsById, activities }); }
+      catch (err) { req.log?.warn?.({ err: err.message, form: form.id }, "funil do form falhou"); }
+    }));
+    return out;
+  });
+
+  // Funil agregado de UM form na janela [since, until] (ISO). `product`,
+  // `leadsById` e `activities` podem vir prontos de quem agrega vários forms
+  // (/api/forms/funnels); sem eles, lê do banco.
+  async function funnelOf(form, { since = "", until = "", product: productIn, leadsById: leadsIn, activities: actsIn } = {}) {
+    // Filtro no Postgres e só as chaves que o funil usa: form_events é a maior
+    // tabela do cockpit (~19k linhas) e `ua` sozinho é metade do documento —
+    // trazer a tabela inteira aqui era o maior consumidor de egress do projeto.
+    const events = await repo.listWhere(
+      "form_events",
+      { form: form.id, createdAt: { gte: since, lte: until } },
+      { fields: ["session", "event", "key", "variant", "pain", "utm", "createdAt"] },
+    );
+    const uniq = (pred) => new Set(events.filter(pred).map((e) => e.session)).size;
+    const questions = form.questions || [];
+    const steps = buildSteps(questions).map((idxs) => questions[idxs[0]]);
+    // Teste A/B: sessões carimbadas com variante viram um funil paralelo por
+    // versão da welcome (view → start → submit). Sem variantes, o array some.
+    const groupKeys = [...new Set(events.filter((e) => e.variant).map((e) => `${e.pain || ""}|${e.variant}`))].sort();
+    // Fechamento por variante: submission carimbada → lead → estágio de ganho.
+    // É o que elege campeã de verdade (headline que vira CONTRATO, não clique).
+    const product = productIn !== undefined ? productIn : (form.saas ? await repo.get("products", form.saas) : null);
+    // `internal` fica no JS: ausente/false/true no documento, o `->>` só compara
+    // o que existe. Form e janela vão pro Postgres.
+    // As submissões (e os leads) do período são lidas SEMPRE, não só quando há
+    // teste A/B: a lista de formulários mostra quantos envios viraram CLIENTE
+    // por formulário (13/09), e sem isso a régua ficaria só dentro do A/B.
+    const subs = (await repo.listWhere(
+      "form_submissions",
+      { form: form.id, createdAt: { gte: since, lte: until } },
+      { fields: ["lead", "variant", "pain", "internal", "createdAt"] },
+    )).filter((x) => !x.internal);
+    const leadsById = leadsIn || new Map((await repo.list("leads")).map((l) => [l.id, l]));
+    const variants = groupKeys.map((gk) => {
+      const [pain, vid] = gk.split("|");
+      const mine = (e) => (e.variant || "") === vid && (e.pain || "") === pain;
+      const vu = (ev) => new Set(events.filter((e) => mine(e) && e.event === ev).map((e) => e.session)).size;
+      const vSubs = subs.filter((x) => String(x.variant || "") === vid && String(x.pain || "") === pain);
+      const vLeads = vSubs.map((x) => leadsById.get(x.lead)).filter(Boolean);
+      // Potencial dos leads que a variante trouxe (cliente A/B/C, régua do
+      // leadGrade) + fechamento: quantos ganharam e a receita (amount) deles —
+      // a headline campeã é a que traz cliente grande e contrato, não clique.
+      const grades = { S: 0, A: 0, B: 0, C: 0, D: 0, E: 0 };
+      for (const l of vLeads) { const g = leadGrade(l); if (g) grades[g] += 1; }
+      // Call agendada: callAt marcado (agenda do pipeline) ou lead num estágio
+      // de kind "call" — mesmo critério do drip-runner pra "marcou call". Mede
+      // o meio do funil comercial: headline que gera CONVERSA, não só envio.
+      const calls = vLeads.filter((l) => l.callAt || kindOf(product, l.stage) === "call").length;
+      const wonLeads = vLeads.filter((l) => isWonLead(product, l));
+      const revenue = wonLeads.reduce((s, l) => s + (Number(l.amount) || 0), 0);
+      const times = events.filter(mine).map((e) => String(e.createdAt || "")).filter(Boolean).sort();
+      return {
+        id: vid, ...(pain ? { pain } : {}),
+        sessions: new Set(events.filter(mine).map((e) => e.session)).size,
+        views: vu("view"), starts: vu("start"), submits: vu("submit"),
+        leads: vSubs.length, calls, won: wonLeads.length, grades, revenue,
+        firstAt: times[0] || null, lastAt: times[times.length - 1] || null,
+      };
+    });
+    // Drop-off por ORIGEM (utm carimbada nos eventos): funil paralelo por
+    // source|campaign|content — o ANÚNCIO (utm_content = ad id) é o nível que
+    // decide criativo, a campanha fica de contexto/fallback. Ids dinâmicos da
+    // Meta; o SPA resolve nomes pelo catálogo de atribuição (useAttribution).
+    // Orgânico derivado do referrer entra só com source (google/instagram/site).
+    // normalizeMetaSource também na LEITURA: evento antigo gravado antes da
+    // normalização (source fb/ig/an) agrupa junto dos novos, como "meta".
+    const originKey = (e) => {
+      const u = normalizeMetaSource(e.utm);
+      return u && (u.source || u.campaign || u.content)
+        ? `${u.source || ""}|${u.campaign || ""}|${u.content || ""}|${u.placement || ""}` : "";
+    };
+    const originKeys = [...new Set(events.map(originKey).filter(Boolean))].sort();
+    const origins = originKeys.map((k) => {
+      const [source, campaign, content, placement] = k.split("|");
+      const mine = (e) => originKey(e) === k;
+      const ou = (ev) => new Set(events.filter((e) => mine(e) && e.event === ev).map((e) => e.session)).size;
+      return {
+        ...(source ? { source } : {}), ...(campaign ? { campaign } : {}), ...(content ? { content } : {}), ...(placement ? { placement } : {}),
+        sessions: new Set(events.filter(mine).map((e) => e.session)).size,
+        views: ou("view"), starts: ou("start"), submits: ou("submit"),
+      };
+    }).sort((a, b) => b.views - a.views);
+    // Fechamento do FORMULÁRIO inteiro (não só por variante): quantos envios
+    // do período viraram contrato e quanto renderam.
+    const todosLeads = subs.map((x) => leadsById.get(x.lead)).filter(Boolean);
+    const ganhos = todosLeads.filter((l) => isWonLead(product, l));
+    // Calls da mesma safra de envios, uma vez por lead. O período seleciona
+    // a entrada no formulário; o comparecimento acompanha o desfecho atual,
+    // assim como os ganhos. Agendamento sozinho não comprova realização.
+    const callActs = new Map();
+    const callLeads = [...new Map(todosLeads
+      .filter((l) => !l.internal && l.saas === form.saas)
+      .map((l) => [l.id, l])).values()];
+    if (callLeads.length) {
+      const leadIds = new Set(callLeads.map((l) => l.id));
+      const activities = actsIn || (await Promise.all(["stage", "system"].map((type) =>
+        repo.listWhere("activities", { saas: form.saas, type }, { fields: ["lead", "type", "meta", "at"] })))).flat();
+      for (const a of activities) {
+        if (!leadIds.has(a.lead)) continue;
+        if (!callActs.has(a.lead)) callActs.set(a.lead, []);
+        callActs.get(a.lead).push(a);
+      }
+    }
+    const actsOf = (id) => callActs.get(id) || [];
+    const callStage = (stage) => kindOf(product, stage) === "call" || FORWARD_KINDS.has(kindOf(product, stage));
+    const attended = callOutcome(product, callLeads.filter((l) =>
+      isWonLead(product, l) || l.callAt || callStage(l.stage) || callWitness(actsOf(l.id)) ||
+      actsOf(l.id).some((a) => a.type === "stage" && callStage(a.meta?.to))), actsOf, dayKey(now()));
+    return {
+      views: uniq((e) => e.event === "view"),
+      starts: uniq((e) => e.event === "start"),
+      submits: uniq((e) => e.event === "submit"),
+      leads: subs.length,
+      callsShown: attended.shown,
+      won: ganhos.length,
+      revenue: ganhos.reduce((sum, l) => sum + (Number(l.amount) || 0), 0),
+      lastSubmitAt: subs.map((x) => String(x.createdAt || "")).filter(Boolean).sort().pop() || null,
+      ...(variants.length ? { variants } : {}),
+      ...(origins.length ? { origins } : {}),
+      steps: steps.map((q) => ({
+        key: q.key,
+        label: q.label || q.key,
+        insight: (q.type || "text") === "insight",
+        sessions: uniq((e) => e.event === "step" && e.key === q.key),
+      })),
+    };
+  }
+
+  // Dor do anúncio de origem: utm_content = ad id → nome do anúncio (insights
+  // sincronizados) → código "[X]". "" quando não dá pra resolver (sem utm, ad
+  // ainda sem sync). Nesse caso consulta o nome vivo na Meta com cache curto:
+  // antes, todo anúncio novo/fora da conta sincronizada caía em Ads.
+  const adPainCache = new Map(); // saas:adId -> { until, promise }
+  async function adPainOf(content, saas) {
+    if (!content) return "";
+    const rows = await repo.listWhere("ad_insights", { adId: String(content), ...(saas ? { saas } : {}) }, {
+      fields: ["adName", "adsetName", "campaignName", "date"],
+    });
+    // Nome mais recente vence em caso de rename na Meta.
+    const row = rows.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))[0];
+    const known = attributionPain(row);
+    if (known || !/^\d{5,30}$/.test(content) || !opts.meta?.configured?.() || !opts.meta.adAttribution) return known;
+    const key = `${saas}:${content}`;
+    const cached = adPainCache.get(key);
+    if (cached && cached.until > Date.now()) return cached.promise;
+    const entry = { until: Date.now() + 300_000 };
+    entry.promise = opts.meta.adAttribution(content).then(attributionPain).catch(() => {
+      entry.until = Date.now() + 60_000; // falha não vira rajada de consultas
+      app.log.warn({ adId: content, saas }, "Form: origem do anúncio indisponível na Meta");
+      return "";
+    });
+    adPainCache.delete(key);
+    if (adPainCache.size >= 500) adPainCache.delete(adPainCache.keys().next().value);
+    adPainCache.set(key, entry);
+    return entry.promise;
+  }
+  // welcome específica da dor sobrescreve a base (título/CTA/variantes da dor);
+  // byPain nunca vai pro client inteiro — só a versão já resolvida.
+  function resolveWelcome(pf, pain) {
+    const w = pf.welcome;
+    if (!w) return pf;
+    const byPain = w.byPain || {};
+    const chosen = pain && byPain[pain] ? { ...w, ...byPain[pain] } : w;
+    const { byPain: _drop, ...clean } = chosen;
+    return { ...pf, welcome: clean };
+  }
+
+  // Página hospedada. `?embed=1` = modo iframe (sem altura cheia, posta a altura).
+  app.get("/f/:id", async (req, reply) => {
+    let form = await publishedForm(req.params.id);
+    if (!form) {
+      return reply.code(404).type("text/html").send("<!doctype html><meta charset=utf-8><title>404</title><p style='font-family:system-ui;padding:40px'>Formulário não encontrado.</p>");
+    }
+    const embed = req.query.embed === "1" || req.query.embed === "true";
+    const pain = await adPainOf(String(req.query.utm_content || ""), form.saas);
+
+    // A/B de FORMULÁRIO. Decide na chegada em vez de trocar a URL dos anúncios:
+    // nenhuma campanha precisa ser editada e a atribuição (mesma URL, mesmo
+    // utm_content) continua idêntica, então o controle e a variante são
+    // comparáveis. O código de dor do anúncio separa OEM das demais.
+    const jaTinhaCookie = readAbCookie(req.headers.cookie);
+    const fbclid = String(req.query.fbclid || "");
+    const seed = seedFrom({ cookie: jaTinhaCookie, fbclid });
+    const alvo = pickForm({
+      cfg: await repo.get("app_config", FORM_AB_FLAG),
+      pain, seed, currentId: form.id,
+    });
+    if (alvo) {
+      const variante = await publishedForm(alvo);
+      if (variante && variante.saas === form.saas) form = variante; // sem cruzar produtos
+    }
+    // Grava a adesão só quando há semente, pra o mesmo visitante não trocar de
+    // formulário no meio do preenchimento ao recarregar.
+    if (seed && !jaTinhaCookie) reply.header("set-cookie", abCookieHeader(seed));
+
+    // Pixel por produto: o form dispara o pixel do SaaS dele (fallback env).
+    // Depois da troca — a variante manda no pixel que vai ao ar.
+    const product = form.saas ? await repo.get("products", form.saas) : null;
+    const pf = await withSalesWhatsapp(resolveWelcome(publicForm(form), pain), form);
+    return reply.type("text/html").send(formPageHtml(pf, { embed, pixelId: product?.metaPixelId || "", pain }));
+  });
+
+  app.get("/embed.js", async (_req, reply) => reply.type("text/javascript").send(EMBED_JS));
+
+  // Variante de welcome por IA (título/subtítulo/botão) — o "aplicar" do
+  // insight de welcome fraca no dashboard. NÃO grava nada: o client mostra a
+  // copy pra edição e é o PATCH do form que publica a variante. Contexto que
+  // vai pro modelo: welcome atual + títulos já testados (base e por dor, pra
+  // não repetir ângulo) + taxa de início que disparou o insight.
+  app.post("/api/forms/:id/suggest-welcome", async (req, reply) => {
+    const form = await repo.get("forms", req.params.id);
+    if (!form) return reply.code(404).send({ error: "Not found" });
+    if (!anthropic?.configured()) return reply.code(NOT_CONFIGURED).send({ error: "IA não configurada (OPENROUTER_API_KEY ou ANTHROPIC_API_KEY)" });
+    const product = form.saas ? await repo.get("products", form.saas) : null;
+    const w = form.welcome || {};
+    const tested = [
+      ...(w.variants || []),
+      ...Object.values(w.byPain || {}).flatMap((p) => p.variants || []),
+    ].map((v) => v.title).filter(Boolean);
+    try {
+      const { suggestion } = await anthropic.suggestWelcome({
+        productName: product?.name || "",
+        pitch: product?.pitch || product?.description || "",
+        welcome: { title: w.title || "", subtitle: w.subtitle || "", button: w.button || "" },
+        variants: tested,
+        startRate: req.body?.startRate != null ? Number(req.body.startRate) : null,
+      });
+      return suggestion;
+    } catch (err) {
+      req.log?.warn?.({ err }, "suggest-welcome falhou");
+      return reply.code(UPSTREAM_FAILED).send({ error: String(err?.message || err).slice(0, 300) });
+    }
+  });
+
+  // Preview autenticado pro builder (rota /api → exige key): recebe o rascunho
+  // inteiro no body e devolve o MESMO HTML da página pública, sem persistir nada.
+  // O SPA injeta via iframe.srcdoc — fidelidade total, zero duplicação de renderer.
+  app.post("/api/forms/preview", async (req, reply) => {
+    const draft = req.body && typeof req.body === "object" ? req.body : null;
+    if (!draft) return reply.code(400).send({ error: "JSON body required" });
+    const pf = await withSalesWhatsapp(resolveWelcome(publicForm(draft), ""), draft);
+    return { html: formPageHtml(pf, { embed: false, preview: true }) };
+  });
+}

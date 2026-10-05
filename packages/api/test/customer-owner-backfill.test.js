@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { backfillCustomerOwners } from "../src/migrations.js";
+import { backfillCustomerOwners } from "../src/platform/migrations.js";
 
 async function seed(repo, { users = [], leads = [], customers = [] } = {}) {
   for (const u of users) await repo.create("users", { roles: ["integrator"], ...u });

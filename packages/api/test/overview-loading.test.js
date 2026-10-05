@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { computeScoreboard } from "../src/routes.scoreboard.js";
-import { computePipelinePace, computeWindowGoal } from "../src/routes.pipeline-pace.js";
-import { metricsReader } from "../src/metrics-reader.js";
+import { computeScoreboard } from "../src/metrics/routes.scoreboard.js";
+import { computePipelinePace, computeWindowGoal } from "../src/metrics/routes.pipeline-pace.js";
+import { metricsReader } from "../src/metrics/metrics-reader.js";
 
 const NOW = new Date("2026-09-14T15:00:00Z");
 const query = { since: "2026-09-01", until: "2026-09-30" };

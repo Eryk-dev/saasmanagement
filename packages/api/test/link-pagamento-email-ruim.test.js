@@ -11,10 +11,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { payerEmailOrNone } from "../src/routes.mp.js";
+import { payerEmailOrNone } from "../src/payments/routes.mp.js";
 
 const { registerRoutes } = await import("../src/routes.js");
-const { makeMp } = await import("../src/mp.js");
+const { makeMp } = await import("../src/payments/mp.js");
 
 // fetch fake do MP: `recusa` decide quando a preferência é rejeitada.
 // Guarda os corpos recebidos pra conferir o que foi mandado.

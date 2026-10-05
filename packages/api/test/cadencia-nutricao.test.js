@@ -3,8 +3,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const { CADENCIAS, TRILHAS, trilhaPara, SEM_NUTRICAO, ENCERRAMENTO_DIA } = await import("../src/cadencia-nutricao.js");
-const { normalizeFunnel } = await import("../src/stages.js");
+const { CADENCIAS, TRILHAS, trilhaPara, SEM_NUTRICAO, ENCERRAMENTO_DIA } = await import("../src/crm/cadencia-nutricao.js");
+const { normalizeFunnel } = await import("../src/crm/stages.js");
 
 test("cadência é concentrada na frente: metade dos toques nos 2 primeiros dias", () => {
   const s = CADENCIAS.prioritario.steps;

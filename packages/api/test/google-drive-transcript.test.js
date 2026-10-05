@@ -5,9 +5,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeGoogle } from "../src/google.js";
-import { makeAnthropic } from "../src/anthropic.js";
-import { makeCallSummarizer } from "../src/call-summaries.js";
+import { makeGoogle } from "../src/google/google.js";
+import { makeAnthropic } from "../src/integrations/anthropic.js";
+import { makeCallSummarizer } from "../src/calls/call-summaries.js";
 
 // fetch fake do Google: token ok, space ok, conferenceRecords VAZIO (= Meet API
 // não vê a call), evento do Calendar com título+horário, busca no Drive acha o

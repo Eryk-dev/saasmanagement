@@ -1,0 +1,454 @@
+// Rotas de billing (fase 5) — mudança de plano com pró-rata, baixa de fatura e o
+// tick do motor. CRUD cru de plans/subscriptions/invoices fica no CRUD genérico
+// (routes.js), que já sincroniza o ARR nas mutações de assinatura.
+
+import { computeChange, runBilling, syncCustomerArr, initSubscription, annualized } from "./billing.js";
+import { closedPlanToCycle, CYCLE_MONTHS } from "../shared/plan-cycles.js";
+import { PLAN_PRODUCTS } from "../shared/plan-resources.js";
+import { kindOf, stageByKind, firstStage } from "../crm/stages.js";
+import { applyStageMove, revertWonLead } from "../crm/lead-flow.js";
+import { mirrorSubscriptionToMp, createCustomerCharge } from "../payments/routes.mp.js";
+import { markCustomerChurn, clearCustomerChurn } from "./churn.js";
+import { parseUpsellBody, recordUpsell } from "./upsell.js";
+import { NOT_CONFIGURED } from "../platform/http-status.js";
+import { customerCashIn, rangeFromQuery, cashReceivedByCustomer } from "../metrics/metrics-core.js";
+import { isChurnedCustomer } from "./churn.js";
+import { plansOf } from "./plan-catalog.js";
+import {
+  findPlan, planSnapshotOf, recordPlanChange, subscriptionPlanState, syncCustomerPlanFromSub, planHistoryOf, removePlanHistory, plannedSubs,
+} from "./plan-history.js";
+
+export function registerBillingRoutes(app, repo, { mp, discord } = {}) {
+  // ── Churn manual (botão da ficha do cliente) ──────────────────────────────
+  // Registrar a SAÍDA de um cliente: carimba endedAt + motivo no cadastro,
+  // cancela as assinaturas em aberto (espelhando no MP quando vinculadas — não
+  // pode ficar cobrando) e loga na timeline. O arr fica CONGELADO de propósito:
+  // o endedAt é quem tira o cliente do MRR/rollup, e o valor parado segue
+  // contando o histórico (Análise). É o caminho pros clientes sem recorrência
+  // rastreada no MP — os com recorrência churnam sozinhos quando o MP cancela.
+  // Re-marcar um cliente já churnado só corrige data/motivo.
+  app.post("/api/customers/:id/churn", async (req, reply) => {
+    const customer = await repo.get("customers", req.params.id);
+    if (!customer) return reply.code(404).send({ error: "cliente não encontrado" });
+    const body = req.body || {};
+    const endedAtRaw = String(body.endedAt || "").trim();
+    if (endedAtRaw && Number.isNaN(new Date(endedAtRaw).getTime())) {
+      return reply.code(400).send({ error: "data de saída inválida" });
+    }
+    const nowIso = new Date().toISOString();
+    const canceled = [];
+    for (const s of (await repo.list("subscriptions")).filter((s) => s.customer === customer.id && s.status !== "canceled")) {
+      const updated = await repo.update("subscriptions", s.id, { status: "canceled", canceledAt: nowIso });
+      await mirrorSubscriptionToMp(mp, s, updated, req.log);
+      canceled.push(s.id);
+    }
+    const saved = await markCustomerChurn(repo, customer, {
+      endedAt: endedAtRaw || nowIso,
+      reason: String(body.reason || ""), note: String(body.note || ""),
+      source: "manual", author: req.authUser?.id || "api", discord, log: req.log,
+    });
+    return { ok: true, customer: saved, canceledSubscriptions: canceled };
+  });
+
+  // ── Upsell (botão "registrar upsell" da ficha do cliente) ────────────────
+  // Venda extra pra cliente atual: o que foi vendido, valor, modo (avulso ou
+  // acréscimo na mensalidade), forma (pago / a receber / link do MP) e quem
+  // vendeu. Regras e efeitos em upsell.js; aqui só o HTTP e a ponte com o MP.
+  app.post("/api/customers/:id/upsell", async (req, reply) => {
+    const customer = await repo.get("customers", req.params.id);
+    if (!customer) return reply.code(404).send({ error: "cliente não encontrado" });
+    const input = parseUpsellBody(req.body || {});
+    if (input.error) return reply.code(400).send({ error: input.error });
+    if (input.payment === "link" && !mp?.configured?.()) {
+      return reply.code(NOT_CONFIGURED).send({ error: "Mercado Pago não configurado — registre como pago ou a receber" });
+    }
+    const author = req.authUser?.id || "api";
+    try {
+      const r = await recordUpsell(repo, customer, input, {
+        author, discord, log: req.log,
+        createInvoice: input.payment === "link"
+          ? (stamp) => createCustomerCharge(repo, mp, req, customer, {
+            amount: input.amount, title: input.item, kind: "upsell", dueDate: input.dueAt,
+            maxInstallments: input.maxInstallments, origin: "upsell", extra: stamp,
+          })
+          : null,
+        mirrorPrice: mp?.configured?.()
+          ? async (before, updated) => { if (before.mpPreapprovalId) await mp.updatePreapprovalAmount(before.mpPreapprovalId, updated.price); }
+          : null,
+      });
+      return { ok: true, ...r };
+    } catch (err) {
+      if (err.status === 409) return reply.code(409).send({ error: err.message });
+      req.log.warn({ customer: customer.id, err: err.message }, "upsell: falha ao registrar");
+      // Link do MP recusado sai 4xx (EasyPanel engole 5xx) com o motivo.
+      return reply.code(err.status || 422).send({ error: err.message || "não deu pra registrar o upsell" });
+    }
+  });
+
+  // Desfazer um churn marcado errado (ou cliente que voltou): limpa a saída.
+  // As assinaturas canceladas NÃO voltam sozinhas — se a cobrança continua,
+  // reative na aba Assinaturas (reativar recorrência no MP é decisão humana).
+  app.post("/api/customers/:id/unchurn", async (req, reply) => {
+    const customer = await repo.get("customers", req.params.id);
+    if (!customer) return reply.code(404).send({ error: "cliente não encontrado" });
+    if (!customer.endedAt) return { ok: true, customer };
+    const saved = await clearCustomerChurn(repo, customer, { author: req.authUser?.id || "api" });
+    return { ok: true, customer: saved };
+  });
+
+  // Desfazer um FECHAMENTO ERRADO direto da tela de Clientes (Leo, 07/08 —
+  // caso New Gift: avançou sem querer, puxou o card de volta, mas o cliente/
+  // assinatura/fatura ficaram vivos contando MRR, caixa e ganho do mês). O
+  // caminho natural (puxar o card) já desfaz via applyStageMove→revertWonLead;
+  // este botão cobre o resto: card que já voltou com o carimbo preso, cliente
+  // sem lead vinculado, ou o gestor agindo direto daqui. Métricas descontam
+  // SOZINHAS: tudo deriva dos registros removidos (winsIn/MRR/caixa).
+  // Trava de dinheiro REAL (mesma do revertWonLead): preapproval/pagamento do
+  // Mercado Pago bloqueia com 409 explícito (EasyPanel engole 5xx).
+  app.post("/api/customers/:id/revert-win", async (req, reply) => {
+    const customer = await repo.get("customers", req.params.id);
+    if (!customer) return reply.code(404).send({ error: "cliente não encontrado" });
+    const subs = (await repo.list("subscriptions")).filter((s) => s.customer === customer.id);
+    const invoices = (await repo.list("invoices")).filter((i) =>
+      i.customer === customer.id || subs.some((s) => s.id === i.subscription));
+    if (subs.some((s) => s.mpPreapprovalId) || invoices.some((i) => i.mpPaymentId)) {
+      return reply.code(409).send({ error: "esse cliente tem cobrança/pagamento REAL do Mercado Pago — o dinheiro existiu, desfaça pelo Financeiro na mão" });
+    }
+    const author = req.authUser?.id || "revert-cliente";
+    const lead = customer.leadId ? await repo.get("leads", customer.leadId) : null;
+    if (lead) {
+      const product = lead.saas ? await repo.get("products", lead.saas) : null;
+      const kind = kindOf(product, lead.stage);
+      if (kind === "ganho" || kind === "integracao" || kind === "posvenda") {
+        // Card ainda na região de venda: puxa pra uma etapa ABERTA — o
+        // applyStageMove limpa o carimbo e chama o revertWonLead sozinho.
+        const back = stageByKind(product, "followup")?.stage
+          || stageByKind(product, "qualificacao")?.stage || firstStage(product);
+        const patch = await applyStageMove(repo, { lead, toStage: back, author });
+        await repo.update("leads", lead.id, { ...patch, stage: back });
+      } else {
+        // Card já voltou pro funil (o carimbo ficou preso): só a limpeza.
+        await revertWonLead(repo, lead, { author });
+        await repo.update("leads", lead.id, { customerId: "", wonAt: "" });
+      }
+      if (await repo.get("customers", customer.id)) {
+        return reply.code(409).send({ error: "não consegui remover o cliente (o vínculo com o lead não bate) — confira o registro" });
+      }
+      return { ok: true, leadId: lead.id, stage: (await repo.get("leads", lead.id))?.stage || "" };
+    }
+    // Cliente sem lead vinculado: remove os registros direto (trava do MP já passou).
+    for (const i of invoices) await repo.remove("invoices", i.id);
+    for (const s of subs) await repo.remove("subscriptions", s.id);
+    await repo.remove("customers", customer.id);
+    await removePlanHistory(repo, customer.id);
+    return { ok: true, leadId: "" };
+  });
+  // ── Adicionar um produto a um cliente que já existe ───────────────────────
+  // Um cliente pode ter mais de um produto ao mesmo tempo, cada um com a sua
+  // assinatura (LeverAds num plano, LeverPrice em outro). Aqui nasce a
+  // assinatura do produto NOVO, com o plano do catálogo carimbado: o 1º ciclo
+  // ganha a fatura em aberto (cobrar é em seguida, pelas faturas) e o ARR do
+  // cliente soma. Do MESMO produto não se abre outra: é troca de plano
+  // (POST /api/subscriptions/:id/change).
+  app.post("/api/customers/:id/subscriptions", async (req, reply) => {
+    const customer = await repo.get("customers", req.params.id);
+    if (!customer) return reply.code(404).send({ error: "cliente não encontrado" });
+    if (isChurnedCustomer(customer)) return reply.code(409).send({ error: "cliente em churn: desfaça o churn antes de adicionar um produto" });
+    const body = req.body || {};
+    const plan = await findPlan(repo, customer.saas, body.plan);
+    if (!plan || plan.status === "archived") return reply.code(422).send({ error: "plano não existe no catálogo deste produto" });
+    if (plan.kind !== "subscription") return reply.code(422).send({ error: "este plano é compra única: registre como upsell ou cobrança avulsa" });
+    const cycle = CYCLE_MONTHS[body.cycle] ? body.cycle : closedPlanToCycle(body.cycle);
+    if (!cycle) return reply.code(400).send({ error: "ciclo inválido (anual ou semestral)" });
+    const now = new Date();
+    const snapshot = planSnapshotOf(plan, { cycle, at: now.toISOString() });
+    const price = body.price != null && body.price !== "" ? Number(body.price) : snapshot.listPrice;
+    if (!(price > 0)) return reply.code(400).send({ error: "informe o valor do ciclo (o plano não tem preço de tabela neste ciclo)" });
+    const subsAll = await repo.list("subscriptions");
+    const same = plannedSubs(subsAll, customer.id).find((s) => (s.planSnapshot.product || "") === snapshot.product);
+    if (same) {
+      const label = PLAN_PRODUCTS.find((x) => x.id === snapshot.product)?.label || snapshot.product;
+      return reply.code(409).send({ error: `o cliente já tem assinatura de ${label} (${same.planSnapshot.name}): use "Mudar plano" nela`, code: "product_already_subscribed", subscription: same.id });
+    }
+    const startAt = body.startAt && !Number.isNaN(new Date(body.startAt).getTime()) ? new Date(body.startAt).toISOString() : now.toISOString();
+    const created = await repo.create("subscriptions", {
+      status: "active", cycle, price, pendingChange: null, customer: customer.id, saas: customer.saas || "",
+      plan: plan.id, planCode: plan.code, planSnapshot: snapshot, periodStart: startAt,
+    });
+    const sub = await initSubscription(repo, created, now);
+    const saved = await syncCustomerPlanFromSub(repo, sub).catch(() => null);
+    await recordPlanChange(repo, {
+      type: "start", saas: customer.saas, customer: customer.id, subscription: sub.id, lead: customer.leadId || "", at: now.toISOString(), effectiveAt: startAt,
+      from: null, to: subscriptionPlanState(sub), listPrice: snapshot.listPrice, priceVersion: snapshot.priceVersion,
+      amount: price, source: "add_product", author: req.authUser?.id || "api", note: "produto adicionado",
+    });
+    return reply.code(201).send({ ok: true, subscription: sub, customer: saved || (await repo.get("customers", customer.id)) });
+  });
+
+  // Mudança de plano/preço/ciclo. Upgrade aplica já (+ fatura pró-rata do diff
+  // restante do ciclo); downgrade e troca de ciclo agendam pro fim do ciclo.
+  app.post("/api/subscriptions/:id/change", async (req, reply) => {
+    const sub = await repo.get("subscriptions", req.params.id);
+    if (!sub) return reply.code(404).send({ error: "Not found" });
+    const raw = req.body || {};
+    const now = new Date();
+    // `plan` aceita o id ou o código de um plano do catálogo: a assinatura
+    // passa a carregar o código e o retrato do plano (preço de tabela do ciclo,
+    // versão e limites). Plano do cadastro antigo segue só como referência.
+    const catalogPlan = raw.plan ? await findPlan(repo, sub.saas, raw.plan) : null;
+    const body = catalogPlan ? { ...raw, plan: catalogPlan.id } : raw;
+    const planPatch = catalogPlan
+      ? { planCode: catalogPlan.code, planSnapshot: planSnapshotOf(catalogPlan, { cycle: body.cycle || sub.cycle, at: now.toISOString() }) }
+      : {};
+    const author = req.authUser?.id || "api";
+    const result = computeChange(sub, body, now);
+
+    if (result.changeType === "no_op") return { ok: false, ...result };
+
+    if (result.changeType === "upgrade_mid_cycle") {
+      const updated = await repo.update("subscriptions", sub.id, {
+        price: body.price != null && body.price !== "" ? Number(body.price) : sub.price,
+        plan: body.plan ?? sub.plan,
+        ...planPatch,
+        pendingChange: null,
+      });
+      let prorataInvoice = null;
+      if (result.prorata > 0) {
+        prorataInvoice = await repo.create("invoices", {
+          subscription: sub.id, customer: sub.customer, saas: sub.saas,
+          amount: result.prorata, kind: "prorata", status: "open",
+          dueDate: now.toISOString(), createdAt: now.toISOString(),
+        });
+      }
+      await syncCustomerArr(repo, sub.customer);
+      await syncCustomerPlanFromSub(repo, updated).catch(() => null);
+      await recordPlanChange(repo, {
+        type: "upgrade", saas: sub.saas, customer: sub.customer, subscription: sub.id, at: now.toISOString(),
+        from: subscriptionPlanState(sub), to: subscriptionPlanState(updated),
+        listPrice: planPatch.planSnapshot?.listPrice, priceVersion: planPatch.planSnapshot?.priceVersion,
+        amount: result.prorata || 0, source: "change", author,
+        ref: prorataInvoice ? { invoice: prorataInvoice.id } : {},
+      });
+      // Assinatura cobrada via MP: PUT só do valor — próxima recorrência sai no
+      // preço novo na data original (best-effort; pró-rata já foi faturado aqui).
+      let mpSync;
+      if (mp?.configured() && sub.mpPreapprovalId) {
+        try { await mp.updatePreapprovalAmount(sub.mpPreapprovalId, updated.price); mpSync = "ok"; }
+        catch (err) {
+          req.log.warn({ sub: sub.id, err: err.message }, "MP: falha ao atualizar valor do preapproval");
+          mpSync = "failed";
+        }
+      }
+      return { ok: true, ...result, subscription: updated, ...(mpSync ? { mpSync } : {}) };
+    }
+
+    // downgrade_mid_cycle | cycle_change → pendingChange aplicado pelo runBilling
+    const updated = await repo.update("subscriptions", sub.id, {
+      pendingChange: {
+        price: body.price != null && body.price !== "" ? Number(body.price) : sub.price,
+        cycle: body.cycle || sub.cycle,
+        plan: body.plan ?? sub.plan,
+        ...planPatch,
+        applyAt: result.applyAt,
+      },
+    });
+    await recordPlanChange(repo, {
+      type: "scheduled", saas: sub.saas, customer: sub.customer, subscription: sub.id, at: now.toISOString(),
+      effectiveAt: result.applyAt,
+      from: subscriptionPlanState(sub),
+      to: subscriptionPlanState({ ...sub, ...updated.pendingChange }),
+      listPrice: planPatch.planSnapshot?.listPrice, priceVersion: planPatch.planSnapshot?.priceVersion,
+      source: "change", author, note: result.changeType === "cycle_change" ? "troca de ciclo" : "downgrade",
+    });
+    return { ok: true, ...result, subscription: updated };
+  });
+
+  // Números por plano do catálogo (tela Planos): quem está em cada plano e
+  // quanto ele vale. Tudo sai das réguas que já existem: cliente ativo é quem
+  // não churnou (churn.js), o contratado é o `arr` do cliente (o mesmo do
+  // rollup) e o recebido é o caixa confirmado (cashReceivedByCustomer). Cliente
+  // fora do catálogo aparece nos baldes `custom` (venda personalizada) e
+  // `none` (sem plano), pra dar pra ver o que falta classificar.
+  // Tem receita por cliente: só admin (a key mestre passa).
+  app.get("/api/plans/stats/:saas", async (req, reply) => {
+    if (req.authUser && !(req.authUser.roles || []).includes("admin")) {
+      return reply.code(403).send({ error: "Os números por plano são restritos a administradores" });
+    }
+    const saas = req.params.saas;
+    const [customers, invoices, mpPayments, plans] = await Promise.all([
+      repo.listWhere("customers", { saas }), repo.listWhere("invoices", { saas }), repo.list("mp_payments"), plansOf(repo, saas),
+    ]);
+    const received = cashReceivedByCustomer({ customers, invoices, mpPayments });
+    const known = new Set(plans.map((p) => p.code));
+    const blank = () => ({ active: 0, churned: 0, arr: 0, mrr: 0, received: 0, customers: [] });
+    const out = { plans: Object.fromEntries(plans.map((p) => [p.code, blank()])), custom: blank(), none: blank() };
+    const subsAll = await repo.listWhere("subscriptions", { saas });
+    const add = (bucket, c, { arr, cash, cycle, snapshot, churned }) => {
+      if (churned) bucket.churned++; else { bucket.active++; bucket.arr += arr; }
+      bucket.received += cash;
+      bucket.customers.push({
+        id: c.id, name: c.name || "", plan: c.plan || "", cycle, arr, received: cash,
+        startedAt: c.startedAt || "", endedAt: churned ? c.endedAt || "" : "",
+        listPrice: snapshot?.listPrice ?? null, priceVersion: snapshot?.priceVersion ?? null,
+      });
+    };
+    for (const c of customers) {
+      const churned = isChurnedCustomer(c);
+      const cash = received.get(c.id) || 0;
+      // Cliente com MAIS DE UM produto conta em cada plano, com o valor da
+      // assinatura daquele plano. O caixa é por cliente (pagamento não diz de
+      // qual assinatura veio), então é repartido na proporção do contratado.
+      const planned = plannedSubs(subsAll, c.id).filter((s) => known.has(s.planCode));
+      if (planned.length > 1) {
+        const values = planned.map((s) => (s.status === "active" || s.status === "past_due" ? annualized(s.price, s.cycle) : 0));
+        const sum = values.reduce((a, v) => a + v, 0);
+        planned.forEach((s, i) => add(out.plans[s.planCode], c, {
+          arr: values[i], cash: sum > 0 ? cash * (values[i] / sum) : cash / planned.length,
+          cycle: s.planSnapshot?.closedPlan || s.cycle, snapshot: s.planSnapshot, churned,
+        }));
+        continue;
+      }
+      const bucket = c.planCode && known.has(c.planCode) ? out.plans[c.planCode] : (c.planCustom || c.planCode ? out.custom : out.none);
+      add(bucket, c, { arr: Number(c.arr) || 0, cash, cycle: c.planCycle || "", snapshot: c.planSnapshot, churned });
+    }
+    const total = blank();
+    for (const b of [...Object.values(out.plans), out.custom, out.none]) {
+      b.arr = Math.round(b.arr); b.mrr = Math.round(b.arr / 12); b.received = Math.round(b.received * 100) / 100;
+      b.customers.forEach((x) => { x.arr = Math.round(x.arr); x.received = Math.round(x.received * 100) / 100; });
+      b.customers.sort((x, y) => (x.endedAt ? 1 : 0) - (y.endedAt ? 1 : 0) || y.arr - x.arr);
+      total.arr += b.arr; total.received += b.received;
+    }
+    // Total de CLIENTES (quem tem dois produtos conta uma vez só).
+    for (const c of customers) { if (isChurnedCustomer(c)) total.churned++; else total.active++; }
+    total.mrr = Math.round(total.arr / 12); total.received = Math.round(total.received * 100) / 100; delete total.customers;
+    return { ...out, total };
+  });
+
+  // Histórico de plano do cliente (mais recente primeiro) e o feed do produto.
+  // A coleção plan_changes é PRIVATE no CRUD genérico: só se lê por aqui.
+  app.get("/api/customers/:id/plan-history", async (req, reply) => {
+    const customer = await repo.get("customers", req.params.id);
+    if (!customer) return reply.code(404).send({ error: "cliente não encontrado" });
+    return planHistoryOf(repo, customer.id);
+  });
+  app.get("/api/plan-changes", async (req) => {
+    const { saas, since } = req.query || {};
+    const rows = await repo.listWhere("plan_changes", { saas, ...(since ? { at: { gte: String(since) } } : {}) });
+    return rows.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  });
+
+  // Baixa de fatura (o pagamento em si acontece no MP/app — fase 4). Se a
+  // assinatura estava past_due e não sobrou fatura vencida, volta a active.
+  app.post("/api/invoices/:id/pay", async (req, reply) => {
+    const inv = await repo.get("invoices", req.params.id);
+    if (!inv) return reply.code(404).send({ error: "Not found" });
+    const paid = await repo.update("invoices", inv.id, { status: "paid", paidAt: new Date().toISOString() });
+    if (inv.subscription) {
+      const stillOverdue = (await repo.list("invoices"))
+        .some((i) => i.subscription === inv.subscription && i.id !== inv.id && i.status === "overdue");
+      const sub = await repo.get("subscriptions", inv.subscription);
+      if (sub && sub.status === "past_due" && !stillOverdue) {
+        await repo.update("subscriptions", sub.id, { status: "active" });
+        await syncCustomerArr(repo, sub.customer);
+      }
+    }
+    // Aviso no Discord (fail-open) — baixa manual também é dinheiro entrando.
+    if (discord?.configured()) {
+      const customer = paid.customer ? await repo.get("customers", paid.customer) : null;
+      await discord.invoicePaid({ invoice: paid, customerName: customer?.name, via: "baixa manual" });
+    }
+    return paid;
+  });
+
+  // Desfaz uma baixa MANUAL (clique errado no "marcar paga"). Pagamento real do
+  // Mercado Pago não desmarca — o dinheiro existiu, estorno é no Financeiro.
+  // Volta pra open/overdue conforme o vencimento e re-derruba a assinatura pra
+  // past_due se a fatura reaberta já estava vencida.
+  app.post("/api/invoices/:id/unpay", async (req, reply) => {
+    const inv = await repo.get("invoices", req.params.id);
+    if (!inv) return reply.code(404).send({ error: "Not found" });
+    if (inv.mpPaymentId) return reply.code(409).send({ error: "essa fatura foi paga de verdade pelo Mercado Pago — não dá pra desmarcar, estorno é no Financeiro" });
+    if (inv.status !== "paid") return inv;
+    const overdue = inv.dueDate && new Date(inv.dueDate).getTime() + 3 * 86400000 <= Date.now();
+    const reopened = await repo.update("invoices", inv.id, {
+      status: overdue ? "overdue" : "open", paidAt: "",
+      ...(overdue ? { overdueAt: new Date().toISOString() } : {}),
+    });
+    if (inv.subscription && overdue) {
+      const sub = await repo.get("subscriptions", inv.subscription);
+      if (sub && sub.status === "active") {
+        await repo.update("subscriptions", sub.id, { status: "past_due" });
+        await syncCustomerArr(repo, sub.customer);
+      }
+    }
+    return reopened;
+  });
+
+  // Dinheiro que REALMENTE entrou, por cliente do SaaS — base do "Status pgto."
+  // da tela Clientes. Conta só FATO: pagamento aprovado no espelho do Mercado
+  // Pago (casado por cliente ou pelo lead de origem) e fatura baixada de
+  // verdade (parcela/fatura marcada paga na mão ou baixada pelo MP). A fatura
+  // inicial que NASCE paga no fechamento (paidAt === periodStart, convenção do
+  // createClosedSubscription) fica fora: é suposição de recebimento, e o
+  // fechamento no cartão sem o link pago provou que ela mente (Marianna, 13/08).
+  app.get("/api/billing/received/:saas", async (req) => {
+    const customers = (await repo.list("customers")).filter((c) => c.saas === req.params.saas);
+    const ids = new Set(customers.map((c) => c.id));
+    const byLead = new Map(customers.filter((c) => c.leadId).map((c) => [c.leadId, c.id]));
+    const received = {};
+    const add = (cid, v) => { if (cid && ids.has(cid) && v > 0) received[cid] = Math.round(((received[cid] || 0) + v) * 100) / 100; };
+    const countedMp = new Set(); // idempotência: pagamento espelhado + fatura baixada por ele contam UMA vez
+    for (const p of await repo.list("mp_payments")) {
+      if (p.status !== "approved") continue;
+      const cid = (ids.has(p.customer) ? p.customer : "") || byLead.get(p.lead) || "";
+      if (!cid) continue;
+      add(cid, Number(p.amount) || 0);
+      countedMp.add(String(p.mpId));
+    }
+    for (const i of await repo.list("invoices")) {
+      if (i.status !== "paid" || !ids.has(i.customer)) continue;
+      if (i.mpPaymentId) {
+        if (!countedMp.has(String(i.mpPaymentId))) add(i.customer, Number(i.amount) || 0);
+        continue;
+      }
+      if (i.paidAt && i.periodStart && i.paidAt === i.periodStart) continue; // nasceu paga no fechamento
+      add(i.customer, Number(i.amount) || 0);
+    }
+    return received;
+  });
+
+  app.get("/api/billing/cash/:saas", async (req, reply) => {
+    const { since, until } = rangeFromQuery(req.query);
+    const validDay = (day) => typeof day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(day)
+      && Number.isFinite(Date.parse(day)) && new Date(day).toISOString().slice(0, 10) === day;
+    if (!validDay(since) || !validDay(until) || since > until) {
+      return reply.code(400).send({ error: "período inválido: informe início e fim em AAAA-MM-DD" });
+    }
+    const saas = req.params.saas;
+    const [customers, invoices, mpPayments] = await Promise.all([
+      repo.listWhere("customers", { saas }), repo.listWhere("invoices", { saas }),
+      // Vínculos antigos podem ter cliente/lead e saas vazio. A função
+      // restringe à base do produto, como o endpoint received acima.
+      repo.list("mp_payments"),
+    ]);
+    return customerCashIn({ customers, invoices, mpPayments, saas, since, until });
+  });
+
+  // Tick do motor: mudanças agendadas + renovações + dunning + sync de ARR.
+  app.post("/api/billing/run", async (req) => {
+    const graceDays = req.body?.graceDays != null ? Number(req.body.graceDays) : undefined;
+    const report = await runBilling(repo, graceDays != null && !Number.isNaN(graceDays) ? { graceDays } : {});
+    // Dunning avisa no Discord só quando ESTE tick marcou algo novo (overdue/
+    // pastDue do report são transições, não estoque); a lista mostra o estoque
+    // vencido inteiro pra ação.
+    if ((report.overdue > 0 || report.pastDue > 0) && discord?.configured()) {
+      const lines = [];
+      for (const inv of (await repo.list("invoices")).filter((i) => i.status === "overdue")) {
+        const c = inv.customer ? await repo.get("customers", inv.customer) : null;
+        lines.push(`• ${c?.name || inv.customer || "?"} — R$ ${Number(inv.amount) || 0} (${inv.saas || "?"})`);
+      }
+      await discord.billingAlert({ report, lines });
+    }
+    return report;
+  });
+}

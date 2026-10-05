@@ -9,17 +9,17 @@ import crypto from "node:crypto";
 import Fastify from "fastify";
 import multipart from "@fastify/multipart";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeAuthHook, hashPassword } from "../src/auth.js";
-import { makeScreenGuardHook } from "../src/screens.js";
-import { normalizeSettings } from "../src/tickets-core.js";
+import { makeAuthHook, hashPassword } from "../src/auth/auth.js";
+import { makeScreenGuardHook } from "../src/auth/screens.js";
+import { normalizeSettings } from "../src/support/tickets-core.js";
 import {
   planTicketSync, normalizeLinearSettings, issueKeyFromInput, clearStateCache, clearPeopleCache,
   linearIdForUser, userIdForLinear, issueAssignee,
   applyLinearIssue, applyLinearComment, LINEAR_PRIORITY, issueDescriptionFor, isCockpitIssue,
   categoryFromLabels, issueLabelNames,
-} from "../src/ticket-linear.js";
-import { startLinearSync } from "../src/ticket-linear-runner.js";
-import { publicTicket } from "../src/support-page.js";
+} from "../src/support/ticket-linear.js";
+import { startLinearSync } from "../src/support/ticket-linear-runner.js";
+import { publicTicket } from "../src/support/support-page.js";
 
 const { registerRoutes } = await import("../src/routes.js");
 

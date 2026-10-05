@@ -1,11 +1,11 @@
 // Follow-up em 4 contatos, por DIA (05/10/2026) — lado da SPA. A régua é a do
-// servidor (api/src/followup-contacts.js, mesmo arquivo); aqui só a leitura da
+// servidor (api/src/shared/followup-contacts.js, mesmo arquivo); aqui só a leitura da
 // configuração global que chega no bootstrap e os rótulos das telas.
 
 import {
   normalizeFollowupContacts, followupDayOf, followupStepOf, addBusinessDays, todayBrt,
   firstFollowupDay, nextFollowupDay, dayStartIso, FOLLOWUP_STEPS, FOLLOWUP_CHANNELS, DEFAULT_FOLLOWUP_CONTACTS,
-} from "../../../api/src/followup-contacts.js";
+} from "../../../api/src/shared/followup-contacts.js";
 
 export {
   normalizeFollowupContacts, followupDayOf, followupStepOf, addBusinessDays, todayBrt,

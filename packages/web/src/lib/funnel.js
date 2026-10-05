@@ -1,5 +1,5 @@
 import { followupContacts, followupDayOf, firstFollowupDay, dayStartIso, followupDueDay, followupNextContact, localDayStart, FOLLOWUP_STEPS } from "./followup.js";
-// Semântica de estágios no SPA — espelho de packages/api/src/stages.js.
+// Semântica de estágios no SPA — espelho de packages/api/src/crm/stages.js.
 // O funil de cada produto é dado (product.funnel[{stage, kind, cadence, ...}]);
 // TODA decisão de tela (fase SDR/Closer, terminal, cadência, condicionais do
 // drawer) passa por aqui, nunca por nome de estágio hardcoded. Funil sem `kind`

@@ -8,7 +8,7 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerRoutes } = await import("../src/routes.js");
-const { buildCustomProposal, customSlides, sanitizeCustomSpec } = await import("../src/proposal.js");
+const { buildCustomProposal, customSlides, sanitizeCustomSpec } = await import("../src/proposals/proposal.js");
 
 function buildApp(repo) {
   const app = Fastify();

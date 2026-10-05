@@ -11,9 +11,9 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerRoutes } = await import("../src/routes.js");
-const { makeGoogle } = await import("../src/google.js");
-const { makeGoogleUser } = await import("../src/google-user.js");
-const { makeCallSummarizer } = await import("../src/call-summaries.js");
+const { makeGoogle } = await import("../src/google/google.js");
+const { makeGoogleUser } = await import("../src/google/google-user.js");
+const { makeCallSummarizer } = await import("../src/calls/call-summaries.js");
 
 const MEET_SCOPES = "calendar.events https://www.googleapis.com/auth/meetings.space.created https://www.googleapis.com/auth/meetings.space.settings https://www.googleapis.com/auth/meetings.space.readonly drive.readonly";
 

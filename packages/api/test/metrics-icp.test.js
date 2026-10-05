@@ -8,8 +8,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const { leadGrade, isIcpLead, gradeBandKnown, ICP_GRADES } = await import("../src/metrics-core.js");
-const { ACCOUNTS_OPTIONS, LISTINGS_OPTIONS, porteAds } = await import("../src/classificacao.js");
+const { leadGrade, isIcpLead, gradeBandKnown, ICP_GRADES } = await import("../src/metrics/metrics-core.js");
+const { ACCOUNTS_OPTIONS, LISTINGS_OPTIONS, porteAds } = await import("../src/crm/classificacao.js");
 const { leadTier } = await import("../../web/src/lib/ui.js");
 
 const FAIXAS_NOVAS = { accounts: ACCOUNTS_OPTIONS.map((o) => o.value), listings: LISTINGS_OPTIONS.map((o) => o.value) };

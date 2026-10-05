@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { ensureRevenueLeadQuestion } = await import("../src/migrations.js");
+const { ensureRevenueLeadQuestion } = await import("../src/platform/migrations.js");
 
 const seed = (repo, leadQuestions) =>
   repo.create("products", { id: "leverads", name: "Leverads", ...(leadQuestions !== undefined ? { leadQuestions } : {}) });
