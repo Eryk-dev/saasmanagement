@@ -147,6 +147,18 @@ export const SDR_TEMPLATES = [
     body: "Bom dia {{1}}, tudo bom? Temos um horário reservado para {{2}}, tudo certo? Na reunião vamos te mostrar na prática o passo a passo para criar anúncios completos em escala, explicar as funcionalidades da plataforma e tirar todas suas dúvidas. Posso contar com sua presença? Caso não consiga comparecer, me sinalize para liberar seu horário, por favor.",
     example: ["Roberto", "hoje às 11h"],
   },
+  // A MESMA confirmação da manhã COM A FOTO do documento (tela "É assim que ele
+  // fica no ar", anúncio publicado): cabeçalho de imagem + corpo. O sdr-setup lê
+  // o arquivo de src/assets e sobe como exemplo; no envio o motor anexa o media
+  // id do número. Enquanto não aprovado, a versão só-texto cobre.
+  {
+    name: "sdr_lembrete_manha_oem_img",
+    category: "UTILITY",
+    language: "pt_BR",
+    headerImage: "sdr/oem-anuncio-no-ar.jpg",
+    body: "Bom dia {{1}}, tudo bom? Temos um horário reservado para {{2}}, tudo certo? Na reunião vamos te mostrar na prática o passo a passo para criar anúncios completos em escala, explicar as funcionalidades da plataforma e tirar todas suas dúvidas. Posso contar com sua presença? Caso não consiga comparecer, me sinalize para liberar seu horário, por favor.",
+    example: ["Roberto", "hoje às 11h"],
+  },
   {
     name: "sdr_lembrete_link_oem",
     category: "UTILITY",

@@ -35,6 +35,7 @@ import { resolveWabaId, getWaHealth } from "./wa-health.js";
 import { raiseAlert } from "./wa-call-flow.js";
 import { slotLabel, slotLabelFull, wallNow, spreadPair, wholeHourSlots, activeHolds, holdSlots } from "./agenda-slots.js";
 import { sdrSlotsForLead } from "./sdr-agenda.js";
+import { readFile } from "node:fs/promises";
 import { SDR_TEMPLATES } from "./sdr-templates.leverads.js";
 
 export const SDR_AUTHOR = "sdr-bot";
@@ -212,6 +213,9 @@ export function sdrBotConfig(product) {
       // Lembretes do roteiro Lever OEM (Leo, 05/10): manhã (8h) sem link, 2h
       // com link e 10 min com link; só pra lead de OEM, fallback nos genéricos.
       reminderManhaOem: cfg.templates?.reminderManhaOem || "sdr_lembrete_manha_oem",
+      // A mesma manhã COM A FOTO do documento (cabeçalho de imagem); vai na
+      // frente da versão só-texto quando aprovada e a foto subiu pro número.
+      reminderManhaOemImg: cfg.templates?.reminderManhaOemImg || "sdr_lembrete_manha_oem_img",
       reminderLinkOem: cfg.templates?.reminderLinkOem || "sdr_lembrete_link_oem",
       reminder10minOem: cfg.templates?.reminder10minOem || "sdr_lembrete_10min_oem",
       rescue: cfg.templates?.rescue || "sdr_resgate_conversa",
@@ -340,12 +344,27 @@ export const DEVICE_TIP = "Se for entrar pelo celular, vale ter um computador po
 // ROTEIRO LEVER OEM (doc do Leo, 05/10/2026): textos fixos do lead de OEM.
 // Manhã sem link (quem entrega é o de 2h); 2h e 10min com o link quando a
 // sala existe (sem sala, pede o ok, como nos genéricos).
+// A FOTO da confirmação da manhã (o documento traz a tela "É assim que ele
+// fica no ar", um anúncio publicado pela ferramenta, entre o "tudo certo?" e o
+// "Na reunião…"). Janela aberta: texto · foto · texto; janela fechada: template
+// com cabeçalho de imagem (sdr_lembrete_manha_oem_img). O arquivo vive em
+// src/assets (vai no container); o media id do número é cacheado em app_config
+// por 25 dias (a Meta expira mídia em 30).
+export const OEM_MORNING_IMAGE = {
+  file: new URL("./assets/sdr/oem-anuncio-no-ar.jpg", import.meta.url),
+  mime: "image/jpeg",
+  filename: "oem-anuncio-no-ar.jpg",
+};
+export function oemMorningParts(nome, quando) {
+  const bomDia = nome ? `Bom dia ${nome}, tudo bom?` : "Bom dia, tudo bom?";
+  return [
+    `${bomDia} Temos um horário reservado para ${quando}, tudo certo?`,
+    "Na reunião vamos te mostrar na prática o passo a passo para criar anúncios completos em escala, explicar as funcionalidades da plataforma e tirar todas suas dúvidas. Posso contar com sua presença? Caso não consiga comparecer, me sinalize para liberar seu horário, por favor.",
+  ];
+}
 function reminderTextOem(key, { nome, quando, link }) {
   const voc = nome ? `${nome}, nossa` : "Nossa";
-  if (key === "manha") {
-    const bomDia = nome ? `Bom dia ${nome}, tudo bom?` : "Bom dia, tudo bom?";
-    return `${bomDia} Temos um horário reservado para ${quando}, tudo certo? Na reunião vamos te mostrar na prática o passo a passo para criar anúncios completos em escala, explicar as funcionalidades da plataforma e tirar todas suas dúvidas. Posso contar com sua presença? Caso não consiga comparecer, me sinalize para liberar seu horário, por favor.`;
-  }
+  if (key === "manha") return oemMorningParts(nome, quando).join(" ");
   if (key === "2h") {
     return link
       ? `${voc} conversa é ${quando}. O link pra entrar é este: ${link}. Qualquer imprevisto por favor me avise.`
@@ -476,8 +495,11 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
     await onOutboundMessage(repo, leadId, { author: SDR_AUTHOR, text: "1º toque do SDR" });
     return messageId;
   }
-  async function sendTemplate({ phone, name, params, phoneId, saas, leadId, moveCard = true }) {
-    const components = params.length ? [{ type: "body", parameters: params.map((t) => ({ type: "text", text: String(t || "") })) }] : [];
+  async function sendTemplate({ phone, name, params, phoneId, saas, leadId, moveCard = true, headerImageId = "" }) {
+    const components = [];
+    // Cabeçalho de IMAGEM (template da manhã do OEM): o media id do número.
+    if (headerImageId) components.push({ type: "header", parameters: [{ type: "image", image: { id: headerImageId } }] });
+    if (params.length) components.push({ type: "body", parameters: params.map((t) => ({ type: "text", text: String(t || "") })) });
     const { messageId } = await wa.sendTemplate(phone, name, "pt_BR", components, { phoneId });
     const rendered = (TEMPLATE_BODY[name] || name).replace(/\{\{\s*(\d+)\s*\}\}/g, (_, n) => params[Number(n) - 1] || "");
     await recordMessage(repo, { id: messageId, phone, direction: "out", text: rendered, status: "sent", author: SDR_AUTHOR, waPhoneId: phoneId || "", saas, leadId, at: now().toISOString() });
@@ -486,6 +508,28 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
     // esvaziaria na rajada sem nenhum lead ter falado nada.
     if (moveCard) await onOutboundMessage(repo, leadId, { author: SDR_AUTHOR, text: "1º toque do SDR" });
     return messageId;
+  }
+
+  // Foto solta na conversa (janela aberta), gravada no inbox como mídia.
+  async function sendImage({ phone, mediaId, phoneId, saas, leadId }) {
+    const { messageId } = await wa.sendMedia(phone, { kind: "image", mediaId }, { phoneId });
+    await recordMessage(repo, { id: messageId, phone, direction: "out", text: "", status: "sent", author: SDR_AUTHOR, waPhoneId: phoneId || "", saas, leadId, at: now().toISOString(), media: { kind: "image", id: mediaId, mime: OEM_MORNING_IMAGE.mime, filename: OEM_MORNING_IMAGE.filename } });
+    return messageId;
+  }
+  // Media id da foto da manhã do OEM no número: sobe uma vez e reusa por 25
+  // dias (a Meta expira em 30). Chave por produto e número.
+  const OEM_MEDIA_TTL_MS = 25 * DAY;
+  async function oemMorningMediaId({ phoneId, saas }) {
+    if (!wa.uploadMedia || !wa.sendMedia) return "";
+    const id = `sdr_oem_media_${saas}_${phoneId || "default"}`;
+    const cur = await repo.get("app_config", id).catch(() => null);
+    if (cur?.mediaId && now().getTime() - Date.parse(cur.at || "") < OEM_MEDIA_TTL_MS) return cur.mediaId;
+    const buffer = await readFile(OEM_MORNING_IMAGE.file);
+    const mediaId = await wa.uploadMedia(buffer, { mime: OEM_MORNING_IMAGE.mime, filename: OEM_MORNING_IMAGE.filename, phoneId });
+    if (!mediaId) return "";
+    const next = { id, saas, mediaId, at: now().toISOString() };
+    if (cur) await repo.update("app_config", id, next); else await repo.create("app_config", next);
+    return mediaId;
   }
 
   async function tick() {
@@ -1021,6 +1065,12 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           // Janela fechada: template aprovado reabre; sem template, alerta
           // quente — o lembrete é justamente o anti no-show, não pode morrer
           // calado.
+          // MANHÃ DO OEM COM A FOTO (doc do Leo, 05/10): o media id da foto no
+          // número; sem conseguir subir, a manhã sai só em texto.
+          const oemManha = oem && due.key === "manha";
+          const oemMediaId = oemManha
+            ? await oemMorningMediaId({ phoneId, saas: product.id }).catch((err) => { log.warn?.({ lead: lead.id, err: err.message }, "sdr: foto da manhã do OEM não subiu"); return ""; })
+            : "";
           const viaTemplate = async () => {
             const names = await approvedNames();
             // Com link do Meet e o template COM link aprovado, ele vai na
@@ -1033,17 +1083,18 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
             // utilizável (os corpos abrem com o nome); sem aprovação ou sem
             // nome, caem nos genéricos.
             const oemTpls = oem && nome ? [
+              due.key === "manha" && oemMediaId ? cfg.templates.reminderManhaOemImg : "",
               due.key === "manha" ? cfg.templates.reminderManhaOem : "",
               due.key === "2h" && callUrl ? cfg.templates.reminderLinkOem : "",
               due.key === "10min" && callUrl ? cfg.templates.reminder10minOem : "",
             ] : [];
             const tplLembrete = [...oemTpls, callUrl ? cfg.templates.reminderLink : "", callUrl ? "sdr_lembrete_link" : "", cfg.templates.reminder, "sdr_lembrete_call"].filter(Boolean).find((n) => names.has(n));
             if (tplLembrete) {
-              const params = tplLembrete === cfg.templates.reminderManhaOem ? [nome, quando]
+              const params = [cfg.templates.reminderManhaOemImg, cfg.templates.reminderManhaOem].includes(tplLembrete) ? [nome, quando]
                 : tplLembrete === cfg.templates.reminderLinkOem ? [nome, quando, callUrl]
                   : tplLembrete === cfg.templates.reminder10minOem ? [nome, callUrl]
                     : [cfg.templates.reminderLink, "sdr_lembrete_link"].includes(tplLembrete) ? [nome || "tudo bem", quando, callUrl] : [nome || "tudo bem", quando];
-              await sendTemplate({ phone: to, name: tplLembrete, params, phoneId, saas: product.id, leadId: lead.id });
+              await sendTemplate({ phone: to, name: tplLembrete, params, phoneId, saas: product.id, leadId: lead.id, headerImageId: tplLembrete === cfg.templates.reminderManhaOemImg ? oemMediaId : "" });
             } else {
               await raiseAlert(repo, thread || { id: digits(phone), phone: digits(phone), name: lead.name || "", leadId: lead.id, saas: product.id }, {
                 text: `Lembrete ${due.key} da call não entregue (janela fechada, sem template aprovado) · confirmar na mão`,
@@ -1053,7 +1104,18 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           try {
             if (windowOpen) {
               try {
-                await sendText({ phone: to, text: reminderText(due.key, { nome, quando, link: callUrl, oem }), phoneId, saas: product.id, leadId: lead.id });
+                if (oemManha) {
+                  // texto · foto · texto, na ordem do documento
+                  const [t1, t2] = oemMorningParts(nome, quando);
+                  await sendText({ phone: to, text: t1, phoneId, saas: product.id, leadId: lead.id });
+                  if (oemMediaId) {
+                    try { await sendImage({ phone: to, mediaId: oemMediaId, phoneId, saas: product.id, leadId: lead.id }); }
+                    catch (err) { log.warn?.({ lead: lead.id, err: err.message }, "sdr: foto da manhã do OEM falhou"); }
+                  }
+                  await sendText({ phone: to, text: t2, phoneId, saas: product.id, leadId: lead.id });
+                } else {
+                  await sendText({ phone: to, text: reminderText(due.key, { nome, quando, link: callUrl, oem }), phoneId, saas: product.id, leadId: lead.id });
+                }
               } catch (err) {
                 if (!outsideWindow(err)) throw err; // nosso registro dizia aberta, a Meta discorda
                 await viaTemplate();

@@ -129,3 +129,9 @@ alerta de ligação 1h antes sem positiva. Lead de OEM recebe os textos do
 roteiro (`reminderTextOem`; templates `sdr_lembrete_manha_oem`,
 `sdr_lembrete_link_oem`, `sdr_lembrete_10min_oem` com a janela fechada);
 lead multi-contas segue com os textos genéricos no mesmo horário.
+
+A confirmação da manhã do OEM leva a FOTO do documento (tela "É assim que ele
+fica no ar", `src/assets/sdr/oem-anuncio-no-ar.jpg`): janela aberta = texto ·
+foto · texto; janela fechada = template `sdr_lembrete_manha_oem_img` (cabeçalho
+de imagem, submetido pelo sdr-setup via upload resumable do app). O media id da
+foto no número fica em `app_config sdr_oem_media_<saas>_<phoneId>` por 25 dias.

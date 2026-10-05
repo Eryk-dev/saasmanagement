@@ -32,8 +32,15 @@ function makeWa({ approved = [], failText = null } = {}) {
       return { messageId: "wm_t" + sent.length };
     },
     sendTemplate: async (to, name, lang, components) => {
-      sent.push({ kind: "template", to, name, params: (components[0]?.parameters || []).map((p) => p.text) });
+      const body = components.find((c) => c.type === "body");
+      const header = components.find((c) => c.type === "header");
+      sent.push({ kind: "template", to, name, params: (body?.parameters || []).map((p) => p.text), headerImageId: header?.parameters?.[0]?.image?.id || "" });
       return { messageId: "wm_p" + sent.length };
+    },
+    uploadMedia: async () => "media_1",
+    sendMedia: async (to, { kind, mediaId }) => {
+      sent.push({ kind, to, mediaId });
+      return { messageId: "wm_m" + sent.length };
     },
     listTemplates: async () => approved.map((n) => ({ name: n })),
     tokenWabaIds: async () => ["waba_test"],
@@ -522,7 +529,7 @@ test("1º toque OEM por template: o v2 do roteiro leva só o nome; sem nome util
   assert.equal(byPhone["41922222222"].params.length, 3);
 });
 
-test("lembretes do lead de OEM (janela aberta): manhã sem link pedindo presença, 2h com o link, 10min com o link", async () => {
+test("lembretes do lead de OEM (janela aberta): manhã = texto · FOTO · texto pedindo presença, 2h com o link, 10min com o link", async () => {
   const nowRef = { t: new Date("2026-08-20T11:05:00Z") }; // quinta 8h05 BRT
   const repo = await world({
     product: { sdrBot: { enabled: true, enabledAt: ISO("2026-08-01T00:00:00Z") }, painMap: { OEM: "OEM" } },
@@ -533,16 +540,24 @@ test("lembretes do lead de OEM (janela aberta): manhã sem link pedindo presenç
   const wa = makeWa();
   const r = runner(repo, wa, nowRef);
   await r.tick();
-  assert.equal(wa.sent.length, 1);
-  assert.equal(wa.sent[0].text, "Bom dia Roberto, tudo bom? Temos um horário reservado para hoje às 14h, tudo certo? Na reunião vamos te mostrar na prática o passo a passo para criar anúncios completos em escala, explicar as funcionalidades da plataforma e tirar todas suas dúvidas. Posso contar com sua presença? Caso não consiga comparecer, me sinalize para liberar seu horário, por favor.");
+  assert.equal(wa.sent.length, 3, "texto, foto e texto");
+  assert.equal(wa.sent[0].text, "Bom dia Roberto, tudo bom? Temos um horário reservado para hoje às 14h, tudo certo?");
+  assert.deepEqual({ kind: wa.sent[1].kind, mediaId: wa.sent[1].mediaId }, { kind: "image", mediaId: "media_1" });
+  assert.equal(wa.sent[2].text, "Na reunião vamos te mostrar na prática o passo a passo para criar anúncios completos em escala, explicar as funcionalidades da plataforma e tirar todas suas dúvidas. Posso contar com sua presença? Caso não consiga comparecer, me sinalize para liberar seu horário, por favor.");
+  // A foto fica gravada no inbox como mídia e o media id é cacheado por número.
+  const img = (await repo.list("wa_messages")).find((m) => m.media?.kind === "image");
+  assert.equal(img?.media?.id, "media_1");
+  assert.equal((await repo.get("app_config", "sdr_oem_media_leverads_default"))?.mediaId, "media_1");
+  await r.tick(); // mesmo instante: nada repete
+  assert.equal(wa.sent.length, 3);
   nowRef.t = new Date("2026-08-20T15:05:00Z"); // 12h05: 2h antes
   await r.tick();
-  assert.equal(wa.sent.length, 2);
-  assert.equal(wa.sent[1].text, "Roberto, nossa conversa é hoje às 14h. O link pra entrar é este: https://meet.google.com/abc-defg. Qualquer imprevisto por favor me avise.");
+  assert.equal(wa.sent.length, 4);
+  assert.equal(wa.sent[3].text, "Roberto, nossa conversa é hoje às 14h. O link pra entrar é este: https://meet.google.com/abc-defg. Qualquer imprevisto por favor me avise.");
   nowRef.t = new Date("2026-08-20T16:52:00Z"); // 13h52: 10 min antes
   await r.tick();
-  assert.equal(wa.sent.length, 3);
-  assert.equal(wa.sent[2].text, "Roberto, nossa conversa começa em 10 minutos! O link pra entrar é este: https://meet.google.com/abc-defg. Te esperamos lá!");
+  assert.equal(wa.sent.length, 5);
+  assert.equal(wa.sent[4].text, "Roberto, nossa conversa começa em 10 minutos! O link pra entrar é este: https://meet.google.com/abc-defg. Te esperamos lá!");
 });
 
 test("lembretes do lead de OEM (janela fechada): templates do roteiro na frente, com os parâmetros certos; sem aprovação, cai no genérico", async () => {
@@ -551,12 +566,14 @@ test("lembretes do lead de OEM (janela fechada): templates do roteiro na frente,
     leads: [{ id: "L1", name: "Roberto", phone: "41999990000", stage: "Call agendada", sourcePain: "OEM", callAt: "2026-08-20T14:00", closer: "pl", callSetAt: ISO("2026-08-18T18:00:00Z"), callUrl: "https://meet.google.com/abc-defg", createdAt: ISO("2026-08-10T10:00:00Z") }],
   });
   const repo = await mk();
-  const wa = makeWa({ approved: ["sdr_lembrete_manha_oem", "sdr_lembrete_link_oem", "sdr_lembrete_10min_oem", "sdr_lembrete_link2"] });
+  const wa = makeWa({ approved: ["sdr_lembrete_manha_oem_img", "sdr_lembrete_manha_oem", "sdr_lembrete_link_oem", "sdr_lembrete_10min_oem", "sdr_lembrete_link2"] });
   const nowRef = { t: new Date("2026-08-20T11:05:00Z") };
   const r = runner(repo, wa, nowRef);
   await r.tick();
-  assert.equal(wa.sent[0].name, "sdr_lembrete_manha_oem");
+  // Com a foto aprovada: o template de cabeçalho de imagem, com o media id do número.
+  assert.equal(wa.sent[0].name, "sdr_lembrete_manha_oem_img");
   assert.deepEqual(wa.sent[0].params, ["Roberto", "hoje às 14h"]);
+  assert.equal(wa.sent[0].headerImageId, "media_1");
   nowRef.t = new Date("2026-08-20T15:05:00Z");
   await r.tick();
   assert.equal(wa.sent[1].name, "sdr_lembrete_link_oem");
@@ -565,6 +582,12 @@ test("lembretes do lead de OEM (janela fechada): templates do roteiro na frente,
   await r.tick();
   assert.equal(wa.sent[2].name, "sdr_lembrete_10min_oem");
   assert.deepEqual(wa.sent[2].params, ["Roberto", "https://meet.google.com/abc-defg"]);
+  // Só a versão em texto aprovada: ela cobre, sem cabeçalho.
+  const repoT = await mk();
+  const waT = makeWa({ approved: ["sdr_lembrete_manha_oem", "sdr_lembrete_link2"] });
+  await runner(repoT, waT, { t: new Date("2026-08-20T11:05:00Z") }).tick();
+  assert.equal(waT.sent[0].name, "sdr_lembrete_manha_oem");
+  assert.equal(waT.sent[0].headerImageId, "");
   // Sem os do roteiro aprovados: o genérico com link cobre.
   const repo2 = await mk();
   const wa2 = makeWa({ approved: ["sdr_lembrete_link2"] });
