@@ -11,6 +11,32 @@ export function setupTodayReview(seed) {
     // &fupLate: o dia do Contato 2 já passou (ontem) — card vermelho e alerta.
     if (params.has('fupLate')) Object.assign(seed.LEADS.find(l => l.id === 'l5'), {followupAt:'2026-09-17',nextActionAt:'2026-09-17T03:00:00.000Z'});
   }
+  // &closing: Próximo passo da call com Integração/Ganho e o catálogo de PLANOS
+  // da plataforma (CONFIG.plans) + a projeção que o servidor manda pro gate.
+  if (params.has('closing')) {
+    const product = seed.SAAS[0];
+    product.funnel.splice(4, 0, {stage:'Follow-up',kind:'followup'}, {stage:'Integração',kind:'integracao'});
+    product.nextSteps = {...(product.nextSteps||{}), call:['followup','integracao','ganho','desqualificado']};
+    seed.USERS.push({id:'eryk',name:'Eryk',roles:['integrator'],saas:''});
+    const cycles=(anu,sem)=>({annual:{per:anu,total:anu*12},semiannual:{per:sem,total:sem*6}});
+    const plan=(code,name,order,extra={})=>({id:`plan_leverads_${code}`,code,name,order,kind:'subscription',pricing:'table',status:'active',product:'leverads',prices:{},options:[],limits:{},features:{},...extra});
+    const plans=[
+      plan('oem_escala','Ads Escala + OEM',20,{prices:cycles(999,1197)}),
+      plan('ads_essencial','Ads Essencial',30,{prices:cycles(497,597)}),
+      plan('ads_trimestral','Ads Só Anual',35,{prices:{annual:{per:450,total:5400}}}),
+      plan('ads_enterprise','Ads Enterprise',50,{pricing:'custom'}),
+      plan('price_escala','Lever Price · Escala',60,{product:'leverprice',prices:cycles(1497,1897)}),
+      plan('oem_pack','Pacote de OEM avulso',90,{kind:'one_off',options:[{qty:1000,price:2000},{qty:2000,price:3500}]}),
+      plan('full','LeverAds FULL',100,{kind:'legacy',pricing:'custom',status:'archived'}),
+      plan('ads_velho','Ads Antigo',110,{status:'archived',prices:cycles(300,350)}),
+    ];
+    const deal=(p)=>({id:p.code,label:p.name,group:'Lever',prices:[['annual','anual','Anual'],['semiannual','semestral','Semestral']].filter(([c])=>p.prices[c]).map(([c,id,l])=>({plan:id,label:l,value:p.prices[c].total}))});
+    seed.CONFIG={...seed.CONFIG,plans:{leverads:plans},proposals:{...(seed.CONFIG.proposals||{}),catalog:{leverads:[
+      ...plans.filter(p=>p.kind==='subscription'&&p.pricing==='table'&&p.status!=='archived').map(deal),
+      {id:'oem_pack',label:'Pacote de OEM avulso',group:'Adicionais',oneOff:true,prices:[{plan:'unico',label:'1.000 anúncios OEM',value:2000},{plan:'unico',label:'2.000 anúncios OEM',value:3500}]},
+      {id:'men_curso',label:'Mentoria · Curso',group:'Mentoria',oneOff:true,prices:[{plan:'unico',label:'à vista ou 12x no cartão',value:1000}]},
+    ]}}};
+  }
   if (params.has('card')) {
     const futureDate=(days)=>{const d=new Date();d.setDate(d.getDate()+days);d.setHours(16,0,0,0);return d.toISOString();};
     const base=seed.LEADS.find(l=>l.name==='Carla Nunes');

@@ -20,9 +20,11 @@ import { allUsers, currentUser, displayName, userById, usersByRole, isAdminUser 
 import { useActiveSaas } from "../lib/workspace.js";
 import { myOpenTasks, taskHash } from "../lib/tasks.js";
 import { useAttribution } from "../lib/pains.js";
-import { clientSummary, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks, DealProductField, isOneOffProduct, SelectWithCustom, PaymentMethodSelect, ProductOptions, leadBox } from "../components/lead-blocks.jsx";
+import { clientSummary, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks, DealPlanField, PaymentMethodPicker, leadBox } from "../components/lead-blocks.jsx";
+import { SelectPopover } from "../components/select-popover.jsx";
+import { Choice } from "../components/plan-editor.jsx";
 import { resolveScript, scriptTokens, scriptChecklist, isNoShowStage, confirmationScript, integrationConfirmationScript, scriptKeyFor } from "../lib/scripts.js";
-import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, withLegacyOption, closedPlanLabel, dealProductLabel, dealProductsOf } from "../lib/payments.js";
+import { CLOSED_PLANS, withLegacyOption, closedPlanLabel, dealProductLabel, closingPlansOf } from "../lib/payments.js";
 import { LeadSendActions, useLeadProposalActions } from "../components/lead-send-actions.jsx";
 import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
 import { followupContacts, followupDueDay, followupNextContact, followupStepOf, followupDayOf, localDayStart, dayStartIso, nextFollowupDay, todayBrt, FOLLOWUP_STEPS, FOLLOWUP_CHANNELS } from "../lib/followup.js";
@@ -1923,6 +1925,44 @@ export function destinationsFor(saasCfg, lead) {
   return out;
 }
 
+// Valor digitado em reais, sem as setinhas do <input type=number> (que somavam
+// 0,01 por clique): aceita "3582", "3.582", "3582,50" e "3.582,50".
+export function parseMoneyInput(v) {
+  let t = String(v ?? "").trim().replace(/[^\d.,]/g, "");
+  if (!t) return 0;
+  if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
+  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");
+  const n = Number(t);
+  return Number.isFinite(n) ? n : 0;
+}
+
+// Itens do fechamento no Próximo passo: um por produto vendido. O lead guarda
+// a lista em `dealItems` só quando há mais de um (o 1º também vai em
+// dealProduct/planClosed e `amount` é a soma — ver dealItemsOf na API).
+const dealItem = (over = {}) => ({ key: Math.random().toString(36).slice(2), product: "", plan: "anual", amount: "", ...over });
+const dealItemsFromLead = (l) => (Array.isArray(l.dealItems) && l.dealItems.length > 1
+  ? l.dealItems.map((i) => dealItem({ product: i.product || "", plan: i.planClosed || "anual", amount: i.amount ? String(i.amount) : "" }))
+  : [dealItem({ product: l.dealProduct || "", plan: l.planClosed || "anual", amount: l.amount ? String(l.amount) : "" })]);
+
+// Próximo passo das Atividades sem "Ganho" (05/10/2026): a Integração já cobra
+// o fechamento inteiro (produto, plano, valor, pagamento) e registra a venda
+// (os dois são SOLD_KINDS no servidor), então o botão de Ganho era redundante.
+// Onde a lista tinha Ganho e não tinha Integração, a Integração entra no lugar.
+// Funil sem etapa de Integração mantém o Ganho: é o único jeito de fechar ali.
+// O quadro do Pipeline continua com a coluna Ganho.
+export function withoutWonStep(saasCfg, lead, dests) {
+  const integ = stageByKind(saasCfg, "integracao");
+  if (!integ) return dests;
+  const cur = lead.stage || firstStage(saasCfg);
+  const hasInteg = cur === integ || dests.some((d) => !d.retry && d.stage === integ);
+  const out = [];
+  for (const d of dests) {
+    if (d.retry || d.kind !== "ganho") out.push(d);
+    else if (!hasInteg) out.push({ stage: integ, kind: "integracao" });
+  }
+  return out;
+}
+
 // Setup que cada destino pede antes de mover.
 export function setupType(kind) {
   if (kind === "call") return "call";
@@ -2141,7 +2181,7 @@ const RETRY_PRESETS = [
 ];
 
 function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet, onAfter, onTouch }) {
-  const dests = destinationsFor(saasCfg, lead);
+  const dests = withoutWonStep(saasCfg, lead, destinationsFor(saasCfg, lead));
   const stageMeta = Object.fromEntries((saasCfg?.funnel || []).map((f) => [f.stage, f]));
   const closers = usersByRole("closer");
   const integrators = usersByRole("integrator");
@@ -2150,12 +2190,14 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   const [dest, setDest] = useS(null);       // { stage, kind }
   const [closer, setCloser] = useS(lead.closer || "");
   const [integrator, setIntegrator] = useS(lead.integrator || (integrators.length === 1 ? integrators[0].id : ""));
-  const [amount, setAmount] = useS(lead.amount || "");
+  // Observação do closer pra quem integra (lead.integrationNote): aparece no
+  // Resumo do cliente e entra no briefing da integração.
+  const [integNote, setIntegNote] = useS(lead.integrationNote || "");
   const [payment, setPayment] = useS(lead.paymentMethod || "");
-  // O que foi VENDIDO (produto do catálogo da apresentação + ciclo): o card só
-  // vai pra Integração depois de fechar, e a entrega precisa do escopo.
-  const [dealProduct, setDealProduct] = useS(lead.dealProduct || "");
-  const [planClosed, setPlanClosed] = useS(lead.planClosed || "anual");
+  // O que foi VENDIDO (um item por produto do catálogo: plano, ciclo e valor):
+  // o card só vai pra Integração depois de fechar, e a entrega precisa do escopo.
+  const [items, setItems] = useS(() => dealItemsFromLead(lead));
+  const setItem = (key, patch) => setItems((cur) => cur.map((it) => (it.key === key ? { ...it, ...(typeof patch === "function" ? patch(it) : patch) } : it)));
   const [reason, setReason] = useS("");
   const [note, setNote] = useS("");
   const [slot, setSlot] = useS(lead.callAt || "");
@@ -2175,8 +2217,8 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   useE(() => {
     setDest(null); setCloser(lead.closer || ""); setSlot(lead.callAt || ""); setDay(nextBusinessDays(1)[0]); setRetryAt(""); setFupDay("");
     setIntegrator(lead.integrator || (integrators.length === 1 ? integrators[0].id : ""));
-    setAmount(lead.amount || ""); setPayment(lead.paymentMethod || ""); setReason(""); setNote("");
-    setDealProduct(lead.dealProduct || ""); setPlanClosed(lead.planClosed || "anual");
+    setPayment(lead.paymentMethod || ""); setReason(""); setNote(""); setIntegNote(lead.integrationNote || "");
+    setItems(dealItemsFromLead(lead));
     setOffer(lead.proposalOffer || ""); setOfferProduct(lead.proposalProduct || "");
     setEmail(lead.email || ""); setEmailTouched(false); setMeetBusy(false); setMeetRes(null); setMeetErr(null);
   }, [lead.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2240,10 +2282,24 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
 
   const isRetry = !!dest?.retry;
   // Produto do catálogo é obrigatório pra fechar em quem tem catálogo (o SaaS
-  // sem catálogo, como a mentoria do Kids, nem mostra o campo).
-  const askProduct = dealProductsOf(lead.saas).length > 0;
-  const oneOff = isOneOffProduct(lead.saas, dealProduct);
-  const dealReady = Number(amount) > 0 && !!payment && (!askProduct || !!dealProduct);
+  // sem catálogo, como a mentoria do Kids, nem mostra o campo). A lista é a do
+  // catálogo de planos da plataforma (Comercial → Planos), não uma fixa.
+  const plans = closingPlansOf(lead.saas);
+  const askProduct = plans.length > 0;
+  // Ciclo que vale pro plano escolhido: compra única é sempre "Serviço único";
+  // ciclo que o plano não vende cai no primeiro que ele vende. Vazio, "não
+  // chegou na proposta" e o legado do lead ("Assinatura mensal") ficam.
+  const cycleFor = (plan, current) => {
+    if (!plan || !current || current === "nenhuma" || plan.cycles.includes(current)) return current;
+    return CLOSED_PLANS.find((p) => p.id === current)?.legacy ? current : plan.cycles[0];
+  };
+  // Cada item com o plano do catálogo, o ciclo que vale pra ele e o valor lido.
+  const rows = items.map((it) => {
+    const plan = plans.find((p) => p.id === it.product) || null;
+    return { ...it, planObj: plan, closed: cycleFor(plan, it.plan), value: parseMoneyInput(it.amount) };
+  });
+  const amountNum = rows.reduce((sum, r) => sum + r.value, 0);
+  const dealReady = !!payment && rows.every((r) => r.value > 0 && (!askProduct || (!!r.product && !!r.closed)));
   // Proposta na mesa completa = ciclo escolhido E, em quem tem catálogo, o
   // produto ofertado ("não chegou na proposta" dispensa o produto).
   const offerDone = !!offer && (offer === "nenhuma" || !askProduct || !!offerProduct);
@@ -2258,10 +2314,15 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
 
   // O fechamento em si (produto, ciclo, valor, pagamento) — igual no gate do
   // board: quem fecha pelo roteiro registra a mesma coisa.
+  // Mais de um produto: a lista vai em dealItems (o servidor abre uma
+  // assinatura por produto recorrente); com um só, a lista antiga é limpa.
   const dealPatch = () => ({
-    amount: Number(amount),
+    amount: amountNum,
     paymentMethod: payment,
-    ...(askProduct ? { dealProduct, planClosed: oneOff ? "unico" : planClosed } : {}),
+    ...(askProduct ? { dealProduct: rows[0].product, planClosed: rows[0].closed } : {}),
+    ...(askProduct && rows.length > 1
+      ? { dealItems: rows.map((r) => ({ product: r.product, planClosed: r.closed, amount: r.value })) }
+      : Array.isArray(lead.dealItems) && lead.dealItems.length ? { dealItems: [] } : {}),
   });
 
   function confirm() {
@@ -2279,7 +2340,12 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     // Integração: define o integrador e, se um horário foi escolhido na agenda,
     // agenda a integração nele (integrationAt aparece na Agenda e replica na
     // agenda pessoal do integrador que conectou o Google).
-    else if (setup === "integrator") { patch.integrator = integrator; if (slot) patch.integrationAt = slot; if (dest.kind === "integracao" && Number(amount) > 0) { Object.assign(patch, dealPatch()); } }
+    else if (setup === "integrator") {
+      patch.integrator = integrator;
+      if (slot) patch.integrationAt = slot;
+      if (integNote.trim() !== String(lead.integrationNote || "")) patch.integrationNote = integNote.trim();
+      if (dest.kind === "integracao" && amountNum > 0) Object.assign(patch, dealPatch());
+    }
     else if (setup === "won") { Object.assign(patch, dealPatch()); }
     else if (setup === "loss") { patch.lostReason = reason; if (note.trim()) patch.lostNote = note.trim(); }
     onMove && onMove(patch);
@@ -2304,39 +2370,89 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   }
   const label = { display: "block", marginBottom: 4 };
   const fieldStyle = { width: "100%", height: 30, padding: "0 8px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: 999, color: "var(--fg-1)", fontSize: 12.5 };
+  // Gatilho do SelectPopover na medida dos campos desta seção.
+  const pickStyle = { height: 30, padding: "0 12px", borderRadius: 999, background: "var(--bg-1)" };
+  const inputStyle = { height: 30, padding: "0 12px", borderRadius: 999, fontSize: 12.5 };
+  const userOptions = (users) => users.map((u) => ({ value: u.id, label: u.name || u.id }));
+  // Ciclos que dá pra fechar no plano escolhido: os que ele tem preço no
+  // catálogo; compra única é sempre "Serviço único"; produto personalizado ou
+  // plano sob consulta abre os ciclos vendidos hoje. Legado ("Assinatura
+  // mensal") só aparece quando já é o valor do lead.
+  const cycleChoices = (plan, current) => {
+    const ids = plan ? plan.cycles : CLOSED_PLANS.filter((p) => !p.legacy).map((p) => p.id);
+    const opts = CLOSED_PLANS.filter((p) => ids.includes(p.id));
+    return withLegacyOption(opts, CLOSED_PLANS, current).map((p) => ({ value: p.id, label: p.label }));
+  };
   const slotFmt = (v) => { const d = new Date(v); return Number.isFinite(d.getTime()) ? d.toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""; };
 
   // O que foi vendido — os mesmos campos do gate do board (produto do catálogo,
-  // ciclo, valor e pagamento), servindo a Integração e o Ganho.
+  // ciclo, valor e pagamento), servindo a Integração e o Ganho. Um bloco por
+  // produto (plano à esquerda; ciclo e valor à direita) e, no fim, o pagamento
+  // e o total da venda. Um plano recorrente por produto (LeverAds, LeverPrice…):
+  // o mesmo produto em dois blocos seria duas assinaturas do mesmo sistema.
+  const money = (v) => window.fmt?.moneyFull?.(v) || `R$ ${v}`;
+  const plansFor = (i) => {
+    const others = rows.filter((_, j) => j !== i);
+    const taken = new Set(others.filter((r) => r.planObj && !r.planObj.oneOff && r.planObj.product).map((r) => r.planObj.product));
+    const picked = new Set(others.map((r) => r.product).filter(Boolean));
+    return plans.filter((p) => p.id === rows[i]?.product || (!picked.has(p.id) && (p.oneOff || !p.product || !taken.has(p.product))));
+  };
+  const multi = rows.length > 1;
   const dealFields = (hint) => (
-    <div style={{ maxWidth: 340 }}>
-      <DealProductField saas={lead.saas} value={dealProduct} plan={planClosed} amount={amount}
-        fieldStyle={fieldStyle} labelStyle={label}
-        onChange={(id, p) => { setDealProduct(id); if (p?.oneOff) setPlanClosed("unico"); }}
-        onPick={(r) => { setAmount(String(r.value)); if (r.plan) setPlanClosed(r.plan); }} />
-      {askProduct && (
-        <div style={{ marginTop: 12 }}>
-          <label className="kicker" style={label}>Plano fechado *</label>
-          <select value={oneOff ? "unico" : planClosed} disabled={oneOff}
-            onChange={(e) => setPlanClosed(e.target.value)} style={{ ...fieldStyle, opacity: oneOff ? 0.7 : 1 }}>
-            {/* Só os planos ativos; "Assinatura mensal" (legado) só quando já é o plano do lead. */}
-            {withLegacyOption(CLOSED_PLANS_ACTIVE, CLOSED_PLANS, planClosed).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-          </select>
-        </div>
+    <div className="today-deal">
+      {rows.map((r, i) => {
+        const monthly = askProduct && r.closed === "mensal";
+        return (
+          <div key={r.key} className={"today-deal-item" + (multi ? " is-boxed" : "")}>
+            {multi && (
+              <div className="today-deal-item-head">
+                <span className="kicker">Produto {i + 1}</span>
+                <button type="button" className="mono dim" onClick={() => setItems((cur) => cur.filter((it) => it.key !== r.key))}
+                  aria-label={`Remover o produto ${i + 1}`}>remover</button>
+              </div>
+            )}
+            <div className="today-dest-grid">
+              {askProduct && (
+                <div>
+                  <DealPlanField plans={plansFor(i)} value={r.product} plan={r.closed} amount={r.value} style={pickStyle} inputStyle={inputStyle}
+                    label={multi ? `Produto vendido ${i + 1} *` : "Produto vendido *"}
+                    onChange={(id, p) => setItem(r.key, (it) => ({ product: id, plan: cycleFor(p, it.plan) }))}
+                    onPick={(price) => setItem(r.key, { amount: String(price.value), ...(price.plan ? { plan: price.plan } : {}) })} />
+                </div>
+              )}
+              <div className="today-deal-side">
+                {askProduct && (
+                  <div>
+                    <div className="kicker" style={label}>Plano fechado *</div>
+                    <Choice label={multi ? `Plano fechado ${i + 1}` : "Plano fechado"} size="sm" value={r.closed}
+                      options={cycleChoices(r.planObj, r.closed)} onChange={(v) => setItem(r.key, { plan: v })} />
+                    {r.planObj?.custom && <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>plano sob consulta: sem preço de tabela, informe o valor fechado</div>}
+                  </div>
+                )}
+                <div>
+                  <label className="kicker" style={label} htmlFor={`deal-amount-${lead.id}-${i}`}>{monthly ? "Valor mensal (R$) *" : multi ? "Valor deste produto (R$) *" : "Valor do negócio (R$) *"}</label>
+                  <input id={`deal-amount-${lead.id}-${i}`} type="text" inputMode="decimal" autoComplete="off" value={r.amount} placeholder={monthly ? "ex.: 599" : "ex.: 7.188"}
+                    onChange={(e) => setItem(r.key, { amount: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") confirm(); }} style={fieldStyle} />
+                  {monthly && <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>recorrência: a cada 30 dias do fechamento o acumulado do cliente soma mais uma mensalidade</div>}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+      {askProduct && plansFor(rows.length).length > 0 && (
+        <button type="button" className="today-deal-add" onClick={() => setItems((cur) => [...cur, dealItem()])}>+ adicionar outro produto</button>
       )}
-      <div style={{ marginTop: 12 }}>
-        <label className="kicker" style={label}>{askProduct && !oneOff && planClosed === "mensal" ? "Valor mensal (R$) *" : "Valor do negócio (R$) *"}</label>
-        <input type="number" min="0" step="0.01" value={amount} placeholder={askProduct && !oneOff && planClosed === "mensal" ? "ex.: 599" : "ex.: 7188"}
-          onChange={(e) => setAmount(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") confirm(); }} style={fieldStyle} />
-        <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>
-          {askProduct && !oneOff && planClosed === "mensal"
-            ? "recorrência: a cada 30 dias do fechamento o acumulado do cliente soma mais uma mensalidade"
-            : hint}
+      <div className="today-dest-grid">
+        <div>
+          <div className="kicker" style={label}>Modo de pagamento *</div>
+          <PaymentMethodPicker value={payment} onChange={setPayment} style={pickStyle} inputStyle={inputStyle} />
         </div>
-      </div>
-      <div style={{ marginTop: 12 }}>
-        <label className="kicker" style={label}>Modo de pagamento *</label>
-        <PaymentMethodSelect value={payment} onChange={setPayment} fieldStyle={fieldStyle} placeholder="como o cliente fechou…" />
+        <div>
+          <div className="kicker" style={label}>{multi ? "Total da venda" : "Receita"}</div>
+          <div className="today-dest-static"><strong className="tnum">{amountNum > 0 ? money(amountNum) : "—"}</strong></div>
+          <div className="mono dim" style={{ fontSize: 10, marginTop: 2 }}>{multi ? `soma dos ${rows.length} produtos · ${hint}` : hint}</div>
+        </div>
       </div>
     </div>
   );
@@ -2420,11 +2536,9 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
             <>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
                 <div>
-                  <label className="kicker" style={label}>Closer da call *</label>
-                  <select value={closer} onChange={(e) => { setCloser(e.target.value); setSlot(""); }} style={fieldStyle}>
-                    <option value="">escolher o closer…</option>
-                    {closers.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
-                  </select>
+                  <div className="kicker" style={label}>Closer da call *</div>
+                  <SelectPopover label="Closer da call" placeholder="escolher o closer…" style={pickStyle}
+                    value={closer} options={userOptions(closers)} onChange={(v) => { setCloser(v); setSlot(""); }} />
                 </div>
               </div>
               {closer ? (
@@ -2458,21 +2572,15 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
                     {askProduct && offer !== "nenhuma" && (
                       <div style={{ width: "min(280px, 100%)" }}>
-                        <label className="kicker" style={label}>Qual produto ficou ofertado? *</label>
-                        <SelectWithCustom ids={dealProductsOf(lead.saas).map((p) => p.id)} value={offerProduct} onChange={setOfferProduct}
-                          fieldStyle={fieldStyle} placeholder="o produto da apresentação…"
-                          customLabel="Personalizado… (escrever o produto)" customPlaceholder="escreva o produto ofertado…">
-                          <ProductOptions products={dealProductsOf(lead.saas)} />
-                        </SelectWithCustom>
+                        <DealPlanField plans={plans} value={offerProduct} chips={false} style={pickStyle} inputStyle={inputStyle}
+                          label="Qual produto ficou ofertado? *" placeholder="o plano da apresentação…" customPlaceholder="escreva o produto ofertado…"
+                          onChange={(id, p) => { setOfferProduct(id); if (offer && offer !== "nenhuma") setOffer(cycleFor(p, offer)); }} />
                       </div>
                     )}
-                    <div style={{ width: "min(280px, 100%)" }}>
-                      <label className="kicker" style={label}>Qual proposta ficou na mesa? *</label>
-                      <select value={offer} onChange={(e) => setOffer(e.target.value)} style={fieldStyle}>
-                        <option value="">a oferta que o cliente levou pra pensar…</option>
-                        {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-                        <option value="nenhuma">não chegou na proposta</option>
-                      </select>
+                    <div style={{ minWidth: 0, maxWidth: "100%" }}>
+                      <div className="kicker" style={label}>Qual proposta ficou na mesa? *</div>
+                      <Choice label="Qual proposta ficou na mesa?" size="sm" value={offer} onChange={setOffer}
+                        options={[...cycleChoices(plans.find((p) => p.id === offerProduct) || null, offer), { value: "nenhuma", label: "não chegou na proposta" }]} />
                     </div>
                   </div>
                 )}
@@ -2485,11 +2593,9 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
               </div>
             ) : (
               <div style={{ maxWidth: 280 }}>
-                <label className="kicker" style={label}>Responsável pelo follow-up *</label>
-                <select value={closer} onChange={(e) => { setCloser(e.target.value); setSlot(""); }} style={fieldStyle}>
-                  <option value="">escolher…</option>
-                  {closers.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
-                </select>
+                <div className="kicker" style={label}>Responsável pelo follow-up *</div>
+                <SelectPopover label="Responsável pelo follow-up" placeholder="escolher…" style={pickStyle}
+                  value={closer} options={userOptions(closers)} onChange={(v) => { setCloser(v); setSlot(""); }} />
               </div>
             )
           )}
@@ -2497,26 +2603,49 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
           {setup === "integrator" && (() => {
             const integLabel = dest.kind === "integracao" ? "integração" : "entrega/CS";
             return (
-              <div>
-                <div style={{ maxWidth: 280 }}>
-                  <label className="kicker" style={label}>Responsável pela {integLabel} *</label>
-                  <select value={integrator} onChange={(e) => { setIntegrator(e.target.value); setSlot(""); }} style={fieldStyle}>
-                    <option value="">escolher o integrador…</option>
-                    {integrators.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
-                  </select>
-                  {lead.closer && <div className="mono dim" style={{ fontSize: 10.5, marginTop: 5 }}>closer da venda: {displayName(lead.closer)} (fica registrado)</div>}
-                </div>
-                {dest.kind === "integracao" && <div style={{ marginTop: 12 }}>{dealFields("fechou! esse é o valor do negócio (vira a receita do closer)")}</div>}
-                {integrator && (
-                  <div style={{ marginTop: 14 }}>
-                    <div className="kicker" style={{ marginBottom: 8 }}>
-                      Quando fazer a {integLabel} · agenda de {displayName(integrator)}
-                    </div>
-                    <SlotGrid days={days} day={day} setDay={setDay} slot={slot} setSlot={setSlot} busy={busy} />
-                    {slot && <div className="mono" style={{ fontSize: 11.5, color: "var(--accent)", marginTop: 8 }}>{integLabel[0].toUpperCase() + integLabel.slice(1)}: {slotFmt(slot)} · {displayName(integrator)}</div>}
-                    <div className="mono dim" style={{ fontSize: 10, marginTop: 6 }}>entra na agenda nesse horário e replica na agenda pessoal do integrador (se ele conectou o Google). Sem horário, só move pra {integLabel}.</div>
-                  </div>
+              <div className="today-dest-form">
+                {/* A venda (só indo pra Integração: é ali que o fechamento é
+                    registrado) e a entrega (quem, quando e o que precisa saber). */}
+                {dest.kind === "integracao" && (
+                  <section className="today-dest-section" aria-label="A venda">
+                    <h4 className="today-dest-title">A venda</h4>
+                    {dealFields("vira a receita do closer")}
+                  </section>
                 )}
+                <section className="today-dest-section" aria-label="A entrega">
+                  <h4 className="today-dest-title">A entrega</h4>
+                  <div className="today-dest-grid">
+                    <div>
+                      <div className="kicker" style={label}>Responsável pela {integLabel} *</div>
+                      <SelectPopover label={`Responsável pela ${integLabel}`} placeholder="escolher o integrador…" style={pickStyle}
+                        value={integrator} options={userOptions(integrators)} onChange={(v) => { setIntegrator(v); setSlot(""); }} />
+                    </div>
+                    {lead.closer && (
+                      <div>
+                        <div className="kicker" style={label}>Closer da venda</div>
+                        <div className="today-dest-static">{displayName(lead.closer)} <span className="mono dim">fica registrado</span></div>
+                      </div>
+                    )}
+                    <div className="is-wide">
+                      <label className="kicker" style={label} htmlFor={`integ-note-${lead.id}`}>Obs. pra {integLabel}</label>
+                      <textarea id={`integ-note-${lead.id}`} className="inp today-dest-note" rows={2} value={integNote} maxLength={1000}
+                        onChange={(e) => setIntegNote(e.target.value)}
+                        placeholder="o que quem integra precisa saber: combinados, acessos, prazos, particularidades do cliente…" />
+                    </div>
+                  </div>
+                  {integrator ? (
+                    <div>
+                      <div className="kicker" style={{ marginBottom: 8 }}>
+                        Quando fazer a {integLabel} · agenda de {displayName(integrator)}
+                      </div>
+                      <SlotGrid days={days} day={day} setDay={setDay} slot={slot} setSlot={setSlot} busy={busy} />
+                      {slot && <div className="mono" style={{ fontSize: 11.5, color: "var(--accent)", marginTop: 8 }}>{integLabel[0].toUpperCase() + integLabel.slice(1)}: {slotFmt(slot)} · {displayName(integrator)}</div>}
+                      <div className="mono dim" style={{ fontSize: 10, marginTop: 6 }}>entra na agenda nesse horário e replica na agenda pessoal do integrador (se ele conectou o Google). Sem horário, só move pra {integLabel}.</div>
+                    </div>
+                  ) : (
+                    <div className="mono dim" style={{ fontSize: 11 }}>escolha o responsável pra ver os horários livres da agenda dele</div>
+                  )}
+                </section>
               </div>
             );
           })()}
@@ -2526,11 +2655,9 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
           {setup === "loss" && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
               <div>
-                <label className="kicker" style={label}>Motivo *</label>
-                <select value={reason} onChange={(e) => setReason(e.target.value)} style={fieldStyle}>
-                  <option value="">escolha o motivo…</option>
-                  {reasons.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
-                </select>
+                <div className="kicker" style={label}>Motivo *</div>
+                <SelectPopover label="Motivo da perda" placeholder="escolha o motivo…" style={pickStyle}
+                  value={reason} options={reasons.map((r) => ({ value: r.id, label: r.label }))} onChange={setReason} />
               </div>
               <div>
                 <label className="kicker" style={label}>Detalhe (opcional)</label>

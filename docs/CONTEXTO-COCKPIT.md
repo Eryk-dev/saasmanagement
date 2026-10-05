@@ -770,6 +770,33 @@ do plano (assinantes, histórico de preço) e o formulário de criar/editar é
 assinatura libera acesso (`planAccessOf`). A aba Cobranças de Clientes não tem
 mais catálogo; o cadastro antigo de `plans` aparece em "Avulsos".
 
+**Próximo passo das Atividades (05/10/2026).** Indo pra Integração ou Ganho
+(e no produto ofertado de Call → Follow-up), o produto vendido sai de
+`closingPlansOf(saas)` (`web/src/lib/payments.js`): os planos vivos de
+`CONFIG.plans` (sem arquivado nem `legacy`), agrupados por produto e na ordem
+do catálogo (`slimPlan` leva `order`), com os preços da projeção
+`CONFIG.proposals.catalog` e, no fim, o que só a apresentação vende. Plano
+"sob consulta" entra sem preço. O "Plano fechado" mostra só os ciclos que o
+plano vende (compra única = Serviço único). A seção não usa `<select>`
+nativo: `SelectPopover` (com grupos), `PopoverWithCustom`,
+`PaymentMethodPicker` e `DealPlanField` (`components/lead-blocks.jsx`) e o
+`Choice` segmentado. O gate do board e o modal de link seguem no
+`DealProductField`. No navegador: `node scripts/review/today-closing.mjs` em
+`packages/web`.
+
+O Próximo passo não oferece Ganho (`withoutWonStep`): a Integração registra o
+mesmo fechamento; sem Integração na lista ela entra no lugar, e funil sem etapa
+de Integração mantém o Ganho. A aba Integração tem "A venda" e "A entrega"
+(responsável, closer, `lead.integrationNote`, que vai pro Resumo do cliente e
+pro briefing, e a agenda). **Venda com mais de um produto:** `lead.dealItems`
+= `[{ product, planClosed, amount }]` só com 2+ itens; o 1º espelha
+`dealProduct`/`planClosed` e `lead.amount` é a SOMA (meta, receita do closer e
+Purchase seguem o total). `dealItemsOf` (routes.js) normaliza; o
+`convertWonLead` abre uma assinatura por item recorrente (uma por produto) e o
+ARR inicial anualiza cada item pelo próprio ciclo; reeditar um fechamento
+multiproduto só atualiza o cadastro (assinaturas são da ficha). O valor é
+texto (`parseMoneyInput` aceita `3.582,50`). Teste: `multi-product.test.js`.
+
 **LeverId (auth novo).** O desenho segue o spike de assinaturas (branch
 `feat/auth`): o LeverId guardará só o direito de acesso org × produto, com o
 código do plano e sem preço; preço e cobrança ficam aqui e os limites são

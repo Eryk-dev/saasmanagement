@@ -506,6 +506,16 @@ try {
       const day3First = { ...legacy, funnel: funnel.filter((f) => f.stage !== "Dia 2") };
       eq(`follow-up ${stageAttempts}: também exclui Dia 3`, names(day3First, { stage: "Follow-up", stageAttempts }), ["Ganho", "Integração", "Nutrição", "Desqualificado"]);
     }
+    // Minhas atividades tira o Ganho do Próximo passo (05/10/2026): a
+    // Integração cobra o mesmo fechamento. Sem Integração na lista, ela entra
+    // no lugar; funil sem etapa de Integração mantém o Ganho.
+    const { withoutWonStep } = await server.ssrLoadModule("/src/screens/today.jsx");
+    const steps = (cfg, lead) => withoutWonStep(cfg, lead, destinationsFor(cfg, lead)).map((d) => (d.retry ? "retry" : d.stage));
+    eq("follow-up sem Ganho", steps({ funnel }, { id: "l1", stage: "Follow-up" }), ["Integração", "Nutrição", "Desqualificado"]);
+    eq("call: Integração no lugar do Ganho", steps({ funnel }, { id: "l1", stage: "Call agendada" }), ["retry", "No show", "Follow-up", "Integração", "Desqualificado"]);
+    eq("na Integração, o voltar pro Ganho some", steps({ funnel }, { id: "l1", stage: "Integração" }), []);
+    const semInteg = funnel.filter((f) => f.kind !== "integracao");
+    eq("sem etapa de Integração, o Ganho fica", steps({ funnel: semInteg }, { id: "l1", stage: "Follow-up" }), ["Ganho", "Nutrição", "Desqualificado"]);
     console.log("✓ destino-nutricao");
   } catch (err) {
     console.error(`✗ destino-nutricao: ${err.message}`);

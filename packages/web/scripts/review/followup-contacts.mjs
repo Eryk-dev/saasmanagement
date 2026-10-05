@@ -53,7 +53,7 @@ try {
     const picker = page.getByRole('group', {name:'Dia do contato 1'});
     await picker.waitFor();
     assert.equal(await page.getByRole('button', {name:'09:00', exact:true}).count(), 0, 'follow-up não oferece horário');
-    await page.getByRole('combobox').filter({has: page.locator('option[value="nenhuma"]')}).selectOption('nenhuma');
+    await page.getByRole('radio', {name:'não chegou na proposta'}).click();
     await picker.getByRole('button').nth(2).click();
     await h.capture(page, `followup-day-${width}`);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));

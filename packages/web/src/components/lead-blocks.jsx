@@ -21,6 +21,7 @@ import { PAYMENT_METHODS, PAYMENT_METHODS_ACTIVE, withLegacyOption, paymentLabel
 import { mentoriaFit, mentoriaOfferLine } from "../lib/mentoria.js";
 import { scriptSegments } from "../lib/scripts.js";
 import { fmtDateTime } from "../lib/format.js";
+import { SelectPopover } from "./select-popover.jsx";
 
 const DAY = 86_400_000;
 
@@ -87,6 +88,8 @@ export function clientSummary(saasCfg, lead, stage, cat, { full = false } = {}) 
     ["Indicado por", referralLine(lead)],
     ["SDR / closer", [lead.owner && displayName(lead.owner), lead.closer && displayName(lead.closer)].filter(Boolean).join(" / ") || null],
     ["Próximo passo (nota)", lead.nextActionNote],
+    // Escrita pelo closer ao mandar pra Integração (Próximo passo das Atividades).
+    ["Obs. da integração", lead.integrationNote],
     ...(full ? [
       // Escrito no painel do inbox durante a conversa. Só no card completo pra
       // não duplicar o campo editável que já fica aberto lá.
@@ -311,30 +314,52 @@ export function PaymentMethodSelect({ value, onChange, fieldStyle, placeholder =
   );
 }
 
-export function DealProductField({ saas, value, onChange, plan = "", amount = null, onPick, fieldStyle, labelStyle = null, required = true }) {
-  const products = dealProductsOf(saas);
-  if (!products.length) return null;
-  const cur = products.find((p) => p.id === value) || null;
-  // Só os preços do PLANO selecionado: o período já é escolhido no "Plano
-  // fechado" logo abaixo — listar os dois ciclos duplicava o leque e o destaque
-  // por ciclo acendia todos os chips do plano juntos (Leo, 16/08). O rótulo
-  // perde o prefixo do ciclo ("Semestral · 50 anúncios" → "50 anúncios");
-  // produto sem leque de cotas fica só com o preço. Destacado = o chip cujo
-  // valor É o valor do negócio atual.
-  // Plano SEM preço no catálogo (assinatura mensal): o leque inteiro fica como
-  // referência em vez de sumir — sem ele parecia que o produto tinha sumido
-  // (Leo, 16/08). Nesse fallback o ciclo volta pro rótulo (é ele que
-  // diferencia) e clicar resolve valor + plano de uma vez (onPick).
-  const all = cur?.prices || [];
+// Preços do catálogo como atalho pro valor do negócio. Só os preços do PLANO
+// selecionado: o período já é escolhido no "Plano fechado" — listar os dois
+// ciclos duplicava o leque e o destaque por ciclo acendia todos os chips do
+// plano juntos (Leo, 16/08). O rótulo perde o prefixo do ciclo ("Semestral ·
+// 50 anúncios" → "50 anúncios"); produto sem leque de cotas fica só com o
+// preço. Destacado = o chip cujo valor É o valor do negócio atual.
+// Plano SEM preço no ciclo escolhido (assinatura mensal): o leque inteiro fica
+// como referência em vez de sumir — sem ele parecia que o produto tinha sumido
+// (Leo, 16/08). Nesse fallback o ciclo volta pro rótulo (é ele que diferencia)
+// e clicar resolve valor + plano de uma vez (onPick).
+function CatalogPriceChips({ all, plan, amount, onPick }) {
   const scoped = plan ? all.filter((r) => r.plan === plan) : [];
   const prices = scoped.length ? scoped : all;
-  const money = (v) => (typeof window !== "undefined" && window.fmt?.money?.(v)) || `R$${v}`;
+  if (!prices.length) return null;
+  // Valor cheio ("R$ 11.988"): o compacto ("R$12,0k") escondia o preço de tabela.
+  const money = (v) => (typeof window !== "undefined" && window.fmt?.moneyFull?.(v)) || `R$ ${v}`;
   const chipLabel = (r) => {
     let l = String(r.label || "");
     const cyc = closedPlanLabel(r.plan);
     if (scoped.length && cyc && l.startsWith(cyc)) l = l.slice(cyc.length).replace(/^\s*·\s*/, "").trim();
     return l ? `${l} · ${money(r.value)}` : money(r.value);
   };
+  return (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>
+      <span className="mono dim" style={{ fontSize: 10, flexShrink: 0 }}>preço do catálogo</span>
+      {prices.map((r) => {
+        const on = amount != null && amount !== "" && Number(amount) === r.value;
+        return (
+          <button key={`${r.plan}-${r.label}-${r.value}`} type="button" onClick={() => onPick && onPick(r)}
+            title={`Usar ${money(r.value)} como valor do negócio`}
+            style={{ height: 24, padding: "0 9px", borderRadius: "var(--r-2)",
+              border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"),
+              background: on ? "var(--accent-soft)" : "var(--bg-1)",
+              color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 11, fontWeight: on ? 600 : 500 }}>
+            {chipLabel(r)}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+export function DealProductField({ saas, value, onChange, plan = "", amount = null, onPick, fieldStyle, labelStyle = null, required = true }) {
+  const products = dealProductsOf(saas);
+  if (!products.length) return null;
+  const cur = products.find((p) => p.id === value) || null;
   return (
     <div>
       <label className="kicker" style={labelStyle || { display: "block", marginBottom: 4 }}>Produto vendido {required ? "*" : ""}</label>
@@ -344,24 +369,67 @@ export function DealProductField({ saas, value, onChange, plan = "", amount = nu
         customLabel="Personalizado… (escrever o produto)" customPlaceholder="escreva o produto vendido…">
         <ProductOptions products={products} />
       </SelectWithCustom>
-      {!!prices.length && (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 6 }}>
-          <span className="mono dim" style={{ fontSize: 10, flexShrink: 0 }}>preço do catálogo</span>
-          {prices.map((r) => {
-            const on = amount != null && amount !== "" && Number(amount) === r.value;
-            return (
-              <button key={`${r.plan}-${r.label}-${r.value}`} onClick={() => onPick && onPick(r)}
-                title={`Usar ${money(r.value)} como valor do negócio`}
-                style={{ height: 24, padding: "0 9px", borderRadius: "var(--r-2)",
-                  border: "1px solid " + (on ? "var(--accent-line)" : "var(--line-2)"),
-                  background: on ? "var(--accent-soft)" : "var(--bg-1)",
-                  color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 11, fontWeight: on ? 600 : 500 }}>
-                {chipLabel(r)}
-              </button>
-            );
-          })}
-        </div>
+      <CatalogPriceChips all={cur?.prices || []} plan={plan} amount={amount} onPick={onPick} />
+    </div>
+  );
+}
+
+// ── Mesmos campos, sem <select> nativo ──────────────────────────────────────
+// O "Próximo passo" das Atividades escolhe pelo SelectPopover (lista no
+// desenho da plataforma). "Personalizado…" continua: o texto livre vira o
+// próprio valor gravado, como no SelectWithCustom.
+export function PopoverWithCustom({ options, value, onChange, label, placeholder = "Selecionar…", customLabel = "Personalizado… (escrever)", customPlaceholder = "escreva aqui…", style, inputStyle }) {
+  const isCustomValue = !!value && !options.some((o) => o.value === value);
+  const [customOn, setCustomOn] = React.useState(false);
+  const custom = isCustomValue || customOn;
+  return (
+    <>
+      <SelectPopover label={label} placeholder={placeholder} style={style}
+        value={custom ? CUSTOM_OPT : value}
+        options={[...options, { value: CUSTOM_OPT, label: customLabel }]}
+        onChange={(v) => {
+          if (v === CUSTOM_OPT) { setCustomOn(true); if (!isCustomValue) onChange(""); return; }
+          setCustomOn(false);
+          onChange(v);
+        }} />
+      {custom && (
+        <input type="text" className="inp" value={isCustomValue ? value : ""} autoFocus={customOn}
+          aria-label={customPlaceholder} placeholder={customPlaceholder}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={(e) => { const t = e.target.value.trim(); if (t !== e.target.value) onChange(t); }}
+          style={{ width: "100%", marginTop: 6, ...(inputStyle || {}) }} />
       )}
+    </>
+  );
+}
+
+export function PaymentMethodPicker({ value, onChange, placeholder = "como o cliente fechou…", style, inputStyle }) {
+  // Só os meios ativos; o legado aparece enquanto for o valor atual.
+  const opts = withLegacyOption(PAYMENT_METHODS_ACTIVE, PAYMENT_METHODS, value);
+  return (
+    <PopoverWithCustom label="Modo de pagamento" placeholder={placeholder} style={style} inputStyle={inputStyle}
+      value={value} onChange={onChange}
+      options={opts.map((p) => ({ value: p.id, label: p.label }))}
+      customLabel="Personalizado… (escrever a condição)" customPlaceholder="ex.: entrada no PIX + saldo no boleto" />
+  );
+}
+
+// Produto vendido escolhido no catálogo de PLANOS da plataforma (closingPlansOf:
+// o que a tela Planos mostra, agrupado pelo produto), com os preços de tabela
+// como atalho pro valor. `plans` vem de quem chama, que também usa a lista pra
+// saber os ciclos do plano escolhido.
+export function DealPlanField({ plans, value, onChange, plan = "", amount = null, onPick, label = "Produto vendido *", placeholder = "o plano que ele comprou…", customPlaceholder = "escreva o produto vendido…", style, inputStyle, chips = true }) {
+  if (!plans.length) return null;
+  const cur = plans.find((p) => p.id === value) || null;
+  const options = plans.map((p) => ({ value: p.id, label: p.label, group: p.group, hint: p.custom ? "sob consulta" : p.oneOff ? "compra única" : "" }));
+  return (
+    <div>
+      <div className="kicker" style={{ marginBottom: 4 }}>{label}</div>
+      <PopoverWithCustom label={label.replace(/\s*\*$/, "")} placeholder={placeholder} style={style} inputStyle={inputStyle}
+        value={value} options={options}
+        onChange={(v) => onChange(v, plans.find((p) => p.id === v) || null)}
+        customLabel="Personalizado… (fora do catálogo)" customPlaceholder={customPlaceholder} />
+      {chips && <CatalogPriceChips all={cur?.prices || []} plan={plan} amount={amount} onPick={onPick} />}
     </div>
   );
 }

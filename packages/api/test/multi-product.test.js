@@ -142,3 +142,53 @@ test("números por plano: cliente com dois produtos conta em cada plano com o va
   assert.equal(Math.round(s.plans.oem_escala.received + s.plans.price_escala.received), 3000);
   assert.ok(s.plans.price_escala.received > s.plans.oem_escala.received);
 });
+
+test("fechar com mais de um produto (Próximo passo das Atividades): uma assinatura por produto recorrente, ARR somado e os produtos no cadastro", async (t) => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNNEL });
+  await repo.create("proposal_templates", { id: "pt_leverads", saas: "leverads", status: "draft", calc: {}, slides: [] });
+  await ensureProposalCatalog(repo);
+  await migrateCatalogPricing(repo);
+  await ensurePlansCatalog(repo);
+  const app = Fastify();
+  registerRoutes(app, repo);
+  t.after(() => app.close());
+  await repo.create("leads", { id: "l2", saas: "leverads", name: "Ciclana", stage: "Follow-up" });
+  const res = await app.inject({ method: "PATCH", url: "/api/leads/l2", payload: {
+    stage: "Ganho", paymentMethod: "pix", dealProduct: "oem_escala", planClosed: "anual", amount: 11988 + 11382,
+    dealItems: [
+      { product: "oem_escala", planClosed: "anual", amount: 11988 },
+      { product: "price_escala", planClosed: "semestral", amount: 11382 },
+    ],
+  } });
+  assert.equal(res.statusCode, 200);
+  const customer = (await repo.list("customers"))[0];
+  const subs = await subsOf(repo, customer.id);
+  assert.deepEqual(subs.map((s) => [s.planCode, s.cycle, s.price]).sort(), [["oem_escala", "annual", 11988], ["price_escala", "semiannual", 11382]]);
+  const after = await repo.get("customers", customer.id);
+  assert.equal(after.arr, 11988 + 11382 * 2, "cada produto anualizado pelo próprio ciclo");
+  assert.deepEqual(after.products, ["leverads", "leverprice"]);
+  assert.equal(after.planCode, "oem_escala", "o cadastro espelha o primeiro produto");
+});
+
+test("um item só em dealItems é o fechamento de sempre", async (t) => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNNEL });
+  await repo.create("proposal_templates", { id: "pt_leverads", saas: "leverads", status: "draft", calc: {}, slides: [] });
+  await ensureProposalCatalog(repo);
+  await migrateCatalogPricing(repo);
+  await ensurePlansCatalog(repo);
+  const app = Fastify();
+  registerRoutes(app, repo);
+  t.after(() => app.close());
+  await repo.create("leads", { id: "l3", saas: "leverads", name: "Beltrano", stage: "Follow-up" });
+  await app.inject({ method: "PATCH", url: "/api/leads/l3", payload: {
+    stage: "Ganho", paymentMethod: "pix", dealProduct: "ads_escala", planClosed: "semestral", amount: 7182,
+    dealItems: [{ product: "ads_escala", planClosed: "semestral", amount: 7182 }],
+  } });
+  const customer = (await repo.list("customers"))[0];
+  const subs = await subsOf(repo, customer.id);
+  assert.equal(subs.length, 1);
+  assert.equal(subs[0].price, 7182);
+  assert.equal(customer.arr, 7182 * 2);
+});

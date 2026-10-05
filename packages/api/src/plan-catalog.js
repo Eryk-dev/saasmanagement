@@ -281,7 +281,7 @@ export function dealCatalogFromPlans(plans) {
 // rotular e escolher plano, sem entregáveis nem histórico de preço.
 export const slimPlan = (p) => ({
   id: p.id, code: p.code, name: p.name, kind: p.kind, pricing: p.pricing, product: planProductOf(p), group: p.group,
-  line: p.line, tier: p.tier, status: p.status, prices: p.prices || {}, options: p.options || [],
+  line: p.line, tier: p.tier, order: Number(p.order) || 0, status: p.status, prices: p.prices || {}, options: p.options || [],
   limits: p.limits || {}, features: p.features || {}, accessProduct: p.access?.product || "", priceVersion: Number(p.priceVersion) || 1,
 });
 

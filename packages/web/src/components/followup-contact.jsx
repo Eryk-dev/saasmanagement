@@ -153,7 +153,7 @@ export function FollowupContactBlock({ lead, tokens, onRegister, onChangeDay, on
       )}
       {!n ? (
         <p className="today-script-hint" role="status">
-          Os {FOLLOWUP_STEPS} contatos foram feitos. Escolha o destino do card no Próximo passo: Ganho, Integração, Nutrição ou Desqualificado.
+          Os {FOLLOWUP_STEPS} contatos foram feitos. Escolha o destino do card no Próximo passo: Integração, Nutrição ou Desqualificado.
         </p>
       ) : (
         <div style={{ display: "grid", gap: 12 }}>

@@ -42,6 +42,8 @@ export function factsOf(lead, { closerName = "" } = {}) {
   // que foi contratado no cabeçalho do card.
   push("Fechado por", closerName);
   push("Integração agendada para", lead.integrationAt);
+  // Observação que o closer deixou ao mandar o card pra Integração.
+  push("Observação do closer", lead.integrationNote);
   return f;
 }
 

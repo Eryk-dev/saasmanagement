@@ -2,6 +2,7 @@ import {
   CLOSED_PLANS as CLOSED_PLAN_DEFS, CLOSED_PLAN_MONTHS as RECURRING_PLAN_MONTHS, CLOSED_PLAN_TITLE,
   CYCLE_LABEL, CYCLE_MONTHS, CYCLE_SHORT, CYCLE_TITLE, annualized, closedPlanFromLabel,
 } from "../../../api/src/plan-cycles.js";
+import { PLAN_PRODUCTS, planProductOf } from "../../../api/src/plan-resources.js";
 
 // Ciclos e planos de fechamento vêm da régua compartilhada com a API
 // (plan-cycles.js); as telas importam daqui.
@@ -141,6 +142,42 @@ export function dealProductsOf(saas) {
 export function plansOf(saas) {
   const rows = (typeof window !== "undefined" && window.SEED?.CONFIG?.plans?.[saas]) || null;
   return Array.isArray(rows) ? rows : [];
+}
+// O que dá pra FECHAR, do catálogo de planos da plataforma (Comercial →
+// Planos): todo plano vivo (fora arquivado e catálogo anterior), na ordem do
+// catálogo, agrupado pelo produto, com os ciclos que ele vende e o preço de
+// tabela de cada um. Os preços vêm da projeção do servidor (dealProductsOf),
+// então o rótulo do pacote avulso é o mesmo do gate. Plano "sob consulta" entra
+// sem preço e com os ciclos recorrentes (o closer digita o valor). O que só o
+// catálogo da apresentação vende (Mentoria de deck selecionável) vem no fim;
+// sem planos semeados, vale o catálogo do SEED inteiro.
+const RECURRING_CLOSED = CLOSED_PLAN_DEFS.filter((p) => p.cycle && !p.legacy).map((p) => p.id);
+export function closingPlansOf(saas) {
+  const deal = new Map(dealProductsOf(saas).map((p) => [p.id, p]));
+  const cyclesOf = (oneOff, prices) => {
+    if (oneOff) return ["unico"];
+    const priced = [...new Set(prices.map((r) => r.plan).filter(Boolean))];
+    return priced.length ? priced : RECURRING_CLOSED;
+  };
+  const productRank = (p) => PLAN_PRODUCTS.findIndex((x) => x.id === planProductOf(p));
+  const rows = plansOf(saas)
+    .filter((p) => p.code && p.status !== "archived" && p.kind !== "legacy")
+    .sort((a, b) => productRank(a) - productRank(b) || (Number(a.order) || 0) - (Number(b.order) || 0))
+    .map((p) => {
+      const oneOff = p.kind === "one_off";
+      const product = planProductOf(p);
+      const prices = deal.get(p.code)?.prices || [];
+      return {
+        id: p.code, label: p.name, product, group: PLAN_PRODUCTS.find((x) => x.id === product)?.label || "",
+        oneOff, custom: p.pricing === "custom", cycles: cyclesOf(oneOff, prices), prices,
+      };
+    });
+  const known = new Set(rows.map((r) => r.id));
+  const extra = [...deal.values()].filter((p) => !known.has(p.id)).map((p) => ({
+    id: p.id, label: p.label, product: "", group: p.group || "", oneOff: !!p.oneOff, custom: false,
+    cycles: cyclesOf(!!p.oneOff, p.prices || []), prices: p.prices || [],
+  }));
+  return [...rows, ...extra];
 }
 export const dealProductLabel = (id, saas = "") =>
   dealProductsOf(saas).find((p) => p.id === id)?.label

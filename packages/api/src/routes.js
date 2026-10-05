@@ -1651,11 +1651,27 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
 // pelos rótulos legados do DEAL_PRODUCT_LABEL.
 // Produto Personalizado (gate de fechamento): dealProduct fora do catálogo é o
 // próprio nome livre que o closer escreveu — vale como rótulo do jeito que veio.
-const planLabelOf = (lead) => [
-  DEAL_PRODUCT_LABEL[lead.dealProduct] || MENTORIA_LABEL[lead.dealProduct]
-    || String(lead.dealProduct || "").trim(),
-  CLOSED_PLAN_LABEL[lead.planClosed],
+// Fechamento com MAIS DE UM produto (Próximo passo das Atividades, 05/10/2026):
+// `lead.dealItems` = [{ product, planClosed, amount }], o 1º espelhado em
+// dealProduct/planClosed e `lead.amount` = a soma (é a venda inteira: meta,
+// receita do closer, Purchase da Meta). Sem lista (ou com um item só), o
+// fechamento é o de sempre: um item com os campos do lead.
+export function dealItemsOf(lead) {
+  const rows = Array.isArray(lead?.dealItems) ? lead.dealItems.filter((i) => i && (String(i.product || "").trim() || Number(i.amount) > 0)) : [];
+  if (rows.length > 1) {
+    return rows.map((i) => ({ dealProduct: String(i.product || "").trim(), planClosed: String(i.planClosed || ""), amount: Number(i.amount) || 0 }));
+  }
+  return [{ dealProduct: lead?.dealProduct || "", planClosed: lead?.planClosed || "", amount: Number(lead?.amount) || 0 }];
+}
+const itemLabelOf = (it) => [
+  DEAL_PRODUCT_LABEL[it.dealProduct] || MENTORIA_LABEL[it.dealProduct]
+    || String(it.dealProduct || "").trim(),
+  CLOSED_PLAN_LABEL[it.planClosed],
 ].filter(Boolean).join(" · ");
+const planLabelOf = (lead) => dealItemsOf(lead).map(itemLabelOf).filter(Boolean).join(" + ");
+// ARR do fechamento: cada item anualizado pelo próprio plano (com um item só,
+// é o amount × fator de sempre).
+const closedArrOf = (lead) => Math.round(dealItemsOf(lead).reduce((sum, it) => sum + it.amount * (CLOSED_PLAN_ANNUAL_FACTOR[it.planClosed] || 1), 0));
 export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } = {}) {
   if (!lead || !lead.saas) return null;
   const product = await repo.get("products", lead.saas);
@@ -1699,7 +1715,7 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
     plan: lead.saas === "uniquekids"
       ? `Mentoria · ${Number(lead.consultPackage) === 4 ? 4 : 8} consultas`
       : (planLabelOf(lead) || ""),
-    arr: Math.round((Number(lead.amount) || 0) * (CLOSED_PLAN_ANNUAL_FACTOR[lead.planClosed] || 1)),
+    arr: closedArrOf(lead),
     leadId: lead.id,
     ...(csOwner ? { owner: csOwner } : {}),
     ...(lead.dealProduct ? { dealProduct: lead.dealProduct } : {}), // produto do catálogo (FULL/OEM/Parcial)
@@ -1713,13 +1729,37 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
   // seguir pra Integração jogaria a venda pro mês da integração.
   await repo.update("leads", lead.id, { customerId: customer.id, wonAt: customer.startedAt });
   // Assinatura ativa nasce junto do cliente (plano fechado + meio de pagamento
-  // → ciclo/preço; fatura inicial paga). Best-effort: o cliente já existe.
+  // → ciclo/preço; fatura inicial paga), UMA POR ITEM recorrente vendido: o
+  // plano vive na assinatura e o cliente pode ter um produto em cada uma.
+  // Best-effort: o cliente já existe.
   try {
-    const sub = await createClosedSubscription(repo, {
-      customerId: customer.id, saas: lead.saas,
-      planClosed: lead.planClosed, amount: lead.amount, paymentMethod: lead.paymentMethod,
-      paymentInstallments: lead.paymentInstallments, planFields: planFields?.subscription,
-    });
+    const items = dealItemsOf(lead);
+    const created = [];
+    const subProducts = new Set();
+    for (const [i, it] of items.entries()) {
+      const itemFields = i === 0 ? planFields : await planFieldsFromDeal(repo, { saas: lead.saas, ...it }).catch(() => null);
+      // Uma assinatura viva por produto: o segundo plano recorrente do mesmo
+      // produto não abre outra (o gate não deixa escolher; aqui só não duplica).
+      const subProduct = itemFields?.subscription?.planSnapshot?.product || "";
+      const spec = closedSubscriptionSpec({ ...lead, planClosed: it.planClosed, amount: it.amount });
+      if (spec && subProduct && subProducts.has(subProduct)) continue;
+      const sub = await createClosedSubscription(repo, {
+        customerId: customer.id, saas: lead.saas,
+        planClosed: it.planClosed, amount: it.amount, paymentMethod: lead.paymentMethod,
+        paymentInstallments: lead.paymentInstallments, planFields: itemFields?.subscription,
+      });
+      if (sub) { created.push(sub); if (subProduct) subProducts.add(subProduct); }
+      // Serviço único faturado em Nx: não há recorrência (spec null, arr manual),
+      // mas o cronograma de parcelas existe do mesmo jeito, preso só ao cliente.
+      if (!sub && closedInstallments(lead) && it.amount > 0) {
+        await createInstallmentSchedule(repo, {
+          customerId: customer.id, saas: lead.saas, total: it.amount,
+          installments: closedInstallments(lead), startAt: customer.startedAt,
+          method: lead.paymentMethod,
+        });
+      }
+    }
+    const sub = created[0] || null;
     wonSubId = sub?.id || "";
     // Recorrência AUTORIZADA no card do lead (link de assinatura do Mercado
     // Pago gerado antes do Ganho): a assinatura que acabou de nascer adota o
@@ -1734,15 +1774,8 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
         ...(lead.mpChargeUrl ? { mpInitPoint: lead.mpChargeUrl } : {}),
       });
     }
-    // Serviço único faturado em Nx: não há recorrência (spec null, arr manual),
-    // mas o cronograma de parcelas existe do mesmo jeito, preso só ao cliente.
-    if (!sub && closedInstallments(lead) && Number(lead.amount) > 0) {
-      await createInstallmentSchedule(repo, {
-        customerId: customer.id, saas: lead.saas, total: lead.amount,
-        installments: closedInstallments(lead), startAt: customer.startedAt,
-        method: lead.paymentMethod,
-      });
-    }
+    // Mais de um produto: o cadastro lista todos e espelha a assinatura principal.
+    if (items.length > 1 && created.length) await syncCustomerPlanFromSub(repo, created[created.length - 1]).catch(() => null);
   } catch { /* assinatura é best-effort */ }
   await recordPlanChange(repo, {
     type: "start", saas: lead.saas, customer: customer.id, subscription: wonSubId, lead: lead.id,
@@ -1836,7 +1869,18 @@ export async function syncWonLeadDeal(repo, lead) {
     ...(lead.paymentMethod ? { paymentMethod: lead.paymentMethod } : {}),
     ...(planFields?.customer || {}),
   };
-  const manualArr = () => Math.round((Number(lead.amount) || 0) * (CLOSED_PLAN_ANNUAL_FACTOR[lead.planClosed] || 1));
+  const manualArr = () => closedArrOf(lead);
+  // Fechamento com mais de um produto: as assinaturas de cada um são gestão
+  // da ficha do cliente (Gerenciar cobranças); aqui só o cadastro acompanha.
+  if (dealItemsOf(lead).length > 1) {
+    const saved = await repo.update("customers", customer.id, patch);
+    await recordPlanChange(repo, {
+      type: "deal_edit", saas: lead.saas, customer: customer.id, lead: lead.id,
+      from: customerPlanState(customer), to: customerPlanState(saved),
+      amount: Number(lead.amount) || 0, source: "deal", author: lead.closer || lead.owner || "",
+    });
+    return saved;
+  }
   const spec = closedSubscriptionSpec(lead);
   const subs = (await repo.list("subscriptions")).filter((s) => s.customer === customer.id && s.status !== "canceled");
   if (subs.length === 1 && !subs[0].mpPreapprovalId) {
