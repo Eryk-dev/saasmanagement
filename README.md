@@ -61,7 +61,7 @@ login, `/f/`, `/p/`, `/public/*`, webhooks).
 ```
 packages/
   api/
-    src/            index.js (boot), routes.js (CRUD + registro dos módulos)
+    src/            index.js (boot), routes.js (registro das rotas de cada domínio)
       platform/     db.js, migrations.js, seed, cache e status HTTP
       shared/       módulos puros que a SPA também importa
       auth/ crm/ sdr/ whatsapp/ calls/ google/ forms/ proposals/ billing/
@@ -244,7 +244,7 @@ devolvido por `POST /api/auth/login`.
 | `DELETE` | `/api/:collection/:id` | apaga |
 
 O CRUD genérico cobre as coleções de `COLLECTIONS`, exceto as privadas (`PRIVATE`
-em `routes.js`: usuários, sessões, mensagens de WhatsApp, remuneração etc.), que só
+em `crm/routes.crud.js`: usuários, sessões, mensagens de WhatsApp, remuneração etc.), que só
 são acessíveis pelas rotas próprias. Os domínios têm rotas dedicadas em
 `packages/api/src/<domínio>/routes.*.js`: formulários, propostas, billing, Mercado Pago,
 financeiro, WhatsApp, tarefas, agenda, marketing, redes sociais, blog, treinamentos,

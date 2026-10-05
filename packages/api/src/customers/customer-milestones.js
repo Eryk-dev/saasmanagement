@@ -7,7 +7,7 @@
 //
 // As duas pontas ficam em sincronia nos dois sentidos:
 //   tarefa concluída  → grava customer.milestonesDone[key]  (hook de tasks-core)
-//   marco concluído na ficha → conclui a tarefa aberta      (PATCH em routes.js)
+//   marco concluído na ficha → conclui a tarefa aberta      (PATCH em crm/routes.crud.js)
 //
 // O template é uma CÓPIA deliberada do módulo do web (mesmo par de espelhos do
 // comp-plan.js): o SPA não importa do servidor e vice-versa. O teste

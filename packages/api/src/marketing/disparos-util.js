@@ -10,8 +10,8 @@ export const unsubSig = (leadId) => createHash("sha256").update(`${leadId}:${UNS
 export const unsubToken = (leadId) => `${leadId}.${unsubSig(leadId)}`;
 
 // Base pública pro link de descadastro. Com `req` usa o host da request; sem
-// (ex.: o poller de fundo) cai no COCKPIT_PUBLIC_URL. Inline pra não acoplar em
-// routes.js (evita ciclo de import).
+// (ex.: o poller de fundo) cai no COCKPIT_PUBLIC_URL. Ficou inline quando o
+// publicBase morava em routes.js (ciclo de import); hoje ele está em platform/request.js.
 export function baseUrl(req) {
   if (process.env.COCKPIT_PUBLIC_URL) return process.env.COCKPIT_PUBLIC_URL.replace(/\/+$/, "");
   const host = req?.headers?.["x-forwarded-host"] || req?.headers?.["host"] || "localhost";

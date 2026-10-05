@@ -1,5 +1,5 @@
 // Barramento de mudanças pro tempo real do cockpit: toda escrita no repo (db.js)
-// incrementa `rev` e notifica os assinantes; /api/events (routes.js) transforma
+// incrementa `rev` e notifica os assinantes; /api/events (platform/routes.system.js) transforma
 // isso num stream SSE que o SPA escuta pra recarregar sem refresh manual.
 //
 // Fora do broadcast: `sessions` (login/logout não é dado de tela), `form_events`

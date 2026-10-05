@@ -15,7 +15,8 @@ const {
   closedSubscriptionSpec, closedInstallments, createClosedSubscription,
   createInstallmentSchedule, runBilling,
 } = await import("../src/billing/billing.js");
-const { registerRoutes, convertWonLead, syncWonLeadDeal } = await import("../src/routes.js");
+const { registerRoutes } = await import("../src/routes.js");
+const { convertWonLead, syncWonLeadDeal } = await import("../src/crm/won-lead.js");
 
 const DAY = 86400000;
 const capi = { sendPurchase: async () => {} };

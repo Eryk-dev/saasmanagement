@@ -12,7 +12,7 @@
 //
 // Duas decisões que valem comentário:
 //   · o chip lê um CARIMBO no lead (`lead.clientPending`), não as tarefas: o
-//     bootstrap só manda tarefas pra quem tem a tela Tarefas (routes.js), e o
+//     bootstrap só manda tarefas pra quem tem a tela Tarefas (crm/routes.bootstrap.js), e o
 //     card do pipeline é desenhado do SEED.LEADS;
 //   · atraso do cliente NÃO é atraso nosso: a régua de próximo toque do board
 //     (funnel.js) não muda, e a Análise de Integração separa os dois.

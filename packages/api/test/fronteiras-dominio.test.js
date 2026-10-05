@@ -32,6 +32,17 @@ test("nenhum módulo importa um routes.<domínio>.js, só o orquestrador routes.
   assert.deepEqual(ofensores, [], `mova o helper para um módulo do domínio:\n${ofensores.join("\n")}`);
 });
 
+test("o orquestrador routes.js só é importado pelo index.js", () => {
+  const ofensores = [];
+  for (const abs of files) {
+    if (rel(abs) === "index.js") continue;
+    for (const spec of importsOf(abs)) {
+      if (spec.startsWith(".") && rel(resolve(dirname(abs), spec)) === "routes.js") ofensores.push(rel(abs));
+    }
+  }
+  assert.deepEqual(ofensores, [], `o que esses módulos usam do routes.js precisa morar num módulo de domínio:\n${ofensores.join("\n")}`);
+});
+
 test("shared/ só usa módulos da própria pasta (o web empacota esses arquivos)", () => {
   const ofensores = [];
   for (const abs of files.filter((f) => rel(f).startsWith("shared/"))) {

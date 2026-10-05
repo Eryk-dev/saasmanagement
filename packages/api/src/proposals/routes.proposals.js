@@ -17,7 +17,7 @@ import { proposalOemPageHtml, deckOemConfig, calcOem, OEM_PRINTS_BASE } from "./
 import { leveradsResults, leveradsPresentationResults } from "../customers/leverads-results.js";
 import { liveDeckCases } from "./cases-live.js";
 import { makeRateLimiter } from "../forms/forms.js";
-import { convertWonLead } from "../routes.js";
+import { convertWonLead } from "../crm/won-lead.js";
 import { logActivity, applyStageMove } from "../crm/lead-flow.js";
 import { gradeBandKnown } from "../metrics/metrics-core.js";
 

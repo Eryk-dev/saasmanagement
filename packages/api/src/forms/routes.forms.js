@@ -14,7 +14,8 @@ import { attributionPain, normalizeMetaSource, referrerSource, sanitizeUtm } fro
 import { isWonLead, kindOf } from "../crm/stages.js";
 import { callOutcome, callWitness, dayKey, FORWARD_KINDS, leadGrade } from "../metrics/metrics-core.js";
 import { formPageHtml, EMBED_JS } from "./form-page.js";
-import { CREATE_DEFAULTS, dispatchProposal } from "../routes.js";
+import { dispatchProposal } from "../proposals/dispatch.js";
+import { CREATE_DEFAULTS } from "../crm/create-defaults.js";
 import { clientIp, publicBase } from "../platform/request.js";
 import { stageByKind, firstStage } from "../crm/stages.js";
 import { logActivity, initialNextActionAt, autoLeadOwner } from "../crm/lead-flow.js";

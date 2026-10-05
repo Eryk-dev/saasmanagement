@@ -53,7 +53,7 @@ export function wallFromNaive(v) {
 export const wallNow = (at = new Date()) => new Date(new Date(at).getTime() - BRT_MS);
 // Qualquer forma de data-hora ("YYYY-MM-DDTHH:MM" ou ISO com fuso) → a forma
 // canônica naive BRT que o cockpit grava. É o que a API aplica em callAt,
-// followupAt e integrationAt antes de gravar (routes.js).
+// followupAt e integrationAt antes de gravar (crm/routes.crud.js).
 export function toNaiveBrt(v) {
   const s = String(v || "").trim();
   if (!s) return "";

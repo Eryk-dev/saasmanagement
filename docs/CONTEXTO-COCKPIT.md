@@ -123,16 +123,16 @@ sem API do Node), `auth/`, `crm/`, `sdr/`, `whatsapp/`, `calls/`, `google/`,
 `forms/`, `proposals/`, `billing/`, `payments/`, `customers/`, `support/`, `tasks/`,
 `training/`, `marketing/`, `blog/`, `metrics/`, `comp/` e `integrations/`
 (clientes externos transversais). Ficam na raiz `index.js`, `routes.js` (orquestra
-o registro) e `build-info.js`; `assets/` guarda as imagens servidas. Arquivo novo
+o registro e monta os clientes compartilhados) e `build-info.js`; `assets/` guarda as imagens servidas. Arquivo novo
 entra na pasta do domínio dele. Um `routes.<x>.js` só registra endpoints: lógica,
 helper usado por outro módulo e rotina em segundo plano moram num módulo do
 domínio (ex.: `metrics/pipeline-pace.js` ao lado de `metrics/routes.pipeline-pace.js`).
-Nenhum módulo importa um `routes.<x>.js` além do orquestrador `routes.js`, e
-`shared/` só importa da própria pasta; `api/test/fronteiras-dominio.test.js`
-garante as duas regras.
+Nenhum módulo importa um `routes.<x>.js` além do orquestrador `routes.js`, que
+só o `index.js` importa, e `shared/` só importa da própria pasta;
+`api/test/fronteiras-dominio.test.js` garante as três regras.
 
 `COLLECTIONS` define as coleções conhecidas e a criação de tabelas. O CRUD tem
-exceções para coleções privadas (`PRIVATE` em `routes.js`), defaults, hooks e
+exceções para coleções privadas (`PRIVATE` em `crm/routes.crud.js`), defaults, hooks e
 rotas próprias. **Adicionar uma coleção não garante exposição automática no
 bootstrap, no MCP ou na interface**: conferir cada contrato e os aliases do MCP.
 
@@ -182,7 +182,7 @@ Os caminhos abaixo são relativos a `packages/`.
 | Área | Onde começar |
 | --- | --- |
 | Navegação, workspace e acesso | `web/src/app.jsx`, `chrome.jsx`, `lib/workspace.js`, `lib/users.js`; `api/src/auth/auth.js`, `auth/screens.js`. |
-| Pipeline, cadência e histórico | `api/src/crm/stages.js`, `crm/lead-flow.js`, `shared/followup-contacts.js` (CRUD de activities em `routes.js`); `web/src/screens/pipeline.jsx`, `deal.jsx`, `today.jsx`, `lib/funnel.js`. |
+| Pipeline, cadência e histórico | `api/src/crm/stages.js`, `crm/lead-flow.js`, `shared/followup-contacts.js` (CRUD de activities em `crm/routes.crud.js`); `web/src/screens/pipeline.jsx`, `deal.jsx`, `today.jsx`, `lib/funnel.js`. |
 | Formulários e propostas | `api/src/forms/` (`routes.forms.js`, `forms.js`, `form-page.js`) e `api/src/proposals/` (`routes.proposals.js`, `proposal.js`, `proposal-page.js`, `proposal-slides-page.js`); telas `forms.jsx` e `proposals.jsx`. |
 | Integração e entrega ao cliente | `api/src/forms/routes.integration-forms.js`, `customers/routes.integrations.js`, `calls/integration-brief.js`, `customers/client-pending.js`; telas `integration-forms.jsx` e `integrations.jsx`. |
 | Clientes, receita e pagamentos | `api/src/billing/` (`billing.js`, `churn.js`, `routes.billing.js`), `payments/` (`routes.mp.js`, `routes.fin.js`) e `metrics/metrics-core.js`; telas `customers.jsx`, `subscriptions.jsx`, `offers.jsx`, `expenses.jsx`. |
@@ -805,7 +805,7 @@ de Integração mantém o Ganho. A aba Integração tem "A venda" e "A entrega"
 pro briefing, e a agenda). **Venda com mais de um produto:** `lead.dealItems`
 = `[{ product, planClosed, amount }]` só com 2+ itens; o 1º espelha
 `dealProduct`/`planClosed` e `lead.amount` é a SOMA (meta, receita do closer e
-Purchase seguem o total). `dealItemsOf` (routes.js) normaliza; o
+Purchase seguem o total). `dealItemsOf` (`crm/won-lead.js`) normaliza; o
 `convertWonLead` abre uma assinatura por item recorrente (uma por produto) e o
 ARR inicial anualiza cada item pelo próprio ciclo; reeditar um fechamento
 multiproduto só atualiza o cadastro (assinaturas são da ficha). O valor é

@@ -4,7 +4,7 @@
 //
 // Invariante do rollup (não quebrar): TODA mudança de assinatura reescreve
 // `customer.arr` — receita/MRR/clientes do produto derivam SEMPRE da coleção
-// `customers` (rollupProduct em routes.js).
+// `customers` (rollupProduct em crm/portfolio.js).
 //
 // Pró-rata: port da lógica de copylever/app/services/prorata.py (sem seats e sem
 // mínimo do MP — aqui a fatura é registro, não cobrança de gateway):

@@ -4,7 +4,7 @@
 
 import { repo as defaultRepo } from "../platform/db.js";
 import { autoLeadOwner, initialNextActionAt, logActivity } from "../crm/lead-flow.js";
-import { CREATE_DEFAULTS } from "../routes.js";
+import { CREATE_DEFAULTS } from "../crm/create-defaults.js";
 import { firstStage } from "../crm/stages.js";
 
 // "tarefas diárias" com tolerância a acento/plural (título do item ou do produto).

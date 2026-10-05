@@ -75,7 +75,7 @@ export function canScreen(user, screen) {
 // importa (primeiro match vence). "Meu dia" (today) é uma view sobre os mesmos
 // dados do pipeline: leads e toques servem as duas telas. Rotas fora do mapa
 // (bootstrap, rev/events, auth próprio, people, leaderboard) ficam liberadas pra
-// qualquer sessão — o bootstrap filtra o payload por conta própria (routes.js).
+// qualquer sessão — o bootstrap filtra o payload por conta própria (crm/routes.bootstrap.js).
 const ROUTE_SCREENS = [
   // Aviso de social selling do Meu dia (só a CONTAGEM de novos seguidores) — o
   // SDR alcança pela fila (today) sem ter a tela de Mídia social. Precede

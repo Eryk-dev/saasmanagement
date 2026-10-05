@@ -1083,8 +1083,8 @@ export async function backfillWonAt(repo) {
 // reordenação, senão isPostSaleStage ainda é falso.
 export async function backfillPostSaleCustomers(repo) {
   // Import dinâmico: migrations.js é carregado pelo index.js antes das rotas, e
-  // um import estático de routes.js aqui acoplaria a ordem de carga à toa.
-  const { convertWonLead } = await import("../routes.js");
+  // um import estático do lead ganho aqui acoplaria a ordem de carga à toa.
+  const { convertWonLead } = await import("../crm/won-lead.js");
   const products = new Map((await repo.list("products")).map((p) => [p.id, p]));
   const leads = await repo.list("leads");
   let n = 0;

@@ -83,8 +83,8 @@ export async function createCustomerCharge(repo, mp, req, customer, { amount, ti
 }
 
 // URLs públicas dos links do MP, POR REQUEST: COCKPIT_PUBLIC_URL > host da
-// request (x-forwarded-*) > localhost — a mesma cadeia do publicBase de
-// routes.js (via baseUrl, que existe fora dele pra não criar ciclo de import).
+// request (x-forwarded-*) > localhost — a mesma cadeia do publicBase
+// (platform/request.js), via baseUrl, que nasceu fora dele quando o publicBase morava em routes.js.
 // Era uma constante só da env: deploy sem COCKPIT_PUBLIC_URL mandava back_url
 // "http://localhost:8787" e o /preapproval recusava a assinatura recorrente
 // inteira ("Invalid value for back_url" — ali o MP exige URL https válida; o
