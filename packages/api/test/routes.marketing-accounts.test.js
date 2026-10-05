@@ -2,9 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { registerMarketingRoutes, startMarketingAutoSync } from "../src/routes.marketing.js";
-import { metaAdAccounts } from "../src/meta-accounts.js";
-import { UPSTREAM_FAILED } from "../src/http-status.js";
+import { registerMarketingRoutes } from "../src/marketing/routes.marketing.js";
+import { startMarketingAutoSync } from "../src/marketing/meta-sync.js";
+import { metaAdAccounts } from "../src/marketing/meta-accounts.js";
+import { UPSTREAM_FAILED } from "../src/platform/http-status.js";
 
 const range = { since: "2026-09-15", until: "2026-09-16" };
 const product = { id: "multi", metaAdAccount: "123", metaAdAccounts: ["act_123", "456"], funnel: [] };

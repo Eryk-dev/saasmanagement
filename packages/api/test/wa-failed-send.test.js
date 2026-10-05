@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { flagFailedBotSend } from "../src/wa-call-flow.js";
+import { flagFailedBotSend } from "../src/whatsapp/wa-call-flow.js";
 
 // Envio do robô recusado pela Meta (status failed): alerta quente único por
 // lead, com o carimbo que destrava o acompanhamento humano (23/08).

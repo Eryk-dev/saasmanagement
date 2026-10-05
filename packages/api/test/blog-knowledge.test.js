@@ -3,9 +3,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { tokenize, jaccard, pickFlashcards, buildKnowledgePack, knowledgeText, reword, EXCLUDE_RE } from "../src/blog-knowledge.js";
-import { LEVERADS_COMPANY, BLOG_FACTS, POSITIONING_RULES } from "../src/company.leverads.js";
-import { LEVERADS_DECKS } from "../src/flashcard-decks.leverads.js";
+import { tokenize, jaccard, pickFlashcards, buildKnowledgePack, knowledgeText, reword, EXCLUDE_RE } from "../src/blog/blog-knowledge.js";
+import { LEVERADS_COMPANY, BLOG_FACTS, POSITIONING_RULES } from "../src/training/company.leverads.js";
+import { LEVERADS_DECKS } from "../src/training/flashcard-decks.leverads.js";
 
 test("tokenize: sem acento, sem stopword, ≥ 3 chars", () => {
   assert.deepEqual(tokenize("Ação de título: ML & Shopee com estoque, você"), ["acao", "titulo", "shopee", "estoque"]);

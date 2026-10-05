@@ -10,7 +10,7 @@ import { Drawer } from "../components/overlay.jsx";
 import { BarraComposicao } from "../components/story.jsx";
 import { PlanModal } from "../components/plan-editor.jsx";
 import { CYCLE_TITLE } from "../lib/payments.js";
-import { PLAN_LIMITS, PLAN_FEATURES, PLAN_PRODUCTS, planProductOf, limitsSummary, featuresIncluded } from "../../../api/src/plan-resources.js";
+import { PLAN_LIMITS, PLAN_FEATURES, PLAN_PRODUCTS, planProductOf, limitsSummary, featuresIncluded } from "../../../api/src/shared/plan-resources.js";
 
 // Planos (Comercial → Planos): gestão do catálogo do produto pelo admin. Cada
 // plano com o que ele vende (preço por ciclo, limites, recursos do LeverAds) e

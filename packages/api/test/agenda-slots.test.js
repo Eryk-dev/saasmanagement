@@ -4,7 +4,7 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   closerPools, slotsForLead, occupyCells, addBusinessDaysNaive, slotLabel, slotLabelFull, wallFromNaive, spreadPair, OFFER_HOURS,
   toNaiveBrt,
-} from "../src/agenda-slots.js";
+} from "../src/crm/agenda-slots.js";
 
 // Quarta-feira 19/08/2026, 8h da manhã no relógio de Brasília (ver
 // off-hours-duty.test.js: em ago/2026, 10=seg … 14=sex; 19 é quarta).

@@ -9,8 +9,8 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerRoutes } = await import("../src/routes.js");
-const { makeAnthropic } = await import("../src/anthropic.js");
-const { makeIntegrationBriefer, formatBriefText, factsOf } = await import("../src/integration-brief.js");
+const { makeAnthropic } = await import("../src/integrations/anthropic.js");
+const { makeIntegrationBriefer, formatBriefText, factsOf } = await import("../src/calls/integration-brief.js");
 // system pode vir como string ou como blocos (cache de prompt, 17/09)
 const sysOf = (b) => (typeof b?.system === "string" ? b.system : (Array.isArray(b?.system) ? b.system.map((x) => x?.text || "").join("\n") : ""));
 

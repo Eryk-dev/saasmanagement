@@ -4,7 +4,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const { makeAnthropic } = await import("../src/anthropic.js");
+const { makeAnthropic } = await import("../src/integrations/anthropic.js");
 
 test("suggestSocialCopy: fields lista → mapa; manda dor/sugestão/campos no prompt", async () => {
   let sentBody = null;

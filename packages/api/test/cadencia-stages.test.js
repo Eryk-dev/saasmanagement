@@ -5,9 +5,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { diaDaCadencia, etapaAlvo, estaNaCadencia, DIAS, NOMES_DIAS, CADENCIA_FLAG } = await import("../src/cadencia-stages.js");
-const { makeCadenciaRunner } = await import("../src/cadencia-runner.js");
-const { ensureCadenciaStages } = await import("../src/migrations.js");
+const { diaDaCadencia, etapaAlvo, estaNaCadencia, DIAS, NOMES_DIAS, CADENCIA_FLAG } = await import("../src/crm/cadencia-stages.js");
+const { makeCadenciaRunner } = await import("../src/crm/cadencia-runner.js");
+const { ensureCadenciaStages } = await import("../src/platform/migrations.js");
 
 const AGORA = Date.parse("2026-09-10T12:00:00Z");
 const haDias = (n) => new Date(AGORA - n * 86400000).toISOString();
@@ -129,7 +129,7 @@ test("estaNaCadencia cobre Novo lead e as colunas de dia, e só elas", () => {
 
 // ── Quem promove pra "Qualificando" ───────────────────────────────────────
 test("com as colunas de dia, o toque do SDR NÃO promove mais o lead", async () => {
-  const { onOutboundMessage } = await import("../src/lead-flow.js");
+  const { onOutboundMessage } = await import("../src/crm/lead-flow.js");
   const repo = await repoPronto();
   const lead = await repo.create("leads", { saas: "leverads", stage: "Novo lead", createdAt: haDias(0) });
 
@@ -141,7 +141,7 @@ test("com as colunas de dia, o toque do SDR NÃO promove mais o lead", async () 
 });
 
 test("sem as colunas de dia, o comportamento antigo continua igual", async () => {
-  const { onOutboundMessage } = await import("../src/lead-flow.js");
+  const { onOutboundMessage } = await import("../src/crm/lead-flow.js");
   const repo = await repoPronto({ ligado: false });
   const lead = await repo.create("leads", { saas: "leverads", stage: "Novo lead", createdAt: haDias(0) });
 
@@ -151,7 +151,7 @@ test("sem as colunas de dia, o comportamento antigo continua igual", async () =>
 });
 
 test("toque dentro de uma coluna de dia também não promove", async () => {
-  const { onOutboundMessage } = await import("../src/lead-flow.js");
+  const { onOutboundMessage } = await import("../src/crm/lead-flow.js");
   const repo = await repoPronto();
   const lead = await repo.create("leads", { saas: "leverads", stage: "Dia 3", createdAt: haDias(2) });
 
@@ -161,7 +161,7 @@ test("toque dentro de uma coluna de dia também não promove", async () => {
 });
 
 test("na Nutrição o toque continua promovendo — lá o reengajamento funcionou", async () => {
-  const { onOutboundMessage } = await import("../src/lead-flow.js");
+  const { onOutboundMessage } = await import("../src/crm/lead-flow.js");
   const repo = await repoPronto();
   const lead = await repo.create("leads", { saas: "leverads", stage: "Nutrição", createdAt: haDias(20) });
 

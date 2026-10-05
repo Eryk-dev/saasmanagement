@@ -33,10 +33,10 @@
 // Idempotente: issue que já tem ticket é pulada. Reversível: a saída lista
 // ticket ↔ issue de cada criação.
 import "dotenv/config";
-import { repo } from "../src/db.js";
-import { defaultLinear as linear } from "../src/linear.js";
-import { loadSettings, agentsOf } from "../src/tickets-core.js";
-import { findTicketByIssue, importLinearIssue, ticketFromIssue } from "../src/ticket-linear.js";
+import { repo } from "../src/platform/db.js";
+import { defaultLinear as linear } from "../src/support/linear.js";
+import { loadSettings, agentsOf } from "../src/support/tickets-core.js";
+import { findTicketByIssue, importLinearIssue, ticketFromIssue } from "../src/support/ticket-linear.js";
 
 const arg = (name, def = "") => {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));

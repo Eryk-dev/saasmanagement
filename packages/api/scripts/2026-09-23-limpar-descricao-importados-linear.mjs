@@ -19,7 +19,7 @@
 //
 // Idempotente: ticket já limpo não casa mais com a marca.
 import "dotenv/config";
-import { repo } from "../src/db.js";
+import { repo } from "../src/platform/db.js";
 
 const APPLY = process.argv.includes("--apply");
 const marca = (t) => `Importado do Linear: ${t.linear?.identifier || ""} · `;

@@ -1,7 +1,7 @@
 // Pente fino do post: 1 positivo + 1 negativo por regra, níveis do plano.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { lintPost, lintOk } from "../src/blog-lint.js";
+import { lintPost, lintOk } from "../src/blog/blog-lint.js";
 
 const CTA = "https://levermoney.com.br/f/fo_diagnostico_leverads";
 const BODY = `## Por que a operação trava\n\n${"Texto de corpo com palavras suficientes pra passar da régua. ".repeat(75)}\n\n## Como a LeverAds entra nisso\n\nFaça o [diagnóstico gratuito](${CTA}?utm_source=blog&utm_medium=organic&utm_campaign=blog&utm_content=slug) e a gente mostra.`;

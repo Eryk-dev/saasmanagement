@@ -5,7 +5,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { registerBlogPublicRoutes, isFronted, signPreview, verifyPreview, previewUrlFor, previewSecret } from "../src/routes.blog-public.js";
+import { registerBlogPublicRoutes } from "../src/blog/routes.blog-public.js";
+import { isFronted, signPreview, verifyPreview, previewUrlFor, previewSecret } from "../src/blog/blog-preview.js";
 
 const ENV = { BLOG_PUBLIC_URL: "https://leverads.com.br/blog", BLOG_PROXY_TOKEN: "segredo-do-proxy", BLOG_PREVIEW_SECRET: "chave-preview" };
 const NOW = new Date("2026-09-20T12:00:00.000Z");

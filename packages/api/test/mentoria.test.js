@@ -10,10 +10,10 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 const {
   mentoriaFit, mentoriaDealCatalog, mentoriaCalcBlock, mentoriaAmount,
   isMentoriaLead, MENTORIA_TEMPLATE_ID, MENTORIA_LABEL,
-} = await import("../src/mentoria.js");
-const { ensureMentoriaTemplate, migrateFormMentoriaOferta } = await import("../src/migrations.js");
-const { runNativeProposal } = await import("../src/proposal.js");
-const { registerProposalRoutes } = await import("../src/routes.proposals.js");
+} = await import("../src/customers/mentoria.js");
+const { ensureMentoriaTemplate, migrateFormMentoriaOferta } = await import("../src/platform/migrations.js");
+const { runNativeProposal } = await import("../src/proposals/proposal.js");
+const { registerProposalRoutes } = await import("../src/proposals/routes.proposals.js");
 
 const leadDaFila = (verba) => ({
   id: "l1", saas: "leverads", name: "Ana Souza", phone: "11999999999",
@@ -267,7 +267,7 @@ test("mas o FUNIL e as TAXAS seguem só da plataforma (o CPL não dilui)", async
 });
 
 test("migração dá dono pra fila da Mentoria, uma vez e sem tocar em card terminal", async () => {
-  const { assignMentoriaOwner } = await import("../src/migrations.js");
+  const { assignMentoriaOwner } = await import("../src/platform/migrations.js");
   const repo = makeMemRepo();
   await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNNEL });
   await repo.create("users", { id: "sdr", name: "Manuela", saas: "leverads", roles: ["sdr"] });

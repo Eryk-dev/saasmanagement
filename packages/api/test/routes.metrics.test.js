@@ -5,7 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { dayKey } from "../src/metrics-core.js";
+import { dayKey } from "../src/metrics/metrics-core.js";
 
 const { registerRoutes } = await import("../src/routes.js");
 

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeSdrRunner } from "../src/sdr-flow.js";
+import { makeSdrRunner } from "../src/sdr/sdr-flow.js";
 
 // Segundo toque (23/08): 1º toque há 24h sem NENHUMA resposta → retomada única.
 const ISO = (s) => new Date(s).toISOString();

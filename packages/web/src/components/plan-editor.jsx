@@ -5,7 +5,7 @@ import { PrimaryButton, SecondaryButton } from "../atoms.jsx";
 import { Modal } from "./overlay.jsx";
 import { CYCLE_MONTHS, CYCLE_TITLE } from "../lib/payments.js";
 import { Checkbox } from "./form-controls.jsx";
-import { PLAN_LIMITS as LIMITS, PLAN_FEATURES, PLAN_PRODUCTS, planProductOf, planAccessOf } from "../../../api/src/plan-resources.js";
+import { PLAN_LIMITS as LIMITS, PLAN_FEATURES, PLAN_PRODUCTS, planProductOf, planAccessOf } from "../../../api/src/shared/plan-resources.js";
 
 // Formulário de PLANO do catálogo (coleção `plans`, v2): criar e editar o que
 // se vende, com o produto, o preço de cada ciclo, os limites, os recursos do

@@ -16,7 +16,8 @@ const SRC = fileURLToPath(new URL("../src/", import.meta.url));
 
 test("nenhuma rota responde 5xx de propósito (o proxy engole o corpo)", () => {
   const ofensores = [];
-  for (const file of readdirSync(SRC).filter((f) => f.endsWith(".js"))) {
+  // Recursivo: as rotas moram nas pastas de domínio (billing/, support/…).
+  for (const file of readdirSync(SRC, { recursive: true }).filter((f) => f.endsWith(".js"))) {
     const linhas = readFileSync(join(SRC, file), "utf8").split("\n");
     linhas.forEach((linha, i) => {
       if (/\.code\(\s*5\d\d\s*\)/.test(linha)) ofensores.push(`${file}:${i + 1} → ${linha.trim()}`);
@@ -26,7 +27,7 @@ test("nenhuma rota responde 5xx de propósito (o proxy engole o corpo)", () => {
 });
 
 test("os códigos exportados são 4xx (atravessam o proxy)", async () => {
-  const { UPSTREAM_FAILED, NOT_CONFIGURED } = await import("../src/http-status.js");
+  const { UPSTREAM_FAILED, NOT_CONFIGURED } = await import("../src/platform/http-status.js");
   for (const c of [UPSTREAM_FAILED, NOT_CONFIGURED]) {
     assert.ok(c >= 400 && c < 500, `${c} precisa ser 4xx`);
   }

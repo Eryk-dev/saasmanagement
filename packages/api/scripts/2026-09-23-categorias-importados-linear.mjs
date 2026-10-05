@@ -17,9 +17,9 @@
 //   node packages/api/scripts/2026-09-23-categorias-importados-linear.mjs --apply
 // Opção: --saas=leverads
 import "dotenv/config";
-import { repo } from "../src/db.js";
-import { defaultLinear as linear } from "../src/linear.js";
-import { loadSettings, saveSettings } from "../src/tickets-core.js";
+import { repo } from "../src/platform/db.js";
+import { defaultLinear as linear } from "../src/support/linear.js";
+import { loadSettings, saveSettings } from "../src/support/tickets-core.js";
 
 const APPLY = process.argv.includes("--apply");
 const SAAS = (process.argv.find((a) => a.startsWith("--saas=")) || "--saas=leverads").slice(7);

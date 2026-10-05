@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import { registerRoutes } from "../src/routes.js";
-import { FORM_IDS, FORMS_V2 } from "../src/forms-v2.leverads.js";
-import { painCode, attributionPain } from "../src/attribution.js";
-import { makeMeta } from "../src/meta.js";
+import { FORM_IDS, FORMS_V2 } from "../src/forms/forms-v2.leverads.js";
+import { painCode, attributionPain } from "../src/marketing/attribution.js";
+import { makeMeta } from "../src/marketing/meta.js";
 
 const OLD = "fo_diagnostico_leverads";
 const CFG = {

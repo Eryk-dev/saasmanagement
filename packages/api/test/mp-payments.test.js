@@ -10,8 +10,8 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerRoutes } = await import("../src/routes.js");
-const { makeMp } = await import("../src/mp.js");
-const { ingestMpPayment, runMpSync } = await import("../src/mp-payments.js");
+const { makeMp } = await import("../src/payments/mp.js");
+const { ingestMpPayment, runMpSync } = await import("../src/payments/mp-payments.js");
 
 const SECRET = "test-webhook-secret";
 

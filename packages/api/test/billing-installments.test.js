@@ -14,8 +14,9 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 const {
   closedSubscriptionSpec, closedInstallments, createClosedSubscription,
   createInstallmentSchedule, runBilling,
-} = await import("../src/billing.js");
-const { registerRoutes, convertWonLead, syncWonLeadDeal } = await import("../src/routes.js");
+} = await import("../src/billing/billing.js");
+const { registerRoutes } = await import("../src/routes.js");
+const { convertWonLead, syncWonLeadDeal } = await import("../src/crm/won-lead.js");
 
 const DAY = 86400000;
 const capi = { sendPurchase: async () => {} };

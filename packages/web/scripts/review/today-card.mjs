@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { reviewHarness } from './harness.mjs';
-import { proposalSlidesPageHtml } from '../../../api/src/proposal-slides-page.js';
+import { proposalSlidesPageHtml } from '../../../api/src/proposals/proposal-slides-page.js';
 
 const h = await reviewHarness('today', 'Minhas atividades', null, {nativeTimers:true});
 const proposal = { id:'card-preview', data:{lead:{name:'Bruno Teixeira',company:'Auto Peças Já'},answers:{}}, state:{} };

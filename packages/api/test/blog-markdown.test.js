@@ -2,7 +2,7 @@
 // esquema seguro, tokens {{x||fallback}} e helpers de texto.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { renderMarkdown, substituteTokens, plainText, countWords, readingMinutes, slugify, escJson, esc } from "../src/blog-markdown.js";
+import { renderMarkdown, substituteTokens, plainText, countWords, readingMinutes, slugify, escJson, esc } from "../src/blog/blog-markdown.js";
 
 const BASE = "https://leverads.com.br/blog";
 

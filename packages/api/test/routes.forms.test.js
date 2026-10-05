@@ -8,8 +8,8 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerRoutes } = await import("../src/routes.js");
-const { variantHeadline, nameError, phoneError, publicForm, validateAnswers } = await import("../src/forms.js");
-const { formPageHtml } = await import("../src/form-page.js");
+const { variantHeadline, nameError, phoneError, publicForm, validateAnswers } = await import("../src/forms/forms.js");
+const { formPageHtml } = await import("../src/forms/form-page.js");
 
 // Form com branching: porte=small pula direto pro fim (faturamento nem aparece).
 const FORM = {
@@ -653,7 +653,7 @@ test("saída antes do contato não cria card fantasma no pipeline", async () => 
 });
 
 test("voltar e trocar a resposta desfaz a saída", async () => {
-  const { submissionExit } = await import("../src/forms.js");
+  const { submissionExit } = await import("../src/forms/forms.js");
   const qs = FORM_EXIT.questions;
   assert.equal(submissionExit(qs, { vende: "nao", interesse: "sim", verba: "ate1k", nome: "A", whatsapp: "1" }), "mentoria");
   assert.equal(submissionExit(qs, { vende: "sim", contas: "2+", nome: "A", whatsapp: "1" }), "");
@@ -672,8 +672,8 @@ test("a página pública recebe as saídas e o exit das opções", async () => {
 // Com desvio, o total NÃO é o número de perguntas do form: é o tamanho do
 // caminho DAQUELA pessoa. Contando tudo, quem não vende via "02 / 08" numa
 // jornada de 5 telas. A conta roda aqui isolada, com o form de verdade.
-const { PROGRESS_JS } = await import("../src/form-page.js");
-const { migrateFormVendeMarketplace } = await import("../src/migrations.js");
+const { PROGRESS_JS } = await import("../src/forms/form-page.js");
+const { migrateFormVendeMarketplace } = await import("../src/platform/migrations.js");
 
 // O form do diagnóstico como está em produção (antes da migração).
 const FORM_DIAGNOSTICO = {
@@ -750,7 +750,7 @@ test("contador: total é o tamanho do CAMINHO, não o número de perguntas", asy
 });
 
 test("mergeLeadQuestions limpa o rótulo pro card (asterisco e prefixo de condução)", async () => {
-  const { mergeLeadQuestions } = await import("../src/forms.js");
+  const { mergeLeadQuestions } = await import("../src/forms/forms.js");
   const form = { questions: [
     { key: "vende_marketplace", label: "Antes de tudo: você *já vende* em marketplace?", options: [{ value: "sim" }] },
     { key: "niche", label: "Pra começar: qual o *segmento* principal?", options: [] },

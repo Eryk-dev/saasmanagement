@@ -37,16 +37,16 @@ Monorepo com npm workspaces, JavaScript ESM e Node 20 ou superior.
 
 | Pacote | Stack | Papel |
 |---|---|---|
-| `packages/api` | Fastify 5, `pg` | API REST na porta 8787. Autenticação (usuários + chave mestre), permissão por tela, CRUD genérico das coleções e rotas de domínio (`routes.*.js`), páginas públicas (formulários, propostas, NPS, blog), webhooks e ~25 rotinas em segundo plano (cobrança, sync de pagamentos, cadências de WhatsApp, lembretes, relatórios). |
+| `packages/api` | Fastify 5, `pg` | API REST na porta 8787. Autenticação (usuários + chave mestre), permissão por tela, CRUD genérico das coleções e rotas de domínio (`routes.*.js` nas pastas de cada domínio), páginas públicas (formulários, propostas, NPS, blog), webhooks e ~25 rotinas em segundo plano (cobrança, sync de pagamentos, cadências de WhatsApp, lembretes, relatórios). |
 | `packages/web` | React 18, Vite 6 | SPA na porta 5173 (dev). Carrega o `/api/bootstrap` e recebe atualizações em tempo real por SSE. Tema claro por padrão, com modo escuro. |
 | `packages/mcp` | SDK MCP, Express | Servidor MCP (Streamable HTTP) na porta 8788. As ferramentas leem **e escrevem** sempre através da API REST. |
 
 **Dados.** Postgres (Supabase), schema `cockpit`, uma tabela por coleção com
 `id`, `json` (JSONB) e `updated_at`. O formato documento é intencional: cada
 produto define seus próprios campos e funis. As tabelas são criadas no boot da API
-a partir de `COLLECTIONS` (`packages/api/src/seed-data.js`), e `migrations.js`
+a partir de `COLLECTIONS` (`packages/api/src/platform/seed-data.js`), e `migrations.js`
 aplica migrações idempotentes de dados logo em seguida. O acesso ao banco fica
-concentrado em `packages/api/src/db.js`.
+concentrado em `packages/api/src/platform/db.js`.
 
 **Autenticação.** Com `COCKPIT_API_KEY` definida, toda rota exige autenticação:
 a chave mestre (integrações e MCP) ou o token de sessão de um usuário logado (senha
@@ -61,9 +61,15 @@ login, `/f/`, `/p/`, `/public/*`, webhooks).
 ```
 packages/
   api/
-    src/            index.js (boot), routes.js (CRUD + registro dos módulos),
-                    routes.*.js (domínios), db.js, migrations.js, auth.js, screens.js,
-                    integrações (mp, meta, whatsapp, google, shopify…) e rotinas
+    src/            index.js (boot e rotinas), routes.js (clientes compartilhados),
+                    domains.js (ordem dos domínios)
+      platform/     db.js, migrations.js, seed, cache e status HTTP
+      shared/       módulos puros que a SPA também importa
+      auth/ crm/ sdr/ whatsapp/ calls/ google/ forms/ proposals/ billing/
+      payments/ customers/ support/ tasks/ training/ marketing/ blog/
+      metrics/ comp/ integrations/
+                    um domínio por pasta: index.js (register/start), rotas
+                    (routes.*.js), regras e rotinas
     test/           testes node:test com repositório em memória (test/helpers/mem-repo.js)
     scripts/        scripts pontuais de dados, datados
   web/
@@ -149,7 +155,7 @@ Abra http://localhost:5173.
 ### 4. Primeiro acesso
 
 - O primeiro boot cria as tabelas e, com a coleção `users` vazia, os administradores
-  padrão definidos em `DEFAULT_ADMINS` (`packages/api/src/auth.js`). Troque a senha
+  padrão definidos em `DEFAULT_ADMINS` (`packages/api/src/auth/auth.js`). Troque a senha
   depois de entrar.
 - O banco nasce sem produtos. Crie o primeiro em **Configurações** ou pela API:
 
@@ -240,9 +246,9 @@ devolvido por `POST /api/auth/login`.
 | `DELETE` | `/api/:collection/:id` | apaga |
 
 O CRUD genérico cobre as coleções de `COLLECTIONS`, exceto as privadas (`PRIVATE`
-em `routes.js`: usuários, sessões, mensagens de WhatsApp, remuneração etc.), que só
+em `crm/routes.crud.js`: usuários, sessões, mensagens de WhatsApp, remuneração etc.), que só
 são acessíveis pelas rotas próprias. Os domínios têm rotas dedicadas em
-`packages/api/src/routes.*.js`: formulários, propostas, billing, Mercado Pago,
+`packages/api/src/<domínio>/routes.*.js`: formulários, propostas, billing, Mercado Pago,
 financeiro, WhatsApp, tarefas, agenda, marketing, redes sociais, blog, treinamentos,
 métricas, entre outros.
 

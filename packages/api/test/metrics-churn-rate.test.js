@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { churnRateIn } from "../src/metrics-core.js";
+import { churnRateIn } from "../src/metrics/metrics-core.js";
 
 const { registerRoutes } = await import("../src/routes.js");
 
@@ -66,7 +66,7 @@ test("churn do CS no placar = churnRateIn da carteira dele (mesma base, mesma ta
 });
 
 test("computeScoreboard é chamável fora da rota e devolve o mesmo payload", async () => {
-  const { computeScoreboard } = await import("../src/routes.scoreboard.js");
+  const { computeScoreboard } = await import("../src/metrics/scoreboard.js");
   const repo = makeMemRepo();
   await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNNEL });
   await repo.create("users", { id: "u_cs", name: "Cris CS", roles: ["integrator"] });

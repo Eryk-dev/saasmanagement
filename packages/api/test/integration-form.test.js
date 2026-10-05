@@ -10,7 +10,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { validateIntegrationAnswers, sanitizeIntegrationAnswers } from "../src/integration-form.js";
+import { validateIntegrationAnswers, sanitizeIntegrationAnswers } from "../src/forms/integration-form.js";
 
 const { registerRoutes } = await import("../src/routes.js");
 
@@ -250,7 +250,7 @@ test("nomes indicados vão pra FICHA do cliente e viram tarefa, sem criar lead",
 });
 
 // ── Compromissos que o formulário já revela ───────────────────────────────
-import { formPendencias } from "../src/integration-form.js";
+import { formPendencias } from "../src/forms/integration-form.js";
 
 test("formPendencias: conta não conectada e contas fora do ERP viram pendência", () => {
   const itens = formPendencias({
@@ -290,8 +290,8 @@ test("formPendencias: formulário vazio não inventa pendência", () => {
 // Segundo questionário na MESMA máquina: link opaco, envio único, snapshot e
 // termo. O que muda é o conteúdo (cadastro do tomador) e o destino: a ficha do
 // cliente recebe `fiscal`, pronto pro financeiro emitir a NFS-e.
-import { FORM_KINDS } from "../src/integration-form.js";
-import { fiscalRecord, fiscalSummary } from "../src/fiscal-form.js";
+import { FORM_KINDS } from "../src/forms/integration-form.js";
+import { fiscalRecord, fiscalSummary } from "../src/forms/fiscal-form.js";
 
 const FISCAL_PJ = {
   nome: "Ricardo Nunes", funcao: "Sócio", whatsapp: "41999990004", email: "ricardo@rn.example",

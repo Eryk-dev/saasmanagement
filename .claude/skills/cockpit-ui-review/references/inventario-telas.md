@@ -196,7 +196,7 @@ foram acionadas. Cada tela tem commit próprio; CSS e preview são compartilhado
 
 ## Apresentação C — ordem e provas sociais (14/09/2026)
 
-Revisão pontual do deck em `packages/api/src/proposal-slides-page.js`:
+Revisão pontual do deck em `packages/api/src/proposals/proposal-slides-page.js`:
 “Anúncio perfeito” antecede “Efeito teia”, com os rótulos de sequência ajustados.
 Os quatro cases publicados (Motvia, Lupa Autopeças, Dyno Nutri e 123tudo) foram
 recuperados na cópia vazia da apresentação aberta via API REST, preservando

@@ -5,7 +5,7 @@ import { CYCLE_TITLE, plansOf } from "../lib/payments.js";
 import { PrimaryButton, SecondaryButton } from "../atoms.jsx";
 import { SelectPopover } from "./select-popover.jsx";
 import { Choice } from "./plan-editor.jsx";
-import { limitsSummary, featuresIncluded, PLAN_PRODUCTS, ORG_FIELD_LABEL as FIELD_LABEL } from "../../../api/src/plan-resources.js";
+import { limitsSummary, featuresIncluded, PLAN_PRODUCTS, ORG_FIELD_LABEL as FIELD_LABEL } from "../../../api/src/shared/plan-resources.js";
 
 // Plano do cliente na ficha: o que foi contratado (plano do catálogo, preço de
 // tabela e limites do dia da venda), o que isso dá de acesso em cada produto e

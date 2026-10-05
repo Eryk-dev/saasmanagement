@@ -1,0 +1,878 @@
+import { leadGradeInfo, LEGACY_ACCOUNTS, LEGACY_LISTINGS, LEGACY_VOLUME } from "../shared/lead-grade.js";
+// Régua ÚNICA das métricas do cockpit. Antes deste módulo cada endpoint
+// reimplementava as próprias contas e elas divergiam em 4 eixos:
+//
+//   1. O DIA: UTC-3 fixo (marketing/scoreboard), America/Sao_Paulo (pace),
+//      UTC puro (funil da Análise) e corte por instante (/api/metrics). Aqui:
+//      `dayKey` — dia do negócio em America/Sao_Paulo, pra todo mundo (o front
+//      espelha em bizDay, lib/format.js).
+//   2. O GANHO: a régua oficial é a venda como FATO do lead — `isWonLead`
+//      (customerId carimbado pelo convertWonLead, ou etapa de kind ganho) e
+//      `wonAtOf` (quando vendeu), definidos em stages.js e re-exportados aqui.
+//      `winsIn` recorta os fechamentos numa janela, com fallback pro lead
+//      legado sem carimbo (startedAt do cliente vinculado).
+//   3. O LEAD: contagens oficiais EXCLUEM leads internos (`isRealLead`) — o
+//      CPL já excluía e o resto não, então tile e custo divergiam.
+//   4. A JANELA: `rangeFromQuery` — since/until por dia do negócio, default
+//      30 dias, em todo endpoint que aceita período.
+//
+// Todo endpoint de métrica importa DAQUI. Regra nova de funil/venda entra
+// aqui (ou em stages.js) primeiro; o metrics-consistency.test.js roda as
+// telas sobre o mesmo dataset e quebra se alguém divergir.
+
+import { kindOf, isLoss, isNoShowStage, isWonLead, wonAtOf, TOUCH_TYPES, TERMINAL_KINDS } from "../crm/stages.js";
+import { isMentoriaLead, mentoriaFit } from "../customers/mentoria.js";
+
+export { isWonLead, wonAtOf }; // a régua oficial de ganho, num import só
+
+// Dinheiro de CARTÃO DE CRÉDITO que ENTROU no mês (espelho do Mercado Pago,
+// aprovados por dateApproved). É a base do custo percentual `cartao12x` da aba
+// Custos e do Financeiro — régua única nos dois lugares.
+// Regra final do Leo (08/08/2026, 4ª iteração): com antecipação D+0 a taxa
+// incide INTEIRA no mês em que o dinheiro CAI — nunca sobre a marcação
+// "cartão 12x" do fechamento (contrato marcado que ainda não passou no cartão
+// não paga taxa; foi isso que inflou a base pra 172k com ~100 recebidos).
+export function card12xBaseIn(mpPayments, month) {
+  let sum = 0;
+  for (const p of mpPayments || []) {
+    if (p.status !== "approved" || p.methodType !== "credit_card") continue;
+    if (monthKey(p.dateApproved || p.dateCreated) !== month) continue;
+    sum += Number(p.amount) || 0;
+  }
+  return Math.round(sum * 100) / 100;
+}
+
+export const DAY_MS = 86_400_000;
+export const round2 = (n) => Math.round(n * 100) / 100;
+
+// ── O dia do negócio ─────────────────────────────────────────────────────────
+const DATE_FMT = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Sao_Paulo",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+export function dayKey(value) {
+  if (!value) return "";
+  // Data PURA ("2026-07-03", sem hora — ex.: ad_insights.date) já É o dia do
+  // negócio: passar pelo fuso deslocaria um dia (meia-noite UTC = 21h da
+  // véspera em São Paulo).
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const d = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(d.getTime())) return "";
+  const parts = Object.fromEntries(
+    DATE_FMT.formatToParts(d).filter((p) => p.type !== "literal").map((p) => [p.type, p.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+export const monthKey = (value) => dayKey(value).slice(0, 7);
+
+// Janela padrão dos endpoints com ?since=&until= (default: últimos 30 dias).
+export function rangeFromQuery(q = {}, now = new Date()) {
+  const until = q.until || dayKey(now);
+  const since = q.since || dayKey(new Date(now.getTime() - 29 * DAY_MS));
+  return { since, until };
+}
+
+// ── O que é lead ─────────────────────────────────────────────────────────────
+// Lead interno (teste/seed) fica fora de TODA contagem oficial.
+// Lead que conta nas métricas do produto: fora os testes internos do time e
+// fora quem saiu por uma SAÍDA LATERAL do form (ex.: "ainda não vende em
+// marketplace", que vai pra fila da Mentoria). Esses últimos são contato, mas
+// não são lead DESTE produto — contá-los faz o CPL parecer barato justamente
+// porque encheu de gente que não compra.
+export const isRealLead = (l) => !l?.internal && !l?.formExit;
+
+// ── O que é VENDA (Leo, 16/08/2026) ─────────────────────────────────────────
+// A régua do DINHEIRO é mais larga que a do LEAD: a mentoria entra normal, como
+// contrato e receita, pra pessoa e pro time. O lead dela segue fora do funil
+// (`isRealLead`), e isso é de propósito, porque o denominador do funil é a
+// máquina da plataforma: CPL, taxa de contato, agendamento e conversão por call
+// medem quem PODE comprar o software. Vender mentoria não passa por call
+// agendada, então contá-la nas taxas inflaria a conversão e desdobraria a meta
+// errado.
+//
+// Em uma frase: dinheiro conta tudo o que o time vendeu; funil conta só a
+// máquina da plataforma. Quem soma contrato ou R$ usa esta; quem soma lead,
+// contato, call ou taxa usa a de cima.
+export const isSaleLead = (l) => !l?.internal && (!l?.formExit || isMentoriaLead(l));
+
+// ── Mentoria: a segunda fila do produto (Leo, 16/08/2026) ───────────────────
+// O lead da mentoria continua FORA do isRealLead, e isso é de propósito: contar
+// no funil quem não pode comprar a plataforma faria o CPL parecer barato e
+// ensinaria a Meta a caçar mais gente fora do perfil. Mas a VENDA dele é venda
+// de verdade, tem dono (o SDR) e agora é contabilizada, num bloco PRÓPRIO.
+//
+// Régua separada, nunca somada ao funil: os dois têm denominadores diferentes
+// (aqui não existe call agendada nem taxa de fechamento por call), então
+// misturar mentiria nos dois lados.
+//
+//   leads        todos os leads do produto (sem filtro de isRealLead)
+//   inWin        (iso) => bool, a janela do período
+//   startByLead  customerStartMap (fallback de ganho legado)
+//   contactedIds Set de leadId com 1º contato humano NA JANELA (contactAttribution)
+//   authorOf     leadId → quem fez esse 1º contato (crédito por pessoa)
+//   valueOf      régua do R$ da venda (saleValuer) — faturado conta só o recebido
+export function mentoriaScore(product, leads, { inWin, startByLead, contactedIds, authorOf, valueOf = FULL_VALUE } = {}) {
+  const fila = (leads || []).filter((l) => l.saas === product?.id && isMentoriaLead(l) && !l.internal);
+  const winAt = winsIn(product, fila, inWin, startByLead);
+  const open = fila.filter((l) => !TERMINAL_KINDS.has(kindOf(product, l.stage)) && !l.customerId);
+  const byVerba = {};
+  let potential = 0;
+  for (const l of open) {
+    const fit = mentoriaFit(l);
+    const band = fit?.verba || "";
+    byVerba[band] = (byVerba[band] || 0) + 1;
+    potential += fit?.price || 0;
+  }
+  // Por pessoa: a fila e o contato vão pro DONO do card; a venda vai por owner
+  // também (aqui não há closer separado, a fila é do SDR de ponta a ponta).
+  const byUser = new Map();
+  const bucket = (uid) => {
+    if (!byUser.has(uid)) byUser.set(uid, { user: uid, queue: 0, contacted: 0, won: 0, revenue: 0 });
+    return byUser.get(uid);
+  };
+  for (const l of open) if (l.owner) bucket(l.owner).queue++;
+  for (const l of fila) {
+    if (contactedIds?.has(l.id)) bucket(authorOf?.get(l.id) || l.owner || "").contacted++;
+    if (winAt.has(l.id)) {
+      const b = bucket(l.owner || "");
+      b.won++;
+      b.revenue = round2(b.revenue + (Number(valueOf(l)) || 0));
+    }
+  }
+  const wonLeads = fila.filter((l) => winAt.has(l.id));
+  return {
+    queue: open.length,
+    queueByVerba: byVerba,
+    queuePotential: Math.round(potential),
+    newIn: fila.filter((l) => inWin(l.createdAt)).length,
+    contacted: fila.filter((l) => contactedIds?.has(l.id)).length,
+    won: wonLeads.length,
+    revenue: revenueOf(wonLeads, valueOf),
+    contracted: tcvOf(wonLeads), // o que foi vendido (contrato cheio), pro contexto
+    unowned: open.filter((l) => !l.owner).length, // card sem dono = ninguém trabalha
+    byUser: [...byUser.values()].filter((b) => b.user),
+  };
+}
+
+// ── Conta grande (key account) ──────────────────────────────────────────────
+// Cliente fora da régua: Galante (R$ 120 mil) e CRGroup (R$ 300 mil) no meio de
+// vendas de R$ 3 a 7 mil. O flag mora no CLIENTE (`customer.keyAccount`, campo
+// "Conta grande" na ficha) e a venda dele é reconhecida pelo vínculo do lead.
+//
+// REGRA (Leo, 23/07 e 18/08): o dinheiro dela conta em caixa e vendido, sempre.
+// Quem ignora é MÉDIA e meta derivada — um contrato de 300 mil no ticket médio
+// quebra a cadeia inteira (meta de contratos, calls, leads) e faz o placar de
+// quem fechou parecer o de outra pessoa.
+export const keyAccountIds = (customers) => new Set((customers || []).filter((c) => !!c.keyAccount).map((c) => c.id));
+export const isKeyAccountLead = (keyIds, lead) => !!(lead?.customerId && keyIds?.has(lead.customerId));
+
+// ── Indicação (referral) ─────────────────────────────────────────────────────
+// Lead que veio por INDICAÇÃO de um cliente. Duas réguas no mesmo lugar, porque
+// a estruturada nasceu depois (Leo, 12/09/2026) e a de texto não pode morrer:
+//   1. ESTRUTURADA: `referredByCustomer` aponta o CLIENTE que indicou e
+//      `referralCollectedBy` o colaborador que colheu. É a única que vale
+//      dinheiro (isPaidReferral) — sem cliente na base, lead inbound
+//      remarcado como "Indicação" viraria prêmio.
+//   2. TEXTO (legado): `source`/`utm.source` contém "indica" — pega
+//      "Indicação", "indicacao", "Indicação de cliente". Continua contando no
+//      funil e na classe semente, pro histórico e pro registro manual antigo
+//      não sumirem do placar.
+const stripAccents = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+export const isReferralLead = (l) =>
+  !!l?.referredByCustomer ||
+  stripAccents(l?.source).includes("indica") || stripAccents(l?.utm?.source).includes("indica");
+
+// A indicação que PAGA: cliente indicador na base + coletor identificado. As
+// duas pontas são obrigatórias porque o prêmio é do coletor — sem uma delas não
+// há a quem pagar nem o que conferir.
+export const isPaidReferral = (l) => !!(l?.referredByCustomer && l?.referralCollectedBy);
+
+// ── Classes de lead (Receita Previsível: Sementes · Redes · Alvos) ───────────
+// Cada classe tem ciclo, taxa e previsibilidade próprios, então nunca entram na
+// mesma projeção (Aaron Ross, cap. 6). Semente = veio por indicação/boca a boca
+// (a régua isReferralLead). Alvo = a prospecção outbound foi atrás (lead com
+// flag `outbound`, source contendo "outbound" ou utm.medium "outbound" — é como
+// o radar de contas carimba). Rede = o marketing pescou (tráfego pago, form,
+// social: todo o resto). A soma das 3 classes fecha com o total por construção.
+export const LEAD_CLASSES = ["semente", "rede", "alvo"];
+export function leadClassOf(lead) {
+  if (isReferralLead(lead)) return "semente";
+  const src = stripAccents(lead?.source);
+  if (lead?.outbound || src.includes("outbound") || stripAccents(lead?.utm?.medium) === "outbound") return "alvo";
+  return "rede";
+}
+
+// Contagens por classe numa janela: leads que ENTRARAM (createdAt), ganhos e
+// receita (winAt = Map do winsIn — a régua oficial da venda). Soma das classes
+// = tile de leads/ganhos do período, pro funil por origem nunca divergir.
+export function classCounts(leads, inWin, winAt, valueOf = FULL_VALUE) {
+  const out = Object.fromEntries(LEAD_CLASSES.map((c) => [c, { leads: 0, won: 0, revenue: 0 }]));
+  for (const l of leads) {
+    const c = out[leadClassOf(l)];
+    if (inWin(l.createdAt)) c.leads++;
+    if (winAt?.has(l.id)) { c.won++; c.revenue = round2(c.revenue + (Number(valueOf(l)) || 0)); }
+  }
+  return out;
+}
+
+// ── Fechamentos numa janela ──────────────────────────────────────────────────
+// Vendas da janela pela régua oficial: isWonLead + data do wonAtOf. Fallback
+// pro lead legado sem carimbo nenhum: startedAt do cliente vinculado (leadId).
+// Retorna Map lead.id → momento da venda (só os que caem na janela).
+export function winsIn(product, leads, inWin, customerStartByLead) {
+  const winAt = new Map();
+  for (const l of leads) {
+    if (!isWonLead(product, l)) continue;
+    const at = wonAtOf(l) || customerStartByLead?.get(l.id) || "";
+    if (at && inWin(at)) winAt.set(l.id, at);
+  }
+  return winAt;
+}
+
+// Vínculo lead → início do cliente (fallback do winsIn pra dado legado).
+export const customerStartMap = (customers) =>
+  new Map(customers.filter((c) => c.leadId && c.startedAt).map((c) => [c.leadId, c.startedAt]));
+
+// ── Churn de uma carteira numa janela (régua ÚNICA) ─────────────────────────
+// Churn é evento do cliente: `customer.endedAt` (botão da ficha ou o MP
+// cancelando a recorrência, churn.js). Numa janela [since, until] (dias do
+// negócio, AAAA-MM-DD):
+//   churned = clientes com endedAt DENTRO da janela
+//   base    = ativos no FIM da janela (sem endedAt, ou endedAt depois de until,
+//             e que já existiam: startedAt até until ou sem startedAt) + churned
+//   pct     = churned ÷ base × 100 · retentionRate = 100 − pct
+// Count e taxa saem da MESMA base, e a função vale tanto pra carteira de um CS
+// (card do placar) quanto pra empresa inteira (bônus de time): quem precisar
+// de churn chama aqui, nunca reimplementa.
+export function churnRateIn(customers, { since, until }) {
+  const list = customers || [];
+  const inWin = (iso) => !!iso && dayKey(iso) >= since && dayKey(iso) <= until;
+  const churned = list.filter((c) => inWin(c.endedAt)).length;
+  const activeAtEnd = list.filter((c) =>
+    (!c.endedAt || dayKey(c.endedAt) > until) && (!c.startedAt || dayKey(c.startedAt) <= until)).length;
+  const base = activeAtEnd + churned;
+  const pct = base > 0 ? round2((churned / base) * 100) : null;
+  const retentionRate = base > 0 ? round2(((base - churned) / base) * 100) : null;
+  return { churned, base, pct, retentionRate };
+}
+
+// NPS: ÍNDICE clássico, não média das notas. Cada resposta é 0 a 10; promotor
+// é 9-10, detrator é 0-6, e o índice é (promotores − detratores) ÷ respostas,
+// de -100 a 100. É essa a régua que o "NPS >= 80" do plano de remuneração
+// cobra: média das notas daria 8, outro número e outra conversa. Sem resposta,
+// index = null (nunca 0, que passaria por "neutro" sendo "não sei").
+export function npsIndex(scores) {
+  // `Number("")` e `Number(null)` são 0, que aqui viraria detrator: nota em
+  // branco tem que sumir da base, nunca virar a pior nota possível.
+  const notas = (scores || [])
+    .filter((v) => v !== "" && v !== null && v !== undefined && typeof v !== "boolean")
+    .map(Number)
+    .filter((n) => Number.isFinite(n) && n >= 0 && n <= 10);
+  const count = notas.length;
+  if (!count) return { index: null, promoters: 0, passives: 0, detractors: 0, count: 0 };
+  const promoters = notas.filter((n) => n >= 9).length;
+  const detractors = notas.filter((n) => n <= 6).length;
+  return { index: round2(((promoters - detractors) / count) * 100), promoters, passives: count - promoters - detractors, detractors, count };
+}
+
+// TCV de um conjunto de leads (valor CONTRATADO, lançado no fechamento).
+export const tcvOf = (leads) => round2(leads.reduce((a, l) => a + (Number(l.amount) || 0), 0));
+
+// ── Contratado × RECONHECIDO: o R$ que a meta cobra (Leo, 29/08/2026) ───────
+// Venda faturada (boleto/PIX parcelado) ou assinatura recorrente no cartão NÃO
+// é dinheiro no dia do fechamento: é promessa. Contar o contrato cheio fazia
+// "12 mil em 12 boletos" valer o mesmo que 12 mil no PIX, e enchia a meta do
+// mês (e o placar do closer/SDR) de dinheiro que ainda não entrou.
+//
+// REGRA:
+//   · à vista / cartão 12x  → conta o contrato CHEIO no fechamento (a
+//     adquirente antecipa o dinheiro, então ele entrou de verdade);
+//   · faturado / parcelado / recorrente → conta só o que ENTROU na MESMA
+//     JANELA do fechamento (na prática, a 1ª parcela). As parcelas dos meses
+//     seguintes NÃO voltam a contar em meta nenhuma: a venda conta uma vez, no
+//     mês em que fechou, pelo que caiu ali. O caixa delas segue no Financeiro
+//     (bloco `cash`, faturas pagas), que é onde o dinheiro do mês mora.
+//
+// Meio de pagamento em branco (fechamento antigo) = à vista, o comportamento
+// de sempre — nenhum histórico muda de valor por causa desta régua.
+// Condição PERSONALIZADA (o closer escreve a condição no gate e o texto livre
+// vira o paymentMethod, ex.: "entrada no PIX + recorrência no cartão"): conta
+// como os pagos-no-recebimento — só o que caiu na janela. Por isso a régua é
+// pelo conjunto dos meios À VISTA: tudo que não está nele e não é vazio entra
+// no conta-pelo-que-caiu, inclusive o texto livre.
+export const PAY_UPFRONT = new Set(["pix", "boleto_vista", "cartao12x"]);
+export const PAY_ON_RECEIPT = new Set(["boleto", "pix_parcelado", "cartao_recorrente"]);
+export const isPayOnReceipt = (method) => {
+  const m = String(method || "");
+  return !!m && !PAY_UPFRONT.has(m);
+};
+
+// Dinheiro que ENTROU de verdade por cliente numa janela ({ id: R$ }). Régua
+// idêntica à do /api/billing/received (a coluna Status pgto. de Clientes):
+// pagamento aprovado no MP + fatura baixada, contando UMA vez quando a fatura
+// foi baixada por aquele pagamento, e SEM a fatura que nasce paga no
+// fechamento — fechar no cartão não é receber (caso Marianna, 13/08).
+export function cashReceivedByCustomer({ invoices = [], mpPayments = [], customers = [], inWin = () => true, paymentDateOf = (p) => p.dateApproved || p.dateCreated } = {}) {
+  const ids = new Set(customers.map((c) => c.id));
+  const byLead = new Map(customers.filter((c) => c.leadId).map((c) => [c.leadId, c.id]));
+  const cash = new Map();
+  const add = (cid, v) => { if (cid && ids.has(cid) && v > 0) cash.set(cid, round2((cash.get(cid) || 0) + v)); };
+  const countedMp = new Set();
+  for (const p of mpPayments) {
+    if (p.status !== "approved") continue;
+    const cid = (ids.has(p.customer) ? p.customer : "") || byLead.get(p.lead) || "";
+    if (!cid) continue;
+    // Marca ANTES da janela: a fatura baixada por este pagamento não pode
+    // entrar de novo por outra data (a data que vale é a da APROVAÇÃO).
+    countedMp.add(String(p.mpId));
+    if (!inWin(paymentDateOf(p))) continue;
+    add(cid, Number(p.amount) || 0);
+  }
+  for (const i of invoices) {
+    if (i.status !== "paid" || !i.paidAt || !inWin(i.paidAt)) continue;
+    if (i.mpPaymentId) {
+      if (!countedMp.has(String(i.mpPaymentId))) add(i.customer, Number(i.amount) || 0);
+      continue;
+    }
+    if (i.periodStart && i.paidAt === i.periodStart) continue; // nasceu paga no fechamento
+    add(i.customer, Number(i.amount) || 0);
+  }
+  return cash;
+}
+
+// Caixa da tela Clientes: toda a base do produto, por dia de recebimento em
+// São Paulo. Sem data de aprovação não se presume que o MP caiu na criação.
+// Em aberto é cobrança CADASTRADA com vencimento na janela; não inclui ARR
+// projetado nem renovações que ainda não geraram fatura.
+export function customerCashIn({ customers = [], invoices = [], mpPayments = [], saas, since, until }) {
+  const base = customers.filter((c) => c.saas === saas);
+  const ids = new Set(base.map((c) => c.id));
+  const scopedInvoices = invoices.filter((i) => ids.has(i.customer) && (!i.saas || i.saas === saas));
+  const byMp = new Map(mpPayments.filter((p) => p.mpId).map((p) => [String(p.mpId), p]));
+  const invoiceCustomer = new Map(scopedInvoices.filter((i) => i.mpPaymentId).map((i) => [String(i.mpPaymentId), i.customer]));
+  const inWin = (iso) => {
+    const day = dayKey(iso);
+    return !!day && day >= since && day <= until;
+  };
+  const cash = cashReceivedByCustomer({
+    customers: base, inWin, paymentDateOf: (p) => p.dateApproved,
+    mpPayments: mpPayments.filter((p) => !p.saas || p.saas === saas).map((p) => ({
+      ...p, customer: p.customer || invoiceCustomer.get(String(p.mpId)) || "",
+    })),
+    invoices: scopedInvoices.filter((i) => {
+      const payment = i.mpPaymentId && byMp.get(String(i.mpPaymentId));
+      // O estado atual do MP prevalece sobre uma fatura que ficou marcada
+      // paga depois de estorno/cancelamento. Sem espelho, vale a baixa datada.
+      return !payment || (payment.status === "approved" && (!payment.saas || payment.saas === saas));
+    }),
+  });
+  const open = scopedInvoices.filter((i) => {
+    if ((i.status !== "open" && i.status !== "overdue") || !inWin(i.dueDate)) return false;
+    return !i.mpPaymentId || byMp.get(String(i.mpPaymentId))?.status !== "approved";
+  });
+  return {
+    saas, since, until,
+    received: round2([...cash.values()].reduce((sum, amount) => sum + amount, 0)),
+    receivable: round2(open.reduce((sum, i) => sum + (Number(i.amount) || 0), 0)),
+    openCount: open.length,
+  };
+}
+
+// Valor de UMA venda pela régua acima, pronto pra somar. Monte um valuer por
+// janela (o caixa é recortado pela MESMA janela do fechamento) e passe pro
+// revenueOf — assim placar, meta do mês e Análise nunca divergem.
+export const FULL_VALUE = (l) => Number(l?.amount) || 0;
+export function saleValuer({ invoices, mpPayments, customers, inWin } = {}) {
+  // O upsell é venda PRÓPRIA (upsellSalesIn, abaixo): o dinheiro dele não pode
+  // completar o contrato do fechamento — sai da conta do lead, e sai também o
+  // pagamento do MP que baixou a fatura de upsell.
+  const upsellMp = new Set((invoices || []).filter((i) => isUpsellInvoice(i) && i.mpPaymentId).map((i) => String(i.mpPaymentId)));
+  const cash = cashReceivedByCustomer({
+    invoices: (invoices || []).filter((i) => !isUpsellInvoice(i)),
+    mpPayments: (mpPayments || []).filter((p) => !upsellMp.has(String(p.mpId))),
+    customers, inWin,
+  });
+  const methodOf = new Map((customers || []).map((c) => [c.id, c.paymentMethod || ""]));
+  return (lead) => {
+    const full = Number(lead?.amount) || 0;
+    // O meio do LEAD é o do fechamento; o do cliente é o fallback (ficha
+    // editada depois, fechamento antigo sem o campo).
+    const method = lead?.paymentMethod || methodOf.get(lead?.customerId) || "";
+    if (!isPayOnReceipt(method)) return full;
+    // Teto no contrato: um pagamento a mais (upsell no mesmo mês) não pode
+    // fazer a venda valer mais do que foi vendido.
+    return round2(Math.min(full, cash.get(lead?.customerId) || 0));
+  };
+}
+
+// Receita RECONHECIDA de um conjunto de leads (soma pelo valuer da janela).
+export const revenueOf = (leads, valueOf = FULL_VALUE) =>
+  round2(leads.reduce((a, l) => a + (Number(valueOf(l)) || 0), 0));
+
+// ── Upsell como VENDA (Leo, 09/09/2026) ─────────────────────────────────────
+// Upsell registrado na ficha do cliente (upsell.js) É um fechamento: conta
+// como venda (nº e R$) de QUEM VENDEU (invoice.soldBy) nas metas, no placar e
+// no vendido do mês — datado pelo REGISTRO (soldAt). O valor reconhecido segue
+// a régua do resto: só o que CAIU na janela (fatura paga, por paidAt); o
+// contratado (amount) fica como contexto e base do custo %. As TAXAS do funil
+// (call→ganho, lead→ganho) seguem no ganho da PLATAFORMA, como a mentoria:
+// upsell não nasce de call agendada. Conta grande sai do núcleo igual ao lead.
+export const isUpsellInvoice = (i) => i?.kind === "upsell";
+export const upsellSoldAt = (i) => i?.soldAt || i?.paidAt || i?.dueDate || i?.createdAt || "";
+export function upsellSalesIn(invoices, inWin, { saas = "" } = {}) {
+  return (invoices || []).filter((i) => isUpsellInvoice(i) && (!saas || i.saas === saas) && inWin(upsellSoldAt(i)));
+}
+export const upsellValuer = (inWin) => (i) => (i?.status === "paid" && inWin(i.paidAt) ? round2(Number(i.amount) || 0) : 0);
+export const upsellRevenueOf = (sales, valueOf) => round2((sales || []).reduce((a, i) => a + (Number(valueOf(i)) || 0), 0));
+export const upsellContractedOf = (sales) => round2((sales || []).reduce((a, i) => a + (Number(i.amount) || 0), 0));
+export const isKeyAccountUpsell = (keyIds, i) => !!(i?.customer && keyIds?.has(i.customer));
+
+// ── A safra de calls ─────────────────────────────────────────────────────────
+// Avançou pra frente da call (a call ACONTECEU): proposta/negociação/fechou.
+export const FORWARD_KINDS = new Set(["proposta", "followup", "integracao", "ganho"]);
+
+// Leads DISTINTOS da lista que atingiram estágio de kind `call` na janela.
+//   actsOf: (leadId) => activities ORDENADAS por data.
+export function bookedLeadsIn(product, leads, actsOf, inWin) {
+  const byId = new Map(leads.map((l) => [l.id, l]));
+  const ids = new Set();
+  for (const l of leads) {
+    for (const a of actsOf(l.id) || []) {
+      if (a.type === "stage" && inWin(a.at) && kindOf(product, a.meta?.to) === "call") ids.add(l.id);
+    }
+  }
+  return [...ids].map((id) => byId.get(id)).filter(Boolean);
+}
+
+// ── A TESTEMUNHA da call: o resumo por IA da transcrição ────────────────────
+// Regra do Leo (03/08): "call realizada é apenas quando o cliente APARECE".
+// Quando o cliente fura, a responsável entra sozinha na sala, a transcrição
+// pega só ela e a IA classifica a temperatura como "frio" — então o resumo é
+// a prova do que aconteceu de verdade, imune a card parado, no-show não
+// marcado ou callAt remarcado/limpo: FRIO = não compareceu; QUENTE/MORNO =
+// compareceu. O resumo de INTEGRAÇÃO fica fora (outra conversa, outra régua).
+// Devolve o resumo de call mais RECENTE do lead ({ temperatura, at }) ou null.
+export function callWitness(acts) {
+  let best = null;
+  for (const a of acts || []) {
+    const m = a?.meta;
+    if (m?.event !== "call_summary" || !m.summary || m.kind === "integracao") continue;
+    if (!best || String(a.at || "") > String(best.at || "")) best = a;
+  }
+  return best ? { temperatura: String(best.meta.summary.temperatura || ""), at: best.at || "" } : null;
+}
+
+// Safra de calls de uma janela: lead com callAt NA janela OU com resumo de
+// call (testemunha) gerado nela. O segundo braço resgata a call que ACONTECEU
+// mas sumiria da conta porque o callAt foi REMARCADO pra frente (o campo é um
+// só: a call de hoje apaga a da semana passada) ou LIMPO depois do desfecho —
+// caso real da UniqueKids em 03/08: 4 calls feitas, com transcrição, fora da
+// safra. Quem tem os dois na janela conta UMA vez (é o mesmo lead).
+export function callCohortIn(leads, actsOf, inWin) {
+  return (leads || []).filter((l) => {
+    if (l.callAt && inWin(l.callAt)) return true;
+    return (actsOf(l.id) || []).some((a) =>
+      a?.meta?.event === "call_summary" && a.meta.summary && a.meta.kind !== "integracao" && inWin(a.at));
+  });
+}
+
+// Resolução da safra de calls, com a data de hoje pra separar "não veio" de
+// "ainda vai acontecer" (Leo, 25/07 — o gap agendadas−realizadas não é tudo
+// no-show: parte é call marcada pro futuro):
+//   shown   = a call ACONTECEU: testemunha quente/morna, avançou pra frente
+//             OU perdeu por OUTRO motivo (sem testemunha dizendo o contrário).
+//   noShow  = não veio: testemunha FRIA (Leo, 03/08 — backup pro no-show não
+//             aplicado), perda "nao_compareceu", etapa de No show, OU call já
+//             VENCIDA (callAt ≤ hoje) parada sem avançar (moveu pra Nutrição
+//             etc. sem virar call real). É o "não compareceram" do funil.
+//   pending = call marcada pro FUTURO (callAt > hoje), ainda não aconteceu —
+//             fora da conta de comparecimento (não é furo, é agenda).
+// Precedência: GANHO vence tudo (cliente que fechou obviamente apareceu);
+// depois a testemunha (frio → furo; quente/morno → realizada); sem
+// transcrição, vale o estado do card como sempre valeu.
+// Assim agendadas = shown + noShow + pending, e comparecimento = shown ÷
+// (shown+noShow) mede só o que já deveria ter acontecido.
+// `today` (dia do negócio "YYYY-MM-DD"); sem ele, tudo que não aconteceu conta
+// como noShow (comportamento antigo — coorte histórica não tem call futura).
+// `inWin` (opcional): com a janela na mão, a testemunha só fala se o resumo é
+// DA janela — senão o lead remarcado pro mês seguinte carregaria o resumo do
+// mês anterior e contaria "realizada" antes da call nova acontecer.
+// Desfecho de UMA call — o classificador por lead que o callOutcome soma.
+// Devolve "won" | "shown" | "noShow" | "pending" (won também é shown na
+// soma). Exposto pra o placar listar QUAIS leads furaram (Análise de
+// Desempenho, 10/09) com a MESMA régua da contagem.
+export function callResultOf(product, l, actsOf, today = null, inWin = null) {
+  if (isWonLead(product, l)) return "won";
+  const lost = isLoss(product, l.stage);
+  const w = callWitness(actsOf(l.id));
+  const temp = w && (!inWin || inWin(w.at)) ? w.temperatura : "";
+  if (temp === "frio") return "noShow";
+  if (temp === "quente" || temp === "morno") return "shown";
+  const advanced = FORWARD_KINDS.has(kindOf(product, l.stage))
+    || (actsOf(l.id) || []).some((a) => a.type === "stage" && FORWARD_KINDS.has(kindOf(product, a.meta?.to)));
+  if (advanced || (lost && l.lostReason !== "nao_compareceu")) return "shown";
+  if ((lost && l.lostReason === "nao_compareceu") || isNoShowStage(l.stage)) return "noShow";
+  // Não avançou e não é furo marcado: futuro = ainda vai acontecer; senão,
+  // call vencida que não virou nada = não compareceu.
+  if (today && dayKey(l.callAt) > today) return "pending";
+  return "noShow";
+}
+
+export function callOutcome(product, list, actsOf, today = null, inWin = null) {
+  let shown = 0, noShow = 0, pending = 0, won = 0;
+  for (const l of list) {
+    const r = callResultOf(product, l, actsOf, today, inWin);
+    if (r === "won") { won++; shown++; }
+    else if (r === "shown") shown++;
+    else if (r === "pending") pending++;
+    else noShow++;
+  }
+  return { shown, noShow, pending, won };
+}
+
+// ── Crédito de indicação: o que o COLETOR ganha ─────────────────────────────
+// Quem colhe a indicação leva o prêmio (Leo, 12/09/2026) — o lojista que indica
+// não recebe nada, o que o move é o resultado e a relação. R$ 100 quando a
+// indicação vira reunião FEITA, R$ 500 se FECHAR, e o de fechamento entra NO
+// LUGAR do de reunião (nunca somados), igual ao que o plano de remuneração já
+// dizia por escrito e ninguém calculava.
+//
+// As duas cercas do Leo, as duas aqui e em nenhum outro lugar:
+//   · só indicação ESTRUTURADA paga (isPaidReferral): cliente indicador na base
+//     e coletor identificado;
+//   · "reunião feita" é a régua do PLACAR (callResultOf: a testemunha da
+//     transcrição manda, depois o avanço de etapa), nunca marcação manual de
+//     quem vai receber o dinheiro.
+export const REFERRAL_RATES = { meeting: 100, closed: 500 };
+
+// Desfecho comissionável de UMA indicação: "closed" | "meeting" | null.
+export function referralCredit(product, lead, actsOf, today = null, inWin = null) {
+  if (!isPaidReferral(lead)) return null;
+  if (isWonLead(product, lead)) return "closed";
+  const r = callResultOf(product, lead, actsOf, today, inWin);
+  return r === "won" || r === "shown" ? "meeting" : null;
+}
+
+// Indicações por COLETOR numa janela → Map(uid → { collected, meetings, closed,
+// value }). Cada linha conta pelo evento que caiu NA janela, nunca pelo estado
+// de hoje: `collected` pela data do registro (referralAt, o carimbo imutável do
+// servidor), `closed` pelo wonAtOf e `meetings` pela safra de calls
+// (callCohortIn: callAt na janela ou transcrição na janela) resolvida como
+// realizada. Lead já ganho FORA da janela sai inteiro da conta: o prêmio dele
+// foi pago no mês do fechamento e não pode voltar como reunião.
+export function referralsByCollector(product, leads, actsOf, inWin, { today = null, rates = REFERRAL_RATES } = {}) {
+  const out = new Map();
+  const row = (uid) => {
+    if (!out.has(uid)) out.set(uid, { collected: 0, meetings: 0, closed: 0, value: 0 });
+    return out.get(uid);
+  };
+  const pool = (leads || []).filter((l) => isPaidReferral(l) && l.referralCollectedBy);
+  const cohort = new Set(callCohortIn(pool, actsOf, inWin).map((l) => l.id));
+  for (const l of pool) {
+    const r = row(String(l.referralCollectedBy));
+    if (inWin(l.referralAt || l.createdAt)) r.collected++;
+    if (isWonLead(product, l)) {
+      const at = wonAtOf(l) || "";
+      if (at && inWin(at)) { r.closed++; r.value = round2(r.value + rates.closed); }
+      continue; // fechou: paga no lugar da reunião, na janela do fechamento
+    }
+    if (!cohort.has(l.id)) continue;
+    const res = callResultOf(product, l, actsOf, today, inWin);
+    if (res === "shown" || res === "won") { r.meetings++; r.value = round2(r.value + rates.meeting); }
+  }
+  return out;
+}
+
+// ── Funil de conversão do produto (base ÚNICA das telas) ─────────────────────
+// Contagens do funil COORTE na janela (leads criados nela): contatados →
+// agendaram call → compareceram → fecharam, + ganhos e receita. É a MESMA base
+// da Visão geral (Conversões do funil) e da Análise de Pace, pra as duas telas
+// nunca divergirem. O funil ENCADEIA — cada denominador é o passo anterior.
+//   actsOf: (leadId) => activities ordenadas;  winLeadsIn(inWin) => leads ganhos
+// `adjust` (product.paceAdjust) soma HISTÓRICO PRÉ-COCKPIT (dados reais de antes
+// do registro no sistema): { leads, contacted, booked, shown, won } — só somas
+// positivas; noShow e ganhos totais (revenue) não entram no ajuste.
+// ── Contato com ATRIBUIÇÃO (a régua ÚNICA de "contatados") ───────────────────
+// Decisões do Leo (24/07): contato = ação HUMANA — toque de cadência
+// (whatsapp/call/email/meeting) ou mensagem ENVIADA no inbox por gente do time
+// (`humanIds` = ids da collection users). Automação (fluxo de ligação, drip,
+// envio por chave "cockpit") NÃO conta no total: sai em `automationReached`
+// (leads distintos que ela alcançou, informativo). Cada lead vai pro autor do
+// PRIMEIRO contato humano da janela, então a soma dos autores fecha EXATA com
+// o total — é o que deixa o funil da Visão geral ser a soma dos cards.
+// O inbox segue separado das activities DE PROPÓSITO (chat ≠ toque de cadência,
+// não re-agenda o GPS), mas a mensagem enviada conta como contato aqui.
+// `creditAllTo` (decisão do Leo, 25/07): com um ÚNICO SDR na operação, TODO
+// contato humano credita nele — o funil de prospecção é dele, mesmo quando um
+// closer respondeu o lead (o autor real segue nas activities; aqui é o placar).
+// Devolve { leadIds, byAuthor (Map autor → leads distintos), automationReached }.
+export function contactAttribution({ leads, actsOf, waMessages, saas, inWin, humanIds, creditAllTo } = {}) {
+  const first = new Map();       // leadId → { at, author } do 1º contato humano
+  const autoReached = new Set(); // leads que a automação tocou (mesmo que gente também)
+  const record = (id, at, author) => {
+    if (!humanIds?.has(author || "")) { autoReached.add(id); return; }
+    const cur = first.get(id);
+    if (!cur || String(at || "") < String(cur.at || "")) first.set(id, { at: at || "", author: creditAllTo || author });
+  };
+  const knownIds = new Set((leads || []).map((l) => l.id));
+  for (const m of waMessages || []) {
+    if (m.direction !== "out" || !m.leadId || !m.author) continue;
+    if (saas && m.saas && m.saas !== saas) continue;
+    if (!knownIds.has(m.leadId) || !inWin(m.at)) continue;
+    record(m.leadId, m.at, m.author);
+  }
+  for (const l of leads || []) {
+    for (const a of actsOf(l.id) || []) {
+      if (inWin(a.at) && TOUCH_TYPES.has(a.type)) record(l.id, a.at, a.author);
+    }
+  }
+  const byAuthor = new Map();
+  for (const { author } of first.values()) byAuthor.set(author, (byAuthor.get(author) || 0) + 1);
+  // `firstAt` = leadId → quando foi o 1º contato humano (alimenta o SLA de 1º
+  // toque: minutos entre o cadastro e a resposta do time).
+  const firstAt = new Map([...first].map(([id, v]) => [id, v.at]));
+  // `authorOf` = leadId → autor creditado (base das taxas por pessoa em coorte).
+  const authorOf = new Map([...first].map(([id, v]) => [id, v.author]));
+  return { leadIds: new Set(first.keys()), firstAt, byAuthor, authorOf, automationReached: autoReached.size };
+}
+
+// Nota e ICP: receita estimada quando há pedidos + ticket; matriz preservada no legado.
+export function leadGrade(l) { return leadGradeInfo(l).grade; }
+export const GRADE_BANDS = { accounts: LEGACY_ACCOUNTS, listings: LEGACY_LISTINGS, volume: LEGACY_VOLUME };
+export const gradeBandKnown = (field, value) => !!GRADE_BANDS[field] && Object.hasOwn(GRADE_BANDS[field], value);
+export const ICP_GRADES = new Set(["S", "A", "B"]);
+export const isIcpLead = (l) => ICP_GRADES.has(leadGrade(l) || "");
+
+// ── Social selling ───────────────────────────────────────────────────────────
+// Lead que nasceu do social selling da SDR (decisão do Leo, 10/09): a origem
+// escrita no cadastro ("Social selling", sugestão do form) é o carimbo. Casa
+// com ou sem espaço/hífen pra o texto livre não perder o lead.
+export const SOCIAL_SELLING_SOURCE = "Social selling";
+export const isSocialSellingLead = (l) => /social[\s_-]?selling/i.test(String(l?.source || "")) || /social[\s_-]?selling/i.test(String(l?.utm?.source || ""));
+
+// ── Contatos SEM resposta ────────────────────────────────────────────────────
+// Dos leads que a pessoa contatou na janela (o 1º contato humano é dela —
+// contactAttribution), quais NUNCA responderam depois desse contato: resposta
+// = mensagem RECEBIDA no WhatsApp (direction "in") do lead com `at` depois do
+// 1º contato, até agora (não só na janela — quem respondeu ontem à noite
+// respondeu). Ligação atendida não deixa registro de "resposta", então é o
+// WhatsApp que decide; é a régua honesta com o dado que existe.
+// Devolve Map<author, { count, leadIds }>; leadIds na ordem do 1º contato.
+export function unansweredContacts({ contact, waMessages, saas } = {}) {
+  const lastIn = new Map(); // leadId → maior `at` recebido
+  for (const m of waMessages || []) {
+    if (m.direction !== "in" || !m.leadId) continue;
+    if (saas && m.saas && m.saas !== saas) continue;
+    const cur = lastIn.get(m.leadId) || "";
+    if (String(m.at || "") > cur) lastIn.set(m.leadId, String(m.at || ""));
+  }
+  const out = new Map();
+  const entries = [...(contact?.firstAt || new Map())].sort((a, b) => String(a[1]).localeCompare(String(b[1])));
+  for (const [leadId, firstAt] of entries) {
+    const author = contact.authorOf?.get(leadId);
+    if (!author) continue;
+    const replied = (lastIn.get(leadId) || "") > String(firstAt || "");
+    if (replied) continue;
+    const e = out.get(author) || { count: 0, leadIds: [] };
+    e.count++;
+    e.leadIds.push(leadId);
+    out.set(author, e);
+  }
+  return out;
+}
+
+// ── Follow-ups EXECUTADOS pelo closer ────────────────────────────────────────
+// Não existe registro explícito de "fiz o follow-up": executar é TOCAR o lead
+// (toque na timeline com TOUCH_TYPES ou mensagem enviada no inbox, autor
+// humano) enquanto ele está em etapa de kind followup. Vale o lead que CAIU em
+// follow-up na janela (transição no log ou stageSince) ou que está lá agora.
+// Conta 1 por lead POR DIA (3 mensagens na mesma conversa = 1 follow-up).
+// Devolve Map<author, { count, leadIds }>.
+export function followupTouches({ product, leads, actsOf, waMessages, inWin, humanIds } = {}) {
+  const inFollowup = new Set();
+  for (const l of leads || []) {
+    if (kindOf(product, l.stage) === "followup") { inFollowup.add(l.id); continue; }
+    for (const a of actsOf(l.id) || []) {
+      if (a.type === "stage" && inWin(a.at) && kindOf(product, a.meta?.to) === "followup") { inFollowup.add(l.id); break; }
+    }
+  }
+  const seen = new Map(); // author → Set("leadId|day")
+  const touch = (author, leadId, at) => {
+    if (!author || !humanIds?.has(author) || !inFollowup.has(leadId) || !inWin(at)) return;
+    if (!seen.has(author)) seen.set(author, new Set());
+    seen.get(author).add(`${leadId}|${dayKey(at)}`);
+  };
+  for (const l of leads || []) {
+    for (const a of actsOf(l.id) || []) if (TOUCH_TYPES.has(a.type)) touch(a.author, l.id, a.at);
+  }
+  for (const m of waMessages || []) {
+    if (m.direction !== "out" || !m.leadId) continue;
+    if (product?.id && m.saas && m.saas !== product.id) continue;
+    touch(m.author, m.leadId, m.at);
+  }
+  const out = new Map();
+  for (const [author, keys] of seen) {
+    const leadIds = [...new Set([...keys].map((k) => k.split("|")[0]))];
+    out.set(author, { count: keys.size, leadIds });
+  }
+  return out;
+}
+
+// ── Primeira RESPOSTA por qualquer canal (humano OU robô) ────────────────────
+// O contato humano acima é a régua de COBRANÇA do time e segue intacta (o
+// sdr-bot cai em automationReached, de propósito). Com o SDR automatizado no
+// ar, a pergunta "quanto tempo o LEAD esperou por alguém" precisa de régua
+// própria: a primeira mensagem enviada na conversa dele (qualquer autor,
+// sdr-bot incluído) ou o primeiro toque de cadência, o que vier antes.
+// Devolve Map leadId → { at, human } (human = o autor está na collection users).
+export function firstResponseAttribution({ leads, actsOf, waMessages, saas, inWin, humanIds } = {}) {
+  const first = new Map();
+  const record = (id, at, author) => {
+    if (!at) return;
+    const cur = first.get(id);
+    if (!cur || String(at) < String(cur.at)) first.set(id, { at, human: !!humanIds?.has(author || "") });
+  };
+  const knownIds = new Set((leads || []).map((l) => l.id));
+  for (const m of waMessages || []) {
+    if (m.direction !== "out" || !m.leadId) continue;
+    if (saas && m.saas && m.saas !== saas) continue;
+    if (!knownIds.has(m.leadId) || !inWin(m.at)) continue;
+    record(m.leadId, m.at, m.author);
+  }
+  for (const l of leads || []) {
+    for (const a of actsOf(l.id) || []) {
+      if (inWin(a.at) && TOUCH_TYPES.has(a.type)) record(l.id, a.at, a.author);
+    }
+  }
+  return first;
+}
+
+export function funnelCounts(product, { leads, actsOf, inWin, winLeadsIn, adjust, waContactedIds } = {}) {
+  const recentLeads = leads.filter((l) => inWin(l.createdAt));
+  const recentIds = new Set(recentLeads.map((l) => l.id));
+  const contacted = recentLeads.filter((l) => (actsOf(l.id) || []).some((a) => TOUCH_TYPES.has(a.type)) || waContactedIds?.has(l.id));
+  const booked = bookedLeadsIn(product, leads, actsOf, inWin).filter((l) => recentIds.has(l.id));
+  const outcome = callOutcome(product, booked, actsOf);
+  const wonLeads = winLeadsIn ? winLeadsIn(inWin) : [];
+  const a = adjust && typeof adjust === "object" ? adjust : {};
+  const adjN = (k) => { const n = Math.floor(Number(a[k])); return Number.isFinite(n) && n > 0 ? n : 0; };
+  const adjApplied = ["leads", "contacted", "booked", "shown", "won"].reduce((o, k) => (adjN(k) ? { ...o, [k]: adjN(k) } : o), null);
+  return {
+    leads: recentLeads.length + adjN("leads"),
+    contacted: contacted.length + adjN("contacted"),
+    booked: booked.length + adjN("booked"),
+    shown: outcome.shown + adjN("shown"),
+    noShow: outcome.noShow,
+    won: outcome.won + adjN("won"),   // ganhos DA SAFRA de calls (+ pré-cockpit) — o que encadeia
+    wonTotal: wonLeads.length,         // ganhos totais no período (todos, por transição)
+    revenue: tcvOf(wonLeads),
+    adjust: adjApplied,
+  };
+}
+
+// ── Dinheiro ─────────────────────────────────────────────────────────────────
+// MRR da base: soma do arr/12 dos clientes (a régua do bootstrap e do pace).
+export const mrrOf = (customers) =>
+  round2(customers.reduce((a, c) => a + (Number(c.arr) || 0), 0) / 12);
+
+// Fatura que representa dinheiro que ENTROU de verdade. A fatura inicial nasce
+// PAGA no fechamento (paidAt = periodStart) e isso é verdade no à vista/cartão
+// 12x — o fechamento É o recebimento. Em faturado/parcelado/recorrente ela é só
+// o carimbo do contrato (a 1ª cobrança do MP ainda vai rodar), então contá-la
+// inflava o "Recebido no mês" com dinheiro que não entrou. `methodOf` devolve o
+// meio de pagamento do cliente; sem ele, o comportamento é o de sempre.
+export function isRealReceipt(inv, methodOf) {
+  if (!inv || inv.status !== "paid" || !inv.paidAt) return false;
+  if (inv.mpPaymentId) return true; // baixada por pagamento real do Mercado Pago
+  if (!methodOf || !inv.periodStart || inv.paidAt !== inv.periodStart) return true;
+  return !isPayOnReceipt(methodOf(inv.customer));
+}
+
+// Caixa do mês: faturas PAGAS com paidAt dentro do mês (chave "YYYY-MM").
+export const cashCollectedIn = (invoices, month, methodOf) =>
+  round2(invoices
+    .filter((i) => isRealReceipt(i, methodOf) && monthKey(i.paidAt) === month)
+    .reduce((a, i) => a + (Number(i.amount) || 0), 0));
+
+// Meio de pagamento por cliente ({ id: método }), pro isRealReceipt acima.
+export const paymentMethodOf = (customers) => {
+  const by = new Map((customers || []).map((c) => [c.id, c.paymentMethod || ""]));
+  return (id) => by.get(id) || "";
+};
+
+// Caixa numa janela em 3 BALDES (livro: novos negócios · add-ons · renovações).
+// Mesma régua da faixa de meta (fatura paga, por paidAt), só que repartida:
+// kind "upsell" = add-on; cliente que COMEÇOU dentro da janela = receita NOVA;
+// cliente antigo pagando de novo = renovação/recorrência. novos + upsell +
+// renovacao = cashCollectedIn da mesma janela, por construção.
+export function cashBucketsIn(invoices, customers, inWin) {
+  const startBy = new Map(customers.map((c) => [c.id, c.startedAt || ""]));
+  const methodOf = paymentMethodOf(customers);
+  const out = { novos: 0, upsell: 0, renovacao: 0 };
+  for (const i of invoices) {
+    if (!isRealReceipt(i, methodOf) || !inWin(i.paidAt)) continue;
+    const amt = Number(i.amount) || 0;
+    if (i.kind === "upsell") out.upsell += amt;
+    else if (inWin(startBy.get(i.customer))) out.novos += amt;
+    else out.renovacao += amt;
+  }
+  return {
+    novos: round2(out.novos), upsell: round2(out.upsell), renovacao: round2(out.renovacao),
+    total: round2(out.novos + out.upsell + out.renovacao),
+  };
+}
+
+// A receber até uma data (faturas abertas/vencidas com dueDate ≤ limite).
+export const receivablesUntil = (invoices, untilDay) =>
+  invoices.filter((i) => {
+    if (i.status !== "open" && i.status !== "overdue") return false;
+    const due = dayKey(i.dueDate);
+    return due && due <= untilDay;
+  });
+
+// ── Origem do lead (Aquisição) ──────────────────────────────────────────────
+// Classifica o lead pelo UTM + referrer do cadastro — régua ÚNICA: a tela de
+// Publicidade (e qualquer card novo) lê DAQUI. Ordem importa: pago primeiro
+// (medium=paid, com o canal pelo referrer/source), depois social orgânico
+// (bio), busca, site próprio. Sem nada = Direto (link limpo, ex.: WhatsApp).
+// Calibrado nos leads reais de 07/08: meta+paid com referrer facebook/instagram
+// é o grosso; "ig"/"fb" no source são os links antigos; "an" = Audience Network.
+export function leadOrigin(lead) {
+  const utm = (lead && typeof lead.utm === "object" && lead.utm) || {};
+  const src = String(utm.source || "").toLowerCase();
+  const medium = String(utm.medium || "").toLowerCase();
+  const ref = String(utm.referrer || "").toLowerCase();
+  const ig = ref.includes("instagram") || src === "ig" || src === "instagram";
+  const fb = ref.includes("facebook") || src === "fb" || src === "facebook" || src === "an";
+  if (medium === "paid") {
+    if (ig) return "ads_ig";
+    if (fb) return "ads_fb";
+    return "ads_meta"; // pago sem canal identificável (referrer vazio/estranho)
+  }
+  // Blog do site: o CTA dos posts manda utm_source=blog e o referrer do form é
+  // leverads.com.br/blog/<slug>. Vem ANTES de "site" (que também casa o referrer).
+  if (src === "blog" || ref.includes("leverads.com.br/blog")) return "blog";
+  if (ig) return "bio_ig";
+  if (fb) return "bio_fb";
+  if (src.includes("google") || ref.includes("google")) return "google";
+  if (src.includes("site") || ref.includes("leverads.com.br") || ref.includes("levermoney")) return "site";
+  if (!src && !medium && !ref) return "direto";
+  return "outros";
+}
+
+export const LEAD_ORIGINS = [
+  { key: "ads_ig", label: "Ads IG" },
+  { key: "ads_fb", label: "Ads FB" },
+  { key: "ads_meta", label: "Ads Meta · sem canal" },
+  { key: "bio_ig", label: "Bio IG" },
+  { key: "bio_fb", label: "Bio FB" },
+  { key: "google", label: "Google" },
+  { key: "blog", label: "Blog" },
+  { key: "site", label: "Site" },
+  { key: "direto", label: "Direto · sem UTM" },
+  { key: "outros", label: "Outros" },
+];

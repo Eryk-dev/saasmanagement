@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { firstResponseAttribution } from "../src/metrics-core.js";
+import { firstResponseAttribution } from "../src/metrics/metrics-core.js";
 
 // SLA de 1ª resposta por QUALQUER canal: o sdr-bot conta (a espera do lead
 // acabou), mas a régua marca se quem chegou primeiro foi máquina ou gente —

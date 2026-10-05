@@ -1,0 +1,3101 @@
+import { revenueClassificationPatch } from "../crm/classificacao.js";
+import { revenueGrade, REVENUE_GRADE_VERSION, REVENUE_ICP } from "../shared/lead-grade.js";
+// Migrações idempotentes de boot — rodam uma vez por inicialização, depois de
+// initDb()/ensureDefaultAdmins(). Cada uma DEVE ser segura pra rodar repetidas
+// vezes (todo deploy reinicia o container) e nunca deve corromper dados que já
+// existem: na dúvida sobre o estado, não mexe.
+
+import { normalizeFunnel, kindOf, isPostSaleStage, TERMINAL_KINDS } from "../crm/stages.js";
+import { autoLeadOwner } from "../crm/lead-flow.js";
+import { isChurnedCustomer } from "../billing/churn.js";
+import { legacyDoneKey, DEFAULT_COLUMNS as TASK_DEFAULT_COLUMNS, assetIdFromUrl } from "../tasks/tasks-core.js";
+import { catalogAmount } from "../proposals/proposal-catalog.js";
+import { createClosedSubscription } from "../billing/billing.js";
+import { CLOSED_PLAN_ANNUAL_FACTOR } from "../shared/plan-cycles.js";
+import { ensurePlansCatalog, ensurePlanResources, syncPlanCatalogProjection } from "../billing/plan-catalog.js";
+import { backfillCustomerPlans } from "../billing/plan-history.js";
+import { FLASHCARD_DEFAULTS } from "../training/flashcards.js";
+import { LEVERADS_DECKS, LEVERADS_V2 } from "../training/flashcard-decks.leverads.js";
+import { LEVERADS_EXPANSION } from "../training/flashcard-decks.leverads.js";
+import { mergeLeadQuestions } from "../forms/forms.js";
+import { waMatchKey } from "../whatsapp/wa-store.js";
+import { caseKey, panelCaseFacts } from "../proposals/cases.js";
+import { backfillPaymentLinks } from "../payments/payment-links.js";
+import { slideVisible, runNativeProposal } from "../proposals/proposal.js";
+import { mentoriaTemplateDoc, mentoriaCalcBlock } from "../customers/mentoria.js";
+import { BLOG_DEFAULT_RULES, BLOG_DEFAULT_STATE, blogCfgId } from "../blog/blog-config.js";
+import { STATUS_KIND, loadSettings } from "../support/tickets-core.js";
+import { repairDoneSla } from "../support/tickets-sla.js";
+import { followupDayOf, dayStartIso, FOLLOWUP_STEPS } from "../shared/followup-contacts.js";
+
+// Garante o estágio "Integração" no funil do produto `leverads`, posicionado
+// entre "Negociação" e "Ganho". Integração é pós-venda: negócio já fechado,
+// agenda-se a call de setup (campo `integrationAt` no card) antes de marcar Ganho.
+//
+// Idempotente: se "Integração" já está no funil, não faz nada. Defensiva: se o
+// produto/funil não existir ou não tiver as âncoras esperadas, sai sem alterar.
+export async function ensureIntegrationStage(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product || !Array.isArray(product.funnel) || product.funnel.length === 0) return false;
+
+  const funnel = product.funnel;
+  const existing = funnel.find((f) => f && f.stage === "Integração");
+  if (existing) {
+    // Reparo idempotente: a 1ª versão inseriu staleDays=0, que marca TODO card como
+    // parado (dias na coluna ≥ 0). Normaliza pra "" (sem limiar). Só age se precisar.
+    if (existing.staleDays === 0) {
+      const next = funnel.map((f) => (f === existing ? { ...f, staleDays: "" } : f));
+      await repo.update("products", "leverads", { funnel: next });
+      return true;
+    }
+    return false; // já existe e está ok
+  }
+
+  // Âncora: imediatamente ANTES de "Ganho"; fallback logo APÓS "Negociação".
+  let idx = funnel.findIndex((f) => f && f.stage === "Ganho");
+  if (idx === -1) {
+    const neg = funnel.findIndex((f) => f && f.stage === "Negociação");
+    if (neg === -1) return false; // funil inesperado — não mexe
+    idx = neg + 1;
+  }
+
+  // Mesmo shape que a tela Settings persiste. conv=1 porque é etapa administrativa
+  // pós-ganho (não é gargalo de conversão); staleDays "" = sem marcação de parado.
+  const stage = { stage: "Integração", conv: 1, color: "", staleDays: "" };
+  const next = [...funnel.slice(0, idx), stage, ...funnel.slice(idx)];
+  await repo.update("products", "leverads", { funnel: next });
+  return true;
+}
+
+// ── Funil CRM SDR+Closer (rework 2026-07) ───────────────────────────────────
+// Troca o funil implícito do leverads (Qualificação → Call closer → Negociação
+// → Integração → Ganho + colunas soltas) pelo processo explícito SDR → Closer.
+// Guarda ESTRITA: só age se o funil atual ainda tem os 4 nomes antigos na ordem
+// relativa e nenhum nome novo — funil editado pelo dono nunca é sobrescrito
+// (nesse caso só o `kind` entra, via ensureFunnelKinds). Cards são migrados por
+// rename (repo.update direto: NÃO recarimba stageSince, NÃO loga activity —
+// rename em massa não é movimento real de funil).
+
+const CRM_OLD_ORDER = ["Qualificação", "Call closer", "Negociação", "Ganho"];
+const CRM_NEW_NAMES = ["Novo lead", "Em contato", "Qualificando", "Call agendada", "Proposta enviada", "Follow-up"];
+// Estágios antigos consumidos pelo funil novo (qualquer outro é preservado no fim,
+// ex.: "Mentoria"). "Sem resposta" morre como coluna: vira Perdido + lostReason.
+const CRM_CONSUMED = new Set([...CRM_OLD_ORDER, "Integração", "Perdido", "Desqualificado", "Sem resposta"]);
+const CRM_CARD_MAP = {
+  "Qualificação": "Qualificando",
+  "Call closer": "Call agendada",
+  "Negociação": "Follow-up",
+  "Sem resposta": "Perdido",
+  "disqualified": "Desqualificado",
+};
+
+export async function migrateLeverAdsCrmFunnel(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product || !Array.isArray(product.funnel) || product.funnel.length === 0) return false;
+  const funnel = product.funnel;
+  const names = funnel.map((f) => f && f.stage);
+
+  // Guarda: nomes antigos presentes na ordem relativa, nenhum nome novo.
+  const idxs = CRM_OLD_ORDER.map((n) => names.indexOf(n));
+  if (idxs.some((i) => i === -1)) return false;
+  if (idxs.some((i, k) => k > 0 && i < idxs[k - 1])) return false;
+  if (names.some((n) => CRM_NEW_NAMES.includes(n))) return false;
+
+  const old = (name) => funnel.find((f) => f && f.stage === name) || {};
+  // Herda ajustes visuais/de conversão do estágio antigo equivalente.
+  const inherit = (name) => {
+    const o = old(name);
+    return { color: o.color || "", staleDays: o.staleDays ?? "" };
+  };
+  const NEW_FUNNEL = [
+    { stage: "Novo lead", kind: "novo", conv: 1, ...inherit(""), cadence: { firstTouchHours: 2 } },
+    { stage: "Em contato", kind: "contato", conv: 1, ...inherit(""), cadence: { maxAttempts: 5, retryDays: 1 } },
+    { stage: "Qualificando", kind: "qualificacao", conv: old("Qualificação").conv ?? 1, ...inherit("Qualificação"), cadence: { maxAttempts: 5, retryDays: 1 } },
+    { stage: "Call agendada", kind: "call", conv: old("Call closer").conv ?? 1, ...inherit("Call closer"), cadence: { maxAttempts: 3, retryDays: 1 } },
+    { stage: "Proposta enviada", kind: "proposta", conv: 1, ...inherit(""), cadence: { maxAttempts: 5, retryDays: 2 } },
+    { stage: "Follow-up", kind: "followup", conv: old("Negociação").conv ?? 1, ...inherit("Negociação"), cadence: { maxAttempts: 8, retryDays: 3 } },
+    { stage: "Integração", kind: "integracao", conv: old("Integração").conv ?? 1, ...inherit("Integração") },
+    { stage: "Ganho", kind: "ganho", conv: old("Ganho").conv ?? 1, ...inherit("Ganho") },
+    { stage: "Perdido", kind: "perdido", conv: old("Perdido").conv ?? 0, ...inherit("Perdido") },
+    { stage: "Desqualificado", kind: "desqualificado", conv: old("Desqualificado").conv ?? 0, ...inherit("Desqualificado") },
+  ];
+  // Estágios custom do dono (ex.: "Mentoria") sobrevivem no fim, com kind.
+  const preserved = funnel.filter((f) => f && f.stage && !CRM_CONSUMED.has(f.stage));
+  const next = normalizeFunnel([...NEW_FUNNEL, ...preserved]);
+
+  // Cards primeiro (se o processo morrer no meio, o funil antigo ainda existe e
+  // a próxima rodada refaz os renames restantes sem efeito colateral).
+  let migrated = 0;
+  for (const collection of ["leads", "deals"]) {
+    for (const item of await repo.list(collection)) {
+      if (item.saas !== "leverads") continue;
+      const to = CRM_CARD_MAP[item.stage];
+      if (!to || to === item.stage) continue;
+      const patch = { stage: to };
+      if (item.stage === "Sem resposta" && !item.lostReason) patch.lostReason = "sem_resposta";
+      await repo.update(collection, item.id, patch);
+      migrated++;
+    }
+  }
+  await repo.update("products", "leverads", { funnel: next });
+  return { migrated };
+}
+
+// ── Cadência SDR (jul/2026) ─────────────────────────────────────────────────
+// O processo desenhado pelo Leo: 1º ato no Novo lead (2 ligações + WhatsApp de
+// apresentação, SLA 2h, fim de semana vira segunda cedo) → o toque move sozinho
+// pra Qualificando (retomadas diárias, 3 sessões no total) → sem retorno vai pra
+// Nutrição, que devolve o card à fila 20 dias depois (sempre em dia útil).
+//
+// One-shot de verdade: marca product.sdrCadenceV1 ao aplicar — edição posterior
+// do Leo (cadência, pergunta removida, estágio recriado) NUNCA é sobrescrita.
+// Sub-guardas por operação protegem estados inesperados na primeira rodada.
+export async function migrateLeverAdsSdrCadence(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product || product.sdrCadenceV1) return false;
+  if (!Array.isArray(product.funnel) || product.funnel.length === 0) return false;
+  let funnel = product.funnel.map((f) => ({ ...(f || {}) }));
+  // Comparação por chave, não por JSON: o jsonb do Postgres reordena as chaves
+  // do objeto salvo (foi o que fez a 1ª rodada pular a cadência do Qualificando
+  // em produção — corrigido lá via PUT /funnel em 2026-07-12).
+  const canon = (o) => JSON.stringify(Object.fromEntries(Object.entries(o || {}).sort(([a], [b]) => a.localeCompare(b))));
+  const cadEq = (f, cad) => canon(f.cadence) === canon(cad);
+  let movedCards = 0;
+
+  // 1. "Em contato" sai (Qualificando cobre a fase); os cards migram por rename
+  // direto (sem recarimbar stageSince — não é movimento real de funil).
+  const emContato = funnel.find((f) => f.stage === "Em contato" && f.kind === "contato");
+  const qualificando = funnel.find((f) => f.kind === "qualificacao");
+  if (emContato && qualificando) {
+    for (const l of await repo.list("leads")) {
+      if (l.saas === "leverads" && l.stage === "Em contato") {
+        await repo.update("leads", l.id, { stage: qualificando.stage });
+        movedCards++;
+      }
+    }
+    funnel = funnel.filter((f) => f !== emContato);
+  }
+
+  // 2. Nutrição: fila de reativação fora da régua (depois do Ganho). Entrada
+  // re-agenda o GPS pra +7 dias (168h, rola pra dia útil); dentro do ciclo,
+  // retomada a cada 7 dias, 3 sessões — mesmo ritmo na entrada e entre toques.
+  // kind explícito: a heurística por nome mandaria "nutri" pra perdido.
+  if (!funnel.some((f) => f.stage === "Nutrição")) {
+    const ganhoIdx = funnel.findIndex((f) => f.kind === "ganho");
+    if (ganhoIdx !== -1) {
+      funnel.splice(ganhoIdx + 1, 0, {
+        stage: "Nutrição", kind: "contato", conv: 1, color: "", staleDays: "",
+        cadence: { maxAttempts: 3, retryDays: 7, firstTouchHours: 168 },
+      });
+    }
+  }
+
+  // 3. Cadências do processo: só se ainda estiverem nos valores antigos do seed
+  // CRM (funil mexido pelo dono fica como está).
+  const novo = funnel.find((f) => f.kind === "novo");
+  if (novo && cadEq(novo, { firstTouchHours: 2 })) {
+    novo.cadence = { maxAttempts: 1, retryDays: 1, firstTouchHours: 2 };
+  }
+  if (qualificando && cadEq(qualificando, { maxAttempts: 5, retryDays: 1 })) {
+    qualificando.cadence = { maxAttempts: 2, retryDays: 1 };
+  }
+
+  // 4. Pergunta de qualificação que o SDR coleta na conversa: tamanho do time de
+  // marketing. key/values casam com o DiagnosticoIn do copylever (staff: 0|1|2-3|4+).
+  let leadQuestions = Array.isArray(product.leadQuestions) ? product.leadQuestions.map((q) => ({ ...q })) : null;
+  if (leadQuestions && !leadQuestions.some((q) => q && q.key === "staff")) {
+    leadQuestions.push({
+      key: "staff", label: "Quantas pessoas no time de marketing?", type: "select", required: false,
+      options: [
+        { value: "0", label: "Só eu" },
+        { value: "1", label: "1 pessoa" },
+        { value: "2-3", label: "2 a 3 pessoas" },
+        { value: "4+", label: "4 ou mais" },
+      ],
+    });
+  }
+
+  await repo.update("products", "leverads", {
+    funnel: normalizeFunnel(funnel),
+    ...(leadQuestions ? { leadQuestions } : {}),
+    sdrCadenceV1: true,
+  });
+  return { movedCards };
+}
+
+// ── Nutrição: entrada em 7 dias (jul/2026) ──────────────────────────────────
+// A Nutrição nascia devolvendo o card em +20 dias (firstTouchHours: 480). O Leo
+// encurtou pra 7 dias (168h) pra bater com o ritmo da fila (retryDays: 7 entre
+// cada toque) — 1º contato e retomadas no mesmo intervalo. Como a criação da
+// Nutrição (migrateLeverAdsSdrCadence) é one-shot e já rodou em produção, editar
+// só o seed não alcança os dados vivos; esta migração faz a correção no lugar.
+// One-shot com marcador nutricao7dV1; só reescreve a linha ainda no valor antigo
+// do seed (480), então cadência ajustada na mão pelo dono nunca é sobrescrita.
+export async function migrateNutricaoSevenDays(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product || product.nutricao7dV1) return false;
+  if (!Array.isArray(product.funnel) || product.funnel.length === 0) return false;
+  let changed = false;
+  const funnel = product.funnel.map((f) => {
+    if (f && f.stage === "Nutrição" && f.cadence && Number(f.cadence.firstTouchHours) === 480) {
+      changed = true;
+      return { ...f, cadence: { ...f.cadence, firstTouchHours: 168 } };
+    }
+    return f;
+  });
+  await repo.update("products", "leverads", {
+    ...(changed ? { funnel: normalizeFunnel(funnel) } : {}),
+    nutricao7dV1: true,
+  });
+  return changed;
+}
+
+// ── Flashcards: conhecimentos gerais + baralhos de 30 (jul/2026) ────────────
+// A base editada na tela (doc `flashcards`) congela os DEFAULTS do código, então
+// os baralhos novos (Geral · Negócio/Marketplaces) e os cards extras por vaga
+// não chegariam em produção. One-shot com marcador generalDecksV1 no doc:
+// APPENDA os cards de DEFAULTS cujo id ainda não existe; card existente (mesmo
+// editado pelo dono) nunca é tocado. Sem doc salvo, os DEFAULTS servem sozinhos.
+export async function migrateFlashcardsGeneralDecks(repo) {
+  const doc = await repo.get("flashcards", "leverads");
+  if (!doc || doc.generalDecksV1) return 0;
+  const have = new Set((doc.cards || []).map((c) => c && c.id));
+  const missing = (FLASHCARD_DEFAULTS.leverads || []).filter((c) => !have.has(c.id));
+  await repo.update("flashcards", "leverads", {
+    ...(missing.length ? { cards: [...(doc.cards || []), ...missing] } : {}),
+    generalDecksV1: true,
+  });
+  return missing.length;
+}
+
+// ── Flashcards: expansão pra 150 por baralho + Estratégia de vendas (ago/2026) ──
+// Mesmo desenho do generalDecksV1, mas anexando SÓ os cards da EXPANSÃO (nunca a
+// base de jul/2026): se o dono apagou um card antigo pela tela, ele fica apagado.
+// Sem doc salvo em produção os DEFAULTS servem sozinhos e isto é no-op.
+export async function migrateFlashcardsDeckExpansion(repo) {
+  const doc = await repo.get("flashcards", "leverads");
+  if (!doc || doc.deckExpansionV1) return 0;
+  const have = new Set((doc.cards || []).map((c) => c && c.id));
+  const missing = LEVERADS_EXPANSION.filter((c) => !have.has(c.id));
+  await repo.update("flashcards", "leverads", {
+    ...(missing.length ? { cards: [...(doc.cards || []), ...missing] } : {}),
+    deckExpansionV1: true,
+  });
+  return missing.length;
+}
+
+// ── Flashcards: catálogo v2 + call otimizada (16/09/2026) ────────────────────
+// Os mapas mentais de 10/09 trocaram o modelo (Lever OEM / Ads / Price ×
+// Essencial / Escala / Enterprise, só anual + semestral, call em 10 passos,
+// robô em 4 passos, ICP por linha). O deck em código já nasce atualizado; se um
+// doc `flashcards` tiver sido materializado pela tela, ele recebe o MESMO
+// conserto: card reescrito ganha o texto novo (imagem/máscaras do dono ficam),
+// card retirado sai (ensinava FULL/Parcial/recorrente) e card novo entra.
+// One-shot com marcador catalogV2FlashcardsV1; sem doc é no-op.
+export async function migrateFlashcardsCatalogV2(repo) {
+  const doc = await repo.get("flashcards", "leverads");
+  if (!doc || doc.catalogV2FlashcardsV1) return 0;
+  const byId = new Map(LEVERADS_DECKS.map((c) => [c.id, c]));
+  const rewritten = new Set(LEVERADS_V2.rewritten);
+  const retired = new Set(LEVERADS_V2.retired);
+  let touched = 0;
+  const kept = [];
+  for (const c of doc.cards || []) {
+    if (!c || !c.id) continue;
+    if (retired.has(c.id)) { touched++; continue; }
+    const fresh = byId.get(c.id);
+    if (rewritten.has(c.id) && fresh) {
+      touched++;
+      kept.push({ ...c, type: fresh.type || "basic", front: fresh.front, back: fresh.back });
+    } else kept.push(c);
+  }
+  const have = new Set(kept.map((c) => c.id));
+  for (const id of LEVERADS_V2.added) {
+    const fresh = byId.get(id);
+    if (fresh && !have.has(id)) { kept.push({ ...fresh }); touched++; }
+  }
+  await repo.update("flashcards", "leverads", { cards: kept, catalogV2FlashcardsV1: true });
+  return touched;
+}
+
+// Estado de estudo dos cards que MUDARAM DE RESPOSTA: quem já tinha o card
+// "maduro" ficaria semanas sem rever um conteúdo que agora é outro (preço,
+// plano, passo da call). Apaga o estado FSRS (e a vaga no gradPool) das entradas
+// dos cards reescritos e retirados, em todos os usuários do leverads; o card
+// volta como novo na fila. `newDone` é contagem por dia, fica. Guard no
+// produto (o doc `flashcards` não existe em produção).
+export async function migrateTrainingStatesCatalogV2(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product || product.flashcardsCatalogV2RelearnV1) return 0;
+  const ids = [...LEVERADS_V2.rewritten, ...LEVERADS_V2.retired];
+  const hit = (key) => ids.some((id) => key === id || key.startsWith(id + "::"));
+  let docs = 0;
+  for (const st of await repo.list("training_states")) {
+    if (!st || st.saas !== "leverads") continue;
+    const cards = { ...(st.cards || {}) };
+    let changed = false;
+    for (const k of Object.keys(cards)) if (hit(k)) { delete cards[k]; changed = true; }
+    const pool = Array.isArray(st.gradPool) ? st.gradPool.filter((k) => !hit(k)) : null;
+    if (pool && pool.length !== st.gradPool.length) changed = true;
+    if (!changed) continue;
+    await repo.update("training_states", st.id, { cards, ...(pool ? { gradPool: pool } : {}) });
+    docs++;
+  }
+  await repo.update("products", "leverads", { flashcardsCatalogV2RelearnV1: true });
+  return docs;
+}
+
+// ── Ganho como destino da Integração (31/08/2026) ───────────────────────────
+// A reordenação de julho tirou o "ganho" dos próximos passos da entrega (era
+// andar pra trás na régua). Na prática o card às vezes vai de Call direto pra
+// Integração, e o Leo quer poder movê-lo pra coluna Ganho depois (pedido de
+// 31/08) — a venda não desfaz nesse movimento (integracao e ganho são
+// SOLD_KINDS no lead-flow). O default novo do código já oferece o ganho, mas o
+// override salvo em product.nextSteps vence o default, então ele precisa
+// ganhar o destino de volta. One-shot por marcador: o Leo pode tirar de novo
+// em Ajustes → Próximos passos sem a migração recolocar no boot seguinte.
+export async function migrateGanhoNaIntegracao(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product || product.ganhoNaIntegracaoV1) return false;
+  const nextSteps = { ...(product.nextSteps || {}) };
+  let changed = false;
+  for (const [key, list] of Object.entries(nextSteps)) {
+    if (!/^integracao/.test(key) || !Array.isArray(list) || list.includes("ganho")) continue;
+    nextSteps[key] = [...list, "ganho"];
+    changed = true;
+  }
+  await repo.update("products", "leverads", { ganhoNaIntegracaoV1: true, ...(changed ? { nextSteps } : {}) });
+  return changed;
+}
+
+// ── Integração como destino do Follow-up (01/09/2026) ───────────────────────
+// A reordenação de julho tirou a Integração dos próximos passos do follow-up
+// (fechar virou o passo do closer, via Ganho). Na prática o closer às vezes
+// fecha no follow-up já combinando a entrega e quer mandar o card direto pra
+// Integração (pedido do Leo, 01/09) — o gate cobra o fechamento igual ao Ganho
+// e a venda registra do mesmo jeito (os dois são SOLD_KINDS no lead-flow). O
+// default novo do código já oferece, mas o override salvo em product.nextSteps
+// vence o default, então ele precisa ganhar o destino de volta. One-shot por
+// marcador: o Leo pode tirar de novo em Ajustes → Próximos passos sem a
+// migração recolocar no boot seguinte.
+export async function migrateIntegracaoNoFollowup(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product || product.integracaoNoFollowupV1) return false;
+  const nextSteps = { ...(product.nextSteps || {}) };
+  let changed = false;
+  for (const [key, list] of Object.entries(nextSteps)) {
+    if (!/^followup/.test(key) || !Array.isArray(list) || list.includes("integracao")) continue;
+    // Entra logo depois do Ganho (os dois são "fechar"); sem Ganho na lista,
+    // vai pro fim.
+    const i = list.indexOf("ganho");
+    nextSteps[key] = i === -1 ? [...list, "integracao"]
+      : [...list.slice(0, i + 1), "integracao", ...list.slice(i + 1)];
+    changed = true;
+  }
+  await repo.update("products", "leverads", { integracaoNoFollowupV1: true, ...(changed ? { nextSteps } : {}) });
+  return changed;
+}
+
+// Nutrição já está no default do follow-up, mas os próximos passos salvos por
+// roteiro substituem esse default. Atualiza esses roteiros uma vez, preservando
+// a ordem das outras ações e futuras edições em Ajustes → Próximos passos.
+export async function migrateNutricaoNoFollowup(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product || product.nutricaoNoFollowupV1) return false;
+  const nextSteps = { ...(product.nextSteps || {}) };
+  let changed = false;
+  for (const [key, list] of Object.entries(nextSteps)) {
+    if (!/^followup/.test(key) || !Array.isArray(list) || !list.length || list.includes("nutricao")) continue;
+    const i = list.indexOf("desqualificado");
+    nextSteps[key] = i === -1 ? [...list, "nutricao"]
+      : [...list.slice(0, i), "nutricao", ...list.slice(i)];
+    changed = true;
+  }
+  await repo.update("products", "leverads", { nutricaoNoFollowupV1: true, ...(changed ? { nextSteps } : {}) });
+  return changed;
+}
+
+// ── Flashcards: cotas de OEM nos cards de produto (31/08/2026) ──────────────
+// O combo Parcial + OEM passou a entregar 250 anúncios/mês (antes 125), e uma
+// leva de cards ainda ensinava o catálogo aposentado em 21/08 (200 no FULL,
+// avulso 50/100/200, preços da tabela velha). A base em produção congela os
+// defaults no doc `flashcards`, então número velho não sai sozinho. REPLACE
+// cirúrgico só nos cards afetados: card que o dono reescreveu não casa com o
+// texto antigo e fica como está. Idempotente: depois da troca o texto velho
+// não existe mais. Ficam FORA de propósito (dependem de decisão do Leo):
+// ger_n_45/clo_100 (descrição oficial do FULL, que vem do deck) e
+// ger_n_61/63/65/66 (escada antiga do doc de pagamentos).
+const FLASHCARD_OEM_FIXES = {
+  ger_n_71: [["Parcial + OEM 125", "Parcial + OEM 250"]],
+  ger_n_73: [["Parcial + OEM 125/mês", "Parcial + OEM 250/mês"]],
+  ger_m_20: [[
+    "(200 no +OEM FULL; avulso de 50, 100 ou 200)",
+    "(500 no +OEM FULL; 250 no Parcial + OEM; avulso de 125, 250 ou 500)",
+  ]],
+  clo_98: [["Com OEM 125/mês", "Com OEM 250/mês"]],
+  clo_99: [["Parcial + OEM 125", "Parcial + OEM 250"]],
+  ger_n_46: [["com teto de 2.000 clones no semestre", "com teto de 1.000 anúncios"]],
+  ger_n_47: [["a Lever cria 50, 100 ou 200 anúncios OEM por mês", "a Lever cria 125, 250 ou 500 anúncios OEM por mês"]],
+  ger_n_64: [[
+    "Leque por cota mensal (ago/2026): 50/mês por R$ 1.788 no semestre (12x 149) ou R$ 3.288 no ano (12x 274) · 100/mês por R$ 2.988 (12x 249) ou R$ 5.388 (12x 449) · 200/mês por R$ 4.788 (12x 399) ou R$ 8.388 (12x 699).",
+    "Leque por cota mensal (tabela de 21/08/2026): 125/mês por R$ 3.288 no ano (12x 274), R$ 1.914 no semestre (6x 319) ou R$ 379/mês na recorrente · 250/mês por R$ 5.388 (12x 449), R$ 2.994 (6x 499) ou R$ 599/mês · 500/mês por R$ 8.388 (12x 699), R$ 4.494 (6x 749) ou R$ 849/mês. Sem clonagem, a recorrente não tem entrada.",
+  ]],
+  ger_m_123: [[
+    "No LeverAds + OEM FULL: 200 anúncios OEM por mês. No OEM avulso (sem a clonagem: o cliente só manda a lista de códigos): versões de 50, 100 ou 200 por mês. Pra dimensionar: 200 fichas",
+    "No LeverAds + OEM FULL: 500 anúncios OEM por mês. No combo Parcial + OEM: 250 por mês. No OEM avulso (sem a clonagem: o cliente só manda a lista de códigos): versões de 125, 250 ou 500 por mês. Pra dimensionar: 500 fichas",
+  ]],
+  clo_29: [["criação por OEM (200/mês no +OEM FULL)", "criação por OEM (500/mês no +OEM FULL)"]],
+  clo_96: [[
+    "Tudo do FULL + 200 anúncios OEM por mês com compatibilidade veicular. Semestral: 11.988 (12x de 999); anual: 16.068 (12x de 1.339).",
+    "Tudo do FULL + 500 anúncios OEM por mês com compatibilidade veicular. Anual: 11.988 (12x de 999); semestral: 7.794 (6x de 1.299); recorrente: 774/mês + 3.750 de clonagem na entrada.",
+  ]],
+  clo_97: [[
+    "50/mês: 1.188 no semestre (12x de 99), o formato pro lead D/E de autopeça. 200/mês: 2.988 no semestre (12x de 249) pros demais.",
+    "A régua abre em 125/mês (3.288 no ano, 12x de 274) pro lead D/E de autopeça e em 500/mês (8.388 no ano, 12x de 699) pros demais; o closer troca a cota na tela zero (125/250/500).",
+  ]],
+  int_26: [[
+    "com cota mensal pelo plano (200 no +OEM FULL; avulso de 50 ou 200)",
+    "com cota mensal pelo plano (500 no +OEM FULL; 250 no Parcial + OEM; avulso de 125, 250 ou 500)",
+  ]],
+  int_100: [[
+    "Degraus: OEM avulso de 50 ou 200 criações/mês, ou migrar pro +OEM FULL (200/mês inclusas).",
+    "Degraus: OEM avulso de 125, 250 ou 500 criações/mês, ou migrar pro +OEM FULL (500/mês inclusas).",
+  ]],
+  int_132: [[
+    "+OEM FULL: 200 criações/mês inclusas. OEM avulso: 50/mês ou 200/mês",
+    "+OEM FULL: 500 criações/mês inclusas. Parcial + OEM: 250/mês. OEM avulso: 125, 250 ou 500/mês",
+  ]],
+};
+export async function migrateFlashcardsOemQuotas(repo) {
+  const doc = await repo.get("flashcards", "leverads");
+  if (!doc || !Array.isArray(doc.cards)) return 0;
+  let n = 0;
+  const cards = doc.cards.map((c) => {
+    const fixes = FLASHCARD_OEM_FIXES[c?.id];
+    if (!fixes) return c;
+    let back = String(c.back || "");
+    for (const [from, to] of fixes) back = back.split(from).join(to);
+    if (back === c.back) return c;
+    n++;
+    return { ...c, back };
+  });
+  if (n) await repo.update("flashcards", "leverads", { cards });
+  return n;
+}
+
+// ── Custos %: base por lançamento (ago/2026) ────────────────────────────────
+// Todo custo percentual incidia sobre os GANHOS do mês inteiro. O Leo separou:
+// o checkout de 12% só existe quando a venda fecha no cartão de crédito em 12x
+// (taxa da adquirente pra antecipar) e o imposto incide sobre o que foi
+// RECEBIDO no mês (regime de caixa), não sobre o contratado. O lançamento
+// ganha `base` ("won" | "cartao12x" | "received"; sem base = "won") e os dois
+// já cadastrados em produção são carimbados pelo nome. Idempotente: só toca
+// linha de pct sem base; lançamento novo já nasce com a base escolhida na tela.
+export async function migrateExpensePctBases(repo) {
+  let n = 0;
+  for (const e of await repo.list("expenses")) {
+    if (!(Number(e.pct) > 0) || e.base) continue;
+    const name = String(e.name || "").toLowerCase();
+    const base = name.includes("checkout") ? "cartao12x" : name.includes("imposto") ? "received" : "";
+    if (!base) continue;
+    await repo.update("expenses", e.id, { base });
+    n++;
+  }
+  return n;
+}
+
+// Permissão de ligação perdida (jul/2026): quando a saudação "posso te ligar?"
+// era digitada na mão (sem passar pelo startCallFlow que cria callFlow=pending),
+// o aceite do lead era só exibido ("topou receber a ligação") mas a thread ficava
+// com callFlow=null — e o botão "Ligar" nunca virava discagem. O código já grava
+// o aceite mesmo sem fluxo prévio; esta migração conserta as conversas que
+// aceitaram/recusaram ANTES do fix (a última resposta de permissão vale). Idempotente.
+export async function backfillCallPermission(repo) {
+  const [threads, messages] = await Promise.all([repo.list("wa_threads"), repo.list("wa_messages")]);
+  // texto RENDERIZADO com que a resposta de permissão é gravada (bodyOf)
+  const REPLY = { "✅ topou receber a ligação": "accepted", "🚫 prefere não receber ligação": "declined" };
+  const latest = new Map(); // thread → { perm, at } da resposta de permissão mais recente
+  for (const m of messages) {
+    if (m.direction !== "in") continue;
+    const perm = REPLY[String(m.text || "")];
+    if (!perm) continue;
+    const at = new Date(m.at || 0).getTime();
+    const cur = latest.get(m.thread);
+    if (!cur || at > cur.at) latest.set(m.thread, { perm, at, iso: m.at });
+  }
+  let fixed = 0;
+  for (const t of threads) {
+    const r = latest.get(t.id);
+    if (!r) continue;
+    if (t.callFlow?.permission === r.perm) continue; // já está certo
+    await repo.update("wa_threads", t.id, {
+      callFlow: {
+        ...(t.callFlow || { startedAt: r.iso, auto: false }),
+        permission: r.perm, permissionAt: r.iso, backfill: true,
+      },
+    });
+    fixed++;
+  }
+  return fixed;
+}
+
+// Tema do form de diagnóstico LeverAds → design system Lever Premium (claro).
+// Roda JUNTO do deploy do CSS novo do form-page.js: assim o tema (dado) e o
+// visual (código) trocam no MESMO boot, sem janela com logo branco invisível
+// no fundo claro. One-shot pelo marcador `dsThemeV1` no doc (guarda o tema
+// antigo em `themeBackup`). O form da UniqueKids NÃO é tocado.
+const LEVERADS_DS_THEME = {
+  bg: "#f7f8fa", surface: "#ffffff", fg: "#0c1d2b",
+  accent: "#0F766E", accentFg: "#ffffff",
+  font: "'Instrument Sans', system-ui, sans-serif",
+  radius: 12, logoUrl: "", logoHeight: 24,
+};
+export async function migrateFormLeverAdsDsTheme(repo) {
+  const form = await repo.get("forms", "fo_diagnostico_leverads");
+  if (!form || form.dsThemeV1) return false;
+  await repo.update("forms", "fo_diagnostico_leverads", {
+    themeBackup: form.theme || null,
+    theme: { ...LEVERADS_DS_THEME },
+    dsThemeV1: true,
+  });
+  return true;
+}
+
+// Todo funil de todo produto ganha `kind` (heurística por nome quando ausente).
+// Cobre multi-SaaS e o caso do dono ter editado o funil (guarda acima falhou).
+export async function ensureFunnelKinds(repo) {
+  let changed = 0;
+  for (const product of await repo.list("products")) {
+    if (!Array.isArray(product.funnel) || product.funnel.length === 0) continue;
+    const next = normalizeFunnel(product.funnel);
+    if (JSON.stringify(next) !== JSON.stringify(product.funnel)) {
+      await repo.update("products", product.id, { funnel: next });
+      changed++;
+    }
+  }
+  return changed;
+}
+
+// Motivos de perda padrão por produto (ids estáveis; label é só exibição —
+// `lead.lostReason` guarda o id). "nao_informado" é fallback do server, fora da lista.
+export const DEFAULT_LOSS_REASONS = [
+  { id: "preco", label: "Preço" },
+  { id: "sem_resposta", label: "Sem resposta" },
+  { id: "sem_fit", label: "Sem fit" },
+  { id: "timing", label: "Timing" },
+  { id: "concorrente", label: "Concorrente" },
+  { id: "nao_compareceu", label: "Não compareceu na call" },
+  { id: "outro", label: "Outro" },
+];
+
+export async function ensureLossReasons(repo) {
+  let changed = 0;
+  for (const product of await repo.list("products")) {
+    if (Array.isArray(product.lossReasons)) continue;
+    await repo.update("products", product.id, { lossReasons: DEFAULT_LOSS_REASONS });
+    changed++;
+  }
+  return changed;
+}
+
+// "Não compareceu na call" é o sinal que alimenta o show-rate do SDR (o closer
+// marca ao mover pra Perdido). Produto que já tinha lossReasons (leverads) não
+// entra no ensureLossReasons acima, então este anexa o motivo aos funis COM
+// estágio de call, uma vez (marcador noShowReasonV1 respeita remoção manual).
+export async function ensureNoShowReason(repo) {
+  let changed = 0;
+  for (const product of await repo.list("products")) {
+    if (product.noShowReasonV1) continue;
+    const patch = { noShowReasonV1: true };
+    const reasons = Array.isArray(product.lossReasons) ? product.lossReasons : [];
+    const hasCall = (product.funnel || []).some((f) => kindOf(product, f.stage) === "call");
+    if (hasCall && !reasons.some((r) => r.id === "nao_compareceu")) {
+      patch.lossReasons = [...reasons, { id: "nao_compareceu", label: "Não compareceu na call" }];
+    }
+    await repo.update("products", product.id, patch);
+    changed++;
+  }
+  return changed;
+}
+
+// "Sem WhatsApp": o descarte automático de número inválido (wa-store) grava
+// lostReason "sem_whatsapp" — o motivo precisa existir na lista do produto pro
+// modal e pros relatórios mostrarem o rótulo. Uma vez por produto que já usa
+// lossReasons (marcador semWhatsappReasonV1 respeita remoção manual).
+export async function ensureSemWhatsappReason(repo) {
+  let changed = 0;
+  for (const product of await repo.list("products")) {
+    if (product.semWhatsappReasonV1) continue;
+    const patch = { semWhatsappReasonV1: true };
+    const reasons = Array.isArray(product.lossReasons) ? product.lossReasons : [];
+    if (reasons.length && !reasons.some((r) => r.id === "sem_whatsapp")) {
+      patch.lossReasons = [...reasons, { id: "sem_whatsapp", label: "Sem WhatsApp" }];
+    }
+    await repo.update("products", product.id, patch);
+    changed++;
+  }
+  return changed;
+}
+
+// 1º TOQUE DA IA NA BASE VELHA (raio-x 17/09). O sdr-brain passou a carimbar
+// sdrLog.firstTouchAt na primeira resposta; quem já tinha conversado com a IA
+// antes disso não tem carimbo nenhum de toque e por isso ficava fora do passe
+// barato da escada de retomada (96 dos 100 leads novos parados) e do 2º toque.
+// Aqui a primeira mensagem do robô em cada conversa vira o carimbo. Uma vez
+// (marcador em app_config); lead com qualquer carimbo de toque fica como está.
+export async function ensureSdrBrainFirstTouch(repo) {
+  const FLAG = "sdr_brain_first_touch_v1";
+  if (await repo.get("app_config", FLAG).catch(() => null)) return 0;
+  const leads = await repo.list("leads");
+  const need = new Map(leads
+    .filter((l) => !l.internal && !l.sdrLog?.firstTouchAt && !l.sdrLog?.secondTouchAt && !l.sdrLog?.backlogRescueAt)
+    .map((l) => [l.id, l]));
+  let changed = 0;
+  if (need.size) {
+    const bot = await repo.listWhere("wa_messages", { author: "sdr-bot" }, { fields: ["leadId", "at"] }).catch(() => []);
+    const firstByLead = new Map();
+    for (const m of bot) {
+      if (!m?.leadId || !need.has(m.leadId) || !m.at) continue;
+      const cur = firstByLead.get(m.leadId);
+      if (!cur || String(m.at) < String(cur)) firstByLead.set(m.leadId, String(m.at));
+    }
+    for (const [id, at] of firstByLead) {
+      const lead = need.get(id);
+      await repo.update("leads", id, { sdrLog: { ...(lead.sdrLog || {}), firstTouchAt: at, firstTouchVia: "brain" } });
+      changed++;
+    }
+  }
+  await repo.create("app_config", { id: FLAG, at: new Date().toISOString(), changed });
+  return changed;
+}
+
+// Metas de SDR por TAXA (benchmark de SaaS inbound morno) — o alvo é a taxa,
+// que já se normaliza pelo volume de leads (o alvo absoluto de calls sai de
+// leads × taxa na UI). Semeadas como role-scope na coleção goals, uma vez por
+// produto com estágio de call (marcador sdrGoalsV1 respeita edição manual).
+const SDR_BENCHMARK_GOALS = [
+  { metric: "contactRate", target: 80 }, // reach: % dos leads novos contatados
+  { metric: "bookingRate", target: 30 }, // % dos leads que viram call agendada
+  { metric: "showRate", target: 75 },    // % das calls em que a pessoa compareceu
+  // callWinRate (ganhos ÷ agendadas) saiu: é CONTA de showRate × conversaoCall,
+  // não meta digitada (ver ensureCloseRateUnica).
+];
+
+export async function ensureSdrGoals(repo) {
+  let created = 0;
+  const goals = await repo.list("goals");
+  for (const product of await repo.list("products")) {
+    if (product.sdrGoalsV1) continue;
+    const hasCall = (product.funnel || []).some((f) => kindOf(product, f.stage) === "call");
+    if (hasCall) {
+      for (const g of SDR_BENCHMARK_GOALS) {
+        const exists = goals.some((x) => x.saas === product.id && x.scope === "role" && x.key === "sdr" && x.metric === g.metric);
+        if (!exists) {
+          // Id explícito: o gerador do repo é por timestamp e várias metas nascem
+          // no mesmo tick — colidiriam na PK (mesmo motivo de routes.forms.js).
+          await repo.create("goals", { id: `goal_${product.id}_sdr_${g.metric}`, saas: product.id, scope: "role", key: "sdr", metric: g.metric, target: g.target, period: "month" });
+          created++;
+        }
+      }
+    }
+    await repo.update("products", product.id, { sdrGoalsV1: true });
+  }
+  return created;
+}
+
+// Metas de QUALIDADE do closer por benchmark (fechamento de proposta, win rate
+// geral). Receita/Ganhos são QUOTA absoluta e o Leo define na mão, então não
+// semeamos. Marcador closerGoalsV1 respeita edição manual.
+const CLOSER_BENCHMARK_GOALS = [
+  // Uma taxa de fechamento só, sobre as calls que ACONTECERAM. `proposalWinRate`
+  // saiu (não alimentava nada) e `winRateCall` virou conta (ensureCloseRateUnica).
+  { metric: "conversaoCall", target: 33 },
+];
+
+export async function ensureCloserGoals(repo) {
+  let created = 0;
+  const goals = await repo.list("goals");
+  for (const product of await repo.list("products")) {
+    if (product.closerGoalsV1) continue;
+    const hasCall = (product.funnel || []).some((f) => kindOf(product, f.stage) === "call");
+    if (hasCall) {
+      for (const g of CLOSER_BENCHMARK_GOALS) {
+        const exists = goals.some((x) => x.saas === product.id && x.scope === "role" && x.key === "closer" && x.metric === g.metric);
+        if (!exists) {
+          await repo.create("goals", { id: `goal_${product.id}_closer_${g.metric}`, saas: product.id, scope: "role", key: "closer", metric: g.metric, target: g.target, period: "month" });
+          created++;
+        }
+      }
+    }
+    await repo.update("products", product.id, { closerGoalsV1: true });
+  }
+  return created;
+}
+
+// UMA taxa de fechamento (22/07). O card do closer tinha "Call → ganho" e
+// "Proposta → ganho" que não conversavam: a segunda não alimentava NADA, e a
+// primeira era lida com dois denominadores (o placar sobre as AGENDADAS, o pace
+// sobre as que COMPARECERAM). Agora existe só `conversaoCall` = ganhos ÷ calls
+// que aconteceram; a conversão sobre as agendadas virou conta.
+//
+// A conversão de valor é o pulo do gato: 25% das agendadas com 75% de
+// comparecimento são 33% das que aconteceram. Divide pela meta de showRate do
+// produto (ou pelo benchmark) pra a régua do time não mudar de altura sozinha.
+export async function ensureCloseRateUnica(repo) {
+  let changed = 0;
+  const goals = await repo.list("goals");
+  for (const product of await repo.list("products")) {
+    if (product.closeRateUnicaV1) continue;
+    const mine = goals.filter((g) => !g.saas || g.saas === product.id);
+    const showGoal = Number(mine.find((g) => g.scope === "role" && g.key === "sdr" && g.metric === "showRate")?.target);
+    const show = showGoal > 0 ? showGoal / 100 : 0.75;
+    for (const old of mine.filter((g) => g.metric === "winRateCall")) {
+      const booked = Number(old.target);
+      const already = mine.find((g) => g.scope === old.scope && g.key === old.key && g.metric === "conversaoCall");
+      if (booked > 0 && !already) {
+        const target = Math.min(100, Math.round(booked / show));
+        await repo.create("goals", {
+          id: `goal_${product.id}_${old.scope}_${old.key}_conversaoCall`,
+          saas: product.id, scope: old.scope, key: old.key,
+          metric: "conversaoCall", target, period: old.period || "month",
+        });
+        changed++;
+      }
+      await repo.remove("goals", old.id); changed++;
+    }
+    // Métricas que deixaram de existir: a de proposta não alimentava nada e a
+    // callWinRate agora é derivada — deixá-las no banco só faria a tela de Metas
+    // ressuscitar campo removido.
+    for (const dead of mine.filter((g) => g.metric === "proposalWinRate" || g.metric === "callWinRate")) {
+      await repo.remove("goals", dead.id); changed++;
+    }
+    await repo.update("products", product.id, { closeRateUnicaV1: true });
+  }
+  return changed;
+}
+
+// Demanda de CONTEÚDO do Mídia social (fase de aprendizado: volume/consistência
+// antes de resultado): 30 posts (1/dia), 120 stories (4/dia), 48 ads (12/sem).
+// Semeadas como alvos definidos pra já aparecerem na tela de Metas; marcador
+// socialGoalsV1 respeita edição manual (o Leo lapida no futuro).
+const SOCIAL_CONTENT_GOALS = [
+  { metric: "postsPerMonth", target: 30 },
+  { metric: "storiesPerMonth", target: 120 },
+  { metric: "adsPerMonth", target: 48 },
+];
+
+export async function ensureSocialGoals(repo) {
+  let created = 0;
+  const goals = await repo.list("goals");
+  for (const product of await repo.list("products")) {
+    if (product.socialGoalsV1) continue;
+    for (const g of SOCIAL_CONTENT_GOALS) {
+      const exists = goals.some((x) => x.saas === product.id && x.scope === "role" && x.key === "social" && x.metric === g.metric);
+      if (!exists) {
+        await repo.create("goals", { id: `goal_${product.id}_social_${g.metric}`, saas: product.id, scope: "role", key: "social", metric: g.metric, target: g.target, period: "month" });
+        created++;
+      }
+    }
+    await repo.update("products", product.id, { socialGoalsV1: true });
+  }
+  return created;
+}
+
+// Etiquetas de capacidade do time (quem aparece nos pickers de SDR/closer/
+// integrador). Espelha o hardcode antigo do pipeline.jsx; não cria usuário novo.
+const ROLE_SEED = {
+  eryk: ["integrator"],
+  leonardo: ["closer", "sdr"],
+  jonathan: ["closer"],
+};
+
+export async function ensureUserRoles(repo) {
+  let changed = 0;
+  for (const user of await repo.list("users")) {
+    if (Array.isArray(user.roles)) continue;
+    await repo.update("users", user.id, { roles: ROLE_SEED[user.id] || [] });
+    changed++;
+  }
+  return changed;
+}
+
+// Escopo de produto do time (user.saas): quem atende UM produto só não aparece
+// nos pickers dos outros workspaces. Mesmo padrão do ROLE_SEED: aplica uma vez
+// (só quando o campo ainda não existe no registro) e não cria usuário novo.
+// A Ana foi criada antes do campo existir na API — o PATCH em produção era
+// no-op até o deploy do código novo; este seed fecha a lacuna no 1º boot.
+const SAAS_SEED = {
+  ana: "uniquekids",
+};
+
+export async function ensureUserSaasScope(repo) {
+  let changed = 0;
+  for (const [id, saas] of Object.entries(SAAS_SEED)) {
+    const user = await repo.get("users", id);
+    if (!user || user.saas !== undefined) continue;
+    await repo.update("users", id, { saas });
+    changed++;
+  }
+  return changed;
+}
+
+// Telas permitidas por usuário (user.screens, ver screens.js): SDR e Ana só
+// operam o funil — Pipeline + Tarefas. Mesmo padrão one-shot dos seeds acima:
+// aplica só quando o campo ainda não existe (ajuste manual em Ajustes → Equipe
+// nunca é sobrescrito) e não cria usuário.
+const SCREENS_SEED = {
+  sdr: ["today", "pipeline", "tasks"],
+  ana: ["today", "pipeline", "tasks"],
+};
+
+// Clientes nascidos da conversão automática ficavam com arr 0 — o valor
+// informado no gate de fechamento (lead.amount) não era carregado (corrigido em
+// convertWonLead). Backfill self-idempotente: só cliente com leadId, arr zerado
+// e SEM assinatura (assinatura é a fonte do arr via syncCustomerArr); o valor do
+// lead entra como contrato anual (padrão das ofertas). Plano não é inventado —
+// passa a ser capturado no fechamento daqui pra frente.
+export async function backfillCustomerArrFromLead(repo) {
+  const withSub = new Set((await repo.list("subscriptions")).map((s) => s.customer));
+  let changed = 0;
+  for (const c of await repo.list("customers")) {
+    if (!c.leadId || Number(c.arr) > 0 || withSub.has(c.id)) continue;
+    const lead = await repo.get("leads", c.leadId);
+    const amount = Number(lead?.amount) || 0;
+    if (amount <= 0) continue;
+    await repo.update("customers", c.id, { arr: Math.round(amount) });
+    changed++;
+  }
+  return changed;
+}
+
+// "Assinatura ativa pra todos os clientes": cliente sem assinatura ganha uma a
+// partir do próprio cadastro (plan/arr/paymentMethod), com a mesma regra do
+// fechamento (createClosedSubscription): faturado/parcelado = ciclo mensal com
+// a parcela; à vista = ciclo do plano com o contrato cheio. Self-idempotente
+// (só quem NÃO tem assinatura); pula churnado (endedAt no passado), Serviço
+// único (não é recorrência) e arr zerado. Sem plano assume anual (padrão da
+// casa) sem inventar o campo plan do cliente. arr não muda: annualized == arr.
+export async function backfillSubscriptionsFromCustomers(repo) {
+  const withSub = new Set((await repo.list("subscriptions")).map((s) => s.customer));
+  const now = new Date();
+  let changed = 0;
+  for (const c of await repo.list("customers")) {
+    if (withSub.has(c.id) || Number(c.arr) <= 0) continue;
+    if (c.endedAt && new Date(c.endedAt) <= now) continue;
+    const t = String(c.plan || "").toLowerCase();
+    if (t.includes("único") || t.includes("unico")) continue;
+    const planClosed = t.includes("semestral") ? "semestral" : t.includes("mensal") ? "mensal" : "anual";
+    const factor = CLOSED_PLAN_ANNUAL_FACTOR[planClosed];
+    const sub = await createClosedSubscription(repo, {
+      customerId: c.id, saas: c.saas,
+      planClosed, amount: Number(c.arr) / factor,
+      paymentMethod: c.paymentMethod, startAt: c.startedAt,
+    }, now);
+    if (sub) changed++;
+  }
+  return changed;
+}
+
+// WhatsApp multi-número: o número do env (single-tenant legado) pertence à
+// LEVERADS — carimba em product.waPhoneId uma vez (marcador waPhoneSeedV1) pra
+// regra nova valer: produto sem waPhoneId NÃO fala pelo número de outro (a
+// UniqueKids bloqueia com aviso até o Leo configurar o número próprio dela em
+// Ajustes → Integrações). Apagar o campo depois nunca é sobrescrito.
+export async function ensureWaPhoneId(repo) {
+  const envId = process.env.WHATSAPP_PHONE_NUMBER_ID || "";
+  if (!envId) return false;
+  const product = await repo.get("products", "leverads");
+  if (!product || product.waPhoneSeedV1) return false;
+  await repo.update("products", "leverads", {
+    ...(product.waPhoneId ? {} : { waPhoneId: envId }),
+    waPhoneSeedV1: true,
+  });
+  return !product.waPhoneId;
+}
+
+// ── Faixa de faturamento no checklist do SDR (jul/2026) ─────────────────────
+// O form público não pergunta mais faturamento, mas o SDR precisa capturar a
+// faixa NA CONVERSA (qualifica o valor do lead, e o briefing de integração já
+// lê lead.revenue). Insere a pergunta no leadQuestions do leverads logo depois
+// de "listings" (ordem da conversa: anúncios → faturamento; o CHECKLIST_ORDER
+// do painel acompanha). Tokens no formato legado do form ("50k-150k", "1m+"),
+// que o range() do integration-brief já formata. One-shot por
+// revenueQuestionV1: se o dono apagar a pergunta no editor, ela não volta.
+export async function ensureRevenueLeadQuestion(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product || product.revenueQuestionV1) return false;
+  const qs = Array.isArray(product.leadQuestions) ? product.leadQuestions.map((q) => ({ ...q })) : null;
+  let inserted = false;
+  if (qs && !qs.some((q) => q && q.key === "revenue")) {
+    const revenue = {
+      key: "revenue", label: "Qual a faixa de faturamento mensal?", type: "select", required: false,
+      options: [
+        { value: "0-50k", label: "Até R$ 50 mil/mês" },
+        { value: "50k-150k", label: "R$ 50 a 150 mil/mês" },
+        { value: "150k-500k", label: "R$ 150 a 500 mil/mês" },
+        { value: "500k-1m", label: "R$ 500 mil a 1 mi/mês" },
+        { value: "1m+", label: "Mais de R$ 1 mi/mês" },
+        { value: "nao-informou", label: "Não quis informar" },
+      ],
+    };
+    const i = qs.findIndex((q) => q && q.key === "listings");
+    qs.splice(i === -1 ? qs.length : i + 1, 0, revenue);
+    inserted = true;
+  }
+  await repo.update("products", "leverads", {
+    ...(inserted ? { leadQuestions: qs } : {}),
+    revenueQuestionV1: true,
+  });
+  return inserted;
+}
+
+// ── Funde conversas duplicadas do inbox (jul/2026) ──────────────────────────
+// O mesmo contato aparecia como DUAS conversas quando o número entrava em duas
+// grafias (com/sem o nono dígito, ver waMatchKey) — visto em prod com o Hilton.
+// O `recordMessage` já foi corrigido pra casar pela chave normalizada e não
+// abrir uma segunda thread, mas as duplicatas que JÁ existiam continuam na
+// lista; esta migração as consolida.
+//
+// Agrupa por waMatchKey; em cada grupo com mais de uma thread, elege a mais
+// recentemente atualizada como canônica, reaponta as mensagens das outras pra
+// ela, soma o não-lido, preenche os campos que faltarem (leadId/name/saas/
+// waPhoneId) e apaga as duplicatas. Idempotente e auto-curável: sem duplicatas
+// (o caso normal depois do primeiro merge) só faz um list de wa_threads e sai.
+export async function ensureWaThreadDedup(repo) {
+  const threads = await repo.list("wa_threads");
+  const byKey = new Map();
+  for (const t of threads) {
+    const k = waMatchKey(t?.id || t?.phone || "");
+    if (!k) continue;
+    if (!byKey.has(k)) byKey.set(k, []);
+    byKey.get(k).push(t);
+  }
+  const dupGroups = [...byKey.values()].filter((g) => g.length > 1);
+  if (!dupGroups.length) return 0;
+
+  const allMsgs = await repo.list("wa_messages");
+  let merged = 0;
+  for (const group of dupGroups) {
+    // Canônica = a conversa VIVA (última atualização). Empate no updatedAt cai
+    // no id, só pra ser determinístico entre boots.
+    group.sort((a, b) =>
+      String(b?.updatedAt || "").localeCompare(String(a?.updatedAt || "")) ||
+      String(a?.id || "").localeCompare(String(b?.id || "")));
+    const canon = group[0];
+    let unread = Number(canon.unread) || 0;
+    let leadId = canon.leadId ?? null;
+    let name = canon.name || "";
+    let saas = canon.saas || "";
+    let waPhoneId = canon.waPhoneId || "";
+    for (const dup of group.slice(1)) {
+      for (const m of allMsgs) {
+        if (m.thread === dup.id) await repo.update("wa_messages", m.id, { thread: canon.id });
+      }
+      unread += Number(dup.unread) || 0;
+      leadId = leadId ?? dup.leadId ?? null;
+      name = name || dup.name || "";
+      saas = saas || dup.saas || "";
+      waPhoneId = waPhoneId || dup.waPhoneId || "";
+      await repo.remove("wa_threads", dup.id);
+      merged++;
+    }
+    await repo.update("wa_threads", canon.id, { unread, leadId, name, saas, waPhoneId });
+  }
+  return merged;
+}
+
+// ── Ganho ANTES da Integração (jul/2026) ────────────────────────────────────
+// O funil colocava a entrega antes do fechamento (… Follow-up → Integração →
+// Acompanhamento → Ganho), então a venda só era reconhecida no fim da entrega e
+// os cards em Integração não contavam como receita. A ordem certa é fechar e
+// depois entregar: … Follow-up → Ganho → Integração → Acompanhamento.
+//
+// Só a ordem do array muda; NENHUM lead é movido (quem está em Integração
+// continua em Integração, agora depois do ganho na régua). O que sustenta a
+// receita nessa nova ordem é `lead.customerId`/`wonAt` (ver isWonLead em
+// stages.js): a venda vira fato do lead e para de depender da posição do card.
+//
+// One-shot por `ganhoAntesIntegracaoV1`. Guarda estrita: só reordena se o funil
+// estiver EXATAMENTE no formato antigo (ganho depois de integracao), então
+// rodar de novo, ou num produto que já foi ajustado à mão, não faz nada.
+export async function migrateGanhoAntesIntegracao(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product || product.ganhoAntesIntegracaoV1) return false;
+  const funnel = Array.isArray(product.funnel) ? product.funnel : [];
+  const idx = (kind) => funnel.findIndex((f) => kindOf(product, f?.stage) === kind);
+  const iGanho = idx("ganho"), iInteg = idx("integracao");
+  // Nada a fazer se falta alguma das duas ou se o ganho JÁ está antes.
+  if (iGanho === -1 || iInteg === -1 || iGanho < iInteg) {
+    await repo.update("products", "leverads", { ganhoAntesIntegracaoV1: true });
+    return false;
+  }
+  const ganhoRow = funnel[iGanho];
+  const reordered = funnel.filter((_, i) => i !== iGanho);
+  // Reinsere o ganho na posição da integração (que andou uma casa se o ganho
+  // estava antes dela no array original — não é o caso aqui, mas fica correto).
+  const at = reordered.findIndex((f) => kindOf(product, f?.stage) === "integracao");
+  reordered.splice(at, 0, ganhoRow);
+
+  // Os próximos passos salvos vencem os defaults do código, então precisam vir
+  // junto: fechar deixa de ser destino da entrega e a entrega passa a ser
+  // destino do ganho. Chaveado por ROTEIRO (followup1/2/3, integracao, …).
+  const nextSteps = { ...(product.nextSteps || {}) };
+  for (const [key, list] of Object.entries(nextSteps)) {
+    if (!Array.isArray(list)) continue;
+    if (/^followup/.test(key)) nextSteps[key] = list.filter((k) => k !== "integracao");
+    if (/^(integracao|posvenda)/.test(key)) nextSteps[key] = list.filter((k) => k !== "ganho");
+  }
+  if (!Array.isArray(nextSteps.ganho) || !nextSteps.ganho.length) nextSteps.ganho = ["integracao", "posvenda"];
+  if (Array.isArray(nextSteps.integracao) && !nextSteps.integracao.length) nextSteps.integracao = ["posvenda"];
+
+  await repo.update("products", "leverads", { funnel: reordered, nextSteps, ganhoAntesIntegracaoV1: true });
+  return { order: reordered.map((f) => f.stage) };
+}
+
+// Carimba `wonAt` nos leads que já venceram antes do campo existir. A data sai
+// do `startedAt` do cliente (gravado por convertWonLead no mesmo instante);
+// sem cliente vinculado, cai no stageSince, que ainda é o do ganho porque
+// esses cards nunca saíram do Ganho. Sem isso, o primeiro card a andar pra
+// Integração perderia a data e cairia no mês errado.
+export async function backfillWonAt(repo) {
+  const leads = await repo.list("leads");
+  const pending = leads.filter((l) => l.customerId && !l.wonAt);
+  if (!pending.length) return 0;
+  const byId = new Map((await repo.list("customers")).map((c) => [c.id, c]));
+  let n = 0;
+  for (const lead of pending) {
+    const at = byId.get(lead.customerId)?.startedAt || lead.stageSince || "";
+    if (!at) continue;
+    await repo.update("leads", lead.id, { wonAt: at });
+    n++;
+  }
+  return n;
+}
+
+// Card que já está numa etapa PÓS-VENDA sem ter passado pelo Ganho nunca virou
+// cliente: o convertWonLead dispara no PATCH do lead, e esses cards foram
+// arrastados direto pra entrega antes da regra existir. Depois da reordenação
+// eles CONTAM como venda (isPostSaleStage), então precisam do cliente e da
+// assinatura junto — senão a receita sobe e os Clientes ativos ficam pra trás.
+//
+// Idempotente por natureza: o convertWonLead já sai fora se o lead tem
+// customerId ou se existe cliente com aquele leadId. Roda DEPOIS da
+// reordenação, senão isPostSaleStage ainda é falso.
+export async function backfillPostSaleCustomers(repo) {
+  // Import dinâmico: migrations.js é carregado pelo index.js antes das rotas, e
+  // um import estático do lead ganho aqui acoplaria a ordem de carga à toa.
+  const { convertWonLead } = await import("../crm/won-lead.js");
+  const products = new Map((await repo.list("products")).map((p) => [p.id, p]));
+  const leads = await repo.list("leads");
+  let n = 0;
+  for (const lead of leads) {
+    if (lead.customerId) continue;
+    const product = products.get(lead.saas);
+    if (!product || !isPostSaleStage(product, lead.stage)) continue;
+    try { if (await convertWonLead(repo, lead)) n++; } catch { /* best-effort, igual ao fluxo normal */ }
+  }
+  return n;
+}
+
+export async function ensureUserScreens(repo) {
+  let changed = 0;
+  for (const [id, screens] of Object.entries(SCREENS_SEED)) {
+    const user = await repo.get("users", id);
+    if (!user || user.screens !== undefined) continue;
+    await repo.update("users", id, { screens });
+    changed++;
+  }
+  return changed;
+}
+
+// Orquestrador chamado no boot. Cada migração é isolada num try/catch pra que
+// uma falha não derrube o start da API.
+// ── Form: pergunta de corte "já vende em marketplace?" (jul/2026) ───────────
+// Estava chegando gente que nem vende em marketplace. Duas coisas resolvem isso
+// ao mesmo tempo: perguntar logo de cara (quem não vende sai do fluxo de venda)
+// e NÃO contar essa saída como conversão — contar ensinaria a Meta a caçar mais
+// gente fora do perfil, que é a raiz do problema.
+//
+// Quem não vende vai pra uma conversa própria (interesse em aprender + verba) e
+// nasce na coluna Mentoria, sem dono: o produto pra essa fila ainda vai existir.
+// Migração porque o dado (perguntas) só faz sentido com o código que entende
+// `exit` — deploy atômico, igual à troca de tema do form.
+export async function migrateFormVendeMarketplace(repo) {
+  const form = await repo.get("forms", "fo_diagnostico_leverads");
+  if (!form) return false;
+  const qs = [...(form.questions || [])];
+  // A sincronização do painel do lead roda SEMPRE (é idempotente e só grava
+  // quando muda). Prendê-la ao marcador da migração foi o erro que deixou a
+  // produção com o formulário novo e o card velho: o marcador já estava posto
+  // do deploy anterior, então a sincronização nunca chegava a acontecer e quem
+  // caía na Mentoria abria o card sem nenhuma das respostas que deu.
+  if (form.vendeMarketplaceV1 || qs.some((q) => q.key === "vende_marketplace")) {
+    const ajustadas = semRespostaEvasiva(qs);
+    if (JSON.stringify(ajustadas) !== JSON.stringify(qs)) await repo.update("forms", form.id, { questions: ajustadas });
+    await sincronizaPainelDoLead(repo, { ...form, questions: ajustadas });
+    if (!form.vendeMarketplaceV1) await repo.update("forms", form.id, { vendeMarketplaceV1: true });
+    return false;
+  }
+
+  const vende = {
+    key: "vende_marketplace",
+    label: "Antes de tudo: você *já vende* em marketplace?",
+    type: "select",
+    required: true,
+    options: [
+      { value: "sim", label: "Sim, já vendo" },
+      // Sai do fluxo de venda e carrega a saída "mentoria" até o fim (as
+      // perguntas de contato são as MESMAS, então o mapping continua valendo).
+      { value: "nao", label: "Ainda não vendo", to: "aprender_interesse", exit: "mentoria" },
+    ],
+  };
+  const aprender = {
+    key: "aprender_interesse",
+    label: "Você tem interesse em *aprender e começar a vender*?",
+    type: "select",
+    required: true,
+    options: [
+      { value: "sim", label: "Sim, quero começar", to: "aprender_verba" },
+      // Disse não duas vezes: acaba aqui, sem pedir contato de quem não quer.
+      { value: "nao", label: "Não, só estava olhando", to: "_end", exit: "sem_interesse" },
+    ],
+  };
+  const verba = {
+    key: "aprender_verba",
+    label: "Qual sua *verba pra começar*?",
+    type: "select",
+    required: true,
+    to: "nome", // volta pras perguntas de contato do fluxo normal
+    options: [
+      { value: "ate-1k", label: "Até R$ 1 mil" },
+      { value: "1k-5k", label: "R$ 1 mil a R$ 5 mil" },
+      { value: "5k-20k", label: "R$ 5 mil a R$ 20 mil" },
+      { value: "20k+", label: "Mais de R$ 20 mil" },
+      // Sem "ainda não sei" de propósito: a verba é o que qualifica essa fila,
+      // e a saída fácil esvaziava a pergunta (decisão do Leo em 22/07).
+    ],
+  };
+
+  // A pergunta nova abre o form; as do ramo novo ficam DEPOIS do contato, então
+  // o fluxo de quem já vende não muda em nada.
+  const contato = new Set([form.mapping?.name, form.mapping?.phone].filter(Boolean));
+  const novas = [vende, ...qs, aprender, verba];
+  // O último passo do fluxo principal precisa terminar explicitamente, senão
+  // cairia nas perguntas do ramo novo que ficam logo abaixo dele.
+  const idxUltimoContato = novas.map((q, i) => (contato.has(q.key) ? i : -1)).filter((i) => i >= 0).pop();
+  if (idxUltimoContato != null) novas[idxUltimoContato] = { ...novas[idxUltimoContato], to: "_end" };
+
+  await repo.update("forms", form.id, {
+    questions: novas,
+    exits: {
+      ...(form.exits || {}),
+      mentoria: {
+        label: "Ainda não vende em marketplace",
+        stage: "Mentoria",
+        title: "Anotado! Você está *no começo da jornada*.",
+        subtitle: "A LeverAds é pra quem já vende e quer escalar, então hoje ela não te serve. Estamos montando algo pra quem está começando: guardamos seu contato e te chamamos quando abrir.",
+      },
+      sem_interesse: {
+        label: "Não quer começar a vender",
+        title: "Tudo certo, obrigado por responder.",
+        subtitle: "Se um dia quiser vender em marketplace, a gente está por aqui.",
+      },
+    },
+    vendeMarketplaceV1: true,
+  });
+  // O card do lead monta o painel de respostas a partir de product.leadQuestions
+  // (não do form). Sem isto, quem cai na Mentoria abre o card e não vê NADA do
+  // que respondeu: as perguntas existiriam só dentro do formulário.
+  await sincronizaPainelDoLead(repo, { ...form, questions: novas });
+  return true;
+}
+
+// Tira a saída fácil da pergunta de verba. Idempotente: roda em todo boot, então
+// vale também pra quem já tinha o formulário com a opção antiga.
+function semRespostaEvasiva(questions) {
+  return questions.map((q) => (q.key === "aprender_verba" && (q.options || []).some((o) => o.value === "nao-sei")
+    ? { ...q, options: q.options.filter((o) => o.value !== "nao-sei") }
+    : q));
+}
+
+async function sincronizaPainelDoLead(repo, form) {
+  const product = await repo.get("products", form.saas || "leverads");
+  if (!product) return;
+  const next = mergeLeadQuestions(product.leadQuestions, form);
+  if (JSON.stringify(next) !== JSON.stringify(product.leadQuestions || [])) {
+    await repo.update("products", product.id, { leadQuestions: next });
+  }
+}
+
+// ── Form: e-mail na tela de contato (ago/2026) ──────────────────────────────
+// A régua de nutrição por e-mail (drip-runner/disparos) só alcança lead com
+// `lead.email`, e o form do diagnóstico pedia apenas nome + WhatsApp. A pergunta
+// entra EMPILHADA na mesma tela do contato, logo depois do telefone, e vai pro
+// `mapping.email` — é o mapping que faz a resposta cair em `lead.email`
+// (leadFromSubmission), valer no dedup por e-mail e ficar FORA do painel de
+// qualificação do card (mergeLeadQuestions ignora chaves do mapping).
+export async function migrateFormEmailContato(repo) {
+  const form = await repo.get("forms", "fo_diagnostico_leverads");
+  if (!form) return false;
+  const qs = [...(form.questions || [])];
+  if (form.emailContatoV1 || qs.some((q) => q.key === "email")) return false;
+  const idx = qs.findIndex((q) => q.key === form.mapping?.phone);
+  if (idx < 0) return false;
+
+  const email = {
+    key: "email",
+    label: "E-mail",
+    type: "email",
+    required: true,
+    stack: true,
+    placeholder: "voce@suaempresa.com.br",
+  };
+  // O fim explícito do fluxo principal (to:"_end") morava na pergunta do
+  // WhatsApp; muda pra nova última pergunta da tela, senão um desempilhamento
+  // futuro do e-mail o deixaria depois do fim.
+  if (qs[idx].to === "_end") {
+    const { to, ...semTo } = qs[idx];
+    qs[idx] = semTo;
+    email.to = "_end";
+  }
+  qs.splice(idx + 1, 0, email);
+
+  await repo.update("forms", form.id, {
+    questions: qs,
+    mapping: { ...(form.mapping || {}), email: "email" },
+    emailContatoV1: true,
+  });
+  return true;
+}
+
+// ── Contratos: campos de preenchimento (ago/2026) ───────────────────────────
+// Os 4 modelos de contrato nasceram com espaços em branco desenhados no HTML
+// (______). A tela Contratos ganhou formulário de preenchimento que interpola
+// tokens {{chave}}; esta migração troca os brancos dos modelos SEED pelos
+// tokens e grava a lista `fields` (rótulo/placeholder) que o formulário lê.
+// Idempotente: pula contrato que já tem token ou `fields`. Se o time editou o
+// corpo na tela e o texto não casa mais, os replaces são no-op e nada quebra —
+// `fields` só entra se o corpo final tiver pelo menos um token.
+
+const CONTRACT_COMMON_REPLACES = [
+  ["Razão social / Nome: ______________________________________________", "Razão social / Nome: {{razao_social}}"],
+  ["CNPJ / CPF: ______________________________________________", "CNPJ / CPF: {{cnpj_cpf}}"],
+  ["Endereço: ______________________________________________", "Endereço: {{endereco}}"],
+  ["Endereço da operação (local das visitas): ______________________________________________", "Endereço da operação (local das visitas): {{endereco}}"],
+  ["Representante legal: ______________________________________________", "Representante legal: {{representante}}"],
+  ["E-mail: ______________________________ &nbsp; WhatsApp: ______________________________", "E-mail: {{email}} &nbsp; WhatsApp: {{whatsapp}}"],
+  ["Forma de pagamento: &nbsp; ☐ PIX à vista &nbsp;&nbsp; ☐ Cartão de crédito em ____x de R$ ______________ &nbsp;&nbsp; ☐ Boleto faturado em ____x de R$ ______________", "Forma de pagamento: {{forma_pagamento}}"],
+  ["Vencimento(s): ______________________________________________", "Vencimento(s): {{vencimentos}}"],
+  ["Valor total: R$ ______________ ( ______________________________________________ )", "Valor total: R$ {{valor_total}} ({{valor_extenso}})"],
+  ["Valor total do período: R$ ______________ ( ______________________________________________ )", "Valor total do período: R$ {{valor_total}} ({{valor_extenso}})"],
+  ["Desenvolvimento + implantação: R$ ______________ ( ______________________________________________ )", "Desenvolvimento + implantação: R$ {{valor_total}} ({{valor_extenso}})"],
+  ["Condições específicas (se houver): ______________________________________________", "Condições específicas (se houver): {{condicoes}}"],
+  ["Personalizações adicionais (se houver): ______________________________________________", "Personalizações adicionais (se houver): {{condicoes}}"],
+  ["____________________________, ______ de ______________________ de 20______.", "{{local_data}}."],
+];
+
+// Campos comuns do Quadro Resumo (a ordem é a do formulário da tela).
+const CONTRACT_COMMON_FIELDS = [
+  { key: "razao_social", label: "Razão social / Nome" },
+  { key: "cnpj_cpf", label: "CNPJ / CPF" },
+  { key: "endereco", label: "Endereço" },
+  { key: "representante", label: "Representante legal" },
+  { key: "email", label: "E-mail" },
+  { key: "whatsapp", label: "WhatsApp", placeholder: "(11) 98765-4321" },
+  { key: "valor_total", label: "Valor total (R$)", placeholder: "40.000,00" },
+  { key: "valor_extenso", label: "Valor por extenso", placeholder: "quarenta mil reais" },
+  { key: "forma_pagamento", label: "Forma de pagamento", placeholder: "Cartão de crédito em 12x de R$ 3.333,33" },
+  { key: "vencimentos", label: "Vencimento(s)", placeholder: "primeira em 10/09/2026, demais todo dia 10" },
+  { key: "condicoes", label: "Condições específicas", multiline: true, placeholder: "se houver" },
+  { key: "local_data", label: "Local e data da assinatura", placeholder: "Curitiba, 10 de agosto de 2026" },
+];
+
+const CONTRACT_FILL_SEED = {
+  co_assinatura_leverads: {
+    replaces: [
+      ["☐ Plano Anual (12 meses) &nbsp;&nbsp; ☐ Plano Semestral (6 meses) &nbsp;&nbsp; ☐ Outro: __________________", "Plano: {{plano}}"],
+      ["Contas de marketplace incluídas: Mercado Livre ( ____ ) &nbsp; Shopee ( ____ )", "Contas de marketplace incluídas: Mercado Livre ( {{contas_ml}} ) &nbsp; Shopee ( {{contas_shopee}} )"],
+      ["____ meses contados da assinatura deste contrato, renovando-se conforme a Cláusula 8ª.", "{{vigencia_meses}} meses contados da assinatura deste contrato, renovando-se conforme a Cláusula 8ª."],
+      // A linha extra de continuação do "Condições específicas" fica órfã depois
+      // do replace comum — remove junto com o <br> que a precede.
+      ["{{condicoes}}<br>\n      ______________________________________________", "{{condicoes}}"],
+    ],
+    fields: [
+      { key: "plano", label: "Plano contratado", placeholder: "Plano Anual (12 meses)" },
+      { key: "contas_ml", label: "Contas Mercado Livre", placeholder: "3" },
+      { key: "contas_shopee", label: "Contas Shopee", placeholder: "2" },
+      { key: "vigencia_meses", label: "Vigência (meses)", placeholder: "12" },
+    ],
+  },
+  co_consultoria_logistica: {
+    replaces: [
+      ["☐ Incluídas no valor total &nbsp;&nbsp; ☐ Por conta do CONTRATANTE, mediante reembolso comprovado (deslocamento, hospedagem e alimentação da equipe da LEVER)", "{{despesas}}"],
+      ["Conclusão do escopo em ______ dias corridos", "Conclusão do escopo em {{prazo_dias}} dias corridos"],
+    ],
+    fields: [
+      { key: "despesas", label: "Despesas de deslocamento", placeholder: "Incluídas no valor total" },
+      { key: "prazo_dias", label: "Prazo (dias corridos)", placeholder: "90" },
+    ],
+  },
+  co_erp_tiny_olist: {
+    replaces: [
+      ["Tiny ERP (Olist) · plano: ______________________ ·", "Tiny ERP (Olist) · plano: {{plano_erp}} ·"],
+      ["Go-live em ______ dias corridos", "Go-live em {{prazo_dias}} dias corridos"],
+    ],
+    fields: [
+      { key: "plano_erp", label: "Plano do ERP", placeholder: "Grande" },
+      { key: "prazo_dias", label: "Prazo até o go-live (dias)", placeholder: "45" },
+    ],
+  },
+  co_leverwms: {
+    replaces: [
+      ["✓ Integração direta com o ERP: ______________________<br>", "✓ Integração direta com o ERP: {{erp_integrado}}<br>"],
+      ["Hospedagem, manutenção e suporte: &nbsp; ☐ incluídos durante a vigência da licença &nbsp;&nbsp; ☐ R$ ______________ / ano a partir do 2º ano", "Hospedagem, manutenção e suporte: {{manutencao}}"],
+      ["______ dias corridos (estimativa de referência: 45 a 90 dias)", "{{prazo_dias}} dias corridos (estimativa de referência: 45 a 90 dias)"],
+      ["______ meses contados do aceite, renovando-se conforme a Cláusula 10ª.", "{{vigencia_meses}} meses contados do aceite, renovando-se conforme a Cláusula 10ª."],
+    ],
+    fields: [
+      { key: "erp_integrado", label: "ERP integrado", placeholder: "Tiny ERP (Olist)" },
+      { key: "manutencao", label: "Hospedagem / manutenção", placeholder: "incluídas durante a vigência da licença" },
+      { key: "prazo_dias", label: "Prazo de implementação (dias)", placeholder: "90" },
+      { key: "vigencia_meses", label: "Vigência da licença (meses)", placeholder: "12" },
+    ],
+  },
+};
+
+// Replace tolerante: no padrão, runs de "_" casam com qualquer tamanho de linha
+// em branco e whitespace casa com whitespace — contar underscore exato seria
+// frágil. O replacement entra via função pra "$" não ser tratado como especial.
+function contractRep(body, from, to) {
+  const pattern = from
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/_{2,}/g, "_+")
+    .replace(/\s+/g, "\\s+");
+  return body.replace(new RegExp(pattern, "g"), () => to);
+}
+
+export async function migrateContractFillTokens(repo) {
+  let n = 0;
+  for (const [id, seed] of Object.entries(CONTRACT_FILL_SEED)) {
+    const c = await repo.get("contracts", id).catch(() => null);
+    if (!c || !c.body) continue;
+    if (c.body.includes("{{") || (Array.isArray(c.fields) && c.fields.length)) continue; // já migrado
+    let body = c.body;
+    for (const [from, to] of [...CONTRACT_COMMON_REPLACES, ...seed.replaces]) body = contractRep(body, from, to);
+    if (!body.includes("{{")) continue; // corpo editado à mão, nada casou: não mexe
+    // Só entra em `fields` o campo cujo token existe no corpo final (o modelo 2
+    // não tem "Vencimento(s)" no 4, por exemplo — cada corpo dita seus campos).
+    const fields = [...CONTRACT_COMMON_FIELDS, ...seed.fields]
+      .map((f) => (c.saas === "leverads" && id === "co_consultoria_logistica" && f.key === "endereco" ? { ...f, label: "Endereço da operação (local das visitas)" } : f))
+      .filter((f) => body.includes(`{{${f.key}}}`));
+    await repo.update("contracts", id, { body, fields });
+    n++;
+  }
+  return n;
+}
+
+// ── Catálogo de produto/oferta da proposta (aprovado pelo Leo, 04-06/08/2026) ──
+// Liga a tela zero com régua + produto no deck do leverads: alinha as faixas de
+// anúncios do template às COLUNAS da régua de qualidade (o form já pergunta
+// `listings` exatamente nessas faixas) e grava o catálogo em calc.catalog
+// (preços aprovados, dores do painMap e perguntas SPIN por dor). One-shot: se o
+// template já tem calc.catalog, não mexe — edição do dono é soberana.
+const LEVERADS_VOLUME_MID = { "0-100": 50, "100-500": 300, "500-2000": 1200, "2000-10000": 5000, "10000+": 20000 };
+const LEVERADS_CATALOG = {
+  accounts: ["1", "2", "3-5", "6-10", "10+"],
+  volLabels: ["≤100", "100-500", "500-2k", "2-10k", "10k+"],
+  // Espelho do GRADE_GRID de packages/web/src/lib/ui.js (calibração 24/07).
+  grid: [
+    ["E", "D", "C", "C", "C"],
+    ["D", "C", "C", "B", "B"],
+    ["C", "B", "B", "A", "A"],
+    ["B", "B", "A", "S", "S"],
+    ["A", "A", "A", "S", "S"],
+  ],
+  // Catálogo v2 (mapa mental "Produtos", Leo, 10/09/2026): três LINHAS
+  // (oem / ads / price) × PACOTES (essencial / escala / enterprise), só ANUAL
+  // (abre a apresentação) e SEMESTRAL (Shift+1). A recorrente saiu.
+  //   anu.total = anu.per × 12 · sem.total = sem.per × 6.
+  // OEM e Ads têm o MESMO preço: a diferença é o nicho (autopeças leva a
+  // criação por OEM inclusa). Enterprise de OEM/Ads é sob consulta e por isso
+  // não está em `products` (não vira deck; fecha como Personalizado). O do
+  // Price tem preço. Entregáveis (`inclui`) vivem AQUI, como os preços: número
+  // de produto não se escreve no texto do slide.
+  catalogV: 2,
+  tierByAccounts: { "1": "essencial", "2": "essencial", "3-5": "essencial", "6-10": "escala", "10+": "enterprise" },
+  lines: {
+    oem: { name: "Lever OEM", enterprise: "sob consulta" },
+    ads: { name: "Lever Ads", enterprise: "sob consulta" },
+    price: { name: "Lever Price", enterprise: "" },
+  },
+  products: {
+    oem_essencial: {
+      line: "oem", tier: "essencial", name: "Ads Essencial + OEM", contas: 3, cota: 200,
+      inclui: {
+        motor: ["200 anúncios OEM criados por mês, com compatibilidade veicular", "Sincronização das suas contas (Meli + Shopee)", "Cópia de anúncios entre contas com títulos sugeridos"],
+        plataforma: ["Edição em massa por SKU", "SAC centralizado e automatizado pela descrição dos produtos", "3 contas incluídas"],
+      },
+      anu: { total: 5964, per: 497 }, sem: { total: 3582, per: 597 },
+    },
+    oem_escala: {
+      line: "oem", tier: "escala", name: "Ads Escala + OEM", contas: 7, cota: 0, cotaLabel: "OEM ilimitado",
+      inclui: {
+        motor: ["Anúncios OEM sem limite mensal, com compatibilidade veicular", "Equalização das suas contas", "Sincronização das suas contas (Meli + Shopee)", "Cópia de anúncios entre contas com títulos sugeridos"],
+        plataforma: ["Edição em massa por SKU", "SAC centralizado e automatizado pela descrição dos produtos", "7 contas incluídas · conta extra R$ 100/mês"],
+      },
+      anu: { total: 11988, per: 999 }, sem: { total: 7182, per: 1197 },
+    },
+    ads_essencial: {
+      line: "ads", tier: "essencial", name: "Ads Essencial", contas: 3, equalizacao: false,
+      inclui: {
+        motor: ["Sincronização das suas contas (Meli + Shopee)", "Cópia de anúncios entre contas com títulos sugeridos", "Edição em massa por SKU"],
+        plataforma: ["SAC centralizado e automatizado pela descrição dos produtos", "3 contas incluídas"],
+      },
+      anu: { total: 5964, per: 497 }, sem: { total: 3582, per: 597 },
+    },
+    ads_escala: {
+      line: "ads", tier: "escala", name: "Ads Escala", contas: 7, equalizacao: true,
+      inclui: {
+        motor: ["Equalização das suas contas", "Sincronização das suas contas (Meli + Shopee)", "Cópia de anúncios entre contas com títulos sugeridos", "Edição em massa por SKU"],
+        plataforma: ["SAC centralizado e automatizado pela descrição dos produtos", "7 contas incluídas · conta extra R$ 100/mês"],
+      },
+      anu: { total: 11988, per: 999 }, sem: { total: 7182, per: 1197 },
+    },
+    price_essencial: {
+      line: "price", tier: "essencial", name: "Lever Price · Essencial", limite: 1000,
+      inclui: {
+        motor: ["Precificação automática de até 1.000 anúncios", "Regras de preço por margem e concorrência"],
+        plataforma: ["Acompanhamento de preço e margem no painel", "Alertas de anúncio fora da regra"],
+      },
+      anu: { total: 9564, per: 797 }, sem: { total: 5082, per: 847 },
+    },
+    price_escala: {
+      line: "price", tier: "escala", name: "Lever Price · Escala", limite: 10000,
+      inclui: {
+        motor: ["Precificação automática de até 10.000 anúncios", "Regras de preço por margem e concorrência"],
+        plataforma: ["Acompanhamento de preço e margem no painel", "Alertas de anúncio fora da regra"],
+      },
+      anu: { total: 17964, per: 1497 }, sem: { total: 11382, per: 1897 },
+    },
+    price_enterprise: {
+      line: "price", tier: "enterprise", name: "Lever Price · Enterprise", limite: 0, limiteLabel: "anúncios ilimitados",
+      inclui: {
+        motor: ["Precificação automática sem limite de anúncios", "Regras de preço por margem e concorrência"],
+        plataforma: ["Acompanhamento de preço e margem no painel", "Alertas de anúncio fora da regra"],
+      },
+      anu: { total: 41964, per: 3497 }, sem: { total: 23982, per: 3997 },
+    },
+  },
+  // Adicionais e pacotes: tabela de consulta do closer na tela zero. O pacote
+  // de OEM é vendível (serviço único) pelo gate de Ganho; setups sem preço
+  // aparecem como "sob consulta".
+  addons: {
+    contaExtra: { label: "Conta extra no Escala", per: 100 },
+    setups: [{ label: "Setup de Equalização" }, { label: "Setup de Otimização" }],
+  },
+  oemPacks: [{ qty: 1000, price: 2000 }, { qty: 2000, price: 3500 }, { qty: 3000, price: 4500 }],
+  // Dores do painMap do produto + perguntas SPIN (definidas com o Leo 06/08).
+  pains: {
+    A: {
+      label: "Subir os mesmos anúncios nas outras contas",
+      spin: {
+        S: "Hoje, quando você publica um produto novo, como funciona? Sobe na conta principal e depois replica nas outras? Quem faz isso?",
+        P: "Quanto tempo por semana vai embora só copiando anúncio de conta pra conta? Qual parte é a pior: ficha técnica, variações, fotos?",
+        I: "Enquanto o produto não está nas outras contas, quantas vendas elas deixam de fazer? Já desistiu de subir em alguma conta por pura falta de braço?",
+        N: "Se o que você sobe na conta principal aparecesse nas outras em minutos, o que você faria com essas horas? Subiria mais produto?",
+      },
+    },
+    B: {
+      label: "Conta banida, precisa anunciar em conta nova",
+      spin: {
+        S: "Você já passou por suspensão ou queda de conta? Hoje, quanto do seu faturamento depende de uma conta só?",
+        P: "Na época, quanto tempo levou pra reerguer a operação? O que foi mais difícil: refazer os anúncios, a reputação, o catálogo?",
+        I: "Se a sua conta principal caísse amanhã, quanto você perde por dia até reconstruir? Esse risco já te fez segurar investimento?",
+        N: "Faria diferença ter as outras contas já espelhadas, prontas, pra uma queda virar solavanco em vez de parar a empresa?",
+      },
+    },
+    C: {
+      label: "Gerenciar SKUs com múltiplos anúncios em múltiplas contas",
+      spin: {
+        S: "Somando todas as contas, quantos anúncios você administra? Quando muda preço ou ficha de um produto, como isso chega nas outras contas?",
+        P: "Com que frequência aparece anúncio desatualizado em alguma conta (preço antigo, atributo errado)? E você descobre como, por acaso?",
+        I: "Um preço errado numa conta que você olha pouco, quanto custa até alguém perceber? Já tomou prejuízo ou punição do marketplace por isso?",
+        N: "E se uma alteração feita uma vez se propagasse pra todos os anúncios daquele SKU, em todas as contas? O que isso mudaria na sua segurança pra crescer?",
+      },
+    },
+    D: {
+      label: "Economizar folha salarial e reduzir riscos",
+      spin: {
+        S: "Quantas pessoas cuidam dos seus anúncios hoje? O que elas fazem no dia a dia, na prática?",
+        P: "Quanto dessa rotina é repetição (copiar, conferir, ajustar) em vez de coisa que gera venda? E quando alguém sai de férias ou pede as contas?",
+        I: "Pra dobrar de contas no seu modelo atual, quantas contratações seriam? E um erro manual grave, tipo atributo errado em escala, o que já te custou?",
+        N: "Se a replicação rodasse sozinha, você enxugaria a folha ou realocaria o time pra venda? Quanto isso vale por mês?",
+      },
+    },
+    E: {
+      label: "Mais exposição no marketplace pra vender mais",
+      spin: {
+        S: "Seu catálogo completo está ativo em quantas contas hoje? Na busca do ML, o comprador te encontra uma vez ou várias?",
+        P: "O que te impede de ter tudo ativo em mais contas: trabalho, tempo, medo de bagunçar a operação?",
+        I: "Cada conta a mais é uma posição a mais na página de busca. Quanto você estima que fica na mesa com o catálogo cheio numa conta só, enquanto o concorrente aparece três vezes?",
+        N: "Se ativar o catálogo em mais duas ou três contas custasse horas em vez de meses, o que acontece com seu faturamento? Quer simular com seus números?",
+      },
+    },
+    // Dor de anúncio OEM (agosto/2026): o lead clicou num anúncio de part
+    // number, não de clonagem. Como as A-E, só troca a trilha SPIN — o
+    // produto/preço sai da régua (pedido do Leo, 15/08/2026: quem veio pelo
+    // OEM também serve pro LeverAds); OEM avulso é escolha manual do closer.
+    OEM: {
+      label: "Anunciar pelo código OEM sem montar ficha nem compatibilidade",
+      spin: {
+        S: "Como nasce um anúncio de peça na sua operação hoje? Alguém monta a ficha técnica e as aplicações, ou você só sobe o que já vem pronto do fornecedor?",
+        P: "Quanto tempo leva pra publicar UMA peça com ficha completa e todas as compatibilidades? Quantos códigos do seu catálogo seguem sem anúncio porque dá esse trabalho?",
+        I: "Cada código que você não anuncia é uma busca em que o comprador acha o concorrente. E anúncio com aplicação errada já te custou devolução ou reclamação?",
+        N: "Se você mandasse só a lista de códigos e os anúncios voltassem prontos (foto, descrição, compatibilidade) publicados na sua conta, quantas peças você subiria por mês?",
+      },
+    },
+    none: {
+      label: "Sem código (não veio de anúncio)",
+      tip: "Abre com a Situação genérica (me conta como está a operação hoje, quantas contas, quem cuida) e escolhe a trilha A-E conforme a primeira dor que ele verbalizar.",
+    },
+  },
+};
+
+export async function ensureProposalCatalog(repo) {
+  const t = await repo.get("proposal_templates", "pt_leverads");
+  if (!t || (t.calc && t.calc.catalog)) return false;
+  const calc = { ...(t.calc || {}) };
+  calc.volumeKey = "listings";
+  calc.volumeMid = { ...LEVERADS_VOLUME_MID };
+  // CÓPIA: sem isso o template (e todo snapshot que sair dele em memória)
+  // aponta pro mesmo objeto do módulo, e uma edição de catálogo vaza pros
+  // outros — o teste do serviço único pegou isso.
+  calc.catalog = JSON.parse(JSON.stringify(LEVERADS_CATALOG));
+  await repo.update("proposal_templates", "pt_leverads", { calc });
+  return true;
+}
+
+// Retroativo (pedido do Leo, 06/08): as propostas JÁ GERADAS do pt_leverads
+// entram no fluxo novo — re-snapshot do template atual (catálogo, faixas da
+// régua, as duas bases de pricing) preservando id/link/editKey/views e os
+// dados do lead, então o link que o closer já tem passa a abrir a tela zero
+// com régua. Ficam FORA por segurança: propostas ACEITAS (história fechada) e
+// snapshots de cliente já compartilhados (sharedFrom) — mudar o preço que está
+// na mão do cliente é decisão humana; re-compartilhar já re-snapshota.
+// Idempotente: proposta com calc.catalog não é tocada de novo.
+export async function backfillProposalCatalog(repo) {
+  const t = await repo.get("proposal_templates", "pt_leverads");
+  if (!t || !t.calc?.catalog) return 0; // depende do ensureProposalCatalog
+  const proposals = await repo.list("proposals");
+  let n = 0;
+  for (const p of proposals) {
+    if (p.template !== "pt_leverads") continue;
+    if (p.sharedFrom || p.accepted) continue;
+    if (p.calc && p.calc.catalog) continue;
+    const answers = p.data?.answers || {};
+    const state = { ...(p.state || {}) };
+    // Faixa de anúncios: a resposta atual do form (listings) quando existe;
+    // senão a faixa antiga vira a coluna equivalente da régua pelo ponto médio.
+    const vm = t.calc.volumeMid || {};
+    const bands = Object.keys(vm);
+    const fromAnswers = answers[t.calc.volumeKey || "listings"];
+    if (fromAnswers != null && vm[String(fromAnswers)] != null) {
+      state.volume = String(fromAnswers);
+    } else {
+      const oldMid = Number((p.calc?.volumeMid || {})[state.volume]) || 0;
+      const col = oldMid <= 100 ? 0 : oldMid <= 500 ? 1 : oldMid <= 2000 ? 2 : oldMid <= 10000 ? 3 : 4;
+      state.volume = bands[Math.min(col, bands.length - 1)] || state.volume || "";
+    }
+    const seats = Number((t.calc.seatsMap || {})[state.accounts]);
+    if (seats) state.seats = seats;
+    // Mesma régua de snapshot do runNativeProposal com catálogo: pricing é
+    // matéria-prima do produto e entra sempre; o resto respeita o showIf.
+    await repo.update("proposals", p.id, {
+      theme: t.theme || {},
+      calc: t.calc,
+      slides: (t.slides || []).filter((s) => s?.type === "pricing" || slideVisible(s, answers)),
+      state,
+    });
+    n++;
+  }
+  return n;
+}
+
+// ── Tabela de preços do catálogo (versão no marcador pricingV) ─────────────
+// 21/08/2026: o Leo refez a tabela: ANO (12 × mensal), SEMESTRAL (6 × mensal) e RECORRENTE
+// (clonagem na entrada + mensalidade), e subiu os limites do OEM (125/250/500,
+// mesmo preço). Como o catálogo vive no BANCO (calc.catalog do template, e
+// congelado em cada proposta), mudar o default do código não muda nada em
+// produção — é preciso reprecificar o template e as propostas abertas.
+//
+// Marcador `pricingV` no catálogo em vez de comparar preço: assim o Leo pode
+// editar um valor pela mão depois sem que a migração volte e atropele a edição
+// dele no próximo boot.
+// 31/08/2026: a entrega do combo Parcial + OEM subiu de 125 pra 250 anúncios/
+// mês (mesmo preço) — o bump da versão re-aplica os produtos do seed no
+// template e nas propostas abertas, exatamente como na tabela de 21/08.
+// 10/09/2026: catálogo v2 (mapa "Produtos"): OEM / Ads / Price × Essencial /
+// Escala / Enterprise, só anual e semestral. O bump reescreve `products` e
+// grava as chaves novas do shape (lines, addons, oemPacks, tierByAccounts,
+// catalogV) no template e nas propostas abertas; a clonagem avulsa (oneOff)
+// sai. Dores/SPIN e a matriz S-E ficam como estão no banco.
+const PRICING_VERSION = "2026-09-10";
+// De-para do produto escolhido pelo closer (state.product) do catálogo v1 pro
+// v2. Sem isto a proposta aberta perderia a escolha e cairia na régua. OEM
+// avulso e o combo viram o OEM Essencial; FULL vira o Ads Escala.
+const PRODUCT_KEY_REMAP = { full: "ads_escala", parcialA: "ads_essencial", fulloem: "oem_escala", parcialoem: "oem_essencial", oem: "oem_essencial" };
+
+export async function migrateCatalogPricing(repo) {
+  const t = await repo.get("proposal_templates", "pt_leverads");
+  const catalog = t?.calc?.catalog;
+  if (!catalog) return false; // sem catálogo ainda: ensureProposalCatalog cuida
+  if (catalog.pricingV === PRICING_VERSION) return false;
+  // Só o que é PRODUTO (products, lines, addons, oemPacks, tierByAccounts):
+  // régua e dores/SPIN seguem como estão no banco (podem ter sido editados
+  // pelo dono). A clonagem avulsa (oneOff) deixou de existir no v2.
+  const { oneOff, ...rest } = catalog;
+  const pick = (k) => JSON.parse(JSON.stringify(LEVERADS_CATALOG[k]));
+  const calc = {
+    ...t.calc,
+    catalog: {
+      ...rest,
+      products: pick("products"),
+      lines: pick("lines"),
+      addons: pick("addons"),
+      oemPacks: pick("oemPacks"),
+      tierByAccounts: pick("tierByAccounts"),
+      catalogV: LEVERADS_CATALOG.catalogV,
+      pricingV: PRICING_VERSION,
+    },
+  };
+  await repo.update("proposal_templates", "pt_leverads", { calc });
+  return true;
+}
+
+// Propostas ABERTAS recebem a tabela nova (decisão do Leo, 21/08: reprecificar
+// todas). Mesmo recorte dos retroativos anteriores: ACEITAS e snapshots já
+// compartilhados com cliente (sharedFrom) ficam de fora, porque mexer no preço
+// que está na mão do cliente é decisão humana. O `lead.amount` de quem já
+// recebeu proposta NÃO é tocado: ele registra o que foi apresentado na época.
+export async function backfillCatalogPricing(repo) {
+  const t = await repo.get("proposal_templates", "pt_leverads");
+  const catalog = t?.calc?.catalog;
+  if (catalog?.pricingV !== PRICING_VERSION) return 0; // depende da migração acima
+  const proposals = await repo.list("proposals");
+  let n = 0;
+  for (const p of proposals) {
+    if (p.template !== "pt_leverads") continue;
+    if (p.sharedFrom || p.accepted) continue;
+    if (p.calc?.catalog?.pricingV === PRICING_VERSION) continue;
+    // CÓPIA do catálogo (mesma lição do ensureProposalCatalog): sem ela todos
+    // os snapshots apontariam pro mesmo objeto e uma edição vazaria pros outros.
+    const patch = { calc: { ...p.calc, catalog: JSON.parse(JSON.stringify(catalog)) } };
+    // Escolha do closer sobrevive à troca de catálogo (de-para acima); produto
+    // desconhecido volta pra régua. A cota do OEM avulso não existe mais.
+    const state = { ...(p.state || {}) };
+    delete state.oemCota;
+    const prod = String(state.product || "");
+    if (prod && !catalog.products?.[prod]) state.product = PRODUCT_KEY_REMAP[prod] || "";
+    patch.state = state;
+    await repo.update("proposals", p.id, patch);
+    n++;
+  }
+  return n;
+}
+
+// ── Card do pipeline = preço da apresentação (pedido do Leo, 15/08/2026) ────
+// O amount do lead nascia da fórmula por assentos (contractValue) e ignorava o
+// PRODUTO que a régua sugere: o card mostrava R$ 8,4k enquanto o closer
+// abria um FULL de R$ 7.188. A geração e a tela zero agora gravam o preço do
+// produto ativo (catalogAmount); esta rotina alinha os leads ABERTOS já
+// gerados e re-aplica a regra a cada boot — até o fechamento, o valor do card
+// É o da apresentação, então drift (edição manual no drawer, dado antigo) não
+// sobrevive ao deploy. Ficam fora: lead em estágio terminal (ganho/perdido/
+// desqualificado), fechado (planClosed/wonAt), proposta aceita (preço na mão
+// do cliente) e proposta sem catálogo. Idempotente: valor já alinhado não mexe.
+export async function syncOpenLeadAmounts(repo) {
+  const products = new Map((await repo.list("products")).map((p) => [p.id, p]));
+  const proposals = new Map((await repo.list("proposals")).map((p) => [p.id, p]));
+  const leads = await repo.list("leads");
+  let n = 0;
+  for (const lead of leads) {
+    if (!lead.proposta_id || lead.planClosed || lead.wonAt) continue;
+    if (TERMINAL_KINDS.has(kindOf(products.get(lead.saas), lead.stage))) continue;
+    const p = proposals.get(lead.proposta_id);
+    if (!p || p.accepted) continue;
+    const amount = catalogAmount(p);
+    if (!(amount > 0) || Number(lead.amount) === amount) continue;
+    await repo.update("leads", lead.id, { amount });
+    n++;
+  }
+  return n;
+}
+
+// ── Conta grande (keyAccount) ───────────────────────────────────────────────
+// Cliente fora da régua (Galante R$ 120 mil, CRGroup R$ 300 mil, no meio de
+// vendas de R$ 3 a 7 mil): o flag `keyAccount` tira ele das MÉDIAS e das metas
+// derivadas por contrato (pace/Metas/Visão geral/placar do closer) sem tirar o
+// dinheiro do caixa nem do vendido. Carimba os conhecidos uma vez; cliente novo
+// é marcado na ficha (campo "Conta grande").
+//
+// Idempotente e respeitosa: só age em cliente que NUNCA foi marcado (campo
+// ausente). Desmarcado de propósito (campo presente com valor falso) não volta.
+const KEY_ACCOUNTS = [/galante/i, /cr\s*group/i];
+
+// Prêmio da indicação FECHADA: R$ 250 → R$ 500 (Leo, 12/09/2026). Sobe só o
+// que ainda está no valor antigo, pra não pisar em ajuste feito na tela.
+export async function migrateReferralClosedValue(repo) {
+  const docs = await repo.list("comp_plans");
+  let n = 0;
+  for (const doc of docs) {
+    if (doc?.role !== "cs" || !doc.plan) continue;
+    if (Number(doc.plan.referralClosed) !== 250) continue;
+    await repo.update("comp_plans", doc.id, { plan: { ...doc.plan, referralClosed: 500 } });
+    n++;
+  }
+  return n;
+}
+
+export async function ensureKeyAccounts(repo) {
+  const customers = await repo.list("customers");
+  let n = 0;
+  for (const c of customers) {
+    if (c.saas !== "leverads" || c.keyAccount !== undefined) continue;
+    if (!KEY_ACCOUNTS.some((re) => re.test(String(c.name || "")))) continue;
+    await repo.update("customers", c.id, { keyAccount: true });
+    n++;
+  }
+  return n;
+}
+
+// ── Papéis do time (Leo, 08/08) ─────────────────────────────────────────────
+// O Vitor é CS (integrator) e a Manuela é SDR — a etiqueta extra de closer que
+// os dois carregavam pintava bloco de closer nos cards da Visão geral e diluía
+// a meta de time dos closers de verdade. ONE-SHOT (flag no produto): rodou uma
+// vez, o Leo pode re-etiquetar em Ajustes → Equipe sem a migração desfazer.
+export async function migrateRolesCsSdr(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product || product.rolesCsSdrV1) return false;
+  const users = await repo.list("users").catch(() => []);
+  let changed = 0;
+  for (const u of users) {
+    const roles = Array.isArray(u.roles) ? u.roles : [];
+    const name = String(u.name || "");
+    if (/manuela/i.test(name) && roles.includes("closer")) {
+      await repo.update("users", u.id, { roles: roles.filter((r) => r !== "closer") });
+      changed++;
+    }
+    if (/^vitor/i.test(name.trim()) && roles.some((r) => r === "closer" || r === "sdr")) {
+      await repo.update("users", u.id, { roles: roles.filter((r) => r !== "closer" && r !== "sdr") });
+      changed++;
+    }
+  }
+  await repo.update("products", "leverads", { rolesCsSdrV1: true });
+  return changed;
+}
+
+
+// Backfill dos sinais do inbox por conversa (ago/2026): `hasIn` (o lead já
+// respondeu alguma vez) e `lastOutAuthor` (quem falou por último do nosso lado,
+// humano ou sdr-bot) — recordMessage mantém os dois daqui pra frente; isto
+// preenche as conversas que nasceram antes. Idempotente: só toca thread que
+// ainda não tem o campo `hasIn`.
+export async function backfillWaThreadSignals(repo) {
+  const threads = await repo.list("wa_threads");
+  const missing = threads.filter((t) => t.hasIn === undefined);
+  if (!missing.length) return 0;
+  const messages = await repo.list("wa_messages");
+  const byThread = new Map();
+  for (const m of messages) {
+    if (!byThread.has(m.thread)) byThread.set(m.thread, []);
+    byThread.get(m.thread).push(m);
+  }
+  let n = 0;
+  for (const t of missing) {
+    const msgs = (byThread.get(t.id) || []).sort((a, b) => String(a.at || "").localeCompare(String(b.at || "")));
+    const lastOut = [...msgs].reverse().find((x) => x.direction === "out");
+    await repo.update("wa_threads", t.id, {
+      hasIn: msgs.some((x) => x.direction === "in"),
+      lastOutAuthor: lastOut?.author || "",
+    }, { silent: true });
+    n++;
+  }
+  return n;
+}
+
+
+// ── Classificação v2 (09/2026) ────────────────────────────────────────────
+// Liga os formulários por produto e as trilhas de nutrição. DESARMADA por
+// padrão: cria a chave `classificacao_v2` em app_config com enabled=false e
+// sai. Nada acontece até alguém virar a flag.
+//
+// Existe assim porque o processo novo precisa de alinhamento com a SDR antes
+// de entrar no ar, e porque a fiação MEXE no que o lead vê: as opções de
+// `accounts`/`listings` são recortadas nas fronteiras comerciais novas, e o
+// formulário público passa a fazer duas perguntas abertas. Merge de código
+// não pode disparar isso sozinho.
+export const CLASSIFICACAO_V2_FLAG = "classificacao_v2";
+
+export async function ensureClassificacaoV2(repo) {
+  const atual = await repo.get("app_config", CLASSIFICACAO_V2_FLAG);
+  if (!atual) {
+    // Primeira subida: só publica a flag, pra ela existir na tela e alguém
+    // poder ligar quando o processo estiver alinhado.
+    await repo.create("app_config", {
+      id: CLASSIFICACAO_V2_FLAG,
+      enabled: false,   // perguntas da classificação no card do lead
+      nutricao: false,  // sequências de nutrição (depende de alinhamento com a SDR)
+      ligadoEm: "",
+      nota: "enabled = perguntas da classificação no card. nutricao = trilhas automatizadas; alinhar com a SDR antes.",
+    }, CLASSIFICACAO_V2_FLAG);
+    return 0;
+  }
+  if (atual.enabled !== true) return 0;
+
+  const { LEAD_QUESTIONS_UNIAO } = await import("../forms/lead-questions.produtos.js");
+  const { TRILHAS } = await import("../crm/cadencia-nutricao.js");
+
+  let mudou = 0;
+
+  // 1) Perguntas no card do lead. mergeLeadQuestions casa por `key`: chave
+  // nova entra, chave existente tem as OPÇÕES atualizadas (é aqui que as
+  // faixas recortadas passam a valer). A união dos três formulários vira o
+  // schema do lead — o pipeline é um só.
+  const produto = await repo.get("products", "leverads");
+  if (produto) {
+    const antes = JSON.stringify(produto.leadQuestions || []);
+    const depois = mergeLeadQuestions(produto.leadQuestions || [], { questions: LEAD_QUESTIONS_UNIAO });
+    if (JSON.stringify(depois) !== antes) {
+      await repo.update("products", "leverads", { leadQuestions: depois });
+      mudou += 1;
+    }
+  }
+
+  // 2) Sequências de nutrição, uma por trilha — atrás de uma flag PRÓPRIA.
+  // Separadas das perguntas porque são coisas diferentes: as perguntas são
+  // classificação (o que a SDR lê no card), as sequências são o processo de
+  // nutrição automatizada, que depende de alinhamento com a SDR. Ligar uma não
+  // pode arrastar a outra.
+  if (atual.nutricao !== true) return mudou;
+
+  for (const t of Object.values(TRILHAS)) {
+    const existente = await repo.get("sequences", t.id);
+    if (existente) continue;
+    await repo.create("sequences", {
+      id: t.id, saas: "leverads", name: t.nome, active: false,
+      trigger: { stages: [], reasons: t.reasons },
+      steps: t.steps, exitOn: {},
+    }, t.id);
+    mudou += 1;
+  }
+
+  return mudou;
+}
+
+// ── Formulários v2 + teste A/B (09/2026) ──────────────────────────────────
+// Cria os três formulários por linha de produto e a config do split. Roda
+// SEMPRE, porque nada aqui muda tráfego: os formulários nascem em `draft` (o
+// A/B só serve formulário publicado) e a config nasce com enabled=false.
+//
+// Publicar e ligar são dois atos deliberados, na tela — deploy não faz nenhum
+// dos dois. O percentual fica em 20 pré-configurado pra ligar ser uma flag só.
+export async function ensureFormsV2(repo) {
+  const { FORMS_V2, FORM_IDS } = await import("../forms/forms-v2.leverads.js");
+  const { FORM_AB_FLAG } = await import("../forms/form-ab.js");
+  let criados = 0;
+
+  for (const form of FORMS_V2) {
+    // Nunca sobrescreve: a partir da primeira subida o dono do conteúdo é a
+    // tela, não este arquivo.
+    if (await repo.get("forms", form.id)) continue;
+    await repo.create("forms", form, form.id);
+    criados += 1;
+  }
+
+  if (!(await repo.get("app_config", FORM_AB_FLAG))) {
+    await repo.create("app_config", {
+      id: FORM_AB_FLAG,
+      enabled: false,
+      pct: 20,
+      // Só quem chega pelo formulário de controle entra no sorteio.
+      onlyForms: ["fo_diagnostico_leverads"],
+      // Campanhas de OEM são as que carregam [OEM] no nome do anúncio
+      // (convenção de attribution.js); as demais são Lever Ads.
+      byPain: { OEM: FORM_IDS.oem },
+      fallback: FORM_IDS.ads,
+      nota: "Manda pct% do tráfego pago pros formulários v2. Publicar os formulários antes de ligar.",
+    }, FORM_AB_FLAG);
+    criados += 1;
+  }
+
+  return criados;
+}
+
+// Leonardo, 16/09/2026: encerrar o split e usar 100% dos formulários novos.
+// Ativa junto do código que resolve anúncios ainda sem insights e PRICE.
+// Só uma vez e com os três destinos já publicados; não publica rascunhos nem
+// sobrescreve ajustes operacionais feitos depois desta migração.
+export async function ensureFormsV2FullRouting(repo) {
+  const { FORM_IDS } = await import("../forms/forms-v2.leverads.js");
+  const { FORM_AB_FLAG } = await import("../forms/form-ab.js");
+  const cfg = await repo.get("app_config", FORM_AB_FLAG);
+  if (!cfg || cfg.fullRoutingV1) return false;
+  const forms = await Promise.all(Object.values(FORM_IDS).map((id) => repo.get("forms", id)));
+  if (forms.some((f) => !f || f.saas !== "leverads" || f.status !== "published")) return false;
+  await repo.update("app_config", FORM_AB_FLAG, {
+    enabled: true, pct: 100, onlyForms: ["fo_diagnostico_leverads"],
+    byPain: {
+      OEM: FORM_IDS.oem, ADS: FORM_IDS.ads, PRICE: FORM_IDS.price,
+      ...Object.fromEntries(["A", "B", "C", "D", "E"].map((code) => [code, FORM_IDS.ads])),
+    },
+    fallback: FORM_IDS.ads, fullRoutingV1: true,
+    nota: "100% nos formulários novos: OEM → Lever OEM, ADS/A–E → Lever Ads, PRICE → Lever Price. Sem origem, entrada antiga → Ads.",
+  });
+  return true;
+}
+
+// ── Etapas de cadência (10/09/2026) ───────────────────────────────────────
+// Insere "Dia 2".."Dia 7" entre "Novo lead" e "Qualificando". Atrás de flag
+// porque muda o BOARD de todo mundo no mesmo instante — e porque, com o
+// poller ligado, os leads começam a andar sozinhos.
+export async function ensureCadenciaStages(repo) {
+  const { DIAS, funnelRowDo, ETAPA_DIA_1, ETAPA_QUALIFICANDO, CADENCIA_FLAG } = await import("../crm/cadencia-stages.js");
+
+  const cfg = await repo.get("app_config", CADENCIA_FLAG);
+  if (!cfg) {
+    await repo.create("app_config", {
+      id: CADENCIA_FLAG, enabled: false, ligadoEm: "",
+      nota: "Cria as colunas Dia 2..Dia 7 no funil e liga o motor que move o lead quando vira o dia.",
+    }, CADENCIA_FLAG);
+    return 0;
+  }
+  if (cfg.enabled !== true) return 0;
+
+  const product = await repo.get("products", "leverads");
+  if (!product || !Array.isArray(product.funnel) || !product.funnel.length) return 0;
+
+  const nomes = product.funnel.map((f) => f.stage);
+  const faltando = DIAS.filter((d) => !nomes.includes(d.stage));
+  if (!faltando.length) return 0;
+
+  // Ancora depois de "Novo lead"; sem a âncora, antes de "Qualificando"; sem
+  // nenhuma das duas, não mexe — melhor não fazer nada do que embaralhar o
+  // funil de quem já está rodando.
+  let at = nomes.indexOf(ETAPA_DIA_1);
+  at = at >= 0 ? at + 1 : nomes.indexOf(ETAPA_QUALIFICANDO);
+  if (at < 0) return 0;
+
+  const funnel = [...product.funnel];
+  funnel.splice(at, 0, ...faltando.map(funnelRowDo));
+  await repo.update("products", "leverads", { funnel });
+  return faltando.length;
+}
+
+// Dono da conta (CS) pra cliente que nasceu sem `owner`. Até 13/09/2026 o
+// fechamento só gravava owner com EXATAMENTE um integrador no produto; com 2+
+// o cliente ficava sem dono, e sem dono o pós-venda (placar de CS, régua de
+// marcos, NPS, relatório) não conta pra ninguém. Regra do backfill, a mesma
+// que o fechamento passou a usar: integrador do lead de origem → único
+// integrador do escopo do produto → fica vazio (aparece em "Sem dono" na tela
+// de Clientes, pro admin escolher na ficha). Só toca owner vazio de cliente
+// ativo; idempotente (segunda execução não muda nada).
+export async function backfillCustomerOwners(repo, { now = Date.now() } = {}) {
+  const customers = await repo.list("customers");
+  const pending = customers.filter((c) => !c.owner && !isChurnedCustomer(c, now));
+  if (!pending.length) return 0;
+  const users = await repo.list("users").catch(() => []);
+  const known = new Set(users.map((u) => u.id));
+  const integrators = users.filter((u) => (u.roles || []).includes("integrator"));
+  const leads = await repo.list("leads").catch(() => []);
+  const leadById = new Map(leads.map((l) => [l.id, l]));
+  let n = 0;
+  for (const c of pending) {
+    const lead = c.leadId ? leadById.get(c.leadId) : null;
+    let owner = "";
+    if (lead?.integrator && known.has(lead.integrator)) owner = lead.integrator;
+    else {
+      const scoped = integrators.filter((u) => !u.saas || u.saas === c.saas);
+      if (scoped.length === 1) owner = scoped[0].id;
+    }
+    if (!owner) continue;
+    await repo.update("customers", c.id, { owner });
+    n++;
+  }
+  return n;
+}
+
+// Os cases que a casa já conta de cor entram como RASCUNHO, nunca públicos: os
+// números vieram do roteiro do closer (scripts.js), não do painel, e o slide
+// promete "conferido no painel". O Leo confere cada número, escolhe a fonte e
+// só então publica. Idempotente: só semeia com a coleção vazia.
+export async function ensureKnownCases(repo) {
+  const atuais = await repo.list("cases").catch(() => []);
+  if (atuais.length) return 0;
+  const base = { saas: "leverads", public: false, authorizedAt: "", authorizedBy: "", authorizedVia: "", customerId: "", createdAt: new Date().toISOString() };
+  const seeds = [
+    {
+      ...base, name: "Unique", niche: "", order: 1,
+      headline: "Espelhou as contas e a conta 1 não perdeu venda",
+      metrics: [
+        { label: "vendas", value: "+105%", period: "", source: "cliente", proofUrl: "" },
+        { label: "pedidos", value: "+98,8%", period: "", source: "cliente", proofUrl: "" },
+        { label: "visitas", value: "+115%", period: "", source: "cliente", proofUrl: "" },
+      ],
+    },
+    {
+      ...base, name: "Dyno Nutri", niche: "", order: 2,
+      headline: "Resultado em 20 dias",
+      metrics: [{ label: "a mais em vendas", value: "R$ 60 mil", period: "20 dias", source: "cliente", proofUrl: "" }],
+    },
+    {
+      ...base, name: "Unicoox", niche: "", order: 3,
+      headline: "Dobrou a conta 2 sem canibalizar a conta 1",
+      metrics: [{ label: "na conta 2", value: "+100%", period: "", source: "cliente", proofUrl: "" }],
+    },
+  ];
+  for (const c of seeds) await repo.create("cases", c);
+  return seeds.length;
+}
+
+// Os quatro cases do painel: acumulado desde o início de cada cliente.
+// Apuração de 28/09/2026 no org_revenue_generated do PRODUTO, a mesma fonte
+// all-time do orgSnapshot. Não multiplicar uma janela de 30 dias pelo tempo
+// de contrato. Os pedidos também são acumulados; crescimento mensal não é
+// uma medida do período completo. Tempo/custo mantêm a régua do slide:
+// 10 min por anúncio, R$ 3.000 / 220h (jornada de 44h semanais).
+// Snapshot com data e valores brutos para auditoria. O novo marcador atualiza
+// os cases de 30 dias uma vez, preservando autorização e publicação existentes.
+//
+// 28/09/2026: o que está escrito aqui virou PISO, não retrato. A régua saiu
+// daqui pro cases.js (`panelCaseFacts`) e o deck refaz cada número no painel a
+// cada abertura (cases-live.js); estes valores são o que aparece quando o banco
+// do produto não responde. Por isso o marcador mudou: os cases semeados em
+// 14/09 precisam ganhar a CHAVE de cada medida (`metric`), que é o que autoriza
+// o recálculo.
+//
+// E a LISTA mudou no mesmo dia, por decisão do Leo: os cases da casa agora são
+// Motvia, Lupa, USACAR e Vikn. Dyno Nutri e 123tudo saíram de circulação (foram
+// despublicados no banco e não são mais semeados aqui); os registros deles
+// continuam existindo como rascunho, prontos pra voltar se um dia voltarem.
+const PANEL_SEED = "painel-vivo-2026-09-28";
+const nomeChaveCase = caseKey;
+
+export async function ensurePanelCases(repo) {
+  const atuais = (await repo.list("cases")).filter((c) => c.saas === "leverads");
+  const clientes = (await repo.list("customers")).filter((c) => c.saas === "leverads");
+  const clientePorNome = new Map(clientes.map((c) => [nomeChaveCase(c.name), c.id]));
+  const seeds = [
+    { name: "Motvia", niche: "Autopeças", order: 1,
+      orgId: "102f9143-c7d0-414c-9393-85fdd5fa3da8", gmv: 442453.32, orders: 3008, listings: 574780,
+      computedAt: "2026-09-28T14:03:11.129787Z" },
+    { name: "Lupa Autopeças", niche: "Autopeças", order: 2,
+      orgId: "d70453cc-274c-4494-a77f-0520045aa348", gmv: 281277.87, orders: 1341, listings: 282418,
+      computedAt: "2026-09-28T13:49:06.068024Z" },
+    { name: "USACAR Autopeças", niche: "Autopeças", order: 3,
+      orgId: "d70a03f3-c6d7-4672-957c-b341f462eb12", gmv: 126851.29, orders: 365, listings: 23376,
+      computedAt: "2026-09-28T13:29:42.323973Z" },
+    { name: "Vikn Comércio de Auto Peças", niche: "Autopeças", order: 4,
+      orgId: "11895872-c51b-41d2-8a07-31c7b6b636ea", gmv: 49691.16, orders: 786, listings: 776,
+      computedAt: "2026-09-28T13:50:16.775499Z" },
+  ].map(({ orgId, gmv, orders, listings, computedAt, ...identity }) => ({
+    ...identity,
+    // Mesma régua do recálculo ao vivo: uma função só pros dois, senão o número
+    // semeado e o número refeito contam histórias diferentes.
+    ...panelCaseFacts({ gmvTotal: gmv, ordersTotal: orders, listings }),
+    headlineAuto: true,
+    evidence: { source: "org_revenue_generated", orgId, gmvTotal: gmv, ordersTotal: orders, listings, computedAt },
+  }));
+  let n = 0;
+  for (const s of seeds) {
+    const antigo = atuais.find((c) => nomeChaveCase(c.name) === nomeChaveCase(s.name));
+    if (antigo?.seed === PANEL_SEED) continue;
+    const doc = {
+      ...s,
+      saas: "leverads",
+      seed: PANEL_SEED,
+      apuradoEm: "2026-09-14",
+      customerId: antigo?.customerId || clientePorNome.get(nomeChaveCase(s.name)) || "",
+      logoUrl: antigo?.logoUrl || "",
+      updatedAt: new Date().toISOString(),
+    };
+    // O case de mesmo nome já existente é ATUALIZADO, nunca duplicado: dois
+    // cards do mesmo cliente no slide seria o pior dos mundos. É o que acontece
+    // com USACAR e Vikn, cadastrados à mão em 15/09 antes de entrarem aqui.
+    if (antigo) await repo.update("cases", antigo.id, doc);
+    else await repo.create("cases", { ...doc, public: false, authorizedAt: "", authorizedBy: "", authorizedVia: "", createdAt: new Date().toISOString() });
+    n++;
+  }
+  return n;
+}
+
+// Reclassifica apenas quem informou pedidos e ticket; legado fica intocado.
+// Carimbo por lead permite retomar após falha e incluir registros ainda não migrados.
+export async function ensureRevenueClassification(repo) {
+  let changed = 0;
+  for (const lead of await repo.listWhere("leads", { saas: "leverads" })) {
+    if (!revenueGrade(lead) || lead.classificacao?.version === REVENUE_GRADE_VERSION) continue;
+    await repo.update("leads", lead.id, revenueClassificationPatch(lead));
+    changed++;
+  }
+  const product = await repo.get("products", "leverads");
+  if (product && product.icp?.classificationVersion !== REVENUE_GRADE_VERSION) {
+    await repo.update("products", product.id, { icp: { ...product.icp, ...REVENUE_ICP } });
+  }
+  return changed;
+}
+
+export async function runStartupMigrations(repo) {
+  try {
+    const n = await ensureRevenueClassification(repo);
+    if (n) console.log(`[migration] ${n} lead(s) classificados por pedidos × ticket`);
+  } catch (err) {
+    console.error("[migration] ensureRevenueClassification falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureKnownCases(repo);
+    if (n) console.log(`[migration] ${n} case(s) conhecidos criados em RASCUNHO (confira os números no painel e autorize antes de publicar)`);
+  } catch (err) {
+    console.error("[migration] ensureKnownCases falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensurePanelCases(repo);
+    if (n) console.log(`[migration] ${n} case(s) do painel prontos em RASCUNHO (Clientes › Cases: publique quando tiver o ok do cliente)`);
+  } catch (err) {
+    console.error("[migration] ensurePanelCases falhou:", err?.message || err);
+  }
+  try {
+    const n = await backfillCustomerOwners(repo);
+    if (n) console.log(`[migration] dono da conta (CS) preenchido em ${n} cliente(s) que estavam sem owner`);
+  } catch (err) {
+    console.error("[migration] backfillCustomerOwners falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureCadenciaStages(repo);
+    if (n) console.log(`[migration] ${n} coluna(s) de cadência criadas no funil (Dia 2..Dia 7)`);
+  } catch (err) {
+    console.error("[migration] ensureCadenciaStages falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureFormsV2(repo);
+    if (n) console.log(`[migration] formulários v2 + config do A/B criados (${n} objeto(s)) — em rascunho, split desligado`);
+    if (await ensureFormsV2FullRouting(repo)) console.log("[migration] formulários OEM/Ads/Price com 100% do tráfego");
+  } catch (err) {
+    console.error("[migration] ensureFormsV2 falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureClassificacaoV2(repo);
+    if (n) console.log(`[migration] classificação v2 aplicada (${n} objeto(s)) — flag classificacao_v2 está ligada`);
+  } catch (err) {
+    console.error("[migration] ensureClassificacaoV2 falhou:", err?.message || err);
+  }
+  try {
+    const n = await backfillWaThreadSignals(repo);
+    if (n) console.log(`[migration] sinais do inbox (hasIn/lastOutAuthor) preenchidos em ${n} conversa(s)`);
+  } catch (err) {
+    console.error("[migration] backfillWaThreadSignals falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureKeyAccounts(repo);
+    if (n) console.log(`[migration] ${n} cliente(s) marcado(s) como conta grande (keyAccount) — fora das médias`);
+  } catch (err) {
+    console.error("[migration] ensureKeyAccounts falhou:", err?.message || err);
+  }
+  try {
+    const n = await migrateReferralClosedValue(repo);
+    if (n) console.log(`[migration] prêmio de indicação fechada: R$ 250 → R$ 500 (${n} plano)`);
+  } catch (err) {
+    console.error("[migration] migrateReferralClosedValue falhou:", err?.message || err);
+  }
+  try {
+    const n = await migrateRolesCsSdr(repo);
+    if (n) console.log(`[migration] papéis ajustados (Vitor = CS, Manuela = SDR): ${n} usuário(s)`);
+  } catch (err) {
+    console.error("[migration] migrateRolesCsSdr falhou:", err?.message || err);
+  }
+  try {
+    const n = await migrateContractFillTokens(repo);
+    if (n) console.log(`[migration] modelos de contrato tokenizados pro preenchimento na tela (${n} modelos)`);
+  } catch (err) {
+    console.error("[migration] migrateContractFillTokens falhou:", err?.message || err);
+  }
+  try {
+    const changed = await migrateFormVendeMarketplace(repo);
+    if (changed) console.log('[migration] form do diagnóstico ganhou a pergunta "já vende em marketplace?" + saídas laterais');
+  } catch (err) {
+    console.error("[migration] migrateFormVendeMarketplace falhou:", err?.message || err);
+  }
+  try {
+    const changed = await migrateFormEmailContato(repo);
+    if (changed) console.log("[migration] form do diagnóstico ganhou o e-mail na tela de contato (mapping.email → lead.email)");
+  } catch (err) {
+    console.error("[migration] migrateFormEmailContato falhou:", err?.message || err);
+  }
+  try {
+    const changed = await ensureIntegrationStage(repo);
+    if (changed) console.log('[migration] estágio "Integração" garantido no funil do leverads');
+  } catch (err) {
+    console.error("[migration] ensureIntegrationStage falhou:", err?.message || err);
+  }
+  try {
+    const changed = await ensureBlogSettings(repo);
+    if (changed) console.log("[migration] configuração da redação do blog (app_config/blog_leverads) criada com os defaults");
+  } catch (err) {
+    console.error("[migration] ensureBlogSettings falhou:", err?.message || err);
+  }
+  try {
+    const r = await migrateLeverAdsCrmFunnel(repo);
+    if (r) console.log(`[migration] funil CRM SDR+Closer aplicado no leverads (${r.migrated} cards migrados)`);
+  } catch (err) {
+    console.error("[migration] migrateLeverAdsCrmFunnel falhou:", err?.message || err);
+  }
+  try {
+    const r = await migrateLeverAdsSdrCadence(repo);
+    if (r) console.log(`[migration] cadência SDR aplicada no leverads (Em contato → Qualificando: ${r.movedCards} cards; Nutrição criada)`);
+  } catch (err) {
+    console.error("[migration] migrateLeverAdsSdrCadence falhou:", err?.message || err);
+  }
+  try {
+    const changed = await migrateNutricaoSevenDays(repo);
+    if (changed) console.log("[migration] Nutrição: entrada ajustada pra 7 dias (168h) no leverads");
+  } catch (err) {
+    console.error("[migration] migrateNutricaoSevenDays falhou:", err?.message || err);
+  }
+  try {
+    const n = await migrateFlashcardsGeneralDecks(repo);
+    if (n) console.log(`[migration] flashcards: ${n} cards novos (gerais + vagas) anexados à base do leverads`);
+  } catch (err) {
+    console.error("[migration] migrateFlashcardsGeneralDecks falhou:", err?.message || err);
+  }
+  try {
+    const n = await migrateFlashcardsDeckExpansion(repo);
+    if (n) console.log(`[migration] flashcards: expansão ago/2026 anexada à base do leverads (${n} cards)`);
+  } catch (err) {
+    console.error("[migration] migrateFlashcardsDeckExpansion falhou:", err?.message || err);
+  }
+  try {
+    const n = await migrateFlashcardsOemQuotas(repo);
+    if (n) console.log(`[migration] flashcards: cotas de OEM atualizadas em ${n} card(s) de produto (combo 250/mês)`);
+  } catch (err) {
+    console.error("[migration] migrateFlashcardsOemQuotas falhou:", err?.message || err);
+  }
+  try {
+    const n = await migrateFlashcardsCatalogV2(repo);
+    if (n) console.log(`[migration] flashcards: catálogo v2 + call otimizada aplicados em ${n} card(s) do doc salvo`);
+  } catch (err) {
+    console.error("[migration] migrateFlashcardsCatalogV2 falhou:", err?.message || err);
+  }
+  try {
+    const n = await migrateTrainingStatesCatalogV2(repo);
+    if (n) console.log(`[migration] treino: estado FSRS zerado em ${n} pessoa(s) pros cards que mudaram de resposta`);
+  } catch (err) {
+    console.error("[migration] migrateTrainingStatesCatalogV2 falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureFunnelKinds(repo);
+    if (n) console.log(`[migration] kind garantido no funil de ${n} produto(s)`);
+  } catch (err) {
+    console.error("[migration] ensureFunnelKinds falhou:", err?.message || err);
+  }
+  try {
+    const n = await backfillCallPermission(repo);
+    if (n) console.log(`[migration] permissão de ligação reconstruída em ${n} conversa(s)`);
+  } catch (err) {
+    console.error("[migration] backfillCallPermission falhou:", err?.message || err);
+  }
+  try {
+    const done = await migrateFormLeverAdsDsTheme(repo);
+    if (done) console.log("[migration] form LeverAds: tema trocado pro design system Lever Premium (claro)");
+  } catch (err) {
+    console.error("[migration] migrateFormLeverAdsDsTheme falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureLossReasons(repo);
+    if (n) console.log(`[migration] lossReasons padrão em ${n} produto(s)`);
+  } catch (err) {
+    console.error("[migration] ensureLossReasons falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureNoShowReason(repo);
+    if (n) console.log(`[migration] motivo "não compareceu" verificado em ${n} produto(s)`);
+  } catch (err) {
+    console.error("[migration] ensureNoShowReason falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureSemWhatsappReason(repo);
+    if (n) console.log(`[migration] motivo "sem WhatsApp" verificado em ${n} produto(s)`);
+  } catch (err) {
+    console.error("[migration] ensureSemWhatsappReason falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureSdrBrainFirstTouch(repo);
+    if (n) console.log(`[migration] 1º toque da IA carimbado em ${n} lead(s) (escada de retomada)`);
+  } catch (err) {
+    console.error("[migration] ensureSdrBrainFirstTouch falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureWaMessagesLeadId(repo);
+    if (n) console.log(`[migration] ${n} mensagem(ns) de WhatsApp herdaram o lead da conversa`);
+  } catch (err) {
+    console.error("[migration] ensureWaMessagesLeadId falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureFormPrefillV2(repo);
+    if (n) console.log(`[migration] mensagem pronta do form corrigida em ${n} formulário(s)`);
+  } catch (err) {
+    console.error("[migration] ensureFormPrefillV2 falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureContractsNoAdDeletionClause(repo);
+    if (n) console.log(`[migration] cláusula de exclusão de anúncios por inadimplência removida de ${n} modelo(s) de contrato`);
+  } catch (err) {
+    console.error("[migration] ensureContractsNoAdDeletionClause falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureSdrGoals(repo);
+    if (n) console.log(`[migration] ${n} meta(s) de SDR (taxa) semeada(s)`);
+  } catch (err) {
+    console.error("[migration] ensureSdrGoals falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureCloserGoals(repo);
+    if (n) console.log(`[migration] ${n} meta(s) de closer (qualidade) semeada(s)`);
+  } catch (err) {
+    console.error("[migration] ensureCloserGoals falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureCloseRateUnica(repo);
+    if (n) console.log(`[migration] ${n} meta(s) de fechamento unificadas em conversaoCall`);
+  } catch (err) {
+    console.error("[migration] ensureCloseRateUnica falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureSocialGoals(repo);
+    if (n) console.log(`[migration] ${n} meta(s) de conteúdo do Mídia social semeada(s)`);
+  } catch (err) {
+    console.error("[migration] ensureSocialGoals falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureUserRoles(repo);
+    if (n) console.log(`[migration] roles garantidas em ${n} usuário(s)`);
+  } catch (err) {
+    console.error("[migration] ensureUserRoles falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureUserSaasScope(repo);
+    if (n) console.log(`[migration] escopo de produto aplicado em ${n} usuário(s)`);
+  } catch (err) {
+    console.error("[migration] ensureUserSaasScope falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureUserScreens(repo);
+    if (n) console.log(`[migration] telas restritas aplicadas em ${n} usuário(s)`);
+  } catch (err) {
+    console.error("[migration] ensureUserScreens falhou:", err?.message || err);
+  }
+  try {
+    const n = await backfillCustomerArrFromLead(repo);
+    if (n) console.log(`[migration] arr puxado do fechamento em ${n} cliente(s)`);
+  } catch (err) {
+    console.error("[migration] backfillCustomerArrFromLead falhou:", err?.message || err);
+  }
+  try {
+    const n = await backfillSubscriptionsFromCustomers(repo);
+    if (n) console.log(`[migration] assinatura ativa criada pra ${n} cliente(s)`);
+  } catch (err) {
+    console.error("[migration] backfillSubscriptionsFromCustomers falhou:", err?.message || err);
+  }
+  try {
+    const changed = await ensureWaPhoneId(repo);
+    if (changed) console.log("[migration] WhatsApp: número do env carimbado como waPhoneId do leverads");
+  } catch (err) {
+    console.error("[migration] ensureWaPhoneId falhou:", err?.message || err);
+  }
+  try {
+    const n = await ensureWaThreadDedup(repo);
+    if (n) console.log(`[migration] WhatsApp: ${n} conversa(s) duplicada(s) fundida(s) no inbox`);
+  } catch (err) {
+    console.error("[migration] ensureWaThreadDedup falhou:", err?.message || err);
+  }
+  try {
+    const changed = await ensureRevenueLeadQuestion(repo);
+    if (changed) console.log("[migration] pergunta de faixa de faturamento adicionada ao checklist do leverads");
+  } catch (err) {
+    console.error("[migration] ensureRevenueLeadQuestion falhou:", err?.message || err);
+  }
+  // wonAt ANTES da reordenação: o carimbo precisa existir antes que qualquer
+  // card possa sair do Ganho, senão a venda perde a data.
+  try {
+    const n = await backfillWonAt(repo);
+    if (n) console.log(`[migration] data do ganho (wonAt) carimbada em ${n} lead(s)`);
+  } catch (err) {
+    console.error("[migration] backfillWonAt falhou:", err?.message || err);
+  }
+  try {
+    const r = await migrateGanhoAntesIntegracao(repo);
+    if (r) console.log(`[migration] funil do leverads reordenado (ganho antes da integração): ${r.order.join(" → ")}`);
+  } catch (err) {
+    console.error("[migration] migrateGanhoAntesIntegracao falhou:", err?.message || err);
+  }
+  // Depois da reordenação: a entrega volta a oferecer o Ganho como destino no
+  // "Depois da ação" (o override salvo em nextSteps vencia o default do código).
+  try {
+    const changed = await migrateGanhoNaIntegracao(repo);
+    if (changed) console.log("[migration] próximos passos da Integração ganharam o destino Ganho (leverads)");
+  } catch (err) {
+    console.error("[migration] migrateGanhoNaIntegracao falhou:", err?.message || err);
+  }
+  // O follow-up volta a poder fechar direto na entrega (o override salvo em
+  // nextSteps vencia o default novo do código).
+  try {
+    const changed = await migrateIntegracaoNoFollowup(repo);
+    if (changed) console.log("[migration] próximos passos do Follow-up ganharam o destino Integração (leverads)");
+  } catch (err) {
+    console.error("[migration] migrateIntegracaoNoFollowup falhou:", err?.message || err);
+  }
+  try {
+    const changed = await migrateNutricaoNoFollowup(repo);
+    if (changed) console.log("[migration] próximos passos do Follow-up ganharam o destino Nutrição (leverads)");
+  } catch (err) {
+    console.error("[migration] migrateNutricaoNoFollowup falhou:", err?.message || err);
+  }
+  // Depois da reordenação: quem está na entrega passa a ser venda, então ganha
+  // cliente e assinatura como se tivesse passado pelo Ganho.
+  try {
+    const n = await backfillPostSaleCustomers(repo);
+    if (n) console.log(`[migration] cliente + assinatura criados pra ${n} lead(s) já na entrega`);
+  } catch (err) {
+    console.error("[migration] backfillPostSaleCustomers falhou:", err?.message || err);
+  }
+  try {
+    const changed = await ensureProposalCatalog(repo);
+    if (changed) console.log("[migration] catálogo de produto/oferta gravado no template pt_leverads (tela zero com régua)");
+  } catch (err) {
+    console.error("[migration] ensureProposalCatalog falhou:", err?.message || err);
+  }
+  // Depois do catálogo no template: propostas antigas entram no fluxo novo.
+  try {
+    const n = await backfillProposalCatalog(repo);
+    if (n) console.log(`[migration] ${n} proposta(s) existente(s) re-snapshotada(s) no fluxo do catálogo`);
+  } catch (err) {
+    console.error("[migration] backfillProposalCatalog falhou:", err?.message || err);
+  }
+  // Depois do backfill: proposta aberta com o leque antigo do OEM avulso (2
+  // cotas, preços velhos) recebe a tabela atual do template.
+  try {
+    const changed = await migrateCatalogPricing(repo);
+    if (changed) console.log("[migration] proposta: catálogo de produtos atualizado no template (v2: OEM / Ads / Price × Essencial / Escala / Enterprise)");
+  } catch (err) {
+    console.error("[migration] migrateCatalogPricing falhou:", err?.message || err);
+  }
+  try {
+    const n = await backfillCatalogPricing(repo);
+    if (n) console.log(`[migration] proposta: ${n} proposta(s) aberta(s) atualizadas pra tabela vigente do catálogo`);
+  } catch (err) {
+    console.error("[migration] backfillCatalogPricing falhou:", err?.message || err);
+  }
+  // Depois do catálogo vigente: a apresentação em slides (o deck publicado)
+  // nasce/atualiza com a MESMA tabela de preço do pt_leverads, onde o catálogo mora.
+  try {
+    const changed = await ensureSlidesDeck(repo);
+    if (changed) console.log("[migration] proposta: apresentação em slides é o deck publicado do leverads (A e B arquivadas)");
+  } catch (err) {
+    console.error("[migration] ensureSlidesDeck falhou:", err?.message || err);
+  }
+  // Apresentação do serviço avulso de criação de anúncios (OEM). Independente do
+  // catálogo: o preço dela é combinado na call, anúncio a anúncio.
+  try {
+    const changed = await ensureOemDeck(repo);
+    if (changed) console.log("[migration] proposta: deck de criação de anúncios (OEM) pronto no select do card");
+  } catch (err) {
+    console.error("[migration] ensureOemDeck falhou:", err?.message || err);
+  }
+  // Depois do catálogo/leque nas propostas: o valor do card dos leads abertos
+  // passa a ser o preço do produto que a apresentação sugere.
+  try {
+    const n = await syncOpenLeadAmounts(repo);
+    if (n) console.log(`[migration] valor do card alinhado ao produto da apresentação em ${n} lead(s) aberto(s)`);
+  } catch (err) {
+    console.error("[migration] syncOpenLeadAmounts falhou:", err?.message || err);
+  }
+  try {
+    const n = await migrateExpensePctBases(repo);
+    if (n) console.log(`[migration] custos %: base carimbada em ${n} lançamento(s) (checkout → cartão 12x, imposto → recebidos)`);
+  } catch (err) {
+    console.error("[migration] migrateExpensePctBases falhou:", err?.message || err);
+  }
+  // Histórico de links de pagamento: o que já foi gerado antes da tela existir
+  // (carimbo no lead / na fatura) vira recibo, senão o histórico nasce vazio.
+  try {
+    const n = await backfillPaymentLinks(repo);
+    if (n) console.log(`[migration] ${n} link(s) de pagamento já gerados entraram no histórico`);
+  } catch (err) {
+    console.error("[migration] backfillPaymentLinks falhou:", err?.message || err);
+  }
+  // Mentoria: o produto da fila de quem ainda não vende (apresentação + preços
+  // que alimentam o gate de fechamento) e a nova mensagem da saída lateral.
+  try {
+    const changed = await ensureMentoriaTemplate(repo);
+    if (changed) console.log("[migration] apresentação da Mentoria (pt_mentoria) criada/atualizada com o catálogo de preços");
+  } catch (err) {
+    console.error("[migration] ensureMentoriaTemplate falhou:", err?.message || err);
+  }
+  // Catálogo de PLANOS (coleção `plans`): semeia uma vez a partir do catálogo
+  // que está no banco e, a cada boot, devolve aos templates o que mudou nos
+  // planos por fora do REST. Depois do template da mentoria, que é fonte.
+  try {
+    const n = await ensurePlansCatalog(repo, { defaults: { leverads: LEVERADS_CATALOG } });
+    if (n) console.log(`[migration] catálogo de planos: ${n} plano(s) criado(s) a partir do catálogo das propostas`);
+    const r = await ensurePlanResources(repo);
+    if (r) console.log(`[migration] catálogo de planos: ${r} plano(s) com os recursos do LeverAds (cópias por dia e módulos) preenchidos`);
+    for (const saas of new Set((await repo.list("plans")).filter((p) => p.code && p.saas).map((p) => p.saas))) {
+      const changed = await syncPlanCatalogProjection(repo, saas);
+      if (changed) console.log(`[migration] catálogo de planos (${saas}): ${changed} template(s) de proposta realinhado(s) aos planos`);
+    }
+  } catch (err) {
+    console.error("[migration] ensurePlansCatalog falhou:", err?.message || err);
+  }
+  // Clientes que já existiam ganham o plano estruturado (código + ciclo) a
+  // partir do que o cadastro e o lead já dizem. Uma vez; não toca receita.
+  try {
+    const r = await backfillCustomerPlans(repo);
+    if (r) console.log(`[migration] plano estruturado nos clientes: ${r.stamped} com plano do catálogo, ${r.custom} personalizado(s)/só ciclo, ${r.unknown} sem plano identificável`);
+  } catch (err) {
+    console.error("[migration] backfillCustomerPlans falhou:", err?.message || err);
+  }
+  try {
+    const changed = await migrateFormMentoriaOferta(repo);
+    if (changed) console.log("[migration] saída lateral da Mentoria agora anuncia a oferta (não mais 'te chamamos quando abrir')");
+  } catch (err) {
+    console.error("[migration] migrateFormMentoriaOferta falhou:", err?.message || err);
+  }
+  try {
+    const n = await assignMentoriaOwner(repo);
+    if (n) console.log(`[migration] fila da Mentoria: ${n} card(s) carimbado(s) com o SDR como dono`);
+  } catch (err) {
+    console.error("[migration] assignMentoriaOwner falhou:", err?.message || err);
+  }
+  try {
+    const n = await migrateTasksV2(repo);
+    if (n) console.log(`[migration] tarefas v2 (concluída/seguidores/anexos/autor do comentário): ${n} registro(s) migrado(s)`);
+  } catch (err) {
+    console.error("[migration] migrateTasksV2 falhou:", err?.message || err);
+  }
+  try {
+    const fixed = await repairDoneTicketSla(repo);
+    if (fixed.length) console.log(`[migration] SLA de ${fixed.length} ticket(s) concluído(s) voltou ao prazo da conclusão: #${fixed.join(", #")}`);
+  } catch (err) {
+    console.error("[migration] repairDoneTicketSla falhou:", err?.message || err);
+  }
+  try {
+    const n = await migrateFollowupDays(repo);
+    if (n) console.log(`[migration] follow-up por dia (4 contatos): ${n} lead(s) ajustado(s)`);
+  } catch (err) {
+    console.error("[migration] migrateFollowupDays falhou:", err?.message || err);
+  }
+}
+
+// ── Follow-up por DIA, em 4 contatos (05/10/2026) ───────────────────────────
+// followupAt deixa de ter hora ("YYYY-MM-DDTHH:MM" → "YYYY-MM-DD"). Quem está
+// na etapa de follow-up ganha followupStep (contatos já feitos): a aproximação
+// é o contador de toques da etapa (os 3 roteiros antigos saíam dele), no máximo
+// 3 — o Contato 4 nunca é presumido. Sem dia marcado, o dia sai do GPS. Não
+// toca callAt, etapa nem responsável. Uma vez, com marcador em app_config.
+export async function migrateFollowupDays(repo) {
+  const FLAG = "followup_days_v1";
+  if (await repo.get("app_config", FLAG).catch(() => null)) return 0;
+  const products = new Map((await repo.list("products")).map((p) => [p.id, p]));
+  let changed = 0;
+  for (const lead of await repo.list("leads")) {
+    const patch = {};
+    const day = followupDayOf(lead.followupAt);
+    if (lead.followupAt && day !== lead.followupAt) patch.followupAt = day;
+    if (kindOf(products.get(lead.saas), lead.stage) === "followup") {
+      if (lead.followupStep == null) patch.followupStep = Math.min(FOLLOWUP_STEPS - 1, Math.max(0, Number(lead.stageAttempts) || 0));
+      const finalDay = patch.followupAt ?? lead.followupAt ?? "";
+      const fromGps = followupDayOf(lead.nextActionAt);
+      if (!finalDay && fromGps) patch.followupAt = fromGps;
+      const target = dayStartIso(patch.followupAt ?? finalDay);
+      if (target && target !== lead.nextActionAt) patch.nextActionAt = target;
+    }
+    if (Object.keys(patch).length) {
+      await repo.update("leads", lead.id, patch, { silent: true });
+      changed++;
+    }
+  }
+  await repo.create("app_config", { id: FLAG, at: new Date().toISOString(), changed });
+  return changed;
+}
+
+// ── SLA de ticket concluído reavaliado na edição (29/09/2026) ───────────────
+// Editar um ticket já concluído recalculava o SLA com a hora da edição: sem 1ª
+// resposta pública (ou sem resolvedAt gravado) ele virava "Fora do prazo", e
+// trocar a prioridade depois refazia os prazos. nextSla não faz mais isso; aqui
+// os concluídos voltam ao estado da conclusão (repairDoneSla: só desmarca
+// estouro que não aconteceu, nunca marca). Uma vez, com marcador em app_config;
+// não mexe em updatedAt nem gera evento — é correção, não alteração do ticket.
+export async function repairDoneTicketSla(repo) {
+  const FLAG = "ticket_sla_done_repair_v1";
+  if (await repo.get("app_config", FLAG).catch(() => null)) return [];
+  const done = (await repo.list("tickets")).filter((t) => STATUS_KIND[t.status] === "done");
+  const fixed = [];
+  const settingsOf = new Map();
+  for (const t of done) {
+    if (!settingsOf.has(t.saas)) settingsOf.set(t.saas, { ...(await loadSettings(repo, t.saas)), statusKinds: STATUS_KIND });
+    const events = await repo.listWhere("ticket_events", { ticket: t.id });
+    const sla = repairDoneSla(t, events, settingsOf.get(t.saas));
+    if (!sla) continue;
+    await repo.update("tickets", t.id, { sla });
+    fixed.push(t.number || t.id);
+  }
+  await repo.create("app_config", { id: FLAG, at: new Date().toISOString(), fixed }, FLAG);
+  return fixed;
+}
+
+// ── A fila da Mentoria ganhou dono (Leo, 16/08/2026) ────────────────────────
+// A saída lateral nascia sem dono porque ninguém trabalhava essa fila. Agora o
+// produto existe e a fila é responsabilidade do SDR, então os cards que já
+// estavam lá recebem o dono que o form passa a dar aos novos.
+//
+// Idempotente e conservadora: só card SEM dono, só fora das etapas terminais
+// (card desqualificado é história fechada) e só quando o produto tem UM SDR
+// (`autoLeadOwner` devolve null com 0 ou 2+, e aí a migração não adivinha).
+// Não marca próximo toque de propósito: 127 cards com GPS pra hoje viraria uma
+// fila impossível no Meu dia. O backlog se trabalha pela coluna, ordenada pela
+// verba declarada.
+export async function assignMentoriaOwner(repo) {
+  const leads = await repo.list("leads");
+  const fila = leads.filter((l) => l.formExit === "mentoria" && !l.owner && !l.internal);
+  if (!fila.length) return 0;
+  const ownerBySaas = new Map();
+  const productBySaas = new Map();
+  let n = 0;
+  for (const l of fila) {
+    if (!l.saas) continue;
+    if (!ownerBySaas.has(l.saas)) ownerBySaas.set(l.saas, await autoLeadOwner(repo, l.saas));
+    if (!productBySaas.has(l.saas)) productBySaas.set(l.saas, await repo.get("products", l.saas));
+    const owner = ownerBySaas.get(l.saas);
+    if (!owner) continue;
+    if (TERMINAL_KINDS.has(kindOf(productBySaas.get(l.saas), l.stage))) continue;
+    await repo.update("leads", l.id, { owner });
+    n++;
+  }
+  return n;
+}
+
+// ── Mentoria · apresentação e preços (16/08/2026) ───────────────────────────
+// A fila de quem ainda não vende ganhou produto. O template nasce RASCUNHO +
+// selectable (o deck padrão do leverads continua sendo o pt_leverads) e carrega
+// `calc.mentoria`, que é de onde o gate de fechamento tira os preços — mexer no
+// preço passa a ser edição no banco, sem deploy, igual ao catálogo do LeverAds.
+//
+// Idempotente e respeitosa: template que já existe só ganha o bloco de preços
+// quando ele falta. Slides editados pelo dono nunca são reescritos.
+// ── A apresentação em SLIDES é a oficial (Leo, 12/09 → 18/09/2026) ─────────
+// Nasceu como "Opção C", deck alternativo pra A/B na call ao lado do deck de
+// sempre (pt_leverads, a "A") e do Starter (a "B"). Em 18/09 virou a ÚNICA:
+// é o template publicado do leverads (o que gera sozinho quando o lead entra
+// pelo form e o que "gerar proposta" usa), e A e B foram arquivadas: rascunho
+// sem `selectable`, com o nome carimbado, no mesmo padrão dos backups. Não são
+// apagadas porque o pt_leverads é onde o catálogo de preço mora (as migrações
+// do catálogo escrevem lá e este deck copia), e as propostas já geradas são
+// snapshots, então nada que já foi mandado muda.
+//
+// O documento é só a CASCA: nome, layout e o catálogo — os slides e a tela
+// zero moram no código (proposal-slides-page.js), porque este deck não é
+// montado campo a campo, e sim pela configuração do plano (linha, pacote,
+// Price, pacote de OEM, período).
+//
+// O catálogo ACOMPANHA o do pt_leverads: preço novo entra nos dois no mesmo
+// deploy, sem ninguém lembrar de copiar.
+const SLIDES_DECK_OFFICIAL_SINCE = "2026-09-18";
+const ARQUIVO_PREFIX = `[ARQUIVO ${SLIDES_DECK_OFFICIAL_SINCE}] `;
+
+async function archiveDeck(repo, id) {
+  const t = await repo.get("proposal_templates", id);
+  if (!t) return false;
+  const patch = {};
+  if (t.status !== "draft") patch.status = "draft";
+  if (t.selectable) patch.selectable = false;
+  if (!String(t.name || "").startsWith("[ARQUIVO")) patch.name = ARQUIVO_PREFIX + (t.name || id);
+  if (!Object.keys(patch).length) return false;
+  await repo.update("proposal_templates", id, patch);
+  return true;
+}
+
+export async function ensureSlidesDeck(repo) {
+  const base = await repo.get("proposal_templates", "pt_leverads");
+  const catalogo = base?.calc?.catalog ? JSON.parse(JSON.stringify(base.calc.catalog)) : null;
+  const cur = await repo.get("proposal_templates", "pt_leverads_slides");
+  let changed = false;
+  if (!cur) {
+    await repo.create("proposal_templates", {
+      id: "pt_leverads_slides",
+      saas: "leverads",
+      name: "Apresentação · LeverAds",
+      pickLabel: "Apresentação",
+      status: "published",
+      selectable: false,
+      officialSince: SLIDES_DECK_OFFICIAL_SINCE,
+      layout: "slides",
+      theme: base?.theme || {},
+      slides: [],
+      acceptStage: base?.acceptStage || "",
+      calc: catalogo ? { ...(base?.calc || {}), catalog: catalogo } : { ...(base?.calc || {}) },
+      createdAt: new Date().toISOString(),
+    });
+    changed = true;
+  } else {
+    const patch = {};
+    if (cur.layout !== "slides") patch.layout = "slides";
+    // Promoção a oficial: roda UMA vez (o carimbo `officialSince` segura). Se
+    // o Leo despublicar de propósito depois, a migração não briga.
+    if (!cur.officialSince) {
+      patch.officialSince = SLIDES_DECK_OFFICIAL_SINCE;
+      patch.status = "published";
+      patch.selectable = false;
+      patch.name = "Apresentação · LeverAds";
+      patch.pickLabel = "Apresentação";
+    }
+    if (catalogo && JSON.stringify(cur.calc?.catalog || null) !== JSON.stringify(catalogo)) {
+      patch.calc = { ...(cur.calc || {}), catalog: catalogo };
+    }
+    if (Object.keys(patch).length) {
+      await repo.update("proposal_templates", "pt_leverads_slides", patch);
+      changed = true;
+    }
+  }
+  // A e B saem do select e do padrão junto com a promoção (mesma passada).
+  if (!cur?.officialSince) {
+    for (const id of ["pt_leverads", "pt_leverads_starter"]) {
+      if (await archiveDeck(repo, id)) changed = true;
+    }
+  }
+  return changed;
+}
+
+// ── Leads abertos trocam pro deck de slides (Leo, 18/09/2026) ───────────────
+// Promover o template não muda quem já tinha link: "apresentar ao vivo" abre o
+// snapshot gravado no lead, e ~1.100 leads abertos nasceram com o deck antigo
+// (A) ou o Starter (B). Regera a apresentação desses leads com o deck
+// publicado, pelo mesmo caminho do botão "re-gerar" do card (runNativeProposal
+// com force): o link antigo continua de pé pra quem já recebeu, o lead passa
+// a apontar pro novo e o valor do card acompanha.
+//
+// Fica de fora quem não tem o que apresentar de novo: lead fechado ou perdido,
+// pós-venda, proposta aceita (preço na mão do cliente), deck fixado sob medida
+// e quem já está no deck de slides ou na Mentoria. Idempotente por natureza:
+// depois da troca o template do lead deixa de ser A/B.
+//
+// Roda DEPOIS de a API ouvir (index.js), não no boot: é uma proposta nova por
+// lead e o health check não pode esperar.
+const ARCHIVED_DECKS = new Set(["pt_leverads", "pt_leverads_starter"]);
+
+function baseUrlFromLeads(leads) {
+  for (const l of leads) {
+    const m = String(l.proposalUrl || "").match(/^(https?:\/\/[^/]+)\/p\//);
+    if (m) return m[1];
+  }
+  return "";
+}
+
+export async function regenerateOpenLeadsToSlides(repo, { baseUrl = "", log = null } = {}) {
+  const deck = await repo.get("proposal_templates", "pt_leverads_slides");
+  if (!deck || deck.status !== "published") return 0;
+  const products = new Map((await repo.list("products")).map((p) => [p.id, p]));
+  const leads = (await repo.list("leads")).filter((l) =>
+    l.saas === "leverads" && l.proposta_id && !l.proposalPinned && !l.planClosed && !l.wonAt);
+  if (!leads.length) return 0;
+  // Só o cabeçalho de cada proposta: a coleção inteira é dezenas de MB.
+  const proposals = new Map((await repo.listWhere("proposals", { saas: "leverads" }, { fields: ["template", "accepted"] }))
+    .map((p) => [p.id, p]));
+  const base = String(baseUrl || "").replace(/\/+$/, "") || baseUrlFromLeads(leads);
+  let n = 0;
+  for (const lead of leads) {
+    const product = products.get(lead.saas);
+    if (TERMINAL_KINDS.has(kindOf(product, lead.stage)) || isPostSaleStage(product, lead.stage)) continue;
+    const p = proposals.get(lead.proposta_id);
+    if (!p || p.accepted || !ARCHIVED_DECKS.has(p.template)) continue;
+    try {
+      const r = await runNativeProposal(repo, lead, { force: true, baseUrl: base });
+      if (r.ok) n++;
+      else if (log) log.warn(`[migration] apresentação do lead ${lead.id} não regerada: ${r.skipped || r.error || "?"}`);
+    } catch (err) {
+      if (log) log.warn(`[migration] apresentação do lead ${lead.id} falhou: ${err?.message || err}`);
+    }
+  }
+  return n;
+}
+
+// ── Criação de anúncios por OEM: a apresentação do serviço avulso (28/09/2026) ──
+// Produto NOVO e separado da plataforma: a gente cria anúncios do zero pelo
+// código OEM (título de 200 caracteres, compatibilidade completa, 3 a 5 fotos
+// tratadas e descrição pra SEO) e cobra por anúncio criado, pagamento único.
+//
+// Como no deck de slides, o documento é só a CASCA: os slides e a tela zero
+// moram no código (proposal-oem-page.js), e o `layout` é o que manda a rota
+// /p/:id escolher o renderer.
+//
+// DE PROPÓSITO sem `calc.catalog`: este deck não vende plano, e catálogo aqui
+// faria o valor do card do lead virar o preço da plataforma no primeiro save da
+// tela zero. O valor deste deck é quantidade × preço por anúncio, calculado no
+// PATCH (routes.proposals.js).
+//
+// Nasce RASCUNHO + `selectable`: o publicado do leverads continua sendo a
+// apresentação oficial, e este entra como escolha no select do card do lead.
+export async function ensureOemDeck(repo) {
+  const base = await repo.get("proposal_templates", "pt_leverads");
+  const cur = await repo.get("proposal_templates", "pt_leverads_oem");
+  if (!cur) {
+    await repo.create("proposal_templates", {
+      id: "pt_leverads_oem",
+      saas: "leverads",
+      name: "Criação de anúncios · OEM",
+      pickLabel: "Criação de anúncios (OEM)",
+      status: "draft",
+      selectable: true,
+      layout: "oem",
+      theme: base?.theme || {},
+      slides: [],
+      acceptStage: base?.acceptStage || "",
+      calc: {},
+      createdAt: new Date().toISOString(),
+    });
+    return true;
+  }
+  const patch = {};
+  if (cur.layout !== "oem") patch.layout = "oem";
+  if (!cur.selectable) patch.selectable = true;
+  if (!cur.pickLabel) patch.pickLabel = "Criação de anúncios (OEM)";
+  if (!Object.keys(patch).length) return false;
+  await repo.update("proposal_templates", "pt_leverads_oem", patch);
+  return true;
+}
+
+export async function ensureMentoriaTemplate(repo) {
+  const doc = mentoriaTemplateDoc();
+  const cur = await repo.get("proposal_templates", doc.id);
+  if (!cur) {
+    await repo.create("proposal_templates", { ...doc, createdAt: new Date().toISOString() });
+    return true;
+  }
+  const patch = {};
+  if (!cur.calc?.mentoria?.products) patch.calc = { ...(cur.calc || {}), mentoria: mentoriaCalcBlock() };
+  // `selectable` é o que faz o deck aparecer no select do card: sem ele o
+  // template existiria mas ninguém conseguiria gerar.
+  if (!cur.selectable) patch.selectable = true;
+  if (!cur.pickLabel) patch.pickLabel = doc.pickLabel;
+  if (!Object.keys(patch).length) return false;
+  await repo.update("proposal_templates", doc.id, patch);
+  return true;
+}
+
+// A tela de saída dizia "estamos montando algo pra quem está começando:
+// guardamos seu contato e te chamamos quando abrir". Abriu. A mensagem passa a
+// dizer o que existe e o que vai acontecer, senão o lead que acabou de declarar
+// a verba fica achando que caiu numa lista de espera.
+export async function migrateFormMentoriaOferta(repo) {
+  const form = await repo.get("forms", "fo_diagnostico_leverads");
+  if (!form || form.mentoriaOfertaV1) return false;
+  const exits = { ...(form.exits || {}) };
+  if (!exits.mentoria) return false; // o form ainda não passou pela saída lateral
+  exits.mentoria = {
+    ...exits.mentoria,
+    title: "Recebemos! Você está *no começo da jornada*.",
+    subtitle: "A LeverAds é pra quem já vende, mas a Mentoria Lever é exatamente pra quem está começando: a gente coloca um produto nosso, que já vende todo dia, na sua conta pra fazer as primeiras vendas enquanto escolhe e compra o seu estoque com você. Vamos te chamar no WhatsApp pra conversar.",
+  };
+  await repo.update("forms", form.id, { exits, mentoriaOfertaV1: true });
+  return true;
+}
+
+// ── Blog SEO: configuração da redação (set/2026) ─────────────────────────────
+// Garante o doc `app_config/blog_leverads` com as regras default do motor do
+// blog (blog-config.js): IA gera pautas e rascunhos, publicação só com aprovação
+// (autoPublicar=false), 2 posts por semana (ter/qui 09:00 BRT). Só cria quando
+// o produto leverads existe e o doc ainda não; nunca sobrescreve regra editada.
+export async function ensureBlogSettings(repo) {
+  const product = await repo.get("products", "leverads");
+  if (!product) return false;
+  const id = blogCfgId("leverads");
+  const existing = await repo.get("app_config", id);
+  if (existing) return false;
+  await repo.create("app_config", {
+    id,
+    saas: "leverads",
+    rules: { ...BLOG_DEFAULT_RULES, diasPublicacao: [...BLOG_DEFAULT_RULES.diasPublicacao], categorias: [...BLOG_DEFAULT_RULES.categorias] },
+    state: { ...BLOG_DEFAULT_STATE },
+    log: [],
+  });
+  return true;
+}
+
+// ── Tarefas v2 · quadro no nível Asana (10/09/2026) ─────────────────────────
+// O quadro ganhou `completed` (régua única de concluída, no lugar da regex no
+// nome da coluna), seguidores, vários anexos (o `photo` vira o primeiro),
+// carimbos de atualização e comentários com o ID do autor (o SPA antigo
+// gravava o NOME). O board ganha `doneKey` (a coluna de concluído explícita),
+// `labels` com cor e `completeMovesToDone`.
+//
+// Idempotente por campo: só preenche o que NÃO existe no doc, nunca sobrescreve
+// (segunda rodada devolve 0). Autor de comentário sem correspondência em
+// `users` fica como está (a tela mostra o texto mesmo).
+export async function migrateTasksV2(repo) {
+  const [boards, tasks, users, ] = await Promise.all([repo.list("task_boards"), repo.list("tasks"), repo.list("users")]);
+  const strip = (v) => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  const userId = (author) => {
+    const a = String(author || "");
+    if (!a || a === "api") return a || "api";
+    if (a === "API key") return "api";
+    if (users.some((u) => u.id === a)) return a;
+    const byName = users.find((u) => strip(u.name) === strip(a));
+    return byName ? byName.id : a;
+  };
+  let n = 0;
+  const board = boards[0] || null;
+  const columns = Array.isArray(board?.columns) && board.columns.length ? board.columns : TASK_DEFAULT_COLUMNS;
+  let doneKey = board ? (board.doneKey !== undefined ? String(board.doneKey) : legacyDoneKey(columns)) : legacyDoneKey(columns);
+  if (board) {
+    const patch = {};
+    if (board.doneKey === undefined) patch.doneKey = doneKey;
+    if (board.completeMovesToDone === undefined) patch.completeMovesToDone = true;
+    if (!Array.isArray(board.labels)) {
+      const seen = new Set();
+      const labels = [];
+      const color = (name) => (name === "bug" ? "oklch(0.64 0.16 25)" : name === "melhoria" ? "oklch(0.62 0.13 240)" : "");
+      for (const t of tasks) for (const l of Array.isArray(t.labels) ? t.labels : []) {
+        const name = String(l || "").trim();
+        if (!name || seen.has(name.toLowerCase())) continue;
+        seen.add(name.toLowerCase());
+        labels.push({ name, color: color(name.toLowerCase()) });
+      }
+      patch.labels = labels;
+    }
+    if (Object.keys(patch).length) { await repo.update("task_boards", board.id, patch, { silent: true }); n++; }
+  }
+  for (const t of tasks) {
+    const patch = {};
+    if (t.completed === undefined) {
+      patch.completed = !!doneKey && t.column === doneKey;
+      patch.completedAt = patch.completed ? String(t.updatedAt || t.createdAt || "") : "";
+      patch.completedBy = ""; patch.completedFrom = "";
+    }
+    if (!Array.isArray(t.assignees)) patch.assignees = t.assignee ? [String(t.assignee)] : [];
+    const assignees = patch.assignees || t.assignees;
+    if (!Array.isArray(t.followers)) patch.followers = [...new Set([...assignees, ...(t.createdBy ? [String(t.createdBy)] : [])].filter(Boolean))];
+    if (t.createdBy === undefined) patch.createdBy = "";
+    if (t.updatedAt === undefined) patch.updatedAt = String(t.createdAt || "");
+    if (t.updatedBy === undefined) patch.updatedBy = "";
+    if (t.version === undefined) patch.version = 0;
+    if (!Array.isArray(t.attachments)) {
+      const id = assetIdFromUrl(t.photo);
+      if (id) {
+        const asset = await repo.get("task_assets", id);
+        patch.attachments = [{ id, url: `/public/tasks/${id}`, name: asset?.name || "foto", mime: asset?.mime || "image/png", size: Number(asset?.size) || 0, by: asset?.by || "", at: asset?.at || String(t.createdAt || "") }];
+      } else patch.attachments = [];
+    }
+    if (t.cover === undefined) patch.cover = assetIdFromUrl(t.photo) ? `/public/tasks/${assetIdFromUrl(t.photo)}` : "";
+    for (const k of ["blockedBy", "likes", "labels"]) if (!Array.isArray(t[k])) patch[k] = [];
+    for (const k of ["startDate", "parentId", "followUpOf", "duplicatedFrom", "recurrenceOf"]) if (t[k] === undefined) patch[k] = "";
+    if (t.recurrence === undefined) patch.recurrence = null;
+    const comments = Array.isArray(t.comments) ? t.comments : [];
+    const needsComments = !Array.isArray(t.comments) || comments.some((c) => !c || typeof c !== "object" || c.editedAt === undefined || !Array.isArray(c.likes) || !Array.isArray(c.mentions) || userId(c.author) !== String(c.author || ""));
+    if (needsComments) {
+      patch.comments = comments.filter((c) => c && typeof c === "object").map((c) => ({
+        ...c, author: userId(c.author), editedAt: c.editedAt === undefined ? "" : c.editedAt,
+        likes: Array.isArray(c.likes) ? c.likes : [], mentions: Array.isArray(c.mentions) ? c.mentions : [],
+      }));
+    }
+    if (Object.keys(patch).length) { await repo.update("tasks", t.id, patch, { silent: true }); n++; }
+  }
+  return n;
+}
+
+// ── Mensagens sem leadId em conversa já vinculada (raio-x 30/09) ──────────
+// Lead que escreveu de um segundo número (ou foi vinculado na mão) ficava com
+// as mensagens dele E as respostas do time sem leadId: a wa_threads sabia o
+// lead, a wa_messages não — 8 conversas inteiras invisíveis pras métricas.
+// Herda o lead (e o produto) da thread. Um UPDATE em SQL quando há banco (22k
+// linhas); em JS no mem-repo dos testes. Roda uma vez (marcador).
+export async function ensureWaMessagesLeadId(repo) {
+  const FLAG = "wa_messages_leadid_v1";
+  if (await repo.get("app_config", FLAG).catch(() => null)) return 0;
+  let changed = 0;
+  if (typeof repo.rawUpdate === "function") {
+    changed = await repo.rawUpdate("wa_messages", `UPDATE {tbl} m
+      SET json = m.json || jsonb_build_object('leadId', t.json->>'leadId', 'saas', coalesce(nullif(m.json->>'saas', ''), t.json->>'saas', ''))
+      FROM {tbl:wa_threads} t
+      WHERE t.id = m.json->>'thread' AND coalesce(m.json->>'leadId', '') = '' AND coalesce(t.json->>'leadId', '') <> ''`);
+  } else {
+    const threads = await repo.list("wa_threads");
+    const byId = new Map(threads.filter((t) => t.leadId).map((t) => [t.id, t]));
+    for (const m of await repo.list("wa_messages")) {
+      if (m.leadId) continue;
+      const t = byId.get(m.thread);
+      if (!t) continue;
+      await repo.update("wa_messages", m.id, { leadId: t.leadId, saas: m.saas || t.saas || "" });
+      changed++;
+    }
+  }
+  await repo.create("app_config", { id: FLAG, at: new Date().toISOString(), changed });
+  return changed;
+}
+
+// ── Mensagem pronta do form com variável órfã (raio-x 30/09) ──────────────
+// O form OEM v2 publicado perdeu a pergunta `niche` e o texto pré-preenchido
+// seguia citando {{niche}}: 233 leads em set/2026 chegaram com "Minha
+// operação: {{niche}}, 1 conta contas" (o rótulo da resposta já traz
+// "conta"). Troca o texto dos forms publicados pelo PREFILL atual quando o
+// deles ainda tem o defeito; texto editado na mão sem o defeito fica como
+// está. Idempotente por conteúdo.
+export async function ensureFormPrefillV2(repo) {
+  const { PREFILL, FORM_IDS } = await import("../forms/forms-v2.leverads.js");
+  let changed = 0;
+  for (const [linha, id] of Object.entries(FORM_IDS)) {
+    const form = await repo.get("forms", id).catch(() => null);
+    const cur = String(form?.thanks?.whatsappPrefill || "");
+    if (!form || !cur || cur === PREFILL[linha]) continue;
+    const hasNiche = (form.questions || []).some((q) => q?.key === "niche");
+    const broken = /\{\{accounts\}\} contas/.test(cur) || (!hasNiche && /\{\{niche\}\}/.test(cur));
+    if (!broken) continue;
+    await repo.update("forms", id, { thanks: { ...(form.thanks || {}), whatsappPrefill: PREFILL[linha] } });
+    changed++;
+  }
+  return changed;
+}
+
+// ── Contratos: sem a cláusula de exclusão de anúncios por inadimplência (Leo, 01/10/2026) ──
+// Os modelos de assinatura (LeverAds, LeverAds+OEM), o OEM avulso e o de
+// remuneração variável traziam um parágrafo "Exclusão dos anúncios ... em
+// caso de encerramento sem quitação" (9.5 ou 10.5): o lead autorizava a
+// LEVERADS a excluir das contas dele os anúncios criados pela ferramenta se o
+// contrato terminasse sem quitação. O Leo mandou tirar. Sai o parágrafo (sem
+// nenhuma tag interna, por isso o `[^<]*`) e as remissões "observado o
+// disposto na Cláusula X.5" / "observada a Cláusula 10.5" que o citavam.
+// Idempotente: corpo sem o parágrafo não muda. Aplicado em prod em 01/10 via
+// SQL (backup em _bak_contracts_20261001_exclusao_anuncios); a migração
+// garante o mesmo estado em qualquer banco semeado.
+export function stripAdDeletionClause(body) {
+  const s = String(body || "");
+  const para = /\n?<p><strong>(\d+)\.5\.[^<]*<\/strong>[^<]*autoriza a LEVERADS a excluir[^<]*<\/p>/g;
+  const nums = new Set();
+  const out = s.replace(para, (_m, n) => { nums.add(n); return ""; });
+  if (!nums.size) return s;
+  let fixed = out;
+  for (const n of nums) {
+    fixed = fixed
+      .replace(new RegExp(`, observado o disposto na Cl[áa]usula ${n}\\.5`, "g"), "")
+      .replace(new RegExp(`, observada a Cl[áa]usula ${n}\\.5`, "g"), "");
+  }
+  return fixed;
+}
+
+export async function ensureContractsNoAdDeletionClause(repo) {
+  let n = 0;
+  for (const c of await repo.list("contracts")) {
+    if (!c?.body) continue;
+    const body = stripAdDeletionClause(c.body);
+    if (body === c.body) continue;
+    await repo.update("contracts", c.id, { body, updatedAt: new Date().toISOString() });
+    n++;
+  }
+  return n;
+}

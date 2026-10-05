@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { addBusinessMinutes, businessMsBetween, nextSla, slaState, normalizeHours } from "../src/tickets-sla.js";
-import { STATUS_KIND, normalizeSettings } from "../src/tickets-core.js";
-import { repairDoneTicketSla } from "../src/migrations.js";
+import { addBusinessMinutes, businessMsBetween, nextSla, slaState, normalizeHours } from "../src/support/tickets-sla.js";
+import { STATUS_KIND, normalizeSettings } from "../src/support/tickets-core.js";
+import { repairDoneTicketSla } from "../src/platform/migrations.js";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const HOURS = { enabled: true, hourStart: 8, hourEnd: 18 };

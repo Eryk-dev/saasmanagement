@@ -4,7 +4,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { makeMetaCapi } from "../src/meta-capi.js";
+import { makeMetaCapi } from "../src/marketing/meta-capi.js";
 
 function capture() {
   const urls = [];

@@ -1,0 +1,390 @@
+// Disponibilidade de agenda no SERVIDOR — o porte fiel da grade do front
+// (today.jsx: occupySlots/busyView/callBusyKeys) pra quem precisa de horário
+// livre sem um navegador aberto: o SDR automatizado (sdr-flow.js) e a rota
+// GET /api/agenda/free-slots. Mesmas réguas: slots de 30 min das 7h às 21h,
+// call ocupa 1h (2 células), fim de semana fora, bloqueios da tela Agenda +
+// calls/integrações marcadas + consultas da mentoria ocupam.
+//
+// FUSO: todo horário de compromisso no cockpit é "hora de Brasília sem fuso"
+// ("YYYY-MM-DDTHH:MM" — callAt, integrationAt, consultations.at, e as horas de
+// agenda_blocks). Aqui a conta inteira roda nesse relógio de parede: datas
+// naive viram Date com campos UTC = relógio BRT (mesma convenção do
+// business-hours.js), e só o "agora" real é convertido (UTC-3 fixo).
+//
+// ROTEAMENTO POR NÍVEL (Leo, 22/08): a régua de cliente é a matriz S-E que já
+// vive nos cards (leadGrade, metrics-core.js). Cliente B ou melhor (S/A/B)
+// é atendido por closer pleno/sênior (user.compLevel 2-3, o nível do plano de
+// remuneração); C pra baixo (C/D/E e sem qualificação) vai pro júnior
+// (compLevel 1). O foco é SEMPRE o próximo horário livre do pool: quem tiver o
+// slot mais cedo leva. C/D pode SUBIR pro pleno/sênior ASSIM QUE O DIA DO
+// JÚNIOR LOTA (Leo, 13/09/2026): basta o pleno/sênior ter horário num dia
+// ANTERIOR ao primeiro slot livre do júnior. A régua antiga exigia mais de 1
+// dia útil de diferença, então o lead C/D esperava até o dia seguinte com um
+// closer livre na mesma tarde — velocidade de resposta vale mais que a
+// separação de escalão. Empate de horário continua do júnior (ele entra
+// primeiro na mistura). S/A/B nunca desce. Pool vazio cai pra todos os
+// closers — agendamento nunca trava.
+import { kindOf } from "./stages.js";
+import { leadGrade, ICP_GRADES } from "../metrics/metrics-core.js";
+
+const BRT_MS = 3 * 3_600_000;
+export const SLOT_MIN = 30;
+export const CALL_MIN = 60;
+export const CALL_H0 = 7, CALL_H1 = 21; // slots 07:00…20:30 (espelho do front)
+
+const pad2 = (n) => String(n).padStart(2, "0");
+
+// Data naive "YYYY-MM-DD[THH:MM]" → Date com campos UTC = relógio de parede.
+export function wallFromNaive(v) {
+  const s = String(v || "").trim();
+  // ISO COM FUSO ("2026-09-16T13:00:00.000Z"): callAt gravado em UTC por um
+  // cliente que mandou Date.toISOString() (visto 16/09, Renan: a call era 10h
+  // BRT e o lembrete disse "hoje às 13h", porque o "13:00" era lido como
+  // parede). Com fuso, converte pro relógio BRT em vez de fatiar o texto.
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s) && /(?:[Zz]|[+-]\d{2}:?\d{2})$/.test(s)) {
+    const d = new Date(s);
+    return Number.isFinite(d.getTime()) ? wallNow(d) : null;
+  }
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
+  if (!m) return null;
+  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4] || 0), Number(m[5] || 0)));
+}
+// O "agora" real no relógio de parede BRT (UTC-3 fixo, sem horário de verão).
+export const wallNow = (at = new Date()) => new Date(new Date(at).getTime() - BRT_MS);
+// Qualquer forma de data-hora ("YYYY-MM-DDTHH:MM" ou ISO com fuso) → a forma
+// canônica naive BRT que o cockpit grava. É o que a API aplica em callAt,
+// followupAt e integrationAt antes de gravar (crm/routes.crud.js).
+export function toNaiveBrt(v) {
+  const s = String(v || "").trim();
+  if (!s) return "";
+  const w = wallFromNaive(s);
+  return w ? slotValOf(w) : s;
+}
+
+const wallYmd = (w) => `${w.getUTCFullYear()}-${pad2(w.getUTCMonth() + 1)}-${pad2(w.getUTCDate())}`;
+const cellKeyOf = (w) => `${wallYmd(w)}-${pad2(w.getUTCHours())}-${w.getUTCMinutes() < 30 ? "00" : "30"}`;
+const slotValOf = (w) => `${wallYmd(w)}T${pad2(w.getUTCHours())}:${pad2(w.getUTCMinutes())}`;
+
+// Células de meia hora que um compromisso ocupa (âncora na meia hora que o
+// contém; 14h10 por 60 min pega três células) — espelho do occupySlots do front.
+export function occupyCells(startNaive, minutes = CALL_MIN) {
+  const w = startNaive instanceof Date ? new Date(startNaive) : wallFromNaive(startNaive);
+  if (!w) return [];
+  const end = w.getTime() + minutes * 60_000;
+  const c = new Date(w);
+  c.setUTCMinutes(c.getUTCMinutes() < 30 ? 0 : 30, 0, 0);
+  const out = [];
+  for (; c.getTime() < end; c.setUTCMinutes(c.getUTCMinutes() + SLOT_MIN)) out.push(cellKeyOf(c));
+  return out;
+}
+
+// Um bloqueio (agenda_blocks) casa com a célula? Mesma régua do matchBlock do
+// front: weekly pelo dia da semana, once pela data; allDay ou sobreposição de
+// horas (fromHour/toHour fracionários). Exportada: as regras de veiculação
+// (ad-delivery.js) medem a capacidade da agenda com ESTA régua, não uma cópia.
+export function blockHits(b, key) {
+  const dateStr = key.slice(0, 10);
+  const from = Number(key.slice(11, 13)) + Number(key.slice(14, 16)) / 60;
+  const to = from + SLOT_MIN / 60;
+  const hourHit = b.allDay || (Number(b.fromHour) < to && Number(b.toHour) > from);
+  if (!hourHit) return false;
+  if (b.recur === "weekly") {
+    const [y, m, d] = dateStr.split("-").map(Number);
+    return Number(b.weekday) === new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  }
+  return b.date === dateStr;
+}
+
+// Ocupação de UMA pessoa: células concretas (calls do closer + integrações do
+// integrador + consultas) num Set, bloqueios avaliados por célula.
+function busyOf(userId, { leads, blocks, consultations, productById, excludeLeadId }) {
+  const cells = new Set();
+  for (const l of leads) {
+    if (l.id === excludeLeadId) continue;
+    if (l.closer === userId && l.callAt) {
+      // Follow-up não ocupa a agenda (o SDR pode marcar a call de venda por
+      // cima) — mesma exceção do callBusyKeys do front.
+      const kind = kindOf(productById.get(l.saas), l.stage);
+      if (kind !== "followup") for (const k of occupyCells(l.callAt)) cells.add(k);
+    }
+    if (l.integrator === userId && l.integrationAt) {
+      for (const k of occupyCells(l.integrationAt)) cells.add(k);
+    }
+  }
+  for (const c of consultations) {
+    if (c.owner !== userId || !c.at || c.status === "canceled") continue;
+    for (const k of occupyCells(c.at, Number(c.durationMin) > 0 ? Number(c.durationMin) : 60)) cells.add(k);
+  }
+  const mine = blocks.filter((b) => b.user === userId || (Array.isArray(b.users) && b.users.includes(userId)));
+  return (key) => cells.has(key) || mine.some((b) => blockHits(b, key));
+}
+
+// ── Pools de closer por nível ───────────────────────────────────────────────
+const levelOf = (u) => { const n = Math.floor(Number(u?.compLevel)); return n >= 1 && n <= 3 ? n : 1; };
+export const UPPER_GRADES = ICP_GRADES; // "B+" da régua do Leo (S/A/B) — régua única no metrics-core
+
+export function closerPools(users, saas) {
+  const closers = (users || []).filter((u) =>
+    Array.isArray(u.roles) && u.roles.includes("closer") && (!u.saas || u.saas === saas));
+  return {
+    upper: closers.filter((u) => levelOf(u) >= 2),  // pleno + sênior
+    junior: closers.filter((u) => levelOf(u) === 1),
+    all: closers,
+  };
+}
+
+// Equipe do SDR LeverAds (Leonardo, 20/09/2026). IDs legados são nomes;
+// cadastros com UUID usam o primeiro nome completo, sem correspondência parcial.
+// A atribuição explícita também vale para Vitor cadastrado como integrador.
+export function sdrCloserPools(users, saas) {
+  const normalize = (v) => String(v || "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const members = (users || []).filter((u) => !u.saas || u.saas === saas);
+  const named = (u, names) => names.includes(normalize(u.id)) || names.includes(normalize(u.name).split(/\s+/)[0]);
+  const upper = members.filter((u) => u.roles?.includes("closer") && named(u, ["leonardo", "jonan", "jonathan"]));
+  const junior = members.filter((u) => named(u, ["vitor"]));
+  return { upper, junior, all: [...upper, ...junior] };
+}
+
+// ── Horários livres de um pool ──────────────────────────────────────────────
+// Varre os próximos `days` DIAS ÚTEIS e devolve, por slot livre, o closer com
+// MENOS calls no dia (balanceamento; empate = ordem estável). Um item por
+// horário: [{ at: "YYYY-MM-DDTHH:MM", closer, level }...], em ordem cronológica.
+export function freeSlotsForPool({ pool, now, startDate, days = 5, minNoticeMin = 120, limit = 0, busyFns, callCountOf, fromHour = CALL_H0, toHour = CALL_H1, lunchFrom = null, lunchTo = null }) {
+  if (!pool.length) return [];
+  const out = [];
+  const floor = new Date(now.getTime() + minNoticeMin * 60_000);
+  const day = startDate ? wallFromNaive(startDate) : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  let scanned = 0;
+  while (scanned < days) {
+    const dow = day.getUTCDay();
+    if (dow !== 0 && dow !== 6) {
+      for (let total = Math.ceil((fromHour * 60) / SLOT_MIN) * SLOT_MIN; total + CALL_MIN <= toHour * 60; total += SLOT_MIN) {
+        // Almoço (Leo, 23/08): call que ENCOSTA na janela de almoço não entra
+        // na oferta do robô (12h-13h por padrão via OFFER_HOURS).
+        if (lunchFrom != null && lunchTo != null && total / 60 < lunchTo && (total + CALL_MIN) / 60 > lunchFrom) continue;
+        const w = new Date(day);
+        w.setUTCHours(Math.floor(total / 60), total % 60, 0, 0);
+        if (w.getTime() < floor.getTime()) continue;
+        const cells = occupyCells(w, CALL_MIN);
+        const free = pool.filter((u) => cells.every((k) => !busyFns.get(u.id)(k)));
+        if (!free.length) continue;
+        const dayStr = wallYmd(w);
+        free.sort((a, b) => (callCountOf(a.id, dayStr) - callCountOf(b.id, dayStr)));
+        out.push({ at: slotValOf(w), closer: free[0].id, level: levelOf(free[0]) });
+        if (limit && out.length >= limit) return out;
+      }
+      scanned++;
+    }
+    day.setUTCDate(day.getUTCDate() + 1);
+  }
+  return out;
+}
+
+// Soma N dias úteis a um "YYYY-MM-DDTHH:MM". Hoje serve o prazo dos
+// compromissos do cliente na integração (client-pending.js); o overflow C/D
+// deixou de usar em 13/09/2026, quando virou comparação por dia.
+export function addBusinessDaysNaive(at, n) {
+  const w = wallFromNaive(at);
+  if (!w) return at;
+  let left = n;
+  while (left > 0) {
+    w.setUTCDate(w.getUTCDate() + 1);
+    const dow = w.getUTCDay();
+    if (dow !== 0 && dow !== 6) left--;
+  }
+  return slotValOf(w);
+}
+
+// Janela de OFERTA do robô: horário que o SDR automatizado propõe pro lead.
+// A grade completa (7h às 21h) continua valendo pra gente marcar na mão; o
+// robô oferecendo "segunda às 7h" é honesto mas soa errado (visto no replay
+// de 22/08) — oferta automática fica no horário comercial confortável.
+// Das 9h às 19h, com a ÚLTIMA call começando 19h (Leo, 23/08): a varredura
+// exige a call TERMINANDO dentro da janela, por isso o teto é 20.
+export const OFFER_HOURS = { fromHour: 9, toHour: 20, lunchFrom: 12, lunchTo: 13 };
+
+// Dia do slot no relógio de parede ("YYYY-MM-DDTHH:MM" → "YYYY-MM-DD"). É a
+// unidade do overflow: "a agenda do júnior encheu" é uma pergunta sobre o DIA,
+// não sobre a hora.
+const dayOfSlot = (at) => String(at || "").slice(0, 10);
+
+// ── A régua completa: horários pro LEAD ─────────────────────────────────────
+// Nota do lead (matriz S-E) → pool elegível → próximos horários. Devolve
+// { slots, pool: "upper"|"junior"|"junior+upper"|"all", grade }.
+export async function slotsForLead(repo, { lead, saas, grade: gradeIn, now = wallNow(), startDate, days = 5, minNoticeMin = 120, limit = 6, fromHour, toHour, lunchFrom, lunchTo, sdr = false, holds = [] } = {}) {
+  const sid = saas || lead?.saas || "";
+  const [users, leads, blocks, consultations, products] = await Promise.all([
+    repo.list("users"),
+    repo.list("leads"),
+    repo.list("agenda_blocks"),
+    repo.list("consultations").catch(() => []),
+    repo.list("products"),
+  ]);
+  const productById = new Map(products.map((p) => [p.id, p]));
+  const pools = sdr && sid === "leverads" ? sdrCloserPools(users, sid) : closerPools(users, sid);
+  const grade = gradeIn || leadGrade(lead || {}) || null;
+
+  const ctx = { leads, blocks, consultations, productById, excludeLeadId: lead?.id || "" };
+  const busyFns = new Map();
+  const ensureBusy = (list) => { for (const u of list) if (!busyFns.has(u.id)) busyFns.set(u.id, busyOf(u.id, ctx)); };
+  // Calls do dia por closer (balanceamento de carga no empate de slot).
+  const countCache = new Map();
+  const callCountOf = (uid, dayStr) => {
+    const key = `${uid}:${dayStr}`;
+    if (!countCache.has(key)) {
+      countCache.set(key, leads.filter((l) => l.closer === uid && l.callAt && String(l.callAt).slice(0, 10) === dayStr).length);
+    }
+    return countCache.get(key);
+  };
+  const compute = (pool, lim, janela) => {
+    ensureBusy(pool);
+    const slots = freeSlotsForPool({ pool, now, startDate, days: janela, minNoticeMin, limit: holds.length ? 0 : lim, busyFns, callCountOf, ...(fromHour != null ? { fromHour } : {}), ...(toHour != null ? { toHour } : {}), ...(lunchFrom != null ? { lunchFrom } : {}), ...(lunchTo != null ? { lunchTo } : {}) });
+    return withoutHeld(slots, holds, lead?.id).slice(0, lim || undefined);
+  };
+
+  // SDR: a equipe indicada independe da remuneração. A preferência do Vitor
+  // é por DIA, inclusive quando o cliente pede uma semana inteira.
+  if (sdr && sid === "leverads") {
+    if (grade && UPPER_GRADES.has(grade)) return { slots: compute(pools.upper, limit, days), pool: "upper", grade };
+    const junior = compute(pools.junior, 0, days);
+    const juniorDays = new Set(junior.map((s) => dayOfSlot(s.at)));
+    const upper = compute(pools.upper, 0, days).filter((s) => !juniorDays.has(dayOfSlot(s.at)));
+    const slots = [...junior, ...upper].sort((a, b) => a.at.localeCompare(b.at)).slice(0, limit || undefined);
+    return { slots, pool: junior.length ? (upper.length ? "junior+upper" : "junior") : "upper", grade };
+  }
+
+  // Roteamento legado da agenda manual e dos demais produtos.
+  const resolve = (janela) => {
+  // S/A/B: pleno/sênior, nunca desce pro júnior. Sem ninguém no pool de cima,
+  // cai pra todos (agendamento nunca trava por cadastro incompleto de nível).
+  if (grade && UPPER_GRADES.has(grade)) {
+    const pool = pools.upper.length ? pools.upper : pools.all;
+    return { slots: compute(pool, limit, janela), pool: pools.upper.length ? "upper" : "all", grade };
+  }
+  // C pra baixo (e sem qualificação): júnior primeiro. Overflow: assim que o
+  // DIA do júnior lota (o primeiro slot livre dele cai num dia posterior ao do
+  // pleno/sênior), os horários de cima entram na oferta. Comparação por DIA, no
+  // relógio de parede: enquanto os dois conseguem hoje, o lead é do júnior.
+  if (!pools.junior.length) {
+    const pool = pools.upper.length ? pools.upper : pools.all;
+    return { slots: compute(pool, limit, janela), pool: pools.upper.length ? "upper" : "all", grade };
+  }
+  const jr = compute(pools.junior, limit, janela);
+  if (!jr.length) return { slots: compute(pools.upper.length ? pools.upper : pools.all, limit, janela), pool: "upper", grade };
+  if (pools.upper.length) {
+    const up = compute(pools.upper, 1, janela);
+    if (up.length && dayOfSlot(up[0].at) < dayOfSlot(jr[0].at)) {
+      const merged = [...jr, ...compute(pools.upper, limit, janela)].sort((a, b) => a.at.localeCompare(b.at));
+      const seen = new Set();
+      return { slots: merged.filter((s) => !seen.has(s.at) && seen.add(s.at)).slice(0, limit || undefined), pool: "junior+upper", grade };
+    }
+  }
+  return { slots: jr, pool: "junior", grade };
+  };
+
+  return resolve(days);
+}
+
+// ── Reserva curta do horário OFERTADO ───────────────────────────────────────
+// O robô ofereceu "amanhã às 10h ou às 14h", o lead respondeu "10" 27 minutos
+// depois e ouviu "esse horário eu não consigo confirmar aqui" — outro lead
+// tinha levado o slot no meio (visto em prod 24/08, Guilherme). Oferecer e
+// depois negar é o tipo de contradição que só robô comete, então a oferta
+// RESERVA: o horário some da oferta dos OUTROS leads por HOLD_MIN minutos e
+// continua válido pra quem recebeu.
+//
+// A reserva é só do robô: quem marca na mão pelo cockpit enxerga a agenda
+// inteira (decisão humana sempre ganha) — por isso o filtro mora aqui, aplicado
+// por quem oferta, e não dentro do slotsForLead.
+export const HOLD_MIN = 30;
+const holdsId = (saas) => `sdr_slot_holds_${saas || "default"}`;
+
+export async function activeHolds(repo, saas, { now = new Date() } = {}) {
+  const rec = await repo.get("app_config", holdsId(saas)).catch(() => null);
+  const nowMs = new Date(now).getTime();
+  return (Array.isArray(rec?.holds) ? rec.holds : []).filter((h) => h?.at && Date.parse(h.until || "") > nowMs);
+}
+
+// Reserva os horários pro lead (as reservas ANTERIORES dele caem: a oferta nova
+// substitui a antiga). Expiradas são podadas no mesmo passe, então o registro
+// não cresce sem fim.
+export async function holdSlots(repo, { saas, leadId, slots = [], now = new Date(), minutes = HOLD_MIN } = {}) {
+  const list = (slots || []).filter((s) => s?.at);
+  if (!leadId || !list.length) return [];
+  const keep = (await activeHolds(repo, saas, { now })).filter((h) => h.leadId !== leadId);
+  const until = new Date(new Date(now).getTime() + minutes * 60_000).toISOString();
+  const holds = [...keep, ...list.map((s) => ({ at: s.at, leadId, until }))].slice(-400);
+  const id = holdsId(saas);
+  const rec = await repo.get("app_config", id).catch(() => null);
+  if (rec) await repo.update("app_config", id, { holds });
+  else await repo.create("app_config", { id, holds });
+  return holds;
+}
+
+// Lead marcou (ou saiu de cena): o que ele segurava volta pro pool na hora.
+export async function releaseHolds(repo, { saas, leadId, now = new Date() } = {}) {
+  if (!leadId) return;
+  const id = holdsId(saas);
+  const rec = await repo.get("app_config", id).catch(() => null);
+  if (!rec) return;
+  const holds = (await activeHolds(repo, saas, { now })).filter((h) => h.leadId !== leadId);
+  await repo.update("app_config", id, { holds });
+}
+
+// Tira da lista o que OUTRO lead reservou agora há pouco.
+export function withoutHeld(slots, holds, leadId) {
+  const taken = new Set((holds || []).filter((h) => h.leadId !== leadId).map((h) => h.at));
+  return taken.size ? (slots || []).filter((s) => !taken.has(s.at)) : (slots || []);
+}
+
+// Dupla de sugestão com RESPIRO (Leo, 23/08): ao oferecer 2 opções, elas
+// devem ter pelo menos 2h de diferença quando a agenda permitir — 9h/9h30 não
+// é escolha de verdade. Cai pro adjacente só quando não há espaçado.
+// OFERTA só em HORA CHEIA (Leo, 25/08): "amanhã às 16h30" soa sobra de agenda
+// e polui a escolha. A grade continua de meia em meia hora — hora quebrada
+// segue disponível pra quando o LEAD pedir ("consigo só 14h30") e pra marcação
+// na mão. Sem nenhuma hora cheia livre, devolve a lista inteira (melhor uma
+// oferta quebrada que nenhuma).
+export function wholeHourSlots(slots) {
+  const cheias = (slots || []).filter((s) => String(s?.at || "").endsWith(":00"));
+  return cheias.length ? cheias : (slots || []);
+}
+
+export function spreadPair(slots, minGapMin = 120) {
+  if (!slots.length) return [];
+  const first = slots[0];
+  const t0 = wallFromNaive(first.at)?.getTime() ?? 0;
+  const second = slots.find((s) => (wallFromNaive(s.at)?.getTime() ?? 0) - t0 >= minGapMin * 60_000) || slots[1];
+  return second ? [first, second] : [first];
+}
+
+// Rótulo humano de um slot naive pro texto do WhatsApp: "hoje às 14h" /
+// "amanhã às 9h30" / "sexta às 10h" (mais de uma semana: "sexta 04/09 às 10h").
+const WEEKDAYS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+export function slotLabel(at, now = wallNow()) {
+  const w = wallFromNaive(at);
+  if (!w) return String(at || "");
+  const h = w.getUTCMinutes() ? `${w.getUTCHours()}h${pad2(w.getUTCMinutes())}` : `${w.getUTCHours()}h`;
+  const today = wallYmd(now);
+  const day = wallYmd(w);
+  if (day === today) return `hoje às ${h}`;
+  const tomorrow = new Date(now); tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  if (day === wallYmd(tomorrow)) return `amanhã às ${h}`;
+  const diffDays = Math.round((Date.UTC(w.getUTCFullYear(), w.getUTCMonth(), w.getUTCDate()) - Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())) / 86_400_000);
+  const wd = WEEKDAYS[w.getUTCDay()];
+  if (diffDays < 7) return `${wd} às ${h}`;
+  return `${wd} ${pad2(w.getUTCDate())}/${pad2(w.getUTCMonth() + 1)} às ${h}`;
+}
+
+// Rótulo da CONFIRMAÇÃO (Leo, 24/08): o combinado por escrito leva a data
+// cravada — "hoje/amanhã" sozinho vira ambiguidade quando o lead relê a
+// conversa dias depois. "hoje (24/08) às 14h" / "sexta (28/08) às 10h".
+export function slotLabelFull(at, now = wallNow()) {
+  const w = wallFromNaive(at);
+  if (!w) return String(at || "");
+  const h = w.getUTCMinutes() ? `${w.getUTCHours()}h${pad2(w.getUTCMinutes())}` : `${w.getUTCHours()}h`;
+  const tomorrow = new Date(now); tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  const day = wallYmd(w);
+  const base = day === wallYmd(now) ? "hoje" : day === wallYmd(tomorrow) ? "amanhã" : WEEKDAYS[w.getUTCDay()];
+  return `${base} (${pad2(w.getUTCDate())}/${pad2(w.getUTCMonth() + 1)}) às ${h}`;
+}

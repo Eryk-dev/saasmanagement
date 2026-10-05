@@ -1,4 +1,4 @@
-// NPS no SPA: a mesma classificação do servidor (packages/api/src/nps.js).
+// NPS no SPA: a mesma classificação do servidor (packages/api/src/customers/nps.js).
 // Nota de 0 a 10 por resposta; promotor 9-10, neutro 7-8, detrator 0-6. O
 // ÍNDICE (promotores − detratores) é calculado no servidor e chega pronto no
 // card de CS do placar — aqui só rotulamos a nota de um cliente.

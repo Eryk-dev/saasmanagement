@@ -9,7 +9,8 @@ import Fastify from "fastify";
 import multipart from "@fastify/multipart";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { registerFlashcardRoutes, FLASHCARD_DEFAULTS } = await import("../src/routes.flashcards.js");
+const { registerFlashcardRoutes } = await import("../src/training/routes.flashcards.js");
+const { FLASHCARD_DEFAULTS } = await import("../src/training/flashcards.js");
 
 const USERS = {
   ana: { id: "ana", name: "Ana", roles: ["sdr"] },
@@ -494,7 +495,7 @@ test("4fun aparece SEPARADO nos números: stats da pessoa e coluna da equipe, se
 });
 
 test("migração 31/08: cotas de OEM velhas trocadas nos cards de produto; edição do dono é soberana", async () => {
-  const { migrateFlashcardsOemQuotas } = await import("../src/migrations.js");
+  const { migrateFlashcardsOemQuotas } = await import("../src/platform/migrations.js");
   const { repo } = await buildApp();
   // Sem doc salvo (defaults servindo sozinhos) a migração é no-op.
   assert.equal(await migrateFlashcardsOemQuotas(repo), 0);
@@ -535,7 +536,7 @@ test("defaults: ids únicos, roles válidos, limites de tamanho e zero travessã
 // (FULL/Parcial/recorrente/trial/12x 599) e "clonar" só vive no integrator
 // (mecânica interna) e nos 3 meta-cards que falam DA regra de não dizer clonar.
 test("defaults: vocabulário aposentado fora e clonagem só no integrator", async () => {
-  const { LEVERADS_V2 } = await import("../src/flashcard-decks.leverads.js");
+  const { LEVERADS_V2 } = await import("../src/training/flashcard-decks.leverads.js");
   const cards = FLASHCARD_DEFAULTS.leverads;
   // Nomes de plano em caixa alta são case-sensitive: "Mercado Envios Full" e o
   // "clone" mecânico do integrator são legítimos.
@@ -561,8 +562,8 @@ test("defaults: vocabulário aposentado fora e clonagem só no integrator", asyn
 });
 
 test("migração 16/09: doc salvo recebe os cards reescritos, perde os retirados e ganha os novos; dono e imagem preservados", async () => {
-  const { migrateFlashcardsCatalogV2 } = await import("../src/migrations.js");
-  const { LEVERADS_V2 } = await import("../src/flashcard-decks.leverads.js");
+  const { migrateFlashcardsCatalogV2 } = await import("../src/platform/migrations.js");
+  const { LEVERADS_V2 } = await import("../src/training/flashcard-decks.leverads.js");
   const { repo } = await buildApp();
   assert.equal(await migrateFlashcardsCatalogV2(repo), 0, "sem doc = no-op");
   const rew = LEVERADS_V2.rewritten[0], ret = LEVERADS_V2.retired[0], add = LEVERADS_V2.added[0];
@@ -585,8 +586,8 @@ test("migração 16/09: doc salvo recebe os cards reescritos, perde os retirados
 });
 
 test("migração 16/09: estado FSRS dos cards que mudaram de resposta é zerado só no leverads", async () => {
-  const { migrateTrainingStatesCatalogV2 } = await import("../src/migrations.js");
-  const { LEVERADS_V2 } = await import("../src/flashcard-decks.leverads.js");
+  const { migrateTrainingStatesCatalogV2 } = await import("../src/platform/migrations.js");
+  const { LEVERADS_V2 } = await import("../src/training/flashcard-decks.leverads.js");
   const { repo } = await buildApp();
   const rew = LEVERADS_V2.rewritten[0], ret = LEVERADS_V2.retired[0];
   await repo.create("training_states", { id: "leverads__ana", saas: "leverads", user: "ana",

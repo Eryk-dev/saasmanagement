@@ -5,7 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { makeLinear } from "../src/linear.js";
+import { makeLinear } from "../src/support/linear.js";
 
 // fetch de mentira: guarda as chamadas e responde pela fila de respostas.
 function fakeFetch(respostas) {

@@ -9,8 +9,8 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerRoutes } = await import("../src/routes.js");
-const { makeDiscord } = await import("../src/discord.js");
-const { makeMp } = await import("../src/mp.js");
+const { makeDiscord } = await import("../src/integrations/discord.js");
+const { makeMp } = await import("../src/payments/mp.js");
 
 const HOOK = "https://discord.test/api/webhooks/1/abc";
 

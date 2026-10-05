@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import {
   blogConfig, seoTitle, ctaUrl, categorySlug, relatedPosts, blogArticleHtml, blogIndexHtml,
   blogNotFoundHtml, blogSitemapXml, blogFeedXml, BLOG_DEFAULT_OG,
-} from "../src/blog-page.js";
+} from "../src/blog/blog-page.js";
 
 const cfg = blogConfig({ BLOG_PUBLIC_URL: "https://exemplo.com.br/blog/" });
 const post = {

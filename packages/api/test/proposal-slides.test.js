@@ -9,10 +9,10 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { ensureProposalCatalog, ensureSlidesDeck, regenerateOpenLeadsToSlides } = await import("../src/migrations.js");
-const { runNativeProposal, shareProposalOffer, proposalOffersOf } = await import("../src/proposal.js");
-const { registerProposalRoutes } = await import("../src/routes.proposals.js");
-const { calcOferta, deckConfig, slimCatalog, proposalSlidesPageHtml } = await import("../src/proposal-slides-page.js");
+const { ensureProposalCatalog, ensureSlidesDeck, regenerateOpenLeadsToSlides } = await import("../src/platform/migrations.js");
+const { runNativeProposal, shareProposalOffer, proposalOffersOf } = await import("../src/proposals/proposal.js");
+const { registerProposalRoutes } = await import("../src/proposals/routes.proposals.js");
+const { calcOferta, deckConfig, slimCatalog, proposalSlidesPageHtml } = await import("../src/proposals/proposal-slides-page.js");
 
 const TEMPLATE = {
   id: "pt_leverads",

@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   reportBlocker, reportEmail, reportWhatsApp, sendCustomerReport, startCustomerReports,
-} from "../src/customer-reports.js";
+} from "../src/customers/customer-reports.js";
 
 const DAY = 86_400_000;
 // 10h de São Paulo (13h UTC) numa terça, pra passar no gate de hora e no expediente.

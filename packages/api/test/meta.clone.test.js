@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const { makeMeta } = await import("../src/meta.js");
+const { makeMeta } = await import("../src/marketing/meta.js");
 
 function recorder(responder) {
   const calls = [];
@@ -190,7 +190,7 @@ test("uploadVideo: vídeo pequeno continua num POST só", async () => {
 // "Invalid parameter" sozinho não diz nada a quem está na tela; a Graph manda
 // o motivo de gente em error_user_msg e o par code/subcode pra documentação.
 
-const { metaErrorText } = await import("../src/meta.js");
+const { metaErrorText } = await import("../src/marketing/meta.js");
 
 test("metaErrorText: junta mensagem técnica, motivo de gente e códigos", () => {
   assert.equal(
@@ -222,7 +222,7 @@ test("erro da Graph chega no chamador com o motivo de gente junto", async () => 
 // "meta.adsOfAdSet is not a function". A fachada agora repassa tudo — e este
 // teste falha se alguém voltar a escrever a lista à mão e esquecer uma linha.
 test("fachada de produção expõe TODO método da fábrica", async () => {
-  const mod = await import("../src/meta.js");
+  const mod = await import("../src/marketing/meta.js");
   const daFabrica = Object.keys(makeMeta({ accessToken: "t" }));
   assert.ok(daFabrica.length > 15);
   assert.deepEqual(daFabrica.filter((k) => typeof mod.meta[k] !== "function"), []);

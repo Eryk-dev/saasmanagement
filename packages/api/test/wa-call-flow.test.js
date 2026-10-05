@@ -9,11 +9,11 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { makeWhatsapp } = await import("../src/whatsapp.js");
-const { registerWhatsappRoutes } = await import("../src/routes.whatsapp.js");
-const { greetingFor, parsePermissionReply, runInboundCallFlow, DEFAULT_CALL_GREETING } = await import("../src/wa-call-flow.js");
-const { isBusinessHours } = await import("../src/business-hours.js");
-const { recordMessage } = await import("../src/wa-store.js");
+const { makeWhatsapp } = await import("../src/whatsapp/whatsapp.js");
+const { registerWhatsappRoutes } = await import("../src/whatsapp/routes.whatsapp.js");
+const { greetingFor, parsePermissionReply, runInboundCallFlow, DEFAULT_CALL_GREETING } = await import("../src/whatsapp/wa-call-flow.js");
+const { isBusinessHours } = await import("../src/platform/business-hours.js");
+const { recordMessage } = await import("../src/whatsapp/wa-store.js");
 
 // Cliente fake: registra envios de texto e de pedido de permissão.
 function fakeWa(opts = {}) {

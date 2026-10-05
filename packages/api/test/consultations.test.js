@@ -7,10 +7,10 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { MANUAL_SECTIONS, newManual, publicManual } = await import("../src/deliverables.js");
-const { syncConsultationCalendar, syncConsultationMeetEvent, makeConsultationSummarizer, startConsultationSummaries, formatConsultationText } = await import("../src/consultations.js");
-const { registerConsultationRoutes } = await import("../src/routes.consultations.js");
-const { manualPageHtml } = await import("../src/manual-page.js");
+const { MANUAL_SECTIONS, newManual, publicManual } = await import("../src/calls/deliverables.js");
+const { syncConsultationCalendar, syncConsultationMeetEvent, makeConsultationSummarizer, startConsultationSummaries, formatConsultationText } = await import("../src/calls/consultations.js");
+const { registerConsultationRoutes } = await import("../src/calls/routes.consultations.js");
+const { manualPageHtml } = await import("../src/calls/manual-page.js");
 
 // ── mocks ─────────────────────────────────────────────────────────────────────
 function fakeGu({ connected = true } = {}) {

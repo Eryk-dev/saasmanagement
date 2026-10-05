@@ -6,8 +6,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeAuthHook, ensureDefaultAdmins, hashPassword } from "../src/auth.js";
-import { makeScreenGuardHook, screenForRequest } from "../src/screens.js";
+import { makeAuthHook, ensureDefaultAdmins, hashPassword } from "../src/auth/auth.js";
+import { makeScreenGuardHook, screenForRequest } from "../src/auth/screens.js";
 
 const { registerRoutes } = await import("../src/routes.js");
 

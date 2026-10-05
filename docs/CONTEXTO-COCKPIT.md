@@ -110,15 +110,42 @@ Node 20. Os comandos oficiais estão nos `package.json` da raiz e dos pacotes.
 
 | Camada | Tecnologia e entrada | Contrato principal |
 | --- | --- | --- |
-| API | Fastify 5; `packages/api/src/index.js`, `routes.js`, `routes.*.js` | REST na porta 8787; registro dos módulos, autenticação, migrações e automações. |
-| Dados | `pg`; `packages/api/src/db.js`, `seed-data.js`, `migrations.js` | Postgres/Supabase via `COCKPIT_DB_URL`; schema `cockpit`, tabelas com `id`, `json` JSONB e `updated_at`. |
+| API | Fastify 5; `packages/api/src/index.js`, `routes.js`, `domains.js` e as pastas de domínio (`billing/`, `support/`, `whatsapp/`…) | REST na porta 8787; registro dos módulos, autenticação, migrações e automações. |
+| Dados | `pg`; `packages/api/src/platform/db.js`, `seed-data.js`, `migrations.js` | Postgres/Supabase via `COCKPIT_DB_URL`; schema `cockpit`, tabelas com `id`, `json` JSONB e `updated_at`. |
 | Web | React 18 + Vite 6; `packages/web/src/main.jsx`, `app.jsx` | SPA na porta 5173 em desenvolvimento; navegação por hash, como `#pipeline`. |
 | Estado web | `data.jsx`, `lib/api.js`, `lib/workspace.js` | Bootstrap em `window.SEED`, `DataContext`, workspace persistido e atualizações via SSE em `/api/events`. |
 | MCP do projeto | SDK MCP + Express; `packages/mcp/src/index.js`, `tools.js`, `apiClient.js` | Streamable HTTP na porta 8788; ferramentas de consulta, escrita e documentação, todas pela API REST. |
 | Produção | `Dockerfile.allinone`, `deploy/start.sh`, `deploy/nginx.allinone.conf` | API + MCP + nginx no mesmo container, porta pública 80; banco externo. |
 
+A API é organizada por domínio em `packages/api/src/`: `platform/` (banco, seed,
+migrações, cache, status HTTP), `shared/` (módulos puros que a SPA também importa;
+sem API do Node), `auth/`, `crm/`, `sdr/`, `whatsapp/`, `calls/`, `google/`,
+`forms/`, `proposals/`, `billing/`, `payments/`, `customers/`, `support/`, `tasks/`,
+`training/`, `marketing/`, `blog/`, `metrics/`, `comp/` e `integrations/`
+(clientes externos transversais). Ficam na raiz `index.js`, `routes.js`,
+`domains.js` e `build-info.js`; `assets/` guarda as imagens servidas. Arquivo novo
+entra na pasta do domínio dele.
+
+Cada domínio com rota tem um `index.js` com `register(app, repo, ctx)` e, quando
+tem rotina em segundo plano, `start(repo, { clients, log, stops })`. O `routes.js`
+monta os clientes de base (IA, Meta, Mercado Pago, Discord) num `ctx` e chama o
+`register` de cada domínio na ordem de `domains.js`; os domínios acrescentam ao
+`ctx` o que criam (Google e mailer, WhatsApp, SDR, motor do blog). A ordem só
+importa para esses clientes: google antes de quem usa Meet/mailer, whatsapp
+antes de SDR e clientes, CRM por último. Depois do listen, o `index.js` chama
+`startDomains`, que sobe o `start` de cada domínio. Rotina nova entra no `start`
+do domínio dela, não no `index.js`.
+
+Um `routes.<x>.js` só registra endpoints: lógica, helper usado por outro módulo
+e rotina em segundo plano moram num módulo do domínio (ex.:
+`metrics/pipeline-pace.js` ao lado de `metrics/routes.pipeline-pace.js`). Só o
+`index.js` do próprio domínio importa um `routes.<x>.js`, só o `domains.js`
+importa o `index.js` de um domínio, só o `index.js` da raiz importa o
+`routes.js`, e `shared/` só importa da própria pasta.
+`api/test/fronteiras-dominio.test.js` garante essas regras.
+
 `COLLECTIONS` define as coleções conhecidas e a criação de tabelas. O CRUD tem
-exceções para coleções privadas (`PRIVATE` em `routes.js`), defaults, hooks e
+exceções para coleções privadas (`PRIVATE` em `crm/routes.crud.js`), defaults, hooks e
 rotas próprias. **Adicionar uma coleção não garante exposição automática no
 bootstrap, no MCP ou na interface**: conferir cada contrato e os aliases do MCP.
 
@@ -167,19 +194,19 @@ Os caminhos abaixo são relativos a `packages/`.
 
 | Área | Onde começar |
 | --- | --- |
-| Navegação, workspace e acesso | `web/src/app.jsx`, `chrome.jsx`, `lib/workspace.js`, `lib/users.js`; `api/src/auth.js`, `screens.js`. |
-| Pipeline, cadência e histórico | `api/src/stages.js`, `lead-flow.js`, `followup-contacts.js` (CRUD de activities em `routes.js`); `web/src/screens/pipeline.jsx`, `deal.jsx`, `today.jsx`, `lib/funnel.js`. |
-| Formulários e propostas | `api/src/routes.forms.js`, `forms.js`, `form-page.js`, `routes.proposals.js`, `proposal.js`, `proposal-page.js`, `proposal-slides-page.js`; telas `forms.jsx` e `proposals.jsx`. |
-| Integração e entrega ao cliente | `api/src/routes.integration-forms.js`, `routes.integrations.js`, `integration-brief.js`, `client-pending.js`; telas `integration-forms.jsx` e `integrations.jsx`. |
-| Clientes, receita e pagamentos | `api/src/billing.js`, `churn.js`, `metrics-core.js`, `routes.billing.js`, `routes.mp.js`, `routes.fin.js`; telas `customers.jsx`, `subscriptions.jsx`, `offers.jsx`, `expenses.jsx`. |
-| Planos, plano do cliente e acesso | `api/src/plan-cycles.js`, `plan-catalog.js`, `plan-resources.js`, `plan-history.js`, `entitlements.js`, `leverads-access.js`; `web/src/screens/plans.jsx`, `components/plan-editor.jsx`, `customer-plan.jsx`; testes `plan-cycles`, `plan-catalog`, `plan-history`, `entitlements`, `leverads-access`. |
-| WhatsApp e SDR | `api/src/routes.whatsapp.js`, módulos `wa-*`, `sdr-flow.js`, `sdr-templates.leverads.js`; telas `whatsapp.jsx`, `calls.jsx`. |
-| Métricas e marketing | `api/src/routes.metrics.js`, `routes.marketing.js`, `routes.funnel-metrics.js`, `routes.scoreboard.js`, `routes.pipeline-pace.js`; telas `metrics.jsx`, `analise.jsx`, `desempenho.jsx`. |
-| Agenda, Google e consultas | `api/src/routes.google.js`, `routes.consultations.js`; telas `agenda.jsx`, `agenda-grid.jsx`, `consultas.jsx`. |
-| Treinamentos | `api/src/routes.flashcards.js`, `fsrs.js`; telas `training.jsx`, `training.css`, `training-focus.jsx`; testes `api/test/routes.flashcards.test.js`. |
-| Tarefas | `api/src/routes.tasks.js`; `web/src/screens/tasks/` (quadro, lista, calendário, drawer, filtros e estado). |
-| Suporte (tickets) | `api/src/tickets-core.js`, `tickets-sla.js`, `support-scope.js`, `routes.tickets.js`, `quick-replies.js`, `ticket-sla-runner.js`, `routes.support-portal.js`, `support-page.js`; espelho com o Linear em `linear.js`, `ticket-linear.js`, `ticket-linear-runner.js` e a rota `/api/webhooks/linear` (`routes.webhooks.js`); `web/src/screens/tickets/`, `support-settings.jsx`, `quick-replies.jsx`, `lib/tickets.js`, `components/customer-tickets.jsx`; testes `routes.tickets`, `routes.quick-replies`, `tickets-sla`, `ticket-sla-runner`, `routes.support-portal`, `ticket-linear`. |
-| Conteúdo e redes sociais | `api/src/routes.blog.js`, `routes.blog-public.js`, `routes.social.js`; telas `blog.jsx` e `social.jsx`. |
+| Navegação, workspace e acesso | `web/src/app.jsx`, `chrome.jsx`, `lib/workspace.js`, `lib/users.js`; `api/src/auth/auth.js`, `auth/screens.js`. |
+| Pipeline, cadência e histórico | `api/src/crm/stages.js`, `crm/lead-flow.js`, `shared/followup-contacts.js` (CRUD de activities em `crm/routes.crud.js`); `web/src/screens/pipeline.jsx`, `deal.jsx`, `today.jsx`, `lib/funnel.js`. |
+| Formulários e propostas | `api/src/forms/` (`routes.forms.js`, `forms.js`, `form-page.js`) e `api/src/proposals/` (`routes.proposals.js`, `proposal.js`, `proposal-page.js`, `proposal-slides-page.js`); telas `forms.jsx` e `proposals.jsx`. |
+| Integração e entrega ao cliente | `api/src/forms/routes.integration-forms.js`, `customers/routes.integrations.js`, `calls/integration-brief.js`, `customers/client-pending.js`; telas `integration-forms.jsx` e `integrations.jsx`. |
+| Clientes, receita e pagamentos | `api/src/billing/` (`billing.js`, `churn.js`, `routes.billing.js`), `payments/` (`routes.mp.js`, `routes.fin.js`) e `metrics/metrics-core.js`; telas `customers.jsx`, `subscriptions.jsx`, `offers.jsx`, `expenses.jsx`. |
+| Planos, plano do cliente e acesso | `api/src/shared/plan-cycles.js`, `shared/plan-resources.js`, `billing/plan-catalog.js`, `billing/plan-history.js`, `billing/entitlements.js`, `billing/leverads-access.js`; `web/src/screens/plans.jsx`, `components/plan-editor.jsx`, `customer-plan.jsx`; testes `plan-cycles`, `plan-catalog`, `plan-history`, `entitlements`, `leverads-access`. |
+| WhatsApp e SDR | `api/src/whatsapp/` (`routes.whatsapp.js`, módulos `wa-*`) e `api/src/sdr/` (`sdr-flow.js`, `sdr-templates.leverads.js`); telas `whatsapp.jsx`, `calls.jsx`. |
+| Métricas e marketing | `api/src/metrics/` (`routes.metrics.js`, `routes.funnel-metrics.js`, `routes.scoreboard.js`, `routes.pipeline-pace.js`) e `marketing/routes.marketing.js`; telas `metrics.jsx`, `analise.jsx`, `desempenho.jsx`. |
+| Agenda, Google e consultas | `api/src/google/routes.google.js`, `calls/routes.consultations.js`; telas `agenda.jsx`, `agenda-grid.jsx`, `consultas.jsx`. |
+| Treinamentos | `api/src/training/` (`routes.flashcards.js`, `fsrs.js`); telas `training.jsx`, `training.css`, `training-focus.jsx`; testes `api/test/routes.flashcards.test.js`. |
+| Tarefas | `api/src/tasks/routes.tasks.js`; `web/src/screens/tasks/` (quadro, lista, calendário, drawer, filtros e estado). |
+| Suporte (tickets) | `api/src/support/` (`tickets-core.js`, `tickets-sla.js`, `routes.tickets.js`, `quick-replies.js`, `ticket-sla-runner.js`, `routes.support-portal.js`, `support-page.js`) e `auth/support-scope.js`; espelho com o Linear em `support/linear.js`, `ticket-linear.js`, `ticket-linear-runner.js` e a rota `/api/webhooks/linear` (`marketing/routes.webhooks.js`); `web/src/screens/tickets/`, `support-settings.jsx`, `quick-replies.jsx`, `lib/tickets.js`, `components/customer-tickets.jsx`; testes `routes.tickets`, `routes.quick-replies`, `tickets-sla`, `ticket-sla-runner`, `routes.support-portal`, `ticket-linear`. |
+| Conteúdo e redes sociais | `api/src/blog/` (`routes.blog.js`, `routes.blog-public.js`) e `marketing/routes.social.js`; telas `blog.jsx` e `social.jsx`. |
 | Componentes e visual | `web/src/tokens.css`, `atoms.jsx`, `components/viz.jsx`, `components/lead-blocks.jsx`, `lib/ui.js`. |
 | Kanban compartilhado | `web/src/components/kanban/` (`KanbanBoard`/`KanbanColumn` + `useBoardDnd`): quadro, coluna, soltar, placeholder, corte "+N" e coluna recolhida. Tarefas, Tickets e Pipeline montam só o card e o que é do domínio em cima dela; layout `scroll` (colunas fixas que rolam sozinhas) ou `fill` (grid de colunas iguais, Pipeline). |
 | Testes da API | `api/test/*.test.js`; repositório em memória em `api/test/helpers/mem-repo.js`. |
@@ -568,7 +595,7 @@ alteração funcional nesta preparação.
 
 ## Classificação por faturamento (21/09/2026)
 
-- `api/src/lead-grade.js` é a régua pura compartilhada com a SPA. LeverAds com
+- `api/src/shared/lead-grade.js` é a régua pura compartilhada com a SPA. LeverAds com
   faixas válidas de `orders` e `ticket` usa a estimativa mensal (100/350/750/1500/3000
   pedidos × R$ 50/110/225/450/800): S ≥1 milhão; A ≥500 mil; B ≥200 mil;
   C ≥100 mil; D ≥50 mil; E abaixo de 50 mil. ICP mantém S/A/B (≥200 mil).
@@ -578,7 +605,7 @@ alteração funcional nesta preparação.
 - `ensureRevenueClassification` atualiza snapshots elegíveis e o texto do ICP
   no boot, com versão por lead/produto, sem mover etapas, agenda ou responsáveis.
   Formulários, CRUD e reenvios recalculam ao receber respostas novas.
-- Dockerfiles de build web copiam explicitamente `api/src/lead-grade.js`.
+- Os Dockerfiles de build web copiam a pasta `api/src/shared/` (módulos puros que a SPA importa).
   Validar limites, preservação do legado, migração idempotente e paridade API/SPA
   em `revenue-grade.test.js`, além da suíte API, smoke web e build.
 - Preview isolado dos badges e ICP: `/?shell=1&review=pipeline&revenueGrades=1#pipeline`
@@ -635,7 +662,7 @@ Mensagens e prazos são **uma configuração global** em
 `app_config/followup_contacts`, editada em Geral → Configurações → Follow-up
 (`GET`/`PUT /api/followup-contacts`; escrita exige a tela `settings`, inclusive
 pelo CRUD de `app_config`) e enviada em `CONFIG.followupContacts` no bootstrap.
-A régua pura é `api/src/followup-contacts.js`, importada pela SPA (copiada nos
+A régua pura é `api/src/shared/followup-contacts.js`, importada pela SPA (copiada nos
 dois Dockerfiles de build web). Os roteiros `followup1/2/3` viraram o roteiro
 único `followup` (postura); `nextSteps.followup1..3` salvos não valem mais.
 `migrateFollowupDays` (marcador `app_config/followup_days_v1`) truncou os
@@ -791,7 +818,7 @@ de Integração mantém o Ganho. A aba Integração tem "A venda" e "A entrega"
 pro briefing, e a agenda). **Venda com mais de um produto:** `lead.dealItems`
 = `[{ product, planClosed, amount }]` só com 2+ itens; o 1º espelha
 `dealProduct`/`planClosed` e `lead.amount` é a SOMA (meta, receita do closer e
-Purchase seguem o total). `dealItemsOf` (routes.js) normaliza; o
+Purchase seguem o total). `dealItemsOf` (`crm/won-lead.js`) normaliza; o
 `convertWonLead` abre uma assinatura por item recorrente (uma por produto) e o
 ARR inicial anualiza cada item pelo próprio ciclo; reeditar um fechamento
 multiproduto só atualiza o cadastro (assinaturas são da ficha). O valor é
