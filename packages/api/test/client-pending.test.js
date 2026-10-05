@@ -6,8 +6,8 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   syncClientPending, restampClientPending, dueFor, pendingKey, isClientItem, lateOurs,
   CLIENT_PENDING_LABEL,
-} from "../src/client-pending.js";
-import { completeTask, patchTask } from "../src/tasks-core.js";
+} from "../src/customers/client-pending.js";
+import { completeTask, patchTask } from "../src/tasks/tasks-core.js";
 
 // Terça, 08/09/2026, 13h UTC (10h de São Paulo).
 const TER = new Date(Date.UTC(2026, 8, 8, 13));
@@ -141,14 +141,14 @@ test("conclusão por qualquer caminho (PATCH da tarefa) também recarimba", asyn
 test("tarefa comum do lead não mexe no carimbo de compromissos do cliente", async () => {
   const { repo, lead } = await base();
   await syncClientPending(repo, lead, resumo([{ item: "Conectar a conta 2", responsavel: "cliente" }]), { now: () => TER });
-  const { createTask } = await import("../src/tasks-core.js");
+  const { createTask } = await import("../src/tasks/tasks-core.js");
   const outra = await createTask(repo, { saas: "leverads", title: "Ligar pro cliente", lead: "ld_1" }, { by: "eryk" });
   await completeTask(repo, outra.id, true, { by: "eryk" });
   assert.equal((await repo.get("leads", "ld_1")).clientPending.open, 1);
 });
 
 // ── Cobrança do que venceu ────────────────────────────────────────────────
-import { startClientPendingReminder, cobrancaText } from "../src/client-pending.js";
+import { startClientPendingReminder, cobrancaText } from "../src/customers/client-pending.js";
 
 const QUI = new Date(Date.UTC(2026, 8, 17, 13)); // quinta, 1 semana depois
 

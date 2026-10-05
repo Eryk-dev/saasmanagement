@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { recordMessage, listThreads, threadId, waMatchKey } = await import("../src/wa-store.js");
+const { recordMessage, listThreads, threadId, waMatchKey } = await import("../src/whatsapp/wa-store.js");
 
 test("mesmo contato em duas grafias (com/sem o 9) = UMA thread", async () => {
   const repo = makeMemRepo();

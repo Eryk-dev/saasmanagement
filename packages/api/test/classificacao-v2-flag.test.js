@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { ensureClassificacaoV2, CLASSIFICACAO_V2_FLAG } = await import("../src/migrations.js");
+const { ensureClassificacaoV2, CLASSIFICACAO_V2_FLAG } = await import("../src/platform/migrations.js");
 
 const PERGUNTAS_ANTIGAS = [
   { key: "accounts", label: "Quantas contas?", options: [{ value: "3-5", label: "3 a 5 contas" }] },

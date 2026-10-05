@@ -8,9 +8,9 @@
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
     "test": "node --test",
-    "seed": "node src/seed-cli.js",
-    "seed:clear": "node src/seed-cli.js --clear",
-    "seed:leverads-questions": "node src/seed-cli.js --leverads-questions"
+    "seed": "node src/platform/seed-cli.js",
+    "seed:clear": "node src/platform/seed-cli.js --clear",
+    "seed:leverads-questions": "node src/platform/seed-cli.js --leverads-questions"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",

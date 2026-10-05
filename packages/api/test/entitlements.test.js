@@ -6,8 +6,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { desiredEntitlements, leveradsLimitFields, limitsDiff, orgRefOf, plansByCodeOf } from "../src/entitlements.js";
-import { runLeveradsAccessSync, registerLeveradsAccessRoutes } from "../src/leverads-access.js";
+import { desiredEntitlements, leveradsLimitFields, limitsDiff, orgRefOf, plansByCodeOf } from "../src/billing/entitlements.js";
+import { runLeveradsAccessSync, registerLeveradsAccessRoutes } from "../src/billing/leverads-access.js";
 
 const SNAP = (over = {}) => ({
   code: "oem_escala", name: "Ads Escala + OEM", cycle: "annual", closedPlan: "anual",
@@ -174,7 +174,7 @@ test("rotas /api/entitlements: status, run (alias) e o direito de um cliente", a
 
 // ── Recursos do plano modelados em cima da org do LeverAds ─────────────────
 test("recursos do plano viram os campos da org: cópias/dia, módulos e Criador OEM só na linha + OEM", async () => {
-  const { leveradsOrgFields, defaultResources, limitsSummary, featuresIncluded, PLAN_FEATURES } = await import("../src/plan-resources.js");
+  const { leveradsOrgFields, defaultResources, limitsSummary, featuresIncluded, PLAN_FEATURES } = await import("../src/shared/plan-resources.js");
   const ads = defaultResources({ limits: { accounts: 3 }, features: {} });
   const oem = defaultResources({ limits: { accounts: 7, oemPerMonth: null }, features: { equalizacao: true } });
   assert.deepEqual(ads.limits, { accounts: 3, copiesPerDay: 8000 }, "sem pacote conhecido fica no teto");
@@ -210,7 +210,7 @@ test("recursos do plano viram os campos da org: cópias/dia, módulos e Criador 
 });
 
 test("sync: módulo que o plano inclui e está desligado na org aparece no relatório (sem escrever)", async () => {
-  const { defaultResources } = await import("../src/plan-resources.js");
+  const { defaultResources } = await import("../src/shared/plan-resources.js");
   const repo = makeMemRepo();
   const res = defaultResources({ limits: { accounts: 7 }, features: {} });
   await repo.create("customers", { id: "c1", name: "Ads Escala", saas: "leverads", leveradsOrgId: "org-1", planCode: "ads_escala" });

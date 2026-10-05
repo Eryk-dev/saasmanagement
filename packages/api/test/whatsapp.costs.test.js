@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const { makeWhatsapp } = await import("../src/whatsapp.js");
+const { makeWhatsapp } = await import("../src/whatsapp/whatsapp.js");
 
 function fakeFetch(routes) {
   const calls = [];

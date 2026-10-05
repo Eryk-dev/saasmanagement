@@ -9,9 +9,9 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   DEFAULT_FOLLOWUP_CONTACTS, normalizeFollowupContacts, followupDayOf, addBusinessDays,
   dayStartIso, todayBrt, nextFollowupDay, firstFollowupDay,
-} from "../src/followup-contacts.js";
-import { screenForRequest } from "../src/screens.js";
-import { migrateFollowupDays } from "../src/migrations.js";
+} from "../src/shared/followup-contacts.js";
+import { screenForRequest } from "../src/auth/screens.js";
+import { migrateFollowupDays } from "../src/platform/migrations.js";
 
 const { registerRoutes } = await import("../src/routes.js");
 

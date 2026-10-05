@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const { makeAnthropic } = await import("../src/anthropic.js");
+const { makeAnthropic } = await import("../src/integrations/anthropic.js");
 // system pode vir como string ou como blocos (cache de prompt, 17/09)
 const sysOf = (b) => (typeof b?.system === "string" ? b.system : (Array.isArray(b?.system) ? b.system.map((x) => x?.text || "").join("\n") : ""));
 

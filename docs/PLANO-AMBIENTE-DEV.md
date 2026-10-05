@@ -159,7 +159,7 @@ O plano da plataforma pede **ensaio com dump de produção** (Fase 2, e "Ensaio 
 ### S0 — Pré-requisitos no código (sem VPS)
 - **Todos:** `APP_ENV` e a trava no boot; seed sintético com ids fixos; `.env` local de cada desenvolvedor apontando para o stack local, e service_role de prod **retirada** das máquinas (relaciona com `docs/seguranca/acessos-producao.md` do LeverAds).
 - **Cockpit:**
-  - chave-mestra `JOBS_ENABLED` + lista `JOBS=` em `index.js:109-206`, com tudo desligado por padrão fora de produção;
+  - chave-mestra `JOBS_ENABLED` + lista `JOBS=` nos `start` dos domínios (`packages/api/src/<domínio>/index.js`), com tudo desligado por padrão fora de produção;
   - transporte SMTP no `mailer.js` para usar Mailpit;
   - os scripts de `packages/api/scripts` exigem `--env` explícito em vez de ler o `.env` da raiz (hoje dizem "escreve no DB compartilhado (= prod)");
   - retirar `DEFAULT_ADMINS` (já está na Fase 0 da plataforma).

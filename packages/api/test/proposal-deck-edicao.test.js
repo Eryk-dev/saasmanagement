@@ -16,10 +16,10 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { ensureProposalCatalog, ensureSlidesDeck } = await import("../src/migrations.js");
+const { ensureProposalCatalog, ensureSlidesDeck } = await import("../src/platform/migrations.js");
 const { registerRoutes } = await import("../src/routes.js");
-const { registerProposalRoutes } = await import("../src/routes.proposals.js");
-const { deckOutline } = await import("../src/proposal-slides-page.js");
+const { registerProposalRoutes } = await import("../src/proposals/routes.proposals.js");
+const { deckOutline } = await import("../src/proposals/proposal-slides-page.js");
 
 async function seedRepo() {
   const repo = makeMemRepo();

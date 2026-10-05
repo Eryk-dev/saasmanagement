@@ -2,8 +2,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { teamBonusOf, teamBonusProducts, teamBonusPlan, DEFAULT_TEAM_BONUS } from "../src/comp-plan.js";
-import { teamBonusStatus } from "../src/routes.scoreboard.js";
+import { teamBonusOf, teamBonusProducts, teamBonusPlan, DEFAULT_TEAM_BONUS } from "../src/comp/comp-plan.js";
+import { teamBonusStatus } from "../src/metrics/scoreboard.js";
 
 // ── Valor ─────────────────────────────────────────────────────────────────
 test("teamBonusOf: valor por cargo e nível, com integrator caindo na trilha CS", () => {
@@ -98,7 +98,7 @@ test("sem cliente nenhum o churn não inventa nota ruim", async () => {
 });
 
 // ── Critério de promoção: 3 meses fechados seguidos com 100% ──────────────
-import { promotionEligibility, careerRuleOf, leveledRoleOf, DEFAULT_CAREER_RULE } from "../src/comp-plan.js";
+import { promotionEligibility, careerRuleOf, leveledRoleOf, DEFAULT_CAREER_RULE } from "../src/comp/comp-plan.js";
 
 const mes = (month, ok, extra = {}) => ({ month, hit100: ok, contractsAtt: ok ? 1.1 : 0.5, revenueAtt: ok ? 1.05 : 0.6, ...extra });
 const HOJE = "2026-10-02";

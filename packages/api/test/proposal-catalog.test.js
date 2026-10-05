@@ -8,10 +8,10 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { ensureProposalCatalog } = await import("../src/migrations.js");
-const { applyCatalog, activeProduct, catalogUI, suggestProduct, dealCatalog, catalogAmount, hasCatalog, DEAL_PRODUCT_LABEL } = await import("../src/proposal-catalog.js");
-const { runNativeProposal, shareProposalOffer, publicProposal, syncProposalLeadSnapshot } = await import("../src/proposal.js");
-const { registerProposalRoutes } = await import("../src/routes.proposals.js");
+const { ensureProposalCatalog } = await import("../src/platform/migrations.js");
+const { applyCatalog, activeProduct, catalogUI, suggestProduct, dealCatalog, catalogAmount, hasCatalog, DEAL_PRODUCT_LABEL } = await import("../src/proposals/proposal-catalog.js");
+const { runNativeProposal, shareProposalOffer, publicProposal, syncProposalLeadSnapshot } = await import("../src/proposals/proposal.js");
+const { registerProposalRoutes } = await import("../src/proposals/routes.proposals.js");
 
 // Template no formato do pt_leverads REAL (antes da migração): faixas antigas,
 // dois slides de investimento com showIf de nicho, deck com ritmo claro/escuro.
@@ -514,7 +514,7 @@ test("preview /p/t: simulação via query (produto e dados) sem persistir nada",
 });
 
 test("retroativo: proposta antiga re-snapshotada no fluxo novo; aceita e compartilhada ficam de fora", async () => {
-  const { backfillProposalCatalog } = await import("../src/migrations.js");
+  const { backfillProposalCatalog } = await import("../src/platform/migrations.js");
   const repo = await seedRepo();
   const oldCalc = {
     seatsKey: "accounts", seatsMap: { "1": 2, "2": 2, "3-5": 4, "6-10": 8, "10+": 12 },
@@ -559,7 +559,7 @@ test("retroativo: proposta antiga re-snapshotada no fluxo novo; aceita e compart
 });
 
 test("catálogo v2: template v1 migrado cirurgicamente; abertas ganham a tabela e o produto escolhido é remapeado", async () => {
-  const { migrateCatalogPricing, backfillCatalogPricing } = await import("../src/migrations.js");
+  const { migrateCatalogPricing, backfillCatalogPricing } = await import("../src/platform/migrations.js");
   const repo = await seedRepo();
   // Volta o template pro shape ANTERIOR (v1), com dor editada pelo dono.
   const t0 = await repo.get("proposal_templates", "pt_leverads");
@@ -691,7 +691,7 @@ test("dor [OEM] inferida na abertura do link entra como trilha SPIN sem mexer no
 });
 
 test("retroativo: valor do card dos leads abertos re-alinhado ao produto da apresentação", async () => {
-  const { syncOpenLeadAmounts } = await import("../src/migrations.js");
+  const { syncOpenLeadAmounts } = await import("../src/platform/migrations.js");
   const repo = await seedRepo();
   const p = await makeProposal(repo, { niche: "outros", accounts: "6-10", listings: "2000-10000" });
   // Simula o lead antigo, com o valor do catálogo anterior gravado.
@@ -762,7 +762,7 @@ test("catálogo do fechamento: linhas × pacotes com anual/semestral + pacote de
 // "essencial" caladas: valem pelo padrão do código, e o que o banco define
 // continua mandando faixa a faixa.
 test("pkgOf com o mapa do banco: faixa nova cai no padrão, faixa definida no banco manda", async () => {
-  const { pkgOf } = await import("../src/proposal-catalog.js");
+  const { pkgOf } = await import("../src/proposals/proposal-catalog.js");
   const repo = makeMemRepo();
   await repo.create("proposal_templates", JSON.parse(JSON.stringify(TEMPLATE)));
   await ensureProposalCatalog(repo);

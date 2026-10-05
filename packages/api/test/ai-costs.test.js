@@ -5,8 +5,8 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { makeAiCosts } = await import("../src/ai-costs.js");
-const { registerMetricsRoutes } = await import("../src/routes.metrics.js");
+const { makeAiCosts } = await import("../src/metrics/ai-costs.js");
+const { registerMetricsRoutes } = await import("../src/metrics/routes.metrics.js");
 
 const json = (obj, status = 200) => ({ status, text: async () => JSON.stringify(obj) });
 

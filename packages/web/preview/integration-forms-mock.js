@@ -1,6 +1,6 @@
 // Dados fictícios da prancha 7d. Só o preview importa este arquivo.
-import { SECTIONS, TERM_TEXT } from "../../api/src/integration-form.js";
-import { FISCAL_SECTIONS, FISCAL_TERM_TEXT } from "../../api/src/fiscal-form.js";
+import { SECTIONS, TERM_TEXT } from "../../api/src/forms/integration-form.js";
+import { FISCAL_SECTIONS, FISCAL_TERM_TEXT } from "../../api/src/forms/fiscal-form.js";
 const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
 const mode = new URLSearchParams(globalThis.location?.search || "").get("intform");
 let failOnce = mode === "error";

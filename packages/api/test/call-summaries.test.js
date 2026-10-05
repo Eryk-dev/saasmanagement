@@ -7,9 +7,9 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerRoutes } = await import("../src/routes.js");
-const { makeGoogle } = await import("../src/google.js");
-const { makeAnthropic } = await import("../src/anthropic.js");
-const { makeCallSummarizer, formatSummaryText } = await import("../src/call-summaries.js");
+const { makeGoogle } = await import("../src/google/google.js");
+const { makeAnthropic } = await import("../src/integrations/anthropic.js");
+const { makeCallSummarizer, formatSummaryText } = await import("../src/calls/call-summaries.js");
 // system pode vir como string ou como blocos (cache de prompt, 17/09)
 const sysOf = (b) => (typeof b?.system === "string" ? b.system : (Array.isArray(b?.system) ? b.system.map((x) => x?.text || "").join("\n") : ""));
 
@@ -311,7 +311,7 @@ test("sala aberta vira reason próprio (call_in_progress), não transcript_not_r
 // #206) — a lista vem vazia mesmo com gente na sala. O sinal confiável é o
 // `activeConference` do SPACE, que a conta lê por ser dona.
 test("google.fetchTranscript: activeConference no space marca sala aberta mesmo sem conferenceRecords", async () => {
-  const { makeGoogle } = await import("../src/google.js");
+  const { makeGoogle } = await import("../src/google/google.js");
   const f = async (url) => {
     const u = String(url);
     const ok = (body) => ({ status: 200, json: async () => body });
@@ -333,7 +333,7 @@ test("google.fetchTranscript: activeConference no space marca sala aberta mesmo 
 // hospedagem trocava o corpo pela página de erro dele (HTML "Not Found"), como
 // o Leo viu no lead do Cristiano. Agora vira diagnóstico "sem conferência ativa".
 test("google.endActiveConference: 400 FAILED_PRECONDITION vira no_active_conference, não erro", async () => {
-  const { makeGoogle } = await import("../src/google.js");
+  const { makeGoogle } = await import("../src/google/google.js");
   const f = async (url) => {
     const u = String(url);
     if (u.includes("oauth2.googleapis.com/token")) return { status: 200, json: async () => ({ access_token: "at", expires_in: 3600 }) };

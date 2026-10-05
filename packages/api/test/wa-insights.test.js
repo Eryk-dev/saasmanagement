@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { waInsights } = await import("../src/wa-store.js");
+const { waInsights } = await import("../src/whatsapp/wa-store.js");
 
 const NOW = new Date("2026-07-18T18:00:00.000Z").getTime();
 const hoursAgo = (h) => new Date(NOW - h * 3_600_000).toISOString();

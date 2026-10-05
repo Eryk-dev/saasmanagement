@@ -12,10 +12,10 @@ import { writeFile, unlink, mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { ensureProposalCatalog, ensureOemDeck } = await import("../src/migrations.js");
-const { runNativeProposal, shareProposalOffer, proposalOffersOf } = await import("../src/proposal.js");
-const { registerProposalRoutes } = await import("../src/routes.proposals.js");
-const { calcOem, deckOemConfig, proposalOemPageHtml } = await import("../src/proposal-oem-page.js");
+const { ensureProposalCatalog, ensureOemDeck } = await import("../src/platform/migrations.js");
+const { runNativeProposal, shareProposalOffer, proposalOffersOf } = await import("../src/proposals/proposal.js");
+const { registerProposalRoutes } = await import("../src/proposals/routes.proposals.js");
+const { calcOem, deckOemConfig, proposalOemPageHtml } = await import("../src/proposals/proposal-oem-page.js");
 
 const TEMPLATE = {
   id: "pt_leverads",

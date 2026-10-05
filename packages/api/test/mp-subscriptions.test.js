@@ -11,10 +11,10 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerRoutes } = await import("../src/routes.js");
-const { makeMp } = await import("../src/mp.js");
-const { normalizePreapproval, runPreapprovalSync, cycleOfAutoRecurring } = await import("../src/mp-subscriptions.js");
-const { ingestMpPayment } = await import("../src/mp-payments.js");
-const { NOT_CONFIGURED } = await import("../src/http-status.js");
+const { makeMp } = await import("../src/payments/mp.js");
+const { normalizePreapproval, runPreapprovalSync, cycleOfAutoRecurring } = await import("../src/payments/mp-subscriptions.js");
+const { ingestMpPayment } = await import("../src/payments/mp-payments.js");
+const { NOT_CONFIGURED } = await import("../src/platform/http-status.js");
 
 function makeFakeFetch(routes) {
   const calls = [];

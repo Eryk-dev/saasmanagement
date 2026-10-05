@@ -9,8 +9,8 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { registerWhatsappRoutes } = await import("../src/routes.whatsapp.js");
-const { ensureWaPhoneId } = await import("../src/migrations.js");
+const { registerWhatsappRoutes } = await import("../src/whatsapp/routes.whatsapp.js");
+const { ensureWaPhoneId } = await import("../src/platform/migrations.js");
 
 // Cliente fake com a interface nova (phoneId por chamada).
 function fakeWa() {

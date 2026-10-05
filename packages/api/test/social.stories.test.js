@@ -3,7 +3,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { syncStories, listStories, invalidateStoriesSync } from "../src/social-stories.js";
+import { syncStories, listStories, invalidateStoriesSync } from "../src/marketing/social-stories.js";
 
 function makeMemRepo() {
   const data = new Map();

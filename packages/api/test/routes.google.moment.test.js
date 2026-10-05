@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const { callMoment, wallClockBrt } = await import("../src/routes.google.js");
+const { callMoment, wallClockBrt } = await import("../src/google/routes.google.js");
 
 test("callMoment aceita naive (hora de Brasília) e ISO com fuso, no MESMO instante", () => {
   // 17:30 em Brasília = 20:30 UTC, escrito das duas formas.

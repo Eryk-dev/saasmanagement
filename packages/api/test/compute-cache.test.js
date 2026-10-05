@@ -4,7 +4,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { memoCompute, forgetCompute } from "../src/compute-cache.js";
+import { memoCompute, forgetCompute } from "../src/platform/compute-cache.js";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 test("hit enquanto ninguém escreve; escrita no repo invalida", async () => {
@@ -76,7 +76,7 @@ test("leitor por requisição (metrics-reader) compartilha o cache do repo de ba
   const repo = makeMemRepo();
   let calls = 0;
   const fn = () => ++calls;
-  const reader = (await import("../src/metrics-reader.js")).metricsReader(repo, "leverads");
+  const reader = (await import("../src/metrics/metrics-reader.js")).metricsReader(repo, "leverads");
   assert.equal(await memoCompute(reader, "k", fn), 1);
   assert.equal(await memoCompute(repo, "k", fn), 1, "a rota do pace e o placar veem o mesmo cálculo");
   await repo.create("leads", { id: "l1" });

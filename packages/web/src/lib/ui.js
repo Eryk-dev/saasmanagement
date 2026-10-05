@@ -1,4 +1,4 @@
-import { leadGradeInfo } from "../../../api/src/lead-grade.js";
+import { leadGradeInfo } from "../../../api/src/shared/lead-grade.js";
 // Shared chrome button style — lifted out of portfolio.jsx so every screen can
 // import it without depending on a screen module. Identical to the original.
 
@@ -27,7 +27,7 @@ export const GRADE_STYLE = {
   E: { key: "E", grade: "E", label: "cliente E", tone: "#9aa2ad", ink: "#5b6472", badgeFg: "#fff" },
 };
 // Matriz histórica, mantida para a legenda dos leads legados.
-export { LEGACY_GRID as GRADE_GRID } from "../../../api/src/lead-grade.js";
+export { LEGACY_GRID as GRADE_GRID } from "../../../api/src/shared/lead-grade.js";
 export const GRADE_ACCOUNTS = ["1", "2", "3-5", "6-10", "10+"];
 export const GRADE_LISTINGS = ["≤100", "100-500", "500-2k", "2-10k", "10k+"];
 export function leadTier(l) {

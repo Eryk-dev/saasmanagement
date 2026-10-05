@@ -8,7 +8,7 @@ import Fastify from "fastify";
 import multipart from "@fastify/multipart";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { registerMarketingRoutes } = await import("../src/routes.marketing.js");
+const { registerMarketingRoutes } = await import("../src/marketing/routes.marketing.js");
 
 // Corpo multipart mínimo: campos de texto + um "vídeo" com filename.
 function buildMultipart(fields, file) {

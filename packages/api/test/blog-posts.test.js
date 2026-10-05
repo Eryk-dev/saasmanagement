@@ -6,7 +6,7 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 import {
   newPostId, isValidSlug, uniqueSlug, injectUtm, TRANSITIONS, canTransition, withDerived, pushHistory,
   toPublicPost, listPublished, getPublishedBySlug, RESERVED_SLUGS, slugify,
-} from "../src/blog-posts.js";
+} from "../src/blog/blog-posts.js";
 
 test("newPostId: prefixo bp_ e ids distintos", () => {
   const a = newPostId(), b = newPostId();

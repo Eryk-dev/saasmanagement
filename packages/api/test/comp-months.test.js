@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { stampCompMonth, pendingMonths, startCompMonthClose, monthHeaderId, monthPersonId, hit100 } from "../src/comp-months.js";
+import { stampCompMonth, pendingMonths, startCompMonthClose, monthHeaderId, monthPersonId, hit100 } from "../src/comp/comp-months.js";
 
 const produto = { id: "leverads", name: "LeverAds", monthlyCashTarget: 100000, monthlyContractsTarget: 20 };
 // 02/10/2026 às 10h de São Paulo (13h UTC): setembro já fechou.
@@ -132,7 +132,7 @@ test("mês sem a meta da empresa batida carimba o bônus como não pago", async 
 });
 
 // ── Aviso de elegibilidade ────────────────────────────────────────────────
-import { notifyEligible } from "../src/comp-months.js";
+import { notifyEligible } from "../src/comp/comp-months.js";
 
 async function tresMeses(repo, uid = "bia", role = "closer") {
   for (const m of ["2026-07", "2026-08", "2026-09"]) {

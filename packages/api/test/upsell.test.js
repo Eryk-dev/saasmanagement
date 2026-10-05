@@ -13,10 +13,10 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerRoutes } = await import("../src/routes.js");
-const { makeMp } = await import("../src/mp.js");
-const { makeDiscord } = await import("../src/discord.js");
-const { parseUpsellBody } = await import("../src/upsell.js");
-const { cashBucketsIn } = await import("../src/metrics-core.js");
+const { makeMp } = await import("../src/payments/mp.js");
+const { makeDiscord } = await import("../src/integrations/discord.js");
+const { parseUpsellBody } = await import("../src/billing/upsell.js");
+const { cashBucketsIn } = await import("../src/metrics/metrics-core.js");
 
 function makeFakeDiscord() {
   const posts = [];

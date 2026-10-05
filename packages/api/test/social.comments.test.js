@@ -7,9 +7,9 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { makeSocial } = await import("../src/social.js");
-const { registerSocialRoutes } = await import("../src/routes.social.js");
-const { upsertComment, listComments, commentInsights, syncComments, invalidateSync, postTitleOf } = await import("../src/social-comments.js");
+const { makeSocial } = await import("../src/marketing/social.js");
+const { registerSocialRoutes } = await import("../src/marketing/routes.social.js");
+const { upsertComment, listComments, commentInsights, syncComments, invalidateSync, postTitleOf } = await import("../src/marketing/social-comments.js");
 
 function makeGraphFetch(routes) {
   const calls = [];

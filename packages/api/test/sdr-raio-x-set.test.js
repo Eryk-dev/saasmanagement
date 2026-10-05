@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { ensureWaMessagesLeadId, ensureFormPrefillV2 } from "../src/migrations.js";
-import { PREFILL, FORM_IDS } from "../src/forms-v2.leverads.js";
+import { ensureWaMessagesLeadId, ensureFormPrefillV2 } from "../src/platform/migrations.js";
+import { PREFILL, FORM_IDS } from "../src/forms/forms-v2.leverads.js";
 
 // Migrações do raio-x do SDR de 30/09/2026.
 

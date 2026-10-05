@@ -1,7 +1,7 @@
 // Transcritor: escolha de backend pela chave, chamada certa em cada um.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { makeTranscriber } from "../src/transcribe.js";
+import { makeTranscriber } from "../src/whatsapp/transcribe.js";
 
 function fakeFetch(capture, response) {
   return async (url, opts) => {

@@ -275,7 +275,7 @@ test("GET /api/billing/received/:saas — só dinheiro FATO: MP aprovado (por cl
 });
 
 test("closedSubscriptionSpec: assinatura recorrente (cartão mensal) vira ciclo mensal sem cronograma de parcelas", async () => {
-  const { closedSubscriptionSpec } = await import("../src/billing.js");
+  const { closedSubscriptionSpec } = await import("../src/billing/billing.js");
   // Plano mensal fechado na recorrente: parcela = o próprio valor do mês.
   assert.deepEqual(closedSubscriptionSpec({ planClosed: "mensal", amount: 274, paymentMethod: "cartao_recorrente" }), { cycle: "monthly", price: 274 });
   // Mesmo com "paymentInstallments" perdido no lead, recorrente ganha cronograma

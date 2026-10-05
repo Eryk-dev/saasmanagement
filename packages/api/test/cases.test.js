@@ -4,9 +4,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { validateCase, publishBlockers, canPublish, publicCase, pickCases } from "../src/cases.js";
-import { registerCaseRoutes } from "../src/routes.cases.js";
-import { ensureKnownCases, ensurePanelCases } from "../src/migrations.js";
+import { validateCase, publishBlockers, canPublish, publicCase, pickCases } from "../src/proposals/cases.js";
+import { registerCaseRoutes } from "../src/proposals/routes.cases.js";
+import { ensureKnownCases, ensurePanelCases } from "../src/platform/migrations.js";
 
 const completo = (over = {}) => ({
   id: "ca_1", saas: "leverads", customerId: "cu_1", name: "Lupa Auto Peças", niche: "autopecas",
@@ -163,7 +163,7 @@ test("migração: cases conhecidos entram em rascunho e não duplicam", async ()
 });
 
 // ── Deck: slide 06 com case real, colchetes quando não há ─────────────────
-import { proposalSlidesPageHtml } from "../src/proposal-slides-page.js";
+import { proposalSlidesPageHtml } from "../src/proposals/proposal-slides-page.js";
 
 const deck = (cases) => proposalSlidesPageHtml({
   id: "pr_1", name: "Proposta", layout: "slides", theme: {}, slides: [], calc: {},
@@ -281,8 +281,8 @@ test("deck: o card de case leva logo, as três medidas de apoio e a régua no sl
 });
 
 // ── Números que se refazem sozinhos (28/09) ───────────────────────────────
-import { panelCaseFacts, panelMetricValue, caseWithLiveNumbers } from "../src/cases.js";
-import { liveCases, liveDeckCases, _resetLiveCases } from "../src/cases-live.js";
+import { panelCaseFacts, panelMetricValue, caseWithLiveNumbers } from "../src/proposals/cases.js";
+import { liveCases, liveDeckCases, _resetLiveCases } from "../src/proposals/cases-live.js";
 
 const SNAP = { gmvTotal: 442140.98, ordersTotal: 3006, listings: 574780, gmv30d: 82000 };
 

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { recordMessage } from "../src/wa-store.js";
+import { recordMessage } from "../src/whatsapp/wa-store.js";
 
 // Lead que escreve de um SEGUNDO número (raio-x 30/09): a thread sabia o lead,
 // a mensagem não — 8 conversas inteiras invisíveis pras métricas.

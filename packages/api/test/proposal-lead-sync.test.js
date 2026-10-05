@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { attributionPain } from "../src/attribution.js";
-import { syncProposalLeadSnapshot } from "../src/proposal.js";
+import { attributionPain } from "../src/marketing/attribution.js";
+import { syncProposalLeadSnapshot } from "../src/proposals/proposal.js";
 
 const calc = { catalog: { pains: { A: {}, B: {}, C: {}, D: {}, E: {}, OEM: {}, none: {} } } };
 

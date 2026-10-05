@@ -6,9 +6,9 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import { seedTestAdmins } from "./helpers/seed-admins.js";
-import { makeAuthHook, hashPassword } from "../src/auth.js";
-import { makeScreenGuardHook } from "../src/screens.js";
-import { makeIdentityAdmin, staffRolesFor } from "../src/identity-admin.js";
+import { makeAuthHook, hashPassword } from "../src/auth/auth.js";
+import { makeScreenGuardHook } from "../src/auth/screens.js";
+import { makeIdentityAdmin, staffRolesFor } from "../src/auth/identity-admin.js";
 
 const { registerRoutes } = await import("../src/routes.js");
 

@@ -302,7 +302,7 @@ test("produto inexistente retorna 404", async () => {
 });
 
 // ── Super metas: o pace re-ancora na próxima quando a base cai ──────────────
-const { chaseCeiling } = await import("../src/routes.pipeline-pace.js");
+const { chaseCeiling } = await import("../src/metrics/pipeline-pace.js");
 
 test("chaseCeiling: base enquanto não bate; depois 125→150→200; null passado de 200", () => {
   const T = 120000;

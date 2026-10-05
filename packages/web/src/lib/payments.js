@@ -1,8 +1,8 @@
 import {
   CLOSED_PLANS as CLOSED_PLAN_DEFS, CLOSED_PLAN_MONTHS as RECURRING_PLAN_MONTHS, CLOSED_PLAN_TITLE,
   CYCLE_LABEL, CYCLE_MONTHS, CYCLE_SHORT, CYCLE_TITLE, annualized, closedPlanFromLabel,
-} from "../../../api/src/plan-cycles.js";
-import { PLAN_PRODUCTS, planProductOf } from "../../../api/src/plan-resources.js";
+} from "../../../api/src/shared/plan-cycles.js";
+import { PLAN_PRODUCTS, planProductOf } from "../../../api/src/shared/plan-resources.js";
 
 // Ciclos e planos de fechamento vêm da régua compartilhada com a API
 // (plan-cycles.js); as telas importam daqui.
@@ -100,7 +100,7 @@ export function accruedAmountOf(lead, { now, endAt } = {}) {
 export const CLOSED_PLAN_MONTHS = { ...RECURRING_PLAN_MONTHS, unico: 1 };
 
 // Produto do catálogo da apresentação (tela zero) com que o negócio fechou —
-// espelho do DEAL_PRODUCT_LABEL de packages/api/src/proposal-catalog.js (os
+// espelho do DEAL_PRODUCT_LABEL de packages/api/src/proposals/proposal-catalog.js (os
 // dois andam juntos). Vai no lead (dealProduct) pelo link de pagamento, aparece
 // no card da Integração e na coluna Plano do cliente.
 // Catálogo v2 (10/09/2026): linha × pacote. As chaves do catálogo anterior

@@ -1,0 +1,270 @@
+// Restrição de TELAS por usuário (user.screens) — a autorização do cockpit.
+//
+// Modelo: `user.screens` é uma lista de ids de tela (espelho do NAV do SPA,
+// chrome.jsx). VAZIA/ausente = acesso total (compatível com o time atual).
+// Preenchida = o usuário só vê essas telas no SPA E só alcança na API as rotas
+// que servem essas telas — esconder o menu sem fechar a API não é restrição.
+//
+// A chave mestre (COCKPIT_API_KEY) NUNCA é restringida: MCP e integrações
+// (forms externos, Levercopy) continuam com acesso total — `req.authUser` só
+// existe em sessão de usuário (auth.js/makeAuthHook).
+//
+// O guard é um hook único por PREFIXO de URL (makeScreenGuardHook), registrado
+// logo após o hook de auth no index.js — rota nova que sirva uma tela restrita
+// deve entrar no mapa abaixo.
+
+export const SCREEN_IDS = [
+  "overview", "today", "pipeline", "customers", "metrics", "expenses",
+  "social", "forms", "proposals", "creative", "offers", "contracts", "intform", "disparos", "whatsapp", "agenda", "consultas", "calls", "integrations", "analise", "funcionarios", "desempenho", "metas", "training", "tasks", "mindmaps", "settings",
+  "outbound", "remuneracao",
+  "blog", // redação do blog SEO (grupo Marketing)
+  "eloapp", "landingpages",
+  "plans", // gestão do catálogo de planos (grupo Comercial; a tela é de admin)
+  "tickets", "quick_replies", "support_settings", // grupo Suporte: fila, respostas rápidas e configurações de SLA/atendentes
+];
+
+export const sanitizeScreens = (x) =>
+  Array.isArray(x) ? x.filter((s) => SCREEN_IDS.includes(s)) : [];
+
+// ── Telas que vêm com o PAPEL (piso, não teto) ───────────────────────────────
+// A restrição por lista de telas tem um furo: ela presume que alguém lembrou de
+// marcar, na mão, tudo que o cargo precisa. Em 24/08/2026 o Vitor (closer) não
+// conseguiu gerar link de pagamento no meio de uma venda porque faltava
+// "offers" na lista dele. Gerar link é o meio de vida do closer, não um extra.
+// Aqui o papel garante o piso: closer SEMPRE alcança o pipeline e a tela de
+// Links de pagamento, com lista restrita ou não. A lista de telas continua
+// somando por cima (é piso, nunca teto), e dado sensível não passa por aqui:
+// ADMIN_PREFIXES (remuneração) segue exigindo etiqueta admin ou tela marcada
+// explicitamente na mão.
+export const ROLE_SCREENS = {
+  closer: ["pipeline", "offers"],
+};
+
+// ── Telas que TODA sessão alcança ───────────────────────────────────────────
+// O piso por papel resolveu o closer, mas não o resto: em 27/08/2026 o Jonathan
+// esbarrou de novo em gerar cobrança, e a régua "depende de alguém ter marcado
+// a caixinha certa (ou ter o papel certo)" já tinha falhado duas vezes na mesma
+// tarefa. DECISÃO DO LEO: gerar link de pagamento é ferramenta de trabalho de
+// TODO MUNDO no cockpit, não permissão a conceder. `offers` (Links de pagamento)
+// passa a valer pra qualquer sessão, com lista restrita ou não.
+//
+// O que continua fechado: a tela Clientes (ARR/MRR/churn da base) e o Financeiro.
+// A AÇÃO de cobrar um cliente anda junto com esta tela (ACTION_SCREENS), a
+// LEITURA da base continua exigindo `customers`.
+export const UNIVERSAL_SCREENS = new Set(["offers"]);
+
+const roleScreens = (user) => {
+  const out = new Set();
+  for (const role of Array.isArray(user?.roles) ? user.roles : []) {
+    for (const screen of ROLE_SCREENS[role] || []) out.add(screen);
+  }
+  return out;
+};
+
+// Usuário pode acessar a tela? Sem authUser (key mestre) ou lista vazia = sim;
+// senão, a lista dele OU o piso do papel.
+export function canScreen(user, screen) {
+  if (!user) return true;
+  if (UNIVERSAL_SCREENS.has(screen)) return true;
+  const s = Array.isArray(user.screens) ? user.screens : [];
+  if (s.length === 0 || s.includes(screen)) return true;
+  return roleScreens(user).has(screen);
+}
+
+// Prefixo de rota → telas que ela serve (basta o usuário ter UMA delas). Ordem
+// importa (primeiro match vence). "Meu dia" (today) é uma view sobre os mesmos
+// dados do pipeline: leads e toques servem as duas telas. Rotas fora do mapa
+// (bootstrap, rev/events, auth próprio, people, leaderboard) ficam liberadas pra
+// qualquer sessão — o bootstrap filtra o payload por conta própria (crm/routes.bootstrap.js).
+const ROUTE_SCREENS = [
+  // Aviso de social selling do Meu dia (só a CONTAGEM de novos seguidores) — o
+  // SDR alcança pela fila (today) sem ter a tela de Mídia social. Precede
+  // /api/social (primeiro match vence).
+  ["/api/social/new-followers", ["today", "pipeline", "overview", "social"]],
+  ["/api/social/dms", ["whatsapp", "social"]], // DMs de IG/Messenger no Inbox (tela whatsapp)
+  ["/api/social", ["social"]],
+  ["/api/marketing", ["metrics"]],
+  ["/api/metrics/", ["metrics"]],
+  ["/api/elo/", ["eloapp", "landingpages", "overview"]],  // agregados do app Elo (Análise do App + Visão geral do workspace)
+  ["/api/lp/", ["landingpages"]],             // resumo do beacon das landing pages
+  ["/api/ad_insights", ["metrics"]],
+  ["/api/ai-costs", ["expenses"]],
+  ["/api/expenses", ["expenses"]], // CRUD genérico E /api/expenses/summary/:saas
+  ["/api/pipeline-pace/", ["pipeline", "analise", "overview"]], // pace de caixa e metas diárias (Pipeline, Análise e faixa de meta da Visão geral)
+  ["/api/funnel/", ["pipeline", "analise"]],  // análise do pipeline (Pipeline + tela Análise)
+  ["/api/leads", ["pipeline", "today"]],    // inclui /api/leads/:id/proposal (ação do closer)
+  ["/api/activities", ["pipeline", "today"]],
+  ["/api/customers", ["customers"]],
+  ["/api/subscriptions", ["customers"]], // inclui /change e /mp/link
+  ["/api/invoices", ["customers"]],      // inclui /pay e /mp/link
+  // Recorrências do MP ↔ clientes: mora na aba MP da tela Assinaturas (dentro
+  // de Clientes). Precede /api/mp/ — primeiro match vence.
+  ["/api/mp/preapprovals", ["customers", "expenses"]],
+  ["/api/mp/", ["expenses"]],            // financeiro: espelho de pagamentos do MP (payments/sync/link) — aba Pagamentos da tela Financeiro
+  ["/api/mp_payments", ["expenses"]],    // CRUD genérico do espelho (mesma tela)
+  ["/api/mp_preapprovals", ["customers", "expenses"]], // CRUD genérico do espelho de recorrências
+  ["/api/fin/", ["expenses"]],           // financeiro completo: leitura do mês (contas a pagar, fluxo, DRE, conciliação)
+  ["/api/payables", ["expenses"]],       // CRUD genérico das contas a pagar
+  ["/api/fin_rules", ["expenses"]],      // regras de conciliação aprendidas
+  ["/api/mp_movements", ["expenses"]],   // saídas da conta MP (settlement report)
+  ["/api/plans", ["customers", "plans"]],
+  ["/api/plan-changes", ["customers"]], // histórico de mudanças de plano (a coleção é PRIVATE no CRUD genérico)
+  // Sync de acesso do produto (payment_active da org): lê e escreve em cima do
+  // billing da base, então segue o guard de Clientes. Aplicar de verdade ainda
+  // pede etiqueta admin dentro da rota (leverads-access.js).
+  ["/api/leverads-access", ["customers"]],
+  ["/api/entitlements", ["customers"]],
+  ["/api/nps", ["customers"]],
+  // Cases nascem da ficha do cliente e mostram faturamento por conta: mesmo
+  // guard da base de clientes.
+  ["/api/cases", ["customers"]],
+  // Fila de colheita de indicação: mora numa aba da tela Clientes e mostra
+  // faturamento por cliente, então segue o mesmo guard da base.
+  ["/api/referrals/", ["customers"]],
+  ["/api/billing/", ["customers"]],
+  ["/api/blog", ["blog"]],               // redação do blog: pautas, rascunhos, agenda, preview (routes.blog.js)
+  ["/api/forms", ["forms", "metrics"]], // inclui /:id/funnel e /preview (a Publicidade usa o funil do form)
+  ["/api/form_submissions", ["forms"]],
+  ["/api/form_events", ["forms"]],
+  ["/api/proposal_templates", ["proposals"]],
+  ["/api/proposals", ["proposals"]],     // inclui /preview
+  ["/api/payment-links", ["offers"]],    // histórico dos links gerados por lead/cliente (tela Links de pagamento) + baixa manual
+  ["/api/payment_links", ["offers"]],    // CRUD genérico do mesmo histórico
+  ["/api/contracts", ["contracts"]],     // modelos de contrato (biblioteca)
+  ["/api/contract_issues", ["contracts"]], // contratos gerados (histórico da mesma tela; a ficha do cliente LÊ, ver EXTRA_READ_SCREENS)
+  ["/api/campaigns", ["disparos"]],      // disparos de e-mail + WhatsApp (mark, ai-copy e CRUD)
+  ["/api/wa_automations", ["whatsapp"]], // automações do Inbox (regras reativas: CRUD genérico)
+  ["/api/wa_flows", ["whatsapp"]],       // fluxos de conversa do Inbox (construtor: CRUD genérico)
+  ["/api/outbound_accounts", ["outbound"]], // radar de contas do outbound (Cold Calling 2.0)
+  ["/api/comp_plans", ["remuneracao"]],  // remuneração por cargo (ADMIN_PREFIXES exige etiqueta admin, além da tela)
+  ["/api/comp/", ["remuneracao"]],       // extrato mensal da remuneração (mesmo guard: tem R$ por pessoa)
+  ["/api/sequences", ["disparos", "whatsapp"]],      // sequências de nutrição (drip): CRUD + enroll/wa-sent/metrics/run; a aba Automações do Inbox lista/pausa
+  ["/api/sequence_enrollments", ["disparos", "whatsapp"]], // progresso das sequências
+  ["/api/drip_templates", ["disparos"]], // biblioteca de conteúdo dos passos
+  // Números do inbox (esperando resposta/janelas) no "Precisa de atenção" da
+  // Visão geral — só a LEITURA agregada; conversas/envio seguem só do inbox.
+  // Precede /api/whatsapp (primeiro match vence).
+  ["/api/whatsapp/insights", ["whatsapp", "overview"]],
+  ["/api/whatsapp", ["whatsapp"]],       // inbox de conversas (threads/messages/send/read); webhook /api/webhooks/whatsapp fica aberto
+  // Bloqueios de agenda: a tela Agenda gerencia; quem marca call (pipeline/Meu dia)
+  // precisa LER pra grade de horários respeitar os bloqueios.
+  ["/api/agenda_blocks", ["agenda", "pipeline", "today", "overview"]],
+  // Horários livres calculados no SERVIDOR (SDR automatizado + quem marca call).
+  ["/api/agenda/free-slots", ["agenda", "pipeline", "today", "whatsapp"]],
+  ["/api/sdr/", ["whatsapp"]], // status do SDR automatizado (card da aba Automações)
+  ["/api/consultations", ["consultas"]], // consultas 1:1 (mentoria UniqueKids): agenda + ações (meet/summary)
+  ["/api/deliverables", ["consultas"]],  // Manual da Família (entregável) + compose por IA
+  ["/api/pitch", ["calls", "settings"]], // análise de pitch (calls) + botão "IA das calls" em Ajustes → Scripts
+  // Formulário de Integração (tela intform): definição das perguntas + os
+  // pedidos por cliente. Precede /api/integrations só por clareza — os
+  // prefixos não se cruzam ("integration-" e "integration_" ≠ "integrations").
+  ["/api/integration-forms", ["intform"]],
+  ["/api/integration_forms", ["intform"]],
+  ["/api/integrations", ["integrations"]], // análise de integração (CS/onboarding)
+
+  ["/api/metas", ["metas"]],             // metas de desempenho por vaga/pessoa
+  ["/api/flashcards", ["training"]],     // treinamentos (flashcards)
+  ["/api/tasks", ["tasks"]],
+  ["/api/task_boards", ["tasks"]],
+  // Suporte: além da tela, o PRODUTO do ticket passa pelo escopo de
+  // support-scope.js dentro das próprias rotas (routes.tickets.js).
+  ["/api/tickets", ["tickets"]],
+  // Respostas rápidas: a página e o chat do ticket (quem só atende também usa e cria as pessoais).
+  ["/api/support/quick-replies", ["quick_replies", "tickets"]],
+  ["/api/support/", ["support_settings"]],
+  ["/api/mindmaps", ["mindmaps"]],       // mapas mentais / estratégia
+  ["/api/goals", ["overview"]],
+  ["/api/portfolio", ["overview"]],
+  ["/api/leaderboard", ["overview"]],
+  ["/api/scoreboard", ["overview", "funcionarios", "desempenho"]], // placar por pessoa/papel (Visão geral + Funcionários + Desempenho)
+  // Análise de Desempenho: a tela lê tudo; SDR (Meu dia) e social (Redes
+  // sociais) só usam a rota pra gravar o próprio registro do dia — a leitura
+  // aplica a lente individual no servidor (só o próprio recorte).
+  ["/api/desempenho", ["desempenho", "today", "social"]],
+  ["/api/daily_logs", ["desempenho"]], // CRUD genérico da collection fica atrás da tela (a escrita normal é pela rota acima)
+];
+
+// Escritas administrativas: leitura fica aberta (o app inteiro precisa do
+// catálogo de produtos e da lista de nomes do time pros pickers), mas mexer em
+// produto/funil/usuários é coisa da tela Ajustes.
+// O follow-up em 4 contatos (mensagens e prazos) é configuração global da
+// mesma tela, inclusive pelo CRUD genérico de app_config.
+const SETTINGS_WRITE_PREFIXES = ["/api/products", "/api/auth/users", "/api/followup-contacts", "/api/app_config/followup_contacts"];
+
+// A Visão geral de gestão é a MESMA pra todo o time: quem tem a tela overview
+// também LÊ o que os painéis dela buscam — tiles de aquisição (/api/marketing,
+// /api/metrics) e Resultado do mês (/api/invoices, /api/expenses/summary). Só
+// GET: sync, pay e CRUD continuam exigindo a tela dona da rota.
+const OVERVIEW_READ_PREFIXES = ["/api/marketing", "/api/metrics/", "/api/invoices", "/api/expenses/summary/"];
+
+// Leitura de carona por tela: prefixo → tela extra que só ganha no GET. A ficha
+// do cliente mostra os contratos GERADOS pra ele (bloco "Contratos gerados"),
+// mas gerar/excluir registro segue sendo coisa da tela Contratos.
+// A fila de tickets lê as categorias/SLA do produto e a lista de atendentes
+// (picker de responsável); editar segue coisa da tela de Configurações de SLA.
+const EXTRA_READ_SCREENS = [
+  ["/api/contract_issues", "customers"],
+  ["/api/support/settings/", "tickets"],
+  ["/api/support/settings/", "quick_replies"], // variáveis customizadas na página de respostas rápidas (editar segue em support_settings)
+  ["/api/support/agents", "tickets"],
+];
+
+// ── Ações com o id NO MEIO da rota ──────────────────────────────────────────
+// A régua de prefixo só olha o começo da URL, então `POST /api/customers/:id/
+// charge` (gerar cobrança no nome de um cliente) caía na tela `customers` — a
+// base inteira, com ARR, MRR e churn. São coisas diferentes: COBRAR é trabalho
+// de quem vende, LER a base é gestão. Aqui a ação anda com a tela de Links de
+// pagamento; /api/customers continua exigindo `customers`.
+const ACTION_SCREENS = [
+  [/^\/api\/customers\/[^/]+\/charge$/, ["customers", "offers"]],
+  [/^\/api\/leads\/[^/]+\/mp\/link$/, ["pipeline", "today", "offers"]],
+];
+
+export function screenForRequest(method, path) {
+  if (method !== "GET" && SETTINGS_WRITE_PREFIXES.some((p) => path.startsWith(p))) return ["settings"];
+  const action = ACTION_SCREENS.find(([re]) => re.test(path));
+  if (action) return action[1];
+  const hit = ROUTE_SCREENS.find(([prefix]) => path.startsWith(prefix));
+  if (!hit) return null;
+  if (method === "GET" && OVERVIEW_READ_PREFIXES.some((p) => path.startsWith(p))) return [...hit[1], "overview"];
+  if (method === "GET") {
+    const extra = EXTRA_READ_SCREENS.filter(([p]) => path.startsWith(p)).map(([, s]) => s);
+    if (extra.length) return [...hit[1], ...extra];
+  }
+  return hit[1];
+}
+
+// Rotas de dado SENSÍVEL (salário/remuneração): a lista de telas em branco
+// significa "vê tudo" (ex.: usuário sem restrição), e salário não pode vazar
+// por esse caminho. Passa quem tem a etiqueta `admin` — ou quem ganhou a tela
+// `remuneracao` EXPLICITAMENTE em Ajustes → Equipe, e aí só LEITURA: editar
+// plano de comp segue coisa de admin.
+const ADMIN_PREFIXES = ["/api/comp_plans", "/api/comp/"];
+// Gestão do time (criar, editar papel/telas/nível, resetar senha, remover): só
+// a etiqueta `admin`. Sem isso, quem tem a tela Ajustes daria a si mesmo a
+// etiqueta admin ou resetaria a senha de um admin. Ler a lista segue aberto
+// (pickers); o próprio perfil vive em /api/auth/me, fora daqui.
+const ADMIN_WRITE_PREFIXES = ["/api/auth/users"];
+
+// Hook Fastify (registrar DEPOIS do makeAuthHook, que popula req.authUser).
+export function makeScreenGuardHook() {
+  return async (req, reply) => {
+    const user = req.authUser;
+    if (!user) return; // key mestre ou rota aberta — auth já decidiu
+    const path = req.url.split("?")[0];
+    if (ADMIN_PREFIXES.some((p) => path.startsWith(p))) {
+      const admin = (user.roles || []).includes("admin");
+      const granted = Array.isArray(user.screens) && user.screens.includes("remuneracao");
+      if (!admin && !(req.method === "GET" && granted)) {
+        return reply.code(403).send({ error: "Sem acesso a esta área" });
+      }
+    }
+    if (req.method !== "GET" && ADMIN_WRITE_PREFIXES.some((p) => path.startsWith(p)) && !(user.roles || []).includes("admin")) {
+      return reply.code(403).send({ error: "Só quem tem a etiqueta admin gerencia a equipe" });
+    }
+    const screens = screenForRequest(req.method, path);
+    if (screens && !screens.some((s) => canScreen(user, s))) {
+      return reply.code(403).send({ error: "Sem acesso a esta área" });
+    }
+  };
+}

@@ -6,9 +6,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeAuthHook, hashPassword } from "../src/auth.js";
-import { makeScreenGuardHook, screenForRequest } from "../src/screens.js";
-import { renderTemplate, BUILTIN_VARIABLES, RESERVED_VARIABLE_KEYS, sanitizeVariables, slugShortcut } from "../src/quick-replies.js";
+import { makeAuthHook, hashPassword } from "../src/auth/auth.js";
+import { makeScreenGuardHook, screenForRequest } from "../src/auth/screens.js";
+import { renderTemplate, BUILTIN_VARIABLES, RESERVED_VARIABLE_KEYS, sanitizeVariables, slugShortcut } from "../src/support/quick-replies.js";
 
 const { registerRoutes } = await import("../src/routes.js");
 

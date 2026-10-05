@@ -8,7 +8,7 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerRoutes } = await import("../src/routes.js");
-const { makeGoogle } = await import("../src/google.js");
+const { makeGoogle } = await import("../src/google/google.js");
 
 // id_token fake com e-mail no payload (assinatura não é validada — display only)
 const idToken = () => `x.${Buffer.from(JSON.stringify({ email: "time@leverads.com.br" })).toString("base64url")}.y`;

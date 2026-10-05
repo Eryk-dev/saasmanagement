@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const { makeTtlCache } = await import("../src/ttl-cache.js");
+const { makeTtlCache } = await import("../src/platform/ttl-cache.js");
 
 function clock(start = 1_000_000) {
   let t = start;

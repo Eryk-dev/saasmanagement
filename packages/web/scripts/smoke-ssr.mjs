@@ -487,7 +487,7 @@ try {
     // Configurações antigas substituem o default: validar o produto migrado
     // nos três roteiros que Minhas atividades escolhe conforme as tentativas.
     const { makeMemRepo } = await import("../../api/test/helpers/mem-repo.js");
-    const { migrateNutricaoNoFollowup } = await import("../../api/src/migrations.js");
+    const { migrateNutricaoNoFollowup } = await import("../../api/src/platform/migrations.js");
     const repo = makeMemRepo();
     await repo.create("products", { id: "leverads", funnel, nextSteps: {
       followup1: ["retry", "ganho", "integracao", "desqualificado"],

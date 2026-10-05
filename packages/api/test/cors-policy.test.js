@@ -5,7 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
-import { makeCorsDelegator } from "../src/cors-policy.js";
+import { makeCorsDelegator } from "../src/platform/cors-policy.js";
 
 async function buildApp(env) {
   const app = Fastify();

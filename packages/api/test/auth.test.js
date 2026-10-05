@@ -9,9 +9,9 @@ import multipart from "@fastify/multipart";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerRoutes } = await import("../src/routes.js");
-const { ensureBootstrapAdmin, makeAuthHook, hashPassword, verifyPassword } = await import("../src/auth.js");
+const { ensureBootstrapAdmin, makeAuthHook, hashPassword, verifyPassword } = await import("../src/auth/auth.js");
 const { seedTestAdmins } = await import("./helpers/seed-admins.js");
-const { makeScreenGuardHook } = await import("../src/screens.js");
+const { makeScreenGuardHook } = await import("../src/auth/screens.js");
 
 function providedKey(req) {
   const h = req.headers["x-api-key"];
@@ -358,7 +358,7 @@ test("nível: mudar compLevel apenda o histórico; o mesmo nível não duplica",
 });
 
 test("sessão em cache: 2ª requisição não vai ao banco; escrita no repo e expiração invalidam", async () => {
-  const { sessionUser } = await import("../src/auth.js");
+  const { sessionUser } = await import("../src/auth/auth.js");
   const repo = makeMemRepo();
   await seedTestAdmins(repo);
   const app = buildApp(repo);

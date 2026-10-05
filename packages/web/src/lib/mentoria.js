@@ -1,4 +1,4 @@
-// Mentoria Lever no cockpit — espelho de packages/api/src/mentoria.js (a tabela
+// Mentoria Lever no cockpit — espelho de packages/api/src/customers/mentoria.js (a tabela
 // de verba e os ids dos produtos andam juntos; preço e nome vêm do SEED, então
 // só existem num lugar).
 //

@@ -14,7 +14,8 @@
 
 # Implementation and validation
 
-- REST is the source of truth. The SPA and the project's MCP server use that API; Postgres access belongs in `packages/api/src/db.js`.
+- REST is the source of truth. The SPA and the project's MCP server use that API; Postgres access belongs in `packages/api/src/platform/db.js`.
+- The API is organized by domain folders under `packages/api/src/`. Each domain with routes has an `index.js` exporting `register(app, repo, ctx)` and, when it has background runners, `start(repo, { clients, log, stops })`; `domains.js` lists them in dependency order, `routes.js` builds the shared clients and calls each `register`, and `index.js` calls `startDomains` after listening. New routes and runners go into their domain, not into `routes.js` or `index.js`; every runner call in a domain `start` is gated by `jobOn("name")`. A `routes.<x>.js` file only registers endpoints; logic, shared helpers, and background runners live in a domain module. Only the domain's own `index.js` imports a `routes.<x>.js`, only `domains.js` imports a domain `index.js`, and only `index.js` imports `routes.js`. `shared/` is bundled by the SPA, so it imports only from itself. `api/test/fronteiras-dominio.test.js` enforces these rules.
 - Preserve product scoping through `saas` and the global workspace in `packages/web/src/lib/workspace.js`.
 - Preserve financial definitions, stage semantics, and backend authorization described in the context guide. Reuse the domain helpers and their existing tests.
 - Before starting the API, verify that `COCKPIT_DB_URL` targets an isolated development database. Startup runs data migrations and background integrations; historical local configurations used production's database. Never print credentials while checking configuration.

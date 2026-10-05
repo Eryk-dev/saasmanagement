@@ -13,10 +13,10 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerRoutes } = await import("../src/routes.js");
-const { makeMp } = await import("../src/mp.js");
-const { makeDiscord } = await import("../src/discord.js");
-const { ingestMpPayment } = await import("../src/mp-payments.js");
-const { isChurnedCustomer } = await import("../src/churn.js");
+const { makeMp } = await import("../src/payments/mp.js");
+const { makeDiscord } = await import("../src/integrations/discord.js");
+const { ingestMpPayment } = await import("../src/payments/mp-payments.js");
+const { isChurnedCustomer } = await import("../src/billing/churn.js");
 
 // Discord fake: captura os embeds postados (mesmo padrão do routes.discord.test).
 function makeFakeDiscord() {
@@ -135,7 +135,7 @@ test("PATCH genérico: assinatura cancelada pela tela ganha canceledAt sozinha",
 
 test("cancelamento no MP com OUTRA assinatura viva = troca de recorrência, sem churn", async () => {
   const repo = makeMemRepo();
-  const { applyMpCancellationChurn } = await import("../src/churn.js");
+  const { applyMpCancellationChurn } = await import("../src/billing/churn.js");
   await seed(repo);
   await repo.create("subscriptions", { id: "s1", customer: "c1", saas: "leverads", status: "canceled", cycle: "monthly", price: 500 });
   await repo.create("subscriptions", { id: "s2", customer: "c1", saas: "leverads", status: "active", cycle: "annual", price: 6000 });
@@ -183,7 +183,7 @@ test("estorno no espelho de pagamentos: transição approved → refunded avisa 
 
 test("churn congela o arr: mutação de assinatura depois do churn não zera o histórico", async () => {
   const repo = makeMemRepo();
-  const { syncCustomerArr } = await import("../src/billing.js");
+  const { syncCustomerArr } = await import("../src/billing/billing.js");
   await seed(repo);
   await repo.update("customers", "c1", { endedAt: "2026-08-01" });
   await repo.create("subscriptions", { id: "s1", customer: "c1", saas: "leverads", status: "canceled", cycle: "monthly", price: 500 });

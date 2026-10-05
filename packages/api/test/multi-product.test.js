@@ -6,12 +6,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { ensurePlansCatalog } from "../src/plan-catalog.js";
-import { planHistoryOf } from "../src/plan-history.js";
-import { desiredEntitlements, plansByCodeOf } from "../src/entitlements.js";
-import { runLeveradsAccessSync } from "../src/leverads-access.js";
+import { ensurePlansCatalog } from "../src/billing/plan-catalog.js";
+import { planHistoryOf } from "../src/billing/plan-history.js";
+import { desiredEntitlements, plansByCodeOf } from "../src/billing/entitlements.js";
+import { runLeveradsAccessSync } from "../src/billing/leverads-access.js";
 
-const { ensureProposalCatalog, migrateCatalogPricing } = await import("../src/migrations.js");
+const { ensureProposalCatalog, migrateCatalogPricing } = await import("../src/platform/migrations.js");
 const { registerRoutes } = await import("../src/routes.js");
 
 const FUNNEL = [{ stage: "Follow-up", kind: "followup" }, { stage: "Ganho", kind: "ganho" }];

@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import {
   guessKind, normalizeFunnel, kindOf, isWon, isWonLead, isPostSaleStage, wonAtOf, isLoss,
   ladderOf, stageByKind, firstStage, cadenceOf,
-} from "../src/stages.js";
+} from "../src/crm/stages.js";
 
 test("guessKind reconhece os nomes históricos do funil LeverAds", () => {
   assert.equal(guessKind("Ganho"), "ganho");

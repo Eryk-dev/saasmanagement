@@ -8,7 +8,7 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerRoutes } = await import("../src/routes.js");
-const { makeMeta } = await import("../src/meta.js");
+const { makeMeta } = await import("../src/marketing/meta.js");
 
 // fetch fake do Graph: /me/adaccounts pagina em 2; /me/accounts numa página só.
 function makeGraphFetch() {

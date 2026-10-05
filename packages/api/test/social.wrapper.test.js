@@ -16,7 +16,7 @@ globalThis.fetch = async (url) => {
   return { status: 200, text: async () => JSON.stringify({ data: [] }) };
 };
 
-const { social } = await import("../src/social.js");
+const { social } = await import("../src/marketing/social.js");
 
 test("wrapper igDemographics repassa metric e extra (alcançados ≠ seguidores)", async () => {
   calls.length = 0;

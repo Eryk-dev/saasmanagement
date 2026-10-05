@@ -6,7 +6,7 @@ import {
   migrateGanhoAntesIntegracao, migrateGanhoNaIntegracao, migrateIntegracaoNoFollowup, migrateNutricaoNoFollowup, backfillWonAt, backfillPostSaleCustomers,
   ensureLossReasons, ensureNoShowReason, ensureSdrGoals, ensureCloserGoals, ensureCloseRateUnica, ensureSocialGoals, ensureUserRoles, ensureUserSaasScope, ensureUserScreens, DEFAULT_LOSS_REASONS,
   migrateExpensePctBases,
-} from "../src/migrations.js";
+} from "../src/platform/migrations.js";
 
 const FUNNEL = [
   { stage: "Inbox", conv: 1 },
@@ -634,8 +634,8 @@ test("ensureCloseRateUnica sem meta de comparecimento usa o benchmark de 75%", a
 });
 
 // ── Pergunta de corte no form + saídas laterais ─────────────────────────────
-const { migrateFormVendeMarketplace, migrateFormEmailContato } = await import("../src/migrations.js");
-const { submissionExit, computePath, leadFromSubmission } = await import("../src/forms.js");
+const { migrateFormVendeMarketplace, migrateFormEmailContato } = await import("../src/platform/migrations.js");
+const { submissionExit, computePath, leadFromSubmission } = await import("../src/forms/forms.js");
 
 const FORM_REAL = {
   id: "fo_diagnostico_leverads",
@@ -821,8 +821,8 @@ test("custos %: Checkout vira base cartão 12x e Imposto vira recebidos, uma vez
 });
 
 // ── Blog: configuração da redação ───────────────────────────────────────────
-import { ensureBlogSettings } from "../src/migrations.js";
-import { BLOG_DEFAULT_RULES } from "../src/blog-config.js";
+import { ensureBlogSettings } from "../src/platform/migrations.js";
+import { BLOG_DEFAULT_RULES } from "../src/blog/blog-config.js";
 
 test("ensureBlogSettings: cria o doc blog_leverads com os defaults uma vez só", async () => {
   const repo = makeMemRepo();

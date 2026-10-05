@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import {
   leadClassOf, LEAD_CLASSES, classCounts, cashBucketsIn, cashCollectedIn,
   contactAttribution, dayKey, callOutcome, callWitness, callCohortIn,
-} from "../src/metrics-core.js";
+} from "../src/metrics/metrics-core.js";
 
 const inWin = (iso) => !!iso && dayKey(iso) >= "2026-08-01" && dayKey(iso) <= "2026-08-31";
 

@@ -5,7 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { registerIntegrationRoutes, aggregateIntegrations } from "../src/routes.integrations.js";
+import { registerIntegrationRoutes, aggregateIntegrations } from "../src/customers/routes.integrations.js";
 
 test("aggregateIntegrations: sentimento, pendências (com responsável) e configurado", () => {
   const a = aggregateIntegrations([

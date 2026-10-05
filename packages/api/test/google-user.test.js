@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeGoogleUser, syncPersonalCalendar } from "../src/google-user.js";
+import { makeGoogleUser, syncPersonalCalendar } from "../src/google/google-user.js";
 
 const idToken = (email) => `h.${Buffer.from(JSON.stringify({ email })).toString("base64url")}.s`;
 

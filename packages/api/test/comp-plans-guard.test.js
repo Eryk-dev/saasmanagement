@@ -5,7 +5,7 @@
 // editar plano de comp segue coisa de admin).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { makeScreenGuardHook } from "../src/screens.js";
+import { makeScreenGuardHook } from "../src/auth/screens.js";
 
 const run = async (user, url, method = "GET") => {
   let code = null;
@@ -54,10 +54,10 @@ test("comp/months: admin passa e a key mestre passa", async () => {
 });
 
 test("comp_months fica fora do CRUD genérico (o R$ só sai pelas rotas /api/comp/)", async () => {
-  const { COLLECTIONS } = await import("../src/seed-data.js");
+  const { COLLECTIONS } = await import("../src/platform/seed-data.js");
   assert.ok("comp_months" in COLLECTIONS, "a coleção precisa existir");
   const { default: fs } = await import("node:fs");
-  const routes = fs.readFileSync(new URL("../src/routes.js", import.meta.url), "utf8");
+  const routes = fs.readFileSync(new URL("../src/crm/routes.crud.js", import.meta.url), "utf8");
   const privateLine = routes.slice(routes.indexOf("const PRIVATE = new Set("), routes.indexOf("const isExposed"));
   assert.match(privateLine, /"comp_months"/);
 });

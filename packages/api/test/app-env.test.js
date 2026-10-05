@@ -3,7 +3,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { resolveAppEnv, prodTargets, assertSafeBoot, makeJobGate } from "../src/app-env.js";
+import { resolveAppEnv, prodTargets, assertSafeBoot, makeJobGate } from "../src/platform/app-env.js";
 
 const CLOUD = "postgresql://postgres.hsooljludhobvsznvnir:segredo@aws-0-sa-east-1.pooler.supabase.com:6543/postgres";
 

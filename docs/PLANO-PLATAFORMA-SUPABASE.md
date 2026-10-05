@@ -276,7 +276,7 @@ O isolamento entre tenants existe só no código (`.eq("org_id")`). Um bug ou um
   - as policies de staff cobrem `public` e `cockpit`, para o Cockpit manter acesso ao banco inteiro;
   - mantém o formato `(id, json)`, com colunas geradas (`saas`, `org_id`, `assignee`) para RLS e índices.
 - **Código:**
-  - `packages/api/src/db.js`: `repo.*` passa a usar postgrest-js com o JWT da requisição;
+  - `packages/api/src/platform/db.js`: `repo.*` passa a usar postgrest-js com o JWT da requisição;
   - `rawQuery` vira RPC;
   - `auth.js`, `makeAuthHook` e `screens.js` validam o JWT pelo JWKS;
   - `support-scope.js` continua, e o RLS repete a regra;
@@ -398,7 +398,7 @@ As tabelas de produto ficam nos schemas atuais e não mudam de nome. A virada é
 
 ## Arquivos-chave por repo
 - **Cockpit:**
-  - banco e autenticação: `packages/api/src/db.js`, `auth.js`, `screens.js`, `support-scope.js`;
+  - banco e autenticação: `packages/api/src/platform/db.js`, `auth.js`, `screens.js`, `support-scope.js`;
   - rotas e integrações: `routes.js`, `index.js`, `leverads-results.js`, `leverads-access.js`;
   - web: `packages/web/src/lib/api.js`.
 - **LeverAds:**

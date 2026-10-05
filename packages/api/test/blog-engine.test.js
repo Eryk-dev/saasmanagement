@@ -6,10 +6,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeBlogEngine, startBlogEngine, nextSlots, BlogEngineError, brtWeekday, isoWeekKey } from "../src/blog-engine.js";
-import { ensureBlogSettings } from "../src/migrations.js";
-import { blogCfgId } from "../src/blog-config.js";
-import { lintPost } from "../src/blog-lint.js";
+import { makeBlogEngine, startBlogEngine, nextSlots, BlogEngineError, brtWeekday, isoWeekKey } from "../src/blog/blog-engine.js";
+import { ensureBlogSettings } from "../src/platform/migrations.js";
+import { blogCfgId } from "../src/blog/blog-config.js";
+import { lintPost } from "../src/blog/blog-lint.js";
 
 const CTA = "https://levermoney.com.br/f/fo_diagnostico_leverads";
 // Segunda-feira 14/09/2026 às 10:00 de Brasília (13:00Z).

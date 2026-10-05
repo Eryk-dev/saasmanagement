@@ -7,8 +7,8 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
-const { makeSocial } = await import("../src/social.js");
-const { registerSocialRoutes } = await import("../src/routes.social.js");
+const { makeSocial } = await import("../src/marketing/social.js");
+const { registerSocialRoutes } = await import("../src/marketing/routes.social.js");
 
 // fetch fake do Graph: grava a sequência de chamadas e responde por padrão de URL.
 function makeGraphFetch(routes) {

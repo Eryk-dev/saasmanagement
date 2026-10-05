@@ -7,7 +7,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const { proposalPageHtml } = await import("../src/proposal-page.js");
+const { proposalPageHtml } = await import("../src/proposals/proposal-page.js");
 
 const render = (slide) => proposalPageHtml({
   id: "t", theme: { accent: "#23D8D3" }, showAll: false,

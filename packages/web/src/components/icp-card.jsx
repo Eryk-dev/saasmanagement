@@ -1,4 +1,4 @@
-import { REVENUE_BANDS } from "../../../api/src/lead-grade.js";
+import { REVENUE_BANDS } from "../../../api/src/shared/lead-grade.js";
 import React from "react";
 import { useActiveSaas } from "../lib/workspace.js";
 import { GRADE_STYLE } from "../lib/ui.js";

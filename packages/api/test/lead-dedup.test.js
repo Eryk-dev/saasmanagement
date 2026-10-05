@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { findDuplicateLead, dedupMergePatch } from "../src/lead-dedup.js";
+import { findDuplicateLead, dedupMergePatch } from "../src/crm/lead-dedup.js";
 
 const { registerRoutes } = await import("../src/routes.js");
 

@@ -28,12 +28,12 @@ import "./integration-forms.css";
 // opaco (/fi/:id) → manda no WhatsApp → o cliente responde → a resposta aparece
 // aqui, presa ao cliente, com o snapshot das perguntas daquela versão.
 //
-// As PERGUNTAS moram no servidor (packages/api/src/integration-form.js) e são
+// As PERGUNTAS moram no servidor (packages/api/src/forms/integration-form.js) e são
 // as mesmas pra todo cliente: o botão "ver perguntas" abre a pré-visualização.
 //
 // TIPOS (17/09/2026): a mesma máquina serve mais de um questionário. Hoje são
 // dois, `integracao` (o de sempre) e `nota_fiscal` (o cadastro do tomador pro
-// financeiro emitir a NFS-e, definido em packages/api/src/fiscal-form.js). O
+// financeiro emitir a NFS-e, definido em packages/api/src/forms/fiscal-form.js). O
 // pedido escolhe o tipo; o documento guarda em `kind` (sem kind = integração).
 
 const { useState: useS, useEffect: useE, useRef: useR, useMemo: useM } = React;

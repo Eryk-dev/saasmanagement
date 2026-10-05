@@ -7,10 +7,10 @@ import Fastify from "fastify";
 import { generateKeyPairSync, sign, createHmac, randomUUID } from "node:crypto";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 import { seedTestAdmins } from "./helpers/seed-admins.js";
-import { makeAuthHook, hashPassword } from "../src/auth.js";
-import { userByAuthId } from "../src/auth.js";
-import { makeScreenGuardHook } from "../src/screens.js";
-import { makeJwksCache, makeJwtResolver, resolveAuthMode, looksLikeJwt, LEVER_ORG_ID } from "../src/auth-jwt.js";
+import { makeAuthHook, hashPassword } from "../src/auth/auth.js";
+import { userByAuthId } from "../src/auth/auth.js";
+import { makeScreenGuardHook } from "../src/auth/screens.js";
+import { makeJwksCache, makeJwtResolver, resolveAuthMode, looksLikeJwt, LEVER_ORG_ID } from "../src/auth/auth-jwt.js";
 
 const { registerRoutes } = await import("../src/routes.js");
 

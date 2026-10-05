@@ -2,9 +2,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { npsIndex } from "../src/metrics-core.js";
-import { npsDue, npsBucket, askNps, answerNps, waWindowOpen, startNpsAsks, npsAskText, npsLink } from "../src/nps.js";
-import { npsPageHtml, npsDoneHtml, npsNotFoundHtml } from "../src/nps-page.js";
+import { npsIndex } from "../src/metrics/metrics-core.js";
+import { npsDue, npsBucket, askNps, answerNps, waWindowOpen, startNpsAsks, npsAskText, npsLink } from "../src/customers/nps.js";
+import { npsPageHtml, npsDoneHtml, npsNotFoundHtml } from "../src/customers/nps-page.js";
 
 const DAY = 86_400_000;
 const HOJE = Date.UTC(2026, 8, 13);

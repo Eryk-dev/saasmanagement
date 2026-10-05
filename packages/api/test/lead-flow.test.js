@@ -8,8 +8,8 @@ import Fastify from "fastify";
 import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerRoutes } = await import("../src/routes.js");
-const { rollToBusinessDay, appointmentAt, brtToIso, onOutboundMessage } = await import("../src/lead-flow.js");
-const { addBusinessDays, todayBrt, dayStartIso } = await import("../src/followup-contacts.js");
+const { rollToBusinessDay, appointmentAt, brtToIso, onOutboundMessage } = await import("../src/crm/lead-flow.js");
+const { addBusinessDays, todayBrt, dayStartIso } = await import("../src/shared/followup-contacts.js");
 
 const FUNNEL = [
   { stage: "Novo lead", kind: "novo", conv: 1, cadence: { firstTouchHours: 2 } },
@@ -366,7 +366,7 @@ test("plano mensal anualiza o arr no fechamento; backfill puxa arr de cliente an
   // Cliente antigo (convertido antes do fix, arr 0, sem assinatura): o backfill
   // puxa o valor do fechamento. Cliente com assinatura NÃO é tocado (o arr dele
   // é do syncCustomerArr).
-  const { backfillCustomerArrFromLead } = await import("../src/migrations.js");
+  const { backfillCustomerArrFromLead } = await import("../src/platform/migrations.js");
   await repo.create("leads", { id: "lo", saas: "leverads", name: "Store", stage: "Ganho", amount: 7188, customerId: "co" });
   await repo.create("customers", { id: "co", saas: "leverads", name: "Storecase", leadId: "lo", arr: 0, plan: "" });
   await repo.create("leads", { id: "ls", saas: "leverads", name: "Sub", stage: "Ganho", amount: 999, customerId: "cs" });

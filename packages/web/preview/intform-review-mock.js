@@ -1,8 +1,8 @@
-import { SECTIONS, TERM_TEXT } from "../../api/src/integration-form.js";
+import { SECTIONS, TERM_TEXT } from "../../api/src/forms/integration-form.js";
 import {
   FISCAL_SECTIONS,
   FISCAL_TERM_TEXT,
-} from "../../api/src/fiscal-form.js";
+} from "../../api/src/forms/fiscal-form.js";
 const params = new URLSearchParams(location.search);
 export const intformReview = params.get("review") === "intform";
 let forms = [];

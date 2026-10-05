@@ -141,7 +141,7 @@ test("ignora tópicos que não são de pedido (200, sem lead)", async () => {
 // orders/paid ficou 8 dias sem entregar (nenhum lead novo desde o backfill de
 // 13/07). Cobre: só "tarefas diárias" entra, dedup por order id, data do PEDIDO.
 test("startShopifySync: backfill dos pedidos que o webhook perdeu, com dedup e gatilho", async () => {
-  const { startShopifySync } = await import("../src/routes.webhooks.js");
+  const { startShopifySync } = await import("../src/marketing/shopify-sync.js");
   const repo = makeMemRepo();
   await repo.create("products", { id: "uniquekids", name: "UniqueKids", funnel: [{ stage: "Novo lead", kind: "novo" }] });
   await repo.create("users", { id: "ana", name: "Ana", saas: "uniquekids", roles: ["closer"] });

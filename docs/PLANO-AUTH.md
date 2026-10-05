@@ -51,7 +51,7 @@
 ### 1.2 Cockpit (este repo)
 
 - **Usuários:** `cockpit.users` `(id, json)`. O `id` é um slug (`"eryk"`), **não tem e-mail** e não tem 2FA.
-- **Hash:** `scrypt:<salt>:<hash>` do Node, **incompatível com o GoTrue** (`packages/api/src/auth.js:14-26`). O GoTrue importa bcrypt, argon2 e firebase-scrypt; o scrypt cru do Node não entra.
+- **Hash:** `scrypt:<salt>:<hash>` do Node, **incompatível com o GoTrue** (`packages/api/src/auth/auth.js:14-26`). O GoTrue importa bcrypt, argon2 e firebase-scrypt; o scrypt cru do Node não entra.
 - **Sessão:** token hex de 64 caracteres em `cockpit.sessions`, TTL de 7 dias sem refresh (`auth.js:12,156`).
   - O SPA guarda o token em `localStorage.cockpit_key` e o envia como `x-api-key` (`packages/web/src/lib/api.js:11-35`); no SSE, vai como `?key=`.
   - Um 401 no meio da sessão não é tratado: o login só aparece no bootstrap (`main.jsx:48`).

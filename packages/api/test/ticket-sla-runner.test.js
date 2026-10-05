@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { createTicket, patchTicket, saveSettings } from "../src/tickets-core.js";
-import { startTicketSla } from "../src/ticket-sla-runner.js";
+import { createTicket, patchTicket, saveSettings } from "../src/support/tickets-core.js";
+import { startTicketSla } from "../src/support/ticket-sla-runner.js";
 
 async function setup() {
   const repo = makeMemRepo();

@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 
 import {
   resultTokens, refreshResults, leveradsResults, presentationResults, leveradsPresentationResults, _resetResultsCache,
-} from "../src/leverads-results.js";
+} from "../src/customers/leverads-results.js";
 
 const ROW = {
   clientes: 23, contas: 25,
@@ -48,7 +48,7 @@ test("resumo mantém a última consulta boa e sua data durante falha, e atualiza
 test("deck C já gerado recebe totais atuais ao abrir, preservando seu estado comercial", async () => {
   const Fastify = (await import("fastify")).default;
   const { makeMemRepo } = await import("./helpers/mem-repo.js");
-  const { registerProposalRoutes } = await import("../src/routes.proposals.js");
+  const { registerProposalRoutes } = await import("../src/proposals/routes.proposals.js");
   _resetResultsCache();
   await refreshResults({ query: async () => [SUMMARY_ROW] });
   const repo = makeMemRepo();
@@ -68,7 +68,7 @@ test("deck C já gerado recebe totais atuais ao abrir, preservando seu estado co
   }
   assert.deepEqual((await repo.get("proposals", "pr_live_c")).state, state);
   _resetResultsCache();
-  const { proposalSlidesPageHtml } = await import("../src/proposal-slides-page.js");
+  const { proposalSlidesPageHtml } = await import("../src/proposals/proposal-slides-page.js");
   const empty = proposalSlidesPageHtml({ state: {}, data: {} });
   assert.match(empty, /Resultados agregados temporariamente indisponíveis/);
   assert.doesNotMatch(empty, /<strong[^>]*>R\$ 8 mi/);
@@ -185,7 +185,7 @@ test("a consulta é a MESMA função que alimenta a tela Resultados do produto",
 test("GET /p/:id serve o número real no calc e o motor repassa no compute()", async () => {
   const Fastify = (await import("fastify")).default;
   const { makeMemRepo } = await import("./helpers/mem-repo.js");
-  const { registerProposalRoutes } = await import("../src/routes.proposals.js");
+  const { registerProposalRoutes } = await import("../src/proposals/routes.proposals.js");
 
   _resetResultsCache();
   await refreshResults({ query: async () => [ROW] });
@@ -217,7 +217,7 @@ test("GET /p/:id serve o número real no calc e o motor repassa no compute()", a
 test("sem número em cache a página sai igual (o slide cai no fallback)", async () => {
   const Fastify = (await import("fastify")).default;
   const { makeMemRepo } = await import("./helpers/mem-repo.js");
-  const { registerProposalRoutes } = await import("../src/routes.proposals.js");
+  const { registerProposalRoutes } = await import("../src/proposals/routes.proposals.js");
 
   _resetResultsCache();
   const repo = makeMemRepo();

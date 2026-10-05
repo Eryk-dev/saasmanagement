@@ -586,7 +586,7 @@ test("escada de 4: oferta inexistente é recusada em vez de cair na principal", 
 // ── Cases com o número de hoje na hora de apresentar (28/09) ──────────────
 // O snapshot congela QUEM aparece no slide 06; o painel refaz QUANTO. Sem isso
 // o deck apresentava a apuração do dia em que o case foi cadastrado.
-import { liveCases, _resetLiveCases } from "../src/cases-live.js";
+import { liveCases, _resetLiveCases } from "../src/proposals/cases-live.js";
 
 const ORG_MOTVIA = "102f9143-c7d0-414c-9393-85fdd5fa3da8";
 

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeSdrRunner } from "../src/sdr-flow.js";
+import { makeSdrRunner } from "../src/sdr/sdr-flow.js";
 
 // Escada de retomada até o corte (Leo, 26/08), desenhada em cima da campanha
 // de 25/08: frio leva o encerramento no 5º dia, morno tem relógio próprio

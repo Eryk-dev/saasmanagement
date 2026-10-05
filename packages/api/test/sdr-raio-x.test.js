@@ -5,11 +5,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { makeMemRepo } from "./helpers/mem-repo.js";
-import { makeAnthropic } from "../src/anthropic.js";
-import { makeSdrBrain } from "../src/sdr-brain.js";
-import { makeSdrRunner, reminderText } from "../src/sdr-flow.js";
-import { makeSdrReplay, docIdOf } from "../src/sdr-replay.js";
-import { ensureSdrBrainFirstTouch } from "../src/migrations.js";
+import { makeAnthropic } from "../src/integrations/anthropic.js";
+import { makeSdrBrain } from "../src/sdr/sdr-brain.js";
+import { makeSdrRunner, reminderText } from "../src/sdr/sdr-flow.js";
+import { makeSdrReplay, docIdOf } from "../src/sdr/sdr-replay.js";
+import { ensureSdrBrainFirstTouch } from "../src/platform/migrations.js";
 
 const ISO = (s) => new Date(s).toISOString();
 const NOW = new Date("2026-08-19T13:00:00Z"); // quarta, 10h BRT
