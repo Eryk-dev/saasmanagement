@@ -501,7 +501,7 @@ function resumoRegras(r) {
   ].join(" · ");
 }
 
-// ── Runner (index.js) ───────────────────────────────────────────────────────
+// ── Runner (start do domínio marketing) ─────────────────────────────────────
 const DEFAULT_INTERVAL_MS = 60_000;
 
 export function startAdDelivery(repo, { meta = defaultMeta, intervalMs = DEFAULT_INTERVAL_MS, log, immediate = true } = {}) {

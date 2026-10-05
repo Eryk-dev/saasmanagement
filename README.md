@@ -61,13 +61,15 @@ login, `/f/`, `/p/`, `/public/*`, webhooks).
 ```
 packages/
   api/
-    src/            index.js (boot), routes.js (registro das rotas de cada domínio)
+    src/            index.js (boot e rotinas), routes.js (clientes compartilhados),
+                    domains.js (ordem dos domínios)
       platform/     db.js, migrations.js, seed, cache e status HTTP
       shared/       módulos puros que a SPA também importa
       auth/ crm/ sdr/ whatsapp/ calls/ google/ forms/ proposals/ billing/
       payments/ customers/ support/ tasks/ training/ marketing/ blog/
       metrics/ comp/ integrations/
-                    um domínio por pasta: rotas (routes.*.js), regras e rotinas
+                    um domínio por pasta: index.js (register/start), rotas
+                    (routes.*.js), regras e rotinas
     test/           testes node:test com repositório em memória (test/helpers/mem-repo.js)
     scripts/        scripts pontuais de dados, datados
   web/

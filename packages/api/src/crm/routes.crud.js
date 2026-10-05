@@ -665,8 +665,8 @@ export function registerCrudRoutes(app, repo, { discordClient, googleUser, metaC
       try { await convertWonLead(repo, updated, { metaCapi: metaCapiClient }); } catch { /* fail-open */ }
       // Card entrando em INTEGRAÇÃO → briefing de passagem pro integrador (lê a
       // transcrição da call de venda). Solto em background: a resposta do PATCH
-      // não espera a IA, e o poller (index.js) re-tenta enquanto a transcrição
-      // do Google não fica pronta, que é o caso mais comum logo após o move.
+      // não espera a IA, e o poller (start do domínio calls) re-tenta enquanto a
+      // transcrição do Google não fica pronta, o caso mais comum logo após o move.
       const toKind = kindOf(await repo.get("products", updated.saas), updated.stage);
       if (briefer && (toKind === "integracao" || toKind === "ganho") && !updated.integrationBriefAt) {
         briefer.briefLead(updated.id).catch(() => { /* o poller tenta de novo */ });

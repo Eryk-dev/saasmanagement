@@ -110,7 +110,7 @@ Node 20. Os comandos oficiais estão nos `package.json` da raiz e dos pacotes.
 
 | Camada | Tecnologia e entrada | Contrato principal |
 | --- | --- | --- |
-| API | Fastify 5; `packages/api/src/index.js`, `routes.js` e as pastas de domínio (`billing/`, `support/`, `whatsapp/`…) | REST na porta 8787; registro dos módulos, autenticação, migrações e automações. |
+| API | Fastify 5; `packages/api/src/index.js`, `routes.js`, `domains.js` e as pastas de domínio (`billing/`, `support/`, `whatsapp/`…) | REST na porta 8787; registro dos módulos, autenticação, migrações e automações. |
 | Dados | `pg`; `packages/api/src/platform/db.js`, `seed-data.js`, `migrations.js` | Postgres/Supabase via `COCKPIT_DB_URL`; schema `cockpit`, tabelas com `id`, `json` JSONB e `updated_at`. |
 | Web | React 18 + Vite 6; `packages/web/src/main.jsx`, `app.jsx` | SPA na porta 5173 em desenvolvimento; navegação por hash, como `#pipeline`. |
 | Estado web | `data.jsx`, `lib/api.js`, `lib/workspace.js` | Bootstrap em `window.SEED`, `DataContext`, workspace persistido e atualizações via SSE em `/api/events`. |
@@ -122,14 +122,27 @@ migrações, cache, status HTTP), `shared/` (módulos puros que a SPA também im
 sem API do Node), `auth/`, `crm/`, `sdr/`, `whatsapp/`, `calls/`, `google/`,
 `forms/`, `proposals/`, `billing/`, `payments/`, `customers/`, `support/`, `tasks/`,
 `training/`, `marketing/`, `blog/`, `metrics/`, `comp/` e `integrations/`
-(clientes externos transversais). Ficam na raiz `index.js`, `routes.js` (orquestra
-o registro e monta os clientes compartilhados) e `build-info.js`; `assets/` guarda as imagens servidas. Arquivo novo
-entra na pasta do domínio dele. Um `routes.<x>.js` só registra endpoints: lógica,
-helper usado por outro módulo e rotina em segundo plano moram num módulo do
-domínio (ex.: `metrics/pipeline-pace.js` ao lado de `metrics/routes.pipeline-pace.js`).
-Nenhum módulo importa um `routes.<x>.js` além do orquestrador `routes.js`, que
-só o `index.js` importa, e `shared/` só importa da própria pasta;
-`api/test/fronteiras-dominio.test.js` garante as três regras.
+(clientes externos transversais). Ficam na raiz `index.js`, `routes.js`,
+`domains.js` e `build-info.js`; `assets/` guarda as imagens servidas. Arquivo novo
+entra na pasta do domínio dele.
+
+Cada domínio com rota tem um `index.js` com `register(app, repo, ctx)` e, quando
+tem rotina em segundo plano, `start(repo, { clients, log, stops })`. O `routes.js`
+monta os clientes de base (IA, Meta, Mercado Pago, Discord) num `ctx` e chama o
+`register` de cada domínio na ordem de `domains.js`; os domínios acrescentam ao
+`ctx` o que criam (Google e mailer, WhatsApp, SDR, motor do blog). A ordem só
+importa para esses clientes: google antes de quem usa Meet/mailer, whatsapp
+antes de SDR e clientes, CRM por último. Depois do listen, o `index.js` chama
+`startDomains`, que sobe o `start` de cada domínio. Rotina nova entra no `start`
+do domínio dela, não no `index.js`.
+
+Um `routes.<x>.js` só registra endpoints: lógica, helper usado por outro módulo
+e rotina em segundo plano moram num módulo do domínio (ex.:
+`metrics/pipeline-pace.js` ao lado de `metrics/routes.pipeline-pace.js`). Só o
+`index.js` do próprio domínio importa um `routes.<x>.js`, só o `domains.js`
+importa o `index.js` de um domínio, só o `index.js` da raiz importa o
+`routes.js`, e `shared/` só importa da própria pasta.
+`api/test/fronteiras-dominio.test.js` garante essas regras.
 
 `COLLECTIONS` define as coleções conhecidas e a criação de tabelas. O CRUD tem
 exceções para coleções privadas (`PRIVATE` em `crm/routes.crud.js`), defaults, hooks e

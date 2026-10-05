@@ -19,17 +19,41 @@ function importsOf(abs) {
   return [...code.matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*|^\s*import\s+)["']([^"']+)["']/gm)].map((m) => m[1]);
 }
 
-test("nenhum módulo importa um routes.<domínio>.js, só o orquestrador routes.js", () => {
+const pasta = (r) => (r.includes("/") ? r.slice(0, r.lastIndexOf("/")) : "");
+
+test("um routes.<x>.js só é importado pelo index.js do próprio domínio", () => {
   const ofensores = [];
   for (const abs of files) {
-    if (rel(abs) === "routes.js") continue;
+    const quem = rel(abs);
     for (const spec of importsOf(abs)) {
       if (!spec.startsWith(".")) continue;
       const alvo = rel(resolve(dirname(abs), spec));
-      if (/(^|\/)routes\.[a-z0-9-]+\.js$/.test(alvo)) ofensores.push(`${rel(abs)} → ${alvo}`);
+      if (!/(^|\/)routes\.[a-z0-9-]+\.js$/.test(alvo)) continue;
+      const indexDoDominio = quem === `${pasta(alvo)}/index.js`;
+      if (!indexDoDominio) ofensores.push(`${quem} → ${alvo}`);
     }
   }
   assert.deepEqual(ofensores, [], `mova o helper para um módulo do domínio:\n${ofensores.join("\n")}`);
+});
+
+test("o index.js de um domínio só é importado pelo domains.js", () => {
+  const ofensores = [];
+  for (const abs of files) {
+    if (rel(abs) === "domains.js") continue;
+    for (const spec of importsOf(abs)) {
+      if (!spec.startsWith(".")) continue;
+      const alvo = rel(resolve(dirname(abs), spec));
+      if (/^[a-z-]+\/index\.js$/.test(alvo)) ofensores.push(`${rel(abs)} → ${alvo}`);
+    }
+  }
+  assert.deepEqual(ofensores, [], `importe o módulo do domínio, não o index.js dele:\n${ofensores.join("\n")}`);
+});
+
+test("todo domínio com rota tem index.js e está na lista do domains.js", async () => {
+  const comRota = new Set(files.map(rel).filter((r) => /\/routes\.[a-z0-9-]+\.js$/.test(r)).map(pasta));
+  const lista = readFileSync(join(SRC, "domains.js"), "utf8");
+  const faltando = [...comRota].filter((d) => !files.map(rel).includes(`${d}/index.js`) || !lista.includes(`"./${d}/index.js"`));
+  assert.deepEqual(faltando, [], `domínio sem index.js ou fora do domains.js: ${faltando.join(", ")}`);
 });
 
 test("o orquestrador routes.js só é importado pelo index.js", () => {
