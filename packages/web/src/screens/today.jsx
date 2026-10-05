@@ -843,10 +843,10 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                   </div>
                 )}
                 {pageRows.map((item) => {
-                  const key = item.consulta ? `c-${item.consulta.id}` : item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id;
+                  const key = rowKey(item);
                   return (
                     <React.Fragment key={key}>
-                      <QueueRow item={item} block="hoje" featured={false}
+                      <QueueRow item={item} block="hoje" featured={false} selected={!!scriptItem && rowKey(scriptItem) === key}
                         onScript={() => setScriptItem(item)} onClaim={() => claim(item)} onWhatsapp={onOpenWhatsapp} onOpen={() => item.consulta ? openConsulta(item) : onOpenLead?.(item.l)} />
                     </React.Fragment>
                   );
@@ -934,10 +934,13 @@ function ConsultaRow({ item, block, featured, ordem, onOpen }) {
   );
 }
 
+// Chave estável da linha: a confirmação de call tem uma por janela do mesmo lead.
+const rowKey = (item) => (item.consulta ? `c-${item.consulta.id}` : item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id);
+
 // Uma linha da fila: sequência, quando, etapa (coluna do funil), ação a fazer,
 // lead com a qualificação compilada e as ações. Clique no corpo abre o ROTEIRO
 // (o painel de execução), não o card de status; o drawer fica no "abrir lead".
-function QueueRow({ item, block, featured, ordem, onScript, onClaim, onWhatsapp, onOpen }) {
+function QueueRow({ item, block, featured, ordem, selected = false, onScript, onClaim, onWhatsapp, onOpen }) {
   const { l, consulta, kind, due, stage, who, group } = item;
   if (consulta) return <ConsultaRow item={item} block={block} featured={featured} ordem={ordem} onOpen={onOpen} />;
   const now = Date.now();
@@ -979,9 +982,9 @@ function QueueRow({ item, block, featured, ordem, onScript, onClaim, onWhatsapp,
   // "1 de 10 feitos hoje" ter onde ser conferido.
   const apagado = !!item.done;
   return (
-    <div className={`today-queue-row${apagado ? " is-done" : ""}${due?.t <= now ? " is-late" : ""}`}>
+    <div className={`today-queue-row${apagado ? " is-done" : ""}${due?.t <= now ? " is-late" : ""}${selected ? " is-selected" : ""}`}>
       <TimeCell pill={when.pill} note={apagado ? "feito" : when.note} tone={when.tone} soft={when.soft} apagado={apagado} />
-      <button onClick={onScript} className="today-queue-lead">
+      <button onClick={onScript} className="today-queue-lead" aria-current={selected ? "true" : undefined}>
         <span><LeadGrade tier={tier} muted={apagado} placeholder size={20} /><strong>{l.name}</strong><small>{l.company}</small></span>
         <span className="today-queue-action">{verbo}</span>
       </button>
@@ -1031,7 +1034,7 @@ function ScheduleLane({ label, rows, amanha, onOpen }) {
       <div style={{ padding: "0 var(--inset-x) 4px" }}>
         {rows.length === 0 && <div style={{ padding: "10px 0 12px", fontSize: 12.5, color: "var(--fg-4)" }}>nenhuma atividade</div>}
         {(showAll ? rows : rows.slice(0, 5)).map((item) => (
-          <button key={item.consulta ? `c-${item.consulta.id}` : item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id} onClick={() => onOpen(item)} style={{ width: "100%", display: "flex", gap: 10, alignItems: "baseline", padding: "10px 0", borderTop: "1px solid var(--line-faint)", textAlign: "left" }}>
+          <button key={rowKey(item)} onClick={() => onOpen(item)} style={{ width: "100%", display: "flex", gap: 10, alignItems: "baseline", padding: "10px 0", borderTop: "1px solid var(--line-faint)", textAlign: "left" }}>
             <span className="tnum" style={{ fontSize: 12.5, color: "var(--fg-4)", flexShrink: 0 }}>{timeOf(item)}</span>
             <span style={{ minWidth: 0 }}>
               <span style={{ display: "block", fontSize: 13.5, fontWeight: 600 }}>{item.consulta ? (item.consulta.clientName || "cliente") : item.l.name}</span>
