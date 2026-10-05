@@ -11,6 +11,7 @@
 
 import { mp as defaultMp, parseWebhookPayload } from "./mp.js";
 import { syncCustomerArr } from "./billing.js";
+import { CLOSED_PLAN_TITLE as PLAN_LABEL } from "./plan-cycles.js";
 import { ingestMpPayment, runMpSync, settleInvoice } from "./mp-payments.js";
 import { recordPaymentLink } from "./payment-links.js";
 import { attachPreapprovalToSub, linkableSubs, runPreapprovalSync } from "./mp-subscriptions.js";
@@ -432,7 +433,6 @@ export function registerMpRoutes(app, repo, { mp = defaultMp, discord } = {}) {
     const amount = Math.round(Number(req.body?.amount) * 100) / 100;
     if (!(amount > 0)) return reply.code(400).send({ error: "valor deve ser positivo" });
     const product = lead.saas ? await repo.get("products", lead.saas) : null;
-    const PLAN_LABEL = { anual: "Plano Anual", semestral: "Plano Semestral", unico: "Serviço único" };
     const plan = PLAN_LABEL[req.body?.plan] ? String(req.body.plan) : "";
     // Produto do catálogo da apresentação (Lever OEM/Ads/Price × pacote, ou
     // chave legada de venda antiga): nomeia o checkout

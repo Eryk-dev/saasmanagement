@@ -366,22 +366,22 @@ test("follow-up JÁ marcado pelo closer vence a sugestão da IA (só a nota entr
   await repo.create("leads", {
     id: "le1", saas: "leverads", name: "Wanderley", stage: "Follow-up",
     callUrl: "https://meet.google.com/abc-defg-hij", meetEventId: "ev1",
-    followupAt: "2099-01-09T16:00", nextActionAt: "2099-01-09T16:00",
+    followupAt: "2099-01-09", nextActionAt: "2099-01-09T03:00:00.000Z",
   });
   const anthropic = makeAnthropic({ fetch: makeAnthropicFetch(), apiKey: "sk-test" });
   const w = makeCallSummarizer({ repo, google: fakeGoogle(TRANSCRIPT), anthropic, log: { info() {}, warn() {} } });
   assert.equal((await w.summarizeLead("le1")).ok, true);
 
   const lead = await repo.get("leads", "le1");
-  // O GPS ficou no compromisso marcado (09/01 16:00 BRT), não na sugestão da IA
-  // (05/01 10:00) — é o que impede a segunda pílula na agenda.
-  assert.equal(lead.nextActionAt, new Date("2099-01-09T16:00:00-03:00").toISOString());
-  assert.equal(lead.followupAt, "2099-01-09T16:00");
+  // O GPS ficou no dia marcado (09/01, follow-up é só dia desde 05/10/2026),
+  // não na sugestão da IA (05/01).
+  assert.equal(lead.nextActionAt, "2099-01-09T03:00:00.000Z");
+  assert.equal(lead.followupAt, "2099-01-09");
   // A nota da IA entra do mesmo jeito: é onde está o valor.
   assert.equal(lead.nextActionNote, "cobrar leitura da proposta");
 });
 
-test("sem follow-up marcado, a sugestão da IA continua virando o GPS", async () => {
+test("sem follow-up marcado, o DIA sugerido pela IA vira o do próximo contato", async () => {
   const repo = makeMemRepo();
   await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNIL_FUP });
   await repo.create("leads", {
@@ -392,20 +392,22 @@ test("sem follow-up marcado, a sugestão da IA continua virando o GPS", async ()
   const w = makeCallSummarizer({ repo, google: fakeGoogle(TRANSCRIPT), anthropic, log: { info() {}, warn() {} } });
   assert.equal((await w.summarizeLead("le1")).ok, true);
   const lead = await repo.get("leads", "le1");
-  assert.equal(lead.nextActionAt, new Date("2099-01-05T10:00:00-03:00").toISOString());
+  assert.equal(lead.followupAt, "2099-01-05");
+  assert.equal(lead.nextActionAt, "2099-01-05T03:00:00.000Z");
 });
 
-test("follow-up marcado que JÁ PASSOU não segura o GPS (a sugestão volta a valer)", async () => {
+test("follow-up de um dia que JÁ PASSOU não segura o GPS (o dia sugerido volta a valer)", async () => {
   const repo = makeMemRepo();
   await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNIL_FUP });
   await repo.create("leads", {
     id: "le1", saas: "leverads", name: "Passado", stage: "Follow-up",
     callUrl: "https://meet.google.com/abc-defg-hij", meetEventId: "ev1",
-    followupAt: "2020-01-02T09:00", nextActionAt: "2020-01-02T09:00",
+    followupAt: "2020-01-02", nextActionAt: "2020-01-02T03:00:00.000Z",
   });
   const anthropic = makeAnthropic({ fetch: makeAnthropicFetch(), apiKey: "sk-test" });
   const w = makeCallSummarizer({ repo, google: fakeGoogle(TRANSCRIPT), anthropic, log: { info() {}, warn() {} } });
   assert.equal((await w.summarizeLead("le1")).ok, true);
   const lead = await repo.get("leads", "le1");
-  assert.equal(lead.nextActionAt, new Date("2099-01-05T10:00:00-03:00").toISOString());
+  assert.equal(lead.followupAt, "2099-01-05");
+  assert.equal(lead.nextActionAt, "2099-01-05T03:00:00.000Z");
 });

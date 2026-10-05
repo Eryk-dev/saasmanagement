@@ -9,6 +9,7 @@ import { api } from "../lib/api.js";
 import { KINDS, KIND_IDS, guessKind, lossReasonsOf, stageKind, stageByKind, phaseOf, NEXT_KINDS, NEXT_STEP_KINDS, NEXT_STEP_LABELS, nurtureStage, nextKindsFor } from "../lib/funnel.js";
 import { useActiveSaas } from "../lib/workspace.js";
 import { DEFAULT_SCRIPTS, SCRIPT_CATALOG, catalogStageRow, isNoShowStage } from "../lib/scripts.js";
+import { followupContacts, DEFAULT_FOLLOWUP_CONTACTS } from "../lib/followup.js";
 import { usersByRole, roleScreens, isUniversalScreen, isAdminUser } from "../lib/users.js";
 import { ScriptPanel } from "./today.jsx";
 import { ErrorBoundary } from "../components/error-boundary.jsx";
@@ -50,6 +51,7 @@ function SettingsWorkspace() {
     ["funnel",      "Funil & estágios"],
     ["nextsteps",   "Próximos passos"],
     ["scripts",     "Scripts"],
+    ["followup",    "Follow-up"],
     ["team",        "Equipe"],
     ["fields",      "Campos"],
     ["integrations","Integrações"],
@@ -123,6 +125,7 @@ function SettingsWorkspace() {
           {tab === "funnel"       && <FunnelSettings key={s.id} s={s} />}
           {tab === "nextsteps"    && <NextStepsSettings key={s.id} s={s} />}
           {tab === "scripts"      && <ScriptsSettings key={s.id} s={s} />}
+          {tab === "followup"     && <FollowupSettings />}
           {tab === "team"         && <TeamSettings />}
           {tab === "fields"       && <FieldsSettings key={s.id} s={s} />}
           {tab === "integrations" && <IntegrationsSettings key={s.id} s={s} />}
@@ -313,6 +316,61 @@ function LossReasonsSettings({ s }) {
         ))}
         <button type="button" onClick={() => setRows((current) => [...current, { id: "", label: "" }])} style={{ height: 32, padding: "0 6px", color: "var(--accent)", fontSize: 12.5, fontWeight: 600 }}>+ motivo</button>
         <SaveBar onSave={save} />
+      </div>
+    </section>
+  );
+}
+
+// ───────────────────────────────────────────── Follow-up em 4 contatos
+// Configuração GLOBAL (vale pra todos os produtos, app_config/followup_contacts):
+// a mensagem e o prazo de cada contato. O prazo é em dias úteis — o Contato 1
+// conta da entrada no follow-up; os outros, do contato anterior registrado.
+// A mensagem aceita os mesmos {{tokens}} dos roteiros.
+const FOLLOWUP_TOKENS = ["nome", "eu", "produto", "empresa", "combinado_call", "objecao_aberta", "dor_call"];
+function FollowupSettings() {
+  const { refresh } = useData();
+  const [rows, setRows] = useStS(() => followupContacts().map((c) => ({ ...c })));
+  const set = (i, patch) => setRows((cur) => cur.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+
+  async function save() {
+    const saved = await api.saveFollowupContacts(rows.map((r) => ({ ...r, prazoDias: Number(r.prazoDias) })));
+    setRows((saved?.contacts || rows).map((c) => ({ ...c })));
+    await refresh();
+  }
+
+  return (
+    <section className="settings-followup-card">
+      <div>
+        <SettingHeader number="01" title="Follow-up em 4 contatos"
+          sub="vale para todos os produtos · o follow-up marca só o dia, sem horário, e não ocupa a agenda" />
+      </div>
+      <ol style={{ listStyle: "none", margin: 0, padding: "0 0 12px", display: "grid", gap: 12 }}>
+        {rows.map((r, i) => (
+          <li key={i} style={{ border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: 14, display: "grid", gap: 10 }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <span className="mono tnum" style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)" }}>Contato {i + 1}</span>
+              <input aria-label={`Título do contato ${i + 1}`} value={r.titulo} maxLength={120} onChange={(e) => set(i, { titulo: e.target.value })}
+                style={{ ...inputStyle, flex: "1 1 220px", width: "auto" }} />
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--fg-3)" }}>
+                <span>prazo</span>
+                <input aria-label={`Prazo do contato ${i + 1} em dias úteis`} type="number" min={0} max={60} step={1} value={r.prazoDias}
+                  onChange={(e) => set(i, { prazoDias: e.target.value })} style={{ ...inputStyle, width: 64, textAlign: "center" }} />
+                <span>{i === 0 ? "dias úteis após entrar no follow-up" : "dias úteis após o contato anterior"}</span>
+              </label>
+            </div>
+            <textarea aria-label={`Mensagem do contato ${i + 1}`} value={r.mensagem} maxLength={4000} rows={4}
+              onChange={(e) => set(i, { mensagem: e.target.value })}
+              style={{ ...inputStyle, height: "auto", minHeight: 84, padding: "8px 12px", borderRadius: "var(--r-2)", lineHeight: 1.5, resize: "vertical" }} />
+          </li>
+        ))}
+      </ol>
+      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <span className="dim" style={{ fontSize: 11.5, color: "var(--fg-4)" }}>
+          dados do lead na mensagem: {FOLLOWUP_TOKENS.map((t) => `{{${t}}}`).join(" · ")}
+        </span>
+        <button type="button" onClick={() => setRows(DEFAULT_FOLLOWUP_CONTACTS.map((c) => ({ ...c })))}
+          style={{ marginLeft: "auto", fontSize: 12, color: "var(--fg-3)" }}>voltar ao padrão</button>
+        <SaveBar onSave={save} hint="Mensagens e prazos do follow-up salvos." />
       </div>
     </section>
   );
@@ -1160,7 +1218,8 @@ function samplePreviewLead(s) {
     id: "__preview__", saas: s.id,
     name: "Maria Souza", company: "Loja Encanto", phone: "5541999990000", email: "maria@lojaencanto.com.br",
     niche: opt("niche") || "Casa & Decoração",
-    accounts: opt("accounts"), listings: opt("listings"), plan_expand: opt("plan_expand"), staff: opt("staff"),
+    accounts: opt("accounts"), listings: opt("listings"), orders: opt("orders"), ticket: opt("ticket"),
+    channel: opt("channel"), stores: opt("stores"), trigger: "Perdi margem no último trimestre",
     score: 72, icp: 0.82, value: "", amount: 0, source: "Form", priority: "P1",
     closer: usersByRole("closer")[0]?.id || "",
     callAt: call.toISOString(), stageAttempts: 0,
@@ -1174,7 +1233,7 @@ const PREVIEW_STAGE_FALLBACK = {
   confirmacao: "Call agendada", noshow1: "No show", noshow2: "No show",
   nutricao1: "Nutrição", nutricao2: "Nutrição", nutricao3: "Nutrição",
   call: "Call agendada", proposta: "Proposta",
-  followup1: "Follow-up", followup2: "Follow-up", followup3: "Follow-up",
+  followup: "Follow-up",
   integracao: "Integração", posvenda: "Pós-venda",
 };
 function buildPreviewItem(s, catItem) {

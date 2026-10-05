@@ -7,9 +7,10 @@ import { Popover } from "./popover.jsx";
 // gatilho com a medida do .inp, lista com marca de seleção, ↑↓ Enter Esc e
 // busca quando a lista passa de 8 opções.
 //
-// options: [{ value, label, tone?, color?, hint? }]
+// options: [{ value, label, tone?, color?, hint?, group? }]
 //   tone  = cor do ponto de 6px (status, prioridade)
 //   color = cor do texto no gatilho e na linha (ex.: urgente em --neg)
+//   group = título do bloco (opções do mesmo grupo vêm juntas, na ordem dada)
 
 const { useEffect, useMemo, useRef, useState } = React;
 const fold = (s) => String(s || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
@@ -20,7 +21,7 @@ function SelectList({ anchor, options, value, onPick, onClose, title, searchable
   const [q, setQ] = useState("");
   const list = useMemo(() => {
     const k = fold(q.trim());
-    return k ? options.filter((o) => fold(o.label).includes(k) || fold(o.hint).includes(k)) : options;
+    return k ? options.filter((o) => fold(o.label).includes(k) || fold(o.hint).includes(k) || fold(o.group).includes(k)) : options;
   }, [options, q]);
   const [active, setActive] = useState(() => Math.max(0, options.findIndex((o) => o.value === value)));
   const boxRef = useRef(null), inputRef = useRef(null);
@@ -44,16 +45,20 @@ function SelectList({ anchor, options, value, onPick, onClose, title, searchable
         style={{ display: "flex", flexDirection: "column", gap: 1, outline: "none" }}>
         {list.map((o, i) => {
           const on = o.value === value;
+          const head = o.group && o.group !== list[i - 1]?.group;
           return (
-            <button key={String(o.value) || "__vazio"} type="button" role="option" aria-selected={on} data-idx={i}
-              className={"tk-menu-item" + (active === i ? " is-active" : "")}
-              onMouseEnter={() => setActive(i)} onClick={() => onPick(o)}
-              style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 8px", borderRadius: 6, textAlign: "left", fontSize: 12.5, color: o.color || "var(--fg-1)", background: "transparent", fontWeight: on ? 600 : 400 }}>
-              {o.tone ? <Dot tone={o.tone} /> : null}
-              <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.label}</span>
-              {o.hint && <span className="mono dim" style={{ fontSize: 10.5, flexShrink: 0 }}>{o.hint}</span>}
-              <span style={{ width: 14, color: "var(--accent)", fontWeight: 700, flexShrink: 0, textAlign: "right" }}>{on ? "✓" : ""}</span>
-            </button>
+            <React.Fragment key={String(o.value) || "__vazio"}>
+              {head && <div className="kicker" role="presentation" style={{ padding: i ? "8px 8px 3px" : "2px 8px 3px", fontSize: 10 }}>{o.group}</div>}
+              <button type="button" role="option" aria-selected={on} data-idx={i}
+                className={"tk-menu-item" + (active === i ? " is-active" : "")}
+                onMouseEnter={() => setActive(i)} onClick={() => onPick(o)}
+                style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 8px", borderRadius: 6, textAlign: "left", fontSize: 12.5, color: o.color || "var(--fg-1)", background: "transparent", fontWeight: on ? 600 : 400 }}>
+                {o.tone ? <Dot tone={o.tone} /> : null}
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.label}</span>
+                {o.hint && <span className="mono dim" style={{ fontSize: 10.5, flexShrink: 0 }}>{o.hint}</span>}
+                <span style={{ width: 14, color: "var(--accent)", fontWeight: 700, flexShrink: 0, textAlign: "right" }}>{on ? "✓" : ""}</span>
+              </button>
+            </React.Fragment>
           );
         })}
         {list.length === 0 && <div className="mono dim" style={{ fontSize: 12, padding: 8 }}>nada encontrado</div>}

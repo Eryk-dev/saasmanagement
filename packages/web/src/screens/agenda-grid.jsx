@@ -7,6 +7,7 @@ import { InfoLink } from "../components/story.jsx";
 import "./agenda.css";
 import { stageKind } from "../lib/funnel.js";
 import { isNoShowStage } from "../lib/scripts.js";
+import { followupDueDay, followupBadge, localDayStart } from "../lib/followup.js";
 
 // A GRADE da agenda. Morava em screens/pipeline.jsx desde que a aba Agenda era
 // do pipeline; a aba saiu de lá (VIEWS = kanban | list) e o código ficou, com
@@ -16,7 +17,7 @@ import { isNoShowStage } from "../lib/scripts.js";
 // dá. Nada de comportamento mudou na mudança.
 //
 // Visão de DIA (faixas por closer) ou SEMANA de 7 dias, estilo Google Agenda:
-// calls (lead.callAt), integrações (integrationAt), follow-ups marcados,
+// calls (lead.callAt), integrações (integrationAt), follow-ups (faixa de DIA, sem horário),
 // consultas 1:1 e — opcional — os toques do GPS. Cor do CARD = tipo; barrinha
 // da esquerda = responsável. Clique abre o lead.
 // `blocking` (opcional, tela Agenda): { blocksFor(d), onSlot(d, hora), onBlock(b) }
@@ -40,12 +41,6 @@ const atMs = (value) => {
   const withZone = /[Zz]|[+-]\d{2}:\d{2}$/.test(v) ? v : `${v.length === 16 ? `${v}:00` : v}-03:00`;
   return new Date(withZone).getTime();
 };
-// Mesmo compromisso, ainda que escrito em representações diferentes.
-const sameMoment = (a, b) => {
-  const x = atMs(a), y = atMs(b);
-  return Number.isFinite(x) && Number.isFinite(y) && x === y;
-};
-
 // Distribui itens em faixas por CLUSTER de sobreposição: cada item recebe `lane`
 // (posição) e `lanes` (nº de faixas do SEU cluster). A largura vem do cluster,
 // não do dia — assim um horário lotado não espreme os itens dos outros horários.
@@ -217,41 +212,29 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
     .flatMap(l => {
       const k = stageKind(saasCfgOf(l), l.stage);
       const out = [];
-      // Follow-up é COMPROMISSO agendado (a pessoa marcou "retomar dia X às Y",
-      // com nota): o compromisso vive no nextActionAt e aparece SEMPRE na
-      // agenda. Antes só entrava com "mostrar toques" ligado, e quando o
-      // follow-up era marcado pelo drawer (só nextActionAt, sem callAt) sumia —
-      // foi o caso da Laura. Toque de CADÊNCIA (novo/contato/qualificação) segue
-      // opcional pelo toggle, senão a agenda vira lista de GPS.
+      // FOLLOW-UP É POR DIA (05/10/2026): o contato da vez tem dia e não tem
+      // hora, então entra como item de DIA INTEIRO na faixa "Follow-ups" do
+      // topo da coluna — nunca na grade de horas e nunca ocupando vão. Só o
+      // card que está na etapa de follow-up (o dia é do contato pendente).
+      // Toque de CADÊNCIA (novo/contato/qualificação) segue opcional pelo
+      // toggle, senão a agenda vira lista de GPS.
       // Call que JÁ ACONTECEU é HISTÓRIA e nunca sai da agenda (Leo, 07/08:
       // "fiz as calls e sumiu tudo da minha agenda"): renderiza como call
       // FEITA (✓, cor lavada, do closer) mesmo que o card tenha ido pra
-      // follow-up/no show/ganho — a supressão do naSame só vale pra call
-      // FUTURA (não duplicar o compromisso remarcado por cima do horário).
+      // follow-up/no show/ganho.
       const callMs = atMs(l.callAt);
       const callT = Number.isFinite(callMs) ? new Date(callMs) : null;
       const callDone = !!(callT && callMs < Date.now());
-      const naSame = sameMoment(l.callAt, l.nextActionAt);
-      const callInstead = k === "followup" && naSame && callDone; // história vence a pílula duplicada
-      const naMs = atMs(l.nextActionAt);
-      if (Number.isFinite(naMs) && k === "followup" && !callInstead) {
-        out.push({ l, t: new Date(naMs), kind: "follow-up", who: l.closer || l.owner });
-      } else if (Number.isFinite(naMs) && showTouches && k !== "followup") {
-        out.push({ l, t: new Date(naMs), kind: "toque", who: l.owner || l.closer });
+      if (k === "followup") {
+        const dayT = localDayStart(followupDueDay(l));
+        if (Number.isFinite(dayT)) out.push({ l, t: new Date(dayT), kind: "follow-up", allDay: true, who: l.closer || l.owner });
+      } else {
+        const naMs = atMs(l.nextActionAt);
+        if (Number.isFinite(naMs) && showTouches) out.push({ l, t: new Date(naMs), kind: "toque", who: l.owner || l.closer });
       }
-      // Follow-up MARCADO com hora (lead.followupAt): compromisso PRÓPRIO, com a
-      // cara de follow-up hoje e depois de passar (lavado, como toda história).
-      // Ele já morou no callAt e a agenda desenhava um "✓ call feita" que nunca
-      // existiu — indistinguível de uma call de verdade (Leo, 13/08). Some do
-      // caminho quando é o mesmo instante do próximo toque, senão a pílula sai
-      // duplicada em cima dela mesma.
-      const fupMs = atMs(l.followupAt);
-      if (Number.isFinite(fupMs) && !sameMoment(l.followupAt, l.nextActionAt)) {
-        out.push({ l, t: new Date(fupMs), kind: "follow-up", who: l.closer || l.owner, done: fupMs < Date.now() });
-      }
-      // Call marcada: futura respeita o naSame (follow-up cobre o horário);
-      // passada entra SEMPRE, como histórico.
-      if (callT && (callDone || !(k === "followup" && naSame))) {
+      // Call marcada: futura só fora do follow-up (lá ela não vai acontecer —
+      // o servidor já limpa a rival); passada entra SEMPRE, como histórico.
+      if (callT && (callDone || k !== "followup")) {
         out.push({ l, t: callT, kind: "call", who: l.closer, done: callDone });
       }
       const intMs = atMs(l.integrationAt);
@@ -276,6 +259,11 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
   const fupCount = events.filter((e) => e.kind === "follow-up").length;
   const intCount = events.filter((e) => e.kind === "integração").length;
   const shown = evKind === "all" ? events : events.filter((e) => e.kind === evKind);
+  // Itens de DIA (follow-up) moram na faixa do topo; a grade de horas só
+  // desenha o que tem horário.
+  const timed = shown.filter((e) => !e.allDay);
+  const allDayOf = (d) => shown.filter((e) => e.allDay && e.t.toDateString() === d.toDateString())
+    .sort((a, b) => String(a.l.name || "").localeCompare(String(b.l.name || "")));
   // Filtro ligado esconde integrações, consultas e compromissos em silêncio —
   // e aí "marquei a integração e não apareceu na agenda" (Leo, 25/08). O aviso
   // conta o que ficou de fora e devolve a visão inteira num clique.
@@ -344,7 +332,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
     : isTeam ? [...new Set([...usersByRole("closer"), ...usersByRole("integrator")].map((u) => u.id))]
     : usersByRole("closer").map((u) => u.id);
   const layoutDay = (d) => {
-    const dayEvents = shown.filter(e => e.t.toDateString() === d.toDateString());
+    const dayEvents = timed.filter(e => e.t.toDateString() === d.toDateString());
     const rawBlocks = (blocking && evKind === "all" ? blocking.blocksFor(d) : [])
       .map((b) => ({ b, from: b.allDay ? H0 : Math.max(H0, Number(b.fromHour) || 0), to: b.allDay ? H1 : Math.min(H1, Number(b.toHour) || 0) }))
       .filter((x) => x.to > x.from);
@@ -389,6 +377,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
   const busyHoursOf = (d, who) => {
     const set = new Set();
     for (const e of events) {
+      if (e.allDay) continue; // follow-up (dia inteiro) nunca ocupa vão
       if (e.t.toDateString() !== d.toDateString()) continue;
       if (who != null && (e.who || "") !== who) continue;
       const h = e.t.getHours();
@@ -593,7 +582,7 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
                   ...doDia.map((e) => ({
                     key: `${e.l.id}-${e.kind}-${e.t.getTime()}`,
                     cor: (AGENDA_TYPE_COLORS[e.kind] || AGENDA_TYPE_COLORS.call).line,
-                    hora: e.t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+                    hora: e.allDay ? "dia" : e.t.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
                     texto: e.l.name,
                   })),
                   ...blocosDoDia.map((b) => ({
@@ -690,6 +679,35 @@ function AgendaView({ leads, consultations = [], onOpenLead, blocking, person, p
             );
           })}
         </div>
+        {/* Faixa de DIA INTEIRO: follow-ups (sem horário, não ocupam a agenda). */}
+        {days.some((d) => allDayOf(d).length > 0) && (
+          <div className="agenda-allday" style={{ display: "grid", gridTemplateColumns: colTemplate, minWidth: gradeMin, borderBottom: "1px solid var(--line-1)" }}>
+            <span className="mono" style={{ fontSize: 9.5, color: "var(--fg-4)", padding: "6px 6px 0 0", textAlign: "right" }}>dia</span>
+            {days.map((d, i) => {
+              const itens = allDayOf(d);
+              return (
+                <div key={i} style={{ borderLeft: "1px solid var(--line-1)", padding: 4, display: "flex", flexWrap: "wrap", gap: 4, alignContent: "flex-start", minWidth: 0 }}>
+                  {itens.map(({ l, who }) => {
+                    const tc = AGENDA_TYPE_COLORS["follow-up"];
+                    const late = localDayStart(followupDueDay(l)) < new Date().setHours(0, 0, 0, 0);
+                    return (
+                      <button key={l.id} type="button" onClick={(e) => { e.stopPropagation(); onOpenLead && onOpenLead(l); }}
+                        title={`follow-up · ${followupBadge(l)}${late ? " · atrasado" : ""} · ${l.name}${l.company ? " · " + l.company : ""}${who ? " · " + displayName(who) : " · sem responsável"} · dia inteiro, sem horário`}
+                        className="mono" style={{
+                          display: "inline-flex", alignItems: "center", gap: 4, maxWidth: "100%", minWidth: 0, height: 22, padding: "0 7px",
+                          borderRadius: 999, background: tc.bg, color: AGENDA_INK, fontSize: 10, fontWeight: 700, cursor: "pointer",
+                          border: `1px dashed ${late ? "var(--neg)" : tc.line}`, borderLeft: `4px solid ${toneOf(who)}`,
+                        }}>
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>↩ {l.name}</span>
+                        <span className="tnum" style={{ flexShrink: 0, opacity: 0.75 }}>{followupBadge(l).replace("Contato ", "C")}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        )}
         {/* Corpo: gutter de horas + colunas de dia com linhas por hora */}
         <div style={{ display: "grid", gridTemplateColumns: colTemplate, minWidth: gradeMin }}>
           <div style={{ position: "relative", height: (H1 - H0) * hourH }}>

@@ -530,6 +530,7 @@ function TemplateEditor({ template, saasId, onDone, onCancel }) {
 
               {temCatalogo && <>
                 <div className="kicker" style={sectionTitle}>Tabela de preço e entregáveis</div>
+                <p className="proposal-editor-note">Os preços daqui são os do catálogo de planos (Clientes → Cobranças → Planos): mudar em um lugar muda no outro, e alterar preço exige perfil de administrador. Os entregáveis de cada plano se editam aqui.</p>
                 <CatalogEditor catalog={draft.calc?.catalog || null} onChange={(catalog) => set({ calc: { ...(draft.calc || {}), catalog } })} />
               </>}
             </>

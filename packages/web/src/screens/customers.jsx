@@ -13,7 +13,7 @@ import { Icon } from "./tasks/icons.jsx";
 import { milestonesFor, nextMilestone, tenureLabel, dueLabel } from "../lib/milestones.js";
 import { ActivityList } from "../components/timeline.jsx";
 import { CallSummaryCard, IntegrationBriefCard } from "./today.jsx";
-import { SubscriptionsScreen } from "./subscriptions.jsx";
+import { SubscriptionsScreen, ChangeModal } from "./subscriptions.jsx";
 import { EntityForm } from "../components/EntityForm.jsx";
 import { WhatsappChat } from "../components/whatsapp-chat.jsx";
 import { CustomerTickets } from "../components/customer-tickets.jsx";
@@ -22,9 +22,12 @@ import { leadTier, waLink, GRADE_STYLE } from "../lib/ui.js";
 import { scriptChecklist } from "../lib/scripts.js";
 import { displayName, usersByRole } from "../lib/users.js";
 import { npsBucket, lastNps, pendingNps, NPS_TONE } from "../lib/nps.js";
-import { paymentLabel, paymentUpfront, paymentRecurring, paymentCustom, PAY_STATUS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf, mpMethodLabel, accruedAmountOf, isRecurringClose } from "../lib/payments.js";
+import { paymentLabel, paymentUpfront, paymentRecurring, paymentCustom, PAY_STATUS, CONSULT_PACKAGES, consultPackageLabel, consultPackageOf, mpMethodLabel, accruedAmountOf, isRecurringClose, CYCLE_LABEL, closedPlanFromLabel, plansOf } from "../lib/payments.js";
+import { CustomerPlanPanel, CustomerContractForm, CustomerProducts } from "../components/customer-plan.jsx";
 import { PaymentMethodSelect } from "../components/lead-blocks.jsx";
 import { UpsellPanel } from "../components/UpsellPanel.jsx";
+import { CustomerMeetings, CustomerMeetingForm } from "../components/customer-meeting.jsx";
+import { CustomerHistoryView } from "../components/customer-history.jsx";
 import { useAttribution, leadPain } from "../lib/pains.js";
 import { isChurned, CHURN_REASONS, churnReasonLabel } from "../lib/churn.js";
 import { fetchLeveradsOrgs } from "../lib/leverads.js";
@@ -48,7 +51,6 @@ export const TABLE_GRID_BUDGET = 884; // soma dos pisos e gaps (sem o padding ex
 
 const { useState, useEffect, useMemo } = React;
 
-const CYCLE_LABEL = { monthly: "mensal", quarterly: "trimestral", semiannual: "semestral", annual: "anual" };
 const SUB_STATUS = {
   active: { label: "ativa", tone: "pos" },
   past_due: { label: "em atraso", tone: "neg" },
@@ -127,7 +129,12 @@ function CustomersScreen({ initialTab }) {
   function patchCustomer(customer, p) {
     Object.assign(customer, p);
     setTick((n) => n + 1);
-    api.update("customers", customer.id, p).catch((error) => { window.toast?.(error.message || "Não foi possível salvar o cliente.", "neg"); refresh(); });
+    // Plano trocado: o servidor refaz o rótulo e o retrato do plano; a ficha
+    // mostra o que voltou dele.
+    const planEdit = ["planCode", "planCycle", "planCustom"].some((k) => k in p);
+    api.update("customers", customer.id, p).then((saved) => {
+      if (planEdit && saved) { Object.assign(customer, saved); setTick((n) => n + 1); }
+    }).catch((error) => { window.toast?.(error.message || "Não foi possível salvar o cliente.", "neg"); refresh(); });
   }
 
   // Workspace de mentoria (UniqueKids): a base não é assinatura recorrente, é
@@ -194,7 +201,9 @@ function CustomersScreen({ initialTab }) {
   // só entra como fallback. O ciclo da assinatura é cadência de COBRANÇA, não o
   // contrato — boleto faturado vira ciclo mensal por design, e mostrar "mensal"
   // pra um contrato semestral faturado estava errado.
-  const contractPlan = (c) => c.plan || (mainSub(c) ? planLabel(mainSub(c)) : "");
+  // Cliente com mais de um produto: o rótulo é o da assinatura principal, com
+  // a contagem dos demais ("Ads Escala · Anual +1").
+  const contractPlan = (c) => (c.plan || (mainSub(c) ? planLabel(mainSub(c)) : "")) + ((c.products || []).length > 1 ? ` +${c.products.length - 1}` : "");
   // Cliente com endedAt no passado deu churn (régua única em lib/churn.js —
   // marcado pelo botão da ficha ou pelo cancelamento da recorrência no MP):
   // fica fora do MRR, da contagem de ativos e da régua de marcos, mas segue
@@ -1020,6 +1029,9 @@ function CustomerFacts({ customer, lead, product, leverOrg, onPatch, cicloAte = 
   );
   // Mentoria vende pacote de consultas; os demais, plano por ciclo. "Mensal"
   // (recorrência) saiu de linha em 10/09/2026: só aparece se já é o plano.
+  // Produto com catálogo de planos: o plano se edita em Gerenciar cobranças.
+  // Sem catálogo (mentoria), segue o seletor de rótulo de sempre.
+  const catalogPlans = customer.saas === "uniquekids" ? [] : plansOf(customer.saas);
   const PLANS = customer.saas === "uniquekids"
     ? CONSULT_PACKAGES.map(consultPackageLabel)
     : ["Anual", "Semestral", "Serviço único", "Trimestral", ...(customer.plan === "Mensal" ? ["Mensal"] : [])];
@@ -1040,13 +1052,13 @@ function CustomerFacts({ customer, lead, product, leverOrg, onPatch, cicloAte = 
           <EditRow label="Contato"><input defaultValue={customer.contact || ""} onBlur={(e) => e.target.value !== (customer.contact || "") && patch({ contact: e.target.value })} style={inputSt} /></EditRow>
           <EditRow label="E-mail"><input defaultValue={customer.email || ""} onBlur={(e) => e.target.value !== (customer.email || "") && patch({ email: e.target.value })} style={inputSt} /></EditRow>
           <EditRow label="WhatsApp"><input defaultValue={customer.phone || ""} onBlur={(e) => e.target.value !== (customer.phone || "") && patch({ phone: e.target.value })} style={inputSt} /></EditRow>
-          <EditRow label={customer.saas === "uniquekids" ? "Pacote" : "Plano"}>
+          {!catalogPlans.length && <EditRow label={customer.saas === "uniquekids" ? "Pacote" : "Plano"}>
             <select value={customer.plan || ""} onChange={(e) => patch({ plan: e.target.value })} style={inputSt}>
               <option value="">{customer.saas === "uniquekids" ? "sem pacote" : "sem plano"}</option>
               {PLANS.map((p) => <option key={p} value={p}>{p}</option>)}
               {customer.plan && !PLANS.includes(customer.plan) && <option value={customer.plan}>{customer.plan}</option>}
             </select>
-          </EditRow>
+          </EditRow>}
           <EditRow label="Pagamento">
             <PaymentMethodSelect value={customer.paymentMethod || ""} onChange={(v) => patch({ paymentMethod: v })}
               fieldStyle={inputSt} placeholder="—" commit="blur" />
@@ -1366,6 +1378,7 @@ function CustomerPeek(props) {
             {facts.map(([label,value])=><div className="customer-peek-fact" key={label}><span>{label}</span><strong>{value||'—'}</strong></div>)}
             <div className="customer-peek-menu"><MoreMenu size={22} items={[
               {label:'Gerenciar cobranças',onClick:()=>setOperation('money')},
+              {label:'Histórico e resumos',onClick:()=>setOperation('history')},
               !churned&&{label:'Registrar upsell',onClick:()=>setOperation('upsell')},
               {label:churned?'Desfazer churn':'Registrar churn',tone:'neg',onClick:()=>setOperation('churn')},
               {label:'Registrar indicação',onClick:()=>props.onNewReferral(customer)},
@@ -1381,6 +1394,7 @@ function CustomerPeek(props) {
               {!milestones.length&&<p>Defina “Cliente desde” na edição para ativar a régua.</p>}
             </div>}
           </section>
+          {!kids&&<CustomerMeetings customer={customer} lead={lead} onSchedule={()=>setOperation('meeting')} onOpenHistory={()=>setOperation('history')}/>}
           <section className="customer-peek-money">
             <div className="customer-peek-kicker">dinheiro</div>
             <div className="customer-peek-amount"><strong>{money(financial.received)}</strong><span>de {money(financial.contracted)}</span></div>
@@ -1392,17 +1406,19 @@ function CustomerPeek(props) {
         <footer className="customer-peek-footer"><button disabled={!!busy||!pending.length} onClick={chargeNext}>{busy==='charge'?'Gerando link…':pending.length?'Cobrar próxima':'Nada a cobrar'}</button><button disabled={!!busy||kids||churned} onClick={createCase}>{busy==='case'?'Criando rascunho…':'Virar case'}</button></footer>
       </div>
     </Drawer>
-    {operation&&<CustomerModal {...props} operation={operation} onClose={()=>setOperation(null)}/>}
+    {operation&&<CustomerModal key={operation} {...props} operation={operation} onOperation={setOperation} onClose={()=>setOperation(null)}/>}
   </>, document.body);
 }
 
-function CustomerModal({ operation = null, customer, lead, product, subs, invoices, planLabel, lastContact, leverOrg, onComplete, onPatch, onClose, onNewReferral }) {
+function CustomerModal({ operation = null, customer, lead, product, subs, invoices, planLabel, lastContact, leverOrg, onComplete, onPatch, onClose, onNewReferral, onOperation }) {
   const { refresh } = useData();
   const [editing, setEditing] = useState(operation === "edit");
+  const [changing, setChanging] = useState(null); // { sub, plans }: assinatura no "Mudar plano"
   // QUATRO ABAS (redesign de 12/09): a ficha era uma rolagem única com doze
   // blocos — dados, assinatura, parcelas, faturas, MP, upsell, régua, conversa,
   // indicações, contratos, histórico. Nada saiu; cada bloco tem lugar agora.
-  const [aba, setAba] = useState(operation === "money" ? "dinheiro" : operation === "referral" ? "indicacoes" : "resumo"); // resumo | dinheiro | indicacoes | historico
+  const [aba, setAba] = useState(operation === "money" ? "dinheiro" : operation === "referral" ? "indicacoes" : operation === "history" || operation === "meeting" ? "" : "resumo"); // resumo | dinheiro | indicacoes | historico
+  const [meetingBusy, setMeetingBusy] = useState(false);
   // Edição das RESPOSTAS DO FORMULÁRIO (campos do lead) direto do popup: otimista
   // no objeto do lead (do SEED) + PATCH; o bump re-renderiza o popro pra o
   // Potencial/Nível recalcularem na hora.
@@ -1553,8 +1569,7 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
     const patch = { paymentInstallments: Number(n) || "" };
     if (!lead.paymentMethod && customer.paymentMethod) patch.paymentMethod = customer.paymentMethod;
     if (!lead.planClosed) {
-      const t = String(customer.plan || "").toLowerCase();
-      const planClosed = t.includes("semestral") ? "semestral" : t.includes("anual") ? "anual" : t.includes("mensal") ? "mensal" : "";
+      const planClosed = closedPlanFromLabel(customer.plan);
       if (planClosed) patch.planClosed = planClosed;
     }
     try { await api.update("leads", lead.id, patch); }
@@ -1605,10 +1620,10 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
   // soltos competindo com o nome.
 
   return (
-    <Modal onClose={onClose} fechavel={!chuSaving && !chSaving && !invBusy && !reverting} label={operation ? "Ação do cliente" : "ficha do cliente"} largura={operation || editing ? 640 : 1080} padding={20}
+    <Modal onClose={onClose} fechavel={!chuSaving && !chSaving && !invBusy && !reverting && !meetingBusy} label={operation ? "Ação do cliente" : "ficha do cliente"} largura={operation === "history" ? 1000 : operation || editing ? 640 : 1080} padding={20}
       painelStyle={{ maxHeight: "min(92dvh, 100%)", display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "18px 24px 14px", borderBottom: "1px solid var(--line-faint)", flexShrink: 0 }}>
-          {operation && <div className="customer-operation-head"><h2>{({edit:"Editar cliente", money:"Gerenciar cobranças", referral:"Registrar indicação", upsell:"Registrar upsell", churn:"Registrar churn"})[operation]} · {customer.name}</h2><button aria-label="Fechar ação" onClick={onClose}>✕</button></div>}
+          {operation && <div className="customer-operation-head"><h2>{({edit:"Editar cliente", money:"Gerenciar cobranças", referral:"Registrar indicação", upsell:"Registrar upsell", churn:"Registrar churn", meeting:"Marcar reunião", history:"Histórico e resumos"})[operation]} · {customer.name}</h2><button aria-label="Fechar ação" onClick={onClose}>✕</button></div>}
           {!operation && <>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
             <div style={{ minWidth: 0, flex: 1 }}>
@@ -1736,6 +1751,15 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
 
         {!editing && (
         <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "14px 16px" }}>
+
+        {operation === "history" && (
+          <CustomerHistoryView customer={customer} lead={lead} onSchedule={onOperation ? () => onOperation("meeting") : null} />
+        )}
+
+        {operation === "meeting" && (
+          <CustomerMeetingForm customer={customer} lead={lead} onBusy={setMeetingBusy} onCancel={onClose}
+            onDone={async () => { await refresh(); onClose(); }} />
+        )}
 
         {/* ── RESUMO: o contrato, os dados e o que fazer com o cliente ────── */}
         {!operation && aba === "resumo" && (
@@ -1906,29 +1930,17 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
         {/* ── DINHEIRO: assinatura, parcelas, faturas, MP e upsells ───────── */}
         {aba === "dinheiro" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
-        {/* Mentoria não é recorrência: pra cliente Kids o bloco de assinaturas
-            sai (o pagamento fica em Dados do cliente e nas faturas). */}
-        {!isKids && (
-        <div style={BOX}>
-          <div className="kicker" style={{ marginBottom: 8 }}>Assinaturas</div>
-          {subs.length === 0 && (
-            <div style={{ fontSize: 12.5, color: "var(--fg-4)" }}>Nenhuma assinatura. Crie na aba Assinaturas.</div>
-          )}
-          {subs.map((s) => {
-            const stt = SUB_STATUS[s.status] || { label: s.status, tone: "mut" };
-            return (
-              <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", fontSize: 13 }}>
-                <span style={{ color: "var(--fg-2)" }}>{planLabel(s)} · {CYCLE_LABEL[s.cycle] || s.cycle}</span>
-                <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
-                  <span className="tnum mono" style={{ fontWeight: 500 }}>{money(s.price || 0)}</span>
-                  <Pill tone={stt.tone}>{stt.label}</Pill>
-                </span>
-              </div>
-            );
-          })}
-        </div>
-        )}
-
+        {/* Contrato: plano, status do pagamento, valor anual e datas, num lugar só. */}
+        {/* Produtos: uma assinatura por produto, cada uma com o seu plano. */}
+        {!isKids && <CustomerProducts customer={customer} subs={subs} churned={!!customer.endedAt}
+          onChangePlan={async (s) => { setChanging({ sub: s, plans: await api.list("plans", { saas: customer.saas }).catch(() => []) }); }}
+          onAdded={async (r) => { if (r?.customer) Object.assign(customer, r.customer); await refresh(); }} />}
+        <CustomerContractForm key={customer.id} customer={customer} hasSubscription={subs.some((s) => s.status === "active" || s.status === "past_due")}
+          hasLiveSubscription={subs.some((s) => s.status !== "canceled")}
+          onSaved={async (saved) => { if (saved) Object.assign(customer, saved); await refresh(); }} />
+        {!isKids && <CustomerPlanPanel customer={customer} subs={subs} />}
+        {changing && createPortal(<ChangeModal sub={changing.sub} plans={changing.plans} customerName={customer.name} onClose={() => setChanging(null)}
+          onDone={async (msg) => { setChanging(null); window.toast?.(msg, "pos"); await refresh(); }} />, document.body)}
         {parcelas.length > 0 && (() => {
           const pagas = parcelas.filter((i) => invStatus(i) === "paid");
           const recebido = pagas.reduce((a, i) => a + (Number(i.amount) || 0), 0);

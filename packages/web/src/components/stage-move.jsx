@@ -7,6 +7,8 @@ import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, withLegacyOption, CONSULT_PACKAGES, 
 import { DealProductField, isOneOffProduct, SelectWithCustom, PaymentMethodSelect, ProductOptions } from "./lead-blocks.jsx";
 import { api } from "../lib/api.js";
 import { SlotGrid, nextBusinessDays, callBusyKeys, integBusyKeys } from "../screens/today.jsx";
+import { DayPicker, defaultFollowupDay } from "./followup-contact.jsx";
+import { followupDayOf, ymdOf } from "../lib/followup.js";
 
 // Gate de movimento de estágio — os três momentos do processo que exigem input:
 //   handoff  = card saindo da fase SDR pra fase Closer sem closer marcado
@@ -26,9 +28,8 @@ export function moveGate(saasCfg, lead, toStage) {
   if (fromPhase === "sdr" && phaseOf(toKind) === "closer" && !lead.closer) return { type: "handoff", toKind };
   // Indo pro Follow-up o gate abre SEMPRE: saindo da call registra QUAL
   // proposta ficou na mesa (a oferta que o follow-up vai cobrar) e, de
-  // qualquer origem, oferece o HORÁRIO do follow-up (opcional — sem horário a
-  // cadência cuida). Antes só existia saindo da call e sem agenda, então quem
-  // movia pra Follow-up pelo select do drawer não tinha onde marcar a hora.
+  // qualquer origem, pede o DIA do Contato 1 (sem horário: follow-up não
+  // ocupa a agenda; já vem com hoje + o prazo do Contato 1).
   if (toKind === "followup") return { type: "offer", toKind, askOffer: fromKind === "call" };
   // Etapa de call SEM hora marcada: o servidor recusa (card em call sem horário
   // não aparece na Agenda nem ocupa slot), então o gate pede a hora ANTES de
@@ -124,10 +125,9 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   const isFaturado = !!payment && paymentUpfront(payment) === false && !paymentRecurring(payment) && !paymentCustom(payment) && !isMonthly;
   const effInstallments = Number(installments) > 0 ? Number(installments)
     : (CLOSED_PLAN_MONTHS[isKidsWon || oneOff ? "unico" : planClosed] || 12);
-  // Follow-up: qual proposta ficou na mesa (só saindo da call — askOffer) e
-  // quando fazer o follow-up (opcional, followAt). O horário vira followupAt
-  // PRÓPRIO + nextActionAt — nunca callAt (a agenda desenharia uma call que
-  // não existe; caso Beto/Milaan, 13/08).
+  // Follow-up: qual proposta ficou na mesa (só saindo da call — askOffer) e o
+  // DIA do Contato 1 (followupAt, sem hora: follow-up não ocupa a agenda) —
+  // nunca callAt (a agenda desenharia uma call que não existe; Beto/Milaan, 13/08).
   const isOffer = gate.type === "offer";
   const askOffer = isOffer && gate.askOffer !== false;
   const [offer, setOffer] = React.useState(lead.proposalOffer || "");
@@ -135,7 +135,10 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   // tem catálogo ele acompanha o ciclo — "não chegou na proposta" dispensa.
   const [offerProduct, setOfferProduct] = React.useState(lead.proposalProduct || "");
   const offerProducts = dealProductsOf(lead.saas);
-  const [followAt, setFollowAt] = React.useState(lead.followupAt || "");
+  const [followDay, setFollowDay] = React.useState(() => {
+    const cur = followupDayOf(lead.followupAt);
+    return cur && cur >= ymdOf(new Date()) ? cur : defaultFollowupDay();
+  });
   // Hora da call pela MESMA grade do Meu dia: slot ocupado do closer vem
   // desabilitado, então não dá pra criar conflito digitando.
   const isCall = gate.type === "call";
@@ -149,7 +152,7 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
   // de call quanto no handoff que já cai numa etapa de call.
   const ready = isLost ? !!reason
     : isWonGate ? (Number(amount) > 0 && !!payment && (!askProduct || !!dealProduct) && (!askInteg || !!integrator))
-      : isOffer ? (!askOffer || (!!offer && (offer === "nenhuma" || !offerProducts.length || !!offerProduct)))
+      : isOffer ? (!!followDay && (!askOffer || (!!offer && (offer === "nenhuma" || !offerProducts.length || !!offerProduct))))
         : askCall ? (!!closer && !!callAt)
           : !!closer;
 
@@ -172,9 +175,9 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
       if (askInteg) { patch.integrator = integrator; if (integAt) patch.integrationAt = integAt; }
     } else if (isOffer) {
       if (askOffer && offer) { patch.proposalOffer = offer; patch.proposalProduct = offer === "nenhuma" ? "" : offerProduct; }
-      // Espelho do Meu dia: followupAt (aparece na Agenda com cara de follow-up,
-      // sem travar slot de venda) + nextActionAt (a fila vence NESSE horário).
-      if (followAt) { patch.followupAt = followAt; patch.nextActionAt = followAt; }
+      // Espelho do Meu dia: o DIA do Contato 1; o servidor zera a sequência e
+      // põe o GPS em 00:00 desse dia.
+      patch.followupAt = followDay;
     } else {
       patch.closer = closer;
       if (callAt) patch.callAt = callAt;
@@ -226,10 +229,10 @@ export function MoveLeadModal({ lead, toStage, gate, saasCfg, onConfirm, onCance
                 <div style={{ height: 12 }} />
               </>
             )}
-            <label className="kicker" style={label}>Follow-up agendado pra (opcional)</label>
-            <SlotGrid days={nextBusinessDays(6)} day={day} setDay={setDay} slot={followAt} setSlot={setFollowAt} busy={busy} />
+            <label className="kicker" style={label}>Contato 1 em *</label>
+            <DayPicker value={followDay} onChange={setFollowDay} label="Dia do contato 1" />
             <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginTop: 6 }}>
-              entra na agenda nesse horário (sem travar slot de call) e a fila do Meu dia cobra nele · sem horário, retoma pela cadência
+              só o dia, sem horário · não ocupa a agenda. Os contatos 2, 3 e 4 caem sozinhos pelo prazo de cada um.
             </div>
           </>
         ) : isWonGate ? (

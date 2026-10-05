@@ -59,6 +59,7 @@ const TasksScreen = lazyScreen(() => import("./screens/tasks/index.jsx"), "Tasks
 const TicketsScreen = lazyScreen(() => import("./screens/tickets/index.jsx"), "TicketsScreen");
 const SupportSettingsScreen = lazyScreen(() => import("./screens/support-settings.jsx"), "SupportSettingsScreen");
 const QuickRepliesScreen = lazyScreen(() => import("./screens/quick-replies.jsx"), "QuickRepliesScreen");
+const PlansScreen = lazyScreen(() => import("./screens/plans.jsx"), "PlansScreen");
 const MindmapsScreen = lazyScreen(() => import("./screens/mindmaps.jsx"), "MindmapsScreen");
 const SettingsScreen = lazyScreen(() => import("./screens/settings.jsx"), "SettingsScreen");
 const SettingsLite = lazyScreen(() => import("./screens/settings.jsx"), "SettingsLite");
@@ -243,6 +244,7 @@ function App({ onInitialReady, initialLoading = false } = {}) {
     outbound:    ["Comercial", "Outbound"],
     customers:   ["Comercial", "Clientes"],
     proposals:   ["Comercial", "Propostas"],
+    plans:       ["Comercial", "Planos"],
     offers:      ["Comercial", "Links de pagamento"],
     contracts:   ["Comercial", "Contratos"],
     intform:     ["Comercial", "Formulário de Integração"],
@@ -330,6 +332,7 @@ function App({ onInitialReady, initialLoading = false } = {}) {
           {scr === "today"       && <TodayScreen onOpenLead={openLead} onOpenWhatsapp={(l, draft) => nav("whatsapp", { waLead: l.id, waThread: "", waDraft: draft || "" })} />}
           {scr === "pipeline"    && <PipelineScreen saasId={params.saas} onJump={jump} jumpFilter={params} onOpenLead={openLead} />}
           {scr === "customers"   && <CustomersScreen />}
+          {scr === "plans"       && <PlansScreen />}
           {scr === "metrics"     && <MetricsScreen />}
           {scr === "expenses"    && <ExpensesScreen />}
           {scr === "forms"       && <FormsScreen saasId={params.saas} />}

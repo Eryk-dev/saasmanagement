@@ -22,9 +22,9 @@ const FUNNEL = [
 ];
 const THREAD = { id: "5541999990000", phone: "5541999990000", leadId: "L1", saas: "leverads", name: "Rafael" };
 const CATALOG = { products: {
-  oem_essencial: { name: "Lever OEM · Essencial", anu: { total: 5964 }, sem: { total: 3582 } },
-  oem_escala: { name: "Lever OEM · Escala", anu: { total: 11988 } },
-  ads_essencial: { name: "Lever Ads · Essencial", anu: { total: 5964 } },
+  oem_essencial: { name: "Ads Essencial + OEM", anu: { total: 5964 }, sem: { total: 3582 } },
+  oem_escala: { name: "Ads Escala + OEM", anu: { total: 11988 } },
+  ads_essencial: { name: "Ads Essencial", anu: { total: 5964 } },
   price_essencial: { name: "Lever Price · Essencial", anu: { total: 9564 } },
 } };
 

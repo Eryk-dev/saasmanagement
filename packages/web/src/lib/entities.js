@@ -11,7 +11,7 @@
 
 // ── dynamic option helpers ──────────────────────────────────────────────────
 import { getActiveSaasId } from "./workspace.js";
-import { PAYMENT_METHODS, PAYMENT_METHODS_ACTIVE, withLegacyOption, CONSULT_PACKAGES, consultPackageLabel } from "./payments.js";
+import { PAYMENT_METHODS, PAYMENT_METHODS_ACTIVE, withLegacyOption, CONSULT_PACKAGES, consultPackageLabel, CYCLE_SHORT, CYCLE_TITLE, plansOf } from "./payments.js";
 import { fetchLeveradsOrgs } from "./leverads.js";
 
 // Orgs do produto LeverAds pro select "Org na LeverAds" (vínculo do sync de
@@ -93,15 +93,11 @@ const customerOptions = (v) => (window.SEED?.CUSTOMERS || [])
   .map((c) => ({ value: c.id, label: c.name }));
 const planOptions = (v) => (window.PLANS_CACHE || [])
   .filter((p) => !v.saas || p.saas === v.saas)
-  .map((p) => ({ value: p.id, label: `${p.name} · ${window.fmt.money(p.price || 0)}/${{ monthly: "mês", quarterly: "tri", semiannual: "sem", annual: "ano" }[p.cycle] || p.cycle}` }));
+  .map((p) => ({ value: p.id, label: `${p.name} · ${window.fmt.money(p.price || 0)}/${CYCLE_SHORT[p.cycle] || p.cycle}` }));
 // Ciclos que ainda se vendem (o Mensal saiu em 10/09/2026 com a recorrência;
 // assinatura antiga mensal continua rodando, só não nasce mais uma nova).
-const CYCLE_OPTS = [
-  { value: "quarterly", label: "Trimestral" },
-  { value: "semiannual", label: "Semestral" },
-  { value: "annual", label: "Anual" },
-];
-const CYCLE_LEGACY = { value: "monthly", label: "Mensal (legado)" };
+const CYCLE_OPTS = ["quarterly", "semiannual", "annual"].map((value) => ({ value, label: CYCLE_TITLE[value] }));
+const CYCLE_LEGACY = { value: "monthly", label: `${CYCLE_TITLE.monthly} (legado)` };
 const cycleOptions = (v) => (v?.cycle === "monthly" ? [CYCLE_LEGACY, ...CYCLE_OPTS] : CYCLE_OPTS);
 
 const SCORE_OPTS = [{ value: "hot", label: "Quente" }, { value: "warm", label: "Morno" }, { value: "cold", label: "Frio" }];
@@ -164,7 +160,12 @@ export const ENTITIES = {
       // "Mensal" (legado) só aparece quando já é o plano do cliente.
       // O que o cliente comprou. Produto de mentoria (UniqueKids) vende PACOTE
       // de consultas, não plano recorrente — o select troca junto com o produto.
-      { key: "plan", label: "Plano", type: "select", blankLabel: "—", options: (v) => (
+      // O CONTRATO não se edita aqui: plano e ciclo (produto com catálogo de
+      // planos), status do pagamento, valor anual, cliente desde e churn ficam
+      // em "Gerenciar cobranças", na ficha do cliente. Valor e data de início
+      // ainda aparecem ao CADASTRAR (createOnly); o select de plano abaixo só
+      // existe onde não há catálogo (mentoria vende pacote).
+      { key: "plan", label: "Plano", type: "select", blankLabel: "—", showIf: (v) => !plansOf(v?.saas).length, options: (v) => (
         v?.saas === "uniquekids"
           ? CONSULT_PACKAGES.map((n) => ({ value: consultPackageLabel(n), label: consultPackageLabel(n) }))
           : [
@@ -178,9 +179,6 @@ export const ENTITIES = {
         options: (v) => withLegacyOption(PAYMENT_METHODS_ACTIVE, PAYMENT_METHODS, v?.paymentMethod).map((p) => ({ value: p.id, label: p.label })),
         allowCustom: true,
         help: "à vista/cartão = valor total no caixa; faturado/parcelado = entra por mês; condição fora da lista (ex.: entrada no PIX + saldo no boleto) entra por Outro e conta como recebe por mês" },
-      { key: "paymentStatus", label: "Status do pagamento", type: "select", blankLabel: "automático",
-        options: [{ value: "paid", label: "Pago" }, { value: "partial", label: "Parcial" }, { value: "unpaid", label: "Não pago" }],
-        help: "vazio = automático (o dinheiro registrado no MP/faturas decide); marque na mão quando o pagamento entra por fora" },
       // Vínculo com a org do produto LeverAds: é o que AUTORIZA o sync de
       // acesso a ligar/cortar o paywall desse cliente lá — sem vínculo o sync
       // não toca na org. Só faz sentido no saas leverads (nos outros a lista
@@ -193,9 +191,8 @@ export const ENTITIES = {
       // fechado "por mês" e alguém digita a MENSALIDADE aqui, deixando o ARR em
       // 1/12 do real. A ficha do cliente tem o campo com unidade (mês/ano); aqui
       // o rótulo e a ajuda dizem a regra na cara.
-      { key: "arr", label: "Valor anual (ARR)", type: "money", help: "é o valor do ANO: mensalidade × 12 (R$ 699/mês = R$ 8.388). A lista mostra o MRR (ARR ÷ 12); com assinatura ativa é recalculado sozinho" },
-      { key: "startedAt", label: "Cliente desde", type: "date", help: "base da linha do tempo de marcos" },
-      { key: "endedAt", label: "Churn (saída)", type: "date", help: "prefira o botão \"registrar churn\" na ficha do cliente (grava o motivo e cancela as assinaturas); aqui só ajusta a data — vazio = ativo" },
+      { key: "arr", label: "Valor anual (ARR)", type: "money", createOnly: true, help: "é o valor do ANO: mensalidade × 12 (R$ 699/mês = R$ 8.388). A lista mostra o MRR (ARR ÷ 12); com assinatura ativa é recalculado sozinho" },
+      { key: "startedAt", label: "Cliente desde", type: "date", createOnly: true, help: "base da linha do tempo de marcos" },
       // Dono da conta = quem cuida do pós-venda. É por ele que o placar de CS
       // agrupa a carteira e que a régua de marcos atribui tarefa. Substitui o
       // "CSM" antigo (campo morto: ninguém lia).

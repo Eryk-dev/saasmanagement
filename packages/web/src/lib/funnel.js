@@ -1,3 +1,4 @@
+import { followupContacts, followupDayOf, firstFollowupDay, dayStartIso, followupDueDay, followupNextContact, localDayStart, FOLLOWUP_STEPS } from "./followup.js";
 // Semântica de estágios no SPA — espelho de packages/api/src/stages.js.
 // O funil de cada produto é dado (product.funnel[{stage, kind, cadence, ...}]);
 // TODA decisão de tela (fase SDR/Closer, terminal, cadência, condicionais do
@@ -214,7 +215,9 @@ export const NEXT_KINDS = {
   // valor, pagamento) e registram a venda — são SOLD_KINDS no servidor.
   // Nutrição no follow-up (Leo, 11/09/2026): lead que esfriou sai da cobrança
   // ativa e entra na cadência de 7 dias, em vez de virar perda.
-  followup:      ["retry", "ganho", "integracao", "nutricao", "desqualificado"],
+  // Follow-up em 4 contatos (05/10/2026): sem "retry" — o registro do contato
+  // do dia (painel da atividade) é o que marca o próximo, pelo prazo.
+  followup:      ["ganho", "integracao", "nutricao", "desqualificado"],
   proposta:      ["retry", "followup", "ganho", "desqualificado"],
   ganho:         ["integracao", "posvenda"],
   // Da entrega dá pra voltar pro Ganho (pedido do Leo, 31/08/2026): card que
@@ -286,10 +289,15 @@ export function nextActionAfterMove(saasCfg, lead, patch = {}, now = Date.now())
   if (patch.nextActionAt != null) return patch.nextActionAt; // horário escolhido na tela manda
   // Compromisso DA ETAPA nova e ainda no futuro conduz o card.
   const merged = { ...(lead || {}), ...patch };
+  // Follow-up é por DIA (followup-contacts.js): o GPS fica em 00:00 do dia do
+  // Contato 1 — o que veio da tela, ou hoje + o prazo do Contato 1.
+  if (kind === "followup") {
+    const day = followupDayOf(merged.followupAt) || firstFollowupDay(followupContacts(), new Date(now));
+    return dayStartIso(day);
+  }
   const appt = kind === "call" ? merged.callAt
-    : kind === "followup" ? merged.followupAt
-      : (kind === "integracao" || kind === "posvenda") ? merged.integrationAt
-        : "";
+    : (kind === "integracao" || kind === "posvenda") ? merged.integrationAt
+      : "";
   const at = appt ? new Date(appt).getTime() : NaN;
   if (Number.isFinite(at) && at > now) return new Date(at).toISOString();
   const cad = cadenceOf(saasCfg, toStage) || {};
@@ -318,6 +326,14 @@ const parseWhen = (v) => {
 // compromisso vencido sem GPS ainda ancora (o card segue sinalizado).
 // Sem kind informado, mantém o clássico (callAt).
 export function nextTouch(lead, { kind, now = Date.now() } = {}) {
+  // Follow-up é por DIA (sem horário): o próximo passo é o dia do contato da
+  // vez (00:00 local), ou o do GPS depois do 4º contato.
+  if (kind === "followup") {
+    const t = localDayStart(followupDueDay(lead));
+    if (!Number.isFinite(t)) return null;
+    const n = followupNextContact(lead);
+    return { at: t, type: "touch", allDay: true, note: n ? `contato ${n}/${FOLLOWUP_STEPS}` : "escolher o destino" };
+  }
   const touch = parseWhen(lead?.nextActionAt);
   const delivery = kind === "integracao" || kind === "posvenda";
   const anchored = kind == null || kind === "call" || delivery; // etapa cujo compromisso rege
@@ -348,6 +364,18 @@ export function nextTouchPill(lead, { isOpen = true, kind, now = Date.now() } = 
   const glyph = t.type === "meeting" ? "◆" : "●";
   const d = new Date(t.at);
   const sameDay = d.toDateString() === new Date(now).toDateString();
+  if (t.allDay) {
+    // Dia inteiro (follow-up): atrasado só depois que o dia passou; sem hora.
+    const start = new Date(now); start.setHours(0, 0, 0, 0);
+    if (t.at < start.getTime()) {
+      const days = Math.max(1, Math.round((start.getTime() - t.at) / 86_400_000));
+      return { key: "late", text: `${glyph} atrasado ${days}d · ${t.note}`, tone: "var(--neg)", type: t.type, at: t.at };
+    }
+    if (sameDay) return { key: "today", text: `${glyph} hoje · ${t.note}`, tone: "var(--warn)", type: t.type, at: t.at };
+    const days = Math.round((t.at - start.getTime()) / 86_400_000);
+    const label = days === 1 ? "amanhã" : d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+    return { key: "future", text: `${glyph} ${label} · ${t.note}`, tone: "var(--fg-3)", type: t.type, at: t.at };
+  }
   const hm = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   if (t.at < now && !sameDay) {
     const days = Math.floor((now - t.at) / 86_400_000);

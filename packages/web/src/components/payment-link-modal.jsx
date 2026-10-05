@@ -2,7 +2,7 @@ import React from "react";
 import { Modal } from "./overlay.jsx";
 import { waLink } from "../lib/ui.js";
 import { api } from "../lib/api.js";
-import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, withLegacyOption, DEAL_PRODUCTS_ACTIVE, dealProductLabel, dealProductsOf } from "../lib/payments.js";
+import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, CLOSED_PLAN_TITLE as PLAN_TITLE, withLegacyOption, DEAL_PRODUCTS_ACTIVE, dealProductLabel, dealProductsOf } from "../lib/payments.js";
 import { ProductOptions, PaymentMethodSelect } from "./lead-blocks.jsx";
 
 // Modal do LINK DE PAGAMENTO do Mercado Pago — o MESMO em todo lugar que gera
@@ -146,7 +146,6 @@ function LinkForm({ target, origin, saas, onBack, onClose, onSaved, onBusyChange
   const product = (window.SEED?.SAAS || []).find((s) => s.id === (doc.saas || saas));
   // Mesmo rótulo do servidor (PLAN_LABEL/PRODUCT_LABEL em routes.mp.js):
   // título default do checkout = produto do catálogo + plano.
-  const PLAN_TITLE = { anual: "Plano Anual", semestral: "Plano Semestral", unico: "Serviço único" };
   const titleFor = (p, prod) => [dealProductLabel(prod, doc.saas) || product?.name || doc.saas, PLAN_TITLE[p] || "pagamento"].filter(Boolean).join(" · ");
 
   const [amount, setAmount] = React.useState(isLead ? (doc.mpChargeAmount || "") : "");

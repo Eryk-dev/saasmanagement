@@ -7,7 +7,7 @@ export function LeadGrade({ tier, muted = false, placeholder = false, size = 20 
   return <span className="lead-grade" title={tier?.label || "sem qualificação"}
     aria-label={tier?.label || "sem qualificação"}
     style={{ width: tier?.legacy ? size + 12 : size, height: size, background: muted || !tier?.grade ? "var(--bg-2)" : tier.tone,
-      color: muted || !tier?.grade ? "var(--fg-3)" : tier.badgeFg }}>{tier?.grade || "—"}{tier?.legacy && <small style={{ fontSize: 9, marginLeft: 3, color: "inherit" }}>L</small>}</span>;
+      color: muted || !tier?.grade ? "var(--fg-3)" : tier.badgeFg }}>{tier?.grade || "—"}{tier?.legacy && <span className="lead-grade-legacy">L</span>}</span>;
 }
 
 export function LeadSection({ title, action, children, className = "" }) {

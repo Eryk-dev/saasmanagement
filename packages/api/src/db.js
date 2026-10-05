@@ -78,6 +78,7 @@ const INDEXES = [
   ["tickets_linear_issue_idx", "tickets", `((json->>'linearIssueId'))`],
   ["ticket_events_ticket_idx", "ticket_events", `((json->>'ticket'))`],
   ["notifications_task_idx", "notifications", `((json->>'task'))`],
+  ["plan_changes_customer_idx", "plan_changes", `((json->>'customer'))`],
   ["activities_lead_idx", "activities", `((json->>'lead'))`], // timeline do lead (GET /api/activities?lead=)
   // proposals é a maior coleção do banco (47 MB de snapshots, acima do teto do
   // cache de list()); o pace só precisa das criadas HOJE por produto.
@@ -185,6 +186,39 @@ function invalidate(name) {
 
 const RANGE_OPS = { gte: ">=", lte: "<=", gt: ">", lt: "<" };
 
+// SQL do repo.listWhere, separado pra teste sem banco. Cada placeholder nasce
+// junto da condição que o usa: a chave de uma faixa sem limite (since vazio)
+// entrava em `params` sem aparecer no SQL, e o Postgres recusava a consulta
+// ("bind message supplies 3 parameters, but prepared statement requires 2") —
+// era o que zerava a timeline de todo lead lida só por `lead`.
+export function listWhereSql(table, where = {}, { fields } = {}) {
+  const params = [];
+  const param = (v) => (params.push(v), `$${params.length}`);
+  const conds = [];
+  for (const [key, val] of Object.entries(where)) {
+    if (val === undefined || val === null || val === "") continue;
+    if (typeof val === "object" && !Array.isArray(val)) {
+      const bounds = Object.entries(val).filter(([op, bound]) => RANGE_OPS[op] && bound !== undefined && bound !== null && bound !== "");
+      if (!bounds.length) continue;
+      const k = param(key);
+      for (const [op, bound] of bounds) conds.push(`json->>(${k}::text) ${RANGE_OPS[op]} ${param(String(bound))}`);
+    } else {
+      const k = param(key);
+      conds.push(`json->>(${k}::text) = ${param(String(val))}`);
+    }
+  }
+  let select = "json::text AS json";
+  if (Array.isArray(fields)) { // `[]` = só o id (achar a linha), não "sem projeção"
+    const parts = [...new Set(["id", ...fields])].map((f) => {
+      const k = param(f);
+      return `${k}::text, json->(${k}::text)`;
+    });
+    select = `jsonb_build_object(${parts.join(", ")})::text AS json`;
+  }
+  const sql = `SELECT ${select} FROM ${table}${conds.length ? ` WHERE ${conds.join(" AND ")}` : ""} ORDER BY id`;
+  return { sql, params };
+}
+
 export const repo = {
   writeRev: () => writeRev,
   async list(name) {
@@ -213,30 +247,7 @@ export const repo = {
   // Sem cache de propósito: o resultado é estreito e a coleção que precisa
   // disso (form_events) recebe escrita o tempo todo.
   async listWhere(name, where = {}, { fields } = {}) {
-    const params = [];
-    const param = (v) => (params.push(v), `$${params.length}`);
-    const conds = [];
-    for (const [key, val] of Object.entries(where)) {
-      if (val === undefined || val === null || val === "") continue;
-      const k = param(key);
-      if (typeof val === "object" && !Array.isArray(val)) {
-        for (const [op, bound] of Object.entries(val)) {
-          if (!RANGE_OPS[op] || bound === undefined || bound === null || bound === "") continue;
-          conds.push(`json->>(${k}::text) ${RANGE_OPS[op]} ${param(String(bound))}`);
-        }
-      } else {
-        conds.push(`json->>(${k}::text) = ${param(String(val))}`);
-      }
-    }
-    let select = "json::text AS json";
-    if (Array.isArray(fields)) { // `[]` = só o id (achar a linha), não "sem projeção"
-      const parts = [...new Set(["id", ...fields])].map((f) => {
-        const k = param(f);
-        return `${k}::text, json->(${k}::text)`;
-      });
-      select = `jsonb_build_object(${parts.join(", ")})::text AS json`;
-    }
-    const sql = `SELECT ${select} FROM ${tbl(name)}${conds.length ? ` WHERE ${conds.join(" AND ")}` : ""} ORDER BY id`;
+    const { sql, params } = listWhereSql(tbl(name), where, { fields });
     const { rows } = await getPool().query(sql, params);
     return rows.map((r) => JSON.parse(r.json));
   },

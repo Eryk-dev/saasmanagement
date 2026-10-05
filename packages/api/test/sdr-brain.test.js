@@ -1440,3 +1440,114 @@ test("handoff carimba o motivo (handoffKind) e a frase da IA (handoffWhy)", asyn
   assert.equal(log.handoffKind, "ia");
   assert.equal(log.handoffWhy, "Lead pediu atendimento humano");
 });
+
+// ── Roteiro Lever OEM (doc do Leo, 05/10/2026) ───────────────────────────────
+// Lead de OEM anda num roteiro fixo, sem IA nos passos cobertos: "sim" à
+// abordagem → convite + par; horário escolhido → reserva + "posso contar com
+// sua presença?"; "sim" → compromisso; preço após a abordagem → oficial + par.
+
+const OEM_M1 = "Oiii Rafael, tudo bem? Recebemos aqui seu interesse, com o Lever OEM você digita o código e recebe o anúncio completo, com fotos, título de 200 caracteres, descrição e compatibilidade, pronto para revisar e publicar no Mercado Livre e Shopee. Isso ajudaria na sua operação?";
+
+test("roteiro OEM · M2: 'sim' à abordagem vira convite + par de horários, sem gastar IA", async () => {
+  const repo = await world({ lead: { sourcePain: "OEM" }, messages: [
+    { direction: "out", author: "sdr-bot", text: OEM_M1, at: ISO("2026-08-19T12:50:00Z") },
+    { direction: "in", text: "Sim", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "a IA não deveria falar" }] });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "Sim" } });
+  assert.equal(r, "oem-agendamento");
+  assert.equal(fakes.calls.length, 0, "passo coberto pelo roteiro não chama a IA");
+  assert.equal(fakes.sent.length, 2);
+  assert.equal(fakes.sent[0].text, "Maravilha Rafael. Pelo que você me passou no formulário, faz sentido te mostrar a plataforma. A demonstração é focada na operação de autopeças e principalmente em ganhar escala na criação dos anúncios com compatibilidade através do OEM.");
+  assert.match(fakes.sent[1].text, /^Tenho agenda para amanhã às 9h ou amanhã às \d{1,2}h\. Qual funciona melhor para você\?$/);
+  assert.ok((await repo.get("leads", "L1")).sdrLog.oemScriptAt);
+  // Lead multi-contas com o mesmo "sim" segue pela IA (o roteiro é só do OEM).
+  const repo2 = await world({ lead: { sourcePain: "B" }, messages: [
+    { direction: "out", author: "sdr-bot", text: "Oiii, Rafael. A LeverAds te ajuda a gerenciar múltiplas contas. Isso ajudaria na sua operação hoje?", at: ISO("2026-08-19T12:50:00Z") },
+    { direction: "in", text: "Sim", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const f2 = makeFakes({ decisions: [{ acao: "responder", mensagens: ["Que bom!", "Consigo amanhã às 9h ou amanhã às 11h, qual fica melhor pra você?"] }] });
+  await brainOf(repo2, f2).handleInbound({ message: { from: "5541999990000", text: "Sim" } });
+  assert.equal(f2.calls.length, 1);
+});
+
+test("roteiro OEM · M3: horário escolhido reserva a call e pergunta pela presença (3 balões, com a duração do roteiro)", async () => {
+  const repo = await world({ lead: { sourcePain: "OEM" }, messages: [
+    { direction: "out", author: "sdr-bot", text: OEM_M1, at: ISO("2026-08-19T12:40:00Z") },
+    { direction: "in", text: "Sim", at: ISO("2026-08-19T12:45:00Z") },
+    { direction: "out", author: "sdr-bot", text: "Tenho agenda para amanhã às 9h ou amanhã às 11h. Qual funciona melhor para você?", at: ISO("2026-08-19T12:50:00Z") },
+    { direction: "in", text: "9h", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const fakes = makeFakes({ decisions: [{ acao: "agendar", horario: SLOT1 }] });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "9h" } });
+  assert.equal(r, "agendar");
+  const lead = await repo.get("leads", "L1");
+  assert.equal(lead.callAt, SLOT1);
+  assert.equal(lead.sdrLog.presenceAskedFor, SLOT1);
+  assert.equal(fakes.sent.length, 3);
+  assert.equal(fakes.sent[0].text, "Perfeito, Rafael. Ficou então para amanhã (20/08) às 9h.");
+  assert.match(fakes.sent[1].text, /^É uma conversa rápida, em torno de 30\/40 minutos/);
+  assert.equal(fakes.sent[2].text, "Vou deixar esse horário reservado para você. Posso contar com sua presença?");
+});
+
+test("roteiro OEM · M4: 'sim' à presença vira o compromisso (computador, decisor, lembrete); o 'ok' seguinte é silêncio", async () => {
+  const repo = await world({
+    lead: { sourcePain: "OEM", stage: "Call agendada", callAt: SLOT1, closer: "pl", sdrLog: { presenceAskedFor: SLOT1 } },
+    messages: [
+      { direction: "out", author: "sdr-bot", text: "Vou deixar esse horário reservado para você. Posso contar com sua presença?", at: ISO("2026-08-19T12:50:00Z") },
+      { direction: "in", text: "sim", at: ISO("2026-08-19T12:59:00Z") },
+    ],
+  });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "a IA não deveria falar" }] });
+  const brain = brainOf(repo, fakes);
+  const r = await brain.handleInbound({ message: { from: "5541999990000", text: "sim" } });
+  assert.equal(r, "oem-compromisso");
+  assert.equal(fakes.calls.length, 0);
+  assert.equal(fakes.sent.length, 3);
+  assert.equal(fakes.sent[0].text, "Combinado então Rafael. Se possível, acesse pelo computador ou notebook para conseguir visualizar melhor todos os detalhes, ok?");
+  assert.equal(fakes.sent[1].text, "E, se tiver mais alguém envolvido na decisão, pode convidar para participar também. Assim conseguimos tirar todas as dúvidas de uma vez.");
+  assert.equal(fakes.sent[2].text, "Te envio o acesso e um lembrete antes da reunião. Até lá!");
+  const lead = await repo.get("leads", "L1");
+  assert.equal(lead.sdrLog.presenceConfirmedFor, SLOT1);
+  assert.equal(lead.callConfirmed, undefined, "a positiva do dia da call continua sendo pedida às 8h");
+  // "ok" ao fecho: nada a dizer.
+  await repo.create("wa_messages", { id: "m9", thread: "5541999990000", leadId: "L1", saas: "leverads", direction: "in", text: "ok", at: ISO("2026-08-19T13:00:30Z") });
+  const r2 = await brain.handleInbound({ message: { from: "5541999990000", text: "ok" } });
+  assert.equal(r2, "silencio");
+  assert.equal(fakes.sent.length, 3);
+  // Ressalva junto com o sim ("sim, mas preciso remarcar") fica com a IA.
+  const repo2 = await world({
+    lead: { sourcePain: "OEM", stage: "Call agendada", callAt: SLOT1, closer: "pl", sdrLog: { presenceAskedFor: SLOT1 } },
+    messages: [{ direction: "in", text: "sim, mas talvez precise remarcar", at: ISO("2026-08-19T12:59:00Z") }],
+  });
+  const f2 = makeFakes({ decisions: [{ acao: "responder", mensagem: "Tranquilo, me avisa que eu remarco" }] });
+  await brainOf(repo2, f2).handleInbound({ message: { from: "5541999990000", text: "sim, mas talvez precise remarcar" } });
+  assert.equal(f2.calls.length, 1);
+});
+
+test("roteiro OEM · preço depois da abordagem: resposta oficial + o par de horários, uma vez, sem IA", async () => {
+  const repo = await world({ lead: { sourcePain: "OEM" }, messages: [
+    { direction: "out", author: "sdr-bot", text: OEM_M1, at: ISO("2026-08-19T12:50:00Z") },
+    { direction: "in", text: "qual o valor?", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const fakes = makeFakes({ decisions: [{ acao: "responder", mensagem: "a IA não deveria falar" }] });
+  const r = await brainOf(repo, fakes).handleInbound({ message: { from: "5541999990000", text: "qual o valor?" } });
+  assert.equal(r, "oem-preco");
+  assert.equal(fakes.calls.length, 0);
+  assert.equal(fakes.sent.length, 2);
+  assert.equal(fakes.sent[0].text, "O investimento depende da sua operação e das suas necessidades. Na demonstração, nosso especialista entende melhor o seu cenário e apresenta os planos e valores mais adequados para o momento da sua empresa.");
+  assert.match(fakes.sent[1].text, /^Tenho agenda para amanhã às 9h ou amanhã às \d{1,2}h\. Qual funciona melhor para você\?$/);
+  assert.ok((await repo.get("leads", "L1")).sdrLog.priceGuardAt);
+  // Aceite + preço na mesma mensagem com horários já na mesa: o horário trava primeiro.
+  const repo2 = await world({ lead: { sourcePain: "OEM" }, messages: [
+    { direction: "out", author: "sdr-bot", text: OEM_M1, at: ISO("2026-08-19T12:40:00Z") },
+    { direction: "in", text: "Sim", at: ISO("2026-08-19T12:45:00Z") },
+    { direction: "out", author: "sdr-bot", text: "Tenho agenda para amanhã às 9h ou amanhã às 11h. Qual funciona melhor para você?", at: ISO("2026-08-19T12:50:00Z") },
+    { direction: "in", text: "pode ser 9h, qual o valor?", at: ISO("2026-08-19T12:59:00Z") },
+  ] });
+  const f2 = makeFakes({ decisions: [{ acao: "responder", mensagem: "sobre o valor..." }] });
+  const r2 = await brainOf(repo2, f2).handleInbound({ message: { from: "5541999990000", text: "pode ser 9h, qual o valor?" } });
+  assert.equal(r2, "agendar");
+  assert.equal((await repo2.get("leads", "L1")).callAt, SLOT1);
+  assert.match(f2.sent.at(-1).text, /^O investimento depende da sua operação/);
+});

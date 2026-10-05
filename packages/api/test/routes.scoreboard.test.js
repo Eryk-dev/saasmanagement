@@ -815,3 +815,16 @@ test("conta grande fica FORA do resultado do closer e volta como rodapé", async
   assert.deepEqual(sb.team.keyAccount.names, ["CRGroup"]);
   await app.close();
 });
+
+test("follow-up em dia é pelo DIA do próximo contato (o de hoje não atrasa à 00:00)", async () => {
+  const { app, repo } = await buildApp(); // agora = 28/07 09:00 de Brasília
+  await repo.create("leads", { id: "f1", saas: "leverads", closer: "u_clo", stage: "Follow-up", followupAt: "2026-07-28", nextActionAt: "2026-07-28T03:00:00.000Z" });
+  await repo.create("leads", { id: "f2", saas: "leverads", closer: "u_clo", stage: "Follow-up", followupAt: "2026-07-30" });
+  await repo.create("leads", { id: "f3", saas: "leverads", closer: "u_clo", stage: "Follow-up", followupAt: "2026-07-27" });
+  await repo.create("leads", { id: "f4", saas: "leverads", closer: "u_clo", stage: "Follow-up", followupAt: "", nextActionAt: "" });
+  const sb = (await app.inject({ url: `/api/scoreboard/leverads${win}` })).json();
+  const c = sb.closer.find((x) => x.user === "u_clo");
+  assert.equal(c.followupNow, 4);
+  assert.equal(c.followupOnTime, 2, "hoje e depois de amanhã; ontem e sem dia atrasados");
+  await app.close();
+});

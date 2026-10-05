@@ -6,7 +6,8 @@ import { randomUUID } from "node:crypto";
 import { makeGoogle } from "./google.js";
 import { makeGoogleUser, syncPersonalCalendar } from "./google-user.js";
 import { publicBase } from "./routes.js";
-import { logActivity } from "./lead-flow.js";
+import { logActivity, appointmentAt } from "./lead-flow.js";
+import { toNaiveBrt } from "./agenda-slots.js";
 import { makeCallSummarizer } from "./call-summaries.js";
 import { makeIntegrationBriefer } from "./integration-brief.js";
 import { UPSTREAM_FAILED, NOT_CONFIGURED } from "./http-status.js";
@@ -215,7 +216,7 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
 
     try {
       const { meetUrl, eventId, htmlLink, calendarId, fellBackFrom } = await gclient.createMeetEvent({
-        summary: `${kind === "integracao" ? "Integração" : "Call"} ${product?.name || "LeverAds"} · ${lead.name}${lead.company ? ` (${lead.company})` : ""}`,
+        summary: `${kind === "integracao" ? (lead.integrationMeetLabel || "Integração") : "Call"} ${product?.name || "LeverAds"} · ${lead.name}${lead.company ? ` (${lead.company})` : ""}`,
         description: [`Lead: ${lead.name}`, lead.phone ? `WhatsApp: ${lead.phone}` : "", lead.company ? `Empresa: ${lead.company}` : ""].filter(Boolean).join("\n"),
         start, end,
         attendees,
@@ -361,6 +362,94 @@ export function registerGoogleRoutes(app, repo, { google, googleUser, anthropic 
     try { await syncPersonalCalendar(repo, gu, { ...fresh, ...patch }); } catch { /* fail-open */ }
     return { ok: true, eventRemoved: "integrationMeetEventId" in patch };
   }
+
+  // Nova reunião com o CLIENTE (Clientes → Marcar nova reunião): roda no lead
+  // dele, pelos campos da integração, e ganha o mesmo Meet gravado e o resumo
+  // de onboarding/CS. Reunião que JÁ aconteceu solta a sala: remarcar movia o
+  // MESMO evento e o dedup do resumo (integrationSummaryFor ===
+  // integrationMeetEventId) pulava a reunião nova pra sempre. Antes de soltar,
+  // tenta resumir a anterior; sem transcrição, só segue com `force` (a tela
+  // confirma), porque a sala velha sai do alcance do poller.
+  async function releaseIntegrationRoom(lead, { force = false } = {}) {
+    if (!lead.integrationCallUrl) return { released: false };
+    const at = callMoment(lead.integrationAt);
+    if (at && at.getTime() > Date.now()) return { released: false }; // ainda vai acontecer: remarcar move a sala
+    let previous = null;
+    const pending = lead.integrationMeetEventId && lead.integrationSummaryFor !== lead.integrationMeetEventId;
+    if (pending && summarizer) {
+      previous = await summarizer.summarizeLead(lead.id, { kind: "integracao" })
+        .catch((err) => ({ ok: false, reason: "error", detail: String(err.message || err).slice(0, 160) }));
+      const canStillCome = ["transcript_not_ready", "call_in_progress", "error"].includes(previous.reason);
+      if (!previous.ok && canStillCome && !force) return { released: false, blocked: true, previous };
+    }
+    await repo.update("leads", lead.id, {
+      integrationCallUrl: "", integrationMeetEventId: "", integrationScheduledAt: "",
+      integrationMeetOrganizer: "", integrationConfirmed: false,
+    });
+    return { released: true, previous };
+  }
+
+  app.post("/api/customers/:id/meeting", async (req, reply) => {
+    const customer = await repo.get("customers", req.params.id);
+    if (!customer) return reply.code(404).send({ error: "Not found" });
+    const lead = customer.leadId ? await repo.get("leads", customer.leadId) : null;
+    if (!lead) return reply.code(422).send({ error: "esse cliente não tem lead vinculado: a reunião e o resumo moram no lead" });
+    const when = toNaiveBrt(String(req.body?.at || ""));
+    const at = callMoment(when);
+    if (!at) return reply.code(422).send({ error: "informe data e hora da reunião" });
+    if (at.getTime() <= Date.now()) return reply.code(422).send({ error: "a reunião precisa ser no futuro" });
+    const responsible = String(req.body?.responsible || "").trim();
+    if (responsible && !(await repo.get("users", responsible))) return reply.code(422).send({ error: "responsável não encontrado" });
+
+    const room = await releaseIntegrationRoom(lead, { force: !!req.body?.force });
+    if (room.blocked) {
+      return reply.code(409).send({
+        error: "a reunião anterior ainda não tem resumo",
+        reason: "previous_without_summary", previous: room.previous,
+      });
+    }
+    const patch = { integrationAt: when, integrationMeetLabel: "Reunião" };
+    if (responsible) patch.integrator = responsible;
+    let fresh = await repo.update("leads", lead.id, patch);
+    try {
+      const next = appointmentAt(lead.saas ? await repo.get("products", lead.saas) : null, fresh);
+      if (next && next !== fresh.nextActionAt) fresh = await repo.update("leads", lead.id, { nextActionAt: next });
+    } catch { /* fail-open: o GPS antigo continua valendo */ }
+    try { await syncPersonalCalendar(repo, gu, fresh); } catch { /* fail-open */ }
+    let meetError = "";
+    try { await autoIntegrationMeet(lead.id); }
+    catch (err) { meetError = String(err.message || err).slice(0, 300); }
+    fresh = (await repo.get("leads", lead.id)) || fresh;
+    if (!fresh.integrationCallUrl && !meetError) {
+      meetError = client.configured() ? "o Meet não foi criado: o responsável precisa conectar a conta @leverads em Ajustes → Integrações" : "Google não configurado no servidor";
+    }
+    await logActivity(repo, {
+      saas: lead.saas || "", lead: lead.id, type: "system", author: req.authUser?.id || "cockpit",
+      text: `Reunião com o cliente marcada para ${at.toLocaleString("pt-BR", { timeZone: TZ, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`,
+      meta: { event: "customer_meeting", customerId: customer.id, at: when, callUrl: fresh.integrationCallUrl || "" },
+    });
+    return {
+      ok: true, at: when, callUrl: fresh.integrationCallUrl || "", meetError,
+      released: room.released, previous: room.previous || null,
+    };
+  });
+
+  // "Gerar resumo" da última reunião, a partir da ficha do cliente (permissão
+  // da tela Clientes; a rota do lead exige Pipeline/Atividades).
+  app.post("/api/customers/:id/meeting-summary", async (req, reply) => {
+    if (!summarizer) return reply.code(NOT_CONFIGURED).send({ error: "IA não configurada — defina OPENROUTER_API_KEY (ou ANTHROPIC_API_KEY) no servidor" });
+    const customer = await repo.get("customers", req.params.id);
+    if (!customer) return reply.code(404).send({ error: "Not found" });
+    if (!customer.leadId) return reply.code(422).send({ error: "esse cliente não tem lead vinculado: a reunião e o resumo moram no lead" });
+    try {
+      const r = await summarizer.summarizeLead(customer.leadId, { force: !!req.body?.force, kind: "integracao" });
+      if (!r.ok && r.reason === "not_found") return reply.code(404).send({ error: "Not found" });
+      return r;
+    } catch (err) {
+      req.log.warn({ err: err.message, customer: customer.id }, "resumo da reunião do cliente falhou");
+      return reply.code(UPSTREAM_FAILED).send({ error: String(err.message || err).slice(0, 300) });
+    }
+  });
 
   // Mesmo gatilho pra CALL DE VENDA marcada pelo SDR automatizado (sdr-brain):
   // o robô agenda e o Meet nasce sozinho, com convite quando o lead tem e-mail;

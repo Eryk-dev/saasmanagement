@@ -16,7 +16,8 @@ try {
     assert.ok(text.includes('Preço acima do orçamento, ainda em aberto.'));
     assert.ok(text.includes('Reduzir o trabalho manual nas três contas.'));
     assert.ok(!text.includes('Integração posterior') && !text.includes('Combinado antigo'));
-    assert.ok(await card.evaluate(e=>e.previousElementSibling.classList.contains('today-script-columns') && e.nextElementSibling.classList.contains('today-script-history')));
+    // Ordem: colunas → contato da vez (4 contatos) → resumo → histórico.
+    assert.ok(await card.evaluate(e=>e.previousElementSibling.classList.contains('today-followup-contact') && e.previousElementSibling.previousElementSibling.classList.contains('today-script-columns') && e.nextElementSibling.classList.contains('today-script-history')));
     await card.scrollIntoViewIfNeeded();
     await h.capture(page,`followup-summary-${width}`);
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));

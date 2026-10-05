@@ -14,6 +14,7 @@
 //                um churn que o próprio MP marcou (applyMpReactivationRescue).
 
 import { logActivity } from "./lead-flow.js";
+import { recordPlanChange, customerPlanState } from "./plan-history.js";
 
 export const isChurnedCustomer = (c, at = Date.now()) =>
   !!(c?.endedAt && new Date(c.endedAt).getTime() <= at);
@@ -49,6 +50,13 @@ export async function markCustomerChurn(repo, customer, { endedAt, reason = "", 
       });
     } catch { /* timeline é registro, nunca quebra o churn */ }
   }
+  if (!wasChurned) {
+    await recordPlanChange(repo, {
+      type: "churn", saas: customer.saas, customer: customer.id, lead: customer.leadId || "",
+      effectiveAt: saved.endedAt, from: customerPlanState(customer), to: customerPlanState(saved),
+      source, author, note: [churnReasonLabel(reason), note].filter(Boolean).join(" · "),
+    });
+  }
   if (!wasChurned && discord?.configured?.()) {
     try {
       const product = customer.saas ? await repo.get("products", customer.saas) : null;
@@ -67,6 +75,10 @@ export async function markCustomerChurn(repo, customer, { endedAt, reason = "", 
 export async function clearCustomerChurn(repo, customer, { author = "system", note = "" } = {}) {
   const saved = await repo.update("customers", customer.id, {
     endedAt: "", churnReason: "", churnNote: "", churnSource: "", churnedBy: "",
+  });
+  await recordPlanChange(repo, {
+    type: "reactivation", saas: customer.saas, customer: customer.id, lead: customer.leadId || "",
+    from: customerPlanState(customer), to: customerPlanState(saved), source: "manual", author, note,
   });
   if (customer.leadId) {
     try {

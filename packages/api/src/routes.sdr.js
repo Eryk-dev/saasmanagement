@@ -1,6 +1,7 @@
 // Rotas do SDR automatizado: horários livres no servidor (a grade do front,
 // agora consultável por API), submissão dos templates da Meta (Fase 0) e o
 // status que o card "SDR automático" da aba Automações mostra.
+import { readFile } from "node:fs/promises";
 import { slotsForLead } from "./agenda-slots.js";
 import { SDR_TEMPLATES } from "./sdr-templates.leverads.js";
 import { resolveWabaId, getWaHealth } from "./wa-health.js";
@@ -87,7 +88,11 @@ export function registerSdrRoutes(app, repo, { whatsapp: wa, anthropic = null } 
     for (const spec of SDR_TEMPLATES) {
       if (approved.has(spec.name)) { templates.push({ name: spec.name, status: "approved" }); continue; }
       try {
-        const r = await wa.createTemplate(wabaId, spec);
+        // Cabeçalho de imagem: o arquivo vive em src/assets (vai no container).
+        const headerImage = spec.headerImage
+          ? { buffer: await readFile(new URL(`./assets/${spec.headerImage}`, import.meta.url)), mime: /\.png$/i.test(spec.headerImage) ? "image/png" : "image/jpeg", filename: spec.headerImage.split("/").pop() }
+          : null;
+        const r = await wa.createTemplate(wabaId, { ...spec, headerImage });
         templates.push({ name: spec.name, status: String(r.status || "PENDING").toLowerCase() });
       } catch (err) {
         const msg = String(err.message || err);

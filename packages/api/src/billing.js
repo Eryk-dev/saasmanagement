@@ -12,7 +12,12 @@
 //   downgrade          → agendado pro fim do ciclo (pendingChange).
 //   troca de ciclo     → agendada pro fim do ciclo (MP não muda frequency in-place).
 
-export const CYCLE_MONTHS = { monthly: 1, quarterly: 3, semiannual: 6, annual: 12 };
+import { CYCLE_MONTHS, annualized, CLOSED_PLAN_MONTHS as PLAN_MONTHS, CLOSED_PLAN_CYCLE as PLAN_CYCLE } from "./plan-cycles.js";
+import { recordPlanChange, subscriptionPlanState, syncCustomerPlanFromSub } from "./plan-history.js";
+
+// Ciclos e a anualização moram em plan-cycles.js (fonte única, compartilhada
+// com a SPA); seguem exportados daqui pra quem já importava do billing.
+export { CYCLE_MONTHS, annualized };
 
 const DAY_MS = 86400000;
 
@@ -23,12 +28,6 @@ export function addMonths(iso, months) {
   d.setUTCMonth(d.getUTCMonth() + months);
   if (d.getUTCDate() !== day) d.setUTCDate(0);
   return d.toISOString();
-}
-
-// Valor anualizado de uma assinatura (preço é por ciclo).
-export function annualized(price, cycle) {
-  const months = CYCLE_MONTHS[cycle] || 1;
-  return (Number(price) || 0) * (12 / months);
 }
 
 // ARR contratado = assinaturas não-encerradas (past_due ainda é receita contratada;
@@ -78,8 +77,6 @@ export async function initSubscription(repo, sub, now = new Date()) {
 // PAGA (o fechamento É o 1º recebimento); as próximas nascem no runBilling.
 // A conta fecha com o arr carimbado no convertWonLead: annualized(price, cycle)
 // = amount × CLOSED_PLAN_ANNUAL_FACTOR, então o syncCustomerArr não muda nada.
-const PLAN_MONTHS = { anual: 12, semestral: 6, mensal: 1 };
-const PLAN_CYCLE = { anual: "annual", semestral: "semiannual", mensal: "monthly" };
 // cartao_recorrente (assinatura no cartão, cobrança mensal indefinida) recebe
 // por mês como o faturado, mas NUNCA tem Nº de parcelas — o gate não pergunta,
 // então closedInstallments devolve 0 e o ciclo mensal fica com o runBilling.
@@ -176,7 +173,9 @@ export async function syncClosedInstallments(repo, { customerId, saas, subscript
   }
 }
 
-export async function createClosedSubscription(repo, { customerId, saas, planClosed, amount, paymentMethod, paymentInstallments, startAt }, now = new Date()) {
+// `planFields` = plano do catálogo da venda ({ plan, planCode, planSnapshot },
+// de plan-history.js); sem ele a assinatura nasce sem plano, como sempre.
+export async function createClosedSubscription(repo, { customerId, saas, planClosed, amount, paymentMethod, paymentInstallments, startAt, planFields }, now = new Date()) {
   const spec = closedSubscriptionSpec({ planClosed, amount, paymentMethod, paymentInstallments });
   if (!customerId || !spec) return null;
   const { cycle, price } = spec;
@@ -190,6 +189,7 @@ export async function createClosedSubscription(repo, { customerId, saas, planClo
   const sub = await repo.create("subscriptions", {
     status: "active", cycle, price, plan: "", pendingChange: null,
     customer: customerId, saas: saas || "", periodStart, periodEnd,
+    ...(planFields || {}),
   });
   if (spec.schedule) {
     // Faturado com cronograma: o recebimento são as PARCELAS (nascem abertas) —
@@ -251,9 +251,20 @@ export async function runBilling(repo, { now = new Date(), graceDays = 3 } = {})
   for (let sub of await repo.list("subscriptions")) {
     if (sub.pendingChange?.applyAt && new Date(sub.pendingChange.applyAt) <= now) {
       const pc = sub.pendingChange;
+      const before = sub;
       sub = await repo.update("subscriptions", sub.id, {
         price: pc.price ?? sub.price, cycle: pc.cycle || sub.cycle, plan: pc.plan ?? sub.plan,
+        ...(pc.planCode ? { planCode: pc.planCode, planSnapshot: pc.planSnapshot || null } : {}),
         pendingChange: null,
+      });
+      // Troca agendada entrou em vigor: o cadastro do cliente acompanha o plano
+      // e o histórico registra a aplicação.
+      await syncCustomerPlanFromSub(repo, sub, { cycleChanged: before.cycle !== sub.cycle }).catch(() => null);
+      await recordPlanChange(repo, {
+        type: "applied", saas: sub.saas, customer: sub.customer, subscription: sub.id, at: nowIso,
+        from: subscriptionPlanState(before), to: subscriptionPlanState(sub),
+        listPrice: pc.planSnapshot?.listPrice, priceVersion: pc.planSnapshot?.priceVersion,
+        source: "billing", author: "billing",
       });
       report.applied++;
       touched.add(sub.customer);

@@ -51,3 +51,25 @@ test("listWhere: projeção sempre inclui id e devolve null pra chave ausente", 
   const [row] = await repo.listWhere("form_events", { id: "fe_3" }, { fields: ["event", "variant"] });
   assert.deepEqual(row, { id: "fe_3", event: "view", variant: null });
 });
+
+// O SQL de verdade (db.js), sem banco: todo parâmetro enviado precisa aparecer
+// como placeholder. Faixa sem limite deixava a chave sobrando em `params` e o
+// Postgres recusava a consulta — a timeline do lead (`?lead=` sem `since`)
+// voltava 500 em todas as telas.
+test("listWhereSql: faixa sem limite não deixa parâmetro sobrando", async () => {
+  const { listWhereSql } = await import("../src/db.js");
+  const used = (sql) => new Set([...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+  const check = (where, opts) => {
+    const { sql, params } = listWhereSql("cockpit.activities", where, opts);
+    assert.deepEqual([...used(sql)].sort((a, b) => a - b), params.map((_, i) => i + 1), sql);
+    return { sql, params };
+  };
+  // A chamada da rota de atividades quando só vem o lead.
+  const lead = check({ lead: "l1", saas: undefined, type: undefined, at: { gte: undefined } });
+  assert.deepEqual(lead.params, ["lead", "l1"]);
+  assert.match(lead.sql, /WHERE json->>\(\$1::text\) = \$2 ORDER BY id$/);
+  check({ at: { gte: "", lte: null } });
+  check({ form: "f1", createdAt: { gte: "2026-07-10", lte: "" } });
+  check({ id: "fe_1" }, { fields: ["event"] });
+  assert.doesNotMatch(check({}).sql, /WHERE/);
+});

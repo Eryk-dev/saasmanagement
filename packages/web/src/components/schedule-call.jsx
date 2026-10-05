@@ -10,8 +10,10 @@ import { PrimaryButton } from "../atoms.jsx";
 // "Próxima ação" do card, dentro do inbox: a conversa andou → o card anda
 // junto. O modal lista os DESTINOS certos pra etapa atual (mesma régua do
 // roteiro, destinationsFor) e cada um faz o setup completo:
-//   · call/follow-up → grade de horário na agenda do closer + Meet + rascunho
-//     de confirmação na caixa (nunca envia sozinho);
+//   · call → grade de horário na agenda do closer + Meet + rascunho de
+//     confirmação na caixa (nunca envia sozinho);
+//   · follow-up → o gate do pipeline (proposta na mesa + DIA do Contato 1, sem
+//     horário: follow-up nunca ocupa a agenda);
 //   · ganho/perdido/handoff → o mesmo gate do pipeline (MoveLeadModal);
 //   · movimento simples → aplica direto.
 // TUDO passa pelo PATCH canônico de leads (applyStageMove no servidor), então
@@ -90,7 +92,7 @@ function NextActionModal({ leadId, onScheduled, onResolved, onClose }) {
   // Destino escolhido: agenda, gate ou movimento direto.
   async function pick(d) {
     const setup = setupType(d.kind);
-    if (setup === "call" || setup === "followup") { setDest(d); setErr(""); return; }
+    if (setup === "call") { setDest(d); setErr(""); return; }
     const gate = moveGate(saasCfg, lead, d.stage);
     if (gate) { setGateMove({ toStage: d.stage, gate }); return; }
     setBusy(true); setErr("");
@@ -117,7 +119,7 @@ function NextActionModal({ leadId, onScheduled, onResolved, onClose }) {
     finally { setBusy(false); }
   }
 
-  // Agendamento (call/follow-up): grava closer + horário e MOVE pro destino.
+  // Agendamento da call: grava closer + horário e MOVE pro destino.
   async function schedule(withInvite) {
     if (!closer || !slot || busy || !dest) return;
     setBusy(true); setErr("");
@@ -216,7 +218,8 @@ function NextActionModal({ leadId, onScheduled, onResolved, onClose }) {
                     <span style={{ flex: 1, minWidth: 0 }}>
                       <span style={{ display: "block", fontSize: 13.5, fontWeight: 600 }}>{d.stage}</span>
                       <span className="mono dim" style={{ fontSize: 10 }}>
-                        {setup === "call" || setup === "followup" ? "escolhe o horário na agenda do closer"
+                        {setup === "call" ? "escolhe o horário na agenda do closer"
+                          : setup === "followup" ? "escolhe o dia do contato 1 (sem horário)"
                           : setup === "won" ? "pede valor e forma de pagamento"
                           : setup === "loss" ? "pede o motivo"
                           : setup === "integrator" ? "define o integrador"

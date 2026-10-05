@@ -21,8 +21,17 @@
 // (report.planned em GET /api/leverads-access/status) — a ativação em produção
 // é revisada antes de valer. POST /api/leverads-access/run {apply:true} força
 // um tick aplicando (pra primeira virada assistida).
+//
+// LIMITES do plano (contas, cota de OEM, Lever Price): o tick também compara o
+// que o plano contratado dá (entitlements.js) com o que a org tem, e devolve a
+// diferença em `report.limits`. É só relatório: nenhum limite é escrito no
+// produto, com apply ou sem — a escrita entra depois de o relatório ser revisado.
 
 import { NOT_CONFIGURED } from "./http-status.js";
+import { desiredAccess, desiredEntitlements, leveradsLimitFields, limitsDiff, orgRefOf, plansByCodeOf } from "./entitlements.js";
+
+// A régua do acesso mora em entitlements.js; segue exportada daqui.
+export { desiredAccess };
 
 const DEFAULT_BASE_URL = "https://copy.levermoney.com.br";
 const DEFAULT_INTERVAL_MS = 10 * 60 * 1000; // mesmo ritmo do espelho MP
@@ -105,16 +114,6 @@ function makeServiceClient({ base, serviceKey, fetchImpl }) {
   };
 }
 
-// O que o payment_active da org DEVERIA ser, dado o billing do cliente no
-// cockpit. null = não mexer (sem assinatura não dá pra inferir nada).
-export function desiredAccess(customer, subs) {
-  if (!subs.length) return null;
-  if (customer.endedAt) return { paymentActive: false, reason: "cliente encerrado (endedAt)" };
-  if (subs.some((s) => s.status === "past_due")) return { paymentActive: false, reason: "fatura vencida (past_due)" };
-  if (subs.some((s) => s.status === "active")) return { paymentActive: true, reason: "assinatura em dia" };
-  return { paymentActive: false, reason: "sem assinatura ativa (cancelada/pausada)" };
-}
-
 // Um tick do sync. Sempre devolve o report completo — em dry-run, `planned`
 // lista o que seria feito; em apply, `applied` conta o que foi.
 export async function runLeveradsAccessSync(repo, { client, apply = false, log } = {}) {
@@ -122,16 +121,21 @@ export async function runLeveradsAccessSync(repo, { client, apply = false, log }
   const report = {
     mode: apply ? "apply" : "dry-run", at: new Date().toISOString(),
     checked: 0, inSync: 0, applied: 0, planned: [], skipped: [], errors: [],
+    // Limites do plano (contas, cota de OEM, Lever Price) × o que a org tem no
+    // produto. SÓ RELATÓRIO: nada daqui é escrito, com apply ou sem.
+    limits: { mode: "report", inSync: 0, planned: [], skipped: [], unsupported: [] },
   };
   const customers = (await repo.list("customers")).filter((c) => c.saas === saasId && c.leveradsOrgId);
   if (!customers.length) return report;
 
   const subsAll = await repo.list("subscriptions");
+  const plansByCode = plansByCodeOf(await repo.list("plans"));
   const orgById = new Map((await client.listOrgs()).map((o) => [String(o.id), o]));
 
   for (const customer of customers) {
     report.checked++;
-    const want = desiredAccess(customer, subsAll.filter((s) => s.customer === customer.id));
+    const subs = subsAll.filter((s) => s.customer === customer.id);
+    const want = desiredAccess(customer, subs);
     if (!want) {
       report.skipped.push({ customer: customer.id, name: customer.name, reason: "sem assinatura no cockpit" });
       continue;
@@ -141,6 +145,7 @@ export async function runLeveradsAccessSync(repo, { client, apply = false, log }
       report.errors.push({ customer: customer.id, name: customer.name, error: `org ${customer.leveradsOrgId} não existe no produto` });
       continue;
     }
+    if (want.paymentActive) limitsReport(report.limits, customer, org, desiredEntitlements(customer, subs, plansByCode, { defaultProduct: "leverads" }));
     if (Boolean(org.payment_active) === want.paymentActive) { report.inSync++; continue; }
     const action = {
       customer: customer.id, name: customer.name, org: org.id, orgName: org.name,
@@ -161,7 +166,33 @@ export async function runLeveradsAccessSync(repo, { client, apply = false, log }
   return report;
 }
 
+// Compara os limites do plano com a org e anota no relatório. Conservador:
+// venda personalizada ou sem plano identificado fica com limites manuais, e org
+// com assinatura self-service do próprio produto (plan_id) não é comparada, já
+// que lá as contas pagas entram na cobrança do produto.
+function limitsReport(out, customer, org, entitlements) {
+  const who = { customer: customer.id, name: customer.name, org: org.id, orgName: org.name };
+  for (const ent of entitlements || []) {
+    if (ent.source !== "plan") {
+      out.skipped.push({ ...who, product: ent.product, reason: "plano personalizado ou não identificado: limites manuais" });
+      continue;
+    }
+    if (org.plan_id) {
+      out.skipped.push({ ...who, product: ent.product, plan: ent.planCode, reason: "org com assinatura self-service no produto (plan_id)" });
+      continue;
+    }
+    const want = leveradsLimitFields(ent);
+    if (!Object.keys(want).length) continue;
+    const { changes, unsupported } = limitsDiff(org, want);
+    if (unsupported.length) out.unsupported.push({ ...who, product: ent.product, plan: ent.planCode, fields: unsupported });
+    if (Object.keys(changes).length) out.planned.push({ ...who, product: ent.product, plan: ent.planCode, changes });
+    else if (!unsupported.length) out.inSync++;
+  }
+}
+
 let lastReport = null;
+
+const isAdmin = (u) => !u || (u.roles || []).includes("admin"); // sem sessão = key mestre
 
 export function startLeveradsAccessSync(repo, { log, intervalMs, client } = {}) {
   const cli = client || envClient();
@@ -186,8 +217,13 @@ export function startLeveradsAccessSync(repo, { log, intervalMs, client } = {}) 
 
 export function registerLeveradsAccessRoutes(app, repo, { client } = {}) {
   // Tick manual. {apply:true} no body aplica MESMO com o env em dry-run — é o
-  // caminho da primeira virada assistida em produção.
-  app.post("/api/leverads-access/run", async (req, reply) => {
+  // caminho da primeira virada assistida em produção. Por escrever no produto
+  // (corta/libera cliente), forçar o apply pede etiqueta admin; sem sessão é a
+  // key mestre (MCP/integrações), que passa.
+  const run = async (req, reply) => {
+    if (req.body?.apply === true && !isAdmin(req.authUser)) {
+      return reply.code(403).send({ error: "Aplicar o sync de acesso exige etiqueta admin" });
+    }
     const cli = client || envClient();
     if (!cli.configured()) {
       return reply.code(NOT_CONFIGURED).send({ error: NOT_CONFIGURED_MSG });
@@ -195,9 +231,34 @@ export function registerLeveradsAccessRoutes(app, repo, { client } = {}) {
     const apply = req.body?.apply === true || process.env.LEVERADS_ACCESS_APPLY === "1";
     lastReport = await runLeveradsAccessSync(repo, { client: cli, apply, log: req.log });
     return lastReport;
-  });
+  };
+  app.post("/api/leverads-access/run", run);
+  app.post("/api/entitlements/run", run);
   // Último report (do poller ou de um run manual) — é aqui que o dry-run é revisado.
-  app.get("/api/leverads-access/status", async () => lastReport || { mode: "never-ran" });
+  const status = async () => lastReport || { mode: "never-ran" };
+  app.get("/api/leverads-access/status", status);
+  // Mesma coisa sob o nome novo: o report traz acesso + limites por plano.
+  app.get("/api/entitlements/status", status);
+  // O direito de UM cliente (ficha): o que o plano dá, a org vinculada em cada
+  // sistema e o que o último report achou dele.
+  app.get("/api/entitlements/customers/:id", async (req, reply) => {
+    const customer = await repo.get("customers", req.params.id);
+    if (!customer) return reply.code(404).send({ error: "cliente não encontrado" });
+    const subs = (await repo.list("subscriptions")).filter((s) => s.customer === customer.id);
+    const saasId = process.env.LEVERCOPY_SAAS_ID || "leverads";
+    const entitlements = desiredEntitlements(customer, subs, plansByCodeOf(await repo.list("plans")), {
+      defaultProduct: customer.saas === saasId ? "leverads" : "",
+    });
+    const mine = (rows) => (rows || []).filter((r) => r.customer === customer.id);
+    return {
+      customer: customer.id, orgs: orgRefOf(customer), entitlements,
+      lastReport: lastReport ? {
+        at: lastReport.at, mode: lastReport.mode,
+        access: mine(lastReport.planned), errors: mine(lastReport.errors),
+        limits: { planned: mine(lastReport.limits?.planned), skipped: mine(lastReport.limits?.skipped), unsupported: mine(lastReport.limits?.unsupported) },
+      } : null,
+    };
+  });
   // Lista enxuta das orgs do produto pro select "Org na LeverAds" do cadastro
   // de cliente (vínculo manual do de-para — clientes antigos sem match e os
   // futuros). O value do select é o id da org.

@@ -20,11 +20,15 @@ import { allUsers, currentUser, displayName, userById, usersByRole, isAdminUser 
 import { useActiveSaas } from "../lib/workspace.js";
 import { myOpenTasks, taskHash } from "../lib/tasks.js";
 import { useAttribution } from "../lib/pains.js";
-import { clientSummary, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks, DealProductField, isOneOffProduct, SelectWithCustom, PaymentMethodSelect, ProductOptions, leadBox } from "../components/lead-blocks.jsx";
+import { clientSummary, ClientSummaryCard, AttributionCard, LeadChecklist, ScriptBlocks, DealPlanField, PaymentMethodPicker, leadBox } from "../components/lead-blocks.jsx";
+import { SelectPopover } from "../components/select-popover.jsx";
+import { Choice } from "../components/plan-editor.jsx";
 import { resolveScript, scriptTokens, scriptChecklist, isNoShowStage, confirmationScript, integrationConfirmationScript, scriptKeyFor } from "../lib/scripts.js";
-import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, withLegacyOption, closedPlanLabel, dealProductLabel, dealProductsOf } from "../lib/payments.js";
+import { CLOSED_PLANS, withLegacyOption, closedPlanLabel, dealProductLabel, closingPlansOf } from "../lib/payments.js";
 import { LeadSendActions, useLeadProposalActions } from "../components/lead-send-actions.jsx";
 import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
+import { followupContacts, followupDueDay, followupNextContact, followupStepOf, followupDayOf, localDayStart, dayStartIso, nextFollowupDay, todayBrt, FOLLOWUP_STEPS, FOLLOWUP_CHANNELS } from "../lib/followup.js";
+import { FollowupContactBlock, DayPicker, defaultFollowupDay } from "../components/followup-contact.jsx";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
 // "Hoje" (a fila de trabalho, numerada na ordem de prioridade do processo),
 // "Amanhã" e "Próximos dias" (o que já está agendado, à vista), e "Sem data".
@@ -167,7 +171,7 @@ const GROUP_META = {
   novo: ["Leads novos", "quanto mais fresco, mais responde"],
   noshow: ["Furou a call", "retomar no mesmo dia"],
   qual: ["Retomadas", "toque agendado que venceu"],
-  closer: ["Follow-up do closer", ""],
+  closer: ["Follow-up", "contato do dia · sem horário"],
   nutri: ["Nutrição", "fora do funil ativo"],
   loose: ["Sem data", "ninguém marcou o próximo toque · não entram na contagem do dia"],
 };
@@ -187,6 +191,12 @@ function actionVerb(item) {
   if (item.group === "noshow") return "retomada";
   if (item.group === "nutri") return "reativação";
   if (item.group === "loose") return "marcar o próximo toque";
+  if (item.kind === "followup" && item.l) {
+    // "follow-up" na frente: na fila a linha precisa dizer QUE é follow-up,
+    // não só qual contato.
+    const n = followupNextContact(item.l);
+    return n ? `follow-up · contato ${n} de ${FOLLOWUP_STEPS}` : "follow-up · escolher o destino";
+  }
   return ACTION_LABELS[item.kind] || "contato";
 }
 
@@ -197,9 +207,13 @@ function actionHint(item) {
   const tent = Number(l.stageAttempts) || 0;
   const partes = [];
   if (item.confirm) {
-    partes.push(item.confirmWindow === "10min" ? "10 min antes" : item.confirmWindow === "ligar" ? "1h antes · sem resposta na confirmação" : item.confirmWindow === "manha" ? "8h30 da manhã" : "2h antes");
+    partes.push(item.confirmWindow === "10min" ? "10 min antes" : item.confirmWindow === "ligar" ? "1h antes · sem resposta na confirmação" : item.confirmWindow === "manha" ? "8h da manhã" : "2h antes");
     const at = item.confirmKind === "integracao" ? l.integrationAt : l.callAt;
     if (at) partes.push(`${item.confirmKind === "integracao" ? "integração" : "call"} ${hhmmOf(at)}`);
+  } else if (kind === "followup") {
+    const n = followupNextContact(l);
+    partes.push(n ? followupContacts()[n - 1].titulo : "sequência concluída");
+    if (l.nextActionNote) partes.push(l.nextActionNote);
   } else if (l.nextActionNote) {
     if (tent > 0) partes.push(`${tent} de 5`);
     partes.push(l.nextActionNote);
@@ -292,11 +306,12 @@ function buildQueue(leads, consultas, saasCfg, person) {
       // FEITO por janela: o SDR marcou "confirmou" ou "sem resposta" naquele
       // passo (confirmStepDone), senão a tarefa continua pendente. Cliente que
       // confirmou já resolve a de 2h; a de 10min segue (positiva ou ligação).
-      // MANHÃ DO DIA (Leo, 30/09): sem véspera; às 08:30 do dia da call sai o
-      // lembrete com link (só pra call a partir das 10h30, senão colaria no de
-      // 2h). O robô manda; a tarefa cobre quem confirma na mão.
-      const morning = new Date(callT); morning.setHours(8, 30, 0, 0);
-      if (callT - morning.getTime() >= 120 * M) {
+      // MANHÃ DO DIA (Leo, 30/09, ajustada no roteiro de 05/10): sem véspera;
+      // às 08:00 do dia da call sai a confirmação pra TODO MUNDO com call no
+      // dia (até 8h40 o de 10min cobre). O robô manda; a tarefa cobre quem
+      // confirma na mão.
+      const morning = new Date(callT); morning.setHours(8, 0, 0, 0);
+      if (callT - morning.getTime() >= 40 * M) {
         g.hoje.push({ l, kind, phase, who, due: { t: morning.getTime(), type: "confirm" }, done: confirmStepDone(l, "manha", l.callAt) || !!l.callConfirmed, stage, group: "confirm", confirm: true, confirmWindow: "manha" });
       }
       g.hoje.push({ l, kind, phase, who, due: { t: callT - 120 * M, type: "confirm" }, done: confirmStepDone(l, "2h", l.callAt) || !!l.callConfirmed, stage, group: "confirm", confirm: true, confirmWindow: "2h" });
@@ -362,17 +377,25 @@ function buildQueue(leads, consultas, saasCfg, person) {
       if (kind === "call") push(l.callAt, "call", startToday.getTime());
       else if (kind === "integracao") push(l.integrationAt, "integração", startToday.getTime());
     }
-    if (!cands.length) push(l.nextActionAt, "toque");
+    // Follow-up é por DIA (sem horário): vence às 00:00 do dia do próximo
+    // contato. Registrar o contato leva o dia pra frente (o item sai de hoje);
+    // toque avulso não conta como feito — só o contato registrado.
+    if (kind === "followup") {
+      const day = followupDueDay(l);
+      const t = localDayStart(day);
+      if (Number.isFinite(t)) cands.push({ t, type: "followup", day });
+    } else if (!cands.length) push(l.nextActionAt, "toque");
     cands.sort((a, b) => a.t - b.t);
     const due = cands[0] || null;
 
     // Toque já registrado hoje = item cumprido (fica na fila, riscado).
-    const done = due?.type !== "call" && TOUCH_TYPES.has(l.lastActivityType) &&
+    const done = due?.type !== "call" && due?.type !== "followup" && TOUCH_TYPES.has(l.lastActivityType) &&
       l.lastActivityAt && new Date(l.lastActivityAt).toDateString() === todayStr;
 
     // Grupo de prioridade (define a ordem e o rótulo da ação).
     const group = !due
       ? (kind === "novo" ? "novo" : "loose")
+      : due.type === "followup" ? "closer"
       : due.type !== "toque" ? "appt"
       : isNoShowStage(stage) ? "noshow"
       : kind === "novo" ? "novo"
@@ -633,6 +656,27 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
       .catch((err) => { console.warn("toque não registrado:", err.message); toast("O toque não foi salvo · tente de novo", "neg"); });
   }
 
+  // Follow-up em 4 contatos: registrar o contato N vira um toque com
+  // meta.followupContact (o servidor avança o passo e marca o dia do próximo
+  // pelo prazo configurado). Espelho local com a mesma régua pra o card sair de
+  // hoje na hora; o SSE ressincroniza.
+  function registerFollowupContact(item, { n, channel, note }) {
+    const l = item.l;
+    const step = Math.max(followupStepOf(l), n);
+    const next = step >= FOLLOWUP_STEPS ? "" : nextFollowupDay(followupContacts(), step, todayBrt());
+    const at = new Date().toISOString();
+    setLeads((prev) => prev.map((x) => x.id === l.id ? {
+      ...x, followupStep: step, followupAt: next, nextActionAt: dayStartIso(next || todayBrt()),
+      lastActivityAt: at, lastActivityType: channel, stageAttempts: (Number(x.stageAttempts) || 0) + 1,
+    } : x));
+    const label = FOLLOWUP_CHANNELS.find((c) => c.id === channel)?.label || channel;
+    return api.logActivity({
+      saas: l.saas, lead: l.id, type: channel, author: me,
+      text: note || `follow-up · contato ${n} de ${FOLLOWUP_STEPS} (${label.toLowerCase()})`,
+      meta: { followupContact: n },
+    }).catch((err) => { console.warn("contato não registrado:", err.message); toast("O contato não foi salvo · tente de novo", "neg"); });
+  }
+
   // Card sem responsável: quem clica assume (vira o responsável). Grava no
   // campo da fase — owner na pré-venda, integrator na entrega, closer no meio.
   function claim(item) {
@@ -658,6 +702,8 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
     ...patch,
     stageSince: new Date().toISOString(),
     stageAttempts: 0,
+    // Entrar no follow-up recomeça a sequência no Contato 1 (o dia vem no patch).
+    ...(patch.stage && stageKind(saasCfg, patch.stage) === "followup" && patch.stage !== lead.stage ? { followupStep: 0 } : {}),
     nextActionAt: nextActionAfterMove(saasCfg, lead, patch),
   });
   // Resposta do PATCH = a verdade (o servidor ainda limpa compromisso rival,
@@ -725,7 +771,9 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   }, [leads, consultas, saasCfg, users]);
   // O primeiro pendente fica em Agora; os demais e as feitas têm áreas próprias.
   const queueRows = q.hoje.filter(item => !item.done && (item.consulta || item !== firstPending));
-  const lateCount = pendingToday.filter((i) => i.due && i.due.t <= Date.now()).length;
+  const lateItems = pendingToday.filter((i) => isLateItem(i, now));
+  const lateCount = lateItems.length;
+  const lateFollowups = lateItems.filter((i) => i.due.type === "followup").length;
 
   // Busca DENTRO da fila (protótipo, 14/09). Com oito grupos e o dia cheio, a
   // fila passa de vinte linhas e achar "aquele lead" era rolar a tela inteira.
@@ -811,8 +859,8 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                   </div>
                   <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                     {/* "N de M feitos hoje" + a barra: é a proporção que diz se
-                        o dia está ganho ou perdido às 15h. O atraso não vira
-                        chip aqui — ele já é lido na pílula vermelha da linha. */}
+                        o dia está ganho ou perdido às 15h. O atraso tem a
+                        faixa de alerta própria logo abaixo e o card vermelho. */}
                     {(doneTodayRows.length > 0 || queueRows.length > 0) && (() => {
                       const feitos = doneTodayRows.length;
                       const totalDia = feitos + pendingToday.length;
@@ -831,6 +879,18 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                       className="inp" /></label>
                   </div>
                 </div>
+                {/* ALARME: atraso não fica só na pílula — a faixa vermelha diz
+                    quantas atividades venceram, com os follow-ups que perderam
+                    o dia do contato contados à parte. */}
+                {lateCount > 0 && (
+                  <div className="today-late-alert" role="alert">
+                    <span>
+                      <strong>{lateCount === 1 ? "1 atividade atrasada" : `${lateCount} atividades atrasadas`}</strong>
+                      {[lateFollowups > 0 && (lateFollowups === 1 ? "1 follow-up com o contato vencido" : `${lateFollowups} follow-ups com o contato vencido`),
+                        "resolva antes do resto da fila"].filter(Boolean).join(" · ")}
+                    </span>
+                  </div>
+                )}
                 {queueRows.length === 0 && (
                   <div style={{ padding: "16px var(--inset-x)", borderTop: "1px solid var(--line-faint)", fontSize: 13, color: "var(--fg-3)" }}>
                     {firstPending ? "Só a atividade de agora, ali em cima." : "Fila zerada por hoje."}
@@ -843,10 +903,10 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                   </div>
                 )}
                 {pageRows.map((item) => {
-                  const key = item.consulta ? `c-${item.consulta.id}` : item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id;
+                  const key = rowKey(item);
                   return (
                     <React.Fragment key={key}>
-                      <QueueRow item={item} block="hoje" featured={false}
+                      <QueueRow item={item} block="hoje" featured={false} selected={!!scriptItem && rowKey(scriptItem) === key}
                         onScript={() => setScriptItem(item)} onClaim={() => claim(item)} onWhatsapp={onOpenWhatsapp} onOpen={() => item.consulta ? openConsulta(item) : onOpenLead?.(item.l)} />
                     </React.Fragment>
                   );
@@ -876,6 +936,14 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
             onAfter={advanceScript}
             onClose={() => setScriptItem(null)}
             onTouch={(when) => { const nx = nextAfter(scriptItem); logTouch(scriptItem, when); setScriptItem(nx); }}
+            onFollowupContact={(r) => {
+              const nx = nextAfter(scriptItem);
+              const saved = registerFollowupContact(scriptItem, r);
+              // Último contato: o card fica aberto pra escolher o destino.
+              if (r.n < FOLLOWUP_STEPS) setScriptItem(nx);
+              else setScriptItem((cur) => cur && { ...cur, l: { ...cur.l, followupStep: FOLLOWUP_STEPS, followupAt: "" } });
+              return saved;
+            }}
             nextItem={nextAfter(scriptItem)}
             onSkip={() => setScriptItem(nextAfter(scriptItem))}
             onOpenLead={() => { setScriptItem(null); onOpenLead && onOpenLead(scriptItem.l); }}
@@ -934,10 +1002,22 @@ function ConsultaRow({ item, block, featured, ordem, onOpen }) {
   );
 }
 
+// ATRASO (05/10/2026): item pendente cujo horário já passou — ou, no
+// follow-up (que é por DIA), cujo dia do contato já passou. É a régua única do
+// card vermelho da fila, do bloco "Próxima ação" e do alerta do topo.
+export function isLateItem(item, now = Date.now()) {
+  if (!item?.due || item.done) return false;
+  if (item.due.type === "followup") return item.due.t < new Date(now).setHours(0, 0, 0, 0);
+  return item.due.t <= now;
+}
+
+// Chave estável da linha: a confirmação de call tem uma por janela do mesmo lead.
+const rowKey = (item) => (item.consulta ? `c-${item.consulta.id}` : item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id);
+
 // Uma linha da fila: sequência, quando, etapa (coluna do funil), ação a fazer,
 // lead com a qualificação compilada e as ações. Clique no corpo abre o ROTEIRO
 // (o painel de execução), não o card de status; o drawer fica no "abrir lead".
-function QueueRow({ item, block, featured, ordem, onScript, onClaim, onWhatsapp, onOpen }) {
+function QueueRow({ item, block, featured, ordem, selected = false, onScript, onClaim, onWhatsapp, onOpen }) {
   const { l, consulta, kind, due, stage, who, group } = item;
   if (consulta) return <ConsultaRow item={item} block={block} featured={featured} ordem={ordem} onOpen={onOpen} />;
   const now = Date.now();
@@ -954,6 +1034,13 @@ function QueueRow({ item, block, featured, ordem, onScript, onClaim, onWhatsapp,
     when = due.t <= now
       ? { pill: hhmmOf(due.t), note: "agora", tone: "neg" }
       : { pill: hhmmOf(due.t), note: untilNote(due.t, now), tone: "pos" };
+  } else if (due?.type === "followup") {
+    // Follow-up não tem hora: a pílula diz o DIA e o selo do contato.
+    const late = due.t < startToday ? Math.max(1, Math.round((startToday - due.t) / DAY)) : 0;
+    // O contato da vez já está no verbo da linha ("contato 2 de 4").
+    when = late ? { pill: ddmmOf(due.t), note: `atrasado ${late}d`, tone: "neg" }
+      : block === "hoje" ? { pill: "hoje", note: "dia todo", tone: "warn" }
+      : { pill: ddmmOf(due.t), note: block === "amanha" ? "amanhã" : "dia todo", tone: "mut" };
   } else if (due && block === "amanha") {
     when = { pill: hhmmOf(due.t), note: "amanhã", tone: "mut" };
   } else if (due && block === "proximos") {
@@ -978,10 +1065,14 @@ function QueueRow({ item, block, featured, ordem, onScript, onClaim, onWhatsapp,
   // número, em vez de escondê-la atrás de um "ver as feitas". É o que faz
   // "1 de 10 feitos hoje" ter onde ser conferido.
   const apagado = !!item.done;
+  // Atrasada = o card INTEIRO em vermelho (não só a pílula): ninguém passa o
+  // olho na fila sem ver.
+  const late = isLateItem(item, now);
   return (
-    <div className={`today-queue-row${apagado ? " is-done" : ""}${due?.t <= now ? " is-late" : ""}`}>
+    <div className={`today-queue-row${apagado ? " is-done" : ""}${late ? " is-late" : ""}${selected ? " is-selected" : ""}`}
+      title={late ? (due?.type === "followup" ? "Follow-up atrasado: o dia do contato já passou" : "Atividade atrasada") : undefined}>
       <TimeCell pill={when.pill} note={apagado ? "feito" : when.note} tone={when.tone} soft={when.soft} apagado={apagado} />
-      <button onClick={onScript} className="today-queue-lead">
+      <button onClick={onScript} className="today-queue-lead" aria-current={selected ? "true" : undefined}>
         <span><LeadGrade tier={tier} muted={apagado} placeholder size={20} /><strong>{l.name}</strong><small>{l.company}</small></span>
         <span className="today-queue-action">{verbo}</span>
       </button>
@@ -999,11 +1090,13 @@ function QueueRow({ item, block, featured, ordem, onScript, onClaim, onWhatsapp,
 function AgoraBlock({ item, saasCfg, onScript }) {
   const { l, due, stage, who } = item;
   const now = Date.now();
-  const atrasado = !!due && due.t <= now;
+  const isFup = due?.type === "followup";
+  const atrasado = isLateItem(item, now);
   const tier = leadTier(l);
-  const quando = due ? `${hhmmOf(due.t)} · ${atrasado ? "agora" : untilNote(due.t, now)}` : "sem hora marcada";
-  return <section className="today-now capsule-navy">
-    <div className="today-section-label">Próxima ação</div>
+  const quando = isFup ? `${atrasado ? `atrasado desde ${ddmmOf(due.t)}` : "hoje"} · ${followupNextContact(l) ? `contato ${followupNextContact(l)}/${FOLLOWUP_STEPS}` : "escolher o destino"}`
+    : due ? `${hhmmOf(due.t)} · ${atrasado ? "agora" : untilNote(due.t, now)}` : "sem hora marcada";
+  return <section className={`today-now capsule-navy${atrasado ? " is-late" : ""}`}>
+    <div className="today-section-label">{atrasado ? (isFup ? "Próxima ação · follow-up atrasado" : "Próxima ação · atrasada") : "Próxima ação"}</div>
     <div className="today-now-person"><LeadGrade tier={tier} size={22} placeholder /><strong>{l.name}</strong><span>{l.company}</span><small className={atrasado ? "is-late" : ""}>{quando}</small></div>
     <div className="today-now-action">{actionVerb(item)}</div>
     <button onClick={onScript}>Abrir a atividade →</button>
@@ -1017,6 +1110,7 @@ function ScheduleLane({ label, rows, amanha, onOpen }) {
   const [showAll, setShowAll] = useS(false);
   const timeOf = (item) => {
     if (!item.due) return "sem data";
+    if (item.due.type === "followup") return amanha ? "dia todo" : new Date(item.due.t).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
     return amanha
       ? new Date(item.due.t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
       : new Date(item.due.t).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -1031,7 +1125,7 @@ function ScheduleLane({ label, rows, amanha, onOpen }) {
       <div style={{ padding: "0 var(--inset-x) 4px" }}>
         {rows.length === 0 && <div style={{ padding: "10px 0 12px", fontSize: 12.5, color: "var(--fg-4)" }}>nenhuma atividade</div>}
         {(showAll ? rows : rows.slice(0, 5)).map((item) => (
-          <button key={item.consulta ? `c-${item.consulta.id}` : item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id} onClick={() => onOpen(item)} style={{ width: "100%", display: "flex", gap: 10, alignItems: "baseline", padding: "10px 0", borderTop: "1px solid var(--line-faint)", textAlign: "left" }}>
+          <button key={rowKey(item)} onClick={() => onOpen(item)} style={{ width: "100%", display: "flex", gap: 10, alignItems: "baseline", padding: "10px 0", borderTop: "1px solid var(--line-faint)", textAlign: "left" }}>
             <span className="tnum" style={{ fontSize: 12.5, color: "var(--fg-4)", flexShrink: 0 }}>{timeOf(item)}</span>
             <span style={{ minWidth: 0 }}>
               <span style={{ display: "block", fontSize: 13.5, fontWeight: 600 }}>{item.consulta ? (item.consulta.clientName || "cliente") : item.l.name}</span>
@@ -1498,7 +1592,7 @@ function PresentationConfig({ url }) {
   return <iframe ref={ref} title="Configurar apresentação" style={{ height }} src={`${url}${url.includes("?") ? "&" : "?"}embed=config&from=cockpit`} />;
 }
 
-function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfter, onClose, onTouch, onOpenLead, onWhatsapp, preview = false, previewScript = null, nextItem = null, onSkip = null }) {
+function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfter, onClose, onTouch, onFollowupContact = null, onOpenLead, onWhatsapp, preview = false, previewScript = null, nextItem = null, onSkip = null }) {
   // On narrow screens keep the accessible modal: the queue can be much taller
   // than the viewport, so an inline editor below it would open out of sight.
   // Choose once per open editor. Changing its wrapper while typing would
@@ -1509,6 +1603,9 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
   // interpolada + checklist) e persiste via onPatch (fila + API).
   const [l, setL] = useS(item.l);
   useE(() => { setL(item.l); }, [item.l.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Contato do follow-up registrado (mesmo lead, passo novo): a cópia local
+  // acompanha, senão o painel continuaria no contato antigo.
+  useE(() => { setL((prev) => ({ ...prev, followupStep: item.l.followupStep, followupAt: item.l.followupAt })); }, [item.l.followupStep, item.l.followupAt]); // eslint-disable-line react-hooks/exhaustive-deps
   function patch(p) {
     setL((prev) => ({ ...prev, ...p }));
     onPatch && onPatch(item.l.id, p);
@@ -1650,6 +1747,10 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
               <LeadChecklist readable key={l.id} checklist={scriptChecklist(saasCfg, l)} onPatch={patch} leadId={l.id} title="Respostas do lead" />
             </LeadSection>
           </div>
+          {stageKind(saasCfg, l.stage) === "followup" && <FollowupContactBlock lead={l} tokens={tokens} preview={preview}
+            onRegister={(r) => { Promise.resolve(onFollowupContact && onFollowupContact(r)).finally(() => setActsReload((n) => n + 1)); }}
+            onChangeDay={preview ? null : (day) => patch({ followupAt: day, nextActionAt: dayStartIso(day) })}
+            onWhatsapp={onWhatsapp} />}
           {stageKind(saasCfg, l.stage) === "followup" && <FollowupCallSummary summary={salesSummary}
             loading={acts === null} error={actsError} onRetry={() => setActsReload((n) => n + 1)} />}
           {preview && <LeadSection title="Pré-visualização do roteiro"><ScriptBlocks script={script} tokens={tokens} /></LeadSection>}
@@ -1793,6 +1894,9 @@ export function destinationsFor(saasCfg, lead) {
   // assim 2ª tentativa, 3ª tentativa, 1º/2º/3º contato têm passos independentes.
   for (const k of nextKindsFor(saasCfg, scriptKeyFor(saasCfg, lead), curKind)) {
     if (k === "retry") {
+      // Follow-up não tem "retomar": o registro do contato do dia (painel
+      // "Contato N de 4") é o que marca o próximo, pelo prazo configurado.
+      if (curKind === "followup") continue;
       // Com as colunas de dia, o toque no Novo lead NÃO promove (o relógio leva
       // pro Dia 2 e só a resposta do lead leva pra Qualificando).
       const promote = curKind === "novo" && !hasDayStages(saasCfg);
@@ -1819,10 +1923,43 @@ export function destinationsFor(saasCfg, lead) {
     if (curKind === "followup" && dayStageNumber(stage)) continue;
     if (stage && !seen.has(stage)) { seen.add(stage); out.push({ stage, kind: stageKind(saasCfg, stage) }); }
   }
-  // O retorno do follow-up sempre permite escolher uma data, inclusive no
-  // último roteiro, cuja configuração antiga omitia o retry.
-  if (curKind === "followup" && !out.some((d) => d.retry)) {
-    out.unshift({ retry: true, promote: false, stage: curStage, kind: curKind });
+  return out;
+}
+
+// Valor digitado em reais, sem as setinhas do <input type=number> (que somavam
+// 0,01 por clique): aceita "3582", "3.582", "3582,50" e "3.582,50".
+export function parseMoneyInput(v) {
+  let t = String(v ?? "").trim().replace(/[^\d.,]/g, "");
+  if (!t) return 0;
+  if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
+  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");
+  const n = Number(t);
+  return Number.isFinite(n) ? n : 0;
+}
+
+// Itens do fechamento no Próximo passo: um por produto vendido. O lead guarda
+// a lista em `dealItems` só quando há mais de um (o 1º também vai em
+// dealProduct/planClosed e `amount` é a soma — ver dealItemsOf na API).
+const dealItem = (over = {}) => ({ key: Math.random().toString(36).slice(2), product: "", plan: "anual", amount: "", ...over });
+const dealItemsFromLead = (l) => (Array.isArray(l.dealItems) && l.dealItems.length > 1
+  ? l.dealItems.map((i) => dealItem({ product: i.product || "", plan: i.planClosed || "anual", amount: i.amount ? String(i.amount) : "" }))
+  : [dealItem({ product: l.dealProduct || "", plan: l.planClosed || "anual", amount: l.amount ? String(l.amount) : "" })]);
+
+// Próximo passo das Atividades sem "Ganho" (05/10/2026): a Integração já cobra
+// o fechamento inteiro (produto, plano, valor, pagamento) e registra a venda
+// (os dois são SOLD_KINDS no servidor), então o botão de Ganho era redundante.
+// Onde a lista tinha Ganho e não tinha Integração, a Integração entra no lugar.
+// Funil sem etapa de Integração mantém o Ganho: é o único jeito de fechar ali.
+// O quadro do Pipeline continua com a coluna Ganho.
+export function withoutWonStep(saasCfg, lead, dests) {
+  const integ = stageByKind(saasCfg, "integracao");
+  if (!integ) return dests;
+  const cur = lead.stage || firstStage(saasCfg);
+  const hasInteg = cur === integ || dests.some((d) => !d.retry && d.stage === integ);
+  const out = [];
+  for (const d of dests) {
+    if (d.retry || d.kind !== "ganho") out.push(d);
+    else if (!hasInteg) out.push({ stage: integ, kind: "integracao" });
   }
   return out;
 }
@@ -2045,9 +2182,8 @@ const RETRY_PRESETS = [
 ];
 
 function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet, onAfter, onTouch }) {
-  const dests = destinationsFor(saasCfg, lead);
+  const dests = withoutWonStep(saasCfg, lead, destinationsFor(saasCfg, lead));
   const stageMeta = Object.fromEntries((saasCfg?.funnel || []).map((f) => [f.stage, f]));
-  const isFollowup = stageKind(saasCfg, lead.stage || firstStage(saasCfg)) === "followup";
   const closers = usersByRole("closer");
   const integrators = usersByRole("integrator");
   const reasons = lossReasonsOf(saasCfg);
@@ -2055,17 +2191,20 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   const [dest, setDest] = useS(null);       // { stage, kind }
   const [closer, setCloser] = useS(lead.closer || "");
   const [integrator, setIntegrator] = useS(lead.integrator || (integrators.length === 1 ? integrators[0].id : ""));
-  const [amount, setAmount] = useS(lead.amount || "");
+  // Observação do closer pra quem integra (lead.integrationNote): aparece no
+  // Resumo do cliente e entra no briefing da integração.
+  const [integNote, setIntegNote] = useS(lead.integrationNote || "");
   const [payment, setPayment] = useS(lead.paymentMethod || "");
-  // O que foi VENDIDO (produto do catálogo da apresentação + ciclo): o card só
-  // vai pra Integração depois de fechar, e a entrega precisa do escopo.
-  const [dealProduct, setDealProduct] = useS(lead.dealProduct || "");
-  const [planClosed, setPlanClosed] = useS(lead.planClosed || "anual");
+  // O que foi VENDIDO (um item por produto do catálogo: plano, ciclo e valor):
+  // o card só vai pra Integração depois de fechar, e a entrega precisa do escopo.
+  const [items, setItems] = useS(() => dealItemsFromLead(lead));
+  const setItem = (key, patch) => setItems((cur) => cur.map((it) => (it.key === key ? { ...it, ...(typeof patch === "function" ? patch(it) : patch) } : it)));
   const [reason, setReason] = useS("");
   const [note, setNote] = useS("");
   const [slot, setSlot] = useS(lead.callAt || "");
   const [day, setDay] = useS(() => nextBusinessDays(1)[0]); // dia da grade (qualquer dia via calendário)
   const [retryAt, setRetryAt] = useS(""); // "Retomar": quando voltar nesse lead
+  const [fupDay, setFupDay] = useS(""); // Follow-up: DIA do Contato 1 (sem hora, não ocupa agenda)
   // Call → Follow-up: qual proposta ficou na mesa (obrigatória nesse movimento)
   // — o PRODUTO da apresentação + o ciclo, pro follow-up cobrar a oferta certa.
   const fromCall = stageKind(saasCfg, lead.stage || saasCfg?.funnel?.[0]?.stage) === "call";
@@ -2077,10 +2216,10 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   const [meetRes, setMeetRes] = useS(null);      // { callUrl, attendees }
   const [meetErr, setMeetErr] = useS(null);
   useE(() => {
-    setDest(null); setCloser(lead.closer || ""); setSlot(lead.callAt || ""); setDay(nextBusinessDays(1)[0]); setRetryAt("");
+    setDest(null); setCloser(lead.closer || ""); setSlot(lead.callAt || ""); setDay(nextBusinessDays(1)[0]); setRetryAt(""); setFupDay("");
     setIntegrator(lead.integrator || (integrators.length === 1 ? integrators[0].id : ""));
-    setAmount(lead.amount || ""); setPayment(lead.paymentMethod || ""); setReason(""); setNote("");
-    setDealProduct(lead.dealProduct || ""); setPlanClosed(lead.planClosed || "anual");
+    setPayment(lead.paymentMethod || ""); setReason(""); setNote(""); setIntegNote(lead.integrationNote || "");
+    setItems(dealItemsFromLead(lead));
     setOffer(lead.proposalOffer || ""); setOfferProduct(lead.proposalProduct || "");
     setEmail(lead.email || ""); setEmailTouched(false); setMeetBusy(false); setMeetRes(null); setMeetErr(null);
   }, [lead.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2091,24 +2230,17 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     if (!emailTouched && lead.email) setEmail(lead.email);
   }, [lead.email, emailTouched]);
 
-  // Follow-up: pré-seleciona o horário que a IA sugeriu na última call
-  // (callSummary.followup.quando, hora de Brasília), quando cai num slot válido
-  // (dia útil à vista, dentro do expediente, no futuro e livre na agenda).
+  // Follow-up: pré-seleciona o DIA que a IA sugeriu na última call
+  // (callSummary.followup.quando), quando é um dia útil de hoje em diante.
+  // Só o dia: follow-up não tem horário nem ocupa a agenda.
   useE(() => {
-    if (!dest || dest.retry || setupType(dest.kind) !== "followup" || slot) return;
-    const m = String(callSummary?.followup?.quando || "").match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/);
-    if (!m) return;
-    const hh = Number(m[2]);
-    // A sugestão vem em qualquer minuto; ancora na meia hora da grade.
-    const mm = Number(m[3]) < 30 ? 0 : 30;
-    if (hh < CALL_H0 || hh >= CALL_H1) return;
-    const dd = nextBusinessDays(6);
-    const idx = dd.findIndex((d) => cellKey(d).slice(0, 10) === m[1]);
-    if (idx < 0) return;
-    const cell = new Date(dd[idx]); cell.setHours(hh, mm, 0, 0);
-    if (cell.getTime() <= Date.now()) return;
-    if (closer && callBusyKeys(leads, closer, lead.id).has(cellKey(cell))) return;
-    setDay(dd[idx]); setSlot(slotVal(dd[idx], hh, mm));
+    if (!dest || dest.retry || setupType(dest.kind) !== "followup") return;
+    const sug = followupDayOf(callSummary?.followup?.quando);
+    const t = localDayStart(sug);
+    if (!sug || !Number.isFinite(t) || t < new Date().setHours(0, 0, 0, 0)) return;
+    const w = new Date(t).getDay();
+    if (w === 0 || w === 6) return;
+    setFupDay(sug);
   }, [dest, callSummary]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (dests.length === 0) return null;
@@ -2118,8 +2250,8 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   const days = nextBusinessDays(6);
 
   // Horas ocupadas na agenda do closer (cada call = 1h; ignora o próprio lead).
-  // Vale pra call e pro follow-up: ambos marcam horário na agenda do closer.
-  const busy = (setup === "call" || setup === "followup") && closer ? callBusyKeys(leads, closer, lead.id)
+  // Follow-up não entra: é só DIA e nunca ocupa a agenda.
+  const busy = setup === "call" && closer ? callBusyKeys(leads, closer, lead.id)
     : setup === "integrator" && integrator ? integBusyKeys(leads, integrator, lead.id)
     : new Set();
 
@@ -2135,9 +2267,15 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     // quem precisa de outra data muda ali mesmo.
     if (next.retry) { setRetryAt(retryPreset(Number(cadenceOf(saasCfg, lead.stage)?.retryDays) || 1)); return; }
     const st = setupType(next.kind);
+    if (st === "followup") {
+      // Dia do Contato 1: o dia que já está no lead (se ainda não passou) ou
+      // hoje + o prazo do Contato 1 (Configurações → Follow-up).
+      const cur = followupDayOf(lead.followupAt);
+      setFupDay(cur && localDayStart(cur) >= new Date().setHours(0, 0, 0, 0) ? cur : defaultFollowupDay());
+      return;
+    }
     const at = st === "integrator" ? (lead.integrationAt || "")
       : st === "call" ? (lead.callAt || "")
-      : st === "followup" ? (lead.followupAt || "") // remarcar o follow-up abre no horário dele
       : "";
     setSlot(at);
     setDay(at ? parseYMD(at.slice(0, 10)) : nextBusinessDays(1)[0]);
@@ -2145,17 +2283,31 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
 
   const isRetry = !!dest?.retry;
   // Produto do catálogo é obrigatório pra fechar em quem tem catálogo (o SaaS
-  // sem catálogo, como a mentoria do Kids, nem mostra o campo).
-  const askProduct = dealProductsOf(lead.saas).length > 0;
-  const oneOff = isOneOffProduct(lead.saas, dealProduct);
-  const dealReady = Number(amount) > 0 && !!payment && (!askProduct || !!dealProduct);
+  // sem catálogo, como a mentoria do Kids, nem mostra o campo). A lista é a do
+  // catálogo de planos da plataforma (Comercial → Planos), não uma fixa.
+  const plans = closingPlansOf(lead.saas);
+  const askProduct = plans.length > 0;
+  // Ciclo que vale pro plano escolhido: compra única é sempre "Serviço único";
+  // ciclo que o plano não vende cai no primeiro que ele vende. Vazio, "não
+  // chegou na proposta" e o legado do lead ("Assinatura mensal") ficam.
+  const cycleFor = (plan, current) => {
+    if (!plan || !current || current === "nenhuma" || plan.cycles.includes(current)) return current;
+    return CLOSED_PLANS.find((p) => p.id === current)?.legacy ? current : plan.cycles[0];
+  };
+  // Cada item com o plano do catálogo, o ciclo que vale pra ele e o valor lido.
+  const rows = items.map((it) => {
+    const plan = plans.find((p) => p.id === it.product) || null;
+    return { ...it, planObj: plan, closed: cycleFor(plan, it.plan), value: parseMoneyInput(it.amount) };
+  });
+  const amountNum = rows.reduce((sum, r) => sum + r.value, 0);
+  const dealReady = !!payment && rows.every((r) => r.value > 0 && (!askProduct || (!!r.product && !!r.closed)));
   // Proposta na mesa completa = ciclo escolhido E, em quem tem catálogo, o
   // produto ofertado ("não chegou na proposta" dispensa o produto).
   const offerDone = !!offer && (offer === "nenhuma" || !askProduct || !!offerProduct);
   const ready = !dest ? false
     : isRetry ? !!retryAt
     : setup === "call" ? !!(closer && slot)
-    : setup === "followup" ? !!closer && (!fromCall || offerDone) // horário é opcional; saindo da call, a proposta na mesa é obrigatória
+    : setup === "followup" ? !!closer && !!fupDay && (!fromCall || offerDone) // saindo da call, a proposta na mesa é obrigatória
     : setup === "integrator" ? !!(integrator && (dest.kind !== "integracao" || dealReady))
     : setup === "won" ? dealReady
     : setup === "loss" ? !!reason
@@ -2163,10 +2315,15 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
 
   // O fechamento em si (produto, ciclo, valor, pagamento) — igual no gate do
   // board: quem fecha pelo roteiro registra a mesma coisa.
+  // Mais de um produto: a lista vai em dealItems (o servidor abre uma
+  // assinatura por produto recorrente); com um só, a lista antiga é limpa.
   const dealPatch = () => ({
-    amount: Number(amount),
+    amount: amountNum,
     paymentMethod: payment,
-    ...(askProduct ? { dealProduct, planClosed: oneOff ? "unico" : planClosed } : {}),
+    ...(askProduct ? { dealProduct: rows[0].product, planClosed: rows[0].closed } : {}),
+    ...(askProduct && rows.length > 1
+      ? { dealItems: rows.map((r) => ({ product: r.product, planClosed: r.closed, amount: r.value })) }
+      : Array.isArray(lead.dealItems) && lead.dealItems.length ? { dealItems: [] } : {}),
   });
 
   function confirm() {
@@ -2176,17 +2333,20 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     if (isRetry) { onTouch && onTouch(retryAt); return; }
     const patch = { stage: dest.stage };
     if (setup === "call") { patch.closer = closer; patch.callAt = slot; if (email.trim()) patch.email = email.trim(); }
-    // Follow-up: mantém o closer e, se um horário foi escolhido, agenda nele —
-    // followAt PRÓPRIO (aparece na agenda com a cara de follow-up, sem travar
-    // slots de venda) + nextActionAt (a fila do "meu dia" vence exatamente nesse
-    // horário, não na cadência padrão). Já foi gravado no callAt e dava ruim: a
-    // agenda desenhava um "✓ call feita" que nunca aconteceu e ainda arquivava a
-    // call de verdade no histórico (Leo, 13/08 — casos Beto e Milaan).
-    else if (setup === "followup") { patch.closer = closer; if (fromCall && offer) { patch.proposalOffer = offer; patch.proposalProduct = offer === "nenhuma" ? "" : offerProduct; } if (slot) { patch.followupAt = slot; patch.nextActionAt = slot; } }
+    // Follow-up: mantém o closer e marca o DIA do Contato 1 (followupAt, sem
+    // hora: não ocupa a agenda). O servidor zera a sequência e põe o GPS em
+    // 00:00 desse dia. Já foi gravado no callAt e dava ruim: a agenda desenhava
+    // um "✓ call feita" que nunca aconteceu (Leo, 13/08 — casos Beto e Milaan).
+    else if (setup === "followup") { patch.closer = closer; if (fromCall && offer) { patch.proposalOffer = offer; patch.proposalProduct = offer === "nenhuma" ? "" : offerProduct; } patch.followupAt = fupDay; }
     // Integração: define o integrador e, se um horário foi escolhido na agenda,
     // agenda a integração nele (integrationAt aparece na Agenda e replica na
     // agenda pessoal do integrador que conectou o Google).
-    else if (setup === "integrator") { patch.integrator = integrator; if (slot) patch.integrationAt = slot; if (dest.kind === "integracao" && Number(amount) > 0) { Object.assign(patch, dealPatch()); } }
+    else if (setup === "integrator") {
+      patch.integrator = integrator;
+      if (slot) patch.integrationAt = slot;
+      if (integNote.trim() !== String(lead.integrationNote || "")) patch.integrationNote = integNote.trim();
+      if (dest.kind === "integracao" && amountNum > 0) Object.assign(patch, dealPatch());
+    }
     else if (setup === "won") { Object.assign(patch, dealPatch()); }
     else if (setup === "loss") { patch.lostReason = reason; if (note.trim()) patch.lostNote = note.trim(); }
     onMove && onMove(patch);
@@ -2211,39 +2371,89 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   }
   const label = { display: "block", marginBottom: 4 };
   const fieldStyle = { width: "100%", height: 30, padding: "0 8px", background: "var(--bg-1)", border: "1px solid var(--line-1)", borderRadius: 999, color: "var(--fg-1)", fontSize: 12.5 };
+  // Gatilho do SelectPopover na medida dos campos desta seção.
+  const pickStyle = { height: 30, padding: "0 12px", borderRadius: 999, background: "var(--bg-1)" };
+  const inputStyle = { height: 30, padding: "0 12px", borderRadius: 999, fontSize: 12.5 };
+  const userOptions = (users) => users.map((u) => ({ value: u.id, label: u.name || u.id }));
+  // Ciclos que dá pra fechar no plano escolhido: os que ele tem preço no
+  // catálogo; compra única é sempre "Serviço único"; produto personalizado ou
+  // plano sob consulta abre os ciclos vendidos hoje. Legado ("Assinatura
+  // mensal") só aparece quando já é o valor do lead.
+  const cycleChoices = (plan, current) => {
+    const ids = plan ? plan.cycles : CLOSED_PLANS.filter((p) => !p.legacy).map((p) => p.id);
+    const opts = CLOSED_PLANS.filter((p) => ids.includes(p.id));
+    return withLegacyOption(opts, CLOSED_PLANS, current).map((p) => ({ value: p.id, label: p.label }));
+  };
   const slotFmt = (v) => { const d = new Date(v); return Number.isFinite(d.getTime()) ? d.toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""; };
 
   // O que foi vendido — os mesmos campos do gate do board (produto do catálogo,
-  // ciclo, valor e pagamento), servindo a Integração e o Ganho.
+  // ciclo, valor e pagamento), servindo a Integração e o Ganho. Um bloco por
+  // produto (plano à esquerda; ciclo e valor à direita) e, no fim, o pagamento
+  // e o total da venda. Um plano recorrente por produto (LeverAds, LeverPrice…):
+  // o mesmo produto em dois blocos seria duas assinaturas do mesmo sistema.
+  const money = (v) => window.fmt?.moneyFull?.(v) || `R$ ${v}`;
+  const plansFor = (i) => {
+    const others = rows.filter((_, j) => j !== i);
+    const taken = new Set(others.filter((r) => r.planObj && !r.planObj.oneOff && r.planObj.product).map((r) => r.planObj.product));
+    const picked = new Set(others.map((r) => r.product).filter(Boolean));
+    return plans.filter((p) => p.id === rows[i]?.product || (!picked.has(p.id) && (p.oneOff || !p.product || !taken.has(p.product))));
+  };
+  const multi = rows.length > 1;
   const dealFields = (hint) => (
-    <div style={{ maxWidth: 340 }}>
-      <DealProductField saas={lead.saas} value={dealProduct} plan={planClosed} amount={amount}
-        fieldStyle={fieldStyle} labelStyle={label}
-        onChange={(id, p) => { setDealProduct(id); if (p?.oneOff) setPlanClosed("unico"); }}
-        onPick={(r) => { setAmount(String(r.value)); if (r.plan) setPlanClosed(r.plan); }} />
-      {askProduct && (
-        <div style={{ marginTop: 12 }}>
-          <label className="kicker" style={label}>Plano fechado *</label>
-          <select value={oneOff ? "unico" : planClosed} disabled={oneOff}
-            onChange={(e) => setPlanClosed(e.target.value)} style={{ ...fieldStyle, opacity: oneOff ? 0.7 : 1 }}>
-            {/* Só os planos ativos; "Assinatura mensal" (legado) só quando já é o plano do lead. */}
-            {withLegacyOption(CLOSED_PLANS_ACTIVE, CLOSED_PLANS, planClosed).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-          </select>
-        </div>
+    <div className="today-deal">
+      {rows.map((r, i) => {
+        const monthly = askProduct && r.closed === "mensal";
+        return (
+          <div key={r.key} className={"today-deal-item" + (multi ? " is-boxed" : "")}>
+            {multi && (
+              <div className="today-deal-item-head">
+                <span className="kicker">Produto {i + 1}</span>
+                <button type="button" className="mono dim" onClick={() => setItems((cur) => cur.filter((it) => it.key !== r.key))}
+                  aria-label={`Remover o produto ${i + 1}`}>remover</button>
+              </div>
+            )}
+            <div className="today-dest-grid">
+              {askProduct && (
+                <div>
+                  <DealPlanField plans={plansFor(i)} value={r.product} plan={r.closed} amount={r.value} style={pickStyle} inputStyle={inputStyle}
+                    label={multi ? `Produto vendido ${i + 1} *` : "Produto vendido *"}
+                    onChange={(id, p) => setItem(r.key, (it) => ({ product: id, plan: cycleFor(p, it.plan) }))}
+                    onPick={(price) => setItem(r.key, { amount: String(price.value), ...(price.plan ? { plan: price.plan } : {}) })} />
+                </div>
+              )}
+              <div className="today-deal-side">
+                {askProduct && (
+                  <div>
+                    <div className="kicker" style={label}>Plano fechado *</div>
+                    <Choice label={multi ? `Plano fechado ${i + 1}` : "Plano fechado"} size="sm" value={r.closed}
+                      options={cycleChoices(r.planObj, r.closed)} onChange={(v) => setItem(r.key, { plan: v })} />
+                    {r.planObj?.custom && <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>plano sob consulta: sem preço de tabela, informe o valor fechado</div>}
+                  </div>
+                )}
+                <div>
+                  <label className="kicker" style={label} htmlFor={`deal-amount-${lead.id}-${i}`}>{monthly ? "Valor mensal (R$) *" : multi ? "Valor deste produto (R$) *" : "Valor do negócio (R$) *"}</label>
+                  <input id={`deal-amount-${lead.id}-${i}`} type="text" inputMode="decimal" autoComplete="off" value={r.amount} placeholder={monthly ? "ex.: 599" : "ex.: 7.188"}
+                    onChange={(e) => setItem(r.key, { amount: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") confirm(); }} style={fieldStyle} />
+                  {monthly && <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>recorrência: a cada 30 dias do fechamento o acumulado do cliente soma mais uma mensalidade</div>}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+      {askProduct && plansFor(rows.length).length > 0 && (
+        <button type="button" className="today-deal-add" onClick={() => setItems((cur) => [...cur, dealItem()])}>+ adicionar outro produto</button>
       )}
-      <div style={{ marginTop: 12 }}>
-        <label className="kicker" style={label}>{askProduct && !oneOff && planClosed === "mensal" ? "Valor mensal (R$) *" : "Valor do negócio (R$) *"}</label>
-        <input type="number" min="0" step="0.01" value={amount} placeholder={askProduct && !oneOff && planClosed === "mensal" ? "ex.: 599" : "ex.: 7188"}
-          onChange={(e) => setAmount(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") confirm(); }} style={fieldStyle} />
-        <div className="mono dim" style={{ fontSize: 10, marginTop: 5 }}>
-          {askProduct && !oneOff && planClosed === "mensal"
-            ? "recorrência: a cada 30 dias do fechamento o acumulado do cliente soma mais uma mensalidade"
-            : hint}
+      <div className="today-dest-grid">
+        <div>
+          <div className="kicker" style={label}>Modo de pagamento *</div>
+          <PaymentMethodPicker value={payment} onChange={setPayment} style={pickStyle} inputStyle={inputStyle} />
         </div>
-      </div>
-      <div style={{ marginTop: 12 }}>
-        <label className="kicker" style={label}>Modo de pagamento *</label>
-        <PaymentMethodSelect value={payment} onChange={setPayment} fieldStyle={fieldStyle} placeholder="como o cliente fechou…" />
+        <div>
+          <div className="kicker" style={label}>{multi ? "Total da venda" : "Receita"}</div>
+          <div className="today-dest-static"><strong className="tnum">{amountNum > 0 ? money(amountNum) : "—"}</strong></div>
+          <div className="mono dim" style={{ fontSize: 10, marginTop: 2 }}>{multi ? `soma dos ${rows.length} produtos · ${hint}` : hint}</div>
+        </div>
       </div>
     </div>
   );
@@ -2261,7 +2471,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
             const on = isRetry;
             return (
               <button key="retry" onClick={() => chooseDest(d)}
-                title={isFollowup ? "Escolher a data e a hora de retorno do follow-up" : d.promote
+                title={d.promote
                   ? `Não atendeu ou ainda não fechou · registra a tentativa, vai pra ${d.stage} e você escolhe quando voltar`
                   : "Não atendeu · registra a tentativa e você escolhe o dia e a hora de voltar"}
                 style={{
@@ -2271,7 +2481,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                   color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 13, fontWeight: 600,
                 }}>
                 <span style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
-                {isFollowup ? "Follow-up" : d.promote ? `${d.stage} · retomar` : "Retomar"}
+                {d.promote ? `${d.stage} · retomar` : "Retomar"}
               </button>
             );
           }
@@ -2299,7 +2509,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
               duas semanas tinha que corrigir no card depois. */}
           {isRetry && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <label className="kicker" htmlFor={`return-at-${lead.id}`}>{isFollowup ? "Data de retorno" : "Quando retomar"}</label>
+              <label className="kicker" htmlFor={`return-at-${lead.id}`}>Quando retomar</label>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                 {RETRY_PRESETS.map(([txt, mk]) => {
                   const v = mk();
@@ -2318,7 +2528,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                   style={{ ...fieldStyle, width: "auto", height: 28, fontFamily: "var(--mono)", fontSize: 11.5 }} />
               </div>
               <div className="mono dim" style={{ fontSize: 10.5 }}>
-                {isFollowup ? "O cliente continua em follow-up e volta à sua fila na data escolhida." : <>registra a tentativa de contato{dest.promote ? ` e manda o card pra ${dest.stage}` : ""} · o lead volta na sua fila nesse horário</>}
+                registra a tentativa de contato{dest.promote ? ` e manda o card pra ${dest.stage}` : ""} · o lead volta na sua fila nesse horário
               </div>
             </div>
           )}
@@ -2327,11 +2537,9 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
             <>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
                 <div>
-                  <label className="kicker" style={label}>Closer da call *</label>
-                  <select value={closer} onChange={(e) => { setCloser(e.target.value); setSlot(""); }} style={fieldStyle}>
-                    <option value="">escolher o closer…</option>
-                    {closers.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
-                  </select>
+                  <div className="kicker" style={label}>Closer da call *</div>
+                  <SelectPopover label="Closer da call" placeholder="escolher o closer…" style={pickStyle}
+                    value={closer} options={userOptions(closers)} onChange={(v) => { setCloser(v); setSlot(""); }} />
                 </div>
               </div>
               {closer ? (
@@ -2365,39 +2573,30 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
                     {askProduct && offer !== "nenhuma" && (
                       <div style={{ width: "min(280px, 100%)" }}>
-                        <label className="kicker" style={label}>Qual produto ficou ofertado? *</label>
-                        <SelectWithCustom ids={dealProductsOf(lead.saas).map((p) => p.id)} value={offerProduct} onChange={setOfferProduct}
-                          fieldStyle={fieldStyle} placeholder="o produto da apresentação…"
-                          customLabel="Personalizado… (escrever o produto)" customPlaceholder="escreva o produto ofertado…">
-                          <ProductOptions products={dealProductsOf(lead.saas)} />
-                        </SelectWithCustom>
+                        <DealPlanField plans={plans} value={offerProduct} chips={false} style={pickStyle} inputStyle={inputStyle}
+                          label="Qual produto ficou ofertado? *" placeholder="o plano da apresentação…" customPlaceholder="escreva o produto ofertado…"
+                          onChange={(id, p) => { setOfferProduct(id); if (offer && offer !== "nenhuma") setOffer(cycleFor(p, offer)); }} />
                       </div>
                     )}
-                    <div style={{ width: "min(280px, 100%)" }}>
-                      <label className="kicker" style={label}>Qual proposta ficou na mesa? *</label>
-                      <select value={offer} onChange={(e) => setOffer(e.target.value)} style={fieldStyle}>
-                        <option value="">a oferta que o cliente levou pra pensar…</option>
-                        {CLOSED_PLANS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-                        <option value="nenhuma">não chegou na proposta</option>
-                      </select>
+                    <div style={{ minWidth: 0, maxWidth: "100%" }}>
+                      <div className="kicker" style={label}>Qual proposta ficou na mesa? *</div>
+                      <Choice label="Qual proposta ficou na mesa?" size="sm" value={offer} onChange={setOffer}
+                        options={[...cycleChoices(plans.find((p) => p.id === offerProduct) || null, offer), { value: "nenhuma", label: "não chegou na proposta" }]} />
                     </div>
                   </div>
                 )}
                 <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginBottom: 6 }}>
-                  Quando fazer o follow-up · agenda de {displayName(closer)}
+                  Dia do contato 1 de {FOLLOWUP_STEPS} · {displayName(closer)}
                 </div>
                 {callSummary?.followup?.nota && <div className="mono" style={{ fontSize: 10.5, color: "var(--accent)", marginBottom: 6 }}>✨ IA (última call): {callSummary.followup.nota}</div>}
-                <SlotGrid days={days} day={day} setDay={setDay} slot={slot} setSlot={setSlot} busy={busy} />
-                {slot && <div className="mono" style={{ fontSize: 11.5, color: "var(--accent)", marginTop: 8 }}>Follow-up: {slotFmt(slot)} · {displayName(closer)}</div>}
-                <div className="mono dim" style={{ fontSize: 10, marginTop: 6 }}>entra na agenda nesse horário · não trava o slot pra novas calls de venda. Sem horário, retoma pela cadência.</div>
+                <DayPicker value={fupDay} onChange={setFupDay} label="Dia do contato 1" />
+                <div className="mono dim" style={{ fontSize: 10, marginTop: 6 }}>só o dia, sem horário · não ocupa a agenda. Os próximos contatos caem sozinhos pelo prazo de cada um.</div>
               </div>
             ) : (
               <div style={{ maxWidth: 280 }}>
-                <label className="kicker" style={label}>Responsável pelo follow-up *</label>
-                <select value={closer} onChange={(e) => { setCloser(e.target.value); setSlot(""); }} style={fieldStyle}>
-                  <option value="">escolher…</option>
-                  {closers.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
-                </select>
+                <div className="kicker" style={label}>Responsável pelo follow-up *</div>
+                <SelectPopover label="Responsável pelo follow-up" placeholder="escolher…" style={pickStyle}
+                  value={closer} options={userOptions(closers)} onChange={(v) => { setCloser(v); setSlot(""); }} />
               </div>
             )
           )}
@@ -2405,26 +2604,49 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
           {setup === "integrator" && (() => {
             const integLabel = dest.kind === "integracao" ? "integração" : "entrega/CS";
             return (
-              <div>
-                <div style={{ maxWidth: 280 }}>
-                  <label className="kicker" style={label}>Responsável pela {integLabel} *</label>
-                  <select value={integrator} onChange={(e) => { setIntegrator(e.target.value); setSlot(""); }} style={fieldStyle}>
-                    <option value="">escolher o integrador…</option>
-                    {integrators.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
-                  </select>
-                  {lead.closer && <div className="mono dim" style={{ fontSize: 10.5, marginTop: 5 }}>closer da venda: {displayName(lead.closer)} (fica registrado)</div>}
-                </div>
-                {dest.kind === "integracao" && <div style={{ marginTop: 12 }}>{dealFields("fechou! esse é o valor do negócio (vira a receita do closer)")}</div>}
-                {integrator && (
-                  <div style={{ marginTop: 14 }}>
-                    <div className="kicker" style={{ marginBottom: 8 }}>
-                      Quando fazer a {integLabel} · agenda de {displayName(integrator)}
-                    </div>
-                    <SlotGrid days={days} day={day} setDay={setDay} slot={slot} setSlot={setSlot} busy={busy} />
-                    {slot && <div className="mono" style={{ fontSize: 11.5, color: "var(--accent)", marginTop: 8 }}>{integLabel[0].toUpperCase() + integLabel.slice(1)}: {slotFmt(slot)} · {displayName(integrator)}</div>}
-                    <div className="mono dim" style={{ fontSize: 10, marginTop: 6 }}>entra na agenda nesse horário e replica na agenda pessoal do integrador (se ele conectou o Google). Sem horário, só move pra {integLabel}.</div>
-                  </div>
+              <div className="today-dest-form">
+                {/* A venda (só indo pra Integração: é ali que o fechamento é
+                    registrado) e a entrega (quem, quando e o que precisa saber). */}
+                {dest.kind === "integracao" && (
+                  <section className="today-dest-section" aria-label="A venda">
+                    <h4 className="today-dest-title">A venda</h4>
+                    {dealFields("vira a receita do closer")}
+                  </section>
                 )}
+                <section className="today-dest-section" aria-label="A entrega">
+                  <h4 className="today-dest-title">A entrega</h4>
+                  <div className="today-dest-grid">
+                    <div>
+                      <div className="kicker" style={label}>Responsável pela {integLabel} *</div>
+                      <SelectPopover label={`Responsável pela ${integLabel}`} placeholder="escolher o integrador…" style={pickStyle}
+                        value={integrator} options={userOptions(integrators)} onChange={(v) => { setIntegrator(v); setSlot(""); }} />
+                    </div>
+                    {lead.closer && (
+                      <div>
+                        <div className="kicker" style={label}>Closer da venda</div>
+                        <div className="today-dest-static">{displayName(lead.closer)} <span className="mono dim">fica registrado</span></div>
+                      </div>
+                    )}
+                    <div className="is-wide">
+                      <label className="kicker" style={label} htmlFor={`integ-note-${lead.id}`}>Obs. pra {integLabel}</label>
+                      <textarea id={`integ-note-${lead.id}`} className="inp today-dest-note" rows={2} value={integNote} maxLength={1000}
+                        onChange={(e) => setIntegNote(e.target.value)}
+                        placeholder="o que quem integra precisa saber: combinados, acessos, prazos, particularidades do cliente…" />
+                    </div>
+                  </div>
+                  {integrator ? (
+                    <div>
+                      <div className="kicker" style={{ marginBottom: 8 }}>
+                        Quando fazer a {integLabel} · agenda de {displayName(integrator)}
+                      </div>
+                      <SlotGrid days={days} day={day} setDay={setDay} slot={slot} setSlot={setSlot} busy={busy} />
+                      {slot && <div className="mono" style={{ fontSize: 11.5, color: "var(--accent)", marginTop: 8 }}>{integLabel[0].toUpperCase() + integLabel.slice(1)}: {slotFmt(slot)} · {displayName(integrator)}</div>}
+                      <div className="mono dim" style={{ fontSize: 10, marginTop: 6 }}>entra na agenda nesse horário e replica na agenda pessoal do integrador (se ele conectou o Google). Sem horário, só move pra {integLabel}.</div>
+                    </div>
+                  ) : (
+                    <div className="mono dim" style={{ fontSize: 11 }}>escolha o responsável pra ver os horários livres da agenda dele</div>
+                  )}
+                </section>
               </div>
             );
           })()}
@@ -2434,11 +2656,9 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
           {setup === "loss" && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
               <div>
-                <label className="kicker" style={label}>Motivo *</label>
-                <select value={reason} onChange={(e) => setReason(e.target.value)} style={fieldStyle}>
-                  <option value="">escolha o motivo…</option>
-                  {reasons.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
-                </select>
+                <div className="kicker" style={label}>Motivo *</div>
+                <SelectPopover label="Motivo da perda" placeholder="escolha o motivo…" style={pickStyle}
+                  value={reason} options={reasons.map((r) => ({ value: r.id, label: r.label }))} onChange={setReason} />
               </div>
               <div>
                 <label className="kicker" style={label}>Detalhe (opcional)</label>
@@ -2479,7 +2699,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                 height: 32, padding: "0 16px", borderRadius: 999, fontSize: 12.5, fontWeight: 600,
                 background: ready ? "var(--btn-bg, var(--accent))" : "var(--bg-2)", color: ready ? "var(--btn-fg, var(--accent-fg))" : "var(--fg-4)",
                 border: "1px solid " + (ready ? "var(--btn-bg, var(--accent))" : "var(--line-2)"), cursor: ready ? "pointer" : "not-allowed",
-              }}>{isRetry ? (isFollowup ? "agendar retorno →" : "registrar tentativa e retomar →") : setup === "followup" && slot ? "agendar follow-up →" : `mover pra ${dest.stage} →`}</button>
+              }}>{isRetry ? "registrar tentativa e retomar →" : setup === "followup" ? "agendar follow-up →" : `mover pra ${dest.stage} →`}</button>
               <button onClick={() => setDest(null)} className="mono dim" style={{ fontSize: 11.5 }}>cancelar</button>
             </div>
           )}

@@ -98,7 +98,7 @@ test("lembrete cala quando gente confirmou na mão minutos antes (e o passo fica
   await runnerOf(repo, wa).tick();
   assert.equal(wa.sent.length, 0, "robô não repete a confirmação que a pessoa acabou de mandar");
   const log = (await repo.get("leads", "L1")).confirmLog;
-  assert.equal(log.manha, "skip", "a manhã pula: o de 2h já está na porta");
+  assert.equal(log.manha, undefined, "a manhã (8h) já passou da janela sem sair: nada a carimbar");
   assert.equal(log["2h"], "humano");
 });
 
