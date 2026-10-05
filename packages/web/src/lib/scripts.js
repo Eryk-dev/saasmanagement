@@ -658,7 +658,9 @@ export function catalogStageRow(saasCfg, item) {
 // item sai com type/options pro painel renderizar o campo EDITÁVEL (select com
 // as opções do formulário; texto onde é livre). `key` é o campo do lead a ser
 // gravado (revenue = faixa de faturamento, que o briefing de integração já lê).
-const CHECKLIST_ORDER = ["niche", "company", "accounts", "listings", "revenue", "plan_expand", "staff", "decider"];
+// Ordem = a dos formulários v2 (OEM · Ads · Price): porta de entrada, tamanho
+// da operação, volume e por último a aberta. Chave que o produto não tem é pulada.
+const CHECKLIST_ORDER = ["niche", "company", "channel", "stores", "accounts", "listings", "orders", "ticket", "trigger"];
 
 export function scriptChecklist(saasCfg, lead) {
   const qs = saasCfg?.leadQuestions || [];
@@ -667,7 +669,7 @@ export function scriptChecklist(saasCfg, lead) {
   // SDR pergunta na ligação). Só entra quando o produto usa o formulário estilo
   // LeverAds (tem nicho/contas/anúncios...); produto B2C (ex.: UniqueKids, que
   // vende pra mãe) não mostra esse campo no checklist do roteiro.
-  const wantsCompany = ["niche", "accounts", "listings", "plan_expand", "staff"].some((k) => byKey[k]);
+  const wantsCompany = ["niche", "accounts", "listings", "orders", "ticket"].some((k) => byKey[k]);
   const fromQuestion = (q) => ({
     key: q.key, label: q.label,
     type: (q.options || []).length ? "select" : "text",

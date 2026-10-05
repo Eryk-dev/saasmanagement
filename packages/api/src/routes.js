@@ -1732,8 +1732,10 @@ export async function syncWonLeadDeal(repo, lead) {
 // chave em mergeLeadQuestions). Chamado quando um form é criado/editado. Só grava
 // se algo mudou. O painel do lead (deal.jsx) lê leadQuestions, então isso garante
 // que nenhuma resposta capturada fique de fora por divergência de chave.
+// Só form PUBLICADO entra: rascunho e backup são laboratório, e um rascunho
+// chegou a empurrar sete perguntas de teste pro card de todo lead (05/10/2026).
 async function syncLeadQuestions(repo, form) {
-  if (!form || !form.saas) return;
+  if (!form || !form.saas || form.status !== "published") return;
   const product = await repo.get("products", form.saas);
   if (!product) return;
   const next = mergeLeadQuestions(product.leadQuestions, form);
