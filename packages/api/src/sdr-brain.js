@@ -203,7 +203,8 @@ function priceBridgeText(nome) {
 // Desvio de preço colado na CONFIRMAÇÃO do horário (aceite + "qual o valor?"
 // na mesma mensagem): sem número, sem plano, e sem repetir a pergunta de
 // agenda que acabou de ser respondida.
-function priceAfterBookingText(nome) {
+function priceAfterBookingText(nome, { oem = false } = {}) {
+  if (oem) return OEM_PRICE_TEXT;
   return `Sobre o valor${nome ? ` ${nome}` : ""}: são planos diferentes e o certo pra sua operação o especialista te mostra nessa conversa, prefiro não te passar um número solto por aqui`;
 }
 // Lead na sala do Meet esperando (texto já normalizado, sem acento).
@@ -254,10 +255,54 @@ function nowLabelOf(wnow) {
   return `${WEEKDAYS[wnow.getUTCDay()]}, ${p2(wnow.getUTCDate())}/${p2(wnow.getUTCMonth() + 1)}, ${wnow.getUTCHours()}h${p2(wnow.getUTCMinutes())} (hora de Brasília)`;
 }
 
+// ── ROTEIRO LEVER OEM (doc do Leo, 05/10/2026: "FLUXO ROBÔ AGENDAMENTO E
+// CONFIRMAÇÃO LEVER OEM") ──────────────────────────────────────────────────
+// Lead que veio pelo OEM anda num roteiro FIXO, mensagem por mensagem; a IA
+// só entra no que o roteiro não cobre (dúvida técnica, objeção, remarcação,
+// pedido de outro dia). Copy do documento, só com o nome e o horário vivos.
+//   M1 abordagem           = 1º toque (sdr-flow.js, firstTouchOemText)
+//   M2 agendamento         = "sim" à abordagem → convite + par de horários
+//   M3 confirmação 1       = horário escolhido → reserva + "posso contar com sua presença?"
+//   M4 confirmação 2       = "sim" → computador, quem decide junto, acesso e lembrete
+//   preço após a abordagem = resposta oficial + o mesmo par de horários
+// Os lembretes do dia (8h · 2h · 10min) vivem no sdr-flow.js (reminderTextOem).
+const OEM_PRICE_TEXT = "O investimento depende da sua operação e das suas necessidades. Na demonstração, nosso especialista entende melhor o seu cenário e apresenta os planos e valores mais adequados para o momento da sua empresa.";
+// Resposta curta e positiva do lead ("sim", "pode ser", "ajudaria", "ok") que
+// move o roteiro; negativa, ressalva ou pedido de mudança fica com a IA.
+const OEM_NO_RX = /\bnao\b|\bnem\b|remarc|reagend|mudar|trocar|outr[oa]|cancel|imprevisto|talvez|depende|nao sei|prefiro/;
+const oemVoc = (nome, word) => (nome ? `${word} ${nome}.` : `${word}.`);
+function oemOfferLine(pair, wnow) {
+  if (pair.length >= 2) return `Tenho agenda para ${slotLabel(pair[0].at, wnow)} ou ${slotLabel(pair[1].at, wnow)}. Qual funciona melhor para você?`;
+  if (pair.length === 1) return `Tenho agenda para ${slotLabel(pair[0].at, wnow)}. Funciona para você?`;
+  return "";
+}
+function oemScheduleParts(nome, pair, wnow) {
+  return [
+    `${oemVoc(nome, "Maravilha")} Pelo que você me passou no formulário, faz sentido te mostrar a plataforma. A demonstração é focada na operação de autopeças e principalmente em ganhar escala na criação dos anúncios com compatibilidade através do OEM.`,
+    oemOfferLine(pair, wnow),
+  ];
+}
+function oemBookingParts(nome, quando) {
+  return [
+    `Perfeito${nome ? `, ${nome}` : ""}. Ficou então para ${quando}.`,
+    "É uma conversa rápida, em torno de 30/40 minutos e o especialista vai te mostrar na prática como a Lever pode ajudar a escalar suas vendas através de anúncios feitos com agilidade e estratégia.",
+    "Vou deixar esse horário reservado para você. Posso contar com sua presença?",
+  ];
+}
+function oemCommitParts(nome) {
+  return [
+    `${oemVoc(nome, "Combinado então")} Se possível, acesse pelo computador ou notebook para conseguir visualizar melhor todos os detalhes, ok?`,
+    "E, se tiver mais alguém envolvido na decisão, pode convidar para participar também. Assim conseguimos tirar todas as dúvidas de uma vez.",
+    "Te envio o acesso e um lembrete antes da reunião. Até lá!",
+  ];
+}
+
 // Resposta OFICIAL de preço (copy do Leo, 23/08) — o texto que entra no lugar
 // de QUALQUER resposta da IA que tenha citado valor. Sem horário junto: a
-// re-oferta de agenda colada no preço soava insistente.
-function priceDeferral(nome) {
+// re-oferta de agenda colada no preço soava insistente. Lead de OEM ouve a
+// copy do roteiro de 05/10.
+function priceDeferral(nome, { oem = false } = {}) {
+  if (oem) return OEM_PRICE_TEXT;
   const oi = nome ? `${nome}, o` : "O";
   return `${oi} investimento é de acordo com as necessidades da sua operação: primeiro a gente entende o seu cenário, e aí te mostra os pontos que dá pra alavancar. É exatamente isso que o especialista faz na demonstração.`;
 }
@@ -728,32 +773,6 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       await sendBot({ phone: to, text: `${nome ? `${nome}, j` : "J"}á avisei nosso especialista aqui, ele está finalizando outra conversa e entra em instantes. Fica na sala que ele já chega`, phoneId, saas: product.id, leadId: lead.id });
       return "lead-na-sala";
     }
-    const decision = await anthropic.sdrDecide({
-      sdrName: firstName((await repo.get("users", lead.owner).catch(() => null))?.name),
-      lead: { name: nome, company: lead.company, email: lead.email, niche: lead.niche },
-      digest: leadDigest(product, lead),
-      grade: leadGrade(lead) || "",
-      stage: lead.stage || firstStage(product),
-      callAt: lead.callAt || "",
-      nowLabel: nowLabelOf(wnow),
-      slots: awaitingReschedule ? [] : slotList,
-      conversation,
-      pain: leadPainFocus(product, lead),
-      canGreet,
-      gapMin,
-      demoOffered,
-      slotsOffered,
-      firstReply,
-      engaged,
-      suggestedPair: awaitingReschedule ? [] : suggestedPair,
-      requestedDate,
-      offerDate,
-      requestedEmpty,
-      rescheduleStatus: reschedule?.status || "",
-    });
-    // Quem respondeu e quanto custou: vai pro carimbo da thread e pro uso do dia.
-    Object.assign(meta, { model: decision.model || "", usage: decision.usage || null, ms: decision.ms || 0, saas: product.id });
-
     // Envio em PARTES, como gente digitando (Leo, 23/08): a 1ª mensagem sai
     // depois do atraso de resposta; as seguintes com 5s entre cada uma.
     //
@@ -801,6 +820,77 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       }
     };
 
+    // ── ROTEIRO LEVER OEM (doc do Leo, 05/10/2026) ──────────────────────────
+    // Lead de OEM anda num roteiro fixo; a IA só entra no que ele não cobre.
+    // Resposta curta e positiva, sem pergunta, sem preço e sem dia/hora pedidos
+    // (dia ou hora seguem pela agenda/IA) é o que move o roteiro.
+    const oem = leadPainFocus(product, lead)?.mode === "oem";
+    const plainIn = plainReply(lastInText);
+    const shortYes = oem && !lastInText.includes("?") && lastInText.trim().split(/\s+/).length <= 8
+      && (INTEREST_RX.test(lastInText) || ACCEPT_RX.test(plainIn))
+      && !PRICE_ASK_RX.test(lastInText) && !FORM_MSG_RX.test(lastInText) && !OEM_NO_RX.test(plainIn)
+      && !HAS_HOUR_RX.test(lastInText) && !DAY_WORD_RX.test(lastInText);
+    if (oem && !inCallWindow && !awaitingReschedule) {
+      // M4 · confirmação 2 + compromisso: o "sim" ao "posso contar com sua presença?".
+      if (lead.callAt && lead.sdrLog?.presenceAskedFor === lead.callAt && lead.sdrLog?.presenceConfirmedFor !== lead.callAt && shortYes) {
+        await stamp(lead, { presenceConfirmedFor: lead.callAt });
+        await send(oemCommitParts(nome));
+        return aborted ? "abortado" : "oem-compromisso";
+      }
+      // "ok" ao fecho do roteiro: nada a dizer (a IA inventaria conversa).
+      if (lead.callAt && lead.sdrLog?.presenceConfirmedFor === lead.callAt && shortYes) return "silencio";
+      // M2 · agendamento: "sim" à abordagem → convite + par de horários.
+      if (!lead.callAt && !slotsOffered && demoOffered && shortYes && suggestedPair.length) {
+        await send(oemScheduleParts(nome, suggestedPair, wnow));
+        if (aborted) return "abortado";
+        await stamp(lead, { oemScriptAt: new Date(nowMs).toISOString() });
+        await holdSlots(repo, { saas: product.id, leadId: lead.id, slots: suggestedPair, now: at }).catch(() => {});
+        return "oem-agendamento";
+      }
+      // Preço depois da abordagem (1ª vez, sem call): resposta oficial + os
+      // horários (no roteiro de OEM o preço LEVA a agenda). Aceite + preço na
+      // mesma mensagem fica com a trava de baixo: o horário trava primeiro.
+      if (!lead.callAt && !firstReply && PRICE_ASK_RX.test(lastInText) && !lead.sdrLog?.priceGuardAt) {
+        const free = new Set(slotList.map((s) => s.at));
+        const offered = slotsOffered ? offeredSlotsIn(agendaMessages, SDR_AUTHOR).filter((s) => free.has(s.at)) : [];
+        if (!(slotsOffered && acceptedSlot(lastInText, offered))) {
+          const offer = slotsOffered && offered.length >= 2
+            ? `Fica melhor ${slotLabel(offered[0].at, wnow)} ou ${slotLabel(offered[1].at, wnow)}?`
+            : oemOfferLine(suggestedPair, wnow) || "Qual período fica melhor pra você, manhã ou tarde?";
+          await send([OEM_PRICE_TEXT, offer]);
+          if (aborted) return "abortado";
+          await stamp(lead, { priceGuardAt: new Date(nowMs).toISOString() });
+          if (!slotsOffered && suggestedPair.length) await holdSlots(repo, { saas: product.id, leadId: lead.id, slots: suggestedPair, now: at }).catch(() => {});
+          return "oem-preco";
+        }
+      }
+    }
+    const decision = await anthropic.sdrDecide({
+      sdrName: firstName((await repo.get("users", lead.owner).catch(() => null))?.name),
+      lead: { name: nome, company: lead.company, email: lead.email, niche: lead.niche },
+      digest: leadDigest(product, lead),
+      grade: leadGrade(lead) || "",
+      stage: lead.stage || firstStage(product),
+      callAt: lead.callAt || "",
+      nowLabel: nowLabelOf(wnow),
+      slots: awaitingReschedule ? [] : slotList,
+      conversation,
+      pain: leadPainFocus(product, lead),
+      canGreet,
+      gapMin,
+      demoOffered,
+      slotsOffered,
+      firstReply,
+      engaged,
+      suggestedPair: awaitingReschedule ? [] : suggestedPair,
+      requestedDate,
+      offerDate,
+      requestedEmpty,
+      rescheduleStatus: reschedule?.status || "",
+    });
+    // Quem respondeu e quanto custou: vai pro carimbo da thread e pro uso do dia.
+    Object.assign(meta, { model: decision.model || "", usage: decision.usage || null, ms: decision.ms || 0, saas: product.id });
+
     // E-mail capturado na mensagem entra no cadastro (o convite do Meet usa).
     if (decision.email && /.+@.+\..+/.test(decision.email) && !lead.email) {
       try { await repo.update("leads", lead.id, { email: decision.email.trim() }); lead.email = decision.email.trim(); } catch { /* best-effort */ }
@@ -845,7 +935,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
         priceWithBooking = true;
       } else if (offered.length >= 2 && ACCEPT_RX.test(plainReply(lastInText))) {
         const iso = new Date(nowMs).toISOString();
-        await send([priceDeferral(nome), `Qual dos dois fica melhor pra você, ${slotLabel(offered[0].at, wnow)} ou ${slotLabel(offered[1].at, wnow)}?`]);
+        await send([priceDeferral(nome, { oem }), `Qual dos dois fica melhor pra você, ${slotLabel(offered[0].at, wnow)} ou ${slotLabel(offered[1].at, wnow)}?`]);
         await stamp(lead, { priceGuardAt: lead.sdrLog?.priceGuardAt || iso });
         return aborted ? "abortado" : "preco-aceite-qual";
       }
@@ -962,11 +1052,15 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
       await releaseHolds(repo, { saas: product.id, leadId: lead.id, now: at }).catch(() => {});
       // Confirmação com a DATA cravada (Leo, 24/08): "hoje/amanhã" solto na
       // confirmação vira mal-entendido quando o lead relê depois.
+      // ROTEIRO LEVER OEM (05/10): a M3 reserva o horário e pergunta "posso
+      // contar com sua presença?"; o "sim" seguinte vira a M4 (compromisso).
       await send(rebook
         ? rebookConfirmText(nome, slotLabelFull(pick.at, wnow), !!(lead.email && (fresh || lead).callUrl))
-        : bookingConfirmText(nome, slotLabelFull(pick.at, wnow), !!lead.email));
+        : oem ? oemBookingParts(nome, slotLabelFull(pick.at, wnow))
+          : bookingConfirmText(nome, slotLabelFull(pick.at, wnow), !!lead.email));
+      if (oem && !rebook && !aborted) await stamp(lead, { presenceAskedFor: pick.at });
       if (priceWithBooking && !aborted) {
-        await send(priceAfterBookingText(nome));
+        await send(priceAfterBookingText(nome, { oem }));
         await stamp(lead, { priceGuardAt: lead.sdrLog?.priceGuardAt || new Date(nowMs).toISOString() });
       }
       if (autoCallMeet) autoCallMeet(lead.id).catch(() => { /* o lembrete de 10min entrega o link quando existir */ });
@@ -980,7 +1074,7 @@ export function makeSdrBrain({ repo, whatsapp: wa, anthropic, autoCallMeet = nul
     // TRAVA DE PREÇO (1ª vez): a IA citou valor → sai a resposta oficial no
     // lugar. A 2ª e a 3ª insistência já foram tratadas pela escada lá em cima.
     if (PRICE_RX.test(parts.join(" "))) {
-      await send(priceDeferral(nome));
+      await send(priceDeferral(nome, { oem }));
       await stamp(lead, { priceGuardAt: new Date(nowMs).toISOString() });
       return "preco-travado";
     }

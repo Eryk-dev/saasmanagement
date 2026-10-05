@@ -197,7 +197,7 @@ function actionHint(item) {
   const tent = Number(l.stageAttempts) || 0;
   const partes = [];
   if (item.confirm) {
-    partes.push(item.confirmWindow === "10min" ? "10 min antes" : item.confirmWindow === "ligar" ? "1h antes · sem resposta na confirmação" : item.confirmWindow === "manha" ? "8h30 da manhã" : "2h antes");
+    partes.push(item.confirmWindow === "10min" ? "10 min antes" : item.confirmWindow === "ligar" ? "1h antes · sem resposta na confirmação" : item.confirmWindow === "manha" ? "8h da manhã" : "2h antes");
     const at = item.confirmKind === "integracao" ? l.integrationAt : l.callAt;
     if (at) partes.push(`${item.confirmKind === "integracao" ? "integração" : "call"} ${hhmmOf(at)}`);
   } else if (l.nextActionNote) {
@@ -292,11 +292,12 @@ function buildQueue(leads, consultas, saasCfg, person) {
       // FEITO por janela: o SDR marcou "confirmou" ou "sem resposta" naquele
       // passo (confirmStepDone), senão a tarefa continua pendente. Cliente que
       // confirmou já resolve a de 2h; a de 10min segue (positiva ou ligação).
-      // MANHÃ DO DIA (Leo, 30/09): sem véspera; às 08:30 do dia da call sai o
-      // lembrete com link (só pra call a partir das 10h30, senão colaria no de
-      // 2h). O robô manda; a tarefa cobre quem confirma na mão.
-      const morning = new Date(callT); morning.setHours(8, 30, 0, 0);
-      if (callT - morning.getTime() >= 120 * M) {
+      // MANHÃ DO DIA (Leo, 30/09, ajustada no roteiro de 05/10): sem véspera;
+      // às 08:00 do dia da call sai a confirmação pra TODO MUNDO com call no
+      // dia (até 8h40 o de 10min cobre). O robô manda; a tarefa cobre quem
+      // confirma na mão.
+      const morning = new Date(callT); morning.setHours(8, 0, 0, 0);
+      if (callT - morning.getTime() >= 40 * M) {
         g.hoje.push({ l, kind, phase, who, due: { t: morning.getTime(), type: "confirm" }, done: confirmStepDone(l, "manha", l.callAt) || !!l.callConfirmed, stage, group: "confirm", confirm: true, confirmWindow: "manha" });
       }
       g.hoje.push({ l, kind, phase, who, due: { t: callT - 120 * M, type: "confirm" }, done: confirmStepDone(l, "2h", l.callAt) || !!l.callConfirmed, stage, group: "confirm", confirm: true, confirmWindow: "2h" });

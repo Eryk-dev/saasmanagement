@@ -198,7 +198,10 @@ export function sdrBotConfig(product) {
       // 1º toque escolhido pela DOR DE ORIGEM; o v2 genérico é o fallback
       // enquanto os específicos não estão aprovados na Meta.
       firstTouchMulti: cfg.templates?.firstTouchMulti || "sdr_primeiro_toque_multi",
-      firstTouchOem: cfg.templates?.firstTouchOem || "sdr_primeiro_toque_oem",
+      // ROTEIRO LEVER OEM (Leo, 05/10): abordagem nova no v2; o v1 segue de
+      // fallback enquanto a Meta não aprova (e pra lead sem nome utilizável).
+      firstTouchOem: cfg.templates?.firstTouchOem || "sdr_primeiro_toque_oem_v2",
+      firstTouchOemV1: cfg.templates?.firstTouchOemV1 || "sdr_primeiro_toque_oem",
       firstTouch: cfg.templates?.firstTouch || "sdr_primeiro_toque_v2",
       // "call" nunca chega no lead (Leo, 23/08): templates novos falam
       // "conversa"; os antigos aprovados seguem de fallback até a revisão.
@@ -206,6 +209,11 @@ export function sdrBotConfig(product) {
       // Lembrete COM o link do Meet no corpo (raio-x 17/09): sai na frente do
       // genérico sempre que a sala já existe. Submeter à Meta pelo sdr-setup.
       reminderLink: cfg.templates?.reminderLink || "sdr_lembrete_link2",
+      // Lembretes do roteiro Lever OEM (Leo, 05/10): manhã (8h) sem link, 2h
+      // com link e 10 min com link; só pra lead de OEM, fallback nos genéricos.
+      reminderManhaOem: cfg.templates?.reminderManhaOem || "sdr_lembrete_manha_oem",
+      reminderLinkOem: cfg.templates?.reminderLinkOem || "sdr_lembrete_link_oem",
+      reminder10minOem: cfg.templates?.reminder10minOem || "sdr_lembrete_10min_oem",
       rescue: cfg.templates?.rescue || "sdr_resgate_conversa",
       secondTouch: cfg.templates?.secondTouch || "sdr_retomada_conversa",
       // Variações aprovadas da retomada: o lote de 2º toque sorteia entre elas
@@ -279,7 +287,17 @@ export function leadDigest(product, lead) {
 // junto (Leo, 23/08): o OEM entra como segundo benefício, sem virar o assunto.
 export const isAutoPecas = (niche) => /auto\s*pe[çc]/i.test(String(niche || ""));
 
+// ROTEIRO LEVER OEM (doc do Leo, 05/10/2026, "FLUXO ROBÔ AGENDAMENTO E
+// CONFIRMAÇÃO LEVER OEM"): a abordagem do lead de OEM é fixa, sem nome do SDR
+// e sem o resumo do diagnóstico. Mesmo corpo do template
+// sdr_primeiro_toque_oem_v2 (janela fechada). As mensagens seguintes do
+// roteiro vivem no sdr-brain.js (oem*Parts).
+export function firstTouchOemText({ nome }) {
+  return `Oiii${nome ? ` ${nome}` : ""}, tudo bem? Recebemos aqui seu interesse, com o Lever OEM você digita o código e recebe o anúncio completo, com fotos, título de 200 caracteres, descrição e compatibilidade, pronto para revisar e publicar no Mercado Livre e Shopee. Isso ajudaria na sua operação?`;
+}
+
 export function firstTouchText({ nome, sdrName, resumo, pain = null, niche = "" }) {
+  if (pain?.mode === "oem") return firstTouchOemText({ nome });
   const oi = nome ? `Oiii, ${nome}.` : "Oiii.";
   const eu = sdrName ? `${sdrName} falando, da LeverAds.` : "Aqui é da LeverAds.";
   const oemSide = pain?.mode !== "oem" && isAutoPecas(niche)
@@ -294,13 +312,14 @@ export function firstTouchText({ nome, sdrName, resumo, pain = null, niche = "" 
 // Lembretes ancorados no callAt. `grace` = janela de disparo depois do ponto
 // (poller de 60s + eventual downtime): passou dela, o passo não sai atrasado —
 // lembrete de véspera chegando 3h depois soa robô quebrado.
-// RÉGUA DE CONFIRMAÇÃO (Leo, 30/09/2026): SEM véspera. Às 08:30 do dia da
-// call sai o primeiro lembrete (com o link, pedindo a positiva); 2h antes o
-// segundo; 10min antes o link; 1h antes sem positiva vira alerta de ligação
-// (seção 2b). Call antes das 10h30 pula o das 08:30 (colaria no de 2h). A
-// chave "24h" some daqui mas continua LIDA (askedByBot/2b) pra call marcada
-// antes da troca.
-export const MORNING_REMINDER = "08:30";
+// RÉGUA DE CONFIRMAÇÃO (Leo, 30/09/2026, ajustada pelo roteiro de 05/10): SEM
+// véspera. Às 08:00 do dia da call sai a confirmação da manhã PRA TODO MUNDO
+// que tem call no dia (pede a positiva); 2h antes o lembrete com o link; 10min
+// antes o link de novo; 1h antes sem positiva vira alerta de ligação (seção
+// 2b). Call até 10h30: a manhã cobre e o de 2h é pulado (nunca duas mensagens
+// seguidas); o de 10min entrega o link. A chave "24h" some daqui mas continua
+// LIDA (askedByBot/2b) pra call marcada antes da troca.
+export const MORNING_REMINDER = "08:00";
 const REMINDERS = [
   { key: "manha", beforeMs: 0, graceMs: 90 * MIN },
   { key: "2h", beforeMs: 2 * HOUR, graceMs: 30 * MIN },
@@ -318,7 +337,29 @@ const REMINDERS = [
 // sem link pede o ok pra mandar (nunca "te espero lá" sem lugar nenhum: ~22
 // conversas ficaram sem o link no WhatsApp).
 export const DEVICE_TIP = "Se for entrar pelo celular, vale ter um computador por perto: na tela grande você acompanha e entende melhor a demonstração.";
-export function reminderText(key, { nome, quando, link }) {
+// ROTEIRO LEVER OEM (doc do Leo, 05/10/2026): textos fixos do lead de OEM.
+// Manhã sem link (quem entrega é o de 2h); 2h e 10min com o link quando a
+// sala existe (sem sala, pede o ok, como nos genéricos).
+function reminderTextOem(key, { nome, quando, link }) {
+  const voc = nome ? `${nome}, nossa` : "Nossa";
+  if (key === "manha") {
+    const bomDia = nome ? `Bom dia ${nome}, tudo bom?` : "Bom dia, tudo bom?";
+    return `${bomDia} Temos um horário reservado para ${quando}, tudo certo? Na reunião vamos te mostrar na prática o passo a passo para criar anúncios completos em escala, explicar as funcionalidades da plataforma e tirar todas suas dúvidas. Posso contar com sua presença? Caso não consiga comparecer, me sinalize para liberar seu horário, por favor.`;
+  }
+  if (key === "2h") {
+    return link
+      ? `${voc} conversa é ${quando}. O link pra entrar é este: ${link}. Qualquer imprevisto por favor me avise.`
+      : `${voc} conversa é ${quando}. Me manda um ok por aqui que eu já te passo o link de acesso. Qualquer imprevisto por favor me avise.`;
+  }
+  if (key === "10min") {
+    return link
+      ? `${voc} conversa começa em 10 minutos! O link pra entrar é este: ${link}. Te esperamos lá!`
+      : `${voc} conversa começa em 10 minutos! Me manda um ok que te passo o link de acesso agora. Te esperamos lá!`;
+  }
+  return null;
+}
+export function reminderText(key, { nome, quando, link, oem = false }) {
+  if (oem) { const t = reminderTextOem(key, { nome, quando, link }); if (t) return t; }
   const oi = nome ? `Oi ${nome}!` : "Oi!";
   if (key === "24h") return `${oi} Confirmando nossa conversa ${quando}, tudo certo? Qualquer imprevisto me fala por aqui que eu remarco sem problema.`;
   // Manhã do dia da call (Leo, 30/09): mesmo pedido de positiva do 2h, com o
@@ -535,10 +576,16 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
               const names = await approvedNames();
               // Template POR DOR (multi × OEM); o v2 genérico cobre enquanto o
               // específico não estiver aprovado. Sem nenhum aprovado, espera.
-              const wanted = pain?.mode === "oem" ? cfg.templates.firstTouchOem : cfg.templates.firstTouchMulti;
-              const tplName = names.has(wanted) ? wanted : names.has(cfg.templates.firstTouch) ? cfg.templates.firstTouch : null;
+              // OEM (roteiro de 05/10): o v2 só com nome utilizável (o corpo é
+              // "Oiii {{1}}, tudo bem?"); senão o v1, que aceita o fallback.
+              const prefs = pain?.mode === "oem"
+                ? [nome ? cfg.templates.firstTouchOem : "", cfg.templates.firstTouchOemV1, cfg.templates.firstTouch]
+                : [cfg.templates.firstTouchMulti, cfg.templates.firstTouch];
+              const tplName = prefs.filter(Boolean).find((n) => names.has(n)) || null;
               if (!tplName) { stats.skipped++; continue; }
-              await sendTemplate({ phone: to, name: tplName, params: [nome || "tudo bem", sdrName || "o time", resumo], phoneId, saas: product.id, leadId: lead.id });
+              // Parâmetros pelo corpo do template (o v2 do OEM só leva o nome).
+              const nParams = (TEMPLATE_BODY[tplName]?.match(/\{\{\s*\d+\s*\}\}/g) || []).length || 3;
+              await sendTemplate({ phone: to, name: tplName, params: [nome || "tudo bem", sdrName || "o time", resumo].slice(0, nParams), phoneId, saas: product.id, leadId: lead.id });
               via = "template";
             }
             sends++; stats.firstTouch++;
@@ -883,17 +930,25 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
             ? Date.parse(brtToIso(`${String(lead.callAt).slice(0, 10)}T${MORNING_REMINDER}`))
             : callMs - r.beforeMs;
           // A MANHÃ PULA (e fica carimbada, pra não sair atrasada) quando: já
-          // confirmou; a call é antes das 10h30 (o de 2h é o único da manhã);
-          // marcou hoje mesmo perto/depois das 8h30 (o de 2h cobre); ou o de
-          // 2h já está na porta (nunca duas mensagens seguidas).
+          // confirmou; a call é cedo demais (até 8h40: o de 10min cobre); ou
+          // marcou hoje mesmo depois das 7h30 (a confirmação da marcação
+          // acabou de sair). Fora isso vai pra TODO MUNDO com call no dia
+          // (roteiro de 05/10).
           const setAtMs = Date.parse(lead.callSetAt || "");
           const manhaAt = fireAtOf(REMINDERS[0]);
           if (!log0.manha && nowMs >= manhaAt && (
             lead.callConfirmed || log0.confirmed
-            || callMs - manhaAt < 2 * HOUR
-            || (Number.isFinite(setAtMs) && setAtMs > manhaAt - 30 * MIN)
-            || nowMs >= callMs - 2 * HOUR - 30 * MIN)) {
+            || callMs - manhaAt < 40 * MIN
+            || (Number.isFinite(setAtMs) && setAtMs > manhaAt - 30 * MIN))) {
             log0.manha = "skip";
+            await repo.update("leads", lead.id, { confirmLog: { ...log0 } });
+          }
+          // O DE 2H PULA quando a manhã SAIU há menos de 30 min dele (call até
+          // 10h30, ou manhã atrasada pela tolerância): nunca duas mensagens
+          // seguidas. O link vai no de 10min. Manhã pulada = o de 2h sai normal.
+          const manhaSentMs = Date.parse(log0.manha || "");
+          if (!log0["2h"] && Number.isFinite(manhaSentMs) && callMs - 2 * HOUR < manhaSentMs + 30 * MIN) {
+            log0["2h"] = "manha";
             await repo.update("leads", lead.id, { confirmLog: { ...log0 } });
           }
           const due = REMINDERS.find((r) => {
@@ -903,6 +958,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           if (!due) continue;
           const nome = greetName(lead.name);
           const quando = slotLabel(lead.callAt, wnow);
+          const oem = leadPainFocus(product, lead)?.mode === "oem"; // roteiro Lever OEM (05/10)
           const phone = lead.waPhone || lead.phone;
           const thread = await findThreadByPhone(repo, phone);
           const to = thread?.phone || phone;
@@ -955,7 +1011,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
             // O template sem link JÁ saiu no de 2h (janela fechada): mandar o
             // mesmo texto de novo é o que 18 leads receberam em 2 semanas. Fica
             // o alerta; o passo é carimbado pra não sair atrasado.
-            const dup = typeof log0["2h"] === "string" && log0["2h"] && log0["2h"] !== "humano" && !log0["2h"].startsWith("erro:");
+            const dup = typeof log0["2h"] === "string" && log0["2h"] && !["humano", "manha"].includes(log0["2h"]) && !log0["2h"].startsWith("erro:");
             if (dup && !windowOpen) { await repo.update("leads", lead.id, { confirmLog: { ...log0, "10min": "sem-link" } }); continue; }
           }
           if (due.key === "2h" && !callUrl && thread) {
@@ -972,9 +1028,21 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
             // link (o "te espero lá" do template antigo não tem lugar).
             // Com link: o v2 (sem a pergunta do celular) na frente; o v1 ainda
             // vale enquanto o v2 não é aprovado (link entregue > pergunta a mais).
-            const tplLembrete = [callUrl ? cfg.templates.reminderLink : "", callUrl ? "sdr_lembrete_link" : "", cfg.templates.reminder, "sdr_lembrete_call"].filter(Boolean).find((n) => names.has(n));
+            // Lead de OEM (roteiro de 05/10): os templates do roteiro vão na
+            // frente (manhã sem link; 2h e 10min com link). Só com nome
+            // utilizável (os corpos abrem com o nome); sem aprovação ou sem
+            // nome, caem nos genéricos.
+            const oemTpls = oem && nome ? [
+              due.key === "manha" ? cfg.templates.reminderManhaOem : "",
+              due.key === "2h" && callUrl ? cfg.templates.reminderLinkOem : "",
+              due.key === "10min" && callUrl ? cfg.templates.reminder10minOem : "",
+            ] : [];
+            const tplLembrete = [...oemTpls, callUrl ? cfg.templates.reminderLink : "", callUrl ? "sdr_lembrete_link" : "", cfg.templates.reminder, "sdr_lembrete_call"].filter(Boolean).find((n) => names.has(n));
             if (tplLembrete) {
-              const params = [cfg.templates.reminderLink, "sdr_lembrete_link"].includes(tplLembrete) ? [nome || "tudo bem", quando, callUrl] : [nome || "tudo bem", quando];
+              const params = tplLembrete === cfg.templates.reminderManhaOem ? [nome, quando]
+                : tplLembrete === cfg.templates.reminderLinkOem ? [nome, quando, callUrl]
+                  : tplLembrete === cfg.templates.reminder10minOem ? [nome, callUrl]
+                    : [cfg.templates.reminderLink, "sdr_lembrete_link"].includes(tplLembrete) ? [nome || "tudo bem", quando, callUrl] : [nome || "tudo bem", quando];
               await sendTemplate({ phone: to, name: tplLembrete, params, phoneId, saas: product.id, leadId: lead.id });
             } else {
               await raiseAlert(repo, thread || { id: digits(phone), phone: digits(phone), name: lead.name || "", leadId: lead.id, saas: product.id }, {
@@ -985,7 +1053,7 @@ export function makeSdrRunner({ repo, whatsapp: wa, autoCallMeet = null, log = c
           try {
             if (windowOpen) {
               try {
-                await sendText({ phone: to, text: reminderText(due.key, { nome, quando, link: callUrl }), phoneId, saas: product.id, leadId: lead.id });
+                await sendText({ phone: to, text: reminderText(due.key, { nome, quando, link: callUrl, oem }), phoneId, saas: product.id, leadId: lead.id });
               } catch (err) {
                 if (!outsideWindow(err)) throw err; // nosso registro dizia aberta, a Meta discorda
                 await viaTemplate();
