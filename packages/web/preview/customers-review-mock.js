@@ -35,7 +35,33 @@ export function setupCustomersReview(seed) {
   seed.INVOICES=invoices;seed.SUBSCRIPTIONS=subs;seed.PLANS=plans;
   window.__reviewMutations=[];
 }
+// Histórico do lead do cliente: resumos de reunião (integração e venda), o
+// briefing da passagem e a linha do tempo, pra conferir "Histórico e resumos".
+const reviewActivities=[
+  {id:'act-sum-int',type:'system',at:'2026-09-15T17:40:00.000Z',author:'cockpit',text:'Resumo da integração (IA)',meta:{event:'call_summary',kind:'integracao',recordingUrl:'https://drive.example.invalid/gravacao',summary:{
+    sentimento:'satisfeito',sentimentoPorque:'elogiou a velocidade da configuração e já pediu o próximo passo',
+    resumo:'Conectamos as duas contas do Mercado Livre e configuramos a cópia de anúncios entre elas. O cliente quer começar pelos 40 produtos de maior giro e avaliar o resultado em duas semanas.',
+    configurado:['Conexão das contas Galante Matriz e Galante Outlet','Regra de cópia de anúncios com ajuste de preço de 8%','Espelho de estoque entre as contas'],
+    pendencias:[{item:'Enviar a planilha com os 40 produtos prioritários',responsavel:'cliente'},{item:'Revisar as categorias de ferragens que deram erro',responsavel:'Lever'}],
+    proximosPassos:['Rodar a primeira cópia em lote na segunda-feira','Check-in de resultado em 29/09'],
+    followup:{nota:'Cobrar a planilha na sexta antes da cópia em lote.',whatsapp:'Oi Rodrigo! Tudo certo por aí? Assim que puder, me manda a planilha com os 40 produtos que você quer priorizar, pra rodarmos a cópia na segunda.'},
+  }}},
+  {id:'act-meet',type:'system',at:'2026-09-10T13:00:00.000Z',author:'leo',text:'Reunião com o cliente marcada para 15/09, 14:00',meta:{event:'customer_meeting',customerId:'c1'}},
+  {id:'act-wa',type:'whatsapp',at:'2026-09-09T18:20:00.000Z',author:'leo',text:'Mandei o acesso do painel e combinei a reunião de configuração.',meta:{}},
+  {id:'act-note',type:'note',at:'2026-09-02T14:05:00.000Z',author:'leo',text:'Cliente pediu nota fiscal no CNPJ da matriz.',meta:{}},
+  {id:'act-brief',type:'system',at:'2026-08-22T12:00:00.000Z',author:'cockpit',text:'Briefing da integração (IA)',meta:{event:'integration_brief',brief:{resumo:'Fechou o plano Enterprise anual para duas contas e quer espelhar o catálogo da matriz na conta outlet.',entregas:['Cópia de anúncios entre duas contas','Espelho de estoque','Treinamento da equipe de anúncios'],atencao:[{ponto:'Prazo',porque:'quer tudo rodando antes da Black Friday'}]}}},
+  {id:'act-stage',type:'stage',at:'2026-08-21T19:00:00.000Z',author:'leo',text:'Ganho',meta:{from:'Follow-up',to:'Ganho'}},
+  {id:'act-sum-call',type:'system',at:'2026-08-18T16:10:00.000Z',author:'cockpit',text:'Resumo da call (IA)',meta:{event:'call_summary',kind:'call',summary:{
+    temperatura:'quente',temperaturaPorque:'pediu a proposta na própria call',
+    resumo:'Rodrigo vende ferragens em duas contas e perde tempo duplicando anúncios. Gostou da cópia entre contas e do espelho de estoque.',
+    dores:['Duplicar anúncios manualmente entre as contas','Estoque divergente entre matriz e outlet'],
+    objecoes:[{objecao:'Preço acima do previsto',resolvida:true,comoFoiTratada:'mostramos o ganho de tempo da equipe em horas por semana'}],
+    compromissos:['Enviar a proposta anual até sexta'],
+  }}},
+  {id:'act-call',type:'call',at:'2026-08-14T15:00:00.000Z',author:'leo',text:'Primeira ligação: qualificado, duas contas no Mercado Livre.',meta:{}},
+];
 export const customersReviewMock={
+  listActivities:async()=>reviewActivities.map(a=>({...a})),
   list:async col=>{if(col==='subscriptions'&&++subscriptionReads===2&&params.has('billingFail'))throw new Error('Falha na leitura das cobranças');return col==='invoices'?invoices:col==='subscriptions'?subs:col==='plans'?plans:window.SEED[col.toUpperCase()]||[];},
   planStats:async()=>{
     const blank=()=>({active:0,churned:0,arr:0,mrr:0,received:0,customers:[]});

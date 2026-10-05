@@ -614,6 +614,27 @@ registrados. Abrir o cartão só consulta a REST, sem gerar resumo nem enviar
 mensagem. Validação de navegador: `node scripts/review/followup-summary.mjs`
 em `packages/web`.
 
+### Reuniões com o cliente — 05/10/2026
+
+A reunião com cliente mora no lead dele (`customer.leadId`), nos campos da
+integração (`integrationAt`, `integrationCallUrl`, `integrationMeetEventId`),
+e é resumida pelo mesmo poller de `call-summaries.js` (`kind: "integracao"`).
+`POST /api/customers/:id/meeting` marca a próxima: se a anterior já aconteceu,
+tenta resumi-la, solta a sala e cria Meet novo (título "Reunião"); se ainda vai
+acontecer, só remarca. Sala reaproveitada não ganha resumo novo, porque o dedup
+compara `integrationSummaryFor` com o id do evento. Transcrição antiga ainda
+pendente devolve 409 `previous_without_summary` e só segue com `force`.
+`POST /api/customers/:id/meeting-summary` gera o resumo pela permissão de
+Clientes. Na ficha lateral, a seção Reuniões mostra próxima reunião, último
+resumo e o motivo quando ele não sai; ⋯ → "Histórico e resumos" abre a vista
+própria (`components/customer-history.jsx`): reuniões, resumo escolhido e timeline. Testes: `packages/api/test/customer-meeting.test.js`.
+Correção junto: `repo.listWhere` (db.js) mandava a chave de uma faixa sem
+limite como parâmetro sem placeholder, e o Postgres recusava a consulta; desde
+`6aa068f5` (17/09) `GET /api/activities?lead=` sem `since` voltava 500 e toda
+timeline de lead (Pipeline, Atividades, Clientes) aparecia vazia, com os
+resumos de call. O SQL agora sai de `listWhereSql`, testado em
+`db-listwhere.test.js`.
+
 ### Alvos progressivos da Visão Geral — 21/09/2026
 
 O card da meta avança o alvo visual para 120%, 140%, 160% etc. assim que o

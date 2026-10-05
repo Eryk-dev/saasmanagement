@@ -316,6 +316,26 @@ aparecem. O pipeline mantém sua disposição vertical.
 O rodapé Próximo passo usa a cápsula escura `capsule-navy`; o plano selecionado
 na configuração incorporada usa fundo `--ink` e texto `--paper-card`.
 
+Separação da fila de Hoje (05/10/2026): cada linha é uma cápsula `--bg-1` com
+sombra difusa dos tokens (`--shadow-1` + `--shadow-2`), 8px entre linhas e
+`--shadow-pop` no hover; divisor de linha foi testado e recusado (pouco
+premium). Feitas ficam planas. Atraso fica só na pílula de horário (sem fundo
+`--neg-soft` na linha, que fundia atrasadas seguidas num bloco). A linha aberta
+no painel usa `--accent-soft` com contorno `--accent-line`, nome em `--accent`
+e `aria-current`.
+
+### Histórico e resumos do cliente — 05/10/2026
+
+Vista própria (`components/customer-history.jsx`), não a pilha de componentes
+antigos: coluna de reuniões (260px; próxima, sem resumo com "Gerar" e
+resumidas, a escolhida sobe em `--bg-1` com sombra) e, ao lado, o resumo
+escolhido e a linha do tempo. Mesma régua da ficha lateral: superfícies
+`--bg-inset` raio 20 sem borda, peças internas `--bg-1` raio 16, controles em
+cápsula 999 e status como ponto + palavra (sentimento/temperatura, tratada/em
+aberto). Linha do tempo com ícone em círculo, trilho `--line-1` e mês como
+separador. Abaixo de 820px empilha. Não misturar `--r-2` com cápsulas no
+mesmo bloco.
+
 Respostas do formulário nas atividades seguem a qualificação do Inbox: pergunta
 acima da resposta, separadores discretos e quebra de textos longos, preservando
 linhas. A edição fica em “Editar respostas”, com contagem das pendências.

@@ -322,6 +322,10 @@ export const api = {
   // (waCallPermission saiu em 22/08/2026: o pedido de permissão de ligação foi
   // removido pra proteger o número — violação USER_INITIATED_CALLS_LOW_PICKUP_RATE.)
   callSummary: (leadId, force = false, kind = "call") => req("POST", `/api/leads/${leadId}/call-summary`, { force, kind }),
+  // Reunião com o cliente (Clientes): marca no lead dele, com Meet novo quando
+  // a anterior já aconteceu, e resume a última pela permissão da tela Clientes.
+  customerMeeting: (customerId, body) => req("POST", `/api/customers/${customerId}/meeting`, body),
+  customerMeetingSummary: (customerId, force = false) => req("POST", `/api/customers/${customerId}/meeting-summary`, { force }),
   // Briefing de passagem pro integrador (lê a transcrição da call de VENDA).
   integrationBrief: (leadId, force = false) => req("POST", `/api/leads/${leadId}/integration-brief`, { force }),
   // Insight de pitch: analisa os resumos das calls do produto e sugere uma

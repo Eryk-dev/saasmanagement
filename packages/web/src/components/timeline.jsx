@@ -270,3 +270,6 @@ export function ActivityComposer({ lead, onLogged, embedded = false }) {
     </div>
   );
 }
+
+// Peças da timeline pra vistas com desenho próprio (histórico do cliente).
+export { TYPE_META as ACTIVITY_TYPES, itemText as activityText };

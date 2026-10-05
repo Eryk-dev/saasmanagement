@@ -26,6 +26,8 @@ import { paymentLabel, paymentUpfront, paymentRecurring, paymentCustom, PAY_STAT
 import { CustomerPlanPanel, CustomerContractForm, CustomerProducts } from "../components/customer-plan.jsx";
 import { PaymentMethodSelect } from "../components/lead-blocks.jsx";
 import { UpsellPanel } from "../components/UpsellPanel.jsx";
+import { CustomerMeetings, CustomerMeetingForm } from "../components/customer-meeting.jsx";
+import { CustomerHistoryView } from "../components/customer-history.jsx";
 import { useAttribution, leadPain } from "../lib/pains.js";
 import { isChurned, CHURN_REASONS, churnReasonLabel } from "../lib/churn.js";
 import { fetchLeveradsOrgs } from "../lib/leverads.js";
@@ -1376,6 +1378,7 @@ function CustomerPeek(props) {
             {facts.map(([label,value])=><div className="customer-peek-fact" key={label}><span>{label}</span><strong>{value||'—'}</strong></div>)}
             <div className="customer-peek-menu"><MoreMenu size={22} items={[
               {label:'Gerenciar cobranças',onClick:()=>setOperation('money')},
+              {label:'Histórico e resumos',onClick:()=>setOperation('history')},
               !churned&&{label:'Registrar upsell',onClick:()=>setOperation('upsell')},
               {label:churned?'Desfazer churn':'Registrar churn',tone:'neg',onClick:()=>setOperation('churn')},
               {label:'Registrar indicação',onClick:()=>props.onNewReferral(customer)},
@@ -1391,6 +1394,7 @@ function CustomerPeek(props) {
               {!milestones.length&&<p>Defina “Cliente desde” na edição para ativar a régua.</p>}
             </div>}
           </section>
+          {!kids&&<CustomerMeetings customer={customer} lead={lead} onSchedule={()=>setOperation('meeting')} onOpenHistory={()=>setOperation('history')}/>}
           <section className="customer-peek-money">
             <div className="customer-peek-kicker">dinheiro</div>
             <div className="customer-peek-amount"><strong>{money(financial.received)}</strong><span>de {money(financial.contracted)}</span></div>
@@ -1402,18 +1406,19 @@ function CustomerPeek(props) {
         <footer className="customer-peek-footer"><button disabled={!!busy||!pending.length} onClick={chargeNext}>{busy==='charge'?'Gerando link…':pending.length?'Cobrar próxima':'Nada a cobrar'}</button><button disabled={!!busy||kids||churned} onClick={createCase}>{busy==='case'?'Criando rascunho…':'Virar case'}</button></footer>
       </div>
     </Drawer>
-    {operation&&<CustomerModal {...props} operation={operation} onClose={()=>setOperation(null)}/>}
+    {operation&&<CustomerModal key={operation} {...props} operation={operation} onOperation={setOperation} onClose={()=>setOperation(null)}/>}
   </>, document.body);
 }
 
-function CustomerModal({ operation = null, customer, lead, product, subs, invoices, planLabel, lastContact, leverOrg, onComplete, onPatch, onClose, onNewReferral }) {
+function CustomerModal({ operation = null, customer, lead, product, subs, invoices, planLabel, lastContact, leverOrg, onComplete, onPatch, onClose, onNewReferral, onOperation }) {
   const { refresh } = useData();
   const [editing, setEditing] = useState(operation === "edit");
   const [changing, setChanging] = useState(null); // { sub, plans }: assinatura no "Mudar plano"
   // QUATRO ABAS (redesign de 12/09): a ficha era uma rolagem única com doze
   // blocos — dados, assinatura, parcelas, faturas, MP, upsell, régua, conversa,
   // indicações, contratos, histórico. Nada saiu; cada bloco tem lugar agora.
-  const [aba, setAba] = useState(operation === "money" ? "dinheiro" : operation === "referral" ? "indicacoes" : "resumo"); // resumo | dinheiro | indicacoes | historico
+  const [aba, setAba] = useState(operation === "money" ? "dinheiro" : operation === "referral" ? "indicacoes" : operation === "history" || operation === "meeting" ? "" : "resumo"); // resumo | dinheiro | indicacoes | historico
+  const [meetingBusy, setMeetingBusy] = useState(false);
   // Edição das RESPOSTAS DO FORMULÁRIO (campos do lead) direto do popup: otimista
   // no objeto do lead (do SEED) + PATCH; o bump re-renderiza o popro pra o
   // Potencial/Nível recalcularem na hora.
@@ -1615,10 +1620,10 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
   // soltos competindo com o nome.
 
   return (
-    <Modal onClose={onClose} fechavel={!chuSaving && !chSaving && !invBusy && !reverting} label={operation ? "Ação do cliente" : "ficha do cliente"} largura={operation || editing ? 640 : 1080} padding={20}
+    <Modal onClose={onClose} fechavel={!chuSaving && !chSaving && !invBusy && !reverting && !meetingBusy} label={operation ? "Ação do cliente" : "ficha do cliente"} largura={operation === "history" ? 1000 : operation || editing ? 640 : 1080} padding={20}
       painelStyle={{ maxHeight: "min(92dvh, 100%)", display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "18px 24px 14px", borderBottom: "1px solid var(--line-faint)", flexShrink: 0 }}>
-          {operation && <div className="customer-operation-head"><h2>{({edit:"Editar cliente", money:"Gerenciar cobranças", referral:"Registrar indicação", upsell:"Registrar upsell", churn:"Registrar churn"})[operation]} · {customer.name}</h2><button aria-label="Fechar ação" onClick={onClose}>✕</button></div>}
+          {operation && <div className="customer-operation-head"><h2>{({edit:"Editar cliente", money:"Gerenciar cobranças", referral:"Registrar indicação", upsell:"Registrar upsell", churn:"Registrar churn", meeting:"Marcar reunião", history:"Histórico e resumos"})[operation]} · {customer.name}</h2><button aria-label="Fechar ação" onClick={onClose}>✕</button></div>}
           {!operation && <>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
             <div style={{ minWidth: 0, flex: 1 }}>
@@ -1746,6 +1751,15 @@ function CustomerModal({ operation = null, customer, lead, product, subs, invoic
 
         {!editing && (
         <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "14px 16px" }}>
+
+        {operation === "history" && (
+          <CustomerHistoryView customer={customer} lead={lead} onSchedule={onOperation ? () => onOperation("meeting") : null} />
+        )}
+
+        {operation === "meeting" && (
+          <CustomerMeetingForm customer={customer} lead={lead} onBusy={setMeetingBusy} onCancel={onClose}
+            onDone={async () => { await refresh(); onClose(); }} />
+        )}
 
         {/* ── RESUMO: o contrato, os dados e o que fazer com o cliente ────── */}
         {!operation && aba === "resumo" && (
