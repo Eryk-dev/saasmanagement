@@ -67,8 +67,9 @@ test("ocupação vale: call marcada, bloqueio semanal e consulta tiram o horári
     leads: [
       // PL com call às 10h (ocupa 10h e 10h30) e SR bloqueado a quarta inteira.
       { id: "busy1", saas: "leverads", stage: "Call agendada", closer: "pl", callAt: "2026-08-19T10:00" },
-      // Follow-up com hora marcada NÃO ocupa a agenda (regra do front).
-      { id: "fup", saas: "leverads", stage: "Follow-up", closer: "pl", callAt: "2026-08-19T11:00" },
+      // Follow-up NÃO ocupa a agenda: nem o legado com callAt, nem o dia do
+      // próximo contato (followupAt é só dia desde 05/10/2026).
+      { id: "fup", saas: "leverads", stage: "Follow-up", closer: "pl", callAt: "2026-08-19T11:00", followupAt: "2026-08-19" },
     ],
     blocks: [{ id: "b1", user: "sr", kind: "block", recur: "weekly", weekday: 3, allDay: true, reason: "quarta fora" }],
     consultations: [{ id: "c1", owner: "pl", at: "2026-08-19T10:30", durationMin: 60, status: "scheduled" }],

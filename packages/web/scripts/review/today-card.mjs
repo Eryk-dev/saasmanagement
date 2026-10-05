@@ -4,7 +4,7 @@ import { proposalSlidesPageHtml } from '../../../api/src/proposal-slides-page.js
 
 const h = await reviewHarness('today', 'Minhas atividades', null, {nativeTimers:true});
 const proposal = { id:'card-preview', data:{lead:{name:'Bruno Teixeira',company:'Auto Peças Já'},answers:{}}, state:{} };
-const catalog={products:{ads_essencial:{name:'Lever Ads · Essencial',contas:2,anu:{per:599},sem:{per:699}}}};
+const catalog={products:{ads_essencial:{name:'Ads Essencial',contas:2,anu:{per:599},sem:{per:699}}}};
 const html = proposalSlidesPageHtml(proposal, {editable:true,configOnly:true,catalog});
 try {
   for (const width of [1440,1920,390]) {

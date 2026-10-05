@@ -8,6 +8,9 @@
 import { randomUUID } from "node:crypto";
 import { kindOf, cadenceOf, firstStage, stageByKind, isNoShowStage, isWonLead, LOSS_KINDS, TOUCH_TYPES } from "./stages.js";
 import { NOMES_DIAS as CADENCIA_DIAS } from "./cadencia-stages.js";
+import { removePlanHistory } from "./plan-history.js";
+import { followupDayOf, todayBrt, dayStartIso, followupStepOf, firstFollowupDay, nextFollowupDay, FOLLOWUP_STEPS } from "./followup-contacts.js";
+import { loadFollowupContacts } from "./followup-config.js";
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
@@ -83,14 +86,30 @@ export function brtToIso(value) {
 // dois divergiam e a agenda desenhava DUAS pílulas de follow-up pro mesmo lead
 // (caso Wanderley/Rood/Yuri, 25/08). Compromisso marcado manda, follow-up
 // também é compromisso marcado.
+//
+// Follow-up é só DIA (05/10/2026): o compromisso vale o dia inteiro, então
+// conta enquanto o dia não passou, e o GPS fica em 00:00 de Brasília dele.
 export function appointmentAt(product, lead, stage = lead?.stage, now = new Date()) {
   const kind = kindOf(product, stage);
+  if (kind === "followup") {
+    return appointmentAhead("followupAt", lead?.followupAt, now) ? dayStartIso(lead.followupAt) : "";
+  }
   const raw = kind === "call" ? lead?.callAt
-    : kind === "followup" ? lead?.followupAt
-      : (kind === "integracao" || kind === "posvenda") ? lead?.integrationAt
-        : "";
+    : (kind === "integracao" || kind === "posvenda") ? lead?.integrationAt
+      : "";
   const iso = brtToIso(raw);
   return iso && new Date(iso).getTime() > now.getTime() ? iso : "";
+}
+
+// Compromisso ainda por vir? Call/integração pelo instante; follow-up (só dia)
+// enquanto o dia não passou no relógio de Brasília.
+export function appointmentAhead(field, value, now = new Date()) {
+  if (field === "followupAt") {
+    const day = followupDayOf(value);
+    return !!day && day >= todayBrt(now);
+  }
+  const iso = brtToIso(value);
+  return !!iso && new Date(iso).getTime() > now.getTime();
 }
 
 // UM COMPROMISSO MARCADO POR VEZ (Leo, 26/08). Call e follow-up são passos
@@ -105,11 +124,11 @@ export function appointmentAt(product, lead, stage = lead?.stage, now = new Date
 //
 // Devolve só o que precisa ser limpo — o chamador mescla no patch.
 export function clearRivalAppointment(lead, patch = {}, kind, now = new Date()) {
-  const ahead = (v) => { const iso = brtToIso(v); return !!iso && new Date(iso).getTime() > now.getTime(); };
   const valueOf = (field) => (patch[field] != null ? patch[field] : lead?.[field]);
+  const ahead = (field) => appointmentAhead(field, valueOf(field), now);
   // Campo que o próprio patch está escrevendo não é "rival": é a intenção nova.
-  if (kind === "followup" && patch.callAt == null && ahead(valueOf("callAt"))) return { callAt: "" };
-  if (kind === "call" && patch.followupAt == null && ahead(valueOf("followupAt"))) return { followupAt: "" };
+  if (kind === "followup" && patch.callAt == null && ahead("callAt")) return { callAt: "" };
+  if (kind === "call" && patch.followupAt == null && ahead("followupAt")) return { followupAt: "" };
   return {};
 }
 
@@ -150,6 +169,7 @@ export async function revertWonLead(repo, lead, { author = "system" } = {}) {
         if (m.customerId === customer.id && untouched) await repo.remove("deliverables", m.id);
       }
       await repo.remove("customers", customer.id);
+      await removePlanHistory(repo, customer.id);
       removed = true;
     }
   }
@@ -226,7 +246,20 @@ export async function applyStageMove(repo, { lead, toStage, patch = {}, author =
     // deixá-la marcada é o que fazia o mesmo lead ocupar duas horas na agenda.
     // Vale nos dois sentidos — ver clearRivalAppointment.
     Object.assign(out, clearRivalAppointment(lead, patch, kind, now));
-    if (kind === "ganho") {
+    // Follow-up em 4 contatos: entrar na etapa recomeça a sequência no
+    // Contato 1, marcado num DIA (o que veio no patch, ou hoje + o prazo do
+    // Contato 1). Sem horário: não ocupa agenda de ninguém.
+    if (kind === "followup") {
+      out.followupStep = 0;
+      let day = followupDayOf(patch.followupAt);
+      if (!day) {
+        let contacts = null;
+        try { contacts = await loadFollowupContacts(repo); } catch { /* padrão do código */ }
+        day = firstFollowupDay(contacts, now);
+      }
+      out.followupAt = day;
+      if (patch.nextActionAt == null) out.nextActionAt = dayStartIso(day);
+    } else if (kind === "ganho") {
       out.nextActionAt = "";
       out.nextActionNote = "";
     } else if (patch.nextActionAt == null) {
@@ -290,6 +323,25 @@ export async function onActivityCreated(repo, activity) {
     patch.stageAttempts = (Number(lead.stageAttempts) || 0) + 1;
     const product = lead.saas ? await repo.get("products", lead.saas) : null;
     const stage = lead.stage || firstStage(product);
+    // FOLLOW-UP EM 4 CONTATOS: só o contato REGISTRADO (meta.followupContact =
+    // N) anda a sequência — o próximo contato cai o prazo dele (dias úteis,
+    // Configurações → Follow-up) depois do dia do registro; depois do 4º o card fica na fila
+    // de hoje, sem dia, esperando o operador escolher o destino. Qualquer outro
+    // toque na etapa (Inbox, robô, ligação avulsa) não mexe no dia marcado.
+    if (kindOf(product, stage) === "followup") {
+      const n = Math.round(Number(activity.meta?.followupContact) || 0);
+      if (n >= 1 && n <= FOLLOWUP_STEPS) {
+        let contacts = null;
+        try { contacts = await loadFollowupContacts(repo); } catch { /* padrão do código */ }
+        const step = Math.max(followupStepOf(lead), n);
+        const doneDay = followupDayOf(activity.at) || todayBrt();
+        const next = step >= FOLLOWUP_STEPS ? "" : nextFollowupDay(contacts, step, doneDay);
+        patch.followupStep = step;
+        patch.followupAt = next;
+        patch.nextActionAt = dayStartIso(next || todayBrt());
+      }
+      return repo.update("leads", lead.id, patch);
+    }
     const cad = cadenceOf(product, stage);
     if (cad.retryDays) {
       const base = new Date(activity.at || Date.now()).getTime();

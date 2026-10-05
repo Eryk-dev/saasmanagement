@@ -322,6 +322,10 @@ export const api = {
   // (waCallPermission saiu em 22/08/2026: o pedido de permissão de ligação foi
   // removido pra proteger o número — violação USER_INITIATED_CALLS_LOW_PICKUP_RATE.)
   callSummary: (leadId, force = false, kind = "call") => req("POST", `/api/leads/${leadId}/call-summary`, { force, kind }),
+  // Reunião com o cliente (Clientes): marca no lead dele, com Meet novo quando
+  // a anterior já aconteceu, e resume a última pela permissão da tela Clientes.
+  customerMeeting: (customerId, body) => req("POST", `/api/customers/${customerId}/meeting`, body),
+  customerMeetingSummary: (customerId, force = false) => req("POST", `/api/customers/${customerId}/meeting-summary`, { force }),
   // Briefing de passagem pro integrador (lê a transcrição da call de VENDA).
   integrationBrief: (leadId, force = false) => req("POST", `/api/leads/${leadId}/integration-brief`, { force }),
   // Insight de pitch: analisa os resumos das calls do produto e sugere uma
@@ -509,6 +513,12 @@ export const api = {
   changeSubscription: (id, body) => req("POST", `/api/subscriptions/${id}/change`, body),
   payInvoice: (id) => req("POST", `/api/invoices/${id}/pay`),
   // Dinheiro real recebido por cliente ({ customerId: total }) — Status pgto.
+  // Plano do cliente: histórico de mudanças e o direito de acesso/limites por produto.
+  // Produto novo pra um cliente que já existe: nasce a assinatura do plano escolhido.
+  addCustomerSubscription: (customerId, body) => req("POST", `/api/customers/${encodeURIComponent(customerId)}/subscriptions`, body),
+  planStats: (saas) => req("GET", `/api/plans/stats/${encodeURIComponent(saas)}`),
+  planHistory: (customerId) => req("GET", `/api/customers/${encodeURIComponent(customerId)}/plan-history`),
+  customerEntitlements: (customerId) => req("GET", `/api/entitlements/customers/${encodeURIComponent(customerId)}`),
   billingReceived: (saas) => req("GET", `/api/billing/received/${encodeURIComponent(saas)}`),
   billingCash: (saas, { since, until }) => req("GET", `/api/billing/cash/${encodeURIComponent(saas)}?${new URLSearchParams({ since, until })}`),
   unpayInvoice: (id) => req("POST", `/api/invoices/${id}/unpay`),
@@ -557,6 +567,9 @@ export const api = {
   // CRM: timeline do lead (pontos de contato + eventos automáticos).
   listActivities: (leadId) => req("GET", `/api/activities?lead=${encodeURIComponent(leadId)}`),
   logActivity: (a) => req("POST", "/api/activities", a),
+  // Follow-up em 4 contatos: mensagens e prazos (config global, Configurações).
+  followupContacts: () => req("GET", "/api/followup-contacts"),
+  saveFollowupContacts: (contacts) => req("PUT", "/api/followup-contacts", { contacts }),
   // Widget de feedback (FAB em toda tela): rotas próprias, abertas a qualquer
   // sessão — /api/tasks é guardado pela tela "tasks" e o widget não pode
   // depender dela. O POST cria o card no quadro; o GET traz o recorte do painel

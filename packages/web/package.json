@@ -14,6 +14,7 @@
     "test:review:training": "node scripts/review/training.mjs",
     "test:review:pipeline": "node scripts/review/pipeline.mjs",
     "test:review:customers": "node scripts/review/customers.mjs",
+    "test:review:plans": "node scripts/review/plans.mjs",
     "test:review:proposals": "node scripts/review/proposals.mjs",
     "test:review:offers": "node scripts/review/offers.mjs",
     "test:review:contracts": "node scripts/review/contracts.mjs",

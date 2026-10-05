@@ -7,6 +7,7 @@
 // stageSince/callAt/amount, activities de stage/toque, customers, proposals).
 // Retenção lê o evento de churn do cliente (customer.endedAt — churn.js).
 
+import { followupDayOf, todayBrt } from "./followup-contacts.js";
 import { metricsReader } from "./metrics-reader.js";
 import { cadenceOf, firstStage, isLoss, kindOf, TOUCH_TYPES } from "./stages.js";
 import { teamBonusProducts, compGoalFor, compLevelOf, careerRuleOf, promotionEligibility, leveledRoleOf } from "./comp-plan.js";
@@ -525,8 +526,8 @@ export async function computeScoreboard(repo, product, query = {}, { now = () =>
     const closerIds = [...new Set([...closerRole, ...leads.map((l) => l.closer).filter(Boolean), ...upsellSales.map((i) => i.soldBy).filter(Boolean)])];
     // ── Follow-up do closer (submetas da Visão geral) ─────────────────────────
     // "Follow-ups em dia" = estado ATUAL: leads dele parados em etapa de kind
-    // followup cujo GPS (nextActionAt, a cadência que o lead-flow materializa)
-    // ainda não venceu — sem GPS conta como atrasado (o "sem próximo passo").
+    // followup cujo dia do próximo contato (followupAt; sem ele, o GPS) ainda
+    // não passou — sem dia conta como atrasado (o "sem próximo passo").
     // "Resgate" = dos leads que CAÍRAM em follow-up na janela (transição de
     // etapa nas activities, ou o card parado lá com stageSince na janela),
     // quantos viraram ganho (régua oficial isWonLead) — não importa quando.
@@ -603,7 +604,13 @@ export async function computeScoreboard(repo, product, query = {}, { now = () =>
       const conversao = callsShown > 0 ? round2((wonPlatformN / callsShown) * 100) : null;
       // Follow-up: fila atual em dia + resgate da janela (réguas no bloco acima).
       const fuNow = mine.filter((l) => kindOf(product, l.stage) === "followup");
-      const followupOnTime = fuNow.filter((l) => l.nextActionAt && new Date(l.nextActionAt).getTime() >= nowMs).length;
+      // Follow-up é por DIA (followup-contacts.js): em dia enquanto o dia do
+      // próximo contato (ou do GPS, depois do 4º) não passou em Brasília.
+      const hojeBrt = todayBrt(new Date(nowMs));
+      const followupOnTime = fuNow.filter((l) => {
+        const day = followupDayOf(l.followupAt) || followupDayOf(l.nextActionAt);
+        return !!day && day >= hojeBrt;
+      }).length;
       const fuCohort = followupCohortOf(mine);
       const followupWon = fuCohort.filter((l) => isWonLead(product, l)).length;
       return {

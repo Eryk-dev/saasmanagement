@@ -41,6 +41,7 @@ export const COLLECTIONS = {
   proposal_templates: [],
   proposals: [],
   plans: [],
+  plan_changes: [], // histórico append-only das mudanças de plano do cliente (início, upgrade, troca agendada, upsell, churn): lido só pelas rotas dedicadas
   subscriptions: [],
   invoices: [],
   users: [],

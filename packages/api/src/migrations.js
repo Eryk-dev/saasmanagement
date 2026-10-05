@@ -11,6 +11,9 @@ import { isChurnedCustomer } from "./churn.js";
 import { legacyDoneKey, DEFAULT_COLUMNS as TASK_DEFAULT_COLUMNS, assetIdFromUrl } from "./tasks-core.js";
 import { catalogAmount } from "./proposal-catalog.js";
 import { createClosedSubscription } from "./billing.js";
+import { CLOSED_PLAN_ANNUAL_FACTOR } from "./plan-cycles.js";
+import { ensurePlansCatalog, ensurePlanResources, syncPlanCatalogProjection } from "./plan-catalog.js";
+import { backfillCustomerPlans } from "./plan-history.js";
 import { FLASHCARD_DEFAULTS } from "./routes.flashcards.js";
 import { LEVERADS_DECKS, LEVERADS_V2 } from "./flashcard-decks.leverads.js";
 import { LEVERADS_EXPANSION } from "./flashcard-decks.leverads.js";
@@ -23,6 +26,7 @@ import { mentoriaTemplateDoc, mentoriaCalcBlock } from "./mentoria.js";
 import { BLOG_DEFAULT_RULES, BLOG_DEFAULT_STATE, blogCfgId } from "./blog-config.js";
 import { STATUS_KIND, loadSettings } from "./tickets-core.js";
 import { repairDoneSla } from "./tickets-sla.js";
+import { followupDayOf, dayStartIso, FOLLOWUP_STEPS } from "./followup-contacts.js";
 
 // Garante o estágio "Integração" no funil do produto `leverads`, posicionado
 // entre "Negociação" e "Ganho". Integração é pós-venda: negócio já fechado,
@@ -881,7 +885,7 @@ export async function backfillSubscriptionsFromCustomers(repo) {
     const t = String(c.plan || "").toLowerCase();
     if (t.includes("único") || t.includes("unico")) continue;
     const planClosed = t.includes("semestral") ? "semestral" : t.includes("mensal") ? "mensal" : "anual";
-    const factor = { anual: 1, semestral: 2, mensal: 12 }[planClosed];
+    const factor = CLOSED_PLAN_ANNUAL_FACTOR[planClosed];
     const sub = await createClosedSubscription(repo, {
       customerId: c.id, saas: c.saas,
       planClosed, amount: Number(c.arr) / factor,
@@ -1426,7 +1430,7 @@ const LEVERADS_CATALOG = {
   },
   products: {
     oem_essencial: {
-      line: "oem", tier: "essencial", name: "Lever OEM · Essencial", contas: 3, cota: 200,
+      line: "oem", tier: "essencial", name: "Ads Essencial + OEM", contas: 3, cota: 200,
       inclui: {
         motor: ["200 anúncios OEM criados por mês, com compatibilidade veicular", "Sincronização das suas contas (Meli + Shopee)", "Cópia de anúncios entre contas com títulos sugeridos"],
         plataforma: ["Edição em massa por SKU", "SAC centralizado e automatizado pela descrição dos produtos", "3 contas incluídas"],
@@ -1434,7 +1438,7 @@ const LEVERADS_CATALOG = {
       anu: { total: 5964, per: 497 }, sem: { total: 3582, per: 597 },
     },
     oem_escala: {
-      line: "oem", tier: "escala", name: "Lever OEM · Escala", contas: 7, cota: 0, cotaLabel: "OEM ilimitado",
+      line: "oem", tier: "escala", name: "Ads Escala + OEM", contas: 7, cota: 0, cotaLabel: "OEM ilimitado",
       inclui: {
         motor: ["Anúncios OEM sem limite mensal, com compatibilidade veicular", "Equalização das suas contas", "Sincronização das suas contas (Meli + Shopee)", "Cópia de anúncios entre contas com títulos sugeridos"],
         plataforma: ["Edição em massa por SKU", "SAC centralizado e automatizado pela descrição dos produtos", "7 contas incluídas · conta extra R$ 100/mês"],
@@ -1442,7 +1446,7 @@ const LEVERADS_CATALOG = {
       anu: { total: 11988, per: 999 }, sem: { total: 7182, per: 1197 },
     },
     ads_essencial: {
-      line: "ads", tier: "essencial", name: "Lever Ads · Essencial", contas: 3, equalizacao: false,
+      line: "ads", tier: "essencial", name: "Ads Essencial", contas: 3, equalizacao: false,
       inclui: {
         motor: ["Sincronização das suas contas (Meli + Shopee)", "Cópia de anúncios entre contas com títulos sugeridos", "Edição em massa por SKU"],
         plataforma: ["SAC centralizado e automatizado pela descrição dos produtos", "3 contas incluídas"],
@@ -1450,7 +1454,7 @@ const LEVERADS_CATALOG = {
       anu: { total: 5964, per: 497 }, sem: { total: 3582, per: 597 },
     },
     ads_escala: {
-      line: "ads", tier: "escala", name: "Lever Ads · Escala", contas: 7, equalizacao: true,
+      line: "ads", tier: "escala", name: "Ads Escala", contas: 7, equalizacao: true,
       inclui: {
         motor: ["Equalização das suas contas", "Sincronização das suas contas (Meli + Shopee)", "Cópia de anúncios entre contas com títulos sugeridos", "Edição em massa por SKU"],
         plataforma: ["SAC centralizado e automatizado pela descrição dos produtos", "7 contas incluídas · conta extra R$ 100/mês"],
@@ -2535,6 +2539,29 @@ export async function runStartupMigrations(repo) {
   } catch (err) {
     console.error("[migration] ensureMentoriaTemplate falhou:", err?.message || err);
   }
+  // Catálogo de PLANOS (coleção `plans`): semeia uma vez a partir do catálogo
+  // que está no banco e, a cada boot, devolve aos templates o que mudou nos
+  // planos por fora do REST. Depois do template da mentoria, que é fonte.
+  try {
+    const n = await ensurePlansCatalog(repo, { defaults: { leverads: LEVERADS_CATALOG } });
+    if (n) console.log(`[migration] catálogo de planos: ${n} plano(s) criado(s) a partir do catálogo das propostas`);
+    const r = await ensurePlanResources(repo);
+    if (r) console.log(`[migration] catálogo de planos: ${r} plano(s) com os recursos do LeverAds (cópias por dia e módulos) preenchidos`);
+    for (const saas of new Set((await repo.list("plans")).filter((p) => p.code && p.saas).map((p) => p.saas))) {
+      const changed = await syncPlanCatalogProjection(repo, saas);
+      if (changed) console.log(`[migration] catálogo de planos (${saas}): ${changed} template(s) de proposta realinhado(s) aos planos`);
+    }
+  } catch (err) {
+    console.error("[migration] ensurePlansCatalog falhou:", err?.message || err);
+  }
+  // Clientes que já existiam ganham o plano estruturado (código + ciclo) a
+  // partir do que o cadastro e o lead já dizem. Uma vez; não toca receita.
+  try {
+    const r = await backfillCustomerPlans(repo);
+    if (r) console.log(`[migration] plano estruturado nos clientes: ${r.stamped} com plano do catálogo, ${r.custom} personalizado(s)/só ciclo, ${r.unknown} sem plano identificável`);
+  } catch (err) {
+    console.error("[migration] backfillCustomerPlans falhou:", err?.message || err);
+  }
   try {
     const changed = await migrateFormMentoriaOferta(repo);
     if (changed) console.log("[migration] saída lateral da Mentoria agora anuncia a oferta (não mais 'te chamamos quando abrir')");
@@ -2559,6 +2586,44 @@ export async function runStartupMigrations(repo) {
   } catch (err) {
     console.error("[migration] repairDoneTicketSla falhou:", err?.message || err);
   }
+  try {
+    const n = await migrateFollowupDays(repo);
+    if (n) console.log(`[migration] follow-up por dia (4 contatos): ${n} lead(s) ajustado(s)`);
+  } catch (err) {
+    console.error("[migration] migrateFollowupDays falhou:", err?.message || err);
+  }
+}
+
+// ── Follow-up por DIA, em 4 contatos (05/10/2026) ───────────────────────────
+// followupAt deixa de ter hora ("YYYY-MM-DDTHH:MM" → "YYYY-MM-DD"). Quem está
+// na etapa de follow-up ganha followupStep (contatos já feitos): a aproximação
+// é o contador de toques da etapa (os 3 roteiros antigos saíam dele), no máximo
+// 3 — o Contato 4 nunca é presumido. Sem dia marcado, o dia sai do GPS. Não
+// toca callAt, etapa nem responsável. Uma vez, com marcador em app_config.
+export async function migrateFollowupDays(repo) {
+  const FLAG = "followup_days_v1";
+  if (await repo.get("app_config", FLAG).catch(() => null)) return 0;
+  const products = new Map((await repo.list("products")).map((p) => [p.id, p]));
+  let changed = 0;
+  for (const lead of await repo.list("leads")) {
+    const patch = {};
+    const day = followupDayOf(lead.followupAt);
+    if (lead.followupAt && day !== lead.followupAt) patch.followupAt = day;
+    if (kindOf(products.get(lead.saas), lead.stage) === "followup") {
+      if (lead.followupStep == null) patch.followupStep = Math.min(FOLLOWUP_STEPS - 1, Math.max(0, Number(lead.stageAttempts) || 0));
+      const finalDay = patch.followupAt ?? lead.followupAt ?? "";
+      const fromGps = followupDayOf(lead.nextActionAt);
+      if (!finalDay && fromGps) patch.followupAt = fromGps;
+      const target = dayStartIso(patch.followupAt ?? finalDay);
+      if (target && target !== lead.nextActionAt) patch.nextActionAt = target;
+    }
+    if (Object.keys(patch).length) {
+      await repo.update("leads", lead.id, patch, { silent: true });
+      changed++;
+    }
+  }
+  await repo.create("app_config", { id: FLAG, at: new Date().toISOString(), changed });
+  return changed;
 }
 
 // ── SLA de ticket concluído reavaliado na edição (29/09/2026) ───────────────

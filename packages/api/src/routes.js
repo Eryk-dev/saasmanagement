@@ -22,6 +22,14 @@ import { initSubscription, syncCustomerArr, createClosedSubscription, closedSubs
 import { registerAuthRoutes } from "./auth.js";
 import { registerMpRoutes, mirrorSubscriptionToMp } from "./routes.mp.js";
 import { isChurnedCustomer } from "./churn.js";
+import { CLOSED_PLAN_LABEL, CLOSED_PLAN_ANNUAL_FACTOR } from "./plan-cycles.js";
+import {
+  isPlanV2, newPlanDoc, nextPlan, plansOf, planReferences, slimPlan, dealCatalogFromPlans,
+  syncPlanCatalogProjection, templateCatalogChange, applyTemplateCatalogEdit, catalogConfigSaas,
+} from "./plan-catalog.js";
+import {
+  planFieldsFromDeal, recordPlanChange, customerPlanState, subscriptionPlanState, customerPlanPatch, stampSubscriptionPlan, syncCustomerPlanFromSub,
+} from "./plan-history.js";
 import { registerLeveradsAccessRoutes } from "./leverads-access.js";
 import { mp as defaultMpClient } from "./mp.js";
 import { registerMarketingRoutes } from "./routes.marketing.js";
@@ -61,17 +69,22 @@ import { metaCapi as defaultMetaCapi } from "./meta-capi.js";
 import { discord as defaultDiscord } from "./discord.js";
 import { currentRev, subscribe as subscribeChanges, QUIET } from "./changes.js";
 import { isWon, isPostSaleStage, firstStage, kindOf, stageByKind, isNoShowStage } from "./stages.js";
-import { logActivity, applyStageMove, onActivityCreated, initialNextActionAt, appointmentAt, autoLeadOwner, brtToIso } from "./lead-flow.js";
+import { logActivity, applyStageMove, onActivityCreated, initialNextActionAt, appointmentAt, appointmentAhead, autoLeadOwner, brtToIso } from "./lead-flow.js";
 import { toNaiveBrt } from "./agenda-slots.js";
+import { followupDayOf, FOLLOWUP_CONTACTS_KEY } from "./followup-contacts.js";
+import { loadFollowupContacts, registerFollowupConfigRoutes } from "./followup-config.js";
 
 // COMPROMISSO SEMPRE NA FORMA CANÔNICA (17/09): callAt/followupAt/integrationAt
 // são "YYYY-MM-DDTHH:MM" no relógio de Brasília. Cliente que manda ISO em UTC
 // ("2026-09-16T13:00:00.000Z", visto no card do Renan) fazia o lembrete dizer
 // "hoje às 13h" pra uma call das 10h. Converte na entrada, POST e PATCH.
-const WHEN_FIELDS = ["callAt", "followupAt", "integrationAt"];
+// Follow-up (05/10/2026) é só DIA ("YYYY-MM-DD"), sem horário: valor com hora
+// (legado ou ISO) vira o dia de Brasília. Ver followup-contacts.js.
+const WHEN_FIELDS = ["callAt", "integrationAt"];
 function canonWhen(body) {
   if (!body || typeof body !== "object") return body;
   for (const k of WHEN_FIELDS) if (typeof body[k] === "string" && body[k]) body[k] = toNaiveBrt(body[k]);
+  if (typeof body.followupAt === "string" && body.followupAt) body.followupAt = followupDayOf(body.followupAt);
   return body;
 }
 import { findDuplicateLead, dedupMergePatch } from "./lead-dedup.js";
@@ -110,8 +123,12 @@ const PRIVATE = new Set(["users", "sessions", "user_assets", "activity_assets", 
   "comp_months",
   // Suporte: isolamento por produto (support-scope.js) só pelas rotas
   // dedicadas de routes.tickets.js — o CRUD genérico seria porta dos fundos.
-  "tickets", "ticket_events", "ticket_assets", "ticket_settings", "quick_replies", "linear_outbox"]);
+  "tickets", "ticket_events", "ticket_assets", "ticket_settings", "quick_replies", "linear_outbox",
+  // Histórico de plano: append-only, escrito só pelo servidor (plan-history.js).
+  "plan_changes"]);
 const isExposed = (c) => COLLECTION_NAMES.includes(c) && !PRIVATE.has(c);
+// Sem sessão = key mestre (MCP/integrações), que nunca é restringida.
+const isAdminSession = (u) => !u || (u.roles || []).includes("admin");
 
 // Collections external SaaS are allowed to write to via REST/MCP.
 const WRITABLE = new Set(COLLECTION_NAMES.filter((c) => !PRIVATE.has(c)));
@@ -153,12 +170,14 @@ export const CREATE_DEFAULTS = {
   // user id do closer; lastActivityAt/Type + stageAttempts = denormalizações da
   // timeline (activities) pro board/fila não precisarem carregar o histórico.
   // callAt = call marcada (a de verdade, que vira histórico ao ser remarcada);
-  // followupAt = follow-up marcado com hora, campo PRÓPRIO pra a agenda não
-  // desenhar follow-up com a cara de call (Leo, 13/08).
+  // followupAt = DIA do próximo contato de follow-up ("YYYY-MM-DD", sem hora e
+  // sem ocupar agenda, 05/10/2026); campo PRÓPRIO pra a agenda não desenhar
+  // follow-up com a cara de call (Leo, 13/08). followupStep = contatos do
+  // follow-up já registrados nesta passagem pela etapa (0..4).
   // referredByCustomer/referralCollectedBy/referralAt = indicação (referrals.js):
   // quem indicou (cliente), quem colheu (o prêmio é do coletor) e o carimbo
   // imutável que define a janela da comissão.
-  leads: { priority: "P2", score: 0, icp: 0, value: "", amount: 0, owner: "", closer: "", reason: "", source: "Form", age: "agora", stage: "", stageSince: "", comments: [], callAt: "", callSetAt: "", followupAt: "", proposalValue: "", proposalPeriod: "", integrationAt: "", nextActionAt: "", nextActionNote: "", lostReason: "", lostNote: "", lastActivityAt: "", lastActivityType: "", stageAttempts: 0, sdrOff: false, referredByCustomer: "", referralCollectedBy: "", referralAt: "" },
+  leads: { priority: "P2", score: 0, icp: 0, value: "", amount: 0, owner: "", closer: "", reason: "", source: "Form", age: "agora", stage: "", stageSince: "", comments: [], callAt: "", callSetAt: "", followupAt: "", followupStep: 0, proposalValue: "", proposalPeriod: "", integrationAt: "", nextActionAt: "", nextActionNote: "", lostReason: "", lostNote: "", lastActivityAt: "", lastActivityType: "", stageAttempts: 0, sdrOff: false, referredByCustomer: "", referralCollectedBy: "", referralAt: "" },
   // `current`/`projected` saem do form (leitura ao vivo da meta) — default 0 até serem alimentados.
   goals: { current: 0, projected: 0 },
   forms: { status: "draft", theme: {}, welcome: null, questions: [], thanks: {}, mapping: {} },
@@ -399,6 +418,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Regras de veiculação (agenda cheia pausa, janela de fim de semana, sexta
   // curta, orçamento alvo) — config/estado/log + tick manual; poller no index.js.
   registerAdDeliveryRoutes(app, repo, { meta: metaClient });
+  // Follow-up em 4 contatos: mensagens e prazos globais (Configurações).
+  registerFollowupConfigRoutes(app, repo);
   // Mídia social: métricas do perfil + publicação orgânica (IG/página FB) +
   // copy do post por IA (mesma chave OpenRouter/Anthropic do resto).
   registerSocialRoutes(app, repo, { social: opts.social, meta: metaClient, anthropic: anthropicClient });
@@ -636,8 +657,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     // O que o CONFIG precisa do banco/integrações vai numa leva só: eram cinco
     // awaits em série no meio do objeto (templates, 3× app_config do Google,
     // saúde do WhatsApp), cada um uma ida ao pooler do Supabase.
-    const [proposalTemplates, googleConnected, googleAccount, gmailReady, waHealth] = await Promise.all([
-      repo.list("proposal_templates"), googleClient.connected(), googleClient.account(), googleClient.gmailReady(), getWaHealth(repo),
+    const [proposalTemplates, googleConnected, googleAccount, gmailReady, waHealth, catalogPlans, followupContacts] = await Promise.all([
+      repo.list("proposal_templates"), googleClient.connected(), googleClient.account(), googleClient.gmailReady(), getWaHealth(repo), plansOf(repo),
+      loadFollowupContacts(repo),
     ]);
     return {
       SAAS: saas,
@@ -671,6 +693,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       // (ex.: mostrar o botão "Gerar proposta" nos leads de SaaS com provider).
       CONFIG: {
         levercopy: integrationStatus(),
+        // Follow-up em 4 contatos: mensagem + prazo (dias úteis) de cada um.
+        followupContacts,
         // `catalog` = o que o closer pode FECHAR, com os preços do template
         // (banco): o gate de fechamento do card monta o select de produto e
         // sugere o valor a partir daqui, então mexer no preço no banco vale na
@@ -684,12 +708,19 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
             const cur = catalog[saas] || (catalog[saas] = []);
             for (const r of rows) if (!cur.some((x) => x.id === r.id)) cur.push(r);
           };
-          for (const t of published) add(t.saas, dealCatalog(t.calc));
+          // Produto com catálogo de PLANOS semeado: o que se fecha sai dos
+          // planos (fonte única). Sem planos, vale o catálogo do template.
+          const plansOfSaas = (saas) => catalogPlans.filter((p) => p.saas === saas);
+          const fromPlans = new Set(catalogPlans.map((p) => p.saas));
+          for (const saas of fromPlans) add(saas, dealCatalogFromPlans(plansOfSaas(saas)));
+          for (const t of published) if (!fromPlans.has(t.saas)) add(t.saas, dealCatalog(t.calc));
           // Deck alternativo (rascunho + selectable) também vende: a Mentoria
           // vive num deck selecionável do leverads, e os produtos dela precisam
           // existir no gate de fechamento do mesmo jeito. `group` nas linhas faz
           // o select separar as duas linhas de produto.
-          for (const t of templates) if (t.selectable) add(t.saas, mentoriaDealCatalog(t.calc));
+          for (const t of templates) {
+            if (t.selectable && !plansOfSaas(t.saas).some((p) => p.line === "mentoria")) add(t.saas, mentoriaDealCatalog(t.calc));
+          }
           // `slidesDeck` = as telas da apresentação em slides, na ordem, com a
           // condição que esconde cada uma (data-if do deck). A tela de
           // Propostas mostra isso no cartão da apresentação oficial; vem do
@@ -697,6 +728,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
           // alguém esquecer de atualizar.
           return { nativeSaas: published.map((t) => t.saas), catalog, slidesDeck: deckOutline() };
         })(),
+        // Catálogo de planos por produto (enxuto): rótulo, preço por ciclo e
+        // limites pra as telas escolherem e nomearem plano sem lista fixa.
+        plans: catalogPlans.reduce((acc, p) => { (acc[p.saas] || (acc[p.saas] = [])).push(slimPlan(p)); return acc; }, {}),
         mp: { configured: mpClient.configured(), webhook: mpClient.hasWebhookSecret() },
         meta: { configured: metaClient.configured() },
         // meetCalendar: onde o evento do Meet nasce (GOOGLE_MEET_CALENDAR_ID).
@@ -852,6 +886,30 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
         if (err?.statusCode) return reply.code(err.statusCode).send({ error: err.message, code: err.code });
         throw err;
       }
+    }
+    if (collection === "app_config" && catalogConfigSaas(req.body.id) !== null && !isAdminSession(req.authUser)) {
+      return reply.code(403).send({ error: "Configuração do catálogo de planos exige etiqueta admin" });
+    }
+    // Mensagens e prazos do follow-up: escrita da tela Configurações (o PATCH e
+    // o DELETE pelo id já caem no prefixo de escrita de settings, screens.js).
+    if (collection === "app_config" && req.body.id === FOLLOWUP_CONTACTS_KEY && req.authUser && !canScreen(req.authUser, "settings")) {
+      return reply.code(403).send({ error: "Sem acesso a esta área" });
+    }
+    // PLANO do catálogo (v2, com `code`): id determinístico, preço normalizado e
+    // versão de preço carimbados aqui; os templates de proposta recebem a
+    // projeção. Plano sem `code` é o cadastro antigo e segue o caminho genérico.
+    if (collection === "plans" && req.body.code != null) {
+      if (!isAdminSession(req.authUser)) return reply.code(403).send({ error: "Criar plano exige etiqueta admin" });
+      let doc;
+      try { doc = newPlanDoc(req.body, { by: req.authUser?.id || "api" }); }
+      catch (err) {
+        if (err?.statusCode) return reply.code(err.statusCode).send({ error: err.message });
+        throw err;
+      }
+      if (await repo.get("plans", doc.id)) return reply.code(409).send({ error: `já existe um plano com o código ${doc.code} neste produto` });
+      const plan = await repo.create("plans", doc);
+      await syncPlanCatalogProjection(repo, plan.saas);
+      return reply.code(201).send(plan);
     }
     const now = new Date().toISOString();
     const stamp = {};
@@ -1041,6 +1099,38 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     // toque pela cadência e loga a activity `stage` (histórico do funil). Renome
     // de estágio NÃO passa por aqui (vai via PUT /funnel → repo.update direto).
     let patch = req.body;
+    // Linhas, régua contas → pacote e adicionais do catálogo de planos moram em
+    // app_config/plan_catalog_<saas>: tem preço (conta extra), então só admin.
+    const catalogConfigFor = collection === "app_config" ? catalogConfigSaas(id) : null;
+    if (catalogConfigFor !== null && !isAdminSession(req.authUser)) {
+      return reply.code(403).send({ error: "Configuração do catálogo de planos exige etiqueta admin" });
+    }
+    // PLANO do catálogo (v2): código, workspace e produto vendido não mudam; mexer em preço, limite
+    // ou opção sobe a versão de preço. Só admin escreve.
+    if (collection === "plans") {
+      const cur = await repo.get("plans", id);
+      if (cur && isPlanV2(cur)) {
+        if (!isAdminSession(req.authUser)) return reply.code(403).send({ error: "Editar plano exige etiqueta admin" });
+        // Produto (e o acesso que ele define) é da criação: plano de outro
+        // produto é outro plano.
+        const { id: _id, v, saas, code, product, access, priceVersion, priceUpdatedAt, priceLog, price, cycle, ...clean } = req.body;
+        const plan = await repo.update("plans", id, nextPlan(cur, clean, { by: req.authUser?.id || "api" }));
+        await syncPlanCatalogProjection(repo, plan.saas);
+        return plan;
+      }
+    }
+    // TABELA DE PREÇO editada pelo template (tela de Propostas): a edição é do
+    // PLANO, então pede admin como qualquer mudança de preço. Só vale com o
+    // catálogo de planos do produto já semeado.
+    let catalogChange = null;
+    if (collection === "proposal_templates" && req.body.calc) {
+      const curTemplate = await repo.get(collection, id);
+      catalogChange = curTemplate ? templateCatalogChange(curTemplate, req.body) : null;
+      if (catalogChange && !(await plansOf(repo, catalogChange.saas)).length) catalogChange = null;
+      if (catalogChange && !isAdminSession(req.authUser)) {
+        return reply.code(403).send({ error: "Mudar a tabela de preço exige etiqueta admin" });
+      }
+    }
     // MAPA MENTAL: trava otimista. O editor manda `baseVersion` (a versão que
     // ele abriu); se outra pessoa gravou no meio, devolve 409 com o doc atual
     // pra tela oferecer "recarregar" em vez de sobrescrever em silêncio. Toda
@@ -1122,11 +1212,11 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     // dentro do applyStageMove. Compromisso PASSADO nunca é limpo: é história.
     if (collection === "leads" && ("callAt" in req.body || "followupAt" in req.body)) {
       const cur = await repo.get(collection, id);
-      const ahead = (v) => { const iso = brtToIso(v); return !!iso && new Date(iso).getTime() > Date.now(); };
-      if ("callAt" in req.body && ahead(req.body.callAt) && !("followupAt" in req.body) && ahead(cur?.followupAt)) {
+      const ahead = (field, v) => appointmentAhead(field, v);
+      if ("callAt" in req.body && ahead("callAt", req.body.callAt) && !("followupAt" in req.body) && ahead("followupAt", cur?.followupAt)) {
         patch = { ...patch, followupAt: "" };
       }
-      if ("followupAt" in req.body && ahead(req.body.followupAt) && !("callAt" in req.body) && ahead(cur?.callAt)) {
+      if ("followupAt" in req.body && ahead("followupAt", req.body.followupAt) && !("callAt" in req.body) && ahead("callAt", cur?.callAt)) {
         patch = { ...patch, callAt: "" };
       }
     }
@@ -1147,6 +1237,22 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
         }
       }
     }
+    // Plano do cliente editado na mão (cadastro/ficha): código validado contra
+    // o catálogo, retrato e rótulo recalculados, e a edição entra no histórico.
+    let planEdit = null;
+    if (collection === "customers" && ["planCode", "planCycle", "planCustom"].some((k) => k in req.body)) {
+      const cur = await repo.get(collection, id);
+      if (cur) {
+        try {
+          const r = await customerPlanPatch(repo, cur, req.body);
+          patch = { ...patch, ...r.patch };
+          planEdit = { before: cur, plan: r.plan, snapshot: r.patch.planSnapshot };
+        } catch (err) {
+          if (err?.statusCode) return reply.code(err.statusCode).send({ error: err.message });
+          throw err;
+        }
+      }
+    }
     // Assinatura cancelada por QUALQUER caminho ganha o carimbo canceledAt (o
     // churn de CS do scoreboard e o histórico dependem dele; antes só o
     // syncWonLeadDeal gravava — o botão da tela e o webhook deixavam vazio).
@@ -1159,12 +1265,37 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     }
     const updated = await repo.update(collection, id, patch);
     if (!updated) return reply.code(404).send({ error: "Not found" });
+    if (planEdit) {
+      await stampSubscriptionPlan(repo, id, planEdit.plan, planEdit.snapshot).catch(() => null);
+      await recordPlanChange(repo, {
+        type: "manual_edit", saas: updated.saas, customer: id, lead: updated.leadId || "",
+        from: customerPlanState(planEdit.before), to: customerPlanState(updated),
+        listPrice: planEdit.snapshot?.listPrice, priceVersion: planEdit.snapshot?.priceVersion,
+        source: "manual", author: req.authUser?.id || "api",
+      });
+    }
+    if (collection === "subscriptions" && before && before.status !== updated.status) {
+      await syncCustomerPlanFromSub(repo, updated).catch(() => null);
+    }
+    if (collection === "subscriptions" && before && before.status !== updated.status && (updated.status === "canceled" || updated.status === "paused")) {
+      await recordPlanChange(repo, {
+        type: updated.status, saas: updated.saas, customer: updated.customer, subscription: id,
+        from: subscriptionPlanState(before), to: subscriptionPlanState(updated),
+        source: "manual", author: req.authUser?.id || "api",
+      });
+    }
     // Tabela de preço editada na tela de Propostas: o deck oficial
     // (pt_leverads_slides) e o pt_leverads têm que ficar com o MESMO catálogo.
     // O catálogo MORA no pt_leverads — é lá que as migrações escrevem e de lá
     // que o ensureSlidesDeck copia a cada boot —, então gravar só num dos dois
     // faria o próximo deploy devolver o preço velho, sem aviso.
-    if (collection === "proposal_templates" && patch.calc?.catalog) {
+    if (catalogConfigFor) await syncPlanCatalogProjection(repo, catalogConfigFor);
+    if (catalogChange) {
+      // Catálogo de planos semeado: a edição vira mudança nos planos e a
+      // projeção regrava os templates (o gêmeo incluso).
+      try { await applyTemplateCatalogEdit(repo, catalogChange, { by: req.authUser?.id || "api" }); }
+      catch (err) { req.log?.warn({ err: err?.message }, "plan-catalog: edição do template não chegou aos planos"); }
+    } else if (collection === "proposal_templates" && patch.calc?.catalog) {
       const gemeo = { pt_leverads_slides: "pt_leverads", pt_leverads: "pt_leverads_slides" }[id];
       if (gemeo) {
         try {
@@ -1348,6 +1479,22 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       if (!r) return reply.code(404).send({ error: "Not found" });
       return { ok: true, id, removed: r.removed };
     }
+    if (collection === "app_config" && catalogConfigSaas(id) !== null && !isAdminSession(req.authUser)) {
+      return reply.code(403).send({ error: "Configuração do catálogo de planos exige etiqueta admin" });
+    }
+    // PLANO do catálogo em uso não se apaga: arquiva (status), senão assinatura,
+    // cliente e negócio fechado ficam apontando pro vazio.
+    if (collection === "plans") {
+      const cur = await repo.get("plans", id);
+      if (cur && isPlanV2(cur)) {
+        if (!isAdminSession(req.authUser)) return reply.code(403).send({ error: "Excluir plano exige etiqueta admin" });
+        const refs = await planReferences(repo, cur);
+        if (refs.total) return reply.code(409).send({ error: "plano em uso: arquive em vez de excluir", code: "plan_in_use", refs });
+        await repo.remove("plans", id);
+        await syncPlanCatalogProjection(repo, cur.saas);
+        return { ok: true, id };
+      }
+    }
     const subCustomer = collection === "subscriptions" ? (await repo.get(collection, id))?.customer : null;
     // Consulta apagada → tira o evento da agenda pessoal da responsável.
     const gone = collection === "consultations" ? await repo.get(collection, id) : null;
@@ -1498,19 +1645,33 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
 // `arr` guarda o ANUAL (a tabela mostra MRR = arr/12), então o valor do negócio
 // é anualizado pelo plano fechado. Assinatura criada depois manda mais — toda
 // mutação de assinatura reescreve o arr via syncCustomerArr.
-const CLOSED_PLAN_LABEL = { anual: "Anual", semestral: "Semestral", mensal: "Mensal", unico: "Serviço único" };
 // O produto do catálogo da apresentação (Lever OEM/Ads/Price × pacote,
 // lead.dealProduct) entra na frente do ciclo na coluna Plano do cliente:
-// "Lever Ads · Escala · Anual". Venda antiga (FULL/OEM/Parcial) segue nomeada
+// "Ads Escala · Anual". Venda antiga (FULL/OEM/Parcial) segue nomeada
 // pelos rótulos legados do DEAL_PRODUCT_LABEL.
 // Produto Personalizado (gate de fechamento): dealProduct fora do catálogo é o
 // próprio nome livre que o closer escreveu — vale como rótulo do jeito que veio.
-const planLabelOf = (lead) => [
-  DEAL_PRODUCT_LABEL[lead.dealProduct] || MENTORIA_LABEL[lead.dealProduct]
-    || String(lead.dealProduct || "").trim(),
-  CLOSED_PLAN_LABEL[lead.planClosed],
+// Fechamento com MAIS DE UM produto (Próximo passo das Atividades, 05/10/2026):
+// `lead.dealItems` = [{ product, planClosed, amount }], o 1º espelhado em
+// dealProduct/planClosed e `lead.amount` = a soma (é a venda inteira: meta,
+// receita do closer, Purchase da Meta). Sem lista (ou com um item só), o
+// fechamento é o de sempre: um item com os campos do lead.
+export function dealItemsOf(lead) {
+  const rows = Array.isArray(lead?.dealItems) ? lead.dealItems.filter((i) => i && (String(i.product || "").trim() || Number(i.amount) > 0)) : [];
+  if (rows.length > 1) {
+    return rows.map((i) => ({ dealProduct: String(i.product || "").trim(), planClosed: String(i.planClosed || ""), amount: Number(i.amount) || 0 }));
+  }
+  return [{ dealProduct: lead?.dealProduct || "", planClosed: lead?.planClosed || "", amount: Number(lead?.amount) || 0 }];
+}
+const itemLabelOf = (it) => [
+  DEAL_PRODUCT_LABEL[it.dealProduct] || MENTORIA_LABEL[it.dealProduct]
+    || String(it.dealProduct || "").trim(),
+  CLOSED_PLAN_LABEL[it.planClosed],
 ].filter(Boolean).join(" · ");
-const CLOSED_PLAN_ANNUAL_FACTOR = { anual: 1, semestral: 2, mensal: 12, unico: 1 };
+const planLabelOf = (lead) => dealItemsOf(lead).map(itemLabelOf).filter(Boolean).join(" + ");
+// ARR do fechamento: cada item anualizado pelo próprio plano (com um item só,
+// é o amount × fator de sempre).
+const closedArrOf = (lead) => Math.round(dealItemsOf(lead).reduce((sum, it) => sum + it.amount * (CLOSED_PLAN_ANNUAL_FACTOR[it.planClosed] || 1), 0));
 export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } = {}) {
   if (!lead || !lead.saas) return null;
   const product = await repo.get("products", lead.saas);
@@ -1540,6 +1701,9 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
   const csOwner = (lead.integrator && csUsers.some((u) => u.id === lead.integrator))
     ? lead.integrator
     : (csCandidates.length === 1 ? csCandidates[0].id : "");
+  // Plano contratado de forma estruturada (código do catálogo, ciclo e retrato
+  // do plano na venda); o rótulo `plan` abaixo segue igual.
+  const planFields = await planFieldsFromDeal(repo, lead).catch(() => null);
   const customer = await repo.create("customers", {
     ...(CREATE_DEFAULTS.customers || {}),
     name: lead.company || lead.name || "Cliente",
@@ -1551,25 +1715,52 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
     plan: lead.saas === "uniquekids"
       ? `Mentoria · ${Number(lead.consultPackage) === 4 ? 4 : 8} consultas`
       : (planLabelOf(lead) || ""),
-    arr: Math.round((Number(lead.amount) || 0) * (CLOSED_PLAN_ANNUAL_FACTOR[lead.planClosed] || 1)),
+    arr: closedArrOf(lead),
     leadId: lead.id,
     ...(csOwner ? { owner: csOwner } : {}),
     ...(lead.dealProduct ? { dealProduct: lead.dealProduct } : {}), // produto do catálogo (FULL/OEM/Parcial)
     ...(lead.paymentMethod ? { paymentMethod: lead.paymentMethod } : {}), // modo como fechou (PIX/boleto/cartão 12x)
+    ...(planFields?.customer || {}),
     startedAt: new Date().toISOString(),
   });
+  let wonSubId = "";
   // `customerId` marca QUE vendeu, `wonAt` marca QUANDO. Os dois precisam ser
   // do lead e não do card: `stageSince` é recarimbado a cada movimento, então
   // seguir pra Integração jogaria a venda pro mês da integração.
   await repo.update("leads", lead.id, { customerId: customer.id, wonAt: customer.startedAt });
   // Assinatura ativa nasce junto do cliente (plano fechado + meio de pagamento
-  // → ciclo/preço; fatura inicial paga). Best-effort: o cliente já existe.
+  // → ciclo/preço; fatura inicial paga), UMA POR ITEM recorrente vendido: o
+  // plano vive na assinatura e o cliente pode ter um produto em cada uma.
+  // Best-effort: o cliente já existe.
   try {
-    const sub = await createClosedSubscription(repo, {
-      customerId: customer.id, saas: lead.saas,
-      planClosed: lead.planClosed, amount: lead.amount, paymentMethod: lead.paymentMethod,
-      paymentInstallments: lead.paymentInstallments,
-    });
+    const items = dealItemsOf(lead);
+    const created = [];
+    const subProducts = new Set();
+    for (const [i, it] of items.entries()) {
+      const itemFields = i === 0 ? planFields : await planFieldsFromDeal(repo, { saas: lead.saas, ...it }).catch(() => null);
+      // Uma assinatura viva por produto: o segundo plano recorrente do mesmo
+      // produto não abre outra (o gate não deixa escolher; aqui só não duplica).
+      const subProduct = itemFields?.subscription?.planSnapshot?.product || "";
+      const spec = closedSubscriptionSpec({ ...lead, planClosed: it.planClosed, amount: it.amount });
+      if (spec && subProduct && subProducts.has(subProduct)) continue;
+      const sub = await createClosedSubscription(repo, {
+        customerId: customer.id, saas: lead.saas,
+        planClosed: it.planClosed, amount: it.amount, paymentMethod: lead.paymentMethod,
+        paymentInstallments: lead.paymentInstallments, planFields: itemFields?.subscription,
+      });
+      if (sub) { created.push(sub); if (subProduct) subProducts.add(subProduct); }
+      // Serviço único faturado em Nx: não há recorrência (spec null, arr manual),
+      // mas o cronograma de parcelas existe do mesmo jeito, preso só ao cliente.
+      if (!sub && closedInstallments(lead) && it.amount > 0) {
+        await createInstallmentSchedule(repo, {
+          customerId: customer.id, saas: lead.saas, total: it.amount,
+          installments: closedInstallments(lead), startAt: customer.startedAt,
+          method: lead.paymentMethod,
+        });
+      }
+    }
+    const sub = created[0] || null;
+    wonSubId = sub?.id || "";
     // Recorrência AUTORIZADA no card do lead (link de assinatura do Mercado
     // Pago gerado antes do Ganho): a assinatura que acabou de nascer adota o
     // preapproval — daqui em diante a cobrança mensal dá baixa na fatura e
@@ -1583,16 +1774,16 @@ export async function convertWonLead(repo, lead, { metaCapi = defaultMetaCapi } 
         ...(lead.mpChargeUrl ? { mpInitPoint: lead.mpChargeUrl } : {}),
       });
     }
-    // Serviço único faturado em Nx: não há recorrência (spec null, arr manual),
-    // mas o cronograma de parcelas existe do mesmo jeito, preso só ao cliente.
-    if (!sub && closedInstallments(lead) && Number(lead.amount) > 0) {
-      await createInstallmentSchedule(repo, {
-        customerId: customer.id, saas: lead.saas, total: lead.amount,
-        installments: closedInstallments(lead), startAt: customer.startedAt,
-        method: lead.paymentMethod,
-      });
-    }
+    // Mais de um produto: o cadastro lista todos e espelha a assinatura principal.
+    if (items.length > 1 && created.length) await syncCustomerPlanFromSub(repo, created[created.length - 1]).catch(() => null);
   } catch { /* assinatura é best-effort */ }
+  await recordPlanChange(repo, {
+    type: "start", saas: lead.saas, customer: customer.id, subscription: wonSubId, lead: lead.id,
+    at: customer.startedAt, from: null,
+    to: customerPlanState((await repo.get("customers", customer.id)) || customer),
+    listPrice: planFields?.customer.planSnapshot?.listPrice, priceVersion: planFields?.customer.planSnapshot?.priceVersion,
+    amount: Number(lead.amount) || 0, source: "won", author: lead.closer || lead.owner || "",
+  });
   // UniqueKids: o ganho É a compra do pacote de consultas (mentoria 1:1). A
   // jornada inteira nasce aqui SEM data (n=1..N + packageTotal); o time marca
   // cada consulta na tela Consultas, e o PATCH do `at` espelha na agenda Google
@@ -1662,14 +1853,34 @@ export async function syncWonLeadDeal(repo, lead) {
   if (!lead?.customerId) return null;
   const customer = await repo.get("customers", lead.customerId);
   if (!customer || customer.leadId !== lead.id) return null;
+  const planFields = await planFieldsFromDeal(repo, lead).catch(() => null);
+  // Mesmo plano e mesmo ciclo: o retrato da venda original fica (preço de
+  // tabela e versão são os do dia do fechamento, não os de hoje).
+  if (planFields?.customer.planSnapshot && customer.planSnapshot
+    && customer.planCode === planFields.customer.planCode && (customer.planCycle || "") === planFields.customer.planCycle) {
+    planFields.customer.planSnapshot = customer.planSnapshot;
+    planFields.subscription.planSnapshot = customer.planSnapshot;
+  }
   const patch = {
     plan: lead.saas === "uniquekids"
       ? `Mentoria · ${Number(lead.consultPackage) === 4 ? 4 : 8} consultas`
       : (planLabelOf(lead) || customer.plan || ""),
     ...(lead.dealProduct ? { dealProduct: lead.dealProduct } : {}),
     ...(lead.paymentMethod ? { paymentMethod: lead.paymentMethod } : {}),
+    ...(planFields?.customer || {}),
   };
-  const manualArr = () => Math.round((Number(lead.amount) || 0) * (CLOSED_PLAN_ANNUAL_FACTOR[lead.planClosed] || 1));
+  const manualArr = () => closedArrOf(lead);
+  // Fechamento com mais de um produto: as assinaturas de cada um são gestão
+  // da ficha do cliente (Gerenciar cobranças); aqui só o cadastro acompanha.
+  if (dealItemsOf(lead).length > 1) {
+    const saved = await repo.update("customers", customer.id, patch);
+    await recordPlanChange(repo, {
+      type: "deal_edit", saas: lead.saas, customer: customer.id, lead: lead.id,
+      from: customerPlanState(customer), to: customerPlanState(saved),
+      amount: Number(lead.amount) || 0, source: "deal", author: lead.closer || lead.owner || "",
+    });
+    return saved;
+  }
   const spec = closedSubscriptionSpec(lead);
   const subs = (await repo.list("subscriptions")).filter((s) => s.customer === customer.id && s.status !== "canceled");
   if (subs.length === 1 && !subs[0].mpPreapprovalId) {
@@ -1693,7 +1904,7 @@ export async function syncWonLeadDeal(repo, lead) {
       await createClosedSubscription(repo, {
         customerId: customer.id, saas: lead.saas,
         planClosed: lead.planClosed, amount: lead.amount, paymentMethod: lead.paymentMethod,
-        paymentInstallments: lead.paymentInstallments,
+        paymentInstallments: lead.paymentInstallments, planFields: planFields?.subscription,
         startAt: lead.wonAt || customer.startedAt,
       });
     } else if (Number(lead.amount) > 0) {
@@ -1725,7 +1936,20 @@ export async function syncWonLeadDeal(repo, lead) {
       });
     } catch { /* cronograma é best-effort — nunca quebra o espelho */ }
   }
-  return repo.update("customers", customer.id, patch);
+  const saved = await repo.update("customers", customer.id, patch);
+  // A assinatura que nasceu do fechamento acompanha o plano reeditado, e a
+  // reedição entra no histórico (só quando produto, ciclo ou valor mudou).
+  if (planFields && subs.length === 1 && !subs[0].mpPreapprovalId) {
+    const plan = planFields.subscription.plan ? { id: planFields.subscription.plan, code: planFields.subscription.planCode } : null;
+    await stampSubscriptionPlan(repo, customer.id, plan, planFields.customer.planSnapshot).catch(() => null);
+  }
+  await recordPlanChange(repo, {
+    type: "deal_edit", saas: lead.saas, customer: customer.id, subscription: subs.length === 1 ? subs[0].id : "", lead: lead.id,
+    from: customerPlanState(customer), to: customerPlanState(saved),
+    listPrice: planFields?.customer.planSnapshot?.listPrice, priceVersion: planFields?.customer.planSnapshot?.priceVersion,
+    amount: Number(lead.amount) || 0, source: "deal", author: lead.closer || lead.owner || "",
+  });
+  return saved;
 }
 
 // Mantém o leadQuestions do produto em dia com as perguntas do form (upsert por

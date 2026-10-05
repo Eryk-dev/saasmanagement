@@ -165,7 +165,7 @@ test("a conta do plano sai do catálogo: pacote, conta extra, período e pagamen
   const completo = calcOferta(cat, { ...cfgBase, tier: "escala", price: true, priceTier: "escala", oem: true, oemPack: "2000" });
   assert.equal(completo.mensal, 999 + 1497, "plataforma + Price somam na parcela");
   assert.equal(completo.setupFmt, "3.500", "pacote de OEM é pagamento único, fora da parcela");
-  assert.equal(completo.planoNome, "Lever Ads · Escala + Lever Price · Escala + OEM 2.000");
+  assert.equal(completo.planoNome, "Ads Escala + Lever Price · Escala + OEM 2.000");
   assert.equal(completo.entregaveis.length, 4, "um card por produto + o lado humano");
   assert.ok(completo.entregaveis[0].itens.length > 0, "entregáveis vêm do catálogo, não escritos no slide");
 });

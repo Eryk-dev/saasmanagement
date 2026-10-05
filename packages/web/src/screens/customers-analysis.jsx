@@ -6,6 +6,7 @@ import { api } from "../lib/api.js";
 import { useData } from "../data.jsx";
 import { useActiveSaas } from "../lib/workspace.js";
 import { InfoNota } from "../components/story.jsx";
+import { CYCLE_LABEL } from "../lib/payments.js";
 
 // Análise da base de clientes — números do período sobre a coleção customers:
 // contratado anualizado, clientes novos, ticket médio,
@@ -63,9 +64,6 @@ export function CustomerCashValues({ cash, loading = false, error = false, onRet
     </div>
   );
 }
-
-// Ciclo da assinatura → rótulo (mesma régua da lista/card do cliente).
-const CYCLE_LABEL = { monthly: "mensal", quarterly: "trimestral", semiannual: "semestral", annual: "anual" };
 
 function planBucket(plan) {
   const t = String(plan || "").toLowerCase();

@@ -465,6 +465,9 @@ try {
   // Destinos do follow-up (Meu dia, "Depois da ação"): a Nutrição entra como
   // botão (Leo, 11/09) resolvida pelo NOME da etapa — `contato` cairia em Dia 2,
   // a 1ª etapa de cadência da LeverAds. Sem etapa Nutrição no funil, o botão some.
+  // Desde 05/10/2026 o follow-up é em 4 contatos: o "retomar" sai (o registro
+  // do contato do dia é que marca o próximo) e os roteiros followup1/2/3
+  // salvos viram configuração morta (a chave agora é "followup").
   try {
     const { destinationsFor } = await server.ssrLoadModule("/src/screens/today.jsx");
     const funnel = [
@@ -477,9 +480,10 @@ try {
       if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error(`${name}: ${JSON.stringify(got)} ≠ ${JSON.stringify(want)}`);
     };
     const names = (cfg, lead) => destinationsFor(cfg, lead).map((d) => (d.retry ? "retry" : d.stage));
-    eq("follow-up ganha Nutrição antes de Desqualificado", names({ funnel }, { id: "l1", stage: "Follow-up" }), ["retry", "Ganho", "Integração", "Nutrição", "Desqualificado"]);
+    eq("follow-up ganha Nutrição antes de Desqualificado", names({ funnel }, { id: "l1", stage: "Follow-up" }), ["Ganho", "Integração", "Nutrição", "Desqualificado"]);
     const semNutri = funnel.filter((f) => f.stage !== "Nutrição");
-    eq("sem etapa Nutrição, o botão some", names({ funnel: semNutri }, { id: "l1", stage: "Follow-up" }), ["retry", "Ganho", "Integração", "Desqualificado"]);
+    eq("sem etapa Nutrição, o botão some", names({ funnel: semNutri }, { id: "l1", stage: "Follow-up" }), ["Ganho", "Integração", "Desqualificado"]);
+    eq("override da chave followup vale, sem retry", names({ funnel, nextSteps: { followup: ["retry", "ganho", "nutricao"] } }, { id: "l1", stage: "Follow-up" }), ["Ganho", "Nutrição"]);
     // Configurações antigas substituem o default: validar o produto migrado
     // nos três roteiros que Minhas atividades escolhe conforme as tentativas.
     const { makeMemRepo } = await import("../../api/test/helpers/mem-repo.js");
@@ -493,15 +497,25 @@ try {
     await migrateNutricaoNoFollowup(repo);
     const migrated = await repo.get("products", "leverads");
     for (const stageAttempts of [0, 1, 2, 5]) {
-      eq(`roteiro salvo com ${stageAttempts} tentativas oferece Nutrição`, names(migrated, { id: "l1", stage: "Follow-up", stageAttempts }), ["retry", "Ganho", "Integração", "Nutrição", "Desqualificado"]);
+      eq(`roteiro salvo com ${stageAttempts} tentativas oferece Nutrição`, names(migrated, { id: "l1", stage: "Follow-up", stageAttempts }), ["Ganho", "Integração", "Nutrição", "Desqualificado"]);
     }
     // Configuração antiga de contato resolvia para Dia 2 no follow-up.
     for (const stageAttempts of [0, 1, 2, 5]) {
       const legacy = { funnel, nextSteps: Object.fromEntries(["followup1", "followup2", "followup3"].map((key) => [key, ["ganho", "integracao", "nutricao", "desqualificado", "contato"]])) };
-      eq(`follow-up ${stageAttempts}: retorno disponível e sem dias`, names(legacy, { stage: "Follow-up", stageAttempts }), ["retry", "Ganho", "Integração", "Nutrição", "Desqualificado"]);
+      eq(`follow-up ${stageAttempts}: sem retomar e sem dias`, names(legacy, { stage: "Follow-up", stageAttempts }), ["Ganho", "Integração", "Nutrição", "Desqualificado"]);
       const day3First = { ...legacy, funnel: funnel.filter((f) => f.stage !== "Dia 2") };
-      eq(`follow-up ${stageAttempts}: também exclui Dia 3`, names(day3First, { stage: "Follow-up", stageAttempts }), ["retry", "Ganho", "Integração", "Nutrição", "Desqualificado"]);
+      eq(`follow-up ${stageAttempts}: também exclui Dia 3`, names(day3First, { stage: "Follow-up", stageAttempts }), ["Ganho", "Integração", "Nutrição", "Desqualificado"]);
     }
+    // Minhas atividades tira o Ganho do Próximo passo (05/10/2026): a
+    // Integração cobra o mesmo fechamento. Sem Integração na lista, ela entra
+    // no lugar; funil sem etapa de Integração mantém o Ganho.
+    const { withoutWonStep } = await server.ssrLoadModule("/src/screens/today.jsx");
+    const steps = (cfg, lead) => withoutWonStep(cfg, lead, destinationsFor(cfg, lead)).map((d) => (d.retry ? "retry" : d.stage));
+    eq("follow-up sem Ganho", steps({ funnel }, { id: "l1", stage: "Follow-up" }), ["Integração", "Nutrição", "Desqualificado"]);
+    eq("call: Integração no lugar do Ganho", steps({ funnel }, { id: "l1", stage: "Call agendada" }), ["retry", "No show", "Follow-up", "Integração", "Desqualificado"]);
+    eq("na Integração, o voltar pro Ganho some", steps({ funnel }, { id: "l1", stage: "Integração" }), []);
+    const semInteg = funnel.filter((f) => f.kind !== "integracao");
+    eq("sem etapa de Integração, o Ganho fica", steps({ funnel: semInteg }, { id: "l1", stage: "Follow-up" }), ["Ganho", "Nutrição", "Desqualificado"]);
     console.log("✓ destino-nutricao");
   } catch (err) {
     console.error(`✗ destino-nutricao: ${err.message}`);
@@ -535,7 +549,9 @@ try {
     };
     eq("antes do movimento o card é de hoje", bloco(lead), "hoje");
     const mover = (patch) => ({ ...lead, ...patch, nextActionAt: nextActionAfterMove(cfg, lead, patch) });
-    eq("movido pro Follow-up, sai da fila de hoje", bloco(mover({ stage: "Follow-up", closer: "jonathan" })), "proximos");
+    // Follow-up é por DIA: o Contato 1 cai em hoje + 1 dia útil (prazo padrão).
+    const amanhaUtil = [1, 2, 3, 4, 5].includes(new Date(Date.now() + 86400000).getDay());
+    eq("movido pro Follow-up, sai da fila de hoje", bloco(mover({ stage: "Follow-up", closer: "jonathan" })), amanhaUtil ? "amanha" : "proximos");
     // Cadência curta (Novo lead volta em 2h) mantém o card no dia — de propósito.
     eq("etapa que volta hoje continua na fila do dia", bloco(mover({ stage: "Novo lead" })), "hoje");
     // Compromisso marcado manda: a call de amanhã vira o próximo passo.
@@ -543,6 +559,17 @@ try {
     const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
     eq("call agendada vira o GPS", nextActionAfterMove(cfg, lead, { stage: "Call agendada", callAt: iso(amanha) }), amanha.toISOString());
     eq("horário escolhido na tela manda", nextActionAfterMove(cfg, lead, { stage: "Follow-up", nextActionAt: amanha.toISOString() }), amanha.toISOString());
+    eq("dia do Contato 1 vira o GPS às 00:00 de Brasília", nextActionAfterMove(cfg, lead, { stage: "Follow-up", followupAt: "2099-01-09" }), "2099-01-09T03:00:00.000Z");
+    // O dia inteiro conta como hoje: follow-up de hoje fica em "hoje" o dia
+    // todo, o de ontem é atrasado e o de amanhã vai pra amanhã — sem horário.
+    const ymdLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const fup = (followupAt, extra = {}) => ({ id: "f1", saas: "leverads", name: "Ana", stage: "Follow-up", closer: "jonathan", followupAt, followupStep: 1, ...extra });
+    eq("follow-up de hoje é de hoje", bloco(fup(ymdLocal(new Date()))), "hoje");
+    eq("follow-up de ontem segue em hoje (atrasado)", bloco(fup(ymdLocal(new Date(Date.now() - 86400000)))), "hoje");
+    eq("follow-up de amanhã é de amanhã", bloco(fup(ymdLocal(new Date(Date.now() + 86400000)))), "amanha");
+    eq("toque avulso hoje não conta como contato feito",
+      buildQueue([fup(ymdLocal(new Date()), { lastActivityType: "whatsapp", lastActivityAt: new Date().toISOString() })], [], cfg, "").hoje[0]?.done, false);
+    eq("depois do 4º contato o card espera o destino hoje", bloco(fup("", { followupStep: 4, nextActionAt: new Date(new Date().setHours(0, 0, 0, 0)).toISOString() })), "hoje");
     eq("etapa terminal sai do GPS", nextActionAfterMove(cfg, lead, { stage: "Desqualificado" }), "");
     eq("integração sem horário fica sem data", nextActionAfterMove(cfg, lead, { stage: "Integração" }), "");
     eq("sem trocar de etapa, o GPS não muda", nextActionAfterMove(cfg, lead, { closer: "x" }), lead.nextActionAt);
@@ -1042,6 +1069,16 @@ try {
     if (!painel.includes("Passo a passo")) throw new Error("o painel não montou em preview");
     if (!painel.includes("Próximo passo")) throw new Error("preview deveria mostrar a nota do Próximo passo");
     if (painel.includes("abrir lead")) throw new Error("preview não deveria oferecer abrir lead");
+    const fupCfg = { ...window.SEED.SAAS[0], funnel: [...(window.SEED.SAAS[0].funnel || []), { stage: "Follow-up", kind: "followup" }] };
+    const fupItem = { ...item, l: { ...item.l, stage: "Follow-up", followupStep: 1, followupAt: "2099-01-09" }, stage: "Follow-up" };
+    const fupPainel = renderToString(wrap(React.createElement(T.ScriptPanel, {
+      item: fupItem, saasCfg: fupCfg, leads: window.SEED.LEADS, preview: true,
+      onPatch() {}, onMove() {}, onMoveMeet() {}, onAfter() {}, onClose() {}, onTouch() {}, onOpenLead() {},
+    })));
+    if (!fupPainel.includes("Contato 2 de 4")) throw new Error("o painel do follow-up deveria mostrar o Contato 2 de 4");
+    if (!fupPainel.includes("FOLLOW-UP")) throw new Error("o painel do follow-up deveria ter o selo FOLLOW-UP");
+    if (!fupPainel.includes("follow-up · contato 2 de 4")) throw new Error("o cabeçalho da atividade deveria dizer que é follow-up");
+    if (!fupPainel.includes("Objeção respondida com prova")) throw new Error("a mensagem do Contato 2 (padrão) não apareceu");
     console.log(`✓ minhas-atividades (${soma}px de ${T.QUEUE_GRID_BUDGET})`);
   } catch (err) {
     console.error(`✗ minhas-atividades: ${err.message}`);

@@ -1208,9 +1208,19 @@ Respostas das atividades revisadas em 21/09/2026: leitura vertical sem cortes,
 como no Inbox; edição recolhível e pendências preservadas. Validado com perguntas
 e respostas longas em desktop e celular no review today-card.
 
-Follow-up nas atividades revisado em 21/09/2026: próximas ações sem etapas
-Dia 2–7; botão Follow-up abre data e hora de retorno, com confirmação e cancelar.
-Validação desktop/mobile em `scripts/review/followup-return.mjs`.
+Follow-up nas atividades refeito em 05/10/2026: 4 contatos, por dia e sem
+horário. A linha da fila diz "follow-up · contato N de 4" e o painel, com o
+selo FOLLOW-UP ao lado de "Contato N de 4", mostra a mensagem configurada (copiar/abrir
+no WhatsApp), o canal, uma nota opcional e "Registrar contato N"; "mudar o dia"
+troca só o dia. Sem chip de retomar; após o 4º, só os destinos. Entrar no
+follow-up pede o dia do Contato 1 (sem grade de horas). Agenda: faixa "dia" no
+topo da coluna. Validação desktop/mobile em `scripts/review/followup-contacts.mjs`
+e `scripts/review/agenda-followup.mjs`; aba Follow-up em `scripts/review/settings.mjs`.
+Atraso nas atividades (05/10/2026): item pendente vencido (`isLateItem`: horário
+passado, ou dia do contato passado no follow-up) pinta o card INTEIRO de
+vermelho na fila e no "Próxima ação"; faixa de alerta no topo do Hoje conta os
+atrasados e os follow-ups com contato vencido. O vermelho é resolvido fora da
+cápsula navy (`--late-bg`). Validado em `followup-contacts.mjs` (`&fupLate`).
 
 Cabeçalho da atividade revisado em 21/09/2026: telefone do cadastro ao lado do
 nome, com quebra de linha quando necessário. Conferido em 1440px e 390px.

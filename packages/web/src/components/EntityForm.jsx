@@ -26,12 +26,17 @@ function resolveOptions(field, values) {
 // `cfg.fields` é estático; o formulário acrescenta os campos dinâmicos do SaaS
 // selecionado: perguntas de qualificação (leads) + campos custom de Ajustes
 // (deals/customers/leads). Esta lista efetiva dirige render, validação e payload.
-function effectiveFields(cfg, values) {
+function effectiveFields(cfg, values, isEdit = false) {
   const extra = ["leads", "deals", "customers"].includes(cfg.collection)
     ? customEntityFields(cfg.collection, values.saas)
     : [];
-  if (cfg.collection === "leads") return [...cfg.fields, ...leadQuestionFields(values.saas), ...extra];
-  return [...cfg.fields, ...extra];
+  // `showIf(values)`: campo que só existe em parte dos casos (ex.: plano do
+  // catálogo só nos produtos que têm catálogo). Campo fora não entra no payload.
+  // `createOnly`: campo que só existe ao CADASTRAR; depois se edita em outro
+  // lugar (ex.: valor e datas do contrato, em Gerenciar cobranças).
+  const fields = cfg.fields.filter((f) => (!f.showIf || f.showIf(values)) && !(isEdit && f.createOnly));
+  if (cfg.collection === "leads") return [...fields, ...leadQuestionFields(values.saas), ...extra];
+  return [...fields, ...extra];
 }
 
 // Vazio para validação de obrigatório: array sem itens conta como vazio.
@@ -140,7 +145,7 @@ function toPayload(fields, values) {
 function EntityForm({ entityKey, record, onClose, onSaved, onOpenLead, bare = false }) {
   const cfg = ENTITIES[entityKey];
   const isEdit = !!(record && record.id);
-  const [values, setValues] = useState(() => toInputs(effectiveFields(cfg, record || {}), record));
+  const [values, setValues] = useState(() => toInputs(effectiveFields(cfg, record || {}, isEdit), record));
   const [busy, setBusy] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState(null);
@@ -157,7 +162,7 @@ function EntityForm({ entityKey, record, onClose, onSaved, onOpenLead, bare = fa
     setValues((v) => {
       let changed = false;
       const next = { ...v };
-      for (const f of effectiveFields(cfg, v)) {
+      for (const f of effectiveFields(cfg, v, isEdit)) {
         if (f._dynamic && next[f.key] === undefined) {
           next[f.key] = f.type === "multiselect" ? [] : "";
           changed = true;
@@ -169,7 +174,7 @@ function EntityForm({ entityKey, record, onClose, onSaved, onOpenLead, bare = fa
 
   async function submit(e) {
     e.preventDefault();
-    const eff = effectiveFields(cfg, values);
+    const eff = effectiveFields(cfg, values, isEdit);
     const missing = eff
       .filter((f) => f.required && isBlank(values[f.key]))
       .map((f) => f.label);
@@ -205,7 +210,7 @@ function EntityForm({ entityKey, record, onClose, onSaved, onOpenLead, bare = fa
 
   const fieldsGrid = (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-      {effectiveFields(cfg, values).map((f) => (
+      {effectiveFields(cfg, values, isEdit).map((f) => (
         <Field key={f.key} f={f} value={values[f.key]} values={values} recordId={record?.id} onChange={(val) => set(f.key, val)} />
       ))}
     </div>

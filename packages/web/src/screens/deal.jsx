@@ -21,6 +21,8 @@ import { CustomProposalModal } from "../components/custom-proposal.jsx";
 import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
 import { LeadSendActions, useLeadProposalActions } from "../components/lead-send-actions.jsx";
 import { useData } from "../data.jsx";
+import { DayPicker } from "../components/followup-contact.jsx";
+import { followupBadge, followupNextContact, followupDayOf } from "../lib/followup.js";
 // Lead detail drawer — slides over the pipeline when a card is opened.
 // (Funil unificado: o card do pipeline é um lead, então o detalhe é do lead.)
 // Seções: header → números → GPS (etapa gateada + próximo toque + call) →
@@ -458,7 +460,20 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
               {next && next.key !== "none" ? next.text.replace(/^[◆●]\s*/, "") : `Sem horário · ${primaryStep.verb}`}
             </div>}
           </div>
+          {/* Follow-up em 4 contatos: o próximo passo é o DIA do contato da vez
+              (sem horário, não ocupa a agenda). O registro do contato mora na
+              atividade (Minhas atividades); aqui só o dia muda. */}
+          {showGps && isOpen && kind === "followup" && (
+            <div style={{ display: "grid", gap: 6 }}>
+              <span className="mono dim" style={{ fontSize: 10.5 }}>
+                {followupBadge(lead)} · dia do próximo contato (sem horário)
+              </span>
+              {followupNextContact(lead) > 0 && <DayPicker value={followupDayOf(lead.followupAt)} label="Dia do próximo contato"
+                onChange={(day) => day && patch({ followupAt: day })} />}
+            </div>
+          )}
           {showGps && isOpen && (<>
+          {kind !== "followup" && (
           <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
             <div style={{ display: "flex", gap: 5, flex: 1, flexWrap: "wrap", alignItems: "center" }}>
               {/* Atalhos curtos tocam a semana; os longos (15 a 60 dias) são pra
@@ -501,19 +516,14 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
                 style={{ flexBasis: "100%", height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5 }} />
             </div>
           </div>
+          )}
           <LeadDisclosure title="Agenda e detalhes da call" open={kind === "call"}>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <span className="mono dim" style={rowLabel}>Call agendada</span>
-            {/* Em etapa de follow-up a fila do Meu dia vence pelo nextActionAt,
-                então marcar a call aqui SINCRONIZA o próximo toque no mesmo
-                horário (igual o roteiro faz) — senão o card fica com a call
-                num dia e a fila cobrando em outro. */}
             <DateTimeEditor value={dtLocal(lead.callAt)}
               validate={(raw) => raw && callConflict(raw) ? (callBusyMsg || "Esse horário já está ocupado") : ""}
               onSave={async (raw) => {
-                const saved = await persistSchedule(kind === "followup" && raw
-                  ? { callAt: raw, nextActionAt: localToIso(raw) }
-                  : { callAt: raw });
+                const saved = await persistSchedule({ callAt: raw });
                 return !!saved;
               }}
               style={{ height: 26, padding: "0 6px", borderRadius: "var(--r-2)", border: `1px solid ${callBusyMsg ? "var(--neg)" : "var(--line-1)"}`, background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11, fontFamily: "var(--mono)" }} />

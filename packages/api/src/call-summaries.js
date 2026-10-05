@@ -5,6 +5,8 @@
 // próximo toque do GPS quando a IA sugere follow-up e o lead está em aberto.
 import { logActivity, appointmentAt } from "./lead-flow.js";
 import { syncClientPending } from "./client-pending.js";
+import { kindOf } from "./stages.js";
+import { followupDayOf, dayStartIso } from "./followup-contacts.js";
 
 const CLOSED_STAGE = /perdid|ganh|fechad|won|lost|cliente/i;
 
@@ -177,7 +179,16 @@ export function makeCallSummarizer({ repo, google, googleUser = null, anthropic,
         // que é onde está o valor ("confirmar o pagamento antes da reunião").
         const product = lead.saas ? await repo.get("products", lead.saas).catch(() => null) : null;
         const booked = appointmentAt(product, lead);
-        patch.nextActionAt = booked || at.toISOString();
+        if (kindOf(product, lead.stage) === "followup") {
+          // Follow-up é por DIA, sem horário (followup-contacts.js): sem dia
+          // ainda por vir, o DIA sugerido vira o do próximo contato.
+          if (!booked) {
+            patch.followupAt = followupDayOf(at.toISOString());
+            patch.nextActionAt = dayStartIso(patch.followupAt);
+          }
+        } else {
+          patch.nextActionAt = booked || at.toISOString();
+        }
         if (summary.followup.nota) patch.nextActionNote = summary.followup.nota;
       }
     }

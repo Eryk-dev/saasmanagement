@@ -64,7 +64,27 @@
 .today-destinations > .kicker { margin-bottom: 0 !important; }
 .today-destinations > div:nth-child(2) { justify-content: flex-end; }
 .today-destinations > div:nth-child(n+3) { grid-column: 1 / -1; }
+/* Próximo passo · Integração/Ganho: seções "A venda" e "A entrega", campos em
+   duas colunas (uma no celular). */
+.today-dest-form { display: flex; flex-direction: column; gap: 14px; }
+.today-dest-section { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.today-dest-section + .today-dest-section { padding-top: 14px; border-top: 1px solid var(--line-1); }
+.today-dest-title { margin: 0; font-family: var(--display); font-size: 13px; font-weight: 700; letter-spacing: -.01em; color: var(--fg-1); }
+.today-dest-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; align-items: start; }
+.today-dest-grid > .is-wide { grid-column: 1 / -1; }
+.today-dest-static { display: flex; align-items: center; gap: 8px; min-height: 30px; font-size: 12.5px; color: var(--fg-1); }
+.today-dest-static .mono { font-size: 10.5px; }
+.today-dest-note { width: 100%; min-height: 58px; padding: 8px 12px; border-radius: 14px; font-size: 12.5px; line-height: 1.45; resize: vertical; box-sizing: border-box; }
+.today-deal { display: flex; flex-direction: column; gap: 12px; }
+.today-deal-item.is-boxed { padding: 12px; border: 1px solid var(--line-1); border-radius: 14px; }
+.today-deal-item-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.today-deal-item-head button { font-size: 11px; }
+.today-deal-item-head button:hover { color: var(--neg); }
+.today-deal-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.today-deal-add { align-self: flex-start; height: 30px; padding: 0 14px; border-radius: 999px; border: 1px dashed var(--line-2); background: transparent; color: var(--fg-2); font-size: 12px; font-weight: 600; }
+.today-deal-add:hover { border-color: var(--accent-line); color: var(--accent); }
 @media (max-width: 760px) {
+  .today-dest-grid { grid-template-columns: minmax(0, 1fr); }
   .today-destinations { grid-template-columns: minmax(0, 1fr); }
   .today-destinations > div:nth-child(2) { justify-content: flex-start; }
   .today-next-lead { flex-wrap: wrap; }
@@ -111,7 +131,7 @@
 .today-now-person { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
 .today-now-person strong { font: 700 18px var(--display); letter-spacing: -.025em; }
 .today-now-person > span { font-size: 12.5px; color: var(--fg-3); }
-.today-now-person small { padding: 4px 9px; border-radius: 999px; background: var(--bg-2); font-size: 11px; }
+.today-now-person > small { padding: 4px 9px; border-radius: 999px; background: var(--bg-2); font-size: 11px; }
 .today-now-action { padding-top: 0 !important; margin-top: 10px; font: 700 16px var(--display); letter-spacing: -.02em; }
 .today-now > button { height: 36px; width: 100%; margin-top: 14px; border-radius: 999px; background: #f3fbff; color: #051c2c; font-size: 12.5px; font-weight: 700; }
 .today-queue { min-width: 0; padding: 22px 16px 16px; border-radius: 24px; background: var(--bg-1); box-shadow: var(--shadow-card); }
@@ -122,7 +142,6 @@
 .today-progress > span:last-child { width: 70px !important; }
 .today-queue-head .inp { background: var(--bg-2); border: 0; }
 .today-queue-row { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 8px 12px; margin: 0; border: 0; border-radius: 22px; transition: background 150ms ease; }
-.today-queue-row.is-late { background: var(--neg-soft); }
 .today-queue-row.is-done { opacity: .65; }
 .today-queue-row.is-done strong { text-decoration: line-through; }
 .today-queue-lead { min-width: 0; text-align: left; }
@@ -170,14 +189,26 @@
 .today-page-head [aria-label="Pessoa da fila"] { gap: 8px !important; padding: 0 12px 0 14px !important; border: 0 !important; font-size: 12.5px !important; }
 .today-screen .lead-grade { border-radius: 999px; }
 .today-now-person { min-height: 26px; }
-.today-now-person small { padding: 5px 11px; background: rgba(35,216,211,.14); color: #23d8d3; }
-.today-now-person small.is-late { background: rgba(255,157,144,.16); color: #ff9d90; }
-.today-now-person small::before { content: ''; display: inline-block; width: 5px; height: 5px; border-radius: 999px; background: currentColor; margin-right: 6px; vertical-align: middle; }
+.today-now-person > small { padding: 5px 11px; background: rgba(35,216,211,.14); color: #23d8d3; }
+.today-now-person > small.is-late { background: rgba(255,157,144,.16); color: #ff9d90; }
+.today-now-person > small::before { content: ''; display: inline-block; width: 5px; height: 5px; border-radius: 999px; background: currentColor; margin-right: 6px; vertical-align: middle; }
 .today-search { display: inline-flex; align-items: center; gap: 8px; width: 185px; height: 34px; padding: 0 15px; border-radius: 999px; background: var(--bg-2); color: var(--fg-3); }
 .today-search .inp { min-width: 0; width: 100%; height: 34px; padding: 0; font-size: 12.5px; outline-offset: 3px; }
 .today-search svg { flex-shrink: 0; }
 .today-queue-head > div:last-child { gap: 10px !important; }
 .today-completed { margin: 14px 8px 0; }
+
+/* Separação da fila (05/10/2026): cada linha é uma cápsula em --bg-1 com a
+   sombra difusa dos tokens (--shadow-1 + --shadow-2), 8px de respiro e
+   sombra mais funda no hover. Feita fica plana (sem sombra). O atraso fica só
+   na pílula de horário; fundo é da linha aberta no painel. */
+.today-queue-row { background: var(--bg-1); box-shadow: var(--shadow-1), var(--shadow-2); transition: background 150ms ease, box-shadow 150ms ease; }
+.today-queue-row + .today-queue-row { margin-top: 8px; }
+.today-queue-head + .today-queue-row { margin-top: 10px; }
+.today-queue-row:hover { box-shadow: var(--shadow-1), var(--shadow-pop); }
+.today-queue-row.is-done { box-shadow: none; }
+.today-queue-row.is-selected, .today-queue-row.is-selected:hover { background: var(--accent-soft) !important; box-shadow: inset 0 0 0 1px var(--accent-line), var(--shadow-2); }
+.today-queue-row.is-selected .today-queue-lead strong { color: var(--accent); }
 .today-completed summary { font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
 
 /* Card de execução — desenho do Leonardo, 21/09/2026. */
@@ -224,3 +255,34 @@
 @media (max-width: 600px) {
   .today-followup-summary dl > div { grid-template-columns: minmax(0, 1fr); gap: 3px; }
 }
+/* ── ATRASO (05/10/2026): card INTEIRO vermelho na fila e no "Próxima ação",
+   e a faixa de alerta no topo do Hoje. Vale também pro follow-up cujo dia do
+   contato já passou (isLateItem). O vermelho é resolvido FORA da cápsula navy
+   (que redefine --neg pra um salmão de texto). */
+.today-screen { --late-bg: var(--neg); }
+.today-queue-row.is-late,
+.today-queue-row.is-late:hover { background: var(--late-bg) !important; box-shadow: 0 0 0 1px var(--late-bg), var(--shadow-2); }
+.today-queue-row.is-late:hover { background: color-mix(in srgb, var(--late-bg) 88%, #000) !important; }
+.today-queue-row.is-late.is-selected { box-shadow: 0 0 0 3px color-mix(in srgb, var(--late-bg) 35%, transparent), var(--shadow-2); }
+.today-queue-row.is-late .today-queue-lead strong,
+.today-queue-row.is-late .today-queue-lead small,
+.today-queue-row.is-late .today-queue-action { color: #fff !important; }
+.today-queue-row.is-late .today-queue-lead small { opacity: .85; }
+.today-queue-row.is-late .today-queue-action { font-weight: 700; }
+.today-queue-row.is-late .today-open-script { background: #fff; color: var(--late-bg) !important; font-weight: 700; }
+.today-queue-row.is-late > span:first-child > span:first-child { background: #fff !important; color: var(--late-bg) !important; }
+.today-queue-row.is-late > span:first-child > span:last-child { color: #fff !important; font-weight: 700 !important; }
+.today-now.is-late { background: var(--late-bg) !important; }
+.today-now.is-late::before { background: rgba(255,255,255,.08); }
+.today-now.is-late > .today-section-label { color: #fff; }
+.today-now.is-late .today-now-person > span { color: rgba(255,255,255,.85); }
+.today-now.is-late .today-now-person > small.is-late { background: #fff; color: var(--late-bg); font-weight: 700; }
+.today-now.is-late > button { background: #fff; color: var(--late-bg); }
+.today-late-alert { display: flex; align-items: flex-start; gap: 10px; margin: 10px 10px 0; padding: 10px 14px; border-radius: 16px; background: var(--neg-soft); border: 1px solid color-mix(in srgb, var(--neg) 45%, transparent); color: var(--neg); font-size: 12.5px; line-height: 1.45; }
+.today-late-alert::before { content: "!"; flex: none; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 999px; background: var(--neg); color: #fff; font-size: 11.5px; font-weight: 700; }
+.today-late-alert strong { font-weight: 700; margin-right: 6px; }
+/* Follow-up atrasado nos detalhes: borda vermelha no bloco e faixa cheia no topo. */
+/* No celular os detalhes abrem em modal fora de .today-screen: --neg de reserva. */
+.today-followup-contact.is-late { box-shadow: inset 0 0 0 2px var(--late-bg, var(--neg)), var(--shadow-card); }
+.today-followup-late { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; margin-bottom: 12px; padding: 10px 14px; border-radius: 14px; background: var(--late-bg, var(--neg)); color: #fff; font-size: 12.5px; }
+.today-followup-late strong { font-weight: 700; font-size: 13.5px; }

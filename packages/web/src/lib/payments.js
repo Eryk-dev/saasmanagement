@@ -1,3 +1,13 @@
+import {
+  CLOSED_PLANS as CLOSED_PLAN_DEFS, CLOSED_PLAN_MONTHS as RECURRING_PLAN_MONTHS, CLOSED_PLAN_TITLE,
+  CYCLE_LABEL, CYCLE_MONTHS, CYCLE_SHORT, CYCLE_TITLE, annualized, closedPlanFromLabel,
+} from "../../../api/src/plan-cycles.js";
+import { PLAN_PRODUCTS, planProductOf } from "../../../api/src/plan-resources.js";
+
+// Ciclos e planos de fechamento vêm da régua compartilhada com a API
+// (plan-cycles.js); as telas importam daqui.
+export { CLOSED_PLAN_TITLE, CYCLE_LABEL, CYCLE_MONTHS, CYCLE_SHORT, CYCLE_TITLE, annualized, closedPlanFromLabel };
+
 // Modo de pagamento com que o closer FECHOU o negócio — assinalado na virada pra
 // Ganho/Integração (o momento do fechamento), junto do valor. Guardado em
 // lead.paymentMethod e carregado pro customer no convertWonLead.
@@ -50,12 +60,9 @@ export const PAY_STATUS = {
 // "Assinatura mensal" (recorrência) deixou de ser vendida em 10/09/2026:
 // `legacy` tira a opção dos selects, mas cliente antigo continua rotulado,
 // com o acumulado a cada 30 dias (accruedAmountOf) e a cobrança no runBilling.
-export const CLOSED_PLANS = [
-  { id: "anual", label: "Anual" },
-  { id: "semestral", label: "Semestral" },
-  { id: "mensal", label: "Assinatura mensal", legacy: true },
-  { id: "unico", label: "Serviço único" },
-];
+export const CLOSED_PLANS = CLOSED_PLAN_DEFS.map((p) => ({
+  id: p.id, label: p.selectLabel || p.label, ...(p.legacy ? { legacy: true } : {}),
+}));
 export const CLOSED_PLANS_ACTIVE = CLOSED_PLANS.filter((p) => !p.legacy);
 // Opções de um select de plano/meio: as ativas + o valor atual quando ele é
 // legado (senão o select de um cliente antigo abriria vazio).
@@ -88,9 +95,9 @@ export function accruedAmountOf(lead, { now, endAt } = {}) {
 }
 
 // Parcelamento padrão do FATURADO por plano (o gate sugere; o closer muda à
-// vontade). Espelho do PLAN_MONTHS da API — anual 12, semestral 6; serviço
+// vontade). Os meses do plano são os da API (anual 12, semestral 6); serviço
 // único não tem cadência própria, então sugere 1 (à vista em boleto).
-export const CLOSED_PLAN_MONTHS = { anual: 12, semestral: 6, mensal: 1, unico: 1 };
+export const CLOSED_PLAN_MONTHS = { ...RECURRING_PLAN_MONTHS, unico: 1 };
 
 // Produto do catálogo da apresentação (tela zero) com que o negócio fechou —
 // espelho do DEAL_PRODUCT_LABEL de packages/api/src/proposal-catalog.js (os
@@ -100,10 +107,10 @@ export const CLOSED_PLAN_MONTHS = { anual: 12, semestral: 6, mensal: 1, unico: 1
 // (FULL/OEM/Parcial/clonagem avulsa) ficam com `legacy: true`: não entram em
 // select nenhum, só nomeiam venda antiga.
 export const DEAL_PRODUCTS = [
-  { id: "oem_essencial", label: "Lever OEM · Essencial" },
-  { id: "oem_escala", label: "Lever OEM · Escala" },
-  { id: "ads_essencial", label: "Lever Ads · Essencial" },
-  { id: "ads_escala", label: "Lever Ads · Escala" },
+  { id: "oem_essencial", label: "Ads Essencial + OEM" },
+  { id: "oem_escala", label: "Ads Escala + OEM" },
+  { id: "ads_essencial", label: "Ads Essencial" },
+  { id: "ads_escala", label: "Ads Escala" },
   { id: "price_essencial", label: "Lever Price · Essencial" },
   { id: "price_escala", label: "Lever Price · Escala" },
   { id: "price_enterprise", label: "Lever Price · Enterprise" },
@@ -130,8 +137,51 @@ export function dealProductsOf(saas) {
 // Rótulo do produto vendido: o do catálogo do SEED (nome que está na
 // apresentação), o estático acima e, por fim, o próprio valor — o produto
 // Personalizado guarda o nome livre no lugar do id (DealProductField).
+// Catálogo de planos do produto (CONFIG.plans do SEED): inclui arquivados e
+// legados, então nomeia venda antiga sem depender da lista fixa acima.
+export function plansOf(saas) {
+  const rows = (typeof window !== "undefined" && window.SEED?.CONFIG?.plans?.[saas]) || null;
+  return Array.isArray(rows) ? rows : [];
+}
+// O que dá pra FECHAR, do catálogo de planos da plataforma (Comercial →
+// Planos): todo plano vivo (fora arquivado e catálogo anterior), na ordem do
+// catálogo, agrupado pelo produto, com os ciclos que ele vende e o preço de
+// tabela de cada um. Os preços vêm da projeção do servidor (dealProductsOf),
+// então o rótulo do pacote avulso é o mesmo do gate. Plano "sob consulta" entra
+// sem preço e com os ciclos recorrentes (o closer digita o valor). O que só o
+// catálogo da apresentação vende (Mentoria de deck selecionável) vem no fim;
+// sem planos semeados, vale o catálogo do SEED inteiro.
+const RECURRING_CLOSED = CLOSED_PLAN_DEFS.filter((p) => p.cycle && !p.legacy).map((p) => p.id);
+export function closingPlansOf(saas) {
+  const deal = new Map(dealProductsOf(saas).map((p) => [p.id, p]));
+  const cyclesOf = (oneOff, prices) => {
+    if (oneOff) return ["unico"];
+    const priced = [...new Set(prices.map((r) => r.plan).filter(Boolean))];
+    return priced.length ? priced : RECURRING_CLOSED;
+  };
+  const productRank = (p) => PLAN_PRODUCTS.findIndex((x) => x.id === planProductOf(p));
+  const rows = plansOf(saas)
+    .filter((p) => p.code && p.status !== "archived" && p.kind !== "legacy")
+    .sort((a, b) => productRank(a) - productRank(b) || (Number(a.order) || 0) - (Number(b.order) || 0))
+    .map((p) => {
+      const oneOff = p.kind === "one_off";
+      const product = planProductOf(p);
+      const prices = deal.get(p.code)?.prices || [];
+      return {
+        id: p.code, label: p.name, product, group: PLAN_PRODUCTS.find((x) => x.id === product)?.label || "",
+        oneOff, custom: p.pricing === "custom", cycles: cyclesOf(oneOff, prices), prices,
+      };
+    });
+  const known = new Set(rows.map((r) => r.id));
+  const extra = [...deal.values()].filter((p) => !known.has(p.id)).map((p) => ({
+    id: p.id, label: p.label, product: "", group: p.group || "", oneOff: !!p.oneOff, custom: false,
+    cycles: cyclesOf(!!p.oneOff, p.prices || []), prices: p.prices || [],
+  }));
+  return [...rows, ...extra];
+}
 export const dealProductLabel = (id, saas = "") =>
   dealProductsOf(saas).find((p) => p.id === id)?.label
+  || plansOf(saas).find((p) => p.code === id)?.name
   || DEAL_PRODUCTS.find((p) => p.id === id)?.label
   || String(id || "");
 

@@ -371,38 +371,20 @@ export const DEFAULT_SCRIPTS = {
       { t: "Destravar", fala: "Me fala com sinceridade: o que falta pra gente começar? Se for investimento, me conta que eu vejo o que consigo por aqui." },
     ],
   },
-  // Follow-up ancorado na CALL TRANSCRITA: o resumo por IA (card acima do
-  // roteiro) diz onde a venda parou, e os tokens da call (combinado, objeção em
-  // aberto, dor, temperatura) entram nas falas — o contato retoma DALI, não do
-  // zero. Token vazio = lacuna mandando gerar o resumo (✨).
-  followup1: {
-    titulo: "Follow-up · 1º contato",
-    resumo: "A venda parou num ponto específico e o resumo da call acima diz qual. Retome dali: nada de reapresentar a ferramenta nem de 'e aí, pensou?'.",
-    objetivo: "Decisão (ou a objeção real declarada) e um dia marcado pra bater o martelo.",
+  // Follow-up em 4 contatos (05/10/2026): a MENSAGEM de cada contato e o prazo
+  // entre eles moram em Configurações → Follow-up (configuração global, painel
+  // "Contato N de 4" da atividade). Este roteiro é só a postura comum aos quatro,
+  // ancorada na CALL TRANSCRITA: o resumo por IA diz onde a venda parou e os
+  // tokens da call (combinado, objeção em aberto, dor, temperatura) entram nas
+  // falas — o contato retoma DALI, não do zero.
+  followup: {
+    titulo: "Follow-up",
+    resumo: "A venda parou num ponto específico e o resumo da call diz qual. Retome dali: nada de reapresentar a ferramenta nem de 'e aí, pensou?'.",
+    objetivo: "Decisão (ou a objeção real declarada). Registre o contato do dia; sem retorno, o próximo cai sozinho no prazo configurado.",
     passos: [
       { t: "Antes de chamar: ler a call", dica: "Temperatura: {{temperatura_call}}. Objeção em aberto: {{objecao_aberta}}. Dor confirmada: {{dor_call}}. O contato inteiro gira em volta disso." },
-      { t: "Retomar pelo combinado", fala: "Oi {{nome}}! Aqui é {{eu}}, da {{produto}}. Na nossa call a gente combinou: {{combinado_call}}. Como ficou aí do teu lado?" },
-      { t: "Atacar a objeção da call", fala: "Me fala com sinceridade o que ainda está pegando, que eu resolvo contigo agora.", dica: "Responda {{objecao_aberta}} de frente antes de pedir a decisão: preço se responde com o valor do primeiro dia, prazo com a integração rodando amanhã." },
-      { t: "Fechar com data", fala: "Fechado. Me diz um dia ainda essa semana pra gente bater o martelo que eu já deixo tudo pronto pra você começar.", dica: "Sai com data no GPS. Sem retorno, volta em 3 dias úteis pro 2º contato." },
-    ],
-  },
-  followup2: {
-    titulo: "Follow-up · 2º contato",
-    resumo: "3 dias sem retorno. Uma mensagem só: responde a objeção da call com prova e pede uma sinalização. Não repete a venda.",
-    objetivo: "Derrubar a objeção em aberto e arrancar um bora, um não ou a dúvida real.",
-    passos: [
-      { t: "Antes de chamar: ler a call", dica: "A mensagem responde a objeção em aberto ({{objecao_aberta}}) e lembra a dor confirmada ({{dor_call}}), nessa ordem." },
-      { t: "Objeção respondida com prova", fala: "Oi {{nome}}! Não vou te deixar sem retorno. Sobre o que ficou no ar na nossa call: cliente nosso na mesma situação subiu 105% espelhando as contas, e o risco do teu lado é baixo, teus anúncios migram no primeiro dia." },
-      { t: "Pedido objetivo", fala: "Me responde só com um 'bora' que eu já reservo teu horário pra fechar, ou me diz o que ainda está te segurando.", dica: "Sem resposta, o GPS devolve em 3 dias úteis pro 3º contato (último)." },
-    ],
-  },
-  followup3: {
-    titulo: "Follow-up · 3º contato (último)",
-    resumo: "Última tentativa: sim ou não claro, sem constranger. Sem resposta, Desqualificado (motivo: sem retorno) e a fila anda.",
-    objetivo: "Retomar com prioridade ou encerrar com respeito.",
-    passos: [
-      { t: "Saída elegante", fala: "Oi {{nome}}, vou parar de te chamar pra não virar chateação. Só me diz: resolver {{dor_call}} ainda é prioridade pra tua operação agora?" },
-      { t: "Sim ou não claro", fala: "Se ainda for, eu retomo com prioridade e a gente fecha essa semana. Se não for a hora, me fala que eu encerro por aqui e deixo a porta aberta pra quando quiser voltar.", dica: "Sem resposta depois deste contato: Desqualificado (motivo: sem retorno)." },
+      { t: "Mandar a mensagem do contato", dica: "A mensagem do contato do dia está no bloco acima: copie ou abra no WhatsApp e registre o canal." },
+      { t: "Respondeu?", dica: "Respondeu com decisão: mova o card (Ganho, Integração, Nutrição ou Desqualificado). Depois do 4º contato sem resposta, o card espera você escolher o destino." },
     ],
   },
   // Confirmação da INTEGRAÇÃO: 2h antes da call de vídeo, na fila do integrador
@@ -531,7 +513,7 @@ export function scriptKeyFor(saasCfg, lead) {
   if (isNoShowStage(stage)) return attempts >= 1 ? "noshow2" : "noshow1";
   if (reactivation) return attempts >= 2 ? "nutricao3" : attempts === 1 ? "nutricao2" : "nutricao1";
   if (kind === "qualificacao") return attempts >= 1 ? "qualificacao3" : "qualificacao2";
-  if (kind === "followup") return attempts >= 2 ? "followup3" : attempts === 1 ? "followup2" : "followup1";
+  if (kind === "followup") return "followup"; // os 4 contatos vêm de Configurações → Follow-up
   return DEFAULT_SCRIPTS[kind] ? kind : "outro";
 }
 
@@ -634,9 +616,8 @@ export const SCRIPT_CATALOG = [
   { key: "nutricao3",     label: "Nutrição · 3º contato (saída)", phase: "Reativação",      stageMatch: "nutri" },
   { key: "call",          label: "Call de fechamento",            phase: "Closer",          stageKind: "call" },
   { key: "proposta",      label: "Proposta enviada",              phase: "Closer",          stageKind: "proposta" },
-  { key: "followup1",     label: "Follow-up · 1º contato",        phase: "Closer",          stageKind: "followup" },
-  { key: "followup2",     label: "Follow-up · 2º contato",        phase: "Closer",          stageKind: "followup" },
-  { key: "followup3",     label: "Follow-up · 3º contato (último)",phase: "Closer",         stageKind: "followup" },
+  // As mensagens e os prazos dos 4 contatos ficam em Configurações → Follow-up.
+  { key: "followup",      label: "Follow-up · postura (4 contatos)", phase: "Closer",       stageKind: "followup" },
   { key: "integracao",    label: "Integração",                    phase: "Entrega",         stageKind: "integracao" },
   { key: "posvenda",      label: "Pós-venda",                     phase: "Entrega",         stageKind: "posvenda" },
 ];

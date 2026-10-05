@@ -9,6 +9,7 @@ import { makeMemRepo } from "./helpers/mem-repo.js";
 
 const { registerRoutes } = await import("../src/routes.js");
 const { rollToBusinessDay, appointmentAt, brtToIso, onOutboundMessage } = await import("../src/lead-flow.js");
+const { addBusinessDays, todayBrt, dayStartIso } = await import("../src/followup-contacts.js");
 
 const FUNNEL = [
   { stage: "Novo lead", kind: "novo", conv: 1, cadence: { firstTouchHours: 2 } },
@@ -116,11 +117,12 @@ test("PATCH de estágio: activity stage {from,to}, stageAttempts zera, GPS re-ag
   assert.equal(lead.stage, "Follow-up");
   assert.equal(lead.stageAttempts, 0);
   assert.ok(lead.stageSince);
-  // retryDays: 3 do Follow-up — mesma régua do produto: +3d rolando fim de
-  // semana pra segunda 08:00 (senão o teste quebra toda quinta/sexta).
-  const expected = rollToBusinessDay(new Date(Date.now() + 3 * 86_400_000)).getTime();
-  const delta = Math.abs(new Date(lead.nextActionAt).getTime() - expected);
-  assert.ok(delta < 60_000, `nextActionAt fora do +3d útil: ${lead.nextActionAt}`);
+  // Follow-up em 4 contatos: entra no Contato 1, marcado num DIA (hoje + o
+  // prazo padrão do Contato 1, 1 dia útil), e o GPS fica em 00:00 desse dia.
+  const day = addBusinessDays(todayBrt(), 1);
+  assert.equal(lead.followupAt, day);
+  assert.equal(lead.followupStep, 0);
+  assert.equal(lead.nextActionAt, dayStartIso(day));
 
   const acts = await activitiesOf(repo, "l1", "stage");
   assert.equal(acts.length, 1);
@@ -407,36 +409,40 @@ test("appointmentAt: pega o compromisso DA ETAPA, e só no futuro", () => {
   // Etapa sem compromisso associado não inventa (nenhum followupAt marcado).
   assert.equal(appointmentAt(PROD, lead, "Follow-up", agora), "");
   // Follow-up MARCADO é compromisso igual aos outros (25/08): sem isso o resumo
-  // por IA sobrescrevia o horário do closer e a agenda desenhava duas pílulas.
-  const comFup = { ...lead, stage: "Follow-up", followupAt: "2026-07-24T16:00" };
-  assert.equal(appointmentAt(PROD, comFup, "Follow-up", agora), "2026-07-24T19:00:00.000Z");
-  // Follow-up que já passou não segura o GPS.
-  assert.equal(appointmentAt(PROD, { ...comFup, followupAt: "2026-07-01T16:00" }, "Follow-up", agora), "");
+  // por IA sobrescrevia o dia do closer. Desde 05/10 é só DIA: vale o dia
+  // inteiro (00:00 de Brasília), inclusive o próprio dia de hoje.
+  const comFup = { ...lead, stage: "Follow-up", followupAt: "2026-07-24" };
+  assert.equal(appointmentAt(PROD, comFup, "Follow-up", agora), "2026-07-24T03:00:00.000Z");
+  assert.equal(appointmentAt(PROD, { ...comFup, followupAt: "2026-07-20" }, "Follow-up", agora), "2026-07-20T03:00:00.000Z");
+  // Legado com hora conta pelo dia.
+  assert.equal(appointmentAt(PROD, { ...comFup, followupAt: "2026-07-24T16:00" }, "Follow-up", agora), "2026-07-24T03:00:00.000Z");
+  // Follow-up de um dia que já passou não segura o GPS.
+  assert.equal(appointmentAt(PROD, { ...comFup, followupAt: "2026-07-19" }, "Follow-up", agora), "");
   // Compromisso passado não é próximo passo.
   const depois = new Date("2026-07-20T23:00:00.000Z");
   assert.equal(appointmentAt(PROD, lead, "Integração", depois), "");
 });
 
-test("remarcar SÓ o followupAt move o GPS junto (agenda não fica com duas horas)", async () => {
+test("mudar SÓ o dia do follow-up move o GPS junto", async () => {
   const { app, repo } = await buildApp();
-  const futuro = new Date(Date.now() + 30 * 3600e3);
-  const brt = new Date(futuro.getTime() - 3 * 3600e3).toISOString().slice(0, 16);
+  const dia = dayOfMs(Date.now() + 30 * 3600e3);
   const lead = (await app.inject({
     method: "POST", url: "/api/leads",
-    payload: { name: "Wanderley", saas: "leverads", stage: "Follow-up", followupAt: brt, nextActionAt: brt },
+    payload: { name: "Wanderley", saas: "leverads", stage: "Follow-up", followupAt: dia, nextActionAt: dayStartIso(dia) },
   })).json();
-  // O closer arrasta o follow-up pra 2h depois, mexendo só no followupAt.
-  const novo = new Date(futuro.getTime() + 2 * 3600e3 - 3 * 3600e3).toISOString().slice(0, 16);
+  // O closer passa o contato pra 2 dias depois, mexendo só no followupAt.
+  const novo = dayOfMs(Date.now() + 78 * 3600e3);
   await app.inject({ method: "PATCH", url: `/api/leads/${lead.id}`, payload: { followupAt: novo } });
   const depois = await repo.get("leads", lead.id);
   assert.equal(depois.followupAt, novo);
-  assert.equal(depois.nextActionAt, new Date(`${novo}:00-03:00`).toISOString());
+  assert.equal(depois.nextActionAt, dayStartIso(novo));
 });
 
 // UM COMPROMISSO MARCADO POR VEZ (Leo, 26/08): o mesmo lead não pode ocupar
 // duas horas na agenda com uma call e um follow-up marcados no futuro. Quem
 // chega por último manda; o que já PASSOU é história e não se apaga.
 const brtOf = (ms) => new Date(ms - 3 * 3600e3).toISOString().slice(0, 16);
+function dayOfMs(ms) { return new Date(ms - 3 * 3600e3).toISOString().slice(0, 10); }
 
 test("card indo pra Follow-up larga a call FUTURA que não vai acontecer", async () => {
   const { app, repo } = await buildApp();
@@ -445,13 +451,14 @@ test("card indo pra Follow-up larga a call FUTURA que não vai acontecer", async
     method: "POST", url: "/api/leads",
     payload: { name: "Wanderley", saas: "leverads", stage: "Call agendada", callAt: callBrt, closer: "leonardo" },
   })).json();
-  const fupBrt = brtOf(Date.now() + 72 * 3600e3);    // closer marca o follow-up na sexta
-  await app.inject({ method: "PATCH", url: `/api/leads/${lead.id}`, payload: { stage: "Follow-up", followupAt: fupBrt } });
+  const fupDia = dayOfMs(Date.now() + 72 * 3600e3);  // closer marca o Contato 1 pra daqui a 3 dias
+  await app.inject({ method: "PATCH", url: `/api/leads/${lead.id}`, payload: { stage: "Follow-up", followupAt: fupDia } });
   const depois = await repo.get("leads", lead.id);
   assert.equal(depois.stage, "Follow-up");
-  assert.equal(depois.followupAt, fupBrt);
+  assert.equal(depois.followupAt, fupDia);
+  assert.equal(depois.followupStep, 0);
   assert.equal(depois.callAt, "", "a call futura sai: ela não vai acontecer");
-  assert.equal(depois.nextActionAt, new Date(`${fupBrt}:00-03:00`).toISOString());
+  assert.equal(depois.nextActionAt, dayStartIso(fupDia));
 });
 
 test("call que JÁ ACONTECEU continua no card ao virar follow-up (é história)", async () => {
@@ -472,11 +479,11 @@ test("marcar follow-up pelo drawer limpa a call futura, sem mexer na etapa", asy
     method: "POST", url: "/api/leads",
     payload: { name: "Wanderley", saas: "leverads", stage: "Call agendada", callAt: callBrt, closer: "leonardo" },
   })).json();
-  const fupBrt = brtOf(Date.now() + 72 * 3600e3);
-  await app.inject({ method: "PATCH", url: `/api/leads/${lead.id}`, payload: { followupAt: fupBrt } });
+  const fupDia = dayOfMs(Date.now() + 72 * 3600e3);
+  await app.inject({ method: "PATCH", url: `/api/leads/${lead.id}`, payload: { followupAt: fupDia } });
   const depois = await repo.get("leads", lead.id);
   assert.equal(depois.callAt, "");
-  assert.equal(depois.followupAt, fupBrt);
+  assert.equal(depois.followupAt, fupDia);
 });
 
 test("remarcar a call limpa o follow-up futuro (a intenção nova manda)", async () => {
@@ -499,11 +506,11 @@ test("mandar os DOIS horários no mesmo patch respeita o que foi mandado", async
     method: "POST", url: "/api/leads", payload: { name: "Wanderley", saas: "leverads", stage: "Qualificando" },
   })).json();
   const callBrt = brtOf(Date.now() + 26 * 3600e3);
-  const fupBrt = brtOf(Date.now() + 72 * 3600e3);
-  await app.inject({ method: "PATCH", url: `/api/leads/${lead.id}`, payload: { callAt: callBrt, followupAt: fupBrt } });
+  const fupDia = dayOfMs(Date.now() + 72 * 3600e3);
+  await app.inject({ method: "PATCH", url: `/api/leads/${lead.id}`, payload: { callAt: callBrt, followupAt: fupDia } });
   const depois = await repo.get("leads", lead.id);
   assert.equal(depois.callAt, callBrt, "escrita explícita não é rival de si mesma");
-  assert.equal(depois.followupAt, fupBrt);
+  assert.equal(depois.followupAt, fupDia);
 });
 
 test("mover pra Integração com hora marcada aponta o GPS pra ela, não pra cadência", async () => {
