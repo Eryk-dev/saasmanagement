@@ -5,8 +5,11 @@ export function setupTodayReview(seed) {
   if (params.has('followup')) {
     const product = seed.SAAS[0];
     product.funnel.push({stage:'Follow-up',kind:'followup'}, {stage:'Dia 2',kind:'contato'}, {stage:'Dia 3',kind:'contato'}, {stage:'Nutrição',kind:'contato'});
-    product.nextSteps = Object.fromEntries(['followup1','followup2','followup3'].map(key => [key, ['ganho','nutricao','contato']]));
-    Object.assign(seed.LEADS.find(l => l.id === 'l5'), {stage:'Follow-up',closer:'leo',stageAttempts:5});
+    product.nextSteps = {followup:['ganho','nutricao','contato']};
+    // Follow-up em 4 contatos: Carla já fez o Contato 1 e o 2 vence hoje (dia, sem hora).
+    Object.assign(seed.LEADS.find(l => l.id === 'l5'), {stage:'Follow-up',closer:'leo',stageAttempts:5,followupStep:1,followupAt:'2026-09-18',nextActionAt:'2026-09-18T03:00:00.000Z'});
+    // &fupLate: o dia do Contato 2 já passou (ontem) — card vermelho e alerta.
+    if (params.has('fupLate')) Object.assign(seed.LEADS.find(l => l.id === 'l5'), {followupAt:'2026-09-17',nextActionAt:'2026-09-17T03:00:00.000Z'});
   }
   if (params.has('card')) {
     const futureDate=(days)=>{const d=new Date();d.setDate(d.getDate()+days);d.setHours(16,0,0,0);return d.toISOString();};

@@ -567,6 +567,9 @@ export const api = {
   // CRM: timeline do lead (pontos de contato + eventos automáticos).
   listActivities: (leadId) => req("GET", `/api/activities?lead=${encodeURIComponent(leadId)}`),
   logActivity: (a) => req("POST", "/api/activities", a),
+  // Follow-up em 4 contatos: mensagens e prazos (config global, Configurações).
+  followupContacts: () => req("GET", "/api/followup-contacts"),
+  saveFollowupContacts: (contacts) => req("PUT", "/api/followup-contacts", { contacts }),
   // Widget de feedback (FAB em toda tela): rotas próprias, abertas a qualquer
   // sessão — /api/tasks é guardado pela tela "tasks" e o widget não pode
   // depender dela. O POST cria o card no quadro; o GET traz o recorte do painel

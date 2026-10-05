@@ -26,6 +26,7 @@ import { mentoriaTemplateDoc, mentoriaCalcBlock } from "./mentoria.js";
 import { BLOG_DEFAULT_RULES, BLOG_DEFAULT_STATE, blogCfgId } from "./blog-config.js";
 import { STATUS_KIND, loadSettings } from "./tickets-core.js";
 import { repairDoneSla } from "./tickets-sla.js";
+import { followupDayOf, dayStartIso, FOLLOWUP_STEPS } from "./followup-contacts.js";
 
 // Garante o estágio "Integração" no funil do produto `leverads`, posicionado
 // entre "Negociação" e "Ganho". Integração é pós-venda: negócio já fechado,
@@ -2585,6 +2586,44 @@ export async function runStartupMigrations(repo) {
   } catch (err) {
     console.error("[migration] repairDoneTicketSla falhou:", err?.message || err);
   }
+  try {
+    const n = await migrateFollowupDays(repo);
+    if (n) console.log(`[migration] follow-up por dia (4 contatos): ${n} lead(s) ajustado(s)`);
+  } catch (err) {
+    console.error("[migration] migrateFollowupDays falhou:", err?.message || err);
+  }
+}
+
+// ── Follow-up por DIA, em 4 contatos (05/10/2026) ───────────────────────────
+// followupAt deixa de ter hora ("YYYY-MM-DDTHH:MM" → "YYYY-MM-DD"). Quem está
+// na etapa de follow-up ganha followupStep (contatos já feitos): a aproximação
+// é o contador de toques da etapa (os 3 roteiros antigos saíam dele), no máximo
+// 3 — o Contato 4 nunca é presumido. Sem dia marcado, o dia sai do GPS. Não
+// toca callAt, etapa nem responsável. Uma vez, com marcador em app_config.
+export async function migrateFollowupDays(repo) {
+  const FLAG = "followup_days_v1";
+  if (await repo.get("app_config", FLAG).catch(() => null)) return 0;
+  const products = new Map((await repo.list("products")).map((p) => [p.id, p]));
+  let changed = 0;
+  for (const lead of await repo.list("leads")) {
+    const patch = {};
+    const day = followupDayOf(lead.followupAt);
+    if (lead.followupAt && day !== lead.followupAt) patch.followupAt = day;
+    if (kindOf(products.get(lead.saas), lead.stage) === "followup") {
+      if (lead.followupStep == null) patch.followupStep = Math.min(FOLLOWUP_STEPS - 1, Math.max(0, Number(lead.stageAttempts) || 0));
+      const finalDay = patch.followupAt ?? lead.followupAt ?? "";
+      const fromGps = followupDayOf(lead.nextActionAt);
+      if (!finalDay && fromGps) patch.followupAt = fromGps;
+      const target = dayStartIso(patch.followupAt ?? finalDay);
+      if (target && target !== lead.nextActionAt) patch.nextActionAt = target;
+    }
+    if (Object.keys(patch).length) {
+      await repo.update("leads", lead.id, patch, { silent: true });
+      changed++;
+    }
+  }
+  await repo.create("app_config", { id: FLAG, at: new Date().toISOString(), changed });
+  return changed;
 }
 
 // ── SLA de ticket concluído reavaliado na edição (29/09/2026) ───────────────

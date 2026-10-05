@@ -1,4 +1,7 @@
 .lead-grade { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: var(--r-1); font-size: 11px; font-weight: 700; line-height: 1; }
+/* "L" do legado: span próprio (não <small>) pra regras de `small` dos blocos
+   onde o selo mora (Próxima ação, linha da fila) não vazarem pra dentro dele. */
+.lead-grade-legacy { font-size: 9px; margin-left: 3px; color: inherit; line-height: 1; }
 .lead-section, .lead-disclosure { min-width: 0; border: 1px solid var(--line-1); border-radius: var(--r-3); background: var(--bg-1); }
 .lead-section { padding: 16px var(--lead-inset, 18px); }
 .lead-section-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }

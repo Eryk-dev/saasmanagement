@@ -25,6 +25,16 @@ export function setupAgendaReview(seed) {
     ...(kind==='call'?{closer:who,callAt:at(day,h)}:{integrator:who,integrationAt:at(day,h)}),
     callConfirmed:name==='Camila Reis',nextActionAt:name==='Camila Reis'?null:at(3,9),createdAt:at(-5,9),
   }));
+  // &followup: follow-ups por DIA (sem horário) na faixa do topo — um de hoje,
+  // um atrasado de ontem e um com call já feita (a call segue como histórico).
+  if (params.has('followup')) {
+    const ymd = (day) => { const d = new Date(); d.setDate(d.getDate() + day); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+    seed.LEADS.push(
+      {id:'fup-hoje',saas:'leverads',name:'Paula Serra',company:'Serra Têxtil',stage:'Follow-up',owner:'leo',closer:'rm',followupAt:ymd(0),followupStep:1,amount:7200,createdAt:at(-9,9)},
+      {id:'fup-ontem',saas:'leverads',name:'Jorge Lins',company:'Lins Pneus',stage:'Follow-up',owner:'leo',closer:'ba',followupAt:ymd(-1),followupStep:2,amount:5100,createdAt:at(-9,9)},
+      {id:'fup-call',saas:'leverads',name:'Ana Prado',company:'Prado Pet',stage:'Follow-up',owner:'leo',closer:'rm',followupAt:ymd(0),followupStep:0,callAt:at(-1,10),amount:4300,createdAt:at(-9,9)},
+    );
+  }
   blocks = params.has('empty') ? [] : [{id:'lunch',saas:'leverads',kind:'block',user:'vn',users:['vn'],date:at(0,12).slice(0,10),recur:'once',fromHour:12,toHour:13,reason:'almoço'},
     {id:'meli',saas:'leverads',kind:'event',user:'rm',users:['rm'],weekday:5,recur:'weekly',fromHour:13,toHour:14,title:'MELI · reunião semanal'}];
   seed.AGENDA_BLOCKS = blocks;

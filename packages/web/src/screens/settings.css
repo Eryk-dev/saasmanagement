@@ -13,3 +13,6 @@
 @media(max-width:900px){.settings-script-fields{grid-template-columns:minmax(0,1fr)!important}.settings-script-head>div+div{gap:8px!important}.settings-script-head>div+div>div{flex-wrap:wrap}.settings-integrations>div>div>div{max-width:100%;flex-wrap:wrap}.settings-integrations .chip{height:auto!important;white-space:normal}}
 
 @media(max-width:900px){.settings-script-head>div:first-child{flex-basis:100%!important}.settings-script-head>div+div{flex-basis:100%;justify-content:flex-start}}
+/* Follow-up em 4 contatos (aba global): o mesmo cartão das outras abas. */
+.settings-followup-card{background:var(--bg-1);border-radius:24px;padding:18px 20px;box-shadow:var(--shadow-card)}
+@media(max-width:900px){.settings-followup-card{padding:18px 16px}}

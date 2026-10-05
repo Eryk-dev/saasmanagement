@@ -69,17 +69,22 @@ import { metaCapi as defaultMetaCapi } from "./meta-capi.js";
 import { discord as defaultDiscord } from "./discord.js";
 import { currentRev, subscribe as subscribeChanges, QUIET } from "./changes.js";
 import { isWon, isPostSaleStage, firstStage, kindOf, stageByKind, isNoShowStage } from "./stages.js";
-import { logActivity, applyStageMove, onActivityCreated, initialNextActionAt, appointmentAt, autoLeadOwner, brtToIso } from "./lead-flow.js";
+import { logActivity, applyStageMove, onActivityCreated, initialNextActionAt, appointmentAt, appointmentAhead, autoLeadOwner, brtToIso } from "./lead-flow.js";
 import { toNaiveBrt } from "./agenda-slots.js";
+import { followupDayOf, FOLLOWUP_CONTACTS_KEY } from "./followup-contacts.js";
+import { loadFollowupContacts, registerFollowupConfigRoutes } from "./followup-config.js";
 
 // COMPROMISSO SEMPRE NA FORMA CANÔNICA (17/09): callAt/followupAt/integrationAt
 // são "YYYY-MM-DDTHH:MM" no relógio de Brasília. Cliente que manda ISO em UTC
 // ("2026-09-16T13:00:00.000Z", visto no card do Renan) fazia o lembrete dizer
 // "hoje às 13h" pra uma call das 10h. Converte na entrada, POST e PATCH.
-const WHEN_FIELDS = ["callAt", "followupAt", "integrationAt"];
+// Follow-up (05/10/2026) é só DIA ("YYYY-MM-DD"), sem horário: valor com hora
+// (legado ou ISO) vira o dia de Brasília. Ver followup-contacts.js.
+const WHEN_FIELDS = ["callAt", "integrationAt"];
 function canonWhen(body) {
   if (!body || typeof body !== "object") return body;
   for (const k of WHEN_FIELDS) if (typeof body[k] === "string" && body[k]) body[k] = toNaiveBrt(body[k]);
+  if (typeof body.followupAt === "string" && body.followupAt) body.followupAt = followupDayOf(body.followupAt);
   return body;
 }
 import { findDuplicateLead, dedupMergePatch } from "./lead-dedup.js";
@@ -165,12 +170,14 @@ export const CREATE_DEFAULTS = {
   // user id do closer; lastActivityAt/Type + stageAttempts = denormalizações da
   // timeline (activities) pro board/fila não precisarem carregar o histórico.
   // callAt = call marcada (a de verdade, que vira histórico ao ser remarcada);
-  // followupAt = follow-up marcado com hora, campo PRÓPRIO pra a agenda não
-  // desenhar follow-up com a cara de call (Leo, 13/08).
+  // followupAt = DIA do próximo contato de follow-up ("YYYY-MM-DD", sem hora e
+  // sem ocupar agenda, 05/10/2026); campo PRÓPRIO pra a agenda não desenhar
+  // follow-up com a cara de call (Leo, 13/08). followupStep = contatos do
+  // follow-up já registrados nesta passagem pela etapa (0..4).
   // referredByCustomer/referralCollectedBy/referralAt = indicação (referrals.js):
   // quem indicou (cliente), quem colheu (o prêmio é do coletor) e o carimbo
   // imutável que define a janela da comissão.
-  leads: { priority: "P2", score: 0, icp: 0, value: "", amount: 0, owner: "", closer: "", reason: "", source: "Form", age: "agora", stage: "", stageSince: "", comments: [], callAt: "", callSetAt: "", followupAt: "", proposalValue: "", proposalPeriod: "", integrationAt: "", nextActionAt: "", nextActionNote: "", lostReason: "", lostNote: "", lastActivityAt: "", lastActivityType: "", stageAttempts: 0, sdrOff: false, referredByCustomer: "", referralCollectedBy: "", referralAt: "" },
+  leads: { priority: "P2", score: 0, icp: 0, value: "", amount: 0, owner: "", closer: "", reason: "", source: "Form", age: "agora", stage: "", stageSince: "", comments: [], callAt: "", callSetAt: "", followupAt: "", followupStep: 0, proposalValue: "", proposalPeriod: "", integrationAt: "", nextActionAt: "", nextActionNote: "", lostReason: "", lostNote: "", lastActivityAt: "", lastActivityType: "", stageAttempts: 0, sdrOff: false, referredByCustomer: "", referralCollectedBy: "", referralAt: "" },
   // `current`/`projected` saem do form (leitura ao vivo da meta) — default 0 até serem alimentados.
   goals: { current: 0, projected: 0 },
   forms: { status: "draft", theme: {}, welcome: null, questions: [], thanks: {}, mapping: {} },
@@ -411,6 +418,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
   // Regras de veiculação (agenda cheia pausa, janela de fim de semana, sexta
   // curta, orçamento alvo) — config/estado/log + tick manual; poller no index.js.
   registerAdDeliveryRoutes(app, repo, { meta: metaClient });
+  // Follow-up em 4 contatos: mensagens e prazos globais (Configurações).
+  registerFollowupConfigRoutes(app, repo);
   // Mídia social: métricas do perfil + publicação orgânica (IG/página FB) +
   // copy do post por IA (mesma chave OpenRouter/Anthropic do resto).
   registerSocialRoutes(app, repo, { social: opts.social, meta: metaClient, anthropic: anthropicClient });
@@ -648,8 +657,9 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     // O que o CONFIG precisa do banco/integrações vai numa leva só: eram cinco
     // awaits em série no meio do objeto (templates, 3× app_config do Google,
     // saúde do WhatsApp), cada um uma ida ao pooler do Supabase.
-    const [proposalTemplates, googleConnected, googleAccount, gmailReady, waHealth, catalogPlans] = await Promise.all([
+    const [proposalTemplates, googleConnected, googleAccount, gmailReady, waHealth, catalogPlans, followupContacts] = await Promise.all([
       repo.list("proposal_templates"), googleClient.connected(), googleClient.account(), googleClient.gmailReady(), getWaHealth(repo), plansOf(repo),
+      loadFollowupContacts(repo),
     ]);
     return {
       SAAS: saas,
@@ -683,6 +693,8 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
       // (ex.: mostrar o botão "Gerar proposta" nos leads de SaaS com provider).
       CONFIG: {
         levercopy: integrationStatus(),
+        // Follow-up em 4 contatos: mensagem + prazo (dias úteis) de cada um.
+        followupContacts,
         // `catalog` = o que o closer pode FECHAR, com os preços do template
         // (banco): o gate de fechamento do card monta o select de produto e
         // sugere o valor a partir daqui, então mexer no preço no banco vale na
@@ -877,6 +889,11 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     }
     if (collection === "app_config" && catalogConfigSaas(req.body.id) !== null && !isAdminSession(req.authUser)) {
       return reply.code(403).send({ error: "Configuração do catálogo de planos exige etiqueta admin" });
+    }
+    // Mensagens e prazos do follow-up: escrita da tela Configurações (o PATCH e
+    // o DELETE pelo id já caem no prefixo de escrita de settings, screens.js).
+    if (collection === "app_config" && req.body.id === FOLLOWUP_CONTACTS_KEY && req.authUser && !canScreen(req.authUser, "settings")) {
+      return reply.code(403).send({ error: "Sem acesso a esta área" });
     }
     // PLANO do catálogo (v2, com `code`): id determinístico, preço normalizado e
     // versão de preço carimbados aqui; os templates de proposta recebem a
@@ -1195,11 +1212,11 @@ export function registerRoutes(app, repo = defaultRepo, opts = {}) {
     // dentro do applyStageMove. Compromisso PASSADO nunca é limpo: é história.
     if (collection === "leads" && ("callAt" in req.body || "followupAt" in req.body)) {
       const cur = await repo.get(collection, id);
-      const ahead = (v) => { const iso = brtToIso(v); return !!iso && new Date(iso).getTime() > Date.now(); };
-      if ("callAt" in req.body && ahead(req.body.callAt) && !("followupAt" in req.body) && ahead(cur?.followupAt)) {
+      const ahead = (field, v) => appointmentAhead(field, v);
+      if ("callAt" in req.body && ahead("callAt", req.body.callAt) && !("followupAt" in req.body) && ahead("followupAt", cur?.followupAt)) {
         patch = { ...patch, followupAt: "" };
       }
-      if ("followupAt" in req.body && ahead(req.body.followupAt) && !("callAt" in req.body) && ahead(cur?.callAt)) {
+      if ("followupAt" in req.body && ahead("followupAt", req.body.followupAt) && !("callAt" in req.body) && ahead("callAt", cur?.callAt)) {
         patch = { ...patch, callAt: "" };
       }
     }

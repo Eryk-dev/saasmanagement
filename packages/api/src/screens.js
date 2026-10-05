@@ -187,7 +187,9 @@ const ROUTE_SCREENS = [
 // Escritas administrativas: leitura fica aberta (o app inteiro precisa do
 // catálogo de produtos e da lista de nomes do time pros pickers), mas mexer em
 // produto/funil/usuários é coisa da tela Ajustes.
-const SETTINGS_WRITE_PREFIXES = ["/api/products", "/api/auth/users"];
+// O follow-up em 4 contatos (mensagens e prazos) é configuração global da
+// mesma tela, inclusive pelo CRUD genérico de app_config.
+const SETTINGS_WRITE_PREFIXES = ["/api/products", "/api/auth/users", "/api/followup-contacts", "/api/app_config/followup_contacts"];
 
 // A Visão geral de gestão é a MESMA pra todo o time: quem tem a tela overview
 // também LÊ o que os painéis dela buscam — tiles de aquisição (/api/marketing,

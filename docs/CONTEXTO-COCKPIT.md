@@ -168,7 +168,7 @@ Os caminhos abaixo são relativos a `packages/`.
 | Área | Onde começar |
 | --- | --- |
 | Navegação, workspace e acesso | `web/src/app.jsx`, `chrome.jsx`, `lib/workspace.js`, `lib/users.js`; `api/src/auth.js`, `screens.js`. |
-| Pipeline, cadência e histórico | `api/src/stages.js`, `lead-flow.js`, `routes.activities.js`; `web/src/screens/pipeline.jsx`, `deal.jsx`, `today.jsx`, `lib/funnel.js`. |
+| Pipeline, cadência e histórico | `api/src/stages.js`, `lead-flow.js`, `followup-contacts.js` (CRUD de activities em `routes.js`); `web/src/screens/pipeline.jsx`, `deal.jsx`, `today.jsx`, `lib/funnel.js`. |
 | Formulários e propostas | `api/src/routes.forms.js`, `forms.js`, `form-page.js`, `routes.proposals.js`, `proposal.js`, `proposal-page.js`, `proposal-slides-page.js`; telas `forms.jsx` e `proposals.jsx`. |
 | Integração e entrega ao cliente | `api/src/routes.integration-forms.js`, `routes.integrations.js`, `integration-brief.js`, `client-pending.js`; telas `integration-forms.jsx` e `integrations.jsx`. |
 | Clientes, receita e pagamentos | `api/src/billing.js`, `churn.js`, `metrics-core.js`, `routes.billing.js`, `routes.mp.js`, `routes.fin.js`; telas `customers.jsx`, `subscriptions.jsx`, `offers.jsx`, `expenses.jsx`. |
@@ -613,6 +613,38 @@ por campo, apenas informações explícitas da transcrição. Resumos antigos us
 registrados. Abrir o cartão só consulta a REST, sem gerar resumo nem enviar
 mensagem. Validação de navegador: `node scripts/review/followup-summary.mjs`
 em `packages/web`.
+
+### Follow-up em 4 contatos, por dia — 05/10/2026
+
+Follow-up marca só o **dia** e nunca ocupa a agenda: `lead.followupAt` é
+`"YYYY-MM-DD"` (valor com hora, legado ou ISO, é truncado para o dia de
+Brasília em `canonWhen`), e o GPS (`nextActionAt`) fica em 00:00 de Brasília
+desse dia. `busyOf`, `callBusyKeys` e a Agenda não tratam follow-up como
+horário; na Agenda ele aparece na faixa "dia" do topo da coluna.
+
+A sequência tem 4 contatos explícitos. `lead.followupStep` (0–4) conta os
+contatos registrados na passagem atual pela etapa; entrar no follow-up zera o
+passo e marca o Contato 1 no dia escolhido (ou hoje + prazo do Contato 1). Só a
+activity de toque com `meta.followupContact: N` avança: o próximo contato cai
+`prazoDias` úteis depois do dia do registro. Depois do 4º, `followupAt` fica
+vazio e o card espera na fila de hoje o destino que o operador escolher; nada
+se move sozinho. Outros toques na etapa (Inbox, robô, ligação avulsa) não
+mexem no dia nem no passo. O chip "retomar" saiu do follow-up.
+
+Mensagens e prazos são **uma configuração global** em
+`app_config/followup_contacts`, editada em Geral → Configurações → Follow-up
+(`GET`/`PUT /api/followup-contacts`; escrita exige a tela `settings`, inclusive
+pelo CRUD de `app_config`) e enviada em `CONFIG.followupContacts` no bootstrap.
+A régua pura é `api/src/followup-contacts.js`, importada pela SPA (copiada nos
+dois Dockerfiles de build web). Os roteiros `followup1/2/3` viraram o roteiro
+único `followup` (postura); `nextSteps.followup1..3` salvos não valem mais.
+`migrateFollowupDays` (marcador `app_config/followup_days_v1`) truncou os
+`followupAt` com hora e estimou o passo de quem já estava na etapa pelo
+contador de toques (máximo 3). No placar, "follow-up em dia" compara o dia.
+Testes: `api/test/followup-contacts.test.js`, `lead-flow.test.js`,
+`routes.when-canon.test.js`, `routes.scoreboard.test.js`; no navegador,
+`node scripts/review/followup-contacts.mjs` e
+`node scripts/review/agenda-followup.mjs` em `packages/web`.
 
 ### Reuniões com o cliente — 05/10/2026
 

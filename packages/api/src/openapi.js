@@ -162,6 +162,8 @@ export const openapi = {
           closer: { type: "string", description: "id do usuário closer responsável (GET /api/auth/users).", example: "leonardo" },
           nextActionAt: { type: "string", description: "Próximo toque no lead (ISO). O servidor preenche/reagenda pela cadência do estágio; envie explícito pra sobrescrever.", example: "2026-07-10T14:00:00Z" },
           nextActionNote: { type: "string", description: "O que fazer no próximo toque.", example: "Cobrar resposta da proposta" },
+          followupAt: { type: "string", description: "Etapa de follow-up: DIA do próximo contato (YYYY-MM-DD, sem hora; não ocupa agenda). Valor com hora é truncado pro dia de Brasília. Entrar no follow-up sem enviar → hoje + prazo do Contato 1.", example: "2026-10-07" },
+          followupStep: { type: "number", readOnly: true, description: "Contatos do follow-up já registrados nesta passagem pela etapa (0–4). Avança com activity de toque com meta.followupContact.", example: 1 },
           recapNote: { type: "string", description: "O que ficou combinado na conversa, em uma linha (escrito no painel do inbox, aparece no card completo do lead). Máx. 280 caracteres.", example: "Quer as 3 contas espelhadas, decide com o sócio, retomar terça" },
           lostReason: { type: "string", description: "Motivo de perda (id de product.lossReasons). Mover pra estágio de perda sem enviar → servidor grava 'nao_informado'.", example: "preco" },
           lostNote: { type: "string", description: "Detalhe livre da perda.", example: "Fechou com concorrente X" },
@@ -327,6 +329,8 @@ export const openapi = {
           "Ponto de contato / evento da timeline do lead. Toques (whatsapp/call/email/meeting) atualizam o " +
           "últ. contato do lead, contam tentativa no estágio e re-agendam `nextActionAt` pela cadência " +
           "(`meta.nextActionAt` define uma data manual; `meta.reschedule: false` registra sem mexer na agenda). " +
+          "Na etapa de follow-up, só o toque com `meta.followupContact: N` (1–4) avança a sequência e marca o dia do " +
+          "próximo contato pelo prazo configurado (GET/PUT /api/followup-contacts); outros toques não mexem no dia. " +
           "`stage` e `system` são " +
           "gravados automaticamente pelo servidor (movimento de estágio, lead criado, proposta vista/aceita).",
         properties: {

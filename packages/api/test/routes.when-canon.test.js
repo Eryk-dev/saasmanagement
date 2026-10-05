@@ -38,3 +38,21 @@ test("POST/PATCH leads: data-hora com fuso vira relógio BRT; naive fica como es
   assert.equal(naive.statusCode, 200, naive.body);
   assert.equal((await repo.get("leads", id)).callAt, "2026-09-18T09:30");
 });
+
+test("followupAt é só DIA: com hora (legado ou ISO) vira o dia de Brasília", async (t) => {
+  const repo = makeMemRepo();
+  await repo.create("products", { id: "leverads", name: "LeverAds", funnel: FUNNEL });
+  const app = Fastify();
+  registerRoutes(app, repo);
+  t.after(() => app.close());
+  const created = await app.inject({ method: "POST", url: "/api/leads", payload: {
+    name: "Bia", saas: "leverads", source: "Outbound", followupAt: "2099-01-09T16:00",
+  } });
+  assert.equal(created.statusCode, 201, created.body);
+  const id = created.json().id;
+  assert.equal((await repo.get("leads", id)).followupAt, "2099-01-09");
+  await app.inject({ method: "PATCH", url: `/api/leads/${id}`, payload: { followupAt: "2099-01-13T02:00:00.000Z" } });
+  assert.equal((await repo.get("leads", id)).followupAt, "2099-01-12", "23h de Brasília do dia 12");
+  await app.inject({ method: "PATCH", url: `/api/leads/${id}`, payload: { followupAt: "2099-01-14" } });
+  assert.equal((await repo.get("leads", id)).followupAt, "2099-01-14");
+});

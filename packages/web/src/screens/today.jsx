@@ -25,6 +25,8 @@ import { resolveScript, scriptTokens, scriptChecklist, isNoShowStage, confirmati
 import { CLOSED_PLANS, CLOSED_PLANS_ACTIVE, withLegacyOption, closedPlanLabel, dealProductLabel, dealProductsOf } from "../lib/payments.js";
 import { LeadSendActions, useLeadProposalActions } from "../components/lead-send-actions.jsx";
 import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
+import { followupContacts, followupDueDay, followupNextContact, followupStepOf, followupDayOf, localDayStart, dayStartIso, nextFollowupDay, todayBrt, FOLLOWUP_STEPS, FOLLOWUP_CHANNELS } from "../lib/followup.js";
+import { FollowupContactBlock, DayPicker, defaultFollowupDay } from "../components/followup-contact.jsx";
 // Meu dia — a fila de execução de quem opera o funil, agrupada POR DIA:
 // "Hoje" (a fila de trabalho, numerada na ordem de prioridade do processo),
 // "Amanhã" e "Próximos dias" (o que já está agendado, à vista), e "Sem data".
@@ -167,7 +169,7 @@ const GROUP_META = {
   novo: ["Leads novos", "quanto mais fresco, mais responde"],
   noshow: ["Furou a call", "retomar no mesmo dia"],
   qual: ["Retomadas", "toque agendado que venceu"],
-  closer: ["Follow-up do closer", ""],
+  closer: ["Follow-up", "contato do dia · sem horário"],
   nutri: ["Nutrição", "fora do funil ativo"],
   loose: ["Sem data", "ninguém marcou o próximo toque · não entram na contagem do dia"],
 };
@@ -187,6 +189,12 @@ function actionVerb(item) {
   if (item.group === "noshow") return "retomada";
   if (item.group === "nutri") return "reativação";
   if (item.group === "loose") return "marcar o próximo toque";
+  if (item.kind === "followup" && item.l) {
+    // "follow-up" na frente: na fila a linha precisa dizer QUE é follow-up,
+    // não só qual contato.
+    const n = followupNextContact(item.l);
+    return n ? `follow-up · contato ${n} de ${FOLLOWUP_STEPS}` : "follow-up · escolher o destino";
+  }
   return ACTION_LABELS[item.kind] || "contato";
 }
 
@@ -200,6 +208,10 @@ function actionHint(item) {
     partes.push(item.confirmWindow === "10min" ? "10 min antes" : item.confirmWindow === "ligar" ? "1h antes · sem resposta na confirmação" : item.confirmWindow === "manha" ? "8h30 da manhã" : "2h antes");
     const at = item.confirmKind === "integracao" ? l.integrationAt : l.callAt;
     if (at) partes.push(`${item.confirmKind === "integracao" ? "integração" : "call"} ${hhmmOf(at)}`);
+  } else if (kind === "followup") {
+    const n = followupNextContact(l);
+    partes.push(n ? followupContacts()[n - 1].titulo : "sequência concluída");
+    if (l.nextActionNote) partes.push(l.nextActionNote);
   } else if (l.nextActionNote) {
     if (tent > 0) partes.push(`${tent} de 5`);
     partes.push(l.nextActionNote);
@@ -362,17 +374,25 @@ function buildQueue(leads, consultas, saasCfg, person) {
       if (kind === "call") push(l.callAt, "call", startToday.getTime());
       else if (kind === "integracao") push(l.integrationAt, "integração", startToday.getTime());
     }
-    if (!cands.length) push(l.nextActionAt, "toque");
+    // Follow-up é por DIA (sem horário): vence às 00:00 do dia do próximo
+    // contato. Registrar o contato leva o dia pra frente (o item sai de hoje);
+    // toque avulso não conta como feito — só o contato registrado.
+    if (kind === "followup") {
+      const day = followupDueDay(l);
+      const t = localDayStart(day);
+      if (Number.isFinite(t)) cands.push({ t, type: "followup", day });
+    } else if (!cands.length) push(l.nextActionAt, "toque");
     cands.sort((a, b) => a.t - b.t);
     const due = cands[0] || null;
 
     // Toque já registrado hoje = item cumprido (fica na fila, riscado).
-    const done = due?.type !== "call" && TOUCH_TYPES.has(l.lastActivityType) &&
+    const done = due?.type !== "call" && due?.type !== "followup" && TOUCH_TYPES.has(l.lastActivityType) &&
       l.lastActivityAt && new Date(l.lastActivityAt).toDateString() === todayStr;
 
     // Grupo de prioridade (define a ordem e o rótulo da ação).
     const group = !due
       ? (kind === "novo" ? "novo" : "loose")
+      : due.type === "followup" ? "closer"
       : due.type !== "toque" ? "appt"
       : isNoShowStage(stage) ? "noshow"
       : kind === "novo" ? "novo"
@@ -633,6 +653,27 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
       .catch((err) => { console.warn("toque não registrado:", err.message); toast("O toque não foi salvo · tente de novo", "neg"); });
   }
 
+  // Follow-up em 4 contatos: registrar o contato N vira um toque com
+  // meta.followupContact (o servidor avança o passo e marca o dia do próximo
+  // pelo prazo configurado). Espelho local com a mesma régua pra o card sair de
+  // hoje na hora; o SSE ressincroniza.
+  function registerFollowupContact(item, { n, channel, note }) {
+    const l = item.l;
+    const step = Math.max(followupStepOf(l), n);
+    const next = step >= FOLLOWUP_STEPS ? "" : nextFollowupDay(followupContacts(), step, todayBrt());
+    const at = new Date().toISOString();
+    setLeads((prev) => prev.map((x) => x.id === l.id ? {
+      ...x, followupStep: step, followupAt: next, nextActionAt: dayStartIso(next || todayBrt()),
+      lastActivityAt: at, lastActivityType: channel, stageAttempts: (Number(x.stageAttempts) || 0) + 1,
+    } : x));
+    const label = FOLLOWUP_CHANNELS.find((c) => c.id === channel)?.label || channel;
+    return api.logActivity({
+      saas: l.saas, lead: l.id, type: channel, author: me,
+      text: note || `follow-up · contato ${n} de ${FOLLOWUP_STEPS} (${label.toLowerCase()})`,
+      meta: { followupContact: n },
+    }).catch((err) => { console.warn("contato não registrado:", err.message); toast("O contato não foi salvo · tente de novo", "neg"); });
+  }
+
   // Card sem responsável: quem clica assume (vira o responsável). Grava no
   // campo da fase — owner na pré-venda, integrator na entrega, closer no meio.
   function claim(item) {
@@ -658,6 +699,8 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
     ...patch,
     stageSince: new Date().toISOString(),
     stageAttempts: 0,
+    // Entrar no follow-up recomeça a sequência no Contato 1 (o dia vem no patch).
+    ...(patch.stage && stageKind(saasCfg, patch.stage) === "followup" && patch.stage !== lead.stage ? { followupStep: 0 } : {}),
     nextActionAt: nextActionAfterMove(saasCfg, lead, patch),
   });
   // Resposta do PATCH = a verdade (o servidor ainda limpa compromisso rival,
@@ -725,7 +768,9 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
   }, [leads, consultas, saasCfg, users]);
   // O primeiro pendente fica em Agora; os demais e as feitas têm áreas próprias.
   const queueRows = q.hoje.filter(item => !item.done && (item.consulta || item !== firstPending));
-  const lateCount = pendingToday.filter((i) => i.due && i.due.t <= Date.now()).length;
+  const lateItems = pendingToday.filter((i) => isLateItem(i, now));
+  const lateCount = lateItems.length;
+  const lateFollowups = lateItems.filter((i) => i.due.type === "followup").length;
 
   // Busca DENTRO da fila (protótipo, 14/09). Com oito grupos e o dia cheio, a
   // fila passa de vinte linhas e achar "aquele lead" era rolar a tela inteira.
@@ -811,8 +856,8 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                   </div>
                   <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                     {/* "N de M feitos hoje" + a barra: é a proporção que diz se
-                        o dia está ganho ou perdido às 15h. O atraso não vira
-                        chip aqui — ele já é lido na pílula vermelha da linha. */}
+                        o dia está ganho ou perdido às 15h. O atraso tem a
+                        faixa de alerta própria logo abaixo e o card vermelho. */}
                     {(doneTodayRows.length > 0 || queueRows.length > 0) && (() => {
                       const feitos = doneTodayRows.length;
                       const totalDia = feitos + pendingToday.length;
@@ -831,6 +876,18 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
                       className="inp" /></label>
                   </div>
                 </div>
+                {/* ALARME: atraso não fica só na pílula — a faixa vermelha diz
+                    quantas atividades venceram, com os follow-ups que perderam
+                    o dia do contato contados à parte. */}
+                {lateCount > 0 && (
+                  <div className="today-late-alert" role="alert">
+                    <span>
+                      <strong>{lateCount === 1 ? "1 atividade atrasada" : `${lateCount} atividades atrasadas`}</strong>
+                      {[lateFollowups > 0 && (lateFollowups === 1 ? "1 follow-up com o contato vencido" : `${lateFollowups} follow-ups com o contato vencido`),
+                        "resolva antes do resto da fila"].filter(Boolean).join(" · ")}
+                    </span>
+                  </div>
+                )}
                 {queueRows.length === 0 && (
                   <div style={{ padding: "16px var(--inset-x)", borderTop: "1px solid var(--line-faint)", fontSize: 13, color: "var(--fg-3)" }}>
                     {firstPending ? "Só a atividade de agora, ali em cima." : "Fila zerada por hoje."}
@@ -876,6 +933,14 @@ function TodayScreen({ onOpenLead, onOpenWhatsapp }) {
             onAfter={advanceScript}
             onClose={() => setScriptItem(null)}
             onTouch={(when) => { const nx = nextAfter(scriptItem); logTouch(scriptItem, when); setScriptItem(nx); }}
+            onFollowupContact={(r) => {
+              const nx = nextAfter(scriptItem);
+              const saved = registerFollowupContact(scriptItem, r);
+              // Último contato: o card fica aberto pra escolher o destino.
+              if (r.n < FOLLOWUP_STEPS) setScriptItem(nx);
+              else setScriptItem((cur) => cur && { ...cur, l: { ...cur.l, followupStep: FOLLOWUP_STEPS, followupAt: "" } });
+              return saved;
+            }}
             nextItem={nextAfter(scriptItem)}
             onSkip={() => setScriptItem(nextAfter(scriptItem))}
             onOpenLead={() => { setScriptItem(null); onOpenLead && onOpenLead(scriptItem.l); }}
@@ -934,6 +999,15 @@ function ConsultaRow({ item, block, featured, ordem, onOpen }) {
   );
 }
 
+// ATRASO (05/10/2026): item pendente cujo horário já passou — ou, no
+// follow-up (que é por DIA), cujo dia do contato já passou. É a régua única do
+// card vermelho da fila, do bloco "Próxima ação" e do alerta do topo.
+export function isLateItem(item, now = Date.now()) {
+  if (!item?.due || item.done) return false;
+  if (item.due.type === "followup") return item.due.t < new Date(now).setHours(0, 0, 0, 0);
+  return item.due.t <= now;
+}
+
 // Chave estável da linha: a confirmação de call tem uma por janela do mesmo lead.
 const rowKey = (item) => (item.consulta ? `c-${item.consulta.id}` : item.confirmWindow ? `${item.l.id}-${item.confirmWindow}` : item.l.id);
 
@@ -957,6 +1031,13 @@ function QueueRow({ item, block, featured, ordem, selected = false, onScript, on
     when = due.t <= now
       ? { pill: hhmmOf(due.t), note: "agora", tone: "neg" }
       : { pill: hhmmOf(due.t), note: untilNote(due.t, now), tone: "pos" };
+  } else if (due?.type === "followup") {
+    // Follow-up não tem hora: a pílula diz o DIA e o selo do contato.
+    const late = due.t < startToday ? Math.max(1, Math.round((startToday - due.t) / DAY)) : 0;
+    // O contato da vez já está no verbo da linha ("contato 2 de 4").
+    when = late ? { pill: ddmmOf(due.t), note: `atrasado ${late}d`, tone: "neg" }
+      : block === "hoje" ? { pill: "hoje", note: "dia todo", tone: "warn" }
+      : { pill: ddmmOf(due.t), note: block === "amanha" ? "amanhã" : "dia todo", tone: "mut" };
   } else if (due && block === "amanha") {
     when = { pill: hhmmOf(due.t), note: "amanhã", tone: "mut" };
   } else if (due && block === "proximos") {
@@ -981,8 +1062,12 @@ function QueueRow({ item, block, featured, ordem, selected = false, onScript, on
   // número, em vez de escondê-la atrás de um "ver as feitas". É o que faz
   // "1 de 10 feitos hoje" ter onde ser conferido.
   const apagado = !!item.done;
+  // Atrasada = o card INTEIRO em vermelho (não só a pílula): ninguém passa o
+  // olho na fila sem ver.
+  const late = isLateItem(item, now);
   return (
-    <div className={`today-queue-row${apagado ? " is-done" : ""}${due?.t <= now ? " is-late" : ""}${selected ? " is-selected" : ""}`}>
+    <div className={`today-queue-row${apagado ? " is-done" : ""}${late ? " is-late" : ""}${selected ? " is-selected" : ""}`}
+      title={late ? (due?.type === "followup" ? "Follow-up atrasado: o dia do contato já passou" : "Atividade atrasada") : undefined}>
       <TimeCell pill={when.pill} note={apagado ? "feito" : when.note} tone={when.tone} soft={when.soft} apagado={apagado} />
       <button onClick={onScript} className="today-queue-lead" aria-current={selected ? "true" : undefined}>
         <span><LeadGrade tier={tier} muted={apagado} placeholder size={20} /><strong>{l.name}</strong><small>{l.company}</small></span>
@@ -1002,11 +1087,13 @@ function QueueRow({ item, block, featured, ordem, selected = false, onScript, on
 function AgoraBlock({ item, saasCfg, onScript }) {
   const { l, due, stage, who } = item;
   const now = Date.now();
-  const atrasado = !!due && due.t <= now;
+  const isFup = due?.type === "followup";
+  const atrasado = isLateItem(item, now);
   const tier = leadTier(l);
-  const quando = due ? `${hhmmOf(due.t)} · ${atrasado ? "agora" : untilNote(due.t, now)}` : "sem hora marcada";
-  return <section className="today-now capsule-navy">
-    <div className="today-section-label">Próxima ação</div>
+  const quando = isFup ? `${atrasado ? `atrasado desde ${ddmmOf(due.t)}` : "hoje"} · ${followupNextContact(l) ? `contato ${followupNextContact(l)}/${FOLLOWUP_STEPS}` : "escolher o destino"}`
+    : due ? `${hhmmOf(due.t)} · ${atrasado ? "agora" : untilNote(due.t, now)}` : "sem hora marcada";
+  return <section className={`today-now capsule-navy${atrasado ? " is-late" : ""}`}>
+    <div className="today-section-label">{atrasado ? (isFup ? "Próxima ação · follow-up atrasado" : "Próxima ação · atrasada") : "Próxima ação"}</div>
     <div className="today-now-person"><LeadGrade tier={tier} size={22} placeholder /><strong>{l.name}</strong><span>{l.company}</span><small className={atrasado ? "is-late" : ""}>{quando}</small></div>
     <div className="today-now-action">{actionVerb(item)}</div>
     <button onClick={onScript}>Abrir a atividade →</button>
@@ -1020,6 +1107,7 @@ function ScheduleLane({ label, rows, amanha, onOpen }) {
   const [showAll, setShowAll] = useS(false);
   const timeOf = (item) => {
     if (!item.due) return "sem data";
+    if (item.due.type === "followup") return amanha ? "dia todo" : new Date(item.due.t).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
     return amanha
       ? new Date(item.due.t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
       : new Date(item.due.t).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -1501,7 +1589,7 @@ function PresentationConfig({ url }) {
   return <iframe ref={ref} title="Configurar apresentação" style={{ height }} src={`${url}${url.includes("?") ? "&" : "?"}embed=config&from=cockpit`} />;
 }
 
-function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfter, onClose, onTouch, onOpenLead, onWhatsapp, preview = false, previewScript = null, nextItem = null, onSkip = null }) {
+function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, onMoveMeet, onAfter, onClose, onTouch, onFollowupContact = null, onOpenLead, onWhatsapp, preview = false, previewScript = null, nextItem = null, onSkip = null }) {
   // On narrow screens keep the accessible modal: the queue can be much taller
   // than the viewport, so an inline editor below it would open out of sight.
   // Choose once per open editor. Changing its wrapper while typing would
@@ -1512,6 +1600,9 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
   // interpolada + checklist) e persiste via onPatch (fila + API).
   const [l, setL] = useS(item.l);
   useE(() => { setL(item.l); }, [item.l.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Contato do follow-up registrado (mesmo lead, passo novo): a cópia local
+  // acompanha, senão o painel continuaria no contato antigo.
+  useE(() => { setL((prev) => ({ ...prev, followupStep: item.l.followupStep, followupAt: item.l.followupAt })); }, [item.l.followupStep, item.l.followupAt]); // eslint-disable-line react-hooks/exhaustive-deps
   function patch(p) {
     setL((prev) => ({ ...prev, ...p }));
     onPatch && onPatch(item.l.id, p);
@@ -1653,6 +1744,10 @@ function ScriptPanel({ inline = false, item, saasCfg, leads, onPatch, onMove, on
               <LeadChecklist readable key={l.id} checklist={scriptChecklist(saasCfg, l)} onPatch={patch} leadId={l.id} title="Respostas do lead" />
             </LeadSection>
           </div>
+          {stageKind(saasCfg, l.stage) === "followup" && <FollowupContactBlock lead={l} tokens={tokens} preview={preview}
+            onRegister={(r) => { Promise.resolve(onFollowupContact && onFollowupContact(r)).finally(() => setActsReload((n) => n + 1)); }}
+            onChangeDay={preview ? null : (day) => patch({ followupAt: day, nextActionAt: dayStartIso(day) })}
+            onWhatsapp={onWhatsapp} />}
           {stageKind(saasCfg, l.stage) === "followup" && <FollowupCallSummary summary={salesSummary}
             loading={acts === null} error={actsError} onRetry={() => setActsReload((n) => n + 1)} />}
           {preview && <LeadSection title="Pré-visualização do roteiro"><ScriptBlocks script={script} tokens={tokens} /></LeadSection>}
@@ -1796,6 +1891,9 @@ export function destinationsFor(saasCfg, lead) {
   // assim 2ª tentativa, 3ª tentativa, 1º/2º/3º contato têm passos independentes.
   for (const k of nextKindsFor(saasCfg, scriptKeyFor(saasCfg, lead), curKind)) {
     if (k === "retry") {
+      // Follow-up não tem "retomar": o registro do contato do dia (painel
+      // "Contato N de 4") é o que marca o próximo, pelo prazo configurado.
+      if (curKind === "followup") continue;
       // Com as colunas de dia, o toque no Novo lead NÃO promove (o relógio leva
       // pro Dia 2 e só a resposta do lead leva pra Qualificando).
       const promote = curKind === "novo" && !hasDayStages(saasCfg);
@@ -1821,11 +1919,6 @@ export function destinationsFor(saasCfg, lead) {
     const stage = stageByKind(saasCfg, k);
     if (curKind === "followup" && dayStageNumber(stage)) continue;
     if (stage && !seen.has(stage)) { seen.add(stage); out.push({ stage, kind: stageKind(saasCfg, stage) }); }
-  }
-  // O retorno do follow-up sempre permite escolher uma data, inclusive no
-  // último roteiro, cuja configuração antiga omitia o retry.
-  if (curKind === "followup" && !out.some((d) => d.retry)) {
-    out.unshift({ retry: true, promote: false, stage: curStage, kind: curKind });
   }
   return out;
 }
@@ -2050,7 +2143,6 @@ const RETRY_PRESETS = [
 function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet, onAfter, onTouch }) {
   const dests = destinationsFor(saasCfg, lead);
   const stageMeta = Object.fromEntries((saasCfg?.funnel || []).map((f) => [f.stage, f]));
-  const isFollowup = stageKind(saasCfg, lead.stage || firstStage(saasCfg)) === "followup";
   const closers = usersByRole("closer");
   const integrators = usersByRole("integrator");
   const reasons = lossReasonsOf(saasCfg);
@@ -2069,6 +2161,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   const [slot, setSlot] = useS(lead.callAt || "");
   const [day, setDay] = useS(() => nextBusinessDays(1)[0]); // dia da grade (qualquer dia via calendário)
   const [retryAt, setRetryAt] = useS(""); // "Retomar": quando voltar nesse lead
+  const [fupDay, setFupDay] = useS(""); // Follow-up: DIA do Contato 1 (sem hora, não ocupa agenda)
   // Call → Follow-up: qual proposta ficou na mesa (obrigatória nesse movimento)
   // — o PRODUTO da apresentação + o ciclo, pro follow-up cobrar a oferta certa.
   const fromCall = stageKind(saasCfg, lead.stage || saasCfg?.funnel?.[0]?.stage) === "call";
@@ -2080,7 +2173,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   const [meetRes, setMeetRes] = useS(null);      // { callUrl, attendees }
   const [meetErr, setMeetErr] = useS(null);
   useE(() => {
-    setDest(null); setCloser(lead.closer || ""); setSlot(lead.callAt || ""); setDay(nextBusinessDays(1)[0]); setRetryAt("");
+    setDest(null); setCloser(lead.closer || ""); setSlot(lead.callAt || ""); setDay(nextBusinessDays(1)[0]); setRetryAt(""); setFupDay("");
     setIntegrator(lead.integrator || (integrators.length === 1 ? integrators[0].id : ""));
     setAmount(lead.amount || ""); setPayment(lead.paymentMethod || ""); setReason(""); setNote("");
     setDealProduct(lead.dealProduct || ""); setPlanClosed(lead.planClosed || "anual");
@@ -2094,24 +2187,17 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     if (!emailTouched && lead.email) setEmail(lead.email);
   }, [lead.email, emailTouched]);
 
-  // Follow-up: pré-seleciona o horário que a IA sugeriu na última call
-  // (callSummary.followup.quando, hora de Brasília), quando cai num slot válido
-  // (dia útil à vista, dentro do expediente, no futuro e livre na agenda).
+  // Follow-up: pré-seleciona o DIA que a IA sugeriu na última call
+  // (callSummary.followup.quando), quando é um dia útil de hoje em diante.
+  // Só o dia: follow-up não tem horário nem ocupa a agenda.
   useE(() => {
-    if (!dest || dest.retry || setupType(dest.kind) !== "followup" || slot) return;
-    const m = String(callSummary?.followup?.quando || "").match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/);
-    if (!m) return;
-    const hh = Number(m[2]);
-    // A sugestão vem em qualquer minuto; ancora na meia hora da grade.
-    const mm = Number(m[3]) < 30 ? 0 : 30;
-    if (hh < CALL_H0 || hh >= CALL_H1) return;
-    const dd = nextBusinessDays(6);
-    const idx = dd.findIndex((d) => cellKey(d).slice(0, 10) === m[1]);
-    if (idx < 0) return;
-    const cell = new Date(dd[idx]); cell.setHours(hh, mm, 0, 0);
-    if (cell.getTime() <= Date.now()) return;
-    if (closer && callBusyKeys(leads, closer, lead.id).has(cellKey(cell))) return;
-    setDay(dd[idx]); setSlot(slotVal(dd[idx], hh, mm));
+    if (!dest || dest.retry || setupType(dest.kind) !== "followup") return;
+    const sug = followupDayOf(callSummary?.followup?.quando);
+    const t = localDayStart(sug);
+    if (!sug || !Number.isFinite(t) || t < new Date().setHours(0, 0, 0, 0)) return;
+    const w = new Date(t).getDay();
+    if (w === 0 || w === 6) return;
+    setFupDay(sug);
   }, [dest, callSummary]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (dests.length === 0) return null;
@@ -2121,8 +2207,8 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   const days = nextBusinessDays(6);
 
   // Horas ocupadas na agenda do closer (cada call = 1h; ignora o próprio lead).
-  // Vale pra call e pro follow-up: ambos marcam horário na agenda do closer.
-  const busy = (setup === "call" || setup === "followup") && closer ? callBusyKeys(leads, closer, lead.id)
+  // Follow-up não entra: é só DIA e nunca ocupa a agenda.
+  const busy = setup === "call" && closer ? callBusyKeys(leads, closer, lead.id)
     : setup === "integrator" && integrator ? integBusyKeys(leads, integrator, lead.id)
     : new Set();
 
@@ -2138,9 +2224,15 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     // quem precisa de outra data muda ali mesmo.
     if (next.retry) { setRetryAt(retryPreset(Number(cadenceOf(saasCfg, lead.stage)?.retryDays) || 1)); return; }
     const st = setupType(next.kind);
+    if (st === "followup") {
+      // Dia do Contato 1: o dia que já está no lead (se ainda não passou) ou
+      // hoje + o prazo do Contato 1 (Configurações → Follow-up).
+      const cur = followupDayOf(lead.followupAt);
+      setFupDay(cur && localDayStart(cur) >= new Date().setHours(0, 0, 0, 0) ? cur : defaultFollowupDay());
+      return;
+    }
     const at = st === "integrator" ? (lead.integrationAt || "")
       : st === "call" ? (lead.callAt || "")
-      : st === "followup" ? (lead.followupAt || "") // remarcar o follow-up abre no horário dele
       : "";
     setSlot(at);
     setDay(at ? parseYMD(at.slice(0, 10)) : nextBusinessDays(1)[0]);
@@ -2158,7 +2250,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
   const ready = !dest ? false
     : isRetry ? !!retryAt
     : setup === "call" ? !!(closer && slot)
-    : setup === "followup" ? !!closer && (!fromCall || offerDone) // horário é opcional; saindo da call, a proposta na mesa é obrigatória
+    : setup === "followup" ? !!closer && !!fupDay && (!fromCall || offerDone) // saindo da call, a proposta na mesa é obrigatória
     : setup === "integrator" ? !!(integrator && (dest.kind !== "integracao" || dealReady))
     : setup === "won" ? dealReady
     : setup === "loss" ? !!reason
@@ -2179,13 +2271,11 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
     if (isRetry) { onTouch && onTouch(retryAt); return; }
     const patch = { stage: dest.stage };
     if (setup === "call") { patch.closer = closer; patch.callAt = slot; if (email.trim()) patch.email = email.trim(); }
-    // Follow-up: mantém o closer e, se um horário foi escolhido, agenda nele —
-    // followAt PRÓPRIO (aparece na agenda com a cara de follow-up, sem travar
-    // slots de venda) + nextActionAt (a fila do "meu dia" vence exatamente nesse
-    // horário, não na cadência padrão). Já foi gravado no callAt e dava ruim: a
-    // agenda desenhava um "✓ call feita" que nunca aconteceu e ainda arquivava a
-    // call de verdade no histórico (Leo, 13/08 — casos Beto e Milaan).
-    else if (setup === "followup") { patch.closer = closer; if (fromCall && offer) { patch.proposalOffer = offer; patch.proposalProduct = offer === "nenhuma" ? "" : offerProduct; } if (slot) { patch.followupAt = slot; patch.nextActionAt = slot; } }
+    // Follow-up: mantém o closer e marca o DIA do Contato 1 (followupAt, sem
+    // hora: não ocupa a agenda). O servidor zera a sequência e põe o GPS em
+    // 00:00 desse dia. Já foi gravado no callAt e dava ruim: a agenda desenhava
+    // um "✓ call feita" que nunca aconteceu (Leo, 13/08 — casos Beto e Milaan).
+    else if (setup === "followup") { patch.closer = closer; if (fromCall && offer) { patch.proposalOffer = offer; patch.proposalProduct = offer === "nenhuma" ? "" : offerProduct; } patch.followupAt = fupDay; }
     // Integração: define o integrador e, se um horário foi escolhido na agenda,
     // agenda a integração nele (integrationAt aparece na Agenda e replica na
     // agenda pessoal do integrador que conectou o Google).
@@ -2264,7 +2354,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
             const on = isRetry;
             return (
               <button key="retry" onClick={() => chooseDest(d)}
-                title={isFollowup ? "Escolher a data e a hora de retorno do follow-up" : d.promote
+                title={d.promote
                   ? `Não atendeu ou ainda não fechou · registra a tentativa, vai pra ${d.stage} e você escolhe quando voltar`
                   : "Não atendeu · registra a tentativa e você escolhe o dia e a hora de voltar"}
                 style={{
@@ -2274,7 +2364,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                   color: on ? "var(--accent)" : "var(--fg-2)", fontSize: 13, fontWeight: 600,
                 }}>
                 <span style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
-                {isFollowup ? "Follow-up" : d.promote ? `${d.stage} · retomar` : "Retomar"}
+                {d.promote ? `${d.stage} · retomar` : "Retomar"}
               </button>
             );
           }
@@ -2302,7 +2392,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
               duas semanas tinha que corrigir no card depois. */}
           {isRetry && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <label className="kicker" htmlFor={`return-at-${lead.id}`}>{isFollowup ? "Data de retorno" : "Quando retomar"}</label>
+              <label className="kicker" htmlFor={`return-at-${lead.id}`}>Quando retomar</label>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                 {RETRY_PRESETS.map(([txt, mk]) => {
                   const v = mk();
@@ -2321,7 +2411,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                   style={{ ...fieldStyle, width: "auto", height: 28, fontFamily: "var(--mono)", fontSize: 11.5 }} />
               </div>
               <div className="mono dim" style={{ fontSize: 10.5 }}>
-                {isFollowup ? "O cliente continua em follow-up e volta à sua fila na data escolhida." : <>registra a tentativa de contato{dest.promote ? ` e manda o card pra ${dest.stage}` : ""} · o lead volta na sua fila nesse horário</>}
+                registra a tentativa de contato{dest.promote ? ` e manda o card pra ${dest.stage}` : ""} · o lead volta na sua fila nesse horário
               </div>
             </div>
           )}
@@ -2387,12 +2477,11 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                   </div>
                 )}
                 <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", marginBottom: 6 }}>
-                  Quando fazer o follow-up · agenda de {displayName(closer)}
+                  Dia do contato 1 de {FOLLOWUP_STEPS} · {displayName(closer)}
                 </div>
                 {callSummary?.followup?.nota && <div className="mono" style={{ fontSize: 10.5, color: "var(--accent)", marginBottom: 6 }}>✨ IA (última call): {callSummary.followup.nota}</div>}
-                <SlotGrid days={days} day={day} setDay={setDay} slot={slot} setSlot={setSlot} busy={busy} />
-                {slot && <div className="mono" style={{ fontSize: 11.5, color: "var(--accent)", marginTop: 8 }}>Follow-up: {slotFmt(slot)} · {displayName(closer)}</div>}
-                <div className="mono dim" style={{ fontSize: 10, marginTop: 6 }}>entra na agenda nesse horário · não trava o slot pra novas calls de venda. Sem horário, retoma pela cadência.</div>
+                <DayPicker value={fupDay} onChange={setFupDay} label="Dia do contato 1" />
+                <div className="mono dim" style={{ fontSize: 10, marginTop: 6 }}>só o dia, sem horário · não ocupa a agenda. Os próximos contatos caem sozinhos pelo prazo de cada um.</div>
               </div>
             ) : (
               <div style={{ maxWidth: 280 }}>
@@ -2482,7 +2571,7 @@ function DestinoSection({ saasCfg, lead, leads, callSummary, onMove, onMoveMeet,
                 height: 32, padding: "0 16px", borderRadius: 999, fontSize: 12.5, fontWeight: 600,
                 background: ready ? "var(--btn-bg, var(--accent))" : "var(--bg-2)", color: ready ? "var(--btn-fg, var(--accent-fg))" : "var(--fg-4)",
                 border: "1px solid " + (ready ? "var(--btn-bg, var(--accent))" : "var(--line-2)"), cursor: ready ? "pointer" : "not-allowed",
-              }}>{isRetry ? (isFollowup ? "agendar retorno →" : "registrar tentativa e retomar →") : setup === "followup" && slot ? "agendar follow-up →" : `mover pra ${dest.stage} →`}</button>
+              }}>{isRetry ? "registrar tentativa e retomar →" : setup === "followup" ? "agendar follow-up →" : `mover pra ${dest.stage} →`}</button>
               <button onClick={() => setDest(null)} className="mono dim" style={{ fontSize: 11.5 }}>cancelar</button>
             </div>
           )}
