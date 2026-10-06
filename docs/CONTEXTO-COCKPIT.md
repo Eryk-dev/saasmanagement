@@ -95,6 +95,13 @@ para imagem/cloze/oclusão e salvamento explícito da base.
 Pipeline compartilha filtros entre Kanban/Lista/Análise; a esteira usa os
 helpers e o endpoint existentes de pace. A ficha compacta é uma variante de
 LeadDetail usada nesta rota; os handlers e a ficha das demais rotas permanecem.
+Filtro de **Segmento** (06/10/2026, `web/src/lib/segments.js`): lê `lead.niche`
+(resposta dos forms, também texto livre do robô/outbound), casa com as opções
+da pergunta `niche` do produto e manda texto livre de autopeças e lead OEM
+(`formProduct: "oem"`, cujo form não pergunta o nicho) para a opção de
+autopeças. Só no navegador, sem campo novo nem migração; some em produto sem
+segmento. Fatia colunas e totais como o filtro de pessoa
+(`cockpit_pipeline_segment`). Tags em lead ainda não existem.
 O modal de pagamento usa o `Modal` compartilhado para controlar foco/teclado.
 Clientes usa a ficha lateral de 420px com contrato, marcos e dinheiro. Edição,
 upsell, churn e gestão de cobranças abrem os formulários existentes em modal;

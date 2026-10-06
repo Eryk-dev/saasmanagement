@@ -524,6 +524,37 @@ try {
     failed++;
   }
 
+  // Filtro de segmento do Pipeline (06/10/2026): lead.niche normalizado, texto
+  // livre de autopeças e OEM sem resposta caem na opção de autopeças do produto.
+  try {
+    const { leadSegment, segmentOptions, segmentMatch, NO_SEGMENT } = await server.ssrLoadModule("/src/lib/segments.js");
+    const eq = (name, got, want) => {
+      if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error(`${name}: ${JSON.stringify(got)} ≠ ${JSON.stringify(want)}`);
+    };
+    const cfg = { leadQuestions: [{ key: "niche", options: [
+      { value: "autopecas", label: "Autopeças" }, { value: "moda", label: "Moda" }, { value: "outros", label: "Outros" },
+    ] }] };
+    eq("código do form", leadSegment({ niche: "autopecas" }, cfg), "autopecas");
+    eq("texto livre do robô", leadSegment({ niche: "Auto Peças" }, cfg), "autopecas");
+    eq("rótulo com acento", leadSegment({ niche: "Moda" }, cfg), "moda");
+    eq("OEM sem resposta é autopeças", leadSegment({ formProduct: "oem" }, cfg), "autopecas");
+    eq("sem nada", leadSegment({}, cfg), "");
+    eq("texto fora das opções", leadSegment({ niche: "Pet Shop" }, cfg), "pet shop");
+    const outroCodigo = { leadQuestions: [{ key: "niche", options: [{ value: "auto", label: "Autopeças e acessórios" }] }] };
+    eq("opção de autopeças com outro código", leadSegment({ formProduct: "oem" }, outroCodigo), "auto");
+    eq("texto livre na opção de outro código", leadSegment({ niche: "autopeças" }, outroCodigo), "auto");
+    const leads = [{ niche: "autopecas" }, { formProduct: "oem" }, { niche: "Pet Shop" }, {}];
+    eq("opções com contagem", segmentOptions(cfg, leads).map((o) => `${o.value}:${o.hint}`),
+      ["autopecas:2", "moda:0", "outros:0", "pet shop:1", `${NO_SEGMENT}:1`]);
+    eq("produto sem segmento não mostra filtro", segmentOptions({}, [{}, {}]), []);
+    eq("filtro", leads.filter((l) => segmentMatch(l, cfg, "autopecas")).length, 2);
+    eq("filtro sem segmento", leads.filter((l) => segmentMatch(l, cfg, NO_SEGMENT)).length, 1);
+    console.log("✓ pipeline-segmento");
+  } catch (err) {
+    console.error(`✗ pipeline-segmento: ${err.message}`);
+    failed++;
+  }
+
   // Card movido SAI da fila de hoje (Leo, 29/09): o movimento otimista mantinha
   // o `nextActionAt` da etapa ANTIGA (vencido) e o card continuava na lista de
   // Minhas atividades até o reload do SEED. `nextActionAfterMove` é o espelho do

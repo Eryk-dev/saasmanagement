@@ -8,8 +8,11 @@
 .pipeline-views { display:inline-flex; gap:3px; padding:4px; border-radius:999px; background:var(--bg-1); box-shadow:0 1px 2px rgba(12,29,43,.05); }
 .pipeline-views button { height:32px; padding:0 16px; border-radius:999px; font-size:12.5px; font-weight:600; color:var(--fg-3); }
 .pipeline-views button[aria-pressed=true] { background:var(--btn-bg); color:var(--btn-fg); }
-.pipeline-filters { flex:0 0 auto; display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:12px 16px; border-radius:999px; background:var(--bg-1); box-shadow:var(--shadow-card); }
-.pipeline-search { display:inline-flex; align-items:center; gap:8px; height:34px; padding:0 15px; border-radius:999px; background:var(--bg-2); color:var(--fg-3); min-width:208px; }
+.pipeline-filters { flex:0 0 auto; display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:12px 16px; border-radius:999px; background:var(--bg-1); box-shadow:var(--shadow-card); }
+.pipeline-search { display:inline-flex; align-items:center; gap:8px; height:34px; padding:0 15px; border-radius:999px; background:var(--bg-2); color:var(--fg-3); flex:1 1 140px; min-width:140px; max-width:260px; }
+/* Foco da busca igual ao da Inbox (06/10/2026): a cápsula continua cinza, sem
+   o contorno verde que o :focus-visible da tela desenhava no input. */
+.pipeline-page .pipeline-search input:focus-visible { outline:none; }
 .pipeline-search svg { flex-shrink:0; }
 .pipeline-search input { flex:1; min-width:0; width:150px; border:0; background:none; outline:none; font-family:inherit; font-size:12.5px; color:var(--fg-1); }
 .pipeline-kicker { font-size:10px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--fg-4); }
@@ -18,7 +21,8 @@
 .pipeline-segment button span { font-family:var(--display); margin-left:4px; }
 .pipeline-segment button[aria-pressed=true] { background:var(--bg-1); color:var(--fg-1); box-shadow:0 1px 2px rgba(12,29,43,.07); }
 .pipeline-people { max-width:100%; overflow-x:auto; }
-.pipeline-order { height:34px; border:0; padding:0 15px; border-radius:999px; font-family:inherit; font-size:12.5px; font-weight:600; color:var(--fg-2); background:var(--bg-2); }
+.pipeline-order { width:140px; flex:0 0 auto; }
+.pipeline-segment-pick { width:160px; flex:0 0 auto; }
 .pipeline-clear { color:var(--fg-3); font-size:12px; padding:6px 8px; border-radius:999px; }
 .pipeline-count { margin-left:auto; font-size:11.5px; color:var(--fg-4); }
 .pipeline-page .kb-board[data-layout=fill] { flex:1 1 auto; min-height:340px; display:flex; align-items:stretch; gap:12px; padding:2px 0 6px; overflow-x:auto; overflow-y:hidden; }
@@ -105,8 +109,8 @@
  .pipeline-header > div:first-child { flex-basis:100%; }
  .pipeline-header-actions { gap:8px; }
  .pipeline-filters { border-radius:24px; padding:12px; }
- .pipeline-search { width:100%; }
- .pipeline-page button, .pipeline-page select, .pipeline-search { min-height:44px; }
+ .pipeline-search { width:100%; max-width:none; flex-basis:100%; }
+ .pipeline-page button, .pipeline-search { min-height:44px; }
  .pipeline-page .lead-board-card button[role=checkbox] { width:44px!important; height:44px!important; }
  .pipeline-views button { padding:0 12px; }
  .pipeline-analysis { padding:18px 16px; }
