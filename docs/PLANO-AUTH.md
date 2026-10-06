@@ -1,6 +1,6 @@
 # Plano: identidade unificada no LeverId (Cockpit + LeverAds)
 
-> **Status (25/09/2026): diagnóstico feito e levantamento para concluir registrado (revisão 2, seção 7); execução não iniciada.** Branch `feat/auth`.
+> **Status (06/10/2026): código das Fases 0 a 3 pronto e validado localmente (LeverId, Cockpit e LeverAds em `feat/auth`); nada em produção.** O que trava é a parte de infraestrutura da Fase 0 (seção 7.3). Checklist por frente na seção 7.4. Branch `feat/auth`.
 >
 > **Escopo:** levar para o LeverId (GoTrue + Postgres no Coolify da VPS2):
 > - o **login** do Cockpit e do LeverAds;
@@ -18,6 +18,12 @@
 > - onde este plano e o `PLANO-PLATAFORMA-SUPABASE.md` divergiam, **vale este plano** (seção 7.1), e as decisões em aberto 1 e 2 ficam fechadas;
 > - a revogação de sessão foi corrigida: o `logout` da admin API não derruba o access token já emitido, então a conferência claim × banco passa a ser permanente (seção 2.1 e decisão 7);
 > - estado do código conferido, pré-requisitos externos, checklist por frente e duas decisões novas (identidade passa pelo dev antes de prod; mecanismo do RLS).
+>
+> **Revisão 3 (06/10):** super admin e "ver como" conferidos no código dos três repos:
+> - **conflito corrigido:** o token leva um `org_id` só. O LeverAds exige que ele bata com `public.users.org_id` (a org de origem do super admin), e o Cockpit exigia a org "Lever". Quem é staff do Cockpit **e** super admin do LeverAds, com uma conta só, ficava barrado em um dos dois. Agora o Cockpit não olha o `org_id`: exige `is_staff` com o papel `team` (seção 2.1, "Org ativa e produtos sem tenant");
+> - a decisão 7 da seção 5 fica fechada: o super admin mantém a membership e a org ativa na org de origem;
+> - o "Operando como \<org\>" do LeverAds (`X-Super-Admin-Org`) continua igual com o JWT; "ver como usuário X" não existe hoje, e o desenho seguro ficou registrado (seção 2.1, "Staff atuando em org de cliente");
+> - a Fase 4 ganhou uma trava: o link do `generate_link` nunca volta para quem pediu.
 >
 > **Relação com `PLANO-PLATAFORMA-SUPABASE.md`:** este plano é o recorte de identidade daquele (Fases 3, 4 e 6: GoTrue, `core.orgs`, `core.memberships`, `core.staff` e o hook de claims). Ele fica **desacoplado** do resto:
 > - não depende da mudança do Levercopy para a VPS nova, do RLS por usuário, do `core_replica` nem do fim da service_role;
@@ -187,6 +193,12 @@
 
 **Org interna "Lever"** (UUID fixo): todo o staff tem membership nela. Isso dá ao staff um `org_id` válido sem prendê-lo a uma org de cliente, como o `is_super_admin` faz hoje.
 
+**Org ativa e produtos sem tenant (revisão 3):**
+- o `org_id` do token quer dizer "em qual org a pessoa atua agora", e há **um só** por token;
+- produto multi-tenant (LeverAds, LeverPrice) usa o `org_id` e o confere contra o próprio banco (decisão 7);
+- produto sem tenant de login (o Cockpit) **não usa o `org_id`**: decide pelo staff (`is_staff` + papel em `staff_roles`, `team` no Cockpit) e pelo vínculo local (`cockpit.users.authUserId`);
+- assim, a mesma conta serve aos dois sem trocar de org. O super admin do LeverAds fica com a org ativa na org de origem (é o `public.users.org_id` dele), e o vínculo do Cockpit (`set_staff`) não mexe na org ativa de quem já tem uma.
+
 **Hook** `private.custom_access_token_hook`, ligado por `GOTRUE_HOOK_CUSTOM_ACCESS_TOKEN_*`:
 - lê `profiles.active_org_id` e confirma que existe membership, além de ler `staff`;
 - grava `org_id`, `org_role`, `is_staff` e `staff_roles` no token;
@@ -199,8 +211,18 @@
 Hoje ninguém tem duas orgs, mas o modelo já aceita.
 
 **Staff atuando em org de cliente:**
-- o `X-Super-Admin-Org` continua, agora autorizado por `staff_roles` do JWT em vez de `is_super_admin`;
-- o token não é trocado: o staff mantém a própria identidade, e a org alvo vem no header, auditada.
+- o `X-Super-Admin-Org` continua ("Operando como \<org\>" no LeverAds), agora autorizado por `staff_roles` do JWT **e** por `is_super_admin` no banco: só vale com os dois (menor privilégio); tirar no banco corta em até 30 s (cache do contexto), sem esperar o token vencer;
+- o token não é trocado: o staff mantém a própria identidade, e a org alvo vem no header;
+- o contexto dá a visão de **admin da org** (`role: admin`, sem restrição de seller), não a de um usuário específico;
+- **a conferir:** se a auditoria registra o par super admin → org em cada ação no contexto. O plano dizia "auditada", mas o `_apply_super_admin_org_context` não emite evento.
+
+**"Ver como usuário X" (não existe hoje; desenho para quando entrar):**
+- **nunca** emitir sessão ou token em nome do usuário. Isso inclui o super admin entrar pelo link do `generate_link` (Fase 4): o MFA dele seria pulado e a auditoria mostraria o cliente como autor;
+- o super admin continua com o **próprio** JWT e manda `X-Act-As-User: <user_id>`, exigindo o mesmo par banco + `staff_roles` do `X-Super-Admin-Org`;
+- o `require_user` monta o contexto com o papel, as permissões por seller e as flags do usuário-alvo, e guarda o super admin como **ator**;
+- só leitura por padrão; as rotas de sessão, senha, MFA e `/api/super` ficam bloqueadas, como em `_ORG_CONTEXT_BLOCKED_PREFIXES`;
+- cada requisição é auditada com ator e alvo;
+- como mora no `require_user`, funciona igual com a sessão antiga e com o LeverId, sem depender do RLS nem do claim `act` (seção 7.1).
 
 **Escrita pelos produtos** (cadastro cria org + owner, admin convida ou remove usuário, muda papel, super admin suspende org):
 - o PostgREST da identidade expõe **só** o schema `identity_api`, com RPCs `SECURITY DEFINER`:
@@ -330,7 +352,7 @@ Hoje ninguém tem duas orgs, mas o modelo já aceita.
     - o cache de sessão é chaveado por `session_id`.
 - **Cockpit:**
   - `makeAuthHook` aceita o Bearer JWT, resolvido pelo `authUserId` → `publicUser()` de sempre;
-  - exige `is_staff` e `org_id` da org "Lever". Um cliente com JWT válido **não entra** no Cockpit (até existir o portal);
+  - exige `is_staff` com o papel `team` em `staff_roles` (revisão 3: antes exigia o `org_id` da org "Lever", o que barrava o super admin do LeverAds). Um cliente com JWT válido **não entra** no Cockpit (até existir o portal);
   - o `?key=` do SSE passa a aceitar o JWT;
   - a master key continua como está (é do MCP e das integrações, não do login).
 - **Cockpit → LeverAds sem senha:** o `leverads-access.js` troca o login de super admin por uma **chave de serviço** própria, aceita só em `GET /api/super/orgs` e `PUT /api/super/orgs/:id`, com `compare_digest` e auditoria. Ele precisa estar resolvido **antes** da Fase 4.
@@ -369,6 +391,7 @@ Hoje ninguém tem duas orgs, mas o modelo já aceita.
   - o cadastro chama o backend, que cria no GoTrue e devolve a sessão.
 - **Backend:**
   - criação por admin, reset em massa e "gerar magic link" do super admin passam a usar a admin API (`generate_link`);
+  - **trava (revisão 3):** a admin API devolve o `action_link` na resposta. O backend só o entrega **por e-mail ao dono da conta**, nunca na resposta HTTP nem em log; com o link, o super admin entraria como o cliente (seção 2.1, "Ver como usuário X"). Teste cobrindo isso;
   - `must_change_password` continua no `public.users`;
   - o cadastro chama `identity_api.create_org_with_owner` e depois cria `public.orgs`/`public.users` com os mesmos ids;
   - gestão de usuários da org (adicionar, mudar papel, remover) e suspender org passam pelas RPCs `identity_api.*` primeiro e só então gravam no banco local.
@@ -435,7 +458,7 @@ Hoje ninguém tem duas orgs, mas o modelo já aceita.
 4. **Onde roda a reconciliação:** job no Coolify da VPS2 (perto do banco da identidade) ou no worker do LeverAds.
 5. **`core.org_products` agora ou só com o LeverPrice:** tabela criada na primeira migration (25/09), sem claim no JWT; `create_org_with_owner` aceita o produto.
 6. **Papéis de org:** `owner`/`admin`/`member` no `core`, com `operator` = `member` no LeverAds. Alternativa: manter os nomes do LeverAds no `core`.
-7. **Super admin do LeverAds:** manter a membership na org do cliente de origem (recomendado, é o comportamento de hoje) ou deixá-lo só na org "Lever".
+7. ~~**Super admin do LeverAds:** manter a membership na org do cliente de origem ou deixá-lo só na org "Lever".~~ **Fechada (revisão 3):** mantém a membership e a org ativa na org de origem, porque o LeverAds confere o `org_id` contra `public.users.org_id`. O Cockpit deixou de exigir a org "Lever" no token (seção 2.1, "Org ativa e produtos sem tenant").
 8. **(nova, revisão 2) A identidade passa pelo dev antes de prod?** O `PLANO-AMBIENTE-DEV.md` exige S1/S2 prontas antes da identidade ir a prod; este plano testa só no compose local. Opções: `identity-dev` na VPS2 (etapa 5 do `PLANO-DEV-INTERINO-VPS2.md`) antes da Fase 1, ou compose local + ensaio com contas internas em prod (Fase 4) como está.
 9. **(nova, revisão 2) Mecanismo do RLS** (seção 7.5): esperar a mudança do Levercopy para a VPS (PostgREST com JWKS) ou começar já com o backend aplicando `SET LOCAL role` + `request.jwt.claims` na conexão `pg`/asyncpg.
 
@@ -511,8 +534,9 @@ A cópia local do LeverAds conferida estava em v2.31.0, atrás da `origin/develo
 **B. Cockpit (este repo)**
 - [x] Contenção (25/09, branch `feat/auth`): `DEFAULT_ADMINS`/`1234` substituído por `BOOTSTRAP_ADMIN_USER`/`PASSWORD`; API fechada sem `COCKPIT_API_KEY`; CORS restrito fora das rotas abertas (`cors-policy.js`); `APP_ENV` com trava de destino de prod (`app-env.js`); `JOBS_ENABLED`/`JOBS=`; senha nova com 8+ caracteres em criar, resetar e trocar.
 - [x] Gestão do time só com a etiqueta `admin` (25/09): escrita em `/api/auth/users` (criar, editar papel/telas/nível, resetar senha, remover) barrada no `screens.js`; a key mestre continua passando; Ajustes → Equipe fica só leitura para os demais.
-- [x] `AUTH_MODE=legacy|dual|gotrue` no `makeAuthHook` (25/09, `auth-jwt.js`): JWT ES256 pelo JWKS em cache (rotação de `kid` com anti-enxurrada), só staff da org Lever com `authUserId` ligado em `cockpit.users`; SSE aceita o JWT; troca de senha de conta da identidade recusada no cockpit. Validado de ponta a ponta com o LeverId local e o banco local do Docker (login novo e antigo lado a lado; cliente barrado).
-- [x] Testes com JWKS de teste (`test/auth-jwt.test.js`, 9 casos).
+- [x] `AUTH_MODE=legacy|dual|gotrue` no `makeAuthHook` (25/09, `auth-jwt.js`): JWT ES256 pelo JWKS em cache (rotação de `kid` com anti-enxurrada), só staff do time (`team` em `staff_roles`; até 06/10 exigia o `org_id` da org Lever) com `authUserId` ligado em `cockpit.users`; SSE aceita o JWT; troca de senha de conta da identidade recusada no cockpit. Validado de ponta a ponta com o LeverId local e o banco local do Docker (login novo e antigo lado a lado; cliente barrado).
+- [x] Testes com JWKS de teste (`test/auth-jwt.test.js`, 10 casos; o novo cobre o super admin do LeverAds com a org de cliente ativa entrando no cockpit).
+- [x] Conta única Cockpit + LeverAds (06/10, revisão 3): o cockpit decide pelo papel `team`, não pelo `org_id` do token.
 - [x] Chave de serviço Cockpit → LeverAds no `leverads-access.js` (25/09; ver item do LeverAds). Falta configurar as duas envs em produção e aposentar `LEVERADS_ADMIN_EMAIL/PASSWORD` (**antes da Fase 4**).
 - [x] SPA (25/09): `@supabase/auth-js` com `VITE_AUTH_URL` (`lib/identity.js`); login por e-mail do LeverId com opção do login antigo; `Authorization: Bearer`; renovação automática e antes da requisição se o token venceu; 401 global (renova uma vez, senão volta ao login); SSE reabre com o token atual; troca de senha e sair pelo GoTrue. Validado no navegador (Playwright) contra o LeverId e o banco local.
 - [x] Vínculo e migração de senha (26/09): Ajustes → Equipe → "LeverId" liga pelo e-mail (`POST /api/auth/users/:id/identity`; reusa a conta existente, senão cria com `app_metadata.password_pending`); o login antigo leva a mesma senha à LeverId só se ela ainda não tem senha própria (gatilho no LeverId apaga a marca na primeira troca); etiquetas → staff `team`/`admin`/`support`; remover ou desligar tira o staff. Validado de ponta a ponta com o GoTrue local.
@@ -527,6 +551,9 @@ A cópia local do LeverAds conferida estava em v2.31.0, atrás da `origin/develo
 - [x] `require_user` com Bearer JWT (25/09, `app/services/leverid_jwt.py`): `AUTH_MODE=legacy|dual|leverid`; org e papel conferidos contra `public.users`; `owner` = dono em `require_org_owner`; super admin só com banco e token; TOTP exige `aal2`; rate limit pela sessão do LeverId; `Vary` com `Authorization`; `legacy` mantém até o 422 sem header. Suíte igual à referência (+32 testes), isolamento 67/67 na bancada em `legacy` e em `dual`, e prova em sistema rodando em `docs/provas/feat-auth.md` (API de pé contra a bancada, token real do LeverId local). A prova achou e corrigiu na carga o dono pelo e-mail que é `operator`.
 - [x] Rota de serviço para o Cockpit (25/09, LeverAds `feat/auth` `e0830511`): em vez de abrir `GET/PUT /api/super/orgs` (que mexe em tudo da org) para uma chave, rotas dedicadas `GET /api/service/cockpit/orgs` e `PUT /api/service/cockpit/orgs/{id}/payment`, que só mudam `payment_active`, com `X-Cockpit-Service-Key` (`COCKPIT_SERVICE_KEY` lá, `LEVERADS_SERVICE_KEY` aqui), auditoria `org_settings_changed` (ator `cockpit-service`) e despejo do cache. O `leverads-access.js` usa a chave quando configurada e cai no login por senha só na transição. Prova com o cliente real do Cockpit contra a API do LeverAds de pé.
 - [ ] Frontend atrás de `VITE_AUTH_PROVIDER`, leitura do token centralizada.
+- [ ] `generate_link` só por e-mail ao dono da conta, com teste (Fase 4, trava da revisão 3).
+- [ ] Conferir a auditoria do `X-Super-Admin-Org` (par super admin → org por ação).
+- [ ] `feat/auth` estava 49 commits atrás da `origin/develop` em 06/10: atualizar antes de seguir.
 - [ ] Espelho reverso após a virada.
 - [ ] Ledger de migrations (LEV-439), pré-requisito do RLS.
 

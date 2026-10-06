@@ -7,16 +7,21 @@
 //
 // O JWT é validado localmente pelo JWKS (AUTH_JWKS_URL), sem chamar a
 // identidade por requisição: só ES256, `kid` publicado, assinatura, `exp`/`nbf`
-// e `aud`. Entra no cockpit só staff (`is_staff`) da org interna Lever cujo
-// `sub` está ligado a um usuário daqui (`users.authUserId`). O papel, as telas
-// e o supportSaas continuam vindo de `cockpit.users` — a conferência com o
-// banco local é permanente (decisão 7 do plano).
+// e `aud`. Entra no cockpit só staff do time (`is_staff` com o papel `team`)
+// cujo `sub` está ligado a um usuário daqui (`users.authUserId`). O `org_id`
+// do token não conta: é a org de cliente em que a pessoa atua, e quem também
+// é super admin do LeverAds carrega a org de origem dele (o LeverAds exige
+// que ela bata com `public.users.org_id`) — uma conta só serve aos dois. O
+// papel, as telas e o supportSaas continuam vindo de `cockpit.users` — a
+// conferência com o banco local é permanente (decisão 7 do plano).
 
 import { createPublicKey, verify as verifySignature } from "node:crypto";
 
 export const AUTH_MODES = ["legacy", "dual", "gotrue"];
-// Org interna "Lever" do LeverId (private.lever_org_id()).
-export const LEVER_ORG_ID = "00000000-0000-4000-8000-00000000000a";
+// Papel de staff que todo usuário do time recebe ao ligar o LeverId
+// (`staffRolesFor` em identity-admin.js). O super admin do LeverAds sozinho
+// (`leverads_super_admin`) não abre o cockpit.
+export const COCKPIT_STAFF_ROLE = "team";
 const JWKS_TTL_MS = 10 * 60 * 1000;
 // Com `kid` desconhecido (chave rotacionada), busca o JWKS de novo no máximo
 // uma vez por este intervalo — token forjado não vira enxurrada de fetch.
@@ -85,7 +90,7 @@ export async function verifyJwt(token, { jwks, audience = "authenticated", issue
 
 // Resolve o usuário do cockpit a partir do JWT (null = negado; o motivo vai
 // pro log). `findUser(sub)` busca em cockpit.users pelo authUserId.
-export function makeJwtResolver({ jwks, findUser, staffOrgId = LEVER_ORG_ID, audience, issuer, log }) {
+export function makeJwtResolver({ jwks, findUser, audience, issuer, log }) {
   return async (token) => {
     let claims;
     try {
@@ -94,8 +99,9 @@ export function makeJwtResolver({ jwks, findUser, staffOrgId = LEVER_ORG_ID, aud
       log?.warn?.(`auth jwt: recusado (${err.message})`);
       return null;
     }
-    if (claims.is_staff !== true || claims.org_id !== staffOrgId) {
-      log?.warn?.(`auth jwt: ${claims.sub} não é staff da org Lever`);
+    const staffRoles = Array.isArray(claims.staff_roles) ? claims.staff_roles : [];
+    if (claims.is_staff !== true || !staffRoles.includes(COCKPIT_STAFF_ROLE)) {
+      log?.warn?.(`auth jwt: ${claims.sub} não é staff do time`);
       return null;
     }
     const user = await findUser(claims.sub);

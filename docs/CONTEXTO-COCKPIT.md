@@ -268,7 +268,9 @@ a mesma regra; os testes ficam em `sdr-brain.test.js`.
    (`cors-policy.js`); rotas abertas aceitam qualquer origem. A migração para a
    identidade central está em `docs/PLANO-AUTH.md`; `AUTH_MODE=dual|gotrue`
    (`auth-jwt.js`) aceita o JWT ES256 do GoTrue, validado pelo JWKS, só de
-   staff da org Lever ligado a um usuário por `users.authUserId`. Telas, papel
+   staff do time (`is_staff` com o papel `team`) ligado a um usuário por
+   `users.authUserId`; o `org_id` do token não conta, porque o super admin do
+   LeverAds usa a mesma conta com a org de origem ativa. Telas, papel
    e `supportSaas` continuam vindo de `cockpit.users`. No SPA, `VITE_AUTH_URL` liga o
    login pelo LeverId (`lib/identity.js`, `@supabase/auth-js`): o JWT vai em
    `Authorization: Bearer`, é renovado sozinho, e um 401 "Unauthorized" no meio

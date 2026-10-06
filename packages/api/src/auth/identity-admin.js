@@ -9,6 +9,8 @@
 //
 // Sem as quatro variáveis, o cliente é null e as rotas respondem 424.
 
+import { COCKPIT_STAFF_ROLE } from "./auth-jwt.js";
+
 export function makeIdentityAdmin({ env = process.env, fetchImpl = fetch } = {}) {
   const authUrl = String(env.IDENTITY_AUTH_URL || "").replace(/\/+$/, "");
   const restUrl = String(env.IDENTITY_REST_URL || "").replace(/\/+$/, "");
@@ -73,7 +75,7 @@ export function makeIdentityAdmin({ env = process.env, fetchImpl = fetch } = {})
 // `support`.
 export function staffRolesFor(user) {
   const tags = Array.isArray(user?.roles) ? user.roles : [];
-  const roles = ["team"];
+  const roles = [COCKPIT_STAFF_ROLE];
   if (tags.includes("admin")) roles.push("admin");
   if (tags.includes("support")) roles.push("support");
   return roles;

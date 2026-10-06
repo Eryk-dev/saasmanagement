@@ -1,5 +1,5 @@
 // Login pela identidade central (auth-jwt.js): JWT ES256 validado pelo JWKS,
-// só staff da org Lever ligado a um usuário do cockpit, e os três AUTH_MODE.
+// só staff do time (papel `team`) ligado a um usuário do cockpit, e os três AUTH_MODE.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -10,7 +10,7 @@ import { seedTestAdmins } from "./helpers/seed-admins.js";
 import { makeAuthHook, hashPassword } from "../src/auth/auth.js";
 import { userByAuthId } from "../src/auth/auth.js";
 import { makeScreenGuardHook } from "../src/auth/screens.js";
-import { makeJwksCache, makeJwtResolver, resolveAuthMode, looksLikeJwt, LEVER_ORG_ID } from "../src/auth/auth-jwt.js";
+import { makeJwksCache, makeJwtResolver, resolveAuthMode, looksLikeJwt } from "../src/auth/auth-jwt.js";
 
 const { registerRoutes } = await import("../src/routes.js");
 
@@ -26,9 +26,11 @@ function es256(key, claims, header = {}) {
   return `${head}.${body}.${sig}`;
 }
 const now = () => Math.floor(Date.now() / 1000);
+// Org interna "Lever" do LeverId (private.lever_org_id()).
+const LEVER_ORG_ID = "00000000-0000-4000-8000-00000000000a";
 const staffClaims = (sub, extra = {}) => ({
   sub, aud: "authenticated", role: "authenticated", iat: now(), exp: now() + 600,
-  session_id: randomUUID(), aal: "aal1", org_id: LEVER_ORG_ID, org_role: "admin", is_staff: true, staff_roles: ["admin"], ...extra,
+  session_id: randomUUID(), aal: "aal1", org_id: LEVER_ORG_ID, org_role: "admin", is_staff: true, staff_roles: ["team", "admin"], ...extra,
 });
 
 // JWKS servido por um fetch falso que conta as buscas.
@@ -103,15 +105,30 @@ test("JWT recusado: expirado, outra chave, assinatura adulterada, alg trocado, a
   assert.equal((await get(es256(key, staffClaims(ERYK_SUB, { aud: "outro-produto" })))).statusCode, 401, "aud");
 });
 
-test("JWT válido mas sem acesso: cliente, staff de outra org, conta não ligada", async (t) => {
+test("JWT válido mas sem acesso: cliente, staff fora do time, conta não ligada", async (t) => {
   const key = makeKey();
   const { app } = await buildApp({ keys: [key] });
   t.after(() => app.close());
   const get = (claims) => app.inject({ method: "GET", url: "/api/leads", headers: bearer(es256(key, claims)) });
   assert.equal((await get(staffClaims(ERYK_SUB, { is_staff: false, staff_roles: [] }))).statusCode, 401, "cliente não entra");
-  assert.equal((await get(staffClaims(ERYK_SUB, { org_id: randomUUID() }))).statusCode, 401, "org de cliente ativa");
-  assert.equal((await get(staffClaims(ERYK_SUB, { org_id: undefined }))).statusCode, 401, "sem org");
+  assert.equal((await get(staffClaims(ERYK_SUB, { is_staff: false }))).statusCode, 401, "papéis sem is_staff não entram");
+  assert.equal((await get(staffClaims(ERYK_SUB, { staff_roles: ["leverads_super_admin"] }))).statusCode, 401, "só super admin do LeverAds não é do time");
+  assert.equal((await get(staffClaims(ERYK_SUB, { staff_roles: "team" }))).statusCode, 401, "staff_roles fora do formato");
   assert.equal((await get(staffClaims(randomUUID()))).statusCode, 401, "sub sem usuário no cockpit");
+});
+
+test("o org_id do token não decide: super admin do LeverAds com a org de cliente ativa entra no cockpit", async (t) => {
+  // Uma conta só para os dois produtos: o LeverAds exige que o org_id do token
+  // bata com public.users.org_id (a org de origem do super admin), então o
+  // cockpit não pode exigir a org Lever no mesmo token.
+  const key = makeKey();
+  const { app } = await buildApp({ keys: [key] });
+  t.after(() => app.close());
+  const get = (claims) => app.inject({ method: "GET", url: "/api/leads", headers: bearer(es256(key, claims)) });
+  const superAdmin = { staff_roles: ["leverads_super_admin", "team", "admin"], org_role: "admin" };
+  assert.equal((await get(staffClaims(ERYK_SUB, { ...superAdmin, org_id: randomUUID() }))).statusCode, 200, "org de cliente ativa");
+  assert.equal((await get(staffClaims(ERYK_SUB, { ...superAdmin, org_id: undefined, org_role: undefined }))).statusCode, 200, "sem org no token");
+  assert.equal((await get(staffClaims(ERYK_SUB, superAdmin))).statusCode, 200, "org Lever ativa");
 });
 
 test("AUTH_MODE: legacy ignora JWT; dual aceita os dois; gotrue recusa a sessão antiga", async (t) => {
@@ -135,7 +152,7 @@ test("telas e papel vêm do cockpit, não do token", async (t) => {
   t.after(() => app.close());
   const sub = randomUUID();
   await repo.create("users", { id: "sdr", name: "SDR", role: "admin", roles: ["sdr"], screens: ["pipeline"], authUserId: sub, passwordHash: hashPassword("x".repeat(8)) });
-  const H = bearer(es256(key, staffClaims(sub, { staff_roles: ["admin"] })));
+  const H = bearer(es256(key, staffClaims(sub, { staff_roles: ["team", "admin"] })));
   assert.equal((await app.inject({ method: "GET", url: "/api/customers", headers: H })).statusCode, 403, "tela fora da lista");
   // staff_roles admin no token não dá a etiqueta admin do cockpit
   assert.equal((await app.inject({ method: "POST", url: "/api/auth/users", headers: H, payload: { name: "Novo", password: "abcd1234" } })).statusCode, 403);
