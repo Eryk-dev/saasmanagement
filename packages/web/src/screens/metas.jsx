@@ -54,10 +54,17 @@ const RATE_SOURCE = {
   benchmark: "padrão do mercado",
 };
 const TICKET_SOURCE = {
+  prev_month: "ticket médio do mês anterior (vendido reconhecido ÷ nº de vendas, sem contas grandes)",
   initial_payments: "1ª fatura paga de cada cliente",
   paid_invoices: "faturas pagas recentes",
   won_tcv: "valor dos ganhos recentes",
   configured_ticket: "o ticket que você configurou",
+};
+// "2026-09" → "set/26" (a base do ticket médio na cadeia e no campo de contratos).
+const mesCurto = (ym) => {
+  const [y, m] = String(ym || "").split("-").map(Number);
+  const nomes = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+  return y && m ? `${nomes[m - 1]}/${String(y).slice(2)}` : "";
 };
 const BLOCKED = {
   ticket: "sem ticket médio ainda (nenhuma fatura paga nem valor lançado nos ganhos): preencha o Ticket médio no card do Closer e a cadeia passa a fechar.",
@@ -130,7 +137,9 @@ function chainParts(d, people = {}) {
         ? `Conversão da call: calibrada pela ponta a ponta real ${janela}${amostra("leadToWin", "leads viraram ganho")}, pra cadeia inteira multiplicada fechar no lead→ganho medido.`
         : fonte("Conversão da call", d.rates.closeRateSource, "closeRate", "calls realizadas") },
     d.ticket
-      ? { big: money(d.ticket), nm: "× ticket médio", title: `Ticket médio: ${TICKET_SOURCE[d.ticketSource] || "sem origem"}.` }
+      ? { big: money(d.ticket), nm: d.ticketMonth ? `× ticket de ${mesCurto(d.ticketMonth)}` : "× ticket médio",
+          title: `Ticket médio: ${TICKET_SOURCE[d.ticketSource] || "sem origem"}.`
+            + (d.ticketMonth && d.previousMonth ? ` ${mesCurto(d.ticketMonth)}: ${money(d.previousMonth.sold)} em ${int(d.previousMonth.soldN)} vendas.` : "") }
       : { big: null, nm: "contratos digitados", title: "Sem ticket médio ainda: a meta de contratos digitada sustenta a cadeia sozinha." },
   ];
   return { boxes, steps };
@@ -250,10 +259,11 @@ function MetasWorkspace({product}) {
   // agenda dos seguintes vive no card do fim.
   const mesAtualInfo = (data?.company?.months || []).find((m) => m.current) || null;
   const proximosMeses = (data?.company?.months || []).filter((m) => !m.current);
-  // Métricas que seguem o plano de REMUNERAÇÃO (contratos/receita de SDR e
-  // closer): não são campo de vaga — o plano vence no placar.
+  // Métricas sem campo de vaga: as que seguem o plano de REMUNERAÇÃO
+  // (contratos/receita do closer, por nível) e as que são a META DO MÊS DA
+  // EQUIPE (contratos/receita do SDR) — o placar resolve as duas sozinho.
   const compKeys = new Set();
-  for (const r of data?.roles || []) for (const m of r.metrics) if (m.compPlan) compKeys.add(rk(r.role, m.metric));
+  for (const r of data?.roles || []) for (const m of r.metrics) if (m.compPlan || m.teamGoal) compKeys.add(rk(r.role, m.metric));
 
   // ── Réguas ao vivo: o vendido do pace contra o alvo que estiver no campo. ──
   // Digitar já move a barra (a conta é local); salvar é o que grava no produto.
@@ -284,7 +294,9 @@ function MetasWorkspace({product}) {
       lvl: levelOf(c.sold || 0, alvo, expected),
       title: digitado > 0 || c.targetSource === "company"
         ? "Meta de contratos digitada (a mesma da remuneração)."
-        : "Meta derivada: venda do mês ÷ ticket médio sem contas grandes.",
+        : c.ticketMonth
+          ? `Meta derivada: receita do mês ÷ ticket médio de ${mesCurto(c.ticketMonth)} (sem contas grandes).`
+          : "Meta derivada: venda do mês ÷ ticket médio sem contas grandes.",
     };
   })();
 
@@ -294,8 +306,9 @@ function MetasWorkspace({product}) {
   // o Leo confere e clica em salvar). As taxas ficam como estão — são a ambição
   // que ALIMENTA a cadeia, não resultado dela.
   function applyDerived() {
-    // Contratos/receita de SDR e closer ficam de fora: seguem o plano de
-    // remuneração por pessoa, não têm campo de vaga pra preencher.
+    // Contratos/receita de SDR e closer ficam de fora: o closer segue o plano
+    // de remuneração por pessoa, o SDR segue a meta do mês da equipe — nenhum
+    // dos dois tem campo de vaga pra preencher.
     const list = (data?.derived?.goals || []).filter((g) => !compKeys.has(rk(g.role, g.metric)));
     if (!list.length) return;
     setRoleVals((p) => ({ ...p, ...Object.fromEntries(list.map((g) => [rk(g.role, g.metric), String(Math.round(g.target))])) }));
@@ -329,6 +342,13 @@ function MetasWorkspace({product}) {
   // De onde vem o número que a pessoa persegue hoje, sem ajuste.
   function vigente(u, metric) {
     const role = roleOfUser(u);
+    // SDR: a meta do mês da equipe, inteira (contratos = receita ÷ ticket do
+    // mês anterior; receita = meta do mês da empresa).
+    if (role === "sdr") {
+      const d = data?.derived;
+      const v = metric === "won" ? d?.won : d?.target;
+      return v > 0 ? { value: v, from: "meta do mês da equipe" } : null;
+    }
     const plan = planOfUser(u);
     if (plan) {
       const v = metric === "won" ? plan.metaContracts : plan.metaRevenue;
@@ -391,7 +411,7 @@ function MetasWorkspace({product}) {
       // metas por vaga: manda tudo (vazio = servidor apaga → volta pro padrão).
       // As do plano de remuneração não têm campo de vaga: não manda nem apaga.
       for (const r of data.roles) for (const m of r.metrics) {
-        if (m.compPlan) continue;
+        if (m.compPlan || m.teamGoal) continue;
         goals.push({ scope: "role", key: r.role, metric: m.metric, target: roleVals[rk(r.role, m.metric)] });
       }
       // overrides atuais
@@ -508,7 +528,9 @@ function MetasWorkspace({product}) {
                     <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: "var(--fg-1)", minWidth: 0 }}>
                       Meta de contratos no mês
                       {contratos === "" && data.derived?.wonFromTicket != null && (
-                        <span style={{ display: "block", fontSize: 11.5, fontWeight: 400, color: "var(--accent)" }}>seguindo a venda ÷ ticket: {data.derived.wonFromTicket}</span>
+                        <span style={{ display: "block", fontSize: 11.5, fontWeight: 400, color: "var(--accent)" }}>
+                          seguindo a receita ÷ ticket{data.derived.ticketMonth ? ` de ${mesCurto(data.derived.ticketMonth)}` : ""}: {data.derived.wonFromTicket}
+                        </span>
                       )}
                       {divergente(contratos, data.derived?.wonFromTicket) && (
                         <button type="button" onClick={() => setContratos(String(data.derived.wonFromTicket))}
@@ -541,7 +563,7 @@ function MetasWorkspace({product}) {
               {data.roles.map((r) => (
                 <Card key={r.role} title={r.label} hint={r.hint}>
                   <div className="metas-role-fields">
-                    {r.metrics.filter((m) => !m.compPlan).map((m) => (
+                    {r.metrics.filter((m) => !m.compPlan && !m.teamGoal).map((m) => (
                       <label key={m.metric} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: "1px solid var(--line-faint)" }}>
                         <span style={{ flex: 1, fontSize: 13.5, color: "var(--fg-2)", minWidth: 0 }}>
                           {m.label}
@@ -578,6 +600,26 @@ function MetasWorkspace({product}) {
                         Remuneração (o placar aplica o plano por cima de vaga e
                         derivado). A régua aparece por pessoa; edita na tela
                         Remuneração, e o ajuste por pessoa abaixo ainda vence. */}
+                    {/* SDR: contratos e receita são a META DO MÊS DA EQUIPE
+                        (Leo, 06/10): a receita do mês da empresa e os contratos
+                        que saem dela pelo ticket do mês anterior. Sem campo de
+                        vaga e sem nível do plano; o ajuste por pessoa vence. */}
+                    {r.metrics.some((m) => m.teamGoal) && (
+                      <div title="Contratos e receita do SDR são a meta do mês da equipe: a meta de receita do mês (card Empresa) e a meta de contratos que sai dela (receita ÷ ticket médio do mês anterior). Não reparte por pessoa; só o ajuste por pessoa, no card mais abaixo, passa na frente."
+                        style={{ marginTop: 12, background: "var(--bg-inset)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "10px 12px", cursor: "help" }}>
+                        <div className="kicker accent" style={{ fontWeight: 600, marginBottom: 7 }}>
+                          Contratos e receita · meta do mês da equipe <span className="dim" style={{ letterSpacing: 0 }}>ⓘ</span>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, alignItems: "baseline", padding: "3px 0", fontSize: 12.5 }}>
+                          <span style={{ flex: 1 }} className="dim">
+                            {data.derived?.ticketMonth ? `receita do mês ÷ ticket de ${mesCurto(data.derived.ticketMonth)}` : "receita do mês ÷ ticket médio"}
+                          </span>
+                          <span className="tnum" style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
+                            {data.derived?.won != null ? `${int(data.derived.won)} contratos` : "— contratos"} · {money(data.derived?.target || 0)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                     {r.metrics.some((m) => m.compPlan) && (
                       <div title="Contratos e receita são meta POR PESSOA, pelo nível dela (1 jr · 2 pl · 3 sn) no plano de Remuneração: vencem a meta de vaga e a derivada do pace. Edita na tela Remuneração; só o ajuste por pessoa, no card mais abaixo, passa na frente."
                         style={{ marginTop: 12, background: "var(--bg-inset)", border: "1px solid var(--line-1)", borderRadius: "var(--r-3)", padding: "10px 12px", cursor: "help" }}>

@@ -158,8 +158,13 @@ function planMetric(remaining, days, today) {
 
 // Ticket compartilhado pelo pace e pela meta da janela. Não precisa de
 // timeline, WhatsApp, anúncios nem propostas para calcular uma entrada média.
-function averageEntryOf(product, { invoices, leads, customers, goals }, now) {
+function averageEntryOf(product, { invoices, leads, saleLeads = leads, customers, goals, mpPayments = [] }, now) {
   const today = dayKey(now);
+  // Mês fechado anterior ao de `now` (base do ticket médio).
+  const prevMonth = (() => { const d = new Date(`${today.slice(0, 7)}-01T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7); })();
+  const [pmY, pmM] = prevMonth.split("-").map(Number);
+  const prevMonthEnd = `${prevMonth}-${String(new Date(pmY, pmM, 0).getDate()).padStart(2, "0")}`;
+  const inPrevMonth = (iso) => { const day = dayKey(iso); return !!day && day >= `${prevMonth}-01` && day <= prevMonthEnd; };
   const since90 = dayKey(new Date(now.getTime() - 89 * DAY));
   const inRange = (iso, since) => {
     const day = dayKey(iso);
@@ -171,9 +176,15 @@ function averageEntryOf(product, { invoices, leads, customers, goals }, now) {
   const customerStartByLead = customerStartMap(customers);
   const winLeadsIn = (test) => [...winsIn(product, leads, test, customerStartByLead).keys()]
     .map((id) => leadById.get(id)).filter(Boolean);
-  // Entrada média por nova venda: 1ª fatura paga de cada assinatura/cliente.
-  // Sem esse vínculo, degrada pra qualquer fatura paga recente; depois TCV ganho
-  // e, por último, ticket configurado — a fonte volta explícita pra interface.
+  // ── Ticket médio = o do MÊS ANTERIOR (Leo, 06/10/2026) ─────────────────────
+  // A meta de contratos do mês nasce de meta de receita do mês ÷ ticket médio
+  // do mês anterior. O ticket é o MESMO número do placar e da faixa Meta do
+  // mês daquele mês: vendido RECONHECIDO (à vista cheio; faturado, parcelado
+  // e recorrente só o que caiu no mês) ÷ nº de vendas (fechamentos + upsells,
+  // `saleLeads` = a base do dinheiro, com a mentoria), sem conta grande.
+  // Mês anterior sem venda (produto novo) cai na cadeia antiga: 1ª fatura paga
+  // de cada cliente, faturas pagas recentes, TCV dos ganhos recentes e, por
+  // último, o ticket configurado — a fonte volta explícita pra interface.
   //
   // CONTA GRANDE (customer.keyAccount, ex.: Galante) fica FORA do ticket médio:
   // um fechamento de R$ 120 mil no meio de vendas de R$ 3-7 mil quebra a cadeia
@@ -191,8 +202,18 @@ function averageEntryOf(product, { invoices, leads, customers, goals }, now) {
   const paidRecent = paid.filter((i) => inRange(i.paidAt, since90) && !isKeyInvoice(i));
   const wonRecent90 = winLeadsIn((iso) => inRange(iso, since90)).filter((l) => !isKeyLead(l));
   const configuredTicket = goals.find((g) => g.scope === "role" && g.key === "closer" && g.metric === "ticket");
-  let averageEntry = averageAmount(initialRecent);
-  let averageEntrySource = averageEntry != null ? "initial_payments" : "";
+  const saleById = new Map(saleLeads.map((l) => [l.id, l]));
+  const prevWinLeads = [...winsIn(product, saleLeads, inPrevMonth, customerStartByLead).keys()]
+    .map((id) => saleById.get(id)).filter((l) => l && !isKeyLead(l));
+  const prevUps = upsellSalesIn(invoices, inPrevMonth, { saas: product.id }).filter((i) => !isKeyAccountUpsell(keyCustomerIds, i));
+  const prevSold = round2(revenueOf(prevWinLeads, saleValuer({ invoices, mpPayments, customers, inWin: inPrevMonth }))
+    + upsellRevenueOf(prevUps, upsellValuer(inPrevMonth)));
+  const prevSoldN = prevWinLeads.length + prevUps.length;
+  const prevTicket = prevSoldN > 0 && prevSold > 0 ? round2(prevSold / prevSoldN) : null;
+  const previousMonth = { month: prevMonth, sold: prevSold, soldN: prevSoldN, ticket: prevTicket };
+  let averageEntry = prevTicket;
+  let averageEntrySource = averageEntry != null ? "prev_month" : "";
+  if (averageEntry == null) { averageEntry = averageAmount(initialRecent); averageEntrySource = averageEntry != null ? "initial_payments" : ""; }
   if (averageEntry == null) { averageEntry = averageAmount(paidRecent); averageEntrySource = averageEntry != null ? "paid_invoices" : ""; }
   if (averageEntry == null) { averageEntry = averageAmount(wonRecent90); averageEntrySource = averageEntry != null ? "won_tcv" : ""; }
   if (averageEntry == null && Number(configuredTicket?.target) > 0) {
@@ -200,7 +221,7 @@ function averageEntryOf(product, { invoices, leads, customers, goals }, now) {
     averageEntrySource = "configured_ticket";
   }
 
-  return { averageEntry, averageEntrySource };
+  return { averageEntry, averageEntrySource, previousMonth };
 }
 
 // Propostas criadas HOJE, filtradas no Postgres. `proposals` é a maior coleção
@@ -298,9 +319,14 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   });
   const receivableAmount = round2(receivables.reduce((a, i) => a + (Number(i.amount) || 0), 0));
 
+  // Mês fechado anterior (janela das taxas no fallback e base do ticket médio).
+  const prevMonth = (() => { const d = new Date(`${month}-01T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7); })();
+  const [pmY, pmM] = prevMonth.split("-").map(Number);
+  const prevMonthEnd = `${prevMonth}-${String(new Date(pmY, pmM, 0).getDate()).padStart(2, "0")}`;
+  const inPrevMonth = (iso) => inRange(iso, `${prevMonth}-01`, prevMonthEnd);
   const keyCustomerIds = keyAccountIds(customers);
   const isKeyLead = (l) => isKeyAccountLead(keyCustomerIds, l);
-  const { averageEntry, averageEntrySource } = averageEntryOf(product, { invoices, leads, customers, goals }, now);
+  const { averageEntry, averageEntrySource, previousMonth } = averageEntryOf(product, { invoices, leads, saleLeads, customers, goals, mpPayments }, now);
 
   // ── Taxas da cadeia: os 30 DIAS MÓVEIS (decisão do Leo, 25/08/2026) ────────
   // Antes a janela era o mês fechado anterior (08/08: "o correto é o funil").
@@ -335,10 +361,6 @@ export async function computePipelinePace(repo, product, now = new Date()) {
   // ganho na janela), cai no mês fechado anterior; sem amostra lá também, as
   // taxas caem na meta configurada e depois no benchmark.
   const humanIds = new Set(users.map((u) => u.id));
-  const prevMonth = (() => { const d = new Date(`${month}-01T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7); })();
-  const [pmY, pmM] = prevMonth.split("-").map(Number);
-  const prevMonthEnd = `${prevMonth}-${String(new Date(pmY, pmM, 0).getDate()).padStart(2, "0")}`;
-  const inPrevMonth = (iso) => inRange(iso, `${prevMonth}-01`, prevMonthEnd);
   const enteredPrev = leads.filter((l) => inPrevMonth(l.createdAt));
   const wonPrev = winLeadsIn(inPrevMonth).length;
   // Janela PRIMÁRIA: 30d móveis. Só cai no mês fechado quando os 30d não têm
@@ -633,6 +655,8 @@ export async function computePipelinePace(repo, product, now = new Date()) {
       return {
         target: contractsTarget,
         targetSource: Number(product.monthlyContractsTarget) > 0 ? "company" : (contractsTarget != null ? "ticket" : ""),
+        ticketSource: averageEntrySource, // prev_month = receita do mês ÷ ticket médio do mês anterior
+        ticketMonth: averageEntrySource === "prev_month" ? prevMonth : "",
         sold: soldN,
         soldToday: soldTodayN,
         gap: contractsTarget != null ? Math.max(0, contractsTarget - soldN) : null,
@@ -673,6 +697,7 @@ export async function computePipelinePace(repo, product, now = new Date()) {
       mrr,
       averageEntry,
       averageEntrySource,
+      previousMonth, // { month, sold, soldN, ticket }: a base do ticket médio
     },
     marketing: { spend30, leads30, cpl },
     paceAdjust, // histórico pré-cockpit somado ao funil (null quando não há)
@@ -740,7 +765,8 @@ export async function computeWindowGoal(repo, product, since, until, now = new D
   const { averageEntry } = averageEntryOf(product, {
     invoices: allInvoices.filter((i) => i.saas === product.id),
     leads: allLeads.filter((l) => l.saas === product.id && isRealLead(l)),
-    customers,
+    saleLeads: allLeads.filter((l) => l.saas === product.id && isSaleLead(l)),
+    customers, mpPayments,
     goals: allGoals.filter((g) => !g.saas || g.saas === product.id),
   }, now);
   const avg = Number(averageEntry) > 0 ? Number(averageEntry) : null;
