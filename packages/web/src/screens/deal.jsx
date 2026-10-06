@@ -11,13 +11,15 @@ import { waLink, leadTier, cockpitProposalUrl } from "../lib/ui.js";
 import { waCallLinkText } from "../lib/wa-copy.js";
 import { stageKind, lossReasonLabel, nextTouchPill, workableStages, stageByKind, isLossKind, phaseOf } from "../lib/funnel.js";
 import { SelectPopover } from "../components/select-popover.jsx";
+import { DateTimeField } from "../components/datetime-field.jsx";
+import { Checkbox } from "../components/form-controls.jsx";
 import { displayName, usersByRole, currentUser } from "../lib/users.js";
 import { CallCopilot } from "../components/call-copilot.jsx";
 import { api } from "../lib/api.js";
 import { useAttribution } from "../lib/pains.js";
 import { sourceLabel } from "../lib/sources.js";
 import { resolveScript, scriptTokens, scriptChecklist } from "../lib/scripts.js";
-import { CallSummaryCard, IntegrationBriefCard, callBusyKeys, callSlotKeys, integBusyKeys, destinationsFor, withoutWonStep } from "./today.jsx";
+import { CallSummaryCard, IntegrationBriefCard, callBusyKeys, callSlotKeys, integBusyKeys, destinationsFor, withoutWonStep, parseMoneyInput } from "./today.jsx";
 import { CustomProposalModal } from "../components/custom-proposal.jsx";
 import { PaymentLinkModal } from "../components/payment-link-modal.jsx";
 import { LeadSendActions, useLeadProposalActions } from "../components/lead-send-actions.jsx";
@@ -66,22 +68,22 @@ const localToIso = (v) => {
   return Number.isFinite(d.getTime()) ? d.toISOString() : "";
 };
 
-// Editor explícito de data/hora. Mantém o input UNCONTROLLED para o Safari não
-// apagar os pedaços enquanto a pessoa digita e só confirma depois que a API
-// respondeu. O botão sempre visível deixa claro que escolher a data não basta:
-// é preciso salvar o horário.
-function DateTimeEditor({ value, onSave, validate, style }) {
-  const inputRef = React.useRef(null);
+// Editor explícito de data/hora: o DateTimeField (calendário + horários do
+// cockpit, no lugar do datetime-local do navegador) escolhe um rascunho e só
+// confirma depois que a API respondeu. O botão sempre visível deixa claro que
+// escolher a data não basta: é preciso salvar o horário.
+function DateTimeEditor({ value, onSave, validate, style, label = "Data e hora" }) {
   const [status, setStatus] = React.useState(""); // "dirty" | "saving" | "saved"
   const stored = String(value || "");
+  const [draft, setDraft] = React.useState(stored);
 
   React.useEffect(() => {
-    if (inputRef.current && inputRef.current.value !== stored) inputRef.current.value = stored;
+    setDraft(stored);
     setStatus((cur) => (cur === "saving" || cur === "saved") ? "saved" : "");
   }, [stored]);
 
   async function save() {
-    const raw = inputRef.current?.value || "";
+    const raw = draft || "";
     if (raw === stored) { setStatus(""); return; }
     const invalid = validate?.(raw) || "";
     if (invalid) {
@@ -95,16 +97,30 @@ function DateTimeEditor({ value, onSave, validate, style }) {
   }
 
   return (<>
-    <input ref={inputRef} type="datetime-local" defaultValue={stored} disabled={status === "saving"}
-      onInput={(e) => setStatus(e.currentTarget.value === stored ? "" : "dirty")}
-      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); save(); } }}
-      style={style} />
+    <span style={{ display: "inline-flex", width: 196, maxWidth: "100%" }}>
+      <DateTimeField label={label} value={draft} disabled={status === "saving"} style={style}
+        onChange={(v) => { setDraft(v); setStatus(v === stored ? "" : "dirty"); }} />
+    </span>
     <button type="button" onClick={save} disabled={status !== "dirty"}
       className="mono" title="Salvar a nova data e hora"
       style={{ height: 26, padding: "0 9px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: status === "dirty" ? "var(--accent)" : "var(--bg-2)", color: status === "dirty" ? "var(--accent-fg)" : status === "saved" ? "var(--pos)" : "var(--fg-4)", fontSize: 10.5, fontWeight: 700, cursor: status === "dirty" ? "pointer" : "default" }}>
       {status === "saving" ? "salvando…" : status === "saved" ? "salvo ✓" : "salvar horário"}
     </button>
   </>);
+}
+
+// Pendência do cliente concluída pela ficha: marca na hora, trava enquanto a
+// API responde e desmarca se falhar.
+function PendingCheck({ label, onDone }) {
+  const [state, setState] = React.useState(""); // "" | "saving" | "done"
+  return (
+    <Checkbox label={label} checked={state !== ""} disabled={state !== ""}
+      onChange={async () => {
+        setState("saving");
+        try { await onDone(); setState("done"); }
+        catch (e) { setState(""); window.alert(e.message || "Não consegui concluir."); }
+      }} />
+  );
 }
 
 // Catálogo de atribuição e dor do criativo: helpers compartilhados com o
@@ -455,11 +471,14 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
   const presetBtn = { height: 32, padding: "0 13px", borderRadius: 999, border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-2)", fontSize: 11.5, fontWeight: 500 };
   // Linha rótulo→campo pra edição inline do Resumo.
   const editInput = { flex: 1, minWidth: 0, height: 28, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 12.5 };
+  const editPick = { height: 28, borderRadius: "var(--r-2)", borderColor: "var(--line-1)", background: "var(--bg-1)" };
+  // div, não <label>: o clique numa opção do SelectPopover subia até o label
+  // e reabria a lista. O grupo leva o nome do campo pro leitor de tela.
   const EditRow = ({ label, children }) => (
-    <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <div role="group" aria-label={label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <span className="mono dim" style={{ width: 92, flexShrink: 0, fontSize: 10.5 }}>{label}</span>
       {children}
-    </label>
+    </div>
   );
 
   // Roteiro do estágio + checklist editável dos dados do 1º contato — a MESMA
@@ -484,26 +503,30 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
             )}>
             {editResumo && (
               <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                <EditRow label="Nome"><input defaultValue={lead.name || ""} onBlur={(e) => e.target.value !== (lead.name || "") && patch({ name: e.target.value })} style={editInput} /></EditRow>
-                <EditRow label="Empresa"><input defaultValue={lead.company || ""} onBlur={(e) => e.target.value !== (lead.company || "") && patch({ company: e.target.value })} style={editInput} /></EditRow>
+                <EditRow label="Nome"><input aria-label="Nome" defaultValue={lead.name || ""} onBlur={(e) => e.target.value !== (lead.name || "") && patch({ name: e.target.value })} style={editInput} /></EditRow>
+                <EditRow label="Empresa"><input aria-label="Empresa" defaultValue={lead.company || ""} onBlur={(e) => e.target.value !== (lead.company || "") && patch({ company: e.target.value })} style={editInput} /></EditRow>
                 <EditRow label="Prioridade">
-                  <select value={lead.priority || ""} onChange={(e) => patch({ priority: e.target.value })} style={editInput}>
-                    <option value="">—</option><option value="P0">P0</option><option value="P1">P1</option><option value="P2">P2</option>
-                  </select>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <SelectPopover label="Prioridade" value={lead.priority || ""} onChange={(v) => patch({ priority: v })} style={editPick}
+                      options={[{ value: "", label: "—" }, { value: "P0", label: "P0" }, { value: "P1", label: "P1" }, { value: "P2", label: "P2" }]} />
+                  </div>
                 </EditRow>
-                <EditRow label={lead.planClosed === "mensal" ? "Valor mensal (R$)" : "Valor (R$)"}><input type="number" defaultValue={lead.amount ?? ""} onBlur={(e) => patch({ amount: e.target.value === "" ? "" : Number(e.target.value) })} style={editInput} /></EditRow>
-                <EditRow label="Faixa"><input defaultValue={lead.value || ""} onBlur={(e) => e.target.value !== (lead.value || "") && patch({ value: e.target.value })} style={editInput} /></EditRow>
-                <EditRow label="E-mail"><input defaultValue={lead.email || ""} onBlur={(e) => e.target.value !== (lead.email || "") && patch({ email: e.target.value })} style={editInput} /></EditRow>
-                <EditRow label="Telefone"><input defaultValue={lead.phone || ""} onBlur={(e) => e.target.value !== (lead.phone || "") && patch({ phone: e.target.value })} style={editInput} /></EditRow>
+                <EditRow label={lead.planClosed === "mensal" ? "Valor mensal (R$)" : "Valor (R$)"}><input aria-label="Valor" type="text" inputMode="decimal" autoComplete="off" defaultValue={lead.amount ?? ""} onBlur={(e) => { const t = e.target.value.trim(); patch({ amount: t === "" ? "" : parseMoneyInput(t) }); }} style={editInput} /></EditRow>
+                <EditRow label="Faixa"><input aria-label="Faixa" defaultValue={lead.value || ""} onBlur={(e) => e.target.value !== (lead.value || "") && patch({ value: e.target.value })} style={editInput} /></EditRow>
+                <EditRow label="E-mail"><input aria-label="E-mail" defaultValue={lead.email || ""} onBlur={(e) => e.target.value !== (lead.email || "") && patch({ email: e.target.value })} style={editInput} /></EditRow>
+                <EditRow label="Telefone"><input aria-label="Telefone" defaultValue={lead.phone || ""} onBlur={(e) => e.target.value !== (lead.phone || "") && patch({ phone: e.target.value })} style={editInput} /></EditRow>
                 {[["Dono (SDR)", "owner", "sdr"], ["Closer", "closer", "closer"], ["Integrador", "integrator", "integrator"]].map(([label, field, role]) => {
                   const opts = usersByRole(role);
                   return (
                     <EditRow key={field} label={label}>
-                      <select value={lead[field] || ""} onChange={(e) => patch({ [field]: e.target.value })} style={editInput}>
-                        <option value="">—</option>
-                        {opts.map((u) => <option key={u.id} value={u.id}>{u.name || u.id}</option>)}
-                        {lead[field] && !opts.some((u) => u.id === lead[field]) && <option value={lead[field]}>{displayName(lead[field])}</option>}
-                      </select>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <SelectPopover label={label} value={lead[field] || ""} onChange={(v) => patch({ [field]: v })} style={editPick}
+                          options={[
+                            { value: "", label: "—" },
+                            ...opts.map((u) => ({ value: u.id, label: u.name || u.id })),
+                            ...(lead[field] && !opts.some((u) => u.id === lead[field]) ? [{ value: lead[field], label: displayName(lead[field]) }] : []),
+                          ]} />
+                      </div>
                     </EditRow>
                   );
                 })}
@@ -727,8 +750,8 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
           {(kind === "proposta" || kind === "followup") && (
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <span className="mono dim" style={rowLabel}>Proposta</span>
-              <input type="number" placeholder="Valor (R$)" defaultValue={lead.proposalValue ?? ""}
-                onBlur={(e) => patch({ proposalValue: e.target.value === "" ? "" : Number(e.target.value) })}
+              <input type="text" inputMode="decimal" autoComplete="off" aria-label="Valor da proposta (R$)" placeholder="Valor (R$)" defaultValue={lead.proposalValue ?? ""}
+                onBlur={(e) => { const t = e.target.value.trim(); patch({ proposalValue: t === "" ? "" : parseMoneyInput(t) }); }}
                 style={{ width: 110, height: 26, padding: "0 8px", borderRadius: "var(--r-2)", border: "1px solid var(--line-1)", background: "var(--bg-1)", color: "var(--fg-1)", fontSize: 11.5, fontFamily: "var(--mono)" }} />
               <input type="text" placeholder="Período (ex: 12 meses)" defaultValue={lead.proposalPeriod ?? ""}
                 onBlur={(e) => patch({ proposalPeriod: e.target.value })}
@@ -772,12 +795,7 @@ function LeadDetail({ lead: initial, onClose, onOpenWhatsapp, pipeline = false }
                   </div>
                   {(lead.clientPending.items || []).map((it) => (
                     <div key={it.task} style={{ display: "flex", alignItems: "flex-start", gap: 7, padding: "3px 0", fontSize: 12 }}>
-                      <input type="checkbox" style={{ marginTop: 2, flexShrink: 0, cursor: "pointer" }}
-                        onChange={async (ev) => {
-                          ev.target.disabled = true;
-                          try { await api.taskComplete(it.task); refetchTimeline?.(); }
-                          catch (e) { ev.target.disabled = false; window.alert(e.message || "Não consegui concluir."); }
-                        }} />
+                      <PendingCheck label={`Concluir: ${it.item}`} onDone={async () => { await api.taskComplete(it.task); refetchTimeline?.(); }} />
                       <span style={{ flex: 1, minWidth: 0 }}>{it.item}</span>
                       <span className="mono dim" style={{ fontSize: 10.5, flexShrink: 0 }}>{it.dueDate ? it.dueDate.slice(8, 10) + "/" + it.dueDate.slice(5, 7) : ""}</span>
                     </div>
